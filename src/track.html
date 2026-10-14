@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>@@TITLE@@ — Interview Mastery</title>
+<meta name="description" content="@@DESC@@">
+<link rel="stylesheet" href="assets/style.css?v=@@V@@">
+</head>
+<body>
+<button id="menuBtn" class="btn" type="button" aria-label="Open menu">☰ Menu</button>
+<div id="app">
+  <aside id="sidebar">
+    <div class="side-top">
+      <a class="brand" href="index.html" style="text-decoration:none;color:inherit"><span class="logo">@@ICON@@</span><div>@@TITLE@@<small>Interview Mastery · beginner → expert</small></div></a>
+      <input id="search" type="search" placeholder="Search this track…" autocomplete="off">
+      <div class="side-row"><a class="btn" href="index.html" style="text-align:center;text-decoration:none">🏠 Home</a><button id="themeBtn" class="btn" type="button">🌙 Dark</button></div>
+      <div class="pwrap"><span id="ptext"></span><div class="pbar"><div id="pfill"></div></div></div>
+    </div>
+    <nav id="nav"></nav>
+    <div id="results" hidden></div>
+  </aside>
+  <main id="main"></main>
+</div>
+<script src="assets/helpers.js?v=@@V@@"></script>
+<script src="assets/tracks.js?v=@@V@@"></script>
+<script src="assets/engine.js?v=@@V@@"></script>
+@@MODULES@@
+<script>App.track('@@ID@@');</script>
+</body>
+</html>

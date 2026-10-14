@@ -1,5 +1,5 @@
 # Interview Mastery — Beginner → Expert Curriculum
-**13 tracks · 193 modules · 4 levels per track:** 🟢 Beginner → 🔵 Intermediate → 🟣 Advanced → 🔴 Expert
+**13 tracks · 194 modules · 4 levels per track:** 🟢 Beginner → 🔵 Intermediate → 🟣 Advanced → 🔴 Expert
 
 ## How depth works (inside every topic)
 Every topic is taught in four layers, so the same page carries you from zero to expert:
@@ -120,11 +120,12 @@ Plus in every module:
 🟣 9. Caching and async processing: Redis, queues, jobs, idempotency · 10. Microservices patterns: saga, outbox, CQRS, gRPC, service mesh · 11. Testing and architecture: clean/hexagonal, DDD · 12. Performance and scalability: profiling, concurrency, backpressure
 🔴 13. DevOps: Docker, Kubernetes, CI/CD, infrastructure as code · 14. Cloud architecture: core AWS services, serverless · 15. Security engineering: OWASP, secrets, zero trust · 16. Observability and production excellence: logs/metrics/traces, incidents, SRE
 
-## 11. GenAI & Working With AI — 16 modules
+## 11. GenAI & Working With AI — 17 modules
 🟢 1. AI, ML, DL and GenAI in plain English · 2. Using AI tools effectively (chat assistants, coding assistants) · 3. Math and Python for AI: vectors, matrices, probability intuition
 🔵 4. ML foundations: training, loss, gradient descent, overfitting, evaluation · 5. Neural networks and backpropagation intuition · 6. How LLMs work: tokens, embeddings, transformers, attention · 7. Prompt engineering deep dive · 8. Embeddings and vector databases · 9. RAG end to end
-🟣 10. Agents, tool use, MCP, multi-agent systems · 11. Fine-tuning: SFT, LoRA/QLoRA, RLHF/DPO, when to fine-tune · 12. Evaluation, guardrails, hallucinations, prompt-injection security · 13. LLM system design and LLMOps: serving, cost, latency, caching, observability
-🔴 14. Transformer internals: attention math, KV cache, quantization, scaling laws, mixture of experts · 15. AI-augmented engineering: coding-agent workflows, reviewing/testing AI code, spec-driven development, AI in interviews · 16. Future of software careers with AI: roles, skills, ethics, staying relevant
+**10. MCP: Model Context Protocol** (host/client/server, tools/resources/prompts, JSON-RPC lifecycle, stdio vs Streamable HTTP, building servers in Python and TypeScript, connecting them to Claude and IDEs, security: OAuth, tool poisoning, prompt injection)
+🟣 11. Agents, tool use and multi-agent systems built on MCP · 12. Fine-tuning: SFT, LoRA/QLoRA, RLHF/DPO, when to fine-tune · 13. Evaluation, guardrails, hallucinations, prompt-injection security · 14. LLM system design and LLMOps: serving, cost, latency, caching, observability
+🔴 15. Transformer internals: attention math, KV cache, quantization, scaling laws, mixture of experts · 16. AI-augmented engineering: coding-agent workflows, reviewing/testing AI code, spec-driven development, AI in interviews · 17. Future of software careers with AI: roles, skills, ethics, staying relevant
 
 ## 12. CS Core: Operating Systems + Computer Networks — 14 modules
 🟢 1. What an OS does: kernel/user mode, system calls · 2. Processes and threads

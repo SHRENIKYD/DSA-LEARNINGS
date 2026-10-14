@@ -1,36 +1,31 @@
-// REFERENCE EXAMPLE ONLY (not part of the build). Shows every schema field and every visualizer part type.
+// REFERENCE EXAMPLE (shape only — real modules need the full counts listed in docs/AUTHORING.md).
+// Shows every field and every visualizer part type. File location for a real module: content/<track>/<id>.js
 registerModule({
-  id: 'm00',
-  part: 'C',
-  num: 0,
-  title: 'Example Module',
-  intro: `<p>One-paragraph friendly overview of the module: what you will learn and why it matters in interviews.</p>`,
+  id: 'dsa08',
+  title: 'Hashing Masterclass (HashSet & HashMap)',
+  intro: `<p>Friendly overview: what you will learn, why it matters in interviews, how it connects to earlier modules.</p>`,
+  goals: ['Explain how a HashMap finds a key in O(1) on average', 'Solve any "subarray sum = K" question in O(N)', 'Pick between HashSet and HashMap from the wording of a question'],
+  prereqs: `Module 5 (Prefix Sums) and Module 6 (Sliding Window).`,
+  hours: 10,
+  databases: { shop: `CREATE TABLE orders(id INTEGER PRIMARY KEY, customer TEXT, amount INTEGER);
+INSERT INTO orders VALUES (1,'asha',120),(2,'ben',80),(3,'asha',40);` },
   topics: [
     {
       title: 'Prefix Sum + HashSet: Does a Zero-Sum Subarray Exist?',
-      analogy: `<p>Check your bank balance on <b>Monday</b> and again on <b>Friday</b>. If both show ₹500, then whatever you spent and earned in between cancelled out — your <b>net spending was zero</b>. You didn't need to look at each day's transactions; you only compared two running totals.</p>`,
-      explain: `<p>A <b>prefix sum</b> <code>pf[i]</code> is the running total of the array up to index <code>i</code>. The sum of a subarray <code>i..j</code> equals <code>pf[j] - pf[i-1]</code>.</p>
+      analogy: `<p>Check your bank balance on <b>Monday</b> and again on <b>Friday</b>. If both show ₹500, everything in between cancelled out — net spending was zero.</p>`,
+      explain: `<p>Plain-English explanation with visuals ...</p>
         ${H.arr([2, -1, 3, -2], { label: 'arr', hl: { 1: 'g', 2: 'g', 3: 'g' } })}
-        ${H.arr([2, 1, 4, 2], { label: 'pf', hl: { 0: 'y', 3: 'y' } })}
-        <p>${H.c('y', 'pf[0] = 2')} and ${H.c('y', 'pf[3] = 2')} are equal, so the part in between (${H.c('g', 'indices 1..3')}) sums to zero: -1 + 3 - 2 = 0.</p>
-        ${H.table(['i', 'arr[i]', 'pf[i]', 'seen before?'], [['0', '2', '2', 'no'], ['1', '-1', '1', 'no'], ['2', '3', '4', 'no'], ['3', '-2', '2', '<span class="c-g">YES → zero-sum exists</span>']])}`,
-      clues: [
-        '"Does any <b>contiguous subarray</b> sum to 0 / K?" → prefix sum + hashing.',
-        'Array has <b>negative numbers</b>, so a sliding window cannot be used.',
-        '<code>N ≤ 10<sup>5</sup></code> → O(N<sup>2</sup>) = 10<sup>10</sup> is too slow; need O(N) or O(N log N).'
-      ],
-      code: `
+        ${H.table(['i', 'arr[i]', 'pf[i]', 'seen before?'], [['0', '2', '2', 'no'], ['3', '-2', '2', '<span class="c-g">YES</span>']])}`,
+      clues: ['"contiguous subarray" + "sum = 0 / K"', 'negative numbers allowed → sliding window fails', 'N ≤ 10<sup>5</sup> → need O(N)'],
+      code: [`
         boolean hasZeroSum(int[] a) {
             Set<Long> seen = new HashSet<>();
-            seen.add(0L);              // empty prefix: handles subarrays starting at index 0
+            seen.add(0L);
             long pf = 0;
-            for (int x : a) {
-                pf += x;
-                if (!seen.add(pf)) return true;  // add() returns false if pf was already there
-            }
+            for (int x : a) { pf += x; if (!seen.add(pf)) return true; }
             return false;
-        }`,
-      codeTitle: 'Core pattern',
+        }`, { lang: 'python', code: `def has_zero_sum(a):\n    seen, pf = {0}, 0\n    for x in a:\n        pf += x\n        if pf in seen:\n            return True\n        seen.add(pf)\n    return False\n\nprint(has_zero_sum([4, 2, -3, 1, 6]))`, run: true, title: 'Same idea in Python (runnable)' }],
+      codeTitle: ['Core pattern (Java)'],
       viz: {
         title: 'Prefix Sum + HashSet walk-through',
         input: '2 -1 3 -2 4',
@@ -38,125 +33,62 @@ registerModule({
         gen: function (input) {
           var a = String(input).trim().split(/[\s,]+/).map(Number);
           if (!a.length || a.some(isNaN)) throw new Error('Enter integers separated by spaces');
+          if (a.length > 16) throw new Error('Use at most 16 numbers');
           var frames = [], seen = [0], pf = 0, pfs = [];
-          frames.push({ narr: 'Start: put <b>0</b> in the set. It stands for "sum of nothing", so a subarray that starts at index 0 can be caught.', parts: [
-            { type: 'array', label: 'arr', values: a },
-            { type: 'set', label: 'HashSet of prefix sums seen', items: seen.slice(), hl: { '0': 'ok' } }
-          ] });
+          frames.push({ narr: 'Start: put <b>0</b> in the set ("sum of nothing").', parts: [{ type: 'array', label: 'arr', values: a }, { type: 'set', items: seen.slice(), hl: { '0': 'ok' } }] });
           for (var i = 0; i < a.length; i++) {
             pf += a[i]; pfs.push(pf);
-            var dup = seen.indexOf(pf) >= 0;
-            var hl = {}; hl[String(pf)] = dup ? 'bad' : 'ok';
+            var dup = seen.indexOf(pf) >= 0, hl = {}, ptr = {}, ch = {};
+            hl[String(pf)] = dup ? 'bad' : 'ok'; ptr[i] = 'i'; ch[i] = 'cur';
             if (!dup) seen.push(pf);
-            var ptr = {}; ptr[i] = 'i';
-            frames.push({
-              narr: 'Add arr[' + i + '] = ' + a[i] + ' → running sum pf = <b>' + pf + '</b>. ' + (dup ? '<span class="c-r">pf was already in the set!</span> The numbers between the two moments cancelled out → a zero-sum subarray exists.' : 'Not seen before, so store it in the set.'),
-              parts: [
-                { type: 'array', label: 'arr', values: a, ptr: ptr, hl: (function () { var h = {}; h[i] = 'cur'; return h; })() },
-                { type: 'bars', label: 'running prefix sums', values: pfs.slice(), hl: (function () { var h = {}; h[i] = dup ? 'bad' : 'cur'; return h; })() },
-                { type: 'set', label: 'HashSet of prefix sums seen', items: seen.slice(), hl: hl },
-                { type: 'vars', vals: { i: i, pf: pf } }
-              ]
-            });
+            frames.push({ narr: 'pf = <b>' + pf + '</b>. ' + (dup ? '<span class="c-r">Seen before → zero-sum subarray!</span>' : 'New, store it.'), parts: [
+              { type: 'array', label: 'arr', values: a, ptr: ptr, hl: ch },
+              { type: 'bars', label: 'running prefix sums', values: pfs.slice() },
+              { type: 'set', label: 'HashSet of prefix sums', items: seen.slice(), hl: hl },
+              { type: 'code', label: 'Code line running', lang: 'java', code: 'pf += x;\nif (!seen.add(pf)) return true;', hl: { 1: 'cur', 2: dup ? 'bad' : '' } }
+            ] });
             if (dup) return frames;
           }
-          frames.push({ narr: 'Finished with no repeated prefix sum → <b>no</b> zero-sum subarray.', parts: [{ type: 'array', label: 'arr', values: a }, { type: 'set', items: seen.slice() }] });
+          frames.push({ narr: 'No repeat → no zero-sum subarray.', parts: [{ type: 'set', items: seen.slice() }] });
           return frames;
         }
       },
-      problems: [
-        {
-          title: 'Subarray with Sum 0',
-          level: 'Easy',
-          tags: ['prefix sum', 'hashset'],
-          statement: `<p>Given an integer array <code>A</code> of size <code>N</code>, return <code>true</code> if some non-empty contiguous subarray sums to 0.</p>`,
-          constraints: `1 ≤ N ≤ 10<sup>5</sup>, -10<sup>9</sup> ≤ A[i] ≤ 10<sup>9</sup>`,
-          example: `${H.arr([4, 2, -3, 1, 6], { hl: { 1: 'g', 2: 'g', 3: 'g' } })}<p>Output: <b>true</b> because ${H.c('g', '2 + (-3) + 1 = 0')}.</p>`,
-          brute: {
-            why: `<p>Try every start <code>i</code> and every end <code>j</code>, keep a running sum. That is N·(N+1)/2 ≈ 5·10<sup>9</sup> pairs for N = 10<sup>5</sup> → TLE. The wasted work: we keep re-adding the same prefixes for every new start.</p>`,
-            code: `
-              boolean brute(int[] a) {
-                  for (int i = 0; i < a.length; i++) {
-                      long s = 0;
-                      for (int j = i; j < a.length; j++) {
-                          s += a[j];
-                          if (s == 0) return true;
-                      }
-                  }
-                  return false;
-              }`
-          },
-          mcq: {
-            q: 'If the running total is 7 after index 2 and again 7 after index 5, what do you know?',
-            options: ['Indices 3..5 sum to 0', 'Indices 2..5 sum to 0', 'Nothing useful', 'The array is sorted'],
-            answer: 0,
-            explain: 'pf[5] - pf[2] = 0 means elements 3, 4, 5 cancel out.'
-          },
-          hints: [
-            `<p><code>sum(i..j) = pf[j] - pf[i-1]</code>. Setting that to 0 gives <code>pf[j] == pf[i-1]</code>: you only need two equal prefix sums.</p>`,
-            `<p>Keep a <code>HashSet&lt;Long&gt;</code> of prefix sums seen so far. Lookup is O(1) on average.</p>`,
-            `<p>Traps: insert <code>0</code> before starting (subarray from index 0); use <code>long</code> (10<sup>5</sup> × 10<sup>9</sup> overflows int). Recipe: pf = 0, set = {0}; for each x: pf += x; if set has pf → true; else add pf. Return false.</p>`
-          ],
-          solution: {
-            approach: `<p>One pass, running sum, HashSet of sums seen.</p>`,
-            code: `
-              import java.util.*;
-
-              class Solution {
-                  public boolean hasZeroSumSubarray(int[] a) {
-                      Set<Long> seen = new HashSet<>();
-                      seen.add(0L);                 // prefix of length 0
-                      long pf = 0;                  // long: avoids overflow
-                      for (int x : a) {
-                          pf += x;                  // running sum up to here
-                          if (seen.contains(pf)) {  // same total seen before → middle part is 0
-                              return true;
-                          }
-                          seen.add(pf);
-                      }
-                      return false;
-                  }
-              }`,
-            dry: {
-              head: ['i', 'a[i]', 'pf', 'set before', 'action'],
-              rows: [
-                ['0', '4', '4', '{0}', 'add 4'],
-                ['1', '2', '6', '{0,4}', 'add 6'],
-                ['2', '-3', '3', '{0,4,6}', 'add 3'],
-                ['3', '1', '4', '{0,4,6,3}', '<span class="c-g">4 found → true</span>']
-              ]
-            },
-            complexity: `<p><b>Time O(N)</b>: one loop, each set operation O(1) on average. <b>Space O(N)</b>: up to N prefix sums stored.</p>`
-          }
-        }
-      ]
+      examples: [
+        { title: 'All positives — answer is always false', html: `<p>Prefix sums strictly increase, so none can repeat ...</p>` },
+        { title: 'A zero inside the array', html: `<p>arr = [3, 0, 5]: pf goes 3, 3 → repeat immediately; the subarray is just [0].</p>` },
+        { title: 'Whole array sums to zero', html: `<p>arr = [1, -1]: pf = 1, 0 → 0 was pre-inserted, so the subarray starts at index 0.</p>`, code: `System.out.println(hasZeroSum(new int[]{1, -1})); // true` }
+      ],
+      deepDive: `<p>Expert layer: why the 0-seed is a sentinel for the empty prefix; worst-case O(N) per lookup under adversarial hashing and Java 8 treeification (O(log N)); Long boxing cost and primitive-map alternatives; streaming variant with bounded memory ...</p>`,
+      aiEra: `<p><b>What AI changes:</b> ... <b>Use AI as a partner:</b> <code>Give me 5 edge-case arrays for zero-sum subarray, don't solve it</code> ... <b>Where AI goes wrong:</b> forgets the 0 seed, uses int and overflows ... <b>What you must still own:</b> recognising the pattern from the wording, proving correctness, explaining trade-offs.</p>`,
+      problems: [/* guided problems — same shape as practice problems below, solution.dry required in DSA/language tracks */]
     },
     {
       title: 'Every other visualizer part type',
-      analogy: `<p>Analogy text...</p>`,
-      explain: `<p>Explanation...</p>`,
-      clues: ['clue one', 'clue two', 'clue three'],
+      analogy: `<p>...</p>`, explain: `<p>...</p>`, clues: ['...', '...', '...'], examples: [], deepDive: `<p>...</p>`, aiEra: `<p>...</p>`,
+      code: { lang: 'sql', db: 'shop', code: `SELECT customer, SUM(amount) AS total FROM orders GROUP BY customer ORDER BY total DESC;`, title: 'Runnable SQL (uses databases.shop)' },
       viz: {
         title: 'Kitchen sink (all part types)',
         gen: function () {
           return [
-            { narr: 'Tree in level-order (null = missing child) + BFS queue.', parts: [
+            { narr: 'Tree (level-order with null) + BFS queue + call stack.', parts: [
               { type: 'tree', label: 'Binary tree', arr: [1, 2, 3, null, 5, 6, 7], hl: { 0: 'done', 1: 'cur', 2: 'ok' }, tags: { 1: 'lvl 1' } },
               { type: 'queue', label: 'BFS Queue', items: [2, 3], hl: { 0: 'cur' } },
-              { type: 'stack', label: 'DFS call stack', items: ['dfs(1)', 'dfs(2)'], hl: { 1: 'cur' } }
+              { type: 'stack', label: 'Call stack', items: ['dfs(1)', 'dfs(2)'], hl: { 1: 'cur' } }
             ] },
-            { narr: 'Graph: x in 0..100, y in 0..height (default 60). Weighted directed edges, highlighted node/edge, tags for distances.', parts: [
-              { type: 'graph', directed: true, nodes: [{ id: 'A', x: 10, y: 30 }, { id: 'B', x: 45, y: 10 }, { id: 'C', x: 45, y: 50 }, { id: 'D', x: 85, y: 30 }],
-                edges: [['A', 'B', 4], ['A', 'C', 1], ['C', 'B', 2], ['B', 'D', 5]], hl: { A: 'done', C: 'cur' }, ehl: { 'A-C': 'ok' }, tags: { A: 'd=0', C: 'd=1', B: 'd=4' } }
+            { narr: 'Graph with circles (algorithms) and boxes (architecture diagrams).', parts: [
+              { type: 'graph', directed: true, height: 50, nodes: [{ id: 'C', label: 'Client', x: 10, y: 25, shape: 'box' }, { id: 'LB', label: 'Load Balancer', x: 40, y: 25, shape: 'box' }, { id: 'S1', label: 'App Server 1', x: 78, y: 10, shape: 'box' }, { id: 'S2', label: 'App Server 2', x: 78, y: 40, shape: 'box' }],
+                edges: [['C', 'LB', 'HTTPS'], ['LB', 'S1'], ['LB', 'S2']], hl: { LB: 'cur' }, ehl: { 'C-LB': 'ok' }, tags: { S1: 'healthy' } }
             ] },
-            { narr: 'Bits: value 13 in 8 bits, bit 2 highlighted. Grid: DP table with headers.', parts: [
-              { type: 'bits', label: 'n', value: 13, width: 8, hl: { 2: 'cur', 0: 'ok' } },
-              { type: 'grid', label: 'dp', colHead: ['', 'a', 'b'], rowHead: ['', 'a', 'c'], rows: [[0, 0, 0], [0, 1, 1], [0, 1, 1]], hl: { '1,1': 'ok', '2,2': 'cur' } }
+            { narr: 'Bits, DP grid, result table (SQL), variables.', parts: [
+              { type: 'bits', label: 'n', value: 13, width: 8, hl: { 2: 'cur' } },
+              { type: 'grid', label: 'dp', colHead: ['', 'a', 'b'], rowHead: ['', 'a'], rows: [[0, 0, 0], [0, 1, 1]], hl: { '1,1': 'ok' } },
+              { type: 'table', label: 'Result set', columns: ['customer', 'total'], rows: [['asha', 160], ['ben', 80]], hl: { 0: 'sel' } },
+              { type: 'vars', vals: { i: 2, best: 7 }, hl: { best: 'ok' } }
             ] },
-            { narr: 'Linked list with slow/fast pointers; next[] lets you draw reversed links (-1 = null).', parts: [
-              { type: 'list', values: [1, 2, 3, 4, 5], ptr: { 1: 'slow', 3: 'fast' }, hl: { 1: 'cur' } },
+            { narr: 'Linked lists (next[] for reversal), map, free HTML.', parts: [
+              { type: 'list', values: [1, 2, 3, 4, 5], ptr: { 1: 'slow', 3: 'fast' } },
               { type: 'list', label: 'mid-reversal', values: [1, 2, 3, 4], next: [-1, 0, 3, -1], ptr: { 1: 'prev', 2: 'curr' } },
-              { type: 'map', label: 'HashMap freq', entries: [['a', 2], ['b', 1]], hl: { a: 'ok' } },
+              { type: 'map', label: 'HashMap', entries: [['a', 2], ['b', 1]], hl: { a: 'ok' } },
               { type: 'text', html: '<b>Any extra HTML</b> note.' }
             ] }
           ];
@@ -164,7 +96,29 @@ registerModule({
       }
     }
   ],
+  quiz: [
+    { q: 'Why insert 0 into the set before the loop?', options: ['To catch subarrays that start at index 0', 'To avoid null pointers', 'It is optional', 'To sort the set'], answer: 0, explain: 'pf[j] - 0 = pf[j]; if pf[j] == 0 the subarray 0..j sums to zero.' }
+  ],
+  interview: [
+    { q: 'How does HashMap handle collisions in Java 8+?', level: 'I', a: `<p>Each bucket holds a linked list; when a bucket exceeds 8 entries (and table ≥ 64) it becomes a red-black tree ...</p>`, followUps: ['What happens on resize?', 'Why must equal objects have equal hashCodes?'] }
+  ],
   practice: [
-    /* same shape as a guided problem; solution.dry optional here */
+    {
+      title: 'Subarray with Sum 0', level: 'Easy', tags: ['prefix sum', 'hashset'], companies: ['Amazon', 'Microsoft'],
+      statement: `<p>Given an integer array A, return true if some non-empty contiguous subarray sums to 0.</p>`,
+      constraints: `1 ≤ N ≤ 10<sup>5</sup>, |A[i]| ≤ 10<sup>9</sup>`,
+      example: `${H.arr([4, 2, -3, 1, 6], { hl: { 1: 'g', 2: 'g', 3: 'g' } })}<p>Output <b>true</b>: ${H.c('g', '2 + (-3) + 1 = 0')}.</p>`,
+      brute: { why: `<p>Every (i, j) pair: ~5·10<sup>9</sup> steps → TLE.</p>`, code: `boolean brute(int[] a){for(int i=0;i<a.length;i++){long s=0;for(int j=i;j<a.length;j++){s+=a[j];if(s==0)return true;}}return false;}` },
+      mcq: { q: 'Running total 7 after index 2 and again after index 5 means…', options: ['3..5 sums to 0', '2..5 sums to 0', 'nothing'], answer: 0, explain: 'pf[5] − pf[2] = 0.' },
+      hints: [`<p>pf[j] − pf[i−1] = 0 ⇒ pf[j] == pf[i−1].</p>`, `<p>HashSet&lt;Long&gt; of prefix sums seen so far.</p>`, `<p>Seed 0; use long. Recipe: ...</p>`],
+      solution: {
+        approach: `<p>One pass, running sum, set of seen sums.</p>`,
+        code: `class Solution { boolean zero(int[] a){ Set<Long> s=new HashSet<>(); s.add(0L); long pf=0; for(int x:a){ pf+=x; if(!s.add(pf)) return true; } return false; } }`,
+        alt: [{ lang: 'python', code: `def zero(a):\n    s, pf = {0}, 0\n    for x in a:\n        pf += x\n        if pf in s: return True\n        s.add(pf)\n    return False` }],
+        dry: { head: ['i', 'a[i]', 'pf', 'action'], rows: [['0', '4', '4', 'add'], ['3', '1', '4', '<span class="c-g">found → true</span>']] },
+        complexity: `<p>Time O(N), space O(N).</p>`,
+        followUps: ['Return the subarray itself', 'Count all such subarrays']
+      }
+    }
   ]
 });
