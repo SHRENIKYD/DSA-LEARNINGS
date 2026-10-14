@@ -388,7 +388,7 @@
     if (kind === 'float' && /[dxXbo]/.test(type)) return fail("ValueError: Unknown format code '" + type + "' for object of type 'float'", 'Use f, e or %; or convert with int() first.');
     if (kind === 'float' && !type && prec !== null) return fail('(This demo skips the "general" g-style rules used when a float has a precision but no type.)', 'Add a type letter: <code>.2f</code> for fixed decimals or <code>.2e</code> for scientific.');
     if (group === ',' && /[xXbo]/.test(type)) return fail("ValueError: Cannot specify ',' with '" + type + "'.", "Use '_' to group hex/binary digits in fours.");
-    if (zero && !align && group) return fail('(This demo does not draw zero-padding combined with grouping; Python inserts separators into the zeros too.)', 'Try <code>&gt;12,</code> instead of <code>012,</code> here, or run it in the Python runner.');
+    if (zero && fill === undefined && group) return fail('(This demo does not draw zero-padding combined with grouping; Python inserts separators into the zeros too.)', 'Try <code>&gt;12,</code> instead of <code>012,</code> here, or run it in the Python runner.');
 
     // 1) core digits/text
     var neg = false, body = '', prefix = '', note = '';
@@ -445,11 +445,9 @@
       { type: 'vars', label: 'Pieces', vals: { sign: "'" + signTxt + "'", prefix: "'" + prefix + "'", 'core text': "'" + body + "'" } }
     ] });
     // 4) padding
-    var f2 = fill === undefined ? ' ' : fill, al = align;
-    if (!al) {
-      if (zero) { f2 = fill === undefined ? '0' : f2; al = kind === 'str' ? '<' : '='; }
-      else al = kind === 'str' ? '<' : '>';
-    }
+    // The 0 flag means "fill with 0" unless you gave a fill; with no align it pads after the sign.
+    var f2 = fill === undefined ? (zero ? '0' : ' ') : fill, al = align;
+    if (!al) al = kind === 'str' ? '<' : (zero ? '=' : '>');
     var core = signTxt + prefix + body, coreLen = Array.from(core).length, pad = Math.max(0, width - coreLen), result;
     if (al === '<') result = core + f2.repeat(pad);
     else if (al === '>') result = f2.repeat(pad) + core;
@@ -1665,4 +1663,1536 @@ else:
       }
     }]
   });
-registerModule({ id: 'py03', title: 'Strings, Files, Modules & Packages', intro: 'x', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();
+
+  /* ======================================================================
+     TOPIC 7: Packages, relative imports, __name__ == "__main__", python -m
+     ====================================================================== */
+  function pkgGen(input) {
+    var raw = String(input === undefined ? 'shop.payments.card' : input).trim();
+    if (!/^[a-z_][a-z0-9_]*(\.[a-z_][a-z0-9_]*){0,3}$/.test(raw)) throw new Error('Type a dotted module path with 1 to 4 lowercase parts, like shop.payments.card');
+    var parts = raw.split('.'), n = parts.length, frames = [];
+    var nodes = [], edges = [], cache = [];
+    var y0 = 8, dy = 15;
+    for (var i = 0; i < n; i++) {
+      var isLast = i === n - 1;
+      var file = parts.slice(0, i + 1).join('/') + (isLast && n > 1 ? '.py' : '/__init__.py');
+      if (n === 1) file = parts[0] + '.py';
+      nodes.push({ id: 'n' + i, label: file, x: 18 + i * 14, y: y0 + i * dy, shape: 'box', w: 30 });
+      if (i > 0) edges.push(['n' + (i - 1), 'n' + i, 'then']);
+    }
+    nodes.push({ id: 'main', label: 'main.py', x: 82, y: 8, shape: 'box', w: 16 });
+    edges.push(['main', 'n0', 'import']);
+    var H2 = y0 + (n - 1) * dy + 14;
+    function f(hl, narr, mh, extra) {
+      var ps = [{ type: 'graph', label: 'Files executed for: import ' + raw, directed: true, height: Math.max(40, H2), nodes: nodes, edges: edges, hl: hl }];
+      ps.push({ type: 'map', label: 'sys.modules (new entries)', entries: cache.slice(), hl: mh || {} });
+      if (extra) ps.push(extra);
+      frames.push({ narr: narr, parts: ps });
+    }
+    f({ main: 'cur' }, 'main.py runs <code>import ' + esc(raw) + '</code>. A dotted name means "a module inside a package inside a package". Python must import <b>every parent first</b>, from the outside in.', {},
+      { type: 'text', label: 'Folder layout on disk', html: '<pre>' + esc(parts.map(function (p, i) { return '    '.repeat(i) + (i === n - 1 ? p + '.py' : p + '/') + (i === n - 1 ? '' : '\n' + '    '.repeat(i + 1) + '__init__.py'); }).join('\n')) + '</pre>' });
+    for (var j = 0; j < n; j++) {
+      var name = parts.slice(0, j + 1).join('.'), hl = { main: 'done' };
+      for (var k = 0; k < j; k++) hl['n' + k] = 'done';
+      hl['n' + j] = 'cur';
+      cache.push([name, j === n - 1 && n > 1 ? 'module' : 'package']);
+      var mh = {}; mh[name] = 'ok';
+      var isPkg = !(j === n - 1 && n > 1) && n > 1;
+      f(hl, 'Import <b>' + esc(name) + '</b>: ' + (isPkg ? 'it is a <b>package</b> (a folder), so Python runs its <code>__init__.py</code>. Whatever that file defines becomes the package\'s attributes. ' + (j > 0 ? 'Python searches for it only inside the parent package\'s folder (<code>' + esc(parts.slice(0, j).join('.')) + '.__path__</code>), not the whole sys.path.' : 'The top-level package is found by searching sys.path, like any module.') : n === 1 ? 'a plain module file, executed top to bottom.' : 'the final piece is a plain <b>module</b> file, executed top to bottom. Its <code>__name__</code> is the full dotted name <code>' + esc(name) + '</code>.'), mh);
+    }
+    var hlAll = { main: 'ok' }; for (var q = 0; q < n; q++) hlAll['n' + q] = 'ok';
+    f(hlAll, 'Binding: <code>import ' + esc(raw) + '</code> binds only the <b>top-level name</b> <code>' + esc(parts[0]) + '</code> in main.py; you then write the full path <code>' + esc(raw) + '.func()</code>.' + (n > 1 ? ' With <code>from ' + esc(parts.slice(0, -1).join('.')) + ' import ' + esc(parts[n - 1]) + '</code> you would get the short name directly.' : ''), {},
+      { type: 'vars', label: 'Names in main.py', vals: (function () { var v = {}; v[parts[0]] = '<package ' + parts[0] + '>'; return v; })() });
+    f(hlAll, 'Importing it again from any other file is free: every name is already in <code>sys.modules</code>, so no <code>__init__.py</code> runs twice.', (function () { var h = {}; cache.forEach(function (e) { h[e[0]] = 'sel'; }); return h; })());
+    f({ main: 'sel', ['n' + (n - 1)]: 'sel' }, 'Now run the same module as a <b>program</b>: <code>python -m ' + esc(raw) + '</code>. Parent packages are still imported normally, but the target module is executed with <code>__name__ == "__main__"</code> instead of <code>"' + esc(raw) + '"</code>, so its <code>if __name__ == "__main__":</code> block runs. Relative imports keep working because Python knows the package (<code>__package__</code>).', {},
+      { type: 'table', label: '__name__ inside ' + esc(parts[n - 1]) + (n > 1 ? '.py' : ''), columns: ['how it was started', '__name__', 'main block runs?'], rows: [['import ' + raw, raw, 'no'], ['python -m ' + raw, '__main__', 'yes'], ['python ' + parts.join('/') + '.py', '__main__', 'yes, but relative imports FAIL']] });
+    return frames;
+  }
+
+  topics.push({
+    title: 'Packages, Relative Imports, __name__ == "__main__" & python -m',
+    analogy: R`<p>If a module is a toolbox, a <b>package is a labelled cupboard of toolboxes</b> (a folder of modules). <code>__init__.py</code> is the <b>label and the welcome note</b> taped on the cupboard door: it is read the first time anyone opens that cupboard. And <code>__name__</code> is a <b>name badge</b>: when a file is the star of the show (run directly) its badge says <code>"__main__"</code>; when it is just a guest (imported by someone else) the badge shows its real name. <code>if __name__ == "__main__":</code> means "only do this when I am the star".</p>`,
+    explain: R`<p>🟢 <b>A package is a folder of modules.</b></p>
+      <pre>project/
+    main.py
+    shop/                 # package
+        __init__.py       # runs when "shop" is first imported
+        cart.py           # module shop.cart
+        payments/         # sub-package
+            __init__.py
+            card.py       # module shop.payments.card</pre>
+      <p>Use dotted names: <code>import shop.cart</code>, <code>from shop.payments import card</code>, <code>from shop.payments.card import charge</code>.</p>
+      <p><b>__init__.py</b> can be empty (it just marks the folder as a regular package) or it can expose a neat public API: <code>from .cart import Cart</code> lets users write <code>from shop import Cart</code>. Since Python 3.3, a folder <i>without</i> <code>__init__.py</code> still imports as a <b>namespace package</b> (PEP 420), used for splitting one package across several folders — but for normal projects, include <code>__init__.py</code>.</p>
+      <p><b>Relative imports</b> (only inside packages): <code>from . import cart</code> (same package), <code>from .cart import Cart</code>, <code>from ..utils import money</code> (parent package). They make a package movable and self-contained. <b>Absolute imports</b> (<code>from shop.cart import Cart</code>) are clearer and recommended by PEP 8 for most code.</p>
+      <p>🔵 <b>__name__ and the main guard.</b> Every module has a global <code>__name__</code>. It is the module's dotted name when imported, and <code>"__main__"</code> when the file is the program being run. So:</p>
+      <pre>def main():
+    print("running as a script")
+
+if __name__ == "__main__":     # True only when run directly
+    main()</pre>
+      <p>lets one file be both a <b>reusable library</b> (importing it does not start the program) and a <b>runnable script</b>. It is also essential for <code>multiprocessing</code> on Windows/macOS, which re-imports your main file in child processes.</p>
+      <p><b>python -m</b>: <code>python -m shop.payments.card</code> runs a module <b>by its import name</b>. Python puts the <b>current directory</b> on sys.path, imports parent packages properly, and relative imports work. Running <code>python shop/payments/card.py</code> instead puts <code>shop/payments/</code> on sys.path, so <code>from ..utils import x</code> fails with <code>ImportError: attempted relative import with no known parent package</code>. Tools use the same trick: <code>python -m pip</code>, <code>python -m venv</code>, <code>python -m http.server</code>, <code>python -m json.tool</code>. A package can be made runnable by adding a <code>__main__.py</code> file.</p>`,
+    clues: [
+      '"code runs when I import the file" → move it under <code>if __name__ == "__main__":</code>',
+      '"attempted relative import with no known parent package" → run with <code>python -m pkg.module</code> from the project root',
+      '"make my package runnable" → add <code>pkg/__main__.py</code>, run <code>python -m pkg</code>',
+      '"expose a clean public API" → re-export in <code>__init__.py</code>, define <code>__all__</code>',
+      '"multiprocessing spawns infinite processes / RuntimeError on Windows" → missing main guard',
+      '"tests can\'t import my package" → use a src/ layout and install it in editable mode (<code>pip install -e .</code>)'
+    ],
+    code: [{ lang: 'python', run: true, title: 'Build a package in a temp folder, import it, and run it with -m semantics (runnable)', code: R`
+      import importlib, runpy, sys, tempfile, textwrap
+      from pathlib import Path
+
+      root = Path(tempfile.mkdtemp())
+      pkg = root / "shop"
+      (pkg / "payments").mkdir(parents=True)
+      files = {
+          "shop/__init__.py": 'print("init shop")\nfrom .cart import Cart\n__all__ = ["Cart"]\n',
+          "shop/cart.py": textwrap.dedent('''
+              class Cart:
+                  def __init__(self):
+                      self.items = []
+                  def add(self, name, price):
+                      self.items.append((name, price))
+                      return self
+                  def total(self):
+                      return sum(p for _, p in self.items)
+          '''),
+          "shop/payments/__init__.py": 'print("init shop.payments")\n',
+          "shop/payments/card.py": textwrap.dedent('''
+              from ..cart import Cart            # relative import: parent package
+              print("card module, __name__ =", __name__)
+              def charge(cart):
+                  return f"charged {cart.total():.2f}"
+              if __name__ == "__main__":
+                  print(charge(Cart().add("demo", 9.5)))
+          '''),
+      }
+      for rel, text in files.items():
+          (root / rel).write_text(text, encoding="utf-8")
+
+      sys.path.insert(0, str(root))
+      importlib.invalidate_caches()
+
+      from shop.payments import card      # runs shop/__init__, payments/__init__, card
+      from shop import Cart               # re-exported by shop/__init__.py
+      print(card.charge(Cart().add("pen", 20).add("book", 350)))
+      print(sorted(k for k in sys.modules if k.startswith("shop")))
+
+      print("--- now run it like: python -m shop.payments.card ---")
+      runpy.run_module("shop.payments.card", run_name="__main__")
+    ` }],
+    codeTitle: ['A real package, end to end'],
+    viz: {
+      title: 'Importing a dotted path: parents first, then the module',
+      input: 'shop.payments.card',
+      inputLabel: 'Dotted module path (1-4 parts), e.g. shop.payments.card or app.models',
+      gen: pkgGen
+    },
+    examples: [
+      { title: 'Predict the output: __name__ in both roles', html: R`<p>The same file prints a different <code>__name__</code> depending on how it is started. <code>runpy.run_path</code> runs a file as if it were the main script — exactly what <code>python file.py</code> does.</p>${H.table(['started as', '__name__', 'guarded block'], [['import greet', '"greet"', 'skipped'], ['python greet.py', '"__main__"', 'runs']])}`, code: { lang: 'python', run: true, code: R`
+        import importlib, runpy, sys, tempfile
+        from pathlib import Path
+        d = Path(tempfile.mkdtemp())
+        (d / "greet.py").write_text(
+            'print("my __name__ is", __name__)\n'
+            'if __name__ == "__main__":\n'
+            '    print("running as a script!")\n', encoding="utf-8")
+        sys.path.insert(0, str(d)); importlib.invalidate_caches()
+        import greet                                          # my __name__ is greet
+        runpy.run_path(str(d / "greet.py"), run_name="__main__")   # ... __main__ + script line
+      ` } },
+      { title: 'Relative import fails when you run the file directly', html: R`<p>Running a module inside a package as a plain file loses the package context: <code>__package__</code> is empty, so <code>..</code> means nothing. Running it as <code>-m</code> (simulated here with <code>runpy.run_module</code>) works. Rule: <b>run package code with python -m from the project root</b>.</p>`, code: { lang: 'python', run: true, code: R`
+        import importlib, runpy, sys, tempfile
+        from pathlib import Path
+        root = Path(tempfile.mkdtemp())
+        (root / "app").mkdir()
+        (root / "app" / "__init__.py").write_text("", encoding="utf-8")
+        (root / "app" / "util.py").write_text("X = 42\n", encoding="utf-8")
+        (root / "app" / "tool.py").write_text("from .util import X\nprint('X is', X)\n", encoding="utf-8")
+        try:
+            runpy.run_path(str(root / "app" / "tool.py"), run_name="__main__")   # like: python app/tool.py
+        except ImportError as e:
+            print("ImportError:", e)
+        sys.path.insert(0, str(root)); importlib.invalidate_caches()
+        runpy.run_module("app.tool", run_name="__main__")                         # like: python -m app.tool
+      ` } },
+      { title: '__init__.py as a public API, and __all__', html: R`<p>Users should not need to know your internal file layout. Re-export the important names in <code>__init__.py</code>. <code>__all__</code> lists what <code>from pkg import *</code> exports (and documents your public API for tools).</p>`, code: { lang: 'python', run: true, code: R`
+        import importlib, sys, tempfile
+        from pathlib import Path
+        root = Path(tempfile.mkdtemp())
+        (root / "geom").mkdir()
+        (root / "geom" / "shapes.py").write_text(
+            "def area(r):\n    return 3.14159 * r * r\n\ndef _helper():\n    return 'private'\n", encoding="utf-8")
+        (root / "geom" / "__init__.py").write_text(
+            "from .shapes import area\n__all__ = ['area']\n", encoding="utf-8")
+        sys.path.insert(0, str(root)); importlib.invalidate_caches()
+        ns = {}
+        exec("from geom import *", ns)
+        print([k for k in ns if not k.startswith("__")])   # ['area']
+        import geom
+        print(round(geom.area(2), 2))
+      ` } },
+      { title: 'Making a package runnable with __main__.py', html: R`<p><code>python -m mytool</code> on a <b>package</b> runs <code>mytool/__main__.py</code>. That is how <code>python -m pip</code> and <code>python -m venv</code> work. For installed command-line tools, declare an entry point in <code>pyproject.toml</code> instead (<code>[project.scripts] mytool = "mytool.cli:main"</code>).</p>`, code: { lang: 'python', run: true, code: R`
+        import importlib, runpy, sys, tempfile
+        from pathlib import Path
+        root = Path(tempfile.mkdtemp())
+        (root / "mytool").mkdir()
+        (root / "mytool" / "__init__.py").write_text("VERSION = '1.0'\n", encoding="utf-8")
+        (root / "mytool" / "__main__.py").write_text(
+            "from mytool import VERSION\nprint(f'mytool {VERSION} says hi')\n", encoding="utf-8")
+        sys.path.insert(0, str(root)); importlib.invalidate_caches()
+        runpy.run_module("mytool", run_name="__main__", alter_sys=True)   # like: python -m mytool
+      ` } }
+    ],
+    deepDive: R`<p>🟣 <b>Package internals.</b></p>
+      <ul>
+        <li><b>__path__:</b> a package is just a module object that has a <code>__path__</code> attribute (list of folders). Submodules are searched only in <code>__path__</code>, not in sys.path. Namespace packages have a dynamic <code>__path__</code> that can combine folders from several sys.path entries (how <code>google.cloud.storage</code> and <code>google.cloud.pubsub</code> can be installed separately).</li>
+        <li><b>Submodule binding:</b> after <code>import shop.cart</code>, Python sets the attribute <code>cart</code> on the <code>shop</code> package object. That is why <code>import shop.cart</code> makes <code>shop.cart</code> usable, and why a submodule imported anywhere becomes visible as an attribute of its package everywhere.</li>
+        <li><b>Relative import resolution</b> uses <code>__package__</code> (and <code>__spec__.parent</code>): <code>from ..utils import x</code> inside <code>shop.payments.card</code> resolves to <code>shop.utils</code>. When a file is run as a script, <code>__package__</code> is empty (or None), hence the "no known parent package" error. Going above the top-level package raises "attempted relative import beyond top-level package".</li>
+        <li><b>The double-import trap:</b> running <code>python shop/cart.py</code> while other code does <code>import shop.cart</code> creates TWO module objects (<code>__main__</code> and <code>shop.cart</code>) with two copies of every class and global — singletons duplicate and <code>isinstance</code> checks mysteriously fail.</li>
+        <li><b>Heavy __init__.py:</b> everything in <code>__init__.py</code> runs on any import of any submodule. Importing large dependencies there slows every CLI start; libraries use lazy attributes via module-level <code>__getattr__</code> (PEP 562).</li>
+        <li><b>src layout:</b> putting the package under <code>src/</code> prevents tests from accidentally importing the local folder instead of the installed package, catching packaging bugs (missing files) early. It is the layout recommended by the Python Packaging User Guide.</li>
+      </ul>`,
+    aiEra: R`<p>🤖 <b>What AI changes:</b> coding agents scaffold whole projects in seconds — <code>pyproject.toml</code>, <code>src/</code> layout, <code>__init__.py</code> files, a CLI entry point. Your job shifts from typing that structure to judging it.</p>
+      <p><b>Use AI as a partner:</b> ask it to draw the import graph of your package and point out cycles or heavy imports in <code>__init__.py</code>; ask "what is the public API of this package?" and compare with <code>__all__</code>.</p>
+      <p><b>Where AI goes wrong:</b> it mixes <code>sys.path.append(os.path.dirname(__file__) + "/..")</code> hacks into files instead of using <code>-m</code> or an editable install; it writes relative imports in top-level scripts; it forgets the main guard in multiprocessing examples; and it sometimes creates both <code>utils.py</code> and a <code>utils/</code> package in the same folder (the package wins, confusingly).</p>
+      <p><b>What you must still own:</b> explaining <code>__name__</code>, choosing absolute vs relative imports, knowing why <code>python -m</code> exists, and keeping package boundaries clean so humans and agents can both navigate the code.</p>`,
+    problems: [{
+      title: 'Resolve a Relative Import to an Absolute Name',
+      level: 'Medium', tags: ['packages', 'relative imports', 'strings'], companies: ['Meta', 'Dropbox', 'Instagram'],
+      statement: R`<p>Write <code>resolve(package, target)</code> that mimics <code>importlib.util.resolve_name</code>: given the current package (e.g. <code>"shop.payments"</code>) and a relative target (e.g. <code>"..utils"</code>), return the absolute module name (<code>"shop.utils"</code>). One leading dot = the current package, each extra dot = go up one level. A target without leading dots is already absolute. Going above the top raise <code>ImportError</code>.</p>`,
+      constraints: R`Package depth ≤ 20; target has at most 21 leading dots; names are valid identifiers.`,
+      example: R`<p><code>resolve("shop.payments", ".card")</code> → ${H.c('g', '"shop.payments.card"')}; <code>resolve("shop.payments", "..utils")</code> → ${H.c('g', '"shop.utils"')}; <code>resolve("shop.payments", "..")</code> → ${H.c('g', '"shop"')}; <code>resolve("shop", "...x")</code> → ${H.c('r', 'ImportError')} (beyond top-level package).</p>`,
+      brute: {
+        why: R`<p>Repeatedly use string replace/rfind in a loop with special cases for "." and ".." and an empty remainder. It quickly grows a pile of if-statements and gets the edge cases (bare dots, too many dots) wrong.</p>`,
+        code: { lang: 'python', run: true, code: R`
+          def resolve_brute(package, target):
+              if target.startswith(".."):
+                  return package[:package.rfind(".")] + "." + target[2:]   # only handles 2 dots, breaks on ".."
+              if target.startswith("."):
+                  return package + target
+              return target
+
+          print(resolve_brute("shop.payments", "..utils"), resolve_brute("shop.payments", ".card"))
+        ` }
+      },
+      mcq: { q: 'Code in module <code>a.b.c</code> (so its package is <code>a.b</code>) says <code>from .. import x</code>. Where does Python look for x?', options: ['In package a (one level above a.b)', 'In package a.b', 'In module a.b.c', 'In the script folder on sys.path'], answer: 0, explain: 'The current package of module a.b.c is a.b. One dot means a.b itself; each extra dot climbs one level, so two dots mean a. Three dots would go beyond the top-level package and raise ImportError.' },
+      hints: [
+        R`<p>Hint 1: Count the leading dots: <code>level = len(target) - len(target.lstrip("."))</code>; the rest is the name.</p>`,
+        R`<p>Hint 2: Going up <code>level - 1</code> times from the package: <code>bits = package.rsplit(".", level - 1)</code>. If there are fewer parts than needed, it is beyond the top.</p>`,
+        R`<p>Hint 3: Base = <code>bits[0]</code>; answer is <code>base + "." + name</code> if name else base. Level 0 → return target unchanged. Verify with <code>importlib.util.resolve_name</code>.</p>`
+      ],
+      solution: {
+        approach: R`<p>Split off the dots, climb the package path with one <code>rsplit</code>, and join the remaining name. This is exactly the algorithm CPython uses (<code>_resolve_name</code> in importlib).</p>`,
+        code: { lang: 'python', run: true, code: R`
+          import importlib.util
+
+          def resolve(package: str, target: str) -> str:
+              level = len(target) - len(target.lstrip("."))
+              name = target[level:]
+              if level == 0:
+                  return target                         # already absolute
+              bits = package.rsplit(".", level - 1)     # climb level-1 times
+              if len(bits) < level:
+                  raise ImportError("attempted relative import beyond top-level package")
+              base = bits[0]
+              return f"{base}.{name}" if name else base
+
+          cases = [("shop.payments", ".card"), ("shop.payments", "..utils"),
+                   ("shop.payments", ".."), ("shop.payments", "json")]
+          for pkg, tgt in cases:
+              mine = resolve(pkg, tgt)
+              ref = importlib.util.resolve_name(tgt, pkg)
+              print(f"{tgt:>8} in {pkg} -> {mine}  (stdlib agrees: {mine == ref})")
+          try:
+              resolve("shop", "...x")
+          except ImportError as e:
+              print("ImportError:", e)
+        ` },
+        dry: { head: ['package', 'target', 'level', 'rsplit result', 'answer'], rows: [
+          ['shop.payments', '.card', '1', "['shop.payments']", 'shop.payments.card'],
+          ['shop.payments', '..utils', '2', "['shop', 'payments']", 'shop.utils'],
+          ['shop.payments', '..', '2', "['shop', 'payments']", 'shop'],
+          ['shop', '...x', '3', "['shop'] (needs 3 parts)", '<span class="c-r">ImportError</span>']
+        ] },
+        complexity: R`<p>O(L) time and space for name length L.</p>`,
+        followUps: ['Given a file path and project root, compute the module name (inverse problem)', 'Why does PEP 8 prefer absolute imports?', 'How does __spec__.parent differ from __package__?']
+      }
+    }]
+  });
+
+  /* ======================================================================
+     TOPIC 8: pip, virtual environments and dependencies
+     ====================================================================== */
+  function venvGen(input) {
+    var pkg = String(input === undefined ? 'requests' : input).trim().toLowerCase();
+    if (!/^[a-z0-9][a-z0-9._-]{0,30}$/.test(pkg)) throw new Error('Type a package name such as requests, flask or pandas');
+    var deps = { requests: ['charset-normalizer', 'idna', 'urllib3', 'certifi'], flask: ['werkzeug', 'jinja2', 'itsdangerous', 'click', 'blinker', 'markupsafe'], pandas: ['numpy', 'python-dateutil', 'pytz', 'tzdata', 'six'], httpx: ['anyio', 'certifi', 'httpcore', 'h11', 'idna'] }[pkg] || [];
+    var nodes = [
+      { id: 'T', label: 'Terminal', x: 10, y: 10, shape: 'box', w: 16 },
+      { id: 'SYS', label: 'System Python /usr/bin/python3', x: 42, y: 10, shape: 'box', w: 34 },
+      { id: 'V', label: 'project/.venv/bin/python', x: 42, y: 36, shape: 'box', w: 30 },
+      { id: 'SP', label: '.venv site-packages', x: 42, y: 60, shape: 'box', w: 24 },
+      { id: 'PIP', label: 'pip (resolver)', x: 80, y: 36, shape: 'box', w: 18 },
+      { id: 'PYPI', label: 'PyPI (pypi.org)', x: 80, y: 60, shape: 'box', w: 20 }
+    ];
+    var frames = [], site = [], term = [];
+    function fr(hl, edges, ehl, narr, cmd, extra) {
+      if (cmd) term.push(cmd);
+      var ps = [{ type: 'graph', label: 'Where things live', directed: true, height: 70, nodes: nodes, edges: edges, hl: hl, ehl: ehl }];
+      ps.push({ type: 'set', label: '.venv site-packages contents', items: site.slice(), hl: (extra && extra.sh) || {} });
+      ps.push({ type: 'text', label: 'Terminal', html: '<pre>' + esc(term.join('\n') || '$') + '</pre>' });
+      frames.push({ narr: narr, parts: ps });
+    }
+    fr({ T: 'cur', SYS: 'cur' }, [['T', 'SYS', 'python']], {}, 'Before any venv, typing <code>python</code> runs the <b>system Python</b>. Installing packages into it is risky: every project on the machine shares one set of versions, and on many Linux distros pip refuses (<code>error: externally-managed-environment</code>, PEP 668).', '$ which python3\n/usr/bin/python3');
+    site = ['pip'];
+    fr({ SYS: 'done', V: 'ok', SP: 'ok' }, [['T', 'SYS', 'python -m venv'], ['SYS', 'V', 'creates'], ['V', 'SP', '']], { 'SYS-V': 'ok' }, '<code>python -m venv .venv</code> creates a folder with: <code>pyvenv.cfg</code> (points to the base Python), <code>bin/python</code> (a link to the base interpreter; <code>Scripts\\python.exe</code> on Windows) and an <b>empty</b> <code>site-packages</code> (just pip). No copy of the standard library is made: it is reused from the base install.', '$ python3 -m venv .venv', { sh: { pip: 'ok' } });
+    fr({ T: 'ok', V: 'cur' }, [['T', 'V', 'python'], ['V', 'SP', 'imports from']], { 'T-V': 'ok' }, '<code>source .venv/bin/activate</code> (Windows: <code>.venv\\Scripts\\activate</code>) only <b>prepends .venv/bin to PATH</b> and changes your prompt. Now <code>python</code> and <code>pip</code> mean the venv\'s ones. (You can skip activation and call <code>.venv/bin/python</code> directly — same effect.)', '$ source .venv/bin/activate\n(.venv) $ which python\n/home/me/project/.venv/bin/python');
+    fr({ V: 'done', PIP: 'cur', PYPI: 'cur' }, [['T', 'V', ''], ['V', 'PIP', 'python -m pip'], ['PIP', 'PYPI', 'query index']], { 'V-PIP': 'ok', 'PIP-PYPI': 'cur' }, '<code>python -m pip install ' + esc(pkg) + '</code>: pip asks the package index (PyPI) for the list of available releases of <b>' + esc(pkg) + '</b> and picks the newest one that satisfies your constraints and has a <b>wheel</b> compatible with this Python version and OS (or falls back to a source distribution).', '(.venv) $ python -m pip install ' + pkg);
+    fr({ PIP: 'cur', PYPI: 'ok' }, [['V', 'PIP', ''], ['PIP', 'PYPI', 'metadata']], { 'PIP-PYPI': 'ok' }, deps.length ? 'pip reads the package metadata (<code>Requires-Dist</code>) and finds its own dependencies: <b>' + esc(deps.join(', ')) + '</b>. The resolver must find one version of each that satisfies <b>every</b> requirement at once, backtracking if two packages disagree.' : 'pip reads the package metadata (<code>Requires-Dist</code>). This demo has no dependency list for "' + esc(pkg) + '"; real packages usually pull in several. (If the name does not exist on PyPI, pip stops with <code>ERROR: No matching distribution found</code> — double-check spelling, typo-squatted names are a real attack.)', null,
+      { sh: {} });
+    var all = [pkg].concat(deps), sh = {};
+    all.forEach(function (d) { site.push(d); sh[d] = 'ok'; });
+    fr({ PYPI: 'done', SP: 'ok', PIP: 'ok' }, [['PIP', 'PYPI', 'download wheels'], ['PIP', 'SP', 'unpack']], { 'PIP-SP': 'ok' }, 'pip downloads the wheels and unpacks them into <b>.venv/lib/python3.x/site-packages</b> — nowhere else. The system Python never sees them. Any console scripts (like <code>flask</code>) go into <code>.venv/bin</code>.', 'Successfully installed ' + all.join(' '), { sh: sh });
+    var frozen = all.slice().sort().map(function (d, i) { return d + '==' + ['2.32.3', '3.4.1', '2.3.0', '1.26.4', '2024.8.30', '3.10', '2.9.0', '1.9.0'][i % 8]; });
+    fr({ V: 'cur', SP: 'sel' }, [['V', 'SP', 'pip freeze']], { 'V-SP': 'sel' }, '<code>pip freeze &gt; requirements.txt</code> writes the <b>exact</b> version of everything installed (versions shown here are illustrative). Commit that file; a teammate runs <code>pip install -r requirements.txt</code> in their own venv and gets the same set. Modern projects declare loose dependencies in <code>pyproject.toml</code> and keep a separate lock file.', '(.venv) $ pip freeze > requirements.txt\n(.venv) $ cat requirements.txt\n' + frozen.join('\n'), { sh: (function () { var h = {}; site.forEach(function (s) { h[s] = 'sel'; }); return h; })() });
+    fr({ SYS: 'bad', T: 'cur' }, [['T', 'SYS', 'python']], { 'T-SYS': 'bad' }, '<code>deactivate</code> restores PATH. Now <code>python -c "import ' + esc(pkg.replace(/-/g, '_')) + '"</code> uses the system Python, which does not have it: <code>ModuleNotFoundError</code>. That is isolation working as designed — and the #1 cause of "but I installed it!" confusion: you installed into a different interpreter.', '(.venv) $ deactivate\n$ python3 -c "import ' + pkg.replace(/-/g, '_') + '"\nModuleNotFoundError: No module named \'' + pkg.replace(/-/g, '_') + '\'');
+    fr({ V: 'sel' }, [['T', 'V', '']], {}, 'Rules of thumb: <b>one venv per project</b>, never commit the <code>.venv</code> folder (add it to .gitignore; it is disposable and machine-specific), always use <code>python -m pip</code> so pip matches the interpreter, and delete + recreate a broken venv instead of repairing it.', '$ rm -rf .venv && python3 -m venv .venv  # cheap to rebuild');
+    return frames;
+  }
+
+  topics.push({
+    title: 'pip, Virtual Environments & Dependency Management (venv, requirements, pyproject, uv)',
+    analogy: R`<p>Each project gets its <b>own kitchen pantry</b>. Recipe A needs flour version 1, recipe B needs flour version 2; if both cooked from one shared pantry, someone would ruin the other's cake. A <b>virtual environment</b> is a private pantry per project. <b>pip</b> is the grocery delivery service that fetches ingredients from the big supermarket (<b>PyPI</b>, the Python Package Index) and puts them into whichever pantry you are standing in. <code>requirements.txt</code> is the <b>shopping list</b> you hand a friend so they can stock an identical pantry.</p>`,
+    explain: R`<p>🟢 <b>Why venvs exist.</b> Packages you install go into a folder called <code>site-packages</code>. Without a venv there is one per Python installation, shared by every project. Project A needs <code>django 4</code>, project B needs <code>django 5</code> → conflict. A virtual environment is a lightweight folder with its own <code>site-packages</code>, so each project's packages are isolated.</p>
+      <pre># create (once per project)
+python -m venv .venv
+# activate (per terminal session)
+source .venv/bin/activate          # macOS / Linux
+.venv\Scripts\activate             # Windows (PowerShell / cmd)
+# install, inspect, save, restore
+python -m pip install requests "pandas&gt;=2.2,&lt;3"
+python -m pip list
+python -m pip show requests
+python -m pip freeze &gt; requirements.txt
+python -m pip install -r requirements.txt
+deactivate</pre>
+      <p>🔵 <b>Version specifiers</b> (PEP 440):</p>
+      ${H.table(['Spec', 'Meaning', 'Example matches'], [
+        ['<code>==2.32.3</code>', 'exactly this (a "pin")', '2.32.3 only'],
+        ['<code>&gt;=2.0,&lt;3</code>', 'range (comma = AND)', '2.0 … 2.99'],
+        ['<code>~=2.2</code>', 'compatible release: &gt;=2.2, ==2.*', '2.2, 2.9 (not 3.0)'],
+        ['<code>~=2.2.1</code>', '&gt;=2.2.1, ==2.2.*', '2.2.1, 2.2.9 (not 2.3)'],
+        ['<code>!=1.5</code>', 'anything but', 'skip a broken release'],
+        ['<code>requests[socks]</code>', 'with optional "extra" deps', 'requests + PySocks']
+      ])}
+      <p><b>Two kinds of dependency lists:</b> <b>abstract</b> ("my library needs <code>requests&gt;=2.28</code>") goes in <code>pyproject.toml</code> under <code>[project] dependencies</code>; <b>concrete/locked</b> ("this deployment uses exactly these 37 versions") goes in <code>requirements.txt</code> from <code>pip freeze</code> or a lock file (<code>uv.lock</code>, <code>poetry.lock</code>, or the standard <code>pylock.toml</code> from PEP 751). Libraries keep ranges loose; applications pin everything for reproducible deploys.</p>
+      <p><b>The 2026 toolbox:</b> <code>venv</code> + <code>pip</code> are built in and always available. <b>uv</b> (written in Rust) has become the popular all-in-one replacement: <code>uv venv</code>, <code>uv pip install</code>, <code>uv add requests</code>, <code>uv lock</code>, <code>uv run script.py</code> — and it is 10–100× faster. <b>pipx</b> / <code>uv tool install</code> install command-line apps (black, ruff, httpie) in their own isolated envs. <b>conda</b> is common in data science for non-Python dependencies (CUDA, MKL). Poetry and Hatch are other project managers you may meet.</p>
+      <p><b>Golden rule:</b> use <code>python -m pip</code> (not bare <code>pip</code>) so packages go into the same interpreter that will import them. Never <code>sudo pip install</code>.</p>`,
+    clues: [
+      '"works on my machine but not on the server" → missing pinned requirements / lock file',
+      '"ModuleNotFoundError right after pip install" → pip and python belong to different interpreters; use <code>python -m pip</code>',
+      '"error: externally-managed-environment" → PEP 668: create a venv (or pipx for tools)',
+      '"two projects need different versions of the same library" → one venv per project',
+      '"reproducible builds / CI" → lock file + <code>pip install -r</code> (or <code>uv sync</code>) with hashes',
+      '"install my own package for development" → <code>pip install -e .</code> (editable install)',
+      '"which Python am I running?" → <code>sys.executable</code>, <code>sys.prefix</code> vs <code>sys.base_prefix</code>'
+    ],
+    code: [
+      { lang: 'python', run: true, title: 'Am I in a venv? Where do packages go? (runnable)', code: R`
+        import sys, sysconfig
+        from importlib import metadata
+
+        in_venv = sys.prefix != sys.base_prefix        # True inside a virtual environment
+        print("interpreter :", sys.executable)
+        print("in a venv?  :", in_venv)
+        print("version     :", sys.version.split()[0])
+        print("site-packages:", sysconfig.get_paths()["purelib"])
+
+        # Installed distributions and their versions, read from package metadata
+        names = sorted({d.metadata["Name"] for d in metadata.distributions() if d.metadata["Name"]})
+        print("installed (first 5):", names[:5])
+        try:
+            print("pip version:", metadata.version("pip"))
+        except metadata.PackageNotFoundError:
+            print("pip is not installed in this environment")
+      ` },
+      { lang: 'bash', title: 'Everyday commands: venv + pip, and the uv equivalents', code: R`
+        # --- classic, built into Python ---
+        python3 -m venv .venv
+        source .venv/bin/activate              # Windows: .venv\Scripts\activate
+        python -m pip install --upgrade pip
+        python -m pip install "requests>=2.31,<3" rich
+        python -m pip freeze > requirements.txt
+        python -m pip install -r requirements.txt
+        python -m pip install -e .             # editable install of your own project
+        deactivate
+
+        # --- uv (fast, all-in-one; 2024+) ---
+        uv venv                                # creates .venv
+        uv pip install -r requirements.txt     # drop-in pip replacement
+        uv init myapp && cd myapp              # new project with pyproject.toml
+        uv add requests                        # adds to pyproject + updates uv.lock
+        uv run python main.py                  # runs inside the synced env
+        uv tool install ruff                   # isolated CLI tool (like pipx)
+      ` },
+      { lang: 'text', title: 'pyproject.toml for a small application', code: R`
+        [project]
+        name = "shop"
+        version = "0.1.0"
+        requires-python = ">=3.11"
+        dependencies = [
+            "requests>=2.31,<3",
+            "rich~=13.7",
+        ]
+
+        [project.optional-dependencies]
+        dev = ["pytest>=8", "ruff"]
+
+        [project.scripts]
+        shop = "shop.cli:main"        # installs a 'shop' command
+
+        [build-system]
+        requires = ["hatchling"]
+        build-backend = "hatchling.build"
+      ` }
+    ],
+    codeTitle: ['Detect your environment', 'Command cheat sheet', 'Declaring dependencies'],
+    viz: {
+      title: 'Create a venv, install a package, freeze, deactivate',
+      input: 'requests',
+      inputLabel: 'Package to install (requests, flask, pandas, httpx — or any name)',
+      gen: venvGen
+    },
+    examples: [
+      { title: '"I installed it but Python cannot find it"', html: R`<p>The most common beginner problem. <code>pip</code> on your PATH belongs to one Python, <code>python</code> to another (system vs venv vs Homebrew vs Microsoft Store). Diagnose by printing the interpreter from inside Python, and always install with that exact interpreter.</p>${H.table(['command', 'shows'], [['<code>python -c "import sys; print(sys.executable)"</code>', 'which interpreter runs'], ['<code>python -m pip --version</code>', 'pip AND the Python it belongs to'], ['<code>which -a python pip</code> (Win: <code>where</code>)', 'all candidates on PATH']])}`, code: { lang: 'python', run: true, code: R`
+        import sys
+        print(sys.executable)          # install with: <this path> -m pip install <pkg>
+        print(sys.prefix == sys.base_prefix and "system/base interpreter" or "virtual environment")
+      ` } },
+      { title: 'Reading a requirements.txt', html: R`<p>Each line is a requirement: a name, optional extras, optional version specifiers, optional environment marker after <code>;</code>. Comments start with <code>#</code>; <code>-r other.txt</code> includes another file. Hashes (<code>--hash=sha256:…</code>) make pip refuse tampered downloads.</p>`, code: { lang: 'text', code: R`
+        # web app runtime deps (pinned by pip freeze)
+        requests==2.32.3
+        urllib3==2.2.3
+        rich[jupyter]==13.9.2
+        uvloop==0.21.0 ; sys_platform != "win32"
+        -r requirements-base.txt
+      ` } },
+      { title: 'Compatible release ~= explained with numbers', html: R`<p><code>~=X.Y</code> means "at least X.Y, but stay on major X". <code>~=X.Y.Z</code> means "at least X.Y.Z, but stay on X.Y". It is how you accept bug-fix releases automatically without accepting breaking ones (assuming the project follows semantic versioning).</p>${H.table(['spec', '2.1', '2.2', '2.2.5', '2.9', '3.0'], [['~=2.2', '✗', '✓', '✓', '✓', '✗'], ['~=2.2.0', '✗', '✓', '✓', '✗', '✗'], ['&gt;=2.2,&lt;3', '✗', '✓', '✓', '✓', '✗']])}`, code: { lang: 'python', run: true, code: R`
+        def as_tuple(v):
+            return tuple(int(p) for p in v.split("."))
+
+        def compatible(version, spec):
+            """~= check for plain numeric versions, e.g. compatible('2.9', '2.2') -> True."""
+            v, s = as_tuple(version), as_tuple(spec)
+            prefix = s[:-1]                       # all but the last part must match
+            return v >= s and v[:len(prefix)] == prefix
+
+        for v in ["2.1", "2.2", "2.2.5", "2.9", "3.0"]:
+            print(v, compatible(v, "2.2"), compatible(v, "2.2.0"))
+      ` } },
+      { title: 'PEP 723: a single script that declares its own dependencies', html: R`<p>Since 2024, a standalone script can carry an inline metadata block. Tools like <code>uv run script.py</code> or <code>pipx run</code> read it, build a throwaway environment with those packages, and run the script — perfect for sharing one-file utilities and AI-generated scripts without polluting any environment.</p>`, code: { lang: 'python', code: R`
+        # /// script
+        # requires-python = ">=3.11"
+        # dependencies = [
+        #   "requests<3",
+        #   "rich",
+        # ]
+        # ///
+        import requests
+        from rich import print
+
+        print(requests.get("https://peps.python.org/api/peps.json", timeout=10).status_code)
+      ` } }
+    ],
+    deepDive: R`<p>🟣 <b>How it really works.</b></p>
+      <ul>
+        <li><b>A venv is tiny:</b> at startup, Python looks for <code>pyvenv.cfg</code> next to (or one level above) the executable. If found, it sets <code>sys.prefix</code> to the venv folder and uses the venv's <code>site-packages</code>, while <code>sys.base_prefix</code> still points to the real installation whose standard library it reuses. Activation scripts only edit <code>PATH</code> and the prompt — that is why calling <code>.venv/bin/python</code> directly works without activating.</li>
+        <li><b>Wheels vs sdists:</b> a wheel (<code>.whl</code>) is a pre-built zip that is simply unpacked; its file name carries compatibility tags like <code>cp313-cp313-manylinux_2_17_x86_64</code>. An sdist (source distribution) must be built locally using the backend declared in <code>[build-system]</code> (setuptools, hatchling, flit, maturin…) — slow and may need compilers.</li>
+        <li><b>The resolver:</b> since pip 20.3, pip uses a backtracking resolver that finds a set of versions satisfying all constraints together (or reports a conflict). uv uses a PubGrub-based resolver with clearer conflict explanations. Resolution is an NP-hard problem in general, which is why huge dependency trees can be slow.</li>
+        <li><b>Supply-chain security:</b> anyone can publish to PyPI. Defences: pin versions and use <code>--require-hashes</code>, review new dependencies, prefer trusted publishing (PyPI supports OIDC from CI and digital attestations), scan with <code>pip-audit</code>, and beware of typosquatting (<code>reqeusts</code>) and "slopsquatting" (names hallucinated by AI and then registered by attackers).</li>
+        <li><b>PEP 668 (externally managed):</b> Debian/Ubuntu/Fedora and Homebrew mark their system Python as externally managed, so <code>pip install</code> outside a venv errors out instead of breaking OS tools. The override flag <code>--break-system-packages</code> exists — its name is the warning.</li>
+        <li><b>Editable installs:</b> <code>pip install -e .</code> installs a pointer (a <code>.pth</code> file or import hook, PEP 660) to your source folder, so edits are picked up without reinstalling. <code>.pth</code> files in site-packages are processed at startup and can add paths or even run code — another place to look when debugging odd imports.</li>
+        <li><b>Docker and CI:</b> in containers you still often use a venv (or <code>uv sync</code>) to separate app packages from OS packages; cache the wheel/uv cache between builds for speed.</li>
+      </ul>`,
+    aiEra: R`<p>🤖 <b>What AI changes:</b> agents now create projects, add dependencies and run <code>uv add</code> / <code>pip install</code> for you. Environment setup errors ("No module named X", resolver conflicts) are classic paste-the-error-into-chat problems that AI solves well.</p>
+      <p><b>Use AI as a partner:</b> ask it to explain a resolver conflict message, to convert a <code>requirements.txt</code> into a <code>pyproject.toml</code>, or to write a PEP 723 header for a script so others can run it with one command.</p>
+      <p><b>Where AI goes wrong:</b> it suggests <code>sudo pip install</code> or <code>--break-system-packages</code>, recommends deprecated tools (<code>setup.py install</code>, <code>easy_install</code>), invents package names that do not exist (and attackers may have registered them!), and pins ancient versions it saw in training data. Agents may also install packages globally instead of inside the project's venv.</p>
+      <p><b>What you must still own:</b> knowing which interpreter and environment are active, reviewing every new dependency (is it real, maintained, licensed suitably, safe?), and keeping builds reproducible with lock files. In a world of AI-generated code, dependency hygiene is a security skill.</p>`,
+    problems: [{
+      title: 'Parse a requirements.txt into Structured Data',
+      level: 'Medium', tags: ['strings', 'parsing', 'files', 'packaging'], companies: ['Snyk', 'GitHub', 'Red Hat'],
+      statement: R`<p>Write <code>parse_requirements(text)</code> that turns requirements-file text into a list of dicts <code>{"name", "extras", "spec", "marker"}</code>. Rules: ignore blank lines, full-line comments and inline comments (<code> #</code> preceded by whitespace); skip option lines starting with <code>-</code> (like <code>-r</code>, <code>--hash</code>); names are normalised to lowercase with runs of <code>-_.</code> turned into <code>-</code> (PEP 503); extras are inside <code>[ ]</code>; the marker is the part after <code>;</code>.</p>`,
+      constraints: R`Up to 10<sup>4</sup> lines; each line ≤ 500 characters; you do not need to support line continuations or URLs.`,
+      example: R`<p>Line <code>Rich[jupyter]&gt;=13 ; python_version &gt;= "3.10"   # pretty output</code> → ${H.c('g', "{'name': 'rich', 'extras': ['jupyter'], 'spec': '>=13', 'marker': 'python_version >= \"3.10\"'}")}. <code>Typing_Extensions==4.12.2</code> → name ${H.c('g', "'typing-extensions'")}. <code>-r base.txt</code> → skipped.</p>`,
+      brute: {
+        why: R`<p>Split every line on <code>==</code> only. It breaks on <code>&gt;=</code>, <code>~=</code>, extras, markers and comments, and keeps names in their original case so <code>Django</code> and <code>django</code> look like different packages.</p>`,
+        code: { lang: 'python', run: true, code: R`
+          def parse_brute(text):
+              out = {}
+              for line in text.splitlines():
+                  if "==" in line:
+                      name, ver = line.split("==")
+                      out[name] = ver            # comments and markers end up in ver
+              return out
+
+          print(parse_brute("Requests==2.32.3  # http\nrich>=13\n"))
+        ` }
+      },
+      mcq: { q: 'Which string method splits <code>"rich[jupyter]&gt;=13 ; os_name == \'nt\'"</code> into requirement and marker most simply?', options: ['<code>line.partition(";")</code>', '<code>line.split()</code>', '<code>line.strip(";")</code>', '<code>line.find("[")</code>'], answer: 0, explain: 'partition returns (before, sep, after) and never raises; if there is no ";" the marker part is just an empty string.' },
+      hints: [
+        R`<p>Hint 1: Process line by line: strip; drop inline comments with <code>re.split(r"\s+#", line, maxsplit=1)[0]</code> (a # attached to text, as in a URL fragment, is kept); skip empty lines and lines starting with <code>-</code>.</p>`,
+        R`<p>Hint 2: <code>req, _, marker = line.partition(";")</code>. In <code>req</code>, the name is the leading run of letters/digits/<code>-_.</code>; then optional <code>[extras]</code>; the rest is the version spec.</p>`,
+        R`<p>Hint 3: A regex like <code>^([A-Za-z0-9][A-Za-z0-9._-]*)\s*(\[[^\]]*\])?\s*(.*)$</code> captures all three. Normalise with <code>re.sub(r"[-_.]+", "-", name).lower()</code>. Remove spaces inside the spec.</p>`
+      ],
+      solution: {
+        approach: R`<p>Line-oriented parsing with <code>partition</code> for the marker and one anchored regular expression for name/extras/spec, followed by PEP 503 name normalisation. Real tools should use the <code>packaging</code> library (<code>packaging.requirements.Requirement</code>), but writing it once teaches you the format.</p>`,
+        code: { lang: 'python', run: true, code: R`
+          import re
+
+          REQ = re.compile(r"^([A-Za-z0-9][A-Za-z0-9._-]*)\s*(\[[^\]]*\])?\s*(.*)$")
+
+          def normalise(name: str) -> str:
+              return re.sub(r"[-_.]+", "-", name).lower()      # PEP 503
+
+          def parse_requirements(text: str):
+              result = []
+              for raw in text.splitlines():
+                  line = re.split(r"\s+#", raw, maxsplit=1)[0].strip()  # inline comment
+                  if not line or line.startswith(("#", "-")):
+                      continue                                  # blank, comment, option
+                  req, _, marker = line.partition(";")
+                  m = REQ.match(req.strip())
+                  if not m:
+                      raise ValueError(f"cannot parse: {raw!r}")
+                  name, extras, spec = m.groups()
+                  result.append({
+                      "name": normalise(name),
+                      "extras": [e.strip() for e in extras[1:-1].split(",") if e.strip()] if extras else [],
+                      "spec": spec.replace(" ", ""),
+                      "marker": marker.strip(),
+                  })
+              return result
+
+          sample = """
+          # runtime
+          Requests==2.32.3            # http client
+          Rich[jupyter] >= 13 ; python_version >= "3.10"
+          Typing_Extensions==4.12.2
+          -r base.txt
+          uvloop ; sys_platform != "win32"
+          """
+          for r in parse_requirements(sample):
+              print(r)
+        ` },
+        dry: { head: ['line', 'after comment strip', 'name / extras / spec', 'marker'], rows: [
+          ['# runtime', '(empty → skip)', '—', '—'],
+          ['Requests==2.32.3  # http client', 'Requests==2.32.3', 'requests / [] / ==2.32.3', "''"],
+          ['Rich[jupyter] &gt;= 13 ; python_version …', 'same', 'rich / [jupyter] / &gt;=13', 'python_version &gt;= "3.10"'],
+          ['-r base.txt', 'starts with - → skip', '—', '—'],
+          ['uvloop ; sys_platform != "win32"', 'same', "uvloop / [] / ''", 'sys_platform != "win32"']
+        ] },
+        complexity: R`<p>O(total characters) time and output size.</p>`,
+        followUps: ['Detect the same package listed twice with conflicting pins', 'Evaluate markers for the current machine (packaging.markers)', 'Support backslash line continuations and --hash options']
+      }
+    }]
+  });
+
+  /* ======================================================================
+     PRACTICE (Easy → Medium → Hard)
+     ====================================================================== */
+  practice.push({
+    title: 'Predict the Output: Slicing & String Methods',
+    level: 'Easy', tags: ['predict the output', 'slicing', 'string methods'], companies: ['TCS', 'Accenture', 'Amazon'],
+    statement: R`<p>Without running it, write down exactly what each line prints. Then check with the solution.</p>
+      <pre>s = "interview"
+print(s[2:5])                     # 1
+print(s[-4:])                     # 2
+print(s[::3])                     # 3
+print(s[5:1:-1])                  # 4
+print(repr(s[100:]))              # 5
+print("a-b-c".split("-", 1))      # 6
+print("Hello".replace("l", "L", 1))  # 7
+print("-".join("abc"))            # 8
+print("they're".title())          # 9
+print(len("café".encode()))       # 10</pre>`,
+    constraints: R`Python 3.10+; all lines run without error.`,
+    example: R`${H.arr(['i', 'n', 't', 'e', 'r', 'v', 'i', 'e', 'w'], { label: 's', hl: { 2: 'g', 3: 'g', 4: 'g' } })}<p>Line 1: start 2 included, stop 5 excluded → boxes 2, 3, 4 → ${H.c('g', 'ter')}.</p>`,
+    brute: {
+      why: R`<p>Guessing from "feel" causes off-by-one errors, especially with negative steps. A safe slow method is to expand a slice by hand into the list of indices it visits, exactly like this helper does — then read the characters.</p>`,
+      code: { lang: 'python', run: true, code: R`
+        def slice_by_hand(s, start, stop, step):
+            # range() follows the same rules as slicing once start/stop are resolved
+            idx = list(range(*slice(start, stop, step).indices(len(s))))
+            return idx, "".join(s[i] for i in idx)
+
+        print(slice_by_hand("interview", 5, 1, -1))   # ([5, 4, 3, 2], 'vret')
+        print(slice_by_hand("interview", None, None, 3))
+      ` }
+    },
+    mcq: { q: 'What does <code>"interview"[5:1:-1]</code> give?', options: ['<code>vret</code>', '<code>vreti</code>', '<code>tere</code>', '<code>\'\'</code> (empty)'], answer: 0, explain: 'Negative step walks left: indices 5, 4, 3, 2 (stop 1 is excluded) → v, r, e, t.' },
+    hints: [
+      R`<p>Hint 1: Write the indices under the letters: i0 n1 t2 e3 r4 v5 i6 e7 w8. Negative index -k means len − k.</p>`,
+      R`<p>Hint 2: <code>split(sep, 1)</code> splits at most once; <code>replace(old, new, 1)</code> replaces only the first; <code>join</code> on a string iterates its characters.</p>`,
+      R`<p>Hint 3: <code>title()</code> capitalises after ANY non-letter, including an apostrophe. <code>len</code> of encoded bytes counts UTF-8 bytes (é is 2).</p>`
+    ],
+    solution: {
+      approach: R`<p>Apply the rules mechanically: (1) ter (2) view (3) iei — indices 0, 3, 6 (4) vret (5) '' — slices never raise (6) ['a', 'b-c'] (7) HeLlo (8) a-b-c (9) They'Re — the famous title() gotcha; use <code>string.capwords</code> instead (10) 5.</p>`,
+      code: { lang: 'python', run: true, code: R`
+        s = "interview"
+        print(s[2:5])                        # ter
+        print(s[-4:])                        # view
+        print(s[::3])                        # iei
+        print(s[5:1:-1])                     # vret
+        print(repr(s[100:]))                 # ''
+        print("a-b-c".split("-", 1))         # ['a', 'b-c']
+        print("Hello".replace("l", "L", 1))  # HeLlo
+        print("-".join("abc"))               # a-b-c
+        print("they're".title())             # They'Re
+        print(len("café".encode()))          # 5
+
+        import string
+        print(string.capwords("they're here"))   # They're Here  (the fix for 9)
+      ` },
+      dry: { head: ['line', 'indices / rule', 'output'], rows: [['3', '0, 3, 6', 'iei'], ['4', '5, 4, 3, 2', 'vret'], ['5', 'start clamped to 9 → nothing', "''"], ['9', 'capitalise after the apostrophe', "They'Re"]] },
+      complexity: R`<p>Each slice is O(k) for k characters copied; split/replace/join are O(n).</p>`,
+      followUps: ['What is <code>s[-1:-4]</code>? (empty: positive step cannot go left)', 'What does <code>"abc"[::-2]</code> give?']
+    }
+  });
+
+  practice.push({
+    title: 'Reverse the Words in a Sentence',
+    level: 'Easy', tags: ['strings', 'split', 'join'], companies: ['Microsoft', 'Amazon', 'Adobe'],
+    statement: R`<p>Given a sentence <code>s</code> that may have leading, trailing or multiple spaces between words, return the words in reverse order separated by <b>single</b> spaces.</p>`,
+    constraints: R`1 ≤ len(s) ≤ 10<sup>4</sup>; s contains letters, digits and spaces; at least one word.`,
+    example: R`<p><code>"  the sky   is blue "</code> → ${H.c('g', '"blue is sky the"')}. The extra spaces vanish because <code>split()</code> without arguments ignores runs of whitespace.</p>`,
+    brute: {
+      why: R`<p>Scan character by character, building each word with <code>+=</code> and inserting it at the front of a result string. Correct, but every front-insert copies the whole result (O(n²)) and the space handling is fiddly.</p>`,
+      code: { lang: 'python', run: true, code: R`
+        def reverse_words_brute(s):
+            result, word = "", ""
+            for ch in s + " ":                 # sentinel space flushes the last word
+                if ch != " ":
+                    word += ch
+                elif word:
+                    result = word + (" " + result if result else "")
+                    word = ""
+            return result
+
+        print(repr(reverse_words_brute("  the sky   is blue ")))
+      ` }
+    },
+    mcq: { q: 'Why is <code>s.split(" ")</code> wrong here?', options: ['It keeps empty strings for repeated spaces', 'It raises on multiple spaces', 'It splits on tabs too', 'It reverses the list'], answer: 0, explain: 'split(" ") splits on each single space, so "a  b" gives [\'a\', \'\', \'b\']. split() with no argument treats any run of whitespace as one separator and drops empties.' },
+    hints: [
+      R`<p>Hint 1: The no-argument <code>split()</code> already solves the messy-space problem for you.</p>`,
+      R`<p>Hint 2: Reverse the list with <code>[::-1]</code> or <code>reversed()</code>, then glue with <code>" ".join(...)</code>.</p>`,
+      R`<p>Hint 3: Interview follow-up: do it "in place" on a list of characters — reverse the whole thing, then reverse each word.</p>`
+    ],
+    solution: {
+      approach: R`<p>One line: <code>" ".join(reversed(s.split()))</code>. split() handles all spacing, reversed() gives the order, join builds the answer in one O(n) pass.</p>`,
+      code: { lang: 'python', run: true, code: R`
+        def reverse_words(s: str) -> str:
+            return " ".join(reversed(s.split()))
+
+        for t in ["  the sky   is blue ", "hello", "a good   example"]:
+            print(repr(reverse_words(t)))
+      ` },
+      dry: { head: ['step', 'value'], rows: [['s.split()', "['the', 'sky', 'is', 'blue']"], ['reversed', "['blue', 'is', 'sky', 'the']"], ['" ".join', "'blue is sky the'"]] },
+      complexity: R`<p>O(n) time, O(n) space for the word list.</p>`,
+      followUps: ['Reverse the letters of each word but keep word order', 'Do it with O(1) extra space on a mutable character list']
+    }
+  });
+
+  practice.push({
+    title: 'Mask a Card Number',
+    level: 'Easy', tags: ['strings', 'formatting', 'isdigit'], companies: ['Razorpay', 'Stripe', 'PayPal'],
+    statement: R`<p>Write <code>mask_card(raw)</code>. The input may contain spaces or dashes. Keep only digits; if there are fewer than 12 or more than 19 digits raise <code>ValueError</code>. Replace every digit except the last 4 with <code>*</code> and group the result in blocks of 4 separated by spaces.</p>`,
+    constraints: R`len(raw) ≤ 40.`,
+    example: R`<p><code>"4111-1111-1111-1234"</code> → ${H.c('g', '"**** **** **** 1234"')}; <code>"378282246310005"</code> (15 digits) → ${H.c('g', '"**** **** ***0 005"')}: we mask by position, then group by 4 from the left.</p>`,
+    brute: {
+      why: R`<p>Replacing digits in the original string with <code>raw.replace(d, "*")</code> masks the last four digits too whenever the same digit appears earlier (replace hits every occurrence). Index-based masking is the correct mental model.</p>`,
+      code: { lang: 'python', run: true, code: R`
+        def mask_brute(raw):
+            masked = raw
+            for d in raw[:-4]:
+                if d.isdigit():
+                    masked = masked.replace(d, "*")    # also hits the last 4!
+            return masked
+
+        print(mask_brute("4111-1111-1111-1234"))   # ****-****-****-**34  wrong
+      ` }
+    },
+    mcq: { q: 'Which expression groups <code>"************1234"</code> into blocks of 4?', options: ['<code>" ".join(m[i:i+4] for i in range(0, len(m), 4))</code>', '<code>m.split(4)</code>', '<code>" ".join(m)</code>', '<code>m.center(4)</code>'], answer: 0, explain: 'Slices of width 4 at positions 0, 4, 8, … then join with spaces. Slicing past the end is safe for the last short block.' },
+    hints: [
+      R`<p>Hint 1: Extract digits: <code>"".join(c for c in raw if c.isdigit())</code> (or <code>isdecimal()</code> to reject things like "²").</p>`,
+      R`<p>Hint 2: <code>"*" * (len(d) - 4) + d[-4:]</code> masks by position, not by value.</p>`,
+      R`<p>Hint 3: Group with slices in steps of 4; validate the digit count first and raise <code>ValueError</code> with a helpful message.</p>`
+    ],
+    solution: {
+      approach: R`<p>Normalise (keep digits), validate, mask by position, then chunk with a stepped range and join. Each step is a standard string idiom.</p>`,
+      code: { lang: 'python', run: true, code: R`
+        def mask_card(raw: str) -> str:
+            digits = "".join(c for c in raw if c.isdecimal())
+            if not 12 <= len(digits) <= 19:
+                raise ValueError(f"expected 12-19 digits, got {len(digits)}")
+            masked = "*" * (len(digits) - 4) + digits[-4:]
+            return " ".join(masked[i:i + 4] for i in range(0, len(masked), 4))
+
+        print(mask_card("4111-1111-1111-1234"))
+        print(mask_card("3782 822463 10005"))
+        try:
+            mask_card("1234")
+        except ValueError as e:
+            print("ValueError:", e)
+      ` },
+      dry: { head: ['step', 'value'], rows: [['digits', '4111111111111234'], ['masked', '************1234'], ['chunks', "'****' '****' '****' '1234'"], ['result', '**** **** **** 1234']] },
+      complexity: R`<p>O(n) time and space.</p>`,
+      followUps: ['Also validate the Luhn checksum', 'Keep the original separators (dashes vs spaces) in the output']
+    }
+  });
+
+  practice.push({
+    title: 'Normalise Usernames (strip, casefold, ASCII-fold)',
+    level: 'Easy', tags: ['strings', 'unicode', 'encode/decode'], companies: ['Instagram', 'Discord', 'Zomato'],
+    statement: R`<p>Write <code>to_username(display_name)</code>: remove accents (<code>é</code> → <code>e</code>), lowercase with <code>casefold()</code>, keep only ASCII letters, digits and spaces, collapse whitespace runs into a single <code>_</code>, cut to at most 20 characters (no trailing <code>_</code>), and return <code>"user"</code> if nothing is left.</p>`,
+    constraints: R`len(display_name) ≤ 200; any Unicode.`,
+    example: R`<p><code>"  José   O'Néil!! "</code> → ${H.c('g', '"jose_oneil"')}: accents removed via Unicode decomposition, apostrophe and ! dropped, the space run becomes one underscore. <code>"😀😀"</code> → ${H.c('y', '"user"')}.</p>`,
+    brute: {
+      why: R`<p>A hand-made replacement table (<code>{"é": "e", "ñ": "n", …}</code>) never covers every accented letter in every language, and forgetting <code>casefold</code> leaves "STRASSE" and "straße" different.</p>`,
+      code: { lang: 'python', run: true, code: R`
+        TABLE = {"é": "e", "á": "a", "ñ": "n"}            # always incomplete
+        def to_username_brute(name):
+            out = "".join(TABLE.get(c, c) for c in name.lower())
+            out = "".join(c for c in out if c.isalnum() or c == " ")
+            return "_".join(out.split())[:20] or "user"
+
+        print(to_username_brute("  José   O'Néil!! "), to_username_brute("Ōsaka"))   # ō survives
+      ` }
+    },
+    mcq: { q: 'What does <code>unicodedata.normalize("NFKD", "é")</code> produce?', options: ['"e" followed by a combining accent (2 code points)', 'Just "e"', 'The bytes C3 A9', 'An error'], answer: 0, explain: 'NFKD decomposes é into e + U+0301. Encoding to ASCII with errors="ignore" then drops the combining mark, leaving plain e.' },
+    hints: [
+      R`<p>Hint 1: <code>unicodedata.normalize("NFKD", s)</code> splits accented letters into base letter + combining mark.</p>`,
+      R`<p>Hint 2: <code>.encode("ascii", "ignore").decode("ascii")</code> drops everything non-ASCII, including those marks.</p>`,
+      R`<p>Hint 3: Then <code>casefold()</code>, keep <code>c.isalnum() or c.isspace()</code>, <code>"_".join(t.split())</code>, slice <code>[:20]</code>, <code>rstrip("_")</code>, fallback <code>or "user"</code>.</p>`
+    ],
+    solution: {
+      approach: R`<p>Decompose → ASCII-fold via encode/decode with an error policy → casefold → filter → collapse whitespace with split/join → truncate → fallback. A pipeline of standard string tools.</p>`,
+      code: { lang: 'python', run: true, code: R`
+        import unicodedata
+
+        def to_username(display_name: str, limit: int = 20) -> str:
+            t = unicodedata.normalize("NFKD", display_name)
+            t = t.encode("ascii", "ignore").decode("ascii")      # drop accents/emoji
+            t = t.casefold()
+            t = "".join(c for c in t if c.isalnum() or c.isspace())
+            t = "_".join(t.split())                               # collapse spaces
+            return t[:limit].rstrip("_") or "user"
+
+        for n in ["  José   O'Néil!! ", "Ōsaka Café", "😀😀", "A Very Long Display Name Indeed"]:
+            print(repr(n), "->", to_username(n))
+      ` },
+      dry: { head: ['step', 'value'], rows: [['NFKD + ascii ignore', "'  Jose   O'Neil!! '"], ['casefold + filter', "'  jose   oneil '"], ['split/join', "'jose_oneil'"], ['truncate/fallback', "'jose_oneil'"]] },
+      complexity: R`<p>O(n) time and space.</p>`,
+      followUps: ['Ensure uniqueness by appending a number if the name is taken', 'Why can NFKD change "ﬁ" (one ligature char) into "fi"?']
+    }
+  });
+
+  practice.push({
+    title: 'Predict the Output: File Modes and the Cursor',
+    level: 'Medium', tags: ['predict the output', 'files', 'modes', 'seek'], companies: ['Amazon', 'Cisco', 'Intuit'],
+    statement: R`<p>Predict each printed value. <code>p</code> is a path in a temporary folder.</p>
+      <pre>with open(p, "w") as f: f.write("abc")
+with open(p, "a") as f: f.write("def")
+with open(p) as f:
+    print(f.read(2))            # 1
+    print(f.read())             # 2
+    print(repr(f.read()))       # 3
+    f.seek(0)
+    print(f.readline())         # 4
+with open(p, "r+") as f:
+    f.write("XY")
+with open(p) as f:
+    print(f.read())             # 5
+with open(p, "w") as f:
+    pass
+with open(p) as f:
+    print(repr(f.read()))       # 6</pre>`,
+    constraints: R`Assume UTF-8 and that p starts out not existing.`,
+    example: R`<p>After line 1 of the program the file is ${H.c('b', '"abc"')}; <code>"a"</code> appends so it becomes ${H.c('b', '"abcdef"')}. Output 1 is ${H.c('g', 'ab')} (two characters from the start).</p>`,
+    brute: {
+      why: R`<p>The slow way is to track the file content and the cursor on paper after every call, like a debugger. That is exactly what the solution's commented trace does; with practice you skip it.</p>`,
+      code: { lang: 'python', run: true, code: R`
+        content, cursor = "", 0
+        content = "abc"                         # "w" erases, then writes
+        content += "def"                        # "a" always writes at the end
+        out1 = content[cursor:cursor + 2]; cursor += 2
+        out2 = content[cursor:]; cursor = len(content)
+        print(out1, out2, repr(content[cursor:]))
+      ` }
+    },
+    mcq: { q: 'Opening with <code>"r+"</code> and writing "XY" immediately does what?', options: ['Overwrites the first two characters (cursor starts at 0)', 'Appends at the end', 'Erases the file first', 'Raises because the file exists'], answer: 0, explain: '"r+" opens for read and write WITHOUT truncating, cursor at position 0, so writes overwrite in place: abcdef → XYcdef.' },
+    hints: [
+      R`<p>Hint 1: Track two things: the content and the cursor. "w" empties then writes; "a" writes at the end; "r" starts at 0.</p>`,
+      R`<p>Hint 2: read() with no argument takes everything from the cursor; a second read() at EOF returns ''.</p>`,
+      R`<p>Hint 3: "r+" overwrites from position 0 without truncating; opening with "w" erases the file even if you write nothing.</p>`
+    ],
+    solution: {
+      approach: R`<p>Answers: (1) ab (2) cdef (3) '' (4) abcdef (5) XYcdef (6) ''. The traps: append mode, empty string at EOF, r+ overwriting in place, and "w" truncating immediately on open.</p>`,
+      code: { lang: 'python', run: true, code: R`
+        import os, tempfile
+        p = os.path.join(tempfile.mkdtemp(), "t.txt")
+        with open(p, "w", encoding="utf-8") as f: f.write("abc")
+        with open(p, "a", encoding="utf-8") as f: f.write("def")
+        with open(p, encoding="utf-8") as f:
+            print(f.read(2))            # ab
+            print(f.read())             # cdef
+            print(repr(f.read()))       # ''
+            f.seek(0)
+            print(f.readline())         # abcdef  (no newline in the file)
+        with open(p, "r+", encoding="utf-8") as f:
+            f.write("XY")               # overwrite in place
+        with open(p, encoding="utf-8") as f:
+            print(f.read())             # XYcdef
+        with open(p, "w", encoding="utf-8") as f:
+            pass                        # truncated on open
+        with open(p, encoding="utf-8") as f:
+            print(repr(f.read()))       # ''
+        os.remove(p)
+      ` },
+      dry: { head: ['call', 'content', 'cursor after', 'printed'], rows: [['read(2)', 'abcdef', '2', 'ab'], ['read()', 'abcdef', '6', 'cdef'], ['read()', 'abcdef', '6', "''"], ['r+ write XY', 'XYcdef', '2', '—'], ['open "w"', "''", '0', "''"]] },
+      complexity: R`<p>Each read/write is O(characters moved).</p>`,
+      followUps: ['What happens with mode "a+" and seek(0) followed by write?', 'Why is seek(3) in text mode with non-ASCII content risky?']
+    }
+  });
+
+  practice.push({
+    title: 'Run-Length Encoding (compress and decompress)',
+    level: 'Medium', tags: ['strings', 'itertools.groupby', 'join'], companies: ['Google', 'Goldman Sachs', 'Uber'],
+    statement: R`<p>Implement <code>encode(s)</code> turning runs of repeated characters into <code>char + count</code> (<code>"aaabccdddd"</code> → <code>"a3b1c2d4"</code>) and <code>decode(t)</code> that reverses it. Counts can have several digits. Input characters are letters only.</p>`,
+    constraints: R`0 ≤ len(s) ≤ 10<sup>6</sup>.`,
+    example: R`<p><code>encode("aaabccdddd")</code> → ${H.c('g', '"a3b1c2d4"')}; <code>decode("x12y1")</code> → ${H.c('g', '"xxxxxxxxxxxxy"')} (12 x's: multi-digit count).</p>`,
+    brute: {
+      why: R`<p>Building the output with <code>result += ...</code> and, for decode, assuming each count is a single digit. The first can be quadratic; the second silently breaks on counts ≥ 10.</p>`,
+      code: { lang: 'python', run: true, code: R`
+        def decode_brute(t):
+            out = ""
+            for i in range(0, len(t), 2):      # assumes ONE digit per count
+                out += t[i] * int(t[i + 1])
+            return out
+
+        print(decode_brute("a3b1"))           # fine
+        try:
+            print(decode_brute("x12y1"))
+        except (ValueError, IndexError) as e:
+            print("breaks:", type(e).__name__)
+      ` }
+    },
+    mcq: { q: 'Which tool groups consecutive equal characters in one pass?', options: ['<code>itertools.groupby</code>', '<code>collections.Counter</code>', '<code>sorted</code>', '<code>str.count</code>'], answer: 0, explain: 'groupby yields (key, run) for each block of consecutive equal items. Counter counts across the whole string and would merge separate runs.' },
+    hints: [
+      R`<p>Hint 1: For encode, walk the string tracking the current character and its run length; flush to a list of parts when it changes.</p>`,
+      R`<p>Hint 2: <code>itertools.groupby(s)</code> gives each run directly: <code>f"{ch}{len(list(run))}"</code>.</p>`,
+      R`<p>Hint 3: For decode, use <code>re.findall(r"([A-Za-z])(\d+)", t)</code> to get (char, count) pairs with multi-digit counts; build parts and join once.</p>`
+    ],
+    solution: {
+      approach: R`<p>Encode with <code>groupby</code> + join; decode with a regex that captures a letter followed by one or more digits. Both are linear and avoid repeated string concatenation.</p>`,
+      code: { lang: 'python', run: true, code: R`
+        import re
+        from itertools import groupby
+
+        def encode(s: str) -> str:
+            return "".join(f"{ch}{sum(1 for _ in run)}" for ch, run in groupby(s))
+
+        def decode(t: str) -> str:
+            return "".join(ch * int(n) for ch, n in re.findall(r"([A-Za-z])(\d+)", t))
+
+        for s in ["aaabccdddd", "", "x" * 12 + "y"]:
+            e = encode(s)
+            print(repr(s[:15]), "->", e, "->", decode(e) == s)
+      ` },
+      dry: { head: ['run', 'char', 'length', 'part'], rows: [['aaa', 'a', '3', 'a3'], ['b', 'b', '1', 'b1'], ['cc', 'c', '2', 'c2'], ['dddd', 'd', '4', 'd4 → "a3b1c2d4"']] },
+      complexity: R`<p>O(n) time for both; output O(n) worst case (no repeats doubles the length).</p>`,
+      followUps: ['Only encode runs longer than 1 to guarantee no growth', 'Make it work on bytes for binary data']
+    }
+  });
+
+  practice.push({
+    title: 'Tail: Last N Lines of a Huge File',
+    level: 'Medium', tags: ['files', 'deque', 'seek', 'binary'], companies: ['Amazon', 'Datadog', 'Splunk'],
+    statement: R`<p>Write <code>tail(path, n)</code> returning the last <code>n</code> lines (without newline characters) of a UTF-8 text file that may be many gigabytes. Return fewer lines if the file is shorter; <code>n = 0</code> returns an empty list.</p>`,
+    constraints: R`0 ≤ n ≤ 10<sup>4</sup>; file size up to 10<sup>11</sup> bytes; lines up to 10<sup>4</sup> characters.`,
+    example: R`<p>File lines <code>line1 … line10</code>, n = 3 → ${H.c('g', "['line8', 'line9', 'line10']")}.</p>`,
+    brute: {
+      why: R`<p><code>f.readlines()[-n:]</code> loads every line of a 100 GB file into memory just to keep 3 of them.</p>`,
+      code: { lang: 'python', run: true, code: R`
+        import os, tempfile
+        def tail_brute(path, n):
+            with open(path, encoding="utf-8") as f:
+                return [l.rstrip("\n") for l in f.readlines()[-n:]] if n else []
+
+        fd, p = tempfile.mkstemp()
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.writelines(f"line{i}\n" for i in range(1, 11))
+        print(tail_brute(p, 3))
+        os.remove(p)
+      ` }
+    },
+    mcq: { q: 'What does <code>collections.deque(f, maxlen=3)</code> do with a file object f?', options: ['Iterates all lines but keeps only the last 3 in memory', 'Reads only the last 3 lines from disk', 'Raises because files are not lists', 'Keeps the first 3 lines'], answer: 0, explain: 'A bounded deque discards from the left as new items arrive, so memory is O(n) lines, but it still reads the whole file (O(file size) time). Seeking from the end avoids reading everything.' },
+    hints: [
+      R`<p>Hint 1: Streaming version: <code>deque(f, maxlen=n)</code> — constant memory, but still reads the whole file.</p>`,
+      R`<p>Hint 2: Faster version: open in <b>binary</b>, <code>seek(0, 2)</code> to the end, and read blocks backwards until you have collected more than n newline bytes.</p>`,
+      R`<p>Hint 3: Decode only the final lines with <code>splitlines()</code>; handle n = 0 separately (because <code>lst[-0:]</code> is the WHOLE list).</p>`
+    ],
+    solution: {
+      approach: R`<p>Read backwards in fixed-size binary blocks from the end until the buffer contains more than n newlines, then split and decode the last n lines. Work is proportional to the size of the answer, not the file. (The deque version is the simple streaming alternative.)</p>`,
+      code: { lang: 'python', run: true, code: R`
+        import os, tempfile
+        from collections import deque
+
+        def tail(path, n, block=4096):
+            if n <= 0:
+                return []                       # careful: lines[-0:] would return everything
+            with open(path, "rb") as f:
+                f.seek(0, os.SEEK_END)
+                pos = f.tell()
+                data = b""
+                while pos > 0 and data.count(b"\n") <= n:
+                    step = min(block, pos)
+                    pos -= step
+                    f.seek(pos)
+                    data = f.read(step) + data  # prepend the earlier block
+            return [line.decode("utf-8") for line in data.splitlines()[-n:]]
+
+        def tail_stream(path, n):
+            with open(path, encoding="utf-8") as f:
+                return [l.rstrip("\n") for l in deque(f, maxlen=n)] if n > 0 else []
+
+        fd, p = tempfile.mkstemp()
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.writelines(f"line{i}\n" for i in range(1, 100_001))
+        print(tail(p, 3), tail_stream(p, 3))
+        print(tail(p, 0), len(tail(p, 200_000)))
+        os.remove(p)
+      ` },
+      dry: { head: ['iteration', 'pos', 'bytes buffered', 'newlines seen'], rows: [['start', 'end of file', '0', '0'], ['1', 'end − 4096', '4096', '≈ 370 &gt; 3 → stop'], ['split', '—', '—', "last 3 → ['line99998', 'line99999', 'line100000']"]] },
+      complexity: R`<p>Seek version: O(answer size + block) time and memory. deque version: O(file size) time, O(n) memory.</p>`,
+      followUps: ['Implement tail -f (follow new lines as they are appended)', 'Why is it safe to split UTF-8 bytes on b"\\n"? (0x0A never appears inside a multi-byte character)']
+    }
+  });
+
+  practice.push({
+    title: 'CSV Sales Report with Aligned Columns',
+    level: 'Medium', tags: ['csv', 'files', 'formatting', 'dict'], companies: ['Walmart', 'Flipkart', 'Deloitte'],
+    statement: R`<p>Given a CSV file with header <code>region,product,amount</code> (amounts may be quoted and contain commas like <code>"1,250.50"</code>), print a report: one row per region with total amount (2 decimals, thousands separators) and its share of the grand total (1 decimal %), sorted by total descending, then a TOTAL row. Return the report string.</p>`,
+    constraints: R`Up to 10<sup>6</sup> rows; up to 100 regions; region names up to 12 characters.`,
+    example: R`<p>Rows <code>North,pen,100</code>, <code>South,bag,"1,250.50"</code>, <code>North,ink,49.5</code> → ${H.c('g', 'South 1,250.50 89.3%')} then ${H.c('g', 'North 149.50 10.7%')} then TOTAL 1,400.00 100.0%.</p>`,
+    brute: {
+      why: R`<p><code>line.split(",")</code> turns <code>"1,250.50"</code> into two fields (<code>'"1'</code> and <code>'250.50"'</code>), so the amount column is wrong or float() crashes. Quoted CSV needs a real parser.</p>`,
+      code: { lang: 'python', run: true, code: R`
+        line = 'South,bag,"1,250.50"'
+        print(line.split(","))        # ['South', 'bag', '"1', '250.50"']  broken
+      ` }
+    },
+    mcq: { q: 'Why open CSV files with <code>newline=""</code>?', options: ['So the csv module sees raw line endings and handles quoted newlines and \\r\\n itself', 'To make reading faster', 'To strip trailing spaces', 'It is required for UTF-8'], answer: 0, explain: 'The csv docs require newline="" so that newlines inside quoted fields are preserved and Windows \\r\\n line endings are not translated twice.' },
+    hints: [
+      R`<p>Hint 1: <code>csv.DictReader(f)</code> gives a dict per row and handles quotes; convert with <code>float(row["amount"].replace(",", ""))</code>.</p>`,
+      R`<p>Hint 2: Accumulate in a dict <code>totals[region] = totals.get(region, 0) + amount</code>, then <code>sorted(totals.items(), key=lambda kv: kv[1], reverse=True)</code>.</p>`,
+      R`<p>Hint 3: Format rows with <code>f"{region:&lt;12}{total:&gt;14,.2f}{share:&gt;8.1%}"</code>; share = total / grand (guard grand == 0).</p>`
+    ],
+    solution: {
+      approach: R`<p>Stream rows with DictReader (constant memory per row), aggregate per region in a dict, sort once, and format with fixed-width specs so columns align.</p>`,
+      code: { lang: 'python', run: true, code: R`
+        import csv, os, tempfile
+
+        def sales_report(path: str) -> str:
+            totals = {}
+            with open(path, newline="", encoding="utf-8") as f:
+                for row in csv.DictReader(f):
+                    amount = float(row["amount"].replace(",", ""))
+                    totals[row["region"]] = totals.get(row["region"], 0.0) + amount
+            grand = sum(totals.values())
+            lines = [f"{'Region':<12}{'Total':>14}{'Share':>8}"]
+            for region, total in sorted(totals.items(), key=lambda kv: kv[1], reverse=True):
+                share = total / grand if grand else 0.0
+                lines.append(f"{region:<12}{total:>14,.2f}{share:>8.1%}")
+            lines.append(f"{'TOTAL':<12}{grand:>14,.2f}{1 if grand else 0:>8.1%}")
+            return "\n".join(lines)
+
+        fd, p = tempfile.mkstemp(suffix=".csv")
+        with os.fdopen(fd, "w", newline="", encoding="utf-8") as f:
+            f.write('region,product,amount\nNorth,pen,100\nSouth,bag,"1,250.50"\nNorth,ink,49.5\n')
+        print(sales_report(p))
+        os.remove(p)
+      ` },
+      dry: { head: ['row', 'region', 'amount', 'totals'], rows: [['1', 'North', '100.0', "{'North': 100.0}"], ['2', 'South', '1250.5', "{'North': 100.0, 'South': 1250.5}"], ['3', 'North', '49.5', "{'North': 149.5, 'South': 1250.5}"]] },
+      complexity: R`<p>O(rows + R log R) time for R regions; O(R) memory regardless of file size.</p>`,
+      followUps: ['Use Decimal so totals of money never drift', 'Write the report to a new CSV with csv.writer instead of text']
+    }
+  });
+
+  practice.push({
+    title: 'Repair Mojibake Automatically',
+    level: 'Medium', tags: ['unicode', 'encode/decode', 'error handling'], companies: ['Booking.com', 'Expedia', 'Airbnb'],
+    statement: R`<p>Text scraped from old systems contains mojibake like <code>"cafÃ©"</code> or <code>"donâ€™t"</code>: UTF-8 bytes that were decoded as Windows-1252 (cp1252) or Latin-1. Write <code>fix_mojibake(s)</code> that repairs such text (possibly mis-decoded twice) and leaves already-correct text unchanged.</p>`,
+    constraints: R`len(s) ≤ 10<sup>5</sup>; at most 3 layers of mis-decoding.`,
+    example: R`<p><code>"cafÃ©"</code> → ${H.c('g', '"café"')}; <code>"donâ€™t"</code> → ${H.c('g', '"don’t"')}; <code>"café"</code> (already fine) → ${H.c('b', '"café"')} because encoding it as cp1252 gives <code>b"caf\xe9"</code>, which is not valid UTF-8, so we keep the original.</p>`,
+    brute: {
+      why: R`<p>A replacement table (<code>"Ã©" → "é"</code>, <code>"â€™" → "’"</code>, …) must list thousands of pairs, misses double-encoding, and can corrupt correct text that legitimately contains those character pairs.</p>`,
+      code: { lang: 'python', run: true, code: R`
+        FIXES = {"Ã©": "é", "â€™": "’"}          # endless list in practice
+        def fix_brute(s):
+            for bad, good in FIXES.items():
+                s = s.replace(bad, good)
+            return s
+
+        print(fix_brute("cafÃ©"), fix_brute("Ã¼ber"))   # second one not in the table
+      ` }
+    },
+    mcq: { q: 'Mojibake "Ã©" came from UTF-8 bytes C3 A9 decoded as cp1252. What reverses it?', options: ['<code>s.encode("cp1252").decode("utf-8")</code>', '<code>s.decode("utf-8")</code>', '<code>s.encode("utf-8").decode("cp1252")</code>', '<code>s.lower()</code>'], answer: 0, explain: 'Undo the wrong step first (turn the characters back into the original bytes using the wrong codec), then apply the right decode. Option 3 repeats the mistake.' },
+    hints: [
+      R`<p>Hint 1: The bug was <code>bytes.decode("cp1252")</code> on UTF-8 bytes. Reverse: <code>s.encode("cp1252")</code> recovers those bytes, then <code>.decode("utf-8")</code>.</p>`,
+      R`<p>Hint 2: If either step raises <code>UnicodeError</code>, this codec was not the culprit; try <code>latin-1</code> next (it can represent bytes cp1252 cannot).</p>`,
+      R`<p>Hint 3: Repeat up to 3 times while the text keeps changing (double-encoded data). Stop when no codec produces a different valid result.</p>`
+    ],
+    solution: {
+      approach: R`<p>Try to undo one layer with each candidate codec; accept the first that round-trips without errors and changes the text; loop for multiple layers. Correct text is safe because re-encoding it rarely yields valid UTF-8. (For production, the <code>ftfy</code> library implements a far more careful version of this idea.)</p>`,
+      code: { lang: 'python', run: true, code: R`
+        def fix_mojibake(s: str, max_layers: int = 3) -> str:
+            for _ in range(max_layers):
+                for codec in ("cp1252", "latin-1"):
+                    try:
+                        candidate = s.encode(codec).decode("utf-8")
+                    except UnicodeError:
+                        continue                  # this codec cannot explain the text
+                    if candidate != s:
+                        s = candidate
+                        break                     # undo one layer, then try again
+                else:
+                    return s                      # no codec changed anything: done
+            return s
+
+        tests = ["cafÃ©", "donâ€™t", "café", "plain ascii", "cafÃƒÂ©"]
+        for t in tests:
+            print(f"{t!r:16} -> {fix_mojibake(t)!r}")
+      ` },
+      dry: { head: ['input', 'cp1252 encode', 'utf-8 decode', 'result'], rows: [['cafÃ©', "b'caf\\xc3\\xa9'", 'café', 'changed → loop again → stable'], ['café', "b'caf\\xe9'", '<span class="c-r">UnicodeDecodeError</span>', 'try latin-1 → same error → keep'], ['cafÃƒÂ©', 'layer 1 → cafÃ©', 'layer 2 → café', 'café']] },
+      complexity: R`<p>O(L · n) for L ≤ 3 layers and text length n.</p>`,
+      followUps: ['How would you detect mojibake in a whole database column?', 'Why is guessing encodings (chardet / charset-normalizer) only probabilistic?']
+    }
+  });
+
+  practice.push({
+    title: 'Load a .env Config File',
+    level: 'Medium', tags: ['files', 'parsing', 'partition', 'errors'], companies: ['Heroku', 'Vercel', 'Postman'],
+    statement: R`<p>Write <code>load_env(path)</code> returning a dict from a <code>.env</code>-style file. Rules: skip blank lines and lines starting with <code>#</code>; an optional leading <code>export </code> is ignored; split on the <b>first</b> <code>=</code> only; strip spaces around key and value; if the value is wrapped in matching single or double quotes, remove them (keep inner content verbatim, including <code>#</code>); otherwise drop an inline comment starting with <code> #</code>. Keys must be valid identifiers, else raise <code>ValueError</code> naming the line number. Later duplicates win.</p>`,
+    constraints: R`File ≤ 10<sup>4</sup> lines, UTF-8.`,
+    example: R`<p>Lines <code>export DB_URL = "postgres://u:p@h/db?x=1"</code>, <code>DEBUG=true # dev only</code>, <code>MSG='hi # there'</code> → ${H.c('g', "{'DB_URL': 'postgres://u:p@h/db?x=1', 'DEBUG': 'true', 'MSG': 'hi # there'}")}. Note the <code>=</code> inside the URL is kept because we split on the first one only.</p>`,
+    brute: {
+      why: R`<p><code>key, value = line.split("=")</code> crashes ("too many values to unpack") on any value containing <code>=</code>, never strips quotes, and gives no line number when the file is wrong.</p>`,
+      code: { lang: 'python', run: true, code: R`
+        def load_env_brute(text):
+            d = {}
+            for line in text.splitlines():
+                if line.strip():
+                    k, v = line.split("=")            # breaks on "a=b=c"
+                    d[k] = v
+            return d
+
+        try:
+            print(load_env_brute("URL=http://x?a=1\n"))
+        except ValueError as e:
+            print("ValueError:", e)
+      ` }
+    },
+    mcq: { q: '<code>"URL=http://x?a=1".partition("=")</code> returns…', options: ["('URL', '=', 'http://x?a=1')", "('URL', 'http://x?a', '1')", "['URL', 'http://x?a', '1']", 'ValueError'], answer: 0, explain: 'partition splits at the FIRST separator only and always returns a 3-tuple (before, sep, after). That is exactly what key=value parsing needs.' },
+    hints: [
+      R`<p>Hint 1: Loop with <code>enumerate(f, start=1)</code> so you have line numbers for error messages. <code>line.strip()</code>; skip empty or <code>#</code> lines; <code>removeprefix("export ")</code>.</p>`,
+      R`<p>Hint 2: <code>key, sep, value = line.partition("=")</code>; if <code>not sep</code> or <code>not key.strip().isidentifier()</code> → ValueError with the line number.</p>`,
+      R`<p>Hint 3: Quoted: <code>len(v) &gt;= 2 and v[0] == v[-1] and v[0] in "'\""</code> → <code>v[1:-1]</code>. Unquoted: <code>v.split(" #", 1)[0].strip()</code>.</p>`
+    ],
+    solution: {
+      approach: R`<p>A small line-oriented parser: strip → skip → <code>removeprefix</code> → <code>partition</code> on the first "=" → validate key → unquote or drop the inline comment. Each rule is one string method.</p>`,
+      code: { lang: 'python', run: true, code: R`
+        import os, tempfile
+
+        def load_env(path: str) -> dict:
+            env = {}
+            with open(path, encoding="utf-8") as f:
+                for lineno, raw in enumerate(f, start=1):
+                    line = raw.strip()
+                    if not line or line.startswith("#"):
+                        continue
+                    line = line.removeprefix("export ").lstrip()
+                    key, sep, value = line.partition("=")
+                    key, value = key.strip(), value.strip()
+                    if not sep or not key.isidentifier():
+                        raise ValueError(f"line {lineno}: expected KEY=VALUE, got {raw.strip()!r}")
+                    if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
+                        value = value[1:-1]                    # quoted: keep inner text verbatim
+                    else:
+                        value = value.split(" #", 1)[0].strip()  # unquoted: drop inline comment
+                    env[key] = value
+            return env
+
+        fd, p = tempfile.mkstemp(suffix=".env")
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write('# settings\nexport DB_URL = "postgres://u:p@h/db?x=1"\nDEBUG=true # dev only\n'
+                    "MSG='hi # there'\nDEBUG=false\n")
+        print(load_env(p))
+        with open(p, "a", encoding="utf-8") as f:
+            f.write("not a valid line\n")
+        try:
+            load_env(p)
+        except ValueError as e:
+            print("ValueError:", e)
+        os.remove(p)
+      ` },
+      dry: { head: ['line', 'key', 'raw value', 'stored'], rows: [['2', 'DB_URL', '"postgres://u:p@h/db?x=1"', 'quotes removed'], ['3', 'DEBUG', 'true # dev only', "'true'"], ['4', 'MSG', "'hi # there'", "'hi # there'"], ['5', 'DEBUG', 'false', "overwrites → 'false'"]] },
+      complexity: R`<p>O(file size) time; O(number of keys) memory.</p>`,
+      followUps: ['Support &#36;{OTHER} variable interpolation (careful with cycles)', 'Never log secret values: how would you redact them in error messages?']
+    }
+  });
+
+  practice.push({
+    title: 'Predict the Output: Imports, Caching, __name__ and reload',
+    level: 'Hard', tags: ['predict the output', 'modules', 'sys.modules', '__name__'], companies: ['Google', 'Meta', 'Bloomberg'],
+    statement: R`<p>Two modules live in the same folder:</p>
+      <pre># b.py
+print("b runs as", __name__)
+VALUE = 7
+
+# a.py
+print("a start")
+import b
+print("a end", b.VALUE)</pre>
+      <p>Predict the full output of this main program:</p>
+      <pre>import a
+import b
+import a
+from b import VALUE
+b.VALUE = 99
+print(VALUE, b.VALUE, a.b.VALUE)
+import importlib
+importlib.reload(b)
+print(VALUE, b.VALUE)</pre>`,
+    constraints: R`Fresh interpreter; the folder is on sys.path; no other module named a or b exists.`,
+    example: R`<p>First line printed is ${H.c('g', 'a start')}: importing <code>a</code> runs its top-level code, which imports <code>b</code> in the middle.</p>`,
+    brute: {
+      why: R`<p>Assuming each <code>import</code> statement re-runs the module leads to printing "a start" twice and "b runs" twice. Tracing <code>sys.modules</code> by hand fixes that.</p>`,
+      code: { lang: 'python', run: true, code: R`
+        cache = {}
+        def fake_import(name, run):
+            if name not in cache:          # first time: execute module code
+                cache[name] = run()
+            return cache[name]
+
+        log = []
+        fake_import("b", lambda: log.append("b runs") or {"VALUE": 7})
+        fake_import("b", lambda: log.append("b runs AGAIN?") or {"VALUE": 7})
+        print(log)                         # only one run
+      ` }
+    },
+    mcq: { q: 'After <code>from b import VALUE</code> and then <code>b.VALUE = 99</code>, what is <code>VALUE</code> in main?', options: ['7 — the name was bound to the old object', '99 — names are linked', 'NameError', 'None'], answer: 0, explain: 'from-import creates a new name in main bound to whatever b.VALUE referred to at that moment (7). Rebinding b.VALUE later changes the module attribute, not main\'s name.' },
+    hints: [
+      R`<p>Hint 1: <code>import a</code> runs a.py, which prints "a start", then imports b (first time → b runs, with <code>__name__ == "b"</code>), then prints "a end 7".</p>`,
+      R`<p>Hint 2: Later <code>import b</code> and <code>import a</code> are cache hits in <code>sys.modules</code>: no output. <code>a.b</code> is the same module object as <code>b</code>.</p>`,
+      R`<p>Hint 3: <code>reload(b)</code> re-executes b.py in the SAME module object: prints again and resets <code>b.VALUE</code> to 7; main's <code>VALUE</code> name is untouched (still 7).</p>`
+    ],
+    solution: {
+      approach: R`<p>Output: <code>a start</code> / <code>b runs as b</code> / <code>a end 7</code> / <code>7 99 99</code> / <code>b runs as b</code> / <code>7 7</code>. Key facts: modules run once per process; every importer shares one module object; from-import copies the current binding; reload re-runs code in place.</p>`,
+      code: { lang: 'python', run: true, code: R`
+        import importlib, sys, tempfile
+        from pathlib import Path
+
+        d = Path(tempfile.mkdtemp())
+        (d / "b.py").write_text('print("b runs as", __name__)\nVALUE = 7\n', encoding="utf-8")
+        (d / "a.py").write_text('print("a start")\nimport b\nprint("a end", b.VALUE)\n', encoding="utf-8")
+        sys.path.insert(0, str(d))
+        importlib.invalidate_caches()
+
+        import a
+        import b
+        import a
+        from b import VALUE
+        b.VALUE = 99
+        print(VALUE, b.VALUE, a.b.VALUE)     # 7 99 99
+        importlib.reload(b)                  # prints "b runs as b" again
+        print(VALUE, b.VALUE)                # 7 7
+      ` },
+      dry: { head: ['statement', 'sys.modules before', 'prints'], rows: [['import a', '{}', 'a start / b runs as b / a end 7'], ['import b', '{a, b}', '(nothing)'], ['import a', '{a, b}', '(nothing)'], ['print(...)', '{a, b}', '7 99 99'], ['reload(b)', '{a, b}', 'b runs as b'], ['print(...)', '{a, b}', '7 7']] },
+      complexity: R`<p>Each cached import is an O(1) dictionary lookup; a first import costs the module's execution time.</p>`,
+      followUps: ['What would change if a.py did "from b import VALUE" instead of "import b"?', 'Run python b.py directly: what does the first line print now?']
+    }
+  });
+
+  practice.push({
+    title: 'Find Duplicate Files by Content',
+    level: 'Hard', tags: ['files', 'hashing', 'binary', 'os.walk'], companies: ['Dropbox', 'Google', 'Apple'],
+    statement: R`<p>Given a root folder, return groups of file paths whose <b>contents are identical</b> (each group sorted, groups sorted by first path). Files can be huge, so never read a whole file into memory, and avoid hashing files that cannot possibly match.</p>`,
+    constraints: R`Up to 10<sup>6</sup> files; sizes up to 10<sup>10</sup> bytes.`,
+    example: R`<p><code>a.txt</code> = "hello", <code>sub/b.txt</code> = "hello", <code>c.txt</code> = "world" → ${H.c('g', "[['a.txt', 'sub/b.txt']]")}. <code>c.txt</code> has the same size (5 bytes) but a different hash, so it is not a duplicate.</p>`,
+    brute: {
+      why: R`<p>Compare every pair of files byte by byte: O(F²) comparisons, each reading two whole files. With 10<sup>5</sup> files that is 5·10<sup>9</sup> comparisons.</p>`,
+      code: { lang: 'python', run: true, code: R`
+        import itertools, os, tempfile
+        def dupes_brute(paths):
+            pairs = []
+            for p, q in itertools.combinations(paths, 2):
+                with open(p, "rb") as f, open(q, "rb") as g:
+                    if f.read() == g.read():       # whole files in memory, every pair
+                        pairs.append((p, q))
+            return pairs
+
+        d = tempfile.mkdtemp()
+        names = []
+        for n, text in [("a", b"hello"), ("b", b"hello"), ("c", b"world")]:
+            path = os.path.join(d, n)
+            with open(path, "wb") as f:
+                f.write(text)
+            names.append(path)
+        print([(os.path.basename(p), os.path.basename(q)) for p, q in dupes_brute(names)])
+      ` }
+    },
+    mcq: { q: 'Why group by file size before hashing?', options: ['Files of different sizes cannot be identical, and size is free from metadata', 'Hashing small files is unsafe', 'Size is a cryptographic hash', 'It sorts the output'], answer: 0, explain: 'os.path.getsize reads metadata only (no file content). Only files that share a size need hashing, which usually eliminates most files cheaply.' },
+    hints: [
+      R`<p>Hint 1: Walk the tree with <code>os.walk</code> (or <code>Path.rglob("*")</code>) and bucket paths by <code>os.path.getsize</code>.</p>`,
+      R`<p>Hint 2: For buckets with ≥ 2 files, hash each in binary chunks: <code>h = hashlib.sha256(); while chunk := f.read(1 &lt;&lt; 20): h.update(chunk)</code>. Python 3.11+ has <code>hashlib.file_digest(f, "sha256")</code>.</p>`,
+      R`<p>Hint 3: Bucket again by digest; keep groups of size ≥ 2. Optional speed-up: first hash only the first 4 KB to split big buckets before full hashing.</p>`
+    ],
+    solution: {
+      approach: R`<p>Three-stage funnel: size (free) → hash in streamed binary chunks (only for size collisions) → group by digest. Memory is O(number of files), never O(file size).</p>`,
+      code: { lang: 'python', run: true, code: R`
+        import hashlib, os, tempfile
+        from collections import defaultdict
+
+        def file_hash(path, chunk=1 << 20):
+            h = hashlib.sha256()
+            with open(path, "rb") as f:
+                while block := f.read(chunk):      # stream: constant memory
+                    h.update(block)
+            return h.hexdigest()
+
+        def find_duplicates(root):
+            by_size = defaultdict(list)
+            for folder, _dirs, files in os.walk(root):
+                for name in files:
+                    p = os.path.join(folder, name)
+                    by_size[os.path.getsize(p)].append(p)
+            groups = []
+            for paths in by_size.values():
+                if len(paths) < 2:
+                    continue                       # unique size -> cannot be a duplicate
+                by_hash = defaultdict(list)
+                for p in paths:
+                    by_hash[file_hash(p)].append(p)
+                groups.extend(sorted(g) for g in by_hash.values() if len(g) > 1)
+            return sorted(groups)
+
+        root = tempfile.mkdtemp()
+        os.makedirs(os.path.join(root, "sub"))
+        for rel, data in [("a.txt", b"hello"), ("sub/b.txt", b"hello"), ("c.txt", b"world"), ("d.bin", b"x" * 10)]:
+            with open(os.path.join(root, rel), "wb") as f:
+                f.write(data)
+        print([[os.path.relpath(p, root) for p in g] for g in find_duplicates(root)])
+      ` },
+      dry: { head: ['stage', 'buckets', 'kept'], rows: [['by size', '5 bytes: a, sub/b, c · 10 bytes: d', '5-byte bucket only'], ['by sha256', 'hash(hello): a, sub/b · hash(world): c', 'group [a.txt, sub/b.txt]'], ['result', '—', "[['a.txt', 'sub/b.txt']]"]] },
+      complexity: R`<p>O(total bytes of files that share a size) for hashing + O(F) metadata; memory O(F).</p>`,
+      followUps: ['Skip symlinks and hard links to the same inode (os.stat st_ino)', 'Parallelise hashing with concurrent.futures', 'Replace duplicates with hard links safely']
+    }
+  });
+
+  practice.push({
+    title: 'Atomic File Writer Context Manager',
+    level: 'Hard', tags: ['with', 'context managers', 'files', 'durability'], companies: ['Stripe', 'Databricks', 'Cloudflare'],
+    statement: R`<p>Write a context manager <code>atomic_write(path, mode="w")</code> so that code inside the block writes to a file object, and <b>only if the block finishes without an exception</b> does <code>path</code> get replaced with the new content. Readers must never see a half-written file; on error the original file stays untouched and no temp files are left behind.</p>`,
+    constraints: R`The target folder is writable; text modes use UTF-8; must work for "w" and "wb".`,
+    example: R`<p>Existing config <code>"v1"</code>. A block writes <code>"v2-partial"</code> then raises → file still ${H.c('g', '"v1"')}, no <code>.tmp</code> files remain. A block that writes <code>"v2"</code> and ends normally → file becomes ${H.c('g', '"v2"')}.</p>`,
+    brute: {
+      why: R`<p>Opening the real file with <code>"w"</code> truncates it immediately. If the program crashes or raises halfway, the config is left empty or half-written, and any reader in the meantime sees garbage.</p>`,
+      code: { lang: 'python', run: true, code: R`
+        import os, tempfile
+        p = os.path.join(tempfile.mkdtemp(), "config.txt")
+        with open(p, "w", encoding="utf-8") as f:
+            f.write("v1")
+        try:
+            with open(p, "w", encoding="utf-8") as f:   # truncates immediately
+                f.write("v2-partial")
+                raise RuntimeError("crash midway")
+        except RuntimeError:
+            pass
+        print(open(p, encoding="utf-8").read())          # v2-partial: corrupted
+      ` }
+    },
+    mcq: { q: 'Which call makes the final swap atomic on the same filesystem?', options: ['<code>os.replace(tmp, path)</code>', '<code>shutil.copy(tmp, path)</code>', '<code>open(path, "w").write(data)</code>', '<code>os.remove(path)</code> then <code>os.rename(tmp, path)</code>'], answer: 0, explain: 'os.replace is an atomic rename that overwrites the target in one step (POSIX rename semantics, also on Windows). Copying writes progressively; remove-then-rename has a window where the file does not exist.' },
+    hints: [
+      R`<p>Hint 1: Create the temp file in the <b>same directory</b> as the target (<code>tempfile.mkstemp(dir=...)</code>) — rename is only atomic within one filesystem.</p>`,
+      R`<p>Hint 2: Use <code>@contextlib.contextmanager</code>: open the temp file, <code>yield</code> it, then flush + <code>os.fsync</code>, close, and <code>os.replace(tmp, path)</code>.</p>`,
+      R`<p>Hint 3: Wrap the yield in try/except <code>BaseException</code>: on any error delete the temp file (ignore FileNotFoundError) and re-raise. Pass <code>encoding</code> only for text modes.</p>`
+    ],
+    solution: {
+      approach: R`<p>Write to a sibling temp file, make it durable (flush + fsync), then atomically rename over the target. On failure, clean up the temp file and let the exception propagate. This is how editors, package managers and databases update files safely.</p>`,
+      code: { lang: 'python', run: true, code: R`
+        import contextlib, os, tempfile
+        from pathlib import Path
+
+        @contextlib.contextmanager
+        def atomic_write(path, mode="w", encoding="utf-8"):
+            path = Path(path)
+            fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+            try:
+                with os.fdopen(fd, mode, encoding=None if "b" in mode else encoding) as f:
+                    yield f
+                    f.flush()
+                    os.fsync(f.fileno())           # data really on disk before the swap
+                os.replace(tmp, path)               # atomic: readers see old OR new
+            except BaseException:
+                with contextlib.suppress(FileNotFoundError):
+                    os.unlink(tmp)                  # leave no garbage behind
+                raise
+
+        folder = Path(tempfile.mkdtemp())
+        cfg = folder / "config.txt"
+        cfg.write_text("v1", encoding="utf-8")
+        try:
+            with atomic_write(cfg) as f:
+                f.write("v2-partial")
+                raise RuntimeError("crash midway")
+        except RuntimeError:
+            pass
+        print(cfg.read_text(encoding="utf-8"), sorted(p.name for p in folder.iterdir()))
+        with atomic_write(cfg) as f:
+            f.write("v2")
+        print(cfg.read_text(encoding="utf-8"))
+        with atomic_write(folder / "blob.bin", "wb") as f:
+            f.write(bytes([1, 2, 3]))
+        print((folder / "blob.bin").read_bytes())
+      ` },
+      dry: { head: ['moment', 'config.txt', 'temp file', 'visible to readers'], rows: [['mkstemp', 'v1', 'empty', 'v1'], ['write v2-partial', 'v1', 'v2-partial', 'v1'], ['exception', 'v1', 'deleted', 'v1'], ['2nd block ends', 'v2 (os.replace)', 'renamed away', 'v2']] },
+      complexity: R`<p>O(size of data) I/O plus one fsync; O(1) extra memory.</p>`,
+      followUps: ['Also fsync the directory so the rename itself survives power loss (POSIX)', 'Preserve the original file permissions (os.stat / os.chmod)', 'How do databases achieve the same with a write-ahead log?']
+    }
+  });
+
+  practice.push({
+    title: 'Detect Circular Imports from Source Code',
+    level: 'Hard', tags: ['modules', 'ast', 'graphs', 'DFS'], companies: ['Meta', 'Instagram', 'JetBrains'],
+    statement: R`<p>You get a dict <code>{module_name: source_code}</code> for one project. Build the import graph using only <b>top-level</b> <code>import x</code> / <code>from x import y</code> statements (absolute imports of modules in the dict; ignore stdlib and imports inside functions). Return one import cycle as a list like <code>["a", "b", "c", "a"]</code>, or <code>None</code> if there is none.</p>`,
+    constraints: R`Up to 10<sup>4</sup> modules; sources are valid Python.`,
+    example: R`<p><code>a</code>: <code>import b</code>; <code>b</code>: <code>from c import f</code>; <code>c</code>: <code>import a</code> → ${H.c('r', "['a', 'b', 'c', 'a']")}. If <code>c</code> only imported <code>a</code> <b>inside a function</b>, there would be no import-time cycle → ${H.c('g', 'None')}.</p>`,
+    brute: {
+      why: R`<p>Grepping lines with a regex like <code>^import (\w+)</code> also matches text inside strings and docstrings, misses <code>from x import y</code> forms or multi-name imports, and cannot tell module-level imports from function-level ones.</p>`,
+      code: { lang: 'python', run: true, code: R`
+        import re
+        src = 'DOC = """\nimport b\n"""\ndef f():\n    import c\n'
+        print(re.findall(r"^\s*import (\w+)", src, flags=re.M))   # ['b', 'c'] - both wrong
+      ` }
+    },
+    mcq: { q: 'Why can an import placed inside a function break a circular-import error?', options: ['It runs only when the function is called, after both modules finished loading', 'Functions have their own sys.modules', 'Python ignores imports in functions', 'It makes the import relative'], answer: 0, explain: 'Module-level imports run during module loading. A function-level import executes later, at call time, when both modules are fully initialised in sys.modules.' },
+    hints: [
+      R`<p>Hint 1: Use <code>ast.parse(source)</code> and look only at <code>tree.body</code> (top-level statements) for <code>ast.Import</code> and <code>ast.ImportFrom</code> nodes (with <code>level == 0</code>).</p>`,
+      R`<p>Hint 2: For <code>import a.b</code> use the first part <code>a</code>; keep only names present in the dict. That gives adjacency lists.</p>`,
+      R`<p>Hint 3: Cycle detection = DFS with three colours (white/grey/black). Meeting a grey node means a back edge: slice the current path from that node and append it again to close the loop.</p>`
+    ],
+    solution: {
+      approach: R`<p>Parse with <code>ast</code> (robust to strings/comments), build a directed graph of module-level imports, then run an iterative-friendly recursive DFS with colour marking and an explicit path stack to extract the first cycle found.</p>`,
+      code: { lang: 'python', run: true, code: R`
+        import ast
+
+        def import_graph(sources: dict) -> dict:
+            graph = {}
+            for mod, src in sources.items():
+                deps = []
+                for node in ast.parse(src).body:           # top-level statements only
+                    if isinstance(node, ast.Import):
+                        names = [alias.name for alias in node.names]
+                    elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+                        names = [node.module]
+                    else:
+                        continue
+                    for n in names:
+                        top = n.split(".")[0]
+                        if top in sources and top not in deps:
+                            deps.append(top)
+                graph[mod] = deps
+            return graph
+
+        def find_cycle(sources: dict):
+            graph = import_graph(sources)
+            WHITE, GREY, BLACK = 0, 1, 2
+            color = {m: WHITE for m in graph}
+            path = []
+
+            def dfs(u):
+                color[u] = GREY
+                path.append(u)
+                for v in graph[u]:
+                    if color[v] == GREY:                    # back edge: cycle!
+                        return path[path.index(v):] + [v]
+                    if color[v] == WHITE:
+                        found = dfs(v)
+                        if found:
+                            return found
+                path.pop()
+                color[u] = BLACK
+                return None
+
+            for m in sorted(graph):
+                if color[m] == WHITE:
+                    cyc = dfs(m)
+                    if cyc:
+                        return cyc
+            return None
+
+        project = {"a": "import b\nimport os\n", "b": "from c import f\n", "c": "import a\ndef f(): pass\n"}
+        print(find_cycle(project))                          # ['a', 'b', 'c', 'a']
+        project["c"] = "def f():\n    import a\n"            # deferred import
+        print(find_cycle(project))                          # None
+      ` },
+      dry: { head: ['dfs call', 'path', 'colour change', 'edge seen'], rows: [['dfs(a)', '[a]', 'a grey', 'a → b (white)'], ['dfs(b)', '[a, b]', 'b grey', 'b → c (white)'], ['dfs(c)', '[a, b, c]', 'c grey', 'c → a (<span class="c-r">grey!</span>)'], ['return', '—', '—', "['a', 'b', 'c', 'a']"]] },
+      complexity: R`<p>O(total source size) to parse + O(V + E) for the DFS. Recursion depth up to V; use an explicit stack for very deep graphs.</p>`,
+      followUps: ['Resolve relative imports using the resolve() function from the packages topic', 'Return ALL cycles (strongly connected components, Tarjan)', 'Also treat imports inside if/try at module level as top-level']
+    }
+  });
+
+  practice.push({
+    title: 'Version Specifier Checker (==, !=, >=, <, ~=, .*)',
+    level: 'Hard', tags: ['packaging', 'parsing', 'tuples', 'PEP 440'], companies: ['GitHub', 'Anaconda', 'Astral'],
+    statement: R`<p>Write <code>satisfies(version, spec)</code> for purely numeric dotted versions (like <code>"2.10.1"</code>). <code>spec</code> is a comma-separated list (all must hold) of clauses with operators <code>==, !=, &gt;=, &lt;=, &gt;, &lt;, ~=</code>; <code>==</code>/<code>!=</code> may use a trailing <code>.*</code> prefix wildcard. Missing parts count as zero (<code>1.0 == 1.0.0</code>). <code>~=X.Y[.Z]</code> needs at least two parts. Raise <code>ValueError</code> on bad syntax.</p>`,
+    constraints: R`Versions have 1–6 numeric parts; spec has ≤ 10 clauses.`,
+    example: R`<p><code>satisfies("2.10.1", "&gt;=2.2,&lt;3")</code> → ${H.c('g', 'True')} (10 &gt; 2 numerically, while the strings "2.10" &lt; "2.2"!). <code>satisfies("2.3", "~=2.2.0")</code> → ${H.c('r', 'False')} (~=2.2.0 means ≥2.2.0 and ==2.2.*). <code>satisfies("1.4.7", "==1.4.*")</code> → ${H.c('g', 'True')}.</p>`,
+    brute: {
+      why: R`<p>Comparing version <b>strings</b> directly is wrong: <code>"2.10" &lt; "2.9"</code> is True in string order because "1" &lt; "9". Versions must be compared as tuples of integers.</p>`,
+      code: { lang: 'python', run: true, code: R`
+        print("2.10" < "2.9")                          # True  (wrong for versions)
+        print((2, 10) < (2, 9))                        # False (correct)
+        print(tuple(map(int, "2.10".split("."))))      # (2, 10)
+      ` }
+    },
+    mcq: { q: 'Which version does <code>~=1.4.2</code> accept?', options: ['1.4.9', '1.5.0', '1.4.1', '2.0'], answer: 0, explain: '~=1.4.2 means >=1.4.2 AND ==1.4.*: patch updates only. 1.5.0 changes the minor version; 1.4.1 is too low.' },
+    hints: [
+      R`<p>Hint 1: Parse each clause with a regex: <code>^(~=|==|!=|&gt;=|&lt;=|&gt;|&lt;)\s*(\d+(?:\.\d+)*)(\.\*)?$</code>; wildcards only with == and !=.</p>`,
+      R`<p>Hint 2: Convert to int tuples and pad the shorter with zeros before comparing, so (1, 0) equals (1, 0, 0). Python compares tuples lexicographically — exactly version order.</p>`,
+      R`<p>Hint 3: <code>~=V</code> = (version ≥ V) and (version's first len(V)−1 parts equal V's). <code>==P.*</code> = version's first len(P) parts (padded) equal P. Combine clauses with <code>all()</code>.</p>`
+    ],
+    solution: {
+      approach: R`<p>Tokenise with a regex, normalise to zero-padded integer tuples, and map each operator to a tuple comparison. Prefix matching handles <code>.*</code> and the compatible-release operator. (Real tools: <code>packaging.specifiers.SpecifierSet</code>, which also handles pre-releases, post-releases and local versions.)</p>`,
+      code: { lang: 'python', run: true, code: R`
+        import operator, re
+
+        CLAUSE = re.compile(r"^(~=|==|!=|>=|<=|>|<)\s*(\d+(?:\.\d+)*)(\.\*)?$")
+        OPS = {"==": operator.eq, "!=": operator.ne, ">=": operator.ge,
+               "<=": operator.le, ">": operator.gt, "<": operator.lt}
+
+        def parse(v: str) -> tuple:
+            return tuple(int(p) for p in v.split("."))
+
+        def pad(a: tuple, b: tuple):
+            n = max(len(a), len(b))
+            return a + (0,) * (n - len(a)), b + (0,) * (n - len(b))
+
+        def prefix_match(v: tuple, prefix: tuple) -> bool:
+            return (v + (0,) * len(prefix))[:len(prefix)] == prefix
+
+        def check(v: tuple, op: str, target: str, star: bool) -> bool:
+            t = parse(target)
+            if star:
+                if op not in ("==", "!="):
+                    raise ValueError(f"wildcard not allowed with {op}")
+                return prefix_match(v, t) == (op == "==")
+            if op == "~=":
+                if len(t) < 2:
+                    raise ValueError("~= needs at least two version parts")
+                a, b = pad(v, t)
+                return a >= b and prefix_match(v, t[:-1])
+            a, b = pad(v, t)
+            return OPS[op](a, b)
+
+        def satisfies(version: str, spec: str) -> bool:
+            v = parse(version)
+            results = []
+            for clause in spec.split(","):
+                m = CLAUSE.match(clause.strip())
+                if not m:
+                    raise ValueError(f"bad clause: {clause!r}")
+                op, target, star = m.groups()
+                results.append(check(v, op, target, bool(star)))
+            return all(results)
+
+        cases = [("2.10.1", ">=2.2,<3"), ("2.3", "~=2.2.0"), ("2.9", "~=2.2"), ("1.4.7", "==1.4.*"),
+                 ("1.0", "==1.0.0"), ("3.0", ">=2.2,<3"), ("2.5.1", ">=2,!=2.5.1")]
+        for v, s in cases:
+            print(f"{v:>7} {s:<12} {satisfies(v, s)}")
+        try:
+            satisfies("1.0", "~=1")
+        except ValueError as e:
+            print("ValueError:", e)
+      ` },
+      dry: { head: ['version', 'clause', 'padded compare', 'result'], rows: [['2.10.1', '&gt;=2.2', '(2,10,1) ≥ (2,2,0)', 'True'], ['2.10.1', '&lt;3', '(2,10,1) &lt; (3,0,0)', 'True → all True'], ['2.3', '~=2.2.0', '≥ ok, prefix (2,3) ≠ (2,2)', 'False'], ['1.4.7', '==1.4.*', 'prefix (1,4) = (1,4)', 'True']] },
+      complexity: R`<p>O(C · P) for C clauses and P version parts.</p>`,
+      followUps: ['Support pre-releases like 2.0rc1 (excluded by default unless asked for)', 'Given many candidate versions, pick the newest that satisfies the spec (what pip does)', 'Why does PEP 440 treat 1.0 and 1.0.0 as equal?']
+    }
+  });
+
+  /* ======================================================================
+     QUIZ
+     ====================================================================== */
+  quiz.push(
+    { q: 'What does <code>"python"[1:4]</code> evaluate to?', options: ['<code>\'yth\'</code>', '<code>\'ytho\'</code>', '<code>\'pyt\'</code>', '<code>\'th\'</code>'], answer: 0, explain: 'Start index 1 is included, stop index 4 is excluded: characters at 1, 2, 3 → y, t, h.' },
+    { q: 'You run <code>name = "  Asha "</code> then <code>name.strip()</code> on its own line. What is <code>name</code> now?', options: ['Still <code>"  Asha "</code>', '<code>"Asha"</code>', '<code>None</code>', 'It raises TypeError'], answer: 0, explain: 'Strings are immutable; strip() returns a NEW string that was thrown away. Write name = name.strip().' },
+    { q: 'Which f-string prints <code>0042</code>?', options: ['<code>f"{42:04d}"</code>', '<code>f"{42:4d}"</code>', '<code>f"{42:.4}"</code>', '<code>f"{42:*&gt;4}"</code>'], answer: 0, explain: 'The 0 flag with width 4 zero-pads integers. Plain width 4 pads with spaces ("  42"), *&gt;4 pads with stars ("**42"), and precision is not allowed for integers.' },
+    { q: '<code>len("naïve".encode("utf-8"))</code> is…', options: ['6', '5', '10', '4'], answer: 0, explain: '5 characters, but ï (U+00EF) needs 2 bytes in UTF-8, so the encoded length is 6.' },
+    { q: 'What is <code>b"AB"[0]</code>?', options: ['<code>65</code> (an int)', '<code>b"A"</code>', '<code>"A"</code>', 'TypeError'], answer: 0, explain: 'Indexing bytes returns the integer value of that byte. Slicing (b"AB"[0:1]) returns bytes.' },
+    { q: 'Which mode opens a file for writing but fails if it already exists?', options: ['<code>"x"</code>', '<code>"w"</code>', '<code>"a"</code>', '<code>"r+"</code>'], answer: 0, explain: '"x" is exclusive creation and raises FileExistsError if the file exists. "w" would silently erase it.' },
+    { q: 'What does <code>f.readline()</code> return at the end of a file?', options: ['An empty string <code>\'\'</code>', '<code>None</code>', 'It raises EOFError', '<code>"\\n"</code>'], answer: 0, explain: 'Reads at EOF return the empty string (b"" in binary mode). A blank line in the middle of a file is "\\n", so the two are distinguishable.' },
+    { q: 'An exception is raised inside <code>with open(p, "w") as f:</code>. What happens?', options: ['The file is flushed and closed, then the exception keeps propagating', 'The exception is swallowed', 'The file stays open', 'The data written so far is discarded'], answer: 0, explain: 'with guarantees __exit__ runs; the file object\'s __exit__ closes (and flushes) the file and returns a falsy value, so the exception propagates.' },
+    { q: 'A module contains <code>print("hi")</code> at top level. You import it three times in one program. How many times is "hi" printed?', options: ['Once', 'Three times', 'Zero', 'Twice'], answer: 0, explain: 'The first import executes the module and stores it in sys.modules; later imports are cache hits that do not re-run the code.' },
+    { q: 'You run <code>python tools/report.py</code> and get <code>ImportError: attempted relative import with no known parent package</code>. Best fix?', options: ['Run <code>python -m tools.report</code> from the project root', 'Add <code>sys.path.append("..")</code>', 'Rename the file', 'Delete <code>__init__.py</code>'], answer: 0, explain: 'Run as a module so Python knows the package (__package__ = "tools") and relative imports can be resolved. sys.path hacks hide the real problem.' },
+    { q: 'Inside a virtual environment, which is true?', options: ['<code>sys.prefix != sys.base_prefix</code>', '<code>sys.prefix == sys.base_prefix</code>', 'The standard library is copied into the venv', 'pip installs into the system site-packages'], answer: 0, explain: 'A venv sets sys.prefix to the venv folder while sys.base_prefix still points to the base installation (whose stdlib it reuses).' },
+    { q: 'Why prefer <code>python -m pip install x</code> over <code>pip install x</code>?', options: ['It guarantees pip installs into the same interpreter that python runs', 'It is faster', 'It installs globally', 'It skips dependency resolution'], answer: 0, explain: 'The pip on PATH may belong to a different Python. python -m pip runs pip as a module of exactly that interpreter.' },
+    { q: 'What does <code>if __name__ == "__main__":</code> protect?', options: ['Code that should run only when the file is executed directly, not when imported', 'Private functions from being imported', 'The module from being imported twice', 'Global variables from changing'], answer: 0, explain: '__name__ is "__main__" only for the entry script (or python -m target). When imported, __name__ is the module\'s dotted name and the guarded block is skipped.' }
+  );
+
+  /* ======================================================================
+     INTERVIEW Q&A
+     ====================================================================== */
+  interview.push(
+    { q: 'Why are Python strings immutable, and what does that mean for performance?', level: 'B', a: R`<p><b>Immutable</b> means a str object can never change after creation; every "modification" (<code>upper()</code>, <code>replace()</code>, slicing, <code>+</code>) creates a new object. Benefits: strings are <b>hashable</b> (safe dict keys and set members, hash cached once), <b>thread-safe</b> to share, and can be <b>interned</b>/reused. Cost: building a long string with <code>+=</code> in a loop may copy repeatedly (O(n²) worst case), so collect pieces in a list and use <code>"".join(parts)</code> (O(n)). CPython sometimes resizes in place for <code>+=</code>, but that is an implementation detail; join is the portable idiom.</p>`, followUps: ['How would you efficiently build a 1 MB string from many small pieces?', 'What is io.StringIO useful for?'] },
+    { q: 'Explain slicing <code>s[start:stop:step]</code>, including negative values and out-of-range behaviour.', level: 'B', a: R`<p><code>start</code> is included, <code>stop</code> excluded, <code>step</code> is the jump (default 1). Omitted values mean "from the edge" in the direction of the step. Negative indexes count from the end (<code>-1</code> is the last). A negative step walks backwards, so <code>s[::-1]</code> reverses. Slices <b>clamp</b> out-of-range indexes (<code>s[2:1000]</code> is fine, <code>s[10:]</code> on a short string is <code>''</code>), while indexing (<code>s[1000]</code>) raises IndexError. A zero step raises ValueError. Slicing creates a new object in O(k) for k elements.</p>`, followUps: ['What is "abcdef"[-2:-5:-1]?', 'How does slice(1, 5, 2).indices(len(s)) help?'] },
+    { q: 'What is the difference between <code>str</code> and <code>bytes</code>? When do you encode and decode?', level: 'B', a: R`<p><code>str</code> is a sequence of Unicode code points (text); <code>bytes</code> is a sequence of integers 0–255 (raw data). Programs should follow the <b>Unicode sandwich</b>: decode bytes to str as soon as data enters (file, socket, HTTP body), work in str internally, encode back to bytes at the exit. Encoding needs a codec — almost always UTF-8. Mixing them raises TypeError; decoding invalid data raises UnicodeDecodeError unless an <code>errors=</code> policy (replace/ignore/backslashreplace) is chosen deliberately. Hashing, encryption, sockets and binary files need bytes.</p>`, followUps: ['Why is len("😀") 1 in Python but "😀".length 2 in JavaScript?', 'What is mojibake and how do you repair it?'] },
+    { q: 'How does UTF-8 encode characters, and why is it the default almost everywhere?', level: 'I', a: R`<p>UTF-8 is a variable-length encoding using 1–4 bytes per code point: ASCII (0–127) is one byte identical to ASCII, U+0080–U+07FF use two bytes (<code>110xxxxx 10xxxxxx</code>), up to U+FFFF three bytes, and the rest four. Advantages: backward compatible with ASCII, no byte-order issues (no BOM needed), compact for Latin text, and <b>self-synchronising</b> — continuation bytes always start with <code>10</code>, so you can find character boundaries from any position. That property lets you truncate byte strings safely by backing up over continuation bytes.</p>`, followUps: ['How would you truncate a string to 255 UTF-8 bytes without breaking characters?', 'What is the utf-8-sig codec for?'] },
+    { q: 'Compare f-strings, <code>str.format</code>, %-formatting and <code>string.Template</code>. When would you pick each?', level: 'I', a: R`<p><b>f-strings</b>: default choice — readable, fastest (compiled to bytecode), full format-spec support, <code>{x=}</code> for debugging. <b>str.format</b>: when the template is defined separately from the data (config, i18n catalogues) — but never format user-supplied templates with rich objects, since <code>{0.__class__...}</code> attribute access can leak data. <b>% formatting</b>: legacy, but still idiomatic for the <code>logging</code> module because the message is only formatted if emitted. <b>string.Template</code> (<code>$name</code>): safest for user-editable templates (no attribute access, no expressions). Python 3.14's <b>t-strings</b> return a Template object so libraries can escape values (SQL/HTML) safely.</p>`, followUps: ['Why does ruff flag f-strings in logging calls?', 'How does an object customise f"{obj:spec}"?'] },
+    { q: 'What happens step by step when Python executes <code>with open("f.txt") as f:</code>?', level: 'B', a: R`<p>1) <code>open()</code> returns a file object (a context manager). 2) Python calls <code>type(obj).__enter__(obj)</code>; for files it returns the file itself, bound to <code>f</code>. 3) The block runs. 4) When the block exits — normally, via return/break, or by an exception — Python calls <code>__exit__(exc_type, exc, tb)</code> (Nones if no exception). The file's __exit__ flushes and closes it. 5) If __exit__ returns a falsy value, any exception continues propagating. It is equivalent to a try/finally but cannot be forgotten, and it ties cleanup to setup visually.</p>`, followUps: ['When is __exit__ NOT called?', 'How would you open a variable number of files safely? (ExitStack)'] },
+    { q: 'How do you process a file that is much larger than RAM?', level: 'I', a: R`<p>Never call <code>read()</code> or <code>readlines()</code> on it. For text, iterate the file object (<code>for line in f</code>) — it reads buffered chunks and yields one line at a time, so memory is O(longest line). For binary, read fixed-size blocks (<code>while chunk := f.read(1 &lt;&lt; 20)</code>). Keep only aggregates (counters, bounded <code>deque(maxlen=n)</code>, heaps of top-k). For random access use <code>seek</code> (e.g. reading backwards for tail) or <code>mmap</code>. For heavy analytics, stream into a columnar format or a database rather than parsing text repeatedly.</p>`, followUps: ['How would you get the last 10 lines of a 100 GB log quickly?', 'How would you count unique IPs if they do not fit in memory?'] },
+    { q: 'Explain the file open modes and the most dangerous mistake people make with them.', level: 'B', a: R`<p><code>"r"</code> read (error if missing), <code>"w"</code> write (creates; <b>truncates an existing file immediately on open</b>), <code>"a"</code> append (all writes go to the end), <code>"x"</code> exclusive create (error if it exists); add <code>"b"</code> for bytes and <code>"+"</code> for read+write (<code>"r+"</code> overwrites in place without truncating). The dangerous mistake is using <code>"w"</code> on an important file when you meant "a", or crashing mid-rewrite and leaving a truncated file. Safe rewrite: write to a temp file in the same directory and <code>os.replace</code> it atomically. Also always pass <code>encoding="utf-8"</code> in text modes.</p>`, followUps: ['Why does csv need newline=""?', 'What is the difference between flush() and os.fsync()?'] },
+    { q: 'Walk through what <code>import mymod</code> does internally.', level: 'I', a: R`<p>1) Check <code>sys.modules</code>; if present, bind and stop. 2) Ask each finder on <code>sys.meta_path</code> for a spec: built-in modules, frozen modules, then <code>PathFinder</code>, which searches the folders in <code>sys.path</code> in order (script folder, PYTHONPATH, stdlib, site-packages) — first match wins. 3) The loader creates a module object, <b>inserts it into sys.modules before executing</b>, then runs the module's code (using a cached <code>.pyc</code> in <code>__pycache__</code> when the source is unchanged). 4) The name <code>mymod</code> is bound in the importer's namespace. If nothing is found: ModuleNotFoundError. If execution fails, the entry is removed from sys.modules.</p>`, followUps: ['Why does inserting into sys.modules before execution matter for circular imports?', 'How can a local file shadow a standard-library module?'] },
+    { q: 'What causes circular imports and how do you fix them?', level: 'I', a: R`<p>Module A imports B at top level and B imports A (directly or via others). When B runs, A is already in sys.modules but only partially executed, so <code>from A import X</code> fails with "cannot import name X from partially initialized module A". Fixes, best first: <b>restructure</b> — move the shared code into a third module both depend on; depend on interfaces rather than concrete modules; use <code>import A</code> and access <code>A.X</code> at call time instead of from-imports at load time; move the import into the function that needs it; for type hints only, use <code>if TYPE_CHECKING:</code> imports with <code>from __future__ import annotations</code>.</p>`, followUps: ['How would you detect cycles automatically in CI?', 'Why does "import A" sometimes work where "from A import X" fails?'] },
+    { q: 'What is the purpose of <code>if __name__ == "__main__":</code>, and what is the difference between <code>python file.py</code> and <code>python -m package.module</code>?', level: 'B', a: R`<p>Every module has <code>__name__</code>: its dotted import name, or <code>"__main__"</code> for the program's entry point. The guard lets one file be both an importable library (no side effects on import) and a runnable script; it is also required for multiprocessing with the spawn start method. <code>python file.py</code> runs a path: sys.path[0] becomes the file's folder and the module has no package, so relative imports fail. <code>python -m pkg.mod</code> runs by import name: the current directory goes on sys.path, parent packages are imported properly, <code>__package__</code> is set, and relative imports work. Running a package with -m executes its <code>__main__.py</code>.</p>`, followUps: ['What is the "double import trap"?', 'How do console_scripts entry points relate to this?'] },
+    { q: 'What is a package, what is <code>__init__.py</code> for, and what are namespace packages?', level: 'I', a: R`<p>A package is a module that can contain submodules — on disk, a folder. <code>__init__.py</code> runs when the package is first imported; it can be empty or define the package's public API (re-exporting names, setting <code>__all__</code>). Packages have a <code>__path__</code> used to find their submodules. Since PEP 420, a folder without <code>__init__.py</code> is a <b>namespace package</b>: its <code>__path__</code> can merge folders from several sys.path entries, letting separately installed distributions share one top-level name (e.g. <code>google.cloud.*</code>). For normal applications use regular packages with <code>__init__.py</code>; keep it light because it runs on every submodule import.</p>`, followUps: ['What does __all__ control?', 'Why do some libraries lazily import submodules in __init__ via __getattr__?'] },
+    { q: 'Why use virtual environments? How do they work internally?', level: 'B', a: R`<p>Different projects need different (often conflicting) package versions, and installing into the system Python can break OS tools (hence PEP 668's externally-managed error). A venv gives each project an isolated <code>site-packages</code>. Internally it is just a folder with <code>pyvenv.cfg</code>, a <code>bin/</code> (or <code>Scripts\</code>) containing a python link/launcher, and an empty site-packages. When Python starts and finds pyvenv.cfg, it sets <code>sys.prefix</code> to the venv and uses its site-packages, while the standard library comes from <code>sys.base_prefix</code>. Activation only edits PATH and the prompt; running <code>.venv/bin/python</code> directly is equivalent. Venvs are disposable — recreate them from a lock/requirements file rather than copying them between machines.</p>`, followUps: ['Why should .venv not be committed to git?', 'How does uv make environment creation so fast?'] },
+    { q: 'How do you make a Python project\'s dependencies reproducible and secure?', level: 'A', a: R`<p>Separate <b>abstract</b> requirements (ranges in <code>pyproject.toml</code>, e.g. <code>requests&gt;=2.31,&lt;3</code>) from a <b>lock</b> of exact versions for deployments (<code>uv.lock</code>, <code>poetry.lock</code>, <code>pylock.toml</code> per PEP 751, or a fully pinned <code>requirements.txt</code> from <code>pip-compile</code>/<code>pip freeze</code>). Install in CI from the lock, ideally with hashes (<code>--require-hashes</code>) so tampered artifacts are rejected. Pin the Python version (<code>requires-python</code>, <code>.python-version</code>). Audit with <code>pip-audit</code> or Dependabot, review every new dependency (is it real, maintained, popular, correctly spelled — typosquatting and AI-hallucinated "slopsquatting" names are real attacks), and prefer wheels from trusted publishers. Rebuild environments from scratch in CI to catch "works on my machine" drift.</p>`, followUps: ['What does ~= mean and when would you use it?', 'Libraries vs applications: why shouldn\'t a library pin exact versions?'] }
+  );
+
+  registerModule({
+    id: 'py03',
+    title: 'Strings, Files, Modules & Packages',
+    intro: R`<p>Almost every real Python program does four things: it <b>handles text</b>, <b>talks to files</b>, is <b>split into modules</b>, and <b>depends on packages</b> someone else wrote. This module teaches all four from zero, the way a friend would explain them, and then takes each one down to what really happens inside CPython.</p>
+      <p>You will learn to slice and clean strings without off-by-one errors, format reports with f-strings, understand why <code>"café"</code> is 4 characters but 5 bytes, read gigabyte files with constant memory, make cleanup automatic with <code>with</code>, know exactly how <code>import</code> finds a module (and why your <code>random.py</code> broke everything), organise code into packages, use <code>if __name__ == "__main__":</code> and <code>python -m</code> correctly, and manage dependencies with venv, pip and modern tools like uv.</p>
+      <p>Every topic has an everyday analogy, a step-by-step visualizer (string index boxes, a UTF-8 encoder, a moving file cursor, import-resolution diagrams), runnable examples, "predict the output" puzzles, interview clues, and a section on working alongside AI tools in 2026.</p>`,
+    goals: [
+      'Read and write any slice (<code>s[a:b:c]</code>, negative indexes and steps) instantly and use the core string methods without immutability bugs',
+      'Format numbers, tables and debug output with f-strings and the format-spec mini-language, and choose between str() and repr()',
+      'Explain str vs bytes, encode/decode correctly with UTF-8, and diagnose UnicodeDecodeError and mojibake',
+      'Read and write text, CSV, JSON and binary files safely: correct modes, encodings, streaming large files, cursor control and atomic writes',
+      'Use <code>with</code> to guarantee cleanup and explain the __enter__/__exit__ protocol',
+      'Explain how import searches sys.modules and sys.path, avoid shadowing and circular imports, and structure code into packages with relative imports',
+      'Use <code>if __name__ == "__main__":</code> and <code>python -m</code> correctly, and manage isolated, reproducible dependencies with venv, pip, requirements/pyproject and uv'
+    ],
+    prereqs: R`<p>Python 1 (Setup, Syntax, Types &amp; I/O) and Python 2 (Control Flow, Functions &amp; Core Collections): you should be comfortable with variables, loops, functions, lists, dicts and basic slicing of lists. No prior file or packaging experience needed.</p>`,
+    hours: 14,
+    topics: topics,
+    practice: practice,
+    quiz: quiz,
+    interview: interview
+  });
+})();
