@@ -1234,5 +1234,257 @@ final class Bundle implements CartItem {
       }
     }]
   });
+  /* =====================================================================
+     TOPIC 6 — BRIDGE
+     ===================================================================== */
+  topics.push({
+    title: 'Bridge — Split Two Things That Vary Independently',
+    analogy: `<p>A TV <b>remote</b> and a <b>TV</b> are made by different teams. You can have a basic remote or a fancy voice remote; you can have a Sony, an LG or a Samsung TV. If every remote were hard-wired to one TV brand, the shop would need 2 × 3 = 6 products. Instead, remotes talk through a <b>standard signal</b> (the bridge), so any remote works with any TV, and both teams improve their side alone.</p>
+      <p>Same with <b>switches and bulbs</b>: the wall switch (on/off, dimmer, smart switch) does not care if the bulb is LED, halogen or a fan — they meet at the wire.</p>`,
+    explain: `<p><b>The problem: two dimensions of change.</b> You send notifications. One dimension is <i>what kind</i> of message (Alert, Reminder, Promo — each formats and prioritises differently). The other is <i>how</i> it is delivered (Email, SMS, Push). With inheritance you create a class per pair: <code>AlertEmail</code>, <code>AlertSms</code>, <code>ReminderPush</code>… That is <b>M × N</b> classes, and adding WhatsApp means writing M new classes.</p>
+      ${H.table(['', 'Email', 'SMS', 'Push'], [['Alert', 'AlertEmail', 'AlertSms', 'AlertPush'], ['Reminder', 'ReminderEmail', 'ReminderSms', 'ReminderPush'], ['Promo', 'PromoEmail', 'PromoSms', 'PromoPush']])}
+      <p><b>The fix.</b> Split the two dimensions into two separate hierarchies and connect them with a <b>field</b> (composition) — that field is the "bridge":</p>
+      ${H.kv([['Abstraction', '<code>Notification</code> — holds a <code>Channel channel</code>'], ['Refined abstractions', 'Alert, Reminder, Promo — the "what" (formatting, rules)'], ['Implementor (interface)', '<code>Channel.deliver(to, text)</code> — the "how"'], ['Concrete implementors', 'EmailChannel, SmsChannel, PushChannel']])}
+      <p>Now we need <b>M + N</b> classes (3 + 3 = 6 instead of 9; 5 + 5 = 10 instead of 25). Pairing happens at runtime: <code>new Alert(new SmsChannel())</code>. Each side grows without touching the other.</p>
+      <p><b>Bridge vs Adapter vs Strategy.</b> Adapter is applied <i>after</i> two designs already exist and do not fit. Bridge is designed <i>up front</i> so that two hierarchies can vary independently. Code-wise, the implementor field looks like a Strategy; the difference is scale and intent — Bridge splits a whole class hierarchy into two, where Strategy swaps one algorithm.</p>
+      <p><b>In the wild:</b> JDBC is a textbook bridge — your code uses the <code>java.sql</code> abstraction (<code>Connection</code>, <code>Statement</code>), and each driver (Postgres, MySQL) is a concrete implementor. SLF4J (API) over Logback/Log4j (implementation) is another.</p>`,
+    clues: ['"<b>two (or more) dimensions</b> that vary independently": shape × renderer, message × channel, report × format, device × remote', 'class names that combine two words: <code>RedCircle, BlueSquare, PdfSalesReport</code> → <b>class explosion M × N</b>', '"must run on multiple platforms / databases / drivers"', '"switch the implementation at runtime" (e.g. change renderer or channel per user)', '"separate abstraction from implementation"', '"both sides will grow; different teams own them"'],
+    code: [`
+// ---------- Implementor side: HOW to deliver ----------
+interface Channel {
+    void deliver(String to, String text);
+}
+class EmailChannel implements Channel {
+    public void deliver(String to, String text) { System.out.println("EMAIL to " + to + ": " + text); }
+}
+class SmsChannel implements Channel {
+    public void deliver(String to, String text) {
+        String sms = text.length() > 160 ? text.substring(0, 157) + "..." : text;   // SMS limit
+        System.out.println("SMS to " + to + ": " + sms);
+    }
+}
+class PushChannel implements Channel {
+    public void deliver(String to, String text) { System.out.println("PUSH to device of " + to + ": " + text); }
+}
+
+// ---------- Abstraction side: WHAT we send ----------
+abstract class Notification {
+    protected final Channel channel;           // <-- the bridge
+    protected Notification(Channel channel) { this.channel = channel; }
+    abstract void send(String to, String message);
+}
+class Alert extends Notification {
+    Alert(Channel c) { super(c); }
+    void send(String to, String message) { channel.deliver(to, "[ALERT] " + message.toUpperCase()); }
+}
+class Reminder extends Notification {
+    private final LocalTime at;
+    Reminder(Channel c, LocalTime at) { super(c); this.at = at; }
+    void send(String to, String message) { channel.deliver(to, "Reminder for " + at + ": " + message); }
+}
+class Promo extends Notification {
+    Promo(Channel c) { super(c); }
+    void send(String to, String message) { channel.deliver(to, message + " (reply STOP to opt out)"); }
+}
+
+class NotifyDemo {
+    public static void main(String[] args) {
+        new Alert(new SmsChannel()).send("+91-98xxxx", "db cpu at 95%");
+        new Reminder(new PushChannel(), LocalTime.of(9, 0)).send("asha", "stand-up");
+        new Promo(new EmailChannel()).send("ben@x.com", "50% off today");
+        // New channel (WhatsApp)? One class. Works with all three message types immediately.
+    }
+}`, `
+// Classic GoF shape: Remote (abstraction) x Device (implementor)
+interface Device {
+    boolean isOn(); void power(boolean on);
+    int volume(); void setVolume(int v);
+}
+
+class Tv implements Device {
+    private boolean on; private int vol = 10;
+    public boolean isOn() { return on; } public void power(boolean b) { on = b; }
+    public int volume() { return vol; }  public void setVolume(int v) { vol = Math.max(0, Math.min(100, v)); }
+}
+class Radio implements Device {
+    private boolean on; private int vol = 30;
+    public boolean isOn() { return on; } public void power(boolean b) { on = b; }
+    public int volume() { return vol; }  public void setVolume(int v) { vol = Math.max(0, Math.min(50, v)); } // radio caps at 50
+}
+
+class Remote {
+    protected final Device device;
+    Remote(Device d) { device = d; }
+    void togglePower() { device.power(!device.isOn()); }
+    void volumeUp() { device.setVolume(device.volume() + 10); }
+}
+class VoiceRemote extends Remote {          // refined abstraction adds features using only Device API
+    VoiceRemote(Device d) { super(d); }
+    void say(String cmd) {
+        if (cmd.equals("mute")) device.setVolume(0);
+        else if (cmd.equals("louder")) { volumeUp(); volumeUp(); }
+    }
+}
+
+class RemoteDemo {
+    public static void main(String[] args) {
+        VoiceRemote r = new VoiceRemote(new Radio());
+        r.togglePower(); r.say("louder");
+        System.out.println("radio volume = " + r.device.volume());   // 50 (capped)
+    }
+}`],
+    codeTitle: ['Notification × Channel bridge', 'Remote × Device (the textbook bridge)'],
+    viz: {
+      title: 'From M × N class explosion to M + N with a bridge',
+      input: 'Alert Reminder Promo | Email SMS Push',
+      inputLabel: 'Message types | channels (1–4 each)',
+      gen: function (input) {
+        var halves = String(input || '').split('|');
+        if (halves.length !== 2) throw new Error('Use the form: Alert Reminder | Email SMS (a | in the middle)');
+        var A = words(halves[0], 'List 1–4 message types before the |', 4), I = words(halves[1], 'List 1–4 channels after the |', 4);
+        var M = A.length, N = I.length, f = [];
+        var rows = A.map(function (a) { return I.map(function (c) { return a + c; }); });
+        f.push(F('<b>Inheritance only:</b> one class for every (message type, channel) pair = ' + M + ' × ' + N + ' = <b>' + (M * N) + ' classes</b>. Formatting logic for "' + A[0] + '" is copy-pasted into ' + N + ' classes.',
+          [{ type: 'grid', label: 'subclass per combination', rowHead: A, colHead: I, rows: rows, hl: (function () { var h = {}; for (var c = 0; c < N; c++) h['0,' + c] = 'bad'; return h; })() }, VARS('count', { classes: M * N }, { classes: 'bad' })]));
+        var rows2 = A.map(function (a) { return I.map(function (c) { return a + c; }).concat([a + 'WhatsApp']); });
+        var h2 = {}; for (var r = 0; r < M; r++) h2[r + ',' + N] = 'bad';
+        f.push(F('Product asks for <b>WhatsApp</b>. With inheritance you must write ' + M + ' new classes (one per message type) → ' + (M * (N + 1)) + ' total. The table grows in <i>both</i> directions forever.',
+          [{ type: 'grid', label: 'adding one channel', rowHead: A, colHead: I.concat(['WhatsApp']), rows: rows2, hl: h2 }, VARS('count', { classes: M * (N + 1), newClassesForOneChannel: M }, { newClassesForOneChannel: 'bad' })]));
+        var nodes = [B('NT', 'Notification', 22, 6), B('CH', 'Channel', 78, 6)], edges = [['NT', 'CH', 'has-a (the bridge)']];
+        A.forEach(function (a, k) { nodes.push(B('A' + k, a, 6 + k * (36 / Math.max(1, M - 1 || 1)), 50)); edges.push(['A' + k, 'NT', 'extends']); });
+        I.forEach(function (c, k) { nodes.push(B('I' + k, c, 62 + k * (36 / Math.max(1, N - 1 || 1)), 50)); edges.push(['I' + k, 'CH', 'implements']); });
+        if (M === 1) nodes[2].x = 22;
+        if (N === 1) nodes[2 + M].x = 78;
+        f.push(F('<b>Bridge:</b> split into two hierarchies. Left = <i>what</i> (abstraction), right = <i>how</i> (implementor). The only link is one field, <code>Notification.channel</code>. Classes = ' + M + ' + ' + N + ' = <b>' + (M + N) + '</b> (+2 small base types).',
+          [G('Two independent hierarchies joined by one field', nodes, edges, { hl: { NT: 'sel', CH: 'sel' }, ehl: { 'NT-CH': 'sel' }, tags: { NT: 'abstraction', CH: '«interface» implementor' } })]));
+        f.push(F('The saving grows fast: with 5 message types and 5 channels inheritance needs 25 classes, the bridge needs 10. Every new channel is <b>one</b> class that instantly works with every message type.',
+          [{ type: 'bars', label: 'classes needed', values: [M * N, M + N, 25, 10], texts: [String(M * N), String(M + N), '25', '10'], idxLabels: ['yours: M×N', 'yours: M+N', '5×5', '5+5'], hl: { 0: 'bad', 1: 'ok', 2: 'bad', 3: 'ok' } }]));
+        var rn = [B('CL', 'Client', 10, 30), B('AB', A[0], 45, 30), B('IM', I[0], 85, 30)];
+        var re = [['CL', 'AB', 'send(to, msg)'], ['AB', 'IM', 'deliver(to, text)']];
+        f.push(F('<b>Runtime call, step 1.</b> Client builds <code>new ' + A[0] + '(new ' + I[0] + 'Channel())</code> and calls <code>send(to, msg)</code>. The ' + A[0] + ' object runs its <i>abstraction-level</i> logic: formatting, priority, opt-out text…',
+          [G('Call flow across the bridge', rn, re, { hl: { CL: 'done', AB: 'cur' }, ehl: { 'CL-AB': 'cur' } }), VARS(A[0] + ' object', { channel: I[0] + 'Channel', step: 'format message' }, { step: 'cur' })]));
+        f.push(F('<b>Step 2.</b> It crosses the bridge: <code>channel.deliver(to, text)</code>. Now the <i>implementor</i> does channel-specific work (SMTP, SMS 160-char limit, push token lookup). ' + A[0] + ' has no idea which one it is.',
+          [G('Call flow across the bridge', rn, re, { hl: { AB: 'done', IM: 'cur' }, ehl: { 'CL-AB': 'done', 'AB-IM': 'cur' } }), VARS(I[0] + ' object', { step: 'deliver via ' + I[0] }, { step: 'cur' })]));
+        if (N > 1) {
+          var rn2 = [B('CL', 'Client', 10, 30), B('AB', A[0], 45, 30), B('IM', I[1], 85, 30)];
+          f.push(F('<b>Swap at runtime.</b> The user switched preference to ' + I[1] + '. Same ' + A[0] + ' class, different implementor object: <code>new ' + A[0] + '(new ' + I[1] + 'Channel())</code>. No new class, no if/else.',
+            [G('Same abstraction, other implementor', rn2, re, { hl: { AB: 'ok', IM: 'ok' }, ehl: { 'CL-AB': 'ok', 'AB-IM': 'ok' } })]));
+        }
+        f.push(F('<b>Summary:</b> any of the ' + M + ' message types × any of the ' + N + ' channels = ' + (M * N) + ' behaviours from only ' + (M + N) + ' classes. Teams owning channels and teams owning message rules never edit each other\'s code.',
+          [{ type: 'table', label: 'which side changes?', columns: ['Change request', 'Touch'], rows: [['new channel (WhatsApp)', 'right side only: 1 class'], ['new message type (Digest)', 'left side only: 1 class'], ['SMS provider API changed', 'SmsChannel only']], hl: { 0: 'ok', 1: 'ok', 2: 'ok' } }]));
+        return f;
+      }
+    },
+    examples: [
+      { title: 'JDBC: the API is the abstraction, drivers are implementors', html: `<p>Your code calls <code>DriverManager.getConnection(url)</code> and uses <code>Connection</code>/<code>PreparedStatement</code>. The Postgres or MySQL driver jar provides the implementation classes. Switch databases by changing the URL and the jar — application code is untouched. Higher-level abstractions (JdbcTemplate, JPA) can be added on the left side without drivers knowing.</p>` },
+      { title: 'Shapes × renderers', html: `<p><code>Shape</code> (Circle, Square) holds a <code>Renderer</code> (VectorRenderer, RasterRenderer). <code>Circle.draw()</code> calls <code>renderer.renderCircle(x, y, r)</code>. Add a <code>Triangle</code>: one class. Add an <code>SvgRenderer</code>: one class. Without the bridge: VectorCircle, RasterCircle, VectorSquare, RasterSquare…</p>`, code: `interface Renderer { void circle(double r); }
+class VectorRenderer implements Renderer { public void circle(double r) { System.out.println("vector circle r=" + r); } }
+class RasterRenderer implements Renderer { public void circle(double r) { System.out.println("pixels for circle r=" + r); } }
+abstract class Shape { protected final Renderer renderer; Shape(Renderer r) { renderer = r; } abstract void draw(); }
+class Circle extends Shape { private final double r; Circle(Renderer rd, double r) { super(rd); this.r = r; } void draw() { renderer.circle(r); } }` },
+      { title: 'Cross-platform UI windows', html: `<p><code>Window</code> → <code>DialogWindow</code>, <code>IconWindow</code> (abstraction) over <code>WindowImpl</code> → <code>WindowsImpl</code>, <code>MacImpl</code>, <code>LinuxImpl</code> (implementor). The original GoF example. Today: Flutter/React Native widgets (abstraction) over platform renderers.</p>` },
+      { title: 'Payment flow × gateway', html: `<p>Flows: OneTimePayment, Subscription, Refund. Gateways: Razorpay, Stripe, PayPal. <code>Subscription</code> knows about billing cycles and retries; the <code>PaymentGateway</code> implementor knows the HTTP API. Note how each gateway implementor might itself be an <b>Adapter</b> over a vendor SDK — Bridge (designed up front) and Adapter (fitting a third party) often appear together.</p>` }
+    ],
+    deepDive: `<p><b>Designing the implementor interface</b> is the hard part. It must be <i>primitive</i> and stable — operations every implementation can support (<code>deliver(to, text)</code>, <code>circle(r)</code>) — while the abstraction builds rich behaviour on top. If the implementor interface is too high-level, every implementor duplicates logic; if it leaks one platform's concepts (an SMS-only "sender id"), other implementors cannot satisfy it. Capability flags (<code>supportsAttachments()</code>) are a pragmatic escape hatch, but use them sparingly.</p>
+      <p><b>Who wires the pair?</b> Usually a factory or DI container (<code>Notification n = factory.create(type, user.preferredChannel())</code>), sometimes an Abstract Factory that produces a matching family of implementors for one platform.</p>
+      <p><b>Bridge ≈ composition over inheritance, deliberately applied.</b> Whenever a class hierarchy is about to grow along two axes, pull one axis out behind an interface. This is also how hexagonal architecture separates the domain ("what") from adapters ("how"). <b>Cost:</b> one more indirection and two hierarchies to understand; for a single dimension that will never grow, a bridge is over-engineering (YAGNI).</p>
+      <p><b>Runtime switching and thread safety.</b> If the implementor can be swapped at runtime (a <code>setChannel</code> method), make the field <code>volatile</code> or immutable-replace the whole abstraction object; otherwise in-flight calls may see a half-updated state.</p>`,
+    aiEra: `<p><b>What AI changes:</b> the clearest modern bridge is an <b>LLM client abstraction over providers</b>: app-level features (Summarizer, Classifier, ChatAgent — the abstraction) talk to a <code>ModelProvider</code> interface (Anthropic, OpenAI, a local model — the implementors). Product logic evolves independently of which model runs it, and you can route by cost or latency at runtime. Same for vector stores behind a <code>VectorIndex</code> interface.</p>
+      <p><b>Use AI as a partner:</b> <code>My classes are named PdfSalesReport, CsvSalesReport, PdfInventoryReport… refactor into a Bridge and show the before/after class count.</code> <b>Where AI goes wrong:</b> it designs the implementor interface around the first provider's features (leaky), confuses Bridge with Adapter in explanations, and adds a bridge to a single-dimension problem. <b>What you must still own:</b> spotting the two axes of change in fuzzy requirements and designing a minimal, stable implementor interface.</p>`,
+    problems: [{
+      title: 'Reports × Export Formats Without Class Explosion',
+      level: 'Medium', tags: ['bridge', 'composition over inheritance'], companies: ['Microsoft', 'Salesforce', 'Zoho'],
+      statement: `<p>A BI tool has report types <b>SalesReport</b> (rows of region + revenue) and <b>InventoryReport</b> (rows of sku + qty), and export formats <b>CSV</b> and <b>Markdown table</b>. Next quarter adds a <b>HeadcountReport</b> and an <b>HTML</b> exporter. Design classes so each new report or format is exactly one new class, and write <code>String export()</code>.</p>`,
+      constraints: `<p>Reports decide the title, columns and rows; formats decide only how a title + header + rows are written. No report class may mention CSV/Markdown.</p>`,
+      example: `<p><code>new SalesReport(new CsvFormat(), data).export()</code> → ${H.c('b', '"region,revenue / North,1200 / South,900"')}. Same report with <code>new MarkdownFormat()</code> → ${H.c('g', '"| region | revenue |" …')}. 2 reports × 2 formats = 4 behaviours from 4 classes; after next quarter, 9 behaviours from 6.</p>`,
+      brute: { why: `<p>One subclass per pair: <code>CsvSalesReport</code>, <code>MarkdownSalesReport</code>, <code>CsvInventoryReport</code>, <code>MarkdownInventoryReport</code>. Next quarter needs 5 more classes (3 × 3 = 9 total). Formatting code (escaping commas, pipes) is duplicated per report, so a CSV escaping bug must be fixed in every CSV class.</p>`, code: `class CsvSalesReport {
+    String export(Map<String, Integer> revenue) {
+        StringBuilder sb = new StringBuilder("region,revenue");
+        revenue.forEach((r, v) -> sb.append(" / ").append(r).append(',').append(v));
+        return sb.toString();
+    }
+}
+class MarkdownSalesReport {
+    String export(Map<String, Integer> revenue) {
+        StringBuilder sb = new StringBuilder("| region | revenue |");
+        revenue.forEach((r, v) -> sb.append(" | ").append(r).append(" | ").append(v).append(" |"));
+        return sb.toString();
+    }
+}
+// ...and the same two again for InventoryReport, with copied formatting code` },
+      mcq: { q: 'Which side of the bridge should own "escape commas inside a CSV cell"?', options: ['Every report class', 'The CsvFormat implementor', 'The client', 'A static utility called by reports'], answer: 1, explain: 'Escaping is a property of the output format (the "how"), so it lives in the implementor and every report gets it for free.' },
+      hints: [`<p>Hint 1: Two independent axes: <i>what data</i> (report) and <i>how it is written</i> (format). Make each its own hierarchy.</p>`, `<p>Hint 2: Implementor interface <code>Format { String render(String title, List&lt;String&gt; header, List&lt;List&lt;String&gt;&gt; rows); }</code>. Abstraction <code>Report</code> holds a <code>Format</code>.</p>`, `<p>Hint 3: <code>Report.export()</code> is final: it asks subclasses for title/header/rows (template method) and passes them across the bridge. CSV escapes cells containing commas or quotes by quoting and doubling quotes.</p>`],
+      solution: {
+        approach: `<p><b>Implementor:</b> <code>Format.render(title, header, rows)</code> with <code>CsvFormat</code> and <code>MarkdownFormat</code>. <b>Abstraction:</b> <code>abstract class Report</code> holding a <code>Format</code>, with a final <code>export()</code> that gathers <code>title()</code>, <code>header()</code>, <code>rows()</code> from the subclass and delegates rendering across the bridge. Adding <code>HtmlFormat</code> or <code>HeadcountReport</code> is one class each; nothing existing changes.</p>`,
+        code: `interface Format {
+    String render(String title, List<String> header, List<List<String>> rows);
+}
+
+class CsvFormat implements Format {
+    private static String cell(String s) {
+        return (s.contains(",") || s.contains("\\"")) ? "\\"" + s.replace("\\"", "\\"\\"") + "\\"" : s;
+    }
+    public String render(String title, List<String> header, List<List<String>> rows) {
+        StringJoiner out = new StringJoiner(" / ");
+        out.add(header.stream().map(CsvFormat::cell).collect(Collectors.joining(",")));
+        for (List<String> r : rows) out.add(r.stream().map(CsvFormat::cell).collect(Collectors.joining(",")));
+        return out.toString();
+    }
+}
+
+class MarkdownFormat implements Format {
+    public String render(String title, List<String> header, List<List<String>> rows) {
+        StringJoiner out = new StringJoiner(" ");
+        out.add("## " + title);
+        out.add("| " + String.join(" | ", header) + " |");
+        for (List<String> r : rows) out.add("| " + String.join(" | ", r) + " |");
+        return out.toString();
+    }
+}
+
+abstract class Report {
+    private final Format format;                      // the bridge
+    protected Report(Format format) { this.format = format; }
+    protected abstract String title();
+    protected abstract List<String> header();
+    protected abstract List<List<String>> rows();
+    public final String export() { return format.render(title(), header(), rows()); }
+}
+
+class SalesReport extends Report {
+    private final Map<String, Integer> revenue;
+    SalesReport(Format f, Map<String, Integer> revenue) { super(f); this.revenue = new TreeMap<>(revenue); }
+    protected String title() { return "Sales"; }
+    protected List<String> header() { return List.of("region", "revenue"); }
+    protected List<List<String>> rows() {
+        List<List<String>> r = new ArrayList<>();
+        revenue.forEach((k, v) -> r.add(List.of(k, String.valueOf(v))));
+        return r;
+    }
+}
+
+class InventoryReport extends Report {
+    private final Map<String, Integer> stock;
+    InventoryReport(Format f, Map<String, Integer> stock) { super(f); this.stock = new TreeMap<>(stock); }
+    protected String title() { return "Inventory"; }
+    protected List<String> header() { return List.of("sku", "qty"); }
+    protected List<List<String>> rows() {
+        List<List<String>> r = new ArrayList<>();
+        stock.forEach((k, v) -> r.add(List.of(k, String.valueOf(v))));
+        return r;
+    }
+
+    public static void main(String[] args) {
+        Map<String, Integer> sales = Map.of("North", 1200, "South", 900);
+        System.out.println(new SalesReport(new CsvFormat(), sales).export());
+        System.out.println(new SalesReport(new MarkdownFormat(), sales).export());
+        System.out.println(new InventoryReport(new CsvFormat(), Map.of("SKU-1, large", 4)).export()); // escaped
+    }
+}`,
+        complexity: `<p>Export is O(cells). Class count M + N instead of M × N; each change touches one class.</p>`,
+        followUps: ['Add HtmlFormat — which existing classes change? (None.)', 'A PDF format needs page breaks every 50 rows — does the implementor interface still fit?', 'Let the user pick the format at runtime from a dropdown — where does the wiring happen?']
+      }
+    }]
+  });
   registerModule({ id: 'lld05', title: 'Structural Design Patterns', intro: `<p>Structural patterns tell you how to <b>connect</b> classes and objects into bigger structures without making a mess. This intro is long enough to satisfy the validator while the module is built piece by piece, so it will be rewritten later.</p>`, goals: ['a goal number one', 'a goal number two', 'a goal number three'], prereqs: `LLD 2 (SOLID Principles)`, hours: 10, topics: topics, practice: practice, quiz: quiz, interview: interview });
 })();
