@@ -861,7 +861,8 @@
           { id: 'ERR', label: 'TypeError', shape: 'box', x: 84, y: 44 }
         ];
         if (inplace) nodes.push({ id: 'I', label: L.t + '.__iadd__?', shape: 'box', x: 34, y: 7 });
-        if (L.t === 'str' || Rt.t === 'str') nodes.push({ id: 'SEQ', label: 'str concat/repeat', shape: 'box', x: 64, y: 7 });
+        var seqOK = (bop === '+' && L.t === 'str') || (bop === '*' && (L.t === 'str' || Rt.t === 'str'));
+        if (seqOK) nodes.push({ id: 'SEQ', label: 'str concat/repeat', shape: 'box', x: 64, y: 7 });
         var edges = [], frames = [], tags = {};
         function G(hl, ehl) {
           return { type: 'graph', label: 'Dispatch path (edges appear as Python walks them)', directed: true, height: 64, nodes: nodes, edges: edges.slice(), hl: hl, ehl: ehl || {}, tags: JSON.parse(JSON.stringify(tags)) };
@@ -911,7 +912,7 @@
           frames.push({ narr: 'Both operands are the <b>same type</b> (' + L.t + '), so Python does <b>not</b> try <code>__r' + nm + '__</code>: it would just be the same class asked the same question again.', parts: [G({ RM: 'done', LM: 'bad' }), varsPart, code([])] });
         }
         var err = null;
-        if (!result && (L.t === 'str' || Rt.t === 'str')) {
+        if (!result && seqOK) {
           edges.push([prev, 'SEQ', 'last resort']);
           var sk = {}; sk[prev + '-SEQ'] = 'cur';
           if (bop === '+') {
@@ -923,7 +924,7 @@
             else if (Rt.t === 'str' && L.t === 'int') result = { t: 'str', s: new Array(Math.max(0, Math.min(L.n, 20)) + 1).join(Rt.s) };
             else err = "can't multiply sequence by non-int of type '" + (L.t === 'str' ? Rt.t : L.t) + "'";
           }
-          frames.push({ narr: 'All numeric methods gave up, but a <b>str</b> is involved, so CPython tries the sequence operation (concatenate for +, repeat for *). ' + (result ? 'It works → <b>' + esc(opsRepr(result)) + '</b>.' : 'It cannot apply here → error.'), parts: [G({ SEQ: result ? 'ok' : 'bad' }, sk), varsPart] });
+          frames.push({ narr: 'All numeric methods gave up, but a <b>str</b> is involved, so CPython tries the sequence operation as a last resort (concatenate for + when the str is on the left; repeat for * on either side). ' + (result ? 'It works → <b>' + esc(opsRepr(result)) + '</b>.' : 'It cannot apply here → error.'), parts: [G({ SEQ: result ? 'ok' : 'bad' }, sk), varsPart] });
           prev = 'SEQ';
         } else if (!result) {
           err = 'unsupported operand type(s) for ' + op + ": '" + L.t + "' and '" + Rt.t + "'";
@@ -1147,6 +1148,403 @@
         ] },
         complexity: R`<p>Every operation is O(1) (Decimal arithmetic on fixed-size amounts). <code>sum</code> of n values is O(n). Each object stores two slots, no <code>__dict__</code>.</p>`,
         followUps: ['Add <code>__truediv__</code> for splitting a bill into n parts without losing cents (allocate remainders)', 'Support currency conversion through an injected rate table: where should that logic live?', 'Rewrite with <code>@dataclass(frozen=True, slots=True)</code>: what do you still write by hand?']
+      }
+    }]
+  });
+
+  /* ======================================================================
+     TOPIC 4: MRO & C3 Linearization (plus cooperative super())
+     ====================================================================== */
+  function parseHierarchy(input) {
+    var defs = String(input).split(/[;\n]/).map(function (s) { return s.trim(); }).filter(Boolean);
+    if (!defs.length) throw new Error('Format: "A; B(A); C(A); D(B, C)"');
+    if (defs.length > 10) throw new Error('Use at most 10 classes');
+    var order = [], bases = {};
+    defs.forEach(function (d) {
+      var m = /^([A-Za-z_]\w{0,7})\s*(?:\(([^)]*)\))?$/.exec(d);
+      if (!m) throw new Error('Could not read "' + d + '". Write classes like D(B, C); names up to 8 letters');
+      var name = m[1];
+      if (name === 'object') throw new Error('object is built in; do not define it');
+      if (bases[name]) throw new Error('Class ' + name + ' defined twice');
+      var bs = (m[2] || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+      bs.forEach(function (b) {
+        if (b !== 'object' && !bases[b]) throw new Error('Base ' + b + ' of ' + name + ' must be defined earlier');
+      });
+      if (bs.length !== new Set(bs).size) throw new Error('duplicate base class in ' + name);
+      bases[name] = bs.length ? bs : ['object'];
+      order.push(name);
+    });
+    return { order: order, bases: bases };
+  }
+
+  topics.push({
+    title: 'MRO & C3 Linearization: Who Wins in Multiple Inheritance',
+    analogy: R`<p>Imagine asking for advice in a <b>family business</b>. You ask your direct mentors first, in the order you listed them, and a mentor is always consulted <b>before</b> that mentor's own teacher. One more rule: you never consult a grandparent-teacher while someone who learned from them still hasn't been asked, because the student has the more specific, updated advice. The MRO is that ordered list of people to ask, and C3 is the fair algorithm that builds it, or tells you the family tree is contradictory.</p>`,
+    explain: R`<p>🟢 <b>The plain idea.</b> When you write <code>obj.method()</code>, Python searches classes in a fixed order and uses the <b>first</b> class that defines <code>method</code>. That order is the <b>Method Resolution Order</b>, stored as a tuple in <code>Cls.__mro__</code> (also <code>Cls.mro()</code>). With single inheritance it is obvious: <code>Dog → Animal → object</code>. With multiple inheritance (<code>class D(B, C)</code>) it needs rules.</p>
+      <p>🔵 <b>The three promises of the MRO:</b></p>
+      <ul>
+        <li><b>Children before parents:</b> a class always comes before its bases.</li>
+        <li><b>Local precedence order:</b> in <code>class D(B, C)</code>, <code>B</code> comes before <code>C</code>, as you wrote it.</li>
+        <li><b>Monotonicity:</b> if <code>B</code> comes before <code>A</code> in a parent's MRO, it stays that way in every child's MRO.</li>
+      </ul>
+      <p><b>The C3 formula.</b> For <code>class C(B1, B2, …, Bn)</code>:</p>
+      <p><code>L[C] = C + merge(L[B1], L[B2], …, L[Bn], [B1, B2, …, Bn])</code></p>
+      <p><b>merge</b> in plain words: look at the <b>first item (head)</b> of each list from left to right. Take the first head that does <b>not</b> appear anywhere except at the front of the lists (i.e. not in any list's <b>tail</b>). Append it to the result and delete it from the front of every list. Repeat. If no head qualifies, the hierarchy is contradictory: <code>TypeError: Cannot create a consistent method resolution order (MRO)</code>.</p>
+      <p><b>Worked diamond:</b> <code>A</code>; <code>B(A)</code>; <code>C(A)</code>; <code>D(B, C)</code>.</p>
+      ${H.table(['Step', 'Lists to merge', 'Pick', 'Why', 'Result so far'], [
+        ['0', '[B, A, obj] [C, A, obj] [B, C]', '—', 'start with D', 'D'],
+        ['1', '[<b>B</b>, A, obj] [C, A, obj] [B, C]', H.c('g', 'B'), 'B is in no tail', 'D B'],
+        ['2', '[<b>A</b>, obj] [C, A, obj] [C]', H.c('r', 'A ✗'), 'A is in the tail of [C, A, obj]', 'D B'],
+        ['2b', '[A, obj] [<b>C</b>, A, obj] [C]', H.c('g', 'C'), 'C is in no tail', 'D B C'],
+        ['3', '[<b>A</b>, obj] [A, obj]', H.c('g', 'A'), 'now free', 'D B C A'],
+        ['4', '[obj] [obj]', H.c('g', 'object'), '', 'D B C A object']
+      ])}
+      <p>Key insight from step 2: <b>A must wait for C</b>, because C is a child of A and might override A's methods. Old Python 2 "classic classes" used plain depth-first search (D, B, A, C, A) and would visit A before C, silently skipping C's overrides. C3 fixes that.</p>
+      <p><b>super() follows the MRO, not "the parent".</b> Inside <code>B</code>, <code>super().greet()</code> means "the next class after B in <b>type(self).__mro__</b>". For a <code>D</code> instance that is <b>C</b>, a class B has never heard of! This is what makes <b>cooperative multiple inheritance</b> work: if every class calls <code>super()</code> once, each method in the chain runs exactly once.</p>`,
+    clues: [
+      '"diamond problem" / "which method is called with multiple inheritance?" → MRO via C3, check <code>Cls.__mro__</code>',
+      '"<code>TypeError: Cannot create a consistent method resolution order</code>" → contradictory base ordering; C3 merge has no valid head',
+      '"mixin" classes (LoggingMixin, JSONMixin) → put mixins <b>left</b> of the main base and make every method call <code>super()</code>',
+      '"<code>__init__</code> runs twice" or "a parent <code>__init__</code> never runs" → mixing <code>Parent.__init__(self)</code> calls with <code>super()</code>',
+      '"what does <code>super()</code> call in class B when the object is a D?" → the next class in <code>D.__mro__</code>, not B\'s base',
+      '"implement the MRO / linearize a class hierarchy" → C3 merge algorithm (a nice graph-ordering coding question)'
+    ],
+    code: [{ lang: 'python', run: true, title: 'MRO and cooperative super() in a diamond', code: R`
+      class A:
+          def __init__(self, **kw):
+              print("A.__init__ (end of chain), leftover kwargs:", kw)
+              super().__init__()               # object.__init__ takes no extra args
+
+      class B(A):
+          def __init__(self, b=None, **kw):
+              print("B.__init__ got b =", b)
+              super().__init__(**kw)           # NOT necessarily A: next in type(self).__mro__
+
+      class C(A):
+          def __init__(self, c=None, **kw):
+              print("C.__init__ got c =", c)
+              super().__init__(**kw)
+
+      class D(B, C):
+          def __init__(self, **kw):
+              print("D.__init__")
+              super().__init__(**kw)
+
+      print([k.__name__ for k in D.__mro__])  # ['D', 'B', 'C', 'A', 'object']
+      D(b=1, c=2)                              # each __init__ runs exactly once, in MRO order
+    ` }, { lang: 'python', run: true, title: 'An inconsistent hierarchy is rejected', code: R`
+      class A: pass
+      class B: pass
+      class X(A, B): pass      # says: A before B
+      class Y(B, A): pass      # says: B before A
+
+      try:
+          class Z(X, Y): pass  # needs both orders at once -> impossible
+      except TypeError as e:
+          print("TypeError:", e)
+
+      try:
+          class W(object, A): pass   # object before A? but A's MRO puts A before object
+      except TypeError as e:
+          print("TypeError:", e)
+    ` }],
+    codeTitle: ['Cooperative super() walks D.__mro__ (runnable)', 'C3 refuses contradictory orders (runnable)'],
+    viz: [{
+      title: 'C3 linearization, step by step',
+      input: 'A; B(A); C(A); D(B, C); E(C); F(D, E)',
+      inputLabel: 'Classes in definition order, e.g. A; B(A); C(A); D(B, C). Try the error case: A; B; X(A, B); Y(B, A); Z(X, Y)',
+      gen: function (input) {
+        var H0 = parseHierarchy(input === undefined ? 'A; B(A); C(A); D(B, C); E(C); F(D, E)' : input);
+        var order = H0.order, bases = H0.bases, L = { object: ['object'] }, frames = [];
+        // layout: level = 1 + max(level of bases)
+        var level = { object: 0 }, maxLv = 0;
+        order.forEach(function (c) { level[c] = 1 + Math.max.apply(null, bases[c].map(function (b) { return level[b]; })); maxLv = Math.max(maxLv, level[c]); });
+        var byLv = {};
+        ['object'].concat(order).forEach(function (c) { (byLv[level[c]] = byLv[level[c]] || []).push(c); });
+        var gap = Math.min(16, 56 / Math.max(1, maxLv)), nodes = [];
+        Object.keys(byLv).forEach(function (lv) {
+          var row = byLv[lv];
+          row.forEach(function (c, i) { nodes.push({ id: c, label: c === 'object' ? 'obj' : c, x: (i + 1) * 100 / (row.length + 1), y: 6 + lv * gap }); });
+        });
+        var edges = [];
+        order.forEach(function (c) { bases[c].forEach(function (b, i) { edges.push([c, b, bases[c].length > 1 ? String(i + 1) : '']); }); });
+        var height = 12 + maxLv * gap;
+        function graph(hl, tags) { return { type: 'graph', label: 'Class graph (arrow = "inherits from", edge number = base order)', directed: true, height: height, nodes: nodes, edges: edges, hl: hl || {}, tags: tags || {} }; }
+        frames.push({ narr: 'Here is the hierarchy. Every class without listed bases inherits from <code>object</code>. We compute <code>L[X]</code> (the MRO) for each class <b>in definition order</b>, because each class needs its parents\' MROs first. Formula: <code>L[C] = C + merge(L[B1], …, L[Bn], [B1 … Bn])</code>.', parts: [graph(), { type: 'table', label: 'Class definitions', columns: ['class', 'bases (in order)'], rows: order.map(function (c) { return [c, bases[c].join(', ')]; }) }] });
+        var failed = false;
+        for (var ci = 0; ci < order.length && !failed; ci++) {
+          var C = order[ci], bs = bases[C];
+          if (bs.length === 1) {
+            L[C] = [C].concat(L[bs[0]]);
+            var h1 = {}; h1[C] = 'ok';
+            frames.push({ narr: '<code>' + C + '</code> has a single base <code>' + bs[0] + '</code>, so its MRO is just ' + C + ' followed by L[' + bs[0] + ']: <b>' + L[C].join(' → ') + '</b>. No merging needed.', parts: [graph(h1), { type: 'array', label: 'L[' + C + ']', values: L[C].slice(), hl: { 0: 'ok' } }] });
+            continue;
+          }
+          var seqs = bs.map(function (b) { return L[b].slice(); }).concat([bs.slice()]);
+          var names = bs.map(function (b) { return 'L[' + b + ']'; }).concat(['bases list']);
+          var out = [C];
+          var hS = {}; hS[C] = 'cur';
+          function listParts(hlMap) {
+            var ps = [];
+            seqs.forEach(function (s, i) { ps.push({ type: 'array', label: names[i] + (s.length ? '' : ' (empty)'), values: s.slice(), hl: (hlMap && hlMap[i]) || {} }); });
+            ps.push({ type: 'array', label: 'L[' + C + '] so far', values: out.slice(), hl: (function () { var o = {}; o[out.length - 1] = 'ok'; return o; })() });
+            return ps;
+          }
+          frames.push({ narr: '<b>Computing L[' + C + ']</b> with ' + bs.length + ' bases. Start the result with <code>' + C + '</code> itself, then merge: ' + names.join(', ') + '. Rule: take the first <b>head</b> (front item) that is not in any list\'s <b>tail</b> (everything after the front).', parts: [graph(hS)].concat(listParts()) });
+          var guard = 0;
+          while (guard++ < 60) {
+            seqs = seqs.filter(function (s) { return s.length; });
+            names = names.filter(function (_, i) { return true; });
+            if (!seqs.length) break;
+            var picked = null;
+            for (var si = 0; si < seqs.length; si++) {
+              var head = seqs[si][0], blocker = -1, bpos = -1;
+              for (var t = 0; t < seqs.length; t++) { var p = seqs[t].indexOf(head); if (p > 0) { blocker = t; bpos = p; break; } }
+              var hlm = {}; hlm[si] = {}; hlm[si][0] = blocker >= 0 ? 'y' : 'g';
+              if (blocker >= 0) { hlm[blocker] = hlm[blocker] || {}; hlm[blocker][bpos] = 'r'; }
+              var gh = {}; gh[C] = 'cur'; gh[head] = blocker >= 0 ? 'bad' : 'ok';
+              if (blocker >= 0) {
+                frames.push({ narr: 'Candidate <b>' + head + '</b> (head of list ' + (si + 1) + ') is ' + H.c('r', 'rejected') + ': it still appears in the <b>tail</b> of list ' + (blocker + 1) + ' (shown red). Something that must come before ' + head + ' has not been placed yet. Try the next list\'s head.', parts: [graph(gh)].concat(listParts(hlm)) });
+              } else {
+                picked = head;
+                out.push(head);
+                seqs.forEach(function (s) { if (s[0] === head) s.shift(); });
+                frames.push({ narr: 'Candidate <b>' + head + '</b> is in no tail → ' + H.c('g', 'accept it') + '. Append to L[' + C + '] and remove it from the front of every list.', parts: [graph(gh)].concat(listParts(hlm)) });
+                break;
+              }
+            }
+            if (picked === null) {
+              failed = true;
+              var heads = seqs.map(function (s) { return s[0]; });
+              var gb = {}; heads.forEach(function (h) { gb[h] = 'bad'; }); gb[C] = 'cur';
+              frames.push({ narr: '<span class="c-r">Every head is blocked</span> (' + heads.join(', ') + '): each one appears in the tail of another list, so each demands to come after another. The constraints contradict each other. Python refuses to create the class: <code>TypeError: Cannot create a consistent method resolution order (MRO) for bases ' + esc(bs.join(', ')) + '</code>.', parts: [graph(gb)].concat(listParts()) });
+              break;
+            }
+          }
+          if (!failed) {
+            L[C] = out;
+            var gd = {}; out.forEach(function (c, i) { gd[c] = i === 0 ? 'sel' : 'done'; });
+            var tg = {}; out.forEach(function (c, i) { tg[c] = '#' + (i + 1); });
+            frames.push({ narr: 'All lists are empty. <b>' + C + '.__mro__ = (' + out.join(', ') + ')</b>. The tags show search order: attribute lookup on a ' + C + ' instance tries #1 first, then #2, and so on.', parts: [graph(gd, tg), { type: 'array', label: 'L[' + C + '] = ' + C + '.__mro__', values: out.slice(), hl: { 0: 'p' } }] });
+          }
+        }
+        if (!failed) {
+          frames.push({ narr: 'Done. Every class has a valid MRO. Check any of them in real Python with <code>[k.__name__ for k in Cls.__mro__]</code>. Remember: <code>super()</code> inside a method just moves one step to the right along <b>the instance\'s</b> MRO.', parts: [{ type: 'table', label: 'All MROs', columns: ['class', 'MRO'], rows: order.map(function (c) { return [c, L[c].join(' → ')]; }), hl: (function () { var o = {}; o[order.length - 1] = 'sel'; return o; })() }] });
+        }
+        return frames;
+      }
+    }, {
+      title: 'super() chain: who runs next for a D instance?',
+      gen: function () {
+        var code = [
+          'class A:',
+          '    def hello(self): print("A")',
+          'class B(A):',
+          '    def hello(self): print("B"); super().hello()',
+          'class C(A):',
+          '    def hello(self): print("C"); super().hello()',
+          'class D(B, C):',
+          '    def hello(self): print("D"); super().hello()',
+          '',
+          'D().hello()        # D.__mro__ = (D, B, C, A, object)'
+        ].join('\n');
+        var mro = ['D', 'B', 'C', 'A', 'object'];
+        var S = [
+          { l: [10], st: [], o: '', p: -1, n: 'We call <code>D().hello()</code>. Python searches <code>D.__mro__ = (D, B, C, A, object)</code> for <code>hello</code> and finds it immediately in D.' },
+          { l: [8], st: ['D.hello'], o: 'D', p: 0, n: '<code>D.hello</code> prints D, then <code>super().hello()</code>. Zero-argument super() means <code>super(D, self)</code>: "search the MRO of <b>type(self)</b>, starting <b>after D</b>" → next is <b>B</b>.' },
+          { l: [4], st: ['D.hello', 'B.hello'], o: 'D\nB', p: 1, n: '<code>B.hello</code> prints B. Its <code>super()</code> is <code>super(B, self)</code>, and self is still a <b>D</b>. In D\'s MRO, the class after B is <b>C</b>, not A! B never mentions C, yet that is who runs next. This surprises almost everyone.' },
+          { l: [6], st: ['D.hello', 'B.hello', 'C.hello'], o: 'D\nB\nC', p: 2, n: '<code>C.hello</code> prints C, then <code>super()</code> → next after C in D\'s MRO → <b>A</b>.' },
+          { l: [2], st: ['D.hello', 'B.hello', 'C.hello', 'A.hello'], o: 'D\nB\nC\nA', p: 3, n: '<code>A.hello</code> prints A and does not call super (object has no <code>hello</code>), so the chain stops. A ran <b>once</b>, even though two classes inherit from it.' },
+          { l: [], st: [], o: 'D\nB\nC\nA', p: -1, n: 'Stack unwinds. Output <b>D B C A</b>: exactly the MRO. If B had called <code>A.hello(self)</code> directly instead of <code>super()</code>, C would be <b>skipped</b>; if both B and C called <code>A.hello(self)</code>, A would run <b>twice</b>. Rule: in a hierarchy, use super() everywhere or nowhere.' }
+        ];
+        return S.map(function (s) {
+          var hl = {}; s.l.forEach(function (x) { hl[x] = 'cur'; });
+          var ah = {}; if (s.p >= 0) { for (var i = 0; i < s.p; i++) ah[i] = 'done'; ah[s.p] = 'cur'; }
+          var sh = {}; if (s.st.length) sh[s.st.length - 1] = 'cur';
+          return { narr: s.n, parts: [
+            { type: 'code', label: 'Program', lang: 'python', code: code, hl: hl },
+            { type: 'array', label: 'D.__mro__ (amber = class whose method runs now)', values: mro, hl: ah },
+            { type: 'stack', label: 'Call stack', items: s.st, hl: sh },
+            { type: 'text', label: 'Output so far', html: '<pre>' + (s.o ? esc(s.o) : '(nothing yet)') + '</pre>' }
+          ] };
+        });
+      }
+    }],
+    examples: [
+      { title: 'Predict the MRO (the classic Wikipedia example)', html: R`<p>O = object. <code>A, B, C, D, E(O)</code>; <code>K1(A, B, C)</code>; <code>K2(D, B, E)</code>; <code>K3(D, A)</code>; <code>Z(K1, K2, K3)</code>. Merge: <code>L[K1] = K1 A B C O</code>, <code>L[K2] = K2 D B E O</code>, <code>L[K3] = K3 D A O</code>. Then <code>L[Z] = Z + merge([K1 A B C O], [K2 D B E O], [K3 D A O], [K1 K2 K3])</code> = <b>Z K1 K2 K3 D A B C E O</b>. Note how A is picked only after D (because A sits in K3's tail behind D) and B waits until A is out. Paste the hierarchy into the visualizer to watch every rejection.</p>`, code: { lang: 'python', run: true, code: R`
+        class A: pass
+        class B: pass
+        class C: pass
+        class D: pass
+        class E: pass
+        class K1(A, B, C): pass
+        class K2(D, B, E): pass
+        class K3(D, A): pass
+        class Z(K1, K2, K3): pass
+
+        print(" ".join(k.__name__ for k in Z.__mro__))
+      ` } },
+      { title: 'Mixins: order matters, and they must call super()', html: R`<p>A mixin adds one behaviour to many classes. Put it <b>left</b> of the main base so its methods are found first, and have it call <code>super()</code> so the main class still runs. Output shows the JSON wrapper decorating the base result.</p>`, code: { lang: 'python', run: true, code: R`
+        import json
+
+        class Report:
+            def render(self):
+                return {"title": "Q3", "total": 42}
+
+        class JSONMixin:
+            def render(self):
+                data = super().render()              # whatever comes next in the MRO
+                return json.dumps(data, sort_keys=True)
+
+        class UpperTitleMixin:
+            def render(self):
+                data = super().render()
+                data["title"] = data["title"].upper() + "!"
+                return data
+
+        class APIReport(JSONMixin, UpperTitleMixin, Report):
+            pass
+
+        print([k.__name__ for k in APIReport.__mro__])
+        print(APIReport().render())
+      ` } },
+      { title: 'Calling the parent by name breaks the diamond', html: R`<p>Using <code>Base.__init__(self)</code> instead of <code>super().__init__()</code> in a diamond: <code>A.__init__</code> runs twice and the order ignores the MRO. Count the lines of output: <b>A appears twice</b>. This is exactly why the rule is "super() everywhere, with **kwargs".</p>`, code: { lang: 'python', run: true, code: R`
+        class A:
+            def __init__(self):
+                print("A init")
+
+        class B(A):
+            def __init__(self):
+                print("B init")
+                A.__init__(self)          # hard-coded parent
+
+        class C(A):
+            def __init__(self):
+                print("C init")
+                A.__init__(self)
+
+        class D(B, C):
+            def __init__(self):
+                B.__init__(self)
+                C.__init__(self)
+
+        D()
+      ` } },
+      { title: 'super() with arguments and the __class__ cell', html: R`<p><code>super()</code> with no arguments is shorthand for <code>super(CurrentClass, self)</code>; the compiler stores <code>CurrentClass</code> in a hidden <code>__class__</code> cell. You can start the search after any class in the MRO by passing it explicitly, e.g. <code>super(B, d).who()</code> starts after B, i.e. at C.</p>`, code: { lang: 'python', run: true, code: R`
+        class A:
+            def who(self): return "A"
+        class B(A):
+            def who(self): return "B"
+        class C(A):
+            def who(self): return "C"
+        class D(B, C):
+            def who(self): return "D"
+
+        d = D()
+        print(d.who(), super(D, d).who(), super(B, d).who(), super(C, d).who())
+      ` } }
+    ],
+    deepDive: R`<p>🟣 <b>Where C3 comes from.</b> It was published for the Dylan language ("A Monotonic Superclass Linearization for Dylan", 1996) and adopted by Python 2.3 for new-style classes, after the Python 2.2 algorithm was shown to violate monotonicity. Perl's <code>mro 'c3'</code> and Raku use it too. C3 guarantees a linearization that respects (1) the inheritance graph, (2) each class's local base order and (3) monotonicity; when those constraints contain a cycle (like <code>X(A, B)</code> + <code>Y(B, A)</code>) no order exists and Python raises <code>TypeError</code> at <b>class creation</b> time, which is good: you learn about it immediately, not when a method resolves weirdly in production.</p>
+      <p><b>How lookups use it.</b> <code>type.__new__</code> computes <code>__mro__</code> once (via <code>type.mro()</code>, which a metaclass can override). Attribute lookup (<code>_PyType_Lookup</code>) walks <code>tp_mro</code> checking each class <code>__dict__</code>, with a global <b>method cache</b> keyed by (type version tag, name), so repeated lookups are O(1); changing any class attribute bumps the version tag and invalidates it. <code>super(T, obj)</code> finds <code>T</code> in <code>type(obj).__mro__</code> and searches the classes <b>after</b> it. <code>isinstance</code>/<code>issubclass</code> for ordinary classes are MRO membership tests.</p>
+      <p><b>Cooperative design rules (Raymond Hettinger's "super considered super"):</b> (1) every method in the chain must call <code>super()</code>, except the root that ends it; (2) signatures must be compatible: accept <code>**kwargs</code>, consume your own keyword arguments and pass the rest on; (3) a root class must exist that stops the chain without forwarding unknown arguments (often <code>object</code>, which rejects extras, so leftovers become a loud <code>TypeError</code>, which is what you want); (4) to adapt a non-cooperative class, wrap it in an adapter instead of inheriting. Also: <code>class C(object, A)</code> fails (object must come last), layout conflicts happen when two bases have incompatible C layouts (e.g. both define non-empty <code>__slots__</code>, or two built-ins like <code>int</code> and <code>str</code>), and deep multiple inheritance is a design smell: prefer composition and small mixins.</p>`,
+    aiEra: R`<p>🤖 <b>What AI changes:</b> models can compute an MRO if asked, but they frequently <b>guess</b> depth-first ("D, B, A, C") when reasoning quickly. Treat any claimed MRO as a hypothesis and check it with <code>Cls.__mro__</code> in two seconds.</p>
+      <p><b>Prompt that helps:</b> <code>Here is my class hierarchy with mixins. Print the MRO, then for each method list which class's implementation runs and whether every override calls super(). Flag any class that would be skipped or run twice.</code> This turns the assistant into a static checker for cooperative chains.</p>
+      <p><b>Where AI goes wrong:</b> suggests <code>Parent.__init__(self, ...)</code> in multiple-inheritance code (double init); puts mixins to the right of the base (their overrides never win); writes mixin methods that do not call <code>super()</code> (chain silently stops); or "fixes" an MRO TypeError by randomly reordering bases until it imports, changing behaviour. In the AI era, frameworks (Django class-based views, DRF, SQLAlchemy mixins) still rely heavily on MRO; the engineer who can trace it by hand debugs them in minutes. <b>What you must own:</b> running C3 on paper and explaining why <code>super()</code> in B can call C.</p>`,
+    problems: [{
+      title: 'Implement C3 linearization',
+      level: 'Hard', tags: ['MRO', 'C3', 'graph', 'merge'], companies: ['Google', 'Meta', 'Bloomberg'],
+      statement: R`<p>Given a class hierarchy as a dict <code>bases</code> (class name → list of base names in order; a missing or empty entry means the class inherits only from <code>"object"</code>), return the MRO of a given class as a list of names, exactly as Python would compute it. If no consistent order exists, raise <code>TypeError</code>. Verify your answer against real Python classes built with <code>type()</code>.</p>`,
+      constraints: R`Up to 200 classes, up to 10 bases each; the hierarchy is acyclic and every base is defined.`,
+      example: R`<p><code>bases = {"A": [], "B": ["A"], "C": ["A"], "D": ["B", "C"]}</code> → <code>mro("D")</code> = ${H.c('g', "['D', 'B', 'C', 'A', 'object']")}</p>
+        <p><code>{"A": [], "B": [], "X": ["A", "B"], "Y": ["B", "A"], "Z": ["X", "Y"]}</code> → <code>mro("Z")</code> raises ${H.c('r', 'TypeError')} because X says A before B but Y says B before A.</p>`,
+      brute: {
+        why: R`<p>Depth-first, left-to-right, keep the first occurrence (the Python 2 classic-class rule). For the diamond it yields <code>D B A C object</code>: A comes before C, so if C overrides a method of A, C's version is <b>never</b> found. It also never detects contradictions.</p>`,
+        code: R`
+          def mro_dfs(cls, bases):
+              seen, out = set(), []
+              def dfs(c):
+                  if c in seen:
+                      return
+                  seen.add(c)
+                  out.append(c)
+                  for b in bases.get(c) or (["object"] if c != "object" else []):
+                      dfs(b)
+              dfs(cls)
+              return out
+
+          print(mro_dfs("D", {"A": [], "B": ["A"], "C": ["A"], "D": ["B", "C"]}))   # wrong order
+        `
+      },
+      mcq: { q: 'During merge, head <code>A</code> appears in the <b>tail</b> of another list. What does that tell you?', options: ['Some class that must precede A has not been placed yet, so skip A for now', 'A is a duplicate and should be deleted', 'The hierarchy is invalid', 'A should be placed immediately'], answer: 0, explain: 'Being in a tail means A has a subclass (or a locally-earlier sibling) still waiting. You try the next list\'s head. Only if <b>every</b> head is blocked is the hierarchy invalid.' },
+      hints: [
+        R`<p>Hint 1: Recursion with memoisation: <code>L[C] = [C] + merge(L[B1], …, L[Bn], [B1, …, Bn])</code>, and <code>L["object"] = ["object"]</code>.</p>`,
+        R`<p>Hint 2: merge loop: drop empty lists; scan heads left to right; pick the first head that is not in <code>s[1:]</code> for any list <code>s</code>; append it and pop it from the front of every list whose head it is. If no head qualifies → <code>TypeError</code>.</p>`,
+        R`<p>Hint 3: Do not forget the final list of direct bases (it enforces local precedence order). To verify, build real classes in definition order: <code>cls = type(name, tuple(real[b] for b in bs) or (object,), {})</code> and compare with <code>[k.__name__ for k in cls.__mro__]</code>.</p>`
+      ],
+      solution: {
+        approach: R`<p>Direct implementation of C3 with memoisation. Each merge step scans at most k heads and checks tails, so it is polynomial and fast for real hierarchies. We then cross-check against CPython by constructing the same hierarchy dynamically.</p>`,
+        code: { lang: 'python', run: true, code: R`
+          def c3_mro(cls, bases):
+              memo = {"object": ["object"]}
+
+              def lin(c):
+                  if c in memo:
+                      return memo[c]
+                  direct = bases.get(c) or ["object"]
+                  seqs = [list(lin(b)) for b in direct] + [list(direct)]
+                  out = [c]
+                  while True:
+                      seqs = [s for s in seqs if s]              # drop exhausted lists
+                      if not seqs:
+                          memo[c] = out
+                          return out
+                      for s in seqs:                             # first good head wins
+                          head = s[0]
+                          if not any(head in t[1:] for t in seqs):
+                              break
+                      else:
+                          raise TypeError(f"Cannot create a consistent MRO for {c}")
+                      out.append(head)
+                      for t in seqs:                             # remove it from the fronts
+                          if t[0] == head:
+                              del t[0]
+
+              return lin(cls)
+
+          def real_mro(cls, bases):
+              """Build the hierarchy with type() and ask CPython."""
+              real = {}
+              pending = list(bases)
+              while pending:                                     # define bases before children
+                  for name in pending:
+                      if all(b in real for b in bases[name]):
+                          real[name] = type(name, tuple(real[b] for b in bases[name]) or (object,), {})
+                          pending.remove(name)
+                          break
+              return [k.__name__ for k in real[cls].__mro__]
+
+          diamond = {"A": [], "B": ["A"], "C": ["A"], "D": ["B", "C"]}
+          print(c3_mro("D", diamond), c3_mro("D", diamond) == real_mro("D", diamond))
+
+          wiki = {"A": [], "B": [], "C": [], "D": [], "E": [],
+                  "K1": ["A", "B", "C"], "K2": ["D", "B", "E"], "K3": ["D", "A"], "Z": ["K1", "K2", "K3"]}
+          print(" ".join(c3_mro("Z", wiki)), c3_mro("Z", wiki) == real_mro("Z", wiki))
+
+          try:
+              c3_mro("Z", {"A": [], "B": [], "X": ["A", "B"], "Y": ["B", "A"], "Z": ["X", "Y"]})
+          except TypeError as e:
+              print("TypeError:", e)
+        ` },
+        dry: { head: ['step', 'lists (heads first)', 'candidate', 'decision', 'L[D]'], rows: [
+          ['0', '[B A obj] [C A obj] [B C]', '—', 'start', 'D'],
+          ['1', '[B A obj] [C A obj] [B C]', 'B', 'in no tail → take', 'D B'],
+          ['2', '[A obj] [C A obj] [C]', 'A', '<span class="c-r">in tail of [C A obj] → skip</span>', 'D B'],
+          ['3', '[A obj] [C A obj] [C]', 'C', 'in no tail → take', 'D B C'],
+          ['4', '[A obj] [A obj]', 'A', 'take', 'D B C A'],
+          ['5', '[obj] [obj]', 'object', 'take; all empty → done', 'D B C A object']
+        ] },
+        complexity: R`<p>For a class whose MRO has length m and k direct bases, each of the m steps scans up to k+1 heads and checks membership in tails of total length O(m·k): O(m²k²) worst case per class, tiny in practice. Memoisation computes each class once. Space O(total MRO lengths).</p>`,
+        followUps: ['Return a helpful error naming the conflicting pair of classes', 'Why is the final list of direct bases needed? Find a hierarchy where omitting it gives a wrong answer', 'How would you compute MROs for all classes in topological order instead of recursion?']
       }
     }]
   });

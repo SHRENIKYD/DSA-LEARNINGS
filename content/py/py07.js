@@ -1566,4 +1566,760 @@ for impl in (override, override_gen):
       }
     }]
   });
+
+  /* ================= PRACTICE: Easy ================= */
+  practice.push({
+    title: 'Predict & Fix: min() and max() of a Generator', level: 'Easy', tags: ['iterator exhaustion', 'predict the output', 'single pass'], companies: ['Amazon', 'Bloomberg'],
+    statement: `<p>A teammate wrote <code>def stats(readings): return min(readings), max(readings)</code>. It works in unit tests with lists, but in production <code>readings</code> is a generator reading sensor values, and it crashes. <b>Predict</b> the error, explain why, and rewrite <code>stats</code> so it works for <b>any</b> iterable in a single pass and raises a clear <code>ValueError</code> for empty input.</p>`,
+    constraints: `Up to 10<sup>9</sup> readings (cannot store them). One pass only.`,
+    example: `<p><code>stats(x for x in [4, 9, 1])</code> → original code: ${H.c('r', 'ValueError: max() iterable argument is empty')} because <code>min()</code> consumed every item. Fixed version → <code>(1, 9)</code>.</p>`,
+    brute: { why: `<p>"Fix" by converting to a list first: <code>xs = list(readings)</code>. Correct, but stores all 10<sup>9</sup> readings in memory just to walk them twice. The real waste is the second pass.</p>`, code: `def stats(readings):
+    xs = list(readings)          # O(n) memory just to be able to loop twice
+    return min(xs), max(xs)
+
+print(stats(x for x in [4, 9, 1]))` },
+    mcq: { q: 'Why does the original code fail only for generators?', options: ['min() exhausts the iterator, so max() receives an empty one', 'Generators cannot be compared', 'min() and max() need indexes', 'Generators are immutable'], answer: 0, explain: 'A list gives a fresh iterator to each call. A generator is its own iterator: after min() walks it, it is exhausted, and max() of nothing raises ValueError.' },
+    hints: [`<p>Hint 1: Lists are iterables (fresh iterator each time); generators are one-shot iterators. Which one did the tests use?</p>`, `<p>Hint 2: Track both the smallest and largest seen so far in one loop. Start from the first item: <code>it = iter(readings); first = next(it, sentinel)</code>.</p>`, `<p>Hint 3: If the first item is the sentinel, raise <code>ValueError('stats() of empty input')</code>. Then loop over the rest updating lo/hi.</p>`],
+    solution: {
+      approach: `<p>Take the first item to initialise lo and hi (handles empty input explicitly), then one pass over the rest of the same iterator. O(1) memory, works for lists, generators, files, anything iterable.</p>`,
+      code: { lang: 'python', run: true, code: `def stats_broken(readings):
+    return min(readings), max(readings)
+
+try:
+    stats_broken(x for x in [4, 9, 1])
+except ValueError as e:
+    print('broken:', e)
+
+_EMPTY = object()
+
+def stats(readings):
+    it = iter(readings)
+    first = next(it, _EMPTY)
+    if first is _EMPTY:
+        raise ValueError('stats() of empty input')
+    lo = hi = first
+    for x in it:                 # continues after the first item
+        if x < lo:
+            lo = x
+        elif x > hi:
+            hi = x
+    return lo, hi
+
+print(stats(x for x in [4, 9, 1]))   # (1, 9)
+print(stats([7]))                     # (7, 7)` },
+      dry: { head: ['x', 'lo', 'hi'], rows: [['4 (first)', '4', '4'], ['9', '4', '9'], ['1', '1', '9']] },
+      complexity: `<p>O(n) time, O(1) memory, one pass.</p>`,
+      followUps: ['Also return the mean in the same pass.', 'What if you really need two passes over a huge file? (Re-open the file / make a function that returns a fresh generator.)']
+    }
+  });
+
+  practice.push({
+    title: 'Infinite Order-ID Generator', level: 'Easy', tags: ['generator', 'itertools.count', 'islice'], companies: ['Shopify', 'Flipkart'],
+    statement: `<p>Write a generator <code>order_ids(prefix, start=1, width=4)</code> that yields IDs forever: <code>ORD-0001</code>, <code>ORD-0002</code>, … (zero-padded to <code>width</code>; wider numbers are not truncated). Then print the first 3 IDs and the 3 IDs after skipping 9,997 of them.</p>`,
+    constraints: `start ≥ 0, 1 ≤ width ≤ 12. Must be lazy (constant memory).`,
+    example: `<p><code>list(islice(order_ids('ORD-'), 3))</code> → <code>['ORD-0001', 'ORD-0002', 'ORD-0003']</code>. Items 9,998–10,000 → <code>ORD-9998, ORD-9999, ORD-10000</code> (no truncation).</p>`,
+    brute: { why: `<p>Pre-build a list of a "big enough" number of IDs: <code>[f'{prefix}{i:04}' for i in range(1, 1_000_000)]</code>. It wastes memory and time for IDs nobody asked for — and "big enough" is always too small eventually.</p>`, code: `def order_ids_list(prefix, n=100_000):
+    return [f'{prefix}{i:04}' for i in range(1, n + 1)]   # builds everything
+
+ids = order_ids_list('ORD-')
+print(ids[:3])` },
+    mcq: { q: 'How do you take items 9,998–10,000 from an infinite generator?', options: ['islice(gen, 9997, 10000)', 'gen[9997:10000]', 'list(gen)[9997:10000]', 'gen.slice(9997, 10000)'], answer: 0, explain: 'Generators do not support indexing; islice skips (consumes) the first 9,997 lazily and stops after 3 more. list(gen) would never finish on an infinite generator.' },
+    hints: [`<p>Hint 1: <code>itertools.count(start)</code> yields start, start+1, … forever.</p>`, `<p>Hint 2: f-string width formatting: <code>f'{n:0{width}d}'</code> pads with zeros to at least width digits and never truncates.</p>`, `<p>Hint 3: Recipe: <code>for n in count(start): yield f'{prefix}{n:0{width}d}'</code>; consume with <code>islice(gen, start, stop)</code>.</p>`],
+    solution: {
+      approach: `<p>An infinite generator built on <code>count</code>. Formatting is done per item, on demand. The caller decides how many to take.</p>`,
+      code: { lang: 'python', run: true, code: `from itertools import count, islice
+
+def order_ids(prefix, start=1, width=4):
+    for n in count(start):
+        yield f'{prefix}{n:0{width}d}'
+
+print(list(islice(order_ids('ORD-'), 3)))
+print(list(islice(order_ids('ORD-'), 9997, 10000)))
+# a shorter alternative using map:
+gen = map('INV-{:06d}'.format, count(42))
+print(next(gen), next(gen))` },
+      complexity: `<p>O(1) per ID and O(1) memory; skipping k IDs with islice costs O(k).</p>`,
+      followUps: ['Make it thread-safe for multiple producers (a lock around next(), or itertools.count is atomic in CPython only by accident — do not rely on it).', 'Resume after a restart: persist the last issued number.']
+    }
+  });
+
+  practice.push({
+    title: 'Day-to-Day Price Changes with pairwise', level: 'Easy', tags: ['itertools.pairwise', 'zip', 'generator expression'], companies: ['Robinhood', 'Goldman Sachs'],
+    statement: `<p>Given daily closing prices, return the list of day-to-day changes and the number of days the price went <b>up</b>. Solve it without index arithmetic.</p>`,
+    constraints: `1 ≤ n ≤ 10<sup>6</sup>; prices are positive floats or ints.`,
+    example: `<p>${H.arr([100, 102, 101, 105, 105], { label: 'prices' })} changes → ${H.arr([2, -1, 4, 0], { hl: { 0: 'g', 1: 'r', 2: 'g' } })} up-days = <b>2</b> (0 is not up).</p>`,
+    brute: { why: `<p><code>for i in range(1, len(p)): changes.append(p[i] - p[i - 1])</code> works but needs a list with indexing (not any iterable), and off-by-one mistakes are common. Fine for small lists, but it cannot handle a stream of prices.</p>`, code: `def changes_brute(p):
+    out = []
+    for i in range(1, len(p)):
+        out.append(p[i] - p[i - 1])
+    return out, sum(1 for c in out if c > 0)
+
+print(changes_brute([100, 102, 101, 105, 105]))` },
+    mcq: { q: 'What does pairwise([100, 102, 101]) yield?', options: ['(100, 102), (102, 101)', '(100, 102), (101,)', '(100,), (102,), (101,)', '(100, 101)'], answer: 0, explain: 'pairwise yields overlapping consecutive pairs: n items give n − 1 pairs.' },
+    hints: [`<p>Hint 1: "Compare each element with the next" is the phrase for <code>itertools.pairwise</code> (3.10+) or <code>zip(p, p[1:])</code>.</p>`, `<p>Hint 2: <code>[b - a for a, b in pairwise(prices)]</code> gives the changes; <code>sum(c &gt; 0 for c in changes)</code> counts ups (True counts as 1).</p>`, `<p>Hint 3: With one price there are zero changes. pairwise works on any iterable, including a generator reading a CSV.</p>`],
+    solution: {
+      approach: `<p><code>pairwise</code> provides overlapping pairs lazily, so this also works on a stream. Booleans sum as integers.</p>`,
+      code: { lang: 'python', run: true, code: `from itertools import pairwise
+
+def price_changes(prices):
+    changes = [b - a for a, b in pairwise(prices)]
+    ups = sum(c > 0 for c in changes)
+    return changes, ups
+
+print(price_changes([100, 102, 101, 105, 105]))   # ([2, -1, 4, 0], 2)
+print(price_changes([42]))                         # ([], 0)
+print(price_changes(iter([1, 3, 6])))              # works on iterators too` },
+      complexity: `<p>O(n) time; O(n) for the output list (O(1) if you only need the count — use a generator expression).</p>`,
+      followUps: ['Longest streak of up-days (groupby on c > 0).', 'Max profit with one buy and one sell (track running min).']
+    }
+  });
+
+  practice.push({
+    title: 'Clean Up Temp Files, Ignoring Missing Ones', level: 'Easy', tags: ['context manager', 'contextlib.suppress', 'files'], companies: ['Dropbox', 'Microsoft'],
+    statement: `<p>Write <code>cleanup(paths)</code> that deletes each file in <code>paths</code>. Some files may already be gone — that is fine and must not stop the loop. Any <b>other</b> error (e.g. permission denied) must still propagate. Return how many files were actually deleted.</p>`,
+    constraints: `Up to 10<sup>5</sup> paths. Do not check existence first (another process may delete the file between check and delete).`,
+    example: `<p>Paths a.tmp (exists), b.tmp (missing), c.tmp (exists) → deletes 2, returns <b>2</b>; b.tmp silently skipped.</p>`,
+    brute: { why: `<p>Look-before-you-leap: <code>if os.path.exists(p): os.remove(p)</code>. It has a race condition (the file can vanish between the two calls → crash) and does two system calls per file. A bare <code>except: pass</code> is worse: it hides permission errors and bugs.</p>`, code: `import os, tempfile
+
+def cleanup_brute(paths):
+    deleted = 0
+    for p in paths:
+        if os.path.exists(p):    # race: file may vanish right here
+            os.remove(p)
+            deleted += 1
+    return deleted
+
+d = tempfile.mkdtemp()
+p = os.path.join(d, 'a.tmp'); open(p, 'w').close()
+print(cleanup_brute([p, os.path.join(d, 'missing.tmp')]))` },
+    mcq: { q: 'Which line ignores ONLY missing files?', options: ['with suppress(FileNotFoundError): os.remove(p)', 'try: os.remove(p)\nexcept: pass', 'with suppress(Exception): os.remove(p)', 'if os.path.exists(p): os.remove(p)'], answer: 0, explain: 'suppress takes exact exception types. A bare except or suppress(Exception) would also hide PermissionError and real bugs; exists() has a race condition.' },
+    hints: [`<p>Hint 1: EAFP — "easier to ask forgiveness than permission": just try to remove, and handle the specific failure.</p>`, `<p>Hint 2: <code>contextlib.suppress(FileNotFoundError)</code> is a context manager whose <code>__exit__</code> returns True only for that type.</p>`, `<p>Hint 3: To count deletions, increment after <code>os.remove</code> <b>inside</b> the with block — if remove raises, the increment is skipped. Or use <code>pathlib.Path.unlink(missing_ok=True)</code> (3.8+).</p>`],
+    solution: {
+      approach: `<p>EAFP with <code>suppress</code>: the counter line is skipped automatically when the file is missing, because the exception jumps to <code>__exit__</code>. Other errors propagate.</p>`,
+      code: { lang: 'python', run: true, code: `import os, tempfile
+from contextlib import suppress
+
+def cleanup(paths):
+    deleted = 0
+    for p in paths:
+        with suppress(FileNotFoundError):
+            os.remove(p)
+            deleted += 1        # skipped if remove() raised
+    return deleted
+
+d = tempfile.mkdtemp()
+paths = [os.path.join(d, n) for n in ('a.tmp', 'b.tmp', 'c.tmp')]
+for p in (paths[0], paths[2]):
+    open(p, 'w').close()        # create a.tmp and c.tmp only
+print(cleanup(paths))            # 2
+print(cleanup(paths))            # 0 (all gone, no crash)
+os.rmdir(d)` },
+      complexity: `<p>O(n) system calls, O(1) memory.</p>`,
+      followUps: ['Collect the paths that failed with other errors instead of stopping (ExceptionGroup in 3.11+).', 'Delete a whole directory tree: shutil.rmtree(path, ignore_errors=...) vs onexc callback (3.12).']
+    }
+  });
+
+  /* ================= PRACTICE: Medium ================= */
+  practice.push({
+    title: 'Sliding Window Generator & Moving Average', level: 'Medium', tags: ['generator', 'deque', 'streaming'], companies: ['Uber', 'Two Sigma', 'Netflix'],
+    statement: `<p>Write <code>windows(iterable, k)</code> that lazily yields every window of <code>k</code> consecutive items as a tuple, and use it to compute the moving average of a stream of response times. It must work on infinite streams.</p>`,
+    constraints: `1 ≤ k ≤ 10<sup>5</sup>; stream length unbounded. Each step O(1) amortised for the averaging (avoid re-summing each window).`,
+    example: `<p>${H.arr([1, 2, 3, 4, 5], { label: 'stream' })} k = 3 → windows (1,2,3) (2,3,4) (3,4,5) → averages <b>2.0, 3.0, 4.0</b>. If the stream is shorter than k, nothing is yielded.</p>`,
+    brute: { why: `<p>Convert to a list and slice: <code>[xs[i:i+k] for i in range(len(xs) - k + 1)]</code>. Needs the whole stream in memory (impossible if infinite) and copies k items per window → O(n·k). Averaging each slice with <code>sum()</code> is another O(k) per step.</p>`, code: `def moving_avg_brute(xs, k):
+    xs = list(xs)
+    return [sum(xs[i:i + k]) / k for i in range(len(xs) - k + 1)]
+
+print(moving_avg_brute([1, 2, 3, 4, 5], 3))` },
+    mcq: { q: 'Which structure gives an O(1) "push right, drop left" window?', options: ['collections.deque(maxlen=k)', 'list with pop(0)', 'a tuple rebuilt each step', 'a set'], answer: 0, explain: 'deque appends and pops at both ends in O(1); with maxlen=k it automatically drops the oldest item. list.pop(0) is O(k).' },
+    hints: [`<p>Hint 1: Keep the current window in <code>deque(maxlen=k)</code>; once it is full, every new item produces a window.</p>`, `<p>Hint 2: For the average, keep a running sum: add the new item, subtract the item that falls out (read it as <code>window[0]</code> <b>before</b> appending when the deque is full).</p>`, `<p>Hint 3: Fill the first k − 1 items with <code>islice</code>, then loop over the rest of the same iterator. Yield <code>tuple(window)</code> so callers do not see later mutation.</p>`],
+    solution: {
+      approach: `<p>A deque with maxlen holds the last k items; a running sum turns each average into O(1). Both functions are generators, so the stream can be infinite.</p>`,
+      code: { lang: 'python', run: true, code: `from collections import deque
+from itertools import islice, count
+
+def windows(iterable, k):
+    it = iter(iterable)
+    window = deque(islice(it, k - 1), maxlen=k)   # first k-1 items
+    for x in it:
+        window.append(x)                          # oldest dropped automatically
+        yield tuple(window)
+
+def moving_average(iterable, k):
+    it = iter(iterable)
+    window = deque(maxlen=k)
+    total = 0
+    for x in it:
+        if len(window) == k:
+            total -= window[0]                    # item about to fall out
+        window.append(x)
+        total += x
+        if len(window) == k:
+            yield total / k
+
+print(list(windows([1, 2, 3, 4, 5], 3)))          # [(1,2,3), (2,3,4), (3,4,5)]
+print(list(moving_average([1, 2, 3, 4, 5], 3)))   # [2.0, 3.0, 4.0]
+print(list(islice(moving_average(count(), 4), 3)))  # infinite input is fine` },
+      dry: { head: ['x', 'window', 'total', 'yield'], rows: [['1', '[1]', '1', '—'], ['2', '[1, 2]', '3', '—'], ['3', '[1, 2, 3]', '6', '2.0'], ['4', '[2, 3, 4]', '9', '3.0'], ['5', '[3, 4, 5]', '12', '4.0']] },
+      complexity: `<p><code>moving_average</code>: O(1) per item, O(k) memory. <code>windows</code>: O(k) per yielded tuple (copying), O(k) memory.</p>`,
+      followUps: ['Floating-point drift in long running sums — when to recompute or use math.fsum?', 'Sliding window maximum (see the Hard problem).']
+    }
+  });
+
+  practice.push({
+    title: 'Round-Robin Interleave of Iterables', level: 'Medium', tags: ['iterators', 'deque', 'itertools'], companies: ['Google', 'Meta'],
+    statement: `<p>Write a generator <code>roundrobin(*iterables)</code> that takes one item from each iterable in turn, skipping the ones that run out: <code>roundrobin('ABC', 'D', 'EF')</code> → A D E B F C. Iterables may be generators of different (even unknown) lengths.</p>`,
+    constraints: `Up to 10<sup>4</sup> iterables, 10<sup>6</sup> total items. Each yielded item should cost O(1).`,
+    example: `<p>Turn order: A(1st) D(2nd) E(3rd) → B(1st) [2nd exhausted, removed] F(3rd) → C(1st) [3rd exhausted]. Output <code>['A', 'D', 'E', 'B', 'F', 'C']</code>.</p>`,
+    brute: { why: `<p>Convert everything to lists and loop <code>for i in range(max_len): for lst in lists: if i &lt; len(lst): yield lst[i]</code>. Materialises every input (no infinite or huge streams) and keeps checking exhausted lists on every round: O(k · max_len) checks.</p>`, code: `def roundrobin_brute(*iterables):
+    lists = [list(it) for it in iterables]
+    for i in range(max(map(len, lists), default=0)):
+        for lst in lists:
+            if i < len(lst):
+                yield lst[i]
+
+print(list(roundrobin_brute('ABC', 'D', 'EF')))` },
+    mcq: { q: 'How do you remove an exhausted iterator from the rotation cheaply?', options: ['Keep iterators in a deque; popleft, try next(), and only append back if it produced a value', 'Rebuild a list of live iterators every round', 'Use zip()', 'Catch StopIteration and restart from the first iterator'], answer: 0, explain: 'A deque rotation gives O(1) per step; an exhausted iterator simply is not re-appended. zip stops at the shortest input.' },
+    hints: [`<p>Hint 1: Store <code>iter(x)</code> for each input in a <code>deque</code> — the queue of "whose turn is it".</p>`, `<p>Hint 2: Loop while the deque is not empty: <code>it = q.popleft()</code>; try <code>yield next(it)</code>; on success append it back to the right.</p>`, `<p>Hint 3: On <code>StopIteration</code> just do not re-append. Careful: do not let StopIteration escape the generator (PEP 479) — catch it. Alternative from the docs recipes uses <code>cycle</code> + <code>islice</code>.</p>`],
+    solution: {
+      approach: `<p>A queue of live iterators. Each step serves the iterator at the front and puts it at the back if it is still alive. Every item costs O(1), and exhausted iterators disappear once.</p>`,
+      code: { lang: 'python', run: true, code: `from collections import deque
+
+def roundrobin(*iterables):
+    queue = deque(iter(it) for it in iterables)
+    while queue:
+        it = queue.popleft()
+        try:
+            value = next(it)
+        except StopIteration:
+            continue              # exhausted: drop it from the rotation
+        yield value
+        queue.append(it)          # still alive: back of the line
+
+print(list(roundrobin('ABC', 'D', 'EF')))          # ['A', 'D', 'E', 'B', 'F', 'C']
+print(list(roundrobin([], (x * x for x in range(3)), 'z')))   # [0, 'z', 1, 4]` },
+      dry: { head: ['queue (front→back)', 'serve', 'yield', 'action'], rows: [['ABC, D, EF', 'ABC', 'A', 'append back'], ['D, EF, BC', 'D', 'D', 'append back'], ['EF, BC, (D done)', 'EF', 'E', 'append back'], ['BC, ∅, F', 'BC', 'B', 'append back'], ['∅(D), F, C', 'D-iter', '—', '<span class="c-r">exhausted → dropped</span>'], ['F, C', 'F', 'F', '…']] },
+      complexity: `<p>O(total items + k) time, O(k) memory for k iterables.</p>`,
+      followUps: ['Zigzag Iterator (LeetCode 281) as a class with next()/hasNext().', 'Weighted round robin: iterable i yields w[i] items per turn.']
+    }
+  });
+
+  practice.push({
+    title: 'Peekable Iterator', level: 'Medium', tags: ['iterator protocol', 'class design'], companies: ['Google', 'Apple', 'Pinterest'],
+    statement: `<p>Wrap any iterator in a class <code>Peekable</code> that supports <code>peek()</code> (see the next item without consuming it), <code>next()</code> (normal iteration) and <code>has_next()</code>. It must also work in a <code>for</code> loop. (LeetCode 284.)</p>`,
+    constraints: `Wrapped iterator may be infinite or a generator; peek() may be called many times in a row; O(1) per operation.`,
+    example: `<p><code>p = Peekable(iter([1, 2, 3]))</code>: <code>p.peek()</code> → 1, <code>p.peek()</code> → 1, <code>next(p)</code> → 1, <code>next(p)</code> → 2, <code>p.has_next()</code> → True, <code>list(p)</code> → [3], <code>p.has_next()</code> → False.</p>`,
+    brute: { why: `<p>Convert the source to a list and keep an index. peek is <code>lst[i]</code>. Works, but destroys laziness: an infinite generator never finishes converting, and a big one wastes memory.</p>`, code: `class PeekableList:
+    def __init__(self, it):
+        self.items, self.i = list(it), 0     # materialises everything
+    def peek(self):
+        return self.items[self.i]
+    def __next__(self):
+        if self.i >= len(self.items):
+            raise StopIteration
+        self.i += 1
+        return self.items[self.i - 1]
+    def __iter__(self):
+        return self
+
+p = PeekableList(iter([1, 2, 3]))
+print(p.peek(), next(p), list(p))` },
+    mcq: { q: 'How do you peek without losing the value?', options: ['Pull it with next() and cache it in a buffer slot until it is consumed', 'Call next() and then "un-next" the iterator', 'Copy the iterator with copy.copy', 'Use itertools.tee every time'], answer: 0, explain: 'Iterators cannot go back. Pull one item ahead and store it (with a sentinel meaning "nothing cached"); next() returns the cached item first.' },
+    hints: [`<p>Hint 1: Keep one cached item in <code>self._buf</code>, using a private sentinel for "empty cache" (None might be a real value!).</p>`, `<p>Hint 2: <code>peek()</code>: if cache empty, fill it with <code>next(self._it)</code> (StopIteration propagates — or accept a default). <code>__next__</code>: if cache full, return it and clear; else delegate.</p>`, `<p>Hint 3: <code>has_next()</code> = try to peek, return False on StopIteration. Add <code>__iter__</code> returning self and <code>__bool__</code> for convenience.</p>`],
+    solution: {
+      approach: `<p>A one-item look-ahead buffer with a sentinel. Every operation is O(1) and the wrapped iterator is consumed lazily, so infinite sources work.</p>`,
+      code: { lang: 'python', run: true, code: `from itertools import count
+
+_EMPTY = object()
+
+class Peekable:
+    def __init__(self, iterable):
+        self._it = iter(iterable)
+        self._buf = _EMPTY
+
+    def __iter__(self):
+        return self
+
+    def peek(self, default=_EMPTY):
+        if self._buf is _EMPTY:
+            try:
+                self._buf = next(self._it)
+            except StopIteration:
+                if default is _EMPTY:
+                    raise
+                return default
+        return self._buf
+
+    def __next__(self):
+        if self._buf is not _EMPTY:
+            value, self._buf = self._buf, _EMPTY
+            return value
+        return next(self._it)
+
+    def has_next(self):
+        return self.peek(_SENTINEL_FALSE) is not _SENTINEL_FALSE
+
+_SENTINEL_FALSE = object()
+
+p = Peekable([1, 2, 3])
+print(p.peek(), p.peek(), next(p), next(p), p.has_next(), list(p), p.has_next())
+q = Peekable(count(10))
+print(q.peek(), next(q), next(q))      # 10 10 11 (infinite source OK)
+r = Peekable([None, 0])
+print(r.peek(), r.has_next(), list(r))  # None True [None, 0]` },
+      complexity: `<p>O(1) time per operation, O(1) extra memory.</p>`,
+      followUps: ['Support peek(n) for n items ahead (use a deque buffer).', 'Add prepend(x) to push items back (more_itertools.peekable does).']
+    }
+  });
+
+  practice.push({
+    title: 'Chunk a Stream into Batches (and the Shared-Iterator Trick)', level: 'Medium', tags: ['islice', 'iterator', 'batching', 'predict the output'], companies: ['Snowflake', 'Databricks', 'Amazon'],
+    statement: `<p>Write <code>chunks(iterable, n)</code> that yields lists of up to <code>n</code> items from any (possibly huge) iterable, without <code>itertools.batched</code>. Then <b>predict</b> what <code>[list(islice(range(7), 3)) for _ in range(3)]</code> prints and explain why your version does not have that bug.</p>`,
+    constraints: `n ≥ 1; up to 10<sup>9</sup> items streamed; memory O(n).`,
+    example: `<p><code>list(chunks(range(7), 3))</code> → <code>[[0, 1, 2], [3, 4, 5], [6]]</code>. The predict-the-output line prints <code>[[0, 1, 2], [0, 1, 2], [0, 1, 2]]</code> because <code>range(7)</code> is an iterable and each <code>islice</code> starts a fresh iterator.</p>`,
+    brute: { why: `<p>Slice a list: <code>[xs[i:i+n] for i in range(0, len(xs), n)]</code>. Requires a sequence (len + slicing), so generators/files must be fully materialised first.</p>`, code: `def chunks_brute(iterable, n):
+    xs = list(iterable)                          # entire stream in memory
+    return [xs[i:i + n] for i in range(0, len(xs), n)]
+
+print(chunks_brute(range(7), 3))` },
+    mcq: { q: 'What makes repeated islice calls continue where the previous one stopped?', options: ['Calling iter() once and slicing the SAME iterator each time', 'Passing step=n to islice', 'Wrapping the input in list()', 'Using range instead of a generator'], answer: 0, explain: 'islice consumes from whatever iterator it is given. With one shared iterator, each islice picks up where the last one ended; with an iterable like range, each call creates a fresh iterator from the start.' },
+    hints: [`<p>Hint 1: Call <code>it = iter(iterable)</code> exactly once.</p>`, `<p>Hint 2: Loop: <code>chunk = list(islice(it, n))</code>; if the chunk is empty, stop; else yield it.</p>`, `<p>Hint 3: Python 3.8+ walrus makes it a 2-liner: <code>while chunk := list(islice(it, n)): yield chunk</code>. Validate n ≥ 1: with n = 0, <code>islice(it, 0)</code> is always empty, so the loop would end at once and silently yield nothing.</p>`],
+    solution: {
+      approach: `<p>One shared iterator + repeated <code>islice</code>. Each chunk is built with O(n) memory and the stream advances exactly once. The walrus operator keeps the loop compact.</p>`,
+      code: { lang: 'python', run: true, code: `from itertools import islice
+
+def chunks(iterable, n):
+    if n < 1:
+        raise ValueError('n must be at least 1')
+    it = iter(iterable)                     # ONE bookmark shared by all slices
+    while chunk := list(islice(it, n)):
+        yield chunk
+
+print(list(chunks(range(7), 3)))            # [[0, 1, 2], [3, 4, 5], [6]]
+print([list(islice(range(7), 3)) for _ in range(3)])        # bug: fresh iterator each time
+it = iter(range(7))
+print([list(islice(it, 3)) for _ in range(3)])              # fixed: [[0,1,2],[3,4,5],[6]]
+print(list(chunks((x * x for x in range(5)), 2)))           # works on generators` },
+      complexity: `<p>O(total items) time, O(n) memory per chunk.</p>`,
+      followUps: ['Yield lazy sub-iterators instead of lists — what goes wrong if the caller skips one?', 'Use itertools.batched(it, n, strict=True) on 3.13 to require full chunks.']
+    }
+  });
+
+  practice.push({
+    title: 'Atomic File Write Context Manager', level: 'Medium', tags: ['context manager', 'files', 'os.replace', 'reliability'], companies: ['Dropbox', 'Stripe', 'Cloudflare'],
+    statement: `<p>Writing a config file directly is dangerous: if the program crashes half-way, the file is left truncated. Write a context manager <code>atomic_write(path)</code> that yields a file object; on success it <b>atomically replaces</b> <code>path</code> with the new content, and on any exception it deletes the temporary file and leaves the original untouched (re-raising the error).</p>`,
+    constraints: `Same filesystem for temp file and target. Must not leak temp files. Exceptions must propagate.`,
+    example: `<p>config.json contains <code>{"v": 1}</code>. <code>with atomic_write(p) as f: f.write('{"v": 2}')</code> → file now <code>{"v": 2}</code>. With <code>raise</code> after a partial write → file still <code>{"v": 1}</code>, no stray .tmp files.</p>`,
+    brute: { why: `<p><code>open(path, 'w')</code> truncates the real file immediately. If the process dies (or an exception happens) after truncation but before all writes, readers see an empty or half-written file — corrupted config.</p>`, code: `import os, tempfile
+
+def save_brute(path, text, fail=False):
+    with open(path, 'w') as f:      # original content destroyed right here
+        f.write(text[:3])
+        if fail:
+            raise RuntimeError('crash mid-write')
+        f.write(text[3:])
+
+p = os.path.join(tempfile.mkdtemp(), 'cfg.json')
+save_brute(p, '{"v": 1}')
+try:
+    save_brute(p, '{"v": 2}', fail=True)
+except RuntimeError:
+    pass
+print(open(p).read())               # '{"v' -> corrupted!` },
+    mcq: { q: 'Why write to a temp file in the SAME directory and then os.replace?', options: ['os.replace is atomic only within one filesystem; readers see either the old or the new file', 'Temp files are faster', 'os.replace compresses the file', 'It avoids needing a with statement'], answer: 0, explain: 'A rename within one filesystem is atomic on POSIX and Windows (os.replace). Across filesystems it degrades to copy+delete, which is not atomic.' },
+    hints: [`<p>Hint 1: <code>tempfile.NamedTemporaryFile('w', dir=os.path.dirname(path), delete=False)</code> creates the temp file next to the target.</p>`, `<p>Hint 2: Use <code>@contextmanager</code>: yield the temp file; after the yield (success path) flush, <code>os.fsync</code>, close, then <code>os.replace(tmp, path)</code>.</p>`, `<p>Hint 3: Wrap in <code>try/except BaseException</code>: on error close and <code>os.unlink(tmp)</code>, then <code>raise</code>. Do not swallow the exception.</p>`],
+    solution: {
+      approach: `<p>Write everything to a sibling temp file; only when the with-body succeeds, fsync and atomically rename over the target. On failure remove the temp file and re-raise. Readers never observe a partial file.</p>`,
+      code: { lang: 'python', run: true, code: `import os, tempfile
+from contextlib import contextmanager
+
+@contextmanager
+def atomic_write(path, mode='w', encoding='utf-8'):
+    directory = os.path.dirname(os.path.abspath(path))
+    tmp = tempfile.NamedTemporaryFile(mode, dir=directory, delete=False,
+                                      encoding=encoding, suffix='.tmp')
+    try:
+        yield tmp                        # caller writes here
+        tmp.flush()
+        os.fsync(tmp.fileno())           # make sure bytes hit the disk
+        tmp.close()
+        os.replace(tmp.name, path)       # atomic swap
+    except BaseException:
+        tmp.close()
+        os.unlink(tmp.name)              # no stray temp files
+        raise                            # never swallow
+
+d = tempfile.mkdtemp()
+p = os.path.join(d, 'cfg.json')
+with atomic_write(p) as f:
+    f.write('{"v": 1}')
+try:
+    with atomic_write(p) as f:
+        f.write('{"v')
+        raise RuntimeError('crash mid-write')
+except RuntimeError as e:
+    print('error:', e)
+print(open(p).read(), sorted(os.listdir(d)))   # {"v": 1} ['cfg.json']` },
+      complexity: `<p>O(size of content) I/O; one extra rename. Memory O(1) beyond the file buffer.</p>`,
+      followUps: ['Also fsync the directory so the rename survives power loss on POSIX.', 'Preserve the original file permissions (os.stat + os.chmod before replace).', 'Make an async version with aiofiles and asynccontextmanager.']
+    }
+  });
+
+  /* ================= PRACTICE: Hard ================= */
+  practice.push({
+    title: 'Merge K Sorted Streams Lazily', level: 'Hard', tags: ['generator', 'heap', 'k-way merge'], companies: ['Google', 'Amazon', 'Bloomberg', 'Snowflake'],
+    statement: `<p>You receive <code>k</code> iterators, each yielding numbers in ascending order (e.g. sorted log files from k servers). Write a generator <code>merge_sorted(*iterators)</code> that yields all numbers in ascending order, <b>lazily</b>, without reading any input more than one item ahead. Do not use <code>heapq.merge</code> (but compare with it).</p>`,
+    constraints: `k ≤ 10<sup>4</sup>, total N ≤ 10<sup>9</sup> items (cannot fit in memory). Memory must be O(k). Each output item should cost O(log k).`,
+    example: `<p>Streams <code>[1, 4, 7]</code>, <code>[2, 5]</code>, <code>[0, 6, 8, 9]</code> → <code>0 1 2 4 5 6 7 8 9</code>. The first output (0) is available after reading just one item from each stream.</p>`,
+    brute: { why: `<p>Read everything and sort: <code>sorted(chain(*iterators))</code>. O(N log N) time, O(N) memory — impossible for 10<sup>9</sup> items, and the first result appears only after reading everything. It also ignores the fact that each input is already sorted.</p>`, code: `from itertools import chain
+
+def merge_brute(*iterators):
+    return sorted(chain(*iterators))     # materialises all N items
+
+print(merge_brute(iter([1, 4, 7]), iter([2, 5]), iter([0, 6, 8, 9])))` },
+    mcq: { q: 'What should the heap contain at any moment?', options: ['One (current value, stream index, iterator) entry per non-exhausted stream', 'All items read so far', 'Only the global minimum', 'The last item of each stream'], answer: 0, explain: 'Each stream contributes only its current head. Pop the smallest head, yield it, then push that stream\'s next item. The heap never exceeds k entries.' },
+    hints: [`<p>Hint 1: The next output is always the smallest of the k current heads. A min-heap gives that in O(log k).</p>`, `<p>Hint 2: Push tuples <code>(value, i, it)</code>. The index <code>i</code> breaks ties so Python never tries to compare two iterator objects (which raises TypeError).</p>`, `<p>Hint 3: Recipe: seed the heap with each stream's first item (skip empty streams). Loop: pop (v, i, it), yield v, <code>nxt = next(it, END)</code>; if not END push (nxt, i, it). Use <code>heapreplace</code> to pop+push in one step.</p>`],
+    solution: {
+      approach: `<p>Classic k-way merge with a heap of stream heads. Laziness comes for free: we only pull from the stream whose item was just emitted. Same algorithm as <code>heapq.merge</code> and the merge phase of external sort.</p>`,
+      code: { lang: 'python', run: true, code: `import heapq
+from itertools import islice, count
+
+_END = object()
+
+def merge_sorted(*iterators):
+    heap = []
+    for i, it in enumerate(map(iter, iterators)):
+        first = next(it, _END)
+        if first is not _END:
+            heap.append((first, i, it))
+    heapq.heapify(heap)
+    while heap:
+        value, i, it = heap[0]
+        yield value
+        nxt = next(it, _END)
+        if nxt is _END:
+            heapq.heappop(heap)                      # stream finished
+        else:
+            heapq.heapreplace(heap, (nxt, i, it))    # pop + push in one go
+
+print(list(merge_sorted([1, 4, 7], [2, 5], [0, 6, 8, 9])))
+print(list(heapq.merge([1, 4, 7], [2, 5], [0, 6, 8, 9])))   # stdlib equivalent
+evens, odds = count(0, 2), count(1, 2)                     # infinite inputs!
+print(list(islice(merge_sorted(evens, odds), 8)))` },
+      dry: { head: ['heap heads', 'yield', 'pull from', 'push'], rows: [['0, 1, 2', '0', 'stream 3', '6'], ['1, 2, 6', '1', 'stream 1', '4'], ['2, 4, 6', '2', 'stream 2', '5'], ['4, 5, 6', '4', 'stream 1', '7'], ['5, 6, 7', '5', 'stream 2', '(end → pop)']] },
+      complexity: `<p>O(N log k) time, O(k) memory. First output after k reads.</p>`,
+      followUps: ['Add key= and reverse= like heapq.merge.', 'Deduplicate equal values across streams while merging.', 'External sort: how do you produce the k sorted runs from a 1 TB file?']
+    }
+  });
+
+  practice.push({
+    title: 'BST Iterator with O(h) Memory', level: 'Hard', tags: ['iterator protocol', 'stack', 'generator', 'tree'], companies: ['Meta', 'Microsoft', 'LinkedIn', 'Google'],
+    statement: `<p>Implement <code>BSTIterator(root)</code> with <code>next()</code> (return the next smallest value) and <code>has_next()</code>, plus support for Python's <code>for</code> loop. Both operations must be <b>amortised O(1)</b> and memory must be <b>O(h)</b> where h is the tree height — you may not store the full in-order list. (LeetCode 173.)</p>`,
+    constraints: `Up to 10<sup>5</sup> nodes; tree may be completely skewed (h = n), so avoid recursion-depth problems.`,
+    example: `<p>Tree 7 → (3, 15 → (9, 20)). Calls: next → 3, next → 7, has_next → True, next → 9, next → 15, next → 20, has_next → False.</p>${H.arr([3, 7, 9, 15, 20], { label: 'in-order', hl: { 0: 'g', 1: 'g' } })}`,
+    brute: { why: `<p>Do a full in-order traversal into a list in the constructor, then walk an index. next/has_next are O(1), but memory is O(n) and the constructor does O(n) work even if the caller only wants the smallest value. Recursive traversal also crashes on a skewed tree of depth 10<sup>5</sup>.</p>`, code: `class Node:
+    def __init__(self, val, left=None, right=None):
+        self.val, self.left, self.right = val, left, right
+
+class BSTIteratorList:
+    def __init__(self, root):
+        self.vals, self.i = [], 0
+        def inorder(n):
+            if n:
+                inorder(n.left); self.vals.append(n.val); inorder(n.right)
+        inorder(root)                        # O(n) memory, recursion depth h
+    def next(self):
+        self.i += 1
+        return self.vals[self.i - 1]
+    def has_next(self):
+        return self.i < len(self.vals)
+
+it = BSTIteratorList(Node(7, Node(3), Node(15, Node(9), Node(20))))
+print(it.next(), it.next(), it.has_next())` },
+    mcq: { q: 'What does the stack hold in the O(h) solution?', options: ['The path of nodes whose left subtree is done but which have not been returned yet', 'All nodes of the tree', 'Only leaf nodes', 'The values already returned'], answer: 0, explain: 'Push the leftmost path. next() pops the top (the smallest unreturned node), then pushes the leftmost path of its right child. The stack never holds more than one root-to-leaf path.' },
+    hints: [`<p>Hint 1: The smallest value is reached by going left as far as possible. Push every node on that path.</p>`, `<p>Hint 2: <code>next()</code>: pop node n, then push the left spine of <code>n.right</code>. <code>has_next()</code>: stack not empty. Each node is pushed and popped once → amortised O(1).</p>`, `<p>Hint 3: For the Python protocol, add <code>__iter__</code> returning self and <code>__next__</code> raising StopIteration when the stack is empty. Bonus: an iterative generator version is only ~8 lines.</p>`],
+    solution: {
+      approach: `<p>Controlled iterative in-order traversal: the explicit stack replaces the call stack, so there is no recursion limit, memory is O(h), and each node is pushed/popped exactly once. We also show the equivalent generator.</p>`,
+      code: { lang: 'python', run: true, code: `class Node:
+    def __init__(self, val, left=None, right=None):
+        self.val, self.left, self.right = val, left, right
+
+class BSTIterator:
+    def __init__(self, root):
+        self._stack = []
+        self._push_left(root)
+
+    def _push_left(self, node):
+        while node:
+            self._stack.append(node)
+            node = node.left
+
+    def has_next(self):
+        return bool(self._stack)
+
+    def next(self):
+        node = self._stack.pop()          # smallest unreturned value
+        self._push_left(node.right)       # its successor lives on the right
+        return node.val
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        if not self._stack:
+            raise StopIteration
+        return self.next()
+
+def inorder_gen(root):                    # same algorithm as a generator
+    stack, node = [], root
+    while stack or node:
+        while node:
+            stack.append(node)
+            node = node.left
+        node = stack.pop()
+        yield node.val
+        node = node.right
+
+root = Node(7, Node(3), Node(15, Node(9), Node(20)))
+it = BSTIterator(root)
+print(it.next(), it.next(), it.has_next(), list(it), it.has_next())
+skewed = None
+for v in range(100_000, 0, -1):           # depth 100,000: no recursion used
+    skewed = Node(v, left=skewed)
+print(sum(BSTIterator(skewed)), next(inorder_gen(skewed)))` },
+      dry: { head: ['call', 'stack before (top right)', 'returns', 'stack after'], rows: [['init', '—', '—', '[7, 3]'], ['next', '[7, 3]', '3', '[7]'], ['next', '[7]', '7', '[15, 9]'], ['next', '[15, 9]', '9', '[15]'], ['next', '[15]', '15', '[20]'], ['next', '[20]', '20', '[] → has_next False']] },
+      complexity: `<p>next(): amortised O(1) (each node pushed and popped once), worst case O(h) for one call. has_next(): O(1). Memory O(h).</p>`,
+      followUps: ['Add peek() and prev() (two stacks / a list of visited values).', 'Two BST iterators (forward and reverse) solve "Two Sum IV in a BST" in O(h) memory.', 'Why does a recursive yield from version cost O(h) per value?']
+    }
+  });
+
+  practice.push({
+    title: 'Implement groupby Yourself (Exact Semantics)', level: 'Hard', tags: ['generators', 'closures', 'iterator protocol', 'itertools'], companies: ['Jane Street', 'Google', 'Bloomberg'],
+    statement: `<p>Re-implement <code>itertools.groupby(iterable, key=None)</code> as a generator <code>my_groupby</code> with the same behaviour: it yields <code>(key, group)</code> pairs for runs of consecutive equal keys; each group is a <b>lazy</b> iterator sharing the underlying input; when the outer iterator advances, the previous group must become empty; unconsumed group items are skipped. Single pass, O(1) extra memory.</p>`,
+    constraints: `Input may be a one-shot generator of 10<sup>9</sup> items; do not buffer whole groups.`,
+    example: `<p><code>[(k, list(g)) for k, g in my_groupby('aaabccaa')]</code> → <code>[('a', ['a','a','a']), ('b', ['b']), ('c', ['c','c']), ('a', ['a','a'])]</code>. And <code>g = list(my_groupby('aab'))</code> → <code>list(g[0][1])</code> is <code>[]</code>, exactly like itertools.</p>`,
+    brute: { why: `<p>Buffer each run into a list and yield <code>(key, iter(run_list))</code>. Behaviour looks right in simple tests, but memory is O(longest run) — a single run of 10<sup>9</sup> equal items blows up — and the "previous group becomes empty" rule is not reproduced, so code relying on itertools semantics behaves differently.</p>`, code: `def groupby_buffered(iterable, key=None):
+    keyfunc = key or (lambda x: x)
+    run, run_key, first = [], None, True
+    for x in iterable:
+        k = keyfunc(x)
+        if not first and k != run_key:
+            yield run_key, iter(run)      # whole run held in memory
+            run = []
+        run.append(x)
+        run_key, first = k, False
+    if not first:
+        yield run_key, iter(run)
+
+print([(k, list(g)) for k, g in groupby_buffered('aaabccaa')])` },
+    mcq: { q: 'How can an old group "know" that the outer iterator has moved on?', options: ['Each group remembers an id; the outer generator bumps a shared counter for every new group, and an old group stops when ids differ', 'Groups check the length of the input', 'The outer generator deletes the group object', 'It cannot; itertools copies the data'], answer: 0, explain: 'A shared, monotonically increasing group id (read through a closure) lets every inner generator detect it is stale and return immediately.' },
+    hints: [`<p>Hint 1: Keep shared state in the outer generator: the current item <code>cur</code>, its key <code>cur_key</code>, and a <code>group_id</code>. Inner generators read/modify it via <code>nonlocal</code>.</p>`, `<p>Hint 2: Inner <code>grouper(my_id, target)</code>: while it is still the active group and <code>cur_key == target</code>: yield cur, then advance cur. After each resume, re-check <code>my_id == group_id</code>.</p>`, `<p>Hint 3: Outer loop: bump group_id, yield (target, grouper(...)); when resumed, skip any items still having key == target (the consumer may not have read them). Use a sentinel for "input exhausted".</p>`],
+    solution: {
+      approach: `<p>Outer generator + inner generator sharing state through a closure. The group id implements invalidation; the skip loop handles partially consumed groups. Every item is read exactly once from the input, and memory is O(1).</p>`,
+      code: { lang: 'python', run: true, code: `import itertools
+
+_END = object()
+
+def my_groupby(iterable, key=None):
+    keyfunc = (lambda x: x) if key is None else key
+    it = iter(iterable)
+    cur = next(it, _END)
+    cur_key = keyfunc(cur) if cur is not _END else None
+    group_id = 0
+
+    def advance():
+        nonlocal cur, cur_key
+        cur = next(it, _END)
+        if cur is not _END:
+            cur_key = keyfunc(cur)
+
+    def grouper(my_id, target):
+        while my_id == group_id and cur is not _END and cur_key == target:
+            yield cur
+            if my_id != group_id:          # outer moved on while we were paused
+                return
+            advance()
+
+    while cur is not _END:
+        target = cur_key
+        group_id += 1
+        yield target, grouper(group_id, target)
+        while cur is not _END and cur_key == target:   # skip unread items
+            advance()
+
+def compare(data, key=None):
+    mine = [(k, list(g)) for k, g in my_groupby(data, key)]
+    real = [(k, list(g)) for k, g in itertools.groupby(data, key)]
+    return mine == real, mine
+
+print(compare('aaabccaa'))
+print(compare([1, 3, 5, 2, 4, 7], key=lambda x: x % 2))
+print(compare(''))
+g = list(my_groupby('aab'))
+print([list(grp) for _, grp in g], [list(grp) for _, grp in itertools.groupby('aab')])
+partial = my_groupby('xxxyy')
+k1, g1 = next(partial)
+print(next(g1), next(partial)[0], list(g1))   # x y []` },
+      dry: { head: ['event', 'cur', 'group_id', 'effect'], rows: [['start', "'a'", '0', 'read first item'], ['outer yields a-group', "'a'", '1', 'grouper(1, a) created'], ['list(group) ×3', "'b'", '1', "yields a, a, a; stops at 'b'"], ['outer yields b-group', "'b'", '2', 'old a-group now stale'], ['list(old a-group)', "'b'", '2', '<span class="c-r">my_id 1 ≠ 2 → []</span>']] },
+      complexity: `<p>O(n) time total (each item read once, key computed once), O(1) extra memory.</p>`,
+      followUps: ['Why does itertools.groupby compute the key exactly once per element? Verify yours does too.', 'Write ungroup/flatten that reverses groupby lazily.', 'Implement the same with a class-based iterator instead of generators.']
+    }
+  });
+
+  practice.push({
+    title: 'Transactional Dict with Nested Savepoints', level: 'Hard', tags: ['context manager', 'undo log', 'design'], companies: ['Stripe', 'Databricks', 'Robinhood'],
+    statement: `<p>Build <code>TxDict</code>, a dict-like store with a <code>transaction()</code> context manager. Changes made inside a transaction are kept if the block succeeds and <b>rolled back</b> if it raises (and the exception propagates). Transactions can be <b>nested</b>: an inner failure rolls back only the inner changes (a savepoint), while an outer failure rolls back everything, including inner blocks that succeeded.</p>`,
+    constraints: `Store may hold 10<sup>6</sup> keys; a transaction typically touches a handful. Rollback cost must be O(changes), not O(store size).`,
+    example: `<p>Start <code>{'a': 1}</code>. Outer tx sets b=2; inner tx sets a=99 then raises → inner rolled back (a=1, b=2 kept). Outer then raises → b removed. Final <code>{'a': 1}</code>.</p>`,
+    brute: { why: `<p>Take <code>copy.deepcopy(self.data)</code> at the start of each transaction and restore it on error. Correct and simple, but every transaction costs O(store size) — with 10<sup>6</sup> keys and thousands of small transactions per second, copying dominates everything.</p>`, code: `import copy
+from contextlib import contextmanager
+
+class TxDictSnapshot:
+    def __init__(self):
+        self.data = {}
+
+    @contextmanager
+    def transaction(self):
+        snapshot = copy.deepcopy(self.data)      # O(n) every time
+        try:
+            yield self.data
+        except BaseException:
+            self.data.clear()
+            self.data.update(snapshot)
+            raise
+
+s = TxDictSnapshot()
+try:
+    with s.transaction() as d:
+        d['x'] = 1
+        raise ValueError
+except ValueError:
+    pass
+print(s.data)` },
+    mcq: { q: 'What should be recorded to roll back in O(changes)?', options: ['An undo log of (key, previous value or MISSING) per write, one log per open transaction', 'A full copy of the dict per write', 'Only the keys written, without old values', 'Nothing — re-read from disk'], answer: 0, explain: 'Replaying old values in reverse order restores the exact previous state. A MISSING sentinel distinguishes "key did not exist" (delete it) from "key was None".' },
+    hints: [`<p>Hint 1: Keep a stack of undo logs, one per open transaction. Every write appends <code>(key, old_value_or_MISSING)</code> to the <b>innermost</b> log.</p>`, `<p>Hint 2: On error: pop the log and replay it <b>in reverse</b> (MISSING → delete the key, else restore the value), then re-raise.</p>`, `<p>Hint 3: On success of a nested transaction: pop its log and <b>append it to the parent's log</b> — so if the parent later fails, it can undo the child's changes too. On success of the outermost, just drop the log.</p>`],
+    solution: {
+      approach: `<p>Undo logging (the technique databases use for rollback and savepoints). Writes go through <code>__setitem__</code>/<code>__delitem__</code>, which record the previous state. The context manager owns one log level; success merges into the parent, failure replays in reverse.</p>`,
+      code: { lang: 'python', run: true, code: `from contextlib import contextmanager
+
+_MISSING = object()
+
+class TxDict:
+    def __init__(self, data=None):
+        self._data = dict(data or {})
+        self._logs = []                       # stack of undo logs
+
+    def __getitem__(self, k):
+        return self._data[k]
+
+    def __contains__(self, k):
+        return k in self._data
+
+    def __repr__(self):
+        return f'TxDict({self._data})'
+
+    def _record(self, k):
+        if self._logs:
+            self._logs[-1].append((k, self._data.get(k, _MISSING)))
+
+    def __setitem__(self, k, v):
+        self._record(k)
+        self._data[k] = v
+
+    def __delitem__(self, k):
+        if k not in self._data:
+            raise KeyError(k)
+        self._record(k)
+        del self._data[k]
+
+    @contextmanager
+    def transaction(self):
+        self._logs.append([])
+        try:
+            yield self
+        except BaseException:
+            for k, old in reversed(self._logs.pop()):
+                if old is _MISSING:
+                    self._data.pop(k, None)
+                else:
+                    self._data[k] = old
+            raise
+        else:
+            log = self._logs.pop()
+            if self._logs:
+                self._logs[-1].extend(log)    # parent can still undo us
+
+store = TxDict({'a': 1})
+try:
+    with store.transaction():
+        store['b'] = 2
+        try:
+            with store.transaction():
+                store['a'] = 99
+                del store['b']
+                raise ValueError('inner fails')
+        except ValueError:
+            print('after inner rollback:', store)   # a=1, b=2
+        with store.transaction():
+            store['c'] = 3                          # inner succeeds
+        print('before outer fails:', store)
+        raise RuntimeError('outer fails')
+except RuntimeError:
+    pass
+print('final:', store)                              # TxDict({'a': 1})` },
+      dry: { head: ['step', 'store', 'logs (innermost last)'], rows: [['outer begin', "{a:1}", '[[]]'], ["b = 2", "{a:1, b:2}", "[[(b, MISSING)]]"], ['inner: a=99, del b', "{a:99}", "[[(b,M)], [(a,1), (b,2)]]"], ['inner raises → replay reversed', "{a:1, b:2}", "[[(b,M)]]"], ['inner2: c=3 succeeds → merge', "{a:1, b:2, c:3}", "[[(b,M), (c,M)]]"], ['outer raises → replay reversed', "{a:1}", '[]']] },
+      complexity: `<p>Each write O(1) extra; rollback O(changes in that transaction, including merged children); commit of a nested tx O(its changes) for the merge. No O(n) copies.</p>`,
+      followUps: ['Record only the FIRST old value per key per transaction to shrink logs.', 'Make it thread-safe: per-thread transaction stacks with threading.local or contextvars.', 'How do real databases combine undo logs with redo (write-ahead) logs?']
+    }
+  });
+
+  practice.push({
+    title: 'Streaming Sliding-Window Maximum', level: 'Hard', tags: ['generator', 'monotonic deque', 'streaming'], companies: ['Amazon', 'Citadel', 'Google'],
+    statement: `<p>Write a generator <code>window_max(stream, k)</code> that, for an unbounded stream of numbers (e.g. CPU readings), yields the maximum of each window of the last <code>k</code> values, starting once k values have arrived. Each value must be processed in amortised O(1). (LeetCode 239, streaming version.)</p>`,
+    constraints: `1 ≤ k ≤ 10<sup>5</sup>; stream length unbounded; memory O(k).`,
+    example: `<p>${H.arr([1, 3, -1, -3, 5, 3, 6, 7], { label: 'stream' })} k = 3 → ${H.arr([3, 3, 5, 5, 6, 7], { label: 'maxes', hl: { 2: 'g' } })} e.g. window [-1, -3, 5] → 5.</p>`,
+    brute: { why: `<p>Keep the last k values (deque) and call <code>max(window)</code> each step: O(k) per value → O(n·k). With k = 10<sup>5</sup> and millions of readings per minute, that is 10<sup>11</sup> comparisons. The waste: re-scanning values that can never be a future maximum.</p>`, code: `from collections import deque
+
+def window_max_brute(stream, k):
+    window = deque(maxlen=k)
+    for x in stream:
+        window.append(x)
+        if len(window) == k:
+            yield max(window)               # O(k) every time
+
+print(list(window_max_brute([1, 3, -1, -3, 5, 3, 6, 7], 3)))` },
+    mcq: { q: 'When a new value x arrives, which stored values can be thrown away forever?', options: ['All values ≤ x that arrived before x', 'All values ≥ x', 'Only the oldest value', 'None until the window slides'], answer: 0, explain: 'An older value that is ≤ x will leave the window before x does and can never beat x, so it can never be a maximum again. Removing them keeps the deque decreasing.' },
+    hints: [`<p>Hint 1: Keep a deque of (index, value) whose values are strictly <b>decreasing</b> from front to back. The front is always the current window max.</p>`, `<p>Hint 2: For each new (i, x): pop from the back while the back value ≤ x; append (i, x); pop from the front if its index ≤ i − k (it slid out).</p>`, `<p>Hint 3: Yield <code>dq[0][1]</code> once i ≥ k − 1. Each element is appended once and popped at most once → amortised O(1). Use <code>enumerate(stream)</code> for indices so it works on any iterator.</p>`],
+    solution: {
+      approach: `<p>Monotonic deque inside a generator. The generator form means it plugs straight into a pipeline (<code>window_max(read_cpu(), 60)</code>) and works on infinite streams with O(k) memory.</p>`,
+      code: { lang: 'python', run: true, code: `from collections import deque
+from itertools import islice
+import random
+
+def window_max(stream, k):
+    dq = deque()                          # (index, value), values decreasing
+    for i, x in enumerate(stream):
+        while dq and dq[-1][1] <= x:      # can never be a max again
+            dq.pop()
+        dq.append((i, x))
+        if dq[0][0] <= i - k:             # front slid out of the window
+            dq.popleft()
+        if i >= k - 1:
+            yield dq[0][1]
+
+print(list(window_max([1, 3, -1, -3, 5, 3, 6, 7], 3)))   # [3, 3, 5, 5, 6, 7]
+
+def readings(seed=7):                     # an infinite sensor stream
+    rng = random.Random(seed)
+    while True:
+        yield rng.randint(0, 100)
+
+data = list(islice(readings(), 2000))
+fast = list(window_max(iter(data), 50))
+slow = [max(data[i:i + 50]) for i in range(len(data) - 49)]
+print(fast == slow, len(fast))` },
+      dry: { head: ['i', 'x', 'deque (value@idx) after', 'yield'], rows: [['0', '1', '1@0', '—'], ['1', '3', '3@1 (1 popped)', '—'], ['2', '-1', '3@1, -1@2', '3'], ['3', '-3', '3@1, -1@2, -3@3', '3'], ['4', '5', '5@4 (all popped)', '5'], ['5', '3', '5@4, 3@5', '5'], ['6', '6', '6@6', '6'], ['7', '7', '7@7', '7']] },
+      complexity: `<p>Amortised O(1) per value, O(n) total; memory O(k).</p>`,
+      followUps: ['Sliding-window minimum and max − min ≤ limit (LeetCode 1438).', 'Time-based windows (last 60 seconds) instead of count-based: evict by timestamp.']
+    }
+  });
 registerModule({ id: 'py07', title: 'Iterators, Generators & Context Managers', intro: `<p>tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro</p>`, goals: ['aaaaaaaaaaaa','bbbbbbbbbbbbb','cccccccccccc'], prereqs: `aaaaaaaaaaaaaaaaaaaa`, hours: 10, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();

@@ -174,7 +174,7 @@ main()` }],
         };
         for (var i = 0; i < names.length; i++) {
           stack.push(names[i]);
-          frames.push(fr('Call <b>' + names[i] + '</b> → a new frame is pushed on top of the stack.' + (i === handler ? ' Note: ' + notes[i] + '.' : ''), [stk(stack), tx(i === 3 ? 'about to run <code>int(\'abc\')</code>' : 'running normally', 'Status')]));
+          frames.push(fr('Call <b>' + esc(names[i]) + '</b> → a new frame is pushed on top of the stack.' + (i === handler ? ' Note: ' + notes[i] + '.' : ''), [stk(stack), tx(i === 3 ? 'about to run <code>int(\'abc\')</code>' : 'running normally', 'Status')]));
         }
         stack.push("int('abc')");
         frames.push(fr('<code>int(\'abc\')</code> raises <b>ValueError</b>. Python stops the line and starts looking for a handler, starting at the TOP frame.', [{ type: 'stack', label: 'Call stack (bottom → top)', items: stack.slice(), hl: { 4: 'bad' } }, tx('<span class="c-r">ValueError: invalid literal for int() with base 10: \'abc\'</span>', 'Exception in flight')]));
@@ -183,11 +183,11 @@ main()` }],
           var hl = {};
           hl[j] = j === handler ? 'ok' : 'bad';
           if (j === handler) {
-            frames.push(fr('<b>' + names[j] + '</b> has a matching <code>except ValueError</code> → <span class="c-g">caught!</span> Unwinding stops here. Frames above it are already gone.', [{ type: 'stack', label: 'Call stack (bottom → top)', items: stack.slice(), hl: hl }, tx('Handled in ' + names[j] + '. Execution continues after its try/except as if nothing happened.', 'Status')]));
+            frames.push(fr('<b>' + esc(names[j]) + '</b> has a matching <code>except ValueError</code> → <span class="c-g">caught!</span> Unwinding stops here. Frames above it are already gone.', [{ type: 'stack', label: 'Call stack (bottom → top)', items: stack.slice(), hl: hl }, tx('Handled in ' + esc(names[j]) + '. Execution continues after its try/except as if nothing happened.', 'Status')]));
             frames.push(fr('Everything below keeps running normally. Lesson: the error is handled by the <b>nearest enclosing handler</b> on the call stack — not necessarily in the function where it happened.', [stk(stack, null, 'ok'), tx('Callers never even see the error.', 'Result')]));
             return frames;
           }
-          frames.push(fr('<b>' + names[j] + '</b> has no matching except → its <code>finally</code> blocks (if any) run, then the frame is <b>discarded</b>. The exception moves to the caller.', [{ type: 'stack', label: 'Call stack (bottom → top)', items: stack.slice(), hl: hl }, tx('<span class="c-r">ValueError still in flight</span>', 'Status')]));
+          frames.push(fr('<b>' + esc(names[j]) + '</b> has no matching except → its <code>finally</code> blocks (if any) run, then the frame is <b>discarded</b>. The exception moves to the caller.', [{ type: 'stack', label: 'Call stack (bottom → top)', items: stack.slice(), hl: hl }, tx('<span class="c-r">ValueError still in flight</span>', 'Status')]));
           stack.pop();
         }
         frames.push(fr('Stack is empty and nobody caught it → Python prints the <b>traceback</b> (most recent call LAST) and exits with status 1.', [{ type: 'stack', label: 'Call stack', items: ['(empty)'], hl: { 0: 'bad' } }, tx('<pre>Traceback (most recent call last):\n  File "app.py", line 20, in &lt;module&gt;\n    main()\n  File "app.py", line 15, in main\n    load_config(lines)\n  File "app.py", line 9, in load_config\n    return [parse_line(x) for x in lines]\n  File "app.py", line 3, in parse_line\n    return int(line)\nValueError: invalid literal for int() with base 10: \'abc\'</pre>', 'stderr')]));
@@ -491,6 +491,549 @@ except TypeError as e:
         dry: { head: ['step', 'cur before', 'cur[step]', 'outcome'], rows: [["'users'", 'whole dict', 'list of 1 user', 'continue'], ['5', 'list (len 1)', '<span class="c-r">IndexError</span>', 'caught as LookupError → return default'], ["'users', 'name'", 'list', '<span class="c-r">TypeError</span>', 'not a LookupError → propagates'], ["'users', 0, 'tags', 0", '…', "'admin'", 'return value']] },
         complexity: `<p>O(P) time for a path of length P (each subscript is O(1) for dicts and lists), O(1) extra space.</p>`,
         followUps: ['Support dotted string paths like "users.0.name" (careful: is "0" a key or an index?).', 'Add deep_set that creates missing dicts along the way.', 'Should an AttributeError on objects count as missing? How would you support getattr steps?']
+      }
+    }]
+  });
+
+  /* ================= TOPIC 3: Raising, custom exceptions, chaining, groups ================= */
+  topics.push({
+    title: 'Raising Exceptions, Custom Exception Classes, Chaining (raise from) and ExceptionGroup',
+    analogy: `<p>A restaurant waiter gets a problem from the kitchen: "the oven broke". Telling the customer "oven broke" is useless to them. A good waiter says <b>"Sorry, your pizza is delayed"</b> (a new, meaningful error for the customer) — but writes <b>"cause: oven broke"</b> on the internal ticket so the manager can fix the real problem. That is <code>raise PizzaDelayed(...) from oven_error</code>: a clear error for the caller <b>plus</b> the original cause attached. And if three tables have problems at once, the waiter hands the manager <b>one folder with three complaints</b> — an <code>ExceptionGroup</code>.</p>`,
+    explain: `<p>🟢 <b>Raising.</b> You signal a problem with <code>raise</code>. Raise an <b>instance</b> with a helpful message: <code>raise ValueError(f'age must be ≥ 0, got {age}')</code>. Pick the built-in that fits: wrong value → <code>ValueError</code>, wrong type → <code>TypeError</code>, missing key → <code>KeyError</code>, "not implemented yet" → <code>NotImplementedError</code>.</p>
+<p><b>Re-raising.</b> Inside an <code>except</code> block, a bare <code>raise</code> re-throws the <b>same</b> exception with its original traceback — use it after logging or cleanup: <code>except Exception: log.exception('failed'); raise</code>.</p>
+<p>🔵 <b>Custom exceptions.</b> When your code has its own failure cases, create classes. Rules of thumb:</p>
+<ul>
+<li>Inherit from <code>Exception</code> (never directly from BaseException). Name them <code>…Error</code>.</li>
+<li>Give your package <b>one base class</b> (<code>class PaymentError(Exception)</code>) and specific children (<code>CardDeclinedError(PaymentError)</code>). Callers can catch everything from you with one clause, or one specific case.</li>
+<li>Store useful data as <b>attributes</b> (amount, field name, HTTP status) and pass a readable message to <code>super().__init__(message)</code> so <code>str(e)</code> and tracebacks look right.</li>
+<li>Multiple inheritance is allowed to fit in two families: <code>class InvalidAmountError(PaymentError, ValueError)</code> can be caught as either.</li>
+</ul>
+<p><b>Chaining — keeping the root cause.</b></p>
+${H.table(['You write', 'Attribute set', 'Traceback says', 'Use when'], [['<code>raise New() from e</code>', '<code>__cause__ = e</code>', '"The above exception was the <b>direct cause</b> of the following exception"', 'translating a low-level error into your own (best practice)'], ['<code>raise New()</code> inside an except', '<code>__context__ = e</code> (automatic)', '"<b>During handling</b> of the above exception, another exception occurred"', 'usually an accident: a bug inside your handler'], ['<code>raise New() from None</code>', '<code>__suppress_context__ = True</code>', 'only the new exception', 'the old error is pure noise (e.g. KeyError behind an AttributeError)']])}
+<p><b>Notes (3.11+).</b> <code>e.add_note('while loading user 42')</code> appends extra lines to the traceback without changing the exception type — great for adding context when re-raising.</p>
+<p><b>ExceptionGroup and except* (3.11+).</b> Sometimes several things fail at once (10 parallel downloads, validating 5 form fields). <code>raise ExceptionGroup('3 fields invalid', [ValueError(...), TypeError(...)])</code> bundles them. <code>except* ValueError:</code> handles <b>only the ValueErrors inside</b> the group; the rest keep propagating. <code>asyncio.TaskGroup</code> raises exactly this.</p>
+<p><b>assert is not error handling.</b> <code>assert x &gt; 0</code> raises <code>AssertionError</code>, but asserts are <b>removed</b> when Python runs with <code>-O</code>. Use them for "this can never happen" internal checks and in tests — never to validate user input.</p>`,
+    clues: [
+      '"translate a low-level error (KeyError, SQL error) into a domain error" → custom exception + <code>raise … from e</code>',
+      '"During handling of the above exception, another exception occurred" in a traceback → implicit chaining; usually a bug in the handler or a missing <code>from</code>',
+      '"callers should be able to catch all errors from my library" → one base exception class per package',
+      '"the error should carry the amount / field / status code" → custom exception with attributes + <code>super().__init__(msg)</code>',
+      '"report ALL validation errors, not just the first" / "several tasks failed" → <code>ExceptionGroup</code> + <code>except*</code>',
+      '"log it and let it continue up" → bare <code>raise</code> inside the except block (keeps the original traceback)',
+      '"input validation with assert" → wrong: asserts vanish under <code>python -O</code>'
+    ],
+    code: [{ lang: 'python', run: true, title: 'A small custom exception hierarchy with data', code: `class PaymentError(Exception):
+    """Base class: catch this to handle ANY payment problem."""
+
+
+class CardDeclinedError(PaymentError):
+    def __init__(self, card_last4, reason):
+        self.card_last4 = card_last4
+        self.reason = reason
+        # A readable message for str(e) and tracebacks:
+        super().__init__(f'card ****{card_last4} declined: {reason}')
+
+
+class InvalidAmountError(PaymentError, ValueError):
+    """Also a ValueError, so generic validation code can catch it too."""
+
+
+def charge(amount, card_last4='4242'):
+    if amount <= 0:
+        raise InvalidAmountError(f'amount must be positive, got {amount}')
+    if amount > 1000:
+        raise CardDeclinedError(card_last4, 'limit exceeded')
+    return f'charged {amount}'
+
+
+for amt in (50, -5, 5000):
+    try:
+        print(charge(amt))
+    except CardDeclinedError as e:
+        print('declined ->', e, '| reason attr:', e.reason)
+    except PaymentError as e:              # catches InvalidAmountError too
+        print(type(e).__name__, '->', e, '| is ValueError?', isinstance(e, ValueError))` }, { lang: 'python', run: true, title: 'raise from, implicit context, from None, add_note', code: `import traceback
+
+
+class ConfigError(Exception):
+    pass
+
+
+def load_port(cfg, mode):
+    try:
+        return int(cfg['port'])
+    except KeyError as e:
+        if mode == 'from':
+            raise ConfigError('port is missing from config') from e
+        if mode == 'implicit':
+            raise ConfigError('port is missing from config')
+        raise ConfigError('port is missing from config') from None
+
+
+for mode in ('from', 'implicit', 'none'):
+    try:
+        load_port({}, mode)
+    except ConfigError as err:
+        print(f'--- mode={mode}')
+        print('  __cause__           =', repr(err.__cause__))
+        print('  __context__         =', repr(err.__context__))
+        print('  __suppress_context__=', err.__suppress_context__)
+
+# add_note (3.11+): extra context without changing the type
+try:
+    try:
+        int('abc')
+    except ValueError as e:
+        e.add_note('while parsing row 17 of users.csv')
+        raise
+except ValueError as e:
+    print(''.join(traceback.format_exception_only(e)).strip())` }, { lang: 'python', run: true, title: 'ExceptionGroup + except* (Python 3.11+)', code: `def validate(user):
+    errors = []
+    if not user.get('name'):
+        errors.append(ValueError('name is required'))
+    if not isinstance(user.get('age'), int):
+        errors.append(TypeError('age must be an int'))
+    elif user['age'] < 0:
+        errors.append(ValueError('age must be >= 0'))
+    if '@' not in user.get('email', ''):
+        errors.append(ValueError('email looks invalid'))
+    if errors:
+        raise ExceptionGroup('user is invalid', errors)
+
+
+try:
+    validate({'name': '', 'age': 'ten', 'email': 'nope'})
+except* ValueError as group:          # gets a sub-group with ONLY the ValueErrors
+    for e in group.exceptions:
+        print('value problem:', e)
+except* TypeError as group:           # the TypeErrors, handled separately
+    for e in group.exceptions:
+        print('type problem :', e)` }],
+    codeTitle: ['Custom exceptions', 'Exception chaining', 'Exception groups'],
+    viz: [{
+      title: 'raise ... from: how the exception chain is built',
+      input: 'from',
+      inputLabel: 'Mode: from · implicit · none',
+      gen: function (input) {
+        var mode = String(input || '').trim().toLowerCase();
+        if (['from', 'implicit', 'none'].indexOf(mode) < 0) throw new Error('Type one of: from, implicit, none');
+        var raiseLine = mode === 'from' ? "        raise ConfigError('port missing') from e" : mode === 'implicit' ? "        raise ConfigError('port missing')" : "        raise ConfigError('port missing') from None";
+        var code = ['def load_port(cfg):', '    try:', "        return int(cfg['port'])", '    except KeyError as e:', raiseLine, '', 'load_port({})'].join('\n');
+        var frames = [];
+        frames.push(fr('Call <code>load_port({})</code> with an empty config.', [cp(code, 7), { type: 'stack', label: 'Exceptions alive', items: ['(none)'] }]));
+        frames.push(fr("<code>cfg['port']</code> raises <b>KeyError('port')</b>. It is caught by <code>except KeyError as e</code>.", [cpm(code, { 3: 'bad', 4: 'ok' }), { type: 'stack', label: 'Exceptions alive', items: ["KeyError('port')"], hl: { 0: 'bad' } }]));
+        frames.push(fr('Inside the handler we raise a <b>new</b> ConfigError. Python <b>always</b> records the exception currently being handled in the new one\'s <code>__context__</code> — automatically.', [cp(code, 5, 'cur'), { type: 'stack', label: 'Exceptions alive', items: ["KeyError('port')", "ConfigError('port missing')"], hl: { 1: 'cur' } }, vp({ '__context__': "KeyError('port')" }, '__context__', 'win', 'ConfigError attributes')]));
+        var attrs = { '__context__': "KeyError('port')", '__cause__': 'None', '__suppress_context__': 'False' };
+        var expl;
+        if (mode === 'from') { attrs.__cause__ = "KeyError('port')"; attrs.__suppress_context__ = 'True'; expl = '<code>from e</code> sets <code>__cause__ = e</code> (and, as a side effect, <code>__suppress_context__ = True</code>, so only the cause is shown — once).'; }
+        else if (mode === 'none') { attrs.__suppress_context__ = 'True'; expl = '<code>from None</code> sets <code>__cause__ = None</code> and <code>__suppress_context__ = True</code>: the KeyError is still stored in __context__ but hidden from the traceback.'; }
+        else { expl = 'No <code>from</code>: <code>__cause__</code> stays None and the context is <b>not</b> suppressed.'; }
+        frames.push(fr(expl, [cp(code, 5, 'cur'), vp(attrs, mode === 'implicit' ? '__context__' : '__cause__,__suppress_context__', 'sel', 'ConfigError attributes')]));
+        var chain = mode === 'none' ? ["ConfigError('port missing')"] : ["KeyError('port')", "ConfigError('port missing')"];
+        frames.push(fr('The ConfigError escapes. When printing, Python follows the chain backwards and prints the <b>oldest first</b>.', [{ type: 'list', label: 'Chain printed (oldest → newest)', values: chain, hl: (function () { var h = {}; h[chain.length - 1] = 'bad'; return h; })() }]));
+        var tb;
+        if (mode === 'from') tb = "Traceback (most recent call last):\n  File \"app.py\", line 3, in load_port\nKeyError: 'port'\n\n<b>The above exception was the direct cause of the following exception:</b>\n\nTraceback (most recent call last):\n  File \"app.py\", line 5, in load_port\nConfigError: port missing";
+        else if (mode === 'implicit') tb = "Traceback (most recent call last):\n  File \"app.py\", line 3, in load_port\nKeyError: 'port'\n\n<b class=\"c-r\">During handling of the above exception, another exception occurred:</b>\n\nTraceback (most recent call last):\n  File \"app.py\", line 5, in load_port\nConfigError: port missing";
+        else tb = "Traceback (most recent call last):\n  File \"app.py\", line 5, in load_port\nConfigError: port missing";
+        frames.push(fr(mode === 'from' ? '<span class="c-g">Best practice:</span> the reader sees a clear domain error AND the real root cause, with a message saying it was deliberate.' : mode === 'implicit' ? '<span class="c-y">Looks like an accident:</span> "During handling…" suggests your handler itself crashed. Add <code>from e</code> to say it was intentional.' : '<span class="c-b">Clean:</span> only the domain error. Good when the low-level error adds nothing — but you lose debugging info, so use sparingly.', [tx('<pre>' + tb + '</pre>', 'Traceback text')]));
+        return frames;
+      }
+    }, {
+      title: 'ExceptionGroup + except*: each handler takes its share of the group',
+      input: 'ValueError TypeError ValueError KeyError',
+      inputLabel: 'Exceptions inside the group (ValueError, TypeError, KeyError, IndexError, OSError) — max 8',
+      gen: function (input) {
+        var allowed = { ValueError: 1, TypeError: 1, KeyError: 1, IndexError: 1, OSError: 1 };
+        var items = words(input);
+        if (!items.length || items.length > 8 || items.some(function (x) { return !allowed[x]; })) throw new Error('List 1-8 of: ValueError TypeError KeyError IndexError OSError');
+        var code = ['try:', '    raise ExceptionGroup("batch failed", errors)', 'except* ValueError as g:', '    print("values:", len(g.exceptions))', 'except* LookupError as g:', '    print("lookups:", len(g.exceptions))'].join('\n');
+        var labels = items.map(function (x, i) { return x + '#' + (i + 1); });
+        var remaining = labels.slice();
+        var frames = [], out = [];
+        frames.push(fr('Several operations failed. Instead of keeping only the first error, we bundle <b>all ' + items.length + '</b> into one <code>ExceptionGroup</code>.', [cp(code, 2, 'bad'), { type: 'array', label: 'ExceptionGroup.exceptions', values: labels.slice() }]));
+        var clauses = [{ line: 3, name: 'ValueError', match: { ValueError: 1 } }, { line: 5, name: 'LookupError', match: { KeyError: 1, IndexError: 1 } }];
+        clauses.forEach(function (cl) {
+          var hl = {}, taken = [];
+          remaining.forEach(function (lab, i) { var t = lab.split('#')[0]; if (cl.match[t]) { hl[i] = 'ok'; taken.push(lab); } else hl[i] = 'cur'; });
+          frames.push(fr('<code>except* ' + cl.name + '</code> calls <code>group.split(' + cl.name + ')</code>: the matching exceptions (green) form a sub-group for this handler; the rest stay in flight.' + (taken.length ? '' : ' Nothing matches, so this handler is <b>skipped</b>.'), [cp(code, cl.line, taken.length ? 'ok' : 'done'), { type: 'array', label: 'still unhandled', values: remaining.slice(), hl: hl }]));
+          if (taken.length) {
+            out.push((cl.name === 'ValueError' ? 'values: ' : 'lookups: ') + taken.length);
+            remaining = remaining.filter(function (l) { return taken.indexOf(l) < 0; });
+            frames.push(fr('Handler body runs <b>once</b> with a group of ' + taken.length + '. Unlike plain except, <b>several</b> except* clauses can run for one raise.', [cp(code, cl.line + 1, 'ok'), { type: 'array', label: 'still unhandled', values: remaining.length ? remaining.slice() : ['(none)'] }, outBox(out)]));
+          }
+        });
+        if (remaining.length) frames.push(fr('<span class="c-r">Leftovers</span> (' + remaining.join(', ') + ') are re-raised automatically as a new ExceptionGroup containing only them.', [{ type: 'array', label: 'propagates to the caller', values: remaining.slice(), hl: (function () { var h = {}; remaining.forEach(function (_, i) { h[i] = 'bad'; }); return h; })() }, outBox(out)]));
+        else frames.push(fr('<span class="c-g">Everything was handled</span>; nothing propagates.', [{ type: 'array', label: 'still unhandled', values: ['(none)'], hl: { 0: 'ok' } }, outBox(out)]));
+        return frames;
+      }
+    }],
+    examples: [
+      { title: 'Predict the output: bare raise keeps the original', html: `<p>A bare <code>raise</code> re-throws the very same object, so identity is preserved. Output: ${H.c('g', 'logged: boom')} then ${H.c('g', 'same object? True')}.</p>`, code: { lang: 'python', run: true, code: `original = None
+try:
+    try:
+        original = RuntimeError('boom')
+        raise original
+    except RuntimeError as e:
+        print('logged:', e)
+        raise                     # re-raise the SAME exception
+except RuntimeError as e2:
+    print('same object?', e2 is original)` } },
+      { title: 'Forgetting super().__init__ breaks str(e)', html: `<p>If your <code>__init__</code> does not pass a message up, <code>str(e)</code> is empty and <code>e.args</code> is wrong — tracebacks show a blank message. (Python still stores the constructor args in <code>args</code> via <code>__new__</code>, so you see the raw tuple, not your nice message.)</p>`, code: { lang: 'python', run: true, code: `class BadError(Exception):
+    def __init__(self, field):
+        self.field = field            # forgot super().__init__(...)
+
+class GoodError(Exception):
+    def __init__(self, field):
+        self.field = field
+        super().__init__(f'invalid field: {field}')
+
+print(repr(str(BadError('age'))))     # 'age'  (raw args, no nice message)
+print(repr(str(GoodError('age'))))    # 'invalid field: age'` } },
+      { title: 'Library pattern: one base class, catch at the boundary', html: `<p>Inside the library, raise specific errors. At the HTTP boundary, map them to status codes with <b>one</b> table.</p>${H.table(['exception', 'HTTP status'], [['<code>NotFoundError(AppError)</code>', '404'], ['<code>PermissionDeniedError(AppError)</code>', '403'], ['<code>ValidationError(AppError)</code>', '422'], ['any other <code>Exception</code>', '500 + log traceback']])}`, code: { lang: 'python', run: true, code: `class AppError(Exception):
+    status = 500
+
+class NotFoundError(AppError):
+    status = 404
+
+class ValidationError(AppError):
+    status = 422
+
+def handle(request_fn):
+    try:
+        return 200, request_fn()
+    except AppError as e:            # all domain errors: use their status
+        return e.status, str(e)
+    except Exception:                # real bugs: 500 (and log it in real life)
+        return 500, 'internal error'
+
+def get_user():
+    raise NotFoundError('user 7 not found')
+
+print(handle(get_user))
+print(handle(lambda: 1 / 0))
+print(handle(lambda: 'ok'))` } },
+      { title: 'assert vanishes under -O', html: `<p><code>python -O app.py</code> strips every assert statement, so <code>assert amount &gt; 0</code> protects nothing in production. Raise a real exception for inputs; keep assert for internal invariants and tests.</p>${H.table(['statement', 'normal run', 'python -O'], [['<code>assert amount &gt; 0</code>', 'AssertionError if false', H.c('r', 'skipped entirely')], ['<code>if amount &lt;= 0: raise ValueError(...)</code>', 'ValueError if false', H.c('g', 'still checked')]])}` }
+    ],
+    deepDive: `<p>🟣 <b>What raise does internally.</b> <code>raise X</code> with a class instantiates it (<code>X()</code>). The interpreter then sets <code>__context__</code> to the exception currently being handled (if any, and if it is not the same object), attaches the traceback, and starts unwinding. <code>raise A from B</code> sets <code>A.__cause__ = B</code> and <code>A.__suppress_context__ = True</code>. The default traceback printer shows <code>__cause__</code> if set; otherwise shows <code>__context__</code> unless suppressed. Chains can be arbitrarily long; Python guards against cycles when printing.</p>
+<p><b>Pickling custom exceptions.</b> Exceptions are pickled via <code>(type, self.args)</code>. If your <code>__init__</code> takes different parameters than what ends up in <code>args</code>, unpickling (e.g. when a <code>multiprocessing</code> or <code>concurrent.futures.ProcessPoolExecutor</code> worker sends the error back) fails with a confusing TypeError. Fix: make <code>args</code> match the constructor (pass the original params to <code>super().__init__</code>) or implement <code>__reduce__</code>. Dataclass-style exceptions need the same care.</p>
+<p><b>ExceptionGroup details.</b> <code>BaseExceptionGroup</code> can hold BaseExceptions; <code>ExceptionGroup</code> only Exceptions. <code>eg.split(T)</code> returns <code>(match, rest)</code> preserving nesting; <code>eg.subgroup(pred)</code> filters. You cannot mix <code>except</code> and <code>except*</code> in one try; <code>break/continue/return</code> are not allowed inside except*. A plain <code>except ValueError</code> does <b>not</b> match an ExceptionGroup containing ValueErrors — that is why libraries switching to groups (asyncio.TaskGroup, Trio, anyio) is a breaking change for callers.</p>
+<p><b>Warnings vs exceptions.</b> For "this still works but is deprecated", use <code>warnings.warn('…', DeprecationWarning, stacklevel=2)</code> — not an exception. Tests can turn warnings into errors with <code>-W error</code> or pytest's <code>filterwarnings</code>.</p>
+<p><b>Production reality.</b> Error messages are an API: include the bad value and what was expected (<code>f'expected 1-65535, got {port!r}'</code>), never secrets (passwords, tokens) — tracebacks end up in logs and error trackers like Sentry.</p>`,
+    aiEra: `<p>🤖 <b>What AI changes:</b> generating a tidy exception hierarchy, the HTTP-mapping middleware and the tests for it is now a 30-second job. Ask the model to "list the failure modes of this function and propose one exception class per actionable case" — a good design conversation starter.</p>
+<p><b>Where AI goes wrong:</b> it forgets <code>from e</code> (producing confusing "During handling…" traces), writes custom exceptions that break pickling, over-engineers 15 exception classes nobody catches, or puts secrets into messages. It also sometimes writes <code>raise Exception('...')</code> — impossible for callers to catch selectively.</p>
+<p><b>What you must still own:</b> deciding which failures are <i>actionable</i> for the caller (deserve their own class), what the public base class is, and what data each error carries.</p>`,
+    problems: [{
+      title: 'Bank Account Errors: A Custom Exception Hierarchy',
+      level: 'Medium', tags: ['custom exceptions', 'raise from', 'design'], companies: ['Stripe', 'JPMorgan', 'Revolut'],
+      statement: `<p>Design exceptions for a tiny bank module and implement two functions.</p><ul><li><code>BankError(Exception)</code> — base class.</li><li><code>InsufficientFundsError(BankError)</code> with attributes <code>balance</code>, <code>amount</code> and <code>shortfall</code>, message like <code>"need 30 more (balance 70, amount 100)"</code>.</li><li><code>AccountNotFoundError(BankError, KeyError)</code>.</li></ul><p><code>withdraw(accounts, acc_id, amount)</code> returns the new balance, raising <code>ValueError</code> for amount ≤ 0, <code>AccountNotFoundError</code> (chained <b>from</b> the original KeyError) for an unknown id, or <code>InsufficientFundsError</code>.</p>`,
+      constraints: `accounts is a dict id → int balance. Do not modify balances when an error is raised.`,
+      example: `<p><code>accounts = {'a1': 70}</code></p><ul><li><code>withdraw(accounts, 'a1', 20)</code> → ${H.c('g', '50')}</li><li><code>withdraw(accounts, 'a1', 100)</code> → ${H.c('r', 'InsufficientFundsError: need 50 more (balance 50, amount 100)')}, <code>e.shortfall == 50</code></li><li><code>withdraw(accounts, 'zz', 5)</code> → ${H.c('r', 'AccountNotFoundError')} whose <code>__cause__</code> is the KeyError.</li></ul>`,
+      brute: { why: `<p>Returning error codes or strings (<code>return -1</code>, <code>return 'no money'</code>) forces every caller to remember to check, mixes errors with real values (is -1 a balance?), and carries no data. A single generic <code>raise Exception('error')</code> cannot be caught selectively.</p>`, code: `def withdraw_codes(accounts, acc_id, amount):
+    if amount <= 0:
+        return 'bad amount'
+    if acc_id not in accounts:
+        return 'no account'
+    if accounts[acc_id] < amount:
+        return 'no money'
+    accounts[acc_id] -= amount
+    return accounts[acc_id]       # caller cannot tell errors from balances easily` },
+      mcq: { q: 'Why make <code>AccountNotFoundError</code> also inherit from <code>KeyError</code>?', options: ['So old code that catches KeyError (or LookupError) keeps working', 'Because exceptions must have two parents', 'To make it faster', 'So that it cannot be caught by except BankError'], answer: 0, explain: 'Multiple inheritance places it in both families: callers can catch it as a BankError (new code) or as a KeyError/LookupError (existing code that expected a dict miss).' },
+      hints: [`<p>Hint 1: Check the cheap, caller-mistake case first: amount ≤ 0 → <code>ValueError</code> with the bad value in the message.</p>`, `<p>Hint 2: Look up the balance with EAFP: <code>try: balance = accounts[acc_id] except KeyError as e: raise AccountNotFoundError(acc_id) from e</code>.</p>`, `<p>Hint 3: Compute <code>shortfall = amount - balance</code> in the exception's <code>__init__</code>, then call <code>super().__init__(message)</code>. Only subtract after all checks pass, so a failed call never changes state.</p>`],
+      solution: {
+        approach: `<p>One base class, specific subclasses that carry data, messages built in <code>__init__</code>, translation of the low-level KeyError with <code>raise … from e</code>, and "validate everything, then mutate" so errors leave no half-done state.</p>`,
+        code: { lang: 'python', run: true, code: `class BankError(Exception):
+    """Base class for every error raised by this module."""
+
+
+class InsufficientFundsError(BankError):
+    def __init__(self, balance, amount):
+        self.balance = balance
+        self.amount = amount
+        self.shortfall = amount - balance
+        super().__init__(f'need {self.shortfall} more (balance {balance}, amount {amount})')
+
+
+class AccountNotFoundError(BankError, KeyError):
+    def __init__(self, acc_id):
+        self.acc_id = acc_id
+        super().__init__(f'no account {acc_id!r}')
+
+    def __str__(self):                 # KeyError.__str__ would add quotes; keep it readable
+        return self.args[0]
+
+
+def withdraw(accounts, acc_id, amount):
+    if amount <= 0:
+        raise ValueError(f'amount must be positive, got {amount}')
+    try:
+        balance = accounts[acc_id]
+    except KeyError as e:
+        raise AccountNotFoundError(acc_id) from e
+    if balance < amount:
+        raise InsufficientFundsError(balance, amount)
+    accounts[acc_id] = balance - amount   # mutate only after all checks
+    return accounts[acc_id]
+
+
+accounts = {'a1': 70}
+print(withdraw(accounts, 'a1', 20))       # 50
+for args in [('a1', 100), ('zz', 5), ('a1', 0)]:
+    try:
+        withdraw(accounts, *args)
+    except InsufficientFundsError as e:
+        print('Insufficient:', e, '| shortfall =', e.shortfall)
+    except BankError as e:
+        print(type(e).__name__ + ':', e, '| cause =', repr(e.__cause__), '| is KeyError?', isinstance(e, KeyError))
+    except ValueError as e:
+        print('ValueError:', e)
+print(accounts)                            # {'a1': 50} unchanged by failures` },
+        dry: { head: ['call', 'check', 'result', 'accounts after'], rows: [["('a1', 20)", 'amount ok, found 70, 70 ≥ 20', 'returns 50', "{'a1': 50}"], ["('a1', 100)", 'found 50, 50 &lt; 100', '<span class="c-r">InsufficientFundsError</span>, shortfall 50', "{'a1': 50}"], ["('zz', 5)", 'KeyError caught', '<span class="c-r">AccountNotFoundError</span> from KeyError', "{'a1': 50}"], ["('a1', 0)", 'amount ≤ 0', '<span class="c-r">ValueError</span>', "{'a1': 50}"]] },
+        complexity: `<p>O(1) per call. The design value is in the API: callers can catch <code>BankError</code> broadly, <code>InsufficientFundsError</code> specifically (and read <code>shortfall</code>), or <code>KeyError</code> for legacy code.</p>`,
+        followUps: ['Add transfer(src, dst, amount) that is atomic — if the deposit fails, the withdrawal is rolled back.', 'Make the exceptions picklable so a ProcessPoolExecutor can send them back.', 'Validate a batch of 1,000 withdrawals and report every failure with an ExceptionGroup.']
+      }
+    }]
+  });
+
+  /* ================= TOPIC 4: EAFP vs LBYL ================= */
+  topics.push({
+    title: 'EAFP vs LBYL: "Just Try It" vs "Check First"',
+    analogy: `<p>Two ways to enter a friend's flat. <b>LBYL</b> ("Look Before You Leap"): phone first — "are you home? is the door unlocked?" — then walk over. But between the call and your arrival they might go out. <b>EAFP</b> ("Easier to Ask Forgiveness than Permission"): just walk over and try the door; if it is locked, deal with it then. Python culture prefers EAFP: <b>try the operation, handle the failure</b> — because the check and the action can drift apart, and because the action itself is usually the most accurate check.</p>`,
+    explain: `<p>🟢 <b>Two styles for the same job.</b></p>
+${H.table(['', 'LBYL (check first)', 'EAFP (try, then handle)'], [['dict key', '<code>if k in d: v = d[k]</code>', '<code>try: v = d[k]</code><br><code>except KeyError: …</code>'], ['attribute', '<code>if hasattr(o, "x"): o.x</code>', '<code>try: o.x</code><br><code>except AttributeError: …</code>'], ['file', '<code>if os.path.exists(p): open(p)</code>', '<code>try: open(p)</code><br><code>except FileNotFoundError: …</code>'], ['number', '<code>if s.isdigit(): int(s)</code>', '<code>try: int(s)</code><br><code>except ValueError: …</code>']])}
+<p>🔵 <b>Why Python leans EAFP.</b></p>
+<ul>
+<li><b>No race conditions.</b> Between <code>exists()</code> and <code>open()</code>, another process can delete the file (a <b>TOCTOU</b> bug: Time Of Check to Time Of Use). With EAFP, the open <i>is</i> the check — atomic.</li>
+<li><b>The real operation is the best validator.</b> <code>s.isdigit()</code> is not the same rule as <code>int(s)</code> (it rejects <code>"-5"</code>, accepts <code>"²"</code>). Let the real code decide.</li>
+<li><b>Duck typing.</b> "Does it support <code>[key]</code>?" is better answered by trying than by <code>isinstance(x, dict)</code>, which rejects perfectly good mapping types.</li>
+<li><b>Speed on the happy path.</b> Since 3.11 a try block costs nothing until something is raised; LBYL does the lookup <b>twice</b> on success (<code>in</code> + <code>[]</code>).</li>
+</ul>
+<p><b>When LBYL is better:</b></p>
+<ul>
+<li>The failure is <b>common</b> (say, more than ~10–20% of calls) — raising is much slower than an <code>if</code>.</li>
+<li>The action has <b>side effects</b> you cannot undo halfway (sending an email, charging a card): validate everything first.</li>
+<li>A cheap built-in exists that does both: <code>d.get(k, default)</code>, <code>d.setdefault</code>, <code>collections.defaultdict</code>, <code>getattr(o, 'x', None)</code>, <code>next(it, None)</code>. These beat both styles — one lookup, no exception.</li>
+</ul>
+<p><b>Keep EAFP honest:</b> the try block must contain only the operation you are "asking forgiveness" for, and the except must name the exact error. <code>try: big_function() except KeyError:</code> will also hide a KeyError <i>bug</i> deep inside <code>big_function</code>.</p>`,
+    clues: [
+      '"check if the file exists, then open it" → TOCTOU race; use EAFP (<code>try: open</code> / <code>except FileNotFoundError</code>)',
+      '"Pythonic way to read a key that may be missing" → <code>d.get(k, default)</code>, or try/except KeyError when the miss is rare and needs real handling',
+      '"most lookups hit" → EAFP (one lookup, zero-cost try); "most lookups miss" → LBYL or <code>.get</code> (raising is expensive)',
+      '"accept anything that behaves like a dict/sequence" → duck typing + EAFP instead of isinstance checks',
+      '"validate before charging the card / sending the email" → LBYL for irreversible side effects',
+      '"hasattr vs try/except AttributeError" → hasattr itself is implemented as getattr + catching AttributeError'
+    ],
+    code: [{ lang: 'python', run: true, title: 'Four ways to count words — and how fast each is', code: `import timeit
+from collections import Counter, defaultdict
+
+words = ('the cat and the hat and the bat ' * 2000).split()
+
+def lbyl():
+    d = {}
+    for w in words:
+        if w in d:            # lookup #1
+            d[w] += 1         # lookup #2 (+ store)
+        else:
+            d[w] = 1
+    return d
+
+def eafp():
+    d = {}
+    for w in words:
+        try:
+            d[w] += 1         # one lookup; KeyError only on first sighting
+        except KeyError:
+            d[w] = 1
+    return d
+
+def with_get():
+    d = {}
+    for w in words:
+        d[w] = d.get(w, 0) + 1
+    return d
+
+def with_counter():
+    return Counter(words)     # C-accelerated counting loop
+
+assert lbyl() == eafp() == with_get() == dict(with_counter())
+for fn in (lbyl, eafp, with_get, with_counter):
+    t = timeit.timeit(fn, number=20)
+    print(f'{fn.__name__:13} {t * 1000:7.1f} ms')
+print('(numbers vary by machine; Counter is usually fastest)')` }, { lang: 'python', run: true, title: 'When misses are common, exceptions get expensive', code: `import timeit
+
+d = {i: i for i in range(100)}
+keys_hit = list(range(100)) * 50          # 100% hits
+keys_miss = list(range(100, 200)) * 50    # 100% misses
+
+def eafp(keys):
+    total = 0
+    for k in keys:
+        try:
+            total += d[k]
+        except KeyError:
+            pass
+    return total
+
+def lbyl(keys):
+    total = 0
+    for k in keys:
+        if k in d:
+            total += d[k]
+    return total
+
+for name, keys in (('all hits', keys_hit), ('all misses', keys_miss)):
+    te = timeit.timeit(lambda: eafp(keys), number=20)
+    tl = timeit.timeit(lambda: lbyl(keys), number=20)
+    print(f'{name:10}  EAFP {te * 1000:6.1f} ms   LBYL {tl * 1000:6.1f} ms')` }],
+    codeTitle: ['Counting words four ways', 'Hit rate decides the winner'],
+    viz: [{
+      title: 'Cost race: LBYL vs EAFP vs dict.get as hits and misses arrive',
+      input: 'a b c | a b z a q c',
+      inputLabel: 'dict keys | lookups (space separated, max 12 lookups)',
+      gen: function (input) {
+        var parts = String(input || '').split('|');
+        if (parts.length !== 2) throw new Error('Format: keys | lookups   e.g.  a b c | a z c');
+        var keys = words(parts[0]), looks = words(parts[1]);
+        if (!keys.length || !looks.length) throw new Error('Give at least one key and one lookup');
+        if (looks.length > 12 || keys.length > 10) throw new Error('Use at most 10 keys and 12 lookups');
+        var RAISE = 10;
+        var cost = { lbyl: 0, eafp: 0, get: 0 };
+        var frames = [], hits = 0;
+        var entries = keys.map(function (k, i) { return [k, i + 1]; });
+        frames.push(fr('A dict with ' + keys.length + ' keys. Each strategy pays <b>1 unit per hash lookup</b> and roughly <b>' + RAISE + ' units to raise + catch</b> a KeyError (a rough CPython ballpark: creating the exception object and unwinding is far slower than a lookup).', [{ type: 'map', label: 'd', entries: entries }, { type: 'bars', label: 'total cost so far', values: [0, 0, 0], idxLabels: ['LBYL', 'EAFP', 'get'] }]));
+        looks.forEach(function (k, i) {
+          var hit = keys.indexOf(k) >= 0;
+          var dl, de, dg = 1;
+          if (hit) { hits++; dl = 2; de = 1; } else { dl = 1; de = 1 + RAISE; }
+          cost.lbyl += dl; cost.eafp += de; cost.get += dg;
+          var hl = {}; if (hit) hl[k] = 'ok';
+          var best = Math.min(cost.lbyl, cost.eafp, cost.get);
+          var bh = {}; [cost.lbyl, cost.eafp, cost.get].forEach(function (c, j) { if (c === best) bh[j] = 'ok'; });
+          frames.push(fr('Lookup ' + (i + 1) + ': <code>' + esc(k) + '</code> is a ' + (hit ? '<span class="c-g">HIT</span>. LBYL pays 2 (<code>in</code> then <code>[]</code>), EAFP pays 1 (no exception), get pays 1.' : '<span class="c-r">MISS</span>. LBYL pays 1 (<code>in</code> says no), EAFP pays 1 + ' + RAISE + ' (KeyError raised and caught), get pays 1.'), [
+            { type: 'map', label: 'd', entries: entries, hl: hl },
+            { type: 'table', label: 'This lookup', columns: ['strategy', 'code', 'cost'], rows: [['LBYL', 'if k in d: d[k]', '+' + dl], ['EAFP', 'try: d[k] / except KeyError', '+' + de], ['get', 'd.get(k)', '+' + dg]], hl: hit ? { 1: 'ok' } : { 1: 'bad' } },
+            { type: 'bars', label: 'total cost so far (lower is better)', values: [cost.lbyl, cost.eafp, cost.get], idxLabels: ['LBYL', 'EAFP', 'get'], hl: bh }
+          ]));
+        });
+        var rate = Math.round(hits * 100 / looks.length);
+        frames.push(fr('Hit rate <b>' + rate + '%</b>. ' + (cost.eafp < cost.lbyl ? 'With mostly hits, <b>EAFP beats LBYL</b>.' : cost.eafp > cost.lbyl ? 'With many misses, <b>EAFP loses</b>: every miss pays for an exception.' : 'EAFP and LBYL tie here.') + ' <code>dict.get</code> is cheapest whenever a default value is all you need. Rule: choose by expected hit rate and by what a miss <i>means</i>.', [{ type: 'bars', label: 'final cost', values: [cost.lbyl, cost.eafp, cost.get], idxLabels: ['LBYL', 'EAFP', 'get'] }, vp({ lookups: looks.length, hits: hits, 'hit rate': rate + '%' })]));
+        return frames;
+      }
+    }, {
+      title: 'TOCTOU: why "check, then open" is a race',
+      gen: function () {
+        var cols = ['time', 'Process A (your code)', 'Process B (log rotation)', 'file exists?'];
+        var rows = [['t1', 'if os.path.exists(p):  → True', '', 'yes']];
+        var frames = [];
+        frames.push(fr('LBYL: process A checks that the file exists. It does.', [cp("if os.path.exists(p):\n    with open(p) as f:\n        data = f.read()", 1, 'ok', 'Process A — LBYL'), { type: 'table', label: 'Timeline', columns: cols, rows: rows.slice() }]));
+        rows.push(['t2', '(scheduler pauses A)', 'os.remove(p)', 'no']);
+        frames.push(fr('The OS pauses A for a moment. Meanwhile process B deletes (rotates) the file. A has no idea.', [cp("if os.path.exists(p):\n    with open(p) as f:\n        data = f.read()", 1, 'done', 'Process A — LBYL'), { type: 'table', label: 'Timeline', columns: cols, rows: rows.slice(), hl: { 1: 'bad' } }]));
+        rows.push(['t3', 'open(p)  → FileNotFoundError 💥', '', 'no']);
+        frames.push(fr('A resumes and calls <code>open(p)</code> — the check is now <b>stale</b>. Crash, despite the "safety" check. Rare in tests, real in production.', [cp("if os.path.exists(p):\n    with open(p) as f:\n        data = f.read()", 2, 'bad', 'Process A — LBYL'), { type: 'table', label: 'Timeline', columns: cols, rows: rows.slice(), hl: { 2: 'bad' } }]));
+        frames.push(fr('EAFP: the <code>open</code> call <b>is</b> the check, done atomically by the OS. Whatever B does, A either gets the file or a FileNotFoundError it handles.', [cp("try:\n    with open(p) as f:\n        data = f.read()\nexcept FileNotFoundError:\n    data = ''          # handled, no race window", 2, 'ok', 'Process A — EAFP'), { type: 'table', label: 'Timeline', columns: ['time', 'Process A (EAFP)', 'Process B', 'outcome'], rows: [['t1', 'open(p)', '', 'opened OR FileNotFoundError'], ['t2', 'read…', 'os.remove(p)', 'A still holds an open file handle (on POSIX the data stays readable)']], hl: { 0: 'ok', 1: 'ok' } }]));
+        frames.push(fr('Same idea elsewhere: <code>os.makedirs(p, exist_ok=True)</code> instead of "if not exists: mkdir", <code>open(p, "x")</code> (fail if exists) instead of "if not exists: create", and database UPSERTs instead of "SELECT then INSERT".', [tx('<b>Rule:</b> when another actor can change the world between your check and your action, let the action itself be the check.', 'Takeaway')]));
+        return frames;
+      }
+    }],
+    examples: [
+      { title: 'hasattr is EAFP in disguise', html: `<p><code>hasattr(obj, name)</code> literally calls <code>getattr</code> and returns False if it raises <b>AttributeError</b>. So a property that has a bug raising AttributeError inside looks like "attribute missing" — a classic confusing bug. Output: ${H.c('r', 'False')}.</p>`, code: { lang: 'python', run: true, code: `class User:
+    @property
+    def email(self):
+        return self.profile.email      # bug: self.profile does not exist
+
+u = User()
+print(hasattr(u, 'email'))             # False - the real bug is hidden!
+try:
+    u.email
+except AttributeError as e:
+    print('real cause:', e)` } },
+      { title: 'Duck typing: accept anything indexable', html: `<p>An EAFP <code>first()</code> works on lists, tuples, strings, ranges and any custom class with <code>__getitem__</code>. An <code>isinstance(x, list)</code> version would reject all but one. Output: ${H.c('g', "1 'h' 0 None")}.</p>`, code: { lang: 'python', run: true, code: `def first(seq, default=None):
+    try:
+        return seq[0]
+    except (IndexError, KeyError):
+        return default
+
+print(first([1, 2]), repr(first('hi')), first(range(5)), first([]))` } },
+      { title: 'Best of both: the built-in that does it for you', html: `${H.table(['task', 'LBYL', 'EAFP', 'idiomatic built-in'], [['default for missing key', 'if k in d', 'try/except KeyError', '<code>d.get(k, 0)</code>'], ['group into lists', 'if k not in d: d[k] = []', 'try/except KeyError', '<code>defaultdict(list)</code> or <code>d.setdefault(k, [])</code>'], ['optional attribute', 'hasattr', 'try/except AttributeError', '<code>getattr(o, "x", None)</code>'], ['first item or None', 'if it: …', 'try/except StopIteration', '<code>next(iter(x), None)</code>'], ['create dir', 'if not exists: mkdir', 'try/except FileExistsError', '<code>os.makedirs(p, exist_ok=True)</code>']])}` },
+      { title: 'LBYL for irreversible actions', html: `<p>Before charging a card, sending 10,000 emails or deleting files, <b>validate everything first</b> — once half the emails are out, "asking forgiveness" is too late. A mix is common: LBYL validation up front, EAFP around the actual I/O.</p>`, code: { lang: 'python', run: true, code: `def send_campaign(recipients, send):
+    # LBYL: validate the whole batch BEFORE any side effect
+    bad = [r for r in recipients if '@' not in r]
+    if bad:
+        raise ValueError(f'invalid addresses: {bad}')
+    sent = 0
+    for r in recipients:
+        try:                       # EAFP around each real I/O call
+            send(r)
+            sent += 1
+        except ConnectionError:
+            print('retry later:', r)
+    return sent
+
+def fake_send(addr):
+    if addr.startswith('down'):
+        raise ConnectionError(addr)
+
+print(send_campaign(['a@x.com', 'down@x.com', 'b@x.com'], fake_send))
+try:
+    send_campaign(['a@x.com', 'oops'], fake_send)
+except ValueError as e:
+    print(e)` } }
+    ],
+    deepDive: `<p>🟣 <b>Actual costs (CPython 3.11–3.13, ballpark).</b> A dict lookup hit is ~20–40 ns. Entering a try block is ~0 ns (exception tables). Raising and catching a built-in exception in the same frame is roughly 100–300 ns — about 5–15× a lookup — and more when it unwinds several frames or builds long tracebacks. So EAFP is faster when misses are rare, slower when they are frequent. Always measure with <code>timeit</code> on your data; the gap changes between versions.</p>
+<p><b>Atomicity, more precisely.</b> EAFP avoids TOCTOU only when the operation itself is atomic at the OS/DB level: <code>open(p, 'x')</code> uses <code>O_CREAT|O_EXCL</code>; <code>os.replace</code> is an atomic rename on the same filesystem; <code>os.mkdir</code> fails atomically if the dir exists. Python-level sequences like <code>d[k] += 1</code> are <b>not</b> atomic across threads (read, add, store are separate bytecodes — even with the GIL, and certainly in free-threaded 3.13t+ builds) — EAFP does not fix data races; locks do.</p>
+<p><b>Hidden-exception traps.</b> <code>hasattr</code>, <code>getattr(o, n, default)</code>, <code>dict.get</code> on a dict subclass with a buggy <code>__missing__</code>, and iteration (StopIteration) are all EAFP internally. Since PEP 479 (3.7), a StopIteration leaking out of a generator body becomes a RuntimeError, precisely because silently treating a bug as "end of data" was so dangerous.</p>
+<p><b>Security angle.</b> TOCTOU is a classic privilege-escalation bug class (check permissions on a path, attacker swaps a symlink, privileged code opens the target). Mitigations: open first and then <code>os.fstat</code> the file descriptor; use <code>dir_fd</code>/<code>follow_symlinks=False</code> parameters; prefer atomic primitives.</p>`,
+    aiEra: `<p>🤖 <b>What AI changes:</b> both styles are trivial to generate, so the skill shifts to <b>choosing</b>: ask "what is the expected hit rate, can another actor change state between check and use, and is the action reversible?"</p>
+<p><b>Where AI goes wrong:</b> LLM-written code often defaults to LBYL with <code>os.path.exists</code> before <code>open</code> (TOCTOU), or to huge EAFP blocks with <code>except Exception</code>. It also "optimises" a loop with try/except when misses are common, making it slower. Ask it to justify the choice and to benchmark with <code>timeit</code>.</p>
+<p><b>What you must still own:</b> spotting race windows in code review and knowing the idiomatic built-ins (<code>get</code>, <code>setdefault</code>, <code>defaultdict</code>, <code>exist_ok</code>, <code>'x'</code> mode) that make the debate unnecessary.</p>`,
+    problems: [{
+      title: 'Read the First Available Config File (Race-Free)',
+      level: 'Medium', tags: ['EAFP', 'files', 'TOCTOU'], companies: ['Microsoft', 'Cloudflare'],
+      statement: `<p>Implement <code>read_first(paths)</code>: try each path in order and return <code>(path, text)</code> for the first file that can be opened and read. Skip paths that do not exist or that you have no permission to read. If none works, raise <code>FileNotFoundError</code> listing all tried paths. Do <b>not</b> use <code>os.path.exists</code> or <code>os.access</code> (they create a race window).</p>`,
+      constraints: `1 ≤ len(paths) ≤ 20. A path may point to a directory — treat that as "skip" too (IsADirectoryError on Linux/macOS, PermissionError on Windows).`,
+      example: `<p>Paths <code>['./app.local.toml', '~/.app.toml', '/etc/app.toml']</code> where only the last exists → ${H.c('g', "('/etc/app.toml', '…contents…')")}. The first two raise ${H.c('r', 'FileNotFoundError')}, which is caught and skipped.</p>`,
+      brute: { why: `<p>The LBYL version checks <code>os.path.isfile(p) and os.access(p, os.R_OK)</code>, then opens. Between the check and the open, the file can be deleted or its permissions changed (TOCTOU), and <code>os.access</code> checks the <b>real</b> uid, not the effective one, so it can lie for setuid programs.</p>`, code: `import os
+
+def read_first_lbyl(paths):
+    for p in paths:
+        if os.path.isfile(p) and os.access(p, os.R_OK):
+            with open(p, encoding='utf-8') as f:   # may still fail: race!
+                return p, f.read()
+    raise FileNotFoundError(f'none of {paths} could be read')` },
+      mcq: { q: 'Which single except clause skips missing files, unreadable files AND directories?', options: ['<code>except (FileNotFoundError, PermissionError, IsADirectoryError)</code>', '<code>except Exception</code>', '<code>except ValueError</code>', '<code>except FileExistsError</code>'], answer: 0, explain: 'All three are OSError subclasses we can sensibly skip. except OSError would also work but additionally hides things like disk I/O errors (EIO), which you may want to surface. Exception would hide bugs such as UnicodeDecodeError on a corrupt file.' },
+      hints: [`<p>Hint 1: The <code>open()</code> call is the check. Wrap only <code>open + read</code> in try.</p>`, `<p>Hint 2: Catch the specific OSError subclasses you can skip: FileNotFoundError, PermissionError, IsADirectoryError. Let anything else (e.g. UnicodeDecodeError) propagate.</p>`, `<p>Hint 3: Recipe: tried = []; for p in paths: try: open+read → return / except (...) as e: tried.append(f'{p}: {type(e).__name__}') / after loop: raise FileNotFoundError('; '.join(tried)).</p>`],
+      solution: {
+        approach: `<p>Pure EAFP: attempt the real operation for each candidate, skip the specific failures we expect, and remember why each was skipped so the final error is actionable.</p>`,
+        code: { lang: 'python', run: true, code: `import os
+import tempfile
+
+SKIPPABLE = (FileNotFoundError, PermissionError, IsADirectoryError)
+
+
+def read_first(paths):
+    tried = []
+    for p in paths:
+        try:
+            with open(p, encoding='utf-8') as f:   # the open IS the check
+                return p, f.read()
+        except SKIPPABLE as e:
+            tried.append(f'{p}: {type(e).__name__}')
+    raise FileNotFoundError('no readable config; tried ' + '; '.join(tried))
+
+
+with tempfile.TemporaryDirectory() as d:
+    real = os.path.join(d, 'app.toml')
+    with open(real, 'w', encoding='utf-8') as f:
+        f.write('port = 8080')
+    candidates = [os.path.join(d, 'missing.toml'), d, real]   # missing, a directory, real
+    path, text = read_first(candidates)
+    print(os.path.basename(path), '->', text)
+    try:
+        read_first([os.path.join(d, 'a.toml'), os.path.join(d, 'b.toml')])
+    except FileNotFoundError as e:
+        print('error:', str(e).replace(d, '<tmp>'))` },
+        dry: { head: ['path', 'open() result', 'action', 'tried'], rows: [['missing.toml', '<span class="c-r">FileNotFoundError</span>', 'skip', '[missing: FileNotFoundError]'], ['&lt;tmp dir&gt;', '<span class="c-r">IsADirectoryError</span>', 'skip', '[…, dir: IsADirectoryError]'], ['app.toml', 'opened, read "port = 8080"', '<span class="c-g">return</span>', '—']] },
+        complexity: `<p>O(P + S) for P paths and S bytes read. No race window: each file is checked and used in the same atomic open call.</p>`,
+        followUps: ['Expand ~ and environment variables in paths (os.path.expanduser / expandvars).', 'Merge ALL existing files (later ones override earlier keys) instead of returning the first.', 'Write the config atomically: write to a temp file, fsync, then os.replace.']
       }
     }]
   });

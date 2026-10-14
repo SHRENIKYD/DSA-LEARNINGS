@@ -793,4 +793,208 @@ if __name__ == "__main__":
     }]
   });
 
+  /* ================= TOPIC 4: concurrent.futures ================= */
+  topics.push({
+    title: 'concurrent.futures: Executors, Futures, map, as_completed and wait',
+    analogy: `<p>At a busy café you order at the counter and get a <b>buzzer</b> (a <b>Future</b>). You don't stand at the coffee machine — you can sit down, chat, order something else. The buzzer lets you <b>check</b> if your order is ready, <b>wait</b> for it, or <b>cancel</b> if they haven't started. The baristas are the <b>executor</b>: a fixed team that takes orders from a line. A <b>thread pool</b> is baristas sharing one coffee machine; a <b>process pool</b> is baristas each with their own café.</p>`,
+    explain: `<p>🟢 <code>concurrent.futures</code> gives <b>one simple API</b> for running functions in the background, whether on threads or processes:</p>
+<pre>from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
+
+with ThreadPoolExecutor(max_workers=8) as ex:     # swap in ProcessPoolExecutor for CPU work
+    fut = ex.submit(fetch, "https://a.example")   # returns immediately with a Future
+    print(fut.result(timeout=5))                  # block until done (or raise TimeoutError)</pre>
+<p>🔵 <b>The four ways to collect results:</b></p>
+${H.table(['API', 'Order you get results', 'Use when'], [['<code>ex.map(fn, items)</code>', '<b>input order</b> (waits for item 0 first)', 'you need results lined up with inputs'], ['<code>as_completed(futures)</code>', '<b>finish order</b> (fastest first)', 'show progress, act on each result ASAP'], ['<code>wait(futures, return_when=FIRST_COMPLETED)</code>', 'returns (done, not_done) sets', 'first-wins races, custom scheduling loops'], ['<code>fut.result()</code> one by one', 'whatever order you ask', 'small fixed sets of calls']])}
+<p><b>A Future's life:</b> <code>PENDING</code> (in the queue) → <code>RUNNING</code> → <code>FINISHED</code> (with a result or an exception), or <code>CANCELLED</code> if you called <code>cancel()</code> before it started. Running work <b>cannot</b> be cancelled by the executor.</p>
+<p><b>Exceptions don't vanish — but they do hide.</b> If the function raises, the exception is stored inside the Future and re-raised when you call <code>result()</code>. If you never call <code>result()</code>, you never see it. With <code>ex.map</code>, the exception is raised when the iterator reaches that item, and the remaining results are lost from that loop.</p>
+<p><b>Shutdown:</b> leaving the <code>with</code> block calls <code>shutdown(wait=True)</code>. Use <code>shutdown(cancel_futures=True)</code> (3.9+) to drop queued work quickly.</p>
+<p><b>Default pool sizes:</b> threads: <code>min(32, cpu_count + 4)</code> (3.13+ uses the CPUs this process may use); processes: number of usable CPUs. Python 3.14 added a third executor, <code>InterpreterPoolExecutor</code>, which runs each worker in its own sub-interpreter with its own GIL inside one process.</p>
+<p>🟣 <b>Bridge to asyncio:</b> <code>await loop.run_in_executor(pool, fn, arg)</code> or <code>await asyncio.to_thread(fn, arg)</code> turns blocking work into something an event loop can await without freezing.</p>`,
+    clues: [
+      '"run these N independent calls in parallel and collect results" → executor.map / submit + as_completed',
+      '"process results as soon as each one is ready" / "progress bar" → as_completed',
+      '"return the first successful response, cancel the rest" (hedged requests) → wait(FIRST_COMPLETED) or as_completed + cancel',
+      '"overall deadline of 2 s for all calls" → as_completed(timeout=…) / wait(timeout=…)',
+      '"the background task failed silently" → exception stored in the Future, never retrieved',
+      '"same code should run on threads or processes" → Executor interface, swap the class'
+    ],
+    code: [{ lang: 'python', title: 'A Future is just a box with a state machine (runnable, no threads needed)', run: true, code: `from concurrent.futures import Future
+
+def on_done(f):
+    # Callbacks run when the future finishes (in the thread that finished it)
+    if f.cancelled():
+        print("callback: cancelled")
+    elif f.exception():
+        print("callback: failed with", repr(f.exception()))
+    else:
+        print("callback: result =", f.result())
+
+ok = Future()
+print("state:", ok._state)            # PENDING (private attribute, peek only)
+ok.add_done_callback(on_done)
+ok.set_running_or_notify_cancel()     # what an executor does when a worker picks it up
+print("running?", ok.running())
+ok.set_result(42)                      # what an executor does when fn returns
+print("done?", ok.done(), "result:", ok.result())
+
+bad = Future()
+bad.add_done_callback(on_done)
+bad.set_running_or_notify_cancel()
+bad.set_exception(ValueError("boom"))  # stored, not raised yet
+try:
+    bad.result()                       # raised HERE, when you ask for the result
+except ValueError as e:
+    print("caught on result():", e)
+
+never = Future()
+never.add_done_callback(on_done)
+print("cancel pending future:", never.cancel())   # True: it had not started
+` }, { lang: 'python', title: 'map vs as_completed vs wait (run locally)', code: `import time
+from concurrent.futures import ThreadPoolExecutor, as_completed, wait, FIRST_COMPLETED
+
+def job(name, secs):
+    time.sleep(secs)                 # I/O-like wait
+    return f"{name} ({secs}s)"
+
+work = [("A", 0.3), ("B", 0.1), ("C", 0.2)]
+
+with ThreadPoolExecutor(max_workers=3) as ex:
+    print("map:         ", list(ex.map(lambda w: job(*w), work)))      # input order
+
+    futs = {ex.submit(job, n, s): n for n, s in work}
+    print("as_completed:", [f.result() for f in as_completed(futs)])  # finish order
+
+    futs = [ex.submit(job, n, s) for n, s in work]
+    done, not_done = wait(futs, return_when=FIRST_COMPLETED)
+    print("first done:  ", [f.result() for f in done], "still running:", len(not_done))
+` }],
+    codeTitle: ['Future state machine', 'Collecting results'],
+    viz: {
+      title: 'Executor timeline: submit order vs as_completed order vs map order',
+      input: '2: 3 1 2 4',
+      inputLabel: 'max_workers (1-3) : task durations (1-9 each, up to 6)',
+      gen: function (input) {
+        var s = String(input || '2: 3 1 2 4'), sp = s.split(':');
+        if (sp.length !== 2) throw new Error('Format: workers : durations, e.g. 2: 3 1 2 4');
+        var W = Number(sp[0].trim());
+        if (!(W >= 1 && W <= 3) || Math.floor(W) !== W) throw new Error('max_workers must be 1-3');
+        var d = nums(sp[1], 6, 'Durations must be whole numbers 1-9, e.g. 2: 3 1 2 4');
+        var n = d.length, state = d.map(function () { return 'PENDING'; }), endAt = d.map(function () { return -1; }), worker = d.map(function () { return '-'; });
+        var free = range(W, function (i) { return i; }), queue = range(n), asc = [], mapOut = [], mapNext = 0, frames = [], t = 0;
+        function snap(narr, hlRow) {
+          var hl = {};
+          if (hlRow !== undefined) hl[hlRow] = 'cur';
+          frames.push(fr(narr, [
+            { type: 'table', label: 'Futures (one per submit call)', columns: ['future', 'duration', 'state', 'worker', 'finished at'], rows: d.map(function (x, i) { return ['f' + i, x + 's', state[i], worker[i], endAt[i] >= 0 && state[i] === 'FINISHED' ? 't=' + endAt[i] : '']; }), hl: hl },
+            { type: 'queue', label: 'Executor work queue (not started)', items: queue.map(function (i) { return 'f' + i; }), frontLabel: 'next', backLabel: 'last' },
+            { type: 'queue', label: 'as_completed() has yielded (finish order)', items: asc.slice(), frontLabel: 'first', backLabel: 'latest' },
+            { type: 'queue', label: 'ex.map() has yielded (input order)', items: mapOut.slice(), frontLabel: 'first', backLabel: 'latest' },
+            vp({ clock: t + 's', 'idle workers': free.length + ' of ' + W }, 'clock', 'cur')
+          ]));
+        }
+        snap('We call <code>submit()</code> ' + n + ' times. Each call returns a <b>Future</b> instantly in state PENDING and puts the job on the executor\'s queue. Only <b>' + W + '</b> worker(s) exist, so the rest wait.');
+        var guard = 0;
+        while (guard++ < 80) {
+          var notes = [];
+          for (var i = 0; i < n; i++) if (state[i] === 'RUNNING' && endAt[i] === t) { state[i] = 'FINISHED'; free.push(Number(worker[i].slice(1)) - 1); free.sort(); asc.push('f' + i); notes.push('<b>f' + i + '</b> finished → <code>as_completed</code> yields it right away.'); }
+          while (mapNext < n && state[mapNext] === 'FINISHED') { mapOut.push('f' + mapNext); notes.push('<code>map</code> can now yield <b>f' + mapNext + '</b>.'); mapNext++; }
+          if (mapNext < n && state[mapNext] !== 'FINISHED' && asc.length > mapOut.length) notes.push('<span class="c-y">map is stuck waiting for f' + mapNext + '</span> even though later futures are done (head-of-line blocking).');
+          while (free.length && queue.length) { var k = queue.shift(), w = free.shift(); state[k] = 'RUNNING'; worker[k] = 'W' + (w + 1); endAt[k] = t + d[k]; notes.push('Worker W' + (w + 1) + ' starts <b>f' + k + '</b> (needs ' + d[k] + 's).'); }
+          if (notes.length) snap('<b>t = ' + t + 's.</b> ' + notes.join(' '));
+          if (state.every(function (x) { return x === 'FINISHED'; })) break;
+          t++;
+        }
+        snap('<b>All finished at t = ' + t + 's.</b> as_completed order: <b>' + asc.join(', ') + '</b> (fastest first — good for progress bars and early reactions). map order: <b>' + mapOut.join(', ') + '</b> (always input order — good when results must line up with inputs). Same work, same total time; only the <i>delivery order</i> differs.');
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'Hidden exception: the job "succeeded" silently', html: `<p><code>ex.submit(save_to_db, row)</code> in a loop, never calling <code>result()</code>. A DB error is stored inside each Future and garbage-collected — no log, no crash. ${H.c('g', 'Fix:')} iterate <code>as_completed(futs)</code> and call <code>f.result()</code> (or check <code>f.exception()</code>) for every future, or add a done-callback that logs failures.</p>`, code: `from concurrent.futures import ThreadPoolExecutor, as_completed
+
+def save(row):
+    if row == 3:
+        raise ValueError(f"row {row} is invalid")
+    return row
+
+with ThreadPoolExecutor(4) as ex:
+    futs = {ex.submit(save, r): r for r in range(5)}
+    for f in as_completed(futs):
+        try:
+            f.result()
+        except Exception as e:
+            print("FAILED", futs[f], "->", e)` },
+      { title: 'Overall deadline with as_completed(timeout)', html: `<p>Ask 5 price services, but answer the user within 1 s with whatever arrived:</p>${H.table(['service', 'latency', 'included?'], [['A', '0.2 s', H.c('g', 'yes')], ['B', '0.6 s', H.c('g', 'yes')], ['C', '3.0 s', H.c('r', 'no — TimeoutError at 1 s')]])}<p>Catch <code>TimeoutError</code> from the <code>as_completed</code> loop, then <code>cancel()</code> what has not started. Already-running calls keep running in the background (threads cannot be killed), so the underlying client should also have its own timeout.</p>` },
+      { title: 'Choosing max_workers', html: `${H.table(['Work', 'Executor', 'Rule of thumb'], [['HTTP / DB calls', 'Thread', '10–100; limited by the remote side, connection pools and rate limits'], ['pure-Python CPU', 'Process', '= number of cores (more just adds context switching)'], ['NumPy / C that releases the GIL', 'Thread', '≈ cores'], ['mixed', 'both', 'thread pool for I/O feeding a process pool for CPU']])}<p>Little's law helps: workers needed ≈ request rate × latency. 200 req/s × 0.25 s = <b>50</b> concurrent calls.</p>` }
+    ],
+    deepDive: `<p><b>How ThreadPoolExecutor works inside.</b> <code>submit</code> wraps your call in a <code>_WorkItem</code> holding a new Future, puts it on an unbounded <code>queue.SimpleQueue</code>, and lazily starts another thread if fewer than <code>max_workers</code> exist and none is idle. Workers loop on <code>queue.get()</code>, call <code>future.set_running_or_notify_cancel()</code> (returns False if it was cancelled → skip), run the function, then <code>set_result</code>/<code>set_exception</code>, which fires callbacks <b>in the worker thread</b>. Because the queue is unbounded, submitting 10 million items holds 10 million work items in memory — bound it yourself with a <code>Semaphore</code> released in a done-callback, or submit in batches.</p>
+<p><b>ProcessPoolExecutor</b> adds a management thread that moves work items into a <code>multiprocessing</code> call queue (sized just above <code>max_workers</code>), plus pickling. Since 3.11 it supports <code>max_tasks_per_child</code>. If a worker dies abruptly, every pending future fails with <code>BrokenProcessPool</code> and the pool must be recreated. <code>map</code> on a process pool accepts <code>chunksize</code>; on a thread pool it is ignored.</p>
+<p><b>as_completed and wait</b> install a waiter object on every future (a small Event-like structure), so they block efficiently without polling. <code>ex.map</code> submits <b>everything immediately</b> (it is not lazy about submission, only about yielding) — beware infinite generators. Python 3.14 added a <code>buffersize</code> argument to <code>Executor.map</code> that limits how many tasks are submitted ahead, making it safe for huge or endless inputs.</p>
+<p><b>Context and cleanup.</b> Executors do not propagate <code>contextvars</code>; wrap with <code>contextvars.copy_context().run</code> when you need request-scoped data (trace IDs) in workers. At interpreter exit, Python joins thread-pool workers, so a stuck task can make your program hang on exit — always give blocking calls timeouts.</p>`,
+    aiEra: `<p><b>What AI changes:</b> "parallelise this loop" becomes a one-line request, and assistants usually reach for <code>ThreadPoolExecutor</code> + <code>as_completed</code>. That is often right for I/O. You add value by checking <b>error handling, ordering, bounded submission and timeouts</b>.</p>
+<p><b>Use AI as a partner:</b> <code>Wrap this loop in a ThreadPoolExecutor, keep results in input order, log every failure with the input that caused it, and enforce a 10 s overall deadline</code>; then ask <code>What happens to tasks that are still running when the deadline hits?</code></p>
+<p><b>Where AI goes wrong:</b> uses <code>ProcessPoolExecutor</code> with a lambda; calls <code>fut.result()</code> right after each <code>submit</code> (accidentally sequential!); ignores exceptions from <code>map</code>; assumes <code>cancel()</code> stops running work; or submits millions of tasks at once.</p>
+<p><b>What you must still own:</b> sizing pools from latency and rate limits, the failure semantics you promise to callers (partial results? fail fast?), and making sure background work cannot hang shutdown.</p>`,
+    problems: [{
+      title: 'Hedged Request: Fastest Mirror Wins', level: 'Medium', tags: ['concurrent.futures', 'wait', 'cancellation'], companies: ['Google', 'Netflix', 'Uber'],
+      statement: `<p>A file is available on several mirrors. Write <code>fetch_fastest(mirrors, fetch, timeout)</code> that requests all mirrors at once with a thread pool and returns <code>(mirror, data)</code> from the <b>first successful</b> response. Failed responses are ignored unless <b>all</b> fail, in which case raise <code>RuntimeError</code> listing the errors. If nothing succeeds within <code>timeout</code> seconds, raise <code>TimeoutError</code>. Do not wait for slow mirrors after a winner is found.</p>`,
+      constraints: `<p>1 ≤ len(mirrors) ≤ 20; fetch is blocking I/O; timeout ≤ 30 s.</p>`,
+      example: `<p>mirrors ${H.c('b', 'eu (0.30 s, ok), us (0.10 s, raises), asia (0.20 s, ok)')} → us fails first (ignored), asia succeeds at 0.20 s → return ${H.c('g', '("asia", data)')} without waiting for eu.</p>`,
+      brute: { why: `<p>Trying mirrors one by one costs the <b>sum</b> of latencies in the worst case and always pays the latency of the first mirror even if it is the slowest. Waiting on <code>ex.map</code> is also wrong: it returns in input order, so a slow first mirror blocks you.</p>`, code: `def fetch_fastest_slow(mirrors, fetch):
+    errors = []
+    for m in mirrors:
+        try:
+            return m, fetch(m)
+        except Exception as e:
+            errors.append(f"{m}: {e}")
+    raise RuntimeError("; ".join(errors))
+
+print(fetch_fastest_slow(["a", "b"], str.upper))` },
+      mcq: { q: 'Which call lets you react to whichever request finishes first, while keeping the others running?', options: ['ex.map(fetch, mirrors)', 'wait(futs, return_when=FIRST_COMPLETED) in a loop', 'futs[0].result()', 'ex.shutdown(wait=True)'], answer: 1, explain: 'wait(FIRST_COMPLETED) returns as soon as any future is done, giving (done, not_done). You inspect done; if it failed, loop again on not_done.' },
+      hints: [`<p>Hint 1: This is a <b>race</b>: submit everything, then react to completions in finish order.</p>`, `<p>Hint 2: Loop: <code>done, pending = wait(pending, timeout=remaining, return_when=FIRST_COMPLETED)</code>. For each done future, if it has no exception → winner. Track remaining time with <code>time.monotonic()</code>.</p>`, `<p>Hint 3: On a winner, <code>cancel()</code> the pending ones and shut the executor down with <code>wait=False, cancel_futures=True</code> so you don't block on slow mirrors (they finish in the background). Empty <code>done</code> after wait → timeout.</p>`],
+      solution: {
+        approach: `<p>Submit all requests, then repeatedly wait for the <b>first completed</b> future among those still pending. A success wins immediately; a failure is recorded and we keep waiting. A deadline computed with <code>time.monotonic()</code> bounds the total wait. The executor is shut down without waiting so stragglers do not delay the caller.</p>`,
+        code: `import time
+from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
+
+def fetch_fastest(mirrors, fetch, timeout):
+    ex = ThreadPoolExecutor(max_workers=len(mirrors))
+    futs = {ex.submit(fetch, m): m for m in mirrors}
+    pending, errors = set(futs), []
+    deadline = time.monotonic() + timeout
+    try:
+        while pending:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError(f"no mirror answered within {timeout}s")
+            done, pending = wait(pending, timeout=remaining, return_when=FIRST_COMPLETED)
+            if not done:
+                raise TimeoutError(f"no mirror answered within {timeout}s")
+            for f in done:
+                if f.exception() is None:
+                    return futs[f], f.result()          # winner
+                errors.append(f"{futs[f]}: {f.exception()}")
+        raise RuntimeError("all mirrors failed: " + "; ".join(errors))
+    finally:
+        for f in pending:
+            f.cancel()                                  # drop anything not started
+        ex.shutdown(wait=False, cancel_futures=True)    # don't wait for stragglers
+
+LAT = {"eu": (0.30, True), "us": (0.10, False), "asia": (0.20, True)}
+
+def fake_fetch(m):
+    secs, ok = LAT[m]
+    time.sleep(secs)
+    if not ok:
+        raise ConnectionError("reset")
+    return f"data from {m}"
+
+if __name__ == "__main__":
+    print(fetch_fastest(["eu", "us", "asia"], fake_fetch, timeout=1.0))   # ('asia', 'data from asia')`,
+        dry: { head: ['time', 'event', 'done set', 'pending', 'action'], rows: [['0.00 s', 'submit eu, us, asia', '{}', 'eu, us, asia', 'wait FIRST_COMPLETED'], ['0.10 s', 'us raises', '{us}', 'eu, asia', 'record error, wait again'], ['0.20 s', 'asia ok', '{asia}', 'eu', '<span class="c-g">return ("asia", data)</span>'], ['finally', 'cancel / shutdown(wait=False)', '', 'eu finishes in background', 'caller already has answer']] },
+        complexity: `<p>Latency = min over successful mirrors (plus small overhead), bounded by timeout. Threads: len(mirrors). Cost: extra load on servers — production systems often send the second request only after a short delay (e.g. the p95 latency) to limit waste.</p>`,
+        followUps: ['How would you implement a delayed hedge (send the 2nd request only after 50 ms)?', 'Write the asyncio version with asyncio.wait and task.cancel().', 'Why can the losing thread not be killed, and what does that mean for resource use?']
+      }
+    }]
+  });
+
 registerModule({ id: 'py10', title: 'Concurrency', intro: '<p>x</p>', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();

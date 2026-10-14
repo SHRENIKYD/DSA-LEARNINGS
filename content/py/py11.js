@@ -1013,4 +1013,572 @@ print(top_k_bucket([1, 1, 1, 2, 2, 3], 2))   # [1, 2]
       }
     }]
   });
+
+  /* ================= TOPIC 4: bisect ================= */
+  topics.push({
+    title: 'bisect: Binary Search Without Off-by-One Bugs',
+    analogy: `<p>You are putting a new book on a <b>shelf sorted by title</b>. You don't check every book — you open in the middle, see if your title comes before or after, and halve the shelf again. In a few glances you find the exact <b>gap</b> where the book belongs. <code>bisect</code> finds that gap (the <b>insertion point</b>); <code>insort</code> also slides the book in.</p>`,
+    explain: `<p>🟢 <b>The plain idea.</b> Hand-written binary search is famous for off-by-one bugs (<code>lo &lt;= hi</code> or <code>lo &lt; hi</code>? <code>mid + 1</code> or <code>mid</code>?). Python's <code>bisect</code> module gives you a tested, C-speed binary search that answers one precise question: <b>"at which index would x go so the list stays sorted?"</b></p>
+${H.table(['Function', 'Returns', 'If x already exists…'], [
+  ['<code>bisect_left(a, x)</code>', 'first index i with <code>a[i] &gt;= x</code>', 'points <b>before</b> the equal run'],
+  ['<code>bisect_right(a, x)</code> (= <code>bisect</code>)', 'first index i with <code>a[i] &gt; x</code>', 'points <b>after</b> the equal run'],
+  ['<code>insort_left / insort_right(a, x)</code>', 'inserts x at that point', 'O(log n) search + O(n) shift']
+])}
+${H.arr([1, 3, 3, 3, 5, 8], { label: 'a', idx: true, ptr: { 1: 'left(3)', 4: 'right(3)' }, hl: { 1: 'g', 2: 'g', 3: 'g' } })}
+<p>For <code>x = 3</code>: <code>bisect_left</code> → <b>1</b>, <code>bisect_right</code> → <b>4</b>. So <b>count of 3s = 4 − 1 = 3</b>. For <code>x = 4</code> (missing) both return 4 — the gap between 3 and 5.</p>
+<p>🔵 <b>Recipes that turn into one-liners:</b></p>
+${H.table(['Question', 'Code'], [
+  ['Is x present?', '<code>i = bisect_left(a, x); i &lt; len(a) and a[i] == x</code>'],
+  ['How many elements &lt; x?', '<code>bisect_left(a, x)</code>'],
+  ['How many elements ≤ x?', '<code>bisect_right(a, x)</code>'],
+  ['Count in range [L, R]', '<code>bisect_right(a, R) - bisect_left(a, L)</code>'],
+  ['First element ≥ x (ceiling)', '<code>a[bisect_left(a, x)]</code> if index &lt; len'],
+  ['Last element ≤ x (floor)', '<code>a[bisect_right(a, x) - 1]</code> if index ≥ 1'],
+  ['Search only a[lo:hi]', '<code>bisect_left(a, x, lo, hi)</code> — no slicing copy']
+])}
+<p>🔵 <b>The <code>key=</code> argument (Python 3.10+).</b> <code>bisect_left(a, x, key=f)</code> compares <code>f(a[i])</code> with <code>x</code>. Important: <code>x</code> is <b>not</b> passed through <code>f</code> — you give the already-transformed value. That enables a neat <b>binary search on the answer</b>: <code>bisect_left(range(lo, hi), True, key=feasible)</code> returns the first value where a monotone condition becomes True.</p>
+<p><b>Precondition:</b> the list (or the key values) must be sorted ascending. On unsorted data bisect returns a meaningless index without any error.</p>`,
+    clues: [
+      '"sorted array" + "find position / first ≥ / last ≤ / insert position" → <code>bisect_left</code> / <code>bisect_right</code>',
+      '"count occurrences of x in a sorted array", "how many values in [L, R]" → <code>bisect_right - bisect_left</code>',
+      '"timestamps are strictly increasing; get the value at time t" → store sorted times, <code>bisect_right(times, t) - 1</code>',
+      '"longest increasing subsequence", "Russian doll envelopes", N up to 10<sup>5</sup> → patience sorting with <code>bisect_left</code>, O(N log N)',
+      '"minimum speed/capacity/days such that…" (monotone yes/no) → binary search on the answer, e.g. <code>bisect_left(range(...), True, key=ok)</code>',
+      '"grade/tax bracket/price tier lookup by breakpoints" → <code>bisect_right(breakpoints, score)</code>',
+      'O(log N) per query with many queries on a static sorted list → bisect'
+    ],
+    code: [{ lang: 'python', run: true, title: 'bisect tour (runnable)', code: `
+from bisect import bisect_left, bisect_right, insort
+
+a = [1, 3, 3, 3, 5, 8]
+print(bisect_left(a, 3), bisect_right(a, 3))   # 1 4
+print("count of 3:", bisect_right(a, 3) - bisect_left(a, 3))   # 3
+print(bisect_left(a, 4), bisect_right(a, 4))   # 4 4  (missing -> same gap)
+print("values in [2, 6]:", bisect_right(a, 6) - bisect_left(a, 2))   # 4
+
+def contains(a, x):
+    i = bisect_left(a, x)
+    return i < len(a) and a[i] == x
+print(contains(a, 5), contains(a, 4))          # True False
+
+# floor / ceiling
+x = 6
+i = bisect_right(a, x)
+print("floor:", a[i - 1] if i else None)       # 5
+j = bisect_left(a, x)
+print("ceil:", a[j] if j < len(a) else None)   # 8
+
+# breakpoints lookup (example from the Python docs)
+def grade(score, breakpoints=(60, 70, 80, 90), grades="FDCBA"):
+    return grades[bisect_right(breakpoints, score)]
+print([grade(s) for s in (33, 99, 77, 70, 89, 90, 100)])
+
+# keep a list sorted while inserting
+b = []
+for v in [5, 1, 4, 1, 3]:
+    insort(b, v)                                # O(log n) search + O(n) shift
+print(b)
+
+# key= (Python 3.10+): search records by a field; x is ALREADY a key value
+people = [("ann", 19), ("bob", 25), ("cat", 31)]    # sorted by age
+print(bisect_left(people, 25, key=lambda p: p[1]))  # 1
+
+# binary search on the answer: smallest s with s*s >= 50
+print(bisect_left(range(0, 100), True, key=lambda s: s * s >= 50))   # 8
+` }],
+    codeTitle: ['bisect tour (runnable)'],
+    viz: [{
+      title: 'bisect_left vs bisect_right: watching lo and hi close in',
+      input: '1 3 3 3 5 8 9 | 3',
+      inputLabel: 'sorted numbers | x   (≤ 14 numbers)',
+      gen: function (input) {
+        var parts = String(input === undefined ? '' : input).split('|');
+        var a = nums(parts[0], 14, 'Format: 1 3 3 5 8 | 3');
+        for (var t = 1; t < a.length; t++) if (a[t] < a[t - 1]) throw new Error('The list must be sorted ascending for bisect to work');
+        var x = Number(parts[1]);
+        if (parts.length < 2 || isNaN(x)) throw new Error('After | give the value x to search for');
+        var frames = [];
+        var CODE = 'def bisect_left(a, x, lo=0, hi=len(a)):\n    while lo < hi:\n        mid = (lo + hi) // 2\n        if a[mid] < x:        # right: a[mid] <= x\n            lo = mid + 1\n        else:\n            hi = mid\n    return lo';
+        [['left', 'bisect_left', '&lt;'], ['right', 'bisect_right', '≤']].forEach(function (mode) {
+          var lo = 0, hi = a.length;
+          frames.push(fr('<b>' + mode[1] + '(a, ' + x + ')</b>: search window is <code>[lo, hi)</code> = [0, ' + hi + '). Invariant: everything left of lo is ' + mode[2] + ' x; everything from hi on is not.', [
+            { type: 'array', label: 'a', values: a.slice(), showIdx: true, range: [lo, hi - 1], ptr: (function () { var p = {}; p[lo] = 'lo'; if (hi < a.length) p[hi] = 'hi'; return p; })() },
+            vp({ lo: lo, hi: hi, x: x }, 'lo,hi', 'cur'),
+            cp(CODE, { 1: 'cur' }, mode[0] === 'left' ? 'bisect_left (CPython logic)' : 'bisect_right = same, but the test is a[mid] <= x')
+          ]));
+          var guard = 0;
+          while (lo < hi && guard++ < 20) {
+            var mid = Math.floor((lo + hi) / 2);
+            var goRight = mode[0] === 'left' ? a[mid] < x : a[mid] <= x;
+            var ptr = {}; ptr[lo] = ptr[lo] ? ptr[lo] : 'lo'; ptr[mid] = mid === lo ? ['lo', 'mid'] : 'mid'; if (hi < a.length) ptr[hi] = 'hi';
+            frames.push(fr('mid = (' + lo + ' + ' + hi + ') // 2 = <b>' + mid + '</b>, a[mid] = ' + a[mid] + '. ' + (goRight ? a[mid] + ' ' + mode[2] + ' ' + x + ' → the gap is to the <b>right</b>: lo = mid + 1 = ' + (mid + 1) + '.' : a[mid] + ' is not ' + mode[2] + ' ' + x + ' → mid could be the answer, keep it: hi = mid = ' + mid + '.'), [
+              { type: 'array', label: 'a', values: a.slice(), showIdx: true, range: [lo, hi - 1], ptr: ptr, hl: one(mid, goRight ? 'done' : 'cur') },
+              vp({ lo: lo, hi: hi, mid: mid, 'a[mid]': a[mid] }, 'mid', 'cur'),
+              cp(CODE, goRight ? { 3: 'cur', 4: 'cur', 5: 'ok' } : { 3: 'cur', 6: 'cur', 7: 'ok' })
+            ]));
+            if (goRight) lo = mid + 1; else hi = mid;
+          }
+          var p2 = {}; if (lo < a.length) p2[lo] = mode[0] === 'left' ? 'left' : 'right';
+          frames.push(fr('lo == hi = <b>' + lo + '</b> → ' + mode[1] + ' returns <b>' + lo + '</b>. ' + (mode[0] === 'left' ? 'That is the first index whose value is ≥ ' + x + '.' : 'That is the first index whose value is &gt; ' + x + '.') + ' Each step halved the window → O(log n).', [
+            { type: 'array', label: 'a (insertion point marked)', values: a.slice(), showIdx: true, ptr: p2, hl: lo < a.length ? one(lo, 'sel') : {} },
+            vp({ result: lo }, 'result', 'ok'),
+            cp(CODE, { 8: 'ok' })
+          ]));
+        });
+        var L = 0; while (L < a.length && a[L] < x) L++;
+        var R = 0; while (R < a.length && a[R] <= x) R++;
+        var hl = {}; for (var k = L; k < R; k++) hl[k] = 'ok';
+        frames.push(fr('Together: bisect_left = ' + L + ', bisect_right = ' + R + ' → the run of <b>' + x + '</b>s is a[' + L + ':' + R + '], count = <b>' + (R - L) + '</b>. If x is missing, both point at the same gap.', [
+          { type: 'array', label: 'a', values: a.slice(), showIdx: true, hl: hl, ptr: (function () { var p = {}; if (L < a.length) p[L] = 'L'; if (R < a.length) p[R] = p[R] ? [p[R], 'R'] : 'R'; return p; })() },
+          vp({ bisect_left: L, bisect_right: R, count: R - L }, 'count', 'sel')
+        ]));
+        return frames;
+      }
+    }, {
+      title: 'LIS in O(n log n): the "tails" array and bisect_left',
+      input: '10 9 2 5 3 7 101 18',
+      inputLabel: 'Numbers (≤ 14)',
+      gen: function (input) {
+        var a = nums(input, 14, 'Enter numbers, e.g. 10 9 2 5 3 7 101 18');
+        var tails = [], frames = [];
+        var CODE = 'tails = []\nfor x in nums:\n    i = bisect_left(tails, x)\n    if i == len(tails):\n        tails.append(x)     # extends the longest pile\n    else:\n        tails[i] = x        # better (smaller) tail\nreturn len(tails)';
+        frames.push(fr('<code>tails[L]</code> = the <b>smallest possible last value</b> of an increasing subsequence of length L+1 seen so far. It is always sorted, so we can bisect it.', [
+          { type: 'array', label: 'nums', values: a.slice(), showIdx: true },
+          { type: 'array', label: 'tails', values: [] },
+          cp(CODE, { 1: 'cur' })
+        ]));
+        a.forEach(function (x, idx) {
+          var lo = 0, hi = tails.length;
+          while (lo < hi) { var m = (lo + hi) >> 1; if (tails[m] < x) lo = m + 1; else hi = m; }
+          var i = lo, before = tails.slice();
+          var app = i === tails.length;
+          if (app) tails.push(x); else tails[i] = x;
+          frames.push(fr('x = <b>' + x + '</b>: <code>bisect_left(tails, ' + x + ')</code> = <b>' + i + '</b>. ' + (app ? x + ' is bigger than every tail → <span class="c-g">append</span>: we found an increasing subsequence of length ' + tails.length + '.' : 'Replace tails[' + i + '] = ' + before[i] + ' with the smaller <b>' + x + '</b> — a length-' + (i + 1) + ' subsequence can now end lower, leaving more room to grow.'), [
+            { type: 'array', label: 'nums', values: a.slice(), showIdx: true, ptr: one(idx, 'x'), hl: one(idx, 'cur') },
+            { type: 'array', label: 'tails (sorted)', values: tails.slice(), hl: one(i, app ? 'ok' : 'cur'), ptr: one(i, 'i') },
+            cp(CODE, app ? { 3: 'cur', 5: 'ok' } : { 3: 'cur', 7: 'cur' })
+          ]));
+        });
+        frames.push(fr('LIS length = len(tails) = <b>' + tails.length + '</b>. Careful: tails itself is <i>not</i> necessarily a real subsequence — only its length is the answer.', [
+          { type: 'array', label: 'tails', values: tails.slice(), hl: (function () { var h = {}; tails.forEach(function (_, j) { h[j] = 'sel'; }); return h; })() },
+          vp({ 'LIS length': tails.length }, 'LIS length', 'sel')
+        ]));
+        return frames;
+      }
+    }],
+    examples: [
+      { title: 'Count values in a range for many queries', html: `<p>Sort once (O(n log n)), then every query "how many scores in [L, R]?" is two bisects (O(log n)). With 10<sup>5</sup> queries that is ~3.4 million steps instead of 10<sup>10</sup>.</p>${H.arr([2, 4, 4, 7, 9, 12], { label: 'sorted scores' })}<p>[4, 9] → <code>bisect_right(a, 9) - bisect_left(a, 4)</code> = 5 − 1 = <b>4</b>.</p>`, code: { lang: 'python', run: true, code: `
+from bisect import bisect_left, bisect_right
+
+scores = sorted([9, 4, 12, 2, 7, 4])
+queries = [(4, 9), (0, 3), (10, 20), (5, 6)]
+print([bisect_right(scores, R) - bisect_left(scores, L) for L, R in queries])  # [4, 1, 1, 0]
+` } },
+      { title: 'Search insert position (LeetCode 35)', html: `<p>"Return the index if found, otherwise where it would be inserted" is literally the definition of <code>bisect_left</code>. Interviewers may then ask you to write it by hand — know the loop from the visualizer.</p>${H.arr([1, 3, 5, 6], { label: 'nums' })}<p>target 5 → 2, target 2 → 1, target 7 → 4.</p>`, code: { lang: 'python', run: true, code: `
+from bisect import bisect_left
+
+def search_insert(nums, target):
+    return bisect_left(nums, target)
+
+def search_insert_by_hand(nums, target):
+    lo, hi = 0, len(nums)            # half-open window [lo, hi)
+    while lo < hi:
+        mid = (lo + hi) // 2
+        if nums[mid] < target:
+            lo = mid + 1
+        else:
+            hi = mid
+    return lo
+
+print([search_insert([1, 3, 5, 6], t) for t in (5, 2, 7, 0)])          # [2, 1, 4, 0]
+print([search_insert_by_hand([1, 3, 5, 6], t) for t in (5, 2, 7, 0)])  # same
+` } },
+      { title: 'Binary search on the answer with key= (Koko eating bananas)', html: `<p>"Find the minimum speed k so Koko finishes all piles within h hours." Hours needed only <b>decreases</b> as speed grows, so <code>can_finish(k)</code> is False…False, True…True. <code>bisect_left</code> on a <code>range</code> with <code>key=can_finish</code> finds the first True without building a list (ranges support indexing in O(1)).</p>${H.table(['speed', '1', '2', '3', '4', '5'], [['hours for [3,6,7,11]', '27', '15', '10', H.c('g', '8'), '8'], ['≤ h = 8?', 'F', 'F', 'F', H.c('g', 'T'), 'T']])}`, code: { lang: 'python', run: true, code: `
+from bisect import bisect_left
+
+def min_eating_speed(piles, h):
+    def can_finish(k):
+        return sum((p + k - 1) // k for p in piles) <= h   # ceil division
+    speeds = range(1, max(piles) + 1)
+    return speeds[bisect_left(speeds, True, key=can_finish)]   # Python 3.10+
+
+print(min_eating_speed([3, 6, 7, 11], 8))          # 4
+print(min_eating_speed([30, 11, 23, 4, 20], 5))    # 30
+` } },
+      { title: 'Sliding window median with insort', html: `<p>Keep the current window as a sorted list: <code>insort</code> the new element, remove the outgoing one with <code>bisect_left</code> + <code>pop</code>. Each step is O(k) because of shifting, but the shift is a fast C <code>memmove</code>, so for k ≤ 10<sup>4</sup> this is a practical interview answer (the two-heap version is O(log k)).</p>`, code: { lang: 'python', run: true, code: `
+from bisect import insort, bisect_left
+
+def median_sliding_window(nums, k):
+    window = sorted(nums[:k])
+    out = []
+    for i in range(k, len(nums) + 1):
+        mid = k // 2
+        out.append(float(window[mid]) if k % 2 else (window[mid - 1] + window[mid]) / 2)
+        if i == len(nums):
+            break
+        window.pop(bisect_left(window, nums[i - k]))   # remove outgoing
+        insort(window, nums[i])                         # add incoming
+    return out
+
+print(median_sliding_window([1, 3, -1, -3, 5, 3, 6, 7], 3))  # [1.0, -1.0, -1.0, 3.0, 5.0, 6.0]
+` } }
+    ],
+    deepDive: `<p>🟣 <b>Under the hood.</b> <code>bisect</code> has a C implementation (<code>_bisect</code>) — the loop is exactly the half-open <code>[lo, hi)</code> search from the visualizer, using only <code>&lt;</code> comparisons (<code>a[mid] &lt; x</code> for left, <code>x &lt; a[mid]</code> for right). Because it only uses <code>__lt__</code>, it works on any sorted sequence: tuples, strings, objects with <code>__lt__</code>, even a <code>range</code> or a custom class with <code>__getitem__</code> and <code>__len__</code> (a "virtual" array).</p>
+<p><b>Why half-open?</b> With <code>[lo, hi)</code> the empty window is <code>lo == hi</code>, the answer can be <code>len(a)</code> (insert at the end) without special cases, and <code>mid = (lo + hi) // 2</code> never overflows in Python (unbounded ints; in Java/C++ you'd write <code>lo + (hi - lo) / 2</code>).</p>
+<p><b>insort cost reality:</b> search O(log n) but insertion shifts the tail → O(n). n insertions → O(n²) worst case, yet the constant is tiny (memmove of pointers). For 10<sup>5</sup> inserts it's usually fine; for 10<sup>6</sup>+ with deletes use <code>sortedcontainers.SortedList</code> (a list of sorted sub-lists, ~O(log n) amortised; available on LeetCode but not in the stdlib) or a Fenwick tree over compressed values.</p>
+<p><b>key= gotchas (3.10+):</b> the key is applied to elements, <b>not</b> to x; the key must be monotone non-decreasing over the sequence; <code>insort(a, x, key=f)</code> <i>does</i> apply f to x (it needs the key of the item being inserted) — an asymmetry that surprises people.</p>
+<p><b>LIS correctness:</b> tails stays sorted because replacing tails[i] with x keeps tails[i-1] &lt; x ≤ old tails[i]. Using <code>bisect_left</code> gives <b>strictly</b> increasing LIS; <code>bisect_right</code> gives the longest <b>non-decreasing</b> subsequence. To reconstruct the actual sequence, store for each x the index of its predecessor (the tail at position i−1 when it was placed).</p>`,
+    aiEra: `<p>🤖 <b>What AI changes:</b> AI writes binary search loops quickly but is famously inconsistent about boundaries. Knowing <code>bisect</code> lets you replace a fragile 10-line loop with one auditable call — and lets you <b>review</b> AI-generated loops against the precise left/right definitions.</p>
+<p><b>Use AI as a partner:</b> <code>"Generate a brute-force checker and 1000 random tests comparing my binary search with bisect_left"</code> — property-based testing (e.g. with Hypothesis) catches off-by-ones in seconds.</p>
+<p><b>Where AI goes wrong:</b> mixes up <code>bisect_left</code>/<code>bisect_right</code> for "count ≤ x"; passes <code>key=</code> and also transforms x (double-transform); calls bisect on unsorted data; claims <code>insort</code> is O(log n); uses <code>key=</code> on Python 3.8/3.9 judges where it doesn't exist.</p>
+<p><b>What you must still own:</b> the invariant ("left of lo is &lt; x, from hi on is ≥ x"), recognising monotone predicates for "binary search on the answer", and explaining why LIS tails gives the right length.</p>`,
+    problems: [{
+      title: 'Longest Increasing Subsequence', level: 'Medium', tags: ['binary search', 'bisect', 'DP', 'patience sorting'], companies: ['Google', 'Amazon', 'Microsoft', 'Meta'],
+      statement: `<p>Given an integer array <code>nums</code>, return the length of the longest <b>strictly increasing</b> subsequence. A subsequence keeps the original order but may skip elements.</p>`,
+      constraints: `1 ≤ n ≤ 2500 (LeetCode) — follow-up: solve for n ≤ 10<sup>5</sup> in O(n log n). -10<sup>4</sup> ≤ nums[i] ≤ 10<sup>4</sup>`,
+      example: `<p>nums = ${H.arr([10, 9, 2, 5, 3, 7, 101, 18], { hl: { 2: 'g', 4: 'g', 5: 'g', 6: 'g' } })} → <b>${H.c('g', '4')}</b>, e.g. 2, 3, 7, 101 (or 2, 5, 7, 18).</p>`,
+      brute: { why: `<p>Classic DP: <code>dp[i]</code> = LIS ending at i = 1 + max(dp[j]) over j &lt; i with nums[j] &lt; nums[i]. That is O(n²): 6 million steps at n = 2500 (fine), but 10<sup>10</sup> at n = 10<sup>5</sup>. The waste: for each i we rescan all j, though we only need "the best length whose last value is &lt; x" — a sorted structure can answer that in O(log n).</p>`, code: `
+def lis_quadratic(nums):
+    dp = [1] * len(nums)                 # dp[i] = LIS ending exactly at i
+    for i in range(len(nums)):
+        for j in range(i):
+            if nums[j] < nums[i]:
+                dp[i] = max(dp[i], dp[j] + 1)
+    return max(dp)
+
+print(lis_quadratic([10, 9, 2, 5, 3, 7, 101, 18]))  # 4
+` },
+      mcq: { q: 'tails = [2, 5, 7] and the next number is 3. What happens?', options: ['tails becomes [2, 3, 7]', 'tails becomes [2, 5, 7, 3]', 'tails becomes [3, 5, 7]', 'nothing changes'], answer: 0, explain: '<code>bisect_left([2,5,7], 3)</code> = 1, so 3 replaces 5: a length-2 subsequence can now end with 3 instead of 5, which is better for future growth.' },
+      hints: [`<p>Hint 1: For each length L, only the <b>smallest possible ending value</b> matters — a smaller tail can be extended by more future numbers.</p>`, `<p>Hint 2: Those smallest tails form a sorted list. For each x, find the first tail ≥ x with <code>bisect_left</code>: replace it, or append if x is bigger than all.</p>`, `<p>Hint 3: Strictly increasing → <code>bisect_left</code> (equal values replace, they don't extend). Recipe: tails = []; for x: i = bisect_left(tails, x); append or tails[i] = x; return len(tails).</p>`],
+      solution: {
+        approach: `<p>Patience sorting: maintain <code>tails</code>, where <code>tails[L]</code> is the smallest tail of any increasing subsequence of length L+1. It is sorted, so each number is placed with one <code>bisect_left</code>. The final length of tails is the LIS length.</p>`,
+        code: { lang: 'python', run: true, code: `
+from bisect import bisect_left
+from typing import List
+
+def length_of_lis(nums: List[int]) -> int:
+    tails = []                        # tails[L] = min tail of an inc. subseq of length L+1
+    for x in nums:
+        i = bisect_left(tails, x)     # first tail >= x
+        if i == len(tails):
+            tails.append(x)           # x extends the longest subsequence
+        else:
+            tails[i] = x              # x is a smaller tail for length i+1
+    return len(tails)
+
+print(length_of_lis([10, 9, 2, 5, 3, 7, 101, 18]))  # 4
+print(length_of_lis([0, 1, 0, 3, 2, 3]))            # 4
+print(length_of_lis([7, 7, 7, 7]))                  # 1 (strict)
+` },
+        alt: [{ lang: 'python', title: 'Reconstruct one actual LIS', run: true, code: `
+from bisect import bisect_left
+
+def lis_sequence(nums):
+    tails, tails_idx = [], []         # values and their indices in nums
+    parent = [-1] * len(nums)
+    for i, x in enumerate(nums):
+        pos = bisect_left(tails, x)
+        if pos > 0:
+            parent[i] = tails_idx[pos - 1]   # predecessor = tail of length pos
+        if pos == len(tails):
+            tails.append(x); tails_idx.append(i)
+        else:
+            tails[pos] = x; tails_idx[pos] = i
+    out, k = [], tails_idx[-1] if tails_idx else -1
+    while k != -1:
+        out.append(nums[k])
+        k = parent[k]
+    return out[::-1]
+
+print(lis_sequence([10, 9, 2, 5, 3, 7, 101, 18]))   # [2, 3, 7, 18]
+` }],
+        dry: { head: ['x', 'bisect_left(tails, x)', 'action', 'tails'], rows: [
+          ['10', '0', 'append', '[10]'], ['9', '0', 'replace', '[9]'], ['2', '0', 'replace', '[2]'],
+          ['5', '1', 'append', '[2, 5]'], ['3', '1', 'replace', '[2, 3]'], ['7', '2', 'append', '[2, 3, 7]'],
+          ['101', '3', 'append', '[2, 3, 7, 101]'], ['18', '3', 'replace', H.c('g', '[2, 3, 7, 18] → 4')]
+        ] },
+        complexity: `<p>Time O(n log n): one O(log n) bisect per element. Space O(n) for tails (O(n) extra for reconstruction).</p>`,
+        followUps: ['Longest non-decreasing subsequence → <code>bisect_right</code>', 'Count the number of LIS (LeetCode 673) — needs O(n²) DP or a Fenwick tree', 'Russian Doll Envelopes: sort by (w asc, h desc) then LIS on h']
+      }
+    }]
+  });
+
+  /* ================= TOPIC 5: itertools ================= */
+  topics.push({
+    title: 'itertools: Combinatorics and Pipelines in One Line',
+    analogy: `<p>itertools is a <b>kitchen of gadgets</b>. Instead of chopping every vegetable by hand with nested loops, you grab the right tool: the <b>grater</b> (<code>accumulate</code>) turns a list into running totals, the <b>combination lock</b> (<code>product</code>) spins through every code, the <b>card dealer</b> (<code>combinations</code>/<code>permutations</code>) deals every hand, and the <b>label maker</b> (<code>groupby</code>) bundles items that sit next to each other. And every gadget works <b>lazily</b> — it only makes the next item when you ask, like a chef who cooks to order.</p>`,
+    explain: `<p>🟢 <b>The plain idea.</b> <code>itertools</code> is a set of fast, C-implemented building blocks that produce <b>iterators</b> — values come one at a time, so even "all 10! orderings" never sits in memory at once. In interviews it replaces nested loops and recursion for brute force, prefix sums, flattening and run-length grouping.</p>
+${H.table(['Tool', 'Example', 'Output', 'Count'], [
+  ['<code>product(A, B)</code>', "<code>product('ab', 'xy')</code>", 'ax ay bx by', '|A|·|B|'],
+  ['<code>product(A, repeat=n)</code>', "<code>product('01', repeat=3)</code>", '000 001 … 111', '|A|<sup>n</sup>'],
+  ['<code>permutations(A, r)</code>', "<code>permutations('abc', 2)</code>", 'ab ac ba bc ca cb', 'n!/(n−r)!'],
+  ['<code>combinations(A, r)</code>', "<code>combinations('abc', 2)</code>", 'ab ac bc', 'C(n, r)'],
+  ['<code>combinations_with_replacement</code>', "<code>cwr('ab', 2)</code>", 'aa ab bb', 'C(n+r−1, r)'],
+  ['<code>accumulate(xs, f, initial=)</code>', '<code>accumulate([1,2,3])</code>', '1 3 6', 'n (+1)'],
+  ['<code>groupby(xs, key)</code>', "<code>groupby('aabccc')</code>", "('a',aa) ('b',b) ('c',ccc)", 'runs'],
+  ['<code>chain.from_iterable(xss)</code>', '<code>[[1,2],[3]]</code>', '1 2 3', 'flatten one level'],
+  ['<code>pairwise(xs)</code> (3.10+)', '<code>pairwise([1,4,9])</code>', '(1,4) (4,9)', 'n−1'],
+  ['<code>batched(xs, n)</code> (3.12+)', '<code>batched(range(5), 2)</code>', '(0,1) (2,3) (4,)', '⌈n/k⌉']
+])}
+<p>Also handy: <code>count(start, step)</code> (infinite counter), <code>cycle(xs)</code>, <code>repeat(x, n)</code>, <code>islice(it, start, stop)</code> (slice any iterator), <code>zip_longest(a, b, fillvalue=)</code>, <code>takewhile</code>/<code>dropwhile</code>, <code>starmap(f, pairs)</code>, <code>compress(data, mask)</code>, <code>tee(it, n)</code>.</p>
+<p>🔵 <b>Two rules that cause most bugs:</b></p>
+<ol>
+<li><b>Iterators are single-use.</b> <code>p = permutations(xs)</code>; after one loop over <code>p</code> it is empty. Wrap in <code>list()</code> if you need it twice.</li>
+<li><b><code>groupby</code> only groups <i>consecutive</i> equal keys</b> — like Unix <code>uniq</code>. <code>groupby('abab')</code> gives four groups. Sort by the same key first if you want SQL-style GROUP BY (or just use <code>defaultdict(list)</code>).</li>
+</ol>
+<p>🔵 <b>Mind the explosion.</b> Combinatorial tools are perfect when the input is tiny and the problem says "all possible". Know the numbers: 10! ≈ 3.6 million (OK), 12! ≈ 479 million (too slow in Python), 2<sup>20</sup> ≈ 10<sup>6</sup> subsets (OK), C(30, 15) ≈ 1.5·10<sup>8</sup> (too slow). <code>math.comb(n, k)</code>, <code>math.perm(n, k)</code> and <code>math.factorial(n)</code> count them without generating.</p>`,
+    clues: [
+      '"all possible combinations / every pair / choose k of n" with n ≤ 20 → <code>combinations</code> (or bitmask)',
+      '"all arrangements / orderings" with n ≤ 8–9 → <code>permutations</code>',
+      '"every string of length n over an alphabet", "all digit combinations", "letter combinations of a phone number" → <code>product(..., repeat=n)</code> / <code>product(*lists)</code>',
+      '"running sum / prefix sums / running max" → <code>accumulate</code> (with <code>initial=0</code> for the leading zero)',
+      '"compress consecutive characters", "count runs", "longest streak" → <code>groupby</code>',
+      '"adjacent pairs / differences / is it sorted?" → <code>pairwise</code> (3.10+) or <code>zip(xs, xs[1:])</code>',
+      '"flatten a list of lists (one level)" → <code>chain.from_iterable</code>',
+      '"first N items of an infinite/huge sequence" → <code>islice</code>'
+    ],
+    code: [{ lang: 'python', run: true, title: 'itertools tour (runnable)', code: `
+from itertools import (product, permutations, combinations, combinations_with_replacement,
+                       accumulate, groupby, chain, islice, count, pairwise, zip_longest)
+import operator
+import math
+
+print(["".join(p) for p in product("ab", "xy")])         # ['ax', 'ay', 'bx', 'by']
+print(["".join(p) for p in product("01", repeat=3)])     # 8 binary strings
+print(list(permutations([1, 2, 3], 2)))                  # 6 ordered pairs
+print(list(combinations([1, 2, 3, 4], 2)))               # 6 unordered pairs
+print(list(combinations_with_replacement("ab", 2)))      # aa ab bb
+print(math.comb(30, 15), math.perm(5, 2), math.factorial(10))
+
+nums = [3, 1, 4, 1, 5]
+print(list(accumulate(nums)))                     # prefix sums [3, 4, 8, 9, 14]
+print(list(accumulate(nums, initial=0)))          # [0, 3, 4, 8, 9, 14]
+print(list(accumulate(nums, max)))                # running max
+print(list(accumulate(nums, operator.mul)))       # running product
+
+s = "aaabccdddd"
+print([(ch, len(list(g))) for ch, g in groupby(s)])   # run-length encoding
+print([k for k, _ in groupby("abab")])           # ['a', 'b', 'a', 'b'] consecutive only!
+
+print(list(chain.from_iterable([[1, 2], [3], [], [4, 5]])))   # flatten one level
+print(list(islice(count(10, 5), 4)))             # [10, 15, 20, 25] from an infinite iterator
+print([b - a for a, b in pairwise([1, 4, 9, 16])])   # differences [3, 5, 7]
+print(list(zip_longest("abc", "x", fillvalue="-")))
+
+p = permutations("ab")
+print(list(p), list(p))                          # second list is EMPTY: iterator used up
+` }],
+    codeTitle: ['itertools tour (runnable)'],
+    viz: [{
+      title: 'groupby: bundling consecutive runs (run-length encoding)',
+      input: 'aaabccdddd',
+      inputLabel: 'A string (≤ 14 chars)',
+      gen: function (input) {
+        var s = String(input === undefined ? '' : input).replace(/\s+/g, '');
+        if (!s.length) throw new Error('Type a string, e.g. aaabccdddd');
+        if (s.length > 14) throw new Error('Use at most 14 characters');
+        var a = s.split(''), out = [], frames = [];
+        var CODE = 'out = []\nfor ch, group in groupby(s):\n    n = len(list(group))     # consume the run\n    out.append(ch + str(n))\nreturn "".join(out)';
+        frames.push(fr('<code>groupby</code> walks the string once and starts a <b>new group every time the key changes</b>. It never looks back, so it is O(n) and lazy.', [
+          { type: 'array', label: 's', values: a.slice(), showIdx: true },
+          { type: 'array', label: 'out', values: [] },
+          cp(CODE, { 1: 'cur' })
+        ]));
+        var i = 0;
+        while (i < a.length) {
+          var j = i;
+          while (j + 1 < a.length && a[j + 1] === a[i]) j++;
+          var hl = {}; for (var t = 0; t < i; t++) hl[t] = 'done'; for (t = i; t <= j; t++) hl[t] = 'cur';
+          frames.push(fr('New key <b>' + esc(a[i]) + '</b> starts at index ' + i + '. groupby keeps yielding items while the next char is still <b>' + esc(a[i]) + '</b>' + (j + 1 < a.length ? ', and stops at index ' + (j + 1) + ' because <b>' + esc(a[j + 1]) + '</b> ≠ ' + esc(a[i]) + '.' : ' until the string ends.'), [
+            { type: 'array', label: 's', values: a.slice(), showIdx: true, range: [i, j], hl: hl },
+            vp({ ch: a[i], 'run': '[' + a.slice(i, j + 1).map(function (c) { return "'" + c + "'"; }).join(', ') + ']' }, 'ch', 'cur'),
+            { type: 'array', label: 'out', values: out.slice() },
+            cp(CODE, { 2: 'cur', 3: 'cur' })
+          ]));
+          out.push(a[i] + (j - i + 1));
+          frames.push(fr('Run length = <b>' + (j - i + 1) + '</b> → append <b>' + esc(a[i] + (j - i + 1)) + '</b>.', [
+            { type: 'array', label: 's', values: a.slice(), showIdx: true, range: [i, j], hl: hl },
+            { type: 'array', label: 'out', values: out.slice(), hl: one(out.length - 1, 'ok') },
+            cp(CODE, { 4: 'ok' })
+          ]));
+          i = j + 1;
+        }
+        var seen = {}, rep = [];
+        a.forEach(function (c) { seen[c] = (seen[c] || 0) + 1; });
+        out.forEach(function (o) { var c = o.charAt(0); if (rep.indexOf(c) < 0) rep.push(c); });
+        frames.push(fr('Result <b>' + esc(out.join('')) + '</b>. ' + (rep.length < out.length ? '<span class="c-y">Notice a key appeared in more than one group</span> — groupby groups only <i>consecutive</i> items. Sort first (or use a Counter) for a real GROUP BY.' : 'Each key appeared in exactly one run here; on input like "abab" you would get repeated keys, because groupby groups only consecutive items.'), [
+          { type: 'array', label: 'out', values: out.slice(), hl: (function () { var h = {}; out.forEach(function (_, k) { h[k] = 'sel'; }); return h; })() },
+          { type: 'map', label: 'compare: Counter(s) (non-consecutive)', entries: Object.keys(seen).map(function (k) { return [k, seen[k]]; }) },
+          cp(CODE, { 5: 'ok' })
+        ]));
+        return frames;
+      }
+    }, {
+      title: 'product(*lists): the odometer behind "all combinations"',
+      input: '23',
+      inputLabel: 'Phone digits 2-9 (≤ 3 digits)',
+      gen: function (input) {
+        var MAP = { 2: 'abc', 3: 'def', 4: 'ghi', 5: 'jkl', 6: 'mno', 7: 'pqrs', 8: 'tuv', 9: 'wxyz' };
+        var d = String(input === undefined ? '' : input).replace(/\s+/g, '');
+        if (!/^[2-9]{1,3}$/.test(d)) throw new Error('Type 1-3 digits from 2 to 9, e.g. 23');
+        var lists = d.split('').map(function (c) { return MAP[c].split(''); });
+        var idx = lists.map(function () { return 0; }), frames = [], res = [];
+        var total = lists.reduce(function (p, l) { return p * l.length; }, 1);
+        var CODE = 'pools = [MAP[c] for c in digits]\nfor combo in product(*pools):\n    out.append("".join(combo))';
+        frames.push(fr('<code>product</code> works like a car <b>odometer</b>: the <b>rightmost</b> wheel spins fastest; when it wraps around, the wheel to its left ticks once. Total = ' + lists.map(function (l) { return l.length; }).join(' × ') + ' = <b>' + total + '</b> combos.', [
+          { type: 'table', label: 'pools (one wheel per digit)', columns: ['digit', 'letters'], rows: d.split('').map(function (c) { return [c, MAP[c]]; }) },
+          cp(CODE, { 1: 'cur' })
+        ]));
+        var guard = 0;
+        while (guard++ < 80) {
+          var combo = idx.map(function (k, w) { return lists[w][k]; }).join('');
+          res.push(combo);
+          var grid = lists.map(function (l) { return l; });
+          var hl = {};
+          idx.forEach(function (k, w) { hl[w + ',' + k] = 'cur'; });
+          var rows = grid.map(function (l) { var r = l.slice(); while (r.length < 4) r.push(''); return r; });
+          if (res.length <= 6 || res.length === total) {
+            frames.push(fr('Wheel positions ' + JSON.stringify(idx) + ' → combo <b>' + esc(combo) + '</b> (#' + res.length + ' of ' + total + ').', [
+              { type: 'grid', label: 'wheels (rows) and current letter', rowHead: d.split(''), colHead: ['0', '1', '2', '3'], rows: rows, hl: hl },
+              { type: 'array', label: 'out', values: res.slice(-8), hl: one(Math.min(res.length, 8) - 1, 'ok') },
+              cp(CODE, { 2: 'cur', 3: 'ok' })
+            ]));
+          }
+          var w = idx.length - 1;
+          while (w >= 0) { idx[w]++; if (idx[w] < lists[w].length) break; idx[w] = 0; w--; }
+          if (w < 0) break;
+        }
+        frames.push(fr('The leftmost wheel wrapped → done. <b>' + res.length + '</b> combinations, produced lazily one at a time. Cost O(total × digits).', [
+          { type: 'array', label: 'all combos', values: res.slice(0, 16) },
+          vp({ count: res.length, formula: lists.map(function (l) { return l.length; }).join('×') }, 'count', 'sel')
+        ]));
+        return frames;
+      }
+    }],
+    examples: [
+      { title: 'All subsets with combinations (power set)', html: `<p>The power set = combinations of every size r from 0 to n. That is 2<sup>n</sup> subsets — fine for n ≤ 20. <code>chain.from_iterable</code> stitches the r-sized groups together.</p>${H.table(['r', 'combinations([1,2,3], r)'], [['0', '()'], ['1', '(1) (2) (3)'], ['2', '(1,2) (1,3) (2,3)'], ['3', '(1,2,3)']])}`, code: { lang: 'python', run: true, code: `
+from itertools import chain, combinations
+
+def power_set(xs):
+    return list(chain.from_iterable(combinations(xs, r) for r in range(len(xs) + 1)))
+
+print(power_set([1, 2, 3]))
+# Subset-sum brute force: does any subset of [3, 34, 4, 12, 5, 2] sum to 9?
+print(any(sum(c) == 9 for c in power_set([3, 34, 4, 12, 5, 2])))   # True (4+5)
+` } },
+      { title: 'Largest time from 4 digits with permutations', html: `<p>LeetCode 949: only 4! = 24 orderings, so try them all. <code>permutations</code> of a sorted input come out in lexicographic order, but here we just keep the max valid one.</p>${H.arr([1, 2, 3, 4], { label: 'digits' })}<p>Valid times: 12:34, 12:43, 13:24 … the largest valid is <b>23:41</b>.</p>`, code: { lang: 'python', run: true, code: `
+from itertools import permutations
+
+def largest_time(digits):
+    best = ""
+    for h1, h2, m1, m2 in permutations(digits):
+        hh, mm = h1 * 10 + h2, m1 * 10 + m2
+        if hh < 24 and mm < 60:
+            best = max(best, f"{hh:02d}:{mm:02d}")   # zero-padded strings compare correctly
+    return best
+
+print(largest_time([1, 2, 3, 4]))  # 23:41
+print(largest_time([5, 5, 5, 5]))  # '' (no valid time)
+` } },
+      { title: 'Best time to buy and sell stock with accumulate', html: `<p>Profit if we sell on day i = price[i] − (minimum price so far). <code>accumulate(prices, min)</code> gives the running minimum in one line.</p>${H.table(['day', '0', '1', '2', '3', '4', '5'], [['price', '7', '1', '5', '3', '6', '4'], ['running min', '7', '1', '1', '1', '1', '1'], ['profit', '0', '0', '4', '2', H.c('g', '5'), '3']])}`, code: { lang: 'python', run: true, code: `
+from itertools import accumulate
+
+def max_profit(prices):
+    return max(p - lo for p, lo in zip(prices, accumulate(prices, min)))
+
+print(max_profit([7, 1, 5, 3, 6, 4]))  # 5
+print(max_profit([7, 6, 4, 3, 1]))     # 0
+` } },
+      { title: 'Longest streak and string compression with groupby', html: `<p>"Max consecutive ones" and "string compression" are both run problems: <code>groupby</code> hands you each run with its key. Use <code>sum(1 for _ in g)</code> to count a run without building a list.</p>${H.arr([1, 1, 0, 1, 1, 1], { label: 'nums', hl: { 3: 'g', 4: 'g', 5: 'g' } })}`, code: { lang: 'python', run: true, code: `
+from itertools import groupby
+
+def max_consecutive_ones(nums):
+    return max((sum(1 for _ in g) for k, g in groupby(nums) if k == 1), default=0)
+
+def compress(s):
+    return "".join(ch + (str(n) if n > 1 else "") for ch, n in
+                   ((k, sum(1 for _ in g)) for k, g in groupby(s)))
+
+print(max_consecutive_ones([1, 1, 0, 1, 1, 1]))  # 3
+print(compress("aabcccccaaa"))                    # a2bc5a3
+` } }
+    ],
+    deepDive: `<p>🟣 <b>Laziness and memory.</b> Every itertools function returns an iterator implemented in C. <code>combinations(range(30), 15)</code> is created instantly and uses O(r) memory; only <code>list()</code> would try to materialise 155 million tuples. CPython even <b>reuses the result tuple</b> when you don't keep a reference to it, which makes tight loops over <code>product</code>/<code>combinations</code> surprisingly fast.</p>
+<p><b>Ordering guarantees:</b> <code>combinations</code> and <code>permutations</code> emit in <b>lexicographic order of input positions</b>, so sorted input → sorted output. They treat elements by <b>position, not value</b>: <code>permutations([1,1,2])</code> yields 6 tuples with duplicates. For unique permutations use <code>set(...)</code> (fine for small n) or a backtracking solution with a Counter, which avoids generating duplicates at all.</p>
+<p><b>groupby internals:</b> the group sub-iterators share the parent iterator. Advancing the outer loop invalidates the previous group — so <code>list(groupby(s))</code> gives groups that look empty. Always consume <code>g</code> inside the loop (e.g. <code>len(list(g))</code>).</p>
+<p><b>tee</b> buffers values the slowest copy hasn't read — if one copy runs far ahead, memory grows to O(n); then just use a list. <b>accumulate</b> takes any binary function (<code>max</code>, <code>operator.mul</code>, <code>lambda a, b: …</code>) and <code>initial=</code> (3.8+). <b>pairwise</b> (3.10) and <b>batched</b> (3.12; <code>strict=True</code> in 3.13) are newer — on older judges use <code>zip(xs, xs[1:])</code> and <code>zip(*[iter(xs)] * n)</code>.</p>
+<p><b>Production:</b> itertools pipelines (generator expressions + <code>islice</code>/<code>chain</code>) stream files and DB cursors with constant memory. The "recipes" section of the docs (and the <code>more-itertools</code> package) contains sliding windows, <code>chunked</code>, <code>unique_everseen</code>, etc.</p>`,
+    aiEra: `<p>🤖 <b>What AI changes:</b> AI is great at turning a nested-loop brute force into a one-line itertools pipeline — and equally good at producing a pipeline that is accidentally exponential. Your job shifts to <b>estimating the count</b> (n!, 2<sup>n</sup>, C(n,k)) before running anything.</p>
+<p><b>Use AI as a partner:</b> <code>"Here is my O(n!) permutations brute force — write a property test that compares it against my optimised solution for n ≤ 7"</code>. Brute force with itertools is the perfect <b>oracle</b> for testing clever code.</p>
+<p><b>Where AI goes wrong:</b> uses <code>groupby</code> on unsorted data expecting SQL semantics; iterates the same iterator twice; calls <code>pairwise</code>/<code>batched</code> on Python versions that lack them; materialises <code>list(permutations(range(12)))</code> and runs out of memory; confuses <code>combinations</code> (order irrelevant) with <code>permutations</code>.</p>
+<p><b>What you must still own:</b> mapping the wording ("choose", "arrange", "every string") to the right generator and its count, and knowing when the interviewer expects you to write the backtracking yourself instead.</p>`,
+    problems: [{
+      title: 'Letter Combinations of a Phone Number', level: 'Medium', tags: ['itertools.product', 'backtracking', 'string'], companies: ['Amazon', 'Google', 'Meta', 'Uber'],
+      statement: `<p>Given a string of digits 2–9, return all letter combinations the number could represent on a classic phone keypad (2 = abc, 3 = def, …, 7 = pqrs, 9 = wxyz). Return an empty list for an empty input.</p>`,
+      constraints: `0 ≤ len(digits) ≤ 4, digits[i] in '2'..'9'`,
+      example: `<p>digits = "23" → ${H.c('g', '["ad","ae","af","bd","be","bf","cd","ce","cf"]')} — 3 letters × 3 letters = 9 combinations.</p>`,
+      brute: { why: `<p>Hard-coding nested loops works only for a fixed length (two digits = two loops). For variable length people write string concatenation inside recursion, creating many temporary strings. The real issue is not speed (output is at most 4<sup>4</sup> = 256) but <b>generality</b>: we need a cartesian product of a variable number of lists.</p>`, code: `
+def letter_combos_two_digits(digits):
+    # Only works when len(digits) == 2 -- not general!
+    m = {"2": "abc", "3": "def", "4": "ghi", "5": "jkl",
+         "6": "mno", "7": "pqrs", "8": "tuv", "9": "wxyz"}
+    out = []
+    for a in m[digits[0]]:
+        for b in m[digits[1]]:
+            out.append(a + b)
+    return out
+
+print(letter_combos_two_digits("23"))
+` },
+      mcq: { q: 'Which call produces all combos for digits "23" given <code>pools = ["abc", "def"]</code>?', options: ['<code>product(*pools)</code>', '<code>product(pools)</code>', '<code>combinations("abcdef", 2)</code>', '<code>permutations(pools)</code>'], answer: 0, explain: '<code>product(*pools)</code> unpacks the two strings as separate iterables → cartesian product. <code>product(pools)</code> treats the list as ONE iterable and yields 1-tuples of whole strings.' },
+      hints: [`<p>Hint 1: Each digit contributes exactly one letter, and every choice is independent → this is a <b>cartesian product</b> of the letter lists.</p>`, `<p>Hint 2: Build <code>pools = [MAP[d] for d in digits]</code> and call <code>itertools.product(*pools)</code>; join each tuple.</p>`, `<p>Hint 3: Edge case: empty digits must return <code>[]</code>, but <code>product()</code> with no pools yields ONE empty tuple → guard it. Recipe: if not digits: return []; return ["".join(t) for t in product(*pools)].</p>`],
+      solution: {
+        approach: `<p>Map each digit to its letters and take the cartesian product with <code>itertools.product(*pools)</code>, which is exactly an odometer over the wheels. Interviewers often follow up with "write it without itertools" → backtracking (alt).</p>`,
+        code: { lang: 'python', run: true, code: `
+from itertools import product
+from typing import List
+
+KEYPAD = {"2": "abc", "3": "def", "4": "ghi", "5": "jkl",
+          "6": "mno", "7": "pqrs", "8": "tuv", "9": "wxyz"}
+
+def letter_combinations(digits: str) -> List[str]:
+    if not digits:
+        return []                                   # product() would yield [()]
+    pools = [KEYPAD[d] for d in digits]
+    return ["".join(combo) for combo in product(*pools)]
+
+print(letter_combinations("23"))
+print(letter_combinations(""))
+print(len(letter_combinations("7999")))             # 4*4*4*4 = 256
+` },
+        alt: [{ lang: 'python', title: 'Backtracking without itertools', run: true, code: `
+KEYPAD = {"2": "abc", "3": "def", "4": "ghi", "5": "jkl",
+          "6": "mno", "7": "pqrs", "8": "tuv", "9": "wxyz"}
+
+def letter_combinations(digits):
+    if not digits:
+        return []
+    out, path = [], []
+    def backtrack(i):
+        if i == len(digits):
+            out.append("".join(path))
+            return
+        for ch in KEYPAD[digits[i]]:
+            path.append(ch)        # choose
+            backtrack(i + 1)       # explore
+            path.pop()             # un-choose
+    backtrack(0)
+    return out
+
+print(letter_combinations("23"))
+` }],
+        dry: { head: ['wheel positions', 'combo', 'note'], rows: [
+          ['(0, 0)', 'ad', 'start'], ['(0, 1)', 'ae', 'right wheel ticks'], ['(0, 2)', 'af', ''],
+          ['(1, 0)', 'bd', 'right wheel wraps → left ticks'], ['…', '…', ''], ['(2, 2)', 'cf', H.c('g', '9th and last')]
+        ] },
+        complexity: `<p>Time O(4<sup>n</sup> · n) (up to 4 letters per digit, each string has length n). Space O(4<sup>n</sup> · n) for the output; the generator itself uses O(n).</p>`,
+        followUps: ['Return them lazily (yield) instead of a list', 'Only return combos that are real dictionary words — prune with a trie during backtracking', 'Count the combinations without generating (multiply pool sizes)']
+      }
+    }]
+  });
 registerModule({ id: 'py11', title: 'T', intro: `<p>xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx</p>`, goals: ['aaaaaaaaaaaa','bbbbbbbbbbbbb','ccccccccccccc'], prereqs: `ppppppppppppppppppp`, hours: 10, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();

@@ -2227,4 +2227,528 @@ class DeadlockDetector {
     }]
   });
 
+  /* ======================================================================
+     PRACTICE — Easy
+     ====================================================================== */
+  practice.push({
+    title: 'Print the Class Loader Chain',
+    level: 'Easy', tags: ['class loading', 'delegation'], companies: ['Oracle', 'Infosys', 'TCS'],
+    statement: `<p>Write ${C('List<String> chain(Class<?> c)')} that returns the names of the class's <b>defining loader</b> followed by every parent up to the top, ending with ${C('"bootstrap"')}. Use ${C('ClassLoader.getName()')} when available, else the loader's class name.</p>`,
+    constraints: `Works for core classes (bootstrap), platform classes (java.sql) and your own classes. Never throws NullPointerException.`,
+    example: `${H.table(['input', 'output'], [[C('String.class'), H.c('g', '[bootstrap]')], [C('java.sql.Connection.class'), H.c('g', '[platform, bootstrap]')], [C('LoaderChain.class'), H.c('g', '[app, platform, bootstrap]')]])}<p>Why: ${C('String')} is defined by the bootstrap loader, represented as ${C('null')}; walking ${C('getParent()')} from the app loader reaches platform, whose parent is ${C('null')} (bootstrap).</p>`,
+    brute: { why: `<p>Printing only ${C('c.getClassLoader()')} shows one loader (or the confusing string "null"), hides the hierarchy, and calling ${C('.getName()')} on it throws NPE for core classes.</p>`, code: `
+class LoaderChainNaive {
+    static String loader(Class<?> c) {
+        return c.getClassLoader().getName();     // NullPointerException for String.class (bootstrap = null)
+    }
+}` },
+    mcq: { q: 'What does <code>ClassLoader.getPlatformClassLoader().getParent()</code> return?', options: ['null (the bootstrap loader has no Java object)', 'the app loader', 'itself', 'throws SecurityException'], answer: 0, explain: 'The bootstrap loader is implemented natively and represented as null in Java APIs.' },
+    hints: [`<p>Hint 1: ${C('getClassLoader()')} returns ${C('null')} for bootstrap-defined classes — handle null before calling anything on it.</p>`, `<p>Hint 2: Walk with ${C('while (l != null) { … l = l.getParent(); }')} and append ${C('"bootstrap"')} after the loop: every chain ends there.</p>`, `<p>Hint 3: ${C('getName()')} can return null for unnamed custom loaders; fall back to ${C('l.getClass().getName()')}.</p>`],
+    solution: {
+      approach: `<p>Start at the defining loader and follow parents until null; add "bootstrap" at the end. Null-safety comes from never dereferencing the bootstrap's null.</p>`,
+      code: `
+class LoaderChain {
+    static List<String> chain(Class<?> c) {
+        List<String> out = new ArrayList<>();
+        for (ClassLoader l = c.getClassLoader(); l != null; l = l.getParent()) {
+            out.add(l.getName() != null ? l.getName() : l.getClass().getName());
+        }
+        out.add("bootstrap");                       // every chain ends at the native bootstrap loader
+        return out;
+    }
+
+    public static void main(String[] args) {
+        System.out.println(chain(String.class));                 // [bootstrap]
+        System.out.println(chain(java.sql.Connection.class));    // [platform, bootstrap]
+        System.out.println(chain(LoaderChain.class));            // [app, platform, bootstrap]
+    }
+}`,
+      complexity: `<p>O(depth) — usually 1–4 loaders.</p>`,
+      followUps: ['What would a Spring Boot fat jar print for your class?', 'Why might two classes with the same name print different chains?']
+    }
+  });
+
+  practice.push({
+    title: 'Predict & Fix: count = count++',
+    level: 'Easy', tags: ['bytecode', 'output prediction'], companies: ['Accenture', 'Wipro', 'Amazon'],
+    statement: `<p>A junior wrote a loop that should count to 100. Predict what it prints, explain it with the bytecode (${C('iload, iinc, istore')}), and fix it.</p>${P(`
+int count = 0;
+for (int i = 0; i < 100; i++) count = count++;
+System.out.println(count);`)}`,
+    constraints: `Explain using the operand stack and local variable slots.`,
+    example: `<p>Output: ${H.c('r', '0')}. Each iteration: push old count (0) → increment the local to 1 → store the old 0 back. The increment is overwritten every time. Fixed output: ${H.c('g', '100')}.</p>`,
+    brute: { why: `<p>The buggy code itself: post-increment returns the <b>old</b> value and the assignment writes it back, so the increment is always lost. It compiles without warnings, which is why it survives code review.</p>`, code: `
+int count = 0;
+for (int i = 0; i < 100; i++) count = count++;   // iload_1; iinc 1,1; istore_1  -> count stays 0
+System.out.println(count);                       // 0` },
+    mcq: { q: 'Which bytecode sequence does <code>count = count++</code> produce (count in slot 1)?', options: ['iload_1, iinc 1 1, istore_1', 'iinc 1 1, iload_1, istore_1', 'iload_1, iconst_1, iadd, istore_1', 'iinc 1 1 only'], answer: 0, explain: 'Post-increment loads the old value first, then increments the local, then the assignment stores the old value back.' },
+    hints: [`<p>Hint 1: Draw the operand stack: what value is on it when ${C('istore')} runs? It was loaded <b>before</b> the increment happened.</p>`, `<p>Hint 2: ${C('iinc')} changes the local variable slot directly; it does not touch the value already sitting on the stack.</p>`, `<p>Hint 3: The fix is to drop the assignment: ${C('count++;')} or ${C('count += 1;')}. Check with ${C('javap -c')} that the loop body becomes a single ${C('iinc')}.</p>`],
+    solution: {
+      approach: `<p>Remove the self-assignment. A standalone ${C('count++')} compiles to just ${C('iinc 1, 1')} — no load/store dance, nothing to overwrite.</p>`,
+      code: `
+int count = 0;
+for (int i = 0; i < 100; i++) count++;           // iinc 1, 1
+System.out.println(count);                       // 100`,
+      complexity: `<p>O(n) iterations, O(1) memory. (The JIT would collapse this loop to a constant anyway.)</p>`,
+      followUps: ['What does <code>int x = 5; x = x++ + ++x;</code> print, and why?', 'Does the same trap exist with Integer (boxed) variables?']
+    }
+  });
+
+  practice.push({
+    title: 'Classify the OutOfMemoryError',
+    level: 'Easy', tags: ['memory areas', 'OOM', 'triage'], companies: ['Flipkart', 'PayPal', 'Walmart'],
+    statement: `<p>On-call gets OOM alerts with only the message text. Write ${C('Advice classify(String message)')} returning the memory <b>area</b> and the <b>first action</b> for: ${C('Java heap space')}, ${C('GC overhead limit exceeded')}, ${C('Metaspace')}, ${C('Compressed class space')}, ${C('Direct buffer memory')}, ${C('unable to create native thread')}, ${C('Requested array size exceeds VM limit')}; anything else → "unknown".</p>`,
+    constraints: `Case-insensitive matching on substrings; message may include the "java.lang.OutOfMemoryError: " prefix.`,
+    example: `<p>${C('"java.lang.OutOfMemoryError: Metaspace"')} → ${H.c('g', 'area = metaspace, action = look for class loader leaks / generated classes; set MaxMetaspaceSize')}.</p><p>${C('"unable to create native thread"')} → ${H.c('g', 'OS threads: count threads (jstack), check ulimit / pid limit, use pools or virtual threads')}.</p>`,
+    brute: { why: `<p>Catching ${C('OutOfMemoryError')} and calling ${C('System.gc()')} then retrying treats every OOM the same. It can't help (the JVM already did a full GC before throwing), it hides the evidence, and for thread/metaspace/direct OOMs it's simply the wrong area.</p>`, code: `
+class OomRetry {
+    static <T> T retryOnOom(Supplier<T> work) {
+        try {
+            return work.get();
+        } catch (OutOfMemoryError e) {
+            System.gc();                 // the JVM already tried a full GC before throwing
+            return work.get();           // usually fails again, now with less evidence
+        }
+    }
+}` },
+    mcq: { q: '"Java heap space" OOM appears but heap dumps show the heap is mostly ONE huge array. Most likely cause?', options: ['A single giant allocation (e.g. reading a whole file/result set into memory)', 'Metaspace leak', 'Too many threads', 'JIT code cache full'], answer: 0, explain: 'A single allocation larger than the free heap throws immediately. Stream or paginate instead of materialising everything.' },
+    hints: [`<p>Hint 1: Lower-case the message once and test ${C('contains')} for each known phrase; order matters little because the phrases are distinct.</p>`, `<p>Hint 2: Return a small ${C('record Advice(String area, String firstAction)')} so callers can route alerts (heap → app team, threads → platform team).</p>`, `<p>Hint 3: Remember the areas: heap, heap-via-GC-overhead, metaspace, compressed class space (part of metaspace), native/direct, OS threads, array-size limit.</p>`],
+    solution: {
+      approach: `<p>A table-driven lookup from message fragment to (area, action). Using a ${C('LinkedHashMap')} keeps matching order deterministic and the advice easy to extend.</p>`,
+      code: `
+class OomTriage {
+    record Advice(String area, String firstAction) {}
+
+    private static final Map<String, Advice> RULES = new LinkedHashMap<>();
+    static {
+        RULES.put("java heap space", new Advice("heap", "HeapDumpOnOutOfMemoryError + MAT; compare live set to -Xmx"));
+        RULES.put("gc overhead limit", new Advice("heap", "heap is full of live data: leak or undersized heap; check old-gen floor"));
+        RULES.put("compressed class space", new Advice("metaspace", "too many classes: loader leak or generated classes"));
+        RULES.put("metaspace", new Advice("metaspace", "class loader leak / dynamic proxies; set MaxMetaspaceSize, check redeploys"));
+        RULES.put("direct buffer memory", new Advice("native", "unreleased DirectByteBuffers; cap MaxDirectMemorySize, check NIO/Netty pools"));
+        RULES.put("unable to create native thread", new Advice("os-threads", "count threads (jstack), check ulimit/pid limit; use pools or virtual threads"));
+        RULES.put("requested array size", new Advice("heap", "array near Integer.MAX_VALUE: chunk or stream the data"));
+    }
+
+    static Advice classify(String message) {
+        String m = message == null ? "" : message.toLowerCase(Locale.ROOT);
+        for (Map.Entry<String, Advice> r : RULES.entrySet()) {
+            if (m.contains(r.getKey())) return r.getValue();
+        }
+        return new Advice("unknown", "capture hs_err / logs, check NMT and container OOM-killer events");
+    }
+
+    public static void main(String[] args) {
+        System.out.println(classify("java.lang.OutOfMemoryError: Metaspace"));
+        System.out.println(classify("java.lang.OutOfMemoryError: unable to create native thread: possibly out of memory"));
+    }
+}`,
+      complexity: `<p>O(R · L) for R rules and message length L — trivial.</p>`,
+      followUps: ['Why does "Compressed class space" need to be checked before "Metaspace"?', 'What evidence do you get when the Linux OOM-killer (exit 137) kills the JVM instead?']
+    }
+  });
+
+  practice.push({
+    title: 'Plug the Unclosed Resource Leak',
+    level: 'Easy', tags: ['memory leak', 'try-with-resources', 'native resources'], companies: ['Infosys', 'Capgemini', 'SAP'],
+    statement: `<p>A log-scanning endpoint counts lines in uploaded files. After a few days the service fails with ${C('Too many open files')}. Find the leak and rewrite ${C('countLines(Path)')} so the file handle is always released, even when reading throws.</p>`,
+    constraints: `Files up to several GB — do not read the whole file into memory.`,
+    example: `<p>Buggy version: if ${C('readLine()')} throws (malformed input), ${C('close()')} is never reached → one leaked file descriptor per failure. The heap looks fine — the leak is a <b>native</b> resource.</p><p>Fixed version: ${H.c('g', 'try-with-resources')} closes the reader on every path.</p>`,
+    brute: { why: `<p>Closing manually at the end of the happy path leaks on every exception. Relying on GC/finalization to close it is unpredictable — file descriptors run out long before the heap fills, so GC never runs in time.</p>`, code: `
+class LeakyLineCounter {
+    static long countLines(String path) throws IOException {
+        BufferedReader r = new BufferedReader(new FileReader(path));
+        long n = 0;
+        while (r.readLine() != null) n++;     // if this throws, the next line never runs
+        r.close();
+        return n;
+    }
+}` },
+    mcq: { q: 'Why doesn\'t the garbage collector prevent "Too many open files"?', options: ['GC is driven by heap pressure; leaked descriptors are tiny on the heap, so GC may not run before the OS limit is hit', 'GC never collects readers', 'File handles live in Metaspace', 'Because FileReader is final'], answer: 0, explain: 'The Java object is small; the scarce resource is the OS descriptor. Release it deterministically with try-with-resources.' },
+    hints: [`<p>Hint 1: Any object that implements ${C('AutoCloseable')} belongs in a ${C('try (…) { }')} header — it is closed on normal exit and on exceptions.</p>`, `<p>Hint 2: ${C('Files.lines(path)')} returns a ${C('Stream')} that holds an open file — it must be closed too, so also put it in try-with-resources.</p>`, `<p>Hint 3: Specify the charset (${C('StandardCharsets.UTF_8')}) and stream the lines with ${C('count()')} so memory stays O(1) even for multi-GB files.</p>`],
+    solution: {
+      approach: `<p>Use try-with-resources around the stream of lines. Close happens in a compiler-generated finally block; suppressed exceptions from close are attached to the primary exception rather than hiding it.</p>`,
+      code: `
+import java.nio.charset.StandardCharsets;
+import java.nio.file.*;
+
+class LineCounter {
+    static long countLines(Path path) throws IOException {
+        try (var lines = Files.lines(path, StandardCharsets.UTF_8)) {   // closed on every exit path
+            return lines.count();                                        // streams: O(1) memory
+        }
+    }
+
+    public static void main(String[] args) throws IOException {
+        Path tmp = Files.createTempFile("log", ".txt");
+        Files.write(tmp, List.of("a", "b", "c"));
+        System.out.println(countLines(tmp));     // 3
+        Files.delete(tmp);
+    }
+}`,
+      complexity: `<p>O(file size) time, O(1) memory; exactly one descriptor, always released.</p>`,
+      followUps: ['How would you detect descriptor leaks in production (lsof, /proc/PID/fd, JFR file events)?', 'What does Cleaner add as a safety net, and why is it not enough on its own?']
+    }
+  });
+
+  /* ======================================================================
+     PRACTICE — Medium
+     ====================================================================== */
+  practice.push({
+    title: 'Reference Counting vs Tracing: Who Frees What?',
+    level: 'Medium', tags: ['GC', 'reference counting', 'cycles'], companies: ['Apple', 'Microsoft', 'Google'],
+    statement: `<p>Given ${C('n')} objects, directed references ${C('edges')} (u → v) and the root set, compute two sets: objects a <b>reference-counting</b> collector would free (start with counts = incoming refs from roots and objects; repeatedly free count-0 objects and decrement their targets) and objects a <b>tracing</b> collector would free (unreachable from roots). Return both sorted.</p>`,
+    constraints: `n ≤ 10<sup>5</sup>, edges ≤ 3·10<sup>5</sup>; a root counts as one reference to its object; duplicates allowed.`,
+    example: `<p>n = 5, edges = [0→1, 2→3, 3→2, 4→4], roots = [0].</p>${H.table(['', 'freed'], [['Reference counting', H.c('y', '[] — 2↔3 and 4→4 keep each other at count 1')], ['Tracing', H.c('g', '[2, 3, 4]')]])}<p>Why Java chose tracing: cycles are common (parent ↔ child, doubly-linked lists, caches).</p>`,
+    brute: { why: `<p>For refcount, rescanning all objects for count 0 after every free is O(n<sup>2</sup>). For tracing, testing each object separately for reachability is O(n·(n+E)). Both have linear-time worklist versions.</p>`, code: `
+class RcVsTracingBrute {
+    static List<Integer> refCountFreed(int n, int[][] edges, int[] roots) {
+        int[] rc = new int[n];
+        for (int r : roots) rc[r]++;
+        for (int[] e : edges) rc[e[1]]++;
+        boolean[] freed = new boolean[n];
+        boolean changed = true;
+        while (changed) {                                    // full rescan after every round: O(n^2)
+            changed = false;
+            for (int i = 0; i < n; i++) if (!freed[i] && rc[i] == 0) {
+                freed[i] = true; changed = true;
+                for (int[] e : edges) if (e[0] == i) rc[e[1]]--;   // O(E) per free
+            }
+        }
+        List<Integer> out = new ArrayList<>();
+        for (int i = 0; i < n; i++) if (freed[i]) out.add(i);
+        return out;
+    }
+}` },
+    mcq: { q: 'Which languages/runtimes rely mainly on reference counting and therefore need extra cycle handling?', options: ['CPython (plus a cycle detector) and Swift ARC (weak/unowned refs)', 'HotSpot JVM', 'V8 JavaScript', '.NET CLR'], answer: 0, explain: 'CPython combines refcounting with a generational cycle collector; Swift uses ARC and asks developers to break cycles with weak/unowned. JVM, V8 and CLR use tracing GCs.' },
+    hints: [`<p>Hint 1: Build adjacency lists once. Refcount: initial count = number of incoming edges + number of times it is a root.</p>`, `<p>Hint 2: Refcount freeing is a cascade — a queue of count-0 objects; freeing one decrements its targets and may enqueue them (like Kahn's topological sort).</p>`, `<p>Hint 3: Tracing is one BFS from all roots; freed = not visited. Objects in cycles are never enqueued by refcounting, which is exactly the difference.</p>`],
+    solution: {
+      approach: `<p>Refcount = Kahn-style cascade with a queue; tracing = multi-source BFS. Both O(n + E). Comparing the two outputs shows exactly the unreachable cycles.</p>`,
+      code: `
+class RcVsTracing {
+    static List<List<Integer>> compare(int n, int[][] edges, int[] roots) {
+        List<List<Integer>> adj = new ArrayList<>();
+        for (int i = 0; i < n; i++) adj.add(new ArrayList<>());
+        int[] rc = new int[n];
+        for (int[] e : edges) { adj.get(e[0]).add(e[1]); rc[e[1]]++; }
+        for (int r : roots) rc[r]++;
+
+        // Reference counting: cascade frees starting from count-0 objects.
+        boolean[] rcFreed = new boolean[n];
+        ArrayDeque<Integer> q = new ArrayDeque<>();
+        for (int i = 0; i < n; i++) if (rc[i] == 0) q.add(i);
+        while (!q.isEmpty()) {
+            int u = q.poll();
+            rcFreed[u] = true;
+            for (int v : adj.get(u)) if (--rc[v] == 0) q.add(v);
+        }
+
+        // Tracing: everything reachable from roots survives.
+        boolean[] live = new boolean[n];
+        for (int r : roots) if (!live[r]) { live[r] = true; q.add(r); }
+        while (!q.isEmpty()) {
+            int u = q.poll();
+            for (int v : adj.get(u)) if (!live[v]) { live[v] = true; q.add(v); }
+        }
+
+        List<Integer> a = new ArrayList<>(), b = new ArrayList<>();
+        for (int i = 0; i < n; i++) { if (rcFreed[i]) a.add(i); if (!live[i]) b.add(i); }
+        return List.of(a, b);
+    }
+
+    public static void main(String[] args) {
+        int[][] edges = { {0, 1}, {2, 3}, {3, 2}, {4, 4} };
+        System.out.println(compare(5, edges, new int[] { 0 }));   // [[], [2, 3, 4]]
+    }
+}`,
+      complexity: `<p>O(n + E) time and memory for both algorithms.</p>`,
+      followUps: ['How does CPython\'s cycle detector find garbage cycles without roots?', 'What does reference counting do better than tracing (prompt freeing, no pauses)?']
+    }
+  });
+
+  practice.push({
+    title: 'Weak Listener Registry (No More Listener Leaks)',
+    level: 'Medium', tags: ['memory leak', 'WeakReference', 'observer'], companies: ['JetBrains', 'Adobe', 'Bloomberg'],
+    statement: `<p>A desktop/plugin app registers UI components as listeners on a global ${C('EventBus')}. Components are closed but never unsubscribe, so the bus keeps every closed screen alive. Implement ${C('WeakEventBus<E>')} with ${C('subscribe(Consumer<E>)')}, ${C('publish(E)')} returning how many listeners received the event, and automatic purging of listeners whose owners were garbage collected.</p>`,
+    constraints: `Publishing must skip and remove cleared references. Thread-safe. Document the trap: a listener object nobody else references can disappear immediately.`,
+    example: `<p>Screen A and B subscribe (each keeps a strong field reference to its listener). Screen B is closed and dropped → after a GC, B's listener is only weakly reachable → cleared. publish("tick") → ${H.c('g', 'delivered to 1')}, registry size ${H.c('g', '1')}.</p>`,
+    brute: { why: `<p>A strong ${C('List<Consumer<E>>')} without unsubscribe keeps every listener — and everything its lambda captured (the whole screen, its images, its model) — reachable from a static bus forever. Classic observer leak.</p>`, code: `
+class StrongEventBus<E> {
+    private final List<Consumer<E>> listeners = new CopyOnWriteArrayList<>();
+    void subscribe(Consumer<E> l) { listeners.add(l); }     // never removed -> pins every subscriber
+    int publish(E e) { listeners.forEach(l -> l.accept(e)); return listeners.size(); }
+}` },
+    mcq: { q: '<code>bus.subscribe(e -> label.setText(e))</code> with a WeakEventBus — what can go wrong?', options: ['Nothing else holds the lambda strongly, so it can be collected right away and silently stop receiving events', 'It leaks the label', 'It throws ClassCastException', 'Lambdas cannot be weakly referenced'], answer: 0, explain: 'With weak registries the subscriber must keep a strong reference to its listener (e.g. a field) for as long as it wants events. Explicit unsubscribe handles are often clearer.' },
+    hints: [`<p>Hint 1: Store ${C('WeakReference<Consumer<E>>')} instead of the consumer itself. ${C('get()')} returns null after the referent is collected.</p>`, `<p>Hint 2: During ${C('publish')}, iterate with an ${C('Iterator')} and call ${C('remove()')} for cleared references — cleanup happens lazily, no background thread needed.</p>`, `<p>Hint 3: Synchronize ${C('subscribe')} and ${C('publish')} (or snapshot the list) so concurrent publishers don't corrupt it; consider a ${C('ReferenceQueue')} for eager purging.</p>`],
+    solution: {
+      approach: `<p>Weakly reference listeners and purge lazily on publish. Subscribers must keep their listener in a field; when the subscriber becomes unreachable, so does its listener, and the bus no longer pins it. For explicit lifecycles, also return an unsubscribe handle.</p>`,
+      code: `
+import java.lang.ref.WeakReference;
+
+class WeakEventBus<E> {
+    private final List<WeakReference<Consumer<E>>> listeners = new ArrayList<>();
+
+    synchronized void subscribe(Consumer<E> listener) {
+        listeners.add(new WeakReference<>(listener));
+    }
+
+    synchronized int publish(E event) {
+        int delivered = 0;
+        Iterator<WeakReference<Consumer<E>>> it = listeners.iterator();
+        while (it.hasNext()) {
+            Consumer<E> l = it.next().get();
+            if (l == null) { it.remove(); continue; }     // owner was collected: purge
+            l.accept(event);
+            delivered++;
+        }
+        return delivered;
+    }
+
+    synchronized int size() { return listeners.size(); }
+
+    public static void main(String[] args) throws InterruptedException {
+        WeakEventBus<String> bus = new WeakEventBus<>();
+        Consumer<String> screenA = e -> System.out.println("A got " + e);   // strongly held by this local
+        Consumer<String> screenB = e -> System.out.println("B got " + e);
+        bus.subscribe(screenA);
+        bus.subscribe(screenB);
+        screenB = null;                                   // screen B closed
+        for (int i = 0; i < 5; i++) { System.gc(); Thread.sleep(20); }   // demo only
+        System.out.println("delivered=" + bus.publish("tick") + " size=" + bus.size());
+        System.out.println(screenA != null);              // keep A reachable until here
+    }
+}`,
+      complexity: `<p>publish O(L) for L registered listeners; purging is amortised into publish. Memory bounded by live subscribers.</p>`,
+      followUps: ['Why might the demo still print delivered=2 on some JVMs (non-capturing lambdas are cached singletons)?', 'Compare with returning an AutoCloseable subscription handle', 'Use a ReferenceQueue to purge without waiting for publish']
+    }
+  });
+
+  practice.push({
+    title: 'ThreadLocal Leak in a Thread Pool',
+    level: 'Medium', tags: ['ThreadLocal', 'memory leak', 'thread pools', 'security'], companies: ['Salesforce', 'Intuit', 'Oracle'],
+    statement: `<p>A request filter stores the current user in a ${C('ThreadLocal<String>')} and never clears it. In a pool, the next task on the same thread sees the <b>previous user</b> (a security bug) and every pool thread pins its last value forever. Implement ${C('runAs(user, Supplier<T> work)')} that sets the context for the duration of ${C('work')} and <b>always</b> restores the previous state, including when ${C('work')} throws.</p>`,
+    constraints: `Must support nesting (runAs inside runAs). Must not leave values behind on pool threads.`,
+    example: `<p>Single-thread pool. Task 1: runAs("alice", …) → sees alice. Task 2 (same thread) without runAs: currentUser() → buggy version ${H.c('r', '"alice"')}, fixed version ${H.c('g', 'null')}.</p>`,
+    brute: { why: `<p>Setting without clearing. Pool threads never die, so their ${C('ThreadLocalMap')} entries live as long as the pool — the value (and in app servers, its class loader) is pinned, and the next request inherits stale identity.</p>`, code: `
+class LeakyContext {
+    static final ThreadLocal<String> USER = new ThreadLocal<>();
+    static <T> T runAs(String user, Supplier<T> work) {
+        USER.set(user);                 // never removed
+        return work.get();
+    }
+}` },
+    mcq: { q: 'ThreadLocalMap keys are WeakReferences to the ThreadLocal. Why does the VALUE still leak?', options: ['Values are strongly referenced by the thread\'s map; they are only expunged lazily, and a static ThreadLocal never becomes unreachable anyway', 'Values are stored in Metaspace', 'Weak references never clear', 'The GC skips thread objects'], answer: 0, explain: 'The entry holds the value strongly. Stale entries are cleaned only opportunistically, and static ThreadLocals (the common case) keep their key alive forever.' },
+    hints: [`<p>Hint 1: The rule for pooled threads: every ${C('set')} needs a matching ${C('remove')} in a ${C('finally')} block.</p>`, `<p>Hint 2: For nesting, save ${C('USER.get()')} before setting, and in ${C('finally')} restore it (or ${C('remove()')} if it was null).</p>`, `<p>Hint 3: Java 21+ alternative: ${C('ScopedValue.where(USER, "alice").call(...)')} — bindings end automatically with the scope and work naturally with virtual threads (final in JDK 25).</p>`],
+    solution: {
+      approach: `<p>Scope the ThreadLocal value with try/finally and restore the previous value, so the thread returns to the pool exactly as it came. This both removes the leak and the cross-request data exposure.</p>`,
+      code: `
+class RequestContext {
+    private static final ThreadLocal<String> USER = new ThreadLocal<>();
+
+    static <T> T runAs(String user, Supplier<T> work) {
+        String previous = USER.get();
+        USER.set(user);
+        try {
+            return work.get();
+        } finally {
+            if (previous == null) USER.remove();   // leave pool threads clean
+            else USER.set(previous);               // support nesting
+        }
+    }
+
+    static String currentUser() { return USER.get(); }
+
+    public static void main(String[] args) throws Exception {
+        ExecutorService pool = Executors.newSingleThreadExecutor();
+        System.out.println(pool.submit(() -> runAs("alice", RequestContext::currentUser)).get()); // alice
+        System.out.println(pool.submit(RequestContext::currentUser).get());                        // null
+        pool.shutdown();
+    }
+}`,
+      complexity: `<p>O(1) per call; no retained memory after the call returns.</p>`,
+      followUps: ['How do frameworks propagate context to CompletableFuture callbacks on other threads?', 'Why are InheritableThreadLocals dangerous with pools?', 'Rewrite with ScopedValue']
+    }
+  });
+
+  practice.push({
+    title: 'Allocation-Free Hot Loop: Counting Without Boxing',
+    level: 'Medium', tags: ['allocation', 'boxing', 'performance', 'GC pressure'], companies: ['Jane Street', 'Citadel', 'LinkedIn'],
+    statement: `<p>A metrics pipeline finds the most frequent status code among 10<sup>7</sup> events per second using ${C('Map<Integer, Integer>')}. JFR shows 400 MB/s of ${C('Integer')} and ${C('HashMap$Node')} allocations and young GCs every 200 ms. Codes are in [0, 999]. Rewrite ${C('mostFrequent(int[] codes)')} to allocate O(1) objects per call regardless of input size.</p>`,
+    constraints: `N ≤ 10<sup>7</sup>, 0 ≤ code ≤ 999. Ties → smaller code.`,
+    example: `<p>codes = [200, 500, 200, 404, 500, 200] → ${H.c('g', '200')} (3 times). Boxed version allocates an ${C('Integer')} per count update for values outside −128..127 (e.g. 200 → new Integer(1), (2), …) plus a node per new key.</p>`,
+    brute: { why: `<p>${C('merge(code, 1, Integer::sum)')} boxes the code (codes ≥ 128 aren't cached) and creates a new ${C('Integer')} for every updated count above 127, plus ${C('HashMap.Node')} objects. Millions of short-lived objects per second → constant young GCs and cache misses, even though the "real" data is 1,000 counters.</p>`, code: `
+class BoxedCounter {
+    static int mostFrequent(int[] codes) {
+        Map<Integer, Integer> freq = new HashMap<>();
+        for (int c : codes) freq.merge(c, 1, Integer::sum);       // boxing + new Integer per update
+        int best = -1, bestCount = 0;
+        for (Map.Entry<Integer, Integer> e : freq.entrySet())
+            if (e.getValue() > bestCount || (e.getValue() == bestCount && e.getKey() < best)) { best = e.getKey(); bestCount = e.getValue(); }
+        return best;
+    }
+}` },
+    mcq: { q: 'Why might escape analysis NOT remove the boxing here?', options: ['The boxed Integers are stored into the HashMap, so they escape the loop', 'EA only works for Strings', 'EA is disabled by default', 'Integer is final'], answer: 0, explain: 'Objects stored in a heap data structure escape. Scalar replacement only works for objects that never leave the compiled scope.' },
+    hints: [`<p>Hint 1: When keys are small dense integers, a plain ${C('int[]')} indexed by the key <i>is</i> a perfect hash map — no hashing, no boxing.</p>`, `<p>Hint 2: Allocate the 1000-slot array once per call (or reuse a thread-confined one); the loop then performs zero allocations.</p>`, `<p>Hint 3: Scan the array once for the max; iterating indices ascending gives the "smaller code wins ties" rule for free with a strict ${C('>')} comparison.</p>`],
+    solution: {
+      approach: `<p>Replace the boxed map by a primitive counting array. Allocation drops from O(N) objects to one 4 KB array; the loop is a sequential array increment that the JIT can unroll. For sparse or unbounded keys, use a primitive-specialised map (fastutil, Eclipse Collections, Agrona) instead.</p>`,
+      code: `
+class PrimitiveCounter {
+    static int mostFrequent(int[] codes) {
+        int[] freq = new int[1000];                 // one small allocation per call
+        for (int c : codes) freq[c]++;              // no boxing, no nodes
+        int best = 0;
+        for (int code = 1; code < freq.length; code++) {
+            if (freq[code] > freq[best]) best = code;   // strict '>' keeps the smaller code on ties
+        }
+        return best;
+    }
+
+    public static void main(String[] args) {
+        System.out.println(mostFrequent(new int[] { 200, 500, 200, 404, 500, 200 }));   // 200
+    }
+}`,
+      complexity: `<p>O(N + 1000) time, O(1000) memory, 1 allocation per call (vs ~N allocations).</p>`,
+      followUps: ['Measure both with JMH and -prof gc to show bytes/op', 'What if keys were arbitrary longs (user ids)?', 'Would a parallel stream help or hurt here?']
+    }
+  });
+
+  practice.push({
+    title: 'Size the Heap and the Container from GC Data',
+    level: 'Medium', tags: ['GC tuning', 'heap sizing', 'containers'], companies: ['Netflix', 'Shopify', 'Zalando'],
+    statement: `<p>Given post-GC old-gen occupancy samples (MB) from a week of production, metaspace (MB), thread count, stack size (KB), direct memory (MB) and code cache (MB), compute: recommended heap = 3.5 × the <b>maximum</b> post-GC sample rounded up to a multiple of 256 MB; container limit = heap + metaspace + threads × stack + direct + code cache + 10% of heap for GC structures, rounded up to 256 MB; and ${C('MaxRAMPercentage')} = floor(100 × heap / container).</p>`,
+    constraints: `All inputs positive; samples length ≥ 1.`,
+    example: `<p>samples = [900, 1100, 1240, 1180], metaspace 200, 300 threads × 1024 KB, direct 256, code 120.</p>${H.table(['item', 'MB'], [['max live', '1240'], ['heap = 3.5 × 1240 = 4340 → round up', H.c('g', '4352')], ['non-heap: 200 + 300 + 256 + 120 + 435', '1311'], ['container = 5663 → round up', H.c('g', '5888')], ['MaxRAMPercentage', H.c('g', '73')]])}`,
+    brute: { why: `<p>"Set Xmx to the container size" or "use the average sample". Xmx = container leaves no room for metaspace, stacks, direct buffers → OOM-killed (exit 137). Using the average ignores weekly peaks → heap too small at Monday 9 am.</p>`, code: `
+class NaiveSizing {
+    static long heapMb(long[] postGcSamples, long containerMb) {
+        long avg = 0;
+        for (long s : postGcSamples) avg += s;
+        avg /= postGcSamples.length;           // average hides the peak live set
+        return Math.max(avg * 2, containerMb); // heap == container -> no room for native memory
+    }
+}` },
+    mcq: { q: 'Why size from the post-GC floor and not from the peak of "heap used"?', options: ['Heap used includes garbage waiting to be collected; the post-GC floor approximates the live set', 'Peaks are always smaller', 'GC logs do not show peaks', 'The JVM forbids it'], answer: 0, explain: 'Before GC, heap is full of dead objects. Only occupancy right after a full/mixed GC approximates the data the app really keeps.' },
+    hints: [`<p>Hint 1: Use the <b>maximum</b> post-GC sample as the live set — sizing is about the worst realistic hour, not the average.</p>`, `<p>Hint 2: Rounding up to a multiple of m: ${C('((x + m - 1) / m) * m')} with longs; compute thread stacks as threads × KB / 1024.</p>`, `<p>Hint 3: Put the formula in one function returning a record (heap, container, percent) so it can be unit-tested and reviewed; print the breakdown for humans.</p>`],
+    solution: {
+      approach: `<p>Derive the live set from the worst post-GC sample, apply the 3–4× rule for heap, then add every native area explicitly. Express the result as both absolute sizes and ${C('MaxRAMPercentage')} so it scales if the container limit changes.</p>`,
+      code: `
+class HeapSizer {
+    record Plan(long heapMb, long containerMb, int maxRamPercentage) {}
+
+    static long roundUp(long x, long m) { return ((x + m - 1) / m) * m; }
+
+    static Plan plan(long[] postGcOldMb, long metaspaceMb, int threads, int stackKb, long directMb, long codeCacheMb) {
+        long live = Arrays.stream(postGcOldMb).max().orElseThrow();
+        long heap = roundUp((long) Math.ceil(live * 3.5), 256);
+        long gcOverhead = heap / 10;                                  // remembered sets, mark bitmaps, etc.
+        long nonHeap = metaspaceMb + (long) threads * stackKb / 1024 + directMb + codeCacheMb + gcOverhead;
+        long container = roundUp(heap + nonHeap, 256);
+        int pct = (int) (100 * heap / container);
+        return new Plan(heap, container, pct);
+    }
+
+    public static void main(String[] args) {
+        System.out.println(plan(new long[] { 900, 1100, 1240, 1180 }, 200, 300, 1024, 256, 120));
+        // Plan[heapMb=4352, containerMb=5888, maxRamPercentage=73]
+    }
+}`,
+      complexity: `<p>O(S) for S samples. The real work is collecting trustworthy samples (a full week, including peaks and batch windows).</p>`,
+      followUps: ['How does the plan change for ZGC (more headroom)?', 'Which of these numbers would you alert on?', 'How do virtual threads change the thread-stack term?']
+    }
+  });
+
+  practice.push({
+    title: 'Card Table: Which Old-Gen Cards Must a Minor GC Scan?',
+    level: 'Medium', tags: ['GC', 'card table', 'write barrier'], companies: ['Azul', 'Oracle', 'Red Hat'],
+    statement: `<p>Old gen starts at address ${C('oldStart')} and has ${C('oldSize')} bytes, divided into 512-byte cards. The write barrier records the address of every reference store into an old object that now points to a young object. Return the sorted list of <b>dirty card indices</b> and the number of bytes a minor GC must scan (dirty cards × 512) versus scanning all of old gen.</p>`,
+    constraints: `oldSize ≤ 2<sup>40</sup>, stores ≤ 10<sup>6</sup>, every store address lies inside old gen.`,
+    example: `<p>oldStart = 4096, oldSize = 8192 (16 cards), stores = [4100, 4600, 4700, 9000].</p>${H.table(['address', 'card = (addr − 4096) / 512'], [['4100', '0'], ['4600', '0'], ['4700', '1'], ['9000', '9']])}<p>Dirty cards ${H.c('g', '[0, 1, 9]')} → scan ${H.c('g', '1536 bytes')} instead of 8192.</p>`,
+    brute: { why: `<p>Without a card table a minor GC would have to scan <b>all</b> of old gen for pointers into young gen — the cost would grow with the old gen's size, destroying the whole point of cheap young collections.</p>`, code: `
+class FullOldScan {
+    // Without a card table: every minor GC inspects every old-gen byte range.
+    static long bytesToScan(long oldStart, long oldSize, long[] stores) {
+        return oldSize;                       // O(old gen) per minor GC, regardless of how few stores happened
+    }
+}` },
+    mcq: { q: 'Why does the card table use 512-byte cards instead of tracking exact addresses?', options: ['One byte per card keeps the table tiny and the barrier a single store; scanning a whole card is cheap', 'Objects are always 512 bytes', 'The OS page size is 512 bytes', 'It is required by the JVM spec'], answer: 0, explain: 'The barrier is just card[addr >> 9] = dirty: a shift and a byte store. Precision is traded for barrier speed and a table of oldSize/512 bytes.' },
+    hints: [`<p>Hint 1: Card index = ${C('(addr - oldStart) >>> 9')} because 512 = 2<sup>9</sup> — the real HotSpot barrier is exactly this shift plus a byte store.</p>`, `<p>Hint 2: Use a ${C('BitSet')} or a byte array of size oldSize/512 to deduplicate; ${C('BitSet.stream()')} yields sorted indices.</p>`, `<p>Hint 3: Bytes to scan = dirty count × 512 (the last card may be partial; clamp with ${C('Math.min')} if you want exactness).</p>`],
+    solution: {
+      approach: `<p>Mark one bit per card on every recorded store, then enumerate set bits. This mirrors HotSpot: a post-write barrier dirties ${C('card_table[addr >> 9]')}, and the young GC treats objects in dirty cards as extra roots, then cleans the cards.</p>`,
+      code: `
+class CardTable {
+    static final int CARD_SHIFT = 9;                 // 512-byte cards
+
+    record Result(List<Integer> dirtyCards, long bytesToScan, long fullScanBytes) {}
+
+    static Result scan(long oldStart, long oldSize, long[] stores) {
+        BitSet dirty = new BitSet((int) ((oldSize + 511) >>> CARD_SHIFT));
+        for (long addr : stores) dirty.set((int) ((addr - oldStart) >>> CARD_SHIFT));   // the write barrier
+        List<Integer> cards = dirty.stream().boxed().toList();
+        long bytes = 0;
+        for (int c : cards) {
+            long cardStart = (long) c << CARD_SHIFT;
+            bytes += Math.min(512, oldSize - cardStart);  // last card may be partial
+        }
+        return new Result(cards, bytes, oldSize);
+    }
+
+    public static void main(String[] args) {
+        System.out.println(scan(4096, 8192, new long[] { 4100, 4600, 4700, 9000 }));
+        // Result[dirtyCards=[0, 1, 9], bytesToScan=1536, fullScanBytes=8192]
+    }
+}`,
+      complexity: `<p>O(S + C/64) for S stores and C cards (bitset scan); memory C bits. Real GCs also clear cards after scanning and use concurrent refinement (G1).</p>`,
+      followUps: ['Why do workloads that constantly update references in old objects have slower young GCs?', 'How does G1 turn dirty cards into per-region remembered sets?']
+    }
+  });
+
+  practice.push({
+    title: 'Choose the Collector: Turn Requirements into JVM Flags',
+    level: 'Medium', tags: ['GC algorithms', 'GC tuning', 'scenario'], companies: ['Uber', 'Goldman Sachs', 'Atlassian'],
+    statement: `<p>Write ${C('String recommend(Workload w)')} where ${C('Workload(int heapGb, int pauseBudgetMs, int cpus, boolean batch)')}. Rules: &lt; 2 CPUs or heap &lt; 1 GB → Serial; batch (throughput only) → Parallel; pause budget &lt; 20 ms or heap &gt; 64 GB → ZGC; otherwise G1 with ${C('MaxGCPauseMillis')} = half the pause budget (min 50, max 200). Always add ${C('-Xms')} = ${C('-Xmx')} = heap and GC logging.</p>`,
+    constraints: `1 ≤ heapGb ≤ 4096; 1 ≤ pauseBudgetMs ≤ 10000; 1 ≤ cpus ≤ 512.`,
+    example: `${H.table(['workload', 'recommendation'], [['(8 GB, 400 ms, 4 CPUs, api)', H.c('g', 'G1, MaxGCPauseMillis=200')], ['(24 GB, 5 ms, 16, api)', H.c('g', 'ZGC')], ['(40 GB, any, 32, batch)', H.c('g', 'Parallel')], ['(0 GB…, 1 CPU)', H.c('g', 'Serial')]])}<p>Why: the order of rules matters — tiny machines first (concurrent GCs need spare cores), then the goal (throughput vs latency).</p>`,
+    brute: { why: `<p>"Always use ZGC, it has the lowest pauses" — or always keep defaults. ZGC on a 1-CPU, 512 MB container burns CPU for nothing; G1 for a nightly batch wastes ~5–10% throughput on barriers; defaults may silently pick Serial in small containers. One size never fits all.</p>`, code: `
+class AlwaysZgc {
+    static String recommend(int heapGb) {
+        return "-XX:+UseZGC -Xmx" + heapGb + "g";      // ignores CPUs, goal, and heap size
+    }
+}` },
+    mcq: { q: 'A latency-sensitive API has a 2-CPU container and a 6 GB heap with a 100 ms pause budget. Best first choice?', options: ['G1 with MaxGCPauseMillis around 50', 'Serial', 'Parallel', 'Epsilon'], answer: 0, explain: 'G1 fits moderate heaps and a 100 ms budget; ZGC is possible but not needed, and its concurrent threads compete with only 2 cores.' },
+    hints: [`<p>Hint 1: Encode the rules as an ordered chain of ${C('if')} statements — the first matching rule wins, just like a decision tree you would explain in an interview.</p>`, `<p>Hint 2: Clamp the G1 pause target with ${C('Math.max(50, Math.min(200, budget / 2))')}: half the budget leaves room for non-GC latency.</p>`, `<p>Hint 3: Build the flag string with a ${C('StringJoiner(" ")')} and always append ${C('-Xms')}/${C('-Xmx')} and a ${C('-Xlog:gc*')} option, so the recommendation is measurable.</p>`],
+    solution: {
+      approach: `<p>A small rule engine mirroring how engineers choose: machine constraints first, then the optimisation goal (throughput vs latency), then heap size. The output includes logging because every choice must be verified with data.</p>`,
+      code: `
+class GcAdvisor {
+    record Workload(int heapGb, int pauseBudgetMs, int cpus, boolean batch) {}
+
+    static String recommend(Workload w) {
+        StringJoiner flags = new StringJoiner(" ");
+        if (w.cpus() < 2 || w.heapGb() < 1) {
+            flags.add("-XX:+UseSerialGC");
+        } else if (w.batch()) {
+            flags.add("-XX:+UseParallelGC");
+        } else if (w.pauseBudgetMs() < 20 || w.heapGb() > 64) {
+            flags.add("-XX:+UseZGC");
+        } else {
+            int target = Math.max(50, Math.min(200, w.pauseBudgetMs() / 2));
+            flags.add("-XX:+UseG1GC").add("-XX:MaxGCPauseMillis=" + target);
+        }
+        int heap = Math.max(1, w.heapGb());
+        flags.add("-Xms" + heap + "g").add("-Xmx" + heap + "g");
+        flags.add("-Xlog:gc*:file=gc.log:time,uptime,level,tags");
+        return flags.toString();
+    }
+
+    public static void main(String[] args) {
+        System.out.println(recommend(new Workload(8, 400, 4, false)));   // G1, MaxGCPauseMillis=200
+        System.out.println(recommend(new Workload(24, 5, 16, false)));   // ZGC
+        System.out.println(recommend(new Workload(40, 1000, 32, true))); // Parallel
+    }
+}`,
+      complexity: `<p>O(1). The real cost is validating the choice under load.</p>`,
+      followUps: ['Add Shenandoah as an option when ZGC is unavailable', 'How would container memory limits change Xmx (MaxRAMPercentage)?', 'Which metrics prove the recommendation was right?']
+    }
+  });
+
 registerModule({ id: 'java13', title: 'JVM Internals & Performance', intro: '<p>x</p>', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();
