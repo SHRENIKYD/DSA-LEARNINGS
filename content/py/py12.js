@@ -985,7 +985,7 @@ print(f"average pointer copies per append (n=100000): {avg_big:.2f}")
       return !seen[o.id];
     });
     var lk = {}; leaked.forEach(function (o) { lk[o.id] = 'bad'; });
-    snapshot(leaked.length ? '<b>End.</b> <span class="c-r">' + leaked.map(function (o) { return label(o.id); }).join(', ') + ' cannot be reached from any name, yet refcount &gt; 0</span> because they point at each other (a cycle). Reference counting alone can never free them; the <b>cyclic garbage collector</b> (next topic) exists for exactly this.' : '<b>End.</b> Every object is either reachable from a name or already freed. Reference counting handled everything with no pauses, freeing each object the instant its last reference vanished.', -1, lk);
+    snapshot(leaked.length ? '<b>End.</b> <span class="c-r">' + leaked.map(function (o) { return label(o.id); }).join(', ') + ' cannot be reached from any name, yet refcount &gt; 0</span> because the only references left come from inside a cycle. Reference counting alone can never free them; the <b>cyclic garbage collector</b> (next topic) exists for exactly this.' : '<b>End.</b> Every object is either reachable from a name or already freed. Reference counting handled everything with no pauses, freeing each object the instant its last reference vanished.', -1, lk);
     return frames;
   }
 
@@ -1165,6 +1165,1005 @@ print("cycle (with collect) :", is_freed_after(Session, cyclic_release))
         dry: { head: ['release', 'strong refs after del obj', 'gc.collect needed?', 'result'], rows: [['leaky_release', '1 (REGISTRY)', 'no help', H.c('r', 'False')], ['clean_release', '0', 'no', H.c('g', 'True')], ['cyclic_release, no collect', '1 (s.me → s)', 'yes', H.c('r', 'False')], ['cyclic_release, collect', '1 but unreachable', 'collected', H.c('g', 'True')]] },
         complexity: R`<p>O(1) apart from <code>gc.collect()</code>, which is O(number of tracked container objects). Use it in tests, not hot paths.</p>`,
         followUps: ['Turn this into a pytest fixture that fails a test when a request handler leaks its request object.', 'How would you find WHO holds the object when the answer is False? (<code>gc.get_referrers</code>)']
+      }
+    }]
+  });
+
+  /* ======================================================================
+     TOPIC 5: The Cyclic Garbage Collector
+     ====================================================================== */
+  function gcSim(input) {
+    var toks = String(input || '').trim().split(/[\s,]+/).filter(Boolean);
+    if (!toks.length) throw new Error('Enter edges like: x->A A->B B->A (lowercase = outside reference, Uppercase = container object)');
+    var edges = [], objs = [], roots = [];
+    toks.forEach(function (t) {
+      var m = /^([A-Za-z]\w*)->([A-Za-z]\w*)$/.exec(t);
+      if (!m) throw new Error('Bad edge "' + t + '". Use FROM->TO, e.g. x->A or A->B');
+      if (!/^[A-Z]/.test(m[2])) throw new Error('"' + m[2] + '": edges must point AT container objects (start with an uppercase letter)');
+      var src = m[1], dst = m[2];
+      (/^[A-Z]/.test(src) ? objs : roots).indexOf(src) < 0 && (/^[A-Z]/.test(src) ? objs : roots).push(src);
+      if (objs.indexOf(dst) < 0) objs.push(dst);
+      edges.push([src, dst]);
+    });
+    if (objs.length > 8) throw new Error('Use at most 8 container objects');
+    if (roots.length > 4) throw new Error('Use at most 4 outside references');
+    if (edges.length > 20) throw new Error('Use at most 20 edges');
+    var H0 = 64, nodes = [];
+    roots.forEach(function (r, i) { nodes.push({ id: r, label: r, x: 6, y: 8 + i * (48 / Math.max(1, roots.length - 1 || 1)), shape: 'box', w: 8 }); });
+    objs.forEach(function (o, i) {
+      var ang = -Math.PI / 2 + (2 * Math.PI * i) / objs.length;
+      nodes.push({ id: o, label: o, x: Math.round(60 + 30 * Math.cos(ang)), y: Math.round(32 + 24 * Math.sin(ang)) });
+    });
+    var rc = {}, gcr = {};
+    objs.forEach(function (o) { rc[o] = 0; });
+    edges.forEach(function (e) { rc[e[1]]++; });
+    var frames = [];
+    function g(hl, ehl, tags, label) { return { type: 'graph', label: label || 'Object graph (boxes = outside references: stack, globals, other generations)', directed: true, height: H0, nodes: nodes, edges: edges.map(function (e) { return [e[0], e[1]]; }), hl: hl || {}, ehl: ehl || {}, tags: tags || {} }; }
+    function tagsOf(map, pre) { var t = {}; objs.forEach(function (o) { t[o] = pre + map[o]; }); return t; }
+    function tbl(extra) { return { type: 'table', label: 'Per-object bookkeeping', columns: ['object', 'ob_refcnt', 'gc_refs', 'state'], rows: objs.map(function (o) { return [o, rc[o], gcr[o] === undefined ? '—' : gcr[o], extra[o] || '']; }) }; }
+    frames.push({ narr: 'The collector looks only at <b>container</b> objects in the generation being collected (circles). It cannot see the stack or other references directly; it only knows each object\'s <code>ob_refcnt</code> and can ask each container "who do you point at?" (<code>tp_traverse</code>).', parts: [g({}, {}, tagsOf(rc, 'rc=')), tbl({})] });
+    objs.forEach(function (o) { gcr[o] = rc[o]; });
+    frames.push({ narr: '<b>Step 1 · copy:</b> <code>gc_refs = ob_refcnt</code> for every object. This counts <i>all</i> references, from inside the group and from outside.', parts: [g({}, {}, tagsOf(gcr, 'gc=')), tbl({})] });
+    objs.forEach(function (o) {
+      var outs = edges.filter(function (e) { return e[0] === o; });
+      if (!outs.length) return;
+      var ehl = {}, hl = {}; hl[o] = 'cur';
+      outs.forEach(function (e) { gcr[e[1]]--; ehl[e[0] + '-' + e[1]] = 'cur'; hl[e[1]] = hl[e[1]] || 'win'; });
+      frames.push({ narr: '<b>Step 2 · subtract internal references:</b> traverse <b>' + o + '</b>; for each object it points at (' + outs.map(function (e) { return e[1]; }).join(', ') + '), do <code>gc_refs -= 1</code>. References between tracked objects cancel out.', parts: [g(hl, ehl, tagsOf(gcr, 'gc=')), tbl({})] });
+    });
+    var reach = {}, st = [], state = {};
+    objs.forEach(function (o) { if (gcr[o] > 0) { reach[o] = true; st.push(o); state[o] = 'external ref → root'; } });
+    var hl0 = {}; objs.forEach(function (o) { hl0[o] = reach[o] ? 'ok' : 'cur'; });
+    frames.push({ narr: '<b>Step 3 · find roots:</b> any object with <code>gc_refs &gt; 0</code> must be referenced from <b>outside</b> the group, so it is definitely alive: ' + (st.length ? '<b>' + st.join(', ') + '</b>' : '<span class="c-r">none!</span>') + '. Objects with 0 are <i>tentatively</i> unreachable.', parts: [g(hl0, {}, tagsOf(gcr, 'gc=')), tbl(state)] });
+    var guard = 0;
+    while (st.length && guard++ < 50) {
+      var cur = st.shift(), found = [], ehl = {};
+      edges.forEach(function (e) { if (e[0] === cur) { ehl[e[0] + '-' + e[1]] = 'ok'; if (!reach[e[1]]) { reach[e[1]] = true; found.push(e[1]); st.push(e[1]); state[e[1]] = 'reachable via ' + cur; } } });
+      if (!found.length) continue;
+      var hl = {}; objs.forEach(function (o) { hl[o] = reach[o] ? 'ok' : 'cur'; }); hl[cur] = 'sel';
+      frames.push({ narr: '<b>Step 4 · propagate:</b> ' + cur + ' is alive, so everything it points at is alive too: <b>' + found.join(', ') + '</b> → marked reachable (a gc_refs of 0 does not matter once a live object points at you).', parts: [g(hl, ehl, tagsOf(gcr, 'gc=')), tbl(state)] });
+    }
+    var dead = objs.filter(function (o) { return !reach[o]; });
+    var hlF = {}, ehlF = {};
+    objs.forEach(function (o) { hlF[o] = reach[o] ? 'ok' : 'bad'; if (!reach[o]) state[o] = 'UNREACHABLE → collect'; });
+    edges.forEach(function (e) { if (!reach[e[1]] && dead.indexOf(e[0]) >= 0) ehlF[e[0] + '-' + e[1]] = 'bad'; });
+    frames.push({ narr: dead.length ? '<b>Step 5 · collect:</b> <span class="c-r">' + dead.join(', ') + '</span> are only kept alive by each other. CPython runs finalizers (<code>__del__</code>, PEP 442) and weakref callbacks, then calls <code>tp_clear</code> on them to break the links; ordinary reference counting then frees the whole group.' : '<b>Step 5 · collect:</b> nothing is unreachable; every object is held (directly or indirectly) from outside. Survivors move to the next (older) generation.', parts: [g(hlF, ehlF, tagsOf(gcr, 'gc=')), tbl(state)] });
+    frames.push({ narr: 'Result: <b>' + (objs.length - dead.length) + '</b> survivor(s) are promoted to an older generation (checked less often), <b>' + dead.length + '</b> object(s) freed. <code>gc.collect()</code> would return ' + dead.length + ' here (the count of unreachable objects found).', parts: [
+      { type: 'set', label: 'survivors (promoted)', items: objs.filter(function (o) { return reach[o]; }), hl: {} },
+      { type: 'set', label: 'collected', items: dead, hl: (function () { var h = {}; dead.forEach(function (d) { h[d] = 'bad'; }); return h; })() }
+    ] });
+    return frames;
+  }
+
+  topics.push({
+    title: 'The Cyclic Garbage Collector: Cleaning Up Islands',
+    analogy: R`<p>A members-only club lets you stay as long as someone <b>vouches</b> for you. Two members, Ana and Ben, vouch only for each other; nobody outside the club knows them. Simple counting says "both have one voucher, keep them". So once in a while an <b>auditor</b> visits: for every member, she counts vouches, then <b>crosses out vouches that come from other members</b>. Anyone with a vouch left must be known by someone outside: they stay, and so does everyone <i>they</i> vouch for. Whoever is left over is a closed island of mutual vouching, and gets shown the door. That auditor is CPython's cyclic garbage collector.</p>`,
+    explain: R`<p>🟢 <b>The plain idea.</b> Reference counting cannot free a <b>cycle</b>: <code>a.friend = b; b.friend = a; del a, b</code> leaves both counts at 1 forever. CPython therefore runs a second, occasional collector that finds groups of objects reachable only from each other, and frees them.</p>
+      <p><b>Which objects does it watch?</b> Only <b>containers</b> that could be part of a cycle: lists, dicts, sets, instances of your classes, functions, frames… (<code>gc.is_tracked(obj)</code>). Ints, floats and strings are never tracked. CPython even <b>untracks</b> tuples that contain only atomic values and dicts holding only atomic keys and values, to keep the work small.</p>
+      <p><b>The algorithm</b> (the visualizer below runs it):</p>
+      <ol>
+        <li>For every tracked object in the generation: <code>gc_refs = ob_refcnt</code>.</li>
+        <li>For every reference <b>between</b> those objects: subtract 1 from the target's <code>gc_refs</code>.</li>
+        <li>Objects still above 0 are referenced from outside (stack, globals, older objects): they are <b>roots</b>.</li>
+        <li>Everything reachable from a root is alive.</li>
+        <li>The rest is garbage: run finalizers, clear references, let refcounting free it.</li>
+      </ol>
+      <p><b>Generations: most objects die young.</b> Classic CPython keeps three generations. New containers go into generation 0; a collection starts when allocations minus deallocations of containers exceed <code>threshold0</code>. Survivors are promoted to gen 1, then gen 2, which are scanned less and less often.</p>
+      ${H.table(['Version', 'Thresholds / design'], [
+        ['≤ 3.12', '<code>gc.get_threshold()</code> = (700, 10, 10): gen0 every 700 net allocations, gen1 every 10 gen0 runs, gen2 every 10 gen1 runs (plus a rule that full collections wait until long-lived objects grow by 25%)'],
+        ['3.13', '(2000, 10, 10): a bigger young generation, fewer collections'],
+        ['3.14', 'an <b>incremental</b> collector with a young and an old generation that scans the old space a slice at a time, cutting long pauses (check the <code>gc</code> docs of your exact version)'],
+        ['free-threaded build', 'non-generational, stop-the-world collector that scans the mimalloc heap']
+      ])}
+      <p><b>Everyday API:</b> <code>gc.collect()</code> (returns the number of unreachable objects found), <code>gc.disable()</code>/<code>enable()</code>, <code>gc.get_threshold()</code>/<code>set_threshold()</code>, <code>gc.get_count()</code>, <code>gc.freeze()</code> (move everything to a permanent generation, great before <code>fork()</code>), <code>gc.callbacks</code> (measure pause times), <code>gc.get_referrers()</code>/<code>get_referents()</code> (debugging).</p>`,
+    clues: [
+      '"How does Python free circular references?" → generational cycle collector on top of refcounting',
+      '"Two objects reference each other and have <code>__del__</code>, are they collected?" → yes since 3.4 (PEP 442); before that they went to <code>gc.garbage</code>',
+      '"Latency spikes in a service that allocates many objects" → GC pauses; tune thresholds, <code>gc.freeze()</code>, reduce cycles',
+      '"Pre-fork server (gunicorn/uWSGI) memory grows after fork" → GC touching objects breaks copy-on-write; <code>gc.freeze()</code>',
+      '"Is it safe to <code>gc.disable()</code>?" → only if you do not create cycles (or collect manually); refcounting still works',
+      '"Why aren\'t ints tracked by the GC?" → they cannot reference other objects, so they cannot form cycles'
+    ],
+    code: [{ lang: 'python', title: 'Create a cycle, then collect it (runnable)', run: true, code: R`import gc
+import weakref
+
+class Node:
+    def __init__(self, name):
+        self.name = name
+        self.peer = None
+
+gc.disable()                       # make the demo deterministic
+a, b = Node("a"), Node("b")
+a.peer, b.peer = b, a              # a <-> b cycle
+probe = weakref.ref(a)
+del a, b                           # refcounts are still 1 each (the cycle)
+print("alive after del (refcounting alone):", probe() is not None)
+
+found = gc.collect()               # the cycle collector finds the island
+print("gc.collect() found", found, "unreachable objects")
+print("alive after collect:", probe() is not None)
+gc.enable()
+
+print("thresholds:", gc.get_threshold())
+print("tracked? int:", gc.is_tracked(42), "| list:", gc.is_tracked([]),
+      "| dict of atoms:", gc.is_tracked({"k": 1}))
+` }],
+    codeTitle: ['Cycles vs refcounting'],
+    viz: {
+      title: 'Mark phase of the cycle collector (gc_refs subtraction)',
+      input: 'x->A A->B B->A B->C C->B D->E E->D E->F F->F y->G',
+      inputLabel: 'Edges FROM->TO. lowercase = outside reference (stack/global), Uppercase = tracked container',
+      gen: gcSim
+    },
+    examples: [
+      { title: 'Predict: which objects survive?', html: R`<p>Graph: <code>x→A, A→B, B→A, C→D, D→C</code>. Refcounts: A=2 (x, B), B=1, C=1, D=1. After subtracting internal edges: A=1, B=0, C=0, D=0. A is a root; B is reachable from A. C and D form an island.</p>
+        ${H.table(['object', 'ob_refcnt', 'gc_refs after step 2', 'verdict'], [['A', '2', '1', H.c('g', 'root')], ['B', '1', '0', H.c('g', 'reachable from A')], ['C', '1', '0', H.c('r', 'collected')], ['D', '1', '0', H.c('r', 'collected')]])}
+        <p>Try exactly this input in the visualizer above.</p>` },
+      { title: 'gc.freeze() for pre-fork servers', html: R`<p>Servers like gunicorn load the app, then <code>fork()</code> workers that share memory pages copy-on-write. A GC pass writes to object headers (the GC links and <code>gc_refs</code>), which copies those pages into every worker, multiplying memory. Instagram famously disabled GC to avoid this; the cleaner fix added in 3.7 is <code>gc.freeze()</code> just before forking: all current objects move to a permanent generation the collector ignores.</p>`, code: { lang: 'python', run: true, code: R`import gc
+
+app_state = [{"route": i} for i in range(10_000)]   # imagine a loaded app
+gc.collect()
+gc.freeze()                       # everything existing is now "permanent"
+print("frozen objects:", gc.get_freeze_count())
+# ... os.fork() workers would happen here ...
+gc.unfreeze()                     # (just to leave the demo clean)
+print("after unfreeze:", gc.get_freeze_count())
+` } },
+      { title: 'Measure GC pauses with gc.callbacks', html: R`<p><code>gc.callbacks</code> lets you hook the start and stop of every collection, so you can log pause times per generation in production and decide whether tuning matters. Most services spend well under 1% of time in GC; when it is more, it is usually because of huge numbers of long-lived container objects.</p>`, code: { lang: 'python', run: true, code: R`import gc
+import time
+
+pauses = []
+_start = [0.0]
+
+def on_gc(phase, info):
+    if phase == "start":
+        _start[0] = time.perf_counter()
+    else:
+        pauses.append((info["generation"], (time.perf_counter() - _start[0]) * 1000))
+
+gc.callbacks.append(on_gc)
+junk = []
+for i in range(200_000):
+    junk.append([i])               # many container allocations trigger gen0 runs
+gc.callbacks.remove(on_gc)
+print("collections:", len(pauses))
+if pauses:
+    print("max pause ms: %.3f" % max(p for _, p in pauses))
+` } }
+    ],
+    deepDive: R`<p>🟣 <b>Where gc_refs lives.</b> Each tracked object has a <code>PyGC_Head</code> just before it: two words linking it into its generation's doubly linked list. During a collection one of those words temporarily holds <code>gc_refs</code> and flag bits. The algorithm is linear in the number of objects in the collected generations, which is why the young generation is kept small.</p>
+      <p><b>Finalization order (PEP 442).</b> For unreachable objects CPython: (1) handles weak references (clears them, schedules callbacks), (2) calls <code>tp_finalize</code> (<code>__del__</code>) once per object, (3) <b>re-checks reachability</b>, because a finalizer may resurrect objects by storing them somewhere, (4) calls <code>tp_clear</code> to break references among the remaining garbage. Since 3.4, cycles with <code>__del__</code> are collected; <code>gc.garbage</code> is now only filled with <code>gc.DEBUG_SAVEALL</code> or by unusual C extensions.</p>
+      <p><b>Why full collections are rate limited.</b> If gen2 were scanned every 10 × 10 × 700 allocations, building a large data structure would be quadratic. CPython waits until the number of objects that survived into gen2 since the last full collection exceeds 25% of the long-lived total.</p>
+      <p><b>Tuning in practice.</b> Raising <code>threshold0</code> (e.g. <code>gc.set_threshold(50_000, 20, 20)</code>) reduces the number of young collections for allocation-heavy batch jobs; <code>gc.freeze()</code> after startup removes long-lived objects from future scans; avoiding cycles (use <code>weakref</code> for parent pointers, break caches explicitly) lets refcounting do all the work. Measure with <code>gc.callbacks</code> or <code>gc.get_stats()</code> before and after; do not tune blindly.</p>
+      <p><b>Other implementations:</b> PyPy uses an incremental generational moving GC with no refcounts (objects may move; <code>id()</code> is emulated). The free-threaded CPython build needs all threads paused for its collector and finds objects by walking mimalloc heaps instead of generation lists.</p>`,
+    aiEra: R`<p>🤖 <b>What AI changes:</b> an assistant can read a heap dump summary or <code>gc.get_stats()</code> output and suggest whether GC is a real bottleneck, and it writes good instrumentation (callbacks, Prometheus metrics for pause time). It is also handy for drawing object graphs from <code>gc.get_referrers</code> output.</p>
+      <p><b>Use AI as a partner:</b> <code>Our p99 latency spikes every few seconds. Here are gc callback logs (generation, ms). Is GC the cause, and what would gc.freeze() or threshold changes do? List risks.</code></p>
+      <p><b>Where AI goes wrong:</b> it repeats outdated facts (thresholds 700 on 3.13, "cycles with __del__ are never collected", "Python uses mark-and-sweep only"), or recommends <code>gc.disable()</code> globally without noticing the code creates cycles (memory then grows without bound).</p>
+      <p><b>What you must still own:</b> knowing that refcounting does most of the work and the cycle GC is a backstop, the subtract-internal-references idea, and how to verify a tuning change with measurements.</p>`,
+    problems: [{
+      title: 'Simulate the Cycle Collector',
+      level: 'Hard', tags: ['graph', 'garbage collection', 'BFS'], companies: ['Google', 'Microsoft', 'Databricks'],
+      statement: R`<p>You are given the tracked objects of one generation: <code>refcnt</code>, a dict mapping each object id to its <code>ob_refcnt</code>, and <code>refs</code>, a dict mapping each object id to the list of ids it references (only references to objects in this generation are listed). Return the set of ids that are <b>unreachable</b> (garbage) according to CPython's algorithm.</p>`,
+      constraints: R`<p>Up to 10<sup>5</sup> objects and 10<sup>6</sup> references. <code>refcnt[o]</code> ≥ number of listed references to <code>o</code>. An object may reference itself or reference the same target several times (each counts).</p>`,
+      example: R`<p><code>refcnt = {A: 2, B: 1, C: 1, D: 1}</code>, <code>refs = {A: [B], B: [A], C: [D], D: [C]}</code> → ${H.c('r', '{C, D}')}. A has one reference from outside (2 − 1 from B), B is reachable from A; C and D only hold each other.</p>`,
+      brute: { why: R`<p>For each object, try to prove it is externally reachable by searching backwards over all objects and edges: O(N · (N + E)). The insight is that "external references" can be computed for <b>all</b> objects at once by subtraction, followed by a single forward BFS: O(N + E).</p>`, code: R`def unreachable_brute(refcnt, refs):
+    incoming = {o: [] for o in refcnt}
+    for src, targets in refs.items():
+        for t in targets:
+            incoming[t].append(src)
+    def externally_held(o):
+        return refcnt[o] > len(incoming[o])
+    garbage = set()
+    for o in refcnt:                       # backward search per object: slow
+        seen, stack, alive = set(), [o], False
+        while stack:
+            cur = stack.pop()
+            if cur in seen:
+                continue
+            seen.add(cur)
+            if externally_held(cur):
+                alive = True
+                break
+            stack.extend(incoming[cur])
+        if not alive:
+            garbage.add(o)
+    return garbage
+
+print(unreachable_brute({"A": 2, "B": 1, "C": 1, "D": 1}, {"A": ["B"], "B": ["A"], "C": ["D"], "D": ["C"]}))
+` },
+      mcq: { q: 'After subtracting internal references, object X has gc_refs = 0. What can you conclude?', options: ['Nothing yet: X may still be reachable from a root', 'X is garbage', 'X has no references at all', 'X is immortal'], answer: 0, explain: 'gc_refs = 0 only means no reference comes from OUTSIDE the generation directly. X may be referenced by a root object inside the generation, so the reachability pass decides.' },
+      hints: [R`<p>Hint 1: copy the refcounts, then for every edge <code>src → dst</code> subtract 1 from <code>dst</code>. What remains counts references from outside the group.</p>`, R`<p>Hint 2: objects with a positive remainder are roots. BFS/DFS from all roots along <code>refs</code>; everything visited is alive.</p>`, R`<p>Hint 3: the answer is all objects minus the visited set. Use a deque for BFS; duplicates in <code>refs</code> must subtract more than once; self-references subtract from themselves.</p>`],
+      solution: {
+        approach: R`<p>Exactly CPython's mark phase: (1) <code>gc_refs = refcnt</code>; (2) subtract one per internal edge; (3) roots are objects with <code>gc_refs &gt; 0</code>; (4) BFS from roots; (5) everything not reached is garbage.</p>`,
+        code: { lang: 'python', run: true, code: R`from collections import deque
+
+def unreachable(refcnt, refs):
+    gc_refs = dict(refcnt)                         # step 1: copy
+    for src, targets in refs.items():              # step 2: subtract internal refs
+        for t in targets:
+            gc_refs[t] -= 1
+    alive = {o for o, r in gc_refs.items() if r > 0}   # step 3: roots
+    queue = deque(alive)
+    while queue:                                    # step 4: propagate
+        cur = queue.popleft()
+        for t in refs.get(cur, ()):
+            if t not in alive:
+                alive.add(t)
+                queue.append(t)
+    return set(refcnt) - alive                      # step 5: garbage
+
+print(sorted(unreachable({"A": 2, "B": 1, "C": 1, "D": 1},
+                         {"A": ["B"], "B": ["A"], "C": ["D"], "D": ["C"]})))
+# self-cycle plus a chain hanging off it
+print(sorted(unreachable({"S": 1, "T": 1, "U": 2},
+                         {"S": ["S"], "T": ["U"], "U": []})))
+` },
+        dry: { head: ['step', 'A', 'B', 'C', 'D', 'note'], rows: [['copy', '2', '1', '1', '1', 'gc_refs = refcnt'], ['A→B', '2', '0', '1', '1', ''], ['B→A', '1', '0', '1', '1', ''], ['C→D, D→C', '1', '0', '0', '0', ''], ['roots', H.c('g', '✓'), '', '', '', 'only A &gt; 0'], ['BFS', H.c('g', '✓'), H.c('g', '✓'), '', '', 'A reaches B'], ['result', '', '', H.c('r', 'garbage'), H.c('r', 'garbage'), '{C, D}']] },
+        complexity: R`<p>O(N + E) time and O(N) extra memory: one pass to subtract, one BFS.</p>`,
+        followUps: ['Second example: S references only itself (gc_refs 1 − 1 = 0, garbage); T has a reference from outside (no internal referrers) so it is a root, and it keeps U alive too.', 'How would you add generations: what must you do about references from OLDER objects into the young generation?']
+      }
+    }]
+  });
+
+  /* ======================================================================
+     TOPIC 6: Small-Int Cache & String Interning
+     ====================================================================== */
+  topics.push({
+    title: 'Small-Int Cache, String Interning & Why "is" Lies to You',
+    analogy: R`<p>A busy school keeps a <b>shared drawer of ready-made number badges</b> from −5 to 256. Whenever anyone needs "7", they grab the drawer's one and only "7" badge instead of printing a new one; for "1000" a fresh badge is printed every time. For words, the school office keeps an <b>official register</b>: popular names like <code>count</code> or <code>self</code> are written once and everybody shares that copy. Asking "is this the <i>same badge</i>?" (<code>is</code>) therefore gives answers that depend on the drawer and the register, while "does it <i>say</i> the same thing?" (<code>==</code>) always works.</p>`,
+    explain: R`<p>🟢 <b>The plain idea.</b> <code>==</code> compares <b>values</b>. <code>is</code> compares <b>identity</b> (same object, same address). CPython reuses some objects to save time and memory, so <code>is</code> sometimes returns <code>True</code> for equal values "by accident". Never rely on it except for true singletons: <code>None</code>, <code>True</code>, <code>False</code>, <code>...</code>, <code>NotImplemented</code> and your own sentinel objects.</p>
+      <p><b>1. The small-int cache.</b> At startup CPython pre-creates the ints <b>−5 … 256</b>. Any operation producing one of these returns the cached object (since 3.12 they are also <b>immortal</b>). Anything outside the range is a new object each time it is computed.</p>
+      ${H.table(['Expression (runtime)', 'Result', 'Why'], [
+        ['<code>int("256") is int("256")</code>', H.c('g', 'True'), 'both come from the cache'],
+        ['<code>int("257") is int("257")</code>', H.c('r', 'False'), 'two separate objects'],
+        ['<code>int("-5") is int("-5")</code>', H.c('g', 'True'), 'cache starts at −5'],
+        ['<code>int("-6") is int("-6")</code>', H.c('r', 'False'), 'outside the cache']
+      ])}
+      <p><b>2. Constants are shared within one compilation.</b> When a whole file (module) is compiled, equal constants are merged, so in a script <code>a = 1000; b = 1000; a is b</code> is <code>True</code>, while typing the two lines separately in the REPL gives <code>False</code> (each line is compiled on its own). This "it works in my script but not in the REPL" effect is the #1 interning puzzle.</p>
+      <p><b>3. String interning.</b> CPython keeps a table of <b>interned</b> strings: one canonical object per value. It interns automatically:</p>
+      ${H.table(['Interned automatically', 'Not interned automatically'], [
+        ['names: variables, functions, attributes, keyword arguments, <code>co_names</code>', 'strings built at runtime: <code>"".join(...)</code>, f-strings, <code>input()</code>, file data, slicing (except 0/1-char results)'],
+        ['string literals that look like identifiers (<code>"user_id"</code>)', 'literals with spaces or punctuation (<code>"hello world"</code>), only merged within one compilation'],
+        ['the empty string and single Latin-1 characters (cached singletons)', '']
+      ])}
+      <p><b>Why bother?</b> Attribute and global lookups are dict lookups keyed by strings. If both keys are the same interned object, the dict can compare <b>pointers</b> instead of characters, and the hash is already cached in the string. You can intern runtime data yourself with <code>sys.intern(s)</code>: useful when you load millions of repeated strings (column names, enum-like values, JSON keys) to save memory and speed up comparisons.</p>`,
+    clues: [
+      '"Why is <code>a is b</code> True for 256 but False for 257?" → small-int cache −5…256',
+      '"Works in a script, different in the REPL" → constants merged per compilation unit',
+      '"SyntaxWarning: \"is\" with a literal" → you meant <code>==</code>',
+      '"Millions of duplicate strings eating memory" → <code>sys.intern</code> or a dedupe dict',
+      '"Why are attribute lookups fast?" → interned names + cached hashes → pointer comparison in dicts',
+      '"When is <code>is</code> correct?" → <code>None</code>, booleans, sentinels, identity checks of the same object'
+    ],
+    code: [{ lang: 'python', title: 'Identity experiments (runnable; avoids literal-is warnings)', run: true, code: R`import sys
+
+def make_int(text):
+    return int(text)               # built at runtime, like data from a file
+
+for t in ["-6", "-5", "100", "256", "257", "1000"]:
+    a, b = make_int(t), make_int(t)
+    print(f"{t:>5}: a == b {a == b!s:5}  a is b {a is b}")
+
+p = "".join(["user", "_id"])       # runtime strings: equal but separate
+q = "".join(["user", "_id"])
+print("runtime strings is? ", p is q)
+print("after sys.intern is?", sys.intern(p) is sys.intern(q))
+
+single = "abc"[0]                  # 1-char Latin-1 strings are cached
+other = "xa"[1]
+print("single-char cached? ", single is other)
+e1, e2 = tuple(), tuple([])
+print("empty tuple shared? ", e1 is e2)
+` }],
+    codeTitle: ['is vs =='],
+    viz: {
+      title: 'Same object or not? Small ints, literals and interning',
+      input: "256, 257, -5, -6, 'a', 'user_id', 'hello world'",
+      inputLabel: "Comma-separated ints or quoted strings (max 8), e.g. 1000, 'x', 'my name'",
+      gen: function (input) {
+        var raw = String(input || '').match(/'[^']*'|"[^"]*"|-?\d+/g);
+        if (!raw || !raw.length) throw new Error("Enter values like: 256, 257, 'a', 'hello world'");
+        if (raw.length > 8) throw new Error('Use at most 8 values');
+        var frames = [], rows = [], interned = ['self', 'name', '__init__'];
+        frames.push({ narr: 'For each value we ask three questions: (1) if the program <b>builds</b> it twice at runtime (e.g. <code>int(text)</code> or <code>"".join(parts)</code>), are the results the same object? (2) if it appears <b>twice as a literal</b> in one file? (3) after <code>sys.intern</code> (strings only)?', parts: [
+          { type: 'bars', label: 'small-int cache: -5 … 256 (262 pre-built immortal objects)', values: [5, 10, 15, 20, 25], texts: ['-5', '0', '1', '…', '256'] },
+          { type: 'set', label: 'interned-strings table (a few of thousands)', items: interned.slice() }
+        ] });
+        raw.forEach(function (tok) {
+          var isStr = /^['"]/.test(tok), runtime, lit, intern, why, hlSet = {};
+          if (!isStr) {
+            var v = parseInt(tok, 10);
+            var cached = v >= -5 && v <= 256;
+            runtime = cached; lit = true; intern = 'n/a';
+            why = cached ? '<b>' + v + '</b> is inside −5…256, so every computation that yields it returns the one cached object.' : '<b>' + v + '</b> is outside −5…256: each <code>int(text)</code> builds a brand-new object, so <code>is</code> is False. Two literals in the same file are still merged into one constant (True), which is why scripts and the REPL disagree.';
+          } else {
+            var s = tok.slice(1, -1);
+            var ident = /^[A-Za-z0-9_]*$/.test(s);
+            var tiny = s.length === 0 || (s.length === 1 && s.charCodeAt(0) < 256);
+            runtime = tiny; lit = true; intern = true;
+            if (ident && !tiny && interned.indexOf(s) < 0) { interned.push(s); hlSet[s] = 'ok'; }
+            why = tiny ? 'Empty and single Latin-1 character strings are <b>cached singletons</b>: even runtime-built copies are the same object.' :
+              ident ? '<code>' + esc(tok) + '</code> looks like an identifier, so the compiler <b>interns</b> the literal (added to the table). But a copy built at runtime with <code>"".join</code> is a separate object until you call <code>sys.intern</code>.' :
+                '<code>' + esc(tok) + '</code> contains characters that are not identifier characters, so it is <b>not</b> interned automatically. Two literals in the same file are merged as constants; runtime copies are separate objects. <code>sys.intern</code> makes them identical.';
+            if (!ident && !tiny) hlSet = {};
+          }
+          rows.push([tok, runtime ? 'True' : 'False', lit ? 'True' : 'False', intern === 'n/a' ? 'n/a' : 'True', 'True (always)']);
+          var rh = {}; rh[rows.length - 1] = runtime ? 'ok' : 'cur';
+          frames.push({ narr: why, parts: [
+            { type: 'table', label: 'a is b ?', columns: ['value', 'built twice at runtime', 'two literals, same file', 'after sys.intern', 'a == b'], rows: rows.map(function (r) { return r.slice(); }), hl: rh },
+            { type: 'set', label: 'interned-strings table', items: interned.slice(), hl: hlSet }
+          ] });
+        });
+        frames.push({ narr: '<b>Lesson:</b> the middle columns change with Python version, REPL vs script and how the value was made. Only the last column is guaranteed. Use <code>==</code> for values and keep <code>is</code> for <code>None</code>, <code>True</code>/<code>False</code> and sentinels.', parts: [
+          { type: 'table', label: 'Summary', columns: ['value', 'built twice at runtime', 'two literals, same file', 'after sys.intern', 'a == b'], rows: rows, hl: {} }
+        ] });
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'Predict the output: script vs REPL', html: R`<p>Saved in a file and run with <code>python demo.py</code>, the first print is <code>True</code>: the compiler merged the two <code>1000</code> constants. Typed line by line in the REPL, it is <code>False</code>. The second print is <code>False</code> in both, because <code>x + 1</code> is computed at runtime.</p>
+        ${H.table(['Line', 'script', 'REPL'], [['<code>a = 1000; b = 1000; a is b</code>', H.c('g', 'True'), H.c('r', 'False') + ' (separate lines)'], ['<code>x = 999; (x + 1) is a</code>', H.c('r', 'False'), H.c('r', 'False')]])}`, code: { lang: 'python', run: true, code: R`a = 1000
+b = 1000
+print("same compilation unit:", a is b)       # constants merged -> True
+
+x = 999
+c = x + 1                                     # computed at runtime
+print("computed at runtime  :", c is a, "| equal?", c == a)
+
+# simulate the REPL: compile each line separately
+ns = {}
+exec(compile("p = 1000", "<line1>", "exec"), ns)
+exec(compile("q = 1000", "<line2>", "exec"), ns)
+print("separate compiles    :", ns["p"] is ns["q"])
+` } },
+      { title: 'The classic bug: comparing strings with is', html: R`<p><code>if status is "ok":</code> may pass in tests (literal interned) and fail in production when <code>status</code> comes from JSON or a database (runtime string). Python 3.8+ warns at compile time: <code>SyntaxWarning: "is" with 'str' literal</code>. Linters (ruff <code>F632</code>) flag it too.</p>
+        ${H.table(['status came from', 'status is "ok"', 'status == "ok"'], [['a literal in code', H.c('g', 'True'), H.c('g', 'True')], ['<code>json.loads</code> / network', H.c('r', 'False (usually)'), H.c('g', 'True')]])}`, code: { lang: 'python', run: true, code: R`import json
+
+OK = "ok"
+from_code = "ok"
+from_json = json.loads('{"status": "o' + 'k"}')["status"]
+print("literal  is:", from_code is OK, "| ==:", from_code == OK)
+print("from json is:", from_json is OK, "(do not rely on this) | ==:", from_json == OK)
+` } },
+      { title: 'sys.intern to shrink repeated data', html: R`<p>Loading a CSV with 1 million rows where a <code>country</code> column has 200 distinct values creates up to 1 million separate string objects. Interning (or a simple dedupe dict) keeps only 200 and makes equality checks pointer-fast.</p>
+        ${H.kv([['before', '≈ 1,000,000 str objects'], ['after sys.intern', '≈ 200 str objects']])}`, code: { lang: 'python', run: true, code: R`import sys
+
+rows = ["".join(["coun", "try_", str(i % 200)]) for i in range(100_000)]
+print("distinct objects before:", len({id(s) for s in rows}))
+rows = [sys.intern(s) for s in rows]
+print("distinct objects after :", len({id(s) for s in rows}))
+` } }
+    ],
+    deepDive: R`<p>🟣 <b>Where the caches live.</b> Small ints are a static array of <code>PyLongObject</code>s in the runtime state (shared by sub-interpreters, immortal since 3.12). Single-character Latin-1 strings and the empty string are also static singletons. Interned strings live in a dict owned by the interpreter; since 3.12, statically allocated and many interned strings are immortal.</p>
+      <p><b>Compile-time merging.</b> The compiler keeps a constant cache per compilation, so equal constants (ints, floats, strings, tuples of constants) across all functions in one module become one object. Constant strings made only of ASCII letters, digits and underscores are interned (the "all name chars" rule); others are merged but not interned. Constant folding results follow the same rules: <code>"hel" + "lo"</code> is folded to an interned <code>"hello"</code>.</p>
+      <p><b>Hash caching.</b> Every <code>str</code> caches its hash after the first computation (the <code>hash</code> field, −1 meaning "not computed yet"). Dict lookup first compares pointers, then hashes, and only then characters, so interned keys hit the fastest path. String hashes are randomized per process (<code>PYTHONHASHSEED</code>) to defend against hash-flooding attacks, which is why set iteration order of strings differs between runs.</p>
+      <p><b>Other identity traps:</b> <code>id()</code> values are reused after objects die; <code>[] is []</code> is False but <code>() is ()</code> is True (the empty tuple is a singleton); <code>float("nan") is float("nan")</code> is False and <code>nan == nan</code> is also False, yet <code>x = nan; [x].count(x)</code> is 1 because containers check identity before equality. PyPy and other implementations make different choices, so all of this is a CPython implementation detail.</p>
+      <p><b>When to intern manually:</b> parsers, ETL jobs and caches with heavy repetition. Measure with <code>tracemalloc</code>; interning has a lookup cost and pins strings in the table, so do not intern unbounded unique data (user IDs, UUIDs).</p>`,
+    aiEra: R`<p>🤖 <b>What AI changes:</b> "predict the output" puzzles about <code>is</code> are now trivial to look up, so interviewers care more about <b>why</b> (per-compilation constant merging, cache range, runtime construction) and whether you would ever write such code (you would not).</p>
+      <p><b>Use AI as a partner:</b> <code>Scan this repository for identity comparisons against literals, ints or strings (is / is not) that should be ==, and explain each one.</code> Combine with a linter rule so it stays fixed.</p>
+      <p><b>Where AI goes wrong:</b> stating the cache range as 0–255 or −128–127 (that is Java's <code>Integer</code> cache), claiming "all strings are interned", or suggesting <code>sys.intern</code> on unique IDs where it only adds overhead.</p>
+      <p><b>What you must still own:</b> the identity-vs-equality distinction, the rule "only use <code>is</code> for singletons", and the ability to explain surprising results from first principles in an interview.</p>`,
+    problems: [{
+      title: 'Build Your Own Intern Pool',
+      level: 'Easy', tags: ['interning', 'dict', 'memory'], companies: ['Bloomberg', 'Two Sigma'],
+      statement: R`<p>Implement a class <code>InternPool</code> with <code>intern(s)</code> that returns a canonical object for each distinct string value (the first one seen), plus <code>stats()</code> returning <code>(calls, distinct)</code>. Use it to deduplicate a list of runtime-built strings and verify that equal values now share identity.</p>`,
+      constraints: R`<p>Up to 10<sup>6</sup> strings. O(1) average per call. Must not use <code>sys.intern</code> (you are re-implementing the idea).</p>`,
+      example: R`<p>Interning <code>["a1", "b2", "a1", "a1"]</code> (each built at runtime) gives ${H.c('g', 'stats() = (4, 2)')} and the three <code>"a1"</code> results satisfy <code>is</code>. Why: the dict maps each value to the first object stored.</p>`,
+      brute: { why: R`<p>Keeping a list of canonical strings and scanning it with <code>==</code> for every call is O(D) per call (D distinct values), so O(N·D) overall. A dict keyed by the string itself does the lookup in O(1) average, which is exactly how CPython's interned table works.</p>`, code: R`class SlowPool:
+    def __init__(self):
+        self.canon = []
+    def intern(self, s):
+        for c in self.canon:          # linear scan: O(D) per call
+            if c == s:
+                return c
+        self.canon.append(s)
+        return s
+
+p = SlowPool()
+print(p.intern("".join(["a", "1"])) is p.intern("".join(["a", "1"])))
+` },
+      mcq: { q: 'What should <code>intern(s)</code> return when <code>s</code> was already seen?', options: ['The object stored the first time (canonical copy)', 'The new object s', 'A copy of s', 'hash(s)'], answer: 0, explain: 'The whole point is that all equal values map to one canonical object; returning the stored one lets callers drop their duplicate.' },
+      hints: [R`<p>Hint 1: a dict can map a value to itself: <code>table.setdefault(s, s)</code> returns the existing key's value if present, otherwise stores and returns <code>s</code>.</p>`, R`<p>Hint 2: count calls in a counter; distinct = <code>len(table)</code>.</p>`, R`<p>Hint 3: build test strings with <code>"".join</code> or <code>str(i)</code> so they are separate runtime objects; compare <code>len({id(x) for x in data})</code> before and after.</p>`],
+      solution: {
+        approach: R`<p>A dict from value to canonical object. <code>setdefault</code> does the "get or insert" in one hash lookup. This is the same design as <code>sys.intern</code>, minus the immortality and interpreter-wide scope.</p>`,
+        code: { lang: 'python', run: true, code: R`class InternPool:
+    """Map every distinct string value to one canonical object."""
+
+    def __init__(self):
+        self._table = {}
+        self._calls = 0
+
+    def intern(self, s):
+        self._calls += 1
+        return self._table.setdefault(s, s)   # one hash lookup: get or insert
+
+    def stats(self):
+        return self._calls, len(self._table)
+
+pool = InternPool()
+raw = ["".join([c, str(n)]) for c, n in [("a", 1), ("b", 2), ("a", 1), ("a", 1)]]
+print("distinct objects before:", len({id(x) for x in raw}))
+canon = [pool.intern(x) for x in raw]
+print("distinct objects after :", len({id(x) for x in canon}))
+print("canon[0] is canon[2]   :", canon[0] is canon[2])
+print("stats (calls, distinct):", pool.stats())
+` },
+        dry: { head: ['call', 's (new object)', 'in table?', 'returned', 'stats'], rows: [['1', '"a1" #1', 'no → store', '#1', '(1, 1)'], ['2', '"b2" #2', 'no → store', '#2', '(2, 2)'], ['3', '"a1" #3', H.c('g', 'yes'), '#1', '(3, 2)'], ['4', '"a1" #4', H.c('g', 'yes'), '#1', '(4, 2)']] },
+        complexity: R`<p>O(1) average per call (one hash + possible equality check), O(D) memory for D distinct values. The duplicates can now be garbage collected.</p>`,
+        followUps: ['Make the pool bounded (LRU) so it cannot grow forever.', 'Why can\'t you use a <code>WeakValueDictionary</code> for <code>str</code> values? (str does not support weak references.)']
+      }
+    }]
+  });
+
+  /* ======================================================================
+     TOPIC 7: Descriptors & Attribute Lookup
+     ====================================================================== */
+  var DESC_SRC = [
+    'class Temp:',
+    '    unit = "C"                  # plain class attribute',
+    '    def __init__(self, c):',
+    '        self.c = c',
+    '    @property',
+    '    def kelvin(self):           # property = DATA descriptor',
+    '        return self.c + 273.15',
+    '    def show(self):             # function = NON-DATA descriptor',
+    '        return f"{self.c}{self.unit}"',
+    '    def __getattr__(self, name):  # last resort',
+    '        return f"<no {name}>"',
+    '',
+    't = Temp(21)',
+    't.__dict__.update(unit="F", kelvin=0, show="shadowed!")'
+  ].join('\n');
+
+  topics.push({
+    title: 'Descriptors: How obj.attr Really Works',
+    analogy: R`<p>Think of an office building. When you ask for something by name, the building checks in a fixed order: first the <b>security desk</b> (data descriptors, like <code>property</code>): if security manages that name, it <i>always</i> handles the request, even if you have your own copy. Next, your <b>personal locker</b> (the instance <code>__dict__</code>). Then the <b>shared notice board</b> of the company (class attributes and methods, which can personalise themselves for you). Finally <b>lost and found</b> (<code>__getattr__</code>). Descriptors are the "staff" who can intercept a name and run code instead of just handing over a value.</p>`,
+    explain: R`<p>🟢 <b>The plain idea.</b> A <b>descriptor</b> is any object, stored as a <b>class</b> attribute, whose class defines at least one of these methods:</p>
+      ${H.table(['Method', 'Called on', 'Kind'], [
+        ['<code>__get__(self, obj, objtype=None)</code>', 'reading <code>obj.attr</code> (obj is None when read from the class)', 'non-data if this is the only one'],
+        ['<code>__set__(self, obj, value)</code>', '<code>obj.attr = value</code>', H.c('p', 'makes it a DATA descriptor')],
+        ['<code>__delete__(self, obj)</code>', '<code>del obj.attr</code>', H.c('p', 'also DATA')],
+        ['<code>__set_name__(self, owner, name)</code>', 'once, when the class is created', 'tells the descriptor its attribute name']
+      ])}
+      <p><b>The lookup order for <code>obj.name</code></b> (implemented in <code>object.__getattribute__</code>):</p>
+      <ol>
+        <li>Search <code>type(obj).__mro__</code> for <code>name</code> (cached per type). Call the result <code>attr</code>.</li>
+        <li>If <code>attr</code> is a <b>data descriptor</b> → return <code>attr.__get__(obj, type(obj))</code>. It wins over the instance.</li>
+        <li>Else if <code>name</code> is in <code>obj.__dict__</code> → return that value.</li>
+        <li>Else if <code>attr</code> is a <b>non-data descriptor</b> → return <code>attr.__get__(obj, type(obj))</code>.</li>
+        <li>Else if <code>attr</code> was found → return it as is (plain class attribute).</li>
+        <li>Else raise <code>AttributeError</code>, which triggers <code>__getattr__</code> if the class defines it.</li>
+      </ol>
+      <p><b>Assignment</b> <code>obj.name = v</code> is simpler: if the type has a data descriptor for <code>name</code>, call its <code>__set__</code>; otherwise store into <code>obj.__dict__</code>.</p>
+      <p><b>You already use descriptors every day:</b></p>
+      ${H.table(['Feature', 'Descriptor type', 'What __get__ returns'], [
+        ['plain methods (<code>def</code>)', 'function: non-data', 'a <b>bound method</b> remembering <code>self</code>'],
+        ['<code>@property</code>', 'data (has <code>__set__</code>, which raises if there is no setter)', 'result of the getter'],
+        ['<code>@classmethod</code> / <code>@staticmethod</code>', 'non-data', 'method bound to the class / the raw function'],
+        ['<code>__slots__</code> entries', '<code>member_descriptor</code>: data', 'value stored at a fixed offset in the object'],
+        ['<code>functools.cached_property</code>', 'non-data', 'computes once, stores in <code>obj.__dict__</code>, which then shadows it'],
+        ['ORM fields (Django, SQLAlchemy), <code>dataclasses.field</code> defaults', 'custom', 'column values, validation']
+      ])}`,
+    clues: [
+      '"What is the difference between a property and a method?" → property is a data descriptor; a function is a non-data descriptor producing bound methods',
+      '"How does <code>self</code> get passed?" → <code>function.__get__(obj, cls)</code> returns a bound method',
+      '"Why can I shadow a method on an instance but not a property?" → data descriptors beat the instance dict, non-data do not',
+      '"Reusable validation for many attributes" → write a descriptor class with <code>__set_name__</code>',
+      '"<code>__getattr__</code> vs <code>__getattribute__</code>" → fallback on failure vs intercept every access',
+      '"How does <code>cached_property</code> work without a lock or setter?" → non-data descriptor writing into the instance dict'
+    ],
+    code: [{ lang: 'python', title: 'Precedence demo: data descriptor > instance dict > non-data (runnable)', run: true, code: R`class Temp:
+    unit = "C"                       # plain class attribute
+    def __init__(self, c):
+        self.c = c
+    @property
+    def kelvin(self):                # data descriptor
+        return self.c + 273.15
+    def show(self):                  # non-data descriptor (function)
+        return f"{self.c}{self.unit}"
+    def __getattr__(self, name):     # only called when lookup FAILS
+        return f"<no {name}>"
+
+t = Temp(21)
+t.__dict__.update(unit="F", kelvin=0, show="shadowed!")
+
+print("t.kelvin ->", t.kelvin)       # property wins over t.__dict__['kelvin']
+print("t.show   ->", t.show)         # instance dict wins over the function
+print("t.unit   ->", t.unit)         # instance dict wins over class attribute
+print("t.nope   ->", t.nope)         # falls through to __getattr__
+
+f = Temp.__dict__["show"]            # the raw function stored in the class
+bound = f.__get__(Temp(5), Temp)     # what t.show does under the hood
+print(type(bound).__name__, bound())
+` }],
+    codeTitle: ['Lookup precedence'],
+    viz: {
+      title: 'Follow object.__getattribute__ for each attribute name',
+      input: 'kelvin show unit c nope',
+      inputLabel: 'Attribute names to look up on t (space separated, max 6)',
+      gen: function (input) {
+        var names = String(input || '').trim().split(/[\s,]+/).filter(Boolean);
+        if (!names.length) throw new Error('Enter attribute names like: kelvin show unit nope');
+        if (names.length > 6) throw new Error('Use at most 6 names');
+        names.forEach(function (n) { if (!/^[A-Za-z_]\w*$/.test(n)) throw new Error('"' + n + '" is not a valid attribute name'); });
+        var cls = { unit: ['plain class attribute', '"C"'], kelvin: ['property (DATA descriptor)', 'getter → c + 273.15'], show: ['function (NON-DATA descriptor)', 'bound method'], __init__: ['function (NON-DATA descriptor)', 'bound method'], __getattr__: ['function (NON-DATA descriptor)', 'bound method'] };
+        var inst = { c: '21', unit: '"F"', kelvin: '0', show: '"shadowed!"' };
+        var nodes = [
+          { id: 'S', label: 't.name', x: 8, y: 12, shape: 'box' }, { id: 'M', label: 'scan type(t).__mro__', x: 32, y: 12, shape: 'box' },
+          { id: 'D', label: 'data descriptor?', x: 60, y: 12, shape: 'box' }, { id: 'I', label: 'in t.__dict__?', x: 88, y: 12, shape: 'box' },
+          { id: 'N', label: 'non-data descriptor?', x: 84, y: 48, shape: 'box' }, { id: 'C', label: 'plain class attr?', x: 56, y: 48, shape: 'box' },
+          { id: 'G', label: '__getattr__', x: 30, y: 48, shape: 'box' }, { id: 'E', label: 'AttributeError', x: 8, y: 48, shape: 'box' }
+        ];
+        var edges = [['S', 'M'], ['M', 'D'], ['D', 'I', 'no'], ['I', 'N', 'no'], ['N', 'C', 'no'], ['C', 'G', 'no'], ['G', 'E', 'if absent']];
+        var frames = [];
+        function mapParts(name) {
+          var ih = {}, ch = {}; ih[name] = 'cur'; ch[name] = 'cur';
+          return [
+            { type: 'map', label: 't.__dict__ (instance)', entries: Object.keys(inst).map(function (k) { return [k, inst[k]]; }), hl: ih },
+            { type: 'map', label: 'Temp.__dict__ (class; then object)', entries: Object.keys(cls).map(function (k) { return [k, cls[k][0]]; }), hl: ch }
+          ];
+        }
+        frames.push({ narr: 'Setup: <code>Temp</code> defines a plain attribute, a property, a method and <code>__getattr__</code>. We then stuffed <code>t.__dict__</code> with <code>unit</code>, <code>kelvin</code> and <code>show</code> to see who wins.', parts: [{ type: 'code', label: 'The class', lang: 'python', code: DESC_SRC, hl: {} }].concat(mapParts('')) });
+        names.forEach(function (name) {
+          var path = ['S', 'M'], result, where, why;
+          var c = cls[name], inI = Object.prototype.hasOwnProperty.call(inst, name);
+          if (c && /DATA descriptor/.test(c[0]) && !/NON-DATA/.test(c[0])) { path.push('D'); where = 'D'; result = name === 'kelvin' ? '294.15' : c[1]; why = '<code>' + name + '</code> is a <b>property</b> found on the class. Properties define <code>__set__</code>, so they are <b>data descriptors</b> and are checked <b>before</b> the instance dict. <code>t.__dict__["kelvin"] = 0</code> is ignored → <b>294.15</b>.'; }
+          else if (inI) { path.push('D', 'I'); where = 'I'; result = inst[name]; why = c ? 'The class has <code>' + name + '</code> (' + c[0] + '), but it is not a data descriptor, so the <b>instance dict wins</b>: → <b>' + esc(inst[name]) + '</b>.' + (name === 'show' ? ' Methods can be shadowed per instance!' : '') : 'Not on the class at all; found in the instance dict → <b>' + esc(inst[name]) + '</b>. This is the most common path.'; }
+          else if (c && /NON-DATA/.test(c[0])) { path.push('D', 'I', 'N'); where = 'N'; result = '<bound method Temp.' + name + '>'; why = '<code>' + name + '</code> is a function on the class (non-data descriptor) and nothing shadows it, so Python calls <code>function.__get__(t, Temp)</code> and returns a <b>bound method</b> that remembers <code>self = t</code>.'; }
+          else if (c) { path.push('D', 'I', 'N', 'C'); where = 'C'; result = c[1]; why = 'Plain class attribute, returned as is.'; }
+          else { path.push('D', 'I', 'N', 'C', 'G'); where = 'G'; result = '"<no ' + name + '>"'; why = '<code>' + name + '</code> is nowhere: the normal lookup raises <code>AttributeError</code>, and because <code>Temp</code> defines <code>__getattr__</code>, Python calls it as a fallback → <b>' + esc(result) + '</b>. Without <code>__getattr__</code> you would get the AttributeError.'; }
+          for (var k = 2; k <= path.length; k++) {
+            var hl = {}, ehl = {};
+            for (var j = 0; j < k; j++) hl[path[j]] = j === k - 1 ? (k === path.length ? 'ok' : 'cur') : 'done';
+            for (var e = 1; e < k; e++) ehl[path[e - 1] + '-' + path[e]] = 'win';
+            var tags = {}; if (k === path.length) tags[where] = '→ ' + result;
+            var step = path[k - 1], txt = {
+              M: 'Scan <code>Temp</code>, then <code>object</code>, for <code>' + name + '</code>: ' + (c ? 'found in <code>Temp</code> (' + c[0] + ').' : 'not found on the class.'),
+              D: 'Is the class attribute a <b>data</b> descriptor (has <code>__set__</code>/<code>__delete__</code>)? ' + (where === 'D' ? 'Yes.' : 'No.'),
+              I: 'Look in <code>t.__dict__</code>: ' + (inI ? 'found <code>' + esc(inst[name]) + '</code>.' : 'not there.'),
+              N: 'Is the class attribute a non-data descriptor (only <code>__get__</code>)? ' + (where === 'N' ? 'Yes.' : 'No.'),
+              C: 'Was a plain class attribute found? ' + (where === 'C' ? 'Yes.' : 'No.'),
+              G: 'Lookup failed → <code>AttributeError</code> is raised internally → <code>__getattr__</code> runs.'
+            }[step] || '';
+            frames.push({ narr: '<code>t.' + name + '</code> · ' + txt + (k === path.length ? ' ' + why : ''), parts: [
+              { type: 'graph', label: 'object.__getattribute__ decision path', directed: true, height: 60, nodes: nodes, edges: edges, hl: hl, ehl: ehl, tags: tags }
+            ].concat(mapParts(name)) });
+          }
+        });
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'Methods are just functions + __get__', html: R`<p><code>Temp.show</code> (from the class) is a plain function: <code>__get__(None, Temp)</code> returns the function itself. <code>t.show</code> calls <code>__get__(t, Temp)</code> and gets a <b>bound method</b> holding <code>__self__ = t</code> and <code>__func__ = show</code>. Calling it inserts <code>self</code> as the first argument. That is the whole secret of <code>self</code>.</p>
+        ${H.table(['Expression', 'Result'], [['<code>Temp.show</code>', 'function'], ['<code>t.show</code>', 'bound method (<code>t.show.__self__ is t</code>)'], ['<code>t.show()</code>', '<code>Temp.show(t)</code>']])}`, code: { lang: 'python', run: true, code: R`class Greeter:
+    def hi(self, name):
+        return f"hi {name} from {type(self).__name__}"
+
+g = Greeter()
+raw = Greeter.__dict__["hi"]
+print(raw is Greeter.hi)                      # class access returns the function
+m = raw.__get__(g, Greeter)                   # what g.hi does
+print(type(m).__name__, m.__self__ is g, m.__func__ is raw)
+print(m("Ana"), "==", Greeter.hi(g, "Ana"))
+` } },
+      { title: 'A reusable validating descriptor with __set_name__', html: R`<p>Instead of writing ten nearly identical properties, write one descriptor class. <code>__set_name__</code> (3.6+) tells each instance the attribute name it was assigned to, so error messages and storage keys are automatic. Because it defines <code>__set__</code> it is a data descriptor and cannot be bypassed by the instance dict.</p>`, code: { lang: 'python', run: true, code: R`class Positive:
+    def __set_name__(self, owner, name):
+        self.public = name
+        self.private = "_" + name            # where the value really lives
+
+    def __get__(self, obj, objtype=None):
+        if obj is None:                       # accessed on the class
+            return self
+        return getattr(obj, self.private)
+
+    def __set__(self, obj, value):
+        if not isinstance(value, (int, float)) or value <= 0:
+            raise ValueError(f"{self.public} must be a positive number, got {value!r}")
+        setattr(obj, self.private, value)
+
+class Order:
+    qty = Positive()
+    price = Positive()
+    def __init__(self, qty, price):
+        self.qty, self.price = qty, price     # goes through __set__
+
+o = Order(3, 9.5)
+print(o.qty * o.price, vars(o))
+try:
+    o.qty = -1
+except ValueError as e:
+    print("ValueError:", e)
+` } },
+      { title: 'cached_property: a non-data descriptor trick', html: R`<p><code>functools.cached_property</code> has only <code>__get__</code>. The first access computes the value and stores it in <code>obj.__dict__</code> under the same name. From then on step 3 of the lookup (instance dict) finds it <b>before</b> step 4 (non-data descriptor), so the function never runs again. Delete the key to force a recompute. It does not work with <code>__slots__</code> classes that lack <code>__dict__</code>.</p>
+        ${H.table(['access', 'found by', 'compute?'], [['1st', 'non-data descriptor', H.c('y', 'yes')], ['2nd', 'instance dict', H.c('g', 'no')]])}`, code: { lang: 'python', run: true, code: R`from functools import cached_property
+
+class Report:
+    @cached_property
+    def total(self):
+        print("  computing total ...")
+        return sum(range(1_000_000))
+
+r = Report()
+print(r.total)
+print(r.total)                 # served from r.__dict__, no recompute
+print("cached in __dict__:", "total" in vars(r))
+del r.total                    # invalidate
+print(r.total)
+` } }
+    ],
+    deepDive: R`<p>🟣 <b>Speed: the type attribute cache and LOAD_ATTR specialization.</b> Step 1 (MRO scan) would be slow if done every time, so CPython keeps a global method cache keyed by (type version tag, name). Each type has a version tag that changes whenever the class or a base is modified. The 3.11+ specializing interpreter goes further: <code>LOAD_ATTR_INSTANCE_VALUE</code> reads an instance attribute straight from the inline values array after checking the type version, <code>LOAD_ATTR_PROPERTY</code> calls a property's getter directly, and <code>LOAD_ATTR_METHOD_WITH_VALUES</code> pushes the function and <code>self</code> without creating a bound-method object at all (the old <code>LOAD_METHOD</code> optimization).</p>
+      <p><b>Class-level lookup</b> (<code>Cls.name</code>) runs <code>type.__getattribute__</code>: data descriptors on the <b>metaclass</b> first, then the class's own MRO (calling <code>__get__(None, Cls)</code> on descriptors found there), then non-data descriptors / attributes on the metaclass. That is how <code>Cls.__name__</code> and <code>Cls.__mro__</code> (data descriptors defined on <code>type</code>) work.</p>
+      <p><b><code>__getattribute__</code> vs <code>__getattr__</code>.</b> Overriding <code>__getattribute__</code> intercepts every access (including <code>self.x</code> inside your own methods) and disables most specializations; call <code>object.__getattribute__(self, name)</code> inside it to avoid infinite recursion. <code>__getattr__</code> is only consulted after normal lookup raises <code>AttributeError</code>; beware that an <code>AttributeError</code> raised accidentally inside a property getter also falls through to <code>__getattr__</code>, hiding the real bug.</p>
+      <p><b>Special method lookup bypasses all of this.</b> Implicit calls like <code>len(x)</code>, <code>x + y</code> and <code>with x:</code> look the dunder up on the type directly (slots), skipping <code>__getattribute__</code> and the instance dict. Also: <code>super()</code> returns a proxy whose <code>__getattribute__</code> continues the MRO search after the current class; and since 3.13 <code>classmethod</code> no longer wraps other descriptors (the 3.9-era "classmethod property" chaining was removed).</p>`,
+    aiEra: R`<p>🤖 <b>What AI changes:</b> assistants write descriptors, properties and validation layers quickly, and many libraries (pydantic, attrs, SQLAlchemy) already package these patterns. Your value is choosing the right tool and debugging when lookup does something surprising.</p>
+      <p><b>Use AI as a partner:</b> <code>Explain, step by step using the descriptor lookup order, why obj.config returns the class default instead of the value I set in __init__.</code> (Typical answer: a data descriptor without storage per instance, or a typo storing to a different name.)</p>
+      <p><b>Where AI goes wrong:</b> storing per-instance values on the descriptor itself (<code>self.value = value</code>), which shares one value across <b>all</b> instances; forgetting the <code>obj is None</code> case in <code>__get__</code>; confusing data and non-data precedence; or recommending <code>__getattribute__</code> overrides that silently kill performance.</p>
+      <p><b>What you must still own:</b> the 6-step lookup order from memory, the data vs non-data rule, and the fact that methods, properties, slots and classmethods are all descriptors. That one model answers a whole family of interview questions.</p>`,
+    problems: [{
+      title: 'Typed Attribute Descriptor',
+      level: 'Medium', tags: ['descriptors', '__set_name__', 'validation'], companies: ['Stripe', 'Robinhood', 'Palantir'],
+      statement: R`<p>Write a descriptor <code>Typed(kind, default=None)</code> that enforces <code>isinstance(value, kind)</code> on assignment, returns <code>default</code> if the attribute was never set, stores values <b>per instance</b>, and when accessed on the class returns the descriptor itself. Use it to build a <code>User</code> class with <code>name: str</code> and <code>age: int</code>.</p>`,
+      constraints: R`<p>Must work for many instances simultaneously, must not leak memory (no global dict keyed by instance), must produce a helpful error message naming the attribute.</p>`,
+      example: R`<p><code>u = User("ana", 30); u.age = "31"</code> → ${H.c('r', 'TypeError: age must be int, got str')}. <code>User.age</code> → the <code>Typed</code> object. Two users keep independent ages.</p>`,
+      brute: { why: R`<p>The tempting version stores the value on the descriptor (<code>self.value = value</code>). Since the descriptor is a single class attribute shared by every instance, all users end up with the <b>same</b> age. Storing in a dict keyed by instance fixes sharing but leaks every instance forever.</p>`, code: R`class TypedBroken:
+    def __init__(self, kind):
+        self.kind = kind
+        self.value = None
+    def __get__(self, obj, objtype=None):
+        return self.value                     # shared by ALL instances!
+    def __set__(self, obj, value):
+        if not isinstance(value, self.kind):
+            raise TypeError("bad type")
+        self.value = value
+
+class P:
+    age = TypedBroken(int)
+
+a, b = P(), P()
+a.age = 1
+b.age = 2
+print(a.age, b.age)                           # 2 2  -> bug
+` },
+      mcq: { q: 'Where should a data descriptor store each instance\'s value?', options: ['In the instance\'s __dict__ under a private name', 'On the descriptor object itself', 'In a module-level dict keyed by id(obj)', 'In the class __dict__'], answer: 0, explain: 'The instance dict is per object and dies with it. The descriptor is shared by all instances, an id-keyed dict leaks and can collide after ids are reused, and the class dict is shared too.' },
+      hints: [R`<p>Hint 1: use <code>__set_name__(self, owner, name)</code> to learn the attribute name and derive a private storage key such as <code>"_typed_age"</code>.</p>`, R`<p>Hint 2: in <code>__get__</code>, return <code>self</code> when <code>obj is None</code>; otherwise <code>obj.__dict__.get(key, default)</code>. In <code>__set__</code>, validate then write <code>obj.__dict__[key] = value</code>.</p>`, R`<p>Hint 3: because <code>Typed</code> has <code>__set__</code>, it is a data descriptor, so even if the instance dict had the public name the descriptor still wins. Test: two instances, wrong type, class access.</p>`],
+      solution: {
+        approach: R`<p>A data descriptor that learns its name via <code>__set_name__</code>, validates in <code>__set__</code>, and stores each value in the instance's own <code>__dict__</code> under a private key. Class access returns the descriptor for introspection.</p>`,
+        code: { lang: 'python', run: true, code: R`class Typed:
+    def __init__(self, kind, default=None):
+        self.kind = kind
+        self.default = default
+
+    def __set_name__(self, owner, name):
+        self.name = name
+        self.key = "_typed_" + name           # per-instance storage key
+
+    def __get__(self, obj, objtype=None):
+        if obj is None:                         # User.age -> the descriptor
+            return self
+        return obj.__dict__.get(self.key, self.default)
+
+    def __set__(self, obj, value):
+        if not isinstance(value, self.kind):
+            raise TypeError(f"{self.name} must be {self.kind.__name__}, "
+                            f"got {type(value).__name__}")
+        obj.__dict__[self.key] = value
+
+class User:
+    name = Typed(str, default="anonymous")
+    age = Typed(int, default=0)
+    def __init__(self, name, age):
+        self.name, self.age = name, age
+
+a, b = User("ana", 30), User("ben", 41)
+a.age += 1
+print(a.name, a.age, "|", b.name, b.age)
+print(type(User.age).__name__, User.age.name)
+try:
+    a.age = "31"
+except TypeError as e:
+    print("TypeError:", e)
+` },
+        dry: { head: ['statement', 'descriptor call', 'a.__dict__ after'], rows: [['class body', '__set_name__(User, "age")', '—'], ['User("ana", 30)', '__set__(a, 30)', "{'_typed_name': 'ana', '_typed_age': 30}"], ['a.age += 1', '__get__ → 30, __set__(a, 31)', "{… '_typed_age': 31}"], ['User.age', '__get__(None, User) → descriptor', 'unchanged'], ['a.age = "31"', '__set__ raises', H.c('r', 'TypeError, unchanged')]] },
+        complexity: R`<p>O(1) per get/set (one dict operation plus <code>isinstance</code>). Memory: one entry per attribute per instance, freed with the instance.</p>`,
+        followUps: ['Support <code>__slots__</code> classes (hint: store via a slot such as <code>_typed_age</code> using <code>setattr</code>).', 'Read the type from annotations instead: <code>age: int = Typed()</code> using <code>owner.__annotations__</code> in <code>__set_name__</code>.']
+      }
+    }]
+  });
+
+  /* ======================================================================
+     TOPIC 8: Metaclasses & Class Creation
+     ====================================================================== */
+  var META_SRC = [
+    'class Meta(type):',                                   // 1
+    '    @classmethod',                                    // 2
+    '    def __prepare__(mcs, name, bases, **kw):',         // 3
+    '        return {}                    # namespace',      // 4
+    '    def __new__(mcs, name, bases, ns, **kw):',        // 5
+    '        cls = super().__new__(mcs, name, bases, ns)', // 6
+    '        return cls',                                  // 7
+    '    def __init__(cls, name, bases, ns, **kw):',       // 8
+    '        super().__init__(name, bases, ns)',           // 9
+    '    def __call__(cls, *args, **kw):',                 // 10
+    '        return super().__call__(*args, **kw)',        // 11
+    '',                                                    // 12
+    'class Field:',                                        // 13
+    '    def __set_name__(self, owner, name): ...',        // 14
+    '',                                                    // 15
+    'class Base:',                                         // 16
+    '    def __init_subclass__(cls, **kw): ...',           // 17
+    '',                                                    // 18
+    'class Plugin(Base, metaclass=Meta):',                 // 19
+    '    x = Field()',                                     // 20
+    '    def __init__(self): ...',                         // 21
+    '',                                                    // 22
+    'p = Plugin()'                                         // 23
+  ].join('\n');
+
+  topics.push({
+    title: 'Metaclasses: The Class of a Class',
+    analogy: R`<p>Objects are <b>cookies</b>, classes are <b>cookie cutters</b>. But who makes the cookie cutters? A <b>cutter factory</b>: that is a metaclass. Python's standard factory is called <code>type</code>, and it makes every ordinary class. You can build a custom factory that stamps a serial number on every cutter it makes, refuses to make cutters without a handle, or registers each new cutter in a catalogue. Most of the time, though, a simple sticker added after the cutter is made (a class decorator) or a rule written on the parent cutter (<code>__init_subclass__</code>) does the job with far less machinery.</p>`,
+    explain: R`<p>🟢 <b>The plain idea.</b> Classes are objects too, so they have a type. The type of a class is its <b>metaclass</b>. By default it is <code>type</code>: <code>type(int) is type</code>, <code>type(MyClass) is type</code>, and even <code>type(type) is type</code>. Calling <code>type(name, bases, namespace)</code> builds a class at runtime, exactly what the <code>class</code> statement does for you.</p>
+      <p><b>What really happens on a <code>class</code> statement</b> (verified order, 3.6+):</p>
+      ${H.table(['#', 'Step', 'Hook you can customise'], [
+        ['1', 'evaluate the base classes (and <code>__mro_entries__</code> for things like <code>Generic[T]</code>)', '—'],
+        ['2', 'pick the metaclass: the explicit <code>metaclass=</code> or the most derived metaclass of the bases', 'metaclass conflict → <code>TypeError</code>'],
+        ['3', 'create the namespace', '<code>Meta.__prepare__</code>'],
+        ['4', 'run the class body inside that namespace (defs and assignments fill it)', 'the body itself'],
+        ['5', 'call <code>Meta(name, bases, ns, **kwargs)</code> → <code>Meta.__new__</code> → <code>type.__new__</code> builds the class and its MRO', '<code>Meta.__new__</code>'],
+        ['6', 'inside <code>type.__new__</code>: call <code>__set_name__</code> on every attribute that has it', 'descriptors'],
+        ['7', 'inside <code>type.__new__</code>: call the parent\'s <code>__init_subclass__</code>', '<code>__init_subclass__</code>'],
+        ['8', '<code>Meta.__init__</code>, then class decorators, then bind the name', 'decorators']
+      ])}
+      <p><b>Creating an instance</b> is also a metaclass job: <code>Plugin()</code> calls <code>type(Plugin).__call__</code>, which calls <code>Plugin.__new__</code> (allocate) and then, if the result is an instance of <code>Plugin</code>, <code>Plugin.__init__</code> (initialise). Overriding <code>Meta.__call__</code> lets you control instantiation (singletons, caching, instance counting).</p>
+      <p><b>The rule of thumb</b> (Tim Peters): "Metaclasses are deeper magic than 99% of users should ever worry about." Prefer, in this order:</p>
+      ${H.table(['Need', 'Simplest tool'], [
+        ['run code for every subclass (registry, validation)', '<code>__init_subclass__</code>'],
+        ['attribute knows its own name', 'descriptor with <code>__set_name__</code>'],
+        ['modify one class after creation', 'class decorator'],
+        ['customise the namespace, <code>isinstance</code> behaviour, or class-level operators', H.c('p', 'metaclass')]
+      ])}
+      <p>Real metaclasses you use: <code>abc.ABCMeta</code> (abstract methods, <code>register</code>), <code>enum.EnumType</code> (makes <code>Color.RED</code> singletons and iteration over the class), Django's <code>ModelBase</code>, pydantic's model metaclass.</p>`,
+    clues: [
+      '"What is a metaclass?" → the type of a class; <code>type</code> by default',
+      '"What does <code>type(name, bases, dict)</code> do?" → creates a class dynamically',
+      '"Register every subclass automatically" → <code>__init_subclass__</code> (metaclass only if you need more)',
+      '"Singleton pattern in Python" → module-level instance, or <code>Meta.__call__</code> caching',
+      '"TypeError: metaclass conflict" → bases with unrelated metaclasses; create a combined metaclass',
+      '"How do Enum / ABC / ORMs work?" → metaclasses customise class creation and class-level behaviour'
+    ],
+    code: [{ lang: 'python', title: 'Trace the full class-creation sequence (runnable)', run: true, code: R`log = []
+
+class Meta(type):
+    @classmethod
+    def __prepare__(mcs, name, bases, **kw):
+        log.append(f"__prepare__({name})")
+        return {}
+    def __new__(mcs, name, bases, ns, **kw):
+        log.append(f"Meta.__new__ ns keys={[k for k in ns if not k.startswith('__')]}")
+        cls = super().__new__(mcs, name, bases, ns)
+        log.append("type.__new__ finished")
+        return cls
+    def __init__(cls, name, bases, ns, **kw):
+        log.append("Meta.__init__")
+        super().__init__(name, bases, ns)
+    def __call__(cls, *args, **kw):
+        log.append("Meta.__call__ (instance creation)")
+        return super().__call__(*args, **kw)
+
+class Field:
+    def __set_name__(self, owner, name):
+        log.append(f"__set_name__({owner.__name__}, {name!r})")
+
+class Base:
+    def __init_subclass__(cls, **kw):
+        log.append(f"__init_subclass__({cls.__name__})")
+        super().__init_subclass__(**kw)
+
+class Plugin(Base, metaclass=Meta):
+    log.append("class body runs")
+    x = Field()
+    def __init__(self):
+        log.append("Plugin.__init__")
+
+p = Plugin()
+for i, line in enumerate(log, 1):
+    print(i, line)
+print(type(p).__name__, "->", type(Plugin).__name__, "->", type(Meta).__name__, "->", type(type).__name__)
+` }],
+    codeTitle: ['Class creation trace'],
+    viz: {
+      title: 'class Plugin(Base, metaclass=Meta): every hook in order',
+      gen: function () {
+        var F = [];
+        function fr(narr, ln, calls, ns, extra) {
+          var parts = [{ type: 'code', label: 'Program', lang: 'python', code: META_SRC, hl: lines(ln, 'cur') },
+            { type: 'stack', label: 'Call stack', items: calls, hl: calls.length ? (function () { var h = {}; h[calls.length - 1] = 'cur'; return h; })() : {} }];
+          if (ns) parts.push({ type: 'map', label: 'class namespace (ns)', entries: ns, hl: extra && extra.nsHl || {} });
+          if (extra && extra.graph) parts.push(extra.graph);
+          F.push({ narr: narr, parts: parts });
+        }
+        fr('Python reaches <code>class Plugin(Base, metaclass=Meta):</code>. First it evaluates the bases (<code>Base</code>) and the keyword <code>metaclass=Meta</code>. The metaclass must be a subclass of the metaclass of every base (<code>type(Base)</code> is <code>type</code>; <code>Meta</code> derives from <code>type</code>, so OK).', [19], ['<module>'], null);
+        fr('<b>Step 3 · <code>Meta.__prepare__</code></b> returns the mapping that will hold the class body\'s names. Usually a plain dict; you could return a custom mapping (e.g. one that forbids duplicate names).', [3, 4], ['<module>', 'Meta.__prepare__'], []);
+        fr('<b>Step 4 · the class body runs</b> like a function body, but its "locals" are the namespace. Python adds <code>__module__</code> and <code>__qualname__</code>, then executes <code>x = Field()</code> and <code>def __init__</code>.', [20, 21], ['<module>', 'class body of Plugin'], [['__module__', "'__main__'"], ['__qualname__', "'Plugin'"], ['x', 'Field object'], ['__init__', 'function']], { nsHl: { x: 'ok', __init__: 'ok' } });
+        fr('<b>Step 5 · <code>Meta("Plugin", (Base,), ns)</code></b> is called, which runs <code>Meta.__new__</code>. At this point the class does not exist yet: you only have the name, bases and namespace, so this is where you can add, rename or reject attributes.', [5], ['<module>', 'Meta.__new__'], [['__module__', "'__main__'"], ['__qualname__', "'Plugin'"], ['x', 'Field object'], ['__init__', 'function']]);
+        fr('<code>super().__new__</code> → <b><code>type.__new__</code></b> allocates the class object, copies the namespace into <code>Plugin.__dict__</code> and computes the MRO <code>(Plugin, Base, object)</code>.', [6], ['<module>', 'Meta.__new__', 'type.__new__'], null);
+        fr('<b>Step 6 · still inside <code>type.__new__</code>:</b> for each attribute that has <code>__set_name__</code>, it calls <code>Field.__set_name__(x_obj, Plugin, "x")</code>. The descriptor learns its owner and name.', [14], ['<module>', 'Meta.__new__', 'type.__new__', 'Field.__set_name__'], null);
+        fr('<b>Step 7 · still inside <code>type.__new__</code>:</b> it calls <code>super(Plugin).__init_subclass__()</code>, i.e. <code>Base.__init_subclass__(Plugin)</code>. Parents can validate or register children here without any metaclass.', [17], ['<module>', 'Meta.__new__', 'type.__new__', 'Base.__init_subclass__'], null);
+        fr('Back in <code>Meta.__new__</code>, which returns the finished class. Then <b>Step 8 · <code>Meta.__init__</code></b> runs on the already-created class (useful for post-processing).', [7, 8, 9], ['<module>', 'Meta.__init__'], null);
+        fr('Class decorators (none here) would run now, and finally the name <code>Plugin</code> is bound in the module namespace. Class creation is done.', [19], ['<module>'], null);
+        fr('<code>p = Plugin()</code>: calling a class means calling its <b>type</b>, so <code>Meta.__call__</code> runs. That is the hook for singletons, caches or instance counting.', [23, 10, 11], ['<module>', 'Meta.__call__'], null);
+        fr('<code>type.__call__</code> calls <code>Plugin.__new__</code> (inherited from <code>object</code>: allocate an empty instance) and then, because the result is a <code>Plugin</code>, <code>Plugin.__init__(p)</code>.', [21], ['<module>', 'Meta.__call__', 'type.__call__', 'Plugin.__init__'], null);
+        fr('Done. The "type of" chain: <code>p</code> → <code>Plugin</code> → <code>Meta</code> → <code>type</code> → <code>type</code> (type is its own type). The "inherits from" chain is separate: <code>Plugin</code> → <code>Base</code> → <code>object</code>, and <code>Meta</code> → <code>type</code> → <code>object</code>.', [23], ['<module>'], null, { graph: { type: 'graph', label: 'solid arrows = "is an instance of" / "inherits from"', directed: true, height: 56, nodes: [
+          { id: 'p', label: 'p', x: 8, y: 12, shape: 'box' }, { id: 'P', label: 'Plugin', x: 32, y: 12, shape: 'box' }, { id: 'M', label: 'Meta', x: 58, y: 12, shape: 'box' }, { id: 'T', label: 'type', x: 86, y: 12, shape: 'box' },
+          { id: 'B', label: 'Base', x: 32, y: 44, shape: 'box' }, { id: 'O', label: 'object', x: 70, y: 44, shape: 'box' }],
+          edges: [['p', 'P', 'instance of'], ['P', 'M', 'instance of'], ['M', 'T', 'instance of'], ['T', 'T', 'instance of'], ['P', 'B', 'inherits'], ['B', 'O', 'inherits'], ['T', 'O', 'inherits']], hl: { M: 'sel', T: 'ok' }, ehl: { 'P-M': 'sel', 'M-T': 'sel' } } });
+        return F;
+      }
+    },
+    examples: [
+      { title: 'Creating a class with type() directly', html: R`<p>The <code>class</code> statement is syntax sugar. <code>type("Point", (), ns)</code> builds the same class at runtime, which is how ORMs, serializers and test frameworks generate classes from schemas.</p>
+        ${H.table(['Argument', 'Meaning'], [['<code>"Point"</code>', '<code>__name__</code>'], ['<code>(Base,)</code>', 'bases tuple'], ['<code>{"x": 0, "norm": fn}</code>', 'namespace → <code>__dict__</code>']])}`, code: { lang: 'python', run: true, code: R`def norm(self):
+    return (self.x ** 2 + self.y ** 2) ** 0.5
+
+Point = type("Point", (), {"x": 0, "y": 0, "norm": norm,
+                           "__repr__": lambda self: f"Point({self.x}, {self.y})"})
+p = Point()
+p.x, p.y = 3, 4
+print(p, p.norm(), type(Point).__name__, Point.__mro__)
+` } },
+      { title: 'Singleton via Meta.__call__', html: R`<p>Because instantiation goes through <code>type(cls).__call__</code>, a metaclass can return a cached instance instead of creating a new one. (In Python, a module-level instance is usually the simpler singleton; use this only when a class API is required.) Note that <code>__init__</code> also runs only once, because we skip <code>super().__call__</code> on later calls.</p>`, code: { lang: 'python', run: true, code: R`class SingletonMeta(type):
+    _instances = {}
+    def __call__(cls, *args, **kwargs):
+        if cls not in cls._instances:
+            cls._instances[cls] = super().__call__(*args, **kwargs)
+        return cls._instances[cls]
+
+class Config(metaclass=SingletonMeta):
+    def __init__(self, env="prod"):
+        print("  Config.__init__ runs with", env)
+        self.env = env
+
+a = Config("dev")
+b = Config("test")            # returns the cached instance, no __init__
+print(a is b, b.env)
+` } },
+      { title: 'Registry without a metaclass: __init_subclass__', html: R`<p>The most common historical reason for a metaclass, "register every subclass", is now a 5-line <code>__init_subclass__</code>. It even accepts class keyword arguments: <code>class Csv(Exporter, ext="csv")</code>.</p>
+        ${H.kv([['csv', 'Csv'], ['json', 'Json']], { label: 'Exporter.registry' })}`, code: { lang: 'python', run: true, code: R`class Exporter:
+    registry = {}
+    def __init_subclass__(cls, *, ext, **kw):
+        super().__init_subclass__(**kw)
+        if ext in Exporter.registry:
+            raise TypeError(f"duplicate exporter for .{ext}")
+        Exporter.registry[ext] = cls
+
+class Csv(Exporter, ext="csv"):
+    pass
+
+class Json(Exporter, ext="json"):
+    pass
+
+print({k: v.__name__ for k, v in Exporter.registry.items()})
+try:
+    class Csv2(Exporter, ext="csv"):
+        pass
+except TypeError as e:
+    print("TypeError:", e)
+` } },
+      { title: 'Metaclass conflict', html: R`<p>A class's metaclass must be a (non-strict) subclass of the metaclasses of all its bases. Mixing an <code>ABC</code> (metaclass <code>ABCMeta</code>) with a class using an unrelated custom metaclass raises <code>TypeError: metaclass conflict</code>. The fix is a combined metaclass: <code>class Both(ABCMeta, MyMeta): pass</code>. This is one more reason libraries avoid metaclasses: they do not compose well.</p>`, code: { lang: 'python', run: true, code: R`from abc import ABC, ABCMeta
+
+class MyMeta(type):
+    pass
+
+class Mine(metaclass=MyMeta):
+    pass
+
+try:
+    class Broken(ABC, Mine):
+        pass
+except TypeError as e:
+    print("TypeError:", e)
+
+class BothMeta(ABCMeta, MyMeta):
+    pass
+
+class Fixed(ABC, Mine, metaclass=BothMeta):
+    pass
+
+print(type(Fixed).__name__, [c.__name__ for c in type(Fixed).__mro__])
+` } }
+    ],
+    deepDive: R`<p>🟣 <b><code>type.__call__</code> details.</b> It calls <code>cls.__new__(cls, *args, **kw)</code>; if the result is an instance of <code>cls</code> it calls <code>type(result).__init__(result, *args, **kw)</code>, otherwise <code>__init__</code> is skipped. That is why <code>__new__</code> is the hook for immutable types (<code>class Celsius(float)</code> must set its value in <code>__new__</code>) and for returning cached instances.</p>
+      <p><b>Metaclass methods vs class methods.</b> A method defined on the metaclass is visible on the <b>class</b> (<code>Plugin.meta_method()</code>) but <b>not</b> on instances (<code>p.meta_method</code> → <code>AttributeError</code>), because instance lookup searches <code>type(p).__mro__</code>, not the metaclass. This is how <code>Enum</code> classes support <code>len(Color)</code> and iteration (<code>EnumType.__len__</code>, <code>__iter__</code>) while members do not, and how <code>ABCMeta.__instancecheck__</code> customises <code>isinstance</code>.</p>
+      <p><b>Namespace tricks with <code>__prepare__</code>.</b> Since 3.6 the default dict preserves definition order, so the old "OrderedDict namespace" reason is gone; <code>__prepare__</code> is still used for DSLs, e.g. <code>Enum</code>'s <code>_EnumDict</code> detects duplicate member names and handles <code>auto()</code>.</p>
+      <p><b>New class attributes.</b> 3.13 adds <code>__firstlineno__</code> and <code>__static_attributes__</code> (names assigned via <code>self.x</code> in methods) to the namespace. 3.14 implements PEP 649/749: annotations are no longer evaluated eagerly; the class gets an <code>__annotate__</code> function and <code>__annotations__</code> is computed on first access, which matters for metaclasses and decorators that read annotations during class creation (use <code>annotationlib.get_annotations</code>).</p>
+      <p><b>Cost and compatibility.</b> Metaclasses run once per class (cheap), but they affect every subclass forever, conflict with other libraries' metaclasses, and confuse type checkers. <code>typing</code> generics use <code>__class_getitem__</code> (PEP 560) precisely to avoid needing a metaclass for <code>List[int]</code>-style subscription.</p>`,
+    aiEra: R`<p>🤖 <b>What AI changes:</b> ask an assistant for a "plugin system" or "singleton" and it often reaches for a metaclass because older blog posts did. In 2026 the idiomatic answer is usually <code>__init_subclass__</code>, a decorator, a dataclass or a module-level object. Push back and ask for the simplest mechanism.</p>
+      <p><b>Use AI as a partner:</b> <code>Here is our legacy metaclass. Rewrite it using __init_subclass__ and __set_name__ if possible, keep behaviour identical, and list any behaviour that truly requires a metaclass.</code> Then verify with tests that cover subclass-of-subclass cases.</p>
+      <p><b>Where AI goes wrong:</b> wrong hook order (claiming <code>__init_subclass__</code> runs after <code>Meta.__init__</code>; it runs inside <code>type.__new__</code>), forgetting to forward <code>**kwargs</code> to <code>super().__init_subclass__</code>, or producing metaclass conflicts when mixing with ABCs.</p>
+      <p><b>What you must still own:</b> the class-creation sequence, the fact that instantiation is <code>type(cls).__call__</code>, and the engineering judgement to avoid metaclasses unless they buy something a simpler tool cannot.</p>`,
+    problems: [{
+      title: 'Enforce an Interface at Class-Creation Time',
+      level: 'Hard', tags: ['metaclass', '__init_subclass__', 'validation'], companies: ['Google', 'Atlassian', 'Shopify'],
+      statement: R`<p>Write a base class <code>Plugin</code> such that any subclass declaring <code>required = ("run", "name")</code> style requirements is checked <b>when the subclass is defined</b>: each name in the nearest <code>required</code> tuple must be defined somewhere in the subclass's MRO (other than on <code>Plugin</code> itself) and, if it is a method, be callable. A violation raises <code>TypeError</code> listing all missing names. Also keep a registry of valid concrete plugins by class name.</p>`,
+      constraints: R`<p>Must fail at definition time (not instantiation). Must support multi-level inheritance: an intermediate abstract class may mark itself with <code>abstract=True</code> to skip checks. No third-party libraries.</p>`,
+      example: R`<p><code>class Bad(Plugin): name = "x"</code> → ${H.c('r', "TypeError: Bad is missing: run")}. <code>class Good(Plugin): name = "g"; def run(self): ...</code> → registered: ${H.c('g', "{'Good': Good}")}.</p>`,
+      brute: { why: R`<p>Checking in <code>__init__</code> (or each time you call the plugin) finds the problem late, only when someone instantiates the class, possibly in production. A metaclass or <code>__init_subclass__</code> moves the error to import time, where tests and CI catch it immediately.</p>`, code: R`class PluginLate:
+    required = ("run", "name")
+    def __init__(self):
+        missing = [r for r in self.required if not hasattr(self, r)]
+        if missing:                           # discovered only at instantiation
+            raise TypeError(f"missing {missing}")
+
+class Bad(PluginLate):
+    name = "bad"                              # defining it does NOT fail
+
+try:
+    Bad()
+except TypeError as e:
+    print("found late:", e)
+` },
+      mcq: { q: 'Which hook runs for every new subclass, at definition time, without writing a metaclass?', options: ['<code>__init_subclass__</code>', '<code>__init__</code>', '<code>__new__</code> of the subclass', '<code>__class_getitem__</code>'], answer: 0, explain: '<code>type.__new__</code> calls the parent\'s <code>__init_subclass__</code> right after the class object is created. <code>__init__</code>/<code>__new__</code> run per instance; <code>__class_getitem__</code> handles <code>Cls[...]</code>.' },
+      hints: [R`<p>Hint 1: in <code>__init_subclass__(cls, abstract=False, **kw)</code>, <code>cls</code> is the brand-new subclass. Return early if <code>abstract</code>.</p>`, R`<p>Hint 2: for each required name, walk <code>cls.__mro__</code> excluding <code>Plugin</code> and <code>object</code>; the name is satisfied if it appears in some class's <code>__dict__</code>. Collect all missing names before raising.</p>`, R`<p>Hint 3: names that are methods on <code>Plugin</code> as placeholders should not count, which is why you skip <code>Plugin</code> in the MRO walk. Register with <code>Plugin.registry[cls.__name__] = cls</code>. Show the metaclass version as an alternative.</p>`],
+      solution: {
+        approach: R`<p>Use <code>__init_subclass__</code> so the check runs inside <code>type.__new__</code> for every subclass, at import time. Walk the MRO manually so placeholders on the base class do not count. A metaclass version (same logic in <code>Meta.__init__</code>) is shown as the alternative; it is needed only if you also want to customise the namespace or class-level operators.</p>`,
+        code: { lang: 'python', run: true, code: R`class Plugin:
+    required = ("run", "name")
+    registry = {}
+
+    def __init_subclass__(cls, abstract=False, **kw):
+        super().__init_subclass__(**kw)
+        if abstract:
+            return
+        missing = []
+        for attr in cls.required:
+            owners = [k for k in cls.__mro__ if k not in (Plugin, object)]
+            if not any(attr in vars(k) for k in owners):
+                missing.append(attr)
+        if missing:
+            raise TypeError(f"{cls.__name__} is missing: {', '.join(missing)}")
+        Plugin.registry[cls.__name__] = cls
+
+class Exporter(Plugin, abstract=True):       # intermediate, skipped
+    required = ("run", "name", "ext")
+    def run(self):
+        return f"exporting .{self.ext}"
+
+class Csv(Exporter):
+    name, ext = "csv", "csv"
+
+try:
+    class Broken(Exporter):
+        name = "broken"                      # forgot ext
+except TypeError as e:
+    print("TypeError:", e)
+
+print(sorted(Plugin.registry), Csv().run())
+` },
+        alt: [{ lang: 'python', code: R`class RequireMeta(type):
+    def __init__(cls, name, bases, ns, abstract=False, **kw):
+        super().__init__(name, bases, ns, **kw)
+        if not bases or abstract:            # the root class itself, or abstract
+            return
+        missing = [a for a in getattr(cls, "required", ())
+                   if not any(a in vars(k) for k in cls.__mro__[:-2])]
+        if missing:
+            raise TypeError(f"{name} is missing: {', '.join(missing)}")
+
+    def __new__(mcs, name, bases, ns, abstract=False, **kw):
+        return super().__new__(mcs, name, bases, ns, **kw)
+
+class Base(metaclass=RequireMeta):
+    required = ("run",)
+
+class Ok(Base):
+    def run(self):
+        return "ok"
+
+print(Ok().run())
+` }],
+        dry: { head: ['class statement', 'abstract?', 'required', 'found in MRO (minus Plugin)', 'result'], rows: [['Exporter', 'yes', '—', '—', 'skipped'], ['Csv', 'no', 'run, name, ext', 'run (Exporter), name/ext (Csv)', H.c('g', 'registered')], ['Broken', 'no', 'run, name, ext', 'run, name', H.c('r', 'TypeError: missing ext')]] },
+        complexity: R`<p>O(R × M) per class definition (R required names, M classes in the MRO), paid once at import time; zero cost per instance.</p>`,
+        followUps: ['Also verify that required methods have the right number of parameters using <code>inspect.signature</code>.', 'How does <code>abc.ABCMeta</code> do something similar, and why does it fail at instantiation instead of definition?']
       }
     }]
   });

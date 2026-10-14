@@ -2089,4 +2089,1540 @@ print(largest_number([3, 30, 34, 5, 9]))    # 9534330
       }
     }]
   });
-registerModule({ id: 'py11', title: 'T', intro: `<p>xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx</p>`, goals: ['aaaaaaaaaaaa','bbbbbbbbbbbbb','ccccccccccccc'], prereqs: `ppppppppppppppppppp`, hours: 10, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();
+
+  /* ================= TOPIC 8: Recursion limits ================= */
+  topics.push({
+    title: 'Recursion Limits & Turning Recursion into Loops',
+    analogy: `<p>Recursion is like <b>stacking plates</b>: every function call puts a plate (a <b>frame</b>) on the pile, and it comes off only when that call returns. Python's kitchen has a <b>safety rule</b>: about 1000 plates max. Stack more and the manager stops you (<code>RecursionError</code>) before the pile crashes onto the floor (a real crash of the interpreter). The fix isn't a taller pile — it's keeping your own <b>to-do list on paper</b> (an explicit stack) instead of a tower of plates.</p>`,
+    explain: `<p>🟢 <b>The plain idea.</b> Each call to a Python function creates a frame object holding its local variables. Python counts how deep the calls go and stops at the <b>recursion limit</b>:</p>
+<pre>import sys
+sys.getrecursionlimit()      # 1000 by default</pre>
+<p>Go past it and you get <code>RecursionError: maximum recursion depth exceeded</code>. Python also has <b>no tail-call optimisation</b>: even <code>return f(n - 1)</code> as the last line keeps a frame for every level (Guido chose clear tracebacks over TCO).</p>
+${H.table(['Situation', 'Depth', 'Safe with default limit?'], [
+  ['DFS on a balanced tree of 10<sup>6</sup> nodes', '≈ 20', H.c('g', 'yes')],
+  ['DFS on a skewed tree / linked list of 10<sup>5</sup> nodes', '10<sup>5</sup>', H.c('r', 'no')],
+  ['Flood fill / islands on a 300 × 300 all-land grid', 'up to 90 000', H.c('r', 'no')],
+  ['Memoized DP <code>f(n)</code> calling <code>f(n-1)</code>, n = 10<sup>4</sup>', '10<sup>4</sup>', H.c('r', 'no')],
+  ['Backtracking over 9 × 9 Sudoku cells', '≤ 81', H.c('g', 'yes')]
+])}
+<p>🔵 <b>Three ways out, best first:</b></p>
+<ol>
+<li><b>Iterate with an explicit stack</b> (a list): push work items, pop and process. Depth is limited only by memory. Order: push children in reverse if you need left-to-right.</li>
+<li><b>Use BFS</b> with a <code>deque</code> when visiting order doesn't matter (islands, flood fill, connected components) — no depth issue at all.</li>
+<li><b>Raise the limit</b>: <code>sys.setrecursionlimit(10**6)</code>. Quick in contests, but the limit only protects you — it doesn't give you more memory. Deep recursion is slow (frame creation), uses ~0.5 KB+ per frame, and on older versions or with C-level recursion it can still crash the process (segfault). Some people also run the solver in a <code>threading.Thread</code> after <code>threading.stack_size(2**27)</code> to get a bigger C stack.</li>
+</ol>
+<p>🔵 <b>Recursion → iteration recipe:</b></p>
+${H.table(['Recursive', 'Iterative'], [
+  ['call <code>dfs(child)</code>', '<code>stack.append(child)</code>'],
+  ['function arguments', 'tuple pushed on the stack, e.g. <code>(node, depth)</code>'],
+  ['code after the recursive call (post-order)', 'push <code>(node, True)</code> as a "come back later" marker'],
+  ['return value combined by the parent', 'store results in a dict / list, or process in reverse order']
+])}`,
+    clues: [
+      '"the tree can be skewed" / "the linked list has up to 10<sup>5</sup> nodes" → recursion depth O(n): iterate or raise the limit',
+      '"grid up to 1000 × 1000", "flood fill", "number of islands" → BFS with deque or iterative DFS, not plain recursion',
+      '"RecursionError: maximum recursion depth exceeded" in your output → depth problem, not logic',
+      '"do it without recursion" / "iteratively" → explicit stack; for in-order use the go-left-then-pop pattern',
+      'Memoized DP where n ≥ ~10<sup>4</sup> → bottom-up table, or warm the cache in increasing order',
+      '"follow-up: O(1) extra space traversal" → Morris traversal (threads the tree temporarily)'
+    ],
+    code: [{ lang: 'python', run: true, title: 'Hitting and avoiding the limit (runnable)', code: `
+import sys
+
+print("limit:", sys.getrecursionlimit())          # 1000
+
+def depth_sum(n):                                  # recursion depth = n
+    return 0 if n == 0 else n + depth_sum(n - 1)
+
+print(depth_sum(500))                              # fine
+try:
+    depth_sum(5000)
+except RecursionError as e:
+    print("RecursionError:", e)
+
+def depth_sum_iter(n):                             # same answer, no frames
+    total = 0
+    while n:
+        total += n
+        n -= 1
+    return total
+print(depth_sum_iter(5000))
+
+sys.setrecursionlimit(20_000)                      # the quick contest fix
+print(depth_sum(5000))                             # works now (12502500)
+sys.setrecursionlimit(1000)                        # restore
+
+# Explicit-stack DFS on a long "linked list" graph of 100_000 nodes
+n = 100_000
+nxt = {i: i + 1 for i in range(n - 1)}
+stack, seen = [0], set()
+while stack:
+    u = stack.pop()
+    if u in seen:
+        continue
+    seen.add(u)
+    if u in nxt:
+        stack.append(nxt[u])
+print("visited:", len(seen))                       # 100000, no recursion at all
+` }],
+    codeTitle: ['Hitting and avoiding the limit (runnable)'],
+    viz: [{
+      title: 'Call stack growing into the recursion limit',
+      input: '7 5',
+      inputLabel: 'n and a (tiny) recursion limit, e.g. 7 5',
+      gen: function (input) {
+        var v = nums(input, 2, 'Give two numbers: n and limit, e.g. 7 5');
+        var n = v[0], lim = v[1];
+        if (v.length !== 2 || n < 1 || n > 12 || lim < 2 || lim > 12) throw new Error('n 1-12 and limit 2-12, e.g. 7 5');
+        var CODE = 'def total(n):\n    if n == 0:\n        return 0\n    return n + total(n - 1)   # one new frame per level';
+        var frames = [], st = [];
+        frames.push(fr('We call <code>total(' + n + ')</code> with a pretend limit of <b>' + lim + '</b> frames (real Python: 1000). Watch the pile of plates.', [
+          { type: 'stack', label: 'call stack', items: [] },
+          { type: 'bars', label: 'depth vs limit', values: [0, lim], idxLabels: ['depth', 'limit'] },
+          cp(CODE, { 1: 'cur' })
+        ]));
+        var crashed = false;
+        for (var k = n; k >= 0; k--) {
+          if (st.length >= lim) { crashed = true; break; }
+          st.push('total(' + k + ')');
+          frames.push(fr('Call <b>total(' + k + ')</b> → push a frame (depth ' + st.length + '). ' + (k > 0 ? 'It cannot finish until total(' + (k - 1) + ') returns, so its frame stays on the stack.' : 'Base case reached!'), [
+            { type: 'stack', label: 'call stack', items: st.slice(), hl: one(st.length - 1, 'cur') },
+            { type: 'bars', label: 'depth vs limit', values: [st.length, lim], idxLabels: ['depth', 'limit'], hl: st.length === lim ? { 0: 'bad' } : { 0: 'cur' } },
+            cp(CODE, k > 0 ? { 4: 'cur' } : { 2: 'ok', 3: 'ok' })
+          ]));
+        }
+        if (crashed) {
+          frames.push(fr('<span class="c-r">Depth would exceed the limit → RecursionError!</span> Python refuses to push another frame. Nothing was wrong with the logic — the input was just too deep.', [
+            { type: 'stack', label: 'call stack', items: st.slice(), hl: (function () { var h = {}; st.forEach(function (_, j) { h[j] = 'bad'; }); return h; })() },
+            { type: 'text', html: '<b>RecursionError</b>: maximum recursion depth exceeded', label: 'error' }
+          ]));
+        } else {
+          var acc = 0;
+          while (st.length) {
+            var fname = st.pop(); var kk = parseInt(fname.replace(/\D/g, ''), 10); acc += kk;
+            frames.push(fr('<b>' + fname + '</b> returns ' + acc + ' → pop its frame.', [
+              { type: 'stack', label: 'call stack', items: st.slice(), hl: st.length ? one(st.length - 1, 'cur') : {} },
+              vp({ returned: acc }, 'returned', 'ok'),
+              cp(CODE, { 4: 'ok' })
+            ]));
+          }
+        }
+        var tot = n * (n + 1) / 2;
+        frames.push(fr('The loop version keeps <b>one</b> frame no matter how big n is: <code>total = 0; while n: total += n; n -= 1</code> → ' + tot + '. Same answer, depth 1.', [
+          { type: 'stack', label: 'call stack (iterative)', items: ['total_iter(' + n + ')'], hl: { 0: 'ok' } },
+          { type: 'bars', label: 'depth vs limit', values: [1, lim], idxLabels: ['depth', 'limit'], hl: { 0: 'ok' } },
+          vp({ answer: tot }, 'answer', 'sel')
+        ]));
+        return frames;
+      }
+    }, {
+      title: 'Iterative in-order traversal with an explicit stack',
+      input: '4 2 6 1 3 5 7',
+      inputLabel: 'Tree in level order (use null for gaps, ≤ 15 values)',
+      gen: function (input) {
+        var toks = words(input);
+        if (!toks.length || toks.length > 15) throw new Error('Give 1-15 level-order values, e.g. 4 2 6 1 3 null 7');
+        var arr = toks.map(function (t) { return (t === 'null' || t === '#' || t === 'None') ? null : t; });
+        if (arr[0] === null) throw new Error('The root cannot be null');
+        var CODE = 'stack, out, node = [], [], root\nwhile stack or node:\n    while node:              # go as far left as possible\n        stack.append(node)\n        node = node.left\n    node = stack.pop()       # leftmost unvisited\n    out.append(node.val)\n    node = node.right        # then its right subtree';
+        function ok(i) { return i < arr.length && arr[i] !== null && arr[i] !== undefined; }
+        var st = [], out = [], node = 0, frames = [], visited = {};
+        function snap(narr, curIdx, codeHl) {
+          var hl = {};
+          Object.keys(visited).forEach(function (k) { hl[k] = 'done'; });
+          st.forEach(function (k) { hl[k] = 'win'; });
+          if (curIdx !== null && ok(curIdx)) hl[curIdx] = 'cur';
+          frames.push(fr(narr, [
+            { type: 'tree', label: 'tree (blue = on stack, faded = output)', arr: arr.slice(), hl: hl },
+            { type: 'stack', label: 'explicit stack', items: st.map(function (k) { return arr[k]; }) },
+            { type: 'array', label: 'out', values: out.slice(), hl: out.length ? one(out.length - 1, 'ok') : {} },
+            cp(CODE, codeHl)
+          ]));
+        }
+        snap('Start at the root. The explicit stack replaces the call stack: it remembers the nodes whose <b>left</b> side we are still exploring.', 0, { 1: 'cur' });
+        var guard = 0;
+        while ((st.length || ok(node)) && guard++ < 60) {
+          while (ok(node)) {
+            st.push(node);
+            snap('Push <b>' + arr[node] + '</b> and step to its left child.', node, { 4: 'cur', 5: 'cur' });
+            node = 2 * node + 1;
+          }
+          var u = st.pop();
+          out.push(arr[u]); visited[u] = true;
+          snap('No more left children → pop <b>' + arr[u] + '</b> and output it (left subtree done, now the node itself).', u, { 6: 'ok', 7: 'ok' });
+          node = 2 * u + 2;
+          if (ok(node)) snap('Move to the right child <b>' + arr[node] + '</b> of ' + arr[u] + ' and repeat.', node, { 8: 'cur' });
+        }
+        snap('Stack empty and no current node → done. In-order = <b>' + out.join(', ') + '</b>' + (out.every(function (x, i) { return i === 0 || Number(out[i - 1]) <= Number(x); }) ? ' (sorted, so this is a valid BST).' : '.') + ' Max stack size = tree height, never the Python recursion limit.', null, { 2: 'ok' });
+        return frames;
+      }
+    }],
+    examples: [
+      { title: 'Iterative pre-order and post-order', html: `<p>Pre-order: pop, output, push <b>right then left</b> (so left is processed first). Post-order trick: do "root, right, left" and reverse the output — or push a <code>(node, visited)</code> flag to emit after children.</p>${H.table(['traversal', 'tree 1-(2,3)'], [['pre', '1 2 3'], ['in', '2 1 3'], ['post', '2 3 1']])}`, code: { lang: 'python', run: true, code: `
+class TreeNode:
+    def __init__(self, val, left=None, right=None):
+        self.val, self.left, self.right = val, left, right
+
+def preorder(root):
+    out, stack = [], [root] if root else []
+    while stack:
+        node = stack.pop()
+        out.append(node.val)
+        if node.right: stack.append(node.right)   # right first...
+        if node.left: stack.append(node.left)     # ...so left pops first
+    return out
+
+def postorder(root):
+    out, stack = [], [(root, False)] if root else []
+    while stack:
+        node, done = stack.pop()
+        if done:
+            out.append(node.val)                  # children already emitted
+            continue
+        stack.append((node, True))                # come back after children
+        if node.right: stack.append((node.right, False))
+        if node.left: stack.append((node.left, False))
+    return out
+
+root = TreeNode(1, TreeNode(2, TreeNode(4)), TreeNode(3))
+print(preorder(root), postorder(root))   # [1, 2, 4, 3] [4, 2, 3, 1]
+` } },
+      { title: 'Max depth of a 100 000-node skewed tree', html: `<p>A recursive <code>max_depth</code> crashes on a degenerate tree (every node only has a left child). BFS level counting never recurses.</p>${H.arr(['1', '2', '3', '…', '100000'], { label: 'skewed tree as a chain' })}`, code: { lang: 'python', run: true, code: `
+from collections import deque
+
+class TreeNode:
+    __slots__ = ("val", "left", "right")
+    def __init__(self, val):
+        self.val, self.left, self.right = val, None, None
+
+root = cur = TreeNode(0)
+for i in range(1, 100_000):            # build a left-skewed chain
+    cur.left = TreeNode(i)
+    cur = cur.left
+
+def max_depth_bfs(root):
+    if not root:
+        return 0
+    q, depth = deque([root]), 0
+    while q:
+        depth += 1
+        for _ in range(len(q)):        # one whole level per iteration
+            node = q.popleft()
+            if node.left: q.append(node.left)
+            if node.right: q.append(node.right)
+    return depth
+
+print(max_depth_bfs(root))             # 100000, no RecursionError
+` } },
+      { title: 'Memoized DP: warm the cache to stay shallow', html: `<p><code>@cache</code> recursion on n = 10<sup>5</sup> would nest 10<sup>5</sup> frames on the first call. Calling it in increasing order first means every call finds its sub-answers already cached, so the depth stays tiny. Bottom-up is still cleaner.</p>${H.table(['strategy', 'max depth for n = 10⁵'], [['direct <code>ways(100000)</code>', H.c('r', '100 000 → RecursionError')], ['warm <code>for i in range(n): ways(i)</code>', H.c('g', '≈ 2')]])}`, code: { lang: 'python', run: true, code: `
+from functools import cache
+
+@cache
+def ways(n):                       # climbing stairs, mod to keep numbers small
+    return 1 if n <= 1 else (ways(n - 1) + ways(n - 2)) % 1_000_000_007
+
+for i in range(100_000):           # warm up in increasing order
+    ways(i)
+print(ways(100_000))
+
+def ways_bottom_up(n):
+    a, b = 1, 1
+    for _ in range(n - 1):
+        a, b = b, (a + b) % 1_000_000_007
+    return b
+print(ways_bottom_up(100_000))     # same value, O(1) memory
+` } }
+    ],
+    deepDive: `<p>🟣 <b>What actually limits depth.</b> Two stacks are involved: Python <b>frame objects</b> (heap memory, counted against <code>sys.getrecursionlimit()</code>) and the <b>C stack</b> of the interpreter thread. Since CPython 3.11, a Python-to-Python call no longer recurses in C (the eval loop "inlines" it), so pure Python recursion mostly consumes heap, not C stack. Since 3.12 the recursion limit applies only to Python code, while C code (e.g. <code>repr</code> of a deeply nested list, <code>json</code>, <code>pickle</code>) has a separate C-stack guard. Raising the limit to 10<sup>6</sup> is therefore safer on modern Pythons than on 3.8–3.10, where it could segfault — but older judges still run those versions.</p>
+<p><b>Cost:</b> a Python call costs roughly 50–100 ns and a frame several hundred bytes, so recursion depth 10<sup>6</sup> means hundreds of MB and noticeable time. The explicit-stack version stores only what you push (often one int or tuple).</p>
+<p><b>Threading trick:</b> <code>threading.stack_size(2**26)</code> before starting a thread gives that thread a larger C stack; competitive programmers run <code>main()</code> in such a thread together with a high recursion limit. It doesn't help memory usage and is platform dependent.</p>
+<p><b>Advanced alternatives:</b> <b>Morris traversal</b> (O(1) extra space in-order by temporarily threading right pointers); <b>trampolines</b> / generator-based recursion where each "call" yields a sub-generator and a driver loop keeps a list of generators — a known way to keep recursive code shape without Python recursion.</p>
+<p><b>Gotcha list:</b> <code>RecursionError</code> inside <code>__repr__</code> of self-referencing objects; <code>copy.deepcopy</code> and <code>pickle</code> of deep linked lists recurse too; <code>@lru_cache</code> wrappers don't add a Python frame in CPython (C wrapper) but debugging decorators written in Python do — doubling depth.</p>`,
+    aiEra: `<p>🤖 <b>What AI changes:</b> AI-generated tree/graph code is usually recursive because it reads well. You need the reflex to ask "what's the worst-case depth?" and to request or write the iterative version when depth can be O(n).</p>
+<p><b>Use AI as a partner:</b> <code>"Convert this recursive post-order DFS into an explicit-stack version that preserves the exact output order"</code>, then test both on random trees — a great use of AI because the conversion is mechanical but fiddly.</p>
+<p><b>Where AI goes wrong:</b> blindly adds <code>sys.setrecursionlimit(10**9)</code> (crashes or wastes memory); pushes children in the wrong order so pre-order turns into a mirrored traversal; forgets the "visited" flag for post-order; claims Python has tail-call optimisation.</p>
+<p><b>What you must still own:</b> estimating recursion depth from constraints, translating recursion into a stack of states, and explaining why BFS sidesteps the problem.</p>`,
+    problems: [{
+      title: 'Number of Islands (recursion-safe)', level: 'Medium', tags: ['DFS', 'BFS', 'explicit stack', 'grid'], companies: ['Amazon', 'Google', 'Meta', 'Microsoft', 'Bloomberg'],
+      statement: `<p>Given an m × n grid of <code>"1"</code> (land) and <code>"0"</code> (water), count the islands. An island is land connected horizontally or vertically. Your solution must not crash on a grid that is entirely land.</p>`,
+      constraints: `1 ≤ m, n ≤ 300 → up to 90 000 cells in one island`,
+      example: `<p>${H.table(['', 'c0', 'c1', 'c2', 'c3'], [['r0', H.c('g', '1'), H.c('g', '1'), '0', '0'], ['r1', H.c('g', '1'), '0', '0', H.c('b', '1')], ['r2', '0', '0', H.c('y', '1'), H.c('b', '1')]])}</p><p>Output <b>3</b>: green, blue and amber groups.</p>`,
+      brute: { why: `<p>The textbook recursive DFS is correct, but on a 300 × 300 all-land grid the recursion goes up to 90 000 frames deep → <code>RecursionError</code> with Python's default limit of 1000 (and a crash risk if you just raise the limit on older versions). The algorithm is fine — the <b>call stack</b> is the problem.</p>`, code: `
+def num_islands_recursive(grid):
+    R, C = len(grid), len(grid[0])
+    def sink(r, c):                      # depth can reach R*C
+        if r < 0 or c < 0 or r >= R or c >= C or grid[r][c] != "1":
+            return
+        grid[r][c] = "0"
+        sink(r + 1, c); sink(r - 1, c); sink(r, c + 1); sink(r, c - 1)
+    count = 0
+    for r in range(R):
+        for c in range(C):
+            if grid[r][c] == "1":
+                count += 1
+                sink(r, c)
+    return count
+
+print(num_islands_recursive([list("1100"), list("1001"), list("0011")]))  # 3
+` },
+      mcq: { q: 'Which change makes the island-sinking safe for a 300 × 300 all-land grid?', options: ['Replace recursion with an explicit stack (or a deque BFS)', 'Add <code>@cache</code> to <code>sink</code>', 'Iterate rows in reverse order', 'Use <code>try/except RecursionError</code> and return 0'], answer: 0, explain: 'The depth problem disappears when the pending cells live in a list/deque on the heap. Caching does nothing (each cell is visited once anyway), and catching the error gives a wrong answer.' },
+      hints: [`<p>Hint 1: Every time you find an unvisited "1", you found a new island — then you must mark all of its land as visited.</p>`, `<p>Hint 2: Marking can use a <code>list</code> as a stack: push the start cell, pop a cell, push its land neighbours. No recursion → no depth limit.</p>`, `<p>Hint 3: Mark a cell as visited <b>when you push it</b> (not when you pop) so it is never pushed twice. Recipe: for each cell == "1": count += 1; grid[r][c] = "0"; stack = [(r, c)]; while stack: pop, check 4 neighbours, sink and push.</p>`],
+      solution: {
+        approach: `<p>Scan the grid; on each unvisited land cell increment the count and flood-fill its island with an <b>explicit stack</b>, sinking cells (set to "0") as they are pushed. Every cell is pushed at most once, and the stack lives on the heap, so the all-land grid works. A <code>deque</code> BFS works identically.</p>`,
+        code: { lang: 'python', run: true, code: `
+from typing import List
+
+def num_islands(grid: List[List[str]]) -> int:
+    R, C = len(grid), len(grid[0])
+    count = 0
+    for r in range(R):
+        for c in range(C):
+            if grid[r][c] != "1":
+                continue
+            count += 1                       # new island found
+            grid[r][c] = "0"                 # mark on push
+            stack = [(r, c)]
+            while stack:
+                cr, cc = stack.pop()
+                for nr, nc in ((cr + 1, cc), (cr - 1, cc), (cr, cc + 1), (cr, cc - 1)):
+                    if 0 <= nr < R and 0 <= nc < C and grid[nr][nc] == "1":
+                        grid[nr][nc] = "0"
+                        stack.append((nr, nc))
+    return count
+
+print(num_islands([list("1100"), list("1001"), list("0011")]))   # 3
+big = [["1"] * 300 for _ in range(300)]                           # one huge island
+print(num_islands(big))                                           # 1, no RecursionError
+` },
+        alt: [{ lang: 'python', title: 'BFS with deque', run: true, code: `
+from collections import deque
+
+def num_islands_bfs(grid):
+    R, C = len(grid), len(grid[0])
+    count = 0
+    for r in range(R):
+        for c in range(C):
+            if grid[r][c] == "1":
+                count += 1
+                grid[r][c] = "0"
+                q = deque([(r, c)])
+                while q:
+                    cr, cc = q.popleft()
+                    for nr, nc in ((cr + 1, cc), (cr - 1, cc), (cr, cc + 1), (cr, cc - 1)):
+                        if 0 <= nr < R and 0 <= nc < C and grid[nr][nc] == "1":
+                            grid[nr][nc] = "0"
+                            q.append((nr, nc))
+    return count
+
+print(num_islands_bfs([list("11000"), list("11000"), list("00100"), list("00011")]))  # 3
+` }],
+        dry: { head: ['found at', 'count', 'cells sunk by the stack'], rows: [
+          ['(0,0)', '1', '(0,0) (1,0) (0,1)'],
+          ['(1,3)', '2', '(1,3) (2,3)'],
+          ['(2,2)', '3', '(2,2)'],
+          ['end', H.c('g', '3'), '—']
+        ] },
+        complexity: `<p>Time O(m·n): each cell is pushed and popped at most once. Space O(m·n) worst case for the stack (all land), but on the heap — no recursion depth issue.</p>`,
+        followUps: ['Do not modify the input grid (use a visited set or a copy)', 'Count distinct island shapes (normalise each island\'s relative coordinates into a frozenset)', 'Islands added one at a time (Number of Islands II) → Union-Find']
+      }
+    }]
+  });
+
+  /* ================= TOPIC 9: Pythonic DSA templates ================= */
+  topics.push({
+    title: 'Pythonic DSA Templates: Graphs, Union-Find, Tries & Gotchas',
+    analogy: `<p>A good chef has <b>mise en place</b>: knives sharpened, sauces pre-made, ingredients chopped in little bowls. When the order comes in, she <i>assembles</i> rather than invents. Your interview mise en place is a set of tiny, memorised Python templates — adjacency list, BFS, Dijkstra, Union-Find, Trie — plus a list of Python traps you never fall into. Then 45 minutes is spent on the <b>problem</b>, not on syntax.</p>`,
+    explain: `<p>🟢 <b>The plain idea.</b> Python lets you write classic algorithms in a fraction of the lines — if you know the idioms. Here is the cheat sheet interviewers expect from a "strong Python" candidate.</p>
+${H.table(['Need', 'Idiom'], [
+  ['swap / rotate values', '<code>a, b = b, a</code>; <code>a, b = b, a + b</code>'],
+  ['index + value', '<code>for i, x in enumerate(xs)</code>'],
+  ['walk two lists together', '<code>for a, b in zip(xs, ys)</code> (<code>strict=True</code> in 3.10+ to catch length bugs)'],
+  ['infinity', '<code>float("inf")</code> or <code>math.inf</code>'],
+  ['2-D grid', '<code>[[0] * C for _ in range(R)]</code> ✅ — never <code>[[0] * C] * R</code> ❌ (rows alias!)'],
+  ['4 directions', '<code>for dr, dc in ((1,0),(-1,0),(0,1),(0,-1))</code>'],
+  ['graph from edges', '<code>adj = defaultdict(list)</code>; <code>adj[u].append(v)</code>'],
+  ['visited', '<code>seen = set()</code> of ints or <code>(r, c)</code> tuples'],
+  ['build a string', '<code>"".join(parts)</code> — not <code>s += ch</code> in a loop'],
+  ['reverse / palindrome', '<code>s[::-1]</code>, <code>s == s[::-1]</code>'],
+  ['quotient &amp; remainder', '<code>q, r = divmod(a, b)</code>'],
+  ['any / all', '<code>any(x &lt; 0 for x in xs)</code> (short-circuits)'],
+  ['count set bits', '<code>x.bit_count()</code> (3.10+) or <code>bin(x).count("1")</code>']
+])}
+<p>🔵 <b>Integer traps Java/C++ people hit:</b> <code>//</code> is <b>floor</b> division: <code>-7 // 2 == -4</code> (C truncates to −3); use <code>int(a / b)</code> or <code>-(-a // b)</code> patterns carefully. <code>%</code> takes the sign of the divisor: <code>-7 % 3 == 2</code>. Ints never overflow (good) but huge ints get slow — apply <code>% MOD</code> as you go.</p>
+<p>🔵 <b>Copy traps:</b> <code>b = a</code> doesn't copy; <code>a[:]</code> / <code>list(a)</code> is a <b>shallow</b> copy (inner lists shared); in backtracking append <code>path[:]</code>, not <code>path</code>. Default arguments are evaluated once: never write <code>def f(x, memo={})</code> or <code>def f(path=[])</code>.</p>
+<p>🔵 <b>Four templates to know by heart</b> (all in the code below): <b>BFS</b> with <code>deque</code>, <b>Dijkstra</b> with <code>heapq</code> + lazy deletion, <b>Union-Find</b> with path compression + union by size, <b>Trie</b> with nested dicts. Each is 10–15 lines in Python.</p>
+<p>🔵 <b>Fast I/O</b> (contests / HackerRank): <code>input = sys.stdin.readline</code> and print once with <code>"\\n".join(...)</code> — <code>input()</code> and many <code>print</code> calls are slow for 10<sup>5</sup>+ lines.</p>`,
+    clues: [
+      '"shortest path", "minimum time for signal", "cheapest route" with non-negative weights → Dijkstra template (<code>heapq</code> + <code>dist</code> dict)',
+      '"connected components", "are x and y connected", "redundant connection", "accounts merge" → Union-Find',
+      '"prefix", "starts with", "autocomplete", "word search with many words" → Trie of nested dicts',
+      '"grid", "minimum steps", "spread / rot / infect" → multi-source BFS with <code>deque</code>',
+      '"Python solution is TLE but the algorithm is right" → check list-as-queue, string <code>+=</code>, slow input, recomputing <code>len</code>/slices in loops',
+      '"result is wrong only for negative numbers" → floor division / modulo semantics',
+      '"all rows of my grid changed together" → <code>[[0]*C]*R</code> aliasing'
+    ],
+    code: [{ lang: 'python', run: true, title: 'Template pack: BFS, Dijkstra, Union-Find, Trie (runnable)', code: `
+import heapq
+from collections import defaultdict, deque
+
+# ---------- BFS (unweighted shortest path) ----------
+def bfs(adj, src):
+    dist = {src: 0}
+    q = deque([src])
+    while q:
+        u = q.popleft()
+        for v in adj[u]:
+            if v not in dist:              # mark when pushing
+                dist[v] = dist[u] + 1
+                q.append(v)
+    return dist
+
+# ---------- Dijkstra (non-negative weights) ----------
+def dijkstra(adj, src):
+    dist = {src: 0}
+    pq = [(0, src)]
+    while pq:
+        d, u = heapq.heappop(pq)
+        if d > dist.get(u, float("inf")):  # stale entry (lazy deletion)
+            continue
+        for v, w in adj[u]:
+            nd = d + w
+            if nd < dist.get(v, float("inf")):
+                dist[v] = nd
+                heapq.heappush(pq, (nd, v))
+    return dist
+
+# ---------- Union-Find (DSU) ----------
+class DSU:
+    def __init__(self, n):
+        self.parent = list(range(n))
+        self.size = [1] * n
+    def find(self, x):
+        while self.parent[x] != x:
+            self.parent[x] = self.parent[self.parent[x]]   # path halving
+            x = self.parent[x]
+        return x
+    def union(self, a, b):
+        ra, rb = self.find(a), self.find(b)
+        if ra == rb:
+            return False
+        if self.size[ra] < self.size[rb]:
+            ra, rb = rb, ra
+        self.parent[rb] = ra                               # union by size
+        self.size[ra] += self.size[rb]
+        return True
+
+# ---------- Trie with nested dicts ----------
+class Trie:
+    END = "$"
+    def __init__(self):
+        self.root = {}
+    def insert(self, word):
+        node = self.root
+        for ch in word:
+            node = node.setdefault(ch, {})
+        node[Trie.END] = True
+    def starts_with(self, prefix):
+        node = self.root
+        for ch in prefix:
+            if ch not in node:
+                return False
+            node = node[ch]
+        return True
+
+g = defaultdict(list)
+for u, v in [(0, 1), (0, 2), (1, 3), (2, 3), (3, 4)]:
+    g[u].append(v); g[v].append(u)
+print("BFS:", bfs(g, 0))
+
+wg = defaultdict(list)
+for u, v, w in [("A", "B", 4), ("A", "C", 1), ("C", "B", 2), ("B", "D", 1), ("C", "D", 5)]:
+    wg[u].append((v, w))
+print("Dijkstra:", dijkstra(wg, "A"))      # {'A': 0, 'B': 3, 'C': 1, 'D': 4}
+
+dsu = DSU(5)
+dsu.union(0, 1); dsu.union(3, 4)
+print("components:", len({dsu.find(i) for i in range(5)}))   # 3
+
+t = Trie()
+for w in ["apple", "app", "bat"]:
+    t.insert(w)
+print(t.starts_with("ap"), t.starts_with("ba"), t.starts_with("c"))
+` }, { lang: 'python', run: true, title: 'Gotchas you must never fall into (runnable)', code: `
+bad = [[0] * 3] * 2          # two references to the SAME row
+bad[0][0] = 9
+print(bad)                   # [[9, 0, 0], [9, 0, 0]]  <- surprise
+good = [[0] * 3 for _ in range(2)]
+good[0][0] = 9
+print(good)                  # [[9, 0, 0], [0, 0, 0]]
+
+print(-7 // 2, int(-7 / 2), -7 % 3)   # -4 -3 2  (floor vs truncate)
+
+def collect(path=[]):        # default list created ONCE
+    path.append(1)
+    return path
+print(collect(), collect())  # [1, 1] [1, 1]  shared!
+
+res, path = [], []
+for x in [1, 2]:
+    path.append(x)
+    res.append(path)         # appends the same list object twice
+print(res)                   # [[1, 2], [1, 2]]
+res2, path = [], []
+for x in [1, 2]:
+    path.append(x)
+    res2.append(path[:])     # snapshot copy
+print(res2)                  # [[1], [1, 2]]
+
+print((10**30 + 1) % 1_000_000_007, (13).bit_count())   # big ints are exact
+` }],
+    codeTitle: ['Template pack (runnable)', 'Gotchas (runnable)'],
+    viz: {
+      title: 'Dijkstra with heapq: pop the closest, relax, skip stale entries',
+      input: 'A B 4, A C 1, C B 2, B D 1, C D 5, D E 3 | A',
+      inputLabel: 'directed edges "u v w" comma separated | source (≤ 7 nodes)',
+      gen: function (input) {
+        var parts = String(input === undefined ? '' : input).split('|');
+        var src = String(parts[1] || '').trim();
+        var edges = String(parts[0] || '').split(',').map(function (s) { return s.trim(); }).filter(function (s) { return s; }).map(function (s) {
+          var t = s.split(/\s+/);
+          if (t.length !== 3 || isNaN(Number(t[2])) || Number(t[2]) < 0) throw new Error('Each edge must be "u v w" with w ≥ 0, e.g. A B 4');
+          return [t[0], t[1], Number(t[2])];
+        });
+        if (!edges.length || edges.length > 14) throw new Error('Give 1-14 edges');
+        var ids = [];
+        edges.forEach(function (e) { if (ids.indexOf(e[0]) < 0) ids.push(e[0]); if (ids.indexOf(e[1]) < 0) ids.push(e[1]); });
+        if (ids.length > 7) throw new Error('Use at most 7 nodes');
+        if (ids.indexOf(src) < 0) throw new Error('After | give a source node that appears in the edges');
+        var nodes = ids.map(function (id, i) {
+          var ang = Math.PI + 2 * Math.PI * i / ids.length;
+          return { id: id, label: id, x: Math.round(50 + 38 * Math.cos(ang)), y: Math.round(32 + 24 * Math.sin(ang)) };
+        });
+        var adj = {}; ids.forEach(function (id) { adj[id] = []; });
+        edges.forEach(function (e) { adj[e[0]].push([e[1], e[2]]); });
+        var dist = {}, pq = [], done = {}, frames = [];
+        var CODE = 'dist = {src: 0}; pq = [(0, src)]\nwhile pq:\n    d, u = heappop(pq)\n    if d > dist[u]: continue      # stale\n    for v, w in adj[u]:\n        if d + w < dist.get(v, inf):\n            dist[v] = d + w\n            heappush(pq, (d + w, v))';
+        function push(d, v) { pq.push([d, v]); pq.sort(function (a, b) { return a[0] - b[0] || (a[1] < b[1] ? -1 : 1); }); }
+        function gpart(hl, ehl) {
+          var tags = {}; ids.forEach(function (id) { tags[id] = dist.hasOwnProperty(id) ? 'd=' + dist[id] : '∞'; });
+          return { type: 'graph', label: 'graph (tags = best known distance)', directed: true, height: 64, nodes: nodes, edges: edges.map(function (e) { return [e[0], e[1], e[2]]; }), hl: hl, ehl: ehl || {}, tags: tags };
+        }
+        function pqPart(hlIdx, cls) { var h = {}; if (hlIdx !== null) h[hlIdx] = cls; return { type: 'array', label: 'heap pq as (dist, node), smallest first', values: pq.map(function (p) { return '(' + p[0] + ',' + p[1] + ')'; }), hl: h }; }
+        dist[src] = 0; push(0, src);
+        var h0 = {}; h0[src] = 'cur';
+        frames.push(fr('Start: dist[' + esc(src) + '] = 0, heap = [(0, ' + esc(src) + ')]. Every other node is ∞ (not in the dict yet).', [gpart(h0), pqPart(0, 'cur'), cp(CODE, { 1: 'cur' })]));
+        var guard = 0;
+        while (pq.length && guard++ < 40) {
+          var top = pq.shift(), d = top[0], u = top[1];
+          if (d > dist[u]) {
+            var hs = {}; hs[u] = 'bad';
+            frames.push(fr('Pop (' + d + ', ' + esc(u) + ') but dist[' + esc(u) + '] is already ' + dist[u] + ' &lt; ' + d + ' → <span class="c-r">stale entry, skip</span>. This "lazy deletion" replaces the decrease-key operation heapq doesn\'t have.', [gpart(hs), pqPart(null), cp(CODE, { 3: 'cur', 4: 'bad' })]));
+            continue;
+          }
+          done[u] = true;
+          var hl = {}; Object.keys(done).forEach(function (k) { hl[k] = 'done'; }); hl[u] = 'sel';
+          frames.push(fr('Pop the closest node <b>' + esc(u) + '</b> (d = ' + d + '). With non-negative weights nothing can later reach it cheaper → its distance is <b>final</b>.', [gpart(hl), pqPart(null), cp(CODE, { 3: 'ok' })]));
+          adj[u].forEach(function (vw) {
+            var v = vw[0], w = vw[1], nd = d + w, old = dist.hasOwnProperty(v) ? dist[v] : Infinity;
+            var eh = {}; eh[u + '-' + v] = nd < old ? 'ok' : 'bad';
+            var hl2 = {}; Object.keys(done).forEach(function (k) { hl2[k] = 'done'; }); hl2[u] = 'sel'; hl2[v] = nd < old ? 'ok' : 'cur';
+            if (nd < old) { dist[v] = nd; push(nd, v); }
+            frames.push(fr('Edge ' + esc(u) + '→' + esc(v) + ' (w=' + w + '): ' + d + ' + ' + w + ' = ' + nd + (nd < old ? ' &lt; ' + (old === Infinity ? '∞' : old) + ' → <span class="c-g">relax</span>: dist[' + esc(v) + '] = ' + nd + ', push (' + nd + ', ' + esc(v) + ').' : ' ≥ ' + old + ' → no improvement.'), [gpart(hl2, eh), pqPart(null), cp(CODE, nd < old ? { 6: 'ok', 7: 'ok', 8: 'ok' } : { 6: 'bad' })]));
+          });
+        }
+        var fh = {}; ids.forEach(function (id) { fh[id] = dist.hasOwnProperty(id) ? 'ok' : 'bad'; });
+        frames.push(fr('Heap empty → done. Final distances: ' + ids.map(function (id) { return esc(id) + '=' + (dist.hasOwnProperty(id) ? dist[id] : '∞'); }).join(', ') + '. Time O((V + E) log V).', [gpart(fh), { type: 'map', label: 'dist', entries: ids.map(function (id) { return [id, dist.hasOwnProperty(id) ? dist[id] : 'inf']; }) }]));
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'Multi-source BFS: rotting oranges in minutes', html: `<p>Start BFS from <b>all</b> rotten oranges at once (put them all in the deque at minute 0). Each BFS level = one minute. If fresh oranges remain, return −1.</p>${H.table(['', 'c0', 'c1', 'c2'], [['r0', H.c('r', '2'), '1', '1'], ['r1', '1', '1', '0'], ['r2', '0', '1', '1']])}<p>Answer: <b>4</b> minutes.</p>`, code: { lang: 'python', run: true, code: `
+from collections import deque
+
+def oranges_rotting(grid):
+    R, C = len(grid), len(grid[0])
+    q = deque((r, c) for r in range(R) for c in range(C) if grid[r][c] == 2)
+    fresh = sum(row.count(1) for row in grid)
+    minutes = 0
+    while q and fresh:
+        for _ in range(len(q)):                  # one level = one minute
+            r, c = q.popleft()
+            for nr, nc in ((r + 1, c), (r - 1, c), (r, c + 1), (r, c - 1)):
+                if 0 <= nr < R and 0 <= nc < C and grid[nr][nc] == 1:
+                    grid[nr][nc] = 2
+                    fresh -= 1
+                    q.append((nr, nc))
+        minutes += 1
+    return -1 if fresh else minutes
+
+print(oranges_rotting([[2, 1, 1], [1, 1, 0], [0, 1, 1]]))  # 4
+print(oranges_rotting([[2, 1, 1], [0, 1, 1], [1, 0, 1]]))  # -1
+` } },
+      { title: 'Union-Find: redundant connection', html: `<p>Add edges one by one; the first edge whose endpoints are <b>already connected</b> closes a cycle — that's the redundant one. <code>union</code> returning False signals it.</p>${H.table(['edge', 'union result', 'note'], [['1-2', 'True', ''], ['1-3', 'True', ''], ['2-3', H.c('r', 'False'), 'cycle → answer [2, 3]']])}`, code: { lang: 'python', run: true, code: `
+def find_redundant_connection(edges):
+    parent = list(range(len(edges) + 1))
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+    for a, b in edges:
+        ra, rb = find(a), find(b)
+        if ra == rb:
+            return [a, b]
+        parent[ra] = rb
+    return []
+
+print(find_redundant_connection([[1, 2], [1, 3], [2, 3]]))                  # [2, 3]
+print(find_redundant_connection([[1, 2], [2, 3], [3, 4], [1, 4], [1, 5]]))  # [1, 4]
+` } },
+      { title: 'Trie: longest common prefix and word search prefix pruning', html: `<p>Insert all words into a dict-of-dicts trie, then walk down while the node has exactly one child and isn't the end of a word.</p>${H.chips(['flower', 'flow', 'flight'], { label: 'words' })}<p>Walk: f → l → (branches o / i) → stop. Answer <b>"fl"</b>.</p>`, code: { lang: 'python', run: true, code: `
+def longest_common_prefix(words):
+    root = {}
+    for w in words:
+        node = root
+        for ch in w:
+            node = node.setdefault(ch, {})
+        node["$"] = True                       # end-of-word marker
+    prefix, node = [], root
+    while len(node) == 1 and "$" not in node:
+        ch = next(iter(node))
+        prefix.append(ch)
+        node = node[ch]
+    return "".join(prefix)
+
+print(longest_common_prefix(["flower", "flow", "flight"]))  # fl
+print(longest_common_prefix(["dog", "racecar", "car"]))     # ''
+` } },
+      { title: 'Two pointers, the Pythonic way', html: `<p>Container With Most Water: pointers at both ends, move the shorter wall inward. Tuple assignment and <code>max</code> keep it to a few lines.</p>${H.arr([1, 8, 6, 2, 5, 4, 8, 3, 7], { label: 'height', ptr: { 1: 'L', 8: 'R' }, hl: { 1: 'g', 8: 'g' } })}<p>Best: walls at 1 and 8 → min(8, 7) × 7 = <b>49</b>.</p>`, code: { lang: 'python', run: true, code: `
+def max_area(height):
+    lo, hi, best = 0, len(height) - 1, 0
+    while lo < hi:
+        best = max(best, (hi - lo) * min(height[lo], height[hi]))
+        if height[lo] < height[hi]:
+            lo += 1
+        else:
+            hi -= 1
+    return best
+
+print(max_area([1, 8, 6, 2, 5, 4, 8, 3, 7]))  # 49
+` } }
+    ],
+    deepDive: `<p>🟣 <b>Why these templates are shaped this way.</b></p>
+<ul>
+<li><b>BFS marks on push</b>, not on pop — otherwise a node can enter the queue many times (O(E) duplicates, and wrong distances in some variants).</li>
+<li><b>Dijkstra uses lazy deletion</b> because <code>heapq</code> has no decrease-key; the heap may hold up to E entries, so time is O(E log E) = O(E log V). The <code>if d &gt; dist[u]: continue</code> line is what keeps it from re-expanding nodes. Negative edges break it — use Bellman-Ford; 0/1 weights → 0-1 BFS.</li>
+<li><b>Union-Find</b> with path compression (or halving) + union by size/rank gives O(α(n)) amortised per operation — effectively constant. An iterative <code>find</code> avoids recursion-depth issues on long chains before compression kicks in.</li>
+<li><b>Trie of dicts</b> is simple and fast enough in Python; a class with <code>__slots__ = ("children", "end")</code> saves memory. For 10<sup>5</sup>+ words consider storing the word at the end node (handy for Word Search II) and deleting exhausted branches.</li>
+</ul>
+<p><b>Constant-factor tuning in CPython</b> (when the algorithm is right but you TLE): bind hot methods to locals (<code>push = heapq.heappush</code>), avoid attribute lookups in tight loops, use lists indexed by int instead of dicts when node ids are 0..n−1, prefer comprehensions and built-ins (<code>sum</code>, <code>min</code>, <code>sorted</code>) which run in C, use 1-D arrays (<code>r * C + c</code>) for big grids, and read input in bulk with <code>sys.stdin.buffer.read().split()</code>.</p>
+<p><b>Semantics worth stating in interviews:</b> Python ints are arbitrary precision (no overflow, but O(digits) arithmetic); <code>//</code> floors toward −∞; strings are immutable (slicing is O(k) and copies); <code>in</code> on a list is O(n) but on a set/dict is O(1) average; tuples are hashable only if their contents are.</p>`,
+    aiEra: `<p>🤖 <b>What AI changes:</b> templates are exactly what AI autocompletes best. The differentiator is <b>adapting</b> them: multi-source BFS, Dijkstra with a state <code>(node, stops)</code>, DSU with extra data (component sums), tries that store counts. Interviewers now ask follow-ups that force the adaptation.</p>
+<p><b>Use AI as a partner:</b> <code>"Here is my Dijkstra. Generate a graph where a stale heap entry is popped, and show the trace"</code>; <code>"Profile this TLE solution and point at Python-specific slowness only"</code>.</p>
+<p><b>Where AI goes wrong:</b> marks BFS nodes on pop; forgets the stale check in Dijkstra; writes recursive <code>find</code> without compression (O(n) chains); creates <code>[[0]*C]*R</code>; uses <code>list.pop(0)</code>; mixes up <code>//</code> semantics when porting C++ solutions; uses mutable default arguments for memo dicts.</p>
+<p><b>What you must still own:</b> the invariants (why Dijkstra's popped node is final, why BFS levels are distances), the complexity of each template, and the instinct to pick the right one from the wording.</p>`,
+    problems: [{
+      title: 'Network Delay Time', level: 'Medium', tags: ['Dijkstra', 'heapq', 'graph', 'defaultdict'], companies: ['Google', 'Amazon', 'Meta', 'Uber'],
+      statement: `<p>There are <code>n</code> nodes labelled 1..n and a list of directed travel times <code>times[i] = (u, v, w)</code>. A signal is sent from node <code>k</code>. Return the minimum time for <b>all</b> nodes to receive it, or −1 if some node can never receive it.</p>`,
+      constraints: `1 ≤ k ≤ n ≤ 100, 1 ≤ len(times) ≤ 6000, 0 ≤ w ≤ 100, no duplicate edges`,
+      example: `<p>times = [[2,1,1],[2,3,1],[3,4,1]], n = 4, k = 2 → ${H.c('g', '2')}. Node 2 reaches 1 and 3 at time 1, and 4 at time 2; the answer is the <b>largest</b> shortest distance.</p>`,
+      brute: { why: `<p>Bellman-Ford relaxes every edge n − 1 times: O(n · E) = 100 · 6000 = 6·10<sup>5</sup> — actually fine here, but it doesn't scale (10<sup>5</sup> nodes → 10<sup>10</sup>). Exploring every path with DFS is exponential. With non-negative weights, Dijkstra finalises each node once in O(E log V).</p>`, code: `
+def network_delay_bellman_ford(times, n, k):
+    dist = [float("inf")] * (n + 1)
+    dist[k] = 0
+    for _ in range(n - 1):                 # relax all edges n-1 times
+        for u, v, w in times:
+            if dist[u] + w < dist[v]:
+                dist[v] = dist[u] + w
+    ans = max(dist[1:])
+    return -1 if ans == float("inf") else ans
+
+print(network_delay_bellman_ford([[2, 1, 1], [2, 3, 1], [3, 4, 1]], 4, 2))  # 2
+` },
+      mcq: { q: 'After Dijkstra finishes, how do you get the answer?', options: ['<code>max(dist.values())</code> if all n nodes are in dist, else −1', '<code>sum(dist.values())</code>', '<code>min(dist.values())</code>', 'The distance of the last node popped, always'], answer: 0, explain: 'All nodes receive the signal once the farthest (in shortest-path terms) receives it → the maximum. Unreached nodes are missing from the dict → −1. (The last finalised node also has the max distance, but you still must check that all nodes were reached.)' },
+      hints: [`<p>Hint 1: "Time for every node to receive a signal" = the largest of the shortest-path distances from k.</p>`, `<p>Hint 2: Non-negative weights → Dijkstra: <code>adj = defaultdict(list)</code>, heap of <code>(dist, node)</code>, pop the closest, relax neighbours.</p>`, `<p>Hint 3: Skip stale heap entries (or skip nodes already in a "finalised" dict). Recipe: dist = {}; pq = [(0, k)]; while pq: d, u = pop; if u in dist: continue; dist[u] = d; push neighbours. Answer: max(dist.values()) if len(dist) == n else −1.</p>`],
+      solution: {
+        approach: `<p>Build an adjacency list with <code>defaultdict(list)</code>. Run Dijkstra from k, using the "finalise on first pop" variant: the first time a node is popped, its distance is final. Then return the maximum distance if every node was reached.</p>`,
+        code: { lang: 'python', run: true, code: `
+import heapq
+from collections import defaultdict
+from typing import List
+
+def network_delay_time(times: List[List[int]], n: int, k: int) -> int:
+    adj = defaultdict(list)
+    for u, v, w in times:
+        adj[u].append((v, w))
+
+    dist = {}                         # node -> final shortest time
+    pq = [(0, k)]
+    while pq:
+        d, u = heapq.heappop(pq)
+        if u in dist:                 # already finalised -> stale entry
+            continue
+        dist[u] = d
+        for v, w in adj[u]:
+            if v not in dist:
+                heapq.heappush(pq, (d + w, v))
+
+    return max(dist.values()) if len(dist) == n else -1
+
+print(network_delay_time([[2, 1, 1], [2, 3, 1], [3, 4, 1]], 4, 2))  # 2
+print(network_delay_time([[1, 2, 1]], 2, 2))                         # -1
+` },
+        dry: { head: ['pop (d, u)', 'finalised?', 'pushes', 'dist'], rows: [
+          ['(0, 2)', 'new', '(1,1) (1,3)', '{2:0}'],
+          ['(1, 1)', 'new', '—', '{2:0, 1:1}'],
+          ['(1, 3)', 'new', '(2,4)', '{2:0, 1:1, 3:1}'],
+          ['(2, 4)', 'new', '—', '{…, 4:2} → max = ' + H.c('g', '2')]
+        ] },
+        complexity: `<p>O(E log E) time (each edge can push one heap entry), O(V + E) space.</p>`,
+        followUps: ['Cheapest flights within K stops — state becomes (cost, node, stops)', 'Negative weights? → Bellman-Ford / SPFA', 'Return the actual path → store parent pointers when relaxing']
+      }
+    }]
+  });
+
+  /* ================= PRACTICE: Easy ================= */
+  practice.push({
+    title: 'Valid Anagram', level: 'Easy', tags: ['Counter', 'hash map', 'string'], companies: ['Amazon', 'Bloomberg', 'Microsoft'],
+    statement: `<p>Given two strings <code>s</code> and <code>t</code>, return <code>True</code> if <code>t</code> is an anagram of <code>s</code> (same letters, same counts, any order).</p>`,
+    constraints: `1 ≤ len(s), len(t) ≤ 5·10<sup>4</sup>; lowercase letters (follow-up: Unicode)`,
+    example: `<p>s = "anagram", t = "nagaram" → ${H.c('g', 'True')} (both have a×3, n, g, r, m). s = "rat", t = "car" → ${H.c('r', 'False')} (t has c, s has t).</p>`,
+    brute: { why: `<p>For each character of s, search t for a matching unused character and remove it: O(n²) because each removal from a string/list is O(n). With n = 5·10<sup>4</sup> that is over a billion operations.</p>`, code: `
+def is_anagram_brute(s, t):
+    if len(s) != len(t):
+        return False
+    rest = list(t)
+    for ch in s:
+        if ch not in rest:        # O(n) search
+            return False
+        rest.remove(ch)           # O(n) removal
+    return True
+
+print(is_anagram_brute("anagram", "nagaram"), is_anagram_brute("rat", "car"))
+` },
+    mcq: { q: 'Which is the cleanest O(n) Python check?', options: ['<code>Counter(s) == Counter(t)</code>', '<code>set(s) == set(t)</code>', '<code>sorted(s) is sorted(t)</code>', '<code>len(s) == len(t)</code>'], answer: 0, explain: 'Counter compares multiplicities. <code>set</code> ignores counts ("aab" vs "abb"), <code>is</code> compares identity (always False for two new lists), and length alone proves nothing.' },
+    hints: [`<p>Hint 1: Anagrams have exactly the same <b>multiset</b> of characters — order doesn't matter, counts do.</p>`, `<p>Hint 2: Counting with a hash map is O(n). <code>collections.Counter</code> does it in one call and supports <code>==</code>.</p>`, `<p>Hint 3: Quick reject: different lengths → False. Recipe: <code>return len(s) == len(t) and Counter(s) == Counter(t)</code>. Sorting both (O(n log n)) also works.</p>`],
+    solution: {
+      approach: `<p>Count both strings with <code>Counter</code> and compare. Works for Unicode too, since Counter keys can be any hashable character. A fixed-size <code>[0]*26</code> array is the "no library" alternative.</p>`,
+      code: { lang: 'python', run: true, code: `
+from collections import Counter
+
+def is_anagram(s: str, t: str) -> bool:
+    return len(s) == len(t) and Counter(s) == Counter(t)
+
+def is_anagram_array(s: str, t: str) -> bool:
+    if len(s) != len(t):
+        return False
+    counts = [0] * 26
+    for a, b in zip(s, t):
+        counts[ord(a) - 97] += 1
+        counts[ord(b) - 97] -= 1
+    return not any(counts)
+
+print(is_anagram("anagram", "nagaram"), is_anagram("rat", "car"))            # True False
+print(is_anagram_array("anagram", "nagaram"), is_anagram_array("rat", "car"))
+` },
+      dry: { head: ['step', 'Counter(s)', 'Counter(t)', 'equal?'], rows: [['"rat"/"car"', "{r:1,a:1,t:1}", "{c:1,a:1,r:1}", H.c('r', 'no (t vs c)')], ['"anagram"/"nagaram"', '{a:3,n:1,g:1,r:1,m:1}', 'same', H.c('g', 'yes')]] },
+      complexity: `<p>O(n) time, O(k) space where k = alphabet size (26 for lowercase).</p>`,
+      followUps: ['Unicode input — any change needed with Counter? (No; with the 26-array, yes)', 'Find all anagram start indices of p in s (sliding window + Counter)']
+    }
+  });
+
+  practice.push({
+    title: 'First Unique Character in a String', level: 'Easy', tags: ['Counter', 'hash map'], companies: ['Amazon', 'Goldman Sachs', 'Bloomberg'],
+    statement: `<p>Given a string <code>s</code>, return the index of the first character that appears exactly once. If there is none, return −1.</p>`,
+    constraints: `1 ≤ len(s) ≤ 10<sup>5</sup>, lowercase letters`,
+    example: `<p>s = "leetcode" → ${H.c('g', '0')} ('l' appears once). s = "loveleetcode" → ${H.c('g', '2')} ('v'). s = "aabb" → ${H.c('r', '-1')}.</p>`,
+    brute: { why: `<p>For each index, count that character in the whole string with <code>s.count(ch)</code>: O(n) per index → O(n²) = 10<sup>10</sup> for n = 10<sup>5</sup>. We keep recounting the same letters.</p>`, code: `
+def first_uniq_brute(s):
+    for i, ch in enumerate(s):
+        if s.count(ch) == 1:      # O(n) each time
+            return i
+    return -1
+
+print(first_uniq_brute("loveleetcode"))   # 2
+` },
+    mcq: { q: 'How many passes over the string does the Counter solution need?', options: ['Two: one to count, one to find the first count-1 character', 'One pass is impossible in any way', 'n passes', 'log n passes'], answer: 0, explain: 'Count everything first (Counter), then scan in order and return the first index whose count is 1. (A one-pass variant exists using an ordered dict of candidates, but two passes is the clean answer.)' },
+    hints: [`<p>Hint 1: "Appears exactly once" needs the <b>total</b> count of each character — you can't know it until you've seen the whole string.</p>`, `<p>Hint 2: Build <code>Counter(s)</code> once, then walk the string with <code>enumerate</code>.</p>`, `<p>Hint 3: Return −1 if the loop finishes. Recipe: c = Counter(s); for i, ch in enumerate(s): if c[ch] == 1: return i; return −1.</p>`],
+    solution: {
+      approach: `<p>Two passes: count with <code>Counter</code>, then return the first index whose character count is 1. A generator with <code>next(..., -1)</code> makes it a one-liner.</p>`,
+      code: { lang: 'python', run: true, code: `
+from collections import Counter
+
+def first_uniq_char(s: str) -> int:
+    counts = Counter(s)
+    return next((i for i, ch in enumerate(s) if counts[ch] == 1), -1)
+
+print(first_uniq_char("leetcode"), first_uniq_char("loveleetcode"), first_uniq_char("aabb"))  # 0 2 -1
+` },
+      complexity: `<p>O(n) time, O(1) extra space (at most 26 keys).</p>`,
+      followUps: ['Stream of characters: return the first unique so far after each char (OrderedDict / deque of candidates)', 'Return the character instead of the index']
+    }
+  });
+
+  practice.push({
+    title: 'Ransom Note', level: 'Easy', tags: ['Counter', 'multiset'], companies: ['Microsoft', 'Apple'],
+    statement: `<p>Return <code>True</code> if <code>ransomNote</code> can be constructed using the letters of <code>magazine</code>, where each letter of the magazine can be used at most once.</p>`,
+    constraints: `1 ≤ len(ransomNote), len(magazine) ≤ 10<sup>5</sup>, lowercase letters`,
+    example: `<p>note = "aa", magazine = "aab" → ${H.c('g', 'True')}. note = "aa", magazine = "ab" → ${H.c('r', 'False')} (only one 'a' available).</p>`,
+    brute: { why: `<p>For each note letter, find and delete it from a list copy of the magazine — O(n·m) because of linear search and deletion.</p>`, code: `
+def can_construct_brute(note, magazine):
+    mag = list(magazine)
+    for ch in note:
+        if ch in mag:
+            mag.remove(ch)        # O(m)
+        else:
+            return False
+    return True
+
+print(can_construct_brute("aa", "aab"), can_construct_brute("aa", "ab"))
+` },
+    mcq: { q: '<code>Counter("aa") - Counter("ab")</code> equals…', options: ["<code>Counter({'a': 1})</code>", '<code>Counter()</code>', "<code>Counter({'a': 1, 'b': -1})</code>", 'TypeError'], answer: 0, explain: 'Subtraction drops non-positive counts: a: 2−1 = 1 stays, b: 0−1 = −1 is dropped. A non-empty result means letters are missing.' },
+    hints: [`<p>Hint 1: You need, for every letter, count in note ≤ count in magazine.</p>`, `<p>Hint 2: Counter subtraction keeps only positive leftovers — exactly the letters you are <b>short</b> of.</p>`, `<p>Hint 3: Since 3.10 you can also write <code>Counter(note) &lt;= Counter(magazine)</code> (sub-multiset test). Recipe: return not (Counter(note) − Counter(magazine)).</p>`],
+    solution: {
+      approach: `<p>Multiset subtraction: if anything remains after removing the magazine's letters from the note's letters, the note can't be built.</p>`,
+      code: { lang: 'python', run: true, code: `
+from collections import Counter
+
+def can_construct(ransom_note: str, magazine: str) -> bool:
+    return not (Counter(ransom_note) - Counter(magazine))
+
+def can_construct_310(ransom_note, magazine):
+    return Counter(ransom_note) <= Counter(magazine)     # Python 3.10+
+
+print(can_construct("a", "b"), can_construct("aa", "ab"), can_construct("aa", "aab"))   # False False True
+print(can_construct_310("aa", "aab"))
+` },
+      complexity: `<p>O(n + m) time, O(1) space for a fixed alphabet.</p>`,
+      followUps: ['Early exit: count the magazine once and decrement while scanning the note', 'What if letters can be reused? (set containment)']
+    }
+  });
+
+  practice.push({
+    title: 'Kth Largest Element in a Stream', level: 'Easy', tags: ['heapq', 'design', 'top-k'], companies: ['Amazon', 'Meta', 'Adobe'],
+    statement: `<p>Design <code>KthLargest(k, nums)</code> whose method <code>add(val)</code> adds a number to the stream and returns the current k-th largest element.</p>`,
+    constraints: `1 ≤ k ≤ 10<sup>4</sup>, up to 10<sup>4</sup> calls to add; at least k elements exist when you query`,
+    example: `<p>k = 3, nums = [4, 5, 8, 2]: add(3) → ${H.c('g', '4')}, add(5) → 5, add(10) → 5, add(9) → 8, add(4) → 8.</p>`,
+    brute: { why: `<p>Append and sort the whole list on every add: O(n log n) per call, and the list grows forever. We only ever need the top k.</p>`, code: `
+class KthLargestBrute:
+    def __init__(self, k, nums):
+        self.k, self.nums = k, list(nums)
+    def add(self, val):
+        self.nums.append(val)
+        self.nums.sort(reverse=True)          # O(n log n) every call
+        return self.nums[self.k - 1]
+
+kb = KthLargestBrute(3, [4, 5, 8, 2])
+print([kb.add(x) for x in (3, 5, 10, 9, 4)])
+` },
+    mcq: { q: 'Which structure gives O(log k) per add?', options: ['A min-heap holding only the k largest values', 'A max-heap of all values', 'A sorted list with insort', 'A deque'], answer: 0, explain: 'The min-heap root is the k-th largest. New values smaller than the root are irrelevant; bigger ones replace the root with <code>heappushpop</code>/<code>heapreplace</code>.' },
+    hints: [`<p>Hint 1: Values smaller than the current k-th largest can never matter again — throw them away.</p>`, `<p>Hint 2: Keep a <b>min</b>-heap of size k. The root (<code>h[0]</code>) is the answer.</p>`, `<p>Hint 3: Initial nums may have more or fewer than k items: heapify, then pop while len &gt; k. In add: push, and pop if size exceeds k (or use <code>heappushpop</code>).</p>`],
+    solution: {
+      approach: `<p>Maintain a size-k min-heap of the largest values seen. Each add is a push plus (if needed) a pop — O(log k). The answer is always <code>heap[0]</code>.</p>`,
+      code: { lang: 'python', run: true, code: `
+import heapq
+from typing import List
+
+class KthLargest:
+    def __init__(self, k: int, nums: List[int]):
+        self.k = k
+        self.h = nums[:]
+        heapq.heapify(self.h)                 # O(n)
+        while len(self.h) > k:
+            heapq.heappop(self.h)
+
+    def add(self, val: int) -> int:
+        if len(self.h) < self.k:
+            heapq.heappush(self.h, val)
+        elif val > self.h[0]:
+            heapq.heapreplace(self.h, val)    # pop root + push in one sift
+        return self.h[0]
+
+kl = KthLargest(3, [4, 5, 8, 2])
+print([kl.add(x) for x in (3, 5, 10, 9, 4)])   # [4, 5, 5, 8, 8]
+` },
+      dry: { head: ['add', 'heap (size 3)', 'answer h[0]'], rows: [['init', '[4, 5, 8]', '—'], ['3', '[4, 5, 8] (3 &lt; 4 ignored)', '4'], ['5', '[5, 5, 8]', '5'], ['10', '[5, 8, 10]', '5'], ['9', '[8, 9, 10]', H.c('g', '8')]] },
+      complexity: `<p>Constructor O(n), add O(log k), space O(k).</p>`,
+      followUps: ['Support remove(val) too (lazy deletion or SortedList)', 'k changes over time']
+    }
+  });
+
+  /* ================= PRACTICE: Medium ================= */
+  practice.push({
+    title: 'K Closest Points to Origin', level: 'Medium', tags: ['heapq', 'nsmallest', 'sorting key'], companies: ['Meta', 'Amazon', 'LinkedIn'],
+    statement: `<p>Given an array of points <code>[x, y]</code> and an integer <code>k</code>, return the <code>k</code> points closest to the origin (Euclidean distance). Any order is accepted.</p>`,
+    constraints: `1 ≤ k ≤ n ≤ 10<sup>4</sup>, -10<sup>4</sup> ≤ x, y ≤ 10<sup>4</sup>`,
+    example: `<p>points = [[3,3],[5,-1],[-2,4]], k = 2 → ${H.c('g', '[[3,3],[-2,4]]')}: squared distances 18, 26, 20 → the two smallest are 18 and 20.</p>`,
+    brute: { why: `<p>Sort all points by distance and slice: O(n log n). Correct and often accepted — but when n is huge (or a stream) and k is small, we waste effort ordering points we'll never return.</p>`, code: `
+def k_closest_sort(points, k):
+    return sorted(points, key=lambda p: p[0] ** 2 + p[1] ** 2)[:k]
+
+print(k_closest_sort([[3, 3], [5, -1], [-2, 4]], 2))
+` },
+    mcq: { q: 'Why compare <code>x*x + y*y</code> instead of <code>math.sqrt(x*x + y*y)</code>?', options: ['sqrt is monotonic, so squared distance gives the same order and avoids float work', 'sqrt gives wrong answers for negatives', 'Python has no sqrt', 'Heaps cannot store floats'], answer: 0, explain: 'For non-negative values, a &lt; b ⇔ √a &lt; √b. Squared integers are exact and faster.' },
+    hints: [`<p>Hint 1: Only the order of distances matters, so use squared distance as the key.</p>`, `<p>Hint 2: "k smallest" → <code>heapq.nsmallest(k, points, key=...)</code>, or a max-heap of size k using negated distances.</p>`, `<p>Hint 3: For the manual heap push <code>(-dist, x, y)</code>; if size &gt; k pop (removes the farthest). Ties: any order is fine.</p>`],
+    solution: {
+      approach: `<p><code>heapq.nsmallest</code> keeps a bounded heap internally: O(n log k). The manual version keeps a max-heap (negated distances) of size k so the farthest of the current k is on top and gets evicted. Quickselect gives O(n) average if asked.</p>`,
+      code: { lang: 'python', run: true, code: `
+import heapq
+from typing import List
+
+def k_closest(points: List[List[int]], k: int) -> List[List[int]]:
+    return heapq.nsmallest(k, points, key=lambda p: p[0] * p[0] + p[1] * p[1])
+
+def k_closest_manual(points, k):
+    h = []                                       # max-heap via negation
+    for x, y in points:
+        heapq.heappush(h, (-(x * x + y * y), x, y))
+        if len(h) > k:
+            heapq.heappop(h)                     # drop the farthest
+    return [[x, y] for _, x, y in h]
+
+print(k_closest([[3, 3], [5, -1], [-2, 4]], 2))          # [[3, 3], [-2, 4]]
+print(sorted(k_closest_manual([[1, 3], [-2, 2]], 1)))   # [[-2, 2]]
+` },
+      complexity: `<p>O(n log k) time, O(k) extra space.</p>`,
+      followUps: ['Points arrive as a stream', 'O(n) average with quickselect — trade-offs vs heap']
+    }
+  });
+
+  practice.push({
+    title: 'Task Scheduler', level: 'Medium', tags: ['Counter', 'greedy', 'math', 'heap'], companies: ['Meta', 'Amazon', 'Microsoft'],
+    statement: `<p>Given CPU tasks (letters) and a cooldown <code>n</code>, identical tasks must be at least <code>n</code> intervals apart. Each interval runs one task or idles. Return the minimum number of intervals to finish all tasks.</p>`,
+    constraints: `1 ≤ len(tasks) ≤ 10<sup>4</sup>, tasks are uppercase letters, 0 ≤ n ≤ 100`,
+    example: `<p>tasks = [A,A,A,B,B,B], n = 2 → ${H.c('g', '8')}: A B idle A B idle A B.</p>`,
+    brute: { why: `<p>Simulate every interval: at each tick scan all 26 letters to find the available task with the most remaining copies. Correct, but the number of ticks can be ~(n+1)·max_count and the logic is fiddly. The counting formula skips the simulation entirely.</p>`, code: `
+from collections import Counter
+
+def least_interval_sim(tasks, n):
+    remaining = Counter(tasks)
+    next_ok = {}                         # task -> earliest time it may run again
+    time = 0
+    while remaining:
+        ready = [t for t in remaining if next_ok.get(t, 0) <= time]
+        if ready:
+            t = max(ready, key=lambda x: remaining[x])   # greedy: most remaining
+            remaining[t] -= 1
+            if remaining[t] == 0:
+                del remaining[t]
+            next_ok[t] = time + n + 1
+        time += 1                        # run a task or idle
+    return time
+
+print(least_interval_sim(list("AAABBB"), 2))   # 8
+` },
+    mcq: { q: 'With max frequency f = 3 and 2 tasks having that frequency, n = 2, the frame formula gives…', options: ['(3 − 1) × (2 + 1) + 2 = 8', '3 × 3 = 9', '(3 − 1) × 2 + 2 = 6', '3 + 2 = 5'], answer: 0, explain: 'Build f − 1 full blocks of size n + 1 starting with the most frequent tasks, then a last partial block containing every task that has frequency f. Then take the max with len(tasks).' },
+    hints: [`<p>Hint 1: The most frequent task decides the skeleton: A _ _ A _ _ A needs (f − 1)·(n + 1) + 1 slots.</p>`, `<p>Hint 2: Every other task with the same max frequency adds one slot at the end; other tasks fill idle gaps. Use <code>Counter</code> to get f and how many tasks hit f.</p>`, `<p>Hint 3: If there are more tasks than gaps, there's no idling at all → answer is len(tasks). Recipe: max((f − 1) * (n + 1) + count_of_f, len(tasks)).</p>`],
+    solution: {
+      approach: `<p>Count with <code>Counter</code>. Let f = highest frequency and m = number of tasks with frequency f. The schedule needs at least <code>(f − 1)(n + 1) + m</code> intervals; if tasks overflow the idle slots, the answer is just <code>len(tasks)</code>.</p>`,
+      code: { lang: 'python', run: true, code: `
+from collections import Counter
+from typing import List
+
+def least_interval(tasks: List[str], n: int) -> int:
+    counts = Counter(tasks)
+    f = max(counts.values())                          # highest frequency
+    m = sum(1 for c in counts.values() if c == f)     # how many tasks share it
+    return max((f - 1) * (n + 1) + m, len(tasks))
+
+print(least_interval(list("AAABBB"), 2))              # 8
+print(least_interval(list("ACABDB"), 1))              # 6
+print(least_interval(list("AAABBB"), 0))              # 6
+` },
+      dry: { head: ['tasks', 'f', 'm', '(f−1)(n+1)+m', 'answer'], rows: [['AAABBB, n=2', '3', '2', '8', H.c('g', '8')], ['AAABBB, n=0', '3', '2', '6', '6'], ['AAAAABCDEFG, n=1', '5', '1', '9', H.c('g', '11 (len wins)')]] },
+      complexity: `<p>O(T) time to count, O(1) extra space (26 letters).</p>`,
+      followUps: ['Return an actual schedule (heap of (-count, task) + cooldown queue)', 'Tasks must keep their given order (Task Scheduler II — hash map of next allowed day)']
+    }
+  });
+
+  practice.push({
+    title: 'Time Based Key-Value Store', level: 'Medium', tags: ['bisect', 'binary search', 'design', 'defaultdict'], companies: ['Google', 'Netflix', 'Uber'],
+    statement: `<p>Design <code>TimeMap</code> with <code>set(key, value, timestamp)</code> and <code>get(key, timestamp)</code>, which returns the value set for key with the <b>largest timestamp ≤ the given timestamp</b>, or "" if none. Timestamps for set are strictly increasing.</p>`,
+    constraints: `1 ≤ timestamp ≤ 10<sup>7</sup>, up to 2·10<sup>5</sup> calls`,
+    example: `<p>set("foo","bar",1); get("foo",1) → ${H.c('g', '"bar"')}; get("foo",3) → "bar" (latest ≤ 3 is t=1); set("foo","bar2",4); get("foo",4) → "bar2"; get("foo",5) → "bar2"; get("foo",0) → ${H.c('r', '""')}.</p>`,
+    brute: { why: `<p>Store a list of (timestamp, value) per key and scan it backwards on every get: O(n) per query → up to 4·10<sup>10</sup> steps in the worst case. The list is already sorted by timestamp, so a binary search is free speed.</p>`, code: `
+from collections import defaultdict
+
+class TimeMapBrute:
+    def __init__(self):
+        self.data = defaultdict(list)
+    def set(self, key, value, timestamp):
+        self.data[key].append((timestamp, value))
+    def get(self, key, timestamp):
+        for t, v in reversed(self.data[key]):     # O(n) scan
+            if t <= timestamp:
+                return v
+        return ""
+
+tm = TimeMapBrute(); tm.set("foo", "bar", 1); print(tm.get("foo", 3))
+` },
+    mcq: { q: 'times = [1, 4, 9]. Which expression gives the index of the latest time ≤ 5?', options: ['<code>bisect_right(times, 5) - 1</code>', '<code>bisect_left(times, 5)</code>', '<code>bisect_right(times, 5)</code>', '<code>bisect_left(times, 5) + 1</code>'], answer: 0, explain: '<code>bisect_right</code> returns the count of times ≤ 5 (here 2); subtract 1 for the last such index (1 → time 4). If the result is −1, no time qualifies. It also handles an exact match correctly (t = 4 → index 1).' },
+    hints: [`<p>Hint 1: Because set timestamps only increase, each key's history is already a <b>sorted list</b> — append keeps it sorted.</p>`, `<p>Hint 2: Store two parallel lists per key (times, values) in a <code>defaultdict</code>. "Largest ≤ t" is <code>bisect_right(times, t) − 1</code>.</p>`, `<p>Hint 3: Use <code>.get()</code> or <code>in</code> for unknown keys so a get doesn't create entries; index −1 means "no value" → return "".</p>`],
+    solution: {
+      approach: `<p>Per key keep sorted <code>times</code> and matching <code>values</code>. <code>set</code> appends (O(1)); <code>get</code> does one <code>bisect_right</code> (O(log n)).</p>`,
+      code: { lang: 'python', run: true, code: `
+from bisect import bisect_right
+from collections import defaultdict
+
+class TimeMap:
+    def __init__(self):
+        self.times = defaultdict(list)    # key -> sorted timestamps
+        self.values = defaultdict(list)   # key -> values aligned with times
+
+    def set(self, key: str, value: str, timestamp: int) -> None:
+        self.times[key].append(timestamp)     # strictly increasing -> stays sorted
+        self.values[key].append(value)
+
+    def get(self, key: str, timestamp: int) -> str:
+        if key not in self.times:             # avoid creating empty entries
+            return ""
+        i = bisect_right(self.times[key], timestamp) - 1
+        return self.values[key][i] if i >= 0 else ""
+
+tm = TimeMap()
+tm.set("foo", "bar", 1)
+print(tm.get("foo", 1), tm.get("foo", 3))     # bar bar
+tm.set("foo", "bar2", 4)
+print(tm.get("foo", 4), tm.get("foo", 5), repr(tm.get("foo", 0)), repr(tm.get("x", 9)))
+` },
+      dry: { head: ['call', 'times["foo"]', 'bisect_right − 1', 'result'], rows: [['get(foo, 3)', '[1]', '1 − 1 = 0', 'bar'], ['get(foo, 4)', '[1, 4]', '2 − 1 = 1', 'bar2'], ['get(foo, 0)', '[1, 4]', '0 − 1 = −1', H.c('r', '""')]] },
+      complexity: `<p>set O(1), get O(log n) per key history; space O(total sets).</p>`,
+      followUps: ['Timestamps not increasing → insort (O(n)) or SortedList', 'Delete or range queries over [t1, t2]']
+    }
+  });
+
+  practice.push({
+    title: 'Coin Change', level: 'Medium', tags: ['DP', 'lru_cache', 'bottom-up', 'recursion limit'], companies: ['Amazon', 'Google', 'Microsoft', 'Bloomberg'],
+    statement: `<p>Given coin denominations <code>coins</code> (unlimited supply) and an <code>amount</code>, return the fewest coins that make up that amount, or −1 if it's impossible.</p>`,
+    constraints: `1 ≤ len(coins) ≤ 12, 1 ≤ coins[i] ≤ 2<sup>31</sup>−1, 0 ≤ amount ≤ 10<sup>4</sup>`,
+    example: `<p>coins = [1, 2, 5], amount = 11 → ${H.c('g', '3')} (5 + 5 + 1). coins = [2], amount = 3 → ${H.c('r', '-1')}.</p>`,
+    brute: { why: `<p>Plain recursion tries every coin at every step: <code>best(a) = 1 + min(best(a − c))</code>. The same remaining amounts are recomputed through countless paths → exponential. Memoizing fixes speed, but a top-down solution for amount = 10<sup>4</sup> with coin 1 recurses 10<sup>4</sup> deep → <code>RecursionError</code> at the default limit.</p>`, code: `
+def coin_change_brute(coins, amount):
+    def best(a):                         # exponential without memo
+        if a == 0:
+            return 0
+        if a < 0:
+            return float("inf")
+        return 1 + min(best(a - c) for c in coins)
+    r = best(amount)
+    return -1 if r == float("inf") else r
+
+print(coin_change_brute([1, 2, 5], 11))  # 3 (slow for bigger amounts)
+` },
+    mcq: { q: 'Top-down <code>@cache</code> solution, coins = [1], amount = 10 000. What happens with default settings?', options: ['RecursionError — depth reaches ~10 000', 'It runs fine in O(amount)', 'TypeError: unhashable', 'It returns −1'], answer: 0, explain: 'Each call best(a) calls best(a − 1) before anything is cached, so the stack grows to ~10 000 frames &gt; 1000. Use bottom-up, warm the cache, or raise the limit.' },
+    hints: [`<p>Hint 1: State = remaining amount. best(a) = 1 + min over coins c ≤ a of best(a − c); best(0) = 0.</p>`, `<p>Hint 2: Only amount + 1 states. Memoize with <code>@cache</code> — or fill <code>dp[0..amount]</code> from small to large, which never recurses.</p>`, `<p>Hint 3: Use <code>inf</code> for impossible states and convert to −1 at the end. Recipe: dp = [0] + [inf]*amount; for a in 1..amount: for c in coins: if c ≤ a: dp[a] = min(dp[a], dp[a−c] + 1).</p>`],
+    solution: {
+      approach: `<p>Bottom-up DP over amounts 0..amount: each amount takes the best of (one coin + optimal smaller amount). No recursion, so no depth issues; it's also faster than memoized recursion in CPython. The memoized version is shown as an alt with a note on depth.</p>`,
+      code: { lang: 'python', run: true, code: `
+from typing import List
+
+def coin_change(coins: List[int], amount: int) -> int:
+    INF = float("inf")
+    dp = [0] + [INF] * amount            # dp[a] = fewest coins for amount a
+    for a in range(1, amount + 1):
+        for c in coins:
+            if c <= a and dp[a - c] + 1 < dp[a]:
+                dp[a] = dp[a - c] + 1
+    return dp[amount] if dp[amount] != INF else -1
+
+print(coin_change([1, 2, 5], 11))     # 3
+print(coin_change([2], 3))            # -1
+print(coin_change([1], 10_000))       # 10000 -- no recursion involved
+` },
+      alt: [{ lang: 'python', title: 'Top-down with @cache (fine for small amounts)', run: true, code: `
+from functools import cache
+
+def coin_change_memo(coins, amount):
+    @cache
+    def best(a):
+        if a == 0:
+            return 0
+        res = min((best(a - c) for c in coins if c <= a), default=float("inf"))
+        return res + 1
+    r = best(amount)
+    return -1 if r == float("inf") else r
+
+print(coin_change_memo([1, 2, 5], 11), coin_change_memo([2], 3))   # 3 -1
+` }],
+      dry: { head: ['a', '0', '1', '2', '3', '4', '5', '…', '11'], rows: [['dp[a]', '0', '1', '1', '2', '2', '1', '…', H.c('g', '3')], ['via coin', '—', '1', '2', '1 (2+1)', '2 (2+2)', '5', '…', '1 (5+5+1)']] },
+      complexity: `<p>O(amount × len(coins)) time = 1.2·10<sup>5</sup> steps max, O(amount) space.</p>`,
+      followUps: ['Count the number of ways instead (Coin Change II — loop coins outside)', 'Return the actual coins used (store the choice per amount)']
+    }
+  });
+
+  practice.push({
+    title: 'Reorganize String', level: 'Medium', tags: ['Counter', 'heapq', 'greedy'], companies: ['Amazon', 'Google', 'Meta'],
+    statement: `<p>Rearrange the characters of <code>s</code> so that no two adjacent characters are the same. Return any valid result, or "" if impossible.</p>`,
+    constraints: `1 ≤ len(s) ≤ 500, lowercase letters`,
+    example: `<p>s = "aab" → ${H.c('g', '"aba"')}. s = "aaab" → ${H.c('r', '""')} (three a's need at least two separators).</p>`,
+    brute: { why: `<p>Try permutations until one has no equal neighbours: up to n! orderings (n = 500 → impossible). The greedy insight: always place the most frequent remaining letter that isn't the one just placed.</p>`, code: `
+from itertools import permutations
+
+def reorganize_brute(s):
+    for p in permutations(s):            # factorial blow-up, tiny inputs only
+        if all(a != b for a, b in zip(p, p[1:])):
+            return "".join(p)
+    return ""
+
+print(reorganize_brute("aab"), repr(reorganize_brute("aaab")))
+` },
+    mcq: { q: 'When is reorganizing impossible?', options: ['When the max count &gt; (n + 1) // 2', 'When there are more than 2 distinct letters', 'When n is even', 'When the string is already sorted'], answer: 0, explain: 'The most frequent letter needs a different letter between each pair: it can occupy at most every other slot, i.e. ⌈n/2⌉ = (n + 1) // 2 positions.' },
+    hints: [`<p>Hint 1: Greedy: at each position place the most frequent letter that differs from the previous one.</p>`, `<p>Hint 2: Max-heap of (−count, ch). Pop the top; hold it back for one round (so it can't be used twice in a row), then push it back if it still has copies.</p>`, `<p>Hint 3: Early exit if max count &gt; (n + 1) // 2. Recipe: prev = None; while heap: pop cur, append, push prev back if it has count, set prev = cur with count − 1.</p>`],
+    solution: {
+      approach: `<p>Count letters; use a max-heap (negated counts). Pop the most frequent letter, append it, and push back the <i>previously</i> used letter (delaying reuse by one step). If the heap empties while a letter is still waiting, it's impossible — prevented upfront by the (n + 1) // 2 check.</p>`,
+      code: { lang: 'python', run: true, code: `
+import heapq
+from collections import Counter
+
+def reorganize_string(s: str) -> str:
+    counts = Counter(s)
+    if max(counts.values()) > (len(s) + 1) // 2:
+        return ""
+    heap = [(-c, ch) for ch, c in counts.items()]
+    heapq.heapify(heap)
+    out, prev = [], None                 # prev = (neg_count, ch) waiting one turn
+    while heap:
+        c, ch = heapq.heappop(heap)
+        out.append(ch)
+        if prev and prev[0] < 0:
+            heapq.heappush(heap, prev)   # previous letter may be used again now
+        prev = (c + 1, ch)               # one fewer copy left (counts are negative)
+    return "".join(out)
+
+print(reorganize_string("aab"), repr(reorganize_string("aaab")), reorganize_string("aaabbc"))
+` },
+      complexity: `<p>O(n log k) time with k ≤ 26 distinct letters (effectively O(n)), O(k) space.</p>`,
+      followUps: ['Rearrange String k Distance Apart (deque as a cooldown queue)', 'Do it in O(n) by filling even indices first with the most frequent letter']
+    }
+  });
+
+  practice.push({
+    title: 'Car Fleet', level: 'Medium', tags: ['sorting key', 'stack', 'greedy'], companies: ['Google', 'Amazon', 'Uber'],
+    statement: `<p><code>n</code> cars drive toward <code>target</code>. Car i starts at <code>position[i]</code> with <code>speed[i]</code>. A faster car that catches a slower one ahead joins it and they move together as a <b>fleet</b>. How many fleets arrive at the target?</p>`,
+    constraints: `1 ≤ n ≤ 10<sup>5</sup>, 0 &lt; target ≤ 10<sup>6</sup>, positions distinct, 0 &lt; speed ≤ 10<sup>6</sup>`,
+    example: `<p>target = 12, position = [10,8,0,5,3], speed = [2,4,1,1,3] → ${H.c('g', '3')}. Arrival times: car@10 → 1, car@8 → 1 (joins it), car@5 → 7, car@3 → 3 (catches the car at 5), car@0 → 12.</p>`,
+    brute: { why: `<p>Simulate the cars step by step until all arrive, merging when positions meet: time-steps can be huge (10<sup>6</sup>) and catches can happen at fractional times. The insight: sort by starting position and compare <b>arrival times</b> only.</p>`, code: `
+def car_fleet_brute(target, position, speed):
+    # For each car, check whether ANY car ahead arrives no earlier -> it gets blocked.
+    # O(n^2) pairwise reasoning; correct but slow for n = 1e5.
+    cars = sorted(zip(position, speed), reverse=True)
+    times = [(target - p) / s for p, s in cars]
+    fleets = 0
+    for i, t in enumerate(times):
+        if all(times[j] < t for j in range(i)):   # nobody ahead is slower
+            fleets += 1
+    return fleets
+
+print(car_fleet_brute(12, [10, 8, 0, 5, 3], [2, 4, 1, 1, 3]))  # 3
+` },
+    mcq: { q: 'Cars sorted from closest-to-target to farthest have arrival times [1, 1, 7, 3, 12]. How many fleets?', options: ['3', '5', '2', '4'], answer: 0, explain: 'Scan keeping the slowest time ahead: 1 (new fleet), 1 (≤ 1, joins), 7 (new), 3 (≤ 7, joins), 12 (new) → 3.' },
+    hints: [`<p>Hint 1: A car can never pass the car ahead; if it would arrive earlier, it gets stuck behind it and takes its arrival time.</p>`, `<p>Hint 2: Sort cars by position <b>descending</b> (closest to target first): <code>sorted(zip(position, speed), reverse=True)</code>, then compute <code>(target − p) / s</code>.</p>`, `<p>Hint 3: Keep the current fleet's arrival time; a car with a strictly larger time starts a new fleet. Recipe: fleets = 0; slowest = 0; for t in times: if t &gt; slowest: fleets += 1; slowest = t.</p>`],
+    solution: {
+      approach: `<p>Sort by position descending (tuple sort on <code>zip</code>), convert to arrival times, and count how many times a new maximum arrival time appears — each new maximum is a car that nobody ahead slows down, i.e. a new fleet leader.</p>`,
+      code: { lang: 'python', run: true, code: `
+from typing import List
+
+def car_fleet(target: int, position: List[int], speed: List[int]) -> int:
+    fleets, slowest = 0, 0.0
+    for p, s in sorted(zip(position, speed), reverse=True):   # closest first
+        t = (target - p) / s                                  # arrival time alone
+        if t > slowest:                                       # can't catch the fleet ahead
+            fleets += 1
+            slowest = t
+    return fleets
+
+print(car_fleet(12, [10, 8, 0, 5, 3], [2, 4, 1, 1, 3]))   # 3
+print(car_fleet(10, [3], [3]))                             # 1
+print(car_fleet(100, [0, 2, 4], [4, 2, 1]))                # 1
+` },
+      dry: { head: ['car (p, s)', 'time', 'slowest before', 'new fleet?'], rows: [['(10, 2)', '1', '0', H.c('g', 'yes')], ['(8, 4)', '1', '1', 'no'], ['(5, 1)', '7', '1', H.c('g', 'yes')], ['(3, 3)', '3', '7', 'no'], ['(0, 1)', '12', '7', H.c('g', 'yes → 3')]] },
+      complexity: `<p>O(n log n) for the sort, O(1) extra beyond it.</p>`,
+      followUps: ['Use fractions.Fraction to avoid float precision issues', 'Car Fleet II: when does each car collide? (monotonic stack)']
+    }
+  });
+
+  /* ================= PRACTICE: Hard ================= */
+  practice.push({
+    title: 'Shortest Subarray with Sum at Least K', level: 'Hard', tags: ['deque', 'monotonic queue', 'prefix sum'], companies: ['Google', 'Amazon', 'Goldman Sachs'],
+    statement: `<p>Given an integer array <code>nums</code> (negatives allowed) and an integer <code>k</code>, return the length of the shortest non-empty contiguous subarray with sum ≥ k, or −1 if none exists.</p>`,
+    constraints: `1 ≤ n ≤ 10<sup>5</sup>, -10<sup>5</sup> ≤ nums[i] ≤ 10<sup>5</sup>, 1 ≤ k ≤ 10<sup>9</sup>`,
+    example: `<p>nums = [2, -1, 2], k = 3 → ${H.c('g', '3')} (whole array). nums = [1, 2], k = 4 → ${H.c('r', '-1')}. Sliding window fails here because a negative number can make a longer window better.</p>`,
+    brute: { why: `<p>Check every (i, j) with prefix sums: O(n²) = 10<sup>10</sup> for n = 10<sup>5</sup>. The two-pointer window trick needs all-positive numbers, so it gives wrong answers with negatives.</p>`, code: `
+from itertools import accumulate
+
+def shortest_brute(nums, k):
+    P = list(accumulate(nums, initial=0))
+    best = float("inf")
+    for i in range(len(nums)):
+        for j in range(i + 1, len(nums) + 1):
+            if P[j] - P[i] >= k:
+                best = min(best, j - i)
+                break                       # longer j can't be shorter
+    return best if best != float("inf") else -1
+
+print(shortest_brute([2, -1, 2], 3), shortest_brute([1, 2], 4))   # 3 -1
+` },
+    mcq: { q: 'Prefix sums P[i1] ≥ P[i2] with i1 &lt; i2. Why can i1 be dropped as a future start?', options: ['Starting at i2 gives a larger-or-equal sum AND a shorter subarray for every future end', 'Because i1 is older than the window', 'Because negative numbers are not allowed', 'It cannot be dropped'], answer: 0, explain: 'For any end j: P[j] − P[i2] ≥ P[j] − P[i1] and j − i2 &lt; j − i1. So i2 dominates i1 — keep the deque of starts with increasing prefix sums.' },
+    hints: [`<p>Hint 1: Use prefix sums P; we want the closest i &lt; j with P[j] − P[i] ≥ k.</p>`, `<p>Hint 2: Keep a deque of candidate start indices with <b>increasing</b> P. From the front, pop while P[j] − P[front] ≥ k (record length — that start is used up). From the back, pop while P[back] ≥ P[j] (dominated).</p>`, `<p>Hint 3: Every index enters and leaves once → O(n). Remember P has n + 1 entries starting with 0 (<code>accumulate(nums, initial=0)</code>).</p>`],
+    solution: {
+      approach: `<p>Monotonic deque over prefix sums: front pops produce answers (and can't produce shorter ones later), back pops remove dominated starts. Each index is pushed and popped at most once.</p>`,
+      code: { lang: 'python', run: true, code: `
+from collections import deque
+from itertools import accumulate
+from typing import List
+
+def shortest_subarray(nums: List[int], k: int) -> int:
+    P = list(accumulate(nums, initial=0))   # P[i] = sum of nums[:i]
+    best = len(nums) + 1
+    dq = deque()                            # start indices, P increasing
+    for j, pj in enumerate(P):
+        while dq and pj - P[dq[0]] >= k:    # valid subarray -> record, start is done
+            best = min(best, j - dq.popleft())
+        while dq and P[dq[-1]] >= pj:       # dominated start
+            dq.pop()
+        dq.append(j)
+    return best if best <= len(nums) else -1
+
+print(shortest_subarray([2, -1, 2], 3))          # 3
+print(shortest_subarray([1, 2], 4))              # -1
+print(shortest_subarray([84, -37, 32, 40, 95], 167))   # 3
+` },
+      dry: { head: ['j', 'P[j]', 'front pops (answers)', 'deque after'], rows: [['0', '0', '—', '[0]'], ['1', '2', '—', '[0, 1]'], ['2', '1', '—', '[0, 2] (1 dominated)'], ['3', '3', '3 − P[0] = 3 ≥ 3 → len 3', H.c('g', '[2, 3] → best 3')]] },
+      complexity: `<p>O(n) time, O(n) space for prefix sums and the deque.</p>`,
+      followUps: ['All numbers positive — simpler sliding window', 'Longest instead of shortest subarray with sum ≥ k']
+    }
+  });
+
+  practice.push({
+    title: 'Find Median from Data Stream', level: 'Hard', tags: ['heapq', 'two heaps', 'design'], companies: ['Amazon', 'Google', 'Microsoft', 'Uber'],
+    statement: `<p>Design <code>MedianFinder</code> with <code>addNum(num)</code> and <code>findMedian()</code>, which returns the median of all numbers added so far (mean of the two middle values when the count is even).</p>`,
+    constraints: `-10<sup>5</sup> ≤ num ≤ 10<sup>5</sup>, up to 5·10<sup>4</sup> calls, findMedian only after at least one add`,
+    example: `<p>addNum(1), addNum(2) → findMedian() = ${H.c('g', '1.5')}; addNum(3) → findMedian() = ${H.c('g', '2.0')}.</p>`,
+    brute: { why: `<p>Keep a list, sort on every query: O(n log n) per findMedian. <code>insort</code> improves it to O(n) per add (shifting) — OK for 5·10<sup>4</sup> but not for millions. Two heaps make both operations O(log n) / O(1).</p>`, code: `
+from bisect import insort
+
+class MedianFinderInsort:
+    def __init__(self):
+        self.a = []
+    def addNum(self, num):
+        insort(self.a, num)                  # O(n) shift
+    def findMedian(self):
+        n, a = len(self.a), self.a
+        return float(a[n // 2]) if n % 2 else (a[n // 2 - 1] + a[n // 2]) / 2
+
+m = MedianFinderInsort(); m.addNum(1); m.addNum(2); print(m.findMedian())
+` },
+    mcq: { q: 'In the two-heap design, what does the <code>lo</code> heap hold and how is it stored in Python?', options: ['The smaller half as a max-heap, stored as negated values', 'The larger half as a max-heap', 'All numbers as a min-heap', 'The smaller half as a min-heap of positives'], answer: 0, explain: 'lo needs quick access to its <b>largest</b> element (the middle), so it is a max-heap — implemented with heapq by pushing −x. hi is a normal min-heap of the larger half.' },
+    hints: [`<p>Hint 1: The median sits at the boundary between the smaller half and the larger half. You only need the largest of the small half and the smallest of the large half.</p>`, `<p>Hint 2: lo = max-heap (negate), hi = min-heap. Keep len(lo) == len(hi) or len(lo) == len(hi) + 1.</p>`, `<p>Hint 3: Add: push −num into lo, then move lo's max to hi (keeps order), then if hi is bigger move hi's min back to lo. Median: −lo[0] if odd count, else (−lo[0] + hi[0]) / 2.</p>`],
+    solution: {
+      approach: `<p>Two heaps split the data into halves. The "push through" trick (push into lo, pop its max into hi, rebalance) guarantees every element of lo ≤ every element of hi without extra comparisons.</p>`,
+      code: { lang: 'python', run: true, code: `
+import heapq
+
+class MedianFinder:
+    def __init__(self):
+        self.lo = []        # max-heap of the smaller half (negated)
+        self.hi = []        # min-heap of the larger half
+
+    def addNum(self, num: int) -> None:
+        heapq.heappush(self.lo, -num)
+        heapq.heappush(self.hi, -heapq.heappop(self.lo))    # move lo's max to hi
+        if len(self.hi) > len(self.lo):                     # keep lo the same size or 1 bigger
+            heapq.heappush(self.lo, -heapq.heappop(self.hi))
+
+    def findMedian(self) -> float:
+        if len(self.lo) > len(self.hi):
+            return float(-self.lo[0])
+        return (-self.lo[0] + self.hi[0]) / 2
+
+mf = MedianFinder()
+for x in (1, 2):
+    mf.addNum(x)
+print(mf.findMedian())        # 1.5
+mf.addNum(3)
+print(mf.findMedian())        # 2.0
+for x in (10, -5, 4):
+    mf.addNum(x)
+print(mf.findMedian())        # median of [-5, 1, 2, 3, 4, 10] = 2.5
+` },
+      dry: { head: ['add', 'lo (as values)', 'hi', 'median'], rows: [['1', '[1]', '[]', '1.0'], ['2', '[1]', '[2]', '1.5'], ['3', '[2, 1]', '[3]', H.c('g', '2.0')]] },
+      complexity: `<p>addNum O(log n), findMedian O(1), space O(n).</p>`,
+      followUps: ['All numbers in [0, 100] — counting array, O(1) add and O(100) median', 'Sliding window median — needs deletions (lazy deletion with two heaps or SortedList)']
+    }
+  });
+
+  practice.push({
+    title: 'Russian Doll Envelopes', level: 'Hard', tags: ['sorting key', 'bisect', 'LIS'], companies: ['Google', 'Amazon', 'Microsoft'],
+    statement: `<p>Envelopes are given as <code>[w, h]</code>. One envelope fits into another only if <b>both</b> width and height are strictly smaller. Return the maximum number of envelopes you can nest (Russian-doll style).</p>`,
+    constraints: `1 ≤ n ≤ 10<sup>5</sup>, 1 ≤ w, h ≤ 10<sup>5</sup>`,
+    example: `<p>[[5,4],[6,4],[6,7],[2,3]] → ${H.c('g', '3')}: [2,3] → [5,4] → [6,7].</p>`,
+    brute: { why: `<p>Sort by width and run the O(n²) LIS DP comparing both dimensions: 10<sup>10</sup> steps at n = 10<sup>5</sup> → TLE. The trick is a <b>sort key</b> that reduces the 2-D problem to a 1-D LIS solvable with bisect.</p>`, code: `
+def max_envelopes_quadratic(env):
+    env = sorted(env)
+    dp = [1] * len(env)
+    for i in range(len(env)):
+        for j in range(i):
+            if env[j][0] < env[i][0] and env[j][1] < env[i][1]:
+                dp[i] = max(dp[i], dp[j] + 1)
+    return max(dp)
+
+print(max_envelopes_quadratic([[5, 4], [6, 4], [6, 7], [2, 3]]))  # 3
+` },
+    mcq: { q: 'Why sort by <code>(w, -h)</code> (width ascending, height DESCENDING)?', options: ['So two envelopes of equal width can never both appear in an increasing run of heights', 'To make the sort stable', 'Because heights must be processed largest first overall', 'It makes no difference'], answer: 0, explain: 'Equal widths can\'t nest. With heights descending inside the same width, a strictly increasing subsequence of heights can take at most one envelope per width.' },
+    hints: [`<p>Hint 1: If widths were all distinct, sorting by width would reduce the problem to LIS on heights.</p>`, `<p>Hint 2: Equal widths break this — fix it with the key <code>(w, -h)</code> so equal-width envelopes appear with decreasing heights.</p>`, `<p>Hint 3: Then run the O(n log n) <code>bisect_left</code> tails LIS on the heights (strict). Recipe: env.sort(key=lambda e: (e[0], -e[1])); LIS of [h for _, h in env].</p>`],
+    solution: {
+      approach: `<p>Sort with key <code>(w, -h)</code>, then compute the strictly increasing LIS of heights with the patience-sorting tails array and <code>bisect_left</code>. The sort guarantees widths strictly increase along any increasing height run.</p>`,
+      code: { lang: 'python', run: true, code: `
+from bisect import bisect_left
+from typing import List
+
+def max_envelopes(envelopes: List[List[int]]) -> int:
+    envelopes.sort(key=lambda e: (e[0], -e[1]))   # width asc, height desc on ties
+    tails = []
+    for _, h in envelopes:
+        i = bisect_left(tails, h)                  # strict LIS on heights
+        if i == len(tails):
+            tails.append(h)
+        else:
+            tails[i] = h
+    return len(tails)
+
+print(max_envelopes([[5, 4], [6, 4], [6, 7], [2, 3]]))   # 3
+print(max_envelopes([[1, 1], [1, 1], [1, 1]]))           # 1
+print(max_envelopes([[4, 5], [4, 6], [6, 7], [2, 3], [1, 1]]))   # 4
+` },
+      dry: { head: ['sorted envelope', 'h', 'tails'], rows: [['[2, 3]', '3', '[3]'], ['[5, 4]', '4', '[3, 4]'], ['[6, 7]', '7', '[3, 4, 7]'], ['[6, 4]', '4', H.c('g', '[3, 4, 7] → 3')]] },
+      complexity: `<p>O(n log n) for the sort plus O(n log n) for the LIS; O(n) space.</p>`,
+      followUps: ['3-D boxes (Box Stacking) — rotations + DP', 'Return the actual chain of envelopes']
+    }
+  });
+
+  practice.push({
+    title: 'LFU Cache', level: 'Hard', tags: ['design', 'OrderedDict', 'defaultdict', 'hash map'], companies: ['Amazon', 'Google', 'Microsoft'],
+    statement: `<p>Design <code>LFUCache(capacity)</code> with O(1) <code>get(key)</code> and <code>put(key, value)</code>. When full, evict the key with the <b>lowest use count</b>; among ties, evict the <b>least recently used</b>. A get or put on a key counts as a use; a newly inserted key has count 1.</p>`,
+    constraints: `1 ≤ capacity ≤ 10<sup>4</sup>, 0 ≤ key ≤ 10<sup>5</sup>, up to 2·10<sup>5</sup> calls`,
+    example: `<p>cap 2: put(1,1) put(2,2) get(1)=1 put(3,3) ${H.c('r', '(evicts 2: count 1)')} get(2)=-1 get(3)=3 put(4,4) ${H.c('r', '(evicts 1: counts tie at 2, 1 is older)')} get(1)=-1 get(3)=3 get(4)=4.</p>`,
+    brute: { why: `<p>Store (key → value, count, last_used_time) and on eviction scan all keys for the minimum (count, time): O(capacity) per eviction → 10<sup>4</sup> × 2·10<sup>5</sup> = 2·10<sup>9</sup>. We need the min-frequency group and its oldest key in O(1).</p>`, code: `
+class LFUBrute:
+    def __init__(self, cap):
+        self.cap, self.t, self.d = cap, 0, {}    # key -> [value, count, last_time]
+    def get(self, key):
+        if key not in self.d:
+            return -1
+        self.t += 1
+        e = self.d[key]; e[1] += 1; e[2] = self.t
+        return e[0]
+    def put(self, key, value):
+        self.t += 1
+        if key in self.d:
+            e = self.d[key]; e[0] = value; e[1] += 1; e[2] = self.t
+            return
+        if len(self.d) >= self.cap:
+            victim = min(self.d, key=lambda k: (self.d[k][1], self.d[k][2]))   # O(n) scan
+            del self.d[victim]
+        self.d[key] = [value, 1, self.t]
+
+c = LFUBrute(2); c.put(1, 1); c.put(2, 2); print(c.get(1)); c.put(3, 3); print(c.get(2))
+` },
+    mcq: { q: 'Which structure gives O(1) "oldest key among those with frequency f"?', options: ['<code>defaultdict(OrderedDict)</code>: freq → keys in recency order, plus a <code>min_freq</code> variable', 'A heap of (freq, time, key)', 'A single OrderedDict sorted by frequency', 'A Counter plus most_common()'], answer: 0, explain: 'Each frequency bucket is an OrderedDict, so <code>popitem(last=False)</code> removes its LRU key in O(1). min_freq is either unchanged, +1 after a touch empties its bucket, or reset to 1 on insert. A heap would be O(log n) with lazy deletion.' },
+    hints: [`<p>Hint 1: Group keys by use count. Within a group, order by recency — that's an LRU per frequency.</p>`, `<p>Hint 2: <code>key_val</code>, <code>key_freq</code> dicts plus <code>freq_keys = defaultdict(OrderedDict)</code>. Track <code>min_freq</code>.</p>`, `<p>Hint 3: Touch(key): move it from bucket f to f + 1; if bucket f became empty and f == min_freq, min_freq += 1. Insert: evict <code>freq_keys[min_freq].popitem(last=False)</code> if full, then add with freq 1 and set min_freq = 1. Capacity 0 edge case.</p>`],
+    solution: {
+      approach: `<p>Three maps: key → value, key → freq, freq → OrderedDict of keys (LRU order). <code>min_freq</code> always points to the bucket to evict from. Every operation touches a constant number of dict/OrderedDict entries → O(1).</p>`,
+      code: { lang: 'python', run: true, code: `
+from collections import defaultdict, OrderedDict
+
+class LFUCache:
+    def __init__(self, capacity: int):
+        self.cap = capacity
+        self.key_val = {}
+        self.key_freq = {}
+        self.freq_keys = defaultdict(OrderedDict)   # freq -> keys, oldest first
+        self.min_freq = 0
+
+    def _touch(self, key):
+        f = self.key_freq[key]
+        del self.freq_keys[f][key]
+        if not self.freq_keys[f]:
+            del self.freq_keys[f]
+            if self.min_freq == f:
+                self.min_freq = f + 1
+        self.key_freq[key] = f + 1
+        self.freq_keys[f + 1][key] = None           # newest in its new bucket
+
+    def get(self, key: int) -> int:
+        if key not in self.key_val:
+            return -1
+        self._touch(key)
+        return self.key_val[key]
+
+    def put(self, key: int, value: int) -> None:
+        if self.cap <= 0:
+            return
+        if key in self.key_val:
+            self.key_val[key] = value
+            self._touch(key)
+            return
+        if len(self.key_val) >= self.cap:
+            bucket = self.freq_keys[self.min_freq]
+            old, _ = bucket.popitem(last=False)     # LRU among least frequent
+            if not bucket:
+                del self.freq_keys[self.min_freq]
+            del self.key_val[old], self.key_freq[old]
+        self.key_val[key] = value
+        self.key_freq[key] = 1
+        self.freq_keys[1][key] = None
+        self.min_freq = 1
+
+c = LFUCache(2)
+c.put(1, 1); c.put(2, 2)
+print(c.get(1))                 # 1
+c.put(3, 3)                     # evicts 2
+print(c.get(2), c.get(3))       # -1 3
+c.put(4, 4)                     # evicts 1 (tie on freq 2, 1 is older)
+print(c.get(1), c.get(3), c.get(4))   # -1 3 4
+` },
+      dry: { head: ['op', 'freq buckets (old → new)', 'min_freq'], rows: [['put 1, put 2', '{1: [1, 2]}', '1'], ['get 1', '{1: [2], 2: [1]}', '1'], ['put 3', 'evict 2 → {1: [3], 2: [1]}', '1'], ['get 3', '{2: [1, 3]}', '2'], ['put 4', 'evict 1 → {1: [4], 2: [3]}', H.c('g', '1')]] },
+      complexity: `<p>O(1) average per operation; O(capacity) space.</p>`,
+      followUps: ['Why does min_freq only ever need +1 or reset to 1?', 'Thread safety and TTL', 'Compare with LRU: which workloads favour LFU?']
+    }
+  });
+
+  practice.push({
+    title: 'Merge k Sorted Lists', level: 'Hard', tags: ['heapq', 'linked list', 'divide and conquer'], companies: ['Amazon', 'Meta', 'Google', 'Microsoft'],
+    statement: `<p>You are given an array of <code>k</code> sorted linked lists. Merge them into one sorted linked list and return its head.</p>`,
+    constraints: `0 ≤ k ≤ 10<sup>4</sup>, total nodes N ≤ 10<sup>4</sup>, -10<sup>4</sup> ≤ val ≤ 10<sup>4</sup>`,
+    example: `<p>[1→4→5, 1→3→4, 2→6] → ${H.c('g', '1→1→2→3→4→4→5→6')}.</p>`,
+    brute: { why: `<p>Collect every value, sort, and rebuild: O(N log N) — fine, but ignores that inputs are already sorted and needs O(N) extra values. Merging lists one by one is O(k·N) because early nodes are re-walked k times. A heap of the k current heads gives O(N log k).</p>`, code: `
+class ListNode:
+    def __init__(self, val=0, next=None):
+        self.val, self.next = val, next
+
+def merge_k_brute(lists):
+    vals = []
+    for node in lists:
+        while node:
+            vals.append(node.val)
+            node = node.next
+    dummy = tail = ListNode()
+    for v in sorted(vals):                  # O(N log N)
+        tail.next = ListNode(v)
+        tail = tail.next
+    return dummy.next
+
+def build(xs):
+    head = None
+    for x in reversed(xs):
+        head = ListNode(x, head)
+    return head
+
+res, out = merge_k_brute([build([1, 4, 5]), build([1, 3, 4]), build([2, 6])]), []
+while res:
+    out.append(res.val); res = res.next
+print(out)
+` },
+    mcq: { q: 'Why push <code>(node.val, i, node)</code> rather than <code>(node.val, node)</code>?', options: ['On equal values Python would compare ListNode objects, which raises TypeError; i breaks ties', 'To sort lists by index', 'heapq requires 3-tuples', 'To make the heap a max-heap'], answer: 0, explain: 'Tuples compare element by element. Two equal vals force comparing nodes → <code>TypeError: \'&lt;\' not supported</code>. A unique integer tie-breaker (list index or a counter) avoids it.' },
+    hints: [`<p>Hint 1: The next node of the result is always the smallest among the k current heads.</p>`, `<p>Hint 2: Keep those k heads in a min-heap keyed by value; pop the smallest, append it, push its successor.</p>`, `<p>Hint 3: Use a unique tie-breaker in the tuple and a dummy head node. Skip empty lists when building the heap. Recipe: heap = [(n.val, i, n) for i, n in enumerate(lists) if n].</p>`],
+    solution: {
+      approach: `<p>Min-heap of the current head of each list, tagged with a unique index. Pop the smallest, link it to the result, push its next node. Each of the N nodes is pushed and popped once → O(N log k).</p>`,
+      code: { lang: 'python', run: true, code: `
+import heapq
+from typing import List, Optional
+
+class ListNode:
+    def __init__(self, val=0, next=None):
+        self.val, self.next = val, next
+
+def merge_k_lists(lists: List[Optional[ListNode]]) -> Optional[ListNode]:
+    heap = [(node.val, i, node) for i, node in enumerate(lists) if node]
+    heapq.heapify(heap)
+    dummy = tail = ListNode()
+    while heap:
+        val, i, node = heapq.heappop(heap)
+        tail.next = node                     # reuse nodes, no copies
+        tail = node
+        if node.next:
+            heapq.heappush(heap, (node.next.val, i, node.next))
+    return dummy.next
+
+def build(xs):
+    head = None
+    for x in reversed(xs):
+        head = ListNode(x, head)
+    return head
+
+def to_list(node):
+    out = []
+    while node:
+        out.append(node.val)
+        node = node.next
+    return out
+
+print(to_list(merge_k_lists([build([1, 4, 5]), build([1, 3, 4]), build([2, 6])])))  # [1, 1, 2, 3, 4, 4, 5, 6]
+print(to_list(merge_k_lists([])), to_list(merge_k_lists([None])))                   # [] []
+` },
+      dry: { head: ['pop', 'push', 'result so far'], rows: [['(1, 0)', '(4, 0)', '1'], ['(1, 1)', '(3, 1)', '1 1'], ['(2, 2)', '(6, 2)', '1 1 2'], ['(3, 1)', '(4, 1)', '1 1 2 3'], ['…', '…', H.c('g', '1 1 2 3 4 4 5 6')]] },
+      complexity: `<p>O(N log k) time, O(k) heap space (output reuses the input nodes).</p>`,
+      followUps: ['Divide and conquer pairwise merging — also O(N log k), no heap', 'Inputs are huge files on disk (external merge sort with heapq.merge)']
+    }
+  });
+
+  /* ================= QUIZ ================= */
+  quiz.push(
+    { q: `What does <code>Counter("abca")["z"]</code> return, and does it change the Counter?`, options: ['0, and "z" is NOT inserted', '0, and "z" is inserted with count 0', 'KeyError', 'None'], answer: 0, explain: '<code>Counter.__missing__</code> returns 0 without storing anything, unlike <code>defaultdict(int)</code>, which inserts the key.' },
+    { q: `<code>d = defaultdict(list)</code>. Which expression adds key <code>"k"</code> to d?`, options: ['<code>d["k"]</code>', '<code>d.get("k")</code>', '<code>"k" in d</code>', '<code>d.pop("k", None)</code>'], answer: 0, explain: 'Only <code>__getitem__</code> (square brackets) triggers <code>__missing__</code>, which calls the factory and stores the result.' },
+    { q: `What is printed? <pre>from collections import Counter
+a = Counter("aab"); a.subtract("aaab")
+print(bool(a), +a)</pre>`, options: ['<code>True Counter()</code>', '<code>False Counter()</code>', "<code>True Counter({'a': -1})</code>", 'TypeError'], answer: 0, explain: 'subtract keeps the −1 for "a" (and 0 for "b"), so the Counter is non-empty → True. Unary <code>+</code> drops non-positive counts → empty Counter.' },
+    { q: `Why is <code>list.pop(0)</code> a bad choice for a BFS queue?`, options: ['It is O(n) because every remaining element shifts left', 'It raises an error on empty lists while deque does not', 'It returns the last element', 'Lists are not thread-safe'], answer: 0, explain: 'Removing from the front of a dynamic array moves all other pointers. <code>deque.popleft()</code> is O(1). (Both raise IndexError when empty.)' },
+    { q: `<code>od = OrderedDict.fromkeys("abc")</code>; <code>od.move_to_end("a")</code>; <code>od.popitem(last=False)</code> returns…`, options: ["<code>('b', None)</code>", "<code>('a', None)</code>", "<code>('c', None)</code>", 'KeyError'], answer: 0, explain: 'After moving "a" to the end the order is b, c, a. <code>popitem(last=False)</code> removes the oldest/front item: "b".' },
+    { q: `After <code>h = [5, 3, 8, 1]; heapq.heapify(h)</code>, which statement is guaranteed?`, options: ['<code>h[0] == 1</code>', '<code>h == [1, 3, 5, 8]</code>', '<code>h[1]</code> is the second smallest', '<code>h[-1] == 8</code>'], answer: 0, explain: 'Only the root is guaranteed to be the minimum. The rest only satisfies parent ≤ children; the second smallest is h[1] or h[2].' },
+    { q: `You push <code>(2, {"name": "a"})</code> and <code>(2, {"name": "b"})</code> onto a heap. What happens?`, options: ['TypeError — dicts cannot be compared with &lt; when priorities tie', 'The first pushed is popped first', 'Python compares dicts by length', 'heapq ignores the second element'], answer: 0, explain: 'Equal priorities make Python compare the dicts. Add a unique tie-breaker: <code>(priority, next(counter), item)</code>.' },
+    { q: `<code>a = [1, 2, 2, 2, 5]</code>. What are <code>bisect_left(a, 2)</code> and <code>bisect_right(a, 2)</code>?`, options: ['1 and 4', '1 and 3', '2 and 4', '0 and 5'], answer: 0, explain: 'Left = first index with value ≥ 2 → 1. Right = first index with value &gt; 2 → 4. Count of 2s = 4 − 1 = 3.' },
+    { q: `What does <code>[k for k, g in groupby("aabbaa")]</code> produce?`, options: ["<code>['a', 'b', 'a']</code>", "<code>['a', 'b']</code>", "<code>['a', 'a', 'b', 'b', 'a', 'a']</code>", "<code>['b', 'a']</code>"], answer: 0, explain: 'groupby groups only <b>consecutive</b> equal items, so "a" appears twice as a key.' },
+    { q: `How many tuples does <code>combinations(range(6), 3)</code> yield?`, options: ['20', '120', '216', '18'], answer: 0, explain: 'C(6, 3) = 6! / (3! · 3!) = 20. (permutations would be 6·5·4 = 120; product with repeat=3 would be 216.)' },
+    { q: `A function decorated with <code>@cache</code> is called as <code>f([1, 2, 3])</code>. Result?`, options: ['TypeError: unhashable type: \'list\'', 'It works but never caches', 'It caches by list identity', 'It converts the list to a tuple automatically'], answer: 0, explain: 'Arguments become dictionary keys, so they must be hashable. Pass a tuple, or pass indices into an outer list.' },
+    { q: `Which sort puts higher scores first and breaks ties alphabetically by name?`, options: ['<code>sorted(rows, key=lambda r: (-r.score, r.name))</code>', '<code>sorted(rows, key=lambda r: (r.score, r.name), reverse=True)</code>', '<code>sorted(rows, key=lambda r: (r.score, -r.name))</code>', '<code>sorted(rows, key=lambda r: r.name).reverse()</code>'], answer: 0, explain: 'Negating the numeric key flips only that field. reverse=True would also reverse names; you can\'t negate a string; and <code>list.reverse()</code> returns None.' },
+    { q: `What does <code>sys.getrecursionlimit()</code> return by default in CPython, and what happens when exceeded?`, options: ['1000; RecursionError is raised', '10 000; the process segfaults', 'Unlimited; Python uses tail-call optimisation', '100; StackOverflowError is raised'], answer: 0, explain: 'The default is 1000 and exceeding it raises <code>RecursionError</code> (a RuntimeError subclass). Python has no tail-call optimisation.' },
+    { q: `What is <code>-7 // 2</code> in Python?`, options: ['-4', '-3', '-3.5', '3'], answer: 0, explain: '<code>//</code> is floor division: ⌊−3.5⌋ = −4. C/Java truncate toward zero (−3); in Python use <code>int(-7 / 2)</code> for that.' },
+    { q: `<code>grid = [[0] * 3] * 2; grid[0][0] = 1</code>. What is grid?`, options: ['<code>[[1, 0, 0], [1, 0, 0]]</code>', '<code>[[1, 0, 0], [0, 0, 0]]</code>', '<code>[[1, 1, 1], [0, 0, 0]]</code>', 'TypeError'], answer: 0, explain: 'The outer <code>* 2</code> repeats the <b>same</b> inner list object twice. Use <code>[[0] * 3 for _ in range(2)]</code>.' }
+  );
+
+  /* ================= INTERVIEW Q&A ================= */
+  interview.push(
+    { q: `What is the difference between <code>Counter</code>, <code>defaultdict(int)</code> and a plain <code>dict</code> for counting?`, level: 'B', a: `<p>All three are hash maps with O(1) average updates. A plain dict needs a guard (<code>d.get(k, 0) + 1</code>). <code>defaultdict(int)</code> auto-creates 0 on <code>d[k]</code> — but also on mere reads, which can silently grow the dict. <code>Counter</code> reads missing keys as 0 <b>without inserting</b>, counts a whole iterable in one C-accelerated call, and adds <code>most_common</code>, <code>total</code>, <code>elements</code> and multiset operators (<code>+ - &amp; |</code>). I use Counter when the values are counts I want to query or compare, defaultdict when values are containers (lists/sets) I append to.</p>`, followUps: ['How does defaultdict work internally? (<code>__missing__</code>)', 'What does <code>Counter.most_common(k)</code> cost?', 'How do Counter comparisons treat missing keys since 3.10?'] },
+    { q: `Why is <code>collections.deque</code> O(1) at both ends while <code>list</code> is not?`, level: 'I', a: `<p>A list is a single contiguous array of pointers: appending at the end is amortised O(1), but inserting or removing at index 0 shifts every element → O(n). CPython's deque is a <b>doubly linked list of fixed-size blocks</b> (64 slots). Adding/removing at either end touches only an end block (allocating or freeing a block occasionally), so it's O(1) without ever moving existing items. The trade-off: indexing in the middle is O(n) and slicing isn't supported. That's why BFS, sliding-window and producer/consumer queues use deque.</p>`, followUps: ['What does <code>maxlen</code> do?', 'Is deque thread-safe?', 'Why does <code>extendleft</code> reverse the input?'] },
+    { q: `Implement an LRU cache in Python. What changes if OrderedDict is not allowed?`, level: 'I', a: `<p>With <code>OrderedDict</code>: <code>get</code> returns −1 if missing, otherwise <code>move_to_end(key)</code> and returns the value; <code>put</code> moves an existing key to the end, assigns, and if <code>len &gt; capacity</code> calls <code>popitem(last=False)</code>. All O(1) because OrderedDict is a dict plus a doubly linked list. Without it, I build exactly that: a dict from key to node, and a doubly linked list with <b>sentinel head and tail</b> nodes; helpers <code>_unlink(node)</code> and <code>_push_newest(node)</code> keep every operation to a few pointer updates. I'd use <code>__slots__</code> on the node class to cut memory.</p>`, followUps: ['How would you add TTL expiry?', 'Make it thread-safe', 'How does <code>functools.lru_cache</code> implement eviction?'] },
+    { q: `How do you implement a max-heap and a priority queue with ties in Python?`, level: 'I', a: `<p><code>heapq</code> is min-only, so push <code>-x</code> and negate on pop (Python 3.14 adds <code>heappush_max</code>/<code>heappop_max</code>, but negation works everywhere). For priorities with payloads I push tuples <code>(priority, seq, item)</code> where <code>seq = next(itertools.count())</code>: tuples compare element-wise, so <code>seq</code> breaks ties in FIFO order and Python never compares the payloads (which may not be comparable). For "update priority" there's no decrease-key — I push a new entry and lazily skip stale ones when popped. For thread-safe blocking use <code>queue.PriorityQueue</code>.</p>`, followUps: ['Why is heapify O(n)?', 'How would you delete an arbitrary element?', 'heapq vs sorted list vs SortedList?'] },
+    { q: `Explain the difference between <code>bisect_left</code> and <code>bisect_right</code> and give three uses.`, level: 'I', a: `<p>On a sorted list, <code>bisect_left(a, x)</code> returns the first index whose value is ≥ x, <code>bisect_right(a, x)</code> the first index whose value is &gt; x — they differ only when x is present (left points before the run of equal values, right after it). Uses: (1) count of x = right − left; (2) number of values in [L, R] = <code>bisect_right(a, R) − bisect_left(a, L)</code>; (3) "latest value at or before time t" = <code>bisect_right(times, t) − 1</code>. Also LIS in O(n log n) with bisect_left on the tails array, and binary search on the answer via <code>key=</code> (3.10+).</p>`, followUps: ['What is the cost of <code>insort</code>?', 'How does <code>key=</code> treat x?', 'Write bisect_left by hand'] },
+    { q: `When would you use <code>itertools</code> in an interview, and what are the traps?`, level: 'I', a: `<p>For brute force over small search spaces (<code>product</code> for "every string/code", <code>combinations</code> for "choose k", <code>permutations</code> for "every ordering"), for prefix sums and running max (<code>accumulate</code>), for runs (<code>groupby</code>), flattening (<code>chain.from_iterable</code>), and adjacent pairs (<code>pairwise</code>). Traps: they return <b>one-shot iterators</b> (a second loop sees nothing); <code>groupby</code> only groups consecutive items; permutations/combinations treat elements by position, so duplicates produce duplicate outputs; and combinatorial counts explode — I estimate n!, 2<sup>n</sup> or C(n,k) before using them.</p>`, followUps: ['How many tuples does product("abc", repeat=4) produce?', 'How would you generate unique permutations of [1,1,2]?', 'Why is itertools memory-efficient?'] },
+    { q: `How does <code>functools.lru_cache</code> work and what can go wrong with it?`, level: 'A', a: `<p>It wraps the function in a C-implemented object that builds a hashable key from the arguments, looks it up in a dict, and on a miss calls the function and stores the result. With a bounded <code>maxsize</code> it keeps entries on a circular doubly linked list to evict the least recently used in O(1); <code>@cache</code> (maxsize=None) is just a dict. Pitfalls: arguments must be hashable; the function must be pure (or results go stale); module-level caches persist across test cases and grow memory; caching methods keeps <code>self</code> alive; <code>f(1)</code> and <code>f(a=1)</code> may be separate entries; and memoized recursion still hits the recursion limit for deep states.</p>`, followUps: ['What does <code>cache_info()</code> show?', 'When is bottom-up DP better?', 'cached_property vs lru_cache on methods?'] },
+    { q: `Is Python's sort stable, and how do you sort by multiple keys with mixed directions?`, level: 'B', a: `<p>Yes — Timsort is guaranteed stable by the language spec: equal keys keep their input order. For multiple keys use a tuple key: <code>key=lambda r: (-r.score, r.name)</code> sorts score descending and name ascending (negation works for numbers). When a field can't be negated (strings, dates), use stability: sort by the secondary key first, then by the primary key (with <code>reverse=True</code> if needed — reverse keeps equal items in original order). For relations between pairs (e.g. Largest Number), use <code>functools.cmp_to_key</code>.</p>`, followUps: ['What is the complexity of Timsort on already-sorted data?', 'Why is cmp_to_key slower than a key function?', 'What does <code>list.sort()</code> return?'] },
+    { q: `Your recursive DFS raises <code>RecursionError</code> on a large input. What are your options?`, level: 'A', a: `<p>First, confirm the depth: skewed trees, long chains or big grids can recurse O(n) deep, beyond the default limit of 1000. Options: (1) rewrite with an <b>explicit stack</b> (a list of states, pushing children in reverse to keep order; a <code>(node, visited)</code> flag for post-order); (2) use <b>BFS</b> with a deque when order doesn't matter; (3) for memoized DP, go <b>bottom-up</b> or warm the cache in increasing order; (4) as a quick fix, <code>sys.setrecursionlimit</code> — acceptable in contests, but it costs memory, is slow, and on older Python versions deep C recursion could still segfault (sometimes paired with <code>threading.stack_size</code>). Python has no tail-call optimisation, so rewriting as tail recursion doesn't help.</p>`, followUps: ['Convert recursive post-order to iterative', 'What changed in 3.11/3.12 about recursion?', 'What is Morris traversal?'] },
+    { q: `Write Dijkstra in Python. Why the <code>if d &gt; dist[u]: continue</code> line?`, level: 'A', a: `<p>Adjacency list via <code>defaultdict(list)</code>, <code>dist = {src: 0}</code>, heap <code>[(0, src)]</code>. Loop: pop <code>(d, u)</code>; if <code>d &gt; dist[u]</code> skip; else for each <code>(v, w)</code> if <code>d + w &lt; dist.get(v, inf)</code> update and push. heapq has no decrease-key, so when a node's distance improves we push a duplicate entry; the old, larger entry stays in the heap. The check discards those <b>stale</b> entries so each node is expanded once with its final distance — without it, correctness survives but time can blow up. Complexity O(E log E) = O(E log V). Requires non-negative weights.</p>`, followUps: ['What breaks with negative edges?', 'How would you return the path?', 'K stops constraint (Cheapest Flights)?'] },
+    { q: `What are the most common Python-specific bugs in DSA interviews?`, level: 'B', a: `<p>(1) <code>[[0]*m]*n</code> creates n references to one row. (2) Mutable default arguments (<code>def f(memo={})</code>) persist across calls. (3) Appending <code>path</code> instead of <code>path[:]</code> in backtracking. (4) <code>//</code> and <code>%</code> floor toward −∞, unlike C/Java. (5) <code>list.pop(0)</code> / <code>insert(0, x)</code> are O(n). (6) String <code>+=</code> in loops can be O(n²); use <code>"".join</code>. (7) Iterators (<code>map</code>, <code>zip</code>, generators) are single-use. (8) Modifying a dict/list while iterating over it. (9) Comparing floats with <code>==</code>. I mention these proactively when relevant — it signals real Python fluency.</p>`, followUps: ['How do you deep copy a nested list?', 'Why does <code>a = a + [x]</code> differ from <code>a += [x]</code> for aliasing?', 'How would you speed up input reading?'] },
+    { q: `Top K Frequent Elements: compare the heap, bucket sort and quickselect approaches.`, level: 'A', a: `<p>All start with <code>Counter</code> (O(n)). <b>Heap</b>: size-k min-heap over d distinct values → O(d log k), O(k) extra; simple via <code>heapq.nlargest(k, c, key=c.get)</code>; great for streams. <b>Bucket sort</b>: buckets indexed by frequency (max n) → O(n) time, O(n) space; only works because frequencies are bounded by n. <b>Quickselect</b>: partition distinct values by frequency → O(d) average, O(d²) worst, in place, but more code and not stable. In Python I'd present the heap/nlargest first, mention bucket sort for the O(n) follow-up, and note <code>most_common(k)</code> already uses nlargest internally.</p>`, followUps: ['What if k is close to d?', 'Ties must be broken alphabetically', 'Data does not fit in memory'] },
+    { q: `Design an LFU cache with O(1) operations.`, level: 'E', a: `<p>Keep <code>key → value</code>, <code>key → freq</code>, and <code>freq → OrderedDict of keys</code> (each bucket in LRU order), plus <code>min_freq</code>. On a touch (get or update), move the key from bucket f to f+1; if bucket f becomes empty and f was min_freq, increment min_freq. On insert into a full cache, evict <code>freq_keys[min_freq].popitem(last=False)</code> — the least recently used among the least frequently used — then insert the new key with freq 1 and reset min_freq to 1. Every step is a constant number of hash/linked-list operations. A heap-based design would be O(log n) and need lazy deletion.</p>`, followUps: ['Why can min_freq only increase by 1 on a touch?', 'Handle capacity 0', 'How would you add frequency decay (aging)?'] },
+    { q: `How do you binary search "on the answer" in Python, and how does <code>bisect</code>'s <code>key=</code> help?`, level: 'E', a: `<p>When a yes/no predicate is monotone in the answer (e.g. "can we ship within D days with capacity c?" is False…False, True…True as c grows), the smallest feasible value is the first True. By hand: <code>lo, hi = min_possible, max_possible</code>; while <code>lo &lt; hi</code>: <code>mid = (lo + hi) // 2</code>; if feasible(mid): <code>hi = mid</code> else <code>lo = mid + 1</code>. With Python 3.10+: <code>r = range(lo, hi + 1); r[bisect_left(r, True, key=feasible)]</code> — ranges support O(1) indexing so no list is built, and the key is applied to each probed element (not to the target <code>True</code>). Cost: O(log(range) × cost of feasible).</p>`, followUps: ['Koko Eating Bananas / Ship Packages within D Days', 'Real-valued answers — how many iterations?', 'Why must the predicate be monotone?'] }
+  );
+
+  registerModule({
+    id: 'py11',
+    title: 'Python Interview Toolkit & Pythonic DSA',
+    intro: `<p>You already know Python and you know your data structures. This module fuses the two: the <b>standard-library power tools</b> that let you write an interview solution in 10 clean lines instead of 40 — <code>Counter</code>, <code>defaultdict</code>, <code>deque</code>, <code>OrderedDict</code>, <code>heapq</code>, <code>bisect</code>, <code>itertools</code>, <code>functools.lru_cache</code>, sorting with keys — plus the Python-specific realities that trip people up: recursion limits, aliasing, floor division and slow queues.</p>
+<p>Every topic starts with an everyday analogy, then shows the mechanics in an interactive visualizer (a heap sifting as a tree <i>and</i> a list, bisect's <code>lo</code>/<code>hi</code> closing in, a Counter filling up, a monotonic deque, an LRU cache evicting, a memo cache scoring hits), then classic interview problems solved idiomatically. By the end, the wording of a question — "top k", "sliding window max", "least recently used", "sorted, find position", "number of ways" — will tell you which tool to reach for.</p>`,
+    goals: [
+      'Pick the right <code>collections</code> type (Counter, defaultdict, deque, OrderedDict) from the operations a problem needs, and explain its internals and costs',
+      'Use <code>heapq</code> fluently: min/max heaps, tuple priorities with tie-breakers, size-k top-k, two heaps, merge-k and Dijkstra with lazy deletion',
+      'Answer "position in a sorted list" questions with <code>bisect_left</code>/<code>bisect_right</code> without off-by-one bugs, including LIS in O(n log n) and binary search on the answer',
+      'Write brute-force and combinatorial solutions with <code>itertools</code> while estimating their size before running them',
+      'Turn a recursive solution into memoized DP with <code>@cache</code>, and into an iterative/bottom-up version when the recursion limit or speed demands it',
+      'Sort by complex rules with tuple keys, stability and <code>cmp_to_key</code>, and avoid the classic Python gotchas in interview code'
+    ],
+    prereqs: `<p>Python 5 (Data Structure Internals &amp; Comprehensions), Python 6 (Closures, Decorators &amp; functools) and Python 7 (Iterators &amp; Generators). Basic DSA: hashing, stacks/queues, binary search, heaps, BFS/DFS and simple DP.</p>`,
+    hours: 14,
+    topics: topics,
+    practice: practice,
+    quiz: quiz,
+    interview: interview
+  });
+})();

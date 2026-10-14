@@ -1523,4 +1523,485 @@ if __name__ == "__main__":
     }]
   });
 
+  /* ================= TOPIC 7: Async pitfalls ================= */
+  topics.push({
+    title: 'Async Pitfalls: Blocking the Loop, Forgotten Awaits, Lost Tasks and Races Across await',
+    analogy: `<p>Back to our single waiter. Pitfall 1: she stops to <b>wash every dish herself</b> (a blocking call) — every table freezes. Pitfall 2: she writes an order on a pad but <b>never hands it to the kitchen</b> (a coroutine never awaited). Pitfall 3: she gives an order to a trainee and <b>forgets the trainee exists</b> (a task with no reference) — it may silently vanish. Pitfall 4: she tells two tables "yes, one slice of cake left!" <b>before walking to the fridge</b>, and both get a yes (a race across <code>await</code>).</p>`,
+    explain: `<p>🟢 asyncio is fast <b>only if every task awaits quickly and often</b>. Most production async bugs come from a short list:</p>
+${H.table(['Pitfall', 'Symptom', 'Fix'], [['<b>Blocking call in async def</b> (<code>time.sleep</code>, <code>requests.get</code>, sync DB driver, big file read)', 'all requests slow down together; heartbeats late; p99 latency spikes', 'async library (httpx, aiohttp, asyncpg, aiofiles) or <code>await asyncio.to_thread(fn, …)</code>'], ['<b>CPU-heavy work in the loop</b> (hashing, parsing a 50 MB JSON, image work)', 'same as above, plus 100% of one core', '<code>await loop.run_in_executor(process_pool, fn, …)</code>'], ['<b>Forgot await</b>', '"coroutine was never awaited" warning; nothing happens', 'add <code>await</code> or <code>create_task</code>'], ['<b>Sequential awaits in a loop</b>', 'async code no faster than sync', 'gather / TaskGroup / as_completed'], ['<b>Fire-and-forget task without reference</b>', 'task silently disappears; "Task exception was never retrieved"', 'keep a set of tasks, or a TaskGroup'], ['<b>Swallowing CancelledError</b>', 'timeouts and shutdown hang', 're-raise after cleanup'], ['<b>Race across await</b> (check-then-act)', 'oversold stock, double-charged user', '<code>asyncio.Lock</code> around the whole check + update'], ['<b>threading.Lock in async code</b>', 'whole loop freezes (or deadlocks)', '<code>asyncio.Lock</code>'], ['<b>asyncio.run() inside a running loop</b>', '"cannot be called from a running event loop"', 'just <code>await</code> (Jupyter), or run in another thread'], ['<b>No timeouts / unbounded fan-out</b>', 'hangs forever; rate-limited; out of sockets', '<code>asyncio.timeout</code> + Semaphore']])}
+<p>🔵 <b>Why "async" does not mean "safe from races".</b> Between two lines with no <code>await</code>, nothing else runs — that part is safe. But any <code>await</code> is a door where other tasks walk in. If you <b>read</b> state, <b>await</b> something, then <b>write</b> based on what you read, another task may have changed it in between.</p>
+<pre>async def withdraw(amount):
+    global balance
+    if balance >= amount:          # check
+        await audit_log(amount)    # ← other tasks run here!
+        balance -= amount          # act on a stale check</pre>
+<p><b>The escape hatches:</b> <code>asyncio.to_thread(fn, *args)</code> (3.9+) runs a blocking function in the default thread pool and gives you an awaitable; <code>loop.run_in_executor(executor, fn, *args)</code> lets you pick a <code>ProcessPoolExecutor</code> for CPU work.</p>
+<p>🟣 <b>Find them early:</b> run with <code>asyncio.run(main(), debug=True)</code> or <code>PYTHONASYNCIODEBUG=1</code>: the loop logs any callback that holds it longer than <code>loop.slow_callback_duration</code> (100 ms default), warns about never-awaited coroutines, and checks thread-safety of calls.</p>`,
+    clues: [
+      '"our async API gets slow for everyone when one endpoint is called" → blocking call or CPU work inside the event loop',
+      '"we switched to async but it\'s not faster" → sequential awaits, or a sync library under the hood',
+      '"RuntimeWarning: coroutine ... was never awaited" → missing await',
+      '"Task was destroyed but it is pending" / "Task exception was never retrieved" → lost or unwatched tasks',
+      '"inventory went negative under load" in async code → check-then-act across an await → asyncio.Lock',
+      '"RuntimeError: asyncio.run() cannot be called from a running event loop" → already inside a loop (Jupyter/FastAPI)',
+      '"Future attached to a different loop" → object created under one loop used in another (global clients created at import time)'
+    ],
+    code: [{ lang: 'python', title: 'Measure loop lag: blocking vs non-blocking (run locally)', code: `import asyncio
+import time
+
+async def heartbeat(lags):
+    loop = asyncio.get_running_loop()
+    for _ in range(6):
+        expected = loop.time() + 0.1
+        await asyncio.sleep(0.1)
+        lags.append(round(loop.time() - expected, 3))   # how late did we wake?
+
+def legacy_blocking_call():
+    time.sleep(0.3)               # e.g. requests.get or a sync DB driver
+    return "data"
+
+async def bad_handler():
+    return legacy_blocking_call()                        # blocks the loop!
+
+async def good_handler():
+    return await asyncio.to_thread(legacy_blocking_call)  # runs in a worker thread
+
+async def trial(handler):
+    lags = []
+    await asyncio.gather(heartbeat(lags), handler())
+    return max(lags)
+
+print("worst heartbeat lag, blocking:   ", asyncio.run(trial(bad_handler)), "s")   # ~0.3
+print("worst heartbeat lag, to_thread:  ", asyncio.run(trial(good_handler)), "s")  # ~0.0
+` }, { lang: 'python', title: 'Race across await and the asyncio.Lock fix (run locally)', code: `import asyncio
+
+stock = 1
+lock = asyncio.Lock()
+
+async def buy_unsafe(user):
+    global stock
+    if stock > 0:                      # check
+        await asyncio.sleep(0.01)      # payment call: other tasks run here
+        stock -= 1                     # act on a stale check
+        return f"{user}: bought"
+    return f"{user}: sold out"
+
+async def buy_safe(user):
+    global stock
+    async with lock:                   # check + act are now one critical section
+        if stock > 0:
+            await asyncio.sleep(0.01)
+            stock -= 1
+            return f"{user}: bought"
+        return f"{user}: sold out"
+
+async def main():
+    global stock
+    stock = 1
+    print(await asyncio.gather(buy_unsafe("ann"), buy_unsafe("bob")), "stock =", stock)  # -1!
+    stock = 1
+    print(await asyncio.gather(buy_safe("ann"), buy_safe("bob")), "stock =", stock)      # 0
+
+asyncio.run(main())
+` }],
+    codeTitle: ['Loop lag', 'Race across await'],
+    viz: [{
+      title: 'Blocking the loop: heartbeat timeline with time.sleep vs asyncio.sleep vs to_thread',
+      input: 'time.sleep',
+      inputLabel: 'handler uses: time.sleep, asyncio.sleep, or to_thread',
+      gen: function (input) {
+        var mode = String(input || 'time.sleep').trim().toLowerCase().replace(/^asyncio\.to_thread$/, 'to_thread');
+        if (['time.sleep', 'asyncio.sleep', 'to_thread'].indexOf(mode) < 0) throw new Error('Type one of: time.sleep, asyncio.sleep, to_thread');
+        var N = 7, rows = [[], [], [], []], frames = [], beats = [], nextBeat = 0, blockedUntil = -1, handlerDone = null;
+        var heads = ['event loop thread', 'heartbeat task (every 1 s)', 'handler task (needs a 3 s wait)', 'worker thread (to_thread pool)'];
+        var code = mode === 'time.sleep' ? 'async def handler():\n    time.sleep(3)              # BLOCKS the loop thread\n    return "ok"' : mode === 'asyncio.sleep' ? 'async def handler():\n    await asyncio.sleep(3)     # parks the task, loop stays free\n    return "ok"' : 'async def handler():\n    await asyncio.to_thread(blocking_call)  # 3 s in a worker thread\n    return "ok"';
+        for (var t = 0; t < N; t++) {
+          var notes = [], loopCell = 'idle', hbCell = '', hCell = '', wCell = '';
+          // handler arrives at t=1
+          if (t === 1) {
+            if (mode === 'time.sleep') { blockedUntil = 4; notes.push('A request arrives; the handler calls <code>time.sleep(3)</code>. <span class="c-r">The loop thread is stuck inside it — nothing else can run until t=4.</span>'); }
+            else if (mode === 'asyncio.sleep') notes.push('A request arrives; the handler <code>await</code>s a 3 s timer and is parked. The loop is free immediately.');
+            else notes.push('A request arrives; the handler hands the blocking call to a <b>worker thread</b> and awaits it. The loop is free immediately.');
+          }
+          var blocked = t >= 1 && t < blockedUntil;
+          if (blocked) { loopCell = 'BLOCKED'; hCell = 'time.sleep'; }
+          else if (t >= 1 && t < 4) { hCell = mode === 'asyncio.sleep' ? 'awaiting timer' : 'awaiting thread'; }
+          if (mode === 'to_thread' && t >= 1 && t < 4) wCell = 'blocking_call()';
+          if (t === 4) { hCell = 'returns ok'; handlerDone = 4; notes.push('Handler finishes at t=4 (3 s of waiting, as expected).'); }
+          // heartbeat due at nextBeat
+          if (!blocked && t >= nextBeat) {
+            var late = t - nextBeat;
+            beats.push(late);
+            hbCell = late ? 'tick (late ' + late + 's)' : 'tick';
+            if (late) notes.push('<span class="c-y">Heartbeat finally runs at t=' + t + ', ' + late + ' s late</span> — its timer fired long ago but the loop could not run it.');
+            else notes.push('Heartbeat ticks on time at t=' + t + '.');
+            nextBeat = t + 1;
+            loopCell = loopCell === 'idle' ? 'running callbacks' : loopCell;
+          } else if (blocked && t >= nextBeat) { hbCell = 'due, starving'; notes.push('<span class="c-r">Heartbeat is due but cannot run</span>: the only thread is inside time.sleep.'); }
+          rows[0].push(loopCell); rows[1].push(hbCell || '·'); rows[2].push(hCell || '·'); rows[3].push(wCell || '·');
+          var hl = {};
+          rows.forEach(function (r, i) { r.forEach(function (c, j) { hl[i + ',' + j] = c === 'BLOCKED' || c === 'time.sleep' || c === 'due, starving' ? 'bad' : c.indexOf('late') >= 0 ? 'cur' : c === 'tick' || c === 'returns ok' ? 'ok' : c === '·' || c === 'idle' ? 'done' : 'win'; }); });
+          frames.push(fr('<b>t = ' + t + 's.</b> ' + (notes.length ? notes.join(' ') : 'Loop waits in the selector for the next timer.'), [
+            cp(code, { 2: mode === 'time.sleep' ? 'bad' : 'ok' }, 'Handler (' + mode + ')'),
+            { type: 'grid', label: 'Timeline (columns = seconds)', rows: rows.map(function (r) { return r.slice(); }), rowHead: heads, colHead: range(rows[0].length, function (j) { return 't' + j; }), hl: hl }
+          ]));
+        }
+        var worst = Math.max.apply(null, beats);
+        frames.push(fr('<b>Result with ' + mode + ':</b> heartbeat ran ' + beats.length + ' times in ' + N + ' s; worst lateness = <b>' + worst + ' s</b>. ' + (mode === 'time.sleep' ? '<span class="c-r">One blocking call froze every task on the loop — in a web server, every other user\'s request.</span> Fix: <code>await asyncio.sleep</code> for waits, an async client for I/O, or <code>await asyncio.to_thread(...)</code> for unavoidable blocking calls.' : '<span class="c-g">The loop stayed responsive</span> — other tasks kept running while the handler waited.'), [
+          { type: 'table', label: 'Heartbeat lateness per tick (seconds)', columns: beats.map(function (b, i) { return 'tick ' + (i + 1); }), rows: [beats.map(String)] }
+        ]));
+        return frames;
+      }
+    }, {
+      title: 'Race across await: two buyers, one item left (type nolock or lock)',
+      input: 'nolock',
+      inputLabel: 'nolock or lock',
+      gen: function (input) {
+        var mode = String(input || 'nolock').trim().toLowerCase().replace(/[\s_-]/g, '');
+        if (mode !== 'nolock' && mode !== 'lock') throw new Error('Type nolock or lock');
+        var L = mode === 'lock';
+        var code = L ? 'async with lock:\n    if stock > 0:\n        await pay()\n        stock -= 1' : 'if stock > 0:\n    await pay()\n    stock -= 1';
+        var o = L ? 1 : 0, st = { stock: 1, ann: '-', bob: '-', 'lock owner': L ? '(free)' : 'none used' }, frames = [];
+        function f(narr, a, b, ac, bc, k, cls) { var ha = {}, hb = {}; if (a) ha[a] = ac || 'cur'; if (b) hb[b] = bc || 'cur'; frames.push(fr(narr, [cp(code, ha, 'Task ann'), cp(code, hb, 'Task bob'), vp(st, k || '', cls || 'cur', 'Shared state')])); }
+        f('One item in stock. Two buyer tasks run concurrently on the same loop.', 0, 0);
+        if (!L) {
+          st.ann = 'check ok'; f('ann checks <code>stock &gt; 0</code> → true.', 1, 0, 'ok', '', 'ann');
+          f('ann hits <code>await pay()</code> → <b>parks</b>. The loop runs the next ready task: bob.', 2, 0, 'win', '');
+          st.bob = 'check ok'; f('bob checks <code>stock &gt; 0</code> → <span class="c-r">still true</span>, because ann hasn\'t decremented yet.', 2, 1, 'win', 'bad', 'bob', 'bad');
+          f('bob also awaits pay() and parks.', 2, 2, 'win', 'win');
+          st.stock = 0; st.ann = 'bought'; f('ann resumes: stock -= 1 → 0.', 3, 2, 'ok', 'win', 'stock');
+          st.stock = -1; st.bob = 'bought'; f('bob resumes: stock -= 1 → <span class="c-r">-1. Oversold!</span>', 3, 3, 'done', 'bad', 'stock', 'bad');
+          frames.push(fr('<span class="c-r"><b>Both bought one item that existed once.</b></span> No threads involved — the <code>await</code> between check and act was the door. Try <b>lock</b>.', [vp(st, 'stock', 'bad', 'Final state')]));
+        } else {
+          st['lock owner'] = 'ann'; f('ann acquires the asyncio.Lock (free).', 1, 0, 'ok', '', 'lock owner');
+          st.ann = 'check ok'; f('ann checks stock → 1, ok.', 2, 0, 'ok', '', 'ann');
+          f('ann awaits pay() and parks — <b>still holding the lock</b>.', 3, 0, 'win', '');
+          f('bob runs: <code>async with lock</code> → lock is taken → bob <b>awaits the lock</b> (parks; the loop is NOT blocked).', 3, 1, 'win', 'bad', 'lock owner');
+          st.stock = 0; st.ann = 'bought'; st['lock owner'] = 'bob'; f('ann resumes, stock → 0, exits the block → lock passes to bob.', 4, 1, 'ok', 'ok', 'stock');
+          st.bob = 'sold out'; st['lock owner'] = '(free)'; f('bob checks stock → 0 → "sold out". Correct!', 0, 2, '', 'ok', 'bob', 'ok');
+          frames.push(fr('<span class="c-g"><b>Correct: stock = 0, exactly one sale.</b></span> asyncio.Lock makes check + await + act one critical section. Never use <code>threading.Lock</code> here — blocking on it would freeze the whole loop.', [vp(st, 'stock', 'ok', 'Final state')]));
+        }
+        return frames;
+      }
+    }],
+    examples: [
+      { title: 'A hidden blocker: a "simple" sync SDK call', html: `<p>An async FastAPI endpoint calls <code>boto3.client("s3").get_object(...)</code>. boto3 is synchronous. Each call blocks the loop ~80 ms. At 50 requests/s on one worker, the loop is blocked 4 s every second — impossible — so latency explodes for <b>every</b> endpoint. ${H.c('g', 'Fixes:')} <code>await asyncio.to_thread(s3.get_object, …)</code>, an async SDK (aioboto3), or declare the endpoint with plain <code>def</code> so FastAPI runs it in its thread pool.</p>` },
+      { title: 'Calling async code from sync code (and back)', html: `${H.table(['From', 'To', 'Use'], [['sync script / main()', 'async', '<code>asyncio.run(main())</code> — once, at the top'], ['async', 'blocking sync function', '<code>await asyncio.to_thread(fn, *args)</code>'], ['async', 'CPU-heavy function', '<code>await loop.run_in_executor(proc_pool, fn, *args)</code>'], ['another thread', 'coroutine on a running loop', '<code>asyncio.run_coroutine_threadsafe(coro, loop).result()</code>'], ['Jupyter cell', 'async', 'top-level <code>await main()</code> (a loop is already running)']])}` },
+      { title: 'The one-character bug', html: `<p>Missing <code>await</code> on a coroutine that returns a value:</p><pre>user = get_user(42)        # forgot await
+print(user["name"])        # TypeError: 'coroutine' object is not subscriptable</pre><p>Type checkers (mypy, pyright) catch this: <code>get_user</code> returns <code>Coroutine[Any, Any, dict]</code>, not <code>dict</code>. Linters help too: Ruff's flake8-async (ASYNC) rules flag <code>time.sleep</code> and blocking HTTP calls inside <code>async def</code>.</p>` }
+    ],
+    deepDive: `<p><b>Why blocking hurts more than you think.</b> With threads, a slow call delays only its own thread. With asyncio, the event loop <b>is</b> the only thread, so a 200 ms blocking call adds 200 ms to <b>every in-flight request</b> on that worker, and work queues up behind it (head-of-line blocking). Latency percentiles (p99) degrade first. Monitoring: export "event loop lag" (schedule a callback every 100 ms, measure lateness — exactly our heartbeat) as a metric; alert when it exceeds ~50 ms.</p>
+<p><b>to_thread is not free.</b> It uses the loop's default <code>ThreadPoolExecutor</code> (size <code>min(32, cpus + 4)</code>). If 500 requests all call a slow blocking function, 32 run and the rest queue silently. Size a dedicated executor with <code>loop.set_default_executor</code> or pass your own to <code>run_in_executor</code>, and add timeouts. Remember that cancelling the awaiting task does <b>not</b> stop the thread — the blocking function keeps running.</p>
+<p><b>Loop-bound objects.</b> Many asyncio primitives and clients bind to the loop that was running when they were first used. Creating an <code>aiohttp.ClientSession</code> at import time and then calling <code>asyncio.run()</code> twice gives "attached to a different loop". Create clients inside the running loop (e.g. in an app lifespan hook) and close them there. <code>asyncio.run</code> also cancels leftover tasks and shuts down async generators and the default executor on exit.</p>
+<p><b>Shutdown and signals.</b> On SIGTERM a well-behaved service stops accepting work, cancels or drains tasks with a deadline, awaits them (<code>gather(*tasks, return_exceptions=True)</code>), closes clients, then exits. <code>loop.add_signal_handler</code> (Unix) lets you trigger this from the loop. Swallowed <code>CancelledError</code>s, blocking calls in <code>finally</code> blocks, and tasks without timeouts are the usual reasons shutdown hangs and Kubernetes has to SIGKILL the pod.</p>`,
+    aiEra: `<p><b>What AI changes:</b> AI-generated async code very often <b>looks</b> async but calls sync libraries (requests, sync Redis/DB clients, the sync version of an LLM SDK) inside <code>async def</code>. Reviewing for loop-blocking calls is now one of the highest-value review skills.</p>
+<p><b>Use AI as a partner:</b> <code>List every call in this async module that could block the event loop and propose the async or to_thread replacement</code>; <code>Find check-then-act sequences separated by await</code>; <code>Add an event-loop-lag metric and a debug-mode test that fails if any callback exceeds 50 ms</code>.</p>
+<p><b>Where AI goes wrong:</b> uses <code>threading.Lock</code> in coroutines; wraps everything in <code>to_thread</code> (hiding a missing async client and exhausting the pool); adds <code>except Exception: pass</code> that hides errors; suggests <code>nest_asyncio</code> as a fix for "loop already running" instead of restructuring.</p>
+<p><b>What you must still own:</b> the review checklist (blocking calls, awaits, task ownership, timeouts, cancellation, locks across awaits) and production observability (loop lag, task counts, slow-callback logs).</p>`,
+    problems: [{
+      title: 'Unfreeze the Event Loop', level: 'Medium', tags: ['asyncio', 'to_thread', 'run_in_executor', 'debugging'], companies: ['Microsoft', 'Shopify', 'Datadog'],
+      statement: `<p>This async handler serves a login endpoint. Under load, <b>all</b> endpoints become slow. It (1) calls <code>legacy_user_lookup(name)</code>, a blocking function that sleeps ~0.2 s, and (2) calls <code>slow_hash(password)</code>, pure-Python CPU work of ~0.2 s. Rewrite <code>login</code> so the event loop is never blocked, while keeping the same return value. Show that a heartbeat task stays on time.</p>`,
+      constraints: `<p>You cannot change <code>legacy_user_lookup</code> or <code>slow_hash</code>. Up to 100 concurrent logins per worker process.</p>`,
+      example: `<p>Before: heartbeat every 0.1 s shows lateness ${H.c('r', '≈ 0.4 s')} during a login. After: lateness ${H.c('g', '≈ 0.00–0.01 s')} and <code>login("ann", "pw")</code> still returns <code>{"user": "ann", "hash": …}</code>.</p>`,
+      brute: { why: `<p>Calling both functions directly inside <code>async def</code> runs them on the loop thread: 0.4 s during which no other coroutine (other users, heartbeats, health checks) can run.</p>`, code: `import time
+import hashlib
+
+def legacy_user_lookup(name):
+    time.sleep(0.2)
+    return {"user": name}
+
+def slow_hash(pw):
+    h = pw.encode()
+    for _ in range(20_000):
+        h = hashlib.sha256(h).digest()
+    return h.hex()[:16]
+
+async def login_blocking(name, pw):
+    user = legacy_user_lookup(name)     # blocks the loop
+    user["hash"] = slow_hash(pw)        # blocks the loop (CPU)
+    return user` },
+      mcq: { q: 'Which pairing is right?', options: ['Both via asyncio.to_thread', 'Lookup via to_thread; hash via run_in_executor with a ProcessPoolExecutor', 'Both via a ProcessPoolExecutor', 'Wrap both in asyncio.wait_for'], answer: 1, explain: 'The lookup waits (releases the GIL) → a thread is enough. The hash is pure-Python CPU work → in a thread it would still compete for the GIL with the loop thread, so a process pool is better. (hashlib on large buffers releases the GIL, but many tiny calls mostly do not.) wait_for does not unblock anything.' },
+      hints: [`<p>Hint 1: Classify each call: waiting (I/O-like) or computing (CPU)?</p>`, `<p>Hint 2: I/O → <code>await asyncio.to_thread(legacy_user_lookup, name)</code>. CPU → <code>await loop.run_in_executor(POOL, slow_hash, pw)</code> with a module-level <code>ProcessPoolExecutor</code> created once (not per request).</p>`, `<p>Hint 3: The two calls are independent, so run them concurrently with <code>asyncio.gather</code>. Measure with a heartbeat that records <code>loop.time()</code> lateness. Guard process-pool creation with <code>if __name__ == "__main__":</code>.</p>`],
+      solution: {
+        approach: `<p>Move blocking I/O to a thread and CPU work to a process, and await both concurrently. The loop thread only schedules and resumes, so it stays responsive. Create the process pool once at startup — spawning processes per request would be far slower than the hash itself.</p>`,
+        code: `import asyncio
+import hashlib
+import time
+from concurrent.futures import ProcessPoolExecutor
+
+def legacy_user_lookup(name):
+    time.sleep(0.2)                         # blocking I/O we can't change
+    return {"user": name}
+
+def slow_hash(pw):
+    h = pw.encode()
+    for _ in range(20_000):                 # CPU work (many small hashes)
+        h = hashlib.sha256(h).digest()
+    return h.hex()[:16]
+
+async def login(name, pw, pool):
+    loop = asyncio.get_running_loop()
+    user, digest = await asyncio.gather(
+        asyncio.to_thread(legacy_user_lookup, name),   # I/O → thread
+        loop.run_in_executor(pool, slow_hash, pw),     # CPU → process
+    )
+    user["hash"] = digest
+    return user
+
+async def heartbeat(lags, stop):
+    loop = asyncio.get_running_loop()
+    while not stop.is_set():
+        expected = loop.time() + 0.05
+        await asyncio.sleep(0.05)
+        lags.append(loop.time() - expected)
+
+async def main(pool):
+    lags, stop = [], asyncio.Event()
+    hb = asyncio.create_task(heartbeat(lags, stop))
+    print(await login("ann", "pw", pool))
+    stop.set()
+    await hb
+    print(f"worst heartbeat lag: {max(lags):.3f}s")   # stays near 0
+
+if __name__ == "__main__":
+    with ProcessPoolExecutor(max_workers=2) as pool:
+        asyncio.run(main(pool))`,
+        dry: { head: ['time', 'loop thread', 'worker thread', 'worker process', 'heartbeat'], rows: [['0.00 s', 'schedules both, awaits gather', 'lookup sleeping', 'hashing', 'on time'], ['0.10 s', 'idle in selector', 'sleeping', 'hashing', 'on time'], ['0.20 s', 'wakes for thread result', 'returns {user}', 'hashing / done', 'on time'], ['~0.25 s', 'resumes login, returns', '-', 'result pickled back', 'worst lag ≈ 0.00 s']] },
+        complexity: `<p>Login latency ≈ max(0.2, hash time) instead of their sum; loop lag ≈ 0. Throughput is bounded by thread-pool size for lookups and number of processes for hashing — size both from expected load.</p>`,
+        followUps: ['What happens if 200 logins arrive at once with the default to_thread pool?', 'How would you add a timeout without leaking the thread work?', 'Would the free-threaded 3.14t build change the choice for slow_hash?']
+      }
+    }]
+  });
+
+  /* ================= TOPIC 8: Choosing a model + design ================= */
+  topics.push({
+    title: 'Choosing the Right Model and Designing Concurrent Systems in Python',
+    analogy: `<p>Moving house: for <b>waiting jobs</b> (waiting for the internet company, the delivery van) one organised person with a phone can juggle all of them — that's <b>asyncio</b>. For <b>heavy lifting</b> (carrying 200 boxes) you need <b>more bodies</b> — that's <b>processes</b>. A couple of friends who each wait on a different phone line is <b>threads</b>. Big moves mix all three: one coordinator (event loop) on the phone, a crew of movers (process pool) lifting boxes, and a <b>conveyor belt</b> (queue) between them so nobody gets swamped.</p>`,
+    explain: `<p>🟢 <b>The 30-second decision recipe:</b></p>
+<ol>
+<li><b>Is concurrency even the problem?</b> Profile first. An N+1 database query or a missing index beats any thread pool.</li>
+<li><b>Waiting or computing?</b> Waiting on network/disk → <b>I/O-bound</b>. Busy CPU → <b>CPU-bound</b>.</li>
+<li><b>I/O-bound:</b> many connections (hundreds+) with async libraries available → <b>asyncio</b>. A few dozen calls, or only blocking libraries (requests, boto3, sync DB drivers) → <b>ThreadPoolExecutor</b>.</li>
+<li><b>CPU-bound:</b> can it be vectorised (NumPy/Polars) or is there a C/Rust library? → do that (it releases the GIL). Otherwise → <b>ProcessPoolExecutor</b> (or try the free-threaded 3.14t build with threads).</li>
+<li><b>Bigger than one machine, or must survive restarts?</b> → a job queue (Celery, RQ, Dramatiq, Arq) or a distributed engine (Ray, Dask, Spark).</li>
+</ol>
+${H.table(['Model', 'Parallel CPU?', 'Scale (concurrent units)', 'Memory each', 'Shares memory?', 'Best for'], [['threads', 'no (yes on 3.14t)', '10s–1000s', '~MB stack (virtual)', 'yes — needs locks', 'blocking I/O libraries'], ['asyncio', 'no', '10,000s+', '~KB', 'yes, but switches only at await', 'many sockets, async clients, LLM fan-out'], ['processes', 'yes', '≈ cores', '10s of MB', 'no — pickle/IPC', 'pure-Python CPU work'], ['sub-interpreters (3.14)', 'yes', '≈ cores', 'smaller than processes', 'no Python objects shared', 'CPU work in one process (still maturing)']])}
+<p>🔵 <b>Design patterns you will reuse:</b></p>
+<ul>
+<li><b>Fan-out / fan-in:</b> start N tasks, collect results (gather/TaskGroup/as_completed).</li>
+<li><b>Worker pool + queue:</b> fixed number of workers pull from a bounded queue → bounded memory and concurrency.</li>
+<li><b>Pipeline:</b> stage 1 (fetch, async) → queue → stage 2 (parse, process pool) → queue → stage 3 (write, batched). Each stage sized independently.</li>
+<li><b>Back-pressure:</b> bounded queues make fast producers wait for slow consumers instead of eating RAM.</li>
+<li><b>Limits:</b> Semaphore for in-flight count, token bucket for rate, timeouts on every external call, retries with exponential backoff + jitter.</li>
+<li><b>Graceful shutdown:</b> stop intake → drain or cancel with a deadline → close resources.</li>
+</ul>
+<p>🟣 <b>Combining models is normal:</b> a FastAPI service runs N <b>processes</b> (uvicorn workers) each with one <b>event loop</b>, using a <b>thread pool</b> for blocking SDKs and maybe a <b>process pool</b> for CPU-heavy endpoints.</p>`,
+    clues: [
+      '"design a web crawler / scraper" → asyncio worker pool + queue + seen-set + per-host limits',
+      '"process a 100 GB file / millions of records" → chunked pipeline, process pool or job queue, bounded queues',
+      '"call an LLM for 50k documents within rate limits" → asyncio + Semaphore + token bucket + retries + checkpointing',
+      '"real-time chat / websockets for 100k users" → asyncio (many processes behind a load balancer)',
+      '"should I use threads, processes or asyncio?" → ask: waiting or computing? how many? which libraries?',
+      '"must survive crashes / restarts" → durable queue (Redis/SQS/Kafka) + idempotent workers, not in-memory pools'
+    ],
+    code: [{ lang: 'python', title: 'A decision helper you can tweak (runnable)', run: true, code: `def choose_model(kind, concurrent_units=10, async_libs=True, vectorizable=False, multi_machine=False):
+    """Return a recommended Python concurrency model and the reason."""
+    if multi_machine:
+        return "job queue / distributed engine", "work must outlive one process or machine"
+    if kind == "cpu":
+        if vectorizable:
+            return "NumPy/Polars (vectorise)", "C code releases the GIL and uses SIMD"
+        return "ProcessPoolExecutor", "pure-Python CPU work needs one GIL per core"
+    if kind == "io":
+        if concurrent_units >= 200 and async_libs:
+            return "asyncio", "cheap tasks scale to many sockets on one thread"
+        return "ThreadPoolExecutor", "blocking libraries release the GIL while waiting"
+    if kind == "mixed":
+        return "asyncio + ProcessPoolExecutor", "loop for I/O, processes for CPU stages"
+    raise ValueError("kind must be cpu, io or mixed")
+
+cases = [
+    ("resize 10k images (Pillow, Python loop)", dict(kind="cpu")),
+    ("matrix stats on 1e8 floats", dict(kind="cpu", vectorizable=True)),
+    ("call 30 internal APIs with requests", dict(kind="io", concurrent_units=30, async_libs=False)),
+    ("10k websocket clients", dict(kind="io", concurrent_units=10_000)),
+    ("crawl + parse heavy HTML", dict(kind="mixed")),
+    ("nightly ETL across a cluster", dict(kind="cpu", multi_machine=True)),
+]
+for label, kw in cases:
+    model, why = choose_model(**kw)
+    print(f"{label:42s} -> {model:32s} ({why})")
+` }, { lang: 'python', title: 'Pipeline: async fetch stage → process-pool parse stage (run locally)', code: `import asyncio
+from concurrent.futures import ProcessPoolExecutor
+
+def parse(html: str) -> int:
+    """CPU-heavy stage (pretend): count words."""
+    return len(html.split())
+
+async def fetch(i: int) -> str:
+    await asyncio.sleep(0.05)                 # network wait
+    return "word " * (i + 1)
+
+async def main():
+    loop = asyncio.get_running_loop()
+    pages: asyncio.Queue = asyncio.Queue(maxsize=10)   # back-pressure between stages
+    results = []
+
+    async def producer():
+        async with asyncio.TaskGroup() as tg:
+            for i in range(20):
+                tg.create_task(fetch_into(i))
+
+    async def fetch_into(i):
+        await pages.put(await fetch(i))
+
+    async def parser(pool):
+        while True:
+            html = await pages.get()
+            try:
+                results.append(await loop.run_in_executor(pool, parse, html))
+            finally:
+                pages.task_done()
+
+    with ProcessPoolExecutor(max_workers=2) as pool:
+        parsers = [asyncio.create_task(parser(pool)) for _ in range(2)]
+        await producer()
+        await pages.join()
+        for p in parsers:
+            p.cancel()
+        await asyncio.gather(*parsers, return_exceptions=True)
+    print(len(results), "pages parsed, total words:", sum(results))
+
+if __name__ == "__main__":
+    asyncio.run(main())
+` }],
+    codeTitle: ['Decision helper', 'Mixed pipeline'],
+    viz: {
+      title: 'Decision walk: which concurrency model fits this workload?',
+      input: 'io-many',
+      inputLabel: 'workload: cpu, cpu-numpy, io-many, io-few, io-blocking-lib, mixed, cluster',
+      gen: function (input) {
+        var w = String(input || 'io-many').trim().toLowerCase();
+        var valid = ['cpu', 'cpu-numpy', 'io-many', 'io-few', 'io-blocking-lib', 'mixed', 'cluster'];
+        if (valid.indexOf(w) < 0) throw new Error('Choose one of: ' + valid.join(', '));
+        var nodes = [
+          { id: 'start', label: 'Profiled? It\'s concurrency', x: 50, y: 4, shape: 'box', w: 28 },
+          { id: 'multi', label: 'Beyond 1 machine / durable?', x: 50, y: 18, shape: 'box', w: 28 },
+          { id: 'jobq', label: 'Job queue / Ray / Dask', x: 88, y: 18, shape: 'box', w: 22 },
+          { id: 'kind', label: 'Waiting or computing?', x: 50, y: 32, shape: 'box', w: 24 },
+          { id: 'vec', label: 'Vectorisable / C lib?', x: 18, y: 46, shape: 'box', w: 22 },
+          { id: 'numpy', label: 'NumPy / Polars', x: 6, y: 60, shape: 'box', w: 16 },
+          { id: 'proc', label: 'ProcessPoolExecutor', x: 30, y: 60, shape: 'box', w: 22 },
+          { id: 'many', label: 'Many conns + async libs?', x: 80, y: 46, shape: 'box', w: 26 },
+          { id: 'aio', label: 'asyncio', x: 92, y: 60, shape: 'box', w: 14 },
+          { id: 'thr', label: 'ThreadPoolExecutor', x: 70, y: 60, shape: 'box', w: 22 },
+          { id: 'mix', label: 'asyncio + process pool', x: 50, y: 60, shape: 'box', w: 22 }
+        ];
+        var edges = [['start', 'multi'], ['multi', 'jobq', 'yes'], ['multi', 'kind', 'no'], ['kind', 'vec', 'CPU'], ['kind', 'many', 'I/O'], ['kind', 'mix', 'both'], ['vec', 'numpy', 'yes'], ['vec', 'proc', 'no'], ['many', 'aio', 'yes'], ['many', 'thr', 'no']];
+        var paths = {
+          'cluster': [['start', 'Profiling shows the bottleneck really is throughput of independent jobs.'], ['multi', 'The work (nightly ETL, millions of jobs) must survive crashes and use several machines → <b>yes</b>.'], ['jobq', '<b>Use a durable job queue</b> (Celery/RQ/Dramatiq with Redis/SQS) or Ray/Dask. Inside each worker you can still use the models below.']],
+          'cpu': [['start', 'Profiler shows 100% of one core in a pure-Python loop.'], ['multi', 'Fits on one machine → <b>no</b>.'], ['kind', 'It is <b>computing</b>, not waiting.'], ['vec', 'The loop does custom object logic, not array math → <b>no</b>.'], ['proc', '<b>ProcessPoolExecutor</b>: one GIL per core. Send small inputs, use chunks. (On 3.14t free-threaded builds, threads become an option.)']],
+          'cpu-numpy': [['start', 'Profiler shows a hot numeric loop.'], ['multi', 'One machine → <b>no</b>.'], ['kind', '<b>Computing</b>.'], ['vec', 'It is array math → <b>yes</b>.'], ['numpy', '<b>Vectorise with NumPy/Polars</b>: often 10–100× faster than any pool, and the C code releases the GIL.']],
+          'io-many': [['start', 'Time is spent waiting on 10,000 sockets.'], ['multi', 'One machine → <b>no</b>.'], ['kind', '<b>Waiting</b> (I/O).'], ['many', 'Thousands of connections and async clients exist (httpx, asyncpg) → <b>yes</b>.'], ['aio', '<b>asyncio</b> with TaskGroup + Semaphore + timeouts. Scale further with several processes.']],
+          'io-few': [['start', 'A script calls 20 APIs one after another.'], ['multi', '<b>no</b>.'], ['kind', '<b>Waiting</b>.'], ['many', 'Only 20 calls; rewriting to async is not worth it → <b>no</b>.'], ['thr', '<b>ThreadPoolExecutor(max_workers=20)</b> + as_completed: 5 lines, works with your existing code.']],
+          'io-blocking-lib': [['start', 'Calls go through a vendor SDK that only has a blocking API.'], ['multi', '<b>no</b>.'], ['kind', '<b>Waiting</b>.'], ['many', 'No async client exists → <b>no</b>.'], ['thr', '<b>Threads</b> (or <code>asyncio.to_thread</code> if the rest of the app is async). The SDK releases the GIL while waiting on sockets.']],
+          'mixed': [['start', 'Crawler: fetch pages (waiting) then parse heavy HTML (computing).'], ['multi', '<b>no</b>.'], ['kind', '<b>Both</b>.'], ['mix', '<b>asyncio for fetching + ProcessPoolExecutor for parsing</b>, joined by a bounded queue (pipeline with back-pressure).']]
+        };
+        var p = paths[w], frames = [], seen = [];
+        p.forEach(function (step, i) {
+          seen.push(step[0]);
+          var hl = {}, ehl = {};
+          seen.forEach(function (id, j) { hl[id] = j === seen.length - 1 ? (i === p.length - 1 ? 'sel' : 'cur') : 'done'; if (j > 0) ehl[seen[j - 1] + '-' + id] = 'ok'; });
+          frames.push(fr('<b>Step ' + (i + 1) + '.</b> ' + step[1], [{ type: 'graph', directed: true, height: 66, nodes: nodes, edges: edges, hl: hl, ehl: ehl }]));
+        });
+        frames.push(fr('<b>Answer for "' + w + '":</b> ' + p[p.length - 1][1] + ' Try another workload in the input box to see a different path.', [{ type: 'graph', directed: true, height: 66, nodes: nodes, edges: edges, hl: (function () { var h = {}; h[p[p.length - 1][0]] = 'sel'; return h; })() }, tx('Interview tip: say the questions out loud in this order — <b>is it concurrency? one machine? waiting or computing? how many? which libraries?</b> — then name the tool and its limits.', 'How to present it')]));
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'Design: summarise 50,000 documents with an LLM API', html: `<p>Limits: 500 requests/min, 200k tokens/min, ~5 s per call. Little's law: in-flight ≈ rate × latency = (500/60) × 5 ≈ <b>42</b>.</p>${H.table(['Concern', 'Choice'], [['concurrency model', 'asyncio + async SDK client'], ['in-flight cap', '<code>Semaphore(40)</code>'], ['rate', 'token bucket for requests <b>and</b> tokens per minute'], ['failures', 'retry 429/5xx with exponential backoff + jitter, honour Retry-After'], ['crash safety', 'write results to disk/DB as they finish; skip done IDs on restart (idempotent)'], ['time', '50,000 / 500 per min = <b>100 min</b> minimum — the rate limit, not code, is the bottleneck']])}` },
+      { title: 'Design: image thumbnailer for an upload service', html: `<p>Uploads arrive via an async web API. Resizing is CPU-heavy. Don't resize in the request handler (blocks the loop) and don't spin up a process per upload. Instead: handler stores the original, pushes a job onto a durable queue (SQS/Redis), returns <code>202 Accepted</code>. A separate worker service runs a <b>process pool</b> sized to cores, pulls jobs, writes thumbnails, acks the job. Scale workers horizontally; jobs survive crashes; the web tier stays fast.</p>` },
+      { title: 'Measure, then decide: a tiny benchmark table', html: `${H.table(['Workload (100 units)', 'serial', '8 threads', '8 processes', 'asyncio'], [['HTTP calls, 100 ms each', '10.0 s', '1.3 s', '1.4 s (+start-up)', '0.15 s'], ['pure-Python math, 50 ms each', '5.0 s', '5.3 s', '0.8 s', '5.0 s'], ['NumPy matmul, 50 ms each', '5.0 s', '~1 s*', '~1.2 s', '5.0 s']])}<p>* BLAS may already use several cores per call. Illustrative numbers on an 8-core laptop — always measure your own.</p>` }
+    ],
+    deepDive: `<p><b>Little's law</b> (L = λ × W) sizes everything: concurrent work L = arrival rate λ × time in system W. 300 req/s × 0.2 s latency = 60 in flight → a pool of ~60 threads, or a Semaphore(60), or 60 connections in the DB pool. If W grows (slow dependency), L grows — without a cap you run out of sockets/memory; with a cap, requests queue and you need timeouts and load shedding.</p>
+<p><b>Back-pressure end to end.</b> Every unbounded buffer is a future out-of-memory: unbounded <code>asyncio.Queue()</code>, unbounded executor queues, creating a task per incoming message. Bound queues, apply <code>maxsize</code>, and decide what happens when full: wait (back-pressure), drop (sampling), or reject (HTTP 429/503). Kafka/SQS consumers should only fetch as many messages as they can process concurrently.</p>
+<p><b>Correctness under retries.</b> Concurrency + failures ⇒ duplicates. Make handlers <b>idempotent</b> (dedupe by job ID, upserts, idempotency keys for payments). Use <b>exponential backoff with jitter</b> (e.g. <code>sleep = random.uniform(0, base * 2**attempt)</code>) to avoid synchronized retry storms. Add a <b>circuit breaker</b> when a dependency is down so you fail fast instead of piling up waiting tasks.</p>
+<p><b>The 2026 landscape.</b> Free-threaded CPython (3.14t) makes thread pools viable for CPU-bound Python when your dependencies support it; check <code>sys._is_gil_enabled()</code> at runtime and benchmark — single-thread speed is a bit lower and memory higher. Sub-interpreters (<code>concurrent.interpreters</code>, <code>InterpreterPoolExecutor</code>) offer process-like isolation with lower overhead but limited data sharing (queues of simple objects / memoryviews). For async, the ecosystem has standardised on <code>TaskGroup</code>-style structured concurrency; AnyIO lets libraries run on both asyncio and Trio.</p>`,
+    aiEra: `<p><b>What AI changes:</b> concurrency design is now often about <b>orchestrating AI calls</b>: fan-out to models and tools, agents running tool calls in parallel, streaming tokens over websockets. These are I/O-bound, rate-limited and expensive — asyncio + limits + retries + caching is the default architecture.</p>
+<p><b>Use AI as a partner:</b> <code>Given these numbers (rate limits, latency, volume), compute the required concurrency with Little's law and propose a design with bounded queues</code>; <code>Review this design for unbounded buffers, missing timeouts and non-idempotent retries</code>; <code>Generate a load-test script that ramps to 2× expected traffic</code>.</p>
+<p><b>Where AI goes wrong:</b> picks a model by fashion ("use asyncio everywhere") instead of workload; ignores provider rate limits; forgets idempotency on retry; proposes a per-request process pool; or overlooks that the slowest dependency, not Python, sets the ceiling.</p>
+<p><b>What you must still own:</b> the numbers (throughput, latency, limits), the failure model, and a clear explanation of trade-offs — exactly what interviewers probe in concurrency design rounds.</p>`,
+    problems: [{
+      title: 'Design and Build an Async Web Crawler', level: 'Hard', tags: ['asyncio', 'Queue', 'design', 'BFS'], companies: ['Google', 'Amazon', 'OpenAI'],
+      statement: `<p>Write <code>async def crawl(start, get_links, max_pages, workers)</code>. <code>await get_links(url)</code> fetches a page and returns the URLs it links to (may raise). Crawl breadth-first from <code>start</code>, visit each URL <b>at most once</b>, fetch at most <code>max_pages</code> pages, run at most <code>workers</code> fetches at once, and return the set of visited URLs. Failures are skipped. The crawl must terminate even when the graph has cycles.</p>`,
+      constraints: `<p>max_pages ≤ 10<sup>5</sup>, workers ≤ 100. Graph may contain cycles and dead links. Assume all URLs are on allowed hosts.</p>`,
+      example: `<p>Graph ${H.c('b', 'a→[b,c], b→[a,d], c→[d], d→[]')}, max_pages = 10, workers = 2 → visited ${H.c('g', '{a, b, c, d}')}. The cycle a↔b doesn't loop forever because "a" is already in <code>seen</code>.</p>`,
+      brute: { why: `<p>Recursive sequential crawling (fetch, then recurse into each link) waits for each page one at a time and, without a <code>seen</code> set, loops forever on cycles. Spawning a task per discovered link without a cap explodes into thousands of simultaneous requests.</p>`, code: `import asyncio
+
+async def crawl_naive(url, get_links, seen=None):
+    seen = seen if seen is not None else set()
+    if url in seen:
+        return seen
+    seen.add(url)
+    for nxt in await get_links(url):      # one page at a time
+        await crawl_naive(nxt, get_links, seen)
+    return seen` },
+      mcq: { q: 'When should a URL be added to the seen set?', options: ['After it is fetched successfully', 'When it is put on the queue', 'When a worker takes it off the queue', 'Never — dedupe the results at the end'], answer: 1, explain: 'Marking at enqueue time guarantees each URL is queued at most once, even if many pages link to it before it is fetched. Marking later lets duplicates pile up in the queue.' },
+      hints: [`<p>Hint 1: It's BFS with a queue, but the queue is an <code>asyncio.Queue</code> and several worker tasks consume it concurrently.</p>`, `<p>Hint 2: Shared state: <code>seen</code> (marked at enqueue), <code>visited</code> (successful fetches), counter. No lock needed for simple set operations — there is no await between check and add.</p>`, `<p>Hint 3: Termination: <code>await q.join()</code> returns when every queued URL got <code>task_done()</code>. Then cancel workers. To respect <code>max_pages</code>, skip fetching when the budget is used up but still call <code>task_done()</code>.</p>`],
+      solution: {
+        approach: `<p>Worker-pool BFS: an <code>asyncio.Queue</code> of URLs, <code>workers</code> tasks pulling from it, a <code>seen</code> set updated at enqueue time (no await between check and add, so no race), and a page budget that is reserved <b>before</b> the fetch's await (so concurrent workers can't overshoot it). <code>q.join()</code> detects completion even with cycles because each URL is enqueued once. Workers are cancelled at the end; <code>try/finally</code> guarantees <code>task_done()</code> even on fetch errors.</p>`,
+        code: `import asyncio
+
+async def crawl(start, get_links, max_pages, workers):
+    q = asyncio.Queue()
+    seen = {start}
+    visited = set()
+    budget = max_pages
+    await q.put(start)
+
+    async def worker():
+        nonlocal budget
+        while True:
+            url = await q.get()
+            try:
+                if budget <= 0:
+                    continue                         # budget used up: just drain the queue
+                budget -= 1                          # reserve BEFORE awaiting → exact cap
+                try:
+                    links = await asyncio.wait_for(get_links(url), timeout=5)
+                except Exception:
+                    continue                         # dead link / timeout: skip
+                visited.add(url)
+                for nxt in links:
+                    if nxt not in seen:              # check + add with no await between
+                        seen.add(nxt)
+                        q.put_nowait(nxt)
+            finally:
+                q.task_done()
+
+    tasks = [asyncio.create_task(worker()) for _ in range(workers)]
+    await q.join()                                   # every enqueued URL handled
+    for t in tasks:
+        t.cancel()
+    await asyncio.gather(*tasks, return_exceptions=True)
+    return visited
+
+GRAPH = {"a": ["b", "c"], "b": ["a", "d"], "c": ["d", "x"], "d": []}
+
+async def fake_get_links(url):
+    await asyncio.sleep(0.01)
+    if url not in GRAPH:
+        raise ConnectionError("404")
+    return GRAPH[url]
+
+if __name__ == "__main__":
+    print(sorted(asyncio.run(crawl("a", fake_get_links, max_pages=10, workers=2))))
+    # ['a', 'b', 'c', 'd']   ('x' is a dead link)`,
+        dry: { head: ['step', 'worker', 'url', 'links found', 'queue after', 'seen'], rows: [['1', 'w0', 'a', 'b, c', 'b, c', 'a b c'], ['2', 'w0 / w1', 'b, c', 'a, d / d, x', 'd, x', 'a b c d x'], ['3', 'w0 / w1', 'd, x', '[] / 404', '(empty)', 'a b c d x'], ['4', 'main', 'q.join() returns', '', 'cancel workers', 'visited = a b c d']] },
+        complexity: `<p>O(V + E) set/queue operations for V pages and E links; wall time ≈ (V / workers) × fetch latency. Memory O(V) for seen + queue.</p>`,
+        followUps: ['Add per-host politeness: max 2 concurrent requests per host and a 1 s delay.', 'Respect robots.txt and add a depth limit.', 'Make it resumable after a crash (persist the frontier and seen set).', 'Move HTML parsing to a process pool — where does the queue go?']
+      }
+    }]
+  });
+
 registerModule({ id: 'py10', title: 'Concurrency', intro: '<p>x</p>', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();

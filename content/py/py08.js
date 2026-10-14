@@ -2109,7 +2109,7 @@
         print(PointDC("not", "ints"))                            # no runtime type checking!
       ` } }
     ],
-    deepDive: R`<p>🟣 <b>How it works.</b> <code>dataclass</code> is an ordinary function. It walks the MRO collecting <code>__dataclass_fields__</code> from base dataclasses (base fields come first, a subclass can override a field's default), then for the class's own <code>__annotations__</code> builds <code>Field</code> objects, and finally generates source text for each method and <code>exec</code>s it (via a small internal helper) with the defaults and factories injected as globals, so the generated <code>__init__</code> is a normal Python function with no per-call overhead beyond hand-written code. Methods you define yourself are <b>not</b> overwritten (except where explicitly documented; e.g. defining <code>__eq__</code> with <code>order=True</code> leaves your <code>__eq__</code>, but defining <code>__lt__</code> with <code>order=True</code> raises <code>TypeError</code>). <code>slots=True</code> must create a brand-new class (slots cannot be added after creation), which breaks zero-argument <code>super()</code> in methods on older versions (fixed in 3.14) and anything holding a reference to the original class.</p>
+    deepDive: R`<p>🟣 <b>How it works.</b> <code>dataclass</code> is an ordinary function. It walks the MRO collecting <code>__dataclass_fields__</code> from base dataclasses (base fields come first, a subclass can override a field's default), then for the class's own <code>__annotations__</code> builds <code>Field</code> objects, and finally generates source text for each method and <code>exec</code>s it (via a small internal helper) with the defaults and factories injected as globals, so the generated <code>__init__</code> is a normal Python function with no per-call overhead beyond hand-written code. Methods you define yourself are <b>not</b> overwritten (except where explicitly documented; e.g. defining <code>__eq__</code> with <code>order=True</code> leaves your <code>__eq__</code>, but defining <code>__lt__</code> with <code>order=True</code> raises <code>TypeError</code>). <code>slots=True</code> must create a brand-new class (slots cannot be added after creation), which can break zero-argument <code>super()</code> inside its methods (the <code>__class__</code> cell still points at the old class; check your Python version's notes) and anything else holding a reference to the original class.</p>
       <p><b>Subtleties interviewers probe.</b> (1) The mutable-default check (3.11+) rejects any <b>unhashable</b> default, not just list/dict/set; a custom mutable class with <code>__hash__</code> slips through. (2) <code>frozen</code> is shallow and costs a little at construction (each field set via <code>object.__setattr__</code>); inheritance cannot mix frozen and non-frozen dataclasses (<code>TypeError</code>). (3) <code>asdict</code> deep-copies recursively, which can be slow for big nested structures; write a custom serializer for hot paths. (4) <code>eq</code> requires the <b>same class</b>, so a subclass instance is never equal to a parent instance. (5) <code>field(hash=None)</code> defaults to <code>compare</code>; <code>compare=False</code> fields are excluded from <code>__eq__</code>, ordering and the generated hash. (6) Since 3.10, <code>KW_ONLY</code> as a pseudo-field marks the rest as keyword-only, and <code>match_args</code>/<code>weakref_slot</code> options exist. (7) <code>typing.dataclass_transform</code> (PEP 681) lets libraries (pydantic, SQLAlchemy 2.0 mapped classes, attrs) tell type checkers "I behave like a dataclass".</p>
       <p><b>Performance:</b> with <code>slots=True</code> a dataclass is as small as a hand-slotted class; creation speed is similar to hand-written <code>__init__</code>. If you need hundreds of thousands of records for analytics, a list of dataclasses still pays per-object overhead: consider NumPy structured arrays, pandas, or Polars instead.</p>`,
     aiEra: R`<p>🤖 <b>What AI changes:</b> AI tools now default to dataclasses or pydantic models for any data shape, and they generate them instantly from a JSON sample or an API spec. The skill shifts to choosing options correctly: frozen or not, ordering semantics, which fields participate in equality, and where validation happens.</p>
@@ -2198,6 +2198,1225 @@
         followUps: ['Add <code>slots=True</code>: what changes, and why must <code>__post_init__</code> still use <code>object.__setattr__</code>?', 'Keep the natural <code>name, price</code> constructor order but still sort by price: compare the sort_index pattern with the classmethod approach', 'Load products from untrusted JSON: would you switch to pydantic? Where is the boundary?']
       }
     }]
+  });
+
+  /* ======================================================================
+     TOPIC 7: Abstract Base Classes — abc, @abstractmethod, collections.abc mixins, Protocol
+     ====================================================================== */
+  var ABC_DEFS = {
+    Sequence: { abs: ['__getitem__', '__len__'], mix: [['__contains__', 'loops with __iter__ and =='], ['__iter__', '__getitem__(0), (1), … until IndexError'], ['__reversed__', '__len__ + __getitem__ from the end'], ['index', '__getitem__ loop'], ['count', 'loops and counts']] },
+    MutableSequence: { abs: ['__getitem__', '__setitem__', '__delitem__', '__len__', 'insert'], mix: [['__contains__ / __iter__ / __reversed__ / index / count', 'inherited from Sequence'], ['append(v)', 'insert(len(self), v)'], ['extend(it)', 'append each item'], ['pop(i=-1)', 'v = self[i]; del self[i]'], ['remove(v)', 'del self[self.index(v)]'], ['reverse()', 'swap with __getitem__/__setitem__'], ['clear()', 'pop() until IndexError'], ['__iadd__', 'extend, return self']] },
+    Mapping: { abs: ['__getitem__', '__iter__', '__len__'], mix: [['__contains__', 'try self[key] except KeyError'], ['get(k, d)', 'try self[k] except KeyError'], ['keys / items / values', 'view objects built on __iter__ + __getitem__'], ['__eq__ / __ne__', 'dict(self.items()) == dict(other.items())']] },
+    MutableMapping: { abs: ['__getitem__', '__setitem__', '__delitem__', '__iter__', '__len__'], mix: [['Mapping mixins', 'inherited (get, keys, items, values, __contains__, __eq__)'], ['pop(k)', 'v = self[k]; del self[k]'], ['popitem()', 'k = next(iter(self)); pop it'], ['clear()', 'popitem() until KeyError'], ['update(...)', 'self[k] = v for each pair'], ['setdefault(k, d)', 'try self[k] except KeyError: self[k] = d']] },
+    Shape: { abs: ['area', 'perimeter'], mix: [['describe()', 'f"{name}: area={self.area()}, perimeter={self.perimeter()}"']] }
+  };
+
+  topics.push({
+    title: 'Abstract Base Classes: Contracts, collections.abc Mixins & Protocols',
+    analogy: R`<p>A <b>franchise agreement</b>. Head office says: "Every branch <b>must</b> have a kitchen and a cash register (abstract methods). In return, you get our brand, our menu boards and our loyalty system <b>for free</b> (mixin methods), because those are built on top of your kitchen and register." A branch that is missing the kitchen is not allowed to open at all, rather than opening and failing on the first order. That is exactly what an ABC does: it refuses to create objects that do not fulfil the contract, and hands out free features to those that do.</p>`,
+    explain: R`<p>🟢 <b>The plain idea.</b> An <b>abstract base class</b> (ABC) describes "what methods a family of classes must have". You mark the required methods with <code>@abstractmethod</code>. A class that still has any abstract method left <b>cannot be instantiated</b>; Python raises <code>TypeError</code> right away, at the place where you create the object, instead of an <code>AttributeError</code> deep in production when the missing method is first called.</p>
+      ${H.table(['Piece', 'Code', 'Meaning'], [
+        ['define a contract', '<code>class Shape(ABC):</code> + <code>@abstractmethod def area(self): …</code>', 'subclasses must implement <code>area</code>'],
+        ['try to use it unfinished', '<code>Square()</code> without <code>area</code>', "<code>TypeError: Can't instantiate abstract class Square without an implementation for abstract method 'area'</code>"],
+        ['concrete helper in the ABC', '<code>def describe(self): return f"{self.area()}"</code>', 'a <b>template method</b> built on abstract ones'],
+        ['ready-made ABCs', '<code>collections.abc.Sequence</code>, <code>Mapping</code>, <code>Iterable</code>, <code>Hashable</code>, …', 'write 2 to 5 methods, inherit the rest'],
+        ['virtual subclass', '<code>Shape.register(Blob)</code>', '<code>isinstance</code> says yes, but nothing is checked or inherited']
+      ])}
+      <p>🔵 <b>The killer feature: free methods.</b> Inherit from <code>collections.abc.Sequence</code>, implement only <code>__getitem__</code> and <code>__len__</code>, and you get <code>__contains__</code>, <code>__iter__</code>, <code>__reversed__</code>, <code>index</code> and <code>count</code>. Inherit <code>MutableMapping</code>, implement five methods, and you get <code>get</code>, <code>pop</code>, <code>setdefault</code>, <code>update</code>, <code>keys</code>, <code>items</code>, <code>values</code>, equality and more, all <b>correctly</b> built on your five. That is the safe way to write a custom dict-like class (subclassing <code>dict</code> directly is a trap because its C methods ignore your overrides).</p>
+      <p><b>Three flavours of "is this a duck?"</b></p>
+      <ul>
+        <li><b>Duck typing</b> (default Python): just call the method; if it quacks, fine. Simple, but errors appear late.</li>
+        <li><b>Nominal ABC</b>: inherit from the ABC (or <code>register</code>). Checked at instantiation, gives mixins, works with <code>isinstance</code>.</li>
+        <li><b>Structural Protocol</b> (<code>typing.Protocol</code>): "anything with a <code>.read()</code> method counts", <b>no inheritance needed</b>. Checked by type checkers (mypy, pyright) before the code runs; <code>@runtime_checkable</code> adds a shallow <code>isinstance</code> check (method names only, not signatures). Some built-in ABCs are structural too: <code>isinstance(x, collections.abc.Iterable)</code> is True for any class with <code>__iter__</code>, via <code>__subclasshook__</code>.</li>
+      </ul>`,
+    clues: [
+      '"design a plugin / payment provider / storage backend interface" → ABC with <code>@abstractmethod</code> (or a Protocol)',
+      '"fail fast if a subclass forgets to implement X" → ABC instead of <code>raise NotImplementedError</code>',
+      '"implement a custom dict-like / list-like class" → inherit <code>collections.abc.MutableMapping</code> / <code>MutableSequence</code>, not <code>dict</code>/<code>list</code>',
+      '"template method pattern": base algorithm calls steps that subclasses provide → concrete method in the ABC calling abstract ones',
+      '"accept any object that has a .read()/.close()" with type checking, no shared base class → <code>typing.Protocol</code>',
+      '"check if something is iterable / hashable / callable" → <code>isinstance(x, collections.abc.Iterable)</code> etc.'
+    ],
+    code: [{ lang: 'python', run: true, title: 'A contract with a template method', code: R`
+      from abc import ABC, abstractmethod
+      import math
+
+      class Shape(ABC):
+          @abstractmethod
+          def area(self) -> float:
+              """Subclasses must return the area."""
+
+          @abstractmethod
+          def perimeter(self) -> float: ...
+
+          def describe(self) -> str:                 # concrete "template method"
+              return f"{type(self).__name__}: area={self.area():.2f}, perimeter={self.perimeter():.2f}"
+
+      class Circle(Shape):
+          def __init__(self, r): self.r = r
+          def area(self): return math.pi * self.r ** 2
+          def perimeter(self): return 2 * math.pi * self.r
+
+      class Square(Shape):
+          def __init__(self, s): self.s = s
+          def area(self): return self.s ** 2         # forgot perimeter!
+
+      print(Circle(1).describe())
+      print(sorted(Square.__abstractmethods__))      # what is still missing
+      try:
+          Square(2)                                  # fails HERE, not later
+      except TypeError as e:
+          print("TypeError:", e)
+      try:
+          Shape()
+      except TypeError as e:
+          print("TypeError:", str(e)[:45])
+    ` }, { lang: 'python', run: true, title: 'collections.abc: implement 5 methods, get 10+ for free', code: R`
+      from collections.abc import MutableMapping
+
+      class CaseInsensitiveDict(MutableMapping):
+          """A dict whose keys ignore case, built the SAFE way."""
+
+          def __init__(self, *args, **kwargs):
+              self._data = {}                       # casefolded key -> (original key, value)
+              self.update(*args, **kwargs)          # update() is a free mixin method!
+
+          def __getitem__(self, key):
+              return self._data[key.casefold()][1]
+
+          def __setitem__(self, key, value):
+              self._data[key.casefold()] = (key, value)
+
+          def __delitem__(self, key):
+              del self._data[key.casefold()]
+
+          def __iter__(self):
+              return (orig for orig, _ in self._data.values())
+
+          def __len__(self):
+              return len(self._data)
+
+          def __repr__(self):
+              return f"CaseInsensitiveDict({dict(self.items())!r})"
+
+      h = CaseInsensitiveDict({"Content-Type": "json"}, Accept="*/*")
+      print(h["content-type"], "ACCEPT" in h, h.get("missing", "-"))   # __contains__, get: free
+      h.setdefault("X-Trace", "abc")                                     # free
+      print(h.pop("accept"), len(h), list(h.keys()))                     # pop, keys: free
+      print(h == {"content-type": "json", "x-trace": "abc"})             # __eq__: free (compares items)
+      print(h)
+    ` }],
+    codeTitle: ['abc.ABC with abstract methods and a template method (runnable)', 'A correct custom mapping via MutableMapping (runnable)'],
+    viz: {
+      title: 'Can this class be instantiated? What do I get for free?',
+      input: 'MutableSequence | __getitem__ __setitem__ __len__ insert',
+      inputLabel: 'Base (Sequence, MutableSequence, Mapping, MutableMapping, Shape) | methods your subclass implements',
+      gen: function (input) {
+        var raw = String(input === undefined ? 'MutableSequence | __getitem__ __setitem__ __len__ insert' : input).split('|');
+        var base = raw[0].trim(), have = (raw[1] || '').trim().split(/[\s,]+/).filter(Boolean);
+        var D = ABC_DEFS[base];
+        if (!D) throw new Error('Base must be one of: ' + Object.keys(ABC_DEFS).join(', '));
+        if (have.length > 12) throw new Error('List at most 12 methods');
+        var frames = [], absHl = {};
+        var absRows = D.abs.map(function (a) { return [a, 'abstract (you must write it)']; });
+        var mixRows = D.mix.map(function (m) { return [m[0], 'mixin: ' + m[1]]; });
+        frames.push({ narr: '<code>' + base + '</code> is an ABC. It declares ' + D.abs.length + ' <b>abstract</b> methods (the contract) and ships ' + D.mix.length + ' <b>mixin</b> entries implemented in terms of them. Your class says it implements: <code>' + (have.length ? esc(have.join(', ')) : '(nothing)') + '</code>.', parts: [{ type: 'table', label: base + ' contract', columns: ['method', 'role'], rows: absRows.concat(mixRows), hl: (function () { var h = {}; for (var i = 0; i < absRows.length; i++) h[i] = 'cur'; return h; })() }, { type: 'set', label: 'methods your class defines', items: have.length ? have : [] }] });
+        var missing = [];
+        D.abs.forEach(function (a, i) {
+          var ok = have.indexOf(a) >= 0;
+          if (!ok) missing.push(a);
+          absHl[a] = ok ? 'ok' : 'bad';
+          frames.push({ narr: 'While creating your class, <code>ABCMeta</code> checks abstract method <code>' + a + '</code>: ' + (ok ? H.c('g', 'your class overrides it with a concrete function → satisfied.') : H.c('r', 'not overridden → it stays in <code>__abstractmethods__</code>.')) + ' (The class itself is still created either way; the check bites when you try to make an <b>instance</b>.)', parts: [{ type: 'set', label: 'abstract methods', items: D.abs.slice(), hl: (function () { var h = {}; D.abs.slice(0, i + 1).forEach(function (x) { h[x] = absHl[x]; }); h[a] = ok ? 'ok' : 'bad'; return h; })() }, { type: 'set', label: 'MyClass.__abstractmethods__ so far', items: missing.slice(), hl: (function () { var h = {}; if (!ok) h[a] = 'bad'; return h; })() }] });
+        });
+        if (missing.length) {
+          var msg = "Can't instantiate abstract class MyClass without an implementation for abstract method" + (missing.length > 1 ? 's ' : ' ') + missing.map(function (m) { return "'" + m + "'"; }).join(', ');
+          frames.push({ narr: '<code>MyClass()</code> → <code>object.__new__</code> sees a non-empty <code>__abstractmethods__</code> and refuses: <span class="c-r">TypeError: ' + esc(msg) + '</span>. This is the "fail fast" benefit: the bug shows up at construction, with a precise list of what is missing.', parts: [{ type: 'set', label: 'MyClass.__abstractmethods__', items: missing, hl: (function () { var h = {}; missing.forEach(function (m) { h[m] = 'bad'; }); return h; })() }, { type: 'text', label: 'Traceback', html: '<pre>TypeError: ' + esc(msg) + '</pre>' }] });
+          frames.push({ narr: 'Fix by implementing ' + missing.map(function (m) { return '<code>' + m + '</code>'; }).join(', ') + ' and press Load again with the full list. Tip: in the console, <code>MyClass.__abstractmethods__</code> tells you exactly what is still missing.', parts: [{ type: 'array', label: 'still to write', values: missing, hl: (function () { var h = {}; missing.forEach(function (_, k) { h[k] = 'r'; }); return h; })() }] });
+          return frames;
+        }
+        frames.push({ narr: '<code>__abstractmethods__</code> is empty → <code>MyClass()</code> ' + H.c('g', 'succeeds') + '. And now the reward: every mixin method works, because each one is written using only the abstract methods you just provided.', parts: [{ type: 'set', label: 'MyClass.__abstractmethods__', items: [] }, { type: 'vars', vals: { 'MyClass()': 'created', 'isinstance(obj, base ABC)': 'True' }, hl: { 'MyClass()': 'ok' } }] });
+        D.mix.forEach(function (m, i) {
+          var hm = {}; hm[D.abs.length + i] = 'ok';
+          for (var q = 0; q < i; q++) hm[D.abs.length + q] = 'done';
+          frames.push({ narr: 'Free method <code>' + esc(m[0]) + '</code>: implemented in the ABC as <i>' + esc(m[1]) + '</i>. You wrote none of it, yet it behaves correctly for your class.', parts: [{ type: 'table', label: base + ' contract', columns: ['method', 'role'], rows: absRows.concat(mixRows), hl: hm }] });
+        });
+        frames.push({ narr: 'Summary: you wrote <b>' + D.abs.length + '</b> methods and received <b>' + D.mix.length + '</b> mixin entries. Mixins are generic, so for speed you may still override some (e.g. a faster <code>__contains__</code> backed by a set); the ABC will happily use your version.', parts: [{ type: 'bars', label: 'methods: written by you vs inherited', values: [D.abs.length, D.mix.length], idxLabels: ['you wrote', 'free mixins'], hl: { 1: 'ok' } }] });
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'Sequence: a Range-like class with free index/count/reversed', html: R`<p>Implement <code>__getitem__</code> (including slices and negatives) and <code>__len__</code>; inherit <code>Sequence</code> and you also get <code>in</code>, iteration, <code>reversed()</code>, <code>.index()</code>, <code>.count()</code>, plus <code>isinstance(x, Sequence)</code> is True. Note the mixin <code>__contains__</code> is a linear scan; override it when you can do better (here O(1) arithmetic).</p>`, code: { lang: 'python', run: true, code: R`
+        from collections.abc import Sequence
+
+        class Evens(Sequence):
+            """The even numbers 0, 2, 4, ... below n (like range(0, n, 2))."""
+            def __init__(self, n):
+                self.n = n
+
+            def __len__(self):
+                return (self.n + 1) // 2
+
+            def __getitem__(self, i):
+                if isinstance(i, slice):
+                    return [self[k] for k in range(*i.indices(len(self)))]
+                if i < 0:
+                    i += len(self)
+                if not 0 <= i < len(self):
+                    raise IndexError("Evens index out of range")
+                return 2 * i
+
+            def __contains__(self, x):                       # optional O(1) override
+                return isinstance(x, int) and x % 2 == 0 and 0 <= x < self.n
+
+        e = Evens(10)
+        print(list(e), e[-1], e[1:4], 6 in e, 7 in e)
+        print(list(reversed(e)), e.index(8), e.count(4), isinstance(e, Sequence))
+      ` } },
+      { title: 'Abstract properties and abstract classmethods', html: R`<p>Stack <code>@abstractmethod</code> <b>innermost</b> (closest to the function) under <code>@property</code> or <code>@classmethod</code>. Subclasses can satisfy an abstract property with a plain class attribute too, because the check is "is the name overridden by something non-abstract".</p>`, code: { lang: 'python', run: true, code: R`
+        from abc import ABC, abstractmethod
+
+        class PaymentProvider(ABC):
+            @property
+            @abstractmethod
+            def name(self) -> str: ...
+
+            @classmethod
+            @abstractmethod
+            def from_config(cls, cfg: dict) -> "PaymentProvider": ...
+
+            @abstractmethod
+            def charge(self, cents: int) -> str: ...
+
+        class FakeStripe(PaymentProvider):
+            name = "fake-stripe"                       # a class attribute satisfies the property
+            def __init__(self, key): self.key = key
+            @classmethod
+            def from_config(cls, cfg): return cls(cfg["key"])
+            def charge(self, cents): return f"{self.name} charged {cents}c with {self.key[:3]}***"
+
+        p = FakeStripe.from_config({"key": "sk_test_123"})
+        print(p.charge(499))
+      ` } },
+      { title: 'register(), __subclasshook__ and structural checks', html: R`<p><code>Iterable</code> and <code>Hashable</code> are <b>structural</b>: a class with <code>__iter__</code> counts as Iterable without inheriting anything. <code>Sequence</code> is <b>not</b> structural (having <code>__getitem__</code> is ambiguous between sequences and mappings), so you inherit or <code>register</code>. A registered "virtual subclass" passes <code>isinstance</code> but gets <b>no</b> mixins and <b>no</b> abstract-method check.</p>`, code: { lang: 'python', run: true, code: R`
+        from collections.abc import Iterable, Hashable, Sequence
+
+        class Countdown:
+            def __init__(self, n): self.n = n
+            def __iter__(self): return iter(range(self.n, 0, -1))
+
+        class Legacy:
+            def __getitem__(self, i): return [10, 20][i]
+            def __len__(self): return 2
+
+        print(isinstance(Countdown(3), Iterable))          # True: has __iter__ (structural)
+        print(isinstance(Legacy(), Sequence))              # False: Sequence is nominal
+        Sequence.register(Legacy)                          # trust me, it is a sequence
+        print(isinstance(Legacy(), Sequence), hasattr(Legacy, "index"))   # True False (no mixins!)
+        print(isinstance([], Hashable), isinstance((), Hashable))         # False True
+      ` } },
+      { title: 'typing.Protocol: structural interfaces without inheritance', html: R`<p>A <code>Protocol</code> describes a shape. Any class with matching methods satisfies it for type checkers, with no import of the protocol and no base class: ideal for adapters around third-party objects. <code>@runtime_checkable</code> allows <code>isinstance</code>, which checks only that the method <b>names</b> exist.</p>`, code: { lang: 'python', run: true, code: R`
+        from typing import Protocol, runtime_checkable
+
+        @runtime_checkable
+        class SupportsClose(Protocol):
+            def close(self) -> None: ...
+
+        class FileLike:
+            def close(self) -> None:
+                print("  file closed")
+
+        class Socketish:
+            def close(self, force=False) -> None:       # different signature: runtime check can't tell
+                print("  socket closed")
+
+        def shutdown(resources: list[SupportsClose]) -> None:
+            for r in resources:
+                r.close()
+
+        print(isinstance(FileLike(), SupportsClose), isinstance(42, SupportsClose))
+        shutdown([FileLike(), Socketish()])
+      ` } }
+    ],
+    deepDive: R`<p>🟣 <b>Mechanics.</b> <code>ABC</code> is just a class whose metaclass is <code>ABCMeta</code>. <code>@abstractmethod</code> sets <code>func.__isabstractmethod__ = True</code>. When <code>ABCMeta.__new__</code> creates a class, it collects names whose value has <code>__isabstractmethod__</code> true, both in the new namespace and inherited from bases if not overridden, into the frozenset <code>__abstractmethods__</code>. <code>object.__new__</code> checks the <code>Py_TPFLAGS_IS_ABSTRACT</code> flag set from that and raises the <code>TypeError</code>. Consequences: adding abstract methods to a class after creation does nothing unless you call <code>abc.update_abstractmethods(cls)</code> (3.10+); a class that overrides <code>__new__</code> without calling <code>object.__new__</code> can bypass the check; and abstract methods may have a body that subclasses reuse via <code>super().area()</code>.</p>
+      <p><b>isinstance with ABCs.</b> <code>ABCMeta.__instancecheck__</code>/<code>__subclasscheck__</code> consult (1) real inheritance, (2) the registry from <code>register()</code>, (3) <code>__subclasshook__</code> (e.g. <code>Iterable</code> checks for <code>__iter__</code> anywhere in the MRO, and treats <code>__iter__ = None</code> as an explicit "no"), with positive and negative caches (C-accelerated in <code>_abc</code>). These checks are slower than plain-class <code>isinstance</code>, a consideration in very hot paths. <code>numbers.Number</code>, <code>numbers.Integral</code>, <code>os.PathLike</code> and <code>contextlib.AbstractContextManager</code> are other useful stdlib ABCs.</p>
+      <p><b>ABC vs Protocol in modern codebases.</b> ABCs: runtime enforcement, mixins, explicit opt-in, good for frameworks you own. Protocols (PEP 544): static, structural, no coupling to your package, good for "accept anything that looks like X" in libraries and for typing third-party objects; but <code>runtime_checkable</code> only verifies attribute presence (not signatures), and <code>issubclass()</code> raises <code>TypeError</code> for protocols that declare non-method (data) members. Many teams use both: a <code>Protocol</code> for type hints at the boundary and an ABC as the convenient base class with shared helpers. Do not over-abstract: Python's duck typing means a one-implementation ABC is usually ceremony; introduce the contract when the second or third implementation appears or when plugins come from other teams.</p>`,
+    aiEra: R`<p>🤖 <b>What AI changes:</b> asking an assistant for "a plugin system" often yields a deep ABC hierarchy with five abstract layers. Your role is to cut it down: one small contract, maybe a Protocol, and composition elsewhere. On the flip side, AI is good at generating fake/test implementations of an ABC, which makes contract-first design cheaper than ever.</p>
+      <p><b>Prompts that help:</b> <code>Given this StorageBackend ABC, generate an in-memory fake implementation and a pytest suite that runs the same contract tests against every subclass (parametrize over implementations).</code> Contract tests ensure every backend honours the ABC beyond just "methods exist". Also useful: <code>Convert this ABC to a typing.Protocol and tell me what runtime guarantees I lose.</code></p>
+      <p><b>Where AI goes wrong:</b> subclasses <code>dict</code> for a custom mapping (then <code>get</code>/<code>update</code> skip the overrides) instead of <code>MutableMapping</code>; uses <code>raise NotImplementedError</code> bodies without <code>ABC</code> (no fail-fast); stacks <code>@abstractmethod</code> outside <code>@property</code> (wrong order); believes <code>register()</code> checks methods or provides mixins; or assumes <code>runtime_checkable</code> verifies signatures. <b>What you must own:</b> knowing which <code>collections.abc</code> class to inherit for a given container and which methods it needs.</p>`
+  });
+
+  /* ======================================================================
+     TOPIC 8: __slots__ — fixed attribute layout, memory and the gotchas
+     ====================================================================== */
+  // Measured on CPython 3.13, 64-bit, with tracemalloc (bytes per object, list pointer excluded).
+  var SLOT_MEM = { plain: [81, 89, 97, 105, 113, 121], plainDict: [145, 153, 161, 169, 177, 185], slots: [41, 49, 57, 65, 73, 81] };
+
+  topics.push({
+    title: '__slots__: Fixed Layouts, Memory Savings & Gotchas',
+    analogy: R`<p>A normal object is like a <b>notebook with a blank index</b>: you can jot down any new heading at any time (<code>obj.anything = 1</code>), but every notebook carries the weight of that flexible index. An object with <code>__slots__</code> is a <b>pre-printed form</b>: boxes for <code>name</code>, <code>age</code>, <code>email</code> and nothing else. Forms are thinner and faster to fill, and a typo like "emial" has no box to go into, so it is rejected immediately. Great when you need a million copies; overkill for a single notebook.</p>`,
+    explain: R`<p>🟢 <b>The plain idea.</b> By default every instance stores its attributes in a per-object dictionary, <code>obj.__dict__</code>. Writing <code>__slots__ = ("x", "y")</code> in the class body tells Python: "instances of this class only ever have <code>x</code> and <code>y</code>". Python then reserves exactly two pointer-sized boxes inside each object and creates <b>no</b> <code>__dict__</code>.</p>
+      ${H.table(['', 'normal class', 'with __slots__'], [
+        ['where attributes live', 'per-instance <code>__dict__</code>', 'fixed boxes inside the object'],
+        ['add a new attribute later', 'allowed (<code>p.z = 1</code>)', "<code>AttributeError: 'P' object has no attribute 'z'</code>"],
+        ['memory per object (3 attrs, CPython 3.13)', '≈ 97 bytes (≈ 161 once <code>__dict__</code> is materialised)', '≈ 57 bytes'],
+        ['attribute access speed', 'fast', 'a bit faster'],
+        ['<code>vars(obj)</code>, <code>obj.__dict__</code>', 'works', 'AttributeError'],
+        ['weak references', 'works', "needs <code>'__weakref__'</code> in slots"],
+        ['<code>functools.cached_property</code>', 'works', 'TypeError (no <code>__dict__</code> to cache into)']
+      ])}
+      <p>🔵 <b>How it works:</b> for each name in <code>__slots__</code>, the class gets a <b>member descriptor</b> (<code>P.x</code> is a <code>member_descriptor</code>). It is a <b>data descriptor</b>, so it sits at step 1 of the attribute lookup ladder from the properties topic: reading <code>p.x</code> calls it, and it reads the pointer at a fixed offset inside the object. Reading an unset slot raises <code>AttributeError</code>.</p>
+      <p><b>The rules you must remember:</b></p>
+      <ul>
+        <li><b>Every class in the hierarchy must declare <code>__slots__</code></b> (listing only its <i>new</i> attributes). A subclass without <code>__slots__</code> silently gets a <code>__dict__</code> again, and the savings vanish.</li>
+        <li><b>No class attribute with the same name as a slot</b>: <code>__slots__ = ("x",)</code> plus <code>x = 0</code> raises <code>ValueError: 'x' in __slots__ conflicts with class variable</code>. Set defaults in <code>__init__</code> (or use <code>@dataclass(slots=True)</code>, which handles it).</li>
+        <li><b>Two bases with non-empty slots cannot be combined</b> in multiple inheritance: <code>TypeError: multiple bases have instance lay-out conflict</code>. Mixins should use <code>__slots__ = ()</code>.</li>
+        <li>Add <code>'__weakref__'</code> to the slots if you need weak references; add <code>'__dict__'</code> if you want slots for hot attributes but still allow extras.</li>
+      </ul>
+      <p><b>When to use it:</b> when you create <b>hundreds of thousands to millions</b> of small objects (graph nodes, events, tokens, particles, cache entries), or when you want typo-proof value objects. For a handful of objects it adds rigidity for no real gain.</p>`,
+    clues: [
+      '"millions of small objects", "memory blew up", "reduce RAM of in-memory records" → <code>__slots__</code> (or <code>@dataclass(slots=True)</code>)',
+      '"prevent adding arbitrary attributes / catch attribute typos" → <code>__slots__</code>',
+      '"<code>AttributeError: ... has no attribute ... and no __dict__</code>" → slotted class; attribute not declared',
+      '"<code>multiple bases have instance lay-out conflict</code>" → two slotted bases; make mixins use <code>__slots__ = ()</code>',
+      '"why is my slotted subclass still big?" → subclass did not declare <code>__slots__</code>',
+      '"<code>cannot create weak reference</code>" → add <code>\'__weakref__\'</code> to slots'
+    ],
+    code: [{ lang: 'python', run: true, title: 'Slots vs dict: behaviour and memory', code: R`
+      import sys
+      import tracemalloc
+
+      class PlainPoint:
+          def __init__(self, x, y, z):
+              self.x, self.y, self.z = x, y, z
+
+      class SlotPoint:
+          __slots__ = ("x", "y", "z")                 # only these attributes, no __dict__
+          def __init__(self, x, y, z):
+              self.x, self.y, self.z = x, y, z
+
+      def bytes_per_object(cls, n=20_000):
+          tracemalloc.start()
+          objs = [cls(1, 2, 3) for _ in range(n)]
+          current, _ = tracemalloc.get_traced_memory()
+          tracemalloc.stop()
+          return round(current / n)                   # includes the list's 8-byte pointer
+
+      print("plain:", bytes_per_object(PlainPoint), "bytes/object")
+      print("slots:", bytes_per_object(SlotPoint), "bytes/object")
+
+      s = SlotPoint(1, 2, 3)
+      print(hasattr(s, "__dict__"), type(SlotPoint.__dict__["x"]).__name__)
+      try:
+          s.w = 4                                     # not declared
+      except AttributeError as e:
+          print("AttributeError:", e)
+      p = PlainPoint(1, 2, 3)
+      p.w = 4                                         # fine: goes into p.__dict__
+      print(sorted(vars(p)))
+    ` }, { lang: 'python', run: true, title: 'Inheritance and mixins with slots', code: R`
+      class Base:
+          __slots__ = ("a",)
+
+      class GoodChild(Base):
+          __slots__ = ("b",)                  # only the NEW attribute
+
+      class LeakyChild(Base):
+          pass                                # no __slots__ -> __dict__ comes back
+
+      g, l = GoodChild(), LeakyChild()
+      print(hasattr(g, "__dict__"), hasattr(l, "__dict__"))   # False True
+      l.anything = 1                                          # allowed again
+
+      class ReprMixin:
+          __slots__ = ()                      # empty slots: safe to mix in
+          def __repr__(self):
+              fields = ", ".join(f"{n}={getattr(self, n)!r}" for n in self.__slots__)
+              return f"{type(self).__name__}({fields})"
+
+      class Pixel(ReprMixin):
+          __slots__ = ("x", "y", "__weakref__")
+          def __init__(self, x, y):
+              self.x, self.y = x, y
+
+      import weakref
+      px = Pixel(3, 4)
+      print(px.x, px.y, weakref.ref(px)() is px)
+
+      class Other:
+          __slots__ = ("q",)
+      try:
+          class Broken(Base, Other): pass     # two non-empty slot layouts
+      except TypeError as e:
+          print("TypeError:", e)
+    ` }],
+    codeTitle: ['Measure it yourself (runnable)', 'Hierarchies, mixins and weakrefs (runnable)'],
+    viz: {
+      title: 'Inside the object: __dict__ vs slots, and the memory bill',
+      input: '3 1000000',
+      inputLabel: 'Attributes per object (1-6) and number of objects (1-10000000)',
+      gen: function (input) {
+        var t = String(input === undefined ? '3 1000000' : input).trim().split(/\s+/).map(Number);
+        var k = t[0], n = t[1];
+        if (!(k >= 1 && k <= 6 && Math.floor(k) === k)) throw new Error('First number: attributes per object, 1 to 6');
+        if (!(n >= 1 && n <= 10000000 && Math.floor(n) === n)) throw new Error('Second number: how many objects, 1 to 10,000,000');
+        var names = ['x', 'y', 'z', 'w', 'u', 'v'].slice(0, k), frames = [];
+        var plain = SLOT_MEM.plain[k - 1], dictB = SLOT_MEM.plainDict[k - 1], slot = SLOT_MEM.slots[k - 1];
+        var codeP = 'class Plain:\n    def __init__(self):\n' + names.map(function (a, i) { return '        self.' + a + ' = ' + (i + 1); }).join('\n');
+        var codeS = 'class Slotted:\n    __slots__ = (' + names.map(function (a) { return "'" + a + "'"; }).join(', ') + (k === 1 ? ',' : '') + ')\n    def __init__(self):\n' + names.map(function (a, i) { return '        self.' + a + ' = ' + (i + 1); }).join('\n');
+        frames.push({ narr: 'A normal instance: a small object header (reference count + pointer to its type) plus a place for attributes. Logically every attribute lives in the instance\'s <code>__dict__</code>, a hash table that can grow to hold <b>any</b> new name.', parts: [{ type: 'code', label: 'Plain class', lang: 'python', code: codeP }, { type: 'array', label: 'Plain object', values: ['refcnt', 'type*', '__dict__ →'], hl: { 2: 'y' } }, { type: 'map', label: 'its __dict__', entries: names.map(function (a, i) { return [a, i + 1]; }) }] });
+        frames.push({ narr: 'Since CPython 3.11 the dict is created lazily ("inline values"), so a plain object costs about <b>' + plain + ' bytes</b> with ' + k + ' attribute(s). But touch <code>obj.__dict__</code> or <code>vars(obj)</code> (as many serializers and debuggers do) and a real dict is built: about <b>' + dictB + ' bytes</b>. Before 3.11 every object always paid for its dict.', parts: [{ type: 'bars', label: 'bytes per object (CPython 3.13, 64-bit)', values: [plain, dictB], idxLabels: ['plain (lazy dict)', 'plain (dict materialised)'], hl: { 1: 'bad' } }] });
+        var cells = ['refcnt', 'type*'].concat(names.map(function (a, i) { return a + ' = ' + (i + 1); }));
+        frames.push({ narr: 'With <code>__slots__</code>, the class reserves exactly ' + k + ' pointer-sized box(es) right after the header, at fixed offsets. No dict at all. Each name becomes a <code>member_descriptor</code> on the class that knows its offset.', parts: [{ type: 'code', label: 'Slotted class', lang: 'python', code: codeS, hl: { 2: 'ok' } }, { type: 'array', label: 'Slotted object (fixed layout)', values: cells, hl: (function () { var h = {}; for (var i = 2; i < cells.length; i++) h[i] = 'g'; return h; })() }, { type: 'map', label: 'Slotted.__dict__ (on the CLASS)', entries: names.map(function (a, i) { return [a, '<member \'' + a + '\'> offset ' + (16 + 8 * i)]; }) }] });
+        frames.push({ narr: '<code>obj.' + names[0] + ' = 42</code>: the attribute lookup ladder finds the member descriptor at <b>step 1</b> (it is a data descriptor), and its <code>__set__</code> writes straight into box #' + 1 + '. No hashing, no dict probing.', parts: [{ type: 'array', label: 'Slotted object', values: ['refcnt', 'type*'].concat(names.map(function (a, i) { return a + ' = ' + (i === 0 ? 42 : i + 1); })), hl: { 2: 'ok' } }, { type: 'vars', vals: { lookup: 'type(obj).__mro__ → member_descriptor ' + names[0], action: 'store pointer at offset 16' }, hl: { lookup: 'cur' } }] });
+        frames.push({ narr: '<code>obj.color = "red"</code>: there is no <code>color</code> slot and no <code>__dict__</code> to fall back to → <span class="c-r">AttributeError: \'Slotted\' object has no attribute \'color\' and no __dict__ for setting new attributes</span>. That strictness also catches typos like <code>obj.' + names[0] + names[0] + ' = 1</code>.', parts: [{ type: 'array', label: 'Slotted object', values: cells, hl: {} }, { type: 'text', label: 'Traceback (3.13 wording)', html: '<pre>AttributeError: \'Slotted\' object has no attribute \'color\'\nand no __dict__ for setting new attributes</pre>' }] });
+        frames.push({ narr: 'Per object: plain ≈ <b>' + plain + '</b> B, plain with dict ≈ <b>' + dictB + '</b> B, slotted ≈ <b>' + slot + '</b> B. Slots save about ' + Math.round((1 - slot / plain) * 100) + '% versus the lazy-dict case and ' + Math.round((1 - slot / dictB) * 100) + '% versus a materialised dict.', parts: [{ type: 'bars', label: 'bytes per object', values: [plain, dictB, slot], idxLabels: ['plain', 'plain + dict', '__slots__'], hl: { 2: 'ok', 1: 'bad' } }] });
+        function mb(b) { return Math.round(b * n / 1048576 * 10) / 10; }
+        frames.push({ narr: 'Multiply by <b>' + n.toLocaleString('en-US') + '</b> objects: plain ≈ <b>' + mb(plain) + ' MB</b>, plain with dicts ≈ <b>' + mb(dictB) + ' MB</b>, slotted ≈ <b>' + mb(slot) + ' MB</b> (objects only; the int/str values they point to are extra, and small ints are shared). ' + (n >= 100000 ? 'At this scale the saving is real money in RAM.' : 'At this scale the difference is negligible: do not bother with slots.'), parts: [{ type: 'bars', label: 'total MB for ' + n.toLocaleString('en-US') + ' objects', values: [mb(plain), mb(dictB), mb(slot)], idxLabels: ['plain', 'plain + dict', '__slots__'], texts: [mb(plain) + ' MB', mb(dictB) + ' MB', mb(slot) + ' MB'], hl: { 2: 'ok' } }] });
+        frames.push({ narr: 'Gotcha: <code>class Child(Slotted): pass</code> (no <code>__slots__</code>) brings the <code>__dict__</code> back for every Child instance: the layout is Slotted\'s boxes <b>plus</b> a dict pointer. Every class in the chain must declare <code>__slots__</code> (only its new names; an empty tuple is fine).', parts: [{ type: 'array', label: 'Child object (forgot __slots__)', values: cells.concat(['__dict__ →', '__weakref__']), hl: { [cells.length]: 'r', [cells.length + 1]: 'r' } }] });
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'Predict the output: class attribute vs slot conflict', html: R`<p>You cannot give a slot a default via a class attribute, because the class attribute and the slot's member descriptor would need the same name in the class namespace. Python refuses at class creation with <code>ValueError</code>. Set defaults in <code>__init__</code>, or use <code>@dataclass(slots=True)</code> which moves the defaults into the generated <code>__init__</code>.</p>`, code: { lang: 'python', run: true, code: R`
+        try:
+            class Config:
+                __slots__ = ("debug",)
+                debug = False                      # conflicts with the slot descriptor
+        except ValueError as e:
+            print("ValueError:", e)
+
+        from dataclasses import dataclass
+
+        @dataclass(slots=True)
+        class Config2:
+            debug: bool = False                    # fine: dataclass handles the default
+
+        c = Config2()
+        print(c, Config2.__slots__)
+      ` } },
+      { title: 'Unset slots raise AttributeError', html: R`<p>A slot exists from the start, but it is <b>empty</b> until assigned. Reading it first raises <code>AttributeError: 'Node' object has no attribute 'next'</code>, the same error as a missing attribute. Always initialise every slot in <code>__init__</code>.</p>`, code: { lang: 'python', run: true, code: R`
+        class Node:
+            __slots__ = ("value", "next")
+            def __init__(self, value):
+                self.value = value                 # forgot self.next = None
+
+        n = Node(1)
+        try:
+            print(n.next)
+        except AttributeError as e:
+            print("AttributeError:", e)
+        n.next = None
+        print(n.value, n.next)
+      ` } },
+      { title: 'Slots for hot attributes plus a __dict__ escape hatch', html: R`<p>Including <code>'__dict__'</code> in <code>__slots__</code> gives fixed fast slots for the common attributes while still allowing arbitrary extras (and makes <code>cached_property</code> work again). You give up most of the memory win, so do this only when you need both.</p>`, code: { lang: 'python', run: true, code: R`
+        from functools import cached_property
+
+        class Event:
+            __slots__ = ("ts", "kind", "__dict__")
+            def __init__(self, ts, kind):
+                self.ts, self.kind = ts, kind
+
+            @cached_property
+            def label(self):
+                return f"{self.kind}@{self.ts}"
+
+        e = Event(1700000000, "click")
+        e.debug_note = "extra attr allowed"
+        print(e.label, vars(e))
+      ` } },
+      { title: 'Pickling and copying slotted objects', html: R`<p>Slotted objects pickle and copy fine with the default protocol (2+): <code>object.__reduce_ex__</code> collects slot values via <code>copyreg</code>. If you add custom <code>__getstate__</code>/<code>__setstate__</code>, include every slot. Python 3.11+ also gives <code>object.__getstate__</code> a default that returns <code>(None, {slot: value})</code> for slotted objects.</p>`, code: { lang: 'python', run: true, code: R`
+        import copy
+        import pickle
+
+        class Point:
+            __slots__ = ("x", "y")
+            def __init__(self, x, y):
+                self.x, self.y = x, y
+            def __repr__(self):
+                return f"Point({self.x}, {self.y})"
+
+        p = Point(1, 2)
+        q = pickle.loads(pickle.dumps(p))
+        r = copy.copy(p)
+        print(q, r, q is p, r is p)
+      ` } }
+    ],
+    deepDive: R`<p>🟣 <b>Implementation.</b> At class creation, <code>type.__new__</code> reads <code>__slots__</code> (a string or iterable of strings), mangles private names (<code>__x</code> → <code>_Cls__x</code>), increases <code>tp_basicsize</code> by 8 bytes per slot, stores <code>PyMemberDef</code> entries and creates a <code>member_descriptor</code> for each; it also omits the <code>__dict__</code> and <code>__weakref__</code> slots unless they are named. That fixed C-level layout is why two slotted bases conflict (each assumes its slots start right after the base object's header) and why slots cannot be added to an existing class (which is why <code>@dataclass(slots=True)</code> builds a new class). <code>__slots__</code> may also be a dict mapping names to docstrings (3.8+), shown by <code>help()</code>.</p>
+      <p><b>Where slots matter in CPython versions.</b> Before 3.11, a plain instance always owned a dict (with key-sharing, ~100+ bytes), so slots often cut memory by 50 to 70%. CPython 3.11–3.13 store attributes as <b>inline values</b> with shared keys and create the dict lazily, which narrowed the gap (our measurements: ~97 vs ~57 bytes for 3 attributes); materialising <code>__dict__</code> (via <code>vars()</code>, <code>obj.__dict__</code>, some serializers) loses that optimisation for that object. Attribute access on slots is a direct offset load and is specialised by the adaptive interpreter (<code>LOAD_ATTR_SLOT</code>); plain attributes are specialised too (<code>LOAD_ATTR_INSTANCE_VALUE</code>), so the speed difference is now small. The bigger win is often <b>predictability</b>: no accidental attributes and a smaller GC footprint.</p>
+      <p><b>Alternatives at scale.</b> For truly large homogeneous data, objects of any kind are the wrong tool: use <code>array</code>, NumPy structured arrays, pandas/Polars columns, or tuples. A slotted object with 3 floats is ~57 bytes plus three 24-byte float objects (~130 B total), whereas a NumPy array stores the same as 24 bytes. Measure with <code>tracemalloc</code> or <code>pympler</code>, not <code>sys.getsizeof</code> (which counts only the shallow object). Other caveats: <code>__class__</code> assignment requires compatible layouts; slotted classes cannot use <code>cached_property</code> without <code>'__dict__'</code>; and some libraries (old copy/pickle helpers, ORMs) expect <code>__dict__</code>.</p>`,
+    aiEra: R`<p>🤖 <b>What AI changes:</b> assistants sprinkle <code>__slots__</code> or <code>slots=True</code> as a "performance best practice" everywhere. The modern judgement is quantitative: on 3.11+ the gain per object is smaller than older blog posts claim, so measure before trading flexibility.</p>
+      <p><b>Prompts that help:</b> <code>Write a tracemalloc benchmark that creates 1,000,000 instances of my class with and without slots and prints bytes per object, then tell me if slots are worth it here.</code> Also: <code>Check this class hierarchy: does every subclass declare __slots__? Will any mixin cause a layout conflict? Do any methods rely on __dict__ (vars, cached_property, setattr of dynamic names)?</code></p>
+      <p><b>Where AI goes wrong:</b> repeats parent slot names in a subclass (wastes space and shadows descriptors), forgets slots in one subclass (silently reintroducing <code>__dict__</code>), adds default values as class attributes (ValueError), combines <code>cached_property</code> with slots, or cites pre-3.11 savings as current fact. <b>What you must own:</b> the layout model (member descriptors at fixed offsets, no dict), the inheritance rule, and the ability to measure memory properly.</p>`
+  });
+
+  /* ======================================================================
+     PRACTICE — Easy
+     ====================================================================== */
+  practice.push({
+    title: 'Predict & fix: Book that prints nicely everywhere',
+    level: 'Easy', tags: ['__repr__', '__str__', 'predict the output'], companies: ['Amazon', 'Goodreads', 'Infosys'],
+    statement: R`<p>This code prints <code>Dune by Frank Herbert</code> and then <code>[&lt;__main__.Book object at 0x…&gt;]</code>. Explain why, then fix the class so that <code>print(book)</code> gives <code>Dune by Frank Herbert</code>, <code>repr(book)</code> gives <code>Book('Dune', 'Frank Herbert')</code>, and <code>print([book])</code> gives <code>[Book('Dune', 'Frank Herbert')]</code>.</p>
+      <pre>class Book:
+    def __init__(self, title, author):
+        self.title, self.author = title, author
+    def __str__(self):
+        return f"{self.title} by {self.author}"</pre>`,
+    constraints: R`Titles and authors may contain quotes, e.g. <code>Ender's Game</code>; the repr must still be valid Python.`,
+    example: R`<p><code>print([Book("Ender's Game", "Orson Scott Card")])</code> → ${H.c('g', '[Book("Ender\'s Game", \'Orson Scott Card\')]')} (Python picks double quotes automatically because we use <code>!r</code>).</p>`,
+    brute: {
+      why: R`<p>Building the repr with manual quotes, <code>f"Book('{self.title}', ...)"</code>, breaks for titles containing <code>'</code> (the output is no longer valid Python) and hides the difference between the string <code>'1'</code> and the int <code>1</code>.</p>`,
+      code: R`
+        class BookBrute:
+            def __init__(self, title, author):
+                self.title, self.author = title, author
+            def __repr__(self):
+                return f"Book('{self.title}', '{self.author}')"     # manual quotes: fragile
+
+        print([BookBrute("Ender's Game", "Orson Scott Card")])    # Book('Ender's Game', ...) -> invalid
+      `
+    },
+    mcq: { q: 'Why does <code>print([book])</code> ignore <code>__str__</code>?', options: ['<code>list.__str__</code> is <code>list.__repr__</code>, which uses <code>repr()</code> of each item', 'print only calls <code>__str__</code> on strings', '<code>__str__</code> is cached', 'Lists call <code>__format__</code>'], answer: 0, explain: 'Containers show their elements with repr so that <code>["1"]</code> and <code>[1]</code> look different. Define <code>__repr__</code> to control it.' },
+    hints: [
+      R`<p>Hint 1: Containers display their items using <code>repr()</code>, never <code>str()</code>.</p>`,
+      R`<p>Hint 2: Use the <code>!r</code> conversion inside the f-string so each field is shown with its own repr (correct quotes and escapes).</p>`,
+      R`<p>Hint 3: Keep <code>__str__</code> for the friendly form, add <code>__repr__</code> as <code>f"{type(self).__name__}({self.title!r}, {self.author!r})"</code> so subclasses show their own name.</p>`
+    ],
+    solution: {
+      approach: R`<p>Add an unambiguous <code>__repr__</code> built with <code>!r</code>, and keep <code>__str__</code> for users. Using <code>type(self).__name__</code> makes subclasses print correctly without overriding.</p>`,
+      code: { lang: 'python', run: true, code: R`
+        class Book:
+            def __init__(self, title, author):
+                self.title, self.author = title, author
+
+            def __repr__(self):
+                return f"{type(self).__name__}({self.title!r}, {self.author!r})"
+
+            def __str__(self):
+                return f"{self.title} by {self.author}"
+
+        class EBook(Book):
+            pass
+
+        book = Book("Dune", "Frank Herbert")
+        print(book)
+        print(repr(book))
+        print([book, EBook("Ender's Game", "Orson Scott Card")])
+        print(f"{book!r} | {book}")
+      ` },
+      dry: { head: ['call', 'method used', 'output'], rows: [['print(book)', '__str__', 'Dune by Frank Herbert'], ['repr(book)', '__repr__', "Book('Dune', 'Frank Herbert')"], ['print([book])', 'list repr → item __repr__', "[Book('Dune', 'Frank Herbert')]"]] },
+      complexity: R`<p>O(L) in the length of the fields for each string conversion.</p>`,
+      followUps: ['What does <code>eval(repr(book))</code> need to work?', 'Implement <code>__format__</code> so <code>f"{book:short}"</code> prints only the title']
+    }
+  });
+
+  practice.push({
+    title: 'BankAccount with a validated, read-only balance',
+    level: 'Easy', tags: ['@property', 'validation', 'encapsulation'], companies: ['JPMorgan', 'Paytm', 'Capital One'],
+    statement: R`<p>Write <code>BankAccount(owner, balance=0)</code>. <code>owner</code> is a property whose setter strips spaces and rejects empty names (<code>ValueError</code>). <code>balance</code> is <b>read-only</b> (<code>acct.balance = 5</code> raises <code>AttributeError</code>); it changes only via <code>deposit(amount)</code> and <code>withdraw(amount)</code>, which reject non-positive amounts and overdrafts with <code>ValueError</code>. The initial balance must also be validated (≥ 0).</p>`,
+    constraints: R`Amounts are ints (cents) up to 10<sup>12</sup>.`,
+    example: R`<p><code>a = BankAccount("  Ada ", 100)</code>; <code>a.withdraw(30)</code>; <code>a.balance</code> → ${H.c('g', '70')}; <code>a.withdraw(500)</code> → ${H.c('r', 'ValueError: insufficient funds')}; <code>a.balance = 10**9</code> → ${H.c('r', "AttributeError: property 'balance' of 'BankAccount' object has no setter")}</p>`,
+    brute: {
+      why: R`<p>A plain public attribute <code>self.balance</code> lets any caller write <code>acct.balance = 10**9</code> or <code>-50</code>. Validation only happens if every caller remembers to call a checker function.</p>`,
+      code: R`
+        class AccountBrute:
+            def __init__(self, owner, balance=0):
+                self.owner, self.balance = owner, balance
+
+        a = AccountBrute("", -50)          # nothing stops invalid state
+        a.balance += 10**9                 # nor free money
+        print(a.owner == "", a.balance)
+      `
+    },
+    mcq: { q: 'Where should the initial balance be validated so that no invalid account can ever exist?', options: ['In <code>__init__</code>, through the same validation logic used everywhere else', 'In <code>deposit</code> only', 'In <code>__repr__</code>', 'Nowhere: properties validate automatically'], answer: 0, explain: 'Construction is just another write. Route it through the same check (a setter or a helper) so invariants hold from the first moment.' },
+    hints: [
+      R`<p>Hint 1: A getter-only <code>@property</code> is read-only: assignment raises <code>AttributeError</code> automatically.</p>`,
+      R`<p>Hint 2: Store the value in <code>self._balance</code>; only <code>deposit</code>/<code>withdraw</code> modify it after validating.</p>`,
+      R`<p>Hint 3: For <code>owner</code>, write a setter and assign <code>self.owner = owner</code> in <code>__init__</code> so construction is validated. Reject <code>bool</code> amounts too (<code>True</code> is an int!).</p>`
+    ],
+    solution: {
+      approach: R`<p>Two properties: <code>owner</code> (getter + validating setter) and <code>balance</code> (getter only). All state changes go through methods that enforce the invariants: balance ≥ 0, amounts positive ints.</p>`,
+      code: { lang: 'python', run: true, code: R`
+        class BankAccount:
+            def __init__(self, owner, balance=0):
+                self.owner = owner                       # validated by the setter
+                if not isinstance(balance, int) or isinstance(balance, bool) or balance < 0:
+                    raise ValueError("initial balance must be a non-negative int")
+                self._balance = balance
+
+            @property
+            def owner(self):
+                return self._owner
+
+            @owner.setter
+            def owner(self, name):
+                name = str(name).strip()
+                if not name:
+                    raise ValueError("owner name required")
+                self._owner = name
+
+            @property
+            def balance(self):                           # no setter -> read-only
+                return self._balance
+
+            @staticmethod
+            def _check(amount):
+                if not isinstance(amount, int) or isinstance(amount, bool) or amount <= 0:
+                    raise ValueError("amount must be a positive int")
+
+            def deposit(self, amount):
+                self._check(amount)
+                self._balance += amount
+
+            def withdraw(self, amount):
+                self._check(amount)
+                if amount > self._balance:
+                    raise ValueError("insufficient funds")
+                self._balance -= amount
+
+            def __repr__(self):
+                return f"BankAccount({self._owner!r}, {self._balance})"
+
+        a = BankAccount("  Ada ", 100)
+        a.withdraw(30)
+        print(a, a.balance)
+        for action in (lambda: a.withdraw(500), lambda: setattr(a, "balance", 10**9), lambda: BankAccount(" ")):
+            try:
+                action()
+            except (ValueError, AttributeError) as e:
+                print(type(e).__name__ + ":", e)
+      ` },
+      dry: { head: ['operation', 'path', 'result'], rows: [['BankAccount("  Ada ", 100)', 'owner setter strips → balance check', "BankAccount('Ada', 100)"], ['withdraw(30)', '_check → 30 ≤ 100', 'balance 70'], ['withdraw(500)', '500 &gt; 70', 'ValueError'], ['a.balance = 10**9', 'property without setter', 'AttributeError']] },
+      complexity: R`<p>O(1) per operation.</p>`,
+      followUps: ['Add a transaction history that callers can read but not modify (return a tuple or a read-only view)', 'Make it thread-safe']
+    }
+  });
+
+  practice.push({
+    title: 'Fix the shared mutable default (class attribute vs dataclass field)',
+    level: 'Easy', tags: ['dataclass', 'default_factory', 'predict the output'], companies: ['Microsoft', 'Atlassian', 'Zoho'],
+    statement: R`<p>Predict the output, explain the bug, then rewrite <code>Team</code> as a dataclass so each team has its own member list. Also add a class-wide counter <code>created</code> (how many teams were made) that must <b>not</b> become a field.</p>
+      <pre>class Team:
+    members = []
+    def __init__(self, name):
+        self.name = name
+    def add(self, person):
+        self.members.append(person)
+
+a, b = Team("red"), Team("blue")
+a.add("ann")
+print(b.members)</pre>`,
+    constraints: R`Up to 10<sup>4</sup> teams; Python 3.10+.`,
+    example: R`<p>Buggy output: ${H.c('r', "['ann']")} (blue sees red's member). Fixed: <code>b.members</code> → ${H.c('g', '[]')}, <code>Team.created</code> → ${H.c('g', '2')}, <code>Team("x")</code> repr does not show <code>created</code>.</p>`,
+    brute: {
+      why: R`<p>Mutating a <b>class attribute</b> through <code>self.members.append</code> changes the one list stored on the class, shared by all instances. Patching it by writing <code>self.members = []</code> in <code>__init__</code> works, but a dataclass version that uses <code>members: list = []</code> is rejected outright, and the counter would wrongly become a field without <code>ClassVar</code>.</p>`,
+      code: R`
+        class Team:
+            members = []                      # ONE list on the class
+            def __init__(self, name):
+                self.name = name
+            def add(self, person):
+                self.members.append(person)   # mutates the shared list
+
+        a, b = Team("red"), Team("blue")
+        a.add("ann")
+        print(b.members, a.members is b.members)
+      `
+    },
+    mcq: { q: 'In a dataclass, how do you declare a counter shared by the whole class that is NOT a field?', options: ['<code>created: ClassVar[int] = 0</code>', '<code>created: int = 0</code>', '<code>created: int = field(default=0)</code>', '<code>created = field(init=False)</code>'], answer: 0, explain: 'Annotated names become fields unless the annotation is <code>ClassVar</code>. (An unannotated <code>created = 0</code> also works, but ClassVar documents the intent and type.)' },
+    hints: [
+      R`<p>Hint 1: Attribute <b>reads</b> fall back to the class, so <code>self.members</code> finds the class list; <code>.append</code> then mutates it in place.</p>`,
+      R`<p>Hint 2: <code>members: list[str] = field(default_factory=list)</code> creates a fresh list per instance.</p>`,
+      R`<p>Hint 3: Increment the counter in <code>__post_init__</code> with <code>type(self).created += 1</code> (not <code>self.created += 1</code>, which would create an instance attribute).</p>`
+    ],
+    solution: {
+      approach: R`<p>A dataclass with a <code>default_factory</code> field for the list and a <code>ClassVar</code> counter updated in <code>__post_init__</code> through the class.</p>`,
+      code: { lang: 'python', run: true, code: R`
+        from dataclasses import dataclass, field
+        from typing import ClassVar
+
+        @dataclass
+        class Team:
+            name: str
+            members: list[str] = field(default_factory=list)
+            created: ClassVar[int] = 0                  # shared, not a field
+
+            def __post_init__(self):
+                type(self).created += 1                 # update the CLASS attribute
+
+            def add(self, person):
+                self.members.append(person)
+
+        a, b = Team("red"), Team("blue")
+        a.add("ann")
+        print(a, b)
+        print(Team.created, a.members is b.members)
+      ` },
+      dry: { head: ['step', 'a.members', 'b.members', 'Team.created'], rows: [['Team("red")', '[] (new list)', '—', '1'], ['Team("blue")', '[]', '[] (another new list)', '2'], ['a.add("ann")', "['ann']", '[]', '2']] },
+      complexity: R`<p>O(1) per operation; O(m) memory per team for m members.</p>`,
+      followUps: ['What would <code>self.created += 1</code> do instead?', 'Why do dataclasses reject <code>members: list = []</code> but plain classes allow it?']
+    }
+  });
+
+  practice.push({
+    title: 'Deduplicate GPS points with __eq__ and __hash__',
+    level: 'Easy', tags: ['__eq__', '__hash__', 'set'], companies: ['Uber', 'Google Maps', 'Ola'],
+    statement: R`<p>GPS readings arrive as <code>(lat, lon)</code> floats with noise. Two readings are "the same place" if they match after <b>rounding to 4 decimals</b> (~11 m). Write an immutable <code>Place(lat, lon)</code> class so that <code>set(places)</code> removes duplicates and <code>Place</code> can be a dict key. Return the unique places in first-seen order.</p>`,
+    constraints: R`Up to 10<sup>6</sup> readings; −90 ≤ lat ≤ 90, −180 ≤ lon ≤ 180.`,
+    example: R`<p>Input: <code>(12.97161, 77.59456), (12.971609, 77.594561), (13.0827, 80.2707)</code> → ${H.c('g', '[Place(12.9716, 77.5946), Place(13.0827, 80.2707)]')}: the first two round to the same key.</p>`,
+    brute: {
+      why: R`<p>Compare each new reading with every kept reading using <code>abs(a - b) &lt; eps</code>: O(n²) comparisons (10<sup>12</sup> for a million points), and "within epsilon" is not transitive, so results depend on order. Rounding to a canonical key gives a real equivalence relation that hashing can use.</p>`,
+      code: R`
+        def dedupe_brute(points, eps=5e-5):
+            kept = []
+            for lat, lon in points:                       # O(n^2)
+                if not any(abs(lat - a) < eps and abs(lon - b) < eps for a, b in kept):
+                    kept.append((lat, lon))
+            return kept
+
+        print(dedupe_brute([(12.97161, 77.59456), (12.971609, 77.594561), (13.0827, 80.2707)]))
+      `
+    },
+    mcq: { q: 'Which fields should <code>__hash__</code> use?', options: ['The same rounded values that <code>__eq__</code> compares', 'The raw floats', '<code>id(self)</code>', 'Only <code>lat</code>'], answer: 0, explain: 'Equal objects must have equal hashes. If eq compares rounded values, hashing raw floats would put "equal" places in different buckets. (Hashing only lat is legal but causes many collisions.)' },
+    hints: [
+      R`<p>Hint 1: Normalise once in <code>__init__</code>: store <code>round(lat, 4)</code> and <code>round(lon, 4)</code>.</p>`,
+      R`<p>Hint 2: <code>__eq__</code> compares the rounded tuple (return <code>NotImplemented</code> for other types); <code>__hash__</code> returns <code>hash(self._key)</code>.</p>`,
+      R`<p>Hint 3: For first-seen order use <code>dict.fromkeys(places)</code> (dicts keep insertion order and dedupe by hash/eq). Make it immutable with <code>__slots__</code> and read-only properties, or a frozen dataclass.</p>`
+    ],
+    solution: {
+      approach: R`<p>Canonicalise the data in the constructor, then equality and hashing operate on the same canonical tuple. A frozen dataclass with a <code>__post_init__</code> does it in a few lines; <code>dict.fromkeys</code> keeps first-seen order.</p>`,
+      code: { lang: 'python', run: true, code: R`
+        from dataclasses import dataclass
+
+        @dataclass(frozen=True, slots=True)
+        class Place:
+            lat: float
+            lon: float
+
+            def __post_init__(self):
+                object.__setattr__(self, "lat", round(self.lat, 4))   # canonical form
+                object.__setattr__(self, "lon", round(self.lon, 4))
+
+        def unique_places(readings):
+            return list(dict.fromkeys(Place(lat, lon) for lat, lon in readings))
+
+        readings = [(12.97161, 77.59456), (12.971609, 77.594561), (13.0827, 80.2707)]
+        print(unique_places(readings))
+        print(hash(Place(1.00001, 2)) == hash(Place(1.0, 2.0)))
+      ` },
+      dry: { head: ['reading', 'canonical', 'already seen?', 'kept'], rows: [['(12.97161, 77.59456)', '(12.9716, 77.5946)', 'no', '1'], ['(12.971609, 77.594561)', '(12.9716, 77.5946)', '<span class="c-r">yes (hash + eq match)</span>', '1'], ['(13.0827, 80.2707)', '(13.0827, 80.2707)', 'no', '2']] },
+      complexity: R`<p>O(n) average time, O(u) space for u unique places.</p>`,
+      followUps: ['Rounding puts two points 1 mm apart into different cells when they straddle a boundary: how do geohashes or checking neighbour cells fix this?', 'Why is <code>-0.0</code> vs <code>0.0</code> not a problem for hashing here?']
+    }
+  });
+
+  /* ======================================================================
+     PRACTICE — Medium
+     ====================================================================== */
+  practice.push({
+    title: 'Playing cards: rank-aware ordering with total_ordering',
+    level: 'Medium', tags: ['__lt__', 'total_ordering', '__hash__', 'sorting'], companies: ['Zynga', 'PokerStars', 'Amazon'],
+    statement: R`<p>Create an immutable <code>Card(rank, suit)</code> parsed from strings like <code>"10H"</code>, <code>"QS"</code>, <code>"AD"</code>. Ranks order <code>2 &lt; 3 &lt; … &lt; 10 &lt; J &lt; Q &lt; K &lt; A</code>; ties break by suit order <code>C &lt; D &lt; H &lt; S</code>. Support <code>sorted(hand)</code>, <code>max(hand)</code>, all six comparisons, use in sets, and a repr <code>Card('QS')</code>. Comparing with a non-Card using <code>&lt;</code> must raise <code>TypeError</code>.</p>`,
+    constraints: R`Hands of up to 52 cards; invalid strings raise <code>ValueError</code>.`,
+    example: R`<p><code>sorted(map(Card, ["QS", "10H", "2C", "AD", "10C"]))</code> → ${H.c('g', "[Card('2C'), Card('10C'), Card('10H'), Card('QS'), Card('AD')]")} — note <code>10</code> sorts after <code>9</code>, not after <code>1</code> as plain string sorting would.</p>`,
+    brute: {
+      why: R`<p>Sorting the raw strings gives <code>['10C', '10H', '2C', 'AD', 'QS']</code>: lexicographic order puts "10" before "2" and "A" before "Q". Re-implementing a key function in every call site duplicates the ranking rules.</p>`,
+      code: R`
+        hand = ["QS", "10H", "2C", "AD", "10C"]
+        print(sorted(hand))                                   # wrong: string order
+        RANKS = "2 3 4 5 6 7 8 9 10 J Q K A".split()
+        print(sorted(hand, key=lambda c: (RANKS.index(c[:-1]), "CDHS".index(c[-1]))))   # rules copied everywhere
+      `
+    },
+    mcq: { q: 'With <code>@total_ordering</code>, which methods must you write yourself?', options: ['<code>__eq__</code> and one of <code>__lt__</code>/<code>__le__</code>/<code>__gt__</code>/<code>__ge__</code>', 'All six comparisons', 'Only <code>__lt__</code>', 'Only <code>__eq__</code>'], answer: 0, explain: 'total_ordering derives the other three ordering methods from one of them plus <code>__eq__</code>. (<code>__ne__</code> is derived from <code>__eq__</code> by Python itself.)' },
+    hints: [
+      R`<p>Hint 1: Convert the rank and suit to integers once: <code>RANKS.index(rank)</code>, <code>"CDHS".index(suit)</code>. The tuple <code>(rank_value, suit_value)</code> is your comparison key.</p>`,
+      R`<p>Hint 2: <code>__eq__</code>, <code>__lt__</code> and <code>__hash__</code> all use that key; return <code>NotImplemented</code> for non-Cards so <code>&lt;</code> raises <code>TypeError</code> automatically.</p>`,
+      R`<p>Hint 3: Parse with <code>text[:-1]</code> and <code>text[-1]</code> (rank may be two characters). Validate and raise <code>ValueError</code> for unknown ranks/suits. Use <code>__slots__</code> for immutability.</p>`
+    ],
+    solution: {
+      approach: R`<p>One integer key tuple drives eq, ordering and hashing, so they are always consistent. <code>@total_ordering</code> fills in <code>&lt;=</code>, <code>&gt;</code>, <code>&gt;=</code>.</p>`,
+      code: { lang: 'python', run: true, code: R`
+        from functools import total_ordering
+
+        RANKS = "2 3 4 5 6 7 8 9 10 J Q K A".split()
+        SUITS = "CDHS"
+
+        @total_ordering
+        class Card:
+            __slots__ = ("rank", "suit", "_key")
+
+            def __init__(self, text):
+                rank, suit = text[:-1].upper(), text[-1].upper()
+                if rank not in RANKS or suit not in SUITS:
+                    raise ValueError(f"bad card {text!r}")
+                self.rank, self.suit = rank, suit
+                self._key = (RANKS.index(rank), SUITS.index(suit))
+
+            def __repr__(self):
+                return f"Card('{self.rank}{self.suit}')"
+
+            def __eq__(self, other):
+                if not isinstance(other, Card):
+                    return NotImplemented
+                return self._key == other._key
+
+            def __lt__(self, other):
+                if not isinstance(other, Card):
+                    return NotImplemented
+                return self._key < other._key
+
+            def __hash__(self):
+                return hash(self._key)
+
+        hand = [Card(c) for c in ["QS", "10H", "2C", "AD", "10C"]]
+        print(sorted(hand))
+        print(max(hand), Card("10H") >= Card("10C"), len({Card("QS"), Card("qs")}))
+        try:
+            Card("QS") < "QS"
+        except TypeError as e:
+            print("TypeError:", e)
+      ` },
+      dry: { head: ['card', 'rank index', 'suit index', 'key'], rows: [['2C', '0', '0', '(0, 0)'], ['10C', '8', '0', '(8, 0)'], ['10H', '8', '2', '(8, 2)'], ['QS', '10', '3', '(10, 3)'], ['AD', '12', '1', '(12, 1) → max']] },
+      complexity: R`<p>Parsing O(1) (13-element list); comparisons O(1); sorting a hand O(n log n).</p>`,
+      followUps: ['Rank poker hands (pair, flush, straight): which comparison key would you build?', 'Why might a <code>key=</code> function be preferable to <code>__lt__</code> in some games (e.g. trump suits change per round)?']
+    }
+  });
+
+  practice.push({
+    title: 'Matrix with m[i, j], @, == and a helpful repr',
+    level: 'Medium', tags: ['__getitem__', '__matmul__', '__eq__', 'operator overloading'], companies: ['NVIDIA', 'MathWorks', 'Google'],
+    statement: R`<p>Implement a small immutable <code>Matrix</code> built from a list of rows. Support <code>m[i, j]</code> (tuple indexing, negatives allowed), <code>m.shape</code> (a property), <code>a @ b</code> (matrix multiplication; mismatched shapes raise <code>ValueError</code>), <code>a == b</code>, <code>a * k</code> and <code>k * a</code> for numbers, <code>len(m)</code> (number of rows) and a repr <code>Matrix([[1, 2], [3, 4]])</code>.</p>`,
+    constraints: R`Up to 100 × 100; entries are ints or floats. Do not use NumPy.`,
+    example: R`<p><code>A = Matrix([[1, 2], [3, 4]])</code>, <code>B = Matrix([[0, 1], [1, 0]])</code> → <code>A @ B</code> = ${H.c('g', 'Matrix([[2, 1], [4, 3]])')}; <code>A[1, -1]</code> = ${H.c('g', '4')}; <code>2 * A == A * 2</code> → ${H.c('g', 'True')}</p>`,
+    brute: {
+      why: R`<p>Free functions on nested lists (<code>matmul(a, b)</code>, <code>get(a, i, j)</code>) work, but every call site handles shapes, there is no equality semantics beyond list equality, no protection against mutation, and expressions like <code>(A @ B) @ C</code> become <code>matmul(matmul(a, b), c)</code>.</p>`,
+      code: R`
+        def matmul(a, b):
+            return [[sum(a[i][k] * b[k][j] for k in range(len(b))) for j in range(len(b[0]))]
+                    for i in range(len(a))]
+
+        A, B = [[1, 2], [3, 4]], [[0, 1], [1, 0]]
+        print(matmul(matmul(A, B), B))       # nested calls instead of A @ B @ B
+      `
+    },
+    mcq: { q: 'Inside <code>__getitem__</code>, what does <code>m[1, -1]</code> pass as the key?', options: ['The tuple <code>(1, -1)</code>', 'Two arguments 1 and -1', 'A slice object', '<code>[1, -1]</code> as a list'], answer: 0, explain: 'The comma creates a tuple; <code>__getitem__</code> always receives exactly one key object.' },
+    hints: [
+      R`<p>Hint 1: Store rows as a tuple of tuples so the matrix is immutable; validate that all rows have the same length.</p>`,
+      R`<p>Hint 2: <code>__getitem__(self, key)</code>: unpack <code>i, j = key</code> and index <code>self._rows[i][j]</code> (tuples handle negatives and raise IndexError).</p>`,
+      R`<p>Hint 3: <code>__matmul__</code>: check <code>self.shape[1] == other.shape[0]</code>; use <code>zip(*other._rows)</code> to get columns. Return <code>NotImplemented</code> for non-Matrix in <code>@</code> and for non-numbers in <code>*</code>; <code>__rmul__ = __mul__</code>. Define <code>__hash__</code> since you defined <code>__eq__</code> and the object is immutable.</p>`
+    ],
+    solution: {
+      approach: R`<p>Immutable tuple-of-tuples storage; dunders map syntax to operations; <code>NotImplemented</code> for unsupported operand types so Python raises the standard <code>TypeError</code>.</p>`,
+      code: { lang: 'python', run: true, code: R`
+        from numbers import Number
+
+        class Matrix:
+            def __init__(self, rows):
+                rows = tuple(tuple(r) for r in rows)
+                if not rows or any(len(r) != len(rows[0]) for r in rows):
+                    raise ValueError("rows must be non-empty and equal length")
+                self._rows = rows
+
+            @property
+            def shape(self):
+                return (len(self._rows), len(self._rows[0]))
+
+            def __len__(self):
+                return len(self._rows)
+
+            def __getitem__(self, key):
+                i, j = key                                    # m[i, j] -> key == (i, j)
+                return self._rows[i][j]
+
+            def __repr__(self):
+                return f"Matrix({[list(r) for r in self._rows]!r})"
+
+            def __eq__(self, other):
+                if not isinstance(other, Matrix):
+                    return NotImplemented
+                return self._rows == other._rows
+
+            def __hash__(self):
+                return hash(self._rows)
+
+            def __matmul__(self, other):
+                if not isinstance(other, Matrix):
+                    return NotImplemented
+                if self.shape[1] != other.shape[0]:
+                    raise ValueError(f"shape mismatch {self.shape} @ {other.shape}")
+                cols = list(zip(*other._rows))
+                return Matrix([[sum(a * b for a, b in zip(row, col)) for col in cols] for row in self._rows])
+
+            def __mul__(self, k):
+                if not isinstance(k, Number) or isinstance(k, bool):
+                    return NotImplemented
+                return Matrix([[x * k for x in row] for row in self._rows])
+
+            __rmul__ = __mul__
+
+        A = Matrix([[1, 2], [3, 4]])
+        B = Matrix([[0, 1], [1, 0]])
+        print(A @ B, A[1, -1], A.shape, len(A))
+        print(2 * A == A * 2, {A, Matrix([[1, 2], [3, 4]])} == {A})
+        try:
+            A @ Matrix([[1, 2, 3]])
+        except ValueError as e:
+            print("ValueError:", e)
+        try:
+            A @ 3
+        except TypeError as e:
+            print("TypeError:", e)
+      ` },
+      dry: { head: ['expression', 'dunder', 'result'], rows: [['A @ B', '__matmul__', 'Matrix([[2, 1], [4, 3]])'], ['A[1, -1]', '__getitem__((1, -1))', '4'], ['2 * A', 'int.__mul__ → NI; Matrix.__rmul__', 'Matrix([[2, 4], [6, 8]])'], ['A @ 3', '__matmul__ → NI; int has no __rmatmul__', 'TypeError']] },
+      complexity: R`<p><code>@</code> is O(n·m·p) for (n×m)·(m×p); indexing O(1); equality O(n·m).</p>`,
+      followUps: ['Support slicing rows: <code>m[0:2, :]</code> (key contains slice objects)', 'Add <code>__iter__</code> over rows and <code>__array__</code> so NumPy can convert it']
+    }
+  });
+
+  practice.push({
+    title: 'Cooperative mixins: initialise every part exactly once',
+    level: 'Medium', tags: ['MRO', 'super()', 'mixins', '**kwargs'], companies: ['Django', 'Meta', 'Dropbox'],
+    statement: R`<p>Build <code>Widget(name, color="black", size=10)</code> from three classes: <code>Base</code> (stores <code>name</code> and a list <code>log</code>), <code>ColorMixin</code> (stores <code>color</code>), <code>SizeMixin</code> (stores <code>size</code>, must be positive). Every <code>__init__</code> must append its class name to <code>self.log</code> and run <b>exactly once</b>, in MRO order. Unknown keyword arguments must raise <code>TypeError</code>. Print <code>Widget.__mro__</code> and the log.</p>`,
+    constraints: R`Use only keyword arguments beyond <code>name</code>; mixins must not know about each other.`,
+    example: R`<p><code>Widget("btn", color="red", size=3).log</code> → ${H.c('g', "['Widget', 'ColorMixin', 'SizeMixin', 'Base']")} (the order of entry into each <code>__init__</code>). <code>Widget("x", colour="red")</code> → ${H.c('r', 'TypeError')} (typo caught).</p>`,
+    brute: {
+      why: R`<p>Calling each parent explicitly (<code>ColorMixin.__init__(self, …)</code>, <code>SizeMixin.__init__(self, …)</code>) hard-codes the hierarchy: if the mixins themselves call <code>Base.__init__</code>, Base runs twice and its <code>log</code> is reset, and adding a new mixin means editing every subclass.</p>`,
+      code: R`
+        class Base:
+            def __init__(self, name):
+                self.name, self.log = name, ["Base"]
+
+        class ColorMixin(Base):
+            def __init__(self, name, color):
+                Base.__init__(self, name)          # explicit parent call
+                self.color = color
+                self.log.append("ColorMixin")
+
+        class SizeMixin(Base):
+            def __init__(self, name, size):
+                Base.__init__(self, name)          # Base runs again: log is reset!
+                self.size = size
+                self.log.append("SizeMixin")
+
+        class Widget(ColorMixin, SizeMixin):
+            def __init__(self, name, color, size):
+                ColorMixin.__init__(self, name, color)
+                SizeMixin.__init__(self, name, size)
+
+        print(Widget("btn", "red", 3).log)         # ['Base', 'SizeMixin'] -> ColorMixin's entry lost
+      `
+    },
+    mcq: { q: 'In <code>ColorMixin.__init__</code>, what does <code>super().__init__(**kw)</code> call for a <code>Widget</code> instance whose MRO is Widget, ColorMixin, SizeMixin, Base, object?', options: ['<code>SizeMixin.__init__</code>', '<code>Base.__init__</code>', '<code>object.__init__</code>', '<code>Widget.__init__</code>'], answer: 0, explain: 'super() moves to the next class after ColorMixin in <b>type(self).__mro__</b>, which is SizeMixin, even though ColorMixin does not inherit from it.' },
+    hints: [
+      R`<p>Hint 1: Every <code>__init__</code> takes <code>**kwargs</code>, pops the arguments it owns, and calls <code>super().__init__(**kwargs)</code> with the rest.</p>`,
+      R`<p>Hint 2: <code>Base</code> is the end of the chain; it calls <code>super().__init__(**kwargs)</code> so that <code>object.__init__</code> raises <code>TypeError</code> for leftovers (typos!).</p>`,
+      R`<p>Hint 3: The log list must exist before mixins append to it. Either append <b>before</b> calling super and create the list lazily, or have each class append on entry using a helper that creates <code>self.log</code> if missing. Simplest: <code>self.__dict__.setdefault("log", []).append(...)</code> at the top of each <code>__init__</code>.</p>`
+    ],
+    solution: {
+      approach: R`<p>Cooperative multiple inheritance: each class handles its own keyword arguments and forwards the rest through <code>super()</code>; the MRO guarantees each runs once. Leftover kwargs reach <code>object.__init__</code>, which rejects them.</p>`,
+      code: { lang: 'python', run: true, code: R`
+        class Base:
+            def __init__(self, name, **kwargs):
+                self.__dict__.setdefault("log", []).append("Base")
+                self.name = name
+                super().__init__(**kwargs)              # object.__init__ rejects leftovers
+
+        class ColorMixin:
+            def __init__(self, color="black", **kwargs):
+                self.__dict__.setdefault("log", []).append("ColorMixin")
+                self.color = color
+                super().__init__(**kwargs)
+
+        class SizeMixin:
+            def __init__(self, size=10, **kwargs):
+                self.__dict__.setdefault("log", []).append("SizeMixin")
+                if size <= 0:
+                    raise ValueError("size must be positive")
+                self.size = size
+                super().__init__(**kwargs)
+
+        class Widget(ColorMixin, SizeMixin, Base):
+            def __init__(self, name, **kwargs):
+                self.__dict__.setdefault("log", []).append("Widget")
+                super().__init__(name=name, **kwargs)
+
+        w = Widget("btn", color="red", size=3)
+        print([k.__name__ for k in Widget.__mro__])
+        print(w.log, w.name, w.color, w.size)
+        try:
+            Widget("x", colour="red")
+        except TypeError as e:
+            print("TypeError:", e)
+      ` },
+      dry: { head: ['running', 'kwargs received', 'consumes', 'forwards to'], rows: [['Widget.__init__', "name='btn', color, size", '—', 'ColorMixin'], ['ColorMixin.__init__', "color='red', size=3, name", 'color', 'SizeMixin'], ['SizeMixin.__init__', "size=3, name", 'size', 'Base'], ['Base.__init__', "name='btn'", 'name', 'object (no kwargs left)']] },
+      complexity: R`<p>O(k) for k classes in the chain; each runs once.</p>`,
+      followUps: ['What happens if <code>SizeMixin</code> forgets to call <code>super().__init__</code>?', 'Why is the mixin placed before <code>Base</code> in the bases list?']
+    }
+  });
+
+  practice.push({
+    title: 'Exporter plugins: ABC contract + automatic registry',
+    level: 'Medium', tags: ['ABC', '@abstractmethod', '__init_subclass__', 'registry'], companies: ['Atlassian', 'Salesforce', 'Bloomberg'],
+    statement: R`<p>Design an <code>Exporter</code> ABC with an abstract method <code>export(rows: list[dict]) -&gt; str</code> and a concrete <code>save(rows, path)</code> template method (just return the string in this exercise). Subclasses declare a format with <code>class CSVExporter(Exporter, fmt="csv")</code> and are <b>registered automatically</b>; <code>Exporter.for_format("csv")</code> returns an instance. Implement CSV and JSON exporters. A subclass that forgets <code>export</code> must fail at instantiation; two classes claiming the same format must fail at class creation.</p>`,
+    constraints: R`Rows are flat dicts with the same keys; up to 10<sup>4</sup> rows.`,
+    example: R`<p><code>Exporter.for_format("csv").export([{"id": 1, "name": "Ada"}])</code> → ${H.c('g', '"id,name\\n1,Ada"')}; <code>Exporter.for_format("xml")</code> → ${H.c('r', 'KeyError: no exporter for xml')}</p>`,
+    brute: {
+      why: R`<p>An if/elif chain (<code>if fmt == "csv": … elif fmt == "json": …</code>) must be edited for every new format, cannot be extended by plugins from other packages, and offers no check that a new exporter implements the right methods.</p>`,
+      code: R`
+        import json
+
+        def export(fmt, rows):
+            if fmt == "csv":
+                keys = list(rows[0])
+                return "\n".join([",".join(keys)] + [",".join(str(r[k]) for k in keys) for r in rows])
+            elif fmt == "json":
+                return json.dumps(rows)
+            raise KeyError(fmt)                        # every new format edits this function
+
+        print(export("csv", [{"id": 1, "name": "Ada"}]))
+      `
+    },
+    mcq: { q: 'When does <code>__init_subclass__</code> run?', options: ['Once, when a subclass is <b>defined</b> (class statement executed)', 'Every time a subclass is instantiated', 'Only when <code>super()</code> is called', 'When the module is imported, before any classes exist'], answer: 0, explain: 'It is a hook on the parent that runs at subclass creation time and receives keyword arguments from the class statement, perfect for registries.' },
+    hints: [
+      R`<p>Hint 1: Keep a class-level dict <code>_registry = {}</code> on <code>Exporter</code>.</p>`,
+      R`<p>Hint 2: <code>def __init_subclass__(cls, fmt=None, **kw): super().__init_subclass__(**kw)</code>; if <code>fmt</code> is given, check for duplicates and store <code>cls</code>.</p>`,
+      R`<p>Hint 3: Mark <code>export</code> with <code>@abstractmethod</code>; a registered class missing it still registers but cannot be instantiated, so <code>for_format</code> surfaces the TypeError. Use the <code>csv</code> module or careful joins; <code>json.dumps</code> for JSON.</p>`
+    ],
+    solution: {
+      approach: R`<p>ABC for the contract (fail fast on missing methods), template method <code>save</code> in the base, and <code>__init_subclass__</code> keyword arguments for zero-boilerplate registration. Duplicate formats raise at definition time.</p>`,
+      code: { lang: 'python', run: true, code: R`
+        import io
+        import csv
+        import json
+        from abc import ABC, abstractmethod
+
+        class Exporter(ABC):
+            _registry: dict = {}
+
+            def __init_subclass__(cls, fmt=None, **kwargs):
+                super().__init_subclass__(**kwargs)
+                if fmt is not None:
+                    if fmt in Exporter._registry:
+                        raise TypeError(f"format {fmt!r} already handled by {Exporter._registry[fmt].__name__}")
+                    Exporter._registry[fmt] = cls
+                    cls.fmt = fmt
+
+            @classmethod
+            def for_format(cls, fmt):
+                try:
+                    return cls._registry[fmt]()
+                except KeyError:
+                    raise KeyError(f"no exporter for {fmt}") from None
+
+            @abstractmethod
+            def export(self, rows):
+                """Return the rows serialised as a string."""
+
+            def save(self, rows, path):                 # template method
+                text = self.export(rows)
+                return f"would write {len(text)} chars to {path}.{self.fmt}"
+
+        class CSVExporter(Exporter, fmt="csv"):
+            def export(self, rows):
+                buf = io.StringIO()
+                writer = csv.DictWriter(buf, fieldnames=list(rows[0]), lineterminator="\n")
+                writer.writeheader()
+                writer.writerows(rows)
+                return buf.getvalue().rstrip("\n")
+
+        class JSONExporter(Exporter, fmt="json"):
+            def export(self, rows):
+                return json.dumps(rows)
+
+        class BrokenExporter(Exporter, fmt="yaml"):
+            pass                                        # forgot export()
+
+        rows = [{"id": 1, "name": "Ada"}, {"id": 2, "name": "Linus"}]
+        print(repr(Exporter.for_format("csv").export(rows)))
+        print(Exporter.for_format("json").save(rows, "out"))
+        for bad in ("yaml", "xml"):
+            try:
+                Exporter.for_format(bad)
+            except (TypeError, KeyError) as e:
+                print(type(e).__name__ + ":", e)
+        try:
+            class AnotherCSV(Exporter, fmt="csv"):
+                def export(self, rows): return ""
+        except TypeError as e:
+            print("TypeError:", e)
+      ` },
+      dry: { head: ['event', 'hook', 'effect'], rows: [['class CSVExporter(..., fmt="csv")', '__init_subclass__', "registry['csv'] = CSVExporter"], ['class BrokenExporter(..., fmt="yaml")', '__init_subclass__', 'registered, but still abstract'], ['for_format("yaml")', 'instantiate', 'TypeError: missing export'], ['class AnotherCSV(..., fmt="csv")', '__init_subclass__', 'TypeError: duplicate format']] },
+      complexity: R`<p>Lookup O(1); CSV/JSON export O(total size of rows).</p>`,
+      followUps: ['Load third-party exporters via <code>importlib.metadata.entry_points</code>', 'Replace the ABC with a <code>Protocol</code>: what do you lose?']
+    }
+  });
+
+  practice.push({
+    title: 'SparseVector: dict-backed vector with +, @, [] and len',
+    level: 'Medium', tags: ['__getitem__', '__setitem__', '__add__', '__matmul__', 'hash map'], companies: ['Meta', 'LinkedIn', 'Amazon'],
+    statement: R`<p>Most entries of a feature vector are zero. Implement <code>SparseVector(n, entries=None)</code> storing only non-zero values in a dict. Support <code>v[i]</code> (0 if absent; negatives allowed; out of range → <code>IndexError</code>), <code>v[i] = x</code> (setting 0 deletes the entry), <code>len(v)</code> (= n, the dimension), <code>v + w</code> (same dimension), <code>v @ w</code> (dot product, iterate over the <b>smaller</b> dict), <code>==</code>, and a repr showing non-zeros.</p>`,
+    constraints: R`n up to 10<sup>9</sup>; non-zeros up to 10<sup>5</sup>. You cannot allocate a list of length n.`,
+    example: R`<p><code>v = SparseVector(10**9, {3: 2.0, 7: 1.0})</code>, <code>w = SparseVector(10**9, {7: 4.0, 99: 5.0})</code> → <code>v @ w</code> = ${H.c('g', '4.0')}; <code>(v + w)[7]</code> = ${H.c('g', '5.0')}; <code>v[-1]</code> = ${H.c('g', '0')}</p>`,
+    brute: {
+      why: R`<p>A dense list of length n: <code>[0.0] * 10**9</code> needs ~8 GB, and the dot product loops over a billion zeros. Sparse storage makes memory and time proportional to the number of non-zeros.</p>`,
+      code: R`
+        def dense_dot(a, b):
+            return sum(x * y for x, y in zip(a, b))       # O(n) even if almost all zeros
+
+        n = 10                                             # a billion would not fit in memory
+        a, b = [0.0] * n, [0.0] * n
+        a[3], a[7], b[7] = 2.0, 1.0, 4.0
+        print(dense_dot(a, b))
+      `
+    },
+    mcq: { q: 'Why should <code>v[i] = 0</code> delete the entry instead of storing 0?', options: ['To keep the invariant "dict holds only non-zeros", so size, equality and iteration stay correct and small', 'Because dicts cannot store 0', 'For thread safety', 'Because <code>__setitem__</code> cannot store falsy values'], answer: 0, explain: 'If zeros were stored, two equal vectors could have different dicts (<code>{1: 0}</code> vs <code>{}</code>), breaking <code>__eq__</code>, and memory would grow.' },
+    hints: [
+      R`<p>Hint 1: Normalise the index in one helper: <code>if i &lt; 0: i += n</code>, then range-check and raise <code>IndexError</code>.</p>`,
+      R`<p>Hint 2: <code>__add__</code>: copy the larger dict and add the other's items, dropping results that become 0. <code>__matmul__</code>: loop over the smaller dict and <code>get</code> from the other.</p>`,
+      R`<p>Hint 3: Return <code>NotImplemented</code> for non-SparseVector operands; raise <code>ValueError</code> on dimension mismatch. Equality: same n and same dict. The object is mutable, so leave <code>__hash__ = None</code> (the default once you define <code>__eq__</code>).</p>`
+    ],
+    solution: {
+      approach: R`<p>A dict of non-zeros plus the dimension. Invariant: no zero values are stored. All operations cost O(non-zeros) instead of O(n).</p>`,
+      code: { lang: 'python', run: true, code: R`
+        class SparseVector:
+            def __init__(self, n, entries=None):
+                self.n = n
+                self._d = {}
+                for i, x in (entries or {}).items():
+                    self[i] = x                               # validated + zeros dropped
+
+            def _idx(self, i):
+                if not isinstance(i, int):
+                    raise TypeError("index must be an int")
+                if i < 0:
+                    i += self.n
+                if not 0 <= i < self.n:
+                    raise IndexError("SparseVector index out of range")
+                return i
+
+            def __len__(self):
+                return self.n
+
+            def __getitem__(self, i):
+                return self._d.get(self._idx(i), 0)
+
+            def __setitem__(self, i, x):
+                i = self._idx(i)
+                if x == 0:
+                    self._d.pop(i, None)                      # keep only non-zeros
+                else:
+                    self._d[i] = x
+
+            def __repr__(self):
+                return f"SparseVector({self.n}, {dict(sorted(self._d.items()))})"
+
+            def __eq__(self, other):
+                if not isinstance(other, SparseVector):
+                    return NotImplemented
+                return self.n == other.n and self._d == other._d
+
+            def _check(self, other):
+                if self.n != other.n:
+                    raise ValueError("dimension mismatch")
+
+            def __add__(self, other):
+                if not isinstance(other, SparseVector):
+                    return NotImplemented
+                self._check(other)
+                big, small = (self, other) if len(self._d) >= len(other._d) else (other, self)
+                out = SparseVector(self.n)
+                out._d = dict(big._d)
+                for i, x in small._d.items():
+                    out[i] = out._d.get(i, 0) + x                 # drops zeros via __setitem__
+                return out
+
+            def __matmul__(self, other):
+                if not isinstance(other, SparseVector):
+                    return NotImplemented
+                self._check(other)
+                a, b = (self._d, other._d) if len(self._d) <= len(other._d) else (other._d, self._d)
+                return sum(x * b.get(i, 0) for i, x in a.items())
+
+        v = SparseVector(10**9, {3: 2.0, 7: 1.0})
+        w = SparseVector(10**9, {7: 4.0, 99: 5.0})
+        print(v @ w, (v + w)[7], v[-1], len(v))
+        u = v + SparseVector(10**9, {3: -2.0})
+        print(u, u == SparseVector(10**9, {7: 1.0}))
+      ` },
+      complexity: R`<p>Get/set O(1) average; <code>+</code> O(nnz(v) + nnz(w)); <code>@</code> O(min(nnz)); memory O(nnz).</p>`,
+      followUps: ['Support <code>scalar * v</code> and <code>-v</code>', 'Make it a <code>collections.abc.Sequence</code>: which mixin would be catastrophically slow for n = 10<sup>9</sup>?']
+    }
+  });
+
+  practice.push({
+    title: 'Semantic versions with pre-releases',
+    level: 'Medium', tags: ['total_ordering', '__eq__', '__hash__', 'parsing'], companies: ['GitHub', 'npm', 'JetBrains'],
+    statement: R`<p>Implement <code>SemVer("1.10.0-beta.2")</code> following SemVer 2.0 precedence: compare <code>major.minor.patch</code> numerically; a version <b>with</b> a pre-release is <b>lower</b> than the same version without one (<code>1.0.0-alpha &lt; 1.0.0</code>); pre-release identifiers are compared dot by dot: numeric ones numerically, alphanumeric ones lexically, numeric &lt; alphanumeric, and a longer list wins when all previous identifiers are equal. Build metadata after <code>+</code> is ignored for ordering and equality. Make it hashable, sortable and printable.</p>`,
+    constraints: R`Up to 10<sup>5</sup> versions; invalid input raises <code>ValueError</code>.`,
+    example: R`<p><code>sorted(["1.0.0", "1.0.0-alpha", "1.0.0-alpha.1", "1.0.0-alpha.beta", "1.0.0-beta.11", "1.0.0-beta.2", "1.0.0-rc.1"])</code> → ${H.c('g', 'alpha < alpha.1 < alpha.beta < beta.2 < beta.11 < rc.1 < 1.0.0')} (the official SemVer example order).</p>`,
+    brute: {
+      why: R`<p>String comparison gives <code>"1.0.0" &lt; "1.0.0-alpha"</code> (wrong: the release should be higher) and <code>"beta.11" &lt; "beta.2"</code> (wrong: 11 &gt; 2). Splitting on dots and converting everything to int crashes on <code>"alpha"</code>.</p>`,
+      code: R`
+        vs = ["1.0.0", "1.0.0-alpha", "1.0.0-beta.11", "1.0.0-beta.2"]
+        print(sorted(vs))          # ['1.0.0', '1.0.0-alpha', '1.0.0-beta.11', '1.0.0-beta.2']  (wrong)
+      `
+    },
+    mcq: { q: 'How can you make "no pre-release" sort <b>after</b> any pre-release using a tuple key?', options: ['Use <code>(major, minor, patch, 1, ())</code> for releases and <code>(major, minor, patch, 0, ids)</code> for pre-releases', 'Use an empty tuple for releases', 'Use <code>None</code> for releases', 'Sort releases separately and append'], answer: 0, explain: 'A flag in the 4th position decides before the identifiers are looked at: 0 (pre-release) &lt; 1 (release). An empty tuple would sort <b>first</b>, the opposite of what SemVer wants.' },
+    hints: [
+      R`<p>Hint 1: Strip build metadata: <code>text.split("+", 1)[0]</code>; then split off the pre-release at the first <code>-</code>.</p>`,
+      R`<p>Hint 2: Map each pre-release identifier to a comparable tuple: numeric → <code>(0, int(x), "")</code>, alphanumeric → <code>(1, 0, x)</code>. Then numeric &lt; alphanumeric, numbers compare numerically, and tuple comparison handles "longer wins".</p>`,
+      R`<p>Hint 3: Key = <code>(major, minor, patch, 0 if pre else 1, tuple(mapped ids))</code>. Use it in <code>__eq__</code>, <code>__lt__</code>, <code>__hash__</code>; decorate with <code>@total_ordering</code>; keep the original text for <code>__repr__</code>.</p>`
+    ],
+    solution: {
+      approach: R`<p>Parse once into a key tuple that encodes all SemVer precedence rules, then let tuple comparison do the work. Equality and hashing use the same key (so build metadata is ignored consistently).</p>`,
+      code: { lang: 'python', run: true, code: R`
+        import re
+        from functools import total_ordering
+
+        _CORE = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
+
+        @total_ordering
+        class SemVer:
+            __slots__ = ("text", "_key")
+
+            def __init__(self, text):
+                self.text = text
+                core, _, pre = text.split("+", 1)[0].partition("-")
+                m = _CORE.match(core)
+                if not m or (pre == "" and "-" in text.split("+", 1)[0]):
+                    raise ValueError(f"invalid version {text!r}")
+                ids = tuple((0, int(x), "") if x.isdigit() else (1, 0, x) for x in pre.split(".")) if pre else ()
+                self._key = (*map(int, m.groups()), 0 if pre else 1, ids)
+
+            def __repr__(self):
+                return f"SemVer({self.text!r})"
+
+            def __eq__(self, other):
+                if not isinstance(other, SemVer):
+                    return NotImplemented
+                return self._key == other._key
+
+            def __lt__(self, other):
+                if not isinstance(other, SemVer):
+                    return NotImplemented
+                return self._key < other._key
+
+            def __hash__(self):
+                return hash(self._key)
+
+        raw = ["1.0.0", "1.0.0-rc.1", "1.0.0-alpha.beta", "1.0.0-beta.11", "1.0.0-alpha",
+               "1.0.0-beta.2", "1.0.0-alpha.1", "0.9.12", "1.10.0", "1.2.0"]
+        print([v.text for v in sorted(map(SemVer, raw))])
+        print(SemVer("1.0.0+build.5") == SemVer("1.0.0"), len({SemVer("2.0.0+a"), SemVer("2.0.0+b")}))
+        try:
+            SemVer("1.0")
+        except ValueError as e:
+            print("ValueError:", e)
+      ` },
+      dry: { head: ['version', 'key'], rows: [['1.0.0-alpha', '(1, 0, 0, 0, ((1, 0, "alpha"),))'], ['1.0.0-alpha.1', '(1, 0, 0, 0, ((1, 0, "alpha"), (0, 1, "")))'], ['1.0.0-beta.2', '(1, 0, 0, 0, ((1, 0, "beta"), (0, 2, "")))'], ['1.0.0-beta.11', '(1, 0, 0, 0, ((1, 0, "beta"), (0, 11, "")))'], ['1.0.0', '(1, 0, 0, 1, ()) → highest']] },
+      complexity: R`<p>Parsing O(L); comparisons O(k) for k pre-release identifiers; sorting O(n log n · k).</p>`,
+      followUps: ['Implement <code>bump_minor()</code> returning a new SemVer', 'Implement range matching like <code>^1.2.0</code> with <code>__contains__</code> on a Range class']
+    }
   });
 
   registerModule({

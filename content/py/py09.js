@@ -858,7 +858,7 @@ assert lbyl() == eafp() == with_get() == dict(with_counter())
 for fn in (lbyl, eafp, with_get, with_counter):
     t = timeit.timeit(fn, number=20)
     print(f'{fn.__name__:13} {t * 1000:7.1f} ms')
-print('(numbers vary by machine; Counter is usually fastest)')` }, { lang: 'python', run: true, title: 'When misses are common, exceptions get expensive', code: `import timeit
+print('(numbers vary by machine and Python version: measure, do not guess)')` }, { lang: 'python', run: true, title: 'When misses are common, exceptions get expensive', code: `import timeit
 
 d = {i: i for i in range(100)}
 keys_hit = list(range(100)) * 50          # 100% hits
@@ -1150,7 +1150,7 @@ print(hasattr(Config, 'host'))         # False: annotation without value creates
         if (!raw) throw new Error("Type a Python literal: 21, 'ab', [1, 2] or None");
         var kind, rt, res, err = null;
         if (/^-?\d+$/.test(raw)) { kind = 'int'; res = String(parseInt(raw, 10) * 2); }
-        else if (/^-?\d+\.\d+$/.test(raw)) { kind = 'float'; res = String(parseFloat(raw) * 2); }
+        else if (/^-?\d+\.\d+$/.test(raw)) { kind = 'float'; res = String(parseFloat(raw) * 2); if (res.indexOf('.') < 0) res += '.0'; }
         else if (/^'[^']*'$/.test(raw) || /^"[^"]*"$/.test(raw)) { kind = 'str'; var inner = raw.slice(1, -1); res = "'" + inner + inner + "'"; }
         else if (/^\[.*\]$/.test(raw)) { kind = 'list[int]'; var body = raw.slice(1, -1).trim(); res = '[' + (body ? body + ', ' + body : '') + ']'; }
         else if (raw === 'None') { kind = 'None'; err = "TypeError: unsupported operand type(s) for *: 'NoneType' and 'int'"; }
@@ -1162,7 +1162,7 @@ print(hasattr(Config, 'host'))         # False: annotation without value creates
         frames.push(fr('Printing <code>__annotations__</code> shows the stored labels. Frameworks like FastAPI, pydantic and dataclasses read exactly this dict.', [cp(code, 4, 'ok'), tx("<pre>{'x': &lt;class 'int'&gt;, 'return': &lt;class 'int'&gt;}</pre>", 'Printed')]));
         frames.push(fr('Now the call <code>double(' + esc(raw) + ')</code>. The argument\'s real type is <b>' + kind + '</b>. Does Python check it against <code>int</code>? <b>No.</b> It just binds <code>x</code>.', [cp(code, 5, 'cur'), vp({ x: raw, 'type(x)': kind, 'hint says': 'int' }, 'type(x)', kind === 'int' || kind === 'bool' ? 'ok' : 'bad')]));
         if (err) frames.push(fr('The body runs <code>x * 2</code> and fails <b>at runtime</b>, deep inside — the hint did not stop the bad value at the door.', [cp(code, 2, 'bad'), tx('<span class="c-r">' + esc(err) + '</span>', 'Runtime result')]));
-        else frames.push(fr('The body runs <code>x * 2</code>' + (kind === 'int' ? ' as intended.' : kind === 'bool' ? ' — bool is a subclass of int, so this is even type-correct.' : ' and <b>silently does something else</b>: <code>*</code> means repetition for ' + kind + '. No error, wrong meaning.'), [cp(code, 2, kind === 'int' || kind === 'bool' ? 'ok' : 'cur'), tx('<b>' + esc(res) + '</b>', 'Returned at runtime')]));
+        else frames.push(fr('The body runs <code>x * 2</code>' + (kind === 'int' ? ' as intended.' : kind === 'bool' ? ' — bool is a subclass of int, so this is even type-correct.' : kind === 'float' ? ' and works numerically — but it returns a <b>float</b>, not the int the hint promises. Code downstream that needs an int (e.g. <code>range(n)</code>) would fail later.' : ' and <b>silently does something else</b>: <code>*</code> means repetition for ' + kind + '. No error, wrong meaning.'), [cp(code, 2, kind === 'int' || kind === 'bool' ? 'ok' : 'cur'), tx('<b>' + esc(res) + '</b>', 'Returned at runtime')]));
         var ok = kind === 'int' || kind === 'bool';
         frames.push(fr('Now run <b>mypy</b> (a separate program that reads the source without running it). It compares the argument\'s type to the label <code>int</code>.', [cp(code, 5, ok ? 'ok' : 'bad', 'mypy reading the source'), tx(ok ? '<span class="c-g">Success: no issues found in 1 source file</span>' : '<span class="c-r">app.py:5: error: Argument 1 to "double" has incompatible type "' + (kind === 'list[int]' ? 'list[int]' : kind) + '"; expected "int"  [arg-type]</span>', '$ mypy app.py')]));
         frames.push(fr('Takeaway: hints catch bugs <b>before</b> running (in your editor and CI), document intent, and power tools — but they are <b>not</b> runtime validation. For untrusted input (HTTP, JSON, files) validate at runtime too (pydantic, manual checks).', [{ type: 'table', label: 'Who reads the hints?', columns: ['reader', 'reads hints?', 'effect'], rows: [['CPython interpreter', 'stores only', 'no checking, no speed-up'], ['mypy / pyright / IDE', 'yes', 'errors before running'], ['pydantic / FastAPI / dataclasses', 'yes, at runtime', 'validation, parsing, generated code'], ['mypyc / Cython', 'yes', 'compile to faster C']], hl: { 1: 'ok' } }]));
@@ -1523,4 +1523,1590 @@ for v in (None, 443, ' 8443 ', '', 70000, 'http', True, 80.0):
       }
     }]
   });
-registerModule({ id: 'py09', title: 'Errors, Type Hints & Testing', intro: `<p>tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro</p>`, goals: ['aaaaaaaaaaaa','bbbbbbbbbbbbb','cccccccccccc'], prereqs: `aaaaaaaaaaaaaaaaaaaa`, hours: 10, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();
+
+  /* ================= TOPIC 7: unittest vs pytest ================= */
+  topics.push({
+    title: 'Testing: unittest vs pytest, Assertions, Parametrize and What Makes a Good Test',
+    analogy: `<p>A test is a <b>smoke alarm</b> for your code. You install it once; it stays quiet while things are fine and screams the moment something breaks — even months later, when someone else changes a line far away. <b>unittest</b> is the classic alarm that ships with every house (the standard library): reliable, a bit formal, needs mounting brackets (classes). <b>pytest</b> is the modern alarm everyone buys: same job, simpler to install (plain functions and <code>assert</code>), and it tells you <i>which room</i> is on fire and <i>why</i>.</p>`,
+    explain: `<p>🟢 <b>The shape of every test: Arrange → Act → Assert.</b> Set up inputs, call the code, check the result. One behaviour per test, a name that says what should happen.</p>
+<pre>def test_discount_is_capped_at_50_percent():
+    cart = Cart(total=100)            # Arrange
+    cart.apply_discount(80)           # Act
+    assert cart.total == 50           # Assert</pre>
+<p>🔵 <b>The two main frameworks side by side:</b></p>
+${H.table(['', '<b>unittest</b> (stdlib)', '<b>pytest</b> (third party, the de-facto standard)'], [['Test shape', '<code>class TestX(unittest.TestCase)</code> with <code>test_*</code> methods', 'plain <code>def test_*():</code> functions (classes optional)'], ['Assertions', '<code>self.assertEqual(a, b)</code>, <code>assertTrue</code>, <code>assertIn</code>, <code>assertAlmostEqual</code>…', 'plain <code>assert a == b</code> — pytest rewrites it to show both values'], ['Expected errors', '<code>with self.assertRaises(ValueError):</code>', '<code>with pytest.raises(ValueError, match="positive"):</code>'], ['Setup / teardown', '<code>setUp</code>/<code>tearDown</code>, <code>setUpClass</code>, <code>addCleanup</code>', 'fixtures with <code>yield</code>, scopes, dependency injection'], ['Many inputs', '<code>with self.subTest(x=x):</code> in a loop', '<code>@pytest.mark.parametrize("x, expected", [...])</code>'], ['Run', '<code>python -m unittest discover</code>', '<code>pytest</code> (also runs unittest-style tests!)'], ['Extras', '<code>unittest.mock</code>, <code>IsolatedAsyncioTestCase</code>', 'huge plugin ecosystem: pytest-cov, pytest-xdist, pytest-asyncio, hypothesis']])}
+<p><b>pytest discovery rules:</b> files named <code>test_*.py</code> or <code>*_test.py</code>, functions named <code>test_*</code>, classes named <code>Test*</code> (without <code>__init__</code>). Handy flags: <code>-k "leap and not 1900"</code> (filter by name), <code>-x</code> (stop at first failure), <code>--lf</code> (re-run last failures), <code>-v</code>, <code>-q</code>, <code>--pdb</code> (debugger on failure).</p>
+<p><b>Parametrize</b> turns one test into a table of cases, each reported separately (<code>test_leap[1900-False]</code>), so one failing row does not hide the others.</p>
+<p><b>What makes a test good:</b> fast (milliseconds), isolated (no shared state, any order), deterministic (no real clock/network/randomness), tests <b>behaviour</b> not implementation details, and fails with a message that tells you what broke. Think in edge cases: empty, one element, duplicates, negative, zero, huge, unicode, None, boundary values (off-by-one).</p>`,
+    clues: [
+      '"how would you test this function?" → list cases (happy path, edges, errors), then a parametrized table + <code>pytest.raises</code> for the error cases',
+      '"unittest or pytest?" → pytest for new projects (less boilerplate, better failure output, fixtures, plugins); unittest when you cannot add dependencies — pytest runs both',
+      '"the test passes on my machine but fails in CI / sometimes" → flaky: shared state, ordering, time, randomness or network; make it deterministic',
+      '"check that it raises with a specific message" → <code>pytest.raises(E, match=regex)</code> / <code>assertRaisesRegex</code>',
+      '"compare floats" → <code>pytest.approx</code> / <code>assertAlmostEqual</code>, never <code>==</code>',
+      '"same test for many inputs" → <code>@pytest.mark.parametrize</code> or <code>subTest</code>',
+      '"test pyramid" → many fast unit tests, fewer integration tests, very few end-to-end tests'
+    ],
+    code: [{ lang: 'python', run: true, title: 'unittest: classes, assert methods, subTest — runnable here', code: `import io
+import unittest
+
+
+def is_leap(year: int) -> bool:
+    return year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)
+
+
+class TestIsLeap(unittest.TestCase):
+    def test_typical_leap_year(self):
+        self.assertTrue(is_leap(2024))
+
+    def test_century_is_not_leap(self):
+        self.assertFalse(is_leap(1900))
+
+    def test_table(self):
+        cases = {2000: True, 2023: False, 2100: False, 2400: True}
+        for year, expected in cases.items():
+            with self.subTest(year=year):          # each case reported separately
+                self.assertEqual(is_leap(year), expected)
+
+    def test_rejects_strings(self):
+        with self.assertRaises(TypeError):
+            is_leap('2024')                        # str % int -> TypeError
+
+
+suite = unittest.defaultTestLoader.loadTestsFromTestCase(TestIsLeap)
+stream = io.StringIO()
+result = unittest.TextTestRunner(stream=stream, verbosity=2).run(suite)
+print(stream.getvalue())
+print('all passed?', result.wasSuccessful())` }, { lang: 'python', title: 'The same tests in pytest style (run with: pytest test_leap.py)', code: `import pytest
+
+from leap import is_leap
+
+
+@pytest.mark.parametrize(
+    'year, expected',
+    [
+        (2024, True),      # divisible by 4
+        (2023, False),     # not divisible by 4
+        (1900, False),     # century, not divisible by 400
+        (2000, True),      # divisible by 400
+    ],
+    ids=['typical', 'odd-year', 'century', 'quad-century'],
+)
+def test_is_leap(year, expected):
+    assert is_leap(year) == expected       # pytest shows both sides on failure
+
+
+def test_rejects_strings():
+    with pytest.raises(TypeError, match='not all arguments converted'):
+        is_leap('2024')
+
+
+def test_float_maths():
+    assert 0.1 + 0.2 == pytest.approx(0.3)
+
+
+@pytest.mark.skip(reason='calendar reform not supported yet')
+def test_julian_calendar():
+    assert is_leap(1500)` }],
+    codeTitle: ['unittest (stdlib)', 'pytest equivalent'],
+    viz: [{
+      title: 'A pytest run: collect → parametrize → run each case → report (with a buggy is_leap)',
+      input: '2024 1900 2000 2023',
+      inputLabel: 'Years to put in the parametrize table (max 8). Buggy code under test: year % 4 == 0',
+      gen: function (input) {
+        var ys = words(input).map(Number);
+        if (!ys.length || ys.some(function (y) { return !Number.isInteger(y) || y < 1; })) throw new Error('Enter positive years, e.g. 2024 1900 2000');
+        if (ys.length > 8) throw new Error('Use at most 8 years');
+        var good = function (y) { return y % 4 === 0 && (y % 100 !== 0 || y % 400 === 0); };
+        var bad = function (y) { return y % 4 === 0; };
+        var py = function (b) { return b ? 'True' : 'False'; };
+        var ids = ys.map(function (y) { return 'test_leap[' + y + '-' + py(good(y)) + ']'; });
+        var frames = [];
+        var code = ['def is_leap(year):', '    return year % 4 == 0          # BUG: forgets the century rule', '', "@pytest.mark.parametrize('year, expected', CASES)", 'def test_leap(year, expected):', '    assert is_leap(year) == expected'].join('\n');
+        frames.push(fr('<b>Collection.</b> pytest imports <code>test_leap.py</code>, finds <code>test_leap</code>, and expands the parametrize table into <b>' + ys.length + '</b> separate test items, each with its own id.', [cp(code, 4, 'cur'), { type: 'queue', label: 'collected test items', items: ids, frontLabel: 'next', backLabel: 'last' }]));
+        var results = [], pass = 0, fail = 0, q = ids.slice();
+        ys.forEach(function (y, i) {
+          var got = bad(y), exp = good(y), ok = got === exp;
+          var hlq = {}; hlq[0] = 'cur';
+          frames.push(fr('Run <code>' + ids[i] + '</code>: call <code>is_leap(' + y + ')</code> → ' + y + ' % 4 = ' + (y % 4) + ' → returns <b>' + py(got) + '</b>; expected <b>' + py(exp) + '</b>.', [cp(code, 6, ok ? 'ok' : 'bad'), { type: 'queue', label: 'remaining items', items: q.slice(), hl: hlq }, vp({ year: y, 'is_leap(year)': py(got), expected: py(exp) }, 'is_leap(year)', ok ? 'ok' : 'bad')]));
+          q.shift();
+          if (ok) pass++; else fail++;
+          results.push([ids[i], ok ? 'PASSED' : 'FAILED']);
+          if (!ok) frames.push(fr('<span class="c-r">FAILED.</span> Thanks to <b>assertion rewriting</b>, pytest shows the values on both sides — no need for assertEqual. The other cases still run.', [tx('<pre>    def test_leap(year, expected):\n&gt;       assert is_leap(year) == expected\nE       assert ' + py(got) + ' == ' + py(exp) + '\nE        +  where ' + py(got) + ' = is_leap(' + y + ')</pre>', 'Failure report'), { type: 'table', label: 'results so far', columns: ['test id', 'outcome'], rows: results.map(function (r) { return r.slice(); }), hl: (function () { var h = {}; results.forEach(function (r, k) { h[k] = r[1] === 'PASSED' ? 'ok' : 'bad'; }); return h; })() }]));
+        });
+        frames.push(fr('<b>Summary line.</b> ' + (fail ? 'The century cases expose the bug. Fix: <code>year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)</code>.' : 'All passed — but notice: if your table has no century year like 1900 or 2100, this buggy code passes! <b>Tests are only as good as their edge cases.</b>'), [{ type: 'table', label: 'pytest -v', columns: ['test id', 'outcome'], rows: results.map(function (r) { return r.slice(); }), hl: (function () { var h = {}; results.forEach(function (r, k) { h[k] = r[1] === 'PASSED' ? 'ok' : 'bad'; }); return h; })() }, tx('<b>' + (fail ? '<span class="c-r">' + fail + ' failed</span>, ' : '') + '<span class="c-g">' + pass + ' passed</span></b> in 0.01s', 'Summary')]));
+        return frames;
+      }
+    }],
+    examples: [
+      { title: 'Predict the output: assert with a tuple is always true', html: `<p>Classic trap: <code>assert (x == 2, "message")</code> asserts a <b>non-empty tuple</b>, which is truthy — it never fails. Python emits a <code>SyntaxWarning: assertion is always true</code>. Correct form: <code>assert x == 2, "message"</code>. Output: ${H.c('r', 'tuple form passed')} then ${H.c('g', 'AssertionError: x should be 2')}.</p>`, code: { lang: 'python', run: true, code: `x = 3
+cond = (x == 2, 'x should be 2')      # what the buggy assert evaluates
+if cond:
+    print('tuple form passed (non-empty tuple is truthy)')
+try:
+    assert x == 2, 'x should be 2'     # correct form
+except AssertionError as e:
+    print('AssertionError:', e)` } },
+      { title: 'Testing exceptions precisely', html: `<p>Check the <b>type</b> and the <b>message</b>, and keep the <code>with</code> block to the single call that should raise — otherwise an earlier line raising the same type would make the test pass for the wrong reason.</p>${H.table(['unittest', 'pytest'], [['<code>with self.assertRaisesRegex(ValueError, "positive"):</code>', '<code>with pytest.raises(ValueError, match="positive") as exc:</code>'], ['<code>cm.exception.args</code>', '<code>exc.value.args</code>, <code>exc.type</code>'], ['<code>self.assertRaises(E, fn, *args)</code>', '—']])}`, code: { lang: 'python', run: true, code: `import unittest
+
+
+def withdraw(balance, amount):
+    if amount <= 0:
+        raise ValueError(f'amount must be positive, got {amount}')
+    return balance - amount
+
+
+class T(unittest.TestCase):
+    def test_negative_amount(self):
+        with self.assertRaisesRegex(ValueError, 'must be positive') as cm:
+            withdraw(100, -5)
+        self.assertIn('-5', str(cm.exception))
+
+
+r = unittest.TextTestRunner(verbosity=0).run(unittest.defaultTestLoader.loadTestsFromTestCase(T))
+print('ok' if r.wasSuccessful() else 'failed')` } },
+      { title: 'Write tests from the edge cases, not the happy path', html: `<p>For <code>chunk(xs, n)</code> (split a list into pieces of size n), a strong case table:</p>${H.table(['case', 'input', 'expected'], [['empty', '([], 3)', '[]'], ['exact fit', '([1,2,3,4], 2)', '[[1,2],[3,4]]'], ['remainder', '([1,2,3], 2)', '[[1,2],[3]]'], ['n bigger than list', '([1], 5)', '[[1]]'], ['invalid n', '([1], 0)', 'ValueError']])}`, code: { lang: 'python', run: true, code: `def chunk(xs, n):
+    if n <= 0:
+        raise ValueError('n must be positive')
+    return [xs[i:i + n] for i in range(0, len(xs), n)]
+
+
+cases = [(([], 3), []), (([1, 2, 3, 4], 2), [[1, 2], [3, 4]]),
+         (([1, 2, 3], 2), [[1, 2], [3]]), (([1], 5), [[1]])]
+for args, expected in cases:
+    got = chunk(*args)
+    assert got == expected, f'chunk{args} = {got}, expected {expected}'
+try:
+    chunk([1], 0)
+    raise AssertionError('expected ValueError')
+except ValueError:
+    pass
+print('all', len(cases) + 1, 'checks passed')` } },
+      { title: 'The test pyramid in one table', html: `${H.table(['level', 'tests what', 'speed', 'how many', 'Python tools'], [['unit', 'one function/class, dependencies faked', 'ms', 'hundreds–thousands', 'pytest, unittest, hypothesis'], ['integration', 'your code + real DB/queue/files', '100 ms–s', 'tens–hundreds', 'pytest + testcontainers, tmp_path'], ['end-to-end', 'the whole system as a user', 'seconds–minutes', 'a handful', 'playwright, requests against staging']])}<p>Inverted pyramids (mostly slow E2E tests) give slow, flaky CI — a common anti-pattern.</p>` }
+    ],
+    deepDive: `<p>🟣 <b>How pytest's assertion rewriting works.</b> pytest installs an <b>import hook</b> for test modules (and <code>conftest.py</code>, and plugins). Before compiling, it rewrites the AST of every <code>assert</code> statement into code that saves each sub-expression in temporaries, so on failure it can print <code>assert 3 == 4</code> plus "where 3 = f(2)". Rewritten bytecode is cached in <code>__pycache__</code> with a pytest-specific tag. That is why helper modules outside tests show plain AssertionErrors unless you call <code>pytest.register_assert_rewrite</code>.</p>
+<p><b>Property-based testing.</b> <b>Hypothesis</b> generates hundreds of inputs from a strategy (<code>@given(st.lists(st.integers()))</code>), checks <b>properties</b> (e.g. "sorting twice equals sorting once", "decode(encode(x)) == x"), and when it finds a failure it <b>shrinks</b> it to a minimal counterexample. It finds edge cases humans forget (empty lists, huge ints, NaN, unicode surrogates).</p>
+<p><b>Coverage and mutation testing.</b> <code>pytest --cov=src --cov-branch</code> measures which lines/branches ran. 100% coverage does not mean correct (a test without asserts covers lines); <b>mutation testing</b> (mutmut, cosmic-ray) changes your code (<code>&lt;</code> to <code>&lt;=</code>) and checks that some test fails — a much stronger signal of test quality.</p>
+<p><b>Scale tricks:</b> <code>pytest-xdist -n auto</code> runs tests in parallel processes (forces isolation!), <code>pytest-randomly</code> shuffles order to expose hidden coupling, markers (<code>@pytest.mark.slow</code> + <code>-m "not slow"</code>) split fast and slow suites, <code>--durations=10</code> finds the slowest tests. <code>doctest</code> runs examples embedded in docstrings — good for docs, weak as a test suite. For async code: <code>pytest-asyncio</code> or <code>unittest.IsolatedAsyncioTestCase</code>.</p>`,
+    aiEra: `<p>🤖 <b>What AI changes:</b> writing test boilerplate is nearly free now: "write pytest tests for this function, parametrized, including edge cases and error cases" gives a solid first draft in seconds. Tests have become the main way to <b>verify AI-generated code</b> and to give coding agents a target ("make these tests pass without editing them").</p>
+<p><b>Where AI goes wrong:</b> it writes tests that mirror the implementation (and therefore its bugs), asserts on whatever the code currently returns (snapshotting bugs into "expected" values), over-mocks so nothing real is tested, or weakens/deletes a failing test to make the suite green. Always ask: <i>where did each expected value come from — the spec, or the code?</i></p>
+<p><b>What you must still own:</b> choosing the cases (especially the boundaries), deciding what is a unit, keeping tests deterministic, and reviewing AI tests as critically as AI code. Writing a few tests <b>before</b> asking AI for the implementation is a powerful habit.</p>`,
+    problems: [{
+      title: 'Find the Bug With a Test Table (is_leap)',
+      level: 'Easy', tags: ['parametrize', 'edge cases', 'pytest'], companies: ['Amazon', 'Atlassian'],
+      statement: `<p>A teammate wrote <code>is_leap(year)</code> as <code>return year % 4 == 0</code>. Write a <b>table-driven test</b> (a list of <code>(year, expected)</code> pairs run in a loop, the same thing <code>@pytest.mark.parametrize</code> produces) that <b>fails</b> on this implementation and <b>passes</b> on a correct one, and report every failing row, not just the first.</p>`,
+      constraints: `Use plain asserts or a results list so it runs anywhere. Cover all four rules of the Gregorian calendar with the fewest rows.`,
+      example: `<p>Rows <code>(2024, True)</code>, <code>(2023, False)</code>, <code>(1900, False)</code>, <code>(2000, True)</code>. On the buggy version only ${H.c('r', '1900')} fails (1900 % 4 == 0 but centuries are not leap unless divisible by 400). ${H.c('g', '2000')} passes by luck — it IS divisible by 400.</p>`,
+      brute: { why: `<p>One test with only <code>assert is_leap(2024)</code> passes on the buggy code — the bug survives. A long list of random years usually also passes, because only 3 in every 400 years trigger the century rule. Quantity of tests is not quality; the boundary cases matter.</p>`, code: `def buggy_is_leap(year):
+    return year % 4 == 0
+
+def test_weak():
+    assert buggy_is_leap(2024)        # passes: proves nothing about centuries
+    assert not buggy_is_leap(2023)
+
+test_weak()
+print('weak test passed on buggy code')` },
+      mcq: { q: 'Which single row exposes the bug in <code>year % 4 == 0</code>?', options: ['(1900, False)', '(2000, True)', '(2024, True)', '(2023, False)'], answer: 0, explain: '1900 is divisible by 4, so the buggy code says True, but it is a century not divisible by 400, so the correct answer is False. 2000 is divisible by 400, so both versions agree.' },
+      hints: [`<p>Hint 1: There are 4 rules: divisible by 4 → leap; but divisible by 100 → not leap; but divisible by 400 → leap; otherwise not leap. One row per rule.</p>`, `<p>Hint 2: Loop over the rows, collect failures in a list instead of stopping at the first assert — that is what parametrize gives you for free.</p>`, `<p>Hint 3: Run the same table against the buggy and the fixed function. A good test table is "red" on the bug and "green" on the fix.</p>`],
+      solution: {
+        approach: `<p>Choose one representative year for each rule (a classic <b>equivalence partition</b> + <b>boundary</b> approach), then run the table against both implementations and print every failing row.</p>`,
+        code: { lang: 'python', run: true, code: `CASES = [
+    (2024, True),    # rule 1: divisible by 4
+    (2023, False),   # not divisible by 4
+    (1900, False),   # rule 2: century -> not leap
+    (2000, True),    # rule 3: divisible by 400 -> leap
+]
+
+
+def buggy_is_leap(year):
+    return year % 4 == 0
+
+
+def is_leap(year):
+    return year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)
+
+
+def run_table(fn):
+    failures = []
+    for year, expected in CASES:          # like @pytest.mark.parametrize
+        got = fn(year)
+        if got != expected:
+            failures.append(f'{fn.__name__}({year}) = {got}, expected {expected}')
+    return failures
+
+
+for fn in (buggy_is_leap, is_leap):
+    fails = run_table(fn)
+    print(fn.__name__, 'FAILED' if fails else 'PASSED', fails)` },
+        alt: [{ lang: 'python', code: `# pytest version (save as test_leap.py and run: pytest -v)
+import pytest
+
+from leap import is_leap
+
+
+@pytest.mark.parametrize('year, expected', [(2024, True), (2023, False), (1900, False), (2000, True)])
+def test_is_leap(year, expected):
+    assert is_leap(year) == expected` }],
+        dry: { head: ['year', 'expected', 'buggy result', 'fixed result'], rows: [['2024', 'True', 'True ✅', 'True ✅'], ['2023', 'False', 'False ✅', 'False ✅'], ['1900', 'False', '<span class="c-r">True ❌</span>', 'False ✅'], ['2000', 'True', 'True ✅', 'True ✅']] },
+        complexity: `<p>4 rows, O(1) each. The value is in the choice of rows: each one pins down a different rule, so any single wrong rule turns the table red.</p>`,
+        followUps: ['Add a property-based test with Hypothesis: "exactly 97 leap years in any 400-year window".', 'What should is_leap(0) or negative years return? Write the test first, then decide.', 'Compare against calendar.isleap as an oracle for years 1..3000.']
+      }
+    }]
+  });
+
+  /* ================= TOPIC 8: Fixtures and mocking ================= */
+  var FIX = { db: { scope: 'session', deps: [] }, client: { scope: 'function', deps: ['db'] }, tmp: { scope: 'function', deps: [] }, user: { scope: 'function', deps: ['db'] } };
+
+  topics.push({
+    title: 'Fixtures and Mocking: Setup/Teardown, pytest Fixtures, unittest.mock and "Patch Where It Is Looked Up"',
+    analogy: `<p>A <b>film set</b>. Before each scene, the crew builds the room and places props (<b>setup / fixtures</b>); after the scene they clear it so the next scene starts clean (<b>teardown</b>). Expensive things like the lighting rig are set up <b>once for the whole day</b> (a session-scoped fixture). And when a scene needs an explosion or a real lion, you do not use the real thing — you use a <b>stunt double</b> that looks right and lets you check exactly what happened (<b>mocks</b>). The trick: put the double <b>where the actor will actually look</b>, not in the warehouse it came from.</p>`,
+    explain: `<p>🟢 <b>Fixtures</b> prepare what a test needs (objects, temp files, a database) and clean up afterwards — so tests stay short and independent.</p>
+${H.table(['', 'unittest', 'pytest'], [['per test', '<code>setUp()</code> / <code>tearDown()</code> methods', 'function-scoped fixture: <code>@pytest.fixture</code> + <code>yield</code>'], ['once per class/module', '<code>setUpClass</code> / <code>setUpModule</code>', '<code>scope="class"</code> / <code>"module"</code>'], ['once per run', '—', '<code>scope="session"</code>'], ['guaranteed cleanup', '<code>self.addCleanup(fn)</code>', 'code after <code>yield</code> (runs even if the test fails)'], ['share across files', 'base TestCase class', '<code>conftest.py</code> (auto-discovered)'], ['built-ins', '—', '<code>tmp_path</code>, <code>monkeypatch</code>, <code>capsys</code>, <code>caplog</code>, <code>request</code>']])}
+<pre>@pytest.fixture
+def db():
+    conn = sqlite3.connect(':memory:')     # setup
+    conn.execute('CREATE TABLE users(name TEXT)')
+    yield conn                             # the test runs here
+    conn.close()                           # teardown (always)
+
+def test_insert(db):                       # asked for by NAME: dependency injection
+    db.execute("INSERT INTO users VALUES ('asha')")
+    assert db.execute('SELECT count(*) FROM users').fetchone() == (1,)</pre>
+<p>Fixtures can depend on other fixtures, and pytest builds them in dependency order and tears them down in <b>reverse</b> order (last built, first destroyed — a stack).</p>
+<p>🔵 <b>Mocking</b> replaces a slow, random or dangerous dependency (HTTP API, clock, payment gateway, email) with a fake object you control and can inspect. <code>unittest.mock</code> is in the standard library:</p>
+<ul>
+<li><code>m = Mock()</code> — any attribute or call works and is <b>recorded</b>. <code>MagicMock</code> also supports dunders (<code>len(m)</code>, <code>with m:</code>, <code>m[0]</code>).</li>
+<li><code>m.return_value = 42</code> — what a call returns. <code>m.side_effect = TimeoutError()</code> — raise instead; <code>side_effect = [1, 2, 3]</code> — return successive values; <code>side_effect = fn</code> — compute the result.</li>
+<li><code>m.assert_called_once_with(city='Pune')</code>, <code>m.call_count</code>, <code>m.call_args_list</code> — verify the interaction.</li>
+<li><code>patch('app.fetch_temp')</code> (decorator or <code>with</code>) — temporarily replace a name, restore it afterwards.</li>
+</ul>
+<p><b>The #1 mocking rule: patch where it is looked up, not where it is defined.</b> If <code>app.py</code> does <code>from weather import fetch_temp</code>, then <code>app</code> has its <b>own</b> name <code>fetch_temp</code>. Patching <code>weather.fetch_temp</code> changes the weather module's name only; <code>app</code> still calls the real one. Patch <code>app.fetch_temp</code>.</p>
+<p><b>Safety:</b> use <code>autospec=True</code> / <code>create_autospec</code> / <code>spec=</code> so the mock has the real signature and attributes — otherwise calls with wrong arguments, or calls to methods that no longer exist on the real object, silently "pass". (Mock does protect you from misspelled assertion helpers: names starting with <code>assret</code>, and since 3.12 <code>asert</code>/<code>aseert</code>/<code>assrt</code>, raise AttributeError.)</p>`,
+    clues: [
+      '"test code that calls an external API / sends email / charges a card" → mock the boundary (patch or inject a fake), assert on the call',
+      '"my patch has no effect, the real function still runs" → you patched where it is defined; patch where it is imported/looked up',
+      '"expensive setup (DB, container) shared by many tests" → session/module-scoped fixture; per-test isolation via transactions rolled back in a function fixture',
+      '"cleanup must run even when the test fails" → <code>yield</code> fixture / <code>addCleanup</code> / context manager',
+      '"simulate a timeout then success (retry logic)" → <code>side_effect=[TimeoutError(), 200]</code>',
+      '"test depends on the current time / random numbers" → inject a clock/rng, or patch <code>time.time</code>/use freezegun; seed randomness',
+      '"temporarily set an env var / attribute" → pytest <code>monkeypatch.setenv</code> / <code>setattr</code> (auto-undone)'
+    ],
+    code: [{ lang: 'python', run: true, title: 'unittest.mock essentials: return_value, side_effect, assertions, patch', code: `from unittest import mock
+
+# 1) A Mock records everything
+api = mock.Mock()
+api.get_user.return_value = {'id': 7, 'name': 'Asha'}
+print(api.get_user(7))                         # {'id': 7, 'name': 'Asha'}
+api.get_user.assert_called_once_with(7)
+print(api.get_user.call_count, api.get_user.call_args)
+
+# 2) side_effect: exceptions, sequences, functions
+flaky = mock.Mock(side_effect=[TimeoutError('slow'), 'ok'])
+for attempt in range(2):
+    try:
+        print('attempt', attempt, '->', flaky())
+    except TimeoutError as e:
+        print('attempt', attempt, '-> timeout:', e)
+
+square = mock.Mock(side_effect=lambda x: x * x)
+print(square(9))                               # 81
+
+# 3) spec/autospec: catch wrong usage of the fake
+def send_email(to, subject, body):
+    raise RuntimeError('would really send!')
+
+fake_send = mock.create_autospec(send_email, return_value=True)
+fake_send('a@x.com', 'hi', 'hello')
+try:
+    fake_send('a@x.com')                       # missing args -> TypeError, like the real one
+except TypeError as e:
+    print('autospec caught bad call:', e)
+
+# 4) patch: temporarily replace an attribute on an object/module
+import random
+with mock.patch.object(random, 'randint', return_value=4):
+    print('dice:', random.randint(1, 6))       # always 4 inside the block
+print('restored:', random.randint.__name__)` }, { lang: 'python', title: 'pytest fixtures: yield, scope, dependencies, built-ins (run with pytest)', code: `import sqlite3
+
+import pytest
+
+
+@pytest.fixture(scope='session')
+def db():
+    conn = sqlite3.connect(':memory:')                 # built ONCE per test run
+    conn.execute('CREATE TABLE users(name TEXT UNIQUE)')
+    yield conn
+    conn.close()                                       # after the last test
+
+
+@pytest.fixture
+def clean_db(db):                                      # depends on db
+    yield db
+    db.execute('DELETE FROM users')                    # per-test cleanup keeps tests isolated
+
+
+@pytest.fixture
+def user(clean_db):
+    clean_db.execute("INSERT INTO users VALUES ('asha')")
+    return 'asha'
+
+
+def test_user_exists(clean_db, user):
+    rows = clean_db.execute('SELECT name FROM users').fetchall()
+    assert rows == [(user,)]
+
+
+def test_starts_empty(clean_db):
+    assert clean_db.execute('SELECT count(*) FROM users').fetchone() == (0,)
+
+
+def test_writes_file(tmp_path, monkeypatch):
+    monkeypatch.setenv('APP_MODE', 'test')             # undone automatically
+    path = tmp_path / 'out.txt'                        # unique temp dir per test
+    path.write_text('hi')
+    assert path.read_text() == 'hi'` }],
+    codeTitle: ['unittest.mock essentials', 'pytest fixtures'],
+    viz: [{
+      title: 'Fixture setup/teardown flow: scopes, dependencies and reverse-order teardown',
+      input: 'a:db,tmp b:client c:tmp,user',
+      inputLabel: 'tests as name:fixtures (fixtures: db = session; client, user need db; tmp). Max 5 tests',
+      gen: function (input) {
+        var tests = String(input || '').trim().split(/\s+/).filter(function (x) { return x; }).map(function (t) {
+          var p = t.split(':');
+          if (p.length !== 2 || !p[0]) throw new Error('Format: name:fix1,fix2  e.g.  a:db,tmp b:client');
+          var fx = p[1].split(',').filter(function (x) { return x; });
+          fx.forEach(function (f) { if (!FIX[f]) throw new Error('Unknown fixture "' + f + '". Use db, client, user, tmp'); });
+          return { name: 'test_' + p[0], fx: fx };
+        });
+        if (!tests.length || tests.length > 5) throw new Error('Give 1-5 tests');
+        var frames = [], active = [], log = [];
+        function stackPart(hlTop, cls) {
+          var hl = {};
+          if (hlTop !== undefined) hl[hlTop] = cls;
+          return { type: 'stack', label: 'active fixtures (bottom = oldest)', items: active.map(function (a) { return a + ' [' + FIX[a].scope + ']'; }), hl: hl };
+        }
+        function logPart() { return tx(log.length ? '<pre>' + log.slice(-8).map(esc).join('\n') + '</pre>' : '<i>(nothing yet)</i>', 'pytest -s output (latest lines)'); }
+        frames.push(fr('pytest collects ' + tests.length + ' tests. Nothing is set up yet: fixtures are created <b>lazily</b>, only when a test asks for them by parameter name.', [stackPart(), { type: 'queue', label: 'tests to run', items: tests.map(function (t) { return t.name + '(' + t.fx.join(', ') + ')'; }) }]));
+        tests.forEach(function (t, ti) {
+          var order = [];
+          var visit = function (f) { FIX[f].deps.forEach(visit); if (order.indexOf(f) < 0) order.push(f); };
+          t.fx.forEach(visit);
+          var created = [];
+          order.forEach(function (f) {
+            if (active.indexOf(f) >= 0) {
+              frames.push(fr('<code>' + t.name + '</code> needs <b>' + f + '</b>. It is ' + FIX[f].scope + '-scoped and already alive → <b>reused</b>, no setup.', [stackPart(active.indexOf(f), 'win'), logPart()]));
+              return;
+            }
+            active.push(f); created.push(f);
+            log.push('SETUP    ' + f + (FIX[f].deps.length ? ' (uses ' + FIX[f].deps.join(', ') + ')' : ''));
+            frames.push(fr('<code>' + t.name + '</code> needs <b>' + f + '</b>' + (FIX[f].deps.length ? ', which itself depends on <b>' + FIX[f].deps.join(', ') + '</b> (built first)' : '') + '. Run its code <b>up to <code>yield</code></b> → push it.', [stackPart(active.length - 1, 'ok'), logPart()]));
+          });
+          log.push('RUN      ' + t.name);
+          frames.push(fr('All fixtures ready → run <b>' + t.name + '</b>. The fixture values are passed in as arguments.', [stackPart(active.length - 1, 'cur'), logPart(), { type: 'queue', label: 'tests left', items: tests.slice(ti + 1).map(function (x) { return x.name; }) }]));
+          for (var k = active.length - 1; k >= 0; k--) {
+            var f = active[k];
+            if (FIX[f].scope !== 'function') continue;
+            frames.push(fr('Test finished → tear down function-scoped <b>' + f + '</b> (code after its <code>yield</code>). Reverse order: newest first, so nothing is destroyed while something still depends on it.', [stackPart(k, 'bad'), logPart()]));
+            log.push('TEARDOWN ' + f);
+            active.splice(k, 1);
+          }
+        });
+        for (var s = active.length - 1; s >= 0; s--) {
+          frames.push(fr('All tests done → tear down session-scoped <b>' + active[s] + '</b>. It was built once and shared by every test that asked for it.', [stackPart(s, 'bad'), logPart()]));
+          log.push('TEARDOWN ' + active[s]);
+          active.splice(s, 1);
+        }
+        frames.push(fr('Finished. Setup is stack-like (push on demand) and teardown is LIFO. Session fixtures save time; function fixtures keep tests isolated.', [stackPart(), logPart()]));
+        return frames;
+      }
+    }, {
+      title: 'Patch where it is looked up: app.fetch vs weather.fetch',
+      input: 'weather.fetch',
+      inputLabel: 'patch target (weather.fetch or app.fetch)',
+      gen: function (input) {
+        var t = String(input || '').trim();
+        if (t !== 'weather.fetch' && t !== 'app.fetch') throw new Error('Type weather.fetch or app.fetch');
+        var appCode = ['# app.py', 'from weather import fetch', '', 'def alert(city):', '    t = fetch(city)        # looks up "fetch" in app\'s globals', "    return 'HOT' if t > 35 else 'ok'"].join('\n');
+        var g = function (hl, eh, tags) { return { type: 'graph', label: 'names → objects', directed: true, height: 40, nodes: [{ id: 'W', label: 'weather.fetch', x: 18, y: 8, shape: 'box' }, { id: 'A', label: 'app.fetch', x: 18, y: 32, shape: 'box' }, { id: 'R', label: 'real fetch() (HTTP!)', x: 72, y: 8, shape: 'box' }, { id: 'M', label: 'MagicMock(return_value=40)', x: 72, y: 32, shape: 'box' }], edges: eh, hl: hl || {}, tags: tags || {} }; };
+        var frames = [];
+        frames.push(fr('<code>weather.py</code> defines <code>fetch</code>. The name <code>weather.fetch</code> points to the real function (which makes an HTTP call).', [g({ W: 'cur', R: 'cur' }, [['W', 'R']]), cp(appCode, 1)]));
+        frames.push(fr('<code>from weather import fetch</code> <b>copies the reference</b> into app\'s own namespace. Now TWO names point to the same function object.', [g({ A: 'ok' }, [['W', 'R'], ['A', 'R']]), cp(appCode, 2, 'ok')]));
+        if (t === 'weather.fetch') {
+          frames.push(fr('<code>patch("weather.fetch")</code> rebinds the name in the <b>weather</b> module to a mock…', [g({ W: 'cur', M: 'ok' }, [['W', 'M'], ['A', 'R']]), tx('with patch("weather.fetch", return_value=40): ...', 'test code')]));
+          frames.push(fr('…but <code>alert()</code> looks up <code>fetch</code> in <b>app\'s</b> globals, which still points to the <span class="c-r">real</span> function. The test makes a real HTTP call (slow, flaky) and the mock is never called.', [g({ A: 'bad', R: 'bad' }, [['W', 'M'], ['A', 'R']], { A: 'used by alert()' }), cp(appCode, 5, 'bad'), tx('<span class="c-r">AssertionError: Expected \'fetch\' to have been called once. Called 0 times.</span>', 'test result')]));
+          frames.push(fr('Fix: patch the name where it is <b>used</b> → <code>patch("app.fetch")</code>. (Alternatively, write <code>import weather</code> + <code>weather.fetch(city)</code> in app.py; then patching <code>weather.fetch</code> works because the lookup goes through the module.)', [tx('<b>Rule:</b> patch the name in the namespace of the code under test.', 'Takeaway')]));
+        } else {
+          frames.push(fr('<code>patch("app.fetch")</code> rebinds the name in <b>app\'s</b> namespace to a mock. weather.fetch is untouched.', [g({ A: 'cur', M: 'ok' }, [['W', 'R'], ['A', 'M']]), tx('with patch("app.fetch", return_value=40) as m: ...', 'test code')]));
+          frames.push(fr('<code>alert("Pune")</code> looks up <code>fetch</code> in app\'s globals → finds the <span class="c-g">mock</span> → returns 40 → <b>"HOT"</b>. No network.', [g({ A: 'ok', M: 'ok' }, [['W', 'R'], ['A', 'M']], { A: 'used by alert()' }), cp(appCode, 5, 'ok'), tx("<span class=\"c-g\">alert('Pune') == 'HOT'; m.assert_called_once_with('Pune') passes</span>", 'test result')]));
+          frames.push(fr('When the <code>with</code> block exits, patch <b>restores</b> the original binding, so other tests see the real function again.', [g({}, [['W', 'R'], ['A', 'R']]), tx('<b>Rule:</b> patch the name in the namespace of the code under test.', 'Takeaway')]));
+        }
+        return frames;
+      }
+    }],
+    examples: [
+      { title: 'patch where it is looked up — runnable proof', html: `<p>We build two tiny modules in memory (<code>weather</code> and <code>app</code>, where app does <code>from weather import fetch</code>) and patch each target. Output: patching <code>weather.fetch</code> → ${H.c('r', 'real fetch called')}; patching <code>app.fetch</code> → ${H.c('g', 'HOT')}.</p>`, code: { lang: 'python', run: true, code: `import sys
+import types
+from unittest import mock
+
+weather = types.ModuleType('weather')
+exec("def fetch(city):\\n    print('  real fetch called (network!)')\\n    return 20", weather.__dict__)
+sys.modules['weather'] = weather
+
+app = types.ModuleType('app')
+exec("from weather import fetch\\ndef alert(city):\\n    return 'HOT' if fetch(city) > 35 else 'ok'", app.__dict__)
+sys.modules['app'] = app
+
+with mock.patch('weather.fetch', return_value=40) as m:
+    print('patch weather.fetch ->', app.alert('Pune'), '| mock calls:', m.call_count)
+
+with mock.patch('app.fetch', return_value=40) as m:
+    print('patch app.fetch     ->', app.alert('Pune'), '| mock calls:', m.call_count)
+    m.assert_called_once_with('Pune')` } },
+      { title: 'Prefer dependency injection over patching', html: `<p>If the function <b>receives</b> its dependency as a parameter (with a sensible default), tests just pass a fake — no patch strings, no import-path traps, and the design gets clearer.</p>`, code: { lang: 'python', run: true, code: `import time
+
+
+def is_expired(created_at, ttl_seconds, now=time.time):
+    """now is injectable: production uses the real clock, tests pass a fake."""
+    return now() - created_at > ttl_seconds
+
+
+def fake_clock():
+    return 1_000.0
+
+print(is_expired(900.0, 60, now=fake_clock))   # True: 100 s old
+print(is_expired(990.0, 60, now=fake_clock))   # False: 10 s old` } },
+      { title: 'unittest setUp / addCleanup order', html: `<p><code>setUp</code> runs before each test, <code>tearDown</code> after; <code>addCleanup</code> callbacks run after tearDown in <b>LIFO</b> order, even if setUp fails partway — safer for multi-resource setup.</p>`, code: { lang: 'python', run: true, code: `import unittest
+
+log = []
+
+
+class T(unittest.TestCase):
+    def setUp(self):
+        log.append('setUp')
+        self.addCleanup(log.append, 'cleanup 1 (registered first)')
+        self.addCleanup(log.append, 'cleanup 2 (registered second)')
+
+    def tearDown(self):
+        log.append('tearDown')
+
+    def test_x(self):
+        log.append('test_x runs')
+
+
+unittest.TextTestRunner(verbosity=0).run(unittest.defaultTestLoader.loadTestsFromTestCase(T))
+print('\\n'.join(log))` } },
+      { title: 'Test doubles vocabulary', html: `${H.table(['double', 'what it is', 'example'], [['dummy', 'passed but never used', '<code>None</code> for an unused logger'], ['stub', 'returns canned answers', '<code>Mock(return_value=200)</code>'], ['fake', 'working lightweight implementation', 'in-memory repository, SQLite instead of Postgres'], ['spy', 'real object + records calls', '<code>Mock(wraps=real_fn)</code>'], ['mock', 'pre-programmed expectations, verified', '<code>m.assert_called_once_with(...)</code>']])}<p>Rule of thumb: mock at the <b>boundary of your system</b> (network, clock, filesystem, third-party SDK), not your own internal classes — over-mocking makes tests pass while the real wiring is broken.</p>` }
+    ],
+    deepDive: `<p>🟣 <b>How patch works.</b> <code>patch('pkg.mod.name')</code> imports <code>pkg.mod</code>, saves <code>getattr(mod, 'name')</code>, does <code>setattr(mod, 'name', MagicMock())</code>, and restores the original in <code>__exit__</code> (or after the decorated function). It is just attribute assignment on a module object — that is why the lookup location matters. Patching a method on a class (<code>patch.object(Class, 'method')</code>) affects all instances, including ones created elsewhere during the test. Patching builtins: <code>patch('builtins.open', mock_open(read_data='x'))</code>.</p>
+<p><b>Mock pitfalls.</b> A plain <code>Mock</code> accepts <b>any</b> attribute, so a renamed method in production code keeps tests green (they call a method that no longer exists on the real class). <code>autospec=True</code> copies signatures recursively and fixes this. <code>AsyncMock</code> (3.8+) is needed for <code>await</code>-ed calls; <code>patch</code> picks it automatically for async functions. Mocks are not thread-safe for assertions in timing-sensitive tests. And <code>mock.call_args</code> compares with <code>==</code> — pass <code>mock.ANY</code> for values you do not care about.</p>
+<p><b>Fixture internals.</b> pytest builds a dependency graph from parameter names, caches each fixture value per scope key (one per function / class / module / package / session), and finalizers run in reverse order of setup. <code>autouse=True</code> applies a fixture to every test in scope; <code>@pytest.fixture(params=[...])</code> runs dependent tests once per param; <code>request.addfinalizer</code> and <code>request.param</code> give fine control. A wider-scoped fixture cannot depend on a narrower one (ScopeMismatch error). With <code>pytest-xdist</code>, "session" means "per worker process".</p>
+<p><b>Production-grade test infrastructure.</b> Integration tests often use a session-scoped container (Testcontainers) plus a function-scoped fixture that wraps each test in a <b>transaction rolled back</b> at teardown — fast and isolated. HTTP mocking libraries (<code>responses</code>, <code>respx</code>, VCR-style recorders) intercept at the transport layer, which is more realistic than patching your own client function. Time: <code>freezegun</code>/<code>time-machine</code>.</p>`,
+    aiEra: `<p>🤖 <b>What AI changes:</b> assistants generate fixtures and mocks quickly, and agents increasingly run your test suite themselves. Good fixtures (a <code>conftest.py</code> with clear, named building blocks) make AI-written tests better, because the model reuses them instead of inventing setup.</p>
+<p><b>Where AI goes wrong:</b> the most common bug in AI-written tests is <b>patching the wrong target</b> (where defined instead of where looked up), followed by mocks without <code>autospec</code>, asserting on the mock's own return value (testing the mock, not the code), and mocking so much that the test exercises nothing real. Also watch for tests that hit the real network or the real clock.</p>
+<p><b>Testing LLM features themselves:</b> mock the model client in unit tests (deterministic canned responses, including malformed JSON and timeouts via <code>side_effect</code>), and keep separate, non-blocking <b>eval</b> suites that call the real model and score outputs. <b>What you must still own:</b> deciding where the system boundary is and what behaviour actually matters.</p>`,
+    problems: [{
+      title: 'Test a Weather Alert Without Touching the Network',
+      level: 'Medium', tags: ['mock', 'patch', 'side_effect'], companies: ['Uber', 'Airbnb', 'Spotify'],
+      statement: `<p><code>app.alert(city)</code> calls <code>fetch(city)</code> (imported with <code>from weather import fetch</code>, a real HTTP call) and returns <code>'HOT'</code> if the temperature is above 35, <code>'ok'</code> otherwise, and <code>'unknown'</code> if fetch raises <code>TimeoutError</code> twice in a row (it retries once). Write tests for all three behaviours <b>without any network access</b>, verifying the number of calls.</p>`,
+      constraints: `Use unittest.mock (stdlib). The real fetch must never run. Tests must be deterministic.`,
+      example: `<p>With fetch mocked to return 40 → ${H.c('g', "'HOT'")}, called once with 'Pune'. With <code>side_effect=[TimeoutError(), 20]</code> → ${H.c('g', "'ok'")}, called twice. With <code>side_effect=TimeoutError()</code> → ${H.c('y', "'unknown'")}, called twice.</p>`,
+      brute: { why: `<p>Calling the real API in tests: slow, rate-limited, fails offline, and the temperature changes every day so you cannot assert on 'HOT'. Patching <code>weather.fetch</code> instead of <code>app.fetch</code> looks right but still calls the real function.</p>`, code: `from unittest import mock
+
+def test_alert_wrong_target(app):
+    # Looks reasonable, but app has its own name 'fetch' -> real HTTP call happens
+    with mock.patch('weather.fetch', return_value=40):
+        assert app.alert('Pune') == 'HOT'` },
+      mcq: { q: 'How do you simulate "timeout on the first call, 20 degrees on the second"?', options: ['<code>side_effect=[TimeoutError(), 20]</code>', '<code>return_value=[TimeoutError(), 20]</code>', '<code>side_effect=TimeoutError</code> then change it manually', 'You cannot do this with Mock'], answer: 0, explain: 'When side_effect is an iterable, each call takes the next item: exception instances are raised, other values are returned. return_value would return the list itself.' },
+      hints: [`<p>Hint 1: Patch <code>'app.fetch'</code> — the name the code under test looks up.</p>`, `<p>Hint 2: <code>return_value</code> for a normal reading; <code>side_effect</code> as a list for "fail then succeed"; <code>side_effect</code> as an exception for "always fail".</p>`, `<p>Hint 3: After each call assert both the result and the interaction: <code>m.call_count == 2</code>, <code>m.assert_called_with('Pune')</code>. Use <code>autospec=True</code> so a wrong signature is caught.</p>`],
+      solution: {
+        approach: `<p>Patch the looked-up name with an autospecced mock, drive behaviour with <code>return_value</code>/<code>side_effect</code>, and assert both the returned value and the calls. Each test is independent because <code>patch</code> restores the original afterwards.</p>`,
+        code: { lang: 'python', run: true, code: `import sys
+import types
+import unittest
+from unittest import mock
+
+# --- the code under test, built as real modules so 'app.fetch' is patchable ---
+weather = types.ModuleType('weather')
+exec("def fetch(city):\\n    raise RuntimeError('REAL NETWORK CALL - must not happen in tests')", weather.__dict__)
+sys.modules['weather'] = weather
+app = types.ModuleType('app')
+exec('''
+from weather import fetch
+
+def alert(city):
+    for attempt in range(2):           # one retry
+        try:
+            t = fetch(city)
+        except TimeoutError:
+            continue
+        return 'HOT' if t > 35 else 'ok'
+    return 'unknown'
+''', app.__dict__)
+sys.modules['app'] = app
+
+
+class TestAlert(unittest.TestCase):
+    @mock.patch('app.fetch', autospec=True, return_value=40)
+    def test_hot(self, m):
+        self.assertEqual(app.alert('Pune'), 'HOT')
+        m.assert_called_once_with('Pune')
+
+    @mock.patch('app.fetch', autospec=True, side_effect=[TimeoutError(), 20])
+    def test_retry_then_ok(self, m):
+        self.assertEqual(app.alert('Oslo'), 'ok')
+        self.assertEqual(m.call_count, 2)
+
+    @mock.patch('app.fetch', autospec=True, side_effect=TimeoutError('slow'))
+    def test_gives_up(self, m):
+        self.assertEqual(app.alert('Lima'), 'unknown')
+        self.assertEqual(m.call_count, 2)
+
+
+result = unittest.TextTestRunner(verbosity=0).run(unittest.defaultTestLoader.loadTestsFromTestCase(TestAlert))
+print('ran', result.testsRun, 'tests; success =', result.wasSuccessful())` },
+        dry: { head: ['test', 'mock behaviour', 'calls', 'alert() returns'], rows: [['test_hot', 'return_value=40', '1', "'HOT'"], ['test_retry_then_ok', 'side_effect=[TimeoutError(), 20]', '2 (raise, then 20)', "'ok'"], ['test_gives_up', 'side_effect=TimeoutError', '2 (raise, raise)', "'unknown'"]] },
+        complexity: `<p>Each test runs in microseconds with zero I/O. The real fetch raising RuntimeError acts as a tripwire: any wrong patch target would make the tests fail loudly.</p>`,
+        followUps: ['Refactor alert to accept fetch as a parameter (dependency injection) and rewrite the tests without patch.', 'Add exponential backoff with time.sleep — how do you test it without waiting? (inject/patch sleep and assert its calls)', 'Write the same tests in pytest using monkeypatch.setattr(app, "fetch", fake).']
+      }
+    }]
+  });
+
+  /* ================= PRACTICE: Easy ================= */
+  practice.push({
+    title: 'Predict the Output: finally, return and print order',
+    level: 'Easy', tags: ['predict the output', 'finally'], companies: ['Amazon', 'TCS', 'Infosys'],
+    statement: `<p>Without running it, write down exactly what this program prints, line by line. Then run it to check.</p><pre>def f(n):
+    try:
+        print('try', n)
+        if n == 0:
+            raise ValueError('zero')
+        return 'ret-' + str(n)
+    except ValueError:
+        print('except')
+        return 'handled'
+    finally:
+        print('finally', n)
+
+print(f(1))
+print(f(0))</pre>`,
+    constraints: `No tools — trace it by hand first. Pay attention to WHEN the return value is printed relative to finally.`,
+    example: `<p>The first call prints ${H.c('b', 'try 1')}, ${H.c('b', 'finally 1')}, then the caller prints ${H.c('g', 'ret-1')}. The value is computed in try, finally runs before the function actually leaves, and only then does <code>print(f(1))</code> get the value.</p>`,
+    brute: { why: `<p>The common wrong mental model: "return leaves the function immediately, so finally does not print" or "finally prints after the caller's print". Here is code that matches that wrong model (no finally semantics) — compare its output with the real one.</p>`, code: `def f_wrong_model(n):
+    print('try', n)
+    if n == 0:
+        print('except')
+        return 'handled'          # the wrong model forgets finally entirely
+    return 'ret-' + str(n)
+
+print(f_wrong_model(1))
+print(f_wrong_model(0))` },
+    mcq: { q: 'What is the last line printed?', options: ['handled', 'finally 0', 'except', 'ret-0'], answer: 0, explain: 'For f(0): try 0 → except → (return "handled" scheduled) → finally 0 → the caller prints handled. So "handled" is last.' },
+    hints: [`<p>Hint 1: A return inside try/except computes the value and parks it; the finally block runs before the function really exits.</p>`, `<p>Hint 2: <code>print(f(1))</code> can only print after <code>f(1)</code> has completely finished — including its finally.</p>`, `<p>Hint 3: Trace f(0): try 0 → raise → except prints "except" → return scheduled → finally 0 → caller prints the parked value.</p>`],
+    solution: {
+      approach: `<p>Order inside a call: try body → (except body if raised) → finally → actual return → caller continues. Output: <code>try 1</code>, <code>finally 1</code>, <code>ret-1</code>, <code>try 0</code>, <code>except</code>, <code>finally 0</code>, <code>handled</code>.</p>`,
+      code: { lang: 'python', run: true, code: `def f(n):
+    try:
+        print('try', n)
+        if n == 0:
+            raise ValueError('zero')
+        return 'ret-' + str(n)     # value computed and parked here
+    except ValueError:
+        print('except')
+        return 'handled'           # parked again (for n == 0)
+    finally:
+        print('finally', n)        # runs BEFORE the parked value is delivered
+
+print(f(1))
+print(f(0))
+# try 1 / finally 1 / ret-1 / try 0 / except / finally 0 / handled` },
+      dry: { head: ['step', 'printed', 'why'], rows: [['1', 'try 1', 'try body'], ['2', 'finally 1', 'return parked, finally first'], ['3', 'ret-1', 'caller print'], ['4', 'try 0 / except', 'ValueError handled'], ['5', 'finally 0', 'before return'], ['6', 'handled', 'caller print']] },
+      complexity: `<p>O(1). The concept: finally always runs between "decide to leave" and "actually leave".</p>`,
+      followUps: ['Add return in finally — what changes, and why do linters forbid it?', 'What if the except block itself raises a new error? Which message appears in the traceback?']
+    }
+  });
+
+  practice.push({
+    title: 'Parse key=value Config Lines, Skipping Bad Ones',
+    level: 'Easy', tags: ['EAFP', 'ValueError', 'parsing'], companies: ['Cisco', 'Red Hat'],
+    statement: `<p>Write <code>parse_config(lines)</code> that turns lines like <code>"port = 8080"</code> into a dict. Values that look like integers become <code>int</code>, others stay strings. Ignore blank lines and lines starting with <code>#</code>. Lines without exactly one <code>=</code> are bad: skip them and return their line numbers (1-based) in a second list.</p>`,
+    constraints: `≤ 10<sup>4</sup> lines. Use exception handling for the int conversion and for the unpacking of the split result.`,
+    example: `<p><code>["# app", "port = 8080", "host=localhost", "oops", "a=b=c", ""]</code> → ${H.c('g', "({'port': 8080, 'host': 'localhost'}, [4, 5])")}. Line 4 has no '=', line 5 has two — both make <code>key, value = line.split('=')</code> raise ${H.c('r', 'ValueError')} (wrong number of values to unpack).</p>`,
+    brute: { why: `<p>LBYL with counting and digit checks: <code>line.count('=') == 1</code> and <code>v.isdigit()</code>. It works for simple cases but <code>isdigit</code> rejects <code>-1</code> and accepts <code>²</code>, and the counting duplicates the logic that unpacking already performs.</p>`, code: `def parse_config_lbyl(lines):
+    out, bad = {}, []
+    for no, line in enumerate(lines, 1):
+        line = line.strip()
+        if not line or line.startswith('#'):
+            continue
+        if line.count('=') != 1:
+            bad.append(no)
+            continue
+        k, v = line.split('=')
+        v = v.strip()
+        out[k.strip()] = int(v) if v.isdigit() else v   # misses '-1'
+    return out, bad` },
+    mcq: { q: 'What does <code>k, v = "a=b=c".split("=")</code> raise?', options: ['ValueError: too many values to unpack', 'KeyError', 'TypeError', 'Nothing, v is "b=c"'], answer: 0, explain: 'split gives 3 items, unpacking into 2 names raises ValueError. (split("=", 1) would give 2 items, but here we want to reject such lines.)' },
+    hints: [`<p>Hint 1: Tuple unpacking raises ValueError on the wrong count — use it as the validity check for "exactly one =".</p>`, `<p>Hint 2: Nested EAFP for the value: <code>try: value = int(v) except ValueError: value = v</code>.</p>`, `<p>Hint 3: Use <code>enumerate(lines, 1)</code> for 1-based numbers; strip whitespace around keys and values; skip blanks and comments before anything else.</p>`],
+    solution: {
+      approach: `<p>For each meaningful line, let unpacking validate the shape, then let <code>int()</code> decide whether the value is numeric. Both failures are ValueError, but they mean different things, so they are handled in separate small try blocks.</p>`,
+      code: { lang: 'python', run: true, code: `def parse_config(lines):
+    out, bad = {}, []
+    for no, raw in enumerate(lines, 1):
+        line = raw.strip()
+        if not line or line.startswith('#'):
+            continue
+        try:
+            key, value = line.split('=')       # exactly one '=' or ValueError
+        except ValueError:
+            bad.append(no)
+            continue
+        value = value.strip()
+        try:
+            value = int(value)                 # '8080' -> 8080, '-1' -> -1
+        except ValueError:
+            pass                               # keep as string
+        out[key.strip()] = value
+    return out, bad
+
+
+print(parse_config(['# app', 'port = 8080', 'host=localhost', 'oops', 'a=b=c', '', 'retries=-1']))` },
+      complexity: `<p>O(total characters). Exceptions only fire on bad or non-numeric lines.</p>`,
+      followUps: ['Support quoted values containing "=" (e.g. url = "a=b").', 'Raise a ConfigError with all bad line numbers if more than 3 lines are bad.', 'Parse booleans true/false too — in which order should the conversions be tried?']
+    }
+  });
+
+  practice.push({
+    title: 'ValidationError With a Field Name',
+    level: 'Easy', tags: ['custom exceptions', 'raise'], companies: ['Stripe', 'Zalando'],
+    statement: `<p>Create <code>ValidationError(ValueError)</code> that stores <code>field</code> and <code>reason</code> attributes and has the message <code>"&lt;field&gt;: &lt;reason&gt;"</code>. Then write <code>validate_user(d)</code> that raises it for: missing or empty <code>name</code>, <code>age</code> not an int (bools are not ints here), or age outside 0–150. Return the dict unchanged when valid.</p>`,
+    constraints: `Check fields in the order name, age. Raise on the first problem.`,
+    example: `<p><code>validate_user({'name': 'Asha', 'age': 200})</code> → ${H.c('r', 'ValidationError: age: must be between 0 and 150')}; <code>e.field == 'age'</code>; and because it subclasses ValueError, generic <code>except ValueError</code> code still catches it.</p>`,
+    brute: { why: `<p>Raising a bare <code>ValueError('bad age')</code> works, but callers that want to highlight the wrong form field must parse the message string — fragile. Structured attributes are the fix.</p>`, code: `def validate_user_plain(d):
+    if not d.get('name'):
+        raise ValueError('bad name')   # which field? parse the string...
+    if not isinstance(d.get('age'), int):
+        raise ValueError('bad age')
+    return d` },
+    mcq: { q: 'Why inherit from ValueError rather than directly from Exception?', options: ['Existing code catching ValueError keeps working, and it describes the error kind', 'Exception cannot have attributes', 'ValueError is faster', 'It is required for custom exceptions'], answer: 0, explain: 'A validation failure is a "right type, wrong value" kind of error. Subclassing ValueError lets both specific (except ValidationError) and generic (except ValueError) handlers catch it.' },
+    hints: [`<p>Hint 1: In <code>__init__(self, field, reason)</code> store both attributes, then call <code>super().__init__(f'{field}: {reason}')</code>.</p>`, `<p>Hint 2: <code>isinstance(True, int)</code> is True — check <code>isinstance(age, bool)</code> first or use <code>type(age) is int</code>.</p>`, `<p>Hint 3: Use <code>d.get('name')</code> so a missing key is just "falsy" and gets the same error as an empty string.</p>`],
+    solution: {
+      approach: `<p>A small exception class with structured data plus a readable message, and a validator that raises it with the field name at the first failed rule.</p>`,
+      code: { lang: 'python', run: true, code: `class ValidationError(ValueError):
+    def __init__(self, field, reason):
+        self.field = field
+        self.reason = reason
+        super().__init__(f'{field}: {reason}')
+
+
+def validate_user(d):
+    if not d.get('name'):
+        raise ValidationError('name', 'is required')
+    age = d.get('age')
+    if isinstance(age, bool) or not isinstance(age, int):
+        raise ValidationError('age', 'must be an integer')
+    if not 0 <= age <= 150:
+        raise ValidationError('age', 'must be between 0 and 150')
+    return d
+
+
+for user in ({'name': 'Asha', 'age': 30}, {'name': '', 'age': 3}, {'name': 'Ben', 'age': True}, {'name': 'Cy', 'age': 200}):
+    try:
+        print('ok', validate_user(user))
+    except ValueError as e:                       # catches ValidationError too
+        print(type(e).__name__, '| field =', e.field, '| message =', e)` },
+      complexity: `<p>O(1) per user: a fixed number of checks, no loops.</p>`,
+      followUps: ['Collect ALL problems instead of the first, and raise one ExceptionGroup of ValidationErrors.', 'Make the error JSON-serialisable for an API response: {"field": ..., "reason": ...}.']
+    }
+  });
+
+  practice.push({
+    title: 'Type the average() Function Correctly',
+    level: 'Easy', tags: ['type hints', 'Optional', 'Iterable'], companies: ['Microsoft', 'JetBrains'],
+    statement: `<p>Write <code>average(values)</code> with full type hints. It must accept <b>any iterable</b> of ints or floats (list, tuple, generator) and return <code>None</code> for an empty input. Make the hints honest: what is the parameter type and the return type? Then show a caller that handles the None case so mypy would accept it.</p>`,
+    constraints: `Single pass (generators can only be read once). No Any.`,
+    example: `<p><code>average([1, 2, 3, 4])</code> → ${H.c('g', '2.5')}; <code>average(x for x in [])</code> → ${H.c('y', 'None')}; signature ${H.c('b', 'def average(values: Iterable[float]) -&gt; float | None')} (ints are accepted where float is expected).</p>`,
+    brute: { why: `<p><code>def average(values: list) -&gt; float</code> lies twice: it rejects tuples/generators for no reason (to mypy) and claims it always returns a float while <code>sum(values) / len(values)</code> crashes on empty input (ZeroDivisionError) and <code>len()</code> fails on generators.</p>`, code: `def average_bad(values: list) -> float:
+    return sum(values) / len(values)    # ZeroDivisionError on [], TypeError on generators` },
+    mcq: { q: 'Why <code>Iterable[float]</code> and not <code>list[float]</code>?', options: ['It accepts lists, tuples, sets and generators — anything we can loop over once', 'Iterable is faster at runtime', 'list[float] is not valid syntax', 'mypy requires Iterable for numbers'], answer: 0, explain: 'We only need to iterate once, so we should ask for the weakest capability. Also Iterable is covariant, so Iterable[int] values are accepted too.' },
+    hints: [`<p>Hint 1: Accept <code>Iterable[float]</code> from <code>collections.abc</code>; mypy lets ints pass where floats are expected.</p>`, `<p>Hint 2: Count and sum in one loop, because a generator has no <code>len()</code> and cannot be read twice.</p>`, `<p>Hint 3: Return <code>float | None</code>; callers then must write <code>if (avg := average(xs)) is None: ...</code> before using it as a number.</p>`],
+    solution: {
+      approach: `<p>Weakest parameter type (Iterable), honest return type (float | None), single pass with a running total and count.</p>`,
+      code: { lang: 'python', run: true, code: `from collections.abc import Iterable
+
+
+def average(values: Iterable[float]) -> float | None:
+    total = 0.0
+    count = 0
+    for v in values:          # single pass: works for generators
+        total += v
+        count += 1
+    if count == 0:
+        return None
+    return total / count
+
+
+def report(values: Iterable[float]) -> str:
+    avg = average(values)
+    if avg is None:                       # mypy forces this branch
+        return 'no data'
+    return f'average = {avg:.2f}'         # avg narrowed to float
+
+
+print(average([1, 2, 3, 4]), average((2.5, 3.5)), average(x for x in []))
+print(report([10, 20]), '|', report([]))` },
+      complexity: `<p>O(N) time, O(1) memory.</p>`,
+      followUps: ['Return statistics.fmean-like precision for huge inputs (use math.fsum).', 'Make it generic so Decimal inputs return Decimal — what TypeVar bound would you use?']
+    }
+  });
+
+  /* ================= PRACTICE: Medium ================= */
+  practice.push({
+    title: 'retry Decorator for Specific Exceptions',
+    level: 'Medium', tags: ['decorators', 'exceptions', 'testing'], companies: ['Netflix', 'AWS', 'Razorpay'],
+    statement: `<p>Write a decorator factory <code>retry(times, exceptions, sleep=time.sleep, base_delay=0.1)</code>. The decorated function is called up to <code>times</code> attempts; if it raises one of <code>exceptions</code>, wait <code>base_delay * 2**attempt</code> (exponential backoff) and try again. Other exceptions propagate immediately. After the last failed attempt, re-raise the last exception. <code>sleep</code> is injectable so tests do not actually wait.</p>`,
+    constraints: `times ≥ 1. Preserve the wrapped function's name/docstring (functools.wraps). Do not catch BaseException.`,
+    example: `<p>A function failing with ConnectionError twice, then returning "ok", decorated with <code>@retry(3, (ConnectionError,), sleep=fake)</code> → returns ${H.c('g', '"ok"')} and the fake sleep was called with ${H.c('b', '[0.1, 0.2]')}. A ValueError on the first call propagates at once with no sleeps.</p>`,
+    brute: { why: `<p>A copy-pasted loop at every call site with <code>except Exception: time.sleep(1)</code> retries bugs (TypeError) as well as transient errors, hides the final error, and makes tests take seconds of real sleeping.</p>`, code: `import time
+
+def call_with_retry(fn):
+    for _ in range(3):
+        try:
+            return fn()
+        except Exception:        # retries bugs too
+            time.sleep(1)        # real waiting in tests
+    return None                  # final error swallowed` },
+    mcq: { q: 'After the final failed attempt, what should happen?', options: ['Re-raise the last exception (bare raise inside the except, or raise saved_exc)', 'Return None', 'Raise a generic Exception("failed")', 'Retry forever'], answer: 0, explain: 'The caller needs the real error (type and traceback) to decide what to do. Returning None hides failure; a generic Exception loses information.' },
+    hints: [`<p>Hint 1: Three layers: <code>retry(...)</code> returns <code>decorator(fn)</code>, which returns <code>wrapper(*args, **kwargs)</code> decorated with <code>@functools.wraps(fn)</code>.</p>`, `<p>Hint 2: Loop <code>for attempt in range(times)</code>; in <code>except exceptions:</code> if it is the last attempt, <code>raise</code>; otherwise <code>sleep(base_delay * 2 ** attempt)</code>.</p>`, `<p>Hint 3: Test with a fake sleep that appends to a list, and a function that uses a counter or an iterator of outcomes. Check the delays and the number of calls.</p>`],
+    solution: {
+      approach: `<p>Catch only the configured exception tuple, back off exponentially with an injected sleep, and re-raise the final failure untouched. Non-retryable exceptions are never caught, so they propagate on the first attempt.</p>`,
+      code: { lang: 'python', run: true, code: `import functools
+import time
+
+
+def retry(times, exceptions, sleep=time.sleep, base_delay=0.1):
+    if times < 1:
+        raise ValueError('times must be >= 1')
+
+    def decorator(fn):
+        @functools.wraps(fn)
+        def wrapper(*args, **kwargs):
+            for attempt in range(times):
+                try:
+                    return fn(*args, **kwargs)
+                except exceptions:
+                    if attempt == times - 1:
+                        raise                          # last attempt: original error
+                    sleep(base_delay * 2 ** attempt)   # 0.1, 0.2, 0.4, ...
+        return wrapper
+    return decorator
+
+
+# --- tests with a fake clock ---
+delays = []
+outcomes = iter([ConnectionError('down'), ConnectionError('down'), 'ok'])
+
+
+@retry(3, (ConnectionError,), sleep=delays.append)
+def fetch():
+    """Fetch something flaky."""
+    result = next(outcomes)
+    if isinstance(result, Exception):
+        raise result
+    return result
+
+
+print(fetch(), delays, fetch.__name__, fetch.__doc__)
+
+calls = []
+
+
+@retry(3, (ConnectionError,), sleep=delays.append)
+def broken():
+    calls.append(1)
+    raise ValueError('bug, not transient')
+
+
+try:
+    broken()
+except ValueError as e:
+    print('propagated immediately:', e, '| calls =', len(calls))` },
+      complexity: `<p>At most <code>times</code> calls; total wait base·(2<sup>times−1</sup> − 1). O(1) extra memory.</p>`,
+      followUps: ['Add jitter (random 0–100% of the delay) to avoid thundering herds — how do you keep tests deterministic?', 'Support async functions (asyncio.sleep) with the same decorator.', 'Add a max_delay cap and a per-call deadline.']
+    }
+  });
+
+  practice.push({
+    title: 'Build Your Own pytest.raises',
+    level: 'Medium', tags: ['context managers', 'testing', 'exceptions'], companies: ['Google', 'Bloomberg'],
+    statement: `<p>Implement a context manager <code>expect_raises(exc_type, match=None)</code> usable as <code>with expect_raises(ValueError, match="positive") as info:</code>. It must: pass silently and expose the caught exception as <code>info.value</code> if the block raises <code>exc_type</code> (or a subclass) whose message matches the regex <code>match</code>; raise <code>AssertionError</code> if nothing was raised or the message does not match; let any <b>other</b> exception type propagate unchanged.</p>`,
+    constraints: `Use a class with __enter__/__exit__ (no contextlib). Use re.search for matching.`,
+    example: `<p><code>with expect_raises(ZeroDivisionError) as info: 1 / 0</code> → passes, <code>info.value</code> is the ZeroDivisionError. <code>with expect_raises(KeyError): pass</code> → ${H.c('r', 'AssertionError: DID NOT RAISE KeyError')}. A TypeError inside <code>expect_raises(ValueError)</code> → the ${H.c('r', 'TypeError')} propagates.</p>`,
+    brute: { why: `<p>The manual pattern repeated in every test — try / call / <code>assert False</code> / except — is easy to get wrong: the <code>assert False</code> inside try gets caught by a broad except, or a forgotten <code>assert False</code> makes the test pass when nothing is raised.</p>`, code: `def test_manual():
+    try:
+        int('x')
+        assert False, 'should have raised'   # caught below if except is too broad!
+    except Exception:
+        pass` },
+    mcq: { q: 'What must <code>__exit__</code> return to swallow the expected exception?', options: ['A truthy value (True)', 'None', 'The exception object', 'It must re-raise it'], answer: 0, explain: 'If __exit__ returns a truthy value, Python suppresses the exception. Returning None/False lets it propagate — which is what we want for unexpected types.' },
+    hints: [`<p>Hint 1: <code>__exit__(self, exc_type, exc, tb)</code> receives <code>None</code>s when the block finished without error → raise AssertionError there.</p>`, `<p>Hint 2: If <code>not issubclass(exc_type, self.expected)</code> → <code>return False</code> so it propagates unchanged.</p>`, `<p>Hint 3: If <code>match</code> is set and <code>re.search(match, str(exc))</code> fails → raise AssertionError with both the pattern and the actual message; otherwise store <code>self.value = exc</code> and <code>return True</code>.</p>`],
+    solution: {
+      approach: `<p>The context-manager protocol gives us exactly the hooks pytest uses: __exit__ sees the exception (or its absence), decides whether it is the expected one, and returns True to suppress it.</p>`,
+      code: { lang: 'python', run: true, code: `import re
+
+
+class expect_raises:
+    def __init__(self, expected, match=None):
+        self.expected = expected
+        self.match = match
+        self.value = None
+
+    def __enter__(self):
+        return self                              # 'as info' gets this object
+
+    def __exit__(self, exc_type, exc, tb):
+        if exc_type is None:
+            raise AssertionError(f'DID NOT RAISE {self.expected.__name__}')
+        if not issubclass(exc_type, self.expected):
+            return False                         # unexpected type: propagate
+        if self.match is not None and not re.search(self.match, str(exc)):
+            raise AssertionError(f'pattern {self.match!r} not found in {str(exc)!r}')
+        self.value = exc
+        return True                              # swallow the expected exception
+
+
+with expect_raises(ZeroDivisionError) as info:
+    1 / 0
+print('caught:', repr(info.value))
+
+with expect_raises(ValueError, match=r'base 10') as info:
+    int('abc')
+print('matched:', info.value)
+
+for label, block in [('nothing raised', lambda: None), ('wrong message', lambda: int('x'))]:
+    try:
+        with expect_raises(ValueError, match='positive'):
+            block()
+    except AssertionError as e:
+        print(label, '->', e)
+
+try:
+    with expect_raises(ValueError):
+        'a' + 1
+except TypeError as e:
+    print('other type propagated:', type(e).__name__)` },
+      complexity: `<p>O(1) plus the regex search on the message.</p>`,
+      followUps: ['Support a tuple of expected types.', 'Also work as a decorator (hint: contextlib.ContextDecorator).', 'Add a warns() equivalent using warnings.catch_warnings(record=True).']
+    }
+  });
+
+  practice.push({
+    title: 'Predict the Output: An Error Inside the Handler',
+    level: 'Medium', tags: ['predict the output', 'chaining', 'finally'], companies: ['Meta', 'Goldman Sachs'],
+    statement: `<p>Predict the full output, including which exception finally escapes and what its <code>__context__</code> is.</p><pre>def risky():
+    try:
+        return {}['k']
+    except KeyError:
+        print('handling KeyError')
+        return 1 / 0
+    finally:
+        print('cleanup')
+
+try:
+    risky()
+except Exception as e:
+    print(type(e).__name__, '| context:', type(e.__context__).__name__)</pre>`,
+    constraints: `Trace by hand first. Note: no "from" is used.`,
+    example: `<p>Output: ${H.c('b', 'handling KeyError')}, ${H.c('b', 'cleanup')}, ${H.c('r', 'ZeroDivisionError | context: KeyError')}. The handler itself crashed; Python automatically attached the KeyError being handled as <code>__context__</code>, and finally still ran before the error left the function.</p>`,
+    brute: { why: `<p>Wrong model #1: "the except block protects everything inside it" — no, an error raised <i>inside</i> an except block is a brand-new exception. Wrong model #2: "finally does not run if the handler crashes" — it always runs. This code encodes the wrong model #1:</p>`, code: `def risky_wrong_model():
+    print('handling KeyError')
+    return 'handled safely'     # imagines the except block cannot fail
+
+print(risky_wrong_model())` },
+    mcq: { q: 'What would the traceback text say between the two exceptions?', options: ['During handling of the above exception, another exception occurred', 'The above exception was the direct cause of the following exception', 'Nothing; only ZeroDivisionError is shown', 'KeyError: k only'], answer: 0, explain: 'Implicit chaining (no "from") sets __context__ and prints "During handling of the above exception…". "direct cause" is printed only for raise … from.' },
+    hints: [`<p>Hint 1: The except clause catches the KeyError; then <code>1 / 0</code> raises ZeroDivisionError inside the handler.</p>`, `<p>Hint 2: Any exception raised while another is being handled gets <code>__context__</code> set automatically.</p>`, `<p>Hint 3: finally runs on the way out, printing "cleanup", before the ZeroDivisionError reaches the outer except.</p>`],
+    solution: {
+      approach: `<p>Sequence: KeyError raised → caught → "handling KeyError" printed → ZeroDivisionError raised in the handler (context = KeyError) → finally prints "cleanup" → outer except prints the type and context.</p>`,
+      code: { lang: 'python', run: true, code: `def risky():
+    try:
+        return {}['k']
+    except KeyError:
+        print('handling KeyError')
+        return 1 / 0               # new exception INSIDE the handler
+    finally:
+        print('cleanup')           # still runs
+
+
+try:
+    risky()
+except Exception as e:
+    print(type(e).__name__, '| context:', type(e.__context__).__name__)
+    print('cause:', e.__cause__, '| suppressed:', e.__suppress_context__)` },
+      complexity: `<p>O(1). The lesson: handlers can fail too; chaining keeps both errors visible.</p>`,
+      followUps: ['Change the handler to raise RuntimeError("bad config") from None — what prints now?', 'What if finally contained return 0?']
+    }
+  });
+
+  practice.push({
+    title: 'Validate a Batch and Report Every Error (ExceptionGroup)',
+    level: 'Medium', tags: ['ExceptionGroup', 'except*', 'validation'], companies: ['Shopify', 'Intuit'],
+    statement: `<p>Write <code>import_orders(rows)</code>. Each row is a dict with <code>id</code>, <code>qty</code> and <code>price</code>. Convert valid rows into tuples <code>(id, qty, price)</code>. For invalid rows collect errors: <code>KeyError</code> for missing fields, <code>ValueError</code> for non-numeric or non-positive qty/price. Each collected error must get a note (<code>add_note</code>) saying which row index failed. If any row failed, raise <code>ExceptionGroup("n bad rows", errors)</code>; otherwise return the list. Then write a caller that handles KeyErrors and ValueErrors separately with <code>except*</code>.</p>`,
+    constraints: `Python 3.11+. Do not stop at the first bad row.`,
+    example: `<p>Rows <code>[{'id': 1, 'qty': '2', 'price': '9.5'}, {'id': 2, 'qty': 'x', 'price': '1'}, {'id': 3, 'price': '4'}]</code> → ExceptionGroup with ${H.c('r', "ValueError (row 1)")} and ${H.c('r', "KeyError 'qty' (row 2)")}. The caller prints one line per group.</p>`,
+    brute: { why: `<p>Stopping at the first error forces the user into a fix-one-rerun loop for a 10,000-row file. Returning a list of error strings loses exception types, so callers cannot react differently to missing columns vs bad values.</p>`, code: `def import_orders_first_error(rows):
+    out = []
+    for r in rows:
+        out.append((r['id'], int(r['qty']), float(r['price'])))   # dies on first bad row
+    return out` },
+    mcq: { q: 'Will a plain <code>except ValueError:</code> catch the ExceptionGroup?', options: ['No — the group is an ExceptionGroup, not a ValueError; use except* ValueError', 'Yes, it looks inside', 'Only if there is exactly one ValueError inside', 'Only in Python 3.13+'], answer: 0, explain: 'ExceptionGroup is not a subclass of ValueError. except* splits the group and matches the members; plain except only matches the group object itself.' },
+    hints: [`<p>Hint 1: Wrap each row's conversion in try/except (KeyError, ValueError) as e → <code>e.add_note(f'row {i}')</code> → errors.append(e).</p>`, `<p>Hint 2: Raise ValueError yourself when qty ≤ 0 or price ≤ 0, with a clear message.</p>`, `<p>Hint 3: After the loop: <code>if errors: raise ExceptionGroup(f'{len(errors)} bad rows', errors)</code>. Caller: <code>except* KeyError as g:</code> and <code>except* ValueError as g:</code>, iterating <code>g.exceptions</code> and their <code>__notes__</code>.</p>`],
+    solution: {
+      approach: `<p>Validate every row, attach context with notes, and bundle all failures. except* lets the caller route each family of errors to its own handler.</p>`,
+      code: { lang: 'python', run: true, code: `def import_orders(rows):
+    good, errors = [], []
+    for i, r in enumerate(rows):
+        try:
+            qty = int(r['qty'])
+            price = float(r['price'])
+            if qty <= 0 or price <= 0:
+                raise ValueError(f'qty and price must be positive, got {qty}, {price}')
+            good.append((r['id'], qty, price))
+        except (KeyError, ValueError) as e:
+            e.add_note(f'row {i} (id={r.get("id")})')
+            errors.append(e)
+    if errors:
+        raise ExceptionGroup(f'{len(errors)} bad rows', errors)
+    return good
+
+
+rows = [{'id': 1, 'qty': '2', 'price': '9.5'}, {'id': 2, 'qty': 'x', 'price': '1'},
+        {'id': 3, 'price': '4'}, {'id': 4, 'qty': '0', 'price': '3'}]
+try:
+    import_orders(rows)
+except* KeyError as g:
+    for e in g.exceptions:
+        print('missing field', e, '->', e.__notes__)
+except* ValueError as g:
+    for e in g.exceptions:
+        print('bad value:', e, '->', e.__notes__)
+
+print(import_orders(rows[:1]))` },
+      complexity: `<p>O(N) over rows; O(E) memory for E errors.</p>`,
+      followUps: ['Cap the number of collected errors at 100 and add a note "and 2,341 more".', 'Return partial results AND the errors instead of raising — when is that better?']
+    }
+  });
+
+  practice.push({
+    title: 'A Tiny Test Runner: PASS, FAIL and ERROR',
+    level: 'Medium', tags: ['testing', 'introspection', 'exceptions'], companies: ['JetBrains', 'GitLab'],
+    statement: `<p>Write <code>run_tests(namespace)</code> that finds every callable whose name starts with <code>test_</code> in a dict (like <code>globals()</code>), runs each one, and classifies it: <b>PASS</b> (returned normally), <b>FAIL</b> (raised AssertionError — a wrong result) or <b>ERROR</b> (raised any other Exception — a crash). Return a dict name → status and print a summary like pytest's (<code>2 passed, 1 failed, 1 error</code>). Tests run in sorted name order; one failing test must not stop the others.</p>`,
+    constraints: `Do not catch BaseException (Ctrl+C must still stop the run).`,
+    example: `<p>Tests: <code>test_add</code> (passes), <code>test_sub</code> (<code>assert 5 - 3 == 1</code>), <code>test_div</code> (<code>1/0</code>), <code>helper</code> (ignored) → ${H.c('g', 'test_add PASS')}, ${H.c('r', 'test_div ERROR')}, ${H.c('y', 'test_sub FAIL')}, summary ${H.c('b', '1 passed, 1 failed, 1 error')}.</p>`,
+    brute: { why: `<p>Calling tests one after another in a script stops at the first failure and cannot distinguish "the code returned a wrong answer" (AssertionError) from "the test or the code crashed" (any other exception) — a distinction every real runner makes.</p>`, code: `def test_a():
+    assert 1 + 1 == 2
+
+def test_b():
+    assert 2 * 2 == 5
+
+test_a()
+test_b()          # AssertionError stops everything here
+print('never reached')` },
+    mcq: { q: 'Which order of except clauses classifies correctly?', options: ['except AssertionError first, then except Exception', 'except Exception first, then except AssertionError', 'Only except BaseException', 'Order does not matter'], answer: 0, explain: 'AssertionError is a subclass of Exception. If Exception came first, failures would be reported as errors.' },
+    hints: [`<p>Hint 1: <code>sorted(name for name, obj in ns.items() if name.startswith('test_') and callable(obj))</code>.</p>`, `<p>Hint 2: try: fn() / except AssertionError: FAIL / except Exception: ERROR / else: PASS.</p>`, `<p>Hint 3: Keep the exception message for the report (<code>f'{type(e).__name__}: {e}'</code>) and count statuses with a Counter for the summary line.</p>`],
+    solution: {
+      approach: `<p>Discovery by naming convention, isolation by catching per test, and classification by exception type: exactly the core loop of unittest and pytest.</p>`,
+      code: { lang: 'python', run: true, code: `from collections import Counter
+
+
+def run_tests(ns):
+    results = {}
+    for name in sorted(n for n, obj in ns.items() if n.startswith('test_') and callable(obj)):
+        try:
+            ns[name]()
+        except AssertionError as e:
+            results[name] = 'FAIL'
+            print(f'{name:10} FAIL   {e}')
+        except Exception as e:
+            results[name] = 'ERROR'
+            print(f'{name:10} ERROR  {type(e).__name__}: {e}')
+        else:
+            results[name] = 'PASS'
+            print(f'{name:10} PASS')
+    c = Counter(results.values())
+    print(f"{c['PASS']} passed, {c['FAIL']} failed, {c['ERROR']} error")
+    return results
+
+
+def test_add():
+    assert 2 + 3 == 5
+
+def test_sub():
+    got = 5 - 3
+    assert got == 1, f'expected 1, got {got}'
+
+def test_div():
+    return 1 / 0
+
+def helper():
+    raise RuntimeError('not a test, never called')
+
+print(run_tests(dict(test_add=test_add, test_sub=test_sub, test_div=test_div, helper=helper)))` },
+      complexity: `<p>O(T log T) for sorting T tests plus the tests' own cost.</p>`,
+      followUps: ['Add setup/teardown hooks around every test (setup_function / teardown_function).', 'Add a skip decorator that sets an attribute the runner checks.', 'Run each test with a timeout — what are your options in pure Python?']
+    }
+  });
+
+  practice.push({
+    title: 'Verify Interactions With a Mock: Overdue Invoice Reminders',
+    level: 'Medium', tags: ['mock', 'call_args_list', 'dependency injection'], companies: ['Intuit', 'Freshworks', 'Xero'],
+    statement: `<p><code>send_reminders(invoices, today, send)</code> must call <code>send(email, subject)</code> once per invoice that is unpaid and overdue (due date before <code>today</code>), with subject <code>"Invoice &lt;id&gt; is &lt;n&gt; days overdue"</code>, and return the number sent. If <code>send</code> raises <code>ConnectionError</code> for one customer, skip that one and continue. Write the function <b>and</b> its tests using <code>unittest.mock.Mock</code> — no real email.</p>`,
+    constraints: `invoices: list of dicts with id, email, due (datetime.date), paid (bool).`,
+    example: `<p>today = 2026-03-10; invoices #1 due 03-01 unpaid, #2 due 03-20 unpaid, #3 due 02-01 paid → exactly ${H.c('g', "one call: send('a@x.com', 'Invoice 1 is 9 days overdue')")}.</p>`,
+    brute: { why: `<p>Testing by sending real emails to a test inbox is slow, needs credentials and network, and you still have to scrape the inbox to verify. Printing instead of sending gives nothing to assert on.</p>`, code: `import smtplib
+
+def send_real(email, subject):
+    with smtplib.SMTP('smtp.example.com') as s:    # real network in tests: no
+        s.sendmail('billing@example.com', [email], subject)` },
+    mcq: { q: 'How do you check that the SECOND call had specific arguments?', options: ['<code>send.call_args_list[1] == mock.call(email, subject)</code>', '<code>send.assert_called_once_with(...)</code>', '<code>send.return_value[1]</code>', '<code>send.call_count == 2</code>'], answer: 0, explain: 'call_args_list keeps every call in order as call objects. assert_called_once_with would fail when there are several calls; call_count does not check arguments.' },
+    hints: [`<p>Hint 1: Inject <code>send</code> as a parameter — then the test passes <code>Mock()</code> with no patching at all.</p>`, `<p>Hint 2: Days overdue = <code>(today - inv['due']).days</code>; condition <code>not paid and days &gt; 0</code>.</p>`, `<p>Hint 3: For the failure case use <code>Mock(side_effect=[ConnectionError(), None])</code> and assert the return value is 1 while call_count is 2.</p>`],
+    solution: {
+      approach: `<p>Dependency injection makes the side effect replaceable; the Mock records each call so the test asserts the exact interactions (who, what, how many), including the partial-failure path.</p>`,
+      code: { lang: 'python', run: true, code: `from datetime import date
+from unittest import mock
+
+
+def send_reminders(invoices, today, send):
+    sent = 0
+    for inv in invoices:
+        days = (today - inv['due']).days
+        if inv['paid'] or days <= 0:
+            continue
+        try:
+            send(inv['email'], f"Invoice {inv['id']} is {days} days overdue")
+        except ConnectionError:
+            continue                      # skip this customer, keep going
+        sent += 1
+    return sent
+
+
+invoices = [
+    {'id': 1, 'email': 'a@x.com', 'due': date(2026, 3, 1), 'paid': False},
+    {'id': 2, 'email': 'b@x.com', 'due': date(2026, 3, 20), 'paid': False},
+    {'id': 3, 'email': 'c@x.com', 'due': date(2026, 2, 1), 'paid': True},
+    {'id': 4, 'email': 'd@x.com', 'due': date(2026, 2, 28), 'paid': False},
+]
+today = date(2026, 3, 10)
+
+send = mock.Mock()
+assert send_reminders(invoices, today, send) == 2
+assert send.call_args_list == [
+    mock.call('a@x.com', 'Invoice 1 is 9 days overdue'),
+    mock.call('d@x.com', 'Invoice 4 is 10 days overdue'),
+]
+print('happy path ok:', send.call_args_list)
+
+flaky = mock.Mock(side_effect=[ConnectionError('smtp down'), None])
+assert send_reminders(invoices, today, flaky) == 1
+assert flaky.call_count == 2
+print('partial failure ok: sent 1 of 2 attempts')` },
+      complexity: `<p>O(N) over invoices; tests run in microseconds.</p>`,
+      followUps: ['Use create_autospec on the real send function so a signature change breaks the test.', 'Make "today" default to date.today() while keeping tests deterministic.', 'Batch sends: one call with a list — how do the assertions change?']
+    }
+  });
+
+  /* ================= PRACTICE: Hard ================= */
+  practice.push({
+    title: 'Mini pytest Fixture Engine (Dependency Injection + Yield Teardown + Scopes)',
+    level: 'Hard', tags: ['fixtures', 'generators', 'inspect', 'design'], companies: ['Google', 'Datadog', 'JetBrains'],
+    statement: `<p>Build a tiny fixture system:</p><ul><li><code>reg.fixture(scope='function'|'session')</code> decorator registers a fixture by its function name. A fixture may <code>return</code> a value or <code>yield</code> once (code after yield = teardown).</li><li>Fixtures and tests request other fixtures by <b>parameter name</b> (use <code>inspect.signature</code>).</li><li><code>reg.run(test)</code> resolves the test's fixtures (recursively), runs it, classifies PASS/FAIL/ERROR, then tears down this test's function-scoped fixtures in <b>reverse</b> creation order — even if the test failed.</li><li>Session fixtures are created once, cached, and torn down (reverse order) by <code>reg.close()</code>.</li><li>A session fixture depending on a function fixture raises <code>ScopeMismatch</code>; an unknown name raises <code>LookupError</code>.</li></ul>`,
+    constraints: `Pure Python stdlib. Each fixture instance is created at most once per its scope.`,
+    example: `<p>Fixtures <code>db</code> (session, yields), <code>user(db)</code> (function, yields). Running <code>test_a(user)</code> then <code>test_b(db, user)</code>, then close() logs: ${H.c('g', 'setup db, setup user, test_a, teardown user, setup user, test_b, teardown user, teardown db')} — db built once, user per test.</p>`,
+    brute: { why: `<p>Hard-coding setup in every test (<code>db = make_db(); try: … finally: db.close()</code>) duplicates code, rebuilds expensive resources for every test, and gets teardown order wrong as soon as resources depend on each other.</p>`, code: `import sqlite3
+
+def test_a():
+    db = sqlite3.connect(':memory:')       # rebuilt for every test
+    try:
+        db.execute('CREATE TABLE t(x)')
+        assert db.execute('SELECT 1').fetchone() == (1,)
+    finally:
+        db.close()` },
+    mcq: { q: 'How do you run a generator fixture\'s teardown and verify it yielded exactly once?', options: ['Call next(gen) once more and expect StopIteration; if it yields again, raise an error', 'Call gen.close() only', 'Delete the generator and rely on garbage collection', 'Call gen.send(None) twice'], answer: 0, explain: 'The second next() resumes after the yield, running the teardown code; a correct fixture then finishes with StopIteration. Relying on GC makes teardown timing unpredictable; close() would raise GeneratorExit at the yield and skip teardown code that is not in a finally block.' },
+    hints: [`<p>Hint 1: Store <code>name → (fn, scope)</code>. Resolution is a recursive DFS over parameter names with a per-test cache dict and a per-test teardown list (plus a session cache and session teardown list).</p>`, `<p>Hint 2: After calling a fixture function, <code>inspect.isgenerator(result)</code> → value = <code>next(result)</code> and push the generator onto the correct teardown list; otherwise the result is the value.</p>`, `<p>Hint 3: In <code>run</code>, use try/except AssertionError/except Exception/finally; in finally pop teardown generators in reverse, calling next() and expecting StopIteration. Check scope mismatch when a session fixture's dependency is function-scoped.</p>`],
+    solution: {
+      approach: `<p>A recursive resolver with two caches (per-test and session) and two LIFO teardown stacks. Generators give us setup/teardown in one function, exactly like pytest's yield fixtures.</p>`,
+      code: { lang: 'python', run: true, code: `import inspect
+
+
+class ScopeMismatch(Exception):
+    pass
+
+
+class Registry:
+    def __init__(self):
+        self.defs = {}                       # name -> (fn, scope)
+        self.session_cache = {}
+        self.session_teardowns = []
+
+    def fixture(self, scope='function'):
+        def deco(fn):
+            self.defs[fn.__name__] = (fn, scope)
+            return fn
+        return deco
+
+    def _resolve(self, name, cache, teardowns, path=()):
+        if name not in self.defs:
+            raise LookupError(f'fixture {name!r} not found')
+        fn, scope = self.defs[name]
+        store = self.session_cache if scope == 'session' else cache
+        if name in store:
+            return store[name]
+        if name in path:
+            raise RuntimeError('fixture cycle: ' + ' -> '.join(path + (name,)))
+        kwargs = {}
+        for dep in inspect.signature(fn).parameters:
+            if scope == 'session' and self.defs.get(dep, (None, 'session'))[1] == 'function':
+                raise ScopeMismatch(f'session fixture {name!r} cannot use function fixture {dep!r}')
+            kwargs[dep] = self._resolve(dep, cache, teardowns, path + (name,))
+        result = fn(**kwargs)
+        if inspect.isgenerator(result):
+            value = next(result)                                    # run setup
+            (self.session_teardowns if scope == 'session' else teardowns).append((name, result))
+        else:
+            value = result
+        store[name] = value
+        return value
+
+    @staticmethod
+    def _finish(name, gen):
+        try:
+            next(gen)                                               # run teardown
+        except StopIteration:
+            return
+        raise RuntimeError(f'fixture {name!r} yielded more than once')
+
+    def run(self, test):
+        cache, teardowns = {}, []
+        try:
+            kwargs = {p: self._resolve(p, cache, teardowns) for p in inspect.signature(test).parameters}
+            test(**kwargs)
+            status = 'PASS'
+        except AssertionError:
+            status = 'FAIL'
+        except Exception as e:
+            status = f'ERROR ({type(e).__name__}: {e})'
+        finally:
+            for name, gen in reversed(teardowns):                  # LIFO
+                self._finish(name, gen)
+        return status
+
+    def close(self):
+        while self.session_teardowns:
+            self._finish(*self.session_teardowns.pop())
+
+
+log = []
+reg = Registry()
+
+
+@reg.fixture(scope='session')
+def db():
+    log.append('setup db')
+    yield {'users': []}
+    log.append('teardown db')
+
+
+@reg.fixture()
+def user(db):
+    log.append('setup user')
+    db['users'].append('asha')
+    yield 'asha'
+    db['users'].remove('asha')
+    log.append('teardown user')
+
+
+def test_a(user):
+    log.append('test_a')
+    assert user == 'asha'
+
+
+def test_b(db, user):
+    log.append('test_b')
+    assert db['users'] == ['asha', 'ben']       # fails on purpose
+
+
+def test_c(missing):
+    pass
+
+
+print(reg.run(test_a), reg.run(test_b), reg.run(test_c))
+reg.close()
+print(log)` },
+      complexity: `<p>Resolution is O(F + E) per test for F fixtures and E dependency edges (each resolved once thanks to caches). Teardown is O(F).</p>`,
+      followUps: ['Add module scope keyed by test.__module__.', 'Support autouse fixtures and params=[...] (run a test once per param).', 'Make teardown errors not hide the test result, but report both (hint: ExceptionGroup).']
+    }
+  });
+
+  practice.push({
+    title: 'Write a Tiny Mock From Scratch',
+    level: 'Hard', tags: ['mock', 'dunder methods', '__getattr__', 'testing'], companies: ['Meta', 'Stripe'],
+    statement: `<p>Implement <code>TinyMock</code> supporting:</p><ul><li>Calling it records <code>(args, kwargs)</code> in <code>.calls</code>; <code>.call_count</code> property.</li><li><code>return_value</code> (default: a child TinyMock, created once and reused).</li><li><code>side_effect</code>: an exception class/instance → raise it; a callable → return its result; an iterable → return (or raise, if an exception) the next item per call.</li><li>Any unknown public attribute returns a child TinyMock, created once and cached (so <code>m.api.get(1)</code> works and is recorded on <code>m.api.get</code>).</li><li><code>assert_called_once_with(*args, **kwargs)</code> raising a helpful AssertionError.</li></ul>`,
+    constraints: `Attributes beginning with "_" must raise AttributeError (otherwise copy/pickle/inspection probes go crazy). No unittest.mock.`,
+    example: `<p><code>m = TinyMock(); m.client.get.return_value = 200; m.client.get('/x')</code> → ${H.c('g', '200')}; <code>m.client.get.assert_called_once_with('/x')</code> passes; <code>TinyMock(side_effect=[1, KeyError('k')])</code> → first call ${H.c('g', '1')}, second ${H.c('r', 'raises KeyError')}.</p>`,
+    brute: { why: `<p>A hand-written stub class per test (<code>class FakeClient: def get(self, url): return 200</code>) works but records nothing, so you cannot assert how it was called, and you write a new one for every dependency.</p>`, code: `class FakeClient:
+    def get(self, url):
+        return 200          # no record of calls, cannot verify interaction
+
+print(FakeClient().get('/x'))` },
+    mcq: { q: 'Why implement child attributes with <code>__getattr__</code> rather than <code>__getattribute__</code>?', options: ['__getattr__ is only called when normal lookup fails, so real attributes (calls, return_value) work normally', '__getattribute__ does not exist', '__getattr__ is faster for every attribute', 'They are identical'], answer: 0, explain: '__getattribute__ intercepts EVERY attribute access, including self.calls, making infinite recursion easy. __getattr__ is the fallback for missing names — exactly "unknown attribute → child mock".' },
+    hints: [`<p>Hint 1: In <code>__init__</code> set real attributes (<code>calls</code>, <code>side_effect</code>, <code>_children</code>, <code>_name</code>). <code>__getattr__(self, name)</code> is only consulted for names not found normally.</p>`, `<p>Hint 2: For side_effect classify in order: exception instance or class → raise; callable → call it; otherwise iterable → keep an iterator in <code>self.__dict__</code> created on first use.</p>`, `<p>Hint 3: Make <code>return_value</code> a property that lazily creates a child mock when never set, so <code>m().foo()</code> chains work like unittest.mock.</p>`],
+    solution: {
+      approach: `<p>Real attributes hold state; <code>__getattr__</code> lazily creates and caches child mocks for unknown public names; <code>__call__</code> records then applies side_effect / return_value.</p>`,
+      code: { lang: 'python', run: true, code: `_UNSET = object()
+
+
+class TinyMock:
+    def __init__(self, return_value=_UNSET, side_effect=None, name='mock'):
+        self._name = name
+        self._children = {}
+        self._return_value = return_value
+        self.side_effect = side_effect
+        self.calls = []
+
+    # --- attributes -------------------------------------------------
+    def __getattr__(self, attr):                 # only for MISSING attributes
+        if attr.startswith('_'):
+            raise AttributeError(attr)
+        if attr not in self._children:
+            self._children[attr] = TinyMock(name=f'{self._name}.{attr}')
+        return self._children[attr]
+
+    @property
+    def return_value(self):
+        if self._return_value is _UNSET:
+            self._return_value = TinyMock(name=f'{self._name}()')
+        return self._return_value
+
+    @return_value.setter
+    def return_value(self, value):
+        self._return_value = value
+
+    @property
+    def call_count(self):
+        return len(self.calls)
+
+    # --- calling ----------------------------------------------------
+    def __call__(self, *args, **kwargs):
+        self.calls.append((args, kwargs))
+        se = self.side_effect
+        if se is None:
+            return self.return_value
+        if isinstance(se, BaseException) or (isinstance(se, type) and issubclass(se, BaseException)):
+            raise se
+        if callable(se):
+            return se(*args, **kwargs)
+        if '_effects' not in self.__dict__:
+            self.__dict__['_effects'] = iter(se)
+        item = next(self._effects)               # StopIteration when exhausted, like unittest.mock
+        if isinstance(item, BaseException):
+            raise item
+        return item
+
+    # --- assertions -------------------------------------------------
+    def assert_called_once_with(self, *args, **kwargs):
+        if self.call_count != 1:
+            raise AssertionError(f'Expected {self._name!r} to be called once. Called {self.call_count} times.')
+        if self.calls[0] != (args, kwargs):
+            raise AssertionError(f'{self._name} called with {self.calls[0]}, expected {(args, kwargs)}')
+
+    def __repr__(self):
+        return f'<TinyMock {self._name}>'
+
+
+m = TinyMock()
+m.client.get.return_value = 200
+print(m.client.get('/x'), m.client.get.call_count)
+m.client.get.assert_called_once_with('/x')
+print(m.anything(1).chained(), '<- auto child of return_value')
+
+seq = TinyMock(side_effect=[1, KeyError('k')], name='seq')
+print(seq())
+try:
+    seq()
+except KeyError as e:
+    print('raised', repr(e))
+
+sq = TinyMock(side_effect=lambda x: x * x)
+print(sq(7))
+try:
+    sq.assert_called_once_with(8)
+except AssertionError as e:
+    print('AssertionError:', e)
+print(hasattr(m, '__deepcopy__'))        # False: private names are not auto-created` },
+      complexity: `<p>O(1) per call/attribute (dict-cached children); memory grows with recorded calls.</p>`,
+      followUps: ['Add spec=SomeClass so unknown attributes raise AttributeError (like autospec).', 'Support magic methods (len(m), m[0], with m:) — why must they be defined on the class, not the instance?', 'Implement call_args_list with call objects that compare equal to call(...).']
+    }
+  });
+
+  practice.push({
+    title: 'Runtime Type Checker for Type Hints (check_type)',
+    level: 'Hard', tags: ['typing', 'get_origin', 'get_args', 'recursion'], companies: ['Microsoft', 'Pydantic', 'Bloomberg'],
+    statement: `<p>Write <code>check_type(value, hint) -&gt; bool</code> that checks a value against a type hint at runtime. Support: plain classes (<code>int</code>, <code>str</code>, custom classes), <code>Any</code>, <code>None</code>, <code>list[T]</code>, <code>set[T]</code>, <code>dict[K, V]</code>, <code>tuple[A, B]</code> and <code>tuple[T, ...]</code>, unions (<code>int | str</code>, <code>Optional[X]</code>), and <code>Literal[...]</code>. Rules: <code>bool</code> is <b>not</b> accepted as <code>int</code>; <code>int</code> <b>is</b> accepted as <code>float</code> (like mypy). Unsupported hints raise <code>TypeError</code>.</p>`,
+    constraints: `Use typing.get_origin / get_args. Recursive containers checked element by element (O(size)).`,
+    example: `<p><code>check_type({'a': [1, 2]}, dict[str, list[int]])</code> → ${H.c('g', 'True')}; <code>check_type([1, 'x'], list[int])</code> → ${H.c('r', 'False')}; <code>check_type(True, int)</code> → ${H.c('r', 'False')}; <code>check_type(3, float)</code> → ${H.c('g', 'True')}; <code>check_type('r', Literal['r', 'w'])</code> → ${H.c('g', 'True')}.</p>`,
+    brute: { why: `<p><code>isinstance(value, hint)</code> fails immediately: <code>isinstance([1], list[int])</code> raises <code>TypeError: isinstance() argument 2 cannot be a parameterized generic</code>. Stripping to the origin (<code>isinstance(v, list)</code>) ignores the element types completely.</p>`, code: `def check_type_naive(value, hint):
+    return isinstance(value, hint)     # TypeError for list[int], dict[str, int], Literal[...]
+
+try:
+    check_type_naive([1], list[int])
+except TypeError as e:
+    print(e)` },
+    mcq: { q: 'What does <code>typing.get_origin(dict[str, int])</code> return?', options: ['<code>dict</code>', '<code>(str, int)</code>', '<code>typing.Dict</code>', '<code>None</code>'], answer: 0, explain: 'get_origin gives the unparametrised base (dict); get_args gives the parameters (str, int). For a plain class like int, get_origin returns None.' },
+    hints: [`<p>Hint 1: Handle the leaves first: Any → True; None/NoneType → value is None; <code>get_origin(hint) is None</code> → plain class → isinstance with the bool/int/float special cases.</p>`, `<p>Hint 2: Unions: origin is <code>typing.Union</code> (from Optional/Union[...]) or <code>types.UnionType</code> (from <code>int | str</code>) → any(check each arg). Literal → value equals one arg AND has the same type (so True does not match Literal[1]).</p>`, `<p>Hint 3: Containers: check isinstance with the origin, then recurse on every element. Tuples: <code>(T, Ellipsis)</code> means homogeneous any length; otherwise lengths must match and check pairwise.</p>`],
+    solution: {
+      approach: `<p>A recursive dispatcher on <code>get_origin(hint)</code>. This is the core of what pydantic, beartype and typeguard do (with many more cases and caching).</p>`,
+      code: { lang: 'python', run: true, code: `import types
+import typing
+from typing import Any, Literal, Optional, Union, get_args, get_origin
+
+
+def check_type(value, hint) -> bool:
+    if hint is Any:
+        return True
+    if hint is None or hint is type(None):
+        return value is None
+    origin = get_origin(hint)
+    if origin is None:                                   # a plain class
+        if hint is int:
+            return isinstance(value, int) and not isinstance(value, bool)
+        if hint is float:
+            return isinstance(value, (int, float)) and not isinstance(value, bool)
+        if isinstance(hint, type):
+            return isinstance(value, hint)
+        raise TypeError(f'unsupported hint {hint!r}')
+    args = get_args(hint)
+    if origin is Union or origin is types.UnionType:    # Optional[X], Union[...], X | Y
+        return any(check_type(value, a) for a in args)
+    if origin is Literal:
+        return any(value == a and type(value) is type(a) for a in args)
+    if origin in (list, set, frozenset):
+        return isinstance(value, origin) and all(check_type(v, args[0]) for v in value)
+    if origin is dict:
+        k_hint, v_hint = args
+        return isinstance(value, dict) and all(
+            check_type(k, k_hint) and check_type(v, v_hint) for k, v in value.items())
+    if origin is tuple:
+        if not isinstance(value, tuple):
+            return False
+        if len(args) == 2 and args[1] is Ellipsis:      # tuple[int, ...]
+            return all(check_type(v, args[0]) for v in value)
+        if args == ((),):                                # tuple[()] - empty tuple
+            return value == ()
+        return len(value) == len(args) and all(check_type(v, a) for v, a in zip(value, args))
+    raise TypeError(f'unsupported hint {hint!r}')
+
+
+tests = [
+    ({'a': [1, 2]}, dict[str, list[int]], True),
+    ([1, 'x'], list[int], False),
+    (True, int, False),
+    (3, float, True),
+    (None, Optional[str], True),
+    ('hi', int | str, True),
+    ((1, 'a'), tuple[int, str], True),
+    ((1, 2, 3), tuple[int, ...], True),
+    ((1, 2), tuple[int], False),
+    ('r', Literal['r', 'w'], True),
+    (True, Literal[1], False),
+    ({1, 2}, set[int], True),
+]
+for value, hint, expected in tests:
+    got = check_type(value, hint)
+    print('ok ' if got == expected else 'BUG', repr(value), hint, '->', got)
+try:
+    check_type([], typing.Callable[[int], int])
+except TypeError as e:
+    print('TypeError:', e)` },
+      complexity: `<p>O(total number of elements in the nested value) time; recursion depth = nesting depth of the hint.</p>`,
+      followUps: ['Support TypedDict (hint: __required_keys__, __annotations__) and dataclasses.', 'Return a path to the first mismatch, e.g. "$.a[1]: expected int, got str".', 'Write a @typechecked decorator that checks arguments and the return value using inspect.signature + typing.get_type_hints.']
+    }
+  });
+
+  practice.push({
+    title: 'Circuit Breaker With Custom Exceptions and a Fake Clock',
+    level: 'Hard', tags: ['custom exceptions', 'state machine', 'testing', 'dependency injection'], companies: ['Netflix', 'Uber', 'Flipkart'],
+    statement: `<p>Implement <code>CircuitBreaker(threshold=3, reset_timeout=30.0, clock=time.monotonic, expected=(ConnectionError, TimeoutError))</code> with method <code>call(fn, *args, **kwargs)</code>:</p><ul><li><b>closed</b>: call fn. Each expected exception increments a failure counter and is re-raised; a success resets the counter. At <code>threshold</code> consecutive failures → <b>open</b>.</li><li><b>open</b>: do not call fn; raise <code>CircuitOpenError</code> (a custom exception with a <code>retry_in</code> attribute). After <code>reset_timeout</code> seconds → <b>half-open</b>.</li><li><b>half-open</b>: allow one trial call: success → closed, failure → open again (timer restarts).</li><li>Unexpected exceptions (e.g. ValueError) propagate without counting.</li></ul><p>Test every transition deterministically using an injected fake clock.</p>`,
+    constraints: `No real sleeping. Single-threaded is fine.`,
+    example: `<p>threshold 2, timeout 10: fail, fail → ${H.c('r', 'open')}; call at t=5 → ${H.c('r', 'CircuitOpenError(retry_in=5.0)')} without touching fn; at t=12 → half-open trial succeeds → ${H.c('g', 'closed')}.</p>`,
+    brute: { why: `<p>Plain retries keep hammering a dead dependency, adding load exactly when it is struggling and making every user request wait for timeouts. Testing it with real <code>time.sleep(30)</code> makes the suite take minutes.</p>`, code: `import time
+
+def call_with_hope(fn):
+    while True:
+        try:
+            return fn()
+        except ConnectionError:
+            time.sleep(1)       # hammers a dead service forever` },
+    mcq: { q: 'Why should a ValueError from fn NOT count as a failure?', options: ['It signals a bug or bad input, not an unhealthy dependency; opening the circuit would block healthy calls', 'ValueError cannot be caught', 'Because it is a BaseException', 'It should count; all errors are equal'], answer: 0, explain: 'The breaker protects against an unavailable dependency. Caller mistakes say nothing about the dependency\'s health, so only the configured "expected" (transient/infra) exceptions count.' },
+    hints: [`<p>Hint 1: State = 'closed' | 'open' | 'half-open', plus <code>failures</code> and <code>opened_at</code>. Check for "open → half-open" lazily at the start of each call using the clock.</p>`, `<p>Hint 2: <code>try: result = fn(...) except self.expected: self._failure(); raise else: self._success(); return result</code> — only expected exceptions touch the counter.</p>`, `<p>Hint 3: Fake clock: <code>now = [0.0]; clock = lambda: now[0]</code>; advance with <code>now[0] = 12</code>. Assert state after each step and that fn was not called while open.</p>`],
+    solution: {
+      approach: `<p>A three-state machine. Expected exceptions are counted and re-raised (callers still see the real error); while open we fail fast with a custom exception carrying how long to wait. The clock is injected, so tests control time.</p>`,
+      code: { lang: 'python', run: true, code: `import time
+
+
+class CircuitOpenError(RuntimeError):
+    def __init__(self, retry_in):
+        self.retry_in = retry_in
+        super().__init__(f'circuit open; retry in {retry_in:.1f}s')
+
+
+class CircuitBreaker:
+    def __init__(self, threshold=3, reset_timeout=30.0, clock=time.monotonic,
+                 expected=(ConnectionError, TimeoutError)):
+        self.threshold = threshold
+        self.reset_timeout = reset_timeout
+        self.clock = clock
+        self.expected = expected
+        self.state = 'closed'
+        self.failures = 0
+        self.opened_at = 0.0
+
+    def call(self, fn, *args, **kwargs):
+        if self.state == 'open':
+            waited = self.clock() - self.opened_at
+            if waited < self.reset_timeout:
+                raise CircuitOpenError(self.reset_timeout - waited)   # fail fast
+            self.state = 'half-open'                                  # allow one trial
+        try:
+            result = fn(*args, **kwargs)
+        except self.expected:
+            self._failure()
+            raise                                                     # caller sees real error
+        self._success()
+        return result
+
+    def _failure(self):
+        self.failures += 1
+        if self.state == 'half-open' or self.failures >= self.threshold:
+            self.state = 'open'
+            self.opened_at = self.clock()
+
+    def _success(self):
+        self.failures = 0
+        self.state = 'closed'
+
+
+# ---- deterministic tests with a fake clock ----
+now = [0.0]
+cb = CircuitBreaker(threshold=2, reset_timeout=10, clock=lambda: now[0])
+calls = []
+
+def down():
+    calls.append('down')
+    raise ConnectionError('service down')
+
+def up():
+    calls.append('up')
+    return 'ok'
+
+for _ in range(2):
+    try:
+        cb.call(down)
+    except ConnectionError:
+        pass
+assert cb.state == 'open'
+
+now[0] = 5
+try:
+    cb.call(up)
+except CircuitOpenError as e:
+    print('fast fail:', e, '| retry_in =', e.retry_in)
+assert calls == ['down', 'down']            # fn NOT called while open
+
+now[0] = 12
+print('trial call:', cb.call(up), '| state =', cb.state)
+
+try:
+    cb.call(lambda: int('x'))               # ValueError: a bug, not counted
+except ValueError:
+    pass
+print('after ValueError: state =', cb.state, '| failures =', cb.failures)
+
+for t in (20, 21):                           # open again, then half-open trial fails
+    now[0] = t
+    try:
+        cb.call(down)
+    except ConnectionError:
+        pass
+now[0] = 32
+try:
+    cb.call(down)                            # half-open trial fails -> open again
+except ConnectionError:
+    pass
+print('half-open failure -> state =', cb.state, '| opened_at =', cb.opened_at)` },
+      complexity: `<p>O(1) per call, O(1) memory. All transitions tested in microseconds thanks to the injected clock.</p>`,
+      followUps: ['Make it thread-safe and allow only ONE trial call in half-open when many threads arrive.', 'Use a failure-rate window (e.g. 50% of the last 20 calls) instead of consecutive failures.', 'Expose it as a decorator and emit metrics on every state change.']
+    }
+  });
+
+  /* ================= QUIZ ================= */
+  quiz.push(
+    { q: 'Which block runs <b>only</b> when the <code>try</code> block finished without raising?', options: ['<code>else</code>', '<code>finally</code>', '<code>except</code>', 'the code after the whole statement'], answer: 0, explain: 'else runs only on success; finally runs always; except runs only on a matching error. Code after the statement also runs after a handled error.' },
+    { q: 'Predict the output: <pre>def f():\n    try:\n        return "try"\n    finally:\n        return "finally"\nprint(f())</pre>', options: ['finally', 'try', 'try then finally', 'SyntaxError'], answer: 0, explain: 'A return in finally replaces the pending return value (and would also swallow an exception). Python 3.14 warns about this (PEP 765); linters flag it.' },
+    { q: 'Why does <code>except LookupError:</code> catch a <code>KeyError</code>?', options: ['KeyError is a subclass of LookupError, and except matches subclasses', 'LookupError is an alias of KeyError', 'Python tries all except clauses until one works', 'Because both end with "Error"'], answer: 0, explain: 'except X matches any exception whose class is X or inherits from X (an issubclass check on the real MRO).' },
+    { q: 'Which statement about a bare <code>except:</code> is true?', options: ['It catches BaseException, including KeyboardInterrupt and SystemExit', 'It catches only Exception subclasses', 'It is a SyntaxError in Python 3', 'It catches nothing unless you name a class'], answer: 0, explain: 'Bare except is equivalent to except BaseException, so it can swallow Ctrl+C and sys.exit(). Use except Exception for a catch-all.' },
+    { q: 'Predict the output: <pre>try:\n    {}["a"]\nexcept KeyError as e:\n    pass\nprint(e)</pre>', options: ['NameError: name \'e\' is not defined', "'a'", 'KeyError', 'None'], answer: 0, explain: 'Python deletes the "as" name at the end of the except block (to break the traceback → frame → e reference cycle). Using e afterwards raises NameError.' },
+    { q: 'What does <code>raise ConfigError("bad") from err</code> set on the new exception?', options: ['<code>__cause__ = err</code> and <code>__suppress_context__ = True</code>', 'Only <code>__context__ = err</code>', '<code>__traceback__ = err</code>', 'Nothing; "from" is just a comment'], answer: 0, explain: 'Explicit chaining sets __cause__; the traceback then says "The above exception was the direct cause of the following exception". __context__ is still set automatically.' },
+    { q: 'You check <code>os.path.exists(p)</code> and then <code>open(p)</code>. What is the risk?', options: ['A TOCTOU race: the file can disappear between check and use', 'exists() is slow', 'open() requires an absolute path', 'No risk at all'], answer: 0, explain: 'Time-Of-Check to Time-Of-Use: another process may delete or replace the file. EAFP (try open / except FileNotFoundError) is atomic.' },
+    { q: 'When is LBYL (check first) usually the better choice?', options: ['When failures are frequent or the action has irreversible side effects', 'Always, because exceptions are forbidden in hot loops', 'When working with files', 'Never in Python'], answer: 0, explain: 'Raising is costly when misses are common, and you should validate before irreversible actions (sending emails, charging cards). Otherwise EAFP is idiomatic.' },
+    { q: 'Predict the output: <pre>def double(x: int) -&gt; int:\n    return x * 2\nprint(double("ab"))</pre>', options: ['abab', 'TypeError', '0', 'mypy error at runtime'], answer: 0, explain: 'CPython ignores type hints at runtime. A checker like mypy would flag the call, but the interpreter just runs "ab" * 2.' },
+    { q: 'Why does mypy reject passing a <code>list[int]</code> to a parameter typed <code>list[float]</code>?', options: ['list is invariant: the function could append a float into your list of ints', 'int and float are unrelated types', 'mypy does not support floats', 'Lists cannot be annotated'], answer: 0, explain: 'Mutable containers are invariant. Accept Sequence[float] (read-only, covariant) if you only read.' },
+    { q: 'After <code>if x is None: return</code>, what type does mypy give <code>x: str | None</code>?', options: ['str', 'str | None', 'None', 'Any'], answer: 0, explain: 'Narrowing: the None case returned early, so only str remains for the rest of the function.' },
+    { q: 'In pytest, how do you run the same test for many inputs, each reported separately?', options: ['<code>@pytest.mark.parametrize</code>', 'A for loop with assert inside one test', '<code>@pytest.fixture(scope="session")</code>', '<code>pytest.raises</code>'], answer: 0, explain: 'parametrize generates one test item per row (test_x[case-id]); a failing row does not hide the others. A plain loop stops at the first failing assert.' },
+    { q: 'app.py does <code>from weather import fetch</code>. Which patch target makes <code>app.alert()</code> use the mock?', options: ['<code>patch("app.fetch")</code>', '<code>patch("weather.fetch")</code>', '<code>patch("fetch")</code>', 'Either one works'], answer: 0, explain: 'from-import copies the reference into app\'s namespace. alert() looks up fetch in app\'s globals, so patch it there: patch where it is looked up.' },
+    { q: 'In a pytest fixture, where does the teardown code go?', options: ['After the <code>yield</code>', 'Before the <code>yield</code>', 'In a separate tearDown method', 'Fixtures cannot have teardown'], answer: 0, explain: 'Code before yield is setup, the yielded value goes to the test, and code after yield runs after the test (even if it failed).' },
+    { q: 'What does <code>Mock(side_effect=[TimeoutError(), 42])</code> do on its first two calls?', options: ['Raises TimeoutError, then returns 42', 'Returns the list both times', 'Returns 42 both times', 'Raises TimeoutError both times'], answer: 0, explain: 'An iterable side_effect yields one item per call; exception instances are raised, other values returned.' },
+    { q: 'Why use <code>autospec=True</code> when patching?', options: ['The mock copies the real signature, so wrong calls and non-existent methods fail the test', 'It makes the mock run the real code', 'It speeds up tests', 'It is required for patch to work'], answer: 0, explain: 'A plain Mock accepts any attribute and any arguments, so tests can keep passing after the real API changes. autospec enforces the real interface.' }
+  );
+
+  /* ================= INTERVIEW ================= */
+  interview.push(
+    { q: 'Explain try / except / else / finally. When does each block run?', level: 'B', a: `<p><b>try</b> holds the risky code. <b>except E</b> runs only if an exception of type E (or a subclass) was raised inside try — the first matching clause wins. <b>else</b> runs only if try finished <b>without</b> an exception; it keeps follow-up code out of the protected zone so the except does not accidentally catch its errors. <b>finally</b> runs <b>always</b> — success, handled error, unhandled error, return, break — and is for cleanup. Order: try → (one except or else) → finally → then the pending return/exception continues. A <code>with</code> statement is usually a cleaner packaged try/finally.</p>`, followUps: ['What happens if finally contains a return?', 'Does finally run on os._exit() or SIGKILL?', 'Why keep the try block small?'] },
+    { q: 'What is the difference between Exception and BaseException? Why is a bare except bad?', level: 'B', a: `<p><code>BaseException</code> is the root of all exceptions. Its direct children include <code>SystemExit</code> (sys.exit), <code>KeyboardInterrupt</code> (Ctrl+C), <code>GeneratorExit</code> and <code>Exception</code>. Everything that is a normal "error" inherits from <code>Exception</code>. A bare <code>except:</code> means <code>except BaseException</code>, so it swallows Ctrl+C and sys.exit() (programs that cannot be stopped) and hides bugs like NameError. If you need a catch-all at a boundary, use <code>except Exception</code>, log with the traceback, and usually re-raise. Similarly, <code>asyncio.CancelledError</code> is a BaseException so normal handlers do not swallow task cancellation.</p>`, followUps: ['Which exceptions inherit from LookupError and OSError?', 'Why did CancelledError move to BaseException in 3.8?'] },
+    { q: 'How do you design custom exceptions for a library?', level: 'I', a: `<p>Create one public base class per package (<code>class PaymentError(Exception)</code>) so callers can catch everything from you in one clause, then specific subclasses only for cases a caller can act on differently (<code>CardDeclinedError</code>, <code>InsufficientFundsError</code>). Name them <code>…Error</code>, store useful data as attributes (amount, field, status code) and pass a readable message to <code>super().__init__</code>. Use multiple inheritance to fit existing families (<code>InvalidAmountError(PaymentError, ValueError)</code>). Translate low-level errors at your boundary with <code>raise MyError(...) from e</code> so the root cause is preserved. Keep them picklable (args matching the constructor) so they survive multiprocessing, and never put secrets in messages.</p>`, followUps: ['How many exception classes is too many?', 'Why might unpickling a custom exception fail?', 'Should the base class subclass Exception or RuntimeError?'] },
+    { q: 'Explain exception chaining: raise from, __cause__, __context__ and from None.', level: 'I', a: `<p>When you raise inside an except block, Python automatically stores the exception being handled in the new one's <code>__context__</code>; the traceback shows both with "During handling of the above exception, another exception occurred" — which reads like a bug in the handler. <code>raise New(...) from e</code> sets <code>__cause__ = e</code> (and <code>__suppress_context__ = True</code>), and the traceback says "The above exception was the direct cause of…", signalling a deliberate translation. <code>raise New(...) from None</code> suppresses the context display entirely — useful when the low-level error is noise (e.g. a KeyError behind an AttributeError in <code>__getattr__</code>). Since 3.11 you can also add context with <code>e.add_note(...)</code> and re-raise.</p>`, followUps: ['When would you use from None in real code?', 'What is printed first in a chained traceback?'] },
+    { q: 'EAFP vs LBYL — which is more Pythonic and when would you choose the other?', level: 'I', a: `<p><b>EAFP</b> (try the operation, catch the specific failure) is the Python default: it avoids TOCTOU races (the operation itself is the check), uses the real operation's rules instead of re-implementing them (isdigit ≠ int()), supports duck typing, and since 3.11 a try costs nothing unless something is raised. <b>LBYL</b> wins when failures are <b>common</b> (raising + catching is roughly 5–15× a dict lookup), when the action is <b>irreversible</b> (validate the whole batch before sending emails), or when a check is required for security/business rules. Often the best answer is neither: <code>dict.get</code>, <code>setdefault</code>, <code>defaultdict</code>, <code>getattr(o, n, None)</code>, <code>os.makedirs(exist_ok=True)</code>.</p>`, followUps: ['Show a TOCTOU bug with files and fix it.', 'Why can hasattr hide bugs?', 'Is d[k] += 1 atomic across threads?'] },
+    { q: 'Do type hints affect runtime behaviour or performance in CPython?', level: 'B', a: `<p>Mostly no. CPython evaluates annotations (lazily from 3.14) and stores them in <code>__annotations__</code>, but never checks arguments against them and does not run faster because of them. They are consumed by tools: type checkers (mypy, pyright) and IDEs before runtime, and by libraries at runtime that read them on purpose — dataclasses (fields), pydantic/FastAPI (validation and parsing), functools.singledispatch, typer. Compilers like mypyc and Cython can use them to generate faster code. For untrusted input you still need runtime validation; <code>isinstance(x, list[int])</code> even raises TypeError.</p>`, followUps: ['What does from __future__ import annotations change?', 'How does FastAPI use your annotations?'] },
+    { q: 'What is the difference between Any and object in type hints?', level: 'I', a: `<p><code>Any</code> switches type checking off: every operation on an Any value is allowed, and Any is compatible in both directions with every type, so it silently spreads through code. <code>object</code> is the top type: any value can be <b>assigned</b> to it, but you can only use operations every object supports (<code>str()</code>, <code>==</code>, <code>hash</code>) until you narrow it with isinstance. Use <code>object</code> for "I accept anything and will check it", Any only as a last-resort escape hatch at untyped boundaries. Under --strict, <code>warn_return_any</code> and <code>disallow_any_*</code> flags help contain Any.</p>`, followUps: ['Where does Any sneak in without you writing it?', 'How do you type json.loads results safely?'] },
+    { q: 'Explain variance with list[int] vs Sequence[float].', level: 'A', a: `<p>An int is acceptable where a float is expected, but <code>list[int]</code> is <b>not</b> a <code>list[float]</code>: a function taking list[float] may <b>append</b> 3.14, corrupting your list of ints. Mutable generics are therefore <b>invariant</b>. Read-only generics like <code>Sequence[T]</code>, <code>Iterable[T]</code>, <code>tuple[T, ...]</code> and Mapping values are <b>covariant</b>: Sequence[int] is a Sequence[float] because nothing can be written. Callables are <b>contravariant</b> in their arguments: a function accepting float can be used where a function accepting int is required. Practical rule: accept the most abstract read-only type you need (Iterable, Sequence, Mapping) and return concrete types.</p>`, followUps: ['How do you declare a covariant TypeVar?', 'Why is dict invariant in its key type?'] },
+    { q: 'How would you introduce type checking into a large untyped codebase?', level: 'A', a: `<p>Gradually. 1) Add mypy (or pyright) to CI with a permissive config so it passes, possibly with a baseline of known errors. 2) Require annotations for new and changed code (<code>disallow_untyped_defs</code> per module via <code>[[tool.mypy.overrides]]</code>). 3) Type the most-imported modules and the boundaries first (API schemas with pydantic/TypedDict, DB layer), because they give the most inference downstream. 4) Install stubs (<code>types-*</code>) or write <code>.pyi</code> for key untyped libraries; ignore_missing_imports only per module. 5) Turn on <code>strict</code> package by package; enable <code>warn_unused_ignores</code>. 6) Track metrics: % typed functions, number of Any/ignores. Use tools like MonkeyType or AI assistants to draft annotations, and always review them.</p>`, followUps: ['mypy or pyright for CI?', 'How do you handle a library with no stubs?'] },
+    { q: 'unittest vs pytest: what are the differences and which would you pick?', level: 'B', a: `<p><b>unittest</b> is in the standard library, xUnit style: <code>TestCase</code> classes, <code>self.assert*</code> methods, setUp/tearDown, subTest. <b>pytest</b> is third-party but the de-facto standard: plain functions with <code>assert</code> (rewritten to show values on failure), powerful <b>fixtures</b> with scopes and dependency injection, <code>parametrize</code>, markers, rich plugins (coverage, xdist, asyncio, hypothesis), better filtering (<code>-k</code>, <code>--lf</code>). pytest can run unittest suites unchanged, so migration is incremental. Pick pytest for new projects; unittest when no third-party dependencies are allowed (some stdlib-only environments). Both use <code>unittest.mock</code> for mocking.</p>`, followUps: ['How does pytest show values in a failing assert?', 'How do you test that an exception message matches?'] },
+    { q: 'Explain pytest fixture scopes and how teardown works.', level: 'I', a: `<p>A fixture is a function decorated with <code>@pytest.fixture</code>; tests request it by parameter name and pytest injects the value (dependency injection, recursively). Scope decides how long one instance lives: <b>function</b> (default, fresh per test), <b>class</b>, <b>module</b>, <b>package</b>, <b>session</b> (once per run, or per worker with xdist). Fixtures that <code>yield</code> run setup before the yield and teardown after it — even if the test failed — and pytest tears down in <b>reverse</b> order of setup. A wider-scoped fixture cannot depend on a narrower one (ScopeMismatch). Typical pattern: session-scoped DB container + function-scoped fixture that opens a transaction and rolls it back, giving fast and isolated tests. Shared fixtures live in <code>conftest.py</code>.</p>`, followUps: ['What does autouse do and when is it dangerous?', 'How do you parametrize a fixture?', 'What changes with pytest-xdist?'] },
+    { q: 'What does "patch where it is looked up, not where it is defined" mean?', level: 'I', a: `<p><code>mock.patch("a.b.name")</code> temporarily rebinds the attribute <code>name</code> on module <code>a.b</code>. If <code>app.py</code> did <code>from weather import fetch</code>, then <code>app</code> holds its <b>own</b> reference called <code>fetch</code>; patching <code>weather.fetch</code> leaves app's reference pointing at the real function, so the test still makes a real call. You must patch <code>app.fetch</code>, the namespace where the code under test looks the name up. If app instead does <code>import weather</code> and calls <code>weather.fetch()</code>, the lookup goes through the module attribute and patching <code>weather.fetch</code> works. Dependency injection avoids the whole issue.</p>`, followUps: ['How do you patch a method for all instances of a class?', 'How do you patch builtins.open?'] },
+    { q: 'When is mocking harmful? How do you avoid over-mocking?', level: 'A', a: `<p>Mocks verify that your code calls collaborators in a certain way — they do not verify that the real system works. Over-mocking (mocking your own internal classes, mocking every call) produces tests that mirror the implementation, break on every refactor, and still pass when the real wiring is broken. Guidelines: mock only at <b>boundaries you do not own</b> or that are slow/non-deterministic (network, clock, randomness, payment, email); prefer <b>fakes</b> (in-memory repository, SQLite, local test server) and real objects otherwise; use <code>autospec</code> so mocks match real signatures; assert on <b>outcomes</b> more than on calls; back unit tests with a few integration tests (e.g. Testcontainers) that use the real dependency.</p>`, followUps: ['Difference between a stub, a fake, a spy and a mock?', 'How would you test code that calls an LLM API?'] },
+    { q: 'How do you test code that depends on time, randomness or the network deterministically?', level: 'A', a: `<p>Make the non-determinism an <b>input</b>. Time: inject a clock function (<code>now=time.monotonic</code>) or patch it / use <code>freezegun</code>/<code>time-machine</code>; inject <code>sleep</code> so backoff code runs instantly. Randomness: pass a <code>random.Random(seed)</code> instance rather than using the global module. Network: mock at the client boundary (<code>unittest.mock</code>, <code>responses</code>/<code>respx</code> for HTTP), use recorded cassettes (VCR) for realism, and keep a separate, explicitly-marked integration suite against real services. Also isolate the filesystem (<code>tmp_path</code>) and environment (<code>monkeypatch.setenv</code>), and run tests in random order (<code>pytest-randomly</code>) and in parallel to expose hidden coupling.</p>`, followUps: ['How do you test a retry with exponential backoff in milliseconds?', 'How do you find which test leaks state into another?'] },
+    { q: 'What is ExceptionGroup / except* and where does it appear in practice?', level: 'E', a: `<p>Added in Python 3.11 (PEP 654). <code>ExceptionGroup(msg, [e1, e2, …])</code> carries several unrelated exceptions at once — needed when concurrent tasks fail independently or when validation should report every problem. <code>except* T</code> matches the members of type T inside the group (it calls <code>group.split(T)</code>), runs its handler with a sub-group, and lets the unmatched rest continue; several except* clauses can run for one raise. You cannot mix except and except* in one try, and a plain <code>except ValueError</code> does <b>not</b> match a group containing ValueErrors. In practice it comes from <code>asyncio.TaskGroup</code>, Trio/anyio nurseries, <code>concurrent.futures</code> wrappers and batch validators, which is why adopting TaskGroup can change what callers must catch.</p>`, followUps: ['How do BaseExceptionGroup and ExceptionGroup differ?', 'How would you log every exception inside a nested group?'] }
+  );
+
+  registerModule({
+    id: 'py09',
+    title: 'Errors, Type Hints & Testing',
+    intro: `<p>Real Python code spends a surprising amount of its life <b>going wrong</b> — missing keys, bad input, dead networks — and the difference between a junior and a senior engineer is how calmly their code (and their tests) handle it. This module covers the three skills that make Python code <b>trustworthy</b>:</p>
+<ul>
+<li>🧯 <b>Errors:</b> how exceptions travel up the call stack, the exception family tree, raising and designing your own exceptions, chaining with <code>raise … from</code>, ExceptionGroups, and the Pythonic EAFP vs LBYL debate.</li>
+<li>🏷️ <b>Type hints:</b> the typing vocabulary (unions, generics, Protocol, TypedDict, Literal), what mypy actually checks, narrowing, variance, and gradual adoption — without forgetting that Python ignores hints at runtime.</li>
+<li>🧪 <b>Testing:</b> unittest vs pytest, parametrized test tables, fixtures with setup/teardown and scopes, and mocking with <code>unittest.mock</code> — including the famous "patch where it is looked up" rule.</li>
+</ul>
+<p>Every topic has a step-by-step visualizer (watch an exception unwind the stack, a fixture stack build and tear down, mypy narrow a type line by line), runnable examples, "predict the output" puzzles, and AI-era advice: in 2026, tests and type checkers are how you <b>verify</b> code that an assistant wrote.</p>`,
+    goals: [
+      'Predict exactly which of try / except / else / finally run, and in what order, including returns inside finally and errors raised inside handlers',
+      'Choose the right exception class from the built-in hierarchy, order except clauses correctly, and design a custom exception hierarchy with attributes and <code>raise … from</code>',
+      'Decide between EAFP and LBYL from hit rate, race conditions and side effects, and spot TOCTOU bugs',
+      'Write precise type hints (unions, generics, Protocol, TypedDict, Literal), read mypy errors, use narrowing instead of cast, and explain variance',
+      'Write table-driven tests in unittest and pytest, test exceptions precisely, and explain why a test suite is (or is not) catching bugs',
+      'Use fixtures (scopes, yield teardown) and mocks (return_value, side_effect, autospec, patch targets) to test code with databases, clocks and networks deterministically'
+    ],
+    prereqs: `Python modules 1–8, especially <b>Closures, Decorators &amp; functools</b> (for retry decorators and fixtures as decorators), <b>Iterators, Generators &amp; Context Managers</b> (yield fixtures, __enter__/__exit__) and <b>Advanced OOP</b> (inheritance and MRO behind the exception hierarchy).`,
+    hours: 14,
+    topics: topics,
+    practice: practice,
+    quiz: quiz,
+    interview: interview
+  });
+})();

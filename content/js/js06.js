@@ -1,0 +1,1445 @@
+(function () {
+  var topics = [], practice = [], quiz = [], interview = [];
+
+  /* ---------------- shared little helpers for the visualizers ---------------- */
+  function one(k, cls) { var h = {}; h[k] = cls; return h; }
+  function esc(s) { return H.esc(String(s)); }
+  function out(lines, label) {
+    return { type: 'text', label: label || 'Console output', html: lines && lines.length ? '<code>' + lines.map(esc).join('<br>') + '</code>' : '<span class="c-m">(nothing printed yet)</span>' };
+  }
+  function note(html, label) { return { type: 'text', label: label || 'What is going on', html: html }; }
+  /* step = { l: line | [lines], cls, v: {vars}, hv, st: [stack], o: [console lines], extra: [parts], narr } */
+  function codeFrames(code, steps, label) {
+    return steps.map(function (s) {
+      var hl = {};
+      [].concat(s.l === undefined ? [] : s.l).forEach(function (n) { hl[n] = s.cls || 'cur'; });
+      var parts = [{ type: 'code', label: label || 'Code (highlighted line = running now)', lang: 'js', code: code, hl: hl }];
+      if (s.v) parts.push({ type: 'vars', label: s.vl || 'Variables', vals: s.v, hl: s.hv || {} });
+      if (s.st) parts.push({ type: 'stack', label: 'Call stack (top = running now)', items: s.st.slice(), hl: s.sh || one(s.st.length - 1, 'cur') });
+      (s.extra || []).forEach(function (p) { parts.push(p); });
+      if (s.o !== undefined) parts.push(out(s.o));
+      return { narr: s.narr, parts: parts };
+    });
+  }
+  /* A prototype chain drawn as zig-zag boxes (so the little tags under each box never sit on an arrow).
+     levels = [{ id, label, tag? }]  — the arrow from each box points to its [[Prototype]]. */
+  function chain(levels, hl, ehl, label) {
+    var nodes = [], edges = [], tags = {};
+    levels.forEach(function (lv, i) {
+      nodes.push({ id: lv.id, label: lv.label, x: i % 2 === 0 ? 30 : 70, y: 7 + i * 12, shape: 'box' });
+      if (lv.tag !== undefined) tags[lv.id] = lv.tag;
+      if (i > 0) edges.push([levels[i - 1].id, lv.id]);
+    });
+    return { type: 'graph', label: label || 'Prototype chain (each arrow = the hidden [[Prototype]] link)', directed: true, height: 7 + levels.length * 12, nodes: nodes, edges: edges, hl: hl || {}, ehl: ehl || {}, tags: tags };
+  }
+
+  /* ======================================================================
+     TOPIC 1 — Objects & the prototype chain: how property lookup works
+     ====================================================================== */
+  topics.push({
+    title: 'The Prototype Chain: How JavaScript Finds a Property',
+    analogy: `<p>Imagine you need a <b>stapler</b>. First you search <b>your own desk</b>. Not there? You ask your <b>team lead</b>. Still no? You walk to the <b>office supply room</b> that the whole building shares. If even the supply room has none, the answer is simply "no stapler" — nobody panics, you just come back empty-handed.</p>
+<p>That is exactly how JavaScript looks up <code>obj.something</code>. Your desk = the object's <b>own</b> properties. The team lead = its <b>prototype</b>. The supply room = <code>Object.prototype</code>, shared by almost every object. "No stapler" = <code>undefined</code>.</p>
+<p>And one more rule: if you <b>buy your own stapler</b> and put it on your desk, you will always use yours from now on — but the supply room still has its own one for everybody else. That is called <b>shadowing</b>.</p>`,
+    explain: `<p>JavaScript does not copy behaviour from a "class blueprint" into every object the way Java or C++ do. Instead, every object carries one <b>hidden link</b> to another object. The spec calls this hidden slot <code>[[Prototype]]</code>. The object it points to is called the object's <b>prototype</b>. That prototype has its own prototype, and so on — this linked list of objects is the <b>prototype chain</b>. It always ends with <code>null</code>.</p>
+<h4>1. Reading a property walks UP the chain</h4>
+<p>When you write <code>dog.eats</code>, the engine does this:</p>
+<ol>
+<li>Does <code>dog</code> itself have an <b>own</b> property called <code>eats</code>? If yes → return it. Done.</li>
+<li>If not, follow <code>[[Prototype]]</code> to the next object and ask the same question.</li>
+<li>Keep climbing. If you reach <code>null</code>, the answer is <code>undefined</code> (no error!).</li>
+</ol>
+${H.table(['Expression', 'Where it was found', 'Result'], [
+  ['<code>dog.name</code>', 'dog itself (own)', H.c('g', "'Rex'")],
+  ['<code>dog.eats</code>', '1 step up: <code>animal</code>', H.c('g', 'true')],
+  ['<code>dog.toString</code>', '2 steps up: <code>Object.prototype</code>', H.c('g', 'ƒ toString()')],
+  ['<code>dog.fly</code>', 'nowhere — reached <code>null</code>', H.c('r', 'undefined')]
+])}
+<h4>2. Methods are shared, <code>this</code> is not</h4>
+<p>When a method is found on a prototype, it still runs with <code>this</code> = the object you called it on. So one <code>describe()</code> function living on <code>animal</code> can serve a million dogs, each seeing its own <code>this.name</code>. This is why prototypes save memory: <b>one copy of each method, shared by every instance</b>.</p>
+<h4>3. Writing a property does NOT walk up</h4>
+<p><code>dog.eats = false</code> creates (or updates) an <b>own</b> property on <code>dog</code>. The prototype is untouched, so every other object sharing that prototype still sees the old value. The new own property <b>shadows</b> (hides) the inherited one. Delete the own property and the inherited one becomes visible again.</p>
+<p>Two exceptions (expert detail, explained in the deep dive): if somewhere up the chain there is a <b>setter</b> for that name, the setter runs instead; and if the inherited property is <b>read-only</b> (<code>writable: false</code>), the write is silently ignored (or throws in strict mode).</p>
+<h4>4. Own vs inherited — the tools</h4>
+${H.table(['Tool', 'Looks at the chain?', 'Typical use'], [
+  ['<code>obj.key</code> / <code>obj[key]</code>', H.c('g', 'yes'), 'normal reading'],
+  ['<code>key in obj</code>', H.c('g', 'yes'), '"can this object do X?"'],
+  ['<code>Object.hasOwn(obj, key)</code> (ES2022)', H.c('r', 'no — own only'), 'safe own-property check (works even on null-prototype objects)'],
+  ['<code>obj.hasOwnProperty(key)</code>', H.c('r', 'no — own only'), 'older style; breaks if the object has no <code>Object.prototype</code> in its chain'],
+  ['<code>for...in</code>', H.c('g', 'yes (enumerable only)'), 'rarely what you want'],
+  ['<code>Object.keys / values / entries</code>', H.c('r', 'no — own enumerable only'), 'what you usually want']
+])}
+<h4>5. Where does the chain end?</h4>
+<p>For a plain object literal <code>{}</code>, the chain is <code>{}</code> → <code>Object.prototype</code> → <code>null</code>. For an array: <code>[]</code> → <code>Array.prototype</code> → <code>Object.prototype</code> → <code>null</code>. For a function: <code>fn</code> → <code>Function.prototype</code> → <code>Object.prototype</code> → <code>null</code>. You can read the link with <code>Object.getPrototypeOf(obj)</code>.</p>`,
+    clues: [
+      '"Why does <code>obj.toString()</code> work when I never defined <code>toString</code>?" → inherited from <code>Object.prototype</code> via the chain.',
+      '"What is printed after I assign the property on the child?" → writes create an <b>own</b> property; the prototype is unchanged (shadowing).',
+      '"<code>in</code> vs <code>hasOwnProperty</code>" or "why does <code>for...in</code> show extra keys?" → chain lookup vs own-only check.',
+      '"Two instances unexpectedly share the same array" → a mutable value (array/object) living on the prototype is shared by everyone.',
+      '"Prototype pollution", "<code>__proto__</code> key in user JSON", "safe deep merge" → writes reaching <code>Object.prototype</code>.',
+      '"How does JS do inheritance without classes?" → delegation along the <code>[[Prototype]]</code> chain.'
+    ],
+    code: [{ lang: 'js', run: true, title: 'Reading walks up the chain (runnable)', code: `// animal will be the prototype of dog
+const animal = {
+  eats: true,
+  describe() {
+    // 'this' is whoever we called describe() ON, not animal
+    return this.name + ' eats? ' + this.eats;
+  }
+};
+
+const dog = Object.create(animal); // dog's hidden [[Prototype]] -> animal
+dog.name = 'Rex';                  // own property
+
+console.log(dog.name);             // own                      -> Rex
+console.log(dog.eats);             // 1 step up (animal)       -> true
+console.log(dog.describe());       // method from animal, this = dog
+console.log(dog.fly);              // nowhere                  -> undefined
+console.log(Object.getPrototypeOf(dog) === animal);              // true
+console.log(Object.getPrototypeOf(animal) === Object.prototype); // true
+console.log(Object.getPrototypeOf(Object.prototype));            // null = end
+` }, { lang: 'js', run: true, title: 'Writing creates an OWN property: shadowing (runnable)', code: `const animal = { eats: true };
+const dog = Object.create(animal);
+const cat = Object.create(animal);
+
+dog.eats = false;                         // creates an OWN 'eats' on dog only
+console.log(dog.eats, cat.eats, animal.eats); // false true true
+
+console.log(Object.hasOwn(dog, 'eats'));  // true  (own copy now)
+console.log(Object.hasOwn(cat, 'eats'));  // false (still inherited)
+console.log('eats' in cat);               // true  ('in' climbs the chain)
+
+delete dog.eats;                          // remove the own copy...
+console.log(dog.eats);                    // ...inherited one shows again -> true
+
+// for...in walks the chain; Object.keys does not
+cat.name = 'Tom';
+const seen = [];
+for (const k in cat) seen.push(k);
+console.log(seen);              // [ 'name', 'eats' ]
+console.log(Object.keys(cat));  // [ 'name' ]
+` }],
+    codeTitle: ['Reading walks up the chain', 'Writing creates an own property'],
+    viz: {
+      title: 'Watch the engine climb the chain',
+      input: 'legs',
+      inputLabel: 'Property name to read (e.g. name, legs, eat, toString, fly) — or "set legs" to see a write',
+      gen: function (input) {
+        var s = String(input === undefined ? 'legs' : input).trim();
+        var m = s.match(/^(set\s+)?([A-Za-z_$][\w$]*)$/);
+        if (!m) throw new Error('Type a property name like  legs  or  toString , or  set legs  to see a write');
+        if (m[2].length > 24) throw new Error('Keep the property name under 25 characters');
+        var isSet = !!m[1], key = m[2];
+        var L = [
+          { id: 'rex', label: 'rex', props: [['name', "'Rex'"], ['sound', "'woof'"]] },
+          { id: 'DP', label: 'Dog.prototype', props: [['constructor', 'Dog'], ['bark', 'ƒ bark()'], ['legs', '4']] },
+          { id: 'AP', label: 'Animal.prototype', props: [['constructor', 'Animal'], ['eat', 'ƒ eat()'], ['legs', '2'], ['alive', 'true']] },
+          { id: 'OP', label: 'Object.prototype', props: [['constructor', 'Object'], ['toString', 'ƒ'], ['hasOwnProperty', 'ƒ'], ['valueOf', 'ƒ'], ['isPrototypeOf', 'ƒ'], ['propertyIsEnumerable', 'ƒ'], ['toLocaleString', 'ƒ'], ['__proto__', 'get/set']] },
+          { id: 'NULL', label: 'null', props: [] }
+        ];
+        var tags = ['', '', '', '', ''];
+        function lv() { return L.map(function (x, i) { return { id: x.id, label: x.label, tag: tags[i] || undefined }; }); }
+        function own(i, k, cls) {
+          var h = {}; if (k) h[k] = cls;
+          return { type: 'map', label: 'Own properties of ' + L[i].label, entries: L[i].props.map(function (p) { return p.slice(); }), hl: h };
+        }
+        function find(i) { for (var j = 0; j < L[i].props.length; j++) if (L[i].props[j][0] === key) return L[i].props[j][1]; return null; }
+        var frames = [];
+        if (!isSet) {
+          frames.push({ narr: 'We evaluate <code>rex.' + esc(key) + '</code>. The engine starts at <b>rex itself</b> and climbs the arrows until some object has an <b>own</b> property named <code>' + esc(key) + '</code>, or it reaches <code>null</code>.', parts: [chain(lv(), {}), { type: 'vars', label: 'Lookup state', vals: { key: key, levelsChecked: 0 } }] });
+          var hl = {}, ehl = {};
+          for (var i = 0; i < L.length; i++) {
+            if (i > 0) ehl[L[i - 1].id + '-' + L[i].id] = 'cur';
+            if (L[i].id === 'NULL') {
+              tags[i] = 'end of chain';
+              hl.NULL = 'bad';
+              frames.push({ narr: 'We followed the last arrow and hit <code>null</code>. Nobody in the chain owns <code>' + esc(key) + '</code>, so <code>rex.' + esc(key) + '</code> is <span class="c-r"><b>undefined</b></span>. Note: reading a missing property is <b>not</b> an error.', parts: [chain(lv(), JSON.parse(JSON.stringify(hl)), JSON.parse(JSON.stringify(ehl))), { type: 'vars', label: 'Lookup state', vals: { key: key, levelsChecked: i, result: 'undefined' }, hl: { result: 'bad' } }] });
+              frames.push({ narr: 'But be careful: <code>rex.' + esc(key) + '()</code> would throw <span class="c-r">TypeError: rex.' + esc(key) + ' is not a function</span> — because you tried to <b>call</b> <code>undefined</code>. And <code>rex.' + esc(key) + '.x</code> would throw "Cannot read properties of undefined". Optional chaining <code>rex.' + esc(key) + '?.()</code> avoids both.', parts: [chain(lv(), JSON.parse(JSON.stringify(hl))), note('Missing property → <b>undefined</b>. Using that undefined as a function or object → <b>TypeError</b>.')] });
+              break;
+            }
+            var val = find(i);
+            if (val !== null) {
+              tags[i] = 'found ✓';
+              hl[L[i].id] = 'ok';
+              frames.push({ narr: '<b>' + esc(L[i].label) + '</b> has an own property <code>' + esc(key) + '</code> → the lookup <span class="c-g">stops right here</span> and returns <b>' + esc(val) + '</b>. ' + (i === 0 ? 'It was the object\'s own property — zero climbing needed.' : 'We climbed ' + i + ' arrow' + (i > 1 ? 's' : '') + ' to get here.'), parts: [chain(lv(), JSON.parse(JSON.stringify(hl)), JSON.parse(JSON.stringify(ehl))), own(i, key, 'ok'), { type: 'vars', label: 'Lookup state', vals: { key: key, levelsChecked: i + 1, result: val }, hl: { result: 'ok' } }] });
+              var shadowed = [];
+              for (var j = i + 1; j < L.length; j++) { if (find(j) !== null) shadowed.push(L[j].label + '.' + key + ' = ' + find(j)); hl[L[j].id] = 'done'; tags[j] = 'never checked'; }
+              frames.push({ narr: 'First match wins. Everything above <b>' + esc(L[i].label) + '</b> is <b>never looked at</b>. ' + (shadowed.length ? 'That means <code>' + esc(shadowed.join(', ')) + '</code> is <b>shadowed</b> (hidden) for rex — it exists, but rex never sees it.' : 'Nothing higher up has this name anyway.') + (L[i].props[0] && find(i) && i > 0 && /ƒ/.test(val) ? ' If you call it, <code>this</code> will still be <b>rex</b>, not ' + esc(L[i].label) + '.' : ''), parts: [chain(lv(), JSON.parse(JSON.stringify(hl))), note(shadowed.length ? 'Shadowed: <code>' + esc(shadowed.join(', ')) + '</code>' : 'No shadowing in this lookup.', 'Shadowing check')] });
+              break;
+            }
+            tags[i] = 'no ✗';
+            var h2 = JSON.parse(JSON.stringify(hl)); h2[L[i].id] = 'cur';
+            frames.push({ narr: 'Does <b>' + esc(L[i].label) + '</b> own <code>' + esc(key) + '</code>? <span class="c-r">No.</span> Follow its <code>[[Prototype]]</code> arrow to <b>' + esc(L[i + 1].label) + '</b> and ask again.', parts: [chain(lv(), h2, JSON.parse(JSON.stringify(ehl))), own(i), { type: 'vars', label: 'Lookup state', vals: { key: key, levelsChecked: i + 1 } }] });
+            hl[L[i].id] = 'done';
+          }
+          return frames;
+        }
+        /* ---- write mode ---- */
+        frames.push({ narr: 'We run <code>rex.' + esc(key) + " = 'mine'</code>. A write is different from a read: the engine wants to put the value <b>on rex itself</b>. It only glances up the chain to see if some ancestor has a <b>setter</b> or a <b>read-only</b> property with that name.", parts: [chain(lv(), {}), own(0)] });
+        if (key === '__proto__') {
+          frames.push({ narr: 'Climbing… <b>Object.prototype</b> has an <b>accessor</b> (getter/setter) called <code>__proto__</code>. Because a setter exists up the chain, the engine <b>calls the setter</b> instead of creating an own property.', parts: [chain(lv(), { OP: 'cur' }), own(3, '__proto__', 'cur')] });
+          frames.push({ narr: "The <code>__proto__</code> setter tries to make the string <code>'mine'</code> rex's prototype. A string is not an object, so the setter <b>silently ignores</b> it. Nothing changes — no own property, chain untouched.", parts: [chain(lv(), { rex: 'sel' }), own(0)] });
+          frames.push({ narr: 'Lesson: <code>__proto__</code> is not a normal key — it is a legacy setter on <code>Object.prototype</code>. That is exactly what attackers abuse in <b>prototype pollution</b>. Use <code>Object.getPrototypeOf / setPrototypeOf</code> instead.', parts: [chain(lv(), { OP: 'bad' }), note('Assigning <code>obj.__proto__ = someObject</code> would actually <b>re-link</b> the chain.')] });
+          return frames;
+        }
+        var foundAt = -1;
+        for (var k = 0; k < 4; k++) if (find(k) !== null) { foundAt = k; break; }
+        frames.push({ narr: 'The engine checks the chain for a setter or a read-only property named <code>' + esc(key) + '</code>. ' + (foundAt > 0 ? 'It finds a plain data property on <b>' + esc(L[foundAt].label) + '</b> — a normal writable value, not a setter — so that does <b>not</b> block the write.' : foundAt === 0 ? 'rex already owns it, so it will simply be updated.' : 'Nothing found anywhere, so nothing blocks the write.'), parts: [chain(lv(), { rex: 'cur', DP: 'win', AP: 'win', OP: 'win' }), note('Setters and <code>writable:false</code> are the only things up the chain that can change a write.', 'Write rule')] });
+        L[0].props = L[0].props.filter(function (p) { return p[0] !== key; }).concat([[key, "'mine'"]]);
+        tags[0] = foundAt === 0 ? 'updated' : 'new own prop';
+        frames.push({ narr: foundAt === 0 ? 'rex already had an own <code>' + esc(key) + '</code>, so it is simply overwritten.' : 'A brand-new <b>own</b> property <code>' + esc(key) + "</code> = 'mine' is created <b>on rex</b>. " + (foundAt > 0 ? '<b>' + esc(L[foundAt].label) + '.' + esc(key) + '</b> is still there, unchanged.' : ''), parts: [chain(lv(), { rex: 'ok' }), own(0, key, 'ok')] });
+        tags[0] = 'found ✓';
+        frames.push({ narr: 'Now read <code>rex.' + esc(key) + "</code> again: the very first object checked (rex) owns it → <b>'mine'</b>. " + (foundAt > 0 ? 'The inherited value is now <b>shadowed</b> for rex.' : ''), parts: [chain(lv(), { rex: 'ok', DP: 'done', AP: 'done', OP: 'done' }), { type: 'vars', vals: { result: "'mine'" }, hl: { result: 'ok' } }] });
+        frames.push({ narr: 'Another dog <code>fido</code> that shares Dog.prototype still sees ' + (foundAt > 0 ? '<b>' + esc(find(foundAt)) + '</b>' : (foundAt === 0 ? 'its own value' : '<b>undefined</b>')) + ' — the prototype was <b>never modified</b>. Want the old value back on rex? <code>delete rex.' + esc(key) + '</code>.', parts: [chain([{ id: 'fido', label: 'fido' }, { id: 'DP', label: 'Dog.prototype' }, { id: 'AP', label: 'Animal.prototype' }, { id: 'OP', label: 'Object.prototype' }], { fido: 'cur' }, {}, 'fido shares the same prototypes'), note('Writes stay local. Reads are shared. That one asymmetry explains most prototype puzzles.')] });
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'Shadow, then un-shadow with delete', html: `<p>An own property hides the inherited one. Deleting the own property does <b>not</b> delete the inherited one — it just "uncovers" it. Notice that <code>delete</code> never climbs the chain: <code>delete dog.eats</code> when dog has no own <code>eats</code> does nothing and returns <code>true</code>.</p>
+${H.table(['Step', 'dog own props', 'dog.eats'], [['start', '{}', 'true (from animal)'], ["dog.eats = 'only veggies'", "{ eats: 'only veggies' }", H.c('g', "'only veggies'")], ['delete dog.eats', '{}', 'true (from animal again)'], ['delete dog.eats (again)', '{}', 'true — delete never touches animal']])}`, code: { lang: 'js', run: true, code: `const animal = { eats: true };
+const dog = Object.create(animal);
+dog.eats = 'only veggies';
+console.log(dog.eats);          // only veggies
+delete dog.eats;
+console.log(dog.eats);          // true
+console.log(delete dog.eats);   // true (nothing own to delete)
+console.log(animal.eats);       // true — prototype untouched` } },
+      { title: 'Arrays and functions are on the chain too', html: `<p>Where does <code>[1, 2, 3].map</code> come from? Not from the array — from <code>Array.prototype</code>. And <code>hasOwnProperty</code> comes from one level higher, <code>Object.prototype</code>.</p>
+${H.chips(['[1,2,3]', '→ Array.prototype (map, filter, push…)', '→ Object.prototype (toString, hasOwnProperty…)', '→ null'], { label: 'Chain of an array' })}`, code: { lang: 'js', run: true, code: `const arr = [1, 2, 3];
+console.log(Object.hasOwn(arr, 'map'));                  // false: not own
+console.log(Object.hasOwn(Array.prototype, 'map'));      // true: lives here
+console.log(Object.getPrototypeOf(arr) === Array.prototype);                  // true
+console.log(Object.getPrototypeOf(Array.prototype) === Object.prototype);     // true
+console.log(Object.keys(arr));    // [ '0', '1', '2' ] — indexes ARE own properties
+function greet() {}
+console.log(Object.getPrototypeOf(greet) === Function.prototype);  // true
+console.log(typeof greet.call);   // function — inherited from Function.prototype` } },
+      { title: 'Predict the output: the shared-array trap', html: `<p>Data that lives on a prototype is shared by <b>reading</b>. Pushing into an inherited array is a <b>read</b> of <code>items</code> (then a mutation of that one array) — <b>not</b> a write of the <code>items</code> property. So every child sees the change. Assigning <code>c.items = [...]</code> would be a write and would create an own copy instead.</p>
+<p>Answer: <code>[ 'a', 'b' ] [ 'a', 'b' ] true</code>, then after reassignment <code>[ 'z' ] [ 'a', 'b' ]</code>.</p>`, code: { lang: 'js', run: true, code: `const basket = { items: [] };          // ONE array on the prototype
+const a = Object.create(basket);
+const b = Object.create(basket);
+a.items.push('a');                       // read a.items (inherited) then mutate it
+b.items.push('b');
+console.log(a.items, b.items, a.items === b.items); // [ 'a', 'b' ] [ 'a', 'b' ] true
+a.items = ['z'];                         // a WRITE: own property on a
+console.log(a.items, b.items);           // [ 'z' ] [ 'a', 'b' ]` } },
+      { title: 'Primitives borrow from the chain too (auto-boxing)', html: `<p><code>'hi'.toUpperCase()</code> works even though strings are not objects. The engine temporarily wraps the primitive in a <code>String</code> object whose prototype is <code>String.prototype</code>, looks the method up there, calls it, and throws the wrapper away. That is also why <code>'hi'.custom = 1</code> silently does nothing useful: the property lands on a temporary wrapper.</p>`, code: { lang: 'js', run: true, code: `const s = 'hi';
+console.log(s.toUpperCase());                         // HI
+console.log(Object.getPrototypeOf(s) === String.prototype); // true
+console.log((42).toFixed(1));                        // 42.0 (Number.prototype)
+const t = 'hey';
+t.custom = 1;               // goes onto a throwaway wrapper (sloppy mode)
+console.log(t.custom);      // undefined` } },
+      { title: 'Expert: a setter up the chain hijacks the write', html: `<p>Rule 3 had two exceptions. Here is the setter one: if an ancestor defines a <b>setter</b> for the name, <code>child.x = v</code> calls that setter with <code>this = child</code> — no own <code>x</code> is created. And if an ancestor's property is <code>writable: false</code>, the write is refused (silently in sloppy mode, <code>TypeError</code> in strict mode, which includes all modules and classes).</p>`, code: { lang: 'js', run: true, code: `'use strict';
+const base = {
+  set temp(v) { this._t = v * 2; },   // setter on the prototype
+  get temp() { return this._t; }
+};
+const child = Object.create(base);
+child.temp = 10;                          // calls base's setter with this = child
+console.log(Object.hasOwn(child, 'temp'), child._t, child.temp); // false 20 20
+
+const frozenBase = Object.freeze({ id: 1 });   // id is now read-only
+const kid = Object.create(frozenBase);
+try { kid.id = 2; } catch (e) { console.log(e.constructor.name); } // TypeError
+console.log(kid.id);                     // 1 — still inherited
+Object.defineProperty(kid, 'id', { value: 2, writable: true, enumerable: true });
+console.log(kid.id);                     // 2 — defineProperty bypasses the rule` } }
+    ],
+    deepDive: `<p><b>The spec algorithms.</b> A read is <code>[[Get]](key, receiver)</code>: <code>OrdinaryGet</code> checks the object's own property; if absent, it calls <code>parent.[[Get]](key, receiver)</code> — note the <b>receiver</b> stays the original object, which is how inherited getters and methods see the right <code>this</code>. A write is <code>[[Set]](key, value, receiver)</code>: <code>OrdinarySet</code> looks for the property along the chain; if it finds an accessor it calls the setter with <code>this = receiver</code>; if it finds a non-writable data property it returns <code>false</code> (strict mode turns that into a <code>TypeError</code>); otherwise it defines an own data property on the receiver. <code>Object.defineProperty</code> skips all of this and always works on the target itself.</p>
+<p><b>Cycles are impossible.</b> <code>Object.setPrototypeOf(a, b)</code> after <code>b</code> already inherits from <code>a</code> throws <code>TypeError: Cyclic __proto__ value</code>, so lookups always terminate.</p>
+<p><b>Performance.</b> V8 does not literally walk the chain on every access. It caches the result per call site in an <b>inline cache</b> keyed by the object's hidden class (shape), and protects the assumption "the prototypes did not change" with <i>prototype validity cells</i>. Changing a prototype object (adding methods at runtime, <code>Object.setPrototypeOf</code> on a live object) invalidates those caches — MDN explicitly warns that changing [[Prototype]] is "a very slow operation". Set up prototypes once, at creation time (<code>Object.create</code>, <code>class</code>), and leave them alone. Long chains are fine for code clarity in practice because of these caches, but a megamorphic call site (dozens of different shapes) falls back to slow generic lookup.</p>
+<p><b>Prototype pollution (security).</b> If code does <code>target[key] = value</code> with attacker-controlled <code>key = '__proto__'</code> (typical in naive deep-merge, query-string parsers, config loaders), the write goes through the inherited <code>__proto__</code> setter and the attacker's object is merged into <code>Object.prototype</code> — now <b>every</b> object in the process "has" <code>isAdmin: true</code>. Real CVEs hit lodash (<code>merge</code>, <code>defaultsDeep</code>), jQuery <code>extend</code>, minimist and others. Defences: skip <code>__proto__</code>, <code>constructor</code> and <code>prototype</code> keys; use <code>Object.create(null)</code> or <code>Map</code> for dictionaries; check with <code>Object.hasOwn</code>; Node's <code>--disable-proto=delete</code> flag; <code>Object.freeze(Object.prototype)</code> in hardened apps. Note that <code>JSON.parse('{"__proto__": 1}')</code> creates a harmless <b>own</b> property named <code>__proto__</code> — the danger appears when that object is later copied with plain assignment.</p>
+<p><b>for...in cost.</b> <code>for...in</code> must enumerate enumerable keys of every object in the chain and de-duplicate shadowed names, which is slower and surprising. Built-in prototype methods are non-enumerable, which is the only reason <code>for...in</code> over a plain object does not list <code>toString</code>. If someone adds an enumerable property to <code>Object.prototype</code>, every <code>for...in</code> loop in the app suddenly sees it — another reason to prefer <code>Object.keys</code>.</p>`,
+    aiEra: `<p><b>What AI changes:</b> assistants will happily write a <code>deepMerge</code>, a config loader or a query-string parser for you in seconds — and the naive version they produce is very often <b>vulnerable to prototype pollution</b> because it copies every key with <code>target[key] = source[key]</code>. Reviewing generated code for chain-related bugs is now a bigger part of the job than writing the loop yourself.</p>
+<p><b>Use AI as a partner:</b> ask "<i>audit this merge function for prototype pollution and give me a failing test with a <code>__proto__</code> payload</i>", or "<i>generate 10 predict-the-output puzzles about shadowing and for...in, without answers</i>" for practice. Ask it to draw the chain for a given object as ASCII so you can check your mental model.</p>
+<p><b>Where AI goes wrong:</b> it frequently mixes up <code>prototype</code> and <code>__proto__</code> in explanations, claims that writes "go to the prototype", forgets that <code>for...in</code> includes inherited keys, and recommends <code>obj.hasOwnProperty(k)</code> where <code>Object.hasOwn(obj, k)</code> is safer (null-prototype objects).</p>
+<p><b>What you must still own:</b> the read-walks-up / write-stays-local rule, the ability to predict any lookup result in your head, and the security instinct to never let user-controlled keys reach a plain object without filtering.</p>`,
+    problems: [{
+      title: 'Where Does This Property Live?',
+      level: 'Easy', tags: ['prototype chain', 'Object.hasOwn', 'getPrototypeOf'], companies: ['Google', 'Atlassian', 'Flipkart'],
+      statement: `<p>Write <code>findOwner(obj, key)</code> that returns <code>{ owner, depth }</code>: the object in <code>obj</code>'s prototype chain that has <code>key</code> as an <b>own</b> property, and how many <code>[[Prototype]]</code> hops it took (0 = the object itself). Return <code>null</code> if no object in the chain owns <code>key</code>. It must work for non-enumerable properties, symbol keys, and null-prototype objects.</p>`,
+      constraints: `Chain length ≤ 100. <code>key</code> is a string or symbol. Do not use <code>for...in</code>.`,
+      example: `<p><code>findOwner(rex, 'legs')</code> where rex → Dog.prototype (has legs) → Animal.prototype (has legs) → Object.prototype → null</p>
+<p>Output: ${H.c('g', '{ owner: Dog.prototype, depth: 1 }')} — the <b>first</b> owner wins (Animal.prototype.legs is shadowed). <code>findOwner(rex, 'toString')</code> → ${H.c('g', 'depth 3')}; <code>findOwner(rex, 'fly')</code> → ${H.c('r', 'null')}.</p>`,
+      brute: {
+        why: `<p>A first idea is to collect keys with <code>Object.keys(o)</code> at each level and test <code>includes(key)</code>. It is O(k) per level instead of O(1), and it is <b>wrong</b>: <code>Object.keys</code> skips non-enumerable properties (every built-in method, every class method!) and symbol keys, so it would say <code>toString</code> lives nowhere.</p>`,
+        code: { lang: 'js', run: true, code: `function findOwnerBrute(obj, key) {
+  let o = obj, depth = 0;
+  while (o !== null) {
+    if (Object.keys(o).includes(key)) return { owner: o, depth };  // misses non-enumerables!
+    o = Object.getPrototypeOf(o);
+    depth++;
+  }
+  return null;
+}
+const animal = { eats: true };
+const dog = Object.create(animal);
+console.log(findOwnerBrute(dog, 'eats').depth);   // 1  (works for enumerable)
+console.log(findOwnerBrute(dog, 'toString'));     // null  WRONG: toString is non-enumerable` }
+      },
+      mcq: { q: 'Which check correctly answers "does THIS object (not its ancestors) have key k", even for objects created with Object.create(null)?', options: ['<code>k in o</code>', '<code>o.hasOwnProperty(k)</code>', '<code>Object.hasOwn(o, k)</code>', '<code>o[k] !== undefined</code>'], answer: 2, explain: '<code>in</code> and <code>o[k]</code> climb the chain; <code>o.hasOwnProperty</code> does not exist on null-prototype objects. <code>Object.hasOwn</code> is a static function, own-only, and works on anything.' },
+      hints: [
+        `<p>Hint 1: the chain is just a linked list. "next" is <code>Object.getPrototypeOf(o)</code> and the list ends at <code>null</code>.</p>`,
+        `<p>Hint 2: at each node ask an <b>own-only</b> question that sees non-enumerable and symbol keys: <code>Object.hasOwn(o, key)</code> (or <code>Object.getOwnPropertyDescriptor(o, key) !== undefined</code>).</p>`,
+        `<p>Hint 3: recipe — <code>o = obj, depth = 0</code>; while <code>o !== null</code>: if own → return; else <code>o = getPrototypeOf(o)</code>, <code>depth++</code>. After the loop return null. Primitives: wrap with <code>Object(obj)</code> first.</p>`
+      ],
+      solution: {
+        approach: `<p>Walk the linked list of prototypes with <code>Object.getPrototypeOf</code>, asking <code>Object.hasOwn</code> at each node. The first hit is the owner (that is precisely the object a normal property read would use). <code>Object(obj)</code> lets primitives like <code>'abc'</code> work too.</p>`,
+        code: { lang: 'js', run: true, code: `function findOwner(obj, key) {
+  if (obj === null || obj === undefined) return null;
+  let o = Object(obj);          // box primitives so 'abc' works
+  let depth = 0;
+  while (o !== null) {
+    if (Object.hasOwn(o, key)) return { owner: o, depth };  // own-only, sees non-enumerables
+    o = Object.getPrototypeOf(o);
+    depth++;
+  }
+  return null;                  // reached the end of the chain
+}
+
+class Animal { eat() {} }
+Animal.prototype.legs = 2;
+class Dog extends Animal { bark() {} }
+Dog.prototype.legs = 4;
+const rex = new Dog();
+rex.name = 'Rex';
+
+const r1 = findOwner(rex, 'legs');
+console.log(r1.owner === Dog.prototype, r1.depth);        // true 1
+console.log(findOwner(rex, 'eat').depth);                  // 2
+console.log(findOwner(rex, 'toString').owner === Object.prototype); // true
+console.log(findOwner(rex, 'fly'));                        // null
+const sym = Symbol('tag');
+Animal.prototype[sym] = 'animal';
+console.log(findOwner(rex, sym).depth);                    // 2
+console.log(findOwner(Object.create(null), 'x'));          // null (no crash)
+console.log(findOwner('abc', 'toUpperCase').owner === String.prototype); // true` },
+        dry: { head: ['depth', 'o', 'Object.hasOwn(o, "legs")', 'action'], rows: [['0', 'rex', 'false', 'climb'], ['1', 'Dog.prototype', H.c('g', 'true'), H.c('g', 'return { Dog.prototype, 1 }')], ['—', 'Animal.prototype', 'never checked', 'shadowed']] },
+        complexity: `<p>Time O(d) where d = chain depth (each <code>hasOwn</code> is O(1) on average). Space O(1).</p>`,
+        followUps: ['Return the property <b>descriptor</b> too, so you can tell a getter from a data property.', 'List every object in the chain that owns <code>key</code> (all shadowed copies).', 'How would a Proxy in the chain change your answer? (its <code>getOwnPropertyDescriptor</code> trap can lie)']
+      }
+    }]
+  });
+
+  /* ======================================================================
+     TOPIC 2 — prototype vs __proto__ vs constructor (the triangle)
+     ====================================================================== */
+  var TRI = {
+    rex: { label: 'rex', x: 85, y: 56, own: { name: "'Rex'" }, proto: 'DogP' },
+    DogP: { label: 'Dog.prototype', x: 75, y: 32, own: { constructor: 'Dog' }, proto: 'ObjP' },
+    Dog: { label: 'Dog', x: 45, y: 56, own: { prototype: 'DogP' }, proto: 'FnP' },
+    FnP: { label: 'Function.prototype', x: 30, y: 32, own: { constructor: 'Fn' }, proto: 'ObjP' },
+    Fn: { label: 'Function', x: 10, y: 56, own: { prototype: 'FnP' }, proto: 'FnP' },
+    Obj: { label: 'Object', x: 12, y: 8, own: { prototype: 'ObjP' }, proto: 'FnP' },
+    ObjP: { label: 'Object.prototype', x: 50, y: 8, own: { constructor: 'Obj' }, proto: 'NULL' },
+    NULL: { label: 'null', x: 88, y: 8, own: {}, proto: null }
+  };
+  function triGraph(hl, ehl, tags) {
+    var nodes = [], eMap = {}, edges = [];
+    Object.keys(TRI).forEach(function (id) {
+      var n = TRI[id];
+      nodes.push({ id: id, label: n.label, x: n.x, y: n.y, shape: id === 'NULL' ? undefined : 'box' });
+      if (n.proto) eMap[id + '-' + n.proto] = ['__proto__'];
+    });
+    Object.keys(TRI).forEach(function (id) {
+      Object.keys(TRI[id].own).forEach(function (k) {
+        if (k === 'name') return;
+        var key = id + '-' + TRI[id].own[k];
+        (eMap[key] = eMap[key] || []).unshift(k);
+      });
+    });
+    Object.keys(eMap).forEach(function (k) { var p = k.split('-'); edges.push([p[0], p[1], eMap[k].join(' & ')]); });
+    return { type: 'graph', label: 'The prototype triangle (edge text = which property points there)', directed: true, height: 64, nodes: nodes, edges: edges, hl: hl || {}, ehl: ehl || {}, tags: tags || {} };
+  }
+
+  topics.push({
+    title: 'prototype vs __proto__ vs constructor: The Triangle',
+    analogy: `<p>Think of a <b>school</b> and its <b>rule book</b>.</p>
+<ul>
+<li>The school <b>owns</b> one master rule book and gives a reference to it to every new student. "The book this school <b>hands out</b>" = <code>School.prototype</code>. Only schools (functions) have this.</li>
+<li>Each student carries "the book I <b>was given</b>" = the student's <code>__proto__</code> (properly: <code>Object.getPrototypeOf(student)</code>). Every object has this.</li>
+<li>Printed inside the book's cover: "issued by <b>this school</b>" = <code>School.prototype.constructor</code>, pointing back to the school.</li>
+</ul>
+<p>Same book, three different <b>directions</b> of pointing. Mixing up "the book I hand out" with "the book I was given" is the #1 prototype confusion in interviews.</p>`,
+    explain: `<p>There are three different things with confusingly similar names. Learn them as three arrows:</p>
+${H.table(['Name', 'Who has it', 'What it points to', 'Used by'], [
+  ['<code>F.prototype</code>', 'Functions that can be called with <code>new</code> (normal functions, classes)', 'The object that will become the <code>[[Prototype]]</code> of objects created by <code>new F()</code>', 'Only by <code>new</code> (and <code>instanceof</code>)'],
+  ['<code>obj.__proto__</code>', 'Every object (it is an inherited getter/setter on <code>Object.prototype</code>)', 'That object\'s <b>own</b> hidden <code>[[Prototype]]</code> link — the next stop in its chain', 'Property lookup, every time'],
+  ['<code>F.prototype.constructor</code>', 'The default prototype object of every function', 'Back to the function <code>F</code>', 'Nothing in the engine — it is just a convenience label']
+])}
+<h4>The one sentence to memorise</h4>
+<p><b><code>new Dog()</code> creates an object whose <code>__proto__</code> is <code>Dog.prototype</code>.</b> So <code>rex.__proto__ === Dog.prototype</code> is <code>true</code>, but <code>rex.prototype</code> is <code>undefined</code> (rex is not a function) and <code>Dog.__proto__</code> is <code>Function.prototype</code> (Dog <i>itself</i> is an object created by the <code>Function</code> machinery).</p>
+<h4><code>__proto__</code> today</h4>
+<p><code>obj.__proto__</code> is a <b>legacy</b> accessor kept for web compatibility (spec Annex B). It does not exist on objects whose chain lacks <code>Object.prototype</code> (e.g. <code>Object.create(null)</code>). Modern code uses:</p>
+<ul>
+<li><code>Object.getPrototypeOf(obj)</code> — read the link.</li>
+<li><code>Object.setPrototypeOf(obj, proto)</code> — change it (slow, avoid in hot code).</li>
+<li><code>Object.create(proto)</code> — make a new object with that link from the start (best).</li>
+<li>In object literals, <code>{ __proto__: proto, x: 1 }</code> is <b>standard syntax</b> that sets the prototype at creation — that one is fine.</li>
+</ul>
+<h4><code>constructor</code> is just a normal property</h4>
+<p>Every ordinary function gets a fresh object in <code>F.prototype</code> with one non-enumerable property: <code>constructor: F</code>. Instances inherit it, so <code>rex.constructor === Dog</code>. But it is only a convention: you can overwrite it, and if you replace <code>Dog.prototype</code> with a new object literal you <b>lose</b> it (then <code>rex.constructor</code> climbs further up and finds <code>Object</code>!). Never use <code>.constructor</code> for security or type checks.</p>
+<h4>Who has a <code>prototype</code> property?</h4>
+${H.table(['Kind of function', 'Has <code>.prototype</code>?', 'Can use <code>new</code>?'], [
+  ['<code>function F() {}</code>', H.c('g', 'yes'), H.c('g', 'yes')],
+  ['<code>class C {}</code>', H.c('g', 'yes (non-writable)'), H.c('g', 'yes — only with new')],
+  ['arrow <code>() =&gt; {}</code>', H.c('r', 'no'), H.c('r', 'no — TypeError')],
+  ['method shorthand <code>{ m() {} }</code>, class methods', H.c('r', 'no'), H.c('r', 'no')],
+  ['<code>async function</code>', H.c('r', 'no'), H.c('r', 'no')],
+  ['<code>function*</code> generator', H.c('y', 'yes (prototype of its iterators)'), H.c('r', 'no')],
+  ['built-in <code>Math.max</code>, bound functions', H.c('r', 'no'), 'bound: yes if target can']
+])}
+<h4>The top of the world</h4>
+<p>Functions are objects too, so they have chains: <code>Dog → Function.prototype → Object.prototype → null</code>. And the two built-in giants point at each other: <code>Object</code> is a function (so <code>Object.__proto__ === Function.prototype</code>) and <code>Function.prototype</code> is an object (so its <code>__proto__</code> is <code>Object.prototype</code>). Hence the famous pair: <code>Object instanceof Function</code> and <code>Function instanceof Object</code> are <b>both true</b>. Even <code>Function.__proto__ === Function.prototype</code> is true — Function is its own constructor.</p>`,
+    clues: [
+      '"What is the difference between <code>prototype</code> and <code>__proto__</code>?" — the classic opener; answer with "hands out" vs "was given".',
+      '"Predict: <code>rex.__proto__ === Dog.prototype</code>, <code>Dog.__proto__ === ?</code>, <code>rex.prototype</code>?" → the triangle diagram.',
+      '"Why is <code>rex.constructor</code> suddenly <code>Object</code>?" → someone replaced <code>Dog.prototype</code> with a literal and lost <code>constructor</code>.',
+      '"Is <code>Function instanceof Object</code>? Is <code>Object instanceof Function</code>?" → both true; draw the top of the triangle.',
+      '"Can you call <code>new</code> on an arrow function / class method?" → no <code>prototype</code>, no <code>[[Construct]]</code>.',
+      '"Should I use <code>__proto__</code>?" → legacy accessor; use <code>Object.getPrototypeOf / create</code>.'
+    ],
+    code: { lang: 'js', run: true, title: 'All three arrows, verified (runnable)', code: `function Dog(name) { this.name = name; }
+const rex = new Dog('Rex');
+
+// 1) prototype: the object Dog HANDS OUT to its instances
+console.log(typeof Dog.prototype);                        // object
+// 2) [[Prototype]] (__proto__): the object rex WAS GIVEN
+console.log(Object.getPrototypeOf(rex) === Dog.prototype); // true
+console.log(rex.__proto__ === Dog.prototype);              // true (legacy accessor)
+// 3) constructor: points back from the prototype to the function
+console.log(Dog.prototype.constructor === Dog);            // true
+console.log(rex.constructor === Dog);                      // true (inherited, not own)
+console.log(Object.hasOwn(rex, 'constructor'));            // false
+
+// rex is not a function, so it has no 'prototype' property
+console.log(rex.prototype);                                // undefined
+// Dog itself is a function object -> its own chain
+console.log(Object.getPrototypeOf(Dog) === Function.prototype);              // true
+console.log(Object.getPrototypeOf(Function.prototype) === Object.prototype); // true
+// the top of the world
+console.log(Object instanceof Function, Function instanceof Object);         // true true
+console.log(Object.getPrototypeOf(Function) === Function.prototype);         // true` },
+    viz: {
+      title: 'Follow a property path through the triangle',
+      input: 'rex.__proto__.__proto__.constructor',
+      inputLabel: 'Path from rex / Dog / Object / Function using .__proto__ .prototype .constructor — or compare two paths with ===',
+      gen: function (input) {
+        var src = String(input === undefined ? 'rex.__proto__.__proto__.constructor' : input).trim();
+        var START = { rex: 'rex', Dog: 'Dog', Function: 'Fn', Object: 'Obj' };
+        var sides = src.split('===');
+        if (sides.length > 2) throw new Error('Use at most one === comparison');
+        var paths = sides.map(function (sd) {
+          var toks = sd.trim().split('.');
+          if (!START[toks[0]]) throw new Error('Start with rex, Dog, Object or Function — e.g.  Dog.__proto__ === Function.prototype');
+          if (toks.length > 9) throw new Error('Use at most 8 steps');
+          toks.slice(1).forEach(function (t) { if (['__proto__', 'prototype', 'constructor'].indexOf(t) < 0) throw new Error('Each step must be .__proto__, .prototype or .constructor (got "' + t + '")'); });
+          return toks;
+        });
+        var frames = [];
+        function lbl(v) { return v === 'UNDEF' ? 'undefined' : TRI[v].label; }
+        function walk(toks, sideName) {
+          var cur = START[toks[0]], expr = toks[0];
+          frames.push({ narr: (sideName ? sideName + ': ' : '') + 'Start at <b>' + esc(TRI[cur].label) + '</b>.' + (cur === 'rex' ? ' rex is a plain object made by <code>new Dog()</code>.' : ' This is a <b>function</b> — and functions are objects too, so they have their own chain.'), parts: [triGraph(one(cur, 'cur')), { type: 'vars', label: 'Evaluating', vals: { expression: expr, value: lbl(cur) }, hl: { value: 'cur' } }] });
+          for (var i = 1; i < toks.length; i++) {
+            var k = toks[i], before = expr;
+            expr += '.' + k;
+            if (cur === 'UNDEF' || cur === 'NULL') {
+              frames.push({ narr: '<span class="c-r"><b>TypeError!</b></span> <code>' + esc(before) + '</code> is <b>' + (cur === 'NULL' ? 'null' : 'undefined') + '</b>, and you cannot read <code>.' + esc(k) + '</code> of ' + (cur === 'NULL' ? 'null' : 'undefined') + '. The evaluation stops here.', parts: [triGraph(cur === 'NULL' ? { NULL: 'bad' } : {}), { type: 'vars', label: 'Evaluating', vals: { expression: expr, value: 'TypeError' }, hl: { value: 'bad' } }] });
+              return 'ERR';
+            }
+            var hl = {}, ehl = {}, tags = {}, narr;
+            if (k === '__proto__') {
+              var nxt = TRI[cur].proto;
+              hl[cur] = 'cur'; hl[nxt] = 'ok'; ehl[cur + '-' + nxt] = 'ok';
+              tags.ObjP = cur === 'ObjP' ? 'getter lives here' : 'getter found here';
+              narr = cur === 'ObjP' ? '<b>Object.prototype</b> is where the <code>__proto__</code> <b>getter</b> itself lives. It returns Object.prototype\'s own hidden <code>[[Prototype]]</code> link → <b>null</b> (the end of every chain).' : '<b>' + esc(TRI[cur].label) + '</b> has no own <code>__proto__</code>. It inherits a <b>getter</b> from <code>Object.prototype</code> that simply returns the object\'s hidden <code>[[Prototype]]</code> link → <b>' + esc(lbl(nxt)) + '</b>.';
+              cur = nxt;
+            } else {
+              var o = cur, path = [];
+              while (o !== 'NULL' && TRI[o].own[k] === undefined) { path.push(TRI[o].label); hl[o] = 'win'; o = TRI[o].proto; }
+              if (o === 'NULL') {
+                hl[cur] = 'cur';
+                narr = 'Look for <code>' + esc(k) + '</code>: checked ' + esc(path.join(' → ')) + ' → null. <span class="c-r">Nobody owns it</span>, so the value is <b>undefined</b>.' + (k === 'prototype' ? ' Only <b>functions</b> carry a <code>prototype</code> property; ' + esc(TRI[cur].label) + ' is not a constructor function.' : '');
+                cur = 'UNDEF';
+              } else {
+                var val = TRI[o].own[k];
+                hl[cur] = 'cur'; hl[o] = o === cur ? 'cur' : 'win'; hl[val] = 'ok'; ehl[o + '-' + val] = 'ok';
+                narr = (o === cur ? '<b>' + esc(TRI[cur].label) + '</b> owns <code>' + esc(k) + '</code> directly' : '<b>' + esc(TRI[cur].label) + '</b> does not own <code>' + esc(k) + '</code>; climbing ' + esc(path.join(' → ')) + ' we find it on <b>' + esc(TRI[o].label) + '</b> (inherited)') + ' → it points to <b>' + esc(TRI[val].label) + '</b>.' + (k === 'constructor' && o !== cur ? ' This is why <code>.constructor</code> works on instances even though they never own it.' : '');
+                cur = val;
+              }
+            }
+            frames.push({ narr: narr, parts: [triGraph(hl, ehl, tags), { type: 'vars', label: 'Evaluating', vals: { expression: expr, value: lbl(cur) }, hl: { value: cur === 'UNDEF' ? 'bad' : 'ok' } }] });
+          }
+          return cur;
+        }
+        var res = [];
+        paths.forEach(function (t, i) { res.push(walk(t, paths.length > 1 ? (i === 0 ? 'Left side' : 'Right side') : '')); });
+        if (paths.length === 2) {
+          var eq = res[0] === res[1] && res[0] !== 'ERR';
+          var hl2 = {}; if (res[0] !== 'ERR' && res[0] !== 'UNDEF') hl2[res[0]] = eq ? 'ok' : 'bad'; if (res[1] !== 'ERR' && res[1] !== 'UNDEF') hl2[res[1]] = eq ? 'ok' : 'bad';
+          frames.push({ narr: res[0] === 'ERR' || res[1] === 'ERR' ? 'One side threw a TypeError, so the comparison never happens.' : '<code>===</code> on objects compares <b>identity</b> (same box in memory). Left = <b>' + esc(lbl(res[0])) + '</b>, right = <b>' + esc(lbl(res[1])) + '</b> → ' + (eq ? '<span class="c-g"><b>true</b></span>' : '<span class="c-r"><b>false</b></span>') + '.', parts: [triGraph(hl2), { type: 'vars', vals: { left: res[0] === 'ERR' ? 'TypeError' : lbl(res[0]), right: res[1] === 'ERR' ? 'TypeError' : lbl(res[1]), result: res[0] === 'ERR' || res[1] === 'ERR' ? 'TypeError' : String(eq) }, hl: { result: eq ? 'ok' : 'bad' } }] });
+        } else if (res[0] !== 'ERR') {
+          frames.push({ narr: 'Final answer: <code>' + esc(src) + '</code> → <b>' + esc(lbl(res[0])) + '</b>. Try <code>Dog.__proto__ === Function.prototype</code>, <code>rex.prototype</code>, <code>Function.__proto__ === Function.prototype</code> or <code>Object.__proto__.__proto__.__proto__</code>.', parts: [triGraph(res[0] === 'UNDEF' ? {} : one(res[0], 'sel')), note('<code>prototype</code> = what a function <b>hands out</b>. <code>__proto__</code> = what an object <b>was given</b>. <code>constructor</code> = arrow back from a prototype to its function.', 'Remember')] });
+        }
+        while (frames.length < 4) frames.push({ narr: 'Every object (including functions) has exactly one <code>__proto__</code> arrow. Only functions have a <code>prototype</code> arrow. Only prototype objects have a <code>constructor</code> arrow (by default).', parts: [triGraph({}), note('Edit the path above and run again to explore.', 'Tip')] });
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'Predict: replacing the whole prototype loses constructor', html: `<p>Writing <code>Dog.prototype = { bark() {} }</code> swaps in a brand-new plain object. That object never had a <code>constructor</code> property, so <code>rex.constructor</code> climbs to <code>Object.prototype.constructor</code> → <code>Object</code>. Fix: add it back as a <b>non-enumerable</b> property, or just add methods one by one (<code>Dog.prototype.bark = ...</code>), or use <code>class</code>.</p>
+${H.table(['Line', 'rex.constructor'], [['Default prototype', H.c('g', 'Dog')], ['After Dog.prototype = { bark }', H.c('r', 'Object')], ['After defineProperty fix', H.c('g', 'Dog')]])}`, code: { lang: 'js', run: true, code: `function Dog() {}
+console.log(new Dog().constructor === Dog);   // true
+
+Dog.prototype = { bark() { return 'woof'; } }; // whole object replaced
+const rex = new Dog();
+console.log(rex.bark());                       // woof
+console.log(rex.constructor === Dog);          // false
+console.log(rex.constructor === Object);       // true  (climbed to Object.prototype)
+
+Object.defineProperty(Dog.prototype, 'constructor', { value: Dog, writable: true, configurable: true, enumerable: false });
+console.log(rex.constructor === Dog);          // true again
+console.log(Object.keys(Dog.prototype));       // [ 'bark' ] — constructor stays hidden` } },
+      { title: 'Predict: old instances keep the OLD prototype', html: `<p><code>new</code> copies the <b>reference</b> in <code>F.prototype</code> into the new object at creation time. Re-assigning <code>F.prototype</code> later does not re-link objects that already exist. But <b>mutating</b> the shared prototype object is visible to everyone who links to it.</p>
+${H.table(['Object', 'linked to', 'a.hello()', 'b.hello()'], [['a (made first)', 'old prototype object', "'old'", '—'], ['b (made after swap)', 'new prototype object', '—', "'new'"]])}`, code: { lang: 'js', run: true, code: `function F() {}
+F.prototype.hello = function () { return 'old'; };
+const a = new F();
+F.prototype = { hello() { return 'new'; } };   // swap the object
+const b = new F();
+console.log(a.hello(), b.hello());     // old new
+console.log(a instanceof F);           // false! a's chain lacks the NEW F.prototype
+console.log(b instanceof F);           // true` } },
+      { title: 'Arrow functions, methods and async functions have no prototype', html: `<p>Only functions that can be <b>constructed</b> get a <code>prototype</code> property. Arrow functions, method shorthand, class methods and async functions are "callable only", so <code>new</code> on them throws <code>TypeError: ... is not a constructor</code>. Classes have a prototype but <b>throw if called without</b> <code>new</code>.</p>`, code: { lang: 'js', run: true, code: `const arrow = () => {};
+const obj = { method() {} };
+async function load() {}
+class Cat {}
+console.log(arrow.prototype, obj.method.prototype, load.prototype); // undefined undefined undefined
+console.log(typeof Cat.prototype);  // object
+try { new arrow(); } catch (e) { console.log(e.message); }   // arrow is not a constructor
+try { Cat(); } catch (e) { console.log(e.message); }         // Class constructor Cat cannot be invoked without 'new'` } },
+      { title: '__proto__ in a literal vs __proto__ from JSON', html: `<p>In an object <b>literal</b>, <code>__proto__: x</code> is special syntax that <b>sets the prototype</b>. In <code>JSON.parse</code> it is just an ordinary <b>own</b> key — harmless by itself, dangerous once a naive merge copies it with <code>target[key] = value</code> (that assignment hits the inherited setter).</p>`, code: { lang: 'js', run: true, code: `const base = { greet() { return 'hi'; } };
+const lit = { __proto__: base, x: 1 };        // literal syntax: sets [[Prototype]]
+console.log(Object.getPrototypeOf(lit) === base, Object.hasOwn(lit, '__proto__')); // true false
+
+const parsed = JSON.parse('{"__proto__": {"admin": true}}');
+console.log(Object.hasOwn(parsed, '__proto__'));        // true — just an own key
+console.log(Object.getPrototypeOf(parsed) === Object.prototype); // true — not re-linked
+
+const copy = {};
+for (const k of Object.keys(parsed)) copy[k] = parsed[k]; // naive copy hits the setter
+console.log(copy.admin, Object.hasOwn(copy, 'admin'));    // true false  (inherited!)` } },
+      { title: 'Functions are objects: Dog has its own chain', html: `<p>Because <code>Dog</code> is itself an object, <code>Dog.call</code>, <code>Dog.bind</code> and <code>Dog.name</code> come from somewhere: <code>call</code>/<code>bind</code> from <code>Function.prototype</code>; <code>name</code> and <code>length</code> are own properties. Static-like helpers you attach (<code>Dog.create = ...</code>) are own properties of the function — exactly what ES6 <code>static</code> does.</p>`, code: { lang: 'js', run: true, code: `function Dog(name, age) {}
+Dog.create = function (n) { return new Dog(n); };   // a "static" method
+console.log(Object.hasOwn(Dog, 'create'), Object.hasOwn(Dog, 'prototype')); // true true
+console.log(Dog.name, Dog.length);                  // Dog 2
+console.log(Object.hasOwn(Dog, 'call'));            // false — from Function.prototype
+console.log(Object.getPrototypeOf(Object.getPrototypeOf(Dog)) === Object.prototype); // true` } }
+    ],
+    deepDive: `<p><b>Internal slots vs properties.</b> <code>[[Prototype]]</code> is an <b>internal slot</b>, not a property. You cannot see it with <code>Object.keys</code>. <code>__proto__</code> is an accessor property defined once, on <code>Object.prototype</code>, whose getter is roughly <code>function () { return Object.getPrototypeOf(this); }</code>. That is why <code>Object.create(null).__proto__</code> is <code>undefined</code>: the getter is not in that chain. <code>F.prototype</code>, by contrast, is a completely ordinary data property (writable for functions, non-writable/non-configurable for classes).</p>
+<p><b>How <code>new</code> reads <code>prototype</code>.</b> <code>OrdinaryCreateFromConstructor</code> does <code>Get(F, 'prototype')</code> at construction time; if the result is not an object (e.g. someone set <code>F.prototype = 42</code>), the engine silently falls back to the realm's <code>%Object.prototype%</code>. With <code>Reflect.construct(F, args, NewTarget)</code> the prototype is read from <code>NewTarget</code>, not <code>F</code> — this is precisely how <code>class B extends A</code> makes <code>A</code>'s constructor build an object linked to <code>B.prototype</code>.</p>
+<p><b>Built-in oddities.</b> <code>Function.prototype</code> is itself a <b>function</b> (callable, returns undefined) but has no <code>prototype</code> property. <code>Array.prototype</code> is itself an array (<code>Array.isArray(Array.prototype) === true</code>). <code>Object.prototype</code> is an <i>immutable prototype exotic object</i>: <code>Object.setPrototypeOf(Object.prototype, {})</code> throws — the chain's root cannot be re-pointed. <code>Function.prototype.constructor === Function</code> and <code>Function.__proto__ === Function.prototype</code>: the bootstrap circle is created by the engine at startup, not by user-level JS.</p>
+<p><b>Cross-realm.</b> Each iframe, <code>vm</code> context, or worker has its own set of intrinsics, so <code>iframeArray.__proto__ !== Array.prototype</code> of the parent page. Identity checks across realms fail — which is why <code>Array.isArray</code> exists (see the instanceof topic).</p>
+<p><b>Performance.</b> <code>Object.setPrototypeOf</code> and assigning <code>__proto__</code> on an existing object force V8 to change the object's hidden class map and can push it into slow "dictionary mode"; it also invalidates prototype validity cells used by inline caches across the app. Creating with the right prototype from the start (<code>Object.create</code>, <code>{ __proto__: p }</code> literal, <code>class</code>) is fast.</p>`,
+    aiEra: `<p><b>What AI changes:</b> "explain prototype vs __proto__" is a question any chatbot answers instantly — so interviewers now go one level deeper: predict-the-output chains like <code>Object.__proto__.__proto__.__proto__</code>, "why did <code>constructor</code> change?", or "what does <code>new</code> read and when?". Memorised definitions no longer impress; a correct mental diagram does.</p>
+<p><b>Use AI as a partner:</b> ask it to "<i>generate 15 expressions over Dog/rex/Object/Function and their expected values; I'll answer first</i>", then verify every answer in a real console — never trust the AI's answer key blindly. Ask for an ASCII triangle diagram for a 3-level class hierarchy and check every arrow.</p>
+<p><b>Where AI goes wrong:</b> it often says "<code>rex.prototype</code> is <code>Dog.prototype</code>" (wrong — undefined), claims arrow functions have a prototype, or writes legacy <code>obj.__proto__ = x</code> in new code. Some generated code still sets <code>Child.prototype = Parent.prototype</code> (shared object — a bug).</p>
+<p><b>What you must still own:</b> drawing the triangle from memory in 30 seconds, explaining why <code>Object instanceof Function</code> and <code>Function instanceof Object</code> are both true, and choosing <code>Object.getPrototypeOf</code>/<code>Object.create</code> over <code>__proto__</code> in code you sign off on.</p>`,
+    problems: [{
+      title: 'Print the Prototype Chain',
+      level: 'Easy', tags: ['prototype chain', 'constructor', 'getPrototypeOf'], companies: ['Microsoft', 'Uber', 'Swiggy'],
+      statement: `<p>Write <code>describeChain(value)</code> that returns a string like <code>"Dog.prototype -&gt; Animal.prototype -&gt; Object.prototype -&gt; null"</code> describing every object in the prototype chain of <code>value</code> (starting from <code>value</code>'s prototype, not <code>value</code> itself). Name a prototype <code>X.prototype</code> only when it truly is the <code>prototype</code> of its <code>constructor</code>; otherwise print <code>[object]</code>. Primitives should be boxed; <code>null</code>/<code>undefined</code> return <code>"null"</code>.</p>`,
+      constraints: `Chain length ≤ 50. Do not trust <code>constructor</code> blindly: it may be missing, inherited, or lie.`,
+      example: `<p><code>describeChain(new Dog())</code> → ${H.c('g', '"Dog.prototype -&gt; Animal.prototype -&gt; Object.prototype -&gt; null"')}<br><code>describeChain(Object.create({ a: 1 }))</code> → ${H.c('g', '"[object] -&gt; Object.prototype -&gt; null"')} — the middle object is an anonymous literal; its inherited <code>constructor</code> is <code>Object</code>, but <code>Object.prototype</code> is not that literal, so we refuse to call it <code>Object.prototype</code>.</p>`,
+      brute: {
+        why: `<p>The tempting version prints <code>p.constructor.name + '.prototype'</code> at each step. It lies whenever <code>constructor</code> is <b>inherited</b> (an anonymous object prints as "Object.prototype" twice), crashes on objects without a constructor (<code>Object.create(null)</code>), and is fooled by someone overwriting <code>constructor</code>.</p>`,
+        code: { lang: 'js', run: true, code: `function describeChainBrute(v) {
+  const parts = [];
+  let p = Object.getPrototypeOf(Object(v));
+  while (p) {
+    parts.push(p.constructor.name + '.prototype');   // trusts constructor blindly
+    p = Object.getPrototypeOf(p);
+  }
+  return parts.concat('null').join(' -> ');
+}
+console.log(describeChainBrute(Object.create({ a: 1 })));
+// Object.prototype -> Object.prototype -> null   (WRONG: first one is an anonymous object)` }
+      },
+      mcq: { q: 'For <code>const o = Object.create({ a: 1 })</code>, what is <code>Object.getPrototypeOf(o).constructor</code>?', options: ['<code>undefined</code>', '<code>Object</code> — inherited from <code>Object.prototype</code>', 'The literal <code>{ a: 1 }</code>', 'It throws'], answer: 1, explain: 'The literal has no own <code>constructor</code>, so the read climbs to <code>Object.prototype.constructor</code> = <code>Object</code>. That is why you must verify <code>C.prototype === p</code> before naming it.' },
+      hints: [
+        `<p>Hint 1: loop with <code>p = Object.getPrototypeOf(p)</code> until <code>p === null</code>. Start from the prototype of <code>Object(value)</code> so primitives work.</p>`,
+        `<p>Hint 2: read the constructor <b>only if it is own</b>: <code>Object.getOwnPropertyDescriptor(p, 'constructor')</code>. Then trust it only if <code>typeof C === 'function' &amp;&amp; C.prototype === p</code>.</p>`,
+        `<p>Hint 3: edge cases — <code>null/undefined</code> input → <code>"null"</code>; anonymous classes have <code>name === ''</code> → print <code>[object]</code>; null-prototype objects end immediately. Join with <code>' -&gt; '</code> and append <code>'null'</code>.</p>`
+      ],
+      solution: {
+        approach: `<p>Walk the chain. For each prototype, look at its <b>own</b> <code>constructor</code> descriptor (a data property, not a getter, so we do not run user code), and accept the name only if the function's <code>prototype</code> points back to this exact object — the triangle must close. This turns the unreliable <code>constructor</code> convention into a verified fact.</p>`,
+        code: { lang: 'js', run: true, code: `function nameOf(p) {
+  const d = Object.getOwnPropertyDescriptor(p, 'constructor');
+  const C = d && 'value' in d ? d.value : undefined;        // own data property only
+  if (typeof C === 'function' && C.prototype === p && C.name) return C.name + '.prototype';
+  return '[object]';
+}
+function describeChain(value) {
+  if (value === null || value === undefined) return 'null';
+  const parts = [];
+  let p = Object.getPrototypeOf(Object(value));   // start from the prototype
+  while (p !== null) {
+    parts.push(nameOf(p));
+    p = Object.getPrototypeOf(p);
+  }
+  parts.push('null');
+  return parts.join(' -> ');
+}
+
+class Animal {}
+class Dog extends Animal {}
+console.log(describeChain(new Dog()));
+// Dog.prototype -> Animal.prototype -> Object.prototype -> null
+console.log(describeChain(Object.create({ a: 1 })));  // [object] -> Object.prototype -> null
+console.log(describeChain([1, 2]));                   // Array.prototype -> Object.prototype -> null
+console.log(describeChain(Dog));  // [object] -> Function.prototype -> Object.prototype -> null (Dog's [[Prototype]] is Animal itself!)
+console.log(describeChain('hi'));                     // String.prototype -> Object.prototype -> null
+console.log(describeChain(Object.create(null)));      // null` },
+        dry: { head: ['p', 'own constructor C', 'C.prototype === p?', 'printed'], rows: [['Dog.prototype', 'Dog', H.c('g', 'yes'), 'Dog.prototype'], ['Animal.prototype', 'Animal', H.c('g', 'yes'), 'Animal.prototype'], ['Object.prototype', 'Object', H.c('g', 'yes'), 'Object.prototype'], ['null', '—', '—', 'null (stop)']] },
+        complexity: `<p>Time O(d), space O(d) for the output, d = chain depth.</p>`,
+        followUps: ['Note the surprise: <code>describeChain(Dog)</code> starts with <code>[object]</code> because <code>Object.getPrototypeOf(Dog) === Animal</code> (a function, not a prototype object). Explain why classes do this.', 'Add a <code>maxDepth</code> guard and Proxy-safety.', 'Print own property names next to each level.']
+      }
+    }]
+  });
+
+  /* ======================================================================
+     TOPIC 3 — Object.create, delegation (OLOO) and null-prototype objects
+     ====================================================================== */
+  topics.push({
+    title: 'Object.create: Linking Objects Directly (Delegation, Null Prototypes, Descriptors)',
+    analogy: `<p>A new employee joins and is told: "Anything you don't know, <b>ask Priya</b>." Nobody copies Priya's brain into the new hire — the new hire just <b>delegates</b> questions to her. If Priya learns something new tomorrow, the new hire benefits instantly.</p>
+<p><code>Object.create(priya)</code> is exactly that: it makes a fresh, empty object whose "ask this person" link points at <code>priya</code>. And <code>Object.create(null)</code> is a new hire told "there is <b>nobody</b> to ask" — a perfectly blank notebook that does not even know what <code>toString</code> is.</p>`,
+    explain: `<p><code>Object.create(proto)</code> is the most <b>direct</b> way to use prototypes: no constructor function, no <code>new</code>, no <code>class</code>. It does one thing — <b>make a new empty object whose <code>[[Prototype]]</code> is <code>proto</code></b>.</p>
+${H.table(['Call', 'New object\'s chain'], [
+  ['<code>Object.create(animal)</code>', 'obj → animal → Object.prototype → null'],
+  ['<code>Object.create(Object.prototype)</code>', 'same as <code>{}</code>'],
+  ['<code>Object.create(null)</code>', 'obj → null (no <code>toString</code>, no <code>hasOwnProperty</code>, nothing)'],
+  ['<code>Object.create(42)</code>', H.c('r', 'TypeError: Object prototype may only be an Object or null')]
+])}
+<h4>1. Delegation, step by step</h4>
+<p>Build objects that <b>delegate</b> to other objects. This style is sometimes called <b>OLOO</b> ("Objects Linked to Other Objects"). There is no "class" at all — just objects pointing at objects:</p>
+<ul>
+<li><code>const animal = { walk() {...} }</code> — the shared behaviour.</li>
+<li><code>const rabbit = Object.create(animal)</code> — rabbit can <code>walk()</code> by delegation.</li>
+<li><code>const longEar = Object.create(rabbit)</code> — a 3-level chain, still no classes.</li>
+</ul>
+<h4>2. The optional second argument: property descriptors</h4>
+<p><code>Object.create(proto, { x: { value: 1, enumerable: true } })</code> also defines own properties, using the same format as <code>Object.defineProperties</code>. Watch out: in a descriptor every flag you leave out defaults to <b>false</b> — so <code>{ value: 1 }</code> creates a property that is <b>read-only, hidden from <code>Object.keys</code>, and cannot be deleted</b>.</p>
+${H.table(['Flag', 'Meaning', 'Default in descriptors', 'Default for <code>o.x = 1</code>'], [['<code>writable</code>', 'can be reassigned', H.c('r', 'false'), H.c('g', 'true')], ['<code>enumerable</code>', 'shows in keys / for...in / spread', H.c('r', 'false'), H.c('g', 'true')], ['<code>configurable</code>', 'can be deleted / redefined', H.c('r', 'false'), H.c('g', 'true')]])}
+<h4>3. Null-prototype objects: safe dictionaries</h4>
+<p>A plain <code>{}</code> already "contains" <code>constructor</code>, <code>toString</code>, <code>__proto__</code>… through its chain. If you use it as a map of user-supplied keys (word counts, HTTP headers, config), a key like <code>"constructor"</code> or <code>"__proto__"</code> collides with inherited stuff. <code>Object.create(null)</code> (or the literal <code>{ __proto__: null }</code>) gives you an object with <b>no chain at all</b> — every key is truly yours. For dynamic keys in new code, a <code>Map</code> is often even better.</p>
+<h4>4. Copying vs linking</h4>
+<p><code>Object.create</code> <b>links</b> (changes to the prototype show through). <code>Object.assign(target, src)</code> and spread <code>{ ...src }</code> <b>copy</b> own enumerable properties into a plain object and <b>drop the prototype</b>. Mixing behaviours into a prototype with <code>Object.assign(Dog.prototype, canSwim, canFly)</code> is the classic <b>mixin</b> pattern.</p>`,
+    clues: [
+      '"Create an object with a given prototype without using a constructor / class" → <code>Object.create(proto)</code>.',
+      '"Implement <code>Object.create</code> polyfill" — a top-5 polyfill question (temp constructor trick).',
+      '"Word count breaks on the word <i>constructor</i>" or "dictionary of arbitrary keys" → <code>Object.create(null)</code> or <code>Map</code>.',
+      '"Behaviour delegation", "OLOO", "inheritance without classes" → objects linked with <code>Object.create</code>.',
+      '"Why is my property not showing in <code>Object.keys</code> / not writable?" → descriptor defaults are all <code>false</code>.',
+      '"Clone an object <b>including</b> its prototype" → <code>Object.create(Object.getPrototypeOf(o), Object.getOwnPropertyDescriptors(o))</code>.'
+    ],
+    code: [{ lang: 'js', run: true, title: 'Delegation chain with Object.create (runnable)', code: `const animal = {
+  eats: true,
+  walk() { return this.name + ' walks'; }
+};
+const rabbit = Object.create(animal);        // rabbit -> animal
+rabbit.name = 'Bunny';
+rabbit.jumps = true;
+
+const longEar = Object.create(rabbit, {      // longEar -> rabbit -> animal
+  earLength: { value: 10, enumerable: true } // writable/configurable default to false!
+});
+longEar.name = 'Long Ear';                   // own, shadows rabbit.name
+
+console.log(longEar.walk());                 // Long Ear walks  (this = longEar)
+console.log(longEar.jumps, longEar.eats);    // true true (delegated)
+longEar.earLength = 99;                      // ignored: not writable (sloppy mode)
+console.log(longEar.earLength);              // 10
+console.log(Object.keys(longEar));           // [ 'earLength', 'name' ]
+
+animal.sleep = function () { return this.name + ' sleeps'; };
+console.log(longEar.sleep());                // Long Ear sleeps  (added later, still visible)
+` }, { lang: 'js', run: true, title: 'Null-prototype dictionary (runnable)', code: `function countWords(words, dict) {
+  for (const w of words) dict[w] = (dict[w] || 0) + 1;
+  return dict;
+}
+const words = ['constructor', 'hello', 'hello'];
+
+const bad = countWords(words, {});           // plain object: inherits 'constructor'!
+console.log(typeof bad.constructor);         // string  (function source + "1" — broken)
+
+const good = countWords(words, Object.create(null));
+console.log(good.constructor, good.hello);   // 1 2
+console.log('toString' in good);             // false — nothing inherited
+console.log(Object.getPrototypeOf(good));    // null
+
+const viaMap = new Map();
+for (const w of words) viaMap.set(w, (viaMap.get(w) || 0) + 1);
+console.log(viaMap.get('constructor'));      // 1 — Map is the modern choice
+` }],
+    codeTitle: ['Delegation chain', 'Null-prototype dictionary'],
+    viz: [{
+      title: 'Building a delegation chain with Object.create',
+      gen: function () {
+        var code = [
+          "const animal = { eats: true, walk() {...} };",
+          "const rabbit = Object.create(animal);",
+          "rabbit.name = 'Bunny';",
+          "const longEar = Object.create(rabbit, {",
+          "  earLength: { value: 10, enumerable: true }",
+          "});",
+          "longEar.name = 'Long Ear';",
+          "longEar.walk();        // 'Long Ear walks'",
+          "longEar.earLength = 99; // ignored!",
+          "const dict = Object.create(null);",
+          "dict.toString = 'just a key';"
+        ].join('\n');
+        function mp(lbl, entries, hl) { return { type: 'map', label: lbl, entries: entries, hl: hl || {} }; }
+        var A = [['eats', 'true'], ['walk', 'ƒ']], R = [], LE = [];
+        var steps = [];
+        steps.push({ l: 1, narr: 'A plain object literal. Its chain is <code>animal → Object.prototype → null</code>. This object will be the <b>shared behaviour</b>.', extra: [{ type: 'list', label: 'Chain of animal', values: ['animal', 'Object.prototype'], next: [1, -1], hl: { 0: 'ok' } }, mp('animal (own)', A.slice(), { eats: 'ok', walk: 'ok' })] });
+        steps.push({ l: 2, narr: '<code>Object.create(animal)</code> makes a <b>new empty object</b> and sets its hidden <code>[[Prototype]]</code> to <code>animal</code>. Nothing is copied — rabbit owns zero properties.', extra: [{ type: 'list', label: 'Chain of rabbit', values: ['rabbit', 'animal', 'Object.prototype'], next: [1, 2, -1], hl: { 0: 'ok' } }, mp('rabbit (own)', []), mp('animal (own)', A.slice())] });
+        R.push(['name', "'Bunny'"]);
+        steps.push({ l: 3, narr: 'A write → a new <b>own</b> property on rabbit. animal is untouched.', extra: [{ type: 'list', label: 'Chain of rabbit', values: ['rabbit', 'animal', 'Object.prototype'], next: [1, 2, -1], hl: { 0: 'cur' } }, mp('rabbit (own)', R.slice(), { name: 'ok' }), mp('animal (own)', A.slice())] });
+        LE.push(['earLength', '10 (read-only)']);
+        steps.push({ l: [4, 5, 6], narr: 'Create longEar linked to <b>rabbit</b>, and define <code>earLength</code> through a <b>descriptor</b>. We said <code>enumerable: true</code>, but left out <code>writable</code> and <code>configurable</code>, so both are <span class="c-r">false</span>.', extra: [{ type: 'list', label: 'Chain of longEar', values: ['longEar', 'rabbit', 'animal', 'Object.prototype'], next: [1, 2, 3, -1], hl: { 0: 'ok' } }, mp('longEar (own)', LE.slice(), { earLength: 'ok' }), mp('rabbit (own)', R.slice()), mp('animal (own)', A.slice())] });
+        LE.push(['name', "'Long Ear'"]);
+        steps.push({ l: 7, narr: 'Write <code>name</code> on longEar → own property that <b>shadows</b> rabbit.name.', extra: [{ type: 'list', label: 'Chain of longEar', values: ['longEar', 'rabbit', 'animal', 'Object.prototype'], next: [1, 2, 3, -1], hl: { 0: 'cur' } }, mp('longEar (own)', LE.slice(), { name: 'ok' }), mp('rabbit (own)', R.slice(), { name: 'done' })] });
+        steps.push({ l: 8, narr: '<code>longEar.walk</code>: not on longEar, not on rabbit, <b>found on animal</b> (2 hops). It runs with <code>this = longEar</code>, so it reads <code>this.name</code> = <b>\'Long Ear\'</b>.', extra: [{ type: 'list', label: 'Lookup of walk', values: ['longEar', 'rabbit', 'animal', 'Object.prototype'], next: [1, 2, 3, -1], hl: { 0: 'done', 1: 'done', 2: 'ok' }, ptr: { 2: 'found' } }, { type: 'vars', vals: { 'this': 'longEar', 'this.name': "'Long Ear'", result: "'Long Ear walks'" }, hl: { result: 'ok' } }], o: ['Long Ear walks'] });
+        steps.push({ l: 9, cls: 'bad', narr: '<code>earLength</code> is <b>not writable</b>. In sloppy mode the write is <b>silently ignored</b>; in strict mode (modules, classes) it throws <code>TypeError: Cannot assign to read only property</code>.', extra: [mp('longEar (own)', LE.slice(), { earLength: 'bad' }), note('Descriptor defaults: writable / enumerable / configurable are all <b>false</b> unless you say otherwise.', 'Gotcha')], o: ['Long Ear walks'] });
+        steps.push({ l: 10, narr: '<code>Object.create(null)</code> → an object with <b>no prototype at all</b>. Its chain is just <code>dict → null</code>.', extra: [{ type: 'list', label: 'Chain of dict', values: ['dict'], next: [-1], hl: { 0: 'sel' } }, mp('dict (own)', [])], o: ['Long Ear walks'] });
+        steps.push({ l: 11, narr: 'In <code>dict</code>, <code>toString</code> is just an ordinary key — nothing inherited to collide with. Perfect for arbitrary user keys (but you cannot call <code>dict.hasOwnProperty</code>: use <code>Object.hasOwn(dict, k)</code>).', extra: [{ type: 'list', label: 'Chain of dict', values: ['dict'], next: [-1], hl: { 0: 'sel' } }, mp('dict (own)', [['toString', "'just a key'"]], { toString: 'ok' }), note('String(dict) or a template literal with dict would throw: no toString / valueOf / Symbol.toPrimitive anywhere in the chain.', 'Trade-off')], o: ['Long Ear walks'] });
+        return codeFrames(code, steps);
+      }
+    }, {
+      title: 'How the classic Object.create polyfill works',
+      gen: function () {
+        var code = [
+          'function create(proto) {',
+          '  function F() {}        // 1. throwaway empty constructor',
+          '  F.prototype = proto;   // 2. point its prototype at proto',
+          '  return new F();        // 3. new links the result to F.prototype',
+          '}',
+          'const o = create(animal);'
+        ].join('\n');
+        function g(hl, ehl, extraNodes, extraEdges) {
+          var nodes = [{ id: 'animal', label: 'animal', x: 75, y: 10, shape: 'box' }].concat(extraNodes || []);
+          return { type: 'graph', directed: true, height: 50, nodes: nodes, edges: extraEdges || [], hl: hl || {}, ehl: ehl || {} };
+        }
+        return codeFrames(code, [
+          { l: 6, narr: 'Before ES5 there was no <code>Object.create</code>. The only tool that sets a prototype was <code>new</code>. Douglas Crockford\'s trick: borrow <code>new</code> with a dummy function.', extra: [g({ animal: 'sel' })] },
+          { l: 2, narr: 'Make an <b>empty</b> function <code>F</code>. Its body does nothing, so <code>new F()</code> will add no own properties.', extra: [g({ F: 'cur' }, {}, [{ id: 'F', label: 'F (function)', x: 20, y: 10, shape: 'box' }, { id: 'FP', label: 'default F.prototype', x: 20, y: 38, shape: 'box' }], [['F', 'FP', 'prototype']])] },
+          { l: 3, narr: 'Re-point <code>F.prototype</code> at <code>proto</code> (animal). The default prototype object is thrown away.', extra: [g({ F: 'cur', animal: 'ok' }, { 'F-animal': 'ok' }, [{ id: 'F', label: 'F (function)', x: 20, y: 10, shape: 'box' }], [['F', 'animal', 'prototype']])] },
+          { l: 4, narr: '<code>new F()</code> creates an empty object whose <code>[[Prototype]]</code> = <code>F.prototype</code> = <b>animal</b>. Exactly what we wanted.', extra: [g({ o: 'ok', animal: 'ok' }, { 'o-animal': 'ok' }, [{ id: 'F', label: 'F (function)', x: 20, y: 10, shape: 'box' }, { id: 'o', label: 'new object o', x: 75, y: 40, shape: 'box' }], [['F', 'animal', 'prototype'], ['o', 'animal', '[[Prototype]]']])] },
+          { l: 6, narr: '<code>F</code> is garbage now; only the link matters. Limitation: this trick <b>cannot</b> make a null-prototype object (<code>F.prototype = null</code> makes <code>new</code> fall back to <code>Object.prototype</code>) — modern polyfills use <code>Object.setPrototypeOf</code> or <code>{ __proto__: null }</code> for that case.', extra: [g({ o: 'sel' }, {}, [{ id: 'o', label: 'o', x: 75, y: 40, shape: 'box' }], [['o', 'animal', '[[Prototype]]']])] }
+        ]);
+      }
+    }],
+    examples: [
+      { title: 'OLOO: behaviour delegation without any class', html: `<p>Kyle Simpson's OLOO style: a "base" object with an <code>init</code> method instead of a constructor, and "sub" objects linked to it. No <code>new</code>, no <code>prototype</code> property, no <code>super</code> — just <code>Object.create</code> and explicit delegation.</p>
+${H.chips(['loginWidget', '→ Widget', '→ Object.prototype'], { label: 'Chain' })}`, code: { lang: 'js', run: true, code: `const Widget = {
+  init(width) { this.width = width; return this; },
+  render() { return '[' + this.kind() + ' ' + this.width + 'px]'; },
+  kind() { return 'widget'; }
+};
+const Button = Object.create(Widget);           // Button delegates to Widget
+Button.setup = function (width, label) {
+  this.init(width);                               // delegated call, this = the button
+  this.label = label;
+  return this;
+};
+Button.kind = function () { return 'button:' + this.label; };   // "override"
+
+const ok = Object.create(Button).setup(80, 'OK');
+console.log(ok.render());                         // [button:OK 80px]
+console.log(Widget.isPrototypeOf(ok));            // true` } },
+      { title: 'Predict: the descriptor defaults trap', html: `<p>Everything you omit in a descriptor is <code>false</code>. So <code>secret</code> below is invisible to <code>Object.keys</code>, <code>JSON.stringify</code> and spread; it ignores writes (sloppy mode) and refuses <code>delete</code>.</p>
+${H.table(['Operation', 'Result'], [['Object.keys(o)', "[ 'visible' ]"], ['o.secret = 2; o.secret', '1'], ['delete o.secret', 'false'], ['JSON.stringify(o)', '{"visible":true}']])}`, code: { lang: 'js', run: true, code: `const o = Object.create(Object.prototype, {
+  secret: { value: 1 },                                // all flags false
+  visible: { value: true, enumerable: true }
+});
+console.log(Object.keys(o));      // [ 'visible' ]
+o.secret = 2;                     // silently ignored (sloppy mode)
+console.log(o.secret);            // 1
+console.log(delete o.secret);     // false (not configurable)
+console.log(JSON.stringify(o));   // {"visible":true}
+console.log(Object.getOwnPropertyDescriptor(o, 'secret'));
+// { value: 1, writable: false, enumerable: false, configurable: false }` } },
+      { title: 'Clone WITH the prototype (and getters) intact', html: `<p>Spread and <code>Object.assign</code> copy own enumerable <b>values</b> into a plain object: the prototype is lost and getters are run and flattened into data. To make a faithful shallow clone, copy the <b>descriptors</b> and the <b>prototype</b>:</p>
+<p><code>Object.create(Object.getPrototypeOf(o), Object.getOwnPropertyDescriptors(o))</code></p>`, code: { lang: 'js', run: true, code: `class Temp {
+  constructor(c) { this.c = c; }
+  get f() { return this.c * 9 / 5 + 32; }
+}
+const t = new Temp(100);
+const spread = { ...t };
+console.log(spread instanceof Temp, spread.f);        // false undefined (getter was on prototype)
+
+const clone = Object.create(Object.getPrototypeOf(t), Object.getOwnPropertyDescriptors(t));
+console.log(clone instanceof Temp, clone.f);          // true 212
+clone.c = 0;
+console.log(clone.f, t.f);                            // 32 212 — independent own data` } },
+      { title: 'Mixins: copy behaviour into a prototype', html: `<p>A class can have only one parent, but you can <b>copy</b> extra methods into its prototype with <code>Object.assign</code>. This is the "mixin" pattern. Downsides: name clashes are silent (last one wins), and <code>Object.assign</code> copies only own enumerable properties — so mixing in a <i>class's</i> prototype copies nothing (class methods are non-enumerable).</p>`, code: { lang: 'js', run: true, code: `const canSwim = { swim() { return this.name + ' swims'; } };
+const canFly = { fly() { return this.name + ' flies'; } };
+function Duck(name) { this.name = name; }
+Object.assign(Duck.prototype, canSwim, canFly);    // copy methods in
+const d = new Duck('Donald');
+console.log(d.swim(), '|', d.fly());              // Donald swims | Donald flies
+
+class Quacker { quack() { return 'quack'; } }
+Object.assign(Duck.prototype, Quacker.prototype); // copies NOTHING
+console.log(typeof d.quack);                      // undefined — class methods are non-enumerable` } },
+      { title: 'Object.setPrototypeOf vs Object.create', html: `<p>Both produce the same chain, but <code>setPrototypeOf</code> <b>mutates</b> an existing object's link, which is slow in every engine (it invalidates optimisations). Use it only for one-time setup; prefer creating the object with the right prototype from the start.</p>`, code: { lang: 'js', run: true, code: `const proto = { hi() { return 'hi from proto'; } };
+const a = Object.create(proto);                 // fast: born with the link
+const b = Object.setPrototypeOf({}, proto);     // works, but re-links later (slow path)
+console.log(a.hi(), b.hi());
+try { Object.setPrototypeOf(proto, a); }        // would create a cycle
+catch (e) { console.log(e.constructor.name + ': ' + e.message); }   // TypeError: Cyclic __proto__ value` } }
+    ],
+    deepDive: `<p><b>What the spec does.</b> <code>Object.create(O, Properties)</code>: (1) if <code>O</code> is not an Object and not null → <code>TypeError</code>; (2) <code>obj = OrdinaryObjectCreate(O)</code>; (3) if <code>Properties</code> is not undefined → <code>ObjectDefineProperties(obj, Properties)</code>. That is all — no constructor runs, no <code>constructor</code> property is added. This is why it is the cleanest primitive and why <code>class</code>/<code>new</code> can be explained in terms of it.</p>
+<p><b>Null-prototype objects in the wild.</b> Node's <code>querystring.parse</code> and the <code>URLSearchParams</code>-to-object helpers return null-prototype objects; <code>Object.groupBy</code> (ES2024) also returns a null-prototype object, so <code>Object.groupBy(xs, f).hasOwnProperty('a')</code> throws — use <code>Object.hasOwn</code>. Module namespace objects (<code>import * as ns</code>) also have a null prototype. Template engines and JSON-schema validators use <code>Object.create(null)</code> caches to avoid key collisions. Downsides: they print as <code>[Object: null prototype] {}</code> in Node, cannot be converted to string (no <code>toString</code>/<code>Symbol.toPrimitive</code>), and some libraries assume <code>obj.hasOwnProperty</code> exists.</p>
+<p><b>Dictionary mode.</b> V8 gives objects "shapes" (hidden classes). An object used as a dynamic dictionary — many keys added and deleted — gets switched to <b>dictionary mode</b> (a hash table), which is slower for property access but fine for map-like use. <code>Map</code> is designed for this workload: it preserves insertion order for any key type (including objects), has <code>size</code>, iterates in order, and has no prototype collisions at all. Rule of thumb: <b>records</b> (fixed, known keys) → objects/classes; <b>dictionaries</b> (unknown keys from data) → <code>Map</code> or <code>Object.create(null)</code>.</p>
+<p><b>Polyfill subtleties.</b> The old <code>function F(){}; F.prototype = proto; return new F()</code> shim cannot create null-prototype objects (when <code>F.prototype</code> is not an object, <code>new</code> silently uses <code>Object.prototype</code>), and it ignores the second argument unless you also call <code>Object.defineProperties</code> (ES5 only). Modern polyfills handle null via <code>Object.setPrototypeOf(obj, null)</code> or the <code>{ __proto__: null }</code> literal. Also note that <code>Object.assign</code> <b>invokes</b> getters on the source and <b>setters</b> on the target, whereas <code>Object.defineProperties</code> copies the accessor functions themselves — a real difference when cloning objects with accessors.</p>`,
+    aiEra: `<p><b>What AI changes:</b> generated code overwhelmingly reaches for <code>class</code>; delegation with <code>Object.create</code> appears less often, so recognising it in legacy code (and in polyfill interview rounds) is now a differentiator. AI is good at writing the <code>Object.create</code> polyfill — interviewers know that, so they ask the follow-ups: "what about <code>null</code>?", "what about the second argument?", "why did ES5 need this trick?".</p>
+<p><b>Use AI as a partner:</b> paste a function that uses <code>{}</code> as a dictionary and ask "<i>which input keys break this?</i>" — a good model will list <code>constructor</code>, <code>__proto__</code>, <code>toString</code>, <code>hasOwnProperty</code>. Ask it to convert a dictionary-style object to <code>Map</code> and then review that it also changed every <code>in</code>/<code>Object.keys</code>/<code>JSON.stringify</code> usage.</p>
+<p><b>Where AI goes wrong:</b> it writes <code>Object.create(proto, { x: { value: 1 } })</code> and assumes <code>x</code> is enumerable/writable; uses spread to "clone" class instances (losing the prototype); suggests <code>Object.assign</code> mixins from class prototypes (copies nothing); calls <code>dict.hasOwnProperty</code> on null-prototype objects.</p>
+<p><b>What you must still own:</b> knowing when you are <b>linking</b> versus <b>copying</b>, the descriptor defaults, and the dictionary-safety reflex (<code>Map</code> or null prototype for untrusted keys).</p>`,
+    problems: [{
+      title: 'Polyfill Object.create (including null and descriptors)',
+      level: 'Medium', tags: ['polyfill', 'Object.create', 'prototype'], companies: ['Amazon', 'Adobe', 'Paytm', 'Walmart'],
+      statement: `<p>Implement <code>objectCreate(proto, propertiesObject)</code> that behaves like <code>Object.create</code>:</p>
+<ul><li>Throws <code>TypeError</code> if <code>proto</code> is neither an object (functions count as objects) nor <code>null</code>.</li><li>Returns a new object whose <code>[[Prototype]]</code> is <code>proto</code> (including <code>null</code>).</li><li>If <code>propertiesObject</code> is given (not <code>undefined</code>), defines those properties with descriptor semantics.</li></ul>
+<p>You may not call <code>Object.create</code>.</p>`,
+      constraints: `Must work for <code>proto = null</code>. Must not run any user constructor. Must not add own <code>constructor</code> or other stray properties.`,
+      example: `<p><code>const o = objectCreate({ hi() { return 'hi'; } }, { x: { value: 1, enumerable: true } })</code></p>
+<p>${H.c('g', "o.hi() → 'hi'")} (delegated), ${H.c('g', 'Object.keys(o) → [ "x" ]')}, and ${H.c('g', 'Object.getPrototypeOf(objectCreate(null)) → null')}. <code>objectCreate(5)</code> → ${H.c('r', 'TypeError')}.</p>`,
+      brute: {
+        why: `<p>A naive "copy" version (<code>Object.assign({}, proto)</code>) is <b>not</b> Object.create: it copies values once (later changes to <code>proto</code> are not seen), drops non-enumerable methods, breaks <code>isPrototypeOf</code>/<code>instanceof</code>, and cannot produce a null-prototype object.</p>`,
+        code: { lang: 'js', run: true, code: `function objectCreateBrute(proto) {
+  return Object.assign({}, proto);       // COPY, not LINK
+}
+const base = { a: 1 };
+const o = objectCreateBrute(base);
+base.b = 2;                              // added later
+console.log(o.b);                        // undefined — not linked
+console.log(base.isPrototypeOf(o));      // false` }
+      },
+      mcq: { q: 'In the classic polyfill <code>function F(){}; F.prototype = proto; return new F();</code>, what happens when <code>proto</code> is <code>null</code>?', options: ['It returns a null-prototype object', '<code>new</code> ignores the non-object prototype and links to <code>Object.prototype</code>', 'It throws TypeError', 'It returns null'], answer: 1, explain: 'OrdinaryCreateFromConstructor falls back to the realm\'s %Object.prototype% when <code>F.prototype</code> is not an object, so the result silently inherits from Object.prototype — a bug for <code>Object.create(null)</code>.' },
+      hints: [
+        `<p>Hint 1: validate first — <code>typeof proto === 'object' || typeof proto === 'function'</code> (and note <code>typeof null === 'object'</code>, which is fine here because null is allowed).</p>`,
+        `<p>Hint 2: for an object proto, use the temp-constructor trick (<code>F.prototype = proto; new F()</code>). For <code>null</code>, start from <code>{}</code> and call <code>Object.setPrototypeOf(obj, null)</code> (or use the literal <code>{ __proto__: null }</code>).</p>`,
+        `<p>Hint 3: finally, if <code>propertiesObject !== undefined</code>, call <code>Object.defineProperties(obj, propertiesObject)</code> — it applies false-by-default flags exactly like the real thing. Return <code>obj</code>.</p>`
+      ],
+      solution: {
+        approach: `<p>Three steps mirror the spec: validate, create with the right link, define properties. Use the dummy-constructor trick for object prototypes (works in any engine) and a special path for <code>null</code>, since <code>new</code> cannot produce a null-prototype object.</p>`,
+        code: { lang: 'js', run: true, code: `function objectCreate(proto, propertiesObject) {
+  // 1. validate: object, function or null only
+  if (proto === undefined || (proto !== null && typeof proto !== 'object' && typeof proto !== 'function')) {
+    throw new TypeError('Object prototype may only be an Object or null: ' + proto);
+  }
+  // 2. create an empty object with the correct [[Prototype]]
+  let obj;
+  if (proto === null) {
+    obj = {};
+    Object.setPrototypeOf(obj, null);    // the dummy-constructor trick cannot do null
+  } else {
+    function F() {}                      // empty: adds no own properties
+    F.prototype = proto;
+    obj = new F();                       // new links obj -> F.prototype === proto
+  }
+  // 3. optional descriptors (flags default to false, exactly like the real API)
+  if (propertiesObject !== undefined) Object.defineProperties(obj, propertiesObject);
+  return obj;
+}
+
+const base = { hi() { return 'hi'; } };
+const o = objectCreate(base, { x: { value: 1, enumerable: true } });
+console.log(o.hi(), Object.keys(o), Object.getPrototypeOf(o) === base);  // hi [ 'x' ] true
+console.log(Object.getOwnPropertyNames(o));                  // [ 'x' ] — no stray constructor
+const n = objectCreate(null);
+console.log(Object.getPrototypeOf(n), 'toString' in n);      // null false
+try { objectCreate(5); } catch (e) { console.log(e.name); }  // TypeError
+base.later = 42;
+console.log(o.later);                                        // 42 — linked, not copied` },
+        dry: { head: ['call', 'validation', 'creation path', 'result chain'], rows: [['objectCreate(base, {x})', 'object ✓', 'F.prototype = base; new F()', 'o → base → Object.prototype → null'], ['objectCreate(null)', 'null ✓', '{} then setPrototypeOf(null)', 'n → null'], ['objectCreate(5)', H.c('r', 'number ✗'), '—', H.c('r', 'TypeError')]] },
+        complexity: `<p>O(1) for the link, plus O(p) for <code>p</code> property descriptors. No user code runs except descriptor getters on <code>propertiesObject</code>.</p>`,
+        followUps: ['Why can the dummy <code>F</code> be reused across calls in an ES5 shim, and what is the risk?', 'Implement <code>Object.setPrototypeOf</code> using only <code>__proto__</code>; when does it fail?', 'Write <code>cloneWithProto(o)</code> using your polyfill plus <code>getOwnPropertyDescriptors</code>.']
+      }
+    }]
+  });
+
+  /* ======================================================================
+     TOPIC 4 — Constructor functions and what `new` really does
+     ====================================================================== */
+  topics.push({
+    title: 'Constructor Functions and the 4 Steps of new',
+    analogy: `<p>Think of a <b>phone factory</b>. When an order comes in:</p>
+<ol>
+<li>a worker grabs an <b>empty phone shell</b>,</li>
+<li>slips in the <b>shared user manual link</b> ("for help, see the manual for model X" — every phone points to the same manual, nobody prints a copy),</li>
+<li>the assembly line <b>fills in this phone's own parts</b> — its serial number, its colour,</li>
+<li>and the finished phone is <b>shipped</b> to you. (Unless the line manager says "ship this other box instead" — then that box goes out.)</li>
+</ol>
+<p>That is <code>new Phone('black')</code>, step for step. The constructor function is the assembly line; <code>Phone.prototype</code> is the shared manual.</p>`,
+    explain: `<p>Before ES6 classes, JavaScript "classes" were just <b>ordinary functions</b> called with <code>new</code>. By convention their names start with a capital letter. Inside, <code>this</code> refers to the new object being built.</p>
+<h4>The 4 steps of <code>new Person('Asha')</code></h4>
+${H.table(['Step', 'What happens', 'Code equivalent'], [
+  ['1. Create', 'A brand-new empty object is made', '<code>const obj = {}</code>'],
+  ['2. Link', 'Its <code>[[Prototype]]</code> is set to <code>Person.prototype</code>', '<code>Object.setPrototypeOf(obj, Person.prototype)</code>'],
+  ['3. Run', '<code>Person</code> is called with <code>this = obj</code> and your arguments', '<code>const r = Person.apply(obj, args)</code>'],
+  ['4. Return', 'If the function returned an <b>object</b> (or function), that wins; otherwise <code>obj</code> is returned', '<code>return isObject(r) ? r : obj</code>']
+])}
+<p>Steps 1 + 2 together are exactly <code>Object.create(Person.prototype)</code>.</p>
+<h4>Where to put things</h4>
+<ul>
+<li><b>Per-object data</b> (name, balance) → assign to <code>this</code> inside the constructor. Every instance gets its own copy.</li>
+<li><b>Shared behaviour</b> (greet, deposit) → put on <code>Person.prototype</code>. One function object, shared by every instance through the chain.</li>
+</ul>
+${H.table(['Methods defined…', 'a.greet === b.greet', '10,000 instances × 5 methods'], [['inside the constructor (<code>this.greet = function…</code>)', H.c('r', 'false'), H.c('r', '50,000 function objects')], ['on <code>Person.prototype</code>', H.c('g', 'true'), H.c('g', '5 function objects')]])}
+<h4>The return-override rule (puzzle favourite)</h4>
+<ul>
+<li><code>return</code> nothing / a primitive (<code>42</code>, <code>'x'</code>, <code>null</code>) → <b>ignored</b>, you get the new object.</li>
+<li><code>return</code> an object, array or function → <b>that</b> is what <code>new</code> gives you, and the object built in steps 1–3 is thrown away.</li>
+</ul>
+<h4>Forgetting <code>new</code></h4>
+<p><code>const p = Person('Asha')</code> without <code>new</code> is just a normal call: <code>p</code> is <code>undefined</code>, and in sloppy mode <code>this</code> is the <b>global object</b>, so you just created a global variable <code>name</code>! In strict mode <code>this</code> is <code>undefined</code> and you get a <code>TypeError</code>. Defences: <code>'use strict'</code>, a <code>new.target</code> check, or use <code>class</code> (which refuses to be called without <code>new</code>).</p>
+<h4>Inheritance the ES5 way</h4>
+<p>To make <code>Dog</code> inherit from <code>Animal</code> with plain functions you need two links: (1) inside <code>Dog</code>, run the parent constructor on the same object: <code>Animal.call(this, name)</code>; (2) link the prototypes: <code>Dog.prototype = Object.create(Animal.prototype)</code> and restore <code>Dog.prototype.constructor = Dog</code>. This is precisely what <code>class Dog extends Animal</code> automates.</p>`,
+    clues: [
+      '"What does the <code>new</code> keyword do?" / "Implement <code>new</code> yourself" → the 4 steps; <code>Object.create</code> + <code>apply</code> + return check.',
+      '"Constructor returns an object / a number — what do you get?" → the return-override rule.',
+      '"Why put methods on the prototype instead of inside the constructor?" → shared function objects, memory, <code>a.greet === b.greet</code>.',
+      '"Function was called without <code>new</code> and a global variable appeared" → sloppy-mode <code>this</code> = global object.',
+      '"Inheritance without <code>class</code> / in ES5" → <code>Parent.call(this)</code> + <code>Object.create(Parent.prototype)</code> + fix <code>constructor</code>.',
+      '"<code>new.target</code>", "scope-safe constructor", "abstract class in JS" → checking how the function was invoked.'
+    ],
+    code: [{ lang: 'js', run: true, title: 'A constructor function with shared prototype methods (runnable)', code: `function Person(name, age) {
+  // 'this' is the brand-new object created by 'new'
+  this.name = name;     // per-instance data
+  this.age = age;
+}
+// shared behaviour: ONE function object for all persons
+Person.prototype.greet = function () {
+  return 'Hi, I am ' + this.name;
+};
+Person.prototype.birthday = function () {
+  this.age += 1;        // mutates the instance, not the prototype
+  return this.age;
+};
+
+const asha = new Person('Asha', 30);
+const ben = new Person('Ben', 25);
+console.log(asha.greet(), '|', ben.greet());  // Hi, I am Asha | Hi, I am Ben
+console.log(asha.greet === ben.greet);        // true — shared
+console.log(asha.birthday(), ben.age);        // 31 25
+console.log(Object.keys(asha));               // [ 'name', 'age' ] — methods are not own
+console.log(asha instanceof Person);          // true
+` }, { lang: 'js', run: true, title: 'ES5 inheritance done right (runnable)', code: `function Animal(name) {
+  this.name = name;
+}
+Animal.prototype.eat = function () { return this.name + ' eats'; };
+
+function Dog(name, breed) {
+  Animal.call(this, name);        // (1) run parent constructor on THIS object
+  this.breed = breed;
+}
+// (2) link prototypes: Dog.prototype -> Animal.prototype
+Dog.prototype = Object.create(Animal.prototype);
+// (3) restore the constructor link that we just overwrote (non-enumerable like the original)
+Object.defineProperty(Dog.prototype, 'constructor', { value: Dog, writable: true, configurable: true });
+Dog.prototype.bark = function () { return this.name + ' barks'; };
+
+const rex = new Dog('Rex', 'lab');
+console.log(rex.eat(), '|', rex.bark());       // Rex eats | Rex barks
+console.log(rex instanceof Dog, rex instanceof Animal); // true true
+console.log(rex.constructor === Dog);          // true
+console.log(Object.keys(rex));                 // [ 'name', 'breed' ]
+` }],
+    codeTitle: ['Constructor function', 'ES5 inheritance'],
+    viz: {
+      title: 'new, step by step (try: none / object / primitive)',
+      input: 'none',
+      inputLabel: 'What the constructor returns: none, object, or primitive',
+      gen: function (input) {
+        var mode = String(input === undefined ? 'none' : input).trim().toLowerCase();
+        if (['none', 'object', 'primitive'].indexOf(mode) < 0) throw new Error('Type one of: none, object, primitive');
+        var retLine = mode === 'none' ? '  // (no return statement)' : mode === 'object' ? '  return { hacked: true };' : '  return 42;';
+        var code = [
+          'function Person(name) {',
+          '  this.name = name;',
+          retLine,
+          '}',
+          "Person.prototype.greet = function () { return 'Hi, ' + this.name; };",
+          'function myNew(Ctor, ...args) {',
+          '  const obj = Object.create(Ctor.prototype); // steps 1 + 2',
+          '  const result = Ctor.apply(obj, args);      // step 3',
+          "  const isObj = result !== null && (typeof result === 'object' || typeof result === 'function');",
+          '  return isObj ? result : obj;               // step 4',
+          '}',
+          "const p = myNew(Person, 'Asha');"
+        ].join('\n');
+        function g(objProps, hl, extra) {
+          var nodes = [{ id: 'P', label: 'Person (function)', x: 18, y: 10, shape: 'box' }, { id: 'PP', label: 'Person.prototype', x: 70, y: 10, shape: 'box' }];
+          var edges = [['P', 'PP', 'prototype']];
+          if (objProps !== null) { nodes.push({ id: 'obj', label: 'obj ' + objProps, x: 70, y: 42, shape: 'box' }); edges.push(['obj', 'PP', '[[Prototype]]']); }
+          if (extra) { nodes.push({ id: 'h', label: '{ hacked: true }', x: 22, y: 42, shape: 'box' }); edges.push(['h', 'OP', '']); nodes.push({ id: 'OP', label: 'Object.prototype', x: 22, y: 58, shape: 'box' }); }
+          return { type: 'graph', label: 'Objects in memory', directed: true, height: extra ? 66 : 52, nodes: nodes, edges: edges, hl: hl || {} };
+        }
+        var steps = [
+          { l: 12, narr: "We call <code>myNew(Person, 'Asha')</code> — our own re-implementation of <code>new Person('Asha')</code>. The real <code>new</code> does exactly these steps internally.", st: ['global', 'myNew'], v: { Ctor: 'Person', args: "['Asha']" }, extra: [g(null, { P: 'cur' })] },
+          { l: 7, narr: '<b>Steps 1 + 2:</b> create a new empty object and link its <code>[[Prototype]]</code> to <code>Ctor.prototype</code> (Person.prototype). <code>Object.create</code> does both in one go.', st: ['global', 'myNew'], v: { obj: '{ } → Person.prototype' }, hv: { obj: 'ok' }, extra: [g('{ }', { obj: 'ok' })] },
+          { l: 8, narr: '<b>Step 3:</b> run the constructor with <code>this = obj</code> using <code>apply</code>. Now we are inside <code>Person</code>.', st: ['global', 'myNew', 'Person (this = obj)'], v: { 'this': 'obj', name: "'Asha'" }, hv: { 'this': 'cur' }, extra: [g('{ }', { obj: 'cur' })] },
+          { l: 2, narr: '<code>this.name = name</code> writes an <b>own</b> property on obj.', st: ['global', 'myNew', 'Person (this = obj)'], v: { 'this': "obj { name: 'Asha' }" }, hv: { 'this': 'ok' }, extra: [g("{ name: 'Asha' }", { obj: 'ok' })] }
+        ];
+        if (mode === 'none') {
+          steps.push({ l: 3, narr: 'No <code>return</code> statement → the function returns <code>undefined</code>.', st: ['global', 'myNew', 'Person (this = obj)'], v: { returns: 'undefined' }, extra: [g("{ name: 'Asha' }", { obj: 'ok' })] });
+          steps.push({ l: [9, 10], narr: '<b>Step 4:</b> <code>result</code> is <code>undefined</code> — not an object — so myNew returns <b>obj</b>, the object we built.', st: ['global', 'myNew'], v: { result: 'undefined', isObj: 'false', returned: 'obj' }, hv: { returned: 'ok' }, extra: [g("{ name: 'Asha' }", { obj: 'sel' })] });
+          steps.push({ l: 12, narr: "<code>p</code> is obj. <code>p.greet()</code> is not own, so the lookup climbs to <b>Person.prototype</b> → <code>'Hi, Asha'</code>. <code>p instanceof Person</code> → <b>true</b>.", st: ['global'], v: { p: "{ name: 'Asha' }", 'p.greet()': "'Hi, Asha'", 'p instanceof Person': 'true' }, hv: { 'p.greet()': 'ok' }, extra: [g("{ name: 'Asha' }", { obj: 'sel', PP: 'ok' })] });
+        } else if (mode === 'object') {
+          steps.push({ l: 3, cls: 'bad', narr: 'The constructor explicitly <b>returns an object</b> <code>{ hacked: true }</code> — a plain literal linked to Object.prototype, unrelated to obj.', st: ['global', 'myNew', 'Person (this = obj)'], v: { returns: '{ hacked: true }' }, hv: { returns: 'bad' }, extra: [g("{ name: 'Asha' }", { h: 'bad' }, true)] });
+          steps.push({ l: [9, 10], narr: '<b>Step 4:</b> <code>result</code> IS an object → it <b>overrides</b>. The carefully built obj (with name and the Person.prototype link) is thrown away.', st: ['global', 'myNew'], v: { result: '{ hacked: true }', isObj: 'true', returned: 'result' }, hv: { returned: 'bad' }, extra: [g("{ name: 'Asha' }", { obj: 'done', h: 'sel' }, true)] });
+          steps.push({ l: 12, narr: "<code>p</code> is <code>{ hacked: true }</code>. <code>p.name</code> → undefined, <code>p.greet</code> → undefined (calling it would throw), <code>p instanceof Person</code> → <b>false</b>. This trick is how some libraries implement singletons or return cached instances.", st: ['global'], v: { p: '{ hacked: true }', 'p.name': 'undefined', 'p instanceof Person': 'false' }, hv: { 'p instanceof Person': 'bad' }, extra: [g("{ name: 'Asha' }", { obj: 'done', h: 'sel' }, true)] });
+        } else {
+          steps.push({ l: 3, narr: 'The constructor returns the <b>primitive</b> <code>42</code>.', st: ['global', 'myNew', 'Person (this = obj)'], v: { returns: '42' }, hv: { returns: 'cur' }, extra: [g("{ name: 'Asha' }", { obj: 'ok' })] });
+          steps.push({ l: [9, 10], narr: '<b>Step 4:</b> <code>42</code> is not an object → it is <b>ignored</b>. myNew returns obj. (Same for <code>null</code>: <code>typeof null</code> is "object", which is why we check <code>result !== null</code>.)', st: ['global', 'myNew'], v: { result: '42', isObj: 'false', returned: 'obj' }, hv: { returned: 'ok' }, extra: [g("{ name: 'Asha' }", { obj: 'sel' })] });
+          steps.push({ l: 12, narr: "<code>p</code> is the normal instance: <code>p.name</code> → 'Asha', <code>p.greet()</code> → 'Hi, Asha'. Returning primitives from a constructor is pointless — <code>new</code> throws them away.", st: ['global'], v: { p: "{ name: 'Asha' }", 'p.greet()': "'Hi, Asha'" }, hv: { 'p.greet()': 'ok' }, extra: [g("{ name: 'Asha' }", { obj: 'sel', PP: 'ok' })] });
+        }
+        return codeFrames(code, steps);
+      }
+    },
+    examples: [
+      { title: 'Predict: methods in the constructor are NOT shared', html: `<p>Defining a method with <code>this.greet = function…</code> creates a <b>new function object per instance</b>. Works fine, costs memory, and patching <code>Person.prototype</code> later will not affect it (the own property shadows).</p>
+${H.table(['', 'own keys of a', 'a.greet === b.greet'], [['methods in constructor', "[ 'name', 'greet' ]", H.c('r', 'false')], ['methods on prototype', "[ 'name' ]", H.c('g', 'true')]])}`, code: { lang: 'js', run: true, code: `function A(name) {
+  this.name = name;
+  this.greet = function () { return 'hi ' + this.name; };   // new function every time
+}
+function B(name) { this.name = name; }
+B.prototype.greet = function () { return 'hi ' + this.name; };
+
+const a1 = new A('x'), a2 = new A('y');
+const b1 = new B('x'), b2 = new B('y');
+console.log(Object.keys(a1), a1.greet === a2.greet);   // [ 'name', 'greet' ] false
+console.log(Object.keys(b1), b1.greet === b2.greet);   // [ 'name' ] true` } },
+      { title: 'Predict: the return-override rule', html: `<p>Four constructors, four outcomes. Objects (including arrays and functions) override; primitives — including <code>null</code> — are ignored.</p>
+${H.table(['Constructor returns', 'new F() gives', 'instanceof F'], [['nothing', 'the new object', 'true'], ['42', 'the new object', 'true'], ['null', 'the new object', 'true'], ['[1, 2]', '[1, 2]', H.c('r', 'false')]])}`, code: { lang: 'js', run: true, code: `function R1() { this.a = 1; }
+function R2() { this.a = 1; return 42; }
+function R3() { this.a = 1; return null; }
+function R4() { this.a = 1; return [1, 2]; }
+for (const F of [R1, R2, R3, R4]) {
+  const x = new F();
+  console.log(F.name, JSON.stringify(x), x instanceof F);
+}
+// R1 {"a":1} true
+// R2 {"a":1} true
+// R3 {"a":1} true
+// R4 [1,2] false` } },
+      { title: 'Forgetting new, and the new.target guard', html: `<p>Called without <code>new</code> in sloppy mode, <code>this</code> is <code>globalThis</code> — you silently create globals. <code>new.target</code> is <code>undefined</code> in a plain call and the constructor function under <code>new</code>, so you can throw a helpful error (or auto-fix by returning <code>new Safe(...)</code>).</p>`, code: { lang: 'js', run: true, code: `function Sloppy(v) { this.leaked = v; }
+const s = Sloppy(5);                     // oops: no 'new'
+console.log(s, globalThis.leaked);       // undefined 5   (global pollution!)
+delete globalThis.leaked;
+
+function Safe(v) {
+  if (!new.target) throw new TypeError('Safe must be called with new');
+  this.v = v;
+}
+try { Safe(1); } catch (e) { console.log(e.message); }   // Safe must be called with new
+console.log(new Safe(1).v);                              // 1
+
+function AutoNew(v) {
+  if (!new.target) return new AutoNew(v);                // "scope-safe" constructor
+  this.v = v;
+}
+console.log(AutoNew(7) instanceof AutoNew);              // true` } },
+      { title: 'Two classic WRONG ways to inherit (and why)', html: `<p><b>Wrong 1:</b> <code>Dog.prototype = Animal.prototype</code> — both names point to the <b>same object</b>, so adding <code>bark</code> to dogs also gives every animal a <code>bark</code>. <b>Wrong 2:</b> <code>Dog.prototype = new Animal()</code> — runs the parent constructor once at setup time (with no arguments) and puts its instance data on the shared prototype, so every dog shares one <code>tags</code> array.</p>`, code: { lang: 'js', run: true, code: `function Animal(name) { this.name = name; this.tags = []; }
+// Wrong 1: shared prototype object
+function Dog1() {}
+Dog1.prototype = Animal.prototype;
+Dog1.prototype.bark = function () { return 'woof'; };
+console.log(typeof new Animal('cat').bark);   // function  — cats can bark now!
+delete Animal.prototype.bark;
+
+// Wrong 2: prototype is an Animal INSTANCE
+function Dog2() {}
+Dog2.prototype = new Animal();                // tags: [] lives on the prototype
+const d1 = new Dog2(), d2 = new Dog2();
+d1.tags.push('good boy');
+console.log(d2.tags);                         // [ 'good boy' ] — shared array!` } },
+      { title: 'Factory function vs constructor', html: `<p>A <b>factory</b> is a plain function that builds and returns an object — no <code>new</code>, no <code>this</code>, and closures give real privacy. The trade-off: methods defined inside are re-created per object (unless you attach a shared prototype with <code>Object.create</code>), and <code>instanceof</code> does not work.</p>`, code: { lang: 'js', run: true, code: `function makeCounter(start) {
+  let count = start;                         // private via closure
+  return {
+    inc() { count += 1; return count; },
+    get value() { return count; }
+  };
+}
+const c = makeCounter(10);
+c.inc(); c.inc();
+console.log(c.value, c.count);               // 12 undefined  (truly private)
+
+// factory + shared prototype: best of both
+const counterProto = { inc() { this.count += 1; return this.count; } };
+function makeCounter2(start) { return Object.assign(Object.create(counterProto), { count: start }); }
+const x = makeCounter2(1), y = makeCounter2(5);
+console.log(x.inc(), y.inc(), x.inc === y.inc);   // 2 6 true` } }
+    ],
+    deepDive: `<p><b>[[Call]] vs [[Construct]].</b> Every function object has an internal <code>[[Call]]</code> method; only <i>constructors</i> also have <code>[[Construct]]</code>. Ordinary <code>function</code> declarations/expressions get both; arrow functions, methods, async functions, generators and most built-in methods get only <code>[[Call]]</code>. <code>new X()</code> throws "X is not a constructor" when <code>[[Construct]]</code> is missing. Classes have <code>[[Construct]]</code> but their <code>[[Call]]</code> always throws.</p>
+<p><b>What <code>[[Construct]]</code> does for a base function</b> (spec <code>OrdinaryCallEvaluateBody</code> with <code>kind = base</code>): <code>OrdinaryCreateFromConstructor(newTarget, '%Object.prototype%')</code> reads <code>newTarget.prototype</code> (falling back to <code>Object.prototype</code> if it is not an object), binds <code>this</code>, runs the body, then applies the return-override rule. With <code>Reflect.construct(F, args, G)</code> the object is linked to <code>G.prototype</code> while <code>F</code>'s body runs — the mechanism behind subclassing built-ins.</p>
+<p><b>Memory and speed.</b> Methods on the prototype cost one closure total; per-instance methods cost a closure <i>per object</i> (roughly 32–64 bytes each in V8 plus the context they capture). For millions of small objects that difference dominates. Assigning all own properties in the constructor, <b>in the same order, every time</b>, lets V8 give every instance the same hidden class, keeping property access monomorphic and fast; adding properties conditionally or later forks the shape tree. V8 also uses <i>slack tracking</i>: it over-allocates in-object slots for the first few instances of a constructor, then shrinks to the observed size.</p>
+<p><b>Why <code>Object.create(Parent.prototype)</code> and not <code>new Parent()</code>?</b> The second runs side effects and stores per-instance data on the shared prototype (see the example), and fails outright if <code>Parent</code> requires arguments. The ES5-era helper <code>util.inherits</code> in Node (now deprecated in favour of <code>class extends</code>) did exactly <code>Object.setPrototypeOf(ctor.prototype, superCtor.prototype)</code>. Notice that ES5 inheritance only links the <b>instance</b> side; static methods on <code>Parent</code> are not inherited by <code>Child</code> unless you also do <code>Object.setPrototypeOf(Child, Parent)</code> — something <code>class extends</code> does automatically.</p>`,
+    aiEra: `<p><b>What AI changes:</b> AI writes constructor functions mostly when it is reading or migrating <b>legacy</b> code (jQuery plugins, old Node libraries, ES5 bundles). Being able to read the ES5 inheritance pattern and translate it to <code>class</code> — or back, when a reviewer asks "what does this compile to?" — is a common real task now, often AI-assisted.</p>
+<p><b>Use AI as a partner:</b> "<i>convert this ES5 constructor hierarchy to classes and list every behavioural difference</i>" (expect: methods become non-enumerable, strict mode, calling without new throws, statics inherited). Then verify with tests. Ask it to generate edge-case tests for your <code>myNew</code>: constructors returning null, arrays, functions; arrow functions; classes.</p>
+<p><b>Where AI goes wrong:</b> <code>myNew</code> implementations that check <code>typeof result === 'object'</code> without excluding <code>null</code>, or forget functions; ES5 inheritance that forgets to restore <code>constructor</code> or uses <code>Child.prototype = new Parent()</code>; claiming arrow functions can be constructors.</p>
+<p><b>What you must still own:</b> the 4 steps of <code>new</code> by heart, the return-override rule, why methods belong on the prototype, and how to diagnose "a global variable appeared from nowhere".</p>`,
+    problems: [{
+      title: 'Implement new as a Function: myNew(Ctor, ...args)',
+      level: 'Medium', tags: ['polyfill', 'new', 'constructor', 'prototype'], companies: ['Amazon', 'Meta', 'Zomato', 'PhonePe'],
+      statement: `<p>Write <code>myNew(Ctor, ...args)</code> that behaves like <code>new Ctor(...args)</code> for ordinary constructor functions: the result must be linked to <code>Ctor.prototype</code>, the constructor must run with <code>this</code> bound to it, and the return-override rule must be respected. Throw a <code>TypeError</code> if <code>Ctor</code> is not a function with a usable <code>prototype</code>.</p>`,
+      constraints: `Do not use the <code>new</code> keyword on <code>Ctor</code>. Handle constructors returning <code>undefined</code>, primitives, <code>null</code>, objects, arrays and functions.`,
+      example: `<p><code>function P(n) { this.n = n; }  P.prototype.hi = function () { return 'hi ' + this.n; };</code></p>
+<p><code>myNew(P, 'x').hi()</code> → ${H.c('g', "'hi x'")}; <code>myNew(P, 'x') instanceof P</code> → ${H.c('g', 'true')}. If <code>P</code> returned <code>[1]</code> you would get ${H.c('y', '[1]')}; if it returned <code>null</code>, the new object.</p>`,
+      brute: {
+        why: `<p>The naive version builds a plain object and copies the prototype's methods onto it. It "works" for simple calls, but the result is not linked (so <code>instanceof</code> fails and later prototype changes are invisible), copies only enumerable properties, and ignores the return-override rule.</p>`,
+        code: { lang: 'js', run: true, code: `function myNewBrute(Ctor, ...args) {
+  const obj = {};
+  Object.assign(obj, Ctor.prototype);   // copy, don't link
+  Ctor.apply(obj, args);                // ignores what Ctor returns
+  return obj;
+}
+function P(n) { this.n = n; }
+P.prototype.hi = function () { return 'hi ' + this.n; };
+const x = myNewBrute(P, 'x');
+console.log(x.hi(), x instanceof P);   // hi x false  <- broken link` }
+      },
+      mcq: { q: 'Your <code>myNew</code> checks <code>typeof result === "object"</code> to decide whether to return <code>result</code>. Which constructor return value breaks it?', options: ['<code>undefined</code>', '<code>null</code>', '<code>42</code>', '<code>"str"</code>'], answer: 1, explain: '<code>typeof null === "object"</code>, so you would return <code>null</code> instead of the new instance. You must also treat <b>functions</b> as objects (typeof "function").' },
+      hints: [
+        `<p>Hint 1: steps 1 + 2 ("create" and "link") are a single call: <code>Object.create(Ctor.prototype)</code>.</p>`,
+        `<p>Hint 2: step 3 is <code>Ctor.apply(obj, args)</code> — it runs the body with <code>this = obj</code>. Keep its return value.</p>`,
+        `<p>Hint 3: step 4: return <code>result</code> only if <code>result !== null &amp;&amp; (typeof result === 'object' || typeof result === 'function')</code>; else return <code>obj</code>. Validate <code>typeof Ctor === 'function'</code> first; if <code>Ctor.prototype</code> is not an object, link to <code>Object.prototype</code> like the real <code>new</code>.</p>`
+      ],
+      solution: {
+        approach: `<p>Literally transcribe the four steps. The details that separate a good answer: the <code>null</code> check, treating functions as objects, falling back to <code>Object.prototype</code> when <code>Ctor.prototype</code> is not an object, and refusing non-functions. (Real <code>new</code> also refuses arrow functions/methods — we can detect a missing <code>prototype</code> as a heuristic.)</p>`,
+        code: { lang: 'js', run: true, code: `function myNew(Ctor, ...args) {
+  if (typeof Ctor !== 'function' || !('prototype' in Ctor)) {
+    throw new TypeError(String(Ctor && Ctor.name || Ctor) + ' is not a constructor');
+  }
+  const proto = Ctor.prototype;
+  const isObj = (v) => v !== null && (typeof v === 'object' || typeof v === 'function');
+  // steps 1 + 2: create + link (fallback mirrors the spec)
+  const obj = Object.create(isObj(proto) ? proto : Object.prototype);
+  // step 3: run the constructor with this = obj
+  const result = Ctor.apply(obj, args);
+  // step 4: object results override, primitives (incl. null) are ignored
+  return isObj(result) ? result : obj;
+}
+
+function P(n) { this.n = n; }
+P.prototype.hi = function () { return 'hi ' + this.n; };
+const x = myNew(P, 'x');
+console.log(x.hi(), x instanceof P);                        // hi x true
+function RetNull() { this.a = 1; return null; }
+function RetArr() { this.a = 1; return [1]; }
+console.log(myNew(RetNull).a, myNew(RetArr));                // 1 [ 1 ]
+try { myNew(() => {}); } catch (e) { console.log(e.name); }  // TypeError (arrow: no prototype)
+function Weird() { this.ok = true; }
+Weird.prototype = 5;                                         // not an object
+console.log(Object.getPrototypeOf(myNew(Weird)) === Object.prototype); // true (like real new)` },
+        dry: { head: ['step', 'code', 'state after'], rows: [['1+2', 'Object.create(P.prototype)', 'obj = {} → P.prototype'], ['3', "P.apply(obj, ['x'])", "obj = { n: 'x' }, result = undefined"], ['4', 'isObj(undefined)?', H.c('g', 'false → return obj')], ['use', 'x.hi()', "'hi x' (found on P.prototype)"]] },
+        complexity: `<p>O(1) overhead plus the cost of running the constructor.</p>`,
+        followUps: ['Support classes: why does <code>Ctor.apply(obj)</code> throw for a <code>class</code>, and how does <code>Reflect.construct(Ctor, args)</code> solve it?', 'Set <code>new.target</code> correctly inside the constructor — possible without <code>Reflect.construct</code>?', 'Implement <code>myNew</code> for a constructor that is a bound function.']
+      }
+    }]
+  });
+
+  /* ======================================================================
+     TOPIC 5 — ES6 classes and what they desugar to
+     ====================================================================== */
+  topics.push({
+    title: 'ES6 Classes: Syntax, Fields, Getters — and What They Desugar To',
+    analogy: `<p>A restaurant redesigns its <b>menu card</b>: nicer layout, clear sections, photos. The <b>kitchen behind it is the same kitchen</b> — same cooks, same recipes. But the new menu also adds a few <b>house rules</b>: "no walk-ins without a reservation" (you must use <code>new</code>), "kitchen is a strict no-mess zone" (strict mode), and "secret recipes stay in the safe" (<code>#private</code>).</p>
+<p>ES6 <code>class</code> is that new menu. Underneath it is still a <b>function</b> plus a <b>prototype object</b> — the kitchen from the previous topics — with a handful of extra rules you must know for interviews.</p>`,
+    explain: `<p>A <code>class</code> declaration creates a <b>constructor function</b> and fills its <code>prototype</code> with your methods. <code>typeof User</code> is <code>'function'</code>.</p>
+<h4>The pieces of a class</h4>
+${H.table(['Syntax', 'Where it ends up', 'Notes'], [
+  ['<code>constructor(name) { this.name = name; }</code>', 'The body of the function <code>User</code>', 'Optional; default is empty (or <code>super(...args)</code> in a subclass)'],
+  ['<code>greet() { … }</code>', '<code>User.prototype.greet</code>', H.c('b', 'non-enumerable') + ', shared, strict'],
+  ['<code>get upper() { … }</code> / <code>set upper(v)</code>', 'Accessor on <code>User.prototype</code>', 'Read like a property: <code>u.upper</code>'],
+  ['<code>role = \'guest\';</code> (public field)', 'Own property on <b>each instance</b>', 'Created when the constructor starts (after <code>super()</code> in subclasses)'],
+  ['<code>onClick = () =&gt; this.name;</code>', 'Own property on each instance (a new arrow per object)', '<code>this</code> is permanently the instance — great for callbacks'],
+  ['<code>static create() { … }</code>', '<code>User.create</code> (on the function)', 'Called on the class, not on instances'],
+  ['<code>#secret</code>, <code>#helper()</code>', 'Hidden private slots (not properties at all)', 'Covered in the private-fields topic'],
+  ['<code>[Symbol.iterator]() { … }</code>', 'Computed method name on the prototype', 'Makes instances iterable']
+])}
+<h4>"Just syntactic sugar"? Mostly — with 8 real differences</h4>
+${H.table(['#', 'class', 'old function + prototype'], [
+  ['1', 'Calling without <code>new</code> → ' + H.c('r', 'TypeError'), 'Runs as a normal function (bug-prone)'],
+  ['2', 'Whole body is <b>strict mode</b>', 'Sloppy unless you opt in'],
+  ['3', 'Methods are <b>non-enumerable</b>', 'Assigned methods are enumerable (show in <code>for...in</code>)'],
+  ['4', 'Declaration is hoisted but in the <b>TDZ</b> → ReferenceError before the line', 'Function declarations are fully hoisted'],
+  ['5', 'Methods are not constructors (no <code>prototype</code>)', 'Every <code>function</code> can be <code>new</code>-ed'],
+  ['6', '<code>User.prototype</code> is read-only; class name is <code>const</code> inside the body', 'Both reassignable'],
+  ['7', 'Fields use <b>define</b> semantics (do not trigger inherited setters)', 'Assignments in the constructor do trigger setters'],
+  ['8', '<code>extends</code> links statics, supports built-ins, enforces <code>super()</code>; <code>#private</code>', 'Manual, partial, or impossible']
+])}
+<h4>Class fields vs methods — the most practical decision</h4>
+<ul>
+<li><b>Method</b> <code>greet() {}</code>: one shared function on the prototype. Cheap. But <code>this</code> is decided at call time, so <code>button.onclick = user.greet</code> loses <code>this</code>.</li>
+<li><b>Arrow field</b> <code>greet = () =&gt; {}</code>: one function <b>per instance</b>, with <code>this</code> locked to that instance. Safe to pass around as a callback. Costs memory and cannot be reached with <code>super.greet()</code> from a subclass (it is not on the prototype).</li>
+</ul>
+<h4>Class expressions</h4>
+<p>Classes are values: <code>const Shape = class { … }</code>, or passed to and returned from functions (<code>const Mixed = withLogging(class extends Base {})</code>). A named class expression's name is visible only inside its own body.</p>`,
+    clues: [
+      '"Is class just syntactic sugar?" → mostly, then list the real differences (new-only, strict, non-enumerable methods, TDZ, fields semantics, super/home object, private).',
+      '"Convert this class to ES5" / "what does the transpiler output?" → constructor function + <code>defineProperty</code> on the prototype.',
+      '"Why is <code>this</code> undefined when I pass <code>obj.method</code> as a callback?" → method on prototype; use an arrow field or <code>bind</code>.',
+      '"<code>ReferenceError: Cannot access \'X\' before initialization</code>" with a class → TDZ; classes are not usable before their line.',
+      '"Getter/setter", "computed property", "validation on assignment" → accessor pairs on the prototype.',
+      '"Why does <code>for...in</code> not show my class methods?" → class methods are non-enumerable.'
+    ],
+    code: [{ lang: 'js', run: true, title: 'A modern class, and proof it is a function + prototype (runnable)', code: `class User {
+  role = 'guest';                          // public field: own property per instance
+  onClick = () => 'clicked by ' + this.name; // arrow field: this locked to the instance
+
+  constructor(name) {
+    this.name = name;
+  }
+  greet() {                                 // goes on User.prototype
+    return 'Hi ' + this.name;
+  }
+  get upper() {                             // accessor on User.prototype
+    return this.name.toUpperCase();
+  }
+  set upper(v) {
+    this.name = String(v).toLowerCase();
+  }
+  static create(n) {                        // on User itself
+    return new User(n);
+  }
+}
+
+const u = User.create('asha');
+console.log(typeof User);                               // function
+console.log(Object.getPrototypeOf(u) === User.prototype); // true
+console.log(Object.keys(u));                            // [ 'role', 'onClick', 'name' ]
+console.log(Object.getOwnPropertyNames(User.prototype)); // [ 'constructor', 'greet', 'upper' ]
+console.log(Object.keys(User.prototype));               // [] — methods are non-enumerable
+console.log(u.greet(), u.upper);                        // Hi asha ASHA
+u.upper = 'BEN';
+console.log(u.name);                                    // ben
+
+const detached = u.greet;                               // method loses 'this'
+try { detached(); } catch (e) { console.log('TypeError:', e.message.includes('undefined')); } // TypeError: true
+const cb = u.onClick;                                   // arrow field keeps 'this'
+console.log(cb());                                      // clicked by ben
+try { User('x'); } catch (e) { console.log(e.message); } // Class constructor User cannot be invoked without 'new'
+` }],
+    codeTitle: ['Class anatomy'],
+    viz: {
+      title: 'Class vs its desugared ES5 twin, side by side',
+      gen: function () {
+        var CLS = [
+          'class User {',
+          "  role = 'guest';",
+          '  onClick = () => this.name;',
+          '  constructor(name) {',
+          '    this.name = name;',
+          '  }',
+          '  greet() {',
+          "    return 'Hi ' + this.name;",
+          '  }',
+          '  get upper() { return this.name.toUpperCase(); }',
+          '  static create(n) { return new User(n); }',
+          '}'
+        ].join('\n');
+        var ES5 = [
+          "'use strict';",
+          'function User(name) {',
+          "  if (!new.target) throw new TypeError(\"Class constructor User cannot be invoked without 'new'\");",
+          "  Object.defineProperty(this, 'role', { value: 'guest', writable: true, enumerable: true, configurable: true });",
+          "  Object.defineProperty(this, 'onClick', { value: () => this.name, writable: true, enumerable: true, configurable: true });",
+          '  this.name = name;',
+          '}',
+          "Object.defineProperty(User.prototype, 'greet', {",
+          "  value: function () { return 'Hi ' + this.name; },",
+          '  writable: true, enumerable: false, configurable: true });',
+          "Object.defineProperty(User.prototype, 'upper', {",
+          '  get: function () { return this.name.toUpperCase(); }, enumerable: false, configurable: true });',
+          "Object.defineProperty(User, 'create', {",
+          '  value: function (n) { return new User(n); }, writable: true, enumerable: false, configurable: true });',
+          "Object.defineProperty(User, 'prototype', { writable: false });"
+        ].join('\n');
+        function fr(narr, a, b, extra) {
+          var ha = {}, hb = {};
+          a.forEach(function (n) { ha[n] = 'cur'; });
+          b.forEach(function (n) { hb[n] = 'ok'; });
+          return { narr: narr, parts: [{ type: 'code', label: 'What you write (ES2022 class)', lang: 'js', code: CLS, hl: ha }, { type: 'code', label: 'Roughly what it means (hand-desugared ES5+)', lang: 'js', code: ES5, hl: hb }].concat(extra || []) };
+        }
+        return [
+          fr('<code>class User { … }</code> creates a <b>function</b> called User. The entire class body runs in <b>strict mode</b> automatically.', [1, 12], [1, 2, 7]),
+          fr('Classes refuse to be called without <code>new</code>. The real engine marks the function as a class constructor; our twin imitates it with a <code>new.target</code> check.', [1], [3], [note('This is difference #1: <code>User()</code> → TypeError instead of silently polluting globals.')]),
+          fr('A <b>public field</b> becomes an <b>own, enumerable</b> property on every instance, created with <b>define</b> semantics (like <code>Object.defineProperty</code>) right when construction starts — before the constructor body\'s own code.', [2], [4]),
+          fr('An <b>arrow-function field</b> is also per-instance. Because arrows capture <code>this</code> from where they are created — the constructor — <code>this</code> is locked to the instance forever. One new function object <b>per instance</b>.', [3], [5], [{ type: 'map', label: 'Own properties of new User(\'asha\')', entries: [['role', "'guest'"], ['onClick', 'ƒ (arrow, own)'], ['name', "'asha'"]], hl: { onClick: 'cur' } }]),
+          fr('The <code>constructor</code> body becomes the body of the function. (Field initialisers run first, then these lines.)', [4, 5, 6], [6]),
+          fr('A method goes onto <code>User.prototype</code> — shared by every instance — and is <b>non-enumerable</b>, so it never shows in <code>for...in</code> or <code>Object.keys</code>. (Real class methods also have no <code>prototype</code> and cannot be <code>new</code>-ed; a <code>function</code> expression can — a tiny imperfection in our twin.)', [7, 8, 9], [8, 9, 10], [{ type: 'map', label: 'User.prototype (all non-enumerable)', entries: [['constructor', 'User'], ['greet', 'ƒ'], ['upper', 'get']], hl: { greet: 'ok' } }]),
+          fr('A getter becomes an <b>accessor property</b> on the prototype. <code>u.upper</code> looks like a field read, but runs the function with <code>this = u</code>.', [10], [11, 12]),
+          fr('<code>static</code> members go on the <b>function object itself</b>, not on the prototype. So <code>User.create(\'x\')</code> works but <code>u.create</code> is <code>undefined</code>.', [11], [13, 14], [{ type: 'map', label: 'Own properties of User (the function)', entries: [['length', '1'], ['name', "'User'"], ['prototype', 'User.prototype (read-only)'], ['create', 'ƒ static']], hl: { create: 'ok', prototype: 'sel' } }]),
+          fr('Finally, a class\'s <code>prototype</code> property is <b>non-writable</b>: <code>User.prototype = {}</code> silently fails (or throws in strict code). Classes protect the triangle you learned about.', [1], [15]),
+          fr('Summary: the <b>shape in memory is identical</b> to the old pattern (function + prototype + chain). The class adds safety rules. Things the twin <b>cannot</b> express: <code>#private</code> fields, <code>super</code> (needs [[HomeObject]]), and real subclassing of built-ins.', [], [], [{ type: 'table', label: 'Not just sugar', columns: ['Feature', 'class', 'ES5 twin'], rows: [['new required', 'yes', 'manual check'], ['strict', 'always', 'opt-in'], ['methods enumerable', 'no', 'only via defineProperty'], ['TDZ', 'yes', 'no (hoisted)'], ['#private', 'yes', 'WeakMap emulation'], ['super.x()', 'yes', 'manual Parent.prototype.x.call(this)']], hl: { 4: 'sel', 5: 'sel' } }])
+        ];
+      }
+    },
+    examples: [
+      { title: 'Predict: classes are in the TDZ before their line', html: `<p>Function declarations are hoisted <b>with</b> their value; class declarations are hoisted <b>without</b> one (like <code>let</code>), so touching the class before its line throws a <code>ReferenceError</code>.</p>
+${H.table(['Code', 'Result'], [['<code>new F()</code> before <code>function F(){}</code>', H.c('g', 'works')], ['<code>new C()</code> before <code>class C {}</code>', H.c('r', 'ReferenceError: Cannot access \'C\' before initialization')]])}`, code: { lang: 'js', run: true, code: `console.log(typeof new F());          // object — function F is fully hoisted
+function F() {}
+
+try { new C(); }
+catch (e) { console.log(e.name + ': ' + e.message); }  // ReferenceError: Cannot access 'C' before initialization
+class C {}
+console.log(typeof new C());          // object — fine after the line` } },
+      { title: 'Predict: method vs arrow field as a callback', html: `<p>Passing <code>timer.tick</code> detaches the method from its object; inside, <code>this</code> is <code>undefined</code> (class bodies are strict). The arrow field version keeps working. Use arrow fields (or <code>bind</code> in the constructor) for handlers you pass around; use normal methods otherwise — they are shared and overridable.</p>`, code: { lang: 'js', run: true, code: `class Timer {
+  count = 0;
+  tick() { this.count++; return this.count; }        // on prototype
+  safeTick = () => { this.count++; return this.count; }; // own, this locked
+}
+const t = new Timer();
+const run = (fn) => { try { return fn(); } catch (e) { return e.constructor.name; } };
+console.log(run(t.tick));      // TypeError  (this is undefined)
+console.log(run(t.safeTick));  // 1
+console.log(run(t.tick.bind(t)));  // 2
+console.log(Object.hasOwn(t, 'safeTick'), Object.hasOwn(t, 'tick')); // true false` } },
+      { title: 'Getters, setters and computed names (iterable class)', html: `<p>Accessors let you validate or compute on access. A <b>computed</b> method name like <code>[Symbol.iterator]</code> makes instances work with <code>for...of</code> and spread.</p>`, code: { lang: 'js', run: true, code: `class Range {
+  constructor(from, to) { this.from = from; this.to = to; }
+  get size() { return Math.max(0, this.to - this.from + 1); }
+  set size(n) {
+    if (!Number.isInteger(n) || n < 0) throw new RangeError('size must be a non-negative integer');
+    this.to = this.from + n - 1;
+  }
+  *[Symbol.iterator]() {                  // generator method with a computed (symbol) name
+    for (let i = this.from; i <= this.to; i++) yield i;
+  }
+}
+const r = new Range(3, 6);
+console.log(r.size, [...r]);              // 4 [ 3, 4, 5, 6 ]
+r.size = 2;
+console.log([...r]);                      // [ 3, 4 ]
+try { r.size = -1; } catch (e) { console.log(e.name); }  // RangeError` } },
+      { title: 'Expert: fields use DEFINE semantics (inherited setters are skipped)', html: `<p>A class field is installed like <code>Object.defineProperty</code>, not like <code>this.x = …</code>. So a setter defined by the parent for the same name is <b>not called</b> — the field simply shadows it. (TypeScript's old <code>useDefineForClassFields: false</code> used assignment semantics, which is why upgrading TS target changed behaviour in some codebases.)</p>`, code: { lang: 'js', run: true, code: `class Base {
+  set value(v) { console.log('Base setter called with', v); this._v = v; }
+  get value() { return this._v; }
+}
+class WithField extends Base {
+  value = 1;                       // define: creates own 'value', setter NOT called
+}
+class WithAssign extends Base {
+  constructor() { super(); this.value = 1; }   // assignment: setter IS called
+}
+const a = new WithField();
+console.log(Object.hasOwn(a, 'value'), a._v);  // true undefined
+const b = new WithAssign();                    // prints: Base setter called with 1
+console.log(Object.hasOwn(b, 'value'), b._v);  // false 1` } },
+      { title: 'Class expressions and anonymous classes', html: `<p>Classes are values. A named class expression's name is only visible inside its own body (handy for recursion/static factories); the variable you assign it to is what the outside sees. Anonymous classes infer their <code>name</code> from the variable.</p>`, code: { lang: 'js', run: true, code: `const Shape = class Internal {
+  clone() { return new Internal(); }       // 'Internal' visible inside
+};
+console.log(Shape.name, typeof Internal);  // Internal undefined
+console.log(new Shape().clone() instanceof Shape); // true
+
+const Anon = class {};
+console.log(Anon.name);                    // Anon (inferred)
+const makeTagged = (tag) => class { tag() { return tag; } };
+console.log(new (makeTagged('blue'))().tag()); // blue` } }
+    ],
+    deepDive: `<p><b>ClassDefinitionEvaluation</b> (what the engine does when it reaches <code>class X {}</code>): (1) create a new declarative scope where the class name is bound as an immutable binding (that is why you cannot reassign <code>X</code> inside its own body); (2) evaluate the <code>extends</code> expression, if any; (3) create the prototype object (linked to the parent's prototype or <code>Object.prototype</code>); (4) create the constructor function <code>F</code> with <code>[[ConstructorKind]]</code> base/derived, marked as a class constructor so <code>[[Call]]</code> throws; (5) define each method with <code>DefineMethodProperty</code> — enumerable <b>false</b> — and set each method's <code>[[HomeObject]]</code> (needed for <code>super</code>); (6) collect field initialisers into <code>F.[[Fields]]</code>; (7) run <code>static</code> fields and <code>static {}</code> blocks in order; (8) initialise the outer binding (leaving the TDZ).</p>
+<p><b>Field initialisation order.</b> For a base class: fields are initialised <b>at the start</b> of <code>[[Construct]]</code>, before the first line of the constructor. For a derived class: fields are initialised <b>immediately after <code>super()</code> returns</b>. Consequence: a parent constructor that calls an overridden method sees the child's fields as <code>undefined</code> (classic puzzle in the next topic). Field initialisers are evaluated with <code>this</code> = the instance, each in its own function-like scope, so they can reference earlier fields.</p>
+<p><b>Performance reality.</b> Class methods and prototype methods compile to the same thing in V8. Fields are installed in declaration order which gives stable hidden classes. Arrow-function fields allocate a closure per instance — negligible for a few hundred UI components, measurable for millions of objects. Getters on hot paths are inlined by TurboFan when monomorphic. Transpiling classes to ES5 (old Babel "loose" mode) changes semantics: enumerable methods, assignment-based fields, no built-in subclassing — a source of bugs when targets were raised to ES2022.</p>
+<p><b>Decorators.</b> The TC39 decorators proposal (Stage 3, implemented in TypeScript 5.0+ and Babel) adds <code>@logged method() {}</code> and the <code>accessor</code> keyword (auto getter/setter backed by a private slot). Frameworks such as Angular, NestJS, MobX and Lit lean on them. They operate on exactly the structures described above: methods on the prototype, fields per instance, static members on the constructor.</p>`,
+    aiEra: `<p><b>What AI changes:</b> AI generates classes fluently, so the human value moves to <b>choosing</b>: method vs arrow field, field vs constructor assignment, class vs plain object + functions. Interviewers probe whether you know the differences behind the sugar because that is what breaks after a refactor or a TS/Babel config change.</p>
+<p><b>Use AI as a partner:</b> "<i>show me the Babel output for this class at target ES5 and ES2022 and explain each difference</i>"; "<i>which of these methods are passed as callbacks and need binding?</i>"; "<i>write tests proving my ES5 desugaring matches the class (enumerability, new-only, statics)</i>".</p>
+<p><b>Where AI goes wrong:</b> turning every method into an arrow field "to be safe" (memory cost, breaks <code>super.method()</code> and prototype mocking in tests), assuming fields run after the constructor body, claiming classes are "just sugar" with no differences, or putting mutable defaults on the prototype in desugared code.</p>
+<p><b>What you must still own:</b> the class → prototype mapping in your head, the 8 differences, field timing, and deciding where each member should live.</p>`,
+    problems: [{
+      title: 'Desugar a Class by Hand',
+      level: 'Medium', tags: ['class', 'desugaring', 'defineProperty', 'ES5'], companies: ['Google', 'Microsoft', 'Razorpay'],
+      statement: `<p>Rewrite this class <b>without</b> the <code>class</code> keyword so that its observable behaviour matches:</p>
+<pre>class Counter {
+  count = 0;
+  constructor(step = 1) { this.step = step; }
+  inc() { this.count += this.step; return this; }
+  get double() { return this.count * 2; }
+  static of(step) { return new Counter(step); }
+}</pre>
+<p>Required: calling <code>Counter2()</code> without <code>new</code> throws <code>TypeError</code>; <code>count</code> and <code>step</code> are own enumerable properties (in that order); <code>inc</code> and <code>double</code> are <b>non-enumerable</b> on the prototype; <code>of</code> is a non-enumerable static; the code runs in strict mode.</p>`,
+      constraints: `No <code>class</code> keyword. Use only functions, <code>Object.defineProperty</code> and <code>new.target</code>.`,
+      example: `<p><code>Counter2.of(5).inc().inc().double</code> → ${H.c('g', '20')}; <code>Object.keys(new Counter2())</code> → ${H.c('g', "[ 'count', 'step' ]")}; <code>Object.keys(Counter2.prototype)</code> → ${H.c('g', '[]')}; <code>Counter2()</code> → ${H.c('r', 'TypeError')}.</p>`,
+      brute: {
+        why: `<p>The "obvious" ES5 version assigns methods with <code>Counter2.prototype.inc = function…</code>. It works for calls, but the methods become <b>enumerable</b> (they appear in <code>for...in</code> over instances), calling without <code>new</code> silently runs, and the getter cannot be written by plain assignment at all.</p>`,
+        code: { lang: 'js', run: true, code: `function CounterBrute(step) { this.count = 0; this.step = step === undefined ? 1 : step; }
+CounterBrute.prototype.inc = function () { this.count += this.step; return this; };
+const c = new CounterBrute(2);
+const keys = [];
+for (const k in c) keys.push(k);
+console.log(keys);          // [ 'count', 'step', 'inc' ]  <- method leaks into for...in
+console.log(typeof CounterBrute(1));  // undefined, no error — and window/global got polluted
+delete globalThis.count; delete globalThis.step;` }
+      },
+      mcq: { q: 'Which statement about the desugared <code>count = 0</code> field is accurate?', options: ['It belongs on <code>Counter2.prototype</code>', 'It is created as an own property at the start of construction, before the constructor body', 'It is created after the constructor body finishes', 'It is a static property'], answer: 1, explain: 'For a base class, field initialisers run at the very beginning of [[Construct]], before the user-written constructor code. That is why <code>count</code> comes before <code>step</code> in <code>Object.keys</code>.' },
+      hints: [
+        `<p>Hint 1: start the function with <code>'use strict'</code> semantics (put the directive at the top of the snippet or inside the function) and a <code>new.target</code> guard that throws a <code>TypeError</code>.</p>`,
+        `<p>Hint 2: fields first (<code>this.count = 0</code> — or <code>defineProperty</code> for exact define semantics), then the body (<code>this.step = step</code> with the default). Order matters for <code>Object.keys</code>.</p>`,
+        `<p>Hint 3: install <code>inc</code> (value), <code>double</code> (get) on the prototype and <code>of</code> on the function with <code>Object.defineProperty</code>, <code>enumerable: false</code>, <code>configurable: true</code> (plus <code>writable: true</code> for methods). Optionally lock <code>prototype</code> with <code>writable: false</code>.</p>`
+      ],
+      solution: {
+        approach: `<p>Follow ClassDefinitionEvaluation: a strict function body with a new-only guard, fields initialised first with define semantics, then the constructor code; methods and accessors defined as non-enumerable on the prototype; statics defined on the function; prototype made read-only. Verify with property introspection, not just by calling methods.</p>`,
+        code: { lang: 'js', run: true, code: `'use strict';
+function Counter2(step) {
+  if (!new.target) throw new TypeError("Class constructor Counter2 cannot be invoked without 'new'");
+  // 1) fields (define semantics), in declaration order
+  Object.defineProperty(this, 'count', { value: 0, writable: true, enumerable: true, configurable: true });
+  // 2) constructor body (default parameter emulated)
+  this.step = step === undefined ? 1 : step;
+}
+const def = (target, key, desc) => Object.defineProperty(target, key, Object.assign({ enumerable: false, configurable: true }, desc));
+def(Counter2.prototype, 'inc', { writable: true, value: function inc() { this.count += this.step; return this; } });
+def(Counter2.prototype, 'double', { get: function () { return this.count * 2; } });
+def(Counter2, 'of', { writable: true, value: function of(step) { return new Counter2(step); } });
+Object.defineProperty(Counter2, 'prototype', { writable: false });
+
+console.log(Counter2.of(5).inc().inc().double);         // 20
+console.log(Object.keys(new Counter2()));              // [ 'count', 'step' ]
+console.log(Object.keys(Counter2.prototype));          // []
+console.log(Object.keys(Counter2));                    // []
+try { Counter2(); } catch (e) { console.log(e.name); } // TypeError
+
+// compare with the real class
+class Counter { count = 0; constructor(step = 1) { this.step = step; } inc() { this.count += this.step; return this; } get double() { return this.count * 2; } static of(s) { return new Counter(s); } }
+console.log(Counter.of(5).inc().inc().double, Object.keys(new Counter()));  // 20 [ 'count', 'step' ]` },
+        dry: { head: ['class member', 'desugared to', 'enumerable?'], rows: [['count = 0', 'defineProperty(this, count) at construction start', 'yes (own)'], ['constructor(step = 1)', 'function body + default emulation', '—'], ['inc()', 'defineProperty(Counter2.prototype, inc)', H.c('b', 'no')], ['get double()', 'accessor on Counter2.prototype', H.c('b', 'no')], ['static of()', 'defineProperty(Counter2, of)', H.c('b', 'no')]] },
+        complexity: `<p>O(1) setup per member; instance creation O(number of fields).</p>`,
+        followUps: ['What part of a class can you <b>not</b> desugar faithfully? (methods without <code>[[Construct]]</code>, <code>super</code> via [[HomeObject]], <code>#private</code>, TDZ.)', 'Desugar <code>class B extends A</code> as well — including statics.', 'Emulate <code>#count</code> with a WeakMap and explain the GC behaviour.']
+      }
+    }]
+  });
+
+  registerModule({
+    id: 'js06',
+    title: 'Prototypes, Classes & Inheritance',
+    intro: `<p>Java and C++ copy behaviour from a class blueprint into every object. JavaScript does something simpler and stranger: every object has a hidden <b>link to another object</b>, and when it cannot find a property on itself, it <b>asks that object</b>. That chain of links — the <b>prototype chain</b> — is the real engine behind every method call you have ever made in JS, including <code>[].map</code>, <code>'hi'.toUpperCase()</code> and every ES6 <code>class</code>.</p>
+<p>In this module you will build the whole picture from the ground up: how a property lookup climbs the chain and why writes do not; the famous <code>prototype</code> vs <code>__proto__</code> vs <code>constructor</code> triangle; <code>Object.create</code> and pure delegation; constructor functions and exactly what <code>new</code> does in four steps; how <code>class</code> is (mostly) sugar over all of that — and the places where it is <b>not</b> just sugar; <code>extends</code>/<code>super</code> with its two parallel chains; truly private <code>#fields</code> and <code>static</code> members; and finally how <code>instanceof</code> really decides "is-a".</p>
+<p>Interviews love this area for <b>predict-the-output</b> puzzles and <b>polyfill</b> rounds (<code>Object.create</code>, <code>new</code>, <code>instanceof</code>, ES5 <code>extends</code>). Every topic has a step-by-step visualizer, runnable examples, and practice problems that build those exact muscles.</p>`,
+    goals: [
+      'Predict the result of any property read or write by walking the prototype chain in your head (including shadowing, setters and read-only inherited properties)',
+      'Draw the <code>prototype</code> / <code>__proto__</code> / <code>constructor</code> triangle for any class hierarchy, including <code>Function</code> and <code>Object</code> at the top',
+      'Implement <code>Object.create</code>, <code>new</code>, <code>instanceof</code> and ES5-style inheritance from scratch and explain every line',
+      'Write modern classes with <code>extends</code>/<code>super</code>, <code>#private</code> fields and methods, <code>static</code> members and static blocks — and explain what each desugars to',
+      'Spot the classic traps: lost <code>constructor</code>, shared mutable state on prototypes, <code>this</code> before <code>super()</code>, overridden methods called from a parent constructor, cross-realm <code>instanceof</code>'
+    ],
+    prereqs: `JS 4 (Scope, Hoisting, TDZ &amp; Closures) and JS 5 (<code>this</code>, call/apply/bind &amp; Arrow Functions) — you must be comfortable with how <code>this</code> is decided at call time. JS 2 (objects, spread, destructuring) is assumed.`,
+    hours: 12,
+    topics: topics,
+    practice: practice,
+    quiz: quiz,
+    interview: interview
+  });
+})();
