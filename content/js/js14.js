@@ -1644,4 +1644,830 @@ console.log(join()('a')()('b', 'c')); // a-b-c (empty calls just wait)
       }
     }]
   });
+
+  /* ================= TOPIC 7: Event Emitter (pub/sub) ================= */
+  var EMIT_SRC = [
+    'class EventEmitter {',
+    '  #events = new Map();                      // name -> [listeners]',
+    '  on(name, fn) {',
+    '    if (!this.#events.has(name)) this.#events.set(name, []);',
+    '    this.#events.get(name).push(fn);',
+    '    return () => this.off(name, fn);         // unsubscribe handle',
+    '  }',
+    '  off(name, fn) {',
+    '    const list = this.#events.get(name) || [];',
+    '    const i = list.indexOf(fn);',
+    '    if (i >= 0) list.splice(i, 1);',
+    '  }',
+    '  once(name, fn) {',
+    '    const wrapper = (...a) => { this.off(name, wrapper); fn(...a); };',
+    '    return this.on(name, wrapper);',
+    '  }',
+    '  emit(name, ...args) {',
+    '    const list = this.#events.get(name);',
+    '    if (!list || !list.length) return false;',
+    '    for (const fn of [...list]) fn(...args); // iterate a COPY',
+    '    return true;',
+    '  }',
+    '}'
+  ].join('\n');
+
+  topics.push({
+    title: 'Event Emitter (Pub/Sub) from Scratch',
+    analogy: `<p>A <b>YouTube channel with a bell icon</b>. Viewers <b>subscribe</b> (<code>on</code>) to a channel (an event name). When the creator <b>uploads</b> (<code>emit</code>), every subscriber gets notified, in the order they subscribed. Viewers can <b>unsubscribe</b> (<code>off</code>). A <b>once</b> subscriber is someone who only wants the <i>next</i> video and then unsubscribes automatically.</p>
+<p>The creator does not know or care who the viewers are — that loose coupling is the whole point of pub/sub.</p>`,
+    explain: `<p>🟢 <b>What it is.</b> An event emitter is an object that keeps a <b>list of callback functions per event name</b> and calls them when that event is emitted. It is everywhere: Node's <code>EventEmitter</code> (streams, servers), the browser's <code>addEventListener</code>, Redux-style stores, WebSocket wrappers, and the <b>Observer pattern</b> from Module JS 13.</p>
+<p>🔵 <b>Data structure:</b> a <code>Map</code> from event name → <b>array</b> of listeners (array keeps subscription order and allows the same function twice, like Node). Some designs use a <code>Set</code> (no duplicates, like the DOM's addEventListener).</p>
+${H.kv([['"login"', '[logUser, showToast]'], ['"logout"', '[clearCache]']], { label: 'events Map' })}
+${H.table(['Method', 'What it does', 'Detail interviewers check'], [['<code>on(name, fn)</code>', 'append fn to the list', 'return an <b>unsubscribe</b> function; support chaining or not'], ['<code>off(name, fn)</code>', 'remove fn (one occurrence)', 'must work for listeners added via <code>once</code> too'], ['<code>once(name, fn)</code>', 'wrap fn so it removes itself before running', 'remove <b>before</b> calling, so a re-emit inside fn does not call it twice'], ['<code>emit(name, ...args)</code>', 'call every listener with args, in order', '<b>iterate a copy</b> — listeners may add/remove listeners while we loop']])}
+<p>🔵 <b>Why copy the list in emit?</b> If listener A calls <code>off</code> on itself (which <code>once</code> does!), the array shifts left while we are looping and listener B gets <b>skipped</b>. Looping over <code>[...list]</code> (a snapshot) makes emit behave predictably: exactly the listeners present at emit time run.</p>
+<p>🔵 <b>Error handling:</b> if one listener throws, should the others still run? Node's emitter lets the error propagate (later listeners do not run). A robust app emitter can wrap each call in <code>try/catch</code> and report errors, so one bad subscriber cannot break the rest. Node also treats the <code>'error'</code> event specially: emitting <code>'error'</code> with no listener <b>throws</b>.</p>
+<p>🔵 <b>Memory leaks:</b> every <code>on</code> keeps a reference to the callback (and everything its closure captures). Forgetting to unsubscribe (e.g. on component unmount) is a classic leak. Node warns when more than 10 listeners are added to one event (<code>setMaxListeners</code>).</p>`,
+    clues: ['"Implement an EventEmitter with on, off, once, emit" → Map of name → array of listeners', '"Pub/sub / observer / notify multiple subscribers" → event emitter', '"subscribe() should return a function to unsubscribe" → return a closure calling off', '"A listener removes itself during emit" → iterate over a copy', '"once listener should be removable with off(original)" → store the original on the wrapper', '"Components communicate without knowing each other" → event bus'],
+    code: [{ lang: 'js', run: true, title: 'EventEmitter with on/off/once/emit, unsubscribe and safe iteration (runnable)', code: `
+class EventEmitter {
+  #events = new Map();                       // eventName -> array of listener functions
+
+  on(name, fn) {
+    if (typeof fn !== 'function') throw new TypeError('listener must be a function');
+    if (!this.#events.has(name)) this.#events.set(name, []);
+    this.#events.get(name).push(fn);
+    return () => this.off(name, fn);           // unsubscribe handle
+  }
+
+  off(name, fn) {
+    const list = this.#events.get(name);
+    if (!list) return this;
+    // match the function itself OR a once-wrapper around it
+    const i = list.findIndex((l) => l === fn || l.original === fn);
+    if (i >= 0) list.splice(i, 1);
+    if (list.length === 0) this.#events.delete(name); // tidy up empty lists
+    return this;
+  }
+
+  once(name, fn) {
+    const wrapper = (...args) => {
+      this.off(name, wrapper);                 // remove FIRST, then call
+      return fn.apply(this, args);
+    };
+    wrapper.original = fn;                     // so off(name, fn) still works
+    return this.on(name, wrapper);
+  }
+
+  emit(name, ...args) {
+    const list = this.#events.get(name);
+    if (!list) return false;
+    for (const fn of [...list]) {              // snapshot: safe if listeners change the list
+      fn.apply(this, args);
+    }
+    return true;
+  }
+
+  listenerCount(name) { return (this.#events.get(name) || []).length; }
+}
+
+// ---------- tests ----------
+const bus = new EventEmitter();
+const log = [];
+const a = (x) => log.push('A' + x);
+const unsubB = bus.on('ping', (x) => log.push('B' + x));
+bus.on('ping', a);
+bus.once('ping', (x) => log.push('ONCE' + x));
+
+bus.emit('ping', 1);          // B1 A1 ONCE1
+bus.emit('ping', 2);          // B2 A2  (once is gone)
+unsubB();
+bus.off('ping', a);
+console.log(bus.emit('ping', 3), log); // false [ 'B1','A1','ONCE1','B2','A2' ]
+
+// a listener removing itself mid-emit does not skip the next one
+const e2 = new EventEmitter();
+const out = [];
+const self = () => { out.push('self'); e2.off('x', self); };
+e2.on('x', self);
+e2.on('x', () => out.push('next'));
+e2.emit('x');
+console.log(out);             // [ 'self', 'next' ]
+
+// once listener can be removed by its original function
+const e3 = new EventEmitter();
+const hi = () => console.log('should not print');
+e3.once('greet', hi);
+e3.off('greet', hi);
+console.log(e3.listenerCount('greet')); // 0
+` }],
+    codeTitle: ['EventEmitter'],
+    viz: [{
+      title: 'Event emitter: the listeners map in action',
+      input: 'on login A; on login B; once login C; emit login; off login A; emit login; emit logout',
+      inputLabel: 'commands separated by ; (on/once/off NAME LISTENER, emit NAME)',
+      gen: function (input) {
+        var list = cmds(input);
+        if (!list.length) throw new Error('Give commands like: on click A; emit click');
+        if (list.length > 14) throw new Error('Use at most 14 commands');
+        var ev = {}, order = [], f = [], outLines = [];
+        function entries() { return order.filter(function (n) { return ev[n] && ev[n].length; }).map(function (n) { return [n, ev[n].map(function (l) { return l.once ? l.name + '(once)' : l.name; }).join(', ')]; }); }
+        f.push(fr('A fresh emitter: an empty <code>Map</code> from event name → array of listeners.', [{ type: 'map', label: '#events', entries: [] }, cp(EMIT_SRC, { 2: 'cur' })]));
+        list.forEach(function (c) {
+          var p = c.split(/\s+/), op = p[0], name = p[1], who = p[2];
+          if (['on', 'once', 'off', 'emit'].indexOf(op) < 0 || !name) throw new Error('Unknown command "' + c + '". Use on/once/off NAME LISTENER or emit NAME');
+          if (op !== 'emit' && !who) throw new Error('"' + c + '" needs a listener name, e.g. on click A');
+          var hl = {};
+          if (op === 'on' || op === 'once') {
+            if (!ev[name]) { ev[name] = []; if (order.indexOf(name) < 0) order.push(name); }
+            ev[name].push({ name: who, once: op === 'once' });
+            hl[name] = 'ok';
+            f.push(fr('<code>' + esc(c) + '</code>: append listener <b>' + esc(who) + '</b> to the "' + esc(name) + '" list' + (op === 'once' ? ' — wrapped so it removes itself before it runs' : '') + '. Order of subscription = order of calls.', [{ type: 'map', label: '#events', entries: entries(), hl: hl }, cp(EMIT_SRC, op === 'on' ? { 4: 'cur', 5: 'ok', 6: 'ok' } : { 14: 'cur', 15: 'ok' })]));
+          } else if (op === 'off') {
+            var arr = ev[name] || [], idx = -1;
+            for (var i = 0; i < arr.length; i++) if (arr[i].name === who) { idx = i; break; }
+            if (idx >= 0) arr.splice(idx, 1);
+            hl[name] = idx >= 0 ? 'bad' : 'cur';
+            f.push(fr('<code>' + esc(c) + '</code>: ' + (idx >= 0 ? 'find <b>' + esc(who) + '</b> in the list and splice it out.' : '<b>' + esc(who) + '</b> is not subscribed to "' + esc(name) + '" → nothing happens (no error).'), [{ type: 'map', label: '#events', entries: entries(), hl: hl }, cp(EMIT_SRC, { 10: 'cur', 11: idx >= 0 ? 'bad' : 'done' })]));
+          } else {
+            var ls = ev[name] || [];
+            if (!ls.length) {
+              f.push(fr('<code>' + esc(c) + '</code>: nobody listens to "' + esc(name) + '" → emit returns <b>false</b>. (Node would throw if the event were "error".)', [{ type: 'map', label: '#events', entries: entries() }, cp(EMIT_SRC, { 19: 'bad' }), outBox(outLines)]));
+              return;
+            }
+            var snap = ls.slice();
+            f.push(fr('<code>' + esc(c) + '</code>: take a <b>snapshot</b> of the ' + snap.length + ' listener(s) — we will call exactly these, even if the list changes while we loop.', [{ type: 'map', label: '#events', entries: entries(), hl: (function () { var h = {}; h[name] = 'cur'; return h; })() }, { type: 'queue', label: 'snapshot to call (front first)', items: snap.map(function (l) { return l.name; }) }, cp(EMIT_SRC, { 20: 'cur' })]));
+            snap.forEach(function (l, k) {
+              if (l.once) { var j = ev[name].indexOf(l); if (j >= 0) ev[name].splice(j, 1); }
+              outLines.push(l.name + ' handled ' + name);
+              f.push(fr('Call listener <b>' + esc(l.name) + '</b> with the emitted args' + (l.once ? ' — it is a <b>once</b> listener, so its wrapper first removes it from the list, then runs it.' : ' (listener #' + (k + 1) + ' of ' + snap.length + ').'), [{ type: 'map', label: '#events', entries: entries(), hl: (function () { var h = {}; h[name] = l.once ? 'bad' : 'cur'; return h; })() }, { type: 'queue', label: 'snapshot to call (front first)', items: snap.map(function (q) { return q.name; }), hl: (function () { var h = {}; for (var z = 0; z < k; z++) h[z] = 'done'; h[k] = 'cur'; return h; })() }, outBox(outLines)]));
+            });
+          }
+        });
+        f.push(fr('All commands done. Final listener map shown; every <code>on</code> without a matching <code>off</code> keeps its callback alive in memory.', [{ type: 'map', label: '#events (final)', entries: entries() }, outBox(outLines)]));
+        return f;
+      }
+    }],
+    examples: [
+      { title: 'Why emit must iterate a copy', html: `<p>Without the snapshot, a listener that unsubscribes itself shifts the array, and the <b>next</b> listener is skipped — a real bug that shows up as "sometimes my handler doesn't fire".</p>`, code: { lang: 'js', run: true, code: `
+const listeners = [];
+const first = () => { out.push('first'); listeners.splice(listeners.indexOf(first), 1); };
+const second = () => out.push('second');
+const out = [];
+listeners.push(first, second);
+for (let i = 0; i < listeners.length; i++) listeners[i]();   // live array: second is skipped!
+console.log(out); // ['first']
+
+const out2 = [], l2 = [];
+const f2 = () => { out2.push('first'); l2.splice(l2.indexOf(f2), 1); };
+l2.push(f2, () => out2.push('second'));
+for (const fn of [...l2]) fn();                                 // snapshot
+console.log(out2); // ['first', 'second']
+` } },
+      { title: 'Typed events with a tiny mitt-style emitter', html: `<p><b>mitt</b> (a ~200-byte library) uses a Map of handler arrays and supports a wildcard <code>'*'</code> that receives every event. Wildcards are great for logging/analytics.</p>`, code: { lang: 'js', run: true, code: `
+function mitt() {
+  const all = new Map();
+  return {
+    on(type, h) { (all.get(type) || all.set(type, []).get(type)).push(h); },
+    off(type, h) { const hs = all.get(type); if (hs) hs.splice(hs.indexOf(h) >>> 0, 1); },
+    emit(type, evt) {
+      (all.get(type) || []).slice().forEach((h) => h(evt));
+      (all.get('*') || []).slice().forEach((h) => h(type, evt));  // wildcard listeners
+    }
+  };
+}
+const em = mitt();
+em.on('*', (type, e) => console.log('[log]', type, e));
+em.on('cart:add', (e) => console.log('added', e.sku));
+em.emit('cart:add', { sku: 'P-42' }); // added P-42 / [log] cart:add { sku: 'P-42' }
+` } },
+      { title: 'One failing listener should not break the others', html: `<p>For an app-level bus, isolate listener errors: catch, collect, and report them (or rethrow asynchronously with <code>queueMicrotask</code>), so one buggy subscriber cannot stop notifications to everyone else.</p>`, code: { lang: 'js', run: true, code: `
+function safeEmit(listeners, ...args) {
+  const errors = [];
+  for (const fn of [...listeners]) {
+    try { fn(...args); } catch (err) { errors.push(err); }
+  }
+  if (errors.length) console.log('listener errors:', errors.map((e) => e.message));
+}
+safeEmit([
+  () => console.log('analytics ok'),
+  () => { throw new Error('toast crashed'); },
+  () => console.log('cache ok')
+]);
+// analytics ok / cache ok / listener errors: ['toast crashed']
+` } },
+      { title: 'Awaiting an event once (promise wrapper)', html: `<p>Node ships <code>events.once(emitter, name)</code> which returns a promise. You can build it on top of your <code>once</code> — handy for "wait until the server is ready".</p>`, code: { lang: 'js', run: true, code: `
+class Emitter {
+  constructor() { this.m = {}; }
+  on(n, f) { (this.m[n] = this.m[n] || []).push(f); }
+  off(n, f) { this.m[n] = (this.m[n] || []).filter((x) => x !== f); }
+  once(n, f) { const w = (...a) => { this.off(n, w); f(...a); }; this.on(n, w); }
+  emit(n, ...a) { (this.m[n] || []).slice().forEach((f) => f(...a)); }
+}
+const onceAsync = (em, name) => new Promise((resolve) => em.once(name, (...args) => resolve(args)));
+const server = new Emitter();
+onceAsync(server, 'ready').then(([port]) => console.log('ready on', port));
+setTimeout(() => server.emit('ready', 8080), 10);
+` } }
+    ],
+    deepDive: `<p>🟣 <b>Node's EventEmitter internals:</b> listeners live in <code>this._events</code>, a prototype-less object. As a memory optimisation, an event with <b>one</b> listener stores the function directly (not an array); only the second <code>on</code> upgrades it to an array. <code>emit</code> copies the array (<code>arrayClone</code>) before iterating — the same snapshot rule. <code>prependListener</code> adds to the front; <code>'newListener'</code>/<code>'removeListener'</code> meta-events fire on changes.</p>
+<p><b>Synchronous by design:</b> <code>emit</code> calls listeners <b>synchronously</b>, in order, on the current call stack. Code after <code>emit()</code> runs after all listeners finish. If a listener should not block the emitter, it can defer itself (<code>setImmediate</code>/<code>queueMicrotask</code>). Contrast with DOM events from user input, which are dispatched as separate tasks, while <code>element.dispatchEvent()</code> is synchronous.</p>
+<p><b>The browser's EventTarget</b> is available everywhere now (including Node): <code>new EventTarget()</code> + <code>addEventListener</code> + <code>dispatchEvent(new CustomEvent('x', { detail }))</code>. It dedupes identical listeners, supports <code>{ once: true }</code> and <code>{ signal }</code> (remove via AbortController — the cleanest unsubscribe for many listeners at once).</p>
+<p><b>Memory leaks:</b> emitters hold <b>strong</b> references to listeners. A long-lived emitter (global bus, socket) + short-lived subscribers (components) = leak unless unsubscribed. Patterns: return disposer functions, use <code>AbortSignal</code>, or <code>WeakRef</code>-based listeners for caches (rarely worth the complexity).</p>
+<p><b>Complexity:</b> on O(1) amortised, emit O(k) for k listeners, off O(k) with an array (O(1) with a Set, but then duplicates are impossible and order is insertion order anyway). For thousands of listeners per event, consider a Set or a linked list.</p>`,
+    aiEra: `<p>🤖 <b>What AI changes:</b> an AI can generate an emitter in one shot, so interviewers focus on <b>behavioural edge cases</b>: mutation during emit, <code>off</code> for once-listeners, error isolation, ordering, sync vs async delivery, and leaks. Expect live "now add wildcard / priority / async emit" extensions.</p>
+<p><b>Use AI as a partner:</b> <code>Act as an interviewer. Ask me 6 increasingly hard follow-ups about my EventEmitter, one at a time, and point out any behaviour that differs from Node's.</code></p>
+<p><b>Where AI goes wrong:</b> iterates the live array; implements <code>once</code> by removing <i>after</i> calling (re-entrant emits call it twice); uses <code>filter</code> in <code>off</code> which removes <b>all</b> duplicates; forgets to delete empty lists (tiny leak); makes emit async without saying so.</p>
+<p><b>What you must still own:</b> deciding when an event bus is the right tool — it decouples components but hides control flow; overuse makes apps hard to debug. In React apps, prefer state/context; in Node, emitters are idiomatic for streams and lifecycle events.</p>`,
+    problems: [{
+      title: 'Build an EventEmitter with on, off, once and emit', level: 'Medium', tags: ['design', 'pub-sub', 'class'], companies: ['Uber', 'Microsoft', 'Swiggy', 'Rippling', 'Zeta'],
+      statement: `<p>Implement a class <code>EventEmitter</code> with: <code>on(name, fn)</code> → returns an unsubscribe function; <code>off(name, fn)</code>; <code>once(name, fn)</code> → listener runs at most once; <code>emit(name, ...args)</code> → calls listeners in subscription order and returns <code>true</code> if any listener existed. Listeners added or removed <b>during</b> an emit must not affect that emit.</p>`,
+      constraints: `Up to 10<sup>4</sup> listeners per event. Same function may be subscribed twice (it then runs twice). <code>off</code> removes one occurrence. <code>off(name, fn)</code> must also remove a pending <code>once(name, fn)</code>.`,
+      example: `<p><code>const e = new EventEmitter(); const un = e.on('x', A); e.once('x', B);</code><br><code>e.emit('x', 1)</code> → A(1), B(1) → ${H.c('g', 'true')}<br><code>e.emit('x', 2)</code> → A(2) only<br><code>un(); e.emit('x', 3)</code> → ${H.c('r', 'false')} (no listeners left)</p>`,
+      brute: { why: `<p>A plain-object version that loops over the <b>live</b> array and implements once with a boolean flag seems to work, but it skips listeners when one unsubscribes mid-emit, never actually removes once-listeners (memory leak), and cannot remove a once-listener by its original function.</p>`, code: `
+class NaiveEmitter {
+  constructor() { this.events = {}; }
+  on(n, f) { (this.events[n] = this.events[n] || []).push(f); }
+  off(n, f) { const l = this.events[n] || []; l.splice(l.indexOf(f), 1); } // indexOf -1 removes the LAST item!
+  emit(n, ...a) { const l = this.events[n] || []; for (let i = 0; i < l.length; i++) l[i](...a); }
+}
+` },
+      mcq: { q: '<code>off</code> uses <code>list.splice(list.indexOf(fn), 1)</code>. What happens if fn is not in the list?', options: ['<code>indexOf</code> returns −1 and <code>splice(-1, 1)</code> removes the LAST listener', 'Nothing happens', 'It throws a RangeError', 'It removes the first listener'], answer: 0, explain: 'Negative indexes count from the end in splice. Always check <code>i &gt;= 0</code> first — a classic subtle bug.' },
+      hints: [`<p>Hint 1: store <code>Map&lt;name, Function[]&gt;</code>. on = push; off = find index and splice (guard −1!).</p>`, `<p>Hint 2: once = a wrapper function that calls <code>off(name, wrapper)</code> and then the real fn. Store <code>wrapper.original = fn</code> so <code>off(name, fn)</code> can find it.</p>`, `<p>Hint 3: emit loops over <code>[...list]</code> (snapshot). on returns <code>() =&gt; this.off(name, fn)</code>. Return true/false from emit based on whether the list was non-empty.</p>`],
+      solution: {
+        approach: `<p>Map of arrays; unsubscribe closures; once via a self-removing wrapper tagged with the original; emit over a snapshot so in-flight mutations are invisible to the current dispatch.</p>`,
+        code: { lang: 'js', run: true, code: `
+class EventEmitter {
+  constructor() { this.events = new Map(); }
+  on(name, fn) {
+    if (!this.events.has(name)) this.events.set(name, []);
+    this.events.get(name).push(fn);
+    return () => this.off(name, fn);
+  }
+  off(name, fn) {
+    const list = this.events.get(name);
+    if (!list) return;
+    const i = list.findIndex((l) => l === fn || l.original === fn);
+    if (i >= 0) list.splice(i, 1);
+  }
+  once(name, fn) {
+    const wrapper = (...args) => { this.off(name, wrapper); fn(...args); };
+    wrapper.original = fn;
+    return this.on(name, wrapper);
+  }
+  emit(name, ...args) {
+    const list = this.events.get(name);
+    if (!list || list.length === 0) return false;
+    for (const fn of [...list]) fn(...args);
+    return true;
+  }
+}
+
+const e = new EventEmitter(), log = [];
+const A = (v) => log.push('A' + v), B = (v) => log.push('B' + v);
+const un = e.on('x', A);
+e.once('x', B);
+console.log(e.emit('x', 1), e.emit('x', 2)); // true true
+un();
+console.log(e.emit('x', 3), log);            // false [ 'A1', 'B1', 'A2' ]
+` },
+        dry: { head: ['op', 'list for "x" after', 'calls', 'returns'], rows: [['on(x, A)', '[A]', '—', 'unsubscribe fn'], ['once(x, B)', '[A, wrap(B)]', '—', 'unsubscribe fn'], ['emit(x, 1)', '[A]  (wrapper removed itself)', 'A1, B1', 'true'], ['emit(x, 2)', '[A]', 'A2', 'true'], ['un(); emit(x, 3)', '[]', '—', 'false']] },
+        complexity: `<p>on: O(1) amortised. off: O(k). emit: O(k) time and O(k) temporary memory for the snapshot (k = listeners for that event).</p>`,
+        followUps: ['Add a wildcard <code>*</code> listener.', 'Add priorities (higher priority runs first).', 'Add <code>emitAsync</code> that awaits async listeners in order / in parallel.']
+      }
+    }]
+  });
+
+  /* ================= TOPIC 8: retry with exponential backoff ================= */
+  var RETRY_SRC = [
+    'async function retry(fn, { retries = 3, base = 100, max = 2000 } = {}) {',
+    '  for (let attempt = 0; ; attempt++) {',
+    '    try {',
+    '      return await fn(attempt);           // success: done',
+    '    } catch (err) {',
+    '      if (attempt >= retries || !isRetryable(err)) throw err;',
+    '      const cap = Math.min(max, base * 2 ** attempt);',
+    '      const delay = Math.random() * cap;  // full jitter',
+    '      await sleep(delay);',
+    '    }',
+    '  }',
+    '}'
+  ].join('\n');
+
+  topics.push({
+    title: 'Retry with Exponential Backoff and Jitter',
+    analogy: `<p>You call a friend and the line is busy. You do not hit redial <b>every second</b> for an hour — that is annoying and keeps the line busy. You wait 1 minute, then 2, then 4, then 8… and after a few tries you give up and send a text. That is <b>exponential backoff</b>.</p>
+<p>Now imagine <b>1 000 people</b> all trying to call the same radio show at the same moment. If everyone waits <i>exactly</i> 1, 2, 4 minutes, they all redial at the same instants and jam the line again. If each person adds a <b>random</b> wait (<b>jitter</b>), the calls spread out and get through.</p>`,
+    explain: `<p>🟢 <b>Why retry?</b> Networks and servers fail <b>temporarily</b> all the time: a dropped packet, a server restarting, a rate limit (HTTP 429), "service unavailable" (503). Many of those succeed if you simply try again a bit later. But retrying <b>blindly and immediately</b> makes overload worse (a "retry storm").</p>
+<p>🔵 <b>The recipe</b> — every term matters:</p>
+<ul><li><b>Max retries</b> (e.g. 3–5): never retry forever. After the last attempt, give up and throw the <b>last error</b>.</li>
+<li><b>Exponential delay:</b> <code>base × 2<sup>attempt</sup></code> → 100, 200, 400, 800 ms… The server gets more breathing room each time.</li>
+<li><b>Cap</b> (<code>maxDelay</code>): 2<sup>10</sup> × 100 ms is 102 s — too long. Clamp: <code>min(maxDelay, base × 2<sup>attempt</sup>)</code>.</li>
+<li><b>Jitter:</b> randomise the wait so many clients do not retry in lockstep. "Full jitter" (popularised by AWS): <code>delay = random(0, cap)</code>.</li>
+<li><b>Only retry retryable errors:</b> network errors, 408, 429, 500, 502, 503, 504. Do <b>not</b> retry 400 (bad request), 401/403 (auth), 404, 422 — they will fail the same way every time.</li>
+<li><b>Respect <code>Retry-After</code></b> headers on 429/503 when the server tells you how long to wait.</li></ul>
+${H.table(['attempt', 'base × 2^attempt', 'cap (max 2000)', 'full-jitter wait'], [['0 (first retry)', '100', '100', '0–100 ms'], ['1', '200', '200', '0–200 ms'], ['2', '400', '400', '0–400 ms'], ['3', '800', '800', '0–800 ms'], ['5', '3200', H.c('y', '2000'), '0–2000 ms']])}
+<p>🔵 <b>Idempotency — the safety question.</b> Retrying a <code>GET</code> is safe. Retrying "charge the card ₹500" may charge <b>twice</b> if the first request actually succeeded but the response got lost. Make writes idempotent (send an <b>Idempotency-Key</b> header the server de-duplicates) before you retry them.</p>
+<p>🔵 <b>Cancellation:</b> a user leaving the page should stop the retry loop. Accept an <code>AbortSignal</code> and check it before each attempt and during the sleep.</p>`,
+    clues: ['"Implement retry(fn, n) for a flaky API / promise" → loop with try/catch + await', '"Wait longer between each attempt" → exponential backoff base × 2^n', '"Many clients retry at the same time (thundering herd)" → add jitter', '"Don\'t retry on 4xx, do retry on 5xx / 429 / network errors" → retryable predicate', '"Server sends Retry-After" → honour it instead of your own delay', '"Payment / write request being retried" → idempotency keys, at-least-once semantics'],
+    code: [{ lang: 'js', run: true, title: 'retry with exponential backoff, full jitter, retryable errors and AbortSignal (runnable)', code: `
+const sleep = (ms, signal) => new Promise((resolve, reject) => {
+  if (signal && signal.aborted) return reject(signal.reason);
+  const t = setTimeout(resolve, ms);
+  if (signal) signal.addEventListener('abort', () => { clearTimeout(t); reject(signal.reason); }, { once: true });
+});
+
+const RETRYABLE_STATUS = new Set([408, 429, 500, 502, 503, 504]);
+function isRetryable(err) {
+  if (err && err.name === 'AbortError') return false;     // user cancelled: stop
+  if (err && typeof err.status === 'number') return RETRYABLE_STATUS.has(err.status);
+  return true;                                             // network-ish error: retry
+}
+
+async function retry(fn, { retries = 3, base = 100, max = 2000, jitter = true, signal, onRetry } = {}) {
+  for (let attempt = 0; ; attempt++) {
+    if (signal && signal.aborted) throw signal.reason;
+    try {
+      return await fn(attempt);                            // success
+    } catch (err) {
+      if (attempt >= retries || !isRetryable(err)) throw err; // out of tries / pointless to retry
+      const cap = Math.min(max, base * 2 ** attempt);
+      let delay = jitter ? Math.random() * cap : cap;      // full jitter
+      if (err.retryAfterMs) delay = Math.max(delay, err.retryAfterMs); // server knows best
+      if (onRetry) onRetry({ attempt: attempt + 1, delay: Math.round(delay), err });
+      await sleep(delay, signal);
+    }
+  }
+}
+
+// ---------- tests ----------
+function flaky(failTimes, status = 503) {
+  let calls = 0;
+  return async () => {
+    calls++;
+    if (calls <= failTimes) { const e = new Error('HTTP ' + status); e.status = status; throw e; }
+    return 'ok after ' + calls + ' calls';
+  };
+}
+
+(async () => {
+  console.log(await retry(flaky(2), { base: 5, jitter: false,
+    onRetry: (r) => console.log('  retry #' + r.attempt + ' in ' + r.delay + ' ms (' + r.err.message + ')') }));
+  // retry #1 in 5 ms, retry #2 in 10 ms, then: ok after 3 calls
+
+  try { await retry(flaky(10), { retries: 2, base: 5 }); }
+  catch (e) { console.log('gave up:', e.message); }        // gave up: HTTP 503 (after 3 calls)
+
+  let calls404 = 0;
+  try { await retry(async () => { calls404++; const e = new Error('HTTP 404'); e.status = 404; throw e; }, { base: 5 }); }
+  catch (e) { console.log('404 not retried, calls =', calls404); } // 1
+
+  const ctrl = new AbortController();
+  setTimeout(() => ctrl.abort(new Error('user left page')), 20);
+  try { await retry(flaky(100), { retries: 50, base: 10, signal: ctrl.signal }); }
+  catch (e) { console.log('aborted:', e.message); }        // aborted: user left page
+})();
+` }],
+    codeTitle: ['retry with backoff'],
+    viz: [{
+      title: 'Backoff schedule: attempts, delays and the cap',
+      input: '100 1000 | fail fail fail fail ok',
+      inputLabel: 'base max | outcome of each attempt (fail / ok / 404)',
+      gen: function (input) {
+        var parts = String(input).split('|');
+        var nums = parseNums(parts[0], 2);
+        if (nums.length !== 2 || nums[0] <= 0 || nums[1] < nums[0]) throw new Error('First part: base max, e.g. 100 1000 (max ≥ base)');
+        var base = nums[0], max = nums[1];
+        var outs = String(parts[1] || '').trim().split(/[\s,]+/).filter(function (x) { return x; });
+        if (!outs.length || outs.length > 8 || outs.some(function (o) { return ['fail', 'ok', '404'].indexOf(o) < 0; })) throw new Error('Outcomes: 1 to 8 of fail / ok / 404');
+        var retries = 5;
+        var rows = [], delays = [], f = [], clock = 0;
+        f.push(fr('retry(fn, { retries: ' + retries + ', base: ' + base + ', max: ' + max + ' }). Each failed attempt waits <code>random(0, min(max, base × 2<sup>attempt</sup>))</code>. The table shows the <b>cap</b> (the upper bound of the random wait).', [cp(RETRY_SRC, { 1: 'cur' }), { type: 'table', label: 'Attempts', columns: ['attempt', 'outcome', 'cap = min(max, base·2^n)', 'wait range', 'worst-case clock'], rows: [['—', '—', '—', '—', '0 ms']] }]));
+        for (var a = 0; a < outs.length; a++) {
+          var o = outs[a];
+          if (o === 'ok') {
+            rows.push([a, 'success', '—', '—', clock + ' ms']);
+            f.push(fr('Attempt ' + a + ' <span class="c-g">succeeds</span> → return its value immediately. Total worst-case waiting: <b>' + clock + ' ms</b> over ' + a + ' retries.', [cp(RETRY_SRC, { 4: 'ok' }), { type: 'table', label: 'Attempts', columns: ['attempt', 'outcome', 'cap = min(max, base·2^n)', 'wait range', 'worst-case clock'], rows: rows.slice(), hl: (function () { var h = {}; h[rows.length - 1] = 'ok'; return h; })() }, { type: 'bars', label: 'cap per retry (ms)', values: delays.length ? delays.slice() : [0] }]));
+            break;
+          }
+          if (o === '404') {
+            rows.push([a, '404 Not Found', '—', '—', clock + ' ms']);
+            f.push(fr('Attempt ' + a + ' fails with <b>404</b>. That is <b>not retryable</b> — asking again will not make the page exist. <span class="c-r">Throw immediately</span>, no waiting.', [cp(RETRY_SRC, { 6: 'bad' }), { type: 'table', label: 'Attempts', columns: ['attempt', 'outcome', 'cap = min(max, base·2^n)', 'wait range', 'worst-case clock'], rows: rows.slice(), hl: (function () { var h = {}; h[rows.length - 1] = 'bad'; return h; })() }]));
+            break;
+          }
+          if (a >= retries) {
+            rows.push([a, 'fail (503)', '—', '—', clock + ' ms']);
+            f.push(fr('Attempt ' + a + ' fails and we have used all ' + retries + ' retries → <span class="c-r">throw the last error</span>. Never retry forever.', [cp(RETRY_SRC, { 6: 'bad' }), { type: 'table', label: 'Attempts', columns: ['attempt', 'outcome', 'cap = min(max, base·2^n)', 'wait range', 'worst-case clock'], rows: rows.slice(), hl: (function () { var h = {}; h[rows.length - 1] = 'bad'; return h; })() }]));
+            break;
+          }
+          var raw = base * Math.pow(2, a), cap = Math.min(max, raw);
+          clock += cap; delays.push(cap);
+          rows.push([a, 'fail (503)', raw > max ? raw + ' → capped ' + cap : String(cap), '0 – ' + cap + ' ms', clock + ' ms']);
+          f.push(fr('Attempt ' + a + ' fails with 503 (retryable). cap = min(' + max + ', ' + base + ' × 2<sup>' + a + '</sup> = ' + raw + ') = <b>' + cap + '</b>' + (raw > max ? ' <span class="c-y">(the cap kicked in)</span>' : '') + '. Sleep a random time in [0, ' + cap + '] ms, then try again.', [cp(RETRY_SRC, { 7: 'cur', 8: 'cur', 9: 'cur' }), { type: 'table', label: 'Attempts', columns: ['attempt', 'outcome', 'cap = min(max, base·2^n)', 'wait range', 'worst-case clock'], rows: rows.slice(), hl: (function () { var h = {}; h[rows.length - 1] = 'cur'; return h; })() }, { type: 'bars', label: 'cap per retry (ms) — doubles, then flattens at max', values: delays.slice(), hl: (function () { var h = {}; h[delays.length - 1] = raw > max ? 'bad' : 'cur'; return h; })() }]));
+        }
+        if (outs[outs.length - 1] === 'fail' && outs.length <= retries) f.push(fr('Input ended while still failing; in real life the loop would keep going up to ' + retries + ' retries, then throw.', [vp({ retries: retries, 'attempts shown': outs.length })]));
+        f.push(fr('Why jitter? Without it, 1 000 clients that failed together would all retry at exactly ' + delays.slice(0, 3).join(', ') + ' ms… and collide again. Random waits in [0, cap] spread them evenly, so the recovering server sees a smooth trickle instead of spikes.', [tx('<b>No jitter:</b> spikes of 1 000 requests at the same instants.<br><b>Full jitter:</b> ~1 000 / cap requests per ms — flat load.', 'Thundering herd')]));
+        return f;
+      }
+    }],
+    examples: [
+      { title: 'Retrying fetch only on retryable HTTP statuses', html: `<p><code>fetch</code> only rejects on <b>network</b> errors; HTTP 500 is a resolved response with <code>ok: false</code>. So you must turn bad statuses into thrown errors yourself, tagging them with the status so the retry policy can decide. Shown as code (needs network).</p>`, code: `
+async function fetchJson(url, init) {
+  const res = await fetch(url, init);
+  if (!res.ok) {
+    const err = new Error('HTTP ' + res.status);
+    err.status = res.status;
+    const ra = res.headers.get('Retry-After');           // seconds or an HTTP date
+    if (ra) err.retryAfterMs = isNaN(ra) ? Math.max(0, Date.parse(ra) - Date.now()) : Number(ra) * 1000;
+    throw err;
+  }
+  return res.json();
+}
+// usage: await retry(() => fetchJson('/api/orders'), { retries: 4, base: 200, max: 5000 });
+` },
+      { title: 'Compare jitter strategies numerically', html: `<p>AWS's analysis compared "no jitter", "full jitter", "equal jitter" (half fixed + half random) and "decorrelated jitter" (<code>min(cap, random(base, prev × 3))</code>). Full and decorrelated jitter finish the work with the fewest total calls.</p>`, code: { lang: 'js', run: true, code: `
+const base = 100, cap = 2000;
+const expo = (n) => Math.min(cap, base * 2 ** n);
+const strategies = {
+  none:  (n) => expo(n),
+  full:  (n) => Math.random() * expo(n),
+  equal: (n) => expo(n) / 2 + Math.random() * (expo(n) / 2)
+};
+for (const [name, f] of Object.entries(strategies)) {
+  const sample = [0, 1, 2, 3, 4, 5].map((n) => Math.round(f(n)));
+  console.log(name.padEnd(5), sample.join(' '));
+}
+let prev = base; const decor = [];
+for (let i = 0; i < 6; i++) { prev = Math.min(cap, base + Math.random() * (prev * 3 - base)); decor.push(Math.round(prev)); }
+console.log('decor', decor.join(' '));
+` } },
+      { title: 'Idempotency key: making a retried payment safe', html: `<p>The client generates one key per <i>logical</i> operation and sends it with every retry. The server stores <code>key → result</code>; a duplicate request returns the stored result instead of charging again.</p>`, code: { lang: 'js', run: true, code: `
+const processed = new Map();                  // server-side store: key -> result
+let charges = 0;
+function chargeServer(key, amount) {
+  if (processed.has(key)) return processed.get(key);   // duplicate: replay result
+  charges++;
+  const result = { id: 'ch_' + charges, amount };
+  processed.set(key, result);
+  if (charges === 1 && !chargeServer.lostOnce) { chargeServer.lostOnce = true; throw new Error('response lost'); }
+  return result;
+}
+const key = 'order-42-attempt';               // same key for every retry
+let res;
+for (let i = 0; i < 3; i++) { try { res = chargeServer(key, 500); break; } catch (e) { console.log('retrying:', e.message); } }
+console.log(res, 'total charges =', charges); // { id: 'ch_1', amount: 500 } total charges = 1
+` } },
+      { title: 'Circuit breaker: when to stop retrying altogether', html: `<p>If a service is down hard, every client retrying 5 times multiplies load ×5. A <b>circuit breaker</b> counts recent failures; after a threshold it "opens" and fails fast for a cool-down, then lets one trial request through ("half-open").</p>`, code: { lang: 'js', run: true, code: `
+function circuitBreaker(fn, { threshold = 3, coolDownMs = 50 } = {}) {
+  let failures = 0, openedAt = 0;
+  return async (...args) => {
+    if (failures >= threshold && Date.now() - openedAt < coolDownMs) throw new Error('circuit open: failing fast');
+    try { const r = await fn(...args); failures = 0; return r; }
+    catch (e) { failures++; if (failures >= threshold) openedAt = Date.now(); throw e; }
+  };
+}
+const down = circuitBreaker(async () => { throw new Error('503'); });
+(async () => {
+  for (let i = 0; i < 5; i++) { try { await down(); } catch (e) { console.log(i, e.message); } }
+})(); // 0..2: 503, then 3..4: circuit open: failing fast
+` } }
+    ],
+    deepDive: `<p>🟣 <b>Retry amplification.</b> In a call chain A → B → C where each layer retries 3 times, one failure at C can cause 3 × 3 × 3 = 27 calls. Rule of thumb: <b>retry at one layer only</b> (usually the edge/client), and use <b>retry budgets</b> (e.g. retries may add at most 10% extra load — gRPC and Envoy support this).</p>
+<p><b>Deadlines beat counts.</b> Production clients often say "keep trying for at most 10 s total" rather than "3 times". Pass the remaining deadline downstream (gRPC deadline propagation, or <code>AbortSignal.timeout()</code> combined with <code>AbortSignal.any</code>) so inner calls do not keep working after the caller gave up.</p>
+<p><b>Which errors are retryable?</b> Also consider: <code>ECONNRESET</code>/<code>ETIMEDOUT</code> (yes), TLS/certificate errors (no), 409 conflict (maybe, after re-reading), and <b>non-idempotent methods</b> — POST should not be retried unless an idempotency key is used. HTTP/2 <code>GOAWAY</code> and "connection closed before response" mean the request may or may not have been processed.</p>
+<p><b>Math:</b> with base b and k retries without cap, total worst-case wait = b(2<sup>k</sup> − 1). With full jitter the expected wait per retry is cap/2. Success probability with independent failure rate p per try is 1 − p<sup>k+1</sup> — e.g. p = 0.2 and 3 retries → 99.84%. Failures are often <b>correlated</b> (an outage), which is why a breaker matters.</p>
+<p><b>Testing:</b> never test with real sleeps of seconds. Inject the <code>sleep</code> and <code>random</code> functions (dependency injection) or use fake timers, so tests are instant and deterministic.</p>`,
+    aiEra: `<p>🤖 <b>What AI changes:</b> AI agents themselves call flaky APIs constantly — LLM providers return 429 (rate limit) and 529/503 (overloaded). Every agent framework needs exactly this utility, and official SDKs (OpenAI, Anthropic) ship built-in retries with exponential backoff and respect <code>retry-after</code>. Knowing the policy lets you tune it instead of stacking a second retry layer on top (amplification!).</p>
+<p><b>Use AI as a partner:</b> <code>Review my retry helper for: non-idempotent retries, missing jitter, retrying 4xx, no cap, no abort support, retry amplification with the SDK's own retries.</code></p>
+<p><b>Where AI goes wrong:</b> writes <code>for</code> loops with <code>setTimeout</code> that do not await (all retries fire at once), retries every error including 400/401, recursive retry without a limit, and forgets that <code>fetch</code> resolves on HTTP 500.</p>
+<p><b>What you must still own:</b> the product decision — how long is the user willing to wait, is the operation safe to repeat, and what do we show after giving up.</p>`,
+    problems: [{
+      title: 'retry(fn, options) with capped exponential backoff', level: 'Medium', tags: ['async', 'promises', 'resilience'], companies: ['Amazon', 'Stripe', 'Razorpay', 'Netflix'],
+      statement: `<p>Implement <code>retry(fn, { retries, base, max })</code>. <code>fn</code> returns a promise. If it rejects, wait <code>min(max, base × 2<sup>attempt</sup>)</code> ms (attempt = 0 for the first retry) and call it again, up to <code>retries</code> extra times. Resolve with the first success; if all attempts fail, reject with the <b>last</b> error. Errors with <code>err.retryable === false</code> must be rethrown immediately.</p>`,
+      constraints: `0 ≤ retries ≤ 10. Must not block the thread (no busy waiting). Total calls ≤ retries + 1.`,
+      example: `<p>fn fails twice then returns "ok"; base = 100, max = 1000.<br>call #1 fails → wait 100 → call #2 fails → wait 200 → call #3 → ${H.c('g', '"ok"')} (total wait 300 ms).<br>If fn always fails with retries = 2 → 3 calls, then ${H.c('r', 'reject with the 3rd error')}.</p>`,
+      brute: { why: `<p>The tempting version schedules every retry with <code>setTimeout</code> inside a plain loop. The loop does not wait for anything, so all attempts fire almost at once (no backoff), and errors are never propagated to the caller because nothing awaits them.</p>`, code: `
+function badRetry(fn, retries) {
+  for (let i = 0; i <= retries; i++) {
+    setTimeout(() => fn().catch(() => {}), 100 * 2 ** i); // fires all attempts regardless of success
+  }
+}
+` },
+      mcq: { q: 'All retries failed. What should <code>retry</code> reject with?', options: ['The last error (most recent cause)', 'The first error only', 'A generic "failed" string', 'undefined'], answer: 0, explain: 'The last error is the most relevant; better still, attach all errors (e.g. AggregateError or err.cause) for debugging.' },
+      hints: [`<p>Hint 1: an <code>async</code> function with a <code>for</code> loop and <code>try/catch</code> around <code>await fn()</code> reads exactly like the English description.</p>`, `<p>Hint 2: a promise-based <code>sleep(ms)</code> lets you <code>await</code> the backoff without blocking. Delay = <code>Math.min(max, base * 2 ** attempt)</code>.</p>`, `<p>Hint 3: in the catch: if <code>attempt === retries</code> or <code>err.retryable === false</code> → <code>throw err</code>. Otherwise sleep and continue. Success → <code>return</code> the value.</p>`],
+      solution: {
+        approach: `<p>Async loop: try the call; on failure decide (give up vs wait), compute the capped exponential delay, await a promise-based sleep, and loop. The function's own promise naturally resolves/rejects with the outcome.</p>`,
+        code: { lang: 'js', run: true, code: `
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function retry(fn, { retries = 3, base = 100, max = 2000 } = {}) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (attempt >= retries || err.retryable === false) throw err;
+      await sleep(Math.min(max, base * 2 ** attempt));
+    }
+  }
+}
+
+let n = 0;
+const t0 = Date.now();
+retry(async () => { n++; if (n < 3) throw new Error('fail ' + n); return 'ok'; }, { base: 10, max: 100 })
+  .then((v) => console.log(v, 'after', n, 'calls, waited ~', Math.round((Date.now() - t0) / 10) * 10, 'ms')); // ok after 3 calls, waited ~30-40 ms (10 + 20 plus timer overhead)
+
+retry(async () => { throw Object.assign(new Error('bad input'), { retryable: false }); }, { base: 10 })
+  .catch((e) => console.log('no retry for:', e.message));
+` },
+        dry: { head: ['attempt', 'fn result', 'decision', 'wait (base 10, max 100)'], rows: [['0', 'throws fail 1', 'attempt &lt; retries → wait', 'min(100, 10·1) = 10'], ['1', 'throws fail 2', 'wait', 'min(100, 10·2) = 20'], ['2', "returns 'ok'", '<span class="c-g">return ok</span>', '—'], ['(other call) 0', 'throws retryable:false', '<span class="c-r">rethrow now</span>', '—']] },
+        complexity: `<p>At most retries + 1 calls. Worst-case total wait = Σ min(max, base·2<sup>i</sup>) for i &lt; retries. O(1) memory.</p>`,
+        followUps: ['Add full jitter and an AbortSignal.', 'Honour a Retry-After value on the error.', 'Collect every error and reject with an AggregateError.']
+      }
+    }]
+  });
+
+  /* ================= TOPIC 9: LRU cache in JS ================= */
+  var LRU_SRC = [
+    'class LRUCache {',
+    '  constructor(capacity) { this.cap = capacity; this.map = new Map(); }',
+    '  get(key) {',
+    '    if (!this.map.has(key)) return -1;',
+    '    const val = this.map.get(key);',
+    '    this.map.delete(key);           // move to the "newest" end',
+    '    this.map.set(key, val);',
+    '    return val;',
+    '  }',
+    '  put(key, val) {',
+    '    if (this.map.has(key)) this.map.delete(key);',
+    '    this.map.set(key, val);',
+    '    if (this.map.size > this.cap) {',
+    '      const oldest = this.map.keys().next().value;',
+    '      this.map.delete(oldest);      // evict least recently used',
+    '    }',
+    '  }',
+    '}'
+  ].join('\n');
+
+  topics.push({
+    title: 'LRU Cache in JavaScript (Map trick and Linked List)',
+    analogy: `<p>Your <b>study desk</b> has room for only 3 books. The rest live on a far-away shelf. Every time you use a book you put it on <b>top of the pile</b>. When you need a 4th book and the desk is full, which one goes back to the shelf? The one at the <b>bottom of the pile</b> — the one you have not touched for the longest time. That is <b>Least Recently Used</b> eviction.</p>
+<p>In JavaScript, a <code>Map</code> is that pile: it remembers the order in which keys were inserted. "Touching" a book = delete it and insert it again, so it moves to the top.</p>`,
+    explain: `<p>🟢 <b>The task</b> (LeetCode 146, asked everywhere): a cache with a fixed <b>capacity</b> supporting <code>get(key)</code> and <code>put(key, value)</code>, both in <b>O(1)</b>. When full, <code>put</code> evicts the least recently used key. Both <code>get</code> and <code>put</code> count as "use".</p>
+<p>🔵 <b>The JS shortcut: Map keeps insertion order.</b> The spec guarantees that iterating a <code>Map</code> yields keys in insertion order. So:</p>
+<ul><li><b>Oldest</b> key = <code>map.keys().next().value</code> (the first one) — O(1).</li>
+<li><b>Mark as recently used</b> = <code>map.delete(k); map.set(k, v)</code> — moves it to the end, O(1).</li>
+<li><b>Evict</b> = delete the first key when <code>size &gt; capacity</code>.</li></ul>
+${H.table(['op (capacity 2)', 'Map order (oldest → newest)', 'note'], [['put(a,1)', 'a', ''], ['put(b,2)', 'a, b', ''], ['get(a) → 1', 'b, a', 'a moved to newest'], ['put(c,3)', H.c('r', 'b evicted') + ' → a, c', 'b was oldest'], ['get(b) → -1', 'a, c', 'miss']])}
+<p>🔵 <b>The classic way: HashMap + Doubly Linked List.</b> Interviewers often say "don't rely on Map ordering" to see the real data structure. The list holds nodes in recency order (head = most recent, tail = least recent). The hash map gives O(1) access from key → node. With <b>prev/next</b> pointers, unlinking any node is O(1). Two <b>sentinel</b> (dummy) nodes at head and tail remove all the "is the list empty?" special cases.</p>
+${H.table(['Operation', 'Map-only', 'Map + DLL'], [['get hit', 'delete + set', 'unlink node, insert after head'], ['put new', 'set; evict first key if over', 'create node, insert after head; evict tail.prev if over'], ['put existing', 'delete + set', 'update value, move to head'], ['Complexity', 'O(1) average', 'O(1) average']])}
+<p>🟢 <b>Where LRU is used:</b> browser HTTP caches, CDN edges, database buffer pools, React Query/Apollo caches, memoizing expensive functions with bounded memory, image thumbnails in an infinite feed.</p>`,
+    clues: ['"Design a cache with capacity N; get and put in O(1)" → LRU = hash map + recency order', '"Evict the least recently used item" → Map ordering or doubly linked list', '"Without using Map\'s insertion order" → doubly linked list with sentinel nodes + object/Map index', '"Memoize but don\'t let memory grow forever" → LRU-bounded memoize', '"Items should also expire after T seconds" → LRU + TTL (store expiry, lazy delete on get)', '"Least FREQUENTLY used" → LFU (freq buckets), not LRU — read the wording!'],
+    code: [{ lang: 'js', run: true, title: 'LRU two ways: Map-ordering and Map + doubly linked list (runnable)', code: `
+// ---------- 1) Map insertion order (shortest correct answer) ----------
+class LRUCache {
+  constructor(capacity) { this.cap = capacity; this.map = new Map(); }
+  get(key) {
+    if (!this.map.has(key)) return -1;
+    const val = this.map.get(key);
+    this.map.delete(key);            // re-insert -> becomes the newest
+    this.map.set(key, val);
+    return val;
+  }
+  put(key, val) {
+    if (this.map.has(key)) this.map.delete(key);
+    this.map.set(key, val);
+    if (this.map.size > this.cap) this.map.delete(this.map.keys().next().value); // oldest
+  }
+}
+
+// ---------- 2) Hash map + doubly linked list with sentinels ----------
+class Node { constructor(k, v) { this.k = k; this.v = v; this.prev = this.next = null; } }
+class LRUList {
+  constructor(capacity) {
+    this.cap = capacity; this.index = new Map();
+    this.head = new Node(null, null);   // sentinel: head.next = most recent
+    this.tail = new Node(null, null);   // sentinel: tail.prev = least recent
+    this.head.next = this.tail; this.tail.prev = this.head;
+  }
+  #unlink(n) { n.prev.next = n.next; n.next.prev = n.prev; }
+  #addFront(n) { n.next = this.head.next; n.prev = this.head; this.head.next.prev = n; this.head.next = n; }
+  get(k) {
+    const n = this.index.get(k);
+    if (!n) return -1;
+    this.#unlink(n); this.#addFront(n); // mark as most recently used
+    return n.v;
+  }
+  put(k, v) {
+    let n = this.index.get(k);
+    if (n) { n.v = v; this.#unlink(n); this.#addFront(n); return; }
+    n = new Node(k, v); this.index.set(k, n); this.#addFront(n);
+    if (this.index.size > this.cap) {
+      const lru = this.tail.prev;        // least recently used
+      this.#unlink(lru); this.index.delete(lru.k);
+    }
+  }
+  keys() { const out = []; for (let n = this.head.next; n !== this.tail; n = n.next) out.push(n.k); return out; }
+}
+
+// ---------- same script against both ----------
+for (const C of [LRUCache, LRUList]) {
+  const c = new C(2), out = [];
+  c.put(1, 'one'); c.put(2, 'two');
+  out.push(c.get(1));        // 'one'  (1 becomes most recent)
+  c.put(3, 'three');         // evicts key 2
+  out.push(c.get(2));        // -1
+  c.put(4, 'four');          // evicts key 1
+  out.push(c.get(1), c.get(3), c.get(4)); // -1 'three' 'four'
+  console.log(C.name, out);
+}
+console.log(new LRUList(3).keys()); // []
+` }],
+    codeTitle: ['LRU cache two ways'],
+    viz: [{
+      title: 'LRU cache: linked list (recency) + Map (index)',
+      input: '3 | put a 1; put b 2; put c 3; get a; put d 4; get b; put c 30; put e 5',
+      inputLabel: 'capacity | commands: put KEY VALUE ; get KEY',
+      gen: function (input) {
+        var parts = String(input).split('|');
+        var cap = Number((parts[0] || '').trim());
+        if (!(cap >= 1 && cap <= 6) || Math.floor(cap) !== cap) throw new Error('Capacity must be 1..6. Format: 3 | put a 1; get a');
+        var ops = cmds(parts[1] || '');
+        if (!ops.length || ops.length > 14) throw new Error('Give 1 to 14 commands like put a 1; get a');
+        var order = [], vals = {}, hits = 0, misses = 0, f = [];
+        function listPart(hl, label) {
+          var vs = ['HEAD'].concat(order.map(function (k) { return k + ':' + vals[k]; })).concat(['TAIL']);
+          var h = {}; h[0] = 'done'; h[vs.length - 1] = 'done';
+          Object.keys(hl || {}).forEach(function (k) { h[Number(k) + 1] = hl[k]; });
+          var ptr = {}; if (order.length) { ptr[1] = 'MRU'; ptr[order.length] = order.length === 1 ? ['MRU', 'LRU'] : 'LRU'; }
+          return { type: 'list', label: label || 'Doubly linked list (most recent → least recent)', values: vs, hl: h, ptr: ptr };
+        }
+        function mapPart(hlKey, cls) { var h = {}; if (hlKey !== undefined) h[hlKey] = cls; return { type: 'map', label: 'Map index: key → node', entries: order.map(function (k) { return [k, 'node(' + k + ':' + vals[k] + ')']; }), hl: h }; }
+        function stats() { return vp({ capacity: cap, size: order.length, hits: hits, misses: misses }, {}, 'Stats'); }
+        f.push(fr('Empty cache with capacity <b>' + cap + '</b>. The list starts as just the two <b>sentinels</b> HEAD ⇄ TAIL, so inserting/removing never needs "is it empty?" checks.', [listPart(), mapPart(), stats()]));
+        ops.forEach(function (c) {
+          var p = c.split(/\s+/);
+          if (p[0] === 'get' && p[1]) {
+            var k = p[1], i = order.indexOf(k);
+            if (i < 0) {
+              misses++;
+              f.push(fr('<code>get(' + esc(k) + ')</code>: the Map has no "' + esc(k) + '" → <span class="c-r">miss, return -1</span>. Nothing moves.', [listPart(), mapPart(), stats(), cp(LRU_SRC, { 4: 'bad' })]));
+            } else {
+              hits++;
+              var hlB = {}; hlB[i] = 'cur';
+              f.push(fr('<code>get(' + esc(k) + ')</code>: Map lookup finds the node in O(1) → <span class="c-g">hit, value ' + esc(vals[k]) + '</span>. Now it must become the <b>most recent</b>…', [listPart(hlB), mapPart(k, 'ok'), stats(), cp(LRU_SRC, { 5: 'ok' })]));
+              order.splice(i, 1); order.unshift(k);
+              f.push(fr('…so unlink it (fix prev/next of its neighbours) and insert right after HEAD. With a JS Map this is <code>delete(' + esc(k) + ')</code> + <code>set(' + esc(k) + ')</code>.', [listPart({ 0: 'ok' }), mapPart(k, 'ok'), stats(), cp(LRU_SRC, { 6: 'cur', 7: 'cur' })]));
+            }
+          } else if (p[0] === 'put' && p[1] && p.length >= 3) {
+            var key = p[1], val = p.slice(2).join(' ');
+            var j = order.indexOf(key);
+            if (j >= 0) {
+              vals[key] = val; order.splice(j, 1); order.unshift(key);
+              f.push(fr('<code>put(' + esc(key) + ', ' + esc(val) + ')</code>: key exists → update its value and move it to the front (a write is also a "use"). No eviction because size did not grow.', [listPart({ 0: 'ok' }), mapPart(key, 'ok'), stats(), cp(LRU_SRC, { 11: 'cur', 12: 'cur' })]));
+            } else {
+              vals[key] = val; order.unshift(key);
+              f.push(fr('<code>put(' + esc(key) + ', ' + esc(val) + ')</code>: new key → create a node, insert after HEAD, add it to the Map. Size is now ' + order.length + (order.length > cap ? ' <span class="c-r">&gt; capacity ' + cap + '</span>.' : '.'), [listPart({ 0: 'ok' }), mapPart(key, 'ok'), stats(), cp(LRU_SRC, { 12: 'ok', 13: order.length > cap ? 'bad' : '' })]));
+              if (order.length > cap) {
+                var victim = order[order.length - 1];
+                var hv = {}; hv[order.length - 1] = 'bad';
+                f.push(fr('Over capacity → evict the node just before TAIL: <b>' + esc(victim) + '</b>, the least recently used. With a JS Map that is the <b>first</b> key: <code>map.keys().next().value</code>.', [listPart(hv), mapPart(victim, 'bad'), stats(), cp(LRU_SRC, { 14: 'cur', 15: 'bad' })]));
+                order.pop(); delete vals[victim];
+                f.push(fr('Removed <b>' + esc(victim) + '</b> from both the list and the Map (forgetting the Map is a classic bug → memory leak + stale hits).', [listPart(), mapPart(), stats()]));
+              }
+            }
+          } else throw new Error('Unknown command "' + c + '". Use put KEY VALUE or get KEY');
+        });
+        f.push(fr('Done. Hit rate: <b>' + hits + '/' + (hits + misses) + '</b>. Every operation touched only a constant number of pointers + one Map lookup → O(1).', [listPart(), mapPart(), stats()]));
+        return f;
+      }
+    }],
+    examples: [
+      { title: 'Memoize with an LRU bound', html: `<p>Plain memoization grows forever (a memory leak for endless distinct inputs). Bounding it with an LRU keeps the hottest results only.</p>`, code: { lang: 'js', run: true, code: `
+function memoizeLRU(fn, capacity = 100) {
+  const cache = new Map();
+  return function (arg) {
+    if (cache.has(arg)) {
+      const v = cache.get(arg);
+      cache.delete(arg); cache.set(arg, v);       // refresh recency
+      return v;
+    }
+    const v = fn.call(this, arg);
+    cache.set(arg, v);
+    if (cache.size > capacity) cache.delete(cache.keys().next().value);
+    return v;
+  };
+}
+let computeCount = 0;
+const slowSquare = memoizeLRU((n) => { computeCount++; return n * n; }, 2);
+[2, 3, 2, 4, 3, 2].forEach((n) => slowSquare(n));
+console.log('computed', computeCount, 'times for 6 calls'); // computed 4 times
+` } },
+      { title: 'LRU + TTL: entries also expire', html: `<p>Real caches (API responses, auth tokens) also have a <b>time-to-live</b>. Store <code>expiresAt</code> with the value and delete lazily on <code>get</code> — no background timer needed.</p>`, code: { lang: 'js', run: true, code: `
+class TTLLRU {
+  constructor(cap, ttlMs, now = () => Date.now()) { this.cap = cap; this.ttl = ttlMs; this.now = now; this.m = new Map(); }
+  get(k) {
+    const e = this.m.get(k);
+    if (!e) return undefined;
+    if (e.exp <= this.now()) { this.m.delete(k); return undefined; }   // lazily expire
+    this.m.delete(k); this.m.set(k, e);
+    return e.v;
+  }
+  set(k, v) {
+    this.m.delete(k);
+    this.m.set(k, { v, exp: this.now() + this.ttl });
+    if (this.m.size > this.cap) this.m.delete(this.m.keys().next().value);
+  }
+}
+let fakeNow = 0;
+const c = new TTLLRU(2, 100, () => fakeNow);   // injected clock -> deterministic test
+c.set('token', 'abc');
+fakeNow = 50;  console.log(c.get('token'));    // abc
+fakeNow = 160; console.log(c.get('token'));    // undefined (expired)
+` } },
+      { title: 'Using a plain object instead of Map: the integer-key trap', html: `<p>Plain objects order <b>integer-like keys numerically first</b>, then string keys in insertion order. So an object cannot replace a Map for LRU ordering when keys are numbers — a subtle bug.</p>`, code: { lang: 'js', run: true, code: `
+const obj = {};
+obj['b'] = 1; obj['10'] = 2; obj['2'] = 3; obj['a'] = 4;
+console.log(Object.keys(obj));            // ['2', '10', 'b', 'a']  (NOT insertion order)
+const map = new Map([['b', 1], ['10', 2], ['2', 3], ['a', 4]]);
+console.log([...map.keys()]);             // ['b', '10', '2', 'a']  (insertion order)
+` } },
+      { title: 'Measuring hit rate: is the cache worth it?', html: `<p>A cache is only useful if the <b>hit rate</b> is high. Simulate your access pattern before choosing capacity. Here a skewed pattern (hot keys) gets a good hit rate even with a small cache; uniform random access does not.</p>`, code: { lang: 'js', run: true, code: `
+function hitRate(capacity, accesses) {
+  const m = new Map(); let hits = 0;
+  for (const k of accesses) {
+    if (m.has(k)) { hits++; m.delete(k); }
+    m.set(k, true);
+    if (m.size > capacity) m.delete(m.keys().next().value);
+  }
+  return (100 * hits / accesses.length).toFixed(1) + '%';
+}
+let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647; // deterministic PRNG
+const skewed = Array.from({ length: 5000 }, () => Math.floor(100 * rnd() ** 4));  // few hot keys
+const uniform = Array.from({ length: 5000 }, () => Math.floor(100 * rnd()));
+console.log('skewed :', hitRate(10, skewed));   // high
+console.log('uniform:', hitRate(10, uniform));  // ~10%
+` } }
+    ],
+    deepDive: `<p>🟣 <b>Is the Map trick really O(1)?</b> <code>map.delete</code> + <code>map.set</code> are O(1) average. <code>map.keys().next()</code> is O(1) in V8 because Map is an <b>OrderedHashMap</b>: entries live in an insertion-ordered array with a hash-bucket index on top. Deleting leaves a tombstone ("hole"); the first <code>next()</code> may skip a few tombstones, and the table is compacted on rehash, so the amortised cost is O(1). Under heavy churn, the delete+set pattern does create tombstones that trigger periodic rehashing — still amortised O(1).</p>
+<p><b>Why the DLL version still matters:</b> (1) other languages (Java's <code>LinkedHashMap(accessOrder=true)</code> does it for you, C++ needs <code>list</code> + <code>unordered_map</code> of iterators); (2) it extends to <b>LFU</b> (frequency buckets of DLLs), <b>segmented LRU</b>, and <b>ARC</b>; (3) interviewers want to see pointer manipulation and sentinels.</p>
+<p><b>Concurrency:</b> JavaScript is single-threaded per event loop, so no locks are needed for an in-process cache. Across Node cluster workers or servers you need a shared cache (Redis — which uses <b>approximated LRU</b>: samples ~5 random keys and evicts the oldest of the sample, to avoid maintaining a global list).</p>
+<p><b>Memory accounting:</b> real caches limit <b>bytes</b>, not entry count (the popular <code>lru-cache</code> npm package supports <code>maxSize</code> + <code>sizeCalculation</code>, TTL, stale-while-revalidate, and uses typed arrays for its linked list to reduce GC pressure).</p>
+<p><b>WeakMap is not a cache replacement:</b> WeakMap entries vanish when the <i>key</i> is collected, not under memory pressure, and keys must be objects. WeakRef + FinalizationRegistry can build GC-aware caches but give no timing guarantees.</p>`,
+    aiEra: `<p>🤖 <b>What AI changes:</b> LRU is one of the most memorised interview problems; AI produces both versions instantly. Interviewers respond by asking for <b>extensions</b>: TTL, byte-size limits, LFU, thread safety in another language, hit-rate metrics, and "why is Map ordering guaranteed?". In the AI era the LRU idea also appears in <b>KV-cache eviction for LLM serving</b> and prompt caches — same principle, new place.</p>
+<p><b>Use AI as a partner:</b> <code>Fuzz-test my LRUList against a reference Map-based LRU with 10 000 random get/put operations and report the first divergence.</code> Differential fuzzing catches pointer bugs fast.</p>
+<p><b>Where AI goes wrong:</b> forgets that <code>put</code> on an existing key must refresh recency, evicts <i>before</i> inserting (evicts when updating an existing key at capacity), forgets to delete the evicted key from the index, or uses a plain object with numeric keys.</p>
+<p><b>What you must still own:</b> choosing the eviction policy for the workload (LRU vs LFU vs TTL-only) and sizing the cache from measured hit rates.</p>`,
+    problems: [{
+      title: 'LRU Cache (get/put in O(1))', level: 'Medium', tags: ['design', 'hash map', 'linked list'], companies: ['Amazon', 'Microsoft', 'Google', 'Goldman Sachs', 'Oracle'],
+      statement: `<p>Design <code>LRUCache(capacity)</code> with <code>get(key)</code> → value or <code>-1</code>, and <code>put(key, value)</code> → insert or update; when the number of keys exceeds capacity, evict the <b>least recently used</b> key. Both must run in O(1) average time. Implement it <b>without</b> relying on Map insertion order (use a doubly linked list).</p>`,
+      constraints: `1 ≤ capacity ≤ 3000, up to 2·10<sup>5</sup> calls to get and put.`,
+      example: `<p>cap 2: put(1,1), put(2,2), get(1) → ${H.c('g', '1')}, put(3,3) evicts key 2, get(2) → ${H.c('r', '-1')}, put(4,4) evicts key 1, get(1) → ${H.c('r', '-1')}, get(3) → ${H.c('g', '3')}, get(4) → ${H.c('g', '4')}.</p>`,
+      brute: { why: `<p>Keep an array of keys in recency order. <code>get</code>/<code>put</code> must find the key with <code>indexOf</code> and <code>splice</code> it — O(capacity) per call → 2·10<sup>5</sup> × 3000 = 6·10<sup>8</sup> steps, too slow.</p>`, code: `
+class SlowLRU {
+  constructor(cap) { this.cap = cap; this.keys = []; this.vals = {}; }
+  touch(k) { const i = this.keys.indexOf(k); if (i >= 0) this.keys.splice(i, 1); this.keys.push(k); } // O(n)
+  get(k) { if (!(k in this.vals)) return -1; this.touch(k); return this.vals[k]; }
+  put(k, v) { this.vals[k] = v; this.touch(k); if (this.keys.length > this.cap) delete this.vals[this.keys.shift()]; }
+}
+` },
+      mcq: { q: 'Why does the linked list need to be <b>doubly</b> linked?', options: ['To unlink an arbitrary node in O(1) you need its previous node, which a singly linked list cannot give you directly', 'To iterate backwards for printing', 'Because JS has no singly linked lists', 'To save memory'], answer: 0, explain: 'The Map gives us the node; removing it requires fixing prev.next, so each node must know its prev.' },
+      hints: [`<p>Hint 1: you need two abilities in O(1): find a key (hash map) and move/remove an item in an ordered sequence (linked list).</p>`, `<p>Hint 2: Map key → node; nodes in a doubly linked list with dummy HEAD and TAIL. Most recent right after HEAD, least recent right before TAIL.</p>`, `<p>Hint 3: helpers unlink(node) and addFront(node). get: lookup, unlink, addFront. put: if exists update + move; else create + addFront + index; if size &gt; cap remove TAIL.prev from list and Map.</p>`],
+      solution: {
+        approach: `<p>Hash map for O(1) lookup + doubly linked list for O(1) recency updates. Sentinels make every insertion/removal the same four pointer assignments. Eviction takes the node before TAIL and deletes its key from the map (store the key inside the node for this).</p>`,
+        code: { lang: 'js', run: true, code: `
+class LRUCache {
+  constructor(capacity) {
+    this.cap = capacity;
+    this.map = new Map();
+    this.head = { k: null, v: null, prev: null, next: null };
+    this.tail = { k: null, v: null, prev: this.head, next: null };
+    this.head.next = this.tail;
+  }
+  unlink(n) { n.prev.next = n.next; n.next.prev = n.prev; }
+  addFront(n) { n.prev = this.head; n.next = this.head.next; this.head.next.prev = n; this.head.next = n; }
+  get(key) {
+    const n = this.map.get(key);
+    if (!n) return -1;
+    this.unlink(n); this.addFront(n);
+    return n.v;
+  }
+  put(key, value) {
+    const n = this.map.get(key);
+    if (n) { n.v = value; this.unlink(n); this.addFront(n); return; }
+    const node = { k: key, v: value, prev: null, next: null };
+    this.map.set(key, node); this.addFront(node);
+    if (this.map.size > this.cap) {
+      const lru = this.tail.prev;
+      this.unlink(lru); this.map.delete(lru.k);
+    }
+  }
+}
+
+const c = new LRUCache(2), out = [];
+c.put(1, 1); c.put(2, 2); out.push(c.get(1));
+c.put(3, 3); out.push(c.get(2));
+c.put(4, 4); out.push(c.get(1), c.get(3), c.get(4));
+console.log(out); // [1, -1, -1, 3, 4]
+` },
+        dry: { head: ['op', 'list HEAD → TAIL', 'evicted', 'returns'], rows: [['put(1,1)', '1', '—', '—'], ['put(2,2)', '2, 1', '—', '—'], ['get(1)', '1, 2', '—', '1'], ['put(3,3)', '3, 1', '2', '—'], ['get(2)', '3, 1', '—', '-1'], ['put(4,4)', '4, 3', '1', '—']] },
+        complexity: `<p>get and put: O(1) average (one Map op + constant pointer updates). Space: O(capacity).</p>`,
+        followUps: ['Add TTL expiry.', 'Implement LFU cache (LeetCode 460).', 'Make capacity count bytes instead of entries.']
+      }
+    }]
+  });
 registerModule({ id: 'js14', title: 'Machine Coding & Polyfills + Output Question Bank', intro: '<p>tmp</p>', goals: [], prereqs: 'tmp', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();

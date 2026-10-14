@@ -2813,4 +2813,945 @@ console.log('J');
       }
     ]
   });
-registerModule({ id: 'js08', title: 'Async II: Event Loop, Microtasks & async/await', intro: `<p>xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx</p>`, goals: ['a','b','c'], prereqs: `x`, hours: 10, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();
+
+  /* ======================================================================
+     PRACTICE — Easy → Medium → Hard
+     ====================================================================== */
+
+  /* ---------------- EASY ---------------- */
+  practice.push({
+    title: 'Sync first, timer later',
+    level: 'Easy', tags: ['setTimeout', 'call stack', 'output order'], companies: ['TCS', 'Infosys', 'Accenture'],
+    statement: `<p>Predict the exact output:</p><pre>console.log('1');
+setTimeout(() =&gt; console.log('2'), 0);
+console.log('3');</pre>`,
+    constraints: `Browser or Node.js.`,
+    example: `<p>Output: ${H.c('g', '1')} → ${H.c('g', '3')} → ${H.c('b', '2')}. "0 ms" means "as soon as possible <b>after</b> the current script", not "right now".</p>`,
+    brute: {
+      why: `<p>Reading the code top to bottom like a recipe gives 1 2 3. That model ignores that <code>setTimeout</code> only <i>registers</i> the callback with the host; the callback becomes a task that waits for the call stack to be empty.</p>`,
+      code: `// "Top to bottom" model — wrong for async callbacks
+console.log(['1', '2', '3'].join(' '));`
+    },
+    mcq: { q: 'What does setTimeout(fn, 0) guarantee?', options: ['fn runs immediately', 'fn runs after the current synchronous code (and the microtasks) finish, at the earliest', 'fn runs exactly 0 ms later', 'fn runs before promises'], answer: 1, explain: 'The delay is a minimum. The callback becomes a task and tasks only run when the stack is empty and microtasks are drained.' },
+    hints: [
+      `<p>Hint 1: Which lines run right now, on the call stack? Only the two console.log calls at the top level.</p>`,
+      `<p>Hint 2: setTimeout hands the callback to the timer system (Web APIs / libuv) and returns undefined immediately.</p>`,
+      `<p>Hint 3: When the script ends the stack is empty, so the event loop takes the timer task and prints 2 last.</p>`
+    ],
+    solution: {
+      approach: `<p>Sync logs first (1, 3). The timer callback is a task, so it runs after the script task finishes.</p>`,
+      code: { lang: 'js', run: true, code: `console.log('1');
+setTimeout(() => console.log('2'), 0);
+console.log('3');
+
+// Expected output:
+// 1
+// 3
+// 2` },
+      dry: { head: ['step', 'call stack', 'task queue', 'printed'], rows: [['1', 'script → log', '—', '1'], ['2', 'script → setTimeout', 'timer cb (after 0 ms)', '1'], ['3', 'script → log', 'timer cb', '1 3'], ['4', 'timer cb', '—', '<span class="c-g">1 3 2</span>']] },
+      complexity: `<p>O(1) — three statements.</p>`,
+      followUps: ['What if a 2-second busy loop sits between the two logs? Does 2 print sooner?', 'What if the delay is 1000 ms instead of 0?']
+    }
+  });
+
+  practice.push({
+    title: 'Promise.then vs setTimeout',
+    level: 'Easy', tags: ['microtask', 'macrotask', 'promise'], companies: ['Amazon', 'Paytm', 'Swiggy'],
+    statement: `<p>Predict the exact output:</p><pre>console.log('A');
+setTimeout(() =&gt; console.log('B'), 0);
+Promise.resolve().then(() =&gt; console.log('C'));
+console.log('D');</pre>`,
+    constraints: `Browser or Node.js.`,
+    example: `<p>Output: ${H.c('g', 'A')} → ${H.c('g', 'D')} → ${H.c('p', 'C')} → ${H.c('b', 'B')}. The promise callback is a <b>microtask</b>; the timer is a <b>task</b>. All microtasks run before the next task.</p>`,
+    brute: {
+      why: `<p>"Callbacks run in the order they were scheduled" puts B before C, because setTimeout was called first. That ignores the two separate queues and their priority.</p>`,
+      code: `// Single-queue model (wrong)
+console.log(['A', 'D', 'B', 'C'].join(' '));`
+    },
+    mcq: { q: 'Why does C print before B even though B was scheduled first?', options: ['Promises are faster than timers', 'Microtasks are drained completely before the event loop picks the next task', 'setTimeout has a 4 ms minimum', 'Random'], answer: 1, explain: 'The order is guaranteed by the event loop algorithm, not by speed: after the script task, every microtask runs before the next task.' },
+    hints: [
+      `<p>Hint 1: Sync first: A and D print during the script itself.</p>`,
+      `<p>Hint 2: Sort the two callbacks into lanes: then-callback → microtask queue; timer callback → task queue.</p>`,
+      `<p>Hint 3: Rule: after each task (the script is one), drain all microtasks, then take one task.</p>`
+    ],
+    solution: {
+      approach: `<p>Sync: A, D. Microtask drain: C. Next task: B.</p>`,
+      code: { lang: 'js', run: true, code: `console.log('A');
+setTimeout(() => console.log('B'), 0);
+Promise.resolve().then(() => console.log('C'));
+console.log('D');
+
+// Expected output:
+// A
+// D
+// C
+// B` },
+      dry: { head: ['phase', 'microtasks', 'tasks', 'printed'], rows: [['script', 'C', 'B', 'A D'], ['drain', '—', 'B', 'A D C'], ['task', '—', '—', '<span class="c-g">A D C B</span>']] },
+      complexity: `<p>O(1) — four statements, two callbacks.</p>`,
+      followUps: ['Replace Promise.resolve().then with queueMicrotask. Same output?', 'Add a second setTimeout with 0 ms before the first. Where does it print?']
+    }
+  });
+
+  practice.push({
+    title: 'The executor runs now',
+    level: 'Easy', tags: ['promise', 'executor', 'output order'], companies: ['Wipro', 'Zoho', 'Freshworks'],
+    statement: `<p>Predict the exact output:</p><pre>console.log('1');
+const p = new Promise((resolve) =&gt; {
+  console.log('2');
+  resolve();
+  console.log('3');
+});
+p.then(() =&gt; console.log('4'));
+console.log('5');</pre>`,
+    constraints: `Browser or Node.js.`,
+    example: `<p>Output: ${H.c('g', '1 2 3 5')} → ${H.c('p', '4')}. The executor is called synchronously by <code>new Promise</code>, and <code>resolve()</code> does not stop it — it only marks the promise fulfilled.</p>`,
+    brute: {
+      why: `<p>Two wrong beliefs: "everything inside a promise is async" (gives 1 5 2 3 4) and "resolve() returns/jumps to then" (gives 1 2 4 3 5). Both misunderstand when executors and then-callbacks run.</p>`,
+      code: `// Belief 1: the executor is async (wrong)
+console.log('1 5 2 3 4');
+// Belief 2: resolve() calls the then-callback right away (wrong)
+console.log('1 2 4 3 5');`
+    },
+    mcq: { q: 'What does calling resolve() inside the executor do immediately?', options: ['Runs the then-callbacks', 'Marks the promise fulfilled; then-callbacks are queued as microtasks', 'Exits the executor like return', 'Throws if called twice'], answer: 1, explain: 'resolve settles the promise and queues reactions already registered (none yet here). The executor keeps running to its end.' },
+    hints: [
+      `<p>Hint 1: new Promise(executor) calls executor immediately, on the same stack, before returning the promise.</p>`,
+      `<p>Hint 2: resolve() is just a function call that changes the promise's state; code after it in the executor still runs.</p>`,
+      `<p>Hint 3: p.then on a fulfilled promise queues the callback as a microtask; it runs after the last sync log.</p>`
+    ],
+    solution: {
+      approach: `<p>Sync: 1, executor prints 2, resolve, 3, then 5. Microtask: 4.</p>`,
+      code: { lang: 'js', run: true, code: `console.log('1');
+const p = new Promise((resolve) => {
+  console.log('2');
+  resolve();
+  console.log('3');
+});
+p.then(() => console.log('4'));
+console.log('5');
+
+// Expected output:
+// 1
+// 2
+// 3
+// 5
+// 4` },
+      dry: { head: ['line', 'running', 'p state', 'microtasks', 'printed'], rows: [['1', 'script', '—', '—', '1'], ['executor', 'executor', 'pending → fulfilled', '—', '1 2 3'], ['p.then', 'script', 'fulfilled', 'cb4', '1 2 3'], ['end', 'script', 'fulfilled', 'cb4', '1 2 3 5'], ['drain', 'cb4', 'fulfilled', '—', '<span class="c-g">1 2 3 5 4</span>']] },
+      complexity: `<p>O(1) — the cost is understanding, not computation.</p>`,
+      followUps: ['Write return resolve(); instead of resolve(); — what changes?', 'What if the executor throws after resolve()?']
+    }
+  });
+
+  practice.push({
+    title: 'Implement sleep(ms) without blocking',
+    level: 'Easy', tags: ['promise', 'setTimeout', 'async/await'], companies: ['Uber', 'Razorpay', 'PhonePe'],
+    statement: `<p>Write <code>sleep(ms)</code> that returns a promise fulfilled after <code>ms</code> milliseconds, then use it in <code>countdown()</code> to print 3, 2, 1 (100 ms apart) and then <b>liftoff</b>. Meanwhile, a timer scheduled for 150 ms must still be able to print <b>other work ran</b> — your sleep must not block the thread.</p>`,
+    constraints: `No busy-waiting. Works in browser and Node.`,
+    example: `<p>Output: ${H.c('g', '3')} → ${H.c('g', '2')} → ${H.c('b', 'other work ran')} → ${H.c('g', '1')} → ${H.c('g', 'liftoff')}. The 150 ms timer fires between "2" (t≈100) and "1" (t≈200) because the thread is free while we sleep.</p>`,
+    brute: {
+      why: `<p>A busy-wait loop (<code>while (Date.now() &lt; end) {}</code>) does pause for the right time — but it holds the only thread hostage: no clicks, no paints, no other timers. The 150 ms timer would print only after the whole countdown.</p>`,
+      code: `function busySleep(ms) {
+  const end = Date.now() + ms;
+  while (Date.now() < end) { /* spinning: the whole thread is blocked */ }
+}
+setTimeout(() => console.log('other work ran (late!)'), 150);
+for (let i = 3; i >= 1; i--) { console.log(i); busySleep(100); }
+console.log('liftoff');`
+    },
+    mcq: { q: 'Why does await sleep(100) not block other code?', options: ['It runs in another thread', 'await pauses only this async function; the thread returns to the event loop until the timer task resolves the promise', 'setTimeout is synchronous', 'It does block'], answer: 1, explain: 'The async function is suspended (saved on the heap); the call stack empties and other tasks can run. The timer later resolves the promise and the continuation is queued as a microtask.' },
+    hints: [
+      `<p>Hint 1: You need something that "finishes later" without holding the thread: setTimeout plus a promise.</p>`,
+      `<p>Hint 2: Wrap it: <code>new Promise((resolve) =&gt; setTimeout(resolve, ms))</code>. The timer callback is resolve itself.</p>`,
+      `<p>Hint 3: In countdown, loop i from 3 to 1: log, then <code>await sleep(100)</code>. After the loop log liftoff. Use for…of / for, not forEach.</p>`
+    ],
+    solution: {
+      approach: `<p>Promise-wrap setTimeout. Each <code>await sleep(100)</code> suspends countdown, the stack empties, and other tasks (the 150 ms timer) get their turn.</p>`,
+      code: { lang: 'js', run: true, code: `const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function countdown() {
+  for (let i = 3; i >= 1; i--) {
+    console.log(i);
+    await sleep(100);         // pause THIS function only; the thread is free
+  }
+  console.log('liftoff');
+}
+
+setTimeout(() => console.log('other work ran'), 150);
+countdown();
+
+// Expected output:
+// 3
+// 2
+// other work ran
+// 1
+// liftoff` },
+      dry: { head: ['time', 'event', 'printed'], rows: [['0 ms', 'countdown starts, sleep(100)', '3'], ['100 ms', 'sleep timer → resume', '2'], ['150 ms', 'other timer task', 'other work ran'], ['200 ms', 'sleep timer → resume', '1'], ['300 ms', 'sleep timer → resume', '<span class="c-g">liftoff</span>']] },
+      complexity: `<p>O(n) timers for n steps; O(1) extra memory. No CPU used while waiting.</p>`,
+      followUps: ['Add an AbortSignal parameter so sleep can be cancelled.', 'Why does setTimeout(resolve, ms) not need an arrow function here?']
+    }
+  });
+
+  /* ---------------- MEDIUM ---------------- */
+  practice.push({
+    title: 'Two promise chains and a queueMicrotask',
+    level: 'Medium', tags: ['microtask', 'promise chain', 'ticks'], companies: ['Google', 'Atlassian', 'Adobe'],
+    statement: `<p>Predict the exact output:</p><pre>Promise.resolve()
+  .then(() =&gt; console.log('a1'))
+  .then(() =&gt; console.log('a2'))
+  .then(() =&gt; console.log('a3'));
+Promise.resolve()
+  .then(() =&gt; console.log('b1'))
+  .then(() =&gt; console.log('b2'));
+queueMicrotask(() =&gt; console.log('m'));</pre>`,
+    constraints: `Browser or Node.js.`,
+    example: `<p>Output: ${H.c('p', 'a1 b1 m')} → ${H.c('p', 'a2 b2')} → ${H.c('p', 'a3')}. Only the <b>first</b> link of each chain is queued during the script; each later link is queued when the previous one finishes, at the back of the line.</p>`,
+    brute: {
+      why: `<p>"Each chain runs to completion" gives a1 a2 a3 b1 b2 m. But a chain is not one job — every <code>.then</code> is a separate microtask queued only when its parent promise settles.</p>`,
+      code: `// "Whole chain at once" model (wrong)
+console.log(['a1', 'a2', 'a3', 'b1', 'b2', 'm'].join(' '));`
+    },
+    mcq: { q: 'When is the callback of the second .then (a2) put into the microtask queue?', options: ['During the script', 'When a1 has run and its promise fulfils', 'After all microtasks', 'After the next task'], answer: 1, explain: 'a2 is registered on the promise returned by the first .then, which is pending until a1 has run.' },
+    hints: [
+      `<p>Hint 1: After the script the queue is [a1, b1, m] — only first links and the queueMicrotask callback.</p>`,
+      `<p>Hint 2: Running a1 queues a2 at the back: [b1, m, a2]. Running b1 queues b2: [m, a2, b2].</p>`,
+      `<p>Hint 3: Keep simulating the FIFO queue: m, a2 (queues a3), b2, a3. Write the queue after every step.</p>`
+    ],
+    solution: {
+      approach: `<p>Simulate the single FIFO microtask queue, adding each next link at the back when its parent runs.</p>`,
+      code: { lang: 'js', run: true, code: `Promise.resolve()
+  .then(() => console.log('a1'))
+  .then(() => console.log('a2'))
+  .then(() => console.log('a3'));
+Promise.resolve()
+  .then(() => console.log('b1'))
+  .then(() => console.log('b2'));
+queueMicrotask(() => console.log('m'));
+
+// Expected output:
+// a1
+// b1
+// m
+// a2
+// b2
+// a3` },
+      dry: { head: ['run', 'queue after'], rows: [['(script)', 'a1, b1, m'], ['a1', 'b1, m, a2'], ['b1', 'm, a2, b2'], ['m', 'a2, b2'], ['a2', 'b2, a3'], ['b2', 'a3'], ['a3', '<span class="c-g">—</span>']] },
+      complexity: `<p>O(total links). Each link = exactly one microtask.</p>`,
+      followUps: ['Make the first link of chain a return Promise.resolve(). Where does a2 move?', 'Move queueMicrotask to the top of the file.']
+    }
+  });
+
+  practice.push({
+    title: 'Timers inside promises, promises inside timers',
+    level: 'Medium', tags: ['event loop', 'macrotask', 'microtask'], companies: ['Microsoft', 'Walmart', 'CRED'],
+    statement: `<p>Predict the exact output:</p><pre>setTimeout(() =&gt; {
+  console.log('t1');
+  Promise.resolve().then(() =&gt; console.log('p-in-t1'));
+}, 0);
+Promise.resolve().then(() =&gt; {
+  console.log('p1');
+  setTimeout(() =&gt; console.log('t-in-p1'), 0);
+});
+setTimeout(() =&gt; console.log('t2'), 0);
+console.log('s');</pre>`,
+    constraints: `Browser or Node.js 11+.`,
+    example: `<p>Output: ${H.c('g', 's')} → ${H.c('p', 'p1')} → ${H.c('b', 't1')} → ${H.c('p', 'p-in-t1')} → ${H.c('b', 't2')} → ${H.c('b', 't-in-p1')}. The timer created inside p1 is created <i>after</i> t1 and t2, so it is last. The microtask created inside t1 runs right after t1, before t2.</p>`,
+    brute: {
+      why: `<p>"All timers, then all promises" (or the Node &lt; 11 batching behaviour) prints t1 t2 before p-in-t1. Modern hosts drain microtasks after <b>every</b> task.</p>`,
+      code: `// Old Node 10 batching / wrong model
+console.log(['s', 'p1', 't1', 't2', 'p-in-t1', 't-in-p1'].join(' '));`
+    },
+    mcq: { q: 'Where does the timer created inside p1 end up?', options: ['Before t1', 'Between t1 and t2', 'After t2 — it was created later with the same delay', 'It never runs'], answer: 2, explain: 'Equal delays run in creation order. t1 and t2 were created during the script; t-in-p1 during the microtask drain afterwards.' },
+    hints: [
+      `<p>Hint 1: Script: two timers (t1, t2) registered, one microtask (p1), prints s.</p>`,
+      `<p>Hint 2: Drain: p1 prints and registers a third timer, which joins after t2.</p>`,
+      `<p>Hint 3: Task t1 → microtask p-in-t1 drains before the next task. Then t2, then t-in-p1.</p>`
+    ],
+    solution: {
+      approach: `<p>Alternate: one task, then all microtasks. Timers with equal delay keep creation order.</p>`,
+      code: { lang: 'js', run: true, code: `setTimeout(() => {
+  console.log('t1');
+  Promise.resolve().then(() => console.log('p-in-t1'));
+}, 0);
+Promise.resolve().then(() => {
+  console.log('p1');
+  setTimeout(() => console.log('t-in-p1'), 0);
+});
+setTimeout(() => console.log('t2'), 0);
+console.log('s');
+
+// Expected output:
+// s
+// p1
+// t1
+// p-in-t1
+// t2
+// t-in-p1` },
+      dry: { head: ['phase', 'runs', 'tasks waiting', 'printed'], rows: [['script', 'main', 't1, t2', 's'], ['micro', 'p1', 't1, t2, t-in-p1', 'p1'], ['task', 't1', 't2, t-in-p1', 't1'], ['micro', 'p-in-t1', 't2, t-in-p1', 'p-in-t1'], ['task', 't2', 't-in-p1', 't2'], ['task', 't-in-p1', '—', '<span class="c-g">t-in-p1</span>']] },
+      complexity: `<p>O(callbacks): each callback is queued and run exactly once.</p>`,
+      followUps: ['Give t2 a 5 ms delay. Does the order change?', 'Replace the inner Promise in t1 with queueMicrotask.']
+    }
+  });
+
+  practice.push({
+    title: 'Error chain: reject, then, catch, finally',
+    level: 'Medium', tags: ['error handling', 'promise chain', 'finally'], companies: ['Stripe', 'Intuit', 'Zomato'],
+    statement: `<p>Predict the exact output:</p><pre>console.log('sync');
+Promise.reject(new Error('x'))
+  .finally(() =&gt; console.log('f1'))
+  .then(() =&gt; console.log('t1'))
+  .catch((e) =&gt; { console.log('c1 ' + e.message); return 'recovered'; })
+  .finally(() =&gt; console.log('f2'))
+  .then((v) =&gt; console.log('t2 ' + v));</pre>`,
+    constraints: `Browser or Node.js.`,
+    example: `<p>Output: ${H.c('g', 'sync')} → ${H.c('p', 'f1')} → ${H.c('r', 'c1 x')} → ${H.c('p', 'f2')} → ${H.c('g', 't2 recovered')}. <b>t1</b> never prints: the rejection skips it. <code>finally</code> runs for both outcomes and passes the outcome through.</p>`,
+    brute: {
+      why: `<p>Common mistakes: thinking <code>finally</code> "handles" the error (so t1 prints), or that after <code>.catch</code> the chain stays rejected (so t2 never prints), or that finally receives the value (it gets no argument).</p>`,
+      code: `// Wrong: "finally handles the rejection"
+console.log(['sync', 'f1', 't1', 'f2', 't2 undefined'].join(' | '));`
+    },
+    mcq: { q: 'What does the last .then receive as v?', options: ['undefined, because finally returned nothing', '"recovered" — finally passes the previous value through', 'The Error x', 'It does not run'], answer: 1, explain: 'finally ignores its callback\'s return value (unless it throws or returns a rejected promise) and forwards the previous outcome: the catch returned "recovered".' },
+    hints: [
+      `<p>Hint 1: Track the state of the chain: rejected(x) → finally keeps it rejected → then is skipped → catch makes it fulfilled("recovered").</p>`,
+      `<p>Hint 2: finally callbacks run on both paths and get no argument; they forward the incoming outcome.</p>`,
+      `<p>Hint 3: Only sync is synchronous. Then follow the chain: f1, (t1 skipped), c1 x, f2, t2 recovered.</p>`
+    ],
+    solution: {
+      approach: `<p>Follow the settled state link by link. Rejection: finally (runs, keeps rejection) → then (skipped) → catch (handles, returns value) → finally (runs, keeps value) → then (receives value).</p>`,
+      code: { lang: 'js', run: true, code: `console.log('sync');
+Promise.reject(new Error('x'))
+  .finally(() => console.log('f1'))
+  .then(() => console.log('t1'))
+  .catch((e) => { console.log('c1 ' + e.message); return 'recovered'; })
+  .finally(() => console.log('f2'))
+  .then((v) => console.log('t2 ' + v));
+
+// Expected output:
+// sync
+// f1
+// c1 x
+// f2
+// t2 recovered` },
+      dry: { head: ['link', 'incoming state', 'callback runs?', 'outgoing state'], rows: [['finally f1', 'rejected(x)', 'yes', 'rejected(x)'], ['then t1', 'rejected(x)', '<span class="c-r">no (skipped)</span>', 'rejected(x)'], ['catch c1', 'rejected(x)', 'yes', 'fulfilled(recovered)'], ['finally f2', 'fulfilled(recovered)', 'yes', 'fulfilled(recovered)'], ['then t2', 'fulfilled(recovered)', 'yes', '<span class="c-g">prints t2 recovered</span>']] },
+      complexity: `<p>O(links): one microtask per link, skipped or not.</p>`,
+      followUps: ['Make f2 throw new Error("y"). What prints now, and is there an unhandled rejection?', 'Replace .catch with .then(null, handler). Same result?']
+    }
+  });
+
+  practice.push({
+    title: 'Load users in parallel, keep input order',
+    level: 'Medium', tags: ['async/await', 'Promise.all', 'performance'], companies: ['Amazon', 'Netflix', 'Booking.com'],
+    statement: `<p><code>getUser(id)</code> takes ~50 ms and resolves to <code>'user' + id</code>. Write <code>loadUsers(ids)</code> that returns the users <b>in the same order as ids</b>, in about 50 ms total (not 50 ms × N).</p>`,
+    constraints: `1 ≤ ids.length ≤ 1000. Requests are independent. Keep result order = input order.`,
+    example: `<p><code>loadUsers([1, 2, 3])</code> → ${H.c('g', "['user1', 'user2', 'user3']")} in ≈ 50 ms. The sequential version takes ≈ 150 ms.</p>`,
+    brute: {
+      why: `<p><code>for…of</code> with <code>await</code> inside waits for each request before <b>starting</b> the next. Correct output, but N × 50 ms.</p>`,
+      code: `const getUser = (id) => new Promise((r) => setTimeout(() => r('user' + id), 50));
+async function loadUsersSlow(ids) {
+  const out = [];
+  for (const id of ids) out.push(await getUser(id));   // one at a time
+  return out;
+}
+const t = Date.now();
+loadUsersSlow([1, 2, 3]).then((u) => console.log(u.join(',') + ' sequential >= 140 ms? ' + (Date.now() - t >= 140)));`
+    },
+    mcq: { q: 'Promise.all(ids.map(getUser)) returns results in which order?', options: ['Order of completion', 'Same order as the input array, whatever finishes first', 'Random', 'Reverse order'], answer: 1, explain: 'Promise.all stores each value at its input index, so order is preserved even if later requests finish first.' },
+    hints: [
+      `<p>Hint 1: Start all requests first — calling getUser(id) starts the timer immediately — then wait for all of them.</p>`,
+      `<p>Hint 2: <code>ids.map(getUser)</code> gives an array of promises; <code>Promise.all</code> waits for all and keeps index order.</p>`,
+      `<p>Hint 3: Edge cases: empty array resolves to [] immediately; one rejection rejects the whole call (use allSettled if partial results are OK); for 1000 ids consider a concurrency limit.</p>`
+    ],
+    solution: {
+      approach: `<p>Fan out, then fan in: <code>return Promise.all(ids.map(getUser))</code>. All timers run concurrently in the host; JavaScript just waits once.</p>`,
+      code: { lang: 'js', run: true, code: `const getUser = (id) => new Promise((r) => setTimeout(() => r('user' + id), 50));
+
+async function loadUsers(ids) {
+  // map() calls getUser for every id NOW, so all requests are in flight together
+  return Promise.all(ids.map(getUser));
+}
+
+const t = Date.now();
+loadUsers([3, 1, 2]).then((users) => {
+  console.log(users.join(','));
+  console.log('took < 120 ms? ' + (Date.now() - t < 120));
+});
+
+// Expected output:
+// user3,user1,user2
+// took < 120 ms? true` },
+      dry: { head: ['time', 'in flight', 'result array'], rows: [['0 ms', 'getUser(3), getUser(1), getUser(2)', '[_, _, _]'], ['≈50 ms', 'all three resolve', '[user3, user1, user2]'], ['≈50 ms', 'Promise.all fulfils', '<span class="c-g">input order kept</span>']] },
+      complexity: `<p>Wall time ≈ max(request time) instead of the sum. Memory O(N) promises.</p>`,
+      followUps: ['What if one request fails but you still want the others?', 'Limit to 5 requests in flight at once.']
+    }
+  });
+
+  practice.push({
+    title: 'promiseWithTimeout(promise, ms)',
+    level: 'Medium', tags: ['Promise.race', 'setTimeout', 'error handling'], companies: ['Uber', 'LinkedIn', 'Airbnb'],
+    statement: `<p>Implement <code>withTimeout(promise, ms)</code>: it settles like <code>promise</code> if that happens within <code>ms</code>, otherwise rejects with <code>Error('Timeout after ' + ms + ' ms')</code>. The timer must be <b>cleared</b> when the promise wins (no leaked timers keeping Node alive).</p>`,
+    constraints: `Do not modify the input promise. Must work for both fulfilment and rejection.`,
+    example: `<p><code>withTimeout(fast30ms, 100)</code> → ${H.c('g', 'fulfils')}; <code>withTimeout(slow200ms, 50)</code> → ${H.c('r', 'rejects "Timeout after 50 ms"')} at ≈ 50 ms.</p>`,
+    brute: {
+      why: `<p>A version without <code>clearTimeout</code> works logically but leaves a pending timer every time the promise wins. In Node a 30-second timeout keeps the process alive 30 s after the work is done; in a server it accumulates thousands of live timers.</p>`,
+      code: `function withTimeoutLeaky(promise, ms) {
+  const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout after ' + ms + ' ms')), ms));
+  return Promise.race([promise, timeout]);     // timer never cleared
+}
+withTimeoutLeaky(Promise.resolve('fast'), 200).then((v) => console.log(v + ' (but a 200 ms timer is still pending)'));`
+    },
+    mcq: { q: 'Promise.race([work, timeout]) settles when…', options: ['both settle', 'the first of them settles — fulfilled or rejected', 'the first one fulfils', 'never'], answer: 1, explain: 'race adopts the first settlement of any kind. The loser keeps running — race does not cancel it.' },
+    hints: [
+      `<p>Hint 1: Race the real promise against a promise that rejects after ms using a timer.</p>`,
+      `<p>Hint 2: Keep the timer id; whatever wins, call clearTimeout(id) in a finally so the loser timer is removed.</p>`,
+      `<p>Hint 3: Remember race does not cancel the slow work. For fetch, pass an AbortSignal (AbortSignal.timeout(ms)) to really stop it.</p>`
+    ],
+    solution: {
+      approach: `<p><code>Promise.race</code> between the input and a timer-rejecting promise; <code>.finally(() =&gt; clearTimeout(id))</code> cleans up in every outcome.</p>`,
+      code: { lang: 'js', run: true, code: `function withTimeout(promise, ms) {
+  let timerId;
+  const timeout = new Promise((_, reject) => {
+    timerId = setTimeout(() => reject(new Error('Timeout after ' + ms + ' ms')), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timerId));
+}
+
+const delay = (ms, v) => new Promise((r) => setTimeout(() => r(v), ms));
+
+async function demo() {
+  console.log('fast: ' + await withTimeout(delay(30, 'done in 30 ms'), 100));
+  try {
+    await withTimeout(delay(200, 'too slow'), 50);
+  } catch (e) {
+    console.log('slow: ' + e.message);
+  }
+  try {
+    await withTimeout(Promise.reject(new Error('server 500')), 100);
+  } catch (e) {
+    console.log('failing: ' + e.message);
+  }
+}
+demo();
+
+// Expected output:
+// fast: done in 30 ms
+// slow: Timeout after 50 ms
+// failing: server 500` },
+      dry: { head: ['call', 'winner', 'outcome', 'timer'], rows: [['delay(30) vs 100', 'work at 30 ms', 'fulfilled', 'cleared'], ['delay(200) vs 50', 'timer at 50 ms', 'rejected: Timeout', 'already fired'], ['reject vs 100', 'work at 0 ms', 'rejected: server 500', 'cleared']] },
+      complexity: `<p>O(1) per call; one timer that is always cleaned up.</p>`,
+      followUps: ['Add an AbortController so the underlying fetch is cancelled on timeout.', 'Why can the slow delay(200) still keep Node alive after the timeout fires?']
+    }
+  });
+
+  practice.push({
+    title: 'Process a big array without freezing the page',
+    level: 'Medium', tags: ['blocking', 'chunking', 'yield to main', 'INP'], companies: ['Google', 'Meta', 'Figma'],
+    statement: `<p>Write <code>processInChunks(items, chunkSize, fn)</code> that sums <code>fn(item)</code> over all items but <b>yields to the event loop</b> between chunks, so a click handler (simulated by a timer scheduled before the call) gets a turn after the first chunk instead of after all of them. Return a promise of the total.</p>`,
+    constraints: `items.length up to 10<sup>6</sup>; keep each chunk short (≈ 5–50 ms of work).`,
+    example: `<p>With 9 items, chunk size 3, fn = x²: output ${H.c('g', 'chunk done up to 3')} → ${H.c('b', '&gt;&gt; click handler got a turn')} → ${H.c('g', 'chunk done up to 6')} → ${H.c('g', 'chunk done up to 9')} → ${H.c('g', 'sum of squares = 285')}.</p>`,
+    brute: {
+      why: `<p>One long synchronous loop gives the right sum but blocks the only thread: the click handler (and painting) waits for the whole loop. On a real page that is a "long task" that ruins INP (Interaction to Next Paint).</p>`,
+      code: `setTimeout(() => console.log('>> click handler finally got a turn'), 0);
+let total = 0;
+for (let i = 1; i <= 9; i++) total += i * i;     // imagine 10 million items here
+console.log('all done in one go, sum = ' + total);`
+    },
+    mcq: { q: 'Which "yield" lets a click handler (a task) run between chunks?', options: ['await Promise.resolve()', 'await new Promise((r) => setTimeout(r, 0)) or scheduler.yield()', 'queueMicrotask', 'A for loop'], answer: 1, explain: 'Microtask-based "yields" never let a task run — microtasks are drained before the next task. You need a new task (setTimeout, MessageChannel) or scheduler.yield().' },
+    hints: [
+      `<p>Hint 1: Split the loop into chunks; after each chunk, give the thread back to the event loop.</p>`,
+      `<p>Hint 2: Yield with a task: <code>const yieldToMain = () =&gt; new Promise((r) =&gt; setTimeout(r, 0));</code> and <code>await</code> it. (In Chrome 129+ prefer <code>scheduler.yield()</code>.)</p>`,
+      `<p>Hint 3: Do not yield after the last chunk. Make the function async so the caller gets a promise of the total.</p>`
+    ],
+    solution: {
+      approach: `<p>Async loop over chunks; after each chunk except the last, await a task-based yield. Pending tasks (clicks, timers) and rendering can happen in between.</p>`,
+      code: { lang: 'js', run: true, code: `// Prefer scheduler.yield() where available; fall back to a 0 ms timer (a new task).
+const yieldToMain = () =>
+  (globalThis.scheduler && typeof globalThis.scheduler.yield === 'function')
+    ? globalThis.scheduler.yield()
+    : new Promise((resolve) => setTimeout(resolve, 0));
+
+async function processInChunks(items, chunkSize, fn) {
+  let total = 0;
+  for (let start = 0; start < items.length; start += chunkSize) {
+    const end = Math.min(start + chunkSize, items.length);
+    for (let i = start; i < end; i++) total += fn(items[i]);
+    console.log('chunk done up to ' + end);
+    if (end < items.length) await yieldToMain();   // let other tasks run
+  }
+  return total;
+}
+
+setTimeout(() => console.log('>> click handler got a turn'), 0);
+const items = Array.from({ length: 9 }, (_, i) => i + 1);
+processInChunks(items, 3, (x) => x * x).then((t) => console.log('sum of squares = ' + t));
+
+// Expected output:
+// chunk done up to 3
+// >> click handler got a turn
+// chunk done up to 6
+// chunk done up to 9
+// sum of squares = 285` },
+      dry: { head: ['task', 'work', 'printed'], rows: [['script', 'chunk 1, schedule yield timer Y1', 'chunk done up to 3'], ['click timer', 'handler', '&gt;&gt; click handler got a turn'], ['Y1 → microtask resume', 'chunk 2, schedule Y2', 'chunk done up to 6'], ['Y2 → resume', 'chunk 3, return 285', 'chunk done up to 9'], ['microtask', 'then', '<span class="c-g">sum of squares = 285</span>']] },
+      complexity: `<p>Same O(N) total work, split into N / chunkSize tasks. Small overhead per yield (≈ a few µs, more with browser timer clamping ≥ 4 ms after deep nesting — another reason to prefer scheduler.yield or MessageChannel).</p>`,
+      followUps: ['Pick the chunk size by time (e.g. 8 ms budget) instead of by count.', 'Move the work to a Web Worker instead. Trade-offs?']
+    }
+  });
+
+  /* ---------------- HARD ---------------- */
+  practice.push({
+    title: 'async functions returning values vs promises',
+    level: 'Hard', tags: ['async/await', 'ticks', 'thenable adoption'], companies: ['ByteDance', 'Google', 'Bloomberg'],
+    statement: `<p>Predict the exact output (modern engines):</p><pre>async function a() {
+  console.log('a start');
+  await null;
+  console.log('a end');
+  return Promise.resolve('A');
+}
+async function b() {
+  console.log('b start');
+  return 'B';
+}
+a().then((v) =&gt; console.log('got ' + v));
+b().then((v) =&gt; console.log('got ' + v));
+Promise.resolve()
+  .then(() =&gt; console.log('t1'))
+  .then(() =&gt; console.log('t2'))
+  .then(() =&gt; console.log('t3'))
+  .then(() =&gt; console.log('t4'));
+console.log('sync');</pre>`,
+    constraints: `Node.js 12+ or any current browser.`,
+    example: `<p>Output: ${H.c('g', 'a start, b start, sync')} → ${H.c('p', 'a end, got B, t1, t2, t3, got A, t4')}. b returns a plain value, so its promise is fulfilled immediately. a returns a <b>promise</b>, which costs 2 extra ticks to adopt.</p>`,
+    brute: {
+      why: `<p>Treating <code>return Promise.resolve('A')</code> like <code>return 'A'</code> predicts "got A" right after t1. Treating async functions as fully async predicts "b start" after "sync". Both skip the precise tick rules.</p>`,
+      code: `// Naive: return-a-promise costs nothing extra (wrong)
+console.log(['a start', 'b start', 'sync', 'a end', 'got B', 't1', 'got A', 't2', 't3', 't4'].join(', '));`
+    },
+    mcq: { q: 'How many extra microtask ticks does "return somePromise" in an async function cost compared to "return value"?', options: ['0', '1', '2', '3'], answer: 2, explain: 'Resolving with a thenable queues NewPromiseResolveThenableJob (1), which calls then; the reaction to that then is another job (2).' },
+    hints: [
+      `<p>Hint 1: Sync: a start (then a pauses at await null), b start (b finishes and its promise is fulfilled with 'B'), sync. Queue: [resume a, got B, t1].</p>`,
+      `<p>Hint 2: resume a prints "a end" and returns a promise → queue the resolve-thenable job at the back. Keep simulating the FIFO queue tick by tick.</p>`,
+      `<p>Hint 3: The thenable job runs after t1, queues the adopt reaction after t2; that reaction fulfils a's promise and queues got A after t3.</p>`
+    ],
+    solution: {
+      approach: `<p>Write the microtask queue after every job. Adopting a returned promise = 2 jobs before the outer promise is fulfilled, plus 1 for its then-callback.</p>`,
+      code: { lang: 'js', run: true, code: `async function a() {
+  console.log('a start');
+  await null;
+  console.log('a end');
+  return Promise.resolve('A');
+}
+async function b() {
+  console.log('b start');
+  return 'B';
+}
+a().then((v) => console.log('got ' + v));
+b().then((v) => console.log('got ' + v));
+Promise.resolve()
+  .then(() => console.log('t1'))
+  .then(() => console.log('t2'))
+  .then(() => console.log('t3'))
+  .then(() => console.log('t4'));
+console.log('sync');
+
+// Expected output:
+// a start
+// b start
+// sync
+// a end
+// got B
+// t1
+// t2
+// t3
+// got A
+// t4` },
+      dry: { head: ['job', 'prints', 'queue after'], rows: [
+        ['(script)', 'a start, b start, sync', 'resume a, got B, t1'],
+        ['resume a', 'a end', 'got B, t1, thenable-job'],
+        ['got B', 'got B', 't1, thenable-job'],
+        ['t1', 't1', 'thenable-job, t2'],
+        ['thenable-job', '—', 't2, adopt'],
+        ['t2', 't2', 'adopt, t3'],
+        ['adopt', '—', 't3, got A'],
+        ['t3', 't3', 'got A, t4'],
+        ['got A', 'got A', 't4'],
+        ['t4', '<span class="c-g">t4</span>', '—']
+      ] },
+      complexity: `<p>O(jobs). Practical lesson: <code>return await p</code> or returning plain values keeps chains short; the 2-tick cost is invisible in real apps but decides puzzles.</p>`,
+      followUps: ['Change a to "return await Promise.resolve(\'A\')". Where does got A move?', 'Change b to return Promise.resolve(\'B\').']
+    }
+  });
+
+  practice.push({
+    title: 'Promise pool: run async tasks with a concurrency limit',
+    level: 'Hard', tags: ['concurrency', 'promises', 'scheduling'], companies: ['Google', 'Amazon', 'Uber', 'Rippling'],
+    statement: `<p>Implement <code>runWithLimit(tasks, limit)</code>. <code>tasks</code> is an array of functions, each returning a promise. Run them with at most <code>limit</code> in flight at any time, start a new one as soon as one finishes, and resolve to the results <b>in input order</b>. If any task rejects, reject with that error.</p>`,
+    constraints: `0 ≤ tasks.length ≤ 10<sup>4</sup>, 1 ≤ limit. Do not start a task before a slot is free.`,
+    example: `<p>Durations [60, 20, 50, 20, 20] ms, limit 2: start 0,1 → 1 finishes (20 ms) → start 2 → 0 finishes (60 ms) → start 3 → 2 finishes (70 ms) → start 4 → 3, 4. Finish order ${H.c('b', '1,0,2,3,4')}; results ${H.c('g', 'r0..r4 in order')}; never more than ${H.c('p', '2')} running.</p>`,
+    brute: {
+      why: `<p><code>Promise.all(tasks.map((t) =&gt; t()))</code> starts everything at once — ignores the limit (rate limits, sockets, memory). Batching in fixed groups of <code>limit</code> respects it but wastes time: each batch waits for its slowest member while free slots sit idle.</p>`,
+      code: `async function batches(tasks, limit) {
+  const results = [];
+  for (let i = 0; i < tasks.length; i += limit) {
+    const group = tasks.slice(i, i + limit).map((t) => t());
+    results.push(...(await Promise.all(group)));       // whole batch waits for its slowest task
+  }
+  return results;
+}
+const job = (ms, v) => () => new Promise((r) => setTimeout(() => r(v), ms));
+batches([job(30, 'a'), job(5, 'b'), job(5, 'c')], 2).then((r) => console.log(r.join(',')));`
+    },
+    mcq: { q: 'What is the key trick to start the next task as soon as ANY slot frees up?', options: ['Promise.all over batches', 'Start `limit` workers; each worker loops: take the next index, await that task, repeat', 'Promise.race in a loop over all tasks', 'Sort tasks by duration'], answer: 1, explain: 'Worker loops share one "next index" counter. JavaScript is single-threaded, so next++ cannot race.' },
+    hints: [
+      `<p>Hint 1: Think of <code>limit</code> workers (cashiers) pulling from a shared line of tasks. A shared index <code>next</code> says which task is next.</p>`,
+      `<p>Hint 2: Each worker: <code>while (next &lt; tasks.length) { const i = next++; results[i] = await tasks[i](); }</code>. Run <code>Math.min(limit, n)</code> workers with Promise.all.</p>`,
+      `<p>Hint 3: Store by index to keep input order. Empty input → []. A rejection rejects Promise.all of the workers; set a flag so other workers stop taking new tasks.</p>`
+    ],
+    solution: {
+      approach: `<p>Worker-pool pattern. Because only one piece of JS runs at a time, <code>next++</code> is atomic — no locks needed. Each worker awaits one task at a time, so at most <code>limit</code> are in flight.</p>`,
+      code: { lang: 'js', run: true, code: `async function runWithLimit(tasks, limit) {
+  const results = new Array(tasks.length);
+  let next = 0;
+  let failed = false;
+
+  async function worker() {
+    while (next < tasks.length && !failed) {
+      const i = next++;                      // claim a task (single thread: no race)
+      try {
+        results[i] = await tasks[i]();
+      } catch (err) {
+        failed = true;                       // stop other workers taking new tasks
+        throw err;
+      }
+    }
+  }
+
+  const workers = Array.from({ length: Math.min(limit, tasks.length) }, worker);
+  await Promise.all(workers);
+  return results;
+}
+
+// ---- demo with instrumentation ----
+let running = 0, maxRunning = 0;
+const finishOrder = [];
+const job = (id, ms) => () => {
+  running++;
+  maxRunning = Math.max(maxRunning, running);
+  return new Promise((resolve) => setTimeout(() => {
+    running--;
+    finishOrder.push(id);
+    resolve('r' + id);
+  }, ms));
+};
+
+const durations = [60, 20, 50, 20, 20];
+runWithLimit(durations.map((ms, id) => job(id, ms)), 2).then((results) => {
+  console.log('finish order: ' + finishOrder.join(','));
+  console.log('results: ' + results.join(','));
+  console.log('max running at once: ' + maxRunning);
+  return runWithLimit([], 3);
+}).then((empty) => console.log('empty input -> ' + JSON.stringify(empty)));
+
+// Expected output:
+// finish order: 1,0,2,3,4
+// results: r0,r1,r2,r3,r4
+// max running at once: 2
+// empty input -> []` },
+      dry: { head: ['time', 'event', 'running', 'next'], rows: [
+        ['0', 'W1 starts 0 (60), W2 starts 1 (20)', '0, 1', '2'],
+        ['20', '1 done → W2 starts 2 (50)', '0, 2', '3'],
+        ['60', '0 done → W1 starts 3 (20)', '2, 3', '4'],
+        ['70', '2 done → W2 starts 4 (20)', '3, 4', '5'],
+        ['80', '3 done → W1 exits', '4', '5'],
+        ['90', '4 done → W2 exits → resolve', '—', '<span class="c-g">results in input order</span>']
+      ] },
+      complexity: `<p>Time ≈ optimal greedy schedule for the given order; O(N) memory for results. Each task is started exactly once.</p>`,
+      followUps: ['Return allSettled-style results instead of failing fast.', 'Add a per-task timeout and retries with exponential backoff.', 'Make limit adjustable while running (adaptive concurrency).']
+    }
+  });
+
+  practice.push({
+    title: 'Build a mini event-loop simulator',
+    level: 'Hard', tags: ['event loop', 'simulation', 'priority queue', 'machine coding'], companies: ['Microsoft', 'Atlassian', 'Postman'],
+    statement: `<p>Build a <b>virtual</b> runtime with <code>toySetTimeout(fn, ms)</code>, <code>toyQueueMicrotask(fn)</code> and <code>run(main)</code> that reproduces the real ordering rules: run <code>main</code> as the first task; after every task drain <b>all</b> microtasks (including ones added during the drain); then pick the timer with the smallest due time (ties: creation order), advance a virtual clock to it, and repeat. Callbacks print via <code>log(msg)</code>, which records <code>t=&lt;clock&gt; msg</code>.</p>`,
+    constraints: `No real timers. Must handle timers created inside microtasks and microtasks created inside timers. Deterministic output.`,
+    example: `<p>A program that mixes both lanes must produce exactly what the real runtime would, with virtual timestamps, e.g. ${H.c('g', 't=0 S')}, ${H.c('p', 't=0 M1')}, ${H.c('b', 't=10 T10')}…</p>`,
+    brute: {
+      why: `<p>A single FIFO queue for everything (in creation order) is simple but wrong: it lets timers run before microtasks and ignores delays. It is exactly the misconception the real algorithm fixes.</p>`,
+      code: `const q = [];
+const out = [];
+const add = (fn) => q.push(fn);
+add(() => out.push('T (timer, created first)'));
+add(() => out.push('M (microtask)'));
+while (q.length) q.shift()();
+console.log(out.join(' | ') + '   <- wrong order');`
+    },
+    mcq: { q: 'Which data structure should hold the pending timers?', options: ['A plain FIFO queue', 'A min-heap / sorted list keyed by (dueTime, sequence number)', 'A stack', 'A Set'], answer: 1, explain: 'Timers fire by due time, ties by creation order. A min-heap gives O(log n) insert and extract; libuv uses a min-heap too.' },
+    hints: [
+      `<p>Hint 1: Keep three things: a microtask array (FIFO), a timer list of {due, seq, fn}, and a virtual clock.</p>`,
+      `<p>Hint 2: <code>drain()</code>: while microtasks exist, shift and run one (new ones are pushed to the back, so the loop picks them up).</p>`,
+      `<p>Hint 3: run(main): main(); drain(); while timers exist: pick min by (due, seq), clock = max(clock, due), run it, drain(). For a few timers a sort is fine; for many use a heap.</p>`
+    ],
+    solution: {
+      approach: `<p>Implement the HTML/Node loop literally: one task → microtask checkpoint → next timer by (due, seq). Timers created inside callbacks get <code>due = clock + ms</code>.</p>`,
+      code: { lang: 'js', run: true, code: `function createRuntime() {
+  let clock = 0, seq = 0;
+  const microtasks = [];
+  const timers = [];                      // { due, seq, fn }
+  const output = [];
+
+  const log = (msg) => output.push('t=' + clock + ' ' + msg);
+  const toyQueueMicrotask = (fn) => microtasks.push(fn);
+  const toySetTimeout = (fn, ms = 0) => timers.push({ due: clock + Math.max(0, ms), seq: seq++, fn });
+
+  function drain() {                      // microtask checkpoint
+    while (microtasks.length) microtasks.shift()();
+  }
+  function popNextTimer() {               // smallest due, then smallest seq
+    let best = 0;
+    for (let i = 1; i < timers.length; i++) {
+      const a = timers[i], b = timers[best];
+      if (a.due < b.due || (a.due === b.due && a.seq < b.seq)) best = i;
+    }
+    return timers.splice(best, 1)[0];
+  }
+  function run(main) {
+    main();                               // the script is the first task
+    drain();
+    while (timers.length) {
+      const t = popNextTimer();
+      clock = Math.max(clock, t.due);     // jump the virtual clock forward
+      t.fn();                             // ONE task
+      drain();                            // then ALL microtasks
+    }
+    return output;
+  }
+  return { log, toyQueueMicrotask, toySetTimeout, run };
+}
+
+const { log, toyQueueMicrotask, toySetTimeout, run } = createRuntime();
+const result = run(() => {
+  log('S');
+  toySetTimeout(() => {
+    log('T10');
+    toyQueueMicrotask(() => log('M-in-T10'));
+    toySetTimeout(() => log('T10+0'), 0);
+  }, 10);
+  toySetTimeout(() => log('T0'), 0);
+  toyQueueMicrotask(() => {
+    log('M1');
+    toyQueueMicrotask(() => log('M2'));
+    toySetTimeout(() => log('T0-from-M1'), 0);
+  });
+  log('E');
+});
+console.log(result.join('\\n'));
+
+// Expected output:
+// t=0 S
+// t=0 E
+// t=0 M1
+// t=0 M2
+// t=0 T0
+// t=0 T0-from-M1
+// t=10 T10
+// t=10 M-in-T10
+// t=10 T10+0` },
+      dry: { head: ['step', 'clock', 'runs', 'microtasks', 'timers (due)'], rows: [
+        ['script', '0', 'main: S, E', 'M1', 'T10(10), T0(0)'],
+        ['drain', '0', 'M1, M2', '—', 'T10(10), T0(0), T0-from-M1(0)'],
+        ['task', '0', 'T0', '—', 'T10(10), T0-from-M1(0)'],
+        ['task', '0', 'T0-from-M1', '—', 'T10(10)'],
+        ['task', '10', 'T10', 'M-in-T10', 'T10+0(10)'],
+        ['drain', '10', 'M-in-T10', '—', 'T10+0(10)'],
+        ['task', '10', '<span class="c-g">T10+0</span>', '—', '—']
+      ] },
+      complexity: `<p>With a linear scan: O(T²) for T timers; with a binary min-heap: O(T log T). Microtasks O(M). Use <code>shift</code>-free index pointers or a ring buffer for huge microtask counts.</p>`,
+      followUps: ['Add toyPromiseResolve(value).then(cb) built on toyQueueMicrotask.', 'Add a nextTick lane that drains before microtasks (Node).', 'Add setInterval with drift-free scheduling.']
+    }
+  });
+
+  practice.push({
+    title: 'Node.js: nextTick, promises and setImmediate inside a timer',
+    level: 'Hard', tags: ['Node.js', 'process.nextTick', 'setImmediate', 'libuv phases'], companies: ['Netflix', 'PayPal', 'LinkedIn', 'Walmart'],
+    statement: `<p>Predict the exact output in Node.js (CommonJS):</p><pre>setTimeout(() =&gt; {
+  console.log('T');
+  setImmediate(() =&gt; console.log('I1'));
+  process.nextTick(() =&gt; {
+    console.log('N1');
+    Promise.resolve().then(() =&gt; console.log('P-from-N1'));
+    process.nextTick(() =&gt; console.log('N2'));
+  });
+  Promise.resolve().then(() =&gt; {
+    console.log('P1');
+    process.nextTick(() =&gt; console.log('N-from-P1'));
+  });
+  setTimeout(() =&gt; console.log('T2'), 0);
+}, 0);</pre>`,
+    constraints: `Node.js 11+ CommonJS file. (Wrapped in a timer so setImmediate vs setTimeout is deterministic.)`,
+    example: `<p>Output: ${H.c('b', 'T')} → ${H.c('y', 'N1 N2')} → ${H.c('p', 'P1 P-from-N1')} → ${H.c('y', 'N-from-P1')} → ${H.c('g', 'I1')} → ${H.c('b', 'T2')}. Node empties the <b>whole</b> nextTick queue, then the <b>whole</b> promise queue, and repeats while either has work.</p>`,
+    brute: {
+      why: `<p>Treating nextTick and promises as one shared FIFO gives T N1 P1 … in creation order; treating nextTick as "interrupting" each promise job gives P1 N-from-P1 P-from-N1. Both are wrong for Node's two-level drain.</p>`,
+      code: `// One shared queue in creation order (wrong for Node)
+console.log(['T', 'N1', 'P1', 'P-from-N1', 'N2', 'N-from-P1', 'I1', 'T2'].join(' '));`
+    },
+    mcq: { q: 'A nextTick callback is queued from inside a promise callback. When does it run?', options: ['Immediately, interrupting the promise queue', 'After the current promise microtask queue is fully drained, before moving on', 'In the next loop iteration', 'After setImmediate'], answer: 1, explain: 'Node runs all nextTicks, then V8 drains all promise jobs; then it checks nextTick again. A tick added during the promise drain waits for that drain to finish.' },
+    hints: [
+      `<p>Hint 1: After the timer callback (prints T), Node processes ticks: nextTick queue = [N1], promise queue = [P1].</p>`,
+      `<p>Hint 2: Drain nextTicks fully: N1 (adds P-from-N1 to promises, N2 to ticks), N2. Then drain promises fully: P1 (adds tick N-from-P1), P-from-N1. Then ticks again: N-from-P1.</p>`,
+      `<p>Hint 3: After the timers phase comes poll then <b>check</b> (setImmediate → I1); T2 needs the next loop's timers phase.</p>`
+    ],
+    solution: {
+      approach: `<p>Model Node's <code>processTicksAndRejections</code>: do { run all nextTicks; run all promise microtasks } while ticks remain. Then follow the libuv phase order: timers → poll → check → next timers.</p>`,
+      code: { lang: 'js', run: true, code: `if (typeof process === 'undefined' || typeof setImmediate === 'undefined') {
+  console.log('This puzzle needs Node.js (process.nextTick and setImmediate).');
+} else {
+  setTimeout(() => {
+    console.log('T');
+    setImmediate(() => console.log('I1'));
+    process.nextTick(() => {
+      console.log('N1');
+      Promise.resolve().then(() => console.log('P-from-N1'));
+      process.nextTick(() => console.log('N2'));
+    });
+    Promise.resolve().then(() => {
+      console.log('P1');
+      process.nextTick(() => console.log('N-from-P1'));
+    });
+    setTimeout(() => console.log('T2'), 0);
+  }, 0);
+}
+
+// Expected output:
+// T
+// N1
+// N2
+// P1
+// P-from-N1
+// N-from-P1
+// I1
+// T2` },
+      dry: { head: ['stage', 'nextTick queue', 'promise queue', 'printed'], rows: [
+        ['timer cb', 'N1', 'P1', 'T'],
+        ['ticks', 'N2 → —', 'P1, P-from-N1', 'N1 N2'],
+        ['promises', 'N-from-P1', '—', 'P1 P-from-N1'],
+        ['ticks', '—', '—', 'N-from-P1'],
+        ['check phase', '—', '—', 'I1'],
+        ['next timers phase', '—', '—', '<span class="c-g">T2</span>']
+      ] },
+      complexity: `<p>O(callbacks). Danger: recursive nextTick starves the loop even worse than recursive promises — prefer queueMicrotask or setImmediate.</p>`,
+      followUps: ['Save the same code as .mjs. Does anything change? (Top-level ordering can, inside this timer it does not.)', 'Replace the outer setTimeout with fs.readFile callback. Same order?']
+    }
+  });
+
+  /* ======================================================================
+     QUIZ
+     ====================================================================== */
+  quiz.push(
+    { q: 'How many call stacks does the JavaScript code on one page (main thread, no workers) have?', options: ['One', 'One per function', 'One per async function', 'As many as CPU cores'], answer: 0, explain: 'One thread, one call stack. Concurrency comes from the host (Web APIs / libuv) doing work in the background and the event loop feeding callbacks back one at a time.' },
+    { q: 'What prints? <code>setTimeout(() =&gt; log(1), 0); Promise.resolve().then(() =&gt; log(2)); log(3);</code>', options: ['1 2 3', '3 1 2', '3 2 1', '2 3 1'], answer: 2, explain: 'Sync 3 first; then the microtask 2; then the task 1.' },
+    { q: 'Which of these schedules a <b>microtask</b>?', options: ['setTimeout(fn, 0)', 'queueMicrotask(fn)', 'setInterval(fn, 0)', 'a click event listener'], answer: 1, explain: 'queueMicrotask, promise reactions (then/catch/finally), await continuations and MutationObserver callbacks are microtasks. Timers and events are tasks.' },
+    { q: 'After one task finishes, the event loop runs…', options: ['one microtask, then the next task', 'all microtasks, including ones added while draining, then (maybe) renders, then the next task', 'all tasks, then all microtasks', 'only rendering'], answer: 1, explain: 'One task → full microtask checkpoint → rendering opportunity → next task.' },
+    { q: 'An async function is called. When does the code <b>before</b> its first await run?', options: ['Synchronously, right away, on the caller\'s stack', 'As a microtask', 'As a task', 'Only when someone awaits the result'], answer: 0, explain: 'Async functions start like normal functions. Only the part after an await is deferred.' },
+    { q: '<code>await 42</code> (a non-promise value)…', options: ['continues immediately without pausing', 'still pauses; the rest of the function resumes as a microtask', 'throws a TypeError', 'waits for the next task'], answer: 1, explain: 'await wraps the value with Promise.resolve and always suspends, costing one microtask tick.' },
+    { q: 'Why is a <code>try/catch</code> around <code>setTimeout(() =&gt; { throw e }, 0)</code> useless?', options: ['setTimeout swallows errors', 'The callback runs later on a fresh stack, after the try block has already finished', 'try/catch does not work with arrow functions', 'Errors in timers are converted to rejections'], answer: 1, explain: 'try/catch only covers code that runs while its frame is on the stack. Put the try/catch inside the callback, or use promises + await.' },
+    { q: 'What happens in Node.js 15+ when a promise rejects and nobody handles it?', options: ['Nothing', 'A warning only', 'The process crashes with an uncaught error (default --unhandled-rejections=throw), unless an unhandledRejection listener exists', 'The promise is retried'], answer: 2, explain: 'Since Node 15 the default mode is throw. Browsers log "Uncaught (in promise)" and fire unhandledrejection.' },
+    { q: 'Which order is correct in Node.js (CommonJS) for callbacks queued in the same synchronous run?', options: ['promise → nextTick → setTimeout', 'nextTick → promise → setTimeout', 'setTimeout → nextTick → promise', 'nextTick → setTimeout → promise'], answer: 1, explain: 'Node drains the nextTick queue first, then promise microtasks, then moves on to the timers phase.' },
+    { q: 'What prints? <code>Promise.resolve().then(() =&gt; { log(0); return Promise.resolve(4); }).then(log); Promise.resolve().then(() =&gt; log(1)).then(() =&gt; log(2)).then(() =&gt; log(3)).then(() =&gt; log(5));</code>', options: ['0 1 4 2 3 5', '0 1 2 3 4 5', '0 4 1 2 3 5', '0 1 2 4 3 5'], answer: 1, explain: 'Returning a promise from a then-callback costs 2 extra ticks (resolve-thenable job + then job), so 4 lands after 3.' },
+    { q: 'You want the browser to repaint (show a spinner) in the middle of a long computation. Which yields correctly?', options: ['await Promise.resolve()', 'queueMicrotask(next)', 'await new Promise((r) =&gt; setTimeout(r, 0)) or scheduler.yield()', 'A while loop that checks Date.now()'], answer: 2, explain: 'Rendering only happens between tasks. Microtask yields never let the browser paint.' },
+    { q: 'Inside an async function, <code>try { return fetchData(); } catch (e) { … }</code> — fetchData() rejects. What happens?', options: ['The local catch handles it', 'The rejection skips the local catch and goes to the caller; use return await to catch it locally', 'The function throws synchronously', 'The rejection is ignored'], answer: 1, explain: 'return hands the promise out and leaves the try block before it rejects. return await waits inside the try.' },
+    { q: 'Two timers: <code>setTimeout(a, 10)</code> created at t=0, then <code>setTimeout(b, 5)</code> created at t=0. A 50 ms busy loop follows. Which runs first?', options: ['a, because it was created first', 'b, because its due time (5 ms) is earlier', 'Random', 'Neither runs until another event'], answer: 1, explain: 'Both are overdue when the loop ends; timers fire in due-time order (ties broken by creation order). The delay is a minimum: both run late.' }
+  );
+
+  /* ======================================================================
+     INTERVIEW
+     ====================================================================== */
+  interview.push(
+    {
+      q: 'Explain the JavaScript event loop to a beginner.', level: 'B',
+      a: `<p>JavaScript runs on <b>one thread</b> with one call stack, like a restaurant with one waiter. Slow things (timers, network, files) are handed to the <b>host</b> — the browser's Web APIs or Node's libuv — which works on them in the background. When they finish, their callbacks are put into queues. The <b>event loop</b> is the routine that, whenever the call stack is empty, takes the next callback and runs it: <b>one task</b> (script, timer, click), then <b>all microtasks</b> (promise callbacks, await continuations, queueMicrotask), then the browser may <b>render</b>, then repeat. That is why <code>setTimeout(fn, 0)</code> runs after the current code and after promise callbacks.</p>`,
+      followUps: ['Where does the callback wait while the timer is counting?', 'What is "run-to-completion"?', 'Why can a long loop freeze the page?']
+    },
+    {
+      q: 'What is the difference between the task (macrotask) queue and the microtask queue?', level: 'B',
+      a: `<p><b>Tasks</b>: the script itself, <code>setTimeout/setInterval</code>, UI events, <code>MessageChannel</code>, I/O and (Node) <code>setImmediate</code>. The loop runs <b>one</b> task per turn. <b>Microtasks</b>: promise reactions (<code>then/catch/finally</code>), the rest of an async function after <code>await</code>, <code>queueMicrotask</code>, <code>MutationObserver</code>. After every task, the loop runs <b>all</b> microtasks until the queue is empty — including new ones queued during the drain. So microtasks always run before the next task and before rendering. Consequence: a microtask that keeps queueing microtasks can starve timers, clicks and painting forever.</p>`,
+      followUps: ['Can a microtask starve the page? How would you show it?', 'Where does requestAnimationFrame fit?']
+    },
+    {
+      q: 'Predict the output of the classic async1/async2 puzzle (script start, async1 start, async2, promise1, script end, …) and explain each line.', level: 'I',
+      a: `<p>Answer: <b>script start, async1 start, async2, promise1, script end, async1 end, promise2, setTimeout</b>. Sync: <i>script start</i>; setTimeout registers a task; async1 runs synchronously → <i>async1 start</i>; <code>await async2()</code> calls async2 now → <i>async2</i>; async2's promise is already fulfilled, so async1's continuation is queued as a microtask. The executor of <code>new Promise</code> runs now → <i>promise1</i>; resolve + then queues <i>promise2</i> behind the continuation. <i>script end</i>. Drain microtasks: <i>async1 end</i>, <i>promise2</i>. Then the timer task: <i>setTimeout</i>. Pre-2019 engines (Node ≤ 10) needed 3 ticks for await and printed promise2 first.</p>`,
+      followUps: ['What changes if async2 returns Promise.resolve() explicitly?', 'What changes if async2 contains its own await?']
+    },
+    {
+      q: 'How does async/await work under the hood?', level: 'I',
+      a: `<p>An async function is compiled like a <b>generator</b> plus a driver. Calling it creates a hidden promise and runs the body synchronously until the first <code>await</code>. <code>await x</code> does <code>PromiseResolve(x)</code> (reuses a native promise, wraps anything else), subscribes resume/throw callbacks with <code>then</code>, and <b>suspends</b>: the frame's registers are saved into a heap object and the stack is freed, so the caller continues. When the promise settles, a microtask resumes the function with the value — or throws the reason at the await line, so <code>try/catch</code> works. <code>return v</code> resolves the hidden promise; <code>throw</code> rejects it. Awaiting a fulfilled native promise costs 1 tick; returning a promise costs 2 extra.</p>`,
+      followUps: ['Write a run(genFn) helper that drives a generator like async/await.', 'Why do paused async functions not consume stack space?']
+    },
+    {
+      q: 'setTimeout(fn, 0) vs Promise.resolve().then(fn) vs queueMicrotask(fn) — when would you use each?', level: 'I',
+      a: `<p><code>queueMicrotask(fn)</code> and <code>Promise.resolve().then(fn)</code> both queue a <b>microtask</b>: fn runs after the current synchronous code, before any other task or render. Use for "after this burst, before anyone else looks" — batching state updates, consistent ordering in libraries. queueMicrotask is cheaper and does not convert exceptions into rejections. <code>setTimeout(fn, 0)</code> queues a <b>task</b>: other tasks, input and painting can happen first; it has ≥ 1 ms (Node) or clamped ≥ 4 ms (nested in browsers) delays. Use it — or better <code>scheduler.yield()</code> / <code>MessageChannel</code> — when you want to <b>yield</b> to the browser.</p>`,
+      followUps: ['Why is await Promise.resolve() not a way to let the UI update?', 'What does scheduler.postTask add?']
+    },
+    {
+      q: 'Why doesn’t try/catch catch errors from a setTimeout callback, and how should async errors be handled?', level: 'I',
+      a: `<p>try/catch works on the <b>current call stack</b>. The timer callback runs later as a new task, on a fresh stack; the try block finished long ago. Options: put try/catch <b>inside</b> the callback; or wrap the async work in a promise so errors become <b>rejections</b> that flow to a <code>.catch</code> or to <code>await</code> inside try/catch. Inside promise land, throws in executors and then-callbacks reject the derived promise. Every promise chain should end in a handler; add global <code>unhandledrejection</code>/<code>error</code> (browser) or <code>process.on('unhandledRejection'/'uncaughtException')</code> (Node) handlers for <b>reporting</b>, not control flow.</p>`,
+      followUps: ['What does Node 15+ do with an unhandled rejection?', 'How do you preserve the original error when re-throwing? (new Error(msg, { cause }))']
+    },
+    {
+      q: 'What is the difference between return and return await inside an async function?', level: 'A',
+      a: `<p>Outside try/catch they behave the same for callers (only tick counts differ: returning a promise costs 2 extra microtasks for adoption, return await costs 1 for the await). Inside <code>try</code> they differ in <b>semantics</b>: <code>return promise</code> leaves the try block immediately, so if the promise rejects, the local <code>catch</code>/<code>finally</code> do not see it; <code>return await promise</code> waits inside the try so the catch handles the rejection and finally runs after settlement. return await also gives better async stack traces in V8. That is why ESLint deprecated <code>no-return-await</code> and typescript-eslint's <code>return-await</code> rule defaults to "in-try-catch".</p>`,
+      followUps: ['Show a case where finally runs too early without await.', 'How many ticks does each version take?']
+    },
+    {
+      q: 'Explain the Node.js event loop phases and where process.nextTick, promises and setImmediate fit.', level: 'A',
+      a: `<p>libuv runs phases in a loop: <b>timers</b> (expired setTimeout/setInterval) → <b>pending callbacks</b> (some deferred I/O errors) → <b>idle/prepare</b> → <b>poll</b> (wait for and run I/O callbacks) → <b>check</b> (setImmediate) → <b>close callbacks</b>. After <b>every</b> callback, Node drains the <code>process.nextTick</code> queue, then the V8 promise microtask queue, repeating while either has work (Node 11+ does this per timer, matching browsers). So nextTick &gt; promises &gt; next phase. Inside an I/O or timer callback, setImmediate always runs before setTimeout 0; at the main module's top level, their order depends on process performance and is not deterministic. In ES modules, top-level promises can run before nextTicks.</p>`,
+      followUps: ['Why can recursive nextTick starve I/O?', 'When would you choose setImmediate over setTimeout(…, 0)?']
+    },
+    {
+      q: 'What is "run-to-completion" and what are its consequences?', level: 'I',
+      a: `<p>Once a function starts running, nothing else in that thread can run until the call stack is empty again — no other callback, no event handler, no rendering. Benefits: no data races inside a single thread, no locks needed, a shared counter like <code>next++</code> in a promise pool is safe. Costs: a long synchronous piece of work (big JSON.parse, heavy loop, giant microtask chain) blocks everything — input lag, frozen UI, missed frames, bad INP; in Node it blocks every request on the server. Fixes: split work into chunks with task yields, move CPU-heavy work to Web Workers / worker_threads, or stream the data.</p>`,
+      followUps: ['Is an await point a "completion"? What can change across an await?', 'How do you detect long tasks in production? (Long Animation Frames API)']
+    },
+    {
+      q: 'Can microtasks starve the event loop? Give an example and a fix.', level: 'A',
+      a: `<p>Yes. Because the loop drains microtasks until the queue is empty, a microtask that always queues another one never lets the loop reach the next task or render: <code>function spin() { queueMicrotask(spin); } spin();</code> freezes the tab while a <code>setTimeout</code> callback never fires. Same with a recursive promise loop such as <code>const loop = () =&gt; Promise.resolve().then(loop)</code> (and with recursive <code>process.nextTick</code> in Node, which also starves I/O). Fix: break long or unbounded work into <b>tasks</b> (<code>setTimeout</code>, <code>MessageChannel</code>, <code>setImmediate</code>, <code>scheduler.yield()</code>), add a budget (process for 5–10 ms, then yield), or move it to a worker.</p>`,
+      followUps: ['Why does Node warn about recursive nextTick?', 'How does React schedule work so it does not starve input?']
+    },
+    {
+      q: 'What happens step by step when you await a fetch() call in the browser?', level: 'I',
+      a: `<p>1) <code>fetch()</code> runs synchronously just long enough to start the request in the browser's network stack (outside the JS thread) and returns a pending promise. 2) <code>await</code> subscribes the function's continuation to that promise and suspends the function; the stack unwinds and the event loop continues — the page stays responsive. 3) When response headers arrive, the networking task resolves the promise; the continuation is queued as a <b>microtask</b>. 4) The function resumes with the <code>Response</code>. 5) <code>await res.json()</code> repeats the cycle while the body streams in and is parsed. Errors: network failures reject (→ throw at await); HTTP 404/500 do <b>not</b> reject — check <code>res.ok</code>.</p>`,
+      followUps: ['How do you cancel it? (AbortController)', 'How would you fetch 3 independent resources faster?']
+    },
+    {
+      q: 'Why might a requestAnimationFrame callback run before or after a setTimeout(…, 0) callback?', level: 'A',
+      a: `<p>rAF callbacks are not tasks or microtasks — they run in the <b>update-the-rendering</b> step, right before the browser paints, which happens only when a frame is due (about every 16.7 ms at 60 Hz, and never in hidden tabs). A 0 ms timer becomes a task that usually runs within a few ms. If the current task ends just before a frame is due, rAF runs first; otherwise the timer runs first. Therefore puzzles mixing rAF and setTimeout have <b>no single correct order</b>; a strong answer says so and explains the model. Use rAF for visual updates and to batch DOM reads and writes; use tasks for yielding.</p>`,
+      followUps: ['How do you run code right after the next paint? (rAF + setTimeout / MessageChannel)', 'What happens to rAF in a background tab?']
+    },
+    {
+      q: 'How would you implement a concurrency-limited async task runner, and why is it safe without locks?', level: 'E',
+      a: `<p>Start <code>limit</code> async <b>workers</b> that share an index: each loops <code>while (next &lt; n) { const i = next++; results[i] = await tasks[i](); }</code>; return <code>Promise.all(workers)</code> then results. Order is preserved by writing at index i; fail-fast via a flag; for allSettled semantics catch per task. It is safe because JavaScript is single-threaded with run-to-completion: <code>next++</code> executes atomically between awaits, and no two workers ever run JS at the same instant. Extensions: per-task timeouts with AbortController, retries with exponential backoff and jitter, priority queues, and adaptive limits based on error rates (like p-limit / p-queue in production).</p>`,
+      followUps: ['How would you stop in-flight tasks on the first failure?', 'Where could a race still happen? (state that changes across an await)']
+    },
+    {
+      q: 'An AI assistant claims a snippet prints "promise2" before "async1 end". How do you settle it and explain the discrepancy?', level: 'E',
+      a: `<p>First, <b>run it</b> in the target runtime (current Node and a browser) — the runtime is the source of truth. Modern engines print "async1 end" first because since the 2019 spec change (V8 7.2 / Node 12), <code>await</code> on a native promise uses <code>PromiseResolve</code> and costs one tick; the old algorithm wrapped it in an extra promise (3 ticks), which is what many pre-2019 blog posts and therefore training data describe. Then explain with a tick table: list the microtask queue after every job. Finally ask which runtime the question targets (browser, Node CJS, Node ESM) — tick-level answers can differ for <code>process.nextTick</code> and module evaluation.</p>`,
+      followUps: ['Which other output-order facts changed between Node 10 and 12/11?', 'How would you write a test that guards a library against ordering regressions?']
+    }
+  );
+
+  registerModule({
+    id: 'js08',
+    title: 'Async II: Event Loop, Microtasks & async/await',
+    intro: `<p>This is the module that turns "JavaScript is weird" into "JavaScript is predictable". You will learn how <b>one thread</b> with one <b>call stack</b> handles timers, clicks, network calls and promises without freezing: the host (browser <b>Web APIs</b> or Node's <b>libuv</b>) does the waiting, and the <b>event loop</b> feeds callbacks back from two queues — the <b>task (macrotask) queue</b> and the higher-priority <b>microtask queue</b>.</p><p>Every topic uses our one-waiter restaurant analogy and an animated visualizer that shows the running line of code, the call stack, the Web APIs, both queues and the console output step by step. Most visualizers are <b>editable</b>: type your own mini-program and watch the event loop run it. You will master <code>setTimeout</code> vs <code>Promise.then</code> vs <code>queueMicrotask</code>, what <code>async/await</code> really compiles to, how async errors travel, and a repeatable 4-column method that solves any "predict the output" interview puzzle — including the famous ones.</p>`,
+    goals: [
+      'Explain the call stack, Web APIs, task queue, microtask queue and the event loop algorithm in plain words and with a diagram',
+      'Predict the exact output order of any mix of sync code, setTimeout, Promise.then, queueMicrotask and async/await — and justify every line',
+      'Explain what async/await does under the hood (generator + promise, 1 tick per await, +2 ticks for returning a promise)',
+      'Handle async errors correctly: try/catch with await, .catch chains, finally, return await, unhandled rejections in browsers and Node',
+      'Know the Node.js differences: process.nextTick, setImmediate, libuv phases, CommonJS vs ES modules',
+      'Keep apps responsive: spot blocking code and microtask starvation, and yield with tasks or scheduler.yield()'
+    ],
+    prereqs: `JS 7 (Async I: Callbacks & Promises) — promise states, then/catch chaining and Promise.all. JS 4 (Scope, Hoisting & Closures) helps for the closure-in-loop puzzles. Basic comfort running code in Node or the browser console (JS 3).`,
+    hours: 12,
+    topics: topics,
+    practice: practice,
+    quiz: quiz,
+    interview: interview
+  });
+})();

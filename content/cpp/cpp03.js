@@ -879,6 +879,474 @@ int main() {
     }]
   });
 
+  /* ======================================================================
+     TOPIC 5: References vs pointers
+     ====================================================================== */
+  var T5_CODE = [
+    'int x = 1, y = 2;',
+    'int& r = x;    // r is another NAME for x',
+    'r = 5;         // x becomes 5',
+    'r = y;         // NOT a re-bind: copies 2 into x',
+    'int* p = &x;   // p holds x\'s address',
+    'p = &y;        // p re-aimed at y',
+    '*p = 9;        // y becomes 9',
+    'cout << x << " " << y << " " << r;'
+  ].join('\n');
+
+  function t5graph(xv, yv, pTo, hlN, hlE) {
+    var nodes = [
+      { id: 'x', label: 'x = ' + xv, x: 30, y: 15, shape: 'box' },
+      { id: 'y', label: 'y = ' + yv, x: 30, y: 48, shape: 'box' },
+      { id: 'r', label: 'r (alias)', x: 80, y: 15 }
+    ];
+    var edges = [['r', 'x', 'same box, forever']], ehl = {};
+    if (pTo) { nodes.push({ id: 'p', label: 'p @0x108', x: 80, y: 48, shape: 'box' }); edges.push(['p', pTo, 'holds address']); }
+    if (hlE) ehl[hlE] = 'cur';
+    var hl = {}; if (hlN) hlN.split(',').forEach(function (k) { hl[k] = 'ok'; });
+    return { type: 'graph', label: 'Reference vs pointer (arrows)', directed: true, height: 60, nodes: nodes, edges: edges, hl: hl, ehl: ehl };
+  }
+
+  topics.push({
+    title: 'References vs Pointers',
+    analogy: `<p>Your friend Robert is also called <b>"Bob"</b>. "Bob" is a <b>reference</b>: a second name for the very same person. You cannot later decide that "Bob" now means your cousin; and there is no such thing as a "Bob" who is nobody. A <b>pointer</b> is more like a <b>contact card</b> with Robert's address on it. You can cross out the address and write your cousin's address instead, you can leave the card blank (null), and you must remember to <i>go to the address</i> (dereference) to actually meet anyone.</p>`,
+    explain: `<p>A <b>reference</b> is an <b>alias</b>: another name for an object that already exists. After <code>int&amp; r = x;</code>, using <code>r</code> is <i>exactly</i> using <code>x</code>: no <code>*</code>, no <code>&amp;</code>, no arrows.</p>
+<h4>1. The rules of references</h4>
+<ul>
+<li><b>Must be initialized</b>: <code>int&amp; r;</code> does not compile. A reference is born attached.</li>
+<li><b>Cannot be re-seated</b>: <code>r = y;</code> does not make <code>r</code> refer to <code>y</code>; it copies <code>y</code>'s <b>value</b> into <code>x</code>. This is the #1 interview trap.</li>
+<li><b>No null references</b>: there is no legal way to make one (any trick involves UB first).</li>
+<li><b>No arithmetic</b>: <code>r + 1</code> adds to the value, it does not move to a neighbour.</li>
+<li><code>sizeof(r)</code> and <code>&amp;r</code> give the size and address of <b>x</b>.</li>
+</ul>
+<h4>2. Side-by-side comparison</h4>
+${H.table(['', 'pointer <code>int* p</code>', 'reference <code>int&amp; r</code>'], [
+  ['must be initialized?', 'no (but you should!)', '<span class="c-g">yes, always</span>'],
+  ['can be null?', 'yes, <code>nullptr</code>', 'no'],
+  ['can change target?', 'yes, <code>p = &amp;y;</code>', 'no, bound for life'],
+  ['syntax to use target', '<code>*p</code>, <code>p-&gt;m</code>', 'just <code>r</code>, <code>r.m</code>'],
+  ['arithmetic', '<code>p + 1</code> moves to next element', 'none'],
+  ['has its own address?', 'yes, <code>&amp;p</code>', '<code>&amp;r</code> is <code>&amp;x</code>'],
+  ['containers of them', '<code>vector&lt;int*&gt;</code> fine', 'not allowed (use <code>reference_wrapper</code>)']
+])}
+<h4>3. Passing to functions: value vs pointer vs reference</h4>
+${H.table(['parameter', 'copies the argument?', 'can modify caller?', 'can be "nothing"?', 'use when'], [
+  ['<code>void f(Big b)</code>', 'yes', 'no', 'no', 'small types (int, double, pointers, small structs)'],
+  ['<code>void f(const Big&amp; b)</code>', '<span class="c-g">no</span>', 'no', 'no', 'read-only access to big objects (string, vector)'],
+  ['<code>void f(Big&amp; b)</code>', 'no', '<span class="c-g">yes</span>', 'no', 'mandatory in/out parameter'],
+  ['<code>void f(Big* b)</code>', 'no', 'yes', '<span class="c-g">yes (nullptr)</span>', 'optional parameter, C APIs']
+])}
+<h4>4. References in range-for loops</h4>
+<p><code>for (auto x : v) x *= 2;</code> doubles <b>copies</b>: <code>v</code> is unchanged. <code>for (auto&amp; x : v) x *= 2;</code> doubles the real elements. For read-only loops over strings or big objects use <code>const auto&amp;</code> to avoid copies.</p>
+<h4>5. Returning references</h4>
+<p>A function may return a reference to something that <b>outlives the call</b>: an element of a container the caller owns, a member of <code>*this</code>, a global. That lets callers write <code>v.at(2) = 7;</code> or <code>maxRef(v) = 0;</code>. Returning a reference to a <b>local variable</b> is a dangling reference (topic 8).</p>
+<h4>6. Quick rule of thumb</h4>
+<p><b>Use a reference when there is always an object and it never changes; use a pointer when "no object" is possible or you need to re-aim or do arithmetic.</b></p>`,
+    clues: [
+      '"Difference between pointer and reference" → null, re-seat, initialization, arithmetic, syntax, own address',
+      '"What does <code>r = y</code> do when r is a reference to x?" → copies the value into x; references never re-bind',
+      '"Function must modify the caller\'s object" + "argument always exists" → non-const reference parameter',
+      '"Pass a large object efficiently without modifying it" → <code>const T&amp;</code>',
+      '"Why didn\'t my loop change the vector?" → range-for without <code>&amp;</code> works on copies',
+      '"Return something the caller can assign to" (<code>operator[]</code>, <code>at()</code>) → return <code>T&amp;</code> to storage that outlives the call'
+    ],
+    code: [{ lang: 'cpp', title: 'References vs pointers side by side', code: `#include <iostream>
+#include <vector>
+using namespace std;
+
+void incByRef(int& n) { ++n; }            // n IS the caller's variable
+void incByPtr(int* n) { if (n) ++*n; }    // n holds the caller's address (may be null)
+void incByVal(int n)  { ++n; }            // n is a copy: caller unaffected
+
+int main() {
+    int x = 1, y = 2;
+    int& r = x;          // alias for x
+    r = 5;               // x == 5
+    r = y;               // copies 2 into x: r STILL refers to x
+    cout << x << ' ' << &r << ' ' << &x << '\\n';   // 2, and the two addresses are equal
+
+    int* p = &x;
+    p = &y;              // pointers CAN be re-aimed
+    *p = 9;              // y == 9
+    cout << x << ' ' << y << '\\n';   // 2 9
+
+    int a = 10;
+    incByVal(a); incByRef(a); incByPtr(&a); incByPtr(nullptr);
+    cout << a << '\\n';  // 12 (value version did nothing, null was ignored)
+
+    vector<int> v{1, 2, 3};
+    for (auto e : v)  e *= 10;     // modifies copies only
+    for (auto& e : v) e *= 2;      // modifies the real elements
+    for (const auto& e : v) cout << e << ' ';   // 2 4 6
+    cout << '\\n';
+}` }],
+    codeTitle: ['Alias vs address, three parameter styles, range-for'],
+    viz: {
+      title: 'Reference = second name, pointer = re-aimable arrow',
+      gen: function () {
+        function M(xv, yv, pv, hl, p) { return { cells: [['0x100', xv, 'x'], ['0x104', yv, 'y'], ['0x108', pv, 'p']], hl: hl || {}, p: p || {} }; }
+        var f = [
+          { l: 1, n: '<code>int x = 1, y = 2;</code> Two ordinary boxes.', m: M('1', '2', '??', { 0: 'ok', 1: 'ok' }), g: t5graph(1, 2, null, 'x,y') },
+          { l: 2, n: '<code>int&amp; r = x;</code> No new box is drawn: r is just a <b>second label</b> stuck on x\'s box. (Under the hood the compiler may use an address, but you can never see or change it.)', m: M('1', '2', '??', { 0: 'win' }, { 0: ['r'] }), g: t5graph(1, 2, null, '', 'r-x'), v: { '&r': '0x100', '&x': '0x100', 'sizeof(r)': 'sizeof(int) = 4' } },
+          { l: 3, n: '<code>r = 5;</code> Writing to r is writing to x. x is now 5.', m: M('5', '2', '??', { 0: 'ok' }, { 0: ['r'] }), g: t5graph(5, 2, null, 'x'), v: { 'x': 5, 'r': 5 }, vh: { x: 'ok' } },
+          { l: 4, n: '<code>r = y;</code> <b>TRAP:</b> this does NOT make r refer to y. It is an ordinary assignment: copy y\'s value (2) into the box r names, which is x. The r label stays on x forever.', m: M('2', '2', '??', { 0: 'bad' }, { 0: ['r (still!)'] }), g: t5graph(2, 2, null, 'x', 'r-x'), v: { 'x': '2 (overwritten)', 'r bound to': 'x, not y' }, vh: { x: 'bad' } },
+          { l: 5, n: '<code>int* p = &amp;x;</code> A pointer <b>is</b> a separate box (0x108) whose value is x\'s address.', m: M('2', '2', '0x100', { 2: 'ok' }, { 0: ['r', '*p'] }), g: t5graph(2, 2, 'x', 'p', 'p-x'), v: { 'p': '0x100', '&p': '0x108' } },
+          { l: 6, n: '<code>p = &amp;y;</code> Pointers <b>can</b> be re-aimed: p now holds 0x104. Nothing about x changes.', m: M('2', '2', '0x104', { 2: 'cur' }, { 0: ['r'], 1: ['*p'] }), g: t5graph(2, 2, 'y', 'p', 'p-y'), v: { 'p': '0x104' }, vh: { p: 'cur' } },
+          { l: 7, n: '<code>*p = 9;</code> Follow the arrow to y and write 9.', m: M('2', '9', '0x104', { 1: 'ok' }, { 0: ['r'], 1: ['*p'] }), g: t5graph(2, 9, 'y', 'y', 'p-y'), v: { 'y': 9 }, vh: { y: 'ok' } },
+          { l: 8, n: 'Output: <b>2 9 2</b>. r printed 2 because it is still x. Summary: the reference never moved; the pointer moved once.', m: M('2', '9', '0x104', { 0: 'sel', 1: 'sel' }, { 0: ['r'], 1: ['*p'] }), g: t5graph(2, 9, 'y'), o: '2 9 2', tb: { type: 'table', label: 'What each line did', columns: ['line', 'reference r', 'pointer p'], rows: [['r = 5', 'wrote x', '-'], ['r = y', 'copied value into x', '-'], ['p = &y', '-', 're-aimed'], ['*p = 9', '-', 'wrote y']] } }
+        ];
+        return steps(T5_CODE, f);
+      }
+    },
+    examples: [
+      { title: 'Swap: reference version vs pointer version', html: `<p>Both work. The reference version is cleaner at the call site (<code>swapRef(i, j)</code>) and cannot be called with null. The pointer version makes modification visible at the call site (<code>swapPtr(&amp;i, &amp;j)</code>), which some codebases (e.g. Google's older style guide) preferred for exactly that reason.</p>`, code: { lang: 'cpp', code: `#include <iostream>
+void swapRef(int& a, int& b) { int t = a; a = b; b = t; }      // a, b ARE the caller's ints
+void swapPtr(int* a, int* b) { int t = *a; *a = *b; *b = t; }  // must dereference
+int main() {
+    int i = 1, j = 2;
+    swapRef(i, j);  std::cout << i << j << '\\n';   // 21
+    swapPtr(&i, &j); std::cout << i << j << '\\n';  // 12
+}` } },
+      { title: 'Predict the output: reference bound inside a loop', html: `<p>Each loop iteration creates a <b>new</b> reference <code>e</code> bound to the next element, so this is not "re-seating"; it is a fresh reference each time. Output: <b>2 4 6</b>. Remove the <code>&amp;</code> and the output is <b>1 2 3</b>.</p>${H.table(['iteration', 'e refers to', 'v after'], [['1', 'v[0]', '{2, 2, 3}'], ['2', 'v[1]', '{2, 4, 3}'], ['3', 'v[2]', '{2, 4, 6}']])}`, code: { lang: 'cpp', code: `#include <iostream>
+#include <vector>
+int main() {
+    std::vector<int> v{1, 2, 3};
+    for (int& e : v) e *= 2;                 // fresh reference per element
+    for (int e : v) std::cout << e << ' ';   // 2 4 6
+}` } },
+      { title: 'Reference to a pointer: int*&amp;', html: `<p>Read right-to-left: <code>int*&amp; rp</code> is "a reference to a pointer to int". The function can re-aim the caller's pointer, just like <code>int**</code> but without the extra star. Handy for "advance this pointer past whitespace" helpers.</p>`, code: { lang: 'cpp', code: `#include <iostream>
+void skipSpaces(const char*& s) {   // reference to the caller's pointer
+    while (*s == ' ') ++s;          // moves the CALLER's pointer
+}
+int main() {
+    const char* text = "   hello";
+    skipSpaces(text);
+    std::cout << text << '\\n';      // hello
+}` } },
+      { title: 'const reference extends a temporary\'s life', html: `<p><code>const std::string&amp; s = std::string("hi") + "!";</code> is safe: binding a temporary directly to a <code>const&amp;</code> local extends the temporary's life to the reference's scope. This only works for a <b>direct</b> binding; it does not work through a function that returns a reference (a classic dangling bug, see topic 8).</p>`, code: { lang: 'cpp', code: `#include <iostream>
+#include <string>
+int main() {
+    const std::string& s = std::string("hi") + "!";   // temporary lives as long as s
+    std::cout << s << '\\n';                           // hi!
+}` } }
+    ],
+    deepDive: `<p><b>How references are implemented.</b> The standard deliberately does not say. In practice a reference parameter or member is passed/stored as an address (same machine code as a pointer), while a local reference to a local variable is usually optimized away entirely: the compiler just uses <code>x</code>. That is why "references are free" is mostly true, and why <code>sizeof</code> a struct with a reference member is typically pointer-sized for that member.</p>
+<p><b>Reference members are awkward.</b> A class with a <code>T&amp;</code> member cannot be copy-assigned (references cannot be re-seated), so the compiler deletes <code>operator=</code>. Containers and algorithms that assign elements then fail to compile. Prefer a pointer member or <code>std::reference_wrapper&lt;T&gt;</code> (<code>std::ref</code>), which is a re-seatable, copyable reference.</p>
+<p><b>Things that do not exist:</b> references to references (collapsed by templates), arrays of references, pointers to references, and null references. <code>int&amp; r = *static_cast&lt;int*&gt;(nullptr);</code> compiles but is UB at the moment of binding, so "null references" are always a symptom of an earlier bug.</p>
+<p><b>Lifetime extension, precisely.</b> A prvalue temporary bound directly to a <code>const T&amp;</code> or <code>T&amp;&amp;</code> local gets its life extended. It does <b>not</b> extend through: function return values that are references, a reference <i>member</i> bound to a temporary in a constructor's initializer list (now ill-formed after defect report CWG 1696), or <code>std::min(a, b)</code>-style functions returning a reference to a parameter. GCC 13+ warns with <code>-Wdangling-reference</code>; Clang has <code>[[clang::lifetimebound]]</code>.</p>
+<p><b>Preview of what comes later:</b> <code>T&amp;&amp;</code> rvalue references and forwarding references are a separate kind of reference used for move semantics (module cpp10). Everything in this topic is about lvalue references, <code>T&amp;</code>.</p>
+<p><b>Performance rule of thumb:</b> pass cheap-to-copy types (≤ 2 pointers in size, trivially copyable: <code>int</code>, <code>double</code>, <code>string_view</code>, <code>span</code>) by value; pass everything else you only read by <code>const&amp;</code>. Passing an <code>int</code> by <code>const int&amp;</code> can be slower because it forces the value into memory.</p>`,
+    aiEra: `<p><b>What AI changes:</b> assistants generate idiomatic parameter passing quickly (<code>const std::string&amp;</code>, <code>std::string_view</code>, <code>std::span</code>) and can audit a codebase for accidental copies in range-for loops. Linters such as <code>clang-tidy performance-for-range-copy</code> and <code>performance-unnecessary-value-param</code> do the same deterministically.</p>
+<p><b>Use AI as a partner:</b> ask <code>For each parameter in these 10 functions, should it be by value, const&amp;, &amp;, or pointer? Justify each in one line.</code> Then challenge any choice you disagree with; the justification is what interviewers want to hear from you.</p>
+<p><b>Where AI goes wrong:</b> it claims references "can be reassigned" (confusing assignment through the reference with re-binding), returns <code>const T&amp;</code> to locals or temporaries, and passes small types like <code>int</code> by <code>const&amp;</code> "for performance". It also may store references in classes without noticing that it deletes copy assignment.</p>
+<p><b>What you must still own:</b> the crisp list of differences (null, re-seat, init, arithmetic, own address) and the parameter-passing decision table. These are among the most asked C++ fundamentals questions, and you should answer them in 30 seconds without help.</p>`,
+    problems: [{
+      title: 'Return a Reference to the Largest Element',
+      level: 'Medium', tags: ['references', 'return by reference'], companies: ['Google', 'Bloomberg', 'Jane Street'],
+      statement: `<p>Write <code>int&amp; maxRef(std::vector&lt;int&gt;&amp; v)</code> that returns a <b>reference</b> to the largest element (the first one if there are ties), so callers can modify it in place: <code>maxRef(v) = 0;</code> zeroes the maximum. If <code>v</code> is empty, throw <code>std::invalid_argument</code>. Then explain why <code>maxRef(std::vector&lt;int&gt;{1, 2})</code> must not compile.</p>`,
+      constraints: `<p>0 ≤ v.size() ≤ 10<sup>6</sup>. One pass. No copies of the vector.</p>`,
+      example: `<p>v = ${H.arr([3, 8, 1, 8], { hl: { 1: 'g' } })} → <code>maxRef(v) = 0;</code> → v = ${H.arr([3, 0, 1, 8], { hl: { 1: 'y' } })} (the <b>first</b> 8 changed, because the function returned a reference to that exact element).</p>`,
+      brute: { why: `<p>Returning the max <b>by value</b> (<code>int</code>) gives the caller a copy: <code>maxValue(v) = 0</code> does not even compile, and the caller then has to search again for the position to modify it. Two passes and clumsy API.</p>`, code: { lang: 'cpp', code: `#include <vector>
+#include <algorithm>
+// Returns a COPY: caller cannot modify the element through it
+int maxValue(const std::vector<int>& v) {
+    return *std::max_element(v.begin(), v.end());   // (UB if v is empty!)
+}
+void zeroMaxBrute(std::vector<int>& v) {
+    int m = maxValue(v);                                // pass 1
+    for (int& x : v) if (x == m) { x = 0; break; }     // pass 2: find it again
+}` } },
+      mcq: { q: 'Why is it safe for <code>maxRef</code> to return <code>int&amp;</code>?', options: ['References are always safe to return', 'The element lives inside the caller\'s vector, which outlives the call', 'The compiler copies the element automatically', 'Because int is a small type'], answer: 1, explain: 'The reference points into storage owned by the caller. Returning a reference to a local variable would dangle; returning one into a parameter passed by non-const reference is fine (until the vector reallocates!).' },
+      hints: [`<p>Track the <b>index</b> (or a pointer/iterator) of the best element, not just its value, so you can return a reference to that exact slot.</p>`, `<p>Taking the parameter as <code>std::vector&lt;int&gt;&amp;</code> (non-const lvalue reference) makes temporaries like <code>std::vector&lt;int&gt;{1,2}</code> fail to bind: a compile-time guard against returning a reference into a dying temporary.</p>`, `<p>Recipe: <code>if (v.empty()) throw std::invalid_argument("empty");</code> <code>size_t best = 0;</code> loop i from 1, update when <code>v[i] &gt; v[best]</code> (strict, so first tie wins), <code>return v[best];</code>.</p>`],
+      solution: {
+        approach: `<p>One scan tracking the index of the maximum; return <code>v[best]</code>, which is an <code>int&amp;</code> into the caller's vector. The non-const lvalue reference parameter rejects temporaries at compile time.</p>`,
+        code: { lang: 'cpp', code: `#include <iostream>
+#include <vector>
+#include <stdexcept>
+
+int& maxRef(std::vector<int>& v) {
+    if (v.empty()) throw std::invalid_argument("maxRef: empty vector");
+    std::size_t best = 0;
+    for (std::size_t i = 1; i < v.size(); ++i)
+        if (v[i] > v[best]) best = i;   // strict > keeps the FIRST maximum
+    return v[best];                      // reference into the caller's storage
+}
+
+int main() {
+    std::vector<int> v{3, 8, 1, 8};
+    maxRef(v) = 0;                       // modify through the returned reference
+    for (int x : v) std::cout << x << ' ';   // 3 0 1 8
+    std::cout << '\\n';
+    // maxRef(std::vector<int>{1, 2});  // does not compile: a temporary cannot bind to int-vector&
+}` },
+        dry: { head: ['i', 'v[i]', 'v[best] before', 'best after'], rows: [['init', '-', '-', '0 (value 3)'], ['1', '8', '3', '<span class="c-g">1</span>'], ['2', '1', '8', '1'], ['3', '8', '8 (not greater)', '1'], ['return', '-', '-', 'reference to v[1]; caller writes 0']] },
+        complexity: `<p>Time O(N), extra space O(1).</p>`,
+        followUps: ['What happens to a saved <code>int&amp; m = maxRef(v);</code> after <code>v.push_back(5)</code>?', 'Write a const overload <code>const int&amp; maxRef(const std::vector&lt;int&gt;&amp;)</code>; why would it accept temporaries and what is the risk?', 'Rewrite using <code>std::max_element</code> and explain its tie-breaking']
+      }
+    }]
+  });
+
+  /* ======================================================================
+     TOPIC 6: const and pointers
+     ====================================================================== */
+  topics.push({
+    title: 'const Pointers vs Pointers to const',
+    analogy: `<p>Imagine two kinds of visitor passes. A <b>"look but don't touch" badge</b> lets you walk into <i>any</i> museum room, but you may not move the paintings: that is a <b>pointer to const</b> (<code>const int* p</code>): you can re-aim it, but not change what it points at. A <b>GPS tracker locked to one address</b> always shows the same house, though the owner may renovate inside: that is a <b>const pointer</b> (<code>int* const p</code>): it can never be re-aimed, but the thing it points at can change. Put both rules together and you get a locked tracker on a museum: <code>const int* const p</code>, nothing moves.</p>`,
+    explain: `<p>A pointer declaration involves <b>two</b> things that could be read-only: the <b>pointer itself</b> (can it be re-aimed?) and the <b>thing it points at</b> (can I change it through this pointer?). Where you write <code>const</code> decides which one is locked.</p>
+<h4>1. The four combinations</h4>
+${H.table(['declaration', 'read it right-to-left', '<code>p = &amp;y;</code> (re-aim)', '<code>*p = 5;</code> (modify target)'], [
+  ['<code>int* p</code>', 'p is a pointer to int', '<span class="c-g">✔</span>', '<span class="c-g">✔</span>'],
+  ['<code>const int* p</code><br><small>same as <code>int const* p</code></small>', 'p is a pointer to const int', '<span class="c-g">✔</span>', '<span class="c-r">✖</span>'],
+  ['<code>int* const p</code>', 'p is a const pointer to int', '<span class="c-r">✖</span>', '<span class="c-g">✔</span>'],
+  ['<code>const int* const p</code>', 'p is a const pointer to const int', '<span class="c-r">✖</span>', '<span class="c-r">✖</span>']
+])}
+<h4>2. The one trick: read right-to-left, starting at the name</h4>
+<p>Start at the variable name and read <b>leftwards</b>; say "pointer to" for <code>*</code>, "reference to" for <code>&amp;</code>, and "const" for <code>const</code>.</p>
+<p><code>const int * const p</code> → "<b>p</b> is a <b>const</b> <b>pointer to</b> <b>int</b> <b>const</b>" → p cannot move and the int cannot change through p.</p>
+<p>Shortcut: <b>const to the LEFT of the <code>*</code></b> protects the <b>target</b>; <b>const to the RIGHT of the <code>*</code></b> protects the <b>pointer</b>. Whether you write <code>const int</code> ("west const") or <code>int const</code> ("east const") makes no difference; teams just pick a style.</p>
+<h4>3. "Pointer to const" means "read-only <i>through this pointer</i>"</h4>
+<p><code>const int* p = &amp;x;</code> does not make <code>x</code> constant. <code>x = 5;</code> still works; you just cannot write <code>*p = 5;</code>. Think of it as a <b>read-only view</b>. That is why it is the right type for function parameters that only read data: <code>size_t count(const int* a, size_t n)</code> promises the caller "I will not modify your array".</p>
+<h4>4. Allowed conversions: you can add const, not remove it</h4>
+${H.table(['from → to', 'allowed?', 'why'], [
+  ['<code>int*</code> → <code>const int*</code>', '<span class="c-g">yes, implicit</span>', 'giving away less power is always safe'],
+  ['<code>const int*</code> → <code>int*</code>', '<span class="c-r">no</span>', 'would let you modify something promised read-only'],
+  ['<code>const int*</code> → <code>int*</code> via <code>const_cast</code>', 'compiles', 'writing through it is UB if the object was originally const'],
+  ['<code>int**</code> → <code>const int**</code>', '<span class="c-r">no</span> (surprising!)', 'would open a hole to modify a const int; see deep dive']
+])}
+<h4>5. const references</h4>
+<p><code>const T&amp;</code> is the reference version of "pointer to const": a read-only alias. There is no "const reference" in the other sense (<code>int&amp; const r</code> is an error), because references can never be re-seated anyway.</p>
+<h4>6. const and string literals</h4>
+<p>A string literal like <code>"hello"</code> has type <code>const char[6]</code>. So <code>const char* s = "hello";</code> is right and <code>char* s = "hello";</code> is an error in C++11 and later (it was only deprecated in C++03). Writing into a literal is UB because literals often live in read-only memory.</p>`,
+    clues: [
+      '"Difference between <code>const int*</code>, <code>int const*</code> and <code>int* const</code>" → read right-to-left; const left of * protects the target',
+      '"The function must not modify the array" → parameter <code>const T*</code> or <code>const T&amp;</code> / <code>std::span&lt;const T&gt;</code>',
+      '"Why can\'t I pass <code>int**</code> where <code>const int**</code> is expected?" → const-correctness hole; use <code>const int* const*</code>',
+      '"Error: assignment of read-only location" → you wrote through a pointer-to-const',
+      '"Is <code>const_cast</code> safe?" → only if the original object was not declared const',
+      '"<code>char* s = \"text\";</code> compiles in C but not C++" → literals are <code>const char[N]</code>'
+    ],
+    code: [{ lang: 'cpp', title: 'All four combinations (errors shown as comments)', code: `#include <iostream>
+using namespace std;
+
+int main() {
+    int x = 1, y = 2;
+
+    int* p1 = &x;              // pointer to int
+    p1 = &y;  *p1 = 5;         // both allowed
+
+    const int* p2 = &x;        // pointer to const int (read-only VIEW of x)
+    p2 = &y;                   // OK: may re-aim
+    // *p2 = 5;                // error: assignment of read-only location '*p2'
+    x = 7;                     // x itself is NOT const: still allowed directly
+
+    int* const p3 = &x;        // const pointer to int
+    *p3 = 9;                   // OK: may modify the target
+    // p3 = &y;                // error: assignment of read-only variable 'p3'
+
+    const int* const p4 = &x;  // const pointer to const int
+    // p4 = &y; *p4 = 1;       // both errors
+    cout << *p2 << ' ' << *p3 << ' ' << *p4 << '\\n';   // 5 9 9
+
+    const int* view = p1;      // int* -> const int* : adding const is implicit
+    // int* back = view;       // error: removing const needs a cast
+    (void)view;
+}` }, { lang: 'cpp', title: 'const-correct function parameters', code: `#include <cstddef>
+// Promise: reads the array, never writes it
+std::size_t countValue(const int* a, std::size_t n, int target) {
+    std::size_t c = 0;
+    for (const int* p = a; p != a + n; ++p)
+        if (*p == target) ++c;
+    return c;
+}
+// Promise: writes the array, pointer 'a' itself never re-aimed inside
+void fill(int* const a, std::size_t n, int value) {
+    for (std::size_t i = 0; i < n; ++i) a[i] = value;
+}` }],
+    codeTitle: ['The four combinations', 'Using const in parameters'],
+    viz: [{
+      title: 'Read any declaration right-to-left',
+      input: 'const int * const p',
+      inputLabel: 'Declaration (e.g. int const * p, char * const * q, const int & r)',
+      gen: function (input) {
+        var raw = String(input === undefined ? 'const int * const p' : input).trim() || 'const int * const p';
+        var toks = raw.replace(/;$/, '').match(/[A-Za-z_]\w*|\*|&|\S/g) || [];
+        var TYPES = ['int', 'char', 'double', 'float', 'long', 'short', 'bool', 'unsigned', 'auto', 'string', 'T', 'void'];
+        var hint = 'Use only const, a type (int, char, double, ...), *, & and a name, e.g. "const int * const p"';
+        if (toks.length < 2 || toks.length > 10) throw new Error(hint);
+        toks.forEach(function (t) { if (!(t === 'const' || t === '*' || t === '&' || /^[A-Za-z_]\w*$/.test(t))) throw new Error(hint); });
+        var name = toks[toks.length - 1];
+        if (name === 'const' || name === '*' || name === '&' || TYPES.indexOf(name) >= 0) throw new Error('The declaration must end with a variable name, e.g. "int * const p"');
+        var firstDecl = -1, i;
+        for (i = 0; i < toks.length - 1; i++) if (toks[i] === '*' || toks[i] === '&') { firstDecl = i; break; }
+        var baseEnd = firstDecl < 0 ? toks.length - 1 : firstDecl;
+        var base = toks.slice(0, baseEnd), baseConst = base.indexOf('const') >= 0;
+        var baseType = base.filter(function (t) { return t !== 'const'; });
+        if (!baseType.length || baseType.some(function (t) { return TYPES.indexOf(t) < 0; })) throw new Error('Start with a known type (int, char, double, long, bool, auto, string, T), optionally with const');
+        if (base.filter(function (t) { return t === 'const'; }).length > 1) throw new Error('Only one const is allowed on the base type');
+        var levels = [], isRef = false;
+        for (i = baseEnd; i < toks.length - 1; i++) {
+          var t = toks[i];
+          if (t === '*') { if (isRef) throw new Error('A pointer to a reference does not exist in C++'); levels.push({ c: false }); }
+          else if (t === '&') { if (isRef) throw new Error('A reference to a reference does not exist'); isRef = true; }
+          else if (t === 'const') { if (isRef) throw new Error('"& const" is an error: references can never be re-seated anyway'); if (!levels.length) throw new Error(hint); if (levels[levels.length - 1].c) throw new Error('duplicate const'); levels[levels.length - 1].c = true; }
+          else throw new Error(hint);
+        }
+        var cells = toks.slice(), frames = [], words = [];
+        function arrPart(cur, done) {
+          var hl = {}; done.forEach(function (k) { hl[k] = 'done'; }); if (cur !== null) hl[cur] = 'cur';
+          var p = {}; if (cur !== null) p[cur] = ['reading'];
+          return { type: 'array', label: 'Tokens (read from the name, leftwards)', values: cells, hl: hl, ptr: p };
+        }
+        frames.push({ narr: 'Split the declaration into tokens. Rule: <b>start at the variable name</b> and read <b>right-to-left</b>. Say "pointer to" for *, "reference to" for &amp;, "const" for const.', parts: [arrPart(null, []), { type: 'code', lang: 'cpp', code: raw + (raw.slice(-1) === ';' ? '' : ';') }] });
+        var done = [];
+        for (i = toks.length - 1; i >= 0; i--) {
+          var tk = toks[i], w;
+          if (i === toks.length - 1) w = name + ' is';
+          else if (tk === '*') w = 'pointer to';
+          else if (tk === '&') w = 'reference to';
+          else if (tk === 'const') w = 'const';
+          else w = tk;
+          words.push(w);
+          var expl = i === toks.length - 1 ? 'The name: <b>' + esc(name) + '</b>. Everything else describes it.'
+            : tk === '*' ? 'A <b>*</b>: "pointer to". Any const just to the RIGHT of this * (already read) locks <i>this</i> pointer.'
+            : tk === '&' ? 'An <b>&amp;</b>: "reference to". References are always bound for life.'
+            : tk === 'const' ? (i < baseEnd ? 'A <b>const</b> on the base type: the final pointed-at value is read-only through this name.' : 'A <b>const</b> right after a *: that <b>pointer</b> cannot be re-aimed.')
+            : 'The base type <b>' + esc(tk) + '</b>: what lives at the end of the chain.';
+          frames.push({ narr: expl, parts: [arrPart(i, done.slice()), { type: 'vars', label: 'Reading so far', vals: { 'english': words.join(' ') } }] });
+          done.push(i);
+        }
+        var desc = (baseConst ? 'const ' : '') + baseType.join(' ');
+        levels.forEach(function (l) { desc = (l.c ? 'const ' : '') + 'pointer to ' + desc; });
+        if (isRef) desc = 'reference to ' + desc;
+        var sentence = name + ' is a ' + desc;
+        var rows = [], hlr = {}, n = levels.length;
+        if (isRef) rows.push(['re-bind ' + name + ' to another object', '✖ never (references cannot be re-seated)']);
+        else if (n) rows.push([name + ' = other address', levels[n - 1].c ? '✖ (const pointer)' : '✔']);
+        else rows.push([name + ' = other value', baseConst ? '✖ (const)' : '✔']);
+        if (isRef) {
+          var refTargetConst = n ? levels[n - 1].c : baseConst;
+          rows.push([name + ' = new value (writes the referred object)', refTargetConst ? '✖ (refers to const)' : '✔']);
+        }
+        for (var k = 1; k <= n; k++) {
+          var idx = n - 1 - k, lockd = idx >= 0 ? levels[idx].c : baseConst;
+          rows.push([new Array(k + 1).join('*') + name + ' = ...', lockd ? '✖ (' + (idx >= 0 ? 'const pointer' : 'const ' + baseType.join(' ')) + ')' : '✔']);
+        }
+        rows.forEach(function (r, j) { hlr[j] = r[1].charAt(0) === '✔' ? 'ok' : 'bad'; });
+        frames.push({ narr: 'Result: <b>' + esc(sentence) + '</b>. The table shows what this name lets you do.', parts: [arrPart(null, done.slice()), { type: 'vars', label: 'Plain English', vals: { 'meaning': sentence } }, { type: 'table', label: 'Permissions through ' + esc(name), columns: ['operation', 'allowed?'], rows: rows, hl: hlr }] });
+        frames.push({ narr: 'Compare with the four classic forms. Rule of thumb: <b>const left of * → target locked; const right of * → pointer locked.</b> Try other inputs, e.g. <code>char * const * q</code> or <code>const int &amp; r</code>.', parts: [{ type: 'table', label: 'const placement cheat sheet', columns: ['declaration', 'p = &y', '*p = 5'], rows: [['int* p', '✔', '✔'], ['const int* p  /  int const* p', '✔', '✖'], ['int* const p', '✖', '✔'], ['const int* const p', '✖', '✖']], hl: { 0: 'ok', 3: 'bad' } }] });
+        return frames;
+      }
+    }, {
+      title: 'Try every operation on every combination',
+      gen: function () {
+        var code = 'int x = 1, y = 2;\nint*             p1 = &x;\nconst int*       p2 = &x;\nint* const       p3 = &x;\nconst int* const p4 = &x;';
+        var rows = [['p1  int*', '?', '?'], ['p2  const int*', '?', '?'], ['p3  int* const', '?', '?'], ['p4  const int* const', '?', '?']];
+        var res = [['✔ re-aimed', '✔ x = 5'], ['✔ re-aimed', '✖ read-only target'], ['✖ const pointer', '✔ x = 5'], ['✖ const pointer', '✖ read-only target']];
+        var f = [{ narr: 'Four pointers, all aimed at x. We will try two operations on each: <b>re-aim</b> (<code>p = &amp;y</code>) and <b>write through</b> (<code>*p = 5</code>).', parts: [{ type: 'code', lang: 'cpp', code: code }, mem({ cells: [['0x100', '1', 'x'], ['0x104', '2', 'y']], p: { 0: ['p1 p2 p3 p4'] } }), { type: 'table', label: 'const placement table', columns: ['pointer', 'p = &y', '*p = 5'], rows: rows.map(function (r) { return r.slice(); }) }] }];
+        for (var i = 0; i < 4; i++) {
+          rows[i][1] = res[i][0]; rows[i][2] = res[i][1];
+          var why = ['No const anywhere: full power.', 'const is LEFT of *: the int is read-only through p2, but p2 itself may move.', 'const is RIGHT of *: p3 is glued to x, but x may be changed through it.', 'const on both sides: a read-only view that never moves.'][i];
+          f.push({ narr: '<b>' + ['p1', 'p2', 'p3', 'p4'][i] + '</b>: ' + why, parts: [{ type: 'code', lang: 'cpp', code: code, hl: one(i + 2, 'cur') }, { type: 'table', label: 'const placement table', columns: ['pointer', 'p = &y', '*p = 5'], rows: rows.map(function (r) { return r.slice(); }), hl: one(i, 'cur') }] });
+        }
+        f.push({ narr: 'Memorize the table shape: the diagonal of ✖ moves as const moves across the *. Compiler errors you will see: <i>"assignment of read-only location"</i> (target locked) vs <i>"assignment of read-only variable"</i> (pointer locked).', parts: [{ type: 'table', label: 'const placement table', columns: ['pointer', 'p = &y', '*p = 5'], rows: rows.map(function (r) { return r.slice(); }), hl: { 0: 'ok', 3: 'bad' } }] });
+        return f;
+      }
+    }],
+    examples: [
+      { title: 'Predict: which lines compile?', html: `<p>Given <code>int a = 1, b = 2; const int* p = &amp;a; int* const q = &amp;a;</code></p>${H.table(['line', 'compiles?', 'reason'], [['<code>p = &amp;b;</code>', '<span class="c-g">yes</span>', 'p is not const itself'], ['<code>*p = 3;</code>', '<span class="c-r">no</span>', 'target is read-only through p'], ['<code>*q = 3;</code>', '<span class="c-g">yes</span>', 'q points to non-const int'], ['<code>q = &amp;b;</code>', '<span class="c-r">no</span>', 'q is a const pointer'], ['<code>a = 4;</code>', '<span class="c-g">yes</span>', 'a itself is not const'], ['<code>int* r = p;</code>', '<span class="c-r">no</span>', 'cannot drop const implicitly']])}` },
+      { title: 'const_cast: legal to compile, UB to misuse', html: `<p><code>const_cast</code> removes const from a pointer. Writing through the result is fine if the object was <b>originally non-const</b>, and undefined behaviour if it was declared <code>const</code> (it may live in read-only memory, or the compiler may have folded its value into the code).</p>`, code: { lang: 'cpp', code: `#include <iostream>
+int main() {
+    int a = 1;
+    const int* view = &a;
+    *const_cast<int*>(view) = 2;     // OK: a was never const
+    std::cout << a << '\\n';           // 2
+
+    const int c = 1;
+    int* bad = const_cast<int*>(&c);
+    // *bad = 2;                       // UB: c is a real const object (often prints 1 anyway)
+    (void)bad;
+}` } },
+      { title: 'Why int** does not convert to const int**', html: `<p>If it were allowed, this would modify a const int without any cast:</p>${H.table(['step', 'code', 'effect'], [['1', '<code>const int ci = 1; int* p;</code>', ''], ['2', '<code>const int** pp = &amp;p;</code>', '(pretend it compiled)'], ['3', '<code>*pp = &amp;ci;</code>', 'legal: stores a const int* in p (via pp)'], ['4', '<code>*p = 99;</code>', '<span class="c-r">modifies ci!</span>']])}<p>The safe conversion is <code>int**</code> → <code>const int* const*</code>, because then step 3 is forbidden.</p>`, code: { lang: 'cpp', code: `int main() {
+    int x = 1;
+    int* p = &x;
+    int** pp = &p;
+    // const int** bad = pp;          // error: invalid conversion
+    const int* const* ok = pp;        // fine: the middle pointer is locked too
+    return **ok - 1;                  // 0
+}` } },
+      { title: 'Bug hunt: modifying a string literal', html: `<p>This compiles in old C but is an error in C++11+: <code>char* s = "hello"; s[0] = 'J';</code>. Even when forced through with a cast, writing into a literal is UB and typically crashes because literals sit in a read-only section (<code>.rodata</code>). Fix: copy into a writable array or <code>std::string</code>.</p>`, code: { lang: 'cpp', code: `#include <iostream>
+#include <string>
+int main() {
+    // char* s = "hello";         // error in C++11+: literal is const char[6]
+    const char* lit = "hello";    // OK: read-only view of the literal
+    char buf[] = "hello";         // writable COPY on the stack
+    buf[0] = 'J';
+    std::string str = lit;        // or a std::string copy
+    str[0] = 'C';
+    std::cout << buf << ' ' << str << '\\n';   // Jello Cello
+}` } }
+    ],
+    deepDive: `<p><b>Top-level vs low-level const.</b> In <code>const int* const p</code>, the right-hand const (on p itself) is <b>top-level</b>; the left one (on the int) is <b>low-level</b>. Top-level const is dropped when copying: <code>auto q = p;</code> gives <code>const int*</code>, and top-level const on a by-value parameter is not part of the function signature (<code>void f(int)</code> and <code>void f(const int)</code> are the same function). Low-level const is always kept, because dropping it would be unsafe.</p>
+<p><b>const is a promise about access, not about the object.</b> The optimizer generally cannot assume <code>*p</code> stays the same just because <code>p</code> is <code>const int*</code>: another non-const pointer may modify the same int (aliasing). So const pointers rarely make code faster; they make it <b>safer and self-documenting</b>. Objects that are actually declared <code>const</code> (or <code>constexpr</code>) are different: the compiler can fold their values and place them in read-only memory.</p>
+<p><b>const member functions</b> (module cpp04 preview): in <code>int size() const;</code>, the hidden <code>this</code> has type <code>const T*</code>, so the function cannot modify members. Calling it on a <code>const T&amp;</code> parameter is only possible because of that const. <code>mutable</code> members (caches, mutexes) are the escape hatch.</p>
+<p><b>Spans and views.</b> The modern equivalent of <code>const T* data, size_t n</code> is <code>std::span&lt;const T&gt;</code>; of <code>const char*</code> for reading text it is <code>std::string_view</code>. Note that <code>const std::span&lt;T&gt;</code> is a const <i>view object</i> (top-level) whose elements are still writable; you want <code>std::span&lt;const T&gt;</code>.</p>
+<p><b>The clockwise/spiral rule</b> generalizes right-to-left reading for function pointers and arrays: <code>const char* (*fp)(int)</code> → "fp is a pointer to a function taking int returning pointer to const char". In real code, tame such declarations with <code>using</code> aliases.</p>
+<p><b>East const vs west const.</b> <code>int const* p</code> (east) reads uniformly right-to-left; <code>const int* p</code> (west) is more common in codebases and in the standard library documentation. Both mean exactly the same thing. Be consistent within a file.</p>`,
+    aiEra: `<p><b>What AI changes:</b> assistants are good at adding const-correctness to an existing API: marking read-only parameters <code>const T&amp;</code>/<code>const T*</code>, adding <code>const</code> to member functions, converting to <code>std::span&lt;const T&gt;</code>. That used to be a tedious, compile-error-driven chore; now it is a review task.</p>
+<p><b>Use AI as a partner:</b> ask <code>Translate these declarations into plain English and tell me what each allows: ...</code>, but also test yourself first using the right-to-left visualizer above. For a codebase, ask the assistant to propose const additions and let the compiler verify each one.</p>
+<p><b>Where AI goes wrong:</b> it uses <code>const_cast</code> to silence errors instead of fixing the design, writes <code>const std::span&lt;int&gt;</code> believing elements are protected, and sometimes claims <code>const int*</code> means "constant pointer". It also may suggest that const enables big optimizations, which is mostly untrue for pointers.</p>
+<p><b>What you must still own:</b> instant right-to-left reading and the conversion rules (add const freely, never remove it implicitly, <code>int**</code> → <code>const int**</code> is rejected). Interviewers frequently put four declarations on a whiteboard and ask which lines compile.</p>`,
+    problems: [{
+      title: 'Const-Correct Find (with a Non-const Overload)',
+      level: 'Medium', tags: ['const', 'pointers', 'API design'], companies: ['Microsoft', 'Apple', 'Citadel'],
+      statement: `<p>Write <code>const int* findFirst(const int* first, const int* last, int target)</code> returning a pointer to the first element equal to <code>target</code> in <code>[first, last)</code>, or <code>last</code> if none. Then provide <code>int* findFirst(int* first, int* last, int target)</code> so callers with a writable array get a writable result, <b>without duplicating the loop</b>.</p>`,
+      constraints: `<p>0 ≤ last − first ≤ 10<sup>6</sup>. No <code>[]</code> needed; O(1) extra space.</p>`,
+      example: `<p>a = ${H.arr([5, 7, 9, 7], { hl: { 1: 'g' } })}, target 7 → pointer to ${H.c('g', 'a[1]')}. With a writable array the caller can do <code>*findFirst(a, a + 4, 7) = 0;</code> → ${H.arr([5, 0, 9, 7], { hl: { 1: 'y' } })}. Target 4 → returns <code>a + 4</code> (the end pointer, meaning "not found").</p>`,
+      brute: { why: `<p>Copy-paste the loop into two functions (one const, one non-const). It works, but now two copies must be kept in sync forever; a fix in one is easily forgotten in the other.</p>`, code: { lang: 'cpp', code: `const int* findFirstC(const int* first, const int* last, int target) {
+    for (; first != last; ++first) if (*first == target) return first;
+    return last;
+}
+int* findFirstM(int* first, int* last, int target) {      // duplicated logic
+    for (; first != last; ++first) if (*first == target) return first;
+    return last;
+}` } },
+      mcq: { q: 'Inside the non-const overload, which is the safe way to reuse the const version?', options: ['Call it and <code>const_cast</code> the result back to <code>int*</code>', 'Use <code>reinterpret_cast</code>', 'Change the const version to take <code>int*</code>', 'It is impossible without duplication'], answer: 0, explain: 'The non-const overload received non-const pointers, so the array is known to be writable; casting away const on the result is well-defined. This is the standard "implement non-const via const" idiom.' },
+      hints: [`<p>Write the loop once in the <code>const</code> version: it can accept both const and non-const arrays (int* converts to const int* automatically).</p>`, `<p>In the non-const overload, call the const version, then <code>const_cast&lt;int*&gt;</code> the result. Safe, because the original objects are non-const (the caller gave you <code>int*</code>).</p>`, `<p>Recipe: <code>const int* r = findFirst(static_cast&lt;const int*&gt;(first), static_cast&lt;const int*&gt;(last), target); return const_cast&lt;int*&gt;(r);</code>. The <code>static_cast</code>s pick the const overload explicitly and avoid infinite recursion.</p>`],
+      solution: {
+        approach: `<p>Single implementation with read-only access, plus a thin non-const wrapper that restores mutability only where it is provably legal. Same pattern as <code>std::vector::operator[]</code> const/non-const pairs and <code>strchr</code> in C.</p>`,
+        code: { lang: 'cpp', code: `#include <iostream>
+
+// The one real implementation: read-only access is enough to search
+const int* findFirst(const int* first, const int* last, int target) {
+    for (; first != last; ++first)       // 'first' is a local copy: re-aiming it is fine
+        if (*first == target) return first;
+    return last;                          // "not found" = end pointer
+}
+
+// Writable arrays get a writable result, reusing the const version
+int* findFirst(int* first, int* last, int target) {
+    const int* r = findFirst(static_cast<const int*>(first),
+                             static_cast<const int*>(last), target);   // calls the const overload
+    return const_cast<int*>(r);           // safe: the elements were never const
+}
+
+int main() {
+    int a[] = {5, 7, 9, 7};
+    int* hit = findFirst(a, a + 4, 7);
+    if (hit != a + 4) *hit = 0;           // modify through the result
+    for (int x : a) std::cout << x << ' ';   // 5 0 9 7
+    std::cout << '\\n';
+
+    const int ro[] = {1, 2, 3};
+    const int* h2 = findFirst(ro, ro + 3, 3);   // const array: const result, cannot modify
+    std::cout << (h2 - ro) << '\\n';             // 2
+}` },
+        dry: { head: ['first points at', '*first', '== 7?', 'action'], rows: [['a[0]', '5', 'no', '++first'], ['a[1]', '7', '<span class="c-g">yes</span>', 'return pointer to a[1]'], ['wrapper', '-', '-', 'const_cast to int*, caller writes 0']] },
+        complexity: `<p>Time O(N), space O(1).</p>`,
+        followUps: ['How does <code>std::find</code> avoid this problem? (templates deduce constness from the iterator type)', 'Why is <code>const_cast</code> UB-free here but not in general?', 'Rewrite with <code>std::span&lt;const int&gt;</code> returning an index']
+      }
+    }]
+  });
+
   registerModule({
     id: 'cpp03',
     title: 'Pointers & References',

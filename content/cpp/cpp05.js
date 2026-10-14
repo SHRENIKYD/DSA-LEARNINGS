@@ -1024,4 +1024,623 @@ dtor a</pre>
     ]
   });
 
+  /* ======================================================================
+     TOPIC 4 — Virtual functions, vtables and vptr
+     ====================================================================== */
+  topics.push({
+    title: 'Virtual Functions: How vtables and the vptr Pick the Right Function',
+    analogy: `<p>A hotel has a universal <b>"Room Service"</b> button in every room. The front desk does not know who is in the room; it just looks at a <b>card stuck to the room's door</b> that says which menu that guest ordered from (vegetarian, kids, VIP). The desk reads the card, opens <i>that</i> menu at line 2 ("dinner"), and sends the right dish.</p>
+      <p>In C++ the card on the door is the <b>vptr</b> (a hidden pointer inside every object of a class with virtual functions), the menus are the <b>vtables</b> (one per class, shared by all its objects), and "line 2" is the fixed <b>slot number</b> of the function. The caller never needs to know the guest's real type.</p>`,
+    explain: `<p><b>Static vs dynamic binding.</b> Normally the compiler picks which function to call by looking at the <b>declared type</b> of the expression (static binding). With <code>virtual</code>, the choice is made at <b>run time</b> by the <b>actual type of the object</b> (dynamic binding). That only happens when you call through a <b>pointer or reference</b> to a base class.</p>
+      ${H.table(['Call', 'Declared type', 'Actual object', 'Non-virtual calls…', 'Virtual calls…'], [
+        ['<code>Shape* p = new Circle; p-&gt;area()</code>', 'Shape*', 'Circle', 'Shape::area', H.c('g', 'Circle::area')],
+        ['<code>Shape&amp; r = sq; r.area()</code>', 'Shape&amp;', 'Square', 'Shape::area', H.c('g', 'Square::area')],
+        ['<code>Shape s = sq; s.area()</code>', 'Shape (a copy)', 'Shape (sliced!)', 'Shape::area', 'Shape::area']
+      ])}
+      <p><b>How it really works (what g++/clang generate):</b></p>
+      <ol>
+        <li>For every class that has (or inherits) a virtual function, the compiler builds <b>one vtable</b>: a static array of function pointers, one slot per virtual function, in declaration order. A derived class copies its base's table and <b>overwrites the slots it overrides</b>; new virtuals are appended.</li>
+        <li>Every <b>object</b> of such a class gets a hidden first member, the <b>vptr</b>, pointing to its class's vtable. The constructor sets it.</li>
+        <li>A call <code>p-&gt;area()</code> becomes roughly <code>(*(p-&gt;vptr)[slot_of_area])(p)</code>: load the vptr, load the function pointer from the slot, call it with <code>this = p</code>.</li>
+      </ol>
+      ${H.table(['Slot', 'Shape vtable', 'Circle vtable', 'Square vtable'], [
+        ['0–1', '~Shape', '~Circle', '~Square'],
+        ['2', 'Shape::area', H.c('g', 'Circle::area'), H.c('g', 'Square::area')],
+        ['3', 'Shape::name', H.c('m', 'Shape::name (inherited)'), H.c('g', 'Square::name')]
+      ])}
+      <p><b>Keywords you should always use:</b> <code>override</code> on every overriding function (the compiler errors if it does not actually override — catches typos and missing <code>const</code>); <code>final</code> to forbid further overriding or derivation (also lets the compiler devirtualize). <code>virtual</code> on the override is redundant once you write <code>override</code>.</p>
+      <p><b>Cost:</b> one extra pointer per object (8 bytes on 64-bit), one vtable per class, and each virtual call is an <b>indirect call</b> that usually cannot be inlined. That is tiny for business logic and noticeable in a hot inner loop over millions of small objects.</p>`,
+    clues: [
+      '"How does C++ implement runtime polymorphism?" → vtable per class, vptr per object, indirect call through a slot',
+      '"What is <code>sizeof</code> of a class with one virtual function and one int?" → 16 on 64-bit (8-byte vptr + 4 int + 4 padding)',
+      '"Base pointer, derived object, which function is called?" → virtual: derived version; non-virtual: base version',
+      '"Different types must respond to the same call differently" (shapes, payment methods, plugins) → virtual interface',
+      '"Why use <code>override</code>?" → compile-time check that you really override (signature, const, ref-qualifiers)',
+      '"Virtual call is slow in a hot loop" → <code>final</code>, CRTP, <code>std::variant</code>, or sort objects by type',
+      '"Default argument in a virtual function" puzzles → defaults are chosen by the STATIC type'
+    ],
+    code: [R`
+      #include <iostream>
+      #include <memory>
+      #include <string>
+      #include <vector>
+
+      struct Shape {
+          virtual ~Shape() = default;                                   // virtual dtor (topic 6)
+          virtual double area() const { return 0.0; }                   // slot: area
+          virtual std::string name() const { return "shape"; }          // slot: name
+          void describe() const {                                       // NOT virtual: always Shape::describe
+              std::cout << name() << " with area " << area() << '\n';  // ...but the calls INSIDE are virtual
+          }
+      };
+
+      struct Circle : Shape {
+          double r;
+          explicit Circle(double radius) : r(radius) {}
+          double area() const override { return 3.14159 * r * r; }      // overrides slot 'area'
+          // name() not overridden -> Circle's vtable reuses Shape::name
+      };
+
+      struct Square final : Shape {                                     // final: nobody can derive from Square
+          double s;
+          explicit Square(double side) : s(side) {}
+          double area() const override { return s * s; }
+          std::string name() const override { return "square"; }
+      };
+
+      int main() {
+          std::vector<std::unique_ptr<Shape>> shapes;
+          shapes.push_back(std::make_unique<Circle>(1.0));
+          shapes.push_back(std::make_unique<Square>(2.0));
+          for (const auto& sp : shapes) sp->describe();                // shape with area 3.14159 / square with area 4
+          std::cout << sizeof(Shape) << '\n';                           // 8: just the vptr
+      }
+    `],
+    codeTitle: ['Dynamic dispatch through a base pointer'],
+    viz: {
+      title: 'Follow the vptr: dynamic dispatch step by step',
+      input: 'Circle: area name describe delete',
+      inputLabel: 'Dynamic type (Shape, Circle or Square) then calls: area, name, describe, delete',
+      gen: function (input) {
+        var m = String(input || '').trim().match(/^(Shape|Circle|Square)\s*:\s*([a-z\s,]+)$/i);
+        if (!m) throw new Error('Format: "Circle: area name describe delete" (types: Shape, Circle, Square)');
+        var T = m[1].charAt(0).toUpperCase() + m[1].slice(1).toLowerCase();
+        var calls = m[2].split(/[\s,]+/).filter(Boolean).map(function (c) { return c.toLowerCase(); });
+        if (!calls.length || calls.length > 6) throw new Error('Give 1 to 6 calls');
+        calls.forEach(function (c) { if (['area', 'name', 'describe', 'delete'].indexOf(c) < 0) throw new Error('Unknown call "' + c + '". Use area, name, describe, delete'); });
+        if (calls.indexOf('delete') >= 0 && calls.indexOf('delete') !== calls.length - 1) throw new Error('"delete" must be the last call');
+        var VT = {
+          Shape: [['[-2]', 'offset-to-top = 0'], ['[-1]', 'typeinfo for Shape'], ['[0]', '~Shape() complete'], ['[1]', '~Shape() deleting'], ['[2]', 'Shape::area'], ['[3]', 'Shape::name']],
+          Circle: [['[-2]', 'offset-to-top = 0'], ['[-1]', 'typeinfo for Circle'], ['[0]', '~Circle() complete'], ['[1]', '~Circle() deleting'], ['[2]', 'Circle::area'], ['[3]', 'Shape::name (inherited)']],
+          Square: [['[-2]', 'offset-to-top = 0'], ['[-1]', 'typeinfo for Square'], ['[0]', '~Square() complete'], ['[1]', '~Square() deleting'], ['[2]', 'Square::area'], ['[3]', 'Square::name']]
+        };
+        var lines = ['struct Shape {', '    virtual ~Shape() = default;', '    virtual double area() const { return 0; }', '    virtual std::string name() const { return "shape"; }', '    void describe() const { cout << name() << " " << area(); }  // non-virtual', '};', 'struct Circle : Shape {  double r = 1;', '    double area() const override { return 3.14159 * r * r; }', '};                       // name() inherited', 'struct Square : Shape {  double s = 2;', '    double area() const override { return s * s; }', '    std::string name() const override { return "square"; }', '};', 'Shape* p = new ' + T + ';'];
+        var callLine = {};
+        calls.forEach(function (c, i) { lines.push(c === 'delete' ? 'delete p;' : 'p->' + c + '();'); callLine[i] = lines.length; });
+        var code = lines.join('\n');
+        var fnLine = { 'Shape::area': 3, 'Shape::name': 4, 'Circle::area': 8, 'Square::area': 11, 'Square::name': 12 };
+        var res = { 'Shape::area': '0', 'Circle::area': '3.14159', 'Square::area': '4', 'Shape::name': 'shape', 'Square::name': 'square' };
+        var slotOf = { area: 4, name: 5, 'delete': 3 };
+        var target = function (c) { var e = VT[T][slotOf[c]][1]; return e.replace(' (inherited)', ''); };
+        var frames = [], output = [];
+        function graph(stage, fn) {
+          var hl = {}, ehl = {}, nodes = [
+            { id: 'p', label: 'Shape* p', x: 9, y: 30, shape: 'box' },
+            { id: 'obj', label: T + ' object', x: 31, y: 30, shape: 'box' },
+            { id: 'vShape', label: 'vtable Shape', x: 58, y: 8, shape: 'box' },
+            { id: 'vCircle', label: 'vtable Circle', x: 58, y: 30, shape: 'box' },
+            { id: 'vSquare', label: 'vtable Square', x: 58, y: 52, shape: 'box' }
+          ];
+          var edges = [['p', 'obj', 'points to'], ['obj', 'v' + T, 'vptr']];
+          if (fn) { nodes.push({ id: 'fn', label: fn, x: 88, y: 30, shape: 'box' }); edges.push(['v' + T, 'fn', 'slot']); }
+          hl['v' + T] = stage >= 2 ? 'cur' : 'win';
+          if (stage >= 1) { hl.obj = 'cur'; ehl['obj-v' + T] = 'cur'; ehl['p-obj'] = 'ok'; }
+          if (stage >= 3 && fn) { hl.fn = 'ok'; ehl['v' + T + '-fn'] = 'ok'; }
+          return { type: 'graph', label: 'Pointer → object → vptr → vtable → function', directed: true, height: 60, nodes: nodes, edges: edges, hl: hl, ehl: ehl };
+        }
+        function vt(slot, cls) { var h = {}; if (slot !== undefined) h[slot] = cls || 'cur'; return { type: 'table', label: 'vtable of ' + T + ' (Itanium C++ ABI layout, used by g++/clang)', columns: ['slot', 'entry'], rows: VT[T].map(function (r) { return r.slice(); }), hl: h }; }
+        function cf(hlMap) { return { type: 'code', label: 'Program', lang: 'cpp', code: code, hl: hlMap }; }
+        frames.push({ narr: '<code>new ' + T + '</code> builds the object. Its constructor stores the address of <b>' + T + '\'s vtable</b> in the hidden <b>vptr</b>. <code>p</code> is declared <code>Shape*</code>, but the object knows its real type through the vptr.', parts: [cf(one(14, 'ok')), graph(1), vt(), { type: 'vars', label: 'Memory of *p (64-bit)', vals: { 'offset 0: vptr': '&vtable for ' + T + ' + 16', 'offset 8': T === 'Circle' ? 'double r = 1' : T === 'Square' ? 'double s = 2' : '(nothing)', 'sizeof': T === 'Shape' ? '8' : '16' } }] });
+        function dispatch(c, lineHl, why) {
+          var fn = target(c);
+          frames.push({ narr: (why || '') + '<code>' + c + '()</code> is <b>virtual</b>, so the compiler cannot hard-code the target. Step 1: load the vptr stored inside <code>*p</code>.', parts: [cf(lineHl), graph(2), vt()] });
+          frames.push({ narr: 'Step 2: <code>' + c + '</code> always lives at slot <b>' + VT[T][slotOf[c]][0] + '</b> in every table of this hierarchy. Read the function pointer there: <b>' + esc(VT[T][slotOf[c]][1]) + '</b>.', parts: [cf(lineHl), graph(2, fn), vt(slotOf[c], 'cur'), { type: 'text', label: 'Machine-level (x86-64)', html: '<code>mov rax, [rdi]</code> ; load vptr<br><code>call [rax + ' + ((slotOf[c] - 2) * 8) + ']</code> ; indirect call through slot' }] });
+          var h = {}; Object.keys(lineHl).forEach(function (k) { h[k] = lineHl[k]; }); h[fnLine[fn]] = 'ok';
+          output.push(res[fn]);
+          frames.push({ narr: 'Step 3: jump to <b>' + esc(fn) + '</b> with <code>this = p</code>. ' + (VT[T][slotOf[c]][1].indexOf('inherited') >= 0 ? T + ' did not override <code>' + c + '</code>, so its slot still holds the base version.' : '') + ' Result: <b>' + esc(res[fn]) + '</b>.', parts: [cf(h), graph(3, fn), vt(slotOf[c], 'ok'), out(output.join('\n'))] });
+        }
+        calls.forEach(function (c, i) {
+          var L = one(callLine[i], 'cur');
+          if (c === 'area' || c === 'name') dispatch(c, L);
+          else if (c === 'describe') {
+            var h = one(callLine[i], 'cur'); h[5] = 'sel';
+            frames.push({ narr: '<code>describe()</code> is <b>not virtual</b>: the compiler binds it statically to <b>Shape::describe</b> — a plain direct <code>call</code>, no vtable lookup. (Hiding a non-virtual function in a derived class would NOT change this call.)', parts: [cf(h), graph(1, 'Shape::describe'), vt(), { type: 'text', label: 'Machine-level', html: '<code>call Shape::describe</code> ; address known at link time' }] });
+            dispatch('name', h, 'Inside <code>describe</code>, <code>name()</code> means <code>this-&gt;name()</code>, a virtual call. ');
+            dispatch('area', h, 'Next, <code>this-&gt;area()</code>: also virtual. ');
+          } else {
+            var dh = one(callLine[i], 'bad');
+            frames.push({ narr: '<code>delete p</code>: the destructor is virtual, so delete goes through slot <b>[1] (deleting destructor)</b> of ' + T + '\'s vtable. That runs the right destructor chain and then frees memory with the right size.', parts: [cf(dh), graph(2, '~' + T + '()'), vt(3, 'bad')] });
+            var chain = T === 'Shape' ? ['~Shape()'] : ['~' + T + '()', '~Shape()'];
+            frames.push({ narr: 'Destructors run from most-derived to base: <b>' + chain.join(' → ') + '</b>, then <code>operator delete</code>. Without a virtual destructor only <code>~Shape</code> would run (undefined behaviour — topic 6).', parts: [cf(dh), { type: 'stack', label: 'Destructor calls (top runs first)', items: chain.slice().reverse(), hl: one(chain.length - 1, 'bad') }, out(output.join('\n'))] });
+          }
+        });
+        frames.push({ narr: 'Summary: every virtual call = <b>load vptr → load slot → indirect call</b>. Two memory loads plus a jump the CPU must predict. The caller only ever knew <code>Shape*</code>.', parts: [{ type: 'table', label: 'Calls made', columns: ['call', 'binding', 'ran'], rows: calls.map(function (c) { return [c === 'delete' ? 'delete p' : 'p->' + c + '()', c === 'describe' ? 'static (non-virtual)' : 'dynamic (vtable)', c === 'describe' ? 'Shape::describe' : c === 'delete' ? '~' + T : target(c)]; }) }, out(output.join('\n'))] });
+        return frames;
+      }
+    },
+    examples: [
+      {
+        title: 'Predict the output: forgetting virtual',
+        html: `<p>With <code>speak()</code> <b>not</b> virtual, <code>a-&gt;speak()</code> is bound to <code>Animal::speak</code> at compile time, because <code>a</code>'s declared type is <code>Animal*</code>. The derived function merely <b>hides</b> the base one; it does not override it. Output: <b>"..."</b>. Add <code>virtual</code> and the output becomes <b>"Woof"</b>.</p>
+          ${H.table(['speak() is…', 'd.speak()', 'a-&gt;speak()'], [['non-virtual', 'Woof', H.c('r', '...')], ['virtual', 'Woof', H.c('g', 'Woof')]])}`,
+        code: R`
+          struct Animal { void speak() const { std::cout << "...\n"; } };         // NOT virtual
+          struct Dog : Animal { void speak() const { std::cout << "Woof\n"; } };  // hides, does not override
+          int main() {
+              Dog d;
+              Animal* a = &d;
+              d.speak();    // Woof   (static type Dog)
+              a->speak();   // ...    (static type Animal, no dynamic dispatch)
+          }
+        `
+      },
+      {
+        title: '<code>override</code> catches the missing const',
+        html: `<p>The base declares <code>virtual double area() const</code>. A derived class writes <code>double area()</code> (no <code>const</code>). Without <code>override</code> this compiles: it is a <b>new, unrelated</b> function, and calls through <code>Shape*</code> still go to <code>Shape::area</code> — a silent bug. With <code>override</code> the compiler says <i>"marked 'override', but does not override"</i>. The commented line below would be that compile error.</p>`,
+        code: R`
+          struct Shape { virtual ~Shape() = default; virtual double area() const { return 0; } };
+          struct Bad : Shape {
+              double area() { return 42; }               // compiles, but does NOT override (no const)
+          };
+          struct Good : Shape {
+              double area() const override { return 42; }
+              // double area() override { return 42; }  // error: marked 'override', but does not override
+          };
+          int main() { Bad b; Shape& s = b; std::cout << s.area() << '\n'; }   // prints 0, not 42
+        `
+      },
+      {
+        title: 'Predict the output: default arguments are static',
+        html: `<p>Default arguments are filled in by the compiler at the <b>call site</b>, using the <b>static type</b>. The function body is chosen dynamically. So <code>p-&gt;f()</code> runs <code>Derived::f</code> but with <code>Base</code>'s default <code>x = 1</code>. Output: <b>"Derived 1"</b>. Core Guidelines C.140: do not give different default arguments to a virtual function and its overrider.</p>`,
+        code: R`
+          struct Base { virtual ~Base() = default; virtual void f(int x = 1) const { std::cout << "Base " << x << '\n'; } };
+          struct Derived : Base { void f(int x = 2) const override { std::cout << "Derived " << x << '\n'; } };
+          int main() {
+              Derived d;
+              Base* p = &d;
+              p->f();   // Derived 1   <- body from Derived, default from Base
+              d.f();    // Derived 2
+          }
+        `
+      },
+      {
+        title: 'The vptr shows up in sizeof',
+        html: `${H.table(['Type', 'Members', 'sizeof on x86-64'], [['<code>struct A { int x; }</code>', 'int', '4'], ['<code>struct B { int x; virtual void f(); }</code>', 'vptr + int + padding', '16'], ['<code>struct C : B { int y; }</code>', 'vptr + x + y', '16 (y fits in the padding)'], ['<code>struct E { virtual void f(); virtual void g(); }</code>', 'one vptr, no matter how many virtuals', '8']])}<p>The number of virtual functions changes the <b>vtable</b> size (shared per class), never the <b>object</b> size.</p>`,
+        code: R`
+          struct A { int x; };
+          struct B { int x; virtual void f() {} };
+          struct E { virtual void f() {} virtual void g() {} };
+          static_assert(sizeof(A) == 4);
+          static_assert(sizeof(B) == 16);   // on 64-bit Itanium ABI (Linux/macOS)
+          static_assert(sizeof(E) == 8);
+        `
+      }
+    ],
+    deepDive: `<p><b>Itanium C++ ABI layout</b> (Linux, macOS, Android; MSVC differs in details). The vtable contains, before the address the vptr points to: the <i>offset-to-top</i> (for multiple inheritance) and the <i>RTTI pointer</i> (used by <code>typeid</code> and <code>dynamic_cast</code>). Each virtual destructor gets <b>two</b> entries: the <i>complete-object</i> destructor (D1) and the <i>deleting</i> destructor (D0) that also calls <code>operator delete</code> with the right size. Inspect real layouts with <code>g++ -fdump-lang-class</code> or <code>clang -Xclang -fdump-vtable-layouts</code>.</p>
+      <p><b>Multiple inheritance</b> gives an object <b>several vptrs</b> (one per polymorphic base subobject). Converting <code>Derived*</code> to the second base adjusts the pointer by an offset, and overriders reached through the second base go through small <b>thunks</b> that fix up <code>this</code>. <b>Virtual inheritance</b> adds virtual-base offsets to the vtable. During construction, the vptr is set <b>for each level</b> in turn (Base's table while Base's constructor runs, then Derived's), which is why virtual calls in constructors do not reach derived overrides.</p>
+      <p><b>Performance.</b> A predicted indirect call costs about the same as a direct call; a mispredicted one costs ~15–20 cycles. The real cost is lost <b>inlining</b> (no constant folding, no vectorization across the call). Compilers <b>devirtualize</b> when they can prove the dynamic type: the class or function is <code>final</code>, the object is a local of known type, or LTO/whole-program analysis sees all derived classes (<code>-fwhole-program-vtables</code>, speculative devirtualization with a type check + inlined fast path).</p>
+      <p><b>Alternatives:</b> CRTP (static polymorphism, zero overhead, no heterogeneous containers), <code>std::variant</code> + <code>std::visit</code> (closed set of types, value semantics, often faster thanks to contiguous storage), type erasure (<code>std::function</code>, <code>std::any</code>, C++26 <code>std::function_ref</code>), and "data-oriented" designs that keep one array per type and avoid per-object dispatch entirely (common in game engines). C++23 <b>deducing this</b> (<code>this auto&amp; self</code>) simplifies CRTP.</p>
+      <p><b>Security.</b> vptr overwrites are a classic exploit primitive (heap overflow → fake vtable). Mitigations: Clang CFI (<code>-fsanitize=cfi-vcall</code>), MSVC Control Flow Guard, and hardware like Intel CET / ARM pointer authentication, which Apple uses to sign vtable pointers on arm64e.</p>`,
+    aiEra: `<p><b>What AI changes:</b> assistants reach for inheritance hierarchies by default, even when a <code>std::variant</code> or a simple function table would be clearer and faster. They also generate overrides without <code>override</code>, so a missing <code>const</code> silently creates a new function.</p>
+      <p><b>Use AI as a partner:</b> <code>Show me the Itanium vtable layout for these three classes and annotate each slot.</code> Then verify with <code>g++ -fdump-lang-class</code>. Or: <code>Rewrite this virtual hierarchy using std::variant and std::visit, and list what we lose (open extension) and gain (no heap, no vptr).</code></p>
+      <p><b>Where AI goes wrong:</b> claiming each object stores a copy of the vtable (it stores only a pointer), claiming virtual calls are "always slow", mixing up overriding and hiding, and forgetting that default arguments and overload resolution use the static type.</p>
+      <p><b>What you must still own:</b> drawing object → vptr → vtable → function from memory, predicting which function runs for any combination of declared and dynamic type, and choosing between runtime polymorphism, compile-time polymorphism and variants. This is a guaranteed C++ interview question at every level.</p>`,
+    problems: [
+      {
+        title: 'Total Area of Mixed Shapes: Replace the Switch with Virtual Dispatch',
+        level: 'Easy', tags: ['virtual functions', 'polymorphism', 'override'], companies: ['Amazon', 'Adobe', 'Siemens'],
+        statement: `<p>A legacy codebase stores shapes as a struct with a <code>kind</code> enum and computes area with a <code>switch</code>. Every new shape means editing every switch in the codebase. Redesign with an abstract-enough base <code>Shape</code> with a virtual <code>area()</code>, implement <code>Circle</code>, <code>Rect</code> and <code>Triangle</code>, and write <code>double totalArea(const std::vector&lt;std::unique_ptr&lt;Shape&gt;&gt;&amp;)</code>.</p>`,
+        constraints: `<p>Up to 10<sup>5</sup> shapes. Adding a new shape must not require editing <code>totalArea</code>.</p>`,
+        example: `<p>Shapes: Circle(r=1), Rect(2×3), Triangle(base 4, height 5). Areas: ${H.c('b', '3.14159')} + ${H.c('g', '6')} + ${H.c('y', '10')} = <b>19.14159</b>. The loop body is just <code>sum += s-&gt;area()</code>; each call dispatches through the object's vptr.</p>`,
+        brute: {
+          why: `<p>The enum + switch approach works but violates the open/closed principle: adding <code>Hexagon</code> means editing every <code>switch</code> (area, perimeter, draw, serialize…). Forgetting one case is a silent bug (unless you use <code>-Wswitch</code>), and the struct carries fields that only some kinds use.</p>`,
+          code: R`
+            #include <vector>
+            enum class Kind { Circle, Rect, Triangle };
+            struct ShapeData { Kind kind; double a, b; };          // meaning of a, b depends on kind
+            double totalArea(const std::vector<ShapeData>& v) {
+                double sum = 0;
+                for (const auto& s : v) {
+                    switch (s.kind) {                               // must be edited for every new shape
+                        case Kind::Circle:   sum += 3.14159 * s.a * s.a; break;
+                        case Kind::Rect:     sum += s.a * s.b;           break;
+                        case Kind::Triangle: sum += 0.5 * s.a * s.b;     break;
+                    }
+                }
+                return sum;
+            }
+          `
+        },
+        mcq: { q: 'In <code>for (auto&amp; s : shapes) sum += s-&gt;area();</code> with <code>shapes</code> holding <code>unique_ptr&lt;Shape&gt;</code>, how is the right <code>area</code> found?', options: ['Through the vptr inside each object, indexing the area slot of that object\'s class vtable', 'By the compiler inspecting the vector at compile time', 'By a hidden switch on a type id', 'Through RTTI and dynamic_cast on each element'], answer: 0, explain: 'Each object carries a vptr to its class\'s vtable; the call loads the pointer at the fixed area slot and calls it. No switch, no RTTI lookup.' },
+        hints: [
+          `<p>Hint 1: put the behaviour that varies (<code>area</code>) behind a <code>virtual</code> function in the base; give the base a <b>virtual destructor</b> because you will delete through <code>Shape*</code>.</p>`,
+          `<p>Hint 2: each derived class stores only its own fields and overrides <code>area() const override</code>.</p>`,
+          `<p>Hint 3: store <code>std::unique_ptr&lt;Shape&gt;</code> in the vector (not <code>Shape</code> by value — that slices). <code>totalArea</code> just sums <code>s-&gt;area()</code>.</p>`
+        ],
+        solution: {
+          approach: `<p>Classic runtime polymorphism: an interface-like base with a pure or default virtual <code>area()</code>, one class per shape, heterogeneous container of owning base pointers. New shapes are added by writing a new class; <code>totalArea</code> never changes.</p>`,
+          code: R`
+            #include <iostream>
+            #include <memory>
+            #include <vector>
+            struct Shape {
+                virtual ~Shape() = default;
+                virtual double area() const = 0;                 // every shape must say its area
+            };
+            struct Circle final : Shape {
+                double r;
+                explicit Circle(double r_) : r(r_) {}
+                double area() const override { return 3.14159 * r * r; }
+            };
+            struct Rect final : Shape {
+                double w, h;
+                Rect(double w_, double h_) : w(w_), h(h_) {}
+                double area() const override { return w * h; }
+            };
+            struct Triangle final : Shape {
+                double base, height;
+                Triangle(double b, double h) : base(b), height(h) {}
+                double area() const override { return 0.5 * base * height; }
+            };
+            double totalArea(const std::vector<std::unique_ptr<Shape>>& shapes) {
+                double sum = 0;
+                for (const auto& s : shapes) sum += s->area();   // dynamic dispatch, no switch
+                return sum;
+            }
+            int main() {
+                std::vector<std::unique_ptr<Shape>> v;
+                v.push_back(std::make_unique<Circle>(1));
+                v.push_back(std::make_unique<Rect>(2, 3));
+                v.push_back(std::make_unique<Triangle>(4, 5));
+                std::cout << totalArea(v) << '\n';               // 19.1416
+            }
+          `,
+          dry: { head: ['Element', 'Dynamic type', 'vtable slot area →', 'area()', 'sum'], rows: [
+            ['v[0]', 'Circle', 'Circle::area', '3.14159', '3.14159'],
+            ['v[1]', 'Rect', 'Rect::area', '6', '9.14159'],
+            ['v[2]', 'Triangle', 'Triangle::area', '10', H.c('g', '19.14159')]
+          ] },
+          complexity: `<p>O(N) time, one indirect call per shape. Memory: one heap allocation + 8-byte vptr per shape. If profiling shows the dispatch matters, group shapes by type or switch to <code>std::variant</code>.</p>`,
+          followUps: ['Add <code>perimeter()</code> and a <code>Hexagon</code> — which files change?', 'Implement the same with <code>std::variant&lt;Circle, Rect, Triangle&gt;</code> and <code>std::visit</code>.', 'Why is <code>final</code> on the leaf classes useful for the optimizer?']
+        }
+      }
+    ]
+  });
+
+  /* ======================================================================
+     TOPIC 5 — Pure virtual functions & abstract classes (interfaces)
+     ====================================================================== */
+  topics.push({
+    title: 'Pure Virtual Functions & Abstract Classes: Contracts You Cannot Instantiate',
+    analogy: `<p>A <b>job description</b> for "Driver" says: <i>must be able to start(), steer(), and park()</i>. You cannot hire "a job description" — there is no person in it. You can only hire a real person (a <b>TruckDriver</b>, a <b>TaxiDriver</b>) who can actually do every item on the list. If a candidate can start and steer but cannot park, they are still not hireable.</p>
+      <p>A <b>pure virtual function</b> (<code>= 0</code>) is one line of the job description. A class with at least one unfilled line is <b>abstract</b>: you cannot create objects of it, but you can talk about "any Driver" through a <code>Driver&amp;</code> or <code>Driver*</code>.</p>`,
+    explain: `<p>Write <code>= 0</code> after a virtual function declaration to make it <b>pure virtual</b>: "every concrete subclass <b>must</b> provide this".</p>
+      <ul>
+        <li>A class with at least one pure virtual function (declared or inherited and not yet overridden) is an <b>abstract class</b>.</li>
+        <li>You <b>cannot create objects</b> of an abstract class: <code>Animal a;</code> and <code>new Animal</code> are compile errors. But <code>Animal&amp;</code>, <code>Animal*</code> and <code>std::unique_ptr&lt;Animal&gt;</code> are fine — that is the whole point.</li>
+        <li>A derived class stays abstract until <b>every</b> pure virtual function has a final overrider. The compiler error tells you which one is missing.</li>
+        <li>Abstract classes can still have <b>data members, constructors, and normal functions</b>. Only the pure ones are "holes".</li>
+      </ul>
+      ${H.table(['Class', 'speak()', 'move()', 'Can you write <code>X obj;</code>?'], [
+        ['Animal', H.c('r', '= 0'), H.c('r', '= 0'), H.c('r', 'no — abstract')],
+        ['Dog : Animal', H.c('g', 'Dog::speak'), H.c('r', '= 0 (inherited)'), H.c('r', 'no — still abstract')],
+        ['Puppy : Dog', 'Dog::speak', H.c('g', 'Puppy::move'), H.c('g', 'yes — concrete')]
+      ])}
+      <p><b>Interfaces in C++.</b> C++ has no <code>interface</code> keyword. The idiom is a class with <b>only</b> pure virtual functions plus a <b>virtual destructor</b> (so <code>delete</code> through the interface works), and usually no data. A class can implement several interfaces through multiple inheritance — that is the "safe" use of multiple inheritance.</p>
+      <p><b>Two surprising facts interviewers love:</b></p>
+      <ol>
+        <li>A pure virtual function <b>can have a body</b>. Derived classes must still override it, but they can call the base version explicitly: <code>Base::f()</code>. Useful for "here is a sensible default, but you must opt in".</li>
+        <li>A <b>pure virtual destructor</b> (<code>virtual ~Base() = 0;</code>) makes a class abstract when it has no other natural pure function — but it <b>must</b> still be defined (<code>Base::~Base() {}</code>), because every derived destructor calls it. Forgetting the definition is a <b>linker error</b>.</li>
+      </ol>`,
+    clues: [
+      '"Design an interface for payment methods / storage backends / notification channels" → abstract base with pure virtuals + virtual destructor',
+      '"Can an abstract class have a constructor? data members?" → yes, both; it just cannot be instantiated directly',
+      '"Why do I get <i>cannot declare variable to be of abstract type</i>?" → some pure virtual is not overridden (check const/signature)',
+      '"Can a pure virtual function have a body?" → yes; call it with <code>Base::f()</code>',
+      '"pure virtual method called" crash at runtime → a pure virtual was called during construction/destruction',
+      '"Dependency injection / mock this dependency in tests" → program against an abstract interface',
+      '"Template Method / NVI pattern" → public non-virtual function calling private pure virtual hooks'
+    ],
+    code: [R`
+      #include <iostream>
+      #include <memory>
+      #include <string>
+      #include <vector>
+
+      // An "interface": only pure virtual functions + a virtual destructor.
+      class Notifier {
+      public:
+          virtual ~Notifier() = default;
+          virtual void send(const std::string& to, const std::string& msg) = 0;   // pure virtual
+          virtual std::string channel() const = 0;
+      };
+
+      class EmailNotifier final : public Notifier {
+      public:
+          void send(const std::string& to, const std::string& msg) override {
+              std::cout << "[email to " << to << "] " << msg << '\n';
+          }
+          std::string channel() const override { return "email"; }
+      };
+
+      class SmsNotifier final : public Notifier {
+      public:
+          void send(const std::string& to, const std::string& msg) override {
+              std::cout << "[sms to " << to << "] " << msg.substr(0, 160) << '\n';   // SMS length limit
+          }
+          std::string channel() const override { return "sms"; }
+      };
+
+      // Code that depends ONLY on the contract. It never names a concrete class.
+      void alertAll(std::vector<std::unique_ptr<Notifier>>& ns, const std::string& who) {
+          for (auto& n : ns) n->send(who, "Your order shipped via " + n->channel());
+      }
+
+      int main() {
+          std::vector<std::unique_ptr<Notifier>> ns;
+          ns.push_back(std::make_unique<EmailNotifier>());
+          ns.push_back(std::make_unique<SmsNotifier>());
+          alertAll(ns, "asha");
+          // Notifier n;   // error: cannot declare variable 'n' to be of abstract type 'Notifier'
+      }
+    `, R`
+      // Pure virtual WITH a body, and a pure virtual destructor (must be defined!).
+      #include <iostream>
+      struct Shape {
+          virtual ~Shape() = 0;                         // pure virtual destructor: makes Shape abstract
+          virtual void draw() const = 0;                // pure, but has a default body below
+      };
+      Shape::~Shape() {}                                // REQUIRED definition, or the linker fails
+      void Shape::draw() const { std::cout << "generic outline\n"; }
+
+      struct Circle : Shape {
+          void draw() const override {
+              Shape::draw();                            // reuse the base body explicitly
+              std::cout << "fill circle\n";
+          }
+      };
+      int main() { Circle c; c.draw(); }
+    `],
+    codeTitle: ['Interface + two implementations + code that only knows the interface', 'Pure virtual functions with bodies'],
+    viz: {
+      title: 'Abstract or concrete? Track the final overrider of every pure function',
+      input: 'Dog: speak; Puppy: move',
+      inputLabel: 'Overrides per class: "Dog: speak; Puppy: move" (functions: speak, move, eat; classes: Dog, Puppy)',
+      gen: function (input) {
+        var s = String(input || '').trim();
+        if (s.length > 80) throw new Error('Keep the input short, e.g. "Dog: speak; Puppy: move"');
+        var ov = { Dog: [], Puppy: [] }, FN = ['speak', 'move', 'eat'];
+        if (s) s.split(';').map(function (x) { return x.trim(); }).filter(Boolean).forEach(function (seg) {
+          var m = seg.match(/^(Dog|Puppy)\s*:\s*([a-z,\s]*)$/i);
+          if (!m) throw new Error('Format: "Dog: speak; Puppy: move eat"');
+          var cls = m[1].charAt(0).toUpperCase() + m[1].slice(1).toLowerCase();
+          m[2].split(/[\s,]+/).filter(Boolean).forEach(function (f) {
+            f = f.toLowerCase();
+            if (FN.indexOf(f) < 0) throw new Error('Unknown function "' + f + '" — use speak, move, eat');
+            if (ov[cls].indexOf(f) < 0) ov[cls].push(f);
+          });
+        });
+        var fo = { speak: 'Animal::speak = 0', move: 'Animal::move = 0', eat: 'Animal::eat (has body, NOT pure)' };
+        var pure = { speak: true, move: true, eat: false };
+        var frames = [], classes = ['Animal', 'Dog', 'Puppy'], status = {};
+        function rows() { return FN.map(function (f) { return [f + '()', fo[f], pure[f] ? 'pure → hole' : 'implemented']; }); }
+        function hl() { var h = {}; FN.forEach(function (f, i) { h[i] = pure[f] ? 'bad' : 'ok'; }); return h; }
+        function graph(cur) {
+          var hlg = {}, tags = {};
+          classes.forEach(function (c) { if (status[c] !== undefined) { hlg[c] = status[c] ? 'bad' : 'ok'; tags[c] = status[c] ? 'abstract' : 'concrete'; } });
+          if (cur) hlg[cur] = status[cur] ? 'bad' : 'cur';
+          return { type: 'graph', label: 'Inheritance chain', directed: true, height: 22, nodes: [{ id: 'Animal', x: 15, y: 9, shape: 'box' }, { id: 'Dog', x: 50, y: 9, shape: 'box' }, { id: 'Puppy', x: 85, y: 9, shape: 'box' }], edges: [['Dog', 'Animal', 'is-a'], ['Puppy', 'Dog', 'is-a']], hl: hlg, tags: tags };
+        }
+        function codeFor() {
+          var L = ['struct Animal {', '    virtual ~Animal() = default;', '    virtual void speak() const = 0;', '    virtual void move() const = 0;', '    virtual void eat() const { /* default body */ }', '};', 'struct Dog : Animal {'];
+          ov.Dog.forEach(function (f) { L.push('    void ' + f + '() const override;'); });
+          L.push('};', 'struct Puppy : Dog {');
+          ov.Puppy.forEach(function (f) { L.push('    void ' + f + '() const override;'); });
+          L.push('};');
+          return L.join('\n');
+        }
+        var code = codeFor();
+        status.Animal = true;
+        frames.push({ narr: '<b>Animal</b> declares <code>speak</code> and <code>move</code> as <code>= 0</code> (pure) and gives <code>eat</code> a body. Two holes → Animal is <b>abstract</b>. You may write <code>Animal*</code> or <code>Animal&amp;</code>, but never <code>Animal a;</code>.', parts: [{ type: 'code', label: 'Hierarchy', lang: 'cpp', code: code, hl: { 3: 'bad', 4: 'bad', 5: 'ok' } }, graph('Animal'), { type: 'table', label: 'Final overrider so far', columns: ['function', 'final overrider', 'state'], rows: rows(), hl: hl() }] });
+        ['Dog', 'Puppy'].forEach(function (c) {
+          ov[c].forEach(function (f) { fo[f] = c + '::' + f; pure[f] = false; });
+          var holes = FN.filter(function (f) { return pure[f]; });
+          status[c] = holes.length > 0;
+          frames.push({ narr: '<b>' + c + '</b> overrides: ' + (ov[c].length ? '<b>' + esc(ov[c].join(', ')) + '</b>' : '<i>nothing</i>') + '. ' + (holes.length ? 'Still pure: <b>' + esc(holes.join(', ')) + '</b> → ' + c + ' is <span class="c-r">abstract</span> too.' : 'No holes left → ' + c + ' is <span class="c-g">concrete</span>: objects can be created.'), parts: [{ type: 'code', label: 'Hierarchy', lang: 'cpp', code: code }, graph(c), { type: 'table', label: 'Final overrider so far', columns: ['function', 'final overrider', 'state'], rows: rows(), hl: hl() }] });
+        });
+        var tests = [['Animal a;', status.Animal], ['Dog d;', status.Dog], ['Puppy p;', status.Puppy], ['Animal* x = new Puppy;', status.Puppy], ['Animal& r = someDog;', false]];
+        frames.push({ narr: 'Now try to create objects. The compiler checks whether the class has any pure virtual function without a final overrider. Pointers and references to abstract types are <b>always</b> allowed.', parts: [graph(), { type: 'table', label: 'Does it compile?', columns: ['statement', 'result'], rows: tests.map(function (t) { return [t[0], t[1] ? 'error: abstract type' : 'OK']; }), hl: (function () { var h = {}; tests.forEach(function (t, i) { h[i] = t[1] ? 'bad' : 'ok'; }); return h; })() }] });
+        var concrete = classes.filter(function (c) { return !status[c]; });
+        frames.push({ narr: concrete.length ? 'Concrete classes: <b>' + concrete.join(', ') + '</b>. A call like <code>animalPtr-&gt;speak()</code> on a ' + concrete[concrete.length - 1] + ' dispatches to <b>' + esc(fo.speak) + '</b>.' : 'No class is concrete yet. Add overrides (e.g. <code>Dog: speak; Puppy: move</code>) until every pure function has an overrider.', parts: [{ type: 'table', label: 'vtable of the most-derived class (pure slots point to __cxa_pure_virtual)', columns: ['slot', 'entry'], rows: [['~', '~Puppy'], ['speak', pure.speak ? '__cxa_pure_virtual' : fo.speak], ['move', pure.move ? '__cxa_pure_virtual' : fo.move], ['eat', fo.eat.replace(' (has body, NOT pure)', '')]], hl: { 1: pure.speak ? 'bad' : 'ok', 2: pure.move ? 'bad' : 'ok', 3: 'ok' } }, note('An abstract class\'s vtable fills pure slots with <code>__cxa_pure_virtual</code>, a function that prints <b>"pure virtual method called"</b> and aborts. You can only reach it by calling a pure virtual function during construction or destruction of the base.', 'Under the hood')] });
+        return frames;
+      }
+    },
+    examples: [
+      {
+        title: 'The missing const keeps the class abstract',
+        html: `<p>Base: <code>virtual double area() const = 0;</code>. Derived writes <code>double area() override</code> without <code>const</code>... with <code>override</code> you get a clear error. Without <code>override</code>, the derived function is a new overload, <code>area() const</code> is still pure, and you get the confusing error <i>"cannot declare variable 'c' to be of abstract type 'Circle'"</i> at the place where you create the object. Lesson: always write <code>override</code>.</p>`,
+        code: R`
+          struct Shape { virtual ~Shape() = default; virtual double area() const = 0; };
+          struct Circle : Shape {
+              double r = 1;
+              double area() const override { return 3.14159 * r * r; }   // const matches -> overrides
+          };
+          int main() { Circle c; Shape& s = c; std::cout << s.area() << '\n'; }
+        `
+      },
+      {
+        title: 'Programming to an interface makes testing easy',
+        html: `<p><code>Checkout</code> needs to charge cards. If it depends on the abstract <code>PaymentGateway</code>, a unit test can pass a <code>FakeGateway</code> that records calls and never touches the network. Real production code passes <code>StripeGateway</code>. This is <b>dependency inversion</b> (the D in SOLID) and how mocking frameworks like GoogleMock work: they generate a class overriding your pure virtuals.</p>`,
+        code: R`
+          struct PaymentGateway {
+              virtual ~PaymentGateway() = default;
+              virtual bool charge(const std::string& card, long cents) = 0;
+          };
+          struct FakeGateway final : PaymentGateway {
+              std::vector<long> charged;
+              bool charge(const std::string&, long cents) override { charged.push_back(cents); return true; }
+          };
+          class Checkout {
+              PaymentGateway& gw_;                       // depends on the contract only
+          public:
+              explicit Checkout(PaymentGateway& gw) : gw_(gw) {}
+              bool pay(long cents) { return cents > 0 && gw_.charge("4242", cents); }
+          };
+          int main() { FakeGateway fake; Checkout c(fake); c.pay(1999); std::cout << fake.charged.size() << '\n'; }   // 1
+        `
+      },
+      {
+        title: 'Non-Virtual Interface (NVI): public non-virtual, private virtual',
+        html: `<p>The base controls the <b>algorithm skeleton</b> (logging, locking, validation) in a public non-virtual function, and derived classes only fill in private pure virtual <b>hooks</b>. Derived classes can override private virtuals — access control and overriding are independent. This is the Template Method pattern, and Herb Sutter's recommended default for C++ class hierarchies.</p>`,
+        code: R`
+          class Report {
+          public:
+              void print() const {                      // non-virtual: base owns the skeleton
+                  std::cout << "== header ==\n";
+                  body();                               // hook
+                  std::cout << "== footer ==\n";
+              }
+              virtual ~Report() = default;
+          private:
+              virtual void body() const = 0;            // derived classes fill this in
+          };
+          class SalesReport final : public Report {
+              void body() const override { std::cout << "sales: 42\n"; }
+          };
+          int main() { SalesReport r; r.print(); }
+        `
+      },
+      {
+        title: 'Predict the crash: calling a pure virtual from the base constructor',
+        html: `<p>While <code>Base</code>'s constructor runs, the object's vptr points to <b>Base</b>'s vtable, whose <code>init</code> slot holds <code>__cxa_pure_virtual</code>. Calling <code>init()</code> <b>indirectly</b> (through a helper, so the compiler cannot warn) prints <b>"pure virtual method called"</b> and terminates. Calling it directly in the constructor is undefined behaviour that GCC usually diagnoses. Fix: do two-phase init through a factory, or pass the needed data into the base constructor.</p>`,
+        code: R`
+          struct Base {
+              Base() { setup(); }                       // calls a pure virtual indirectly -> abort at runtime
+              void setup() { init(); }
+              virtual void init() = 0;
+              virtual ~Base() = default;
+          };
+          struct Derived : Base { void init() override { std::cout << "never reached from Base()\n"; } };
+          // int main() { Derived d; }               // would print: pure virtual method called / terminate
+        `
+      }
+    ],
+    deepDive: `<p><b>"Abstract" is decided by final overriders.</b> [class.abstract]: a class is abstract if it has at least one pure virtual function for which the final overrider is pure. Overriding a non-pure virtual with a pure one (<code>void f() override = 0;</code>) is legal and makes the derived class abstract again — useful to force grandchildren to re-implement something.</p>
+      <p><b>Pure virtual destructor</b>: unlike other pure virtuals, it must be defined, because destructor chains call every base destructor explicitly (non-virtually). The definition goes outside the class: either <code>Base::~Base() {}</code> or <code>Base::~Base() = default;</code> (an out-of-line defaulted definition is allowed). The typical use: a base class that has no other natural pure function but must not be instantiated.</p>
+      <p><b>Cost of interfaces.</b> An empty interface adds a vptr to each object. Implementing several interfaces adds one vptr per polymorphic base (multiple inheritance), so a class implementing 3 interfaces carries 3 vptrs (24 bytes) and pointer conversions between them adjust <code>this</code>. The Empty Base Optimization does not apply to polymorphic bases.</p>
+      <p><b>Linker gotcha: the "key function".</b> In the Itanium ABI, a class's vtable is emitted in the translation unit that defines its <b>first non-inline, non-pure virtual function</b> (the key function). If you declare it but never define it, you get the infamous <i>undefined reference to 'vtable for X'</i>. Defining everything inline makes the vtable emitted in every TU (as a weak/COMDAT symbol).</p>
+      <p><b>Abstract classes vs concepts.</b> C++20 concepts express "has a <code>send(string, string)</code> member" at compile time with zero runtime cost and no inheritance, but they do not give you a heterogeneous container. Rule of thumb: <b>runtime choice of implementation</b> (plugins, config-driven backends, mocks) → abstract base class; <b>compile-time genericity</b> (algorithms over many types) → templates + concepts. Big codebases often combine them: a concept-constrained template wrapped in a type-erased runtime interface.</p>`,
+    aiEra: `<p><b>What AI changes:</b> generating an interface plus three implementations plus a GoogleMock mock is now seconds of work, so the bottleneck shifts to <i>deciding the contract</i>: what goes in the interface, at what granularity, with what error semantics. Bloated interfaces (20 pure virtuals "just in case") are the most common AI-generated design smell.</p>
+      <p><b>Use AI as a partner:</b> <code>Given these 3 call sites, propose the smallest interface they need (Interface Segregation). Explain each method.</code> Or: <code>Write a GoogleMock class for this interface and one test using EXPECT_CALL.</code></p>
+      <p><b>Where AI goes wrong:</b> omitting the virtual destructor on the interface, writing <code>virtual ~Base() = 0;</code> without the out-of-line definition (linker error), forgetting <code>const</code> so the "implementation" does not override, and using an abstract class where a <code>std::function</code> callback or a concept would be simpler.</p>
+      <p><b>What you must still own:</b> knowing exactly when a class is abstract, explaining why abstract classes can have constructors and data, recognising the "pure virtual method called" crash, and choosing between abstract interfaces, concepts and type erasure in a design discussion.</p>`,
+    problems: [
+      {
+        title: 'Design a Pluggable Logger Interface',
+        level: 'Medium', tags: ['abstract class', 'pure virtual', 'interface', 'dependency injection'], companies: ['Microsoft', 'Uber', 'Atlassian'],
+        statement: `<p>Create an abstract <code>Logger</code> with pure virtual <code>void write(Level, std::string_view)</code> and a <b>non-virtual</b> convenience API <code>info(msg)</code> / <code>error(msg)</code> that filters by a minimum level stored in the base. Implement <code>ConsoleLogger</code> (prints) and <code>MemoryLogger</code> (stores lines for tests). A <code>Service</code> must receive a <code>Logger&amp;</code> and log through it without knowing the concrete type.</p>`,
+        constraints: `<p>Logger must not be instantiable. Deleting a logger through <code>Logger*</code> must be safe. Filtering logic must exist in exactly one place.</p>`,
+        example: `<p><code>MemoryLogger m(Level::Error); Service s(m); s.run();</code> where run() logs one info and one error → ${H.c('g', 'm.lines == ["ERROR boom"]')} — the info line was ${H.c('r', 'filtered')} by the base class before <code>write</code> was ever called.</p>`,
+        brute: {
+          why: `<p>A concrete <code>Logger</code> class with a <code>bool toConsole</code> flag and if/else in every method: every new destination (file, syslog, network) means editing the class, tests cannot capture output without hacks, and filtering is duplicated in every branch.</p>`,
+          code: R`
+            #include <iostream>
+            #include <string>
+            #include <vector>
+            enum class Level { Info, Error };
+            class Logger {                                  // concrete "god" logger
+            public:
+                bool toConsole = true;
+                std::vector<std::string> memory;
+                void info(const std::string& m)  { if (toConsole) std::cout << "INFO " << m << '\n'; else memory.push_back("INFO " + m); }
+                void error(const std::string& m) { if (toConsole) std::cout << "ERROR " << m << '\n'; else memory.push_back("ERROR " + m); }
+            };
+          `
+        },
+        mcq: { q: 'Where should the level-filtering logic live?', options: ['In the base class\'s non-virtual info()/error(), before calling the pure virtual write()', 'Copied into every derived write()', 'In the Service class', 'In a global variable'], answer: 0, explain: 'This is the NVI / Template Method idea: the base owns the policy (filtering), derived classes only implement the varying step (where the text goes). One place to change, impossible to forget.' },
+        hints: [
+          `<p>Hint 1: the base class has data (<code>minLevel_</code>) and a constructor taking it — abstract classes may have both.</p>`,
+          `<p>Hint 2: make <code>write</code> a <code>protected</code> or <code>private</code> pure virtual; make <code>info</code>/<code>error</code> public and non-virtual; give the base a virtual destructor.</p>`,
+          `<p>Hint 3: <code>Service</code> stores <code>Logger&amp;</code>. Tests construct a <code>MemoryLogger</code> and inspect its <code>lines</code>. Mark leaf classes <code>final</code>.</p>`
+        ],
+        solution: {
+          approach: `<p>Abstract base = policy + contract. It stores the minimum level, exposes non-virtual <code>info</code>/<code>error</code> that filter and format, and calls the private pure virtual <code>write</code>. Each concrete logger implements only <code>write</code>. <code>Service</code> depends on <code>Logger&amp;</code> (dependency injection).</p>`,
+          code: R`
+            #include <iostream>
+            #include <string>
+            #include <string_view>
+            #include <vector>
+
+            enum class Level { Info = 0, Error = 1 };
+
+            class Logger {
+            public:
+                explicit Logger(Level min) : minLevel_(min) {}          // abstract classes can have ctors + data
+                virtual ~Logger() = default;
+                void info(std::string_view m)  { log(Level::Info, m); }  // non-virtual public API
+                void error(std::string_view m) { log(Level::Error, m); }
+            private:
+                void log(Level l, std::string_view m) {
+                    if (l < minLevel_) return;                           // filtering lives in ONE place
+                    write(l, m);
+                }
+                virtual void write(Level l, std::string_view m) = 0;    // the only varying step
+                Level minLevel_;
+            };
+
+            class ConsoleLogger final : public Logger {
+            public:
+                using Logger::Logger;                                   // inherit the constructor
+            private:
+                void write(Level l, std::string_view m) override {
+                    std::cout << (l == Level::Error ? "ERROR " : "INFO ") << m << '\n';
+                }
+            };
+
+            class MemoryLogger final : public Logger {
+            public:
+                using Logger::Logger;
+                std::vector<std::string> lines;
+            private:
+                void write(Level l, std::string_view m) override {
+                    lines.push_back(std::string(l == Level::Error ? "ERROR " : "INFO ") + std::string(m));
+                }
+            };
+
+            class Service {
+                Logger& log_;
+            public:
+                explicit Service(Logger& l) : log_(l) {}
+                void run() { log_.info("starting"); log_.error("boom"); }
+            };
+
+            int main() {
+                MemoryLogger m(Level::Error);
+                Service(m).run();
+                std::cout << m.lines.size() << ' ' << m.lines[0] << '\n';   // 1 ERROR boom
+                ConsoleLogger c(Level::Info);
+                Service(c).run();                                          // INFO starting / ERROR boom
+            }
+          `,
+          dry: { head: ['Call', 'log() level check (min = Error)', 'write() dispatched to', 'm.lines'], rows: [
+            ['<code>info("starting")</code>', H.c('r', 'Info &lt; Error → return'), '—', '[]'],
+            ['<code>error("boom")</code>', H.c('g', 'pass'), 'MemoryLogger::write (via vptr)', '["ERROR boom"]']
+          ] },
+          complexity: `<p>Each log call: O(1) level check + one virtual call + the cost of the sink. Filtered messages never reach the virtual call.</p>`,
+          followUps: ['Add a <code>FileLogger</code> that owns a <code>std::ofstream</code> — which special members must it declare? (none: Rule of Zero)', 'Make the logger thread-safe without touching derived classes.', 'Replace the interface with a <code>std::function&lt;void(Level, std::string_view)&gt;</code> sink. Trade-offs?']
+        }
+      }
+    ]
+  });
+
 registerModule({ id: 'cpp05', title: 'Advanced OOP', intro: '<p>x</p>', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();

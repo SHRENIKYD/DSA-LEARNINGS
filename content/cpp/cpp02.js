@@ -726,6 +726,538 @@ long long powerIter(long long base, long long exp, long long mod) {
     }]
   });
 
+  /* ======================================================================
+     TOPIC 4 — Pass by value, by reference, by const reference
+     ====================================================================== */
+  function passGraph(aLabel, xLabel, mode, hl, ehl) {
+    var edges = mode === 'value' ? [['a', 'x', 'copied']] : mode === 'ref' ? [['x', 'a', 'refers to']] : [];
+    return { type: 'graph', label: 'Memory: main\'s frame (left) vs the function\'s frame (right)', directed: true, height: 50,
+      nodes: [{ id: 'a', label: aLabel, x: 20, y: 25, shape: 'box', w: 26 }, { id: 'x', label: xLabel, x: 78, y: 25, shape: 'box', w: 30 }],
+      edges: edges, hl: hl || {}, ehl: ehl || {} };
+  }
+  topics.push({
+    title: 'Pass by Value vs Reference vs const Reference',
+    analogy: `<p>You want a friend to check your essay. <b>Pass by value</b> = you hand them a <b>photocopy</b>. They can scribble all over it; your original is untouched — but photocopying a 500-page book takes time. <b>Pass by reference</b> = you hand them your <b>original</b>. No copying, and any change they make is a change to <i>your</i> essay. <b>Pass by const reference</b> = you let them read the original <b>through a glass case</b>: no copying, and they physically cannot write on it. Choosing between these three is one of the most common C++ interview questions.</p>`,
+    explain: `<p>When you call a function, C++ has to decide what the parameter <b>is</b>: a brand-new copy of the argument, or another name for the argument itself.</p>
+<h4>1. Pass by value — the function gets a copy</h4>
+<pre><code>void bump(int x) { x += 10; }     // x is a COPY
+int a = 5;  bump(a);              // a is still 5</code></pre>
+<p>Safe (the caller's variable cannot change) and perfect for small types: <code>int</code>, <code>double</code>, <code>char</code>, <code>bool</code>, pointers, <code>string_view</code>. But copying a <code>vector&lt;int&gt;</code> of a million elements copies 4 MB <b>every call</b>.</p>
+<h4>2. Pass by reference — the function gets the original</h4>
+<pre><code>void bump(int&amp; x) { x += 10; }    // x is ANOTHER NAME for the argument
+int a = 5;  bump(a);              // a is now 15</code></pre>
+<p>A <b>reference</b> (<code>int&amp;</code>) is an <b>alias</b>: a second name for an existing variable. It must be bound when created and can never be re-pointed at something else. Use it when the function is <b>supposed</b> to change the caller's variable (<code>swap</code>, filling a result, sorting in place). You cannot pass a literal or a temporary to a plain <code>int&amp;</code>: <code>bump(5)</code> does not compile — there is no variable to change.</p>
+<h4>3. Pass by const reference — the original, read-only</h4>
+<pre><code>long long sum(const vector&lt;int&gt;&amp; v) {   // no copy, cannot modify
+    long long s = 0;
+    for (int x : v) s += x;
+    return s;
+}</code></pre>
+<p>The everyday choice for <b>big inputs you only read</b>: strings, vectors, maps, your own structs. It also accepts temporaries and literals: <code>sum({1, 2, 3})</code> and <code>print("hi")</code> with <code>const string&amp;</code> both work.</p>
+<h4>The decision table (memorise this)</h4>
+${H.table(['you want to…', 'small type (int, double, char)', 'big type (string, vector, struct)'], [['only read it', 'by value <code>int x</code>', 'by const ref <code>const vector&lt;int&gt;&amp; v</code>'], ['change the caller\'s variable', 'by ref <code>int&amp; x</code>', 'by ref <code>vector&lt;int&gt;&amp; v</code>'], ['get your own copy to modify locally', 'by value', 'by value (then it can be moved in — module A)'], ['produce a result', 'return it', 'return it (no copy thanks to RVO/move)']])}
+<h4>4. What about pointers?</h4>
+<p>You can also pass an address: <code>void bump(int* p) { *p += 10; }</code> called as <code>bump(&amp;a)</code>. It works like a reference but can be <code>nullptr</code> and needs <code>*</code> to reach the value. Modern C++ prefers references unless "nothing" is a valid input. Pointers get their own module next (C++ 3).</p>
+<h4>5. Range-for is the same decision</h4>
+<p><code>for (auto x : v)</code> copies each element, <code>for (auto&amp; x : v)</code> lets you modify, <code>for (const auto&amp; x : v)</code> reads without copying. Same three choices, same rule.</p>`,
+    clues: [
+      '"modify the array / string in place", "swap", "fill the result into" → pass by <b>non-const reference</b>',
+      '"given a large vector / string / matrix" that you only read → <b>const reference</b> (a by-value vector param in a recursive function = TLE/MLE)',
+      'Output question: a function changes its parameter and the caller prints the original → it was <b>by value</b>, nothing changed',
+      'Recursion on a big vector (DFS, backtracking) → pass the vector by <b>reference</b>, otherwise each call copies it: O(n) per call',
+      '"Why does <code>f(5)</code> not compile?" → a literal cannot bind to a non-const <code>int&amp;</code>',
+      '"returns a reference" + local variable → <b>dangling reference</b> bug'
+    ],
+    code: [R`#include <bits/stdc++.h>
+using namespace std;
+
+void byValue(int x)       { x += 10; }   // works on a copy
+void byRef(int& x)        { x += 10; }   // works on the caller's variable
+int  readOnly(const int& x) { return x * 2; }   // legal, but for int just use 'int x'
+
+// Big input, read only -> const reference: no copy, no accidental modification.
+long long total(const vector<int>& v) {
+    long long s = 0;
+    for (int x : v) s += x;
+    return s;
+}
+
+// Output through a reference parameter: the caller's vector is changed.
+void appendSquares(vector<int>& out, int n) {
+    for (int i = 1; i <= n; ++i) out.push_back(i * i);
+}
+
+void mySwap(int& a, int& b) {      // the classic reference example
+    int t = a;
+    a = b;
+    b = t;
+}
+
+int main() {
+    int a = 5;
+    byValue(a);  cout << a << "\n";    // 5  (copy changed, not a)
+    byRef(a);    cout << a << "\n";    // 15 (a itself changed)
+    cout << readOnly(21) << "\n";      // 42: const& accepts a literal
+
+    vector<int> v;
+    appendSquares(v, 4);               // v = 1 4 9 16
+    cout << total(v) << "\n";          // 30
+    cout << total({10, 20}) << "\n";   // 30: const& binds to a temporary
+
+    int p = 3, q = 8;
+    mySwap(p, q);
+    cout << p << " " << q << "\n";     // 8 3
+
+    // Range-for follows the same rule.
+    vector<string> names = {"ana", "bo"};
+    for (auto& s : names) s[0] = toupper(s[0]);   // modify in place
+    for (const auto& s : names) cout << s << " "; // read without copying
+    cout << "\n";                                  // Ana Bo
+}`],
+    codeTitle: ['Value, reference and const reference side by side'],
+    viz: [{
+      title: 'Copy vs alias: who really changes?',
+      input: '5',
+      inputLabel: 'starting value of a',
+      gen: function (input) {
+        var a0 = intOf(input, -999, 999, 'Enter an integer from -999 to 999');
+        var code = 'void bumpV(int x)  { x += 10; }   // by value\nvoid bumpR(int& x) { x += 10; }   // by reference\nint main() {\n    int a = ' + a0 + ';\n    bumpV(a);\n    bumpR(a);\n    cout << a;\n}';
+        var a1 = a0 + 10;
+        function F(l, narr, g, st, vars, outp, cls) {
+          var hl = {}; hl[l] = cls || 'cur';
+          return { narr: narr, parts: [{ type: 'code', lang: 'cpp', code: code, hl: hl }, g, { type: 'stack', label: 'Call stack', items: st, hl: one(st.length - 1, 'cur') }, { type: 'vars', label: 'Values', vals: vars }, out(outp)] };
+        }
+        return [
+          F(4, 'main creates <b>a = ' + a0 + '</b> in its own frame.', passGraph('main: a = ' + a0, '(no function yet)', 'none', { a: 'ok' }), ['main'], { a: a0 }, ''),
+          F(5, '<b>By value:</b> calling <code>bumpV(a)</code> makes a <b>new variable x</b> in bumpV\'s frame and <b>copies</b> ' + a0 + ' into it. Two separate boxes now.', passGraph('main: a = ' + a0, 'bumpV: x = ' + a0, 'value', { x: 'cur' }, { 'a-x': 'ok' }), ['main', 'bumpV(x)'], { a: a0, x: a0 }, ''),
+          F(1, '<code>x += 10</code> changes <b>only the copy</b>: x = ' + a1 + '. Look — a is still ' + a0 + '.', passGraph('main: a = ' + a0, 'bumpV: x = ' + a1, 'value', { x: 'ok', a: 'done' }), ['main', 'bumpV(x)'], { a: a0, x: a1 }, ''),
+          F(5, 'bumpV returns, its frame is destroyed and the copy x disappears. <span class="c-r">The change is lost.</span> a = ' + a0 + '.', passGraph('main: a = ' + a0, '(x destroyed)', 'none', { x: 'bad' }), ['main'], { a: a0 }, '', 'done'),
+          F(6, '<b>By reference:</b> calling <code>bumpR(a)</code> does <b>not</b> make a new int. x is just a <b>second name</b> for a — the arrow shows x refers to a.', passGraph('main: a = ' + a0, 'bumpR: x (alias of a)', 'ref', { x: 'cur', a: 'cur' }, { 'x-a': 'sel' }), ['main', 'bumpR(x&)'], { a: a0, 'x (= a)': a0 }, ''),
+          F(2, '<code>x += 10</code> writes <b>through</b> the alias straight into main\'s a: a = <b>' + a1 + '</b>.', passGraph('main: a = ' + a1, 'bumpR: x (alias of a)', 'ref', { a: 'ok' }, { 'x-a': 'ok' }), ['main', 'bumpR(x&)'], { a: a1, 'x (= a)': a1 }, '', 'ok'),
+          F(6, 'bumpR returns. The name x is gone, but the change stays because it was made to a itself.', passGraph('main: a = ' + a1, '(alias x gone)', 'none', { a: 'ok' }), ['main'], { a: a1 }, ''),
+          F(7, 'Print a → <b>' + a1 + '</b>. Only the reference version had an effect. Under the hood a reference parameter is passed as the variable\'s <b>address</b>, so it costs 8 bytes no matter how big the object is.', passGraph('main: a = ' + a1, '—', 'none', { a: 'sel' }), ['main'], { a: a1 }, String(a1))
+        ];
+      }
+    }, {
+      title: 'Swap: by value fails, by reference works',
+      input: '3 8',
+      inputLabel: 'p q',
+      gen: function (input) {
+        var pq = intsOf(input, 2, 2, -999, 999, 'Enter two integers, e.g. 3 8');
+        var p = pq[0], q = pq[1];
+        function G(l1, l2, l3, l4, mode, hl, ehl) {
+          var edges = mode === 'value' ? [['p', 'a', 'copy'], ['q', 'b', 'copy']] : mode === 'ref' ? [['a', 'p', 'alias'], ['b', 'q', 'alias']] : [];
+          return { type: 'graph', label: 'main (left) and swap\'s parameters (right)', directed: true, height: 60,
+            nodes: [{ id: 'p', label: l1, x: 18, y: 15, shape: 'box', w: 22 }, { id: 'q', label: l2, x: 18, y: 45, shape: 'box', w: 22 }, { id: 'a', label: l3, x: 78, y: 15, shape: 'box', w: 26 }, { id: 'b', label: l4, x: 78, y: 45, shape: 'box', w: 26 }],
+            edges: edges, hl: hl || {}, ehl: ehl || {} };
+        }
+        var code = 'void swapV(int a, int b)   { int t = a; a = b; b = t; }\nvoid swapR(int& a, int& b) { int t = a; a = b; b = t; }\n// main: int p = ' + p + ', q = ' + q + ';\nswapV(p, q);  cout << p << " " << q << "\\n";\nswapR(p, q);  cout << p << " " << q << "\\n";';
+        function F(l, narr, g, o) { var hl = {}; hl[l] = 'cur'; return { narr: narr, parts: [{ type: 'code', lang: 'cpp', code: code, hl: hl }, g, out(o)] }; }
+        var o1 = p + ' ' + q + '\n';
+        return [
+          F(3, 'main has p = ' + p + ' and q = ' + q + '.', G('p = ' + p, 'q = ' + q, '—', '—', 'none'), ''),
+          F(4, 'swapV(p, q): a and b are <b>copies</b>.', G('p = ' + p, 'q = ' + q, 'a = ' + p, 'b = ' + q, 'value', { a: 'cur', b: 'cur' }, { 'p-a': 'ok', 'q-b': 'ok' }), ''),
+          F(1, 'Inside swapV the copies are swapped: a = ' + q + ', b = ' + p + '. p and q do not know anything happened.', G('p = ' + p, 'q = ' + q, 'a = ' + q, 'b = ' + p, 'value', { a: 'ok', b: 'ok', p: 'done', q: 'done' }), ''),
+          F(4, 'swapV returns; copies vanish. Print: <b>' + p + ' ' + q + '</b> — <span class="c-r">unchanged</span>.', G('p = ' + p, 'q = ' + q, '(gone)', '(gone)', 'none', { a: 'bad', b: 'bad' }), o1),
+          F(5, 'swapR(p, q): a and b are <b>aliases</b> of p and q.', G('p = ' + p, 'q = ' + q, 'a → p', 'b → q', 'ref', { a: 'cur', b: 'cur' }, { 'a-p': 'sel', 'b-q': 'sel' }), o1),
+          F(2, 'Swapping through the aliases swaps the real variables: p = ' + q + ', q = ' + p + '.', G('p = ' + q, 'q = ' + p, 'a → p', 'b → q', 'ref', { p: 'ok', q: 'ok' }, { 'a-p': 'ok', 'b-q': 'ok' }), o1),
+          F(5, 'Print: <b>' + q + ' ' + p + '</b> — swapped. (In real code just call <code>std::swap(p, q)</code>.)', G('p = ' + q, 'q = ' + p, '—', '—', 'none', { p: 'sel', q: 'sel' }), o1 + q + ' ' + p)
+        ];
+      }
+    }, {
+      title: 'Cost of passing a vector: value vs const&',
+      input: '1000000',
+      inputLabel: 'vector size n',
+      gen: function (input) {
+        var n = intOf(input, 1, 100000000, 'Enter n from 1 to 100000000');
+        var bytes = n * 4, calls = 1000;
+        function mb(x) { return (x / 1048576).toFixed(x >= 1048576 ? 1 : 4) + ' MB'; }
+        return [
+          { narr: 'A <code>vector&lt;int&gt;</code> with n = ' + n + ' elements holds <b>' + mb(bytes) + '</b> of data on the heap.', parts: [{ type: 'vars', vals: { n: n, 'bytes of data': bytes } }, { type: 'code', lang: 'cpp', code: 'long long sumV(vector<int> v);          // by value\nlong long sumR(const vector<int>& v);   // by const reference', hl: {} }] },
+          { narr: '<b>By value</b>: every call allocates a new buffer and copies all ' + n + ' ints (O(n) time and memory) before the function even starts.', parts: [{ type: 'bars', label: 'bytes copied per call', values: [bytes, 8], texts: [mb(bytes), '8 B'], idxLabels: ['by value', 'const ref'], hl: { 0: 'bad' } }] },
+          { narr: '<b>By const reference</b>: only an address (8 bytes on 64-bit) is passed. Cost is O(1) regardless of n.', parts: [{ type: 'bars', label: 'bytes copied per call', values: [bytes, 8], texts: [mb(bytes), '8 B'], idxLabels: ['by value', 'const ref'], hl: { 1: 'ok' } }] },
+          { narr: 'Call it ' + calls + ' times (e.g. inside a loop or recursion): by value copies <b>' + mb(bytes * calls) + '</b> in total; const&amp; copies 8 KB. This is a real cause of TLE/MLE in DFS and backtracking solutions.', parts: [{ type: 'bars', label: 'total bytes over ' + calls + ' calls', values: [bytes * calls, 8 * calls], texts: [mb(bytes * calls), '8 KB'], idxLabels: ['by value', 'const ref'], hl: { 0: 'bad', 1: 'ok' } }, { type: 'text', html: '<b>Rule:</b> big + read-only → <code>const T&amp;</code>. Big + must modify → <code>T&amp;</code>. Small → by value.' }] }
+        ];
+      }
+    }],
+    examples: [
+      { title: 'Predict the output: modifying a vector parameter', html: `<p><code>clearV</code> gets a copy, so the caller's vector keeps its 3 elements; <code>clearR</code> gets the real vector and empties it. Output: <b>3 0</b>.</p>`, code: R`void clearV(vector<int> v)  { v.clear(); }
+void clearR(vector<int>& v) { v.clear(); }
+
+int main() {
+    vector<int> a = {1, 2, 3};
+    clearV(a); cout << a.size() << " ";   // 3
+    clearR(a); cout << a.size() << "\n";  // 0
+}` },
+      { title: 'A reference cannot be re-seated', html: `<p><code>r</code> is bound to <code>a</code> forever. The line <code>r = b;</code> does <b>not</b> make r refer to b — it <b>assigns b's value into a</b>. Output: <b>20 20 20</b>. Interviewers use this to check you understand that a reference is an alias, not a pointer.</p>`, code: R`int a = 10, b = 20;
+int& r = a;     // r is another name for a
+r = b;          // means a = b; r still refers to a
+cout << a << " " << b << " " << r << "\n";   // 20 20 20` },
+      { title: 'Literals and temporaries need const&amp;', html: `<p>A non-const reference must refer to a real, changeable variable, so <code>shout("hey")</code> with a <code>string&amp;</code> parameter does not compile (the string is a temporary). With <code>const string&amp;</code> it compiles and no extra copy of an existing string is made. This is why read-only parameters should be <code>const&amp;</code>: they accept everything.</p>`, code: R`void shoutRef(string& s)        { cout << s << "!\n"; }
+void shoutConst(const string& s) { cout << s << "!\n"; }
+
+int main() {
+    string w = "hello";
+    shoutRef(w);         // OK: w is a variable
+    // shoutRef("hey");  // ERROR: cannot bind non-const reference to a temporary
+    shoutConst("hey");   // OK: const& binds to the temporary string
+}` },
+      { title: 'Dangling reference: returning a local by reference', html: `<p><code>bad()</code> returns a reference to <code>local</code>, which is destroyed when the function's frame is popped. Using the result is <b>undefined behaviour</b> — it may print 42, garbage, or crash. GCC warns: "reference to local variable returned". Return <b>by value</b> instead; it is cheap.</p>`, code: R`int& bad() {
+    int local = 42;
+    return local;        // DANGER: local dies when bad() returns
+}
+int good() {
+    int local = 42;
+    return local;        // returns a copy: always fine
+}` },
+      { title: 'Recursion: pass the big container by reference', html: `<p>Generating all subsets with backtracking: if <code>cur</code> were passed by value, every one of the 2<sup>n</sup> calls would copy it. Passing by reference and undoing the change (<code>pop_back</code>) after the recursive call keeps one shared vector. Output for {1,2}: <b>{} {2} {1} {1 2}</b>.</p>`, code: R`void subsets(const vector<int>& a, int i, vector<int>& cur) {
+    if (i == (int)a.size()) {
+        cout << "{";
+        for (size_t k = 0; k < cur.size(); ++k) cout << (k ? " " : "") << cur[k];
+        cout << "} ";
+        return;
+    }
+    subsets(a, i + 1, cur);          // skip a[i]
+    cur.push_back(a[i]);             // take a[i]
+    subsets(a, i + 1, cur);
+    cur.pop_back();                  // undo: shared vector stays correct
+}
+
+int main() {
+    vector<int> a = {1, 2}, cur;
+    subsets(a, 0, cur);
+}` }
+    ],
+    deepDive: `<p><b>How references are implemented.</b> The standard says a reference is an alias and may not even occupy storage. In practice, when a reference is a <b>function parameter</b>, the compiler passes the <b>address</b> of the argument (8 bytes on 64-bit) and every use dereferences it. So <code>const int&amp;</code> for an <code>int</code> is actually <b>slower</b> than plain <code>int</code>: an extra memory load, and the optimiser must worry that the referenced int changes behind its back (<b>aliasing</b>). Rule of thumb: pass by value anything up to ~16 bytes that is cheap to copy (ints, doubles, pointers, <code>string_view</code>, <code>span</code>, small structs like a 2D point); pass by <code>const&amp;</code> anything that owns heap memory (<code>string</code>, <code>vector</code>, <code>map</code>).</p>
+<p><b>Aliasing surprises.</b> With references two names can refer to the same object: <code>void addTwice(int&amp; a, const int&amp; b) { a += b; a += b; }</code> called as <code>addTwice(x, x)</code> with x = 1 gives 4, not 3, because b changes when a does. Similar bugs appear in <code>v.push_back(v[0])</code>-style code (handled correctly by the standard library, but not necessarily by your own containers).</p>
+<p><b>The "sink" parameter idiom.</b> When a function will <b>store</b> its argument (e.g. a constructor saving a name), modern C++ passes <b>by value and moves</b>: <code>Person(string n) : name(std::move(n)) {}</code>. Callers passing a temporary pay zero copies; callers passing an lvalue pay exactly one. You will see this in Module A (move semantics).</p>
+<p><b>C++ vs Java/Python.</b> Java passes everything by value, but object variables hold references, so a method can mutate an object but never rebind the caller's variable. Python is similar ("pass by object reference"). C++ is the only one of the three where <code>void f(vector&lt;int&gt; v)</code> really <b>deep-copies</b> the whole container — a frequent performance shock for people coming from those languages.</p>`,
+    aiEra: `<p><b>What AI changes:</b> linters and AI reviewers (clang-tidy's <code>performance-unnecessary-value-param</code>, Copilot reviews) now flag "this vector is passed by value but only read — use <code>const&amp;</code>" automatically. You no longer need to hunt for these by eye in a large codebase.</p>
+<p><b>Use AI as a partner:</b> ask <i>"For each parameter in this file, should it be value, const&amp;, or &amp;? Explain each choice in one line."</i> Then check its reasoning against the decision table above — and ask it to explain the aliasing risk in any function that takes two references of the same type.</p>
+<p><b>Where AI goes wrong:</b> it often over-applies <code>const&amp;</code> to <code>int</code> and <code>double</code> (slower, not faster), returns references to locals in "optimised" rewrites, and changes a by-value parameter to a reference without noticing the function modified its local copy — silently changing the caller's data. <b>What you must still own:</b> explaining in an interview <i>why</i> a choice is right, predicting the output of value-vs-reference trick questions, and spotting when a reference rewrite changed behaviour.</p>`,
+    problems: [{
+      title: 'Min, Max and Average in One Pass (Reference Out-Parameters)',
+      level: 'Easy', tags: ['pass by reference', 'const reference', 'functions'], companies: ['Microsoft', 'Qualcomm', 'Samsung'],
+      statement: `<p>Write a function that receives a <b>non-empty</b> vector of integers and gives back its minimum, maximum and average (as a <code>double</code>) to the caller. The vector may have up to 10<sup>6</sup> elements and the function may be called many times, so it must <b>not copy</b> the vector and must look at each element only once. Show both styles: <b>reference out-parameters</b> and <b>returning a struct</b>.</p>`,
+      constraints: `1 ≤ n ≤ 10<sup>6</sup>, |a[i]| ≤ 10<sup>9</sup> (the sum needs <code>long long</code>).`,
+      example: `<p>Input ${H.arr([4, -2, 9, 1])} → min ${H.c('g', '-2')}, max ${H.c('g', '9')}, average ${H.c('g', '3')} because (4 − 2 + 9 + 1) / 4 = 12 / 4 = 3.</p>`,
+      brute: {
+        why: `<p>Three separate functions, each taking the vector <b>by value</b>: three full copies (3 × 4 MB for n = 10<sup>6</sup>) and three passes over the data. It also sums into an <code>int</code>, which overflows when values reach 10<sup>9</sup>. Correct for small inputs, wasteful and fragile for large ones.</p>`,
+        code: R`int minOf(vector<int> v) { int m = v[0]; for (int x : v) m = min(m, x); return m; }   // copy #1
+int maxOf(vector<int> v) { int m = v[0]; for (int x : v) m = max(m, x); return m; }   // copy #2
+double avgOf(vector<int> v) {                                                       // copy #3
+    int s = 0;                       // int overflows for large values
+    for (int x : v) s += x;
+    return (double)s / v.size();
+}`
+      },
+      mcq: { q: 'Which signature reads the vector without copying it and lets the function hand three results back?', options: ['<code>void stats(vector&lt;int&gt; v, int mn, int mx, double avg)</code>', '<code>void stats(const vector&lt;int&gt;&amp; v, int&amp; mn, int&amp; mx, double&amp; avg)</code>', '<code>void stats(vector&lt;int&gt;&amp; v, const int&amp; mn, const int&amp; mx, const double&amp; avg)</code>', '<code>void stats(const vector&lt;int&gt; v, int mn, int mx, double avg)</code>'], answer: 1, explain: 'Input: const reference (no copy, read-only). Outputs: non-const references so writes reach the caller. Option 3 has it backwards — the outputs are const and cannot be written.' },
+      hints: [`<p>Hint 1: The input is big and read-only → <code>const vector&lt;int&gt;&amp;</code>. The outputs must change the caller's variables → <code>int&amp;</code> / <code>double&amp;</code>.</p>`, `<p>Hint 2: Start min and max at <code>v[0]</code> (not 0 — the numbers can all be negative), then one loop updates min, max and a <code>long long</code> sum together.</p>`, `<p>Hint 3: Compute the average as <code>(double)sum / v.size()</code> — cast <b>before</b> dividing or you get integer division. Modern alternative: return a <code>struct Stats { int mn, mx; double avg; }</code> and unpack with <code>auto [mn, mx, avg] = ...</code>.</p>`],
+      solution: {
+        approach: `<p>One pass with a <code>const&amp;</code> input (zero copies) and reference outputs. The struct-returning version is the more modern style: the signature documents the results, and return value optimisation makes it free. Both are O(n) with a single pass.</p>`,
+        code: R`#include <bits/stdc++.h>
+using namespace std;
+
+// Style 1: reference out-parameters.
+void stats(const vector<int>& v, int& mn, int& mx, double& avg) {
+    mn = mx = v[0];                   // never start at 0: values may be negative
+    long long sum = 0;                // 10^6 * 10^9 needs 64 bits
+    for (int x : v) {                 // const& input: no copy of the vector
+        if (x < mn) mn = x;
+        if (x > mx) mx = x;
+        sum += x;
+    }
+    avg = (double)sum / v.size();     // cast first: avoid integer division
+}
+
+// Style 2 (preferred today): return a struct.
+struct Stats { int mn, mx; double avg; };
+
+Stats statsOf(const vector<int>& v) {
+    Stats s{v[0], v[0], 0.0};
+    long long sum = 0;
+    for (int x : v) { s.mn = min(s.mn, x); s.mx = max(s.mx, x); sum += x; }
+    s.avg = (double)sum / v.size();
+    return s;
+}
+
+int main() {
+    vector<int> a = {4, -2, 9, 1};
+    int lo, hi; double av;
+    stats(a, lo, hi, av);
+    cout << lo << " " << hi << " " << av << "\n";      // -2 9 3
+
+    auto [mn, mx, avg] = statsOf(a);                    // structured bindings
+    cout << mn << " " << mx << " " << avg << "\n";      // -2 9 3
+}`,
+        dry: { head: ['x', 'mn', 'mx', 'sum'], rows: [['(start)', '4', '4', '0'], ['4', '4', '4', '4'], ['-2', H.c('g', '-2'), '4', '2'], ['9', '-2', H.c('g', '9'), '11'], ['1', '-2', '9', '12 → avg 12/4 = <b>3</b>']] },
+        complexity: `<p>Time O(n), one pass. Extra space O(1) — the vector is never copied. The brute force used O(n) extra memory per call and three passes.</p>`,
+        followUps: ['Also return the index of the first minimum.', 'Make it work for an empty vector by returning <code>std::optional&lt;Stats&gt;</code>.']
+      }
+    }]
+  });
+
+  /* ======================================================================
+     TOPIC 5 — Default arguments and function overloading
+     ====================================================================== */
+  function literalType(s) {
+    s = String(s).trim();
+    if (/^-?\d+$/.test(s)) return 'int';
+    if (/^-?\d+[lL]$/.test(s)) return 'long';
+    if (/^-?(\d+\.\d*|\.\d+)([eE]-?\d+)?[fF]$/.test(s)) return 'float';
+    if (/^-?(\d+\.\d*|\.\d+)([eE]-?\d+)?$/.test(s)) return 'double';
+    if (/^'.'$/.test(s)) return 'char';
+    if (s === 'true' || s === 'false') return 'bool';
+    if (/^".*"$/.test(s)) return 'const char*';
+    throw new Error('Enter a C++ literal: 42, 42L, 3.5, 3.5f, \'a\', true or "hi"');
+  }
+  topics.push({
+    title: 'Default Arguments & Function Overloading',
+    analogy: `<p><b>Default arguments</b> are a coffee shop's standard order: "a coffee" means <i>medium, with milk</i> unless you say otherwise. You only mention the parts you want to change — but you can only skip from the <b>end</b> of the list ("medium, no milk" works; "skip the size, but no milk" is confusing). <b>Overloading</b> is like the word <i>"play"</i>: "play the guitar", "play football", "play a video". Same word, different action, and you know which one from <b>what follows it</b>. The C++ compiler picks among same-named functions the same way — by looking at the <b>types of the arguments</b>.</p>`,
+    explain: `<h4>1. Default arguments</h4>
+<pre><code>void greet(const string&amp; name, const string&amp; word = "Hello", int times = 1);
+
+greet("Ana");              // greet("Ana", "Hello", 1)
+greet("Ana", "Hi");        // greet("Ana", "Hi", 1)
+greet("Ana", "Hi", 3);     // nothing defaulted</code></pre>
+<p>The compiler simply <b>fills in the missing arguments at the call site</b>. Three rules:</p>
+<ul><li><b>Trailing only.</b> Once a parameter has a default, every parameter after it needs one too. <code>void f(int a = 1, int b);</code> is an error — there is no way to skip <code>a</code> but give <code>b</code>.</li><li><b>Say it once.</b> Put the default in the <b>declaration</b> (usually the header) and <b>not</b> again in the definition. Repeating it is a compile error ("default argument given for parameter 2").</li><li><b>You cannot skip the middle.</b> <code>greet("Ana", , 3)</code> is not C++. If you need that, use overloads or pass a small options struct with designated initialisers (C++20): <code>draw({.width = 3, .dashed = true})</code>.</li></ul>
+<h4>2. Overloading — same name, different parameter lists</h4>
+<pre><code>int    area(int side)               { return side * side; }       // square
+int    area(int w, int h)           { return w * h; }             // rectangle
+double area(double r)               { return 3.14159 * r * r; }   // circle</code></pre>
+<p>Overloads must differ in the <b>number</b> or <b>types</b> of parameters. They <b>cannot</b> differ only in the return type: <code>int f();</code> and <code>double f();</code> together are an error, because a call <code>f()</code> would give the compiler no way to choose.</p>
+<h4>3. How the compiler chooses (overload resolution)</h4>
+<p>For a call, the compiler collects all functions with that name, throws out those that cannot accept the arguments, then ranks the rest by how much each argument has to be "bent" to fit:</p>
+${H.table(['rank', 'kind of match', 'example (argument → parameter)'], [[H.c('g', '1 (best)'), 'exact match (incl. adding const, array→pointer)', '<code>int → int</code>, <code>int → const int&amp;</code>'], [H.c('b', '2'), 'promotion (small → its "natural" bigger type)', '<code>char/short/bool → int</code>, <code>float → double</code>'], [H.c('y', '3'), 'standard conversion', '<code>int → double</code>, <code>double → int</code>, <code>long → int</code>, pointer → <code>bool</code>'], [H.c('r', '4 (worst)'), 'user-defined conversion', '<code>const char* → std::string</code>']])}
+<p>The best rank wins. If two candidates tie at the best rank → <b>ambiguous call</b>, compile error. Example: with only <code>f(int)</code> and <code>f(double)</code>, the call <code>f(5L)</code> (a <code>long</code>) needs a conversion to <i>either</i> → ambiguous.</p>
+<h4>4. Overloads vs default arguments</h4>
+<p>Use a <b>default argument</b> when the behaviour is the same and only a value changes (<code>print(v, sep = " ")</code>). Use <b>overloads</b> when the work is genuinely different for different types (area of a circle vs a rectangle). Do not mix them carelessly: <code>void f(int);</code> plus <code>void f(int, int = 0);</code> makes <code>f(1)</code> ambiguous.</p>`,
+    clues: [
+      '"optional parameter", "if not given, use …", "with a sensible default" → <b>default argument</b> (trailing, declared once)',
+      '"the same operation for int, double and string", "print any of these types" → <b>overloading</b> (later: templates)',
+      'Output question with <code>f(\'A\')</code>, <code>f(3.5f)</code> or <code>f("hi")</code> and several overloads → work through the <b>exact → promotion → conversion → user-defined</b> ranking',
+      '"call of overloaded … is ambiguous" in an error message → two candidates tie; add an exact overload or cast the argument',
+      '"Can functions be overloaded by return type?" → <b>No</b>; only the parameter list counts',
+      '"Why is the default value in the header but not the .cpp?" → defaults are applied at the call site, which only sees the declaration'
+    ],
+    code: [R`#include <bits/stdc++.h>
+using namespace std;
+
+// ---- default arguments: declared once, trailing only ----
+void printVec(const vector<int>& v, const string& sep = " ", bool newline = true);
+
+// ---- overloads: same name, different parameter lists ----
+void show(int x)            { cout << "int: " << x << "\n"; }
+void show(double x)         { cout << "double: " << x << "\n"; }
+void show(const string& s)  { cout << "string: " << s << "\n"; }
+void show(int a, int b)     { cout << "pair: " << a << "," << b << "\n"; }
+
+int main() {
+    vector<int> v = {1, 2, 3};
+    printVec(v);              // 1 2 3      (sep=" ", newline=true)
+    printVec(v, ", ");        // 1, 2, 3
+    printVec(v, "-", false);  // 1-2-3      (no newline)
+    cout << "\n";
+
+    show(42);                 // int: 42          exact match
+    show(4.2);                // double: 4.2      exact match
+    show(string("hey"));      // string: hey      exact match
+    show(7, 8);               // pair: 7,8        chosen by argument COUNT
+    show('A');                // int: 65          char -> int is a PROMOTION
+    show(2.5f);               // double: 2.5      float -> double is a PROMOTION
+    // show(5L);              // ERROR: ambiguous, long -> int and long -> double are both conversions
+}
+
+// Definition: do NOT repeat the default values here.
+void printVec(const vector<int>& v, const string& sep, bool newline) {
+    for (size_t i = 0; i < v.size(); ++i) cout << (i ? sep : "") << v[i];
+    if (newline) cout << "\n";
+}`],
+    codeTitle: ['Default arguments and overload resolution in action'],
+    viz: [{
+      title: 'Overload resolution: which show() gets called?',
+      input: '\'A\'',
+      inputLabel: 'argument literal: 42, 42L, 3.5, 3.5f, \'A\', true, "hi"',
+      gen: function (input) {
+        var t = literalType(input);
+        var lit = String(input).trim();
+        var code = 'void show(int x);              // candidate 1\nvoid show(double x);           // candidate 2\nvoid show(const string& s);    // candidate 3\n\nshow(' + lit + ');';
+        var R1 = { exact: [1, 'exact match'], promo: [2, 'promotion'], conv: [3, 'standard conversion'], user: [4, 'user-defined conversion'], none: [9, 'not viable'] };
+        var table = {
+          'int': ['exact', 'conv', 'none'], 'long': ['conv', 'conv', 'none'], 'double': ['conv', 'exact', 'none'], 'float': ['conv', 'promo', 'none'],
+          'char': ['promo', 'conv', 'none'], 'bool': ['promo', 'conv', 'none'], 'const char*': ['none', 'none', 'user']
+        }[t];
+        var names = ['show(int)', 'show(double)', 'show(const string&)'];
+        var why = {
+          'int': ['int → int', 'int → double', 'no conversion from int to string'],
+          'long': ['long → int (narrowing)', 'long → double', 'no conversion'],
+          'double': ['double → int (drops decimals)', 'double → double', 'no conversion'],
+          'float': ['float → int', 'float → double', 'no conversion'],
+          'char': ['char → int', 'char → double', 'no conversion from char to string'],
+          'bool': ['bool → int', 'bool → double', 'no conversion'],
+          'const char*': ['pointer → int: not allowed', 'pointer → double: not allowed', 'string has a constructor taking const char*']
+        }[t];
+        var rows = [], frames = [];
+        function tbl(hl) { return { type: 'table', label: 'Candidates for show(' + esc(lit) + ')', columns: ['candidate', 'conversion needed', 'rank'], rows: rows.map(function (r) { return r.slice(); }), hl: hl || {} }; }
+        frames.push({ narr: 'Step 1 — work out the argument\'s type: <code>' + esc(lit) + '</code> is a <b>' + t + '</b>. Step 2 — collect every function named <code>show</code> visible here: 3 candidates.', parts: [{ type: 'code', lang: 'cpp', code: code, hl: { 5: 'cur' } }, { type: 'vars', vals: { argument: lit, type: t } }] });
+        for (var k = 0; k < 3; k++) {
+          var r = R1[table[k]];
+          rows.push([names[k], why[k], r[0] === 9 ? '✗ ' + r[1] : r[0] + ' — ' + r[1]]);
+          var hl = {}; hl[k] = r[0] === 9 ? 'bad' : 'cur';
+          var codeHl = {}; codeHl[k + 1] = r[0] === 9 ? 'bad' : 'cur';
+          frames.push({ narr: 'Check <b>' + names[k].replace('&', '&amp;') + '</b>: ' + why[k] + ' → ' + (r[0] === 9 ? '<span class="c-r">not viable</span>, thrown out.' : 'rank <b>' + r[0] + '</b> (' + r[1] + ').'), parts: [{ type: 'code', lang: 'cpp', code: code, hl: codeHl }, tbl(hl)] });
+        }
+        var best = 9, winners = [];
+        for (var k2 = 0; k2 < 3; k2++) { var rk = R1[table[k2]][0]; if (rk < best) { best = rk; winners = [k2]; } else if (rk === best && rk !== 9) winners.push(k2); }
+        if (winners.length === 1) {
+          var whl = {}; whl[winners[0]] = 'sel';
+          var ch = {}; ch[winners[0] + 1] = 'ok'; ch[5] = 'ok';
+          frames.push({ narr: 'Best rank is <b>' + best + '</b> and only one candidate has it → the compiler calls <b>' + names[winners[0]].replace('&', '&amp;') + '</b>.' + (t === 'char' ? ' Surprise for many: a char goes to <code>int</code> (prints 65 for \'A\'), not to string.' : '') + (t === 'const char*' ? ' Careful: if a <code>show(bool)</code> overload existed, it would win — pointer → bool is a standard conversion (rank 3), better than user-defined (rank 4)!' : ''), parts: [{ type: 'code', lang: 'cpp', code: code, hl: ch }, tbl(whl)] });
+        } else {
+          var bhl = {}; winners.forEach(function (w) { bhl[w] = 'bad'; });
+          frames.push({ narr: '<span class="c-r">Tie!</span> ' + winners.length + ' candidates share the best rank ' + best + ' → <b>error: call of overloaded show(' + t + ') is ambiguous</b>. Fix: cast (<code>show((int)x)</code>) or add an exact <code>show(' + t + ')</code> overload.', parts: [{ type: 'code', lang: 'cpp', code: code, hl: { 5: 'bad' } }, tbl(bhl)] });
+        }
+        return frames;
+      }
+    }, {
+      title: 'Default arguments are filled in at the call site',
+      input: 'Ana, Hi',
+      inputLabel: '1 to 3 arguments: name[, word[, times]]',
+      gen: function (input) {
+        var parts = String(input || '').split(',').map(function (x) { return x.trim(); }).filter(function (x) { return x.length; });
+        if (parts.length < 1 || parts.length > 3) throw new Error('Give 1 to 3 comma-separated values, e.g. Ana, Hi, 2');
+        if (parts.some(function (p) { return p.length > 12 || /[<>&"]/.test(p); })) throw new Error('Keep each value short and without < > & or quotes');
+        if (parts.length === 3 && !/^[1-4]$/.test(parts[2])) throw new Error('times must be a number from 1 to 4');
+        var name = parts[0], word = parts.length > 1 ? parts[1] : 'Hello', times = parts.length > 2 ? Number(parts[2]) : 1;
+        var call = 'greet("' + name + '"' + (parts.length > 1 ? ', "' + parts[1] + '"' : '') + (parts.length > 2 ? ', ' + parts[2] : '') + ');';
+        var code = 'void greet(const string& name,\n           const string& word = "Hello",\n           int times = 1) {\n    for (int i = 0; i < times; ++i)\n        cout << word << ", " << name << "!\\n";\n}\n// in main:\n' + call;
+        var frames = [];
+        frames.push({ narr: 'You wrote <code>' + esc(call) + '</code> with <b>' + parts.length + '</b> argument(s). The function has 3 parameters.', parts: [{ type: 'code', lang: 'cpp', code: code, hl: { 8: 'cur' } }, { type: 'table', label: 'Parameter filling', columns: ['parameter', 'value', 'came from'], rows: [['name', '?', ''], ['word', '?', ''], ['times', '?', '']] }] });
+        var rows = [['name', '"' + name + '"', 'your argument']];
+        frames.push({ narr: 'Arguments fill parameters <b>left to right</b>: name = "' + esc(name) + '".', parts: [{ type: 'code', lang: 'cpp', code: code, hl: { 1: 'ok' } }, { type: 'table', label: 'Parameter filling', columns: ['parameter', 'value', 'came from'], rows: rows.concat([['word', '?', ''], ['times', '?', '']]), hl: { 0: 'sel' } }] });
+        rows.push(['word', '"' + word + '"', parts.length > 1 ? 'your argument' : 'DEFAULT']);
+        frames.push({ narr: parts.length > 1 ? 'word = "' + esc(word) + '" from your second argument.' : 'No second argument → the compiler <b>inserts the default</b> "Hello" right here at the call site, as if you had typed it.', parts: [{ type: 'code', lang: 'cpp', code: code, hl: { 2: parts.length > 1 ? 'ok' : 'sel' } }, { type: 'table', label: 'Parameter filling', columns: ['parameter', 'value', 'came from'], rows: rows.concat([['times', '?', '']]), hl: { 1: parts.length > 1 ? 'sel' : 'cur' } }] });
+        rows.push(['times', String(times), parts.length > 2 ? 'your argument' : 'DEFAULT']);
+        frames.push({ narr: parts.length > 2 ? 'times = ' + times + ' from your third argument.' : 'No third argument → default <b>times = 1</b> is inserted.', parts: [{ type: 'code', lang: 'cpp', code: code, hl: { 3: parts.length > 2 ? 'ok' : 'sel' } }, { type: 'table', label: 'Parameter filling', columns: ['parameter', 'value', 'came from'], rows: rows.map(function (r) { return r.slice(); }), hl: { 2: parts.length > 2 ? 'sel' : 'cur' } }] });
+        var o = '';
+        for (var i = 0; i < times; i++) {
+          o += word + ', ' + name + '!\n';
+          frames.push({ narr: 'Loop round i = ' + i + ': print the greeting.', parts: [{ type: 'code', lang: 'cpp', code: code, hl: { 4: 'cur', 5: 'ok' } }, { type: 'vars', vals: { name: name, word: word, times: times, i: i } }, out(o)] });
+        }
+        frames.push({ narr: 'Done. The actual call compiled was <code>greet("' + esc(name) + '", "' + esc(word) + '", ' + times + ')</code>. Defaults cost nothing at run time — they are just text the compiler fills in.', parts: [{ type: 'table', label: 'Final call', columns: ['parameter', 'value', 'came from'], rows: rows }, out(o)] });
+        return frames;
+      }
+    }],
+    examples: [
+      { title: 'Predict the output: char and float arguments', html: `<p><code>'A' + 1</code> is an <code>int</code> (66), so the first call picks <code>f(int)</code>. <code>'A'</code> alone is a <code>char</code>, which <b>promotes</b> to int → also <code>f(int)</code>. <code>1.5f</code> is a float, which <b>promotes</b> to double → <code>f(double)</code>. Output: <b>int 66 / int 65 / double 1.5</b>.</p>`, code: R`void f(int x)    { cout << "int " << x << "\n"; }
+void f(double x) { cout << "double " << x << "\n"; }
+
+int main() {
+    f('A' + 1);   // int 66
+    f('A');       // int 65   (char -> int promotion)
+    f(1.5f);      // double 1.5 (float -> double promotion)
+}` },
+      { title: 'The famous trap: a string literal picks bool', html: `<p><code>"hello"</code> is a <code>const char*</code>. Converting a pointer to <code>bool</code> is a <b>standard conversion</b>; converting it to <code>std::string</code> is a <b>user-defined conversion</b>, which ranks worse. So <code>log("hello")</code> calls the <b>bool</b> version and prints <b>bool: 1</b>. Fix: add a <code>log(const char*)</code> overload, or pass <code>"hello"s</code> / <code>string("hello")</code>.</p>`, code: R`void logIt(bool b)            { cout << "bool: " << b << "\n"; }
+void logIt(const string& s)   { cout << "string: " << s << "\n"; }
+
+int main() {
+    logIt("hello");               // bool: 1  (!)
+    logIt(string("hello"));       // string: hello
+    using namespace std::string_literals;
+    logIt("hello"s);              // string: hello
+}` },
+      { title: 'Default argument rules that cause compile errors', html: `<p>Defaults must be at the end, and a default is given only once — in the first declaration the caller sees. Both commented lines would fail to compile. Default values can be any expression, even a function call; they are evaluated <b>at each call</b>, so <code>stamp()</code> gets a fresh counter value each time: output <b>1 2 7</b>.</p>`, code: R`// void bad(int a = 1, int b);          // ERROR: b needs a default too
+int counter = 0;
+int nextId() { return ++counter; }
+
+void stamp(int id = nextId());           // default evaluated at EACH call
+// void stamp(int id = nextId()) { }     // ERROR: default repeated in definition
+
+void stamp(int id) { cout << id << " "; }
+
+int main() {
+    stamp(); stamp(); stamp(7);          // 1 2 7
+}` },
+      { title: 'Overload + default argument = ambiguity', html: `<p>Both <code>area(int)</code> and <code>area(int, int = 1)</code> can be called with one argument, both as exact matches → <b>ambiguous</b>. Pick one design: either keep only the defaulted version, or drop the default. The two-argument call is fine.</p>`, code: R`int area(int side)            { return side * side; }
+int area(int w, int h = 1)    { return w * h; }
+
+int main() {
+    cout << area(3, 4) << "\n";   // 12: only the 2-parameter version fits
+    // cout << area(3);           // ERROR: call of overloaded 'area(int)' is ambiguous
+}` },
+      { title: 'Return type alone cannot overload', html: `<p>The compiler identifies a function by its name and parameter types, so these two declarations clash: "functions that differ only in their return type cannot be overloaded". If you need different result types, give the functions different names or different parameters (or, later, use templates).</p>`, code: R`int    parse(const string& s) { return stoi(s); }
+// double parse(const string& s) { return stod(s); }   // ERROR: differs only by return type
+double parseDouble(const string& s) { return stod(s); } // fix: a different name` }
+    ],
+    deepDive: `<p><b>Name mangling — how overloads coexist.</b> The linker only understands plain symbol names, so the compiler encodes the parameter types into each function's symbol: with GCC/Clang (Itanium ABI) <code>show(int)</code> becomes <code>_Z4showi</code>, <code>show(double)</code> becomes <code>_Z4showd</code>, and <code>show(const std::string&amp;)</code> becomes a longer <code>_Z4showRKNSt7__cxx1112basic_string…</code>. Run <code>nm a.out | c++filt</code> to see them demangled. The return type is not part of a normal function's mangled name — another way to see why you cannot overload on it. <code>extern "C"</code> turns mangling off (needed to call C++ from C or Python's ctypes), which is also why C functions cannot be overloaded.</p>
+<p><b>The full overload-resolution algorithm.</b> (1) <b>Name lookup</b> finds candidates — including ones found by <b>argument-dependent lookup</b> (ADL) in the namespaces of the argument types; this is how <code>cout &lt;&lt; s</code> finds <code>std::operator&lt;&lt;</code>. (2) Keep the <b>viable</b> ones (right number of arguments counting defaults, each argument convertible). (3) Pick the one that is <b>at least as good for every argument and strictly better for one</b>. With several arguments it is easy to get ambiguity: <code>f(int, double)</code> vs <code>f(double, int)</code> called with <code>f(1, 1)</code> is ambiguous. A non-template is preferred over a template when they tie.</p>
+<p><b>Defaults are static.</b> Default arguments belong to the <b>declaration the caller sees</b>, not to the function. Consequences: different translation units could (illegally but silently) see different defaults; and for <b>virtual</b> functions the default comes from the <b>static</b> type of the pointer, not from the overriding function — a classic advanced trap you will meet in the OOP modules. Changing a default in a library header is an API change: callers must recompile to pick it up.</p>
+<p><b>Overloads vs templates.</b> If the bodies of your overloads are identical except for the type, that is a template waiting to happen (<code>template &lt;class T&gt; T maxOf(T a, T b)</code>) — covered in module A. If the bodies differ, overloading is the right tool.</p>`,
+    aiEra: `<p><b>What AI changes:</b> AI tools generate overload sets and default parameters readily, and can explain a scary "call of overloaded … is ambiguous" error in plain words. Asking <i>"which overload does this call pick and why?"</i> usually gets a correct answer for simple cases.</p>
+<p><b>Use AI as a partner:</b> paste an overload set and ask <i>"For each of these 6 calls, which overload is chosen and what conversion rank applies?"</i> — then verify with the compiler (add a print in each overload). Ask it to propose whether a design should use overloading, default arguments, a template, or an options struct.</p>
+<p><b>Where AI goes wrong:</b> the subtle rankings — <code>const char*</code> → <code>bool</code> beating <code>std::string</code>, <code>0</code> vs <code>nullptr</code> with pointer overloads, and ambiguities that appear only when a default argument is added. Models also sometimes "fix" an ambiguity with a cast that silently changes which function runs. <b>What you must still own:</b> the exact → promotion → conversion → user-defined ladder, the "defaults trailing and declared once" rules, and the judgement of when a new overload makes an API confusing.</p>`,
+    problems: [{
+      title: 'Overloaded area() with a Default Unit',
+      level: 'Easy', tags: ['overloading', 'default arguments', 'functions'], companies: ['Infosys', 'Wipro', 'Cisco'],
+      statement: `<p>Write an overload set named <code>area</code>: <code>area(double r)</code> for a circle, <code>area(double w, double h)</code> for a rectangle, and <code>area(double a, double b, double c)</code> for a triangle with three sides (Heron's formula; return −1 if the sides cannot form a triangle). Add a <code>describe(double value, const string&amp; unit = "cm")</code> function that prints the value with 2 decimals and the unit squared. Read queries like <code>C 2</code>, <code>R 3 4</code>, <code>T 3 4 5</code> and print the answers.</p>`,
+      constraints: `Up to 10<sup>4</sup> queries; all lengths are positive and ≤ 10<sup>4</sup>.`,
+      example: `<p>Input:</p><pre>C 2\nR 3 4\nT 3 4 5\nT 1 2 10</pre><p>Output: ${H.c('g', '12.57 cm^2')}, ${H.c('g', '12.00 cm^2')}, ${H.c('g', '6.00 cm^2')}, ${H.c('r', 'invalid triangle')}. Why: π·2² ≈ 12.566; 3·4 = 12; a 3-4-5 triangle has semi-perimeter 6 and area √(6·3·2·1) = 6; 1 + 2 &lt; 10 so no triangle exists.</p>`,
+      brute: {
+        why: `<p>One function with a shape <b>string</b> and a vector of numbers, plus an if-ladder on the string. It works, but every caller must remember magic strings ("circle" vs "Circle"), the compiler cannot check the number of values, and a typo becomes a run-time bug instead of a compile-time error. Overloading moves that checking to the compiler.</p>`,
+        code: R`double areaOf(const string& shape, const vector<double>& v) {
+    if (shape == "circle") return 3.141592653589793 * v[0] * v[0];
+    else if (shape == "rect") return v[0] * v[1];
+    else if (shape == "tri") {
+        double s = (v[0] + v[1] + v[2]) / 2;
+        return sqrt(s * (s - v[0]) * (s - v[1]) * (s - v[2]));
+    }
+    return -1;    // unknown shape string: only discovered at run time
+}`
+      },
+      mcq: { q: 'Which call is ambiguous if you add <code>double area(double w, double h = 1.0)</code> to the set?', options: ['<code>area(2.0, 3.0)</code>', '<code>area(2.0)</code>', '<code>area(1.0, 2.0, 3.0)</code>', 'None of them'], answer: 1, explain: 'area(2.0) would match both area(double) and area(double, double = 1.0) exactly → ambiguous. Two-argument and three-argument calls are still unique.' },
+      hints: [`<p>Hint 1: Three functions with the same name and 1, 2 and 3 <code>double</code> parameters. The compiler picks by the <b>number</b> of arguments — no strings needed.</p>`, `<p>Hint 2: Heron: s = (a + b + c) / 2, area = √(s(s − a)(s − b)(s − c)). Check the triangle inequality first: every side must be shorter than the sum of the other two.</p>`, `<p>Hint 3: Put the default <code>unit = "cm"</code> only in the declaration of <code>describe</code>. Use <code>fixed &lt;&lt; setprecision(2)</code> for two decimals. Use a <code>switch</code> on the query letter to decide which overload to call.</p>`],
+      solution: {
+        approach: `<p>Overloads make each shape a separately type-checked function; the query letter is read once and a <code>switch</code> calls the right overload. The output helper uses a default argument for the unit so that most callers do not have to mention it. All work is O(1) per query.</p>`,
+        code: R`#include <bits/stdc++.h>
+using namespace std;
+
+const double PI = acos(-1.0);
+
+double area(double r)                     { return PI * r * r; }        // circle
+double area(double w, double h)           { return w * h; }             // rectangle
+double area(double a, double b, double c) {                             // triangle
+    if (a + b <= c || a + c <= b || b + c <= a) return -1;              // impossible
+    double s = (a + b + c) / 2;
+    return sqrt(s * (s - a) * (s - b) * (s - c));                       // Heron
+}
+
+void describe(double value, const string& unit = "cm");   // default declared once
+
+int main() {
+    char kind;
+    while (cin >> kind) {
+        double x, y, z;
+        switch (kind) {
+            case 'C': cin >> x;           describe(area(x));       break;
+            case 'R': cin >> x >> y;      describe(area(x, y));    break;
+            case 'T': cin >> x >> y >> z; describe(area(x, y, z)); break;
+            default:  cout << "unknown shape\n";
+        }
+    }
+}
+
+void describe(double value, const string& unit) {         // no default repeated
+    if (value < 0) { cout << "invalid triangle\n"; return; }
+    cout << fixed << setprecision(2) << value << " " << unit << "^2\n";
+}`,
+        dry: { head: ['query', 'overload chosen', 'computation', 'printed'], rows: [['C 2', 'area(double)', 'π·4 = 12.566', '12.57 cm^2'], ['R 3 4', 'area(double,double)', '3·4 = 12', '12.00 cm^2'], ['T 3 4 5', 'area(double,double,double)', 's=6, √(6·3·2·1)=6', '6.00 cm^2'], ['T 1 2 10', 'area(double,double,double)', '1+2 ≤ 10 → −1', H.c('r', 'invalid triangle')]] },
+        complexity: `<p>O(1) time and space per query. Overload resolution happens at <b>compile time</b>, so choosing the right function costs nothing at run time.</p>`,
+        followUps: ['Add <code>area(int side)</code> for a square — which calls change behaviour, and why is <code>area(2)</code> now different from <code>area(2.0)</code>?', 'Replace the overloads with a <code>std::variant&lt;Circle, Rect, Tri&gt;</code> and <code>std::visit</code> (module A).']
+      }
+    }]
+  });
+
   registerModule({
     id: 'cpp02',
     title: 'Control Flow, Functions, Arrays & Strings',
