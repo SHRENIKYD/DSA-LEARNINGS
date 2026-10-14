@@ -602,7 +602,7 @@ print(fewest_flights(6, [[0, 1], [0, 2], [1, 3], [2, 3], [3, 4], [4, 5]], 0, 5))
         function shown(g) { return g.map(function (row) { return row.map(function (x) { return x === 2 ? '🟥2' : x === 1 ? '🟧1' : '·'; }); }); }
         function qItems() { return q.map(function (p) { return '(' + p[0] + ',' + p[1] + ')'; }); }
         var h0 = {}; q.forEach(function (p) { h0[rc(p[0], p[1])] = 'bad'; });
-        frames.push({ narr: 'Scan the grid once: push <b>all ' + q.length + '</b> rotten oranges into the queue (they all start at minute 0) and count fresh oranges = <b>' + fresh + '</b>.', parts: [
+        frames.push({ narr: 'Scan the grid once: push <b>all ' + q.length + '</b> rotten orange(s) into the queue (they all start at minute 0) and count fresh oranges = <b>' + fresh + '</b>.', parts: [
           { type: 'grid', label: 'Grid at minute 0', rows: shown(G), hl: h0 },
           { type: 'queue', label: 'Queue (all sources together)', items: qItems(), hl: (function () { var o = {}; q.forEach(function (_, i) { o[i] = 'ok'; }); return o; })() },
           { type: 'vars', vals: { minute: 0, fresh: fresh }, hl: { fresh: 'cur' } }
@@ -1590,7 +1590,7 @@ print(two_groups(3, [[0, 1], [1, 2], [2, 0]]))           # None (triangle)` }],
       }
     }],
     examples: [
-      { title: 'Several valid answers', html: `<p>Edges 5→2, 5→0, 4→0, 4→1, 2→3, 3→1. Kahn (queue, index order) gives ${H.c('g', '4, 5, 2, 0, 3, 1')}; DFS from 0 upwards gives ${H.c('g', '5, 4, 2, 3, 1, 0')}. Both respect every arrow. Interview problems usually say "return any valid order" — if they want a unique one, they say "lexicographically smallest" (use a min-heap in Kahn).</p>` },
+      { title: 'Several valid answers', html: `<p>Edges 5→2, 5→0, 4→0, 4→1, 2→3, 3→1. Kahn (queue, neighbours scanned in increasing order, as in the visualizer) gives ${H.c('g', '4, 5, 0, 2, 3, 1')}; DFS from 0 upwards gives ${H.c('g', '5, 4, 2, 3, 1, 0')}. Both respect every arrow. Interview problems usually say "return any valid order" — if they want a unique one, they say "lexicographically smallest" (use a min-heap in Kahn).</p>` },
       { title: 'Minimum semesters (Kahn by levels)', html: `<p>Prerequisites 1→3, 2→3, 3→4 (take as many courses per semester as you like). Level 0 = {1,2}, level 1 = {3}, level 2 = {4} → ${H.c('g', '3 semesters')}. That number is the length of the longest path (in nodes) — the critical path.</p>`, code: { lang: 'python', run: true, code: `from collections import deque
 
 def min_semesters(n, relations):          # courses 1..n, relation [a, b]: a before b
@@ -1852,12 +1852,12 @@ print("0~2?", d.find(0) == d.find(2), " 0~3?", d.find(0) == d.find(3))` }],
           while (parent[r] !== r) { r = parent[r]; path.push(r); }
           var hl = {}, eh = {}, ah = {};
           path.forEach(function (p, k) { hl[p] = k === path.length - 1 ? 'sel' : 'cur'; ah[p] = hl[p]; if (k) eh[ek(path[k - 1], p)] = 'cur'; });
-          snap('find(' + x + ') for ' + who + ': follow parent links ' + path.join(' → ') + '. Leader = <b>' + r + '</b>' + (path.length > 2 ? ' (' + (path.length - 1) + ' hops).' : '.'), hl, eh, ah);
+          if (path.length > 1) snap('find(' + x + ') for ' + who + ': follow parent links ' + path.join(' → ') + '. Leader = <b>' + r + '</b>' + (path.length > 2 ? ' (' + (path.length - 1) + ' hops).' : '.'), hl, eh, ah);
           if (path.length > 2) {
             var changed = [];
             for (var k = 0; k < path.length - 2; k++) { if (parent[path[k]] !== r) { parent[path[k]] = r; changed.push(path[k]); } }
             var h2 = {}, a2 = {}; changed.forEach(function (c) { h2[c] = 'ok'; a2[c] = 'ok'; }); h2[r] = 'sel';
-            snap('<b>Path compression:</b> nodes ' + changed.join(', ') + ' now point straight at leader ' + r + '. Next time find() on them takes 1 hop.', h2, {}, a2);
+            snap('<b>Path compression:</b> node(s) ' + changed.join(', ') + ' now point straight at leader ' + r + '. Next time find() on them takes 1 hop.', h2, {}, a2);
           }
           return r;
         }
@@ -1879,7 +1879,7 @@ print("0~2?", d.find(0) == d.find(2), " 0~3?", d.find(0) == d.find(3))` }],
           if (rank[big] === rank[small]) rank[big]++;
           comps--;
           var hl = {}; hl[big] = 'sel'; hl[small] = 'ok';
-          snap('union(' + a + ', ' + b + '): leaders ' + ra + ' and ' + rb + ' differ → link them. ' + why + '. Only ONE array cell changes: parent[' + small + '] = ' + big + '. Components = ' + comps + '.', hl, one(ek(small, big), 'ok'), one(small, 'ok'));
+          snap('union(' + a + ', ' + b + '): find(' + a + ') = ' + ra + ', find(' + b + ') = ' + rb + ' — different leaders → link the ROOTS (never a and b themselves). ' + why + '. Only ONE array cell changes: parent[' + small + '] = ' + big + '. Components = ' + comps + '.', hl, one(ek(small, big), 'ok'), one(small, 'ok'));
         });
         snap('All unions done: <b>' + comps + '</b> group(s). Trees stay short thanks to rank (height ≤ log n) and compression flattens them further.', {}, {}, {});
         return frames;
@@ -2008,5 +2008,930 @@ print(find_redundant([[1, 2], [2, 3], [3, 4], [1, 4], [1, 5]]))    # [1, 4]`, ru
       }
     }]
   });
-  registerModule({ id: 'dsa19', title: 'Graphs I: Traversals, Cycles, Topological Sort & DSU', intro: `<p>tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro</p>`, goals: ['aaaaaaaaaaaa', 'bbbbbbbbbbbbbb', 'cccccccccccc'], prereqs: `DSA something something`, hours: 14, topics: topics, practice: practice, quiz: quiz, interview: interview });
+
+  // ================= PRACTICE: Easy =================
+  practice.push({
+    title: 'Find if Path Exists in Graph', level: 'Easy', tags: ['bfs', 'dfs', 'dsu'], companies: ['Amazon', 'Microsoft'],
+    statement: `<p>Given an undirected graph with <code>n</code> nodes (0..n−1) and an edge list, return true if there is a path from <code>source</code> to <code>destination</code>.</p>`,
+    constraints: `1 ≤ n ≤ 2·10<sup>5</sup>, 0 ≤ edges.length ≤ 2·10<sup>5</sup>, no duplicate edges, no self-loops`,
+    example: `<p>n = 6, edges = [[0,1],[0,2],[3,5],[5,4],[4,3]], source = 0, destination = 5 → <b>${H.c('r', 'false')}</b>. Nodes {0,1,2} and {3,4,5} are separate components; no road crosses between them.</p>`,
+    brute: { why: `<p>Repeatedly sweep all edges, spreading a "reachable" flag across any edge with one reachable end, until nothing changes. Each sweep is O(E) and you may need up to V sweeps (a long chain listed in the worst order) → O(V·E) = 4·10<sup>10</sup>.</p>`, code: `boolean validPathBrute(int n, int[][] edges, int source, int destination) {
+    boolean[] reach = new boolean[n];
+    reach[source] = true;
+    boolean changed = true;
+    while (changed) {                                  // up to n sweeps
+        changed = false;
+        for (int[] e : edges) {
+            if (reach[e[0]] != reach[e[1]]) { reach[e[0]] = reach[e[1]] = true; changed = true; }
+        }
+    }
+    return reach[destination];
+}` },
+    mcq: { q: 'Only a yes/no answer is needed (not the shortest path). Which approaches are fine?', options: ['BFS, DFS or DSU — any of them in ~O(V + E)', 'Only Dijkstra', 'Only Floyd-Warshall', 'Topological sort'], answer: 0, explain: 'Reachability in an undirected graph is just "same component?". Any traversal or a DSU answers it in linear time.' },
+    hints: [`<p>Hint 1: "Is there a path" = "are source and destination in the same connected component?".</p>`, `<p>Hint 2: BFS/DFS from source and check whether destination got marked — or union all edges with DSU and compare leaders.</p>`, `<p>Hint 3: Recipe: build adjacency list; iterative DFS with a stack from source; return true as soon as destination is popped/marked. Edge: source == destination → true. Use iterative DFS (n can be 2·10<sup>5</sup>).</p>`],
+    solution: {
+      approach: `<p>Iterative DFS from <code>source</code> with early exit. Iterative, because a path-shaped graph with 2·10<sup>5</sup> nodes would overflow a recursive Java DFS.</p>`,
+      code: `class Solution {
+    public boolean validPath(int n, int[][] edges, int source, int destination) {
+        if (source == destination) return true;
+        List<List<Integer>> g = new ArrayList<>();
+        for (int i = 0; i < n; i++) g.add(new ArrayList<>());
+        for (int[] e : edges) { g.get(e[0]).add(e[1]); g.get(e[1]).add(e[0]); }
+        boolean[] seen = new boolean[n];
+        ArrayDeque<Integer> st = new ArrayDeque<>();
+        st.push(source);
+        seen[source] = true;
+        while (!st.isEmpty()) {
+            int u = st.pop();
+            for (int v : g.get(u)) {
+                if (v == destination) return true;
+                if (!seen[v]) { seen[v] = true; st.push(v); }
+            }
+        }
+        return false;
+    }
+}`,
+      alt: [{ lang: 'python', code: `def valid_path(n, edges, source, destination):
+    parent = list(range(n))
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    for u, v in edges:
+        parent[find(u)] = find(v)              # DSU version: no adjacency list needed
+    return find(source) == find(destination)
+
+print(valid_path(3, [[0, 1], [1, 2], [2, 0]], 0, 2))                       # True
+print(valid_path(6, [[0, 1], [0, 2], [3, 5], [5, 4], [4, 3]], 0, 5))       # False`, run: true }],
+      complexity: `<p>Time O(V + E), space O(V + E). DSU version: O((V + E)·α(V)) with only O(V) extra memory.</p>`,
+      followUps: ['Answer 10<sup>5</sup> queries (s, d) on the same graph → label components once, O(1) per query', 'Directed graph: is d reachable from s? (DFS on directed edges; DSU no longer works)']
+    }
+  });
+
+  practice.push({
+    title: 'Flood Fill', level: 'Easy', tags: ['dfs', 'bfs', 'grid'], companies: ['Amazon', 'Google'],
+    statement: `<p>An image is an R×C grid of colour values. Starting at pixel (sr, sc), change the colour of that pixel and every pixel 4-directionally connected to it <b>with the same original colour</b> to <code>color</code>. Return the image (the "paint bucket" tool).</p>`,
+    constraints: `1 ≤ R, C ≤ 50, 0 ≤ values &lt; 2<sup>16</sup>`,
+    example: `<p>image = [[1,1,1],[1,1,0],[1,0,1]], sr = 1, sc = 1, color = 2 → <b>${H.c('g', '[[2,2,2],[2,2,0],[2,0,1]]')}</b>. The bottom-right 1 is not connected to the start through 1s (only diagonally), so it stays 1.</p>`,
+    brute: { why: `<p>Repeatedly scan the whole image and recolour any original-coloured pixel next to an already-recoloured pixel, until no change. Each scan is O(R·C) and you may need O(R·C) scans (a snake-shaped region) → O((R·C)²). Wasted work: rescanning pixels far away from the "paint front".</p>`, code: `int[][] floodBrute(int[][] img, int sr, int sc, int color) {
+    int old = img[sr][sc], R = img.length, C = img[0].length;
+    if (old == color) return img;
+    boolean[][] painted = new boolean[R][C];
+    painted[sr][sc] = true;
+    boolean changed = true;
+    while (changed) {
+        changed = false;
+        for (int r = 0; r < R; r++)
+            for (int c = 0; c < C; c++) {
+                if (painted[r][c] || img[r][c] != old) continue;
+                if ((r > 0 && painted[r - 1][c]) || (r + 1 < R && painted[r + 1][c]) || (c > 0 && painted[r][c - 1]) || (c + 1 < C && painted[r][c + 1])) {
+                    painted[r][c] = true; changed = true;
+                }
+            }
+    }
+    for (int r = 0; r < R; r++) for (int c = 0; c < C; c++) if (painted[r][c]) img[r][c] = color;
+    return img;
+}` },
+    mcq: { q: 'The new colour equals the old colour. What happens to a naive DFS that uses "pixel has old colour" as the visited test?', options: ['It recurses forever (StackOverflowError), because painting does not change anything', 'It works fine', 'It paints the whole image', 'It returns an empty image'], answer: 0, explain: 'Painted pixels still have the old colour, so they look unvisited and get re-entered forever. Return early when old == color.' },
+    hints: [`<p>Hint 1: The region to paint is the connected component of the start pixel among pixels of the original colour.</p>`, `<p>Hint 2: DFS from (sr, sc); the recolouring itself acts as the visited mark.</p>`, `<p>Hint 3: Recipe: old = image[sr][sc]; if old == color return; dfs(r, c): if out of bounds or image[r][c] != old return; image[r][c] = color; recurse 4 ways.</p>`],
+    solution: {
+      approach: `<p>DFS flood fill. Painting a pixel immediately changes its colour, so it will never match <code>old</code> again — no separate visited array needed, as long as we return early when the colours are equal.</p>`,
+      code: `class Solution {
+    public int[][] floodFill(int[][] image, int sr, int sc, int color) {
+        int old = image[sr][sc];
+        if (old != color) paint(image, sr, sc, old, color);
+        return image;
+    }
+    private void paint(int[][] img, int r, int c, int old, int color) {
+        if (r < 0 || c < 0 || r >= img.length || c >= img[0].length || img[r][c] != old) return;
+        img[r][c] = color;                       // doubles as "visited"
+        paint(img, r + 1, c, old, color);
+        paint(img, r - 1, c, old, color);
+        paint(img, r, c + 1, old, color);
+        paint(img, r, c - 1, old, color);
+    }
+}`,
+      complexity: `<p>Time O(R·C), space O(R·C) recursion depth in the worst case (for 50×50 that is 2500 frames — fine; use an explicit stack for big images).</p>`,
+      followUps: ['8-directional fill', 'Return only the size of the painted region', 'Huge images: scan-line flood fill (paint whole horizontal runs at once)']
+    }
+  });
+
+  practice.push({
+    title: 'Find Center of Star Graph', level: 'Easy', tags: ['graph', 'degree'], companies: ['Microsoft'],
+    statement: `<p>An undirected <b>star</b> graph has n nodes labelled 1..n: one center node connected to every other node, and no other edges. Given its n − 1 edges, return the center.</p>`,
+    constraints: `3 ≤ n ≤ 10<sup>5</sup>, edges.length == n − 1, the input is a valid star`,
+    example: `<p>edges = [[1,2],[2,3],[4,2]] → <b>${H.c('g', '2')}</b>: node 2 appears in every edge (degree n − 1 = 3).</p>`,
+    brute: { why: `<p>Count the degree of every node (O(n) time and memory) and return the one with degree n − 1. Correct and linear, but it ignores the structure: the center appears in <i>every</i> edge, so two edges are enough.</p>`, code: `int centerBrute(int[][] edges) {
+    int n = edges.length + 1;
+    int[] deg = new int[n + 1];
+    for (int[] e : edges) { deg[e[0]]++; deg[e[1]]++; }
+    for (int v = 1; v <= n; v++) if (deg[v] == n - 1) return v;
+    return -1;
+}` },
+    mcq: { q: 'What is the minimum number of edges you must read to find the center?', options: ['2', '1', 'n / 2', 'n − 1'], answer: 0, explain: 'The center is the only node shared by any two edges. One edge leaves two candidates; a second edge breaks the tie.' },
+    hints: [`<p>Hint 1: Every single edge of a star touches the center node.</p>`, `<p>Hint 2: So the center is the common endpoint of the first two edges.</p>`, `<p>Hint 3: Return edges[0][0] if it equals edges[1][0] or edges[1][1]; otherwise return edges[0][1].</p>`],
+    solution: {
+      approach: `<p>Degree reasoning without counting: the center has degree n − 1 and every leaf has degree 1, so the only node appearing in both of the first two edges is the center.</p>`,
+      code: `class Solution {
+    public int findCenter(int[][] edges) {
+        int a = edges[0][0], b = edges[0][1];
+        return (a == edges[1][0] || a == edges[1][1]) ? a : b;
+    }
+}`,
+      complexity: `<p>Time O(1), space O(1).</p>`,
+      followUps: ['Validate that the input really is a star (check all degrees)', 'Find the center(s) of a general tree (the 1 or 2 nodes minimising the max distance — peel leaves level by level, Kahn-style)']
+    }
+  });
+
+  practice.push({
+    title: 'Island Perimeter', level: 'Easy', tags: ['grid', 'counting', 'dfs'], companies: ['Google', 'Meta', 'Amazon'],
+    statement: `<p>A grid has exactly one island (land = 1, water = 0, no lakes inside). Each cell is a 1×1 square. Return the perimeter of the island.</p>`,
+    constraints: `1 ≤ R, C ≤ 100`,
+    example: `<p>grid = [[0,1,0,0],[1,1,1,0],[0,1,0,0],[1,1,0,0]] → <b>${H.c('g', '16')}</b>. 7 land cells × 4 sides = 28, minus 2 for each of the 6 shared land–land edges (28 − 12 = 16).</p>`,
+    brute: { why: `<p>DFS over the island, and for each land cell look at its 4 sides, adding 1 for every side that touches water or the border. That is already O(R·C) — the "brute" cost here is the recursion and visited bookkeeping, which pure counting avoids.</p>`, code: `int perimeterDfs(int[][] g) {
+    for (int r = 0; r < g.length; r++)
+        for (int c = 0; c < g[0].length; c++)
+            if (g[r][c] == 1) return dfs(g, r, c);
+    return 0;
+}
+int dfs(int[][] g, int r, int c) {
+    if (r < 0 || c < 0 || r >= g.length || c >= g[0].length || g[r][c] == 0) return 1;   // crossed a border side
+    if (g[r][c] == 2) return 0;                                                          // already visited
+    g[r][c] = 2;
+    return dfs(g, r + 1, c) + dfs(g, r - 1, c) + dfs(g, r, c + 1) + dfs(g, r, c - 1);
+}` },
+    mcq: { q: 'Land cells L = 5 and shared edges between land cells S = 4. Perimeter?', options: ['4L − 2S = 12', '4L − S = 16', '4L = 20', 'L + S = 9'], answer: 0, explain: 'Each shared edge hides one side of each of its two cells, so subtract 2 per shared edge.' },
+    hints: [`<p>Hint 1: Every land cell contributes 4 sides, except sides shared with another land cell.</p>`, `<p>Hint 2: Count land cells L and land–land adjacencies S, looking only up and left to count each adjacency once.</p>`, `<p>Hint 3: Answer = 4·L − 2·S. No traversal needed — the grid is an implicit graph and this is just the handshake idea on cells.</p>`],
+    solution: {
+      approach: `<p>Edge counting on the implicit grid graph: perimeter = 4 × (land cells) − 2 × (land–land edges). Checking only the top and left neighbours counts each shared edge exactly once.</p>`,
+      code: `class Solution {
+    public int islandPerimeter(int[][] grid) {
+        int land = 0, shared = 0;
+        for (int r = 0; r < grid.length; r++)
+            for (int c = 0; c < grid[0].length; c++) {
+                if (grid[r][c] != 1) continue;
+                land++;
+                if (r > 0 && grid[r - 1][c] == 1) shared++;   // edge with the cell above
+                if (c > 0 && grid[r][c - 1] == 1) shared++;   // edge with the cell to the left
+            }
+        return 4 * land - 2 * shared;
+    }
+}`,
+      dry: { head: ['cell', 'land', 'shared (up/left)'], rows: [['(0,1)', '1', '0'], ['(1,0),(1,1),(1,2)', '4', '0+2+1 → 3'], ['(2,1)', '5', '4'], ['(3,0),(3,1)', '7', '4+0+2 → 6 → 28 − 12 = 16']] },
+      complexity: `<p>Time O(R·C), space O(1).</p>`,
+      followUps: ['Several islands: return the perimeter of each (component labelling + counting)', 'Lakes inside the island count as perimeter too — what changes? (nothing: the formula already counts them)']
+    }
+  });
+
+  // ================= PRACTICE: Medium =================
+  practice.push({
+    title: 'Number of Provinces', level: 'Medium', tags: ['dfs', 'dsu', 'adjacency matrix', 'components'], companies: ['Amazon', 'Goldman Sachs', 'Bloomberg'],
+    statement: `<p>There are n cities. <code>isConnected[i][j] = 1</code> if city i and city j are directly connected (an <b>adjacency matrix</b>). A province is a group of directly or indirectly connected cities. Return the number of provinces.</p>`,
+    constraints: `1 ≤ n ≤ 200, isConnected[i][i] = 1, the matrix is symmetric`,
+    example: `<p>isConnected = [[1,1,0],[1,1,0],[0,0,1]] → <b>${H.c('g', '2')}</b>: {0,1} and {2}.</p>`,
+    brute: { why: `<p>Compute the full transitive closure with Floyd–Warshall style triple loops (reach[i][j] |= reach[i][k] &amp;&amp; reach[k][j]) and then count distinct rows. O(n³) = 8·10<sup>6</sup> — works for n = 200 but explodes for larger n, and it computes far more than needed.</p>`, code: `int provincesBrute(int[][] m) {
+    int n = m.length;
+    boolean[][] reach = new boolean[n][n];
+    for (int i = 0; i < n; i++) for (int j = 0; j < n; j++) reach[i][j] = m[i][j] == 1;
+    for (int k = 0; k < n; k++)
+        for (int i = 0; i < n; i++)
+            for (int j = 0; j < n; j++)
+                if (reach[i][k] && reach[k][j]) reach[i][j] = true;
+    int count = 0;
+    boolean[] done = new boolean[n];
+    for (int i = 0; i < n; i++) {
+        if (done[i]) continue;
+        count++;
+        for (int j = 0; j < n; j++) if (reach[i][j]) done[j] = true;
+    }
+    return count;
+}` },
+    mcq: { q: 'The graph is given as an n×n matrix. What is the cost of a DFS over it?', options: ['O(n²) — scanning a row to find neighbours costs n', 'O(n + E)', 'O(n log n)', 'O(n³)'], answer: 0, explain: 'With a matrix, listing the neighbours of one node is a full row scan, so a full traversal is O(V²), which here equals the input size.' },
+    hints: [`<p>Hint 1: Provinces = connected components. The input is an adjacency matrix rather than an edge list.</p>`, `<p>Hint 2: Loop over cities; each unvisited city starts a new province and a DFS that scans its matrix row for neighbours.</p>`, `<p>Hint 3: Or DSU: union(i, j) for every i &lt; j with isConnected[i][j] == 1, and count successful unions: answer = n − unions.</p>`],
+    solution: {
+      approach: `<p>Count connected components with DFS over the matrix (neighbours of i = every j with a 1 in row i). An equally good alternative is DSU, shown in Python.</p>`,
+      code: `class Solution {
+    public int findCircleNum(int[][] isConnected) {
+        int n = isConnected.length, provinces = 0;
+        boolean[] seen = new boolean[n];
+        ArrayDeque<Integer> st = new ArrayDeque<>();
+        for (int s = 0; s < n; s++) {
+            if (seen[s]) continue;
+            provinces++;
+            seen[s] = true;
+            st.push(s);
+            while (!st.isEmpty()) {
+                int u = st.pop();
+                for (int v = 0; v < n; v++)
+                    if (isConnected[u][v] == 1 && !seen[v]) { seen[v] = true; st.push(v); }
+            }
+        }
+        return provinces;
+    }
+}`,
+      alt: [{ lang: 'python', code: `def find_circle_num(m):
+    n = len(m)
+    parent = list(range(n))
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    comps = n
+    for i in range(n):
+        for j in range(i + 1, n):
+            if m[i][j] and find(i) != find(j):
+                parent[find(i)] = find(j)
+                comps -= 1
+    return comps
+
+print(find_circle_num([[1, 1, 0], [1, 1, 0], [0, 0, 1]]))  # 2`, run: true }],
+      complexity: `<p>Time O(n²) (the size of the matrix), space O(n).</p>`,
+      followUps: ['Input as an edge list with n = 10<sup>5</sup> → adjacency list or DSU', 'Report the size of each province']
+    }
+  });
+
+  practice.push({
+    title: '01 Matrix (distance to nearest 0)', level: 'Medium', tags: ['multi-source bfs', 'grid'], companies: ['Amazon', 'Google', 'Uber'],
+    statement: `<p>Given an R×C binary matrix, return a matrix where each cell holds the distance (in 4-directional steps) to the nearest 0.</p>`,
+    constraints: `1 ≤ R·C ≤ 10<sup>4</sup> (design for 10<sup>6</sup>), at least one 0 exists`,
+    example: `<p>mat = [[0,0,0],[0,1,0],[1,1,1]] → <b>${H.c('g', '[[0,0,0],[0,1,0],[1,2,1]]')}</b>. The bottom middle cell is 2 steps from the nearest 0 (up twice).</p>`,
+    brute: { why: `<p>Run a separate BFS from every 1-cell until it finds a 0. Each BFS is O(R·C) → O((R·C)²) = 10<sup>8</sup> for 10<sup>4</sup> cells and 10<sup>12</sup> for a 1000×1000 grid. The waste: neighbouring cells repeat nearly identical searches.</p>`, code: `int[][] nearestBrute(int[][] mat) {
+    int R = mat.length, C = mat[0].length;
+    int[][] out = new int[R][C];
+    int[] dr = {-1, 1, 0, 0}, dc = {0, 0, -1, 1};
+    for (int r = 0; r < R; r++)
+        for (int c = 0; c < C; c++) {
+            if (mat[r][c] == 0) continue;
+            boolean[][] seen = new boolean[R][C];        // a fresh BFS for every single cell
+            ArrayDeque<int[]> q = new ArrayDeque<>();
+            q.add(new int[]{r, c, 0}); seen[r][c] = true;
+            while (!q.isEmpty()) {
+                int[] p = q.poll();
+                if (mat[p[0]][p[1]] == 0) { out[r][c] = p[2]; break; }
+                for (int d = 0; d < 4; d++) {
+                    int nr = p[0] + dr[d], nc = p[1] + dc[d];
+                    if (nr >= 0 && nc >= 0 && nr < R && nc < C && !seen[nr][nc]) { seen[nr][nc] = true; q.add(new int[]{nr, nc, p[2] + 1}); }
+                }
+            }
+        }
+    return out;
+}` },
+    mcq: { q: 'Which cells go into the queue first?', options: ['All 0 cells (the targets), at distance 0', 'All 1 cells', 'Only the top-left cell', 'One random 0 cell'], answer: 0, explain: 'Reverse the question: spread outward from every 0 at once. Each 1 is reached first by its nearest 0 — multi-source BFS.' },
+    hints: [`<p>Hint 1: Instead of searching from each 1 to a 0, spread from all 0s simultaneously.</p>`, `<p>Hint 2: Multi-source BFS: queue all zeros with dist 0, mark all ones as -1 (unknown).</p>`, `<p>Hint 3: Pop (r, c); for each in-bounds neighbour with dist -1: dist = dist[r][c] + 1, push. Each cell is finalised the first time it is reached.</p>`],
+    solution: {
+      approach: `<p>Multi-source BFS from every zero. The BFS invariant guarantees each cell is first reached by its nearest zero, so one pass of O(R·C) gives all distances. (A two-pass DP — top-left then bottom-right sweeps — also works in O(R·C) with O(1) extra space.)</p>`,
+      code: `class Solution {
+    public int[][] updateMatrix(int[][] mat) {
+        int R = mat.length, C = mat[0].length;
+        int[][] dist = new int[R][C];
+        int[] q = new int[R * C];
+        int head = 0, tail = 0;
+        for (int r = 0; r < R; r++)
+            for (int c = 0; c < C; c++) {
+                if (mat[r][c] == 0) q[tail++] = r * C + c;
+                else dist[r][c] = -1;
+            }
+        int[] dr = {-1, 1, 0, 0}, dc = {0, 0, -1, 1};
+        while (head < tail) {
+            int cur = q[head++], r = cur / C, c = cur % C;
+            for (int d = 0; d < 4; d++) {
+                int nr = r + dr[d], nc = c + dc[d];
+                if (nr < 0 || nc < 0 || nr >= R || nc >= C || dist[nr][nc] != -1) continue;
+                dist[nr][nc] = dist[r][c] + 1;
+                q[tail++] = nr * C + nc;
+            }
+        }
+        return dist;
+    }
+}`,
+      complexity: `<p>Time O(R·C), space O(R·C) for the queue (array-based: each cell enters once).</p>`,
+      followUps: ['Distance to the nearest 1 using 8 directions', 'Walls and Gates (-1 walls, 0 gates, INF rooms)', 'As Far from Land as Possible — the maximum of this distance matrix']
+    }
+  });
+
+  practice.push({
+    title: 'Surrounded Regions', level: 'Medium', tags: ['dfs', 'bfs', 'grid', 'border flood fill'], companies: ['Google', 'Amazon', 'Uber'],
+    statement: `<p>Given a board of 'X' and 'O', capture every region of 'O' that is completely surrounded by 'X' (flip those 'O' to 'X'). An 'O' region touching the <b>border</b> is not surrounded and must stay.</p>`,
+    constraints: `1 ≤ R, C ≤ 200`,
+    example: `<p>board =<br>X X X X<br>X O O X<br>X X O X<br>X <b>O</b> X X<br>→ the middle O's become X; the O at (3,1) is on the border so it ${H.c('g', 'survives')}.</p>`,
+    brute: { why: `<p>For every 'O' region, flood fill it and check whether any of its cells touches the border; if not, flip it. Done naively (a fresh BFS from <i>each O cell</i>), that is O((R·C)²). The waste: we keep re-exploring the same region.</p>`, code: `void solveBrute(char[][] b) {
+    int R = b.length, C = b[0].length;
+    int[] dr = {-1, 1, 0, 0}, dc = {0, 0, -1, 1};
+    List<int[]> flip = new ArrayList<>();
+    for (int r = 0; r < R; r++)
+        for (int c = 0; c < C; c++) {
+            if (b[r][c] != 'O') continue;
+            boolean[][] seen = new boolean[R][C];           // fresh search per O cell
+            ArrayDeque<int[]> q = new ArrayDeque<>();
+            q.add(new int[]{r, c}); seen[r][c] = true;
+            boolean escapes = false;
+            while (!q.isEmpty() && !escapes) {
+                int[] p = q.poll();
+                if (p[0] == 0 || p[1] == 0 || p[0] == R - 1 || p[1] == C - 1) escapes = true;
+                for (int d = 0; d < 4; d++) {
+                    int nr = p[0] + dr[d], nc = p[1] + dc[d];
+                    if (nr >= 0 && nc >= 0 && nr < R && nc < C && !seen[nr][nc] && b[nr][nc] == 'O') { seen[nr][nc] = true; q.add(new int[]{nr, nc}); }
+                }
+            }
+            if (!escapes) flip.add(new int[]{r, c});
+        }
+    for (int[] p : flip) b[p[0]][p[1]] = 'X';
+}` },
+    mcq: { q: 'What is the cleanest way to find the O cells that must NOT be flipped?', options: ['Flood fill from every O on the border and mark what you reach as safe', 'Flood fill from the center of the board', 'Flip every O, then undo', 'Sort the O cells by distance to the center'], answer: 0, explain: 'Reverse thinking: an O survives iff it is connected to a border O. Mark those from the border inward, then flip everything else.' },
+    hints: [`<p>Hint 1: Think in reverse: which O's survive? Exactly those connected to the border.</p>`, `<p>Hint 2: DFS/BFS from each border 'O', temporarily marking reached cells as '#'.</p>`, `<p>Hint 3: Final sweep: 'O' → 'X' (captured), '#' → 'O' (restore survivors). Use an explicit stack for 200×200 to be safe.</p>`],
+    solution: {
+      approach: `<p>Border flood fill. Mark every O reachable from the border as safe ('#'). Every O that remains is enclosed → flip to X. Then turn '#' back into 'O'. Each cell is visited a constant number of times.</p>`,
+      code: `class Solution {
+    public void solve(char[][] board) {
+        int R = board.length, C = board[0].length;
+        ArrayDeque<int[]> st = new ArrayDeque<>();
+        for (int r = 0; r < R; r++) for (int c = 0; c < C; c++)
+            if ((r == 0 || c == 0 || r == R - 1 || c == C - 1) && board[r][c] == 'O') { board[r][c] = '#'; st.push(new int[]{r, c}); }
+        int[] dr = {-1, 1, 0, 0}, dc = {0, 0, -1, 1};
+        while (!st.isEmpty()) {
+            int[] p = st.pop();
+            for (int d = 0; d < 4; d++) {
+                int nr = p[0] + dr[d], nc = p[1] + dc[d];
+                if (nr < 0 || nc < 0 || nr >= R || nc >= C || board[nr][nc] != 'O') continue;
+                board[nr][nc] = '#';                       // safe: connected to the border
+                st.push(new int[]{nr, nc});
+            }
+        }
+        for (int r = 0; r < R; r++) for (int c = 0; c < C; c++)
+            board[r][c] = board[r][c] == '#' ? 'O' : 'X';  // captured O → X, safe # → O
+    }
+}`,
+      complexity: `<p>Time O(R·C), space O(R·C) for the stack in the worst case.</p>`,
+      followUps: ['Number of Enclaves: count land cells that cannot walk off the grid (same trick)', 'Number of Closed Islands', 'Do it with DSU and a virtual "border" node']
+    }
+  });
+
+  practice.push({
+    title: 'Possible Bipartition', level: 'Medium', tags: ['bipartite', 'bfs', 'dsu'], companies: ['Google', 'Meta'],
+    statement: `<p>Split n people (1..n) into two groups of any size. <code>dislikes[i] = [a, b]</code> means a and b must not be in the same group. Return true if such a split is possible.</p>`,
+    constraints: `1 ≤ n ≤ 2000, 0 ≤ dislikes.length ≤ 10<sup>4</sup>, pairs distinct`,
+    example: `<p>n = 3, dislikes = [[1,2],[1,3],[2,3]] → <b>${H.c('r', 'false')}</b>: 1, 2, 3 all dislike each other — a triangle (odd cycle) cannot be 2-coloured.</p>`,
+    brute: { why: `<p>Try all 2<sup>n</sup> group assignments and check every dislike pair: O(2<sup>n</sup>·m). Already hopeless at n = 40. The insight that removes the search: once one person's group is fixed, everyone connected to them is forced.</p>`, code: `boolean bipartitionBrute(int n, int[][] dislikes) {   // n <= ~20 only
+    for (int mask = 0; mask < (1 << n); mask++) {
+        boolean ok = true;
+        for (int[] d : dislikes)
+            if (((mask >> (d[0] - 1)) & 1) == ((mask >> (d[1] - 1)) & 1)) { ok = false; break; }
+        if (ok) return true;
+    }
+    return false;
+}` },
+    mcq: { q: 'Dislikes form a cycle of length 4: 1-2, 2-3, 3-4, 4-1. Possible?', options: ['Yes: {1,3} and {2,4}', 'No, any cycle is impossible', 'Only if n is even', 'Cannot tell without more info'], answer: 0, explain: 'Only odd cycles break bipartiteness. An even cycle alternates groups perfectly.' },
+    hints: [`<p>Hint 1: People = nodes, dislikes = edges. Two groups with no internal edge = bipartite graph.</p>`, `<p>Hint 2: BFS 2-colouring from every uncoloured person (the graph may be disconnected).</p>`, `<p>Hint 3: Remember 1-indexing (allocate n + 1). Neighbour uncoloured → opposite colour; same colour → false.</p>`],
+    solution: {
+      approach: `<p>Build the dislike graph and run BFS 2-colouring per component; any edge with equal colours proves an odd cycle → impossible.</p>`,
+      code: `class Solution {
+    public boolean possibleBipartition(int n, int[][] dislikes) {
+        List<List<Integer>> g = new ArrayList<>();
+        for (int i = 0; i <= n; i++) g.add(new ArrayList<>());
+        for (int[] d : dislikes) { g.get(d[0]).add(d[1]); g.get(d[1]).add(d[0]); }
+        int[] color = new int[n + 1];                   // 0 none, 1 / 2 groups
+        ArrayDeque<Integer> q = new ArrayDeque<>();
+        for (int s = 1; s <= n; s++) {
+            if (color[s] != 0) continue;
+            color[s] = 1;
+            q.offer(s);
+            while (!q.isEmpty()) {
+                int u = q.poll();
+                for (int v : g.get(u)) {
+                    if (color[v] == 0) { color[v] = 3 - color[u]; q.offer(v); }
+                    else if (color[v] == color[u]) return false;
+                }
+            }
+        }
+        return true;
+    }
+}`,
+      complexity: `<p>Time O(n + m), space O(n + m).</p>`,
+      followUps: ['Return the two groups', 'Some pairs must be in the SAME group too → DSU with parity', 'Minimise the size difference between groups (each component can flip → subset-sum DP)']
+    }
+  });
+
+  practice.push({
+    title: 'Number of Operations to Make Network Connected', level: 'Medium', tags: ['dsu', 'components'], companies: ['Amazon', 'Microsoft'],
+    statement: `<p>n computers (0..n−1) are joined by cables <code>connections[i] = [a, b]</code>. You may unplug any cable and re-plug it between any two computers. Return the minimum number of moves to connect all computers, or -1 if impossible.</p>`,
+    constraints: `1 ≤ n ≤ 10<sup>5</sup>, 1 ≤ connections.length ≤ min(n(n−1)/2, 10<sup>5</sup>)`,
+    example: `<p>n = 4, connections = [[0,1],[0,2],[1,2]] → <b>${H.c('g', '1')}</b>. Cable [1,2] is redundant (0,1,2 are already connected); move it to connect computer 3. Components = 2 → 1 move.</p>`,
+    brute: { why: `<p>Check every cable for redundancy by removing it and running a BFS (does a path still join its ends?), count the components the slow way, then compare. That is O(E·(V + E)) ≈ 10<sup>10</sup> for 10<sup>5</sup> cables. The insight: you never need to know <i>which</i> cables are redundant — counting is enough.</p>`, code: `int makeConnectedBrute(int n, int[][] connections) {
+    int redundant = 0;
+    for (int skip = 0; skip < connections.length; skip++)             // is cable 'skip' redundant?
+        if (connectedWithout(n, connections, skip, connections[skip][0], connections[skip][1])) redundant++;
+    int comps = 0;
+    boolean[] seen = new boolean[n];
+    for (int s = 0; s < n; s++) {                                       // count components (slow BFS over the edge list)
+        if (seen[s]) continue;
+        comps++;
+        ArrayDeque<Integer> q = new ArrayDeque<>(List.of(s));
+        seen[s] = true;
+        while (!q.isEmpty()) {
+            int u = q.poll();
+            for (int[] c : connections) {
+                int v = c[0] == u ? c[1] : c[1] == u ? c[0] : -1;
+                if (v >= 0 && !seen[v]) { seen[v] = true; q.add(v); }
+            }
+        }
+    }
+    return redundant >= comps - 1 ? comps - 1 : -1;
+}
+boolean connectedWithout(int n, int[][] cs, int skip, int a, int b) {     // one full BFS per cable: O(E * (V + E))
+    boolean[] seen = new boolean[n];
+    ArrayDeque<Integer> q = new ArrayDeque<>(List.of(a));
+    seen[a] = true;
+    while (!q.isEmpty()) {
+        int u = q.poll();
+        if (u == b) return true;
+        for (int i = 0; i < cs.length; i++) {
+            if (i == skip) continue;
+            int v = cs[i][0] == u ? cs[i][1] : cs[i][1] == u ? cs[i][0] : -1;
+            if (v >= 0 && !seen[v]) { seen[v] = true; q.add(v); }
+        }
+    }
+    return false;
+}` },
+    mcq: { q: 'There are k components and enough cables. How many moves are needed?', options: ['k − 1', 'k', 'number of redundant cables', 'n − 1'], answer: 0, explain: 'Each move can join two components, so k − 1 moves suffice and are necessary. Feasibility only needs E ≥ n − 1 (a spanning tree needs n − 1 cables).' },
+    hints: [`<p>Hint 1: If there are fewer than n − 1 cables, connecting n computers is impossible → -1.</p>`, `<p>Hint 2: Otherwise there are always enough redundant cables; you need exactly (components − 1) moves.</p>`, `<p>Hint 3: Count components with DSU: start at n, decrement on each successful union.</p>`],
+    solution: {
+      approach: `<p>Counting argument + DSU. With E ≥ n − 1, the number of redundant cables (E − (n − components)) is always ≥ components − 1, so the answer is components − 1.</p>`,
+      code: `class Solution {
+    int[] parent;
+    int find(int x) { while (parent[x] != x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; }
+
+    public int makeConnected(int n, int[][] connections) {
+        if (connections.length < n - 1) return -1;       // not enough cables in total
+        parent = new int[n];
+        for (int i = 0; i < n; i++) parent[i] = i;
+        int comps = n;
+        for (int[] c : connections) {
+            int a = find(c[0]), b = find(c[1]);
+            if (a != b) { parent[a] = b; comps--; }
+        }
+        return comps - 1;
+    }
+}`,
+      complexity: `<p>Time O((n + E)·α(n)), space O(n).</p>`,
+      followUps: ['Return which cables to move and where', 'Cables have costs and you want the cheapest network → Kruskal MST (Graphs II)']
+    }
+  });
+
+  practice.push({
+    title: 'Accounts Merge', level: 'Medium', tags: ['dsu', 'hashmap', 'dfs'], companies: ['Meta', 'Google', 'Amazon', 'LinkedIn'],
+    statement: `<p>Each account is <code>[name, email1, email2, …]</code>. Two accounts belong to the same person if they share <b>any</b> email (names can repeat for different people). Merge accounts and return each person as <code>[name, sorted emails…]</code>, in any order.</p>`,
+    constraints: `1 ≤ accounts.length ≤ 1000, 2 ≤ accounts[i].length ≤ 10, email length ≤ 30`,
+    example: `<p>[["John","a@m","b@m"], ["John","b@m","c@m"], ["Mary","m@m"], ["John","x@m"]] → <b>${H.c('g', '[["John","a@m","b@m","c@m"], ["Mary","m@m"], ["John","x@m"]]')}</b>. The first two share b@m. The last John shares nothing, so he is a different person.</p>`,
+    brute: { why: `<p>Compare every pair of accounts for a shared email and merge repeatedly until nothing changes: O(A²·L²) per round and up to A rounds. Wasted work: the transitive chains (A shares with B, B with C) force many rounds.</p>`, code: `List<List<String>> mergeBrute(List<List<String>> accounts) {
+    List<Set<String>> sets = new ArrayList<>();
+    List<String> names = new ArrayList<>();
+    for (List<String> a : accounts) { names.add(a.get(0)); sets.add(new TreeSet<>(a.subList(1, a.size()))); }
+    boolean merged = true;
+    while (merged) {                                       // keep merging pairs until stable
+        merged = false;
+        outer:
+        for (int i = 0; i < sets.size(); i++)
+            for (int j = i + 1; j < sets.size(); j++)
+                if (!Collections.disjoint(sets.get(i), sets.get(j))) {
+                    sets.get(i).addAll(sets.remove(j)); names.remove(j);
+                    merged = true; break outer;
+                }
+    }
+    List<List<String>> res = new ArrayList<>();
+    for (int i = 0; i < sets.size(); i++) { List<String> row = new ArrayList<>(); row.add(names.get(i)); row.addAll(sets.get(i)); res.add(row); }
+    return res;
+}` },
+    mcq: { q: 'What should be the DSU elements?', options: ['Account indices (union accounts that share an email, via an email → first-account map)', 'Names', 'Characters of emails', 'Pairs of names'], answer: 0, explain: 'Names are not unique identifiers. Map each email to the first account index that owned it; when another account has the same email, union the two indices.' },
+    hints: [`<p>Hint 1: "Share any email ⇒ same person" is transitive grouping → connected components / DSU.</p>`, `<p>Hint 2: Keep <code>Map&lt;String, Integer&gt; owner</code> from email to the first account index; union the current account with the owner when an email repeats.</p>`, `<p>Hint 3: Finally group emails by find(owner[email]) into TreeSets, prepend the name of that root account.</p>`],
+    solution: {
+      approach: `<p>DSU over account indices. One pass over all emails unions accounts sharing an email. A second pass buckets each email under its root account; sorting each bucket gives the output.</p>`,
+      code: `class Solution {
+    int[] parent;
+    int find(int x) { while (parent[x] != x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; }
+
+    public List<List<String>> accountsMerge(List<List<String>> accounts) {
+        int n = accounts.size();
+        parent = new int[n];
+        for (int i = 0; i < n; i++) parent[i] = i;
+        Map<String, Integer> owner = new HashMap<>();
+        for (int i = 0; i < n; i++)
+            for (int k = 1; k < accounts.get(i).size(); k++) {
+                String email = accounts.get(i).get(k);
+                Integer j = owner.putIfAbsent(email, i);
+                if (j != null) parent[find(i)] = find(j);    // same email → same person
+            }
+        Map<Integer, TreeSet<String>> groups = new HashMap<>();
+        for (Map.Entry<String, Integer> e : owner.entrySet())
+            groups.computeIfAbsent(find(e.getValue()), k -> new TreeSet<>()).add(e.getKey());
+        List<List<String>> res = new ArrayList<>();
+        for (Map.Entry<Integer, TreeSet<String>> g : groups.entrySet()) {
+            List<String> row = new ArrayList<>();
+            row.add(accounts.get(g.getKey()).get(0));
+            row.addAll(g.getValue());
+            res.add(row);
+        }
+        return res;
+    }
+}`,
+      complexity: `<p>Time O(S log S) where S = total number of emails (sorting dominates; DSU work is O(S·α)). Space O(S).</p>`,
+      followUps: ['Billions of records across machines (entity resolution with distributed union-find / connected components)', 'Use DFS on an email graph instead of DSU — compare memory', 'What if one bad shared email (like "noreply@") merges millions of accounts? (block high-degree keys)']
+    }
+  });
+
+  practice.push({
+    title: 'Find Eventual Safe States', level: 'Medium', tags: ['directed graph', 'cycle detection', 'topological sort'], companies: ['Google', 'Amazon'],
+    statement: `<p>A directed graph has n nodes; <code>graph[i]</code> lists the nodes i points to. A node is <b>terminal</b> if it has no outgoing edges. A node is <b>safe</b> if every path starting from it ends at a terminal node (it can never get stuck in a cycle). Return all safe nodes in ascending order.</p>`,
+    constraints: `1 ≤ n ≤ 10<sup>4</sup>, total edges ≤ 4·10<sup>4</sup>, self-loops possible`,
+    example: `<p>graph = [[1,2],[2,3],[5],[0],[5],[],[]] → <b>${H.c('g', '[2,4,5,6]')}</b>. 0 → 1 → 3 → 0 is a cycle, so 0, 1, 3 are unsafe. 2 only reaches 5 (terminal), 4 reaches 5, and 5, 6 are terminal.</p>`,
+    brute: { why: `<p>For each node, run a DFS that explores every path and checks whether any of them revisits a node on the current path. Without memoisation each node's DFS is O(V + E) → O(V·(V + E)) = 5·10<sup>8</sup>, and without a visited set it can be exponential.</p>`, code: `List<Integer> safeBrute(int[][] graph) {
+    List<Integer> res = new ArrayList<>();
+    for (int s = 0; s < graph.length; s++)
+        if (!reachesCycle(graph, s, new boolean[graph.length], new boolean[graph.length])) res.add(s);
+    return res;
+}
+boolean reachesCycle(int[][] g, int u, boolean[] onPath, boolean[] done) {   // fresh arrays per start node
+    if (onPath[u]) return true;
+    if (done[u]) return false;
+    onPath[u] = true;
+    for (int v : g[u]) if (reachesCycle(g, v, onPath, done)) return true;
+    onPath[u] = false;
+    done[u] = true;
+    return false;
+}` },
+    mcq: { q: 'In the three-colour DFS, which nodes are safe?', options: ['Nodes that finish black without ever reaching a grey node', 'All grey nodes', 'Nodes with in-degree 0', 'Nodes visited first'], answer: 0, explain: 'A node is unsafe iff it can reach a cycle. If its DFS ever hits a grey node, it (and everything on the current path) is unsafe; otherwise it finishes black and is safe. Memoising the colours makes the whole thing O(V + E).' },
+    hints: [`<p>Hint 1: Unsafe = can reach a cycle. Safe = every path ends at a terminal node.</p>`, `<p>Hint 2: Option A: three-colour DFS with memo (grey stays grey if it hits a cycle). Option B: reverse all edges and run Kahn from terminal nodes (out-degree 0).</p>`, `<p>Hint 3: Reverse-Kahn recipe: outdeg[i] = graph[i].length; queue all nodes with outdeg 0; pop v, for each u that points to v: outdeg[u]--, if 0 push. Popped nodes are safe; sort them.</p>`],
+    solution: {
+      approach: `<p>Three-colour DFS with memoisation: colour 1 (grey) = in progress or known unsafe, 2 (black) = safe. When a DFS hits grey, return unsafe and leave the current path grey forever (they all can reach that cycle). Each node is resolved once.</p>`,
+      code: `class Solution {
+    public List<Integer> eventualSafeNodes(int[][] graph) {
+        int n = graph.length;
+        int[] color = new int[n];                    // 0 unvisited, 1 grey/unsafe, 2 safe
+        List<Integer> res = new ArrayList<>();
+        for (int i = 0; i < n; i++) if (safe(graph, i, color)) res.add(i);
+        return res;
+    }
+    private boolean safe(int[][] g, int u, int[] color) {
+        if (color[u] != 0) return color[u] == 2;
+        color[u] = 1;
+        for (int v : g[u]) if (!safe(g, v, color)) return false;   // u stays grey = unsafe
+        color[u] = 2;
+        return true;
+    }
+}`,
+      alt: [{ lang: 'python', code: `from collections import deque
+
+def eventual_safe(graph):
+    n = len(graph)
+    rev = [[] for _ in range(n)]
+    outdeg = [len(x) for x in graph]
+    for u in range(n):
+        for v in graph[u]:
+            rev[v].append(u)
+    q = deque(i for i in range(n) if outdeg[i] == 0)    # terminal nodes
+    safe = [False] * n
+    while q:
+        v = q.popleft()
+        safe[v] = True
+        for u in rev[v]:
+            outdeg[u] -= 1
+            if outdeg[u] == 0:
+                q.append(u)
+    return [i for i in range(n) if safe[i]]
+
+print(eventual_safe([[1, 2], [2, 3], [5], [0], [5], [], []]))  # [2, 4, 5, 6]`, run: true }],
+      complexity: `<p>Time O(V + E), space O(V) (plus recursion depth for the DFS version).</p>`,
+      followUps: ['Return the nodes that are ON a cycle (not just able to reach one) → SCCs (Tarjan/Kosaraju)', 'Deadlock detection in a wait-for graph']
+    }
+  });
+
+  // ================= PRACTICE: Hard =================
+  practice.push({
+    title: 'Word Ladder', level: 'Hard', tags: ['bfs', 'implicit graph', 'strings'], companies: ['Amazon', 'Meta', 'Google', 'LinkedIn'],
+    statement: `<p>Given <code>beginWord</code>, <code>endWord</code> and a <code>wordList</code>, return the number of words in the shortest transformation sequence from beginWord to endWord, where each step changes exactly one letter and every intermediate word must be in wordList. Return 0 if impossible.</p>`,
+    constraints: `1 ≤ L = word length ≤ 10, 1 ≤ wordList.length ≤ 5000, lowercase letters, all words distinct`,
+    example: `<p>begin = "hit", end = "cog", list = ["hot","dot","dog","lot","log","cog"] → <b>${H.c('g', '5')}</b>: hit → hot → dot → dog → cog (5 words, 4 changes). If "cog" is not in the list → 0.</p>`,
+    brute: { why: `<p>Build the explicit graph by comparing every pair of words (O(N²·L) = 2.5·10<sup>8</sup> character comparisons for N = 5000), then BFS. The pair comparison dominates. Generating neighbours by trying 26 letters at each position is O(N·L·26·L) instead.</p>`, code: `int ladderBrute(String begin, String end, List<String> list) {
+    List<String> words = new ArrayList<>(list);
+    if (!words.contains(end)) return 0;
+    words.add(begin);
+    int n = words.size();
+    List<List<Integer>> g = new ArrayList<>();
+    for (int i = 0; i < n; i++) g.add(new ArrayList<>());
+    for (int i = 0; i < n; i++)                         // O(N^2 * L) edge building
+        for (int j = i + 1; j < n; j++) {
+            int diff = 0;
+            for (int k = 0; k < begin.length() && diff < 2; k++) if (words.get(i).charAt(k) != words.get(j).charAt(k)) diff++;
+            if (diff == 1) { g.get(i).add(j); g.get(j).add(i); }
+        }
+    int[] dist = new int[n];
+    Arrays.fill(dist, -1);
+    ArrayDeque<Integer> q = new ArrayDeque<>();
+    q.add(n - 1); dist[n - 1] = 1;
+    while (!q.isEmpty()) {
+        int u = q.poll();
+        if (words.get(u).equals(end)) return dist[u];
+        for (int v : g.get(u)) if (dist[v] == -1) { dist[v] = dist[u] + 1; q.add(v); }
+    }
+    return 0;
+}` },
+    mcq: { q: 'Why BFS and not DFS?', options: ['Each transformation costs 1 and we want the fewest steps', 'DFS cannot handle strings', 'BFS uses less memory', 'The graph is directed'], answer: 0, explain: 'Unweighted shortest path → BFS. DFS finds some ladder, not the shortest one.' },
+    hints: [`<p>Hint 1: Words are nodes; two words are connected if they differ in exactly one letter. Find the shortest path → BFS.</p>`, `<p>Hint 2: Don't build all edges. For each popped word, try every position × 26 letters and check membership in a HashSet of remaining words.</p>`, `<p>Hint 3: Remove a word from the set when you enqueue it (= visited). Level count starts at 1. Speed-up: bidirectional BFS, always expanding the smaller frontier.</p>`],
+    solution: {
+      approach: `<p>BFS on the implicit word graph with on-the-fly neighbour generation. The dictionary set doubles as the "unvisited" set: deleting a word when it is enqueued guarantees each word is processed once.</p>`,
+      code: `class Solution {
+    public int ladderLength(String beginWord, String endWord, List<String> wordList) {
+        Set<String> dict = new HashSet<>(wordList);
+        if (!dict.contains(endWord)) return 0;
+        ArrayDeque<String> q = new ArrayDeque<>();
+        q.offer(beginWord);
+        dict.remove(beginWord);
+        int level = 1;                                     // number of words in the ladder so far
+        while (!q.isEmpty()) {
+            for (int k = q.size(); k > 0; k--) {
+                char[] w = q.poll().toCharArray();
+                for (int i = 0; i < w.length; i++) {
+                    char orig = w[i];
+                    for (char ch = 'a'; ch <= 'z'; ch++) {
+                        if (ch == orig) continue;
+                        w[i] = ch;
+                        String next = new String(w);
+                        if (!dict.contains(next)) continue;
+                        if (next.equals(endWord)) return level + 1;
+                        dict.remove(next);                 // visited on push
+                        q.offer(next);
+                    }
+                    w[i] = orig;
+                }
+            }
+            level++;
+        }
+        return 0;
+    }
+}`,
+      complexity: `<p>Time O(N · L · 26 · L) — N words, L positions, 26 letters, O(L) to build/hash each candidate. Space O(N · L).</p>`,
+      followUps: ['Return all shortest ladders (Word Ladder II: BFS to build a parent DAG, then backtrack)', 'Bidirectional BFS', 'Wildcard buckets ("h*t" → [hot, hit]) as an alternative neighbour index']
+    }
+  });
+
+  practice.push({
+    title: 'Alien Dictionary', level: 'Hard', tags: ['topological sort', 'graph construction', 'strings'], companies: ['Airbnb', 'Meta', 'Google', 'Uber'],
+    statement: `<p>An alien language uses lowercase English letters in an unknown order. You get a list of words <b>sorted</b> by that order. Return a string of the unique letters in a valid order, or "" if the input is inconsistent. Any valid order is accepted.</p>`,
+    constraints: `1 ≤ words.length ≤ 100, 1 ≤ word length ≤ 100`,
+    example: `<p>words = ["wrt","wrf","er","ett","rftt"] → <b>${H.c('g', '"wertf"')}</b>. Adjacent pairs give t&lt;f, w&lt;e, r&lt;t, e&lt;r → chain w → e → r → t → f.<br>words = ["abc","ab"] → <b>${H.c('r', '""')}</b> (a word cannot come before its own prefix).</p>`,
+    brute: { why: `<p>Try every permutation of the distinct letters (up to 26!) and check whether sorting the words by that order reproduces the input. Factorial time — impossible. The structure we need is just "which letter must precede which", i.e. a DAG.</p>`, code: `String alienBrute(String[] words) {                         // only for a handful of letters
+    List<Character> letters = new ArrayList<>();
+    for (String w : words) for (char c : w.toCharArray()) if (!letters.contains(c)) letters.add(c);
+    return permute(letters, 0, words);
+}
+String permute(List<Character> a, int k, String[] words) {
+    if (k == a.size()) return sortedUnder(a, words) ? join(a) : null;
+    for (int i = k; i < a.size(); i++) {
+        Collections.swap(a, k, i);
+        String r = permute(a, k + 1, words);
+        Collections.swap(a, k, i);
+        if (r != null) return r;
+    }
+    return k == 0 ? "" : null;
+}
+boolean sortedUnder(List<Character> order, String[] words) {
+    for (int i = 0; i + 1 < words.length; i++) {
+        String x = words[i], y = words[i + 1];
+        int j = 0;
+        while (j < x.length() && j < y.length() && x.charAt(j) == y.charAt(j)) j++;
+        if (j == y.length() && j < x.length()) return false;          // prefix violation
+        if (j < x.length() && j < y.length() && order.indexOf(x.charAt(j)) > order.indexOf(y.charAt(j))) return false;
+    }
+    return true;
+}
+String join(List<Character> a) { StringBuilder sb = new StringBuilder(); for (char c : a) sb.append(c); return sb.toString(); }` },
+    mcq: { q: 'Comparing "wrf" and "er", what edge do you add?', options: ['w → e (first differing letters)', 'f → r (last letters)', 'r → e and f → r', 'No edge: the words have different lengths'], answer: 0, explain: 'Only the FIRST differing position tells you anything; letters after it are unconstrained.' },
+    hints: [`<p>Hint 1: Compare only adjacent words. The first position where they differ gives one rule: x[j] comes before y[j].</p>`, `<p>Hint 2: Letters = nodes, rules = directed edges. Topologically sort with Kahn; include letters that have no rules at all.</p>`, `<p>Hint 3: Pitfalls: (1) if y is a proper prefix of x with x before y → return ""; (2) avoid duplicate edges (or in-degree double-counts); (3) if Kahn outputs fewer letters than exist → cycle → "".</p>`],
+    solution: {
+      approach: `<p>Build a DAG of letter precedences from adjacent word pairs, then Kahn's algorithm. Two validity checks: the prefix rule while building, and the "all letters output" cycle check after sorting.</p>`,
+      code: `class Solution {
+    public String alienOrder(String[] words) {
+        Map<Character, Set<Character>> g = new HashMap<>();
+        Map<Character, Integer> indeg = new HashMap<>();
+        for (String w : words) for (char c : w.toCharArray()) { g.putIfAbsent(c, new HashSet<>()); indeg.putIfAbsent(c, 0); }
+        for (int i = 0; i + 1 < words.length; i++) {
+            String x = words[i], y = words[i + 1];
+            int j = 0;
+            while (j < x.length() && j < y.length() && x.charAt(j) == y.charAt(j)) j++;
+            if (j == x.length() || j == y.length()) {
+                if (x.length() > y.length()) return "";             // "abc" before "ab" is invalid
+                continue;                                            // x is a prefix of y: no info
+            }
+            char a = x.charAt(j), b = y.charAt(j);
+            if (g.get(a).add(b)) indeg.merge(b, 1, Integer::sum);    // add edge a -> b once
+        }
+        ArrayDeque<Character> q = new ArrayDeque<>();
+        for (Map.Entry<Character, Integer> e : indeg.entrySet()) if (e.getValue() == 0) q.offer(e.getKey());
+        StringBuilder sb = new StringBuilder();
+        while (!q.isEmpty()) {
+            char c = q.poll();
+            sb.append(c);
+            for (char nx : g.get(c)) if (indeg.merge(nx, -1, Integer::sum) == 0) q.offer(nx);
+        }
+        return sb.length() == indeg.size() ? sb.toString() : "";    // cycle → inconsistent
+    }
+}`,
+      complexity: `<p>Time O(C) where C = total characters across words (edge building) + O(26 + E) for Kahn. Space O(26 + E) ≤ O(26²).</p>`,
+      followUps: ['Return "" if the order is not UNIQUE (queue size must always be 1)', 'Verifying an Alien Dictionary (given the order, check sortedness) — Easy cousin', 'Return the lexicographically smallest valid order (PriorityQueue)']
+    }
+  });
+
+  practice.push({
+    title: 'Shortest Path Visiting All Nodes', level: 'Hard', tags: ['bfs', 'bitmask', 'multi-source bfs', 'state space'], companies: ['Google', 'Amazon'],
+    statement: `<p>An undirected connected graph has n nodes (n ≤ 12), given as <code>graph[i]</code> = neighbours of i. Return the length of the shortest walk that visits every node. You may start and end anywhere, revisit nodes and reuse edges.</p>`,
+    constraints: `1 ≤ n ≤ 12, the graph is connected`,
+    example: `<p>graph = [[1,2,3],[0],[0],[0]] (a star) → <b>${H.c('g', '4')}</b>: 1 → 0 → 2 → 0 → 3. Starting at a leaf saves a step compared to starting at the center.</p>`,
+    brute: { why: `<p>Try every order of visiting the n nodes (n! = 479 million for n = 12) and sum the BFS distances between consecutive nodes. Even with precomputed distances it is far too slow. The state that really matters is just (current node, set of visited nodes): 12 × 2<sup>12</sup> = 49 152 states.</p>`, code: `int bestBrute = Integer.MAX_VALUE;
+int shortestBrute(int[][] graph) {
+    int n = graph.length;
+    int[][] d = new int[n][n];
+    for (int s = 0; s < n; s++) {                          // all-pairs BFS distances
+        Arrays.fill(d[s], -1);
+        ArrayDeque<Integer> q = new ArrayDeque<>(List.of(s));
+        d[s][s] = 0;
+        while (!q.isEmpty()) { int u = q.poll(); for (int v : graph[u]) if (d[s][v] < 0) { d[s][v] = d[s][u] + 1; q.add(v); } }
+    }
+    boolean[] used = new boolean[n];
+    for (int s = 0; s < n; s++) { used[s] = true; perm(d, s, 1, 0, used); used[s] = false; }
+    return bestBrute;
+}
+void perm(int[][] d, int last, int cnt, int cost, boolean[] used) {   // n! orders
+    if (cost >= bestBrute) return;
+    if (cnt == used.length) { bestBrute = cost; return; }
+    for (int v = 0; v < used.length; v++)
+        if (!used[v]) { used[v] = true; perm(d, v, cnt + 1, cost + d[last][v], used); used[v] = false; }
+}` },
+    mcq: { q: 'What is a node of the BFS graph in this problem?', options: ['(current node, bitmask of visited nodes)', 'Just the current node', 'Just the bitmask', 'An edge of the original graph'], answer: 0, explain: 'Revisiting is allowed, so "current node" alone loses information; the bitmask records progress. BFS over these states finds the fewest moves to reach any state with a full mask.' },
+    hints: [`<p>Hint 1: State = (node, visitedMask). A move to neighbour v goes to (v, mask | 1 &lt;&lt; v) and costs 1 → BFS over states.</p>`, `<p>Hint 2: You may start anywhere → multi-source BFS: push (i, 1 &lt;&lt; i) for every i at distance 0.</p>`, `<p>Hint 3: visited[node][mask] boolean array of size n × 2<sup>n</sup>. Return the distance when mask == (1 &lt;&lt; n) − 1. Edge: n == 1 → 0.</p>`],
+    solution: {
+      approach: `<p>Multi-source BFS over the state graph (node, mask). Every state is reached first by its shortest walk; the first popped state whose mask is full gives the answer.</p>`,
+      code: `class Solution {
+    public int shortestPathLength(int[][] graph) {
+        int n = graph.length, full = (1 << n) - 1;
+        if (n == 1) return 0;
+        boolean[][] seen = new boolean[n][1 << n];
+        ArrayDeque<int[]> q = new ArrayDeque<>();
+        for (int i = 0; i < n; i++) { q.offer(new int[]{i, 1 << i}); seen[i][1 << i] = true; }   // start anywhere
+        int steps = 0;
+        while (!q.isEmpty()) {
+            steps++;
+            for (int k = q.size(); k > 0; k--) {
+                int[] s = q.poll();
+                for (int v : graph[s[0]]) {
+                    int mask = s[1] | (1 << v);
+                    if (mask == full) return steps;
+                    if (seen[v][mask]) continue;
+                    seen[v][mask] = true;
+                    q.offer(new int[]{v, mask});
+                }
+            }
+        }
+        return -1;
+    }
+}`,
+      complexity: `<p>States n · 2<sup>n</sup>; each state scans its node's neighbours → O(2<sup>n</sup> · n²) time worst case ≈ 590 000 for n = 12. Space O(n · 2<sup>n</sup>).</p>`,
+      followUps: ['Weighted edges → Dijkstra over states, or bitmask DP (TSP-style) on all-pairs distances', 'Must start at node 0 and return to it (classic TSP)', 'Grid version: collect all keys (Shortest Path to Get All Keys)']
+    }
+  });
+
+  practice.push({
+    title: 'Number of Islands II (online land additions)', level: 'Hard', tags: ['dsu', 'grid', 'online'], companies: ['Google', 'Uber', 'Snap'],
+    statement: `<p>An m×n grid starts as all water. <code>positions[k] = [r, c]</code> turns cell (r, c) into land at step k (a cell may be added twice). After each addition, report the number of islands.</p>`,
+    constraints: `1 ≤ m, n, positions.length ≤ 10<sup>4</sup>, m·n ≤ 10<sup>4</sup> (design for m·n ≤ 10<sup>6</sup>)`,
+    example: `<p>m = 3, n = 3, positions = [[0,0],[0,1],[1,2],[2,1],[1,1]] → <b>${H.c('g', '[1, 1, 2, 3, 1]')}</b>. The last cell (1,1) touches three separate islands and merges them all into one: 4 − 3 = 1.</p>`,
+    brute: { why: `<p>After each addition, recount islands with a full DFS over the grid: O(k · m · n) = 10<sup>4</sup> × 10<sup>4</sup> = 10<sup>8</sup> here and 10<sup>10</sup> for bigger grids. Wasted work: one new cell only affects its 4 neighbours.</p>`, code: `List<Integer> islands2Brute(int m, int n, int[][] positions) {
+    int[][] g = new int[m][n];
+    List<Integer> res = new ArrayList<>();
+    for (int[] p : positions) {
+        g[p[0]][p[1]] = 1;
+        boolean[][] seen = new boolean[m][n];
+        int count = 0;
+        for (int r = 0; r < m; r++)
+            for (int c = 0; c < n; c++) {
+                if (g[r][c] != 1 || seen[r][c]) continue;
+                count++;
+                ArrayDeque<int[]> st = new ArrayDeque<>();
+                st.push(new int[]{r, c}); seen[r][c] = true;
+                while (!st.isEmpty()) {
+                    int[] x = st.pop();
+                    int[][] nb = {{x[0] + 1, x[1]}, {x[0] - 1, x[1]}, {x[0], x[1] + 1}, {x[0], x[1] - 1}};
+                    for (int[] y : nb)
+                        if (y[0] >= 0 && y[1] >= 0 && y[0] < m && y[1] < n && g[y[0]][y[1]] == 1 && !seen[y[0]][y[1]]) { seen[y[0]][y[1]] = true; st.push(y); }
+                }
+            }
+        res.add(count);
+    }
+    return res;
+}` },
+    mcq: { q: 'A new land cell touches 3 existing land cells. Two of them are already in the same island. How does the count change?', options: ['+1 − 2 (new island, then two successful merges)', '+1 − 3', '−3', 'unchanged'], answer: 0, explain: 'Count +1 for the new cell, then −1 for each union that actually merges two different sets. The two neighbours in the same island share a root, so only 2 unions succeed.' },
+    hints: [`<p>Hint 1: Islands only merge, never split → online connectivity with additions → DSU.</p>`, `<p>Hint 2: Map cell (r, c) to id r·n + c. When adding: if already land, just repeat the count; else count++, then try to union with each land neighbour.</p>`, `<p>Hint 3: Decrement count only when union finds two different roots. Use path compression + union by rank/size.</p>`],
+    solution: {
+      approach: `<p>DSU over cell ids, activated lazily. Each addition is +1 component, and each successful union with a neighbouring land cell is −1. Duplicate positions are ignored. Total work O(k · α(m·n)).</p>`,
+      code: `class Solution {
+    int[] parent, rank;
+    int find(int x) { while (parent[x] != x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; }
+    boolean union(int a, int b) {
+        int ra = find(a), rb = find(b);
+        if (ra == rb) return false;
+        if (rank[ra] < rank[rb]) { int t = ra; ra = rb; rb = t; }
+        parent[rb] = ra;
+        if (rank[ra] == rank[rb]) rank[ra]++;
+        return true;
+    }
+
+    public List<Integer> numIslands2(int m, int n, int[][] positions) {
+        parent = new int[m * n];
+        rank = new int[m * n];
+        Arrays.fill(parent, -1);                          // -1 = water
+        int[] dr = {-1, 1, 0, 0}, dc = {0, 0, -1, 1};
+        List<Integer> res = new ArrayList<>();
+        int count = 0;
+        for (int[] p : positions) {
+            int id = p[0] * n + p[1];
+            if (parent[id] != -1) { res.add(count); continue; }   // already land
+            parent[id] = id;
+            count++;
+            for (int d = 0; d < 4; d++) {
+                int r = p[0] + dr[d], c = p[1] + dc[d], nid = r * n + c;
+                if (r < 0 || c < 0 || r >= m || c >= n || parent[nid] == -1) continue;
+                if (union(id, nid)) count--;               // merged two islands
+            }
+            res.add(count);
+        }
+        return res;
+    }
+}`,
+      complexity: `<p>Time O(m·n + k·α(m·n)), space O(m·n).</p>`,
+      followUps: ['Cells can also turn back into water (deletions) → offline: reverse the timeline so deletions become additions', 'Report the size of the largest island after each step (union by size)', 'Grid is 10<sup>9</sup>×10<sup>9</sup> → store DSU parents in a HashMap keyed by cell']
+    }
+  });
+
+  // ================= QUIZ =================
+  quiz.push(
+    { q: 'A graph has n = 10<sup>5</sup> nodes and 2·10<sup>5</sup> edges. Which representation should you use for BFS?', options: ['Adjacency list', 'Adjacency matrix', 'Only an edge list, scanned for every node', 'A 2-D boolean grid of size n×n'], answer: 0, explain: 'A matrix needs n² = 10<sup>10</sup> cells. An adjacency list needs n + 2E entries and gives O(V + E) traversal.' },
+    { q: 'In BFS, when should a node be marked visited?', options: ['When it is pushed into the queue', 'When it is popped from the queue', 'After all its neighbours are processed', 'It does not matter at all'], answer: 0, explain: 'Marking on push guarantees each node enters the queue once. Marking on pop still gives correct distances but can push the same node many times (O(E) queue size).' },
+    { q: 'Why does BFS give shortest paths in an unweighted graph?', options: ['The queue processes nodes in non-decreasing order of distance, so the first discovery uses the fewest edges', 'Because it uses recursion', 'Because it visits neighbours in sorted order', 'Because it explores the deepest node first'], answer: 0, explain: 'The queue always holds distance d nodes followed by distance d + 1 nodes; nobody at distance d + 1 is processed before all distance d nodes.' },
+    { q: 'Rotting Oranges with 5 rotten oranges at the start. The efficient approach is…', options: ['One BFS with all 5 rotten oranges in the queue at time 0', 'Five BFS runs, take the maximum', 'DFS from each fresh orange', 'Sort oranges by position'], answer: 0, explain: 'Multi-source BFS = BFS from a virtual super-source; each cell is reached first by its nearest source in a single O(R·C) pass.' },
+    { q: 'Directed graph 0→1, 0→2, 1→3, 2→3. DFS with a single boolean visited[] reaches 3 a second time from 2. What is true?', options: ['There is no cycle; you need grey/black colours to tell "on current path" from "finished"', 'There is a cycle 0→1→3→2→0', 'The graph is undirected', 'DFS must restart from 3'], answer: 0, explain: 'This is the diamond. 3 is already finished (black), not on the current path (grey). Only an edge into a grey node indicates a cycle.' },
+    { q: 'In undirected DFS cycle detection, which neighbour must be ignored?', options: ['The parent (the node we just came from)', 'All visited neighbours', 'The neighbour with the smallest id', 'Nodes in other components'], answer: 0, explain: 'The edge back to the parent is the same undirected edge we walked down; it is not a cycle. Any other visited neighbour is a cycle (with the parallel-edge caveat).' },
+    { q: 'A graph is bipartite if and only if…', options: ['It contains no odd-length cycle', 'It contains no cycle at all', 'It is connected', 'Every node has even degree'], answer: 0, explain: 'Going around a cycle flips colours each step; you return to the starting colour only after an even number of steps. Even cycles are fine, odd ones are not.' },
+    { q: 'Kahn’s algorithm outputs 6 nodes for a graph with 8 nodes. Conclusion?', options: ['The graph has a directed cycle; no topological order exists', 'The two remaining nodes are isolated and can be appended', 'The graph is disconnected', 'Run DFS topo sort instead and it will succeed'], answer: 0, explain: 'Isolated nodes have in-degree 0 and are output immediately. Nodes that never reach in-degree 0 sit on or behind a cycle.' },
+    { q: 'In DFS-based topological sort, when is a node added to the result stack?', options: ['After all its descendants have finished (post-order)', 'When it is first entered (pre-order)', 'When its in-degree reaches 0', 'Before visiting its first neighbour'], answer: 0, explain: 'Reverse post-order works because for every edge u → v, v finishes before u in a DAG.' },
+    { q: 'DSU with both path compression and union by rank has amortised cost per operation of…', options: ['O(α(n)) — inverse Ackermann, effectively constant', 'O(log n)', 'O(n)', 'O(1) worst case for every single operation'], answer: 0, explain: 'Tarjan proved the O(α(n)) amortised bound; α(n) ≤ 4 for all practical n. Individual operations can still be slower, hence "amortised".' },
+    { q: 'Which task is DSU NOT suitable for?', options: ['Finding the shortest path between two nodes', 'Counting components as edges are added', 'Detecting a cycle in an undirected graph', 'Grouping accounts that share an email'], answer: 0, explain: 'DSU knows only "same group or not". It keeps no path or distance information; use BFS for shortest paths.' },
+    { q: 'union(a, b) is implemented as <code>parent[a] = b</code>. What is wrong?', options: ['It must link the ROOTS: parent[find(a)] = find(b); linking a directly can detach a from its own group', 'Nothing, it is correct', 'It should be parent[b] = a', 'It needs a HashMap'], answer: 0, explain: 'If a is not a root, re-pointing it cuts it (and its subtree) away from its old group while the rest of that group stays behind — groups get split incorrectly.' },
+    { q: 'Recursive DFS on a 1000×1000 all-land grid in Java will most likely…', options: ['Throw StackOverflowError — recursion depth can reach 10<sup>6</sup>', 'Run fine because Java has tail-call optimisation', 'Run in O(log n) depth', 'Be faster than BFS'], answer: 0, explain: 'Java has no tail-call optimisation and the default thread stack holds roughly 10<sup>4</sup>–10<sup>5</sup> frames. Use an explicit stack or BFS.' }
+  );
+
+  // ================= INTERVIEW Q&A =================
+  interview.push(
+    { q: 'Adjacency matrix vs adjacency list — when would you pick each?', level: 'B', a: `<p>An <b>adjacency list</b> stores, for each node, its neighbours: memory O(V + E), neighbour iteration O(degree) — ideal for sparse graphs and traversals (BFS/DFS run in O(V + E)). An <b>adjacency matrix</b> is a V×V table: O(V²) memory but O(1) "is u–v an edge?" checks; good for dense graphs, small V (≤ ~2000), Floyd–Warshall, and bitset tricks. Rule of thumb: read the constraints — if V² would exceed ~10<sup>8</sup> cells, a matrix is out. Grids are implicit graphs; you compute neighbours with direction arrays and build neither.</p>`, followUps: ['How much memory does List&lt;List&lt;Integer&gt;&gt; really use in Java for 10<sup>6</sup> edges?', 'What is CSR (compressed sparse row) and why do graph libraries use it?'] },
+    { q: 'Explain BFS and prove it finds shortest paths in an unweighted graph.', level: 'B', a: `<p>BFS uses a FIFO queue: start with the source at distance 0; pop a node, and for each undiscovered neighbour set dist = dist[u] + 1, record its parent, mark it and push it. <b>Proof:</b> the queue always contains nodes with distance d followed by nodes with distance d + 1 (induction: popping a d node only appends d + 1 nodes). So nodes are finalised in non-decreasing distance order, and the first time a node is discovered it is via a neighbour at the smallest possible distance. Complexity O(V + E). Parent pointers rebuild the path by walking back from the target.</p>`, followUps: ['What breaks if edges have different weights?', 'What is bidirectional BFS and when does it help?'] },
+    { q: 'What is multi-source BFS and why is it correct?', level: 'I', a: `<p>Put <b>all</b> sources into the queue at distance 0 before the loop, then run ordinary BFS. Each cell receives its distance to the <b>nearest</b> source. It is correct because it is exactly a single-source BFS from an imaginary super-source connected to every real source with zero-length edges, after its first step. It turns k separate BFS runs (O(k·(V + E))) into one O(V + E) pass. Classic uses: Rotting Oranges (answer = number of levels), 01 Matrix, Walls and Gates, "as far from land as possible", fire spreading in escape problems.</p>`, followUps: ['How do you know which source reached each cell?', 'What if some cells take 2 minutes to cross?'] },
+    { q: 'How do you detect a cycle in an undirected graph? Give at least two methods.', level: 'I', a: `<p>(1) <b>DFS with parent:</b> if you meet a visited neighbour that is not your parent, there is a cycle; run from every unvisited node. (2) <b>DSU:</b> process edges; if both endpoints already have the same root, this edge closes a cycle. (3) <b>Counting:</b> a forest with V nodes and c components has exactly V − c edges, so a simple graph with E ≥ V certainly has a cycle (useful as a quick pre-check; Graph Valid Tree uses E == V − 1 plus connectivity). Caveat: with parallel edges, skip the parent <i>edge id</i>, not the parent node, or you miss the 2-cycle.</p>`, followUps: ['Which method would you use if edges arrive as a stream?', 'How would you output the actual cycle?'] },
+    { q: 'Why does directed cycle detection need three colours instead of a visited flag?', level: 'I', a: `<p>In a directed graph, reaching an already-visited node is normal when two paths share a descendant (the diamond 0→1→3, 0→2→3). That is not a cycle. A cycle exists only if we reach a node that is still on the <b>current recursion path</b>. Colours: white = unvisited, grey = entered but not finished (on the stack), black = finished. An edge into a grey node is a back edge ⇒ cycle; edges into black nodes are safe. Black also memoises "no cycle reachable from here", keeping the total cost O(V + E). Alternative: Kahn's algorithm — fewer than V nodes output ⇒ cycle.</p>`, followUps: ['How would you find all nodes that can reach a cycle (eventual safe states)?', 'How do databases use this for deadlock detection?'] },
+    { q: 'Compare Kahn’s algorithm and DFS-based topological sort.', level: 'I', a: `<p><b>Kahn</b>: compute in-degrees, queue all zero-in-degree nodes, repeatedly pop and decrement successors. Iterative (no recursion depth problems), naturally detects cycles (output count &lt; V), supports levels (minimum semesters / parallel stages) and lexicographically smallest order with a min-heap. <b>DFS</b>: push nodes on a stack when they finish and reverse; detects cycles via grey nodes; elegant and also gives finishing times used by Kosaraju's SCC algorithm. Both are O(V + E). In production build/workflow tools Kahn is common because its levels expose parallelism.</p>`, followUps: ['How do you check if the topological order is unique?', 'How do you compute the longest path in a DAG?'] },
+    { q: 'What is a bipartite graph and how do you check it? What is the connection to odd cycles?', level: 'I', a: `<p>A graph is bipartite if nodes can be split into two sets with every edge crossing between them. Check by BFS/DFS 2-colouring: colour a start node 0, each undiscovered neighbour gets the opposite colour, and an edge joining equal colours proves it is not bipartite. Run from every uncoloured node because the graph may be disconnected. Theorem: bipartite ⇔ no odd cycle. Walking around a cycle flips colour each step, so an odd cycle returns with the wrong colour; conversely, BFS level parity gives a valid colouring when no odd cycle exists. Trees and grids are always bipartite.</p>`, followUps: ['How would you return an odd cycle as proof?', 'Is 3-colouring also O(V + E)?'] },
+    { q: 'Walk me through DSU with path compression and union by rank. Why is it so fast?', level: 'A', a: `<p>DSU keeps <code>parent[]</code>: a root points to itself. <code>find</code> follows parents to the root; <b>path compression</b> re-points every visited node directly to the root. <code>union</code> links the root of the lower-rank tree under the higher-rank root (rank grows only when equal ranks merge), so height ≤ log n even without compression. Together they give O(α(n)) amortised per operation (Tarjan), where α is the inverse Ackermann function, ≤ 4 for any realistic n. Union by size works equally well and also tracks group sizes. Always link roots, never the raw arguments.</p>`, followUps: ['Why can union by rank alone guarantee O(log n)?', 'What changes if you need to undo unions (rollback DSU)?'] },
+    { q: 'When would you choose DSU over BFS/DFS for connectivity?', level: 'A', a: `<p>Choose DSU when connections are <b>added over time</b> and you must answer connectivity or component-count queries in between (online), when you only care about grouping (accounts merge, equations, similar strings), or inside Kruskal's MST. BFS/DFS would need O(V + E) per query or per update. Choose BFS/DFS when you need paths, distances, directed reachability, or a single offline traversal is enough. DSU cannot delete edges; for deletions, process the timeline in reverse (turning deletions into additions) or use more advanced dynamic connectivity.</p>`, followUps: ['How would you handle "Bricks Falling When Hit" (removals)?', 'How do you use DSU when ids are strings?'] },
+    { q: 'Your recursive DFS throws StackOverflowError on a large input. What are your options?', level: 'A', a: `<p>(1) Convert to an <b>explicit stack</b> (<code>ArrayDeque</code>) — for "mark the component" you push neighbours and mark on push. When true post-order matters (topological sort, SCC, articulation points), push frames of (node, next-neighbour index) to mimic recursion exactly. (2) Use <b>BFS</b> if order does not matter. (3) Use DSU for pure connectivity. (4) Contest-only trick: run the DFS in a <code>new Thread(null, runnable, "dfs", 1 &lt;&lt; 26)</code> with a larger stack. In Python, raising the recursion limit is risky (can crash the interpreter); prefer iteration.</p>`, followUps: ['Write iterative DFS that produces the same post-order as recursion', 'What is the maximum recursion depth of DFS on a 1000×1000 grid?'] },
+    { q: 'Model "Word Ladder" as a graph. What are the nodes and edges, and how do you avoid O(N²) edge building?', level: 'A', a: `<p>Nodes are words; edges join words differing in exactly one letter; the answer is a BFS shortest path. Building edges by comparing all pairs costs O(N²·L). Instead generate neighbours on the fly: for each position, try the 25 other letters and check a HashSet (O(26·L) candidates per word, each hashed in O(L)), or pre-bucket words by wildcard patterns like <code>h*t</code>. Remove words from the set as they are enqueued (visited). Bidirectional BFS, expanding the smaller frontier, cuts the explored states dramatically. For all shortest ladders (Word Ladder II) build a BFS parent DAG and backtrack.</p>`, followUps: ['What is the complexity with wildcard buckets?', 'How do you return all shortest sequences without exploding memory?'] },
+    { q: 'Course Schedule: you have 10<sup>5</sup> courses with prerequisites. Describe a full solution and its failure modes.', level: 'A', a: `<p>Edges go from prerequisite to course (for [a, b], b → a). Kahn: in-degree array, queue all zero-in-degree courses, pop/decrement, collect order; if order size &lt; n, a cycle exists → impossible. O(V + E), iterative so no stack issues at 10<sup>5</sup>. Failure modes: reversed edge direction, forgetting isolated courses (they have in-degree 0 and must be included), duplicate prerequisite pairs inflating in-degrees (dedupe or allow — Kahn still works if each duplicate edge also decrements), and returning a partial order instead of empty when a cycle exists. Extensions: min semesters (levels), with durations (DAG DP / critical path), lexicographic order (heap).</p>`, followUps: ['How would you show the user which courses form the cycle?', 'What if at most k courses per semester are allowed? (NP-hard in general — discuss)'] },
+    { q: 'Where do these graph algorithms appear in real production systems?', level: 'E', a: `<p><b>Topological sort:</b> build systems (Bazel, Gradle, make), package managers, spreadsheet recalculation, workflow/agent orchestrators (Airflow, Dagster, LLM tool-call planners), and deep-learning autograd (reverse topological order for backprop). <b>Cycle detection:</b> deadlock detection in databases via wait-for graphs, circular-import and circular-dependency errors. <b>BFS:</b> social "degrees of separation", web crawlers by depth, network broadcast, game AI and robot path planning on grids. <b>DSU / components:</b> image segmentation, clustering, entity resolution (merging user identities), network partition detection. At web scale these run as distributed label propagation or Pregel-style supersteps rather than single-machine traversals.</p>`, followUps: ['How would you compute connected components over 10<sup>10</sup> edges?', 'How does Postgres/MySQL resolve a detected deadlock?'] },
+    { q: 'How has AI changed graph interview questions, and how do you work with AI on graph code?', level: 'E', a: `<p>Boilerplate (adjacency lists, BFS, DSU class) is now instant with AI, so interviews focus on <b>modelling</b> (what is a node? what is an edge? is it directed? is the state larger than the position?), choosing the right tool (BFS vs Dijkstra vs DSU vs topo sort) from wording and constraints, proofs (queue invariant, grey/black back edges, rank bound), and follow-ups (online additions, deletions, scale). With AI, I generate brute-force oracles and random/adversarial tests (diamond graphs, disconnected inputs, long chains for stack depth, odd cycles) and fuzz my solution. I review generated code for the classic bugs: visited on pop, missing reverse edges, wrong prerequisite direction, BFS only from node 0 in bipartite checks, union of non-roots, recursion depth.</p>`, followUps: ['Give an example of a subtle bug an AI might introduce in DSU', 'How would you prompt an assistant to produce adversarial graph tests?'] }
+  );
+
+  registerModule({
+    id: 'dsa19',
+    title: 'Graphs I: Traversals, Cycles, Topological Sort & DSU',
+    intro: `<p>Maps, friendships, course prerequisites, build systems, pixels in an image, word puzzles: they are all <b>graphs</b>, meaning things (nodes) joined by connections (edges). Once you learn to see the graph inside a problem, a small toolkit solves a large share of interview questions.</p>
+      <p>In this module you will learn to <b>store</b> a graph (adjacency list vs matrix) and walk it <b>level by level</b> with BFS to get shortest paths in unweighted graphs. You will spread from many starting points at once with <b>multi-source BFS</b> (Rotting Oranges), and go <b>deep</b> with DFS to count connected components and islands. Then you will <b>detect cycles</b> in undirected and directed graphs, split a graph into <b>two teams</b> (bipartite colouring) and <b>order tasks</b> that depend on each other (topological sort with Kahn's algorithm and DFS). Finally you will meet <b>Disjoint Set Union</b>, the almost-O(1) structure for merging groups.</p>
+      <p>Each topic starts with an everyday analogy, then gives step-by-step visualizers (graph highlighting, BFS queues, DFS stacks, grid flood fills, and the DSU parent array drawn as a forest), worked examples, deep dives into proofs and production use, and an AI-era section. Graphs II builds on all of this with weighted shortest paths and minimum spanning trees.</p>`,
+    goals: [
+      'Turn any edge list, matrix or grid into the right representation and estimate its memory from the constraints',
+      'Write BFS that returns distances, levels and the actual shortest path, and explain why the first visit is the shortest',
+      'Solve multi-source grid problems (Rotting Oranges, 01 Matrix, Walls and Gates) in one O(R·C) pass',
+      'Count connected components and islands with recursive and iterative DFS without stack overflows',
+      'Detect cycles in undirected graphs (parent check, DSU) and directed graphs (white/grey/black, Kahn)',
+      'Check bipartiteness by 2-colouring and explain the odd-cycle theorem',
+      'Produce a topological order with Kahn and with DFS post-order, and extend it to levels, lexicographic order and DAG DP',
+      'Implement DSU with path compression and union by rank, and recognise "groups merge over time" problems instantly'
+    ],
+    prereqs: `DSA 1–2 (Java foundations, Big-O), Stacks &amp; Queues (ArrayDeque as stack and queue), Recursion &amp; Backtracking (call stack), Trees (DFS/BFS on trees, level order) and Hashing (HashMap/HashSet).`,
+    hours: 16,
+    topics: topics,
+    practice: practice,
+    quiz: quiz,
+    interview: interview
+  });
 })();

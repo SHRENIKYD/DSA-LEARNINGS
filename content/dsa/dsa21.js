@@ -1802,4 +1802,410 @@ print(longest_subarray([10, 1, 2, 4, 7, 2], 5))   # 4`, run: true }],
     }]
   });
 
+  // =====================================================================
+  // TOPIC 5 — Sqrt decomposition
+  // =====================================================================
+  topics.push({
+    title: 'Sqrt Decomposition: Cut the Array into √N Blocks',
+    analogy: `<p>A library has one very long shelf of 10 000 books. The librarian sticks a <b>label on every 100-book section</b>: "this section has 31 240 pages". A visitor asks: "how many pages from book 1 234 to book 8 765?" She counts the few loose books at the two ends one by one (at most 100 + 100), and for the ~75 sections fully in between she just <b>reads the labels</b>. About 250 steps instead of 7 500.</p>
+      <p>When a book is replaced, she fixes the book and the one label of its section. Nothing fancy, no tree — just <b>sections of √N books</b>, chosen so that "loose books at the ends" and "number of labels" are balanced. That simple idea, called <b>sqrt decomposition</b>, also handles weird queries that trees struggle with.</p>`,
+    explain: `<p><b>The recipe.</b> Pick a block size <code>B ≈ √N</code>. Element i lives in block <code>i / B</code>. For every block keep a summary (sum, min, a sorted copy, a frequency table — whatever the query needs).</p>
+      ${H.arr([4, 1, 7, 2, 9, 3, 6, 8, 5, 2], { label: 'a (N = 10, B = 3)', hl: { 0: 'b', 1: 'b', 2: 'b', 6: 'b', 7: 'b', 8: 'b' } })}
+      ${H.table(['block', 'indices', 'elements', 'block sum'], [['b0', '0–2', '4 1 7', '12'], ['b1', '3–5', '2 9 3', '14'], ['b2', '6–8', '6 8 5', '19'], ['b3', '9', '2', '2']])}
+      <p><b>Query [l, r]</b> = left partial block (walk elements) + full blocks in the middle (read summaries) + right partial block (walk elements). At most 2B elements + N/B summaries. <b>Point update</b> = fix the element + its block summary.</p>
+      <p>Sum of a[1..8]: left partial a[1], a[2] = 1 + 7; full block b1 = 14; right part (block b2 holds 8, so we walk it) 6 + 8 + 5 → total 8 + 14 + 19 = <b>41</b>.</p>
+      <p><b>Why √N?</b> Cost per query ≈ <code>2B + N/B</code>. If B is tiny there are too many blocks; if B is huge the partial walks are long. The sum <code>B + N/B</code> is smallest when <code>B = N/B</code>, i.e. <b>B = √N</b>, giving O(√N) per operation:</p>
+      ${H.table(['B', 'element walk ~2B', 'block reads N/B', 'total (N = 10<sup>6</sup>)'], [['10', '20', '100 000', H.c('r', '100 020')], ['1 000 (√N)', '2 000', '1 000', H.c('g', '3 000')], ['100 000', '200 000', '10', H.c('r', '200 010')]])}
+      <p><b>Range updates</b> work like a mini-lazy: for a full block store a block-level tag (<code>blockAdd[b] += v</code>), for partial blocks touch the elements. Sum of a full block = <code>blockSum[b] + blockAdd[b]·B</code>.</p>
+      <p><b>Why learn it when segment trees are O(log N)?</b> Because the block summary can be <i>anything</i>:</p>
+      <ul>
+        <li><b>Sorted copy</b> per block → "how many elements ≤ x in [l, r] with updates" in O(√N log N). A segment tree needs a merge-sort tree, which cannot be updated easily.</li>
+        <li><b>Frequency table</b> per block → "most frequent value in a range" style queries (with extra precomputation).</li>
+        <li><b>Sqrt on queries</b>: buffer updates; every √Q operations rebuild a static structure (like prefix sums) from scratch. Each query = static answer + scan of the small buffer.</li>
+        <li><b>Heavy/light threshold</b>: items with frequency/degree &gt; √N are "heavy" (there are at most √N of them) and get precomputed answers; light items are brute-forced.</li>
+      </ul>
+      <p>It is the Swiss-army knife for "weird" range problems, and the foundation of <b>Mo's algorithm</b> (next topic).</p>`,
+    clues: [
+      '"Count elements <b>≤ x</b> (or equal to x) in [l, r]" <i>with updates</i> → sorted blocks + binary search, O(√N log N).',
+      'The merge operation is <b>awkward</b> (cannot combine two halves cheaply) but a block-by-block scan is easy → sqrt decomposition.',
+      '<code>N, Q ≤ 10<sup>5</sup></code> and time limit 2–5 s → O(Q·√N) ≈ 3·10<sup>7</sup>–10<sup>8</sup> is affordable: a hint that √N is intended.',
+      '"Jump / bounce" problems: "from position i jump a[i] steps, how many jumps to leave?" with updates → per-block "jumps to exit block + exit position" (the classic Holes problem).',
+      'A threshold like "if the value appears more than √N times" or "degree &gt; √M" in the editorial-style reasoning → heavy/light sqrt split.',
+      'You need a <b>fallback</b> in an interview: "I don\'t remember lazy segment trees perfectly, but blocks of √N give O(√N) safely" — a valid, explainable answer.'
+    ],
+    code: [`
+      // Sqrt decomposition: range ADD + range SUM, O(√N) per operation.
+      class SqrtDecomposition {
+          private final int n, B;
+          private final long[] a;          // element values WITHOUT their block's pending add
+          private final long[] blockSum;   // sum of a[] inside each block (also without blockAdd)
+          private final long[] blockAdd;   // pending "+v" for a WHOLE block
+
+          SqrtDecomposition(int[] arr) {
+              n = arr.length;
+              B = Math.max(1, (int) Math.sqrt(n));
+              a = new long[n];
+              int blocks = (n + B - 1) / B;
+              blockSum = new long[blocks];
+              blockAdd = new long[blocks];
+              for (int i = 0; i < n; i++) { a[i] = arr[i]; blockSum[i / B] += arr[i]; }
+          }
+
+          void rangeAdd(int l, int r, long v) {
+              int bl = l / B, br = r / B;
+              if (bl == br) {                                        // both ends in one block: walk it
+                  for (int i = l; i <= r; i++) { a[i] += v; blockSum[bl] += v; }
+                  return;
+              }
+              for (int i = l; i < (bl + 1) * B; i++) { a[i] += v; blockSum[bl] += v; }   // left partial
+              for (int b = bl + 1; b < br; b++) blockAdd[b] += v;                         // full blocks, O(1) each
+              for (int i = br * B; i <= r; i++) { a[i] += v; blockSum[br] += v; }        // right partial
+          }
+
+          long rangeSum(int l, int r) {
+              int bl = l / B, br = r / B;
+              long s = 0;
+              if (bl == br) {
+                  for (int i = l; i <= r; i++) s += a[i] + blockAdd[bl];
+                  return s;
+              }
+              for (int i = l; i < (bl + 1) * B; i++) s += a[i] + blockAdd[bl];
+              for (int b = bl + 1; b < br; b++) s += blockSum[b] + blockAdd[b] * B;       // middle blocks are full (size B)
+              for (int i = br * B; i <= r; i++) s += a[i] + blockAdd[br];
+              return s;
+          }
+
+          public static void main(String[] args) {
+              SqrtDecomposition sd = new SqrtDecomposition(new int[]{4, 1, 7, 2, 9, 3, 6, 8, 5, 2});
+              System.out.println(sd.rangeSum(1, 8));   // 41
+              sd.rangeAdd(2, 7, 10);                   // six elements +10
+              System.out.println(sd.rangeSum(1, 8));   // 101
+          }
+      }`, { lang: 'python', run: true, title: 'Python sqrt decomposition + stress test (runnable)', code: `import math
+import random
+
+
+class Sqrt:
+    def __init__(self, arr):
+        self.n = len(arr)
+        self.B = max(1, math.isqrt(self.n))
+        self.a = list(arr)
+        nb = (self.n + self.B - 1) // self.B
+        self.bsum = [0] * nb
+        self.badd = [0] * nb
+        for i, v in enumerate(arr):
+            self.bsum[i // self.B] += v
+
+    def add(self, l, r, v):
+        B = self.B
+        i = l
+        while i <= r:
+            b = i // B
+            if i % B == 0 and i + B - 1 <= r:      # whole block inside [l, r]
+                self.badd[b] += v
+                i += B
+            else:                                  # loose element
+                self.a[i] += v
+                self.bsum[b] += v
+                i += 1
+
+    def sum(self, l, r):
+        B, s, i = self.B, 0, l
+        while i <= r:
+            b = i // B
+            if i % B == 0 and i + B - 1 <= r:
+                s += self.bsum[b] + self.badd[b] * B
+                i += B
+            else:
+                s += self.a[i] + self.badd[b]
+                i += 1
+        return s
+
+
+arr = [4, 1, 7, 2, 9, 3, 6, 8, 5, 2]
+sd = Sqrt(arr)
+print("sum[1..8] =", sd.sum(1, 8))        # 41
+random.seed(11)
+truth = [random.randint(-9, 9) for _ in range(57)]
+sd = Sqrt(truth)
+for _ in range(3000):
+    l = random.randrange(57)
+    r = random.randrange(l, 57)
+    if random.random() < 0.5:
+        v = random.randint(-5, 5)
+        sd.add(l, r, v)
+        for i in range(l, r + 1):
+            truth[i] += v
+    else:
+        assert sd.sum(l, r) == sum(truth[l:r + 1])
+print("3000 random range-add / range-sum ops match, block size", sd.B)` }],
+    codeTitle: ['Range add + range sum with √N blocks', 'Python + stress test'],
+    viz: {
+      title: 'Blocks of √N: walk loose elements at the edges, read block labels in the middle',
+      input: '4 1 7 2 9 3 6 8 5 2 | sum 1 8 ; add 2 7 10 ; sum 1 8 ; set 4 0',
+      inputLabel: 'array (2–25 numbers) | ops ";"-separated: "sum l r", "add l r v", "set i v" (0-based, up to 5)',
+      gen: function (input) {
+        var p = splitBar(input, 2, 'array | ops   e.g.  4 1 7 2 | sum 0 3 ; set 1 5');
+        var arr = parseNums(p[0], 'the array', 2, 25, -99, 99), n = arr.length;
+        var B = Math.max(1, Math.floor(Math.sqrt(n))), nb = Math.ceil(n / B);
+        var ops = p[1].split(';').map(function (s) { return s.trim(); }).filter(function (s) { return s.length; });
+        if (!ops.length || ops.length > 5) throw new Error('Give 1 to 5 operations separated by ";".');
+        ops = ops.map(function (s) {
+          var t = s.split(/\s+/), kind = t[0].toLowerCase(), need = { sum: 2, add: 3, set: 2 }[kind];
+          if (!need) throw new Error('Operations are "sum l r", "add l r v" or "set i v" (got "' + s + '").');
+          var nums = parseNums(t.slice(1).join(' '), 'the numbers of "' + s + '"', need, need, -99, 99);
+          if (kind !== 'set' && (nums[0] < 0 || nums[1] >= n || nums[0] > nums[1])) throw new Error('"' + s + '": need 0 ≤ l ≤ r ≤ ' + (n - 1) + '.');
+          if (kind === 'set' && (nums[0] < 0 || nums[0] >= n)) throw new Error('"' + s + '": index must be 0..' + (n - 1) + '.');
+          return { kind: kind, x: nums };
+        });
+        var a = arr.slice(), bsum = [], badd = [], i, b, frames = [];
+        for (b = 0; b < nb; b++) { bsum.push(0); badd.push(0); }
+        for (i = 0; i < n; i++) bsum[Math.floor(i / B)] += a[i];
+        var idxL = []; for (i = 0; i < n; i++) idxL.push(i + '·b' + Math.floor(i / B));
+        var bL = []; for (b = 0; b < nb; b++) bL.push('b' + b + ' [' + (b * B) + '–' + Math.min(n - 1, b * B + B - 1) + ']');
+        function real() { var r = []; for (var j = 0; j < n; j++) r.push(a[j] + badd[Math.floor(j / B)]); return r; }
+        function blockColors() { var h = {}; for (var j = 0; j < n; j++) if (Math.floor(j / B) % 2 === 1) h[j] = 'done'; return h; }
+        function parts(ahl, bhl, vals, range) {
+          return [{ type: 'array', label: 'true values (index·block; alternate blocks faded)', values: real(), idxLabels: idxL, hl: ahl, range: range },
+            { type: 'array', label: 'block sums (stored)', values: bsum.slice(), idxLabels: bL, hl: bhl || {} },
+            { type: 'array', label: 'block pending add (lazy)', values: badd.slice(), idxLabels: bL, hl: bhl || {} },
+            { type: 'vars', label: 'state', vals: vals }];
+        }
+        frames.push({ narr: 'N = ' + n + ' → block size B = ⌊√' + n + '⌋ = <b>' + B + '</b>, so ' + nb + ' blocks. Every block keeps one label: the sum of its elements (plus a pending "add to whole block" tag for range updates).',
+          parts: parts(blockColors(), {}, { B: B, blocks: nb }) });
+        ops.forEach(function (op) {
+          var x = op.x, steps = 0;
+          if (op.kind === 'set') {
+            var bi = Math.floor(x[0] / B), old = a[x[0]] + badd[bi], stored = x[1] - badd[bi];
+            bsum[bi] += stored - a[x[0]]; a[x[0]] = stored;
+            frames.push({ narr: '<b>set a[' + x[0] + '] = ' + x[1] + '</b> (was ' + old + '): change the element and fix its block label b' + bi + ' by the difference ' + (x[1] - old) + '. Just 2 writes → O(1).',
+              parts: parts(one(x[0], 'ok'), one(bi, 'ok'), { op: 'set ' + x[0] + ' ' + x[1], 'steps': 2 }) });
+            return;
+          }
+          var l = x[0], r = x[1], v = x[2], s = 0, ahl = {}, bhl = {}, name = op.kind === 'sum' ? 'sum ' + l + '..' + r : 'add ' + v + ' to ' + l + '..' + r;
+          frames.push({ narr: '<b>' + name + '</b>: left end in block b' + Math.floor(l / B) + ', right end in block b' + Math.floor(r / B) + '. Loose elements at the edges are handled one by one; blocks completely inside are handled by their label in O(1).',
+            parts: parts({}, {}, { op: name, steps: 0 }, [l, r]) });
+          i = l;
+          while (i <= r) {
+            b = Math.floor(i / B);
+            if (i % B === 0 && i + B - 1 <= r) {
+              steps++;
+              for (var j = i; j < i + B; j++) ahl[j] = 'sel';
+              bhl[b] = 'sel';
+              if (op.kind === 'sum') {
+                s += bsum[b] + badd[b] * B;
+                frames.push({ narr: 'Block b' + b + ' lies <b>completely inside</b> → read its label: ' + bsum[b] + (badd[b] ? ' + pending ' + badd[b] + ' × ' + B : '') + ' = ' + (bsum[b] + badd[b] * B) + '. One step for ' + B + ' elements. Running sum = <b>' + s + '</b>.',
+                  parts: parts(copy(ahl), copy(bhl), { op: name, 'running sum': s, steps: steps }, [l, r]) });
+              } else {
+                badd[b] += v;
+                frames.push({ narr: 'Block b' + b + ' lies <b>completely inside</b> → do not touch its elements; just add ' + v + ' to its pending tag (now ' + badd[b] + '). One step instead of ' + B + '.',
+                  parts: parts(copy(ahl), copy(bhl), { op: name, steps: steps }, [l, r]) });
+              }
+              i += B;
+            } else {
+              steps++;
+              ahl[i] = 'cur';
+              if (op.kind === 'sum') {
+                s += a[i] + badd[b];
+                frames.push({ narr: 'Index ' + i + ' is a <b>loose</b> element (its block b' + b + ' is only partly inside) → add it directly: ' + (a[i] + badd[b]) + '. Running sum = <b>' + s + '</b>.',
+                  parts: parts(copy(ahl), copy(bhl), { op: name, 'running sum': s, steps: steps }, [l, r]) });
+              } else {
+                a[i] += v; bsum[b] += v;
+                frames.push({ narr: 'Index ' + i + ' is a <b>loose</b> element → change it directly (+' + v + ') and keep block b' + b + '\'s label in sync (+' + v + ').',
+                  parts: parts(copy(ahl), copy(bhl), { op: name, steps: steps }, [l, r]) });
+              }
+              ahl[i] = 'ok';
+              i++;
+            }
+          }
+          frames.push({ narr: (op.kind === 'sum' ? 'Answer = <b>' + s + '</b>' : 'Update done') + ' in ' + steps + ' steps (a plain loop needs ' + (r - l + 1) + '). Worst case is about 2B + N/B = ' + (2 * B + nb) + ' here; for N = 10<sup>6</sup> that is ~3 000 instead of 10<sup>6</sup>.',
+            parts: parts({}, {}, op.kind === 'sum' ? { op: name, answer: s, steps: steps } : { op: name, steps: steps }, [l, r]) });
+        });
+        return frames;
+      }
+    },
+    examples: [
+      {
+        title: 'Tracing sum[1..8] with N = 10, B = 3',
+        html: `${H.table(['piece', 'indices', 'how', 'value'], [
+            ['left loose', '1, 2', 'walk elements', '1 + 7 = 8'],
+            ['full block b1', '3–5', 'read label', '14'],
+            ['full block b2', '6–8', 'read label', '19'],
+            ['total', '', '4 steps instead of 8', H.c('g', '41')]
+          ])}
+          <p>In the Java version the block containing r is always walked as "right partial" even when it is fully covered (it may be the short last block). Both styles are correct; the Python version checks "whole block inside [l, r]" explicitly.</p>`
+      },
+      {
+        title: 'Count of values ≤ x in [l, r] with sorted blocks',
+        html: `<p>a = [5, 1, 4, 8, 2, 7, 3, 6, 9], B = 3. Keep a <b>sorted copy</b> of every block: [1, 4, 5], [2, 7, 8], [3, 6, 9].</p>
+          <p>Query "how many ≤ 5 in [1, 7]": loose a[1], a[2] = 1, 4 → 2; full block b1 → binary search in [2, 7, 8] → 1; loose a[6], a[7] = 3, 6 → 1. Total <b>4</b> (values 1, 4, 2, 3).</p>
+          <p>Update a[3] = 0: replace 8 by 0 in b1's sorted copy and bubble it into place → [0, 2, 7] (O(B)). Query cost O(B + (N/B)·log B). This is the guided problem below.</p>`
+      },
+      {
+        title: 'Sqrt on queries: rebuild every √Q operations',
+        html: `<p>Problem: point updates + range sums, but you only remember prefix sums. Keep a <b>buffer</b> of pending updates (index, delta). A query = <code>prefix[r+1] − prefix[l]</code> + every buffered delta whose index lies in [l, r]. When the buffer reaches √Q entries, apply them to the array and rebuild the prefix sums in O(N).</p>
+          ${H.table(['cost', 'formula', 'N = Q = 10<sup>5</sup>'], [['rebuilds', '(Q / √Q) · N = √Q · N', '≈ 3.2·10<sup>7</sup>'], ['queries', 'Q · √Q', '≈ 3.2·10<sup>7</sup>']])}
+          <p>Useful when the static structure is easy but making it dynamic is hard (e.g. a static data structure that is expensive to update, like a sorted array or a precomputed graph answer).</p>`
+      },
+      {
+        title: 'Heavy/light split by a √N threshold',
+        html: `<p>Query: "for two values x and y, what is the minimum distance between an occurrence of x and one of y?" Values that appear more than √N times are <b>heavy</b> — there are at most √N of them. For each heavy value precompute the answer against every other value with one O(N) sweep → O(N√N) total. For two <b>light</b> values merge their position lists (each &lt; √N long) in O(√N). Every query becomes O(√N) or O(1).</p>`
+      }
+    ],
+    deepDive: `<p><b>Choosing B for real.</b> The textbook B = √N balances only the simplest costs. If full blocks cost log B each (sorted blocks + binary search), minimise 2B + (N/B)·log B → B ≈ √(N log N). If partial-block work is cheap array scanning (cache-friendly) and block work involves random access, a <b>larger</b> B is often faster in practice. Measure with your data; powers of two (e.g. 256, 512) let the compiler turn <code>i / B</code> into a shift.</p>
+      <p><b>When sqrt beats a segment tree.</b> (1) The node merge is expensive or impossible (sorted lists, frequency tables, "number of distinct"). (2) Updates change elements in ways that are not lazy-friendly (e.g. "a[i] = a[i] mod x" — rebuild only the touched partial blocks). (3) You need something working in 15 minutes with low bug risk. Constant factors matter too: O(√N) with simple loops can beat O(log² N) with heavy recursion for N ≈ 10<sup>5</sup>.</p>
+      <p><b>Complexity reality check (Java, ~10<sup>8</sup>–10<sup>9</sup> simple ops/s).</b> N = Q = 2·10<sup>5</sup>, B = 450 → Q·(2B + N/B) ≈ 2·10<sup>5</sup> · 1 350 ≈ 2.7·10<sup>8</sup>. Fine if the inner loops are tight primitive-array scans; too slow with boxed collections or HashMaps inside.</p>
+      <p><b>Classic sqrt problems.</b> "Holes" (jump game with updates): per block store, for each position, how many jumps to leave the block and where you land — updates rebuild one block in O(B), queries hop block to block in O(N/B). "Range mode" (most frequent value) uses precomputed answers between block boundaries. Sqrt ideas also appear in graph algorithms (triangle counting in O(M√M) by orienting edges from low to high degree).</p>
+      <p><b>Relation to other techniques.</b> Mo's algorithm is sqrt decomposition applied to the <i>order of queries</i>. Sqrt tree and van Emde Boas-style structures recursively apply √N splits (√N, then √√N, …) to reach O(log log N). In systems, page-level summaries (B-tree pages, columnar storage "zone maps" with per-block min/max that let a database skip whole blocks during a scan) are the same idea: summarise fixed-size blocks, scan only the edges.</p>`,
+    aiEra: `<p><b>What AI changes:</b> because AI makes heavy structures cheap to type, people over-engineer: a persistent segment tree where a 30-line sqrt decomposition would do. In an interview, proposing the sqrt version first, stating its complexity honestly ("O(√N) per op, ~3·10<sup>7</sup> total, fits"), and then optionally upgrading shows judgement.</p>
+      <p><b>Typical AI mistakes:</b> treating the last (shorter) block as full size B in the sum formula <code>blockSum + blockAdd·B</code>; forgetting to add the block's pending tag when walking loose elements; recomputing block summaries from scratch on every point update (O(B) instead of O(1) for sums); choosing B = 100 hard-coded for N = 10<sup>6</sup>.</p>
+      <p><b>Use AI as a partner:</b> ask for a stress test with block sizes 1, 2, √N and N (the edge cases where partial/full logic breaks); ask it to estimate operation counts for your constraints; ask "is there a √ or offline trick that avoids a persistent structure here?" — then verify. <b>What you must own:</b> the B + N/B balancing argument and the decision of what summary each block stores.</p>`,
+    problems: [{
+      title: 'Count Values ≤ x in a Range, with Updates',
+      level: 'Hard',
+      tags: ['sqrt decomposition', 'binary search', 'online queries'],
+      companies: ['Google', 'Codenation', 'DE Shaw'],
+      statement: `<p>You are given an array <code>a</code> of N integers and Q operations, processed online in order:</p>
+        <ul><li><code>[1, i, v]</code> — set <code>a[i] = v</code>.</li><li><code>[2, l, r, x]</code> — report how many indices <code>j</code> in <code>[l, r]</code> have <code>a[j] ≤ x</code>.</li></ul>
+        <p>Return the answers of all type-2 operations.</p>`,
+      constraints: `1 ≤ N, Q ≤ 5·10<sup>4</sup>, |a[i]|, |v|, |x| ≤ 10<sup>9</sup>, 0-based indices, time limit 2 s.`,
+      example: `${H.arr([5, 1, 4, 8, 2, 7, 3, 6, 9], { label: 'a', hl: { 1: 'g', 2: 'g', 4: 'g', 6: 'g' } })}
+        <p>Ops: [2,1,7,5], [1,3,0], [2,1,7,5] → output ${H.c('g', '[4, 5]')}. In a[1..7] = [1,4,8,2,7,3,6] the values ≤ 5 are 1, 4, 2, 3 → 4. After a[3] = 0 the 8 becomes 0 → 5.</p>`,
+      brute: {
+        why: `<p>Loop over [l, r] for every query: O(N) each, up to 5·10<sup>4</sup> × 5·10<sup>4</sup> = 2.5·10<sup>9</sup>. Updates are O(1). The waste: the same middle elements are compared against x over and over, although a sorted summary of them would answer "how many ≤ x" with one binary search.</p>`,
+        code: `
+          List<Integer> bruteCount(int[] a0, int[][] ops) {
+              int[] a = a0.clone();
+              List<Integer> out = new ArrayList<>();
+              for (int[] op : ops) {
+                  if (op[0] == 1) a[op[1]] = op[2];
+                  else {
+                      int c = 0;
+                      for (int j = op[1]; j <= op[2]; j++) if (a[j] <= op[3]) c++;
+                      out.add(c);
+                  }
+              }
+              return out;
+          }`
+      },
+      mcq: {
+        q: 'Why is a plain segment tree awkward here, while √N blocks are easy?',
+        options: ['Segment trees cannot store negative numbers', 'Merging "sorted lists" of two children costs O(size), and updating every sorted list on a path is expensive', 'Segment trees need the array length to be a power of two', 'Binary search does not work on segment trees'],
+        answer: 1,
+        explain: 'A merge-sort tree answers static queries in O(log² N), but an update would have to fix a sorted list in every one of the log N nodes on its path, each O(size). With blocks only one sorted list of size √N changes.'
+      },
+      hints: [
+        `<p><b>Aha:</b> "how many ≤ x" in a <i>sorted</i> list is one binary search. So keep each block of √N elements also as a sorted copy.</p>`,
+        `<p>Query: loose elements at the two edges are compared one by one; each full block contributes <code>upperBound(sorted[b], x)</code>. Update: in that block's sorted copy, replace the old value by the new one and bubble it into position (O(B)).</p>`,
+        `<p>Edge cases: l and r in the same block (just walk), the last block shorter than B, duplicates (use upper bound "≤ x", not lower bound). Recipe: B = √N → build sorted blocks → per op: update = find old value, overwrite, bubble; query = edges + binary searches.</p>`
+      ],
+      solution: {
+        approach: `<p>Sqrt decomposition with a sorted copy per block. Query: O(B + (N/B)·log B). Update: O(B). With B ≈ √N ≈ 224 that is ≈ 2 000 steps per op, 10<sup>8</sup> in total — comfortably inside 2 s.</p>`,
+        code: `
+          class Solution {
+              private int n, B;
+              private int[] a;
+              private int[][] sorted;            // sorted copy of every block
+
+              public List<Integer> process(int[] arr, int[][] ops) {
+                  n = arr.length;
+                  B = Math.max(1, (int) Math.sqrt(n));
+                  a = arr.clone();
+                  int blocks = (n + B - 1) / B;
+                  sorted = new int[blocks][];
+                  for (int b = 0; b < blocks; b++) {
+                      sorted[b] = Arrays.copyOfRange(a, b * B, Math.min(n, b * B + B));
+                      Arrays.sort(sorted[b]);
+                  }
+                  List<Integer> out = new ArrayList<>();
+                  for (int[] op : ops) {
+                      if (op[0] == 1) update(op[1], op[2]);
+                      else out.add(query(op[1], op[2], op[3]));
+                  }
+                  return out;
+              }
+
+              /** number of values <= x in a sorted array (upper bound). */
+              private static int countLE(int[] s, int x) {
+                  int lo = 0, hi = s.length;
+                  while (lo < hi) {
+                      int mid = (lo + hi) >>> 1;
+                      if (s[mid] <= x) lo = mid + 1; else hi = mid;
+                  }
+                  return lo;
+              }
+
+              private void update(int i, int v) {
+                  int[] s = sorted[i / B];
+                  int pos = Arrays.binarySearch(s, a[i]);     // some slot holding the old value
+                  s[pos] = v;
+                  while (pos > 0 && s[pos - 1] > s[pos]) { int t = s[pos]; s[pos] = s[pos - 1]; s[pos - 1] = t; pos--; }
+                  while (pos + 1 < s.length && s[pos + 1] < s[pos]) { int t = s[pos]; s[pos] = s[pos + 1]; s[pos + 1] = t; pos++; }
+                  a[i] = v;
+              }
+
+              private int query(int l, int r, int x) {
+                  int bl = l / B, br = r / B, c = 0;
+                  if (bl == br) {
+                      for (int i = l; i <= r; i++) if (a[i] <= x) c++;
+                      return c;
+                  }
+                  for (int i = l; i < (bl + 1) * B; i++) if (a[i] <= x) c++;   // left edge
+                  for (int b = bl + 1; b < br; b++) c += countLE(sorted[b], x);  // full blocks
+                  for (int i = br * B; i <= r; i++) if (a[i] <= x) c++;         // right edge
+                  return c;
+              }
+
+              public static void main(String[] args) {
+                  int[] a = {5, 1, 4, 8, 2, 7, 3, 6, 9};
+                  int[][] ops = {{2, 1, 7, 5}, {1, 3, 0}, {2, 1, 7, 5}};
+                  System.out.println(new Solution().process(a, ops));   // [4, 5]
+              }
+          }`,
+        alt: [{ lang: 'python', code: `import bisect
+import math
+
+
+def process(arr, ops):
+    a = list(arr)
+    n = len(a)
+    B = max(1, math.isqrt(n))
+    blocks = [sorted(a[i:i + B]) for i in range(0, n, B)]
+    out = []
+    for op in ops:
+        if op[0] == 1:
+            _, i, v = op
+            s = blocks[i // B]
+            s.pop(bisect.bisect_left(s, a[i]))     # remove old value
+            bisect.insort(s, v)                    # insert new value, O(B)
+            a[i] = v
+        else:
+            _, l, r, x = op
+            c, i = 0, l
+            while i <= r:
+                if i % B == 0 and i + B - 1 <= r:  # full block
+                    c += bisect.bisect_right(blocks[i // B], x)
+                    i += B
+                else:
+                    c += a[i] <= x
+                    i += 1
+            out.append(c)
+    return out
+
+
+print(process([5, 1, 4, 8, 2, 7, 3, 6, 9], [[2, 1, 7, 5], [1, 3, 0], [2, 1, 7, 5]]))  # [4, 5]`, run: true }],
+        dry: {
+          head: ['op', 'left edge', 'full blocks (binary search)', 'right edge', 'answer'],
+          rows: [
+            ['count ≤ 5 in [1,7]', 'a[1]=1 ✔, a[2]=4 ✔ → 2', 'b1 sorted [2,7,8] → 1', 'a[6]=3 ✔, a[7]=6 ✘ → 1', H.c('g', '4')],
+            ['set a[3] = 0', '—', 'b1: [2,7,8] → replace 8 by 0 → bubble → [0,2,7]', '—', '—'],
+            ['count ≤ 5 in [1,7]', '2', 'b1 [0,2,7] → 2', '1', H.c('g', '5')]
+          ]
+        },
+        complexity: `<p>Build O(N log N). Query O(B + (N/B) log B), update O(B). With B = √N: ≈ O(√N log N) per query. Memory O(N).</p>`,
+        followUps: ['Pick B to minimise B + (N/B)·log B — what is the best B for N = 5·10<sup>4</sup>?', 'Offline alternative: sort queries by x and points by value, use a BIT (only without updates).', 'How would a merge-sort tree answer the static version in O(log² N)?']
+      }
+    }]
+  });
+
 registerModule({ id: 'dsa21', title: 'Range Query Data Structures', intro: '<p>x</p>', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();

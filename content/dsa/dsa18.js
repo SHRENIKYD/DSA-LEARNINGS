@@ -2091,6 +2091,991 @@ print(wildcard("adceb", "*a*b"), wildcard("acdcb", "a*c?b"))                # Tr
       <p><b>What you must still own:</b> the state sentence, the complexity check against constraints, and the correctness argument (each solution corresponds to exactly one path through the states).</p>`
   });
 
+  // ================= PRACTICE: Easy =================
+  practice.push({
+    title: 'Longest Continuous Increasing Subsequence', level: 'Easy', tags: ['array', 'dp', 'LIS warm-up'], companies: ['Meta', 'Amazon'],
+    statement: `<p>Given an unsorted integer array, return the length of the longest <b>continuous</b> (contiguous) strictly increasing subarray. This is the “no skipping allowed” cousin of LIS.</p>`,
+    constraints: `1 ≤ nums.length ≤ 10<sup>4</sup>, −10<sup>9</sup> ≤ nums[i] ≤ 10<sup>9</sup>.`,
+    example: `${H.arr([1, 3, 5, 4, 7], { label: 'nums', hl: { 0: 'g', 1: 'g', 2: 'g' } })}<p>Output <b>3</b> (${H.c('g', '1, 3, 5')}). 1, 3, 5, 7 is longer but 4 sits between 5 and 7, so it is not contiguous. [2, 2, 2] → 1.</p>`,
+    brute: {
+      why: `<p>Check every start index and walk right while the values increase: O(N²) in the worst case (a sorted array re-walks the same run from every start). The run ending at i only depends on whether nums[i−1] &lt; nums[i] — no need to restart.</p>`,
+      code: `class Brute {
+    public int findLengthOfLCIS(int[] nums) {
+        int best = 0;
+        for (int i = 0; i < nums.length; i++) {
+            int j = i;
+            while (j + 1 < nums.length && nums[j] < nums[j + 1]) j++;   // extend from i
+            best = Math.max(best, j - i + 1);
+        }
+        return best;
+    }
+}`
+    },
+    mcq: { q: 'dp[i] = length of the increasing run ENDING at i. If nums[i−1] ≥ nums[i], dp[i] is…', options: ['1', 'dp[i−1]', 'dp[i−1] + 1', '0'], answer: 0, explain: 'The run is broken, so a new run starts with nums[i] alone.' },
+    hints: [
+      `<p>Hint 1: unlike LIS you cannot skip elements, so the run ending at i can only extend the run ending at i−1.</p>`,
+      `<p>Hint 2: keep one counter <code>cur</code>: if nums[i] &gt; nums[i−1] then cur++ else cur = 1.</p>`,
+      `<p>Hint 3: track the maximum of cur over the whole array; an array of length 1 gives 1. Equal neighbours break the run (strictly increasing).</p>`
+    ],
+    solution: {
+      approach: `<p>One pass with a running length — the O(1)-memory version of <code>dp[i] = nums[i] &gt; nums[i−1] ? dp[i−1] + 1 : 1</code>. Compare with LIS where dp[i] looks at <b>every</b> earlier j because skipping is allowed.</p>`,
+      code: `class Solution {
+    public int findLengthOfLCIS(int[] nums) {
+        int best = 1, cur = 1;
+        for (int i = 1; i < nums.length; i++) {
+            cur = nums[i] > nums[i - 1] ? cur + 1 : 1;   // extend or restart
+            best = Math.max(best, cur);
+        }
+        return best;
+    }
+}`,
+      alt: [{ lang: 'python', code: `class Solution:
+    def findLengthOfLCIS(self, nums):
+        best = cur = 1
+        for a, b in zip(nums, nums[1:]):
+            cur = cur + 1 if b > a else 1
+            best = max(best, cur)
+        return best` }],
+      dry: { head: ['i', 'nums[i]', 'cur', 'best'], rows: [['0', '1', '1', '1'], ['1', '3', '2', '2'], ['2', '5', '3', '3'], ['3', '4', '1 (5 ≥ 4)', '3'], ['4', '7', '2', '<span class="c-g">3</span>']] },
+      complexity: `<p>Time O(N), space O(1).</p>`,
+      followUps: ['Return the subarray itself.', 'Longest increasing subarray if you may delete at most one element.']
+    }
+  });
+
+  practice.push({
+    title: 'Best Time to Buy and Sell Stock (one transaction)', level: 'Easy', tags: ['state machine dp', 'array', 'greedy'], companies: ['Amazon', 'Meta', 'Microsoft', 'Goldman Sachs'],
+    statement: `<p>Given daily prices, choose one day to buy and a <b>later</b> day to sell to maximise profit. Return the maximum profit, or 0 if no profit is possible.</p>`,
+    constraints: `1 ≤ prices.length ≤ 10<sup>5</sup>, 0 ≤ prices[i] ≤ 10<sup>4</sup>.`,
+    example: `${H.arr([7, 1, 5, 3, 6, 4], { label: 'prices', hl: { 1: 'g', 4: 'g' } })}<p>Output <b>5</b>: buy at ${H.c('g', '1')} (day 1), sell at ${H.c('g', '6')} (day 4). Selling at 7 is impossible because day 0 comes before the buy.</p>`,
+    brute: {
+      why: `<p>Try every (buy, sell) pair with buy &lt; sell: N²/2 pairs = 5·10<sup>9</sup> for N = 10<sup>5</sup>. Wasted work: for each sell day, only the <b>cheapest earlier</b> price matters, and that can be carried forward.</p>`,
+      code: `class Brute {
+    public int maxProfit(int[] prices) {
+        int best = 0;
+        for (int i = 0; i < prices.length; i++)
+            for (int j = i + 1; j < prices.length; j++)
+                best = Math.max(best, prices[j] - prices[i]);
+        return best;
+    }
+}`
+    },
+    mcq: { q: 'In the two-mode state machine (hold, cash) for ONE transaction, the buy arrow is…', options: ['hold = max(hold, −p)', 'hold = max(hold, cash − p)', 'cash = max(cash, hold − p)', 'hold = hold + p'], answer: 0, explain: 'With only one transaction allowed, a buy always starts from zero profit, so hold = max(hold, 0 − p). Using cash − p would allow repeated trades (that is Stock II).' },
+    hints: [
+      `<p>Hint 1: if you sell today, the best buy was the minimum price seen <b>before</b> today.</p>`,
+      `<p>Hint 2: carry <code>minSoFar</code> and <code>best</code> in one left-to-right pass.</p>`,
+      `<p>Hint 3: update best with price − minSoFar, then update minSoFar (order does not matter here because selling on the same day gives 0). Answer is never negative.</p>`
+    ],
+    solution: {
+      approach: `<p>Carry-forward minimum — equivalently the 2-mode state machine with <code>hold = max(hold, −p)</code>, <code>cash = max(cash, hold + p)</code>. Show both: the state-machine view is what generalises to cooldown, fee and k transactions.</p>`,
+      code: `class Solution {
+    public int maxProfit(int[] prices) {
+        int hold = Integer.MIN_VALUE, cash = 0;
+        for (int p : prices) {
+            hold = Math.max(hold, -p);         // best "bought once" state: cheapest buy so far
+            cash = Math.max(cash, hold + p);   // sell today
+        }
+        return cash;
+    }
+}`,
+      alt: [{ lang: 'python', code: `class Solution:
+    def maxProfit(self, prices):
+        low, best = float('inf'), 0
+        for p in prices:
+            low = min(low, p)
+            best = max(best, p - low)
+        return best` }],
+      dry: { head: ['day', 'price', 'hold (= −min)', 'cash'], rows: [['0', '7', '−7', '0'], ['1', '1', '−1', '0'], ['2', '5', '−1', '4'], ['3', '3', '−1', '4'], ['4', '6', '−1', '<span class="c-g">5</span>'], ['5', '4', '−1', '5']] },
+      complexity: `<p>Time O(N), space O(1).</p>`,
+      followUps: ['Unlimited transactions (Stock II).', 'Also return the buy and sell days.']
+    }
+  });
+
+  practice.push({
+    title: 'Is Subsequence', level: 'Easy', tags: ['two pointers', 'string dp', 'binary search'], companies: ['Google', 'Pinterest'],
+    statement: `<p>Given strings <code>s</code> and <code>t</code>, return true if <code>s</code> is a <b>subsequence</b> of <code>t</code> (delete some characters of t without reordering to get s). Follow-up: what if there are 10<sup>9</sup> incoming s strings to test against the same t?</p>`,
+    constraints: `0 ≤ s.length ≤ 100, 0 ≤ t.length ≤ 10<sup>4</sup>, lowercase letters.`,
+    example: `<p>s = ${H.c('g', '"abc"')}, t = "a<b>h</b>b<b>gd</b>c" → <b>true</b> (a, b, c appear in order). s = "axc" → <b>false</b> (no x in t).</p>`,
+    brute: {
+      why: `<p>The LCS grid answers it (s is a subsequence iff LCS(s, t) == |s|) but costs O(|s|·|t|) time and memory — overkill. A greedy match is enough: matching each letter of s as early as possible never hurts.</p>`,
+      code: `class Brute {
+    public boolean isSubsequence(String s, String t) {
+        int m = s.length(), n = t.length();
+        int[][] dp = new int[m + 1][n + 1];          // LCS grid
+        for (int i = 1; i <= m; i++)
+            for (int j = 1; j <= n; j++)
+                dp[i][j] = s.charAt(i - 1) == t.charAt(j - 1) ? dp[i - 1][j - 1] + 1 : Math.max(dp[i - 1][j], dp[i][j - 1]);
+        return dp[m][n] == m;
+    }
+}`
+    },
+    mcq: { q: 'For 10<sup>9</sup> queries against one long t, the best preprocessing is…', options: ['For each letter, the sorted list of its positions in t; binary search the next position per query letter', 'Build the LCS grid once', 'Sort t', 'Hash every substring of t'], answer: 0, explain: 'Each query letter jumps to the next occurrence after the current position in O(log |t|), so a query costs O(|s| log |t|) with no rescanning of t.' },
+    hints: [
+      `<p>Hint 1: greedily match s[0] with its first occurrence in t, then s[1] after that, and so on — taking the earliest match leaves the most room.</p>`,
+      `<p>Hint 2: two pointers i (in s) and j (in t); advance i only on a match, always advance j.</p>`,
+      `<p>Hint 3: answer i == s.length(). Empty s → true. For many queries: positions-per-letter lists + binary search (or a next[j][c] table).</p>`
+    ],
+    solution: {
+      approach: `<p>Two-pointer greedy, O(|t|). It is the degenerate case of the subsequence grid where only the diagonal (“match”) and left (“skip a t letter”) moves exist and the greedy choice is provably optimal (exchange argument: an earlier match can replace any later one).</p>`,
+      code: `class Solution {
+    public boolean isSubsequence(String s, String t) {
+        int i = 0;
+        for (int j = 0; j < t.length() && i < s.length(); j++) {
+            if (s.charAt(i) == t.charAt(j)) i++;   // match s[i] as early as possible
+        }
+        return i == s.length();
+    }
+}`,
+      alt: [{ lang: 'python', code: `from bisect import bisect_right
+from collections import defaultdict
+
+class Solution:
+    def isSubsequence(self, s, t):
+        pos = defaultdict(list)              # follow-up version: preprocess t once
+        for j, c in enumerate(t):
+            pos[c].append(j)
+        cur = -1
+        for c in s:
+            lst = pos.get(c, [])
+            k = bisect_right(lst, cur)       # next occurrence after cur
+            if k == len(lst):
+                return False
+            cur = lst[k]
+        return True` }],
+      dry: { head: ['j', 't[j]', 's[i] wanted', 'match?', 'i after'], rows: [['0', 'a', 'a', 'yes', '1'], ['1', 'h', 'b', 'no', '1'], ['2', 'b', 'b', 'yes', '2'], ['3', 'g', 'c', 'no', '2'], ['4', 'd', 'c', 'no', '2'], ['5', 'c', 'c', 'yes', '<span class="c-g">3 = |s| → true</span>']] },
+      complexity: `<p>Time O(|t|), space O(1). Follow-up: O(|t|) preprocessing, O(|s| log |t|) per query.</p>`,
+      followUps: ['Count how many words in a list are subsequences of t (LC 792).', 'Number of distinct ways s appears in t (Distinct Subsequences).']
+    }
+  });
+
+  // ================= PRACTICE: Medium =================
+  practice.push({
+    title: 'Number of Longest Increasing Subsequence', level: 'Medium', tags: ['LIS', 'dp', 'counting'], companies: ['Google', 'Meta', 'Amazon'],
+    statement: `<p>Given an integer array, return the <b>number</b> of longest strictly increasing subsequences (different index sets count separately).</p>`,
+    constraints: `1 ≤ nums.length ≤ 2000, −10<sup>6</sup> ≤ nums[i] ≤ 10<sup>6</sup>. The answer fits in a 32-bit int.`,
+    example: `<p>nums = [1, 3, 5, 4, 7] → <b>2</b>: ${H.c('g', '1, 3, 4, 7')} and ${H.c('g', '1, 3, 5, 7')}. nums = [2, 2, 2, 2, 2] → 5 (each single element is a longest subsequence of length 1).</p>`,
+    brute: {
+      why: `<p>DFS every increasing subsequence and tally lengths: the number of increasing subsequences can be 2<sup>N</sup> (sorted input). The same “runs ending at j” are rebuilt for every prefix that reaches j.</p>`,
+      code: `class Brute {
+    int bestLen = 0, count = 0;
+    void dfs(int[] a, int last, int len) {               // last = index of last picked element
+        if (len > bestLen) { bestLen = len; count = 1; }
+        else if (len == bestLen) count++;
+        for (int j = last + 1; j < a.length; j++)
+            if (a[j] > a[last]) dfs(a, j, len + 1);
+    }
+    public int findNumberOfLIS(int[] nums) {
+        for (int i = 0; i < nums.length; i++) dfs(nums, i, 1);
+        return count;
+    }
+}`
+    },
+    mcq: { q: 'While computing index i, you find j with a[j] &lt; a[i] and len[j] + 1 == len[i]. What do you do with cnt[i]?', options: ['cnt[i] += cnt[j]', 'cnt[i] = cnt[j]', 'cnt[i]++', 'nothing'], answer: 0, explain: 'Another group of runs reaches the same best length at i, so their counts add. When len[j] + 1 is strictly larger, you reset: cnt[i] = cnt[j].' },
+    hints: [
+      `<p>Hint 1: alongside len[i] (LIS ending at i) keep cnt[i] = how many runs of that best length end at i.</p>`,
+      `<p>Hint 2: for each j &lt; i with a[j] &lt; a[i]: if len[j]+1 &gt; len[i] → len[i] = len[j]+1, cnt[i] = cnt[j]; if equal → cnt[i] += cnt[j].</p>`,
+      `<p>Hint 3: the answer sums cnt[i] over all i whose len[i] equals the global maximum. Initialise len[i] = cnt[i] = 1. For N = 10<sup>5</sup> use a Fenwick tree storing (bestLen, count) per compressed value.</p>`
+    ],
+    solution: {
+      approach: `<p>O(N²) LIS dp extended with counts. Every longest run has a unique last index, so summing counts at the indices with maximal length counts each run exactly once.</p>`,
+      code: `class Solution {
+    public int findNumberOfLIS(int[] nums) {
+        int n = nums.length, maxLen = 0, total = 0;
+        int[] len = new int[n], cnt = new int[n];
+        for (int i = 0; i < n; i++) {
+            len[i] = 1; cnt[i] = 1;
+            for (int j = 0; j < i; j++) {
+                if (nums[j] < nums[i]) {
+                    if (len[j] + 1 > len[i]) { len[i] = len[j] + 1; cnt[i] = cnt[j]; }   // better length
+                    else if (len[j] + 1 == len[i]) cnt[i] += cnt[j];                    // same length, more ways
+                }
+            }
+            if (len[i] > maxLen) { maxLen = len[i]; total = cnt[i]; }
+            else if (len[i] == maxLen) total += cnt[i];
+        }
+        return total;
+    }
+}`,
+      alt: [{ lang: 'python', code: `class Solution:
+    def findNumberOfLIS(self, nums):
+        n = len(nums)
+        ln, cnt = [1] * n, [1] * n
+        for i in range(n):
+            for j in range(i):
+                if nums[j] < nums[i]:
+                    if ln[j] + 1 > ln[i]:
+                        ln[i], cnt[i] = ln[j] + 1, cnt[j]
+                    elif ln[j] + 1 == ln[i]:
+                        cnt[i] += cnt[j]
+        m = max(ln)
+        return sum(c for l, c in zip(ln, cnt) if l == m)` }],
+      dry: { head: ['i', 'val', 'len', 'cnt'], rows: [['0', '1', '1', '1'], ['1', '3', '2', '1'], ['2', '5', '3', '1'], ['3', '4', '3', '1'], ['4', '7', '4', '1 (via 5) + 1 (via 4) = <span class="c-g">2</span>']] },
+      complexity: `<p>Time O(N²), space O(N). O(N log N) with a Fenwick/segment tree over compressed values.</p>`,
+      followUps: ['Solve in O(N log N).', 'Count longest non-decreasing subsequences instead.']
+    }
+  });
+
+  practice.push({
+    title: 'Largest Divisible Subset', level: 'Medium', tags: ['LIS', 'dp', 'sorting', 'math'], companies: ['Google', 'Amazon'],
+    statement: `<p>Given a set of distinct positive integers, return the largest subset such that for every pair (a, b) in it, <code>a % b == 0</code> or <code>b % a == 0</code>. Any valid largest subset may be returned.</p>`,
+    constraints: `1 ≤ nums.length ≤ 1000, 1 ≤ nums[i] ≤ 2·10<sup>9</sup>, all distinct.`,
+    example: `<p>nums = [1, 2, 4, 8, 3] → ${H.c('g', '[1, 2, 4, 8]')} (each divides the next). nums = [1, 2, 3] → [1, 2] or [1, 3].</p>`,
+    brute: {
+      why: `<p>Check all 2<sup>N</sup> subsets and verify every pair: hopeless beyond N ≈ 20. The key waste: once sorted, a valid subset is a <b>chain</b>, and the best chain ending at a given number is reused by many larger numbers.</p>`,
+      code: `class Brute {
+    public List<Integer> largestDivisibleSubset(int[] nums) {
+        int n = nums.length;
+        List<Integer> best = new ArrayList<>();
+        for (int mask = 1; mask < (1 << Math.min(n, 20)); mask++) {
+            List<Integer> pick = new ArrayList<>();
+            for (int i = 0; i < n && i < 20; i++) if ((mask >> i & 1) == 1) pick.add(nums[i]);
+            boolean ok = true;
+            for (int a = 0; a < pick.size() && ok; a++)
+                for (int b = a + 1; b < pick.size() && ok; b++)
+                    if (pick.get(a) % pick.get(b) != 0 && pick.get(b) % pick.get(a) != 0) ok = false;
+            if (ok && pick.size() > best.size()) best = pick;
+        }
+        return best;
+    }
+}`
+    },
+    mcq: { q: 'Why is it enough (after sorting) to check only that nums[i] % nums[j] == 0 for the PREVIOUS chain element j?', options: ['Divisibility is transitive: if c | b and b | a then c | a', 'Because all numbers are prime', 'Because the array is distinct', 'It is not enough; all pairs must be checked'], answer: 0, explain: 'In a sorted chain where each element divides the next, every earlier element divides every later one by transitivity — so the whole subset is pairwise divisible.' },
+    hints: [
+      `<p>Hint 1: sort ascending. Then a divisible subset is a chain where each element divides the next — just like an increasing subsequence.</p>`,
+      `<p>Hint 2: dp[i] = size of the largest chain ending at nums[i]; dp[i] = 1 + max dp[j] over j &lt; i with nums[i] % nums[j] == 0. Keep parent[i].</p>`,
+      `<p>Hint 3: pick the index with the largest dp and follow parents back to rebuild the list. Single element → that element.</p>`
+    ],
+    solution: {
+      approach: `<p>Sort, then run the O(N²) LIS template with “divides” as the compatibility test, recording parents for reconstruction.</p>`,
+      code: `class Solution {
+    public List<Integer> largestDivisibleSubset(int[] nums) {
+        Arrays.sort(nums);
+        int n = nums.length, best = 0;
+        int[] dp = new int[n], parent = new int[n];
+        for (int i = 0; i < n; i++) {
+            dp[i] = 1; parent[i] = -1;
+            for (int j = 0; j < i; j++) {
+                if (nums[i] % nums[j] == 0 && dp[j] + 1 > dp[i]) { dp[i] = dp[j] + 1; parent[i] = j; }
+            }
+            if (dp[i] > dp[best]) best = i;
+        }
+        LinkedList<Integer> res = new LinkedList<>();
+        for (int k = best; k != -1; k = parent[k]) res.addFirst(nums[k]);
+        return res;
+    }
+}`,
+      alt: [{ lang: 'python', code: `class Solution:
+    def largestDivisibleSubset(self, nums):
+        nums.sort()
+        n = len(nums)
+        dp, par = [1] * n, [-1] * n
+        for i in range(n):
+            for j in range(i):
+                if nums[i] % nums[j] == 0 and dp[j] + 1 > dp[i]:
+                    dp[i], par[i] = dp[j] + 1, j
+        k = max(range(n), key=lambda x: dp[x])
+        out = []
+        while k != -1:
+            out.append(nums[k]); k = par[k]
+        return out[::-1]` }],
+      dry: { head: ['sorted value', 'dp', 'parent'], rows: [['1', '1', '—'], ['2', '2', '1'], ['3', '2', '1'], ['4', '3', '2'], ['8', '<span class="c-g">4</span>', '4 → chain 1, 2, 4, 8']] },
+      complexity: `<p>Time O(N²) after O(N log N) sorting; space O(N).</p>`,
+      followUps: ['Count the number of largest divisible subsets.', 'What if numbers are not distinct?']
+    }
+  });
+
+  practice.push({
+    title: 'Best Time to Buy and Sell Stock with Transaction Fee', level: 'Medium', tags: ['state machine dp', 'greedy'], companies: ['Meta', 'Bloomberg', 'Citadel'],
+    statement: `<p>Given prices and a fixed <code>fee</code> charged per completed transaction (buy + sell), return the maximum profit with unlimited transactions, holding at most one share at a time.</p>`,
+    constraints: `1 ≤ prices.length ≤ 5·10<sup>4</sup>, 1 ≤ prices[i] &lt; 5·10<sup>4</sup>, 0 ≤ fee &lt; 5·10<sup>4</sup>.`,
+    example: `<p>prices = [1, 3, 2, 8, 4, 9], fee = 2 → <b>8</b>: ${H.c('g', 'buy 1 sell 8 (+7−2) and buy 4 sell 9 (+5−2)')}. Trading every rise (1→3, 2→8, 4→9) would pay the fee three times: 2+6+5−6 = 7.</p>`,
+    brute: {
+      why: `<p>Recursively decide buy / sell / wait each day while tracking whether you hold a share: 2 choices per day → 2<sup>N</sup> paths. The future only depends on (day, holding), so there are just 2N distinct situations.</p>`,
+      code: `class Brute {
+    int go(int[] p, int fee, int day, boolean holding) {
+        if (day == p.length) return 0;
+        int wait = go(p, fee, day + 1, holding);
+        int act = holding ? p[day] - fee + go(p, fee, day + 1, false)
+                          : -p[day] + go(p, fee, day + 1, true);
+        return Math.max(wait, act);
+    }
+    public int maxProfit(int[] prices, int fee) { return go(prices, fee, 0, false); }
+}`
+    },
+    mcq: { q: 'Where should the fee be subtracted in the 2-mode machine?', options: ['On exactly one arrow per round trip (e.g. the sell arrow)', 'On both the buy and the sell arrow', 'Every day you hold a share', 'Only at the very end'], answer: 0, explain: 'The fee is per transaction. Charging it on both arrows would double-charge each round trip.' },
+    hints: [
+      `<p>Hint 1: two modes at the end of each day — holding a share or holding cash.</p>`,
+      `<p>Hint 2: cash = max(cash, hold + p − fee); hold = max(hold, cash − p), both from yesterday’s values.</p>`,
+      `<p>Hint 3: start cash = 0, hold = −prices[0]; answer is cash. Use temporaries so the new cash does not leak into today’s hold (it would be harmless here, but build the habit).</p>`
+    ],
+    solution: {
+      approach: `<p>Two-variable state machine. The fee simply lowers the value of the sell arrow, which automatically suppresses trades whose rise is not bigger than the fee.</p>`,
+      code: `class Solution {
+    public int maxProfit(int[] prices, int fee) {
+        int cash = 0, hold = -prices[0];
+        for (int i = 1; i < prices.length; i++) {
+            int newCash = Math.max(cash, hold + prices[i] - fee);   // sell today
+            int newHold = Math.max(hold, cash - prices[i]);         // buy today
+            cash = newCash; hold = newHold;
+        }
+        return cash;
+    }
+}`,
+      alt: [{ lang: 'python', code: `class Solution:
+    def maxProfit(self, prices, fee):
+        cash, hold = 0, -prices[0]
+        for p in prices[1:]:
+            cash, hold = max(cash, hold + p - fee), max(hold, cash - p)
+        return cash` }],
+      dry: { head: ['day', 'price', 'cash', 'hold'], rows: [['0', '1', '0', '−1'], ['1', '3', '0', '−1'], ['2', '2', '0', '−1'], ['3', '8', '5', '−1'], ['4', '4', '5', '1'], ['5', '9', '<span class="c-g">8</span>', '1']] },
+      complexity: `<p>Time O(N), space O(1).</p>`,
+      followUps: ['Fee charged only on buying — what changes?', 'Combine fee with a cooldown.']
+    }
+  });
+
+  practice.push({
+    title: 'Palindrome Partitioning (list all)', level: 'Medium', tags: ['partition dp', 'backtracking', 'string'], companies: ['Amazon', 'Google', 'Bloomberg'],
+    statement: `<p>Given a string <code>s</code>, return <b>all</b> ways to partition it so that every piece is a palindrome.</p>`,
+    constraints: `1 ≤ s.length ≤ 16, lowercase letters.`,
+    example: `<p>s = ${H.c('b', '"aab"')} → ${H.c('g', '[["a","a","b"], ["aa","b"]]')}. s = "a" → [["a"]].</p>`,
+    brute: {
+      why: `<p>Enumerate all 2<sup>N−1</sup> ways to place cuts and check every piece with two pointers. Correct but each piece is re-checked in O(N) many times; many cut patterns are generated even though an early piece is already not a palindrome.</p>`,
+      code: `class Brute {
+    boolean pal(String s) { return new StringBuilder(s).reverse().toString().equals(s); }
+    public List<List<String>> partition(String s) {
+        List<List<String>> res = new ArrayList<>();
+        int n = s.length();
+        for (int mask = 0; mask < (1 << (n - 1)); mask++) {     // bit i set = cut after char i
+            List<String> parts = new ArrayList<>();
+            int start = 0;
+            boolean ok = true;
+            for (int i = 0; i < n && ok; i++) {
+                if (i == n - 1 || (mask >> i & 1) == 1) {
+                    String piece = s.substring(start, i + 1);
+                    if (!pal(piece)) ok = false;
+                    parts.add(piece);
+                    start = i + 1;
+                }
+            }
+            if (ok) res.add(parts);
+        }
+        return res;
+    }
+}`
+    },
+    mcq: { q: 'Why can this problem NOT be solved in polynomial time in general?', options: ['The output itself can contain 2<sup>N−1</sup> partitions (e.g. "aaaa…")', 'Palindrome checks are exponential', 'Backtracking is always exponential', 'It can; dp gives O(N²)'], answer: 0, explain: 'A string of N equal letters has every cut pattern valid, so just printing the answer is exponential. We can only make each output step cheap (O(1) palindrome checks, no dead branches).' },
+    hints: [
+      `<p>Hint 1: choose the first piece s[start..end] among palindromes, then recursively partition the rest — choose, explore, unchoose.</p>`,
+      `<p>Hint 2: precompute pal[i][j] once in O(N²) so each check is O(1).</p>`,
+      `<p>Hint 3: when start == n, copy the current list into the result. Iterate end from start to n−1 and recurse only when pal[start][end] is true.</p>`
+    ],
+    solution: {
+      approach: `<p>Backtracking over the first piece, pruned by an O(N²) palindrome table (partition-DP preprocessing). Every recursive branch produces at least one valid partition, so no work is wasted on dead ends.</p>`,
+      code: `class Solution {
+    public List<List<String>> partition(String s) {
+        int n = s.length();
+        boolean[][] pal = new boolean[n][n];
+        for (int i = n - 1; i >= 0; i--)
+            for (int j = i; j < n; j++)
+                pal[i][j] = s.charAt(i) == s.charAt(j) && (j - i < 2 || pal[i + 1][j - 1]);
+        List<List<String>> res = new ArrayList<>();
+        backtrack(s, 0, pal, new ArrayList<>(), res);
+        return res;
+    }
+    private void backtrack(String s, int start, boolean[][] pal, List<String> cur, List<List<String>> res) {
+        if (start == s.length()) { res.add(new ArrayList<>(cur)); return; }
+        for (int end = start; end < s.length(); end++) {
+            if (!pal[start][end]) continue;
+            cur.add(s.substring(start, end + 1));      // choose
+            backtrack(s, end + 1, pal, cur, res);      // explore
+            cur.remove(cur.size() - 1);                // unchoose
+        }
+    }
+}`,
+      alt: [{ lang: 'python', code: `class Solution:
+    def partition(self, s):
+        n = len(s)
+        pal = [[False] * n for _ in range(n)]
+        for i in range(n - 1, -1, -1):
+            for j in range(i, n):
+                pal[i][j] = s[i] == s[j] and (j - i < 2 or pal[i + 1][j - 1])
+        res, cur = [], []
+        def go(start):
+            if start == n:
+                res.append(cur[:]); return
+            for end in range(start, n):
+                if pal[start][end]:
+                    cur.append(s[start:end + 1]); go(end + 1); cur.pop()
+        go(0)
+        return res` }],
+      dry: { head: ['call', 'start', 'pieces so far', 'action'], rows: [['1', '0', '[]', 'try "a" (pal), "aa" (pal), "aab" (no)'], ['2', '1', '[a]', 'try "a" → recurse; "ab" no'], ['3', '2', '[a, a]', '"b" → start 3 = n → <span class="c-g">add [a,a,b]</span>'], ['4', '2', '[aa]', '"b" → <span class="c-g">add [aa,b]</span>']] },
+      complexity: `<p>Time O(N · 2<sup>N</sup>) in the worst case (output size), plus O(N²) preprocessing. Space O(N²) for the table, O(N) recursion.</p>`,
+      followUps: ['Return only the count of partitions (dp, no listing).', 'Minimum cuts (Palindrome Partitioning II).']
+    }
+  });
+
+  practice.push({
+    title: 'Longest Palindromic Subsequence', level: 'Medium', tags: ['string dp', 'interval dp'], companies: ['Amazon', 'LinkedIn', 'Uber'],
+    statement: `<p>Given a string <code>s</code>, return the length of its longest <b>palindromic subsequence</b> (delete any characters, keep order, the result reads the same backwards).</p>`,
+    constraints: `1 ≤ s.length ≤ 1000, lowercase letters.`,
+    example: `<p>s = ${H.c('b', '"bbbab"')} → <b>4</b> (${H.c('g', '"bbbb"')}). s = "cbbd" → 2 ("bb").</p>`,
+    brute: {
+      why: `<p>Plain recursion on (i, j): if ends match take both, otherwise branch into dropping either end. Without memo the two branches overlap heavily (dropping left then right = dropping right then left), giving O(2<sup>N</sup>).</p>`,
+      code: `class Brute {
+    int lps(String s, int i, int j) {
+        if (i > j) return 0;
+        if (i == j) return 1;
+        if (s.charAt(i) == s.charAt(j)) return 2 + lps(s, i + 1, j - 1);
+        return Math.max(lps(s, i + 1, j), lps(s, i, j - 1));   // overlapping subproblems
+    }
+    public int longestPalindromeSubseq(String s) { return lps(s, 0, s.length() - 1); }
+}`
+    },
+    mcq: { q: 'Which identity gives an alternative solution?', options: ['LPS(s) = LCS(s, reverse(s))', 'LPS(s) = n − LCS(s, s)', 'LPS(s) = longest palindromic substring', 'LPS(s) = LIS of character codes'], answer: 0, explain: 'A palindromic subsequence reads the same in s and reversed s, so it is a common subsequence of both; the longest common one is a palindrome of maximal length.' },
+    hints: [
+      `<p>Hint 1: look at the two ends of s[i..j]. If they are equal, both can be the outer layer of the palindrome.</p>`,
+      `<p>Hint 2: dp[i][j] = s[i]==s[j] ? dp[i+1][j−1] + 2 : max(dp[i+1][j], dp[i][j−1]); dp[i][i] = 1.</p>`,
+      `<p>Hint 3: fill i from n−1 down to 0 and j from i+1 up to n−1 so dependencies are ready. One-row optimisation is possible with a saved diagonal.</p>`
+    ],
+    solution: {
+      approach: `<p>Interval DP over substrings, O(N²). For memory, keep one row plus a variable holding the old diagonal value (dp[i+1][j−1]).</p>`,
+      code: `class Solution {
+    public int longestPalindromeSubseq(String s) {
+        int n = s.length();
+        int[] dp = new int[n];                     // dp[j] = LPS of s[i..j] for the current i
+        for (int i = n - 1; i >= 0; i--) {
+            dp[i] = 1;
+            int diag = 0;                          // dp[i+1][j-1] from the previous row
+            for (int j = i + 1; j < n; j++) {
+                int saved = dp[j];                 // dp[i+1][j] before overwrite
+                if (s.charAt(i) == s.charAt(j)) dp[j] = diag + 2;
+                else dp[j] = Math.max(dp[j], dp[j - 1]);
+                diag = saved;
+            }
+        }
+        return dp[n - 1];
+    }
+}`,
+      alt: [{ lang: 'python', code: `class Solution:
+    def longestPalindromeSubseq(self, s):
+        n = len(s)
+        dp = [[0] * n for _ in range(n)]
+        for i in range(n - 1, -1, -1):
+            dp[i][i] = 1
+            for j in range(i + 1, n):
+                dp[i][j] = dp[i + 1][j - 1] + 2 if s[i] == s[j] else max(dp[i + 1][j], dp[i][j - 1])
+        return dp[0][n - 1]` }],
+      dry: { head: ['substring', 'ends equal?', 'dp'], rows: [['"ba"', 'no', '1'], ['"ab"', 'no', '1'], ['"bab"', 'yes', '1 + 2 = 3'], ['"bbab"', 'yes', 'dp("ba") + 2 = 3'], ['"bbbab"', 'yes', 'dp("bba") + 2 = 2 + 2 = <span class="c-g">4</span>']] },
+      complexity: `<p>Time O(N²), space O(N) with the rolling row.</p>`,
+      followUps: ['Print the palindrome.', 'Minimum insertions to make s a palindrome (n − LPS).', 'Count palindromic subsequences.']
+    }
+  });
+
+  practice.push({
+    title: 'Minimum Score Triangulation of Polygon', level: 'Medium', tags: ['interval dp'], companies: ['Uber', 'Google'],
+    statement: `<p>A convex polygon has vertex values <code>values[0..n−1]</code> in clockwise order. Triangulate it into n − 2 triangles; a triangle’s score is the product of its three vertex values. Return the minimum total score.</p>`,
+    constraints: `3 ≤ n ≤ 50, 1 ≤ values[i] ≤ 100.`,
+    example: `<p>values = [3, 7, 4, 5] → <b>144</b>: triangles (3,7,5) + (4,5,7) = 105 + 140 = 245, or (3,4,5) + (3,4,7) = 60 + 84 = ${H.c('g', '144')}. values = [1, 3, 1, 4, 1, 5] → 13.</p>`,
+    brute: {
+      why: `<p>Recursion over the third vertex of the triangle on edge (i, j) without memo: the number of triangulations is a Catalan number (≈ 4<sup>n</sup>/n<sup>1.5</sup>), and the same sub-polygon (i, j) is solved repeatedly.</p>`,
+      code: `class Brute {
+    int best(int[] v, int i, int j) {
+        if (j - i < 2) return 0;                      // fewer than 3 vertices: no triangle
+        int res = Integer.MAX_VALUE;
+        for (int k = i + 1; k < j; k++)
+            res = Math.min(res, best(v, i, k) + best(v, k, j) + v[i] * v[k] * v[j]);
+        return res;
+    }
+    public int minScoreTriangulation(int[] values) { return best(values, 0, values.length - 1); }
+}`
+    },
+    mcq: { q: 'Why does every triangulation of polygon i..j contain exactly one triangle using edge (i, j)?', options: ['Edge (i, j) is a side of the sub-polygon, and every side belongs to exactly one triangle', 'Because i and j are adjacent in the original array', 'Because the polygon is convex, all triangles use vertex 0', 'It does not; some use two'], answer: 0, explain: 'In a triangulation every polygon side lies in exactly one triangle. Its third vertex k splits the rest into polygons i..k and k..j — the interval split point.' },
+    hints: [
+      `<p>Hint 1: fix the side (i, j). Its triangle has some third vertex k between them; that triangle splits the polygon into two smaller polygons.</p>`,
+      `<p>Hint 2: dp[i][j] = min over i &lt; k &lt; j of dp[i][k] + dp[k][j] + v[i]·v[k]·v[j]; dp[i][i+1] = 0.</p>`,
+      `<p>Hint 3: fill by gap length (j − i) from 2 to n−1. Answer dp[0][n−1]. Use int: max 100³·48 fits easily.</p>`
+    ],
+    solution: {
+      approach: `<p>Interval DP identical in shape to Matrix Chain Multiplication (an n-gon triangulation ↔ bracketing a chain of n−1 matrices).</p>`,
+      code: `class Solution {
+    public int minScoreTriangulation(int[] v) {
+        int n = v.length;
+        int[][] dp = new int[n][n];
+        for (int gap = 2; gap < n; gap++) {
+            for (int i = 0; i + gap < n; i++) {
+                int j = i + gap;
+                dp[i][j] = Integer.MAX_VALUE;
+                for (int k = i + 1; k < j; k++)
+                    dp[i][j] = Math.min(dp[i][j], dp[i][k] + dp[k][j] + v[i] * v[k] * v[j]);
+            }
+        }
+        return dp[0][n - 1];
+    }
+}`,
+      alt: [{ lang: 'python', code: `class Solution:
+    def minScoreTriangulation(self, v):
+        n = len(v)
+        dp = [[0] * n for _ in range(n)]
+        for gap in range(2, n):
+            for i in range(n - gap):
+                j = i + gap
+                dp[i][j] = min(dp[i][k] + dp[k][j] + v[i] * v[k] * v[j] for k in range(i + 1, j))
+        return dp[0][n - 1]` }],
+      dry: { head: ['range (i, j)', 'k options', 'dp'], rows: [['(0,2) 3,7,4', 'k=1: 84', '84'], ['(1,3) 7,4,5', 'k=2: 140', '140'], ['(0,3)', 'k=1: 0 + 140 + 3·7·5 = 245; k=2: 84 + 0 + 3·4·5 = 144', '<span class="c-g">144</span>']] },
+      complexity: `<p>Time O(n³), space O(n²).</p>`,
+      followUps: ['Maximise instead of minimise.', 'Return the triangles chosen.']
+    }
+  });
+
+  // ================= PRACTICE: Hard =================
+  practice.push({
+    title: 'Russian Doll Envelopes', level: 'Hard', tags: ['LIS', 'binary search', 'sorting'], companies: ['Google', 'Amazon', 'Microsoft'],
+    statement: `<p>Envelopes are given as [width, height]. One fits inside another only if <b>both</b> width and height are strictly smaller. Return the maximum number of envelopes you can nest (Russian-doll style). Rotation is not allowed.</p>`,
+    constraints: `1 ≤ envelopes.length ≤ 10<sup>5</sup>, 1 ≤ w, h ≤ 10<sup>5</sup>. O(N log N) required.`,
+    example: `<p>[[5,4], [6,4], [6,7], [2,3]] → <b>3</b>: ${H.c('g', '[2,3] → [5,4] → [6,7]')}. [[1,1], [1,1], [1,1]] → 1.</p>`,
+    brute: {
+      why: `<p>Sort by width and run the O(N²) LIS-style dp checking both dimensions: correct but 10<sup>10</sup> steps at N = 10<sup>5</sup>. The fix is to reduce to a 1D LIS so the tails + binary search trick applies.</p>`,
+      code: `class Brute {
+    public int maxEnvelopes(int[][] env) {
+        Arrays.sort(env, (a, b) -> a[0] - b[0]);
+        int n = env.length, best = 0;
+        int[] dp = new int[n];
+        for (int i = 0; i < n; i++) {
+            dp[i] = 1;
+            for (int j = 0; j < i; j++)
+                if (env[j][0] < env[i][0] && env[j][1] < env[i][1]) dp[i] = Math.max(dp[i], dp[j] + 1);
+            best = Math.max(best, dp[i]);
+        }
+        return best;
+    }
+}`
+    },
+    mcq: { q: 'After sorting by width ascending, how must equal widths be ordered for the height-LIS to be correct?', options: ['Height descending', 'Height ascending', 'Any order', 'Remove duplicates of width'], answer: 0, explain: 'Envelopes with the same width cannot nest. Sorting their heights in decreasing order makes it impossible for a strictly increasing height subsequence to take two of them.' },
+    hints: [
+      `<p>Hint 1: if widths were all distinct, sorting by width would leave a pure LIS on heights.</p>`,
+      `<p>Hint 2: handle equal widths by sorting them by height <b>descending</b> so at most one per width can join an increasing run.</p>`,
+      `<p>Hint 3: then run the O(N log N) tails LIS (lower bound, strict) on the heights. Use Integer.compare in the comparator to stay overflow-safe.</p>`
+    ],
+    solution: {
+      approach: `<p>Sort by (w ascending, h descending), extract heights, strict LIS with tails + binary search. The tie rule turns the 2D condition into a 1D one.</p>`,
+      code: `class Solution {
+    public int maxEnvelopes(int[][] envelopes) {
+        Arrays.sort(envelopes, (a, b) -> a[0] != b[0] ? Integer.compare(a[0], b[0]) : Integer.compare(b[1], a[1]));
+        int[] tails = new int[envelopes.length];
+        int len = 0;
+        for (int[] e : envelopes) {
+            int h = e[1], lo = 0, hi = len;
+            while (lo < hi) {
+                int mid = (lo + hi) >>> 1;
+                if (tails[mid] < h) lo = mid + 1; else hi = mid;
+            }
+            tails[lo] = h;
+            if (lo == len) len++;
+        }
+        return len;
+    }
+}`,
+      alt: [{ lang: 'python', code: `from bisect import bisect_left
+
+class Solution:
+    def maxEnvelopes(self, envelopes):
+        envelopes.sort(key=lambda e: (e[0], -e[1]))
+        tails = []
+        for _, h in envelopes:
+            k = bisect_left(tails, h)
+            if k == len(tails):
+                tails.append(h)
+            else:
+                tails[k] = h
+        return len(tails)` }],
+      dry: { head: ['sorted envelope', 'height', 'tails'], rows: [['[2,3]', '3', '[3]'], ['[5,4]', '4', '[3, 4]'], ['[6,7]', '7', '[3, 4, 7]'], ['[6,4]', '4', '[3, 4, 7] (replace 4 with 4) → <span class="c-g">3</span>']] },
+      complexity: `<p>Time O(N log N), space O(N).</p>`,
+      followUps: ['3D boxes (stacking boxes) — why does the trick not extend directly?', 'Return the actual nesting order.']
+    }
+  });
+
+  practice.push({
+    title: 'Best Time to Buy and Sell Stock IV (at most k transactions)', level: 'Hard', tags: ['state machine dp', 'dp'], companies: ['Amazon', 'Citadel', 'Two Sigma', 'Google'],
+    statement: `<p>Given an integer <code>k</code> and daily prices, find the maximum profit with at most <code>k</code> transactions (each = one buy followed by one sell; at most one share held at a time).</p>`,
+    constraints: `1 ≤ k ≤ 100, 1 ≤ prices.length ≤ 1000, 0 ≤ prices[i] ≤ 1000. (Be ready for k up to 10<sup>9</sup>.)`,
+    example: `<p>k = 2, prices = [3, 2, 6, 5, 0, 3] → <b>7</b>: ${H.c('g', 'buy 2 sell 6 (+4), buy 0 sell 3 (+3)')}. k = 1 on the same prices → 4.</p>`,
+    brute: {
+      why: `<p>Recursion over (day, transactions left, holding) with choices wait / buy / sell — exponential without memo, even though there are only N·k·2 distinct situations.</p>`,
+      code: `class Brute {
+    int go(int[] p, int day, int left, boolean holding) {
+        if (day == p.length || (left == 0 && !holding)) return 0;
+        int best = go(p, day + 1, left, holding);                                   // wait
+        if (holding) best = Math.max(best, p[day] + go(p, day + 1, left - 1, false)); // sell completes one
+        else best = Math.max(best, -p[day] + go(p, day + 1, left, true));           // buy
+        return best;
+    }
+    public int maxProfit(int k, int[] prices) { return go(prices, 0, k, false); }
+}`
+    },
+    mcq: { q: 'Why can you switch to the greedy “sum of all rises” when k ≥ n/2?', options: ['There can be at most ⌊n/2⌋ non-overlapping profitable trades, so the limit never binds', 'Because greedy is always optimal for stocks', 'Because k is too large for an array', 'Because the dp becomes incorrect'], answer: 0, explain: 'Each trade needs a distinct buy day and later sell day, so at most n/2 useful trades exist. If k is at least that, the problem is the unlimited version.' },
+    hints: [
+      `<p>Hint 1: extend the two-mode machine with a counter: buy[j] = best cash after the j-th buy, sell[j] = best cash after the j-th sell.</p>`,
+      `<p>Hint 2: buy[j] = max(buy[j], sell[j−1] − p); sell[j] = max(sell[j], buy[j] + p) for j = 1..k, every day.</p>`,
+      `<p>Hint 3: initialise buy[j] = −∞, sell[j] = 0; answer sell[k]. Add the k ≥ n/2 shortcut to avoid huge arrays and O(n·k) blow-up.</p>`
+    ],
+    solution: {
+      approach: `<p>k-layer state machine with O(k) memory, plus the unlimited shortcut. sell[k] is monotone in k, so it already represents “at most k”.</p>`,
+      code: `class Solution {
+    public int maxProfit(int k, int[] prices) {
+        int n = prices.length;
+        if (n < 2 || k == 0) return 0;
+        if (k >= n / 2) {                                  // unlimited transactions
+            int sum = 0;
+            for (int i = 1; i < n; i++) sum += Math.max(0, prices[i] - prices[i - 1]);
+            return sum;
+        }
+        int[] buy = new int[k + 1], sell = new int[k + 1];
+        Arrays.fill(buy, Integer.MIN_VALUE);
+        for (int p : prices) {
+            for (int j = 1; j <= k; j++) {
+                buy[j] = Math.max(buy[j], sell[j - 1] - p);
+                sell[j] = Math.max(sell[j], buy[j] + p);
+            }
+        }
+        return sell[k];
+    }
+}`,
+      alt: [{ lang: 'python', code: `class Solution:
+    def maxProfit(self, k, prices):
+        n = len(prices)
+        if k >= n // 2:
+            return sum(max(0, b - a) for a, b in zip(prices, prices[1:]))
+        buy, sell = [float('-inf')] * (k + 1), [0] * (k + 1)
+        for p in prices:
+            for j in range(1, k + 1):
+                buy[j] = max(buy[j], sell[j - 1] - p)
+                sell[j] = max(sell[j], buy[j] + p)
+        return sell[k]` }],
+      dry: { head: ['day', 'price', 'buy1', 'sell1', 'buy2', 'sell2'], rows: [['0', '3', '−3', '0', '−3', '0'], ['1', '2', '−2', '0', '−2', '0'], ['2', '6', '−2', '4', '−2', '4'], ['3', '5', '−2', '4', '−1', '4'], ['4', '0', '0', '4', '4', '4'], ['5', '3', '0', '4', '4', '<span class="c-g">7</span>']] },
+      complexity: `<p>Time O(n·k) (or O(n) when k ≥ n/2), space O(k).</p>`,
+      followUps: ['Add a cooldown.', 'Solve in O(n log n) independent of k (valley/peak pairs + heap, or the “Aliens” penalty trick).']
+    }
+  });
+
+  practice.push({
+    title: 'Minimum Cost to Cut a Stick', level: 'Hard', tags: ['interval dp', 'sorting'], companies: ['Google', 'Amazon'],
+    statement: `<p>A wooden stick of length <code>n</code> must be cut at positions <code>cuts[i]</code>, in any order you choose. Each cut costs the <b>current length</b> of the piece being cut. Return the minimum total cost.</p>`,
+    constraints: `2 ≤ n ≤ 10<sup>6</sup>, 1 ≤ cuts.length ≤ min(n − 1, 100), cut positions distinct.`,
+    example: `<p>n = 7, cuts = [1, 3, 4, 5] → <b>16</b>: ${H.c('g', 'cut 3 (7), cut 5 (4), cut 1 (3), cut 4 (2)')}. The given order 1, 3, 4, 5 costs 7 + 6 + 4 + 3 = 20.</p>`,
+    brute: {
+      why: `<p>Try all m! cut orders, or recurse “which cut first” on each piece without memo. The state is just (left boundary, right boundary) — at most (m+2)² pairs — but the plain recursion recomputes each pair many times.</p>`,
+      code: `class Brute {
+    int best(int[] c, int i, int j) {                 // cuts strictly between c[i] and c[j]
+        if (j - i < 2) return 0;
+        int res = Integer.MAX_VALUE;
+        for (int k = i + 1; k < j; k++)
+            res = Math.min(res, c[j] - c[i] + best(c, i, k) + best(c, k, j));
+        return res;
+    }
+    public int minCost(int n, int[] cuts) {
+        int[] c = new int[cuts.length + 2];
+        int[] s = cuts.clone(); Arrays.sort(s);
+        for (int i = 0; i < s.length; i++) c[i + 1] = s[i];
+        c[c.length - 1] = n;
+        return best(c, 0, c.length - 1);
+    }
+}`
+    },
+    mcq: { q: 'Why is the state built on cut INDICES (after sorting and adding 0 and n) rather than on stick positions 0..n?', options: ['n can be 10<sup>6</sup> but there are at most 102 boundaries, so (m+2)² states is tiny', 'Positions are not integers', 'Sorting is required by Java', 'Because cuts must happen left to right'], answer: 0, explain: 'Only boundaries that are cut points (plus the ends) can ever be piece ends, so the state space depends on m, not n.' },
+    hints: [
+      `<p>Hint 1: any piece you ever cut runs between two boundary points from the set {0, cuts…, n}.</p>`,
+      `<p>Hint 2: sort cuts, add 0 and n: c[0..m+1]. dp[i][j] = min over k in (i, j) of dp[i][k] + dp[k][j] + (c[j] − c[i]) — k is the FIRST cut made inside the piece.</p>`,
+      `<p>Hint 3: dp[i][i+1] = 0 (no cuts inside). Fill by gap j − i from 2 up. Answer dp[0][m+1].</p>`
+    ],
+    solution: {
+      approach: `<p>Interval DP on sorted boundaries. Unlike Burst Balloons, here thinking of the FIRST cut is natural: it costs the full piece length and splits it into two independent pieces.</p>`,
+      code: `class Solution {
+    public int minCost(int n, int[] cuts) {
+        int m = cuts.length;
+        int[] c = new int[m + 2];
+        int[] s = cuts.clone();
+        Arrays.sort(s);
+        for (int i = 0; i < m; i++) c[i + 1] = s[i];
+        c[m + 1] = n;
+        int[][] dp = new int[m + 2][m + 2];
+        for (int gap = 2; gap <= m + 1; gap++) {
+            for (int i = 0; i + gap <= m + 1; i++) {
+                int j = i + gap;
+                int best = Integer.MAX_VALUE;
+                for (int k = i + 1; k < j; k++) best = Math.min(best, dp[i][k] + dp[k][j]);
+                dp[i][j] = best + c[j] - c[i];          // the first cut costs the whole piece
+            }
+        }
+        return dp[0][m + 1];
+    }
+}`,
+      alt: [{ lang: 'python', code: `class Solution:
+    def minCost(self, n, cuts):
+        c = [0] + sorted(cuts) + [n]
+        m = len(c)
+        dp = [[0] * m for _ in range(m)]
+        for gap in range(2, m):
+            for i in range(m - gap):
+                j = i + gap
+                dp[i][j] = min(dp[i][k] + dp[k][j] for k in range(i + 1, j)) + c[j] - c[i]
+        return dp[0][m - 1]` }],
+      dry: { head: ['piece (boundaries)', 'best first cut', 'dp'], rows: [['0..3 (cut 1)', '1', '3'], ['3..5 (cut 4)', '4', '2'], ['4..7 (cut 5)', '5', '3'], ['3..7 (cuts 4, 5)', '5: 2 + 0 + 4', '6'], ['0..7 (all)', '3: dp(0..3)=3 + dp(3..7)=6 + 7', '<span class="c-g">16</span>']] },
+      complexity: `<p>Time O(m³) with m ≤ 100 → ~10<sup>6</sup> steps; space O(m²).</p>`,
+      followUps: ['Print the cutting order.', 'Knuth optimisation applies here — why, and what is the new complexity?']
+    }
+  });
+
+  practice.push({
+    title: 'Binary Tree Cameras', level: 'Hard', tags: ['tree dp', 'greedy', 'dfs'], companies: ['Meta', 'Google', 'Amazon'],
+    statement: `<p>Cameras placed on tree nodes monitor the node itself, its parent and its immediate children. Return the minimum number of cameras needed to monitor every node of a binary tree.</p>`,
+    constraints: `1 ≤ nodes ≤ 1000, Node.val == 0.`,
+    example: `<p>A root with one child that has two children ([0, 0, null, 0, 0]) → <b>1</b> camera on ${H.c('g', 'the middle node')}. A chain of 5 nodes → 2 cameras.</p>`,
+    brute: {
+      why: `<p>Try every subset of nodes as camera positions and check coverage: 2<sup>N</sup> subsets × O(N) check. Each subtree’s situation only matters through a tiny summary (covered? has camera? needs cover?), which is what tree DP exploits.</p>`,
+      code: `class Brute {
+    List<TreeNode> nodes = new ArrayList<>();
+    Map<TreeNode, TreeNode> parent = new HashMap<>();
+    void collect(TreeNode n, TreeNode p) {
+        if (n == null) return;
+        nodes.add(n); parent.put(n, p);
+        collect(n.left, n); collect(n.right, n);
+    }
+    public int minCameraCover(TreeNode root) {
+        collect(root, null);
+        int n = Math.min(nodes.size(), 20), best = Integer.MAX_VALUE;   // only feasible for tiny trees
+        for (int mask = 0; mask < (1 << n); mask++) {
+            Set<TreeNode> seen = new HashSet<>();
+            for (int i = 0; i < n; i++) if ((mask >> i & 1) == 1) {
+                TreeNode c = nodes.get(i);
+                seen.add(c);
+                if (parent.get(c) != null) seen.add(parent.get(c));
+                if (c.left != null) seen.add(c.left);
+                if (c.right != null) seen.add(c.right);
+            }
+            if (seen.size() == nodes.size()) best = Math.min(best, Integer.bitCount(mask));
+        }
+        return best;
+    }
+}`
+    },
+    mcq: { q: 'A node reports state 0 = “I am NOT covered, my parent must cover me”. What must the parent do?', options: ['Place a camera on itself', 'Report 0 as well', 'Ignore it — the grandparent will handle it', 'Place a camera on the child'], answer: 0, explain: 'Only the node itself, its children or its parent can cover it. Its children already decided, so the parent must hold a camera.' },
+    hints: [
+      `<p>Hint 1: leaves should never hold cameras — putting the camera on a leaf’s parent covers at least as much. So decide bottom-up.</p>`,
+      `<p>Hint 2: each node returns one of 3 states: 0 = not covered, 1 = has a camera, 2 = covered without a camera. A null child counts as 2 (covered, needs nothing).</p>`,
+      `<p>Hint 3: if any child is 0 → place camera, return 1. Else if any child is 1 → return 2. Else return 0. At the end, if the root returns 0, add one more camera.</p>`
+    ],
+    solution: {
+      approach: `<p>Post-order tree DP with three states (a greedy that is provably optimal by the leaf argument). Each node is processed once.</p>`,
+      code: `class Solution {
+    private int cameras = 0;
+    public int minCameraCover(TreeNode root) {
+        if (state(root) == 0) cameras++;          // root still uncovered
+        return cameras;
+    }
+    // 0 = not covered, 1 = has camera, 2 = covered (no camera)
+    private int state(TreeNode node) {
+        if (node == null) return 2;               // empty child needs nothing
+        int l = state(node.left), r = state(node.right);
+        if (l == 0 || r == 0) { cameras++; return 1; }   // a child needs me
+        if (l == 1 || r == 1) return 2;                  // a child's camera covers me
+        return 0;                                        // ask my parent
+    }
+}`,
+      alt: [{ lang: 'python', code: `class Solution:
+    def minCameraCover(self, root):
+        self.cams = 0
+        def state(node):
+            if not node:
+                return 2
+            l, r = state(node.left), state(node.right)
+            if l == 0 or r == 0:
+                self.cams += 1
+                return 1
+            if l == 1 or r == 1:
+                return 2
+            return 0
+        if state(root) == 0:
+            self.cams += 1
+        return self.cams` }],
+      dry: { head: ['node (post-order)', 'children states', 'returns', 'cameras'], rows: [['leaf A', '2, 2', '0 (needs cover)', '0'], ['leaf B', '2, 2', '0', '0'], ['middle', '0, 0', '1 (camera)', '1'], ['root', '1, 2', '2 (covered)', '<span class="c-g">1</span>']] },
+      complexity: `<p>Time O(N), space O(H).</p>`,
+      followUps: ['Cameras with different costs per node (needs real 3-state min dp).', 'Cover distance 2 instead of 1.']
+    }
+  });
+
+  practice.push({
+    title: 'Word Break II (all sentences)', level: 'Hard', tags: ['partition dp', 'backtracking', 'memoization'], companies: ['Google', 'Amazon', 'Meta', 'Uber'],
+    statement: `<p>Given a string <code>s</code> and a dictionary, add spaces to form sentences where every word is in the dictionary. Return <b>all</b> such sentences in any order.</p>`,
+    constraints: `1 ≤ s.length ≤ 20, 1 ≤ wordDict.length ≤ 1000, word length ≤ 10. Output size ≤ 10<sup>5</sup>.`,
+    example: `<p>s = "catsanddog", dict = [cat, cats, and, sand, dog] → ${H.c('g', '["cats and dog", "cat sand dog"]')}. s = "catsandog" → [].</p>`,
+    brute: {
+      why: `<p>Plain backtracking: at each start try every dictionary prefix and recurse. On "aaaaaaaaaaaaaaaaaaab" with {a, aa, aaa} it explores an exponential tree only to find nothing at the end. Suffix results are recomputed for each way of reaching the same start.</p>`,
+      code: `class Brute {
+    public List<String> wordBreak(String s, List<String> wordDict) {
+        List<String> res = new ArrayList<>();
+        go(s, 0, new HashSet<>(wordDict), new ArrayList<>(), res);
+        return res;
+    }
+    void go(String s, int start, Set<String> dict, List<String> cur, List<String> res) {
+        if (start == s.length()) { res.add(String.join(" ", cur)); return; }
+        for (int end = start + 1; end <= s.length(); end++) {
+            String w = s.substring(start, end);
+            if (dict.contains(w)) { cur.add(w); go(s, end, dict, cur, res); cur.remove(cur.size() - 1); }
+        }
+    }
+}`
+    },
+    mcq: { q: 'What does memoising on the start index store?', options: ['The list of all sentences that complete the suffix s[start..]', 'Only whether the suffix can be completed', 'The longest word starting at start', 'The number of words used so far'], answer: 0, explain: 'All sentences for a suffix are the same no matter how we reached that start, so we compute them once and prepend the current word for each caller.' },
+    hints: [
+      `<p>Hint 1: the sentences for suffix s[i..] do not depend on how you reached i — cache them by i.</p>`,
+      `<p>Hint 2: solve(i) = for each word w with s.startsWith(w, i): for each sentence t in solve(i + |w|): w + (t empty ? "" : " " + t).</p>`,
+      `<p>Hint 3: solve(n) = [""] (one empty completion). Optionally run the boolean Word Break dp first to skip impossible suffixes entirely.</p>`
+    ],
+    solution: {
+      approach: `<p>Top-down partition DP with a memo from start index to its list of completions. Dead suffixes return an empty list once and are never explored again; live suffixes are built once and shared.</p>`,
+      code: `class Solution {
+    public List<String> wordBreak(String s, List<String> wordDict) {
+        return solve(s, 0, new HashSet<>(wordDict), new HashMap<>());
+    }
+    private List<String> solve(String s, int start, Set<String> dict, Map<Integer, List<String>> memo) {
+        if (memo.containsKey(start)) return memo.get(start);
+        List<String> res = new ArrayList<>();
+        if (start == s.length()) { res.add(""); memo.put(start, res); return res; }
+        for (int end = start + 1; end <= s.length() && end - start <= 10; end++) {
+            String w = s.substring(start, end);
+            if (!dict.contains(w)) continue;
+            for (String rest : solve(s, end, dict, memo))
+                res.add(rest.isEmpty() ? w : w + " " + rest);
+        }
+        memo.put(start, res);
+        return res;
+    }
+}`,
+      alt: [{ lang: 'python', code: `from functools import lru_cache
+
+class Solution:
+    def wordBreak(self, s, wordDict):
+        words = set(wordDict)
+        @lru_cache(maxsize=None)
+        def solve(i):
+            if i == len(s):
+                return [""]
+            out = []
+            for j in range(i + 1, min(len(s), i + 10) + 1):
+                w = s[i:j]
+                if w in words:
+                    for rest in solve(j):
+                        out.append(w + (" " + rest if rest else ""))
+            return out
+        return solve(0)` }],
+      dry: { head: ['start', 'words found', 'completions'], rows: [['7', 'dog', '["dog"]'], ['4', 'and', '["and dog"]'], ['3', 'sand', '["sand dog"]'], ['0', 'cat (→3), cats (→4)', '<span class="c-g">["cat sand dog", "cats and dog"]</span>']] },
+      complexity: `<p>Time O(n · L + output size × average sentence length); memo holds at most n + 1 lists. Worst case is exponential because the output is.</p>`,
+      followUps: ['Return only the count (mod 10<sup>9</sup>+7).', 'Use a trie to avoid substring creation.']
+    }
+  });
+
+  practice.push({
+    title: 'Regular Expression Matching', level: 'Hard', tags: ['string dp', 'recursion'], companies: ['Google', 'Meta', 'Amazon', 'Microsoft'],
+    statement: `<p>Implement matching of string <code>s</code> against pattern <code>p</code> supporting <code>.</code> (any single character) and <code>*</code> (zero or more of the <b>preceding</b> element). The match must cover the <b>entire</b> string.</p>`,
+    constraints: `1 ≤ s.length ≤ 20, 1 ≤ p.length ≤ 20, s lowercase letters, p lowercase letters plus . and *; every * has a valid preceding element.`,
+    example: `<p>s = "aa", p = "a" → false. s = "aa", p = ${H.c('b', '"a*"')} → <b>true</b>. s = "ab", p = ".*" → true. s = "aab", p = ${H.c('b', '"c*a*b"')} → <b>true</b> (c* matches zero c’s, a* matches "aa").</p>`,
+    brute: {
+      why: `<p>Plain recursion: match the first character, and for <code>x*</code> branch into “skip x* entirely” or “consume one char and stay on x*”. Without memo, patterns like "a*a*a*a*b" against "aaaaaaaa" branch exponentially, revisiting the same (i, j) pairs.</p>`,
+      code: `class Brute {
+    public boolean isMatch(String s, String p) {
+        if (p.isEmpty()) return s.isEmpty();
+        boolean first = !s.isEmpty() && (p.charAt(0) == s.charAt(0) || p.charAt(0) == '.');
+        if (p.length() >= 2 && p.charAt(1) == '*') {
+            return isMatch(s, p.substring(2))                  // x* matches zero chars
+                || (first && isMatch(s.substring(1), p));     // x* eats one char, stays
+        }
+        return first && isMatch(s.substring(1), p.substring(1));
+    }
+}`
+    },
+    mcq: { q: 'p[j−1] == \'*\'. Which two options define dp[i][j] (prefixes s[0..i), p[0..j))?', options: ['dp[i][j−2] (zero copies) OR (s[i−1] matches p[j−2] AND dp[i−1][j])', 'dp[i][j−1] OR dp[i−1][j]', 'dp[i−1][j−1] only', 'dp[i][j−2] AND dp[i−1][j]'], answer: 0, explain: 'In regex the star belongs to the previous element: drop the pair "x*" (j−2), or, if s’s last char matches x, let the star eat it and stay at j. dp[i][j−1] OR dp[i−1][j] is the WILDCARD rule.' },
+    hints: [
+      `<p>Hint 1: treat “x*” as one unit. It either matches nothing, or matches one more character of s and remains available.</p>`,
+      `<p>Hint 2: dp[i][j] over prefixes; dp[0][0] = true; dp[0][j] = p[j−1]=='*' &amp;&amp; dp[0][j−2] (things like a*b*c* match the empty string).</p>`,
+      `<p>Hint 3: if p[j−1] is a letter or '.', dp[i][j] = match(s[i−1], p[j−1]) &amp;&amp; dp[i−1][j−1]. If '*': dp[i][j−2] || (match(s[i−1], p[j−2]) &amp;&amp; dp[i−1][j]). Answer dp[m][n].</p>`
+    ],
+    solution: {
+      approach: `<p>Bottom-up boolean grid over prefixes with a special two-step-back rule for the star. Each cell is O(1), so the whole thing is O(m·n).</p>`,
+      code: `class Solution {
+    public boolean isMatch(String s, String p) {
+        int m = s.length(), n = p.length();
+        boolean[][] dp = new boolean[m + 1][n + 1];
+        dp[0][0] = true;
+        for (int j = 2; j <= n; j++)                       // patterns like a*b* match ""
+            dp[0][j] = p.charAt(j - 1) == '*' && dp[0][j - 2];
+        for (int i = 1; i <= m; i++) {
+            for (int j = 1; j <= n; j++) {
+                char pc = p.charAt(j - 1);
+                if (pc == '*') {
+                    char prev = p.charAt(j - 2);
+                    boolean eat = (prev == '.' || prev == s.charAt(i - 1)) && dp[i - 1][j];
+                    dp[i][j] = dp[i][j - 2] || eat;         // zero copies, or one more copy
+                } else {
+                    dp[i][j] = (pc == '.' || pc == s.charAt(i - 1)) && dp[i - 1][j - 1];
+                }
+            }
+        }
+        return dp[m][n];
+    }
+}`,
+      alt: [{ lang: 'python', code: `class Solution:
+    def isMatch(self, s, p):
+        m, n = len(s), len(p)
+        dp = [[False] * (n + 1) for _ in range(m + 1)]
+        dp[0][0] = True
+        for j in range(2, n + 1):
+            dp[0][j] = p[j - 1] == '*' and dp[0][j - 2]
+        for i in range(1, m + 1):
+            for j in range(1, n + 1):
+                if p[j - 1] == '*':
+                    dp[i][j] = dp[i][j - 2] or (p[j - 2] in ('.', s[i - 1]) and dp[i - 1][j])
+                else:
+                    dp[i][j] = p[j - 1] in ('.', s[i - 1]) and dp[i - 1][j - 1]
+        return dp[m][n]` }],
+      dry: { head: ['s prefix', 'p = "c*a*b": ""', 'c', 'c*', 'c*a', 'c*a*', 'c*a*b'], rows: [['""', 'T', 'F', 'T', 'F', 'T', 'F'], ['a', 'F', 'F', 'F', 'T', 'T', 'F'], ['aa', 'F', 'F', 'F', 'F', 'T', 'F'], ['aab', 'F', 'F', 'F', 'F', 'F', '<span class="c-g">T</span>']] },
+      complexity: `<p>Time O(m·n), space O(m·n) (two rows suffice).</p>`,
+      followUps: ['Add + (one or more).', 'Wildcard matching (LC 44) — compare the transitions.', 'Why do real regex engines use automata (Thompson NFA) instead of backtracking?']
+    }
+  });
+
+  // ================= QUIZ =================
+  quiz.push(
+    { q: 'In the O(N log N) LIS algorithm, what does <code>tails[k]</code> store?', options: ['The smallest possible last value of an increasing subsequence of length k+1', 'The k-th element of the actual LIS', 'The number of subsequences of length k+1', 'The largest value seen so far'], answer: 0, explain: 'tails is a list of “cheapest endings” per length. It has the right length but is generally not itself a valid subsequence.' },
+    { q: 'You need the longest NON-DECREASING subsequence. Which binary search do you use on tails?', options: ['Upper bound (first tail strictly greater than x)', 'Lower bound (first tail ≥ x)', 'Exact-match search', 'No binary search — use O(N²)'], answer: 0, explain: 'Equal values may extend a run, so x should replace only a tail that is strictly bigger; equal tails stay and x can be appended after them.' },
+    { q: 'For Word Break, dp[0] = true because…', options: ['The empty prefix can always be segmented (using zero words)', 'The first letter is always a word', 'Java arrays default to true', 'It marks the end of the string'], answer: 0, explain: 'It is the base case that lets dp[i] become true when s[0..i) is itself a dictionary word: dp[0] && dict.contains(s[0..i)).' },
+    { q: 'Palindrome min cuts with a pal[j][i] table costs…', options: ['O(N²) time', 'O(N³) time', 'O(N log N) time', 'O(2<sup>N</sup>) time'], answer: 0, explain: 'There are O(N²) (j, i) pairs; each palindrome check is O(1) from pal[j+1][i−1], and each cuts update is O(1).' },
+    { q: 'In Burst Balloons, why do we choose the balloon burst LAST in a range?', options: ['It stays as a wall while the rest burst, so the left and right sub-ranges are independent', 'Because the last balloon always has the largest value', 'It reduces the complexity to O(N²)', 'Because the first balloon has no neighbours'], answer: 0, explain: 'If we chose the first balloon, its removal would make its two neighbours adjacent and the sub-problems would interact. The last balloon keeps both sides separated.' },
+    { q: 'Interval DP tables are usually filled…', options: ['By increasing range length', 'Row by row from i = 0 with j increasing', 'In random order with memoisation only', 'From the top-right corner'], answer: 0, explain: 'dp[i][j] needs shorter ranges inside [i..j]; filling by length guarantees they are ready. (i descending, j ascending also works.)' },
+    { q: 'In Binary Tree Maximum Path Sum, what does the DFS return to the parent?', options: ['node.val + max(0, leftGain, rightGain) — a one-sided path', 'node.val + leftGain + rightGain', 'The global best so far', 'The height of the subtree'], answer: 0, explain: 'The parent can only extend a path that goes down one side; the two-sided (bent) sum is recorded in the global answer but not returned.' },
+    { q: 'House Robber III returns [rob, skip] per node. What is skip?', options: ['max(L.rob, L.skip) + max(R.rob, R.skip)', 'L.skip + R.skip', 'L.rob + R.rob', 'node.val + L.skip + R.skip'], answer: 0, explain: 'If the node is skipped, each child is free to be robbed or not, so each contributes its best value.' },
+    { q: 'Stock with cooldown: from which mode can you BUY today?', options: ['rest', 'sold', 'hold', 'any mode'], answer: 0, explain: 'sold means you sold yesterday → today is cooldown. hold already owns a share. Only rest may buy.' },
+    { q: 'At most k transactions with k ≥ n/2 should be solved…', options: ['Greedily by summing every positive day-to-day rise', 'With an n×k table anyway', 'By sorting prices', 'With binary search on k'], answer: 0, explain: 'At most ⌊n/2⌋ disjoint trades exist, so the k limit cannot bind — it is the unlimited version, O(n).' },
+    { q: 'Distinct Subsequences with ONE dp row: in which direction must j run?', options: ['Right to left (n down to 1)', 'Left to right (1 up to n)', 'Either direction', 'Only from the middle outwards'], answer: 0, explain: 'dp[j] += dp[j−1] needs dp[j−1] from the PREVIOUS row. Going right-to-left updates dp[j] before dp[j−1] is overwritten.' },
+    { q: 'Minimum insertions to make a string a palindrome equals…', options: ['n − LPS(s)', 'n − LCS(s, s)', 'Number of distinct characters', 'Longest palindromic substring length'], answer: 0, explain: 'Characters outside a longest palindromic subsequence each need a mirror partner; characters inside it are already paired.' },
+    { q: 'Regex: p = "a*" and s = "". What is the result and why?', options: ['true — "a*" can match zero a’s (dp[0][2] = dp[0][0])', 'false — the pattern has a letter', 'true — * matches anything', 'false — empty strings never match'], answer: 0, explain: 'In regex, x* means zero or more of x; dropping the "a*" pair leaves the empty pattern, which matches the empty string.' }
+  );
+
+  // ================= INTERVIEW Q&A =================
+  interview.push(
+    { q: 'Walk me through LIS in O(N log N). Why is it correct?', level: 'A', a: `<p>Keep <code>tails</code>, where tails[k] is the smallest possible ending value of an increasing subsequence of length k+1. For each x, binary search the first tail ≥ x: if none, append (a longer run exists); otherwise replace it (same length, smaller ending). Correctness: tails is strictly increasing (a shorter run inside a longer one ends lower), so binary search is valid; replacing a tail by a smaller value only adds options for future extensions, never removes any. The length of tails at the end is the LIS length. To reconstruct, store per index the index it extended (parent) and the index currently holding each tail.</p>`, followUps: ['How do you get the actual subsequence?', 'How would you count the LIS in O(N log N)?', 'Why can’t the tails trick maximise the SUM of an increasing subsequence?'] },
+    { q: 'How do you solve Russian Doll Envelopes, and why the strange sort order?', level: 'A', a: `<p>Sort by width ascending and, for equal widths, by height <b>descending</b>; then run strict LIS on heights in O(N log N). Sorting by width makes the width condition automatic for any increasing subsequence of heights except among equal widths. Ordering equal widths by height descending makes their heights non-increasing, so a strictly increasing subsequence can pick at most one of them — exactly the rule that equal widths cannot nest. With ascending ties we would wrongly nest [6,4] inside [6,7].</p>`, followUps: ['What about 3D boxes?', 'What if rotation were allowed?'] },
+    { q: 'Explain the Word Break DP and its real complexity.', level: 'I', a: `<p>dp[i] says whether the prefix s[0..i) can be split into words; dp[0] = true. dp[i] = OR over j of dp[j] AND s[j..i) in the dictionary. Naively that is O(N²) pairs, but each substring + hash lookup costs O(L), so it is really O(N²·L). Limiting j to i − maxWordLen gives O(N·maxLen²); walking a trie forward from each reachable start gives O(N·maxLen) with no substring allocation. Every valid split has a unique last word, which is why OR (or SUM for counting) over the last piece is exhaustive and not double counting.</p>`, followUps: ['How would you return all sentences efficiently?', 'How would you handle a dictionary of 10<sup>6</sup> words?', 'How is this related to tokenisers?'] },
+    { q: 'How do you get minimum palindrome cuts in O(N²) — and can you do O(N) memory?', level: 'A', a: `<p>Build pal[j][i] (s[j..i] is a palindrome) using pal[j+1][i−1], and cuts[i] = 0 if s[0..i] is a palindrome else min over palindromic last pieces s[j..i] of cuts[j−1] + 1. Both fill in the same double loop, O(N²) time and memory. For O(N) memory, expand around each of the 2N−1 centres: whenever s[l..r] is a palindrome, update cuts[r+1] = min(cuts[r+1], cuts[l] + 1) using a shifted cuts array where cuts[0] = −1. Same O(N²) time, but only one array.</p>`, followUps: ['Why does listing all partitions take exponential time?', 'Could Manacher’s algorithm make min-cut linear?'] },
+    { q: 'What is interval DP and how do you recognise it?', level: 'A', a: `<p>Interval DP has states dp[i][j] for contiguous ranges and transitions that split a range at k (or pick the element handled last), combining dp[i][k] and dp[k+1][j] with a cost that depends on i, k, j. Signals: “merge adjacent”, “burst/remove and neighbours change”, “parenthesise”, “cut at positions”, both ends of a range matter, and N up to a few hundred (O(N³)). Fill by increasing length. Examples: Matrix Chain Multiplication, Burst Balloons, Minimum Score Triangulation, Cut a Stick, Merge Stones, Longest Palindromic Subsequence, Strange Printer.</p>`, followUps: ['When can Knuth optimisation reduce O(N³) to O(N²)?', 'How does Merge Stones with k piles change feasibility?'] },
+    { q: 'Derive the Burst Balloons recurrence out loud.', level: 'E', a: `<p>Pad nums with 1 at both ends. Let dp[i][j] be the max coins from bursting only balloons i..j while i−1 and j+1 are still alive. Choose k to be the <b>last</b> balloon burst in [i..j]. Before it bursts, the balloons in [i..k−1] burst with walls i−1 and k, and those in [k+1..j] with walls k and j+1 — independent sub-problems. Finally k bursts between i−1 and j+1: dp[i][j] = max over k of dp[i][k−1] + b[i−1]·b[k]·b[j+1] + dp[k+1][j]. Fill by length, O(N³) time, O(N²) space; answer dp[1][n]. The “first balloon” formulation fails because removing it couples the two sides.</p>`, followUps: ['How would you print the order?', 'Remove Boxes needs an extra dimension — why?'] },
+    { q: 'How does tree DP work in House Robber III and why is plain recursion slow?', level: 'I', a: `<p>Post-order DFS returning a pair per node: rob = val + left.skip + right.skip, skip = max(left) + max(right). Each node is visited once, so O(N) time and O(H) stack. The naive recursion “rob node + grandchildren vs children” evaluates each grandchild from both its parent and grandparent, and that duplication compounds exponentially with depth. Returning both choices lets the parent decide without recomputation — it is memoisation built into the return value.</p>`, followUps: ['Generalise to an N-ary tree given as edges.', 'What if robbing a node also forbids its grandchildren?'] },
+    { q: 'Binary Tree Maximum Path Sum: what are the classic bugs?', level: 'A', a: `<p>(1) Initialising the global best to 0 — an all-negative tree must return its largest single value, so start at Integer.MIN_VALUE. (2) Returning node + left + right to the parent — that creates a branched “path”; return node + max(left, right). (3) Not clipping negative gains with max(0, gain), which forces bad branches into the path. (4) Assuming the path passes through the root. (5) Recursion depth on skewed trees of 10<sup>5</sup> nodes — use iterative post-order or a larger thread stack in Java.</p>`, followUps: ['Return the path itself.', 'What if the path must start at a leaf and end at a leaf?'] },
+    { q: 'Design the state machine for Buy/Sell Stock with cooldown and fee together.', level: 'A', a: `<p>Modes after each day: hold (own a share), sold (sold today, cooldown tomorrow), rest (free). Transitions from yesterday’s values: hold = max(hold, rest − p); sold = hold + p − fee; rest = max(rest, sold_yesterday). Answer max(sold, rest). The fee is charged once per round trip (on the sell arrow), and the cooldown is enforced by allowing buys only from rest. Initialise hold = −∞, sold = −∞ (or 0), rest = 0. O(N) time, O(1) space. Use temporaries to avoid reading today’s values.</p>`, followUps: ['Cooldown of c days?', 'At most k transactions plus cooldown — state size?'] },
+    { q: 'Why is sell[k] the answer for “at most k” transactions even if fewer trades are optimal?', level: 'A', a: `<p>Because a transaction can be “wasted” for free: buying and selling on the same day changes cash by −p + p = 0. So any schedule with fewer than k trades can be padded to exactly k without loss, making sell[j] non-decreasing in j, and sell[k] equals the best over all j ≤ k. Also mention the k ≥ n/2 shortcut (unlimited trades, greedy sum of rises) to avoid O(n·k) when k is huge, and the O(n log n) / WQS-binary-search approaches for very large n and k.</p>`, followUps: ['What is the “Aliens trick” in one sentence?', 'How do you also return the trades?'] },
+    { q: 'Compare LCS, Edit Distance and Distinct Subsequences transitions.', level: 'I', a: `<p>All use dp[i][j] over prefixes. LCS: match → diag + 1; else max(up, left). Edit distance: match → diag; else 1 + min(diag (replace), up (delete), left (insert)). Distinct Subsequences counts ways t appears in s: always up (skip s[i−1]); on match also add diag (use it). Base rows differ: LCS/edit have 0/i/j borders, Distinct Subsequences has dp[i][0] = 1. One-row versions need the right loop direction: Distinct Subsequences runs j right-to-left so dp[j−1] is still the previous row.</p>`, followUps: ['How would you get O(n) memory and still reconstruct the LCS?', 'Why can’t LCS be done in strongly sub-quadratic time?'] },
+    { q: 'Regex vs wildcard matching — what is different in the DP?', level: 'E', a: `<p>Wildcard ‘*’ stands alone and matches any sequence: dp[i][j] = dp[i][j−1] (empty) OR dp[i−1][j] (eat one char). Regex ‘*’ modifies the previous element x: dp[i][j] = dp[i][j−2] (zero copies of x) OR (s[i−1] matches x AND dp[i−1][j]) (one more copy). Base rows differ too: wildcard dp[0][j] is true for leading stars; regex dp[0][j] is true for patterns like a*b*c*. Mixing these rules is the most common bug. Production regex engines avoid exponential backtracking with automata (Thompson NFA / RE2) — the DP is the polynomial alternative.</p>`, followUps: ['Add support for +.', 'Give an input that makes naive backtracking regex exponential.'] },
+    { q: 'You see a new DP problem in an interview. What is your process?', level: 'E', a: `<p>(1) Restate it and find the shape: tree? modes on a timeline? two sequences? ranges with merges? cutting a sequence? subsequence with compatibility? (2) Write the brute-force recursion and look for repeating arguments — those become the state. (3) Say the state sentence (“dp[i][j] is …”). (4) Write the transition from the last decision (last piece, last balloon, last character, yesterday’s mode). (5) Base cases and fill order. (6) Check states × transition cost against constraints. (7) Dry-run a tiny example, then optimise memory if asked. With AI tools available, I also generate a brute force + random tests to cross-check.</p>`, followUps: ['How do you decide between top-down and bottom-up?', 'How do you know when it is greedy instead?'] }
+  );
+
   // Spread correct answers across positions (deterministic rotation) so "always A" is never a pattern.
   function rotate(q, r) {
     if (!q || !q.options || !r) return;
