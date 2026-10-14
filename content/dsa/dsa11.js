@@ -4154,7 +4154,7 @@ print("\\n".join("".join(row) for row in board))` }],
       q: `Minimum moves for Tower of Hanoi with 10 disks?`,
       options: ['100', '512', '1023', '1024'],
       answer: 2,
-      explain: `2<sup>10</sup> − 1 = 1023.`
+      explain: `Moves(n) = 2<sup>n</sup> − 1, so 2<sup>10</sup> − 1 = 1024 − 1 = 1023.`
     },
     {
       q: `A backtracking solution saves answers with <code>res.add(cur)</code> where cur is the shared ArrayList. What goes wrong?`,

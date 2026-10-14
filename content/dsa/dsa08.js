@@ -1606,6 +1606,967 @@ def count_distinct(arr, k):
     }]
   });
 
+  /* =====================================================================
+     TOPIC 5 — Prefix sum + HashSet: zero-sum subarray exists?
+     ===================================================================== */
+  topics.push({
+    title: 'Prefix Sum + HashSet: Does a Zero-Sum Subarray Exist?',
+    analogy: `<p>Check your <b>bank balance on Monday</b>: ₹500. Money comes in and goes out all week. On <b>Friday</b> you check again: ₹500. You do not need the statement to know one thing for sure: <b>everything between Monday and Friday cancelled out</b> — the net change was exactly zero.</p>
+<p>A running balance is a <b>prefix sum</b>. "Have I seen this exact balance before?" is a <b>HashSet</b> question. The moment a balance repeats, the transactions in between form a <b>zero-sum subarray</b>.</p>`,
+    explain: `<p><b>Problem:</b> does some non-empty contiguous subarray sum to 0? The array can contain <b>negative</b> numbers, which is exactly why the sliding-window trick from DSA 6 fails (adding an element can make the sum go up <i>or</i> down, so "shrink when too big" makes no sense).</p>
+
+<h4>Step 1 — running balance (prefix sum)</h4>
+<p><code>pf[i] = arr[0] + arr[1] + … + arr[i]</code>. The sum of any subarray <code>l..r</code> is <code>pf[r] − pf[l−1]</code> (the balance at the end minus the balance just before the start).</p>
+${H.arr([4, 2, -3, 1, 6], { label: 'arr', hl: { 1: 'g', 2: 'g', 3: 'g' } })}
+${H.arr([4, 6, 3, 4, 10], { label: 'pf', hl: { 0: 'r', 3: 'r' } })}
+
+<h4>Step 2 — zero sum means a repeated balance</h4>
+<p><code>pf[r] − pf[l−1] = 0</code> ⇔ <code>pf[r] == pf[l−1]</code>. Above, pf[0] = 4 and pf[3] = 4, so the subarray <b>1..3</b> = [2, −3, 1] sums to 0. We only need to ask, at each step, "<b>is this balance already in my set?</b>"</p>
+
+<h4>Step 3 — the seed {0}</h4>
+<p>What about a subarray that starts at index 0, like [1, −1]? Its sum is <code>pf[r] − pf[−1]</code>, where <code>pf[−1]</code> is the balance <b>before any transaction = 0</b>. So we put <b>0 in the set before the loop</b>. Then pf = 0 at any point also counts as a repeat.</p>
+${H.table(['i', 'arr[i]', 'pf', 'set before', 'in set?'], [['—', '—', '0 (seed)', '{}', 'insert'], ['0', '4', '4', '{0}', H.c('g', 'no → insert')], ['1', '2', '6', '{0, 4}', H.c('g', 'no → insert')], ['2', '−3', '3', '{0, 4, 6}', H.c('g', 'no → insert')], ['3', '1', '4', '{0, 4, 6, 3}', H.c('r', 'YES → zero-sum found')]])}
+
+<h4>Step 4 — the code is five lines</h4>
+<pre>Set&lt;Long&gt; seen = new HashSet&lt;&gt;(); seen.add(0L);
+long pf = 0;
+for (int x : a) { pf += x; if (!seen.add(pf)) return true; }
+return false;</pre>
+<p><code>seen.add(pf)</code> returns <b>false</b> when pf was already present — the repeat check and the insert in one call. Use <code>long</code>: 10<sup>5</sup> values of 10<sup>9</sup> sum to 10<sup>14</sup>, far beyond int.</p>
+
+<h4>The family this unlocks</h4>
+${H.table(['question', 'store in the hash', 'topic'], [['zero-sum subarray exists?', 'HashSet of prefix sums, seed {0}', 'this one'], ['how many subarrays sum to K?', 'HashMap prefix → count, seed {0:1}', 'next topic'], ['longest subarray with sum 0 / K?', 'HashMap prefix → first index, seed {0:−1}', 'topic 7'], ['equal 0s and 1s', 'turn 0 into −1, then "longest sum 0"', 'topic 7']])}`,
+    clues: [
+      '"contiguous subarray" + "sum = 0" / "sum = K" → prefix sum + hashing',
+      '"array contains negative numbers" → sliding window will not work, use prefix sums',
+      '"does there exist" → HashSet; "how many" → map of counts; "longest" → map of first index',
+      '"net change zero", "balanced", "returns to the same level", "same balance twice" → repeated prefix sum',
+      'N ≤ 10<sup>5</sup>, |a[i]| ≤ 10<sup>9</sup> → O(N) and use long for the running sum',
+      '"subarray sum divisible by K" → repeated prefix sum <b>mod K</b> (same idea)'
+    ],
+    code: [`
+import java.util.*;
+
+public class ZeroSum {
+    // true if some non-empty contiguous subarray sums to 0
+    static boolean hasZeroSum(int[] a) {
+        Set<Long> seen = new HashSet<>();
+        seen.add(0L);                       // balance before any element (empty prefix)
+        long pf = 0;
+        for (int x : a) {
+            pf += x;                        // running balance
+            if (!seen.add(pf)) return true; // add() == false -> this balance appeared before
+        }
+        return false;
+    }
+
+    // Variant: return the [l, r] of one zero-sum subarray (or null)
+    static int[] findZeroSum(int[] a) {
+        Map<Long, Integer> firstAt = new HashMap<>();
+        firstAt.put(0L, -1);                // pf = 0 "happened" before index 0
+        long pf = 0;
+        for (int i = 0; i < a.length; i++) {
+            pf += a[i];
+            Integer prev = firstAt.get(pf);
+            if (prev != null) return new int[]{prev + 1, i};  // a[prev+1..i] sums to 0
+            firstAt.put(pf, i);
+        }
+        return null;
+    }
+
+    public static void main(String[] args) {
+        System.out.println(hasZeroSum(new int[]{4, 2, -3, 1, 6}));                  // true
+        System.out.println(hasZeroSum(new int[]{1, 2, 3}));                         // false
+        System.out.println(Arrays.toString(findZeroSum(new int[]{4, 2, -3, 1, 6}))); // [1, 3]
+        System.out.println(Arrays.toString(findZeroSum(new int[]{1, -1})));         // [0, 1]
+    }
+}`, {
+      lang: 'python', run: true, title: 'Python (runnable)',
+      code: `def has_zero_sum(a):
+    seen, pf = {0}, 0           # seed: the empty prefix has sum 0
+    for x in a:
+        pf += x
+        if pf in seen:
+            return True
+        seen.add(pf)
+    return False
+
+for arr in ([4, 2, -3, 1, 6], [1, 2, 3], [1, -1], [3, 0, 5], [-3, 2, 3, 1, 6]):
+    print(arr, "->", has_zero_sum(arr))`
+    }],
+    codeTitle: ['Zero-sum subarray in Java (exists + find)', 'Python version (runnable)'],
+    viz: [{
+      title: 'Running balance as bars + HashSet: spot the repeated balance',
+      input: '4 2 -3 1 6',
+      inputLabel: 'Array (whole numbers incl. negatives, at most 14)',
+      gen: function (input) {
+        var a = parseNums(input, 14, 'array'), seen = [0], pf = 0, pfs = [], frames = [];
+        frames.push({ narr: 'Seed the set with <b>0</b>: the balance before any transaction. This lets us catch zero-sum subarrays that start at index 0.', parts: [{ type: 'array', label: 'arr', values: a.slice() }, { type: 'set', label: 'balances seen (HashSet)', items: seen.slice(), hl: { '0': 'ok' } }, { type: 'code', label: 'code', lang: 'java', code: 'seen.add(0L); long pf = 0;\nfor (int x : a) {\n  pf += x;\n  if (!seen.add(pf)) return true;\n}\nreturn false;', hl: { 1: 'cur' } }] });
+        for (var i = 0; i < a.length; i++) {
+          pf += a[i]; pfs.push(pf);
+          var dup = seen.indexOf(pf) >= 0;
+          var bhl = {}; bhl[i] = dup ? 'bad' : 'ok';
+          if (dup) {
+            var j = -1;
+            for (var q = 0; q < i; q++) if (pfs[q] === pf) { j = q; break; }
+            var start = j + 1;                      // j = -1 means the match was the seed 0
+            if (j >= 0) bhl[j] = 'bad';
+            frames.push({ narr: 'i = ' + i + ': balance = ' + (pf - a[i]) + ' + (' + a[i] + ') = <b>' + pf + '</b>. <span class="c-r">Already in the set!</span> The same balance appeared ' + (j < 0 ? 'before index 0 (the seed 0)' : 'after index ' + j) + ', so arr[' + start + '..' + i + '] sums to <b>0</b>.', parts: [{ type: 'array', label: 'arr', values: a.slice(), range: [start, i], ptr: one(i, 'i') }, { type: 'bars', label: 'running balance pf[i]', values: pfs.slice(), hl: bhl }, { type: 'set', label: 'balances seen (HashSet)', items: seen.slice(), hl: one(pf, 'bad') }, { type: 'code', label: 'code', lang: 'java', code: 'seen.add(0L); long pf = 0;\nfor (int x : a) {\n  pf += x;\n  if (!seen.add(pf)) return true;\n}\nreturn false;', hl: { 4: 'bad' } }] });
+            frames.push({ narr: 'Answer: <b>true</b>. The highlighted window [' + a.slice(start, i + 1).join(', ') + '] has sum 0 — Monday\'s balance equals Friday\'s.', parts: [{ type: 'array', label: 'arr', values: a.slice(), hl: rng(start, i, 'sel') }, { type: 'vars', vals: { answer: true, subarray: start + '..' + i }, hl: { answer: 'sel' } }] });
+            return frames;
+          }
+          seen.push(pf);
+          frames.push({ narr: 'i = ' + i + ': balance = <b>' + pf + '</b>. New balance → <span class="c-g">insert</span> into the set.', parts: [{ type: 'array', label: 'arr', values: a.slice(), ptr: one(i, 'i'), hl: one(i, 'cur') }, { type: 'bars', label: 'running balance pf[i]', values: pfs.slice(), hl: bhl }, { type: 'set', label: 'balances seen (HashSet)', items: seen.slice(), hl: one(pf, 'ok') }, { type: 'code', label: 'code', lang: 'java', code: 'seen.add(0L); long pf = 0;\nfor (int x : a) {\n  pf += x;\n  if (!seen.add(pf)) return true;\n}\nreturn false;', hl: { 3: 'cur', 4: 'ok' } }] });
+        }
+        frames.push({ narr: 'No balance ever repeated → <b>false</b>: no zero-sum subarray.', parts: [{ type: 'bars', label: 'running balance', values: pfs.slice() }, { type: 'set', label: 'balances seen', items: seen.slice() }, { type: 'vars', vals: { answer: false }, hl: { answer: 'sel' } }] });
+        return frames;
+      }
+    }, {
+      title: 'List EVERY zero-sum subarray: map balance → all indices where it occurred',
+      input: '6 -1 -3 4 -2 2 4 6 -12 -7',
+      inputLabel: 'Array (at most 12 numbers)',
+      gen: function (input) {
+        var a = parseNums(input, 12, 'array'), m = new Map(), pf = 0, found = [], frames = [];
+        m.set(0, [-1]);
+        frames.push({ narr: 'To list all zero-sum subarrays, remember <b>every</b> index where each balance occurred (seed: balance 0 at index −1). Each earlier occurrence of the current balance gives one subarray.', parts: [{ type: 'array', label: 'arr', values: a.slice() }, { type: 'map', label: 'balance → indices', entries: ents(m), hl: { '0': 'ok' } }] });
+        for (var i = 0; i < a.length; i++) {
+          pf += a[i];
+          var prev = m.get(pf), newOnes = [];
+          if (prev) prev.forEach(function (p) { newOnes.push((p + 1) + '..' + i); found.push((p + 1) + '..' + i); });
+          if (prev) {
+            frames.push({ narr: 'i = ' + i + ', balance <b>' + pf + '</b> seen before at index(es) ' + prev.join(', ') + ' → <span class="c-r">' + prev.length + ' zero-sum subarray(s)</span>: ' + newOnes.join(', ') + '.', parts: [{ type: 'array', label: 'arr', values: a.slice(), range: [prev[prev.length - 1] + 1, i], ptr: one(i, 'i') }, { type: 'map', label: 'balance → indices', entries: ents(m), hl: one(pf, 'bad') }, { type: 'vars', vals: { pf: pf, 'found so far': found.length } }] });
+            prev.push(i);
+          } else {
+            m.set(pf, [i]);
+            frames.push({ narr: 'i = ' + i + ', balance <b>' + pf + '</b> is new → <span class="c-g">insert</span> ' + pf + ' → [' + i + '].', parts: [{ type: 'array', label: 'arr', values: a.slice(), ptr: one(i, 'i'), hl: one(i, 'cur') }, { type: 'map', label: 'balance → indices', entries: ents(m), hl: one(pf, 'ok') }, { type: 'vars', vals: { pf: pf, 'found so far': found.length } }] });
+          }
+        }
+        frames.push({ narr: 'All zero-sum subarrays: <b>' + (found.length ? found.join(', ') : 'none') + '</b> (' + found.length + ' total). Counting them only needs counts, not index lists — that is the next topic.', parts: [{ type: 'map', label: 'final balance → indices', entries: ents(m) }, { type: 'vars', vals: { total: found.length }, hl: { total: 'sel' } }] });
+        return frames;
+      }
+    }],
+    examples: [{
+      title: 'All positive numbers → always false',
+      html: `<p>arr = [3, 1, 4, 1, 5]: balances 3, 4, 8, 9, 14 — strictly increasing, so no value can repeat, and none equals the seed 0. Positives-only arrays never have a zero-sum subarray (and you could even use sliding window there).</p>`
+    }, {
+      title: 'A single zero is a zero-sum subarray',
+      html: `<p>arr = [3, 0, 5]: balances 3, <b>3</b>, 8. The balance repeats immediately at index 1 → subarray [1..1] = [0]. The algorithm needs no special case for zeros.</p>`
+    }, {
+      title: 'Starts at index 0 — why the seed matters',
+      html: `<p>arr = [−3, 2, 1, 6]: balances −3, −1, <b>0</b>, 6. Without the seed {0}, no balance repeats and you would wrongly answer false. With the seed, pf = 0 at index 2 matches the "before the start" balance → subarray [0..2] = [−3, 2, 1].</p>`,
+      code: `System.out.println(hasZeroSum(new int[]{-3, 2, 1, 6})); // true only because of seen.add(0L)`
+    }, {
+      title: 'Bank statement in real life',
+      html: `${H.table(['day', 'transaction', 'balance'], [['start', '—', '₹1000'], ['Mon', '+500', '₹1500'], ['Tue', '−200', '₹1300'], ['Wed', '−300', H.c('r', '₹1000')], ['Thu', '+100', '₹1100']])}
+<p>The balance after Wednesday equals the opening balance → Monday..Wednesday netted to 0 (500 − 200 − 300). The starting balance plays the role of the seed.</p>`
+    }],
+    deepDive: `<p><b>Proof.</b> Let P<sub>−1</sub> = 0 and P<sub>i</sub> = a<sub>0</sub> + … + a<sub>i</sub>. A non-empty subarray l..r has sum P<sub>r</sub> − P<sub>l−1</sub>, with −1 ≤ l−1 &lt; r. So a zero-sum subarray exists ⇔ two of the N+1 values P<sub>−1</sub>..P<sub>N−1</sub> are equal. The algorithm inserts them in order and reports the first duplicate — exactly that condition.</p>
+<p><b>No-hash alternative.</b> Sort the N+1 prefix sums and check neighbours: O(N log N) time, no hashing, works when the input is huge and adversarial. Hashing wins on average speed; sorting wins on predictable worst case.</p>
+<p><b>Pigeonhole connection (DSA 3).</b> For "is there a non-empty subarray whose sum is divisible by N?" the answer is <b>always yes</b>: there are N+1 prefix sums mod N but only N possible remainders, so two must collide. The same hashing code finds it — just store <code>pf mod N</code>.</p>
+<p><b>Overflow and boxing.</b> Use <code>long</code> for pf. A <code>HashSet&lt;Long&gt;</code> boxes every value (≈16 bytes per Long + ≈32-byte node). For N = 10<sup>6</sup> that is still fine; for 10<sup>8</sup> streaming values use a primitive long hash set or sort-based detection. Beware: <code>seen.add(0)</code> on a <code>Set&lt;Long&gt;</code> does not compile in Java (int autoboxes to Integer) — write <code>0L</code>. With <code>Set&lt;Object&gt;</code> it would compile and silently store an Integer that never equals any Long.</p>
+<p><b>Streaming / early exit.</b> The algorithm is online: it can answer "has a zero-sum window appeared yet?" as values arrive and stops at the first hit. In finance and telemetry this is how "back to the same level" events are detected in real time.</p>
+<p><b>Adversarial inputs.</b> Long.hashCode is <code>(int)(v ^ (v &gt;&gt;&gt; 32))</code>; an attacker can craft prefix sums that collide. Java's treeify keeps that at O(log N) per operation since Long is Comparable.</p>`,
+    aiEra: `<p><b>What AI changes:</b> "subarray sum equals zero/K" is a top-10 pattern and assistants recall it well. The bugs they introduce are subtle: a missing seed, int overflow, or a HashSet where a map was needed. Your job is to spot those in seconds.</p>
+<p><b>Use AI as a partner:</b> <code>Give me 6 arrays where a zero-sum subarray starts at index 0, one where the only zero-sum subarray is a single 0, and one with only positives</code>; <code>Explain prefix sum + hashing using a bank balance analogy for a 12-year-old</code>; <code>Write a property-based test (jqwik / Hypothesis) comparing hasZeroSum with the O(N^2) brute force</code>.</p>
+<p><b>Where AI goes wrong:</b> forgetting <code>seen.add(0)</code>; using <code>Set&lt;Integer&gt;</code> with a <code>long</code> running sum (compile error) or an int running sum (overflow); proposing sliding window even though negatives are allowed.</p>
+<p><b>What you must still own:</b> deriving <code>sum(l..r) = pf[r] − pf[l−1]</code> on the whiteboard, explaining the seed as "the empty prefix", and knowing which variant of value (none / count / first index) each question needs.</p>`,
+    problems: [{
+      title: 'Subarray with Sum 0 (does one exist?)',
+      level: 'Easy', tags: ['prefix sum', 'hashset'], companies: ['Amazon', 'Microsoft', 'Paytm', 'Zoho'],
+      statement: `<p>Given an integer array <code>arr</code> (negative values allowed), return <b>true</b> if there is a non-empty contiguous subarray whose sum is 0, otherwise <b>false</b>.</p>`,
+      constraints: `1 ≤ N ≤ 10<sup>5</sup>, −10<sup>9</sup> ≤ arr[i] ≤ 10<sup>9</sup>`,
+      example: `${H.arr([4, 2, -3, 1, 6], { label: 'arr', hl: { 1: 'g', 2: 'g', 3: 'g' } })}<p>Output <b>${H.c('g', 'true')}</b>: ${H.c('g', '2 + (−3) + 1 = 0')}. Balances are 4, 6, 3, <b>4</b> — the 4 repeats.</p>
+<p>arr = [4, 2, 0, 1, 6] → <b>true</b> (the single 0). arr = [1, 2, 3] → <b>false</b>.</p>`,
+      brute: {
+        why: `<p>Try every start l and extend r, keeping a running sum: N(N+1)/2 ≈ 5·10<sup>9</sup> additions for N = 10<sup>5</sup> → <b>TLE</b>. The waste: for each start we recompute sums we could have compared against remembered balances.</p>`,
+        code: `boolean hasZeroSumBrute(int[] a) {
+    for (int l = 0; l < a.length; l++) {
+        long sum = 0;
+        for (int r = l; r < a.length; r++) {
+            sum += a[r];
+            if (sum == 0) return true;
+        }
+    }
+    return false;
+}`
+      },
+      mcq: {
+        q: 'The running balance is 7 after index 2 and again 7 after index 5. Which subarray sums to 0?',
+        options: ['indices 3..5', 'indices 2..5', 'indices 2..4', 'none — balances must be 0 to mean anything'],
+        answer: 0,
+        explain: 'pf[5] − pf[2] = 0 is the sum of arr[3] + arr[4] + arr[5]. The subarray starts right AFTER the earlier balance.'
+      },
+      hints: [
+        `<p><b>Hint 1:</b> Sum of l..r = pf[r] − pf[l−1]. When is that 0? Exactly when two running balances are equal.</p>`,
+        `<p><b>Hint 2:</b> Keep a <code>HashSet&lt;Long&gt;</code> of balances seen so far. At each index, if the new balance is already in it, you are done.</p>`,
+        `<p><b>Hint 3 (recipe):</b> seen = {0}; pf = 0; for x in arr: pf += x; if pf in seen → true; add pf. Return false. Edge cases: subarray starting at 0 (seed), a single 0 element, long overflow.</p>`
+      ],
+      solution: {
+        approach: `<p><b>Repeated running balance.</b> Walk once, maintaining the prefix sum. A HashSet remembers every balance so far (seeded with 0 for the empty prefix). The first repeat proves that the elements between the two occurrences cancel out.</p>`,
+        code: `class Solution {
+    public boolean findsum(int[] arr) {
+        Set<Long> seen = new HashSet<>();
+        seen.add(0L);                       // empty prefix: catches subarrays starting at index 0
+        long pf = 0;                        // long: up to 1e5 * 1e9 = 1e14
+        for (int x : arr) {
+            pf += x;
+            if (!seen.add(pf)) return true; // balance repeated -> zero-sum subarray in between
+        }
+        return false;
+    }
+}`,
+        alt: [{
+          lang: 'python', code: `def find_sum(arr):
+    seen, pf = {0}, 0
+    for x in arr:
+        pf += x
+        if pf in seen:
+            return True
+        seen.add(pf)
+    return False`
+        }, {
+          lang: 'cpp', code: `bool findsum(vector<int>& arr) {
+    unordered_set<long long> seen{0};
+    long long pf = 0;
+    for (int x : arr) {
+        pf += x;
+        if (!seen.insert(pf).second) return true;   // insert failed -> already present
+    }
+    return false;
+}`
+        }],
+        dry: {
+          head: ['i', 'arr[i]', 'pf', 'set before', 'action'],
+          rows: [
+            ['—', '—', '0', '{}', 'seed → {0}'],
+            ['0', '4', '4', '{0}', H.c('g', 'new → insert')],
+            ['1', '2', '6', '{0, 4}', H.c('g', 'new → insert')],
+            ['2', '−3', '3', '{0, 4, 6}', H.c('g', 'new → insert')],
+            ['3', '1', '4', '{0, 4, 6, 3}', H.c('r', '4 seen → subarray 1..3 → return true')]
+          ]
+        },
+        complexity: `<p><b>Time:</b> O(N) average (one set operation per element). <b>Space:</b> O(N) for the set.</p>`,
+        followUps: [
+          'Return the start and end indices (map balance → first index).',
+          'Count all zero-sum subarrays (map balance → count) — next topic.',
+          'Longest zero-sum subarray (map balance → first index) — topic 7.',
+          'Is there a subarray whose sum is divisible by K? (store pf mod K).'
+        ]
+      }
+    }]
+  });
+
+  /* =====================================================================
+     TOPIC 6 — Prefix sum + HashMap (counts): count subarrays with sum K
+     ===================================================================== */
+  topics.push({
+    title: 'Prefix Sum + HashMap of Counts: Count Subarrays with Sum = K',
+    analogy: `<p>Back to the <b>bank balance</b>, now with a goal: "In how many stretches of days did I spend exactly <b>₹K</b>?" Today your balance is ₹900 and K = 300. Any earlier day whose closing balance was <b>₹600</b> starts a stretch that ends today with exactly ₹300 net. If ₹600 appeared on <b>three</b> different earlier days, that is <b>three</b> different stretches.</p>
+<p>So you keep a <b>tally sheet of balances</b> (the shopkeeper again!): balance → how many days ended with it. Each day: look up <code>today − K</code> in the tally, add that count to the answer, then put a stroke next to today's balance.</p>`,
+    explain: `<p><b>Problem:</b> count the subarrays whose sum equals K (negatives allowed). Different start/end positions count separately even if the values look the same.</p>
+
+<h4>From "exists" to "how many"</h4>
+<p>Sum of l..r = <code>pf[r] − pf[l−1]</code> = K ⇔ <code>pf[l−1] = pf[r] − K</code>. For a fixed end r, the number of valid starts equals <b>how many earlier balances equal pf[r] − K</b>. A HashSet can only say yes/no, so we upgrade to a <b>HashMap balance → count</b>.</p>
+
+<h4>The loop (query first, then record)</h4>
+<pre>cnt = {0: 1}            // the empty prefix, seen once
+pf = 0, total = 0
+for x in arr:
+    pf += x
+    total += cnt.get(pf - K, 0)   // all stretches ending here
+    cnt[pf] += 1                  // record today's balance</pre>
+
+<h4>Worked example: arr = [3, 4, 7, 2, −3, 1, 4, 2], K = 7</h4>
+${H.table(['i', 'x', 'pf', 'need pf − 7', 'cnt[need]', 'total', 'subarray(s) found'], [['0', '3', '3', '−4', '0', '0', '—'], ['1', '4', '7', '0', H.c('r', '1'), '1', '[3, 4]'], ['2', '7', '14', '7', H.c('r', '1'), '2', '[7]'], ['3', '2', '16', '9', '0', '2', '—'], ['4', '−3', '13', '6', '0', '2', '—'], ['5', '1', '14', '7', H.c('r', '1'), '3', '[7, 2, −3, 1]'], ['6', '4', '18', '11', '0', '3', '—'], ['7', '2', '20', '13', H.c('r', '1'), H.c('g', '4'), '[1, 4, 2]']])}
+
+<h4>Why the seed is {0: 1} (not {0})</h4>
+<p>It is the empty prefix, which happened <b>once</b>. When pf itself equals K (like at i = 1 above), <code>pf − K = 0</code> and we must count the subarray starting at index 0 — exactly one of them.</p>
+
+<h4>Why query BEFORE recording</h4>
+<p>If you record pf first and K = 0, then <code>pf − 0 = pf</code> finds today's own stroke and counts an <b>empty</b> subarray. Query first = only earlier balances count.</p>
+
+<h4>Why not sliding window?</h4>
+<p>With negatives, a bigger window can have a smaller sum, so "shrink when the sum is too big" breaks. Sliding window only works for all-non-negative arrays; prefix sum + map works for everything.</p>`,
+    clues: [
+      '"count / number of subarrays with sum equal to K" → prefix sum + map of counts',
+      '"total number of continuous subarrays" + negatives allowed → not sliding window',
+      '"subarrays with sum divisible by K" → map of (pf mod K) counts, normalize negatives',
+      '"number of subarrays with XOR equal to K" → same pattern with ^ instead of +',
+      '"count subarrays with equal number of 0s and 1s / odd and even" → map ±1 to 0 and count sum 0',
+      '"number of submatrices that sum to target" → fix row pair, then this pattern on column sums'
+    ],
+    code: [`
+import java.util.*;
+
+public class CountSumK {
+    static long countSubarrays(int[] a, int k) {
+        Map<Long, Integer> cnt = new HashMap<>();
+        cnt.put(0L, 1);                                   // the empty prefix, seen once
+        long pf = 0, total = 0;
+        for (int x : a) {
+            pf += x;
+            total += cnt.getOrDefault(pf - k, 0);         // every earlier balance pf-k starts a valid subarray
+            cnt.merge(pf, 1, Integer::sum);               // record this balance AFTER querying
+        }
+        return total;
+    }
+
+    // Same pattern, XOR version: number of subarrays whose XOR equals k
+    static long countXorK(int[] a, int k) {
+        Map<Integer, Integer> cnt = new HashMap<>();
+        cnt.put(0, 1);
+        int px = 0;
+        long total = 0;
+        for (int x : a) {
+            px ^= x;                                      // prefix XOR
+            total += cnt.getOrDefault(px ^ k, 0);         // px ^ earlier == k  <=>  earlier == px ^ k
+            cnt.merge(px, 1, Integer::sum);
+        }
+        return total;
+    }
+
+    public static void main(String[] args) {
+        System.out.println(countSubarrays(new int[]{3, 4, 7, 2, -3, 1, 4, 2}, 7)); // 4
+        System.out.println(countSubarrays(new int[]{1, 1, 1}, 2));                 // 2
+        System.out.println(countSubarrays(new int[]{0, 0, 0}, 0));                 // 6
+        System.out.println(countXorK(new int[]{4, 2, 2, 6, 4}, 6));                // 4
+    }
+}`, {
+      lang: 'python', run: true, title: 'Python (runnable)',
+      code: `from collections import defaultdict
+
+def count_subarrays(a, k):
+    cnt = defaultdict(int)
+    cnt[0] = 1                  # empty prefix
+    pf = total = 0
+    for x in a:
+        pf += x
+        total += cnt[pf - k]    # query first
+        cnt[pf] += 1            # then record
+    return total
+
+print(count_subarrays([3, 4, 7, 2, -3, 1, 4, 2], 7))  # 4
+print(count_subarrays([1, -1, 0], 0))                 # 3
+print(count_subarrays([0, 0, 0], 0))                  # 6`
+    }],
+    codeTitle: ['Count subarrays with sum K (and XOR K) in Java', 'Python version (runnable)'],
+    viz: [{
+      title: 'Count subarrays with sum K: balance → count tally',
+      input: '3 4 7 2 -3 1 4 2 | 7',
+      inputLabel: 'arr | K  (at most 14 numbers)',
+      gen: function (input) {
+        var p = splitBar(input, 2, '3 4 7 2 -3 1 4 2 | 7'), a = parseNums(p[0], 14, 'array'), k = parseInt1(p[1], 'K', -50000, 50000);
+        var cnt = new Map(), firsts = new Map(), pf = 0, total = 0, pfs = [], frames = [];
+        cnt.set(0, 1); firsts.set(0, [-1]);
+        frames.push({ narr: 'Seed: balance <b>0</b> has been seen <b>1</b> time (the empty prefix, "before day 0"). K = ' + k + '.', parts: [{ type: 'array', label: 'arr', values: a.slice() }, { type: 'map', label: 'balance → how many times seen', entries: ents(cnt), hl: { '0': 'ok' } }, { type: 'vars', vals: { pf: 0, total: 0 } }] });
+        for (var i = 0; i < a.length; i++) {
+          pf += a[i]; pfs.push(pf);
+          var need = pf - k, c = cnt.get(need) || 0;
+          total += c;
+          var starts = (firsts.get(need) || []).map(function (s) { return (s + 1) + '..' + i; });
+          var bh = one(i, 'cur');
+          frames.push({ narr: 'i = ' + i + ': pf = <b>' + pf + '</b>, need an earlier balance of pf − K = <b>' + need + '</b>. ' + (c ? '<span class="c-r">Found ' + c + ' time(s)</span> → ' + c + ' subarray(s) ending here: ' + starts.join(', ') + '.' : 'Not in the tally → 0 subarrays end here.') + ' Total = <b>' + total + '</b>.', parts: [{ type: 'array', label: 'arr', values: a.slice(), ptr: one(i, 'i'), range: c ? [firsts.get(need)[0] + 1, i] : undefined }, { type: 'bars', label: 'running balance pf', values: pfs.slice(), hl: bh }, { type: 'map', label: 'balance → how many times seen', entries: ents(cnt), hl: c ? one(need, 'bad') : {} }, { type: 'vars', vals: { pf: pf, need: need, 'added now': c, total: total }, hl: { total: c ? 'ok' : '', need: 'cur' } }] });
+          var had = cnt.has(pf);
+          cnt.set(pf, (cnt.get(pf) || 0) + 1);
+          if (!firsts.has(pf)) firsts.set(pf, []);
+          firsts.get(pf).push(i);
+          frames.push({ narr: 'Now record today\'s balance ' + pf + ': ' + (had ? 'already in the tally → count becomes ' + cnt.get(pf) + '.' : '<span class="c-g">new row</span> ' + pf + ' → 1.') + ' (Recording AFTER the query keeps empty subarrays out.)', parts: [{ type: 'array', label: 'arr', values: a.slice(), ptr: one(i, 'i') }, { type: 'bars', label: 'running balance pf', values: pfs.slice() }, { type: 'map', label: 'balance → how many times seen', entries: ents(cnt), hl: one(pf, had ? 'cur' : 'ok') }, { type: 'vars', vals: { pf: pf, total: total } }] });
+        }
+        frames.push({ narr: 'Answer: <b>' + total + '</b> subarray(s) with sum ' + k + '. One pass, one lookup and one update per element → O(N).', parts: [{ type: 'map', label: 'final tally', entries: ents(cnt) }, { type: 'vars', vals: { answer: total }, hl: { answer: 'sel' } }] });
+        return frames;
+      }
+    }, {
+      title: 'Variant: count subarrays with sum divisible by K (tally of remainders)',
+      input: '4 5 0 -2 -3 1 | 5',
+      inputLabel: 'arr | K (K from 1 to 50, at most 14 numbers)',
+      gen: function (input) {
+        var p = splitBar(input, 2, '4 5 0 -2 -3 1 | 5'), a = parseNums(p[0], 14, 'array'), k = parseInt1(p[1], 'K', 1, 50);
+        var cnt = new Map(), pf = 0, total = 0, frames = [];
+        cnt.set(0, 1);
+        frames.push({ narr: 'Sum of l..r divisible by K ⇔ pf[r] and pf[l−1] leave the <b>same remainder</b> mod K. So tally remainders (seed remainder 0 → 1). Negative sums need ((pf % K) + K) % K.', parts: [{ type: 'array', label: 'arr', values: a.slice() }, { type: 'map', label: 'remainder → count', entries: ents(cnt), hl: { '0': 'ok' } }, { type: 'vars', vals: { total: 0 } }] });
+        for (var i = 0; i < a.length; i++) {
+          pf += a[i];
+          var r = ((pf % k) + k) % k, c = cnt.get(r) || 0;
+          total += c;
+          frames.push({ narr: 'i = ' + i + ': pf = ' + pf + ', remainder = ((' + pf + ' % ' + k + ') + ' + k + ') % ' + k + ' = <b>' + r + '</b>. ' + (c ? '<span class="c-r">Seen ' + c + ' time(s)</span> → +' + c + '.' : 'New remainder → +0.') + ' Total = <b>' + total + '</b>.', parts: [{ type: 'array', label: 'arr', values: a.slice(), ptr: one(i, 'i'), hl: one(i, 'cur') }, { type: 'map', label: 'remainder → count', entries: ents(cnt), hl: one(r, c ? 'bad' : 'cur') }, { type: 'vars', vals: { pf: pf, remainder: r, total: total }, hl: { remainder: 'cur' } }] });
+          var had = cnt.has(r);
+          cnt.set(r, c + 1);
+          frames.push({ narr: (had ? 'Bump remainder ' + r + ' → ' + cnt.get(r) + '.' : '<span class="c-g">Insert</span> remainder ' + r + ' → 1.'), parts: [{ type: 'array', label: 'arr', values: a.slice(), ptr: one(i, 'i') }, { type: 'map', label: 'remainder → count', entries: ents(cnt), hl: one(r, had ? 'cur' : 'ok') }, { type: 'vars', vals: { total: total } }] });
+        }
+        frames.push({ narr: 'Answer: <b>' + total + '</b> subarrays have a sum divisible by ' + k + '. (Equivalently, for each remainder with count c, add c·(c−1)/2.)', parts: [{ type: 'map', label: 'final remainder tally', entries: ents(cnt) }, { type: 'vars', vals: { answer: total }, hl: { answer: 'sel' } }] });
+        return frames;
+      }
+    }],
+    examples: [{
+      title: '[1, 1, 1], K = 2 → 2',
+      html: `${H.table(['i', 'pf', 'need pf − 2', 'cnt[need]', 'total', 'cnt after'], [['0', '1', '−1', '0', '0', '{0:1, 1:1}'], ['1', '2', '0', H.c('r', '1'), '1', '{0:1, 1:1, 2:1}'], ['2', '3', '1', H.c('r', '1'), H.c('g', '2'), '{0:1, 1:1, 2:1, 3:1}']])}
+<p>The two subarrays are [0..1] and [1..2].</p>`
+    }, {
+      title: '[0, 0, 0], K = 0 → 6 (why counts, not a set)',
+      html: `<p>pf stays 0 forever. Tally of 0 grows 1 → 2 → 3 → 4, and at each step we add the current tally: 1 + 2 + 3 = <b>6</b>. Those are [0], [1], [2], [0..1], [1..2], [0..2]. A HashSet would have counted at most 1 per step (3) — wrong. And if we recorded before querying, we would get 2 + 3 + 4 = 9 — also wrong (empty subarrays).</p>`
+    }, {
+      title: 'Count subarrays with XOR = K (same skeleton)',
+      html: `<p>XOR has its own "prefix" and its own "undo": <code>xor(l..r) = px[r] ^ px[l−1]</code>, so we need earlier <code>px[l−1] = px[r] ^ K</code>. arr = [4, 2, 2, 6, 4], K = 6 → prefix XORs 4, 6, 4, 2, 6 → answer <b>4</b> ([4,2], [4,2,2,6,4], [2,2,6], [6]).</p>`
+    }, {
+      title: 'All non-negative? A cheaper alternative exists',
+      html: `<p>If every element is ≥ 0 (e.g. "binary subarrays with sum", LeetCode 930), you can also count with sliding windows: <code>atMost(K) − atMost(K − 1)</code>, using O(1) extra space. With negatives allowed, only the prefix-sum map is correct.</p>`
+    }],
+    deepDive: `<p><b>Correctness.</b> For each end index r, the valid starts l are exactly those with P<sub>l−1</sub> = P<sub>r</sub> − K and −1 ≤ l−1 &lt; r. When we process r, the map contains P<sub>−1</sub>..P<sub>r−1</sub> with multiplicities (query-before-insert), so <code>cnt[P<sub>r</sub> − K]</code> is exactly the number of subarrays ending at r. Summing over r counts each subarray once.</p>
+<p><b>Overflow.</b> The answer can reach N(N+1)/2 ≈ 5·10<sup>9</sup> for N = 10<sup>5</sup> (e.g. all zeros, K = 0) → use <code>long total</code>. The prefix sums themselves need <code>long</code> when |a[i]| ≤ 10<sup>9</sup>. LeetCode 560 has N ≤ 2·10<sup>4</sup> and |a[i]| ≤ 1000, so int happens to work there — do not rely on that in a different problem.</p>
+<p><b>Mod variant pitfalls.</b> In Java, <code>-7 % 5 == -2</code>, not 3. Normalize with <code>((pf % k) + k) % k</code>, or track the remainder incrementally. For "continuous subarray sum multiple of K with length ≥ 2" (LeetCode 523) store the <b>first index</b> of each remainder instead of a count and check <code>i − first ≥ 2</code>.</p>
+<p><b>2D extension.</b> "Number of submatrices that sum to target" (LeetCode 1074): fix a pair of rows (top, bottom) — O(R<sup>2</sup>) pairs — compress the columns between them into a 1D array of column sums, and run this exact algorithm on it in O(C). Total O(R<sup>2</sup>·C). Always loop over the smaller dimension squared.</p>
+<p><b>Performance.</b> <code>HashMap&lt;Long,Integer&gt;</code> boxes everything. In tight loops with up to 10<sup>6</sup> elements this is fine (tens of ms). For 10<sup>7</sup>+ consider sorting the prefix sums with their indices and counting equal pairs with a "seen-so-far" sweep (O(N log N), cache-friendly), or a primitive long→int open-addressing map.</p>`,
+    aiEra: `<p><b>What AI changes:</b> LeetCode 560 is a famous problem, so generated code is usually right for the base case. The skill that matters now is <b>adapting</b>: divisible-by-K with negative numbers, XOR instead of sum, 2D matrices, "at least length 2" — the places where copy-pasted solutions quietly fail.</p>
+<p><b>Use AI as a partner:</b> <code>Here is my count-subarrays-sum-K code; generate inputs where K = 0, all zeros, all negatives, and compare against brute force</code>; <code>Show me how the same skeleton solves XOR = K and divisible by K — list exactly which lines change</code>.</p>
+<p><b>Where AI goes wrong:</b> seeding with <code>{0}</code> in a set instead of <code>{0: 1}</code> in a map, inserting before querying (overcounts when K = 0), Java's negative modulo, and suggesting sliding window for arrays with negative numbers.</p>
+<p><b>What you must still own:</b> the derivation <code>pf[l−1] = pf[r] − K</code>, why the seed is a count of 1, the query-then-record order, and the 2D reduction. Interviewers often ask you to <i>prove</i> the count is exact — practise saying it in two sentences.</p>`,
+    problems: [{
+      title: 'Subarray Sum Equals K (count them)',
+      level: 'Medium', tags: ['prefix sum', 'hashmap', 'counting'], companies: ['Meta', 'Amazon', 'Google', 'Microsoft', 'Goldman Sachs'],
+      statement: `<p>Given an integer array <code>nums</code> (negatives allowed) and an integer <code>k</code>, return the <b>total number</b> of contiguous non-empty subarrays whose sum equals <code>k</code>.</p>`,
+      constraints: `1 ≤ N ≤ 2·10<sup>4</sup>, −1000 ≤ nums[i] ≤ 1000, −10<sup>7</sup> ≤ k ≤ 10<sup>7</sup>`,
+      example: `${H.arr([3, 4, 7, 2, -3, 1, 4, 2], { label: 'nums' })}<p>k = 7 → output ${H.c('g', '4')}: [3, 4], [7], [7, 2, −3, 1], [1, 4, 2].</p>
+<p>nums = [1, 1, 1], k = 2 → 2.</p>`,
+      brute: {
+        why: `<p>For every start l, extend r and keep a running sum; count when it equals k. That is N(N+1)/2 ≈ 2·10<sup>8</sup> steps for N = 2·10<sup>4</sup> — borderline, and hopeless for N = 10<sup>5</sup>. You cannot break early (negatives can bring the sum back to k later). The waste: for a fixed r we re-derive sums that a tally of earlier balances answers in O(1).</p>`,
+        code: `int subarraySumBrute(int[] nums, int k) {
+    int count = 0;
+    for (int l = 0; l < nums.length; l++) {
+        int sum = 0;
+        for (int r = l; r < nums.length; r++) {
+            sum += nums[r];
+            if (sum == k) count++;   // no early break: negatives may hit k again
+        }
+    }
+    return count;
+}`
+      },
+      mcq: {
+        q: 'Why must the map start as {0: 1} rather than empty?',
+        options: ['To count subarrays that start at index 0 (pf itself equals k)', 'To avoid a NullPointerException in getOrDefault', 'Because 0 is always a valid answer', 'It is only needed when k = 0'],
+        answer: 0,
+        explain: 'sum(0..r) = pf[r] − 0. The "0" is the balance of the empty prefix, which occurred exactly once. Without it, prefixes equal to k are missed.'
+      },
+      hints: [
+        `<p><b>Hint 1:</b> For a fixed right end r, the subarray l..r sums to k exactly when pf[l−1] = pf[r] − k. So the question becomes "how many earlier balances equal pf[r] − k?"</p>`,
+        `<p><b>Hint 2:</b> Keep a <code>HashMap&lt;balance, count&gt;</code> of all balances seen so far. Seed it with {0: 1}.</p>`,
+        `<p><b>Hint 3 (recipe):</b> pf = 0, total = 0, cnt = {0:1}. For x: pf += x; total += cnt.get(pf − k, 0); cnt[pf]++. Query <b>before</b> you record. Edge cases: k = 0, all zeros, negatives, answers bigger than int (use long in general).</p>`
+      ],
+      solution: {
+        approach: `<p><b>Tally of balances.</b> Every subarray ending at r corresponds to one earlier balance equal to pf[r] − k. The map counts how many times each balance has appeared, so a single lookup tells us how many subarrays end at r. Summing over all r gives the answer in one pass.</p>`,
+        code: `class Solution {
+    public int subarraySum(int[] nums, int k) {
+        Map<Integer, Integer> cnt = new HashMap<>();
+        cnt.put(0, 1);                                  // empty prefix seen once
+        int pf = 0, total = 0;                          // safe as int under these constraints
+        for (int x : nums) {
+            pf += x;
+            total += cnt.getOrDefault(pf - k, 0);       // stretches ending here with sum k
+            cnt.merge(pf, 1, Integer::sum);             // record AFTER querying
+        }
+        return total;
+    }
+}`,
+        alt: [{
+          lang: 'python', code: `from collections import defaultdict
+
+def subarray_sum(nums, k):
+    cnt = defaultdict(int)
+    cnt[0] = 1
+    pf = total = 0
+    for x in nums:
+        pf += x
+        total += cnt[pf - k]
+        cnt[pf] += 1
+    return total`
+        }, {
+          lang: 'cpp', code: `int subarraySum(vector<int>& nums, int k) {
+    unordered_map<long long, int> cnt{{0, 1}};
+    long long pf = 0;
+    int total = 0;
+    for (int x : nums) {
+        pf += x;
+        auto it = cnt.find(pf - k);
+        if (it != cnt.end()) total += it->second;
+        cnt[pf]++;
+    }
+    return total;
+}`
+        }],
+        dry: {
+          head: ['i', 'x', 'pf', 'need pf − 7', 'cnt[need]', 'total', 'cnt after recording pf'],
+          rows: [
+            ['—', '—', '0', '—', '—', '0', '{0:1}'],
+            ['0', '3', '3', '−4', '0', '0', H.c('g', '{0:1, 3:1}')],
+            ['1', '4', '7', '0', H.c('r', '1'), '1', H.c('g', '+7:1')],
+            ['2', '7', '14', '7', H.c('r', '1'), '2', H.c('g', '+14:1')],
+            ['3', '2', '16', '9', '0', '2', H.c('g', '+16:1')],
+            ['4', '−3', '13', '6', '0', '2', H.c('g', '+13:1')],
+            ['5', '1', '14', '7', H.c('r', '1'), '3', '14:2'],
+            ['6', '4', '18', '11', '0', '3', H.c('g', '+18:1')],
+            ['7', '2', '20', '13', H.c('r', '1'), H.c('g', '4'), H.c('g', '+20:1')]
+          ]
+        },
+        complexity: `<p><b>Time:</b> O(N) average. <b>Space:</b> O(N) for the map (at most N+1 distinct balances).</p>`,
+        followUps: [
+          'Subarray Sums Divisible by K (LeetCode 974): tally remainders, normalize negatives.',
+          'Count subarrays with XOR = K: prefix XOR, look up px ^ K.',
+          'Number of Submatrices That Sum to Target (LeetCode 1074): fix two rows, run this on column sums.',
+          'Return the longest such subarray instead of the count → store first index (next topic).'
+        ]
+      }
+    }]
+  });
+
+  /* =====================================================================
+     TOPIC 7 — Prefix sum + HashMap (first index): longest sum 0 / K, equal 0s and 1s
+     ===================================================================== */
+  topics.push({
+    title: 'Prefix Sum + First-Index Map: Longest Subarray with Sum 0 / K and Equal 0s & 1s',
+    analogy: `<p>The <b>bank balance</b> one last time. Now the question is: "What is the <b>longest</b> stretch of days in which my net change was exactly ₹K?" A stretch ending today starts the day after some earlier day with balance <code>today − K</code>. To make the stretch <b>as long as possible</b>, you want the <b>earliest</b> such day. So your notebook stores, for each balance, only the <b>first date</b> you ever saw it — later repeats are never better, so you do not overwrite.</p>
+<p>For "equal 0s and 1s", imagine each 1 is a deposit of ₹1 and each 0 is a withdrawal of ₹1. A stretch with equal deposits and withdrawals has net change <b>0</b> — the same question with K = 0.</p>`,
+    explain: `<p><b>Map choice:</b> exists → set; how many → counts; <b>longest → first index</b>. Seed <code>{0: −1}</code>: balance 0 was "seen" just before index 0, so a subarray from index 0 to i has length <code>i − (−1) = i + 1</code>.</p>
+
+<h4>Longest subarray with sum 0</h4>
+${H.arr([15, -2, 2, -8, 1, 7, 10, 23], { label: 'arr', hl: { 1: 'g', 2: 'g', 3: 'g', 4: 'g', 5: 'g' } })}
+${H.table(['i', 'x', 'pf', 'first index of pf?', 'length', 'best'], [['—', '—', '0', 'seed 0 → −1', '—', '0'], ['0', '15', '15', H.c('g', 'new → 0'), '—', '0'], ['1', '−2', '13', H.c('g', 'new → 1'), '—', '0'], ['2', '2', '15', H.c('r', 'seen at 0'), '2 − 0 = 2', '2'], ['3', '−8', '7', H.c('g', 'new → 3'), '—', '2'], ['4', '1', '8', H.c('g', 'new → 4'), '—', '2'], ['5', '7', '15', H.c('r', 'seen at 0'), '5 − 0 = 5', H.c('g', '5')], ['6', '10', '25', H.c('g', 'new'), '—', '5'], ['7', '23', '48', H.c('g', 'new'), '—', '5']])}
+<p>Answer 5: indices 1..5 = [−2, 2, −8, 1, 7]. Note at i = 5 we compare with the <b>first</b> 15 (index 0), not the one at index 2 — that is why we never overwrite.</p>
+
+<h4>Longest subarray with sum K</h4>
+<p>Same loop, but look up <code>pf − K</code>:</p>
+<pre>first = {0: −1}; pf = 0; best = 0
+for i, x in arr:
+    pf += x
+    if pf − K in first: best = max(best, i − first[pf − K])
+    if pf not in first: first[pf] = i      // keep the EARLIEST index only</pre>
+
+<h4>Equal number of 0s and 1s (Contiguous Array)</h4>
+<p>Replace every 0 by <b>−1</b>. A subarray has equal 0s and 1s ⇔ its ±1 sum is 0 ⇔ "longest subarray with sum 0".</p>
+${H.arr([0, 1, 1, 0, 1, 1, 1, 0], { label: 'nums', hl: { 0: 'g', 1: 'g', 2: 'g', 3: 'g' } })}
+${H.arr([-1, 1, 1, -1, 1, 1, 1, -1], { label: '±1', hl: { 0: 'g', 1: 'g', 2: 'g', 3: 'g' } })}
+${H.arr([-1, 0, 1, 0, 1, 2, 3, 2], { label: 'balance', hl: { 3: 'r' } })}
+<p>Balance 0 appears at index 3 and in the seed (index −1) → length 3 − (−1) = <b>4</b>: [0, 1, 1, 0].</p>
+
+<h4>Cheat sheet: same skeleton, different value</h4>
+${H.table(['question', 'map value', 'seed', 'update rule'], [['exists?', '(set)', '{0}', 'add every pf'], ['how many?', 'count', '{0: 1}', 'cnt[pf]++ after query'], ['longest?', 'first index', '{0: −1}', 'putIfAbsent(pf, i)'], ['shortest?', 'last index', '{0: −1}', 'put(pf, i) — overwrite']])}`,
+    clues: [
+      '"longest / maximum length subarray with sum K (or 0)" → prefix sum + map of FIRST index',
+      '"equal number of 0s and 1s" / "balanced" / "same count of X and Y" → map one side to −1, find longest sum 0',
+      '"array may contain negatives" with "longest" → not sliding window, use first-index map',
+      '"largest subarray with 0 sum" (GfG) → the exact pattern with K = 0',
+      '"longest well-performing interval" (hours &gt; 8 vs ≤ 8) → ±1 transform + first-index map',
+      '"shortest subarray with sum K" (no negatives involved in the trick) → keep the LAST index instead'
+    ],
+    code: [`
+import java.util.*;
+
+public class LongestSumK {
+    // Longest subarray with sum exactly k (negatives allowed). Works for k = 0 too.
+    static int longestSumK(int[] a, long k) {
+        Map<Long, Integer> first = new HashMap<>();
+        first.put(0L, -1);                         // empty prefix "ends" at index -1
+        long pf = 0;
+        int best = 0;
+        for (int i = 0; i < a.length; i++) {
+            pf += a[i];
+            Integer j = first.get(pf - k);
+            if (j != null) best = Math.max(best, i - j);   // a[j+1..i] sums to k
+            first.putIfAbsent(pf, i);              // keep the EARLIEST index -> longest answers
+        }
+        return best;
+    }
+
+    // Contiguous Array: longest subarray with equal 0s and 1s
+    static int findMaxLength(int[] nums) {
+        Map<Integer, Integer> first = new HashMap<>();
+        first.put(0, -1);
+        int bal = 0, best = 0;
+        for (int i = 0; i < nums.length; i++) {
+            bal += nums[i] == 1 ? 1 : -1;          // 1 -> +1, 0 -> -1
+            Integer j = first.get(bal);
+            if (j != null) best = Math.max(best, i - j);
+            else first.put(bal, i);
+        }
+        return best;
+    }
+
+    public static void main(String[] args) {
+        System.out.println(longestSumK(new int[]{15, -2, 2, -8, 1, 7, 10, 23}, 0)); // 5
+        System.out.println(longestSumK(new int[]{10, 5, 2, 7, 1, -10}, 15));        // 6
+        System.out.println(findMaxLength(new int[]{0, 1, 1, 0, 1, 1, 1, 0}));       // 4
+    }
+}`, {
+      lang: 'python', run: true, title: 'Python (runnable)',
+      code: `def longest_sum_k(a, k):
+    first, pf, best = {0: -1}, 0, 0
+    for i, x in enumerate(a):
+        pf += x
+        if pf - k in first:
+            best = max(best, i - first[pf - k])
+        first.setdefault(pf, i)          # keep earliest index only
+    return best
+
+def find_max_length(nums):
+    return longest_sum_k([1 if x == 1 else -1 for x in nums], 0)
+
+print(longest_sum_k([15, -2, 2, -8, 1, 7, 10, 23], 0))  # 5
+print(longest_sum_k([10, 5, 2, 7, 1, -10], 15))         # 6
+print(find_max_length([0, 1, 1, 0, 1, 1, 1, 0]))        # 4`
+    }],
+    codeTitle: ['Longest sum K and equal 0s/1s in Java', 'Python version (runnable)'],
+    viz: [{
+      title: 'Longest subarray with sum K: map balance → FIRST index',
+      input: '10 5 2 7 1 -10 | 15',
+      inputLabel: 'arr | K  (use K = 0 for "largest zero-sum subarray"; at most 14 numbers)',
+      gen: function (input) {
+        var p = splitBar(input, 2, '10 5 2 7 1 -10 | 15'), a = parseNums(p[0], 14, 'array'), k = parseInt1(p[1], 'K', -50000, 50000);
+        var first = new Map(), pf = 0, best = 0, bestL = -1, bestR = -1, frames = [];
+        first.set(0, -1);
+        frames.push({ narr: 'Seed: balance 0 first seen at index <b>−1</b> (before the array). K = ' + k + '. We want the earliest earlier balance equal to pf − K.', parts: [{ type: 'array', label: 'arr', values: a.slice() }, { type: 'map', label: 'balance → first index', entries: ents(first), hl: { '0': 'ok' } }, { type: 'vars', vals: { pf: 0, best: 0 } }] });
+        for (var i = 0; i < a.length; i++) {
+          pf += a[i];
+          var need = pf - k, j = first.has(need) ? first.get(need) : null, msg;
+          if (j !== null) {
+            var len = i - j, improved = len > best;
+            if (improved) { best = len; bestL = j + 1; bestR = i; }
+            msg = 'i = ' + i + ': pf = <b>' + pf + '</b>, need ' + need + ' → <span class="c-r">first seen at ' + j + '</span>. Subarray ' + (j + 1) + '..' + i + ' has sum ' + k + ', length ' + len + '. ' + (improved ? '<b>New best = ' + best + '</b>.' : 'Not longer than best ' + best + '.');
+            frames.push({ narr: msg, parts: [{ type: 'array', label: 'arr', values: a.slice(), range: [j + 1, i], ptr: one(i, 'i') }, { type: 'map', label: 'balance → first index', entries: ents(first), hl: one(need, 'bad') }, { type: 'vars', vals: { pf: pf, need: need, length: len, best: best }, hl: { best: improved ? 'ok' : '' } }] });
+          } else {
+            frames.push({ narr: 'i = ' + i + ': pf = <b>' + pf + '</b>, need ' + need + ' → not seen, no subarray with sum ' + k + ' ends here.', parts: [{ type: 'array', label: 'arr', values: a.slice(), ptr: one(i, 'i'), hl: one(i, 'cur') }, { type: 'map', label: 'balance → first index', entries: ents(first) }, { type: 'vars', vals: { pf: pf, need: need, best: best }, hl: { need: 'cur' } }] });
+          }
+          if (first.has(pf)) {
+            frames.push({ narr: 'Balance ' + pf + ' already has first index ' + first.get(pf) + ' → <b>keep it</b> (do not overwrite with ' + i + '). An earlier start always gives a longer subarray later.', parts: [{ type: 'array', label: 'arr', values: a.slice(), ptr: one(i, 'i') }, { type: 'map', label: 'balance → first index', entries: ents(first), hl: one(pf, 'cur') }, { type: 'vars', vals: { pf: pf, best: best } }] });
+          } else {
+            first.set(pf, i);
+            frames.push({ narr: '<span class="c-g">Insert</span> balance ' + pf + ' → first index ' + i + '.', parts: [{ type: 'array', label: 'arr', values: a.slice(), ptr: one(i, 'i') }, { type: 'map', label: 'balance → first index', entries: ents(first), hl: one(pf, 'ok') }, { type: 'vars', vals: { pf: pf, best: best } }] });
+          }
+        }
+        frames.push({ narr: best ? 'Longest subarray with sum ' + k + ': indices <b>' + bestL + '..' + bestR + '</b>, length <b>' + best + '</b>.' : 'No subarray sums to ' + k + ' → answer 0.', parts: [{ type: 'array', label: 'arr', values: a.slice(), hl: best ? rng(bestL, bestR, 'sel') : {} }, { type: 'vars', vals: { answer: best }, hl: { answer: 'sel' } }] });
+        return frames;
+      }
+    }, {
+      title: 'Equal 0s and 1s: deposit +1 for 1, withdraw −1 for 0, find the longest zero net change',
+      input: '0 1 1 0 1 1 1 0',
+      inputLabel: 'Binary array (0s and 1s, at most 16)',
+      gen: function (input) {
+        var a = parseNums(input, 16, 'binary array');
+        if (a.some(function (x) { return x !== 0 && x !== 1; })) throw new Error('Use only 0 and 1, e.g. 0 1 1 0 1');
+        var first = new Map(), bal = 0, best = 0, bl = -1, br = -1, bals = [], frames = [];
+        first.set(0, -1);
+        frames.push({ narr: 'Turn each 0 into −1 and each 1 into +1. Equal counts ⇔ net balance change 0. Seed: balance 0 at index −1.', parts: [{ type: 'array', label: 'nums', values: a.slice() }, { type: 'array', label: 'as ±1', values: a.map(function (x) { return x ? '+1' : '-1'; }) }, { type: 'map', label: 'balance → first index', entries: ents(first), hl: { '0': 'ok' } }] });
+        for (var i = 0; i < a.length; i++) {
+          bal += a[i] ? 1 : -1; bals.push(bal);
+          if (first.has(bal)) {
+            var j = first.get(bal), len = i - j, imp = len > best;
+            if (imp) { best = len; bl = j + 1; br = i; }
+            frames.push({ narr: 'i = ' + i + ' (' + a[i] + '): balance <b>' + bal + '</b> was first seen at ' + j + ' → <span class="c-r">hit</span>: nums[' + (j + 1) + '..' + i + '] has as many 0s as 1s, length ' + len + '. ' + (imp ? '<b>New best ' + best + '</b>.' : 'Best stays ' + best + '.'), parts: [{ type: 'array', label: 'nums', values: a.slice(), range: [j + 1, i], ptr: one(i, 'i') }, { type: 'bars', label: 'balance after each index', values: bals.slice(), hl: one(i, 'bad') }, { type: 'map', label: 'balance → first index', entries: ents(first), hl: one(bal, 'bad') }, { type: 'vars', vals: { balance: bal, best: best }, hl: { best: imp ? 'ok' : '' } }] });
+          } else {
+            first.set(bal, i);
+            frames.push({ narr: 'i = ' + i + ' (' + a[i] + '): balance <b>' + bal + '</b> is new → <span class="c-g">insert</span> ' + bal + ' → ' + i + '.', parts: [{ type: 'array', label: 'nums', values: a.slice(), ptr: one(i, 'i'), hl: one(i, 'cur') }, { type: 'bars', label: 'balance after each index', values: bals.slice(), hl: one(i, 'ok') }, { type: 'map', label: 'balance → first index', entries: ents(first), hl: one(bal, 'ok') }, { type: 'vars', vals: { balance: bal, best: best } }] });
+          }
+        }
+        frames.push({ narr: best ? 'Answer: <b>' + best + '</b> (indices ' + bl + '..' + br + ').' : 'No balanced subarray → 0.', parts: [{ type: 'array', label: 'nums', values: a.slice(), hl: best ? rng(bl, br, 'sel') : {} }, { type: 'vars', vals: { answer: best }, hl: { answer: 'sel' } }] });
+        return frames;
+      }
+    }],
+    examples: [{
+      title: 'Why NOT overwrite the first index',
+      html: `<p>arr = [1, −1, 1, −1], K = 0. Balances: 1, 0, 1, 0. With first-index map: at i = 3, balance 0 → first at −1 → length <b>4</b> (whole array). If you overwrote 0 → 1 at i = 1, you would get length 2 at i = 3 — wrong.</p>`
+    }, {
+      title: 'Longest sum K: [10, 5, 2, 7, 1, −10], K = 15 → 6',
+      html: `${H.table(['i', 'pf', 'need pf − 15', 'first[need]', 'length', 'best'], [['0', '10', '−5', '—', '—', '0'], ['1', '15', '0', '−1', '2', '2'], ['2', '17', '2', '—', '—', '2'], ['3', '24', '9', '—', '—', '2'], ['4', '25', '10', '0', '4', '4'], ['5', '15', '0', '−1', H.c('g', '6'), H.c('g', '6')]])}
+<p>At i = 5 the balance 15 repeats (first at 1); we keep 15 → 1 and the answer is the whole array.</p>`
+    }, {
+      title: 'All positives? Two pointers is enough (and O(1) space)',
+      html: `<p>If every element is <b>positive</b>, prefix sums strictly increase, so a sliding window works: grow right, shrink left while sum &gt; K, record when sum == K. O(N) time, O(1) space. As soon as zeros or negatives are allowed, use the map.</p>`,
+      code: `int longestSumKPositive(int[] a, long k) {   // only valid if all a[i] > 0
+    int best = 0, l = 0;
+    long sum = 0;
+    for (int r = 0; r < a.length; r++) {
+        sum += a[r];
+        while (sum > k && l <= r) sum -= a[l++];
+        if (sum == k) best = Math.max(best, r - l + 1);
+    }
+    return best;
+}`
+    }, {
+      title: 'Longest Well-Performing Interval (a ±1 cousin)',
+      html: `<p>hours = [9, 9, 6, 0, 6, 6, 9]: a day is "tiring" if hours &gt; 8 (+1) else −1. Want the longest interval with <b>positive</b> sum. Trick: if balance &gt; 0, the whole prefix works (i + 1); otherwise look up the first index of <b>balance − 1</b>. Answer 3 ([9, 9, 6]). Same first-index map, a slightly different lookup.</p>`
+    }],
+    deepDive: `<p><b>Why first index is optimal.</b> For a fixed end i, every j with P<sub>j</sub> = P<sub>i</sub> − K gives a valid subarray j+1..i of length i − j, which is largest for the smallest j. Storing only the first occurrence keeps exactly that j. Each index is inserted at most once, so the map has at most N + 1 entries.</p>
+<p><b>putIfAbsent vs the else branch.</b> For K ≠ 0 you must <b>query first and then putIfAbsent</b> — the lookup key (pf − K) differs from the insert key (pf). For K = 0 they are the same key, so "if present → measure, else → insert" is a valid shortcut (as in Contiguous Array). Mixing these up is a classic bug when adapting code.</p>
+<p><b>Shortest instead of longest.</b> Store the <b>last</b> index (overwrite every time). Note: "shortest subarray with sum ≥ K" with negatives (LeetCode 862) is a different beast — it needs a monotonic deque over prefix sums, not a hash map, because "≥" is not an exact-match lookup. Hash maps only answer <b>exact</b> equality questions.</p>
+<p><b>Generalizing ±1.</b> Any "equal count of A and B" (vowels vs consonants, X vs O, even vs odd) maps to ±1 and sum 0. For three categories ("equal 0s, 1s and 2s"), the key becomes a <b>pair</b> of differences (c1 − c0, c2 − c1) — hash a <code>long</code> combining both, or a record key. That generalization is a favourite follow-up.</p>
+<p><b>Array instead of map.</b> For the ±1 balance the values lie in [−N, N], so a plain <code>int[2N + 1]</code> filled with a sentinel replaces the HashMap: index = bal + N. No hashing, no boxing, guaranteed O(N) worst case — a nice optimization to mention.</p>`,
+    aiEra: `<p><b>What AI changes:</b> assistants know Contiguous Array and Largest Zero-Sum Subarray well. They are much weaker at the <i>adaptation</i>: switching from count to first index, from K = 0 to general K, from two categories to three. That adaptation is now the real interview signal.</p>
+<p><b>Use AI as a partner:</b> <code>Generate tests where overwriting the first index gives a wrong answer for longest subarray sum K</code>; <code>Convert my HashMap solution for equal 0s/1s into an int[] version and explain the offset</code>; <code>Give me the three-category version and its key design</code>.</p>
+<p><b>Where AI goes wrong:</b> overwriting with <code>put</code> (gives shortest-ish, not longest), forgetting the seed −1 (misses subarrays starting at 0), using the "else insert" shortcut for K ≠ 0 (a balance equal to pf − K at the same step is wrongly skipped), and proposing sliding window when the array has negatives.</p>
+<p><b>What you must still own:</b> choosing first vs last index from "longest" vs "shortest", the ±1 modelling step, and explaining why hash maps cannot do "≥ K" questions.</p>`,
+    problems: [{
+      title: 'Largest Subarray with 0 Sum',
+      level: 'Medium', tags: ['prefix sum', 'hashmap', 'first index'], companies: ['Amazon', 'Microsoft', 'Flipkart', 'MakeMyTrip'],
+      statement: `<p>Given an integer array <code>arr</code> (negatives allowed), return the <b>length of the longest</b> contiguous subarray whose sum is 0. Return 0 if none exists.</p>`,
+      constraints: `1 ≤ N ≤ 10<sup>5</sup>, −1000 ≤ arr[i] ≤ 1000`,
+      example: `${H.arr([15, -2, 2, -8, 1, 7, 10, 23], { label: 'arr', hl: { 1: 'g', 2: 'g', 3: 'g', 4: 'g', 5: 'g' } })}<p>Output ${H.c('g', '5')}: [−2, 2, −8, 1, 7] sums to 0. The shorter [−2, 2] also sums to 0 but is not the longest.</p>`,
+      brute: {
+        why: `<p>Check every (l, r) pair with a running sum and track the longest with sum 0: <b>O(N<sup>2</sup>)</b> = 5·10<sup>9</sup> steps at N = 10<sup>5</sup>. The waste: for each end r we only need the earliest start whose balance matches — information a map can remember.</p>`,
+        code: `int maxLenBrute(int[] arr) {
+    int best = 0;
+    for (int l = 0; l < arr.length; l++) {
+        int sum = 0;
+        for (int r = l; r < arr.length; r++) {
+            sum += arr[r];
+            if (sum == 0) best = Math.max(best, r - l + 1);
+        }
+    }
+    return best;
+}`
+      },
+      mcq: {
+        q: 'Balance 15 appears at indices 0, 2 and 5. When you reach index 5, which earlier index gives the longest zero-sum subarray ending at 5?',
+        options: ['Index 0 → subarray 1..5 (length 5)', 'Index 2 → subarray 3..5 (length 3)', 'Index 5 itself', 'All of them equally'],
+        answer: 0,
+        explain: 'The earliest matching balance gives the longest stretch. That is why the map stores only the FIRST index of each balance.'
+      },
+      hints: [
+        `<p><b>Hint 1:</b> A zero-sum subarray j+1..i means balance[j] == balance[i]. To make it longest, you want the smallest such j.</p>`,
+        `<p><b>Hint 2:</b> HashMap from balance → first index where it occurred. Seed balance 0 → index −1.</p>`,
+        `<p><b>Hint 3 (recipe):</b> for i: pf += a[i]; if pf in map → best = max(best, i − map[pf]); else map[pf] = i. Never overwrite. Edge cases: whole array sums to 0 (seed gives length N), no zero-sum (0), single 0 element (length 1).</p>`
+      ],
+      solution: {
+        approach: `<p><b>First-occurrence map of running balances.</b> When the current balance has been seen before, the elements after its first occurrence up to here sum to 0. Measuring against the first occurrence always gives the longest such stretch ending here; the overall answer is the max over all ends.</p>`,
+        code: `class Solution {
+    int maxLen(int[] arr) {
+        Map<Integer, Integer> first = new HashMap<>();
+        first.put(0, -1);                        // balance 0 before the array starts
+        int pf = 0, best = 0;                    // |pf| <= 1e5 * 1000 = 1e8 fits in int
+        for (int i = 0; i < arr.length; i++) {
+            pf += arr[i];
+            Integer j = first.get(pf);
+            if (j != null) best = Math.max(best, i - j);   // arr[j+1..i] sums to 0
+            else first.put(pf, i);                         // only the FIRST time
+        }
+        return best;
+    }
+}`,
+        alt: [{
+          lang: 'python', code: `def max_len(arr):
+    first, pf, best = {0: -1}, 0, 0
+    for i, x in enumerate(arr):
+        pf += x
+        if pf in first:
+            best = max(best, i - first[pf])
+        else:
+            first[pf] = i
+    return best`
+        }],
+        dry: {
+          head: ['i', 'arr[i]', 'pf', 'map lookup', 'length', 'best'],
+          rows: [
+            ['—', '—', '0', 'seed {0:−1}', '—', '0'],
+            ['0', '15', '15', H.c('g', 'new → 15:0'), '—', '0'],
+            ['1', '−2', '13', H.c('g', 'new → 13:1'), '—', '0'],
+            ['2', '2', '15', H.c('r', 'first at 0'), '2', '2'],
+            ['3', '−8', '7', H.c('g', 'new → 7:3'), '—', '2'],
+            ['4', '1', '8', H.c('g', 'new → 8:4'), '—', '2'],
+            ['5', '7', '15', H.c('r', 'first at 0'), '5', H.c('g', '5')],
+            ['6', '10', '25', H.c('g', 'new'), '—', '5'],
+            ['7', '23', '48', H.c('g', 'new'), '—', '5']
+          ]
+        },
+        complexity: `<p><b>Time:</b> O(N) average. <b>Space:</b> O(N) for the map.</p>`,
+        followUps: [
+          'Return the start and end indices, not just the length.',
+          'Longest subarray with sum exactly K (next problem).',
+          'Values are small: replace the map by an offset array of size 2·maxSum + 1.'
+        ]
+      }
+    }, {
+      title: 'Longest Subarray with Sum K (negatives allowed)',
+      level: 'Medium', tags: ['prefix sum', 'hashmap', 'first index'], companies: ['Amazon', 'Google', 'Samsung', 'Flipkart'],
+      statement: `<p>Given an integer array <code>arr</code> that may contain negative numbers and zeros, and an integer <code>k</code>, return the length of the <b>longest</b> contiguous subarray whose sum equals <code>k</code>, or 0 if none exists.</p>`,
+      constraints: `1 ≤ N ≤ 10<sup>5</sup>, −10<sup>5</sup> ≤ arr[i], k ≤ 10<sup>5</sup>`,
+      example: `${H.arr([10, 5, 2, 7, 1, -10], { label: 'arr', hl: { 0: 'g', 1: 'g', 2: 'g', 3: 'g', 4: 'g', 5: 'g' } })}<p>k = 15 → output ${H.c('g', '6')}: the whole array sums to 15. Shorter answers exist ([10, 5], [5, 2, 7, 1]) but 6 is the longest.</p>`,
+      brute: {
+        why: `<p>All (l, r) pairs with a running sum: <b>O(N<sup>2</sup>)</b>. Sliding window is <b>not</b> a valid speed-up because negatives break the "shrink when too big" rule: here the window would shrink away the 10 and never reach the full-array answer.</p>`,
+        code: `int longestSubarrayBrute(int[] arr, int k) {
+    int best = 0;
+    for (int l = 0; l < arr.length; l++) {
+        long sum = 0;
+        for (int r = l; r < arr.length; r++) {
+            sum += arr[r];
+            if (sum == k) best = Math.max(best, r - l + 1);
+        }
+    }
+    return best;
+}`
+      },
+      mcq: {
+        q: 'You adapt the zero-sum code "if (found) measure; <b>else</b> insert" to K = 5 by looking up pf − 5. On arr = [5, 1, 4], what happens?',
+        options: ['At i = 0, pf − 5 = 0 is found so pf = 5 is never stored; at i = 2 (pf = 10) the subarray [1, 4] is missed → answer 1 instead of 2', 'It works perfectly — the else-branch shortcut is always fine', 'It counts an empty subarray and returns 3', 'It throws a NullPointerException'],
+        answer: 0,
+        explain: 'For K ≠ 0 the lookup key (pf − k) and the insert key (pf) are different, so you must ALWAYS putIfAbsent(pf, i), not only when the lookup fails.'
+      },
+      hints: [
+        `<p><b>Hint 1:</b> Sum of j+1..i = pf[i] − pf[j] = k ⇔ pf[j] = pf[i] − k. The longest one ending at i uses the earliest such j.</p>`,
+        `<p><b>Hint 2:</b> Map balance → first index, seeded with {0: −1}. Use <code>long</code> for the running sum to be safe.</p>`,
+        `<p><b>Hint 3 (recipe):</b> for i: pf += a[i]; if map has pf − k → best = max(best, i − map[pf − k]); map.putIfAbsent(pf, i). Edge cases: whole array (seed), k = 0, negatives and zeros (balances repeat → never overwrite).</p>`
+      ],
+      solution: {
+        approach: `<p><b>First-index map with a shifted lookup.</b> Same skeleton as the zero-sum version, but the partner balance is pf − k. The map holds the first index of each balance so every measured length is the longest possible for that end.</p>`,
+        code: `class Solution {
+    public int longestSubarray(int[] arr, int k) {
+        Map<Long, Integer> first = new HashMap<>();
+        first.put(0L, -1);
+        long pf = 0;
+        int best = 0;
+        for (int i = 0; i < arr.length; i++) {
+            pf += arr[i];
+            Integer j = first.get(pf - k);
+            if (j != null) best = Math.max(best, i - j);   // arr[j+1..i] sums to k
+            first.putIfAbsent(pf, i);                      // keep earliest occurrence
+        }
+        return best;
+    }
+}`,
+        alt: [{
+          lang: 'python', code: `def longest_subarray(arr, k):
+    first, pf, best = {0: -1}, 0, 0
+    for i, x in enumerate(arr):
+        pf += x
+        if pf - k in first:
+            best = max(best, i - first[pf - k])
+        first.setdefault(pf, i)
+    return best`
+        }, {
+          lang: 'cpp', code: `int longestSubarray(vector<int>& arr, int k) {
+    unordered_map<long long, int> first{{0, -1}};
+    long long pf = 0;
+    int best = 0;
+    for (int i = 0; i < (int)arr.size(); i++) {
+        pf += arr[i];
+        auto it = first.find(pf - k);
+        if (it != first.end()) best = max(best, i - it->second);
+        first.emplace(pf, i);              // emplace does nothing if the key exists
+    }
+    return best;
+}`
+        }],
+        dry: {
+          head: ['i', 'arr[i]', 'pf', 'need pf − 15', 'first[need]', 'length', 'best', 'map update'],
+          rows: [
+            ['0', '10', '10', '−5', '—', '—', '0', H.c('g', '10:0')],
+            ['1', '5', '15', '0', H.c('r', '−1'), '2', '2', H.c('g', '15:1')],
+            ['2', '2', '17', '2', '—', '—', '2', H.c('g', '17:2')],
+            ['3', '7', '24', '9', '—', '—', '2', H.c('g', '24:3')],
+            ['4', '1', '25', '10', H.c('r', '0'), '4', '4', H.c('g', '25:4')],
+            ['5', '−10', '15', '0', H.c('r', '−1'), '6', H.c('g', '6'), '15 exists → keep 15:1']
+          ]
+        },
+        complexity: `<p><b>Time:</b> O(N) average. <b>Space:</b> O(N).</p>`,
+        followUps: [
+          'All elements positive → sliding window, O(1) space.',
+          'Shortest subarray with sum exactly K → store the LAST index.',
+          'Count (not longest) subarrays with sum K → map of counts (previous topic).'
+        ]
+      }
+    }, {
+      title: 'Contiguous Array (equal number of 0s and 1s)',
+      level: 'Medium', tags: ['prefix sum', 'hashmap', '±1 trick'], companies: ['Meta', 'Amazon', 'Microsoft', 'Uber'],
+      statement: `<p>Given a binary array <code>nums</code>, return the maximum length of a contiguous subarray with an <b>equal number of 0s and 1s</b>.</p>`,
+      constraints: `1 ≤ N ≤ 10<sup>5</sup>, nums[i] is 0 or 1`,
+      example: `${H.arr([0, 1, 1, 0, 1, 1, 1, 0], { label: 'nums', hl: { 0: 'g', 1: 'g', 2: 'g', 3: 'g' } })}<p>Output ${H.c('g', '4')}: [0, 1, 1, 0] has two 0s and two 1s. No longer balanced stretch exists.</p>`,
+      brute: {
+        why: `<p>For every start, extend and count zeros and ones; record when equal: <b>O(N<sup>2</sup>)</b> = 10<sup>10</sup> at N = 10<sup>5</sup>. The waste: "ones − zeros" is just a running balance, and equal balances can be matched with a map.</p>`,
+        code: `int findMaxLengthBrute(int[] nums) {
+    int best = 0;
+    for (int l = 0; l < nums.length; l++) {
+        int zeros = 0, ones = 0;
+        for (int r = l; r < nums.length; r++) {
+            if (nums[r] == 0) zeros++; else ones++;
+            if (zeros == ones) best = Math.max(best, r - l + 1);
+        }
+    }
+    return best;
+}`
+      },
+      mcq: {
+        q: 'Why turn every 0 into −1?',
+        options: ['Then "equal 0s and 1s" becomes "subarray sum is 0", which prefix sums + a map solve', 'To make all values negative so sliding window works', 'Because Java cannot add zeros', 'To sort the array faster'],
+        answer: 0,
+        explain: 'With ±1, each 1 cancels one 0. Equal counts ⇔ net sum 0 ⇔ two equal running balances.'
+      },
+      hints: [
+        `<p><b>Hint 1:</b> Track one number: (number of 1s) − (number of 0s) so far. A stretch is balanced when this number is the same at both ends.</p>`,
+        `<p><b>Hint 2:</b> That is "longest subarray with sum 0" after mapping 0 → −1. Map balance → first index, seed {0: −1}.</p>`,
+        `<p><b>Hint 3 (recipe):</b> bal = 0; for i: bal += (nums[i] == 1 ? 1 : −1); if bal in map → best = max(best, i − map[bal]) else map[bal] = i. Bonus: bal is in [−N, N], so an int array of size 2N+1 works instead of a map.</p>`
+      ],
+      solution: {
+        approach: `<p><b>±1 balance + first-index map.</b> Map each 1 to +1 and each 0 to −1. A balanced subarray has net 0, i.e. equal balances at its two ends. Keep the first index of each balance; the longest gap between equal balances is the answer.</p>`,
+        code: `class Solution {
+    public int findMaxLength(int[] nums) {
+        Map<Integer, Integer> first = new HashMap<>();
+        first.put(0, -1);                          // balance 0 before index 0
+        int bal = 0, best = 0;
+        for (int i = 0; i < nums.length; i++) {
+            bal += (nums[i] == 1) ? 1 : -1;        // deposit for 1, withdraw for 0
+            Integer j = first.get(bal);
+            if (j != null) best = Math.max(best, i - j);
+            else first.put(bal, i);                // first time we see this balance
+        }
+        return best;
+    }
+}`,
+        alt: [{
+          lang: 'java', title: 'Array instead of HashMap (balance offset by N)', code: `class SolutionArray {
+    public int findMaxLength(int[] nums) {
+        int n = nums.length;
+        int[] first = new int[2 * n + 1];          // index = balance + n
+        Arrays.fill(first, Integer.MIN_VALUE);     // "not seen yet"
+        first[n] = -1;                              // balance 0 at index -1
+        int bal = 0, best = 0;
+        for (int i = 0; i < n; i++) {
+            bal += (nums[i] == 1) ? 1 : -1;
+            if (first[bal + n] != Integer.MIN_VALUE) best = Math.max(best, i - first[bal + n]);
+            else first[bal + n] = i;
+        }
+        return best;
+    }
+}`
+        }, {
+          lang: 'python', code: `def find_max_length(nums):
+    first, bal, best = {0: -1}, 0, 0
+    for i, x in enumerate(nums):
+        bal += 1 if x == 1 else -1
+        if bal in first:
+            best = max(best, i - first[bal])
+        else:
+            first[bal] = i
+    return best`
+        }],
+        dry: {
+          head: ['i', 'nums[i]', '±1', 'balance', 'map lookup', 'length', 'best'],
+          rows: [
+            ['0', '0', '−1', '−1', H.c('g', 'new → −1:0'), '—', '0'],
+            ['1', '1', '+1', '0', H.c('r', 'first at −1'), '2', '2'],
+            ['2', '1', '+1', '1', H.c('g', 'new → 1:2'), '—', '2'],
+            ['3', '0', '−1', '0', H.c('r', 'first at −1'), '4', H.c('g', '4')],
+            ['4', '1', '+1', '1', H.c('r', 'first at 2'), '2', '4'],
+            ['5', '1', '+1', '2', H.c('g', 'new → 2:5'), '—', '4'],
+            ['6', '1', '+1', '3', H.c('g', 'new → 3:6'), '—', '4'],
+            ['7', '0', '−1', '2', H.c('r', 'first at 5'), '2', '4']
+          ]
+        },
+        complexity: `<p><b>Time:</b> O(N). <b>Space:</b> O(N) (map or 2N+1 array).</p>`,
+        followUps: [
+          '<b>Count</b> subarrays with equal 0s and 1s → map of counts with seed {0: 1}.',
+          'Equal 0s, 1s and 2s → key = pair (c1 − c0, c2 − c1).',
+          'Longest substring with equal vowels and consonants (same ±1 trick on characters).'
+        ]
+      }
+    }]
+  });
+
 
   registerModule({
     id: 'dsa08',
