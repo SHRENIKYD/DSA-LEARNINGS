@@ -1757,4 +1757,778 @@ template &lt;class T&gt; requires std::is_integral_v&lt;T&gt; &amp;&amp; std::is
       }
     }]
   });
-registerModule({ id: 'cpp09', title: 'Templates, SFINAE & Concepts', intro: '<p>x</p>', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();
+
+  /* ======================================================================
+     PRACTICE — Easy
+     ====================================================================== */
+  practice.push({
+    title: 'Generic clampTo', level: 'Easy', tags: ['function template', 'deduction'], companies: ['Microsoft', 'Adobe'],
+    statement: `<p>Write <code>clampTo(x, lo, hi)</code> that returns <code>lo</code> if <code>x &lt; lo</code>, <code>hi</code> if <code>hi &lt; x</code>, else <code>x</code>. It must work for any type with <code>operator&lt;</code> (int, double, std::string) and must <b>not copy</b> large objects.</p>`,
+    constraints: `T supports <code>&lt;</code>. Assume <code>!(hi &lt; lo)</code>.`,
+    example: `<p><code>clampTo(15, 0, 10)</code> → ${H.c('g', '10')}; <code>clampTo(2.5, 0.0, 1.0)</code> → ${H.c('g', '1')}; <code>clampTo(std::string("m"), std::string("a"), std::string("k"))</code> → ${H.c('g', '"k"')}. <code>clampTo(15, 0.0, 10)</code> → ${H.c('r', 'deduction conflict')} (int vs double) — the same behavior as <code>std::clamp</code>.</p>`,
+    brute: { why: `<p>One function per type. Three copies of identical logic; the string version would copy unless written carefully.</p>`, code: R`
+      #include <string>
+      int clampInt(int x, int lo, int hi) { return x < lo ? lo : (hi < x ? hi : x); }
+      double clampDouble(double x, double lo, double hi) { return x < lo ? lo : (hi < x ? hi : x); }
+      std::string clampStr(std::string x, std::string lo, std::string hi) { return x < lo ? lo : (hi < x ? hi : x); }
+    ` },
+    mcq: { q: 'Why take parameters as <code>const T&amp;</code> and return <code>const T&amp;</code>?', options: ['No copies for big types; result refers to one of the arguments', 'It is required for templates', 'It makes deduction convert types', 'References are faster for int'], answer: 0, explain: 'Like <code>std::clamp</code>. Caveat: do not bind the returned reference to a temporary argument and keep it after the full expression — it would dangle.' },
+    hints: [`<p>Hint 1: One template parameter T used three times; deduction requires all three arguments to agree on T.</p>`, `<p>Hint 2: Use only <code>operator&lt;</code>: <code>x &lt; lo</code> and <code>hi &lt; x</code>, so types that define just &lt; still work.</p>`, `<p>Hint 3: Signature <code>template&lt;class T&gt; const T&amp; clampTo(const T&amp; x, const T&amp; lo, const T&amp; hi)</code>. Beware of keeping the returned reference to a temporary (dangling).</p>`],
+    solution: {
+      approach: `<p>A single function template using <code>const T&amp;</code> everywhere, mirroring <code>std::clamp</code>. Deduction forces the three arguments to share a type, which avoids silent mixed-type comparisons.</p>`,
+      code: R`
+        #include <iostream>
+        #include <string>
+
+        template <class T>
+        const T& clampTo(const T& x, const T& lo, const T& hi) {
+            if (x < lo) return lo;
+            if (hi < x) return hi;
+            return x;
+        }
+
+        int main() {
+            std::cout << clampTo(15, 0, 10) << " " << clampTo(2.5, 0.0, 1.0) << "\n";   // 10 1
+            std::string a = "a", k = "k", m = "m";
+            std::cout << clampTo(m, a, k) << "\n";                                        // k
+            std::cout << clampTo<double>(15, 0.0, 10) << "\n";   // explicit T: 15 and 10 convert -> 10
+        }
+      `,
+      dry: { head: ['call', 'T', 'test', 'returns'], rows: [['clampTo(15, 0, 10)', 'int', '15 &lt; 0? no; 10 &lt; 15? yes', 'hi = 10'], ['clampTo(2.5, 0.0, 1.0)', 'double', '1.0 &lt; 2.5', '1'], ['clampTo(m, a, k)', 'std::string', '"k" &lt; "m"', '"k"']] },
+      complexity: `<p>O(1) comparisons (O(length) for strings). One instantiation per T.</p>`,
+      followUps: ['Add a comparator parameter like <code>std::clamp(x, lo, hi, comp)</code>.', 'Constrain T with <code>std::totally_ordered</code>.', 'Show a dangling-reference bug with <code>const auto&amp; r = clampTo(f(), 0, 10);</code>']
+    }
+  });
+
+  practice.push({
+    title: 'Stack<T> class template', level: 'Easy', tags: ['class template'], companies: ['Amazon', 'Cisco'],
+    statement: `<p>Implement a class template <code>Stack&lt;T&gt;</code> with <code>push</code>, <code>pop</code> (returns the removed value), <code>top</code>, <code>empty</code> and <code>size</code>, backed by <code>std::vector&lt;T&gt;</code>. <code>pop</code>/<code>top</code> on an empty stack throws <code>std::out_of_range</code>. Define <code>push</code> outside the class body.</p>`,
+    constraints: `Up to 10<sup>6</sup> operations. T is movable.`,
+    example: `<p>push 1, push 2, pop → ${H.c('g', '2')}, top → ${H.c('g', '1')}, size → ${H.c('g', '1')}. A <code>Stack&lt;std::string&gt;</code> is a different class with identical code.</p>`,
+    brute: { why: `<p>Write <code>IntStack</code>, then copy-paste into <code>StringStack</code>… Every bug fix must be repeated; every new type needs a new class.</p>`, code: R`
+      #include <stdexcept>
+      #include <vector>
+      class IntStack {
+          std::vector<int> v_;
+      public:
+          void push(int x) { v_.push_back(x); }
+          int pop() { if (v_.empty()) throw std::out_of_range("empty"); int x = v_.back(); v_.pop_back(); return x; }
+      };
+    ` },
+    mcq: { q: 'How do you define <code>push</code> outside the class?', options: ['<code>template&lt;class T&gt; void Stack&lt;T&gt;::push(T x) { … }</code>', '<code>void Stack::push(T x) { … }</code>', '<code>template&lt;&gt; void Stack&lt;T&gt;::push(T x)</code>', 'It must be inside the class'], answer: 0, explain: 'Repeat the template header and qualify with <code>Stack&lt;T&gt;::</code>. It still belongs in the header.' },
+    hints: [`<p>Hint 1: <code>template &lt;class T&gt; class Stack { std::vector&lt;T&gt; v_; … };</code></p>`, `<p>Hint 2: Take <code>push</code>'s argument by value and <code>std::move</code> it into the vector — one signature handles lvalues (copy) and rvalues (move).</p>`, `<p>Hint 3: <code>pop</code>: check empty → throw; <code>T x = std::move(v_.back()); v_.pop_back(); return x;</code>. Out-of-class: <code>template&lt;class T&gt; void Stack&lt;T&gt;::push(T x)</code>.</p>`],
+    solution: {
+      approach: `<p>A thin class template around <code>std::vector&lt;T&gt;</code>. Members are instantiated only when used, so even a <code>Stack</code> of a non-copyable type works as long as you only move.</p>`,
+      code: R`
+        #include <iostream>
+        #include <memory>
+        #include <stdexcept>
+        #include <string>
+        #include <utility>
+        #include <vector>
+
+        template <class T>
+        class Stack {
+            std::vector<T> v_;
+        public:
+            void push(T x);                                   // defined below
+            T pop() {
+                if (v_.empty()) throw std::out_of_range("pop on empty stack");
+                T x = std::move(v_.back());
+                v_.pop_back();
+                return x;
+            }
+            const T& top() const {
+                if (v_.empty()) throw std::out_of_range("top on empty stack");
+                return v_.back();
+            }
+            bool empty() const { return v_.empty(); }
+            std::size_t size() const { return v_.size(); }
+        };
+
+        template <class T>
+        void Stack<T>::push(T x) { v_.push_back(std::move(x)); }
+
+        int main() {
+            Stack<int> s; s.push(1); s.push(2);
+            std::cout << s.pop() << " " << s.top() << " " << s.size() << "\n";   // 2 1 1
+            Stack<std::unique_ptr<int>> owners;                                   // move-only T works
+            owners.push(std::make_unique<int>(7));
+            std::cout << *owners.pop() << "\n";                                   // 7
+        }
+      `,
+      complexity: `<p>Amortized O(1) per operation; O(n) space.</p>`,
+      followUps: ['Add <code>emplace(Args&amp;&amp;...)</code> with perfect forwarding.', 'Make the backing container a template parameter, like <code>std::stack&lt;T, Container&gt;</code>.', 'Why does <code>std::stack::pop</code> return <code>void</code>? (exception safety)']
+    }
+  });
+
+  practice.push({
+    title: 'sumAll with a fold expression', level: 'Easy', tags: ['variadic', 'fold expression'], companies: ['Google', 'Meta'],
+    statement: `<p>Write <code>sumAll(args...)</code> that adds any number of arithmetic arguments and returns 0 when called with no arguments. The result type should be the common type of the arguments (int for no arguments).</p>`,
+    constraints: `0 ≤ number of arguments ≤ 100.`,
+    example: `<p><code>sumAll(1, 2, 3)</code> → ${H.c('g', '6')}; <code>sumAll(1, 2.5)</code> → ${H.c('g', '3.5')}; <code>sumAll()</code> → ${H.c('g', '0')}. A unary fold <code>(args + ...)</code> would ${H.c('r', 'not compile')} for the empty call.</p>`,
+    brute: { why: `<p>An <code>initializer_list&lt;double&gt;</code> loop: works, but converts everything to double (precision loss for large 64-bit ints) and needs braces at the call site.</p>`, code: R`
+      #include <initializer_list>
+      double sumBrute(std::initializer_list<double> xs) { double s = 0; for (double x : xs) s += x; return s; }
+    ` },
+    mcq: { q: 'Which fold handles zero arguments?', options: ['<code>(args + ... + 0)</code>', '<code>(args + ...)</code>', '<code>(... + args)</code>', 'None — packs cannot be empty'], answer: 0, explain: 'A binary fold has an initial value, so the empty expansion is just <code>0</code>. Unary folds over + are ill-formed for empty packs.' },
+    hints: [`<p>Hint 1: <code>template&lt;class... Ts&gt; auto sumAll(Ts... args)</code>.</p>`, `<p>Hint 2: A binary right fold with init 0: <code>return (args + ... + 0);</code>.</p>`, `<p>Hint 3: The <code>+ 0</code> participates in usual arithmetic conversions; with doubles present the result is double. Add <code>static_assert((std::is_arithmetic_v&lt;Ts&gt; &amp;&amp; ...))</code> for a clear error.</p>`],
+    solution: {
+      approach: `<p>A binary fold with identity element 0, plus a fold over <code>&amp;&amp;</code> in a <code>static_assert</code> to reject non-arithmetic arguments with a readable message.</p>`,
+      code: R`
+        #include <iostream>
+        #include <type_traits>
+
+        template <class... Ts>
+        auto sumAll(Ts... args) {
+            static_assert((std::is_arithmetic_v<Ts> && ...), "sumAll: arithmetic arguments only");
+            return (args + ... + 0);      // a1 + (a2 + (... + (aN + 0)))
+        }
+
+        int main() {
+            std::cout << sumAll(1, 2, 3) << " " << sumAll(1, 2.5) << " " << sumAll() << "\n";   // 6 3.5 0
+        }
+      `,
+      dry: { head: ['call', 'expansion', 'value'], rows: [['sumAll(1,2,3)', '1 + (2 + (3 + 0))', '6'], ['sumAll(1, 2.5)', '1 + (2.5 + 0)', '3.5 (double)'], ['sumAll()', '0', '0 (int)']] },
+      complexity: `<p>O(N) additions; one instantiation per argument-type list.</p>`,
+      followUps: ['Return <code>long long</code> for integer packs to avoid overflow.', 'Write <code>productAll</code> with identity 1.', 'Make it <code>constexpr</code> and test with <code>static_assert</code>.']
+    }
+  });
+
+  practice.push({
+    title: 'countOf: array length via a non-type template parameter', level: 'Easy', tags: ['non-type template parameter', 'constexpr'], companies: ['Qualcomm', 'Intel'],
+    statement: `<p>Write <code>countOf(arr)</code> returning the number of elements of a built-in array at <b>compile time</b>. Passing a pointer must <b>not compile</b> (the classic <code>sizeof(a)/sizeof(a[0])</code> macro silently returns a wrong number for pointers).</p>`,
+    constraints: `Built-in arrays of any element type and size.`,
+    example: `<p><code>int a[7]; static_assert(countOf(a) == 7);</code> ✓. <code>void f(int* p) { countOf(p); }</code> → ${H.c('r', 'no matching function')} — good! The macro version would give ${H.c('r', 'sizeof(int*)/sizeof(int) = 2')} on 64-bit.</p>`,
+    brute: { why: `<p>The C macro works for real arrays but compiles happily for pointers (e.g. after an array parameter decayed) and returns garbage like 2.</p>`, code: R`
+      #define COUNT_OF(a) (sizeof(a) / sizeof((a)[0]))
+      int f(int* p) { return COUNT_OF(p); }   // compiles, returns 2 on x86-64: a silent bug
+    ` },
+    mcq: { q: 'Why must the parameter be a reference to array, <code>const T (&amp;)[N]</code>?', options: ['By-value array parameters decay to pointers and lose N', 'References are faster', 'N must be a type', 'Arrays cannot be passed to templates'], answer: 0, explain: 'Only reference binding keeps the array type, letting deduction recover N. A pointer argument cannot match <code>T (&amp;)[N]</code>, so misuse fails to compile.' },
+    hints: [`<p>Hint 1: Make N a template parameter: <code>template&lt;class T, std::size_t N&gt;</code>.</p>`, `<p>Hint 2: Parameter <code>const T (&amp;)[N]</code> — the parentheses make it "reference to array", not "array of references".</p>`, `<p>Hint 3: Mark it <code>constexpr</code> (or <code>consteval</code>) and <code>noexcept</code>; it just returns N. C++17 also provides <code>std::size(arr)</code> doing exactly this.</p>`],
+    solution: {
+      approach: `<p>Deduce N from a reference-to-array parameter. Pointers cannot bind, so the bug class is eliminated at compile time. <code>std::size</code> / <code>std::ssize</code> are the standard versions.</p>`,
+      code: R`
+        #include <cstddef>
+        #include <iterator>
+
+        template <class T, std::size_t N>
+        constexpr std::size_t countOf(const T (&)[N]) noexcept { return N; }
+
+        int a[7];
+        const char msg[] = "hello";
+        static_assert(countOf(a) == 7);
+        static_assert(countOf(msg) == 6);          // includes the '\0'
+        static_assert(std::size(a) == 7);          // the standard library equivalent
+        // int* p = a; countOf(p);                 // error: no matching function (good!)
+        int main() {}
+      `,
+      complexity: `<p>Zero run-time cost — a compile-time constant.</p>`,
+      followUps: ['Make it work for <code>std::array</code> too (overload or concept).', 'What does <code>std::ssize</code> return and why was it added?', 'Use it to size another array: <code>int b[countOf(a)];</code>']
+    }
+  });
+
+  /* ======================================================================
+     PRACTICE — Medium
+     ====================================================================== */
+  practice.push({
+    title: 'Which overload is chosen? (predict the output)', level: 'Medium', tags: ['overload resolution', 'templates', 'output prediction'], companies: ['Bloomberg', 'Jane Street', 'Optiver'],
+    statement: `<p>Given the overload set below, predict what each call prints, then explain the rule that decided it.</p>
+      <pre>void g(long)                     // A
+void g(const char*)              // B
+template &lt;class T&gt; void g(T)     // C
+template &lt;class T&gt; void g(T*)    // D
+template &lt;&gt; void g&lt;int*&gt;(int*)   // E: explicit specialization of C</pre>
+      <p>Calls: <code>g(1)</code>, <code>g(1L)</code>, <code>g("hi")</code>, <code>g(nullptr)</code>, <code>int x; g(&amp;x)</code>, <code>g&lt;&gt;("hi")</code>.</p>`,
+    constraints: `Standard C++20 overload resolution.`,
+    example: `<p>${H.table(['call', 'prints', 'reason'], [['g(1)', 'C', 'T=int exact beats int→long conversion'], ['g(1L)', 'A', 'exact tie with C → non-template wins'], ['g("hi")', 'B', 'array-to-pointer is Exact; tie C/D/B → non-template'], ['g(nullptr)', 'C', 'nullptr_t is not a pointer type, D cannot deduce; B needs a conversion'], ['g(&amp;x)', 'D', 'C (T=int*) vs D (T=int): D more specialized; E is ignored!'], ['g&lt;&gt;("hi")', 'D', 'templates only; D more specialized than C']])}</p>`,
+    brute: { why: `<p>Guessing, or sprinkling <code>typeid(T).name()</code> prints at run time. You get the answer for one compiler run but not the <i>rule</i>, and you will not be able to defend it in an interview.</p>`, code: R`
+      #include <iostream>
+      #include <typeinfo>
+      template <class T> void probe(T) { std::cout << typeid(T).name() << "\n"; }   // shows T, not which overload won
+    ` },
+    mcq: { q: 'Why is E (the explicit specialization <code>g&lt;int*&gt;</code> of C) not called for <code>g(&amp;x)</code>?', options: ['Specializations do not take part in overload resolution; D beats C first, so C\'s specialization is never considered', 'E has a syntax error', 'Explicit specializations are always ignored', 'Because &amp;x is an rvalue'], answer: 0, explain: 'Overload resolution chooses among primary templates and plain functions. Only if C won would the compiler then look for C\'s specialization for T=int*. D (T*) is more specialized than C, so D wins.' },
+    hints: [`<p>Hint 1: For every call, list candidates, deduce T for C and D, and rank conversions: Exact &gt; Promotion &gt; Conversion.</p>`, `<p>Hint 2: Ties: non-template beats template; then more specialized template beats less specialized. Explicit specializations are invisible to this process.</p>`, `<p>Hint 3: <code>nullptr</code> has type <code>std::nullptr_t</code>, which is not <code>T*</code> for any T. <code>int → long</code> is a conversion, not a promotion. <code>g&lt;&gt;</code> removes non-templates from consideration.</p>`],
+    solution: {
+      approach: `<p>Apply the ranking rules per call and confirm by compiling. The famous lesson (Herb Sutter's "Why not specialize function templates?") is that E is dead code here: overload instead of specializing function templates.</p>`,
+      code: R`
+        #include <iostream>
+
+        void g(long)        { std::cout << "A\n"; }
+        void g(const char*) { std::cout << "B\n"; }
+        template <class T> void g(T)  { std::cout << "C\n"; }
+        template <class T> void g(T*) { std::cout << "D\n"; }
+        template <> void g<int*>(int*) { std::cout << "E\n"; }   // specializes C, not D
+
+        int main() {
+            int x = 0;
+            g(1);        // C : T=int exact, A needs int->long conversion
+            g(1L);       // A : exact tie with C -> non-template wins
+            g("hi");     // B : exact (array-to-pointer) tie -> non-template wins
+            g(nullptr);  // C : T=std::nullptr_t; D cannot deduce, B needs a conversion
+            g(&x);       // D : C(T=int*) vs D(T=int) -> D more specialized; E never considered
+            g<>("hi");   // D : templates only; T=const char
+        }
+      `,
+      dry: { head: ['call', 'A long', 'B const char*', 'C T', 'D T*', 'winner'], rows: [
+        ['g(1)', 'conversion', 'not viable', 'exact (int)', 'fails', 'C'],
+        ['g(1L)', 'exact', 'not viable', 'exact (long)', 'fails', 'A (non-template)'],
+        ['g("hi")', 'not viable', 'exact', 'exact (const char*)', 'exact (const char)', 'B (non-template)'],
+        ['g(nullptr)', 'not viable', 'conversion', 'exact', 'fails', 'C'],
+        ['g(&amp;x)', 'not viable', 'not viable', 'exact (int*)', 'exact (int)', 'D (more specialized)']
+      ] },
+      complexity: `<p>Compile-time reasoning only.</p>`,
+      followUps: ['Move E below D but make it specialize D (<code>template&lt;&gt; void g&lt;int&gt;(int*)</code>) — what prints now?', 'Add <code>void g(int)</code>: which calls change?', 'Why does <code>g(0)</code> not pick B even though 0 is a null pointer constant?']
+    }
+  });
+
+  practice.push({
+    title: 'is_specialization_of<T, Template>', level: 'Medium', tags: ['type traits', 'template template parameter', 'partial specialization'], companies: ['Google', 'Bloomberg'],
+    statement: `<p>Write a trait <code>is_specialization_of_v&lt;T, Tmpl&gt;</code> that is true when T is an instantiation of the class template Tmpl, e.g. <code>is_specialization_of_v&lt;std::vector&lt;int&gt;, std::vector&gt;</code> is true and <code>is_specialization_of_v&lt;std::list&lt;int&gt;, std::vector&gt;</code> is false. Use it to write <code>is_vector_v</code> and <code>is_optional_v</code>.</p>`,
+    constraints: `Tmpl takes only type parameters (works for vector, map, optional, pair, tuple; not for std::array).`,
+    example: `<p>${H.table(['T', 'Tmpl', 'value'], [['std::vector&lt;int&gt;', 'std::vector', '<span class="c-g">true</span>'], ['std::map&lt;int, char&gt;', 'std::map', '<span class="c-g">true</span>'], ['std::list&lt;int&gt;', 'std::vector', 'false'], ['int', 'std::optional', 'false']])}</p>`,
+    brute: { why: `<p>Hand-write one trait per template (<code>is_vector</code>, <code>is_map</code>, <code>is_optional</code>…), each a primary + partial specialization. Correct but repetitive, and easy to forget the allocator parameter for vector.</p>`, code: R`
+      #include <type_traits>
+      #include <vector>
+      template <class T> struct is_vector : std::false_type {};
+      template <class T, class A> struct is_vector<std::vector<T, A>> : std::true_type {};
+    ` },
+    mcq: { q: 'How can a template take <code>std::vector</code> itself (not <code>std::vector&lt;int&gt;</code>) as an argument?', options: ['A template template parameter: <code>template&lt;class...&gt; class Tmpl</code>', 'Pass <code>decltype(std::vector)</code>', 'Use <code>auto</code>', 'It is impossible'], answer: 0, explain: 'A template template parameter accepts a class template. Using a pack <code>class...</code> lets it match templates with defaulted extra parameters like allocators.' },
+    hints: [`<p>Hint 1: Primary: <code>template&lt;class T, template&lt;class...&gt; class Tmpl&gt; struct is_spec : std::false_type {};</code></p>`, `<p>Hint 2: Partial: <code>template&lt;template&lt;class...&gt; class Tmpl, class... Args&gt; struct is_spec&lt;Tmpl&lt;Args...&gt;, Tmpl&gt; : std::true_type {};</code> — the same Tmpl appears twice, so it must match.</p>`, `<p>Hint 3: Strip cv/ref first (<code>std::remove_cvref_t</code>) so <code>const std::vector&lt;int&gt;&amp;</code> also counts; then define <code>is_vector_v</code> as an alias using it.</p>`],
+    solution: {
+      approach: `<p>Template template parameter + variadic args + partial specialization. The pattern <code>Tmpl&lt;Args...&gt;</code> deduces both the template and its arguments from T, and matches only if that template is the same one passed as the second argument.</p>`,
+      code: R`
+        #include <list>
+        #include <map>
+        #include <optional>
+        #include <type_traits>
+        #include <vector>
+
+        template <class T, template <class...> class Tmpl>
+        struct is_specialization_of : std::false_type {};
+
+        template <template <class...> class Tmpl, class... Args>
+        struct is_specialization_of<Tmpl<Args...>, Tmpl> : std::true_type {};
+
+        template <class T, template <class...> class Tmpl>
+        inline constexpr bool is_specialization_of_v = is_specialization_of<std::remove_cvref_t<T>, Tmpl>::value;
+
+        template <class T> inline constexpr bool is_vector_v   = is_specialization_of_v<T, std::vector>;
+        template <class T> inline constexpr bool is_optional_v = is_specialization_of_v<T, std::optional>;
+
+        static_assert(is_vector_v<std::vector<int>>);
+        static_assert(is_vector_v<const std::vector<double>&>);
+        static_assert(!is_vector_v<std::list<int>>);
+        static_assert(is_specialization_of_v<std::map<int, char>, std::map>);
+        static_assert(is_optional_v<std::optional<int>> && !is_optional_v<int>);
+        int main() {}
+      `,
+      dry: { head: ['T', 'pattern Tmpl&lt;Args...&gt;', 'second arg', 'match?'], rows: [['vector&lt;int, allocator&lt;int&gt;&gt;', 'Tmpl=vector, Args={int, alloc}', 'vector', '<span class="c-g">yes → true</span>'], ['list&lt;int&gt;', 'Tmpl=list', 'vector', 'list ≠ vector → primary → false'], ['int', 'cannot deduce', 'optional', 'primary → false']] },
+      complexity: `<p>Compile time only; zero run-time cost.</p>`,
+      followUps: ['Why does this not work for <code>std::array&lt;int, 3&gt;</code>? (non-type parameter)', 'Turn it into a C++20 concept <code>SpecializationOf&lt;T, Tmpl&gt;</code>.', 'Extract the first template argument: <code>first_arg_t&lt;std::vector&lt;int&gt;&gt;</code>.']
+    }
+  });
+
+  practice.push({
+    title: 'join(sep, args...) without a trailing separator', level: 'Medium', tags: ['variadic', 'fold expression', 'ostringstream'], companies: ['Amazon', 'Uber'],
+    statement: `<p>Write <code>join(sep, args...)</code> that streams any number of printable arguments into a string with <code>sep</code> between them and <b>no</b> leading or trailing separator. Zero arguments → empty string.</p>`,
+    constraints: `Arguments support <code>operator&lt;&lt;</code>; up to 50 arguments.`,
+    example: `<p><code>join(", ", 1, "two", 3.5)</code> → ${H.c('g', '"1, two, 3.5"')}; <code>join("-")</code> → ${H.c('g', '""')}; <code>join("|", \'x\')</code> → ${H.c('g', '"x"')}.</p>`,
+    brute: { why: `<p>Convert everything to strings in a vector first, then join with a loop. Two passes and extra allocations; also needs a conversion for every type.</p>`, code: R`
+      #include <sstream>
+      #include <string>
+      #include <vector>
+      template <class... Ts>
+      std::string joinBrute(const std::string& sep, const Ts&... args) {
+          std::vector<std::string> parts;
+          auto toS = [](const auto& x) { std::ostringstream os; os << x; return os.str(); };
+          (parts.push_back(toS(args)), ...);
+          std::string out;
+          for (std::size_t i = 0; i < parts.size(); ++i) out += (i ? sep : "") + parts[i];
+          return out;
+      }
+    ` },
+    mcq: { q: 'What keeps the separator out of the front?', options: ['A <code>bool first</code> flag updated inside the comma fold', 'A right fold', '<code>sizeof...(args) - 1</code> in a loop', 'Removing the last character afterwards always works'], answer: 0, explain: 'The comma fold runs left to right; for each element print the separator unless it is the first. Trimming afterwards breaks when sep has several characters or args are empty strings.' },
+    hints: [`<p>Hint 1: Use an <code>std::ostringstream os</code> and a comma fold that runs a small lambda per element.</p>`, `<p>Hint 2: Keep <code>bool first = true;</code>. For each arg: <code>if (!first) os &lt;&lt; sep; os &lt;&lt; arg; first = false;</code>.</p>`, `<p>Hint 3: Write it as <code>(( (first ? void() : void(os &lt;&lt; sep)), os &lt;&lt; args, first = false ), ...);</code> or call a lambda: <code>(emit(args), ...)</code>. Zero args → the fold is empty → <code>""</code>.</p>`],
+    solution: {
+      approach: `<p>A comma fold calls a lambda for each element in order. The lambda prints the separator before every element except the first.</p>`,
+      code: R`
+        #include <iostream>
+        #include <sstream>
+        #include <string>
+
+        template <class... Ts>
+        std::string join(const std::string& sep, const Ts&... args) {
+            std::ostringstream os;
+            bool first = true;
+            auto emit = [&](const auto& x) {
+                if (!first) os << sep;
+                os << x;
+                first = false;
+            };
+            (emit(args), ...);              // left to right, once per argument
+            return os.str();
+        }
+
+        int main() {
+            std::cout << join(", ", 1, "two", 3.5) << "\n";   // 1, two, 3.5
+            std::cout << "[" << join("-") << "]\n";           // []
+            std::cout << join("|", 'x') << "\n";              // x
+        }
+      `,
+      dry: { head: ['element', 'first?', 'stream so far'], rows: [['1', 'yes', '"1"'], ['"two"', 'no', '"1, two"'], ['3.5', 'no', '"1, two, 3.5"']] },
+      complexity: `<p>O(total output length).</p>`,
+      followUps: ['Use <code>std::format</code> instead of streams.', 'Accept a range instead of a pack — which API is more flexible?', 'Constrain the pack with a concept requiring <code>os &lt;&lt; x</code>.']
+    }
+  });
+
+  practice.push({
+    title: 'serialize(): member if available, else free function (if constexpr + requires)', level: 'Medium', tags: ['concepts', 'requires expression', 'if constexpr', 'detection'], companies: ['Meta', 'Bloomberg'],
+    statement: `<p>Write <code>serialize(x)</code>: if <code>x.serialize()</code> exists, use it; otherwise if <code>std::to_string(x)</code> works, use that; otherwise if <code>x</code> is convertible to <code>std::string</code>, use it; otherwise fail with a clear <code>static_assert</code> message. Prefer a single function with compile-time branches.</p>`,
+    constraints: `C++20. No macros.`,
+    example: `<p><code>struct P { std::string serialize() const { return "P"; } };</code> → ${H.c('g', '"P"')}; <code>serialize(42)</code> → ${H.c('g', '"42"')}; <code>serialize("hi")</code> → ${H.c('g', '"hi"')}; <code>serialize(Widget{})</code> → ${H.c('r', 'static_assert: no way to serialize')}.</p>`,
+    brute: { why: `<p>The C++11 way: three SFINAE overloads plus priority tags or a <code>void_t</code> detector per feature. It works but is ~4× longer, and overlap between the cases needs careful ordering.</p>`, code: R`
+      #include <string>
+      #include <type_traits>
+      #include <utility>
+      template <class T, class = void> struct has_serialize : std::false_type {};
+      template <class T>
+      struct has_serialize<T, std::void_t<decltype(std::declval<const T&>().serialize())>> : std::true_type {};
+    ` },
+    mcq: { q: 'What does <code>if constexpr (requires { x.serialize(); })</code> do?', options: ['Evaluates at compile time whether the expression is valid and discards the other branch', 'Calls serialize() and checks the result', 'Throws if serialize is missing', 'Only works with concepts declared at namespace scope'], answer: 0, explain: 'A requires-expression is a bool constant expression. Inside a template, the untaken <code>if constexpr</code> branch is discarded, so it may contain code that would not compile for T.' },
+    hints: [`<p>Hint 1: A requires-expression can be used inline as a bool: <code>requires { x.serialize(); }</code>.</p>`, `<p>Hint 2: Chain <code>if constexpr / else if constexpr</code> in priority order: member, to_string, convertible_to.</p>`, `<p>Hint 3: The last <code>else</code> needs a dependent false: <code>static_assert(sizeof(T) == 0, "…")</code> or (C++23 compilers) plain <code>static_assert(false, "…")</code>.</p>`],
+    solution: {
+      approach: `<p>One function template with an <code>if constexpr</code> chain whose conditions are inline requires-expressions. Priority is simply the order of the branches — no tags, no overload ranking.</p>`,
+      code: R`
+        #include <concepts>
+        #include <iostream>
+        #include <string>
+
+        template <class T>
+        std::string serialize(const T& x) {
+            if constexpr (requires { { x.serialize() } -> std::convertible_to<std::string>; }) {
+                return x.serialize();
+            } else if constexpr (requires { std::to_string(x); }) {
+                return std::to_string(x);
+            } else if constexpr (std::convertible_to<const T&, std::string>) {
+                return std::string(x);
+            } else {
+                static_assert(sizeof(T) == 0, "serialize: no way to serialize this type");
+            }
+        }
+
+        struct P { std::string serialize() const { return "P"; } };
+
+        int main() {
+            std::cout << serialize(P{}) << " " << serialize(42) << " " << serialize("hi") << "\n";  // P 42 hi
+        }
+      `,
+      dry: { head: ['argument', 'has .serialize()?', 'to_string ok?', 'convertible?', 'branch'], rows: [['P{}', 'yes', '—', '—', 'member'], ['42', 'no', 'yes', '—', 'to_string'], ['"hi" (const char[3])', 'no', 'no', 'yes', 'std::string(x)'], ['Widget{}', 'no', 'no', 'no', '<span class="c-r">static_assert</span>']] },
+      complexity: `<p>Decided at compile time; run time is just the chosen conversion.</p>`,
+      followUps: ['Add containers by recursing with <code>serialize(elem)</code>.', 'Convert the conditions into named concepts — when is that worth it?', 'Why does <code>to_string</code> accept <code>bool</code> and <code>char</code> (what does it print)?']
+    }
+  });
+
+  practice.push({
+    title: 'Shape concept and a variadic totalArea', level: 'Medium', tags: ['concepts', 'variadic', 'static polymorphism'], companies: ['Apple', 'Nvidia'],
+    statement: `<p>Define a concept <code>Shape</code> requiring <code>s.area()</code> convertible to <code>double</code> and <code>s.name()</code> convertible to <code>std::string</code>. Write <code>totalArea(shapes...)</code> that accepts any number of different shape types (no common base class, no virtual functions) and sums their areas. Non-shapes must be rejected by the constraint.</p>`,
+    constraints: `0 ≤ number of shapes ≤ 100.`,
+    example: `<p><code>totalArea(Circle{1}, Square{2})</code> → ${H.c('g', '3.14159 + 4 = 7.14159')}; <code>totalArea()</code> → ${H.c('g', '0')}; <code>totalArea(Square{2}, 5)</code> → ${H.c('r', 'constraints not satisfied: Shape&lt;int&gt;')}.</p>`,
+    brute: { why: `<p>The classic OOP answer: an abstract <code>Shape</code> base with virtual <code>area()</code>, heap-allocated shapes in a <code>vector&lt;unique_ptr&lt;Shape&gt;&gt;</code>. Flexible at run time, but costs an allocation and a virtual call per shape, and forces every type to inherit from your base.</p>`, code: R`
+      #include <memory>
+      #include <vector>
+      struct ShapeBase { virtual ~ShapeBase() = default; virtual double area() const = 0; };
+      double totalAreaVirtual(const std::vector<std::unique_ptr<ShapeBase>>& v) {
+          double s = 0; for (const auto& p : v) s += p->area(); return s;
+      }
+    ` },
+    mcq: { q: 'What does <code>const Shape auto&amp;... shapes</code> declare?', options: ['A function parameter pack where every element\'s type must satisfy Shape', 'A single shape', 'A pack of Shape base-class references', 'A runtime check'], answer: 0, explain: 'An abbreviated variadic template: each element gets its own invented template parameter, and the type-constraint applies to each of them.' },
+    hints: [`<p>Hint 1: <code>concept Shape = requires(const T&amp; s) { { s.area() } -&gt; std::convertible_to&lt;double&gt;; { s.name() } -&gt; std::convertible_to&lt;std::string&gt;; };</code></p>`, `<p>Hint 2: Signature: <code>double totalArea(const Shape auto&amp;... shapes)</code>.</p>`, `<p>Hint 3: Body: <code>return (0.0 + ... + shapes.area());</code> — a binary left fold with 0.0, valid for an empty pack.</p>`],
+    solution: {
+      approach: `<p>Static polymorphism: the concept states the interface; the constrained pack accepts any mix of conforming types; a binary fold sums. Every call is resolved and inlined at compile time — no vtables, no heap.</p>`,
+      code: R`
+        #include <concepts>
+        #include <iostream>
+        #include <numbers>
+        #include <string>
+
+        template <class T>
+        concept Shape = requires(const T& s) {
+            { s.area() } -> std::convertible_to<double>;
+            { s.name() } -> std::convertible_to<std::string>;
+        };
+
+        struct Circle { double r; double area() const { return std::numbers::pi * r * r; } std::string name() const { return "circle"; } };
+        struct Square { double a; double area() const { return a * a; } std::string name() const { return "square"; } };
+
+        double totalArea(const Shape auto&... shapes) {
+            return (0.0 + ... + shapes.area());          // binary left fold, 0 for no shapes
+        }
+
+        void describeAll(const Shape auto&... shapes) {
+            ((std::cout << shapes.name() << '=' << shapes.area() << ' '), ...);
+            std::cout << "\n";
+        }
+
+        int main() {
+            std::cout << totalArea(Circle{1}, Square{2}) << " " << totalArea() << "\n";   // 7.14159 0
+            describeAll(Square{3}, Circle{0.5});
+            // totalArea(Square{2}, 5);   // error: Shape<int> not satisfied
+        }
+      `,
+      dry: { head: ['step', 'element', 'running sum'], rows: [['init', '—', '0.0'], ['1', 'Circle{1}.area() = 3.14159', '3.14159'], ['2', 'Square{2}.area() = 4', '7.14159']] },
+      complexity: `<p>O(N) area calls, all inlinable. One instantiation per distinct list of shape types.</p>`,
+      followUps: ['Store mixed shapes in a container: compare <code>std::variant&lt;Circle, Square&gt;</code> + <code>std::visit</code> with the virtual approach.', 'Add a semantic requirement (area ≥ 0) — can a concept check it?', 'How would you type-erase Shape (like <code>std::function</code>) without inheritance in the user types?']
+    }
+  });
+
+  practice.push({
+    title: 'Build my_is_same, my_conditional and my_enable_if from scratch', level: 'Medium', tags: ['type traits', 'specialization', 'SFINAE'], companies: ['Bloomberg', 'Citadel'],
+    statement: `<p>Without using <code>&lt;type_traits&gt;</code> for the implementations, write <code>my_is_same&lt;A, B&gt;</code>, <code>my_conditional&lt;B, T, F&gt;</code> and <code>my_enable_if&lt;B, T&gt;</code> with <code>_v</code>/<code>_t</code> helpers, then use <code>my_enable_if_t</code> to write a function <code>half(x)</code> available only for floating-point types.</p>`,
+    constraints: `C++17 or later; check results with <code>static_assert</code>.`,
+    example: `<p>${H.table(['expression', 'result'], [['my_is_same_v&lt;int, int&gt;', 'true'], ['my_is_same_v&lt;int, const int&gt;', 'false'], ['my_conditional_t&lt;true, int, double&gt;', 'int'], ['half(3.0)', '1.5'], ['half(3)', '<span class="c-r">no matching function</span>']])}</p>`,
+    brute: { why: `<p>Just <code>#include &lt;type_traits&gt;</code> — fine in production, but interviewers ask this to see whether you understand that traits are ordinary specializations, not compiler magic.</p>`, code: R`
+      #include <type_traits>
+      static_assert(std::is_same_v<std::conditional_t<true, int, double>, int>);
+    ` },
+    mcq: { q: 'In <code>my_enable_if&lt;false, T&gt;</code>, what makes SFINAE work?', options: ['The primary template has no <code>type</code> member, so <code>::type</code> is an invalid type during substitution', 'It throws an exception', 'It defines <code>type = void</code>', 'It is marked deleted'], answer: 0, explain: 'Naming a non-existent member type in the signature is a substitution failure in the immediate context, so the overload is removed.' },
+    hints: [`<p>Hint 1: <code>my_is_same</code>: primary inherits a false constant; partial <code>my_is_same&lt;T, T&gt;</code> inherits true.</p>`, `<p>Hint 2: <code>my_conditional</code>: primary <code>&lt;bool B, class T, class F&gt; { using type = T; }</code>; partial for <code>&lt;false, T, F&gt;</code> uses F.</p>`, `<p>Hint 3: <code>my_enable_if</code>: primary is empty; partial <code>&lt;true, T&gt;</code> has <code>using type = T;</code>. Use it as <code>template&lt;class T, my_enable_if_t&lt;is_float&lt;T&gt;, int&gt; = 0&gt;</code>. You may write a tiny <code>is_float</code> via <code>my_is_same</code>.</p>`],
+    solution: {
+      approach: `<p>Every trait is a primary template plus one partial specialization. A tiny <code>bool_constant</code> replaces <code>std::integral_constant</code>.</p>`,
+      code: R`
+        #include <iostream>
+
+        template <bool B> struct bool_c { static constexpr bool value = B; };
+
+        template <class A, class B> struct my_is_same : bool_c<false> {};
+        template <class T>          struct my_is_same<T, T> : bool_c<true> {};
+        template <class A, class B> inline constexpr bool my_is_same_v = my_is_same<A, B>::value;
+
+        template <bool B, class T, class F> struct my_conditional { using type = T; };
+        template <class T, class F>         struct my_conditional<false, T, F> { using type = F; };
+        template <bool B, class T, class F> using my_conditional_t = typename my_conditional<B, T, F>::type;
+
+        template <bool B, class T = void> struct my_enable_if {};
+        template <class T>                struct my_enable_if<true, T> { using type = T; };
+        template <bool B, class T = void> using my_enable_if_t = typename my_enable_if<B, T>::type;
+
+        template <class T>
+        inline constexpr bool is_float_v = my_is_same_v<T, float> || my_is_same_v<T, double> || my_is_same_v<T, long double>;
+
+        template <class T, my_enable_if_t<is_float_v<T>, int> = 0>
+        T half(T x) { return x / 2; }
+
+        static_assert(my_is_same_v<int, int> && !my_is_same_v<int, const int>);
+        static_assert(my_is_same_v<my_conditional_t<true, int, double>, int>);
+        static_assert(my_is_same_v<my_conditional_t<false, int, double>, double>);
+
+        int main() { std::cout << half(3.0) << "\n"; }   // 1.5   (half(3) would not compile)
+      `,
+      dry: { head: ['instantiation', 'specialization chosen', 'result'], rows: [['my_is_same&lt;int, int&gt;', 'partial &lt;T, T&gt;', 'true'], ['my_is_same&lt;int, const int&gt;', 'primary', 'false'], ['my_enable_if&lt;false, int&gt;::type', 'primary (empty)', 'invalid → SFINAE']] },
+      complexity: `<p>Compile time only; zero run-time cost.</p>`,
+      followUps: ['Implement <code>my_remove_reference</code> and <code>my_decay</code>.', 'Why is <code>std::is_same</code> often a compiler built-in today?', 'Write <code>my_void_t</code> and a detector with it.']
+    }
+  });
+
+  /* ======================================================================
+     PRACTICE — Hard
+     ====================================================================== */
+  practice.push({
+    title: 'Compile-time TypeList: size, contains, indexOf, at', level: 'Hard', tags: ['variadic', 'metaprogramming', 'partial specialization', 'fold expression'], companies: ['Jane Street', 'Hudson River Trading'],
+    statement: `<p>Implement a compile-time type list <code>TypeList&lt;Ts...&gt;</code> with: <code>size</code>, <code>contains&lt;T&gt;</code>, <code>indexOf&lt;T&gt;</code> (first index, or -1), and <code>At&lt;I, List&gt;::type</code> (the I-th type; out of range must not compile). Everything must be usable in <code>static_assert</code>.</p>`,
+    constraints: `Up to 100 types in a list. No run-time code.`,
+    example: `<p>For <code>L = TypeList&lt;int, char, double, char&gt;</code>: size ${H.c('g', '4')}, contains&lt;char&gt; ${H.c('g', 'true')}, indexOf&lt;char&gt; ${H.c('g', '1')} (first match), indexOf&lt;float&gt; ${H.c('g', '-1')}, <code>At&lt;2, L&gt;::type</code> = ${H.c('g', 'double')}, <code>At&lt;9, L&gt;</code> ${H.c('r', 'compile error')}.</p>`,
+    brute: { why: `<p>Find the index at <b>run time</b> by comparing <code>typeid</code>s in a loop. It costs run time, needs RTTI, cannot be used in <code>static_assert</code> or as a template argument, and cannot produce a <i>type</i> (At) at all.</p>`, code: R`
+      #include <typeinfo>
+      #include <vector>
+      #include <typeindex>
+      template <class T, class... Ts>
+      int indexOfRuntime() {
+          std::vector<std::type_index> ids{typeid(Ts)...};
+          for (int i = 0; i < (int)ids.size(); ++i) if (ids[i] == typeid(T)) return i;
+          return -1;
+      }
+    ` },
+    mcq: { q: 'For <code>At&lt;0, TypeList&lt;H, T...&gt;&gt;</code> vs <code>At&lt;I, TypeList&lt;H, T...&gt;&gt;</code> with I = 0, which partial specialization is chosen?', options: ['The one with the literal 0 — it is more specialized', 'The generic I one — it was declared later', 'Ambiguous', 'The primary template'], answer: 0, explain: 'Every argument list matching <code>&lt;0, …&gt;</code> also matches <code>&lt;I, …&gt;</code>, but not vice versa, so the 0-version is more specialized and terminates the recursion.' },
+    hints: [`<p>Hint 1: <code>size = sizeof...(Ts)</code>; <code>contains = (std::is_same_v&lt;T, Ts&gt; || ...)</code>.</p>`, `<p>Hint 2: indexOf in a <code>consteval</code>/<code>constexpr</code> function: walk the pack with a comma fold, counting <code>i</code> and recording the first match.</p>`, `<p>Hint 3: At: declare the primary but do not define it (so out-of-range is an error). Partial <code>&lt;0, TypeList&lt;H, T...&gt;&gt;</code> gives H; partial <code>&lt;I, TypeList&lt;H, T...&gt;&gt;</code> inherits from <code>At&lt;I - 1, TypeList&lt;T...&gt;&gt;</code>.</p>`],
+    solution: {
+      approach: `<p>Folds for the boolean/counting questions (one instantiation, no recursion) and a recursive partial specialization for <code>At</code>, which must produce a type. Leaving the primary <code>At</code> undefined turns out-of-range access into a compile error.</p>`,
+      code: R`
+        #include <cstddef>
+        #include <type_traits>
+
+        template <class... Ts>
+        struct TypeList {
+            static constexpr std::size_t size = sizeof...(Ts);
+
+            template <class T>
+            static constexpr bool contains = (std::is_same_v<T, Ts> || ...);
+
+            template <class T>
+            static constexpr int indexOf() {
+                int i = 0, found = -1;
+                ((found == -1 && std::is_same_v<T, Ts> ? (found = i) : 0, ++i), ...);
+                return found;
+            }
+        };
+
+        template <std::size_t I, class List> struct At;                 // undefined: out of range = error
+        template <class H, class... T>
+        struct At<0, TypeList<H, T...>> { using type = H; };             // found it
+        template <std::size_t I, class H, class... T>
+        struct At<I, TypeList<H, T...>> : At<I - 1, TypeList<T...>> {};  // drop the head, recurse
+
+        template <std::size_t I, class List> using At_t = typename At<I, List>::type;
+
+        using L = TypeList<int, char, double, char>;
+        static_assert(L::size == 4);
+        static_assert(L::contains<char> && !L::contains<float>);
+        static_assert(L::indexOf<char>() == 1 && L::indexOf<float>() == -1);
+        static_assert(std::is_same_v<At_t<2, L>, double>);
+        // At_t<9, L> x;   // error: incomplete type At<5, TypeList<>>
+        int main() {}
+      `,
+      dry: { head: ['instantiation', 'specialization', 'result'], rows: [['At&lt;2, TL&lt;int,char,double,char&gt;&gt;', 'generic I', 'inherit At&lt;1, TL&lt;char,double,char&gt;&gt;'], ['At&lt;1, TL&lt;char,double,char&gt;&gt;', 'generic I', 'inherit At&lt;0, TL&lt;double,char&gt;&gt;'], ['At&lt;0, TL&lt;double,char&gt;&gt;', 'I = 0 (more specialized)', '<span class="c-g">type = double</span>']] },
+      complexity: `<p>size/contains/indexOf: O(N) work in one instantiation. At&lt;I&gt;: O(I) instantiations (compilers also offer <code>__type_pack_element</code> for O(1)).</p>`,
+      followUps: ['Add <code>PushFront</code>, <code>Reverse</code> and <code>Unique</code>.', 'Convert a <code>TypeList</code> into a <code>std::variant</code> of those types.', 'Use C++26 pack indexing <code>Ts...[I]</code> — what disappears?']
+    }
+  });
+
+  practice.push({
+    title: 'Implement std::apply and a tuple printer with index_sequence', level: 'Hard', tags: ['variadic', 'index_sequence', 'perfect forwarding', 'tuple'], companies: ['Google', 'Bloomberg'],
+    statement: `<p>Implement <code>myApply(f, tuple)</code> that calls <code>f</code> with the tuple's elements as separate arguments (perfectly forwarding both <code>f</code> and the elements, returning exactly what <code>f</code> returns, including references). Then use it to write <code>tupleToString(t)</code> producing <code>(1, x, 2.5)</code>.</p>`,
+    constraints: `Tuples of 0..20 elements; works with lvalue and rvalue tuples; move-only elements must be movable out of an rvalue tuple.`,
+    example: `<p><code>myApply([](int a, int b) { return a + b; }, std::tuple{2, 3})</code> → ${H.c('g', '5')}. <code>tupleToString(std::tuple{1, \'x\', 2.5})</code> → ${H.c('g', '"(1, x, 2.5)"')}; empty tuple → ${H.c('g', '"()"')}.</p>`,
+    brute: { why: `<p>Hand-write one overload per tuple size (0, 1, 2, 3 …), each calling <code>f(std::get&lt;0&gt;(t), std::get&lt;1&gt;(t), …)</code>. It caps the size and repeats code; forgetting to forward makes move-only elements fail.</p>`, code: R`
+      #include <tuple>
+      template <class F, class A, class B>
+      auto apply2(F f, const std::tuple<A, B>& t) { return f(std::get<0>(t), std::get<1>(t)); }
+      template <class F, class A, class B, class C>
+      auto apply3(F f, const std::tuple<A, B, C>& t) { return f(std::get<0>(t), std::get<1>(t), std::get<2>(t)); }
+    ` },
+    mcq: { q: 'Why expand <code>std::get&lt;I&gt;(std::forward&lt;Tuple&gt;(t))...</code> rather than <code>std::get&lt;I&gt;(t)...</code>?', options: ['So elements of an rvalue tuple are passed as rvalues (move-only types work, no extra copies)', 'Because std::get requires rvalues', 'To change the evaluation order', 'It makes no difference'], answer: 0, explain: '<code>std::get</code> on an rvalue tuple returns <code>T&amp;&amp;</code>. Forwarding the tuple preserves its value category per element; forwarding "the same tuple" several times is fine because each <code>get</code> touches a different element.' },
+    hints: [`<p>Hint 1: A helper that receives <code>std::index_sequence&lt;I...&gt;</code> gives you the pack 0, 1, …, N-1 to expand.</p>`, `<p>Hint 2: <code>std::make_index_sequence&lt;std::tuple_size_v&lt;std::remove_reference_t&lt;Tuple&gt;&gt;&gt;{}</code> creates it; return type <code>decltype(auto)</code> preserves references.</p>`, `<p>Hint 3: Inside: <code>return std::invoke(std::forward&lt;F&gt;(f), std::get&lt;I&gt;(std::forward&lt;Tuple&gt;(t))...);</code>. For the printer, apply a variadic lambda that uses a comma fold with a "first" flag.</p>`],
+    solution: {
+      approach: `<p>The index-sequence trick turns "N elements" into a pack of indices that can be expanded in one expression. <code>std::invoke</code> supports member pointers too, and <code>decltype(auto)</code> returns exactly what <code>f</code> returns.</p>`,
+      code: R`
+        #include <cstddef>
+        #include <functional>
+        #include <iostream>
+        #include <memory>
+        #include <sstream>
+        #include <string>
+        #include <tuple>
+        #include <type_traits>
+        #include <utility>
+
+        template <class F, class Tuple, std::size_t... I>
+        decltype(auto) applyImpl(F&& f, Tuple&& t, std::index_sequence<I...>) {
+            return std::invoke(std::forward<F>(f), std::get<I>(std::forward<Tuple>(t))...);
+        }
+
+        template <class F, class Tuple>
+        decltype(auto) myApply(F&& f, Tuple&& t) {
+            constexpr std::size_t N = std::tuple_size_v<std::remove_reference_t<Tuple>>;
+            return applyImpl(std::forward<F>(f), std::forward<Tuple>(t), std::make_index_sequence<N>{});
+        }
+
+        template <class... Ts>
+        std::string tupleToString(const std::tuple<Ts...>& t) {
+            std::ostringstream os;
+            os << '(';
+            myApply([&os](const auto&... xs) {
+                bool first = true;
+                ((os << (first ? "" : ", ") << xs, first = false), ...);
+            }, t);
+            os << ')';
+            return os.str();
+        }
+
+        int main() {
+            std::cout << myApply([](int a, int b) { return a + b; }, std::tuple{2, 3}) << "\n";   // 5
+            std::cout << tupleToString(std::tuple{1, 'x', 2.5}) << " " << tupleToString(std::tuple<>{}) << "\n";
+            auto owned = myApply([](std::unique_ptr<int> p) { return *p; },
+                                 std::tuple<std::unique_ptr<int>>{std::make_unique<int>(9)});  // moved out
+            std::cout << owned << "\n";                                                         // 9
+        }
+      `,
+      dry: { head: ['step', 'value'], rows: [['N for tuple{1, \'x\', 2.5}', '3'], ['index_sequence', '&lt;0, 1, 2&gt;'], ['expansion', 'f(get&lt;0&gt;(t), get&lt;1&gt;(t), get&lt;2&gt;(t))'], ['printer fold', '"1" → "1, x" → "1, x, 2.5"']] },
+      complexity: `<p>O(N) element accesses; one instantiation per tuple type. No recursion.</p>`,
+      followUps: ['Implement <code>std::make_from_tuple&lt;T&gt;</code>.', 'Write <code>tupleTransform(t, f)</code> returning a new tuple.', 'Make <code>myApply</code> <code>constexpr</code> and <code>noexcept</code>-correct.']
+    }
+  });
+
+  practice.push({
+    title: 'Strongly typed physical units with non-type template parameters', level: 'Hard', tags: ['non-type template parameter', 'operator templates', 'compile-time safety'], companies: ['SpaceX', 'Tesla', 'Waymo'],
+    statement: `<p>Model quantities as <code>Quantity&lt;M, S&gt;</code> where M and S are the exponents of metres and seconds. Adding/subtracting requires identical dimensions; multiplying/dividing adds/subtracts exponents. <code>Meters / Seconds</code> must produce a <code>Speed</code> type, and <code>Meters + Seconds</code> must <b>fail to compile</b>. Zero run-time overhead versus <code>double</code>.</p>`,
+    constraints: `Integer exponents in [-8, 8]. C++20.`,
+    example: `<p><code>Meters d{100}; Seconds t{20}; auto v = d / t;</code> → type ${H.c('g', 'Quantity&lt;1, -1&gt;')}, value ${H.c('g', '5')}. <code>d + t</code> → ${H.c('r', 'no match for operator+')}. (The 1999 Mars Climate Orbiter was lost to a unit mix-up exactly like this.)</p>`,
+    brute: { why: `<p>Plain <code>double</code>s with naming conventions (<code>distM</code>, <code>timeS</code>). The compiler cannot catch <code>distM + timeS</code>; bugs show up in production, not at build time.</p>`, code: R`
+      double speed(double distM, double timeS) { return distM / timeS; }
+      double oops(double distM, double timeS) { return distM + timeS; }   // compiles, meaningless
+    ` },
+    mcq: { q: 'How does <code>operator*</code> produce the right result type?', options: ['Its return type is <code>Quantity&lt;M1 + M2, S1 + S2&gt;</code>, computed from deduced non-type parameters', 'It checks units at run time', 'It returns double', 'Through virtual functions'], answer: 0, explain: 'Non-type template parameters are deduced from the argument types, and arithmetic on them in the return type happens at compile time.' },
+    hints: [`<p>Hint 1: <code>template &lt;int M, int S&gt; struct Quantity { double value; };</code> — the dimensions live only in the type.</p>`, `<p>Hint 2: <code>operator+</code> takes <code>Quantity&lt;M, S&gt;</code> twice (same M, S), so mismatched dimensions simply fail deduction → "no match".</p>`, `<p>Hint 3: <code>template&lt;int M1, int S1, int M2, int S2&gt; constexpr Quantity&lt;M1 + M2, S1 + S2&gt; operator*(Quantity&lt;M1, S1&gt; a, Quantity&lt;M2, S2&gt; b)</code>; same for <code>/</code> with minus. Add aliases Meters, Seconds, Speed, Acceleration and check with <code>static_assert</code>.</p>`],
+    solution: {
+      approach: `<p>Dimensions are encoded as non-type template parameters, so the type system does dimensional analysis. Deduction makes mismatched addition impossible and computes product/quotient dimensions at compile time. The object is just a <code>double</code>, so it optimizes to identical machine code.</p>`,
+      code: R`
+        #include <iostream>
+        #include <type_traits>
+
+        template <int M, int S>
+        struct Quantity {
+            double value;
+        };
+
+        template <int M, int S>
+        constexpr Quantity<M, S> operator+(Quantity<M, S> a, Quantity<M, S> b) { return {a.value + b.value}; }
+        template <int M, int S>
+        constexpr Quantity<M, S> operator-(Quantity<M, S> a, Quantity<M, S> b) { return {a.value - b.value}; }
+        template <int M1, int S1, int M2, int S2>
+        constexpr Quantity<M1 + M2, S1 + S2> operator*(Quantity<M1, S1> a, Quantity<M2, S2> b) { return {a.value * b.value}; }
+        template <int M1, int S1, int M2, int S2>
+        constexpr Quantity<M1 - M2, S1 - S2> operator/(Quantity<M1, S1> a, Quantity<M2, S2> b) { return {a.value / b.value}; }
+
+        using Meters       = Quantity<1, 0>;
+        using Seconds      = Quantity<0, 1>;
+        using Speed        = Quantity<1, -1>;
+        using Acceleration = Quantity<1, -2>;
+
+        int main() {
+            constexpr Meters d{100};
+            constexpr Seconds t{20};
+            constexpr auto v = d / t;                         // Quantity<1, -1>
+            constexpr auto a = v / t;                         // Quantity<1, -2>
+            static_assert(std::is_same_v<std::remove_const_t<decltype(v)>, Speed>);
+            static_assert(std::is_same_v<std::remove_const_t<decltype(a)>, Acceleration>);
+            static_assert(sizeof(Speed) == sizeof(double));   // zero overhead
+            std::cout << v.value << " m/s, " << a.value << " m/s^2\n";   // 5 m/s, 0.25 m/s^2
+            // auto bad = d + t;   // error: no match for operator+ (Quantity<1,0>, Quantity<0,1>)
+        }
+      `,
+      dry: { head: ['expression', 'deduced', 'result type', 'value'], rows: [['d / t', 'M1=1,S1=0,M2=0,S2=1', 'Quantity&lt;1, -1&gt; (Speed)', '5'], ['v / t', 'M1=1,S1=-1,M2=0,S2=1', 'Quantity&lt;1, -2&gt;', '0.25'], ['d + t', 'M: 1 vs 0 conflict', '<span class="c-r">no match</span>', '—']] },
+      complexity: `<p>Run time identical to raw doubles; compile time: one instantiation per dimension combination.</p>`,
+      followUps: ['Add kilograms and a <code>Newton</code> alias.', 'Support scaled units (km, ms) with <code>std::ratio</code> — compare with <code>std::chrono::duration</code>.', 'Use a C++20 class-type NTTP <code>struct Dim { int m, s, kg; }</code> instead of separate ints.']
+    }
+  });
+
+  practice.push({
+    title: 'The overloaded visitor for std::variant', level: 'Hard', tags: ['variadic', 'CTAD', 'overload resolution', 'variant'], companies: ['Meta', 'Bloomberg', 'Adobe'],
+    statement: `<p>Write the <code>overloaded</code> helper so that <code>std::visit(overloaded{lambda1, lambda2, …}, v)</code> dispatches on the active alternative of a <code>std::variant&lt;int, double, std::string, bool&gt;</code>. Use it to evaluate a vector of such tokens: sum the numbers, concatenate strings, count true bools. Explain which lambda is chosen for each alternative, including when a generic <code>[](auto)</code> fallback is present.</p>`,
+    constraints: `Up to 10<sup>6</sup> tokens. C++20.`,
+    example: `<p>Tokens <code>{3, 2.5, "ab", true, "c", false}</code> → sum ${H.c('g', '5.5')}, text ${H.c('g', '"abc"')}, trues ${H.c('g', '1')}. With lambdas for <code>int</code>, <code>double</code>, <code>const std::string&amp;</code> and <code>auto</code>: a <code>bool</code> alternative goes to ${H.c('y', 'the generic auto lambda')} (exact match through deduction beats bool→int promotion).</p>`,
+    brute: { why: `<p>An if-else chain on <code>std::holds_alternative&lt;T&gt;</code> / <code>v.index()</code>. Easy to forget an alternative (no compile-time exhaustiveness), and every new alternative means editing every chain.</p>`, code: R`
+      #include <string>
+      #include <variant>
+      double numericValue(const std::variant<int, double, std::string, bool>& v) {
+          if (std::holds_alternative<int>(v)) return std::get<int>(v);
+          if (std::holds_alternative<double>(v)) return std::get<double>(v);
+          return 0;   // silently ignores strings and bools — and any alternative added later
+      }
+    ` },
+    mcq: { q: 'Why do we need <code>using Fs::operator()...;</code> in <code>struct overloaded : Fs...</code>?', options: ['Otherwise the operator() names from different bases are ambiguous; the using-declarations bring them into one overload set', 'To make the lambdas copyable', 'It enables CTAD', 'It is only for style'], answer: 0, explain: 'Name lookup finds operator() in several base classes and stops with an ambiguity. A pack-expanded using-declaration merges them so normal overload resolution can pick the best one.' },
+    hints: [`<p>Hint 1: <code>template&lt;class... Fs&gt; struct overloaded : Fs... { using Fs::operator()...; };</code> inherits from every lambda type.</p>`, `<p>Hint 2: C++20 aggregate CTAD deduces <code>Fs...</code> from <code>overloaded{l1, l2}</code>; in C++17 add a deduction guide <code>template&lt;class... Fs&gt; overloaded(Fs...) -&gt; overloaded&lt;Fs...&gt;;</code>.</p>`, `<p>Hint 3: <code>std::visit</code> calls the visitor with the active alternative's exact type; then ordinary overload resolution among the lambdas' <code>operator()</code> decides. A bool alternative + an <code>int</code> lambda + an <code>auto</code> lambda → the auto one wins (exact). If no lambda accepts an alternative, <code>std::visit</code> fails to compile — free exhaustiveness checking.</p>`],
+    solution: {
+      approach: `<p>Inherit from all lambdas and merge their call operators with a pack-expanded using-declaration; CTAD deduces the lambda types. <code>std::visit</code> generates a jump table over alternatives, so dispatch is O(1) and missing cases are compile errors.</p>`,
+      code: R`
+        #include <iostream>
+        #include <string>
+        #include <variant>
+        #include <vector>
+
+        template <class... Fs>
+        struct overloaded : Fs... { using Fs::operator()...; };
+        template <class... Fs> overloaded(Fs...) -> overloaded<Fs...>;   // needed only before C++20
+
+        using Token = std::variant<int, double, std::string, bool>;
+
+        int main() {
+            std::vector<Token> tokens{3, 2.5, std::string("ab"), true, std::string("c"), false};
+            double sum = 0; std::string text; int trues = 0;
+            for (const auto& tok : tokens) {
+                std::visit(overloaded{
+                    [&](int i)                { sum += i; },
+                    [&](double d)             { sum += d; },
+                    [&](const std::string& s) { text += s; },
+                    [&](bool b)               { trues += b; }
+                }, tok);
+            }
+            std::cout << sum << " " << text << " " << trues << "\n";        // 5.5 abc 1
+
+            // Which overload? A generic fallback catches bool before the int lambda does.
+            auto who = overloaded{
+                [](int)                { return "int"; },
+                [](const std::string&) { return "string"; },
+                [](auto)               { return "auto"; }
+            };
+            std::cout << std::visit(who, Token{true}) << " "              // auto (exact via deduction)
+                      << std::visit(who, Token{7}) << " "                 // int  (non-template wins tie)
+                      << std::visit(who, Token{1.5}) << "\n";             // auto
+        }
+      `,
+      dry: { head: ['alternative', 'int lambda', 'string lambda', 'auto lambda', 'chosen'], rows: [['bool', 'promotion', 'not viable', 'exact (template)', 'auto'], ['int', 'exact', 'not viable', 'exact (template)', 'int (non-template wins tie)'], ['double', 'conversion', 'not viable', 'exact', 'auto'], ['std::string', 'not viable', 'exact (reference binding)', 'exact (copy, template)', 'string (non-template wins tie)']] },
+      complexity: `<p>O(1) dispatch per token (jump table); O(n) total.</p>`,
+      followUps: ['Make a missing case a readable error with a constrained <code>[](auto) requires false</code>-style trick or a static_assert in a generic lambda.', 'Visit two variants at once — how many combinations does <code>std::visit</code> generate?', 'Compare with a virtual <code>Token</code> hierarchy: memory, speed, extensibility.']
+    }
+  });
+
+  /* ======================================================================
+     QUIZ
+     ====================================================================== */
+  quiz.push(
+    { q: 'Given <code>template&lt;class T&gt; T maxOf(T a, T b)</code>, what happens with <code>maxOf(3, 2.5)</code>?', options: ['Compile error: T deduced as both int and double', 'Returns 3 as int', 'Returns 3.0 as double', 'T becomes common_type&lt;int, double&gt;'], answer: 0, explain: 'Each argument deduces T independently and deduction never applies conversions. Use <code>maxOf&lt;double&gt;(3, 2.5)</code> or two type parameters.' },
+    { q: 'With <code>void f(int)</code> and <code>template&lt;class T&gt; void f(T)</code>, which is called by <code>f(\'a\')</code>?', options: ['The template with T = char', 'f(int)', 'Ambiguous', 'Neither'], answer: 0, explain: 'char → int is a promotion; the template deduces T = char, an exact match. The "non-template wins" rule is only a tie-breaker for equally good conversions.' },
+    { q: 'Why do template definitions normally live in header files?', options: ['The compiler needs the full definition at each point of use to instantiate it', 'Headers compile faster', 'The linker cannot handle templates', 'It is required by the ODR for all functions'], answer: 0, explain: 'Instantiation happens in the translation unit that uses the template. If only a declaration is visible, no code is generated and the link fails (unless you explicitly instantiate the needed types elsewhere).' },
+    { q: 'Which is a <b>partial</b> specialization?', options: ['<code>template&lt;class T&gt; struct Hash&lt;T*&gt; { … };</code>', '<code>template&lt;&gt; struct Hash&lt;int&gt; { … };</code>', '<code>template struct Hash&lt;int&gt;;</code>', '<code>template&lt;class T&gt; void f&lt;T*&gt;(T*);</code>'], answer: 0, explain: 'A partial specialization still has template parameters. Option 2 is a full specialization, option 3 an explicit instantiation, option 4 is illegal (function templates cannot be partially specialized).' },
+    { q: 'What does <code>sizeof...(Ts)</code> give for <code>f(1, "a", 2.0)</code> where <code>template&lt;class... Ts&gt; void f(Ts... args)</code>?', options: ['3, at compile time', 'The total byte size of the arguments', '3, computed at run time', 'It does not compile'], answer: 0, explain: '<code>sizeof...</code> counts pack elements and is a constant expression.' },
+    { q: 'Which unary fold is <b>ill-formed</b> for an empty pack?', options: ['<code>(args + ...)</code>', '<code>(args &amp;&amp; ...)</code>', '<code>(args || ...)</code>', '<code>(f(args), ...)</code>'], answer: 0, explain: 'Only &amp;&amp; (true), || (false) and the comma operator (void()) have defined empty expansions. Use a binary fold <code>(args + ... + 0)</code>.' },
+    { q: '<code>std::is_const_v&lt;const int&amp;&gt;</code> is…', options: ['false', 'true', 'ill-formed', 'implementation-defined'], answer: 0, explain: 'References themselves are never cv-qualified; the const applies to the referred-to int. Use <code>std::is_const_v&lt;std::remove_reference_t&lt;T&gt;&gt;</code>.' },
+    { q: '<code>std::decay_t&lt;const int(&amp;)[3]&gt;</code> is…', options: ['<code>const int*</code>', '<code>int*</code>', '<code>int[3]</code>', '<code>const int[3]</code>'], answer: 0, explain: 'Remove the reference, then the array decays to a pointer to its (const) element type. Top-level cv removal does not touch the pointee.' },
+    { q: 'What does SFINAE stand for and when does it apply?', options: ['Substitution Failure Is Not An Error — invalid types/expressions formed while substituting into a template\'s declaration remove that candidate', 'Static Function Inlining Not Always Enabled — an optimization rule', 'It turns all template errors into warnings', 'It applies to errors inside function bodies'], answer: 0, explain: 'Only the immediate context of substitution (signature, template parameter defaults) is covered. Errors in bodies are hard errors.' },
+    { q: 'Why do two templates <code>template&lt;class T, class = enable_if_t&lt;A&gt;&gt; void f(T)</code> and <code>template&lt;class T, class = enable_if_t&lt;!A&gt;&gt; void f(T)</code> fail?', options: ['Default template arguments are not part of the signature, so they redeclare the same template with conflicting defaults', 'enable_if cannot be negated', 'The second always wins', 'Two templates cannot share a name'], answer: 0, explain: 'Use <code>enable_if_t&lt;A, int&gt; = 0</code> so the condition is part of the non-type parameter\'s type, making the templates distinct.' },
+    { q: 'For <code>int</code>, with overloads constrained by <code>std::integral</code> and <code>std::signed_integral</code>, which is chosen?', options: ['The signed_integral one — it subsumes integral', 'The integral one — it was declared first', 'Ambiguous', 'Neither; constraints only reject'], answer: 0, explain: 'signed_integral is defined as integral&lt;T&gt; &amp;&amp; is_signed_v&lt;T&gt;, so it is more constrained and wins when both are satisfied.' },
+    { q: 'In a requires-expression, what does <code>{ c.size() } -&gt; std::convertible_to&lt;std::size_t&gt;;</code> check?', options: ['That <code>c.size()</code> is a valid expression and its type satisfies <code>convertible_to&lt;…, std::size_t&gt;</code>', 'That size() returns exactly size_t', 'It calls size() at compile time', 'That size() is noexcept'], answer: 0, explain: 'A compound requirement checks validity and then applies the type-constraint to <code>decltype((expr))</code>. Add <code>noexcept</code> after the braces to also require non-throwing.' },
+    { q: 'Two overloads are written as <code>requires std::is_integral_v&lt;T&gt;</code> and <code>requires std::is_integral_v&lt;T&gt; &amp;&amp; std::is_signed_v&lt;T&gt;</code>. Calling with <code>int</code> gives…', options: ['An ambiguity error, because the two is_integral_v atoms are not identical for subsumption', 'The second overload', 'The first overload', 'A substitution failure'], answer: 0, explain: 'Atomic constraints are identical only if they are the same expression from the same declaration. Wrap them in named concepts to get subsumption.' }
+  );
+
+  /* ======================================================================
+     INTERVIEW
+     ====================================================================== */
+  interview.push(
+    { q: 'What is a template and what does "instantiation" mean?', level: 'B', a: `<p>A template is a <b>compile-time recipe</b> for functions or classes with type (or value) placeholders. <b>Instantiation</b> is when the compiler substitutes concrete arguments (deduced or explicit) and generates real code: <code>maxOf&lt;int&gt;</code> and <code>maxOf&lt;double&gt;</code> are two separate functions in the binary. Nothing is generated for types never used, and class template members are instantiated only when used. Trade-off: zero run-time overhead and full inlining, paid for with compile time and binary size.</p>`, followUps: ['What is the difference between implicit and explicit instantiation?', 'What does <code>extern template</code> do?', 'How do linkers avoid duplicate instantiations across files?'] },
+    { q: 'Why must templates usually be defined in headers? What are the alternatives?', level: 'B', a: `<p>Instantiation happens in the translation unit where the template is used, so that TU must see the full definition. If the body is in a .cpp file, other TUs only see the declaration, generate a call to <code>foo&lt;int&gt;</code>, and the linker finds no definition. Alternatives: (1) explicit instantiation definitions in the .cpp (<code>template int foo&lt;int&gt;(int);</code>) for a closed set of types, with <code>extern template</code> declarations in the header; (2) C++20 <b>modules</b>, where the exported template is compiled once into a module interface and importers instantiate from it.</p>`, followUps: ['Does putting templates in headers violate the ODR?', 'How do modules change build times for template-heavy code?'] },
+    { q: 'Explain template argument deduction rules for <code>T</code>, <code>T&amp;</code>, and <code>T&amp;&amp;</code> parameters.', level: 'I', a: `<p><b>By value <code>T</code></b>: references ignored, top-level const/volatile dropped, arrays and functions decay to pointers (<code>const int[3]</code> → <code>const int*</code>). <b><code>T&amp;</code></b>: no decay, constness kept (<code>const int</code> lvalue → T = <code>const int</code>), arrays bind as <code>T = int[3]</code> (how <code>std::size</code> gets N); rvalues cannot bind unless T deduces const. <b><code>T&amp;&amp;</code> with deduced T</b> is a <b>forwarding reference</b>: lvalue argument → T = <code>X&amp;</code> and reference collapsing makes the parameter <code>X&amp;</code>; rvalue → T = <code>X</code>. Deduction never applies implicit conversions; conflicting deductions are an error; <code>std::type_identity_t&lt;T&gt;</code> blocks deduction for a parameter.</p>`, followUps: ['What is reference collapsing?', 'Why is <code>auto</code> deduction the same as template deduction except for braced lists?', 'How do you deduce from <code>std::initializer_list</code>?'] },
+    { q: 'How does overload resolution treat function templates vs normal functions?', level: 'I', a: `<p>Each function template that deduces and substitutes successfully contributes one specialization to the candidate set. All candidates are ranked by implicit conversion sequences per argument (Exact &gt; Promotion &gt; Conversion &gt; User-defined &gt; Ellipsis). Only if two are equally good do tie-breakers apply: a <b>non-template beats a template</b>, then the <b>more specialized</b> template wins (partial ordering), then (C++20) the <b>more constrained</b> one. So <code>f('a')</code> picks <code>template f(T)</code> over <code>f(int)</code> because exact beats promotion. Explicit specializations of function templates are not candidates; they are used only if their primary template wins.</p>`, followUps: ['Why does <code>g(&amp;x)</code> ignore <code>template&lt;&gt; void g&lt;int*&gt;(int*)</code> when <code>template&lt;class T&gt; g(T*)</code> exists?', 'What does <code>f&lt;&gt;(x)</code> do?'] },
+    { q: 'Full vs partial specialization: what is each for, and why can\'t function templates be partially specialized?', level: 'I', a: `<p><b>Full (explicit) specialization</b> replaces the implementation for one exact argument list: <code>template&lt;&gt; struct hash&lt;MyKey&gt;</code>, <code>vector&lt;bool&gt;</code>. <b>Partial specialization</b> (class and variable templates only) handles a pattern: <code>Traits&lt;T*&gt;</code>, <code>Traits&lt;std::vector&lt;T&gt;&gt;</code>. Selection: exact full specialization, else the most specialized matching partial (ambiguity = error), else primary. Function templates have <b>overloading</b> instead, which already handles patterns (<code>f(T*)</code>), so the language never added function partial specialization; mixing specializations with overloads causes surprises. Rule: overload functions, specialize classes (or delegate from a function to a class template).</p>`, followUps: ['When may you specialize templates in namespace std?', 'Why is <code>std::vector&lt;bool&gt;</code> considered a mistake?'] },
+    { q: 'What are variadic templates and fold expressions? Give a practical use.', level: 'I', a: `<p>A variadic template has a <b>parameter pack</b> (<code>class... Ts</code> / <code>Ts... args</code>) holding zero or more arguments. Packs are expanded with patterns (<code>f(g(args)...)</code>), counted with <code>sizeof...</code>, and since C++17 reduced with <b>fold expressions</b>: <code>(args + ... + 0)</code>, <code>(... &amp;&amp; preds)</code>, <code>((os &lt;&lt; args), ...)</code>. Practical uses: <code>make_unique</code>/<code>emplace_back</code> perfect-forwarding constructor arguments (<code>std::forward&lt;Args&gt;(args)...</code>), <code>std::tuple</code>/<code>variant</code>, type-safe logging/formatting, and the <code>overloaded{…}</code> visitor (<code>struct overloaded : Fs... { using Fs::operator()...; }</code>). Folds replace recursive "head + tail" templates and cut instantiations from O(N) to 1.</p>`, followUps: ['Which unary folds are valid for an empty pack?', 'Is evaluation order guaranteed in <code>g(f(args)...)</code>?', 'How would you index into a pack (pre-C++26)?'] },
+    { q: 'What is perfect forwarding and how does it interact with variadic templates?', level: 'A', a: `<p>Perfect forwarding passes arguments on with their <b>original value category</b> (lvalue stays lvalue, rvalue stays rvalue) and constness. It needs a forwarding reference <code>template&lt;class... Args&gt; void emplace(Args&amp;&amp;... args)</code> and <code>std::forward&lt;Args&gt;(args)...</code>: for an lvalue, Args = <code>X&amp;</code> and forward returns an lvalue; for an rvalue, Args = <code>X</code> and forward casts to <code>X&amp;&amp;</code>. Pitfalls: forwarding the same argument twice (double move), braced initializer lists cannot be deduced, overloads with forwarding references are greedy (a forwarding constructor can hijack copying a non-const lvalue — constrain it), and bit-fields/overloaded function names cannot be forwarded directly.</p>`, followUps: ['Write <code>std::forward</code> yourself.', 'Why does <code>emplace_back({1, 2})</code> not compile?', 'How do you constrain a forwarding constructor?'] },
+    { q: 'What are type traits and how are they implemented?', level: 'I', a: `<p>Compile-time queries and transformations on types in <code>&lt;type_traits&gt;</code>: <code>is_integral_v</code>, <code>is_trivially_copyable_v</code>, <code>is_base_of_v</code>, <code>remove_cvref_t</code>, <code>decay_t</code>, <code>conditional_t</code>, <code>common_type_t</code>. Most are class templates with a primary template and specializations: <code>template&lt;class T&gt; struct is_pointer : false_type {}; template&lt;class T&gt; struct is_pointer&lt;T*&gt; : true_type {};</code> (plus cv variants). Some need compiler intrinsics (<code>__is_trivially_copyable</code>, <code>__underlying_type</code>). They are used in <code>static_assert</code>, <code>if constexpr</code>, <code>enable_if</code>, concepts, and inside the STL (e.g. <code>vector</code> uses <code>is_nothrow_move_constructible</code> to decide move vs copy on reallocation).</p>`, followUps: ['Why is specializing <code>std::is_integral</code> undefined behavior?', 'What is <code>std::declval</code> and why is it never defined?'] },
+    { q: 'Explain SFINAE with an example, including the "immediate context" limitation.', level: 'A', a: `<p>When substituting deduced arguments into a function template's declaration produces an invalid type or expression, the template is <b>removed from the candidate set</b> instead of causing an error. Example: <code>template&lt;class T&gt; auto len(const T&amp; c) -&gt; decltype(c.size()) { return c.size(); }</code> is silently dropped for <code>int</code>, letting another overload win. <code>std::enable_if_t&lt;cond, int&gt; = 0</code> creates such a failure deliberately. <b>Immediate context</b>: only the declaration (return type, parameter types, template parameter defaults, explicit specifier expressions) counts. If the failure happens while instantiating a function body (e.g. for <code>auto</code> return-type deduction) or inside a class template that the signature needed, it is a hard error.</p>`, followUps: ['How does the void_t detection idiom work?', 'Why did C++20 introduce concepts if SFINAE already worked?'] },
+    { q: 'enable_if vs if constexpr vs concepts: when do you use each?', level: 'A', a: `<p><b>if constexpr</b> (C++17): branching <i>inside</i> one function body by a compile-time condition; best when the function's interface is the same and only the implementation differs. <b>Concepts</b> (C++20): when the <i>interface</i> must reject types or when you want different overloads chosen by properties; they give readable errors, document requirements, and order overloads by subsumption. <b>enable_if/SFINAE</b>: legacy code or pre-C++20 toolchains; also still seen in library-style "shall not participate in overload resolution" constraints. Rule of thumb: if callers should see "this does not accept X", use concepts; if it is an internal detail, use <code>if constexpr</code>.</p>`, followUps: ['Can <code>if constexpr</code> be used outside templates? What happens to the discarded branch then?', 'How do you write an exhaustive compile-time branch with a final static_assert?'] },
+    { q: 'What are C++20 concepts? Show the four syntaxes and a requires-expression.', level: 'I', a: `<p>A concept is a named predicate on template arguments: <code>template&lt;class T&gt; concept Number = std::integral&lt;T&gt; || std::floating_point&lt;T&gt;;</code>. Syntaxes: <code>template&lt;Number T&gt; void f(T)</code>; <code>template&lt;class T&gt; requires Number&lt;T&gt; void f(T)</code>; trailing <code>void f(T) requires Number&lt;T&gt;</code>; abbreviated <code>void f(Number auto x)</code>. A requires-expression lists required operations: simple (<code>a + b;</code>), type (<code>typename T::value_type;</code>), compound (<code>{ c.size() } -&gt; std::convertible_to&lt;std::size_t&gt;;</code>, optionally <code>noexcept</code>), nested (<code>requires sizeof(T) &lt;= 8;</code>). Concepts are checked before the body is instantiated, so misuse yields short diagnostics naming the failed requirement.</p>`, followUps: ['What does <code>requires requires</code> mean?', 'Can a concept check semantics (e.g. that &lt; is a strict weak order)?'] },
+    { q: 'Explain constraint subsumption. When does it fail to order overloads?', level: 'E', a: `<p>When two constrained templates are both viable and otherwise equivalent, the compiler normalizes each constraint into conjunctions/disjunctions of <b>atomic constraints</b> (expanding named concepts) and checks whether one implies the other. <code>std::random_access_iterator</code> is built from <code>bidirectional_iterator &amp;&amp; …</code>, so it subsumes <code>std::input_iterator</code> and wins. It fails when (1) the "same" condition is written as separate raw expressions (<code>requires std::is_integral_v&lt;T&gt;</code> in two places are different atoms → ambiguous); (2) the function parameter types differ (<code>T</code> vs <code>const T&amp;</code>) so the templates are not equivalent and ordering falls back to partial ordering; (3) constraints overlap without one implying the other (<code>Hashable</code> vs <code>Printable</code> both satisfied → ambiguous).</p>`, followUps: ['Why are atomic constraints compared by identity rather than meaning?', 'How would you break an ambiguity between two unrelated concepts?'] },
+    { q: 'What is two-phase name lookup, and why do you need <code>typename</code> and <code>template</code> keywords inside templates?', level: 'A', a: `<p>When a template is <b>defined</b>, non-dependent names are looked up and checked (phase 1). Names that depend on template parameters are looked up only at <b>instantiation</b> (phase 2), with ADL at the point of instantiation. Because the parser cannot know what a dependent name like <code>T::value_type</code> is in phase 1, it assumes "a value"; you write <code>typename T::value_type</code> to say it is a type, and <code>x.template get&lt;0&gt;()</code> to say <code>get</code> is a template so <code>&lt;</code> opens an argument list. Related trap: members of a dependent base class are not found by unqualified lookup — write <code>this-&gt;member</code>. (C++20 relaxed <code>typename</code> in some contexts where only a type can appear.)</p>`, followUps: ['Show a dependent base class bug and its fix.', 'What did MSVC\'s old "permissive" mode do differently?'] },
+    { q: 'Templates make code fast but builds slow and binaries big. How do you manage that in a large codebase?', level: 'E', a: `<p>Measure first: Clang <code>-ftime-trace</code> or GCC <code>-ftime-report</code>, ClangBuildAnalyzer, binary-size tools (bloaty). Techniques: (1) <b>thin templates</b> — move type-independent logic into non-template functions; (2) <b>explicit instantiation</b> + <code>extern template</code> for commonly used arguments so they are compiled once; (3) replace recursive metaprograms with folds, <code>if constexpr</code>, and compiler built-ins; (4) use type erasure (<code>std::function</code>, <code>std::any</code>, hand-written) at API boundaries where run-time dispatch is acceptable; (5) precompiled headers and <b>C++20 modules</b>; (6) keep heavy headers out of widely included headers (pimpl, forward declarations); (7) rely on linker identical-code folding (<code>--icf=all</code>) for duplicate instantiations. The trade-off: templates give inlining and static dispatch; erasure gives build-time and binary-size savings — choose per layer.</p>`, followUps: ['When would you prefer <code>std::function</code> over a template parameter for a callback?', 'How does ICF interact with function pointer identity?'] }
+  );
+
+  registerModule({
+    id: 'cpp09',
+    title: 'Templates, SFINAE & Concepts',
+    intro: `<p>Templates are how C++ writes code <b>once</b> and runs it at full speed for <b>every</b> type: <code>std::vector</code>, <code>std::sort</code>, <code>std::unique_ptr</code>, <code>std::format</code> and the whole STL are templates. In this module you learn to think like the compiler: how it <b>deduces</b> T from a call, <b>instantiates</b> a fresh function per type, picks a <b>specialization</b>, expands a <b>parameter pack</b>, asks <b>type traits</b> questions, silently drops candidates with <b>SFINAE</b>, and — the modern way — checks <b>C++20 concepts</b> before anything else.</p>
+      <p>Every topic has a step-by-step visualizer: watch instantiations appear per type, watch overload candidates get eliminated row by row, watch a pack peel off one argument at a time, and watch a concept check each requirement. Interviews at trading firms, game studios, compilers and infrastructure teams love "which overload is chosen?" and "write a generic X" questions; by the end you can answer them by applying rules, not by guessing.</p>`,
+    goals: [
+      'Write function and class templates, predict what T deduces to, and fix deduction conflicts',
+      'Predict which overload, template, or specialization the compiler chooses — and explain the ranking and tie-breakers',
+      'Write variadic templates with pack expansion and all four fold-expression forms, including perfect forwarding',
+      'Use and build type traits; branch at compile time with <code>if constexpr</code> and <code>std::conditional_t</code>',
+      'Read and write SFINAE / <code>enable_if</code> / <code>void_t</code> code found in real libraries',
+      'Design C++20 concepts with requires-expressions and use subsumption to order overloads cleanly'
+    ],
+    prereqs: `<p>C++ 5 (Advanced OOP: operators, rule of 3/5/0), C++ 6 (RAII &amp; smart pointers), C++ 7–8 (STL containers, iterators and algorithms). Comfort with references, <code>const</code>, and basic overloading from C++ 2–3.</p>`,
+    hours: 14,
+    topics: topics,
+    practice: practice,
+    quiz: quiz,
+    interview: interview
+  });
+})();

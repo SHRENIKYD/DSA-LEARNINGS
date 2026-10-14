@@ -2191,7 +2191,7 @@ dtor a</pre>
      TOPIC 8 — Operator overloading
      ====================================================================== */
   topics.push({
-    title: 'Operator Overloading: Making Your Types Feel Built-In (and C++20 <=>)',
+    title: 'Operator Overloading: Making Your Types Feel Built-In (and the C++20 Spaceship)',
     analogy: `<p>The <b>+</b> key on a calculator means "add numbers". On a music app, a <b>+</b> button means "add song to playlist". Same symbol, different meaning depending on <b>what you press it on</b> — and it feels natural because the meaning matches what people expect.</p>
       <p>Operator overloading lets you teach C++ what <code>+</code>, <code>==</code>, <code>&lt;&lt;</code> or <code>[]</code> mean for <b>your</b> types. The golden rule is the same as for the button: <b>only give an operator a meaning that people would guess anyway</b>. A <code>+</code> that secretly deletes a file is legal and evil.</p>`,
     explain: `<p>An overloaded operator is just a function with a special name: <code>a + b</code> becomes either <code>a.operator+(b)</code> (member) or <code>operator+(a, b)</code> (free function). The compiler tries both.</p>
@@ -2259,7 +2259,7 @@ dtor a</pre>
           Vec2 a{1, 2}, b{3, 4};
           std::cout << a + b << ' ' << 2 * a << ' ' << -b << '\n';   // (4, 6) (2, 4) (-3, -4)
           a += b;                                                     // a = (4, 6)
-          std::cout << (a == b) << (a != b) << (b < a) << '\n';      // 0 1 1
+          std::cout << (a == b) << (a != b) << (b < a) << '\n';      // 011  (false, true, true)
           a[0] = 0; a[1] = 0;
           if (!a) std::cout << "a is the zero vector\n";
       }
@@ -2285,7 +2285,7 @@ dtor a</pre>
           ++c;                                                        // c = 2 (no copy made)
           std::cout << before.value() << ' ' << c.value() << '\n';    // 0 2
           IsMultipleOf by3{3};
-          std::cout << by3(9) << by3(10) << '\n';                     // 1 0
+          std::cout << by3(9) << by3(10) << '\n';                     // 10  (true, false)
       }
     `],
     codeTitle: ['A value type with the canonical operator set', 'Prefix/postfix ++ and operator()'],
@@ -2519,4 +2519,1342 @@ dtor a</pre>
     ]
   });
 
-registerModule({ id: 'cpp05', title: 'Advanced OOP', intro: '<p>x</p>', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();
+  /* ======================================================================
+     PRACTICE — Easy
+     ====================================================================== */
+  practice.push({
+    title: 'Count Every Special Member Call',
+    level: 'Easy', tags: ['special members', 'static members', 'instrumentation'], companies: ['Bloomberg', 'Microsoft'],
+    statement: `<p>Write a class <code>Tracker</code> that counts, in static counters, how many times each special member ran: default ctor, copy ctor, move ctor, copy assign, move assign, destructor. Then run the scenario below and print the counts. Use it to prove how many copies a piece of code really makes.</p>`,
+    constraints: `<p>Counters must be shared by all Tracker objects. Scenario: <code>std::vector&lt;Tracker&gt; v; v.reserve(4); Tracker t; v.push_back(t); v.push_back(Tracker{}); v.emplace_back(); Tracker u = v[0]; u = std::move(v[1]);</code></p>`,
+    example: `<p>Expected counts: ${H.c('g', 'default 3')} (t, Tracker{}, emplace_back), ${H.c('y', 'copy 2')} (push_back(t), u = v[0]), ${H.c('b', 'move 1')} (push_back(Tracker{})), copy-assign 0, ${H.c('b', 'move-assign 1')}; destructors after scope: 6 (one per object ever constructed).</p>`,
+    brute: {
+      why: `<p>Printing a line from every member and counting by eye works for 5 lines but not for a loop of 10<sup>5</sup> push_backs, and output interleaving makes it error-prone. A per-object counter would not work at all: the counts must be global.</p>`,
+      code: R`
+        #include <iostream>
+        struct Tracker {
+            Tracker() { std::cout << "default\n"; }
+            Tracker(const Tracker&) { std::cout << "copy\n"; }
+            Tracker(Tracker&&) noexcept { std::cout << "move\n"; }
+            Tracker& operator=(const Tracker&) { std::cout << "copy-assign\n"; return *this; }
+            Tracker& operator=(Tracker&&) noexcept { std::cout << "move-assign\n"; return *this; }
+            ~Tracker() { std::cout << "dtor\n"; }
+        };
+      `
+    },
+    mcq: { q: 'Which keyword lets every Tracker object share one counter?', options: ['<code>static</code> data members (C++17: <code>static inline int</code>)', '<code>mutable</code>', '<code>const</code>', '<code>friend</code>'], answer: 0, explain: 'A static data member belongs to the class, not to an object, so all instances increment the same variable. <code>inline</code> lets you define it inside the class without a separate definition in a .cpp file.' },
+    hints: [
+      `<p>Hint 1: one <code>static inline</code> counter per special member, incremented in that member.</p>`,
+      `<p>Hint 2: <code>v.reserve(4)</code> prevents reallocation, so the vector never moves existing elements in this scenario.</p>`,
+      `<p>Hint 3: <code>push_back(t)</code> copies (t is an lvalue), <code>push_back(Tracker{})</code> moves the temporary, <code>emplace_back()</code> default-constructs in place, <code>Tracker u = v[0]</code> copies, <code>u = std::move(v[1])</code> move-assigns.</p>`
+    ],
+    solution: {
+      approach: `<p>Static counters + a small report function. Print the counters inside a nested scope's end to see destructors too.</p>`,
+      code: R`
+        #include <iostream>
+        #include <utility>
+        #include <vector>
+        struct Tracker {
+            static inline int def = 0, copy = 0, move = 0, cassign = 0, massign = 0, dtor = 0;
+            Tracker() { ++def; }
+            Tracker(const Tracker&) { ++copy; }
+            Tracker(Tracker&&) noexcept { ++move; }
+            Tracker& operator=(const Tracker&) { ++cassign; return *this; }
+            Tracker& operator=(Tracker&&) noexcept { ++massign; return *this; }
+            ~Tracker() { ++dtor; }
+            static void report() {
+                std::cout << "def=" << def << " copy=" << copy << " move=" << move
+                          << " cassign=" << cassign << " massign=" << massign << " dtor=" << dtor << '\n';
+            }
+        };
+        int main() {
+            {
+                std::vector<Tracker> v;
+                v.reserve(4);
+                Tracker t;                    // def 1
+                v.push_back(t);               // copy 1
+                v.push_back(Tracker{});       // def 2, move 1, dtor 1 (the temporary)
+                v.emplace_back();             // def 3 (built in place)
+                Tracker u = v[0];             // copy 2
+                u = std::move(v[1]);          // massign 1
+                Tracker::report();            // def=3 copy=2 move=1 cassign=0 massign=1 dtor=1
+            }
+            Tracker::report();                // def=3 copy=2 move=1 cassign=0 massign=1 dtor=6
+        }
+      `,
+      dry: { head: ['Statement', 'def', 'copy', 'move', 'massign', 'dtor'], rows: [
+        ['<code>Tracker t</code>', '1', '0', '0', '0', '0'],
+        ['<code>push_back(t)</code>', '1', '1', '0', '0', '0'],
+        ['<code>push_back(Tracker{})</code>', '2', '1', '1', '0', '1'],
+        ['<code>emplace_back()</code>', '3', '1', '1', '0', '1'],
+        ['<code>Tracker u = v[0]</code>', '3', '2', '1', '0', '1'],
+        ['<code>u = std::move(v[1])</code>', '3', '2', '1', '1', '1'],
+        ['closing <code>}</code> (t, u, 3 elements)', '3', '2', '1', '1', H.c('g', '6')]
+      ] },
+      complexity: `<p>O(1) per counted call. Sanity check that always works: objects born = def 3 + copy 2 + move 1 = <b>6</b>; objects dead = 1 temporary + t + u + 3 elements = <b>6</b>. Births and deaths must always balance — if your counts do not, you have a leak or a double destruction.</p>`,
+      followUps: ['Remove <code>reserve(4)</code>: how do the counts change (hint: growth 1 → 2 → 4 moves elements)?', 'Drop <code>noexcept</code> from the move constructor and re-run without reserve.', 'Make the counters thread-safe with <code>std::atomic&lt;int&gt;</code>.']
+    }
+  });
+
+  practice.push({
+    title: 'Rule of Zero Refactor: Delete 40 Lines, Fix 3 Bugs',
+    level: 'Easy', tags: ['rule of zero', 'std::string', 'refactoring'], companies: ['Google', 'Meta'],
+    statement: `<p><code>Contact</code> stores <code>char* name</code> and <code>char* email</code> with a hand-written destructor and copy constructor, but no copy assignment (and no moves). Refactor it so it needs <b>no user-declared special members</b> while keeping the same public behaviour, and explain which bugs disappear.</p>`,
+    constraints: `<p>Public API: <code>Contact(const char* name, const char* email)</code>, <code>name()</code>, <code>email()</code> returning <code>const char*</code> or <code>std::string_view</code>.</p>`,
+    example: `<p><code>Contact a("Asha", "a@x.io"); Contact b("Ben", "b@x.io"); b = a;</code> → original: ${H.c('r', 'shallow assignment, leak of Ben\'s strings, double free at exit')}. Refactored: ${H.c('g', 'deep copy, no leak, no double free')}, and <code>std::move(a)</code> is cheap.</p>`,
+    brute: {
+      why: `<p>The existing class violates the Rule of Three: assignment is compiler-generated and shallow (leaks the old buffers, then double-frees the shared ones). It also has no moves (destructor suppresses them), so every move is a deep copy. Patching it means writing 3 more functions carefully.</p>`,
+      code: R`
+        #include <cstring>
+        class Contact {
+            char* name_;
+            char* email_;
+            static char* dup(const char* s) { char* p = new char[std::strlen(s) + 1]; std::strcpy(p, s); return p; }
+        public:
+            Contact(const char* n, const char* e) : name_(dup(n)), email_(dup(e)) {}
+            Contact(const Contact& o) : name_(dup(o.name_)), email_(dup(o.email_)) {}
+            ~Contact() { delete[] name_; delete[] email_; }
+            // operator= missing -> shallow copy -> leak + double free
+            const char* name() const { return name_; }
+            const char* email() const { return email_; }
+        };
+      `
+    },
+    mcq: { q: 'After switching both members to <code>std::string</code>, which special members should you write?', options: ['None — the compiler-generated ones are correct', 'Only the destructor', 'Copy constructor and copy assignment', 'All five'], answer: 0, explain: 'std::string manages its own memory and has correct copy/move/destroy semantics, so memberwise generated members are correct. Writing any of them would also suppress the implicit moves.' },
+    hints: [
+      `<p>Hint 1: ask "who owns these chars?" — a type that already owns chars correctly exists in the standard library.</p>`,
+      `<p>Hint 2: store <code>std::string</code>; take constructor arguments as <code>std::string</code> by value and <code>std::move</code> them into members.</p>`,
+      `<p>Hint 3: return <code>const std::string&amp;</code> or <code>std::string_view</code> from the getters; delete the destructor and copy constructor entirely.</p>`
+    ],
+    solution: {
+      approach: `<p>Replace raw owning pointers with <code>std::string</code>. The compiler now generates a correct destructor, deep copy constructor, deep copy assignment, and cheap noexcept moves. Three bugs vanish: the leak in assignment, the double free, and copies-instead-of-moves.</p>`,
+      code: R`
+        #include <iostream>
+        #include <string>
+        #include <string_view>
+        #include <utility>
+        class Contact {
+            std::string name_;
+            std::string email_;
+        public:
+            Contact(std::string n, std::string e) : name_(std::move(n)), email_(std::move(e)) {}
+            std::string_view name() const { return name_; }
+            std::string_view email() const { return email_; }
+            // No destructor, no copy/move members: Rule of Zero.
+        };
+        static_assert(std::is_nothrow_move_constructible_v<Contact>);
+        int main() {
+            Contact a("Asha", "a@x.io"), b("Ben", "b@x.io");
+            b = a;                                       // deep copy, old strings released correctly
+            Contact c = std::move(a);                    // cheap move
+            std::cout << b.name() << ' ' << c.email() << '\n';   // Asha a@x.io
+        }
+      `,
+      dry: { head: ['Operation', 'Raw char* version', 'std::string version'], rows: [
+        ['<code>b = a</code>', H.c('r', 'shallow: leaks Ben, shares Asha'), H.c('g', 'deep copy')],
+        ['<code>Contact c = std::move(a)</code>', H.c('y', 'deep copy (no move ctor)'), H.c('g', 'O(1) move')],
+        ['end of main', H.c('r', 'double free'), H.c('g', 'clean')]
+      ] },
+      complexity: `<p>Copy O(len), move O(1). Code size: 4 special members → 0. Short strings (≤ 15 chars in libstdc++) do not even allocate thanks to SSO.</p>`,
+      followUps: ['When is a raw pointer member still appropriate? (non-owning observers)', 'How would you keep the <code>const char*</code> getters for a C API?', 'Add a <code>std::vector&lt;std::string&gt; phones_</code> — what changes? (nothing)']
+    }
+  });
+
+  practice.push({
+    title: 'Printable, Comparable Point',
+    level: 'Easy', tags: ['operator<<', 'operator==', 'spaceship'], companies: ['Amazon', 'Infosys'],
+    statement: `<p>Implement <code>struct Point { int x, y; }</code> so that <code>std::cout &lt;&lt; p</code> prints <code>(x, y)</code>, points compare equal when both coordinates match, and a <code>std::set&lt;Point&gt;</code> works (ordered by x, then y).</p>`,
+    constraints: `<p>Use C++20 features where they remove boilerplate. Up to 10<sup>5</sup> points in the set.</p>`,
+    example: `<p>Insert (2,1), (1,5), (1,2), (2,1) into a set → printed in order ${H.c('g', '(1, 2) (1, 5) (2, 1)')}; the duplicate (2,1) is ${H.c('r', 'rejected')} because it is equivalent to an existing element.</p>`,
+    brute: {
+      why: `<p>Pre-C++20 style: six comparison operators written by hand, easy to make inconsistent (e.g. <code>&lt;</code> compares only x, so (1,2) and (1,5) look equivalent and the set drops one). Printing via a member <code>print()</code> does not compose with streams.</p>`,
+      code: R`
+        #include <iostream>
+        struct Point {
+            int x, y;
+            bool operator==(const Point& o) const { return x == o.x && y == o.y; }
+            bool operator!=(const Point& o) const { return !(*this == o); }
+            bool operator<(const Point& o) const { return x < o.x; }          // BUG: ignores y
+            bool operator>(const Point& o) const { return o < *this; }
+            bool operator<=(const Point& o) const { return !(o < *this); }
+            bool operator>=(const Point& o) const { return !(*this < o); }
+            void print() const { std::cout << '(' << x << ", " << y << ')'; }
+        };
+      `
+    },
+    mcq: { q: 'What does <code>auto operator&lt;=&gt;(const Point&amp;) const = default;</code> compare?', options: ['x first, then y (members in declaration order)', 'y first, then x', 'The sum x + y', 'The addresses of the objects'], answer: 0, explain: 'A defaulted three-way comparison compares base classes then members lexicographically in declaration order, stopping at the first difference.' },
+    hints: [
+      `<p>Hint 1: <code>bool operator==(const Point&amp;) const = default;</code> gives <code>==</code> and <code>!=</code>.</p>`,
+      `<p>Hint 2: <code>auto operator&lt;=&gt;(const Point&amp;) const = default;</code> gives <code>&lt;</code>, <code>&lt;=</code>, <code>&gt;</code>, <code>&gt;=</code> — exactly what <code>std::set</code> needs (it uses <code>std::less</code>, i.e. <code>&lt;</code>).</p>`,
+      `<p>Hint 3: <code>operator&lt;&lt;</code> must be a free function (or hidden friend) taking <code>std::ostream&amp;</code> and returning it.</p>`
+    ],
+    solution: {
+      approach: `<p>Two defaulted comparison declarations + one stream operator as a hidden friend. Lexicographic order is exactly "x, then y".</p>`,
+      code: R`
+        #include <compare>
+        #include <iostream>
+        #include <set>
+        struct Point {
+            int x = 0, y = 0;
+            bool operator==(const Point&) const = default;
+            auto operator<=>(const Point&) const = default;
+            friend std::ostream& operator<<(std::ostream& os, const Point& p) {
+                return os << '(' << p.x << ", " << p.y << ')';
+            }
+        };
+        int main() {
+            std::set<Point> s{{2, 1}, {1, 5}, {1, 2}, {2, 1}};
+            for (const Point& p : s) std::cout << p << ' ';        // (1, 2) (1, 5) (2, 1)
+            std::cout << '\n' << (Point{1, 2} < Point{1, 5}) << '\n';   // 1
+        }
+      `,
+      dry: { head: ['Insert', 'Compared with', 'Result', 'Set'], rows: [
+        ['(2,1)', '—', 'inserted', '{(2,1)}'],
+        ['(1,5)', '(2,1): x 1 &lt; 2', 'inserted before', '{(1,5),(2,1)}'],
+        ['(1,2)', '(1,5): x equal, y 2 &lt; 5', 'inserted before', '{(1,2),(1,5),(2,1)}'],
+        ['(2,1)', '(2,1): equal', H.c('r', 'rejected'), 'unchanged']
+      ] },
+      complexity: `<p>Each comparison O(1); set insert O(log n). The defaulted operators are <code>constexpr</code>-friendly and as fast as hand-written ones.</p>`,
+      followUps: ['Make points hashable for <code>std::unordered_set</code>.', 'Order by distance from the origin instead — which ordering category is correct?', 'Why is <code>operator&lt;&lt;</code> not a member?']
+    }
+  });
+
+  practice.push({
+    title: 'Predict the Output: Virtual, Non-Virtual and Hidden Functions',
+    level: 'Easy', tags: ['virtual', 'name hiding', 'static vs dynamic binding', 'predict output'], companies: ['Qualcomm', 'Cisco', 'Oracle'],
+    statement: `<p>Predict every line printed by the program below, then explain each one in terms of static type, dynamic type and the vtable. <code>Base</code> has a virtual <code>who()</code>, a non-virtual <code>tag()</code>, and an overloaded virtual <code>f(int)</code>/<code>f(double)</code>; <code>Derived</code> overrides <code>who()</code>, redefines <code>tag()</code>, and overrides only <code>f(int)</code>.</p>`,
+    constraints: `<p>Calls are made through <code>Derived d</code>, <code>Base&amp; r = d</code>, and <code>Base b = d</code>.</p>`,
+    example: `<p><code>r.who()</code> → ${H.c('g', 'Derived')} (virtual, dynamic type). <code>r.tag()</code> → ${H.c('r', 'Base-tag')} (non-virtual, static type). <code>d.f(1.5)</code> → ${H.c('y', 'Derived::f(int) with 1')} — Derived's <code>f</code> <b>hides</b> all base overloads, so 1.5 converts to int!</p>`,
+    brute: {
+      why: `<p>The naive mental model "the object is a Derived, so Derived's version always runs" gets three of the lines wrong: non-virtual <code>tag()</code> through a Base reference, the sliced copy <code>b</code>, and the name-hiding surprise with <code>f(double)</code>.</p>`,
+      code: R`
+        #include <iostream>
+        struct Base {
+            virtual ~Base() = default;
+            virtual const char* who() const { return "Base"; }
+            const char* tag() const { return "Base-tag"; }
+            virtual void f(int x) const { std::cout << "Base::f(int) " << x << '\n'; }
+            virtual void f(double x) const { std::cout << "Base::f(double) " << x << '\n'; }
+        };
+        struct Derived : Base {
+            const char* who() const override { return "Derived"; }
+            const char* tag() const { return "Derived-tag"; }                 // hides, not overrides
+            void f(int x) const override { std::cout << "Derived::f(int) " << x << '\n'; }   // hides f(double)!
+        };
+        // naive guess: every call prints the Derived version
+      `
+    },
+    mcq: { q: 'Why does <code>d.f(1.5)</code> call <code>Derived::f(int)</code>?', options: ['Declaring f in Derived hides ALL base overloads named f, so only f(int) is visible and 1.5 converts to 1', 'Because f(double) is not virtual', 'Because the vtable has only one slot for f', 'It is undefined behaviour'], answer: 0, explain: 'Name lookup stops at the first scope that declares the name. Derived declares f, so Base::f(double) is never considered for <code>d.f(...)</code>. Fix: <code>using Base::f;</code> in Derived.' },
+    hints: [
+      `<p>Hint 1: for each call, write down the static type of the expression and whether the function is virtual.</p>`,
+      `<p>Hint 2: <code>Base b = d;</code> slices — b is a genuine Base with Base's vptr.</p>`,
+      `<p>Hint 3: name lookup happens before overload resolution and before virtual dispatch. A name declared in Derived hides every same-named function in Base.</p>`
+    ],
+    solution: {
+      approach: `<p>Apply the three rules in order: (1) name lookup in the static type's scope, (2) overload resolution among what was found, (3) if the chosen function is virtual and the call is through a reference/pointer, dispatch on the dynamic type.</p>`,
+      code: R`
+        #include <iostream>
+        struct Base {
+            virtual ~Base() = default;
+            virtual const char* who() const { return "Base"; }
+            const char* tag() const { return "Base-tag"; }
+            virtual void f(int x) const { std::cout << "Base::f(int) " << x << '\n'; }
+            virtual void f(double x) const { std::cout << "Base::f(double) " << x << '\n'; }
+        };
+        struct Derived : Base {
+            const char* who() const override { return "Derived"; }
+            const char* tag() const { return "Derived-tag"; }
+            void f(int x) const override { std::cout << "Derived::f(int) " << x << '\n'; }
+        };
+        int main() {
+            Derived d;
+            Base& r = d;
+            Base b = d;                                        // sliced copy
+            std::cout << d.who() << ' ' << r.who() << ' ' << b.who() << '\n';   // Derived Derived Base
+            std::cout << d.tag() << ' ' << r.tag() << '\n';                       // Derived-tag Base-tag
+            d.f(1.5);                                          // Derived::f(int) 1     (hiding!)
+            r.f(1.5);                                          // Base::f(double) 1.5   (lookup in Base, not overridden)
+            r.f(2);                                            // Derived::f(int) 2     (virtual dispatch)
+        }
+      `,
+      dry: { head: ['Call', 'Static type', 'Lookup finds', 'Virtual?', 'Runs'], rows: [
+        ['<code>r.who()</code>', 'Base&amp;', 'Base::who', 'yes', 'Derived::who'],
+        ['<code>b.who()</code>', 'Base (object)', 'Base::who', 'yes, but b IS a Base', 'Base::who'],
+        ['<code>r.tag()</code>', 'Base&amp;', 'Base::tag', 'no', 'Base::tag'],
+        ['<code>d.f(1.5)</code>', 'Derived', 'Derived::f(int) only', 'yes', 'Derived::f(int) with 1'],
+        ['<code>r.f(1.5)</code>', 'Base&amp;', 'f(int), f(double)', 'yes', 'Base::f(double)'],
+        ['<code>r.f(2)</code>', 'Base&amp;', 'f(int), f(double)', 'yes', 'Derived::f(int)']
+      ] },
+      complexity: `<p>Not an algorithmic problem; the takeaway is the three-step rule. Add <code>using Base::f;</code> to Derived to make <code>d.f(1.5)</code> call <code>Base::f(double)</code>.</p>`,
+      followUps: ['What warning flag reports hidden overloaded virtuals? (<code>-Woverloaded-virtual</code>)', 'Add <code>final</code> to <code>Derived::who</code>. What can the compiler do with <code>d.who()</code>?', 'Predict <code>static_cast&lt;Base&amp;&gt;(d).tag()</code>.']
+    }
+  });
+
+  /* ======================================================================
+     PRACTICE — Medium
+     ====================================================================== */
+  practice.push({
+    title: 'DynArray&lt;T&gt;: Rule of Five with Copy-and-Swap',
+    level: 'Medium', tags: ['rule of five', 'copy-and-swap', 'templates', 'exception safety'], companies: ['Bloomberg', 'Citadel', 'Optiver'],
+    statement: `<p>Implement a fixed-size generic array <code>DynArray&lt;T&gt;</code> that owns <code>new T[n]</code>. It must support deep copy, O(1) noexcept move, self-assignment, the strong exception guarantee for copy assignment, <code>operator[]</code> (const and non-const) and <code>size()</code>. Use a <code>swap</code> hidden friend and the copy-and-swap idiom.</p>`,
+    constraints: `<p>T is default-constructible and copy-assignable; T's copy may throw. n ≤ 10<sup>7</sup>.</p>`,
+    example: `<p><code>DynArray&lt;std::string&gt; a(2); a[0] = "x"; auto b = a; b[0] = "y";</code> → ${H.c('g', 'a[0] == "x"')}. <code>auto c = std::move(b);</code> → ${H.c('b', 'b.size() == 0, c[0] == "y"')}, no allocation.</p>`,
+    brute: {
+      why: `<p>Writing copy assignment as "delete old, allocate, copy" fails self-assignment and leaves a dangling pointer if T's copy throws halfway. Writing separate copy and move assignments doubles the code paths to test.</p>`,
+      code: R`
+        #include <algorithm>
+        #include <cstddef>
+        template <class T>
+        class DynArray {
+            T* p_; std::size_t n_;
+        public:
+            explicit DynArray(std::size_t n) : p_(new T[n]), n_(n) {}
+            ~DynArray() { delete[] p_; }
+            DynArray(const DynArray& o) : p_(new T[o.n_]), n_(o.n_) { std::copy(o.p_, o.p_ + n_, p_); }   // leaks p_ if copy throws!
+            DynArray& operator=(const DynArray& o) {
+                delete[] p_;                           // self-assignment destroys the source
+                p_ = new T[o.n_]; n_ = o.n_;           // if this throws, p_ dangles
+                std::copy(o.p_, o.p_ + n_, p_);
+                return *this;
+            }
+        };
+      `
+    },
+    mcq: { q: 'In <code>DynArray&amp; operator=(DynArray other)</code>, where does the copy (that might throw) happen?', options: ['While constructing the by-value parameter, before the function body runs', 'Inside swap()', 'In the destructor of other', 'It never copies'], answer: 0, explain: 'The argument is copied (lvalue) or moved (rvalue) into the parameter at the call site. If that throws, *this was never touched — strong guarantee for free. The body only swaps, which is noexcept.' },
+    hints: [
+      `<p>Hint 1: in the copy constructor, if <code>std::copy</code> throws, the destructor of the half-built object will NOT run. Hold the new block in a <code>std::unique_ptr&lt;T[]&gt;</code> until copying succeeds, then <code>release()</code> it.</p>`,
+      `<p>Hint 2: move constructor = <code>std::exchange</code> both members; mark it noexcept.</p>`,
+      `<p>Hint 3: one assignment operator taking <code>DynArray other</code> by value + <code>swap(*this, other)</code> covers copy-assign and move-assign.</p>`
+    ],
+    solution: {
+      approach: `<p>Copy constructor: allocate into a temporary unique_ptr (so an exception during element copy frees the block), then adopt it. Move constructor: steal with <code>std::exchange</code>. Unified assignment: by-value parameter + noexcept swap. Destructor: <code>delete[]</code>.</p>`,
+      code: R`
+        #include <algorithm>
+        #include <cstddef>
+        #include <iostream>
+        #include <memory>
+        #include <string>
+        #include <utility>
+
+        template <class T>
+        class DynArray {
+            T* p_ = nullptr;
+            std::size_t n_ = 0;
+        public:
+            DynArray() = default;
+            explicit DynArray(std::size_t n) : p_(new T[n]()), n_(n) {}
+            ~DynArray() { delete[] p_; }
+
+            DynArray(const DynArray& o) : n_(o.n_) {
+                std::unique_ptr<T[]> tmp(new T[o.n_]);          // freed automatically if a copy throws
+                std::copy(o.p_, o.p_ + o.n_, tmp.get());
+                p_ = tmp.release();                              // commit
+            }
+            DynArray(DynArray&& o) noexcept : p_(std::exchange(o.p_, nullptr)), n_(std::exchange(o.n_, 0)) {}
+
+            DynArray& operator=(DynArray other) noexcept {      // copy or move happens in the parameter
+                swap(*this, other);
+                return *this;
+            }
+            friend void swap(DynArray& a, DynArray& b) noexcept {
+                std::swap(a.p_, b.p_);
+                std::swap(a.n_, b.n_);
+            }
+
+            T& operator[](std::size_t i) { return p_[i]; }
+            const T& operator[](std::size_t i) const { return p_[i]; }
+            std::size_t size() const { return n_; }
+        };
+
+        int main() {
+            DynArray<std::string> a(2);
+            a[0] = "x";
+            DynArray<std::string> b = a;                         // deep copy
+            b[0] = "y";
+            DynArray<std::string> c = std::move(b);              // steal
+            a = a;                                               // self-assignment: safe
+            c = a;                                               // copy-assign via copy-and-swap
+            std::cout << a[0] << ' ' << b.size() << ' ' << c[0] << '\n';   // x 0 x
+        }
+      `,
+      dry: { head: ['Statement', 'a', 'b', 'c', 'Note'], rows: [
+        ['<code>a(2); a[0]="x"</code>', '[x, ""]', '—', '—', ''],
+        ['<code>b = a</code>', '[x, ""]', '[x, ""] (new block)', '—', 'deep copy'],
+        ['<code>b[0] = "y"</code>', '[x, ""]', '[y, ""]', '—', 'independent'],
+        ['<code>c = std::move(b)</code>', '[x, ""]', 'empty', '[y, ""]', 'O(1)'],
+        ['<code>c = a</code>', '[x, ""]', 'empty', '[x, ""]', 'param copy, swap, old c block freed']
+      ] },
+      complexity: `<p>Copy O(n), move O(1), assignment O(n) for copies / O(1) for moves. Extra memory during copy assignment: one temporary array (the price of the strong guarantee).</p>`,
+      followUps: ['Why is <code>new T[n]()</code> (value-init) different from <code>new T[n]</code> for ints?', 'Make it a growable vector: what changes about exception safety when T\'s move may throw?', 'Add <code>begin()</code>/<code>end()</code> so range-for works.']
+    }
+  });
+
+  practice.push({
+    title: 'Vec3 Operator Suite for a Physics Engine',
+    level: 'Medium', tags: ['operator overloading', 'hidden friends', 'const correctness'], companies: ['Nvidia', 'Unity', 'Epic Games'],
+    statement: `<p>Implement <code>Vec3</code> (three doubles) with: <code>+ - </code> (binary), unary <code>-</code>, <code>* /</code> by a scalar on either side (<code>v * 2</code>, <code>2 * v</code>), compound <code>+= -= *= /=</code>, <code>==</code>, <code>operator[]</code> (0..2, const and non-const), <code>dot</code>, <code>cross</code>, <code>length</code>, and <code>&lt;&lt;</code>. Then simulate one Euler step: <code>pos += vel * dt; vel += gravity * dt;</code>.</p>`,
+    constraints: `<p>No heap allocation; all operations O(1). Binary operators must not be members.</p>`,
+    example: `<p>pos = (0, 10, 0), vel = (1, 0, 0), gravity = (0, -9.8, 0), dt = 0.5 → new pos = ${H.c('g', '(0.5, 10, 0)')}, new vel = ${H.c('b', '(1, -4.9, 0)')}. <code>cross((1,0,0), (0,1,0))</code> = ${H.c('g', '(0, 0, 1)')}.</p>`,
+    brute: {
+      why: `<p>Named functions only (<code>add(a, b)</code>, <code>scale(v, k)</code>) work but turn <code>pos + vel * dt</code> into <code>add(pos, scale(vel, dt))</code>: unreadable physics. Member binary operators break <code>2 * v</code>.</p>`,
+      code: R`
+        struct Vec3 { double x, y, z; };
+        Vec3 add(Vec3 a, Vec3 b) { return {a.x + b.x, a.y + b.y, a.z + b.z}; }
+        Vec3 scale(Vec3 v, double k) { return {v.x * k, v.y * k, v.z * k}; }
+        // pos = add(pos, scale(vel, dt));   readable? not really.
+      `
+    },
+    mcq: { q: 'Why define <code>operator+</code> in terms of <code>operator+=</code>?', options: ['One implementation of the arithmetic, so the two can never disagree', 'Because += is faster than +', 'Because + cannot access private members', 'The standard requires it'], answer: 0, explain: 'The canonical pattern keeps the logic in the compound operator (a member) and makes the binary operator a thin free function: <code>a += b; return a;</code>. Less code, no inconsistency.' },
+    hints: [
+      `<p>Hint 1: compound operators as members returning <code>Vec3&amp;</code>; binary operators as hidden friends taking the left side by value.</p>`,
+      `<p>Hint 2: provide both <code>operator*(Vec3, double)</code> and <code>operator*(double, Vec3)</code>.</p>`,
+      `<p>Hint 3: <code>==</code> on doubles: default it for exact equality, but provide an <code>approxEqual(a, b, eps)</code> for physics comparisons.</p>`
+    ],
+    solution: {
+      approach: `<p>Canonical operator set: members for compound assignment, unary minus and subscript; hidden friends for symmetric binary operators and streaming; free functions for dot/cross/length. Everything is <code>constexpr</code>-friendly and allocation-free.</p>`,
+      code: R`
+        #include <cmath>
+        #include <iostream>
+
+        struct Vec3 {
+            double x = 0, y = 0, z = 0;
+
+            Vec3& operator+=(const Vec3& o) { x += o.x; y += o.y; z += o.z; return *this; }
+            Vec3& operator-=(const Vec3& o) { x -= o.x; y -= o.y; z -= o.z; return *this; }
+            Vec3& operator*=(double k) { x *= k; y *= k; z *= k; return *this; }
+            Vec3& operator/=(double k) { x /= k; y /= k; z /= k; return *this; }
+            Vec3 operator-() const { return {-x, -y, -z}; }
+
+            double& operator[](int i) { return i == 0 ? x : i == 1 ? y : z; }
+            double operator[](int i) const { return i == 0 ? x : i == 1 ? y : z; }
+
+            bool operator==(const Vec3&) const = default;
+
+            friend Vec3 operator+(Vec3 a, const Vec3& b) { return a += b; }
+            friend Vec3 operator-(Vec3 a, const Vec3& b) { return a -= b; }
+            friend Vec3 operator*(Vec3 v, double k) { return v *= k; }
+            friend Vec3 operator*(double k, Vec3 v) { return v *= k; }
+            friend Vec3 operator/(Vec3 v, double k) { return v /= k; }
+            friend std::ostream& operator<<(std::ostream& os, const Vec3& v) {
+                return os << '(' << v.x << ", " << v.y << ", " << v.z << ')';
+            }
+        };
+        double dot(const Vec3& a, const Vec3& b) { return a.x * b.x + a.y * b.y + a.z * b.z; }
+        Vec3 cross(const Vec3& a, const Vec3& b) { return {a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x}; }
+        double length(const Vec3& v) { return std::sqrt(dot(v, v)); }
+
+        int main() {
+            Vec3 pos{0, 10, 0}, vel{1, 0, 0};
+            const Vec3 gravity{0, -9.8, 0};
+            double dt = 0.5;
+            pos += vel * dt;                 // (0.5, 10, 0)
+            vel += gravity * dt;             // (1, -4.9, 0)
+            std::cout << pos << ' ' << vel << ' ' << cross(Vec3{1, 0, 0}, Vec3{0, 1, 0}) << ' ' << length(Vec3{3, 4, 0}) << '\n';
+        }
+      `,
+      dry: { head: ['Expression', 'Calls', 'Value'], rows: [
+        ['<code>vel * dt</code>', 'operator*(Vec3, double)', '(0.5, 0, 0)'],
+        ['<code>pos += …</code>', 'pos.operator+=(…)', '(0.5, 10, 0)'],
+        ['<code>gravity * dt</code>', 'operator*(Vec3, double)', '(0, -4.9, 0)'],
+        ['<code>vel += …</code>', 'vel.operator+=(…)', '(1, -4.9, 0)'],
+        ['<code>cross(x̂, ŷ)</code>', 'cross', '(0, 0, 1)']
+      ] },
+      complexity: `<p>All O(1), no allocations. With <code>-O2</code> these compile to the same instructions as hand-written component math (and often vectorize).</p>`,
+      followUps: ['Make every operator <code>constexpr</code> and compute a constant at compile time.', 'Why is defaulted <code>==</code> on doubles risky in physics code?', 'Template it as <code>Vec3&lt;T&gt;</code> constrained by a concept.']
+    }
+  });
+
+  practice.push({
+    title: 'Polymorphic Clone Without Repeating Yourself (CRTP Cloneable)',
+    level: 'Medium', tags: ['clone', 'CRTP', 'virtual constructor', 'slicing'], companies: ['Bloomberg', 'Autodesk', 'Adobe'],
+    statement: `<p>A document editor has <code>Shape</code> with 20 derived classes, each writing the same <code>clone()</code> boilerplate. Write a CRTP helper <code>Cloneable&lt;Derived, Base&gt;</code> that implements <code>clone()</code> once, returning <code>std::unique_ptr&lt;Base&gt;</code> holding a full copy of the dynamic type. Use it for <code>Circle</code> and <code>Text</code>, and implement "duplicate selection" that copies a <code>std::vector&lt;std::unique_ptr&lt;Shape&gt;&gt;</code>.</p>`,
+    constraints: `<p>No slicing; each copy must have the correct dynamic type. Up to 10<sup>5</sup> shapes.</p>`,
+    example: `<p>Selection [Circle r=2, Text "hi"] duplicated → new vector [${H.c('g', 'Circle r=2')}, ${H.c('g', 'Text "hi"')}] at different addresses; editing the copy's text does not change the original.</p>`,
+    brute: {
+      why: `<p>Hand-writing <code>clone()</code> in every class is repetitive, and forgetting it in one class silently inherits the parent's <code>clone()</code>, which then <b>slices</b> (creates a parent object). Copying via <code>std::make_unique&lt;Shape&gt;(*p)</code> does not compile for abstract Shape and slices for concrete ones.</p>`,
+      code: R`
+        #include <memory>
+        struct Shape { virtual ~Shape() = default; virtual std::unique_ptr<Shape> clone() const = 0; };
+        struct Circle : Shape {
+            double r = 1;
+            std::unique_ptr<Shape> clone() const override { return std::make_unique<Circle>(*this); }
+        };
+        struct BigCircle : Circle {
+            double border = 2;
+            // forgot clone() -> inherits Circle::clone -> returns a sliced Circle!
+        };
+      `
+    },
+    mcq: { q: 'In <code>struct Circle : Cloneable&lt;Circle, Shape&gt;</code>, how does the helper know to copy a Circle?', options: ['Derived is a template parameter, so it can static_cast *this to const Derived&amp; and call Derived\'s copy constructor', 'It uses RTTI at runtime', 'It calls Shape\'s copy constructor', 'It memcpys sizeof(Base) bytes'], answer: 0, explain: 'CRTP passes the derived type to the base at compile time. <code>std::make_unique&lt;Derived&gt;(static_cast&lt;const Derived&amp;&gt;(*this))</code> invokes the correct copy constructor.' },
+    hints: [
+      `<p>Hint 1: <code>template &lt;class Derived, class Base&gt; struct Cloneable : Base { ... };</code> — the helper sits <b>between</b> Shape and the concrete class.</p>`,
+      `<p>Hint 2: implement <code>std::unique_ptr&lt;Shape&gt; clone() const override</code> in the helper using <code>static_cast&lt;const Derived&amp;&gt;(*this)</code>.</p>`,
+      `<p>Hint 3: duplicating the selection: <code>reserve</code>, then <code>push_back(p-&gt;clone())</code> for each element.</p>`
+    ],
+    solution: {
+      approach: `<p>Cloneable inherits from Base and implements the virtual <code>clone()</code> by copy-constructing <code>Derived</code>. Concrete classes inherit from <code>Cloneable&lt;Self, Shape&gt;</code> and get a correct clone automatically. Inheriting constructors (<code>using Base::Base</code>) keeps the helper transparent.</p>`,
+      code: R`
+        #include <iostream>
+        #include <memory>
+        #include <string>
+        #include <vector>
+
+        struct Shape {
+            virtual ~Shape() = default;
+            virtual std::unique_ptr<Shape> clone() const = 0;
+            virtual std::string describe() const = 0;
+        };
+
+        template <class Derived, class Base>
+        struct Cloneable : Base {
+            using Base::Base;
+            std::unique_ptr<Shape> clone() const override {
+                return std::make_unique<Derived>(static_cast<const Derived&>(*this));   // Derived's copy ctor
+            }
+        };
+
+        struct Circle final : Cloneable<Circle, Shape> {
+            double r;
+            explicit Circle(double radius) : r(radius) {}
+            std::string describe() const override { return "Circle r=" + std::to_string(r); }
+        };
+        struct Text final : Cloneable<Text, Shape> {
+            std::string s;
+            explicit Text(std::string t) : s(std::move(t)) {}
+            std::string describe() const override { return "Text \"" + s + "\""; }
+        };
+
+        std::vector<std::unique_ptr<Shape>> duplicate(const std::vector<std::unique_ptr<Shape>>& sel) {
+            std::vector<std::unique_ptr<Shape>> out;
+            out.reserve(sel.size());
+            for (const auto& p : sel) out.push_back(p->clone());
+            return out;
+        }
+
+        int main() {
+            std::vector<std::unique_ptr<Shape>> sel;
+            sel.push_back(std::make_unique<Circle>(2));
+            sel.push_back(std::make_unique<Text>("hi"));
+            auto copy = duplicate(sel);
+            static_cast<Text&>(*copy[1]).s = "edited";
+            for (const auto& p : sel) std::cout << p->describe() << '\n';    // Circle r=2.000000 / Text "hi"
+            for (const auto& p : copy) std::cout << p->describe() << '\n';   // Circle r=2.000000 / Text "edited"
+        }
+      `,
+      dry: { head: ['Element', 'clone() resolved to', 'Copy constructed', 'Dynamic type of copy'], rows: [
+        ['sel[0]', 'Cloneable&lt;Circle, Shape&gt;::clone', 'Circle(const Circle&amp;)', 'Circle'],
+        ['sel[1]', 'Cloneable&lt;Text, Shape&gt;::clone', 'Text(const Text&amp;)', 'Text']
+      ] },
+      complexity: `<p>O(N) clones, each one allocation + one copy. One virtual call per element.</p>`,
+      followUps: ['Support multi-level hierarchies (BigCircle derived from Circle) with <code>Cloneable&lt;BigCircle, Circle&gt;</code>.', 'Rewrite using C++23 deducing this.', 'Compare with C++26 <code>std::polymorphic&lt;Shape&gt;</code>.']
+    }
+  });
+
+  practice.push({
+    title: 'Matrix with operator() Indexing and operator* Multiplication',
+    level: 'Medium', tags: ['operator()', 'operator*', 'rule of zero', 'value semantics'], companies: ['Jane Street', 'MathWorks', 'Two Sigma'],
+    statement: `<p>Implement a dense row-major <code>Matrix</code> of doubles with <code>m(i, j)</code> access (const and non-const), <code>==</code>, <code>*</code> (matrix product, throws <code>std::invalid_argument</code> on dimension mismatch), <code>*=</code>, and <code>&lt;&lt;</code>. Storage must be a single <code>std::vector&lt;double&gt;</code> so that the class follows the Rule of Zero.</p>`,
+    constraints: `<p>Up to 500×500. Product must be O(n·m·p). Use cache-friendly loop order.</p>`,
+    example: `<p>A = [[1,2],[3,4]], B = [[5,6],[7,8]] → A*B = ${H.c('g', '[[19,22],[43,50]]')}. A (2×2) * C (3×1) → ${H.c('r', 'throws invalid_argument')}.</p>`,
+    brute: {
+      why: `<p>A <code>double**</code> with rows allocated separately needs a hand-written Rule of Five (and gets shallow copies by default), scatters rows across the heap, and the naive i-j-k product loop walks B column-wise, missing the cache on every access.</p>`,
+      code: R`
+        struct BadMatrix {
+            int r, c;
+            double** d;                                                   // array of separately allocated rows
+            BadMatrix(int r_, int c_) : r(r_), c(c_), d(new double*[r_]) { for (int i = 0; i < r; ++i) d[i] = new double[c]{}; }
+            ~BadMatrix() { for (int i = 0; i < r; ++i) delete[] d[i]; delete[] d; }
+            // no copy ctor/assign: shallow copies -> double free
+        };
+      `
+    },
+    mcq: { q: 'Why use <code>operator()(i, j)</code> instead of <code>operator[]</code> for 2-D access in C++20?', options: ['Before C++23, operator[] accepts exactly one argument; m[i][j] needs a proxy row object', 'operator() is faster', 'operator[] cannot return a reference', 'operator() is required by the standard for matrices'], answer: 0, explain: 'C++23 allows multidimensional <code>operator[](i, j)</code>, but in C++20 <code>operator[]</code> takes one parameter, so libraries (Eigen, Armadillo) use <code>m(i, j)</code>.' },
+    hints: [
+      `<p>Hint 1: store <code>rows_</code>, <code>cols_</code> and <code>std::vector&lt;double&gt; a_</code>; element (i, j) is <code>a_[i * cols_ + j]</code>.</p>`,
+      `<p>Hint 2: for C = A·B use loop order i, k, j: <code>double aik = A(i,k); for j: C(i,j) += aik * B(k,j);</code> — B and C are then read row-wise.</p>`,
+      `<p>Hint 3: implement <code>*</code> as a hidden friend and <code>*=</code> as <code>*this = *this * o;</code> (the product cannot be done in place).</p>`
+    ],
+    solution: {
+      approach: `<p>Rule of Zero value type over one contiguous vector. <code>operator()</code> provides 2-D indexing; defaulted <code>==</code> compares dimensions and data. Multiplication uses the i-k-j order for sequential memory access and checks dimensions.</p>`,
+      code: R`
+        #include <iostream>
+        #include <stdexcept>
+        #include <vector>
+
+        class Matrix {
+            std::size_t rows_ = 0, cols_ = 0;
+            std::vector<double> a_;
+        public:
+            Matrix(std::size_t r, std::size_t c) : rows_(r), cols_(c), a_(r * c, 0.0) {}
+            Matrix(std::initializer_list<std::initializer_list<double>> init)
+                : rows_(init.size()), cols_(init.size() ? init.begin()->size() : 0) {
+                for (const auto& row : init) {
+                    if (row.size() != cols_) throw std::invalid_argument("ragged rows");
+                    a_.insert(a_.end(), row.begin(), row.end());
+                }
+            }
+            double& operator()(std::size_t i, std::size_t j) { return a_[i * cols_ + j]; }
+            double operator()(std::size_t i, std::size_t j) const { return a_[i * cols_ + j]; }
+            std::size_t rows() const { return rows_; }
+            std::size_t cols() const { return cols_; }
+            bool operator==(const Matrix&) const = default;
+
+            friend Matrix operator*(const Matrix& A, const Matrix& B) {
+                if (A.cols_ != B.rows_) throw std::invalid_argument("dimension mismatch");
+                Matrix C(A.rows_, B.cols_);
+                for (std::size_t i = 0; i < A.rows_; ++i)
+                    for (std::size_t k = 0; k < A.cols_; ++k) {
+                        double aik = A(i, k);
+                        for (std::size_t j = 0; j < B.cols_; ++j) C(i, j) += aik * B(k, j);   // row-wise
+                    }
+                return C;
+            }
+            Matrix& operator*=(const Matrix& o) { *this = *this * o; return *this; }
+
+            friend std::ostream& operator<<(std::ostream& os, const Matrix& m) {
+                for (std::size_t i = 0; i < m.rows_; ++i) {
+                    os << '[';
+                    for (std::size_t j = 0; j < m.cols_; ++j) os << m(i, j) << (j + 1 < m.cols_ ? "," : "");
+                    os << "]\n";
+                }
+                return os;
+            }
+        };
+
+        int main() {
+            Matrix A{{1, 2}, {3, 4}}, B{{5, 6}, {7, 8}};
+            std::cout << A * B;                                    // [19,22] [43,50]
+            std::cout << (A * B == Matrix{{19, 22}, {43, 50}}) << '\n';   // 1
+            try { Matrix C(3, 1); A * C; } catch (const std::invalid_argument& e) { std::cout << e.what() << '\n'; }
+        }
+      `,
+      dry: { head: ['i', 'k', 'aik', 'row C(i,·) after k'], rows: [
+        ['0', '0', '1', '[5, 6]'],
+        ['0', '1', '2', '[5+14, 6+16] = [19, 22]'],
+        ['1', '0', '3', '[15, 18]'],
+        ['1', '1', '4', '[15+28, 18+32] = [43, 50]']
+      ] },
+      complexity: `<p>Product O(n·m·p) time, O(n·p) extra memory. Copy O(rows·cols), move O(1) (vector move). The i-k-j order is typically 3–10× faster than i-j-k for large matrices because of cache behaviour.</p>`,
+      followUps: ['Add <code>operator[](i, j)</code> under C++23.', 'Implement expression templates so <code>A + B + C</code> makes no temporaries.', 'Return a lightweight row view from <code>row(i)</code> using <code>std::span</code>.']
+    }
+  });
+
+  practice.push({
+    title: 'Make Your Range Work in a Range-for (Iterator Operators)',
+    level: 'Medium', tags: ['iterator', 'operator*', 'operator++', 'operator=='], companies: ['Google', 'Microsoft', 'Bloomberg'],
+    statement: `<p>Implement <code>Range(lo, hi, step)</code> that produces <code>lo, lo+step, …</code> while <code>&lt; hi</code>, without storing the numbers. It must work in <code>for (int x : Range(0, 10, 3))</code> and with <code>std::vector&lt;int&gt; v(r.begin(), r.end())</code>. Write the iterator class with <code>operator*</code>, prefix and postfix <code>operator++</code>, and <code>operator==</code>.</p>`,
+    constraints: `<p>step &gt; 0. O(1) memory. Must satisfy <code>std::input_iterator</code> (check with <code>static_assert</code>).</p>`,
+    example: `<p><code>Range(0, 10, 3)</code> yields ${H.c('g', '0 3 6 9')}. The range-for is rewritten by the compiler into <code>for (auto it = r.begin(), end = r.end(); it != end; ++it) { int x = *it; … }</code> — exactly the three operators you write.</p>`,
+    brute: {
+      why: `<p>Materializing the numbers into a <code>std::vector&lt;int&gt;</code> works but costs O(n) memory and time up front — a <code>Range(0, 1'000'000'000)</code> would allocate 4 GB just to loop.</p>`,
+      code: R`
+        #include <vector>
+        std::vector<int> rangeVec(int lo, int hi, int step) {
+            std::vector<int> v;
+            for (int x = lo; x < hi; x += step) v.push_back(x);   // O(n) memory before the loop even starts
+            return v;
+        }
+      `
+    },
+    mcq: { q: 'With <code>it != end</code> in the loop condition and only <code>operator==</code> defined, does it compile in C++20?', options: ['Yes — != is rewritten as !(it == end)', 'No — you must write operator!= too', 'Only if operator&lt;=&gt; is defined', 'Only for random-access iterators'], answer: 0, explain: 'C++20 rewritten comparison candidates generate != from ==. (Before C++20 you had to write both.)' },
+    hints: [
+      `<p>Hint 1: the iterator stores the current value and the step. Comparing iterators needs care: with step 3 and hi 10 the values go 0,3,6,9,12 — never exactly 10.</p>`,
+      `<p>Hint 2: make <code>end()</code> hold the first value ≥ hi that the sequence actually reaches: <code>lo + ceil((hi-lo)/step)*step</code>, so <code>==</code> on the current value works.</p>`,
+      `<p>Hint 3: provide the iterator type aliases (<code>value_type</code>, <code>difference_type</code>, <code>iterator_concept</code>) so standard algorithms accept it; postfix <code>++</code> returns the old copy.</p>`
+    ],
+    solution: {
+      approach: `<p>A lightweight iterator holding (value, step). <code>end()</code> is pre-computed as the first reachable value at or past <code>hi</code>, so equality comparison on values is exact. C++20 rewrites <code>!=</code> from <code>==</code>.</p>`,
+      code: R`
+        #include <iostream>
+        #include <iterator>
+        #include <vector>
+
+        class Range {
+            int lo_, hi_, step_;
+        public:
+            class iterator {
+                int v_ = 0, step_ = 1;
+            public:
+                using value_type = int;
+                using difference_type = std::ptrdiff_t;
+                using iterator_concept = std::forward_iterator_tag;
+                iterator() = default;
+                iterator(int v, int s) : v_(v), step_(s) {}
+                int operator*() const { return v_; }
+                iterator& operator++() { v_ += step_; return *this; }               // prefix
+                iterator operator++(int) { iterator old = *this; v_ += step_; return old; }   // postfix
+                bool operator==(const iterator& o) const { return v_ == o.v_; }      // != comes for free
+            };
+            Range(int lo, int hi, int step = 1) : lo_(lo), hi_(hi), step_(step) {}
+            iterator begin() const { return {lo_, step_}; }
+            iterator end() const {
+                int n = hi_ > lo_ ? (hi_ - lo_ + step_ - 1) / step_ : 0;          // number of elements
+                return {lo_ + n * step_, step_};
+            }
+        };
+        static_assert(std::forward_iterator<Range::iterator>);
+
+        int main() {
+            for (int x : Range(0, 10, 3)) std::cout << x << ' ';                    // 0 3 6 9
+            Range r(5, 8);
+            std::vector<int> v(r.begin(), r.end());                                 // 5 6 7
+            std::cout << "| " << v.size() << '\n';
+        }
+      `,
+      dry: { head: ['Iteration', 'it.v_', 'it == end (12)?', 'x printed'], rows: [
+        ['1', '0', 'no', '0'],
+        ['2', '3', 'no', '3'],
+        ['3', '6', 'no', '6'],
+        ['4', '9', 'no', '9'],
+        ['5', '12', H.c('g', 'yes → stop'), '—']
+      ] },
+      complexity: `<p>O(1) memory, O(1) per step. The compiler typically optimizes the range-for to the same loop as a hand-written <code>for (int x = lo; x &lt; hi; x += step)</code>.</p>`,
+      followUps: ['Support negative steps.', 'Use a sentinel type for <code>end()</code> instead of precomputing it (C++20 ranges allow different begin/end types).', 'Make <code>Range</code> a <code>std::ranges::view</code> and pipe it into <code>std::views::filter</code>.']
+    }
+  });
+
+  practice.push({
+    title: 'Which Constructor Runs? Ten Ways to Initialize an Object',
+    level: 'Medium', tags: ['initialization', 'most vexing parse', 'explicit', 'predict output'], companies: ['Bloomberg', 'Amazon', 'Optiver'],
+    statement: `<p>For a class <code>W</code> that prints from its default ctor, <code>W(int)</code>, <code>explicit W(double)</code>, <code>W(std::initializer_list&lt;int&gt;)</code>, copy ctor and move ctor, predict what each line prints: <code>W a; W b(1); W c = 2; W d{3}; W e{}; W f = {4, 5}; W g(a); W h = std::move(a); W i = W(6); W j();</code> — and spot the line that does not create an object at all.</p>`,
+    constraints: `<p>C++17 or later (guaranteed copy elision). <code>W(double)</code> is explicit.</p>`,
+    example: `<p><code>W d{3};</code> → ${H.c('y', 'init-list ctor')} (braces strongly prefer initializer_list constructors). <code>W e{};</code> → ${H.c('g', 'default ctor')} (empty braces mean value-initialization). <code>W j();</code> → ${H.c('r', 'nothing: it declares a function!')} (the most vexing parse).</p>`,
+    brute: {
+      why: `<p>Guessing from the visual shape of the line ("parentheses call the matching constructor, braces too") gets <code>W d{3}</code>, <code>W f = {4, 5}</code>, <code>W i = W(6)</code> and <code>W j()</code> wrong. You need the actual rules for direct, copy, list and value initialization.</p>`,
+      code: R`
+        #include <iostream>
+        struct W {
+            W() { std::cout << "default\n"; }
+            W(int) { std::cout << "int\n"; }
+            // naive guess table:
+            // W d{3};      -> "int"?         (wrong: init-list wins)
+            // W i = W(6);  -> "int" + "copy"? (wrong: elided since C++17)
+            // W j();       -> "default"?      (wrong: declares a function)
+        };
+      `
+    },
+    mcq: { q: 'What does <code>W j();</code> do?', options: ['Declares a function j taking no arguments and returning W', 'Default-constructs j', 'Value-initializes j to zero', 'Compile error'], answer: 0, explain: 'If something can be parsed as a declaration, it is. Empty parentheses after a name in a declaration declare a function. Use <code>W j;</code> or <code>W j{};</code>.' },
+    hints: [
+      `<p>Hint 1: copy-initialization (<code>W c = 2;</code>) considers only <b>non-explicit</b> converting constructors.</p>`,
+      `<p>Hint 2: list-initialization (<code>{…}</code>) prefers an <code>initializer_list</code> constructor whenever the elements can convert; empty braces <code>{}</code> use the default constructor instead.</p>`,
+      `<p>Hint 3: <code>W i = W(6);</code> is a prvalue initializing a W → guaranteed elision: just <code>W(int)</code>.</p>`
+    ],
+    solution: {
+      approach: `<p>Classify each line by initialization kind: default, direct, copy, list (direct or copy), value; apply explicit-ness and initializer_list preference; remember elision and the most vexing parse.</p>`,
+      code: R`
+        #include <initializer_list>
+        #include <iostream>
+        #include <utility>
+        struct W {
+            W() { std::cout << "default\n"; }
+            W(int) { std::cout << "int\n"; }
+            explicit W(double) { std::cout << "double\n"; }
+            W(std::initializer_list<int> l) { std::cout << "init-list(" << l.size() << ")\n"; }
+            W(const W&) { std::cout << "copy\n"; }
+            W(W&&) noexcept { std::cout << "move\n"; }
+        };
+        int main() {
+            W a;               // default
+            W b(1);            // int
+            W c = 2;           // int        (copy-init: non-explicit converting ctor)
+            W d{3};            // init-list(1)
+            W e{};             // default    (empty braces -> value-init via default ctor)
+            W f = {4, 5};      // init-list(2)
+            W g(a);            // copy
+            W h = std::move(a);// move
+            W i = W(6);        // int        (guaranteed elision, no copy/move)
+            W j();             // prints nothing: declares a function named j!
+            W k(2.5);          // double     (direct-init may use explicit ctors)
+            // W m = 2.5;      // would pick W(int) after double->int conversion? No: explicit W(double) is
+            //                 // ignored, W(int) is viable -> prints "int" (narrowing silently!)
+        }
+      `,
+      dry: { head: ['Line', 'Initialization kind', 'Chosen constructor'], rows: [
+        ['<code>W c = 2;</code>', 'copy-init', 'W(int)'],
+        ['<code>W d{3};</code>', 'direct-list-init', 'W(initializer_list) — preferred'],
+        ['<code>W e{};</code>', 'value-init', 'W()'],
+        ['<code>W f = {4, 5};</code>', 'copy-list-init', 'W(initializer_list)'],
+        ['<code>W i = W(6);</code>', 'copy-init from prvalue', 'W(int) only (elided)'],
+        ['<code>W j();</code>', H.c('r', 'function declaration'), 'none'],
+        ['<code>W k(2.5);</code>', 'direct-init', 'explicit W(double)']
+      ] },
+      complexity: `<p>Not algorithmic. Practical rule: prefer <code>{}</code> for "construct from these values" except when a type has an initializer_list constructor you do not want (the classic <code>std::vector&lt;int&gt; v{10}</code> = one element vs <code>v(10)</code> = ten elements).</p>`,
+      followUps: ['Explain <code>std::vector&lt;int&gt; a(3, 1)</code> vs <code>std::vector&lt;int&gt; b{3, 1}</code>.', 'Why does <code>W x{2.5}</code> fail to compile (narrowing in list-init)?', 'What does <code>auto x{5};</code> deduce since C++17?']
+    }
+  });
+
+  /* ======================================================================
+     PRACTICE — Hard
+     ====================================================================== */
+  practice.push({
+    title: 'Build a Minimal unique_ptr (Move-Only Ownership, Custom Deleter)',
+    level: 'Hard', tags: ['rule of five', 'move-only', 'RAII', 'operator overloading'], companies: ['Google', 'Bloomberg', 'Meta'],
+    statement: `<p>Implement <code>UniquePtr&lt;T, D = DefaultDelete&lt;T&gt;&gt;</code>: sole ownership of a heap object, copy <b>deleted</b>, noexcept move constructor/assignment, destructor that calls the deleter, <code>operator*</code>, <code>operator-&gt;</code>, <code>explicit operator bool</code>, <code>get()</code>, <code>release()</code>, <code>reset(p = nullptr)</code>, and a <code>makeUnique&lt;T&gt;(args...)</code> factory. A <code>UniquePtr&lt;Derived&gt;</code> must convert to <code>UniquePtr&lt;Base&gt;</code>.</p>`,
+    constraints: `<p>No leaks or double deletes under any sequence of moves/resets (verify with ASan). <code>sizeof(UniquePtr&lt;T&gt;) == sizeof(T*)</code> for the empty default deleter (use <code>[[no_unique_address]]</code>).</p>`,
+    example: `<p><code>auto a = makeUnique&lt;int&gt;(5); auto b = std::move(a);</code> → ${H.c('y', 'a is null')}, ${H.c('g', '*b == 5')}. <code>UniquePtr&lt;int&gt; c = b;</code> → ${H.c('r', 'compile error (copy deleted)')}. <code>b.reset(new int(7));</code> → old 5 deleted, b owns 7.</p>`,
+    brute: {
+      why: `<p>A raw-pointer wrapper that relies on the compiler-generated copy members gives two owners → double delete. Making copy "transfer ownership" (the C++98 <code>auto_ptr</code> design) silently nulls the source on what looks like a copy, which broke containers and algorithms — that is why <code>auto_ptr</code> was removed in C++17.</p>`,
+      code: R`
+        template <class T>
+        class NaivePtr {
+            T* p_;
+        public:
+            explicit NaivePtr(T* p) : p_(p) {}
+            ~NaivePtr() { delete p_; }
+            T& operator*() const { return *p_; }
+            // compiler-generated copy: two NaivePtrs own the same T -> double delete
+        };
+        int main() { NaivePtr<int> a(new int(1)); NaivePtr<int> b = a; }   // double free at exit
+      `
+    },
+    mcq: { q: 'Why must <code>reset(p)</code> store the new pointer <b>before</b> deleting the old one?', options: ['If deleting the old object somehow reaches this UniquePtr again (e.g. via its destructor), it must already see a consistent state', 'Because delete is slow', 'To avoid a compiler warning', 'It does not matter'], answer: 0, explain: 'The standard specifies: old = ptr; ptr = p; if (old) deleter(old). Deleting first would leave a dangling pointer visible during the old object\'s destructor (and breaks self-reset patterns).' },
+    hints: [
+      `<p>Hint 1: members: <code>T* p_</code> and <code>[[no_unique_address]] D d_</code>. Delete the copy constructor and copy assignment.</p>`,
+      `<p>Hint 2: move ctor: <code>p_(std::exchange(o.p_, nullptr))</code>. Move assign: <code>reset(o.release())</code> — automatically self-move safe? Check it: release() nulls o first, then reset deletes our old pointer; for self-move old == new pointer… handle that case.</p>`,
+      `<p>Hint 3: converting constructor <code>template &lt;class U&gt; requires std::is_convertible_v&lt;U*, T*&gt; UniquePtr(UniquePtr&lt;U&gt;&amp;&amp; o)</code>; give it access via a friend declaration or use <code>o.release()</code>.</p>`
+    ],
+    solution: {
+      approach: `<p>RAII handle with move-only semantics. The destructor and <code>reset</code> are the only places that call the deleter. Move assignment is implemented as <code>reset(o.release())</code> guarded against self-move. <code>[[no_unique_address]]</code> makes an empty deleter take no space.</p>`,
+      code: R`
+        #include <iostream>
+        #include <type_traits>
+        #include <utility>
+
+        template <class T>
+        struct DefaultDelete {
+            DefaultDelete() = default;
+            template <class U> requires std::is_convertible_v<U*, T*>
+            DefaultDelete(const DefaultDelete<U>&) noexcept {}                // Derived deleter -> Base deleter
+            void operator()(T* p) const noexcept { delete p; }
+        };
+
+        template <class T, class D = DefaultDelete<T>>
+        class UniquePtr {
+            T* p_ = nullptr;
+            [[no_unique_address]] D d_{};
+        public:
+            UniquePtr() noexcept = default;
+            explicit UniquePtr(T* p, D d = D{}) noexcept : p_(p), d_(std::move(d)) {}
+            ~UniquePtr() { if (p_) d_(p_); }
+
+            UniquePtr(const UniquePtr&) = delete;                       // sole ownership
+            UniquePtr& operator=(const UniquePtr&) = delete;
+
+            UniquePtr(UniquePtr&& o) noexcept : p_(std::exchange(o.p_, nullptr)), d_(std::move(o.d_)) {}
+            UniquePtr& operator=(UniquePtr&& o) noexcept {
+                if (this != &o) { reset(o.release()); d_ = std::move(o.d_); }
+                return *this;
+            }
+
+            template <class U, class E>
+                requires std::is_convertible_v<U*, T*> && std::is_convertible_v<E, D>
+            UniquePtr(UniquePtr<U, E>&& o) noexcept : p_(o.release()), d_(std::move(o.get_deleter())) {}
+
+            T& operator*() const { return *p_; }
+            T* operator->() const noexcept { return p_; }
+            explicit operator bool() const noexcept { return p_ != nullptr; }
+            T* get() const noexcept { return p_; }
+            D& get_deleter() noexcept { return d_; }
+            T* release() noexcept { return std::exchange(p_, nullptr); }
+            void reset(T* p = nullptr) noexcept {
+                T* old = std::exchange(p_, p);                          // publish new state first
+                if (old) d_(old);
+            }
+        };
+
+        template <class T, class... Args>
+        UniquePtr<T> makeUnique(Args&&... args) { return UniquePtr<T>(new T(std::forward<Args>(args)...)); }
+
+        struct Base { virtual ~Base() = default; virtual int id() const { return 0; } };
+        struct Derived : Base { int id() const override { return 1; } };
+
+        static_assert(sizeof(UniquePtr<int>) == sizeof(int*));
+        static_assert(!std::is_copy_constructible_v<UniquePtr<int>>);
+        static_assert(std::is_nothrow_move_constructible_v<UniquePtr<int>>);
+
+        int main() {
+            auto a = makeUnique<int>(5);
+            auto b = std::move(a);                                      // a null, b owns 5
+            b.reset(new int(7));                                        // 5 deleted, b owns 7
+            UniquePtr<Base> poly = makeUnique<Derived>();               // converting move
+            std::cout << static_cast<bool>(a) << ' ' << *b << ' ' << poly->id() << '\n';   // 0 7 1
+        }
+      `,
+      dry: { head: ['Statement', 'a.p_', 'b.p_', 'Heap'], rows: [
+        ['<code>a = makeUnique&lt;int&gt;(5)</code>', '0x10', '—', '{0x10: 5}'],
+        ['<code>b = std::move(a)</code>', 'nullptr', '0x10', '{0x10: 5}'],
+        ['<code>b.reset(new int(7))</code>', 'nullptr', '0x20', '{0x20: 7} (0x10 deleted)'],
+        ['end of main', '—', 'deleted 0x20', 'empty']
+      ] },
+      complexity: `<p>All operations O(1). Zero space overhead beyond one pointer with a stateless deleter.</p>`,
+      followUps: ['Add the array specialization <code>UniquePtr&lt;T[]&gt;</code> with <code>operator[]</code> and <code>delete[]</code>.', 'Use a function-pointer deleter for <code>FILE*</code> with <code>fclose</code>. What happens to sizeof?', 'Why can a <code>std::unique_ptr</code> to an incomplete type be declared but its destructor not instantiated?']
+    }
+  });
+
+  practice.push({
+    title: 'Hand-Rolled vtable: Dynamic Dispatch in C-Style Code',
+    level: 'Hard', tags: ['vtable', 'vptr', 'function pointers', 'internals'], companies: ['Nvidia', 'Apple', 'Qualcomm'],
+    statement: `<p>Without using the <code>virtual</code> keyword, implement polymorphic <code>area()</code> and <code>name()</code> for Circle and Rect the way the compiler does: a <code>VTable</code> struct of function pointers, one <code>static const</code> table per "class", and a <code>vptr</code> as the first member of each object. Write <code>double totalArea(Shape* const* shapes, int n)</code> that dispatches through the vptr.</p>`,
+    constraints: `<p>Plain structs only (as you would in C or in a kernel / embedded codebase). Objects must be usable through a <code>Shape*</code> that points at their first member.</p>`,
+    example: `<p>Circle r=1 and Rect 2×3 → total ${H.c('g', '9.14159')}. Dispatch for the Rect: ${H.c('b', 's-&gt;vptr')} → ${H.c('y', 'RectVTable')} → ${H.c('g', 'rect_area(s)')}.</p>`,
+    brute: {
+      why: `<p>A type-tag <code>switch</code> in every function works but every new shape edits every switch — exactly the coupling vtables were invented to remove. Storing function pointers <b>per object</b> (instead of one shared table) wastes memory: two pointers per object per method.</p>`,
+      code: R`
+        enum Kind { CIRCLE, RECT };
+        struct Shape { Kind kind; double a, b; };
+        double area(const Shape* s) {
+            switch (s->kind) {                       // edited for every new shape
+                case CIRCLE: return 3.14159 * s->a * s->a;
+                case RECT:   return s->a * s->b;
+            }
+            return 0;
+        }
+      `
+    },
+    mcq: { q: 'Why does each object store a pointer to a <b>shared</b> table instead of its own function pointers?', options: ['One table per class costs memory once; each object pays only 8 bytes for the vptr regardless of how many virtual functions exist', 'Function pointers cannot be stored in objects', 'It is faster to call through two indirections', 'Shared tables are required by C'], answer: 0, explain: 'With k virtual functions, per-object function pointers cost 8k bytes per object; a vptr costs 8 bytes per object plus 8k bytes per class.' },
+    hints: [
+      `<p>Hint 1: <code>struct VTable { double (*area)(const struct Shape*); const char* (*name)(const struct Shape*); };</code> and <code>struct Shape { const VTable* vptr; };</code></p>`,
+      `<p>Hint 2: <code>struct Circle { Shape base; double r; };</code> — base first, so <code>(Shape*)&amp;circle</code> is valid (standard-layout); inside <code>circle_area</code> cast back with <code>reinterpret_cast&lt;const Circle*&gt;(s)</code>.</p>`,
+      `<p>Hint 3: the "constructor" sets <code>c.base.vptr = &amp;CircleVTable</code>; the call site is <code>s-&gt;vptr-&gt;area(s)</code> — exactly what <code>s-&gt;area()</code> compiles to.</p>`
+    ],
+    solution: {
+      approach: `<p>Emulate the Itanium-style layout: the base sub-object (holding the vptr) is the first member, each "class" has one constant table, and a call loads the vptr, loads the slot and calls with the object pointer as <code>this</code>. This is how GObject, the Linux kernel's <code>file_operations</code>, and COM work.</p>`,
+      code: R`
+        #include <cstdio>
+
+        struct Shape;
+        struct VTable {
+            double (*area)(const Shape*);
+            const char* (*name)(const Shape*);
+        };
+        struct Shape { const VTable* vptr; };                      // the hidden member, made visible
+
+        struct Circle { Shape base; double r; };                   // base FIRST: Shape* == Circle* address
+        struct Rect   { Shape base; double w, h; };
+
+        static double circle_area(const Shape* s) { const Circle* c = reinterpret_cast<const Circle*>(s); return 3.14159 * c->r * c->r; }
+        static const char* circle_name(const Shape*) { return "circle"; }
+        static double rect_area(const Shape* s) { const Rect* r = reinterpret_cast<const Rect*>(s); return r->w * r->h; }
+        static const char* rect_name(const Shape*) { return "rect"; }
+
+        static const VTable CircleVTable = { circle_area, circle_name };   // one table per "class"
+        static const VTable RectVTable   = { rect_area, rect_name };
+
+        Circle makeCircle(double r) { Circle c; c.base.vptr = &CircleVTable; c.r = r; return c; }   // "constructor" sets vptr
+        Rect makeRect(double w, double h) { Rect x; x.base.vptr = &RectVTable; x.w = w; x.h = h; return x; }
+
+        double totalArea(Shape* const* shapes, int n) {
+            double sum = 0;
+            for (int i = 0; i < n; ++i) sum += shapes[i]->vptr->area(shapes[i]);   // load vptr, load slot, call
+            return sum;
+        }
+
+        int main() {
+            Circle c = makeCircle(1);
+            Rect r = makeRect(2, 3);
+            Shape* shapes[] = { &c.base, &r.base };
+            for (Shape* s : shapes) std::printf("%s %.5f\n", s->vptr->name(s), s->vptr->area(s));
+            std::printf("total %.5f\n", totalArea(shapes, 2));      // total 9.14159
+        }
+      `,
+      dry: { head: ['Element', 'vptr →', 'slot area', 'Result', 'Sum'], rows: [
+        ['shapes[0]', 'CircleVTable', 'circle_area', '3.14159', '3.14159'],
+        ['shapes[1]', 'RectVTable', 'rect_area', '6', H.c('g', '9.14159')]
+      ] },
+      complexity: `<p>O(N) with one indirect call per element — identical cost to C++ virtual functions. Memory: 8 bytes per object + one table per type.</p>`,
+      followUps: ['Add "inheritance": a <code>Square</code> whose table reuses <code>rect_area</code> but has its own name.', 'Add a destroy slot and emulate a virtual destructor.', 'Compare the generated assembly with the <code>virtual</code> version at -O2.']
+    }
+  });
+
+  practice.push({
+    title: 'Growable Stack&lt;T&gt; with the Strong Exception Guarantee',
+    level: 'Hard', tags: ['rule of five', 'move_if_noexcept', 'exception safety', 'templates'], companies: ['Bloomberg', 'Citadel', 'Hudson River Trading'],
+    statement: `<p>Implement <code>Stack&lt;T&gt;</code> backed by a manually managed buffer that grows ×2. <code>push(const T&amp;)</code>/<code>push(T&amp;&amp;)</code> must give the <b>strong guarantee</b>: if anything throws (allocation, T's copy, T's move), the stack is unchanged. Use <code>std::move_if_noexcept</code> when relocating. Provide full Rule of Five, <code>pop()</code>, <code>top()</code>, <code>size()</code>.</p>`,
+    constraints: `<p>T may have a throwing copy constructor and a possibly-throwing move constructor. Use <code>std::allocator&lt;T&gt;</code> or <code>::operator new</code> + placement new so capacity slots are not default-constructed.</p>`,
+    example: `<p>Push 3 strings into capacity 2 → reallocation to 4: ${H.c('g', 'moves the 2 existing strings')} (string's move is noexcept). For a type whose move may throw, ${H.c('y', 'it copies them instead')} so a failure leaves the old buffer intact.</p>`,
+    brute: {
+      why: `<p>Using <code>new T[cap]</code> default-constructs every slot (requires default-constructible T, wastes work). Relocating with <code>std::move</code> unconditionally loses elements if the 3rd move throws: the first two are already gutted in the old buffer.</p>`,
+      code: R`
+        #include <algorithm>
+        #include <cstddef>
+        #include <utility>
+        template <class T>
+        class NaiveStack {
+            T* d_ = new T[1]; std::size_t n_ = 0, cap_ = 1;
+        public:
+            ~NaiveStack() { delete[] d_; }
+            void push(T v) {
+                if (n_ == cap_) {
+                    T* nd = new T[cap_ * 2];                                    // default-constructs every slot
+                    for (std::size_t i = 0; i < n_; ++i) nd[i] = std::move(d_[i]);   // throws midway -> data lost, nd leaked
+                    delete[] d_; d_ = nd; cap_ *= 2;
+                }
+                d_[n_++] = std::move(v);
+            }
+        };
+      `
+    },
+    mcq: { q: 'Relocating during growth, when should elements be copied instead of moved?', options: ['When T\'s move constructor is not noexcept and T is copyable', 'Always copy', 'Always move', 'When T is trivially copyable'], answer: 0, explain: 'std::move_if_noexcept yields an rvalue only if moving cannot throw (or T is move-only). Copying keeps the originals intact, so if a copy throws we destroy the partial new buffer and the stack is unchanged.' },
+    hints: [
+      `<p>Hint 1: allocate raw storage with <code>std::allocator&lt;T&gt;</code>; construct with <code>std::construct_at</code>; destroy with <code>std::destroy_at</code>/<code>std::destroy</code>.</p>`,
+      `<p>Hint 2: in <code>grow()</code>, construct into the new buffer inside try/catch; on exception destroy the already-built elements in the new buffer, deallocate it, rethrow. Only after success destroy the old elements and swap buffers.</p>`,
+      `<p>Hint 3: in <code>push</code>, construct the new element into the <b>new</b> buffer before relocating the old ones (it may alias an existing element: <code>s.push(s.top())</code>).</p>`
+    ],
+    solution: {
+      approach: `<p>Separate allocation from construction. Growth builds a complete new buffer (relocating with <code>move_if_noexcept</code>) and commits with non-throwing pointer swaps only at the end. The element being pushed is constructed first in the new buffer so that pushing a reference to an existing element is safe. Copy uses the same build-then-commit pattern; moves steal pointers.</p>`,
+      code: R`
+        #include <cstddef>
+        #include <iostream>
+        #include <memory>
+        #include <string>
+        #include <utility>
+
+        template <class T>
+        class Stack {
+            T* d_ = nullptr;
+            std::size_t n_ = 0, cap_ = 0;
+            static T* alloc(std::size_t c) { return c ? std::allocator<T>{}.allocate(c) : nullptr; }
+            static void dealloc(T* p, std::size_t c) { if (p) std::allocator<T>{}.deallocate(p, c); }
+
+            template <class U>
+            void growAndPush(U&& v) {
+                std::size_t nc = cap_ ? cap_ * 2 : 1;
+                T* nd = alloc(nc);
+                std::size_t built = 0;
+                bool placed = false;
+                try {
+                    std::construct_at(nd + n_, std::forward<U>(v));                 // new element first (aliasing-safe)
+                    placed = true;
+                    for (; built < n_; ++built) std::construct_at(nd + built, std::move_if_noexcept(d_[built]));
+                } catch (...) {                                                      // roll back: *this is untouched
+                    std::destroy(nd, nd + built);                                    // relocated copies built so far
+                    if (placed) std::destroy_at(nd + n_);                            // the new element, if it was built
+                    dealloc(nd, nc);
+                    throw;
+                }
+                std::destroy(d_, d_ + n_);                                           // commit: nothing below can throw
+                dealloc(d_, cap_);
+                d_ = nd; cap_ = nc; ++n_;
+            }
+        public:
+            Stack() = default;
+            ~Stack() { std::destroy(d_, d_ + n_); dealloc(d_, cap_); }
+            Stack(const Stack& o) : d_(alloc(o.n_)), n_(0), cap_(o.n_) {
+                try { for (; n_ < o.n_; ++n_) std::construct_at(d_ + n_, o.d_[n_]); }
+                catch (...) { std::destroy(d_, d_ + n_); dealloc(d_, cap_); throw; }
+            }
+            Stack(Stack&& o) noexcept : d_(std::exchange(o.d_, nullptr)), n_(std::exchange(o.n_, 0)), cap_(std::exchange(o.cap_, 0)) {}
+            Stack& operator=(Stack o) noexcept { swap(*this, o); return *this; }
+            friend void swap(Stack& a, Stack& b) noexcept { std::swap(a.d_, b.d_); std::swap(a.n_, b.n_); std::swap(a.cap_, b.cap_); }
+
+            void push(const T& v) { if (n_ == cap_) growAndPush(v); else { std::construct_at(d_ + n_, v); ++n_; } }
+            void push(T&& v) { if (n_ == cap_) growAndPush(std::move(v)); else { std::construct_at(d_ + n_, std::move(v)); ++n_; } }
+            void pop() { std::destroy_at(d_ + --n_); }
+            T& top() { return d_[n_ - 1]; }
+            std::size_t size() const { return n_; }
+        };
+
+        int main() {
+            Stack<std::string> s;
+            s.push("alpha"); s.push("beta"); s.push(s.top());       // aliasing push during growth: safe
+            Stack<std::string> t = s;                                // deep copy
+            s.pop();
+            std::cout << s.size() << ' ' << t.size() << ' ' << t.top() << '\n';   // 2 3 beta
+        }
+      `,
+      dry: { head: ['Operation', 'n / cap', 'Relocation', 'Note'], rows: [
+        ['push "alpha"', '1 / 1', 'grow 0→1', 'construct in new buffer'],
+        ['push "beta"', '2 / 2', 'grow 1→2: move alpha', 'string move is noexcept'],
+        ['push(s.top())', '3 / 4', 'grow 2→4', 'copy of "beta" built FIRST, then alpha, beta moved'],
+        ['<code>Stack t = s</code>', 't: 3 / 3', 'copy each', 'on throw: destroy built, free, rethrow'],
+        ['s.pop()', '2 / 4', '—', 'destroy_at top']
+      ] },
+      complexity: `<p>push amortized O(1); growth O(n) moves (or copies when move may throw). Copy O(n). Move O(1). Extra memory during growth: old + new buffer.</p>`,
+      followUps: ['If <code>push(T&amp;&amp;)</code> fails after the argument was already moved into the new buffer, is the caller\'s object still intact? How does <code>std::vector</code> document this?', 'Why can\'t <code>pop()</code> return the popped value by value with the strong guarantee? (the classic std::stack design reason)', 'Replace manual try/catch with a scope guard RAII helper.']
+    }
+  });
+
+  practice.push({
+    title: 'Value-Semantic Polymorphism: a Type-Erased AnyShape',
+    level: 'Hard', tags: ['type erasure', 'virtual', 'rule of five', 'no slicing'], companies: ['Adobe', 'Google', 'Bloomberg'],
+    statement: `<p>Implement <code>AnyShape</code> that can hold <b>any</b> type with an <code>area()</code> member (no common base class required!), is <b>copyable with value semantics</b> (copies deep-copy the held object), movable, and can be stored directly in <code>std::vector&lt;AnyShape&gt;</code> without slicing. This is Sean Parent's "runtime polymorphism without inheritance".</p>`,
+    constraints: `<p>User types (<code>Circle</code>, <code>Square</code>) must not inherit from anything. One heap allocation per stored object.</p>`,
+    example: `<p><code>std::vector&lt;AnyShape&gt; v{Circle{1}, Square{2}}; auto w = v; </code> → ${H.c('g', 'w is an independent deep copy')}; sum of areas ${H.c('b', '7.14159')}; no slicing because the vector stores AnyShape handles, not shapes.</p>`,
+    brute: {
+      why: `<p>The inheritance approach forces every type to derive from <code>Shape</code> (impossible for third-party types), requires <code>unique_ptr&lt;Shape&gt;</code> in containers (no value semantics: copying the vector does not compile) and a hand-written clone in every class.</p>`,
+      code: R`
+        #include <memory>
+        #include <vector>
+        struct Shape { virtual ~Shape() = default; virtual double area() const = 0; };
+        struct Circle : Shape { double r; double area() const override { return 3.14159 * r * r; } };   // must inherit
+        int main() {
+            std::vector<std::unique_ptr<Shape>> v;
+            // auto w = v;   // does not compile: unique_ptr is move-only -> no value semantics
+        }
+      `
+    },
+    mcq: { q: 'Where does the virtual function live in a type-erasure design?', options: ['In a private Concept base class inside AnyShape; a templated Model&lt;T&gt; implements it by calling T\'s area()', 'In the user\'s Circle class', 'In std::any', 'Nowhere — type erasure uses only templates'], answer: 0, explain: 'The inheritance is hidden inside the wrapper: Concept declares virtual area/clone, Model&lt;T&gt; stores a T and forwards. Users never see or inherit from Concept.' },
+    hints: [
+      `<p>Hint 1: inside AnyShape: <code>struct Concept { virtual ~Concept() = default; virtual double area() const = 0; virtual std::unique_ptr&lt;Concept&gt; clone() const = 0; };</code></p>`,
+      `<p>Hint 2: <code>template &lt;class T&gt; struct Model final : Concept { T obj; ... double area() const override { return obj.area(); } ... };</code> and a templated constructor <code>AnyShape(T t)</code> that creates a Model&lt;T&gt;.</p>`,
+      `<p>Hint 3: copy ctor clones; copy assignment via copy-and-swap; moves are defaulted (unique_ptr moves). Constrain the templated constructor so it does not hijack copying an AnyShape (exclude <code>T = AnyShape</code>).</p>`
+    ],
+    solution: {
+      approach: `<p>External polymorphism: a hidden abstract <code>Concept</code>, a templated <code>Model&lt;T&gt;</code> adapting any type with <code>area()</code>, and a value-semantic handle owning <code>unique_ptr&lt;Concept&gt;</code>. Copy = clone (deep, type-preserving); move = pointer steal. The same pattern underlies <code>std::function</code> and <code>std::any</code>.</p>`,
+      code: R`
+        #include <concepts>
+        #include <iostream>
+        #include <memory>
+        #include <type_traits>
+        #include <vector>
+
+        template <class T>
+        concept HasArea = requires(const T& t) { { t.area() } -> std::convertible_to<double>; };
+
+        class AnyShape {
+            struct Concept {
+                virtual ~Concept() = default;
+                virtual double area() const = 0;
+                virtual std::unique_ptr<Concept> clone() const = 0;
+            };
+            template <class T>
+            struct Model final : Concept {
+                T obj;
+                explicit Model(T o) : obj(std::move(o)) {}
+                double area() const override { return obj.area(); }
+                std::unique_ptr<Concept> clone() const override { return std::make_unique<Model>(*this); }
+            };
+            std::unique_ptr<Concept> self_;
+        public:
+            template <class T>
+                requires HasArea<T> && (!std::same_as<std::remove_cvref_t<T>, AnyShape>)
+            AnyShape(T t) : self_(std::make_unique<Model<T>>(std::move(t))) {}
+
+            AnyShape(const AnyShape& o) : self_(o.self_->clone()) {}          // deep copy, real type kept
+            AnyShape(AnyShape&&) noexcept = default;
+            AnyShape& operator=(AnyShape o) noexcept { self_ = std::move(o.self_); return *this; }
+            ~AnyShape() = default;
+
+            double area() const { return self_->area(); }
+        };
+
+        struct Circle { double r; double area() const { return 3.14159 * r * r; } };   // no base class!
+        struct Square { double s; double area() const { return s * s; } };
+
+        int main() {
+            std::vector<AnyShape> v{Circle{1}, Square{2}};
+            std::vector<AnyShape> w = v;                                   // value semantics: deep copy
+            v[0] = Square{10};                                             // does not affect w
+            double sum = 0;
+            for (const auto& s : w) sum += s.area();
+            std::cout << sum << ' ' << v[0].area() << '\n';                 // 7.14159 100
+        }
+      `,
+      dry: { head: ['Step', 'v', 'w', 'Mechanism'], rows: [
+        ['construct v', '[Model&lt;Circle&gt;, Model&lt;Square&gt;]', '—', 'templated ctor wraps each'],
+        ['<code>w = v</code>', 'unchanged', '[clone, clone]', 'AnyShape copy ctor → clone()'],
+        ['<code>v[0] = Square{10}</code>', '[Model&lt;Square 10&gt;, …]', 'unchanged', 'convert, then move-assign'],
+        ['sum over w', '', '3.14159 + 4', H.c('g', '7.14159')]
+      ] },
+      complexity: `<p>One allocation per stored object, one virtual call per area(). Copy O(size of object). Small-buffer optimization (storing small T inline) removes the allocation for small types — what <code>std::function</code> implementations do.</p>`,
+      followUps: ['Add small-buffer optimization for types ≤ 32 bytes.', 'Make AnyShape hold <code>std::shared_ptr&lt;const Concept&gt;</code> for cheap copies of immutable shapes (copy-on-write).', 'Compare with C++26 <code>std::polymorphic</code> and with <code>std::variant</code>.']
+    }
+  });
+
+  practice.push({
+    title: 'Intrusive Reference-Counted Handle (Shared Ownership by Hand)',
+    level: 'Hard', tags: ['rule of five', 'reference counting', 'RAII', 'operator overloading'], companies: ['Apple', 'Microsoft', 'Unreal / Epic'],
+    statement: `<p>Game engines and COM/Objective-C style APIs use <b>intrusive</b> reference counts: the object itself stores its count. Implement <code>RefCounted</code> (base with <code>addRef()</code>/<code>release()</code>, deleting itself at zero through a <b>virtual destructor</b>) and <code>RefPtr&lt;T&gt;</code>: copy = share (increment), move = steal (no count change), destructor = release, plus <code>*</code>, <code>-&gt;</code>, <code>==</code>, <code>explicit operator bool</code>, and correct self-assignment.</p>`,
+    constraints: `<p>Single-threaded counts are fine; mention what changes for threads. No leaks, no double deletes, self-assignment safe (including <code>p = p</code> when p holds the last reference).</p>`,
+    example: `<p><code>RefPtr&lt;Texture&gt; a = make&lt;Texture&gt;(); auto b = a;</code> → ${H.c('b', 'count 2')}. <code>auto c = std::move(a);</code> → ${H.c('b', 'count still 2')}, a is null. <code>b = nullptr-ish reset; c goes out of scope</code> → ${H.c('g', 'count 0 → ~Texture runs once')}.</p>`,
+    brute: {
+      why: `<p>A naive copy assignment that releases the old object <b>before</b> retaining the new one deletes the object when both sides point to the same last reference (<code>p = p</code>), then increments a dead object. Forgetting a virtual destructor in RefCounted means <code>delete this</code> inside <code>release()</code> runs only <code>~RefCounted</code>.</p>`,
+      code: R`
+        struct RefCounted {
+            int refs = 0;
+            void addRef() { ++refs; }
+            void release() { if (--refs == 0) delete this; }   // BUG: ~RefCounted not virtual
+            ~RefCounted() = default;
+        };
+        template <class T>
+        struct NaiveRef {
+            T* p = nullptr;
+            NaiveRef& operator=(const NaiveRef& o) {
+                if (p) p->release();          // if p == o.p and refs was 1: object deleted here
+                p = o.p;
+                if (p) p->addRef();           // ...then incremented after death: use-after-free
+                return *this;
+            }
+        };
+      `
+    },
+    mcq: { q: 'Safest order inside copy assignment of a ref-counted pointer?', options: ['addRef the new object first, then release the old one', 'Release the old, then addRef the new', 'Only addRef', 'Only release'], answer: 0, explain: 'Retaining first guarantees the object cannot hit zero in between, so self-assignment and "assign from an object owned only through me" are safe. (Copy-and-swap achieves the same ordering automatically.)' },
+    hints: [
+      `<p>Hint 1: <code>RefCounted</code> needs <code>virtual ~RefCounted()</code> because <code>release()</code> deletes through a base pointer. Make its copy operations not copy the count (a copied object starts at 0 references).</p>`,
+      `<p>Hint 2: copy ctor: copy pointer, addRef. Move ctor: <code>std::exchange</code>, no count change. Destructor: release if non-null.</p>`,
+      `<p>Hint 3: assignment via copy-and-swap: <code>RefPtr&amp; operator=(RefPtr o) noexcept { std::swap(p_, o.p_); return *this; }</code> — the parameter copy does the addRef, its destructor does the release of our old object.</p>`
+    ],
+    solution: {
+      approach: `<p>The count lives in the object (no separate control block → one allocation, and a raw <code>T*</code> can be re-wrapped safely). RefPtr is a Rule-of-Five handle: copy increments, move transfers, destruction decrements, and copy-and-swap orders increment-before-decrement. For multi-threading use <code>std::atomic&lt;int&gt;</code> with <code>fetch_add(relaxed)</code> and <code>fetch_sub(acq_rel)</code>.</p>`,
+      code: R`
+        #include <iostream>
+        #include <string>
+        #include <utility>
+
+        class RefCounted {
+            mutable int refs_ = 0;
+        public:
+            RefCounted() = default;
+            RefCounted(const RefCounted&) : refs_(0) {}              // a copy is a NEW object: 0 refs
+            RefCounted& operator=(const RefCounted&) { return *this; }   // never copy the count
+            virtual ~RefCounted() = default;                         // release() deletes through this base
+            void addRef() const { ++refs_; }
+            void release() const { if (--refs_ == 0) delete this; }
+            int count() const { return refs_; }
+        };
+
+        template <class T>
+        class RefPtr {
+            T* p_ = nullptr;
+        public:
+            RefPtr() = default;
+            explicit RefPtr(T* p) : p_(p) { if (p_) p_->addRef(); }
+            RefPtr(const RefPtr& o) : p_(o.p_) { if (p_) p_->addRef(); }              // share
+            RefPtr(RefPtr&& o) noexcept : p_(std::exchange(o.p_, nullptr)) {}       // steal: count unchanged
+            RefPtr& operator=(RefPtr o) noexcept { std::swap(p_, o.p_); return *this; }   // addRef (in o) before release (o dies)
+            ~RefPtr() { if (p_) p_->release(); }
+
+            T& operator*() const { return *p_; }
+            T* operator->() const { return p_; }
+            explicit operator bool() const { return p_ != nullptr; }
+            bool operator==(const RefPtr&) const = default;          // same object?
+            void reset() { RefPtr().swap(*this); }
+            void swap(RefPtr& o) noexcept { std::swap(p_, o.p_); }
+        };
+
+        template <class T, class... A>
+        RefPtr<T> make(A&&... a) { return RefPtr<T>(new T(std::forward<A>(a)...)); }
+
+        struct Texture : RefCounted {
+            std::string name;
+            explicit Texture(std::string n) : name(std::move(n)) {}
+            ~Texture() override { std::cout << "~Texture " << name << '\n'; }
+        };
+
+        int main() {
+            RefPtr<Texture> a = make<Texture>("grass");
+            RefPtr<Texture> b = a;                                    // 2
+            RefPtr<Texture> c = std::move(a);                         // still 2, a null
+            std::cout << c->count() << ' ' << static_cast<bool>(a) << ' ' << (b == c) << '\n';   // 2 0 1
+            c = c;                                                    // self-assignment: safe
+            b.reset();                                                // 1
+            std::cout << c->count() << '\n';                          // 1
+        }                                                             // c dies -> 0 -> ~Texture grass (once)
+      `,
+      dry: { head: ['Statement', 'a', 'b', 'c', 'refs'], rows: [
+        ['<code>a = make("grass")</code>', 'T', '—', '—', '1'],
+        ['<code>b = a</code>', 'T', 'T', '—', '2'],
+        ['<code>c = std::move(a)</code>', 'null', 'T', 'T', '2'],
+        ['<code>c = c</code>', 'null', 'T', 'T', '2 → 3 (param) → 2'],
+        ['<code>b.reset()</code>', 'null', 'null', 'T', '1'],
+        ['end of main', '', '', 'released', H.c('g', '0 → ~Texture')]
+      ] },
+      complexity: `<p>All operations O(1). Memory: one int inside the object, one pointer per handle. Atomic counts cost ~5–20 ns per increment under contention — a reason to pass <code>const RefPtr&amp;</code> rather than by value in hot paths.</p>`,
+      followUps: ['Make the count atomic and justify the memory orders.', 'How do you break reference cycles without weak_ptr? (non-owning raw back-pointers / weak references with a separate counter)', 'Compare with <code>std::shared_ptr</code> + <code>enable_shared_from_this</code>.']
+    }
+  });
+
+  /* ======================================================================
+     QUIZ
+     ====================================================================== */
+  quiz.push(
+    { q: 'Which special member runs for <code>Widget b = a;</code> where <code>a</code> is an existing Widget?', options: ['Copy constructor', 'Copy assignment operator', 'Default constructor then copy assignment', 'Move constructor'], answer: 0, explain: '<code>b</code> is being declared, so it is born here: initialization, i.e. the copy constructor. The <code>=</code> in a declaration is not assignment. It is not a move because <code>a</code> is an lvalue.' },
+    { q: 'A class has a raw owning pointer, a destructor that deletes it, and nothing else. What happens on <code>T b = a;</code> followed by both going out of scope?', options: ['Double delete: both objects free the same block (undefined behaviour)', 'A deep copy is made automatically', 'Compile error: copy constructor missing', 'Memory leak only'], answer: 0, explain: 'The implicit copy constructor copies the pointer value (shallow copy). Both destructors then delete the same address. This is exactly why the Rule of Three exists.' },
+    { q: 'You add <code>~Order() { log(); }</code> to a class that previously declared no special members. What happens to <code>Order o2 = std::move(o1);</code>?', options: ['It now copies, because a user-declared destructor suppresses the implicit move constructor', 'It still moves', 'It fails to compile', 'It moves but logs twice'], answer: 0, explain: 'A user-declared destructor prevents implicit move operations from being declared. The rvalue then binds to the (deprecated but still generated) copy constructor — silently slower.' },
+    { q: 'Why should a move constructor be marked <code>noexcept</code>?', options: ['So std::vector uses it (via move_if_noexcept) when reallocating; otherwise vector copies to keep the strong guarantee', 'Because the compiler requires it', 'To make it inline', 'So it can be called from destructors'], answer: 0, explain: 'If moving could throw half-way through relocation, the old elements could not be restored, so vector falls back to copying unless the move is noexcept (or the type is move-only).' },
+    { q: 'On a typical 64-bit Linux system, what is <code>sizeof</code> of <code>struct S { virtual void f(); virtual void g(); int x; };</code>?', options: ['16', '8', '24', '4'], answer: 0, explain: 'One vptr (8 bytes) regardless of how many virtual functions exist, plus int x (4) and 4 bytes of padding for 8-byte alignment = 16.' },
+    { q: '<code>Base* p = new Derived; p-&gt;f();</code> where <code>f</code> is <b>non-virtual</b> in Base and redefined in Derived. Which runs?', options: ['Base::f — non-virtual calls bind to the static type', 'Derived::f', 'Both', 'Undefined behaviour'], answer: 0, explain: 'Without virtual there is no vtable lookup; the compiler uses the declared type Base*. Derived::f only hides Base::f for calls made through a Derived.' },
+    { q: 'What makes a class abstract?', options: ['It has at least one pure virtual function whose final overrider is still pure', 'It has a protected constructor', 'It has no data members', 'It is declared with the abstract keyword'], answer: 0, explain: 'C++ has no abstract keyword. A class with any unresolved pure virtual function (= 0), declared or inherited, cannot be instantiated.' },
+    { q: 'A pure virtual destructor <code>virtual ~Base() = 0;</code> is declared but never defined. What happens when you build a program that creates a Derived?', options: ['Linker error: every derived destructor calls ~Base, so it must be defined', 'It works fine', 'Runtime crash "pure virtual method called"', 'Compile error at the declaration'], answer: 0, explain: 'Unlike other pure virtuals, a pure virtual destructor is always called (by derived destructors), so it needs a definition such as <code>Base::~Base() = default;</code>.' },
+    { q: '<code>Base* p = new Derived; delete p;</code> where <code>~Base()</code> is not virtual and Derived owns a std::vector. Result?', options: ['Undefined behaviour; in practice only ~Base runs and the vector leaks', '~Derived then ~Base run normally', 'Compile error', 'Only ~Derived runs'], answer: 0, explain: 'delete through a base pointer requires a virtual destructor in the base. Otherwise the call binds to ~Base statically: derived destructors and members never run.' },
+    { q: 'Inside <code>Base</code>\'s constructor, a call to the virtual <code>init()</code> on an object being constructed as <code>Derived</code> runs…', options: ['Base::init — the vptr points to Base\'s vtable during Base construction', 'Derived::init', 'Nothing — virtual calls are ignored in constructors', 'It is always a compile error'], answer: 0, explain: 'During construction the object is treated as a Base; the Derived part does not exist yet. (If init is pure in Base, you get "pure virtual method called".)' },
+    { q: 'Which line slices?', options: ['<code>std::vector&lt;Animal&gt; v; v.push_back(Dog{});</code>', '<code>const Animal&amp; r = dog;</code>', '<code>std::unique_ptr&lt;Animal&gt; p = std::make_unique&lt;Dog&gt;();</code>', '<code>Animal* p = &amp;dog;</code>'], answer: 0, explain: 'The vector stores Animal objects, so pushing a Dog copy-constructs an Animal from it, discarding the Dog part. References and pointers refer to the whole object.' },
+    { q: 'Why is <code>operator&lt;&lt;</code> for printing a custom type written as a non-member?', options: ['Its left operand is std::ostream, a class you cannot add members to', 'Members cannot return references', 'Non-members are faster', 'The standard forbids member operator&lt;&lt;'], answer: 0, explain: 'A member operator takes the class as its LEFT operand. For <code>cout &lt;&lt; x</code> the left operand is the stream, so it must be a free function (often a hidden friend).' },
+    { q: 'In C++20, which declaration(s) give a struct all of <code>== != &lt; &lt;= &gt; &gt;=</code>?', options: ['<code>auto operator&lt;=&gt;(const T&amp;) const = default;</code> alone (a defaulted &lt;=&gt; also implicitly declares a defaulted ==)', 'Only writing all six by hand', '<code>bool operator&lt;(const T&amp;) const;</code> alone', '<code>bool operator==(const T&amp;) const = default;</code> alone'], answer: 0, explain: 'A defaulted three-way comparison provides the four relational operators via rewriting and implicitly declares a defaulted ==, from which != is rewritten. Defaulted == alone gives only == and !=.' },
+    { q: 'What is the difference between <code>T&amp; operator++()</code> and <code>T operator++(int)</code>?', options: ['The first is prefix (returns the incremented object); the second is postfix (dummy int, returns the old value as a copy)', 'They are identical', 'The int parameter is the increment amount', 'The second is prefix'], answer: 0, explain: 'The unused int parameter only distinguishes postfix. Postfix must copy the old value, which is why ++it is preferred for non-trivial iterators.' }
+  );
+
+  /* ======================================================================
+     INTERVIEW Q&A
+     ====================================================================== */
+  interview.push(
+    { q: 'What is the difference between the copy constructor and the copy assignment operator? When is each called?', level: 'B',
+      a: `<p>The <b>copy constructor</b> <code>T(const T&amp;)</code> creates a <b>new</b> object from an existing one: <code>T b = a;</code>, <code>T b(a);</code>, passing by value, returning by value when not elided, catching by value, container copies. The <b>copy assignment operator</b> <code>T&amp; operator=(const T&amp;)</code> overwrites an object that <b>already exists</b>: <code>b = a;</code>. Because the target already holds state, assignment must release or reuse the old resources and must survive self-assignment; the constructor has nothing old to clean up. My quick test: "is the left side being declared on this line?" — yes means constructor, even if there is an <code>=</code> sign.</p>`,
+      followUps: ['Why does the copy constructor take its parameter by const reference?', 'Why does operator= return T&amp; and not void?', 'Does <code>T b = T();</code> call the copy constructor in C++17?'] },
+    { q: 'Explain shallow copy vs deep copy. When is a shallow copy correct?', level: 'B',
+      a: `<p>A <b>shallow copy</b> copies member values as they are; for a pointer that means copying the <b>address</b>, so both objects refer to the same heap block. A <b>deep copy</b> allocates new storage and copies the <b>pointed-to contents</b>, giving two independent objects. Shallow copies of <b>owning</b> pointers cause aliasing, dangling pointers and double frees. A shallow copy is correct when the pointer is <b>non-owning</b> (an observer like a parent link or <code>string_view</code>) or when sharing is the intended semantics and ownership is tracked (<code>shared_ptr</code>, copy-on-write with a reference count). The key question is always "who deletes this?"</p>`,
+      followUps: ['How would you deep-copy a linked list with random pointers?', 'Why did C++11 effectively forbid copy-on-write std::string?', 'How do you deep-copy through a base pointer?'] },
+    { q: 'State the Rule of Three, Rule of Five and Rule of Zero. Which one do you follow by default?', level: 'I',
+      a: `<p><b>Rule of Three:</b> if a class needs a user-defined destructor, copy constructor or copy assignment, it almost certainly needs all three, because it manages a resource manually. <b>Rule of Five:</b> since C++11 add the move constructor and move assignment; declaring any of destructor/copy operations suppresses the implicit moves, so moves silently become copies. <b>Rule of Zero:</b> design classes so they need none of them, by composing members that already manage themselves (<code>std::string</code>, <code>std::vector</code>, <code>std::unique_ptr</code> with a custom deleter). I default to Rule of Zero; only small dedicated RAII wrappers implement the five, and if I declare one special member I explicitly declare all five with <code>= default</code>/<code>= delete</code>.</p>`,
+      followUps: ['What exactly suppresses the implicit move constructor?', 'Is <code>~T() = default;</code> user-declared? Does it suppress moves?', 'Show a move-only resource wrapper.'] },
+    { q: 'What does std::move actually do? What state is a moved-from object in?', level: 'I',
+      a: `<p><code>std::move</code> does not move anything: it is an unconditional <b>cast to an rvalue reference</b> (<code>static_cast&lt;T&amp;&amp;&gt;</code>). It enables overload resolution to pick a move constructor or move assignment, which then performs the actual transfer, typically by stealing pointers and nulling the source. A moved-from standard library object is in a <b>valid but unspecified</b> state: you may destroy it, assign to it, or call functions without preconditions (like <code>clear()</code> or <code>size()</code>), but must not rely on its value. Your own types must at least keep the moved-from object destructible and assignable. Moving from a <code>const</code> object silently copies, because <code>const T&amp;&amp;</code> binds to the copy constructor.</p>`,
+      followUps: ['Why does <code>return std::move(local);</code> hurt performance?', 'What happens with <code>std::move</code> on a const object?', 'What is std::forward for?'] },
+    { q: 'Why must move constructors usually be noexcept? What happens if they are not?', level: 'I',
+      a: `<p>Containers like <code>std::vector</code> promise the <b>strong exception guarantee</b> for operations such as <code>push_back</code>: if an exception is thrown, the container is unchanged. During reallocation, if element moves could throw half-way, some old elements would already be gutted and could not be restored. So vector uses <code>std::move_if_noexcept</code>: it moves only when the move constructor is <code>noexcept</code> (or the type is not copyable), otherwise it <b>copies</b>. A missing <code>noexcept</code> therefore turns every reallocation into deep copies. Defaulted moves are noexcept if all members' moves are; I check with <code>static_assert(std::is_nothrow_move_constructible_v&lt;T&gt;)</code>.</p>`,
+      followUps: ['What happens if a noexcept function throws?', 'Do std::list or std::deque care about noexcept moves?', 'How do you make a defaulted move noexcept explicitly?'] },
+    { q: 'Explain how virtual functions are implemented (vtable and vptr). What does a virtual call cost?', level: 'I',
+      a: `<p>For each polymorphic class the compiler emits one <b>vtable</b>: a static array of function pointers (plus, in the Itanium ABI, offset-to-top and RTTI pointers before it). Derived classes copy the base layout, overwrite slots they override and append new virtuals. Every object gets a hidden <b>vptr</b> pointing to its class's vtable, set by each constructor in the chain. A call <code>p-&gt;f()</code> compiles to: load vptr from <code>*p</code>, load the function pointer at <code>f</code>'s fixed slot, indirect call with <code>this = p</code>. Cost: 8 bytes per object, one table per class, two dependent loads and an indirect branch per call; the bigger cost is lost inlining. Compilers devirtualize when the dynamic type is provable (<code>final</code>, local objects, LTO).</p>`,
+      followUps: ['How many vptrs does an object with two polymorphic bases have?', 'What is a thunk?', 'Why does the vptr change during construction?'] },
+    { q: 'What is the difference between overriding, overloading and hiding? What do override and final do?', level: 'I',
+      a: `<p><b>Overloading</b>: same name, different parameters, same scope, resolved at compile time. <b>Overriding</b>: a derived class provides a function with the same signature (including const and ref-qualifiers) as a base <b>virtual</b> function; calls through base references dispatch to it at runtime. <b>Hiding</b>: a derived class declares any function with the same name, which hides <b>all</b> base functions of that name (even other overloads, and even if they are virtual) for lookups through the derived type; fix with <code>using Base::f;</code>. <code>override</code> makes the compiler verify that the function really overrides something (catches missing const, typos). <code>final</code> forbids further overriding or derivation and lets the compiler devirtualize calls.</p>`,
+      followUps: ['Can a virtual function be overloaded in the derived class without hiding?', 'Which warning flags catch hidden virtuals?', 'Are default arguments of virtual functions dynamic?'] },
+    { q: 'What is an abstract class? Can it have constructors and data members? Can a pure virtual function have a body?', level: 'I',
+      a: `<p>A class is <b>abstract</b> if it has at least one pure virtual function (<code>= 0</code>) whose final overrider is still pure. You cannot create objects of it, but you can use pointers and references to it — that is its purpose as an interface or partial implementation. It <b>can</b> have constructors (called by derived constructors), data members, and non-virtual or virtual functions with bodies. A pure virtual function <b>can</b> have a definition: derived classes must still override it, but may call <code>Base::f()</code> explicitly. A pure virtual <b>destructor must</b> be defined because every derived destructor calls it. Calling a pure virtual during base construction reaches <code>__cxa_pure_virtual</code> and aborts with "pure virtual method called".</p>`,
+      followUps: ['How do you build an interface in C++?', 'What is the NVI idiom?', 'Abstract class vs C++20 concept — when to use which?'] },
+    { q: 'Why should a base class destructor be virtual? When should it not be?', level: 'B',
+      a: `<p>If code deletes a derived object through a base pointer (<code>delete basePtr</code>, or <code>std::unique_ptr&lt;Base&gt;</code>), the destructor call is dispatched by the <b>static</b> type unless it is virtual. With a non-virtual base destructor only <code>~Base</code> runs: the derived destructor and its members' destructors are skipped — formally undefined behaviour, in practice leaks and sometimes heap corruption (wrong size passed to sized delete, wrong address with multiple inheritance). Guideline C.35: a base class destructor should be <b>public and virtual</b> or <b>protected and non-virtual</b>. Classes not designed as polymorphic bases (value types, <code>final</code> classes, CRTP mixins) should not have a virtual destructor, which would add a vptr and prevent triviality.</p>`,
+      followUps: ['Does shared_ptr&lt;Base&gt;(new Derived) leak without a virtual destructor?', 'What is the deleting destructor?', 'Should you inherit from std::vector?'] },
+    { q: 'In what order are constructors and destructors called in an inheritance hierarchy with members? What about virtual calls inside them?', level: 'I',
+      a: `<p>Construction: virtual bases first, then direct bases in declaration order, then non-static members in <b>declaration</b> order (not initializer-list order), then the constructor body. Destruction is the exact reverse: body, members in reverse order, bases in reverse order. During each constructor and destructor the object's dynamic type is the class currently being constructed or destroyed: the vptr points to that class's vtable, so virtual calls resolve to that class's version, never to a more-derived override (unlike Java and C#). If a constructor throws, already-constructed members and bases are destroyed, but that class's own destructor is not called.</p>`,
+      followUps: ['What does -Wreorder warn about?', 'Why are virtual calls in constructors dangerous in Java but not C++?', 'How does two-phase initialization work?'] },
+    { q: 'What is object slicing? Give the common sources and the fixes.', level: 'I',
+      a: `<p>Slicing happens when a derived object is copied or moved into an object of base type: only the base sub-object is copied, the derived members are discarded, and the new object is a genuine base (its vptr points to the base vtable), so virtual calls run base versions. Sources: by-value parameters/returns of base type, <code>std::vector&lt;Base&gt;</code>, catching exceptions by value, and assignment through a base reference (partial assignment that mixes two objects). Fixes: pass and store polymorphic objects by reference or smart pointer, <code>catch (const E&amp;)</code>, make bases abstract or give them protected/deleted copy operations, and use a virtual <code>clone()</code> or type erasure when real copies are needed.</p>`,
+      followUps: ['Why can\'t you static_cast a sliced object back to Derived?', 'How does catch-by-value interact with rethrow?', 'How does C++26 std::polymorphic help?'] },
+    { q: 'How do you choose between member and non-member operator overloads? Write the canonical forms.', level: 'I',
+      a: `<p>Must be members: <code>=</code>, <code>[]</code>, <code>()</code>, <code>-&gt;</code>, conversions. Should be members: compound assignments (<code>+=</code>) and <code>++</code>/<code>--</code>, which modify <code>*this</code> and return <code>T&amp;</code>. Should be non-members (ideally hidden friends): symmetric binary operators, so implicit conversions apply to both operands (<code>2 * v</code>), and stream operators, whose left operand is the stream. Canonical: <code>T&amp; operator+=(const T&amp;)</code>; <code>friend T operator+(T a, const T&amp; b) { return a += b; }</code>; <code>T&amp; operator++()</code> and <code>T operator++(int)</code>; <code>friend std::ostream&amp; operator&lt;&lt;(std::ostream&amp;, const T&amp;)</code>; in C++20, <code>bool operator==(const T&amp;) const = default;</code> and <code>auto operator&lt;=&gt;(const T&amp;) const = default;</code>.</p>`,
+      followUps: ['What are hidden friends and why are they preferred?', 'Which operators should never be overloaded?', 'Why make operator bool explicit?'] },
+    { q: 'Explain C++20 operator&lt;=&gt; and comparison rewriting. When would you write it by hand?', level: 'A',
+      a: `<p>The three-way comparison <code>a &lt;=&gt; b</code> returns an ordering category: <code>std::strong_ordering</code>, <code>std::weak_ordering</code> or <code>std::partial_ordering</code>. The compiler <b>rewrites</b> <code>a &lt; b</code> as <code>(a &lt;=&gt; b) &lt; 0</code> (also trying reversed operands), and <code>a != b</code> as <code>!(a == b)</code>. A defaulted <code>&lt;=&gt;</code> compares bases then members lexicographically in declaration order and implicitly declares a defaulted <code>==</code>; the result category is the weakest among members (doubles give partial_ordering). <code>==</code> is kept separate for efficiency (equality can short-circuit, e.g. on string length). I write it by hand for non-memberwise orders: case-insensitive names (weak_ordering), fractions compared by cross-multiplication, or ignoring cache fields — and then I also write a consistent <code>==</code>.</p>`,
+      followUps: ['What breaks if a comparator is not a strict weak ordering?', 'Why does a user-written &lt;=&gt; not generate ==?', 'How do doubles with NaN affect defaulted &lt;=&gt;?'] },
+    { q: 'Implement a copy assignment operator that is exception-safe and self-assignment safe. Compare approaches.', level: 'A',
+      a: `<p>Option 1, <b>allocate-then-release</b>: allocate and copy into a temporary pointer first, then delete the old resource and adopt the new one. If allocation or copying throws, <code>*this</code> is unchanged (strong guarantee), and self-assignment works because the source is read before anything is freed. Option 2, <b>copy-and-swap</b>: <code>T&amp; operator=(T other) noexcept { swap(*this, other); return *this; }</code> — the copy (or move) happens in the parameter; the body cannot throw; the old state dies with <code>other</code>. It unifies copy and move assignment. Trade-off: copy-and-swap always allocates, even when the existing buffer is big enough, and does a wasted full copy on self-assignment; high-performance containers reuse capacity and offer only the basic guarantee for copy assignment. I state which guarantee I chose.</p>`,
+      followUps: ['What are the basic, strong and nothrow guarantees?', 'Why is the self-assignment check alone not enough for exception safety?', 'How does std::vector implement operator=?'] },
+    { q: 'How would you copy a polymorphic object when all you have is a Base reference? Discuss clone, type erasure and variants.', level: 'E',
+      a: `<p>The copier does not know the dynamic type, so the object must copy itself: a virtual <b><code>clone()</code></b> returning <code>std::unique_ptr&lt;Base&gt;</code>, implemented in each class (or once via a CRTP helper <code>Cloneable&lt;Derived, Base&gt;</code>) by calling Derived's copy constructor. For value semantics without user-visible inheritance, use <b>type erasure</b>: a handle holding <code>unique_ptr&lt;Concept&gt;</code> where a templated <code>Model&lt;T&gt;</code> implements virtual <code>clone</code>; copying the handle deep-copies; types need no common base (Sean Parent's pattern, like <code>std::function</code>). If the set of types is closed, <b><code>std::variant</code></b> gives value semantics, no heap allocation, and copying for free, at the cost of editing the variant to add types. C++26 adds <code>std::polymorphic&lt;T&gt;</code>, a standard deep-copying owning wrapper. I choose by: open vs closed set of types, need for value semantics, and allocation/latency budgets.</p>`,
+      followUps: ['Why can\'t unique_ptr&lt;Derived&gt; be a covariant return type?', 'What is small-buffer optimization in type erasure?', 'How would you serialize such a hierarchy?'] }
+  );
+
+  registerModule({
+    id: 'cpp05',
+    title: 'Advanced OOP: Rule of 3/5/0, Virtual & Operators',
+    intro: `<p>This module is where C++ objects stop being "structs with functions" and become things with a <b>lifetime</b>, an <b>owner</b> and a <b>dynamic type</b>. You will learn exactly which special member function runs on every line of code (copy constructor, copy assignment, move operations, destructor), why a class with a raw pointer crashes with a <b>double free</b> the moment it is copied, and how the <b>Rule of 3 / 5 / 0</b> prevents it — ideally by writing no special members at all.</p>
+      <p>Then we open the hood of runtime polymorphism: the <b>vptr</b> inside every object, the <b>vtable</b> per class, how <code>p-&gt;area()</code> becomes "load, load, call", why abstract classes cannot be created, why base destructors must be virtual, why virtual calls in constructors do not reach the derived class, and how <b>object slicing</b> silently turns a Dog into a plain Animal. Finally, <b>operator overloading</b> — member vs free, canonical signatures, and the C++20 spaceship operator — lets your types feel built-in.</p>
+      <p>Every topic has an interactive visualizer (watch objects being born and destroyed on a stack, pointers sharing a heap block, a call travelling through the vtable, bytes being sliced off), "predict the output" puzzles, bug hunts, and interview-style problems. These are some of the most frequently asked C++ interview topics at every level.</p>`,
+    goals: [
+      'Name, for any line of code, which special member runs (copy/move constructor, copy/move assignment, destructor) and in what order objects are destroyed',
+      'Spot shallow-copy bugs (aliasing, dangling pointers, double free) and fix them with deep copies, the Rule of Five, or — preferably — the Rule of Zero',
+      'Write correct, exception-safe Rule-of-Five classes with noexcept moves and copy-and-swap, and explain the implicit-generation rules',
+      'Draw object → vptr → vtable → function for a hierarchy and predict which function a call runs, including non-virtual, hidden and default-argument cases',
+      'Design interfaces with pure virtual functions and abstract classes, and always give polymorphic bases a correct destructor',
+      'Recognise and prevent object slicing, and copy polymorphic objects with clone() or type erasure',
+      'Overload operators idiomatically (member vs hidden friend, canonical return types, C++20 defaulted == and &lt;=&gt;)'
+    ],
+    prereqs: `<p>C++ 3 (Pointers &amp; References) and C++ 4 (OOP Basics: classes, constructors, destructors, initializer lists, inheritance). Comfort with <code>new</code>/<code>delete</code> and references helps; smart pointers are introduced lightly here and covered fully in C++ 6 (Memory Management, RAII &amp; Smart Pointers).</p>`,
+    hours: 14,
+    topics: topics,
+    practice: practice,
+    quiz: quiz,
+    interview: interview
+  });
+})();

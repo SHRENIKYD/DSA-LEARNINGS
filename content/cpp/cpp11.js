@@ -1384,4 +1384,557 @@ cv.wait(lk, [&amp;] { return !q.empty(); });   // sleeps until the predicate is 
       }
     }]
   });
+
+  /* ======================================================================
+     TOPIC 6 — memory orders: relaxed, acquire/release, seq_cst
+     ====================================================================== */
+  var ORD_NAME = { relaxed: 'relaxed', acqrel: 'acquire / release', seqcst: 'seq_cst' };
+  function ordFor(mode, kind) {
+    if (mode === 'relaxed') return 'memory_order_relaxed';
+    if (mode === 'seqcst') return 'memory_order_seq_cst';
+    return kind === 'store' ? 'memory_order_release' : 'memory_order_acquire';
+  }
+  var LITMUS = {
+    SB: {
+      name: 'Store Buffering (Dekker)',
+      vars: ['x', 'y'],
+      A: [{ w: 0, v: 1, txt: 'x = 1' }, { r: 1, reg: 'r1', txt: 'r1 = y' }],
+      B: [{ w: 1, v: 1, txt: 'y = 1' }, { r: 0, reg: 'r2', txt: 'r2 = x' }],
+      code: function (o) {
+        return {
+          A: '// Thread A\nx.store(1, ' + ordFor(o, 'store') + ');\nint r1 = y.load(' + ordFor(o, 'load') + ');',
+          B: '// Thread B\ny.store(1, ' + ordFor(o, 'store') + ');\nint r2 = x.load(' + ordFor(o, 'load') + ');'
+        };
+      },
+      question: 'Both start at 0. Each thread first writes its own flag, then reads the other one. <b>Can the program end with r1 == 0 AND r2 == 0</b>, meaning each thread missed the other\'s write?',
+      isTarget: function (r1, r2) { return r1 === 0 && r2 === 0; },
+      outcomes: ['r1=0, r2=0', 'r1=0, r2=1', 'r1=1, r2=0', 'r1=1, r2=1'],
+      allowed: { relaxed: [1, 1, 1, 1], acqrel: [1, 1, 1, 1], seqcst: [0, 1, 1, 1] },
+      hw: {
+        weak: [
+          { a: 'x = 1 → into A\'s store buffer', b: '', sbA: 'x=1', sbB: '', m: [0, 0], r1: '-', r2: '-', narr: 'Core A executes <code>x = 1</code>. Real CPUs do not write straight to memory: the store waits in a private <b>store buffer</b> so the core can keep running. Other cores cannot see it yet.' },
+          { a: '', b: 'y = 1 → into B\'s store buffer', sbA: 'x=1', sbB: 'y=1', m: [0, 0], r1: '-', r2: '-', narr: 'Core B does the same with <code>y = 1</code>. Memory still says x = 0, y = 0.' },
+          { a: 'r1 = y → reads memory: 0', b: '', sbA: 'x=1', sbB: 'y=1', m: [0, 0], r1: 0, r2: '-', narr: 'Core A loads y. Its own buffer has nothing for y, so it reads memory: <b>0</b>. Effectively A\'s load ran <b>before</b> its own store became visible (a StoreLoad reordering). Even x86 does this.' },
+          { a: '', b: 'r2 = x → reads memory: 0', sbA: 'x=1', sbB: 'y=1', m: [0, 0], r1: 0, r2: 0, cls: 'bad', narr: '<span class="c-r">Core B loads x from memory: <b>0</b>.</span> Both threads missed each other: r1 = 0, r2 = 0, an outcome that <b>no interleaving</b> can produce.' },
+          { a: 'buffer drains', b: 'buffer drains', sbA: '', sbB: '', m: [1, 1], r1: 0, r2: 0, narr: 'Later the buffers drain and memory becomes x = 1, y = 1. Too late: the loads already happened. Release/acquire do <b>not</b> forbid this, because release only keeps <i>earlier</i> operations before a store, and acquire only keeps <i>later</i> operations after a load. A store followed by a load of another variable is not covered.' }
+        ],
+        strong: [
+          { a: 'x = 1 → into A\'s store buffer', b: '', sbA: 'x=1', sbB: '', m: [0, 0], r1: '-', r2: '-', narr: 'Core A executes the seq_cst store <code>x = 1</code>. On x86 the compiler emits <code>xchg</code> (or <code>mov</code> + <code>mfence</code>); on ARM64 <code>stlr</code>, which later <code>ldar</code> loads cannot pass.' },
+          { a: 'fence: drain buffer before next load', b: '', sbA: '', sbB: '', m: [1, 0], r1: '-', r2: '-', cls: 'ok', narr: 'Because of seq_cst, A\'s <b>next seq_cst load must wait</b> until x = 1 is globally visible. The buffer drains: memory x = 1.' },
+          { a: 'r1 = y → 0', b: '', sbA: '', sbB: '', m: [1, 0], r1: 0, r2: '-', narr: 'A reads y = 0 (B has not written yet). That is fine.' },
+          { a: '', b: 'y = 1, drained before its load', sbA: '', sbB: '', m: [1, 1], r1: 0, r2: '-', narr: 'B stores y = 1 and must also make it visible before its seq_cst load.' },
+          { a: '', b: 'r2 = x → 1', sbA: '', sbB: '', m: [1, 1], r1: 0, r2: 1, cls: 'ok', narr: '<span class="c-g">B reads x = <b>1</b>.</span> Whoever goes second is guaranteed to see the first thread\'s store. All seq_cst operations fit in <b>one global order</b>, so (0, 0) is impossible.' }
+        ]
+      }
+    },
+    MP: {
+      name: 'Message Passing (publish a value with a flag)',
+      vars: ['payload', 'ready'],
+      A: [{ w: 0, v: 42, txt: 'payload = 42' }, { w: 1, v: 1, txt: 'ready = 1' }],
+      B: [{ r: 1, reg: 'r1', txt: 'r1 = ready' }, { r: 0, reg: 'r2', txt: 'r2 = payload' }],
+      code: function (o) {
+        return {
+          A: '// Thread A (producer)\npayload.store(42, memory_order_relaxed);\nready.store(1, ' + ordFor(o, 'store') + ');',
+          B: '// Thread B (consumer)\nint r1 = ready.load(' + ordFor(o, 'load') + ');\nint r2 = payload.load(memory_order_relaxed);'
+        };
+      },
+      question: 'Thread A prepares a value and then raises a flag. Thread B checks the flag, then reads the value. <b>Can B see ready == 1 but payload == 0</b> (the flag arrived before the data)?',
+      isTarget: function (r1, r2) { return r1 === 1 && r2 === 0; },
+      outcomes: ['r1=0, r2=0', 'r1=0, r2=42', 'r1=1, r2=42', 'r1=1, r2=0'],
+      allowed: { relaxed: [1, 1, 1, 1], acqrel: [1, 1, 1, 0], seqcst: [1, 1, 1, 0] },
+      hw: {
+        weak: [
+          { a: 'payload = 42 → store buffer', b: '', sbA: 'payload=42', sbB: '', m: [0, 0], r1: '-', r2: '-', narr: 'Core A writes payload = 42 into its store buffer.' },
+          { a: 'ready = 1 → store buffer', b: '', sbA: 'payload=42, ready=1', sbB: '', m: [0, 0], r1: '-', r2: '-', narr: 'Then ready = 1, also buffered. With <b>relaxed</b> there is no rule about which one reaches memory first. (The <b>compiler</b> may even swap the two stores at compile time, on any CPU.)' },
+          { a: 'ready drains FIRST', b: '', sbA: 'payload=42', sbB: '', m: [0, 1], r1: '-', r2: '-', cls: 'win', narr: 'On ARM / POWER the buffer may drain out of order: <b>ready = 1 becomes visible before payload = 42</b>.' },
+          { a: '', b: 'r1 = ready → 1', sbA: 'payload=42', sbB: '', m: [0, 1], r1: 1, r2: '-', narr: 'Core B sees the flag: r1 = 1. "Great, the data must be ready!"' },
+          { a: '', b: 'r2 = payload → 0', sbA: 'payload=42', sbB: '', m: [0, 1], r1: 1, r2: 0, cls: 'bad', narr: '<span class="c-r">Core B reads payload = <b>0</b>.</span> The flag said ready, but the data was not there yet. In real code this means reading a half-built object, a null pointer, garbage.' },
+          { a: 'payload drains', b: '', sbA: '', sbB: '', m: [42, 1], r1: 1, r2: 0, narr: 'payload = 42 finally reaches memory, too late. Relaxed atomics give atomicity but <b>no ordering between different variables</b>.' }
+        ],
+        strong: [
+          { a: 'payload = 42 → store buffer', b: '', sbA: 'payload=42', sbB: '', m: [0, 0], r1: '-', r2: '-', narr: 'Core A writes payload = 42 (relaxed, buffered).' },
+          { a: 'ready.store(1, release or seq_cst)', b: '', sbA: 'payload=42, ready=1', sbB: '', m: [0, 0], r1: '-', r2: '-', narr: 'The <b>release</b> store promises: every write before me becomes visible <b>no later than</b> me. Think of it as sealing an envelope: everything packed before sealing travels with it.' },
+          { a: 'drain in order: payload, then ready', b: '', sbA: '', sbB: '', m: [42, 1], r1: '-', r2: '-', cls: 'ok', narr: 'So payload = 42 reaches memory before (or together with) ready = 1. On x86 this is free; on ARM64 the compiler emits <code>stlr</code>.' },
+          { a: '', b: 'r1 = ready.load(acquire or seq_cst) → 1', sbA: '', sbB: '', m: [42, 1], r1: 1, r2: '-', narr: 'The <b>acquire</b> load reads the value written by the release store. That creates a <b>synchronizes-with</b> edge: everything A did before the release <b>happens-before</b> everything B does after the acquire. Later loads cannot be moved above it (ARM64: <code>ldar</code>).' },
+          { a: '', b: 'r2 = payload → 42', sbA: '', sbB: '', m: [42, 1], r1: 1, r2: 42, cls: 'ok', narr: '<span class="c-g">B is guaranteed to read payload = 42.</span> (1, 0) is impossible. This release/acquire handshake is how mutexes, queues and futures publish data.' },
+          { a: 'done', b: 'done', sbA: '', sbB: '', m: [42, 1], r1: 1, r2: 42, narr: 'If B had read ready = 0 it would simply know "not ready yet" and must not touch payload (or must spin until ready == 1).' }
+        ]
+      }
+    }
+  };
+  var SC_ORDERS = ['AABB', 'ABAB', 'ABBA', 'BAAB', 'BABA', 'BBAA'];
+  var vizMemOrder = {
+    title: 'Memory-order litmus tests: interleavings vs what real CPUs do',
+    input: 'SB relaxed',
+    inputLabel: 'Test (SB or MP) + order (relaxed | acqrel | seqcst), e.g. "MP acqrel"',
+    gen: function (input) {
+      var parts = String(input || 'SB relaxed').trim().split(/[\s,]+/);
+      var lt = (parts[0] || 'SB').toUpperCase(), o = (parts[1] || 'relaxed').toLowerCase().replace(/[^a-z]/g, '');
+      var alias = { relaxed: 'relaxed', acqrel: 'acqrel', acquire: 'acqrel', release: 'acqrel', acquirerelease: 'acqrel', releaseacquire: 'acqrel', ar: 'acqrel', seqcst: 'seqcst', sc: 'seqcst', seq: 'seqcst' };
+      var L = LITMUS[lt], mode = alias[o];
+      if (!L || !mode) throw new Error('Type a test (SB or MP) and an order (relaxed, acqrel, seqcst), e.g. "MP acqrel"');
+      var code = L.code(mode), frames = [], scRows = [], scHl = {};
+      function codeParts(hlA, hlB) { return [{ type: 'code', label: 'Thread A', lang: 'cpp', code: code.A, hl: hlA || {} }, { type: 'code', label: 'Thread B', lang: 'cpp', code: code.B, hl: hlB || {} }]; }
+      frames.push({ narr: '<b>' + L.name + '</b> with <b>' + ORD_NAME[mode] + '</b>. ' + L.question + ' First we try every way the two threads can <b>take turns</b> (what most people imagine), then we look at what real hardware may do.', parts: codeParts().concat([note('Variables start at 0. A <b>litmus test</b> is a tiny program used to ask "which results are allowed?". Interviewers love them because they reveal whether you understand reordering.', 'The question')]) });
+      SC_ORDERS.forEach(function (ord, k) {
+        var mem = [0, 0], reg = {}, ia = 0, ib = 0, seq = [];
+        ord.split('').forEach(function (t) {
+          var op = t === 'A' ? L.A[ia++] : L.B[ib++];
+          if (op.w !== undefined) mem[op.w] = op.v; else reg[op.reg] = mem[op.r];
+          seq.push(t + ': ' + op.txt);
+        });
+        var hit = L.isTarget(reg.r1, reg.r2);
+        scRows.push([seq.join('  →  '), String(reg.r1), String(reg.r2), hit ? 'YES' : 'no']);
+        scHl = {}; for (var c = 0; c < 4; c++) scHl[k + ',' + c] = hit ? 'bad' : 'cur';
+        frames.push({ narr: 'Interleaving ' + (k + 1) + ' of 6 (<code>' + ord + '</code>): ' + seq.join(', ') + ' gives r1 = <b>' + reg.r1 + '</b>, r2 = <b>' + reg.r2 + '</b>. ' + (hit ? '<span class="c-r">That is the surprising outcome.</span>' : 'Not the surprising outcome.'), parts: [
+          { type: 'grid', label: 'Every "take turns" (sequentially consistent) order', colHead: ['order of the 4 operations', 'r1', 'r2', 'surprising?'], rows: clone(scRows), hl: scHl }
+        ].concat(codeParts()) });
+      });
+      frames.push({ narr: 'None of the 6 turn-taking orders produces the surprising result. If computers only interleaved, the answer would be "impossible". <b>But compilers and CPUs reorder memory operations</b> as long as a single thread cannot tell the difference. Let\'s see what hardware may do with <b>' + ORD_NAME[mode] + '</b>.', parts: [
+        { type: 'grid', label: 'Every "take turns" (sequentially consistent) order', colHead: ['order of the 4 operations', 'r1', 'r2', 'surprising?'], rows: clone(scRows), hl: {} },
+        note('Model: each core has a <b>store buffer</b> (writes wait there before reaching shared memory); loads read the core\'s own buffer first, then memory.', 'Hardware model')
+      ] });
+      var weakOK = L.allowed[mode][lt === 'SB' ? 0 : 3] === 1;   // show the reordering only if C++ allows the surprising outcome
+      var steps = weakOK ? L.hw.weak : L.hw.strong;
+      var cols = [], rowsH = ['Core A does', 'A store buffer', 'Core B does', 'B store buffer', 'memory ' + L.vars[0], 'memory ' + L.vars[1], 'r1', 'r2'];
+      steps.forEach(function (s, k) {
+        cols.push([s.a || '·', s.sbA || '(empty)', s.b || '·', s.sbB || '(empty)', String(s.m[0]), String(s.m[1]), String(s.r1), String(s.r2)]);
+        var rows = rowsH.map(function (_, r) { return cols.map(function (c) { return c[r]; }); });
+        var hl = {};
+        for (var r = 0; r < rowsH.length; r++) hl[r + ',' + k] = s.cls || 'cur';
+        frames.push({ narr: 't' + (k + 1) + ': ' + s.narr, parts: [
+          { type: 'grid', label: 'Hardware timeline (' + ORD_NAME[mode] + '): columns are time steps', rowHead: rowsH, colHead: cols.map(function (_, i) { return 't' + (i + 1); }), rows: rows, hl: hl }
+        ].concat(codeParts()) });
+      });
+      var vrows = L.outcomes.map(function (oc, i) { return [oc, L.allowed.relaxed[i] ? 'allowed' : 'FORBIDDEN', L.allowed.acqrel[i] ? 'allowed' : 'FORBIDDEN', L.allowed.seqcst[i] ? 'allowed' : 'FORBIDDEN']; });
+      var col = { relaxed: 1, acqrel: 2, seqcst: 3 }[mode], vhl = {};
+      L.outcomes.forEach(function (_, i) { var tgt = i === (lt === 'SB' ? 0 : 3); vhl[i + ',' + col] = tgt ? (L.allowed[mode][i] ? 'bad' : 'ok') : 'sel'; });
+      var tIdx = lt === 'SB' ? 0 : 3, can = L.allowed[mode][tIdx] === 1;
+      frames.push({ narr: '<b>Verdict for ' + ORD_NAME[mode] + ':</b> the surprising outcome is ' + (can ? '<span class="c-r">ALLOWED</span>. Your code must not rely on it being impossible.' : '<span class="c-g">FORBIDDEN</span>. The ordering guarantees rule it out on every compiler and CPU.') + (lt === 'SB' ? ' Store-buffering needs <b>seq_cst</b>: acquire/release is not enough.' : ' Message passing needs <b>release on the flag store + acquire on the flag load</b>; seq_cst also works but costs more.') + ' Try the other orders and the other test.', parts: [
+        { type: 'grid', label: L.name + ': which results can a correct C++ implementation produce?', colHead: ['outcome', 'relaxed', 'acquire/release', 'seq_cst'], rows: vrows, hl: vhl }
+      ].concat(codeParts()) });
+      return frames;
+    }
+  };
+
+  topics.push({
+    title: 'Memory Orders: relaxed, acquire/release, seq_cst (and Happens-Before)',
+    analogy: `<p>You mail a friend <b>two postcards</b>: first "I baked a cake" then "come over, it's ready". The post office doesn't promise they arrive in order, so your friend might read "come over" before "I baked a cake" (<b>relaxed</b>). If you instead put the cake news <b>inside a sealed registered envelope</b> together with the invitation, whoever opens the envelope is guaranteed to see everything you packed before sealing it. Sealing is <b>release</b>, opening is <b>acquire</b>. <b>seq_cst</b> is a town where every letter from everyone goes through one single counter, so everybody agrees on one order of all letters.</p>`,
+    explain: `<p><b>Surprise #1: your code doesn't run in the order you wrote it.</b> The compiler reorders and merges instructions, and the CPU executes out of order and buffers stores. That's all invisible to a <i>single</i> thread (the "as-if" rule), but <b>another</b> thread can observe the reordering. Memory orders are how you tell the compiler and CPU which orderings you need preserved across threads.</p>
+      ${H.table(['order', 'what it guarantees', 'typical use', 'cost'], [
+        ['<code>memory_order_relaxed</code>', 'the operation is atomic, and all threads agree on the order of writes <b>to that one variable</b>. Nothing about other variables.', 'counters, statistics, unique IDs', 'cheapest'],
+        ['<code>memory_order_release</code> (stores)', 'no reads/writes written <b>before</b> it may move after it', 'publishing data: "the data is ready" flag', 'free on x86, cheap on ARM'],
+        ['<code>memory_order_acquire</code> (loads)', 'no reads/writes written <b>after</b> it may move before it', 'consuming published data, taking a lock', 'free on x86, cheap on ARM'],
+        ['<code>memory_order_acq_rel</code> (RMW)', 'both at once, for read-modify-write ops', 'exchange / CAS in locks, refcount decrement', 'like a RMW'],
+        ['<code>memory_order_seq_cst</code> (default)', 'acquire/release <b>plus</b> one single global order of all seq_cst operations that every thread agrees on', 'default; flag protocols like Dekker / store-buffering', 'store costs a full fence on x86']
+      ])}
+      <p><b>The key idea: happens-before.</b> If a <b>release</b> store to <code>ready</code> is read by an <b>acquire</b> load of <code>ready</code>, the two <b>synchronize-with</b> each other. Then everything thread A did before the release <b>happens-before</b> everything thread B does after the acquire, so B sees all of A's earlier writes, <b>including plain non-atomic ones</b>. This is the same mechanism that makes <code>mutex.unlock()</code> → <code>mutex.lock()</code> publish data.</p>
+      <p><b>One-way fences, not walls.</b> Release keeps earlier operations above it, but later ones may still float up above it. Acquire keeps later operations below it, but earlier ones may sink below it. That's why release/acquire does <b>not</b> stop a store followed by a load of a different variable from being reordered (the store-buffering test), and only seq_cst does.</p>
+      <p><b>Practical rules for normal humans:</b></p>
+      <ol><li>Use the default (<code>seq_cst</code>) unless profiling proves an atomic is a bottleneck.</li>
+      <li>Use <code>relaxed</code> only for values nobody uses to decide whether <i>other</i> data is ready (pure counters, stats).</li>
+      <li>For "flag says data is ready": <b>release</b> on the store, <b>acquire</b> on the load.</li>
+      <li>If you're not sure, use a mutex. It does the right acquire/release for you.</li></ol>
+      <p><code>memory_order_consume</code> exists on paper, but every compiler treats it as acquire and C++26 deprecates it. Don't use it.</p>`,
+    clues: ['"what can this print?" with two threads and atomics → enumerate interleavings, then ask which reorderings the memory order allows', '"flag + data" / "publish an object to another thread" / "double-checked locking" → release store + acquire load', '"each thread sets its flag then checks the other\'s" (Dekker, Peterson) → needs seq_cst (store-buffering)', '"just a counter" / "statistics" / "only read after join" → relaxed is enough', '"works on x86, fails on ARM / Apple Silicon / Graviton" → missing acquire/release (x86-TSO hides it)', '"happens-before" / "synchronizes-with" / "visibility" → acquire-release pairing on the same atomic'],
+    code: [R`
+      #include <bits/stdc++.h>
+      using namespace std;
+
+      struct Config { string host; int port; };
+
+      Config* sharedCfg = nullptr;               // plain pointer data, published via the flag
+      atomic<bool> cfgReady{false};
+
+      void producer() {
+          sharedCfg = new Config{"db.local", 5432};          // ordinary (non-atomic) writes
+          cfgReady.store(true, memory_order_release);        // seal the envelope
+      }
+
+      void consumer() {
+          while (!cfgReady.load(memory_order_acquire))        // open the envelope
+              this_thread::yield();
+          // acquire read the release value: every write before the release is visible here
+          cout << sharedCfg->host << ":" << sharedCfg->port << "\n";   // db.local:5432, guaranteed
+      }
+
+      atomic<long long> eventsSeen{0};
+      void countEvent() { eventsSeen.fetch_add(1, memory_order_relaxed); }   // pure counter: relaxed OK
+
+      int main() {
+          thread c(consumer), p(producer);
+          p.join(); c.join();
+          for (int i = 0; i < 5; ++i) countEvent();
+          cout << eventsSeen.load() << "\n";                  // 5 (read after the work: fine)
+          delete sharedCfg;
+      }`, R`
+      #include <bits/stdc++.h>
+      using namespace std;
+
+      // Store-buffering / Dekker: only seq_cst forbids r1 == 0 && r2 == 0
+      atomic<int> x{0}, y{0};
+      int r1 = -1, r2 = -1;
+
+      int main() {
+          int bothZero = 0;
+          for (int iter = 0; iter < 20000; ++iter) {
+              x = 0; y = 0;
+              thread a([] { x.store(1, memory_order_relaxed); r1 = y.load(memory_order_relaxed); });
+              thread b([] { y.store(1, memory_order_relaxed); r2 = x.load(memory_order_relaxed); });
+              a.join(); b.join();
+              if (r1 == 0 && r2 == 0) ++bothZero;       // possible with relaxed / acquire-release
+          }
+          cout << "r1==0 && r2==0 happened " << bothZero << " times\n";
+          // Change both orders to memory_order_seq_cst: the count is always 0.
+      }`],
+    codeTitle: ['Publishing data with release / acquire (and a relaxed counter)', 'Store-buffering experiment: relaxed vs seq_cst'],
+    viz: vizMemOrder,
+    examples: [
+      { title: 'What can this print? (relaxed message passing)', html: `<p>Possible outputs: <b>nothing</b> (B saw ready = 0), <b>42</b>, and also <span class="c-r"><b>0</b></span>: with relaxed, B may see the flag before the data. Changing the flag store to <code>release</code> and the flag load to <code>acquire</code> leaves only "nothing" and "42".</p>`, code: R`
+        std::atomic<int> payload{0}, ready{0};
+        void a() { payload.store(42, std::memory_order_relaxed); ready.store(1, std::memory_order_relaxed); }
+        void b() {
+            if (ready.load(std::memory_order_relaxed) == 1)
+                std::cout << payload.load(std::memory_order_relaxed);   // may print 0 !
+        }` },
+      { title: 'What can this print? (Dekker-style flags)', html: `<p>Each thread raises its own flag, then checks the other's. People expect "at most one enters", but with acquire/release <b>both</b> can see the other's flag as 0 and both enter the critical section (both print). With the default seq_cst, at least one thread sees the other's flag, so <b>at most one</b> line prints. This is why Peterson's algorithm needs seq_cst.</p>`, code: R`
+        std::atomic<bool> wantA{false}, wantB{false};
+        void threadA() {
+            wantA.store(true, std::memory_order_release);
+            if (!wantB.load(std::memory_order_acquire)) std::cout << "A enters\n";
+        }
+        void threadB() {
+            wantB.store(true, std::memory_order_release);
+            if (!wantA.load(std::memory_order_acquire)) std::cout << "B enters\n";   // both can print!
+        }` },
+      { title: 'Double-checked locking done right', html: `<p>The fast path reads the pointer with <b>acquire</b>. The slow path builds the object under a mutex and publishes it with <b>release</b>. Without these orders a thread could see a non-null pointer to an object whose constructor writes are not visible yet. In practice prefer a function-local <code>static</code> ("magic statics", thread-safe since C++11) or <code>std::call_once</code>.</p>`, code: R`
+        struct Registry { std::vector<int> items{1, 2, 3}; };
+        std::atomic<Registry*> inst{nullptr};
+        std::mutex initM;
+        Registry& get() {
+            Registry* p = inst.load(std::memory_order_acquire);          // fast path: no lock
+            if (!p) {
+                std::lock_guard g(initM);
+                p = inst.load(std::memory_order_relaxed);                 // re-check under the lock
+                if (!p) { p = new Registry(); inst.store(p, std::memory_order_release); }
+            }
+            return *p;
+        }
+        Registry& getSimple() { static Registry r; return r; }            // the easy, correct way` },
+      { title: 'Reference counting: relaxed up, acq_rel down', html: `<p>This is how <code>shared_ptr</code> implementations order their count. Incrementing can be relaxed (you already hold a reference, nothing to publish). The decrement must be <b>acq_rel</b> (or release + an acquire fence when it hits zero): the thread that destroys the object must see every write other owners made before dropping their references.</p>`, code: R`
+        struct Node { std::atomic<int> refs{1}; int value = 0; };
+        void addRef(Node* n) { n->refs.fetch_add(1, std::memory_order_relaxed); }
+        void release(Node* n) {
+            if (n->refs.fetch_sub(1, std::memory_order_acq_rel) == 1)
+                delete n;                         // sees all writes by previous owners
+        }` }
+    ],
+    deepDive: `<p><b>Where reordering comes from.</b> (1) The <b>compiler</b>: it may reorder, merge or remove loads and stores to non-atomics, and to relaxed atomics of different variables. (2) The <b>CPU</b>: out-of-order execution, store buffers, and caches that propagate writes at different speeds. x86 uses <b>TSO</b> (total store order): the only visible hardware reordering is a store followed by a later load (StoreLoad). ARM and POWER are weaker: almost any pair can be reordered unless you use barriers or acquire/release instructions. Code that "works" on an x86 laptop can break on ARM servers (AWS Graviton, Apple Silicon).</p>
+      <p><b>What gets emitted.</b> x86: relaxed/acquire loads and relaxed/release stores are plain <code>mov</code>s (they only constrain the compiler); a seq_cst store is <code>xchg</code> (an implicit full fence, ≈ 20+ cycles); a seq_cst load is a plain <code>mov</code>. ARM64: acquire load = <code>ldar</code>/<code>ldapr</code>, release store = <code>stlr</code>, with seq_cst using the same instructions (they're designed so <code>stlr</code> followed by <code>ldar</code> is not reordered). So seq_cst's cost is mostly on x86 stores.</p>
+      <p><b>Formal pieces you can name in an interview:</b> <i>sequenced-before</i> (program order inside a thread), <i>synchronizes-with</i> (release → acquire that reads the value, or a later value in the <i>release sequence</i> of RMWs), <i>happens-before</i> (the transitive closure), <i>modification order</i> (every atomic has one total order of writes everyone agrees on, called coherence), and the single total order <i>S</i> over seq_cst operations.</p>
+      <p><b>Fences.</b> <code>std::atomic_thread_fence(memory_order_release)</code> before a relaxed store, paired with a relaxed load followed by an acquire fence, gives the same synchronization as release/acquire operations, which is handy to upgrade many relaxed operations at once. <code>atomic_signal_fence</code> only restrains the compiler (for signal handlers on the same thread).</p>
+      <p><b>IRIW</b> (independent reads of independent writes): two writers write x and y; two readers read them in opposite orders. With acquire/release the readers may <b>disagree</b> about which write happened first (possible on POWER). Only seq_cst forces everyone to agree on one order. If you ever need that, you really need seq_cst.</p>
+      <p><b>Testing is weak evidence.</b> Reorderings may show up once in a billion runs, or only on another CPU. Tools: <b>herd7</b> / <b>CppMem</b> (exhaustive litmus checkers for the C++ model), <b>Relacy</b> and <b>CDSChecker</b> (model checkers for small lock-free algorithms), TSan (catches missing happens-before on non-atomics).</p>`,
+    aiEra: `<p><b>What AI changes:</b> LLMs can recite the memory-order table and generate litmus tests instantly. They are also great at translating a relaxed/acquire/release design into plain-English happens-before chains, if you ask them to.</p>
+      <p><b>Use AI as a partner:</b> prompt <code>"For each atomic operation in this code, state which other operation it synchronizes with, and what data that edge publishes. Flag any relaxed operation whose value is used to decide whether to read other data."</code> Then ask it to produce a herd7/CppMem litmus test for the critical pair and run that tool for real.</p>
+      <p><b>Where AI goes wrong:</b> this is one of the areas where models are most confidently wrong: claiming acquire/release fixes store-buffering, saying "relaxed is fine on x86", treating <code>volatile</code> as a fence, or weakening orders "for performance" with no proof. Many training examples come from x86-only code that is subtly broken on ARM.</p>
+      <p><b>What you must still own:</b> the rule "use seq_cst or a mutex unless you can draw the happens-before graph", the ability to solve a small litmus test by hand (interleavings first, then allowed reorderings), and the discipline to verify weakened orders with a model checker and ARM hardware, not with a quick run on your laptop.</p>`,
+    problems: [{
+      title: 'What Can This Print? Fix the Flag Publication',
+      level: 'Hard', tags: ['memory order', 'acquire/release', 'litmus test'], companies: ['Jane Street', 'Hudson River Trading', 'Apple', 'Google'],
+      statement: `<p>Thread A fills a <code>std::string msg</code> (non-atomic) and then sets <code>std::atomic&lt;bool&gt; done</code> with <code>memory_order_relaxed</code>. Thread B spins until <code>done</code> is true (relaxed) and then prints <code>msg</code>. (1) List everything the program can do. (2) Fix it using the <b>weakest</b> orders that are correct, and explain the happens-before chain.</p>`,
+      constraints: `Must be correct on any conforming compiler and CPU (x86, ARM64, POWER). No mutex.`,
+      example: `<p>Intended output: <code>hello</code>. With relaxed ordering:</p>${H.table(['possibility', 'why'], [['prints hello', 'the usual case on x86'], ['<span class="c-r">prints empty / garbage / crashes</span>', 'B sees done = true before the writes to msg are visible: data race on msg = UB'], ['spins forever?', 'no: atomics must become visible "eventually", even relaxed']])}`,
+      brute: { why: `<p>The relaxed flag gives no ordering between the writes to <code>msg</code> and the write to <code>done</code>. There is no happens-before edge between A writing msg and B reading it, so it is a <b>data race on a non-atomic object</b>: undefined behaviour, not just a stale value.</p>`, code: R`
+        std::string msg;
+        std::atomic<bool> done{false};
+        void writerBAD() {
+            msg = "hello";
+            done.store(true, std::memory_order_relaxed);        // no release: msg may not be visible
+        }
+        void readerBAD() {
+            while (!done.load(std::memory_order_relaxed)) {}    // no acquire
+            std::cout << msg << "\n";                           // DATA RACE on msg (UB)
+        }` },
+      mcq: { q: 'Which is the weakest correct pair of orders for the done flag?', options: ['store relaxed / load relaxed', 'store release / load acquire', 'store seq_cst / load relaxed', 'store relaxed / load acquire'], answer: 1, explain: 'You need a synchronizes-with edge: a release store read by an acquire load. A seq_cst store with a relaxed load does NOT synchronize (the load side has no acquire). Relaxed on either side breaks the edge.' },
+      hints: [`<p><b>Aha:</b> the question is not "is done atomic?" (it is) but "does reading done = true guarantee seeing msg?". That needs a happens-before edge.</p>`, `<p>Release on the store keeps <code>msg = "hello"</code> before it; acquire on the load keeps <code>cout &lt;&lt; msg</code> after it. When the acquire reads the released value they synchronize.</p>`, `<p>Write the chain: <code>msg = "hello"</code> sequenced-before <code>done.store(release)</code> synchronizes-with <code>done.load(acquire)</code> sequenced-before <code>cout &lt;&lt; msg</code> → happens-before → no data race. seq_cst would also work, just stronger than needed.</p>`],
+      solution: {
+        approach: `<p>Add the release/acquire handshake. The writer's <b>release</b> store means "everything I wrote before this, including msg, travels with the flag". The reader's <b>acquire</b> load, once it reads <code>true</code>, synchronizes-with that store, so the write to msg happens-before the print. The non-atomic <code>msg</code> is now race-free. Possible outputs: only <code>hello</code>.</p>`,
+        code: R`
+          #include <bits/stdc++.h>
+          using namespace std;
+
+          string msg;                                   // ordinary, non-atomic data
+          atomic<bool> done{false};
+
+          void writer() {
+              msg = "hello";                            // (1) sequenced-before (2)
+              done.store(true, memory_order_release);   // (2) release: publishes (1)
+          }
+
+          void reader() {
+              while (!done.load(memory_order_acquire))  // (3) acquire reads the value from (2): synchronizes-with
+                  this_thread::yield();
+              cout << msg << "\n";                      // (4) (1) happens-before (4): prints "hello"
+          }
+
+          int main() {
+              thread r(reader), w(writer);
+              w.join(); r.join();
+          }`,
+        dry: { head: ['step', 'thread', 'operation', 'guarantee gained'], rows: [['1', 'A', 'msg = "hello"', 'sequenced-before step 2'], ['2', 'A', 'done.store(true, release)', 'all earlier writes travel with it'], ['3', 'B', 'done.load(acquire) → false (spin)', 'nothing yet: do not touch msg'], ['4', 'B', 'done.load(acquire) → true', 'synchronizes-with step 2'], ['5', 'B', 'print msg', '<span class="c-g">step 1 happens-before: prints hello</span>']] },
+        complexity: `<p>On x86 the fix costs nothing at runtime (plain movs; it only stops compiler reordering). On ARM64 it uses <code>stlr</code>/<code>ldar</code>, a few cycles. The spin loop burns CPU while waiting; for long waits use <code>done.wait(false)</code> (C++20) or a condition_variable.</p>`,
+        followUps: ['Replace the spin with C++20 <code>done.wait(false)</code> + <code>done.notify_one()</code>', 'What if the reader only <i>sometimes</i> reads msg (if done) and otherwise moves on?', 'Would <code>volatile bool done</code> work? Why not?']
+      }
+    }]
+  });
+
+  /* ======================================================================
+     TOPIC 7 — futures, promises, std::async, packaged_task
+     ====================================================================== */
+  var FUT = {
+    async: {
+      code: 'int slowSquare(int x) { /* takes 3 ticks */ return x * x; }\nint main() {\n    auto fut = std::async(std::launch::async, slowSquare, 7);\n    prepareReport();          // main keeps working\n    int v = fut.get();        // wait if needed, then take the result\n    std::cout << v;           // 49\n}',
+      steps: [
+        ['main() starts', '-', 'none yet', 2, '-', 'One thread so far.', 'cur'],
+        ['std::async(launch::async, ...)', 'NEW thread starts slowSquare(7)', 'not ready', 3, 'true', '<code>std::async</code> with <code>launch::async</code> starts the function on a <b>new thread</b> right away and immediately hands back a <b>future</b>: a receipt for a value that does not exist yet. Both share a heap object, the <b>shared state</b>.', 'ok'],
+        ['prepareReport()', 'computing (tick 1 of 3)', 'not ready', 4, 'true', 'Main does other useful work while the task runs in parallel. This overlap is the whole point.', 'cur'],
+        ['fut.get(): result not ready, main sleeps', 'computing (tick 2 of 3)', 'not ready', 5, 'true', '<code>get()</code> blocks until the shared state becomes ready. Sleeping costs no CPU.', 'win'],
+        ['(blocked inside get)', 'returns 49 → stored in shared state', 'READY: 49', 5, 'true', 'The task finishes and the library stores 49 in the shared state, then wakes the waiter. Storing the result <b>happens-before</b> get() returning, so no data race.', 'ok'],
+        ['get() returns 49', 'thread finished', 'consumed', 5, 'false', '<code>get()</code> moves the value out. The future is now <b>invalid</b> (<code>valid() == false</code>): get() is one-shot. Use <code>std::shared_future</code> if several readers need it.', 'ok'],
+        ['prints 49', '-', 'consumed', 6, 'false', '<span class="c-g">Done.</span> We ran slowSquare in parallel with prepareReport and collected the result safely, without a single mutex in our code.', 'ok']
+      ]
+    },
+    deferred: {
+      code: 'int slowSquare(int x) { /* takes 3 ticks */ return x * x; }\nint main() {\n    auto fut = std::async(std::launch::deferred, slowSquare, 7);\n    prepareReport();          // NOTHING runs in parallel\n    int v = fut.get();        // runs slowSquare HERE, on main\n    std::cout << v;           // 49\n}',
+      steps: [
+        ['main() starts', '-', 'none yet', 2, '-', 'One thread.', 'cur'],
+        ['std::async(launch::deferred, ...)', '(no thread created)', 'deferred: function + args saved', 3, 'true', '<b>deferred</b> means lazy: no thread is created. The function and its arguments are just stored inside the shared state.', 'win'],
+        ['prepareReport()', '(nothing running)', 'deferred', 4, 'true', 'No parallelism at all: the task has not started.', 'cur'],
+        ['fut.get() → runs slowSquare(7) on MAIN', '(still no thread)', 'running on main', 5, 'true', '<code>get()</code> (or <code>wait()</code>) runs the function <b>synchronously on the calling thread</b>.', 'win'],
+        ['get() returns 49', '-', 'consumed', 5, 'false', 'Result returned; the future is now invalid.', 'ok'],
+        ['prints 49', '-', 'consumed', 6, 'false', 'Same answer, zero concurrency. If nobody ever calls get()/wait(), the function <b>never runs</b>. The default policy (<code>async | deferred</code>) lets the library choose, so pass <code>launch::async</code> when you need real parallelism.', 'ok']
+      ]
+    },
+    exception: {
+      code: 'int parsePort(std::string s) { return std::stoi(s); }   // throws on "abc"\nint main() {\n    auto fut = std::async(std::launch::async, parsePort, "abc");\n    try {\n        int p = fut.get();    // the exception is RE-THROWN here\n    } catch (const std::exception& e) {\n        std::cout << "error: " << e.what();\n    }\n}',
+      steps: [
+        ['main() starts', '-', 'none yet', 2, '-', 'One thread.', 'cur'],
+        ['std::async(launch::async, parsePort, "abc")', 'starts parsePort("abc")', 'not ready', 3, 'true', 'The task starts on a new thread.', 'ok'],
+        ['enters try, calls fut.get(), sleeps', 'std::stoi("abc") throws invalid_argument', 'not ready', 5, 'true', 'Inside the worker, <code>std::stoi</code> throws. If this were a raw std::thread, the uncaught exception would call <b>std::terminate</b>.', 'win'],
+        ['(blocked inside get)', 'async catches it, stores exception_ptr', 'READY: exception', 5, 'true', 'But <code>std::async</code> wraps the call in try/catch and stores the exception in the shared state (as a <code>std::exception_ptr</code>).', 'bad'],
+        ['get() RE-THROWS invalid_argument', 'finished', 'consumed', 5, 'false', '<code>get()</code> re-throws the very same exception <b>in the calling thread</b>, so normal try/catch works across threads.', 'bad'],
+        ['catch prints "error: stoi"', '-', 'consumed', 7, 'false', '<span class="c-g">Handled.</span> This exception transport is a big reason to prefer futures over hand-rolled threads for tasks that can fail.', 'ok']
+      ]
+    },
+    discard: {
+      code: 'void sendEmail() { /* takes 3 ticks */ }\nint main() {\n    std::async(std::launch::async, sendEmail);   // result ignored!\n    std::async(std::launch::async, sendEmail);   // waits for #1 first\n    std::cout << "done";\n}',
+      steps: [
+        ['main() starts', '-', '-', 2, '-', 'The intent: send two emails in parallel, fire-and-forget.', 'cur'],
+        ['async #1 starts, returns a TEMPORARY future', 'email #1 starts', 'not ready', 3, 'true', 'The returned future is not stored in a variable, so it is a temporary destroyed at the end of this statement.', 'cur'],
+        ['~future() BLOCKS until email #1 is done', 'email #1 ticks 1..3', 'not ready → ready', 3, 'true', '<span class="c-r">Gotcha:</span> a future that came from <code>std::async</code> <b>waits in its destructor</b> for the task to finish. So this line takes the full 3 ticks.', 'bad'],
+        ['async #2 starts', 'email #2 starts (#1 already done)', 'not ready', 4, 'true', 'Only now does the second email start.', 'cur'],
+        ['~future() BLOCKS again', 'email #2 ticks 1..3', 'ready', 4, 'true', 'Same story: 3 more ticks of waiting.', 'bad'],
+        ['prints done after 6 ticks', '-', '-', 5, '-', 'Total 6 ticks instead of 3: <b>fully sequential</b>. Fix: keep the futures alive (<code>auto f1 = ...; auto f2 = ...;</code>) so both run at once, and get/wait them later.', 'bad']
+      ]
+    },
+    promise: {
+      code: 'void worker(std::promise<int> p) {\n    int answer = 6 * 7;      // compute\n    p.set_value(answer);     // fulfil the promise\n}\nint main() {\n    std::promise<int> prom;\n    std::future<int> fut = prom.get_future();\n    std::thread t(worker, std::move(prom));\n    std::cout << fut.get();  // 42\n    t.join();\n}',
+      steps: [
+        ['creates promise + future', '-', 'not ready', 7, 'true', 'A <b>promise</b> is the "write end" of the channel, the <b>future</b> is the "read end". They share one state.', 'cur'],
+        ['std::thread t(worker, move(prom))', 'starts worker, owns the promise', 'not ready', 8, 'true', 'The promise is <b>moved</b> into the worker (promises are move-only).', 'ok'],
+        ['fut.get(): sleeps', 'answer = 42', 'not ready', 9, 'true', 'Main waits on the future.', 'win'],
+        ['(blocked)', 'p.set_value(42)', 'READY: 42', 3, 'true', '<code>set_value</code> stores the value and wakes the waiter. Use <code>set_exception(std::current_exception())</code> to send an error instead.', 'ok'],
+        ['get() returns 42', 'worker returns', 'consumed', 9, 'false', 'If the worker had destroyed the promise without setting it, get() would throw <code>std::future_error</code> with <code>broken_promise</code>.', 'ok'],
+        ['t.join()', 'finished', 'consumed', 10, 'false', '<span class="c-g">Done.</span> promise/future works with any thread, callback or event loop, not just std::async.', 'ok']
+      ]
+    }
+  };
+  var vizFuture = {
+    title: 'Futures timeline: async vs deferred vs exceptions vs the discarded-future trap',
+    input: 'async',
+    inputLabel: 'Mode: async | deferred | exception | discard | promise',
+    gen: function (input) {
+      var mode = String(input || 'async').trim().toLowerCase();
+      var F = FUT[mode];
+      if (!F) throw new Error('Type one of: async, deferred, exception, discard, promise');
+      var rows = [], frames = [];
+      F.steps.forEach(function (s, k) {
+        rows.push([String(k), s[0], s[1], s[2]]);
+        var hl = {}; hl[k] = s[6];
+        var lh = {}; lh[s[3]] = s[6] === 'bad' ? 'bad' : s[6] === 'ok' ? 'ok' : 'cur';
+        frames.push({ narr: s[5], parts: [
+          { type: 'table', label: 'Timeline', columns: ['tick', 'main thread', 'task side', 'shared state'], rows: clone(rows), hl: hl },
+          { type: 'code', label: 'Program (mode: ' + mode + ')', lang: 'cpp', code: F.code, hl: lh },
+          { type: 'vars', label: 'Future', vals: { 'fut.valid()': s[4], 'shared state': s[2] }, hl: { 'shared state': s[6] === 'bad' ? 'bad' : s[2].indexOf('READY') === 0 ? 'ok' : 'cur' } }
+        ] });
+      });
+      return frames;
+    }
+  };
+
+  topics.push({
+    title: 'Futures, Promises, std::async & packaged_task',
+    analogy: `<p>At a coffee shop you order, pay, and get a <b>receipt with a number</b>. You don't stand frozen at the counter: you find a table and answer emails. When you need the coffee you go to the counter with your receipt: if it's ready you take it, if not you wait right there. The receipt is a <b>future</b>, the barista's promise to fill it is a <b>promise</b>, and ordering is <b>std::async</b>. If the machine breaks, you get the <b>bad news at the counter</b> instead of the coffee: an exception delivered through the future.</p>`,
+    explain: `<p>Threads and mutexes are low-level. Most of the time you just want "<b>run this function somewhere else and give me its result later</b>". That's what futures are for.</p>
+      ${H.table(['tool', 'what it is', 'typical use'], [
+        ['<code>std::future&lt;T&gt;</code>', 'the read end: <code>get()</code> waits and returns the T (or re-throws the exception), <b>once</b>', 'holding a result that will arrive later'],
+        ['<code>std::async(policy, f, args...)</code>', 'runs f and returns a future of its result', 'simple parallel tasks, divide-and-conquer'],
+        ['<code>std::promise&lt;T&gt;</code>', 'the write end: <code>set_value</code> / <code>set_exception</code>', 'results from callbacks, threads you manage yourself'],
+        ['<code>std::packaged_task&lt;R(Args...)&gt;</code>', 'wraps a callable; calling it fills its future', 'thread pools and task queues'],
+        ['<code>std::shared_future&lt;T&gt;</code>', 'copyable future; many threads can <code>get()</code>', 'broadcast a result or a "start" signal']
+      ])}
+      <p><b>Launch policies:</b> <code>std::launch::async</code> = start on a new thread now. <code>std::launch::deferred</code> = run lazily on whichever thread calls <code>get()</code>/<code>wait()</code>, and never if nobody does. The <b>default</b> (both flags) lets the implementation choose, so always say <code>launch::async</code> if you need real parallelism.</p>
+      <p><b>Things to know about futures:</b></p>
+      <ul><li><code>get()</code> blocks until ready, then <b>moves</b> the result out; afterwards <code>valid()</code> is false, and calling get() again is a bug.</li>
+      <li><code>wait()</code> blocks without taking the result; <code>wait_for(100ms)</code> returns <code>future_status::ready</code>, <code>timeout</code> or <code>deferred</code>.</li>
+      <li><b>Exceptions travel:</b> if the task throws, <code>get()</code> re-throws it in your thread.</li>
+      <li><span class="c-r"><b>The trap:</b></span> a future returned by <code>std::async</code> <b>blocks in its destructor</b> until the task finishes. Ignoring the return value makes your "parallel" code sequential.</li>
+      <li>The result is handed over through a <b>shared state</b>, and making it ready happens-before <code>get()</code> returns, so reading the result is race-free.</li></ul>
+      <p><b>When to use what:</b> one-off parallel computation → <code>std::async(launch::async, ...)</code>. Many small tasks → a <b>thread pool</b> of workers taking <code>packaged_task</code>s from a blocking queue. Results coming from callbacks or I/O → <code>promise</code>. Standard C++ futures have no <code>.then()</code> continuations; C++26's <code>std::execution</code> (senders/receivers) is the modern composable model.</p>`,
+    clues: ['"compute two halves in parallel and combine" / "parallel merge sort / sum" → <code>std::async(launch::async)</code> + <code>get()</code>', '"return a value from a thread" / "propagate an exception from a worker" → future/promise instead of shared variables', '"thread pool where submit() returns the result" → <code>packaged_task</code> + <code>future</code>', '"wait at most 200 ms for a result" → <code>wait_for</code> + <code>future_status</code>', '"fire-and-forget with std::async is slow / sequential" → discarded future blocks in its destructor', '"many threads wait for one signal / result" → <code>shared_future</code>'],
+    code: [R`
+      #include <bits/stdc++.h>
+      using namespace std;
+      using namespace std::chrono_literals;
+
+      long long sumRange(const vector<int>& v, size_t lo, size_t hi) {
+          return accumulate(v.begin() + lo, v.begin() + hi, 0LL);
+      }
+
+      int main() {
+          vector<int> v(1'000'000, 1);
+          size_t mid = v.size() / 2;
+
+          // 1) async: left half on a new thread, right half here
+          auto left = async(launch::async, sumRange, cref(v), 0, mid);
+          long long right = sumRange(v, mid, v.size());
+          cout << left.get() + right << "\n";                    // 1000000
+
+          // 2) promise / future with an explicit thread
+          promise<string> prom;
+          future<string> fut = prom.get_future();
+          thread t([p = std::move(prom)]() mutable {
+              try { p.set_value("config loaded"); }
+              catch (...) { p.set_exception(current_exception()); }
+          });
+          cout << fut.get() << "\n";
+          t.join();
+
+          // 3) packaged_task: wrap a callable, run it anywhere, collect via its future
+          packaged_task<int(int, int)> task([](int a, int b) { return a * b; });
+          future<int> prod = task.get_future();
+          thread runner(std::move(task), 6, 7);
+          cout << prod.get() << "\n";                            // 42
+          runner.join();
+
+          // 4) timeouts
+          auto slow = async(launch::async, [] { this_thread::sleep_for(50ms); return 1; });
+          if (slow.wait_for(10ms) == future_status::timeout) cout << "not yet...\n";
+          cout << slow.get() << "\n";
+      }`],
+    codeTitle: ['async, promise, packaged_task and wait_for in one program'],
+    viz: vizFuture,
+    examples: [
+      { title: 'Exceptions cross threads through get()', html: `<p>The worker throws; <code>get()</code> re-throws the same exception object in the caller, where an ordinary try/catch handles it. With a raw <code>std::thread</code> the same throw would call <code>std::terminate</code>.</p>`, code: R`
+        int loadUser(int id) {
+            if (id < 0) throw std::invalid_argument("negative id");
+            return id * 10;
+        }
+        int main() {
+            auto f = std::async(std::launch::async, loadUser, -1);
+            try { std::cout << f.get(); }
+            catch (const std::invalid_argument& e) { std::cout << "failed: " << e.what() << "\n"; }
+        }` },
+      { title: 'The discarded-future trap and its fix', html: `<p>Both calls in <code>slowVersion</code> run one after another, because each temporary future waits in its destructor. Keeping the futures alive lets the work overlap. (Other futures, from a promise or packaged_task, do <b>not</b> block in their destructor; only std::async's do.)</p>`, code: R`
+        void work() { std::this_thread::sleep_for(std::chrono::milliseconds(100)); }
+        void slowVersion() {                       // ~200 ms
+            std::async(std::launch::async, work);
+            std::async(std::launch::async, work);
+        }
+        void fastVersion() {                       // ~100 ms
+            auto f1 = std::async(std::launch::async, work);
+            auto f2 = std::async(std::launch::async, work);
+            f1.get(); f2.get();
+        }` },
+      { title: 'shared_future as a starting gun', html: `<p>All runners wait on copies of one <code>shared_future</code>. When main calls <code>set_value()</code>, every waiter wakes. A plain future could only be waited on by one owner. (A C++20 <code>std::latch</code> is another good fit.)</p>`, code: R`
+        int main() {
+            std::promise<void> go;
+            std::shared_future<void> start = go.get_future().share();
+            std::vector<std::thread> runners;
+            for (int i = 0; i < 3; ++i)
+                runners.emplace_back([start, i] { start.wait(); std::cout << ("runner " + std::to_string(i) + " off\n"); });
+            go.set_value();                          // everybody starts now
+            for (auto& r : runners) r.join();
+        }` },
+      { title: 'Choosing: async vs thread pool', html: `<p>libstdc++ (GCC) and libc++ create a <b>new OS thread</b> for every <code>std::async(launch::async)</code> call (MSVC uses a pool). Fine for a handful of big tasks; terrible for 100,000 tiny ones. Rule of thumb: tasks under ~100 µs or more tasks than cores → a thread pool, or a library such as Intel oneTBB / Taskflow / <code>std::execution</code> parallel algorithms like <code>std::reduce(std::execution::par, ...)</code>.</p>`, code: R`
+        long long parallelSum(const std::vector<long long>& v) {
+            // the standard library can do the splitting for you (C++17 parallel algorithms)
+            return std::reduce(v.begin(), v.end(), 0LL);   // add std::execution::par with TBB installed
+        }` }
+    ],
+    deepDive: `<p><b>Shared state internals.</b> A future and its promise/task point to one heap-allocated, reference-counted <b>shared state</b> holding: the value or an <code>exception_ptr</code>, a "ready" flag, and synchronization (typically a mutex + condition variable, or a futex). <code>set_value</code> writes the value, flips ready (release) and wakes waiters; <code>get</code> waits (acquire) and moves the value out. That's the happens-before edge that makes the handoff race-free.</p>
+      <p><b>Why std::async futures block on destruction.</b> The committee wanted to prevent detached tasks that outlive everything they reference. The price is the surprising sequential behaviour when you drop the future. Futures from <code>promise</code> and <code>packaged_task</code> don't do this. If you need true fire-and-forget, use a thread pool that owns the work.</p>
+      <p><b>Error states.</b> Destroying a promise without setting it stores <code>future_error(broken_promise)</code>; calling <code>get_future()</code> twice or <code>set_value()</code> twice throws <code>future_error</code>. Calling <code>get()</code> on an invalid future (already consumed, or default-constructed) is undefined behaviour; implementations usually throw <code>future_error(no_state)</code>. Check <code>valid()</code> when unsure.</p>
+      <p><b>Deferred subtleties.</b> <code>wait_for</code> on a deferred future returns <code>future_status::deferred</code> immediately and never times out. A loop like <code>while (f.wait_for(0s) != future_status::ready)</code> spins forever if the default policy chose deferred. Another reason to pass <code>launch::async</code> explicitly.</p>
+      <p><b>Recursion and thread explosion.</b> Divide-and-conquer with <code>std::async</code> at every level creates 2<sup>depth</sup> threads. Cap it: only spawn above a size threshold or below a depth limit, and process the other half on the current thread. Pools with <b>work stealing</b> (TBB, Taskflow, Java's ForkJoin, Rust's Rayon) solve this properly by keeping per-worker deques.</p>
+      <p><b>The future of futures.</b> <code>std::experimental::future::then</code> never made it into the standard. C++20 coroutines give you <code>co_await</code>-able task types (from libraries), and C++26 standardizes <b>senders/receivers</b> (<code>std::execution</code>): lazy, composable async pipelines with explicit schedulers, the long-term replacement for chaining futures.</p>`,
+    aiEra: `<p><b>What AI changes:</b> assistants convert sequential loops into <code>std::async</code> or parallel-algorithm versions instantly, and can scaffold a thread pool with <code>packaged_task</code> in one go.</p>
+      <p><b>Use AI as a partner:</b> ask <code>"Where in this code is a std::async future discarded or destroyed early?"</code>, <code>"What happens if this task throws, and where is it caught?"</code>, and <code>"How many OS threads can this recursive async create for n = 10⁷?"</code>. Have it write a benchmark comparing async-per-task vs a pool vs <code>std::reduce(par)</code>.</p>
+      <p><b>Where AI goes wrong:</b> it uses the default launch policy and assumes parallelism, ignores the return value of <code>std::async</code> for fire-and-forget, calls <code>get()</code> twice, spawns async at every recursion level, and captures references in tasks that outlive the referenced data.</p>
+      <p><b>What you must still own:</b> choosing the right granularity (how big a task must be to be worth a thread), the lifetime of everything a task touches, and the error-handling story. Those are architecture decisions you'll defend in system-design and C++ interviews.</p>`,
+    problems: [{
+      title: 'Parallel Sum with std::async (Divide & Conquer)',
+      level: 'Medium', tags: ['std::async', 'future', 'divide and conquer'], companies: ['Microsoft', 'Bloomberg', 'Adobe'],
+      statement: `<p>Implement <code>long long parallelSum(const vector&lt;int&gt;&amp; v)</code> that splits the work recursively: if the range is larger than a threshold, sum the left half with <code>std::async(launch::async)</code> and the right half on the current thread, then combine. Never create more than about <code>hardware_concurrency()</code> concurrent tasks.</p>`,
+      constraints: `1 ≤ n ≤ 10<sup>8</sup>, |v[i]| ≤ 10<sup>9</sup> (use long long); threshold ≥ 10<sup>4</sup> elements`,
+      example: `<p>v = [1..8], threshold = 2, max depth 2:</p>${H.table(['call', 'range', 'left half', 'right half', 'result'], [['depth 0', '[0,8)', 'async → [0,4)', 'here → [4,8)', '10 + 26 = 36'], ['depth 1 (left)', '[0,4)', 'async → [0,2)', 'here → [2,4)', '3 + 7 = 10'], ['depth 1 (right)', '[4,8)', 'async → [4,6)', 'here → [6,8)', '11 + 15 = 26']])}<p>Output ${H.c('g', '36')}.</p>`,
+      brute: { why: `<p>Sequential <code>accumulate</code> uses one core. The naive parallel attempt (async at every level, no threshold) creates one thread per tiny range: for n = 10<sup>6</sup> that's ~10<sup>6</sup> thread creations, which is much slower than the plain loop and may hit the OS thread limit.</p>`, code: R`
+        long long sumSequential(const std::vector<int>& v) {
+            return std::accumulate(v.begin(), v.end(), 0LL);   // one core
+        }
+        long long sumExplode(const std::vector<int>& v, size_t lo, size_t hi) {
+            if (hi - lo == 1) return v[lo];
+            size_t mid = lo + (hi - lo) / 2;
+            auto left = std::async(std::launch::async, sumExplode, std::cref(v), lo, mid);   // a thread per node!
+            return sumExplode(v, mid, hi) + left.get();
+        }` },
+      mcq: { q: 'Why compute the right half on the CURRENT thread instead of launching two asyncs?', options: ['async cannot be called twice', 'The current thread would otherwise just sit in get() doing nothing: one async per split halves the number of threads', 'It changes the result', 'get() only works for the left half'], answer: 1, explain: 'Launching both halves leaves the parent idle while it waits. Doing one half yourself keeps every thread busy and halves the thread count.' },
+      hints: [`<p><b>Aha:</b> parallel speedup only pays if each task is big enough to amortize ~20–50 µs of thread start-up.</p>`, `<p>Recursive helper <code>sum(v, lo, hi, depth)</code>: if <code>hi - lo &lt; THRESH</code> or <code>depth == 0</code>, use accumulate; else async the left half with depth-1, do the right half here, add <code>left.get()</code>.</p>`, `<p>Start with <code>depth = ⌈log₂(hardware_concurrency())⌉</code> so about that many leaves run at once. Pass the vector with <code>std::cref</code> (async copies its arguments!). Use long long for the sum.</p>`],
+      solution: {
+        approach: `<p>Divide and conquer with a <b>depth budget</b>: each level spawns one async for the left half and recurses on the right half itself, so depth d gives at most 2<sup>d</sup> concurrent leaves. Small ranges fall back to <code>std::accumulate</code>. Futures carry results (and exceptions) back without any shared mutable state.</p>`,
+        code: R`
+          #include <bits/stdc++.h>
+          using namespace std;
+
+          constexpr size_t THRESH = 10000;
+
+          long long sumRec(const vector<int>& v, size_t lo, size_t hi, int depth) {
+              if (hi - lo <= THRESH || depth <= 0)
+                  return accumulate(v.begin() + lo, v.begin() + hi, 0LL);   // small or out of budget: sequential
+              size_t mid = lo + (hi - lo) / 2;
+              // left half on a new thread (cref: avoid copying the whole vector into the task!)
+              auto left = async(launch::async, sumRec, cref(v), lo, mid, depth - 1);
+              long long right = sumRec(v, mid, hi, depth - 1);              // right half on THIS thread
+              return left.get() + right;                                   // waits only if left is slower
+          }
+
+          long long parallelSum(const vector<int>& v) {
+              unsigned hw = max(1u, thread::hardware_concurrency());
+              int depth = 0;
+              while ((1u << depth) < hw) ++depth;                          // 2^depth leaves ≈ cores
+              return sumRec(v, 0, v.size(), depth);
+          }
+
+          int main() {
+              vector<int> v(5'000'000);
+              iota(v.begin(), v.end(), 1);
+              cout << parallelSum(v) << "\n";                               // 12500002500000
+          }`,
+        dry: { head: ['call', 'lo..hi', 'depth', 'action', 'returns'], rows: [['root', '0..8', '2', 'async(0..4), self(4..8)', '36'], ['self', '4..8', '1', 'async(4..6), self(6..8)', '26'], ['async', '0..4', '1', 'async(0..2), self(2..4)', '10'], ['leaves', '0..2 / 2..4 / 4..6 / 6..8', '0', 'accumulate', '3 / 7 / 11 / 15']] },
+        complexity: `<p>Work O(n); span O(n / 2<sup>d</sup> + d); at most 2<sup>d</sup> ≈ cores threads alive. Memory-bandwidth-bound sums usually speed up 3–6× on 8 cores, not 8×, because RAM bandwidth is shared.</p>`,
+        followUps: ['Generalize to <code>parallelReduce(first, last, init, op)</code>', 'Compare with <code>std::reduce(std::execution::par, ...)</code>', 'How would work stealing handle uneven work (e.g. a parallel quicksort)?']
+      }
+    }]
+  });
 registerModule({ id: 'cpp11', title: 'Concurrency in C++', intro: 'x', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();

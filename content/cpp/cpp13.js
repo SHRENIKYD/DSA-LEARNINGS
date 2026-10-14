@@ -876,5 +876,569 @@ f(3) → ${H.c('g', '9')}     g(3) → ${H.c('g', '13')}     Function&lt;int(int
       }
     }]
   });
+
+  /* ======================================================================
+     TOPIC 4 — COPY-AND-SWAP
+     ====================================================================== */
+  function swapViz(input) {
+    var mode = oneOf(input, 'copy', ['copy', 'self', 'move', 'throw']);
+    var frames = [];
+    var CODE = {
+      copy: 'String a("hi"), b("world");\na = b;                       // copy-assign\nString& operator=(String other) noexcept {\n    swap(*this, other);      // exchange pointers\n    return *this;\n}                            // ~other() frees old buffer',
+      self: 'String a("hi");\na = a;                       // self-assignment!\nString& operator=(String other) noexcept {\n    swap(*this, other);\n    return *this;\n}                            // ~other() frees old buffer',
+      move: 'String a("hi"), b("world");\na = std::move(b);            // move-assign\nString& operator=(String other) noexcept {\n    swap(*this, other);\n    return *this;\n}                            // ~other() frees old buffer',
+      throw: 'String a("hi"), b("world");\na = b;                       // out of memory!\nString& operator=(String other) noexcept {\n    swap(*this, other);\n    return *this;\n}'
+    };
+    var code = CODE[mode];
+    function F(narr, line, cls, vals, vhl, heap, extra) {
+      var hlc = {}; hlc[line] = cls;
+      var parts = [codePart('copy-and-swap', code, hlc), { type: 'vars', label: 'objects (stack)', vals: vals, hl: vhl || {} },
+        { type: 'map', label: 'heap blocks', entries: heap.map(function (h) { return [h[0], h[1]]; }), hl: heap.reduce(function (o, h) { if (h[2]) o[h[0]] = h[2]; return o; }, {}) }];
+      if (extra) parts.push(extra);
+      frames.push({ narr: narr, parts: parts });
+    }
+    if (mode === 'copy') {
+      F('Start: <code>a</code> owns heap block <b>A1</b> ("hi"), <code>b</code> owns <b>B1</b> ("world"). Each <code>String</code> is just a pointer + size; the characters live on the heap.', 1, 'cur',
+        { 'a.data': 'A1', 'b.data': 'B1' }, {}, [['A1', '"hi" (owner: a)'], ['B1', '"world" (owner: b)']]);
+      F('<code>a = b;</code> calls <code>operator=(String other)</code>. The parameter is taken <b>by value</b>, so <code>other</code> must be built first — from an lvalue <code>b</code>, that means the <b>copy constructor</b>.', 2, 'cur',
+        { 'a.data': 'A1', 'b.data': 'B1' }, {}, [['A1', '"hi" (owner: a)'], ['B1', '"world" (owner: b)']]);
+      F('Copy constructor allocates <b>C1</b> and copies "world". <span class="c-g">This is the only step that can throw</span> (<code>bad_alloc</code>) — and it happens <b>before</b> we have touched <code>a</code> at all.', 3, 'cur',
+        { 'a.data': 'A1', 'b.data': 'B1', 'other.data': 'C1' }, { 'other.data': 'ok' }, [['A1', '"hi" (owner: a)'], ['B1', '"world" (owner: b)'], ['C1', '"world" (owner: other)', 'ok']]);
+      F('<code>swap(*this, other)</code> exchanges two pointers and two sizes — <b>noexcept</b>, cannot fail. Now <code>a</code> owns the fresh copy C1 and <code>other</code> holds a\'s old block A1.', 4, 'cur',
+        { 'a.data': 'C1', 'b.data': 'B1', 'other.data': 'A1' }, { 'a.data': 'ok', 'other.data': 'bad' }, [['A1', '"hi" (owner: other)', 'bad'], ['B1', '"world" (owner: b)'], ['C1', '"world" (owner: a)', 'ok']]);
+      F('<code>return *this;</code> — the assignment is logically complete.', 5, 'cur',
+        { 'a.data': 'C1', 'b.data': 'B1', 'other.data': 'A1' }, {}, [['A1', '"hi" (owner: other)'], ['B1', '"world" (owner: b)'], ['C1', '"world" (owner: a)']]);
+      F('Leaving the function destroys the parameter <code>other</code>; its destructor runs <code>delete[]</code> on <b>A1</b> — a\'s old data. The destructor did our cleanup for free: no duplicated <code>delete[]</code> code in operator=.', 6, 'ok',
+        { 'a.data': 'C1', 'b.data': 'B1' }, { 'a.data': 'ok' }, [['A1', 'freed', 'bad'], ['B1', '"world" (owner: b)'], ['C1', '"world" (owner: a)', 'ok']]);
+      F('Done: a == "world", b == "world", independent buffers, no leak. Three wins in four lines: <b>strong exception guarantee</b>, <b>self-assignment safe</b>, <b>no duplicated code</b> (copy ctor + destructor do all the work).', 2, 'ok',
+        { 'a.data': 'C1 "world"', 'b.data': 'B1 "world"' }, { 'a.data': 'ok' }, [['B1', '"world" (owner: b)'], ['C1', '"world" (owner: a)']],
+        { type: 'table', label: 'cost of this assignment', columns: ['allocations', 'frees', 'can leave a half-assigned?'], rows: [['1 (C1)', '1 (A1)', 'no']] });
+    } else if (mode === 'self') {
+      F('Start: <code>a</code> owns A1 ("hi"). Now the nasty case: <code>a = a;</code> — it happens in real code via aliases like <code>v[i] = v[j]</code> with i == j.', 1, 'cur',
+        { 'a.data': 'A1' }, {}, [['A1', '"hi" (owner: a)']]);
+      F('A naive operator= that does <code>delete[] data_;</code> first would free A1 and then copy from the <b>freed</b> memory (use-after-free). Copy-and-swap instead first builds <code>other</code> as a copy of a → new block C1.', 3, 'cur',
+        { 'a.data': 'A1', 'other.data': 'C1' }, { 'other.data': 'ok' }, [['A1', '"hi" (owner: a)'], ['C1', '"hi" (owner: other)', 'ok']]);
+      F('swap: a now owns C1, other owns A1.', 4, 'cur',
+        { 'a.data': 'C1', 'other.data': 'A1' }, { 'a.data': 'ok' }, [['A1', '"hi" (owner: other)', 'bad'], ['C1', '"hi" (owner: a)', 'ok']]);
+      F('other dies, freeing A1. a still says "hi" — <b>correct with no special <code>if (this == &amp;rhs)</code> check</b>.', 6, 'ok',
+        { 'a.data': 'C1' }, { 'a.data': 'ok' }, [['A1', 'freed', 'bad'], ['C1', '"hi" (owner: a)', 'ok']]);
+      F('The honest trade-off: self-assignment did a <b>pointless allocation + copy</b>. Self-assignment is rare, so most code accepts this; a hand-written operator= with a self-check and buffer reuse can be faster (that\'s why <code>std::vector</code> does not use copy-and-swap).', 2, 'win',
+        { 'a.data': 'C1 "hi"' }, {}, [['C1', '"hi" (owner: a)']], { type: 'table', label: 'self-assignment', columns: ['approach', 'correct?', 'extra work'], rows: [['naive delete-then-copy', 'NO (use-after-free)', '—'], ['self-check + reuse buffer', 'yes', 'none'], ['copy-and-swap', 'yes', '1 alloc + copy']] });
+    } else if (mode === 'move') {
+      F('Start: a owns A1 ("hi"), b owns B1 ("world").', 1, 'cur', { 'a.data': 'A1', 'b.data': 'B1' }, {}, [['A1', '"hi" (owner: a)'], ['B1', '"world" (owner: b)']]);
+      F('<code>a = std::move(b);</code> — the argument is an rvalue, so the by-value parameter <code>other</code> is built with the <b>move constructor</b>: it steals B1 and leaves b empty. <b>No allocation.</b>', 3, 'cur',
+        { 'a.data': 'A1', 'b.data': 'null', 'other.data': 'B1' }, { 'other.data': 'ok', 'b.data': 'bad' }, [['A1', '"hi" (owner: a)'], ['B1', '"world" (owner: other)', 'ok']]);
+      F('swap: a takes B1, other takes A1.', 4, 'cur', { 'a.data': 'B1', 'b.data': 'null', 'other.data': 'A1' }, { 'a.data': 'ok' }, [['A1', '"hi" (owner: other)', 'bad'], ['B1', '"world" (owner: a)', 'ok']]);
+      F('other is destroyed → A1 freed. One operator served as <b>both</b> copy-assignment and move-assignment (the "unifying assignment operator").', 6, 'ok',
+        { 'a.data': 'B1', 'b.data': 'null' }, { 'a.data': 'ok' }, [['A1', 'freed', 'bad'], ['B1', '"world" (owner: a)', 'ok']]);
+      F('Cost: one move construction + one swap + one destructor — slightly more than a dedicated move-assignment (which would just swap or steal), but usually negligible. b is in a valid, empty "moved-from" state.', 2, 'win',
+        { 'a.data': 'B1 "world"', 'b.data': 'null (valid, empty)' }, {}, [['B1', '"world" (owner: a)']], { type: 'table', label: 'what built other?', columns: ['argument', 'parameter built by', 'allocates?'], rows: [['lvalue b', 'copy ctor', 'yes'], ['rvalue std::move(b)', 'move ctor', 'no']], hl: { 1: 'sel' } });
+    } else {
+      F('Start: a owns A1 ("hi"), b owns B1 ("world"). This time the machine is almost out of memory.', 1, 'cur', { 'a.data': 'A1', 'b.data': 'B1' }, {}, [['A1', '"hi" (owner: a)'], ['B1', '"world" (owner: b)']]);
+      F('<code>a = b;</code> → copy-constructing <code>other</code> calls <code>new char[6]</code> which throws <b>std::bad_alloc</b>.', 2, 'bad', { 'a.data': 'A1', 'b.data': 'B1' }, {}, [['A1', '"hi" (owner: a)'], ['B1', '"world" (owner: b)']]);
+      F('The exception leaves <b>before the body of operator= ever runs</b>. <code>a</code> still owns A1 with "hi" — fully intact. That is the <b>strong exception guarantee</b>: "either it fully succeeds, or nothing changed" (commit-or-rollback).', 3, 'bad',
+        { 'a.data': 'A1 (unchanged)', 'b.data': 'B1' }, { 'a.data': 'ok' }, [['A1', '"hi" (owner: a)', 'ok'], ['B1', '"world" (owner: b)']]);
+      F('Compare a <b>naive</b> operator=: <code>delete[] data_; data_ = new char[n]; ...</code>. If <code>new</code> throws, a\'s pointer still points at the <b>freed</b> A1 → its destructor later double-frees. That\'s not even the basic guarantee.', 2, 'bad',
+        { 'a.data': 'A1 (DANGLING)', 'b.data': 'B1' }, { 'a.data': 'bad' }, [['A1', 'freed but still referenced!', 'bad'], ['B1', '"world" (owner: b)']],
+        codePart('naive version', 'String& operator=(const String& o) {\n    delete[] data_;               // 1. old data gone\n    data_ = new char[o.size_+1];  // 2. throws -> data_ dangles\n    std::memcpy(data_, o.data_, o.size_+1);\n    size_ = o.size_;\n    return *this;\n}', { 2: 'bad', 3: 'bad' }));
+      F('Lesson: <b>do all the work that can fail on the side, then commit with operations that cannot fail</b> (swap). Copy-and-swap is that pattern in its smallest form.', 3, 'ok',
+        { 'a.data': 'A1 "hi"', 'b.data': 'B1 "world"' }, { 'a.data': 'ok' }, [['A1', '"hi" (owner: a)'], ['B1', '"world" (owner: b)']],
+        { type: 'table', label: 'exception guarantees', columns: ['level', 'promise'], rows: [['nothrow', 'never throws (swap, destructors, moves)'], ['strong', 'success or no change at all (copy-and-swap)'], ['basic', 'no leaks, object valid but unspecified'], ['none', 'anything can happen (naive version)']], hl: { 1: 'sel' } });
+    }
+    return frames;
+  }
+
+  topics.push({
+    title: 'Copy-and-Swap: Exception-Safe Assignment',
+    analogy: `<p>Repainting your shop sign. The risky way: <b>scrape off the old sign first</b>, then start painting the new one — if you run out of paint halfway, the shop has no sign at all. The safe way: <b>paint the new sign in the workshop</b> (if you run out of paint there, the old sign is still hanging), then <b>swap</b> them in one quick move, and throw the old sign in the bin. Copy-and-swap is the workshop approach: build the new state on the side, swap it in with an operation that can't fail, let the old state be destroyed automatically.</p>`,
+    explain: `<p>🟢 <b>The problem.</b> A class that owns a resource (a raw buffer, a handle) needs the <b>rule of three/five</b>: destructor, copy constructor, copy assignment (+ move constructor, move assignment). The copy-assignment operator is the hardest one to get right because it must <i>destroy the old value</i> and <i>copy a new one</i> — and three things go wrong:</p>
+      ${H.table(['bug', 'how it happens'], [['<span class="c-r">self-assignment</span>', '<code>a = a</code>: you free your buffer, then copy from it'], ['<span class="c-r">exception safety</span>', 'you free first, then <code>new</code> throws → the object points to freed memory'], ['<span class="c-r">duplicated code</span>', 'operator= repeats the copy constructor\'s allocation and the destructor\'s cleanup']])}
+      <p><b>The idiom</b> (three pieces):</p>
+      <ol>
+        <li>A correct <b>copy constructor</b> and <b>destructor</b> (you need them anyway).</li>
+        <li>A <b>noexcept swap</b> that exchanges the members (pointers, sizes) — trivially can't fail.</li>
+        <li>An assignment operator that takes its parameter <b>by value</b> and swaps:</li>
+      </ol>
+      <pre>String&amp; operator=(String other) noexcept {   // 1. 'other' is a COPY (or a move) made by the caller
+    swap(*this, other);                       // 2. take its guts, give it ours
+    return *this;
+}                                             // 3. 'other' dies → destructor frees our OLD data</pre>
+      <p>Why it works: the only thing that can throw (allocating the copy) happens while <b>building the parameter</b>, before <code>*this</code> is touched → <b>strong exception guarantee</b>. Self-assignment just copies, swaps and frees the old copy → correct without an <code>if</code>. The cleanup is done by the destructor → no duplicated code. And because the parameter is by value, an rvalue argument is <b>move-constructed</b> into it, so this single operator is both copy- and move-assignment.</p>
+      ${H.table(['you write', 'other is built by', 'cost'], [['<code>a = b;</code>', 'copy constructor', '1 allocation + copy'], ['<code>a = std::move(b);</code>', 'move constructor', 'pointer steal'], ['<code>a = String("tmp");</code>', 'guaranteed elision (C++17)', 'nothing extra'], ['<code>a = a;</code>', 'copy constructor', 'wasted copy, but correct']])}`,
+    clues: [
+      '"Implement the assignment operator for a class that owns raw memory" → copy-and-swap',
+      '"Make <code>operator=</code> exception-safe" / "strong exception guarantee" / "commit or rollback" → copy-and-swap',
+      '"Handle self-assignment" → copy-and-swap handles it without a check',
+      '"Rule of three / five / big three" questions → write copy ctor + dtor + swap, then assignment by value',
+      '"Avoid code duplication between copy constructor, destructor and assignment" → copy-and-swap',
+      '"Unified assignment operator" / "one operator for copy and move" → by-value parameter + swap'
+    ],
+    code: [R`
+      #include <iostream>
+      #include <utility>
+      #include <cstring>
+      #include <cstddef>
+
+      class String {
+          char*       data_ = nullptr;   // owned heap buffer (always '\0'-terminated when non-null)
+          std::size_t size_ = 0;
+      public:
+          String(const char* s = "") : data_(new char[std::strlen(s) + 1]), size_(std::strlen(s)) {
+              std::memcpy(data_, s, size_ + 1);
+          }
+          // 1) Copy constructor: deep copy (may throw std::bad_alloc — fine, *this isn't built yet)
+          String(const String& o) : data_(new char[o.size_ + 1]), size_(o.size_) {
+              std::memcpy(data_, o.data_, size_ + 1);
+          }
+          // 2) Move constructor: steal the buffer, leave o empty-but-valid
+          String(String&& o) noexcept : data_(std::exchange(o.data_, nullptr)), size_(std::exchange(o.size_, 0)) {}
+          // 3) Destructor
+          ~String() { delete[] data_; }
+          // 4) noexcept swap: exchanges two pointers and two sizes — cannot fail
+          friend void swap(String& a, String& b) noexcept {
+              using std::swap;                 // the "two-step": allow ADL to find better swaps for members
+              swap(a.data_, b.data_);
+              swap(a.size_, b.size_);
+          }
+          // 5) THE copy-and-swap assignment: parameter taken BY VALUE
+          //    lvalue argument -> copy ctor builds 'other' (the risky part happens here, before *this is touched)
+          //    rvalue argument -> move ctor builds 'other' (cheap)
+          String& operator=(String other) noexcept {
+              swap(*this, other);              // our old guts go into 'other'...
+              return *this;                    // ...and die when 'other' is destroyed at the closing brace
+          }
+          const char* c_str() const { return data_ ? data_ : ""; }
+          std::size_t size() const { return size_; }
+      };
+
+      int main() {
+          String a("hello"), b("world!");
+          a = b;                    // copy-assign: a = "world!", b unchanged
+          a = a;                    // self-assignment: safe with no special check
+          a = String("moved in");   // move-assign via the same operator
+          std::cout << a.c_str() << " " << a.size() << " | " << b.c_str() << "\n";   // moved in 8 | world!
+      }
+    `],
+    codeTitle: ['A complete rule-of-five String using copy-and-swap'],
+    viz: { title: 'Copy-and-swap, one line at a time', input: 'copy', inputLabel: 'Scenario: copy | self | move | throw', gen: swapViz },
+    examples: [
+      { title: 'The naive operator= and its two bugs', html: `<p>This is what most people write first. Trace <code>a = a</code>: line 1 frees the buffer, line 3 copies from the freed buffer → <b>use-after-free</b>. Trace an out-of-memory: line 1 frees, line 2 throws, <code>data_</code> still holds the freed address → the destructor later frees it <b>again</b>.</p>
+        ${H.table(['line', 'a = a (self)', 'new throws'], [['delete[] data_', 'buffer freed', 'buffer freed'], ['data_ = new char[...]', 'ok', '<span class="c-r">throws; data_ dangles</span>'], ['memcpy(data_, o.data_)', '<span class="c-r">reads freed memory</span>', 'never reached'], ['later ~String()', 'ok', '<span class="c-r">double free</span>']])}`,
+        code: R`
+          #include <cstring>
+          #include <cstddef>
+          class Naive {
+              char* data_; std::size_t size_;
+          public:
+              Naive(const char* s) : data_(new char[std::strlen(s) + 1]), size_(std::strlen(s)) { std::memcpy(data_, s, size_ + 1); }
+              ~Naive() { delete[] data_; }
+              Naive(const Naive& o) : data_(new char[o.size_ + 1]), size_(o.size_) { std::memcpy(data_, o.data_, size_ + 1); }
+              Naive& operator=(const Naive& o) {
+                  delete[] data_;                          // (1) BUG: if this == &o we just freed o.data_ too
+                  data_ = new char[o.size_ + 1];           // (2) BUG: if this throws, data_ dangles
+                  std::memcpy(data_, o.data_, o.size_ + 1);  // (3) self-assign: copies freed memory
+                  size_ = o.size_;
+                  return *this;
+              }
+          };
+          int main() { Naive a("hi"), b("yo"); a = b; }` },
+      { title: 'The hand-tuned alternative (and why std::vector uses it)', html: `<p>Copy-and-swap always allocates a new buffer, even when the existing one is big enough. Containers like <code>std::vector</code> instead check <code>if (this != &amp;o)</code>, reuse capacity when possible, and offer only the <b>basic</b> guarantee for assignment — a deliberate speed-vs-safety trade. Know both answers; say which you'd use and why.</p>
+        ${H.table(['', 'copy-and-swap', 'reuse-buffer operator='], [['guarantee', '<span class="c-g">strong</span>', 'basic (or strong with care)'], ['allocations when capacity suffices', '1', '<span class="c-g">0</span>'], ['self-assignment', 'correct (wasted copy)', 'needs explicit check'], ['code size', '<span class="c-g">tiny</span>', 'larger, error-prone']])}`,
+        code: R`
+          #include <algorithm>
+          #include <cstddef>
+          class Buf {
+              int* d_ = nullptr; std::size_t n_ = 0, cap_ = 0;
+          public:
+              explicit Buf(std::size_t n) : d_(new int[n]{}), n_(n), cap_(n) {}
+              ~Buf() { delete[] d_; }
+              Buf(const Buf& o) : d_(new int[o.n_]), n_(o.n_), cap_(o.n_) { std::copy(o.d_, o.d_ + n_, d_); }
+              Buf& operator=(const Buf& o) {
+                  if (this == &o) return *this;                    // explicit self-check
+                  if (o.n_ <= cap_) {                               // reuse: no allocation at all
+                      std::copy(o.d_, o.d_ + o.n_, d_);
+                      n_ = o.n_;
+                      return *this;
+                  }
+                  int* fresh = new int[o.n_];                       // allocate BEFORE freeing (still safe)
+                  std::copy(o.d_, o.d_ + o.n_, fresh);
+                  delete[] d_;
+                  d_ = fresh; n_ = cap_ = o.n_;
+                  return *this;
+              }
+          };
+          int main() { Buf a(4), b(2); a = b; a = a; }` },
+      { title: 'Trap: implementing swap with std::swap on the whole object', html: `<p>Generic <code>std::swap(x, y)</code> is implemented as <code>T tmp = move(x); x = move(y); y = move(tmp);</code> — it uses <b>move assignment</b>. If your move assignment is the copy-and-swap <code>operator=</code> and your <code>swap</code> calls <code>std::swap(*this, other)</code> on the whole object, they call each other forever → <b>stack overflow</b>. Always swap <b>member by member</b> in your own friend <code>swap</code>.</p>
+        ${H.table(['call', 'calls'], [['a = b', 'swap(*this, other)'], ['std::swap(*this, other)', 'a = std::move(...)'], ['a = std::move(...)', 'swap(*this, other) …', ], ['…', '<span class="c-r">infinite recursion</span>']])}` },
+      { title: 'Verifying the call sequence with a tracer', html: `<p>Instrument the special members to <i>see</i> which ones run. For <code>a = b</code> you get a copy-construction (building <code>other</code>) and a destruction (of <code>other</code> holding the old data). For <code>a = std::move(b)</code> you get a move-construction instead — no copy.</p>`,
+        code: R`
+          #include <iostream>
+          #include <utility>
+          struct T {
+              int* p;
+              explicit T(int v) : p(new int(v)) {}
+              T(const T& o) : p(new int(*o.p)) { std::cout << "copy "; }
+              T(T&& o) noexcept : p(std::exchange(o.p, nullptr)) { std::cout << "move "; }
+              ~T() { if (p) std::cout << "free(" << *p << ") "; delete p; }
+              friend void swap(T& a, T& b) noexcept { std::swap(a.p, b.p); }
+              T& operator=(T other) noexcept { swap(*this, other); return *this; }
+          };
+          int main() {
+              T a(1), b(2), c(3);
+              a = b;                 std::cout << "| ";   // copy free(1) |
+              a = std::move(c);      std::cout << "| ";   // move free(2) |
+              std::cout << "\n";
+          }                                               // then: free(2) free(3)  (c is empty)
+          ` }
+    ],
+    deepDive: `<p>🟣 <b>Fine print an expert should know.</b></p>
+      <ul>
+        <li><b>Where the exception is thrown.</b> The by-value parameter is initialized in the <b>caller's</b> context before the body runs; that's why marking the operator itself <code>noexcept</code> is honest — the body (a swap) never throws, while a failed copy surfaces at the call site with <code>*this</code> untouched.</li>
+        <li><b>The two-step swap.</b> Inside your swap write <code>using std::swap; swap(a.m, b.m);</code> so that member types with their own optimized <code>swap</code> (found by ADL) use it, and everything else falls back to <code>std::swap</code>. A <b>hidden friend</b> <code>swap</code> (defined inside the class) is only found by ADL — exactly what generic code like <code>std::sort</code> and <code>std::ranges::swap</code> want.</li>
+        <li><b>Rule of zero beats all of this.</b> If you hold a <code>std::vector</code>/<code>std::string</code>/<code>std::unique_ptr</code> instead of a raw pointer, the compiler-generated members are correct and you write <b>none</b> of the five. Copy-and-swap is for the rare class that manages a raw resource — or for getting the strong guarantee on a class built from members that only offer the basic one.</li>
+        <li><b>Performance trade-off.</b> Copy-and-swap forfeits buffer reuse (always allocates) and does a needless copy on self-assignment. For a value type assigned in a hot loop, a hand-written operator= that reuses capacity can be several times faster. Measure before choosing; library containers choose speed.</li>
+        <li><b>Separate move-assignment?</b> With the unified by-value operator you get one extra move construction on move-assign. Some codebases write a dedicated <code>operator=(T&amp;&amp;) noexcept</code> (just swap or steal) and keep <code>operator=(const T&amp;)</code> as <code>T tmp(o); swap(*this, tmp);</code>. Don't declare both <code>operator=(T)</code> and <code>operator=(T&amp;&amp;)</code> — calls become ambiguous.</li>
+        <li><b>Beyond assignment:</b> the same "do risky work on a copy, then commit with a noexcept swap" pattern gives the strong guarantee to any multi-step mutation: build a new <code>std::vector</code>, then <code>v.swap(tmp)</code>; update a config by building a new object and swapping a pointer (RCU style).</li>
+      </ul>`,
+    aiEra: `<p>🤖 <b>What AI changes:</b> assistants produce rule-of-five boilerplate instantly, and modern code-review bots flag naive <code>operator=</code> implementations. The idiom is now less about typing and more about <b>knowing which guarantee you need</b>.</p>
+      <p><b>Use AI as a partner:</b> "Write a tracer type and show which special members run for <code>a = b</code>, <code>a = std::move(b)</code> and <code>a = a</code>", "Fuzz this class under an allocator that fails on the Nth allocation and check invariants" (a classic way to test exception safety).</p>
+      <p><b>Where AI goes wrong:</b> it writes <code>std::swap(*this, other)</code> (infinite recursion), declares both <code>operator=(T)</code> and <code>operator=(T&amp;&amp;)</code> (ambiguity), forgets <code>noexcept</code> on swap/move, or recommends copy-and-swap for a class whose members are already RAII types (rule of zero is better).</p>
+      <p><b>What you must own:</b> being able to write the idiom from memory, explain the strong guarantee, and argue when <i>not</i> to use it.</p>`,
+    problems: [{
+      title: 'Strong-Guarantee Assignment for an IntBuffer', level: 'Medium', tags: ['copy-and-swap', 'rule of five', 'exception safety'], companies: ['Microsoft', 'Bloomberg', 'Morgan Stanley'],
+      statement: `<p>Class <code>IntBuffer</code> owns a raw <code>int*</code> array of size <code>n</code>. Implement the full rule of five so that copy-assignment gives the <b>strong exception guarantee</b>, self-assignment is safe, and move operations are <code>noexcept</code>. Provide <code>size()</code>, <code>operator[]</code>, and a free <code>swap</code>.</p>`,
+      constraints: `<p>Do not use <code>std::vector</code> inside (the point is to manage the raw array). C++20.</p>`,
+      example: `<pre>IntBuffer a(3); a[0]=1; a[1]=2; a[2]=3;
+IntBuffer b(1); b[0]=9;
+b = a;   a[0] = 100;   → b = ${H.c('g', '[1, 2, 3]')} (deep copy)
+b = b;                  → b = ${H.c('g', '[1, 2, 3]')} (self-assignment safe)
+IntBuffer c = std::move(b); → c = [1, 2, 3], b.size() = ${H.c('g', '0')}</pre>`,
+      brute: { why: `<p>The brute version frees first and then allocates. If allocation throws, <code>data_</code> dangles (later double free); on self-assignment it copies from memory it just freed. It also duplicates the copy-constructor's logic.</p>`,
+        code: R`
+          #include <algorithm>
+          #include <cstddef>
+          class IntBufferNaive {
+              int* data_; std::size_t n_;
+          public:
+              explicit IntBufferNaive(std::size_t n) : data_(new int[n]{}), n_(n) {}
+              ~IntBufferNaive() { delete[] data_; }
+              IntBufferNaive(const IntBufferNaive& o) : data_(new int[o.n_]), n_(o.n_) { std::copy(o.data_, o.data_ + n_, data_); }
+              IntBufferNaive& operator=(const IntBufferNaive& o) {
+                  delete[] data_;                       // gone before we know the copy succeeds
+                  data_ = new int[o.n_];                // may throw -> dangling data_
+                  std::copy(o.data_, o.data_ + o.n_, data_);   // self-assign: reads freed memory
+                  n_ = o.n_;
+                  return *this;
+              }
+          };
+          int main() { IntBufferNaive a(2), b(3); a = b; }` },
+      mcq: { q: 'In <code>IntBuffer&amp; operator=(IntBuffer other)</code>, at which moment can a <code>std::bad_alloc</code> be thrown during <code>b = a;</code>?', options: ['While the parameter <code>other</code> is being copy-constructed, before the body runs', 'Inside <code>swap</code>', 'In the destructor of <code>other</code>', 'Never'], answer: 0, explain: 'The only allocation is in the copy constructor that builds <code>other</code>. The body (swap) and the destructor never throw, so <code>b</code> is untouched if the copy fails.' },
+      hints: [`<p>Get the copy constructor and destructor right first — copy-and-swap reuses them.</p>`, `<p>Write <code>friend void swap(IntBuffer&amp; x, IntBuffer&amp; y) noexcept</code> that swaps <code>data_</code> and <code>n_</code> with <code>std::swap</code> on each member.</p>`, `<p>Assignment: <code>IntBuffer&amp; operator=(IntBuffer other) noexcept { swap(*this, other); return *this; }</code>. Move constructor: <code>std::exchange</code> the pointer to nullptr and size to 0. Destructor <code>delete[]</code> is safe on nullptr.</p>`],
+      solution: {
+        approach: `<p>Copy constructor + destructor + member-wise noexcept swap + by-value assignment. Copies are made before the object is touched (strong guarantee); self-assignment copies, swaps and frees the old buffer; rvalues move-construct the parameter so the same operator handles move-assignment.</p>`,
+        code: R`
+          #include <algorithm>
+          #include <cstddef>
+          #include <iostream>
+          #include <utility>
+
+          class IntBuffer {
+              int*        data_ = nullptr;
+              std::size_t n_    = 0;
+          public:
+              explicit IntBuffer(std::size_t n = 0) : data_(n ? new int[n]{} : nullptr), n_(n) {}
+              ~IntBuffer() { delete[] data_; }                               // delete[] nullptr is fine
+              IntBuffer(const IntBuffer& o) : data_(o.n_ ? new int[o.n_] : nullptr), n_(o.n_) {
+                  std::copy(o.data_, o.data_ + n_, data_);
+              }
+              IntBuffer(IntBuffer&& o) noexcept
+                  : data_(std::exchange(o.data_, nullptr)), n_(std::exchange(o.n_, 0)) {}
+              friend void swap(IntBuffer& x, IntBuffer& y) noexcept {
+                  using std::swap;
+                  swap(x.data_, y.data_);
+                  swap(x.n_, y.n_);
+              }
+              IntBuffer& operator=(IntBuffer other) noexcept {             // copy OR move happens at the call site
+                  swap(*this, other);
+                  return *this;
+              }                                                              // old buffer freed by ~other
+              std::size_t size() const noexcept { return n_; }
+              int& operator[](std::size_t i) { return data_[i]; }
+              const int& operator[](std::size_t i) const { return data_[i]; }
+          };
+
+          int main() {
+              IntBuffer a(3); a[0] = 1; a[1] = 2; a[2] = 3;
+              IntBuffer b(1); b[0] = 9;
+              b = a;  a[0] = 100;                                 // deep copy: b unaffected
+              b = b;                                              // safe
+              IntBuffer c = std::move(b);
+              std::cout << c[0] << c[1] << c[2] << " " << b.size() << "\n";   // 123 0
+          }`,
+        dry: { head: ['statement', 'a.data_', 'b.data_', 'other.data_', 'note'], rows: [
+          ['initial', 'P1 [1,2,3]', 'P2 [9]', '—', ''], ['b = a: build other', 'P1', 'P2', 'P3 [1,2,3]', 'copy ctor allocates (may throw here)'], ['swap(*this, other)', 'P1', 'P3', 'P2', 'noexcept'], ['} ~other', 'P1', 'P3', 'freed P2', 'old data gone'], ['b = b', 'P1', 'P4 [1,2,3]', 'freed P3', 'extra copy, but correct'], ['c = move(b)', 'P1', 'nullptr', '—', 'c owns P4']] },
+        complexity: `<p>Copy-assign O(n) time and one allocation; move O(1); swap O(1) noexcept.</p>`,
+        followUps: ['Add <code>resize(n)</code> with the strong guarantee using the same pattern.', 'Rewrite with <code>std::unique_ptr&lt;int[]&gt;</code> — which special members can you now delete or default?', 'How would you test exception safety automatically (failing allocator / fault injection)?']
+      }
+    }]
+  });
+
+  /* ======================================================================
+     TOPIC 5 — RAII GUARDS
+     ====================================================================== */
+  function guardViz(input) {
+    var acts = words(input, 'lock open txn alloc throw', 7, ['lock', 'open', 'txn', 'alloc', 'throw', 'work'], 'actions (lock, open, txn, alloc, work, throw)');
+    var INFO = {
+      lock: { g: 'lock_guard lk(mtx)', acq: 'mtx locked', rel: 'mtx unlocked', code: 'std::lock_guard lk(mtx);' },
+      open: { g: 'File f("log.txt")', acq: 'file handle opened', rel: 'file closed', code: 'File f("log.txt");' },
+      txn: { g: 'ScopeFail undo{rollback}', acq: 'transaction begun', rel: '', code: 'db.begin(); ScopeFail undo([&]{ db.rollback(); });' },
+      alloc: { g: 'unique_ptr<Buf> buf', acq: 'buffer allocated', rel: 'buffer freed', code: 'auto buf = std::make_unique<Buf>(4096);' }
+    };
+    var frames = [], stack = [], res = {}, lines = ['void handle() {'], lineOf = [];
+    acts.forEach(function (a) { lines.push('    ' + (a === 'throw' ? 'throw std::runtime_error("boom");' : a === 'work' ? 'doWork();' : INFO[a].code)); lineOf.push(lines.length); });
+    lines.push('}   // scope ends: destructors run in REVERSE order');
+    var code = lines.join('\n'), endLine = lines.length;
+    function snap(narr, line, cls, hlTop, extraParts) {
+      var h = {}; if (line) h[line] = cls;
+      var sh = {}; if (hlTop !== undefined && stack.length) sh[stack.length - 1] = hlTop;
+      frames.push({ narr: narr, parts: [codePart('function body', code, h), { type: 'stack', label: 'guards alive on the stack (top = newest)', items: stack.slice(), hl: sh }, { type: 'vars', label: 'resources', vals: Object.keys(res).length ? clone(res) : { none: '—' } }].concat(extraParts || []) });
+    }
+    snap('The function starts. Each line that acquires a resource creates a <b>guard object</b> on the stack. Watch the guard stack: C++ guarantees that when the scope ends — by <code>return</code>, by falling off the end, or by an <b>exception</b> — every fully-constructed local is destroyed in <b>reverse</b> order.', 1, 'cur');
+    var thrown = false, hasTxn = false;
+    for (var i = 0; i < acts.length && !thrown; i++) {
+      var a = acts[i];
+      if (a === 'throw') {
+        thrown = true;
+        snap('<span class="c-r">An exception is thrown!</span> Normal execution stops. The runtime starts <b>stack unwinding</b>: it leaves this scope and destroys every guard that was constructed so far, newest first. Nothing after this line runs.', lineOf[i], 'bad', 'bad');
+        break;
+      }
+      if (a === 'work') { snap('<code>doWork()</code> runs while all ' + stack.length + ' guard(s) protect their resources. If it threw, they would still be released.', lineOf[i], 'cur'); continue; }
+      stack.push(INFO[a].g);
+      if (a === 'txn') { hasTxn = true; res.transaction = 'open'; }
+      else res[INFO[a].acq.split(' ')[0] === 'mtx' ? 'mutex' : a === 'open' ? 'file' : 'buffer'] = INFO[a].acq;
+      snap('Acquire: <b>' + INFO[a].acq + '</b>, and immediately hand it to a guard (<code>' + INFO[a].g.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</code>). Acquisition and ownership happen in the <b>same statement</b> — there is no window where the resource could leak.', lineOf[i], 'ok', 'ok');
+    }
+    if (!thrown) snap('No exception: we reach the closing brace. Same rule — destructors run in reverse order of construction.', endLine, 'cur');
+    while (stack.length) {
+      var top = stack[stack.length - 1], txt;
+      if (/ScopeFail/.test(top)) {
+        if (thrown) { res.transaction = 'ROLLED BACK'; txt = '<code>~ScopeFail</code> sees <code>std::uncaught_exceptions()</code> went up since it was created → we are leaving <b>because of an exception</b> → it runs <code>db.rollback()</code>. Partial changes are undone.'; }
+        else { res.transaction = 'kept (commit)'; txt = '<code>~ScopeFail</code> sees no new exception in flight → leaving normally → it does <b>nothing</b>, so the transaction\'s work stands (a <code>ScopeSuccess</code> guard would run <code>commit()</code> here).'; }
+      } else {
+        var key = /lock_guard/.test(top) ? 'mutex' : /File/.test(top) ? 'file' : 'buffer';
+        res[key] = key === 'mutex' ? 'mtx unlocked' : key === 'file' ? 'file closed' : 'buffer freed';
+        txt = 'Destroy <code>' + top.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</code> → <b>' + res[key] + '</b>.';
+      }
+      stack.pop();
+      snap(txt + ' (' + stack.length + ' guard(s) left)', thrown ? 0 : endLine, 'cur');
+    }
+    frames.push({ narr: thrown ? 'Unwinding finished: every resource was released and the transaction rolled back, then the exception continues to the caller\'s <code>catch</code>. You wrote <b>zero</b> cleanup code on the error path — the guards are the cleanup code.' : 'All guards destroyed in reverse order; every resource released, transaction kept. The same cleanup would have happened on any early <code>return</code>.',
+      parts: [{ type: 'vars', label: 'final state of resources', vals: Object.keys(res).length ? clone(res) : { none: '—' }, hl: hasTxn ? { transaction: thrown ? 'bad' : 'ok' } : {} },
+        { type: 'table', label: 'guards in the standard library', columns: ['guard', 'releases'], rows: [['std::lock_guard / scoped_lock', 'mutex(es)'], ['std::unique_lock', 'mutex (movable, can unlock early)'], ['std::unique_ptr<T, Deleter>', 'memory or any handle'], ['std::jthread', 'joins the thread'], ['scope_exit / scope_fail / scope_success', 'any callable (Library Fundamentals TS v3)']] }] });
+    return frames;
+  }
+
+  topics.push({
+    title: 'RAII Guards: Scope Guards, Lock Guards & Exception Safety',
+    analogy: `<p>A <b>hotel key card that also controls the lights</b>: put the card in the slot and the room powers on; take it out when you leave — through the door, the window or the fire escape — and everything switches off automatically. Nobody has to remember to turn off the lights. An RAII guard is that card: the resource turns on in the guard's constructor and <b>switches off in its destructor</b>, which C++ always runs when you leave the scope, however you leave.</p>`,
+    explain: `<p>🟢 <b>RAII refresher.</b> <i>Resource Acquisition Is Initialization</i>: tie a resource's lifetime to an object's lifetime. Constructor acquires, destructor releases. Because C++ <b>always</b> destroys local objects when a scope exits — normal end, <code>return</code>, <code>break</code>, or an exception unwinding the stack — cleanup can't be forgotten.</p>
+      <p>A <b>guard</b> is a small RAII object whose only job is to undo something at scope exit. Many are in the standard library:</p>
+      ${H.table(['guard', 'what it does', 'notes'], [['<code>std::lock_guard</code>', 'locks a mutex now, unlocks at scope end', 'simplest; not movable'], ['<code>std::scoped_lock</code> (C++17)', 'locks <b>several</b> mutexes deadlock-free', 'prefer it for 2+ mutexes'], ['<code>std::unique_lock</code>', 'like lock_guard but movable; can unlock/relock; needed by <code>condition_variable</code>', 'small extra state (owns flag)'], ['<code>std::unique_ptr&lt;T, D&gt;</code>', 'frees memory or calls a custom deleter (fclose, CloseHandle)', 'zero overhead with stateless deleter'], ['<code>std::jthread</code> (C++20)', 'joins in its destructor', 'no more <code>std::terminate</code> from a joinable thread']])}
+      <p><b>Generic scope guards</b> run <i>any</i> lambda at scope exit — perfect for one-off cleanups without writing a class. The three flavours (from the Library Fundamentals TS v3, also in GSL / folly / Boost):</p>
+      ${H.table(['guard', 'runs the lambda when…', 'typical use'], [['<code>scope_exit</code> / "defer"', 'always', 'restore a flag, close a C handle'], ['<code>scope_fail</code>', 'only if leaving <b>by exception</b>', 'rollback a partially-applied change'], ['<code>scope_success</code>', 'only if leaving <b>normally</b>', 'commit, log success']])}
+      <p>The magic behind <code>scope_fail</code>/<code>scope_success</code> is <code>std::uncaught_exceptions()</code> (C++17): the guard records the count when created and compares in its destructor — if it went up, we are being unwound by an exception.</p>
+      <p><b>Three rules:</b> (1) acquire and hand to a guard <b>in one statement</b>; (2) <b>give the guard a name</b> — <code>std::lock_guard&lt;std::mutex&gt;{m};</code> is a temporary that unlocks at the semicolon; (3) destructors must <b>not throw</b> (they are <code>noexcept</code> by default; a throw during unwinding calls <code>std::terminate</code>).</p>`,
+    clues: [
+      '"Make sure the mutex is always released, even if an exception is thrown" → <code>lock_guard</code>/<code>scoped_lock</code>',
+      '"Lock two mutexes without deadlock" → <code>std::scoped_lock lk(m1, m2);</code>',
+      '"Run cleanup code at the end of a scope" / "Go\'s <code>defer</code> in C++" → scope guard',
+      '"Roll back on failure, keep on success" / "transactional" → <code>scope_fail</code> + <code>uncaught_exceptions()</code>',
+      '"Wrap a C API handle (FILE*, socket, HANDLE)" → <code>unique_ptr</code> with custom deleter or a small RAII class',
+      '"What happens if a destructor throws?" → <code>std::terminate</code> during unwinding; destructors are implicitly noexcept'
+    ],
+    code: [R`
+      #include <iostream>
+      #include <utility>
+      #include <exception>
+      #include <stdexcept>
+      #include <cstdio>
+
+      // A tiny generic scope guard: runs a callable when the scope ends (normally OR by exception).
+      template <typename F>
+      class ScopeGuard {
+          F fn_;
+          bool active_ = true;
+      public:
+          explicit ScopeGuard(F f) : fn_(std::move(f)) {}
+          ScopeGuard(ScopeGuard&& o) noexcept : fn_(std::move(o.fn_)), active_(std::exchange(o.active_, false)) {}
+          ScopeGuard(const ScopeGuard&) = delete;
+          ScopeGuard& operator=(const ScopeGuard&) = delete;
+          void dismiss() noexcept { active_ = false; }     // "commit": the cleanup is no longer needed
+          ~ScopeGuard() { if (active_) fn_(); }            // destructors are implicitly noexcept
+      };
+
+      // Only runs the callable if the scope is left BY AN EXCEPTION (rollback guard).
+      template <typename F>
+      class ScopeFail {
+          F fn_;
+          int count_ = std::uncaught_exceptions();         // exceptions in flight at creation
+      public:
+          explicit ScopeFail(F f) : fn_(std::move(f)) {}
+          ScopeFail(const ScopeFail&) = delete;
+          ~ScopeFail() { if (std::uncaught_exceptions() > count_) fn_(); }
+      };
+
+      void transfer(int& from, int& to, int amt, bool fail) {
+          from -= amt;
+          ScopeFail undo([&] { from += amt; std::cout << "rolled back; "; });
+          if (fail) throw std::runtime_error("network down");
+          to += amt;                                       // success: undo never runs
+      }
+
+      int main() {
+          {
+              std::FILE* f = std::fopen("/dev/null", "w");
+              ScopeGuard close([&] { if (f) std::fclose(f); std::cout << "file closed; "; });
+              std::cout << "writing; ";
+          }                                                // guard fires here
+          int a = 100, b = 0;
+          transfer(a, b, 30, false);
+          try { transfer(a, b, 30, true); } catch (const std::exception& e) { std::cout << e.what() << "; "; }
+          std::cout << "a=" << a << " b=" << b << "\n";    // writing; file closed; rolled back; network down; a=70 b=30
+      }
+    `],
+    codeTitle: ['ScopeGuard (defer) and ScopeFail (rollback) from scratch'],
+    viz: { title: 'Stack unwinding: guards release in reverse order', input: 'lock open txn alloc throw', inputLabel: 'Actions in order: lock, open, txn, alloc, work, throw', gen: guardViz },
+    examples: [
+      { title: 'The unnamed-guard bug (a classic code-review catch)', html: `<p>Three lines that look alike but behave very differently:</p>
+        ${H.table(['code', 'what it really is', 'protected?'], [['<code>std::lock_guard lk(m);</code>', 'named guard, lives to end of scope', '<span class="c-g">yes</span>'], ['<code>std::lock_guard&lt;std::mutex&gt;{m};</code>', 'a <b>temporary</b> — destroyed at the <code>;</code>', '<span class="c-r">no — unlocked immediately</span>'], ['<code>std::unique_lock&lt;std::mutex&gt;(m);</code>', 'declares a <b>new variable named m</b> (default-constructed, owns nothing)', '<span class="c-r">no — locks nothing</span>']])}
+        <p>The third one is the "most vexing parse" family: parentheses around a name in a declaration are allowed, so it declares a variable. Compilers warn with <code>-Wshadow</code>; static analysers (clang-tidy <code>bugprone-unused-raii</code>) catch the second.</p>` },
+      { title: 'scoped_lock: two mutexes, no deadlock', html: `<p>Thread 1 transfers A→B (locks A then B), thread 2 transfers B→A (locks B then A) → classic deadlock. <code>std::scoped_lock</code> locks all its mutexes using a deadlock-avoidance algorithm (like <code>std::lock</code>), and unlocks them all at scope end.</p>`,
+        code: R`
+          #include <mutex>
+          #include <thread>
+          #include <iostream>
+          struct Account { std::mutex m; long balance = 100; };
+          void transfer(Account& from, Account& to, long amt) {
+              std::scoped_lock lk(from.m, to.m);       // both or neither, any order, no deadlock
+              from.balance -= amt;
+              to.balance += amt;
+          }                                            // both unlocked here
+          int main() {
+              Account a, b;
+              std::thread t1([&] { for (int i = 0; i < 1000; ++i) transfer(a, b, 1); });
+              std::thread t2([&] { for (int i = 0; i < 1000; ++i) transfer(b, a, 1); });
+              t1.join(); t2.join();
+              std::cout << a.balance + b.balance << "\n";   // 200, always
+          }` },
+      { title: 'unique_ptr with a custom deleter for C handles', html: `<p>No need to write a class: <code>std::unique_ptr&lt;FILE, Closer&gt;</code> calls <code>fclose</code> automatically. With a <b>stateless</b> deleter type (an empty struct or, in C++20, a captureless lambda type via <code>decltype</code>) the smart pointer is exactly the size of a raw pointer.</p>`,
+        code: R`
+          #include <cstdio>
+          #include <memory>
+          #include <iostream>
+          struct FileCloser { void operator()(std::FILE* f) const noexcept { if (f) std::fclose(f); } };
+          using FilePtr = std::unique_ptr<std::FILE, FileCloser>;
+          int main() {
+              FilePtr f(std::fopen("/dev/null", "w"));
+              if (f) std::fputs("hello", f.get());
+              std::cout << (sizeof(FilePtr) == sizeof(std::FILE*)) << "\n";   // 1: zero overhead
+          }                                                                   // fclose runs here` },
+      { title: 'Why destructors must not throw', html: `<p>During unwinding, if a destructor lets an exception escape, there would be <b>two</b> exceptions in flight — C++ calls <code>std::terminate</code>. Since C++11 destructors are implicitly <code>noexcept</code>, so even a throw outside of unwinding terminates. If a release can fail (e.g. <code>fclose</code> flushing to a full disk), offer an explicit <code>close()</code> that reports errors and let the destructor be a silent best-effort fallback.</p>
+        ${H.table(['situation', 'destructor throws →'], [['normal scope exit, implicit noexcept', '<span class="c-r">std::terminate</span>'], ['during stack unwinding', '<span class="c-r">std::terminate</span>'], ['explicit <code>noexcept(false)</code>, normal exit', 'exception propagates (legal, but dangerous design)']])}` }
+    ],
+    deepDive: `<p>🟣 <b>Exception-safety levels and how guards deliver them.</b> <b>Basic</b>: no leaks, invariants hold (any RAII code gets this for free). <b>Strong</b>: commit-or-rollback (copy-and-swap, or <code>scope_fail</code> undo actions). <b>Nothrow</b>: destructors, swaps, moves marked <code>noexcept</code>. Guards are how real code reaches basic and strong without try/catch walls.</p>
+      <ul>
+        <li><b>Order matters.</b> Locals are destroyed in reverse order of construction — so declare the guard <b>after</b> the thing it cleans up, and the lock <b>before</b> the data access it protects. Members are destroyed in reverse declaration order too.</li>
+        <li><b>Partially constructed objects.</b> If a constructor throws, the destructor of <i>that</i> object does not run — but already-constructed members and bases are destroyed. That is why owning members should themselves be RAII types (<code>unique_ptr</code>, <code>vector</code>), never raw <code>new</code> in an initializer list (two raw news: the second throws, the first leaks).</li>
+        <li><b><code>uncaught_exceptions()</code> vs the deprecated <code>uncaught_exception()</code>:</b> the old bool version was wrong for guards created inside a destructor that runs during unwinding; the count-based version compares "then vs now" correctly. <code>std::uncaught_exception()</code> was removed in C++20.</li>
+        <li><b>Guards and coroutines/threads:</b> a guard in a coroutine lives in the coroutine frame and is destroyed only when the frame is destroyed — a lock held across a <code>co_await</code> may be released on another thread (UB for <code>std::mutex</code>). Never hold a <code>std::lock_guard</code> across a suspension point.</li>
+        <li><b>Cost:</b> zero in the happy path (destructor calls are just inlined code at scope exits); on the exception path, unwinding uses table-driven "zero-cost" exceptions — no runtime cost until something throws, then it's slow (microseconds). That's fine: exceptions are for exceptional paths.</li>
+        <li><b>std status:</b> <code>scope_exit</code>/<code>scope_fail</code>/<code>scope_success</code> and <code>unique_resource</code> live in <code>&lt;experimental/scope&gt;</code> (Library Fundamentals TS v3); they are not yet in the C++23 standard, so production code uses GSL's <code>finally</code>, folly's <code>SCOPE_EXIT</code>, Boost.Scope, or a 20-line home-made guard like the one above.</li>
+      </ul>`,
+    aiEra: `<p>🤖 <b>What AI changes:</b> assistants convert manual <code>try { ... } catch (...) { cleanup(); throw; }</code> blocks into guards well, and linters + AI review now routinely flag unnamed guards and raw <code>new</code>/<code>delete</code> pairs.</p>
+      <p><b>Use AI as a partner:</b> "Find every path in this function that can leak the socket", "Rewrite with RAII and show the destruction order", "Generate a fault-injection test that throws from each step and checks the rollback".</p>
+      <p><b>Where AI goes wrong:</b> it writes <code>std::lock_guard&lt;std::mutex&gt;(m);</code> (vexing parse), throws from destructors, uses the deprecated <code>uncaught_exception()</code>, holds a lock across <code>co_await</code>, or captures by reference in a guard that outlives the variables (when the guard is moved out of the function).</p>
+      <p><b>What you must own:</b> explaining stack unwinding and destruction order, choosing the right guard, and reasoning about which exception-safety guarantee a function gives.</p>`,
+    problems: [{
+      title: 'Implement a Defer / ScopeGuard with dismiss()', level: 'Easy', tags: ['raii', 'scope guard', 'lambdas'], companies: ['Meta', 'Amazon'],
+      statement: `<p>Write <code>ScopeGuard&lt;F&gt;</code> and a helper <code>makeGuard(f)</code>: the guard calls <code>f()</code> when it goes out of scope, unless <code>dismiss()</code> was called. It must be non-copyable, movable (a moved-from guard must <b>not</b> fire), and safe to use with lambdas. Use it to restore a global "verbose" flag and to undo a <code>push_back</code> if a later step fails.</p>`,
+      constraints: `<p>C++20. Destructor must not throw. No heap allocation.</p>`,
+      example: `<pre>bool verbose = false;
+{ verbose = true; auto g = makeGuard([&amp;]{ verbose = false; }); ... }   → verbose = ${H.c('g', 'false')} after the block
+v.push_back(x); auto undo = makeGuard([&amp;]{ v.pop_back(); });
+saveToDisk(v);  // throws → undo runs → v unchanged
+undo.dismiss(); // success path → undo does nothing</pre>`,
+      brute: { why: `<p>Without a guard you repeat the cleanup on every exit path and wrap things in try/catch. Each new <code>return</code> is a new chance to forget it, and a <code>catch (...) { cleanup(); throw; }</code> wall hides the real logic.</p>`,
+        code: R`
+          #include <vector>
+          #include <stdexcept>
+          bool verbose = false;
+          void save(const std::vector<int>& v) { if (v.size() > 2) throw std::runtime_error("disk full"); }
+          void addAndSave(std::vector<int>& v, int x) {
+              verbose = true;
+              v.push_back(x);
+              try {
+                  save(v);
+              } catch (...) {
+                  v.pop_back();          // cleanup #1, duplicated on every path
+                  verbose = false;       // cleanup #2
+                  throw;
+              }
+              verbose = false;           // and again on the success path
+          }
+          int main() { std::vector<int> v; addAndSave(v, 1); }` },
+      mcq: { q: 'Why must the move constructor of ScopeGuard set the source\'s <code>active_</code> to false?', options: ['Otherwise both the moved-from and the moved-to guard would run the cleanup — it would run twice', 'Moves are not allowed for guards', 'To make the guard copyable', 'It is only needed for performance'], answer: 0, explain: 'After a move there are two guard objects. Only the destination should fire, so the source is deactivated (often with <code>std::exchange(o.active_, false)</code>).' },
+      hints: [`<p>Store the callable by value (<code>F fn_</code>) plus a <code>bool active_ = true</code>. The destructor does <code>if (active_) fn_();</code>.</p>`, `<p>Delete the copy constructor/assignment. In the move constructor, move the callable and use <code>std::exchange(o.active_, false)</code>.</p>`, `<p><code>template &lt;class F&gt; ScopeGuard&lt;std::decay_t&lt;F&gt;&gt; makeGuard(F&amp;&amp; f)</code> — or rely on C++17 CTAD: <code>ScopeGuard g([&amp;]{...});</code>. Mark <code>dismiss()</code> noexcept.</p>`],
+      solution: {
+        approach: `<p>A tiny RAII class holding the callable and an "armed" flag. Destruction fires the callable if still armed; <code>dismiss()</code> disarms it (the commit point); moves transfer the duty and disarm the source. CTAD or <code>makeGuard</code> deduces the lambda type, so there is no <code>std::function</code> and no allocation.</p>`,
+        code: R`
+          #include <iostream>
+          #include <stdexcept>
+          #include <type_traits>
+          #include <utility>
+          #include <vector>
+
+          template <typename F>
+          class ScopeGuard {
+              F fn_;
+              bool active_ = true;
+          public:
+              explicit ScopeGuard(F f) noexcept(std::is_nothrow_move_constructible_v<F>) : fn_(std::move(f)) {}
+              ScopeGuard(ScopeGuard&& o) noexcept(std::is_nothrow_move_constructible_v<F>)
+                  : fn_(std::move(o.fn_)), active_(std::exchange(o.active_, false)) {}
+              ScopeGuard(const ScopeGuard&) = delete;
+              ScopeGuard& operator=(const ScopeGuard&) = delete;
+              ScopeGuard& operator=(ScopeGuard&&) = delete;
+              void dismiss() noexcept { active_ = false; }
+              ~ScopeGuard() { if (active_) fn_(); }
+          };
+          template <typename F>
+          ScopeGuard<std::decay_t<F>> makeGuard(F&& f) { return ScopeGuard<std::decay_t<F>>(std::forward<F>(f)); }
+
+          bool verbose = false;
+          void save(const std::vector<int>& v) { if (v.size() > 2) throw std::runtime_error("disk full"); }
+
+          void addAndSave(std::vector<int>& v, int x) {
+              verbose = true;
+              auto restore = makeGuard([&] { verbose = false; });   // always runs
+              v.push_back(x);
+              auto undo = makeGuard([&] { v.pop_back(); });         // runs only if not dismissed
+              save(v);                                              // may throw
+              undo.dismiss();                                       // commit point
+          }
+
+          int main() {
+              std::vector<int> v;
+              addAndSave(v, 1); addAndSave(v, 2);
+              try { addAndSave(v, 3); } catch (const std::exception& e) { std::cout << e.what() << ": "; }
+              std::cout << v.size() << " verbose=" << verbose << "\n";   // disk full: 2 verbose=0
+          }`,
+        dry: { head: ['call', 'after push_back', 'save()', 'undo', 'restore', 'v.size()'], rows: [
+          ['addAndSave(v,1)', '[1]', 'ok', 'dismissed', 'fires: verbose=false', '1'], ['addAndSave(v,2)', '[1,2]', 'ok', 'dismissed', 'fires', '2'], ['addAndSave(v,3)', '[1,2,3]', '<span class="c-r">throws</span>', '<span class="c-g">fires: pop_back</span>', 'fires', '<span class="c-g">2</span>']] },
+        complexity: `<p>O(1) time and no heap allocation; the guard is as big as the lambda's captures plus a bool.</p>`,
+        followUps: ['Turn it into <code>ScopeFail</code> using <code>std::uncaught_exceptions()</code> so no explicit <code>dismiss()</code> is needed.', 'What happens if the cleanup lambda itself throws? How would you make that safe?', 'Write a <code>DEFER { ... };</code> macro using a unique variable name (<code>__COUNTER__</code>).']
+      }
+    }]
+  });
   registerModule({ id: 'cpp13', title: 'Expert Idioms + Question Bank', intro: '<p>stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub</p>', goals: ['aaaaaaaaaaaa','bbbbbbbbbbbbbb','cccccccccccc'], prereqs: 'xxxxxxxxxxxxxxxxxxxx', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview });
 })();
