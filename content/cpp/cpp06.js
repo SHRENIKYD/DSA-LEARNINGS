@@ -572,5 +572,274 @@ delete[] buf;</pre>
       }
     }]
   });
+
+  /* ======================================================================
+     TOPIC 3 — RAII and destructor order
+     ====================================================================== */
+  function raiiOrder(input) {
+    var DEF = 'file lock { tmp buf } conn';
+    var toks = String(input === undefined ? DEF : input).trim().split(/\s+/).filter(Boolean);
+    if (!toks.length) throw new Error('Type names separated by spaces, e.g. ' + DEF);
+    if (toks.length > 16) throw new Error('Use at most 16 tokens');
+    var depth = 0, lines = ['void work() {'], lineOf = [];
+    toks.forEach(function (t) {
+      if (t === '{') { lines.push('    '.repeat(depth + 1) + '{'); lineOf.push(lines.length); depth++; return; }
+      if (t === '}') { if (depth === 0) throw new Error('Unbalanced "}" — every } needs a { before it'); depth--; lines.push('    '.repeat(depth + 1) + '}'); lineOf.push(lines.length); return; }
+      var th = /!$/.test(t), nm = okName(t.replace(/!$/, ''));
+      lines.push('    '.repeat(depth + 1) + 'Guard ' + nm + '{"' + nm + '"};' + (th ? '   // constructor throws!' : ''));
+      lineOf.push(lines.length);
+    });
+    while (depth > 0) { depth--; lines.push('    '.repeat(depth + 1) + '}'); }
+    lines.push('}');
+    var code = lines.join('\n'), lastLine = lines.length;
+    var frames = [], st = [], log = [], scope = 0;
+    function items() { return st.map(function (o) { return o.marker ? '── scope ' + o.marker + ' ──' : o.name + ' (alive)'; }); }
+    function snap(narr, line, cls, hlTop) {
+      var h = {}; if (hlTop !== undefined && st.length) h[st.length - 1] = hlTop;
+      var chl = {}; if (line) chl[line] = cls || 'cur';
+      frames.push({ narr: narr, parts: [
+        { type: 'code', label: 'The function (generated from your input)', lang: 'cpp', code: code, hl: chl },
+        { type: 'stack', label: 'Objects alive on the stack (top = newest)', items: items(), hl: h },
+        out(log.slice())
+      ] });
+    }
+    function destroyTo(stopAtMarker, line, why) {
+      while (st.length) {
+        var top = st[st.length - 1];
+        if (top.marker) { if (stopAtMarker) { st.pop(); return; } st.pop(); continue; }
+        snap(why + ': destroying <b>' + H.esc(top.name) + '</b> (newest first). Its destructor releases its resource.', line, 'cur', 'bad');
+        st.pop(); log.push('~Guard(' + top.name + ')  -> released');
+      }
+    }
+    snap('RAII = <b>Resource Acquisition Is Initialization</b>: grab the resource in the constructor, release it in the destructor. Each <code>Guard</code> below could be a file, a lock, a socket. Watch the order: objects are destroyed in the <b>reverse</b> order they were created. Tip: put <code>!</code> after a name to make its constructor throw.', 1);
+    for (var i = 0; i < toks.length; i++) {
+      var t = toks[i], ln = lineOf[i];
+      if (t === '{') { scope++; st.push({ marker: scope }); snap('Entering an inner block <code>{</code>. Objects created in here die at its matching <code>}</code>, before the outer ones.', ln); continue; }
+      if (t === '}') { destroyTo(true, ln, 'Inner block ends at <code>}</code>'); snap('Inner block finished: only its own objects were destroyed. Outer objects are still alive.', ln, 'ok'); continue; }
+      var nm = t.replace(/!$/, '');
+      if (/!$/.test(t)) {
+        log.push('Guard(' + nm + ') constructor THROWS');
+        snap('<span class="c-r"><b>' + H.esc(nm) + '\'s constructor throws.</b></span> ' + H.esc(nm) + ' was never fully built, so its destructor will <b>not</b> run (any members it had already built <i>are</i> destroyed). Stack unwinding now destroys everything that <b>was</b> fully built, newest first.', ln, 'bad');
+        destroyTo(false, ln, 'Unwinding');
+        snap('Unwinding finished — every acquired resource was released even though we never reached the end of the function. That guarantee is why RAII beats manual cleanup. The exception now continues to the caller.', ln, 'bad');
+        return frames;
+      }
+      st.push({ name: nm }); log.push('Guard(' + nm + ')  -> acquired');
+      snap('<code>Guard ' + H.esc(nm) + '</code> constructed: the resource is acquired <b>in the constructor</b>. It is pushed on top of the stack.', ln, 'ok', 'ok');
+    }
+    destroyTo(false, lastLine, 'Function returns at the final <code>}</code>');
+    snap('All done. Construction order: ' + log.filter(function (l) { return /acquired/.test(l); }).map(function (l) { return l.replace(/Guard\(|\).*/g, ''); }).join(' → ') + '. Destruction order: exactly the reverse. No <code>delete</code>, <code>close</code> or <code>unlock</code> was written by hand.', lastLine, 'ok');
+    return frames;
+  }
+
+  topics.push({
+    title: 'RAII: Tie Every Resource to an Object\'s Lifetime',
+    analogy: `<p><b>A hotel room that checks you out automatically when you walk out the door.</b> You never have to remember to return the key: the moment you leave the room (the scope), the door system ends your stay. Even if you leave in a hurry because the fire alarm went off (an exception), checkout still happens.</p>
+      <p>RAII objects are that smart door: the <b>constructor</b> checks you in (opens the file, locks the mutex, allocates memory) and the <b>destructor</b> checks you out — automatically, on every way out.</p>`,
+    explain: `<p><b>RAII</b> (Resource Acquisition Is Initialization — a famously bad name; think "<b>Scope-Bound Resource Management</b>") is the single most important C++ idiom:</p>
+      <ol><li>Wrap each resource in a class.</li><li>Acquire it in the <b>constructor</b> (or receive ownership of it there).</li><li>Release it in the <b>destructor</b>.</li><li>Create the wrapper as a local (stack) object or as a member of another object.</li></ol>
+      <p>Because C++ <b>guarantees</b> that a fully constructed automatic object's destructor runs when its scope ends — by normal flow, <code>return</code>, <code>break</code>, or an exception — the resource cannot leak.</p>
+      ${H.table(['Resource', 'Manual (fragile)', 'RAII type (automatic)'], [
+        ['Heap memory', '<code>new</code> / <code>delete</code>', '<code>std::vector</code>, <code>std::string</code>, <code>std::unique_ptr</code>, <code>std::shared_ptr</code>'],
+        ['Mutex', '<code>m.lock()</code> / <code>m.unlock()</code>', '<code>std::lock_guard</code>, <code>std::scoped_lock</code>, <code>std::unique_lock</code>'],
+        ['File', '<code>fopen</code> / <code>fclose</code>', '<code>std::ifstream</code>/<code>std::ofstream</code>, or <code>unique_ptr</code> + custom deleter'],
+        ['Thread', '<code>t.join()</code> (forget → <code>std::terminate</code>)', '<code>std::jthread</code> (joins in its destructor, C++20)'],
+        ['Socket / DB connection / GPU buffer', '<code>close()</code>, <code>release()</code>', 'your own small wrapper class']
+      ])}
+      <p><b>Destructor order rules (interview favourite):</b></p>
+      <ul><li>Locals in a scope: destroyed in <b>reverse order of construction</b> (last built, first destroyed — like a stack of plates).</li>
+      <li>Class members: constructed in <b>declaration order</b> (not initializer-list order!), destroyed in reverse.</li>
+      <li>Inheritance: base constructed before derived; derived destroyed before base.</li>
+      <li>Array / vector elements: constructed front to back; <code>delete[]</code> and built-in arrays destroy back to front.</li>
+      <li>If a constructor throws, that object's destructor does <b>not</b> run — but its already-constructed members and bases are destroyed.</li></ul>
+      <p><b>Writing your own RAII class:</b> decide copy semantics. Most resource handles should be <b>non-copyable</b> (delete copy constructor/assignment) but <b>movable</b> (move transfers ownership and leaves the source empty). And destructors must not throw — they are <code>noexcept</code> by default; a throw during unwinding calls <code>std::terminate</code>.</p>`,
+    clues: [
+      '"Make this exception-safe" / "what if X throws halfway?" → RAII wrappers, not try/catch cleanup',
+      '"Lock a mutex and make sure it is always unlocked" → <code>std::lock_guard</code> / <code>std::scoped_lock</code>',
+      '"In what order are these destructors called?" → reverse construction order; members reverse of declaration order',
+      'Wrap a C API that returns a handle and has a matching <code>close/free/release</code> function → RAII class or <code>unique_ptr</code> with custom deleter',
+      '"Run this cleanup on every exit path" / "defer" (Go) / "finally" (Java) → scope guard object',
+      '"Can a destructor throw?" → no (noexcept by default; throwing during unwinding → <code>std::terminate</code>)'
+    ],
+    code: [R`
+      #include <cstdio>
+      #include <iostream>
+      #include <mutex>
+      #include <stdexcept>
+      #include <string>
+      #include <utility>
+
+      // A minimal, correct RAII wrapper for a C FILE*.
+      class File {
+          std::FILE* f_ = nullptr;
+      public:
+          File(const char* path, const char* mode) : f_(std::fopen(path, mode)) {
+              if (!f_) throw std::runtime_error(std::string("cannot open ") + path);
+          }
+          ~File() { if (f_) std::fclose(f_); }                 // release, never throws
+          File(const File&) = delete;                         // one owner only
+          File& operator=(const File&) = delete;
+          File(File&& o) noexcept : f_(std::exchange(o.f_, nullptr)) {}   // transfer ownership
+          File& operator=(File&& o) noexcept {
+              if (this != &o) { if (f_) std::fclose(f_); f_ = std::exchange(o.f_, nullptr); }
+              return *this;
+          }
+          std::FILE* get() const noexcept { return f_; }
+      };
+
+      std::mutex logMutex;
+      void appendLine(const char* path, const std::string& line) {
+          std::lock_guard<std::mutex> guard(logMutex);        // locked here...
+          File out(path, "a");                                // opened here...
+          std::fputs((line + "\n").c_str(), out.get());
+      }   // ...closed, then unlocked (reverse order) — even if fputs or the string ops throw
+
+      int main() {
+          try { appendLine("/tmp/raii_demo.txt", "hello"); }
+          catch (const std::exception& e) { std::cout << e.what() << "\n"; }
+      }
+    `, R`
+      #include <iostream>
+      #include <string>
+      struct Noisy {
+          std::string n;
+          explicit Noisy(std::string s) : n(std::move(s)) { std::cout << "+" << n << ' '; }
+          ~Noisy() { std::cout << "-" << n << ' '; }
+      };
+      struct Car {
+          Noisy engine{"engine"};      // declared first -> built first, destroyed last
+          Noisy wheels{"wheels"};
+          Car() { std::cout << "+Car "; }
+          ~Car() { std::cout << "-Car "; }
+      };
+      int main() {
+          Noisy a("a");
+          {
+              Car c;
+          }
+          Noisy b("b");
+          std::cout << "| ";
+      }
+      // Output: +a +engine +wheels +Car -Car -wheels -engine +b | -b -a
+    `],
+    codeTitle: ['A real RAII class (File) plus lock_guard', 'Destructor order: locals, members, nested scopes'],
+    viz: {
+      title: 'RAII destructor order (try "file lock buf! conn" for an exception)',
+      input: 'file lock { tmp buf } conn',
+      inputLabel: 'Object names in creation order; { } = inner block; name! = its constructor throws',
+      gen: raiiOrder
+    },
+    examples: [
+      { title: 'Predict the output: nested scopes', html: `<p>Objects: <code>A a; { B b; C c; } D d;</code></p>
+        ${H.table(['Event', 'Stack after'], [['+A', 'A'], ['+B', 'A B'], ['+C', 'A B C'], ['inner } → -C, -B', 'A'], ['+D', 'A D'], ['function end → -D, -A', '(empty)']])}
+        <p>Printed: ${H.c('b', '+A +B +C -C -B +D -D -A')}</p>` },
+      { title: 'A scope guard: "defer" in C++', html: `<p>Sometimes the cleanup is a one-off action, not a resource with its own class. A tiny template that runs a lambda in its destructor gives you Go's <code>defer</code>. (Libraries: <code>std::experimental::scope_exit</code>, Abseil <code>absl::Cleanup</code>, GSL <code>gsl::finally</code>.)</p>`, code: R`
+        #include <iostream>
+        #include <utility>
+        template <class F>
+        class ScopeGuard {
+            F fn_;
+            bool active_ = true;
+        public:
+            explicit ScopeGuard(F f) : fn_(std::move(f)) {}
+            ~ScopeGuard() { if (active_) fn_(); }
+            void dismiss() noexcept { active_ = false; }      // "commit": skip the rollback
+            ScopeGuard(const ScopeGuard&) = delete;
+            ScopeGuard& operator=(const ScopeGuard&) = delete;
+        };
+        int main() {
+            int balance = 100;
+            {
+                balance -= 30;                                // step 1 of a transaction
+                ScopeGuard rollback([&] { balance += 30; std::cout << "rolled back\n"; });
+                bool step2ok = false;                         // pretend step 2 failed
+                if (step2ok) rollback.dismiss();
+            }                                                 // guard fires: undo step 1
+            std::cout << balance << "\n";                     // 100
+        }` },
+      { title: 'Constructor throws halfway: what gets cleaned?', html: `<p><code>struct Server { Socket s; Logger log; Cache c; };</code> — suppose <code>Cache</code>'s constructor throws.</p>
+        ${H.table(['Member', 'Constructed?', 'Destroyed during unwind?'], [['s (Socket)', '<span class="c-g">yes</span>', '<span class="c-g">yes</span> (2nd)'], ['log (Logger)', '<span class="c-g">yes</span>', '<span class="c-g">yes</span> (1st)'], ['c (Cache)', '<span class="c-r">no — threw</span>', 'no'], ['~Server()', '—', '<span class="c-r">does NOT run</span> (object never existed)']])}
+        <p>That is why you must not do raw cleanup in <code>~Server()</code> for members acquired in the constructor body: if the body throws, the destructor never runs. Make every member its own RAII object.</p>` },
+      { title: 'lock_guard vs unique_lock vs scoped_lock', html: `${H.table(['Type', 'Use when', 'Extra powers'], [['<code>std::lock_guard</code>', 'lock one mutex for the whole scope', 'none — smallest, simplest'], ['<code>std::scoped_lock</code> (C++17)', 'lock one or <b>several</b> mutexes', 'deadlock-avoidance algorithm for multiple mutexes'], ['<code>std::unique_lock</code>', 'condition variables, unlock early, deferred/timed locking', 'movable, <code>unlock()</code>, <code>try_lock_for</code>']])}<p>All three unlock in their destructor — the RAII guarantee is the point.</p>` }
+    ],
+    deepDive: `<p><b>Why RAII works so well in C++ specifically:</b> C++ has <i>deterministic destruction</i>. Unlike garbage-collected languages (Java, Go, C#, JS), you know the exact line where a destructor runs. Java needed <code>try-with-resources</code>, C# <code>using</code>, Python <code>with</code>, Go <code>defer</code> to emulate what C++ gets from every local variable. RAII also composes: a class whose members are RAII types needs no destructor at all (<b>Rule of Zero</b>).</p>
+      <p><b>Stack unwinding mechanics:</b> on <code>throw</code>, the runtime (Itanium ABI on Linux) walks frames using unwind tables, and for each frame runs "landing pads" the compiler generated to destroy live locals. This is "zero-cost" on the happy path (no runtime overhead without a throw) but throwing is expensive (microseconds). If no handler is found, whether the stack is unwound before <code>std::terminate</code> is implementation-defined — so do not rely on RAII for cleanup when an exception escapes <code>main</code>.</p>
+      <p><b>Destructors and noexcept:</b> since C++11 destructors are implicitly <code>noexcept</code>. If one throws while another exception is in flight, <code>std::terminate</code> is called. Corollary: a destructor that can fail (e.g. <code>fclose</code> flushing to a full disk) should swallow/log the error, and offer an explicit <code>close()</code> method that reports errors for callers who care.</p>
+      <p><b>RAII limits:</b> objects with static storage are destroyed after <code>main</code> in reverse order of construction (cross-translation-unit order is unspecified — the "static destruction order fiasco"). <code>std::exit</code> skips locals' destructors; <code>std::abort</code>/<code>quick_exit</code>/a crash skip everything. Detached threads holding RAII objects may be killed mid-flight. Moved-from RAII objects must be left empty so their destructor does nothing.</p>`,
+    aiEra: `<p><b>What AI changes:</b> asking an assistant to "make this exception-safe" usually produces RAII wrappers quickly, and it is good at writing boilerplate like a movable, non-copyable handle class. Code review bots flag <code>m.lock()</code> without a guard.</p>
+      <p><b>Use AI as a partner:</b> <code>List every resource this function acquires and every exit path. Show which paths release which resource.</code> That table is a fast, checkable leak audit. Ask it to generate a fuzz/fault-injection test that makes each constructor throw once.</p>
+      <p><b>Where AI goes wrong:</b> generated RAII classes often forget to delete the copy operations (double close on copy), forget to null the source in the move constructor, write a destructor that throws, or rely on initializer-list order instead of declaration order. <b>What you must own:</b> the destructor-order rules and the "who owns this after a copy/move?" question — five lines of a handle class decide whether the program is correct.</p>`,
+    problems: [{
+      title: 'Build a Movable, Non-Copyable Socket Handle', level: 'Medium', tags: ['RAII', 'rule of 5', 'move semantics'], companies: ['Bloomberg', 'Citadel', 'Microsoft'],
+      statement: `<p>A C library gives you <code>int open_conn(const char* host)</code> (returns a handle ≥ 0, or -1 on failure) and <code>void close_conn(int h)</code>. Write a class <code>Conn</code> that: opens in its constructor (throws on failure), closes exactly once in its destructor, cannot be copied, can be moved (including into a <code>std::vector&lt;Conn&gt;</code>), and exposes <code>get()</code>.</p>`,
+      constraints: `No leaks or double closes under any sequence of moves, self-move-assignment, or vector growth. Move operations must be <code>noexcept</code>.`,
+      example: `<p><code>Conn a("db"); Conn b = std::move(a);</code> → ${H.c('g', 'b owns handle 3')}, ${H.c('m', 'a is empty (-1)')}. At scope end only <b>one</b> <code>close_conn(3)</code> runs.</p>`,
+      brute: { why: `<p>The naive class has a destructor but keeps the compiler-generated copy: copying it copies the integer handle, so two objects close the same handle (a "double close" — on a real OS the second close may close a <b>different</b> connection that reused the number). It also has no move, so <code>vector</code> growth copies.</p>`, code: R`
+        #include <stdexcept>
+        static int nextHandle = 3;
+        int open_conn(const char*) { return nextHandle++; }
+        void close_conn(int) {}
+        class ConnNaive {
+            int h_;
+        public:
+            explicit ConnNaive(const char* host) : h_(open_conn(host)) { if (h_ < 0) throw std::runtime_error("open failed"); }
+            ~ConnNaive() { close_conn(h_); }      // copies share h_ -> closed twice
+            int get() const { return h_; }
+        };
+        int main() { ConnNaive a("db"); ConnNaive b = a; return b.get() == a.get() ? 0 : 1; }` },
+      mcq: { q: 'Why must the move constructor set the source handle to -1?', options: ['So the moved-from object\'s destructor does not close the handle we now own', 'Because moves must always zero memory', 'To make the class copyable', 'It is required by std::vector only'], answer: 0, explain: 'The moved-from object is still destroyed later. Leaving it "empty" makes its destructor a no-op, so the handle is closed exactly once.' },
+      hints: [`<p>Hint 1: The resource is the integer handle. Who owns it after <code>Conn b = std::move(a);</code>? Only <code>b</code> — so <code>a</code> must forget it.</p>`, `<p>Hint 2: <code>= delete</code> the copy constructor and copy assignment. Implement move constructor and move assignment with <code>std::exchange(o.h_, -1)</code>; mark them <code>noexcept</code> so <code>vector</code> moves instead of copying on growth.</p>`, `<p>Hint 3: In move assignment, release what <i>this</i> currently owns first, guard against self-move (<code>this != &amp;o</code>), then steal. Destructor: <code>if (h_ &gt;= 0) close_conn(h_);</code>.</p>`],
+      solution: {
+        approach: `<p>Classic Rule-of-5 handle: destructor releases if non-empty; copy deleted; move transfers and empties the source; all moves <code>noexcept</code>. Using <code>std::exchange</code> makes "take the value and leave a sentinel" a one-liner.</p>`,
+        code: R`
+          #include <iostream>
+          #include <stdexcept>
+          #include <utility>
+          #include <vector>
+          static int nextHandle = 3;
+          int open_conn(const char*) { return nextHandle++; }
+          void close_conn(int h) { std::cout << "close " << h << "\n"; }
+
+          class Conn {
+              int h_ = -1;
+          public:
+              explicit Conn(const char* host) : h_(open_conn(host)) {
+                  if (h_ < 0) throw std::runtime_error("open failed");
+              }
+              ~Conn() { if (h_ >= 0) close_conn(h_); }
+              Conn(const Conn&) = delete;
+              Conn& operator=(const Conn&) = delete;
+              Conn(Conn&& o) noexcept : h_(std::exchange(o.h_, -1)) {}
+              Conn& operator=(Conn&& o) noexcept {
+                  if (this != &o) {
+                      if (h_ >= 0) close_conn(h_);       // drop what we had
+                      h_ = std::exchange(o.h_, -1);      // take theirs, empty them
+                  }
+                  return *this;
+              }
+              int get() const noexcept { return h_; }
+          };
+
+          int main() {
+              Conn a("db");                 // handle 3
+              Conn b = std::move(a);        // b=3, a=-1
+              std::vector<Conn> pool;
+              pool.emplace_back("cache");   // handle 4
+              pool.push_back(std::move(b)); // growth moves, never copies
+              std::cout << a.get() << " " << pool[1].get() << "\n";   // -1 3
+          }   // prints "close 4" and "close 3" once each; a closes nothing
+        `,
+        dry: { head: ['statement', 'a.h_', 'b.h_', 'pool', 'closes so far'], rows: [
+          ['Conn a("db")', '3', '—', '[]', 'none'],
+          ['Conn b = move(a)', '<span class="c-m">-1</span>', '3', '[]', 'none'],
+          ['emplace_back("cache")', '-1', '3', '[4]', 'none'],
+          ['push_back(move(b))', '-1', '<span class="c-m">-1</span>', '[4, 3]', 'none (moves only)'],
+          ['end of main', 'no-op', 'no-op', 'elements destroyed', '<span class="c-g">close 4, close 3</span>']
+        ] },
+        complexity: `<p>All operations O(1). Size of <code>Conn</code> = one int. No heap allocation of its own.</p>`,
+        followUps: ['Why does <code>vector</code> copy instead of move when the move constructor is not <code>noexcept</code>?', 'How would <code>std::unique_ptr&lt;int, Closer&gt;</code> or a custom deleter save you this code?', 'Add a <code>close()</code> method that reports errors — how does the destructor interact with it?']
+      }
+    }]
+  });
   registerModule({ id: 'cpp06', title: 'Memory Management, RAII & Smart Pointers', intro: '<p>x</p>', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview });
 })();

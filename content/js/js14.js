@@ -1232,7 +1232,7 @@ console.log(typeof structuredClone === 'function' ? structuredClone({ d: new Dat
         function walk(v, path) {
           if (++steps > 40) return;
           if (v === null || typeof v !== 'object') {
-            f.push(fr('<code>' + esc(path) + '</code> = <b>' + esc(JSON.stringify(v)) + '</b> is a primitive → return it as is (primitives are immutable, so sharing is safe).', [cp(CLONE_SRC, { 2: 'ok' }), { type: 'stack', label: 'Recursion stack', items: stack.concat([path]), hl: { length: 'cur' } }, { type: 'map', label: 'seen (WeakMap: original → clone)', entries: seenEntries() }]));
+            f.push(fr('<code>' + esc(path) + '</code> = <b>' + esc(JSON.stringify(v)) + '</b> is a primitive → return it as is (primitives are immutable, so sharing is safe).', [cp(CLONE_SRC, { 2: 'ok' }), { type: 'stack', label: 'Recursion stack', items: stack.concat([path]), hl: (function () { var s = {}; s[stack.length] = 'cur'; return s; })() }, { type: 'map', label: 'seen (WeakMap: original → clone)', entries: seenEntries() }]));
             return;
           }
           var nm = nameOf(v);
@@ -1390,6 +1390,257 @@ console.log(c.d instanceof Date, c.d.getTime()); // true 0
         dry: { head: ['call', 'value', 'in seen?', 'action', 'seen after'], rows: [['1', 'o', 'no', 'copy c = {}, register', '{o→c}'], ['2', 'o.a = [1,2]', 'no', 'copy [1,2], register', '{o→c, a→a\'}'], ['3', 'o.d (Date)', '—', 'new Date(0)', 'unchanged'], ['4', 'o.inner', 'no', 'copy {x:1}', '+ inner→i\''], ['5', 'o.self (= o)', '<span class="c-g">yes</span>', 'return c (cycle)', 'unchanged'], ['6', 'o.twin (= inner)', '<span class="c-g">yes</span>', "return i' (shared)", 'unchanged']] },
         complexity: `<p>O(V + E): each object cloned once, each property visited once. O(V) extra memory for the WeakMap plus recursion depth.</p>`,
         followUps: ['Support Map, Set and RegExp.', 'Make it iterative to survive depth 10<sup>6</sup>.', 'Preserve prototypes and getters/setters.']
+      }
+    }]
+  });
+
+  /* ================= TOPIC 6: curry & flatten ================= */
+  var CURRY_SRC = [
+    'function curry(fn) {',
+    '  return function curried(...args) {',
+    '    if (args.length >= fn.length) {',
+    '      return fn.apply(this, args);       // enough args: run it',
+    '    }',
+    '    return function (...more) {          // not enough: wait for more',
+    '      return curried.apply(this, [...args, ...more]);',
+    '    };',
+    '  };',
+    '}'
+  ].join('\n');
+  var FLAT_SRC = [
+    'function flatten(arr, depth = 1) {',
+    '  const stack = arr.map((v) => [v, depth]);',
+    '  const out = [];',
+    '  while (stack.length) {',
+    '    const [v, d] = stack.pop();',
+    '    if (Array.isArray(v) && d > 0) {',
+    '      for (const x of v) stack.push([x, d - 1]);  // open the box',
+    '    } else {',
+    '      out.push(v);                                  // keep as is',
+    '    }',
+    '  }',
+    '  return out.reverse();       // stack popped from the end',
+    '}'
+  ].join('\n');
+
+  topics.push({
+    title: 'Currying and Flattening',
+    analogy: `<p><b>Currying = a coffee machine that asks one question at a time.</b> "Size?" → "Milk?" → "Sugar?" → only after the last answer does coffee come out. You can stop after "Size: large", walk away, and later someone else continues from that point — the machine <b>remembers</b> the answers so far (a closure!).</p>
+<p><b>Flattening = unpacking nested gift boxes.</b> A box contains toys and smaller boxes, which contain more toys and boxes. Flatten with depth 1 opens <b>one layer</b> of boxes; <code>depth = Infinity</code> keeps opening until only toys remain, laid out in a single row in their original order.</p>`,
+    explain: `<p>🟢 <b>Currying</b> turns <code>f(a, b, c)</code> into <code>f(a)(b)(c)</code>: a chain of functions that each take some arguments and return a new function until <b>all</b> arguments have arrived. Why bother? <b>Reuse</b>: <code>const addTax = curry(price)(0.18)</code> pre-fills an argument; and it makes function composition (<code>pipe</code>) easy because each step takes one input.</p>
+<p>🔵 <b>The generic curry</b> uses <code>fn.length</code> (the number of declared parameters). Each call collects arguments into an array; if we have <b>at least</b> <code>fn.length</code>, call the real function; otherwise return a new function that will merge more arguments in. Every partial call creates a <b>new</b> collected array — so a partial function can be reused safely.</p>
+${H.table(['call', 'collected args', 'enough? (need 3)', 'returns'], [['<code>c(1)</code>', '[1]', H.c('r', 'no'), 'function'], ['<code>c(1)(2)</code>', '[1, 2]', H.c('r', 'no'), 'function'], ['<code>c(1)(2)(3)</code>', '[1, 2, 3]', H.c('g', 'yes'), 'fn(1,2,3)'], ['<code>c(1, 2)(3)</code>', '[1, 2, 3]', H.c('g', 'yes'), 'fn(1,2,3)']])}
+<p>🔵 <b>Infinite currying</b> — the famous <code>sum(1)(2)(3)()</code> = 6 — has no fixed arity, so it needs a <b>stop signal</b>: an empty call <code>()</code>. Each call with an argument returns a function that remembers the running total; the empty call returns the total. (A trickier variant uses <code>valueOf</code>/<code>toString</code> so <code>+sum(1)(2)</code> works.)</p>
+<p>🟢 <b>Flattening</b> turns <code>[1, [2, [3, [4]]]]</code> into <code>[1, 2, [3, [4]]]</code> (depth 1) or <code>[1, 2, 3, 4]</code> (depth Infinity). Native: <code>arr.flat(depth)</code> (default depth 1).</p>
+<p>🔵 <b>Two ways to write it:</b></p>
+<ul><li><b>Recursive:</b> for each item, if it is an array and depth &gt; 0 → push all of <code>flatten(item, depth − 1)</code>; else push the item. Short and clear.</li>
+<li><b>Iterative with a stack:</b> avoids "Maximum call stack size exceeded" for very deep nesting. Push items with their remaining depth; pop; if it is an array with depth left, push its children; else output. Because a stack is last-in-first-out, either push children in reverse or reverse the output at the end.</li></ul>
+<p>Spec detail: <code>flat</code> <b>removes holes</b> (<code>[1, , 3].flat()</code> → <code>[1, 3]</code>). Objects are flattened too in interviews: <code>{a: {b: 1}}</code> → <code>{'a.b': 1}</code>.</p>`,
+    clues: ['"Implement curry(fn) so that f(1)(2)(3), f(1, 2)(3) and f(1)(2, 3) all work" → fn.length + collect args', '"sum(1)(2)(3)...() with any number of calls" → infinite curry with a stop call or valueOf', '"Pre-fill some arguments / create specialised functions" → currying / partial application', '"Implement Array.prototype.flat / flatten a nested array to a given depth" → recursion or stack', '"Very deeply nested input / stack overflow concerns" → iterative flatten with explicit stack', '"Flatten an object into dot-notation keys" (e.g. for form errors, query strings) → recursive object flatten'],
+    code: [{ lang: 'js', run: true, title: 'curry, infinite sum, flat polyfill and object flatten (runnable)', code: `
+// ---------- curry with fixed arity ----------
+function curry(fn) {
+  return function curried(...args) {
+    if (args.length >= fn.length) return fn.apply(this, args);  // all args collected
+    return function (...more) {                                  // wait for more
+      return curried.apply(this, [...args, ...more]);
+    };
+  };
+}
+const volume = curry((l, w, h) => l * w * h);
+console.log(volume(2)(3)(4), volume(2, 3)(4), volume(2)(3, 4), volume(2, 3, 4)); // 24 24 24 24
+const base2 = volume(2);                     // reusable partial
+console.log(base2(5)(5), base2(1)(1));       // 50 2 (partials don't share state)
+
+// ---------- infinite curry: sum(1)(2)(3)() ----------
+function sum(a) {
+  return function next(b) {
+    if (b === undefined) return a;           // empty call = stop
+    return sum(a + b);
+  };
+}
+console.log(sum(1)(2)(3)(4)());              // 10
+
+// ---------- Array.prototype.flat polyfill (recursive) ----------
+Array.prototype.myFlat = function (depth = 1) {
+  const out = [];
+  (function walk(arr, d) {
+    for (let i = 0; i < arr.length; i++) {
+      if (!(i in arr)) continue;             // flat() removes holes
+      const v = arr[i];
+      if (Array.isArray(v) && d > 0) walk(v, d - 1);
+      else out.push(v);
+    }
+  })(this, Math.floor(Number(depth)) || 0);
+  return out;
+};
+const nested = [1, [2, [3, [4, [5]]]], , 6];
+console.log(nested.myFlat());                // [1, 2, [3, [4, [5]]], 6]
+console.log(nested.myFlat(2));               // [1, 2, 3, [4, [5]], 6]
+console.log(nested.myFlat(Infinity));        // [1, 2, 3, 4, 5, 6]
+
+// ---------- flatten an object to dot keys ----------
+function flattenObject(obj, prefix = '', out = {}) {
+  for (const [k, v] of Object.entries(obj)) {
+    const key = prefix ? prefix + '.' + k : k;
+    if (v !== null && typeof v === 'object' && Object.keys(v).length) flattenObject(v, key, out);
+    else out[key] = v;
+  }
+  return out;
+}
+console.log(flattenObject({ user: { name: 'Asha', address: { city: 'Pune' } }, tags: ['a', 'b'] }));
+// { 'user.name': 'Asha', 'user.address.city': 'Pune', 'tags.0': 'a', 'tags.1': 'b' }
+` }],
+    codeTitle: ['curry + flatten'],
+    viz: [{
+      title: 'curry(fn): collecting arguments call by call',
+      input: '3 | 1 ; 2 ; 3',
+      inputLabel: 'fn.length | argument groups separated by ; (e.g. 1 2 ; 3)',
+      gen: function (input) {
+        var parts = String(input).split('|');
+        var arity = Number((parts[0] || '').trim());
+        if (!(arity >= 1 && arity <= 6) || Math.floor(arity) !== arity) throw new Error('fn.length must be an integer 1..6. Format: 3 | 1 ; 2 3');
+        var groups = String(parts[1] || '').split(';').map(function (g) { return parseNums(g, 6); }).filter(function (g) { return g.length; });
+        if (!groups.length || groups.length > 8) throw new Error('Give 1 to 8 argument groups separated by ;');
+        var f = [], collected = [], callStr = 'c';
+        f.push(fr('<code>const c = curry(fn)</code> where fn takes <b>' + arity + '</b> parameters (<code>fn.length = ' + arity + '</code>). curry returns <code>curried</code>; nothing is called yet.', [cp(CURRY_SRC, { 1: 'cur', 2: 'ok' }), vp({ 'fn.length': arity, collected: '[]' }), { type: 'array', label: 'collected args', values: [] }]));
+        for (var g = 0; g < groups.length; g++) {
+          var before = collected.slice();
+          collected = collected.concat(groups[g]);
+          callStr += '(' + groups[g].join(', ') + ')';
+          var hl = {}; for (var k = before.length; k < collected.length; k++) hl[k] = 'ok';
+          var enough = collected.length >= arity;
+          f.push(fr('Call <code>' + callStr + '</code>: merge <code>[' + before.join(', ') + ']</code> with the new <code>[' + groups[g].join(', ') + ']</code> → ' + collected.length + ' of ' + arity + ' args. ' + (enough ? '<span class="c-g">Enough! Call the real fn.</span>' : 'Not enough yet → return a <b>new function</b> that remembers these args (a closure).'), [cp(CURRY_SRC, enough ? { 3: 'ok', 4: 'ok' } : { 3: 'cur', 6: 'cur', 7: 'cur' }), vp({ 'args.length': collected.length, 'fn.length': arity, enough: enough }, { enough: enough ? 'ok' : 'bad' }), { type: 'array', label: 'collected args', values: collected.slice(), hl: hl }]));
+          if (enough) {
+            var used = collected.slice(0, collected.length);
+            var prod = used.reduce(function (a, b) { return a + b; }, 0);
+            f.push(fr('<code>fn.apply(this, [' + used.join(', ') + '])</code> runs. With fn = (…xs) =&gt; sum of its params the answer is <b>' + prod + '</b>. ' + (collected.length > arity ? 'Extra args are passed too (fn just ignores them unless it uses <code>arguments</code>).' : ''), [cp(CURRY_SRC, { 4: 'sel' }), outBox([callStr + ' → ' + prod])]));
+            if (g < groups.length - 1) f.push(fr('The result is a <b>number</b>, not a function — calling it again with <code>(' + groups[g + 1].join(', ') + ')</code> would throw <span class="c-r">TypeError: ... is not a function</span>. A fixed-arity curry stops once it has enough.', [tx('Use infinite currying (<code>sum(1)(2)()</code>) when the number of calls is unknown.')]));
+            break;
+          }
+        }
+        if (collected.length < arity) f.push(fr('We ran out of calls with only ' + collected.length + '/' + arity + ' args, so the result is still a <b>function</b> waiting for more. That partial function can be stored and reused.', [vp({ result: 'function (...more)', missing: arity - collected.length }, { missing: 'cur' })]));
+        while (f.length < 4) f.push(fr('Each partial call created a fresh array <code>[...args, ...more]</code>, so partials never interfere with each other.', [{ type: 'array', label: 'collected args', values: collected.slice() }]));
+        return f;
+      }
+    }, {
+      title: 'Iterative flatten with an explicit stack',
+      input: '[1,[2,[3,4]],5] | 1',
+      inputLabel: 'JSON array | depth (number or Infinity)',
+      gen: function (input) {
+        var parts = String(input).split('|');
+        var arr = parseJsonInput(parts[0], 'The array');
+        if (!Array.isArray(arr)) throw new Error('Give a JSON array like [1,[2,[3]]]');
+        var dRaw = (parts[1] || '1').trim();
+        var depth = dRaw === 'Infinity' ? Infinity : Number(dRaw);
+        if (isNaN(depth) || depth < 0) throw new Error('Depth must be a number ≥ 0 or Infinity');
+        function show(x) { return Array.isArray(x) ? JSON.stringify(x) : String(JSON.stringify(x)); }
+        function dStr(d) { return d === Infinity ? '∞' : d; }
+        var stack = arr.map(function (v) { return [v, depth]; });
+        var out = [], f = [], guard = 0;
+        f.push(fr('Put every top-level item on the stack, each tagged with how many more levels we may open (depth = ' + dStr(depth) + ').', [cp(FLAT_SRC, { 2: 'cur' }), { type: 'stack', label: 'stack (top = right/last)', items: stack.map(function (e) { return show(e[0]) + ' d=' + dStr(e[1]); }) }, { type: 'array', label: 'out (reversed at the end)', values: [] }]));
+        while (stack.length && guard++ < 40) {
+          var e = stack.pop(), v = e[0], d = e[1];
+          if (Array.isArray(v) && d > 0) {
+            v.forEach(function (x) { stack.push([x, d - 1]); });
+            f.push(fr('Pop <code>' + esc(show(v)) + '</code>: it is an array and we may still open ' + dStr(d) + ' level(s) → push its ' + v.length + ' children with depth ' + dStr(d - 1) + '.', [cp(FLAT_SRC, { 5: 'cur', 6: 'ok', 7: 'ok' }), { type: 'stack', label: 'stack (top = right/last)', items: stack.map(function (q) { return show(q[0]) + ' d=' + dStr(q[1]); }), hl: (function () { var h = {}; for (var z = stack.length - v.length; z < stack.length; z++) h[z] = 'ok'; return h; })() }, { type: 'array', label: 'out (reversed at the end)', values: out.slice() }]));
+          } else {
+            out.push(Array.isArray(v) ? show(v) : v);
+            f.push(fr('Pop <code>' + esc(show(v)) + '</code>: ' + (Array.isArray(v) ? 'an array but depth is used up → keep it <b>as a whole</b>.' : 'not an array → output it.'), [cp(FLAT_SRC, { 5: 'cur', 9: 'ok' }), { type: 'stack', label: 'stack (top = right/last)', items: stack.map(function (q) { return show(q[0]) + ' d=' + dStr(q[1]); }) }, { type: 'array', label: 'out (reversed at the end)', values: out.slice(), hl: (function () { var h = {}; h[out.length - 1] = 'ok'; return h; })() }]));
+          }
+        }
+        var res = out.slice().reverse();
+        f.push(fr('Stack empty. We always popped from the <b>end</b>, so <code>out</code> is backwards → reverse it. Result: <code>' + esc('[' + res.map(function (x) { return typeof x === 'string' && x.charAt(0) === '[' ? x : JSON.stringify(x); }).join(',') + ']') + '</code>.', [cp(FLAT_SRC, { 12: 'sel' }), { type: 'array', label: 'flattened result', values: res, hl: (function () { var h = {}; res.forEach(function (_, i) { h[i] = 'sel'; }); return h; })() }]));
+        return f;
+      }
+    }],
+    examples: [
+      { title: 'Currying in real code: reusable validators and loggers', html: `<p>Partial application creates small specialised functions from a general one. This is the everyday payoff of currying.</p>`, code: { lang: 'js', run: true, code: `
+const curry = (fn) => function c(...a) { return a.length >= fn.length ? fn(...a) : (...b) => c(...a, ...b); };
+const log = curry((level, module, msg) => '[' + level + '] ' + module + ': ' + msg);
+const errorIn = log('ERROR');
+const authError = errorIn('auth');
+console.log(authError('token expired'));       // [ERROR] auth: token expired
+const inRange = curry((min, max, x) => x >= min && x <= max);
+console.log([5, 50, 500].filter(inRange(1, 100))); // [5, 50]
+` } },
+      { title: 'fn.length gotchas: defaults and rest params', html: `<p><code>fn.length</code> counts parameters <b>before</b> the first one with a default value, and ignores rest params. So <code>curry((a, b = 2) =&gt; ...)</code> thinks arity is 1. Fix: let curry accept an explicit arity.</p>`, code: { lang: 'js', run: true, code: `
+console.log(((a, b) => 0).length);       // 2
+console.log(((a, b = 2) => 0).length);   // 1  (stops at first default)
+console.log(((...xs) => 0).length);      // 0  (rest params not counted)
+function curryN(fn, arity = fn.length) {
+  return function c(...a) { return a.length >= arity ? fn(...a) : (...b) => c(...a, ...b); };
+}
+const add3 = curryN((...xs) => xs.reduce((s, x) => s + x, 0), 3);
+console.log(add3(1)(2)(3));              // 6
+` } },
+      { title: 'Infinite sum with valueOf (no empty call)', html: `<p>A tricky variant: <code>sum(1)(2)(3) == 6</code>. Return a function and give it a <code>valueOf</code>, so when JS converts it to a primitive (with <code>+</code>, <code>==</code> or template strings) it yields the total.</p>`, code: { lang: 'js', run: true, code: `
+function sum(a) {
+  const next = (b) => sum(a + b);
+  next.valueOf = () => a;              // used by +, ==, <, etc.
+  next.toString = () => String(a);     // used by String() / template literals
+  return next;
+}
+console.log(+sum(1)(2)(3));            // 6
+console.log(sum(1)(2)(3) == 6);        // true (loose equality calls valueOf)
+console.log(String(sum(10)(5)));       // 15
+` } },
+      { title: 'Flatten with reduce + concat (the one-liner) and its cost', html: `<p>A popular short answer. It is clear but copies arrays repeatedly (<code>concat</code> makes a new array each time) → roughly O(N · depth) or worse for wide inputs. Fine for interviews; mention the cost.</p>`, code: { lang: 'js', run: true, code: `
+const flatDeep = (arr, d = 1) =>
+  d > 0 ? arr.reduce((acc, v) => acc.concat(Array.isArray(v) ? flatDeep(v, d - 1) : v), []) : arr.slice();
+console.log(flatDeep([1, [2, [3, [4]]]], Infinity)); // [1, 2, 3, 4]
+console.log(flatDeep([1, [2, [3, [4]]]], 1));        // [1, 2, [3, [4]]]
+console.log(['a', ['b']].flatMap((x) => x));         // flatMap = map + flat(1): ['a', 'b']
+` } }
+    ],
+    deepDive: `<p>🟣 <b>Currying vs partial application.</b> Strictly, <b>currying</b> converts an n-ary function into n unary functions (<code>f(a)(b)(c)</code>). <b>Partial application</b> fixes some arguments and returns a function of the rest (<code>bind</code> does this!). The JS "curry" utility (lodash, Ramda) is really an <i>auto-partial</i> that accepts any grouping — say so if asked.</p>
+<p><b>Placeholders:</b> lodash's <code>_.curry</code> supports <code>_</code> placeholders: <code>curried(_, 2)(1)</code> fills position 0 later. Implementation: keep an args array with holes marked by a sentinel; each call fills placeholders left-to-right, then appends; count only non-placeholder args against arity. Popular "Hard" follow-up.</p>
+<p><b>Performance:</b> every partial call allocates a closure and an array. In hot loops this costs garbage-collection time; V8 handles short-lived closures well (young generation), but avoid currying in per-frame code. Readability is the real benefit.</p>
+<p><b>Flatten complexity:</b> the stack version is O(N) where N = total number of elements and nested arrays visited; extra memory O(N). Recursive version uses call-stack depth = nesting depth; ~10 000 nested levels can overflow. Native <code>flat</code> in V8 is also recursive internally but in C++/Torque with a larger effective limit.</p>
+<p><b>Order preservation trick:</b> instead of reversing at the end, push children in <b>reverse</b> order (<code>for (let i = v.length - 1; i &gt;= 0; i--)</code>) so the leftmost child is on top. Or use a generator: <code>function* flat(a, d) { for (const x of a) Array.isArray(x) &amp;&amp; d &gt; 0 ? yield* flat(x, d - 1) : yield x; }</code> — lazy, great for huge inputs.</p>
+<p><b>Object flatten edge cases:</b> empty objects/arrays (keep as leaf or drop?), keys containing dots (escape them), Dates (treat as leaf), cycles (seen set), and the reverse operation <code>unflatten</code> (split on '.' and build nested objects; numeric segments → arrays).</p>`,
+    aiEra: `<p>🤖 <b>What AI changes:</b> curry and flatten are textbook — AI outputs them instantly. The interview value moved to: placeholders, <code>fn.length</code> pitfalls, the <code>valueOf</code> trick, iterative flatten for deep input, and explaining <b>why</b> partials do not share state.</p>
+<p><b>Use AI as a partner:</b> <code>Explain line by line why my curry's partial functions don't share their args array. Then show a buggy version that does share state.</code> Seeing the broken twin is how intuition sticks.</p>
+<p><b>Where AI goes wrong:</b> pushes into a shared <code>args</code> array in the closure (so <code>const p = c(1); p(2); p(3)</code> breaks), uses arrow functions and loses <code>this</code>, writes flatten that ignores depth or does not remove holes, or recurses on strings (strings are iterable!).</p>
+<p><b>What you must still own:</b> knowing when currying improves code (configuration, composition pipelines) and when it obscures it (most app code — prefer named parameters/objects).</p>`,
+    problems: [{
+      title: 'Implement curry(fn) supporting any argument grouping', level: 'Medium', tags: ['closure', 'functional', 'curry'], companies: ['Flipkart', 'Paytm', 'Meesho', 'Amazon'],
+      statement: `<p>Implement <code>curry(fn)</code>. The returned function collects arguments across calls; as soon as it has <b>at least</b> <code>fn.length</code> arguments it calls <code>fn</code> with them and returns the result. Every grouping must work: <code>c(1)(2)(3)</code>, <code>c(1, 2)(3)</code>, <code>c(1)(2, 3)</code>, <code>c(1, 2, 3)</code>. Partially applied functions must be <b>reusable</b> independently.</p>`,
+      constraints: `1 ≤ fn.length ≤ 10. Preserve <code>this</code>. Calling with zero args should just return a function waiting for more.`,
+      example: `<p><code>const join = curry((a, b, c) =&gt; a + '-' + b + '-' + c);</code><br><code>const p = join('x');</code> → function<br><code>p('y')('z')</code> → ${H.c('g', "'x-y-z'")}, and <code>p('q', 'r')</code> → ${H.c('g', "'x-q-r'")} (p was not affected by the first use).</p>`,
+      brute: { why: `<p>A common buggy version keeps <b>one shared array</b> in the outer closure and pushes into it. The first full use works, but the partial <code>p</code> now has stale extra args — the second use returns garbage. Every partial needs its own copy of the arguments.</p>`, code: `
+function badCurry(fn) {
+  const args = [];                       // shared by ALL partial calls -> bug
+  return function c(...more) {
+    args.push(...more);
+    return args.length >= fn.length ? fn(...args) : c;
+  };
+}
+` },
+      mcq: { q: 'Why does <code>curried.apply(this, [...args, ...more])</code> fix the shared-state bug?', options: ['It builds a brand-new array for each call path, so partials never mutate each other', 'apply is faster than calling directly', 'Spread syntax freezes the array', 'It resets fn.length'], answer: 0, explain: 'Each call creates a new merged array; the closure of a partial keeps its own args untouched.' },
+      hints: [`<p>Hint 1: the decision at every call is binary: "do I have <code>fn.length</code> args yet?" Yes → call fn. No → return a function.</p>`, `<p>Hint 2: name the inner function (<code>curried</code>) so it can call itself recursively with the merged args: <code>curried(...args, ...more)</code>.</p>`, `<p>Hint 3: never mutate <code>args</code>; build <code>[...args, ...more]</code>. Use <code>function</code> (not arrow) + <code>apply(this, ...)</code> to keep <code>this</code>.</p>`],
+      solution: {
+        approach: `<p>Recursive closure: <code>curried(...args)</code> compares the count with <code>fn.length</code>. If short, it returns a fresh function that calls <code>curried</code> with an immutable concatenation of old and new args. Because nothing is mutated, every partial is an independent "checkpoint".</p>`,
+        code: { lang: 'js', run: true, code: `
+function curry(fn) {
+  return function curried(...args) {
+    if (args.length >= fn.length) return fn.apply(this, args);
+    return function (...more) {
+      return curried.apply(this, [...args, ...more]);
+    };
+  };
+}
+
+const join = curry((a, b, c) => a + '-' + b + '-' + c);
+const p = join('x');
+console.log(p('y')('z'));          // x-y-z
+console.log(p('q', 'r'));          // x-q-r  (p unaffected)
+console.log(join('a', 'b', 'c'));  // a-b-c
+console.log(join()('a')()('b', 'c')); // a-b-c (empty calls just wait)
+` },
+        dry: { head: ['expression', 'args collected', '≥ 3?', 'returns'], rows: [["join('x')", "['x']", 'no', 'fn A (remembers [x])'], ["A('y')", "['x','y']", 'no', 'fn B'], ["B('z')", "['x','y','z']", 'yes', "'x-y-z'"], ["A('q','r')", "['x','q','r']", 'yes', "'x-q-r'"]] },
+        complexity: `<p>Each call copies the collected args: O(k) per call, O(n<sup>2</sup>) worst case for n single-arg calls (n ≤ 10, so trivial). O(n) memory per partial chain.</p>`,
+        followUps: ['Support lodash-style placeholders <code>curry.placeholder</code>.', 'Write <code>uncurry</code>.', 'Implement <code>pipe</code> and <code>compose</code> and use them with curried functions.']
       }
     }]
   });
