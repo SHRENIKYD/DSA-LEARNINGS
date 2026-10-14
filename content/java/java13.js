@@ -1486,4 +1486,231 @@ class G1CsetPicker {
     }]
   });
 
+  /* ======================================================================
+     TOPIC 7 — GC tuning: goals, metrics, logs, heap sizing, common fixes
+     ====================================================================== */
+  topics.push({
+    title: 'GC Tuning: Goals, Metrics, GC Logs, Heap Sizing & the Usual Fixes',
+    analogy: `<p>Tuning a GC is like setting up rubbish collection for a busy office. First decide what matters: <b>fewest interruptions</b> (latency), <b>least money spent on cleaners</b> (throughput), or <b>smallest bins</b> (footprint). Then <b>measure</b>: how fast is rubbish produced (allocation rate)? How much stuff is genuinely kept (live set)? Only then change things — bigger bins (heap), emptying the small bins more often (young gen), or simply <i>producing less rubbish</i> (fixing allocation-heavy code), which usually beats every other fix.</p>`,
+    explain: `<p><b>Rule 1: don't tune blind.</b> Most "GC problems" are fixed by right-sizing the heap or by reducing allocation; exotic flags are rarely needed. Modern defaults (G1, ergonomics) are good.</p>
+<h4>1. Pick the goal (you get two of three)</h4>
+${H.table(['Goal', 'Metric', 'Typical target'], [['Latency', 'p99 / max pause, % of requests delayed by GC', 'p99 pause &lt; 50 ms (G1) or &lt; 1 ms (ZGC)'], ['Throughput', '% time NOT in GC', '&gt; 95–99%'], ['Footprint', 'RSS / heap committed', 'fits container with headroom']])}
+<h4>2. Measure the 5 numbers that matter</h4>
+<ol><li><b>Allocation rate</b> (MB/s created in Eden). Drives young-GC frequency.</li>
+<li><b>Promotion rate</b> (MB/s moved to Old). Drives old-gen growth and mixed/full GCs.</li>
+<li><b>Live set</b> (old occupancy right after a full or mixed GC). The heap must comfortably exceed it.</li>
+<li><b>Pause times</b> (distribution, not average) and <b>GC frequency</b>.</li>
+<li><b>GC CPU</b> (concurrent threads count too).</li></ol>
+${P(`
+# Production-grade GC logging (JDK 9+ unified logging), rotated, near-zero overhead
+-Xlog:gc*,safepoint:file=/var/log/app/gc.log:time,uptime,level,tags:filecount=10,filesize=50m
+# Plus: always capture evidence when it dies
+-XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/dumps/ -XX:+ExitOnOutOfMemoryError`)}
+<h4>3. Heap sizing rules of thumb</h4>
+<ul><li>Total heap ≈ <b>3–4 × live set</b> for G1/Parallel; ZGC wants extra headroom for concurrent work (allocation continues during the cycle).</li>
+<li>Production servers: set ${C('-Xms')} = ${C('-Xmx')} (no resize pauses, predictable RSS), optionally ${C('-XX:+AlwaysPreTouch')} to fault pages in at startup.</li>
+<li>Containers: prefer ${C('-XX:MaxRAMPercentage=60..75')} over hard-coded ${C('-Xmx')}, leaving room for Metaspace, thread stacks, direct buffers. Default is only 25%!</li>
+<li>With G1, do <b>not</b> pin the young size (${C('-Xmn')}, ${C('NewRatio')}): it disables G1's pause-goal-driven young sizing.</li></ul>
+<h4>4. Symptom → likely cause → fix</h4>
+${H.table(['Symptom (in the log)', 'Likely cause', 'First fix'], [
+  ['Young GCs every ~100 ms', 'very high allocation rate / tiny young gen', 'profile allocations (JFR); bigger heap'],
+  ['Young pauses long', 'many survivors, large remembered sets, too many GC threads competing for CPU', 'reduce long-lived temp data; check CPU quota'],
+  ['Old grows after each young GC then drops', 'premature promotion of medium-lived objects', 'more young/survivor space, shorter object lifetimes'],
+  ['Old grows and NEVER drops (even after full GC)', H.c('r', 'memory leak'), 'heap dump + MAT (next topic)'],
+  [C('G1 Humongous Allocation') + ' everywhere', 'big arrays ≥ half a region', C('-XX:G1HeapRegionSize=32m') + ' or smaller buffers'],
+  [C('Pause Full') + ' in G1', 'evacuation failure, marking started too late, metaspace, ' + C('System.gc()'), 'more heap / lower IHOP / fix explicit GC'],
+  ['ZGC ' + C('Allocation Stall'), 'allocation outpaces concurrent GC', 'more heap headroom, more ' + C('ConcGCThreads')],
+  ['Pause logs short but app freezes', 'time-to-safepoint, swapping, CPU throttling', 'check ' + C('safepoint') + ' logs, disable swap, container CPU limits']
+])}
+<h4>5. The tuning loop</h4>
+<p><b>Goal → baseline under realistic load → one change → re-measure → keep or revert.</b> Change one knob at a time, run long enough to include several old-gen cycles, and compare percentiles, not averages.</p>`,
+    clues: [
+      '"p99 latency spikes every few minutes" → read GC logs: mixed/full GCs, humongous, time-to-safepoint',
+      '"Service OOMs only under peak load" → heap too small for live set + headroom, or allocation burst',
+      '"What heap size would you set for this service?" → measure live set, 3–4×, container headroom',
+      '"High CPU but low request rate" → GC thrashing (heap nearly full of live data)',
+      '"Xms vs Xmx", "MaxRAMPercentage", "MaxGCPauseMillis", "IHOP" → tuning knobs interviewers expect',
+      '"After upgrading from Java 8, GC behaviour changed" → default switched Parallel → G1'
+    ],
+    code: [{ lang: 'bash', title: 'A sensible production launch line (G1, container)', code: `java \\
+  -XX:MaxRAMPercentage=70 -XX:InitialRAMPercentage=70 \\
+  -XX:+UseG1GC -XX:MaxGCPauseMillis=100 \\
+  -Xlog:gc*,safepoint:file=/var/log/app/gc.log:time,uptime,level,tags:filecount=10,filesize=50m \\
+  -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/dumps \\
+  -XX:+ExitOnOutOfMemoryError \\
+  -XX:StartFlightRecording=disk=true,maxage=6h,settings=default \\
+  -jar app.jar` }, `
+import java.lang.management.*;
+
+// Measure allocation rate and GC overhead from inside the app (e.g. expose as metrics).
+class GcMetrics {
+    public static void main(String[] args) throws Exception {
+        long gcTimeBefore = totalGcMillis();
+        long t0 = System.nanoTime();
+        long checksum = 0;
+        for (int i = 0; i < 5_000_000; i++) {              // allocation-heavy workload
+            String s = "order-" + i;                       // temporary objects die young
+            checksum += s.length();
+        }
+        double secs = (System.nanoTime() - t0) / 1e9;
+        long gcMs = totalGcMillis() - gcTimeBefore;
+        System.out.printf("ran %.2f s, GC %d ms -> %.1f%% time in GC (checksum %d)%n",
+                secs, gcMs, 100.0 * gcMs / (secs * 1000), checksum);
+    }
+    static long totalGcMillis() {
+        long sum = 0;
+        for (GarbageCollectorMXBean gc : ManagementFactory.getGarbageCollectorMXBeans()) {
+            sum += Math.max(0, gc.getCollectionTime());   // -1 means "undefined" for some beans
+        }
+        return sum;
+    }
+}`],
+    codeTitle: ['Launch flags', 'GC overhead from MXBeans'],
+    viz: [{
+      title: 'Heap sawtooth: how allocation rate, young size and promotion drive GC',
+      input: 'alloc=400 young=800 survive=10 live=1200 old=3000 secs=20',
+      inputLabel: 'alloc MB/s, young MB, survive % promoted per young GC, live MB, old MB, seconds',
+      gen: function (input) {
+        var o = kvParse(input, { alloc: 400, young: 800, survive: 10, live: 1200, old: 3000, secs: 20 });
+        var A = num(o.alloc, 1, 20000, 'alloc'), Y = num(o.young, 16, 100000, 'young'), P = num(o.survive, 0, 100, 'survive'), LV = num(o.live, 0, 100000, 'live'), OC = num(o.old, 32, 200000, 'old'), T = num(o.secs, 4, 30, 'secs');
+        if (LV >= OC) throw new Error('live must be smaller than old (otherwise the heap cannot even hold the live set)');
+        var ihop = Math.round(OC * 0.45), yu = 0, ou = LV, F = [], used = [], labels = [], ygc = 0, mixed = 0, full = 0;
+        var gcEvery = (Y / A).toFixed(2), promoRate = (A * P / 100).toFixed(0);
+        F.push({ narr: 'Setup: allocation ' + A + ' MB/s into a ' + Y + ' MB young gen → a young GC every <b>' + gcEvery + ' s</b>. Each young GC promotes ' + P + '% → promotion rate ≈ <b>' + promoRate + ' MB/s</b>. Old starts with the ' + LV + ' MB live set; marking starts at IHOP = 45% of ' + OC + ' = ' + ihop + ' MB.', parts: [{ type: 'vars', label: 'Model', vals: { 'young GC interval s': gcEvery, 'promotion MB/s': promoRate, 'live set MB': LV, 'IHOP MB': ihop } }] });
+        for (var s = 1; s <= T; s++) {
+          yu += A; var events = [];
+          while (yu >= Y) { yu -= Y; ygc++; ou += Y * P / 100; events.push('young GC'); }
+          if (ou > OC) { full++; ou = LV; events.push('<span class="c-r">FULL GC</span>'); }
+          else if (ou >= ihop) { mixed++; ou = LV + (ou - LV) * 0.15; events.push('marking + mixed GCs'); }
+          used.push(Math.round(yu + ou)); labels.push(s + 's');
+          var hl = {}; if (events.length) hl[used.length - 1] = events.join('').indexOf('FULL') >= 0 ? 'bad' : (events.join('').indexOf('mixed') >= 0 ? 'sel' : 'cur');
+          F.push({ narr: 't = ' + s + ' s: ' + (events.length ? events.length > 3 ? events.length + ' events (' + ygc + ' young GCs so far)' + (events.join(' ').indexOf('mixed') >= 0 ? ' incl. marking + mixed GCs' : '') + (events.join(' ').indexOf('FULL') >= 0 ? ' and a <span class="c-r">FULL GC</span>' : '') : events.join(', ') : 'no GC — Eden filling at ' + A + ' MB/s') + '. Old = ' + Math.round(ou) + ' MB.', parts: [
+            { type: 'bars', label: 'Heap used after each second (MB): young + old', values: used.slice(), idxLabels: labels.slice(), hl: hl },
+            { type: 'vars', label: 'Counters', vals: { 'young used MB': Math.round(yu), 'old used MB': Math.round(ou), 'young GCs': ygc, 'mixed cycles': mixed, 'full GCs': full }, hl: full ? { 'full GCs': 'bad' } : {} }
+          ] });
+        }
+        var toIhop = P > 0 ? ((ihop - LV) / (A * P / 100)).toFixed(1) : '∞';
+        F.push({ narr: 'Reading the result: old gen reaches IHOP every ~<b>' + toIhop + ' s</b> because of promotion. Levers: (1) <b>allocate less</b> (fewer young GCs, fewer promotions), (2) bigger young gen → fewer GCs <i>and</i> more time for objects to die before promotion, (3) bigger old/total heap → rarer marking cycles, (4) shorter object lifetimes (don\'t hold request data in caches). Try survive=40 or old=1500 to provoke full GCs.', parts: [{ type: 'table', label: 'What-if', columns: ['Change', 'Effect'], rows: [['alloc ÷ 2', 'young GC interval × 2, promotion ÷ 2'], ['young × 2', 'half as many young GCs; often lower survive %'], ['old × 2', 'marking cycles much rarer'], ['survive ↑ (medium-lived data)', 'old fills fast → mixed/full GCs']] }] });
+        return F;
+      }
+    }, {
+      title: 'A real tuning session, step by step (G1 humongous allocations)',
+      gen: function () {
+        function f(narr, rows, hl, extra) { var p = [{ type: 'table', label: 'Tuning notebook', columns: ['Step', 'Evidence / action', 'Result'], rows: rows, hl: hl || {} }]; (extra || []).forEach(function (x) { p.push(x); }); return { narr: narr, parts: p }; }
+        var r = [['Goal', 'p99 latency &lt; 120 ms for /search', 'currently 450 ms']];
+        var frames = [f('Start with a <b>measurable goal</b>, not "GC is slow". The SLO is p99 &lt; 120 ms; we are at 450 ms.', r.slice(), { 0: 'cur' })];
+        r.push(['Baseline', 'GC log: Pause Young (Concurrent Start) (G1 Humongous Allocation) ~every 3 s; pauses 60–180 ms', 'GC correlates with spikes']);
+        frames.push(f('<b>Baseline under real load</b>: GC log lines with "G1 Humongous Allocation" line up with the latency spikes in the dashboard.', r.slice(), { 1: 'cur' }, [note('Log excerpt', '<code>GC(812) Pause Young (Concurrent Start) (G1 Humongous Allocation) 3010M-&gt;2650M(6144M) 142.6ms</code>')]));
+        r.push(['Hypothesis', 'heap 6 GB → region size 4 MB → objects ≥ 2 MB are humongous. JFR allocation samples: 3 MB byte[] from the JSON response buffer', 'cause found']);
+        frames.push(f('<b>Hypothesis from evidence</b>: JFR\'s allocation profiling points at 3 MB <code>byte[]</code> response buffers. With 4 MB regions, ≥ 2 MB is humongous → each one takes a whole region, triggers marking early, fragments the heap.', r.slice(), { 2: 'cur' }));
+        r.push(['Change #1', '-XX:G1HeapRegionSize=16m (threshold becomes 8 MB)', 'p99 450 → 160 ms']);
+        frames.push(f('<b>One change at a time</b>: raise region size so 3 MB buffers are ordinary young objects. Re-run the same load test.', r.slice(), { 3: 'ok' }));
+        r.push(['Change #2 (code)', 'stream the JSON response instead of building a 3 MB byte[]', 'p99 160 → 85 ms, alloc rate −40%']);
+        frames.push(f('<b>Fix the root cause in code</b>: streaming removes the big allocation entirely. Allocation rate drops 40% — fewer young GCs too. This beat every flag.', r.slice(), { 4: 'ok' }));
+        r.push(['Verify', '24 h canary: no Full GC, no humongous-triggered marking, p99 85 ms', 'goal met; keep both changes']);
+        frames.push(f('<b>Verify over a long window</b> (several marking cycles, daily peak). Document the flag with the reason so nobody deletes it — or better, revert the flag later if the code fix alone suffices.', r.slice(), { 5: 'sel' }));
+        return frames;
+      }
+    }],
+    examples: [
+      { title: 'Sizing a heap from the live set', html: `<p>After several mixed GCs the old gen settles at <b>1.5 GB</b> (live set). Rule of thumb 3–4× → heap 4.5–6 GB. Choose 6 GB: ${C('-Xms6g -Xmx6g')}. Container: 6 GB heap + ~300 MB metaspace/code cache + 200 threads × 1 MB + 256 MB direct buffers + GC overhead ≈ 7.2 GB → request an 8 GiB pod (or use ${C('MaxRAMPercentage=75')} on 8 GiB).</p>` },
+      { title: 'Why "-XX:MaxGCPauseMillis=10" made things worse', html: `<p>A team set a 10 ms pause goal on G1 with a 16 GB heap. G1 shrank Eden to hit it → young GCs every 50 ms, survivors overflowed, promotion skyrocketed, old filled, marking ran nonstop and eventually <b>Full GC</b>s of 4 s appeared. The goal must be achievable; for sub-10 ms needs, use ZGC instead of squeezing G1.</p>` },
+      { title: 'Computing GC overhead from a log', html: `<p>In a 10-minute window: 1,200 young pauses averaging 12 ms (14.4 s) + 20 mixed pauses of 40 ms (0.8 s) = 15.2 s paused out of 600 s → <b>2.5% overhead, 97.5% throughput</b>. p99 pause comes from the distribution, e.g. 38 ms. Concurrent marking CPU is extra and appears in CPU metrics, not in pause time.</p>`, code: `
+double[] pausesMs = { 12, 11, 13, 40, 12, 14, 38, 12 };
+double total = Arrays.stream(pausesMs).sum();
+double windowMs = 600_000;
+System.out.printf("throughput = %.2f%%%n", 100 * (1 - total / windowMs));` },
+      { title: 'The container that thrashed', html: `<p>A 2 GiB pod ran with defaults: max heap = 25% = 512 MB, while the live set was 450 MB. GC ran continuously (heap almost full of live data), CPU at 100%, latency terrible, but never an OOM. Setting ${C('-XX:MaxRAMPercentage=70')} (≈1.4 GB heap) cut GC CPU from 60% to 3%. "Heap too small" usually looks like <b>high CPU</b>, not like an error.</p>` }
+    ],
+    deepDive: `<p><b>Little's law for heaps.</b> Memory held by in-flight work ≈ allocation rate per request × requests/s × request duration. A slow downstream (requests last 2 s instead of 50 ms) multiplies the live set by 40 — and the GC "suddenly" struggles. GC symptoms are often load or latency symptoms upstream.</p>
+<p><b>Young-gen sizing trade-off.</b> A bigger young gen means fewer young GCs and more objects dying before promotion, but each young pause copies whatever is live at that moment. Because cost ∝ survivors (not Eden size), growing Eden is usually cheap — until medium-lived data (sessions, batches, in-flight requests) makes survivors large. G1 adapts young size between ${C('G1NewSizePercent')} (5%) and ${C('G1MaxNewSizePercent')} (60%) to meet the pause goal.</p>
+<p><b>IHOP and evacuation failures.</b> G1's adaptive IHOP learns how long marking takes and how fast old fills, and starts marking just in time. If marking finishes too late, there is no free space to evacuate into → "to-space exhausted" → expensive failure handling → maybe a Full GC. Remedies: more heap, ${C('G1ReservePercent')} (default 10%), more ${C('ConcGCThreads')}, or lowering ${C('InitiatingHeapOccupancyPercent')} with adaptive IHOP off for very spiky apps.</p>
+<p><b>Pauses that are not GC.</b> Logs with ${C('-Xlog:safepoint')} show "Reaching safepoint" time; long values mean some thread did not reach a safepoint quickly (huge array copies, counted loops, JNI). Other stop-the-world causes: biased-lock revocation (biased locking was removed in JDK 18), deoptimization, class redefinition, thread dumps. And OS issues: swapping, transparent huge page compaction stalls, CPU throttling from CFS quotas in containers — all look like "GC pauses" from the outside.</p>
+<p><b>Allocation reduction techniques.</b> Avoid boxing in hot paths (primitive collections, ${C('IntStream')}), reuse ${C('StringBuilder')}s only within a thread, stream instead of materialising, size collections up front, avoid ${C('String.format')} in hot logs (use parameterised logging guarded by level), and prefer records/value-like classes that escape analysis can scalar-replace. JFR's allocation profiling (${C('jdk.ObjectAllocationSample')}) points straight at the top allocation sites.</p>
+<p><b>Footprint tricks.</b> ${C('-XX:+UseCompactObjectHeaders')} (JDK 25) shrinks headers; ${C('-XX:+UseStringDeduplication')} (G1, also others in newer JDKs) dedupes identical String backing arrays; ${C('SoftMaxHeapSize')} lets ZGC/G1 aim lower than Xmx and return memory; G1 uncommits idle memory periodically (${C('G1PeriodicGCInterval')}).</p>`,
+    aiEra: `<p><b>What AI changes:</b> GC log analysis used to need specialist tools or experts. Now you can feed a log (or the summary from GCeasy / JDK Mission Control) to an assistant and get allocation rate, promotion rate, live set and pause percentiles in a minute, plus hypotheses. AIOps platforms correlate GC events with latency automatically.</p>
+<p><b>Where AI goes wrong:</b> it produces long "magic flag lists" copied from old blog posts (${C('-XX:+UseParNewGC')}, ${C('-XX:+CMSParallelRemarkEnabled')}, ${C('-XX:PermSize')}) that crash modern JVMs or do nothing; it recommends setting ${C('-Xmn')} with G1; it averages pauses instead of using percentiles; and it rarely asks what the goal is.</p>
+<p><b>What you still own:</b> stating the goal, demanding evidence (logs, JFR) before changes, the "one change at a time" discipline, and the judgement that a code change (less allocation) beats a flag. Use AI to read and summarise; use your load tests to decide.</p>`,
+    problems: [{
+      title: 'GC Log Analyzer: Throughput, Max and p99 Pause, Allocation Rate',
+      level: 'Medium', tags: ['GC logs', 'parsing', 'percentiles'], companies: ['Datadog', 'Amazon', 'Atlassian'],
+      statement: `<p>You get unified-logging GC lines like ${C('[12.345s][info][gc] GC(7) Pause Young (Normal) (G1 Evacuation Pause) 812M->120M(2048M) 9.876ms')}. Lines without "Pause" (concurrent phases) must be ignored for pause stats. Compute: total pause ms, max pause, p99 pause (nearest-rank), throughput % over the window [first uptime, last uptime], and average allocation rate in MB/s (heap growth between consecutive pauses: before<sub>i</sub> − after<sub>i−1</sub>).</p>`,
+      constraints: `Up to 10<sup>6</sup> lines; pause values in ms with decimals; heap sizes in M. Use O(n log n) at most.`,
+      example: `${P(`
+[1.000s][info][gc] GC(0) Pause Young (Normal) (G1 Evacuation Pause) 300M->50M(1024M) 10.000ms
+[2.000s][info][gc] GC(1) Concurrent Mark Cycle 5.000ms
+[3.000s][info][gc] GC(2) Pause Young (Normal) (G1 Evacuation Pause) 450M->60M(1024M) 20.000ms`)}<p>Pauses: 10, 20 → total ${H.c('g', '30 ms')}, max ${H.c('g', '20')}, p99 ${H.c('g', '20')}. Window 2 s = 2000 ms → throughput 1 − 30/2000 = ${H.c('g', '98.5%')}. Allocation between pauses: 450 − 50 = 400 MB in 2 s → ${H.c('g', '200 MB/s')}. The concurrent line is ignored: the app was running during it.</p>`,
+      brute: { why: `<p>A quick script that greps "ms" and averages every number it finds. It counts concurrent phases as pauses, reports an <b>average</b> (hides the 1-in-100 long pause users actually feel), and ignores the time window, so throughput is wrong. Averages of pauses are the most common GC-analysis mistake.</p>`, code: `
+class NaiveGcStats {
+    static double averagePause(List<String> lines) {
+        double sum = 0; int n = 0;
+        for (String line : lines) {
+            if (line.endsWith("ms")) {                          // also matches concurrent phases!
+                String last = line.substring(line.lastIndexOf(' ') + 1);
+                sum += Double.parseDouble(last.substring(0, last.length() - 2));
+                n++;
+            }
+        }
+        return n == 0 ? 0 : sum / n;                            // average hides the tail
+    }
+}` },
+      mcq: { q: 'Why report p99 pause instead of the average?', options: ['Latency SLOs are about the tail; one 2 s pause per minute can hide inside a 15 ms average', 'Averages are harder to compute', 'p99 is always smaller', 'The JVM only logs p99'], answer: 0, explain: 'Users feel the slow requests. A few long pauses barely move the mean but dominate p99/p99.9 latency.' },
+      hints: [`<p>Hint 1: Parse without regexes: uptime is between the first ${C('[')} and ${C('s]')}; the pause is the last token minus ${C('ms')}; the heap transition is the token containing ${C('->')}.</p>`, `<p>Hint 2: Keep a list of pauses for percentiles; sort once at the end. Nearest-rank p99 = sorted[ceil(0.99 × n) − 1].</p>`, `<p>Hint 3: For allocation, remember the previous pause's "after" value; for each new pause add (before − prevAfter) to a running total, then divide by (lastUptime − firstUptime). Guard against n = 0.</p>`],
+      solution: {
+        approach: `<p>Single pass: filter "Pause" lines, extract uptime, before/after/pause by plain string operations, accumulate totals and the previous "after" for allocation; sort pauses once for the percentile. Throughput uses the observed wall-clock window.</p>`,
+        code: `
+class GcLogAnalyzer {
+    record Stats(double totalMs, double maxMs, double p99Ms, double throughputPct, double allocMBps) {}
+
+    static Stats analyze(List<String> lines) {
+        List<Double> pauses = new ArrayList<>();
+        double first = -1, last = -1, allocMb = 0;
+        long prevAfter = -1;
+        for (String line : lines) {
+            if (!line.contains(" Pause ")) continue;                    // skip concurrent phases
+            double uptime = Double.parseDouble(line.substring(line.indexOf('[') + 1, line.indexOf("s]")));
+            String lastTok = line.substring(line.lastIndexOf(' ') + 1);
+            double pause = Double.parseDouble(lastTok.substring(0, lastTok.length() - 2));
+            long before = -1, after = -1;
+            for (String tok : line.split(" ")) {
+                int arrow = tok.indexOf("->");
+                if (arrow > 0) {                                        // e.g. 812M->120M(2048M)
+                    before = Long.parseLong(tok.substring(0, arrow - 1));
+                    after = Long.parseLong(tok.substring(arrow + 2, tok.indexOf('M', arrow + 2)));
+                }
+            }
+            if (first < 0) first = uptime;
+            last = uptime;
+            pauses.add(pause);
+            if (prevAfter >= 0 && before >= 0) allocMb += Math.max(0, before - prevAfter);
+            if (after >= 0) prevAfter = after;
+        }
+        if (pauses.isEmpty()) return new Stats(0, 0, 0, 100, 0);
+        Collections.sort(pauses);
+        double total = 0;
+        for (double p : pauses) total += p;
+        double p99 = pauses.get((int) Math.ceil(0.99 * pauses.size()) - 1);
+        double windowMs = (last - first) * 1000;
+        double throughput = windowMs > 0 ? 100 * (1 - total / windowMs) : 100;
+        double alloc = last > first ? allocMb / (last - first) : 0;
+        return new Stats(total, pauses.get(pauses.size() - 1), p99, throughput, alloc);
+    }
+
+    public static void main(String[] args) {
+        List<String> log = List.of(
+            "[1.000s][info][gc] GC(0) Pause Young (Normal) (G1 Evacuation Pause) 300M->50M(1024M) 10.000ms",
+            "[2.000s][info][gc] GC(1) Concurrent Mark Cycle 5.000ms",
+            "[3.000s][info][gc] GC(2) Pause Young (Normal) (G1 Evacuation Pause) 450M->60M(1024M) 20.000ms");
+        System.out.println(analyze(log));   // total 30, max 20, p99 20, throughput 98.5, alloc 200.0
+    }
+}`,
+        dry: { head: ['line', 'pause?', 'before→after', 'pause ms', 'alloc added'], rows: [
+          ['1', 'yes', '300→50', '10', '— (first)'], ['2', H.c('m', 'no (concurrent)'), '—', '—', '—'], ['3', 'yes', '450→60', '20', '450 − 50 = 400'], ['end', '—', '—', 'total 30, p99 20', H.c('g', '400 MB / 2 s = 200 MB/s')]
+        ] },
+        complexity: `<p>O(n·L) parsing (L = line length) + O(p log p) to sort p pauses; O(p) memory. For huge logs, a streaming quantile sketch (HdrHistogram, t-digest) gives p99 in O(1) memory.</p>`,
+        followUps: ['Compute pause percentiles per GC type (young / mixed / full)', 'Detect the leak signature: old occupancy after each mixed GC trending up', 'Compute promotion rate if the log has young/old breakdowns (gc+heap=debug)']
+      }
+    }]
+  });
+
 registerModule({ id: 'java13', title: 'JVM Internals & Performance', intro: '<p>x</p>', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();

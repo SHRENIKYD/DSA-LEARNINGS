@@ -656,6 +656,7 @@ class Bounds {
       input: '4 9 2 9 7',
       inputLabel: 'Integers (space separated, up to 10)',
       gen: function (input) {
+        if (!String(input || '').trim()) throw new Error('Enter whole numbers separated by spaces, e.g. 4 9 2');
         var a = String(input || '').trim().split(/[\s,]+/).map(Number);
         if (!a.length || a.some(function (x) { return isNaN(x) || x !== Math.floor(x); })) throw new Error('Enter whole numbers separated by spaces, e.g. 4 9 2');
         if (a.length > 10) throw new Error('Use at most 10 numbers');

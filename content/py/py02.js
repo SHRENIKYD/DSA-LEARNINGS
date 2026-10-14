@@ -1724,4 +1724,643 @@ print(fib(100_000).bit_length(), 'bits')` },
       }
     }]
   });
-registerModule({ id: 'py02', title: 'tmp', intro: 'x', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();
+
+  /* ================= PRACTICE (Easy → Medium → Hard) ================= */
+  practice.push({
+    title: 'Count Vowels, Consonants and Others', level: 'Easy', tags: ['loops', 'strings', 'membership'], companies: ['Infosys', 'Accenture'],
+    statement: `<p>Given a string <code>s</code>, return a tuple <code>(vowels, consonants, others)</code>: the number of vowel letters (a, e, i, o, u, either case), consonant letters, and every other character (digits, spaces, punctuation).</p>`,
+    constraints: `0 ≤ len(s) ≤ 10<sup>6</sup>; ASCII text`,
+    example: `<p><code>"Hello, World 42!"</code> → <b>(3, 7, 6)</b>: vowels ${H.c('g', 'e o o')}; consonants ${H.c('b', 'H l l W r l d')}; others ${H.c('m', '", " " " "4" "2" "!"')} (comma, two spaces, 4, 2, !).</p>`,
+    brute: { why: `<p>Writing <code>if ch == 'a' or ch == 'e' or …</code> with ten comparisons per character (upper and lower case) is slow to read and easy to get wrong. Checking membership in a <b>list</b> of vowels is O(10) per char — fine, but a set or string with <code>in</code> plus <code>lower()</code> is cleaner.</p>`, code: `def classify(s):
+    v = c = o = 0
+    for ch in s:
+        if ch == 'a' or ch == 'e' or ch == 'i' or ch == 'o' or ch == 'u' or ch == 'A' or ch == 'E' or ch == 'I' or ch == 'O' or ch == 'U':
+            v += 1
+        elif ('a' <= ch <= 'z') or ('A' <= ch <= 'Z'):
+            c += 1
+        else:
+            o += 1
+    return v, c, o` },
+    mcq: { q: 'Which check correctly identifies an ASCII letter?', options: ['ch.isalpha() and ch.isascii()', 'ch in "aeiou"', 'ch != " "'], answer: 0, explain: 'isalpha alone also accepts letters like é; combined with isascii it matches exactly A–Z/a–z.' },
+    hints: [`<p>Hint 1: Lower-case each character once, then a vowel test is just <code>ch in 'aeiou'</code>.</p>`, `<p>Hint 2: Order the if/elif ladder: vowel first, then "is a letter" (consonant), else other.</p>`, `<p>Hint 3: Use <code>ch.isalpha()</code> (plus <code>isascii()</code> to ignore accented letters). Return the three counters as a tuple.</p>`],
+    solution: {
+      approach: `<p>One pass. For each character: vowel? → v; else ASCII letter? → c; else → o. A set of vowels gives O(1) membership.</p>`,
+      code: { lang: 'python', run: true, code: `VOWELS = set('aeiou')
+
+def classify(s):
+    v = c = o = 0
+    for ch in s:
+        low = ch.lower()
+        if low in VOWELS:
+            v += 1
+        elif ch.isascii() and ch.isalpha():
+            c += 1
+        else:
+            o += 1
+    return v, c, o
+
+print(classify('Hello, World 42!'))   # (3, 7, 6)
+print(classify(''))                   # (0, 0, 0)` },
+      dry: { head: ['ch', 'lower', 'vowel?', 'letter?', '(v, c, o)'], rows: [['H', 'h', 'no', 'yes', '(0, 1, 0)'], ['e', 'e', 'yes', '—', '(1, 1, 0)'], ['l', 'l', 'no', 'yes', '(1, 2, 0)'], ['l', 'l', 'no', 'yes', '(1, 3, 0)'], ['o', 'o', 'yes', '—', '(2, 3, 0)'], [',', ',', 'no', 'no', '(2, 3, 1)'], ['… rest', '', '', '', '(3, 7, 6)']] },
+      complexity: `<p>Time O(n), space O(1).</p>`,
+      followUps: ['Return a dict with counts per vowel.', 'Do it with sum() and generator expressions in three lines.']
+    }
+  });
+
+  practice.push({
+    title: 'Second Largest Distinct Value', level: 'Easy', tags: ['loops', 'sets', 'tracking'], companies: ['Amazon', 'Flipkart'],
+    statement: `<p>Return the second largest <b>distinct</b> value in a list of integers, or <code>None</code> if it does not exist (fewer than two distinct values).</p>`,
+    constraints: `0 ≤ len(nums) ≤ 10<sup>6</sup>`,
+    example: `<p>[4, 9, 9, 2, 7] → <b>7</b> (largest is ${H.c('g', '9')}, the next distinct value is ${H.c('b', '7')}). [5, 5] → <b>None</b>.</p>`,
+    brute: { why: `<p><code>sorted(set(nums))[-2]</code> is short but O(n log n) and crashes with IndexError when fewer than two distinct values exist. The waste: sorting everything just to find two numbers.</p>`, code: `def second_largest(nums):
+    distinct = sorted(set(nums))
+    return distinct[-2] if len(distinct) >= 2 else None` },
+    mcq: { q: 'Current (first, second) = (9, 7). Next value is 9. What happens?', options: ['Nothing — it equals first, not a new distinct value', 'second becomes 9', 'first becomes 9 and second 9'], answer: 0, explain: 'Duplicates of the maximum must be skipped, or second would wrongly become 9.' },
+    hints: [`<p>Hint 1: Track two variables, <code>first</code> and <code>second</code>, starting at <code>None</code>.</p>`, `<p>Hint 2: If x &gt; first: shift first into second, then first = x. Elif x is strictly between second and first: second = x.</p>`, `<p>Hint 3: Skip x == first (duplicate max). Handle None comparisons carefully (or start with float('-inf') and convert back).</p>`],
+    solution: {
+      approach: `<p>Single pass keeping the top two <b>distinct</b> values; tuple assignment shifts them in one line.</p>`,
+      code: { lang: 'python', run: true, code: `def second_largest(nums):
+    first = second = None
+    for x in nums:
+        if first is None or x > first:
+            first, second = x, first          # shift down
+        elif x != first and (second is None or x > second):
+            second = x
+    return second
+
+print(second_largest([4, 9, 9, 2, 7]))   # 7
+print(second_largest([5, 5]))            # None
+print(second_largest([]))                # None
+print(second_largest([-1, -3]))          # -3` },
+      dry: { head: ['x', 'first', 'second'], rows: [['4', '4', 'None'], ['9', '9', '4'], ['9', '9 (dup, skip)', '4'], ['2', '9', '4'], ['7', '9', '<span class="c-g">7</span>']] },
+      complexity: `<p>Time O(n), space O(1).</p>`,
+      followUps: ['Generalise to k-th largest distinct → heapq.nlargest on a set, or a size-k heap.']
+    }
+  });
+
+  practice.push({
+    title: 'Reverse the Words in a Sentence', level: 'Easy', tags: ['strings', 'slicing', 'split/join'], companies: ['Microsoft', 'Goldman Sachs'],
+    statement: `<p>Given a sentence <code>s</code>, return a string with the words in reverse order, separated by single spaces. Leading, trailing and repeated spaces must disappear.</p>`,
+    constraints: `0 ≤ len(s) ≤ 10<sup>5</sup>`,
+    example: `<p><code>"  the sky   is blue "</code> → <b>"blue is sky the"</b>. ${H.c('m', 'Extra spaces vanish because split() with no argument splits on runs of whitespace.')}</p>`,
+    brute: { why: `<p>Building the result with <code>result = word + ' ' + result</code> in a loop copies the growing string every time: O(n²) characters for long inputs. The waste: repeated string concatenation of immutable strings.</p>`, code: `def reverse_words(s):
+    result = ''
+    for word in s.split():
+        result = word + ' ' + result     # copies the whole string each time
+    return result.strip()` },
+    mcq: { q: "What does '  a  b '.split() return?", options: ["['a', 'b']", "['', '', 'a', '', 'b', '']", "['a  b']"], answer: 0, explain: 'split() with no argument splits on any whitespace run and drops empty strings. split(" ") would keep empties.' },
+    hints: [`<p>Hint 1: <code>s.split()</code> (no argument) already gives clean words.</p>`, `<p>Hint 2: Reverse the list with slicing <code>[::-1]</code> or <code>reversed()</code>.</p>`, `<p>Hint 3: <code>' '.join(...)</code> builds the final string in one O(n) pass — never concatenate in a loop.</p>`],
+    solution: {
+      approach: `<p>Split into words, reverse with a slice, join with single spaces. Each step is linear.</p>`,
+      code: { lang: 'python', run: true, code: `def reverse_words(s):
+    return ' '.join(s.split()[::-1])
+
+print(repr(reverse_words('  the sky   is blue ')))   # 'blue is sky the'
+print(repr(reverse_words('')))                       # ''
+print(repr(reverse_words('one')))` },
+      dry: { head: ['step', 'value'], rows: [['s.split()', "['the', 'sky', 'is', 'blue']"], ['[::-1]', "['blue', 'is', 'sky', 'the']"], ["' '.join", "'blue is sky the'"]] },
+      complexity: `<p>Time O(n), space O(n).</p>`,
+      followUps: ['Reverse the characters of each word but keep word order.', 'Do it in place on a list of characters (reverse all, then each word).']
+    }
+  });
+
+  practice.push({
+    title: 'Find the Missing Number', level: 'Easy', tags: ['math', 'sets', 'loops'], companies: ['Amazon', 'Apple', 'Cisco'],
+    statement: `<p>A list contains <code>n</code> distinct numbers taken from <code>0, 1, …, n</code> — exactly one number in that range is missing. Return it.</p>`,
+    constraints: `1 ≤ n ≤ 10<sup>6</sup>`,
+    example: `<p>[3, 0, 1] (n = 3, range 0..3) → <b>2</b>. Expected sum 0+1+2+3 = 6, actual sum 4, so ${H.c('g', '6 − 4 = 2')}.</p>`,
+    brute: { why: `<p>For each candidate k in 0..n, scan the list with <code>k in nums</code>: O(n) per check → O(n²) ≈ 10<sup>12</sup> for n = 10<sup>6</sup>. The waste: re-scanning a list for membership.</p>`, code: `def missing(nums):
+    for k in range(len(nums) + 1):
+        if k not in nums:          # O(n) list scan each time
+            return k` },
+    mcq: { q: 'Sum of 0..n equals…', options: ['n·(n+1)/2', 'n²', '(n−1)·n/2 + 1'], answer: 0, explain: 'Gauss: pair the ends (0+n, 1+(n−1), …).' },
+    hints: [`<p>Hint 1: You know what the full range should add up to.</p>`, `<p>Hint 2: <code>n * (n + 1) // 2 - sum(nums)</code> — use <code>//</code> to stay an int.</p>`, `<p>Hint 3: Alternatives: a set difference <code>set(range(n+1)) - set(nums)</code> (O(n) memory) or XOR of all indexes and values.</p>`],
+    solution: {
+      approach: `<p>Expected total minus actual total. Python ints never overflow, so no worry for big n.</p>`,
+      code: { lang: 'python', run: true, code: `def missing(nums):
+    n = len(nums)
+    return n * (n + 1) // 2 - sum(nums)
+
+def missing_set(nums):
+    # same answer via set difference
+    (k,) = set(range(len(nums) + 1)) - set(nums)   # unpack the single item
+    return k
+
+print(missing([3, 0, 1]), missing_set([3, 0, 1]))             # 2 2
+print(missing([9, 6, 4, 2, 3, 5, 7, 0, 1]))                   # 8
+print(missing([0]))                                           # 1` },
+      dry: { head: ['nums', 'n', 'expected n(n+1)/2', 'sum', 'answer'], rows: [['[3, 0, 1]', '3', '6', '4', '2'], ['[0]', '1', '1', '0', '1']] },
+      complexity: `<p>Time O(n), space O(1) (the set version uses O(n)).</p>`,
+      followUps: ['Two numbers missing → use sum and sum of squares, or a set.', 'Find the duplicate and the missing number together.']
+    }
+  });
+
+  practice.push({
+    title: 'First Non-Repeating Character', level: 'Medium', tags: ['dict', 'counting', 'enumerate'], companies: ['Amazon', 'Bloomberg', 'Goldman Sachs'],
+    statement: `<p>Return the index of the first character in <code>s</code> that appears exactly once, or <code>-1</code> if there is none.</p>`,
+    constraints: `1 ≤ len(s) ≤ 10<sup>5</sup>; lowercase letters`,
+    example: `<p><code>"leetcode"</code> → <b>0</b> (${H.c('g', 'l')} appears once). <code>"loveleetcode"</code> → <b>2</b> (${H.c('g', 'v')}). <code>"aabb"</code> → <b>-1</b>.</p>`,
+    brute: { why: `<p>For every index, count that character with <code>s.count(ch)</code>, which scans the whole string: O(n²) — 10<sup>10</sup> steps for n = 10<sup>5</sup>. The waste: counting the same letters again and again.</p>`, code: `def first_unique(s):
+    for i, ch in enumerate(s):
+        if s.count(ch) == 1:        # O(n) scan inside an O(n) loop
+            return i
+    return -1` },
+    mcq: { q: 'Why do we need a second pass over s (not over the dict)?', options: ['To respect the original order of characters in s', 'Dicts cannot be iterated', 'To recount characters'], answer: 0, explain: 'The answer is defined by position in s. (Iterating the dict in insertion order also works, but you need the index — scanning s with enumerate gives it.)' },
+    hints: [`<p>Hint 1: Two passes: first count every character, then find the first with count 1.</p>`, `<p>Hint 2: Counting: <code>counts[ch] = counts.get(ch, 0) + 1</code>.</p>`, `<p>Hint 3: Second pass with <code>enumerate(s)</code>; return i at the first ch with counts[ch] == 1, else -1.</p>`],
+    solution: {
+      approach: `<p>Count with a dict in pass 1 (O(n)); scan again with enumerate in pass 2 and return the first index whose count is 1.</p>`,
+      code: { lang: 'python', run: true, code: `def first_unique(s):
+    counts = {}
+    for ch in s:
+        counts[ch] = counts.get(ch, 0) + 1
+    for i, ch in enumerate(s):
+        if counts[ch] == 1:
+            return i
+    return -1
+
+print(first_unique('leetcode'))       # 0
+print(first_unique('loveleetcode'))   # 2
+print(first_unique('aabb'))           # -1` },
+      dry: { head: ['pass', 'state'], rows: [['1 (count) "loveleetcode"', "{'l': 2, 'o': 2, 'v': 1, 'e': 4, 't': 1, 'c': 1, 'd': 1}"], ['2: i=0 l', 'count 2 → skip'], ['2: i=1 o', 'count 2 → skip'], ['2: i=2 v', '<span class="c-g">count 1 → return 2</span>']] },
+      complexity: `<p>Time O(n), space O(k) for k distinct characters (≤ 26 here → O(1)).</p>`,
+      followUps: ['Streaming version: characters arrive one by one; report the first unique so far after each (dict + ordered structure).']
+    }
+  });
+
+  practice.push({
+    title: 'Group Anagrams', level: 'Medium', tags: ['dict', 'tuples as keys', 'sorting'], companies: ['Amazon', 'Uber', 'Meta'],
+    statement: `<p>Given a list of lowercase words, group the anagrams together (words made of the same letters). Return a list of groups; groups appear in order of their first word, and words keep their input order inside a group.</p>`,
+    constraints: `1 ≤ len(words) ≤ 10<sup>4</sup>; 0 ≤ len(word) ≤ 100`,
+    example: `<p>["eat","tea","tan","ate","nat","bat"] → <b>[["eat","tea","ate"], ["tan","nat"], ["bat"]]</b>. Key for ${H.c('g', 'eat/tea/ate')} is "aet".</p>`,
+    brute: { why: `<p>Compare every word with every existing group using <code>sorted(a) == sorted(b)</code>: O(n² · L log L). The waste: recomputing the "signature" of each word against every group instead of using it as a dictionary key.</p>`, code: `def group_anagrams(words):
+    groups = []
+    for w in words:
+        for g in groups:
+            if sorted(g[0]) == sorted(w):
+                g.append(w)
+                break
+        else:
+            groups.append([w])
+    return groups` },
+    mcq: { q: 'Which key works for a dict of anagram groups?', options: ['tuple(sorted(word)) or "".join(sorted(word))', 'sorted(word) (a list)', 'set(word)'], answer: 0, explain: 'Lists are unhashable; set(word) loses counts ("aab" vs "ab" collide).' },
+    hints: [`<p>Hint 1: Anagrams share the same sorted letters — that is a perfect dictionary key.</p>`, `<p>Hint 2: The key must be hashable: <code>''.join(sorted(w))</code> or <code>tuple(sorted(w))</code>.</p>`, `<p>Hint 3: <code>groups.setdefault(key, []).append(w)</code>; dicts keep insertion order, so <code>list(groups.values())</code> is already in first-seen order.</p>`],
+    solution: {
+      approach: `<p>Map each word to a canonical signature (sorted letters) and bucket words by signature in a dict of lists.</p>`,
+      code: { lang: 'python', run: true, code: `def group_anagrams(words):
+    groups = {}
+    for w in words:
+        key = ''.join(sorted(w))            # canonical form
+        groups.setdefault(key, []).append(w)
+    return list(groups.values())
+
+print(group_anagrams(['eat', 'tea', 'tan', 'ate', 'nat', 'bat']))
+print(group_anagrams(['', '']))` },
+      alt: [{ lang: 'python', code: `def group_anagrams(words):
+    # O(L) signature: letter counts as a tuple (no sorting)
+    groups = {}
+    for w in words:
+        counts = [0] * 26
+        for ch in w:
+            counts[ord(ch) - ord('a')] += 1
+        groups.setdefault(tuple(counts), []).append(w)
+    return list(groups.values())` }],
+      dry: { head: ['word', 'key', 'groups'], rows: [['eat', 'aet', "{aet: [eat]}"], ['tea', 'aet', "{aet: [eat, tea]}"], ['tan', 'ant', "{aet: [...], ant: [tan]}"], ['ate', 'aet', "aet → [eat, tea, ate]"], ['nat', 'ant', 'ant → [tan, nat]'], ['bat', 'abt', 'abt → [bat]']] },
+      complexity: `<p>Time O(n · L log L) with sorting (O(n · L) with the count-tuple key), space O(n · L).</p>`,
+      followUps: ['Return only groups of size ≥ 2.', 'Words may contain uppercase/unicode — how does the key change?']
+    }
+  });
+
+  practice.push({
+    title: 'Longest Run of Equal Adjacent Values', level: 'Medium', tags: ['loops', 'zip', 'tracking'], companies: ['Google', 'Atlassian'],
+    statement: `<p>Return a tuple <code>(value, length)</code> describing the longest block of consecutive equal values in a list. If several blocks tie, return the first. For an empty list return <code>(None, 0)</code>.</p>`,
+    constraints: `0 ≤ len(a) ≤ 10<sup>6</sup>`,
+    example: `${H.arr([1, 1, 2, 2, 2, 3, 2, 2], { hl: { 2: 'g', 3: 'g', 4: 'g' } })}<p>→ <b>(2, 3)</b>: the green block. The later [2, 2] is a separate, shorter block.</p>`,
+    brute: { why: `<p>From each start index, walk right while values match: O(n²) in the worst case (all equal). The waste: the inner walk re-covers elements already measured.</p>`, code: `def longest_run(a):
+    best = (None, 0)
+    for i in range(len(a)):
+        j = i
+        while j < len(a) and a[j] == a[i]:
+            j += 1
+        if j - i > best[1]:
+            best = (a[i], j - i)
+    return best` },
+    mcq: { q: 'When the current value differs from the previous one, the current run length becomes…', options: ['1', '0', 'unchanged'], answer: 0, explain: 'The new value starts a fresh block containing itself.' },
+    hints: [`<p>Hint 1: Walk once; keep the current run length and the best seen so far.</p>`, `<p>Hint 2: <code>zip(a, a[1:])</code> gives (previous, current) pairs; equal → run += 1, else run = 1.</p>`, `<p>Hint 3: Update best only on strictly greater (keeps the first tie). Handle the empty list up front.</p>`],
+    solution: {
+      approach: `<p>One pass over adjacent pairs, tracking the current run and the best run. Strict &gt; keeps the earliest tie.</p>`,
+      code: { lang: 'python', run: true, code: `def longest_run(a):
+    if not a:
+        return (None, 0)
+    best_val, best_len, run = a[0], 1, 1
+    for prev, cur in zip(a, a[1:]):
+        run = run + 1 if cur == prev else 1
+        if run > best_len:
+            best_val, best_len = cur, run
+    return best_val, best_len
+
+print(longest_run([1, 1, 2, 2, 2, 3, 2, 2]))   # (2, 3)
+print(longest_run([]), longest_run([7]))      # (None, 0) (7, 1)
+print(longest_run(list('aabbb')))             # ('b', 3)` },
+      alt: [{ lang: 'python', code: `from itertools import groupby
+
+def longest_run(a):
+    best = (None, 0)
+    for value, grp in groupby(a):     # groupby splits into equal-value blocks
+        n = sum(1 for _ in grp)
+        if n > best[1]:
+            best = (value, n)
+    return best` }],
+      dry: { head: ['prev', 'cur', 'run', 'best'], rows: [['1', '1', '2', '(1, 2)'], ['1', '2', '1', '(1, 2)'], ['2', '2', '2', '(1, 2)'], ['2', '2', '3', '<span class="c-g">(2, 3)</span>'], ['2', '3', '1', '(2, 3)'], ['…', '…', '≤ 2', '(2, 3)']] },
+      complexity: `<p>Time O(n). <code>a[1:]</code> copies the list (O(n) memory); use <code>itertools.pairwise</code> (3.10+) or indexes to avoid it.</p>`,
+      followUps: ['Run-length encode a string: "aaabcc" → "a3b1c2".', 'Longest run allowing one change (sliding window).']
+    }
+  });
+
+  practice.push({
+    title: 'Rotate a Square Matrix 90° Clockwise', level: 'Medium', tags: ['lists', 'zip', 'slicing', 'unpacking'], companies: ['Microsoft', 'Amazon', 'Apple'],
+    statement: `<p>Given an n × n matrix as a list of lists, return a new matrix rotated 90° clockwise. Then (follow-up) do it <b>in place</b>.</p>`,
+    constraints: `1 ≤ n ≤ 500`,
+    example: `<p>[[1, 2, 3], [4, 5, 6], [7, 8, 9]] → <b>[[7, 4, 1], [8, 5, 2], [9, 6, 3]]</b>. The first ${H.c('g', 'column read bottom-up (7, 4, 1)')} becomes the first row.</p>`,
+    brute: { why: `<p>Index arithmetic <code>new[j][n-1-i] = m[i][j]</code> works in O(n²), but it needs a pre-built grid — and beginners often build it with <code>[[0]*n]*n</code>, which aliases rows and corrupts the result. The "waste" is bug surface, not big-O.</p>`, code: `def rotate(m):
+    n = len(m)
+    new = [[0] * n for _ in range(n)]     # NOT [[0]*n]*n
+    for i in range(n):
+        for j in range(n):
+            new[j][n - 1 - i] = m[i][j]
+    return new` },
+    mcq: { q: 'Clockwise rotation equals…', options: ['reverse the rows, then transpose', 'transpose, then reverse every column', 'reverse every row only'], answer: 0, explain: 'zip(*m[::-1]) — reversing row order then transposing turns columns (read bottom-up) into rows.' },
+    hints: [`<p>Hint 1: Look at where the first output row comes from: the first column, read from bottom to top.</p>`, `<p>Hint 2: <code>m[::-1]</code> reverses row order; <code>zip(*rows)</code> transposes.</p>`, `<p>Hint 3: zip yields tuples — convert each to a list. In place: transpose with swaps <code>m[i][j], m[j][i] = m[j][i], m[i][j]</code> for j &gt; i, then reverse each row.</p>`],
+    solution: {
+      approach: `<p>Reverse the rows, then transpose with <code>zip(*…)</code>. For in-place: transpose via tuple swaps above the diagonal, then reverse each row with <code>row.reverse()</code>.</p>`,
+      code: { lang: 'python', run: true, code: `def rotate(m):
+    return [list(row) for row in zip(*m[::-1])]
+
+def rotate_in_place(m):
+    n = len(m)
+    for i in range(n):
+        for j in range(i + 1, n):            # above the diagonal only
+            m[i][j], m[j][i] = m[j][i], m[i][j]
+    for row in m:
+        row.reverse()
+
+grid = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+print(rotate(grid))
+rotate_in_place(grid)
+print(grid)` },
+      dry: { head: ['step', 'matrix'], rows: [['start', '[[1,2,3],[4,5,6],[7,8,9]]'], ['m[::-1]', '[[7,8,9],[4,5,6],[1,2,3]]'], ['zip(*…)', '(7,4,1), (8,5,2), (9,6,3)'], ['list(row)', '[[7,4,1],[8,5,2],[9,6,3]]']] },
+      complexity: `<p>Time O(n²); the zip version uses O(n²) extra space, the in-place version O(1).</p>`,
+      followUps: ['Counter-clockwise: <code>list(zip(*m))[::-1]</code>.', 'Rotate a non-square m × n matrix (in-place is impossible — why?).']
+    }
+  });
+
+  practice.push({
+    title: 'Merge Overlapping Intervals', level: 'Medium', tags: ['sorting with key', 'unpacking', 'lists'], companies: ['Google', 'Meta', 'Bloomberg', 'Salesforce'],
+    statement: `<p>Given a list of intervals <code>[start, end]</code> (inclusive), merge all overlapping intervals and return them sorted by start. Touching intervals like [1, 4] and [4, 5] count as overlapping.</p>`,
+    constraints: `1 ≤ len(intervals) ≤ 10<sup>5</sup>; 0 ≤ start ≤ end ≤ 10<sup>9</sup>`,
+    example: `<p>[[8, 10], [1, 3], [2, 6], [15, 18]] → <b>[[1, 6], [8, 10], [15, 18]]</b> since ${H.c('g', '[1, 3] and [2, 6] overlap')} → [1, 6].</p>`,
+    brute: { why: `<p>Repeatedly scan all pairs, merge any overlapping pair, and restart until nothing changes: O(n²) per round, up to n rounds → O(n³). The waste: without sorting, any interval could overlap any other.</p>`, code: `def merge(intervals):
+    res = [list(x) for x in intervals]
+    changed = True
+    while changed:
+        changed = False
+        for i in range(len(res)):
+            for j in range(i + 1, len(res)):
+                (a, b), (c, d) = res[i], res[j]
+                if a <= d and c <= b:              # overlap
+                    res[i] = [min(a, c), max(b, d)]
+                    del res[j]
+                    changed = True
+                    break
+            if changed:
+                break
+    return sorted(res)` },
+    mcq: { q: 'After sorting by start, when does the next interval [s, e] overlap the last merged one [ls, le]?', options: ['s <= le', 'e <= le', 's >= ls'], answer: 0, explain: 'Sorted by start, so s ≥ ls is guaranteed; overlap only depends on s ≤ le.' },
+    hints: [`<p>Hint 1: Sort by start: <code>sorted(intervals, key=lambda iv: iv[0])</code>. Now overlaps can only happen with the most recent merged interval.</p>`, `<p>Hint 2: Keep <code>merged</code>; for each [s, e] compare s with <code>merged[-1][1]</code>.</p>`, `<p>Hint 3: If overlapping, extend the end with <code>max</code> (the new one might be inside). Else append a copy. Unpack with <code>for s, e in …</code>.</p>`],
+    solution: {
+      approach: `<p>Sort by start, then sweep once, either extending the last merged interval or starting a new one.</p>`,
+      code: { lang: 'python', run: true, code: `def merge(intervals):
+    merged = []
+    for s, e in sorted(intervals, key=lambda iv: iv[0]):
+        if merged and s <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], e)   # extend
+        else:
+            merged.append([s, e])                    # new block (a fresh list)
+    return merged
+
+print(merge([[8, 10], [1, 3], [2, 6], [15, 18]]))   # [[1, 6], [8, 10], [15, 18]]
+print(merge([[1, 4], [4, 5]]))                       # [[1, 5]]
+print(merge([[1, 10], [2, 3]]))                      # [[1, 10]]` },
+      dry: { head: ['[s, e]', 'last merged', 'overlap?', 'merged'], rows: [['[1, 3]', '—', '—', '[[1, 3]]'], ['[2, 6]', '[1, 3]', '2 ≤ 3 yes', '[[1, 6]]'], ['[8, 10]', '[1, 6]', '8 ≤ 6 no', '[[1, 6], [8, 10]]'], ['[15, 18]', '[8, 10]', 'no', '[[1, 6], [8, 10], [15, 18]]']] },
+      complexity: `<p>Time O(n log n) for sorting + O(n) sweep; space O(n).</p>`,
+      followUps: ['Insert one new interval into an already merged list in O(n).', 'Minimum meeting rooms (count max overlap) with a sweep of +1/−1 events.']
+    }
+  });
+
+  practice.push({
+    title: 'Valid Sudoku Board', level: 'Medium', tags: ['sets', 'tuples as keys', 'nested loops'], companies: ['Amazon', 'Apple', 'Uber'],
+    statement: `<p>A 9 × 9 board is given as a list of 9 strings; each character is a digit '1'–'9' or '.' for empty. Return <code>True</code> if no digit repeats in any row, any column, or any of the nine 3 × 3 boxes (the board does not have to be solvable).</p>`,
+    constraints: `board is exactly 9 strings of length 9`,
+    example: `<p>If row 0 is <code>"53..7...."</code> and row 1 is <code>"6..195..."</code>, no conflict there. Changing row 1 to <code>"5..195..."</code> would repeat ${H.c('r', '5')} in column 0 and in box (0, 0) → <b>False</b>.</p>`,
+    brute: { why: `<p>Check each row, then each column, then each box in three separate loops, building fresh lists and testing <code>len(digits) == len(set(digits))</code>. It is O(81)·3 — fine in speed — but triple code means triple chances for index bugs. A single pass with keyed sets is cleaner.</p>`, code: `def is_valid(board):
+    def ok(cells):
+        digits = [c for c in cells if c != '.']
+        return len(digits) == len(set(digits))
+    rows = all(ok(row) for row in board)
+    cols = all(ok([board[r][c] for r in range(9)]) for c in range(9))
+    boxes = all(ok([board[r][c] for r in range(br, br + 3) for c in range(bc, bc + 3)])
+                for br in range(0, 9, 3) for bc in range(0, 9, 3))
+    return rows and cols and boxes` },
+    mcq: { q: 'Which expression gives the box id (0–8) of cell (r, c)?', options: ['(r // 3) * 3 + c // 3', 'r * 3 + c', '(r + c) // 3'], answer: 0, explain: 'r // 3 and c // 3 give the box row and box column (0–2 each).' },
+    hints: [`<p>Hint 1: One set of "seen" facts is enough if each fact records <i>where</i>: ('row', r, d), ('col', c, d), ('box', r//3, c//3, d).</p>`, `<p>Hint 2: Tuples are hashable, so they can live in a set. If a fact is already present → duplicate → False.</p>`, `<p>Hint 3: Loop with <code>for r, row in enumerate(board): for c, d in enumerate(row):</code>, skip '.', check and add three facts.</p>`],
+    solution: {
+      approach: `<p>Single pass over the 81 cells; encode each constraint as a tuple and keep them in one set. A repeated tuple means a repeated digit in that row/column/box.</p>`,
+      code: { lang: 'python', run: true, code: `def is_valid(board):
+    seen = set()
+    for r, row in enumerate(board):
+        for c, d in enumerate(row):
+            if d == '.':
+                continue
+            facts = (('row', r, d), ('col', c, d), ('box', r // 3, c // 3, d))
+            for f in facts:
+                if f in seen:
+                    return False
+                seen.add(f)
+    return True
+
+board = ['53..7....', '6..195...', '.98....6.', '8...6...3', '4..8.3..1',
+         '7...2...6', '.6....28.', '...419..5', '....8..79']
+print(is_valid(board))                 # True
+bad = board[:]
+bad[1] = '5..195...'                    # 5 repeats in column 0 and box (0, 0)
+print(is_valid(bad))                   # False` },
+      dry: { head: ['cell', 'd', 'new facts', 'result'], rows: [['(0, 0)', '5', "('row',0,'5'), ('col',0,'5'), ('box',0,0,'5')", 'added'], ['(0, 1)', '3', 'row 0 / col 1 / box (0,0) with 3', 'added'], ['(1, 0) in bad', '5', "('col',0,'5') already in seen", '<span class="c-r">False</span>']] },
+      complexity: `<p>O(81) = O(1) for a fixed board; O(n²) for an n × n board. Space O(n²).</p>`,
+      followUps: ['Use 27 separate sets (9 rows, 9 cols, 9 boxes) — compare readability.', 'Solve the Sudoku with backtracking (module on recursion).']
+    }
+  });
+
+  practice.push({
+    title: 'Longest Substring Without Repeating Characters', level: 'Hard', tags: ['dict', 'sliding window', 'enumerate'], companies: ['Amazon', 'Google', 'Microsoft', 'Bloomberg'],
+    statement: `<p>Return the length of the longest substring of <code>s</code> with all characters distinct.</p>`,
+    constraints: `0 ≤ len(s) ≤ 10<sup>5</sup>; any ASCII characters`,
+    example: `<p><code>"abcabcbb"</code> → <b>3</b> (${H.c('g', '"abc"')}). <code>"pwwkew"</code> → <b>3</b> ("wke" — "pwke" is not contiguous). <code>"bbbb"</code> → 1.</p>`,
+    brute: { why: `<p>Check every substring s[i:j] with <code>len(set(s[i:j])) == j - i</code>: O(n²) substrings × O(n) to build each set = O(n³), about 10<sup>15</sup> steps for n = 10<sup>5</sup>. The waste: when a window is valid, extending it by one only needs to check one new character.</p>`, code: `def longest(s):
+    best = 0
+    for i in range(len(s)):
+        for j in range(i + 1, len(s) + 1):
+            if len(set(s[i:j])) == j - i:
+                best = max(best, j - i)
+    return best` },
+    mcq: { q: 'The window is s[left..i]. You see ch at i, and ch was last seen at index p ≥ left. New left = ?', options: ['p + 1', 'i', 'left + 1'], answer: 0, explain: 'Jump just past the previous occurrence; everything between p+1 and i is still distinct.' },
+    hints: [`<p>Hint 1: Keep a window [left, i] that never contains a duplicate; grow i one step at a time.</p>`, `<p>Hint 2: A dict <code>last[ch] = index</code> tells you where ch was last seen.</p>`, `<p>Hint 3: If <code>last.get(ch, -1) &gt;= left</code>, move left to <code>last[ch] + 1</code> (never move left backwards). Then update last[ch] = i and best = max(best, i - left + 1).</p>`],
+    solution: {
+      approach: `<p>Sliding window with a dict of last positions. Each index enters the window once and <code>left</code> only moves forward, so the whole thing is linear.</p>`,
+      code: { lang: 'python', run: true, code: `def longest(s):
+    last = {}          # char -> last index seen
+    left = best = 0
+    for i, ch in enumerate(s):
+        if last.get(ch, -1) >= left:     # ch is inside the current window
+            left = last[ch] + 1          # jump past its previous copy
+        last[ch] = i
+        best = max(best, i - left + 1)
+    return best
+
+for t in ['abcabcbb', 'pwwkew', 'bbbb', '', 'abba']:
+    print(repr(t), longest(t))` },
+      dry: { head: ['i', 'ch', 'last[ch] before', 'left', 'window', 'best'], rows: [['0', 'a', '—', '0', 'a', '1'], ['1', 'b', '—', '0', 'ab', '2'], ['2', 'c', '—', '0', 'abc', '3'], ['3', 'a', '0 ≥ 0', '1', 'bca', '3'], ['4', 'b', '1 ≥ 1', '2', 'cab', '3'], ['5', 'c', '2 ≥ 2', '3', 'abc', '3'], ['6', 'b', '4 ≥ 3', '5', 'cb', '3'], ['7', 'b', '6 ≥ 5', '7', 'b', '3']] },
+      complexity: `<p>Time O(n), space O(k) for k distinct characters.</p>`,
+      followUps: ['Return the substring itself, not just the length.', 'At most k distinct characters (dict of counts + shrinking window).', 'Why does "abba" break a version that forgets the >= left check?']
+    }
+  });
+
+  practice.push({
+    title: 'Spiral Order of a Matrix', level: 'Hard', tags: ['loops', 'boundaries', 'lists'], companies: ['Microsoft', 'Amazon', 'Paytm'],
+    statement: `<p>Return all elements of an m × n matrix in clockwise spiral order, starting at the top-left corner.</p>`,
+    constraints: `1 ≤ m, n ≤ 100`,
+    example: `<p>[[1, 2, 3], [4, 5, 6], [7, 8, 9]] → <b>[1, 2, 3, 6, 9, 8, 7, 4, 5]</b>: ${H.c('g', 'top row →')}, ${H.c('b', 'right column ↓')}, ${H.c('y', 'bottom row ←')}, ${H.c('p', 'left column ↑')}, then the centre.</p>`,
+    brute: { why: `<p>Simulate walking with a direction vector and a <code>visited</code> grid, turning right whenever the next cell is outside or visited. It is O(m·n) too, but needs O(m·n) extra memory and fiddly turning logic. The boundary-shrinking approach is simpler to prove correct.</p>`, code: `def spiral(m):
+    rows, cols = len(m), len(m[0])
+    seen = [[False] * cols for _ in range(rows)]
+    dr, dc = [0, 1, 0, -1], [1, 0, -1, 0]
+    r = c = d = 0
+    out = []
+    for _ in range(rows * cols):
+        out.append(m[r][c])
+        seen[r][c] = True
+        nr, nc = r + dr[d], c + dc[d]
+        if not (0 <= nr < rows and 0 <= nc < cols) or seen[nr][nc]:
+            d = (d + 1) % 4
+            nr, nc = r + dr[d], c + dc[d]
+        r, c = nr, nc
+    return out` },
+    mcq: { q: 'After walking the top row and the right column, why check top <= bottom before walking the bottom row?', options: ['A single remaining row would otherwise be printed twice', 'To avoid IndexError only', 'It is not needed'], answer: 0, explain: 'When top passes bottom, the "bottom row" is the same row already printed left-to-right.' },
+    hints: [`<p>Hint 1: Keep four boundaries: top, bottom, left, right. Peel one layer at a time.</p>`, `<p>Hint 2: Each lap: top row (left→right), top += 1; right column (top→bottom), right −= 1; bottom row reversed, bottom −= 1; left column upward, left += 1.</p>`, `<p>Hint 3: Guard the bottom row with <code>if top &lt;= bottom</code> and the left column with <code>if left &lt;= right</code>; use <code>range(right, left - 1, -1)</code> for backwards walks.</p>`],
+    solution: {
+      approach: `<p>Shrink four boundaries after each side of the current layer. The two guards prevent re-visiting a lone row or column in the middle.</p>`,
+      code: { lang: 'python', run: true, code: `def spiral(m):
+    out = []
+    top, bottom, left, right = 0, len(m) - 1, 0, len(m[0]) - 1
+    while top <= bottom and left <= right:
+        for c in range(left, right + 1):          # top row, left -> right
+            out.append(m[top][c])
+        top += 1
+        for r in range(top, bottom + 1):          # right column, downwards
+            out.append(m[r][right])
+        right -= 1
+        if top <= bottom:
+            for c in range(right, left - 1, -1):  # bottom row, right -> left
+                out.append(m[bottom][c])
+            bottom -= 1
+        if left <= right:
+            for r in range(bottom, top - 1, -1):  # left column, upwards
+                out.append(m[r][left])
+            left += 1
+    return out
+
+print(spiral([[1, 2, 3], [4, 5, 6], [7, 8, 9]]))
+print(spiral([[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12]]))
+print(spiral([[1], [2], [3]]))` },
+      dry: { head: ['lap step', 'cells', 'boundaries after (t, b, l, r)'], rows: [['top row', '1 2 3', '(1, 2, 0, 2)'], ['right col', '6 9', '(1, 2, 0, 1)'], ['bottom row', '8 7', '(1, 1, 0, 1)'], ['left col', '4', '(1, 1, 1, 1)'], ['lap 2 top row', '5', '(2, 1, 1, 0) → loop ends']] },
+      complexity: `<p>Time O(m·n) — every cell once; extra space O(1) besides the output.</p>`,
+      followUps: ['Generate an n × n spiral matrix filled with 1..n².', 'One-liner trick: <code>m[0] + spiral(list(zip(*m[1:]))[::-1])</code> — what does it cost?']
+    }
+  });
+
+  practice.push({
+    title: 'Top K Frequent Words with Tie-Breaking', level: 'Hard', tags: ['dict', 'sorting key', 'tuples'], companies: ['Amazon', 'Yelp', 'Uber'],
+    statement: `<p>Given a list of words and an integer <code>k</code>, return the <code>k</code> most frequent words, ordered by frequency (highest first). Words with the same frequency are ordered alphabetically.</p>`,
+    constraints: `1 ≤ len(words) ≤ 10<sup>5</sup>; 1 ≤ k ≤ number of distinct words`,
+    example: `<p>["i","love","code","i","love","coding"], k = 2 → <b>["i", "love"]</b>: both appear twice; ${H.c('g', '"i" &lt; "love"')} alphabetically. With k = 3 the third is ${H.c('b', '"code"')} (ties at 1: code &lt; coding).</p>`,
+    brute: { why: `<p>For every distinct word call <code>words.count(w)</code> (O(n) each → O(n·d)), then sort. With 10<sup>5</sup> words that is up to 10<sup>10</sup> operations. The waste: counting by rescanning instead of a single dictionary pass.</p>`, code: `def top_k(words, k):
+    distinct = set(words)
+    pairs = [(w, words.count(w)) for w in distinct]      # O(n) per word
+    pairs.sort(key=lambda p: (-p[1], p[0]))
+    return [w for w, _ in pairs[:k]]` },
+    mcq: { q: 'Which sort key gives "count descending, then word ascending"?', options: ['key=lambda w: (-counts[w], w)', 'key=lambda w: (counts[w], w), reverse=True', 'key=counts.get'], answer: 0, explain: 'Negating the count flips its order while keeping the word ascending. reverse=True would also reverse the words.' },
+    hints: [`<p>Hint 1: Count all words in one pass with a dict.</p>`, `<p>Hint 2: Sort the distinct words with a <b>tuple key</b>; tuples compare element by element.</p>`, `<p>Hint 3: <code>sorted(counts, key=lambda w: (-counts[w], w))[:k]</code>. For huge d with small k, use <code>heapq.nsmallest(k, counts, key=…)</code>.</p>`],
+    solution: {
+      approach: `<p>Dict counting (O(n)), then sort the d distinct words with the tuple key (−count, word) and take the first k.</p>`,
+      code: { lang: 'python', run: true, code: `import heapq
+
+def top_k(words, k):
+    counts = {}
+    for w in words:
+        counts[w] = counts.get(w, 0) + 1
+    return sorted(counts, key=lambda w: (-counts[w], w))[:k]
+
+def top_k_heap(words, k):
+    counts = {}
+    for w in words:
+        counts[w] = counts.get(w, 0) + 1
+    return heapq.nsmallest(k, counts, key=lambda w: (-counts[w], w))
+
+ws = ['i', 'love', 'code', 'i', 'love', 'coding']
+print(top_k(ws, 2), top_k(ws, 3))
+print(top_k_heap(ws, 3))` },
+      dry: { head: ['word', 'count', 'key (−count, word)', 'rank'], rows: [['i', '2', "(-2, 'i')", '1'], ['love', '2', "(-2, 'love')", '2'], ['code', '1', "(-1, 'code')", '3'], ['coding', '1', "(-1, 'coding')", '4']] },
+      complexity: `<p>Time O(n + d log d) with sorting, O(n + d log k) with the heap; space O(d).</p>`,
+      followUps: ['Stream of words that never ends → keep counts + a size-k heap, or Count-Min Sketch for approximate counts.', 'Why can a tuple key not negate a string? (Use reverse sorting tricks or a wrapper class.)']
+    }
+  });
+
+  practice.push({
+    title: 'Flatten Arbitrarily Nested Lists', level: 'Hard', tags: ['recursion', 'isinstance', 'lists', 'stack'], companies: ['Meta', 'LinkedIn', 'Airbnb'],
+    statement: `<p>Given a list that may contain integers and other lists nested to any depth, return a flat list of all the integers in left-to-right order. Tuples should be treated like lists. Strings never appear.</p>`,
+    constraints: `Total items ≤ 10<sup>5</sup>; nesting depth may exceed 1000 (so avoid deep recursion in the final version)`,
+    example: `<p>[1, [2, [3, 4], 5], [], (6, [7])] → <b>[1, 2, 3, 4, 5, 6, 7]</b>. Empty lists contribute nothing.</p>`,
+    brute: { why: `<p>Repeatedly loop "if any item is a list, splice it in" (e.g. rebuilding the whole list each pass) is O(n · depth). The natural recursive solution is O(n) but crashes with <code>RecursionError</code> past ~1000 levels because CPython limits recursion depth.</p>`, code: `def flatten(items):
+    out = []
+    for x in items:
+        if isinstance(x, (list, tuple)):
+            out.extend(flatten(x))        # recursion: fine until depth ~1000
+        else:
+            out.append(x)
+    return out` },
+    mcq: { q: 'Using an explicit stack, how do you keep left-to-right order when pushing a sub-list?', options: ['Push its items in reverse so the first item is popped first', 'Push them in normal order', 'Sort them first'], answer: 0, explain: 'A stack is LIFO; reversing on push restores the original order on pop.' },
+    hints: [`<p>Hint 1: Recursion mirrors the structure: flatten each sub-list and extend.</p>`, `<p>Hint 2: To survive deep nesting, replace the call stack with your own list used as a stack.</p>`, `<p>Hint 3: Start with <code>stack = list(reversed(items))</code>; pop; if it is a list/tuple, push its items reversed; else append to output.</p>`],
+    solution: {
+      approach: `<p>Iterative DFS with an explicit stack: pop an item; if it is a list or tuple, push its children in reverse order; otherwise append it. No recursion limit, O(n) total work.</p>`,
+      code: { lang: 'python', run: true, code: `def flatten(items):
+    out = []
+    stack = list(reversed(items))
+    while stack:
+        x = stack.pop()
+        if isinstance(x, (list, tuple)):
+            stack.extend(reversed(x))     # reversed keeps left-to-right order
+        else:
+            out.append(x)
+    return out
+
+print(flatten([1, [2, [3, 4], 5], [], (6, [7])]))   # [1, 2, 3, 4, 5, 6, 7]
+
+deep = [0]
+for i in range(1, 5000):                 # 5000 levels: recursion would fail
+    deep = [deep, i]
+print(len(flatten(deep)), flatten(deep)[:5])` },
+      alt: [{ lang: 'python', code: `def flatten_gen(items):
+    # generator version (recursive): elegant, still limited by depth
+    for x in items:
+        if isinstance(x, (list, tuple)):
+            yield from flatten_gen(x)
+        else:
+            yield x` }],
+      dry: { head: ['pop', 'is list?', 'stack after (top at right)', 'out'], rows: [['1', 'no', '[(6,[7]), [], [2,[3,4],5]]', '[1]'], ['[2,[3,4],5]', 'yes', '[…, 5, [3,4], 2]', '[1]'], ['2', 'no', '[…, 5, [3,4]]', '[1, 2]'], ['[3,4]', 'yes', '[…, 5, 4, 3]', '[1, 2]'], ['3, 4, 5', 'no', '[(6,[7]), []]', '[1, 2, 3, 4, 5]'], ['[] then (6,[7])…', '', '[]', '[1, …, 7]']] },
+      complexity: `<p>Time O(total items + total lists), space O(max stack size) ≤ O(n).</p>`,
+      followUps: ['Also handle strings safely (do not iterate a str — it would recurse forever on 1-char strings).', 'Return the depth of each integer as well.']
+    }
+  });
+
+  /* ================= QUIZ (many are "predict the output") ================= */
+  quiz.push(
+    { q: `Predict the output: <pre>print([] or 0 or 'x')</pre>`, options: [`x`, `[]`, `0`, `False`], answer: 0, explain: `<code>or</code> returns the first truthy operand: [] is falsy, 0 is falsy, 'x' is truthy → prints x.` },
+    { q: `Predict the output: <pre>for i in range(3):
+    pass
+else:
+    print('done', i)</pre>`, options: [`done 2`, `done 3`, `nothing — else only runs on break`, `NameError`], answer: 0, explain: `The loop finished without break, so the loop-else runs. The loop variable keeps its last value, 2.` },
+    { q: `What is <code>list(range(10, 0, -3))</code>?`, options: [`[10, 7, 4, 1]`, `[10, 7, 4, 1, -2]`, `[10, 7, 4]`, `[]`], answer: 0, explain: `Start 10, step −3, stop 0 is excluded: 10, 7, 4, 1 (the next, −2, is past the stop).` },
+    { q: `Predict the output: <pre>def f(x, acc=[]):
+    acc.append(x)
+    return acc
+f(1)
+print(f(2))</pre>`, options: [`[1, 2]`, `[2]`, `[1]`, `TypeError`], answer: 0, explain: `The default list is created once at def time and shared between calls.` },
+    { q: `Predict the output: <pre>a = [1, 2, 3]
+b = a
+b += [4]
+print(a)</pre>`, options: [`[1, 2, 3, 4]`, `[1, 2, 3]`, `[4]`, `TypeError`], answer: 0, explain: `b = a makes an alias; += on a list extends it in place, so a sees the change. (b = b + [4] would create a new list.)` },
+    { q: `What is <code>type((5))</code> and <code>type((5,))</code>?`, options: [`int and tuple`, `tuple and tuple`, `int and int`, `tuple and list`], answer: 0, explain: `Parentheses alone just group; the trailing comma is what makes a tuple.` },
+    { q: `Predict the output: <pre>s = 'python'
+print(s[-3:], s[::-2])</pre>`, options: [`hon nhy`, `hon nohtyp`, `tho nhy`, `hon pto`], answer: 0, explain: `s[-3:] = last three 'hon'. s[::-2] starts at the last index 5 and steps −2: indexes 5, 3, 1 → n, h, y.` },
+    { q: `Predict the output: <pre>d = {1: 'a', 1.0: 'b', True: 'c'}
+print(d)</pre>`, options: [`{1: 'c'}`, `{1: 'a', 1.0: 'b', True: 'c'}`, `{True: 'c'}`, `TypeError`], answer: 0, explain: `1 == 1.0 == True and they hash equally, so they are the same key. The first key object (1) is kept; the value is overwritten twice, ending as 'c'.` },
+    { q: `Predict the output: <pre>first, *rest = 'ab'
+print(rest)</pre>`, options: [`['b']`, `('b',)`, `'b'`, `ValueError`], answer: 0, explain: `A starred target always becomes a list, even when unpacking a string.` },
+    { q: `Predict the output: <pre>print(sorted([3, 1, 2]), [3, 1, 2].sort())</pre>`, options: [`[1, 2, 3] None`, `[1, 2, 3] [1, 2, 3]`, `None None`, `[3, 1, 2] None`], answer: 0, explain: `sorted() returns a new list; list.sort() sorts in place and returns None.` },
+    { q: `What is <code>list(zip([1, 2, 3], 'ab'))</code>?`, options: [`[(1, 'a'), (2, 'b')]`, `[(1, 'a'), (2, 'b'), (3, None)]`, `ValueError`, `[(1, 2, 3), ('a', 'b')]`], answer: 0, explain: `zip stops at the shortest input. Only zip(..., strict=True) raises; zip_longest pads.` },
+    { q: `Predict the output: <pre>nums = [2, 4, 6, 7]
+for n in nums:
+    if n % 2 == 0:
+        nums.remove(n)
+print(nums)</pre>`, options: [`[4, 7]`, `[7]`, `[2, 4, 6, 7]`, `RuntimeError`], answer: 0, explain: `Removing 2 shifts 4 into index 0, which the loop has already passed; next it sees 6 (removed), then the list ends. Never mutate a list while iterating it.` },
+    { q: `Given <code>def f(a, b=2, *, c=3)</code>, which call raises TypeError?`, options: [`f(1, 2, 3)`, `f(1, c=5)`, `f(a=1)`, `f(1, 2, c=0)`], answer: 0, explain: `c is keyword-only (after the bare *), so a third positional argument has nowhere to go.` },
+    { q: `What does <code>print(1 &lt; 3 &gt; 2)</code> print?`, options: [`True`, `False`, `SyntaxError`, `1`], answer: 0, explain: `Chained comparison: (1 &lt; 3) and (3 &gt; 2) → True.` },
+    { q: `What does <code>type({})</code> return, and how do you make an empty set?`, options: [`dict; set()`, `set; {}`, `dict; {,}`, `set; set[]`], answer: 0, explain: `Braces with nothing inside are an empty dict for historical reasons. Use set() for an empty set.` },
+    { q: `Predict the output: <pre>i = 0
+nums = [5, 5]
+i, nums[i] = 1, 9
+print(nums)</pre>`, options: [`[5, 9]`, `[9, 5]`, `[9, 9]`, `IndexError`], answer: 0, explain: `The right side (1, 9) is built first, then targets are assigned left to right: i = 1, then nums[1] = 9.` }
+  );
+
+  /* ================= INTERVIEW Q&A ================= */
+  interview.push(
+    { q: `What is the difference between a list and a tuple? When do you pick each?`, level: 'B', a: `<p>Both are ordered sequences that allow duplicates and any types. A <b>list</b> is mutable (append, remove, sort in place), so it suits collections that grow or change. A <b>tuple</b> is immutable, so it suits fixed records like <code>(x, y)</code>, function return values, and dictionary keys/set members (a tuple is hashable when all its items are). Tuples are slightly smaller and faster to create, and immutability communicates intent ("this will not change"). Note tuple immutability is shallow: a tuple can hold a list that is mutated.</p>`, followUps: ['Why can a tuple be a dict key but a list cannot?', 'What does <code>t = ([1], 2); t[0] += [3]</code> do?'] },
+    { q: `Which values are falsy in Python, and what does <code>x or default</code> really return?`, level: 'B', a: `<p>Falsy: <code>False</code>, <code>None</code>, numeric zeros (0, 0.0, 0j, Decimal 0), and empty containers ('', [], (), {}, set(), range(0)). Everything else is truthy unless its class defines <code>__bool__</code> or <code>__len__</code> to say otherwise. <code>or</code> returns the <b>first truthy operand</b> (or the last operand if none is truthy) — it returns the object, not a bool. So <code>name or 'Guest'</code> is a quick default, but it also replaces legitimate falsy values like 0 or '' — use <code>x if x is not None else default</code> when those are valid.</p>`, followUps: ['What does <code>0 and 1/0</code> evaluate to?', 'Why does a NumPy array raise in an if statement?'] },
+    { q: `Explain the mutable default argument problem and how to fix it.`, level: 'I', a: `<p>Default values are evaluated <b>once</b>, when the <code>def</code> statement executes, and stored on the function (<code>f.__defaults__</code>). If the default is a mutable object like a list or dict and the function mutates it, the change persists across calls: <code>def add(x, acc=[])</code> returns [1], then [1, 2], … The fix is a sentinel: <code>def add(x, acc=None): if acc is None: acc = []</code>. Occasionally the shared default is used deliberately as a cache, but <code>functools.lru_cache</code> is clearer. Linters (Ruff B006) flag this pattern.</p>`, followUps: ['Why is <code>if not acc: acc = []</code> subtly different from <code>if acc is None</code>?', 'Does the same issue apply to <code>stamp=datetime.now()</code>?'] },
+    { q: `Is Python pass-by-value or pass-by-reference?`, level: 'I', a: `<p>Neither exactly — it is <b>pass-by-object-reference</b> (call by sharing). The parameter name is bound to the <b>same object</b> the caller passed. If the function <b>mutates</b> that object (append to a list, set a dict key), the caller sees the change. If the function <b>rebinds</b> the parameter (<code>lst = [0]</code>) only the local name changes; the caller's variable still points to the old object. Immutable objects (int, str, tuple) cannot be mutated, so they behave as if passed by value.</p>`, followUps: ['Write a function that clears a caller\'s list in place.', 'How would you avoid accidentally mutating an argument?'] },
+    { q: `How does a <code>for</code> loop work under the hood?`, level: 'I', a: `<p><code>for x in obj</code> calls <code>iter(obj)</code> to get an iterator (via <code>__iter__</code>, or the old <code>__getitem__</code> protocol), then repeatedly calls <code>next()</code> on it, binding each result to x and running the body. When the iterator raises <code>StopIteration</code>, the loop ends quietly and the optional loop-<code>else</code> runs (unless a <code>break</code> happened). This uniform protocol is why the same loop syntax works for lists, strings, dicts (keys), files (lines), ranges and generators. It also explains why iterators are single-use.</p>`, followUps: ['Write the equivalent while loop with iter/next and try/except.', 'Why does iterating a zip object twice give nothing the second time?'] },
+    { q: `What does <code>else</code> on a for/while loop do? Give a good use case.`, level: 'B', a: `<p>The loop's <code>else</code> block runs only when the loop ends <b>normally</b> — the iterable is exhausted (for) or the condition becomes false (while) — and is <b>skipped if the loop exits via break</b> (or return/exception). Think "no break". The classic use is search: <code>for d in range(2, isqrt(n)+1): if n % d == 0: break</code> / <code>else: return True</code> to report "prime" without a flag variable. Many teams avoid it because readers misread it, so a well-named helper function with return can be clearer.</p>`, followUps: ['Does a loop-else run if the loop body never executes?', 'Rewrite a search with any() instead.'] },
+    { q: `Why are dict lookups O(1) on average, and are dicts ordered?`, level: 'I', a: `<p>A dict is a <b>hash table</b>: <code>hash(key)</code> picks a slot in an index array, so finding a key costs a hash plus (usually) one or two probes, independent of the dict's size. Collisions are resolved with open addressing (perturbed probing), and the table resizes at about 2/3 load to keep probe chains short. Worst case is O(n) when many keys collide. Since CPython 3.6 the layout is compact (index table + dense entries array), and since Python 3.7 <b>insertion order is guaranteed</b> by the language: iteration follows the order keys were first inserted (updating a value does not move it).</p>`, followUps: ['What breaks if a key\'s hash changes after insertion?', 'Why are string hashes randomized per process?'] },
+    { q: `Why can't a list be a dictionary key or set member?`, level: 'I', a: `<p>Keys must be <b>hashable</b>: their hash must never change while they are in the table, and equal objects must have equal hashes. A list is mutable — if you appended to it after insertion, its hash (based on content) would change and the dict would look in the wrong slot, effectively losing the entry. So <code>list.__hash__</code> is None and <code>{[1]: 'x'}</code> raises <code>TypeError: unhashable type: 'list'</code>. Convert to a tuple (<code>tuple(lst)</code>) or a frozenset for unordered content.</p>`, followUps: ['Is <code>(1, [2])</code> hashable?', 'How do user-defined classes hash by default?'] },
+    { q: `Explain slicing rules and the cost of slicing. How is it different from NumPy?`, level: 'I', a: `<p><code>seq[start:stop:step]</code> includes start, excludes stop, supports negative indexes (counted from the end) and clamps out-of-range bounds instead of raising. Defaults depend on the step's sign (for negative steps, start defaults to the last item and stop to "before index 0"). For built-in sequences a slice <b>copies</b> the selected references: O(k) time and memory, so slicing inside loops or recursion (<code>f(arr[1:])</code>) can silently add an O(n) factor. <b>NumPy</b> basic slices are <b>views</b> sharing memory with the original — mutating the slice mutates the array — which is the opposite of list behaviour.</p>`, followUps: ['What does <code>a[-0:]</code> return?', 'How would you slice an iterator lazily?'] },
+    { q: `What is the difference between <code>is</code> and <code>==</code>?`, level: 'B', a: `<p><code>==</code> compares <b>values</b> by calling <code>__eq__</code>; <code>is</code> compares <b>identity</b> — whether both names point to the very same object (same <code>id()</code>). Two separately built lists <code>[1, 2] == [1, 2]</code> is True but <code>is</code> is False. Use <code>is</code> only for singletons such as <code>None</code> (PEP 8: <code>if x is None</code>) and sentinel objects. CPython caches small ints (−5…256) and interns some strings, so <code>is</code> may look like it works on small values and then fail on larger ones — a classic bug.</p>`, followUps: ['Why is <code>x == None</code> discouraged?', 'What does <code>id()</code> represent in CPython?'] },
+    { q: `How does <code>a, b = b, a</code> work, and where can multiple assignment go wrong?`, level: 'I', a: `<p>Python first evaluates the <b>entire right-hand side</b> using the current values, producing (conceptually) a tuple <code>(b, a)</code>, and then assigns its items to the targets <b>left to right</b>. No temporary variable is needed. It goes wrong when a later target depends on an earlier one: <code>i, nums[i] = 1, 9</code> writes to nums[1] because i is rebound first. In linked-list reversal, <code>prev, cur, cur.next = cur, cur.next, prev</code> fails because cur changes before <code>cur.next</code> is assigned — order the targets carefully or use separate lines.</p>`, followUps: ['Write Fibonacci in O(1) memory with tuple assignment.', 'What bytecode does CPython emit for a two-name swap?'] },
+    { q: `append vs extend, and why is <code>list.pop(0)</code> a performance trap?`, level: 'I', a: `<p><code>append(x)</code> adds x as <b>one</b> item (even if x is a list); <code>extend(iterable)</code> adds <b>each</b> item. A list is a dynamic array of pointers: operations at the end (append, pop()) are O(1) amortised, but inserting or removing at the front/middle shifts every following pointer, O(n). Using <code>pop(0)</code> as a queue in a loop over n items is therefore O(n²). Use <code>collections.deque</code>, whose <code>popleft()</code> and <code>appendleft()</code> are O(1).</p>`, followUps: ['Why is append amortised O(1) and not strictly O(1)?', 'When is a list still fine as a queue?'] },
+    { q: `Explain <code>*args</code>, <code>**kwargs</code>, keyword-only and positional-only parameters. When would you use each?`, level: 'A', a: `<p><code>*args</code> collects extra positional arguments into a tuple; <code>**kwargs</code> collects extra keyword arguments into a dict — used for wrappers, decorators and flexible APIs. Parameters after a bare <code>*</code> (or after *args) are <b>keyword-only</b>: callers must name them, which is great for boolean flags and options (<code>sort(items, *, reverse=False)</code>). Parameters before <code>/</code> (3.8+) are <b>positional-only</b>: their names are not part of the public API, so you can rename them later, and they cannot clash with **kwargs. Full order: <code>def f(a, /, b, *args, c, **kwargs)</code>.</p>`, followUps: ['What happens with <code>f(**{"a": 1})</code> when a is positional-only?', 'How do you forward all arguments to another function?'] },
+    { q: `How do you remove duplicates from a list while preserving the original order?`, level: 'B', a: `<p>Use the fact that dicts keep insertion order and keys are unique: <code>list(dict.fromkeys(items))</code> — O(n) and one line. Or loop with a <code>seen</code> set: append x to the result only if it is not yet in seen, then add it. Both require hashable items. <code>list(set(items))</code> also removes duplicates but <b>loses the order</b> (set order depends on hashes). For unhashable items (lists), fall back to an O(n²) membership check against the result list or convert items to tuples.</p>`, followUps: ['Remove duplicates in place from a sorted list with two pointers.', 'Keep the <i>last</i> occurrence instead of the first.'] }
+  );
+
+  /* Every visualizer must show at least 4 frames, even for tiny custom inputs. */
+  topics.forEach(function (t) {
+    [].concat(t.viz).forEach(function (v) {
+      var gen = v.gen;
+      v.gen = function (inp) {
+        var f = gen(inp);
+        var tips = ['Recap: try a different input above to see another path through the code.', 'Tip: predict the next state yourself before pressing Next — that is how interview "predict the output" rounds feel.', 'Edge cases (empty input, one item, negatives) are where most bugs live — try them here.'];
+        var k = 0;
+        while (f.length < 4) { f.push({ narr: tips[k++ % tips.length], parts: f[f.length - 1].parts }); }
+        return f;
+      };
+    });
+  });
+
+  registerModule({
+    id: 'py02',
+    title: 'Control Flow, Functions & Core Collections',
+    intro: `<p>This is where Python starts to feel powerful. You will learn how programs <b>make decisions</b> (<code>if / elif / else</code>, truthiness, short-circuit logic), how they <b>repeat work</b> (<code>for</code>, <code>while</code>, <code>range</code>, <code>break</code>, <code>continue</code> and the unusual loop <code>else</code>), and how to loop the Pythonic way with <code>enumerate</code> and <code>zip</code>.</p>
+<p>Then we package logic into <b>functions</b> — positional, keyword and default arguments, and the famous mutable-default trap — and meet Python's four workhorse collections: <b>lists, tuples, dicts and sets</b>, including what each operation really costs. We finish with two superpowers interviewers love to probe: <b>slicing</b> (<code>seq[start:stop:step]</code>) and <b>unpacking</b> (<code>a, b = b, a</code>, <code>first, *rest = items</code>).</p>
+<p>Every topic has a step-by-step visualizer, runnable examples, "predict the output" puzzles and interview-style problems such as Two Sum, Merge Intervals and Longest Substring Without Repeating Characters.</p>`,
+    goals: [
+      'Write correct <code>if/elif/else</code> ladders and predict the result of <code>and</code>/<code>or</code>/<code>not</code> on any values using truthiness and short-circuit rules',
+      'Choose between <code>for</code>, <code>while</code>, <code>range</code>, <code>enumerate</code> and <code>zip</code>, and use <code>break</code>/<code>continue</code>/loop-<code>else</code> without off-by-one errors',
+      'Define functions with positional, keyword, default, keyword-only and <code>*args/**kwargs</code> parameters, and explain (and avoid) the mutable default argument bug',
+      'Use lists, tuples, dicts and sets fluently, state the Big-O of their common operations, and pick the right one from a problem\'s wording',
+      'Slice and unpack sequences confidently (negative indexes, steps, star-unpacking, swaps) and answer "predict the output" questions about them',
+      'Solve classic interview problems (Two Sum, Group Anagrams, Merge Intervals, Spiral Matrix, Longest Substring) with idiomatic Python'
+    ],
+    prereqs: `<b>py01 (Python Setup, Syntax, Types &amp; I/O)</b>: running Python, variables as names bound to objects, int/float/str/bool/None, operators and f-strings. No prior data-structure knowledge needed.`,
+    hours: 14,
+    topics: topics,
+    practice: practice,
+    quiz: quiz,
+    interview: interview
+  });
+})();
