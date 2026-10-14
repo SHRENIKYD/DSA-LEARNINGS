@@ -2479,6 +2479,1180 @@ class Solution {
     }]
   });
 
+  // =====================================================================
+  // PRACTICE ARENA — Easy
+  // =====================================================================
+  practice.push({
+    title: 'Backspace String Compare',
+    level: 'Easy',
+    tags: ['stack', 'string', 'simulation'],
+    companies: ['Google', 'Meta', 'Amazon'],
+    statement: `<p>Given two strings <code>s</code> and <code>t</code>, return <code>true</code> if they are equal when both are typed into empty text editors. <code>#</code> means a backspace. Backspacing an empty editor keeps it empty.</p>`,
+    constraints: `1 ≤ s.length, t.length ≤ 200; only lowercase letters and <code>#</code>`,
+    example: `<p>s = <code>"ab#c"</code> → typed result ${H.c('g', '"ac"')}; t = <code>"ad#c"</code> → ${H.c('g', '"ac"')}. Output <b>true</b>.</p>
+      <p>s = <code>"a#c"</code> → "c", t = <code>"b"</code> → "b". Output ${H.c('r', 'false')}.</p>`,
+    brute: {
+      why: `<p>Find the first <code>#</code>, cut it and the character before it out of the string, repeat. Every cut builds a new string (O(N)), and there can be N cuts → <b>O(N<sup>2</sup>)</b>. The waste: we rebuild the whole string to undo one character, while the "last typed character" is exactly the top of a stack.</p>`,
+      code: `
+boolean backspaceCompareBrute(String s, String t) {
+    return apply(s).equals(apply(t));
+}
+
+String apply(String s) {
+    while (s.contains("#")) {
+        int i = s.indexOf('#');
+        // remove the '#' and the character before it (if any)
+        s = (i > 0 ? s.substring(0, i - 1) : "") + s.substring(i + 1);
+    }
+    return s;
+}`
+    },
+    mcq: { q: 'Which structure naturally models "backspace deletes the most recently typed character"?', options: ['Queue', 'Stack', 'HashSet', 'Sorted array'], answer: 1, explain: 'Backspace removes the newest character first: last in, first out.' },
+    hints: [
+      `<p>Aha: typing pushes a character, backspace pops the newest one. The final text is whatever is left on the stack, from bottom to top.</p>`,
+      `<p>A <code>StringBuilder</code> is a perfect char stack: <code>append</code> = push, <code>deleteCharAt(length - 1)</code> = pop. Build both strings, then compare.</p>`,
+      `<p>Edge cases: <code>#</code> on an empty editor does nothing (check length &gt; 0); strings like <code>"##a"</code>. Follow-up: O(1) extra space by walking both strings from the <b>end</b> with a "skip" counter.</p>`
+    ],
+    solution: {
+      approach: `<p>Simulate the editor with a stack (StringBuilder) for each string and compare the results.</p>`,
+      code: `
+class Solution {
+    private String type(String s) {
+        StringBuilder st = new StringBuilder();          // used as a stack of characters
+        for (char c : s.toCharArray()) {
+            if (c != '#') st.append(c);                  // type a character = push
+            else if (st.length() > 0) st.deleteCharAt(st.length() - 1);   // backspace = pop
+        }
+        return st.toString();
+    }
+
+    public boolean backspaceCompare(String s, String t) {
+        return type(s).equals(type(t));
+    }
+
+    public static void main(String[] args) {
+        System.out.println(new Solution().backspaceCompare("ab#c", "ad#c"));   // true
+        System.out.println(new Solution().backspaceCompare("a#c", "b"));       // false
+    }
+}`,
+      dry: { head: ['char of "ab#c"', 'action', 'stack'], rows: [['a', 'push', 'a'], ['b', 'push', 'ab'], ['#', 'pop', 'a'], ['c', 'push', '<span class="c-g">ac</span>']] },
+      complexity: `<p><b>Time O(N + M)</b>, <b>space O(N + M)</b> for the two builders. The two-pointer-from-the-end version keeps O(N + M) time with O(1) space.</p>`,
+      followUps: ['Do it in O(1) extra space.', 'What if the editor also supports an "undo" command?']
+    }
+  });
+
+  practice.push({
+    title: 'Remove All Adjacent Duplicates in String',
+    level: 'Easy',
+    tags: ['stack', 'string'],
+    companies: ['Meta', 'Bloomberg'],
+    statement: `<p>Given a string <code>s</code> of lowercase letters, repeatedly remove two <b>adjacent equal</b> letters until no such pair remains. Return the final string (it is unique).</p>`,
+    constraints: `1 ≤ s.length ≤ 10<sup>5</sup>`,
+    example: `<p><code>"abbaca"</code>: remove ${H.c('r', '"bb"')} → <code>"aaca"</code>, remove ${H.c('r', '"aa"')} → <code>"ca"</code>. Output ${H.c('g', '"ca"')}. Removing a pair can create a <b>new</b> pair from the letters around it — that "chain reaction" is what a stack handles for free.</p>`,
+    brute: {
+      why: `<p>Scan for an adjacent equal pair, cut it out, start again from the beginning. Up to N/2 removals, each O(N) → <b>O(N<sup>2</sup>)</b> = 5·10<sup>9</sup> for N = 10<sup>5</sup>. The waste: after a cut, only the two letters <i>next to the cut</i> can form a new pair, yet we rescan everything.</p>`,
+      code: `
+String removeDuplicatesBrute(String s) {
+    boolean changed = true;
+    while (changed) {
+        changed = false;
+        for (int i = 0; i + 1 < s.length(); i++) {
+            if (s.charAt(i) == s.charAt(i + 1)) {
+                s = s.substring(0, i) + s.substring(i + 2);   // cut the pair, rebuild: O(N)
+                changed = true;
+                break;                                        // rescan from the start
+            }
+        }
+    }
+    return s;
+}`
+    },
+    mcq: { q: 'The stack holds <code>c a</code> (a on top). The next letter is <code>a</code>. What happens?', options: ['Push a → c a a', 'Pop a → c', 'Pop both → empty', 'Ignore the new a'], answer: 1, explain: 'The new letter equals the top, so the pair cancels: pop the top and do not push the new letter.' },
+    hints: [
+      `<p>Aha: the only letter that can pair with the next one is the <b>last surviving</b> letter — the top of a stack.</p>`,
+      `<p>Use a <code>StringBuilder</code> as the stack: if the last char equals the current one, delete it; otherwise append.</p>`,
+      `<p>Edge cases: everything cancels (<code>"abba"</code> → ""), no duplicates at all. Recipe: for c in s: if sb not empty and last == c → delete last, else append c. Return sb.</p>`
+    ],
+    solution: {
+      approach: `<p>One pass; the builder holds the letters that survived so far, and each new letter either cancels the top or is pushed.</p>`,
+      code: `
+class Solution {
+    public String removeDuplicates(String s) {
+        StringBuilder st = new StringBuilder();
+        for (char c : s.toCharArray()) {
+            int n = st.length();
+            if (n > 0 && st.charAt(n - 1) == c) st.deleteCharAt(n - 1);   // pair cancels
+            else st.append(c);                                          // survives for now
+        }
+        return st.toString();
+    }
+
+    public static void main(String[] args) {
+        System.out.println(new Solution().removeDuplicates("abbaca"));   // ca
+    }
+}`,
+      dry: { head: ['char', 'top before', 'action', 'stack'], rows: [['a', '—', 'push', 'a'], ['b', 'a', 'push', 'ab'], ['b', 'b', '<span class="c-r">pop</span>', 'a'], ['a', 'a', '<span class="c-r">pop</span>', '(empty)'], ['c', '—', 'push', 'c'], ['a', 'c', 'push', '<span class="c-g">ca</span>']] },
+      complexity: `<p><b>Time O(N)</b>: each letter is pushed once and popped at most once. <b>Space O(N)</b> for the builder.</p>`,
+      followUps: ['Remove groups of K equal adjacent letters (LeetCode 1209): store (char, count) pairs.']
+    }
+  });
+
+  practice.push({
+    title: 'Next Greater Element I (two arrays)',
+    level: 'Easy',
+    tags: ['monotonic stack', 'hashmap'],
+    companies: ['Amazon', 'Bloomberg'],
+    statement: `<p><code>nums1</code> is a subset of <code>nums2</code>; all values are <b>distinct</b>. For each <code>x</code> in <code>nums1</code>, find the first element to the right of <code>x</code>'s position in <code>nums2</code> that is greater than <code>x</code>, or <code>-1</code>.</p>`,
+    constraints: `1 ≤ nums1.length ≤ nums2.length ≤ 1000, values distinct, 0 ≤ value ≤ 10<sup>4</sup>`,
+    example: `<p>nums1 = <code>[4, 1, 2]</code>, nums2 = <code>[1, 3, 4, 2]</code> → output <code>[-1, 3, -1]</code>.</p>
+      <p>4 has nothing bigger to its right → ${H.c('r', '-1')}; 1 → ${H.c('g', '3')}; 2 is last → ${H.c('r', '-1')}.</p>`,
+    brute: {
+      why: `<p>For each query, find it in <code>nums2</code> and scan right: O(N·M) up to 10<sup>6</sup> — fine for these limits but it does not scale. The waste: every query re-walks the same parts of <code>nums2</code>.</p>`,
+      code: `
+int[] nextGreaterElementBrute(int[] nums1, int[] nums2) {
+    int[] res = new int[nums1.length];
+    for (int q = 0; q < nums1.length; q++) {
+        res[q] = -1;
+        int pos = 0;
+        while (nums2[pos] != nums1[q]) pos++;                 // find it
+        for (int j = pos + 1; j < nums2.length; j++) {
+            if (nums2[j] > nums1[q]) { res[q] = nums2[j]; break; }
+        }
+    }
+    return res;
+}`
+    },
+    mcq: { q: 'Why can we store answers in a <code>HashMap</code> keyed by value?', options: ['Because the values are distinct', 'Because nums2 is sorted', 'Because HashMap is faster than arrays', 'We cannot'], answer: 0, explain: 'Distinct values mean each value has exactly one position in nums2, so value → next greater is well defined.' },
+    hints: [
+      `<p>Aha: compute the next greater element for <b>every</b> value of <code>nums2</code> once, then answer queries by lookup.</p>`,
+      `<p>Monotonic decreasing stack over <code>nums2</code>; when <code>x</code> pops <code>y</code>, record <code>map.put(y, x)</code>.</p>`,
+      `<p>Values left on the stack have no greater element → use <code>getOrDefault(v, -1)</code>. Recipe: for x in nums2: while top &lt; x: map[pop] = x; push x. Then res[i] = map.getOrDefault(nums1[i], -1).</p>`
+    ],
+    solution: {
+      approach: `<p>Monotonic stack on nums2 + HashMap from value to its next greater value.</p>`,
+      code: `
+import java.util.*;
+
+class Solution {
+    public int[] nextGreaterElement(int[] nums1, int[] nums2) {
+        Map<Integer, Integer> next = new HashMap<>();
+        Deque<Integer> st = new ArrayDeque<>();          // values, decreasing bottom -> top
+        for (int x : nums2) {
+            while (!st.isEmpty() && st.peek() < x) next.put(st.pop(), x);
+            st.push(x);
+        }
+        int[] res = new int[nums1.length];
+        for (int i = 0; i < nums1.length; i++) res[i] = next.getOrDefault(nums1[i], -1);
+        return res;
+    }
+
+    public static void main(String[] args) {
+        System.out.println(Arrays.toString(new Solution().nextGreaterElement(new int[]{4, 1, 2}, new int[]{1, 3, 4, 2})));   // [-1, 3, -1]
+    }
+}`,
+      complexity: `<p><b>Time O(N + M)</b>: one monotonic pass over nums2 plus O(1) lookups. <b>Space O(N)</b> for the map and stack.</p>`,
+      followUps: ['What if values are not distinct? (Map by index instead.)']
+    }
+  });
+
+  // =====================================================================
+  // PRACTICE ARENA — Medium
+  // =====================================================================
+  practice.push({
+    title: 'Daily Temperatures',
+    level: 'Medium',
+    tags: ['monotonic stack', 'next greater'],
+    companies: ['Amazon', 'Meta', 'Google', 'Uber'],
+    statement: `<p>Given daily temperatures, return an array <code>answer</code> where <code>answer[i]</code> is the number of days you have to wait after day <code>i</code> for a <b>warmer</b> temperature, or 0 if there is no such day.</p>`,
+    constraints: `1 ≤ N ≤ 10<sup>5</sup>, 30 ≤ temperature ≤ 100`,
+    example: `${H.arr([73, 74, 75, 71, 69, 72, 76, 73], { label: 'temps' })}${H.arr([1, 1, 4, 2, 1, 1, 0, 0], { label: 'answer', hl: { 2: 'g' } })}<p>Day 2 (75) waits 4 days until day 6 (76).</p>`,
+    brute: {
+      why: `<p>For each day scan forward to the first warmer day: O(N<sup>2</sup>) in the worst case (temperatures decreasing then one hot day at the end) = 5·10<sup>9</sup>. Waste: cold days are rescanned by every earlier day.</p>`,
+      code: `
+int[] dailyTemperaturesBrute(int[] t) {
+    int n = t.length;
+    int[] ans = new int[n];
+    for (int i = 0; i < n; i++) {
+        for (int j = i + 1; j < n; j++) {
+            if (t[j] > t[i]) { ans[i] = j - i; break; }
+        }
+    }
+    return ans;
+}`
+    },
+    mcq: { q: 'What should the stack store for this problem?', options: ['Temperatures', 'Indices', 'Answers', 'Differences'], answer: 1, explain: 'The answer is a distance (j - i), so you need positions; the temperature can be read from the index.' },
+    hints: [
+      `<p>Aha: this is "next greater element", but the answer is the <b>distance</b> to it.</p>`,
+      `<p>Decreasing stack of indices. When day <code>i</code> is warmer than the top day <code>j</code>, pop and set <code>ans[j] = i - j</code>.</p>`,
+      `<p>Strictly warmer → pop while <code>t[top] &lt; t[i]</code> (equal temperatures keep waiting). Days left on the stack keep 0. Optimisation: temperatures are bounded (30..100), so a right-to-left "next occurrence" array also works.</p>`
+    ],
+    solution: {
+      approach: `<p>Monotonic decreasing stack of indices; each pop fills one answer with the distance.</p>`,
+      code: `
+import java.util.*;
+
+class Solution {
+    public int[] dailyTemperatures(int[] t) {
+        int n = t.length;
+        int[] ans = new int[n];
+        int[] st = new int[n];                 // int[] stack: faster than Deque<Integer>
+        int top = 0;
+        for (int i = 0; i < n; i++) {
+            while (top > 0 && t[st[top - 1]] < t[i]) {
+                int j = st[--top];             // day j finally sees a warmer day
+                ans[j] = i - j;
+            }
+            st[top++] = i;
+        }
+        return ans;                            // remaining days keep 0
+    }
+
+    public static void main(String[] args) {
+        System.out.println(Arrays.toString(new Solution().dailyTemperatures(new int[]{73, 74, 75, 71, 69, 72, 76, 73})));
+    }
+}`,
+      dry: { head: ['i', 't[i]', 'popped → ans', 'stack (indices)'], rows: [['0', '73', '—', '0'], ['1', '74', '0 → 1', '1'], ['2', '75', '1 → 1', '2'], ['3', '71', '—', '2 3'], ['4', '69', '—', '2 3 4'], ['5', '72', '4 → 1, 3 → 2', '2 5'], ['6', '76', '5 → 1, 2 → <span class="c-g">4</span>', '6'], ['7', '73', '—', '6 7']] },
+      complexity: `<p><b>Time O(N)</b> (each index pushed and popped once), <b>space O(N)</b>.</p>`
+    }
+  });
+
+  practice.push({
+    title: 'Next Greater Element II (circular array)',
+    level: 'Medium',
+    tags: ['monotonic stack', 'circular'],
+    companies: ['Amazon', 'Google'],
+    statement: `<p>Given a <b>circular</b> integer array (the element after the last is the first), return the next greater number for every element, searching circularly; <code>-1</code> if none exists.</p>`,
+    constraints: `1 ≤ N ≤ 10<sup>4</sup>, -10<sup>9</sup> ≤ nums[i] ≤ 10<sup>9</sup>`,
+    example: `<p><code>[1, 2, 3, 4, 3]</code> → <code>[2, 3, 4, -1, 4]</code>. The last 3 wraps around and finds ${H.c('g', '4')}; the maximum 4 gets ${H.c('r', '-1')}.</p>`,
+    brute: {
+      why: `<p>For each i, look at the next N − 1 positions <code>(i + d) % n</code>: O(N<sup>2</sup>) = 10<sup>8</sup>. It passes small limits but repeats the same comparisons for neighbouring elements.</p>`,
+      code: `
+int[] nextGreaterCircularBrute(int[] a) {
+    int n = a.length;
+    int[] res = new int[n];
+    for (int i = 0; i < n; i++) {
+        res[i] = -1;
+        for (int d = 1; d < n; d++) {
+            if (a[(i + d) % n] > a[i]) { res[i] = a[(i + d) % n]; break; }
+        }
+    }
+    return res;
+}`
+    },
+    mcq: { q: 'In the two-lap trick, why do we only push indices during the first lap?', options: ['To save memory only', 'Second-lap positions are the same elements; they only need to ANSWER waiting ones, not wait again', 'Because the second lap is sorted', 'It is a bug; we should push both laps'], answer: 1, explain: 'Every element already waits once (from lap 1). In lap 2 the elements act only as potential answers for the ones still waiting.' },
+    hints: [
+      `<p>Aha: walking the array <b>twice</b> simulates the wrap-around: an element near the end sees the start of the array during the second lap.</p>`,
+      `<p>Loop <code>i</code> from 0 to <code>2n − 1</code>, use <code>x = a[i % n]</code>; pop smaller tops and give them x; push <code>i</code> only if <code>i &lt; n</code>.</p>`,
+      `<p>Fill the result with -1 first; the global maximum (and equal copies) will never be popped. Duplicates: strictly greater → pop while <code>a[top] &lt; x</code>.</p>`
+    ],
+    solution: {
+      approach: `<p>Monotonic stack over a doubled (virtual) array.</p>`,
+      code: `
+import java.util.*;
+
+class Solution {
+    public int[] nextGreaterElements(int[] a) {
+        int n = a.length;
+        int[] res = new int[n];
+        Arrays.fill(res, -1);
+        Deque<Integer> st = new ArrayDeque<>();
+        for (int i = 0; i < 2 * n; i++) {
+            int x = a[i % n];
+            while (!st.isEmpty() && a[st.peek()] < x) res[st.pop()] = x;
+            if (i < n) st.push(i);               // each index waits only once
+        }
+        return res;
+    }
+
+    public static void main(String[] args) {
+        System.out.println(Arrays.toString(new Solution().nextGreaterElements(new int[]{1, 2, 3, 4, 3})));   // [2, 3, 4, -1, 4]
+    }
+}`,
+      complexity: `<p><b>Time O(N)</b>: 2N iterations, each index pushed once and popped at most once. <b>Space O(N)</b>.</p>`
+    }
+  });
+
+  practice.push({
+    title: 'Minimum Remove to Make Valid Parentheses',
+    level: 'Medium',
+    tags: ['stack', 'parentheses', 'string'],
+    companies: ['Meta', 'Amazon', 'Bloomberg'],
+    statement: `<p>Given a string <code>s</code> of <code>(</code>, <code>)</code> and lowercase letters, remove the <b>minimum</b> number of parentheses so the result is valid. Return any valid result.</p>`,
+    constraints: `1 ≤ s.length ≤ 10<sup>5</sup>`,
+    example: `<p><code>"lee(t(c)o)de)"</code> → <code>"lee(t(c)o)de"</code>: the last ${H.c('r', ')')} has no partner.</p>
+      <p><code>"))(("</code> → <code>""</code>: every bracket is unmatched.</p>`,
+    brute: {
+      why: `<p>BFS over strings: remove one bracket in every possible way, then two, ... and stop at the first valid string. That is exponential in the number of brackets. The waste: we try removing brackets that are perfectly matched, while a stack can tell us <i>exactly</i> which ones are unmatched.</p>`,
+      code: `
+String minRemoveBrute(String s) {
+    Queue<String> q = new ArrayDeque<>();
+    Set<String> seen = new HashSet<>();
+    q.offer(s);
+    seen.add(s);
+    while (!q.isEmpty()) {
+        String cur = q.poll();
+        if (isValid(cur)) return cur;                    // first valid = fewest removals
+        for (int i = 0; i < cur.length(); i++) {
+            char c = cur.charAt(i);
+            if (c != '(' && c != ')') continue;
+            String next = cur.substring(0, i) + cur.substring(i + 1);
+            if (seen.add(next)) q.offer(next);
+        }
+    }
+    return "";
+}
+
+boolean isValid(String s) {
+    int balance = 0;
+    for (char c : s.toCharArray()) {
+        if (c == '(') balance++;
+        else if (c == ')' && --balance < 0) return false;
+    }
+    return balance == 0;
+}`
+    },
+    mcq: { q: 'After scanning, the stack still holds indices 0 and 7. What are they?', options: ['Matched opens', 'Unmatched ( that must be removed', 'Unmatched ) that must be removed', 'Letters'], answer: 1, explain: 'Only ( indices are pushed. Anything left at the end never found a ), so it must be deleted.' },
+    hints: [
+      `<p>Aha: a bracket must be removed only if it is <b>unmatched</b>. A ) is unmatched if no ( is open when it arrives; a ( is unmatched if it is still open at the end.</p>`,
+      `<p>Push <b>indices</b> of ( on a stack. On ): pop if possible, otherwise mark this ) for removal. At the end, mark every index still on the stack.</p>`,
+      `<p>Build the answer with a <code>StringBuilder</code>, skipping marked indices (a <code>boolean[]</code>). Avoid <code>deleteCharAt</code> in a loop — that is O(N<sup>2</sup>).</p>`
+    ],
+    solution: {
+      approach: `<p>Stack of indices finds every unmatched bracket in one pass; a second pass copies the rest.</p>`,
+      code: `
+import java.util.*;
+
+class Solution {
+    public String minRemoveToMakeValid(String s) {
+        int n = s.length();
+        boolean[] drop = new boolean[n];
+        Deque<Integer> open = new ArrayDeque<>();        // indices of unmatched '('
+        for (int i = 0; i < n; i++) {
+            char c = s.charAt(i);
+            if (c == '(') open.push(i);
+            else if (c == ')') {
+                if (open.isEmpty()) drop[i] = true;      // nothing to close
+                else open.pop();                         // matched pair
+            }
+        }
+        while (!open.isEmpty()) drop[open.pop()] = true; // never closed
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < n; i++) if (!drop[i]) sb.append(s.charAt(i));
+        return sb.toString();
+    }
+
+    public static void main(String[] args) {
+        System.out.println(new Solution().minRemoveToMakeValid("lee(t(c)o)de)"));   // lee(t(c)o)de
+        System.out.println(new Solution().minRemoveToMakeValid("a)b(c)d"));         // ab(c)d
+    }
+}`,
+      complexity: `<p><b>Time O(N)</b>, <b>space O(N)</b> for the stack and marks. Minimality: each removed bracket is provably unmatched in every valid subsequence.</p>`,
+      followUps: ['Return ALL valid strings with the minimum removals (LeetCode 301, BFS/backtracking).', 'Do it with O(1) extra space besides the output (two counter passes).']
+    }
+  });
+
+  practice.push({
+    title: 'Asteroid Collision',
+    level: 'Medium',
+    tags: ['stack', 'simulation'],
+    companies: ['Amazon', 'Uber', 'Lyft'],
+    statement: `<p>Each integer is an asteroid: absolute value = size, sign = direction (positive → right, negative → left), all moving at the same speed. When two meet, the smaller one explodes; equal sizes both explode. Asteroids moving the same direction never meet. Return the state after all collisions.</p>`,
+    constraints: `2 ≤ N ≤ 10<sup>4</sup>, -1000 ≤ a[i] ≤ 1000, a[i] ≠ 0`,
+    example: `${H.table(['input', 'output', 'why'], [['[5, 10, -5]', '[5, 10]', '-5 hits 10 and explodes'], ['[8, -8]', '[]', 'equal → both explode'], ['[10, 2, -5]', '[10]', '-5 destroys 2, then dies against 10'], ['[-2, -1, 1, 2]', '[-2, -1, 1, 2]', 'left-movers on the left never meet right-movers']])}`,
+    brute: {
+      why: `<p>Repeatedly look for an adjacent pair "positive then negative", resolve it, and restart: up to N collisions × O(N) rescans and list shifts → <b>O(N<sup>2</sup>)</b>. The waste: a left-moving asteroid only ever collides with the <b>most recent</b> surviving right-mover — a stack top.</p>`,
+      code: `
+int[] asteroidBrute(int[] asteroids) {
+    List<Integer> list = new ArrayList<>();
+    for (int a : asteroids) list.add(a);
+    boolean changed = true;
+    while (changed) {
+        changed = false;
+        for (int i = 0; i + 1 < list.size(); i++) {
+            int l = list.get(i), r = list.get(i + 1);
+            if (l > 0 && r < 0) {                       // they meet
+                if (l > -r) list.remove(i + 1);
+                else if (l < -r) list.remove(i);
+                else { list.remove(i + 1); list.remove(i); }
+                changed = true;
+                break;
+            }
+        }
+    }
+    int[] res = new int[list.size()];
+    for (int i = 0; i < res.length; i++) res[i] = list.get(i);
+    return res;
+}`
+    },
+    mcq: { q: 'Stack (bottom→top) is <code>[-3, 4, 2]</code>. Asteroid <code>-5</code> arrives. Final stack?', options: ['[-3, 4, 2, -5]', '[-3, -5]', '[-3, 4]', '[-5]'], answer: 1, explain: '-5 destroys 2 and 4 (both smaller). The top is now -3, also moving left, so no collision: push -5.' },
+    hints: [
+      `<p>Aha: only a <b>negative</b> asteroid arriving after <b>positive</b> ones causes collisions, and it hits the closest (most recent) positive first.</p>`,
+      `<p>Stack of survivors. For a negative <code>a</code>: while the top is positive and smaller than <code>|a|</code>, pop it. Then handle the equal case (pop, a dies) and the bigger case (a dies).</p>`,
+      `<p>Use an <code>alive</code> flag for the current asteroid. Push only if it survives. Positive asteroids are always pushed (they move away from everything on the left).</p>`
+    ],
+    solution: {
+      approach: `<p>Stack of surviving asteroids; each incoming left-mover fights the stack top until it dies or the top is no longer a right-mover.</p>`,
+      code: `
+import java.util.*;
+
+class Solution {
+    public int[] asteroidCollision(int[] asteroids) {
+        Deque<Integer> st = new ArrayDeque<>();
+        for (int a : asteroids) {
+            boolean alive = true;
+            while (alive && a < 0 && !st.isEmpty() && st.peek() > 0) {
+                int top = st.peek();
+                if (top < -a) st.pop();                          // top explodes, a continues
+                else if (top == -a) { st.pop(); alive = false; } // both explode
+                else alive = false;                              // a explodes
+            }
+            if (alive) st.push(a);
+        }
+        int[] res = new int[st.size()];
+        for (int i = res.length - 1; i >= 0; i--) res[i] = st.pop();   // stack top is the rightmost
+        return res;
+    }
+
+    public static void main(String[] args) {
+        System.out.println(Arrays.toString(new Solution().asteroidCollision(new int[]{10, 2, -5})));   // [10]
+    }
+}`,
+      dry: { head: ['a', 'fight', 'stack after'], rows: [['10', '—', '10'], ['2', '—', '10 2'], ['-5', '<span class="c-r">2 pops</span>; 10 &gt; 5 → -5 dies', '<span class="c-g">10</span>']] },
+      complexity: `<p><b>Time O(N)</b>: each asteroid is pushed and popped at most once. <b>Space O(N)</b>.</p>`
+    }
+  });
+
+  practice.push({
+    title: 'Decode String',
+    level: 'Medium',
+    tags: ['stack', 'string', 'nested'],
+    companies: ['Google', 'Amazon', 'Bloomberg'],
+    statement: `<p>Decode a string encoded as <code>k[encoded]</code>, meaning <code>encoded</code> is repeated exactly <code>k</code> times. Encodings can be nested. Digits only appear as repeat counts.</p>`,
+    constraints: `1 ≤ s.length ≤ 30; k in [1, 300]; output length ≤ 10<sup>5</sup>`,
+    example: `<p><code>"3[a2[c]]"</code> → inner ${H.c('b', '"2[c]" = "cc"')} → <code>"3[acc]"</code> → ${H.c('g', '"accaccacc"')}.</p>
+      <p><code>"2[abc]3[cd]ef"</code> → <code>"abcabccdcdcdef"</code>.</p>`,
+    brute: {
+      why: `<p>Find the innermost bracket (first <code>]</code> and the nearest <code>[</code> before it), expand it, rebuild the string, repeat. Each expansion rebuilds the whole (possibly huge) string → roughly O(levels × output length). Acceptable for tiny inputs but wasteful: a stack expands each level exactly once, in place.</p>`,
+      code: `
+String decodeBrute(String s) {
+    int close;
+    while ((close = s.indexOf(']')) >= 0) {
+        int open = s.lastIndexOf('[', close);            // innermost '[' for this ']'
+        int start = open;
+        while (start > 0 && Character.isDigit(s.charAt(start - 1))) start--;
+        int times = Integer.parseInt(s.substring(start, open));
+        String expanded = s.substring(open + 1, close).repeat(times);
+        s = s.substring(0, start) + expanded + s.substring(close + 1);
+    }
+    return s;
+}`
+    },
+    mcq: { q: 'When we read <code>[</code>, what must we save before starting a fresh inner string?', options: ['Nothing', 'Only the count k', 'The count k and the string built so far', 'The index of ['], answer: 2, explain: 'After the inner part is finished we need to repeat it k times and append it to the outer string we were building — both must be restored.' },
+    hints: [
+      `<p>Aha: brackets nest, so the most recently opened <code>[</code> closes first — a stack of "where was I?" states.</p>`,
+      `<p>Two stacks: counts and outer <code>StringBuilder</code>s. On <code>[</code> push (k, current) and reset; on <code>]</code> pop them and append <code>current × k</code> to the outer builder.</p>`,
+      `<p>Multi-digit counts like <code>"12[a]"</code>: build <code>k = k * 10 + digit</code>. Reset k after pushing. Letters just append to the current builder.</p>`
+    ],
+    solution: {
+      approach: `<p>Stack of (repeat count, outer string) frames — the explicit version of a recursive descent parser.</p>`,
+      code: `
+import java.util.*;
+
+class Solution {
+    public String decodeString(String s) {
+        Deque<Integer> counts = new ArrayDeque<>();
+        Deque<StringBuilder> outers = new ArrayDeque<>();
+        StringBuilder cur = new StringBuilder();
+        int k = 0;
+        for (char c : s.toCharArray()) {
+            if (Character.isDigit(c)) {
+                k = k * 10 + (c - '0');                  // multi-digit count
+            } else if (c == '[') {
+                counts.push(k);                          // remember how many times
+                outers.push(cur);                        // remember what came before
+                cur = new StringBuilder();
+                k = 0;
+            } else if (c == ']') {
+                int times = counts.pop();
+                StringBuilder outer = outers.pop();
+                outer.append(cur.toString().repeat(times));
+                cur = outer;                             // continue the outer level
+            } else {
+                cur.append(c);
+            }
+        }
+        return cur.toString();
+    }
+
+    public static void main(String[] args) {
+        System.out.println(new Solution().decodeString("3[a2[c]]"));        // accaccacc
+        System.out.println(new Solution().decodeString("2[abc]3[cd]ef"));   // abcabccdcdcdef
+    }
+}`,
+      dry: { head: ['char', 'action', 'cur', 'stacks (count, outer)'], rows: [['3', 'k=3', '""', '—'], ['[', 'push (3, "")', '""', '(3,"")'], ['a', 'append', 'a', '(3,"")'], ['2', 'k=2', 'a', '(3,"")'], ['[', 'push (2, "a")', '""', '(3,"") (2,"a")'], ['c', 'append', 'c', '…'], [']', 'pop (2,"a") → "a"+"cc"', 'acc', '(3,"")'], [']', 'pop (3,"") → "" + "acc"×3', '<span class="c-g">accaccacc</span>', '—']] },
+      complexity: `<p><b>Time O(output length)</b> (each output character is written a bounded number of times per nesting level), <b>space O(output length)</b>.</p>`
+    }
+  });
+
+  practice.push({
+    title: 'Remove K Digits',
+    level: 'Medium',
+    tags: ['monotonic stack', 'greedy'],
+    companies: ['Google', 'Amazon', 'Microsoft'],
+    statement: `<p>Given a non-negative integer as a string <code>num</code> and an integer <code>k</code>, remove exactly <code>k</code> digits so the remaining number is as <b>small</b> as possible. Return it without leading zeros ("0" if empty).</p>`,
+    constraints: `1 ≤ k ≤ num.length ≤ 10<sup>5</sup>; num has no leading zeros except "0" itself`,
+    example: `<p><code>"1432219"</code>, k = 3 → remove ${H.c('r', '4, 3, 2')} → ${H.c('g', '"1219"')}.</p><p><code>"10200"</code>, k = 1 → remove 1 → "0200" → <code>"200"</code>. <code>"10"</code>, k = 2 → <code>"0"</code>.</p>`,
+    brute: {
+      why: `<p>Remove one digit at a time, k times, each time trying all N positions and keeping the smallest string: O(k·N<sup>2</sup>) → far too slow for 10<sup>5</sup>. The waste: the best digit to remove is simply the first one that is bigger than its right neighbour — a monotonic stack finds all of them in one pass.</p>`,
+      code: `
+String removeKdigitsBrute(String num, int k) {
+    for (int r = 0; r < k; r++) {
+        String best = null;
+        for (int i = 0; i < num.length(); i++) {
+            String cand = num.substring(0, i) + num.substring(i + 1);
+            if (best == null || cand.compareTo(best) < 0) best = cand;   // same length -> lexicographic = numeric
+        }
+        num = best;
+    }
+    int i = 0;
+    while (i < num.length() - 1 && num.charAt(i) == '0') i++;
+    num = num.substring(i);
+    return num.isEmpty() ? "0" : num;
+}`
+    },
+    mcq: { q: 'Stack is <code>1 4</code>, next digit is <code>3</code>, k = 3. What do we do?', options: ['Push 3', 'Pop 4 (k becomes 2), then push 3', 'Pop 4 and 1', 'Skip 3'], answer: 1, explain: 'A bigger digit before a smaller one should be removed (14… &gt; 13…). Pop 4, k-1; top 1 &lt; 3 stops; push 3.' },
+    hints: [
+      `<p>Aha: to minimise a number, its <b>leftmost</b> digits matter most. If a digit is bigger than the one after it, removing it always makes the number smaller.</p>`,
+      `<p>Keep an <b>increasing</b> stack of digits. While <code>k &gt; 0</code> and the top is bigger than the current digit, pop (k--). Then push.</p>`,
+      `<p>If k is still &gt; 0 at the end (e.g. "12345"), remove from the end. Strip leading zeros. Empty → "0". Use a <code>StringBuilder</code> as the stack.</p>`
+    ],
+    solution: {
+      approach: `<p>Greedy with a monotonic increasing stack: every pop removes a "peak" digit, the most valuable removal available.</p>`,
+      code: `
+class Solution {
+    public String removeKdigits(String num, int k) {
+        StringBuilder st = new StringBuilder();
+        for (char c : num.toCharArray()) {
+            while (k > 0 && st.length() > 0 && st.charAt(st.length() - 1) > c) {
+                st.deleteCharAt(st.length() - 1);   // remove a bigger digit before a smaller one
+                k--;
+            }
+            st.append(c);
+        }
+        st.setLength(st.length() - k);              // still need removals: cut the largest tail
+        int i = 0;
+        while (i < st.length() - 1 && st.charAt(i) == '0') i++;   // strip leading zeros
+        String res = st.substring(i);
+        return res.isEmpty() ? "0" : res;
+    }
+
+    public static void main(String[] args) {
+        System.out.println(new Solution().removeKdigits("1432219", 3));   // 1219
+        System.out.println(new Solution().removeKdigits("10200", 1));     // 200
+        System.out.println(new Solution().removeKdigits("10", 2));        // 0
+    }
+}`,
+      dry: { head: ['digit', 'pops (k after)', 'stack'], rows: [['1', '—', '1'], ['4', '—', '14'], ['3', '<span class="c-r">4</span> (2)', '13'], ['2', '<span class="c-r">3</span> (1)', '12'], ['2', '—', '122'], ['1', '<span class="c-r">2</span> (0)', '121'], ['9', '—', '<span class="c-g">1219</span>']] },
+      complexity: `<p><b>Time O(N)</b>, <b>space O(N)</b>.</p>`,
+      followUps: ['Make the number as LARGE as possible instead.', 'Remove Duplicate Letters / Smallest Subsequence of Distinct Characters (LC 316/1081).']
+    }
+  });
+
+  practice.push({
+    title: 'Sum of Subarray Minimums',
+    level: 'Medium',
+    tags: ['monotonic stack', 'contribution technique'],
+    companies: ['Amazon', 'Google'],
+    statement: `<p>Given an integer array <code>arr</code>, return the sum of <code>min(b)</code> over every contiguous subarray <code>b</code>, modulo 10<sup>9</sup> + 7.</p>`,
+    constraints: `1 ≤ N ≤ 3·10<sup>4</sup>, 1 ≤ arr[i] ≤ 3·10<sup>4</sup>`,
+    example: `<p><code>[3, 1, 2, 4]</code>: subarrays and minimums: [3]=3, [1]=1, [2]=2, [4]=4, [3,1]=1, [1,2]=1, [2,4]=2, [3,1,2]=1, [1,2,4]=1, [3,1,2,4]=1. Sum = ${H.c('g', '17')}.</p>`,
+    brute: {
+      why: `<p>For every start i, extend j to the right keeping a running minimum: O(N<sup>2</sup>) = 9·10<sup>8</sup> — too slow. The waste: we never ask "for how many subarrays is a[i] the minimum?", which can be answered with two nearest-smaller boundaries.</p>`,
+      code: `
+int sumSubarrayMinsBrute(int[] arr) {
+    long MOD = 1_000_000_007L, sum = 0;
+    for (int i = 0; i < arr.length; i++) {
+        int mn = Integer.MAX_VALUE;
+        for (int j = i; j < arr.length; j++) {
+            mn = Math.min(mn, arr[j]);
+            sum = (sum + mn) % MOD;
+        }
+    }
+    return (int) sum;
+}`
+    },
+    mcq: { q: 'a[i] = 1 at index 1 of [3, 1, 2, 4]. Previous smaller index = -1, next smaller-or-equal index = 4. Contribution?', options: ['1', '1 × 2 × 3 = 6', '1 × 4 = 4', '1 × 2 = 2'], answer: 1, explain: 'Left choices: i − left = 2 (start at 0 or 1). Right choices: right − i = 3 (end at 1, 2 or 3). 2 × 3 = 6 subarrays have 1 as their minimum.' },
+    hints: [
+      `<p>Aha (contribution technique): instead of summing per subarray, ask for each element how many subarrays it is the minimum of, and add <code>a[i] × count</code>.</p>`,
+      `<p>count = <code>(i − left[i]) × (right[i] − i)</code> where left = previous <b>strictly</b> smaller index and right = next smaller-<b>or-equal</b> index. Two monotonic stack passes.</p>`,
+      `<p>Duplicates: strict on one side, non-strict on the other, so each subarray is counted exactly once. Use <code>long</code> and take mod. Default left = -1, right = n.</p>`
+    ],
+    solution: {
+      approach: `<p>Nearest smaller boundaries with monotonic stacks + contribution counting.</p>`,
+      code: `
+import java.util.*;
+
+class Solution {
+    public int sumSubarrayMins(int[] arr) {
+        final long MOD = 1_000_000_007L;
+        int n = arr.length;
+        int[] left = new int[n], right = new int[n];
+        Deque<Integer> st = new ArrayDeque<>();
+        for (int i = 0; i < n; i++) {                       // previous STRICTLY smaller
+            while (!st.isEmpty() && arr[st.peek()] >= arr[i]) st.pop();
+            left[i] = st.isEmpty() ? -1 : st.peek();
+            st.push(i);
+        }
+        st.clear();
+        for (int i = n - 1; i >= 0; i--) {                  // next smaller OR EQUAL
+            while (!st.isEmpty() && arr[st.peek()] > arr[i]) st.pop();
+            right[i] = st.isEmpty() ? n : st.peek();
+            st.push(i);
+        }
+        long sum = 0;
+        for (int i = 0; i < n; i++) {
+            long count = (long) (i - left[i]) * (right[i] - i);   // subarrays where arr[i] is the min
+            sum = (sum + arr[i] * count) % MOD;
+        }
+        return (int) sum;
+    }
+
+    public static void main(String[] args) {
+        System.out.println(new Solution().sumSubarrayMins(new int[]{3, 1, 2, 4}));   // 17
+    }
+}`,
+      dry: { head: ['i', 'a[i]', 'left', 'right', 'count', 'contribution'], rows: [['0', '3', '-1', '1', '1×1 = 1', '3'], ['1', '1', '-1', '4', '2×3 = 6', '6'], ['2', '2', '1', '4', '1×2 = 2', '4'], ['3', '4', '2', '4', '1×1 = 1', '4'], ['', '', '', '', 'total', '<span class="c-g">17</span>']] },
+      complexity: `<p><b>Time O(N)</b>, <b>space O(N)</b>. Max product 3·10<sup>4</sup> × 9·10<sup>8</sup> ≈ 2.7·10<sup>13</sup> fits in a long.</p>`,
+      followUps: ['Sum of subarray ranges (max − min) — LC 2104.', 'Why would strict comparisons on both sides double-count [2, 2]?']
+    }
+  });
+
+  practice.push({
+    title: 'Design Circular Queue',
+    level: 'Medium',
+    tags: ['queue', 'design', 'circular buffer'],
+    companies: ['Amazon', 'Microsoft', 'Apple'],
+    statement: `<p>Design a fixed-capacity circular queue with <code>enQueue(v)</code>, <code>deQueue()</code> (both return success), <code>Front()</code>, <code>Rear()</code> (return -1 if empty), <code>isEmpty()</code> and <code>isFull()</code>. All operations must be O(1). Do not use a built-in queue.</p>`,
+    constraints: `1 ≤ k ≤ 1000, 0 ≤ value ≤ 1000, at most 3000 calls`,
+    example: `${H.table(['call', 'returns', 'buffer (k = 3)'], [['enQueue(1)', 'true', '[1, ·, ·]'], ['enQueue(2)', 'true', '[1, 2, ·]'], ['enQueue(3)', 'true', '[1, 2, 3]'], ['enQueue(4)', '<span class="c-r">false</span> (full)', '[1, 2, 3]'], ['Rear()', '3', ''], ['deQueue()', 'true', '[·, 2, 3] head → 1'], ['enQueue(4)', 'true', '[<b>4</b>, 2, 3] wrapped!'], ['Rear()', '<span class="c-g">4</span>', '']])}`,
+    brute: {
+      why: `<p>Use an <code>ArrayList</code>; <code>deQueue</code> = <code>remove(0)</code>, which shifts every remaining element left → <b>O(N)</b> per dequeue. The waste: moving data that did not change, when we could just move a <code>head</code> index.</p>`,
+      code: `
+import java.util.*;
+
+class MyCircularQueueSlow {
+    private final List<Integer> list = new ArrayList<>();
+    private final int cap;
+    public MyCircularQueueSlow(int k) { cap = k; }
+    public boolean enQueue(int v) { if (list.size() == cap) return false; list.add(v); return true; }
+    public boolean deQueue() { if (list.isEmpty()) return false; list.remove(0); return true; }   // O(N) shift
+    public int Front() { return list.isEmpty() ? -1 : list.get(0); }
+    public int Rear() { return list.isEmpty() ? -1 : list.get(list.size() - 1); }
+    public boolean isEmpty() { return list.isEmpty(); }
+    public boolean isFull() { return list.size() == cap; }
+}`
+    },
+    mcq: { q: 'k = 4, head = 3, size = 2. At which index is the Rear element?', options: ['4', '0', '1', '3'], answer: 1, explain: 'Rear = (head + size − 1) % k = (3 + 2 − 1) % 4 = 0. The queue wrapped around.' },
+    hints: [
+      `<p>Aha: never move elements — move <b>indices</b> and let them wrap around with <code>% k</code>.</p>`,
+      `<p>Store <code>int[] data</code>, <code>head</code> and <code>size</code>. Insert at <code>(head + size) % k</code>; remove by <code>head = (head + 1) % k</code>; rear at <code>(head + size − 1) % k</code>.</p>`,
+      `<p>Keeping <code>size</code> avoids the classic "head == tail: empty or full?" ambiguity (the alternative is wasting one slot). Check full/empty before enQueue/deQueue.</p>`
+    ],
+    solution: {
+      approach: `<p>Array + head index + size: every operation is a couple of arithmetic steps.</p>`,
+      code: `
+class MyCircularQueue {
+    private final int[] data;
+    private int head = 0, size = 0;
+
+    public MyCircularQueue(int k) { data = new int[k]; }
+
+    public boolean enQueue(int value) {
+        if (isFull()) return false;
+        data[(head + size) % data.length] = value;    // first free slot after the last element
+        size++;
+        return true;
+    }
+
+    public boolean deQueue() {
+        if (isEmpty()) return false;
+        head = (head + 1) % data.length;              // just move the front forward
+        size--;
+        return true;
+    }
+
+    public int Front() { return isEmpty() ? -1 : data[head]; }
+    public int Rear() { return isEmpty() ? -1 : data[(head + size - 1) % data.length]; }
+    public boolean isEmpty() { return size == 0; }
+    public boolean isFull() { return size == data.length; }
+
+    public static void main(String[] args) {
+        MyCircularQueue q = new MyCircularQueue(3);
+        System.out.println(q.enQueue(1) + " " + q.enQueue(2) + " " + q.enQueue(3) + " " + q.enQueue(4)); // true true true false
+        System.out.println(q.Rear() + " " + q.deQueue() + " " + q.enQueue(4) + " " + q.Rear());          // 3 true true 4
+    }
+}`,
+      complexity: `<p><b>All operations O(1)</b>, <b>space O(k)</b>. This is the same circular-buffer idea used inside <code>ArrayDeque</code>, Linux kernel ring buffers and network card queues.</p>`,
+      followUps: ['Make it thread-safe for one producer and one consumer (lock-free ring buffer).', 'Design a circular DEQUE (LC 641).']
+    }
+  });
+
+  practice.push({
+    title: 'Validate Stack Sequences',
+    level: 'Medium',
+    tags: ['stack', 'simulation'],
+    companies: ['Google', 'Amazon'],
+    statement: `<p>Given two permutations <code>pushed</code> and <code>popped</code> of distinct values, return <code>true</code> if they could be the result of push and pop operations on an initially empty stack (pushes in the order of <code>pushed</code>, pops in the order of <code>popped</code>).</p>`,
+    constraints: `1 ≤ N ≤ 1000, values distinct, popped is a permutation of pushed`,
+    example: `<p>pushed = [1,2,3,4,5], popped = [4,5,3,2,1] → ${H.c('g', 'true')}: push 1..4, pop 4, push 5, pop 5, 3, 2, 1.</p><p>popped = [4,3,5,1,2] → ${H.c('r', 'false')}: 1 cannot leave before 2 because 2 is on top of it.</p>`,
+    brute: {
+      why: `<p>Try every interleaving of pushes and pops with backtracking: exponential. The waste: there is never a real choice — if the top equals the next value to pop, popping now is always safe (it could not be popped later if we buried it).</p>`,
+      code: `
+boolean validateBrute(int[] pushed, int[] popped) {
+    return go(pushed, popped, 0, 0, new ArrayDeque<>());
+}
+
+boolean go(int[] pu, int[] po, int i, int j, Deque<Integer> st) {
+    if (j == po.length) return true;
+    if (!st.isEmpty() && st.peek() == po[j]) {            // option 1: pop now
+        int x = st.pop();
+        boolean ok = go(pu, po, i, j + 1, st);
+        st.push(x);
+        if (ok) return true;
+    }
+    if (i < pu.length) {                                   // option 2: push next
+        st.push(pu[i]);
+        boolean ok = go(pu, po, i + 1, j, st);
+        st.pop();
+        if (ok) return true;
+    }
+    return false;
+}`
+    },
+    mcq: { q: 'Why is greedy popping (pop whenever top == popped[j]) always safe?', options: ['Because values are sorted', 'Values are distinct: if we push more on top of it, that value can never come out before them', 'Because the stack is small', 'It is not always safe'], answer: 1, explain: 'With distinct values, delaying the pop only buries the needed value under newer items, which must leave first — that contradicts the popped order.' },
+    hints: [
+      `<p>Aha: simulate the real stack. Push values in order; whenever the top is the next value that must be popped, pop it.</p>`,
+      `<p>Keep a pointer <code>j</code> into <code>popped</code>. After each push: <code>while top == popped[j]</code> → pop, j++.</p>`,
+      `<p>Answer: did we pop everything (<code>j == n</code>, equivalently the stack is empty)? Compare <code>st.peek()</code> (Integer) with an <code>int</code> so Java unboxes, or use an <code>int[]</code> stack.</p>`
+    ],
+    solution: {
+      approach: `<p>Greedy simulation of the stack.</p>`,
+      code: `
+import java.util.*;
+
+class Solution {
+    public boolean validateStackSequences(int[] pushed, int[] popped) {
+        Deque<Integer> st = new ArrayDeque<>();
+        int j = 0;
+        for (int x : pushed) {
+            st.push(x);
+            while (!st.isEmpty() && st.peek() == popped[j]) {   // Integer == int -> unboxed compare
+                st.pop();
+                j++;
+            }
+        }
+        return j == popped.length;
+    }
+
+    public static void main(String[] args) {
+        System.out.println(new Solution().validateStackSequences(new int[]{1, 2, 3, 4, 5}, new int[]{4, 5, 3, 2, 1}));   // true
+        System.out.println(new Solution().validateStackSequences(new int[]{1, 2, 3, 4, 5}, new int[]{4, 3, 5, 1, 2}));   // false
+    }
+}`,
+      complexity: `<p><b>Time O(N)</b>, <b>space O(N)</b>.</p>`
+    }
+  });
+
+  // =====================================================================
+  // PRACTICE ARENA — Hard
+  // =====================================================================
+  practice.push({
+    title: 'Maximal Rectangle',
+    level: 'Hard',
+    tags: ['monotonic stack', 'histogram', 'matrix'],
+    companies: ['Google', 'Amazon', 'Meta'],
+    statement: `<p>Given a binary matrix of <code>'0'</code> and <code>'1'</code> characters, find the largest rectangle containing only 1s and return its area.</p>`,
+    constraints: `1 ≤ rows, cols ≤ 200`,
+    example: `${H.table(['row', 'cells', 'histogram heights'], [['0', '1 0 1 0 0', '1 0 1 0 0'], ['1', '1 0 1 1 1', '2 0 2 1 1'], ['2', '1 1 1 1 1', '3 1 3 2 2'], ['3', '1 0 0 1 0', '4 0 0 3 0']])}<p>Output ${H.c('g', '6')}: rows 1–2 × columns 2–4. In row 2's histogram, height 2 spans columns 2..4 → 2 × 3 = 6.</p>`,
+    brute: {
+      why: `<p>Try every top-left and bottom-right corner and check that the rectangle is all 1s: O(R<sup>3</sup>·C<sup>3</sup>) in the naive form — hopeless at 200 × 200. The waste: rectangles sharing the same bottom row share almost all their work, which the per-row histogram captures.</p>`,
+      code: `
+int maximalRectangleBrute(char[][] m) {
+    int R = m.length, C = R == 0 ? 0 : m[0].length, best = 0;
+    for (int r1 = 0; r1 < R; r1++)
+        for (int c1 = 0; c1 < C; c1++)
+            for (int r2 = r1; r2 < R; r2++)
+                for (int c2 = c1; c2 < C; c2++) {
+                    boolean ok = true;
+                    for (int r = r1; r <= r2 && ok; r++)
+                        for (int c = c1; c <= c2 && ok; c++)
+                            if (m[r][c] != '1') ok = false;
+                    if (ok) best = Math.max(best, (r2 - r1 + 1) * (c2 - c1 + 1));
+                }
+    return best;
+}`
+    },
+    mcq: { q: 'How is heights[c] updated when moving to the next row?', options: ['heights[c] = 1 always', 'heights[c] + 1 if the cell is 1, else 0', 'max(heights[c], 1)', 'heights[c] + cell value, never reset'], answer: 1, explain: 'A 0 breaks the vertical run of 1s, so the bar height resets to 0.' },
+    hints: [
+      `<p>Aha: fix the <b>bottom row</b> of the rectangle. The 1s above each column form a histogram; the best rectangle with that bottom is the largest rectangle in that histogram.</p>`,
+      `<p>Maintain <code>int[] heights</code> across rows (add 1 or reset to 0) and call the O(C) monotonic-stack histogram routine for each row.</p>`,
+      `<p>Total O(R·C). Reuse the sentinel trick (height 0 at index C). Use <code>char</code> comparisons with <code>'1'</code>, not ints.</p>`
+    ],
+    solution: {
+      approach: `<p>Row-by-row histograms + Largest Rectangle in Histogram (Topic 7).</p>`,
+      code: `
+import java.util.*;
+
+class Solution {
+    public int maximalRectangle(char[][] matrix) {
+        if (matrix.length == 0) return 0;
+        int cols = matrix[0].length, best = 0;
+        int[] h = new int[cols];
+        for (char[] row : matrix) {
+            for (int c = 0; c < cols; c++) h[c] = row[c] == '1' ? h[c] + 1 : 0;
+            best = Math.max(best, largest(h));
+        }
+        return best;
+    }
+
+    private int largest(int[] h) {
+        int n = h.length, best = 0;
+        Deque<Integer> st = new ArrayDeque<>();
+        for (int i = 0; i <= n; i++) {
+            int cur = i == n ? 0 : h[i];
+            while (!st.isEmpty() && h[st.peek()] >= cur) {
+                int top = st.pop();
+                int left = st.isEmpty() ? -1 : st.peek();
+                best = Math.max(best, h[top] * (i - left - 1));
+            }
+            st.push(i);
+        }
+        return best;
+    }
+
+    public static void main(String[] args) {
+        char[][] m = { "10100".toCharArray(), "10111".toCharArray(), "11111".toCharArray(), "10010".toCharArray() };
+        System.out.println(new Solution().maximalRectangle(m));   // 6
+    }
+}`,
+      complexity: `<p><b>Time O(R·C)</b>, <b>space O(C)</b>.</p>`,
+      followUps: ['Largest SQUARE of 1s (DP, LC 221).', 'Count all submatrices of 1s (LC 1504) with the same histogram + stack idea.']
+    }
+  });
+
+  practice.push({
+    title: 'Trapping Rain Water (stack method)',
+    level: 'Hard',
+    tags: ['monotonic stack', 'two pointers'],
+    companies: ['Amazon', 'Google', 'Goldman Sachs', 'Meta'],
+    statement: `<p>Given non-negative bar heights (width 1 each), compute how much rain water is trapped between the bars. Solve it with a monotonic stack (layer by layer).</p>`,
+    constraints: `1 ≤ N ≤ 2·10<sup>4</sup>, 0 ≤ height[i] ≤ 10<sup>5</sup>`,
+    example: `${H.arr([0, 1, 0, 2, 1, 0, 1, 3, 2, 1, 2, 1], { label: 'height' })}<p>Output ${H.c('g', '6')}. E.g. the valley at index 5 (height 0) between walls 2 (index 3) and 3 (index 7) holds water in two horizontal layers.</p>`,
+    brute: {
+      why: `<p>For each bar, scan left for the tallest wall and right for the tallest wall; water = <code>min(leftMax, rightMax) − h[i]</code>. O(N<sup>2</sup>). The waste: the same maxima are recomputed for every bar (prefix/suffix max arrays or a stack fix it).</p>`,
+      code: `
+int trapBrute(int[] h) {
+    int water = 0;
+    for (int i = 0; i < h.length; i++) {
+        int lm = 0, rm = 0;
+        for (int j = 0; j <= i; j++) lm = Math.max(lm, h[j]);
+        for (int j = i; j < h.length; j++) rm = Math.max(rm, h[j]);
+        water += Math.min(lm, rm) - h[i];
+    }
+    return water;
+}`
+    },
+    mcq: { q: 'We pop a "floor" bar of height 1. The new top (left wall) has height 2 and the current bar (right wall) has height 3, 2 positions apart (width 1). Water added?', options: ['1 × (2 − 1) = 1', '1 × (3 − 1) = 2', '2 × 1 = 2', '0'], answer: 0, explain: 'Water level is limited by the shorter wall: min(2, 3) − floor 1 = 1, times width (i − left − 1) = 1.' },
+    hints: [
+      `<p>Aha: water fills <b>horizontal layers</b>. When a taller bar arrives, it closes a "valley" whose floor is the popped bar and whose left wall is the new stack top.</p>`,
+      `<p>Decreasing stack of indices. While <code>h[top] &lt; h[i]</code>: pop the floor; if the stack is empty there is no left wall (break); else add <code>(i − left − 1) × (min(h[left], h[i]) − h[floor])</code>.</p>`,
+      `<p>Equal heights give a 0-height layer — harmless. The stack approach is O(N) time and space; the two-pointer approach is O(1) space — mention both.</p>`
+    ],
+    solution: {
+      approach: `<p>Monotonic decreasing stack; each pop measures one horizontal layer of water above the popped floor.</p>`,
+      code: `
+import java.util.*;
+
+class Solution {
+    public int trap(int[] height) {
+        Deque<Integer> st = new ArrayDeque<>();          // indices, heights decreasing
+        int water = 0;
+        for (int i = 0; i < height.length; i++) {
+            while (!st.isEmpty() && height[st.peek()] < height[i]) {
+                int floor = st.pop();                     // bottom of the valley
+                if (st.isEmpty()) break;                  // no left wall: water would spill
+                int left = st.peek();
+                int width = i - left - 1;
+                int level = Math.min(height[left], height[i]) - height[floor];
+                water += width * level;
+            }
+            st.push(i);
+        }
+        return water;
+    }
+
+    public static void main(String[] args) {
+        System.out.println(new Solution().trap(new int[]{0, 1, 0, 2, 1, 0, 1, 3, 2, 1, 2, 1}));   // 6
+        System.out.println(new Solution().trap(new int[]{4, 2, 0, 3, 2, 5}));                     // 9
+    }
+}`,
+      complexity: `<p><b>Time O(N)</b>, <b>space O(N)</b>. Two-pointer version: O(N) time, O(1) space.</p>`,
+      followUps: ['Trapping Rain Water II on a 2D grid (min-heap from the borders, LC 407).', 'Prove the two-pointer version correct.']
+    }
+  });
+
+  practice.push({
+    title: 'Basic Calculator (+, -, parentheses)',
+    level: 'Hard',
+    tags: ['stack', 'expression', 'parsing'],
+    companies: ['Google', 'Meta', 'Amazon', 'Microsoft'],
+    statement: `<p>Evaluate a string expression with non-negative integers, <code>+</code>, <code>-</code>, parentheses and spaces. Unary minus is allowed (e.g. <code>"-(2 + 3)"</code>). Do not use any built-in eval.</p>`,
+    constraints: `1 ≤ s.length ≤ 3·10<sup>5</sup>; the expression is valid; every intermediate value fits in a 32-bit int`,
+    example: `<p><code>"(1+(4+5+2)-3)+(6+8)"</code> → ${H.c('g', '23')}. <code>"- (3 + (4 + 5))"</code> → ${H.c('g', '-12')}.</p>`,
+    brute: {
+      why: `<p>Repeatedly find the innermost parentheses, evaluate the flat expression inside, substitute the number back into the string, repeat. Each substitution rebuilds the string → <b>O(N<sup>2</sup>)</b> for deep nesting, and substituted negatives create awkward <code>"--"</code> sequences. A stack saves the outer state once per <code>(</code> instead.</p>`,
+      code: `
+int calculateBrute(String s) {
+    s = s.replace(" ", "");
+    int close;
+    while ((close = s.indexOf(')')) >= 0) {
+        int open = s.lastIndexOf('(', close);
+        long v = evalFlat(s.substring(open + 1, close));
+        s = s.substring(0, open) + v + s.substring(close + 1);   // may create "--5" or "+-5"
+    }
+    return (int) evalFlat(s);
+}
+
+long evalFlat(String e) {                    // only digits, '+' and '-'
+    long total = 0, num = 0;
+    int sign = 1;
+    boolean inNum = false;
+    for (int i = 0; i < e.length(); i++) {
+        char c = e.charAt(i);
+        if (Character.isDigit(c)) { num = num * 10 + (c - '0'); inNum = true; }
+        else {
+            if (inNum) { total += sign * num; num = 0; inNum = false; sign = 1; }
+            if (c == '-') sign = -sign;      // "--" cancels, "+-" stays negative
+        }
+    }
+    if (inNum) total += sign * num;
+    return total;
+}`
+    },
+    mcq: { q: 'On reading <code>(</code>, what do we push?', options: ['Only the current number', 'The result so far and the sign in front of the (', 'Nothing; recursion is required', 'The index of ('], answer: 1, explain: 'Inside the parentheses we start a fresh result. On ), result = savedResult + savedSign × innerResult.' },
+    hints: [
+      `<p>Aha: with only + and -, an expression is a sum of signed numbers. Parentheses just apply a sign to a whole group.</p>`,
+      `<p>Keep <code>result</code>, <code>sign</code>, <code>num</code>. On <code>(</code>: push result and sign, reset. On <code>)</code>: finish the inner result, then <code>result = popSign × result + popResult</code>.</p>`,
+      `<p>Multi-digit numbers: <code>num = num*10 + d</code>. Spaces: skip. Unary minus is handled automatically because result starts at 0 ("-x" = "0 - x"). Pop order: sign was pushed last, so pop it first.</p>`
+    ],
+    solution: {
+      approach: `<p>Single pass with a stack of (result, sign) frames for each open parenthesis.</p>`,
+      code: `
+import java.util.*;
+
+class Solution {
+    public int calculate(String s) {
+        Deque<Integer> st = new ArrayDeque<>();
+        int result = 0, sign = 1, num = 0;
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (Character.isDigit(c)) {
+                num = num * 10 + (c - '0');
+            } else if (c == '+' || c == '-') {
+                result += sign * num;                 // close the previous number
+                num = 0;
+                sign = (c == '+') ? 1 : -1;
+            } else if (c == '(') {
+                st.push(result);                      // save the outer state
+                st.push(sign);
+                result = 0;
+                sign = 1;
+            } else if (c == ')') {
+                result += sign * num;                 // finish the inner expression
+                num = 0;
+                result *= st.pop();                   // sign in front of '(' (pushed last)
+                result += st.pop();                   // result before '('
+            }                                         // spaces are ignored
+        }
+        return result + sign * num;
+    }
+
+    public static void main(String[] args) {
+        Solution sol = new Solution();
+        System.out.println(sol.calculate("(1+(4+5+2)-3)+(6+8)"));   // 23
+        System.out.println(sol.calculate("- (3 + (4 + 5))"));       // -12
+        System.out.println(sol.calculate(" 2-1 + 2 "));             // 3
+    }
+}`,
+      dry: { head: ['char', 'result', 'sign', 'num', 'stack'], rows: [['-', '0', '-1', '0', '—'], ['(', '0', '1', '0', '0, -1'], ['3', '0', '1', '3', '0, -1'], ['+', '3', '1', '0', '0, -1'], ['(', '0', '1', '0', '0, -1, 3, 1'], ['4 + 5', '4', '1', '5', '…'], [')', '9 → ×1 +3 = 12', '1', '0', '0, -1'], [')', '12 → ×(-1) + 0 = <span class="c-g">-12</span>', '1', '0', '—']] },
+      complexity: `<p><b>Time O(N)</b>, <b>space O(depth of nesting)</b>.</p>`,
+      followUps: ['Add * and / (Basic Calculator II / III): apply * and / immediately, push signed terms.', 'Support variables and return a simplified polynomial (LC 770).']
+    }
+  });
+
+  practice.push({
+    title: 'Longest Valid Parentheses',
+    level: 'Hard',
+    tags: ['stack', 'parentheses', 'dp'],
+    companies: ['Amazon', 'Google', 'ByteDance'],
+    statement: `<p>Given a string of <code>(</code> and <code>)</code>, return the length of the longest <b>contiguous</b> well-formed parentheses substring.</p>`,
+    constraints: `0 ≤ s.length ≤ 3·10<sup>4</sup>`,
+    example: `<p><code>")()())"</code> → ${H.c('g', '4')} for <code>"()()"</code>. <code>"(()"</code> → 2. <code>""</code> → 0.</p>`,
+    brute: {
+      why: `<p>For every start i, extend j with a running balance; whenever balance is 0 the substring is valid, and when it goes negative stop. O(N<sup>2</sup>) = 9·10<sup>8</sup>. The waste: a valid run is rediscovered from every start inside it.</p>`,
+      code: `
+int longestValidBrute(String s) {
+    int best = 0;
+    for (int i = 0; i < s.length(); i++) {
+        int bal = 0;
+        for (int j = i; j < s.length(); j++) {
+            bal += s.charAt(j) == '(' ? 1 : -1;
+            if (bal < 0) break;                        // a ')' with nothing open
+            if (bal == 0) best = Math.max(best, j - i + 1);
+        }
+    }
+    return best;
+}`
+    },
+    mcq: { q: 'Why do we push -1 onto the stack before scanning?', options: ['To avoid an empty-stack exception only', 'It marks "the index just before the current valid run", so length = i − top works from index 0', 'It is the answer for an empty string', 'It counts unmatched )'], answer: 1, explain: 'The stack bottom always holds the last position that cannot be part of a valid run. Starting with -1 lets a run that begins at index 0 be measured as i − (−1).' },
+    hints: [
+      `<p>Aha: store <b>indices</b>. The bottom of the stack is a "barrier": the last unmatched <code>)</code> (or -1). Above it are unmatched <code>(</code>.</p>`,
+      `<p><code>(</code> → push i. <code>)</code> → pop; if the stack becomes empty, push i as the new barrier; else the current valid length is <code>i − peek()</code>.</p>`,
+      `<p>Alternative O(1) space: two counter scans (left→right and right→left). DP also works: <code>dp[i]</code> = longest valid ending at i.</p>`
+    ],
+    solution: {
+      approach: `<p>Stack of indices with a barrier at the bottom; every match measures the run back to the nearest barrier or unmatched (.</p>`,
+      code: `
+import java.util.*;
+
+class Solution {
+    public int longestValidParentheses(String s) {
+        Deque<Integer> st = new ArrayDeque<>();
+        st.push(-1);                                     // barrier before index 0
+        int best = 0;
+        for (int i = 0; i < s.length(); i++) {
+            if (s.charAt(i) == '(') {
+                st.push(i);
+            } else {
+                st.pop();                                // match the latest '(' (or remove barrier)
+                if (st.isEmpty()) st.push(i);            // unmatched ')' becomes the new barrier
+                else best = Math.max(best, i - st.peek());
+            }
+        }
+        return best;
+    }
+
+    public static void main(String[] args) {
+        System.out.println(new Solution().longestValidParentheses(")()())"));   // 4
+        System.out.println(new Solution().longestValidParentheses("(()"));      // 2
+    }
+}`,
+      dry: { head: ['i', 'char', 'action', 'stack', 'best'], rows: [['0', ')', 'pop -1 → empty → push 0', '0', '0'], ['1', '(', 'push', '0 1', '0'], ['2', ')', 'pop 1 → len 2 − 0 = 2', '0', '2'], ['3', '(', 'push', '0 3', '2'], ['4', ')', 'pop 3 → len 4 − 0 = 4', '0', '<span class="c-g">4</span>'], ['5', ')', 'pop 0 → empty → push 5', '5', '4']] },
+      complexity: `<p><b>Time O(N)</b>, <b>space O(N)</b> (O(1) with the two-scan counter method).</p>`
+    }
+  });
+
+  practice.push({
+    title: 'Shortest Subarray with Sum at Least K',
+    level: 'Hard',
+    tags: ['monotonic deque', 'prefix sum'],
+    companies: ['Google', 'Amazon', 'Goldman Sachs'],
+    statement: `<p>Given an integer array <code>nums</code> (values may be <b>negative</b>) and an integer <code>k</code>, return the length of the shortest non-empty contiguous subarray with sum ≥ <code>k</code>, or <code>-1</code>.</p>`,
+    constraints: `1 ≤ N ≤ 10<sup>5</sup>, -10<sup>5</sup> ≤ nums[i] ≤ 10<sup>5</sup>, 1 ≤ k ≤ 10<sup>9</sup>`,
+    example: `<p><code>[2, -1, 2]</code>, k = 3 → ${H.c('g', '3')} (the whole array). <code>[1, 2]</code>, k = 4 → ${H.c('r', '-1')}. Negatives break the normal sliding window, because shrinking the window can <i>increase</i> its sum.</p>`,
+    brute: {
+      why: `<p>Prefix sums + check every pair (i, j): O(N<sup>2</sup>) = 10<sup>10</sup>. The waste: many starting points i are useless — if a later prefix is smaller or equal, it is a better start (shorter and larger difference).</p>`,
+      code: `
+int shortestSubarrayBrute(int[] nums, int k) {
+    int n = nums.length, best = Integer.MAX_VALUE;
+    long[] pre = new long[n + 1];
+    for (int i = 0; i < n; i++) pre[i + 1] = pre[i] + nums[i];
+    for (int i = 0; i < n; i++)
+        for (int j = i + 1; j <= n; j++)
+            if (pre[j] - pre[i] >= k) { best = Math.min(best, j - i); break; }
+    return best == Integer.MAX_VALUE ? -1 : best;
+}`
+    },
+    mcq: { q: 'Deque holds prefix indices with increasing prefix values. Why pop the BACK while pre[back] ≥ pre[j]?', options: ['To keep memory low only', 'j is a later start with a smaller-or-equal prefix: it gives larger sums and shorter subarrays, so back is dominated', 'Because the deque must be sorted by index', 'To find the maximum'], answer: 1, explain: 'For any future end, starting at j beats starting at back: shorter length and at least as large a sum.' },
+    hints: [
+      `<p>Aha: with prefix sums, we need <code>pre[j] − pre[i] ≥ k</code> with the largest i &lt; j. Some i's are dominated and can be discarded forever.</p>`,
+      `<p>Increasing deque of prefix indices. For each j: (1) while <code>pre[j] − pre[front] ≥ k</code>, record <code>j − front</code> and poll the front (it can only give longer answers later); (2) while <code>pre[back] ≥ pre[j]</code>, poll the back; (3) offer j.</p>`,
+      `<p>Use <code>long</code> prefix sums. Include index 0 (pre[0] = 0). Answer -1 if nothing was recorded.</p>`
+    ],
+    solution: {
+      approach: `<p>Monotonic increasing deque over prefix sums: front pops record answers, back pops remove dominated starts.</p>`,
+      code: `
+import java.util.*;
+
+class Solution {
+    public int shortestSubarray(int[] nums, int k) {
+        int n = nums.length;
+        long[] pre = new long[n + 1];
+        for (int i = 0; i < n; i++) pre[i + 1] = pre[i] + nums[i];
+        Deque<Integer> dq = new ArrayDeque<>();      // prefix indices, pre[] increasing
+        int best = n + 1;
+        for (int j = 0; j <= n; j++) {
+            while (!dq.isEmpty() && pre[j] - pre[dq.peekFirst()] >= k) {
+                best = Math.min(best, j - dq.pollFirst());   // a later j would only be longer
+            }
+            while (!dq.isEmpty() && pre[dq.peekLast()] >= pre[j]) {
+                dq.pollLast();                               // dominated start
+            }
+            dq.offerLast(j);
+        }
+        return best <= n ? best : -1;
+    }
+
+    public static void main(String[] args) {
+        System.out.println(new Solution().shortestSubarray(new int[]{2, -1, 2}, 3));   // 3
+        System.out.println(new Solution().shortestSubarray(new int[]{1, 2}, 4));       // -1
+        System.out.println(new Solution().shortestSubarray(new int[]{84, -37, 32, 40, 95}, 167));   // 3
+    }
+}`,
+      dry: { head: ['j', 'pre[j]', 'front pops (answer)', 'back pops', 'deque'], rows: [['0', '0', '—', '—', '0'], ['1', '2', '—', '—', '0 1'], ['2', '1', '—', '1 (2 ≥ 1)', '0 2'], ['3', '3', '0 → len 3', '—', '<span class="c-g">2 3</span>']] },
+      complexity: `<p><b>Time O(N)</b> (each index enters and leaves the deque once), <b>space O(N)</b>.</p>`,
+      followUps: ['Why does the plain sliding window fail with negative numbers?', 'Constrained Subsequence Sum (LC 1425) — DP + monotonic deque.']
+    }
+  });
+
+  // =====================================================================
+  // QUIZ
+  // =====================================================================
+  quiz.push(
+    { q: 'You push 1, 2, 3 into a stack and offer 1, 2, 3 into a queue, then remove one item from each. What comes out?', options: ['Stack 1, queue 1', 'Stack 3, queue 1', 'Stack 3, queue 3', 'Stack 1, queue 3'], answer: 1, explain: 'Stack = LIFO (newest, 3). Queue = FIFO (oldest, 1).' },
+    { q: 'Why is <code>ArrayDeque</code> preferred over <code>java.util.Stack</code>?', options: ['Stack cannot store integers', 'Stack is synchronized (slower) and extends Vector, exposing middle access', 'ArrayDeque allows null values', 'Stack has O(N) push'], answer: 1, explain: 'Stack is a legacy synchronized Vector subclass. ArrayDeque is an unsynchronized circular buffer with O(1) operations at both ends (and it rejects null).' },
+    { q: 'What does <code>new ArrayDeque&lt;Integer&gt;().poll()</code> return?', options: ['Throws NoSuchElementException', 'null', '0', '-1'], answer: 1, explain: 'poll/peek return null on an empty deque; pop/remove/element throw.' },
+    { q: 'In bracket matching, the string is <code>"(]"</code>. When <code>]</code> arrives, the stack top is <code>(</code>. Result?', options: ['Push ] and continue', 'Invalid immediately', 'Pop ( and continue', 'Valid'], answer: 1, explain: 'A closer must match the most recent opener. ( cannot be closed by ].' },
+    { q: 'Postfix <code>6 2 3 + -</code> evaluates to:', options: ['1', '7', '-1', '11'], answer: 0, explain: '2 3 + = 5; then 6 5 - = 1 (first pop is the right operand).' },
+    { q: 'For "next greater element to the right", the stack (bottom→top) values are always:', options: ['Increasing', 'Non-increasing (decreasing)', 'Random', 'Sorted by index descending'], answer: 1, explain: 'A bigger arrival pops all smaller waiting values, so the ones that remain form a non-increasing staircase.' },
+    { q: 'The monotonic stack loop has a <code>while</code> inside a <code>for</code>. Total time for N elements?', options: ['O(N²)', 'O(N log N)', 'O(N)', 'O(N√N)'], answer: 2, explain: 'Each index is pushed once and popped at most once, so the while loop runs at most N times in total.' },
+    { q: 'Largest rectangle: bar <code>top</code> is popped at index <code>i</code> and the new stack top is <code>L</code>. Width?', options: ['i − top', 'i − L − 1', 'i − L + 1', 'top − L'], answer: 1, explain: 'The rectangle spans strictly between the nearest smaller bars L and i.' },
+    { q: 'Queue from two stacks: when should you move items from <code>in</code> to <code>out</code>?', options: ['After every push', 'Before every pop', 'Only when out is empty', 'Never'], answer: 2, explain: 'Transferring into a non-empty out would put newer items above older ones and break FIFO order.' },
+    { q: 'Sliding window maximum, k = 3. Deque (front→back, index:value) = <code>3:8, 5:4</code>; i = 6 arrives with value 5. Deque after processing?', options: ['3:8, 5:4, 6:5', '3:8, 6:5', '6:5', '5:4, 6:5'], answer: 2, explain: 'The window is now [4..6]. Front index 3 ≤ 6 − 3 = 3, so it has expired → pollFirst (even though 8 is big). Then back value 4 ≤ 5 → pollLast. Offer 6 → deque = 6:5, window max 5.' },
+    { q: 'Stock span with prices <code>[100, 80, 60, 70]</code>. Span of day 3 (price 70)?', options: ['1', '2', '3', '4'], answer: 1, explain: '60 ≤ 70 is popped; previous greater is 80 at index 1 → span = 3 − 1 = 2.' },
+    { q: 'Which clue most strongly suggests a monotonic deque rather than a monotonic stack?', options: ['"next greater element"', '"maximum of every window of size K"', '"valid parentheses"', '"evaluate postfix"'], answer: 1, explain: 'Window problems need to drop expired elements from the old end and dominated ones from the new end — both ends → deque.' }
+  );
+
+  // =====================================================================
+  // INTERVIEW Q&A
+  // =====================================================================
+  interview.push(
+    { q: 'Stack vs queue: explain the difference and give two real uses of each.', level: 'B', a: `<p>A <b>stack</b> is LIFO — the last item added is the first removed (pile of plates). Uses: function call stack, undo/redo, browser back button, DFS, bracket matching, expression evaluation. A <b>queue</b> is FIFO — the oldest item leaves first (ticket line). Uses: BFS, task schedulers, printer spooling, message queues (Kafka/SQS consumers), rate-limiting buffers. Both support O(1) insert/remove at their ends; the difference is only <i>which</i> end you remove from.</p>`, followUps: ['What is a deque and when would you need one?', 'How does the JVM use a stack?'] },
+    { q: 'How would you implement a stack and a queue in Java, and why not use <code>Stack</code> or <code>LinkedList</code>?', level: 'B', a: `<p>Use <code>Deque&lt;Integer&gt; st = new ArrayDeque&lt;&gt;()</code> with <code>push/pop/peek</code> for a stack and <code>Queue&lt;Integer&gt; q = new ArrayDeque&lt;&gt;()</code> with <code>offer/poll/peek</code> for a queue. <code>Stack</code> extends <code>Vector</code>: every call is synchronized (unneeded overhead) and it exposes index access that breaks LIFO. <code>LinkedList</code> allocates a node per element and has poor cache locality. <code>ArrayDeque</code> is a resizable circular array: O(1) amortized at both ends, compact, fast. One caveat: it rejects <code>null</code>.</p>`, followUps: ['What happens when ArrayDeque is full?', 'Which methods throw on empty and which return null?'] },
+    { q: 'Walk me through checking whether a bracket string is valid. What are the failure cases?', level: 'B', a: `<p>Scan left to right with a stack of openers. Opener → push. Closer → if the stack is empty, invalid (nothing to close); else pop and check the popped opener matches the closer's type, otherwise invalid. At the end the stack must be empty, otherwise some opener was never closed. Failure cases: <code>")("</code> (empty-stack closer), <code>"(]"</code> (wrong type), <code>"([)]"</code> (wrong order), <code>"(("</code> (leftovers). Time O(N), space O(N); with a single bracket type a counter suffices (O(1) space).</p>`, followUps: ['How would you return the index of the first error?', 'What changes if there is a wildcard * that can be ( ) or empty?'] },
+    { q: 'Design a stack that returns the minimum in O(1). What variations do you know?', level: 'I', a: `<p>Store with every element the minimum of itself and everything below it — e.g. a stack of <code>int[]{value, minSoFar}</code>. Push computes <code>min(x, top.min)</code>; pop needs no work because the entry below already holds its own min; getMin reads the top. All O(1), space 2N. Variations: (1) two stacks where the min stack is pushed only when <code>x ≤ currentMin</code> (the ≤ keeps duplicates), saving space for random data; (2) an encoded single-variable version storing <code>2x − min</code> when a new min arrives, which needs <code>long</code> to avoid overflow. The trick works because a stack's lower elements never change while the top exists.</p>`, followUps: ['How would you build a Max Stack with popMax()?', 'How do you get a queue with O(1) getMin?'] },
+    { q: 'Explain the monotonic stack. Why is it O(N) even though there is a nested loop?', level: 'I', a: `<p>A monotonic stack keeps indices whose values are sorted (increasing or decreasing) from bottom to top. For "next greater", each new element pops every smaller waiting element — it is their answer — and then waits itself, keeping the stack decreasing. Although the <code>while</code> sits inside a <code>for</code>, each index is pushed exactly once and popped at most once, so the total number of pops over the whole run is ≤ N. Total work ≤ 2N → O(N). Formally: potential = stack size; each step has amortized cost 2.</p>`, followUps: ['Which comparison do you use for strictly greater vs greater-or-equal?', 'How do you handle a circular array?'] },
+    { q: 'Give the four variants (next/previous × greater/smaller) and how the code differs.', level: 'I', a: `<p>Scanning left to right: <b>next greater</b> — pop while <code>a[top] &lt; x</code>, popped elements get x; stack decreasing. <b>Next smaller</b> — pop while <code>a[top] &gt; x</code>; stack increasing. <b>Previous greater</b> — pop while <code>a[top] ≤ x</code>, then the surviving top is the answer for x. <b>Previous smaller</b> — pop while <code>a[top] ≥ x</code>, surviving top is the answer. Rule of thumb: "next" answers come from <i>popped</i> elements; "previous" answers come from the <i>survivor</i>. Flip strict/non-strict depending on whether equal values should count.</p>`, followUps: ['Get both previous and next smaller in a single pass.', 'Why store indices rather than values?'] },
+    { q: 'Solve Largest Rectangle in Histogram in O(N) and explain correctness.', level: 'A', a: `<p>The best rectangle uses some bar as its shortest bar; for that bar, the rectangle extends to the nearest strictly smaller bar on each side, so area = <code>h[i] × (right − left − 1)</code>. Keep an increasing stack of indices. When <code>h[i] ≤ h[top]</code>, the top bar's right boundary is i; pop it, its left boundary is the new top (or -1); compute its area. Append a sentinel bar of height 0 at index n to flush the stack. Each bar is pushed/popped once → O(N) time, O(N) space. With duplicates, earlier equal bars get underestimated widths but the last one of the run measures the full width, so the max is still right.</p>`, followUps: ['Extend to Maximal Rectangle in a binary matrix.', 'When do you need long for the area?'] },
+    { q: 'Implement a queue with two stacks. Prove the amortized complexity.', level: 'I', a: `<p>Stacks <code>in</code> and <code>out</code>. Push goes to <code>in</code>. Pop/peek: if <code>out</code> is empty, move everything from <code>in</code> to <code>out</code> (reversing the order so the oldest is on top), then pop/peek <code>out</code>. Each element is pushed to in once, moved once (pop + push) and popped from out once: at most 4 stack operations over its lifetime, so N queue operations cost O(N) total → amortized O(1). Accounting view: charge 3 credits per push; 2 are saved to pay for the later transfer. A single pop can still be O(N), which matters for latency-sensitive systems.</p>`, followUps: ['Why must the transfer only happen when out is empty?', 'Can you implement a stack with queues in amortized O(1)?'] },
+    { q: 'How does a monotonic deque solve sliding window maximum? Compare with a heap.', level: 'A', a: `<p>Keep a deque of indices with decreasing values. For each i: drop the front if it left the window (<code>front ≤ i − k</code>); drop back indices whose values are ≤ a[i] because a newer, bigger value dominates them forever; offer i; once <code>i ≥ k − 1</code>, the front is the window max. Each index enters and leaves once → O(N), space O(k). A max-heap with lazy deletion works in O(N log N) and keeps dominated elements around; a <code>TreeMap</code> of counts is O(N log k). The deque is optimal and simpler once you understand the dominance argument.</p>`, followUps: ['Longest subarray with max − min ≤ limit.', 'Where does a monotonic deque appear inside DP?'] },
+    { q: 'How do you evaluate an infix expression like <code>3 + 4 * (2 - 1)</code>?', level: 'A', a: `<p>Option 1: convert to postfix with Shunting-Yard (operands to output; operators wait on a stack and pop those with higher precedence, or equal precedence if left-associative; <code>(</code> is a barrier; <code>)</code> pops to the matching <code>(</code>), then evaluate postfix with a number stack (operator pops b then a, pushes a op b). Option 2: evaluate directly with two stacks (operands and operators), applying an operator whenever Shunting-Yard would output it. Watch for multi-digit numbers, unary minus, right-associative <code>^</code>, integer division truncation and overflow. O(N) time and space. Never use a script-engine eval on user input.</p>`, followUps: ['How would you build an expression tree?', 'How do you detect a unary minus?'] },
+    { q: 'Your recursive DFS throws StackOverflowError on a 10<sup>5</sup>-node chain. What do you do?', level: 'I', a: `<p>The JVM thread stack (often 512 KB–1 MB by default) holds one frame per recursive call, so deep recursion overflows. Fixes: (1) rewrite with an explicit <code>ArrayDeque</code> stack on the heap — push the start node, loop pop/process/push neighbours (for exact pre/post-order you may push (node, state) pairs); (2) run the recursion in a <code>new Thread(null, task, "dfs", 1 &lt;&lt; 26)</code> with a bigger stack size; (3) restructure the algorithm (BFS, union-find) if order does not matter. Option 1 is the robust production answer.</p>`, followUps: ['How do you do an iterative post-order traversal?', 'Why might the iterative DFS visit neighbours in a different order?'] },
+    { q: 'What clues in a problem statement point to stacks, monotonic stacks or deques?', level: 'I', a: `<p><b>Stack:</b> "valid/balanced", "nested", "undo", "most recent", "evaluate expression", "decode k[...]", "simplify path", "collisions", or recursion that may be too deep. <b>Monotonic stack:</b> "next/previous greater or smaller", "days until warmer", "span", "how far can it extend", "largest rectangle", "sum of subarray minimums", "remove k digits to make smallest", N ≤ 10<sup>5</sup> with an obvious O(N<sup>2</sup>) "scan right for each element". <b>Queue:</b> "level by level", "in arrival order", "shortest steps" (BFS). <b>Monotonic deque:</b> "max/min of every window of size K", "longest subarray with max − min ≤ limit", "shortest subarray with sum ≥ K with negatives", DP with a sliding max transition.</p>`, followUps: ['Name a problem that looks like a sliding window but needs a deque.', 'What changes when the array is circular?'] },
+    { q: 'Design a bounded, thread-safe producer–consumer queue. Which Java classes would you use and why?', level: 'E', a: `<p>For bounded blocking semantics use <code>ArrayBlockingQueue</code> (single lock, fixed array, fair option) or <code>LinkedBlockingQueue</code> (separate put/take locks, higher throughput, optionally bounded). Producers call <code>put</code> (blocks when full = back-pressure), consumers <code>take</code> (blocks when empty); use <code>offer/poll</code> with timeouts to avoid hanging forever. For non-blocking high-throughput cases, <code>ConcurrentLinkedQueue</code>/<code>ConcurrentLinkedDeque</code> (lock-free CAS), or an LMAX Disruptor-style ring buffer when latency matters. Never wrap <code>ArrayDeque</code> in ad-hoc synchronization when the standard classes exist; and remember that check-then-act sequences need a single lock even on synchronized collections.</p>`, followUps: ['How does a lock-free single-producer single-consumer ring buffer work?', 'How do you shut down consumers cleanly (poison pill)?'] },
+    { q: 'An AI assistant generated a monotonic stack solution that passes the samples. How do you review it before trusting it?', level: 'A', a: `<p>(1) Restate the invariant and check the code maintains it: stack order, what is stored (indices vs values), and whether answers come from popped elements or survivors. (2) Check the comparison: strict vs non-strict against the problem's definition, especially with duplicates. (3) Check boundaries: empty stack defaults (-1, n, 0), the sentinel or final flush, window expiry (<code>≤ i − k</code>), circular second lap. (4) Check types: <code>Integer ==</code> comparisons, int overflow in areas/sums, modulo. (5) Run a differential test: a brute force O(N<sup>2</sup>) on thousands of small random arrays including duplicates, all-equal, increasing and decreasing inputs. Only then trust it.</p>`, followUps: ['Write the random test harness in 5 lines.', 'Which bug do models make most often on Sum of Subarray Minimums?'] }
+  );
+
   registerModule({
     id: 'dsa13',
     title: 'Stacks & Queues',
