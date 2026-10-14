@@ -1676,4 +1676,367 @@ class Solution:
       }
     }]
   });
+
+  // =====================================================================
+  // TOPIC 6 — Suffix automaton (intro)
+  // =====================================================================
+  topics.push({
+    title: 'Suffix Automaton (Intro): A Tiny Machine That Knows Every Substring',
+    analogy: `<p><b>Think of a maze whose doors are labelled with letters.</b> You enter at the start and spell a word by walking through doors. The suffix automaton is built so that <b>you can walk all the way</b> exactly when the word you spelled is a substring of s — and it uses at most <b>2N rooms</b>, even though s has about N<sup>2</sup>/2 substrings.</p>
+      <p>How can so few rooms hold so many words? Rooms are shared by words that “end in exactly the same places” in s. In <code>abcbc</code>, the words <code>c</code> and <code>bc</code> both end at positions 2 and 4 — so they live in the <b>same room</b>. It is like a school grouping students by the exact set of buses they can take: students with identical bus sets share one homeroom.</p>`,
+    explain: `<h4>1. What it is</h4>
+      <p>The <b>suffix automaton (SAM)</b> of s is the smallest deterministic automaton that accepts every suffix of s; following edges from the start state, a word can be spelled ⇔ it is a <b>substring</b> of s. Facts: ≤ <b>2N − 1</b> states, ≤ <b>3N − 4</b> transitions, built <b>online</b> (one character at a time) in O(N) for a fixed alphabet.</p>
+      <h4>2. endpos classes — the grouping rule</h4>
+      <p>endpos(w) = set of positions where an occurrence of w <b>ends</b>. Substrings with the same endpos share a state. For s = <code>abcbc</code> (positions 0..4):</p>
+      ${H.table(['state', 'len', 'link', 'substrings in this state', 'endpos'], [
+        ['0', '0', '−', '(empty)', 'all'],
+        ['1', '1', '0', 'a', '{0}'],
+        ['5', '1', '0', 'b', '{1, 3}'],
+        ['7', '2', '0', H.c('g', 'bc, c'), '{2, 4}'],
+        ['2', '2', '5', 'ab', '{1}'],
+        ['3', '3', '7', 'abc', '{2}'],
+        ['4', '4', '5', 'abcb, bcb, cb', '{3}'],
+        ['6', '5', '7', 'abcbc, bcbc, cbc', '{4}']
+      ])}
+      <p>Inside one state, the strings are suffixes of each other with consecutive lengths <b>(len(link), len]</b>. The <b>suffix link</b> points to the state of the next-shorter suffix that ends in <i>more</i> places. Suffix links form a tree (like Aho–Corasick’s fail tree).</p>
+      <h4>3. Building it: extend(c) in plain words</h4>
+      <ol>
+        <li>Create state <b>cur</b> with len = len(last) + 1 (the whole new prefix).</li>
+        <li>Walk suffix links from <b>last</b>; every state p with <b>no edge c</b> gets <code>p --c--&gt; cur</code>.</li>
+        <li>If we walked past the root: <code>link(cur) = root</code>.</li>
+        <li>Else p already has an edge c to q. If <code>len(p) + 1 == len(q)</code>, q is a perfect fit: <code>link(cur) = q</code>.</li>
+        <li>Otherwise q holds strings that are “too long”: <b>clone</b> q into a state with len(p) + 1 (same edges, same link), redirect p’s chain of c-edges from q to the clone, and set <code>link(q) = link(cur) = clone</code>.</li>
+      </ol>
+      <h4>4. What you can answer with it</h4>
+      ${H.table(['Question', 'How', 'Time'], [
+        ['Is w a substring?', 'walk w from the root', 'O(|w|)'],
+        ['Number of distinct substrings', 'Σ over states v ≠ 0 of len(v) − len(link(v))', 'O(N)'],
+        ['Occurrences of each substring', 'cnt = 1 on non-clone states, then add cnt up the link tree (longest first)', 'O(N)'],
+        ['Longest common substring of s and t', 'walk t; on a missing edge follow suffix links (like Aho–Corasick)', 'O(|s| + |t|)'],
+        ['k-th lexicographic distinct substring', 'count paths from each state (DAG DP), then walk', 'O(N·σ)']
+      ])}`,
+    clues: [
+      '"process the string <b>online</b>, one character at a time" + substring questions after each append → suffix automaton (SAM is built incrementally).',
+      '"number of <b>distinct</b> substrings" (also after every prefix) → Σ len(v) − len(link(v)); the increment after adding char i is len(cur) − len(link(cur)).',
+      '"<b>longest common substring</b> of two strings", |s|, |t| ≤ 10<sup>6</sup> → SAM of one, walk the other, O(|s| + |t|).',
+      '"how many times does each substring occur", "substring occurring ≥ k times with max length·count" → SAM + endpos sizes via the link tree.',
+      '"k-th smallest distinct substring", "count paths in the substring DAG" → SAM is a DAG; DP over it.',
+      'Memory budget allows ~2N states × σ edges, and you want deterministic results (no hashing).'
+    ],
+    code: [`
+      class SuffixAutomaton {
+          final int[] len, link, firstPos;
+          final int[][] next;
+          final boolean[] isClone;
+          int size, last;
+
+          SuffixAutomaton(String s) {
+              int cap = 2 * Math.max(1, s.length());            // at most 2N - 1 states
+              len = new int[cap]; link = new int[cap]; firstPos = new int[cap];
+              isClone = new boolean[cap];
+              next = new int[cap][26];
+              for (int[] row : next) Arrays.fill(row, -1);
+              link[0] = -1; size = 1; last = 0;
+              for (int i = 0; i < s.length(); i++) extend(s.charAt(i) - 'a', i);
+          }
+
+          private void extend(int c, int pos) {
+              int cur = size++;
+              len[cur] = len[last] + 1;
+              firstPos[cur] = pos;
+              int p = last;
+              while (p != -1 && next[p][c] == -1) { next[p][c] = cur; p = link[p]; }   // new edges into cur
+              if (p == -1) link[cur] = 0;                                              // case 1: fell off root
+              else {
+                  int q = next[p][c];
+                  if (len[p] + 1 == len[q]) link[cur] = q;                             // case 2: perfect fit
+                  else {                                                               // case 3: clone q
+                      int clone = size++;
+                      len[clone] = len[p] + 1;
+                      next[clone] = next[q].clone();
+                      link[clone] = link[q];
+                      firstPos[clone] = firstPos[q];
+                      isClone[clone] = true;
+                      while (p != -1 && next[p][c] == q) { next[p][c] = clone; p = link[p]; }
+                      link[q] = clone;
+                      link[cur] = clone;
+                  }
+              }
+              last = cur;
+          }
+
+          boolean contains(String w) {
+              int v = 0;
+              for (char ch : w.toCharArray()) { v = next[v][ch - 'a']; if (v == -1) return false; }
+              return true;
+          }
+
+          long distinctSubstrings() {
+              long total = 0;
+              for (int v = 1; v < size; v++) total += len[v] - len[link[v]];
+              return total;
+          }
+
+          // occurrences of w = |endpos| of its state
+          long occurrences(String w) {
+              int n = size;
+              long[] cnt = new long[n];
+              for (int v = 1; v < n; v++) if (!isClone[v]) cnt[v] = 1;          // each prefix end is one position
+              Integer[] order = new Integer[n];
+              for (int v = 0; v < n; v++) order[v] = v;
+              Arrays.sort(order, (a, b) -> len[b] - len[a]);                    // longest first
+              for (int v : order) if (link[v] >= 0) cnt[link[v]] += cnt[v];
+              int v = 0;
+              for (char ch : w.toCharArray()) { v = next[v][ch - 'a']; if (v == -1) return 0; }
+              return cnt[v];
+          }
+
+          public static void main(String[] args) {
+              SuffixAutomaton sam = new SuffixAutomaton("abcbc");
+              System.out.println("states = " + sam.size);                       // 8
+              System.out.println(sam.distinctSubstrings());                     // 12
+              System.out.println(sam.contains("cbc") + " " + sam.contains("ca")); // true false
+              System.out.println(sam.occurrences("bc"));                        // 2
+          }
+      }`, { lang: 'python', run: true, title: 'Suffix automaton in Python (runnable)', code: `
+class SAM:
+    def __init__(self, s):
+        self.len, self.link, self.next = [0], [-1], [{}]
+        self.last = 0
+        for ch in s:
+            self.extend(ch)
+
+    def extend(self, c):
+        cur = len(self.len)
+        self.len.append(self.len[self.last] + 1); self.link.append(-1); self.next.append({})
+        p = self.last
+        while p != -1 and c not in self.next[p]:
+            self.next[p][c] = cur
+            p = self.link[p]
+        if p == -1:
+            self.link[cur] = 0
+        else:
+            q = self.next[p][c]
+            if self.len[p] + 1 == self.len[q]:
+                self.link[cur] = q
+            else:
+                clone = len(self.len)
+                self.len.append(self.len[p] + 1); self.link.append(self.link[q]); self.next.append(dict(self.next[q]))
+                while p != -1 and self.next[p].get(c) == q:
+                    self.next[p][c] = clone
+                    p = self.link[p]
+                self.link[q] = self.link[cur] = clone
+        self.last = cur
+
+    def distinct(self):
+        return sum(self.len[v] - self.len[self.link[v]] for v in range(1, len(self.len)))
+
+def lcs(s, t):
+    a = SAM(s)
+    v = l = best = 0
+    for c in t:
+        while v and c not in a.next[v]:
+            v = a.link[v]
+            l = a.len[v]
+        if c in a.next[v]:
+            v = a.next[v][c]
+            l += 1
+        best = max(best, l)
+    return best
+
+print("states:", len(SAM("abcbc").len), " distinct:", SAM("abcbc").distinct())   # 8, 12
+print("distinct('aaaa') =", SAM("aaaa").distinct())                              # 4
+print("LCS =", lcs("abcbc", "bcbcab"))                                           # 4 (bcbc)
+` }],
+    codeTitle: ['Suffix automaton: build, contains, distinct, occurrences (Java)', 'Python version + longest common substring (runnable)'],
+    viz: {
+      title: 'Suffix automaton built one letter at a time',
+      input: 'abcbc',
+      inputLabel: 'Lowercase word (max 8 letters)',
+      gen: function (input) {
+        var s = readWord(input, 'abcbc', 8, 'the word');
+        var n = s.length, st = [{ len: 0, link: -1, next: {}, fp: -1, clone: false }], last = 0, frames = [];
+        function cls(v) {
+          if (v === 0) return '(empty)';
+          var lng = s.slice(st[v].fp - st[v].len + 1, st[v].fp + 1), out = [];
+          for (var L = st[v].len; L > st[st[v].link].len; L--) out.push(lng.slice(lng.length - L));
+          return out.join(', ');
+        }
+        function rows() {
+          return st.map(function (v, i) {
+            return [i + (v.clone ? ' (clone)' : ''), v.len, v.link < 0 ? '—' : v.link, Object.keys(v.next).sort().map(function (c) { return c + '→' + v.next[c]; }).join(' ') || '—', cls(i)];
+          });
+        }
+        function graph(hl, ehl) {
+          var lanes = {}, nodes = st.map(function (v, i) {
+            var y;
+            if (i === 0) y = 22;
+            else if (!v.clone) y = v.len % 2 ? 36 : 12;
+            else { lanes[v.len] = (lanes[v.len] || 0) + 1; y = 48 + 6 * (lanes[v.len] - 1); }
+            return { id: 's' + i, label: String(i), x: 5 + v.len * (88 / Math.max(1, n)), y: y };
+          });
+          var edges = [];
+          st.forEach(function (v, i) { Object.keys(v.next).sort().forEach(function (c) { edges.push(['s' + i, 's' + v.next[c], c]); }); });
+          return { type: 'graph', label: 'automaton (x-position = len; clones on the bottom lane)', directed: true, height: 62, nodes: nodes, edges: edges, hl: hl || {}, ehl: ehl || {} };
+        }
+        frames.push({ narr: 'Start with just the root (state 0, the empty string). We will add the letters of <b>' + H.esc(s) + '</b> one by one; after each step the automaton recognises every substring of the prefix read so far.', parts: [
+          graph({ s0: 'cur' }),
+          { type: 'table', label: 'states', columns: ['state', 'len', 'link', 'edges', 'substrings in state'], rows: rows() }
+        ] });
+        for (var i = 0; i < n; i++) {
+          var c = s[i], cur = st.length;
+          st.push({ len: st[last].len + 1, link: -1, next: {}, fp: i, clone: false });
+          var p = last, given = [], ehl = {};
+          while (p !== -1 && st[p].next[c] === undefined) { st[p].next[c] = cur; given.push(p); ehl['s' + p + '-s' + cur] = 'ok'; p = st[p].link; }
+          var hlA = {}; hlA['s' + cur] = 'ok';
+          var rowHl = {}; rowHl[cur] = 'ok';
+          var msg = 'Read <code>' + c + '</code> (prefix <b>' + H.esc(s.slice(0, i + 1)) + '</b>). Create state <b>' + cur + '</b> with len = ' + st[cur].len + '. Walk suffix links from last = ' + last + ': state(s) ' + given.join(', ') + ' had no “' + c + '” edge → add edges into ' + cur + '.';
+          var how;
+          if (p === -1) { st[cur].link = 0; how = 'We fell off past the root → no shorter suffix is already known: <b>link(' + cur + ') = 0</b>.'; }
+          else {
+            var q = st[p].next[c];
+            if (st[p].len + 1 === st[q].len) { st[cur].link = q; how = 'Stopped at state ' + p + ', which already has “' + c + '” → ' + q + '. len(' + p + ') + 1 = ' + st[q].len + ' = len(' + q + ') → perfect fit: <b>link(' + cur + ') = ' + q + '</b>.'; hlA['s' + q] = 'sel'; }
+            else {
+              var clone = st.length, redirected = [];
+              st.push({ len: st[p].len + 1, link: st[q].link, next: cp(st[q].next), fp: st[q].fp, clone: true });
+              while (p !== -1 && st[p].next[c] === q) { st[p].next[c] = clone; redirected.push(p); p = st[p].link; }
+              st[q].link = clone; st[cur].link = clone;
+              how = 'Stopped at a state with “' + c + '” → ' + q + ', but len(' + q + ') = ' + st[q].len + ' is too long (state ' + q + ' mixes strings with different endpos). <span class="c-p"><b>Clone</b> ' + q + ' → new state ' + clone + '</span> with len ' + st[clone].len + ', copy its edges, redirect “' + c + '” edges of state(s) ' + redirected.join(', ') + ' to the clone, and set link(' + q + ') = link(' + cur + ') = ' + clone + '.';
+              hlA['s' + clone] = 'sel'; hlA['s' + q] = 'bad'; rowHl[clone] = 'sel'; rowHl[q] = 'bad';
+            }
+          }
+          frames.push({ narr: msg, parts: [graph(hlA, ehl), { type: 'table', label: 'states', columns: ['state', 'len', 'link', 'edges', 'substrings in state'], rows: rows(), hl: rowHl }] });
+          frames.push({ narr: how + ' New distinct substrings created by this letter = len(cur) − len(link(cur)) = ' + st[cur].len + ' − ' + st[st[cur].link].len + ' = <b>' + (st[cur].len - st[st[cur].link].len) + '</b>.', parts: [
+            graph(hlA),
+            { type: 'table', label: 'states', columns: ['state', 'len', 'link', 'edges', 'substrings in state'], rows: rows(), hl: rowHl },
+            { type: 'vars', vals: { last: cur, states: st.length, 'limit 2N−1': 2 * (i + 1) - 1 } }
+          ] });
+          last = cur;
+        }
+        var total = 0, contrib = [];
+        st.forEach(function (v, i) { if (i) { total += v.len - st[v.link].len; contrib.push(v.len - st[v.link].len); } });
+        frames.push({ narr: 'Finished: <b>' + st.length + '</b> states for a string of length ' + n + ' (≤ 2N − 1 = ' + (2 * n - 1) + '). Every substring is one path from the root. Distinct substrings = Σ (len − len(link)) = <b>' + total + '</b>.', parts: [
+          graph({}),
+          { type: 'bars', label: 'len(v) − len(link(v)) for states 1..' + (st.length - 1), values: contrib, idxLabels: contrib.map(function (_, j) { return 's' + (j + 1); }) },
+          { type: 'vars', vals: { states: st.length, 'distinct substrings': total, 'all (i,j) pairs': n * (n + 1) / 2 }, hl: { 'distinct substrings': 'sel' } }
+        ] });
+        return frames;
+      }
+    },
+    examples: [
+      { title: '“abbb” needs clones', html: `<p>Adding the 3rd letter (<code>b</code> of <code>abb</code>): the walk stops at the root, which has “b” → state 2 (len 2, strings <code>ab, b</code>). But len(root) + 1 = 1 ≠ 2: <code>b</code> now ends at positions {1, 2} while <code>ab</code> ends only at {1}. So state 2 is split: a clone with len 1 takes <code>b</code>. Final SAM: 7 states, distinct substrings = 7 (a, b, ab, bb, abb, bbb, abbb).</p>` },
+      { title: 'Counting occurrences of “bc” in “abcbc”', html: `<p>Non-clone states (one per prefix end) start with cnt = 1: states 1, 2, 3, 4, 6. Push counts up suffix links, longest first: 6 → 7, 4 → 5, 3 → 7, 2 → 5. State 7 (<code>bc, c</code>) gets 1 + 1 = <b>2</b> → “bc” occurs twice (positions 1 and 3). ✔</p>` },
+      { title: 'Longest common substring walk', html: `<p>SAM of s = <code>abcbc</code>, walk t = <code>bcbcab</code>: b → (5, l=1), c → (7, 2), b → (4, 3), c → (6, <b>4</b>), a: no edge → link 7 (l = 2) → link 0 (l = 0) → edge a → (1, 1), b → (2, 2). Best = <b>4</b> = <code>bcbc</code>. Each fallback shortens l, each step adds 1 → O(|t|).</p>` },
+      { title: 'Distinct substrings after every prefix', html: `<p>When the i-th letter arrives, exactly len(cur) − len(link(cur)) new distinct substrings appear (the new suffixes not seen before). For <code>abcbc</code> the increments are 1, 2, 3, 3, 3 → running totals 1, 3, 6, 9, <b>12</b>. A suffix array would have to be rebuilt; the SAM answers online.</p>` }
+    ],
+    deepDive: `<p><b>Why ≤ 2N − 1 states.</b> The endpos sets form a laminar family (two sets are either disjoint or nested), i.e. a tree whose leaves are at most N single positions; a tree with ≤ N leaves where every internal node has ≥ 2 children (or adds a new position) has ≤ 2N − 1 nodes. Transitions ≤ 3N − 4 by a spanning-tree argument. Construction is amortised O(N) for constant σ: the clone-redirect loop and the edge-adding loop are paid for by how the depth of <code>last</code> in the link tree changes.</p>
+      <p><b>Relation to other structures.</b> The suffix-link tree of the SAM of s is the <b>suffix tree of reverse(s)</b>. Built over a set of strings with separators (or a “generalised SAM” built on a trie), it answers multi-string questions such as the longest substring common to all k strings. Compared with SA + LCP: SAM is online and O(N) but uses σ-wide transitions (26 ints per state → ~200 bytes per character for 26 letters with int[] rows, or hash maps for large alphabets); SA is offline and leaner (4–8 bytes per char).</p>
+      <p><b>Pitfalls.</b> Allocate 2N states (not N); copy the clone’s transition row (not alias it — <code>next[clone] = next[q]</code> without <code>.clone()</code> is a classic bug); compute occurrence counts in decreasing len order (counting sort by len is O(N)); remember clones get cnt 0 initially. For huge N in Java, prefer flat <code>int[]</code> arrays of size 26·2N over <code>int[][]</code> to cut object overhead.</p>`,
+    aiEra: `<p><b>What AI changes:</b> the SAM is the archetype of “hard to derive, easy to copy”. An assistant can paste a correct template, and interviewers at the expert level know it — so they probe <i>understanding</i>: what a state represents (an endpos class), why cloning is needed, and how to adapt it (occurrence counts, first positions, k-th substring). That is the knowledge this topic builds.</p>
+      <p><b>Use AI as a partner:</b> ask it to print the state table (len, link, strings in state) for small words and check it against the visualizer; ask for a brute-force “set of all substrings” checker for distinct counts and occurrence counts on random strings of length ≤ 12. Ask it to explain a clone step for <code>abbb</code> in its own words — then verify each claim.</p>
+      <p><b>Where AI goes wrong:</b> aliasing the transition array when cloning, sizing arrays to N states, counting occurrences without the longest-first order, and claiming SAM works “in O(N) for any alphabet” (with hash maps it is O(N log σ) or expected O(N)). <b>What you must still own:</b> deciding whether SAM is worth its complexity in an interview (often SA + LCP or hashing is simpler to explain) and articulating the endpos intuition clearly.</p>`,
+    problems: [{
+      title: 'Longest Common Substring of Two Strings', level: 'Hard', tags: ['suffix automaton', 'string', 'two pointers on automaton'], companies: ['Google', 'Meta'],
+      statement: `<p>Given two strings <code>s</code> and <code>t</code>, return the length of their longest common <b>substring</b> (contiguous).</p>`,
+      constraints: `1 ≤ |s|, |t| ≤ 2.5·10<sup>5</sup>, lowercase letters (SPOJ LCS)`,
+      example: `<p>s = <code>"abcbc"</code>, t = <code>"bcbcab"</code> → <b>4</b> (${H.c('g', 'bcbc')}).</p><p>s = <code>"xabcdey"</code>, t = <code>"zzbcdq"</code> → <b>3</b> (${H.c('g', 'bcd')}).</p>`,
+      brute: { why: `<p>The textbook DP <code>dp[i][j] = dp[i−1][j−1] + 1</code> if s[i−1] == t[j−1] is O(|s|·|t|) = 6.25·10<sup>10</sup> steps — far too slow (and a 2D table would need 250 GB). The waste: every (i, j) pair is examined even though most cannot extend a match.</p>`, code: `
+        class Brute {
+            int lcs(String s, String t) {
+                int n = s.length(), m = t.length(), best = 0;
+                int[] prev = new int[m + 1], cur = new int[m + 1];
+                for (int i = 1; i <= n; i++) {
+                    for (int j = 1; j <= m; j++) {
+                        cur[j] = s.charAt(i - 1) == t.charAt(j - 1) ? prev[j - 1] + 1 : 0;
+                        best = Math.max(best, cur[j]);
+                    }
+                    int[] tmp = prev; prev = cur; cur = tmp;
+                }
+                return best;
+            }
+        }` },
+      mcq: { q: 'While walking t through the SAM of s, the next char has no edge from state v. What do you do?', options: ['Restart from the root with length 0', 'Follow suffix links (setting l = len(v)) until an edge exists or you reach the root', 'Skip the character and keep l', 'Rebuild the automaton'], answer: 1, explain: 'Like Aho–Corasick fail links: the suffix link is the longest shorter suffix with more occurrences; keep as much of the current match as possible.' },
+      hints: [`<p>Keep (v, l): the SAM state and length of the longest suffix of t[0..j] that is a substring of s. Answer = max l over j.</p>`, `<p>On character c: while v ≠ root and v has no c-edge, set v = link(v), l = len(v). If an edge exists, take it and l++; otherwise stay at the root with l = 0.</p>`, `<p>Build the SAM of the shorter string to save memory. Each step increases l by ≤ 1 and each fallback decreases it, so the walk is O(|t|). Return best.</p>`],
+      solution: {
+        approach: `<p>Build the suffix automaton of s (O(|s|)). Scan t keeping the current state and current match length, falling back along suffix links on mismatches — exactly the Aho–Corasick / KMP pattern, but over all substrings of s at once.</p>`,
+        code: `
+          class Solution {
+              public int longestCommonSubstring(String s, String t) {
+                  int cap = 2 * Math.max(1, s.length());
+                  int[] len = new int[cap], link = new int[cap];
+                  int[][] next = new int[cap][26];
+                  for (int[] row : next) Arrays.fill(row, -1);
+                  link[0] = -1;
+                  int size = 1, last = 0;
+                  for (int i = 0; i < s.length(); i++) {                    // build SAM of s
+                      int c = s.charAt(i) - 'a', cur = size++;
+                      len[cur] = len[last] + 1;
+                      int p = last;
+                      while (p != -1 && next[p][c] == -1) { next[p][c] = cur; p = link[p]; }
+                      if (p == -1) link[cur] = 0;
+                      else {
+                          int q = next[p][c];
+                          if (len[p] + 1 == len[q]) link[cur] = q;
+                          else {
+                              int clone = size++;
+                              len[clone] = len[p] + 1;
+                              next[clone] = next[q].clone();
+                              link[clone] = link[q];
+                              while (p != -1 && next[p][c] == q) { next[p][c] = clone; p = link[p]; }
+                              link[q] = clone; link[cur] = clone;
+                          }
+                      }
+                      last = cur;
+                  }
+                  int v = 0, l = 0, best = 0;                                // walk t
+                  for (int j = 0; j < t.length(); j++) {
+                      int c = t.charAt(j) - 'a';
+                      while (v != 0 && next[v][c] == -1) { v = link[v]; l = len[v]; }
+                      if (next[v][c] != -1) { v = next[v][c]; l++; }
+                      best = Math.max(best, l);
+                  }
+                  return best;
+              }
+          }`,
+        alt: [{ lang: 'python', code: `
+def longest_common_substring(s, t):
+    length, link, nxt, last = [0], [-1], [{}], 0
+    for ch in s:
+        cur = len(length); length.append(length[last] + 1); link.append(-1); nxt.append({})
+        p = last
+        while p != -1 and ch not in nxt[p]:
+            nxt[p][ch] = cur; p = link[p]
+        if p == -1:
+            link[cur] = 0
+        else:
+            q = nxt[p][ch]
+            if length[p] + 1 == length[q]:
+                link[cur] = q
+            else:
+                cl = len(length); length.append(length[p] + 1); link.append(link[q]); nxt.append(dict(nxt[q]))
+                while p != -1 and nxt[p].get(ch) == q:
+                    nxt[p][ch] = cl; p = link[p]
+                link[q] = link[cur] = cl
+        last = cur
+    v = l = best = 0
+    for ch in t:
+        while v and ch not in nxt[v]:
+            v = link[v]; l = length[v]
+        if ch in nxt[v]:
+            v = nxt[v][ch]; l += 1
+        best = max(best, l)
+    return best` }],
+        dry: { head: ['t[j]', 'fallbacks (state:len)', 'edge taken', 'state v', 'l', 'best'], rows: [
+          ['b', '—', '0 → 5', '5 (b)', '1', '1'],
+          ['c', '—', '5 → 7', '7 (bc, c)', '2', '2'],
+          ['b', '—', '7 → 4', '4 (…cb)', '3', '3'],
+          ['c', '—', '4 → 6', '6 (…cbc)', '4', '<b>4</b>'],
+          ['a', '6 → 7 (2) → 0 (0)', '0 → 1', '1 (a)', '1', '4'],
+          ['b', '—', '1 → 2', '2 (ab)', '2', H.c('g', '<b>4</b>')]
+        ] },
+        complexity: `<p>Build O(|s|·σ) memory-wise (O(|s|) time for fixed σ), walk O(|t|). Space O(|s|·26).</p>`,
+        followUps: ['Return the substring itself (remember the end index j where best was set).', 'Longest common substring of <b>k</b> strings: SAM of the first, walk each other string recording per-state best, take minima up the link tree.', 'Same problem via SA + LCP of s + "#" + t — compare memory and code length.']
+      }
+    }]
+  });
 registerModule({ id: 'dsa24', title: 'Advanced String Algorithms', intro: '<p>x</p>', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();
