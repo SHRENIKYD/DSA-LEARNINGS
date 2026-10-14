@@ -2372,4 +2372,842 @@ class Solution:
       }
     }]
   });
+
+  // =====================================================================
+  // PRACTICE — Easy & Medium
+  // =====================================================================
+  practice.push({
+    title: 'Find the Index of the First Occurrence (Rabin–Karp, done safely)', level: 'Easy', tags: ['rolling hash', 'rabin-karp', 'string'], companies: ['Microsoft', 'Apple', 'Facebook'],
+    statement: `<p>Given strings <code>haystack</code> and <code>needle</code>, return the index of the first occurrence of <code>needle</code> in <code>haystack</code>, or −1. Solve it with a rolling hash in O(N + M) expected time — and make it impossible to fool.</p>`,
+    constraints: `1 ≤ |haystack|, |needle| ≤ 10<sup>4</sup> (LeetCode 28); think about 10<sup>6</sup>.`,
+    example: `<p>haystack = <code>"sadbutsad"</code>, needle = <code>"sad"</code> → <b>0</b> (${H.c('g', 'sad')} at 0 and 6; first wins). needle = <code>"leeto"</code> in <code>"leetcode"</code> → <b>−1</b>.</p>`,
+    brute: { why: `<p>Try every start and compare up to M characters: O(N·M) = 10<sup>8</sup> for 10<sup>4</sup> × 10<sup>4</sup>, and worse on inputs like <code>aaaa…ab</code>. The waste: when the window slides by one we throw away everything we learned about the previous window.</p>`, code: `
+      class Brute {
+          int strStr(String h, String nd) {
+              for (int i = 0; i + nd.length() <= h.length(); i++) {
+                  int k = 0;
+                  while (k < nd.length() && h.charAt(i + k) == nd.charAt(k)) k++;
+                  if (k == nd.length()) return i;
+              }
+              return -1;
+          }
+      }` },
+    mcq: { q: 'Both window hashes equal the needle’s hashes. What should a robust solution do before returning i?', options: ['Return immediately — two hashes never collide', 'Verify with a direct comparison (regionMatches)', 'Recompute with a third modulus', 'Nothing; collisions only happen with mod 2^64'], answer: 1, explain: 'A direct comparison costs O(M) and runs only when the hashes agree, so the expected total stays O(N + M) while the answer becomes always correct.' },
+    hints: [`<p>Hash the needle once. Hash the first window, then roll: remove the left char’s contribution (·B<sup>M−1</sup>), multiply by B, add the new right char.</p>`, `<p>Use two prime moduli with <b>random</b> bases so nobody can craft collisions, and add M before taking mod after subtraction.</p>`, `<p>On a hash match, confirm with <code>regionMatches</code>. Edge: needle longer than haystack → −1. Recipe: precompute B<sup>M−1</sup>, loop i from 0, check, then roll if i + M &lt; N.</p>`],
+    solution: {
+      approach: `<p>Rabin–Karp with a double hash and verification: O(N + M) expected, always correct (Las Vegas style — randomness affects only speed, not the answer).</p>`,
+      code: `
+        class Solution {
+            public int strStr(String haystack, String needle) {
+                int n = haystack.length(), m = needle.length();
+                if (m == 0) return 0;
+                if (m > n) return -1;
+                final long M1 = 1_000_000_007L, M2 = 998_244_353L;
+                Random rnd = new Random();
+                long b1 = 256 + rnd.nextInt(1_000_000), b2 = 256 + rnd.nextInt(1_000_000);
+                long p1 = 1, p2 = 1;                                     // B^(m-1)
+                for (int i = 1; i < m; i++) { p1 = p1 * b1 % M1; p2 = p2 * b2 % M2; }
+                long n1 = 0, n2 = 0, w1 = 0, w2 = 0;
+                for (int i = 0; i < m; i++) {
+                    n1 = (n1 * b1 + needle.charAt(i)) % M1;   n2 = (n2 * b2 + needle.charAt(i)) % M2;
+                    w1 = (w1 * b1 + haystack.charAt(i)) % M1; w2 = (w2 * b2 + haystack.charAt(i)) % M2;
+                }
+                for (int i = 0; ; i++) {
+                    if (w1 == n1 && w2 == n2 && haystack.regionMatches(i, needle, 0, m)) return i;   // verify
+                    if (i + m >= n) return -1;
+                    w1 = ((w1 - haystack.charAt(i) * p1 % M1 + M1) * b1 + haystack.charAt(i + m)) % M1;
+                    w2 = ((w2 - haystack.charAt(i) * p2 % M2 + M2) * b2 + haystack.charAt(i + m)) % M2;
+                }
+            }
+        }`,
+      alt: [{ lang: 'python', code: `
+import random
+
+class Solution:
+    def strStr(self, haystack: str, needle: str) -> int:
+        n, m = len(haystack), len(needle)
+        if m > n:
+            return -1
+        MOD = (1 << 61) - 1
+        B = random.randrange(256, MOD - 1)
+        top = pow(B, m - 1, MOD)
+        hn = hw = 0
+        for i in range(m):
+            hn = (hn * B + ord(needle[i])) % MOD
+            hw = (hw * B + ord(haystack[i])) % MOD
+        for i in range(n - m + 1):
+            if hw == hn and haystack[i:i + m] == needle:
+                return i
+            if i + m < n:
+                hw = ((hw - ord(haystack[i]) * top) * B + ord(haystack[i + m])) % MOD
+        return -1` }],
+      dry: { head: ['i', 'window', 'hash match?', 'verify', 'result'], rows: [['0', 'sad', 'yes', 'equal', H.c('g', 'return 0')], ['—', '(stop)', '', '', '']] },
+      complexity: `<p>O(N + M) expected time, O(1) extra space.</p>`,
+      followUps: ['Return <b>all</b> occurrences.', 'Deterministic O(N + M): KMP or Z-function (DSA 9).', 'Search a 2D pattern in a 2D grid with a 2D rolling hash.']
+    }
+  });
+
+  practice.push({
+    title: 'Rotate String', level: 'Easy', tags: ['string matching', 'kmp', 'rotation'], companies: ['Amazon', 'Google'],
+    statement: `<p>Given strings <code>s</code> and <code>goal</code>, return <code>true</code> if <code>s</code> can become <code>goal</code> after some number of left rotations (moving the first character to the end).</p>`,
+    constraints: `1 ≤ |s|, |goal| ≤ 100 (LeetCode 796); make it O(N) for 10<sup>6</sup>.`,
+    example: `<p>s = <code>"abcde"</code>, goal = <code>"cdeab"</code> → <b>true</b>: ${H.c('b', 'ab')}${H.c('g', 'cde')} → ${H.c('g', 'cde')}${H.c('b', 'ab')}. goal = <code>"abced"</code> → <b>false</b>.</p>`,
+    brute: { why: `<p>Build all N rotations and compare each with goal: O(N<sup>2</sup>). The waste: every rotation is already sitting inside <code>s + s</code>.</p>`, code: `
+      class Brute {
+          boolean rotateString(String s, String goal) {
+              if (s.length() != goal.length()) return false;
+              for (int k = 0; k < Math.max(1, s.length()); k++)
+                  if ((s.substring(k) + s.substring(0, k)).equals(goal)) return true;
+              return false;
+          }
+      }` },
+    mcq: { q: 'Every rotation of s appears as a substring of…', options: ['reverse(s)', 's + s', 's + reverse(s)', 'only s itself'], answer: 1, explain: 'Rotation by k = s[k..] + s[..k], which is s+s starting at index k.' },
+    hints: [`<p>Lengths must match. Then goal is a rotation of s ⇔ goal occurs in <code>s + s</code>.</p>`, `<p>Use a linear matcher: prefix function (KMP) on <code>goal + "#" + s + s</code>; a value equal to |goal| means a match.</p>`, `<p>The separator must not occur in the strings. Edge: both empty → true.</p>`],
+    solution: {
+      approach: `<p>Reduce to substring search in the doubled string and solve with KMP’s prefix function in O(N). (A double-hash Rabin–Karp works too.)</p>`,
+      code: `
+        class Solution {
+            public boolean rotateString(String s, String goal) {
+                if (s.length() != goal.length()) return false;
+                if (s.isEmpty()) return true;
+                String t = goal + "#" + s + s;
+                int[] pi = new int[t.length()];
+                for (int i = 1; i < t.length(); i++) {
+                    int k = pi[i - 1];
+                    while (k > 0 && t.charAt(i) != t.charAt(k)) k = pi[k - 1];
+                    if (t.charAt(i) == t.charAt(k)) k++;
+                    pi[i] = k;
+                    if (k == goal.length()) return true;          // goal found inside s + s
+                }
+                return false;
+            }
+        }`,
+      alt: [{ lang: 'python', code: `
+class Solution:
+    def rotateString(self, s: str, goal: str) -> bool:
+        return len(s) == len(goal) and goal in s + s` }],
+      dry: { head: ['step', 'value'], rows: [['s + s', 'abcdeabcde'], ['search "cdeab"', 'found at index 2 → <b>true</b>']] },
+      complexity: `<p>O(N) time and space.</p>`,
+      followUps: ['Return the minimum number of rotations needed.', 'Count how many rotations of s equal goal (all matches in s + s minus the last).']
+    }
+  });
+
+  practice.push({
+    title: 'Repeated Substring Pattern', level: 'Easy', tags: ['prefix function', 'period', 'hashing'], companies: ['Amazon', 'Google'],
+    statement: `<p>Return <code>true</code> if <code>s</code> can be built by repeating one of its proper substrings two or more times.</p>`,
+    constraints: `1 ≤ |s| ≤ 10<sup>4</sup> (LeetCode 459)`,
+    example: `<p><code>"abab"</code> → <b>true</b> (${H.c('g', 'ab')} × 2). <code>"aba"</code> → <b>false</b>. <code>"abcabcabcabc"</code> → <b>true</b> (${H.c('g', 'abc')} × 4).</p>`,
+    brute: { why: `<p>For every divisor d of N, rebuild <code>s[0..d) × (N/d)</code> and compare: O(N · number of divisors), fine here, but the string-building wastes memory. A period test does it in one pass.</p>`, code: `
+      class Brute {
+          boolean repeatedSubstringPattern(String s) {
+              int n = s.length();
+              for (int d = 1; d <= n / 2; d++) {
+                  if (n % d != 0) continue;
+                  if (s.substring(0, d).repeat(n / d).equals(s)) return true;
+              }
+              return false;
+          }
+      }` },
+    mcq: { q: 'The longest proper border (prefix = suffix) of s has length b. The smallest period is…', options: ['b', 'n − b', 'n / b', 'n + b'], answer: 1, explain: 'If s[0..b) = s[n−b..n), shifting s by n − b lines it up with itself, so n − b is a period, and the longest border gives the smallest period.' },
+    hints: [`<p>s is a repetition ⇔ its smallest period p divides n and p &lt; n.</p>`, `<p>Prefix function: b = π[n−1] is the longest border; smallest period p = n − b.</p>`, `<p>Return b &gt; 0 && n % (n − b) == 0. Check: <code>"abcab"</code> has b = 2, p = 3, 5 % 3 ≠ 0 → false.</p>`],
+    solution: {
+      approach: `<p>Compute the prefix function; the smallest period is n − π[n−1]. s is a power of a shorter string iff that period divides n (and the border is non-empty).</p>`,
+      code: `
+        class Solution {
+            public boolean repeatedSubstringPattern(String s) {
+                int n = s.length();
+                int[] pi = new int[n];
+                for (int i = 1; i < n; i++) {
+                    int k = pi[i - 1];
+                    while (k > 0 && s.charAt(i) != s.charAt(k)) k = pi[k - 1];
+                    if (s.charAt(i) == s.charAt(k)) k++;
+                    pi[i] = k;
+                }
+                int border = pi[n - 1], period = n - border;
+                return border > 0 && n % period == 0;
+            }
+        }`,
+      alt: [{ lang: 'python', code: `
+class Solution:
+    def repeatedSubstringPattern(self, s: str) -> bool:
+        # s is periodic iff s appears in (s+s) with the first and last char removed
+        return s in (s + s)[1:-1]` }],
+      dry: { head: ['s', 'π[n−1]', 'period', 'n % period', 'answer'], rows: [['abab', '2', '2', '0', H.c('g', 'true')], ['aba', '1', '2', '1', H.c('r', 'false')], ['abcabcabcabc', '9', '3', '0', H.c('g', 'true')]] },
+      complexity: `<p>O(N) time and space.</p>`,
+      followUps: ['Return the shortest repeating unit.', 'Answer the question for every prefix of s.']
+    }
+  });
+
+  practice.push({
+    title: 'Longest Palindromic Substring (in O(N))', level: 'Medium', tags: ['manacher', 'palindrome'], companies: ['Amazon', 'Microsoft', 'Adobe', 'Google'],
+    statement: `<p>Return the longest palindromic substring of <code>s</code> (any one if several).</p>`,
+    constraints: `1 ≤ |s| ≤ 1000 on LeetCode 5; your solution should handle 10<sup>6</sup>.`,
+    example: `<p><code>"babad"</code> → <b>"bab"</b> (or "aba"). <code>"cbbd"</code> → <b>"bb"</b> (even length, centered on a gap).</p>`,
+    brute: { why: `<p>Check all O(N<sup>2</sup>) substrings in O(N) each → O(N<sup>3</sup>). Expand-around-center is O(N<sup>2</sup>) — accepted at N = 1000 but 10<sup>12</sup> steps at 10<sup>6</sup> on <code>"aaa…a"</code>.</p>`, code: `
+      class Brute {
+          String longestPalindrome(String s) {
+              String best = "";
+              for (int i = 0; i < s.length(); i++)
+                  for (int j = i; j < s.length(); j++) {
+                      int l = i, r = j;
+                      while (l < r && s.charAt(l) == s.charAt(r)) { l++; r--; }
+                      if (l >= r && j - i + 1 > best.length()) best = s.substring(i, j + 1);
+                  }
+              return best;
+          }
+      }` },
+    mcq: { q: 'In the #-padded string, P[i] = 4 at i = 6. The palindrome in s is…', options: ['s[1..4]', 's[3..6]', 's[1..5]', 's[6..10]'], answer: 0, explain: 'Start = (i − P[i]) / 2 = (6 − 4)/2 = 1, length 4 → s[1..4].' },
+    hints: [`<p>Pad with <code>#</code> so every palindrome has a center cell; P[i] then equals the palindrome’s length in s.</p>`, `<p>Manacher: keep the rightmost palindrome [C − P[C], R]; inside it start from min(P[2C − i], R − i), then expand.</p>`, `<p>Track the argmax of P; start = (i − P[i]) / 2, length = P[i]. Single character strings return themselves.</p>`],
+    solution: {
+      approach: `<p>Manacher’s algorithm: one left-to-right pass over the padded string, reusing mirror radii inside the current rightmost palindrome. O(N).</p>`,
+      code: `
+        class Solution {
+            public String longestPalindrome(String s) {
+                int n = s.length(), m = 2 * n + 1;
+                char[] t = new char[m];
+                for (int i = 0; i < m; i++) t[i] = (i % 2 == 0) ? '#' : s.charAt(i / 2);
+                int[] p = new int[m];
+                int c = 0, r = -1, best = 0, center = 0;
+                for (int i = 0; i < m; i++) {
+                    int k = (i > r) ? 0 : Math.min(p[2 * c - i], r - i);
+                    while (i - k - 1 >= 0 && i + k + 1 < m && t[i - k - 1] == t[i + k + 1]) k++;
+                    p[i] = k;
+                    if (i + k > r) { c = i; r = i + k; }
+                    if (k > best) { best = k; center = i; }
+                }
+                int start = (center - best) / 2;
+                return s.substring(start, start + best);
+            }
+        }`,
+      alt: [{ lang: 'python', code: `
+class Solution:
+    def longestPalindrome(self, s: str) -> str:
+        t = '#' + '#'.join(s) + '#'
+        m, p, c, r = len(t), [0] * len(t), 0, -1
+        for i in range(m):
+            k = 0 if i > r else min(p[2 * c - i], r - i)
+            while i - k - 1 >= 0 and i + k + 1 < m and t[i - k - 1] == t[i + k + 1]:
+                k += 1
+            p[i] = k
+            if i + k > r:
+                c, r = i, i + k
+        i = max(range(m), key=p.__getitem__)
+        start = (i - p[i]) // 2
+        return s[start:start + p[i]]` }],
+      dry: { head: ['i', 't[i]', 'P[i]', 'best'], rows: [['1', 'c', '1', '1'], ['3', 'b', '1', '1'], ['4', '#', '2', H.c('g', '2 → "bb"')], ['5', 'b', '1', '2']] },
+      complexity: `<p>O(N) time, O(N) space.</p>`,
+      followUps: ['Return the longest palindromic substring of every prefix.', 'Longest palindromic <b>subsequence</b> — that is DP, not Manacher (DSA 17).']
+    }
+  });
+
+  practice.push({
+    title: 'Repeated DNA Sequences (perfect rolling hash)', level: 'Medium', tags: ['rolling hash', 'bit manipulation', 'hashset'], companies: ['LinkedIn', 'Amazon', 'Google'],
+    statement: `<p>DNA is a string over <code>A, C, G, T</code>. Return all 10-letter-long sequences that occur more than once (any order).</p>`,
+    constraints: `1 ≤ |s| ≤ 10<sup>5</sup> (LeetCode 187)`,
+    example: `<p><code>"AAAAACCCCCAAAAACCCCCCAAAAAGGGTTT"</code> → <b>["AAAAACCCCC", "CCCCCAAAAA"]</b>. <code>"AAAAAAAAAAAAA"</code> → <b>["AAAAAAAAAA"]</b> (reported once even though it appears 4 times).</p>`,
+    brute: { why: `<p>Put every 10-letter <code>substring</code> into a HashMap&lt;String, Integer&gt;: correct, but creates 10<sup>5</sup> String objects and hashes 10 chars each time. Works, yet wastes memory and time; the alphabet has only 4 letters, so 10 letters fit in <b>20 bits</b>.</p>`, code: `
+      class Brute {
+          List<String> findRepeatedDnaSequences(String s) {
+              Map<String, Integer> cnt = new HashMap<>();
+              List<String> res = new ArrayList<>();
+              for (int i = 0; i + 10 <= s.length(); i++) {
+                  String sub = s.substring(i, i + 10);
+                  if (cnt.merge(sub, 1, Integer::sum) == 2) res.add(sub);
+              }
+              return res;
+          }
+      }` },
+    mcq: { q: 'Why can this rolling hash never collide?', options: ['Because the modulus is prime', 'Because 2 bits per letter × 10 letters = 20 bits encode the window exactly (injective)', 'Because DNA is random', 'It can collide'], answer: 1, explain: 'With base 4 and no modulus overflow (4<sup>10</sup> = 2<sup>20</sup> fits in an int), the hash is just the window written in base 4 — a perfect encoding.' },
+    hints: [`<p>Map A, C, G, T to 0..3. A window of 10 letters is a 20-bit number.</p>`, `<p>Roll with <code>mask = ((mask &lt;&lt; 2) | code) &amp; ((1 &lt;&lt; 20) − 1)</code>. Keep a seen-set and an added-set of ints.</p>`, `<p>Report a window when it is seen for the second time only. Strings shorter than 10 → empty list.</p>`],
+    solution: {
+      approach: `<p>Base-4 rolling hash with no modulus = exact encoding. One pass, O(1) per step, ints instead of Strings.</p>`,
+      code: `
+        class Solution {
+            public List<String> findRepeatedDnaSequences(String s) {
+                List<String> res = new ArrayList<>();
+                int n = s.length();
+                if (n < 10) return res;
+                int[] code = new int[128];
+                code['C'] = 1; code['G'] = 2; code['T'] = 3;           // 'A' stays 0
+                Set<Integer> seen = new HashSet<>(), added = new HashSet<>();
+                int mask = 0, full = (1 << 20) - 1;
+                for (int i = 0; i < n; i++) {
+                    mask = ((mask << 2) | code[s.charAt(i)]) & full;   // slide: drop 2 old bits, add 2 new
+                    if (i >= 9 && !seen.add(mask) && added.add(mask)) res.add(s.substring(i - 9, i + 1));
+                }
+                return res;
+            }
+        }`,
+      alt: [{ lang: 'python', code: `
+class Solution:
+    def findRepeatedDnaSequences(self, s: str):
+        code = {'A': 0, 'C': 1, 'G': 2, 'T': 3}
+        seen, out, mask = set(), set(), 0
+        for i, ch in enumerate(s):
+            mask = ((mask << 2) | code[ch]) & ((1 << 20) - 1)
+            if i >= 9:
+                if mask in seen:
+                    out.add(s[i - 9:i + 1])
+                seen.add(mask)
+        return list(out)` }],
+      dry: { head: ['i', 'window', 'mask seen before?', 'action'], rows: [['9', 'AAAAACCCCC', 'no', 'add to seen'], ['14', 'CCCCCAAAAA', 'no', 'add to seen'], ['19', 'AAAAACCCCC', H.c('g', 'yes'), 'report'], ['25', 'CCCCCAAAAA', H.c('g', 'yes'), 'report']] },
+      complexity: `<p>O(N) time, O(N) space (ints).</p>`,
+      followUps: ['Window length k = 32 → 64-bit masks; k = 40 → need a real modular hash or two longs.', 'Return each sequence with its count.']
+    }
+  });
+
+  practice.push({
+    title: 'Longest Happy Prefix', level: 'Medium', tags: ['double hashing', 'prefix function', 'border'], companies: ['Google', 'Amazon'],
+    statement: `<p>A <b>happy prefix</b> is a non-empty prefix that is also a suffix (excluding the whole string). Return the longest happy prefix of <code>s</code>, or <code>""</code>.</p>`,
+    constraints: `1 ≤ |s| ≤ 10<sup>5</sup> (LeetCode 1392)`,
+    example: `<p><code>"level"</code> → <b>"l"</b>. <code>"ababab"</code> → <b>"abab"</b> (prefix ${H.c('g', 'abab')}ab, suffix ab${H.c('g', 'abab')} — they overlap, that is allowed).</p>`,
+    brute: { why: `<p>For each length L from N−1 down, compare prefix and suffix of length L: O(N<sup>2</sup>) = 10<sup>10</sup> on <code>"aaaa…ab"</code>. The waste: re-comparing the same characters for every L.</p>`, code: `
+      class Brute {
+          String longestPrefix(String s) {
+              int n = s.length();
+              for (int len = n - 1; len > 0; len--)
+                  if (s.regionMatches(0, s, n - len, len)) return s.substring(0, len);
+              return "";
+          }
+      }` },
+    mcq: { q: 'How do you extend the SUFFIX hash from length L−1 to L (new char z = s[n−L] is added on the LEFT)?', options: ['suf = suf·B + z', 'suf = z·B<sup>L−1</sup> + suf', 'suf = suf + z', 'suf = (suf − z)/B'], answer: 1, explain: 'The new leftmost char is the most significant digit of the length-L suffix, so it is multiplied by B<sup>L−1</sup>.' },
+    hints: [`<p>Grow the prefix hash on the right (×B + c) and the suffix hash on the left (c·B<sup>L−1</sup> + old) at the same time.</p>`, `<p>Whenever both hashes agree (two moduli, random bases), remember L. The last such L is the answer.</p>`, `<p>Deterministic alternative: π[n−1] from the prefix function is exactly the answer length.</p>`],
+    solution: {
+      approach: `<p>Simultaneous prefix/suffix double hashing in one pass; O(N). The prefix function gives the same answer deterministically and is worth mentioning.</p>`,
+      code: `
+        class Solution {
+            public String longestPrefix(String s) {
+                int n = s.length();
+                final long M1 = 1_000_000_007L, M2 = 998_244_353L;
+                Random rnd = new Random();
+                long b1 = 131 + rnd.nextInt(1_000_000), b2 = 131 + rnd.nextInt(1_000_000);
+                long pre1 = 0, pre2 = 0, suf1 = 0, suf2 = 0, pw1 = 1, pw2 = 1;
+                int best = 0;
+                for (int len = 1; len < n; len++) {
+                    int a = s.charAt(len - 1), z = s.charAt(n - len);
+                    pre1 = (pre1 * b1 + a) % M1;      pre2 = (pre2 * b2 + a) % M2;      // append right
+                    suf1 = (z * pw1 + suf1) % M1;     suf2 = (z * pw2 + suf2) % M2;     // prepend left
+                    pw1 = pw1 * b1 % M1;              pw2 = pw2 * b2 % M2;
+                    if (pre1 == suf1 && pre2 == suf2) best = len;
+                }
+                return s.substring(0, best);
+            }
+        }`,
+      alt: [{ lang: 'python', code: `
+class Solution:
+    def longestPrefix(self, s: str) -> str:
+        pi = [0] * len(s)                       # deterministic: prefix function
+        for i in range(1, len(s)):
+            k = pi[i - 1]
+            while k and s[i] != s[k]:
+                k = pi[k - 1]
+            if s[i] == s[k]:
+                k += 1
+            pi[i] = k
+        return s[:pi[-1]]` }],
+      dry: { head: ['L', 'prefix', 'suffix', 'equal?', 'best'], rows: [['1', 'a', 'b', 'no', '0'], ['2', 'ab', 'ab', 'yes', '2'], ['3', 'aba', 'bab', 'no', '2'], ['4', 'abab', 'abab', 'yes', H.c('g', '4')], ['5', 'ababa', 'babab', 'no', '4']] },
+      complexity: `<p>O(N) time, O(1) extra space.</p>`,
+      followUps: ['Count all happy prefixes (all borders) — follow the π chain.', 'Longest prefix that is also a suffix of a <b>different</b> string t.']
+    }
+  });
+
+  practice.push({
+    title: 'Palindrome Range Queries', level: 'Medium', tags: ['manacher', 'queries', 'palindrome'], companies: ['Google', 'Uber'],
+    statement: `<p>Given a string <code>s</code> and Q queries <code>[l, r]</code> (0-based, inclusive), answer for each query whether <code>s[l..r]</code> is a palindrome.</p>`,
+    constraints: `1 ≤ |s| ≤ 10<sup>6</sup>, 1 ≤ Q ≤ 10<sup>6</sup>`,
+    example: `<p>s = <code>"abacaba"</code>, queries [[0,6], [1,5], [0,1], [2,4]] → <b>[true, true, false, true]</b> (${H.c('g', 'abacaba')}, ${H.c('g', 'bacab')}, ${H.c('r', 'ab')}, ${H.c('g', 'aca')}).</p>`,
+    brute: { why: `<p>Two pointers per query: O(r − l) each → up to 10<sup>12</sup> total. The waste: the same palindromes are re-verified across overlapping queries.</p>`, code: `
+      class Brute {
+          boolean[] answer(String s, int[][] qs) {
+              boolean[] res = new boolean[qs.length];
+              for (int k = 0; k < qs.length; k++) {
+                  int l = qs[k][0], r = qs[k][1];
+                  while (l < r && s.charAt(l) == s.charAt(r)) { l++; r--; }
+                  res[k] = l >= r;
+              }
+              return res;
+          }
+      }` },
+    mcq: { q: 'Which index of the #-padded P array decides query [l, r]?', options: ['l + r', 'l + r + 1', '2l + 1', '(l + r) / 2'], answer: 1, explain: 's[k] sits at t[2k + 1], so the center of s[l..r] in t is (2l + 1 + 2r + 1)/2 = l + r + 1.' },
+    hints: [`<p>Run Manacher once. Every query is about a fixed center in the padded string.</p>`, `<p>s[l..r] is a palindrome ⇔ the maximal palindrome at its center is at least as long: P[l + r + 1] ≥ r − l + 1.</p>`, `<p>Use fast I/O for 10<sup>6</sup> queries. Single-character queries are always true (P ≥ 1 at letter cells).</p>`],
+    solution: {
+      approach: `<p>Precompute all radii with Manacher in O(N); answer each query with one comparison.</p>`,
+      code: `
+        class Solution {
+            public boolean[] answer(String s, int[][] queries) {
+                int n = s.length(), m = 2 * n + 1;
+                char[] t = new char[m];
+                for (int i = 0; i < m; i++) t[i] = (i % 2 == 0) ? '#' : s.charAt(i / 2);
+                int[] p = new int[m];
+                for (int i = 0, c = 0, r = -1; i < m; i++) {
+                    int k = (i > r) ? 0 : Math.min(p[2 * c - i], r - i);
+                    while (i - k - 1 >= 0 && i + k + 1 < m && t[i - k - 1] == t[i + k + 1]) k++;
+                    p[i] = k;
+                    if (i + k > r) { c = i; r = i + k; }
+                }
+                boolean[] res = new boolean[queries.length];
+                for (int q = 0; q < queries.length; q++) {
+                    int l = queries[q][0], r = queries[q][1];
+                    res[q] = p[l + r + 1] >= r - l + 1;           // O(1) per query
+                }
+                return res;
+            }
+        }`,
+      dry: { head: ['query', 'center l+r+1', 'P[center]', 'needed', 'answer'], rows: [['[0,6]', '7', '7', '7', H.c('g', 'true')], ['[1,5]', '7', '7', '5', H.c('g', 'true')], ['[0,1]', '2', '0', '2', H.c('r', 'false')], ['[2,4]', '7', '7', '3', H.c('g', 'true')]] },
+      complexity: `<p>O(N + Q) time, O(N) space.</p>`,
+      followUps: ['Count palindromic substrings inside s[l..r] (offline, much harder).', 'Updates to s between queries → segment tree of forward/backward hashes.']
+    }
+  });
+
+  practice.push({
+    title: 'Lexicographically Minimal Rotation', level: 'Medium', tags: ['rotation', 'two pointers', 'suffix array', 'booth'], companies: ['Google', 'Codeforces classic'],
+    statement: `<p>Return the lexicographically smallest string among all rotations of <code>s</code> (canonical form of a necklace — used to compare cyclic strings).</p>`,
+    constraints: `1 ≤ |s| ≤ 10<sup>6</sup>, lowercase letters`,
+    example: `<p><code>"bca"</code> → <b>"abc"</b>. <code>"baabaa"</code> → <b>"aabaab"</b> (starts at index 1; index 4 gives the same string).</p>`,
+    brute: { why: `<p>Build all N rotations and keep the minimum: N comparisons of length N → O(N<sup>2</sup>) = 10<sup>12</sup>. The waste: when two candidate starts agree on k letters and then differ, we learn that k + 1 starts are hopeless — brute force ignores this.</p>`, code: `
+      class Brute {
+          String minRotation(String s) {
+              String best = s;
+              for (int k = 1; k < s.length(); k++) {
+                  String r = s.substring(k) + s.substring(0, k);
+                  if (r.compareTo(best) < 0) best = r;
+              }
+              return best;
+          }
+      }` },
+    mcq: { q: 'Candidates i and j agree on k letters and then s[i+k] &gt; s[j+k]. Which starts can you discard?', options: ['only i', 'i, i+1, …, i+k', 'j..j+k', 'none'], answer: 1, explain: 'For any d ≤ k, rotation i+d is beaten by rotation j+d (they share the same next letters until the bigger letter). So i jumps to i + k + 1.' },
+    hints: [`<p>SA view: the answer is the smallest suffix of <code>s + s</code> that starts before |s|. But there is a simpler O(N) two-pointer trick.</p>`, `<p>Keep two candidates i &lt; j and a match length k. Compare s[(i+k) mod n] and s[(j+k) mod n]; on a mismatch, the loser jumps past the compared block.</p>`, `<p>If i == j after a jump, move j forward. Stop when any of i, j, k reaches n; answer starts at min(i, j).</p>`],
+    solution: {
+      approach: `<p>The “minimum expression” two-pointer algorithm: each mismatch discards k + 1 starting positions, so i + j + k only grows and the total work is O(N). (Booth’s algorithm and SA of s + s also work.)</p>`,
+      code: `
+        class Solution {
+            public String minRotation(String s) {
+                int n = s.length(), i = 0, j = 1, k = 0;
+                while (i < n && j < n && k < n) {
+                    char a = s.charAt((i + k) % n), b = s.charAt((j + k) % n);
+                    if (a == b) { k++; continue; }
+                    if (a > b) i = i + k + 1;      // starts i..i+k all lose
+                    else j = j + k + 1;            // starts j..j+k all lose
+                    if (i == j) j++;
+                    k = 0;
+                }
+                int start = Math.min(i, j);
+                return s.substring(start) + s.substring(0, start);
+            }
+        }`,
+      alt: [{ lang: 'python', code: `
+class Solution:
+    def minRotation(self, s: str) -> str:
+        n, i, j, k = len(s), 0, 1, 0
+        while i < n and j < n and k < n:
+            a, b = s[(i + k) % n], s[(j + k) % n]
+            if a == b:
+                k += 1
+                continue
+            if a > b:
+                i += k + 1
+            else:
+                j += k + 1
+            if i == j:
+                j += 1
+            k = 0
+        st = min(i, j)
+        return s[st:] + s[:st]` }],
+      dry: { head: ['i', 'j', 'k', 'compare', 'action'], rows: [['0', '1', '0', 'b vs c', 'j = 2'], ['0', '2', '0', 'b vs a', 'i = 1'], ['1', '2', '0', 'c vs a', 'i = 2 → i == j → j = 3 = n'], ['stop', '', '', 'start = min(2, 3) = 2', H.c('g', '"abc"')]] },
+      complexity: `<p>O(N) time, O(1) extra space (besides the output).</p>`,
+      followUps: ['Group strings that are rotations of each other (canonical form as the map key).', 'Minimal rotation of a <b>circular array of ints</b> — same algorithm.']
+    }
+  });
+
+  // =====================================================================
+  // PRACTICE — Hard
+  // =====================================================================
+  practice.push({
+    title: 'Shortest Palindrome (add characters in front)', level: 'Hard', tags: ['manacher', 'palindrome', 'prefix function'], companies: ['Google', 'Amazon', 'Pocket Gems'],
+    statement: `<p>You may add characters only <b>in front of</b> <code>s</code>. Return the shortest palindrome you can make.</p>`,
+    constraints: `0 ≤ |s| ≤ 5·10<sup>4</sup> (LeetCode 214); aim for O(N).`,
+    example: `<p><code>"aacecaaa"</code> → <b>"aaacecaaa"</b>: the longest palindromic prefix is ${H.c('g', 'aacecaa')}; reverse the leftover ${H.c('r', 'a')} and put it in front.</p><p><code>"abcd"</code> → <b>"dcbabcd"</b> (longest palindromic prefix is just <code>a</code>).</p>`,
+    brute: { why: `<p>For each prefix length from N down, test whether it is a palindrome: O(N) tests × O(N) each = O(N<sup>2</sup>) = 2.5·10<sup>9</sup> on <code>"aaa…ab"</code>-like inputs. The waste: palindrome checks restart from scratch every time.</p>`, code: `
+      class Brute {
+          String shortestPalindrome(String s) {
+              int n = s.length();
+              for (int len = n; len >= 0; len--) {
+                  int l = 0, r = len - 1;
+                  while (l < r && s.charAt(l) == s.charAt(r)) { l++; r--; }
+                  if (l >= r) return new StringBuilder(s.substring(len)).reverse() + s;
+              }
+              return s;
+          }
+      }` },
+    mcq: { q: 'In the padded Manacher array, a palindrome centered at i is a PREFIX of s when…', options: ['i + P[i] == 2n', 'i − P[i] == 0', 'P[i] == n', 'i is even'], answer: 1, explain: 'The palindrome spans t[i − P[i] .. i + P[i]]; it starts at the very beginning when i − P[i] = 0.' },
+    hints: [`<p>The answer is reverse(s[L..]) + s where L is the length of the <b>longest palindromic prefix</b>.</p>`, `<p>Manacher gives every center’s radius. A center i yields a palindromic prefix of length P[i] exactly when i − P[i] == 0.</p>`, `<p>Take the maximum such P[i] (at least 1 when s is non-empty). Alternative: prefix function of s + "#" + reverse(s). Empty s → "".</p>`],
+    solution: {
+      approach: `<p>Find the longest palindromic prefix with Manacher (O(N)), then prepend the reverse of the remaining suffix.</p>`,
+      code: `
+        class Solution {
+            public String shortestPalindrome(String s) {
+                int n = s.length();
+                if (n == 0) return s;
+                int m = 2 * n + 1;
+                char[] t = new char[m];
+                for (int i = 0; i < m; i++) t[i] = (i % 2 == 0) ? '#' : s.charAt(i / 2);
+                int[] p = new int[m];
+                int c = 0, r = -1, bestPrefix = 0;
+                for (int i = 0; i < m; i++) {
+                    int k = (i > r) ? 0 : Math.min(p[2 * c - i], r - i);
+                    while (i - k - 1 >= 0 && i + k + 1 < m && t[i - k - 1] == t[i + k + 1]) k++;
+                    p[i] = k;
+                    if (i + k > r) { c = i; r = i + k; }
+                    if (i - k == 0) bestPrefix = Math.max(bestPrefix, k);   // palindrome touches the start
+                }
+                return new StringBuilder(s.substring(bestPrefix)).reverse() + s;
+            }
+        }`,
+      alt: [{ lang: 'python', code: `
+class Solution:
+    def shortestPalindrome(self, s: str) -> str:
+        t = s + '#' + s[::-1]                  # prefix function: longest prefix of s that is a suffix of rev(s)
+        pi = [0] * len(t)
+        for i in range(1, len(t)):
+            k = pi[i - 1]
+            while k and t[i] != t[k]:
+                k = pi[k - 1]
+            if t[i] == t[k]:
+                k += 1
+            pi[i] = k
+        L = pi[-1] if s else 0
+        return s[L:][::-1] + s` }],
+      dry: { head: ['center i', 'P[i]', 'i − P[i]', 'prefix palindrome?', 'best'], rows: [['1', '1', '0', 'yes "a"', '1'], ['2', '2', '0', 'yes "aa"', '2'], ['7', '7', '0', 'yes "aacecaa"', H.c('g', '7')], ['others', '…', '&gt; 0', 'no', '7']] },
+      complexity: `<p>O(N) time and space.</p>`,
+      followUps: ['Characters may be added at the <b>end</b> instead (longest palindromic suffix).', 'Minimum insertions anywhere → DP (DSA 17), not Manacher.']
+    }
+  });
+
+  practice.push({
+    title: 'Stream of Characters', level: 'Hard', tags: ['aho-corasick', 'trie', 'design', 'stream'], companies: ['Google', 'Amazon'],
+    statement: `<p>Design <code>StreamChecker(String[] words)</code> with <code>boolean query(char letter)</code>: letters arrive one by one; after each, return <code>true</code> if some suffix of the stream so far equals one of the words.</p>`,
+    constraints: `1 ≤ words.length ≤ 2000, 1 ≤ |word| ≤ 200, up to 4·10<sup>4</sup> queries (LeetCode 1032); think about 10<sup>5</sup> words.`,
+    example: `<p>words = [<code>"cd"</code>, <code>"f"</code>, <code>"kl"</code>]; stream a, b, c, ${H.c('g', 'd')}, e, ${H.c('g', 'f')}, g, h, i, j, k, ${H.c('g', 'l')} → true exactly at d (“cd”), f, and l (“kl”).</p>`,
+    brute: { why: `<p>Keep the whole stream; after each letter test <code>endsWith(word)</code> for every word: O(k · |word|) per query = 2000 · 200 = 4·10<sup>5</sup> per letter → 1.6·10<sup>10</sup> total. The waste: forgetting what the previous letters already matched.</p>`, code: `
+      class BruteStreamChecker {
+          private final String[] words;
+          private final StringBuilder stream = new StringBuilder();
+          BruteStreamChecker(String[] words) { this.words = words; }
+          boolean query(char letter) {
+              stream.append(letter);
+              String cur = stream.toString();
+              for (String w : words) if (cur.endsWith(w)) return true;
+              return false;
+          }
+      }` },
+    mcq: { q: 'After building the Aho–Corasick automaton, what is the extra work per query?', options: ['O(number of words)', 'O(max word length)', 'O(1): one transition + one boolean lookup', 'O(log N)'], answer: 2, explain: 'With the complete goto table and “ends a word somewhere on my fail chain” precomputed as a boolean, each letter is one table lookup.' },
+    hints: [`<p>The question “does a suffix of the stream equal a word?” is exactly what an Aho–Corasick state answers: the state is the longest suffix of the stream that is a trie prefix.</p>`, `<p>Precompute <code>term[v] = isWordEnd[v] || term[fail[v]]</code> in BFS order, so you never walk the fail chain at query time.</p>`, `<p>Alternative (shorter to code): a trie of <b>reversed</b> words and walk the last ≤ 200 letters backwards each query — O(maxLen) per query.</p>`],
+    solution: {
+      approach: `<p>Aho–Corasick with a complete transition table. Keep one current state across queries. O(Σ|words|·26) build, O(1) per query.</p>`,
+      code: `
+        class StreamChecker {
+            private final int[][] go;
+            private final boolean[] term;      // some word ends at this state or on its fail chain
+            private int state = 0;
+
+            public StreamChecker(String[] words) {
+                int cap = 1;
+                for (String w : words) cap += w.length();
+                go = new int[cap][26];
+                for (int[] row : go) Arrays.fill(row, -1);
+                term = new boolean[cap];
+                int[] fail = new int[cap];
+                int nodes = 1;
+                for (String w : words) {
+                    int v = 0;
+                    for (char ch : w.toCharArray()) {
+                        int c = ch - 'a';
+                        if (go[v][c] == -1) go[v][c] = nodes++;
+                        v = go[v][c];
+                    }
+                    term[v] = true;
+                }
+                ArrayDeque<Integer> q = new ArrayDeque<>();
+                for (int c = 0; c < 26; c++) {
+                    int u = go[0][c];
+                    if (u == -1) go[0][c] = 0; else { fail[u] = 0; q.add(u); }
+                }
+                while (!q.isEmpty()) {
+                    int v = q.poll();
+                    term[v] |= term[fail[v]];                      // fail[v] is shallower → already final
+                    for (int c = 0; c < 26; c++) {
+                        int u = go[v][c];
+                        if (u == -1) go[v][c] = go[fail[v]][c];
+                        else { fail[u] = go[fail[v]][c]; q.add(u); }
+                    }
+                }
+            }
+
+            public boolean query(char letter) {
+                state = go[state][letter - 'a'];
+                return term[state];
+            }
+        }`,
+      alt: [{ lang: 'python', code: `
+class StreamChecker:
+    # reversed-trie version: simple, O(max word length) per query
+    def __init__(self, words):
+        self.root, self.maxlen, self.stream = {}, max(map(len, words)), []
+        for w in words:
+            node = self.root
+            for ch in reversed(w):
+                node = node.setdefault(ch, {})
+            node['$'] = True
+
+    def query(self, letter):
+        self.stream.append(letter)
+        node = self.root
+        for ch in reversed(self.stream[-self.maxlen:]):
+            if ch not in node:
+                return False
+            node = node[ch]
+            if '$' in node:
+                return True
+        return False` }],
+      dry: { head: ['letter', 'state', 'term?', 'answer'], rows: [['a', 'root', 'no', 'false'], ['c', 'c', 'no', 'false'], ['d', 'cd', 'yes', H.c('g', 'true')], ['f', 'f', 'yes', H.c('g', 'true')], ['k', 'k', 'no', 'false'], ['l', 'kl', 'yes', H.c('g', 'true')]] },
+      complexity: `<p>Build O(M·26) time/memory (M = Σ|words| ≤ 4·10<sup>5</sup>); query O(1).</p>`,
+      followUps: ['Return <b>which</b> words matched (dictionary links).', 'Words can be added between queries — rebuild lazily or use a reversed trie.']
+    }
+  });
+
+  practice.push({
+    title: 'Construct String with Minimum Cost', level: 'Hard', tags: ['aho-corasick', 'dynamic programming', 'dictionary links'], companies: ['Google', 'LeetCode contest'],
+    statement: `<p>Start with an empty string. In one operation you may append <code>words[i]</code> for <code>costs[i]</code>. Return the minimum total cost to build exactly <code>target</code>, or −1 if impossible.</p>`,
+    constraints: `1 ≤ |target| ≤ 5·10<sup>4</sup>, 1 ≤ words.length ≤ 5·10<sup>4</sup>, Σ|words[i]| ≤ 5·10<sup>4</sup>, 1 ≤ costs[i] ≤ 10<sup>4</sup> (LeetCode 3213)`,
+    example: `<p>target = <code>"abcdef"</code>, words = [abdef, abc, d, def, ef], costs = [100, 1, 1, 10, 5] → <b>7</b>: ${H.c('g', 'abc')} (1) + ${H.c('b', 'd')} (1) + ${H.c('p', 'ef')} (5).</p><p>target = <code>"aaaa"</code>, words = [z, zz, zzz] → <b>−1</b>.</p>`,
+    brute: { why: `<p>dp[i] = min cost to build target[0..i). For each i try every word with <code>startsWith</code>: O(|target| · Σ|words|) = 2.5·10<sup>9</sup> character checks. The waste: re-matching the same words from scratch at every position.</p>`, code: `
+      class Brute {
+          int minimumCost(String target, String[] words, int[] costs) {
+              int n = target.length();
+              long INF = Long.MAX_VALUE / 4;
+              long[] dp = new long[n + 1];
+              Arrays.fill(dp, INF);
+              dp[0] = 0;
+              for (int i = 0; i < n; i++) {
+                  if (dp[i] == INF) continue;
+                  for (int k = 0; k < words.length; k++)
+                      if (target.startsWith(words[k], i))
+                          dp[i + words[k].length()] = Math.min(dp[i + words[k].length()], dp[i] + costs[k]);
+              }
+              return dp[n] >= INF ? -1 : (int) dp[n];
+          }
+      }` },
+    mcq: { q: 'At one target position, how many different words can END there (following dictionary links)?', options: ['Up to the number of words (5·10<sup>4</sup>)', 'At most the number of DISTINCT word lengths, which is O(√Σ|words|) ≈ 316', 'Always 1', 'O(log n)'], answer: 1, explain: 'Words ending at the same position are suffixes of each other, so they have distinct lengths; distinct lengths ℓ<sub>1</sub> &lt; ℓ<sub>2</sub> &lt; … need Σ ≥ 1 + 2 + … ⇒ at most ~√(2·5·10<sup>4</sup>).' },
+    hints: [`<p>dp[i] = min over words w that END at position i of dp[i − |w|] + cost(w). Aho–Corasick lists exactly the words ending at each position.</p>`, `<p>Duplicate words: keep the minimum cost at the trie node. Use dictionary links (nearest word-ending node on the fail chain) to enumerate matches without walking empty nodes.</p>`, `<p>Each enumerated node has a distinct depth, so ≤ ~316 per position → ~1.6·10<sup>7</sup> steps. Use long for dp, return −1 if dp[n] is infinite.</p>`],
+    solution: {
+      approach: `<p>Build Aho–Corasick over the words (min cost per end node, depth = word length, dictionary links). Scan target; at each position walk the dictionary chain and relax dp. O(|target|·√M + M·26).</p>`,
+      code: `
+        class Solution {
+            public int minimumCost(String target, String[] words, int[] costs) {
+                int cap = 1;
+                for (String w : words) cap += w.length();
+                int[][] go = new int[cap][26];
+                for (int[] row : go) Arrays.fill(row, -1);
+                int[] fail = new int[cap], best = new int[cap], depth = new int[cap], dict = new int[cap];
+                Arrays.fill(best, Integer.MAX_VALUE);
+                int nodes = 1;
+                for (int k = 0; k < words.length; k++) {                  // trie, min cost per word
+                    int v = 0;
+                    for (char ch : words[k].toCharArray()) {
+                        int c = ch - 'a';
+                        if (go[v][c] == -1) { go[v][c] = nodes; depth[nodes] = depth[v] + 1; nodes++; }
+                        v = go[v][c];
+                    }
+                    best[v] = Math.min(best[v], costs[k]);
+                }
+                ArrayDeque<Integer> q = new ArrayDeque<>();
+                dict[0] = -1;
+                for (int c = 0; c < 26; c++) {
+                    int u = go[0][c];
+                    if (u == -1) go[0][c] = 0; else { fail[u] = 0; dict[u] = -1; q.add(u); }
+                }
+                while (!q.isEmpty()) {
+                    int v = q.poll();
+                    for (int c = 0; c < 26; c++) {
+                        int u = go[v][c];
+                        if (u == -1) { go[v][c] = go[fail[v]][c]; continue; }
+                        fail[u] = go[fail[v]][c];
+                        dict[u] = best[fail[u]] != Integer.MAX_VALUE ? fail[u] : dict[fail[u]];
+                        q.add(u);
+                    }
+                }
+                int n = target.length();
+                long INF = Long.MAX_VALUE / 4;
+                long[] dp = new long[n + 1];
+                Arrays.fill(dp, INF);
+                dp[0] = 0;
+                int v = 0;
+                for (int i = 1; i <= n; i++) {
+                    v = go[v][target.charAt(i - 1) - 'a'];
+                    for (int u = best[v] != Integer.MAX_VALUE ? v : dict[v]; u != -1; u = dict[u]) {
+                        long prev = dp[i - depth[u]];                       // word u ends at i
+                        if (prev != INF) dp[i] = Math.min(dp[i], prev + best[u]);
+                    }
+                }
+                return dp[n] >= INF ? -1 : (int) dp[n];
+            }
+        }`,
+      dry: { head: ['i', 'char', 'words ending here', 'dp[i]'], rows: [['0', '', '', '0'], ['3', 'c', 'abc (1)', '0 + 1 = 1'], ['4', 'd', 'd (1)', '1 + 1 = 2'], ['5', 'e', 'none (state “de”)', '∞'], ['6', 'f', 'def (10), ef (5)', 'min(1 + 10, 2 + 5) = <b>7</b>']] },
+      complexity: `<p>Build O(M·26), scan O(|target|·√M) ≈ 1.6·10<sup>7</sup>, space O(M·26 + |target|).</p>`,
+      followUps: ['Return the actual sequence of words (store argmin).', 'Words may be used at most once each — becomes much harder (set cover flavour).']
+    }
+  });
+
+  practice.push({
+    title: 'Longest Substring Occurring at Least K Times', level: 'Hard', tags: ['suffix array', 'lcp', 'monotonic deque', 'sliding window'], companies: ['Google', 'Bloomberg'],
+    statement: `<p>Given <code>s</code> and an integer <code>k</code>, return the length of the longest substring that occurs at least <code>k</code> times in <code>s</code> (occurrences may overlap). Return 0 if none.</p>`,
+    constraints: `1 ≤ |s| ≤ 10<sup>5</sup>, 1 ≤ k ≤ |s|, lowercase letters`,
+    example: `<p>s = <code>"banana"</code>: k = 2 → <b>3</b> (${H.c('g', 'ana')}); k = 3 → <b>1</b> (${H.c('g', 'a')}). s = <code>"aaaa"</code>, k = 3 → <b>2</b> (aa at 0, 1, 2).</p>`,
+    brute: { why: `<p>For each length L (from long to short), count all substrings of length L in a HashMap&lt;String, Integer&gt;: O(N) lengths × O(N) substrings × O(N) hashing = O(N<sup>3</sup>). Binary search on L + rolling hash makes it O(N log N) expected — but SA gives a clean deterministic O(N log N).</p>`, code: `
+      class Brute {
+          int longestKRepeat(String s, int k) {
+              int n = s.length();
+              for (int len = n; len >= 1; len--) {
+                  Map<String, Integer> cnt = new HashMap<>();
+                  for (int i = 0; i + len <= n; i++)
+                      if (cnt.merge(s.substring(i, i + len), 1, Integer::sum) >= k) return len;
+              }
+              return 0;
+          }
+      }` },
+    mcq: { q: 'A substring w occurs ≥ k times ⇔ in SA order there are k consecutive suffixes that…', options: ['all have length ≥ |w|', 'pairwise share a prefix of length ≥ |w| (min of the k−1 lcp values ≥ |w|)', 'have increasing SA values', 'are all distinct'], answer: 1, explain: 'All suffixes starting with w form one contiguous SA block; the common prefix of a block equals the minimum lcp inside it.' },
+    hints: [`<p>Suffixes sharing a prefix w sit together in SA. A block of k consecutive ranks shares exactly min(lcp[r+1..r+k−1]) letters.</p>`, `<p>Slide a window of k − 1 consecutive lcp values; answer = max over windows of the window minimum. A monotonic deque gives each minimum in amortised O(1) (DSA 13).</p>`, `<p>k = 1 → whole string (length N). k &gt; N → 0. Recipe: SA → Kasai → sliding-window minimum over lcp[1..N−1] with width k − 1 → max.</p>`],
+    solution: {
+      approach: `<p>SA + LCP + sliding-window minimum. The window minimum is the longest prefix shared by k consecutive suffixes, i.e. the longest substring with ≥ k occurrences inside that block.</p>`,
+      code: `
+        class Solution {
+            public int longestKRepeat(String s, int k) {
+                int n = s.length();
+                if (k <= 1) return n;
+                if (k > n) return 0;
+                int[] sa = buildSA(s), lcp = kasai(s, sa);
+                int w = k - 1, best = 0;                        // window of k-1 lcp values
+                ArrayDeque<Integer> dq = new ArrayDeque<>();   // indices with increasing lcp
+                for (int i = 1; i < n; i++) {
+                    while (!dq.isEmpty() && lcp[dq.peekLast()] >= lcp[i]) dq.pollLast();
+                    dq.addLast(i);
+                    if (dq.peekFirst() <= i - w) dq.pollFirst();
+                    if (i >= w) best = Math.max(best, lcp[dq.peekFirst()]);
+                }
+                return best;
+            }
+
+            private int[] kasai(String s, int[] sa) {
+                int n = s.length(), h = 0;
+                int[] rank = new int[n], lcp = new int[n];
+                for (int r = 0; r < n; r++) rank[sa[r]] = r;
+                for (int i = 0; i < n; i++) {
+                    if (rank[i] == 0) { h = 0; continue; }
+                    int j = sa[rank[i] - 1];
+                    while (i + h < n && j + h < n && s.charAt(i + h) == s.charAt(j + h)) h++;
+                    lcp[rank[i]] = h;
+                    if (h > 0) h--;
+                }
+                return lcp;
+            }
+
+            private int[] buildSA(String s) {
+                int n = s.length();
+                Integer[] sa = new Integer[n];
+                int[] rank = new int[n], tmp = new int[n];
+                for (int i = 0; i < n; i++) { sa[i] = i; rank[i] = s.charAt(i); }
+                for (int k = 1; n > 1; k <<= 1) {
+                    final int K = k;
+                    final int[] r = rank;
+                    Comparator<Integer> c = (x, y) -> r[x] != r[y] ? Integer.compare(r[x], r[y])
+                            : Integer.compare(x + K < n ? r[x + K] : -1, y + K < n ? r[y + K] : -1);
+                    Arrays.sort(sa, c);
+                    tmp[sa[0]] = 0;
+                    for (int i = 1; i < n; i++) tmp[sa[i]] = tmp[sa[i - 1]] + (c.compare(sa[i - 1], sa[i]) < 0 ? 1 : 0);
+                    System.arraycopy(tmp, 0, rank, 0, n);
+                    if (rank[sa[n - 1]] == n - 1) break;
+                }
+                int[] res = new int[n];
+                for (int i = 0; i < n; i++) res[i] = sa[i];
+                return res;
+            }
+        }`,
+      dry: { head: ['window (ranks)', 'suffixes', 'lcp values inside', 'min', 'best'], rows: [['0–1', 'a, ana', '1', '1', '1'], ['1–2', 'ana, anana', '3', '3', '3'], ['2–3', 'anana, banana', '0', '0', '3'], ['3–4', 'banana, na', '0', '0', '3'], ['4–5', 'na, nana', '2', '2', H.c('g', '<b>3</b> (k = 2)')]] },
+      complexity: `<p>O(N log<sup>2</sup> N) for the SA, O(N) for Kasai and the deque.</p>`,
+      followUps: ['Return the substring (remember SA[r] of the best window).', 'Require the k occurrences to be pairwise non-overlapping.', 'Maximise length × occurrences (largest rectangle in the LCP histogram).']
+    }
+  });
+
+  practice.push({
+    title: 'K-th Lexicographically Smallest Distinct Substring', level: 'Hard', tags: ['suffix array', 'lcp', 'counting'], companies: ['Google', 'SPOJ SUBLEX'],
+    statement: `<p>List all <b>distinct</b> non-empty substrings of <code>s</code> in lexicographic order. Return the k-th one (1-based), or <code>""</code> if there are fewer than k.</p>`,
+    constraints: `1 ≤ |s| ≤ 10<sup>5</sup>, 1 ≤ k ≤ 10<sup>10</sup> (use long)`,
+    example: `<p>s = <code>"banana"</code>: sorted distinct substrings are a, an, ana, anan, anana, b, ba, ban, … → k = 4 → <b>"anan"</b>; k = 6 → <b>"b"</b>; k = 16 → <b>""</b> (only 15 exist).</p>`,
+    brute: { why: `<p>Put all substrings into a TreeSet&lt;String&gt; and walk to the k-th: O(N<sup>2</sup>) strings of length up to N → O(N<sup>3</sup>) memory and time. The waste: we materialise ~5·10<sup>9</sup> strings just to count them.</p>`, code: `
+      class Brute {
+          String kth(String s, long k) {
+              TreeSet<String> set = new TreeSet<>();
+              for (int i = 0; i < s.length(); i++)
+                  for (int j = i + 1; j <= s.length(); j++) set.add(s.substring(i, j));
+              for (String t : set) if (--k == 0) return t;
+              return "";
+          }
+      }` },
+    mcq: { q: 'Walking ranks in SA order, the new substrings of rank r are its prefixes of lengths lcp[r]+1 … |suffix|. In which order do they appear in the global sorted list?', options: ['Reverse order', 'Exactly in increasing length, right after everything from earlier ranks', 'Random', 'Interleaved with later ranks'], answer: 1, explain: 'A shorter prefix is smaller than a longer one with the same start, and all of rank r’s new prefixes are larger than earlier ranks’ substrings and smaller than later ranks’ new ones.' },
+    hints: [`<p>Group the sorted distinct substrings by the first SA rank that owns them (topic 7): rank r owns (n − SA[r]) − lcp[r] consecutive entries.</p>`, `<p>Skip whole ranks while k is larger than their count (subtract). Inside the right rank, the answer is the prefix of length lcp[r] + k.</p>`, `<p>Use long for k. If k survives all ranks, return "". Multiple queries: prefix sums over rank counts + binary search.</p>`],
+    solution: {
+      approach: `<p>SA + LCP. Ranks contribute contiguous, already-sorted blocks of new substrings; skip blocks by count, then index inside the right block. O(N log<sup>2</sup> N) build, O(N) per query (O(log N) with prefix sums).</p>`,
+      code: `
+        class Solution {
+            public String kth(String s, long k) {
+                int n = s.length();
+                int[] sa = buildSA(s), lcp = kasai(s, sa);
+                for (int r = 0; r < n; r++) {
+                    long fresh = (n - sa[r]) - lcp[r];                 // new substrings owned by rank r
+                    if (k <= fresh) return s.substring(sa[r], sa[r] + lcp[r] + (int) k);
+                    k -= fresh;
+                }
+                return "";
+            }
+
+            private int[] kasai(String s, int[] sa) {
+                int n = s.length(), h = 0;
+                int[] rank = new int[n], lcp = new int[n];
+                for (int r = 0; r < n; r++) rank[sa[r]] = r;
+                for (int i = 0; i < n; i++) {
+                    if (rank[i] == 0) { h = 0; continue; }
+                    int j = sa[rank[i] - 1];
+                    while (i + h < n && j + h < n && s.charAt(i + h) == s.charAt(j + h)) h++;
+                    lcp[rank[i]] = h;
+                    if (h > 0) h--;
+                }
+                return lcp;
+            }
+
+            private int[] buildSA(String s) {
+                int n = s.length();
+                Integer[] sa = new Integer[n];
+                int[] rank = new int[n], tmp = new int[n];
+                for (int i = 0; i < n; i++) { sa[i] = i; rank[i] = s.charAt(i); }
+                for (int k = 1; n > 1; k <<= 1) {
+                    final int K = k;
+                    final int[] r = rank;
+                    Comparator<Integer> c = (x, y) -> r[x] != r[y] ? Integer.compare(r[x], r[y])
+                            : Integer.compare(x + K < n ? r[x + K] : -1, y + K < n ? r[y + K] : -1);
+                    Arrays.sort(sa, c);
+                    tmp[sa[0]] = 0;
+                    for (int i = 1; i < n; i++) tmp[sa[i]] = tmp[sa[i - 1]] + (c.compare(sa[i - 1], sa[i]) < 0 ? 1 : 0);
+                    System.arraycopy(tmp, 0, rank, 0, n);
+                    if (rank[sa[n - 1]] == n - 1) break;
+                }
+                int[] res = new int[n];
+                for (int i = 0; i < n; i++) res[i] = sa[i];
+                return res;
+            }
+        }`,
+      dry: { head: ['rank', 'suffix', 'lcp', 'owns', 'k before → after'], rows: [['0', 'a', '0', '1 (a)', '4 → 3'], ['1', 'ana', '1', '2 (an, ana)', '3 → 1'], ['2', 'anana', '3', '2 (anan, anana)', H.c('g', 'k = 1 ≤ 2 → prefix of length 3 + 1 = "anan"')]] },
+      complexity: `<p>O(N log<sup>2</sup> N) preprocessing, O(N) per query (or O(log N) with prefix sums).</p>`,
+      followUps: ['Count <b>all</b> substrings (with repeats) instead of distinct ones — then SAM path counting with occurrence weights is easier.', 'Q queries with different k — prefix sums of “owns” + binary search.']
+    }
+  });
 registerModule({ id: 'dsa24', title: 'Advanced String Algorithms', intro: '<p>x</p>', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();
