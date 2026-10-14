@@ -3359,7 +3359,7 @@ System.out.println(P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1]
     function rot(q) {
       if (!q || !q.options) return;
       k++;
-      var n = q.options.length, shift = (k * 2 + 1) % n;
+      var n = q.options.length, shift = (k * 7 + 3) % n;
       if (!shift) return;
       var correct = q.options[q.answer];
       q.options = q.options.slice(shift).concat(q.options.slice(0, shift));
