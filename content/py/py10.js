@@ -2712,7 +2712,7 @@ class Scheduler:
     async def _worker(self):
         while True:
             _, job_id, fn = await self._q.get()
-            fut = self._futures.pop(job_id)
+            fut = self._futures[job_id]
             try:
                 if fut.cancelled():
                     continue
@@ -2733,6 +2733,7 @@ class Scheduler:
                 finally:
                     self._running.pop(job_id, None)
             finally:
+                self._futures.pop(job_id, None)
                 self._q.task_done()
 
     async def close(self):
@@ -2757,7 +2758,7 @@ async def main():
     print(await fb, await fa)                       # B A
     await asyncio.sleep(0.05)
     print("D running:", order[-1] == "D", "cancel D:", s.cancel(3))
-    await asyncio.sleep(0)
+    await asyncio.sleep(0.01)
     print("order:", order, "C cancelled:", fc.cancelled(), "D cancelled:", fd.cancelled())
     await s.close()
 

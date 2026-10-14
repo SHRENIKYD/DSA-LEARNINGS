@@ -3419,6 +3419,473 @@ print(b.members)</pre>`,
     }
   });
 
+  /* ======================================================================
+     PRACTICE — Hard
+     ====================================================================== */
+  practice.push({
+    title: 'LRU cache that is a real MutableMapping',
+    level: 'Hard', tags: ['collections.abc', 'MutableMapping', 'LRU', 'OrderedDict'], companies: ['Amazon', 'Google', 'Microsoft', 'Netflix'],
+    statement: R`<p>Implement <code>LRUCache(capacity)</code> as a subclass of <code>collections.abc.MutableMapping</code>. Reading <code>c[k]</code> (and <code>c.get(k)</code>) marks <code>k</code> as most recently used; <code>c[k] = v</code> inserts or updates and marks it recent; inserting beyond capacity evicts the <b>least</b> recently used key. <code>len</code>, iteration (oldest → newest), <code>in</code> (must <b>not</b> change recency), <code>del</code>, <code>pop</code>, <code>update</code>, <code>setdefault</code> must all work. Also count <code>hits</code> and <code>misses</code>.</p>`,
+    constraints: R`capacity ≥ 1; up to 10<sup>6</sup> operations; each operation O(1) average.`,
+    example: R`<p>cap 2: <code>c["a"]=1; c["b"]=2; c["a"]; c["c"]=3</code> → <code>list(c)</code> = ${H.c('g', "['a', 'c']")} ("b" was least recently used and got evicted). <code>"b" in c</code> → ${H.c('g', 'False')}; <code>c.hits, c.misses</code> → ${H.c('g', '(1, 0)')}.</p>`,
+    brute: {
+      why: R`<p>A list of keys plus a dict: every access does <code>keys.remove(k)</code> and <code>keys.append(k)</code>, which is O(n) per operation. Subclassing <code>dict</code> instead of <code>MutableMapping</code> is another trap: <code>dict.get</code>, <code>dict.update</code> and <code>dict.setdefault</code> bypass your overridden <code>__getitem__</code>/<code>__setitem__</code>, so recency and eviction silently break.</p>`,
+      code: R`
+        class LRUBrute:
+            def __init__(self, cap):
+                self.cap, self.data, self.order = cap, {}, []
+            def get(self, k):
+                if k not in self.data:
+                    return None
+                self.order.remove(k)                  # O(n)
+                self.order.append(k)
+                return self.data[k]
+            def put(self, k, v):
+                if k in self.data:
+                    self.order.remove(k)              # O(n)
+                elif len(self.data) == self.cap:
+                    del self.data[self.order.pop(0)]  # O(n) pop from the front
+                self.data[k] = v
+                self.order.append(k)
+
+        c = LRUBrute(2)
+        c.put("a", 1); c.put("b", 2); c.get("a"); c.put("c", 3)
+        print(c.order)
+      `
+    },
+    mcq: { q: 'Why does the mixin <code>get()</code> automatically update recency in your class?', options: ['MutableMapping.get is implemented as <code>try: return self[key]</code>, which calls your <code>__getitem__</code>', 'Because OrderedDict tracks it', 'Because <code>get</code> is abstract', 'It does not; you must override get'], answer: 0, explain: 'Mixin methods are written in terms of the abstract methods, so all reads funnel through your <code>__getitem__</code>. That is exactly why you inherit from the ABC instead of <code>dict</code>.' },
+    hints: [
+      R`<p>Hint 1: Back it with <code>collections.OrderedDict</code>: <code>move_to_end(k)</code> is O(1) and <code>popitem(last=False)</code> removes the oldest in O(1).</p>`,
+      R`<p>Hint 2: Implement the five abstract methods: <code>__getitem__</code> (move to end, count hit; on KeyError count miss and re-raise), <code>__setitem__</code> (assign, move to end, evict while too big), <code>__delitem__</code>, <code>__iter__</code>, <code>__len__</code>.</p>`,
+      R`<p>Hint 3: The mixin <code>__contains__</code> calls <code>self[key]</code>, which would change recency and the hit counter. Override <code>__contains__</code> to check the OrderedDict directly. Note the mixin <code>get()</code> also counts a miss when it catches <code>KeyError</code>, which is what we want.</p>`
+    ],
+    solution: {
+      approach: R`<p>Five abstract methods over an <code>OrderedDict</code>, plus an override of <code>__contains__</code> so membership tests are side-effect free. Everything else (<code>get</code>, <code>pop</code>, <code>update</code>, <code>setdefault</code>, <code>keys</code>, <code>items</code>, equality) comes from <code>MutableMapping</code> and automatically respects recency/eviction.</p>`,
+      code: { lang: 'python', run: true, code: R`
+        from collections import OrderedDict
+        from collections.abc import MutableMapping
+
+        class LRUCache(MutableMapping):
+            def __init__(self, capacity, *args, **kwargs):
+                if capacity < 1:
+                    raise ValueError("capacity must be >= 1")
+                self.capacity = capacity
+                self._od = OrderedDict()
+                self.hits = self.misses = 0
+                self.update(*args, **kwargs)              # mixin -> our __setitem__
+
+            def __getitem__(self, key):
+                try:
+                    value = self._od[key]
+                except KeyError:
+                    self.misses += 1
+                    raise
+                self._od.move_to_end(key)                 # now most recently used
+                self.hits += 1
+                return value
+
+            def __setitem__(self, key, value):
+                self._od[key] = value
+                self._od.move_to_end(key)
+                while len(self._od) > self.capacity:
+                    self._od.popitem(last=False)          # evict least recently used
+
+            def __delitem__(self, key):
+                del self._od[key]
+
+            def __iter__(self):
+                return iter(self._od)                     # oldest -> newest
+
+            def __len__(self):
+                return len(self._od)
+
+            def __contains__(self, key):                  # no recency change, no stats
+                return key in self._od
+
+            def __repr__(self):
+                return f"LRUCache({self.capacity}, {dict(self._od)})"
+
+        c = LRUCache(2)
+        c["a"] = 1
+        c["b"] = 2
+        c["a"]                                            # touch a
+        c["c"] = 3                                        # evicts b
+        print(list(c), "b" in c, (c.hits, c.misses))
+        print(c.get("zzz", "default"), c.misses)          # mixin get -> __getitem__ -> miss
+        c.setdefault("d", 4)                              # mixin: evicts a
+        print(c, c.pop("c"), len(c))
+      ` },
+      dry: { head: ['op', 'OrderedDict (old → new)', 'evicted', 'hits/misses'], rows: [['c["a"]=1', 'a', '—', '0/0'], ['c["b"]=2', 'a b', '—', '0/0'], ['c["a"]', 'b a', '—', '1/0'], ['c["c"]=3', 'a c', 'b', '1/0'], ['"b" in c', 'a c (unchanged)', '—', '1/0'], ['get("zzz")', 'a c', '—', '1/1'], ['setdefault("d", 4)', 'c d', 'a', '1/2 (setdefault tried c["d"] first)']] },
+      complexity: R`<p>Every operation O(1) average (hash lookup + linked-list relink inside OrderedDict). Memory O(capacity).</p>`,
+      followUps: ['Make it thread-safe with a lock: which methods need it?', 'Add a TTL per entry (expire on read)', 'How does <code>functools.lru_cache</code> implement this in C?']
+    }
+  });
+
+  practice.push({
+    title: 'Reusable validated fields with a descriptor and __set_name__',
+    level: 'Hard', tags: ['descriptor', '__set_name__', 'property', 'validation'], companies: ['Django', 'Stripe', 'Robinhood'],
+    statement: R`<p>Writing a property + setter for each validated attribute is repetitive. Implement two descriptors: <code>Positive()</code> (number &gt; 0) and <code>OneOf(*choices)</code>. Usage:</p>
+      <pre>class Order:
+    qty = Positive()
+    price = Positive()
+    side = OneOf("buy", "sell")</pre>
+      <p>Each descriptor must learn its attribute name automatically (no repeating <code>"qty"</code>), store the value per instance, raise <code>ValueError</code> mentioning the attribute name on bad input, return the descriptor itself when accessed on the class (<code>Order.qty</code>), and raise <code>AttributeError</code> when read before being set.</p>`,
+    constraints: R`Must work for many instances independently; no global state; Python 3.6+.`,
+    example: R`<p><code>o = Order(); o.qty = 5; o.side = "buy"</code> → fine. <code>o.price = -1</code> → ${H.c('r', "ValueError: price must be > 0, got -1")}. <code>o.side = "hold"</code> → ${H.c('r', "ValueError: side must be one of ('buy', 'sell'), got 'hold'")}</p>`,
+    brute: {
+      why: R`<p>One property per field: three getters and three setters with copy-pasted checks, and the attribute name typed in several places. With 20 fields across 10 classes that is hundreds of lines, and one copy-paste slip (checking <code>qty</code> in the <code>price</code> setter) goes unnoticed.</p>`,
+      code: R`
+        class OrderBrute:
+            @property
+            def qty(self): return self._qty
+            @qty.setter
+            def qty(self, v):
+                if v <= 0: raise ValueError("qty must be > 0")
+                self._qty = v
+            @property
+            def price(self): return self._price
+            @price.setter
+            def price(self, v):
+                if v <= 0: raise ValueError("qty must be > 0")   # copy-paste bug: wrong name
+                self._price = v
+
+        o = OrderBrute()
+        try:
+            o.price = -1
+        except ValueError as e:
+            print(e)
+      `
+    },
+    mcq: { q: 'Why must the descriptor store values on the <b>instance</b> (e.g. <code>obj.__dict__</code>) rather than on <code>self</code> (the descriptor)?', options: ['There is one descriptor object per class attribute, shared by all instances; storing on it would make every Order share one qty', 'Descriptors cannot have attributes', 'For speed only', 'Because <code>__set_name__</code> requires it'], answer: 0, explain: 'The descriptor lives on the class. Per-instance data must be keyed by the instance, typically in <code>instance.__dict__</code> under a private name.' },
+    hints: [
+      R`<p>Hint 1: <code>__set_name__(self, owner, name)</code> is called automatically when the class body is executed; save <code>self.public = name</code> and <code>self.private = "_" + name</code>.</p>`,
+      R`<p>Hint 2: Implement <code>__get__(self, obj, objtype=None)</code> (return <code>self</code> if <code>obj is None</code>, else <code>getattr(obj, self.private)</code>, translating the error) and <code>__set__(self, obj, value)</code> (validate, then <code>setattr(obj, self.private, value)</code>).</p>`,
+      R`<p>Hint 3: Put the shared logic in a base class <code>Validator</code> with an abstract <code>validate(value)</code>; <code>Positive</code> and <code>OneOf</code> only implement validation. Because it defines <code>__set__</code>, it is a <b>data descriptor</b>, so it wins over the instance dict (step 1 of the lookup ladder).</p>`
+    ],
+    solution: {
+      approach: R`<p>An abstract <code>Validator</code> data descriptor implements the protocol once; subclasses implement only <code>validate</code>. <code>__set_name__</code> wires the attribute name in automatically. This is the same pattern used by Django model fields and the official Python "Descriptor HowTo" guide.</p>`,
+      code: { lang: 'python', run: true, code: R`
+        from abc import ABC, abstractmethod
+
+        class Validator(ABC):
+            def __set_name__(self, owner, name):
+                self.public = name
+                self.private = "_" + name
+
+            def __get__(self, obj, objtype=None):
+                if obj is None:
+                    return self                          # accessed on the class
+                try:
+                    return getattr(obj, self.private)
+                except AttributeError:
+                    raise AttributeError(f"{self.public} has not been set") from None
+
+            def __set__(self, obj, value):
+                self.validate(value)
+                setattr(obj, self.private, value)
+
+            @abstractmethod
+            def validate(self, value):
+                """Raise ValueError if value is not allowed."""
+
+        class Positive(Validator):
+            def validate(self, value):
+                if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
+                    raise ValueError(f"{self.public} must be > 0, got {value!r}")
+
+        class OneOf(Validator):
+            def __init__(self, *choices):
+                self.choices = choices
+
+            def validate(self, value):
+                if value not in self.choices:
+                    raise ValueError(f"{self.public} must be one of {self.choices}, got {value!r}")
+
+        class Order:
+            qty = Positive()
+            price = Positive()
+            side = OneOf("buy", "sell")
+
+            def __init__(self, qty, price, side):
+                self.qty, self.price, self.side = qty, price, side   # all validated
+
+            def __repr__(self):
+                return f"Order(qty={self.qty}, price={self.price}, side={self.side!r})"
+
+        a, b = Order(5, 9.5, "buy"), Order(1, 100, "sell")
+        print(a, b)                                       # independent per-instance values
+        print(type(Order.qty).__name__, Order.qty.public)
+        for field, bad in (("price", -1), ("side", "hold"), ("qty", True)):
+            try:
+                setattr(a, field, bad)
+            except ValueError as e:
+                print("ValueError:", e)
+        try:
+            Order.__new__(Order).qty
+        except AttributeError as e:
+            print("AttributeError:", e)
+      ` },
+      dry: { head: ['event', 'descriptor method', 'effect'], rows: [['class Order body runs', '__set_name__ ×3', 'public/private names stored'], ['Order(5, 9.5, "buy")', '__set__ → validate', 'a._qty=5, a._price=9.5, a._side="buy"'], ['a.price = -1', '__set__ → Positive.validate', 'ValueError (price)'], ['Order.qty', '__get__(None, Order)', 'returns the descriptor'], ['fresh_obj.qty', '__get__ → missing _qty', 'AttributeError: qty has not been set']] },
+      complexity: R`<p>O(1) per get/set plus the cost of <code>validate</code> (O(k) for k choices in OneOf; use a frozenset for large choice lists).</p>`,
+      followUps: ['Make it work with <code>__slots__</code> classes (hint: store in a slot named by <code>private</code>)', 'Add a <code>Typed(int)</code> descriptor and compose validators', 'Compare with pydantic field validation: when is each appropriate?']
+    }
+  });
+
+  practice.push({
+    title: 'Polynomial algebra: +, -, *, ==, hash and __call__',
+    level: 'Hard', tags: ['operator overloading', '__radd__', '__call__', 'value object'], companies: ['Wolfram', 'Two Sigma', 'Jane Street'],
+    statement: R`<p>Implement an immutable <code>Poly</code> from coefficients (lowest degree first): <code>Poly([1, 0, 3])</code> is 3x² + 1. Support <code>p + q</code>, <code>p - q</code>, <code>p * q</code> and the same with an int/float on <b>either</b> side (<code>2 * p</code>, <code>1 - p</code>), unary <code>-p</code>, <code>p == q</code> (also <code>Poly([5]) == 5</code>), hashing consistent with that equality, <code>p(x)</code> evaluation (Horner's rule), <code>p.degree</code>, and a readable repr like <code>3x^2 + 1</code> (zero polynomial prints <code>0</code>). Trailing zero coefficients must be normalised away.</p>`,
+    constraints: R`Degree ≤ 10<sup>3</sup>; coefficients ints or floats.`,
+    example: R`<p><code>p = Poly([1, 0, 3])</code>, <code>q = Poly([-1, 1])</code> → <code>p * q</code> = ${H.c('g', '3x^3 - 3x^2 + x - 1')}; <code>1 - p</code> = ${H.c('g', '-3x^2')}; <code>p(2)</code> = ${H.c('g', '13')}; <code>Poly([2, 0, 0]) == 2</code> → ${H.c('g', 'True')} and both hash equal.</p>`,
+    brute: {
+      why: R`<p>Functions over raw coefficient lists (<code>poly_add(a, b)</code>) leave trailing zeros (<code>[1, 0, 0]</code> vs <code>[1]</code> compare unequal), cannot be used with operators or <code>sum()</code>, and evaluation by <code>sum(c * x**i)</code> recomputes powers (O(n²) multiplications for big ints).</p>`,
+      code: R`
+        def poly_add(a, b):
+            n = max(len(a), len(b))
+            a, b = a + [0] * (n - len(a)), b + [0] * (n - len(b))
+            return [x + y for x, y in zip(a, b)]
+
+        print(poly_add([1, 2], [0, -2]) == [1])      # False: [1, 0] keeps a trailing zero
+        print(sum(c * 2 ** i for i, c in enumerate([1, 0, 3])))
+      `
+    },
+    mcq: { q: '<code>Poly([5]) == 5</code> should be True. What must also hold?', options: ['<code>hash(Poly([5])) == hash(5)</code>, so hash a constant polynomial as its constant', 'Nothing else', '<code>Poly</code> must subclass int', '<code>5 == Poly([5])</code> must be False'], answer: 0, explain: 'Equal objects must hash equal, even across types (like <code>hash(1) == hash(1.0)</code>). Otherwise a set containing 5 would not find Poly([5]).' },
+    hints: [
+      R`<p>Hint 1: A <code>_coerce</code> helper turns ints/floats into constant polynomials and returns <code>None</code> for anything else; every operator returns <code>NotImplemented</code> when coercion fails. Normalise in <code>__init__</code> by stripping trailing zeros.</p>`,
+      R`<p>Hint 2: <code>__radd__ = __add__</code> and <code>__rmul__ = __mul__</code> (commutative), but <code>__rsub__</code> must compute <code>other - self</code>. Multiplication: <code>out[i + j] += a[i] * b[j]</code>.</p>`,
+      R`<p>Hint 3: Hash: if the degree is ≤ 0 return <code>hash(constant)</code>, else <code>hash(tuple(coeffs))</code>. Horner: <code>acc = 0; for c in reversed(coeffs): acc = acc * x + c</code>. Repr: iterate from highest degree, handle signs, coefficient 1/−1 and powers 0/1.</p>`
+    ],
+    solution: {
+      approach: R`<p>An immutable value object with a canonical form (no trailing zeros, constant 0 as empty tuple). One coercion helper makes all mixed-type operators symmetric through the reflected methods, and equality/hash agree with plain numbers for constants.</p>`,
+      code: { lang: 'python', run: true, code: R`
+        from numbers import Number
+
+        class Poly:
+            __slots__ = ("coeffs",)
+
+            def __init__(self, coeffs):
+                c = list(coeffs)
+                while c and c[-1] == 0:
+                    c.pop()                                   # canonical form
+                object.__setattr__(self, "coeffs", tuple(c))
+
+            def __setattr__(self, name, value):
+                raise AttributeError("Poly is immutable")
+
+            @staticmethod
+            def _coerce(x):
+                if isinstance(x, Poly):
+                    return x
+                if isinstance(x, Number) and not isinstance(x, bool):
+                    return Poly([x])
+                return None
+
+            @property
+            def degree(self):
+                return len(self.coeffs) - 1                   # zero polynomial -> -1
+
+            def __add__(self, other):
+                o = self._coerce(other)
+                if o is None:
+                    return NotImplemented
+                n = max(len(self.coeffs), len(o.coeffs))
+                a = self.coeffs + (0,) * (n - len(self.coeffs))
+                b = o.coeffs + (0,) * (n - len(o.coeffs))
+                return Poly(x + y for x, y in zip(a, b))
+
+            __radd__ = __add__
+
+            def __neg__(self):
+                return Poly(-c for c in self.coeffs)
+
+            def __sub__(self, other):
+                o = self._coerce(other)
+                return NotImplemented if o is None else self + (-o)
+
+            def __rsub__(self, other):                        # other - self
+                o = self._coerce(other)
+                return NotImplemented if o is None else o + (-self)
+
+            def __mul__(self, other):
+                o = self._coerce(other)
+                if o is None:
+                    return NotImplemented
+                if not self.coeffs or not o.coeffs:
+                    return Poly([])
+                out = [0] * (len(self.coeffs) + len(o.coeffs) - 1)
+                for i, a in enumerate(self.coeffs):
+                    for j, b in enumerate(o.coeffs):
+                        out[i + j] += a * b
+                return Poly(out)
+
+            __rmul__ = __mul__
+
+            def __call__(self, x):                            # Horner's rule
+                acc = 0
+                for c in reversed(self.coeffs):
+                    acc = acc * x + c
+                return acc
+
+            def __eq__(self, other):
+                o = self._coerce(other)
+                return NotImplemented if o is None else self.coeffs == o.coeffs
+
+            def __hash__(self):
+                if self.degree <= 0:
+                    return hash(self.coeffs[0] if self.coeffs else 0)   # agree with plain numbers
+                return hash(self.coeffs)
+
+            def __repr__(self):
+                if not self.coeffs:
+                    return "0"
+                parts = []
+                for power in range(self.degree, -1, -1):
+                    c = self.coeffs[power]
+                    if c == 0:
+                        continue
+                    sign = "-" if c < 0 else "+"
+                    mag = abs(c)
+                    body = "" if (mag == 1 and power) else str(mag)
+                    body += "" if power == 0 else ("x" if power == 1 else f"x^{power}")
+                    parts.append((sign, body))
+                first_sign, first = parts[0]
+                text = ("-" if first_sign == "-" else "") + first
+                return text + "".join(f" {s} {b}" for s, b in parts[1:])
+
+        p, q = Poly([1, 0, 3]), Poly([-1, 1])
+        print(p, "|", q, "|", p * q, "|", 1 - p, "|", 2 * p + q)
+        print(p(2), (p * q)(2), p.degree, Poly([0, 0]).degree)
+        print(Poly([2, 0, 0]) == 2, hash(Poly([2])) == hash(2), len({Poly([7]), 7}))
+        print(sum([p, q, Poly([0, 0, -3])]))                  # sum starts at 0 -> __radd__
+        try:
+            p + "x"
+        except TypeError as e:
+            print("TypeError:", e)
+      ` },
+      dry: { head: ['expression', 'dispatch', 'result'], rows: [['p * q', 'Poly.__mul__', '3x^3 - 3x^2 + x - 1'], ['1 - p', 'int.__sub__ → NI; Poly.__rsub__(1)', '-3x^2'], ['2 * p + q', '__rmul__ then __add__', '6x^2 + x + 1'], ['sum([p, q, -3x²])', '0 + p → __radd__; … ', 'x'], ['Poly([2,0,0]) == 2', '_coerce(2) → Poly([2])', 'True; hashes equal']] },
+      complexity: R`<p>Add/sub O(n), multiply O(n·m) (Karatsuba or FFT for very large degrees), evaluation O(n) with Horner, hashing O(n).</p>`,
+      followUps: ['Add <code>__pow__</code> with exponentiation by squaring', 'Implement polynomial long division with <code>__divmod__</code>', 'Why must <code>__rsub__</code> not be <code>__sub__</code>?']
+    }
+  });
+
+  practice.push({
+    title: 'Interval value type: in, &, |, ordering, and merging',
+    level: 'Hard', tags: ['__contains__', '__and__', '__or__', 'total_ordering', '__slots__', 'merge intervals'], companies: ['Google', 'Meta', 'Uber', 'Airbnb'],
+    statement: R`<p>Implement an immutable, slotted, hashable closed interval <code>Interval(lo, hi)</code> (<code>lo ≤ hi</code>, else <code>ValueError</code>) with: <code>x in iv</code> (point membership) and <code>other_iv in iv</code> (containment), <code>a &amp; b</code> (intersection, or <code>None</code> if disjoint), <code>a | b</code> (union of overlapping or touching intervals; <code>ValueError</code> otherwise), ordering by <code>(lo, hi)</code>, <code>len(iv)</code> = number of integers covered for int intervals, and a repr <code>[3, 7]</code>. Then use it to solve "merge overlapping intervals" in a few lines: <code>merge(list_of_intervals)</code>.</p>`,
+    constraints: R`Up to 10<sup>5</sup> intervals; integer endpoints in [−10<sup>9</sup>, 10<sup>9</sup>].`,
+    example: R`<p><code>merge([Interval(1, 3), Interval(8, 10), Interval(2, 6), Interval(15, 18), Interval(6, 7)])</code> → ${H.c('g', '[[1, 7], [8, 10], [15, 18]]')}; <code>Interval(1, 5) &amp; Interval(4, 9)</code> → ${H.c('g', '[4, 5]')}; <code>Interval(1, 2) | Interval(5, 6)</code> → ${H.c('r', 'ValueError')}</p>`,
+    brute: {
+      why: R`<p>Repeatedly scan all pairs and merge any two that overlap until nothing changes: O(n²) per pass and up to n passes → O(n³) worst case. Tuples of <code>(lo, hi)</code> also scatter the overlap logic across the code.</p>`,
+      code: R`
+        def merge_brute(iv):
+            iv = [list(x) for x in iv]
+            changed = True
+            while changed:                                  # up to n passes
+                changed = False
+                for i in range(len(iv)):
+                    for j in range(i + 1, len(iv)):         # O(n^2) pairs
+                        a, b = iv[i], iv[j]
+                        if a[0] <= b[1] and b[0] <= a[1]:
+                            iv[i] = [min(a[0], b[0]), max(a[1], b[1])]
+                            del iv[j]
+                            changed = True
+                            break
+                    if changed:
+                        break
+            return sorted(iv)
+
+        print(merge_brute([(1, 3), (8, 10), (2, 6), (15, 18), (6, 7)]))
+      `
+    },
+    mcq: { q: 'After sorting by <code>lo</code>, when can the current interval be merged into the last kept one?', options: ['When <code>cur.lo ≤ last.hi</code>', 'When <code>cur.hi ≤ last.hi</code> only', 'When <code>cur.lo == last.lo</code>', 'Never: sorting already merges them'], answer: 0, explain: 'Sorted by start, the only interval that can overlap the current one is the last merged interval; overlap (or touching, for closed intervals) means <code>cur.lo ≤ last.hi</code>.' },
+    hints: [
+      R`<p>Hint 1: Overlap test for closed intervals: <code>a.lo ≤ b.hi and b.lo ≤ a.hi</code>. Intersection is <code>[max(lo), min(hi)]</code> if non-empty.</p>`,
+      R`<p>Hint 2: <code>__contains__(self, x)</code>: if <code>x</code> is an Interval check containment, otherwise check <code>lo ≤ x ≤ hi</code>. Ordering via <code>@total_ordering</code> on the key <code>(lo, hi)</code>; hash the same key.</p>`,
+      R`<p>Hint 3: <code>merge</code>: sort, then fold: for each interval, if it overlaps the last kept one replace the last with <code>last | cur</code>, else append. Return <code>NotImplemented</code> from <code>&amp;</code>/<code>|</code> for non-Intervals.</p>`
+    ],
+    solution: {
+      approach: R`<p>Put the interval algebra into dunders so the algorithm reads like the math: <code>sorted(...)</code> uses <code>__lt__</code>, the fold uses <code>&amp;</code> to test overlap and <code>|</code> to combine. <code>__slots__</code> keeps 10<sup>5</sup> intervals compact; immutability keeps hashing safe.</p>`,
+      code: { lang: 'python', run: true, code: R`
+        from functools import total_ordering
+
+        @total_ordering
+        class Interval:
+            __slots__ = ("lo", "hi")
+
+            def __init__(self, lo, hi):
+                if lo > hi:
+                    raise ValueError(f"empty interval [{lo}, {hi}]")
+                object.__setattr__(self, "lo", lo)
+                object.__setattr__(self, "hi", hi)
+
+            def __setattr__(self, name, value):
+                raise AttributeError("Interval is immutable")
+
+            def __repr__(self):
+                return f"[{self.lo}, {self.hi}]"
+
+            def __contains__(self, x):
+                if isinstance(x, Interval):
+                    return self.lo <= x.lo and x.hi <= self.hi
+                return self.lo <= x <= self.hi
+
+            def __len__(self):                       # integers covered (int endpoints)
+                return self.hi - self.lo + 1
+
+            def __and__(self, other):
+                if not isinstance(other, Interval):
+                    return NotImplemented
+                lo, hi = max(self.lo, other.lo), min(self.hi, other.hi)
+                return Interval(lo, hi) if lo <= hi else None
+
+            def __or__(self, other):
+                if not isinstance(other, Interval):
+                    return NotImplemented
+                if (self & other) is None:
+                    raise ValueError(f"{self} and {other} do not overlap")
+                return Interval(min(self.lo, other.lo), max(self.hi, other.hi))
+
+            def _key(self):
+                return (self.lo, self.hi)
+
+            def __eq__(self, other):
+                if not isinstance(other, Interval):
+                    return NotImplemented
+                return self._key() == other._key()
+
+            def __lt__(self, other):
+                if not isinstance(other, Interval):
+                    return NotImplemented
+                return self._key() < other._key()
+
+            def __hash__(self):
+                return hash(self._key())
+
+        def merge(intervals):
+            out = []
+            for cur in sorted(intervals):            # uses __lt__
+                if out and (out[-1] & cur) is not None:
+                    out[-1] = out[-1] | cur          # uses __or__
+                else:
+                    out.append(cur)
+            return out
+
+        ivs = [Interval(1, 3), Interval(8, 10), Interval(2, 6), Interval(15, 18), Interval(6, 7)]
+        print(merge(ivs))
+        print(Interval(1, 5) & Interval(4, 9), Interval(1, 5) & Interval(7, 9))
+        print(4 in Interval(1, 5), Interval(2, 3) in Interval(1, 5), len(Interval(3, 7)))
+        print(len({Interval(1, 2), Interval(1, 2)}), max(ivs))
+        try:
+            Interval(1, 2) | Interval(5, 6)
+        except ValueError as e:
+            print("ValueError:", e)
+      ` },
+      dry: { head: ['sorted cur', 'last kept', 'last &amp; cur', 'action', 'out'], rows: [['[1, 3]', '—', '—', 'append', '[1,3]'], ['[2, 6]', '[1, 3]', '[2, 3]', 'last | cur', '[1,6]'], ['[6, 7]', '[1, 6]', '[6, 6]', 'last | cur', '[1,7]'], ['[8, 10]', '[1, 7]', 'None', 'append', '[1,7] [8,10]'], ['[15, 18]', '[8, 10]', 'None', 'append', '[1,7] [8,10] [15,18]']] },
+      complexity: R`<p>merge: O(n log n) for sorting + O(n) fold. Each dunder O(1). Memory: slotted objects, ~56 bytes each plus the endpoint ints.</p>`,
+      followUps: ['Add <code>__sub__</code> returning a list of 0 to 2 intervals', 'Build an <code>IntervalSet</code> that is a <code>collections.abc.Set</code>', 'Should <code>[1, 2] | [3, 4]</code> merge for integer intervals (adjacent, not overlapping)? Make it configurable']
+    }
+  });
+
   registerModule({
     id: 'py08',
     title: 'Advanced OOP: Dunder Methods, MRO & Dataclasses',

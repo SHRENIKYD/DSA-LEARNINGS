@@ -1989,4 +1989,299 @@ console.log(e.emit('ready', 2));   // false -- nobody left` },
       followUps: ['Add <code>maxListeners</code> leak warnings like Node.', 'Make <code>emit</code> catch listener errors and emit an <code>\'error\'</code> event instead.', 'How is <code>EventTarget</code> different (event objects, capture/bubble, <code>{ once: true }</code>)?']
     }
   });
+  /* =====================================================================
+     PRACTICE — Hard
+     ===================================================================== */
+  practice.push({
+    title: 'Build a Mini CommonJS Loader (wrapper, cache, cycles)',
+    level: 'Hard', tags: ['commonjs', 'module system', 'closures', 'machine coding'], companies: ['Google', 'Microsoft', 'Atlassian'],
+    statement: `<p>Implement <code>createLoader(files)</code> where <code>files</code> maps absolute paths (e.g. <code>'/app/main.js'</code>) to source strings. It returns <code>require(path)</code> that behaves like Node's CommonJS:</p>
+<ul><li>Wraps each source as <code>function (exports, require, module, __filename, __dirname) { … }</code> and calls it with <code>this === module.exports</code>.</li>
+<li>Resolves relative specifiers (<code>'./util'</code>, <code>'../lib/x.js'</code>) against the requiring file's folder; adds <code>.js</code> if missing.</li>
+<li><b>Caches</b> modules: a second <code>require</code> of the same file returns the same exports without re-running.</li>
+<li><b>Cycles</b>: if A requires B and B requires A while A is still running, B receives A's <b>partially filled</b> exports (no infinite loop).</li>
+<li>Throws <code>Error("Cannot find module 'x'")</code> for unknown files.</li></ul>`,
+    constraints: `≤ 1000 files. Sources are trusted (this is a teaching model). Use <code>new Function</code> to build the wrapper.`,
+    example: `<p>a.js: <code>exports.loaded = false; const b = require('./b'); exports.loaded = true;</code> b.js: <code>const a = require('./a'); exports.sawA = a.loaded;</code></p>
+<p>Requiring a.js gives ${H.c('g', 'b.sawA === false')}: when b ran, a had only executed its first line.</p>`,
+    brute: { why: `<p>Evaluating each file with no cache re-runs modules on every require (double side effects, separate state) and recurses forever on a cycle (A → B → A → B …) until "Maximum call stack size exceeded".</p>`, code: R`function bruteRequire(files, path) {
+  var module = { exports: {} };
+  var fn = new Function('exports', 'require', 'module', files[path]);
+  fn(module.exports, function (p) { return bruteRequire(files, '/' + p.replace('./', '') + '.js'); }, module);
+  return module.exports;                     // no cache: cycles never end
+}
+try {
+  bruteRequire({ '/a.js': "require('./b')", '/b.js': "require('./a')" }, '/a.js');
+} catch (e) { console.log(e.name + ': ' + e.message); }` },
+    mcq: { q: 'Why must a module be put in the cache <i>before</i> its code runs?', options: ['For speed only', 'So a circular require gets the in-progress exports instead of recursing forever', 'Because Node is single-threaded', 'It must be cached after'], answer: 1, explain: 'Node inserts the module into <code>require.cache</code> first. A cycle then finds it and returns the partial <code>module.exports</code>.' },
+    hints: [`<p><b>Hint 1:</b> a module record is <code>{ id, exports: {}, loaded: false }</code>. Store it in <code>cache[id]</code> <b>before</b> running the wrapper.</p>`, `<p><b>Hint 2:</b> path resolution: split the base folder and the specifier on <code>/</code>; for each part, <code>..</code> pops, <code>.</code> is skipped, anything else pushes. Append <code>.js</code> if absent.</p>`, `<p><b>Hint 3:</b> each module gets its <b>own</b> <code>require</code> bound to its folder (a closure). Return <code>module.exports</code> at the end — not the original <code>exports</code> object — so <code>module.exports = fn</code> works.</p>`],
+    solution: {
+      approach: `<p>Cache-first module records + a per-module <code>require</code> closure + POSIX path normalisation. This is essentially Node's <code>Module._load</code> in miniature: resolve → check cache → create record → cache it → compile wrapper → run with <code>this = exports</code> → mark loaded → return <code>module.exports</code>.</p>`,
+      code: { lang: 'js', run: true, code: R`function createLoader(files) {
+  var cache = {};
+
+  function resolve(fromDir, spec) {
+    if (!/^\.{1,2}\//.test(spec) && spec[0] !== '/') throw new Error("Cannot find module '" + spec + "' (only relative paths in this model)");
+    var parts = spec[0] === '/' ? [] : fromDir.split('/').filter(Boolean);
+    spec.split('/').forEach(function (seg) {
+      if (seg === '..') parts.pop();
+      else if (seg && seg !== '.') parts.push(seg);
+    });
+    var id = '/' + parts.join('/');
+    if (!/\.js$/.test(id)) id += '.js';
+    if (!(id in files)) throw new Error("Cannot find module '" + spec + "'");
+    return id;
+  }
+
+  function load(id) {
+    if (cache[id]) return cache[id].exports;            // cached (or in progress -> partial)
+    var module = { id: id, exports: {}, loaded: false };
+    cache[id] = module;                                 // cache BEFORE running: cycles OK
+    var dir = id.slice(0, id.lastIndexOf('/')) || '/';
+    var localRequire = function (spec) { return load(resolve(dir, spec)); };
+    var wrapper = new Function('exports', 'require', 'module', '__filename', '__dirname', files[id]);
+    wrapper.call(module.exports, module.exports, localRequire, module, id, dir);
+    module.loaded = true;
+    return module.exports;                              // honours module.exports = ...
+  }
+
+  return function require(path) { return load(resolve('/', path)); };
+}
+
+var files = {
+  '/app/main.js': "const a = require('./a'); const u = require('./lib/util'); console.log('a.loaded', a.loaded, 'b saw', a.b.sawA); console.log(u(2, 3), require('./lib/util') === u); console.log('this === exports:', this === exports);",
+  '/app/a.js': "exports.loaded = false; exports.b = require('./b'); exports.loaded = true;",
+  '/app/b.js': "const a = require('./a.js'); exports.sawA = a.loaded;",
+  '/app/lib/util.js': "console.log('util evaluated once', __filename); module.exports = function add(x, y) { return x + y; };"
+};
+var req = createLoader(files);
+req('/app/main.js');
+try { req('/app/missing'); } catch (e) { console.log(e.message); }` },
+      dry: { head: ['step', 'cache', 'event'], rows: [
+        ['require main', '{main*}', 'main runs, requires ./a'],
+        ['load a', '{main*, a*}', 'a: loaded=false, requires ./b'],
+        ['load b', '{…, b*}', 'b requires ./a.js → cache hit, <b>partial</b> exports (loaded=false)'],
+        ['b done', '{…, b}', 'b.sawA = false'],
+        ['a done', '{…, a}', 'a.loaded = true'],
+        ['util ×2', '{…, util}', 'second require returns cached function (true)']
+      ] },
+      complexity: `<p>Each file is compiled and run once: O(total source size) plus O(path length) per require. Memory O(number of modules).</p>`,
+      followUps: ['Add <code>index.js</code> folder resolution and a <code>node_modules</code> walk for bare names.', 'Add JSON files (<code>require(\'./data.json\')</code>).', 'How do ES modules avoid the "partial exports" problem (and what do they have instead — TDZ errors)?']
+    }
+  });
+
+  practice.push({
+    title: 'ES Module Cycles: Find the TDZ Crashes',
+    level: 'Hard', tags: ['esm', 'dfs', 'cycles', 'predict the output'], companies: ['Google', 'Bloomberg', 'Meta'],
+    statement: `<p>You get an ES module graph: <code>mods[name] = { imports: [...], exports: { binding: 'let' | 'const' | 'class' | 'function' }, topLevelReads: ['mod.binding', ...] }</code>. <code>topLevelReads</code> are imported bindings read while the module's top-level code runs. Starting from <code>entry</code>, compute the ESM <b>evaluation order</b> (post-order DFS, imports in order, each once, cycles skipped) and report every top-level read that would throw a <b>TDZ ReferenceError</b>: reading a <code>let</code>/<code>const</code>/<code>class</code> export of a module that has <b>not finished evaluating</b> yet. <code>function</code> declarations are hoisted and initialised during linking, so they are always safe.</p>`,
+    constraints: `≤ 10<sup>4</sup> modules. Report errors in evaluation order as strings <code>"reader: mod.binding"</code>. Assume nothing throws earlier (report all).`,
+    example: `<p>main → a; a → b; b → a. b reads <code>a.config</code> (const) and <code>a.helper</code> (function).</p>
+<p>Order: ${H.arr(['b', 'a', 'main'])} Errors: ${H.c('r', '["b: a.config"]')} — when b runs, a is still on the stack; <code>a.helper</code> is fine because function declarations are hoisted.</p>`,
+    brute: { why: `<p>"Cycles are always errors" or "cycles are never errors" are both wrong. The answer depends on <b>which</b> module evaluates first and on the <b>kind</b> of binding. Without simulating the DFS you cannot tell.</p>`, code: R`function tdzBrute(mods) {
+  // flags EVERY read that is part of a cycle -- includes safe function reads
+  var errs = [];
+  Object.keys(mods).forEach(function (m) {
+    mods[m].topLevelReads.forEach(function (r) {
+      var src = r.split('.')[0];
+      if (mods[src].imports.indexOf(m) >= 0) errs.push(m + ': ' + r);
+    });
+  });
+  return errs;
+}
+console.log(tdzBrute({
+  a: { imports: ['b'], exports: { config: 'const', helper: 'function' }, topLevelReads: [] },
+  b: { imports: ['a'], exports: {}, topLevelReads: ['a.config', 'a.helper'] }
+}));` },
+    mcq: { q: 'In a cycle, which imported binding can safely be <b>called</b> at the top level before its module finished evaluating?', options: ['an exported <code>const</code> arrow function', 'an exported <code>function</code> declaration', 'an exported <code>class</code>', 'none of them'], answer: 1, explain: 'Function declarations are instantiated during linking (hoisted). const/let/class bindings stay in the TDZ until their declaration line runs.' },
+    hints: [`<p><b>Hint 1:</b> first compute the evaluation order exactly as in the guided problem (post-order DFS with visiting/done states).</p>`, `<p><b>Hint 2:</b> when module M is evaluated (appended to the order), check each of its top-level reads <code>X.b</code>: it is safe iff X is already <b>done</b>, or the binding kind is <code>function</code>.</p>`, `<p><b>Hint 3:</b> because evaluation happens at the moment of post-order append, you can do the check inline in the DFS: at append time, state[X] tells you whether X has finished.</p>`],
+    solution: {
+      approach: `<p>Post-order DFS; at the moment a module is "evaluated" (appended), inspect its reads against the <code>done</code> set and the binding kind. This mirrors the real spec: TDZ errors come from bindings not yet initialised by their module's evaluation.</p>`,
+      code: { lang: 'js', run: true, code: R`function analyze(mods, entry) {
+  var state = {}, order = [], errors = [];
+  function visit(m) {
+    state[m] = 'visiting';
+    mods[m].imports.forEach(function (d) { if (!state[d]) visit(d); });   // skip visiting/done
+    // m evaluates NOW: check every imported binding it reads at top level
+    mods[m].topLevelReads.forEach(function (r) {
+      var parts = r.split('.'), src = parts[0], name = parts[1];
+      var kind = mods[src].exports[name];
+      if (state[src] !== 'done' && kind !== 'function') errors.push(m + ': ' + r);
+    });
+    state[m] = 'done';
+    order.push(m);
+  }
+  visit(entry);
+  return { order: order, errors: errors };
+}
+
+var mods = {
+  main: { imports: ['a'], exports: {}, topLevelReads: ['a.config'] },
+  a: { imports: ['b'], exports: { config: 'const', helper: 'function' }, topLevelReads: ['b.VERSION'] },
+  b: { imports: ['a'], exports: { VERSION: 'const' }, topLevelReads: ['a.config', 'a.helper'] }
+};
+console.log(analyze(mods, 'main'));
+// { order: [ 'b', 'a', 'main' ], errors: [ 'b: a.config' ] }
+// Fix idea: move config into its own module c that both a and b import (break the cycle).` },
+      dry: { head: ['evaluate', 'reads', 'source state', 'kind', 'verdict'], rows: [
+        ['b', 'a.config', 'a visiting', 'const', '<span class="c-r">TDZ error</span>'],
+        ['b', 'a.helper', 'a visiting', 'function', '<span class="c-g">ok (hoisted)</span>'],
+        ['a', 'b.VERSION', 'b done', 'const', '<span class="c-g">ok</span>'],
+        ['main', 'a.config', 'a done', 'const', '<span class="c-g">ok</span>']
+      ] },
+      complexity: `<p>O(V + E + R): each module, import edge and top-level read processed once.</p>`,
+      followUps: ['Rewrite the DFS iteratively for very deep graphs.', 'How would the CommonJS version of this graph behave (undefined instead of an error)?', 'Which refactors break cycles (extract shared module, dependency injection, lazy import())?']
+    }
+  });
+
+  practice.push({
+    title: 'npm Resolution: maxSatisfying with Comparator Sets and ||',
+    level: 'Hard', tags: ['semver', 'parsing', 'npm install'], companies: ['GitHub', 'Microsoft', 'Vercel'],
+    statement: `<p>When you run <code>npm install pkg@"range"</code>, npm picks the <b>highest published version</b> that satisfies the range. Implement <code>maxSatisfying(versions, range)</code> for ranges made of:</p>
+<ul><li>sets separated by <code>||</code> (a version matches if it matches <b>any</b> set);</li>
+<li>each set is space-separated comparators that must <b>all</b> hold: <code>&gt;=v</code>, <code>&gt;v</code>, <code>&lt;=v</code>, <code>&lt;v</code>, <code>=v</code> or bare <code>v</code>, <code>^v</code>, <code>~v</code>, <code>1.x</code>, <code>1.2.x</code>, <code>*</code>.</li></ul>
+<p>Return the version string or <code>null</code>.</p>`,
+    constraints: `≤ 10<sup>5</sup> versions (unsorted), plain <code>MAJOR.MINOR.PATCH</code> only, range ≤ 200 chars.`,
+    example: `<p>versions = <code>['1.2.0', '1.9.3', '2.0.0', '2.4.1', '3.0.0']</code>, range = <code>'^1.5.0 || &gt;=2.1.0 &lt;3'</code></p>
+<p>Set 1 matches ${H.c('g', '1.9.3')}; set 2 matches ${H.c('g', '2.4.1')} (note <code>&lt;3</code> means &lt;3.0.0). Highest → ${H.c('g', '2.4.1')}.</p>`,
+    brute: { why: `<p>Sorting versions as strings and picking the last one that "starts with the major" ignores <code>||</code>, inequality comparators and numeric ordering (<code>'1.10.0' &lt; '1.9.0'</code> as text).</p>`, code: R`function maxBrute(versions, range) {
+  var major = range.replace(/[^\d.]/g, '').split('.')[0];
+  var ok = versions.filter(function (v) { return v.split('.')[0] === major; }).sort();
+  return ok[ok.length - 1] || null;            // string sort + ignores || and < >
+}
+console.log(maxBrute(['1.9.3', '1.10.0', '2.4.1'], '^1.5.0 || >=2.1.0 <3'));   // '1.9.3' -- wrong twice` },
+    mcq: { q: '<code>&gt;=1.2.0 &lt;2</code> — what is the exclusive upper bound?', options: ['2.9.9', '2.0.0', '1.9.9', '3.0.0'], answer: 1, explain: 'A partial version in <code>&lt;2</code> fills missing parts with zeros: &lt;2.0.0.' },
+    hints: [`<p><b>Hint 1:</b> compile the range once into a list of sets; each set is a list of simple comparators <code>{ op, ver }</code> with op in <code>&gt;= &gt; &lt;= &lt; =</code>. Shorthands (^, ~, x) expand into a <code>&gt;=</code> and a <code>&lt;</code>.</p>`, `<p><b>Hint 2:</b> then for each version: parse once, test <code>sets.some(set =&gt; set.every(test))</code>, and keep a running maximum with numeric comparison — no need to sort.</p>`, `<p><b>Hint 3:</b> partial versions like <code>&lt;3</code> or <code>&gt;=2.1</code>: pad missing parts with 0. Wildcards: <code>1.x</code> → [&gt;=1.0.0, &lt;2.0.0]; <code>*</code> → [&gt;=0.0.0].</p>`],
+    solution: {
+      approach: `<p>Compile-then-scan. Compilation turns the human syntax into primitive comparators; the scan is O(N) with a running max, so no O(N log N) sort is needed.</p>`,
+      code: { lang: 'js', run: true, code: R`function parseV(s) {
+  var p = s.split('.').map(Number);
+  while (p.length < 3) p.push(0);                       // '<3' -> 3.0.0
+  return p;
+}
+function cmp(a, b) { for (var i = 0; i < 3; i++) if (a[i] !== b[i]) return a[i] < b[i] ? -1 : 1; return 0; }
+
+function compileToken(tok) {
+  var m;
+  if (tok === '*' || tok === 'x') return [{ op: '>=', v: [0, 0, 0] }];
+  if ((m = /^\^(\d+(?:\.\d+){0,2})$/.exec(tok))) {
+    var c = parseV(m[1]);
+    var hi = c[0] > 0 ? [c[0] + 1, 0, 0] : c[1] > 0 ? [0, c[1] + 1, 0] : [0, 0, c[2] + 1];
+    return [{ op: '>=', v: c }, { op: '<', v: hi }];
+  }
+  if ((m = /^~(\d+(?:\.\d+){0,2})$/.exec(tok))) {
+    var t = parseV(m[1]);
+    return [{ op: '>=', v: t }, { op: '<', v: [t[0], t[1] + 1, 0] }];
+  }
+  if ((m = /^(\d+)\.[x*]$/.exec(tok))) return [{ op: '>=', v: [+m[1], 0, 0] }, { op: '<', v: [+m[1] + 1, 0, 0] }];
+  if ((m = /^(\d+)\.(\d+)\.[x*]$/.exec(tok))) return [{ op: '>=', v: [+m[1], +m[2], 0] }, { op: '<', v: [+m[1], +m[2] + 1, 0] }];
+  if ((m = /^(>=|<=|>|<|=)?(\d+(?:\.\d+){0,2})$/.exec(tok))) return [{ op: m[1] || '=', v: parseV(m[2]) }];
+  throw new Error('Bad comparator: ' + tok);
+}
+function compile(range) {
+  return range.split('||').map(function (set) {
+    var toks = set.trim().replace(/(>=|<=|>|<|=)\s+/g, '$1').split(/\s+/).filter(Boolean);
+    if (!toks.length) toks = ['*'];
+    return toks.reduce(function (acc, t) { return acc.concat(compileToken(t)); }, []);
+  });
+}
+function test(v, c) {
+  var r = cmp(v, c.v);
+  return c.op === '>=' ? r >= 0 : c.op === '>' ? r > 0 : c.op === '<=' ? r <= 0 : c.op === '<' ? r < 0 : r === 0;
+}
+function maxSatisfying(versions, range) {
+  var sets = compile(range), best = null, bestV = null;
+  versions.forEach(function (s) {
+    var v = parseV(s);
+    var ok = sets.some(function (set) { return set.every(function (c) { return test(v, c); }); });
+    if (ok && (!bestV || cmp(v, bestV) > 0)) { best = s; bestV = v; }
+  });
+  return best;
+}
+
+var vs = ['1.2.0', '1.9.3', '1.10.0', '2.0.0', '2.4.1', '3.0.0'];
+console.log(maxSatisfying(vs, '^1.5.0 || >=2.1.0 <3'));   // 2.4.1
+console.log(maxSatisfying(vs, '^1.5.0'));                 // 1.10.0 (numeric, not text!)
+console.log(maxSatisfying(vs, '~1.2.0'));                 // 1.2.0
+console.log(maxSatisfying(vs, '>= 2.0.0 <= 2.0.0'));      // 2.0.0 (spaces after operators)
+console.log(maxSatisfying(vs, '>3.0.0'));                 // null` },
+      dry: { head: ['version', 'set 1: ≥1.5.0 &lt;2.0.0', 'set 2: ≥2.1.0 &lt;3.0.0', 'match?', 'best so far'], rows: [
+        ['1.2.0', 'no', 'no', 'no', 'null'],
+        ['1.9.3', 'yes', 'no', 'yes', '1.9.3'],
+        ['1.10.0', 'yes', 'no', 'yes', '1.10.0'],
+        ['2.4.1', 'no', 'yes', 'yes', '<span class="c-g">2.4.1</span>'],
+        ['3.0.0', 'no', 'no (not &lt;3.0.0)', 'no', '2.4.1']
+      ] },
+      complexity: `<p>Compile O(L) for range length L; scan O(N · C) for N versions and C comparators (C is tiny), so effectively O(N). No sorting needed.</p>`,
+      followUps: ['Add pre-release handling (<code>2.0.0-rc.1</code> only matches ranges that mention a pre-release of the same tuple).', 'npm also respects <code>dist-tags</code> like <code>latest</code> — how does that interact with ranges?', 'Hyphen ranges: <code>1.2 - 2.3.4</code>.']
+    }
+  });
+
+  practice.push({
+    title: 'Write a structuredClone Fallback (cycles, Date, Map, Set)',
+    level: 'Hard', tags: ['deep clone', 'portable', 'recursion', 'WeakMap'], companies: ['Meta', 'Amazon', 'Walmart'],
+    statement: `<p><code>structuredClone</code> is a web-standard global (browsers, Node 17+, Deno, Bun), but some older or locked-down environments lack it. Write <code>deepClone(value)</code> that copies: primitives, plain objects, arrays, <code>Date</code>, <code>RegExp</code>, <code>Map</code>, <code>Set</code>, and handles <b>cycles and shared references</b> (the clone keeps the same shape of sharing). Like the real thing, throw an error named <code>DataCloneError</code> for functions and symbols.</p>`,
+    constraints: `Object graph ≤ 10<sup>5</sup> nodes; depth may be large (prefer no recursion limit issues, but recursion is acceptable here). Prototypes of class instances are not preserved (plain objects come back), matching structuredClone.`,
+    example: `<p><code>const a = { d: new Date(0), list: [1, 2] }; a.self = a;</code> → clone <code>c</code> with ${H.c('g', 'c.self === c')}, ${H.c('g', 'c.d instanceof Date')}, ${H.c('g', 'c !== a')}.</p>`,
+    brute: { why: `<p><code>JSON.parse(JSON.stringify(x))</code>: Dates become strings, Map/Set become <code>{}</code>, <code>undefined</code> disappears, <code>NaN</code> becomes <code>null</code>, and a cycle throws <code>TypeError: Converting circular structure to JSON</code>.</p>`, code: R`var a = { d: new Date(0), m: new Map([['k', 1]]), u: undefined };
+var c = JSON.parse(JSON.stringify(a));
+console.log(typeof c.d, c.m, 'u' in c);        // string {} false
+a.self = a;
+try { JSON.stringify(a); } catch (e) { console.log(e.name); }   // TypeError` },
+    mcq: { q: 'Which data structure lets the clone handle cycles?', options: ['A stack of keys', 'A Map/WeakMap from original object → its clone', 'A Set of visited keys', 'JSON'], answer: 1, explain: 'Before recursing into an object, record original → clone. If you meet the original again, return the recorded clone instead of copying again.' },
+    hints: [`<p><b>Hint 1:</b> primitives (and <code>null</code>) are returned as-is; functions and symbols throw. Everything else is an object to copy.</p>`, `<p><b>Hint 2:</b> keep a <code>WeakMap</code> original → clone. <b>Register the empty clone before filling it</b>, so a child pointing back at the parent finds it.</p>`, `<p><b>Hint 3:</b> branch on type: Date → new Date(time); RegExp → new RegExp(source, flags); Map → set clone(k), clone(v); Set → add clone(v); Array → index loop; plain object → own enumerable string keys.</p>`],
+    solution: {
+      approach: `<p>Recursive copy with a memo table. The memo makes cycles terminate and preserves shared references (two properties pointing at the same object still point at one shared clone). Compare with the real <code>structuredClone</code> when available.</p>`,
+      code: { lang: 'js', run: true, code: R`function deepClone(value, memo) {
+  memo = memo || new WeakMap();
+  var t = typeof value;
+  if (t === 'function' || t === 'symbol') {
+    var err = new Error(String(value).slice(0, 30) + ' could not be cloned.');
+    err.name = 'DataCloneError';
+    throw err;
+  }
+  if (value === null || t !== 'object') return value;           // primitives
+  if (memo.has(value)) return memo.get(value);                  // cycle / shared ref
+
+  var out;
+  if (value instanceof Date) { out = new Date(value.getTime()); memo.set(value, out); return out; }
+  if (value instanceof RegExp) { out = new RegExp(value.source, value.flags); memo.set(value, out); return out; }
+  if (value instanceof Map) {
+    out = new Map(); memo.set(value, out);                      // register BEFORE filling
+    value.forEach(function (v, k) { out.set(deepClone(k, memo), deepClone(v, memo)); });
+    return out;
+  }
+  if (value instanceof Set) {
+    out = new Set(); memo.set(value, out);
+    value.forEach(function (v) { out.add(deepClone(v, memo)); });
+    return out;
+  }
+  out = Array.isArray(value) ? new Array(value.length) : {};
+  memo.set(value, out);
+  Object.keys(value).forEach(function (k) { out[k] = deepClone(value[k], memo); });
+  return out;
+}
+
+var shared = { tag: 'shared' };
+var a = { d: new Date(0), re: /ab+c/gi, m: new Map([['k', shared]]), s: new Set([1, shared]), list: [1, 2, shared], u: undefined, n: NaN };
+a.self = a;
+var c = deepClone(a);
+console.log(c !== a, c.self === c, c.d instanceof Date, c.d.getTime());
+console.log(c.m.get('k') === c.list[2], c.list[2] !== shared);   // sharing preserved, but copied
+console.log(c.re.flags, 'u' in c, Number.isNaN(c.n));
+try { deepClone({ f: function () {} }); } catch (e) { console.log(e.name); }
+if (typeof structuredClone === 'function') {
+  var real = structuredClone({ d: new Date(0), m: new Map([[1, 2]]) });
+  console.log('native agrees:', real.d instanceof Date && real.m.get(1) === 2);
+}` },
+      dry: { head: ['visit', 'memo before', 'action'], rows: [
+        ['a (object)', '{}', 'create {} and memo a → c'],
+        ['a.d (Date)', '{a}', 'new Date(0)'],
+        ['a.m → shared', '{a, m}', 'clone shared → s′ and memo it'],
+        ['a.list[2] → shared', '{a, m, shared}', 'memo hit → reuse s′'],
+        ['a.self → a', '{…}', 'memo hit → c (cycle closed)']
+      ] },
+      complexity: `<p>O(N) time and space over N reachable values (each object copied once thanks to the memo).</p>`,
+      followUps: ['Make it iterative (explicit stack) for very deep structures.', 'Support typed arrays and ArrayBuffer.', 'What does real <code>structuredClone</code> do with class instances, getters and Error objects?']
+    }
+  });
 registerModule({ id: 'js03', title: 'x', intro: 'x', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();
