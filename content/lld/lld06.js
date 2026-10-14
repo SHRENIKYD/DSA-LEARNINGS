@@ -1977,6 +1977,479 @@ class Tower {
     }]
   });
 
+  /* ======================= TOPIC 9: MEMENTO ======================= */
+  topics.push({
+    title: 'Memento: Save a Snapshot, Restore It Later',
+    analogy: `<p>A <b>video game save point</b>: before the boss fight you save; if you lose, you reload exactly where you were — health, gold, position. The save file is <b>sealed</b>: the "Load Game" menu can store and list your saves, but it cannot edit your gold. Or think of <b>Ctrl+Z in Photoshop</b> after a blur filter: you cannot "un-blur" mathematically, so the app simply goes back to the picture saved just before.</p>`,
+    explain: `<p><b>Memento in one line:</b> let an object (the <b>originator</b>) produce a sealed snapshot of its internal state (the <b>memento</b>), let someone else (the <b>caretaker</b>) keep those snapshots, and later hand one back to the originator to restore — <b>without exposing the object's private fields</b> to anyone.</p>
+${H.table(['Role', 'Job', 'Game example'], [
+  ['<b>Originator</b>', 'Creates a memento of itself (<code>save()</code>) and restores from one (<code>restore(m)</code>)', '<code>Game</code> (hp, gold, level, inventory)'],
+  ['<b>Memento</b>', 'An immutable, opaque snapshot; only the originator can read it', '<code>Game.Snapshot</code>'],
+  ['<b>Caretaker</b>', 'Stores mementos (stack, list, map of named saves); never looks inside', '<code>SaveSlots</code> / undo history']
+])}
+<p><b>The naive way:</b> make every field public (or add getters <i>and</i> setters for all of them) so a "SaveManager" can copy them out and write them back. Now encapsulation is gone: any class can set <code>gold = 999999</code>. Every new field must be remembered in the SaveManager too. And a classic bug: copying a <code>List</code> <i>reference</i> instead of the list itself — later changes to the inventory silently change the "saved" copy. ${H.c('r', 'Leaky, fragile, and the snapshot is not really a snapshot.')}</p>
+<p><b>With Memento:</b> the originator itself decides what to capture (deep-copying mutable parts) and how to restore it. The caretaker holds opaque objects. Add a field? Only the originator changes.</p>
+<p><b>Memento vs Command for undo:</b> Command stores the <i>operation</i> and reverses it (cheap, needs an inverse). Memento stores the <i>state</i> and jumps back (works for anything, costs memory). Editors often combine them: commands for typing, mementos for "apply filter" or as periodic checkpoints.</p>`,
+    clues: [
+      '"<b>Undo</b>" where operations are hard to reverse (filters, complex transformations, game moves) → Memento snapshots.',
+      '"<b>Save / checkpoint / restore</b>", "rollback to a previous version", "snapshot" → Memento.',
+      '"Without exposing internal state / without breaking encapsulation" → that phrase is the Memento signature.',
+      '"Transactions: begin, change things, then commit or <b>rollback</b>" → snapshot at begin, restore on rollback.',
+      'Machine-coding: text editor history, drawing app, game save slots, form draft autosave, configuration rollback, in-memory KV store with transactions.',
+      'Follow-up "the state is huge" → incremental/delta snapshots, copy-on-write, or switch to Command (store operations instead of states).'
+    ],
+    code: [{ lang: 'java', title: 'Game with sealed snapshots and a caretaker', code: `class Game {
+    private int hp = 100, gold = 0, level = 1;
+    private final List<String> inventory = new ArrayList<>();
+
+    void play(int damage, int loot, String item) {
+        hp = Math.max(0, hp - damage); gold += loot;
+        if (item != null) inventory.add(item);
+        if (gold >= 100) { level++; gold -= 100; }
+    }
+
+    // MEMENTO: nested, immutable, fields private. Outside code can hold it but not read it.
+    static final class Snapshot {
+        private final int hp, gold, level;
+        private final List<String> inventory;           // deep copy, see save()
+        private final String label;
+        private Snapshot(int hp, int gold, int level, List<String> inv, String label) {
+            this.hp = hp; this.gold = gold; this.level = level; this.inventory = inv; this.label = label;
+        }
+        String label() { return label; }               // only harmless metadata is visible
+    }
+
+    Snapshot save(String label) {
+        return new Snapshot(hp, gold, level, List.copyOf(inventory), label);   // copy, not reference!
+    }
+    void restore(Snapshot s) {
+        hp = s.hp; gold = s.gold; level = s.level;     // Game can read Snapshot's private fields
+        inventory.clear(); inventory.addAll(s.inventory);
+    }
+    @Override public String toString() { return "hp=" + hp + " gold=" + gold + " lvl=" + level + " inv=" + inventory; }
+}
+
+// CARETAKER: stores snapshots, never inspects or edits them.
+class SaveSlots {
+    private final Deque<Game.Snapshot> history = new ArrayDeque<>();
+    private final int max;
+    SaveSlots(int max) { this.max = max; }
+    void push(Game.Snapshot s) { history.push(s); if (history.size() > max) history.removeLast(); }
+    Optional<Game.Snapshot> pop() { return Optional.ofNullable(history.poll()); }
+    List<String> labels() { return history.stream().map(Game.Snapshot::label).toList(); }
+}
+
+class MementoDemo {
+    public static void main(String[] args) {
+        Game g = new Game();
+        SaveSlots slots = new SaveSlots(3);
+        g.play(10, 60, "sword");
+        slots.push(g.save("before cave"));
+        g.play(70, 50, "shield");
+        slots.push(g.save("before boss"));
+        g.play(90, 0, null);                       // boss fight goes badly
+        System.out.println("now:      " + g);
+        slots.pop().ifPresent(g::restore);
+        System.out.println("reloaded: " + g);
+        slots.pop().ifPresent(g::restore);
+        System.out.println("reloaded: " + g + " remaining saves " + slots.labels());
+    }
+}` }],
+    codeTitle: ['Memento with caretaker'],
+    viz: {
+      title: 'Memento: saving and restoring sealed snapshots',
+      input: 'set hp=100; set gold=10; save; set hp=40; add sword; save; set hp=0; restore; restore; restore',
+      inputLabel: 'Actions separated by ; (set hp=N | set gold=N | add ITEM | save | restore)',
+      gen: function (input) {
+        var acts = tokens(input, ';', 14, 'Example: set hp=50; save; set hp=0; restore');
+        var st = { hp: 100, gold: 0, inventory: [] }, stack = [], frames = [], n = 0;
+        var nodes = [B('ORG', 'Game (originator)', 15, 30), B('MEM', 'Snapshot (memento)', 50, 30), B('CT', 'SaveSlots (caretaker)', 85, 30), B('CL', 'Player / UI', 50, 6)];
+        var edges = [['ORG', 'MEM', 'save() creates'], ['CT', 'MEM', 'holds (opaque)'], ['CL', 'ORG', 'play'], ['CL', 'CT', 'push/pop']];
+        var view = function () { return { hp: st.hp, gold: st.gold, inventory: st.inventory.length ? st.inventory.join(',') : '(empty)' }; };
+        var stk = function (hl) { return STACK('Caretaker stack (contents sealed)', stack.map(function (s) { return '#' + s.n + ' sealed'; }), hl || {}); };
+        frames.push(F('<b>Structure.</b> The originator (Game) is the <i>only</i> class that can read a Snapshot\'s fields. The caretaker stores snapshots like sealed envelopes — it knows "#1", "#2", nothing more. This is how Memento keeps <b>encapsulation</b>.',
+          [G('Memento roles', nodes, edges, { h: 60, hl: { ORG: 'sel', MEM: 'sel' } }), VARS('Game private state', view()), stk()]));
+        acts.forEach(function (a) {
+          var m;
+          if ((m = /^set\s+(hp|gold)\s*=\s*(-?\d+)$/i.exec(a))) {
+            var k = m[1].toLowerCase(), v = parseInt(m[2], 10);
+            if (Math.abs(v) > 1e6) throw new Error('Keep numbers small');
+            st[k] = v; var hv = {}; hv[k] = 'cur';
+            frames.push(F('Gameplay changes <b>' + k + '</b> to ' + v + '. Only the live object changes; saved snapshots are untouched.', [G('Playing', nodes, edges, { h: 60, hl: { ORG: 'cur', CL: 'cur' }, ehl: { 'CL-ORG': 'cur' } }), VARS('Game private state', view(), hv), stk()]));
+          } else if ((m = /^add\s+(\w+)$/i.exec(a))) {
+            st.inventory = st.inventory.concat([m[1]]);
+            frames.push(F('Picked up <b>' + esc(m[1]) + '</b>. Inventory is a mutable list — this is why <code>save()</code> must <b>copy</b> it, not store the same reference.', [G('Playing', nodes, edges, { h: 60, hl: { ORG: 'cur' }, ehl: { 'CL-ORG': 'cur' } }), VARS('Game private state', view(), { inventory: 'cur' }), stk()]));
+          } else if (/^save$/i.test(a)) {
+            n++;
+            stack.push({ n: n, hp: st.hp, gold: st.gold, inventory: st.inventory.slice() });
+            var hs = {}; hs[stack.length - 1] = 'ok';
+            frames.push(F('<code>slots.push(game.save())</code>: Game copies its private state (deep-copying the inventory) into <b>Snapshot #' + n + '</b>, and the caretaker pushes it. The caretaker cannot see hp=' + st.hp + ' — only "#' + n + '".',
+              [G('save()', nodes, edges, { h: 60, hl: { ORG: 'cur', MEM: 'ok', CT: 'ok' }, ehl: { 'ORG-MEM': 'ok', 'CT-MEM': 'ok', 'CL-CT': 'cur' } }), VARS('Game private state', view()), stk(hs),
+                VARS('inside Snapshot #' + n + ' (only Game can read)', { hp: st.hp, gold: st.gold, inventory: st.inventory.length ? st.inventory.join(',') : '(empty)' })]));
+          } else if (/^restore$/i.test(a)) {
+            if (!stack.length) {
+              frames.push(F('<code>slots.pop()</code> returns <b>Optional.empty()</b> — no saves left. Nothing is restored; always handle this case.', [G('nothing to restore', nodes, edges, { h: 60, hl: { CT: 'bad' } }), VARS('Game private state', view()), stk()]));
+              return;
+            }
+            var before = stack.slice(), s = stack.pop();
+            var hb = {}; hb[before.length - 1] = 'cur';
+            st = { hp: s.hp, gold: s.gold, inventory: s.inventory.slice() };
+            frames.push(F('<code>slots.pop().ifPresent(game::restore)</code>: the caretaker hands back <b>Snapshot #' + s.n + '</b>; Game opens it and overwrites its own fields. hp is back to ' + s.hp + '. ' + H.c('g', 'No public setters were needed.'),
+              [G('restore()', nodes, edges, { h: 60, hl: { ORG: 'ok', MEM: 'cur', CT: 'cur' }, ehl: { 'CL-CT': 'cur', 'ORG-MEM': 'cur' } }), VARS('Game private state', view(), { hp: 'ok', gold: 'ok', inventory: 'ok' }), STACK('Caretaker stack (before pop)', before.map(function (x) { return '#' + x.n + ' sealed'; }), hb)]));
+          } else throw new Error('Cannot read "' + a + '". Use set hp=N, set gold=N, add ITEM, save or restore');
+        });
+        frames.push(F('Finished. Memory cost = one full snapshot per save — fine for small objects, expensive for big documents (then use deltas, copy-on-write, or Command).', [G('Memento roles', nodes, edges, { h: 60, hl: { ORG: 'sel' } }), VARS('Game private state', view()), stk()]));
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'The shallow-copy bug', html: `<p>If <code>save()</code> stores <code>this.inventory</code> (the same list object), then adding "shield" after saving also changes the snapshot — restore brings back the shield you should have lost. Always copy mutable fields (<code>List.copyOf</code>, defensive copies, or keep state immutable to begin with).</p>`, code: `List<String> live = new ArrayList<>(List.of("sword"));
+List<String> badSnapshot = live;                 // same object!
+List<String> goodSnapshot = List.copyOf(live);   // independent copy
+live.add("shield");
+System.out.println("bad: " + badSnapshot + "  good: " + goodSnapshot);   // bad: [sword, shield]  good: [sword]` },
+      { title: 'Form draft autosave', html: `<p>A long job-application form saves a memento every 30 s to local storage. If the browser crashes, the form restores the last memento. The autosave timer (caretaker) does not understand the form's fields; it stores whatever opaque blob <code>form.snapshot()</code> returns (often serialized JSON).</p>` },
+      { title: 'Immutable state makes Memento free', html: `<p>If the originator's state is an immutable record (<code>record Board(List&lt;String&gt; cells, int turn)</code> built with copies), then "saving" is just keeping a reference to the current state object — it can never change. Redux in frontend apps, persistent data structures in functional languages and Git commits all work this way: <b>history = list of immutable states</b>, with structural sharing to save memory.</p>` },
+      { title: 'Transactions: snapshot on BEGIN', html: `<p>An in-memory key-value store supports <code>BEGIN</code> / <code>ROLLBACK</code> / <code>COMMIT</code>. Simplest correct design: on BEGIN push a memento (copy of the map) on a stack; ROLLBACK pops and restores; COMMIT discards the top. Cost: O(size of map) per BEGIN. Optimised design (Hard practice problem): store only the <i>changed keys' old values</i> — a delta memento.</p>` }
+    ],
+    deepDive: `<p><b>Narrow vs wide interface:</b> GoF says the memento offers a <i>wide</i> interface to the originator (read all state) and a <i>narrow</i> one to everyone else (nothing, or a label/timestamp). In Java: nested class with private fields (the outer class can access them), or package-private access with originator and memento in the same package, or an opaque serialized byte array.</p>
+<p><b>Memory strategies:</b> (1) full snapshots — simple, O(state) per save; (2) <b>deltas</b> — store only what changed since the previous memento; restore by applying deltas backwards; (3) <b>copy-on-write / persistent structures</b> — unchanged parts are shared between snapshots; (4) cap the number of mementos (ring buffer) or thin them out over time (keep every save from the last minute, one per minute for the last hour…).</p>
+<p><b>Serialization & versioning:</b> mementos written to disk (save files, autosave) outlive code versions. Add a version number and a migration path; never use raw Java serialization of internal classes for long-term storage — prefer explicit formats (JSON/Protobuf).</p>
+<p><b>Consistency:</b> taking a snapshot while another thread mutates the originator gives a torn state. Synchronize <code>save()</code>/<code>restore()</code> with mutators, or snapshot immutable state atomically (swap an <code>AtomicReference&lt;State&gt;</code>). Databases solve this at scale with MVCC snapshots and point-in-time recovery — the same idea.</p>
+<p><b>Restore side effects:</b> restoring fields does not undo external effects (emails sent, payments made). Memento rolls back <i>in-memory state only</i> — say this explicitly in interviews.</p>`,
+    aiEra: `<p><b>What AI changes:</b> AI coding agents need checkpoints. Tools like Claude Code snapshot files before edits so you can rewind; agent frameworks persist the conversation/graph state after each step (a memento) so a run can resume or be "time-travelled" back to a previous step for debugging. Same pattern: opaque snapshots, a caretaker (checkpointer), restore on demand.</p>
+<p><b>Use AI as a partner:</b> ask for a test that saves, mutates every field (including nested collections), restores, and asserts deep equality — it catches shallow-copy bugs instantly. <b>Where AI goes wrong:</b> generates public getters/setters for everything, stores references to mutable lists, forgets the empty-history case. <b>What you own:</b> deciding snapshot vs command, memory budget, and what "restore" cannot undo.</p>`,
+    problems: [{
+      title: 'Game Checkpoints with Named Slots', level: 'Easy', tags: ['memento', 'encapsulation'], companies: ['EA', 'Ubisoft', 'Zynga'],
+      statement: `<p>A <code>Player</code> has health, position (x, y) and an inventory list. Implement <code>CheckpointManager</code> supporting <code>save(name)</code>, <code>load(name)</code> and <code>list()</code>, with at most <b>3 named slots</b> (saving a 4th evicts the oldest). Loading a missing slot fails safely. The manager must <b>not</b> be able to read or modify the player's fields, and later changes to the player must not affect saved slots.</p>`,
+      constraints: `Inventory up to 100 items. Names are unique; saving to an existing name overwrites it (and makes it the newest).`,
+      example: `<p>hp=100 at (0,0) inv=[map] → save("start"). Move to (5,2), pick "key", hp=60 → save("door"). hp=0 → load("door") → ${H.c('g', 'hp=60 at (5,2) inv=[map,key]')}. load("start") → ${H.c('g', 'hp=100 at (0,0) inv=[map]')}. load("boss") → ${H.c('r', 'false, nothing changes')}.</p>`,
+      brute: { why: `<p>The manager reads public fields of <code>Player</code> and stores them in parallel maps, then writes them back. Encapsulation is broken (anyone can set hp), every new player field must be added to the manager, and the inventory map stores the <b>same list reference</b> — picking up items after saving corrupts the save.</p>`, code: `class OpenPlayer { public int hp = 100, x, y; public List<String> inv = new ArrayList<>(); }
+class NaiveCheckpoints {
+    final Map<String, int[]> nums = new HashMap<>();
+    final Map<String, List<String>> invs = new HashMap<>();
+    void save(String name, OpenPlayer p) {
+        nums.put(name, new int[]{p.hp, p.x, p.y});
+        invs.put(name, p.inv);                     // BUG: same list object, not a copy
+    }
+    void load(String name, OpenPlayer p) {
+        int[] v = nums.get(name);                  // NPE if missing
+        p.hp = v[0]; p.x = v[1]; p.y = v[2]; p.inv = invs.get(name);
+    }
+}` },
+      mcq: { q: 'Where should the code that copies the inventory list live?', options: ['In Player.save() — the originator decides how to snapshot itself', 'In CheckpointManager.save()', 'In the inventory item class', 'Nowhere; references are fine'], answer: 0, explain: 'Only the originator knows its internals and which parts are mutable; it builds a self-contained memento. The caretaker just stores it.' },
+      hints: [`<p>Hint 1: Player creates a <code>Player.Memento</code> (nested, private fields) and has <code>restore(Memento)</code>.</p>`, `<p>Hint 2: Caretaker = <code>LinkedHashMap&lt;String, Player.Memento&gt;</code>. Re-inserting a name: remove then put so it becomes newest. Evict the first entry when size &gt; 3.</p>`, `<p>Hint 3: Copy the inventory with <code>List.copyOf</code> on save and copy again on restore (so the player cannot mutate the memento's list). <code>load</code> returns boolean for missing slots.</p>`],
+      solution: {
+        approach: `<p>Player is the originator: <code>createMemento()</code> returns an immutable nested <code>Memento</code> with private fields and a defensive copy of the inventory; <code>restore(m)</code> copies everything back. The caretaker <code>CheckpointManager</code> keeps a <code>LinkedHashMap</code> in insertion order to evict the oldest slot. It only ever handles <code>Player.Memento</code> as an opaque value — no access to hp or position.</p>`,
+        code: `class Player {
+    private int hp = 100, x, y;
+    private final List<String> inventory = new ArrayList<>();
+
+    void move(int dx, int dy) { x += dx; y += dy; }
+    void damage(int d) { hp = Math.max(0, hp - d); }
+    void pick(String item) { inventory.add(item); }
+    @Override public String toString() { return "hp=" + hp + " at (" + x + "," + y + ") inv=" + inventory; }
+
+    static final class Memento {
+        private final int hp, x, y; private final List<String> inventory;
+        private Memento(int hp, int x, int y, List<String> inv) { this.hp = hp; this.x = x; this.y = y; this.inventory = inv; }
+    }
+    Memento createMemento() { return new Memento(hp, x, y, List.copyOf(inventory)); }
+    void restore(Memento m) {
+        hp = m.hp; x = m.x; y = m.y;
+        inventory.clear(); inventory.addAll(m.inventory);
+    }
+}
+
+class CheckpointManager {
+    private static final int MAX = 3;
+    private final LinkedHashMap<String, Player.Memento> slots = new LinkedHashMap<>();
+
+    void save(String name, Player p) {
+        slots.remove(name);                            // overwrite => becomes newest
+        slots.put(name, p.createMemento());
+        if (slots.size() > MAX) {
+            String oldest = slots.keySet().iterator().next();
+            slots.remove(oldest);
+        }
+    }
+    boolean load(String name, Player p) {
+        Player.Memento m = slots.get(name);
+        if (m == null) return false;
+        p.restore(m);
+        return true;
+    }
+    List<String> list() { return new ArrayList<>(slots.keySet()); }
+
+    public static void main(String[] args) {
+        Player p = new Player(); p.pick("map");
+        CheckpointManager cm = new CheckpointManager();
+        cm.save("start", p);
+        p.move(5, 2); p.pick("key"); p.damage(40);
+        cm.save("door", p);
+        p.damage(100);
+        cm.load("door", p);  System.out.println(p);    // hp=60 at (5,2) inv=[map, key]
+        cm.load("start", p); System.out.println(p);    // hp=100 at (0,0) inv=[map]
+        System.out.println(cm.load("boss", p) + " " + cm.list());
+    }
+}`,
+        complexity: `<p>save: O(inventory size) for the copy; load: O(inventory size); list: O(slots). Memory O(slots × state size).</p>`,
+        followUps: ['Persist slots to disk across game versions — what would you add? (version field + migration)', 'The world map is 50 MB — how do you avoid copying it per save? (deltas / immutable chunks)', 'Add autosave every 5 minutes without blocking the game thread']
+      }
+    }]
+  });
+
+  /* ======================= TOPIC 10: VISITOR ======================= */
+  topics.push({
+    title: 'Visitor: Add New Operations Without Touching the Classes',
+    analogy: `<p>A <b>house</b> has a kitchen, bedrooms and a garden. Different experts <i>visit</i> it: an <b>electrician</b> checks the wiring in each room, a <b>painter</b> quotes for each wall, a <b>tax assessor</b> values each room. The rooms never change to accommodate a new expert — each expert brings their own know-how for "what to do in a kitchen" and "what to do in a garden". The room just says "come in" (<i>accept</i>), and the visitor does its job there.</p>`,
+    explain: `<p><b>Visitor in one line:</b> when you have a <b>stable set of element classes</b> (e.g. expression nodes, file-system entries, shapes) but keep adding <b>new operations</b> over them (evaluate, print, export, validate, compute size), put each operation in its own <b>visitor class</b> with one <code>visitX</code> method per element type. Each element has a single <code>accept(visitor)</code> method that calls back the right <code>visitX</code>.</p>
+${H.table(['Role', 'Job', 'Expression example'], [
+  ['<b>Element</b> (interface)', '<code>accept(Visitor v)</code>', '<code>Expr</code>'],
+  ['<b>Concrete elements</b>', '<code>accept</code> calls <code>v.visitMe(this)</code>', '<code>Num</code>, <code>Add</code>, <code>Sub</code>, <code>Mul</code>'],
+  ['<b>Visitor</b> (interface)', 'One method per element type', '<code>visitNum</code>, <code>visitAdd</code>, <code>visitSub</code>, <code>visitMul</code>'],
+  ['<b>Concrete visitors</b>', 'One operation each', '<code>EvalVisitor</code>, <code>PrintVisitor</code>, <code>CountVisitor</code>']
+])}
+<p><b>The naive way:</b> either (a) add a method for every operation to every class (<code>eval()</code>, <code>print()</code>, <code>toJson()</code>, <code>typeCheck()</code>…) so node classes bloat with unrelated concerns and each new operation edits every class; or (b) write <code>if (e instanceof Add) … else if (e instanceof Mul) …</code> in each operation, and when a new node type appears you silently forget one of the ten instanceof chains. ${H.c('r', 'Operations are scattered or unchecked.')}</p>
+<p><b>Why <code>accept</code>? Double dispatch.</b> Java picks an overloaded method by the <i>compile-time</i> type. Given <code>Expr e</code>, calling <code>visitor.visit(e)</code> cannot know e is an <code>Add</code>. So we bounce: <code>e.accept(v)</code> dispatches on the <b>element's runtime type</b> (first dispatch), and inside <code>Add.accept</code> the call <code>v.visitAdd(this)</code> dispatches on the <b>visitor's runtime type</b> (second dispatch). Two virtual calls = the exact (element, operation) pair.</p>
+<p><b>The trade-off (say it in interviews):</b> Visitor makes <b>adding operations easy</b> (new class) but <b>adding element types hard</b> (every visitor needs a new method). Use it when types are stable and operations grow — compilers (AST passes), document exporters, file-system tools. Modern Java 21 offers a lighter alternative: <b>sealed interfaces + pattern-matching switch</b>, where the compiler checks exhaustiveness.</p>`,
+    clues: [
+      '"Perform <b>many different operations</b> over a <b>fixed hierarchy</b> of objects" (AST, shapes, file system, insurance products) → Visitor.',
+      '"Add new operations <b>without modifying the element classes</b>" → Visitor by definition.',
+      '"Export the same structure as JSON, XML and PDF", "compute area, perimeter and draw for all shapes" → one visitor per output/operation.',
+      'Code with repeated <code>instanceof</code> ladders over the same set of classes → Visitor or sealed + switch.',
+      '"Compiler / interpreter / linter / query planner" questions → tree walked by visitors (type checker, optimiser, code generator).',
+      'Warning clue: "new element types are added every week" → Visitor is the <i>wrong</i> choice; prefer polymorphic methods on the elements.'
+    ],
+    code: [{ lang: 'java', title: 'Classic Visitor with double dispatch and generic results', code: `interface ExprVisitor<R> {
+    R visitNum(Num n);
+    R visitAdd(Add a);
+    R visitSub(Sub s);
+    R visitMul(Mul m);
+}
+
+interface Expr { <R> R accept(ExprVisitor<R> v); }
+
+// Each accept() is one line: "visitor, here is me, with my exact type".
+record Num(int value) implements Expr { public <R> R accept(ExprVisitor<R> v) { return v.visitNum(this); } }
+record Add(Expr l, Expr r) implements Expr { public <R> R accept(ExprVisitor<R> v) { return v.visitAdd(this); } }
+record Sub(Expr l, Expr r) implements Expr { public <R> R accept(ExprVisitor<R> v) { return v.visitSub(this); } }
+record Mul(Expr l, Expr r) implements Expr { public <R> R accept(ExprVisitor<R> v) { return v.visitMul(this); } }
+
+// Operation 1: evaluate
+class EvalVisitor implements ExprVisitor<Integer> {
+    public Integer visitNum(Num n) { return n.value(); }
+    public Integer visitAdd(Add a) { return a.l().accept(this) + a.r().accept(this); }
+    public Integer visitSub(Sub s) { return s.l().accept(this) - s.r().accept(this); }
+    public Integer visitMul(Mul m) { return m.l().accept(this) * m.r().accept(this); }
+}
+// Operation 2: pretty-print. Added later, ZERO changes to Num/Add/Sub/Mul.
+class PrintVisitor implements ExprVisitor<String> {
+    public String visitNum(Num n) { return String.valueOf(n.value()); }
+    public String visitAdd(Add a) { return "(" + a.l().accept(this) + " + " + a.r().accept(this) + ")"; }
+    public String visitSub(Sub s) { return "(" + s.l().accept(this) + " - " + s.r().accept(this) + ")"; }
+    public String visitMul(Mul m) { return a(m.l()) + " * " + a(m.r()); }
+    private String a(Expr e) { return e.accept(this); }
+}
+// Operation 3: count nodes by type (a visitor can also accumulate state)
+class CountVisitor implements ExprVisitor<Void> {
+    final Map<String, Integer> counts = new TreeMap<>();
+    private Void bump(String k) { counts.merge(k, 1, Integer::sum); return null; }
+    public Void visitNum(Num n) { return bump("Num"); }
+    public Void visitAdd(Add a) { a.l().accept(this); a.r().accept(this); return bump("Add"); }
+    public Void visitSub(Sub s) { s.l().accept(this); s.r().accept(this); return bump("Sub"); }
+    public Void visitMul(Mul m) { m.l().accept(this); m.r().accept(this); return bump("Mul"); }
+}
+
+class VisitorDemo {
+    public static void main(String[] args) {
+        Expr e = new Mul(new Add(new Num(2), new Num(3)), new Sub(new Num(7), new Num(4)));   // (2+3)*(7-4)
+        System.out.println(e.accept(new PrintVisitor()) + " = " + e.accept(new EvalVisitor()));
+        CountVisitor c = new CountVisitor();
+        e.accept(c);
+        System.out.println(c.counts);
+    }
+}` }, { lang: 'java', title: 'Java 21 alternative: sealed types + pattern-matching switch', code: `// The compiler knows ALL subtypes of a sealed interface, so the switch must be exhaustive.
+sealed interface Shape permits Circle, Rect, Triangle {}
+record Circle(double r) implements Shape {}
+record Rect(double w, double h) implements Shape {}
+record Triangle(double b, double h) implements Shape {}
+
+class ShapeOps {
+    // Each "visitor" is just a function with a switch. No accept() boilerplate.
+    static double area(Shape s) {
+        return switch (s) {
+            case Circle c   -> Math.PI * c.r() * c.r();
+            case Rect r     -> r.w() * r.h();
+            case Triangle t -> 0.5 * t.b() * t.h();
+        };   // add a new Shape and this stops compiling until you handle it: safe!
+    }
+    static String svg(Shape s) {
+        return switch (s) {
+            case Circle c   -> "<circle r='" + c.r() + "'/>";
+            case Rect r     -> "<rect width='" + r.w() + "' height='" + r.h() + "'/>";
+            case Triangle t -> "<polygon base='" + t.b() + "'/>";
+        };
+    }
+    public static void main(String[] args) {
+        List<Shape> shapes = List.of(new Circle(1), new Rect(2, 3), new Triangle(4, 5));
+        for (Shape s : shapes) System.out.printf("%.2f %s%n", area(s), svg(s));
+    }
+}` }],
+    codeTitle: ['Classic Visitor', 'Sealed + switch (modern alternative)'],
+    viz: {
+      title: 'Visitor: double dispatch walking (2+3)*(7-4)',
+      input: 'eval',
+      inputLabel: 'Visitor to run: eval | print | count',
+      gen: function (input) {
+        var kind = pick(input, { eval: 'eval', print: 'print', count: 'count' }, 'Type eval, print or count');
+        var arr = ['*', '+', '-', 2, 3, 7, 4];
+        var TYPE = { '*': 'Mul', '+': 'Add', '-': 'Sub' };
+        var VIS = { eval: 'EvalVisitor', print: 'PrintVisitor', count: 'CountVisitor' }[kind];
+        var frames = [], res = {}, calls = [], counts = {}, done = {};
+        var nodes = [B('EL', '«Expr» accept(v)', 25, 8), B('NUM', 'Num', 8, 34), B('ADD', 'Add', 25, 34), B('MUL', 'Mul', 42, 34), B('VI', '«ExprVisitor»', 78, 8), B('EV', 'EvalVisitor', 62, 34), B('PV', 'PrintVisitor', 80, 34), B('CV', 'CountVisitor', 96, 34)];
+        var edges = [['NUM', 'EL'], ['ADD', 'EL'], ['MUL', 'EL'], ['EV', 'VI'], ['PV', 'VI'], ['CV', 'VI'], ['EL', 'VI', 'accept(v) → v.visitX(this)']];
+        var vid = { eval: 'EV', print: 'PV', count: 'CV' }[kind];
+        var sh = { EL: 'sel', VI: 'sel' }; sh[vid] = 'cur';
+        frames.push(F('<b>Two hierarchies.</b> Left: the stable element classes (Expr nodes). Right: operations as visitors. Each element\'s <code>accept(v)</code> is one line: <code>return v.visitMe(this);</code>. We will run <b>' + VIS + '</b> over the tree.',
+          [G('Elements and visitors', nodes, edges, { h: 50, hl: sh }), { type: 'tree', label: 'Expression tree: (2 + 3) * (7 - 4)', arr: arr }]));
+        var walk = function (i, depth) {
+          var v = arr[i], isOp = typeof v === 'string', t = isOp ? TYPE[v] : 'Num';
+          var h = clone(done); h[i] = 'cur';
+          calls.push(t + '.accept');
+          frames.push(F('Call <code>node.accept(' + VIS + ')</code> on <b>' + v + '</b>. Dispatch #1 (on the element): the runtime type is <b>' + t + '</b>, so <code>' + t + '.accept</code> runs and immediately calls <code>v.visit' + t + '(this)</code> — dispatch #2 (on the visitor) picks <b>' + VIS + '.visit' + t + '</b>.',
+            [{ type: 'tree', label: 'Expression tree', arr: arr, hl: h }, STACK('call stack', calls.slice(), (function () { var x = {}; x[calls.length - 1] = 'cur'; return x; })()), CODE(t + '.accept', 'public <R> R accept(ExprVisitor<R> v) {\n  return v.visit' + t + '(this);\n}', { 2: 'cur' })]));
+          var out;
+          if (isOp) {
+            var a = walk(2 * i + 1, depth + 1), b = walk(2 * i + 2, depth + 1);
+            if (kind === 'eval') out = v === '+' ? a + b : v === '-' ? a - b : a * b;
+            else if (kind === 'print') out = v === '*' ? a + ' * ' + b : '(' + a + ' ' + v + ' ' + b + ')';
+            else { counts[t] = (counts[t] || 0) + 1; out = null; }
+          } else {
+            if (kind === 'eval') out = v; else if (kind === 'print') out = String(v); else { counts.Num = (counts.Num || 0) + 1; out = null; }
+          }
+          calls.pop();
+          res[i] = out; done[i] = 'ok';
+          var h2 = clone(done); h2[i] = 'sel';
+          var vals = kind === 'count' ? clone(counts) : (function () { var o = {}; o['result of ' + v] = out; return o; })();
+          frames.push(F(VIS + '.visit' + t + '(' + v + ') ' + (isOp ? 'already visited both children (each via <code>child.accept(this)</code>) and ' : '') +
+            (kind === 'eval' ? 'returns <b>' + out + '</b>.' : kind === 'print' ? 'returns <b>"' + out + '"</b>.' : 'increments the counter for <b>' + t + '</b> (this visitor accumulates state instead of returning).'),
+            [{ type: 'tree', label: 'Expression tree (green = finished)', arr: arr, hl: h2 }, STACK('call stack', calls.length ? calls.slice() : ['(empty)']), VARS(kind === 'count' ? 'CountVisitor.counts' : 'returned value', vals, {})]));
+          return out;
+        };
+        var result = walk(0, 0);
+        frames.push(F('Done. ' + (kind === 'eval' ? 'Value = <b>' + result + '</b>.' : kind === 'print' ? 'Printed: <b>' + result + '</b>.' : 'Counts: ' + JSON.stringify(counts) + '.') + ' Adding a 4th operation (e.g. <code>ToJsonVisitor</code>) = one new class; Num/Add/Sub/Mul never change. But adding a new node type (Div) would force a new method into <b>every</b> visitor — the Visitor trade-off.',
+          [G('Elements and visitors', nodes, edges, { h: 50, hl: sh }), { type: 'table', label: 'Visitor trade-off', columns: ['Change', 'Cost with Visitor'], rows: [['New operation', '1 new class'], ['New element type', 'edit every visitor']], hl: { 0: 'sel' } }]));
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'Compilers and linters', html: `<p><code>javac</code>'s annotation processing API (<code>ElementVisitor</code>, <code>TypeVisitor</code>), ANTLR-generated parse-tree visitors and Java's <code>FileVisitor</code> all use this pattern. A compiler has a fixed set of AST node types and many passes: name resolution, type checking, constant folding, code generation — each pass is a visitor.</p>` },
+      { title: 'Files.walkFileTree — a JDK visitor', html: `<p>The JDK walks a directory tree and calls your <code>FileVisitor</code> at each event: <code>preVisitDirectory</code>, <code>visitFile</code>, <code>visitFileFailed</code>, <code>postVisitDirectory</code>. Counting files, deleting a tree or copying it are different visitors over the same walk.</p>`, code: `import java.nio.file.*;
+import java.nio.file.attribute.BasicFileAttributes;
+Path dir = Files.createTempDirectory("demo");
+Files.writeString(dir.resolve("a.txt"), "hello");
+Files.writeString(dir.resolve("b.log"), "world!");
+long[] total = {0};
+Files.walkFileTree(dir, new SimpleFileVisitor<Path>() {
+    @Override public FileVisitResult visitFile(Path f, BasicFileAttributes attrs) {
+        total[0] += attrs.size();
+        return FileVisitResult.CONTINUE;
+    }
+});
+System.out.println("bytes = " + total[0]);   // 11` },
+      { title: 'Insurance / tax over product types', html: `<p>A cart contains <code>Book</code>, <code>Electronics</code> and <code>Food</code>. Finance asks for tax, logistics for shipping weight, marketing for loyalty points — three visitors. Each visitor keeps its rules together (all tax rules in <code>TaxVisitor</code>) instead of spreading <code>tax()</code>, <code>shippingWeight()</code>, <code>points()</code> across every product class.</p>` },
+      { title: 'Choosing: polymorphism vs Visitor vs sealed switch', html: `<p><b>Methods on elements</b> (plain polymorphism): best when <i>types</i> are added often and operations are few and core to the type. <b>Visitor</b>: best when types are stable and operations are many and owned by different teams. <b>Sealed + switch</b> (Java 21): same benefits as Visitor with far less code and compiler-checked exhaustiveness, but the operation logic sits in functions rather than objects (harder to pass around state or swap at runtime). This is the "expression problem" — no option makes both directions free.</p>` }
+    ],
+    deepDive: `<p><b>Double dispatch explained precisely:</b> Java does <i>single dispatch</i> on the receiver's runtime type and <i>static</i> overload resolution on argument types. <code>visitor.visit(expr)</code> with overloads <code>visit(Add)</code>/<code>visit(Mul)</code> would fail to compile (or pick <code>visit(Expr)</code>) because <code>expr</code> is statically <code>Expr</code>. <code>accept</code> converts the element's runtime type into a static type inside its own class (<code>this</code> is <code>Add</code> there), so the right overload is chosen at compile time in each <code>accept</code>.</p>
+<p><b>Who traverses?</b> Options: the visitor (as in EvalVisitor recursing into children — flexible, e.g. short-circuiting), the elements' <code>accept</code> (always visits children — uniform, but less control), or an external iterator. Pick one and be consistent, or you visit nodes twice.</p>
+<p><b>Encapsulation cost:</b> visitors need access to element data, so elements often expose getters they would otherwise hide. Records make this explicit and acceptable for data-centric trees.</p>
+<p><b>Acyclic / default visitors:</b> to soften "new type breaks all visitors", provide an abstract base visitor with default implementations (e.g. <code>visitDiv</code> falls back to <code>visitDefault</code>) — but then the compiler no longer forces you to handle new types. Sealed + exhaustive switch keeps the safety; with <code>default</code> branches you lose it again.</p>
+<p><b>Generic return types</b> (<code>ExprVisitor&lt;R&gt;</code>) avoid mutable accumulator fields and make visitors reusable and thread-safe; use <code>Void</code> visitors for side-effect passes. <b>Performance:</b> two virtual calls per node — negligible; deep trees may need an explicit stack instead of recursion.</p>`,
+    aiEra: `<p><b>What AI changes:</b> AI is great at generating the boilerplate that made Visitor painful (one <code>accept</code> per class, one <code>visitX</code> per type) — but in Java 21 you should often ask it for the <b>sealed interface + switch</b> version instead, which is shorter and compiler-checked. AI tools that transform code (codemods, refactoring agents) themselves walk ASTs with visitors (e.g. JavaParser, OpenRewrite recipes) — knowing the pattern helps you review those recipes.</p>
+<p><b>Where AI goes wrong:</b> it writes <code>instanceof</code> ladders with a silent <code>else</code>, uses overloads expecting runtime dispatch (the classic double-dispatch misunderstanding), or adds a <code>default</code> branch that hides unhandled new types. <b>What you own:</b> deciding which axis (types or operations) will change, and choosing polymorphism, Visitor or sealed switch accordingly.</p>`,
+    problems: [{
+      title: 'File System Analyzer (size, search, tree print)', level: 'Hard', tags: ['visitor', 'composite'], companies: ['Dropbox', 'Google', 'Box'],
+      statement: `<p>A file system has <code>FileNode(name, sizeBytes)</code> and <code>DirNode(name, children)</code>. Product keeps asking for new operations: <b>total size</b>, <b>find all files with extension X</b>, <b>print an indented tree</b>, and next month "largest file", "count empty directories". Design so each new operation is a new class and the node classes never change. Every operation must handle nested directories of any depth.</p>`,
+      constraints: `Up to 10<sup>5</sup> nodes, depth up to 100. The set of node types (file, directory) is stable; operations grow.`,
+      example: `<p>root/{ a.txt(100), docs/{ b.md(50), c.txt(25) }, empty/{} }<br>size → ${H.c('g', '175')}; find ".txt" → ${H.c('g', '[root/a.txt, root/docs/c.txt]')}; tree print → root, ··a.txt, ··docs, ····b.md, ····c.txt, ··empty. Three operations, same two node classes.</p>`,
+      brute: { why: `<p>Each operation is a static method with <code>if (n instanceof FileNode) … else if (n instanceof DirNode) …</code> and its own recursion. Five operations = five copies of the type check and traversal; adding a <code>SymlinkNode</code> means hunting through all of them — and forgetting one compiles fine and silently returns wrong results (the <code>else</code> swallows it).</p>`, code: `class NaiveFs {
+    record FileN(String name, long size) {}
+    record DirN(String name, List<Object> kids) {}
+    static long size(Object n) {
+        if (n instanceof FileN f) return f.size();
+        else if (n instanceof DirN d) { long s = 0; for (Object k : d.kids()) s += size(k); return s; }
+        return 0;                                   // silently ignores unknown types
+    }
+    static void find(Object n, String ext, List<String> out) {
+        if (n instanceof FileN f) { if (f.name().endsWith(ext)) out.add(f.name()); }
+        else if (n instanceof DirN d) for (Object k : d.kids()) find(k, ext, out);   // traversal copy #2
+    }
+}` },
+      mcq: { q: 'Next quarter a new node type SymlinkNode is added. What is the cost with the Visitor design?', options: ['Add visitSymlink to the visitor interface; every existing visitor must implement it (the compiler lists them)', 'Nothing changes', 'Only the SymlinkNode class is added', 'All file and dir classes must change'], answer: 0, explain: 'Visitor makes new operations cheap and new element types expensive — but the compiler points to every visitor that must be updated, unlike instanceof chains that fail silently.' },
+      hints: [`<p>Hint 1: Nodes are stable, operations grow → Visitor. Nodes get <code>accept(FsVisitor v)</code>; the visitor has <code>visitFile</code> and <code>visitDir</code>.</p>`, `<p>Hint 2: Let the visitor control traversal in <code>visitDir</code> (loop over children calling <code>child.accept(this)</code>), so each visitor can track depth or path, or stop early.</p>`, `<p>Hint 3: Track the current path with a <code>Deque&lt;String&gt;</code> (push on enter dir, pop on exit). Size visitor accumulates a long; find visitor collects paths; print visitor uses depth for indentation.</p>`],
+      solution: {
+        approach: `<p>Node classes (<code>FileNode</code>, <code>DirNode</code>) implement <code>FsNode.accept(FsVisitor)</code>. Each operation is a visitor: <code>SizeVisitor</code> sums file sizes; <code>FindVisitor</code> tracks the current path with a deque and collects matches; <code>TreePrinter</code> tracks depth. Visitors drive traversal in <code>visitDir</code>, so they share no traversal bugs with each other and can add path/depth tracking. Adding "largest file" is one more ~10-line class; node classes are untouched.</p>`,
+        code: `interface FsVisitor { void visitFile(FileNode f); void visitDir(DirNode d); }
+interface FsNode { String name(); void accept(FsVisitor v); }
+
+record FileNode(String name, long size) implements FsNode {
+    public void accept(FsVisitor v) { v.visitFile(this); }
+}
+record DirNode(String name, List<FsNode> children) implements FsNode {
+    public void accept(FsVisitor v) { v.visitDir(this); }
+}
+
+class SizeVisitor implements FsVisitor {
+    long total;
+    public void visitFile(FileNode f) { total += f.size(); }
+    public void visitDir(DirNode d) { for (FsNode c : d.children()) c.accept(this); }
+}
+
+class FindVisitor implements FsVisitor {
+    private final String ext; private final Deque<String> path = new ArrayDeque<>();
+    final List<String> found = new ArrayList<>();
+    FindVisitor(String ext) { this.ext = ext; }
+    public void visitFile(FileNode f) {
+        if (f.name().endsWith(ext)) found.add(String.join("/", path) + "/" + f.name());
+    }
+    public void visitDir(DirNode d) {
+        path.addLast(d.name());
+        for (FsNode c : d.children()) c.accept(this);
+        path.removeLast();
+    }
+}
+
+class TreePrinter implements FsVisitor {
+    private int depth; final StringBuilder out = new StringBuilder();
+    public void visitFile(FileNode f) { out.append("  ".repeat(depth)).append(f.name()).append(" (").append(f.size()).append(")\\n"); }
+    public void visitDir(DirNode d) {
+        out.append("  ".repeat(depth)).append(d.name()).append("/\\n");
+        depth++;
+        for (FsNode c : d.children()) c.accept(this);
+        depth--;
+    }
+}
+
+class FsDemo {
+    public static void main(String[] args) {
+        FsNode root = new DirNode("root", List.of(
+            new FileNode("a.txt", 100),
+            new DirNode("docs", List.of(new FileNode("b.md", 50), new FileNode("c.txt", 25))),
+            new DirNode("empty", List.of())));
+        SizeVisitor size = new SizeVisitor(); root.accept(size);
+        FindVisitor find = new FindVisitor(".txt"); root.accept(find);
+        TreePrinter tp = new TreePrinter(); root.accept(tp);
+        System.out.println(size.total + " " + find.found);
+        System.out.print(tp.out);
+    }
+}`,
+        complexity: `<p>Each visitor is O(N) time over N nodes; extra space O(depth) for recursion/path. New operation = 1 class; node classes unchanged.</p>`,
+        followUps: ['Depth can be 10<sup>5</sup> (deep nesting) — how do you avoid StackOverflowError? (explicit stack traversal)', 'Rewrite with a sealed interface + switch. What do you gain and lose?', 'Run SizeVisitor in parallel over huge directories (ForkJoin, per-subtree visitors merged)']
+      }
+    }]
+  });
+
   registerModule({
     id: 'lld06',
     title: 'Behavioral Design Patterns',

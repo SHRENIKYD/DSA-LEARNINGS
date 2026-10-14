@@ -1538,6 +1538,242 @@ SELECT
     ]
   });
 
+  /* =====================================================================
+     TOPIC 7 — Query rewriting
+     ===================================================================== */
+  var REWRITE_STEPS = [
+    { name: 'original', work: 20244, sql: "SELECT DISTINCT c.*,\n  (SELECT count(*) FROM orders o2 WHERE o2.customer_id = c.id) AS n\nFROM customers c JOIN orders o ON o.customer_id = c.id\nWHERE strftime('%Y-%m', o.created_at) = '2026-09'\nORDER BY n DESC, c.id LIMIT 10;", plan: ['SCAN o', 'SEARCH c USING INTEGER PRIMARY KEY (rowid=?)', 'CORRELATED SCALAR SUBQUERY 1', 'SEARCH o2 USING COVERING INDEX idx_orders_customer (customer_id=?)', 'USE TEMP B-TREE FOR DISTINCT', 'USE TEMP B-TREE FOR ORDER BY'], say: 'The query a dashboard shipped with: "top 10 customers (by lifetime orders) who ordered in Sept 2026". Four problems: a <b>non-sargable</b> month filter (SCAN o), a join that <b>fans out</b> (one row per order, 150 rows) so it needs <b>DISTINCT</b>, a <b>correlated count</b> that runs once per <i>joined</i> row (150 times, not 111), and <code>SELECT c.*</code>.' },
+    { name: '1. sargable range', work: 8646, sql: "SELECT DISTINCT c.*,\n  (SELECT count(*) FROM orders o2 WHERE o2.customer_id = c.id) AS n\nFROM customers c JOIN orders o ON o.customer_id = c.id\nWHERE o.created_at >= '2026-09-01' AND o.created_at < '2026-10-01'\nORDER BY n DESC, c.id LIMIT 10;", plan: ['SEARCH o USING INDEX idx_orders_created (created_at>? AND created_at<?)', 'SEARCH c USING INTEGER PRIMARY KEY (rowid=?)', 'CORRELATED SCALAR SUBQUERY 1', 'SEARCH o2 USING COVERING INDEX idx_orders_customer (customer_id=?)', 'USE TEMP B-TREE FOR DISTINCT', 'USE TEMP B-TREE FOR ORDER BY'], say: '<b>Rewrite 1 — make the filter sargable.</b> strftime(…) = \'2026-09\' becomes a half-open range. SCAN o (3,000 rows) becomes a SEARCH that touches only the 150 September orders. Same rows, 2.3× less work.' },
+    { name: '2. join+DISTINCT → IN', work: 6573, sql: "SELECT c.*,\n  (SELECT count(*) FROM orders o2 WHERE o2.customer_id = c.id) AS n\nFROM customers c\nWHERE c.id IN (SELECT customer_id FROM orders\n               WHERE created_at >= '2026-09-01' AND created_at < '2026-10-01')\nORDER BY n DESC, c.id LIMIT 10;", plan: ['SEARCH c USING INTEGER PRIMARY KEY (rowid=?)', 'LIST SUBQUERY 2', 'SEARCH orders USING INDEX idx_orders_created (created_at>? AND created_at<?)', 'CORRELATED SCALAR SUBQUERY 1', 'SEARCH o2 USING COVERING INDEX idx_orders_customer (customer_id=?)', 'USE TEMP B-TREE FOR ORDER BY'], say: '<b>Rewrite 2 — semi-join instead of join + DISTINCT.</b> We only need to know <i>whether</i> a customer ordered in September, not how many times. <code>IN (subquery)</code> builds the list of 111 customer ids once; no fan-out, so the DISTINCT sort disappears and the correlated count runs 111 times instead of 150.' },
+    { name: '2b. tried EXISTS', work: 21020, sql: "SELECT c.*,\n  (SELECT count(*) FROM orders o2 WHERE o2.customer_id = c.id) AS n\nFROM customers c\nWHERE EXISTS (SELECT 1 FROM orders o WHERE o.customer_id = c.id\n              AND o.created_at >= '2026-09-01' AND o.created_at < '2026-10-01')\nORDER BY n DESC, c.id LIMIT 10;", plan: ['SCAN c', 'CORRELATED SCALAR SUBQUERY 2', 'SEARCH o USING INDEX idx_orders_customer (customer_id=?)', 'CORRELATED SCALAR SUBQUERY 1', 'SEARCH o2 USING COVERING INDEX idx_orders_customer (customer_id=?)', 'USE TEMP B-TREE FOR ORDER BY'], say: '<b>Detour — EXISTS is not automatically faster.</b> Logically equal to step 2, but SQLite runs EXISTS as a <i>correlated</i> subquery: it scans all 320 customers and, for each, reads their orders to test the date. <span class="c-r">21,020 instructions — worse than the original!</span> PostgreSQL would turn both IN and EXISTS into the same semi-join. Lesson: <b>measure every rewrite on your engine.</b>' },
+    { name: '3. only needed columns', work: 6513, sql: "SELECT c.id, c.name, c.city,\n  (SELECT count(*) FROM orders o2 WHERE o2.customer_id = c.id) AS n\nFROM customers c\nWHERE c.id IN (SELECT customer_id FROM orders\n               WHERE created_at >= '2026-09-01' AND created_at < '2026-10-01')\nORDER BY n DESC, c.id LIMIT 10;", plan: ['SEARCH c USING INTEGER PRIMARY KEY (rowid=?)', 'LIST SUBQUERY 2', 'SEARCH orders USING INDEX idx_orders_created (created_at>? AND created_at<?)', 'CORRELATED SCALAR SUBQUERY 1', 'SEARCH o2 USING COVERING INDEX idx_orders_customer (customer_id=?)', 'USE TEMP B-TREE FOR ORDER BY'], say: '<b>Rewrite 3 — list the columns.</b> A small gain here (fewer bytes copied into the sort), but in real systems <code>SELECT *</code> blocks covering indexes, drags big TEXT/JSON columns through sorts and the network, and breaks when columns are added.' }
+  ];
+
+  topics.push({
+    title: 'Query Rewriting: Same Answer, Far Less Work',
+    analogy: `<p>Asking a librarian "bring me every book, and I'll throw away the ones not about cooking" versus "bring me the cooking shelf". Both give you cooking books; one makes the librarian carry the whole library. <b>Query rewriting</b> means rephrasing your request so it asks for exactly what you need, in a form the database can answer with its shortcuts (indexes, semi-joins, early stopping). The planner does some rephrasing itself — but it can't read your mind about duplicates, NULLs, or which rows you'll never look at.</p>`,
+    explain: `<p>Planners already rewrite a lot automatically (flattening subqueries, pushing filters down, folding constants — topic 1). The rewrites below are the ones <b>you</b> usually have to do, because the planner either can't prove they are equivalent or doesn't know your intent.</p>
+${H.table(['Slow shape', 'Rewrite', 'Why it is faster'], [
+  ['<code>ORDER BY … LIMIT 20 OFFSET 100000</code>', '<b>Keyset</b>: <code>WHERE (created_at, id) &lt; (:last_ts, :last_id) ORDER BY created_at DESC, id DESC LIMIT 20</code>', 'OFFSET reads and discards 100,000 rows; keyset seeks straight to the page'],
+  ['Correlated subquery in SELECT, run per row', 'Pre-aggregate once in a derived table / CTE and JOIN, or use a window function', 'One grouped pass instead of N little queries'],
+  ['<code>SELECT DISTINCT …</code> to undo join fan-out', '<code>WHERE EXISTS (…)</code> / <code>IN (…)</code> (semi-join)', 'No duplicates created, no dedupe sort; stops at first match'],
+  ['<code>NOT IN (SELECT col …)</code> where col can be NULL', '<code>NOT EXISTS (…)</code>', H.c('r', 'Correctness!') + ' One NULL makes NOT IN return no rows; NOT EXISTS is also a clean anti-join'],
+  ['<code>WHERE a = 1 OR b = 2</code> (two different columns)', '<code>… WHERE a = 1 UNION ALL … WHERE b = 2 AND a &lt;&gt; 1</code> (mind NULLs)', 'Each branch can seek its own index'],
+  ['<code>(SELECT count(*) …) &gt; 0</code>', '<code>EXISTS (…)</code>', 'Stops at the first row instead of counting all'],
+  ['Filter on a grouping column in HAVING', 'Move it to WHERE', 'Rows removed before grouping, can use an index'],
+  ['Aggregate after a big join', 'Aggregate first, then join the small result', 'Join 300 summary rows instead of 3,000,000 detail rows'],
+  ['UNION where duplicates are impossible', 'UNION ALL', 'Skips a dedupe sort/hash'],
+  ['N+1: app runs 1 query per item in a loop', 'One query with <code>IN (…)</code> / JOIN', '1 round-trip instead of N (network latency dominates)'],
+  ['<code>SELECT *</code>', 'Only the columns you need', 'Enables covering indexes; less I/O, memory, network']
+])}
+<p><b>The golden rule of rewriting:</b> (1) prove the new query returns <b>exactly</b> the same rows (compare counts, or <code>EXCEPT</code> both ways); (2) prove it is <b>faster</b> with EXPLAIN / EXPLAIN ANALYZE on realistic data; (3) keep it readable. A rewrite that is faster on SQLite can be slower on PostgreSQL and vice versa — the viz below shows a "textbook" rewrite (EXISTS) making things <i>worse</i> in SQLite.</p>`,
+    clues: [
+      '"Pagination gets slower the deeper you go" / "page 5,000 times out" → OFFSET; switch to keyset (seek) pagination',
+      '"Query returns duplicates, so I added DISTINCT" → join fan-out; use EXISTS / IN (semi-join) or pre-aggregate',
+      '"NOT IN returns nothing even though some rows clearly qualify" → NULL in the subquery; use NOT EXISTS',
+      '"Report has a subquery in the SELECT list and 1M rows" → correlated subquery per row; join to a pre-aggregated result or use a window function',
+      '"The API makes 200 queries to render one page" → N+1 problem; batch with IN / JOIN, or ORM eager loading',
+      '"WHERE email = ? OR phone = ? is slow even though both are indexed" → OR across columns; UNION ALL or bitmap/multi-index OR'
+    ],
+    code: [
+      { lang: 'sql', db: 'shop', title: 'Keyset pagination vs OFFSET (▶ Run)', code: `-- Page 146 with OFFSET: walks and DISCARDS 2,900 index entries + rows first
+EXPLAIN QUERY PLAN
+SELECT id, created_at, total_cents FROM orders
+ORDER BY created_at DESC, id DESC
+LIMIT 20 OFFSET 2900;
+
+-- Same page with keyset: remember the last row of the previous page
+-- (created_at = '2025-01-22 15:09:07', id = 2353) and seek past it
+EXPLAIN QUERY PLAN
+SELECT id, created_at, total_cents FROM orders
+WHERE (created_at, id) < ('2025-01-22 15:09:07', 2353)
+ORDER BY created_at DESC, id DESC
+LIMIT 20;
+
+-- Prove both return the same rows (EXCEPT in both directions must be empty)
+SELECT count(*) AS rows_only_in_one_version FROM (
+  SELECT * FROM (SELECT id FROM orders ORDER BY created_at DESC, id DESC LIMIT 20 OFFSET 2900)
+  EXCEPT
+  SELECT * FROM (SELECT id FROM orders WHERE (created_at, id) < ('2025-01-22 15:09:07', 2353)
+                 ORDER BY created_at DESC, id DESC LIMIT 20)
+);` },
+      { lang: 'sql', db: 'shop', title: 'NOT IN vs NOT EXISTS with a NULL in the subquery', code: `-- "Customers who never referred anybody". referred_by contains NULLs.
+SELECT count(*) AS not_in_result
+FROM customers c
+WHERE c.id NOT IN (SELECT referred_by FROM customers);          -- 0 rows (!!)
+
+SELECT count(*) AS not_exists_result
+FROM customers c
+WHERE NOT EXISTS (SELECT 1 FROM customers r WHERE r.referred_by = c.id);   -- 280 rows
+
+-- Why: x NOT IN (1, 2, NULL)  =  x<>1 AND x<>2 AND x<>NULL  =  ... AND UNKNOWN  ->  never TRUE` }
+    ],
+    codeTitle: ['Keyset pagination', 'NOT IN trap'],
+    viz: [
+      {
+        title: 'OFFSET vs keyset pagination: rows touched per page',
+        input: '5 30',
+        inputLabel: 'page size, total rows (small demo)',
+        gen: function (input) {
+          var p = String(input || '').trim().split(/[\s,]+/).map(Number);
+          if (p.length !== 2 || p.some(function (x) { return !(x >= 1) || Math.floor(x) !== x; })) throw new Error('Enter two whole numbers: pageSize totalRows   e.g. 5 30');
+          var size = p[0], total = p[1];
+          if (total > 40 || size > total) throw new Error('Use at most 40 rows and a page size ≤ total rows');
+          var vals = []; for (var i = 0; i < total; i++) vals.push(total - i);   // newest first: id descending
+          var pages = Math.ceil(total / size), frames = [], offTot = 0, keyTot = 0;
+          frames.push({ narr: 'An index on <code>created_at</code>, read newest-first. ' + total + ' rows, ' + size + ' per page = ' + pages + ' pages. Watch how much each method <b>touches</b> to produce each page.', parts: [{ type: 'array', label: 'index order (newest → oldest), showing id', values: vals }] });
+          for (var pg = 1; pg <= pages; pg++) {
+            var start = (pg - 1) * size, end = Math.min(total, start + size);
+            var hlO = {}, hlK = {};
+            for (var a = 0; a < start; a++) hlO[a] = 'bad';
+            for (var b2 = start; b2 < end; b2++) { hlO[b2] = 'ok'; hlK[b2] = 'ok'; }
+            var offRead = end, keyRead = end - start + (pg > 1 ? 1 : 0);
+            offTot += offRead; keyTot += keyRead;
+            if (pg <= 3 || pg === pages) {
+              var ptrK = {}; if (pg > 1) ptrK[start] = 'seek';
+              frames.push({ narr: '<b>Page ' + pg + '.</b> OFFSET ' + start + ': walk ' + start + ' rows just to <span class="c-r">throw them away</span>, then return ' + (end - start) + ' → touched ' + offRead + '. Keyset: <code>WHERE id &lt; ' + (pg > 1 ? vals[start - 1] : '∞') + '</code> (last id of the previous page) → <b>seek</b> straight to the page → touched ' + keyRead + '.', parts: [{ type: 'array', label: 'OFFSET ' + start + ' LIMIT ' + size, values: vals, hl: hlO }, { type: 'array', label: 'keyset: WHERE id < last_seen LIMIT ' + size, values: vals, hl: hlK, ptr: ptrK }, { type: 'vars', vals: { page: pg, offsetTouched: offRead, keysetTouched: keyRead } }] });
+            }
+          }
+          frames.push({ narr: 'Reading <b>all</b> ' + pages + ' pages: OFFSET touches ' + offTot + ' rows (grows like pages² — quadratic), keyset touches ' + keyTot + ' (linear). Measured in SQLite on the 3,000-row <code>orders</code> table (VM instructions): OFFSET 0 → 171, OFFSET 100 → 471, OFFSET 1000 → 3,171, OFFSET 2900 → <b>8,871</b>; keyset for that last page → <b>246</b>.', parts: [{ type: 'bars', label: 'measured SQLite VM steps for one page of 20 rows', values: [171, 471, 3171, 8871, 246], idxLabels: ['OFFSET 0', 'OFFSET 100', 'OFFSET 1000', 'OFFSET 2900', 'keyset (any page)'], hl: { 3: 'bad', 4: 'ok' } }, { type: 'bars', label: 'rows touched to read every page (this demo)', values: [offTot, keyTot], idxLabels: ['OFFSET', 'keyset'], hl: { 0: 'bad', 1: 'ok' } }] });
+          frames.push({ narr: 'Keyset trade-offs: you can\'t jump to "page 37" directly (use "next/previous" or infinite scroll), the sort key must be <b>unique</b> (add <code>id</code> as a tie-breaker), and you need an index matching the ORDER BY. In exchange: constant speed on every page, and no skipped/duplicated rows when new rows are inserted between page loads.', parts: [{ type: 'code', label: 'keyset recipe', lang: 'sql', code: "-- first page\nSELECT id, created_at FROM orders\nORDER BY created_at DESC, id DESC LIMIT 20;\n-- next page: pass the last row's (created_at, id)\nSELECT id, created_at FROM orders\nWHERE (created_at, id) < (:last_created_at, :last_id)\nORDER BY created_at DESC, id DESC LIMIT 20;" }] });
+          return frames;
+        }
+      },
+      {
+        title: 'Rewrite a slow dashboard query step by step (measured in SQLite)',
+        gen: function () {
+          var frames = [], works = [];
+          REWRITE_STEPS.forEach(function (st, i) {
+            works.push(st.work);
+            var hl = {}; hl[i] = st.work > REWRITE_STEPS[0].work ? 'bad' : i === 0 ? 'cur' : 'ok';
+            var phl = {}; st.plan.forEach(function (l, j) { if (/^SCAN [a-z0-9]+$|TEMP B-TREE FOR DISTINCT|CORRELATED SCALAR SUBQUERY 2/i.test(l)) phl[j] = 'bad'; });
+            frames.push({ narr: st.say + ' <b>Measured: ' + st.work.toLocaleString('en-US') + ' VM instructions.</b>', parts: [{ type: 'code', label: st.name, lang: 'sql', code: st.sql }, { type: 'table', label: 'EXPLAIN QUERY PLAN', columns: ['plan line'], rows: st.plan.map(function (l) { return [l]; }), hl: phl }, { type: 'bars', label: 'SQLite VM instructions (lower is better)', values: works.slice(), idxLabels: REWRITE_STEPS.slice(0, i + 1).map(function (s) { return s.name; }), hl: hl }] });
+          });
+          frames.push({ narr: 'Result: the same 10 customers (3, 5, 7, 9, 14, 16, 18, 20, 25, 27) with <b>3.1× less work</b> — and on a 30M-row table the sargable range and the semi-join turn minutes into milliseconds because they scale with the matching rows, not the table. Every step was checked two ways: same result rows, and a better plan.', parts: [{ type: 'bars', label: 'all steps', values: works, idxLabels: REWRITE_STEPS.map(function (s) { return s.name; }), hl: { 0: 'cur', 3: 'bad', 4: 'ok' } }] });
+          return frames;
+        }
+      }
+    ],
+    examples: [
+      { title: 'Correlated subquery per row → pre-aggregate once', html: `<p>"Each Delhi customer with their order count and last order date." The correlated version runs two little subqueries per customer (38 × 2). The rewrite aggregates <code>orders</code> once per customer in a derived table and joins it. In PostgreSQL with 1M customers this is the difference between 2M index probes and one hash aggregate + hash join. With a <b>LEFT</b> join, customers with no orders still appear (count 0 via COALESCE).</p>`, code: { lang: 'sql', db: 'shop', code: `-- Correlated: two subqueries per customer
+SELECT c.id, c.name,
+       (SELECT count(*)        FROM orders o WHERE o.customer_id = c.id) AS orders,
+       (SELECT max(created_at) FROM orders o WHERE o.customer_id = c.id) AS last_order
+FROM customers c WHERE c.city = 'Delhi'
+ORDER BY c.id LIMIT 3;
+
+-- Rewrite: aggregate once, join the summary
+SELECT c.id, c.name, COALESCE(a.orders, 0) AS orders, a.last_order
+FROM customers c
+LEFT JOIN (SELECT customer_id, count(*) AS orders, max(created_at) AS last_order
+           FROM orders GROUP BY customer_id) a ON a.customer_id = c.id
+WHERE c.city = 'Delhi'
+ORDER BY c.id LIMIT 3;` } },
+      { title: 'OR across columns → UNION ALL', html: `<p><code>WHERE customer_id = 42 OR created_at &gt;= '2026-09-01'</code> needs two different indexes. SQLite handles it with a ${H.c('g', 'MULTI-INDEX OR')}; PostgreSQL with BitmapOr; MySQL with index_merge — but many engines/cases fall back to a full scan. The portable rewrite is <code>UNION ALL</code> of two seekable branches, where the second branch <b>excludes</b> rows the first already returned (<code>customer_id &lt;&gt; 42</code>, and think about NULLs: if the column is nullable, use <code>customer_id IS NOT 42</code> / <code>IS DISTINCT FROM</code>). Plain <code>UNION</code> also works but pays a dedupe sort.</p>`, code: { lang: 'sql', db: 'shop', code: `EXPLAIN QUERY PLAN
+SELECT id FROM orders WHERE customer_id = 42
+UNION ALL
+SELECT id FROM orders WHERE created_at >= '2026-09-01' AND customer_id <> 42;
+
+SELECT
+  (SELECT count(*) FROM orders WHERE customer_id = 42 OR created_at >= '2026-09-01') AS with_or,
+  (SELECT count(*) FROM (SELECT id FROM orders WHERE customer_id = 42
+                         UNION ALL
+                         SELECT id FROM orders WHERE created_at >= '2026-09-01' AND customer_id <> 42)) AS with_union_all;` } },
+      { title: 'COUNT(*) &gt; 0 → EXISTS, HAVING → WHERE', html: `<p><code>(SELECT count(*) FROM orders WHERE customer_id = ?) &gt; 0</code> counts all 10 orders to answer a yes/no question; <code>EXISTS</code> stops at the first. Similarly <code>GROUP BY customer_id HAVING customer_id &lt; 10</code> asks to filter <i>groups</i> by a grouping column — move it to <code>WHERE customer_id &lt; 10</code> so rows are skipped before grouping (SQLite actually does this push-down itself — both show the same SEARCH — but many engines and more complex HAVING clauses don't).</p>`, code: { lang: 'sql', db: 'shop', code: `SELECT c.id, c.name
+FROM customers c
+WHERE c.city = 'Jaipur'
+  AND EXISTS (SELECT 1 FROM orders o WHERE o.customer_id = c.id AND o.status = 'cancelled')
+ORDER BY c.id LIMIT 5;
+
+EXPLAIN QUERY PLAN
+SELECT customer_id, count(*) FROM orders WHERE customer_id < 10 GROUP BY customer_id;` } },
+      { title: 'The N+1 query problem (ORMs)', html: `<p>Code like <code>for order in orders: order.customer.name</code> issues 1 query for the orders and then <b>N</b> more, one per customer. 100 orders = 101 round-trips; at 1 ms network latency each, that's 100 ms of pure waiting even though every query is "fast". Fix: one query with a JOIN, or a second query with <code>WHERE id IN (…)</code>; in ORMs use eager loading (<code>select_related</code>/<code>prefetch_related</code> in Django, <code>joinedload</code>/<code>selectinload</code> in SQLAlchemy, <code>include</code> in Prisma, <code>JOIN FETCH</code> / entity graphs in JPA). Detect it by counting queries per request in logs or APM traces.</p>`, code: { lang: 'sql', db: 'shop', code: `-- Instead of 1 + N queries, fetch the page and its customers in ONE query
+SELECT o.id, o.total_cents, c.name
+FROM orders o
+JOIN customers c ON c.id = o.customer_id
+WHERE o.status = 'pending'
+ORDER BY o.id
+LIMIT 10;` } },
+      { title: 'CTEs: inlined or materialized?', html: `<p>In PostgreSQL ≤ 11 every <code>WITH</code> was an <b>optimization fence</b>: computed in full, then filtered — so <code>WITH x AS (SELECT * FROM orders) SELECT … FROM x WHERE id = 42</code> read the whole table. Since PostgreSQL 12, a non-recursive, side-effect-free CTE referenced <b>once</b> is inlined like a subquery; you can force either behaviour with <code>AS MATERIALIZED</code> / <code>AS NOT MATERIALIZED</code>. SQLite also inlines when it can (plan shows a co-routine or the base table directly) and materializes CTEs used more than once. Materializing on purpose is a valid trick when an expensive CTE is reused several times.</p>`, code: { lang: 'sql', check: false, code: `-- PostgreSQL 12+
+WITH recent AS NOT MATERIALIZED (       -- let the planner push filters inside
+  SELECT * FROM orders WHERE created_at >= now() - interval '30 days'
+)
+SELECT * FROM recent WHERE customer_id = 42;
+
+WITH heavy AS MATERIALIZED (             -- compute once, reuse twice
+  SELECT customer_id, sum(total_cents) AS spend FROM orders GROUP BY customer_id
+)
+SELECT * FROM heavy WHERE spend > (SELECT avg(spend) * 2 FROM heavy);` } }
+    ],
+    deepDive: `<h4>What the planner rewrites for you (and what it can't)</h4>
+<ul>
+<li><b>Done automatically</b> by most mature engines: subquery flattening (derived tables, views), predicate push-down into subqueries and through joins, constant folding, <code>IN (subquery)</code> / <code>EXISTS</code> → semi-join, <code>NOT EXISTS</code> → anti-join (PostgreSQL, SQL Server, Oracle, MySQL 8.0.17+), outer join → inner join when a WHERE rejects NULLs, join elimination (dropping a LEFT JOIN to a unique key whose columns aren't used — PG, SQL Server, Oracle), redundant DISTINCT removal on unique keys, OR → IN for one column.</li>
+<li><b>Not done</b> (needs you): turning OFFSET into keyset (changes the API contract), <code>NOT IN</code> → <code>NOT EXISTS</code> when NULLs are possible (different semantics!), splitting OR across columns in engines without index merge, pre-aggregating before a join (some engines do "eager aggregation", most don't), removing <code>SELECT *</code>, fixing non-sargable predicates, batching N+1 queries in application code.</li>
+</ul>
+<h4>Proving equivalence</h4>
+<p>For any rewrite on real data: <code>(A EXCEPT B)</code> and <code>(B EXCEPT A)</code> must both be empty — and remember EXCEPT removes duplicates, so also compare <code>count(*)</code>. Think through the special cases explicitly: NULLs (NOT IN, <code>&lt;&gt;</code>, outer joins), duplicates (join fan-out vs semi-join), ties in ORDER BY + LIMIT (non-deterministic results — always add a unique tie-breaker), time zones and half-open ranges, integer vs decimal division, collation and case.</p>
+<h4>Window functions vs self-joins</h4>
+<p>"Latest order per customer" written as a correlated <code>created_at = (SELECT max(...))</code> runs a subquery per row; <code>ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY created_at DESC)</code> does one sorted pass (or uses an index on <code>(customer_id, created_at)</code> to avoid the sort). For "top 1 per group" with few groups and an index, a <b>lateral join</b> (<code>CROSS JOIN LATERAL (… ORDER BY created_at DESC LIMIT 1)</code> in PG) or a loose index scan can be fastest of all.</p>
+<h4>When to stop rewriting</h4><p>If the plan is already a few index seeks returning a handful of rows, further rewriting is noise. Big wins come from changing the <i>shape</i> of the work (scan → seek, per-row → set-based, quadratic → linear, N round-trips → 1); micro-tweaks rarely matter. And sometimes the right answer isn't a rewrite at all: an index, fresher statistics, a materialized view, a summary table, or caching.</p>`,
+    aiEra: `<p><b>What AI changes:</b> Rewriting is where AI assistants shine — give them a slow query and they will propose CTEs, semi-joins, window functions and keyset pagination in seconds. Database tools now bundle "AI query optimization" that suggests rewrites and indexes from the plan.</p>
+<p><b>Use AI as a partner:</b> ask for <i>several</i> candidate rewrites, then make the database the judge: run each through EXPLAIN (ANALYZE) and an EXCEPT-both-ways equivalence check. Ask the AI explicitly: "list every case (NULLs, duplicates, ties, time zones) where your rewrite could return different rows".</p>
+<p><b>Where AI goes wrong:</b> NOT IN ↔ NOT EXISTS swaps that change results with NULLs; dropping DISTINCT when duplicates were real; "always use EXISTS" advice (the viz shows it can be slower on SQLite); keyset pagination on a non-unique sort key (skips rows); assuming every engine inlines CTEs.</p>
+<p><b>What you must still own:</b> proving equivalence, measuring on realistic data, and choosing the simplest rewrite that changes the <i>shape</i> of the work.</p>`,
+    problems: [
+      {
+        title: 'Infinite scroll that slows down page after page', level: 'Hard', tags: ['keyset pagination', 'OFFSET', 'row values', 'rewrite'], companies: ['Meta', 'Twitter/X', 'LinkedIn', 'Instagram'],
+        statement: `<p>The "all orders" admin screen uses infinite scroll, newest first, 20 per page:</p><pre>SELECT id, created_at, total_cents FROM orders
+ORDER BY created_at DESC, id DESC
+LIMIT 20 OFFSET :page * 20;</pre><p>Deep pages get slower and, while new orders are arriving, users report <b>duplicate rows</b> between pages. Rewrite it so every page costs the same and new inserts can't shift the pages. Show page 146 both ways and prove they return the same rows.</p>`,
+        constraints: `SQLite <code>shop</code>; index <code>idx_orders_created(created_at)</code> exists (its entries also carry the rowid = <code>id</code>); the API may return the last row's keys to the client.`,
+        example: `<p>Page 145 ends with ${H.c('b', "(created_at = '2025-01-22 15:09:07', id = 2353)")}. Page 146 via keyset: <code>WHERE (created_at, id) &lt; ('2025-01-22 15:09:07', 2353)</code> → same 20 rows as <code>OFFSET 2900</code>. Measured: OFFSET 2900 ≈ ${H.c('r', '8,871')} VM steps, keyset ≈ ${H.c('g', '246')}.</p>`,
+        brute: { why: `<p>OFFSET makes the engine produce and throw away <code>page × 20</code> rows before returning anything — cost grows linearly per page and quadratically for a full scroll. And because positions are counted at query time, an order inserted at the top shifts everything down by one: the first row of the next page is the last row you already saw (duplicate), or a row is skipped after a delete.</p>`, code: { lang: 'sql', db: 'shop', code: `EXPLAIN QUERY PLAN
+SELECT id, created_at, total_cents FROM orders
+ORDER BY created_at DESC, id DESC
+LIMIT 20 OFFSET 2900;            -- SCAN orders USING INDEX idx_orders_created (walks 2,920 entries)
+
+SELECT id, created_at, total_cents FROM orders
+ORDER BY created_at DESC, id DESC
+LIMIT 20 OFFSET 2900;` } },
+        mcq: { q: 'Why must the keyset include <code>id</code> and not only <code>created_at</code>?', options: ['To make the sort key unique so no row is skipped or repeated when timestamps tie', 'Because SQLite cannot compare timestamps', 'To make the index covering', 'It doesn\'t matter'], answer: 0, explain: 'If two orders share a created_at and the page boundary falls between them, WHERE created_at < :last skips the second one (or <= repeats the first). Adding a unique tie-breaker (id) makes the order total and the cursor exact.' },
+        hints: [`<p>Hint 1: Instead of "skip N rows", say "give me the rows that come <b>after the last one I saw</b>" in the sort order.</p>`, `<p>Hint 2: The sort is <code>(created_at DESC, id DESC)</code>, so "after" means <code>(created_at, id) &lt; (:last_created_at, :last_id)</code>. SQLite (3.15+), PostgreSQL and MySQL support row-value comparisons; otherwise expand to <code>created_at &lt; :t OR (created_at = :t AND id &lt; :i)</code>.</p>`, `<p>Hint 3: Check the plan seeks <code>idx_orders_created</code> (no OFFSET walk), then prove equality with EXCEPT both ways. Recipe: get the last row of page 145, write the keyset query, compare.</p>`],
+        solution: {
+          approach: `<p><b>Keyset (seek) pagination.</b> The client sends back the sort key of the last row it received; the next query asks for rows strictly "after" that key in the same total order and takes 20. Because <code>idx_orders_created</code> is sorted by <code>(created_at, rowid)</code>, the engine seeks straight to the boundary and reads exactly 20 entries — page 1 and page 10,000 cost the same. New orders at the top don't shift the cursor, so no duplicates or gaps. Trade-off: no "jump to page 37" (offer next/previous or date filters instead).</p>`,
+          code: { lang: 'sql', db: 'shop', code: `-- 1) Last row of page 145 (in the app you'd just keep it from the previous response)
+SELECT id, created_at FROM orders
+ORDER BY created_at DESC, id DESC LIMIT 1 OFFSET 2899;      -- 2353 | 2025-01-22 15:09:07
+
+-- 2) Page 146 with keyset
+EXPLAIN QUERY PLAN
+SELECT id, created_at, total_cents FROM orders
+WHERE (created_at, id) < ('2025-01-22 15:09:07', 2353)
+ORDER BY created_at DESC, id DESC
+LIMIT 20;                                                    -- SEARCH orders USING INDEX idx_orders_created (created_at<?)
+
+SELECT id, created_at, total_cents FROM orders
+WHERE (created_at, id) < ('2025-01-22 15:09:07', 2353)
+ORDER BY created_at DESC, id DESC
+LIMIT 20;
+
+-- 3) Equivalence proof: both differences are empty
+SELECT
+ (SELECT count(*) FROM (
+    SELECT id FROM (SELECT id FROM orders ORDER BY created_at DESC, id DESC LIMIT 20 OFFSET 2900)
+    EXCEPT
+    SELECT id FROM (SELECT id FROM orders WHERE (created_at, id) < ('2025-01-22 15:09:07', 2353)
+                    ORDER BY created_at DESC, id DESC LIMIT 20))) AS only_in_offset,
+ (SELECT count(*) FROM (
+    SELECT id FROM (SELECT id FROM orders WHERE (created_at, id) < ('2025-01-22 15:09:07', 2353)
+                    ORDER BY created_at DESC, id DESC LIMIT 20)
+    EXCEPT
+    SELECT id FROM (SELECT id FROM orders ORDER BY created_at DESC, id DESC LIMIT 20 OFFSET 2900))) AS only_in_keyset;` },
+          complexity: `<p>OFFSET page p: O(p·20) rows walked; all P pages: O(P²·20). Keyset: O(log N + 20) per page, O(N) for the whole scroll. Measured on page 146: ~8,871 vs ~246 SQLite VM instructions (36× less), and the gap grows with depth.</p>`,
+          followUps: ['How do you implement a "previous page" button with keyset?', 'The ORDER BY is <code>total_cents DESC</code> (not unique, no index). What index and cursor do you need?', 'How would you expose the cursor in a REST/GraphQL API (opaque base64 cursor, Relay connections)?']
+        }
+      }
+    ]
+  });
+
   registerModule({
     id: 'sql11',
     title: 'Query Execution & Optimization',

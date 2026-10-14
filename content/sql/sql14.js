@@ -2006,6 +2006,791 @@ CREATE TABLE geo.pings_by_driver (
       }
     }]
   });
+
+  /* =====================================================================
+     PRACTICE — Easy
+     ===================================================================== */
+  practice.push({
+    title: 'Replication Lag Report',
+    level: 'Easy', tags: ['replication', 'monitoring'], companies: ['GitLab', 'Shopify', 'Atlassian'],
+    statement: `<p>Using <code>wal</code> and <code>replicas</code> (db <code>repl</code>), produce a lag report for every replica: <code>name, role, lsn_behind, lag_ms, status</code>, where <code>lsn_behind</code> = newest LSN − applied LSN, <code>lag_ms</code> = newest commit time − commit time of the replica's last applied entry, and <code>status</code> = <code>'STALE'</code> if lag_ms &gt; 300 else <code>'ok'</code>. Order by lag_ms descending.</p>`,
+    constraints: `Every applied_lsn exists in wal. One leader, any number of followers.`,
+    example: `<p>db-f4 applied LSN 101 (committed at 1000 ms); newest is LSN 110 at 1640 ms → lsn_behind ${H.c('y', '9')}, lag_ms ${H.c('r', '640 → STALE')}. db-f2 applied 107 (1420 ms) → ${H.c('g', '220 → ok')}.</p>`,
+    brute: { why: `<p>Hard-code the newest LSN (<code>110</code>) into the query. It works today and silently lies tomorrow, and it says nothing about <i>time</i>, which is what users feel. Lag in log entries and lag in milliseconds are different: 9 tiny entries may replay instantly while 1 huge transaction takes minutes.</p>`, code: { lang: 'sql', db: 'repl', code: `SELECT name, role, 110 - applied_lsn AS lsn_behind
+FROM replicas
+ORDER BY lsn_behind DESC;   -- 110 hard-coded: wrong as soon as a new write arrives` } },
+    mcq: { q: 'Why can "entries behind" be misleading as a lag metric?', options: ['LSNs are random', 'One entry can be a huge transaction while many entries can be tiny; users care about time', 'Followers never apply entries in order', 'It is always zero for async replicas'], answer: 1, explain: 'Replay time depends on the size and cost of each entry. Time-based lag (replay_lag, heartbeat tables) reflects what users experience.' },
+    hints: [
+      `<p>Hint 1: Use scalar subqueries for the newest values: <code>(SELECT MAX(lsn) FROM wal)</code> and <code>(SELECT MAX(commit_ms) FROM wal)</code>.</p>`,
+      `<p>Hint 2: Join (or correlated subquery) to <code>wal</code> on <code>lsn = r.applied_lsn</code> to get the commit time of the last applied entry.</p>`,
+      `<p>Hint 3: Wrap it in a CTE and add <code>CASE WHEN lag_ms &gt; 300 THEN 'STALE' ELSE 'ok' END</code>; order by lag_ms DESC.</p>`
+    ],
+    solution: {
+      approach: `<p>Compute the leader's head position once, join each replica to the WAL row it last applied, and derive both lag measures. In Postgres the same report comes from <code>pg_stat_replication</code> (<code>replay_lag</code>, <code>pg_wal_lsn_diff(sent_lsn, replay_lsn)</code>); export it to your metrics system and alert on the time-based number.</p>`,
+      code: { lang: 'sql', db: 'repl', code: `WITH head AS (
+  SELECT MAX(lsn) AS max_lsn, MAX(commit_ms) AS max_ms FROM wal
+), lag AS (
+  SELECT r.name, r.role,
+         h.max_lsn - r.applied_lsn AS lsn_behind,
+         h.max_ms  - w.commit_ms   AS lag_ms
+  FROM replicas AS r
+  JOIN wal      AS w ON w.lsn = r.applied_lsn
+  CROSS JOIN head AS h
+)
+SELECT name, role, lsn_behind, lag_ms,
+       CASE WHEN lag_ms > 300 THEN 'STALE' ELSE 'ok' END AS status
+FROM lag
+ORDER BY lag_ms DESC, name;` },
+      complexity: `<p>O(R) with an index on wal.lsn (it is the primary key). Run every few seconds.</p>`,
+      followUps: ['How would you measure lag if the leader has had no writes for 10 minutes (the "idle lag" problem)?', 'Should a load balancer remove STALE replicas automatically? What could go wrong?']
+    }
+  });
+
+  practice.push({
+    title: 'Hash-Mod Shard Assignment and Its Rebalancing Trap',
+    level: 'Easy', tags: ['sharding', 'hashing'], companies: ['Pinterest', 'Instagram', 'Zomato'],
+    statement: `<p>With 4 shards and the rule <code>shard = user_id % 4</code>, report for each shard the number of users and the number of requests (db <code>shard</code>). Then report how many of the 24 users would <b>move</b> if you grew to 5 shards with <code>user_id % 5</code>.</p>`,
+    constraints: `24 users, 120 requests. Output two result sets: per-shard counts, then the moved-user count.`,
+    example: `<p>Per shard: 6 users each, but requests ${H.c('r', '73')} on shard 1 (it holds the celebrity, user 1) versus 15-16 elsewhere. Growing to 5 shards moves ${H.c('r', '17 of 24 users')} (about 70%; it tends to N/(N+1) = 80% for large key sets) — the classic reason not to use <code>mod N</code> with N = number of servers.</p>`,
+    brute: { why: `<p>Count each shard with its own full scan — four separate queries glued together. Correct but scans the table 4 times, and adding a shard means editing the query.</p>`, code: { lang: 'sql', db: 'shard', code: `SELECT 0 AS shard, (SELECT COUNT(*) FROM users WHERE user_id % 4 = 0) AS users
+UNION ALL SELECT 1, (SELECT COUNT(*) FROM users WHERE user_id % 4 = 1)
+UNION ALL SELECT 2, (SELECT COUNT(*) FROM users WHERE user_id % 4 = 2)
+UNION ALL SELECT 3, (SELECT COUNT(*) FROM users WHERE user_id % 4 = 3);` } },
+    mcq: { q: 'Going from N to N+1 shards with key mod N moves roughly what fraction of keys?', options: ['1/(N+1)', 'N/(N+1)', '1/2', 'none'], answer: 1, explain: 'A key stays only if k mod N = k mod (N+1), which happens for about 1/(N+1) of keys; the rest (≈ N/(N+1)) move. Consistent hashing moves only ≈ 1/(N+1).' },
+    hints: [
+      `<p>Hint 1: One <code>GROUP BY user_id % 4</code> over users joined (LEFT JOIN) to requests gives both counts in one pass.</p>`,
+      `<p>Hint 2: Count distinct users with <code>COUNT(DISTINCT u.user_id)</code> and requests with <code>COUNT(q.req_id)</code> (NULL-safe).</p>`,
+      `<p>Hint 3: Moved users: <code>SUM(user_id % 4 &lt;&gt; user_id % 5)</code> — a comparison is 0/1 in SQLite.</p>`
+    ],
+    solution: {
+      approach: `<p>Group once by the shard expression; use a LEFT JOIN so shards without requests still appear. The moved count shows why production systems use a fixed, large number of logical partitions (e.g. 1024 or Redis's 16 384 slots) mapped to servers through a table — growing the cluster moves whole partitions, and the key → partition function never changes.</p>`,
+      code: { lang: 'sql', db: 'shard', code: `SELECT u.user_id % 4               AS shard,
+       COUNT(DISTINCT u.user_id)     AS users,
+       COUNT(q.req_id)               AS requests
+FROM users AS u
+LEFT JOIN requests AS q ON q.user_id = u.user_id
+GROUP BY shard
+ORDER BY shard;
+
+SELECT SUM(user_id % 4 <> user_id % 5) AS users_that_move,
+       COUNT(*)                         AS total_users
+FROM users;` },
+      complexity: `<p>O(U + Q) single pass with grouping.</p>`,
+      followUps: ['Design the partition → node table that avoids mass moves.', 'Why is <code>user_id % 4</code> a bad hash for sequential ids that share a pattern (e.g. all even)?']
+    }
+  });
+
+  practice.push({
+    title: 'List Every Strong Quorum for N Replicas',
+    level: 'Easy', tags: ['quorum', 'recursive CTE'], companies: ['Amazon', 'DataStax', 'Apple'],
+    statement: `<p>For a replication factor <b>N = 3</b> (make it a parameter), list every pair (W, R) with 1 ≤ W, R ≤ N such that <b>R + W &gt; N</b>, plus how many node failures writes and reads can tolerate (N − W, N − R). Order by the smaller tolerance (descending), then W.</p>`,
+    constraints: `N between 1 and 9. Use a recursive CTE to generate numbers; do not hard-code the pairs.`,
+    example: `<p>N = 3 → (2, 2) tolerates ${H.c('g', '1 / 1')}; (3, 1) tolerates ${H.c('y', '0 writes / 2 reads')}; (1, 3) tolerates ${H.c('y', '2 / 0')}; (2,3), (3,2), (3,3) also qualify. (1, 1) and (1, 2) do not.</p>`,
+    brute: { why: `<p>Type all 9 pairs by hand in a VALUES list. Works for N = 3, but N = 5 needs 25 rows and N = 7 needs 49 — error-prone and not reusable.</p>`, code: { lang: 'sql', code: `WITH pairs(w, r) AS (VALUES (1,1),(1,2),(1,3),(2,1),(2,2),(2,3),(3,1),(3,2),(3,3))
+SELECT w, r FROM pairs WHERE w + r > 3;` } },
+    mcq: { q: 'With N = 3, which setting lets the system keep accepting BOTH reads and writes with one node down, while still guaranteeing overlap?', options: ['W=3, R=1', 'W=1, R=3', 'W=2, R=2', 'W=1, R=1'], answer: 2, explain: 'W=2, R=2: overlap since 4 > 3, and each operation needs only 2 of 3 nodes, so one failure is tolerated for both.' },
+    hints: [
+      `<p>Hint 1: Put N in a one-row CTE <code>params(n)</code> so it can change in one place.</p>`,
+      `<p>Hint 2: <code>WITH RECURSIVE k(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM k, params WHERE x &lt; n)</code> generates 1..N.</p>`,
+      `<p>Hint 3: Cross join k with itself as w and r, filter <code>w.x + r.x &gt; n</code>, compute <code>n - w.x</code> and <code>n - r.x</code>, order with <code>MIN(n - w.x, n - r.x) DESC</code>.</p>`
+    ],
+    solution: {
+      approach: `<p>Generate 1..N once, cross join for all pairs, keep the overlapping ones. The ordering surfaces the balanced choice (majority/majority) first, which is why QUORUM/QUORUM is the usual default; skewed choices (W = N) buy cheap reads at the cost of write availability.</p>`,
+      code: { lang: 'sql', code: `WITH RECURSIVE params(n) AS (SELECT 3),
+k(x) AS (
+  SELECT 1
+  UNION ALL
+  SELECT x + 1 FROM k, params WHERE x < params.n
+)
+SELECT w.x            AS W,
+       r.x            AS R,
+       p.n - w.x      AS write_failures_tolerated,
+       p.n - r.x      AS read_failures_tolerated
+FROM k AS w
+CROSS JOIN k AS r
+CROSS JOIN params AS p
+WHERE w.x + r.x > p.n
+ORDER BY MIN(p.n - w.x, p.n - r.x) DESC, W, R;` },
+      complexity: `<p>O(N²) rows — at most 81 for N = 9.</p>`,
+      followUps: ['Add a column for expected write latency if each extra ack waits for a slower replica.', 'How does LOCAL_QUORUM change the math in a 2-datacenter setup with 3 replicas each?']
+    }
+  });
+
+  practice.push({
+    title: 'Embed or Reference? Query an Order Document',
+    level: 'Easy', tags: ['document store', 'JSON', 'modelling'], companies: ['MongoDB', 'Myntra', 'Etsy'],
+    statement: `<p>Orders are stored as JSON documents with <b>embedded</b> line items and a <b>snapshot</b> of the customer name (db <code>nosql</code>, table <code>docs</code>, collection <code>'orders'</code>). For each customer id, return the customer name, number of orders, total units and total spend. Then explain why line items are embedded but products are referenced by SKU.</p>`,
+    constraints: `Items array may have any length. Spend = Σ qty × price over all items of all the customer's orders.`,
+    example: `<p>Asha (id 7) has o1 (3×40 + 1×450 = 570) and o3 (10×40 + 1×199 = 599) → ${H.c('g', '2 orders, 15 units, 1169')}. Ravi (id 3): ${H.c('g', '1 order, 2 units, 398')}.</p>`,
+    brute: { why: `<p>Treat the JSON as plain text and use <code>LIKE '%"id":7%'</code>. It also matches <code>"id":70</code> or an id nested elsewhere, cannot sum quantities, and breaks when key order or spacing changes. Always use the database's JSON operators (or the document DB's query language).</p>`, code: { lang: 'sql', db: 'nosql', code: `SELECT COUNT(*) AS asha_orders
+FROM docs
+WHERE collection = 'orders' AND body LIKE '%"id":7%';   -- fragile string matching` } },
+    mcq: { q: 'Which belongs EMBEDDED in an order document?', options: ['All reviews of each product', 'Line items with the price paid at purchase time', 'The full, live product catalogue entry', 'Every other order of the same customer'], answer: 1, explain: 'Line items are bounded, owned by the order, and read with it; the price must be a snapshot anyway. Reviews and other orders are unbounded; live product data is shared and changes independently.' },
+    hints: [
+      `<p>Hint 1: <code>json_each(body, '$.items')</code> turns the array into rows (one per item) you can join against the document.</p>`,
+      `<p>Hint 2: Group by <code>json_extract(body, '$.customer.id')</code>; count orders with <code>COUNT(DISTINCT d.id)</code> because items multiply rows.</p>`,
+      `<p>Hint 3: Units = <code>SUM(json_extract(i.value, '$.qty'))</code>, spend = <code>SUM(qty * price)</code>; take the name with <code>MAX(json_extract(body, '$.customer.name'))</code>.</p>`
+    ],
+    solution: {
+      approach: `<p>Unnest the embedded array, then aggregate. <b>Embed</b> what is owned, bounded and read together (line items, shipping address snapshot); <b>reference</b> what is shared, large or changing independently (products by SKU, customers by id). Snapshots (name, price at purchase) are deliberate denormalisation: an order must show what was true when it was placed.</p>`,
+      code: { lang: 'sql', db: 'nosql', code: `SELECT json_extract(d.body, '$.customer.id')                              AS customer_id,
+       MAX(json_extract(d.body, '$.customer.name'))                       AS customer,
+       COUNT(DISTINCT d.id)                                               AS orders,
+       SUM(json_extract(i.value, '$.qty'))                                AS units,
+       SUM(json_extract(i.value, '$.qty') * json_extract(i.value, '$.price')) AS spend
+FROM docs AS d
+JOIN json_each(d.body, '$.items') AS i
+WHERE d.collection = 'orders'
+GROUP BY customer_id
+ORDER BY spend DESC;` },
+      alt: [{ lang: 'js', check: false, title: 'MongoDB aggregation', code: `db.orders.aggregate([
+  { $unwind: "$items" },
+  { $group: {
+      _id: "$customer.id",
+      customer: { $first: "$customer.name" },
+      orders: { $addToSet: "$_id" },
+      units: { $sum: "$items.qty" },
+      spend: { $sum: { $multiply: ["$items.qty", "$items.price"] } } } },
+  { $project: { customer: 1, units: 1, spend: 1, orders: { $size: "$orders" } } },
+  { $sort: { spend: -1 } }
+]);` }],
+      complexity: `<p>O(total line items). In MongoDB add an index on <code>customer.id</code> when filtering one customer.</p>`,
+      followUps: ['A product is renamed: which documents change, and which must NOT?', 'An order could have 50 000 items (B2B). Embed or not?']
+    }
+  });
+
+  /* =====================================================================
+     PRACTICE — Medium
+     ===================================================================== */
+  practice.push({
+    title: 'Detect Monotonic-Read Violations',
+    level: 'Medium', tags: ['replication lag', 'window functions', 'consistency'], companies: ['LinkedIn', 'Twitter/X', 'Reddit'],
+    statement: `<p><code>read_log(id, session_id, at_ms, replica, seen_lsn)</code> records which replica answered each read and how far it had applied (db <code>repl</code>). A <b>monotonic reads</b> violation happens when a session reads data <b>older</b> than something it already saw earlier — i.e. <code>seen_lsn</code> is lower than the <b>maximum</b> seen_lsn of any earlier read in the same session. List every violating read with the LSN the user had already seen.</p>`,
+    constraints: `Reads per session ordered by at_ms. The first read of a session can never violate.`,
+    example: `<p>s-mei saw 110, then 107 (${H.c('r', 'violation')}), then 108 — still ${H.c('r', 'a violation')} because 108 &lt; 110 even though it is newer than the previous read. Expected violators: reads ${H.c('r', '2, 6, 8, 9')}.</p>`,
+    brute: { why: `<p>Compare each read only with the <b>previous</b> read using <code>LAG</code>. That misses read 9: 108 &gt; 107 looks like "time moved forward", yet the user had already seen 110 two reads earlier, so data still went backwards.</p>`, code: { lang: 'sql', db: 'repl', code: `SELECT id, session_id, seen_lsn,
+       LAG(seen_lsn) OVER (PARTITION BY session_id ORDER BY at_ms) AS prev
+FROM read_log
+ORDER BY id;   -- flags only seen_lsn < prev: finds 2, 6, 8 but misses 9` } },
+    mcq: { q: 'Which routing rule prevents monotonic-read violations without sending every read to the leader?', options: ['Round-robin across all replicas', 'Pin each session to one replica (e.g. hash(session) → replica), failing over carefully', 'Read from the replica with the lowest CPU', 'Use a bigger connection pool'], answer: 1, explain: 'A single replica only moves forward in the log, so a session pinned to it never sees time go backwards. On failover, choose a replica at least as advanced as the session\'s high-water mark.' },
+    hints: [
+      `<p>Hint 1: You need the running maximum of all <i>earlier</i> rows, not just the previous row.</p>`,
+      `<p>Hint 2: <code>MAX(seen_lsn) OVER (PARTITION BY session_id ORDER BY at_ms ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING)</code> excludes the current row.</p>`,
+      `<p>Hint 3: Compute it in a CTE, then filter <code>seen_lsn &lt; best_before</code> (NULL for first reads drops out automatically).</p>`
+    ],
+    solution: {
+      approach: `<p>A window frame ending one row before the current one gives the session's high-water mark. Violations are reads below it. In an app, store that high-water mark in the session (a cookie or token) and route reads only to replicas at or beyond it — the same LSN-token trick used for read-your-writes.</p>`,
+      code: { lang: 'sql', db: 'repl', code: `WITH marked AS (
+  SELECT id, session_id, at_ms, replica, seen_lsn,
+         MAX(seen_lsn) OVER (
+           PARTITION BY session_id
+           ORDER BY at_ms
+           ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+         ) AS already_seen
+  FROM read_log
+)
+SELECT id, session_id, replica, seen_lsn, already_seen
+FROM marked
+WHERE seen_lsn < already_seen
+ORDER BY id;` },
+      complexity: `<p>O(n log n) for the window sort; O(1) per read in an app that keeps the high-water mark in the session.</p>`,
+      followUps: ['Also detect read-your-writes violations using sessions.last_write_lsn.', 'Which of these violations would sticky routing have prevented?']
+    }
+  });
+
+  practice.push({
+    title: 'Remove a Node: Mod-N vs Rendezvous Hashing',
+    level: 'Medium', lang: 'python', tags: ['sharding', 'rendezvous hashing', 'consistent hashing'], companies: ['Akamai', 'Cloudflare', 'Netflix'],
+    statement: `<p>Cache keys are spread across 5 nodes. Node <b>C</b> dies. Write a function that returns how many of 10 000 keys change owner under (a) <code>hash(key) mod N</code> (N goes 5 → 4) and (b) <b>rendezvous (highest-random-weight) hashing</b>: owner = the node with the highest <code>hash(key + node)</code>. Print both counts and verify that with rendezvous only C's keys move.</p>`,
+    constraints: `Use a stable hash (hashlib), not Python's randomized <code>hash()</code>. 10 000 keys, nodes A-E.`,
+    example: `<p>Mod-N: about ${H.c('r', '80%')} of keys move (anything whose mod-5 and mod-4 owners differ). Rendezvous: about ${H.c('g', '20%')} move — exactly the keys that lived on C, each to its second-highest scoring node.</p>`,
+    brute: { why: `<p>Mod-N recomputes every key's owner with a new divisor, so most keys change owner even though only one node left. For a cache this means a cluster-wide miss storm hitting the database right when you lost capacity.</p>`, code: { lang: 'python', run: true, code: `import hashlib
+
+def h(s):
+    return int(hashlib.sha1(s.encode()).hexdigest()[:12], 16)
+
+keys = [f"k{i}" for i in range(10000)]
+before = {k: h(k) % 5 for k in keys}
+after = {k: h(k) % 4 for k in keys}     # node list shrank, divisor changed
+print("mod-N moved:", sum(before[k] != after[k] for k in keys))` } },
+    mcq: { q: 'In rendezvous hashing, when node X is removed, where does a key previously owned by X go?', options: ['To a random node', 'To the node with the next-highest score for that key', 'Always to the first node in the list', 'It is dropped'], answer: 1, explain: 'Each key ranks all nodes by hash(key, node). Removing the winner promotes the runner-up; keys owned by other nodes keep their winner.' },
+    hints: [
+      `<p>Hint 1: Rendezvous owner = <code>max(nodes, key=lambda n: h(key + "|" + n))</code>. No ring, no sorting of tokens.</p>`,
+      `<p>Hint 2: Compute owners with all 5 nodes, then with C removed, and count differences.</p>`,
+      `<p>Hint 3: Check the invariant: every moved key's old owner must be C (<code>all(before[k] == "C" for k in moved)</code>).</p>`
+    ],
+    solution: {
+      approach: `<p>Rendezvous hashing gives each (key, node) pair a pseudo-random score and picks the max. Removing a node only affects keys where it was the max, so movement is the theoretical minimum (≈ 1/N). It is O(N) per lookup (fine for tens of nodes) and needs no virtual nodes for balance; consistent hashing with a sorted ring is O(log N) and preferred for very large clusters.</p>`,
+      code: { lang: 'python', run: true, code: `import hashlib
+
+
+def h(s):
+    return int(hashlib.sha1(s.encode()).hexdigest()[:12], 16)
+
+
+def rendezvous_owner(key, nodes):
+    # highest random weight: every node "bids" for the key; best bid wins
+    return max(nodes, key=lambda n: h(f"{key}|{n}"))
+
+
+keys = [f"k{i}" for i in range(10000)]
+nodes = ["A", "B", "C", "D", "E"]
+alive = [n for n in nodes if n != "C"]
+
+mod_before = {k: nodes[h(k) % 5] for k in keys}
+mod_after = {k: alive[h(k) % 4] for k in keys}
+mod_moved = sum(mod_before[k] != mod_after[k] for k in keys)
+
+hrw_before = {k: rendezvous_owner(k, nodes) for k in keys}
+hrw_after = {k: rendezvous_owner(k, alive) for k in keys}
+moved = [k for k in keys if hrw_before[k] != hrw_after[k]]
+
+print(f"mod-N moved:      {mod_moved}")
+print(f"rendezvous moved: {len(moved)}")
+print("only C's keys moved:", all(hrw_before[k] == "C" for k in moved))
+print("keys C owned:", sum(v == "C" for v in hrw_before.values()))
+` },
+      complexity: `<p>Rendezvous lookup O(N) hashes per key; movement on change ≈ K/N keys. Mod-N lookup O(1) but movement ≈ K·(N−1)/N.</p>`,
+      followUps: ['How would you add weights (a node with 2× capacity)?', 'Why do Redis Cluster and Kafka use a fixed partition count instead of either scheme?']
+    }
+  });
+
+  practice.push({
+    title: 'Range Shard Split Planner',
+    level: 'Medium', tags: ['range sharding', 'window functions', 'hot spots'], companies: ['MongoDB', 'Cockroach Labs', 'Yugabyte'],
+    statement: `<p>Requests are routed by <code>range_map</code> (db <code>shard</code>). Find the <b>hottest range shard</b> by request count, then propose a <b>split point</b>: the smallest user_id such that the left part [lo..split] carries at least half of that shard's requests. Report shard, split_after, left_load, right_load. Explain what the result says about hot keys.</p>`,
+    constraints: `Split only at user_id boundaries (a single key cannot be split by range).`,
+    example: `<p>Shard 0 (users 1-6) has ${H.c('r', '75')} requests. User 1 alone has 60 ≥ 37.5 → split after user 1: left ${H.c('r', '60')}, right ${H.c('g', '15')}. Even the best range split leaves one key with 80% of the load.</p>`,
+    brute: { why: `<p>Split at the middle of the <b>key range</b> (users 1-3 | 4-6), as naive size-based splitting does. Left gets 66 requests, right gets 9 — the split barely helps because it ignores where the load actually is.</p>`, code: { lang: 'sql', db: 'shard', code: `SELECT CASE WHEN q.user_id <= 3 THEN 'left [1-3]' ELSE 'right [4-6]' END AS half,
+       COUNT(*) AS reqs
+FROM requests AS q
+WHERE q.user_id BETWEEN 1 AND 6
+GROUP BY half;` } },
+    mcq: { q: 'A range shard is hot because of ONE key. After a load-based split, what is still true?', options: ['Load is perfectly balanced', 'The shard holding that key is still hot; you need key splitting (salting) or caching', 'Range sharding automatically salts keys', 'The hot key moves to every shard'], answer: 1, explain: 'Range splits happen between keys. A single key\'s load cannot be divided by range boundaries.' },
+    hints: [
+      `<p>Hint 1: First aggregate requests per (shard, user_id) using <code>JOIN range_map ON user_id BETWEEN lo AND hi</code>.</p>`,
+      `<p>Hint 2: Pick the hottest shard with <code>ORDER BY SUM(reqs) DESC LIMIT 1</code>; within it compute a running total <code>SUM(reqs) OVER (ORDER BY user_id)</code> and the shard total <code>SUM(reqs) OVER ()</code>.</p>`,
+      `<p>Hint 3: The split is the first row where <code>running * 2 &gt;= total</code>; right_load = total − running.</p>`
+    ],
+    solution: {
+      approach: `<p>Load-based splitting (CockroachDB, Bigtable, DynamoDB adaptive capacity) finds the key where cumulative load crosses half — the result here shows the limit: the hot key itself becomes a one-key range. Next steps: salt the key, cache its reads, or isolate it on the strongest node.</p>`,
+      code: { lang: 'sql', db: 'shard', code: `WITH per_user AS (
+  SELECT r.shard, q.user_id, COUNT(*) AS reqs
+  FROM requests AS q
+  JOIN range_map AS r ON q.user_id BETWEEN r.lo AND r.hi
+  GROUP BY r.shard, q.user_id
+), hottest AS (
+  SELECT shard FROM per_user GROUP BY shard ORDER BY SUM(reqs) DESC LIMIT 1
+), cum AS (
+  SELECT p.shard, p.user_id, p.reqs,
+         SUM(p.reqs) OVER (ORDER BY p.user_id) AS running,
+         SUM(p.reqs) OVER ()                   AS total
+  FROM per_user AS p
+  WHERE p.shard = (SELECT shard FROM hottest)
+)
+SELECT shard, user_id AS split_after, running AS left_load, total - running AS right_load
+FROM cum
+WHERE running * 2 >= total
+ORDER BY user_id
+LIMIT 1;` },
+      complexity: `<p>O(Q log Q) for grouping and window sorting.</p>`,
+      followUps: ['Extend it to propose splits for every shard above 1.5× average load.', 'How would you also respect a size limit (MB) together with load?']
+    }
+  });
+
+  practice.push({
+    title: 'Degrees of Separation (Graph Traversal in SQL)',
+    level: 'Medium', tags: ['graph', 'recursive CTE', 'BFS'], companies: ['LinkedIn', 'Meta', 'Neo4j'],
+    statement: `<p>Using <code>people</code> and the directed <code>follows(src, dst)</code> edges (db <code>nosql</code>), compute the <b>minimum number of hops</b> from Asha (id 1) to every reachable person, like LinkedIn's "1st, 2nd, 3rd degree" badges. Exclude Asha herself. Then state when you would move this query to a graph database.</p>`,
+    constraints: `The graph has cycles (Leo follows Asha). Cap depth at 6 hops.`,
+    example: `<p>${H.table(['name', 'hops'], [['Mei', '1'], ['Ravi', '1'], ['Tom', '2'], ['Zara', '2'], ['Leo', '3'], ['Nia', '3']])}<p>Tom is 2 hops (Asha → Ravi → Tom or Asha → Mei → Tom). The cycle Leo → Asha must not loop forever.</p>`,
+    brute: { why: `<p>Hand-write one self-join per depth and UNION them: depth 1, depth 2 (two joins), depth 3 (three joins)... Each level is a new query block, the depth is fixed in code, and the number of intermediate rows explodes on real social graphs (average 300 friends → 300<sup>3</sup> = 27 M paths at depth 3).</p>`, code: { lang: 'sql', db: 'nosql', code: `SELECT f1.dst AS id, 1 AS hops FROM follows f1 WHERE f1.src = 1
+UNION ALL
+SELECT f2.dst, 2 FROM follows f1 JOIN follows f2 ON f2.src = f1.dst WHERE f1.src = 1
+UNION ALL
+SELECT f3.dst, 3 FROM follows f1 JOIN follows f2 ON f2.src = f1.dst
+                       JOIN follows f3 ON f3.src = f2.dst WHERE f1.src = 1;
+-- duplicates and non-minimal hops still need cleaning; depth is hard-coded` } },
+    mcq: { q: 'Why does the recursive CTE use UNION (not UNION ALL) and a depth cap?', options: ['UNION is faster', 'UNION drops duplicate (id, hops) rows and the cap stops infinite cycles', 'SQLite requires UNION in recursive CTEs', 'UNION sorts the output'], answer: 1, explain: 'In a cyclic graph the recursion would revisit nodes forever; deduplication plus a hop limit (or a visited-path check) guarantees termination.' },
+    hints: [
+      `<p>Hint 1: Seed the recursion with (1, 0), then step: join the frontier to <code>follows</code> on <code>f.src = w.id</code> producing <code>(f.dst, hops + 1)</code>.</p>`,
+      `<p>Hint 2: Bound it with <code>WHERE w.hops &lt; 6</code> and use <code>UNION</code> to avoid repeating identical rows.</p>`,
+      `<p>Hint 3: Outside the CTE take <code>MIN(hops)</code> per person and drop id 1.</p>`
+    ],
+    solution: {
+      approach: `<p>Recursive CTE = BFS frontier expansion; MIN(hops) gives the shortest path length. It is fine for small graphs or shallow depths. Move to a graph DB (Neo4j/Neptune) when multi-hop traversals are the core workload over millions of edges, or you need path algorithms (shortest weighted path, PageRank, community detection) interactively. In Cypher: <code>MATCH p = shortestPath((a:Person {id:1})-[:FOLLOWS*..6]-&gt;(b)) RETURN b.name, length(p)</code>.</p>`,
+      code: { lang: 'sql', db: 'nosql', code: `WITH RECURSIVE walk(id, hops) AS (
+  SELECT 1, 0                                  -- start at Asha
+  UNION
+  SELECT f.dst, w.hops + 1
+  FROM walk AS w
+  JOIN follows AS f ON f.src = w.id
+  WHERE w.hops < 6                             -- cycle / explosion guard
+)
+SELECT p.name, MIN(w.hops) AS hops
+FROM walk AS w
+JOIN people AS p ON p.id = w.id
+WHERE w.id <> 1
+GROUP BY p.id
+ORDER BY hops, p.name;` },
+      complexity: `<p>Up to O(depth × E) rows in the worst case. A native graph DB with a visited set does BFS in O(V + E) touched.</p>`,
+      followUps: ['Return one actual shortest path, not only its length.', 'Make it bidirectional ("mutual connections").']
+    }
+  });
+
+  practice.push({
+    title: 'Global Secondary Index vs Scatter-Gather',
+    level: 'Medium', lang: 'python', tags: ['sharding', 'secondary index'], companies: ['Amazon', 'Uber', 'Airbnb'],
+    statement: `<p>Users are sharded by <code>user_id</code> across 8 shards. The login page needs "find user by <b>email</b>". Implement and compare: (a) <b>scatter-gather</b> — ask every shard; (b) a <b>global secondary index</b> — a separate store sharded by email that maps email → user_id, then one targeted shard read. Count shard calls per lookup and describe the write-path cost of (b).</p>`,
+    constraints: `8 shards, 10 000 users. Each lookup must return the right user. Report average calls per lookup for each approach.`,
+    example: `<p>Scatter-gather: ${H.c('r', '8 calls')} per login (and the slowest shard sets the latency). Global index: ${H.c('g', '2 calls')} (index shard + data shard). But every signup or email change must also update the index — on another shard, often asynchronously.</p>`,
+    brute: { why: `<p>Scatter-gather sends every lookup to all shards. Fine at 4 shards and low QPS; at 100 shards each login costs 100 requests and the p99 latency equals the slowest of 100 servers (tail-at-scale problem).</p>`, code: { lang: 'python', run: true, code: `N = 8
+shards = [dict() for _ in range(N)]
+for uid in range(10000):
+    shards[uid % N][uid] = {"id": uid, "email": f"user{uid}@mail.com"}
+
+def find_by_email_scatter(email):
+    calls, found = 0, None
+    for s in shards:                      # ask everybody
+        calls += 1
+        for row in s.values():
+            if row["email"] == email:
+                found = row
+    return found, calls
+
+print(find_by_email_scatter("user4242@mail.com"))` } },
+    mcq: { q: 'DynamoDB global secondary indexes are…', options: ['Strongly consistent with the base table', 'Updated asynchronously, so index reads are eventually consistent', 'Stored inside each base partition', 'Only usable for range queries'], answer: 1, explain: 'GSIs are separately partitioned by the index key and propagated asynchronously; strongly consistent reads are not supported on them.' },
+    hints: [
+      `<p>Hint 1: The index is just another key-value store: <code>email → user_id</code>, partitioned by a hash of the email.</p>`,
+      `<p>Hint 2: Lookup = 1 call to <code>index[hash(email) % N]</code>, then 1 call to <code>shards[user_id % N]</code>.</p>`,
+      `<p>Hint 3: Writes must update both; if the index update is async, a just-registered user may fail to log in for a moment — handle it (retry, or synchronous index write in a transaction).</p>`
+    ],
+    solution: {
+      approach: `<p>A global (term-partitioned) index turns an N-way fan-out into 2 targeted calls. The cost moves to writes: two shards change per signup, so you either use a distributed transaction (NewSQL does this for you), or update the index asynchronously and accept a short window where the index is stale. Local (document-partitioned) indexes have the opposite trade-off: cheap writes, scatter-gather reads. Uniqueness of email also needs the global index (a conditional put on the index row).</p>`,
+      code: { lang: 'python', run: true, code: `import hashlib
+
+N = 8
+
+
+def h(s):
+    return int(hashlib.md5(s.encode()).hexdigest()[:8], 16)
+
+
+shards = [dict() for _ in range(N)]          # data, partitioned by user_id
+email_index = [dict() for _ in range(N)]     # global index, partitioned by email
+
+
+def create_user(uid, email):
+    shards[uid % N][uid] = {"id": uid, "email": email}
+    idx = email_index[h(email) % N]
+    if email in idx:                          # conditional put = uniqueness check
+        raise ValueError("email taken")
+    idx[email] = uid                          # in real life: same txn, or async + repair
+
+
+def find_by_email_indexed(email):
+    calls = 1
+    uid = email_index[h(email) % N].get(email)
+    if uid is None:
+        return None, calls
+    calls += 1
+    return shards[uid % N][uid], calls
+
+
+def find_by_email_scatter(email):
+    calls, found = 0, None
+    for s in shards:
+        calls += 1
+        for row in s.values():
+            if row["email"] == email:
+                found = row
+    return found, calls
+
+
+for uid in range(10000):
+    create_user(uid, f"user{uid}@mail.com")
+
+tests = [f"user{u}@mail.com" for u in (7, 4242, 9999)]
+for e in tests:
+    a, ca = find_by_email_scatter(e)
+    b, cb = find_by_email_indexed(e)
+    assert a == b
+    print(f"{e:20s} scatter={ca} calls  indexed={cb} calls")
+` },
+      complexity: `<p>Reads: scatter-gather O(N) calls, index O(1) calls. Writes: data-only O(1) vs data + index (2 shards).</p>`,
+      followUps: ['What if the index write succeeds and the data write fails?', 'How would you backfill a new global index on a live table?']
+    }
+  });
+
+  practice.push({
+    title: 'IoT Time-Series Partition Design with Buckets',
+    level: 'Medium', tags: ['wide-column', 'time-series', 'partition sizing'], companies: ['Tesla', 'Siemens', 'Samsung'],
+    statement: `<p>Devices send one reading per second (≈ 40 bytes). Queries: "last hour for device X" and "one day for device X". Data is kept 2 years. Design the partition key, compute the partition size with and without a day bucket, and write the "last hour" query. Use the SQLite emulation (a <code>WITHOUT ROWID</code> table clustered by the primary key) to prove the access path.</p>`,
+    constraints: `Keep partitions well under ~100 MB. Queries must hit a single partition.`,
+    example: `<p>Unbucketed partition per device: 86 400 × 40 B × 730 days ≈ ${H.c('r', '2.5 GB')} — far too big. Bucket by day: ${H.c('g', '≈ 3.5 MB')} per partition, and "one day" is exactly one partition.</p>`,
+    brute: { why: `<p>Partition by <code>device_id</code> alone. Every reading of a device for two years lands in one partition: gigabytes on one replica set, slow compaction and repair, and a heavy device becomes a hotspot. Reads of "last hour" still work but the partition grows forever.</p>`, code: { lang: 'sql', code: `-- projected partition size if the partition key is just device_id
+SELECT 86400 * 40                         AS bytes_per_day,
+       ROUND(86400 * 40 * 730 / 1e9, 2)   AS gb_per_partition_after_2_years;` } },
+    mcq: { q: 'A device sometimes bursts to 100 readings/s. With day buckets, what is the safest adjustment?', options: ['Remove the bucket', 'Use smaller buckets (hour) for that device class, stored as metadata so readers know the bucket size', 'Increase the replication factor', 'Add a secondary index on ts'], answer: 1, explain: '100/s × 40 B × 86 400 ≈ 345 MB/day → hourly buckets give ~14 MB partitions. Readers compute bucket keys from the time range, so the bucket size must be known.' },
+    hints: [
+      `<p>Hint 1: Partition = (device_id, day); clustering = ts. "Last hour" names device + today's day, then a range on ts.</p>`,
+      `<p>Hint 2: Size per partition = readings/day × bytes/reading. Compare 1 day vs 730 days.</p>`,
+      `<p>Hint 3: A query spanning midnight touches 2 buckets — the client issues two single-partition queries and merges.</p>`
+    ],
+    solution: {
+      approach: `<p>Partition key <code>(device_id, day)</code>, clustering key <code>ts DESC</code>, TTL 2 years (Cassandra: <code>default_time_to_live</code>; use TimeWindowCompactionStrategy so whole expired SSTables drop cheaply). Each partition ≈ 3.5 MB/day. Queries name the bucket(s) explicitly. The SQLite emulation shows rows clustered by (device, day, ts) so the last-hour query is a single range scan.</p>`,
+      code: { lang: 'sql', code: `CREATE TABLE readings (
+  device_id TEXT    NOT NULL,
+  day       TEXT    NOT NULL,      -- bucket
+  ts        INTEGER NOT NULL,      -- seconds since 2026-10-12 00:00 UTC
+  temp_c    REAL    NOT NULL,
+  PRIMARY KEY (device_id, day, ts)
+) WITHOUT ROWID;                   -- physically clustered like a wide-column partition
+
+-- 3 devices, one reading every 10 minutes for 3 days (demo-sized data)
+INSERT INTO readings (device_id, day, ts, temp_c)
+WITH RECURSIVE n(i) AS (SELECT 0 UNION ALL SELECT i + 1 FROM n WHERE i < 431)
+SELECT 'dev-' || (i % 3), date('2026-10-12', '+' || (i / 144) || ' days'), i * 600, 20 + (i % 7)
+FROM n;
+
+-- "last hour for dev-1": one partition (dev-1, latest day), range on ts
+SELECT ts, temp_c
+FROM readings
+WHERE device_id = 'dev-1' AND day = '2026-10-14'
+  AND ts >= (SELECT MAX(ts) FROM readings WHERE device_id = 'dev-1' AND day = '2026-10-14') - 3600
+ORDER BY ts DESC;
+
+-- partition size report at production rates (1 reading/s, 40 B)
+SELECT device_id, day, COUNT(*) AS demo_rows,
+       ROUND(86400 * 40 / 1e6, 2) AS prod_mb_per_partition
+FROM readings
+GROUP BY device_id, day
+ORDER BY device_id, day;` },
+      alt: [{ lang: 'text', check: false, title: 'Cassandra version', code: `CREATE TABLE iot.readings (
+  device_id text, day date, ts timestamp, temp_c float,
+  PRIMARY KEY ((device_id, day), ts)
+) WITH CLUSTERING ORDER BY (ts DESC)
+  AND default_time_to_live = 63072000
+  AND compaction = {'class': 'TimeWindowCompactionStrategy',
+                    'compaction_window_unit': 'DAYS', 'compaction_window_size': 1};
+
+SELECT ts, temp_c FROM iot.readings
+WHERE device_id = 'dev-1' AND day = '2026-10-14' AND ts >= '2026-10-14 08:00:00+0000';` }],
+      complexity: `<p>Last hour: one partition, O(log n + 3 600) rows. Storage ≈ 3.5 MB per device-day; 1 M devices ≈ 3.5 TB/day before replication.</p>`,
+      followUps: ['How would you serve "average temperature per site per hour" for dashboards?', 'Why is TimeWindowCompactionStrategy a good fit with TTL?']
+    }
+  });
+
+  /* =====================================================================
+     PRACTICE — Hard
+     ===================================================================== */
+  practice.push({
+    title: 'Detect Concurrent Siblings with Version Vectors',
+    level: 'Hard', lang: 'python', tags: ['version vectors', 'multi-leader', 'conflicts'], companies: ['Apple', 'Riak/Basho', 'Figma'],
+    statement: `<p>A leaderless store returns several versions of a shopping cart from different replicas, each tagged with a version vector. Write <code>resolve(versions)</code> that discards every version that <b>happened before</b> another one and returns the remaining <b>concurrent siblings</b> plus the merged vector a client must send with its next write. For carts, also produce the merged cart (union of items — "add wins").</p>`,
+    constraints: `Up to 10 versions, up to 5 replicas in a vector. Vectors are dicts replica → counter (missing = 0).`,
+    example: `<p>Versions: A {r1:2} = [milk], B {r1:2, r2:1} = [milk, eggs], C {r1:3} = [milk, bread]. A ≤ B, so ${H.c('m', 'A is obsolete')}. B and C are ${H.c('y', 'concurrent')}. Merge → ${H.c('g', '[bread, eggs, milk], vector {r1:3, r2:1}')}.</p>`,
+    brute: { why: `<p>Last-write-wins by wall-clock timestamp: keep the version with the latest timestamp. C wins and the <b>eggs</b> Ben added on r2 silently disappear (Amazon's original Dynamo paper used exactly this cart example to motivate version vectors). Clock skew can even make an older version win.</p>`, code: { lang: 'python', run: true, code: `versions = [
+    {"ts": 100, "items": {"milk"}},
+    {"ts": 105, "items": {"milk", "eggs"}},
+    {"ts": 107, "items": {"milk", "bread"}},
+]
+winner = max(versions, key=lambda v: v["ts"])   # LWW
+print("LWW keeps:", sorted(winner["items"]), "-> eggs lost")` } },
+    mcq: { q: 'Version vectors {r1:3, r2:0} and {r1:2, r2:1} are…', options: ['Equal', 'The first happened before the second', 'The second happened before the first', 'Concurrent'], answer: 3, explain: 'The first is bigger in r1, the second in r2. Neither dominates, so the writes were concurrent and both must be kept or merged.' },
+    hints: [
+      `<p>Hint 1: <code>dominated(a, b)</code> = every counter of a ≤ the counter in b, and a ≠ b. A version survives if no other version dominates it.</p>`,
+      `<p>Hint 2: Deduplicate equal vectors first (same version seen from two replicas).</p>`,
+      `<p>Hint 3: Merged vector = pointwise max over survivors; merged cart = union of survivors' items (deletes need tombstones or an OR-Set to work correctly).</p>`
+    ],
+    solution: {
+      approach: `<p>Compute the "frontier" of the causal partial order: drop every version dominated by another. What remains are concurrent siblings. The client merges them (domain-specific: union for carts) and writes back with the pointwise-max vector, which dominates all siblings and therefore replaces them. Removals in a union merge can resurrect items, which is why production carts use OR-Set CRDTs (each add has a unique tag; removes delete observed tags).</p>`,
+      code: { lang: 'python', run: true, code: `def leq(a, b):
+    keys = set(a) | set(b)
+    return all(a.get(k, 0) <= b.get(k, 0) for k in keys)
+
+
+def resolve(versions):
+    # 1. remove exact duplicates (same vector)
+    uniq = []
+    for v in versions:
+        if not any(v["vv"] == u["vv"] for u in uniq):
+            uniq.append(v)
+    # 2. keep versions not dominated by any other
+    survivors = [v for v in uniq
+                 if not any(v is not w and leq(v["vv"], w["vv"]) and v["vv"] != w["vv"] for w in uniq)]
+    # 3. merged vector and merged value
+    merged_vv = {}
+    for v in survivors:
+        for k, c in v["vv"].items():
+            merged_vv[k] = max(merged_vv.get(k, 0), c)
+    merged_items = set().union(*(v["items"] for v in survivors))
+    return survivors, merged_vv, merged_items
+
+
+versions = [
+    {"name": "A", "vv": {"r1": 2}, "items": {"milk"}},
+    {"name": "B", "vv": {"r1": 2, "r2": 1}, "items": {"milk", "eggs"}},
+    {"name": "C", "vv": {"r1": 3}, "items": {"milk", "bread"}},
+    {"name": "C-copy", "vv": {"r1": 3}, "items": {"milk", "bread"}},
+]
+sib, vv, items = resolve(versions)
+print("siblings:", [s["name"] for s in sib])
+print("merged vector:", dict(sorted(vv.items())))
+print("merged cart:", sorted(items))
+` },
+      complexity: `<p>O(V² × R) for V versions and R replicas in a vector — tiny in practice (a handful of siblings).</p>`,
+      followUps: ['Why do vectors need pruning (and what can go wrong when you prune)?', 'Design the OR-Set so that "remove eggs" is not undone by a concurrent sibling.']
+    }
+  });
+
+  practice.push({
+    title: 'Salted Like Counter for a Viral Post',
+    level: 'Hard', tags: ['hot key', 'write sharding', 'upsert'], companies: ['Instagram', 'TikTok', 'YouTube'],
+    statement: `<p>A viral post receives 1 000 likes in a burst. Storing the count in one row means 1 000 writes contend on one row (and one partition). Implement <b>write sharding</b>: spread increments over 16 sub-rows <code>(post_id, slot)</code> chosen by hashing the like event id, and read the total by summing. Report total likes, the writes taken by the hottest row, and rows used — for both designs.</p>`,
+    constraints: `Use UPSERT (INSERT ... ON CONFLICT DO UPDATE). Slot = high bits of (event_id × 2654435761) mod 16. Totals must match exactly.`,
+    example: `<p>Single row: total ${H.c('g', '1000')}, hottest row takes ${H.c('r', '1000')} writes. 16 slots: total ${H.c('g', '1000')}, hottest row takes ${H.c('g', '66')} writes across ${H.c('b', '16')} rows — about 15× less contention per row.</p>`,
+    brute: { why: `<p>One counter row per post. Every like is a read-modify-write (or atomic increment) on the same row: row locks / Raft log entries serialize them, and in a partitioned store the post's partition becomes a hotspot that adding nodes cannot fix.</p>`, code: { lang: 'sql', code: `CREATE TABLE like_events (event_id INTEGER PRIMARY KEY, post_id INTEGER NOT NULL);
+INSERT INTO like_events (event_id, post_id)
+WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 1000)
+SELECT i, 42 FROM n;
+
+CREATE TABLE post_likes (post_id INTEGER PRIMARY KEY, cnt INTEGER NOT NULL);
+INSERT INTO post_likes (post_id, cnt)
+SELECT post_id, 1 FROM like_events WHERE true          -- WHERE true: needed before ON CONFLICT
+ON CONFLICT (post_id) DO UPDATE SET cnt = cnt + 1;     -- 1000 updates to ONE row
+
+SELECT post_id, cnt AS total_likes, cnt AS writes_to_hottest_row, 1 AS rows_used FROM post_likes;` } },
+    mcq: { q: 'What is the main cost of reading a write-sharded counter with 16 slots?', options: ['It cannot be read', 'A read must fetch and sum 16 rows (fan-in), and the sum may be briefly inconsistent across slots', 'It doubles storage for every post', 'It requires a distributed lock'], answer: 1, explain: 'Writes get cheaper, reads gather K rows. For display counters a slightly stale sum is fine; cache the total for a few seconds.' },
+    hints: [
+      `<p>Hint 1: Table <code>post_likes_sharded(post_id, slot, cnt, PRIMARY KEY (post_id, slot))</code>.</p>`,
+      `<p>Hint 2: Insert one row per event with slot = hash(event_id) % 16 and <code>ON CONFLICT (post_id, slot) DO UPDATE SET cnt = cnt + 1</code>.</p>`,
+      `<p>Hint 3: Read: <code>SUM(cnt)</code> for the total, <code>MAX(cnt)</code> for the hottest row, <code>COUNT(*)</code> for rows used. Only apply sharding to posts above a heat threshold.</p>`
+    ],
+    solution: {
+      approach: `<p>Split one hot key into K sub-keys; writes pick a slot at random (or by hash of the event), reads sum all K. In DynamoDB/Cassandra the sub-keys land on different partitions, so throughput scales ~K×. Make K adaptive (start at 1, raise for hot posts) and cache the summed value. Alternatives: buffer increments in memory/Kafka and flush aggregated deltas every second, or use a CRDT G-Counter per region.</p>`,
+      code: { lang: 'sql', code: `CREATE TABLE like_events (event_id INTEGER PRIMARY KEY, post_id INTEGER NOT NULL);
+INSERT INTO like_events (event_id, post_id)
+WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 1000)
+SELECT i, 42 FROM n;
+
+CREATE TABLE post_likes_sharded (
+  post_id INTEGER NOT NULL,
+  slot    INTEGER NOT NULL,          -- 0..15: the "salt"
+  cnt     INTEGER NOT NULL,
+  PRIMARY KEY (post_id, slot)
+);
+
+-- each like increments one of 16 sub-rows
+INSERT INTO post_likes_sharded (post_id, slot, cnt)
+SELECT post_id, (((event_id * 2654435761) % 4294967296) >> 16) % 16, 1
+FROM like_events WHERE true
+ON CONFLICT (post_id, slot) DO UPDATE SET cnt = cnt + 1;
+
+-- read path: gather and sum
+SELECT post_id,
+       SUM(cnt)  AS total_likes,
+       MAX(cnt)  AS writes_to_hottest_row,
+       COUNT(*)  AS rows_used
+FROM post_likes_sharded
+GROUP BY post_id;` },
+      complexity: `<p>Write: O(1) to one of K rows (contention ÷ K). Read: O(K). Storage: K rows per hot post.</p>`,
+      followUps: ['How do you shrink K again when the post cools down?', 'How would you show an exact count to the post owner but an approximate one to everyone else?']
+    }
+  });
+
+  practice.push({
+    title: 'Two-Phase Commit Coordinator (and Why It Blocks)',
+    level: 'Hard', lang: 'python', tags: ['2PC', 'distributed transactions', 'fault tolerance'], companies: ['Google', 'Stripe', 'Goldman Sachs'],
+    statement: `<p>Simulate a cross-shard transfer with <b>two-phase commit</b>: a coordinator asks shards to PREPARE (lock + vote yes/no), then sends COMMIT if all voted yes, else ABORT. Show three runs: (1) all yes, (2) one shard votes no, (3) the coordinator crashes after collecting yes votes but before sending the decision. In (3) show that participants are <b>blocked</b> holding locks, and how a durable decision log (replicated, as in Spanner/CockroachDB) lets a recovering coordinator finish the job.</p>`,
+    constraints: `Two participants (shard A holds the debit, shard B the credit). Money must never be created or destroyed in any run.`,
+    example: `<p>Run 1: both prepare → ${H.c('g', 'COMMIT')}, totals unchanged. Run 2: B votes no (account frozen) → ${H.c('y', 'ABORT')}, A releases its lock. Run 3: crash after votes → A and B ${H.c('r', 'stuck in PREPARED holding locks')} until recovery reads the log.</p>`,
+    brute: { why: `<p>Commit each shard independently ("debit A, then credit B"). If B fails after A committed, money disappears; compensating later is possible (a saga) but needs explicit design. Without any protocol the system is simply inconsistent.</p>`, code: { lang: 'python', run: true, code: `balances = {"A": 500, "B": 100}
+
+def credit_b(amount):
+    raise RuntimeError("shard B is down")
+
+balances["A"] -= 200            # committed on shard A
+try:
+    credit_b(200)
+except RuntimeError as e:
+    print("credit failed:", e)
+print("total money:", sum(balances.values()), "(was 600)")` } },
+    mcq: { q: 'Why is classic 2PC called a "blocking" protocol?', options: ['It uses locks', 'A participant that voted yes cannot decide alone; if the coordinator is lost it must wait, holding locks', 'It needs 3 phases', 'It blocks reads on all shards'], answer: 1, explain: 'After voting yes the participant promised to commit if told so, so it may not abort unilaterally; only the coordinator (or its durable, replicated decision record) can resolve it.' },
+    hints: [
+      `<p>Hint 1: Model a participant with states INIT → PREPARED → COMMITTED/ABORTED and a <code>locked</code> flag set at prepare time.</p>`,
+      `<p>Hint 2: The coordinator writes the decision to a durable log <b>before</b> sending it. That record is the commit point.</p>`,
+      `<p>Hint 3: Recovery: a new coordinator reads the log; if a decision exists, resend it; if none exists, it is safe to abort (no one was told to commit).</p>`
+    ],
+    solution: {
+      approach: `<p>Phase 1 collects votes (each yes = durable promise + locks held). The decision is logged durably, then broadcast. A crash before logging → recovery aborts; after logging → recovery re-sends the logged decision. Participants in PREPARED cannot act alone, which is the blocking problem; Spanner/CockroachDB make the coordinator state a consensus-replicated record so "crash" means "another replica takes over in seconds". Alternatives: 3PC (rarely used, assumes bounded delays) or sagas with compensations.</p>`,
+      code: { lang: 'python', run: true, code: `class Participant:
+    def __init__(self, name, balance, will_vote_yes=True):
+        self.name, self.balance = name, balance
+        self.state, self.locked, self.pending = "INIT", False, 0
+        self.will_vote_yes = will_vote_yes
+
+    def prepare(self, delta):
+        if not self.will_vote_yes or self.balance + delta < 0:
+            self.state = "ABORTED"
+            return False
+        self.state, self.locked, self.pending = "PREPARED", True, delta   # durable promise
+        return True
+
+    def finish(self, decision):
+        if decision == "COMMIT" and self.state == "PREPARED":
+            self.balance += self.pending
+        self.state = "COMMITTED" if decision == "COMMIT" else "ABORTED"
+        self.locked, self.pending = False, 0
+
+
+def run(label, b_votes_yes=True, crash_after_votes=False):
+    a, b = Participant("A", 500), Participant("B", 100, b_votes_yes)
+    decision_log = []                                   # replicated in Spanner/CockroachDB
+    votes = [a.prepare(-200), b.prepare(+200)]
+    decision = "COMMIT" if all(votes) else "ABORT"
+    decision_log.append(decision)                       # the commit point
+    if crash_after_votes:
+        print(f"{label}: coordinator crashed -> A={a.state}/locked={a.locked}, B={b.state}/locked={b.locked}")
+        recovered = decision_log[-1] if decision_log else "ABORT"   # new coordinator reads the log
+        for p in (a, b):
+            p.finish(recovered)
+        print(f"{label}: recovery re-sent {recovered}")
+    else:
+        for p in (a, b):
+            p.finish(decision)
+    print(f"{label}: decision={decision_log[-1]} A={a.balance} B={b.balance} total={a.balance + b.balance}")
+
+
+run("run1 all yes")
+run("run2 B votes no", b_votes_yes=False)
+run("run3 crash", crash_after_votes=True)
+` },
+      complexity: `<p>2 round trips (prepare, commit) + 1 durable log write on the critical path; locks held for the whole duration — which is why distributed transactions should be short and rare.</p>`,
+      followUps: ['Rewrite the transfer as a saga with a compensating action. What anomaly does a saga allow that 2PC does not?', 'Where do CockroachDB\'s parallel commits save a round trip?']
+    }
+  });
+
+  practice.push({
+    title: 'Online Resharding: Backfill, Catch Up, Verify',
+    level: 'Hard', tags: ['resharding', 'CDC', 'migration'], companies: ['Notion', 'Figma', 'Slack', 'PlanetScale'],
+    statement: `<p>Users live on 2 shards (<code>user_id % 2</code>); you must move to 4 shards (<code>user_id % 4</code>) <b>without downtime</b>. While the snapshot copy runs, live traffic changes data: user 3's balance becomes 999, user 21 signs up, user 8 is deleted — all captured in a <code>changelog</code> (CDC). Write the SQL for: snapshot backfill, change-log replay, and a <b>verification</b> that compares row counts and a checksum between old and new before cut-over.</p>`,
+    constraints: `Replay must be idempotent (safe to run twice) and applied in sequence order. Verification must detect any missed change.`,
+    example: `<p>After snapshot only: old has 20 rows (u21 added, u8 removed), new has 20 rows but the ${H.c('r', 'checksums differ')} (stale u3, missing u21, extra u8). After replay: counts ${H.c('g', '20 = 20')} and checksums ${H.c('g', 'equal')} → safe to switch routing.</p>`,
+    brute: { why: `<p>"Stop the world": block writes, copy, switch. Correct but means downtime proportional to data size (hours for TBs). The run below copies a snapshot while writes continue and never replays them — the verification query shows the new shards are wrong.</p>`, code: { lang: 'sql', code: `CREATE TABLE old_s0 (user_id INTEGER PRIMARY KEY, name TEXT NOT NULL, balance INTEGER NOT NULL);
+CREATE TABLE old_s1 (user_id INTEGER PRIMARY KEY, name TEXT NOT NULL, balance INTEGER NOT NULL);
+INSERT INTO old_s0 WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 20)
+  SELECT i, 'u' || i, i * 10 FROM n WHERE i % 2 = 0;
+INSERT INTO old_s1 WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 20)
+  SELECT i, 'u' || i, i * 10 FROM n WHERE i % 2 = 1;
+CREATE TABLE new_users (shard INTEGER NOT NULL, user_id INTEGER PRIMARY KEY, name TEXT NOT NULL, balance INTEGER NOT NULL);
+INSERT INTO new_users SELECT user_id % 4, user_id, name, balance FROM (SELECT * FROM old_s0 UNION ALL SELECT * FROM old_s1);
+-- live writes keep landing on the old shards during/after the copy:
+UPDATE old_s1 SET balance = 999 WHERE user_id = 3;
+INSERT INTO old_s1 VALUES (21, 'u21', 50);
+DELETE FROM old_s0 WHERE user_id = 8;
+WITH old AS (SELECT * FROM old_s0 UNION ALL SELECT * FROM old_s1)
+SELECT (SELECT SUM(user_id * 1000003 + balance) FROM old)       AS old_checksum,
+       (SELECT SUM(user_id * 1000003 + balance) FROM new_users) AS new_checksum;   -- differ!` } },
+    mcq: { q: 'Why must the change-log capture start BEFORE the snapshot copy begins?', options: ['To save disk space', 'So that every change made during the copy is either in the snapshot or in the log (no gap)', 'Because snapshots are slower', 'It does not matter'], answer: 1, explain: 'If capture starts after the snapshot, writes in between are in neither. Starting earlier may duplicate some changes, which idempotent replay (UPSERT, delete-if-exists) tolerates.' },
+    hints: [
+      `<p>Hint 1: Backfill = <code>INSERT INTO new_users SELECT user_id % 4, ... FROM (old_s0 UNION ALL old_s1)</code>.</p>`,
+      `<p>Hint 2: Replay upserts with <code>INSERT ... SELECT ... FROM changelog WHERE op = 'upsert' ORDER BY seq ON CONFLICT (user_id) DO UPDATE</code>, then <code>DELETE ... WHERE user_id IN (deletes)</code>. Both are idempotent.</p>`,
+      `<p>Hint 3: Verify with count + an order-independent checksum such as <code>SUM(user_id * 1000003 + balance)</code> (production tools hash per chunk, e.g. Vitess VDiff).</p>`
+    ],
+    solution: {
+      approach: `<p>The standard live-migration recipe (Vitess MoveTables/Reshard, gh-ost, Notion's and Figma's Postgres resharding): (1) start CDC capture; (2) snapshot-copy into the new layout; (3) replay the change stream until lag is ~0; (4) verify counts and checksums chunk by chunk; (5) briefly pause writes (seconds), drain remaining changes, switch routing; (6) keep reverse replication to the old shards for fast rollback. The SQL below performs steps 2-4.</p>`,
+      code: { lang: 'sql', code: `-- old layout: 2 shards
+CREATE TABLE old_s0 (user_id INTEGER PRIMARY KEY, name TEXT NOT NULL, balance INTEGER NOT NULL);
+CREATE TABLE old_s1 (user_id INTEGER PRIMARY KEY, name TEXT NOT NULL, balance INTEGER NOT NULL);
+INSERT INTO old_s0 WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 20)
+  SELECT i, 'u' || i, i * 10 FROM n WHERE i % 2 = 0;
+INSERT INTO old_s1 WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 20)
+  SELECT i, 'u' || i, i * 10 FROM n WHERE i % 2 = 1;
+
+-- new layout (one table here; the shard column says which of 4 shards a row belongs to)
+CREATE TABLE new_users (shard INTEGER NOT NULL, user_id INTEGER PRIMARY KEY, name TEXT NOT NULL, balance INTEGER NOT NULL);
+-- CDC stream, capture started BEFORE the snapshot
+CREATE TABLE changelog (seq INTEGER PRIMARY KEY, user_id INTEGER NOT NULL, op TEXT NOT NULL, name TEXT, balance INTEGER);
+
+-- step 2: snapshot backfill
+INSERT INTO new_users (shard, user_id, name, balance)
+SELECT user_id % 4, user_id, name, balance
+FROM (SELECT * FROM old_s0 UNION ALL SELECT * FROM old_s1);
+
+-- live traffic during the copy: applied to old shards AND captured
+UPDATE old_s1 SET balance = 999 WHERE user_id = 3;  INSERT INTO changelog VALUES (1, 3,  'upsert', 'u3',  999);
+INSERT INTO old_s1 VALUES (21, 'u21', 50);          INSERT INTO changelog VALUES (2, 21, 'upsert', 'u21', 50);
+DELETE FROM old_s0 WHERE user_id = 8;               INSERT INTO changelog VALUES (3, 8,  'delete', NULL,  NULL);
+
+-- step 3: idempotent replay in sequence order
+INSERT INTO new_users (shard, user_id, name, balance)
+SELECT user_id % 4, user_id, name, balance
+FROM changelog WHERE op = 'upsert' ORDER BY seq
+ON CONFLICT (user_id) DO UPDATE SET name = excluded.name, balance = excluded.balance;
+DELETE FROM new_users WHERE user_id IN (SELECT user_id FROM changelog WHERE op = 'delete');
+
+-- step 4: verify before cut-over
+WITH old AS (SELECT * FROM old_s0 UNION ALL SELECT * FROM old_s1)
+SELECT (SELECT COUNT(*) FROM old)                                AS old_rows,
+       (SELECT COUNT(*) FROM new_users)                          AS new_rows,
+       (SELECT SUM(user_id * 1000003 + balance) FROM old)        AS old_checksum,
+       (SELECT SUM(user_id * 1000003 + balance) FROM new_users)  AS new_checksum;
+
+SELECT shard, COUNT(*) AS rows_on_shard FROM new_users GROUP BY shard ORDER BY shard;` },
+      complexity: `<p>Backfill O(rows), replay O(changes), verification O(rows) (chunked in production). Downtime: only the final cut-over pause.</p>`,
+      followUps: ['How do you handle a row updated twice, with the second update arriving before the first in the stream?', 'What must happen to caches and ID generators at cut-over?']
+    }
+  });
+
+  practice.push({
+    title: 'Globally Unique Usernames Across Regions',
+    level: 'Hard', tags: ['linearizability', 'uniqueness', 'multi-region'], companies: ['Discord', 'GitHub', 'Twitter/X'],
+    statement: `<p>Two users in different regions try to claim the username <code>asha</code> at the same moment. Show (a) why per-region "check then insert" with asynchronous replication between regions lets <b>both</b> succeed, and (b) a correct design where exactly one claim wins. Express both in SQL (each region as a table) and explain how you would run (b) in production across regions.</p>`,
+    constraints: `Usernames are case-insensitive. Exactly one winner. Losing client gets a clear "taken" answer.`,
+    example: `<p>(a) US inserts asha, EU inserts asha (neither sees the other yet) → after replication ${H.c('r', '2 owners of "asha"')}. (b) one linearizable table with a UNIQUE key: first claim ${H.c('g', 'changes() = 1')}, second claim (even as "Asha") ${H.c('r', 'changes() = 0 → taken')}.</p>`,
+    brute: { why: `<p>Each region checks its own replica and inserts. Under AP / multi-leader replication there is no single place that sees both claims before they commit, so uniqueness cannot be enforced — the conflict is discovered after replication, when both users already think they own the name.</p>`, code: { lang: 'sql', code: `CREATE TABLE users_us (username TEXT NOT NULL, region TEXT NOT NULL);
+CREATE TABLE users_eu (username TEXT NOT NULL, region TEXT NOT NULL);
+-- each region: "if not exists locally, insert"
+INSERT INTO users_us SELECT 'asha', 'us' WHERE NOT EXISTS (SELECT 1 FROM users_us WHERE username = 'asha');
+INSERT INTO users_eu SELECT 'asha', 'eu' WHERE NOT EXISTS (SELECT 1 FROM users_eu WHERE username = 'asha');
+-- later, replication merges both regions:
+SELECT username, COUNT(*) AS owners, GROUP_CONCAT(region) AS regions
+FROM (SELECT * FROM users_us UNION ALL SELECT * FROM users_eu)
+GROUP BY username HAVING COUNT(*) > 1;` } },
+    mcq: { q: 'Which mechanism gives correct global uniqueness for usernames?', options: ['Last-write-wins replication', 'A unique constraint on a single linearizable (consensus-backed) store, or a conditional write (IF NOT EXISTS / Paxos LWT)', 'Checking a read replica before inserting', 'A cache with a TTL'], answer: 1, explain: 'Uniqueness is a linearizability requirement: all claims must be ordered through one consensus point. Replicas, caches and LWW cannot see concurrent claims in time.' },
+    hints: [
+      `<p>Hint 1: Uniqueness = "first claim wins, everyone agrees on who was first" → needs one ordering point (single leader or consensus).</p>`,
+      `<p>Hint 2: In SQL that is a PRIMARY KEY / UNIQUE on a normalised username (<code>COLLATE NOCASE</code> or lower()) plus <code>INSERT ... ON CONFLICT DO NOTHING</code> and checking <code>changes()</code>.</p>`,
+      `<p>Hint 3: Production: a CockroachDB/Spanner GLOBAL or REGIONAL table with a unique index, DynamoDB conditional put, or Cassandra <code>INSERT ... IF NOT EXISTS</code> (Paxos). Only the claim pays cross-region latency; profiles can stay regional.</p>`
+    ],
+    solution: {
+      approach: `<p>Route every claim through one linearizable store keyed by the normalised username. The insert either creates the row (winner) or hits the unique key (loser) — decided by consensus, so both regions agree. Cost: one cross-region consensus round (~100 ms) only on signup/rename, which is rare. Keep user profiles in their home region; the username table maps name → user_id + home region. Avoid "reserve in cache then write" schemes unless the cache itself is the linearizable store.</p>`,
+      code: { lang: 'sql', code: `CREATE TABLE usernames (
+  username    TEXT PRIMARY KEY COLLATE NOCASE,   -- 'Asha' and 'asha' are the same name
+  user_id     INTEGER NOT NULL,
+  home_region TEXT NOT NULL
+);
+
+-- US claim
+INSERT INTO usernames VALUES ('asha', 101, 'us') ON CONFLICT (username) DO NOTHING;
+SELECT changes() AS us_claim_won;          -- 1
+
+-- EU claim arrives a moment later (ordered by consensus in production)
+INSERT INTO usernames VALUES ('Asha', 202, 'eu') ON CONFLICT (username) DO NOTHING;
+SELECT changes() AS eu_claim_won;          -- 0 -> tell the user "taken"
+
+SELECT username, user_id, home_region FROM usernames;` },
+      alt: [{ lang: 'text', check: false, title: 'Cassandra lightweight transaction / DynamoDB conditional put', code: `-- Cassandra (Paxos under the hood)
+INSERT INTO accounts.usernames (username, user_id, home_region)
+VALUES ('asha', 202, 'eu') IF NOT EXISTS;        -- returns [applied] = false for the loser
+
+-- DynamoDB PutItem
+-- ConditionExpression: attribute_not_exists(PK)   with PK = "USERNAME#asha"` }],
+      complexity: `<p>One consensus round per claim (in-region ~ms, cross-region ~100 ms). Reads of "who owns asha" can use follower reads if slightly stale answers are acceptable.</p>`,
+      followUps: ['How do you implement username changes atomically (release old, claim new)?', 'What if the linearizable store\'s region is partitioned away from EU users?']
+    }
+  });
   registerModule({ id: 'sql14', title: 'Distributed Databases & NoSQL', intro: `<p>tmp</p>`, goals: [], prereqs: `tmp`, hours: 12,
     databases: { repl: DB_REPL, shard: DB_SHARD, nosql: DB_NOSQL, bank: DB_BANK },
     topics: topics, practice: practice, quiz: quiz, interview: interview });

@@ -2099,7 +2099,7 @@ class PayrollService {
     }
 }` },
     mcq: { q: 'Departments contain people AND departments, and the same questions apply to both. Which pattern?', options: ['Composite', 'Proxy', 'Adapter', 'Bridge'], answer: 0, explain: 'A part-whole tree where leaves and groups share one interface is the Composite pattern.' },
-    hints: [`<p>Hint 1: Make <code>OrgUnit</code> the shared interface with all three methods.</p>`, `<p>Hint 2: <code>Employee</code> (leaf): headcount 1, payroll = salary, depth 0. <code>Department</code> (composite) aggregates over <code>List&lt;OrgUnit&gt;</code>.</p>`, `<p>Hint 3: Department depth = 1 + max(child depth), or 0 if empty... decide and document it (we use 1 for an empty department so it still counts as a level).</p>`],
+    hints: [`<p>Hint 1: Make <code>OrgUnit</code> the shared interface with all three methods.</p>`, `<p>Hint 2: <code>Employee</code> (leaf): headcount 1, payroll = salary, depth 0. <code>Department</code> (composite) aggregates over <code>List&lt;OrgUnit&gt;</code>.</p>`, `<p>Hint 3: Department depth = 1 + max(child depth). An empty department has depth 1 (it is still a level) — decide edge cases like this out loud and document them.</p>`],
     solution: {
       approach: `<p>Sealed <code>OrgUnit</code> with <code>headcount()</code>, <code>payroll()</code>, <code>deepest()</code>. Employee is the leaf record; Department is the composite and combines children with sum / sum / 1 + max. Client calls the same methods on any node.</p>`,
       code: `sealed interface OrgUnit permits Employee, Department {
@@ -2131,6 +2131,900 @@ final class Department implements OrgUnit {
 }`,
       complexity: `<p>Each query O(n) over all units, O(depth) recursion stack.</p>`,
       followUps: ['Payroll is queried every second — cache per department and invalidate on change.', 'Find the department with the highest average salary in one traversal.']
+    }
+  });
+  /* =====================================================================
+     PRACTICE — MEDIUM
+     ===================================================================== */
+  practice.push({
+    title: 'Role-Based Protection Proxy for a Bank Account',
+    level: 'Medium', tags: ['proxy', 'security', 'which pattern fits'], companies: ['JPMorgan', 'Goldman Sachs', 'PhonePe'],
+    statement: `<p><code>interface Account { long balance(); void deposit(long amt); void withdraw(long amt); }</code> is implemented by <code>RealAccount</code> (pure business logic, no security). Rules: the <b>OWNER</b> may do everything; a <b>TELLER</b> may view balance and deposit; an <b>AUDITOR</b> may only view. Every denied attempt must be recorded in an audit log. <code>RealAccount</code> must stay free of security code.</p>`,
+    constraints: `<p>Unauthorised calls throw <code>SecurityException</code> and must not reach the real account. Withdraw more than the balance → <code>IllegalStateException</code> from the real account.</p>`,
+    example: `<p>Teller: <code>deposit(500)</code> ${H.c('g', 'ok')}, <code>withdraw(100)</code> ${H.c('r', 'SecurityException')}, audit log = ["TELLER denied withdraw"]. Owner: <code>withdraw(100)</code> ${H.c('g', 'ok')}.</p>`,
+    brute: { why: `<p>Putting <code>if (role != OWNER) throw</code> inside every <code>RealAccount</code> method mixes security with banking logic. Tests for interest calculation now need a user context; adding a new role edits every method; and a second account type duplicates all the checks.</p>`, code: `enum Role { OWNER, TELLER, AUDITOR }
+class RealAccount {
+    private long balance; Role currentRole = Role.OWNER;      // security leaked into the domain class
+    long balance() { return balance; }
+    void deposit(long a) { if (currentRole == Role.AUDITOR) throw new SecurityException(); balance += a; }
+    void withdraw(long a) {
+        if (currentRole != Role.OWNER) throw new SecurityException();
+        if (a > balance) throw new IllegalStateException("insufficient");
+        balance -= a;
+    }
+}` },
+    mcq: { q: 'Same interface, same behaviour, but calls must be checked before reaching the real object. Which pattern?', options: ['Decorator', 'Protection Proxy', 'Adapter', 'Facade'], answer: 1, explain: 'Controlling access to an object with an identical interface is the protection proxy — it adds no new feature to the account itself.' },
+    hints: [`<p>Hint 1: Create <code>SecuredAccount implements Account</code> holding the real account, the caller's role, and an audit log.</p>`, `<p>Hint 2: Model permissions as data: <code>Map&lt;Role, Set&lt;Op&gt;&gt;</code> so a new role is a config change, not new code.</p>`, `<p>Hint 3: Each method: <code>check(op)</code> → if not allowed, append to audit log and throw; else delegate. Never catch business exceptions from the real account.</p>`],
+    solution: {
+      approach: `<p><code>SecuredAccount</code> is a protection proxy: same <code>Account</code> interface, holds the real account, a role and an audit sink. A permission table maps role → allowed operations. Each method checks first, audits denials, and only then delegates. The real account stays pure; a factory hands clients the proxy so they cannot bypass it.</p>`,
+      code: `enum Role { OWNER, TELLER, AUDITOR }
+enum Op { VIEW, DEPOSIT, WITHDRAW }
+
+interface Account { long balance(); void deposit(long amt); void withdraw(long amt); }
+
+class RealAccount implements Account {
+    private long balance;
+    public synchronized long balance() { return balance; }
+    public synchronized void deposit(long a) { if (a <= 0) throw new IllegalArgumentException(); balance += a; }
+    public synchronized void withdraw(long a) {
+        if (a > balance) throw new IllegalStateException("insufficient funds");
+        balance -= a;
+    }
+}
+
+class SecuredAccount implements Account {
+    private static final Map<Role, Set<Op>> PERMS = Map.of(
+        Role.OWNER, EnumSet.allOf(Op.class),
+        Role.TELLER, EnumSet.of(Op.VIEW, Op.DEPOSIT),
+        Role.AUDITOR, EnumSet.of(Op.VIEW));
+
+    private final Account real; private final Role role; private final List<String> audit;
+
+    SecuredAccount(Account real, Role role, List<String> audit) { this.real = real; this.role = role; this.audit = audit; }
+
+    private void check(Op op) {
+        if (!PERMS.get(role).contains(op)) {
+            audit.add(role + " denied " + op.name().toLowerCase());
+            throw new SecurityException(role + " may not " + op);
+        }
+    }
+    public long balance() { check(Op.VIEW); return real.balance(); }
+    public void deposit(long a) { check(Op.DEPOSIT); real.deposit(a); }
+    public void withdraw(long a) { check(Op.WITHDRAW); real.withdraw(a); }
+
+    public static void main(String[] args) {
+        Account real = new RealAccount();
+        List<String> audit = new ArrayList<>();
+        Account teller = new SecuredAccount(real, Role.TELLER, audit);
+        teller.deposit(500);
+        try { teller.withdraw(100); } catch (SecurityException e) { System.out.println("blocked"); }
+        new SecuredAccount(real, Role.OWNER, audit).withdraw(100);
+        System.out.println(real.balance() + " " + audit);   // 400 [TELLER denied withdraw]
+    }
+}`,
+      complexity: `<p>O(1) extra per call (EnumSet lookup). Memory O(roles × ops) for the table.</p>`,
+      followUps: ['Generate this proxy for any interface using java.lang.reflect.Proxy and an @RequiresRole annotation.', 'Tellers may withdraw up to ₹10 000 — where does an amount-based rule go?']
+    }
+  });
+
+  practice.push({
+    title: 'Rate-Limiting Proxy for a Third-Party API',
+    level: 'Medium', tags: ['proxy', 'rate limiting'], companies: ['Stripe', 'Cloudflare', 'Postman'],
+    statement: `<p><code>interface GeoApi { String lookup(String clientId, String ip); }</code> calls a paid vendor. Each client may make at most <b>limit</b> calls per <b>windowMillis</b> (fixed window). Excess calls must fail fast with <code>RateLimitedException</code> <i>without</i> reaching the vendor. Callers must keep using <code>GeoApi</code>. Time must be injectable.</p>`,
+    constraints: `<p>limit ≥ 1, windowMillis ≥ 1. Many clients, many threads. Each client's window starts at its first call in that window.</p>`,
+    example: `<p>limit = 2, window = 1000 ms. Client A at t = 0, 10 → ${H.c('g', 'allowed')}; t = 20 → ${H.c('r', 'rate limited')}; t = 1005 → new window → ${H.c('g', 'allowed')}. Client B at t = 20 → allowed (separate counter).</p>`,
+    brute: { why: `<p>Adding a counter inside the vendor-calling class (or worse, in every caller) mixes throttling with business code, uses a single global counter (one noisy client blocks everyone), and with an unsynchronised <code>HashMap</code> corrupts under concurrency.</p>`, code: `class VendorGeoApi {
+    static int callsThisSecond = 0;                 // global, not per client, not thread-safe
+    String lookup(String clientId, String ip) {
+        if (++callsThisSecond > 2) throw new RuntimeException("limited");
+        return "IN";
+    }
+}` },
+    mcq: { q: 'Why make the limiter a proxy instead of a feature of VendorGeoApi?', options: ['Proxies are faster', 'Access control is a separate concern; the vendor class stays focused and the limiter can wrap any GeoApi', 'Java requires it', 'So the vendor is called even when limited'], answer: 1, explain: 'The proxy guards access with the same interface and can be reused in front of any implementation (including a fake in tests).' },
+    hints: [`<p>Hint 1: Same interface, decides whether to forward → proxy. Keep one window per client id.</p>`, `<p>Hint 2: <code>ConcurrentHashMap&lt;String, Window&gt;</code> with <code>compute</code> so the read-modify-write of each client's counter is atomic.</p>`, `<p>Hint 3: In <code>compute</code>: if no window or now − start ≥ window → new Window(now, 1); else count + 1. If the resulting count &gt; limit, throw; otherwise delegate.</p>`],
+    solution: {
+      approach: `<p><code>RateLimitingGeoApi implements GeoApi</code> holds the real API, a limit, a window length and a <code>LongSupplier</code> clock. Per client it keeps an immutable <code>Window(start, count)</code> updated atomically with <code>ConcurrentHashMap.compute</code>. Over-limit calls throw before the vendor is touched. This is a fixed-window limiter; sliding-window or token-bucket variants slot into the same proxy.</p>`,
+      code: `class RateLimitedException extends RuntimeException {
+    RateLimitedException(String m) { super(m); }
+}
+interface GeoApi { String lookup(String clientId, String ip); }
+
+class VendorGeoApi implements GeoApi {
+    int calls = 0;
+    public synchronized String lookup(String clientId, String ip) { calls++; return ip.startsWith("49.") ? "IN" : "US"; }
+}
+
+class RateLimitingGeoApi implements GeoApi {
+    private record Window(long start, int count) {}
+    private final GeoApi real; private final int limit; private final long windowMillis;
+    private final java.util.function.LongSupplier clock;
+    private final ConcurrentHashMap<String, Window> windows = new ConcurrentHashMap<>();
+
+    RateLimitingGeoApi(GeoApi real, int limit, long windowMillis, java.util.function.LongSupplier clock) {
+        if (limit < 1 || windowMillis < 1) throw new IllegalArgumentException();
+        this.real = real; this.limit = limit; this.windowMillis = windowMillis; this.clock = clock;
+    }
+
+    @Override
+    public String lookup(String clientId, String ip) {
+        long now = clock.getAsLong();
+        Window w = windows.compute(clientId, (id, old) ->
+            (old == null || now - old.start() >= windowMillis) ? new Window(now, 1) : new Window(old.start(), old.count() + 1));
+        if (w.count() > limit) throw new RateLimitedException(clientId + " exceeded " + limit + "/" + windowMillis + "ms");
+        return real.lookup(clientId, ip);
+    }
+
+    public static void main(String[] args) {
+        long[] t = {0};
+        VendorGeoApi vendor = new VendorGeoApi();
+        GeoApi api = new RateLimitingGeoApi(vendor, 2, 1000, () -> t[0]);
+        api.lookup("A", "49.1.1.1"); t[0] = 10; api.lookup("A", "49.1.1.1");
+        t[0] = 20;
+        try { api.lookup("A", "49.1.1.1"); } catch (RateLimitedException e) { System.out.println("limited"); }
+        api.lookup("B", "8.8.8.8");
+        t[0] = 1005; api.lookup("A", "49.1.1.1");
+        System.out.println("vendor calls = " + vendor.calls);   // 4
+    }
+}`,
+      complexity: `<p>O(1) per call. Memory O(active clients) — evict idle windows periodically in production.</p>`,
+      followUps: ['Fixed windows allow 2× the limit across a boundary — implement a sliding-window log or token bucket.', 'Run 10 servers behind a load balancer — where does the counter live now? (Redis INCR + EXPIRE)']
+    }
+  });
+
+  practice.push({
+    title: '100 000 Bullets with Flyweight Sprites',
+    level: 'Medium', tags: ['flyweight', 'game dev', 'memory'], companies: ['Unity', 'EA', 'Nintendo'],
+    statement: `<p>A shooter game spawns up to 100 000 bullets. Each bullet type (pistol, laser, rocket…) has a 64 KB sprite, a damage value and a colour; each bullet has its own position, velocity and remaining life. Implement <code>spawn(type, x, y, vx, vy)</code>, <code>tick()</code> (move bullets, remove dead ones) and <code>memoryEstimateBytes()</code>.</p>`,
+    constraints: `<p>≤ 16 bullet types, ≤ 10<sup>5</sup> live bullets, tick must be O(live bullets). Bullet types are immutable.</p>`,
+    example: `<p>Spawn 3 pistol + 2 laser bullets → <b>${H.c('g', '2')}</b> BulletType objects exist, 5 Bullet contexts. Memory estimate ≈ 2 × 64 KB + 5 × 40 B ≈ <b>131 KB</b> instead of 5 × 64 KB = 320 KB (and 6.4 GB vs 128 KB+4 MB at 100k).</p>`,
+    brute: { why: `<p>Each <code>Bullet</code> owns a copy of its 64 KB sprite. At 100 000 bullets that is 6.4 GB — the game crashes, and even before that, allocating sprites every frame thrashes the garbage collector.</p>`, code: `class Bullet {
+    final byte[] sprite = new byte[64 * 1024];   // copied per bullet!
+    final int damage; double x, y, vx, vy; int life = 100;
+    Bullet(int damage, double x, double y, double vx, double vy) { this.damage = damage; this.x = x; this.y = y; this.vx = vx; this.vy = vy; }
+}` },
+    mcq: { q: 'Which fields belong in the shared BulletType flyweight?', options: ['x, y', 'vx, vy, life', 'sprite, damage, colour', 'All fields'], answer: 2, explain: 'Sprite, damage and colour are identical for every bullet of a type (intrinsic). Position, velocity and life differ per bullet (extrinsic).' },
+    hints: [`<p>Hint 1: Split intrinsic (per type) from extrinsic (per bullet) state.</p>`, `<p>Hint 2: <code>BulletTypeFactory</code> with <code>computeIfAbsent</code>; <code>Bullet</code> holds a reference to its type plus mutable motion fields.</p>`, `<p>Hint 3: In <code>tick()</code> use an iterator (or swap-remove) to delete dead bullets in O(1) each. Memory estimate = types × sprite + bullets × context size.</p>`],
+    solution: {
+      approach: `<p><code>BulletType</code> is an immutable record (name, sprite, damage, colour) created once per name by a factory. <code>Bullet</code> is a small mutable context (x, y, vx, vy, life, type ref). The world keeps an <code>ArrayList&lt;Bullet&gt;</code> and removes dead bullets with swap-remove for O(1) deletion. Memory drops from bullets × 64 KB to types × 64 KB + bullets × ~40 B.</p>`,
+      code: `record BulletType(String name, byte[] sprite, int damage, int rgb) {}
+
+final class BulletTypeFactory {
+    private final Map<String, BulletType> pool = new ConcurrentHashMap<>();
+    BulletType get(String name) {
+        return pool.computeIfAbsent(name, n -> new BulletType(n, new byte[64 * 1024],
+            n.equals("rocket") ? 50 : n.equals("laser") ? 20 : 10, n.hashCode() & 0xFFFFFF));
+    }
+    int size() { return pool.size(); }
+}
+
+final class Bullet {                                   // extrinsic, ~40 bytes
+    final BulletType type; double x, y; final double vx, vy; int life;
+    Bullet(BulletType t, double x, double y, double vx, double vy) { type = t; this.x = x; this.y = y; this.vx = vx; this.vy = vy; life = 100; }
+}
+
+class BulletWorld {
+    private static final int CONTEXT_BYTES = 40, SPRITE_BYTES = 64 * 1024;
+    private final BulletTypeFactory types = new BulletTypeFactory();
+    private final List<Bullet> live = new ArrayList<>();
+
+    void spawn(String type, double x, double y, double vx, double vy) { live.add(new Bullet(types.get(type), x, y, vx, vy)); }
+
+    void tick() {
+        for (int i = live.size() - 1; i >= 0; i--) {
+            Bullet b = live.get(i);
+            b.x += b.vx; b.y += b.vy;
+            if (--b.life <= 0) {                        // swap-remove: O(1)
+                live.set(i, live.get(live.size() - 1));
+                live.remove(live.size() - 1);
+            }
+        }
+    }
+
+    long memoryEstimateBytes() { return (long) types.size() * SPRITE_BYTES + (long) live.size() * CONTEXT_BYTES; }
+
+    public static void main(String[] args) {
+        BulletWorld w = new BulletWorld();
+        for (int i = 0; i < 3; i++) w.spawn("pistol", 0, i, 1, 0);
+        for (int i = 0; i < 2; i++) w.spawn("laser", 0, i, 2, 0);
+        w.tick();
+        System.out.println(w.types.size() + " types, " + w.live.size() + " bullets, ~" + w.memoryEstimateBytes() + " bytes");
+    }
+}`,
+      complexity: `<p>spawn O(1) amortised, tick O(live bullets). Memory O(types × sprite + bullets).</p>`,
+      followUps: ['Also pool Bullet objects (Object Pool) to avoid GC churn — how do Flyweight and Object Pool differ here?', 'Convert bullets to struct-of-arrays (double[] xs, ys…) — what do you gain and lose?']
+    }
+  });
+
+  practice.push({
+    title: 'Encode → Compress → Checksum Pipeline (Order Matters)',
+    level: 'Medium', tags: ['decorator', 'streams'], companies: ['Dropbox', 'Google', 'Backblaze'],
+    statement: `<p><code>interface DataStore { void write(String data); String read(); }</code> with a plain <code>MemoryStore</code>. Add stackable features: <b>Compression</b> (run-length encoding with a marker: "aaab" → "3xa1xb" — count, an 'x', then the character, so any character including digits survives), <b>Encryption</b> (simple reversible shift cipher for this exercise), and <b>Checksum</b> (append "#&lt;sum&gt;" on write, verify and strip on read, throw if corrupted). Each feature must transform on write and undo on read, and any subset in any order must round-trip.</p>`,
+    constraints: `<p>Any characters (layers will feed each other digits, '#' and 'x'). Length ≤ 10<sup>5</sup>. <code>read()</code> after <code>write(s)</code> must return exactly s for every stacking order — so each layer's decode must invert its encode for <i>every</i> string.</p>`,
+    example: `<p><code>new Checksum(new Encryption(new Compression(new MemoryStore())))</code>; write "aaabbb": Checksum appends ${H.c('y', '"#sum"')}, Encryption shifts the letters, Compression run-length encodes, and the store keeps the result. <code>read()</code> undoes them in exact reverse (Compression → Encryption → Checksum) and returns ${H.c('g', '"aaabbb"')}. The outer layer's write runs first and its read runs last.</p>`,
+    brute: { why: `<p>A single <code>SmartStore</code> with flags <code>compress</code>, <code>encrypt</code>, <code>checksum</code> must hard-code one order of operations in write and the exact reverse in read. Supporting a different order or a new transform (Base64) means rewriting both methods; bugs where read's order does not mirror write's corrupt data silently.</p>`, code: `class SmartStore {
+    boolean compress, encrypt; String stored = "";
+    void write(String s) {
+        if (encrypt) s = shift(s, 3);          // fixed order baked in
+        if (compress) s = s.toUpperCase();     // placeholder transform for the flag
+        stored = s;
+    }
+    String read() {
+        String s = stored;
+        if (compress) s = s.toLowerCase();
+        if (encrypt) s = shift(s, -3);         // must mirror write exactly, by hand
+        return s;
+    }
+    static String shift(String s, int k) {
+        StringBuilder b = new StringBuilder();
+        for (char c : s.toCharArray()) b.append((char) (c + k));
+        return b.toString();
+    }
+}` },
+    mcq: { q: 'With Encryption(Compression(store)), what does the compressor see on write?', options: ['The original text', 'The encrypted text', 'The checksum', 'Nothing — compression runs on read only'], answer: 1, explain: 'The outer decorator (Encryption) transforms first and passes its output inward, so Compression receives ciphertext — which compresses badly. Order matters.' },
+    hints: [`<p>Hint 1: Each feature is a decorator with two halves: transform on the way in (write) and inverse on the way out (read).</p>`, `<p>Hint 2: <code>write(s)</code> → <code>inner.write(encode(s))</code>; <code>read()</code> → <code>decode(inner.read())</code>. Wrapping automatically mirrors the order.</p>`, `<p>Hint 3: RLE decode: read digits up to the 'x' marker into a count, then repeat the single character after the marker (it may itself be a digit or an 'x'). Checksum: sum of chars mod 997; on read split at the last '#', recompute, throw <code>IllegalStateException</code> on mismatch.</p>`],
+    solution: {
+      approach: `<p>An abstract <code>TransformingStore</code> decorator implements <code>write</code> as <code>inner.write(encode(s))</code> and <code>read</code> as <code>decode(inner.read())</code>. Subclasses supply only <code>encode</code>/<code>decode</code>. Because each call passes through the layers in nested order, the read path is automatically the exact mirror of the write path — any order round-trips. Real-world tip: compress before encrypting, i.e. <code>Compression(Encryption(store))</code> — the outer layer runs first on write, so the plaintext is compressed and then encrypted. (Encrypted bytes look random and barely compress.)</p>`,
+      code: `interface DataStore { void write(String data); String read(); }
+
+class MemoryStore implements DataStore {
+    private String data = "";
+    public void write(String d) { data = d; }
+    public String read() { return data; }
+}
+
+abstract class TransformingStore implements DataStore {
+    protected final DataStore inner;
+    TransformingStore(DataStore inner) { this.inner = inner; }
+    protected abstract String encode(String s);
+    protected abstract String decode(String s);
+    public final void write(String s) { inner.write(encode(s)); }
+    public final String read() { return decode(inner.read()); }
+}
+
+class Compression extends TransformingStore {
+    Compression(DataStore d) { super(d); }
+    protected String encode(String s) {
+        StringBuilder b = new StringBuilder();
+        for (int i = 0; i < s.length(); ) {
+            int j = i;
+            while (j < s.length() && s.charAt(j) == s.charAt(i)) j++;
+            b.append(j - i).append('x').append(s.charAt(i));   // count, marker, char
+            i = j;
+        }
+        return b.toString();
+    }
+    protected String decode(String s) {
+        StringBuilder b = new StringBuilder();
+        int i = 0;
+        while (i < s.length()) {
+            int count = 0;
+            while (s.charAt(i) != 'x') count = count * 10 + (s.charAt(i++) - '0');
+            char c = s.charAt(i + 1);                    // the char right after the marker
+            b.append(String.valueOf(c).repeat(count));
+            i += 2;
+        }
+        return b.toString();
+    }
+}
+
+class Encryption extends TransformingStore {           // toy cipher: shift letters by 3 (not real crypto!)
+    Encryption(DataStore d) { super(d); }
+    private static String shift(String s, int k) {
+        StringBuilder b = new StringBuilder();
+        for (char c : s.toCharArray()) {
+            if (Character.isLowerCase(c)) b.append((char) ('a' + Math.floorMod(c - 'a' + k, 26)));
+            else if (Character.isUpperCase(c)) b.append((char) ('A' + Math.floorMod(c - 'A' + k, 26)));
+            else b.append(c);
+        }
+        return b.toString();
+    }
+    protected String encode(String s) { return shift(s, 3); }
+    protected String decode(String s) { return shift(s, -3); }
+}
+
+class Checksum extends TransformingStore {
+    Checksum(DataStore d) { super(d); }
+    private static int sum(String s) { int x = 0; for (char c : s.toCharArray()) x = (x + c) % 997; return x; }
+    protected String encode(String s) { return s + "#" + sum(s); }
+    protected String decode(String s) {
+        int at = s.lastIndexOf('#');
+        if (at < 0) throw new IllegalStateException("missing checksum");
+        String body = s.substring(0, at);
+        if (sum(body) != Integer.parseInt(s.substring(at + 1))) throw new IllegalStateException("corrupted");
+        return body;
+    }
+}
+
+class PipelineDemo {
+    public static void main(String[] args) {
+        DataStore[] stacks = {
+            new Checksum(new Encryption(new Compression(new MemoryStore()))),
+            new Compression(new Encryption(new Checksum(new MemoryStore()))),
+            new Encryption(new MemoryStore())
+        };
+        for (DataStore s : stacks) { s.write("aaabbbCCz 42x#"); System.out.println(s.read()); }   // round-trips x3
+    }
+}`,
+      complexity: `<p>Each layer is O(n) per read/write; k layers → O(k·n). Memory O(n) per intermediate string.</p>`,
+      followUps: ['Streaming version: make the decorators wrap OutputStream/InputStream so 10 GB files never sit in memory.', 'Which order is best for real compression + AES-GCM encryption, and why does checksum become unnecessary with authenticated encryption?']
+    }
+  });
+
+  practice.push({
+    title: 'Shapes × Renderers: ASCII and SVG',
+    level: 'Medium', tags: ['bridge', 'which pattern fits'], companies: ['Figma', 'Canva', 'Adobe'],
+    statement: `<p>Support shapes <b>Rect(w, h)</b> and <b>Square(side)</b> and renderers <b>Ascii</b> (draws with '#') and <b>Svg</b> (returns an svg rect element string). Product will add Circle, Line and a PDF renderer later. Each shape must render with each renderer, and adding one shape or renderer must be one class.</p>`,
+    constraints: `<p>1 ≤ w, h ≤ 20 for ASCII. Shapes must not contain renderer-specific code; renderers must not know shape classes.</p>`,
+    example: `<p><code>new Rect(new AsciiRenderer(), 3, 2).draw()</code> → ${H.c('b', '"### / ###"')}. <code>new Square(new SvgRenderer(), 4).draw()</code> → ${H.c('g', 'rect element with width 4 and height 4')}. 2 shapes × 2 renderers from 4 classes.</p>`,
+    brute: { why: `<p><code>AsciiRect</code>, <code>SvgRect</code>, <code>AsciiSquare</code>, <code>SvgSquare</code>… M × N classes. Adding PDF needs M new classes; adding Circle needs N. ASCII drawing code is duplicated in every Ascii* class.</p>`, code: `class AsciiRect {
+    final int w, h; AsciiRect(int w, int h) { this.w = w; this.h = h; }
+    String draw() { return String.join(" / ", Collections.nCopies(h, "#".repeat(w))); }
+}
+class AsciiSquare {
+    final int s; AsciiSquare(int s) { this.s = s; }
+    String draw() { return String.join(" / ", Collections.nCopies(s, "#".repeat(s))); }   // duplicated
+}
+class SvgRect {
+    final int w, h; SvgRect(int w, int h) { this.w = w; this.h = h; }
+    String draw() { return "<rect width='" + w + "' height='" + h + "'/>"; }
+}` },
+    mcq: { q: 'Shapes and renderers both grow independently. Which pattern prevents M × N classes?', options: ['Bridge', 'Flyweight', 'Facade', 'Proxy'], answer: 0, explain: 'Bridge separates the abstraction (shape) from the implementor (renderer) and joins them by composition.' },
+    hints: [`<p>Hint 1: Two axes → two hierarchies. Which side defines the primitive operations?</p>`, `<p>Hint 2: Implementor: <code>Renderer { String rect(int w, int h); }</code>. Abstraction: <code>abstract class Shape { protected final Renderer r; abstract String draw(); }</code>.</p>`, `<p>Hint 3: <code>Square.draw()</code> reuses the renderer's rect primitive — refined abstractions build on primitives instead of adding renderer methods.</p>`],
+    solution: {
+      approach: `<p>Implementor <code>Renderer</code> exposes primitives (<code>rect(w, h)</code>); <code>AsciiRenderer</code> and <code>SvgRenderer</code> implement them. Abstraction <code>Shape</code> holds a renderer; <code>Rect</code> and <code>Square</code> express themselves via the primitives. Adding Circle may need a new primitive (<code>circle(r)</code>) — that is the main cost of Bridge: the implementor interface must be designed carefully.</p>`,
+      code: `interface Renderer { String rect(int w, int h); }
+
+class AsciiRenderer implements Renderer {
+    public String rect(int w, int h) {
+        if (w < 1 || h < 1 || w > 20 || h > 20) throw new IllegalArgumentException("ascii supports 1..20");
+        return String.join(" / ", Collections.nCopies(h, "#".repeat(w)));
+    }
+}
+class SvgRenderer implements Renderer {
+    public String rect(int w, int h) { return "<rect width='" + w + "' height='" + h + "'/>"; }
+}
+
+abstract class Shape {
+    protected final Renderer renderer;              // the bridge
+    protected Shape(Renderer r) { renderer = Objects.requireNonNull(r); }
+    abstract String draw();
+}
+class Rect extends Shape {
+    private final int w, h;
+    Rect(Renderer r, int w, int h) { super(r); this.w = w; this.h = h; }
+    String draw() { return renderer.rect(w, h); }
+}
+class Square extends Shape {
+    private final int side;
+    Square(Renderer r, int side) { super(r); this.side = side; }
+    String draw() { return renderer.rect(side, side); }   // built on the same primitive
+}
+
+class BridgeDemo {
+    public static void main(String[] args) {
+        System.out.println(new Rect(new AsciiRenderer(), 3, 2).draw());   // ### / ###
+        System.out.println(new Square(new SvgRenderer(), 4).draw());     // <rect width='4' height='4'/>
+    }
+}`,
+      complexity: `<p>Classes M + N; draw cost depends on the renderer (ASCII O(w·h), SVG O(1)).</p>`,
+      followUps: ['Add Circle: what changes in the Renderer interface, and how do you keep old renderers compiling (default methods)?', 'Pick the renderer per user preference at runtime — who wires it?']
+    }
+  });
+
+  practice.push({
+    title: 'Two-Way Adapter for a Gradual Storage Migration',
+    level: 'Medium', tags: ['adapter', 'migration', 'strangler'], companies: ['Shopify', 'Atlassian', 'Uber'],
+    statement: `<p>Old code uses <code>interface LegacyUserStore { Map&lt;String,String&gt; load(int id); void save(int id, Map&lt;String,String&gt; fields); }</code> (fields "name", "email"). New code uses <code>interface UserRepository { Optional&lt;User&gt; find(long id); void put(User u); }</code> with <code>record User(long id, String name, String email)</code>. During a 6-month migration both kinds of callers must work against <b>one</b> underlying store (the new one). Write the adapter(s).</p>`,
+    constraints: `<p>Missing user → <code>load</code> returns an empty map. Unknown legacy field names are rejected with <code>IllegalArgumentException</code>. Ids above <code>Integer.MAX_VALUE</code> are not visible to legacy callers.</p>`,
+    example: `<p>New code: <code>put(User(7, "Asha", "a@x.com"))</code>. Old code: <code>load(7)</code> → ${H.c('g', '{name=Asha, email=a@x.com}')}. Old code: <code>save(8, {name: "Ben"})</code> → new code <code>find(8)</code> → ${H.c('g', 'User(8, Ben, null)')}.</p>`,
+    brute: { why: `<p>Running two separate stores and syncing them with a nightly job: data is stale for up to 24 hours, writes on both sides conflict, and the "sync" becomes a second migration project. Or rewriting all old callers at once — a risky big-bang release.</p>`, code: `class NightlySync {
+    // copies everything from the old store to the new one once a day
+    void run(Map<Integer, Map<String, String>> oldStore, Map<Long, String[]> newStore) {
+        oldStore.forEach((id, f) -> newStore.put((long) id, new String[]{f.get("name"), f.get("email")}));
+        // writes made to newStore during the day are overwritten tonight: data loss
+    }
+}` },
+    mcq: { q: 'Old callers keep calling LegacyUserStore, but data lives in UserRepository. The adapter implements which interface and wraps which?', options: ['Implements UserRepository, wraps LegacyUserStore', 'Implements LegacyUserStore, wraps UserRepository', 'Implements both, wraps nothing', 'Extends User'], answer: 1, explain: 'The target is what the client expects (LegacyUserStore); the adaptee is the real store (UserRepository).' },
+    hints: [`<p>Hint 1: Old clients' target = <code>LegacyUserStore</code>; the adaptee = <code>UserRepository</code>.</p>`, `<p>Hint 2: <code>load</code>: find → convert record to map (skip nulls). <code>save</code>: validate keys, merge with existing user if present, then put.</p>`, `<p>Hint 3: Convert int ↔ long carefully; guard ids beyond int range on the legacy side. Keep the conversion in one adapter class so it is deleted in one commit when migration ends.</p>`],
+    solution: {
+      approach: `<p><code>LegacyStoreAdapter implements LegacyUserStore</code> and wraps the new <code>UserRepository</code>, so there is exactly one source of truth. <code>load</code> maps the record to a field map; <code>save</code> validates keys, merges partial updates onto the existing user (legacy saves may send only some fields), and writes through. New code uses the repository directly. When no old callers remain, delete the adapter (strangler pattern).</p>`,
+      code: `record User(long id, String name, String email) {}
+
+interface UserRepository { Optional<User> find(long id); void put(User u); }
+interface LegacyUserStore { Map<String, String> load(int id); void save(int id, Map<String, String> fields); }
+
+class InMemoryUserRepository implements UserRepository {
+    private final Map<Long, User> rows = new ConcurrentHashMap<>();
+    public Optional<User> find(long id) { return Optional.ofNullable(rows.get(id)); }
+    public void put(User u) { rows.put(u.id(), u); }
+}
+
+class LegacyStoreAdapter implements LegacyUserStore {
+    private static final Set<String> FIELDS = Set.of("name", "email");
+    private final UserRepository repo;
+    LegacyStoreAdapter(UserRepository repo) { this.repo = repo; }
+
+    @Override
+    public Map<String, String> load(int id) {
+        return repo.find(id).map(u -> {
+            Map<String, String> m = new HashMap<>();
+            if (u.name() != null) m.put("name", u.name());
+            if (u.email() != null) m.put("email", u.email());
+            return m;
+        }).orElseGet(HashMap::new);
+    }
+
+    @Override
+    public void save(int id, Map<String, String> fields) {
+        for (String k : fields.keySet())
+            if (!FIELDS.contains(k)) throw new IllegalArgumentException("unknown field " + k);
+        User old = repo.find(id).orElse(new User(id, null, null));
+        repo.put(new User(id,
+            fields.getOrDefault("name", old.name()),
+            fields.getOrDefault("email", old.email())));      // partial update merges
+    }
+
+    public static void main(String[] args) {
+        UserRepository repo = new InMemoryUserRepository();
+        LegacyUserStore legacy = new LegacyStoreAdapter(repo);
+        repo.put(new User(7, "Asha", "a@x.com"));
+        System.out.println(legacy.load(7));
+        legacy.save(8, Map.of("name", "Ben"));
+        System.out.println(repo.find(8).orElseThrow());       // User[id=8, name=Ben, email=null]
+    }
+}`,
+      complexity: `<p>O(1) per call plus O(fields) conversion. One source of truth, so no sync job.</p>`,
+      followUps: ['Some legacy callers write fields the new model lacks ("fax") — store them, reject them, or log and drop?', 'How do you measure when it is safe to delete the adapter?']
+    }
+  });
+  /* =====================================================================
+     PRACTICE — HARD
+     ===================================================================== */
+  practice.push({
+    title: 'Thread-Safe Lazy-Loading Entity Proxy (Mini ORM)',
+    level: 'Hard', tags: ['proxy', 'lazy loading', 'concurrency'], companies: ['Oracle', 'Red Hat', 'Amazon'],
+    statement: `<p>An <code>Order</code> references a <code>Customer</code>. Loading a customer costs one database query. Build a mini-ORM where <code>order.customer()</code> returns a <b>virtual proxy</b> that knows only the id; the query runs on the first call of any other method, exactly once even if 50 threads call at the same time. <code>id()</code> must never trigger a load. Proxies and real customers with the same id must be <code>equals</code>.</p>`,
+    constraints: `<p>Up to 10<sup>4</sup> orders loaded per request; most screens never touch customer details. Loader may throw — the next call must retry (do not cache failures). Count queries so tests can assert them.</p>`,
+    example: `<p>Load 3 orders for 2 customers. Render only order ids → ${H.c('g', '0 customer queries')}. Then 50 threads call <code>customer().name()</code> on the same proxy → ${H.c('g', 'exactly 1 query')}. Eager loading would have run ${H.c('r', '2–3 queries up front')} for nothing.</p>`,
+    brute: { why: `<p>(1) Eager loading: every order fetch also loads its customer — wasted queries when the screen never shows customer data. (2) Naive lazy field: <code>if (real == null) real = load()</code> without synchronisation — two threads both see null and both query (double load), and without <code>volatile</code> a thread may see a half-constructed object.</p>`, code: `class Customer { final long id; final String name; Customer(long id, String name) { this.id = id; this.name = name; } }
+class NaiveLazyCustomer {
+    private final long id; private Customer real;           // not volatile, not synchronized
+    NaiveLazyCustomer(long id) { this.id = id; }
+    String name() {
+        if (real == null) real = new Customer(id, "loaded-" + id);   // race: may load twice
+        return real.name;
+    }
+}` },
+    mcq: { q: 'Why must the proxy\'s id() NOT trigger a load?', options: ['Ids are secret', 'The proxy already knows the id; loading would defeat lazy loading for common operations like equals, hashing and building links', 'Java forbids it', 'Because ids are mutable'], answer: 1, explain: 'Many operations need only the id (map keys, equality, URLs). Loading on id() would turn every such use into a database query.' },
+    hints: [`<p>Hint 1: <code>interface Customer { long id(); String name(); String email(); }</code> implemented by <code>RealCustomer</code> (record) and <code>CustomerProxy</code>.</p>`, `<p>Hint 2: Double-checked locking: <code>volatile RealCustomer real</code>; check without lock, then <code>synchronized</code>, check again, load, assign.</p>`, `<p>Hint 3: If the loader throws, the field stays null so the next call retries. Implement <code>equals/hashCode</code> on <code>id()</code> only, comparing against the <code>Customer</code> interface (not <code>getClass()</code>), so proxies and real objects compare equal.</p>`],
+    solution: {
+      approach: `<p><code>CustomerProxy</code> holds the id and a loader function. <code>id()</code> returns immediately. Every other method calls <code>target()</code>, which uses double-checked locking on a <code>volatile</code> field to load exactly once; a loader exception propagates and leaves the field null so the next call retries. Equality is id-based against the interface. The repository counts queries for tests.</p>`,
+      code: `interface Customer { long id(); String name(); String email(); }
+
+record RealCustomer(long id, String name, String email) implements Customer {}
+
+class CustomerRepository {
+    final AtomicInteger queries = new AtomicInteger();
+    RealCustomer load(long id) {                            // pretend: SELECT * FROM customer WHERE id = ?
+        queries.incrementAndGet();
+        return new RealCustomer(id, "cust-" + id, id + "@shop.com");
+    }
+}
+
+final class CustomerProxy implements Customer {
+    private final long id;
+    private final java.util.function.LongFunction<RealCustomer> loader;
+    private volatile RealCustomer real;
+
+    CustomerProxy(long id, java.util.function.LongFunction<RealCustomer> loader) { this.id = id; this.loader = loader; }
+
+    private RealCustomer target() {
+        RealCustomer r = real;                  // one volatile read on the fast path
+        if (r == null) {
+            synchronized (this) {
+                r = real;
+                if (r == null) {
+                    r = loader.apply(id);       // may throw: field stays null -> retry later
+                    real = r;
+                }
+            }
+        }
+        return r;
+    }
+
+    public long id() { return id; }             // never loads
+    public String name() { return target().name(); }
+    public String email() { return target().email(); }
+
+    @Override public boolean equals(Object o) { return o instanceof Customer c && c.id() == id; }
+    @Override public int hashCode() { return Long.hashCode(id); }
+    @Override public String toString() { return real == null ? "Customer#" + id + "(not loaded)" : real.toString(); }
+}
+
+record Order(long id, Customer customer) {}
+
+class OrmDemo {
+    public static void main(String[] args) throws Exception {
+        CustomerRepository repo = new CustomerRepository();
+        Map<Long, Customer> identityMap = new HashMap<>();   // one proxy per customer id
+        List<Order> orders = new ArrayList<>();
+        long[][] rows = {{1, 10}, {2, 10}, {3, 11}};          // (orderId, customerId)
+        for (long[] r : rows)
+            orders.add(new Order(r[0], identityMap.computeIfAbsent(r[1], cid -> new CustomerProxy(cid, repo::load))));
+
+        orders.forEach(o -> System.out.print(o.id() + " "));
+        System.out.println("| queries so far = " + repo.queries.get());          // 0
+
+        Customer shared = orders.get(0).customer();
+        ExecutorService pool = Executors.newFixedThreadPool(8);
+        List<Future<String>> fs = new ArrayList<>();
+        for (int i = 0; i < 50; i++) fs.add(pool.submit(shared::name));
+        for (Future<String> f : fs) f.get();
+        pool.shutdown();
+        System.out.println("queries after 50 threads = " + repo.queries.get());  // 1
+        System.out.println(shared.equals(new RealCustomer(10, "x", "y")));       // true
+    }
+}`,
+      complexity: `<p>First access: one query + lock; later accesses: one volatile read, O(1). Memory: one small proxy per distinct customer (identity map).</p>`,
+      followUps: ['Rendering 1 000 orders with customer names fires 1 000 queries (N+1). Add batch loading: the first proxy touched loads all pending ids in one IN (...) query.', 'What happens if the proxy is used after the database session is closed? Design the error.', 'Replace double-checked locking with a holder or a memoising Supplier — compare trade-offs.']
+    }
+  });
+
+  practice.push({
+    title: 'Composite File System with mkdir -p, Move and Cached Sizes',
+    level: 'Hard', tags: ['composite', 'tree', 'caching'], companies: ['Google', 'Dropbox', 'Microsoft'],
+    statement: `<p>Implement an in-memory file system: <code>mkdirs(path)</code> creates all missing folders; <code>write(path, bytes)</code> creates or replaces a file (parents must exist); <code>size(path)</code> returns a file's size or a folder's total; <code>move(src, dstFolder)</code> moves a file or folder; <code>find(path, suffix)</code> lists file paths under a folder ending with suffix. <code>size()</code> on the root is called very often, so it must be O(1).</p>`,
+    constraints: `<p>Paths like "/a/b/c.txt". Up to 10<sup>5</sup> nodes, depth ≤ 100. Moving a folder into itself or its descendant → <code>IllegalArgumentException</code>. Name clash at destination → <code>IllegalStateException</code>.</p>`,
+    example: `<p>mkdirs("/docs/old"); write("/docs/a.txt", 5); write("/docs/old/b.txt", 7) → size("/") = ${H.c('g', '12')}. move("/docs/old", "/") → size("/docs") = ${H.c('g', '5')}, size("/old") = 7, root still 12. move("/docs", "/docs") → ${H.c('r', 'IllegalArgumentException')}.</p>`,
+    brute: { why: `<p>Store a flat <code>Map&lt;String path, Long size&gt;</code>. Folder size = scan every key with that prefix: O(N) per <code>size()</code> call. Moving a folder means rewriting every descendant key (O(N)) and prefix bugs appear ("/doc" matches "/docs/..."). There is no real notion of a folder, so empty folders cannot exist.</p>`, code: `class FlatFs {
+    final Map<String, Long> files = new HashMap<>();
+    long size(String path) {
+        long total = 0;
+        for (var e : files.entrySet()) if (e.getKey().startsWith(path)) total += e.getValue();  // O(N), and "/doc" matches "/docs"
+        return total;
+    }
+    void move(String src, String dst) {
+        Map<String, Long> moved = new HashMap<>();
+        files.entrySet().removeIf(e -> {
+            if (!e.getKey().startsWith(src)) return false;
+            moved.put(dst + e.getKey().substring(src.lastIndexOf('/')), e.getValue());
+            return true;
+        });
+        files.putAll(moved);
+    }
+}` },
+    mcq: { q: 'How can a composite keep size() O(1) while files change?', options: ['Recompute the whole tree on each call', 'Each folder caches its total; a change of Δ bytes is propagated up through parent pointers (O(depth))', 'Store sizes only in the root', 'Use a Flyweight for sizes'], answer: 1, explain: 'Cached aggregates plus upward propagation make reads O(1) and writes/moves O(depth).' },
+    hints: [`<p>Hint 1: <code>abstract class FsNode { String name; Folder parent; abstract long size(); }</code>; <code>FileNode</code> leaf and <code>Folder</code> composite with a <code>TreeMap&lt;String, FsNode&gt;</code> of children.</p>`, `<p>Hint 2: Folder caches <code>total</code>. Helper <code>bubble(folder, delta)</code> walks parents adding delta. Write: delta = new − old size. Move: bubble(−size) from old parent, bubble(+size) at new parent.</p>`, `<p>Hint 3: Cycle check for move: walk up from the destination folder to the root; if you meet the source node, reject. Resolve paths by splitting on "/" and walking children; <code>find</code> is a DFS that builds paths.</p>`],
+    solution: {
+      approach: `<p>Composite tree with parent pointers. <code>FileNode</code> (leaf) stores bytes; <code>Folder</code> (composite) stores sorted children and a cached <code>total</code>. Every mutation computes a size delta and bubbles it to the root in O(depth), so <code>size()</code> on any node is O(1). Move = detach + attach with two bubbles, after a cycle check that walks up from the destination. <code>find</code> is a DFS over the composite.</p>`,
+      code: `abstract class FsNode {
+    final String name; Folder parent;
+    FsNode(String name) { this.name = name; }
+    abstract long size();
+    String path() { return parent == null ? "" : parent.path() + "/" + name; }
+}
+
+final class FileNode extends FsNode {
+    long bytes;
+    FileNode(String name, long bytes) { super(name); this.bytes = bytes; }
+    long size() { return bytes; }
+}
+
+final class Folder extends FsNode {
+    final TreeMap<String, FsNode> children = new TreeMap<>();
+    long total;                                          // cached aggregate
+    Folder(String name) { super(name); }
+    long size() { return total; }
+}
+
+class FileSystem {
+    private final Folder root = new Folder("");
+
+    private static void bubble(Folder f, long delta) { for (Folder x = f; x != null; x = x.parent) x.total += delta; }
+
+    private static String[] parts(String path) {
+        if (!path.startsWith("/")) throw new IllegalArgumentException("absolute path needed: " + path);
+        return Arrays.stream(path.split("/")).filter(s -> !s.isEmpty()).toArray(String[]::new);
+    }
+
+    private FsNode resolve(String path) {
+        FsNode cur = root;
+        for (String p : parts(path)) {
+            if (!(cur instanceof Folder f) || !f.children.containsKey(p)) throw new NoSuchElementException(path);
+            cur = f.children.get(p);
+        }
+        return cur;
+    }
+
+    private void attach(Folder parent, FsNode child) {
+        if (parent.children.containsKey(child.name)) throw new IllegalStateException("exists: " + child.name);
+        parent.children.put(child.name, child);
+        child.parent = parent;
+        bubble(parent, child.size());
+    }
+
+    void mkdirs(String path) {
+        Folder cur = root;
+        for (String p : parts(path)) {
+            FsNode next = cur.children.get(p);
+            if (next == null) { next = new Folder(p); attach(cur, next); }
+            if (!(next instanceof Folder f)) throw new IllegalStateException(p + " is a file");
+            cur = f;
+        }
+    }
+
+    void write(String path, long bytes) {
+        String[] ps = parts(path);
+        String parentPath = "/" + String.join("/", Arrays.copyOf(ps, ps.length - 1));
+        if (!(resolve(parentPath) instanceof Folder parent)) throw new IllegalStateException("parent is a file");
+        String name = ps[ps.length - 1];
+        FsNode existing = parent.children.get(name);
+        if (existing instanceof FileNode f) { bubble(parent, bytes - f.bytes); f.bytes = bytes; }
+        else if (existing == null) attach(parent, new FileNode(name, bytes));
+        else throw new IllegalStateException(name + " is a folder");
+    }
+
+    long size(String path) { return resolve(path).size(); }
+
+    void move(String src, String dstFolder) {
+        FsNode node = resolve(src);
+        if (!(resolve(dstFolder) instanceof Folder dst)) throw new IllegalArgumentException("destination must be a folder");
+        if (node == root) throw new IllegalArgumentException("cannot move root");
+        for (Folder x = dst; x != null; x = x.parent)          // cycle check
+            if (x == node) throw new IllegalArgumentException("cannot move a folder into itself");
+        if (dst.children.containsKey(node.name)) throw new IllegalStateException("name clash");
+        Folder old = node.parent;
+        old.children.remove(node.name);
+        bubble(old, -node.size());
+        attach(dst, node);
+    }
+
+    List<String> find(String folder, String suffix) {
+        List<String> out = new ArrayList<>();
+        Deque<FsNode> stack = new ArrayDeque<>(List.of(resolve(folder)));   // iterative: safe for deep trees
+        while (!stack.isEmpty()) {
+            FsNode n = stack.pop();
+            if (n instanceof Folder f) f.children.values().forEach(stack::push);
+            else if (n.name.endsWith(suffix)) out.add(n.path());
+        }
+        Collections.sort(out);
+        return out;
+    }
+
+    public static void main(String[] args) {
+        FileSystem fs = new FileSystem();
+        fs.mkdirs("/docs/old");
+        fs.write("/docs/a.txt", 5);
+        fs.write("/docs/old/b.txt", 7);
+        System.out.println(fs.size("/"));                      // 12
+        fs.move("/docs/old", "/");
+        System.out.println(fs.size("/docs") + " " + fs.size("/old") + " " + fs.size("/"));  // 5 7 12
+        System.out.println(fs.find("/", ".txt"));              // [/docs/a.txt, /old/b.txt]
+        try { fs.move("/docs", "/docs"); } catch (IllegalArgumentException e) { System.out.println("blocked: " + e.getMessage()); }
+    }
+}`,
+      complexity: `<p>size O(1); write / mkdirs / move O(depth · log fan-out); find O(subtree size). Memory O(nodes).</p>`,
+      followUps: ['Add symlinks — how do you keep size() and find() from looping forever?', 'Make it thread-safe: one global lock, per-path locks, or immutable persistent trees?', 'Support "du" output that prints each folder\'s size in sorted order without recomputation.']
+    }
+  });
+
+  practice.push({
+    title: 'Notification Platform: Bridge + Adapter + Decorator Together',
+    level: 'Hard', tags: ['bridge', 'adapter', 'decorator', 'which pattern fits'], companies: ['Amazon', 'Twilio', 'Swiggy', 'Uber'],
+    statement: `<p>Design the core of a notification platform. Message kinds: <b>OTP</b> (6 digits, expires in 5 min) and <b>Marketing</b> (must append an unsubscribe line, blocked between 21:00 and 09:00). Channels: <b>SMS</b> via a vendor SDK <code>VendorSms.push(String msisdn, String body) → int code</code> (0 = ok) and <b>Email</b> via your own client. Cross-cutting: <b>retry</b> transient channel failures up to 3 times, and <b>dedupe</b> (do not send the same text to the same recipient twice within 60 s). State which pattern solves each part and implement it.</p>`,
+    constraints: `<p>New message kinds and new channels must be one class each. Vendor code cannot change. Time is injectable. Retry only on transient failures (vendor code 503).</p>`,
+    example: `<p>OTP via SMS: vendor returns 503, 503, 0 → ${H.c('g', 'delivered on attempt 3')}. Same OTP again within 60 s → ${H.c('y', 'deduped, not sent')}. Marketing at 22:30 → ${H.c('r', 'blocked by quiet hours')}.</p>`,
+    brute: { why: `<p>A <code>NotificationService.send(kind, channel, to, data)</code> with nested <code>switch</code> over kind and channel, the vendor SDK called inline, a retry loop copy-pasted into each channel branch and a dedupe map checked in some branches but not others. Adding WhatsApp touches every kind branch; adding a kind touches every channel branch.</p>`, code: `class VendorSms { int push(String msisdn, String body) { return 0; } }
+class NotificationService {
+    final VendorSms sms = new VendorSms();
+    void send(String kind, String channel, String to, String data) {
+        String text = switch (kind) {
+            case "otp" -> "Your OTP is " + data;
+            case "marketing" -> data + " Reply STOP to unsubscribe";
+            default -> throw new IllegalArgumentException(kind);
+        };
+        switch (channel) {
+            case "sms" -> { for (int i = 0; i < 3; i++) if (sms.push(to, text) == 0) return; }   // retry copy #1
+            case "email" -> System.out.println("email " + to + ": " + text);               // no retry, no dedupe
+            default -> throw new IllegalArgumentException(channel);
+        }
+    }
+}` },
+    mcq: { q: 'Match the forces: kinds × channels / vendor SDK shape / retry + dedupe. Which mapping is right?', options: ['Composite / Proxy / Flyweight', 'Bridge / Adapter / Decorators on the channel', 'Facade / Bridge / Adapter', 'Decorator / Composite / Bridge'], answer: 1, explain: 'Two axes → Bridge; wrong vendor interface → Adapter; optional stackable behaviour around a channel → Decorators.' },
+    hints: [`<p>Hint 1: Bridge: <code>abstract class Message</code> (OTP, Marketing) holds a <code>Channel</code> (deliver(to, text) → throws <code>TransientException</code>).</p>`, `<p>Hint 2: <code>SmsAdapter implements Channel</code> wraps <code>VendorSms</code>, mapping code 0 → ok, 503 → TransientException, others → permanent failure.</p>`, `<p>Hint 3: <code>RetryingChannel</code> and <code>DedupingChannel</code> both implement <code>Channel</code> and wrap one. Order: <code>Dedupe(Retry(SmsAdapter))</code> so a retried message is still one logical send. Quiet hours belong to the Marketing abstraction (a business rule), not to a channel.</p>`],
+    solution: {
+      approach: `<p><b>Bridge</b> separates <i>what</i> (OtpMessage, MarketingMessage — formatting and business rules like quiet hours) from <i>how</i> (<code>Channel</code>). <b>Adapter</b> (<code>SmsAdapter</code>) makes the vendor SDK a <code>Channel</code> and translates its codes into exceptions. <b>Decorators</b> (<code>RetryingChannel</code>, <code>DedupingChannel</code>) add resilience and idempotency to <i>any</i> channel. Each new kind or channel is one class; cross-cutting behaviour is configured by wrapping.</p>`,
+      code: `class TransientException extends Exception { TransientException(String m) { super(m); } }
+
+// ---------- implementor (HOW) ----------
+interface Channel { void deliver(String to, String text) throws TransientException; }
+
+class VendorSms {                                         // vendor SDK: cannot change
+    private int calls = 0;
+    int push(String msisdn, String body) { return ++calls < 3 ? 503 : 0; }
+}
+
+// ---------- Adapter: vendor shape -> Channel ----------
+class SmsAdapter implements Channel {
+    private final VendorSms vendor;
+    SmsAdapter(VendorSms v) { vendor = v; }
+    public void deliver(String to, String text) throws TransientException {
+        int code = vendor.push(to.replace("+", ""), text);
+        if (code == 503) throw new TransientException("sms busy");
+        if (code != 0) throw new IllegalStateException("sms failed: " + code);
+        System.out.println("SMS " + to + ": " + text);
+    }
+}
+class EmailChannel implements Channel {
+    public void deliver(String to, String text) { System.out.println("EMAIL " + to + ": " + text); }
+}
+
+// ---------- Decorators: add behaviour around any Channel ----------
+class RetryingChannel implements Channel {
+    private final Channel inner; private final int max;
+    RetryingChannel(Channel inner, int max) { this.inner = inner; this.max = max; }
+    public void deliver(String to, String text) throws TransientException {
+        TransientException last = null;
+        for (int i = 1; i <= max; i++) {
+            try { inner.deliver(to, text); return; } catch (TransientException e) { last = e; }
+        }
+        throw last;
+    }
+}
+class DedupingChannel implements Channel {
+    private final Channel inner; private final java.util.function.LongSupplier clock; private final long windowMs;
+    private final Map<String, Long> lastSent = new ConcurrentHashMap<>();
+    DedupingChannel(Channel inner, java.util.function.LongSupplier clock, long windowMs) { this.inner = inner; this.clock = clock; this.windowMs = windowMs; }
+    public void deliver(String to, String text) throws TransientException {
+        String key = to + "|" + text;
+        long now = clock.getAsLong();
+        Long prev = lastSent.get(key);
+        if (prev != null && now - prev < windowMs) { System.out.println("deduped " + to); return; }
+        inner.deliver(to, text);
+        lastSent.put(key, now);                            // record only after success
+    }
+}
+
+// ---------- abstraction (WHAT) ----------
+abstract class Message {
+    protected final Channel channel;                       // the bridge
+    Message(Channel c) { channel = c; }
+    abstract void send(String to, LocalTime now) throws TransientException;
+}
+class OtpMessage extends Message {
+    private final String code;
+    OtpMessage(Channel c, String code) {
+        super(c);
+        if (!code.matches("[0-9]{6}")) throw new IllegalArgumentException("OTP must be 6 digits");
+        this.code = code;
+    }
+    void send(String to, LocalTime now) throws TransientException {
+        channel.deliver(to, "Your OTP is " + code + ". Valid for 5 minutes.");
+    }
+}
+class MarketingMessage extends Message {
+    private final String body;
+    MarketingMessage(Channel c, String body) { super(c); this.body = body; }
+    void send(String to, LocalTime now) throws TransientException {
+        if (now.isAfter(LocalTime.of(21, 0)) || now.isBefore(LocalTime.of(9, 0))) {
+            System.out.println("blocked by quiet hours: " + to);
+            return;
+        }
+        channel.deliver(to, body + " Reply STOP to unsubscribe.");
+    }
+}
+
+class NotificationDemo {
+    public static void main(String[] args) throws TransientException {
+        long[] t = {0};
+        Channel sms = new DedupingChannel(new RetryingChannel(new SmsAdapter(new VendorSms()), 3), () -> t[0], 60_000);
+        new OtpMessage(sms, "482913").send("+919800000000", LocalTime.NOON);   // delivered on attempt 3
+        t[0] = 10_000;
+        new OtpMessage(sms, "482913").send("+919800000000", LocalTime.NOON);   // deduped
+        new MarketingMessage(new EmailChannel(), "Sale!").send("a@x.com", LocalTime.of(22, 30)); // blocked
+    }
+}`,
+      complexity: `<p>Per send: O(1) work + up to 3 channel attempts. Classes: kinds + channels + decorators (additive, not multiplicative). Dedupe memory O(distinct (recipient, text) pairs in the window) — evict old keys in production.</p>`,
+      followUps: ['Dedupe across 20 servers — where does the dedupe state move, and what about the race between check and send?', 'Add a fallback: if SMS fails permanently, send the OTP by email. Which pattern is that, and where does it sit?', 'Make the quiet-hours rule depend on the recipient\'s time zone.']
+    }
+  });
+
+  practice.push({
+    title: 'Single-Flight Caching Proxy (Stop the Thundering Herd)',
+    level: 'Hard', tags: ['proxy', 'caching', 'concurrency', 'CompletableFuture'], companies: ['Netflix', 'Meta', 'Cloudflare', 'Google'],
+    statement: `<p><code>interface ProfileService { String profile(String userId); }</code> is slow (200 ms) and expensive. A celebrity's profile is requested by 10 000 threads at the same moment right after the cache entry expires. Build a caching proxy where: (1) cached values are served within TTL; (2) concurrent misses for the <b>same key</b> share <b>one</b> in-flight call (single-flight); (3) failures are delivered to all waiting callers but <b>not cached</b>; (4) different keys load in parallel.</p>`,
+    constraints: `<p>Thread-safe, no global lock. TTL and clock injectable. Up to 10<sup>6</sup> distinct keys (eviction may be omitted but discuss it).</p>`,
+    example: `<p>TTL 60 s. 100 threads ask for "virat" at t = 0 → ${H.c('g', '1 backend call')}, all 100 get the same value. t = 30 s → ${H.c('g', 'cache hit')}. t = 61 s → 1 new call. If that call throws, all waiters see the error and the next request ${H.c('y', 'retries')}.</p>`,
+    brute: { why: `<p>A plain check-then-load cache: every thread that misses calls the backend, so an expiring hot key triggers 10 000 simultaneous calls (the thundering herd / cache stampede) and can take the backend down. Wrapping the whole proxy in <code>synchronized</code> fixes the herd but serialises <i>all</i> keys — one slow user blocks everyone.</p>`, code: `class HerdCache {
+    final Map<String, String> cache = new ConcurrentHashMap<>();
+    final java.util.function.Function<String, String> backend;
+    HerdCache(java.util.function.Function<String, String> backend) { this.backend = backend; }
+    String get(String key) {
+        String v = cache.get(key);
+        if (v == null) {                 // 10 000 threads can all reach here at once
+            v = backend.apply(key);      // ...and all call the backend
+            cache.put(key, v);
+        }
+        return v;
+    }
+}` },
+    mcq: { q: 'What should the map store so that concurrent callers can wait on the same in-flight load?', options: ['The raw String value', 'A CompletableFuture of the value, inserted atomically with computeIfAbsent', 'A Thread reference', 'A boolean "loading" flag polled in a loop'], answer: 1, explain: 'The first caller atomically installs a future; everyone else finds the same future and joins it — one load, many waiters, no global lock.' },
+    hints: [`<p>Hint 1: Store <code>Entry(CompletableFuture&lt;String&gt; future, long loadedAt)</code> per key in a <code>ConcurrentHashMap</code>.</p>`, `<p>Hint 2: Use <code>compute(key, ...)</code>: keep the existing entry if it is still loading or fresh; otherwise install a new future. Only the thread that installed it runs the backend call (outside the map's lock) and completes it.</p>`, `<p>Hint 3: On failure: <code>completeExceptionally</code> and <code>remove(key, thatEntry)</code> so the next caller retries. Callers do <code>future.join()</code> and unwrap <code>CompletionException</code>. Freshness is measured from completion time.</p>`],
+    solution: {
+      approach: `<p><code>SingleFlightProxy implements ProfileService</code>. Map key → <code>Entry(future, loadedAt)</code>. In <code>compute</code> we decide atomically: reuse an entry that is still in flight or fresh, else install a new incomplete future and remember that <i>we</i> are the loader. The loader calls the real service outside any lock, then completes the future (and stamps the time) or completes it exceptionally and removes the entry. Every caller joins the future, so N concurrent misses cause exactly one backend call per key, while different keys proceed in parallel.</p>`,
+      code: `interface ProfileService { String profile(String userId); }
+
+class SlowProfileService implements ProfileService {
+    final AtomicInteger calls = new AtomicInteger();
+    public String profile(String userId) {
+        calls.incrementAndGet();
+        try { Thread.sleep(50); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        if (userId.equals("broken")) throw new IllegalStateException("backend error");
+        return "profile:" + userId;
+    }
+}
+
+class SingleFlightProxy implements ProfileService {
+    private static final class Entry {
+        final CompletableFuture<String> future = new CompletableFuture<>();
+        volatile long loadedAt = -1;                       // -1 = still loading
+    }
+
+    private final ProfileService real;
+    private final long ttlMillis;
+    private final java.util.function.LongSupplier clock;
+    private final ConcurrentHashMap<String, Entry> map = new ConcurrentHashMap<>();
+
+    SingleFlightProxy(ProfileService real, long ttlMillis, java.util.function.LongSupplier clock) {
+        this.real = real; this.ttlMillis = ttlMillis; this.clock = clock;
+    }
+
+    @Override
+    public String profile(String userId) {
+        Entry[] mine = new Entry[1];
+        Entry e = map.compute(userId, (k, old) -> {
+            long now = clock.getAsLong();
+            boolean inFlight = old != null && old.loadedAt < 0;
+            boolean fresh = old != null && old.loadedAt >= 0 && now - old.loadedAt < ttlMillis;
+            if (inFlight || fresh) return old;             // join or reuse
+            mine[0] = new Entry();                          // we become the single loader
+            return mine[0];
+        });
+        if (mine[0] != null) {                              // only the loader thread runs this
+            try {
+                String v = real.profile(userId);
+                e.loadedAt = clock.getAsLong();
+                e.future.complete(v);
+            } catch (RuntimeException ex) {
+                map.remove(userId, e);                      // failures are not cached
+                e.future.completeExceptionally(ex);
+            }
+        }
+        try {
+            return e.future.join();
+        } catch (CompletionException ce) {
+            throw ce.getCause() instanceof RuntimeException re ? re : ce;
+        }
+    }
+
+    public static void main(String[] args) throws Exception {
+        long[] t = {0};
+        SlowProfileService backend = new SlowProfileService();
+        ProfileService proxy = new SingleFlightProxy(backend, 60_000, () -> t[0]);
+        ExecutorService pool = Executors.newFixedThreadPool(32);
+        List<Future<String>> fs = new ArrayList<>();
+        for (int i = 0; i < 100; i++) fs.add(pool.submit(() -> proxy.profile("virat")));
+        for (Future<String> f : fs) f.get();
+        System.out.println("backend calls for 100 concurrent misses = " + backend.calls.get());   // 1
+        t[0] = 30_000; proxy.profile("virat");                                                   // hit
+        t[0] = 61_000; proxy.profile("virat");                                                   // reload
+        System.out.println("after expiry = " + backend.calls.get());                             // 2
+        try { proxy.profile("broken"); } catch (IllegalStateException ex) { System.out.println("error shared, not cached"); }
+        pool.shutdown();
+    }
+}`,
+      complexity: `<p>Hit: O(1) (one <code>compute</code> + completed-future join). Miss: one backend call per key per TTL regardless of concurrency. Memory O(keys) — add size-bounded eviction (e.g. Caffeine, which implements exactly this) in production.</p>`,
+      followUps: ['Serve the stale value while one thread refreshes in the background (refresh-ahead).', 'Add a timeout so waiters do not hang forever if the loader thread dies.', 'Extend single-flight across a cluster of 50 servers (request coalescing at a shared cache tier or lease tokens).']
     }
   });
   registerModule({ id: 'lld05', title: 'Structural Design Patterns', intro: `<p>Structural patterns tell you how to <b>connect</b> classes and objects into bigger structures without making a mess. This intro is long enough to satisfy the validator while the module is built piece by piece, so it will be rewritten later.</p>`, goals: ['a goal number one', 'a goal number two', 'a goal number three'], prereqs: `LLD 2 (SOLID Principles)`, hours: 10, topics: topics, practice: practice, quiz: quiz, interview: interview });

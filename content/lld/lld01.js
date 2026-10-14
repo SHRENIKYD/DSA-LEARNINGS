@@ -2197,5 +2197,1386 @@ class BookingService {
     }]
   });
 
-  registerModule({ id: 'lld01', title: 'OOP Modelling & UML', intro: `<p>temp intro temp intro temp intro temp intro temp intro temp intro temp intro temp intro temp intro temp intro temp intro temp intro</p>`, goals: ['aaaaaaaaaaaa', 'bbbbbbbbbbbbb', 'cccccccccccc'], prereqs: `Java basics module xx`, hours: 10, topics: topics, practice: practice, quiz: quiz, interview: interview });
+  /* =========================== PRACTICE: EASY =========================== */
+  practice.push({
+    title: 'Car, Engine, Wheels and Driver',
+    level: 'Easy', tags: ['composition', 'association', 'multiplicity'], companies: ['TCS', 'Infosys', 'Amazon'],
+    statement: `<p>Model a <b>Car</b> that is built with exactly one <b>Engine</b> and four <b>Wheels</b>. A <b>Driver</b> can be assigned to at most one car at a time, and a car has at most one driver. Starting the car starts its engine. Replacing a flat tyre swaps one wheel. Identify each relationship, its multiplicity, and write the Java classes.</p>`,
+    constraints: `<ul><li>Engine and wheels are created with the car and never shared.</li><li>Wheel position 0–3.</li><li>Driver ↔ Car is 0..1 on both sides.</li></ul>`,
+    example: `${H.table(['Pair', 'Relationship', 'Multiplicity'], [['Car–Engine', H.c('g', 'composition'), '1 → 1'], ['Car–Wheel', H.c('g', 'composition'), '1 → 4'], ['Driver–Car', H.c('b', 'association'), '0..1 ↔ 0..1']])}<p><code>car.start()</code> prints "engine on"; <code>driver.drive(car)</code> fails if the car already has another driver.</p>`,
+    brute: {
+      why: `<p>The naive version gives Car public fields <code>engine</code> and <code>wheels</code> that callers fill in, so two cars can end up sharing one Engine object (start one, the other "starts" too) and a car can be built with 3 wheels or none. Driver and Car are linked by two independent setters, so a car can point to Ravi while Ravi points to a different car.</p>`,
+      code: `
+class Engine { boolean on; }
+class Car {
+    public Engine engine;                 // set from outside: may be shared or null
+    public List<String> wheels = new ArrayList<>();
+    public String driverName;             // and Driver has its own carPlate: drift
+}`
+    },
+    mcq: { q: 'Two cars must never share an engine, and the engine is scrapped with the car. Which Java shape fits?', options: ['Engine passed into the Car constructor from outside', 'private final Engine engine = new Engine(); created inside Car', 'public Engine engine; set later', 'static Engine shared by all cars'], answer: 1, explain: 'Composition: the whole creates and exclusively owns the part. Creating it inside and keeping it private guarantees no sharing.' },
+    hints: [
+      `<p>Hint 1: apply the life test. Can an engine exist in our system without its car? No → composition. Can a driver exist without a car? Yes → association.</p>`,
+      `<p>Hint 2: create the engine and an array of 4 wheels inside the Car constructor. Expose behaviour (<code>start()</code>, <code>replaceWheel(pos)</code>) instead of the parts themselves.</p>`,
+      `<p>Hint 3: keep the two-way Driver ↔ Car link consistent with one entry point, <code>driver.drive(car)</code>, that checks the car is free and sets both sides.</p>`
+    ],
+    solution: {
+      approach: `<p><b>Car ◆ 1 Engine</b> and <b>Car ◆ 4 Wheel</b>: created in the constructor, private, never returned. <b>Driver 0..1 — 0..1 Car</b>: a two-way association updated only through <code>Driver.drive</code> / <code>Driver.leave</code>, which call package-private hooks on Car. Behaviour goes on the whole: <code>car.start()</code> delegates to its engine (the caller never touches Engine).</p>`,
+      code: `
+class Engine {
+    private boolean running;
+    void start() { running = true; }
+    boolean isRunning() { return running; }
+}
+
+class Wheel {
+    private final int position;
+    private int wearPercent;
+    Wheel(int position) { this.position = position; }
+    int position() { return position; }
+}
+
+class Car {
+    private final String plate;
+    private final Engine engine = new Engine();                 // composition 1
+    private final Wheel[] wheels = new Wheel[4];                // composition 4
+    private Driver driver;                                      // association 0..1
+    Car(String plate) {
+        this.plate = plate;
+        for (int i = 0; i < 4; i++) wheels[i] = new Wheel(i);
+    }
+    void start() { engine.start(); System.out.println(plate + ": engine on"); }
+    void replaceWheel(int pos) {
+        if (pos < 0 || pos > 3) throw new IllegalArgumentException("position 0..3");
+        wheels[pos] = new Wheel(pos);                           // old wheel is discarded with no other owner
+    }
+    boolean hasDriver() { return driver != null; }
+    void setDriverInternal(Driver d) { driver = d; }            // only Driver calls this
+}
+
+class Driver {
+    private final String name;
+    private Car car;                                            // association 0..1
+    Driver(String name) { this.name = name; }
+    boolean drive(Car c) {
+        if (c.hasDriver() || car != null) return false;
+        car = c;
+        c.setDriverInternal(this);                              // both sides in one place
+        return true;
+    }
+    void leave() { if (car != null) { car.setDriverInternal(null); car = null; } }
+
+    public static void main(String[] args) {
+        Car swift = new Car("KA-01-1234");
+        Driver ravi = new Driver("Ravi"), mia = new Driver("Mia");
+        System.out.println(ravi.drive(swift));   // true
+        System.out.println(mia.drive(swift));    // false: car taken
+        swift.start();
+        ravi.leave();
+        System.out.println(mia.drive(swift));    // true
+    }
+}`,
+      complexity: `<p>All operations O(1). Memory: 1 engine + 4 wheels per car. The design guarantees no shared engines and no inconsistent driver links.</p>`,
+      followUps: ['Electric cars have a Battery instead of an Engine. Interface PowerSource?', 'A fleet company assigns drivers to cars per shift: does the association become a class?']
+    }
+  });
+
+  practice.push({
+    title: 'Music Library, Songs and Playlists',
+    level: 'Easy', tags: ['aggregation', 'composition', 'shared parts'], companies: ['Spotify', 'JioSaavn', 'Apple'],
+    statement: `<p>A user's <b>music library</b> holds all songs they have saved. The user creates <b>playlists</b> that contain songs from the library, in order; the same song can appear in many playlists. Deleting a playlist must not delete songs. Deleting a song from the library removes it from every playlist. Model the classes and relationships and implement add/remove.</p>`,
+    constraints: `<ul><li>Songs are identified by id; title and duration in seconds.</li><li>A playlist may contain the same song twice (repeats allowed).</li><li>Total duration of a playlist must be computed, not stored.</li></ul>`,
+    example: `<p>Library: {S1 "Kesariya" 268s, S2 "Naatu Naatu" 210s}. Playlist "Gym": [S2, S1, S2] → duration ${H.c('g', '688s')}. Delete playlist "Gym" → songs still in library. Delete S2 from library → Playlist "Chill" [S2, S1] becomes ${H.c('y', '[S1]')}.</p>`,
+    brute: {
+      why: `<p>The naive design copies song data into each playlist (<code>List&lt;String&gt; titles</code>). Now a renamed or deleted song stays stale in every playlist, the duration is stored and goes out of sync, and the library has no idea which playlists use a song. Copying parts instead of referencing them is the opposite of aggregation.</p>`,
+      code: `
+class Playlist {
+    String name;
+    List<String> songTitles = new ArrayList<>();   // copies, not references
+    int totalSeconds;                               // stored, drifts when songs change
+}
+class MusicApp {
+    List<Playlist> playlists = new ArrayList<>();
+    Map<String, Integer> library = new HashMap<>(); // title -> seconds
+}`
+    },
+    mcq: { q: 'Library → Song and Playlist → Song: which pair of relationships fits?', options: ['Both composition', 'Library ◆ Song (owns them), Playlist ◇ Song (shared references)', 'Both inheritance', 'Playlist ◆ Song, Library ◇ Song'], answer: 1, explain: 'Songs live in the library (deleting from the library deletes the song). Playlists only group references to songs that are shared with other playlists.' },
+    hints: [
+      `<p>Hint 1: who controls the life of a song? The library. Who only groups songs? Playlists.</p>`,
+      `<p>Hint 2: <code>Song</code> is a record (id, title, seconds). Library keeps <code>Map&lt;String, Song&gt;</code> and <code>List&lt;Playlist&gt;</code>; Playlist keeps <code>List&lt;Song&gt;</code> references.</p>`,
+      `<p>Hint 3: <code>library.deleteSong(id)</code> removes it from the map and calls <code>p.removeAll(song)</code> on each playlist; duration = stream sum of seconds.</p>`
+    ],
+    solution: {
+      approach: `<p><b>MusicLibrary ◆ 0..* Song</b> (songs are created through the library), <b>MusicLibrary ◆ 0..* Playlist</b>, <b>Playlist ◇ 0..* Song</b> (ordered references, repeats allowed). The library coordinates deletion so playlists never reference a removed song. Duration is derived on demand.</p>`,
+      code: `
+record Song(String id, String title, int seconds) { }
+
+class Playlist {
+    private final String name;
+    private final List<Song> songs = new ArrayList<>();        // aggregation: references only
+    Playlist(String name) { this.name = name; }
+    void add(Song s) { songs.add(s); }
+    void removeAll(Song s) { songs.removeIf(x -> x.equals(s)); }
+    int durationSeconds() { return songs.stream().mapToInt(Song::seconds).sum(); }   // derived
+    List<Song> songs() { return List.copyOf(songs); }
+    String name() { return name; }
+}
+
+class MusicLibrary {
+    private final Map<String, Song> songs = new LinkedHashMap<>();       // composition
+    private final Map<String, Playlist> playlists = new LinkedHashMap<>();
+    Song save(String id, String title, int seconds) {
+        Song s = new Song(id, title, seconds);
+        songs.put(id, s);
+        return s;
+    }
+    Playlist createPlaylist(String name) { return playlists.computeIfAbsent(name, Playlist::new); }
+    void addToPlaylist(String playlist, String songId) {
+        Song s = songs.get(songId);
+        if (s == null) throw new IllegalArgumentException("save the song first");
+        playlists.get(playlist).add(s);
+    }
+    void deletePlaylist(String name) { playlists.remove(name); }         // songs untouched
+    void deleteSong(String id) {
+        Song s = songs.remove(id);
+        if (s != null) playlists.values().forEach(p -> p.removeAll(s)); // keep playlists consistent
+    }
+
+    public static void main(String[] args) {
+        MusicLibrary lib = new MusicLibrary();
+        lib.save("S1", "Kesariya", 268); lib.save("S2", "Naatu Naatu", 210);
+        Playlist gym = lib.createPlaylist("Gym");
+        lib.addToPlaylist("Gym", "S2"); lib.addToPlaylist("Gym", "S1"); lib.addToPlaylist("Gym", "S2");
+        System.out.println(gym.durationSeconds());   // 688
+        lib.deleteSong("S2");
+        System.out.println(gym.durationSeconds());   // 268
+    }
+}`,
+      complexity: `<p>save/add O(1); deleteSong O(P × L) over playlists and their lengths (fine for one user; at scale keep a reverse index song → playlists). Duration O(L).</p>`,
+      followUps: ['Collaborative playlists shared by several users: what relationship joins User and Playlist?', 'Shuffle without changing the stored order: where does that behaviour belong?']
+    }
+  });
+
+  practice.push({
+    title: 'Animals That Swim, Fly or Both',
+    level: 'Easy', tags: ['inheritance', 'interface', 'polymorphism', 'is-a vs can-do'], companies: ['Microsoft', 'Zoho', 'Wipro'],
+    statement: `<p>A zoo app needs Duck (walks, swims, flies), Penguin (walks, swims), Eagle (walks, flies) and Fish (swims). Every animal has a name and makes a sound. The keeper wants to: list all animals' sounds, get all swimmers for the pool show, and get all fliers for the bird show. Design the hierarchy so that no class has a method it cannot honestly perform.</p>`,
+    constraints: `<ul><li>No method may throw UnsupportedOperationException.</li><li>Adding a new animal must not modify the show code.</li></ul>`,
+    example: `<p>Pool show → ${H.c('g', 'Duck, Penguin, Fish')}. Bird show → ${H.c('g', 'Duck, Eagle')}. A design where <code>Penguin extends Bird</code> with <code>fly()</code> would ${H.c('r', 'lie')}.</p>`,
+    brute: {
+      why: `<p>The naive design puts every ability in one base class: <code>Animal</code> with <code>swim()</code>, <code>fly()</code>, <code>walk()</code>, and subclasses override the ones they cannot do with <code>throw new UnsupportedOperationException()</code>. Every show must now wrap calls in try/catch or check a type string. The hierarchy promises abilities that do not exist (an LSP violation).</p>`,
+      code: `
+class Animal {
+    String name;
+    void fly() { System.out.println(name + " flies"); }
+    void swim() { System.out.println(name + " swims"); }
+}
+class Fish extends Animal {
+    @Override void fly() { throw new UnsupportedOperationException("fish can't fly"); }
+}`
+    },
+    mcq: { q: 'Where should "can fly" live?', options: ['As fly() on the Animal base class', 'In a Flyable interface implemented only by animals that fly', 'As a boolean canFly field checked everywhere', 'In a FlyingAnimal superclass that Duck and Eagle extend, while Penguin extends SwimmingAnimal'], answer: 1, explain: 'Abilities that cut across the family tree are capabilities: small interfaces. A Duck both swims and flies, which single-inheritance superclasses cannot express.' },
+    hints: [
+      `<p>Hint 1: what is true of <b>all</b> animals? name and sound. That goes into an abstract base class.</p>`,
+      `<p>Hint 2: abilities not shared by all → interfaces <code>Swimmer</code>, <code>Flyer</code>. A class can implement several.</p>`,
+      `<p>Hint 3: shows filter with <code>instanceof Swimmer s</code> (pattern matching) or keep separate typed lists; then call the ability polymorphically.</p>`
+    ],
+    solution: {
+      approach: `<p><code>abstract class Animal</code> (name, abstract sound()) is the honest is-a root. Capabilities are interfaces: <code>Swimmer</code>, <code>Flyer</code>. Duck extends Animal implements both; Penguin implements Swimmer; Eagle implements Flyer; Fish implements Swimmer. Show code depends only on the capability interfaces, so new animals plug in with no edits.</p>`,
+      code: `
+abstract class Animal {
+    private final String name;
+    protected Animal(String name) { this.name = name; }
+    abstract String sound();
+    String name() { return name; }
+}
+interface Swimmer { default String swim() { return "splash"; } }
+interface Flyer { int maxAltitude(); }
+
+class Duck extends Animal implements Swimmer, Flyer {
+    Duck() { super("Duck"); }
+    String sound() { return "quack"; }
+    public int maxAltitude() { return 1000; }
+}
+class Penguin extends Animal implements Swimmer {
+    Penguin() { super("Penguin"); }
+    String sound() { return "squawk"; }
+}
+class Eagle extends Animal implements Flyer {
+    Eagle() { super("Eagle"); }
+    String sound() { return "screech"; }
+    public int maxAltitude() { return 3000; }
+}
+class Fish extends Animal implements Swimmer {
+    Fish() { super("Fish"); }
+    String sound() { return "blub"; }
+}
+
+class ZooShows {
+    static List<String> poolShow(List<Animal> zoo) {
+        List<String> out = new ArrayList<>();
+        for (Animal a : zoo) if (a instanceof Swimmer s) out.add(a.name() + " " + s.swim());
+        return out;
+    }
+    static List<String> birdShow(List<Animal> zoo) {
+        List<String> out = new ArrayList<>();
+        for (Animal a : zoo) if (a instanceof Flyer f) out.add(a.name() + " up to " + f.maxAltitude() + "m");
+        return out;
+    }
+    public static void main(String[] args) {
+        List<Animal> zoo = List.of(new Duck(), new Penguin(), new Eagle(), new Fish());
+        zoo.forEach(a -> System.out.println(a.name() + ": " + a.sound()));
+        System.out.println(poolShow(zoo));   // Duck, Penguin, Fish
+        System.out.println(birdShow(zoo));   // Duck, Eagle
+    }
+}`,
+      complexity: `<p>Each show is O(N) over animals. Adding an animal = one class, no edits to shows.</p>`,
+      followUps: ['A robot fish also swims but is not an Animal. Does the design still work?', 'Would a sealed hierarchy be appropriate here? Why or why not?']
+    }
+  });
+
+  practice.push({
+    title: 'Encapsulate a Smart Thermostat',
+    level: 'Easy', tags: ['encapsulation', 'enum', 'invariants'], companies: ['Google Nest', 'Honeywell', 'Bosch'],
+    statement: `<p>A thermostat has a <b>mode</b> (OFF, HEAT, COOL, AUTO), a <b>target temperature</b> between 16 °C and 30 °C, and a <b>current temperature</b> reported by a sensor. Users can change the mode and nudge the target up/down by 0.5 °C. Based on mode and temperatures it decides whether the heater or cooler should run. Nobody outside may set the current temperature except the sensor callback. Design and code it.</p>`,
+    constraints: `<ul><li>Target always within [16.0, 30.0]; nudges past the limit are clamped.</li><li>Store temperatures in tenths of a degree (int) to avoid float drift.</li><li>AUTO: heat if current &lt; target − 1 °C, cool if current &gt; target + 1 °C.</li></ul>`,
+    example: `${H.table(['mode', 'target', 'current', 'action'], [['HEAT', '22.0', '20.5', H.c('r', 'HEATING')], ['COOL', '22.0', '20.5', H.c('m', 'IDLE')], ['AUTO', '22.0', '23.5', H.c('b', 'COOLING')], ['OFF', 'any', 'any', H.c('m', 'IDLE')]])}<p>30 nudges up from 29.0 leave the target at ${H.c('g', '30.0')}, not 44.0.</p>`,
+    brute: {
+      why: `<p>With public fields, the mobile app writes <code>t.target = 45</code>, a buggy integration sets <code>t.current</code> directly, and mode is a String ("Heat" vs "HEAT"). The decision logic is copied into the app, the wall panel and the voice assistant, and the three copies disagree. Nothing protects the 16–30 rule.</p>`,
+      code: `
+class Thermostat {
+    public double target;      // anyone can set 45.0
+    public double current;     // anyone can fake the sensor
+    public String mode;        // "heat", "HEAT", "Heat"?
+}`
+    },
+    mcq: { q: 'Which is the best API for changing the target?', options: ['setTarget(double) with no checks', 'nudgeUp() / nudgeDown() that clamp to [16, 30], plus a validated setTarget', 'A public target field', 'A static method in ThermostatUtils'], answer: 1, explain: 'Methods named after real user actions, each guarding the invariant inside the object. The field stays private.' },
+    hints: [
+      `<p>Hint 1: list invariants: target range, mode from a fixed set, current only from the sensor.</p>`,
+      `<p>Hint 2: <code>enum Mode</code>, <code>enum Action { IDLE, HEATING, COOLING }</code>; ints in tenths: 160..300.</p>`,
+      `<p>Hint 3: <code>action()</code> is derived from mode + temperatures each time it is called (no stored copy). <code>onSensorReading(int tenths)</code> is the only writer of current.</p>`
+    ],
+    solution: {
+      approach: `<p>All state private. Target in tenths with clamping in <code>nudge</code> and validation in <code>setTarget</code>. Mode is an enum. Current temperature changes only through <code>onSensorReading</code> (the sensor's callback). The decision is a derived method so every UI asks the object instead of re-implementing the rule.</p>`,
+      code: `
+enum Mode { OFF, HEAT, COOL, AUTO }
+enum Action { IDLE, HEATING, COOLING }
+
+class Thermostat {
+    private static final int MIN = 160, MAX = 300, STEP = 5, BAND = 10;   // tenths of a degree
+    private Mode mode = Mode.OFF;
+    private int targetTenths = 220;
+    private int currentTenths = 220;
+
+    void setMode(Mode m) { mode = Objects.requireNonNull(m); }
+    void setTarget(int tenths) {
+        if (tenths < MIN || tenths > MAX) throw new IllegalArgumentException("target must be 16.0..30.0");
+        targetTenths = tenths;
+    }
+    void nudgeUp() { targetTenths = Math.min(MAX, targetTenths + STEP); }
+    void nudgeDown() { targetTenths = Math.max(MIN, targetTenths - STEP); }
+    void onSensorReading(int tenths) { currentTenths = tenths; }          // the only writer
+
+    Action action() {                                                      // derived each time
+        switch (mode) {
+            case HEAT: return currentTenths < targetTenths ? Action.HEATING : Action.IDLE;
+            case COOL: return currentTenths > targetTenths ? Action.COOLING : Action.IDLE;
+            case AUTO:
+                if (currentTenths < targetTenths - BAND) return Action.HEATING;
+                if (currentTenths > targetTenths + BAND) return Action.COOLING;
+                return Action.IDLE;
+            default: return Action.IDLE;
+        }
+    }
+    String target() { return targetTenths / 10 + "." + targetTenths % 10; }
+
+    public static void main(String[] args) {
+        Thermostat t = new Thermostat();
+        t.setMode(Mode.AUTO); t.onSensorReading(235);
+        System.out.println(t.action());          // COOLING
+        t.setTarget(290);
+        for (int i = 0; i < 30; i++) t.nudgeUp();
+        System.out.println(t.target());          // 30.0
+    }
+}`,
+      complexity: `<p>Every operation O(1). The invariant (16–30) and the decision rule each live in exactly one place.</p>`,
+      followUps: ['Add a weekly schedule (target per time slot). New class or more fields?', 'Notify the app whenever action changes: which relationship does that add (Observer, later module)?']
+    }
+  });
+
+  /* =========================== PRACTICE: MEDIUM =========================== */
+  practice.push({
+    title: 'Student Enrollment with Grades and GPA',
+    level: 'Medium', tags: ['association class', 'many-to-many', 'derived attribute'], companies: ['Coursera', 'Byju\'s', 'Oracle'],
+    statement: `<p>Students enroll in courses each semester. A course has a code, title and credits (1–5). A student can take at most 24 credits per semester and cannot enroll in the same course twice in a semester. At the end, each enrollment gets a letter grade (A=10, B=8, C=6, D=4, F=0 points). Compute a student's <b>semester GPA</b> = Σ(credits × points) / Σ credits over graded enrollments. Model it and code it.</p>`,
+    constraints: `<ul><li>Max 24 credits per semester per student.</li><li>Grades from a fixed set.</li><li>GPA is derived, rounded to 2 decimals; 0.00 if nothing graded.</li></ul>`,
+    example: `<p>Asha, Sem 1: DSA (4 cr) → A, DBMS (3 cr) → B, Ethics (1 cr) → C.</p>
+<p>GPA = (4×10 + 3×8 + 1×6) / 8 = 70 / 8 = ${H.c('g', '8.75')}. Enrolling in DSA again in Sem 1 → ${H.c('r', 'rejected')}.</p>`,
+    brute: {
+      why: `<p>The naive model stores <code>Map&lt;String, String&gt; grades</code> (course code → letter) inside Student and a separate <code>List&lt;String&gt; students</code> inside Course. Semester information is lost (retaking a course overwrites the old grade), credits must be looked up from somewhere else, and GPA is a stored field updated by hand. The link (enrollment) has its own data but has no class to live in.</p>`,
+      code: `
+class Student {
+    String name;
+    Map<String, String> grades = new HashMap<>();   // course -> "A": which semester? overwritten on retake
+    double gpa;                                      // stored, goes stale
+}
+class Course {
+    String code; int credits;
+    List<String> students = new ArrayList<>();       // separately maintained: drifts
+}`
+    },
+    mcq: { q: 'Where should the grade live?', options: ['In Student as a map', 'In Course as a map', 'In an Enrollment object linking student, course and semester', 'In a global static map'], answer: 2, explain: 'The grade belongs to the (student, course, semester) link, not to either side alone. That makes Enrollment an association class.' },
+    hints: [
+      `<p>Hint 1: the many-to-many link has its own data (semester, grade) → <code>Enrollment</code> class.</p>`,
+      `<p>Hint 2: <code>enum Grade { A(10), B(8), ... }</code> with points; <code>record Course(code, title, credits)</code> validating credits 1..5.</p>`,
+      `<p>Hint 3: Student keeps its enrollments; <code>enroll</code> checks duplicates and the 24-credit cap for that semester; <code>gpa(sem)</code> streams graded enrollments.</p>`
+    ],
+    solution: {
+      approach: `<p><code>Student 1 ◆— 0..* Enrollment</code>, <code>Enrollment → 1 Course</code>; Enrollment holds semester and an optional grade (null until graded, exposed as Optional). Rules on the owner of the data: duplicate and credit-cap checks in Student.enroll (it knows all its enrollments), points in the Grade enum, GPA derived on demand. Course is an immutable record shared by many enrollments.</p>`,
+      code: `
+enum Grade {
+    A(10), B(8), C(6), D(4), F(0);
+    final int points;
+    Grade(int p) { points = p; }
+}
+
+record Course(String code, String title, int credits) {
+    Course { if (credits < 1 || credits > 5) throw new IllegalArgumentException("credits 1..5"); }
+}
+
+class Enrollment {                                       // association class
+    private final Course course;
+    private final int semester;
+    private Grade grade;                                 // null until graded
+    Enrollment(Course course, int semester) { this.course = course; this.semester = semester; }
+    void grade(Grade g) { this.grade = Objects.requireNonNull(g); }
+    Optional<Grade> grade() { return Optional.ofNullable(grade); }
+    Course course() { return course; }
+    int semester() { return semester; }
+}
+
+class Student {
+    private static final int MAX_CREDITS = 24;
+    private final String name;
+    private final List<Enrollment> enrollments = new ArrayList<>();
+    Student(String name) { this.name = name; }
+
+    Enrollment enroll(Course c, int semester) {
+        int credits = 0;
+        for (Enrollment e : enrollments) {
+            if (e.semester() != semester) continue;
+            if (e.course().equals(c)) throw new IllegalStateException("already enrolled in " + c.code());
+            credits += e.course().credits();
+        }
+        if (credits + c.credits() > MAX_CREDITS) throw new IllegalStateException("credit cap exceeded");
+        Enrollment e = new Enrollment(c, semester);
+        enrollments.add(e);
+        return e;
+    }
+
+    double gpa(int semester) {
+        int weighted = 0, credits = 0;
+        for (Enrollment e : enrollments) {
+            if (e.semester() != semester || e.grade().isEmpty()) continue;
+            weighted += e.course().credits() * e.grade().get().points;
+            credits += e.course().credits();
+        }
+        return credits == 0 ? 0.0 : Math.round(100.0 * weighted / credits) / 100.0;
+    }
+
+    public static void main(String[] args) {
+        Course dsa = new Course("CS201", "DSA", 4), db = new Course("CS202", "DBMS", 3), eth = new Course("HS101", "Ethics", 1);
+        Student asha = new Student("Asha");
+        asha.enroll(dsa, 1).grade(Grade.A);
+        asha.enroll(db, 1).grade(Grade.B);
+        asha.enroll(eth, 1).grade(Grade.C);
+        System.out.println(asha.gpa(1));          // 8.75
+        try { asha.enroll(dsa, 1); } catch (IllegalStateException ex) { System.out.println(ex.getMessage()); }
+    }
+}`,
+      complexity: `<p>enroll and gpa are O(E) over the student's enrollments (tiny). A per-semester map would make them O(courses in that semester).</p>`,
+      followUps: ['Courses have prerequisites (DSA requires Programming 1 with grade ≥ C). Where does that rule go?', 'A course section has a seat limit: which class owns the waitlist?']
+    }
+  });
+
+  practice.push({
+    title: 'Restaurant: Menu, Tables, Orders and the Bill',
+    level: 'Medium', tags: ['composition', 'association', 'price snapshot', 'enum'], companies: ['Zomato', 'Swiggy', 'Petpooja'],
+    statement: `<p>A restaurant has a <b>menu</b> of items (name, price, category VEG/NON_VEG, available flag) and numbered <b>tables</b>. A <b>waiter</b> opens an order for a table and adds items with quantities; unavailable items are rejected. The kitchen marks the order SERVED. The <b>bill</b> = item subtotal + 5% GST, and the table becomes free after payment. Menu prices may change during the day without affecting orders already placed.</p>`,
+    constraints: `<ul><li>One open order per table at a time.</li><li>Status: OPEN → SERVED → PAID only.</li><li>Money in paise; GST rounded down.</li></ul>`,
+    example: `<p>Table 4: 2 × Paneer Tikka (₹250) + 3 × Roti (₹30) = ₹590; GST 5% = ₹29.50 → 2950 paise; total ${H.c('g', '61950 paise (₹619.50)')}. Changing Roti to ₹35 afterwards does not change this bill. Opening a second order on table 4 before payment → ${H.c('r', 'rejected')}.</p>`,
+    brute: {
+      why: `<p>A single <code>RestaurantSystem</code> with <code>Map&lt;Integer, List&lt;String&gt;&gt; tableItems</code> computes the bill by looking up <b>today's</b> menu prices, so a price change rewrites open bills. Status is a string, any transition is allowed (PAID → OPEN), and nothing stops two orders on one table.</p>`,
+      code: `
+class RestaurantSystem {
+    Map<String, Integer> menuPrices = new HashMap<>();
+    Map<Integer, List<String>> tableItems = new HashMap<>();
+    Map<Integer, String> tableStatus = new HashMap<>();   // free-form strings
+    int bill(int table) {
+        int sum = 0;
+        for (String item : tableItems.get(table)) sum += menuPrices.get(item);  // live prices: wrong
+        return sum + sum * 5 / 100;
+    }
+}`
+    },
+    mcq: { q: 'Order → OrderItem → MenuItem. Which statement is right?', options: ['Order ◆ OrderItem; OrderItem → MenuItem (association) plus a copied unit price', 'Order ◇ MenuItem directly, no OrderItem needed', 'MenuItem ◆ OrderItem', 'OrderItem extends MenuItem'], answer: 0, explain: 'Order lines live and die with the order (composition) and snapshot the price; they only reference the menu item, which belongs to the menu.' },
+    hints: [
+      `<p>Hint 1: entities: Restaurant, Menu ◆ MenuItem, Table, Waiter, Order ◆ OrderItem. Enums: Category, OrderStatus.</p>`,
+      `<p>Hint 2: OrderItem copies <code>unitPricePaise</code> at add time. Table knows its current order (0..1) so "one open order per table" is checked there.</p>`,
+      `<p>Hint 3: status transitions as methods: <code>serve()</code> only from OPEN, <code>pay()</code> only from SERVED, then <code>table.release()</code>.</p>`
+    ],
+    solution: {
+      approach: `<p><code>Menu ◆ 0..* MenuItem</code>; <code>Order ◆ 1..* OrderItem</code>; <code>OrderItem → 1 MenuItem</code> with frozen price; <code>Table 1 — 0..1 Order</code> (current order); <code>Waiter → 0..* Order</code> (who took it). Status changes are guarded methods on Order, so illegal transitions are impossible. The bill is derived from the order's own lines, not from the live menu.</p>`,
+      code: `
+enum Category { VEG, NON_VEG }
+enum OrderStatus { OPEN, SERVED, PAID }
+
+class MenuItem {
+    private final String name;
+    private final Category category;
+    private long pricePaise;
+    private boolean available = true;
+    MenuItem(String name, Category c, long price) { this.name = name; this.category = c; this.pricePaise = price; }
+    void changePrice(long p) { pricePaise = p; }
+    void setAvailable(boolean a) { available = a; }
+    boolean isAvailable() { return available; }
+    long price() { return pricePaise; }
+    String name() { return name; }
+}
+
+record OrderItem(MenuItem item, int qty, long unitPricePaise) {
+    long subtotal() { return qty * unitPricePaise; }
+}
+
+class Order {
+    private final int tableNo;
+    private final String waiter;
+    private final List<OrderItem> items = new ArrayList<>();
+    private OrderStatus status = OrderStatus.OPEN;
+    Order(int tableNo, String waiter) { this.tableNo = tableNo; this.waiter = waiter; }
+    void add(MenuItem m, int qty) {
+        if (status != OrderStatus.OPEN) throw new IllegalStateException("order not open");
+        if (!m.isAvailable()) throw new IllegalStateException(m.name() + " unavailable");
+        items.add(new OrderItem(m, qty, m.price()));               // price snapshot
+    }
+    void serve() { require(OrderStatus.OPEN); status = OrderStatus.SERVED; }
+    long bill() {
+        long sub = items.stream().mapToLong(OrderItem::subtotal).sum();
+        return sub + sub * 5 / 100;                                  // 5% GST, rounded down
+    }
+    void pay() { require(OrderStatus.SERVED); status = OrderStatus.PAID; }
+    private void require(OrderStatus s) { if (status != s) throw new IllegalStateException("expected " + s + " but was " + status); }
+}
+
+class Table {
+    private final int number;
+    private Order current;                                           // 0..1
+    Table(int number) { this.number = number; }
+    Order open(String waiter) {
+        if (current != null) throw new IllegalStateException("table " + number + " busy");
+        current = new Order(number, waiter);
+        return current;
+    }
+    long settle() { current.pay(); long amt = current.bill(); current = null; return amt; }
+}
+
+class RestaurantDemo {
+    public static void main(String[] args) {
+        MenuItem paneer = new MenuItem("Paneer Tikka", Category.VEG, 25000), roti = new MenuItem("Roti", Category.VEG, 3000);
+        Table t4 = new Table(4);
+        Order o = t4.open("Ravi");
+        o.add(paneer, 2); o.add(roti, 3);
+        roti.changePrice(3500);                      // does not affect the open order
+        o.serve();
+        System.out.println(o.bill());                // 61950
+        try { t4.open("Mia"); } catch (IllegalStateException e) { System.out.println(e.getMessage()); }
+        System.out.println(t4.settle());             // 61950, table free again
+    }
+}`,
+      complexity: `<p>add/serve/pay O(1); bill O(items). Each rule (availability, transitions, one order per table, GST) lives in one class.</p>`,
+      followUps: ['Split the bill between guests: new class or a method on Order?', 'Kitchen display needs orders by status: who keeps that index?']
+    }
+  });
+
+  practice.push({
+    title: 'Notification Service with Pluggable Channels',
+    level: 'Medium', tags: ['interface', 'realization', 'aggregation', 'sequence diagram'], companies: ['Twilio', 'Freshworks', 'Amazon'],
+    statement: `<p>Users choose how they want to be notified: EMAIL, SMS and/or PUSH (any combination). When an event like "Order shipped" happens, the <b>NotificationService</b> sends the message on each preferred channel. SMS is limited to 160 characters (truncate with "…"). If a channel fails, the others must still be tried, and the service reports which channels succeeded. New channels (WhatsApp) will be added later. Draw the class diagram and the <code>notify</code> sequence, then code it.</p>`,
+    constraints: `<ul><li>A channel failure must not stop other channels.</li><li>Adding a channel must not modify NotificationService.</li><li>Users with no preferences receive nothing.</li></ul>`,
+    example: `<p>Asha prefers {EMAIL, SMS}. Event "Order 42 shipped" → Email ${H.c('g', 'sent')}, SMS ${H.c('g', 'sent')}. If the SMS gateway is down: result {EMAIL: ok, SMS: ${H.c('r', 'failed')}}; email still went out.</p>`,
+    brute: {
+      why: `<p>The naive service has <code>if (prefs.contains("EMAIL")) sendEmail(...); if (prefs.contains("SMS")) sendSms(...);</code> with each sender's code inline. One exception in SMS aborts the rest. Adding WhatsApp means editing the service, its tests, and every place that lists channels.</p>`,
+      code: `
+class NotificationService {
+    void notifyUser(Set<String> prefs, String msg) {
+        if (prefs.contains("EMAIL")) System.out.println("SMTP: " + msg);
+        if (prefs.contains("SMS")) { if (msg.length() > 160) throw new RuntimeException("too long"); System.out.println("SMS: " + msg); }
+        if (prefs.contains("PUSH")) System.out.println("FCM: " + msg);   // never reached if SMS threw
+    }
+}`
+    },
+    mcq: { q: 'The service holds a Map&lt;ChannelType, NotificationChannel&gt; passed in at construction. What relationship is that?', options: ['Composition, because the service created them', 'Aggregation/association via dependency injection: channels are created outside and may be shared', 'Inheritance', 'No relationship'], answer: 1, explain: 'The channels live independently (often singletons shared by many services) and are handed in, which is what makes them swappable in tests.' },
+    hints: [
+      `<p>Hint 1: the varying part is "how to send on a channel" → <code>interface NotificationChannel { ChannelType type(); void send(User u, String msg); }</code>.</p>`,
+      `<p>Hint 2: the service receives a list of channels and builds a map by type. For each preferred type: look up the channel, try/catch around send, record the outcome.</p>`,
+      `<p>Hint 3: sequence: Caller → Service.notify(user, msg) → loop [each preference] → Service → Channel.send → (alt failure) record failed → return results map.</p>`
+    ],
+    solution: {
+      approach: `<p>Class diagram: <code>«interface» NotificationChannel</code> ◁·· EmailChannel, SmsChannel, PushChannel; <code>NotificationService o— 1..* NotificationChannel</code> (injected); <code>NotificationService ..&gt; User</code> (parameter); <code>User → 0..* ChannelType</code> (enum preferences). Sequence: one loop fragment over preferences with an alt for failure. Each channel owns its own formatting rules (SMS truncation lives in SmsChannel). New channel = one class + one enum constant.</p>`,
+      code: `
+enum ChannelType { EMAIL, SMS, PUSH }
+
+record User(String name, String email, String phone, Set<ChannelType> prefs) { }
+
+interface NotificationChannel {
+    ChannelType type();
+    void send(User u, String message);
+}
+
+class EmailChannel implements NotificationChannel {
+    public ChannelType type() { return ChannelType.EMAIL; }
+    public void send(User u, String m) { System.out.println("EMAIL to " + u.email() + ": " + m); }
+}
+
+class SmsChannel implements NotificationChannel {
+    private final boolean gatewayUp;
+    SmsChannel(boolean gatewayUp) { this.gatewayUp = gatewayUp; }
+    public ChannelType type() { return ChannelType.SMS; }
+    public void send(User u, String m) {
+        if (!gatewayUp) throw new IllegalStateException("SMS gateway down");
+        String body = m.length() > 160 ? m.substring(0, 159) + "…" : m;   // channel-specific rule
+        System.out.println("SMS to " + u.phone() + ": " + body);
+    }
+}
+
+class PushChannel implements NotificationChannel {
+    public ChannelType type() { return ChannelType.PUSH; }
+    public void send(User u, String m) { System.out.println("PUSH to " + u.name() + ": " + m); }
+}
+
+class NotificationService {
+    private final Map<ChannelType, NotificationChannel> channels = new EnumMap<>(ChannelType.class);
+    NotificationService(List<NotificationChannel> list) { for (NotificationChannel c : list) channels.put(c.type(), c); }
+
+    Map<ChannelType, Boolean> notifyUser(User u, String message) {
+        Map<ChannelType, Boolean> result = new EnumMap<>(ChannelType.class);
+        for (ChannelType t : u.prefs()) {                          // loop fragment
+            NotificationChannel c = channels.get(t);
+            try {
+                if (c == null) throw new IllegalStateException("no channel for " + t);
+                c.send(u, message);
+                result.put(t, true);
+            } catch (RuntimeException ex) {                        // alt [failure]: keep going
+                result.put(t, false);
+            }
+        }
+        return result;
+    }
+
+    public static void main(String[] args) {
+        User asha = new User("Asha", "asha@x.com", "+91-90000", EnumSet.of(ChannelType.EMAIL, ChannelType.SMS));
+        NotificationService ok = new NotificationService(List.of(new EmailChannel(), new SmsChannel(true), new PushChannel()));
+        System.out.println(ok.notifyUser(asha, "Order 42 shipped"));
+        NotificationService smsDown = new NotificationService(List.of(new EmailChannel(), new SmsChannel(false)));
+        System.out.println(smsDown.notifyUser(asha, "Order 42 shipped"));   // {EMAIL=true, SMS=false}
+    }
+}`,
+      complexity: `<p>O(P) channel sends per notification for P preferences. Adding a channel: one class + one enum constant, zero service edits.</p>`,
+      followUps: ['Make sending asynchronous with retries: where does the queue sit in the sequence diagram?', 'Quiet hours (no SMS between 22:00 and 08:00): a decorator around a channel, or a rule in the service?']
+    }
+  });
+
+  practice.push({
+    title: 'Payroll: Composition Over Inheritance',
+    level: 'Medium', tags: ['composition over inheritance', 'interface', 'runtime change'], companies: ['Workday', 'ADP', 'Deel', 'Zoho'],
+    statement: `<p>A company pays employees in different ways: <b>salaried</b> (fixed monthly), <b>hourly</b> (rate × hours, 1.5× above 160 hours/month), and <b>commissioned</b> (base + % of sales). Employees can <b>switch</b> pay type (an intern becomes salaried) without losing their id or history. Some employees are also <b>managers</b> who get a fixed allowance on top of any pay type. Design it so that no class explosion (SalariedManager, HourlyManager…) happens.</p>`,
+    constraints: `<ul><li>Pay type changes at runtime keep the same Employee object.</li><li>Manager allowance stacks with any pay type.</li><li>Amounts in paise.</li></ul>`,
+    example: `${H.table(['employee', 'pay policy', 'input', 'monthly pay'], [['Asha', 'Salaried 80,000', '-', '80,000'], ['Ravi', 'Hourly 500/h', '170 h', '160×500 + 10×750 = 87,500'], ['Mia', 'Commission 20,000 + 5%', 'sales 4,00,000', '40,000'], ['Mia as manager', 'same + 10,000 allowance', 'same', H.c('g', '50,000')]])}`,
+    brute: {
+      why: `<p>An inheritance tree <code>Employee → SalariedEmployee, HourlyEmployee, CommissionedEmployee</code> plus managers doubles it: <code>SalariedManager, HourlyManager, CommissionedManager</code>. Every new dimension multiplies classes. Worse, switching pay type requires creating a different object, breaking every reference held elsewhere (payslips, org chart) and losing identity.</p>`,
+      code: `
+abstract class Employee { String id; abstract long pay(); }
+class SalariedEmployee extends Employee { long monthly; long pay() { return monthly; } }
+class HourlyEmployee extends Employee { long rate; int hours; long pay() { return rate * hours; } }
+class SalariedManager extends SalariedEmployee { long pay() { return super.pay() + 1_000_000; } }
+class HourlyManager extends HourlyEmployee { long pay() { return super.pay() + 1_000_000; } }
+// CommissionedManager, InternManager, ... the explosion continues`
+    },
+    mcq: { q: 'An intern becomes a salaried employee. With which design is that a one-line change on the same object?', options: ['class Intern extends Employee, class Salaried extends Employee', 'Employee has a PayPolicy field; call employee.changePolicy(new Salaried(...))', 'A String payType field with a switch in pay()', 'Delete the intern and create a new employee'], answer: 1, explain: 'Composition with a behaviour object (a policy/strategy) lets behaviour change at runtime while identity stays the same.' },
+    hints: [
+      `<p>Hint 1: identify the axes of variation: (a) how pay is computed, (b) whether a manager allowance applies. Neither is a "kind of employee"; both are things an employee <b>has</b>.</p>`,
+      `<p>Hint 2: <code>interface PayPolicy { long monthlyPay(WorkLog log); }</code> with Salaried/Hourly/Commission records. Employee holds one policy (association to a behaviour object).</p>`,
+      `<p>Hint 3: manager allowance: an optional <code>long allowancePaise</code> on Employee or a role object. Pay = policy.monthlyPay(log) + allowance.</p>`
+    ],
+    solution: {
+      approach: `<p>Employee (entity: id, name) <b>has a</b> PayPolicy (interface; Salaried, Hourly, Commission implement it) and an optional ManagerRole value. Pay type and managerial status vary independently, so we compose them instead of multiplying subclasses (N policies + 1 role instead of N × 2 classes). <code>WorkLog</code> is a record carrying hours and sales for the month. Changing policy keeps the same Employee object and id.</p>`,
+      code: `
+record WorkLog(int hours, long salesPaise) { }
+
+interface PayPolicy { long monthlyPay(WorkLog log); }
+
+record Salaried(long monthlyPaise) implements PayPolicy {
+    public long monthlyPay(WorkLog log) { return monthlyPaise; }
+}
+record Hourly(long ratePaise) implements PayPolicy {
+    public long monthlyPay(WorkLog log) {
+        int normal = Math.min(160, log.hours()), extra = Math.max(0, log.hours() - 160);
+        return normal * ratePaise + extra * ratePaise * 3 / 2;
+    }
+}
+record Commission(long basePaise, int percent) implements PayPolicy {
+    public long monthlyPay(WorkLog log) { return basePaise + log.salesPaise() * percent / 100; }
+}
+
+record ManagerRole(long allowancePaise) { }
+
+class Employee {
+    private final String id, name;
+    private PayPolicy policy;
+    private ManagerRole managerRole;                  // 0..1
+    Employee(String id, String name, PayPolicy policy) { this.id = id; this.name = name; this.policy = Objects.requireNonNull(policy); }
+    void changePolicy(PayPolicy p) { policy = Objects.requireNonNull(p); }   // same object, new behaviour
+    void makeManager(long allowance) { managerRole = new ManagerRole(allowance); }
+    long pay(WorkLog log) {
+        return policy.monthlyPay(log) + (managerRole == null ? 0 : managerRole.allowancePaise());
+    }
+    String id() { return id; }
+
+    public static void main(String[] args) {
+        Employee ravi = new Employee("E2", "Ravi", new Hourly(50000));
+        System.out.println(ravi.pay(new WorkLog(170, 0)));          // 8750000
+        Employee mia = new Employee("E3", "Mia", new Commission(2000000, 5));
+        mia.makeManager(1000000);
+        System.out.println(mia.pay(new WorkLog(0, 40000000)));     // 5000000
+        Employee intern = new Employee("E9", "Kiran", new Hourly(20000));
+        intern.changePolicy(new Salaried(6000000));                 // promotion: same id E9
+        System.out.println(intern.id() + " " + intern.pay(new WorkLog(0, 0)));
+    }
+}`,
+      complexity: `<p>pay is O(1). Classes grow as P + R (policies + roles) instead of P × R. Policy objects are immutable records and can be shared between employees.</p>`,
+      followUps: ['Payroll must keep history of past policies for audit: what new class appears?', 'This "policy object" is the Strategy pattern: when would you still prefer inheritance?']
+    }
+  });
+
+  practice.push({
+    title: 'Social Feed: Users, Posts, Comments, Likes and Follows',
+    level: 'Medium', tags: ['self-association', 'composition', 'uniqueness', 'navigability'], companies: ['Meta', 'LinkedIn', 'ShareChat', 'X'],
+    statement: `<p>Users can <b>follow</b> other users (not themselves), create <b>posts</b>, <b>comment</b> on posts, and <b>like</b> a post at most once. Deleting a post deletes its comments and likes. Deleting a user is out of scope. A user's <b>feed</b> shows posts by people they follow, newest first. Model the relationships carefully (including the User → User link) and implement follow, post, comment, like and feed.</p>`,
+    constraints: `<ul><li>Like is idempotent per (user, post).</li><li>Follow is one-way (like Instagram, not Facebook friends).</li><li>Use a logical clock (increasing counter) for "newest first".</li></ul>`,
+    example: `<p>Asha follows Ravi and Mia. Ravi posts P1, Mia posts P2, Kiran posts P3. Asha's feed → ${H.c('g', '[P2, P1]')} (P3 excluded: not followed). Asha likes P1 twice → like count ${H.c('y', '1')}. Ravi deletes P1 → its comments vanish.</p>`,
+    brute: {
+      why: `<p>The naive design keeps global lists: <code>List&lt;String[]&gt; follows</code>, <code>List&lt;String[]&gt; likes</code>, <code>List&lt;String[]&gt; comments</code>. Deleting a post means scanning three lists and remembering each one; likes are duplicated because nothing enforces uniqueness; building a feed scans every post in the system for every request.</p>`,
+      code: `
+class SocialApp {
+    List<String[]> follows = new ArrayList<>();    // [follower, followee]
+    List<String[]> posts = new ArrayList<>();      // [id, author, text]
+    List<String[]> likes = new ArrayList<>();      // duplicates possible
+    List<String[]> comments = new ArrayList<>();   // orphaned after post deletion
+}`
+    },
+    mcq: { q: 'How do you guarantee a user likes a post at most once?', options: ['Check a List&lt;String&gt; of likers with contains() and hope callers use it', 'Post holds a Set&lt;User&gt; likedBy and like() returns set.add(user)', 'A static counter', 'Store likes in User only'], answer: 1, explain: 'A Set gives uniqueness by construction, and keeping it inside Post (which owns its likes) means one place enforces the rule.' },
+    hints: [
+      `<p>Hint 1: follow is a <b>self-association</b> User → 0..* User. One-way, so each User keeps a <code>Set&lt;User&gt; following</code>.</p>`,
+      `<p>Hint 2: <code>Post ◆ 0..* Comment</code> (deleted together) and <code>Post → 0..* User</code> for likes (a Set). Users are referenced, never owned.</p>`,
+      `<p>Hint 3: feed = posts of everyone in <code>following</code>, sorted by timestamp descending. A <code>SocialNetwork</code> coordinator holds users and posts and generates ids/timestamps.</p>`
+    ],
+    solution: {
+      approach: `<p><b>User → 0..* User</b> (following, one-way self-association). <b>User 1 — 0..* Post</b> (author). <b>Post ◆ 0..* Comment</b>, <b>Post → 0..* User</b> as a Set of likers. <b>SocialNetwork ◆ users, posts</b> (coordinator and in-memory store) generates ids and a logical clock. Each rule sits with the owner: self-follow check in User.follow, like uniqueness in Post.like, cascade delete by removing the Post (its comments go with it).</p>`,
+      code: `
+class User {
+    private final String handle;
+    private final Set<User> following = new LinkedHashSet<>();    // self-association
+    User(String handle) { this.handle = handle; }
+    void follow(User other) {
+        if (other == this) throw new IllegalArgumentException("cannot follow yourself");
+        following.add(other);
+    }
+    boolean follows(User u) { return following.contains(u); }
+    String handle() { return handle; }
+}
+
+record Comment(User author, String text) { }
+
+class Post {
+    private final long id, createdAt;
+    private final User author;
+    private final String text;
+    private final List<Comment> comments = new ArrayList<>();     // composition
+    private final Set<User> likedBy = new HashSet<>();             // association, unique
+    Post(long id, User author, String text, long createdAt) { this.id = id; this.author = author; this.text = text; this.createdAt = createdAt; }
+    boolean like(User u) { return likedBy.add(u); }                 // idempotent
+    void comment(User u, String t) { comments.add(new Comment(u, t)); }
+    int likes() { return likedBy.size(); }
+    User author() { return author; }
+    long createdAt() { return createdAt; }
+    long id() { return id; }
+}
+
+class SocialNetwork {
+    private final Map<Long, Post> posts = new HashMap<>();
+    private long clock = 0;
+    Post post(User author, String text) {
+        long t = ++clock;                                            // logical clock doubles as id
+        Post p = new Post(t, author, text, t);
+        posts.put(p.id(), p);
+        return p;
+    }
+    void delete(Post p, User requester) {
+        if (p.author() != requester) throw new IllegalStateException("only the author can delete");
+        posts.remove(p.id());                                        // comments and likes go with it
+    }
+    List<Post> feed(User viewer) {
+        List<Post> out = new ArrayList<>();
+        for (Post p : posts.values()) if (viewer.follows(p.author())) out.add(p);
+        out.sort(Comparator.comparingLong(Post::createdAt).reversed());
+        return out;
+    }
+
+    public static void main(String[] args) {
+        User asha = new User("asha"), ravi = new User("ravi"), mia = new User("mia"), kiran = new User("kiran");
+        asha.follow(ravi); asha.follow(mia);
+        SocialNetwork net = new SocialNetwork();
+        Post p1 = net.post(ravi, "hello"), p2 = net.post(mia, "chai?");
+        net.post(kiran, "not followed");
+        System.out.println(net.feed(asha).stream().map(Post::id).toList());   // [2, 1]
+        p1.like(asha); p1.like(asha);
+        System.out.println(p1.likes());                                       // 1
+        p2.comment(asha, "yes!");
+    }
+}`,
+      complexity: `<p>follow/like/comment O(1). Feed is O(P log P) over all posts here; production systems precompute feeds (fan-out on write) or merge per-followee timelines with a heap (fan-out on read).</p>`,
+      followUps: ['Mutual friendship (Facebook-style): how does the self-association change?', 'Who should own "unfollow removes their posts from my cached feed"?']
+    }
+  });
+
+  practice.push({
+    title: 'ATM Withdrawal from a Sequence Diagram (with PIN Retries)',
+    level: 'Medium', tags: ['sequence diagram', 'alt fragment', 'state', 'responsibility'], companies: ['NCR', 'Diebold', 'HDFC', 'Goldman Sachs'],
+    statement: `<p>Implement the classes behind this flow: Customer inserts card → <code>ATM → CardReader: read()</code> → Customer enters PIN → <code>ATM → Bank: verifyPin(card, pin)</code>; <b>alt</b> wrong PIN: allow 3 attempts, then <code>ATM → CardReader: retain()</code>; <b>else</b>: Customer requests amount → <code>ATM → Bank: debit(account, amount)</code> → <b>alt</b> approved: <code>ATM → CashDispenser: dispense(amount)</code> using ₹500 and ₹100 notes (fewest notes) → print receipt; <b>else</b> show "insufficient funds".</p>`,
+    constraints: `<ul><li>Amount must be a positive multiple of 100.</li><li>Dispenser has limited notes; if it cannot make the amount, do not debit.</li><li>3 wrong PINs → card retained, session ends.</li></ul>`,
+    example: `<p>Balance ₹2,000; dispenser has 2 × ₹500 and 10 × ₹100. Withdraw ₹1,300 → dispense ${H.c('g', '2×500 + 3×100')}, balance ₹700. Withdraw ₹250 → ${H.c('r', 'rejected')} (not a multiple of 100). Wrong PIN 3 times → ${H.c('r', 'card retained')}.</p>`,
+    brute: {
+      why: `<p>The naive version is a single <code>Atm.run()</code> method with nested ifs: it reads the PIN, compares it with a hard-coded map, subtracts from a balance map, and computes notes inline. The order of checks is easy to get wrong (debit happens before checking that notes are available, so the customer loses money without cash). There are no seams to test the dispenser or the bank separately.</p>`,
+      code: `
+class AtmGod {
+    Map<String, Integer> pins = new HashMap<>(), balances = new HashMap<>();
+    int notes500 = 2, notes100 = 10;
+    String run(String card, int pin, int amount) {
+        if (pins.get(card) != pin) return "wrong pin";          // no retry count, no retention
+        balances.merge(card, -amount, Integer::sum);             // debited first...
+        int n5 = Math.min(amount / 500, notes500);
+        int rest = amount - n5 * 500;
+        if (rest / 100 > notes100) return "cannot dispense";    // ...money already gone
+        return "ok";
+    }
+}`
+    },
+    mcq: { q: 'Which order avoids taking money without giving cash?', options: ['debit → check notes → dispense', 'check notes can make the amount → debit → dispense', 'dispense → debit', 'Order does not matter'], answer: 1, explain: 'Ask the CashDispenser whether it can make the amount before the bank debit. The sequence diagram is the place to get this order right.' },
+    hints: [
+      `<p>Hint 1: lifelines → classes: Atm (coordinator), CardReader, Bank, CashDispenser. Each arrow → method on the receiver.</p>`,
+      `<p>Hint 2: Atm keeps per-session state: current card and failed attempts. The PIN check lives in Bank (it owns secrets); the note maths lives in CashDispenser (it owns notes).</p>`,
+      `<p>Hint 3: dispenser exposes <code>canDispense(amount)</code> (greedy 500s then 100s within stock) and <code>dispense(amount)</code>. Withdraw: validate amount → canDispense → bank.debit → dispense → receipt.</p>`
+    ],
+    solution: {
+      approach: `<p>Map the sequence 1:1. <code>Atm</code> coordinates and holds session state (card, attempts). <code>CardReader</code> reads/retains. <code>Bank</code> verifies PINs and debits (information expert for accounts). <code>CashDispenser</code> owns note counts and the fewest-notes algorithm. The alt fragments become if/else in Atm. Crucially, the dispenser feasibility check runs <b>before</b> the debit.</p>`,
+      code: `
+class CardReader {
+    private String inserted;
+    private final List<String> retained = new ArrayList<>();
+    void insert(String card) { inserted = card; }
+    String read() { return inserted; }
+    void retain() { retained.add(inserted); inserted = null; }
+    void eject() { inserted = null; }
+}
+
+class Bank {
+    private final Map<String, Integer> pins = new HashMap<>();
+    private final Map<String, Long> balances = new HashMap<>();
+    void open(String card, int pin, long balance) { pins.put(card, pin); balances.put(card, balance); }
+    boolean verifyPin(String card, int pin) { return Objects.equals(pins.get(card), pin); }
+    boolean debit(String card, long amount) {
+        long b = balances.getOrDefault(card, 0L);
+        if (amount > b) return false;
+        balances.put(card, b - amount);
+        return true;
+    }
+    long balance(String card) { return balances.get(card); }
+}
+
+class CashDispenser {
+    private int n500, n100;
+    CashDispenser(int n500, int n100) { this.n500 = n500; this.n100 = n100; }
+    private int[] plan(long amount) {
+        int use500 = (int) Math.min(amount / 500, n500);
+        long rest = amount - use500 * 500L;
+        if (rest % 100 != 0 || rest / 100 > n100) return null;
+        return new int[]{use500, (int) (rest / 100)};
+    }
+    boolean canDispense(long amount) { return plan(amount) != null; }
+    String dispense(long amount) {
+        int[] p = plan(amount);
+        n500 -= p[0]; n100 -= p[1];
+        return p[0] + "x500 + " + p[1] + "x100";
+    }
+}
+
+class Atm {
+    private static final int MAX_ATTEMPTS = 3;
+    private final CardReader reader;
+    private final Bank bank;
+    private final CashDispenser dispenser;
+    private int failed;
+    private boolean authenticated;
+    Atm(CardReader r, Bank b, CashDispenser d) { reader = r; bank = b; dispenser = d; }
+
+    String enterPin(int pin) {
+        if (bank.verifyPin(reader.read(), pin)) { authenticated = true; failed = 0; return "PIN ok"; }
+        if (++failed >= MAX_ATTEMPTS) { reader.retain(); return "Card retained"; }   // alt: 3 failures
+        return "Wrong PIN, " + (MAX_ATTEMPTS - failed) + " left";
+    }
+
+    String withdraw(long amount) {
+        if (!authenticated) return "Enter PIN first";
+        if (amount <= 0 || amount % 100 != 0) return "Amount must be a multiple of 100";
+        if (!dispenser.canDispense(amount)) return "ATM cannot dispense this amount";   // before debit!
+        if (!bank.debit(reader.read(), amount)) return "Insufficient funds";            // alt else
+        return "Dispensed " + dispenser.dispense(amount) + ", balance " + bank.balance(reader.read());
+    }
+
+    public static void main(String[] args) {
+        Bank bank = new Bank(); bank.open("C1", 1234, 2000);
+        CardReader reader = new CardReader(); reader.insert("C1");
+        Atm atm = new Atm(reader, bank, new CashDispenser(2, 10));
+        System.out.println(atm.enterPin(1234));
+        System.out.println(atm.withdraw(1300));   // 2x500 + 3x100, balance 700
+        System.out.println(atm.withdraw(250));    // multiple of 100
+    }
+}`,
+      complexity: `<p>Each step O(1). The design mirrors the sequence diagram, so reviewing the diagram reviews the code.</p>`,
+      followUps: ['Model the ATM session states (IDLE, CARD_INSERTED, AUTHENTICATED) explicitly: this becomes the State pattern in a later module.', 'The bank call times out after debiting: what does the sequence need (reversal message)?']
+    }
+  });
+
+  /* =========================== PRACTICE: HARD =========================== */
+  practice.push({
+    title: 'Movie Ticket Booking: Domain Model (Type vs Instance Everywhere)',
+    level: 'Hard', tags: ['type-object', 'composition', 'association class', 'class diagram'], companies: ['BookMyShow', 'PVR INOX', 'Amazon', 'Paytm'],
+    statement: `<p>A city has <b>theatres</b>; each theatre has <b>screens</b>; each screen has a fixed layout of <b>seats</b> (row, number, type REGULAR/PREMIUM). A <b>movie</b> is played in <b>shows</b> (movie + screen + start time). For each show, every seat is independently AVAILABLE, LOCKED (in someone's cart for 5 minutes) or BOOKED. A customer selects seats for a show, locks them, then confirms a <b>booking</b>; price depends on seat type and the show. Produce the class diagram (with all multiplicities) and the Java domain model with <code>lock</code>, <code>confirm</code>, and lock expiry.</p>`,
+    constraints: `<ul><li>A physical seat is shared by all shows on that screen; its status is per show.</li><li>Locks expire after 5 minutes (use an injected clock value in minutes).</li><li>Confirm only seats locked by the same customer and not expired.</li></ul>`,
+    example: `<p>Show S1 (Dune, Screen 2, 18:00), premium ₹400, regular ₹250. Asha locks A1, A2 at minute 0 → Ravi tries A2 at minute 2 → ${H.c('r', 'rejected')} (locked). Asha confirms at minute 3 → booking ₹650 if A1 premium, A2 regular. Had Asha waited until minute 6, her lock ${H.c('y', 'expired')} and Ravi could lock A2.</p>`,
+    brute: {
+      why: `<p>The naive model puts a <code>status</code> field on <b>Seat</b>. But the same physical seat is used by the 15:00 and the 18:00 show, so booking A1 for 18:00 also blocks it at 15:00. The workaround (copying the whole seat layout per show, including row/number/type) duplicates data and makes layout changes impossible. Locks with no owner or expiry leave seats stuck forever.</p>`,
+      code: `
+class Seat {
+    String row; int number; String type;
+    String status = "AVAILABLE";      // one status for ALL shows: wrong
+}
+class Screen { List<Seat> seats = new ArrayList<>(); }
+class Show { String movie; Screen screen; String time; }   // no per-show seat state`
+    },
+    mcq: { q: 'Seat A1 on Screen 2 is booked for the 18:00 show but free at 15:00. Where does its status live?', options: ['Seat.status', 'In a ShowSeat object (show + seat + status), one per seat per show', 'Screen.status', 'Movie.status'], answer: 1, explain: 'Type vs instance again: Seat is the physical, shared description; ShowSeat is the per-show instance carrying status, lock owner and lock time.' },
+    hints: [
+      `<p>Hint 1: draw the composition chain: Theatre ◆ 1..* Screen ◆ 1..* Seat. Movie is independent. Show → 1 Movie, Show → 1 Screen.</p>`,
+      `<p>Hint 2: Show ◆ 1..* ShowSeat (one per Seat of the screen, created with the show); ShowSeat → 1 Seat, holds status, lockedBy, lockedAt. Booking → 1 Show, → 1..* ShowSeat, has total.</p>`,
+      `<p>Hint 3: <code>ShowSeat.isFreeAt(now)</code> = AVAILABLE or (LOCKED and now − lockedAt ≥ 5). Lock all-or-nothing: first check every seat, then lock. Confirm checks owner + not expired, then marks BOOKED and creates Booking.</p>`
+    ],
+    solution: {
+      approach: `<p><b>Diagram:</b> <code>Theatre 1 ◆— 1..* Screen 1 ◆— 1..* Seat</code>; <code>Show 0..* —&gt; 1 Movie</code>; <code>Show 0..* —&gt; 1 Screen</code>; <code>Show 1 ◆— 1..* ShowSeat</code>; <code>ShowSeat 0..* —&gt; 1 Seat</code>; <code>Booking 0..* —&gt; 1 Show</code>; <code>Booking 0..1 —&gt; 1..* ShowSeat</code>; enums SeatType, SeatStatus. The key insight is <b>Seat (type) vs ShowSeat (instance)</b>, the same idea as Book vs BookCopy. Show owns pricing per seat type and the lock/confirm use cases (it holds its ShowSeats). Locking is all-or-nothing and synchronized per show.</p>`,
+      code: `
+enum SeatType { REGULAR, PREMIUM }
+enum SeatStatus { AVAILABLE, LOCKED, BOOKED }
+
+record Seat(String row, int number, SeatType type) {
+    String label() { return row + number; }
+}
+
+class Screen {
+    private final String name;
+    private final List<Seat> seats = new ArrayList<>();          // composition
+    Screen(String name) { this.name = name; }
+    void addSeat(String row, int n, SeatType t) { seats.add(new Seat(row, n, t)); }
+    List<Seat> seats() { return List.copyOf(seats); }
+}
+
+class Theatre {
+    private final String name;
+    private final List<Screen> screens = new ArrayList<>();      // composition
+    Theatre(String name) { this.name = name; }
+    Screen addScreen(String n) { Screen s = new Screen(n); screens.add(s); return s; }
+}
+
+record Movie(String title, int minutes) { }
+
+class ShowSeat {
+    static final int LOCK_MINUTES = 5;
+    private final Seat seat;
+    private SeatStatus status = SeatStatus.AVAILABLE;
+    private String lockedBy;
+    private long lockedAt;
+    ShowSeat(Seat seat) { this.seat = seat; }
+    boolean isFreeAt(long now) {
+        return status == SeatStatus.AVAILABLE || (status == SeatStatus.LOCKED && now - lockedAt >= LOCK_MINUTES);
+    }
+    void lock(String customer, long now) { status = SeatStatus.LOCKED; lockedBy = customer; lockedAt = now; }
+    boolean heldBy(String customer, long now) {
+        return status == SeatStatus.LOCKED && customer.equals(lockedBy) && now - lockedAt < LOCK_MINUTES;
+    }
+    void book() { status = SeatStatus.BOOKED; }
+    Seat seat() { return seat; }
+}
+
+record Booking(String id, String customer, List<String> seats, long totalPaise) { }
+
+class Show {
+    private final Movie movie;
+    private final Screen screen;
+    private final LocalDateTime start;
+    private final Map<SeatType, Long> prices;
+    private final Map<String, ShowSeat> showSeats = new LinkedHashMap<>();   // composition
+    private int seq = 1;
+    Show(Movie movie, Screen screen, LocalDateTime start, Map<SeatType, Long> prices) {
+        this.movie = movie; this.screen = screen; this.start = start; this.prices = Map.copyOf(prices);
+        for (Seat s : screen.seats()) showSeats.put(s.label(), new ShowSeat(s));  // one per physical seat
+    }
+
+    synchronized boolean lock(String customer, List<String> labels, long now) {
+        for (String l : labels) {                                  // check all first: all-or-nothing
+            ShowSeat ss = showSeats.get(l);
+            if (ss == null || !ss.isFreeAt(now)) return false;
+        }
+        for (String l : labels) showSeats.get(l).lock(customer, now);
+        return true;
+    }
+
+    synchronized Optional<Booking> confirm(String customer, List<String> labels, long now) {
+        long total = 0;
+        for (String l : labels) {
+            ShowSeat ss = showSeats.get(l);
+            if (ss == null || !ss.heldBy(customer, now)) return Optional.empty();
+            total += prices.get(ss.seat().type());
+        }
+        labels.forEach(l -> showSeats.get(l).book());
+        return Optional.of(new Booking("BK" + (seq++), customer, List.copyOf(labels), total));
+    }
+
+    public static void main(String[] args) {
+        Theatre pvr = new Theatre("PVR Forum");
+        Screen s2 = pvr.addScreen("Screen 2");
+        s2.addSeat("A", 1, SeatType.PREMIUM); s2.addSeat("A", 2, SeatType.REGULAR);
+        Show evening = new Show(new Movie("Dune", 166), s2, LocalDateTime.of(2026, 3, 6, 18, 0),
+                Map.of(SeatType.PREMIUM, 40000L, SeatType.REGULAR, 25000L));
+        System.out.println(evening.lock("asha", List.of("A1", "A2"), 0));      // true
+        System.out.println(evening.lock("ravi", List.of("A2"), 2));            // false: locked
+        System.out.println(evening.confirm("asha", List.of("A1", "A2"), 3));   // total 65000
+    }
+}`,
+      complexity: `<p>lock/confirm are O(k) for k seats requested. Creating a show is O(seats on the screen). Synchronising per Show keeps different shows independent (a finer-grained design locks per seat or uses DB row locks; see the Concurrency module).</p>`,
+      followUps: ['Two app servers handle the same show: what replaces synchronized (DB unique constraint, optimistic version, Redis lock with TTL)?', 'Add dynamic pricing (weekend, occupancy-based) without editing Show: what interface appears?', 'Draw the sequence diagram for "select seats → pay → confirm" including the payment-failure branch.']
+    }
+  });
+
+  practice.push({
+    title: 'Food Delivery: Orders with a Status Lifecycle and Agent Assignment',
+    level: 'Hard', tags: ['enum state machine', 'sequence diagram', 'association', 'composition'], companies: ['Swiggy', 'Zomato', 'DoorDash', 'Uber Eats'],
+    statement: `<p>Customers order from one <b>restaurant</b> at a time; the restaurant's <b>menu</b> has items with prices. An order moves through <b>PLACED → ACCEPTED → PREPARING → PICKED_UP → DELIVERED</b>, or CANCELLED (only before PREPARING). When the restaurant accepts, the platform assigns the nearest free <b>delivery agent</b>; the agent becomes free again on delivery. Model the classes, write the legal-transition logic once, and implement place, accept (with assignment), pick up, deliver and cancel.</p>`,
+    constraints: `<ul><li>Illegal transitions throw IllegalStateException.</li><li>All items in an order come from the same restaurant.</li><li>Agent distance: Manhattan on a grid; ties by agent id.</li></ul>`,
+    example: `${H.table(['step', 'status', 'agent'], [['place (2 × Biryani)', 'PLACED', '-'], ['restaurant accepts', 'ACCEPTED', H.c('g', 'A1 (nearest free)')], ['cancel', H.c('r', 'still allowed (before PREPARING)'), 'A1 released'], ['… or: prepare → pick up → deliver', 'DELIVERED', 'A1 free again'], ['cancel after PREPARING', H.c('r', 'IllegalStateException'), '-']])}`,
+    brute: {
+      why: `<p>A god class <code>DeliveryApp</code> holds <code>Map&lt;Integer, String&gt; orderStatus</code> and each endpoint does <code>orderStatus.put(id, "DELIVERED")</code>. Nothing prevents DELIVERED → PLACED; cancellation rules are copied (and differ) in the customer app and the restaurant app; agents are marked busy in one map and never freed when an order is cancelled.</p>`,
+      code: `
+class DeliveryApp {
+    Map<Integer, String> orderStatus = new HashMap<>();
+    Map<String, Boolean> agentBusy = new HashMap<>();
+    void setStatus(int orderId, String status) { orderStatus.put(orderId, status); }   // any jump allowed
+    void cancel(int orderId) { orderStatus.put(orderId, "CANCELLED"); }                 // agent never freed
+}`
+    },
+    mcq: { q: 'Where should the rule "cancel only before PREPARING" be written?', options: ['In every client app', 'Inside Order (or its status enum) as the only way to change status', 'In the database only', 'In the DeliveryAgent class'], answer: 1, explain: 'The order owns its lifecycle. Putting legal transitions in one place (enum or Order methods) makes illegal jumps impossible from any caller.' },
+    hints: [
+      `<p>Hint 1: classes: Restaurant ◆ MenuItem, Customer, Order ◆ OrderLine → MenuItem, DeliveryAgent, Location record, OrderStatus enum, DispatchService (coordinator).</p>`,
+      `<p>Hint 2: give the enum a method <code>canMoveTo(next)</code> listing legal targets, and route every change through <code>Order.moveTo(next)</code>.</p>`,
+      `<p>Hint 3: <code>accept</code> = order.moveTo(ACCEPTED) then dispatcher picks nearest free agent (min by distance, then id) → agent.assign(order). cancel releases the agent if any; deliver releases too.</p>`
+    ],
+    solution: {
+      approach: `<p><b>Diagram:</b> <code>Restaurant ◆ 1..* MenuItem</code>; <code>Order → 1 Restaurant</code>, <code>Order → 1 Customer</code>, <code>Order ◆ 1..* OrderLine → 1 MenuItem</code>; <code>Order 0..1 — 0..1 DeliveryAgent</code> (current assignment, two-way, kept in sync); <code>DispatchService o— 0..* DeliveryAgent</code>. The lifecycle lives in <code>OrderStatus.canMoveTo</code>; <code>Order.moveTo</code> is the single door. Sequence for accept: Restaurant → Order.moveTo(ACCEPTED) → DispatchService.assign(order) → nearest free agent → agent.assign(order).</p>`,
+      code: `
+enum OrderStatus {
+    PLACED, ACCEPTED, PREPARING, PICKED_UP, DELIVERED, CANCELLED;
+    boolean canMoveTo(OrderStatus next) {
+        switch (this) {
+            case PLACED: return next == ACCEPTED || next == CANCELLED;
+            case ACCEPTED: return next == PREPARING || next == CANCELLED;
+            case PREPARING: return next == PICKED_UP;
+            case PICKED_UP: return next == DELIVERED;
+            default: return false;                                   // DELIVERED, CANCELLED are final
+        }
+    }
+}
+
+record Location(int x, int y) { int dist(Location o) { return Math.abs(x - o.x) + Math.abs(y - o.y); } }
+record MenuItem(String name, long pricePaise) { }
+record OrderLine(MenuItem item, int qty, long unitPaise) { }
+
+class Restaurant {
+    private final String name;
+    private final Location location;
+    private final Map<String, MenuItem> menu = new HashMap<>();     // composition
+    Restaurant(String name, Location loc) { this.name = name; this.location = loc; }
+    void addItem(String n, long p) { menu.put(n, new MenuItem(n, p)); }
+    MenuItem item(String n) { return Objects.requireNonNull(menu.get(n), "not on menu: " + n); }
+    Location location() { return location; }
+}
+
+class DeliveryAgent {
+    private final String id;
+    private final Location location;
+    private Order current;                                         // 0..1
+    DeliveryAgent(String id, Location loc) { this.id = id; this.location = loc; }
+    boolean isFree() { return current == null; }
+    void assign(Order o) { current = o; }
+    void release() { current = null; }
+    Location location() { return location; }
+    String id() { return id; }
+}
+
+class Order {
+    private final Restaurant restaurant;
+    private final List<OrderLine> lines = new ArrayList<>();       // composition
+    private OrderStatus status = OrderStatus.PLACED;
+    private DeliveryAgent agent;                                   // 0..1
+    Order(Restaurant r) { this.restaurant = r; }
+    void add(String itemName, int qty) {
+        if (status != OrderStatus.PLACED) throw new IllegalStateException("order already accepted");
+        MenuItem m = restaurant.item(itemName);                    // same restaurant by construction
+        lines.add(new OrderLine(m, qty, m.pricePaise()));
+    }
+    void moveTo(OrderStatus next) {                                // the ONLY door for status changes
+        if (!status.canMoveTo(next)) throw new IllegalStateException(status + " -> " + next + " not allowed");
+        status = next;
+        if ((next == OrderStatus.CANCELLED || next == OrderStatus.DELIVERED) && agent != null) { agent.release(); agent = null; }
+    }
+    void setAgent(DeliveryAgent a) { agent = a; a.assign(this); }
+    Optional<DeliveryAgent> agent() { return Optional.ofNullable(agent); }
+    OrderStatus status() { return status; }
+    Restaurant restaurant() { return restaurant; }
+    long total() { return lines.stream().mapToLong(l -> l.qty() * l.unitPaise()).sum(); }
+}
+
+class DispatchService {
+    private final List<DeliveryAgent> agents;
+    DispatchService(List<DeliveryAgent> agents) { this.agents = List.copyOf(agents); }
+    void accept(Order o) {
+        o.moveTo(OrderStatus.ACCEPTED);
+        Location r = o.restaurant().location();
+        agents.stream().filter(DeliveryAgent::isFree)
+              .min(Comparator.comparingInt((DeliveryAgent a) -> a.location().dist(r)).thenComparing(DeliveryAgent::id))
+              .ifPresent(o::setAgent);
+    }
+
+    public static void main(String[] args) {
+        Restaurant meghana = new Restaurant("Meghana", new Location(0, 0));
+        meghana.addItem("Biryani", 30000);
+        DispatchService d = new DispatchService(List.of(new DeliveryAgent("A1", new Location(1, 1)), new DeliveryAgent("A2", new Location(5, 5))));
+        Order o = new Order(meghana);
+        o.add("Biryani", 2);
+        d.accept(o);
+        System.out.println(o.status() + " " + o.agent().map(DeliveryAgent::id).orElse("none"));   // ACCEPTED A1
+        o.moveTo(OrderStatus.PREPARING);
+        try { o.moveTo(OrderStatus.CANCELLED); } catch (IllegalStateException e) { System.out.println(e.getMessage()); }
+        o.moveTo(OrderStatus.PICKED_UP); o.moveTo(OrderStatus.DELIVERED);
+        System.out.println(o.status() + " total=" + o.total());   // DELIVERED total=60000
+    }
+}`,
+      complexity: `<p>Transitions O(1); assignment O(A) over agents (a geo-index makes it sublinear at scale). All lifecycle rules live in one enum method, so adding a state (e.g. READY_FOR_PICKUP) is a local change.</p>`,
+      followUps: ['The agent rejects the assignment: which messages appear in the sequence and who retries?', 'Add order states with timeouts (auto-cancel if not accepted in 10 minutes): who owns the timer?', 'When does this enum-based lifecycle become the full State pattern?']
+    }
+  });
+
+  practice.push({
+    title: 'Refactor a God Class: E-Learning Platform',
+    level: 'Hard', tags: ['refactoring', 'god class', 'responsibility assignment', 'class diagram'], companies: ['Udemy', 'upGrad', 'Coursera', 'Unacademy'],
+    statement: `<p>You inherit <code>LearningPlatform</code>, a 1,000-line class (simplified in the brute-force code below) that stores courses, lessons, enrollments, progress and certificates in parallel maps of strings. Rules: a course has ordered lessons; a learner must <b>enroll</b> before watching; a lesson counts as complete when watched ≥ 90%; a <b>certificate</b> is issued once when all lessons are complete; paid courses require payment before enrollment. Identify the hidden entities, draw the class diagram, and rewrite it as cooperating classes with the same behaviour.</p>`,
+    constraints: `<ul><li>Behaviour must stay identical for existing callers' use cases.</li><li>Certificate issued exactly once, with a unique id.</li><li>Progress is per learner per lesson.</li></ul>`,
+    example: `<p>Course "Java 101" with lessons L1, L2. Asha enrolls (free course), watches L1 95% → complete, L2 50% → not complete → progress ${H.c('y', '50%')}; watches L2 92% → progress ${H.c('g', '100%')} → certificate CERT-1 issued. Watching L2 again does ${H.c('m', 'not')} issue a second certificate.</p>`,
+    brute: {
+      why: `<p>Everything is keyed by concatenated strings (<code>learner + "|" + course + "|" + lesson</code>), so a typo silently creates a new key. Rules are scattered: the 90% threshold appears in two methods with different values; certificate issuance can run twice because "already issued" lives in a different map than progress; adding quizzes would mean editing every method. There is no type to hang a unit test on.</p>`,
+      code: `
+class LearningPlatform {
+    Map<String, List<String>> courseLessons = new HashMap<>();
+    Map<String, Boolean> paid = new HashMap<>();               // course -> paid?
+    Set<String> enrolled = new HashSet<>();                    // "learner|course"
+    Map<String, Integer> watched = new HashMap<>();            // "learner|course|lesson" -> percent
+    Map<String, String> certificates = new HashMap<>();        // "learner|course" -> id
+    int certSeq = 1;
+
+    String watch(String learner, String course, String lesson, int percent) {
+        if (!enrolled.contains(learner + "|" + course)) return "not enrolled";
+        watched.merge(learner + "|" + course + "|" + lesson, percent, Math::max);
+        int done = 0;
+        for (String l : courseLessons.get(course))
+            if (watched.getOrDefault(learner + "|" + course + "|" + l, 0) >= 90) done++;
+        if (done == courseLessons.get(course).size())
+            certificates.put(learner + "|" + course, "CERT-" + (certSeq++));   // re-issued every time!
+        return "ok";
+    }
+}`
+    },
+    mcq: { q: 'Which hidden entity owns "is this lesson complete for this learner"?', options: ['Course', 'Lesson', 'Enrollment (learner + course), holding per-lesson progress', 'Certificate'], answer: 2, explain: 'Progress belongs to the learner-in-a-course relationship. Enrollment is the association class that should hold per-lesson watch percentages and decide completion.' },
+    hints: [
+      `<p>Hint 1: every string key is a hidden class: "learner|course" = Enrollment; "learner|course|lesson" = progress inside Enrollment; the certificate map = Certificate owned by Enrollment (0..1).</p>`,
+      `<p>Hint 2: Course ◆ 1..* Lesson (ordered); Course has a price (0 = free). Enrollment → Course, → Learner; Enrollment ◆ Map&lt;Lesson, Integer&gt; progress; Enrollment ◆ 0..1 Certificate.</p>`,
+      `<p>Hint 3: <code>Enrollment.watch(lesson, pct)</code> stores max pct; if <code>isComplete()</code> and certificate is null → issue via an injected <code>CertificateIssuer</code> (id generator). Payment check moves to <code>Platform.enroll</code> through a <code>PaymentGateway</code> interface.</p>`
+    ],
+    solution: {
+      approach: `<p><b>Entities recovered:</b> Course (id, title, price) ◆ 1..* Lesson; Learner; Enrollment (association class Learner–Course) ◆ per-lesson progress and ◆ 0..1 Certificate (record). <b>Variation/infra:</b> «interface» PaymentGateway, CertificateIssuer (id sequence). <b>Coordinator:</b> Platform with in-memory maps and two use cases (enroll, watch). Rules move to their experts: completion threshold in Enrollment (one constant), "issue once" in Enrollment (it owns the 0..1 certificate), payment in Platform.enroll. Strings become types, so typos fail to compile.</p>`,
+      code: `
+record Lesson(String id, String title) { }
+record Certificate(String id, String learner, String courseId) { }
+
+class Course {
+    private final String id, title;
+    private final long pricePaise;
+    private final List<Lesson> lessons = new ArrayList<>();      // composition, ordered
+    Course(String id, String title, long pricePaise) { this.id = id; this.title = title; this.pricePaise = pricePaise; }
+    Lesson addLesson(String lid, String t) { Lesson l = new Lesson(lid, t); lessons.add(l); return l; }
+    List<Lesson> lessons() { return List.copyOf(lessons); }
+    boolean isPaid() { return pricePaise > 0; }
+    long price() { return pricePaise; }
+    String id() { return id; }
+}
+
+interface PaymentGateway { boolean charge(String learner, long amountPaise); }
+
+class CertificateIssuer {
+    private int seq = 1;
+    Certificate issue(String learner, String courseId) { return new Certificate("CERT-" + (seq++), learner, courseId); }
+}
+
+class Enrollment {                                              // association class Learner - Course
+    private static final int COMPLETE_AT = 90;                  // the ONE place for the threshold
+    private final String learner;
+    private final Course course;
+    private final Map<String, Integer> watchedPercent = new HashMap<>();
+    private Certificate certificate;                            // 0..1
+    Enrollment(String learner, Course course) { this.learner = learner; this.course = course; }
+
+    void watch(Lesson lesson, int percent, CertificateIssuer issuer) {
+        if (!course.lessons().contains(lesson)) throw new IllegalArgumentException("lesson not in course");
+        watchedPercent.merge(lesson.id(), Math.min(100, percent), Math::max);
+        if (certificate == null && progressPercent() == 100) certificate = issuer.issue(learner, course.id()); // once
+    }
+    int progressPercent() {
+        List<Lesson> ls = course.lessons();
+        long done = ls.stream().filter(l -> watchedPercent.getOrDefault(l.id(), 0) >= COMPLETE_AT).count();
+        return (int) (100 * done / ls.size());
+    }
+    Optional<Certificate> certificate() { return Optional.ofNullable(certificate); }
+}
+
+class Platform {
+    private final Map<String, Course> courses = new HashMap<>();
+    private final Map<String, Enrollment> enrollments = new HashMap<>();   // key learner|course kept internal
+    private final PaymentGateway payments;
+    private final CertificateIssuer issuer = new CertificateIssuer();
+    Platform(PaymentGateway payments) { this.payments = payments; }
+
+    void addCourse(Course c) { courses.put(c.id(), c); }
+    Enrollment enroll(String learner, String courseId) {
+        Course c = courses.get(courseId);
+        if (c.isPaid() && !payments.charge(learner, c.price())) throw new IllegalStateException("payment failed");
+        return enrollments.computeIfAbsent(learner + "|" + courseId, k -> new Enrollment(learner, c));
+    }
+    void watch(String learner, String courseId, Lesson lesson, int percent) {
+        Enrollment e = enrollments.get(learner + "|" + courseId);
+        if (e == null) throw new IllegalStateException("not enrolled");
+        e.watch(lesson, percent, issuer);
+    }
+
+    public static void main(String[] args) {
+        Platform p = new Platform((who, amt) -> true);
+        Course java = new Course("J101", "Java 101", 0);
+        Lesson l1 = java.addLesson("L1", "Basics"), l2 = java.addLesson("L2", "OOP");
+        p.addCourse(java);
+        Enrollment e = p.enroll("asha", "J101");
+        p.watch("asha", "J101", l1, 95);
+        p.watch("asha", "J101", l2, 50);
+        System.out.println(e.progressPercent());                       // 50
+        p.watch("asha", "J101", l2, 92);
+        p.watch("asha", "J101", l2, 100);
+        System.out.println(e.progressPercent() + " " + e.certificate().map(Certificate::id).orElse("-"));  // 100 CERT-1
+    }
+}`,
+      complexity: `<p>watch is O(lessons in the course) for the progress check (cache a completed-count to make it O(1)). Same behaviour as before, but each rule has one home and each class can be unit tested alone.</p>`,
+      followUps: ['Add quizzes that must be passed (≥ 60%) for a lesson to count: which class changes?', 'How would you refactor safely in production (characterisation tests first, strangler approach)?', 'Courses get versions (lessons added later): do existing certificates stay valid?']
+    }
+  });
+
+  practice.push({
+    title: 'In-Memory File System: Recursive Composition',
+    level: 'Hard', tags: ['composition', 'inheritance', 'recursion', 'self-association'], companies: ['Google', 'Dropbox', 'Microsoft', 'Amazon'],
+    statement: `<p>Model an in-memory file system. A <b>directory</b> contains files and other directories (any depth). A <b>file</b> has a name and content (its size = content length). Support <code>mkdir -p</code> on a path like <code>/a/b/c</code>, <code>write(path, content)</code> creating the file if needed, <code>ls(path)</code> (sorted names), <code>size(path)</code> (recursive for directories), and <code>rm(path)</code> which removes a directory with everything inside it. Draw the class diagram and implement it.</p>`,
+    constraints: `<ul><li>Names are unique within a directory; a file and directory cannot share a name there.</li><li>Paths are absolute, '/'-separated; root is "/".</li><li>rm on root is not allowed.</li></ul>`,
+    example: `<p>mkdir /docs/java; write /docs/java/notes.txt "OOP!" (4 bytes); write /docs/plan.txt "buy milk" (8 bytes).</p>
+${H.table(['call', 'result'], [['ls /docs', H.c('g', '[java, plan.txt]')], ['size /docs', H.c('g', '12')], ['rm /docs/java', 'java and notes.txt gone'], ['size /docs', H.c('y', '8')]])}`,
+    brute: {
+      why: `<p>The naive design stores a flat <code>Map&lt;String, String&gt;</code> from full path to content, and directories as a <code>Set&lt;String&gt;</code> of path strings. <code>ls</code> and <code>size</code> scan every path with <code>startsWith</code> (O(total files) per call and buggy: "/doc" matches "/docs"); <code>rm</code> must find all prefixes; renaming a directory rewrites thousands of keys. The tree structure exists only in string prefixes.</p>`,
+      code: `
+class FlatFs {
+    Map<String, String> files = new HashMap<>();      // "/docs/java/notes.txt" -> content
+    Set<String> dirs = new HashSet<>();
+    long size(String path) {
+        long s = 0;
+        for (var e : files.entrySet()) if (e.getKey().startsWith(path)) s += e.getValue().length();  // "/doc" matches "/docs"!
+        return s;
+    }
+}`
+    },
+    mcq: { q: 'Directory contains Files and Directories. What structure models "any depth" cleanly?', options: ['Directory has List&lt;File&gt; and List&lt;List&lt;File&gt;&gt;', 'abstract Entry; File extends Entry; Directory extends Entry and ◆ 0..* Entry children', 'One class Node with a boolean isFile and a String content for everything', 'A Map from path to content only'], answer: 1, explain: 'A recursive composition: Directory owns children of the common supertype Entry, which can themselves be directories. Polymorphic size() then recurses naturally (the Composite pattern you will meet later).' },
+    hints: [
+      `<p>Hint 1: both files and directories have a name and a size, and a directory holds "things that are either". That common supertype is <code>abstract class Entry</code>.</p>`,
+      `<p>Hint 2: <code>Directory ◆ 0..* Entry</code> as a <code>TreeMap&lt;String, Entry&gt;</code> (sorted ls for free). <code>File.size()</code> = content length; <code>Directory.size()</code> = sum of children's size() (polymorphic recursion).</p>`,
+      `<p>Hint 3: a FileSystem facade splits paths and walks from root; <code>mkdir</code> creates missing directories; <code>rm</code> = parent.children.remove(name) (composition: the whole subtree goes with it).</p>`
+    ],
+    solution: {
+      approach: `<p><b>Diagram:</b> <code>«abstract» Entry</code> (name, size()) ◁— <code>File</code> (content), ◁— <code>Directory</code>; <code>Directory 1 ◆— 0..* Entry</code> (recursive composition: a directory is part of its parent, deleting the parent deletes the subtree). <code>FileSystem ◆ 1 Directory</code> (root) as the facade parsing paths. size() is polymorphic: File answers directly, Directory sums its children. A TreeMap keeps names unique and sorted.</p>`,
+      code: `
+abstract class Entry {
+    private final String name;
+    protected Entry(String name) { this.name = name; }
+    String name() { return name; }
+    abstract long size();
+}
+
+class FileEntry extends Entry {
+    private String content = "";
+    FileEntry(String name) { super(name); }
+    void write(String c) { content = c; }
+    long size() { return content.length(); }
+}
+
+class Directory extends Entry {
+    private final TreeMap<String, Entry> children = new TreeMap<>();   // recursive composition
+    Directory(String name) { super(name); }
+    long size() {
+        long s = 0;
+        for (Entry e : children.values()) s += e.size();                // polymorphic recursion
+        return s;
+    }
+    Entry child(String n) { return children.get(n); }
+    Directory dir(String n) {
+        Entry e = children.computeIfAbsent(n, Directory::new);
+        if (!(e instanceof Directory d)) throw new IllegalStateException(n + " is a file");
+        return d;
+    }
+    FileEntry file(String n) {
+        Entry e = children.computeIfAbsent(n, FileEntry::new);
+        if (!(e instanceof FileEntry f)) throw new IllegalStateException(n + " is a directory");
+        return f;
+    }
+    boolean remove(String n) { return children.remove(n) != null; }       // subtree goes with it
+    List<String> names() { return new ArrayList<>(children.keySet()); }
+}
+
+class FileSystem {
+    private final Directory root = new Directory("");
+
+    private static String[] parts(String path) {
+        if (!path.startsWith("/")) throw new IllegalArgumentException("absolute path required");
+        return Arrays.stream(path.split("/")).filter(s -> !s.isEmpty()).toArray(String[]::new);
+    }
+    private Entry resolve(String path) {
+        Entry cur = root;
+        for (String p : parts(path)) {
+            if (!(cur instanceof Directory d) || (cur = d.child(p)) == null) throw new NoSuchElementException(path);
+        }
+        return cur;
+    }
+
+    void mkdirs(String path) { Directory cur = root; for (String p : parts(path)) cur = cur.dir(p); }
+    void write(String path, String content) {
+        String[] ps = parts(path);
+        Directory cur = root;
+        for (int i = 0; i < ps.length - 1; i++) cur = cur.dir(ps[i]);
+        cur.file(ps[ps.length - 1]).write(content);
+    }
+    List<String> ls(String path) {
+        Entry e = resolve(path);
+        return e instanceof Directory d ? d.names() : List.of(e.name());
+    }
+    long size(String path) { return resolve(path).size(); }
+    void rm(String path) {
+        String[] ps = parts(path);
+        if (ps.length == 0) throw new IllegalArgumentException("cannot remove root");
+        Entry parent = resolve("/" + String.join("/", Arrays.copyOf(ps, ps.length - 1)));
+        if (!(parent instanceof Directory d) || !d.remove(ps[ps.length - 1])) throw new NoSuchElementException(path);
+    }
+
+    public static void main(String[] args) {
+        FileSystem fs = new FileSystem();
+        fs.mkdirs("/docs/java");
+        fs.write("/docs/java/notes.txt", "OOP!");
+        fs.write("/docs/plan.txt", "buy milk");
+        System.out.println(fs.ls("/docs"));     // [java, plan.txt]
+        System.out.println(fs.size("/docs"));   // 12
+        fs.rm("/docs/java");
+        System.out.println(fs.size("/docs"));   // 8
+    }
+}`,
+      complexity: `<p>Path operations are O(depth × log fanout) thanks to TreeMap; size is O(subtree) (cache sizes with parent pointers to make it O(depth) per update); rm is O(log fanout) since the subtree is dropped by reference.</p>`,
+      followUps: ['Add mv (move a directory): which relationship makes this O(1)?', 'Add symbolic links: what new Entry subclass and what danger (cycles) appears?', 'Cache directory sizes: which class needs a parent reference, and what does that do to the diagram?']
+    }
+  });
+
+  /* =========================== QUIZ =========================== */
+  quiz.push(
+    { q: 'A <code>House</code> creates its <code>Room</code>s in its constructor and never shares them. Demolishing the house removes the rooms. Which relationship is this?', options: ['Association', 'Aggregation', 'Composition', 'Dependency'], answer: 2, explain: 'Exclusive ownership plus a shared lifecycle (the whole creates and destroys the part) is composition, drawn with a filled diamond at House.' },
+    { q: 'In UML, where does the hollow triangle of an inheritance arrow go?', options: ['At the child class', 'At the parent class', 'In the middle of the line', 'Either end; it does not matter'], answer: 1, explain: 'The arrow reads "child is a parent": the line starts at the child and the triangle sits at the parent (or interface, for a dashed realisation line).' },
+    { q: '<code>class ReportPrinter { String print(Report r, Formatter f) { return f.format(r); } }</code>. What is the relationship between ReportPrinter and Formatter?', options: ['Composition', 'Aggregation', 'Association', 'Dependency'], answer: 3, explain: 'Formatter is only used as a parameter inside one call and is not stored in a field. That is a dependency (dashed arrow).' },
+    { q: 'What does the multiplicity <code>1..*</code> on the OrderLine end of <code>Order —— OrderLine</code> mean?', options: ['An order line has at least one order', 'An order has at least one order line', 'An order has at most one line', 'Exactly one line per order'], answer: 1, explain: 'The number at the OrderLine end answers "how many OrderLines does one Order have?": one or more. An empty order is invalid.' },
+    { q: 'Which UML visibility symbol means <code>protected</code>?', options: ['+', '-', '#', '~'], answer: 2, explain: '+ public, - private, # protected, ~ package-private. Static members are underlined; abstract ones are italic.' },
+    { q: 'A requirement says "a member (also called a patron) borrows books". How should you treat "patron"?', options: ['A separate Patron class', 'A subclass of Member', 'A synonym: merge it into Member', 'An attribute of Book'], answer: 2, explain: 'Noun filtering: synonyms describe the same concept and must be merged, otherwise you get two classes that drift apart.' },
+    { q: 'The library owns 3 copies of "Clean Code". Which model is best?', options: ['One Book object with copies = 3', 'Three Book objects each repeating title and ISBN', 'Book (title, ISBN) 1 → 0..* BookCopy (barcode, status)', 'BookCopy extends Book'], answer: 2, explain: 'Type vs instance (item-description pattern): shared description in Book, per-item identity and status in BookCopy. BookCopy extends Book would wrongly say a copy is a kind of title.' },
+    { q: 'An employee can be promoted from Engineer to Manager at runtime. Best design?', options: ['Manager extends Employee', 'Employee has a Role field (composition) that can be swapped', 'A boolean isManager plus duplicated methods', 'Create a new Manager object and copy fields'], answer: 1, explain: 'Objects cannot change class at runtime. Composition with a Role keeps the same identity while behaviour changes: favour composition over inheritance for things that change.' },
+    { q: 'In a sequence diagram, what does an <code>alt</code> fragment with two compartments map to in Java?', options: ['A for loop', 'An if/else', 'A try/finally', 'A new thread'], answer: 1, explain: 'alt = alternatives (if/else or switch), opt = an if without else, loop = for/while, par = parallel execution.' },
+    { q: 'Why is <code>Penguin extends Bird</code> wrong when <code>Bird</code> declares <code>fly()</code>?', options: ['Penguins are not animals', 'It violates the Liskov Substitution Principle: a Penguin cannot honour Bird\'s fly() contract', 'Java forbids it', 'It makes the class too small'], answer: 1, explain: 'Any code that loops over Birds and calls fly() breaks for penguins. Move flying to a Flyable interface implemented only by birds that fly.' },
+    { q: 'Which is an <b>invariant</b> best enforced inside the owning class?', options: ['The UI font size', 'An account balance never goes below zero', 'The database host name', 'The log file path'], answer: 1, explain: 'Invariants are facts about an object\'s state that must always hold. Keeping the field private and checking inside withdraw() makes violation impossible.' },
+    { q: 'Order lines reference Product but also store <code>unitPricePaise</code>. Why?', options: ['Duplicate data is always good', 'To freeze the price paid; later product price changes must not rewrite the order', 'Because Product cannot be referenced', 'To make Product immutable'], answer: 1, explain: 'An order is a historical record. Snapshotting the price at purchase time keeps totals correct after catalogue changes.' },
+    { q: 'Two classes keep references to each other (Student ↔ Course). What is the main risk?', options: ['Slower compilation', 'The two sides can become inconsistent unless one method updates both', 'Java does not allow cycles', 'Garbage collection stops working'], answer: 1, explain: 'Bidirectional associations double the update points. Use one entry point (student.enroll(course)) that updates both sides, or make the link one-way.' }
+  );
+
+  /* =========================== INTERVIEW =========================== */
+  interview.push(
+    { level: 'B', q: 'What is the difference between a class and an object? Give an everyday example.', a: `<p>A <b>class</b> is a blueprint written once in code: it declares what state (fields) and behaviour (methods) its instances will have. An <b>object</b> is one concrete instance created at runtime with <code>new</code>, with its own state and identity. Cookie cutter vs cookies: one <code>Dog</code> class, many dog objects, each with its own name and age. Variables hold <b>references</b> to objects, so two variables can point to the same object, which is why changing it through one is visible through the other.</p>`, followUps: ['What is object identity and how does == differ from equals()?', 'Where do objects live in memory and when are they garbage collected?'] },
+    { level: 'B', q: 'Explain association, aggregation and composition with examples. How do you decide between them?', a: `<p>All three are "has-a" links. <b>Association</b>: a long-lived reference between independent objects (Doctor ↔ Patient). <b>Aggregation</b>: a whole groups parts that can exist alone and be shared (Team ◇ Player). <b>Composition</b>: the whole creates, exclusively owns and destroys its parts (House ◆ Room, Order ◆ OrderLine). I decide with the life test: can the part exist without the whole? Can it belong to two wholes at once? Who creates it? If the part dies with the whole and is never shared, composition; otherwise aggregation or plain association. In Java, composition means the part is created inside and never leaked; aggregation usually arrives through the constructor or an add method.</p>`, followUps: ['How does composition map to database foreign keys?', 'Is aggregation worth distinguishing from association in practice?'] },
+    { level: 'B', q: 'What are the four pillars of OOP, in one sentence each?', a: `<p><b>Encapsulation</b>: keep state private and change it only through methods that protect the rules. <b>Abstraction</b>: expose what an object does and hide how (a <code>PaymentMethod.pay()</code> hides card vs UPI details). <b>Inheritance</b>: a subclass is a kind of its parent and reuses its contract and code. <b>Polymorphism</b>: one call site runs different implementations depending on the runtime object, removing type switches. In design interviews encapsulation and polymorphism carry most of the weight; inheritance is used sparingly.</p>`, followUps: ['Give an example where inheritance hurts.', 'Is a getter for every field still encapsulation?'] },
+    { level: 'I', q: 'How do you identify classes from a requirements paragraph?', a: `<p>First I clarify scope with the interviewer. Then I do a noun-verb pass: nouns are candidate classes or attributes, verbs candidate methods. I filter nouns: things with their own state, behaviour and identity become classes; single values become attributes; fixed option sets become enums; values with rules but no identity become records; synonyms are merged; vague words like "system" are dropped; a link with its own data (loan, booking, enrollment) becomes its own class. I give each verb to the class that has the data (Information Expert), and finally I trace one real use case through the classes to find gaps. I say my reasons out loud for every drop or merge.</p>`, followUps: ['How do you avoid creating a god class like LibrarySystem?', 'When does an actor (Driver, User) become a class?'] },
+    { level: 'I', q: 'Abstract class vs interface in modern Java: when do you use each?', a: `<p>An <b>interface</b> describes a capability or contract; a class can implement many, and interfaces can carry <code>default</code>, <code>static</code> and <code>private</code> methods but no instance state. An <b>abstract class</b> is a partial implementation with shared state and constructors; a class can extend only one. I use interfaces at variation points (PaymentMethod, NotificationChannel, PricingPolicy) and for capabilities across unrelated classes (Flyable). I use an abstract class when subclasses truly share state and an algorithm skeleton (CardPayment with number/expiry validation). Often both: interface for clients, abstract base for shared implementation. For a closed set of variants, a <code>sealed</code> interface with records is a modern option.</p>`, followUps: ['What happens if two interfaces provide the same default method?', 'When would you choose a sealed interface?'] },
+    { level: 'I', q: 'What does "favour composition over inheritance" mean? Give an example.', a: `<p>Inheritance couples the child to the parent's implementation and fixes the type at compile time. Composition gets reuse by holding another object and delegating to it, which keeps classes loosely coupled and lets behaviour change at runtime. Example: payroll with Salaried, Hourly and Commissioned employees who can also be managers. Inheritance explodes into SalariedManager, HourlyManager and so on, and a promotion requires a new object. With composition, Employee holds a <code>PayPolicy</code> and an optional <code>ManagerRole</code>: P + R classes instead of P × R, and <code>changePolicy()</code> keeps the same identity. I still use inheritance for genuine, stable "kind-of" hierarchies.</p>`, followUps: ['What is the fragile base class problem?', 'How does this relate to the Strategy pattern?'] },
+    { level: 'I', q: 'Walk me through drawing a class diagram in an interview. How much detail do you include?', a: `<p>I draw boxes with names first, then relationship lines with diamonds/triangles and multiplicities, then key attributes (ids, statuses, money) and use-case methods, then interfaces where variation was mentioned and enums for fixed sets. I skip getters/setters and constructors. 6–10 classes is typical in 45 minutes, and I budget about 10 minutes for the diagram so most time goes to code. I verify it by tracing the main use case. I mention that in a real repo I would keep it as PlantUML/Mermaid text next to the code so it does not rot.</p>`, followUps: ['What notation mistakes do people commonly make?', 'Domain model vs design model: what is the difference?'] },
+    { level: 'I', q: 'What is a sequence diagram for, and how does it map to code?', a: `<p>It shows the behaviour of one use case over time: lifelines are participating objects, solid arrows are synchronous method calls, dashed arrows are returns, open-headed arrows are async messages, and fragments (<code>alt</code>, <code>opt</code>, <code>loop</code>, <code>par</code>) are if/else, if, loops and parallel work. Each arrow into a lifeline must be a method on that class, so drawing it validates the class diagram: missing methods or arrows landing on classes without the needed data reveal design gaps. It also exposes god classes (one lifeline with arrows to everyone) and train wrecks (long chains of getters).</p>`, followUps: ['How do you show an asynchronous email send?', 'What would you draw for a payment failure after inventory was reserved?'] },
+    { level: 'A', q: 'How do you keep a bidirectional association consistent? When would you avoid it?', a: `<p>I give the relationship a single entry point that updates both sides, for example <code>student.enroll(course)</code> adds the course to the student and calls a package-private <code>course.addInternal(student)</code>; removal mirrors it. Collections are never exposed mutably. I avoid two-way links unless a real use case navigates both directions often, because they double the update points, couple both classes, and create cycles that break naive <code>toString</code>, <code>equals</code>, <code>hashCode</code> and JSON serialisation. A reverse lookup can instead come from a repository query or an index maintained by a coordinator.</p>`, followUps: ['How do JPA mappedBy and owning sides relate to this?', 'What happens to equals/hashCode with cyclic references?'] },
+    { level: 'A', q: 'What is the Liskov Substitution Principle? Show a violation and the fix.', a: `<p>LSP says objects of a subtype must be usable anywhere the parent type is expected without breaking correctness: no stronger preconditions, no weaker postconditions, invariants preserved. Violation: <code>Square extends Rectangle</code> where <code>setWidth</code> also changes height; code that sets width 5 and height 4 expects area 20 but gets 16. Another: <code>Penguin extends Bird</code> with <code>fly()</code> throwing. Fixes: model squares and rectangles as separate immutable shapes implementing a <code>Shape</code> interface, and move flying into a <code>Flyable</code> capability interface. The test is behavioural, not taxonomic: "is-a" in biology does not guarantee substitutability in code.</p>`, followUps: ['How do throws clauses and return types relate to LSP in Java?', 'Can an immutable Square extend an immutable Rectangle safely?'] },
+    { level: 'A', q: 'Entity vs value object: how do you model each in Java?', a: `<p>An <b>entity</b> has identity that persists through state changes (Customer #42 changing address is still #42); I give it an id, mutable state guarded by methods, and equals/hashCode based on id (or identity). A <b>value object</b> is defined only by its values and is immutable (Money, DateRange, Address); I use a <code>record</code>, validate in the compact constructor, and share instances freely, including as map keys. Values make code safer (no aliasing bugs), thread-safe by default, and push small rules (like <code>DateRange.overlaps</code>) to tiny, testable types instead of services.</p>`, followUps: ['Why is double a bad type for money?', 'How do value objects reduce primitive obsession?'] },
+    { level: 'E', q: 'An interviewer adds a late twist: "now support seasonal pricing and multiple hotels". How do you show your model is extensible?', a: `<p>I point to the seams I created on purpose. Pricing was announced as variable, so it sits behind a <code>PricingPolicy</code> interface; seasonal pricing is one new class injected into Hotel, with no edits to booking logic (Open/Closed). Multiple hotels means a new <code>HotelChain ◆ 1..* Hotel</code> composition above the existing model; Hotel's internals do not change. I also say what I would <i>not</i> do: no speculative factories or plugin frameworks for changes nobody mentioned (YAGNI). Then I sketch the diff: which classes are added, which are untouched, and which tests prove the old behaviour still works.</p>`, followUps: ['How do you decide which variation points to create upfront?', 'What if the twist breaks a core assumption (bookings by the hour)?'] },
+    { level: 'E', q: 'You are given an AI-generated design for a library system. What do you check first?', a: `<p>I read it back into a class diagram and compare it with the requirement. First checks: is there a god class or anemic model (data classes + one giant service)? Are Book and BookCopy separated? Are statuses enums and money not double? Do getters leak mutable collections (breaking composition)? Are rules owned by the information expert (loan limit in Member, fine in Loan)? Are relationships one-way unless needed? Are invariants validated in constructors? Is the check-then-act in checkout atomic? Did it add features we scoped out? Then I write a few tests for the riskiest rules. The AI saves typing; ownership and lifecycle decisions are still mine to verify.</p>`, followUps: ['What prompt would you write to get a better first draft?', 'How would you catch architectural drift over time (ArchUnit, diagrams-as-code)?'] }
+  );
+
+  registerModule({
+    id: 'lld01',
+    title: 'OOP Modelling & UML',
+    intro: `<p>Every Low-Level Design interview starts the same way: a paragraph of English and the words "design the classes". This module teaches the skill underneath every LLD question: <b>thinking in objects</b>. You will learn to read a requirement like a detective (noun-verb analysis), decide which nouns become classes, attributes, enums or value objects, and choose the right link between them: <b>association, aggregation, composition, dependency, inheritance, realisation</b>, each with a lifecycle test you can say out loud.</p>
+<p>Then you will speak the industry's shared drawing language: <b>UML class diagrams</b> (boxes, visibility, the six arrows, multiplicities) and <b>sequence diagrams</b> (lifelines, sync/async messages, alt/loop fragments). Every visualizer builds diagrams step by step, and several are editable: type your own requirement or relationship list and watch the diagram and the Java skeleton appear.</p>
+<p>Finally you will put it all together in the <b>requirement → diagram → sequence → compilable Java</b> workflow used in machine-coding rounds, practising on libraries, shops, universities, cab booking, restaurants, movie tickets and file systems. Every solution starts with the naive god-class design and explains exactly why it fails.</p>`,
+    goals: [
+      'Turn a requirements paragraph into a filtered list of classes, attributes, enums and value objects, with a spoken reason for every decision',
+      'Choose between association, aggregation, composition and dependency using the lifecycle test, and write the matching Java shape',
+      'Decide when inheritance is honest (is-a, LSP) and when to use interfaces or composition instead',
+      'Read and draw UML class diagrams with correct visibility, arrows and multiplicities, and translate them to and from Java',
+      'Draw a sequence diagram for a use case (including alt/loop and async messages) and implement it as cooperating classes',
+      'Produce a compilable, extensible Java skeleton in an interview time budget and explain where future changes will land'
+    ],
+    prereqs: `Java track: Classes, Objects &amp; Constructors; OOP Pillars in Java; equals &amp; hashCode; Collections Framework (Java modules 3–7). Comfort with records and enums helps. No design-pattern knowledge needed: this is the first LLD module.`,
+    hours: 14,
+    topics: topics, practice: practice, quiz: quiz, interview: interview
+  });
 })();

@@ -110,9 +110,10 @@ INSERT INTO notes SELECT i, printf('%0200d', i) FROM n;
 SELECT page_count, page_size, page_count * page_size AS bytes_on_disk,
        2000 * 200 AS raw_payload_bytes
 FROM pragma_page_count(), pragma_page_size();
--- delete half the rows: pages become partly or fully empty
+-- delete every other row: pages become HALF empty, but almost none become FREE
 DELETE FROM notes WHERE id % 2 = 0;
 SELECT freelist_count AS free_pages_after_delete FROM pragma_freelist_count();
+-- delete a contiguous key range: whole pages empty out and go to the freelist
 DELETE FROM notes WHERE id > 1000;
 SELECT freelist_count AS free_pages_after_bigger_delete FROM pragma_freelist_count();
 VACUUM;                              -- rewrite the file compactly
@@ -1753,7 +1754,7 @@ for name, keys in (("auto-increment", auto_inc), ("UUIDv4 (random)", uuid_v4), (
     examples: [
       {
         title: 'UUIDv4 primary key in InnoDB',
-        html: `<p>Inserting random UUIDs into a clustered index scatters writes across every leaf page: pages split 50/50 and settle near <b>~69% full</b>, the working set is the <i>whole</i> table (no hot right edge), and every secondary index stores the 16-byte PK. Auto-increment keys append at the right edge: pages fill to ~94% (InnoDB leaves 1/16 free), and only the last page is hot. Time-ordered <b>UUIDv7</b> (RFC 9562, 2024) or ULIDs give you global uniqueness <i>and</i> right-edge inserts. Run the Python sketch above to see ~100% vs ~69% fill.</p>`
+        html: `<p>Inserting random UUIDs into a clustered index scatters writes across every leaf page: pages split 50/50 and settle near <b>~69% full</b>, the working set is the <i>whole</i> table (no hot right edge), and every secondary index stores the 16-byte PK. Auto-increment keys append at the right edge: pages fill to ~94% (InnoDB leaves 1/16 free), and only the last page is hot. Time-ordered <b>UUIDv7</b> (RFC 9562, 2024) or ULIDs give you global uniqueness <i>and</i> right-edge inserts. Run the Python sketch above to see ~100% vs ~70% fill.</p>`
       },
       {
         title: 'Secondary index lookup cost',
@@ -1787,9 +1788,9 @@ FROM kv_log GROUP BY k ORDER BY versions_written DESC, k;`)
         level: 'Medium', tags: ['InnoDB', 'clustered index', 'page split', 'simulation'], companies: ['Shopify', 'GitHub', 'Booking.com', 'PlanetScale'],
         statement: `<p>Simulate inserting <b>N</b> keys into B+tree leaf pages of capacity <b>C</b> using InnoDB's split rule: when a page overflows, split it 50/50 — <b>unless</b> the insert is at the far right end of the last page (sequential pattern), in which case keep the old page full and start a new page. Report pages, average fill and splits for auto-increment keys, random keys (UUIDv4) and time-ordered keys (UUIDv7).</p>`,
         constraints: `N ≤ 10<sup>5</sup>, 4 ≤ C ≤ 256. Inserts in the given order.`,
-        example: `<p>N = 4000, C = 16 → auto-increment: ${H.c('g', '250 pages, ~100% full')}; UUIDv4: ${H.c('r', '~360 pages, ~69% full')}; UUIDv7: ${H.c('g', '~250 pages')}. Random keys need ~45% more pages, so more I/O and a bigger working set.</p>`,
+        example: `<p>N = 4000, C = 16 → auto-increment: ${H.c('g', '250 pages, ~100% full')}; UUIDv4: ${H.c('r', '~355 pages, ~70% full')}; UUIDv7: ${H.c('g', '~250 pages')}. Random keys need ~40% more pages, so more I/O and a bigger working set.</p>`,
         brute: {
-          why: `<p>The naive estimate is pages = ⌈N / C⌉, assuming every page is full. It is exact for sequential keys and wrong by ~45% for random keys, because a 50/50 split leaves two half-full pages that only slowly fill up again. You must simulate (or know the ln 2 ≈ 69% result for random B-tree inserts).</p>`,
+          why: `<p>The naive estimate is pages = ⌈N / C⌉, assuming every page is full. It is exact for sequential keys and wrong by ~40% for random keys, because a 50/50 split leaves two half-full pages that only slowly fill up again. You must simulate (or know the ln 2 ≈ 69% result for random B-tree inserts).</p>`,
           code: { lang: 'python', run: true, code: `import math
 N, C = 4000, 16
 print("naive pages =", math.ceil(N / C), "(assumes 100% fill for every key pattern)")` }
@@ -2073,5 +2074,849 @@ FROM runs ORDER BY start_row;`),
       }
     ]
   });
-  registerModule({ id: 'sql13', title: 'Storage Engines Internals', intro: '<p>x</p>', goals: [], prereqs: 'x', hours: 1, databases: { engine: DB_ENGINE, lab: DB_LAB }, topics: topics, practice: practice, quiz: quiz, interview: interview });
+
+  /* =====================================================================
+     PRACTICE — Easy
+     ===================================================================== */
+  practice.push({
+    title: 'Buffer Pool Hit Ratio Report',
+    level: 'Easy', tags: ['buffer pool', 'conditional aggregation'], companies: ['Amazon', 'Percona', 'Shopify'],
+    statement: `<p>The table <code>engine_stats(metric, value)</code> holds InnoDB-style counters. Write one query returning <b>hit ratio %</b> (1 − disk reads ÷ read requests), <b>dirty page %</b> and <b>free page %</b>, each rounded to 2 decimals.</p>`,
+    constraints: `One row of output. Avoid integer division (multiply by 1.0).`,
+    example: `<p>read requests 1,250,000, disk reads 9,800 → hit ratio ${H.c('g', '99.22%')}; dirty 7,200 / 65,536 → ${H.c('y', '10.99%')}; free 310 / 65,536 → ${H.c('b', '0.47%')}.</p>`,
+    brute: {
+      why: `<p>One scalar subquery per metric works but repeats the table scan for every number and gets messy fast. Pivoting with conditional aggregation reads the table once.</p>`,
+      code: eng(`SELECT ROUND(100.0 * (1 - (SELECT value FROM engine_stats WHERE metric = 'buffer_pool_reads') * 1.0
+                       / (SELECT value FROM engine_stats WHERE metric = 'buffer_pool_read_requests')), 2) AS hit_ratio_pct;`)
+    },
+    mcq: { q: 'Hit ratio is 99.2% but p99 latency is bad. What should you look at next?', options: ['Absolute misses per second and which queries cause them', 'Nothing — 99% is always fine', 'Increase the page size', 'Turn off the WAL'], answer: 0, explain: 'A high percentage can still mean thousands of disk reads per second; latency depends on the absolute number of misses and where they happen.' },
+    hints: [
+      `<p>Hint 1: each metric is a row; you want them as columns — a pivot.</p>`,
+      `<p>Hint 2: <code>MAX(CASE WHEN metric = 'x' THEN value END)</code> extracts one metric per column in a single scan.</p>`,
+      `<p>Hint 3: wrap the pivot in a CTE, then compute the ratios with <code>* 1.0</code> and <code>ROUND(…, 2)</code>.</p>`
+    ],
+    solution: {
+      approach: `<p>Pivot the counters with conditional aggregation in a CTE, then compute three ratios. This is exactly how monitoring dashboards turn <code>SHOW GLOBAL STATUS</code> into health metrics.</p>`,
+      code: eng(`WITH s AS (
+  SELECT MAX(CASE WHEN metric = 'buffer_pool_read_requests' THEN value END) AS req,
+         MAX(CASE WHEN metric = 'buffer_pool_reads'         THEN value END) AS miss,
+         MAX(CASE WHEN metric = 'buffer_pool_pages_total'   THEN value END) AS total,
+         MAX(CASE WHEN metric = 'buffer_pool_pages_dirty'   THEN value END) AS dirty,
+         MAX(CASE WHEN metric = 'buffer_pool_pages_free'    THEN value END) AS free
+  FROM engine_stats
+)
+SELECT ROUND(100.0 * (1 - miss * 1.0 / req), 2) AS hit_ratio_pct,
+       ROUND(100.0 * dirty / total, 2)          AS dirty_pct,
+       ROUND(100.0 * free / total, 2)           AS free_pct
+FROM s;`),
+      complexity: `<p>One scan of a tiny table: O(M) for M metrics.</p>`,
+      followUps: ['Store snapshots every minute and compute misses per second with LAG().', 'What does a free_pct near 0 together with a high dirty_pct suggest?']
+    }
+  });
+
+  practice.push({
+    title: 'Compute Record IDs (page, slot) for a Heap File',
+    level: 'Easy', tags: ['pages', 'RID', 'arithmetic'], companies: ['Microsoft', 'Oracle'],
+    statement: `<p>Rows are appended to a heap file in insertion order, and exactly <b>3 rows fit per page</b>. For row numbers 1..10, output each row's <b>RID = (page, slot)</b> with pages and slots numbered from 0 — the same shape as a Postgres <code>ctid</code>.</p>`,
+    constraints: `Generate the rows with a recursive CTE. No deletes, no free-space reuse.`,
+    example: `<p>Row 1 → ${H.c('g', '(0,0)')}, row 3 → ${H.c('g', '(0,2)')}, row 4 → ${H.c('b', '(1,0)')}, row 10 → ${H.c('b', '(3,0)')}.</p>`,
+    brute: {
+      why: `<p>Simulating the page fill with a loop works but hides the simple formula: with a fixed rows-per-page R, page = ⌊(n − 1) / R⌋ and slot = (n − 1) mod R.</p>`,
+      code: { lang: 'python', run: true, code: `page, slot, R = 0, 0, 3
+for n in range(1, 11):
+    print(n, "->", (page, slot))
+    slot += 1
+    if slot == R:              # page full: move to a new page
+        page, slot = page + 1, 0` }
+    },
+    mcq: { q: 'Why do indexes store (page, slot) instead of (page, byte offset)?', options: ['So records can move inside the page during compaction without updating indexes', 'Slots are smaller than offsets', 'Offsets are not allowed in SQL', 'To support compression'], answer: 0, explain: 'The slot array is an indirection: compaction changes the offset in the slot, while the slot number in every index entry stays valid.' },
+    hints: [
+      `<p>Hint 1: switch to 0-based numbering first: k = n − 1.</p>`,
+      `<p>Hint 2: integer division by 3 gives the page, the remainder gives the slot.</p>`,
+      `<p>Hint 3: format with <code>'(' || page || ',' || slot || ')'</code> to mimic a ctid.</p>`
+    ],
+    solution: {
+      approach: `<p>Generate 1..10, then compute page and slot with integer division and modulo. In real engines rows-per-page varies with row size, which is why the RID is <i>stored</i> rather than computed.</p>`,
+      code: lab(`WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 10)
+SELECT i AS row_number,
+       (i - 1) / 3 AS page,
+       (i - 1) % 3 AS slot,
+       '(' || ((i - 1) / 3) || ',' || ((i - 1) % 3) || ')' AS ctid_style_rid
+FROM n;`),
+      complexity: `<p>O(N) rows, O(1) each.</p>`,
+      followUps: ['After deleting row 2 and vacuuming, where could a new row go?', 'How does an UPDATE change a row\'s ctid in Postgres (and when does HOT keep it on the same page)?']
+    }
+  });
+
+  practice.push({
+    title: 'Bits Needed per Column for Dictionary Encoding',
+    level: 'Easy', tags: ['column store', 'dictionary encoding', 'recursive CTE'], companies: ['Snowflake', 'ClickHouse', 'Databricks'],
+    statement: `<p>For each column of <code>sales</code> (<code>region</code>, <code>day</code>, <code>product</code>, <code>amount</code>), compute the number of distinct values <b>d</b> and the bits per value after dictionary encoding: the smallest b ≥ 1 with 2<sup>b</sup> ≥ d.</p>`,
+    constraints: `Do not rely on LOG2 (not always compiled into SQLite). Use a small recursive CTE of powers of two.`,
+    example: `<p>region has 3 distinct values → ${H.c('g', '2 bits')}; amount has 12 → ${H.c('y', '4 bits')} instead of a 32-bit integer.</p>`,
+    brute: {
+      why: `<p>Counting distinct values one column at a time and doing the log in your head is fine for 4 columns, error-prone for 400. A query that does all columns and the bit math at once is reusable on any table.</p>`,
+      code: eng(`SELECT COUNT(DISTINCT region) AS region_d, COUNT(DISTINCT day) AS day_d,
+       COUNT(DISTINCT product) AS product_d, COUNT(DISTINCT amount) AS amount_d
+FROM sales;`)
+    },
+    mcq: { q: 'A column has exactly 256 distinct values. Bits per code?', options: ['8', '9', '7', '256'], answer: 0, explain: '2<sup>8</sup> = 256 ≥ 256, so 8 bits suffice (codes 0..255).' },
+    hints: [
+      `<p>Hint 1: build one row per column with UNION ALL: (column_name, COUNT(DISTINCT col)).</p>`,
+      `<p>Hint 2: a recursive CTE <code>pow(b, v)</code> producing (1,2), (2,4), (3,8)… up to b = 32.</p>`,
+      `<p>Hint 3: for each column take <code>MIN(b) WHERE v ≥ d</code>.</p>`
+    ],
+    solution: {
+      approach: `<p>Unpivot distinct counts with UNION ALL, generate powers of two, and pick the smallest sufficient bit width per column. Real encoders also compare against RLE and plain encoding and choose the smallest.</p>`,
+      code: eng(`WITH RECURSIVE pow(b, v) AS (SELECT 1, 2 UNION ALL SELECT b + 1, v * 2 FROM pow WHERE b < 32),
+d AS (
+  SELECT 'region' AS col, COUNT(DISTINCT region) AS distinct_vals FROM sales
+  UNION ALL SELECT 'day', COUNT(DISTINCT day) FROM sales
+  UNION ALL SELECT 'product', COUNT(DISTINCT product) FROM sales
+  UNION ALL SELECT 'amount', COUNT(DISTINCT amount) FROM sales
+)
+SELECT d.col, d.distinct_vals,
+       (SELECT MIN(b) FROM pow WHERE v >= d.distinct_vals) AS bits_per_value,
+       (SELECT COUNT(*) FROM sales) * (SELECT MIN(b) FROM pow WHERE v >= d.distinct_vals) AS total_bits
+FROM d ORDER BY bits_per_value, col;`),
+      complexity: `<p>One distinct-count per column (a sort or hash each) plus a 32-row helper table.</p>`,
+      followUps: ['When is dictionary encoding a bad idea (hint: nearly-unique columns)?', 'How does Parquet fall back when a dictionary page grows too large?']
+    }
+  });
+
+  practice.push({
+    title: 'Winners and Losers After a Crash',
+    level: 'Easy', tags: ['WAL', 'recovery', 'GROUP BY'], companies: ['Oracle', 'SAP', 'Amazon'],
+    statement: `<p>From <code>wal_log</code>, list every transaction with its number of UPDATE records and whether recovery treats it as a <b>winner</b> (has a COMMIT record → redo only) or a <b>loser</b> (no COMMIT → must be undone). This is the ARIES Analysis pass in one query.</p>`,
+    constraints: `A transaction may have BEGIN/UPDATE/COMMIT records in any order of LSNs.`,
+    example: `<p>${H.c('g', 'T1 winner (1 update)')}, ${H.c('r', 'T2 loser (2 updates)')}, ${H.c('g', 'T3 winner (1)')}, ${H.c('r', 'T4 loser (1)')}.</p>`,
+    brute: {
+      why: `<p>Listing transactions and then running a separate "does a COMMIT exist?" query per transaction is N+1 queries. A single GROUP BY with conditional counts does it in one scan.</p>`,
+      code: eng(`SELECT DISTINCT txn,
+       (SELECT COUNT(*) FROM wal_log c WHERE c.txn = l.txn AND c.kind = 'COMMIT') AS has_commit
+FROM wal_log l ORDER BY txn;`)
+    },
+    mcq: { q: 'A loser\'s update already reached disk (stolen page). During Redo, ARIES…', options: ['Repeats history anyway (or skips it if pageLSN shows it is there); Undo later reverses it', 'Ignores all loser records in Redo', 'Deletes the page', 'Marks the transaction committed'], answer: 0, explain: 'ARIES redo is history-repeating and pageLSN-conditional; only the undo pass treats losers differently.' },
+    hints: [
+      `<p>Hint 1: one output row per transaction, so group the log by <code>txn</code>.</p>`,
+      `<p>Hint 2: <code>SUM(kind = 'UPDATE')</code> counts updates; <code>MAX(kind = 'COMMIT')</code> is 1 if a commit exists (SQLite booleans are 0/1).</p>`,
+      `<p>Hint 3: a CASE on that flag prints winner/loser; also show MAX(lsn) — the place Undo starts for a loser.</p>`
+    ],
+    solution: {
+      approach: `<p>One aggregate per transaction: count updates, detect a COMMIT, and keep the last LSN (for losers, undo starts there and follows prev_lsn backward).</p>`,
+      code: eng(`SELECT txn,
+       SUM(kind = 'UPDATE') AS updates,
+       CASE WHEN MAX(kind = 'COMMIT') = 1 THEN 'winner: redo only' ELSE 'LOSER: redo, then undo' END AS fate,
+       MAX(lsn) AS last_lsn
+FROM wal_log
+GROUP BY txn
+ORDER BY txn;`),
+      complexity: `<p>O(L) for L log records (a hash or sort group-by).</p>`,
+      followUps: ['Add ABORT records: an aborted transaction whose undo finished is not a loser any more — how do END records express that?', 'Order the losers\' UPDATE records exactly as the Undo pass would process them.']
+    }
+  });
+
+  /* =====================================================================
+     PRACTICE — Medium
+     ===================================================================== */
+  practice.push({
+    title: 'Clock (Second-Chance) Page Replacement',
+    level: 'Medium', tags: ['buffer pool', 'clock', 'simulation'], companies: ['Google', 'Microsoft', 'VMware'],
+    statement: `<p>Implement the <b>Clock</b> replacement policy for a pool of <b>C</b> frames: each frame has a reference bit set to 1 on load and on every hit. To find a victim, the hand sweeps: a frame with bit 1 gets a second chance (bit cleared, hand moves on); the first frame with bit 0 is evicted. Return the number of hits for a trace, and compare with FIFO and LRU.</p>`,
+    constraints: `C ≤ 10<sup>5</sup>, trace ≤ 10<sup>6</sup>. Amortised O(1) per access.`,
+    example: `<p>C = 3, trace 1 2 3 1 4 1 5 1 6 1 7 1 → ${H.c('r', 'FIFO 3 hits')}, ${H.c('y', 'Clock 4 hits')}, ${H.c('g', 'LRU 5 hits')}. Clock sits between FIFO and LRU but needs no list reordering on hits — just set a bit.</p>`,
+    brute: {
+      why: `<p>FIFO is the brute-force policy: evict whatever arrived first, ignoring that page 1 is hot. It is O(1) and simple, but evicts the most popular page every C misses.</p>`,
+      code: { lang: 'python', run: true, code: `def fifo_hits(cap, trace):
+    queue, hits = [], 0
+    for p in trace:
+        if p in queue:
+            hits += 1               # a hit does NOT protect the page in FIFO
+            continue
+        if len(queue) == cap:
+            queue.pop(0)            # evict the oldest arrival, hot or not
+        queue.append(p)
+    return hits
+
+print("FIFO hits:", fifo_hits(3, [1, 2, 3, 1, 4, 1, 5, 1, 6, 1, 7, 1]))` }
+    },
+    mcq: { q: 'Why do Postgres and many OSes prefer Clock over exact LRU?', options: ['A hit only sets a bit — no shared linked list to lock and reorder on every access', 'Clock always has a higher hit ratio than LRU', 'Clock needs no memory', 'LRU cannot handle dirty pages'], answer: 0, explain: 'Exact LRU must move the page to the list head on every hit, which serialises concurrent readers on a lock. Clock approximates recency with a bit (Postgres uses a 0–5 usage count).' },
+    hints: [
+      `<p>Hint 1: keep an array of frames, an array of reference bits, a dict page → frame, and a hand index.</p>`,
+      `<p>Hint 2: on a hit just set ref = 1. On a miss, loop: if the frame is empty or ref = 0 → use it; else clear ref and advance the hand.</p>`,
+      `<p>Hint 3: the loop ends within one full sweep because every bit it passes gets cleared. Remember to delete the evicted page from the dict.</p>`
+    ],
+    solution: {
+      approach: `<p>Circular array + reference bits. Each sweep clears bits, so a page survives only if it was referenced since the hand last passed — an approximation of "recently used" with O(1) amortised cost and no reordering.</p>`,
+      code: { lang: 'python', run: true, code: `from collections import OrderedDict
+
+def clock_hits(cap, trace):
+    frames, ref, where, hand, hits = [None] * cap, [0] * cap, {}, 0, 0
+    for p in trace:
+        if p in where:
+            hits += 1
+            ref[where[p]] = 1                 # second chance for later
+            continue
+        while frames[hand] is not None and ref[hand] == 1:
+            ref[hand] = 0                     # give a second chance, move on
+            hand = (hand + 1) % cap
+        if frames[hand] is not None:
+            del where[frames[hand]]           # evict victim
+        frames[hand], ref[hand], where[p] = p, 1, hand
+        hand = (hand + 1) % cap
+    return hits
+
+def lru_hits(cap, trace):
+    pool, hits = OrderedDict(), 0
+    for p in trace:
+        if p in pool:
+            hits += 1
+            pool.move_to_end(p)
+        else:
+            if len(pool) == cap:
+                pool.popitem(last=False)
+            pool[p] = True
+    return hits
+
+trace = [1, 2, 3, 1, 4, 1, 5, 1, 6, 1, 7, 1]
+print("Clock hits:", clock_hits(3, trace), "| LRU hits:", lru_hits(3, trace))` },
+      complexity: `<p>Amortised O(1) per access (each sweep step clears a bit that a later access must set again); O(C) memory.</p>`,
+      followUps: ['Turn the bit into a counter (0–5) like Postgres usage_count. What changes for very hot pages?', 'Add pin counts: pinned frames are skipped by the hand.']
+    }
+  });
+
+  practice.push({
+    title: 'Where Can the Log Be Truncated?',
+    level: 'Medium', tags: ['WAL', 'checkpoint', 'recovery'], companies: ['Amazon', 'Microsoft', 'Yugabyte'],
+    statement: `<p>A fuzzy checkpoint stored its dirty page table in <code>ckpt_dirty_pages(page, rec_lsn)</code> and its active transactions in <code>ckpt_active_txns(txn, first_lsn)</code>. Compute (1) the LSN where the <b>Redo</b> pass must start, (2) the oldest LSN still needed for <b>Undo</b>, (3) the <b>truncation point</b> (everything strictly older can be recycled), and list the log records that must be kept.</p>`,
+    constraints: `Assume no transaction started before the checkpoint other than those in ckpt_active_txns.`,
+    example: `<p>recLSNs {A: 2, C: 6} → redo from ${H.c('b', '2')}; active T2 first LSN 3 → undo needs ${H.c('y', '3')}; truncation point = min(2, 3) = ${H.c('g', '2')}: only LSN 1 can be recycled.</p>`,
+    brute: {
+      why: `<p>Never truncating is always "safe" but the log grows forever (and recovery reads all of it). Truncating at the checkpoint record itself is the classic bug: older records may still be needed to redo dirty pages or undo active transactions.</p>`,
+      code: eng(`-- "Keep everything" (safe, but unbounded log and slow recovery)
+SELECT COUNT(*) AS records_kept, MIN(lsn) AS oldest_kept FROM wal_log;`)
+    },
+    mcq: { q: 'An idle transaction began 6 hours ago and never committed. What happens to WAL/redo retention?', options: ['The log cannot be truncated past its first LSN, so log files pile up', 'Nothing — checkpoints ignore transactions', 'The transaction is auto-committed at the checkpoint', 'Only data pages grow'], answer: 0, explain: 'Undo may need its records, so the truncation point is pinned at its first LSN (InnoDB undo/history and Postgres replication slots show similar pinning).' },
+    hints: [
+      `<p>Hint 1: redo must start at the oldest change not yet on disk = MIN(rec_lsn).</p>`,
+      `<p>Hint 2: undo of an active transaction may walk back to its first record = MIN(first_lsn).</p>`,
+      `<p>Hint 3: truncation point = the smaller of the two; then <code>SELECT … FROM wal_log WHERE lsn &gt;= that</code>.</p>`
+    ],
+    solution: {
+      approach: `<p>Combine the two lower bounds. This is precisely what InnoDB's checkpoint age and Postgres's <code>max_wal_size</code>/checkpoint logic track: the oldest LSN any recovery could possibly need.</p>`,
+      code: eng(`WITH bounds AS (
+  SELECT (SELECT MIN(rec_lsn) FROM ckpt_dirty_pages)   AS redo_start,
+         (SELECT MIN(first_lsn) FROM ckpt_active_txns) AS undo_oldest
+), cut AS (
+  SELECT redo_start, undo_oldest, MIN(redo_start, COALESCE(undo_oldest, redo_start)) AS keep_from FROM bounds
+)
+SELECT c.redo_start, c.undo_oldest, c.keep_from,
+       (SELECT COUNT(*) FROM wal_log WHERE lsn < c.keep_from) AS recyclable_records,
+       (SELECT GROUP_CONCAT(lsn) FROM wal_log WHERE lsn >= c.keep_from) AS kept_lsns
+FROM cut c;`),
+      complexity: `<p>O(D + A + L): scan the dirty page table, active transaction table and the log once.</p>`,
+      followUps: ['Why is a fuzzy checkpoint safe even though pages are being modified while it is taken?', 'How do replication slots or lagging replicas add a third lower bound in Postgres?']
+    }
+  });
+
+  practice.push({
+    title: 'Size a Bloom Filter per SSTable',
+    level: 'Medium', tags: ['LSM', 'Bloom filter', 'math'], companies: ['Meta', 'Apple', 'Cloudflare'],
+    statement: `<p>Each SSTable needs a Bloom filter with false-positive rate <b>p</b>. For <b>n</b> keys, compute the optimal bits per key (m/n = −ln p / (ln 2)<sup>2</sup>) and hash count (k = (m/n)·ln 2). For a database of <b>10<sup>9</sup> keys</b>, report total filter memory for p = 1% and p = 0.1%, and the expected wasted reads per lookup of a missing key across 7 SSTable levels.</p>`,
+    constraints: `Round k to the nearest integer; report memory in MB (10<sup>6</sup> bytes).`,
+    example: `<p>p = 1% → ${H.c('g', '9.59 bits/key, k = 7')}, 10<sup>9</sup> keys → ${H.c('b', '≈ 1,198 MB')}; 7 levels × 0.01 = ${H.c('y', '0.07')} wasted reads per miss. p = 0.1% → 14.4 bits/key ≈ 1,797 MB.</p>`,
+    brute: {
+      why: `<p>Brute force: try every (bits per key, k) pair and evaluate the false-positive formula (1 − e<sup>−k/b</sup>)<sup>k</sup>, keeping the cheapest that meets p. It works, but the closed form gives the optimum directly.</p>`,
+      code: { lang: 'python', run: true, code: `import math
+p_target = 0.01
+best = None
+for bits in [x / 10 for x in range(10, 300)]:          # bits per key 1.0 .. 29.9
+    for k in range(1, 30):
+        fpr = (1 - math.exp(-k / bits)) ** k
+        if fpr <= p_target and (best is None or bits < best[0]):
+            best = (bits, k, fpr)
+print("search: bits/key=%.1f k=%d fpr=%.4f" % best)` }
+    },
+    mcq: { q: 'Halving the false-positive rate of a Bloom filter costs roughly…', options: ['About 1.44 extra bits per key', 'Twice the memory', 'One extra hash function and no memory', 'Nothing'], answer: 0, explain: 'm/n = −ln p / (ln 2)² = 1.44·log₂(1/p); halving p adds 1.44 bits per key.' },
+    hints: [
+      `<p>Hint 1: bits per key b = −ln(p) / (ln 2)<sup>2</sup> ≈ 1.44 · log<sub>2</sub>(1/p).</p>`,
+      `<p>Hint 2: k = b · ln 2, rounded. Memory = n · b / 8 bytes.</p>`,
+      `<p>Hint 3: for a missing key every level's filter gets a chance to lie: expected wasted reads ≈ levels × p.</p>`
+    ],
+    solution: {
+      approach: `<p>Use the closed-form optimum. Then reason about placement: RocksDB keeps filters in the block cache (pinning L0 and top-level filters), and research like Monkey gives deeper levels fewer bits since they hold most keys but are probed least often for hits.</p>`,
+      code: { lang: 'python', run: true, code: `import math
+
+def bloom_plan(n, p, levels=7):
+    bits_per_key = -math.log(p) / (math.log(2) ** 2)
+    k = max(1, round(bits_per_key * math.log(2)))
+    actual_fpr = (1 - math.exp(-k / bits_per_key)) ** k
+    mem_mb = n * bits_per_key / 8 / 1e6
+    return bits_per_key, k, actual_fpr, mem_mb, levels * p
+
+for p in (0.01, 0.001):
+    b, k, fpr, mb, waste = bloom_plan(10**9, p)
+    print("p=%.3f: %.2f bits/key, k=%d (fpr %.4f), memory %.0f MB, wasted reads per miss %.3f"
+          % (p, b, k, fpr, mb, waste))` },
+      complexity: `<p>O(1) closed form (the brute search is O(B·K)).</p>`,
+      followUps: ['Why do RocksDB Ribbon filters save ~30% memory at the same FPR?', 'What changes for range queries — why do Bloom filters not help, and what are prefix Bloom filters?']
+    }
+  });
+
+  practice.push({
+    title: 'K-Way Merge of SSTables (Compaction Core)',
+    level: 'Medium', tags: ['LSM', 'compaction', 'heap', 'merge'], companies: ['Cockroach Labs', 'PingCAP', 'Confluent', 'Datadog'],
+    statement: `<p>You are given <b>k</b> SSTables, each a list of <code>(key, seq, value)</code> sorted by key, where <code>value = None</code> is a tombstone. Produce the compacted output: sorted by key, only the <b>highest seq</b> per key, and drop tombstones if <code>bottom_level = True</code> (keep them otherwise). Stream it — do not load everything and sort.</p>`,
+    constraints: `Total entries up to 10<sup>8</sup> on disk; memory O(k). Keys within one SSTable are unique.`,
+    example: `<p>run A [(a,1,x) (c,3,None)], run B [(a,5,y) (b,2,z)], bottom = True → ${H.c('g', '[(a,5,y), (b,2,z)]')}: a's newest version is seq 5; c's newest is a tombstone, dropped at the bottom.</p>`,
+    brute: {
+      why: `<p>Concatenate all runs, sort by (key, −seq), keep the first of each key. Correct, but O(N log N) time and O(N) memory — impossible for 100 GB of SSTables. The runs are already sorted; a heap merge streams them in O(N log k) with O(k) memory.</p>`,
+      code: { lang: 'python', run: true, code: `def compact_brute(runs, bottom_level):
+    allrows = sorted((row for run in runs for row in run), key=lambda r: (r[0], -r[1]))
+    out, last = [], None
+    for key, seq, val in allrows:
+        if key == last:
+            continue                       # older version, shadowed
+        last = key
+        if val is None and bottom_level:
+            continue                       # tombstone can vanish at the bottom
+        out.append((key, seq, val))
+    return out
+
+A = [("a", 1, "x"), ("c", 3, None)]
+B = [("a", 5, "y"), ("b", 2, "z")]
+print(compact_brute([A, B], True))` }
+    },
+    mcq: { q: 'Why may a tombstone NOT be dropped when compacting into a middle level?', options: ['An older value of the key may still exist in a deeper level, and would reappear', 'Tombstones are needed for Bloom filters', 'Middle levels are read-only', 'Because of the WAL'], answer: 0, explain: 'The tombstone is the only thing hiding older versions below it. Only at the bottom (or when no deeper file overlaps the key) is it safe to drop.' },
+    hints: [
+      `<p>Hint 1: <code>heapq.merge(*runs, key=lambda r: (r[0], -r[1]))</code> yields entries in key order, newest first for equal keys.</p>`,
+      `<p>Hint 2: the first entry you see for a key is its newest version; skip the rest until the key changes.</p>`,
+      `<p>Hint 3: emit tombstones only when not at the bottom level. Use a generator so output streams.</p>`
+    ],
+    solution: {
+      approach: `<p>Heap-based k-way merge (exactly RocksDB's MergingIterator idea) with "first version wins" de-duplication. Memory holds one cursor per input run. Real engines also respect snapshots: a version is dropped only if no live snapshot needs it.</p>`,
+      code: { lang: 'python', run: true, code: `import heapq
+
+def compact(runs, bottom_level):
+    last_key = object()
+    for key, seq, val in heapq.merge(*runs, key=lambda r: (r[0], -r[1])):
+        if key == last_key:
+            continue                       # shadowed older version
+        last_key = key
+        if val is None and bottom_level:
+            continue                       # drop tombstone at the bottom level
+        yield (key, seq, val)
+
+A = [("a", 1, "x"), ("c", 3, None), ("d", 4, "old")]
+B = [("a", 5, "y"), ("b", 2, "z"), ("d", 9, "new")]
+print("bottom :", list(compact([A, B], True)))
+print("middle :", list(compact([A, B], False)))` },
+      complexity: `<p>O(N log k) time, O(k) memory, single sequential pass over each input — which is why compaction I/O is sequential.</p>`,
+      followUps: ['Add snapshot support: keep the newest version visible to each live snapshot sequence number.', 'Split the output into ~64 MB files at key boundaries so the next level has non-overlapping files.']
+    }
+  });
+
+  practice.push({
+    title: 'Snapshot Read on a Versioned Key-Value Log',
+    level: 'Medium', tags: ['LSM', 'MVCC', 'window functions'], companies: ['PingCAP', 'Cockroach Labs', 'Google'],
+    statement: `<p>An LSM engine gives every write a sequence number, and a snapshot taken at sequence <b>S</b> sees, for each key, the newest version with <code>seq ≤ S</code> — unless that version is a delete. Using <code>kv_log(seq, k, v, op)</code>, return the visible key/value pairs for <b>S = 4</b> and <b>S = 6</b> in one query.</p>`,
+    constraints: `op 'P' = put, 'D' = delete (tombstone). Output columns: snapshot, k, v.`,
+    example: `<p>S = 4 → user:1 = asha.k, ${H.c('g', 'user:2 = ben')}, user:3 = chen. S = 6 → user:1 = asha.k, user:3 = chen, user:4 = dara (${H.c('r', 'user:2 deleted at seq 5')}).</p>`,
+    brute: {
+      why: `<p>A correlated subquery per (snapshot, key) — "find the max seq ≤ S for this key" — re-scans the log for every key: O(K · L) per snapshot. A window function does one pass per snapshot.</p>`,
+      code: eng(`SELECT 4 AS snapshot, k, v FROM kv_log a
+WHERE seq = (SELECT MAX(seq) FROM kv_log b WHERE b.k = a.k AND b.seq <= 4) AND op = 'P'
+ORDER BY k;`)
+    },
+    mcq: { q: 'Why can an LSM engine offer snapshots almost for free?', options: ['Every version is kept with its sequence number until compaction, so a snapshot is just a sequence cutoff', 'It copies the whole database', 'It locks all keys', 'Snapshots are not possible in LSMs'], answer: 0, explain: 'Old versions live on in older memtables/SSTables; a snapshot only needs compaction to keep versions it can still see.' },
+    hints: [
+      `<p>Hint 1: cross join the log with a tiny table of snapshots (4, 6), filtering <code>seq ≤ snapshot</code>.</p>`,
+      `<p>Hint 2: <code>ROW_NUMBER() OVER (PARTITION BY snapshot, k ORDER BY seq DESC)</code> marks the newest visible version as 1.</p>`,
+      `<p>Hint 3: keep rn = 1 and op = 'P' — a newest version that is a tombstone hides the key.</p>`
+    ],
+    solution: {
+      approach: `<p>Versioned reads are "latest version per key under a cutoff": a partitioned ROW_NUMBER. This is how TiKV/CockroachDB-style MVCC on top of an LSM resolves reads at a timestamp.</p>`,
+      code: eng(`WITH snaps(s) AS (VALUES (4), (6)),
+visible AS (
+  SELECT s AS snapshot, k, v, op,
+         ROW_NUMBER() OVER (PARTITION BY s, k ORDER BY seq DESC) AS rn
+  FROM kv_log JOIN snaps ON kv_log.seq <= snaps.s
+)
+SELECT snapshot, k, v FROM visible
+WHERE rn = 1 AND op = 'P'
+ORDER BY snapshot, k;`),
+      complexity: `<p>O(S · L log L) for S snapshots over L log entries (one sort per partition set).</p>`,
+      followUps: ['Which versions can compaction drop if the oldest live snapshot is 4?', 'How does a long-lived snapshot affect space amplification?']
+    }
+  });
+
+  practice.push({
+    title: 'Group Commit: Throughput and Latency',
+    level: 'Medium', tags: ['WAL', 'fsync', 'simulation'], companies: ['Stripe', 'Amazon', 'PlanetScale'],
+    statement: `<p>Transactions arrive every <b>0.1 ms</b> (10,000/s) and each needs its COMMIT record fsynced; one fsync takes <b>1 ms</b>. Simulate 2,000 commits under (a) one fsync per commit, served one at a time, and (b) <b>group commit</b>: when an fsync finishes, the next fsync covers <i>all</i> commits waiting at that moment. Report number of fsyncs, average and max commit latency.</p>`,
+    constraints: `Times in ms; the log device does one fsync at a time.`,
+    example: `<p>Serial: capacity 1,000 commits/s &lt; 10,000/s arrivals → the queue explodes, ${H.c('r', 'max latency ≈ 1.8 s')}. Group commit: ${H.c('g', '~200 fsyncs, latency ≈ 1.5–2 ms')}.</p>`,
+    brute: {
+      why: `<p>One fsync per commit is the naive design: correct, but the device's fsync rate caps throughput at 1 / 1 ms = 1,000 commits/s, and latency grows without bound when arrivals exceed it.</p>`,
+      code: { lang: 'python', run: true, code: `ARRIVE, FSYNC, N = 0.1, 1.0, 2000
+t_free, lat = 0.0, []
+for i in range(N):
+    arrive = i * ARRIVE
+    start = max(arrive, t_free)        # wait for the device
+    t_free = start + FSYNC             # one fsync just for me
+    lat.append(t_free - arrive)
+print("serial: fsyncs=%d avg=%.1f ms max=%.1f ms" % (N, sum(lat) / N, max(lat)))` }
+    },
+    mcq: { q: 'Group commit improves throughput mainly because…', options: ['One fsync makes many transactions\' commit records durable at once', 'It skips fsync entirely', 'It writes data pages instead of the log', 'It reduces the size of log records'], answer: 0, explain: 'Durability cost is per fsync, not per transaction; batching amortises it across all commits waiting in the log buffer.' },
+    hints: [
+      `<p>Hint 1: keep <code>t_free</code> = when the device finishes its current fsync.</p>`,
+      `<p>Hint 2: for group commit, when an fsync completes at time t, the batch is every commit that arrived up to t and is not yet durable.</p>`,
+      `<p>Hint 3: latency of a commit = (end of the fsync that covers it) − (its arrival time). If nobody is waiting, the device idles until the next arrival.</p>`
+    ],
+    solution: {
+      approach: `<p>Event-driven loop over fsyncs instead of transactions: each fsync takes everything waiting. Throughput becomes "batch size / fsync time", and the batch grows automatically with load — the self-tuning property that makes durable commits cheap in InnoDB, Postgres and every serious WAL.</p>`,
+      code: { lang: 'python', run: true, code: `ARRIVE, FSYNC, N = 0.1, 1.0, 2000
+arrivals = [i * ARRIVE for i in range(N)]
+t, i, fsyncs, lat = 0.0, 0, 0, []
+while i < N:
+    t = max(t, arrivals[i])                    # device idle until someone commits
+    batch_end = i
+    while batch_end < N and arrivals[batch_end] <= t:
+        batch_end += 1                         # everyone waiting joins this fsync
+    t += FSYNC
+    fsyncs += 1
+    lat.extend(t - arrivals[j] for j in range(i, batch_end))
+    i = batch_end
+print("group: fsyncs=%d avg=%.2f ms max=%.2f ms, throughput capacity ~%d commits/s"
+      % (fsyncs, sum(lat) / N, max(lat), N / (t / 1000)))` },
+      complexity: `<p>O(N) — each commit joins exactly one batch.</p>`,
+      followUps: ['What does Postgres commit_delay / commit_siblings add to this model?', 'How do replicated commits (Raft/semi-sync) change the latency floor?']
+    }
+  });
+
+  /* =====================================================================
+     PRACTICE — Hard
+     ===================================================================== */
+  practice.push({
+    title: 'ARIES Undo with CLRs Survives a Crash During Recovery',
+    level: 'Hard', tags: ['ARIES', 'CLR', 'recovery', 'idempotence'], companies: ['Oracle', 'Microsoft', 'Snowflake', 'Amazon'],
+    statement: `<p>Implement recovery for a log of <b>logical increment</b> records (<code>UPD page += delta</code>, each with <code>prev</code> = previous LSN of the same transaction). Redo is conditional on pageLSN. Undo of a loser must write a <b>CLR</b> (compensation log record) carrying <code>undo_next</code> = the undone record's <code>prev</code>, and set pageLSN to the CLR's LSN. Show that if the system <b>crashes again after one undo step</b> (log and that page flushed), running recovery a second time still produces the correct state — and that a version without CLRs does not.</p>`,
+    constraints: `Pages: X = 100, Y = 0 initially. T1 (loser): X += 10, X += 5. T2 (winner): Y += 7. Disk at the first crash: X = 115 (pageLSN 3), Y = 0.`,
+    example: `<p>Correct final state: ${H.c('g', 'X = 100, Y = 7')}. Without CLRs the second recovery undoes "+5" again: ${H.c('r', 'X = 95')} — corruption, because logical undo is not idempotent.</p>`,
+    brute: {
+      why: `<p>The naive recovery undoes losers by walking their records backward but writes nothing to the log and does not bump pageLSN. If it crashes midway after flushing a page, the next recovery has no way to know which undos already happened, so it repeats them. With increment-style (logical) undo, repeating is wrong.</p>`,
+      code: { lang: 'python', run: true, code: `def naive_recover(log, disk, crash_after=None):
+    pages = {p: list(v) for p, v in disk.items()}
+    winners = {r["txn"] for r in log if r["type"] == "COMMIT"}
+    for r in log:                                            # redo
+        if r["type"] == "UPD" and pages[r["page"]][1] < r["lsn"]:
+            pages[r["page"]][0] += r["delta"]
+            pages[r["page"]][1] = r["lsn"]
+    steps = 0
+    for r in reversed(log):                                  # undo, no CLRs
+        if r["type"] == "UPD" and r["txn"] not in winners:
+            if steps == crash_after:
+                return pages                                 # crash! pages flushed as they are
+            pages[r["page"]][0] -= r["delta"]
+            steps += 1
+    return pages
+
+log = [{"lsn": 1, "txn": "T1", "type": "BEGIN", "prev": None},
+       {"lsn": 2, "txn": "T1", "type": "UPD", "page": "X", "delta": 10, "prev": 1},
+       {"lsn": 3, "txn": "T1", "type": "UPD", "page": "X", "delta": 5, "prev": 2},
+       {"lsn": 4, "txn": "T2", "type": "BEGIN", "prev": None},
+       {"lsn": 5, "txn": "T2", "type": "UPD", "page": "Y", "delta": 7, "prev": 4},
+       {"lsn": 6, "txn": "T2", "type": "COMMIT", "prev": 5}]
+disk = {"X": [115, 3], "Y": [0, 0]}
+after_first = naive_recover(log, disk, crash_after=1)        # undid +5, then crashed
+print("after crash during recovery:", after_first)
+print("second naive recovery      :", naive_recover(log, after_first), "<- X should be 100")` }
+    },
+    mcq: { q: 'What does a CLR\'s undo_next pointer guarantee?', options: ['A later recovery skips work already undone and continues exactly where undo stopped', 'The CLR itself will be undone later', 'Winners are redone twice', 'The page is written to disk immediately'], answer: 0, explain: 'CLRs are redo-only; undo_next points to the next record still to undo, so repeated crashes never undo the same change twice and recovery work is bounded.' },
+    hints: [
+      `<p>Hint 1: Analysis — for each transaction remember its last LSN; transactions without COMMIT are losers whose undo starts at that last LSN.</p>`,
+      `<p>Hint 2: Redo must replay CLRs too (they are just "X += −5" with their own LSN), guarded by pageLSN &lt; LSN.</p>`,
+      `<p>Hint 3: Undo loop — pick the loser with the largest pending LSN; if it is a CLR jump to its undo_next; if UPD, append a CLR (delta = −delta, undo_next = prev), apply it, set pageLSN; stop at BEGIN (write END).</p>`
+    ],
+    solution: {
+      approach: `<p>Classic ARIES: history-repeating redo over UPD <i>and</i> CLR records, then undo driven by a max-LSN worklist. Because each undo step is logged (CLR) and stamps pageLSN, the second recovery's redo sees the CLR already applied and its undo resumes from undo_next — so the result is correct no matter how many times recovery crashes.</p>`,
+      code: { lang: 'python', run: true, code: `def recover(log, disk, crash_after=None):
+    pages = {p: list(v) for p, v in disk.items()}
+    by_lsn = {r["lsn"]: r for r in log}
+    last, committed = {}, set()
+    for r in log:                                             # 1) analysis
+        last[r["txn"]] = r["lsn"]
+        if r["type"] in ("COMMIT", "END"):
+            committed.add(r["txn"])
+    pending = {t: l for t, l in last.items() if t not in committed}
+    for r in log:                                             # 2) redo: UPD and CLR
+        if r["type"] in ("UPD", "CLR") and pages[r["page"]][1] < r["lsn"]:
+            pages[r["page"]][0] += r["delta"]
+            pages[r["page"]][1] = r["lsn"]
+    steps = 0
+    while pending:                                            # 3) undo, newest first
+        txn, lsn = max(pending.items(), key=lambda kv: kv[1])
+        r = by_lsn[lsn]
+        if r["type"] == "CLR":
+            nxt = r["undo_next"]                              # skip what is already undone
+        elif r["type"] == "UPD":
+            if steps == crash_after:
+                return pages, "CRASHED"
+            clr = {"lsn": len(log) + 1, "txn": txn, "type": "CLR", "page": r["page"],
+                   "delta": -r["delta"], "undo_next": r["prev"]}
+            log.append(clr)
+            by_lsn[clr["lsn"]] = clr
+            pages[r["page"]][0] += clr["delta"]
+            pages[r["page"]][1] = clr["lsn"]
+            steps += 1
+            nxt = r["prev"]
+        else:
+            nxt = None                                        # reached BEGIN
+        if nxt and by_lsn[nxt]["type"] != "BEGIN":
+            pending[txn] = nxt
+        else:
+            del pending[txn]
+            log.append({"lsn": len(log) + 1, "txn": txn, "type": "END"})
+    return pages, "OK"
+
+log = [{"lsn": 1, "txn": "T1", "type": "BEGIN", "prev": None},
+       {"lsn": 2, "txn": "T1", "type": "UPD", "page": "X", "delta": 10, "prev": 1},
+       {"lsn": 3, "txn": "T1", "type": "UPD", "page": "X", "delta": 5, "prev": 2},
+       {"lsn": 4, "txn": "T2", "type": "BEGIN", "prev": None},
+       {"lsn": 5, "txn": "T2", "type": "UPD", "page": "Y", "delta": 7, "prev": 4},
+       {"lsn": 6, "txn": "T2", "type": "COMMIT", "prev": 5}]
+disk = {"X": [115, 3], "Y": [0, 0]}
+pages, status = recover(log, disk, crash_after=1)
+print("first recovery:", status, pages, "| log now ends with", log[-1]["type"], "lsn", log[-1]["lsn"])
+pages, status = recover(log, pages)                           # flushed pages + flushed log
+print("second recovery:", status, {p: v[0] for p, v in pages.items()})
+print("log tail:", [(r["lsn"], r["type"], r.get("undo_next")) for r in log[6:]])` },
+      complexity: `<p>O(L + U log T): one forward scan for analysis and redo, then each loser record undone once (heap/max over T losers). Repeated crashes add no repeated undo work.</p>`,
+      followUps: ['Why are CLRs never undone themselves?', 'Postgres has no undo pass — what replaces it (hint: MVCC visibility and the commit log)?', 'Add a fuzzy checkpoint so analysis starts mid-log.']
+    }
+  });
+
+  practice.push({
+    title: 'Design a Storage Engine for 1M Metric Points per Second',
+    level: 'Hard', tags: ['storage engine design', 'LSM', 'time-series', 'capacity planning'], companies: ['Datadog', 'Grafana Labs', 'Uber', 'Netflix'],
+    statement: `<p>Design the single-node storage engine for a metrics database: <b>1,000,000 points/s</b> (series_id 8 B, timestamp 8 B, float64 value 8 B), queries mostly "last 1–6 hours for a few series", retention <b>30 days</b>. Choose the data structure, key layout, write path, compaction strategy, compression and deletion strategy, and size WAL bandwidth, memtable, flush frequency, total disk and compaction bandwidth. Write the sizing as code.</p>`,
+    constraints: `One NVMe disk (≈ 2 GB/s sequential write, 1 M IOPS), 64 GB RAM. Gorilla-style compression ≈ 1.4 bytes per point.`,
+    example: `<p>Raw ingest = 24 MB/s. Memtable 1 GB flushes every ~40 s. Compressed ≈ 1.4 MB/s → ${H.c('b', '≈ 3.6 TB for 30 days')}. Time-window compaction with WA ≈ 3 → ${H.c('g', '≈ 28 MB/s total disk writes')}. A B-tree on (series, ts) would dirty a random 16 KB page per point: ${H.c('r', '≈ 32 GB/s')} — impossible.</p>`,
+    brute: {
+      why: `<p>The naive design is a relational table <code>points(series_id, ts, value)</code> with a B-tree primary key in a general-purpose engine. With a million <i>different</i> series receiving points, inserts land on random leaf pages: page writes, doublewrite and index maintenance blow past any disk, and 30-day deletes become billions of row deletes.</p>`,
+      code: { lang: 'python', run: true, code: `points_per_s = 1_000_000
+page = 16_384
+btree_bytes_per_s = points_per_s * (2 * page)     # random leaf page + doublewrite per point (worst case)
+print("naive B-tree writes ~%.0f GB/s (disk does ~2 GB/s)" % (btree_bytes_per_s / 1e9))
+rows_to_delete_daily = points_per_s * 86_400
+print("retention via DELETE: %.1f billion row deletes per day" % (rows_to_delete_daily / 1e9))` }
+    },
+    mcq: { q: 'Which compaction strategy fits 30-day retention of time-series data best?', options: ['Time-window compaction: compact within time buckets and drop whole expired files', 'Leveled compaction with tombstones for every expired point', 'No compaction at all', 'Size-tiered with daily DELETE statements'], answer: 0, explain: 'Data arrives roughly in time order and expires by time; grouping files by time window lets expiry delete entire files with zero rewrite and no tombstones.' },
+    hints: [
+      `<p>Hint 1: the write path must be sequential: WAL + in-memory buffer per series, flushed as immutable sorted, compressed blocks (an LSM / TSM design).</p>`,
+      `<p>Hint 2: key = (series_id, time_bucket) → value = compressed chunk of points (delta-of-delta timestamps, XOR floats). Recent data stays in RAM for the common "last few hours" query.</p>`,
+      `<p>Hint 3: partition files by time window (e.g. 2 h blocks merged into daily blocks); retention = delete files older than 30 days. Size: raw MB/s, compressed MB/s, total TB, WA × compressed rate, memtable flush interval.</p>`
+    ],
+    solution: {
+      approach: `<p><b>Design:</b> an LSM-style time-series engine (like Prometheus TSDB, InfluxDB TSM, M3, VictoriaMetrics). <b>Write path:</b> append each batch to a WAL (group commit), add points to per-series in-memory chunks (the memtable); recent 2 h of data serves most queries from RAM. <b>Flush:</b> every ~2 h block (or when memory is high), write an immutable block: an index (series → chunk offsets, inverted label index) plus chunks compressed with delta-of-delta timestamps and XOR-encoded floats (~1.4 B/point). <b>Compaction:</b> time-window — merge small blocks into larger (e.g. 2 h → 8 h → 1 day) <i>within</i> a time range only; WA ≈ 2–3. <b>Retention:</b> delete whole blocks past 30 days — no tombstones. <b>Reads:</b> time-range pruning by block min/max time, then series lookup in each block's index. <b>Durability:</b> WAL replay on restart rebuilds the in-memory head.</p>`,
+      code: { lang: 'python', run: true, code: `PTS = 1_000_000            # points per second
+RAW_POINT = 24             # bytes: series 8 + ts 8 + value 8
+COMPRESSED = 1.4           # bytes/point with delta-of-delta + XOR floats
+DAYS = 30
+MEMTABLE_GB = 1.0
+WA_TIME_WINDOW = 3         # flush + ~2 merges within a window
+
+raw_mb_s = PTS * RAW_POINT / 1e6
+wal_mb_s = raw_mb_s                                  # WAL holds the raw batches
+flush_every_s = MEMTABLE_GB * 1e9 / (PTS * RAW_POINT)
+comp_mb_s = PTS * COMPRESSED / 1e6
+disk_tb = PTS * COMPRESSED * 86_400 * DAYS / 1e12
+total_write_mb_s = wal_mb_s + comp_mb_s * WA_TIME_WINDOW
+head_2h_gb = PTS * 7200 * COMPRESSED / 1e9           # recent data kept in RAM, compressed
+
+print("raw ingest          : %.0f MB/s" % raw_mb_s)
+print("WAL bandwidth       : %.0f MB/s (sequential, group-committed)" % wal_mb_s)
+print("memtable flush every: %.0f s for a %.0f GB memtable" % (flush_every_s, MEMTABLE_GB))
+print("compressed data rate: %.1f MB/s" % comp_mb_s)
+print("30-day footprint    : %.1f TB" % disk_tb)
+print("total disk writes   : %.0f MB/s of ~2000 available" % total_write_mb_s)
+print("last 2 h in RAM     : %.1f GB compressed (serves most dashboards)" % head_2h_gb)` },
+      complexity: `<p>Writes: O(1) amortised per point (append + in-memory insert); reads: O(blocks overlapping the time range × log series) via per-block indexes; retention: O(1) per expired block (file delete).</p>`,
+      followUps: ['How do you handle out-of-order points that arrive 3 hours late?', 'How would you add downsampling (5-minute rollups) without rewriting raw blocks?', 'What changes if cardinality explodes to 100M active series (label explosion)?']
+    }
+  });
+
+  practice.push({
+    title: 'Detect and Repair Torn Pages',
+    level: 'Hard', tags: ['torn page', 'checksum', 'doublewrite', 'durability'], companies: ['Oracle', 'Percona', 'Amazon', 'Alibaba'],
+    statement: `<p>A page is 4 sectors; the disk guarantees only that each <b>sector</b> write is atomic. Simulate writing a new page version and crashing after 2 of 4 sectors. Implement (1) a <b>CRC32 checksum</b> in the page header to detect the torn page on read and (2) a <b>doublewrite</b> area: write the full new page there and fsync before writing in place, so recovery can repair a torn in-place page.</p>`,
+    constraints: `Use zlib.crc32. The doublewrite copy itself may also be torn if the crash happens while writing it — then the in-place page is still the intact old version.`,
+    example: `<p>Old page "AAAA|AAAA|AAAA|AAAA", new "BBBB|BBBB|BBBB|BBBB", crash after 2 sectors → disk holds ${H.c('r', 'BBBB BBBB AAAA AAAA')}: checksum mismatch → copy from doublewrite → ${H.c('g', 'BBBB×4')}.</p>`,
+    brute: {
+      why: `<p>Without checksums, a torn page is read back silently as half-new, half-old data — the engine cannot even tell something went wrong, and WAL redo (which assumes a consistent page image) may build on garbage.</p>`,
+      code: { lang: 'python', run: true, code: `SECTORS = 4
+old = ["AAAA"] * SECTORS
+new = ["BBBB"] * SECTORS
+disk = old[:]
+for i in range(2):              # crash after 2 sectors
+    disk[i] = new[i]
+print("read back:", disk, "<- no way to know it is torn")` }
+    },
+    mcq: { q: 'Postgres solves torn pages without a doublewrite buffer by…', options: ['Writing a full-page image into the WAL on the first change to a page after each checkpoint', 'Using 512-byte pages', 'Never writing pages', 'Running fsck after crashes'], answer: 0, explain: 'full_page_writes = on: recovery restores the whole page from the WAL image, then replays later changes, so a torn page on disk does not matter.' },
+    hints: [
+      `<p>Hint 1: store the CRC of the payload sectors in a header sector; on read, recompute and compare.</p>`,
+      `<p>Hint 2: write order = doublewrite copy (all sectors) → fsync → in-place sectors → fsync. A crash can tear only one of the two copies.</p>`,
+      `<p>Hint 3: recovery: for each page, if the in-place copy fails its checksum, take the doublewrite copy if <i>it</i> verifies; if the doublewrite copy is torn, the in-place page is still the old intact version.</p>`
+    ],
+    solution: {
+      approach: `<p>Checksums give detection; a second, separately written full copy gives repair. InnoDB does exactly this (doublewrite buffer, since 8.0.20 in separate <code>#ib_*.dblwr</code> files); Postgres gets the same guarantee from full-page images in WAL; filesystems like ZFS avoid it with copy-on-write. Hardware with atomic 16 KB writes lets InnoDB disable doublewrite safely.</p>`,
+      code: { lang: 'python', run: true, code: `import zlib
+
+def make_page(sectors):
+    crc = zlib.crc32("".join(sectors).encode())
+    return {"crc": crc, "data": list(sectors)}
+
+def valid(page):
+    return zlib.crc32("".join(page["data"]).encode()) == page["crc"]
+
+def write_page(target, page, crash_after=None):
+    """Header (crc) goes with sector 0; each sector write is atomic."""
+    for i, s in enumerate(page["data"]):
+        if crash_after is not None and i == crash_after:
+            return False
+        target["data"][i] = s
+        if i == 0:
+            target["crc"] = page["crc"]
+    return True
+
+old = make_page(["AAAA"] * 4)
+new = make_page(["BBBB"] * 4)
+in_place = {"crc": old["crc"], "data": old["data"][:]}
+doublewrite = {"crc": 0, "data": ["....."] * 4}
+
+assert write_page(doublewrite, new)            # 1) full copy to doublewrite, then fsync
+write_page(in_place, new, crash_after=2)       # 2) in-place write torn by a crash
+print("in-place after crash:", in_place["data"], "checksum ok?", valid(in_place))
+
+# recovery
+if not valid(in_place):
+    if valid(doublewrite):
+        in_place = {"crc": doublewrite["crc"], "data": doublewrite["data"][:]}
+        print("repaired from doublewrite:", in_place["data"], "checksum ok?", valid(in_place))
+    else:
+        print("doublewrite torn: in-place page must still be the old intact version")` },
+      complexity: `<p>Detection O(page size) per read (CRC32C is hardware-accelerated); doublewrite doubles page write bytes but the extra writes are sequential.</p>`,
+      followUps: ['Why does InnoDB still need the redo log when it has a doublewrite buffer?', 'What does a checksum failure on a replica mean, and how do you recover (re-clone vs page-level repair)?']
+    }
+  });
+
+  practice.push({
+    title: 'WAL Record Framing: Recover Up to the Last Valid Record',
+    level: 'Hard', tags: ['WAL', 'checksum', 'binary format', 'Java'], companies: ['Confluent', 'Apple', 'Cockroach Labs', 'Microsoft'],
+    lang: 'java',
+    statement: `<p>Design the on-disk record format for a write-ahead log and the startup scan that finds where valid data ends. Each record is <code>[int length][long crc32][payload bytes]</code>. On startup, read records sequentially and stop at the first record that is incomplete (torn tail) or whose CRC does not match; return the valid payloads and the byte offset where new appends must start (the log is truncated there).</p>`,
+    constraints: `Payload ≤ 1 MB. Treat a negative or too-large length as corruption. Single log segment in a ByteBuffer.`,
+    example: `<p>Records "BEGIN T1", "PUT k=v", "COMMIT T1", then a crash cuts the 4th record in half → recovery returns ${H.c('g', '3 records, truncate at byte 60')} (12-byte header + 8, 7 and 9 payload bytes); the partial record is ${H.c('r', 'discarded')}, never applied.</p>`,
+    brute: {
+      why: `<p>Newline-delimited text records seem fine, but a torn final line looks like a valid (shorter) record, and a bit flip in the middle is accepted silently. Without a length and checksum there is no reliable end-of-log detection.</p>`,
+      code: { lang: 'java', code: `class NaiveTextWal {
+    static List<String> recover(String logContents) {
+        // Every line is accepted — including a half-written last line after a crash.
+        return Arrays.asList(logContents.split("\\n"));
+    }
+
+    public static void main(String[] args) {
+        String disk = "BEGIN T1\\nPUT k=v\\nCOMMIT T1\\nPUT k2=v";   // last record torn: "v2" lost
+        System.out.println(recover(disk));                          // happily replays "PUT k2=v"
+    }
+}` }
+    },
+    mcq: { q: 'Why include the length BEFORE the payload instead of a terminator byte?', options: ['The reader knows exactly how many bytes to expect, detects truncation, and needs no escaping of payload bytes', 'It is smaller', 'Terminators are illegal in binary files', 'To support compression'], answer: 0, explain: 'Length-prefix framing makes truncation detection trivial (fewer bytes remain than promised) and lets payloads contain any byte; the CRC covers corruption inside.' },
+    hints: [
+      `<p>Hint 1: writing = putInt(len), putLong(crc of payload), put(payload). Header is 12 bytes.</p>`,
+      `<p>Hint 2: reading loop: if remaining &lt; 12 → stop; read len; if len &lt; 0 or len &gt; max or remaining &lt; len → stop; read payload; recompute CRC; mismatch → stop.</p>`,
+      `<p>Hint 3: remember the position <i>before</i> each record; the last good end position is the truncation point.</p>`
+    ],
+    solution: {
+      approach: `<p>Length-prefixed, checksummed records — the format used (with variations such as record types, LSNs and per-block headers) by RocksDB's WAL, Kafka's log segments, Postgres WAL pages and etcd's WAL. The scan is linear and stops at the first invalid record; everything after is discarded and overwritten by new appends.</p>`,
+      code: { lang: 'java', code: `import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.util.zip.CRC32;
+
+class WalFraming {
+    static final int HEADER = 4 + 8;               // length + crc32
+    static final int MAX_PAYLOAD = 1 << 20;
+
+    static long crc(byte[] data) {
+        CRC32 c = new CRC32();
+        c.update(data, 0, data.length);
+        return c.getValue();
+    }
+
+    static void append(ByteBuffer log, String record) {
+        byte[] payload = record.getBytes(StandardCharsets.UTF_8);
+        log.putInt(payload.length);
+        log.putLong(crc(payload));
+        log.put(payload);
+    }
+
+    /** Returns the valid payloads; result[0] of the int array is the truncation offset. */
+    static List<String> recover(ByteBuffer log, int[] truncateAt) {
+        List<String> out = new ArrayList<>();
+        int goodEnd = log.position();
+        while (log.remaining() >= HEADER) {
+            int len = log.getInt();
+            long expected = log.getLong();
+            if (len < 0 || len > MAX_PAYLOAD || log.remaining() < len) break;   // torn tail
+            byte[] payload = new byte[len];
+            log.get(payload);
+            if (crc(payload) != expected) break;                                  // corruption
+            out.add(new String(payload, StandardCharsets.UTF_8));
+            goodEnd = log.position();
+        }
+        truncateAt[0] = goodEnd;
+        return out;
+    }
+
+    public static void main(String[] args) {
+        ByteBuffer disk = ByteBuffer.allocate(256);
+        for (String r : List.of("BEGIN T1", "PUT k=v", "COMMIT T1", "PUT k2=v2-long-value")) append(disk, r);
+        int written = disk.position();
+        ByteBuffer afterCrash = ByteBuffer.wrap(disk.array(), 0, written - 10);   // last record torn
+        int[] cut = new int[1];
+        List<String> valid = recover(afterCrash.slice(), cut);
+        System.out.println(valid + " truncate at byte " + cut[0]);
+    }
+}` },
+      complexity: `<p>O(log size) single sequential scan; O(1) extra memory besides the payload being checked.</p>`,
+      followUps: ['Why do many WALs also store the LSN or a segment-id/sequence in each record or block header (hint: recycled segments contain stale but valid-looking records)?', 'How would you make appends crash-safe across segment file boundaries?']
+    }
+  });
+
+  /* =====================================================================
+     QUIZ
+     ===================================================================== */
+  quiz.push({ q: 'Why does a slotted page keep a slot array instead of letting indexes point at byte offsets?', options: ['Records can be moved inside the page (compaction) by updating only the slot, so index entries (page, slot) stay valid', 'Slot arrays make pages smaller', 'Offsets cannot be stored in indexes', 'It is required for compression'], answer: 0, explain: 'The slot is a level of indirection: the RID names the slot, the slot names the current offset.' });
+  quiz.push({ q: 'Default page sizes: SQLite, PostgreSQL, InnoDB?', options: ['4 KB, 8 KB, 16 KB', '8 KB, 8 KB, 8 KB', '16 KB, 4 KB, 8 KB', '1 MB, 64 KB, 16 KB'], answer: 0, explain: 'SQLite 4096 B (PRAGMA page_size), Postgres 8 KB (BLCKSZ), InnoDB 16 KB (innodb_page_size).' });
+  quiz.push({ q: 'The buffer pool must evict a dirty page. What has to happen first?', options: ['The log records up to that page\'s pageLSN must be flushed (WAL rule), then the page is written', 'The transaction that dirtied it must commit', 'Nothing — just drop it', 'A checkpoint must finish'], answer: 0, explain: 'STEAL allows writing uncommitted pages, but only after the log describing the change is durable so it can be undone.' });
+  quiz.push({ q: 'A nightly full-table scan evicts the hot working set in a plain-LRU cache. What does InnoDB do about it?', options: ['Inserts new pages at the midpoint (head of the old sublist) and promotes them only if re-accessed after innodb_old_blocks_time', 'Disables the cache during scans', 'Uses MRU for everything', 'Sends scans to the redo log'], answer: 0, explain: 'Midpoint insertion keeps one-off scan pages in the old sublist so they are evicted first.' });
+  quiz.push({ q: 'In ARIES, which statement about the Redo pass is TRUE?', options: ['It repeats history for all transactions, including losers, applying a record only if pageLSN &lt; LSN', 'It redoes only committed transactions', 'It runs backward from the end of the log', 'It writes CLRs'], answer: 0, explain: 'Redo restores the exact pre-crash state; Undo then rolls back losers and writes CLRs.' });
+  quiz.push({ q: 'What does a commit actually wait for in a WAL-based engine with full durability?', options: ['The COMMIT log record (and everything before it) to be fsynced', 'All dirty data pages to be written', 'A checkpoint', 'Replication to every replica in all cases'], answer: 0, explain: 'No-force: data pages are written later; durability comes from the log.' });
+  quiz.push({ q: 'In an LSM-tree, a Delete(k) is implemented as…', options: ['Writing a tombstone for k that shadows older versions until compaction removes both', 'Finding and erasing k in its SSTable in place', 'Rebuilding all SSTables immediately', 'Removing k only from the Bloom filter'], answer: 0, explain: 'SSTables are immutable, so deletes are writes of a marker; space is reclaimed by compaction.' });
+  quiz.push({ q: 'Leveled vs size-tiered compaction: which pairing is correct?', options: ['Leveled: lower space and read amplification, higher write amplification; tiered: the opposite', 'Leveled: lowest write amplification', 'Tiered: lowest read amplification', 'They have identical trade-offs'], answer: 0, explain: 'Leveled rewrites data ~T times per level but keeps one run per level; tiered rewrites once per tier but leaves many runs and needs ~2× space during merges.' });
+  quiz.push({ q: 'With L1 = 256 MB and fanout 10, roughly how many levels hold 1 TB?', options: ['5', '3', '10', '1'], answer: 0, explain: '256 MB → 2.56 GB → 25.6 GB → 256 GB → 2.56 TB: the fifth level is the first big enough.' });
+  quiz.push({ q: 'Why do Bloom filters matter so much for LSM point reads?', options: ['They let the engine skip SSTables that definitely do not contain the key, so a lookup costs ≈ 1 I/O instead of one per level', 'They compress SSTables', 'They make range scans faster', 'They replace the WAL'], answer: 0, explain: 'A negative answer is certain; with ~1% false positives, almost all non-matching files are skipped in RAM.' });
+  quiz.push({ q: 'In InnoDB, a secondary index entry stores…', options: ['The indexed columns plus the primary key value', 'The physical page and slot of the row', 'The full row', 'Only a hash of the row'], answer: 0, explain: 'Because rows move inside the clustered B+tree on splits, secondary indexes refer to rows by primary key.' });
+  quiz.push({ q: 'Why are random UUIDv4 primary keys costly in InnoDB?', options: ['Inserts land on random leaf pages, causing 50/50 splits (~70% fill), poor cache locality and larger secondary indexes', 'UUIDs cannot be indexed', 'They disable the redo log', 'They force table scans'], answer: 0, explain: 'Sequential or time-ordered keys (auto-increment, UUIDv7) append at the right edge and keep pages full.' });
+  quiz.push({ q: 'Which technique lets a column store skip whole blocks for <code>WHERE day = \'2026-10-03\'</code> without a B-tree?', options: ['Zone maps (min/max per block)', 'Dictionary encoding', 'Doublewrite buffer', 'Clock-sweep'], answer: 0, explain: 'Blocks whose [min, max] range excludes the value are never read.' });
+  quiz.push({ q: 'SQLite in WAL mode: what is a checkpoint?', options: ['Copying committed pages from the -wal file back into the main database file', 'Deleting the database', 'Flushing the OS page cache', 'A full backup'], answer: 0, explain: 'New page versions are appended to the WAL; checkpoints transfer them into the main file so the WAL can be reset.' });
+
+  /* =====================================================================
+     INTERVIEW
+     ===================================================================== */
+  interview.push({
+    q: 'Walk me through what happens on disk when you INSERT one row and COMMIT in a B-tree engine like InnoDB or Postgres.', level: 'I',
+    a: `<p><b>1.</b> The engine finds the target page (InnoDB: the clustered-index leaf for the PK; Postgres: a heap page with free space from the Free Space Map) and loads it into the <b>buffer pool</b> if needed. <b>2.</b> It appends a <b>WAL record</b> describing the change to the in-memory log buffer, then modifies the page in RAM (slot + tuple), stamping its pageLSN; the page is now <b>dirty</b>. Secondary indexes get the same treatment. <b>3.</b> On COMMIT, a commit record is appended and the log is <b>fsynced</b> up to it (often batched with other commits — group commit). The client gets OK. <b>4.</b> Later, background writers flush the dirty page (after the WAL covering it is durable), with a doublewrite or full-page image protecting against torn writes. <b>5.</b> A checkpoint eventually records that this page is clean so the old log can be recycled.</p>`,
+    followUps: ['What changes if synchronous_commit = off?', 'Which step is the durability point?', 'What if the dirty page is evicted before COMMIT?']
+  });
+  interview.push({
+    q: 'What is a slotted page and why do databases use it?', level: 'B',
+    a: `<p>A slotted page is the standard layout for variable-length records: a <b>header</b> at the start, a <b>slot array</b> growing forward (each slot = offset + length of one record), and <b>records</b> growing backward from the end, with free space in between. Records are addressed by <b>RID = (page, slot)</b>. Benefits: variable-length rows fit naturally, deleting just marks a slot, and the engine can <b>compact</b> the page (slide records together to merge holes) while only rewriting slot offsets — indexes that store (page, slot) remain valid. Costs: ~4 bytes per slot, holes until compaction, and slots can be reused only after nothing references them (Postgres reclaims line pointers only after VACUUM cleans index entries).</p>`,
+    followUps: ['How are rows bigger than a page stored?', 'What does fill factor do and when would you lower it?']
+  });
+  interview.push({
+    q: 'Explain the buffer pool. How would you implement page replacement, and what is special compared to a generic LRU cache?', level: 'I',
+    a: `<p>The buffer pool is an array of page-sized frames plus a <b>page table</b> (hash map page_id → frame). Each frame has a <b>pin count</b>, a <b>dirty bit</b> and recency info. Fetch: hit → pin and return; miss → pick a victim with pin count 0, write it back if dirty (respecting the WAL rule: log up to its pageLSN first), read the new page, pin it. Replacement: LRU via hash map + doubly linked list is O(1) but suffers from <b>sequential flooding</b> and global-lock contention, so real systems use variants: InnoDB's <b>midpoint insertion</b> (young/old sublists, promotion only after 1 s), Postgres's <b>clock-sweep</b> with usage counts plus <b>ring buffers</b> for big scans, or LRU-K/2Q/ARC. Database-specific needs: pinning, dirty write-back ordering with the WAL, flushing policy tied to checkpoints, and prefetch for scans — none of which a generic cache or <code>mmap</code> gives you.</p>`,
+    followUps: ['Why not just rely on the OS page cache or mmap?', 'How do you size innodb_buffer_pool_size vs shared_buffers?', 'What is a page latch vs a lock?']
+  });
+  interview.push({
+    q: 'State the WAL protocol rules and explain the STEAL / NO-FORCE terminology.', level: 'A',
+    a: `<p><b>Rule 1 (undo / write-ahead):</b> a dirty page may be written to disk only after all log records up to its pageLSN are on disk. <b>Rule 2 (redo / commit):</b> a transaction is acknowledged only after all its log records, including COMMIT, are on disk. <b>STEAL</b> = the buffer manager may write pages containing uncommitted changes (frees memory; requires undo information in the log). <b>NO-FORCE</b> = committed transactions' pages need not be written at commit (makes commits cheap; requires redo). Steal + no-force is the highest-performance combination, and ARIES is designed around it. The opposite (no-steal + force) needs neither undo nor redo but forces random page writes at every commit and caps transaction size by memory.</p>`,
+    followUps: ['Which combination does Postgres effectively use, given that its WAL is redo-only?', 'What breaks if a disk lies about fsync?']
+  });
+  interview.push({
+    q: 'Walk through ARIES recovery on a small example.', level: 'A',
+    a: `<p>Log: 1 T1 A 0→5, 2 T2 B 0→7, 3 T1 COMMIT, 4 T2 C 0→9, 5 T3 A 5→8, 6 T3 COMMIT, crash. Disk: B = 7 (pageLSN 2, stolen), others old. <b>Analysis:</b> scan from the last checkpoint, rebuild the dirty page table and transaction table → winners T1, T3; loser T2. <b>Redo:</b> from min recLSN, re-apply every UPDATE whose LSN &gt; the page's pageLSN: A = 5 (LSN 1), skip B (pageLSN 2 ≥ 2), C = 9 (LSN 4, a loser — history is repeated), A = 8 (LSN 5). <b>Undo:</b> roll back losers in descending LSN order: C ← 0 writing CLR 7 (undoNext = 2), B ← 0 writing CLR 8 (undoNext = none), then END T2. Result A = 8, B = 0, C = 0. CLRs make the process restartable: a crash during undo resumes from undoNext without undoing anything twice.</p>`,
+    followUps: ['Why repeat history for losers instead of skipping them?', 'What do fuzzy checkpoints store and why are they "fuzzy"?', 'How long can recovery take and what bounds it?']
+  });
+  interview.push({
+    q: 'Compare B-trees and LSM-trees. When would you choose each?', level: 'A',
+    a: `<p><b>B-tree</b>: in-place updates of fixed-size pages; point reads ≈ 1 I/O, efficient range scans, steady latency; writes are random and amplified (a 100 B change rewrites a 16 KB page, plus doublewrite), pages ~70% full after random inserts. <b>LSM</b>: WAL + memtable, flushed to immutable sorted SSTables, merged by compaction; writes are sequential and cheap, compression is excellent and space is dense; reads check memtable + several runs (Bloom filters make point reads ≈ 1 I/O), range scans merge iterators across levels, and compaction can cause latency spikes and costs write amplification later. Choose <b>LSM</b> for write-heavy ingest (metrics, logs, events, messaging), huge data on SSD where space and flash endurance matter (MyRocks at Meta), and embedded KV in distributed databases (TiKV, CockroachDB/Pebble). Choose <b>B-tree</b> for read-heavy OLTP, many secondary indexes, range-heavy queries, strict p99. Quantify with the three amplifications for the actual workload.</p>`,
+    followUps: ['What is the RUM conjecture?', 'How do LSMs handle range deletes and secondary indexes?', 'Name a design between the two (Bε-tree, Bw-tree).']
+  });
+  interview.push({
+    q: 'Derive the write amplification of leveled vs size-tiered compaction.', level: 'E',
+    a: `<p><b>Leveled</b>, fanout T, L levels: moving S bytes from level i to i+1 merges them with the ~T·S bytes of overlapping data below, writing ≈ (T + 1)·S. Every byte makes that move once per level, so WA ≈ T per level, ≈ T·L worst case (≈ T·L/2 on average, plus 1 for the WAL and 1 for the flush). With T = 10 and 5 levels, ~20–40 in theory, typically 10–30 observed. Space amplification ≈ 1 + 1/T (≈ 1.1) and one run per level to read. <b>Size-tiered</b>: when T runs of similar size exist, merge them into one run of T·S: each byte is rewritten once per tier, so WA ≈ number of tiers ≈ log<sub>T</sub>(N/flush size), but there can be up to T−1 runs per tier to read, and a full merge needs old and new copies at once (SA up to 2×). Hybrids ("lazy leveling", RocksDB universal + leveled bottom, Cassandra 5 UCS) tier the top and level the bottom.</p>`,
+    followUps: ['How does level_compaction_dynamic_level_bytes change space amplification?', 'Given 50 MB/s ingest and WA 22, what disk bandwidth do you need?']
+  });
+  interview.push({
+    q: 'Design a key-value storage engine for a write-heavy workload (e.g. 500k writes/s, 2 TB).', level: 'E',
+    a: `<p><b>Write path:</b> client batches → WAL append with group commit (one fsync per batch) → concurrent skip-list memtable (64–256 MB); when full, freeze it and switch to a new one. <b>Flush:</b> background thread writes the immutable memtable as an SSTable: sorted, 16 KB compressed blocks, block index, Bloom filter (~10 bits/key), footer with checksum; then delete the WAL segment. <b>Compaction:</b> leveled (T = 10, dynamic level sizes) for steady reads and ~1.1 space amp, or tiered/hybrid if write bandwidth is the bottleneck; rate-limited, with subcompactions and write-stall thresholds on L0 count. <b>Reads:</b> memtable → immutable → L0 newest-first → one file per level, Bloom filters and a block cache; merging iterator for scans; snapshots via sequence numbers. <b>Deletes:</b> tombstones, range tombstones, TTL via compaction filter. <b>Sizing:</b> 500k × 200 B = 100 MB/s WAL; WA ~20 → ~2 GB/s compaction writes → needs several NVMe drives or sharding across nodes. <b>Recovery:</b> replay WAL into a memtable; SST files are immutable so they need no recovery beyond manifest replay.</p>`,
+    followUps: ['How do you avoid write stalls during a burst?', 'How would you add transactions?', 'Where does the manifest (list of live SST files) live and how is it made crash-safe?']
+  });
+  interview.push({
+    q: 'InnoDB vs MyRocks (RocksDB) — what are the trade-offs, and why did Meta migrate?', level: 'A',
+    a: `<p>InnoDB: clustered B+tree, 16 KB pages, in-place updates with undo logs for MVCC, redo log + doublewrite; secondary indexes store the PK. Strengths: predictable read latency, mature tooling, gap locks for REPEATABLE READ. Weaknesses on flash at Meta's scale: fragmented pages (~50–70% full), weak page compression, high write amplification (full page rewrites + doublewrite). MyRocks: LSM with leveled compaction, per-level compression (LZ4 on top, Zstd at the bottom), dense immutable files, prefix Bloom filters. Meta reported roughly half the space of compressed InnoDB and far fewer bytes written to flash, enabling fewer servers and longer SSD life. Trade-offs: range scans across levels, no gap locks (different isolation semantics), compaction tuning and occasional stalls, unique-key checks require reads, smaller ecosystem.</p>`,
+    followUps: ['Which workloads would you keep on InnoDB?', 'How does MyRocks implement secondary indexes?']
+  });
+  interview.push({
+    q: 'Why is a UUID primary key often a bad idea in MySQL, and what would you use instead?', level: 'I',
+    a: `<p>InnoDB stores the table <b>inside</b> the primary-key B+tree. Random UUIDv4 keys insert into random leaf pages: frequent 50/50 page splits leave pages ~70% full, every insert touches a different page (no hot right edge in the buffer pool), so the working set becomes the whole table, and redo/page-write volume rises. Every secondary index also stores the PK, so a 16-byte (or 36-char string!) key bloats them all. Better: <code>BIGINT AUTO_INCREMENT</code> for single-writer systems; <b>UUIDv7</b> (RFC 9562) or ULID when you need globally unique, client-generated IDs — they are time-ordered, so inserts append at the right edge — stored as <code>BINARY(16)</code>, not a string. In distributed SQL (Spanner, CockroachDB) monotonically increasing keys create a write hotspot on one range, so there the advice flips toward hashed or random prefixes.</p>`,
+    followUps: ['What does the Postgres heap do differently with random UUID keys?', 'How would you migrate a 2 TB table off UUIDv4 keys?']
+  });
+  interview.push({
+    q: 'How does a column store make analytical queries fast?', level: 'I',
+    a: `<p>(1) <b>Columnar layout</b>: read only the columns a query touches — 2 of 50 columns means ~25× less I/O. (2) <b>Compression</b> per column: dictionary codes, RLE (great when sorted), bit-packing, delta/frame-of-reference, then LZ4/Zstd — typically 5–20×. (3) <b>Zone maps / min-max stats</b> per block skip data that cannot match, often 90%+ of blocks with a good sort key. (4) <b>Vectorized execution</b>: operators process batches of ~1–2K values in tight SIMD-friendly loops instead of row-at-a-time iterators; predicates evaluated on compressed codes; <b>late materialization</b> builds rows only for survivors. (5) Massive parallelism across cores and nodes. The costs: single-row lookups and updates are slow (immutable compressed segments), so writes go through delta stores or small parts that are merged in the background, much like LSM compaction.</p>`,
+    followUps: ['How does ClickHouse MergeTree resemble an LSM?', 'What is the difference between Parquet and Arrow?', 'When does HTAP make sense?']
+  });
+  interview.push({
+    q: 'What are torn pages and how do InnoDB and Postgres protect against them?', level: 'A',
+    a: `<p>Database pages (8–16 KB) are larger than the unit the storage stack writes atomically (often 4 KB sectors/blocks). A crash mid-write can leave a <b>torn page</b>: part new, part old. Redo cannot fix it because physiological redo assumes a consistent page image. <b>Detection:</b> per-page checksums (InnoDB CRC32C, Postgres data checksums). <b>Repair:</b> InnoDB writes each flushed page first to the <b>doublewrite buffer</b> (sequentially, fsync), then in place; after a crash a torn in-place page is restored from the doublewrite copy and then redo applies. Postgres uses <b>full_page_writes</b>: the first modification of a page after each checkpoint logs the whole page image to WAL, so recovery starts from that image. Both can be disabled on storage that guarantees atomic page-size writes (some ZFS setups, certain cloud volumes, Aurora-style storage).</p>`,
+    followUps: ['Why do full-page writes cause a WAL volume spike right after each checkpoint?', 'How do checksums help detect silent corruption on replicas?']
+  });
+  interview.push({
+    q: 'Your Postgres or MySQL primary takes 25 minutes to recover after a crash. What determines recovery time and how do you reduce it?', level: 'E',
+    a: `<p>Recovery time ≈ (amount of WAL/redo after the oldest dirty page's recLSN) ÷ replay speed, plus undo work for in-flight transactions (InnoDB rolls back in the background after opening). It grows with: very large <code>max_wal_size</code>/<code>checkpoint_timeout</code> (Postgres) or <code>innodb_redo_log_capacity</code> (InnoDB) that let checkpoints lag; heavy write bursts creating many dirty pages; slow, single-threaded replay of random page reads (pages not in cache). Fixes: checkpoint more frequently or set a smaller redo capacity (trading steady-state I/O), keep the dirty page ratio in check (adaptive flushing), use faster storage, enable WAL prefetch (Postgres <code>recovery_prefetch</code>), parallel redo (InnoDB applies redo in parallel), and avoid giant transactions. Architecturally: fail over to a hot standby (seconds) instead of waiting for crash recovery, or use storage that applies redo continuously (Aurora).</p>`,
+    followUps: ['What is the trade-off between checkpoint frequency and write amplification?', 'How does a long-running transaction affect InnoDB rollback after restart?']
+  });
+  interview.push({
+    q: 'In an LSM-based system, users report that deleted rows still use disk space and some range queries are slow. Explain and fix.', level: 'A',
+    a: `<p>Deletes write <b>tombstones</b>; the old values and the tombstones remain until compaction merges them down to a level where nothing older can hide below (the bottom level). Until then they take space and range scans must step over them — a scan over a heavily deleted range may read thousands of tombstones to return a few live rows (Cassandra warns at 1,000 per query and fails at 100,000 by default). Fixes: use <b>range tombstones</b> / <code>DeleteRange</code> instead of millions of point deletes; trigger targeted compaction of the affected key range (RocksDB <code>CompactRange</code>, deletion-triggered compaction collectors); for time-based expiry use TTL via compaction filters or time-window/FIFO compaction so whole files are dropped; redesign queue-like access patterns (insert/delete churn) to time-bucketed partitions. In Cassandra, also respect <code>gc_grace_seconds</code> and run repairs so deleted data is not resurrected.</p>`,
+    followUps: ['Why can a long-lived snapshot also keep deleted data alive?', 'How does space amplification differ between leveled and tiered here?']
+  });
+
+  /* ---------------- vary MCQ answer positions (deterministic rotation) ---------------- */
+  function rotate(q, r) {
+    if (!q || !q.options) return;
+    var n = q.options.length;
+    r = r % n;
+    if (!r) return;
+    q.options = q.options.slice(r).concat(q.options.slice(0, r));
+    q.answer = (q.answer - r + n) % n;
+  }
+  quiz.forEach(function (q, i) { rotate(q, i * 2 + 1); });
+  practice.forEach(function (p, i) { rotate(p.mcq, i + 2); });
+  topics.forEach(function (t, i) { (t.problems || []).forEach(function (p, j) { rotate(p.mcq, i + j + 1); }); });
+
+  registerModule({
+    id: 'sql13',
+    title: 'Storage Engines Internals',
+    intro: `<p>Every SQL statement you have written so far ends up as <b>bytes on a disk</b>. This module opens the box: how rows are laid out in <b>pages</b> with slot arrays, how the <b>buffer pool</b> decides what stays in RAM, how the <b>write-ahead log</b> lets a database survive a power cut (the ARIES recovery idea, walked through by hand), and why there are two great families of engines — <b>B-trees</b> that update in place and <b>LSM-trees</b> that append and compact. You will do the <b>compaction math</b> (levels, write/read/space amplification), compare <b>InnoDB with RocksDB</b> (and see where Postgres fits), and finish with <b>column stores</b> that power every data warehouse.</p>
+<p>These are the questions that separate senior candidates: "what does COMMIT actually do?", "design a storage engine for a write-heavy workload", "why did Meta move to MyRocks?", "why is a UUID primary key slow in MySQL?". Every topic comes with an analogy, a step-by-step visualizer, runnable SQLite and Python experiments, and design problems with numbers.</p>`,
+    goals: [
+      'Draw a slotted page, explain RIDs (page, slot), page compaction, overflow/TOAST and fill factor, and estimate a table\'s size in pages',
+      'Explain the buffer pool (frames, page table, pins, dirty bits) and compare LRU, Clock, InnoDB midpoint insertion and Postgres ring buffers',
+      'State the WAL rules, explain STEAL/NO-FORCE, and run ARIES Analysis → Redo → Undo (with CLRs) on a log by hand',
+      'Describe the LSM write and read paths (WAL, memtable, SSTables, Bloom filters, tombstones) and choose B-tree vs LSM for a workload using amplification numbers',
+      'Compute levels, write/read/space amplification and compaction bandwidth for leveled and size-tiered compaction',
+      'Contrast InnoDB, RocksDB/MyRocks and PostgreSQL storage, and explain why column stores (dictionary/RLE encoding, zone maps, vectorized execution) win for analytics'
+    ],
+    prereqs: `SQL 10 (Index Internals — B+trees, clustered vs secondary indexes) and SQL 12 (Transactions, Isolation &amp; Concurrency Control — ACID, MVCC). Comfort with basic Python helps for the toy engines; DSA modules on hashing, linked lists (LRU) and heaps (k-way merge) are useful background.`,
+    hours: 16,
+    databases: { engine: DB_ENGINE, lab: DB_LAB },
+    topics: topics,
+    quiz: quiz,
+    interview: interview,
+    practice: practice
+  });
 })();

@@ -1233,7 +1233,7 @@ class Main {
           B('IP', '«Printer»', 15, 28), B('IS', '«Scanner»', 50, 28), B('IF', '«Fax»', 85, 28),
           B('BP', 'BasicPrinter', 22, 50), B('OM', 'OfficeMachine', 70, 50)];
         var ae = [['PQ', 'IP'], ['SA', 'IS'], ['FS', 'IF'], ['BP', 'IP'], ['OM', 'IP'], ['OM', 'IS'], ['OM', 'IF']];
-        var why = 'the <code>' + m + '()</code> method gets a new parameter (e.g. a <code>Options</code> object).';
+        var why = 'the <code>' + m + '()</code> method gets a new parameter (e.g. an <code>Options</code> object).';
         var frames = [F('<b>Before:</b> three clients and two implementers all hang off one fat <b>«Machine»</b> interface. BasicPrinter is forced to fake <code>scan</code> and <code>fax</code> (tags show the lies).',
           [G('Fat interface', bn, be, { ehl: paint(be, 'bad'), hl: { MA: 'bad', BP: 'bad' }, tags: { BP: '2 fake methods', MA: '3 methods' } })])];
         frames = frames.concat(ripple('Fat interface', bn, be, 'MA', why + ' The change is in «Machine», so everything attached to it is affected —', 'bad'));
@@ -1880,7 +1880,7 @@ class ReportJob {                                                               
         var edges = [['JOB', 'SRC'], ['JOB', 'SUM'], ['JOB', 'FMT'], ['JOB', 'DEL'], ['CSV', 'FMT'], ['TXT', 'FMT'], ['EM', 'DEL'], ['SC', 'DEL'], ['MY', 'SRC']];
         frames.push(F('<b>Refactored design.</b> Each finding maps to a box: small roles (purple), plug-in implementations (green arrows point up into abstractions), and a thin <b>ReportJob</b> that only orchestrates.',
           [G('After the review', nodes, edges, { ehl: paint(edges, 'ok'), h: 70, hl: { SRC: 'sel', FMT: 'sel', DEL: 'sel', JOB: 'cur' } }), { type: 'table', label: 'Review findings', columns: ['Principle', 'Lines', 'Fix'], rows: rows.slice() }]));
-        frames.push(F('Sanity check on cost: we went from 1 class + 1 subclass to ~9 small types. Worth it here because formats and delivery channels <b>do</b> change often. For a one-off script, the original would be fine — say this trade-off out loud in interviews.',
+        frames.push(F('Sanity check on cost: we went from 3 tangled types to ~9 small ones. Worth it here because formats and delivery channels <b>do</b> change often. For a one-off script, the original would be fine — say this trade-off out loud in interviews.',
           [{ type: 'vars', label: 'trade-off', vals: { typesBefore: 3, typesAfter: 9, filesEditedToAddXlsx_before: 1 + ' (core method)', filesEditedToAddXlsx_after: '0 (+1 new class)' }, hl: { filesEditedToAddXlsx_after: 'ok', typesAfter: 'cur' } }]));
         return frames;
       }
@@ -2069,4 +2069,1279 @@ class NotificationDemo {
     }]
   });
 
-registerModule({ id: 'lld02', title: 'SOLID Principles', intro: 'x', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();
+  /* ======================= PRACTICE: EASY ======================= */
+  practice.push({
+    title: 'Which principle? The Book that prints and saves itself',
+    level: 'Easy', tags: ['SRP', 'spot the violation'], companies: ['TCS', 'Infosys', 'Amazon'],
+    statement: `<p>A library app has a <code>Book</code> class holding title, author and text. It also has <code>printToConsole()</code> and <code>saveToFile(path)</code>. The UI team keeps changing the print layout; the infra team is moving storage from files to S3. <b>Name the violated principle</b>, explain who the actors are, and refactor so a layout change and a storage change each touch one class.</p>`,
+    constraints: `<p>Java 21. <code>Book</code> should stay a simple domain object. Storage must be swappable (file today, S3 tomorrow).</p>`,
+    example: `<p>Changing the console layout from "Title by Author" to a boxed format → ${H.c('g', 'only BookPrinter changes')}. Moving to S3 → ${H.c('g', 'only a new BookStore implementation')}; <code>Book</code> is untouched in both cases.</p>`,
+    brute: {
+      why: `<p><code>Book</code> has three reasons to change: book data (domain), presentation (UI team) and persistence (infra team). Every UI tweak re-opens the class that infra depends on and vice versa; the file I/O also makes <code>Book</code> hard to unit test. This is a <b>Single Responsibility</b> violation.</p>`,
+      code: `class Book {
+    String title, author, text;
+    Book(String title, String author, String text) { this.title = title; this.author = author; this.text = text; }
+
+    void printToConsole() {                       // UI team's concern
+        System.out.println(title + " by " + author);
+        System.out.println(text);
+    }
+    void saveToFile(String path) throws IOException {   // infra team's concern
+        try (PrintWriter w = new PrintWriter(new FileWriter(path))) {
+            w.println(title); w.println(author); w.println(text);
+        }
+    }
+}`
+    },
+    mcq: { q: 'Which principle does <code>Book.saveToFile</code> most directly violate?', options: ['Single Responsibility', 'Liskov Substitution', 'Interface Segregation', 'None — books should save themselves'], answer: 0, explain: 'Persistence is a different actor\'s concern (infra) from the book\'s data and from printing (UI). Three actors → three reasons to change.' },
+    hints: [
+      `<p>Ask "who would request a change to each method?" — you will find three different answers.</p>`,
+      `<p>Keep <code>Book</code> as a record. Create <code>BookPrinter</code> for layout and a <code>BookStore</code> interface for persistence with a file implementation.</p>`,
+      `<p>The printer can return a <code>String</code> (easy to test) and let the caller print it. Storage gets an interface so S3 is just another implementation (that is DIP + OCP as a bonus).</p>`
+    ],
+    solution: {
+      approach: `<p><b>SRP: one class per actor.</b> <code>Book</code> becomes a record (pure data plus simple invariants). <code>BookPrinter</code> owns presentation and returns text, so it is trivially testable. <code>BookStore</code> is an interface; <code>FileBookStore</code> and later <code>S3BookStore</code> implement it. A layout change touches one class; a storage change adds one class.</p>`,
+      code: `record Book(String title, String author, String text) {
+    Book {
+        if (title == null || title.isBlank()) throw new IllegalArgumentException("title required");
+    }
+}
+
+class BookPrinter {                                   // UI team owns this
+    String render(Book b) { return b.title() + " by " + b.author() + "\\n" + b.text(); }
+}
+
+interface BookStore { void save(Book b); Optional<Book> load(String title); }   // infra team owns implementations
+
+class InMemoryBookStore implements BookStore {        // stands in for File/S3 in this demo
+    private final Map<String, Book> data = new HashMap<>();
+    public void save(Book b) { data.put(b.title(), b); }
+    public Optional<Book> load(String title) { return Optional.ofNullable(data.get(title)); }
+}
+
+class LibraryDemo {
+    public static void main(String[] args) {
+        Book b = new Book("SOLID 101", "Asha", "Small classes, clear roles.");
+        BookStore store = new InMemoryBookStore();
+        store.save(b);
+        System.out.println(new BookPrinter().render(store.load("SOLID 101").orElseThrow()));
+    }
+}`,
+      complexity: `<p>O(size of text) to render, O(1) average to save/load in the map. Change cost: 1 class per requirement instead of re-opening <code>Book</code>.</p>`,
+      followUps: ['Should <code>Book</code> have a <code>wordCount()</code> method, or is that another responsibility?', 'How would you add an HTML renderer without touching BookPrinter?']
+    }
+  });
+
+  practice.push({
+    title: 'Decoy ducks that cannot quack',
+    level: 'Easy', tags: ['LSP', 'inheritance', 'spot the violation'], companies: ['Microsoft', 'Adobe'],
+    statement: `<p>A game has <code>Duck</code> with <code>quack()</code> and <code>fly()</code>. <code>MallardDuck</code> does both. A wooden <code>DecoyDuck</code> extends <code>Duck</code> and throws <code>UnsupportedOperationException</code> from both methods. The "pond chorus" feature calls <code>quack()</code> on every duck and crashes when a decoy is in the pond. <b>Which principle is violated?</b> Redesign so the chorus can never receive a duck that cannot quack.</p>`,
+    constraints: `<p>Java 21. Decoys still appear in the pond list (they float). No <code>instanceof</code> in the chorus.</p>`,
+    example: `<p>Pond: [Mallard, Decoy, Rubber]. ${H.c('r', 'Before:')} chorus crashes at Decoy. ${H.c('g', 'After:')} chorus takes only <code>Quackable</code> things → "Quack", "Squeak"; the decoy is in the pond list but not in the chorus list.</p>`,
+    brute: {
+      why: `<p><code>DecoyDuck</code> cannot keep the promise of its parent (<code>quack()</code> makes a sound). Any code written for <code>Duck</code> breaks when handed a decoy — a <b>Liskov Substitution</b> violation. Fixing it with <code>instanceof DecoyDuck</code> in the chorus would also break OCP.</p>`,
+      code: `class Duck {
+    void quack() { System.out.println("Quack"); }
+    void fly() { System.out.println("Flap flap"); }
+}
+class MallardDuck extends Duck { }
+class DecoyDuck extends Duck {
+    @Override void quack() { throw new UnsupportedOperationException("wooden"); }
+    @Override void fly() { throw new UnsupportedOperationException("wooden"); }
+}
+class Chorus {
+    static void sing(List<Duck> pond) { pond.forEach(Duck::quack); }   // crashes on decoys
+}`
+    },
+    mcq: { q: 'What is the best fix?', options: ['Split capabilities into small interfaces (Floatable, Quackable, Flyable) and let each duck implement what it can', 'Catch the exception in the chorus', 'Make DecoyDuck.quack() print nothing', 'Add <code>if (d instanceof DecoyDuck) continue;</code>'], answer: 0, explain: 'An empty quack silently breaks the promise too (weakened postcondition). Capabilities as role interfaces let the type system keep decoys out of the chorus.' },
+    hints: [
+      `<p>What can <i>every</i> duck do? Float. What can only some do? Quack, fly. Put each capability in its own interface.</p>`,
+      `<p><code>interface Floatable</code>, <code>interface Quackable</code>, <code>interface Flyable</code>. Mallard implements all three; Decoy only Floatable; Rubber floats and squeaks.</p>`,
+      `<p>The chorus parameter type becomes <code>List&lt;? extends Quackable&gt;</code>. The pond can be <code>List&lt;Floatable&gt;</code>. No exceptions, no instanceof.</p>`
+    ],
+    solution: {
+      approach: `<p><b>LSP via capability interfaces (with an ISP flavour).</b> The base abstraction contains only what every duck can honour (floating). Quacking and flying become separate roles. The chorus asks for <code>Quackable</code>, so a decoy cannot be passed — the bug moves from runtime to compile time.</p>`,
+      code: `interface Floatable { String name(); }
+interface Quackable { String quack(); }
+interface Flyable { String fly(); }
+
+class MallardDuck implements Floatable, Quackable, Flyable {
+    public String name() { return "Mallard"; }
+    public String quack() { return "Quack"; }
+    public String fly() { return "Flap flap"; }
+}
+class RubberDuck implements Floatable, Quackable {
+    public String name() { return "Rubber"; }
+    public String quack() { return "Squeak"; }
+}
+class DecoyDuck implements Floatable {
+    public String name() { return "Decoy"; }
+}
+
+class Pond {
+    static List<String> chorus(List<? extends Quackable> singers) {
+        return singers.stream().map(Quackable::quack).toList();
+    }
+    public static void main(String[] args) {
+        MallardDuck m = new MallardDuck(); RubberDuck r = new RubberDuck(); DecoyDuck d = new DecoyDuck();
+        List<Floatable> pond = List.of(m, d, r);
+        System.out.println(pond.stream().map(Floatable::name).toList());   // all float
+        System.out.println(chorus(List.of(m, r)));                          // [Quack, Squeak]
+        // chorus(List.of(m, d));  // compile error: DecoyDuck is not Quackable
+    }
+}`,
+      complexity: `<p>O(n) for the chorus. Runtime crash risk from decoys: eliminated by the type system.</p>`,
+      followUps: ['Is an empty <code>quack()</code> body acceptable? Which LSP rule does it break?', 'How does the Strategy pattern (QuackBehavior) from Head First Design Patterns solve the same problem with composition?']
+    }
+  });
+
+  practice.push({
+    title: 'Area calculator with an instanceof chain',
+    level: 'Easy', tags: ['OCP', 'polymorphism'], companies: ['Amazon', 'Walmart'],
+    statement: `<p><code>AreaCalculator.total(List&lt;Object&gt; shapes)</code> loops and uses <code>instanceof Circle</code> / <code>instanceof Rectangle</code> to compute each area. Next sprint adds <code>Triangle</code>, then <code>Hexagon</code>. <b>Which principle is violated?</b> Refactor so new shapes never require editing <code>AreaCalculator</code>.</p>`,
+    constraints: `<p>Java 21. Dimensions are positive doubles. Unknown objects must not silently count as zero.</p>`,
+    example: `<p>[Circle(r=1), Rectangle(2,3)] → 3.14159… + 6 = ${H.c('g', '9.14')}. After adding Triangle(base 4, height 3) → +6 = ${H.c('g', '15.14')} with zero edits to the calculator.</p>`,
+    brute: {
+      why: `<p>Each new shape means editing <code>total()</code> and every other method with a similar chain (perimeter, draw). The fallback branch silently ignores unknown shapes — a hidden bug. This violates <b>Open/Closed</b>; the type <code>Object</code> also gives the compiler nothing to check.</p>`,
+      code: `class Circle { double r; Circle(double r) { this.r = r; } }
+class Rectangle { double w, h; Rectangle(double w, double h) { this.w = w; this.h = h; } }
+
+class AreaCalculator {
+    static double total(List<Object> shapes) {
+        double sum = 0;
+        for (Object s : shapes) {
+            if (s instanceof Circle c) sum += Math.PI * c.r * c.r;
+            else if (s instanceof Rectangle r) sum += r.w * r.h;
+            // Triangle? Hexagon? -> edit here, and in perimeter(), and in draw()...
+        }
+        return sum;
+    }
+}`
+    },
+    mcq: { q: 'Where should the formula for a triangle\'s area live after the refactor?', options: ['In the Triangle class itself', 'In AreaCalculator', 'In a ShapeUtils class', 'In the UI'], answer: 0, explain: 'Replace conditional with polymorphism: each shape knows its own area, so the calculator only calls <code>s.area()</code>.' },
+    hints: [
+      `<p>The varying behaviour is "how to compute area". Put it behind an interface method that every shape implements.</p>`,
+      `<p><code>interface Shape { double area(); }</code> and records <code>Circle</code>, <code>Rectangle</code>, <code>Triangle</code> implementing it.</p>`,
+      `<p>Change the list type to <code>List&lt;? extends Shape&gt;</code> so non-shapes cannot sneak in. Validate dimensions in compact record constructors.</p>`
+    ],
+    solution: {
+      approach: `<p><b>Replace conditional with polymorphism.</b> A <code>Shape</code> interface with <code>area()</code>; each shape is a small record that validates its dimensions. The calculator sums <code>area()</code> over <code>Shape</code>s and never changes again. The type parameter also fixes the "unknown object counts as zero" bug at compile time.</p>`,
+      code: `interface Shape { double area(); }
+
+record Circle(double r) implements Shape {
+    Circle { if (r <= 0) throw new IllegalArgumentException("radius > 0"); }
+    public double area() { return Math.PI * r * r; }
+}
+record Rectangle(double w, double h) implements Shape {
+    Rectangle { if (w <= 0 || h <= 0) throw new IllegalArgumentException("sides > 0"); }
+    public double area() { return w * h; }
+}
+record Triangle(double base, double height) implements Shape {      // added later, nothing edited
+    Triangle { if (base <= 0 || height <= 0) throw new IllegalArgumentException("> 0"); }
+    public double area() { return 0.5 * base * height; }
+}
+
+class AreaCalculator {
+    static double total(List<? extends Shape> shapes) {
+        return shapes.stream().mapToDouble(Shape::area).sum();
+    }
+    public static void main(String[] args) {
+        System.out.printf("%.2f%n", total(List.of(new Circle(1), new Rectangle(2, 3), new Triangle(4, 3))));  // 15.14
+    }
+}`,
+      complexity: `<p>O(n) over shapes. New shape: 1 new record, 0 edited files.</p>`,
+      followUps: ['If you keep adding <i>operations</i> (area, perimeter, draw, export) more often than shapes, would a sealed interface + pattern-matching switch be better? Why?', 'How would you add perimeter without breaking existing shape classes (default method? visitor?)']
+    }
+  });
+
+  practice.push({
+    title: 'The Car that builds its own petrol engine',
+    level: 'Easy', tags: ['DIP', 'dependency injection'], companies: ['Tata Motors', 'Bosch', 'Google'],
+    statement: `<p><code>Car</code> has a field <code>private final PetrolEngine engine = new PetrolEngine();</code> and <code>drive()</code> calls <code>engine.start()</code>. The company now builds electric and hybrid versions, and the test team wants to test <code>Car</code> without a real engine simulation (which takes seconds). <b>Which principle is violated?</b> Refactor so the same <code>Car</code> class works with any engine and can be tested with a fake.</p>`,
+    constraints: `<p>Java 21. A car must always have an engine (no nulls). Engine start may fail; <code>drive()</code> should report it.</p>`,
+    example: `<p><code>new Car(new ElectricMotor()).drive()</code> → ${H.c('g', '"silent whirr… driving"')}. <code>new Car(new FailingEngine()).drive()</code> in a test → ${H.c('y', '"engine failed to start"')}, no real simulation needed.</p>`,
+    brute: {
+      why: `<p>The high-level <code>Car</code> depends directly on the low-level <code>PetrolEngine</code> and even creates it. Supporting EVs means editing <code>Car</code> (or copy-pasting it into <code>ElectricCar</code>), and tests cannot swap the slow engine — a <b>Dependency Inversion</b> violation ("new is glue").</p>`,
+      code: `class PetrolEngine {
+    boolean start() {
+        System.out.println("crank... vroom (slow simulation)");
+        return true;
+    }
+}
+class Car {
+    private final PetrolEngine engine = new PetrolEngine();   // glued forever
+    String drive() { return engine.start() ? "driving" : "engine failed to start"; }
+}`
+    },
+    mcq: { q: 'Who should own the <code>Engine</code> interface?', options: ['The Car side (the high-level module that needs it)', 'The PetrolEngine package', 'A shared utils package', 'Nobody — use abstract classes only'], answer: 0, explain: 'In DIP the abstraction is shaped by and belongs to the client that uses it; engines plug into the car\'s "socket".' },
+    hints: [
+      `<p>What does <code>Car</code> really need? Only "something that can start". That is the abstraction.</p>`,
+      `<p>Create <code>interface Engine { boolean start(); String sound(); }</code>; pass it to <code>Car</code>'s constructor with <code>Objects.requireNonNull</code>.</p>`,
+      `<p>Write <code>PetrolEngine</code>, <code>ElectricMotor</code> and a test fake <code>FailingEngine</code>. Wire concrete engines in <code>main</code> (the composition root).</p>`
+    ],
+    solution: {
+      approach: `<p><b>Constructor injection behind a client-owned interface.</b> <code>Car</code> depends on <code>Engine</code>, receives it in its constructor and never names a concrete class. New engine types are new classes (OCP); tests pass fakes (fast, deterministic). <code>requireNonNull</code> keeps the invariant "a car always has an engine".</p>`,
+      code: `interface Engine { boolean start(); String sound(); }
+
+class PetrolEngine implements Engine {
+    public boolean start() { return true; }
+    public String sound() { return "vroom"; }
+}
+class ElectricMotor implements Engine {
+    public boolean start() { return true; }
+    public String sound() { return "silent whirr"; }
+}
+class FailingEngine implements Engine {          // test double
+    public boolean start() { return false; }
+    public String sound() { return "click"; }
+}
+
+class Car {
+    private final Engine engine;
+    Car(Engine engine) { this.engine = Objects.requireNonNull(engine, "engine"); }
+    String drive() { return engine.start() ? engine.sound() + "... driving" : "engine failed to start"; }
+
+    public static void main(String[] args) {
+        System.out.println(new Car(new PetrolEngine()).drive());
+        System.out.println(new Car(new ElectricMotor()).drive());
+        String r = new Car(new FailingEngine()).drive();
+        if (!r.equals("engine failed to start")) throw new AssertionError(r);
+        System.out.println("test ok: " + r);
+    }
+}`,
+      complexity: `<p>O(1). Adding a hybrid engine: 1 new class, <code>Car</code> untouched; tests no longer need the slow simulation.</p>`,
+      followUps: ['A hybrid uses both a petrol engine and a motor — how would you compose them (Composite pattern)?', 'Constructor vs setter injection here: which and why?']
+    }
+  });
+
+  /* ======================= PRACTICE: MEDIUM ======================= */
+  practice.push({
+    title: 'Fat CustomerRepository used by a read-only dashboard',
+    level: 'Medium', tags: ['ISP', 'CQRS', 'repository'], companies: ['Salesforce', 'Freshworks', 'Zoho'],
+    statement: `<p><code>CustomerRepository</code> has 8 methods: <code>findById</code>, <code>findAll</code>, <code>countByCity</code>, <code>save</code>, <code>delete</code>, <code>bulkImport</code>, <code>exportCsv</code>, <code>purgeInactive</code>. The analytics dashboard only reads and counts, but its unit tests must stub all 8 methods, and last week a bug let the dashboard call <code>purgeInactive()</code>. <b>Which principle is violated?</b> Split the interface so each client sees only what it needs, while one storage class can still serve everyone.</p>`,
+    constraints: `<p>Java 21. Keep one implementation class (<code>InMemoryCustomerStore</code>). The dashboard must not be able to call write or admin methods at compile time.</p>`,
+    example: `<p>Dashboard: <code>countByCity()</code> → ${H.c('g', '{Pune=2, Delhi=1}')}. Trying <code>reader.purgeInactive()</code> in dashboard code → ${H.c('r', 'compile error')} after the refactor. Dashboard test fakes 2 methods instead of 8.</p>`,
+    brute: {
+      why: `<p>Every client depends on all 8 methods (an <b>Interface Segregation</b> violation): read-only code can perform destructive operations, tests stub methods they never call, and a signature change to <code>bulkImport</code> forces the dashboard to rebuild and retest.</p>`,
+      code: `record Customer(String id, String city, boolean active) {}
+
+interface CustomerRepository {
+    Optional<Customer> findById(String id);
+    List<Customer> findAll();
+    Map<String, Long> countByCity();
+    void save(Customer c);
+    void delete(String id);
+    void bulkImport(List<Customer> cs);
+    String exportCsv();
+    int purgeInactive();
+}
+
+class Dashboard {
+    private final CustomerRepository repo;          // sees everything, including purgeInactive()
+    Dashboard(CustomerRepository repo) { this.repo = repo; }
+    String render() { return "Customers per city: " + repo.countByCity(); }
+}`
+    },
+    mcq: { q: 'How should the 8 methods be grouped?', options: ['By client role: reader (find/count), writer (save/delete), admin (bulk/export/purge)', 'Alphabetically into two interfaces', 'One interface per method', 'Keep one interface but add Javadoc warnings'], answer: 0, explain: 'ISP splits by who uses the methods. Three roles match three kinds of clients; one-method-per-interface would be needless fragmentation.' },
+    hints: [
+      `<p>List each client and the methods it calls: dashboard (findAll, countByCity), signup flow (save, findById), admin tool (bulkImport, exportCsv, purgeInactive, delete).</p>`,
+      `<p>Create <code>CustomerReader</code>, <code>CustomerWriter</code>, <code>CustomerAdmin</code>. One class implements all three; each client's constructor asks for one role.</p>`,
+      `<p>If a client needs two roles, accept both parameters or define a tiny combined interface. Make the dashboard test use a lambda-free tiny fake implementing only <code>CustomerReader</code>.</p>`
+    ],
+    solution: {
+      approach: `<p><b>Role interfaces from the client's point of view.</b> Reader, Writer and Admin interfaces; the store implements all three (high cohesion stays). The dashboard depends on <code>CustomerReader</code>, so destructive calls are impossible by type and its fake implements 3 methods. Later, the reader can be served from a read replica or cache without touching writers — CQRS at class level.</p>`,
+      code: `record Customer(String id, String city, boolean active) {}
+
+interface CustomerReader {
+    Optional<Customer> findById(String id);
+    List<Customer> findAll();
+    Map<String, Long> countByCity();
+}
+interface CustomerWriter { void save(Customer c); void delete(String id); }
+interface CustomerAdmin { void bulkImport(List<Customer> cs); String exportCsv(); int purgeInactive(); }
+
+class InMemoryCustomerStore implements CustomerReader, CustomerWriter, CustomerAdmin {
+    private final Map<String, Customer> data = new LinkedHashMap<>();
+    public Optional<Customer> findById(String id) { return Optional.ofNullable(data.get(id)); }
+    public List<Customer> findAll() { return List.copyOf(data.values()); }
+    public Map<String, Long> countByCity() {
+        Map<String, Long> m = new TreeMap<>();
+        data.values().forEach(c -> m.merge(c.city(), 1L, Long::sum));
+        return m;
+    }
+    public void save(Customer c) { data.put(c.id(), c); }
+    public void delete(String id) { data.remove(id); }
+    public void bulkImport(List<Customer> cs) { cs.forEach(this::save); }
+    public String exportCsv() {
+        StringBuilder sb = new StringBuilder("id,city,active\\n");
+        data.values().forEach(c -> sb.append(c.id()).append(',').append(c.city()).append(',').append(c.active()).append('\\n'));
+        return sb.toString();
+    }
+    public int purgeInactive() {
+        int before = data.size();
+        data.values().removeIf(c -> !c.active());
+        return before - data.size();
+    }
+}
+
+class Dashboard {
+    private final CustomerReader reader;             // read-only by type
+    Dashboard(CustomerReader reader) { this.reader = reader; }
+    String render() { return "Customers per city: " + reader.countByCity(); }
+}
+class AdminTool {
+    private final CustomerAdmin admin;
+    AdminTool(CustomerAdmin admin) { this.admin = admin; }
+    String nightlyCleanup() { return "purged " + admin.purgeInactive(); }
+}
+
+class Wiring {
+    public static void main(String[] args) {
+        InMemoryCustomerStore store = new InMemoryCustomerStore();
+        store.bulkImport(List.of(new Customer("1", "Pune", true), new Customer("2", "Pune", true), new Customer("3", "Delhi", false)));
+        System.out.println(new Dashboard(store).render());       // {Delhi=1, Pune=2}
+        System.out.println(new AdminTool(store).nightlyCleanup()); // purged 1
+        System.out.println(new Dashboard(store).render());       // {Pune=2}
+    }
+}`,
+      complexity: `<p>Same O(1)/O(n) operations as before. Dashboard dependency surface: 8 methods → 3; destructive calls from read-only code: impossible.</p>`,
+      followUps: ['How would Spring let you inject the same bean as three different interface types?', 'The reader should hit a read replica: where does that decision live?']
+    }
+  });
+
+  practice.push({
+    title: 'Shipping cost calculator for many carriers',
+    level: 'Medium', tags: ['OCP', 'SRP', 'strategy'], companies: ['Flipkart', 'Delhivery', 'Amazon'],
+    statement: `<p><code>ShippingCalculator.cost(carrier, weightKg, region)</code> uses nested if/else: BlueDart = 50 + 20/kg, Delhivery = 40 + 25/kg, IndiaPost = 30 + 15/kg, and every carrier adds a <b>region surcharge</b> (METRO 0%, TIER2 10%, REMOTE 35%). Business adds carriers every quarter and sometimes changes surcharges. <b>Identify the violations</b> and redesign so a new carrier is a new class and surcharge changes touch one class.</p>`,
+    constraints: `<p>Java 21. Weight &gt; 0 and ≤ 50 kg. Unknown carrier → clear exception. Return cost rounded to 2 decimals (use <code>BigDecimal</code> in real code).</p>`,
+    example: `<p>BlueDart, 2 kg, TIER2 → (50 + 40) × 1.10 = ${H.c('g', '99.00')}. IndiaPost, 1 kg, REMOTE → (30 + 15) × 1.35 = ${H.c('g', '60.75')}. A new carrier "Shadowfax" = one new class.</p>`,
+    brute: {
+      why: `<p><b>OCP:</b> each carrier edits the if/else. <b>SRP:</b> carrier pricing (owned by partnerships team) and regional surcharges (owned by finance) are tangled in one method, so a surcharge change re-tests every carrier. The surcharge logic is also duplicated inside each branch.</p>`,
+      code: `class ShippingCalculator {
+    double cost(String carrier, double kg, String region) {
+        double base;
+        if (carrier.equals("BLUEDART")) base = 50 + 20 * kg;
+        else if (carrier.equals("DELHIVERY")) base = 40 + 25 * kg;
+        else if (carrier.equals("INDIAPOST")) base = 30 + 15 * kg;
+        else throw new IllegalArgumentException(carrier);
+        if (region.equals("TIER2")) base *= 1.10;
+        else if (region.equals("REMOTE")) base *= 1.35;
+        return Math.round(base * 100) / 100.0;
+    }
+}`
+    },
+    mcq: { q: 'Finance changes REMOTE surcharge to 40%. In the good design, which class changes?', options: ['Only the surcharge policy', 'Every carrier class', 'The calculator and every carrier', 'The Region enum and the calculator'], answer: 0, explain: 'Carrier rates and regional surcharges are separate responsibilities with separate owners, so they live in separate classes.' },
+    hints: [
+      `<p>There are two independent axes of change: carriers and regional surcharges. Each deserves its own abstraction.</p>`,
+      `<p><code>interface CarrierRate { String code(); double baseCost(double kg); }</code> plus a <code>SurchargePolicy</code> (enum-backed map). The calculator combines them.</p>`,
+      `<p>Register carriers from a list into a map (fail on duplicates). Validate weight once in the calculator. Use an <code>enum Region</code> so typos are compile errors.</p>`
+    ],
+    solution: {
+      approach: `<p><b>Two strategies, one orchestrator.</b> <code>CarrierRate</code> implementations hold each carrier's formula (OCP: add a class per carrier). <code>SurchargePolicy</code> owns the regional multipliers (SRP: finance's rules in one place). <code>ShippingCalculator</code> validates, looks up the carrier, applies the surcharge and rounds. Carriers and policy are injected, so tests can use fixed fakes.</p>`,
+      code: `enum Region { METRO, TIER2, REMOTE }
+
+interface CarrierRate { String code(); double baseCost(double kg); }
+
+class BlueDart implements CarrierRate { public String code() { return "BLUEDART"; } public double baseCost(double kg) { return 50 + 20 * kg; } }
+class Delhivery implements CarrierRate { public String code() { return "DELHIVERY"; } public double baseCost(double kg) { return 40 + 25 * kg; } }
+class IndiaPost implements CarrierRate { public String code() { return "INDIAPOST"; } public double baseCost(double kg) { return 30 + 15 * kg; } }
+class Shadowfax implements CarrierRate { public String code() { return "SHADOWFAX"; } public double baseCost(double kg) { return 35 + 18 * kg; } }   // new: zero edits elsewhere
+
+class SurchargePolicy {                                       // finance owns this
+    private final Map<Region, Double> multiplier = new EnumMap<>(Map.of(Region.METRO, 1.00, Region.TIER2, 1.10, Region.REMOTE, 1.35));
+    double apply(Region r, double amount) { return amount * multiplier.get(r); }
+}
+
+class ShippingCalculator {
+    private final Map<String, CarrierRate> carriers = new HashMap<>();
+    private final SurchargePolicy surcharges;
+
+    ShippingCalculator(List<CarrierRate> rates, SurchargePolicy surcharges) {
+        rates.forEach(r -> { if (carriers.putIfAbsent(r.code(), r) != null) throw new IllegalArgumentException("dup " + r.code()); });
+        this.surcharges = surcharges;
+    }
+
+    double cost(String carrier, double kg, Region region) {
+        if (kg <= 0 || kg > 50) throw new IllegalArgumentException("weight must be in (0, 50]");
+        CarrierRate rate = carriers.get(carrier);
+        if (rate == null) throw new IllegalArgumentException("unknown carrier " + carrier);
+        return Math.round(surcharges.apply(region, rate.baseCost(kg)) * 100) / 100.0;
+    }
+
+    public static void main(String[] args) {
+        ShippingCalculator c = new ShippingCalculator(
+                List.of(new BlueDart(), new Delhivery(), new IndiaPost(), new Shadowfax()), new SurchargePolicy());
+        System.out.println(c.cost("BLUEDART", 2, Region.TIER2));   // 99.0
+        System.out.println(c.cost("INDIAPOST", 1, Region.REMOTE)); // 60.75
+        System.out.println(c.cost("SHADOWFAX", 3, Region.METRO));  // 89.0
+    }
+}`,
+      complexity: `<p>O(1) per quote. New carrier: 1 class + 1 list entry. Surcharge change: 1 class. Neither re-tests the other axis.</p>`,
+      followUps: ['Some carriers do not serve REMOTE regions — where does that rule go without breaking LSP?', 'Rates come from a partner API daily: how does <code>CarrierRate</code> stay the same while data changes?', 'Pick the cheapest carrier for a parcel: new class or method?']
+    }
+  });
+
+  practice.push({
+    title: 'Fleet refuelling breaks on electric cars',
+    level: 'Medium', tags: ['LSP', 'composition', 'ISP'], companies: ['Ola', 'Uber', 'Tesla'],
+    statement: `<p>A fleet app has <code>Vehicle</code> with <code>refuel(double litres)</code> and <code>range()</code>. <code>ElectricCar extends Vehicle</code> overrides <code>refuel</code> to throw because it charges instead. The nightly <code>FleetService.topUpAll()</code> refuels every vehicle and crashes on the first EV. Redesign so <b>every vehicle can be topped up through one honest contract</b>, EVs and petrol cars both work in the nightly job, and adding a CNG car or hydrogen truck needs no change to the job.</p>`,
+    constraints: `<p>Java 21. Fuel tank capacity in litres, battery capacity in kWh. Range = energy × efficiency. No <code>instanceof</code> in the job.</p>`,
+    example: `<p>Fleet: PetrolCar(tank 40 L, 15 km/L, 10 L left), ElectricCar(60 kWh, 6 km/kWh, 20 kWh left). <code>topUpAll()</code> → petrol tank to 40 L (range 600 km), battery to 60 kWh (range 360 km). ${H.c('g', 'No crash.')}</p>`,
+    brute: {
+      why: `<p><code>ElectricCar</code> cannot honour <code>refuel(litres)</code> — the parent contract is shaped around petrol. The override throws (surprise exception), so every <code>Vehicle</code> client is at risk: a <b>Liskov</b> violation caused by an abstraction that leaked a detail (litres) into the base type.</p>`,
+      code: `class Vehicle {
+    protected double fuelLitres, tankLitres, kmPerLitre;
+    Vehicle(double tank, double kmpl, double current) { tankLitres = tank; kmPerLitre = kmpl; fuelLitres = current; }
+    void refuel(double litres) { fuelLitres = Math.min(tankLitres, fuelLitres + litres); }
+    double range() { return fuelLitres * kmPerLitre; }
+}
+class ElectricCar extends Vehicle {
+    ElectricCar() { super(0, 0, 0); }
+    @Override void refuel(double litres) { throw new UnsupportedOperationException("EVs charge!"); }
+}
+class FleetService {
+    static void topUpAll(List<Vehicle> fleet) {
+        for (Vehicle v : fleet) v.refuel(v.tankLitres);   // boom on the first EV
+    }
+}`
+    },
+    mcq: { q: 'What is the root cause of this LSP violation?', options: ['The base type exposes a petrol-specific detail (litres) as if every vehicle had it', 'ElectricCar forgot to call super', 'refuel should be static', 'Java lacks multiple inheritance'], answer: 0, explain: 'The abstraction is wrong. A neutral contract ("top up to full", "range") that every energy source can honour fixes the hierarchy.' },
+    hints: [
+      `<p>What does the nightly job really want? "Make every vehicle full." Litres vs kWh is a detail of the energy source.</p>`,
+      `<p>Use composition: <code>interface EnergySource { void fillUp(); double rangeKm(); }</code> with <code>FuelTank</code> and <code>Battery</code>. A <code>Vehicle</code> <i>has</i> an energy source.</p>`,
+      `<p>Petrol-only operations like <code>refuel(litres)</code> live on <code>FuelTank</code>, not on Vehicle. A hybrid could hold two sources (composite). The job calls <code>v.energy().fillUp()</code>.</p>`
+    ],
+    solution: {
+      approach: `<p><b>Fix the abstraction, prefer composition.</b> Every vehicle has an <code>EnergySource</code> whose contract (<code>fillUp()</code>, <code>rangeKm()</code>) every implementation can keep. Unit-specific operations stay on the concrete source. The job depends only on the honest contract, so EVs, CNG or hydrogen all work. A <code>HybridSource</code> composite shows how the design extends without touching the job.</p>`,
+      code: `interface EnergySource { void fillUp(); double rangeKm(); }
+
+class FuelTank implements EnergySource {
+    private final double capacityL, kmPerL; private double litres;
+    FuelTank(double capacityL, double kmPerL, double litres) { this.capacityL = capacityL; this.kmPerL = kmPerL; this.litres = litres; }
+    void add(double l) { if (l <= 0) throw new IllegalArgumentException(); litres = Math.min(capacityL, litres + l); }   // petrol-specific
+    public void fillUp() { litres = capacityL; }
+    public double rangeKm() { return litres * kmPerL; }
+}
+class Battery implements EnergySource {
+    private final double capacityKwh, kmPerKwh; private double kwh;
+    Battery(double capacityKwh, double kmPerKwh, double kwh) { this.capacityKwh = capacityKwh; this.kmPerKwh = kmPerKwh; this.kwh = kwh; }
+    public void fillUp() { kwh = capacityKwh; }
+    public double rangeKm() { return kwh * kmPerKwh; }
+}
+class HybridSource implements EnergySource {          // composite: still honours the contract
+    private final List<EnergySource> parts;
+    HybridSource(EnergySource... parts) { this.parts = List.of(parts); }
+    public void fillUp() { parts.forEach(EnergySource::fillUp); }
+    public double rangeKm() { return parts.stream().mapToDouble(EnergySource::rangeKm).sum(); }
+}
+
+record Vehicle(String plate, EnergySource energy) {}
+
+class FleetService {
+    static void topUpAll(List<Vehicle> fleet) { fleet.forEach(v -> v.energy().fillUp()); }
+
+    public static void main(String[] args) {
+        List<Vehicle> fleet = List.of(
+                new Vehicle("MH12-P", new FuelTank(40, 15, 10)),
+                new Vehicle("MH12-E", new Battery(60, 6, 20)),
+                new Vehicle("MH12-H", new HybridSource(new FuelTank(30, 20, 5), new Battery(10, 7, 2))));
+        topUpAll(fleet);
+        fleet.forEach(v -> System.out.println(v.plate() + " range " + v.energy().rangeKm() + " km"));
+    }
+}`,
+      complexity: `<p>O(n) over the fleet. New energy type = 1 class; the job never changes and never throws for a vehicle type.</p>`,
+      followUps: ['Charging takes hours but refuelling takes minutes — how would you model scheduling without breaking the contract?', 'Why is composition (Vehicle has-an EnergySource) better here than more subclasses (PetrolCar, ElectricCar, HybridCar)?']
+    }
+  });
+
+  practice.push({
+    title: 'Coupon validation hard-wired to a singleton DB and the system clock',
+    level: 'Medium', tags: ['DIP', 'testability', 'Clock'], companies: ['Swiggy', 'Myntra', 'Shopify'],
+    statement: `<p><code>CouponService.apply(code, cartTotal)</code> fetches the coupon with <code>CouponDb.getInstance().find(code)</code> and checks expiry with <code>LocalDate.now()</code>. Rules: coupon must exist, not be expired, cart ≥ minimum; discount = percent of cart capped at <code>maxOff</code>. QA cannot test "expires today vs yesterday" reliably and every test needs the shared DB. Refactor using DIP and write boundary tests in <code>main</code>.</p>`,
+    constraints: `<p>Java 21, no mocking libraries. Expiry date is inclusive (valid through the end of that day). Return the discount amount (0 if not applicable) and a reason.</p>`,
+    example: `<p>Coupon SAVE20: 20%, max 150, min cart 500, expires 2026-03-31. Cart 1000 on 2026-03-31 → ${H.c('g', '150 (capped)')}. Same on 2026-04-01 → ${H.c('r', '0 (expired)')}. Cart 400 → ${H.c('y', '0 (below minimum)')}.</p>`,
+    brute: {
+      why: `<p>Two hidden dependencies: a global singleton (shared mutable state, cannot substitute) and the wall clock (non-deterministic). The business rule cannot be tested in isolation, tests interfere with each other through the singleton, and midnight-boundary bugs slip through — a <b>Dependency Inversion</b> violation.</p>`,
+      code: `record Coupon(String code, int percent, double maxOff, double minCart, LocalDate expires) {}
+
+class CouponDb {                                          // global singleton
+    private static final CouponDb INSTANCE = new CouponDb();
+    private final Map<String, Coupon> rows = new HashMap<>();
+    static CouponDb getInstance() { return INSTANCE; }
+    Coupon find(String code) { return rows.get(code); }
+}
+
+class CouponService {
+    double apply(String code, double cart) {
+        Coupon c = CouponDb.getInstance().find(code);     // hidden dependency 1
+        if (c == null || LocalDate.now().isAfter(c.expires()) || cart < c.minCart()) return 0;   // hidden dependency 2
+        return Math.min(cart * c.percent() / 100.0, c.maxOff());
+    }
+}`
+    },
+    mcq: { q: 'Why inject <code>java.time.Clock</code> instead of calling <code>LocalDate.now()</code>?', options: ['So tests can fix "now" to any instant and zone deterministically', 'Because LocalDate.now() is deprecated', 'Clock is faster', 'To avoid time zones entirely'], answer: 0, explain: 'Clock is the JDK\'s built-in abstraction for time. <code>Clock.fixed</code> makes expiry boundaries testable; production passes <code>Clock.system(zone)</code>.' },
+    hints: [
+      `<p>List everything the rule reads that is not a parameter: the coupon store and the current date. Each becomes an injected dependency.</p>`,
+      `<p><code>interface CouponRepository { Optional&lt;Coupon&gt; find(String code); }</code> + <code>Clock</code> in the constructor. Return a small result record with amount + reason.</p>`,
+      `<p>Boundary tests: expiry day itself (valid), next day (expired), cart exactly at minimum (valid), cart just below, discount exactly at the cap. Use <code>Clock.fixed(..., ZoneId.of("Asia/Kolkata"))</code>.</p>`
+    ],
+    solution: {
+      approach: `<p><b>Inject the store and the clock.</b> <code>CouponService</code> depends on a domain-owned <code>CouponRepository</code> and on <code>Clock</code>. The rule is unchanged but now deterministic and isolated: tests construct an in-memory repo and a fixed clock per case, so they cannot interfere. The result record explains <i>why</i> a coupon failed — useful for UI and logs.</p>`,
+      code: `record Coupon(String code, int percent, double maxOff, double minCart, LocalDate expires) {}
+record CouponResult(double discount, String reason) {}
+
+interface CouponRepository { Optional<Coupon> find(String code); }
+
+class InMemoryCoupons implements CouponRepository {
+    private final Map<String, Coupon> rows = new HashMap<>();
+    InMemoryCoupons(Coupon... cs) { for (Coupon c : cs) rows.put(c.code(), c); }
+    public Optional<Coupon> find(String code) { return Optional.ofNullable(rows.get(code)); }
+}
+
+class CouponService {
+    private final CouponRepository repo;
+    private final Clock clock;
+    CouponService(CouponRepository repo, Clock clock) { this.repo = repo; this.clock = clock; }
+
+    CouponResult apply(String code, double cart) {
+        Optional<Coupon> found = repo.find(code);
+        if (found.isEmpty()) return new CouponResult(0, "unknown coupon");
+        Coupon c = found.get();
+        if (LocalDate.now(clock).isAfter(c.expires())) return new CouponResult(0, "expired");
+        if (cart < c.minCart()) return new CouponResult(0, "below minimum " + c.minCart());
+        return new CouponResult(Math.min(cart * c.percent() / 100.0, c.maxOff()), "ok");
+    }
+}
+
+class CouponTests {
+    static final ZoneId IST = ZoneId.of("Asia/Kolkata");
+    static CouponService at(String date) {
+        Clock fixed = Clock.fixed(LocalDate.parse(date).atTime(23, 59).atZone(IST).toInstant(), IST);
+        return new CouponService(new InMemoryCoupons(new Coupon("SAVE20", 20, 150, 500, LocalDate.of(2026, 3, 31))), fixed);
+    }
+    static void expect(CouponResult r, double amount, String reason) {
+        if (r.discount() != amount || !r.reason().startsWith(reason)) throw new AssertionError(r);
+        System.out.println("ok " + r);
+    }
+    public static void main(String[] args) {
+        expect(at("2026-03-31").apply("SAVE20", 1000), 150, "ok");        // last valid day, capped
+        expect(at("2026-04-01").apply("SAVE20", 1000), 0, "expired");
+        expect(at("2026-03-01").apply("SAVE20", 500), 100, "ok");         // exactly at minimum
+        expect(at("2026-03-01").apply("SAVE20", 499.99), 0, "below");
+        expect(at("2026-03-01").apply("NOPE", 1000), 0, "unknown");
+    }
+}`,
+      complexity: `<p>O(1) per application. Tests: 5 deterministic boundary cases in milliseconds, no shared DB, no dependence on the real date.</p>`,
+      followUps: ['Per-user usage limits ("once per user") need storage of redemptions — new port or extend CouponRepository? (think ISP)', 'Why are singletons with global state considered a DIP/testability smell, and when is a singleton still fine?']
+    }
+  });
+
+  practice.push({
+    title: 'Invoice that calculates, taxes by country and prints',
+    level: 'Medium', tags: ['SRP', 'OCP', 'tax'], companies: ['Stripe', 'Chargebee', 'SAP'],
+    statement: `<p><code>Invoice</code> holds line items and has <code>total()</code> (which includes a <code>switch</code> on country: IN 18% GST, UK 20% VAT, US 0% at federal level), and <code>print()</code> which formats a text invoice. The company is launching in Germany (19%) and Singapore (9%), and the design team wants a new layout. <b>Name both violated principles</b> and refactor so adding a country and changing the layout each touch one place.</p>`,
+    constraints: `<p>Java 21. Money as <code>BigDecimal</code> with 2-decimal HALF_UP rounding. Unknown country → exception at invoice creation, not at print time.</p>`,
+    example: `<p>Items: 2 × 100.00 + 1 × 50.00 = 250.00. Country IN → tax 45.00, total ${H.c('g', '295.00')}. Country DE (added as new class) → tax 47.50, total ${H.c('g', '297.50')}.</p>`,
+    brute: {
+      why: `<p><b>SRP:</b> one class serves finance (tax rules), sales (line items) and design (layout). <b>OCP:</b> every new country edits the switch inside <code>total()</code>. A layout tweak re-opens the class that computes money — risky.</p>`,
+      code: `class Invoice {
+    private final String country;
+    private final List<double[]> lines = new ArrayList<>();   // {qty, unitPrice}
+    Invoice(String country) { this.country = country; }
+    void add(int qty, double price) { lines.add(new double[]{qty, price}); }
+
+    double total() {
+        double sub = 0;
+        for (double[] l : lines) sub += l[0] * l[1];
+        switch (country) {
+            case "IN": return sub * 1.18;
+            case "UK": return sub * 1.20;
+            case "US": return sub;
+            default: throw new IllegalArgumentException(country);
+        }
+    }
+    void print() { System.out.println("INVOICE (" + country + ") total = " + total()); }
+}`
+    },
+    mcq: { q: 'Where should "Germany charges 19%" be written after the refactor?', options: ['In a new GermanVat class implementing TaxPolicy', 'In the Invoice switch', 'In the InvoicePrinter', 'In a properties file read by Invoice.print()'], answer: 0, explain: 'Tax rules are their own responsibility with their own axis of change (countries), so each country is a TaxPolicy implementation.' },
+    hints: [
+      `<p>Three responsibilities: line items and subtotal (sales), tax by country (finance), formatting (design).</p>`,
+      `<p><code>record LineItem</code>, <code>Invoice</code> (lines + subtotal + injected <code>TaxPolicy</code>), <code>interface TaxPolicy { String country(); BigDecimal taxOn(BigDecimal subtotal); }</code>, <code>InvoicePrinter</code>.</p>`,
+      `<p>A <code>TaxPolicies</code> registry resolves the country when the invoice is created (fail fast). Use <code>setScale(2, RoundingMode.HALF_UP)</code> once, on the tax amount.</p>`
+    ],
+    solution: {
+      approach: `<p><b>Split by actor, open the country axis.</b> <code>Invoice</code> owns items and the subtotal and receives its <code>TaxPolicy</code> (resolved at creation, so an unknown country fails immediately). Each country is a class (or a data-driven <code>FlatRateTax</code>) registered in <code>TaxPolicies</code>. <code>InvoicePrinter</code> only formats. A new layout = new printer; a new country = new registry entry.</p>`,
+      code: `record LineItem(String name, int qty, BigDecimal unitPrice) {
+    BigDecimal amount() { return unitPrice.multiply(BigDecimal.valueOf(qty)); }
+}
+
+interface TaxPolicy { String country(); BigDecimal taxOn(BigDecimal subtotal); }
+
+record FlatRateTax(String country, BigDecimal rate) implements TaxPolicy {     // data-driven policy
+    public BigDecimal taxOn(BigDecimal sub) { return sub.multiply(rate).setScale(2, RoundingMode.HALF_UP); }
+}
+
+class TaxPolicies {
+    private final Map<String, TaxPolicy> byCountry = new HashMap<>();
+    TaxPolicies(List<TaxPolicy> all) { all.forEach(p -> byCountry.put(p.country(), p)); }
+    TaxPolicy forCountry(String c) {
+        TaxPolicy p = byCountry.get(c);
+        if (p == null) throw new IllegalArgumentException("no tax policy for " + c);
+        return p;
+    }
+}
+
+class Invoice {
+    private final List<LineItem> items = new ArrayList<>();
+    private final TaxPolicy tax;
+    Invoice(TaxPolicy tax) { this.tax = tax; }
+    void add(LineItem i) { items.add(i); }
+    List<LineItem> items() { return List.copyOf(items); }
+    String country() { return tax.country(); }
+    BigDecimal subtotal() { return items.stream().map(LineItem::amount).reduce(BigDecimal.ZERO, BigDecimal::add); }
+    BigDecimal taxAmount() { return tax.taxOn(subtotal()); }
+    BigDecimal total() { return subtotal().add(taxAmount()).setScale(2, RoundingMode.HALF_UP); }
+}
+
+class InvoicePrinter {                                        // design team owns layout
+    String render(Invoice inv) {
+        StringBuilder sb = new StringBuilder("INVOICE [" + inv.country() + "]\\n");
+        inv.items().forEach(i -> sb.append(String.format("%-8s x%d %10s%n", i.name(), i.qty(), i.amount())));
+        return sb.append("Tax: ").append(inv.taxAmount()).append("\\nTotal: ").append(inv.total()).toString();
+    }
+}
+
+class InvoiceDemo {
+    public static void main(String[] args) {
+        TaxPolicies taxes = new TaxPolicies(List.of(
+                new FlatRateTax("IN", new BigDecimal("0.18")), new FlatRateTax("UK", new BigDecimal("0.20")),
+                new FlatRateTax("US", BigDecimal.ZERO), new FlatRateTax("DE", new BigDecimal("0.19")),
+                new FlatRateTax("SG", new BigDecimal("0.09"))));
+        Invoice inv = new Invoice(taxes.forCountry("DE"));
+        inv.add(new LineItem("Pen", 2, new BigDecimal("100.00")));
+        inv.add(new LineItem("Ink", 1, new BigDecimal("50.00")));
+        System.out.println(new InvoicePrinter().render(inv));   // Tax 47.50, Total 297.50
+    }
+}`,
+      complexity: `<p>O(items) per total. New country: one registry entry (or one class for complex rules like US state taxes). New layout: one printer class.</p>`,
+      followUps: ['US sales tax depends on state and product category — how does TaxPolicy\'s signature need to evolve (pass the Invoice or a TaxContext)?', 'Should Invoice store the computed tax at issue time? (hint: legal immutability of issued invoices)']
+    }
+  });
+
+  practice.push({
+    title: 'A logger with if-chains for levels and destinations',
+    level: 'Medium', tags: ['OCP', 'SRP', 'DIP', 'logging'], companies: ['Atlassian', 'Datadog', 'Oracle'],
+    statement: `<p>A home-grown <code>Logger.log(level, msg)</code> checks a string config <code>"console"</code>/<code>"file"</code> with if/else, filters levels with string comparisons, and formats lines itself. Teams want JSON output, a Kafka destination and multiple destinations at once. <b>Identify the violations</b> and design a small logging library where formats and destinations plug in, the minimum level is configurable, and tests can capture output.</p>`,
+    constraints: `<p>Java 21. Levels DEBUG &lt; INFO &lt; WARN &lt; ERROR. One failing destination must not stop others. Keep it single-threaded for this exercise.</p>`,
+    example: `<p>Min level INFO, appenders [console(text), memory(json)]. <code>debug("x")</code> → nothing. <code>warn("disk 91%")</code> → console: <code>WARN disk 91%</code>; memory: <code>{"level":"WARN","msg":"disk 91%"}</code>.</p>`,
+    brute: {
+      why: `<p><b>OCP:</b> every destination or format edits <code>log()</code>. <b>SRP:</b> filtering, formatting and writing are mixed. <b>DIP:</b> the logger creates file writers itself, so tests must read files from disk. String levels also allow typos ("WARNING") that silently never log.</p>`,
+      code: `class Logger {
+    private final String destination;   // "console" or "file"
+    private final String minLevel;
+    Logger(String destination, String minLevel) { this.destination = destination; this.minLevel = minLevel; }
+
+    void log(String level, String msg) throws IOException {
+        List<String> order = List.of("DEBUG", "INFO", "WARN", "ERROR");
+        if (order.indexOf(level) < order.indexOf(minLevel)) return;
+        String line = java.time.LocalTime.now() + " " + level + " " + msg;
+        if (destination.equals("console")) System.out.println(line);
+        else if (destination.equals("file")) {
+            try (FileWriter w = new FileWriter("app.log", true)) { w.write(line + "\\n"); }
+        }
+    }
+}`
+    },
+    mcq: { q: 'Which split mirrors real logging frameworks (Logback/Log4j)?', options: ['Logger (level filter) → Appender (destination) → Layout (format)', 'One Logger subclass per destination', 'A static LogUtils class', 'Separate loggers per level'], answer: 0, explain: 'Frameworks separate what/whether to log, where it goes and how it looks — each an independent axis of change.' },
+    hints: [
+      `<p>Three axes of change: which messages pass (level), how a line looks (format), where it goes (destination). Each becomes an abstraction.</p>`,
+      `<p><code>enum Level</code>; <code>interface LogFormat { String format(Level l, String msg); }</code>; <code>interface Appender { void append(String line); }</code>; Logger takes a list of (format, appender) pairs.</p>`,
+      `<p>Wrap each append in try/catch so one broken destination does not stop others. A <code>MemoryAppender</code> collecting lines makes testing trivial.</p>`
+    ],
+    solution: {
+      approach: `<p><b>Separate filter, format and destination; inject them.</b> <code>Level</code> is an enum (typos become compile errors). <code>LogFormat</code> and <code>Appender</code> are tiny interfaces; a <code>Sink</code> pairs them so each destination can have its own format. <code>Logger</code> filters by level and fans out to sinks, isolating failures. JSON or Kafka support = new classes only; tests use <code>MemoryAppender</code>.</p>`,
+      code: `enum Level { DEBUG, INFO, WARN, ERROR }
+
+interface LogFormat { String format(Level level, String msg); }
+interface Appender { void append(String line); }
+record Sink(LogFormat format, Appender appender) {}
+
+class TextFormat implements LogFormat { public String format(Level l, String m) { return l + " " + m; } }
+class JsonFormat implements LogFormat {
+    public String format(Level l, String m) { return "{\\"level\\":\\"" + l + "\\",\\"msg\\":\\"" + m.replace("\\"", "\\\\\\"") + "\\"}"; }
+}
+class ConsoleAppender implements Appender { public void append(String line) { System.out.println(line); } }
+class MemoryAppender implements Appender {
+    final List<String> lines = new ArrayList<>();
+    public void append(String line) { lines.add(line); }
+}
+class BrokenAppender implements Appender { public void append(String line) { throw new IllegalStateException("disk full"); } }
+
+class Logger {
+    private final Level min;
+    private final List<Sink> sinks;
+    Logger(Level min, List<Sink> sinks) { this.min = min; this.sinks = List.copyOf(sinks); }
+
+    void log(Level level, String msg) {
+        if (level.compareTo(min) < 0) return;
+        for (Sink s : sinks) {
+            try { s.appender().append(s.format().format(level, msg)); }
+            catch (RuntimeException e) { System.err.println("appender failed: " + e.getMessage()); }   // isolate failures
+        }
+    }
+    void debug(String m) { log(Level.DEBUG, m); }
+    void warn(String m) { log(Level.WARN, m); }
+
+    public static void main(String[] args) {
+        MemoryAppender mem = new MemoryAppender();
+        Logger log = new Logger(Level.INFO, List.of(
+                new Sink(new TextFormat(), new ConsoleAppender()),
+                new Sink(new JsonFormat(), new BrokenAppender()),
+                new Sink(new JsonFormat(), mem)));
+        log.debug("ignored");
+        log.warn("disk 91%");
+        System.out.println(mem.lines);   // [{"level":"WARN","msg":"disk 91%"}]
+    }
+}`,
+      complexity: `<p>O(sinks) per log call. New format or destination: 1 class, 0 edits. Tests read <code>MemoryAppender.lines</code> instead of files.</p>`,
+      followUps: ['Make appenders asynchronous with a bounded queue — what happens when it is full (drop, block)?', 'Add per-package log levels (com.shop.payment=DEBUG): which class changes?', 'How does SLF4J use DIP so libraries do not depend on a specific logging backend?']
+    }
+  });
+
+  /* ======================= PRACTICE: HARD ======================= */
+  practice.push({
+    title: 'Parking lot exit flow: refactor a God class',
+    level: 'Hard', tags: ['SOLID', 'parking lot', 'machine coding'], companies: ['Amazon', 'Flipkart', 'Uber', 'Microsoft'],
+    statement: `<p>A parking lot's <code>ParkingLot</code> class tracks free spots per vehicle type, issues tickets, computes fees with a <code>switch</code> on vehicle type, charges via <code>new CardTerminal()</code> or cash, reads the time with <code>System.currentTimeMillis()</code>, and prints a receipt. New requirements: EV spots with a charging fee, weekend pricing, UPI payments, and fast unit tests. <b>Write the findings (which principle, where) and implement a SOLID design</b> for park → exit → pay → receipt.</p>`,
+    constraints: `<p>Java 21. Vehicle types: BIKE, CAR, EV, TRUCK. Pricing: first hour flat, then per started hour (BIKE 10/5, CAR 30/20, TRUCK 60/40; EV = CAR rate + 15 per hour charging). Weekend: +25%. Lot full → reject park. Paying twice for one ticket → reject.</p>`,
+    example: `<p>CAR parks Sat 10:00, exits 12:30 → hours = 3 (started hours) → 30 + 2×20 = 70 → weekend ×1.25 = ${H.c('g', '87.50')}. EV, Mon 09:00–10:00 → 30 + 15 = ${H.c('g', '45.00')}. Third car when 2 car spots exist → ${H.c('r', 'rejected: no spot')}.</p>`,
+    brute: {
+      why: `<p><b>S:</b> spots, tickets, pricing, payments and receipts in one class (5 actors). <b>O:</b> fee switch and payment if/else edited for EV/UPI/weekend. <b>D:</b> <code>new CardTerminal()</code> and <code>System.currentTimeMillis()</code> make tests slow and time-dependent. <b>I/L</b> risks appear as soon as someone adds "refund" to a shared payment interface that cash cannot honour. Every new requirement edits the same method.</p>`,
+      code: `class CardTerminal { boolean charge(double amt) { System.out.println("card charged " + amt); return true; } }
+
+class ParkingLot {
+    private final Map<String, Integer> free = new HashMap<>(Map.of("BIKE", 2, "CAR", 2, "TRUCK", 1));
+    private final Map<String, String[]> tickets = new HashMap<>();   // plate -> {type, startMillis}
+
+    String park(String type, String plate) {
+        if (free.getOrDefault(type, 0) == 0) return "FULL";
+        free.merge(type, -1, Integer::sum);
+        tickets.put(plate, new String[]{type, String.valueOf(System.currentTimeMillis())});
+        return "TICKET-" + plate;
+    }
+
+    double exit(String plate, String payBy) {
+        String[] t = tickets.remove(plate);
+        long hours = Math.max(1, (System.currentTimeMillis() - Long.parseLong(t[1]) + 3_599_999) / 3_600_000);
+        double fee;
+        switch (t[0]) {
+            case "BIKE": fee = 10 + (hours - 1) * 5; break;
+            case "CAR": fee = 30 + (hours - 1) * 20; break;
+            case "TRUCK": fee = 60 + (hours - 1) * 40; break;
+            default: throw new IllegalArgumentException(t[0]);
+        }
+        if (payBy.equals("CARD")) new CardTerminal().charge(fee);
+        else if (payBy.equals("CASH")) System.out.println("collect cash " + fee);
+        free.merge(t[0], 1, Integer::sum);
+        System.out.println("RECEIPT " + plate + " " + hours + "h " + fee);
+        return fee;
+    }
+}`
+    },
+    mcq: { q: 'Weekend pricing (+25%) should be added how?', options: ['As a decorator/wrapper PricingPolicy around the base policy, using the injected Clock', 'As another case in the fee switch', 'Inside the payment classes', 'By subclassing ParkingLot as WeekendParkingLot'], answer: 0, explain: 'A <code>WeekendSurcharge implements PricingPolicy</code> wrapping the base policy adds behaviour without editing it (OCP), and reading time from the ticket/Clock keeps it testable (DIP).' },
+    hints: [
+      `<p>Write one line per responsibility: spot allocation, ticketing, pricing, payment, receipts, time. Each is a candidate class or port.</p>`,
+      `<p>Ports: <code>PricingPolicy { double fee(Ticket t, Instant exit); }</code>, <code>PaymentMethod { String code(); boolean pay(double amt); }</code>, <code>Clock</code>. Classes: <code>SpotInventory</code>, <code>Ticket</code> record, <code>ParkingService</code> orchestrator, <code>ReceiptFormatter</code>.</p>`,
+      `<p>Pricing: <code>BaseRates</code> (map type → first/next), <code>EvChargingFee</code> and <code>WeekendSurcharge</code> as decorators. Hours = ceil(minutes/60), min 1. Mark tickets paid to block double payment; free the spot only after successful payment.</p>`
+    ],
+    solution: {
+      approach: `<p><b>Findings → design.</b> SRP: <code>SpotInventory</code> (capacity), <code>ParkingService</code> (flow), <code>ReceiptFormatter</code> (text). OCP: pricing is a <code>PricingPolicy</code> chain — base rates, then EV charging and weekend decorators; payments are registered <code>PaymentMethod</code>s (UPI = new class). LSP: every payment method honours "returns false on decline" instead of throwing; every pricing decorator returns a fee ≥ the base. ISP: payment methods expose only <code>pay</code> — refunds would be a separate <code>Refundable</code> role. DIP: time via injected <code>Clock</code>, payments via interfaces, so the tests below run instantly at any simulated date.</p>`,
+      code: `enum VehicleType { BIKE, CAR, EV, TRUCK }
+record Ticket(String id, String plate, VehicleType type, Instant entry) {}
+
+interface PricingPolicy { double fee(Ticket t, Instant exit); }
+interface PaymentMethod { String code(); boolean pay(double amount); }
+
+class BaseRates implements PricingPolicy {
+    private final Map<VehicleType, double[]> rates = new EnumMap<>(Map.of(
+            VehicleType.BIKE, new double[]{10, 5}, VehicleType.CAR, new double[]{30, 20},
+            VehicleType.EV, new double[]{30, 20}, VehicleType.TRUCK, new double[]{60, 40}));
+    static long hours(Ticket t, Instant exit) {
+        long min = Math.max(1, Duration.between(t.entry(), exit).toMinutes());
+        return (min + 59) / 60;                                    // started hours, at least 1
+    }
+    public double fee(Ticket t, Instant exit) {
+        double[] r = rates.get(t.type());
+        return r[0] + (hours(t, exit) - 1) * r[1];
+    }
+}
+class EvChargingFee implements PricingPolicy {                     // decorator: adds, never removes
+    private final PricingPolicy inner;
+    EvChargingFee(PricingPolicy inner) { this.inner = inner; }
+    public double fee(Ticket t, Instant exit) {
+        double f = inner.fee(t, exit);
+        return t.type() == VehicleType.EV ? f + 15 * BaseRates.hours(t, exit) : f;
+    }
+}
+class WeekendSurcharge implements PricingPolicy {
+    private final PricingPolicy inner; private final ZoneId zone;
+    WeekendSurcharge(PricingPolicy inner, ZoneId zone) { this.inner = inner; this.zone = zone; }
+    public double fee(Ticket t, Instant exit) {
+        DayOfWeek d = t.entry().atZone(zone).getDayOfWeek();
+        boolean weekend = d == DayOfWeek.SATURDAY || d == DayOfWeek.SUNDAY;
+        return inner.fee(t, exit) * (weekend ? 1.25 : 1.0);
+    }
+}
+
+class SpotInventory {
+    private final Map<VehicleType, Integer> free;
+    SpotInventory(Map<VehicleType, Integer> capacity) { free = new EnumMap<>(capacity); }
+    boolean take(VehicleType t) { int n = free.getOrDefault(t, 0); if (n == 0) return false; free.put(t, n - 1); return true; }
+    void release(VehicleType t) { free.merge(t, 1, Integer::sum); }
+}
+
+class ReceiptFormatter {
+    String format(Ticket t, double fee, String method) { return String.format("RECEIPT %s %s %.2f via %s", t.plate(), t.type(), fee, method); }
+}
+
+class ParkingService {
+    private final SpotInventory spots; private final PricingPolicy pricing; private final Clock clock;
+    private final Map<String, PaymentMethod> methods = new HashMap<>();
+    private final Map<String, Ticket> open = new HashMap<>();
+    private final ReceiptFormatter receipts = new ReceiptFormatter();
+    private int seq = 0;
+
+    ParkingService(SpotInventory spots, PricingPolicy pricing, List<PaymentMethod> ms, Clock clock) {
+        this.spots = spots; this.pricing = pricing; this.clock = clock;
+        ms.forEach(m -> methods.put(m.code(), m));
+    }
+
+    Optional<Ticket> park(String plate, VehicleType type) {
+        if (!spots.take(type)) return Optional.empty();
+        Ticket t = new Ticket("T" + (++seq), plate, type, clock.instant());
+        open.put(t.id(), t);
+        return Optional.of(t);
+    }
+
+    String exit(String ticketId, String methodCode) {
+        Ticket t = open.get(ticketId);
+        if (t == null) throw new IllegalStateException("unknown or already paid ticket");
+        PaymentMethod m = methods.get(methodCode);
+        if (m == null) throw new IllegalArgumentException("unsupported payment " + methodCode);
+        double fee = Math.round(pricing.fee(t, clock.instant()) * 100) / 100.0;
+        if (!m.pay(fee)) return "DECLINED";                      // ticket stays open, spot stays taken
+        open.remove(ticketId);
+        spots.release(t.type());
+        return receipts.format(t, fee, m.code());
+    }
+}
+
+// adapters + fakes
+class CashPayment implements PaymentMethod { public String code() { return "CASH"; } public boolean pay(double a) { return true; } }
+class UpiPayment implements PaymentMethod { public String code() { return "UPI"; } public boolean pay(double a) { return a < 100_000; } }
+
+class MutableClock extends Clock {                                    // test clock we can move forward
+    private Instant now; private final ZoneId zone;
+    MutableClock(Instant start, ZoneId zone) { now = start; this.zone = zone; }
+    void advance(Duration d) { now = now.plus(d); }
+    public ZoneId getZone() { return zone; }
+    public Clock withZone(ZoneId z) { return new MutableClock(now, z); }
+    public Instant instant() { return now; }
+}
+
+class ParkingDemo {
+    public static void main(String[] args) {
+        ZoneId ist = ZoneId.of("Asia/Kolkata");
+        MutableClock clock = new MutableClock(LocalDateTime.of(2026, 3, 7, 10, 0).atZone(ist).toInstant(), ist);   // Saturday
+        PricingPolicy pricing = new WeekendSurcharge(new EvChargingFee(new BaseRates()), ist);
+        ParkingService svc = new ParkingService(new SpotInventory(Map.of(VehicleType.CAR, 2, VehicleType.EV, 1)),
+                pricing, List.of(new CashPayment(), new UpiPayment()), clock);
+
+        Ticket car = svc.park("MH12AB1234", VehicleType.CAR).orElseThrow();
+        svc.park("MH12CD0001", VehicleType.CAR).orElseThrow();
+        System.out.println(svc.park("MH12EF0002", VehicleType.CAR).isPresent());   // false: full
+        clock.advance(Duration.ofMinutes(150));
+        System.out.println(svc.exit(car.id(), "UPI"));                            // 87.50 (3h, weekend)
+        try { svc.exit(car.id(), "UPI"); } catch (IllegalStateException e) { System.out.println("blocked: " + e.getMessage()); }
+    }
+}`,
+      complexity: `<p>O(1) per park/exit (hash maps, EnumMap). Each new requirement (UPI, EV fee, weekend) was a new class; <code>ParkingService</code> never changed for them. Tests simulate Saturdays and 150 minutes instantly via <code>MutableClock</code>.</p>`,
+      followUps: ['Multiple floors and nearest-spot allocation: which class changes and which interface would you introduce (SpotAllocationStrategy)?', 'Two exit gates processing the same ticket concurrently — how do you make <code>exit</code> safe?', 'Lost ticket with a fixed penalty: new PricingPolicy or new flow?']
+    }
+  });
+
+  practice.push({
+    title: 'Plugin text pipeline: add filters without touching the processor',
+    level: 'Hard', tags: ['OCP', 'DIP', 'pipeline', 'registry'], companies: ['Google', 'Meta', 'Grammarly'],
+    statement: `<p>A content moderation service has <code>TextProcessor.process(text, boolean trim, boolean lower, boolean maskEmails, boolean censor)</code>. Every new rule adds a boolean parameter and an <code>if</code>, the order of steps is hard-coded, and call sites look like <code>process(t, true, false, true, true)</code>. Design a pipeline where <b>new filters are plugged in by name from configuration</b> (e.g. <code>"trim,mask-emails,censor"</code>), the order comes from config, and the core never changes. Add a new <code>mask-phones</code> filter to prove it.</p>`,
+    constraints: `<p>Java 21. Filters are pure functions String → String. Unknown filter names fail at startup with a helpful message listing known names. Banned words list is injected (not hard-coded).</p>`,
+    example: `<p>Config <code>"trim,mask-emails,censor"</code>, banned = [darn]. Input <code>"  Mail me at a@b.com, darn it  "</code> → ${H.c('g', '"Mail me at ***@***, **** it"')}. Config <code>"trim,mask-phones"</code> works after adding one class + one registration.</p>`,
+    brute: {
+      why: `<p>Boolean-flag parameters violate <b>OCP</b> (each rule edits the signature and every caller) and hide meaning at call sites. The hard-coded order and banned list couple policy to data (<b>DIP</b>: configuration and word lists are details). It is also an <b>SRP</b> pile: four unrelated rules in one method, each owned by a different team (privacy, trust &amp; safety, formatting).</p>`,
+      code: `class TextProcessor {
+    String process(String text, boolean trim, boolean lower, boolean maskEmails, boolean censor) {
+        String t = text;
+        if (trim) t = t.trim();
+        if (lower) t = t.toLowerCase();
+        if (maskEmails) t = t.replaceAll("[\\\\w.+-]+@[\\\\w-]+\\\\.[\\\\w.]+", "***@***");
+        if (censor) t = t.replaceAll("(?i)darn", "****");            // banned list hard-coded
+        return t;                                                     // new rule? new boolean + new if
+    }
+}`
+    },
+    mcq: { q: 'What makes the pipeline open for extension?', options: ['A TextFilter interface plus a name → factory registry used to build the chain from config', 'An enum of all filters with a switch', 'Subclassing TextProcessor for each combination', 'More boolean parameters with default values'], answer: 0, explain: 'Filters implement one interface and register themselves by name; the pipeline composes whatever the config lists. The core code never learns about specific filters.' },
+    hints: [
+      `<p>Each step is "String in, String out" — a perfect single-method interface. A pipeline is just a list of them applied in order.</p>`,
+      `<p><code>interface TextFilter { String apply(String s); }</code>, <code>FilterRegistry</code> mapping names to <code>Supplier&lt;TextFilter&gt;</code>, <code>Pipeline.fromConfig(String, registry)</code>.</p>`,
+      `<p>Inject the banned-word list into <code>CensorFilter</code>'s constructor (registered with a lambda that captures it). Validate all names before building; quote banned words with <code>Pattern.quote</code> and use word boundaries.</p>`
+    ],
+    solution: {
+      approach: `<p><b>Strategy objects composed into a pipeline, discovered through a registry.</b> Each rule is a small <code>TextFilter</code> (SRP, independently testable). The <code>FilterRegistry</code> maps config names to factories; the composition root registers built-ins and the banned-word list (DIP: data injected). <code>Pipeline</code> only applies filters in order and never changes (OCP). Unknown names fail fast with the list of known filters. Adding <code>mask-phones</code> = one class + one <code>register</code> call; in a real plugin system, <code>ServiceLoader</code> could do the registration.</p>`,
+      code: `import java.util.regex.Pattern;
+
+interface TextFilter { String apply(String s); }
+
+class TrimFilter implements TextFilter { public String apply(String s) { return s.strip(); } }
+class LowerFilter implements TextFilter { public String apply(String s) { return s.toLowerCase(); } }
+class MaskEmailsFilter implements TextFilter {
+    private static final Pattern EMAIL = Pattern.compile("[\\\\w.+-]+@[\\\\w-]+\\\\.[\\\\w.]+");
+    public String apply(String s) { return EMAIL.matcher(s).replaceAll("***@***"); }
+}
+class CensorFilter implements TextFilter {
+    private final List<Pattern> banned;
+    CensorFilter(List<String> words) {
+        banned = words.stream().map(w -> Pattern.compile("(?i)\\\\b" + Pattern.quote(w) + "\\\\b")).toList();
+    }
+    public String apply(String s) {
+        String out = s;
+        for (Pattern p : banned) out = p.matcher(out).replaceAll(m -> "*".repeat(m.group().length()));
+        return out;
+    }
+}
+class MaskPhonesFilter implements TextFilter {                    // NEW: added without touching anything else
+    private static final Pattern PHONE = Pattern.compile("\\\\+?\\\\d[\\\\d -]{8,}\\\\d");
+    public String apply(String s) { return PHONE.matcher(s).replaceAll("[phone]"); }
+}
+
+class FilterRegistry {
+    private final Map<String, Supplier<TextFilter>> factories = new LinkedHashMap<>();
+    FilterRegistry register(String name, Supplier<TextFilter> f) {
+        if (factories.putIfAbsent(name, f) != null) throw new IllegalArgumentException("duplicate filter " + name);
+        return this;
+    }
+    TextFilter create(String name) {
+        Supplier<TextFilter> f = factories.get(name);
+        if (f == null) throw new IllegalArgumentException("unknown filter '" + name + "', known: " + factories.keySet());
+        return f.get();
+    }
+}
+
+class Pipeline {
+    private final List<TextFilter> steps;
+    Pipeline(List<TextFilter> steps) { this.steps = List.copyOf(steps); }
+    static Pipeline fromConfig(String config, FilterRegistry reg) {
+        List<TextFilter> steps = new ArrayList<>();
+        for (String name : config.split(",")) if (!name.isBlank()) steps.add(reg.create(name.strip()));
+        return new Pipeline(steps);
+    }
+    String run(String text) {
+        String t = text;
+        for (TextFilter f : steps) t = f.apply(t);
+        return t;
+    }
+}
+
+class ModerationApp {
+    public static void main(String[] args) {
+        List<String> banned = List.of("darn");                        // would come from a config service
+        FilterRegistry reg = new FilterRegistry()
+                .register("trim", TrimFilter::new)
+                .register("lower", LowerFilter::new)
+                .register("mask-emails", MaskEmailsFilter::new)
+                .register("censor", () -> new CensorFilter(banned))
+                .register("mask-phones", MaskPhonesFilter::new);   // the only line added for the new filter
+
+        System.out.println(Pipeline.fromConfig("trim,mask-emails,censor", reg).run("  Mail me at a@b.com, darn it  "));
+        System.out.println(Pipeline.fromConfig("trim,mask-phones", reg).run(" call +91 98765 43210 now "));
+        try { Pipeline.fromConfig("trim,translate", reg); } catch (IllegalArgumentException e) { System.out.println(e.getMessage()); }
+    }
+}`,
+      complexity: `<p>O(k × n) for k filters over text of length n (each regex pass is linear in practice). Adding a filter: 1 class + 1 registration; Pipeline and existing filters unchanged.</p>`,
+      followUps: ['Some filters need to <i>reject</i> text instead of transforming it — change the interface or add a second role (<code>TextValidator</code>)?', 'Load third-party filters from jars at runtime: how would <code>ServiceLoader</code> fit, and how do you sandbox them?', 'Make the order of filters safe (e.g. lower before censor) — validation rules in the registry?']
+    }
+  });
+
+  practice.push({
+    title: 'Stack extends ArrayList, and a BoundedStack that throws',
+    level: 'Hard', tags: ['LSP', 'composition over inheritance', 'contract tests'], companies: ['Oracle', 'Goldman Sachs', 'Bloomberg'],
+    statement: `<p>A codebase has <code>class LifoStack&lt;T&gt; extends ArrayList&lt;T&gt;</code> with <code>push</code>/<code>pop</code>, and <code>BoundedStack&lt;T&gt; extends LifoStack&lt;T&gt;</code> whose <code>push</code> throws when full. Bugs: callers use <code>add(0, x)</code> and <code>remove(i)</code> (inherited from ArrayList) and break LIFO order; a scheduler written for <code>LifoStack</code> crashes with a <code>BoundedStack</code>. <b>Explain both LSP problems</b> and design a stack abstraction whose contract both an unbounded and a bounded stack can honour, verified by a shared contract test.</p>`,
+    constraints: `<p>Java 21. Operations: push, pop, peek, size, isEmpty. Pop/peek on empty must not throw (return <code>Optional</code>). No public method may let callers bypass LIFO.</p>`,
+    example: `<p>Bounded(capacity 2): push A → true, push B → true, push C → ${H.c('y', 'false (full, unchanged)')}, pop → ${H.c('g', 'B')}. The same contract test passes for both <code>ArrayLifoStack</code> and <code>BoundedLifoStack</code>.</p>`,
+    brute: {
+      why: `<p>(1) <b>Inheritance for reuse</b>: extending ArrayList exposes ~40 list methods that break the stack invariant (only the top is accessible) — the subclass cannot protect its own invariant (the same flaw as <code>java.util.Stack extends Vector</code>). (2) <code>BoundedStack.push</code> <b>strengthens the precondition</b> ("only when not full") and adds a surprise exception, so clients of <code>LifoStack</code> break — a direct LSP violation.</p>`,
+      code: `class LifoStack<T> extends ArrayList<T> {
+    void push(T x) { add(x); }
+    T pop() { return remove(size() - 1); }          // throws on empty
+}
+class BoundedStack<T> extends LifoStack<T> {
+    private final int capacity;
+    BoundedStack(int capacity) { this.capacity = capacity; }
+    @Override void push(T x) {
+        if (size() == capacity) throw new IllegalStateException("full");   // strengthened precondition
+        super.push(x);
+    }
+}
+class Scheduler {
+    static void runAll(LifoStack<String> jobs) {
+        for (int i = 0; i < 3; i++) jobs.push("job" + i);   // crashes for BoundedStack(2)
+        jobs.add(0, "sneaky");                              // inherited: breaks LIFO silently
+    }
+}`
+    },
+    mcq: { q: 'How can a bounded stack and an unbounded stack share one honest contract?', options: ['Make push return boolean ("accepted or not") in the interface, so "full" is part of the contract', 'Let the bounded stack silently drop the item and return void', 'Catch IllegalStateException in every caller', 'Make capacity a static constant'], answer: 0, explain: 'Like <code>Queue.offer</code>, a boolean result lets every implementation keep the promise. The unbounded one always returns true; the bounded one returns false when full. Callers wrote code for the contract, so nothing surprises them.' },
+    hints: [
+      `<p>Problem 1 is solved by <b>composition</b>: keep an <code>ArrayDeque</code> inside and expose only stack operations.</p>`,
+      `<p>Problem 2 is solved by designing the <b>interface contract</b> so that "cannot accept" is a normal outcome: <code>boolean push(T)</code>, <code>Optional&lt;T&gt; pop()</code>.</p>`,
+      `<p>Write a contract test once (a method taking a <code>Supplier</code> of fresh stacks) that checks LIFO order, empty behaviour, size, and "push false ⇒ unchanged"; run it against both implementations.</p>`
+    ],
+    solution: {
+      approach: `<p><b>Composition + contract-first interface + contract tests.</b> <code>LifoStack&lt;T&gt;</code> is an interface whose contract allows rejection (<code>push</code> returns false and leaves the stack unchanged) and uses <code>Optional</code> for empty pops. <code>ArrayLifoStack</code> wraps an <code>ArrayDeque</code> (no list methods leak). <code>BoundedLifoStack</code> wraps another stack (decorator) and refuses when full — honouring the same contract. One reusable contract test verifies every implementation, which is how LSP is enforced in practice.</p>`,
+      code: `interface LifoStack<T> {
+    /** Contract: returns true and places x on top, or returns false and leaves the stack unchanged. */
+    boolean push(T x);
+    Optional<T> pop();
+    Optional<T> peek();
+    int size();
+    default boolean isEmpty() { return size() == 0; }
+}
+
+class ArrayLifoStack<T> implements LifoStack<T> {          // composition: nothing from ArrayDeque leaks out
+    private final ArrayDeque<T> items = new ArrayDeque<>();
+    public boolean push(T x) { items.push(Objects.requireNonNull(x)); return true; }
+    public Optional<T> pop() { return Optional.ofNullable(items.poll()); }
+    public Optional<T> peek() { return Optional.ofNullable(items.peek()); }
+    public int size() { return items.size(); }
+}
+
+class BoundedLifoStack<T> implements LifoStack<T> {        // decorator honouring the same contract
+    private final LifoStack<T> inner; private final int capacity;
+    BoundedLifoStack(LifoStack<T> inner, int capacity) {
+        if (capacity <= 0) throw new IllegalArgumentException("capacity > 0");
+        this.inner = inner; this.capacity = capacity;
+    }
+    public boolean push(T x) { return size() < capacity && inner.push(x); }
+    public Optional<T> pop() { return inner.pop(); }
+    public Optional<T> peek() { return inner.peek(); }
+    public int size() { return inner.size(); }
+}
+
+class LifoStackContract {                                   // run against EVERY implementation
+    static void verify(String name, Supplier<LifoStack<String>> fresh) {
+        LifoStack<String> s = fresh.get();
+        check(s.isEmpty() && s.pop().isEmpty() && s.peek().isEmpty(), "empty behaviour");
+        check(s.push("A") && s.push("B"), "accepts at least 2 items");
+        check(s.peek().orElseThrow().equals("B") && s.size() == 2, "peek top without removing");
+        int before = s.size();
+        boolean accepted = s.push("C");
+        check(accepted ? s.size() == before + 1 : s.size() == before && s.peek().orElseThrow().equals("B"), "rejected push leaves stack unchanged");
+        if (accepted) check(s.pop().orElseThrow().equals("C"), "LIFO order");
+        check(s.pop().orElseThrow().equals("B") && s.pop().orElseThrow().equals("A"), "LIFO order");
+        check(s.isEmpty(), "empty after pops");
+        System.out.println(name + ": contract OK");
+    }
+    static void check(boolean cond, String what) { if (!cond) throw new AssertionError(what); }
+
+    public static void main(String[] args) {
+        verify("ArrayLifoStack", ArrayLifoStack::new);
+        verify("BoundedLifoStack(2)", () -> new BoundedLifoStack<>(new ArrayLifoStack<>(), 2));
+        verify("BoundedLifoStack(10)", () -> new BoundedLifoStack<>(new ArrayLifoStack<>(), 10));
+
+        LifoStack<String> jobs = new BoundedLifoStack<>(new ArrayLifoStack<>(), 2);
+        for (int i = 0; i < 3; i++) System.out.println("push job" + i + " -> " + jobs.push("job" + i));   // true, true, false
+    }
+}`,
+      complexity: `<p>All operations O(1) amortised (ArrayDeque). The contract test is O(1) per implementation and catches LSP regressions automatically in CI.</p>`,
+      followUps: ['Why does <code>java.util.Stack</code> (extends Vector) violate the same idea, and why does the JDK recommend <code>Deque</code>?', 'A thread-safe stack: decorator around LifoStack or a new implementation? What changes in the contract (blocking vs non-blocking)?', 'How do <code>Queue.add</code> (throws) vs <code>Queue.offer</code> (returns false) relate to this design?']
+    }
+  });
+
+  practice.push({
+    title: 'Testable checkout with inventory, payment and notification ports',
+    level: 'Hard', tags: ['DIP', 'ISP', 'SRP', 'hexagonal'], companies: ['Amazon', 'Shopify', 'Zepto', 'Walmart'],
+    statement: `<p><code>CheckoutService.checkout(cart)</code> calls the static <code>InventoryDb.reserve(...)</code>, <code>new RazorpayClient(key).charge(...)</code> and <code>new SmtpMailer().send(...)</code>. If payment fails after stock was reserved, the stock is never released. The inventory class exposes 12 methods (stock admin, reports, reservations) to checkout. Redesign with <b>domain-owned ports</b>, a <b>narrow inventory role</b> for checkout, correct <b>compensation</b> on payment failure, and tests with fakes for: success, out of stock, payment declined (stock released), email failure (order still succeeds).</p>`,
+    constraints: `<p>Java 21, no frameworks. A cart has (sku, qty) lines and a total. Reservation is all-or-nothing. Email is best-effort.</p>`,
+    example: `<p>Stock {pen: 5}. Cart [pen×2] + payment OK → ${H.c('g', 'CONFIRMED')}, stock 3, email sent. Cart [pen×9] → ${H.c('y', 'OUT_OF_STOCK')}. Cart [pen×2] + decline → ${H.c('r', 'PAYMENT_DECLINED')}, stock back to 5.</p>`,
+    brute: {
+      why: `<p><b>DIP:</b> static and <code>new</code>-ed vendor clients make the flow untestable and vendor-locked. <b>ISP:</b> checkout depends on a 12-method inventory API. <b>SRP:</b> orchestration, vendor calls and email wording are mixed. The missing compensation bug survived precisely because nobody could test "payment declined" without a real gateway.</p>`,
+      code: `class InventoryDb {                                        // static global, 12 methods in real life
+    static final Map<String, Integer> STOCK = new HashMap<>(Map.of("pen", 5));
+    static boolean reserve(String sku, int qty) {
+        int have = STOCK.getOrDefault(sku, 0);
+        if (have < qty) return false;
+        STOCK.put(sku, have - qty);
+        return true;
+    }
+}
+class RazorpayClient { RazorpayClient(String key) { } boolean charge(double amt) { return amt < 1000; } }
+class SmtpMailer { void send(String to, String body) { System.out.println("mail " + to + " " + body); } }
+
+class CheckoutService {
+    String checkout(String sku, int qty, double total, String email) {
+        if (!InventoryDb.reserve(sku, qty)) return "OUT_OF_STOCK";
+        if (!new RazorpayClient("live_key").charge(total)) return "PAYMENT_DECLINED";   // BUG: stock never released
+        new SmtpMailer().send(email, "Order confirmed");                               // failure here kills checkout
+        return "CONFIRMED";
+    }
+}`
+    },
+    mcq: { q: 'Which inventory interface should checkout depend on?', options: ['A narrow StockReservations port: reserve(lines) and release(lines)', 'The full 12-method InventoryDb', 'A generic Repository&lt;Object&gt;', 'None — call the DB directly from checkout'], answer: 0, explain: 'ISP + DIP: the checkout domain defines the small port it needs, shaped by its use case (reserve/release), and the inventory adapter implements it.' },
+    hints: [
+      `<p>List what checkout needs from the outside world: reserve stock, release stock, charge money, send a confirmation. Those four verbs are your ports.</p>`,
+      `<p><code>StockReservations { boolean reserve(List&lt;Line&gt;); void release(List&lt;Line&gt;); }</code>, <code>PaymentGateway { boolean charge(double, String ref); }</code>, <code>OrderNotifier { void confirmed(Order); }</code>. Inject all three.</p>`,
+      `<p>Flow: reserve (all-or-nothing) → charge → on decline release and return → notify inside try/catch (best effort). Fakes: in-memory stock, scripted gateway (approve/decline), notifier that can be told to throw.</p>`
+    ],
+    solution: {
+      approach: `<p><b>Hexagonal checkout.</b> The domain owns three narrow ports (DIP + ISP). <code>CheckoutService</code> orchestrates only (SRP): reserve atomically, charge, compensate by releasing stock on decline, and treat email as best-effort so a mail outage never loses a paid order. Adapters wrap the inventory DB, Razorpay and SMTP in production; in tests, fakes make every branch — including the previously untestable compensation path — run in milliseconds. The bug fix and the design fix are the same move.</p>`,
+      code: `record Line(String sku, int qty) {}
+record Cart(String customerEmail, List<Line> lines, double total) {}
+enum CheckoutStatus { CONFIRMED, OUT_OF_STOCK, PAYMENT_DECLINED }
+
+// ---- ports owned by the checkout domain ----
+interface StockReservations { boolean reserve(List<Line> lines); void release(List<Line> lines); }
+interface PaymentGateway { boolean charge(double amount, String reference); }
+interface OrderNotifier { void confirmed(String email, String orderRef); }
+
+class CheckoutService {
+    private final StockReservations stock; private final PaymentGateway payments; private final OrderNotifier notifier;
+    private int seq = 0;
+    CheckoutService(StockReservations s, PaymentGateway p, OrderNotifier n) { stock = s; payments = p; notifier = n; }
+
+    CheckoutStatus checkout(Cart cart) {
+        if (!stock.reserve(cart.lines())) return CheckoutStatus.OUT_OF_STOCK;
+        String ref = "ORD-" + (++seq);
+        if (!payments.charge(cart.total(), ref)) {
+            stock.release(cart.lines());                              // compensation
+            return CheckoutStatus.PAYMENT_DECLINED;
+        }
+        try { notifier.confirmed(cart.customerEmail(), ref); }
+        catch (RuntimeException e) { System.out.println("notify failed, queued for retry: " + e.getMessage()); }
+        return CheckoutStatus.CONFIRMED;
+    }
+}
+
+// ---- fakes (an in-memory adapter can also serve local dev) ----
+class InMemoryStock implements StockReservations {
+    final Map<String, Integer> qty = new HashMap<>();
+    InMemoryStock(Map<String, Integer> initial) { qty.putAll(initial); }
+    public boolean reserve(List<Line> lines) {
+        for (Line l : lines) if (qty.getOrDefault(l.sku(), 0) < l.qty()) return false;   // check all first: all-or-nothing
+        lines.forEach(l -> qty.merge(l.sku(), -l.qty(), Integer::sum));
+        return true;
+    }
+    public void release(List<Line> lines) { lines.forEach(l -> qty.merge(l.sku(), l.qty(), Integer::sum)); }
+}
+class ScriptedGateway implements PaymentGateway {
+    private final boolean approve; final List<String> charged = new ArrayList<>();
+    ScriptedGateway(boolean approve) { this.approve = approve; }
+    public boolean charge(double amount, String ref) { charged.add(ref + ":" + amount); return approve; }
+}
+class TestNotifier implements OrderNotifier {
+    private final boolean fail; final List<String> sent = new ArrayList<>();
+    TestNotifier(boolean fail) { this.fail = fail; }
+    public void confirmed(String email, String ref) { if (fail) throw new IllegalStateException("SMTP down"); sent.add(email + " " + ref); }
+}
+
+class CheckoutTests {
+    static Cart cart(int qty) { return new Cart("a@b.com", List.of(new Line("pen", qty)), 20.0 * qty); }
+    static void eq(Object a, Object b, String what) { if (!a.equals(b)) throw new AssertionError(what + ": " + a + " != " + b); System.out.println("ok " + what); }
+
+    public static void main(String[] args) {
+        InMemoryStock s1 = new InMemoryStock(Map.of("pen", 5)); TestNotifier n1 = new TestNotifier(false);
+        eq(new CheckoutService(s1, new ScriptedGateway(true), n1).checkout(cart(2)), CheckoutStatus.CONFIRMED, "success");
+        eq(s1.qty.get("pen"), 3, "stock reduced"); eq(n1.sent.size(), 1, "email sent");
+
+        InMemoryStock s2 = new InMemoryStock(Map.of("pen", 5));
+        eq(new CheckoutService(s2, new ScriptedGateway(true), new TestNotifier(false)).checkout(cart(9)), CheckoutStatus.OUT_OF_STOCK, "out of stock");
+        eq(s2.qty.get("pen"), 5, "stock untouched");
+
+        InMemoryStock s3 = new InMemoryStock(Map.of("pen", 5));
+        eq(new CheckoutService(s3, new ScriptedGateway(false), new TestNotifier(false)).checkout(cart(2)), CheckoutStatus.PAYMENT_DECLINED, "declined");
+        eq(s3.qty.get("pen"), 5, "stock released after decline");
+
+        InMemoryStock s4 = new InMemoryStock(Map.of("pen", 5));
+        eq(new CheckoutService(s4, new ScriptedGateway(true), new TestNotifier(true)).checkout(cart(1)), CheckoutStatus.CONFIRMED, "email failure tolerated");
+    }
+}`,
+      complexity: `<p>O(lines) per checkout. Four business scenarios verified in milliseconds; vendor swaps (Razorpay → Stripe, SMTP → SES) are new adapters only.</p>`,
+      followUps: ['Payment times out (unknown result) — how do idempotency keys and a status query port change the flow?', 'Two checkouts race for the last pen — where does the atomicity guarantee belong (adapter/DB), and how does the port contract express it?', 'Move notifications to an event (OrderConfirmed) published to a queue: which class changes?']
+    }
+  });
+
+  /* ======================= QUIZ ======================= */
+  quiz.push(
+    { q: 'In Uncle Bob\'s modern wording, SRP means a module should be responsible to…', options: ['One actor (one group of people who request changes)', 'One method', 'One database table', 'One developer'], answer: 0, explain: '"A module should be responsible to one, and only one, actor." A class with many methods can still follow SRP if they all change for the same stakeholder.' },
+    { q: 'A <code>DiscountCalculator</code> has a <code>switch</code> on customer type that grows every month. Which principle is most directly violated?', options: ['Open/Closed', 'Liskov Substitution', 'Interface Segregation', 'Dependency Inversion'], answer: 0, explain: 'Each new discount modifies tested code. Replace the conditional with polymorphism (a <code>DiscountPolicy</code> per type) so new types are added, not edited in.' },
+    { q: '<code>Square extends Rectangle</code> overrides <code>setWidth</code> to also set the height. Client code expecting area = w × h breaks. This violates…', options: ['Liskov Substitution', 'Single Responsibility', 'Open/Closed', 'Interface Segregation'], answer: 0, explain: 'The subclass breaks the behavioural contract of the parent ("setWidth changes only width"), so it is not substitutable.' },
+    { q: 'Which of these is a classic smell of an Interface Segregation violation?', options: ['Implementations that throw <code>UnsupportedOperationException</code> for methods they cannot support', 'A class with a private helper method', 'An interface with one method', 'Using generics in an interface'], answer: 0, explain: 'Forced, fake implementations mean the interface is too fat for some implementers. Split it into role interfaces.' },
+    { q: 'In the Dependency Inversion Principle, who should own (define) the <code>OrderRepository</code> interface?', options: ['The high-level domain module that uses it', 'The MySQL adapter package', 'The JDBC driver vendor', 'A shared utils module used by everyone'], answer: 0, explain: 'The abstraction is shaped by the client\'s needs and lives with the policy; low-level details depend on it. That is what "inversion" refers to.' },
+    { q: 'What is the relationship between DIP and Dependency Injection (DI)?', options: ['DI (passing dependencies in) is a technique often used to achieve DIP', 'They are exactly the same thing', 'DI forbids interfaces', 'DIP requires a framework like Spring'], answer: 0, explain: 'DIP is the principle (depend on abstractions). DI is how you supply the concrete implementation from outside. IoC containers automate DI. You can do DI with plain constructors.' },
+    { q: 'A subclass method requires <code>amount ≤ 1000</code> while the parent accepted any positive amount. In LSP terms this…', options: ['Strengthens a precondition — not allowed', 'Weakens a precondition — allowed', 'Strengthens a postcondition — allowed', 'Has nothing to do with LSP'], answer: 0, explain: 'Subtypes may accept <i>more</i> (weaker preconditions) and promise <i>more</i> (stronger postconditions), never less. Demanding more from callers breaks parent-based clients.' },
+    { q: 'Which change best applies DIP to code that calls <code>LocalDate.now()</code> inside a business rule?', options: ['Inject a <code>java.time.Clock</code> and call <code>LocalDate.now(clock)</code>', 'Wrap the call in try/catch', 'Make the method static', 'Cache today\'s date in a static field'], answer: 0, explain: 'Time is a volatile, non-deterministic dependency. <code>Clock</code> is the JDK\'s abstraction for it; tests pass <code>Clock.fixed(...)</code>.' },
+    { q: 'You have exactly one implementation of a payment interface, no plans for another, and no testing need for a fake. Strongest design advice?', options: ['Consider a concrete class for now (YAGNI); extract an interface when a real need appears', 'Always add an interface plus an abstract factory', 'Use reflection to load implementations', 'Duplicate the class just in case'], answer: 0, explain: 'SOLID responds to real or clearly expected change. Interfaces with one implementation and no test seam are needless complexity; IDEs extract interfaces in seconds when needed.' },
+    { q: 'Java 21 offers <code>sealed</code> interfaces with exhaustive pattern-matching <code>switch</code>. When is that a better fit than polymorphic classes (Strategy)?', options: ['When the set of types is fixed but new operations are added often', 'When new types are added every week by different teams', 'Never — switches always violate OCP', 'Only for primitive types'], answer: 0, explain: 'This is the expression problem. Polymorphism makes adding types cheap; sealed + switch makes adding operations cheap with compiler-checked exhaustiveness. Pick by the axis of change.' },
+    { q: 'An <code>OfficeMachine</code> implements <code>Printer</code>, <code>Scanner</code> and <code>Fax</code>. A <code>PrintQueue</code> constructor should accept…', options: ['A <code>Printer</code>', 'An <code>OfficeMachine</code>', 'An <code>Object</code>', 'All three interfaces as separate parameters'], answer: 0, explain: 'Depend on the narrowest role you use. PrintQueue then works with any printer and is unaffected by fax/scan changes.' },
+    { q: 'Which statement about a Facade and SRP is correct?', options: ['A facade with many methods that only delegate (no business logic) does not violate SRP', 'Any class with more than 5 methods violates SRP', 'Facades must contain all business rules', 'Facades are forbidden by SOLID'], answer: 0, explain: 'A facade offers a convenient entry point and has no reason to change except "expose a new operation". A God class, by contrast, contains logic for many actors.' }
+  );
+
+  /* ======================= INTERVIEW ======================= */
+  interview.push(
+    { q: 'What are the SOLID principles? Explain each in one or two sentences with an example.', level: 'B', a: `<p><b>S</b> — Single Responsibility: one reason to change (one actor). An <code>Invoice</code> should not also print and email itself. <b>O</b> — Open/Closed: add behaviour by adding code, not editing tested code; new discount = new <code>DiscountPolicy</code> class. <b>L</b> — Liskov Substitution: subtypes must keep the parent's promises; a <code>Penguin</code> that throws from <code>fly()</code> breaks code written for <code>Bird</code>. <b>I</b> — Interface Segregation: clients should not depend on methods they do not use; split <code>Machine</code> into <code>Printer</code>, <code>Scanner</code>, <code>Fax</code>. <b>D</b> — Dependency Inversion: business logic depends on abstractions it owns (<code>OrderRepository</code>), and MySQL/SMTP adapters implement them. Together they keep changes local and code testable.</p>`, followUps: ['Which one gives the biggest win in a typical legacy codebase?', 'Who coined the acronym and when?'] },
+    { q: 'Is SRP the same as "a class should do only one thing"?', level: 'B', a: `<p>No. "Do one thing" applies to <b>functions</b>. SRP is about <b>reasons to change</b>: a class should be responsible to one actor. A <code>ShoppingCart</code> with add, remove, total and itemCount does several things but all change for the same reason (cart rules), so it follows SRP. An <code>Employee</code> with <code>calculatePay</code> (finance), <code>reportHours</code> (HR) and <code>save</code> (DBA) violates it even if each method is tiny. The danger is shared code between actors — HR edits a helper and payroll silently changes. Over-splitting by method destroys cohesion, the opposite smell.</p>`, followUps: ['How do you identify actors in a requirement?', 'What is accidental duplication and why should you sometimes keep it?'] },
+    { q: 'How do you achieve the Open/Closed Principle in Java? Give a concrete refactoring.', level: 'I', a: `<p>Identify the axis of change (e.g. payment methods), extract an interface for the varying behaviour (<code>PaymentMethod { String code(); double charge(double amt); }</code>), move each <code>if/case</code> branch into its own implementing class, and let the caller hold a <code>Map&lt;String, PaymentMethod&gt;</code> built from an injected list. New method = new class + one wiring line in the composition root (or zero with Spring's <code>List&lt;PaymentMethod&gt;</code> injection or <code>ServiceLoader</code>). Patterns delivering OCP: Strategy, Decorator, Template Method, Observer, plugins. Note OCP is strategic: you choose which changes to be closed against, based on real variation.</p>`, followUps: ['Is the one wiring line a violation of OCP?', 'When would you keep a switch instead (sealed types)?'] },
+    { q: 'Explain the Liskov Substitution Principle using contracts. What exactly is a subclass allowed to change?', level: 'I', a: `<p>A subtype must be usable anywhere the supertype is expected without breaking correctness. In Design-by-Contract terms a subclass may: <b>weaken preconditions</b> (accept more inputs), <b>strengthen postconditions</b> (promise more), and must <b>preserve invariants</b> and the history constraint (not allow state changes the parent forbids). It must not throw new kinds of exceptions clients do not expect. Java checks only signatures (visibility, checked exceptions, covariant returns) — behaviour is on you. Square/Rectangle, read-only collections throwing on <code>add</code>, and <code>Timestamp extends Date</code> breaking equals symmetry are classic examples. Enforce it with <b>contract tests</b> run against all implementations.</p>`, followUps: ['How do covariant return types relate to LSP?', 'Is <code>Collections.unmodifiableList</code> an LSP violation?'] },
+    { q: 'How would you fix the Square/Rectangle problem? Give at least two options.', level: 'I', a: `<p>(1) <b>Siblings under a smaller abstraction</b>: <code>interface Shape { double area(); }</code> with <code>Rectangle</code> and <code>Square</code> both implementing it; code needing independent width/height asks for <code>Rectangle</code> specifically. (2) <b>Immutability</b>: records with no setters — <code>Rectangle withWidth(w)</code> returns a new object; with no mutators, there is no promise to break, and a <code>Square</code> can offer <code>toRectangle()</code>. (3) Model squareness as a <b>query</b>: one <code>Rectangle</code> with <code>isSquare()</code>. Avoid the anti-fix of <code>instanceof</code> checks in clients — that spreads knowledge of subclasses everywhere and breaks OCP.</p>`, followUps: ['Why is "a square is a rectangle in math" not enough in code?', 'How would a contract test catch this?'] },
+    { q: 'What is the difference between ISP and SRP? Can a class follow one and violate the other?', level: 'I', a: `<p>SRP looks at a class from the <b>inside</b>: why would it change, for which actor? ISP looks from the <b>client's side</b>: what does each caller or implementer have to depend on? A cohesive <code>OfficeMachine</code> can follow SRP (one hardware team owns it) yet violate ISP if it is exposed only through one fat <code>Machine</code> interface that a print queue must depend on. Fix: keep the class, expose role interfaces (<code>Printer</code>, <code>Scanner</code>, <code>Fax</code>). Conversely, a God class may expose narrow interfaces to each client (ISP fine) while still mixing actors internally (SRP broken).</p>`, followUps: ['What are header interfaces vs role interfaces?', 'How small is too small for an interface?'] },
+    { q: 'DIP vs Dependency Injection vs Inversion of Control — explain the differences.', level: 'I', a: `<p><b>DIP</b> is a design principle: high-level policy and low-level details both depend on abstractions, and the abstraction is owned by the policy side. <b>Dependency Injection</b> is a technique: an object receives its collaborators (constructor, setter, method parameter) instead of creating them with <code>new</code>. <b>IoC</b> is a broader idea: the framework controls the flow and object lifecycle (Spring container, servlet container calling your code); DI containers are one IoC form. You can use DI without DIP (injecting a concrete <code>JdbcTemplate</code> into domain code) and DIP without a container (wire in <code>main</code> — the composition root). Constructor injection is preferred: explicit, immutable, testable.</p>`, followUps: ['What is a composition root?', 'Why is the Service Locator considered an anti-pattern?'] },
+    { q: 'Here is a class that creates a MySQL connection and an HTTP client inside its methods. How do you make it unit-testable without a mocking framework?', level: 'B', a: `<p>Apply DIP in small steps: (1) identify every external dependency — database, HTTP, time, randomness, environment variables; (2) define domain-owned interfaces for them in business terms (<code>OrderRepository.save(Order)</code>, <code>RatesProvider.rateFor(currency)</code>) and use <code>java.time.Clock</code> for time; (3) inject them through the constructor; (4) write tiny hand-made fakes — an in-memory map repository, a fixed-rate provider, <code>Clock.fixed</code>; (5) move all <code>new</code>s to a composition root. Tests now run in milliseconds and cover edge cases (declines, timeouts, midnight) deterministically. Keep a few integration tests per adapter against the real system.</p>`, followUps: ['When are mocks better than fakes?', 'How do you ensure fakes behave like the real adapters (LSP)?'] },
+    { q: 'Can SOLID be over-applied? How do you decide when to add an abstraction?', level: 'A', a: `<p>Yes. Interfaces with one implementation everywhere, factories of factories and deep layering create <b>needless complexity</b>: more files, more indirection, slower onboarding, and no protection against real change. My rules: add an abstraction when (a) there is a <b>proven axis of change</b> (rule of three: third variation), (b) a dependency is <b>volatile or non-deterministic</b> (vendor, I/O, time) and needs a test seam, or (c) a <b>plugin/extension requirement</b> exists. Otherwise write a concrete class and refactor later — IDE refactorings are cheap if the code is tested. In interviews, state the trade-off explicitly: "I'm adding a PricingStrategy because rates vary by vehicle type and the interviewer hinted at weekend pricing."</p>`, followUps: ['What is YAGNI and how does it interact with OCP?', 'Name a criticism of SOLID (e.g. CUPID) and your view.'] },
+    { q: 'How would you refactor a 3,000-line legacy God class towards SOLID without breaking production?', level: 'A', a: `<p>(1) Pin behaviour with <b>characterization tests</b> (golden-master style if needed). (2) Find seams: apply DIP first — inject DB/HTTP/time so the class becomes testable. (3) Use git history and method-field clustering to find <b>actors</b>; Extract Class per actor, leaving the old class as a temporary <b>facade</b> that delegates so callers do not change (strangler pattern). (4) Replace type switches with polymorphism where variation is real. (5) Split fat interfaces as clients migrate. (6) Add contract tests for new hierarchies. Ship every step as a small, reviewed, reversible commit behind feature flags if behaviour risk exists; measure with coverage and mutation testing.</p>`, followUps: ['How do you find hidden actors using git log?', 'What is the strangler fig pattern at class level?'] },
+    { q: 'In a Parking Lot machine-coding round, where do SOLID principles show up?', level: 'I', a: `<p><b>SRP:</b> separate <code>SpotAllocator</code>, <code>TicketService</code>, <code>PricingPolicy</code>, <code>PaymentProcessor</code>, <code>DisplayBoard</code>. <b>OCP:</b> new vehicle types, pricing rules (weekend, EV charging) and payment methods are new classes — pricing decorators and payment strategies. <b>LSP:</b> every <code>Vehicle</code> subtype fits the spot-matching contract; an EV that needs a charger is modelled via spot features, not by throwing. <b>ISP:</b> display boards get a read-only <code>AvailabilityView</code>; admins get <code>SpotAdmin</code>. <b>DIP:</b> <code>ParkingService</code> depends on <code>PaymentGateway</code>, <code>Clock</code> and repositories via constructor injection, so the interviewer's "now add weekend pricing" becomes a 5-minute addition.</p>`, followUps: ['How would you support multiple floors with nearest-spot allocation?', 'Where do you handle concurrency on spot allocation?'] },
+    { q: 'How does SOLID relate to design patterns and to hexagonal/clean architecture?', level: 'A', a: `<p>Patterns are reusable <b>implementations</b> of the principles. Strategy, Decorator, Observer and Template Method realise OCP; Adapter and Abstract Factory support DIP; Facade keeps SRP-split subsystems convenient; Composite and Null Object help LSP-friendly hierarchies. <b>Hexagonal architecture</b> (ports and adapters) is DIP at application scale: the domain defines ports (interfaces), adapters for DB, HTTP, messaging implement them, and dependencies point inward. Clean architecture adds SRP-driven layers (entities, use cases, interface adapters, frameworks) with the Dependency Rule: source code dependencies only point inward. Package principles (Common Closure, Common Reuse, Acyclic Dependencies, Stable Abstractions) are SOLID applied to modules.</p>`, followUps: ['Which pattern would you use to add retries around a payment adapter?', 'How do you enforce the dependency rule in a Java build (ArchUnit, modules)?'] },
+    { q: 'How do you use AI coding assistants without letting them erode SOLID in your codebase?', level: 'E', a: `<p>AI tends to produce the shortest diff: another <code>case</code> in a switch, an inline <code>new VendorClient()</code>, an override that throws "not supported", or a 40-method header interface. I counter that by (1) giving it the <b>design constraints</b> in the prompt (ports, where interfaces live, "add a new strategy class rather than editing X"); (2) reviewing AI diffs against a SOLID checklist and asking it to justify each new abstraction — and to say which are <i>not</i> worth adding; (3) encoding rules as automated checks (ArchUnit: domain must not import infra; Sonar rules for switch size and class size) so agents get fast feedback; (4) using AI for the mechanical parts — usage analysis for ISP splits, generating fakes and contract tests, extracting classes once I choose the seams. Design judgement — actors, axes of change, dosage — stays with humans.</p>`, followUps: ['Which architectural rules would you automate first?', 'How would you wrap an LLM call behind a port and test the business flow?'] }
+  );
+
+  /* ---------- vary the position of correct answers (authored with the answer first) ---------- */
+  function rotate(m, k) {
+    if (!m || !Array.isArray(m.options)) return;
+    var n = m.options.length, s = ((k % n) + n) % n;
+    if (!s) return;
+    var correct = m.options[m.answer];
+    m.options = m.options.slice(n - s).concat(m.options.slice(0, n - s));
+    m.answer = m.options.indexOf(correct);
+  }
+  quiz.forEach(function (q, i) { rotate(q, i * 3 + 1); });
+  var allProblems = practice.slice();
+  topics.forEach(function (t) { (t.problems || []).forEach(function (p) { allProblems.push(p); }); });
+  allProblems.forEach(function (p, i) { rotate(p.mcq, i * 2 + 1); });
+
+  registerModule({
+    id: 'lld02',
+    title: 'SOLID Principles',
+    intro: `<p>Code that works today is the easy part. The hard part is the <b>next change</b>: a new payment method, a new tax rule, a new database, a test that must run in milliseconds. This module teaches the five <b>SOLID</b> principles — <b>S</b>ingle Responsibility, <b>O</b>pen/Closed, <b>L</b>iskov Substitution, <b>I</b>nterface Segregation and <b>D</b>ependency Inversion — the toolkit every LLD interviewer silently grades you on.</p>
+<p>For every principle you will see a <b>real bad design</b> in Java, learn to <b>smell</b> the problem, watch the <b>ripple of a change</b> spread class by class in animated class diagrams (red arrows = violating dependencies, green = fixed), and step through a <b>refactor</b> line by line into a clean Java design. Then you practise like an interviewer tests you: "which principle is violated?", "refactor this code", and full multi-principle reviews — plus when <i>not</i> to apply SOLID, and how AI assistants change the picture.</p>`,
+    goals: [
+      'Explain each SOLID principle in one plain sentence, with its classic bad design, the smell, and the refactored Java design',
+      'Spot violations in unfamiliar code fast — God classes, growing switches, "unsupported" overrides, fat interfaces, <code>new</code> inside business logic — and name the principle',
+      'Refactor safely in small steps: extract class by actor, replace conditional with polymorphism, split role interfaces, inject domain-owned ports, verify with contract tests',
+      'Make business logic unit-testable with hand-written fakes and an injected <code>Clock</code>, and explain DIP vs DI vs IoC',
+      'Judge the dosage: argue when an abstraction pays off (rule of three, volatile dependencies) and when it is over-engineering',
+      'Use SOLID as a review lens for AI-generated code and in machine-coding rounds (Parking Lot, notifications, checkout)'
+    ],
+    prereqs: `<p>LLD 1 (OOP Modelling &amp; UML) — classes, interfaces, inheritance vs composition, reading class diagrams. Comfortable Java basics: interfaces, records, generics, lambdas, <code>Map</code>/<code>List</code> (Java track modules 1–6 or equivalent). No framework knowledge needed.</p>`,
+    hours: 12,
+    topics: topics,
+    practice: practice,
+    quiz: quiz,
+    interview: interview
+  });
+})();

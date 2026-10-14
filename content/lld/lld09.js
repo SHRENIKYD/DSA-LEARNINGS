@@ -529,6 +529,381 @@ class Document {
     }]
   });
 
+  /* ======================= TOPIC 2: ELEVATOR DESIGN + CAR STATE MACHINE ======================= */
+  var CAR_NODES = [B('IDLE', 'IDLE', 14, 32), B('MOVING_UP', 'MOVING_UP', 50, 9), B('MOVING_DOWN', 'MOVING_DOWN', 50, 55), B('DOORS_OPEN', 'DOORS_OPEN', 86, 32), B('MAINTENANCE', 'MAINTENANCE', 14, 58)];
+  var CAR_EDGES = [['IDLE', 'MOVING_UP', 'stop above'], ['IDLE', 'MOVING_DOWN', 'stop below'], ['MOVING_UP', 'DOORS_OPEN', 'arrived'], ['MOVING_DOWN', 'DOORS_OPEN', 'arrived'], ['DOORS_OPEN', 'IDLE', 'timer → close'], ['IDLE', 'MAINTENANCE', 'fault'], ['MAINTENANCE', 'IDLE', 'fixed']];
+  // building grid: rows = floors (top first), columns = shaft + pending marker
+  function shaft(floors, carFloor, sym, pending, cls) {
+    var rows = [], rh = [], hl = {};
+    for (var f = floors - 1; f >= 0; f--) {
+      var r = floors - 1 - f;
+      rh.push('Floor ' + f);
+      rows.push([f === carFloor ? sym : '', pending.indexOf(f) >= 0 ? '● call' : '']);
+      if (f === carFloor) hl[r + ',0'] = cls || 'cur';
+      if (pending.indexOf(f) >= 0) hl[r + ',1'] = 'win';
+    }
+    return { type: 'grid', label: 'Building (car position and pending stops)', rows: rows, rowHead: rh, colHead: ['car', 'stop'], hl: hl };
+  }
+
+  topics.push({
+    title: 'Elevator System I: Requirements, Class Design and the Car State Machine',
+    analogy: `<p>An elevator is like a <b>city bus on a vertical road</b>. The bus has a route (floors), a driver brain that decides where to go next (the controller), passengers pressing "stop here" inside (car buttons), and people waiting at bus stops waving it down with an "I want to go up/down" sign (hall buttons). At any moment the bus is either <b>parked</b>, <b>driving up</b>, <b>driving down</b>, <b>stopped with doors open</b>, or <b>in the garage for repair</b>. What the bus does with a new "stop" request depends entirely on which of those it is doing — that is our state machine.</p>`,
+    explain: `<p><b>Step 1 — clarify requirements</b> (always ask before drawing classes):</p>
+${H.table(['Question', 'Typical answer', 'Why it matters'], [
+  ['How many floors / cars?', '0–9, start with 1 car, then N cars', 'one car = state machine; N cars = dispatcher'],
+  ['Hall buttons have direction?', 'Yes: ▲ and ▼ on each floor', 'request = (floor, direction)'],
+  ['Car buttons?', 'Yes: one per floor inside', 'request = (floor) for a specific car'],
+  ['Door behaviour?', 'Stay open ~3 s, re-open if blocked', 'DOORS_OPEN state + timer + safety'],
+  ['Special modes?', 'Maintenance, overload, fire', 'extra states; must not break others'],
+  ['Optimise for?', 'Low wait time, fairness, low energy', 'chooses the scheduling strategy (next topic)']
+])}
+<p><b>Step 2 — entities (nouns become classes):</b></p>
+${H.table(['Class', 'Holds', 'Does'], [
+  ['<code>Building</code>', 'floors, cars, controller', 'wires everything together'],
+  ['<code>ElevatorCar</code>', 'id, current floor, direction, <b>state</b>, set of stops, door', '<code>addStop()</code>, <code>tick()</code>'],
+  ['<code>CarState</code> (enum with behaviour)', 'IDLE, MOVING_UP, MOVING_DOWN, DOORS_OPEN, MAINTENANCE', '<code>onTick(car)</code> returns the next state'],
+  ['<code>HallCall</code> / car call', 'floor (+ direction for hall calls)', 'immutable record — the "request"'],
+  ['<code>ElevatorController</code>', 'list of cars, dispatch strategy', 'picks which car serves a hall call'],
+  ['<code>SchedulingStrategy</code>', '—', 'decides the next stop (FCFS/SSTF/SCAN/LOOK)'],
+  ['<code>Door</code>, <code>Display</code>, <code>Button</code>', 'open/closed, text, lit', 'small helpers; Display observes the car']
+])}
+<p><b>Step 3 — the car's state machine.</b> The car runs on a <b>clock tick</b> (a "heartbeat" — say every 500 ms in real life). On each tick the current state decides what happens:</p>
+<ul>
+<li><b>IDLE</b>: if there is a stop on this floor → open doors. Else pick a direction (stops above → MOVING_UP, below → MOVING_DOWN). Nothing to do → stay IDLE.</li>
+<li><b>MOVING_UP / MOVING_DOWN</b>: move one floor. If this floor is a stop → DOORS_OPEN.</li>
+<li><b>DOORS_OPEN</b>: count the door timer down. If the door sensor is blocked, <b>reset</b> the timer (safety). When the timer ends → close doors → IDLE (which immediately decides where to go next).</li>
+<li><b>MAINTENANCE</b>: ignore all calls until a technician resets it.</li>
+</ul>
+<p><b>The brute force trap:</b> one <code>tick()</code> method with <code>if (moving) { if (up) … else … } else if (doorsOpen) { if (blocked) … } else if (maintenance) …</code> plus boolean flags <code>isMoving</code>, <code>isDoorOpen</code>, <code>isUnderMaintenance</code>. Flags allow <b>impossible combinations</b> (moving AND doors open!). ${H.c('r', 'A single state field makes illegal states unrepresentable.')} ${H.c('g', 'The State pattern makes each mode a small, testable unit.')}</p>`,
+    clues: [
+      '"Design an elevator system" — first ask: floors, cars, hall vs car buttons, special modes. Then draw the car state machine before any scheduling talk.',
+      'Boolean flags like <code>isMoving</code>, <code>doorOpen</code>, <code>underMaintenance</code> in your draft → replace with one <code>CarState</code>; flags allow impossible combos.',
+      '"Doors must re-open if something blocks them" → a self-transition on DOORS_OPEN that resets the timer (safety guard).',
+      '"Requests arrive while the elevator is moving" → requests go into a <b>set of stops</b>, not a FIFO queue; the state decides when to serve them.',
+      '"Simulate time" / "tick" in a machine-coding round → a <code>tick()</code> method that delegates to <code>state.onTick(car)</code>.',
+      '"Add maintenance / fire / VIP mode" → add states, do not add flags.'
+    ],
+    code: { lang: 'java', title: 'Elevator core: enum State pattern + car + controller (runnable simulation)', code: `import java.util.*;
+
+enum Direction { UP, DOWN, NONE }
+
+/** A request from a floor button: "I am on floor 4 and want to go UP". */
+record HallCall(int floor, Direction direction) {}
+
+/** Enum State pattern: each constant carries its own behaviour. */
+enum CarState {
+    IDLE {
+        CarState onTick(ElevatorCar c) {
+            if (c.maintenanceRequested()) return MAINTENANCE;
+            if (c.isStop(c.floor())) { c.arrive(); return DOORS_OPEN; }
+            Direction d = c.chooseDirection();
+            c.setDirection(d);
+            return d == Direction.UP ? MOVING_UP : d == Direction.DOWN ? MOVING_DOWN : IDLE;
+        }
+    },
+    MOVING_UP {
+        CarState onTick(ElevatorCar c) {
+            c.move(+1);
+            if (c.isStop(c.floor())) { c.arrive(); return DOORS_OPEN; }
+            return MOVING_UP;
+        }
+    },
+    MOVING_DOWN {
+        CarState onTick(ElevatorCar c) {
+            c.move(-1);
+            if (c.isStop(c.floor())) { c.arrive(); return DOORS_OPEN; }
+            return MOVING_DOWN;
+        }
+    },
+    DOORS_OPEN {
+        CarState onTick(ElevatorCar c) {
+            if (c.doorBlocked()) { c.resetDoorTimer(); return DOORS_OPEN; }   // safety: never close on a person
+            if (c.countDownDoor() > 0) return DOORS_OPEN;
+            return IDLE;                                                      // doors closed; IDLE decides next
+        }
+    },
+    MAINTENANCE {
+        CarState onTick(ElevatorCar c) { return MAINTENANCE; }
+        boolean acceptsCalls() { return false; }
+    };
+
+    abstract CarState onTick(ElevatorCar c);
+    boolean acceptsCalls() { return true; }
+}
+
+class ElevatorCar {
+    static final int DOOR_TICKS = 2;
+    private final int id, minFloor, maxFloor;
+    private int floor;
+    private Direction direction = Direction.NONE;
+    private CarState state = CarState.IDLE;
+    private final TreeSet<Integer> stops = new TreeSet<>();   // sorted: higher()/lower() are O(log n)
+    private int doorTicks = 0;
+    private boolean blocked = false, maintenance = false;
+
+    ElevatorCar(int id, int minFloor, int maxFloor, int startFloor) {
+        this.id = id; this.minFloor = minFloor; this.maxFloor = maxFloor; this.floor = startFloor;
+    }
+
+    /** Car button or dispatcher assignment. Returns false if the car is not taking calls. */
+    boolean addStop(int f) {
+        if (f < minFloor || f > maxFloor) throw new IllegalArgumentException("no floor " + f);
+        if (!state.acceptsCalls() || maintenance) return false;
+        stops.add(f);                                          // duplicates ignored by the set
+        return true;
+    }
+
+    void tick() {
+        CarState next = state.onTick(this);
+        if (next != state) System.out.printf("car %d: %s -> %s at floor %d%n", id, state, next, floor);
+        state = next;
+    }
+
+    /** Cost of serving a hall call; the controller picks the cheapest car. */
+    int costFor(HallCall call) {
+        if (!state.acceptsCalls() || maintenance) return Integer.MAX_VALUE;
+        int distance = Math.abs(floor - call.floor());
+        boolean onTheWay = (state == CarState.MOVING_UP && call.direction() == Direction.UP && call.floor() > floor)
+                || (state == CarState.MOVING_DOWN && call.direction() == Direction.DOWN && call.floor() < floor);
+        if (state == CarState.IDLE || onTheWay) return distance;
+        return distance + 2 * (maxFloor - minFloor);           // must finish its current sweep first
+    }
+
+    // ---- helpers used only by CarState ----
+    boolean isStop(int f)             { return stops.contains(f); }
+    void arrive()                     { stops.remove(floor); doorTicks = DOOR_TICKS; }
+    void move(int delta)              { floor += delta; }
+    int countDownDoor()               { return --doorTicks; }
+    void resetDoorTimer()             { doorTicks = DOOR_TICKS; blocked = false; }
+    boolean doorBlocked()             { return blocked; }
+    void setDirection(Direction d)    { direction = d; }
+    boolean maintenanceRequested()    { return maintenance; }
+    Direction chooseDirection() {                              // LOOK rule: keep going while work remains ahead
+        Integer above = stops.higher(floor), below = stops.lower(floor);
+        if (direction == Direction.UP && above != null) return Direction.UP;
+        if (direction == Direction.DOWN && below != null) return Direction.DOWN;
+        if (above != null && below != null) return (above - floor) <= (floor - below) ? Direction.UP : Direction.DOWN;
+        if (above != null) return Direction.UP;
+        if (below != null) return Direction.DOWN;
+        return Direction.NONE;
+    }
+
+    // ---- outside events ----
+    void blockDoor()          { blocked = true; }
+    void requestMaintenance() { maintenance = true; stops.clear(); }
+    void finishMaintenance()  { maintenance = false; if (state == CarState.MAINTENANCE) state = CarState.IDLE; }
+    int floor()               { return floor; }
+    int id()                  { return id; }
+    CarState state()          { return state; }
+}
+
+class ElevatorController {
+    private final List<ElevatorCar> cars;
+    ElevatorController(List<ElevatorCar> cars) { this.cars = cars; }
+
+    ElevatorCar onHallCall(HallCall call) {
+        ElevatorCar best = cars.stream().min(Comparator.comparingInt(c -> c.costFor(call))).orElseThrow();
+        if (best.costFor(call) == Integer.MAX_VALUE) throw new IllegalStateException("no car in service");
+        best.addStop(call.floor());
+        return best;
+    }
+    void onCarButton(int carIndex, int floor) { cars.get(carIndex).addStop(floor); }
+    void tickAll() { cars.forEach(ElevatorCar::tick); }
+
+    public static void main(String[] args) {
+        ElevatorCar a = new ElevatorCar(0, 0, 9, 0), b = new ElevatorCar(1, 0, 9, 9);
+        ElevatorController ctl = new ElevatorController(List.of(a, b));
+        System.out.println("hall call 2 UP -> car " + ctl.onHallCall(new HallCall(2, Direction.UP)).id());
+        System.out.println("hall call 8 DOWN -> car " + ctl.onHallCall(new HallCall(8, Direction.DOWN)).id());
+        for (int t = 0; t < 6; t++) ctl.tickAll();
+        ctl.onCarButton(0, 6);                 // passenger in car 0 presses 6
+        a.blockDoor();                         // someone holds the door
+        for (int t = 0; t < 12; t++) ctl.tickAll();
+        System.out.println("car 0 at " + a.floor() + " " + a.state() + ", car 1 at " + b.floor() + " " + b.state());
+    }
+}` },
+    viz: {
+      title: 'One elevator car: states light up as it serves calls floor by floor',
+      input: 'start=0; calls=5 B 2 M 7',
+      inputLabel: 'start=floor; calls = floors 0-9 in arrival order, B = someone blocks the door at the next stop, M = maintenance cycle',
+      gen: function (input) {
+        var o = kvParse(input, 'Format: start=0; calls=5 B 2 M 7');
+        var start = parseInt(o.start, 10);
+        if (isNaN(start) || start < 0 || start > 9) throw new Error('start must be a floor 0-9');
+        var toks = tokens(o.calls || '', /[\s,]+/, 8, 'calls = floors 0-9, B or M, e.g. calls=5 B 2 M 7');
+        toks.forEach(function (t) { if (!/^([0-9]|b|m|B|M)$/.test(t)) throw new Error('Bad token "' + t + '": use floors 0-9, B or M'); });
+        var floors = 10, f = start, frames = [], pending = toks.filter(function (t) { return /^[0-9]$/.test(t); }).map(Number), moved = 0, blockNext = false;
+        var qItems = toks.slice();
+        function snap(state, sym, narr, edge, cls, extra) {
+          var parts = [SM('Car state machine', CAR_NODES, CAR_EDGES, state, cls || 'cur', edge, 'ok', null, 64), shaft(floors, f, sym, pending, cls === 'ok' ? 'ok' : 'cur'), QUEUE('Requests still to serve (arrival order)', qItems, { 0: 'cur' }), VARS('ElevatorCar', { floor: f, state: state, floorsMoved: moved, doorTimer: extra || '-' })];
+          frames.push(F(narr, parts));
+        }
+        snap('IDLE', '[ ]', 'The car is <b>IDLE</b> on floor ' + f + ' with doors closed. Requests will arrive in this order: <b>' + esc(toks.join(', ')) + '</b>. The car keeps a set of stops (blue ● on the right) and processes them one heartbeat (tick) at a time.');
+        while (qItems.length && frames.length < 70) {
+          var t = qItems[0];
+          if (t === 'B' || t === 'b') { blockNext = true; qItems.shift(); snap('IDLE', '[ ]', 'Note for later: a passenger will <b>block the door</b> at the next stop (B).'); continue; }
+          if (t === 'M' || t === 'm') {
+            snap('MAINTENANCE', '✖', 'A <b>fault</b> is reported. Because the car is IDLE with doors closed, it is safe to switch to <b>MAINTENANCE</b>. In this state <code>acceptsCalls()</code> returns false — the dispatcher will skip this car and hall calls go to other cars.', 'IDLE-MAINTENANCE', 'bad');
+            snap('MAINTENANCE', '✖', 'Technician works on the car. Every tick, <code>MAINTENANCE.onTick()</code> just returns MAINTENANCE — no if/else anywhere else had to learn about this mode.', null, 'bad');
+            qItems.shift();
+            snap('IDLE', '[ ]', 'Technician presses <b>reset</b> → back to <b>IDLE</b>. The car is in service again.', 'MAINTENANCE-IDLE', 'ok');
+            continue;
+          }
+          var target = Number(t);
+          if (target === f) {
+            snap('DOORS_OPEN', '[< >]', 'A call for floor ' + f + ' — the car is already here. <code>IDLE.onTick()</code> sees a stop on the current floor and opens the doors immediately (no movement).', null, 'ok', 2);
+          } else {
+            var up = target > f, st = up ? 'MOVING_UP' : 'MOVING_DOWN';
+            snap(st, up ? '▲' : '▼', 'IDLE picks a direction: the stop (' + target + ') is ' + (up ? 'above' : 'below') + ' → <b>' + st + '</b>. From now on each tick runs <code>' + st + '.onTick()</code>, which moves one floor and checks "is this floor a stop?".', 'IDLE-' + st, 'cur');
+            while (f !== target) {
+              f += up ? 1 : -1; moved++;
+              if (f !== target) snap(st, up ? '▲' : '▼', 'Tick: moved to floor ' + f + '. Not a stop → stay ' + st + '.', null, 'cur');
+            }
+            snap('DOORS_OPEN', '[< >]', 'Tick: reached floor <b>' + f + '</b>, which is in the stop set → <code>arrive()</code> removes it from the set, starts the door timer (2 ticks) and the state becomes <b>DOORS_OPEN</b>.', st + '-DOORS_OPEN', 'ok', 2);
+          }
+          pending.splice(pending.indexOf(target), 1);
+          qItems.shift();
+          if (blockNext) {
+            blockNext = false;
+            snap('DOORS_OPEN', '[< >]', 'Door sensor reports something in the doorway. <code>DOORS_OPEN.onTick()</code> sees <code>doorBlocked()</code> and <b>resets</b> the timer instead of closing — a self-transition. Safety rule beats efficiency every time.', null, 'bad', '2 (reset)');
+          }
+          snap('DOORS_OPEN', '[< >]', 'Tick: door timer 2 → 1. Passengers get in and out.', null, 'cur', 1);
+          snap('IDLE', '[ ]', 'Tick: timer hits 0 → doors close → <b>IDLE</b>. IDLE will look at the remaining stops on the next tick and choose a direction again (or stay idle if there is no work).', 'DOORS_OPEN-IDLE', 'cur');
+        }
+        snap('IDLE', '[ ]', 'All requests served. The car moved <b>' + moved + '</b> floors in total. Serving calls strictly in arrival order (like here) is simple but wasteful when calls zig-zag — the next topic compares smarter scheduling (SSTF, SCAN, LOOK).', null, 'sel');
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'Hall call vs car call: two kinds of request', html: `<p>${H.table(['', 'Hall call', 'Car call'], [['Pressed', 'on the floor (▲/▼)', 'inside the car (a floor number)'], ['Data', '(floor, direction)', '(car id, floor)'], ['Who decides the car?', 'the controller (dispatcher)', 'already decided — it is that car'], ['Example', 'Floor 4, ▲', 'Car B, go to 9']])}</p><p>Modelling both as one <code>Request</code> class with a nullable direction is a common mistake; the dispatcher only ever handles hall calls. Two small records keep each rule obvious.</p>`, code: `record HallRequest(int floor, boolean up) {}
+record CarRequest(int carId, int floor) {}` },
+      { title: 'Why a set of stops, not a FIFO queue', html: `<p>Calls arrive: 7, 2, 6 while the car is at 0. A FIFO queue forces 0→7→2→6 = 7 + 5 + 4 = <b>16 floors</b>. A sorted set lets the car serve 2 and 6 on the way up: 0→2→6→7 = <b>7 floors</b>. Also, pressing 6 three times must not create three stops — a set ignores duplicates for free. ${H.c('g', 'TreeSet&lt;Integer&gt; gives higher(f)/lower(f) in O(log n)')}, exactly the "next stop above/below me" questions a lift asks.</p>` },
+      { title: 'Door obstruction: the safety self-loop', html: `<p>In DOORS_OPEN, each tick checks the door sensor first. Blocked → reset timer, stay open. This rule lives in exactly one place (<code>DOORS_OPEN.onTick</code>). With flags, you would have to remember to check <code>doorBlocked</code> everywhere doors might close — and an elevator closing on a child is not a bug you get to fix later.</p>` },
+      { title: 'Add-a-state follow-up: OVERLOADED', html: `<p>"If load exceeds 680 kg, keep doors open and beep." Add <b>OVERLOADED</b>: DOORS_OPEN → OVERLOADED when the weight sensor trips; OVERLOADED → DOORS_OPEN when weight drops. IDLE/MOVING states are untouched because only DOORS_OPEN can lead there — a car cannot become overloaded with closed doors.</p>`, code: `enum CarState2 {
+    DOORS_OPEN { CarState2 onTick(Car2 c) { return c.loadKg() > 680 ? OVERLOADED : DOORS_OPEN; } },
+    OVERLOADED { CarState2 onTick(Car2 c) { c.beep(); return c.loadKg() > 680 ? OVERLOADED : DOORS_OPEN; } };
+    abstract CarState2 onTick(Car2 c);
+}
+class Car2 {
+    int load = 700;
+    int loadKg() { return load; }
+    void beep() { System.out.println("BEEP: overloaded"); }
+}` },
+      { title: 'Display as an Observer of the car', html: `<p>Each floor has a display "▲ 5". Instead of the car calling every display, displays <b>subscribe</b> to the car: <code>car.addListener(display)</code>; on every state change the car notifies listeners with (floor, direction). New listeners (a mobile app, a building-management dashboard, a logger) plug in without changing <code>ElevatorCar</code>. State + Observer is the standard combination in elevator designs.</p>` }
+    ],
+    deepDive: `<p><b>Tick-driven vs event-driven.</b> Our car advances on a clock tick — easy to simulate and test deterministically (great in a machine-coding round). Real controllers are <b>event-driven</b>: sensors fire "floor 4 reached", "door closed", "weight changed"; each event is fed to the current state. Both are the same state machine; only the trigger differs. Say this out loud in interviews.</p>
+<p><b>Single thread of control.</b> Buttons are pressed from many threads (floors, cars, network). Never let them mutate the car directly. Put every input into a <code>BlockingQueue&lt;Event&gt;</code> consumed by one controller thread per car (the <b>actor</b> or event-loop model). Then the state machine needs no locks, and events are applied in a clear order. If you must share, make <code>addStop</code> and <code>tick</code> <code>synchronized</code> on the car.</p>
+<p><b>Illegal states must be unrepresentable.</b> With flags (isMoving, isDoorOpen) there are 2 × 2 = 4 combinations and one of them (moving with doors open) is deadly. With one <code>CarState</code> field there are exactly 5 legal states. Real lift firmware is verified exactly this way — every state has a defined door status and motor status.</p>
+<p><b>Stops data structure.</b> <code>TreeSet</code> gives O(log n) for add/remove/higher/lower; with only ~100 floors a <code>boolean[] up, down</code> pair indexed by floor is O(1) and even simpler. Many production designs keep <b>two sets</b>: stops to serve while going up, stops while going down — this is how a hall call "5▼" is <i>not</i> served by a car passing 5 on its way up (the person wants to go down; picking them up now would take them the wrong way).</p>
+<p><b>Timers.</b> In production, DOORS_OPEN uses a <code>ScheduledExecutorService</code> to schedule a <code>DoorTimeout</code> event; leaving the state (exit action) cancels the scheduled future. A forgotten timer that fires in the wrong state is a classic bug — the state machine protects you because DOORS_OPEN is the only state that handles DoorTimeout; every other state ignores it.</p>
+<p><b>Safety vs efficiency hierarchy.</b> Fire service &gt; maintenance &gt; door safety &gt; overload &gt; normal scheduling. Model this as a <b>hierarchical state machine</b>: a top-level FIRE_SERVICE state overrides everything; NORMAL_OPERATION contains IDLE/MOVING/DOORS_OPEN as sub-states.</p>`,
+    aiEra: `<p><b>What AI changes:</b> an LLM will produce a 200-line elevator in seconds — usually a single <code>Elevator</code> class with <code>isMoving</code> and <code>doorOpen</code> booleans and a <code>PriorityQueue</code> of requests. It runs, so juniors stop there. Your job is to review it like a senior: "Which combinations of these flags are illegal? Where is the door-safety rule? What happens to a hall call for 5▼ while the car goes up past 5?"</p>
+<p><b>Use AI as a partner:</b> <code>Here is my CarState enum and transitions. Generate a randomized simulation that presses 1000 random buttons and asserts: doors never open while moving, every request is eventually served, the car never goes outside floors 0-9.</code> Property-based tests like this find bugs no hand-written test does — and AI is very good at writing them.</p>
+<p><b>Modern buildings:</b> destination dispatch (you type your floor in the lobby and the screen says "take car C"), occupancy prediction from badge-in data, and ML models tuning dispatch weights by time of day (morning up-peak, lunch, evening down-peak). The state machine stays the same; the dispatcher gets smarter.</p>
+<p><b>What you must still own:</b> the state × event table, the safety ordering, the single-thread-of-control decision, and explaining trade-offs (tick vs event, TreeSet vs arrays) in your own words.</p>`,
+    problems: [{
+      title: 'Fire Recall Mode for an Elevator (add-a-state)', level: 'Medium', tags: ['state pattern', 'elevator', 'add-a-state'], companies: ['Amazon', 'Microsoft', 'Otis', 'Uber'],
+      statement: `<p>You have a working elevator car with states IDLE, MOVING_UP, MOVING_DOWN, DOORS_OPEN. Add <b>fire recall</b>: when the building's fire alarm triggers, the car must (1) drop all pending stops, (2) if doors are open, close them as soon as the door is not blocked, (3) travel non-stop to the lobby (floor 0), (4) open doors and stay parked, ignoring every call, until the alarm is reset — then return to IDLE. Implement it without adding <code>if (fire)</code> checks to the existing states.</p>`,
+      constraints: `Floors 0–20. Tick-based simulation. Existing states may change only where they must react to the alarm event.`,
+      example: `<p>Car at floor 6 moving up to 9. ${H.c('r', 'Alarm!')} Stops {9} cleared → state ${H.c('y', 'FIRE_RECALL')} → moves 6→5→…→0 (ignores a car call for 3 pressed on the way) → ${H.c('b', 'FIRE_PARKED')} with doors open. Hall calls rejected. ${H.c('g', 'Alarm reset')} → IDLE.</p>`,
+      brute: { why: `<p>Add a boolean <code>fireMode</code> and sprinkle checks: in addStop (reject), in IDLE (go to 0), in MOVING_UP (reverse!), in MOVING_DOWN (do not stop), in DOORS_OPEN (close faster). Five places to edit; forgetting one (say MOVING_DOWN still stops at floor 3 for a car call) is a safety bug. And the combination <code>fireMode && maintenance</code> is undefined.</p>`, code: `class FlagCar {
+    int floor = 6; boolean fireMode = false, movingUp = true, doorOpen = false;
+    java.util.TreeSet<Integer> stops = new java.util.TreeSet<>();
+    void tick() {
+        if (fireMode) {
+            if (doorOpen) doorOpen = false;
+            else if (floor > 0) floor--;            // easy to forget: what if we were moving up?
+            else doorOpen = true;
+        } else if (movingUp) {
+            floor++;
+            if (stops.remove(floor)) doorOpen = true;
+        }
+        // ... every other branch also needs "if (fireMode)" - one missed check = safety bug
+    }
+}` },
+      mcq: { q: 'A passenger presses "3" inside the car during FIRE_RECALL. With the State pattern, where is this handled?', options: ['FIRE_RECALL.acceptsCalls() returns false, so addStop() rejects it — no other code changes', 'MOVING_DOWN must check a fire flag', 'The controller must filter it', 'It cannot be handled'], answer: 0, explain: 'The new states declare their own policy for calls. The context asks the current state; existing states do not know fire mode exists.' },
+      hints: [`<p>Hint 1: Fire recall is really <b>two</b> new states: FIRE_RECALL (travelling to the lobby) and FIRE_PARKED (doors open, waiting for reset).</p>`, `<p>Hint 2: The alarm is an <b>outside event</b> that can arrive in any state. Handle it once in the car: <code>onFireAlarm()</code> clears stops and sets the state to FIRE_RECALL — the existing states do not need to know.</p>`, `<p>Hint 3: FIRE_RECALL.onTick: if doors open and not blocked → close; else if floor &gt; 0 → move down; else → FIRE_PARKED. Both new states override <code>acceptsCalls()</code> to false. Reset: only FIRE_PARKED → IDLE.</p>`],
+      solution: {
+        approach: `<p>Model the alarm as an outside event handled by the context: it clears the stop set and jumps to <b>FIRE_RECALL</b> (doors close safely, then the car moves down without stopping). On reaching floor 0 it becomes <b>FIRE_PARKED</b> (doors open). Both new enum constants override <code>acceptsCalls()</code> to return false, so <code>addStop</code> rejects calls without any flag. Reset is accepted only in FIRE_PARKED. The original four states are unchanged.</p>`,
+        code: `import java.util.*;
+
+enum FState {
+    IDLE {
+        FState onTick(FireCar c) {
+            Integer up = c.stops.higher(c.floor), down = c.stops.lower(c.floor);
+            if (c.stops.remove(c.floor)) { c.doorOpen = true; return DOORS_OPEN; }
+            if (up != null) return MOVING_UP;
+            if (down != null) return MOVING_DOWN;
+            return IDLE;
+        }
+    },
+    MOVING_UP {
+        FState onTick(FireCar c) { c.floor++; if (c.stops.remove(c.floor)) { c.doorOpen = true; return DOORS_OPEN; } return MOVING_UP; }
+    },
+    MOVING_DOWN {
+        FState onTick(FireCar c) { c.floor--; if (c.stops.remove(c.floor)) { c.doorOpen = true; return DOORS_OPEN; } return MOVING_DOWN; }
+    },
+    DOORS_OPEN {
+        FState onTick(FireCar c) { if (c.doorBlocked) return DOORS_OPEN; c.doorOpen = false; return IDLE; }
+    },
+    // ---------- the two NEW states; nothing above was modified ----------
+    FIRE_RECALL {
+        FState onTick(FireCar c) {
+            if (c.doorOpen) { if (!c.doorBlocked) c.doorOpen = false; return FIRE_RECALL; } // close safely first
+            if (c.floor > 0) { c.floor--; return FIRE_RECALL; }                            // non-stop to lobby
+            c.doorOpen = true;
+            return FIRE_PARKED;
+        }
+        boolean acceptsCalls() { return false; }
+    },
+    FIRE_PARKED {
+        FState onTick(FireCar c) { return FIRE_PARKED; }
+        boolean acceptsCalls() { return false; }
+    };
+
+    abstract FState onTick(FireCar c);
+    boolean acceptsCalls() { return true; }
+}
+
+class FireCar {
+    int floor;
+    boolean doorOpen = false, doorBlocked = false;
+    final TreeSet<Integer> stops = new TreeSet<>();
+    FState state = FState.IDLE;
+
+    FireCar(int floor) { this.floor = floor; }
+
+    boolean addStop(int f) { if (!state.acceptsCalls()) return false; stops.add(f); return true; }
+    void tick() { state = state.onTick(this); }
+
+    /** Outside event: valid in ANY state, so the context handles it once. */
+    void onFireAlarm() { stops.clear(); state = FState.FIRE_RECALL; }
+
+    /** Only a parked car may return to service. */
+    boolean onAlarmReset() {
+        if (state != FState.FIRE_PARKED) return false;
+        doorOpen = false;
+        state = FState.IDLE;
+        return true;
+    }
+
+    public static void main(String[] args) {
+        FireCar car = new FireCar(6);
+        car.addStop(9);
+        car.tick();                                  // IDLE -> MOVING_UP
+        car.onFireAlarm();
+        System.out.println("call 3 accepted? " + car.addStop(3));   // false
+        for (int t = 0; t < 10; t++) car.tick();
+        System.out.println(car.state + " at floor " + car.floor + ", door open " + car.doorOpen);
+        System.out.println("reset ok? " + car.onAlarmReset() + " -> " + car.state);
+    }
+}`,
+        complexity: `<p>Each tick is O(log n) for the TreeSet operations; recall takes at most (current floor + 1) ticks. Adding the mode cost 2 new enum constants and 2 context methods; the four existing states were not edited.</p>`,
+        followUps: ['Firefighters use a key to drive the car manually (Phase II). Model it as another state — what does it accept?', 'With 4 cars, should all recall at once or one by one? Who coordinates?', 'Should a car already in MAINTENANCE also recall? How would a hierarchical state machine express priority?']
+      }
+    }]
+  });
+
   registerModule({
     id: 'lld09',
     title: 'State-Heavy Designs: Elevator, Vending Machine, ATM',
