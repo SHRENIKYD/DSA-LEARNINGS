@@ -2450,6 +2450,1199 @@ class FsDemo {
     }]
   });
 
+  /* ======================= TOPIC 11: CHOOSING & COMBINING ======================= */
+  var PATTERN_CLUES = [
+    { p: 'Strategy', k: ['algorithm', 'strategy', 'interchangeable', 'pricing', 'payment method', 'sort by', 'different ways', 'pluggable', 'policy', 'fare', 'discount', 'route', 'at runtime', 'choose'] },
+    { p: 'Observer', k: ['notify', 'subscribe', 'subscriber', 'listener', 'alert', 'broadcast', 'follow', 'event', 'publish', 'whenever', 'channels'] },
+    { p: 'Command', k: ['undo', 'redo', 'queue', 'macro', 'schedule', 'replay', 'button', 'job', 'retry', 'audit', 'history of actions'] },
+    { p: 'State', k: ['state', 'status', 'lifecycle', 'mode', 'transition', 'phase', 'vending', 'cannot', 'once', 'after it is'] },
+    { p: 'Template Method', k: ['same steps', 'skeleton', 'workflow', 'order of steps', 'hook', 'duplicate', 'recipe', 'common steps', 'every report', 'formats'] },
+    { p: 'Chain of Responsibility', k: ['escalate', 'approve', 'approval', 'chain', 'middleware', 'filter', 'handler', 'pipeline', 'fallback', 'next level', 'limit'] },
+    { p: 'Iterator', k: ['iterate', 'traverse', 'next', 'cursor', 'pagination', 'page', 'without exposing', 'one by one', 'walk through', 'collection'] },
+    { p: 'Mediator', k: ['coordinate', 'chat room', 'tower', 'hub', 'central', 'many-to-many', 'group', 'dispatcher', 'talk to each other', 'interact'] },
+    { p: 'Memento', k: ['snapshot', 'checkpoint', 'restore', 'save state', 'rollback', 'revert', 'save point', 'previous version'] },
+    { p: 'Visitor', k: ['operations over', 'export', 'ast', 'new operations', 'without changing', 'double dispatch', 'compiler', 'every node', 'tax and shipping', 'element'] }
+  ];
+  topics.push({
+    title: 'Which Pattern Fits? Choosing, Comparing and Combining',
+    analogy: `<p>A <b>mechanic's toolbox</b> has ten tools. A good mechanic does not ask "how can I use the torque wrench today?" — they look at the problem (a loose bolt, a stuck nut) and the right tool picks itself. Requirements in an LLD interview contain <b>tell-tale words</b> the same way a symptom points a doctor to a diagnosis: "undo" → Command/Memento, "notify" → Observer, "status" → State.</p>`,
+    explain: `<p><b>The one-page cheat sheet.</b> Every behavioral pattern answers one question about <i>who decides</i> and <i>who talks to whom</i>:</p>
+${H.table(['Pattern', 'Problem it solves', 'Tell-tale words', 'Key Java shape'], [
+  ['Strategy', 'Many ways to do one job, picked at runtime', 'pricing rules, payment methods, "pluggable"', 'context holds an interface; client sets it'],
+  ['Observer', 'One change, many interested parties', 'notify, subscribe, alert, follow', 'subject keeps List&lt;Listener&gt;'],
+  ['Command', 'Treat an action as data', 'undo/redo, queue, macro, log, retry', 'execute()/undo() + invoker stacks'],
+  ['State', 'Behaviour depends on current mode', 'status, lifecycle, "cannot X after Y"', 'context delegates to state; states switch it'],
+  ['Template Method', 'Same steps, a few differ', 'workflow, skeleton, duplicated sequence', 'final method in abstract base + hooks'],
+  ['Chain of Resp.', 'Who handles it? pass it along', 'approval, escalate, middleware, filter', 'handler with next link'],
+  ['Iterator', 'Walk a collection without its insides', 'traverse, next, paging, cursor', 'Iterable + hasNext()/next()'],
+  ['Mediator', 'Many objects coordinate', 'chat room, tower, hub, dispatcher', 'colleagues know only the mediator'],
+  ['Memento', 'Save and restore state privately', 'snapshot, checkpoint, rollback', 'originator creates opaque snapshot; caretaker stores'],
+  ['Visitor', 'New operations over a fixed type set', 'export, AST, compute X for every element', 'accept(v) → v.visitX(this); or sealed + switch']
+])}
+<p><b>Look-alike pairs</b> interviewers love to ask about:</p>
+<ul>
+<li><b>Strategy vs State</b> — same class diagram. Strategy: the <i>client</i> chooses, strategies are independent. State: <i>states</i> switch the context to the next state.</li>
+<li><b>Observer vs Mediator</b> — Observer broadcasts one-to-many without logic; Mediator coordinates many-to-many <i>with</i> rules in the middle.</li>
+<li><b>Command vs Memento</b> for undo — Command reverses the <i>operation</i> (small, needs an inverse); Memento restores the <i>state</i> (works for anything, uses memory).</li>
+<li><b>Template Method vs Strategy</b> — inheritance with a fixed skeleton vs composition swappable at runtime.</li>
+<li><b>Chain of Responsibility vs Decorator</b> — both link objects; a chain may <i>stop</i> and is about <i>who handles</i>; a decorator always forwards and <i>adds</i> behaviour.</li>
+<li><b>Iterator vs Visitor</b> — Iterator gives you elements one by one; Visitor brings an operation to each element (often while iterating).</li>
+</ul>
+<p><b>The golden rule:</b> start with the simplest code. Introduce a pattern when you can name the <b>axis of change</b> it protects ("pricing rules change monthly"). Patterns without a reason are over-engineering — interviewers penalise that too.</p>`,
+    clues: [
+      'Listen for verbs: <b>notify</b> → Observer, <b>undo</b> → Command/Memento, <b>escalate/approve</b> → Chain, <b>traverse</b> → Iterator, <b>coordinate</b> → Mediator.',
+      'Listen for nouns: <b>status / lifecycle</b> → State, <b>rule / policy / algorithm</b> → Strategy, <b>snapshot / checkpoint</b> → Memento, <b>AST / export formats</b> → Visitor.',
+      '"Same steps but X differs" → Template Method (or Strategy if X must change at runtime).',
+      '"Easy to add new <b>types</b>" → polymorphism/Strategy; "easy to add new <b>operations</b> over fixed types" → Visitor.',
+      'Machine-coding rounds almost always combine 2–4 patterns: e.g. Elevator = State + Strategy (scheduling) + Observer (displays) + Command (requests).',
+      'If the requirement has none of these signals, the right answer is often "no pattern — a simple class is enough", said with a reason.'
+    ],
+    code: [{ lang: 'java', title: 'Patterns combined: order workflow (State + Observer + Strategy + Command)', code: `// Strategy: how shipping cost is computed
+interface ShippingPolicy { long cost(long weightGrams); }
+
+// Observer: who hears about status changes
+interface OrderEvents { void statusChanged(String orderId, String from, String to); }
+
+// State: what each action means in each status (table-driven to stay short)
+enum Status {
+    NEW, PAID, SHIPPED, CANCELLED;
+    Status on(String action) {
+        return switch (this) {
+            case NEW -> switch (action) { case "pay" -> PAID; case "cancel" -> CANCELLED; default -> null; };
+            case PAID -> switch (action) { case "ship" -> SHIPPED; case "cancel" -> CANCELLED; default -> null; };
+            default -> null;                                   // SHIPPED, CANCELLED: terminal here
+        };
+    }
+}
+
+class OrderWorkflow {
+    private final String id; private Status status = Status.NEW;
+    private final ShippingPolicy shipping;
+    private final List<OrderEvents> listeners = new CopyOnWriteArrayList<>();
+    private final Deque<Runnable> undoLog = new ArrayDeque<>();          // Command: reversible steps
+
+    OrderWorkflow(String id, ShippingPolicy shipping) { this.id = id; this.shipping = shipping; }
+    void subscribe(OrderEvents l) { listeners.add(l); }
+
+    synchronized void act(String action) {
+        Status next = status.on(action);
+        if (next == null) throw new IllegalStateException("cannot " + action + " in " + status);
+        Status prev = status;
+        status = next;
+        undoLog.push(() -> status = prev);                                 // command to revert
+        listeners.forEach(l -> l.statusChanged(id, prev.name(), next.name()));
+    }
+    synchronized void undo() { if (!undoLog.isEmpty()) undoLog.pop().run(); }
+    long quote(long grams) { return shipping.cost(grams); }
+    Status status() { return status; }
+
+    public static void main(String[] args) {
+        OrderWorkflow o = new OrderWorkflow("A1", g -> 40 + g / 100);         // strategy as lambda
+        o.subscribe((id, f, t) -> System.out.println("email: " + id + " " + f + " -> " + t));
+        o.subscribe((id, f, t) -> System.out.println("analytics: " + t));
+        o.act("pay"); o.act("ship");
+        try { o.act("cancel"); } catch (IllegalStateException e) { System.out.println(e.getMessage()); }
+        o.undo();
+        System.out.println(o.status() + ", shipping quote " + o.quote(2500));
+    }
+}` }],
+    codeTitle: ['Combining patterns'],
+    viz: {
+      title: 'Clue detector: which pattern does this requirement hint at?',
+      input: 'When an order ships, notify the customer by email and SMS, and let new channels subscribe later',
+      inputLabel: 'Type a requirement sentence (try: "support undo and redo", "expense needs approval by the next level")',
+      gen: function (input) {
+        var text = String(input === undefined ? '' : input).toLowerCase().replace(/\s+/g, ' ').trim();
+        if (text.length < 8) throw new Error('Type a requirement sentence of at least 8 characters');
+        if (text.length > 300) throw new Error('Keep it under 300 characters');
+        var frames = [], scores = [], rows = [];
+        frames.push(F('Requirement: <i>"' + esc(text) + '"</i>. We scan it for the tell-tale words of each of the 10 behavioral patterns — the same mental scan you do in an interview before drawing any class.',
+          [TXT('<b>Requirement:</b> ' + esc(text), 'Input'), { type: 'bars', label: 'scores so far', values: PATTERN_CLUES.map(function () { return 0; }), idxLabels: PATTERN_CLUES.map(function (c) { return c.p.split(' ')[0]; }) }]));
+        PATTERN_CLUES.forEach(function (c, i) {
+          var hits = c.k.filter(function (w) { return text.indexOf(w) >= 0; });
+          scores.push(hits.length);
+          rows.push([c.p, hits.length ? hits.join(', ') : '—', String(hits.length)]);
+          var hl = {}; hl[i] = hits.length ? 'ok' : 'cur';
+          var th = {}; th[rows.length - 1] = hits.length ? 'sel' : '';
+          frames.push(F('<b>' + c.p + '</b>: looking for ' + c.k.slice(0, 6).map(function (w) { return '"' + w + '"'; }).join(', ') + '… → ' + (hits.length ? H.c('g', hits.length + ' clue(s): ' + hits.join(', ')) : H.c('m', 'no clue words')) + '.',
+            [{ type: 'bars', label: 'clue score per pattern', values: scores.concat(PATTERN_CLUES.slice(i + 1).map(function () { return 0; })), hl: hl, idxLabels: PATTERN_CLUES.map(function (c2) { return c2.p.split(' ')[0]; }) },
+              { type: 'table', label: 'Evidence', columns: ['Pattern', 'Clues found', 'Score'], rows: rows.slice(), hl: th }]));
+        });
+        var best = Math.max.apply(null, scores);
+        var winners = PATTERN_CLUES.filter(function (c, i) { return scores[i] === best && best > 0; }).map(function (c) { return c.p; });
+        var hlb = {}; scores.forEach(function (s, i) { if (s === best && best > 0) hlb[i] = 'sel'; });
+        var advice = best === 0 ? 'No strong signal. Ask clarifying questions ("will this vary?", "who needs to know?", "can it be undone?") — and remember that no pattern is a valid answer.'
+          : winners.length > 1 ? 'Tie between <b>' + winners.join(' and ') + '</b>: real designs often <b>combine</b> them. Decide which one owns which part (e.g. Observer for "notify", Strategy for "which channel").'
+          : 'Strongest signal: <b>' + winners[0] + '</b>. Confirm it by naming the axis of change it protects, then sketch its class diagram.';
+        frames.push(F('Verdict. ' + advice + ' Keyword matching is only a first hint — always check the <b>intent</b> (who decides, who changes, who talks to whom).',
+          [{ type: 'bars', label: 'final scores', values: scores, hl: hlb, idxLabels: PATTERN_CLUES.map(function (c) { return c.p.split(' ')[0]; }) },
+            VARS('suggestion', { pick: winners.length ? winners.join(' + ') : 'clarify first', topScore: best }, { pick: 'sel' })]));
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'Elevator system: four patterns at once', html: `<p><b>State</b> for each car (Idle, MovingUp, MovingDown, DoorsOpen, Maintenance). <b>Strategy</b> for the scheduling algorithm (nearest car, SCAN/LOOK, zone-based) so it can be swapped. <b>Observer</b> so floor displays and the monitoring dashboard update on every move. <b>Command</b> for requests (hall call, car call) queued and possibly cancelled. Naming this combination clearly is often the difference between a "hire" and a "strong hire".</p>` },
+      { title: 'Notification service', html: `<p>Producers publish events (<b>Observer</b>/pub-sub). Each user's preferred channel is a <b>Strategy</b> (push/SMS/email). If push fails, fall back SMS → email (<b>Chain of Responsibility</b>). Rendering each message follows the same steps per channel — load template, fill, localise, send — <b>Template Method</b>. You will build this in the Hard practice set.</p>` },
+      { title: 'Text editor', html: `<p>Typing and formatting are <b>Commands</b> with undo/redo; expensive filters use <b>Memento</b> snapshots; the document is a tree walked by an <b>Iterator</b> for search and by <b>Visitors</b> for export (HTML, PDF, word count); the editor UI's toolbar, ruler and status bar coordinate through a <b>Mediator</b>; spell-check runs as an <b>Observer</b> of document changes.</p>` },
+      { title: 'When the answer is "no pattern"', html: `<p>"Compute the GST on an invoice (single fixed 18% rule)." A Strategy interface with one implementation adds files and indirection with no benefit. Write a method, keep it tested, and say: "If more tax regimes appear, I would extract a TaxStrategy — the refactor is mechanical." That sentence shows judgement, which is what the interviewer is grading.</p>` }
+    ],
+    deepDive: `<p><b>Patterns as responses to change:</b> each behavioral pattern isolates one axis — Strategy (algorithm), State (mode), Observer (set of listeners), Command (when/whether an action runs), Chain (who handles), Iterator (traversal order), Mediator (interaction rules), Memento (history), Template Method (varying steps), Visitor (operations). Ask "what will change most often?" and isolate exactly that.</p>
+<p><b>Language features have absorbed patterns:</b> lambdas make Strategy, Command and Observer one-liners; <code>Iterable</code>/streams are built-in Iterator; records + sealed interfaces + pattern-matching <code>switch</code> replace much of Visitor; enums with abstract methods give compact State/Strategy. In interviews, show the classic structure first (it communicates intent), then mention the idiomatic modern shortcut.</p>
+<p><b>Costs to state honestly:</b> more classes and indirection (harder to follow control flow — especially Observer and Mediator, where "who reacts?" is implicit), memory (Memento, Command histories), and inheritance coupling (Template Method). Good engineers mention the cost alongside the benefit.</p>
+<p><b>Testing angle:</b> every pattern here improves testability by isolating behaviour behind an interface — strategies, states, handlers and visitors can each be unit-tested alone; contexts are tested with fakes. This is a strong argument to use in interviews.</p>
+<p><b>Scaling up:</b> in-process patterns have distributed twins — Observer → pub/sub (Kafka, SNS), Command → message queues and event sourcing, Mediator → orchestrators/sagas, Chain → API gateway filter chains, State → workflow engines (Temporal, Step Functions), Memento → snapshots/point-in-time recovery. Mentioning the twin shows you can connect LLD to HLD.</p>`,
+    aiEra: `<p><b>What AI changes:</b> generating pattern boilerplate is now nearly free, so the scarce skill is <b>choosing</b> — and defending the choice. A good workflow: describe the requirement and the axis of change to an assistant, ask for two alternative designs (e.g. State classes vs enum table) with trade-offs, then decide yourself.</p>
+<p><b>AI systems themselves are built from these patterns:</b> tool calls are Commands; model routing is Strategy; guardrail stacks are Chains; streaming callbacks are Observers; supervisor agents are Mediators; checkpointers are Mementos; agent graphs are State machines. Recognising them lets you read agent frameworks quickly.</p>
+<p><b>Where AI goes wrong:</b> pattern-stuffing (five patterns for a CRUD screen), or the opposite — a 300-line if/else ladder because it mirrors the prompt literally. <b>What you own:</b> the judgement call, the naming, and explaining "why this pattern, why not the alternative" out loud.</p>`
+  });
+
+  /* ======================= PRACTICE: EASY ======================= */
+  practice.push({
+    title: 'Sort Employees by Pluggable Criteria', level: 'Easy', tags: ['strategy', 'comparator'], companies: ['Amazon', 'Infosys', 'TCS'],
+    statement: `<p>An HR screen has a dropdown "Sort by": <b>salary</b> (high → low), <b>name</b> (A → Z), <b>joined</b> (oldest first), <b>dept-then-salary</b> (dept A → Z, then salary high → low). Implement <code>EmployeeSorter.sort(List&lt;Employee&gt;, String key)</code>. More sort options will be added by other teams; they must not edit your sorting code. Unknown keys must fail with a clear message.</p>`,
+    constraints: `Up to 10<sup>5</sup> employees. Sorting must be stable and O(N log N). Do not mutate the caller's list.`,
+    example: `<p>[(Asha, ENG, 90, 2019), (Ben, OPS, 70, 2017), (Cy, ENG, 95, 2021)]<br>key = "salary" → ${H.c('g', 'Cy, Asha, Ben')}; key = "dept-then-salary" → ${H.c('g', 'Cy, Asha (ENG), Ben (OPS)')}; key = "age" → ${H.c('r', 'IllegalArgumentException: unknown sort key age')}.</p>`,
+    brute: { why: `<p>A switch on the key with a hand-written bubble sort inside each case: four copies of an O(N²) loop, a new option means editing the switch, and a typo in one comparison only shows up for that option. The sorting <i>algorithm</i> and the <i>ordering rule</i> are welded together.</p>`, code: `class NaiveSorter {
+    record Emp(String name, String dept, int salary, int joined) {}
+    static void sort(List<Emp> a, String key) {
+        for (int i = 0; i < a.size(); i++)
+            for (int j = 0; j + 1 < a.size() - i; j++) {
+                boolean swap;
+                switch (key) {                                  // rule mixed into the algorithm
+                    case "salary" -> swap = a.get(j).salary() < a.get(j + 1).salary();
+                    case "name" -> swap = a.get(j).name().compareTo(a.get(j + 1).name()) > 0;
+                    default -> swap = false;                    // unknown keys silently ignored
+                }
+                if (swap) { Emp t = a.get(j); a.set(j, a.get(j + 1)); a.set(j + 1, t); }
+            }
+    }
+}` },
+    mcq: { q: 'In Collections.sort(list, comparator), which part is the Strategy?', options: ['The Comparator', 'The List', 'The sort algorithm (TimSort)', 'The Employee class'], answer: 0, explain: 'The sorting algorithm is the fixed context; the comparator is the interchangeable rule plugged into it.' },
+    hints: [`<p>Hint 1: Separate "how to sort" (library TimSort, stable, O(N log N)) from "what order" (a Comparator).</p>`, `<p>Hint 2: A <code>Map&lt;String, Comparator&lt;Employee&gt;&gt;</code> registry; other teams call <code>register(key, comparator)</code>.</p>`, `<p>Hint 3: Build comparators with <code>Comparator.comparing(...).thenComparing(...)</code> and <code>.reversed()</code>; copy the list before sorting; throw on unknown keys.</p>`],
+    solution: {
+      approach: `<p>The sort algorithm is fixed (List.sort, stable TimSort). Each ordering rule is a <code>Comparator</code> strategy stored in a registry keyed by the dropdown value. New options are added by registering, not by editing. Composite orders use <code>thenComparing</code>. The input list is copied so callers are not surprised.</p>`,
+      code: `record Employee(String name, String dept, int salary, LocalDate joined) {}
+
+class EmployeeSorter {
+    private final Map<String, Comparator<Employee>> strategies = new HashMap<>();
+
+    EmployeeSorter() {
+        register("salary", Comparator.comparingInt(Employee::salary).reversed());
+        register("name", Comparator.comparing(Employee::name));
+        register("joined", Comparator.comparing(Employee::joined));
+        register("dept-then-salary", Comparator.comparing(Employee::dept)
+                .thenComparing(Comparator.comparingInt(Employee::salary).reversed()));
+    }
+
+    void register(String key, Comparator<Employee> c) { strategies.put(key, Objects.requireNonNull(c)); }
+
+    List<Employee> sort(List<Employee> input, String key) {
+        Comparator<Employee> c = strategies.get(key);
+        if (c == null) throw new IllegalArgumentException("unknown sort key " + key);
+        List<Employee> copy = new ArrayList<>(input);
+        copy.sort(c);                                   // stable O(N log N)
+        return copy;
+    }
+
+    public static void main(String[] args) {
+        List<Employee> es = List.of(new Employee("Asha", "ENG", 90, LocalDate.of(2019, 1, 1)),
+                new Employee("Ben", "OPS", 70, LocalDate.of(2017, 5, 1)),
+                new Employee("Cy", "ENG", 95, LocalDate.of(2021, 3, 1)));
+        EmployeeSorter s = new EmployeeSorter();
+        s.sort(es, "dept-then-salary").forEach(e -> System.out.print(e.name() + " "));
+        System.out.println();
+        s.register("name-desc", Comparator.comparing(Employee::name).reversed());   // added by another team
+        s.sort(es, "name-desc").forEach(e -> System.out.print(e.name() + " "));
+    }
+}`,
+      complexity: `<p>O(N log N) time, O(N) extra space for the copy. Registering a strategy: O(1).</p>`,
+      followUps: ['Let users combine any two keys at runtime (compose comparators)', 'How would you expose the available keys to the UI?']
+    }
+  });
+
+  practice.push({
+    title: 'Traffic Light Controller', level: 'Easy', tags: ['state'], companies: ['Siemens', 'Bosch', 'Uber'],
+    statement: `<p>A traffic light cycles <b>RED (30s) → GREEN (25s) → YELLOW (5s) → RED</b>. Events: <code>timerExpired()</code> moves to the next colour; <code>pedestrianButton()</code> during GREEN switches immediately to YELLOW (ignored in other states); <code>emergency()</code> from any state goes to <b>FLASHING_RED</b>; <code>resume()</code> from FLASHING_RED goes to RED (ignored elsewhere). Expose <code>color()</code> and <code>duration()</code> of the current state.</p>`,
+    constraints: `Single light, events come from one controller thread. Adding a new state (e.g. GREEN_ARROW) should touch only the states that lead to it.`,
+    example: `<p>Start RED → timer → ${H.c('g', 'GREEN')} → pedestrian → ${H.c('y', 'YELLOW')} → timer → ${H.c('r', 'RED')} → emergency → ${H.c('r', 'FLASHING_RED')} → timer → stays FLASHING_RED → resume → ${H.c('r', 'RED')}.</p>`,
+    brute: { why: `<p>A colour string plus a switch inside each of the four event methods. 4 states × 4 events = 16 cases spread across 4 methods; a new state means editing all four; an unhandled case silently does nothing or does the wrong thing.</p>`, code: `class NaiveLight {
+    String color = "RED";
+    void timerExpired() {
+        switch (color) {
+            case "RED" -> color = "GREEN";
+            case "GREEN" -> color = "YELLOW";
+            case "YELLOW" -> color = "RED";
+            default -> { }
+        }
+    }
+    void pedestrianButton() { if (color.equals("GREEN")) color = "YELLOW"; }
+    void emergency() { color = "FLASHING_RED"; }
+    void resume() { if (color.equals("FLASHING_RED")) color = "RED"; }
+    // duration()? another switch...
+}` },
+    mcq: { q: 'Which state class should handle pedestrianButton() by changing to YELLOW?', options: ['GREEN only; other states inherit a "do nothing" default', 'Every state, with an if inside', 'The controller, with a switch', 'YELLOW'], answer: 0, explain: 'Only the state where the event matters overrides it. Defaults make other states ignore it safely.' },
+    hints: [`<p>Hint 1: Each colour is a state with its own duration and its own reaction to each event.</p>`, `<p>Hint 2: An <code>enum Light</code> with constant-specific bodies is a compact State pattern: each constant overrides <code>onTimer()</code> etc. and returns the next state.</p>`, `<p>Hint 3: Default methods return <code>this</code> (ignore). <code>emergency()</code> is the same for all → implement once in the enum, not per constant.</p>`],
+    solution: {
+      approach: `<p>Use an enum as a compact State pattern: each constant knows its duration and overrides only the events it reacts to, returning the next state. Shared behaviour (emergency → FLASHING_RED) lives once in the enum body. The controller holds the current state and assigns whatever the state returns.</p>`,
+      code: `enum Light {
+    RED(30)    { Light onTimer() { return GREEN; } },
+    GREEN(25)  { Light onTimer() { return YELLOW; } Light onPedestrian() { return YELLOW; } },
+    YELLOW(5)  { Light onTimer() { return RED; } },
+    FLASHING_RED(0) { Light onTimer() { return this; } Light onResume() { return RED; } };
+
+    final int seconds;
+    Light(int seconds) { this.seconds = seconds; }
+    abstract Light onTimer();
+    Light onPedestrian() { return this; }            // default: ignore
+    Light onResume() { return this; }                // default: ignore
+    Light onEmergency() { return FLASHING_RED; }     // same for every state
+}
+
+class TrafficController {
+    private Light state = Light.RED;
+    void timerExpired()     { state = state.onTimer(); }
+    void pedestrianButton() { state = state.onPedestrian(); }
+    void emergency()        { state = state.onEmergency(); }
+    void resume()           { state = state.onResume(); }
+    String color() { return state.name(); }
+    int duration() { return state.seconds; }
+
+    public static void main(String[] args) {
+        TrafficController t = new TrafficController();
+        t.timerExpired(); t.pedestrianButton(); System.out.print(t.color() + " ");   // YELLOW
+        t.timerExpired(); t.emergency(); t.timerExpired(); System.out.print(t.color() + " ");
+        t.resume(); System.out.println(t.color() + " " + t.duration() + "s");       // RED 30s
+    }
+}`,
+      complexity: `<p>O(1) per event, O(1) memory. New state = new enum constant + overrides in states that lead to it.</p>`,
+      followUps: ['Drive it with a real ScheduledExecutorService timer — where does scheduling live?', 'Two lights at an intersection must never both be GREEN — which pattern coordinates them? (Mediator)']
+    }
+  });
+
+  practice.push({
+    title: 'Peeking Iterator', level: 'Easy', tags: ['iterator', 'design'], companies: ['Google', 'Apple', 'Yahoo'],
+    statement: `<p>Wrap an existing <code>Iterator&lt;Integer&gt;</code> in a <code>PeekingIterator</code> that supports <code>peek()</code> (return the next element without advancing), <code>next()</code> and <code>hasNext()</code>. You may not copy the whole underlying sequence (it may be huge or infinite).</p>`,
+    constraints: `Up to 10<sup>6</sup> calls. All operations O(1). <code>next()</code>/<code>peek()</code> on an exhausted iterator throw <code>NoSuchElementException</code>.`,
+    example: `<p>Underlying [1, 2, 3]: next → ${H.c('g', '1')}, peek → ${H.c('b', '2')}, next → ${H.c('g', '2')} (same value peek showed), next → ${H.c('g', '3')}, hasNext → ${H.c('r', 'false')}.</p>`,
+    brute: { why: `<p>Drain the whole underlying iterator into a list in the constructor and keep an index. Peek is trivial, but memory becomes O(N), startup O(N), and it never terminates on an infinite stream (e.g. an iterator over a live event feed).</p>`, code: `class CopyingPeekingIterator {
+    private final List<Integer> all = new ArrayList<>();
+    private int i;
+    CopyingPeekingIterator(Iterator<Integer> it) { while (it.hasNext()) all.add(it.next()); }   // O(N), hangs if infinite
+    Integer peek() { return all.get(i); }
+    Integer next() { return all.get(i++); }
+    boolean hasNext() { return i < all.size(); }
+}` },
+    mcq: { q: 'What extra state does a lazy PeekingIterator need?', options: ['One cached "next" element plus a flag saying whether it is valid', 'A copy of all remaining elements', 'A stack', 'Nothing; call next() twice'], answer: 0, explain: 'Look ahead by exactly one element and remember it; next() returns the cached value and refills the cache.' },
+    hints: [`<p>Hint 1: To peek you must take the element from the underlying iterator early — so remember it.</p>`, `<p>Hint 2: Fields: <code>Integer nextVal</code> and <code>boolean hasPeeked</code> (null can be a valid element, so do not use null as "empty").</p>`, `<p>Hint 3: peek(): if not cached, cache it. next(): if cached, return and clear; else delegate. hasNext(): cached || underlying.hasNext().</p>`],
+    solution: {
+      approach: `<p>Keep a one-element look-ahead buffer. <code>peek()</code> fills the buffer if empty and returns it without consuming; <code>next()</code> returns the buffer if filled (and clears it) or delegates to the wrapped iterator. A separate boolean distinguishes "no buffered element" from "buffered null". Implementing <code>Iterator&lt;T&gt;</code> generically makes it reusable. This is also a Decorator over an Iterator.</p>`,
+      code: `class PeekingIterator<T> implements Iterator<T> {
+    private final Iterator<T> it;
+    private T buffered;
+    private boolean hasBuffered;
+
+    PeekingIterator(Iterator<T> it) { this.it = it; }
+
+    T peek() {
+        if (!hasBuffered) {
+            if (!it.hasNext()) throw new NoSuchElementException();
+            buffered = it.next();
+            hasBuffered = true;
+        }
+        return buffered;
+    }
+
+    @Override public T next() {
+        if (hasBuffered) { hasBuffered = false; T v = buffered; buffered = null; return v; }
+        return it.next();                       // throws NoSuchElementException when exhausted
+    }
+
+    @Override public boolean hasNext() { return hasBuffered || it.hasNext(); }
+
+    public static void main(String[] args) {
+        PeekingIterator<Integer> p = new PeekingIterator<>(List.of(1, 2, 3).iterator());
+        System.out.println(p.next() + " " + p.peek() + " " + p.next() + " " + p.next() + " " + p.hasNext());
+    }
+}`,
+      complexity: `<p>O(1) time per call, O(1) extra memory.</p>`,
+      followUps: ['Generalise to peek(k) — look k ahead (use a small deque)', 'Use it to merge K sorted iterators with a heap']
+    }
+  });
+
+  practice.push({
+    title: 'Smart Light Remote with Undo', level: 'Easy', tags: ['command', 'undo'], companies: ['Amazon', 'Google', 'Philips'],
+    statement: `<p>A remote has numbered slots. Each slot can be programmed with an action on a <code>Light</code> (brightness 0–100): <b>On</b> (100), <b>Off</b> (0), <b>Dim(level)</b>. <code>press(slot)</code> runs the action; <code>undo()</code> reverts the <b>most recent</b> press, restoring the exact previous brightness (multiple undos go further back). Slots can be re-programmed at runtime. The remote must not know what a light is.</p>`,
+    constraints: `Up to 10 slots, history up to 100 presses (drop the oldest beyond that). Pressing an empty slot does nothing and is not recorded.`,
+    example: `<p>Slot0=On, Slot1=Dim(30), Slot2=Off. press(0) → 100. press(1) → 30. press(2) → 0. undo → ${H.c('g', '30')}. undo → ${H.c('g', '100')}. undo → ${H.c('g', '0')} (initial). undo → ${H.c('m', 'nothing')}.</p>`,
+    brute: { why: `<p>The remote stores slot numbers in an int array and switches on the button id to call <code>light.on()</code>, <code>light.dim(30)</code>… It remembers only <code>lastButton</code>, so undo is a second switch that guesses the previous brightness (wrong after Dim → Dim) and supports only one level of undo. The remote is welded to the Light class.</p>`, code: `class NaiveRemote {
+    int brightness, lastButton = -1;
+    void press(int button) {
+        lastButton = button;
+        switch (button) { case 0 -> brightness = 100; case 1 -> brightness = 30; case 2 -> brightness = 0; default -> { } }
+    }
+    void undo() {                                 // guesses: wrong after two dims, only one level
+        switch (lastButton) { case 0 -> brightness = 0; case 1 -> brightness = 100; case 2 -> brightness = 100; default -> { } }
+        lastButton = -1;
+    }
+}` },
+    mcq: { q: 'Dim(30) is pressed twice in a row, then undo twice. What must each command store to undo correctly?', options: ['The brightness just before it executed', 'The brightness it sets (30)', 'Nothing; Dim undoes to 100', 'The slot number'], answer: 0, explain: 'Undo restores the previous value. Each command instance must capture it at execute time, so every press needs its own command record.' },
+    hints: [`<p>Hint 1: Make <code>interface Command { void execute(); void undo(); }</code>. The remote holds <code>Command[] slots</code>.</p>`, `<p>Hint 2: A slot holds a command <i>template</i>; each press must record its own "previous brightness". Either create a fresh command per press (a Supplier in the slot) or let the history store (command, previous value) pairs.</p>`, `<p>Hint 3: A <code>SetBrightness(light, target)</code> command covers On/Off/Dim. Bounded <code>ArrayDeque</code> for history.</p>`],
+    solution: {
+      approach: `<p>Slots hold <code>Supplier&lt;Command&gt;</code> factories so every press creates a fresh command object that captures the brightness before it runs. The remote (invoker) executes it and pushes it on a bounded history. Undo pops and calls <code>undo()</code>. The remote only knows the <code>Command</code> interface, so slots can control fans or TVs tomorrow.</p>`,
+      code: `class Light {
+    private int brightness;
+    void set(int b) { brightness = Math.max(0, Math.min(100, b)); }
+    int get() { return brightness; }
+}
+
+interface Command { void execute(); void undo(); }
+
+class SetBrightness implements Command {
+    private final Light light; private final int target; private int previous;
+    SetBrightness(Light light, int target) { this.light = light; this.target = target; }
+    public void execute() { previous = light.get(); light.set(target); }
+    public void undo() { light.set(previous); }
+}
+
+class Remote {
+    private final List<Supplier<Command>> slots = new ArrayList<>(Collections.nCopies(10, null));
+    private final Deque<Command> history = new ArrayDeque<>();
+
+    void program(int slot, Supplier<Command> factory) { slots.set(slot, factory); }
+
+    void press(int slot) {
+        Supplier<Command> f = slots.get(slot);
+        if (f == null) return;                       // empty slot: no-op, not recorded
+        Command c = f.get();                         // fresh command per press
+        c.execute();
+        history.push(c);
+        if (history.size() > 100) history.removeLast();
+    }
+    boolean undo() {
+        Command c = history.poll();
+        if (c == null) return false;
+        c.undo();
+        return true;
+    }
+
+    public static void main(String[] args) {
+        Light l = new Light();
+        Remote r = new Remote();
+        r.program(0, () -> new SetBrightness(l, 100));
+        r.program(1, () -> new SetBrightness(l, 30));
+        r.program(2, () -> new SetBrightness(l, 0));
+        r.press(0); r.press(1); r.press(2);
+        StringBuilder sb = new StringBuilder();
+        while (r.undo()) sb.append(l.get()).append(' ');
+        System.out.println(sb.toString().trim());    // 30 100 0
+    }
+}`,
+      complexity: `<p>press/undo O(1); memory O(history size) — bounded at 100.</p>`,
+      followUps: ['Add a "Party mode" macro slot that runs several commands and undoes them together', 'Add redo']
+    }
+  });
+
+  /* ======================= PRACTICE: MEDIUM ======================= */
+  practice.push({
+    title: 'Logger with Levels and Handler Chain', level: 'Medium', tags: ['chain of responsibility', 'logging'], companies: ['Microsoft', 'Atlassian', 'Uber'],
+    statement: `<p>Build a <code>Logger</code> with levels <b>DEBUG &lt; INFO &lt; WARN &lt; ERROR</b>. Output goes through a chain of handlers: <code>ConsoleHandler</code> (min DEBUG), <code>FileHandler</code> (min INFO, keeps lines in memory for the test), <code>PagerHandler</code> (min ERROR, pages on-call). Every handler whose minimum level is met writes the message, then passes it on (pipeline semantics). Handlers can be added/reordered by configuration. One failing handler must not stop the others.</p>`,
+    constraints: `Up to 10<sup>6</sup> log calls; handlers are shared across threads. Messages below every handler's level should cost almost nothing.`,
+    example: `<p>log(DEBUG, "cache miss") → ${H.c('b', 'console only')}. log(WARN, "slow query") → ${H.c('b', 'console + file')}. log(ERROR, "db down") → ${H.c('r', 'console + file + pager')}.</p>`,
+    brute: { why: `<p>A single <code>log()</code> method with <code>if (level &gt;= INFO) writeFile(); if (level == ERROR) page();</code>. Adding a Slack handler or changing thresholds edits the logger; a pager exception aborts the log call; and handlers cannot be configured per environment.</p>`, code: `class NaiveLogger {
+    final List<String> file = new ArrayList<>();
+    void log(int level, String msg) {         // 0=DEBUG 1=INFO 2=WARN 3=ERROR
+        System.out.println(msg);
+        if (level >= 1) file.add(msg);
+        if (level >= 3) throw new RuntimeException("pager down");   // breaks everything after it
+    }
+}` },
+    mcq: { q: 'In this logger, why does every handler call next even after handling?', options: ['Pipeline semantics: several handlers may each act on the same message', 'Because the first handler cannot write', 'To save memory', 'It is a bug; CoR must stop at the first handler'], answer: 0, explain: 'Chain of Responsibility has two flavours. Approvals stop at the first handler; logging is a filter pipeline where many handlers act.' },
+    hints: [`<p>Hint 1: <code>enum Level</code> with ordinal comparison. Abstract <code>LogHandler</code> with <code>minLevel</code>, <code>next</code>, and a final <code>handle()</code>.</p>`, `<p>Hint 2: <code>handle()</code>: if level ≥ min, try { write } catch (RuntimeException) { record failure }; then if next != null, next.handle().</p>`, `<p>Hint 3: Cheap filtering: the Logger can store the lowest min level of the chain and return early. Use a thread-safe list for the file handler.</p>`],
+    solution: {
+      approach: `<p>Each handler is a link with its own minimum level. The base class fixes the walking logic (Template Method inside CoR): check level → write (isolated in try/catch) → forward. The logger only knows the head of the chain plus a pre-computed global minimum, so messages that no handler wants are dropped in O(1). Chains are assembled by configuration code.</p>`,
+      code: `enum Level { DEBUG, INFO, WARN, ERROR }
+
+abstract class LogHandler {
+    private final Level min; private LogHandler next;
+    LogHandler(Level min) { this.min = min; }
+    LogHandler then(LogHandler n) { this.next = n; return n; }
+    Level min() { return next == null ? min : (min.compareTo(next.min()) < 0 ? min : next.min()); }
+
+    final void handle(Level level, String msg) {
+        if (level.compareTo(min) >= 0) {
+            try { write(level, msg); }
+            catch (RuntimeException e) { System.err.println(getClass().getSimpleName() + " failed: " + e.getMessage()); }
+        }
+        if (next != null) next.handle(level, msg);           // pipeline: always forward
+    }
+    protected abstract void write(Level level, String msg);
+}
+
+class ConsoleHandler extends LogHandler {
+    ConsoleHandler() { super(Level.DEBUG); }
+    protected void write(Level l, String m) { System.out.println("[console] " + l + " " + m); }
+}
+class FileHandler extends LogHandler {
+    final List<String> lines = new CopyOnWriteArrayList<>();
+    FileHandler() { super(Level.INFO); }
+    protected void write(Level l, String m) { lines.add(l + " " + m); }
+}
+class PagerHandler extends LogHandler {
+    PagerHandler() { super(Level.ERROR); }
+    protected void write(Level l, String m) { System.out.println("[pager] waking on-call: " + m); }
+}
+
+class Logger {
+    private final LogHandler head; private final Level min;
+    Logger(LogHandler head) { this.head = head; this.min = head.min(); }
+    void log(Level level, String msg) {
+        if (level.compareTo(min) < 0) return;                // nobody wants it: O(1) drop
+        head.handle(level, msg);
+    }
+
+    public static void main(String[] args) {
+        ConsoleHandler console = new ConsoleHandler();
+        FileHandler file = new FileHandler();
+        console.then(file).then(new PagerHandler());
+        Logger log = new Logger(console);
+        log.log(Level.DEBUG, "cache miss");
+        log.log(Level.WARN, "slow query");
+        log.log(Level.ERROR, "db down");
+        System.out.println("file has " + file.lines);
+    }
+}`,
+      complexity: `<p>O(H) per message for H handlers; O(1) for messages below the global minimum.</p>`,
+      followUps: ['Make writing asynchronous so a slow file system does not block callers (queue + background thread)', 'Add per-package log levels (logger hierarchy)']
+    }
+  });
+
+  practice.push({
+    title: 'Typed Event Bus', level: 'Medium', tags: ['observer', 'pub-sub', 'generics'], companies: ['Google', 'Spotify', 'Swiggy'],
+    statement: `<p>Implement an in-process <code>EventBus</code>: <code>subscribe(Class&lt;T&gt; type, Consumer&lt;T&gt; handler)</code> returns a handle to unsubscribe; <code>publish(Object event)</code> delivers the event to every handler subscribed to the event's class <b>or any of its supertypes/interfaces</b> (a handler for <code>OrderEvent</code> also receives <code>OrderShipped</code>). A handler that throws must not prevent delivery to others; return the number of handlers that succeeded.</p>`,
+    constraints: `Up to 10<sup>4</sup> subscriptions, many publishes per second from multiple threads; subscriptions change rarely.`,
+    example: `<p>subscribe(OrderEvent → audit), subscribe(OrderShipped → sms), subscribe(Object → debugLog). publish(new OrderShipped("A1")) → ${H.c('g', 'audit, sms and debugLog')} all run (3). publish(new UserSignedUp("u7")) → ${H.c('g', 'debugLog only')} (1).</p>`,
+    brute: { why: `<p>One <code>publish(String type, Object payload)</code> with a switch on the type string calling services directly. No compile-time type safety (payload casts), publishers know every consumer, and hierarchy-based subscriptions ("all order events") are impossible without listing every subtype.</p>`, code: `class NaiveBus {
+    void publish(String type, Object payload) {
+        switch (type) {
+            case "ORDER_SHIPPED" -> { System.out.println("audit " + payload); System.out.println("sms " + payload); }
+            case "USER_SIGNED_UP" -> System.out.println("welcome " + payload);
+            default -> System.out.println("unknown " + type);   // every new event edits this
+        }
+    }
+}` },
+    mcq: { q: 'How do you find every handler that should receive an OrderShipped event?', options: ['Walk its class, superclasses and interfaces, and collect the handlers registered for each', 'Only look up OrderShipped.class', 'Call every handler and let it check instanceof', 'Use the event name string'], answer: 0, explain: 'Subscriptions keyed by type; delivery resolves the event type hierarchy (cache it per class for speed).' },
+    hints: [`<p>Hint 1: <code>Map&lt;Class&lt;?&gt;, List&lt;Consumer&lt;Object&gt;&gt;&gt;</code> — store handlers wrapped so the bus can call them with an Object after a safe cast.</p>`, `<p>Hint 2: Collect all supertypes with a BFS over <code>getSuperclass()</code> and <code>getInterfaces()</code>; cache the result in a <code>ConcurrentHashMap&lt;Class, List&lt;Class&gt;&gt;</code>.</p>`, `<p>Hint 3: Use <code>CopyOnWriteArrayList</code> for handler lists; wrap each call in try/catch; unsubscribe handle removes the exact wrapper.</p>`],
+    solution: {
+      approach: `<p>An Observer keyed by type. Subscriptions are stored per <code>Class</code> in thread-safe lists; each typed handler is wrapped in a <code>Consumer&lt;Object&gt;</code> that casts with <code>type.cast</code>. On publish, the bus resolves the event's type hierarchy once (cached), gathers handlers from every type in it, and invokes each in isolation. The unsubscribe handle removes the exact wrapper instance.</p>`,
+      code: `interface OrderEvent { String orderId(); }
+record OrderShipped(String orderId) implements OrderEvent {}
+record UserSignedUp(String userId) {}
+
+class EventBus {
+    private final Map<Class<?>, List<Consumer<Object>>> handlers = new ConcurrentHashMap<>();
+    private final Map<Class<?>, List<Class<?>>> hierarchyCache = new ConcurrentHashMap<>();
+
+    <T> Runnable subscribe(Class<T> type, Consumer<? super T> handler) {
+        Consumer<Object> wrapper = o -> handler.accept(type.cast(o));
+        handlers.computeIfAbsent(type, k -> new CopyOnWriteArrayList<>()).add(wrapper);
+        return () -> handlers.getOrDefault(type, List.of()).remove(wrapper);
+    }
+
+    int publish(Object event) {
+        int ok = 0;
+        for (Class<?> t : hierarchy(event.getClass())) {
+            for (Consumer<Object> h : handlers.getOrDefault(t, List.of())) {
+                try { h.accept(event); ok++; }
+                catch (RuntimeException e) { System.out.println("handler failed: " + e.getMessage()); }
+            }
+        }
+        return ok;
+    }
+
+    private List<Class<?>> hierarchy(Class<?> c) {
+        return hierarchyCache.computeIfAbsent(c, k -> {
+            List<Class<?>> out = new ArrayList<>();
+            Deque<Class<?>> q = new ArrayDeque<>(List.of(k));
+            Set<Class<?>> seen = new HashSet<>();
+            while (!q.isEmpty()) {
+                Class<?> x = q.poll();
+                if (x == null || !seen.add(x)) continue;
+                out.add(x);
+                if (x.getSuperclass() != null) q.add(x.getSuperclass());
+                q.addAll(Arrays.asList(x.getInterfaces()));
+            }
+            return out;
+        });
+    }
+
+    public static void main(String[] args) {
+        EventBus bus = new EventBus();
+        bus.subscribe(OrderEvent.class, e -> System.out.println("audit " + e.orderId()));
+        Runnable sms = bus.subscribe(OrderShipped.class, e -> System.out.println("sms: " + e.orderId() + " shipped"));
+        bus.subscribe(Object.class, e -> System.out.println("debug " + e));
+        System.out.println(bus.publish(new OrderShipped("A1")) + " handlers");
+        sms.run();
+        System.out.println(bus.publish(new OrderShipped("A2")) + " handlers");
+        System.out.println(bus.publish(new UserSignedUp("u7")) + " handlers");
+    }
+}`,
+      complexity: `<p>publish: O(T + H) where T = types in the hierarchy (cached) and H = matching handlers. subscribe/unsubscribe: O(H) copy-on-write.</p>`,
+      followUps: ['Deliver asynchronously with ordering per event type', 'Add dead-event handling (no subscribers)', 'Prevent memory leaks from forgotten subscriptions']
+    }
+  });
+
+  practice.push({
+    title: 'Flatten Nested List Iterator', level: 'Medium', tags: ['iterator', 'stack'], companies: ['Meta', 'LinkedIn', 'Airbnb', 'Netflix'],
+    statement: `<p>Given a nested list such as <code>[[1,1],2,[1,[4,[6]]]]</code>, implement an iterator that returns the integers in order: 1, 1, 2, 1, 4, 6. Elements are <code>NestedInteger</code>s: each is either an integer or a list of NestedIntegers. Lists may be empty at any depth (<code>[[],[[]],3]</code> → 3). Iterate lazily: do not flatten everything in the constructor.</p>`,
+    constraints: `Up to 10<sup>5</sup> integers, nesting depth up to 10<sup>4</sup>. <code>hasNext()</code> must be safe to call repeatedly.`,
+    example: `<p>[[1,1],2,[1,[4,[6]]]] → ${H.c('g', '1 1 2 1 4 6')}. [[],[[]],3] → ${H.c('g', '3')} — empty lists produce nothing, so hasNext() must <b>skip</b> them before answering.</p>`,
+    brute: { why: `<p>Recursively flatten the whole structure into a list in the constructor. Simple, but O(N) memory and work up front, and a depth-10<sup>4</sup> recursion risks StackOverflowError. Callers who need only the first element still pay for all.</p>`, code: `interface NI { boolean isInteger(); Integer getInteger(); List<NI> getList(); }
+class FlattenAll {
+    private final List<Integer> out = new ArrayList<>(); private int i;
+    FlattenAll(List<NI> list) { add(list); }
+    private void add(List<NI> l) { for (NI x : l) if (x.isInteger()) out.add(x.getInteger()); else add(x.getList()); }  // deep recursion
+    boolean hasNext() { return i < out.size(); }
+    Integer next() { return out.get(i++); }
+}` },
+    mcq: { q: 'Why must hasNext() do work (not just check a stack is non-empty)?', options: ['Because the stack may hold only empty lists, so we must unpack until an integer is on top', 'Because next() is slow', 'Because Java requires it', 'It must not do work'], answer: 0, explain: 'hasNext() advances past empty lists and unpacks nested lists until an integer is ready (or nothing remains). It must be idempotent, so it only prepares and never consumes the integer.' },
+    hints: [`<p>Hint 1: Keep a stack of iterators (one per open list), like a paused DFS.</p>`, `<p>Hint 2: In hasNext(): look at the top iterator; if exhausted pop it; if its next element is a list, push that list's iterator; if it is an integer, cache it and return true.</p>`, `<p>Hint 3: Use a cached <code>Integer nextVal</code> to make hasNext idempotent; next() calls hasNext(), returns and clears the cache.</p>`],
+    solution: {
+      approach: `<p>Simulate DFS with a stack of <code>Iterator&lt;NestedInteger&gt;</code>. <code>hasNext()</code> repeatedly inspects the top iterator: pop it when exhausted, descend (push a new iterator) when the next element is a list, and stop when it finds an integer, which it caches. <code>next()</code> returns the cached integer. Memory is O(depth); each element is touched once, so operations are O(1) amortised and no recursion is used.</p>`,
+      code: `interface NestedInteger {
+    boolean isInteger();
+    Integer getInteger();
+    List<NestedInteger> getList();
+    static NestedInteger of(int v) { return new NestedImpl(v, null); }
+    static NestedInteger of(NestedInteger... xs) { return new NestedImpl(null, List.of(xs)); }
+}
+record NestedImpl(Integer value, List<NestedInteger> list) implements NestedInteger {
+    public boolean isInteger() { return value != null; }
+    public Integer getInteger() { return value; }
+    public List<NestedInteger> getList() { return list; }
+}
+
+class NestedIterator implements Iterator<Integer> {
+    private final Deque<Iterator<NestedInteger>> stack = new ArrayDeque<>();
+    private Integer nextVal;                       // cached look-ahead
+
+    NestedIterator(List<NestedInteger> list) { stack.push(list.iterator()); }
+
+    @Override public boolean hasNext() {
+        while (nextVal == null && !stack.isEmpty()) {
+            Iterator<NestedInteger> top = stack.peek();
+            if (!top.hasNext()) { stack.pop(); continue; }
+            NestedInteger x = top.next();
+            if (x.isInteger()) nextVal = x.getInteger();
+            else stack.push(x.getList().iterator());      // descend lazily
+        }
+        return nextVal != null;
+    }
+
+    @Override public Integer next() {
+        if (!hasNext()) throw new NoSuchElementException();
+        Integer v = nextVal; nextVal = null; return v;
+    }
+
+    public static void main(String[] args) {
+        List<NestedInteger> in = List.of(NestedInteger.of(NestedInteger.of(1), NestedInteger.of(1)), NestedInteger.of(2),
+                NestedInteger.of(NestedInteger.of(1), NestedInteger.of(NestedInteger.of(4), NestedInteger.of(NestedInteger.of(6)))));
+        NestedIterator it = new NestedIterator(in);
+        StringBuilder sb = new StringBuilder();
+        while (it.hasNext()) sb.append(it.next()).append(' ');
+        System.out.println(sb.toString().trim());   // 1 1 2 1 4 6
+        System.out.println(new NestedIterator(List.of(NestedInteger.of(), NestedInteger.of(NestedInteger.of()), NestedInteger.of(3))).next());
+    }
+}`,
+      complexity: `<p>O(1) amortised per call (each element and list is visited once); O(depth) memory.</p>`,
+      followUps: ['Support remove()', 'Return elements in reverse order lazily', 'Make it work for a structure that is streamed from disk']
+    }
+  });
+
+  practice.push({
+    title: 'Media Player State Machine', level: 'Medium', tags: ['state'], companies: ['Spotify', 'Netflix', 'Apple'],
+    statement: `<p>A <code>MediaPlayer</code> plays one track of length L seconds. States: <b>Stopped</b>, <b>Playing</b>, <b>Paused</b>. <code>play()</code>: Stopped → Playing from 0; Paused → Playing from the saved position; Playing → no-op. <code>pause()</code>: Playing → Paused; otherwise no-op. <code>stop()</code>: any → Stopped, position 0. <code>tick(s)</code>: only in Playing, advances the position; reaching L moves to Stopped (track ended) and fires an <code>onFinished</code> callback. Return a status line after each action.</p>`,
+    constraints: `L ≤ 10<sup>4</sup> s, up to 10<sup>5</sup> actions. Adding a <b>Buffering</b> state later must not require editing unrelated states.`,
+    example: `<p>L=10. play → Playing@0. tick 4 → Playing@4. pause → Paused@4. tick 3 → ${H.c('m', 'Paused@4 (time frozen)')}. play → Playing@4. tick 7 → ${H.c('g', 'Stopped@0, finished fired')}.</p>`,
+    brute: { why: `<p>Two booleans <code>playing</code> and <code>paused</code> and if/else in every method. Invalid combinations (both true) become possible, <code>tick</code> must remember to check both flags, and Buffering would add a third boolean and 8 combinations.</p>`, code: `class NaivePlayer {
+    boolean playing, paused; int pos; final int len;
+    NaivePlayer(int len) { this.len = len; }
+    void play() { if (paused) { paused = false; playing = true; } else if (!playing) { pos = 0; playing = true; } }
+    void pause() { if (playing) { playing = false; paused = true; } }
+    void stop() { playing = false; paused = false; pos = 0; }
+    void tick(int s) { if (playing && !paused) { pos += s; if (pos >= len) stop(); } }   // flags can drift
+}` },
+    mcq: { q: 'Where does "time does not advance while paused" live in the State design?', options: ['PausedState.tick() is a no-op (inherited default)', 'In MediaPlayer.tick() with an if', 'In the UI', 'In the track object'], answer: 0, explain: 'Each state defines its own reaction; Paused simply does not override tick, so the default does nothing.' },
+    hints: [`<p>Hint 1: Context = player (position, length, callback). States = Stopped, Playing, Paused.</p>`, `<p>Hint 2: <code>interface PlayerState</code> with default no-op methods returning <code>this</code>; each state overrides only its meaningful events and returns the next state.</p>`, `<p>Hint 3: Playing.tick: pos += s; if pos ≥ len → pos = 0, fire callback, return Stopped. Keep the state singletons stateless; data stays in the context.</p>`],
+    solution: {
+      approach: `<p>State objects are stateless singletons that receive the context and return the next state; the context (player) keeps position, length and the finished callback. Defaults return <code>this</code>, which encodes "ignored" for every event a state does not handle. The player's public methods are one-line delegations plus a status string.</p>`,
+      code: `interface PlayerState {
+    String name();
+    default PlayerState play(MediaPlayer p)  { return this; }
+    default PlayerState pause(MediaPlayer p) { return this; }
+    default PlayerState tick(MediaPlayer p, int s) { return this; }
+    default PlayerState stop(MediaPlayer p)  { p.position = 0; return Stopped.I; }
+}
+final class Stopped implements PlayerState {
+    static final Stopped I = new Stopped();
+    public String name() { return "Stopped"; }
+    public PlayerState play(MediaPlayer p) { p.position = 0; return Playing.I; }
+}
+final class Playing implements PlayerState {
+    static final Playing I = new Playing();
+    public String name() { return "Playing"; }
+    public PlayerState pause(MediaPlayer p) { return Paused.I; }
+    public PlayerState tick(MediaPlayer p, int s) {
+        p.position += s;
+        if (p.position >= p.length) { p.position = 0; p.onFinished.run(); return Stopped.I; }
+        return this;
+    }
+}
+final class Paused implements PlayerState {
+    static final Paused I = new Paused();
+    public String name() { return "Paused"; }
+    public PlayerState play(MediaPlayer p) { return Playing.I; }     // resume from saved position
+}
+
+class MediaPlayer {
+    int position; final int length; final Runnable onFinished;
+    private PlayerState state = Stopped.I;
+    MediaPlayer(int length, Runnable onFinished) { this.length = length; this.onFinished = onFinished; }
+    String play()       { state = state.play(this); return status(); }
+    String pause()      { state = state.pause(this); return status(); }
+    String stop()       { state = state.stop(this); return status(); }
+    String tick(int s)  { state = state.tick(this, s); return status(); }
+    String status() { return state.name() + "@" + position; }
+
+    public static void main(String[] args) {
+        MediaPlayer m = new MediaPlayer(10, () -> System.out.println("finished!"));
+        System.out.println(String.join(" ", m.play(), m.tick(4), m.pause(), m.tick(3), m.play(), m.tick(7)));
+    }
+}`,
+      complexity: `<p>O(1) per action, O(1) memory. A Buffering state = one class + overrides in Playing (to enter it) — Stopped and Paused are untouched.</p>`,
+      followUps: ['Add a playlist: when a track finishes, auto-play the next (who owns that rule?)', 'Notify UI widgets of state changes (Observer)']
+    }
+  });
+
+  practice.push({
+    title: 'Shopping Cart: Tax and Shipping Visitors', level: 'Medium', tags: ['visitor'], companies: ['Flipkart', 'Amazon', 'Walmart'],
+    statement: `<p>A cart contains <code>Book(price, grams)</code>, <code>Electronics(price, grams, fragile)</code> and <code>Grocery(price, grams, perishable)</code>. Implement two operations as visitors: <b>tax</b> (books 0%, electronics 18%, grocery 5%) and <b>shipping</b> (₹10 per 500 g or part thereof; +₹50 if fragile; +₹30 if perishable). Finance will later add "loyalty points" and "import duty" — the item classes must not change for that.</p>`,
+    constraints: `Up to 10<sup>4</sup> items. Money in paise (long) to avoid floating-point errors. Item types are stable.`,
+    example: `<p>Book(50000, 400) + Electronics(200000, 1200, fragile) + Grocery(10000, 900, perishable).<br>Tax = 0 + 36000 + 500 = ${H.c('g', '36500 paise')}. Shipping = 1000 + (3000 + 5000) + (2000 + 3000) = ${H.c('g', '14000 paise')} (1200 g → 3 blocks of 500 g; 900 g → 2 blocks).</p>`,
+    brute: { why: `<p>Each operation is a method with <code>if (item instanceof Book) … else if (item instanceof Electronics) …</code>. Tax, shipping, points and duty each repeat the same ladder; adding a new item type compiles fine even when one ladder forgets it.</p>`, code: `class NaiveCart {
+    record Item(String kind, long price, int grams) {}
+    long tax(List<Item> items) {
+        long t = 0;
+        for (Item i : items) {
+            if (i.kind().equals("BOOK")) t += 0;
+            else if (i.kind().equals("ELEC")) t += i.price() * 18 / 100;
+            else if (i.kind().equals("GROCERY")) t += i.price() * 5 / 100;
+        }
+        return t;   // shipping(), points(), duty() repeat this ladder...
+    }
+}` },
+    mcq: { q: 'Finance adds "loyalty points" next sprint. With Visitor, what do you write?', options: ['One new class LoyaltyVisitor; item classes untouched', 'A points() method in each item class', 'A new instanceof ladder', 'A new item type'], answer: 0, explain: 'New operations over stable types are exactly what Visitor makes cheap.' },
+    hints: [`<p>Hint 1: <code>interface CartItem { &lt;R&gt; R accept(CartVisitor&lt;R&gt; v); }</code> and a visitor with <code>visitBook</code>, <code>visitElectronics</code>, <code>visitGrocery</code>.</p>`, `<p>Hint 2: Each visitor returns the amount for one item; the cart sums <code>item.accept(visitor)</code> over all items.</p>`, `<p>Hint 3: Blocks of 500 g "or part thereof" = <code>(grams + 499) / 500</code>. Keep all money in long paise.</p>`],
+    solution: {
+      approach: `<p>Item records are the stable element hierarchy with one-line <code>accept</code> methods. Each business operation is a <code>CartVisitor&lt;Long&gt;</code> that returns the amount for one item; a generic <code>Cart.total(visitor)</code> sums over items. All tax rules sit together in <code>TaxVisitor</code> and all shipping rules in <code>ShippingVisitor</code>, which is how finance and logistics teams want to own them.</p>`,
+      code: `interface CartVisitor<R> {
+    R visitBook(Book b);
+    R visitElectronics(Electronics e);
+    R visitGrocery(Grocery g);
+}
+interface CartItem { <R> R accept(CartVisitor<R> v); }
+
+record Book(long price, int grams) implements CartItem { public <R> R accept(CartVisitor<R> v) { return v.visitBook(this); } }
+record Electronics(long price, int grams, boolean fragile) implements CartItem { public <R> R accept(CartVisitor<R> v) { return v.visitElectronics(this); } }
+record Grocery(long price, int grams, boolean perishable) implements CartItem { public <R> R accept(CartVisitor<R> v) { return v.visitGrocery(this); } }
+
+class TaxVisitor implements CartVisitor<Long> {
+    public Long visitBook(Book b) { return 0L; }
+    public Long visitElectronics(Electronics e) { return e.price() * 18 / 100; }
+    public Long visitGrocery(Grocery g) { return g.price() * 5 / 100; }
+}
+class ShippingVisitor implements CartVisitor<Long> {
+    private static long base(int grams) { return 1000L * ((grams + 499) / 500); }   // ₹10 per 500 g block
+    public Long visitBook(Book b) { return base(b.grams()); }
+    public Long visitElectronics(Electronics e) { return base(e.grams()) + (e.fragile() ? 5000 : 0); }
+    public Long visitGrocery(Grocery g) { return base(g.grams()) + (g.perishable() ? 3000 : 0); }
+}
+
+class Cart {
+    private final List<CartItem> items = new ArrayList<>();
+    void add(CartItem i) { items.add(i); }
+    long total(CartVisitor<Long> v) {
+        long sum = 0;
+        for (CartItem i : items) sum += i.accept(v);
+        return sum;
+    }
+
+    public static void main(String[] args) {
+        Cart c = new Cart();
+        c.add(new Book(50_000, 400));
+        c.add(new Electronics(200_000, 1200, true));
+        c.add(new Grocery(10_000, 900, true));
+        System.out.println("tax=" + c.total(new TaxVisitor()) + " shipping=" + c.total(new ShippingVisitor()));   // 36500 14000
+    }
+}`,
+      complexity: `<p>O(N) per visitor run. New operation: one class. New item type: one method in every visitor (compiler-enforced).</p>`,
+      followUps: ['Rewrite with a sealed interface and switch — compare the amount of code', 'Tax rules differ by state/country — combine Visitor with a Strategy per region']
+    }
+  });
+
+  practice.push({
+    title: 'Payment Processing Template', level: 'Medium', tags: ['template method', 'hooks'], companies: ['Razorpay', 'Stripe', 'PayPal'],
+    statement: `<p>Every payment method follows: <b>validate amount</b> → <b>fraud check</b> (optional per method) → <b>debit</b> (method-specific) → <b>apply fee</b> (method-specific, default 0) → <b>write receipt</b>. Card: 2% fee, always fraud-checked (reject amounts &gt; ₹1,00,000). UPI: no fee, fraud check only above ₹2,000. Wallet: no fraud check, fails if wallet balance is insufficient. The order of steps must be enforced for all methods, including ones added later.</p>`,
+    constraints: `Amounts in paise (long) &gt; 0. Fraud and debit failures must return a failed result, never throw to the caller.`,
+    example: `<p>Card ₹500 → ${H.c('g', 'OK, fee ₹10')}. UPI ₹1,500 → ${H.c('g', 'OK, fraud check skipped')}. Card ₹2,00,000 → ${H.c('r', 'FRAUD_REJECTED')}. Wallet ₹900 with balance ₹800 → ${H.c('r', 'DEBIT_FAILED')}.</p>`,
+    brute: { why: `<p>Three classes each implementing the full flow. One forgets amount validation, another writes the receipt before the debit succeeds, and a compliance change ("log every fraud decision") must be applied three times. The <i>order of steps</i> is a business rule but nobody enforces it.</p>`, code: `class NaiveCardPayment {
+    String pay(long amt) {
+        String receipt = "receipt " + amt;              // written BEFORE debit: wrong order
+        if (amt > 10_000_000) return "FRAUD_REJECTED";
+        System.out.println("debit card " + amt);
+        return receipt + " fee " + amt * 2 / 100;       // forgot to validate amt > 0
+    }
+}
+// NaiveUpiPayment, NaiveWalletPayment: same flow pasted with different mistakes.` },
+    mcq: { q: 'UPI wants to skip fraud checks for small amounts. How should it express that?', options: ['Override a hook like needsFraudCheck(amount) that the template calls', 'Override the whole pay() method', 'Add an if in the base class for UPI', 'Catch the fraud exception'], answer: 0, explain: 'Hooks let subclasses switch optional steps on/off while the base keeps the order and the mandatory steps.' },
+    hints: [`<p>Hint 1: <code>public final PaymentResult pay(long amount)</code> in an abstract <code>PaymentProcessor</code>.</p>`, `<p>Hint 2: Abstract: <code>debit(amount)</code> returning boolean. Hooks: <code>needsFraudCheck(amount)</code> (default true), <code>fee(amount)</code> (default 0).</p>`, `<p>Hint 3: Shared private steps: validate, fraudCheck (limit rule), receipt. Return a record <code>PaymentResult(status, fee)</code> with an enum status.</p>`],
+    solution: {
+      approach: `<p>The base class fixes the flow in a <code>final pay()</code>: validate → (hook) fraud check → abstract debit → (hook) fee → receipt. Mandatory steps are private, so no subclass can skip them; optional behaviour is expressed through hooks with safe defaults. A new payment method is a small subclass, and a compliance change to the flow is made once.</p>`,
+      code: `enum PayStatus { OK, INVALID_AMOUNT, FRAUD_REJECTED, DEBIT_FAILED }
+record PaymentResult(PayStatus status, long fee) {}
+
+abstract class PaymentProcessor {
+    public final PaymentResult pay(long amount) {
+        if (amount <= 0) return new PaymentResult(PayStatus.INVALID_AMOUNT, 0);
+        if (needsFraudCheck(amount) && !fraudCheck(amount)) return new PaymentResult(PayStatus.FRAUD_REJECTED, 0);
+        if (!debit(amount)) return new PaymentResult(PayStatus.DEBIT_FAILED, 0);
+        long fee = fee(amount);
+        writeReceipt(amount, fee);
+        return new PaymentResult(PayStatus.OK, fee);
+    }
+    protected abstract boolean debit(long amount);
+    protected boolean needsFraudCheck(long amount) { return true; }   // hook
+    protected long fee(long amount) { return 0; }                     // hook
+    private boolean fraudCheck(long amount) { return amount <= 10_000_000; }   // ₹1,00,000 in paise
+    private void writeReceipt(long amount, long fee) {
+        System.out.println(getClass().getSimpleName() + " receipt: " + amount + " fee " + fee);
+    }
+}
+
+class CardPayment extends PaymentProcessor {
+    protected boolean debit(long amount) { return true; }             // call card network
+    @Override protected long fee(long amount) { return amount * 2 / 100; }
+}
+class UpiPayment extends PaymentProcessor {
+    protected boolean debit(long amount) { return true; }
+    @Override protected boolean needsFraudCheck(long amount) { return amount > 200_000; }
+}
+class WalletPayment extends PaymentProcessor {
+    private long balance;
+    WalletPayment(long balance) { this.balance = balance; }
+    protected boolean debit(long amount) {
+        if (amount > balance) return false;
+        balance -= amount; return true;
+    }
+    @Override protected boolean needsFraudCheck(long amount) { return false; }
+}
+
+class PayDemo {
+    public static void main(String[] args) {
+        System.out.println(new CardPayment().pay(50_000));
+        System.out.println(new UpiPayment().pay(150_000));
+        System.out.println(new CardPayment().pay(20_000_000));
+        System.out.println(new WalletPayment(80_000).pay(90_000));
+    }
+}`,
+      complexity: `<p>O(1) per payment. New method = one subclass with 1–3 small overrides.</p>`,
+      followUps: ['Fraud checking should call a pluggable ML service — would you make it a Strategy injected into the base?', 'Make debit + receipt atomic (what if receipt writing fails?)']
+    }
+  });
+
+  /* ======================= PRACTICE: HARD ======================= */
+  practice.push({
+    title: 'Transactional Key-Value Store (Nested BEGIN/ROLLBACK/COMMIT)', level: 'Hard', tags: ['memento', 'command', 'undo log'], companies: ['Stripe', 'Coinbase', 'Databricks', 'Google'],
+    statement: `<p>Implement an in-memory store with <code>set(k, v)</code>, <code>get(k)</code> (null if missing), <code>delete(k)</code>, <code>begin()</code>, <code>rollback()</code> and <code>commit()</code>. Transactions <b>nest</b>: rollback undoes only the innermost open transaction; commit merges the innermost into its parent (or makes changes permanent if it is the outermost). rollback/commit with no open transaction return false. <code>begin()</code> must be O(1) — copying the whole map is not allowed.</p>`,
+    constraints: `Up to 10<sup>6</sup> keys and 10<sup>5</sup> operations; nesting depth up to 10<sup>3</sup>. get/set/delete O(1) average.`,
+    example: `<p>set a=10 · begin · set a=20 · begin · delete a · get a → ${H.c('m', 'null')} · rollback · get a → ${H.c('g', '20')} · commit · get a → ${H.c('g', '20')} · rollback → ${H.c('r', 'false (no open txn)')}.</p>`,
+    brute: { why: `<p>On <code>begin()</code> push a <b>full copy</b> of the map (a full memento); rollback pops and restores it. Correct and simple, but begin is O(N): with 10<sup>6</sup> keys and frequent short transactions, you copy millions of entries to change one. Memory explodes with nesting.</p>`, code: `class CopyingStore {
+    private Map<String, String> data = new HashMap<>();
+    private final Deque<Map<String, String>> snapshots = new ArrayDeque<>();
+    void set(String k, String v) { data.put(k, v); }
+    String get(String k) { return data.get(k); }
+    void begin() { snapshots.push(new HashMap<>(data)); }          // O(N) every time
+    boolean rollback() { if (snapshots.isEmpty()) return false; data = snapshots.pop(); return true; }
+    boolean commit() { if (snapshots.isEmpty()) return false; snapshots.pop(); return true; }
+}` },
+    mcq: { q: 'Inside one transaction, key a is set three times. What should the undo log keep for a?', options: ['Only its value before the FIRST change in this transaction', 'All three old values', 'Only the latest value', 'Nothing; rollback re-reads the database'], answer: 0, explain: 'Rollback must restore the state at begin(); the first old value is all that is needed. Recording it once per key per transaction keeps the log O(keys touched).' },
+    hints: [`<p>Hint 1: A <b>delta memento</b>: each transaction keeps a <code>Map&lt;key, oldValue&gt;</code> recorded the first time it touches a key. A sentinel marks "key did not exist".</p>`, `<p>Hint 2: rollback: for each entry, restore the old value (or remove the key if the sentinel). commit: merge the child log into the parent with <code>putIfAbsent</code> (the parent's older value wins); if outermost, just drop it.</p>`, `<p>Hint 3: Use <code>Optional</code> or a private static final Object ABSENT as the sentinel. Stack of logs = <code>Deque&lt;Map&lt;String,Object&gt;&gt;</code>.</p>`],
+    solution: {
+      approach: `<p>Store data in one live map and keep a stack of <b>undo logs</b>, one per open transaction (a delta memento). Before the first modification of a key within the innermost transaction, record its previous value (or ABSENT). <b>rollback</b> replays that log into the live map and pops it. <b>commit</b> pops the log and merges it into the parent's log with <code>putIfAbsent</code>, so the parent can still roll back to its own begin state; at the outermost level the log is simply discarded. begin is O(1); rollback/commit cost O(keys touched).</p>`,
+      code: `class TxStore {
+    private static final Object ABSENT = new Object();
+    private final Map<String, String> data = new HashMap<>();
+    private final Deque<Map<String, Object>> logs = new ArrayDeque<>();
+
+    String get(String k) { return data.get(k); }
+
+    void set(String k, String v) { remember(k); data.put(k, v); }
+    void delete(String k) { remember(k); data.remove(k); }
+
+    private void remember(String k) {
+        Map<String, Object> log = logs.peek();
+        if (log != null && !log.containsKey(k)) log.put(k, data.containsKey(k) ? data.get(k) : ABSENT);
+    }
+
+    void begin() { logs.push(new HashMap<>()); }                       // O(1)
+
+    boolean rollback() {
+        Map<String, Object> log = logs.poll();
+        if (log == null) return false;
+        for (Map.Entry<String, Object> e : log.entrySet()) {
+            if (e.getValue() == ABSENT) data.remove(e.getKey());
+            else data.put(e.getKey(), (String) e.getValue());
+        }
+        return true;
+    }
+
+    boolean commit() {
+        Map<String, Object> log = logs.poll();
+        if (log == null) return false;
+        Map<String, Object> parent = logs.peek();
+        if (parent != null) log.forEach(parent::putIfAbsent);         // parent keeps its OLDER value
+        return true;
+    }
+
+    public static void main(String[] args) {
+        TxStore s = new TxStore();
+        s.set("a", "10");
+        s.begin(); s.set("a", "20");
+        s.begin(); s.delete("a"); s.set("b", "1");
+        System.out.println(s.get("a") + " " + s.get("b"));   // null 1
+        s.rollback();
+        System.out.println(s.get("a") + " " + s.get("b"));   // 20 null
+        s.commit();
+        System.out.println(s.get("a") + " " + s.rollback()); // 20 false
+        s.begin(); s.set("a", "30"); s.begin(); s.set("a", "40"); s.commit(); s.rollback();
+        System.out.println(s.get("a"));                      // 20 (outer rollback undoes both)
+    }
+}`,
+      complexity: `<p>get/set/delete O(1) average; begin O(1); rollback/commit O(keys touched in that transaction). Memory O(total keys touched across open transactions).</p>`,
+      followUps: ['Add count(value) in O(1) that also respects rollback (maintain a value→count map, logged the same way)', 'Make it thread-safe with snapshot isolation (MVCC)', 'Persist with a write-ahead log for crash recovery']
+    }
+  });
+
+  practice.push({
+    title: 'HTTP Middleware Pipeline with Ordering and Error Handling', level: 'Hard', tags: ['chain of responsibility', 'middleware'], companies: ['Cloudflare', 'Netflix', 'Shopify'],
+    statement: `<p>Build a <code>Server</code> where middlewares are registered with an <b>order number</b> (lower runs first, ties by registration order). Each middleware receives the request and a <code>next</code> function; it may modify the request, short-circuit with its own response, call next and then modify the response (add headers). Required middlewares: <b>ErrorBoundary</b> (outermost; converts any exception into 500), <b>Auth</b> (401 without a token), <b>RateLimit</b> (429 after N requests per client), <b>Timing</b> (adds an <code>X-Time-Us</code> header). The final handler routes to an endpoint.</p>`,
+    constraints: `Up to 20 middlewares; requests from many threads; middlewares must be stateless or thread-safe. Build the chain once, not per request.`,
+    example: `<p>No token → ${H.c('r', '401')} (endpoint never runs). Token, 3rd request with limit 2 → ${H.c('r', '429')}. Token, endpoint throws → ${H.c('r', '500 from ErrorBoundary')}. Normal → ${H.c('g', '200 with X-Time-Us header')}.</p>`,
+    brute: { why: `<p>One giant <code>handle()</code> with sequential if-blocks: try { if (!token) return 401; if (rate…) return 429; long t = …; resp = route(); resp.header(…) } catch … Every new concern edits it; ordering is implicit in code position; post-processing (headers) and short-circuits interleave confusingly; nothing can be reused in another service.</p>`, code: `class NaiveServer {
+    final Map<String, Integer> hits = new HashMap<>();
+    String handle(String token, String client, String path) {
+        try {
+            if (token == null) return "401";
+            if (hits.merge(client, 1, Integer::sum) > 2) return "429";   // not thread-safe either
+            long t0 = System.nanoTime();
+            if (path.equals("/boom")) throw new IllegalStateException("bug");
+            String body = "200 " + path;
+            return body + " X-Time-Us=" + (System.nanoTime() - t0) / 1000;
+        } catch (RuntimeException e) { return "500"; }
+    }
+}` },
+    mcq: { q: 'Why must ErrorBoundary be the OUTERMOST middleware?', options: ['So exceptions thrown by any inner middleware or the endpoint propagate up into its try/catch', 'Because it is the fastest', 'So it runs after the response is sent', 'Order does not matter'], answer: 0, explain: 'In the onion model, a middleware can only catch exceptions from what runs inside its next() call. Outermost = wraps everything.' },
+    hints: [`<p>Hint 1: <code>interface Middleware { Response handle(Request r, Function&lt;Request, Response&gt; next); }</code>. Store (order, seq, middleware) and sort once.</p>`, `<p>Hint 2: Pre-compose the chain into a single <code>Function&lt;Request, Response&gt;</code> by folding from the innermost: <code>f = r -&gt; m.handle(r, inner)</code>.</p>`, `<p>Hint 3: Responses with headers: an immutable record with a <code>withHeader</code> method. RateLimit uses <code>ConcurrentHashMap.merge</code>. Mark the chain "built" and rebuild if a middleware is added later.</p>`],
+    solution: {
+      approach: `<p>Middlewares are Chain-of-Responsibility handlers in the onion style. Registration stores them with (order, sequence). <code>build()</code> sorts them and folds from the innermost outward, producing one composed function — so per-request cost is just the calls themselves, with no list walking or allocation for the chain. Each middleware decides to short-circuit, delegate, or post-process. The ErrorBoundary has the lowest order so its try/catch wraps everything. Rate limiting uses a concurrent map so the shared middleware is thread-safe.</p>`,
+      code: `record Req(String path, String token, String client) {}
+record Resp(int status, String body, Map<String, String> headers) {
+    Resp(int status, String body) { this(status, body, Map.of()); }
+    Resp withHeader(String k, String v) {
+        Map<String, String> h = new LinkedHashMap<>(headers); h.put(k, v);
+        return new Resp(status, body, Collections.unmodifiableMap(h));
+    }
+}
+@FunctionalInterface interface Mw { Resp handle(Req r, Function<Req, Resp> next); }
+
+class Server {
+    private record Entry(int order, int seq, Mw mw) {}
+    private final List<Entry> entries = new ArrayList<>();
+    private final Function<Req, Resp> endpoint;
+    private volatile Function<Req, Resp> chain;
+
+    Server(Function<Req, Resp> endpoint) { this.endpoint = endpoint; }
+
+    synchronized Server use(int order, Mw mw) { entries.add(new Entry(order, entries.size(), mw)); chain = null; return this; }
+
+    private synchronized Function<Req, Resp> build() {
+        if (chain != null) return chain;
+        List<Entry> sorted = new ArrayList<>(entries);
+        sorted.sort(Comparator.comparingInt(Entry::order).thenComparingInt(Entry::seq));
+        Function<Req, Resp> f = endpoint;
+        for (int i = sorted.size() - 1; i >= 0; i--) {          // fold innermost -> outermost
+            Mw m = sorted.get(i).mw(); Function<Req, Resp> inner = f;
+            f = r -> m.handle(r, inner);
+        }
+        return chain = f;
+    }
+
+    Resp handle(Req r) { Function<Req, Resp> c = chain; return (c != null ? c : build()).apply(r); }
+
+    public static void main(String[] args) {
+        Map<String, Integer> hits = new ConcurrentHashMap<>();
+        Server s = new Server(r -> {
+            if (r.path().equals("/boom")) throw new IllegalStateException("endpoint bug");
+            return new Resp(200, "ok " + r.path());
+        });
+        s.use(30, (r, next) -> hits.merge(r.client(), 1, Integer::sum) > 2 ? new Resp(429, "slow down") : next.apply(r))
+         .use(20, (r, next) -> r.token() == null ? new Resp(401, "login") : next.apply(r))
+         .use(0, (r, next) -> { try { return next.apply(r); } catch (RuntimeException e) { return new Resp(500, "error: " + e.getMessage()); } })
+         .use(10, (r, next) -> { long t = System.nanoTime(); Resp res = next.apply(r); return res.withHeader("X-Time-Us", String.valueOf((System.nanoTime() - t) / 1000)); });
+        System.out.println(s.handle(new Req("/a", null, "c1")).status());          // 401
+        System.out.println(s.handle(new Req("/a", "t", "c1")).headers().keySet()); // 200 + [X-Time-Us]
+        System.out.println(s.handle(new Req("/boom", "t", "c2")).status());       // 500
+        s.handle(new Req("/a", "t", "c1"));
+        System.out.println(s.handle(new Req("/a", "t", "c1")).status());          // 429
+    }
+}`,
+      complexity: `<p>Build: O(M log M) once. Per request: O(M) middleware calls, zero chain allocation. Rate limiter O(1) per request.</p>`,
+      followUps: ['Make per-route middleware (only /admin needs an extra role check)', 'Add async (CompletableFuture) middlewares without blocking threads', 'How does this map to Servlet filters / Spring Security?']
+    }
+  });
+
+  practice.push({
+    title: 'Notification Dispatcher (Observer + Strategy + Chain Fallback)', level: 'Hard', tags: ['observer', 'strategy', 'chain of responsibility', 'machine coding'], companies: ['Swiggy', 'Uber', 'Airbnb', 'Amazon'],
+    statement: `<p>Services publish domain events (e.g. <code>ORDER_SHIPPED</code>, <code>PAYMENT_FAILED</code>). Users subscribe to event types. Each user has an ordered list of preferred channels (e.g. PUSH → SMS → EMAIL). When an event is published, every subscribed user must be notified through the <b>first channel that succeeds</b> (a channel may fail: no device token, SMS gateway down). Record a delivery log (user, event, channel or FAILED). New channels (WhatsApp) and new event types must be addable without modifying the dispatcher.</p>`,
+    constraints: `Up to 10<sup>5</sup> users, 50 event types. Publishing for one type must not scan users of other types. Channel implementations may throw; treat that as failure.`,
+    example: `<p>Asha subscribes ORDER_SHIPPED with [PUSH, SMS]; Ben with [SMS, EMAIL]. SMS gateway is down. publish(ORDER_SHIPPED) → Asha: ${H.c('g', 'PUSH ok')}; Ben: SMS ${H.c('r', 'fails')} → ${H.c('g', 'EMAIL ok')}. If all channels fail → log ${H.c('r', 'FAILED')} for retry later.</p>`,
+    brute: { why: `<p>A dispatcher with a switch over event types and, inside, nested if/else per user preference: <code>if (pref == "PUSH") { if (!push(u)) { if (second == "SMS") … } }</code>. Fallback depth is hard-coded, channels are concrete calls, all users are scanned for each event, and adding WhatsApp touches every branch.</p>`, code: `class NaiveDispatcher {
+    record U(String name, String type, String first, String second) {}
+    final List<U> users = new ArrayList<>();
+    boolean send(String channel, U u) { return !channel.equals("SMS"); }           // pretend SMS is down
+    void publish(String type) {
+        for (U u : users) {                                                          // scans everyone
+            if (!u.type().equals(type)) continue;
+            if (u.first().equals("PUSH")) { if (!send("PUSH", u) && u.second().equals("EMAIL")) send("EMAIL", u); }
+            else if (u.first().equals("SMS")) { if (!send("SMS", u) && u.second().equals("EMAIL")) send("EMAIL", u); }
+            // fallback depth fixed at 2, WhatsApp = more branches
+        }
+    }
+}` },
+    mcq: { q: 'Which pattern decides "try PUSH, then SMS, then EMAIL until one works"?', options: ['Chain of Responsibility built per user from their preference list', 'Observer', 'Visitor', 'Memento'], answer: 0, explain: 'Each channel handler either succeeds (stops) or passes to the next. Observer decides WHO hears the event; Strategy encapsulates HOW each channel sends; the chain decides WHICH channel ends up delivering.' },
+    hints: [`<p>Hint 1: Three questions, three patterns: who receives (Observer, keyed by event type), how a channel sends (Strategy: <code>Channel.send(user, msg)</code>), which channel wins (Chain: try in order until success).</p>`, `<p>Hint 2: Registry <code>Map&lt;String, Channel&gt;</code> lets new channels plug in by name. Subscriptions: <code>Map&lt;EventType, List&lt;Subscription&gt;&gt;</code> where a subscription holds the user and their ordered channel names.</p>`, `<p>Hint 3: The fallback loop catches exceptions per channel; log the winning channel or FAILED. Use concurrent collections; deliver asynchronously in production (mention it).</p>`],
+    solution: {
+      approach: `<p><b>Observer:</b> the dispatcher keeps subscriptions per event type, so publish touches only interested users. <b>Strategy:</b> each channel implements <code>Channel</code> and is registered by name — WhatsApp is a new class plus one <code>register</code> call. <b>Chain of Responsibility:</b> for each user, channels are tried in the user's preference order; a channel that returns false or throws passes the job to the next; the first success stops the chain. Every attempt result goes to a delivery log for retries and analytics.</p>`,
+      code: `record Event(String type, String payload) {}
+record Delivery(String user, String eventType, String channel) {}
+
+interface Channel { boolean send(String user, String message); }
+
+class NotificationDispatcher {
+    private record Subscription(String user, List<String> channelOrder) {}
+    private final Map<String, Channel> channels = new ConcurrentHashMap<>();
+    private final Map<String, List<Subscription>> subs = new ConcurrentHashMap<>();
+    final List<Delivery> log = new CopyOnWriteArrayList<>();
+
+    void registerChannel(String name, Channel c) { channels.put(name, c); }           // Strategy registry
+
+    void subscribe(String user, String eventType, List<String> channelOrder) {      // Observer
+        subs.computeIfAbsent(eventType, k -> new CopyOnWriteArrayList<>()).add(new Subscription(user, List.copyOf(channelOrder)));
+    }
+
+    void publish(Event e) {
+        for (Subscription s : subs.getOrDefault(e.type(), List.of())) {
+            String winner = deliver(s, "[" + e.type() + "] " + e.payload());
+            log.add(new Delivery(s.user(), e.type(), winner));
+        }
+    }
+
+    // Chain of Responsibility: first channel that succeeds handles it.
+    private String deliver(Subscription s, String msg) {
+        for (String name : s.channelOrder()) {
+            Channel c = channels.get(name);
+            if (c == null) continue;                                   // unknown channel: skip
+            try { if (c.send(s.user(), msg)) return name; }
+            catch (RuntimeException ex) { System.out.println(name + " threw for " + s.user() + ": " + ex.getMessage()); }
+        }
+        return "FAILED";
+    }
+
+    public static void main(String[] args) {
+        NotificationDispatcher d = new NotificationDispatcher();
+        d.registerChannel("PUSH", (u, m) -> { if (u.equals("ben")) return false; System.out.println("push  -> " + u + " " + m); return true; });
+        d.registerChannel("SMS", (u, m) -> { throw new IllegalStateException("gateway down"); });
+        d.registerChannel("EMAIL", (u, m) -> { System.out.println("email -> " + u + " " + m); return true; });
+        d.subscribe("asha", "ORDER_SHIPPED", List.of("PUSH", "SMS"));
+        d.subscribe("ben", "ORDER_SHIPPED", List.of("SMS", "EMAIL"));
+        d.subscribe("cy", "ORDER_SHIPPED", List.of("SMS"));
+        d.publish(new Event("ORDER_SHIPPED", "A1 is on the way"));
+        d.publish(new Event("PAYMENT_FAILED", "nobody subscribed"));
+        d.log.forEach(System.out::println);
+    }
+}`,
+      complexity: `<p>publish: O(S × C) where S = subscribers of that event type and C = channels tried per user (small). Subscribe O(S) copy-on-write. Memory O(subscriptions + log).</p>`,
+      followUps: ['Retry FAILED deliveries with exponential backoff (a Command queue)', 'Quiet hours per user — which pattern/where?', 'Scale out: Kafka topics per event type, consumer groups per channel']
+    }
+  });
+
+  practice.push({
+    title: 'Spreadsheet Recalculation with Dependency Observers', level: 'Hard', tags: ['observer', 'graph', 'topological sort'], companies: ['Microsoft', 'Google', 'Airtable'],
+    statement: `<p>Cells are named like <code>A1</code>. <code>setValue(cell, number)</code> stores a number; <code>setSum(cell, refs...)</code> makes the cell a formula equal to the sum of the referenced cells (missing cells count as 0). Whenever a cell changes, every cell that depends on it (directly or indirectly) must update automatically — each dependent recomputed <b>exactly once</b>, after all of its inputs. A formula that would create a cycle (A1 = B1, B1 = A1) must be rejected and leave the sheet unchanged.</p>`,
+    constraints: `Up to 10<sup>4</sup> cells, each formula up to 50 refs. Recalculation after a change must touch only affected cells.`,
+    example: `<p>A1=2, A2=3, B1=SUM(A1,A2) → 5, C1=SUM(B1,A1) → 7. setValue(A1, 10) → ${H.c('g', 'B1=13, then C1=23')} (C1 recomputed once, after B1). setSum(A1, C1) → ${H.c('r', 'rejected: cycle A1 → C1 → A1')}.</p>`,
+    brute: { why: `<p>On every change, recompute <b>every</b> formula cell, repeating passes until nothing changes. That wastes work on unrelated cells, recomputes some cells many times, may show inconsistent intermediate values ("glitches") to listeners, and loops forever on a cycle.</p>`, code: `class NaiveSheet {
+    final Map<String, Double> val = new HashMap<>();
+    final Map<String, List<String>> formula = new HashMap<>();
+    void recalcAll() {
+        boolean changed = true;
+        while (changed) {                                   // infinite loop if there is a cycle
+            changed = false;
+            for (var e : formula.entrySet()) {              // touches every formula, every pass
+                double s = 0;
+                for (String r : e.getValue()) s += val.getOrDefault(r, 0.0);
+                if (!Objects.equals(val.put(e.getKey(), s), s)) changed = true;
+            }
+        }
+    }
+}` },
+    mcq: { q: 'C1 depends on B1 and A1; B1 depends on A1. A1 changes. Why recompute in topological order?', options: ['So C1 is computed once, after B1 has its new value (no glitch, no double work)', 'Because alphabetical order is required', 'To detect cycles', 'It does not matter'], answer: 0, explain: 'Naive observer push would update C1 when A1 changes (with stale B1) and again when B1 changes. Topological order over the affected subgraph computes each cell once with fresh inputs.' },
+    hints: [`<p>Hint 1: Each cell keeps its <b>inputs</b> (refs) and its <b>observers</b> (dependents). Changing a cell notifies its dependents — Observer — but do it in a batch.</p>`, `<p>Hint 2: On change: collect all affected cells by DFS/BFS over dependents; then Kahn's topological sort restricted to that set (in-degree = number of affected inputs); recompute in that order.</p>`, `<p>Hint 3: Cycle check before installing a formula: DFS from each ref along <i>inputs</i>; if you reach the target cell, reject. When replacing a formula, remove the cell from its old inputs' dependent sets.</p>`],
+    solution: {
+      approach: `<p>Model the sheet as a dependency graph. Every cell stores its inputs and its dependents (observers). Installing a formula first checks for cycles by searching from each new input through inputs for the target cell; if found, nothing changes. Otherwise old edges are removed and new ones added. Any change triggers a <b>batched</b> notification: gather the affected set (all transitive dependents), order it topologically with Kahn's algorithm restricted to that set, and recompute each cell once. This gives glitch-free, minimal recalculation — the same idea used by Excel and reactive UI frameworks.</p>`,
+      code: `class Sheet {
+    private final Map<String, Double> value = new HashMap<>();
+    private final Map<String, List<String>> inputs = new HashMap<>();      // formula refs
+    private final Map<String, Set<String>> dependents = new HashMap<>();   // observers
+
+    double get(String c) { return value.getOrDefault(c, 0.0); }
+
+    void setValue(String cell, double v) {
+        detach(cell);
+        value.put(cell, v);
+        propagate(cell);
+    }
+
+    boolean setSum(String cell, String... refs) {
+        for (String r : refs) if (reaches(r, cell)) return false;         // would create a cycle
+        detach(cell);
+        inputs.put(cell, List.of(refs));
+        for (String r : refs) dependents.computeIfAbsent(r, k -> new HashSet<>()).add(cell);
+        value.put(cell, compute(cell));
+        propagate(cell);
+        return true;
+    }
+
+    private void detach(String cell) {
+        List<String> old = inputs.remove(cell);
+        if (old != null) for (String r : old) dependents.getOrDefault(r, new HashSet<>()).remove(cell);
+    }
+
+    // DFS along inputs: does 'from' (transitively) read 'target'?
+    private boolean reaches(String from, String target) {
+        Deque<String> st = new ArrayDeque<>(List.of(from)); Set<String> seen = new HashSet<>();
+        while (!st.isEmpty()) {
+            String c = st.pop();
+            if (c.equals(target)) return true;
+            if (seen.add(c)) st.addAll(inputs.getOrDefault(c, List.of()));
+        }
+        return false;
+    }
+
+    private double compute(String cell) {
+        double s = 0;
+        for (String r : inputs.get(cell)) s += get(r);
+        return s;
+    }
+
+    // Batched observer notification: each affected cell recomputed once, inputs first.
+    private void propagate(String changed) {
+        Set<String> affected = new LinkedHashSet<>();
+        Deque<String> q = new ArrayDeque<>(dependents.getOrDefault(changed, Set.of()));
+        while (!q.isEmpty()) { String c = q.poll(); if (affected.add(c)) q.addAll(dependents.getOrDefault(c, Set.of())); }
+        Map<String, Integer> indeg = new HashMap<>();
+        for (String c : affected) {
+            int d = 0;
+            for (String r : inputs.get(c)) if (affected.contains(r)) d++;
+            indeg.put(c, d);
+        }
+        Deque<String> ready = new ArrayDeque<>();
+        indeg.forEach((c, d) -> { if (d == 0) ready.add(c); });
+        while (!ready.isEmpty()) {
+            String c = ready.poll();
+            value.put(c, compute(c));
+            System.out.println("  recompute " + c + " = " + get(c));
+            for (String dep : dependents.getOrDefault(c, Set.of()))
+                if (affected.contains(dep) && indeg.merge(dep, -1, Integer::sum) == 0) ready.add(dep);
+        }
+    }
+
+    public static void main(String[] args) {
+        Sheet s = new Sheet();
+        s.setValue("A1", 2); s.setValue("A2", 3);
+        s.setSum("B1", "A1", "A2");
+        s.setSum("C1", "B1", "A1");
+        System.out.println("set A1 = 10:");
+        s.setValue("A1", 10);
+        System.out.println("B1=" + s.get("B1") + " C1=" + s.get("C1"));        // 13.0 23.0
+        System.out.println("cycle accepted? " + s.setSum("A1", "C1"));         // false
+        System.out.println("A1 still " + s.get("A1"));
+    }
+}`,
+      complexity: `<p>Change: O(V<sub>a</sub> + E<sub>a</sub>) over the affected subgraph only. Cycle check: O(V + E) worst case over the inputs reachable from the new refs. Memory O(cells + references).</p>`,
+      followUps: ['Support other functions (MIN, AVG, IF) — Strategy per function or a Visitor over a formula AST?', 'Undo for cell edits (Command storing old value or old formula)', 'Recalculate in parallel: which cells can run concurrently? (same topological level)']
+    }
+  });
+
+  /* ======================= QUIZ ======================= */
+  quiz.push(
+    { q: 'A checkout must support flat, percentage and festive discounts, chosen by marketing at runtime. Which pattern fits best?', options: ['Strategy', 'Observer', 'Memento', 'Iterator'], answer: 0, explain: 'Interchangeable algorithms behind one interface, selected at runtime, is the definition of Strategy.' },
+    { q: 'Strategy and State have the same class diagram. What is the key difference?', options: ['In State, the state objects themselves trigger transitions to the next state; in Strategy the client chooses', 'State uses inheritance, Strategy uses interfaces', 'Strategy cannot be changed at runtime', 'State has no context object'], answer: 0, explain: 'Who switches the object is the tell: client-driven = Strategy; self-driven transitions = State.' },
+    { q: 'In a text editor, after undoing two steps the user types a new character. What happens to the redo stack?', options: ['It is cleared', 'It is kept so redo still works', 'Its top element is executed', 'It is merged into the undo stack'], answer: 0, explain: 'The new action creates a new history branch; old redo entries refer to a future that no longer exists and could corrupt the document.' },
+    { q: 'An observer throws an exception while being notified. What should a robust subject do?', options: ['Catch it per observer, log it, and continue notifying the others', 'Stop notifying and rethrow', 'Unsubscribe every observer', 'Retry forever'], answer: 0, explain: 'Failure isolation: one broken listener must not prevent delivery to the rest.' },
+    { q: 'Why is the template method usually declared <code>final</code>?', options: ['So subclasses cannot change the order of steps or skip mandatory ones', 'For performance', 'Because abstract methods require it', 'To allow multiple inheritance'], answer: 0, explain: 'The template method is the guarantee of the algorithm skeleton; overriding it would defeat the pattern.' },
+    { q: 'An expense of ₹9,99,999 passes TeamLead, Manager, Director and CFO without anyone approving. Which design element prevents it from silently disappearing?', options: ['A terminal default handler / explicit "unhandled" result at the end of the chain', 'A larger limit for the CFO', 'Making the chain circular', 'Observer notifications'], answer: 0, explain: 'Chain of Responsibility does not guarantee handling; you must define what happens at the end of the chain.' },
+    { q: 'A BST iterator using an explicit stack has which complexity per next() call?', options: ['O(1) amortised, O(h) memory', 'O(N) per call', 'O(log N) memory always, O(N) time', 'O(1) worst case, O(N) memory'], answer: 0, explain: 'Each node is pushed and popped exactly once over the whole traversal; the stack holds at most one root-to-leaf path.' },
+    { q: 'Ten UI widgets each enable/disable others based on their values. What pattern reduces their N×N coupling?', options: ['Mediator (a dialog object coordinating the widgets)', 'Iterator', 'Template Method', 'Memento'], answer: 0, explain: 'Colleagues talk only to the mediator, which holds the interaction rules in one place.' },
+    { q: 'In the Memento pattern, who is allowed to read the snapshot\'s internal fields?', options: ['Only the originator that created it', 'The caretaker', 'Any class in the application', 'Nobody, not even the originator'], answer: 0, explain: 'The caretaker stores mementos opaquely; only the originator reads them back during restore — this preserves encapsulation.' },
+    { q: 'Why does Visitor need an <code>accept(visitor)</code> method on each element?', options: ['To achieve double dispatch: pick the method by both the element\'s and the visitor\'s runtime types', 'To make elements serializable', 'Because Java has no interfaces', 'To iterate children in order'], answer: 0, explain: 'Java overload resolution uses static types; accept() lets each element call the correctly typed visitX(this).' },
+    { q: 'Visitor makes which kind of change cheap?', options: ['Adding a new operation over existing element types', 'Adding a new element type', 'Renaming element classes', 'Changing the traversal order of a list'], answer: 0, explain: 'New operation = one new visitor class. New element type = a new method in every visitor (the expression problem).' },
+    { q: 'You need undo for an "apply Gaussian blur" action that cannot be mathematically reversed. Best choice?', options: ['Take a Memento (snapshot) before applying, restore it on undo', 'A Command whose undo() applies "un-blur"', 'Observer', 'Chain of Responsibility'], answer: 0, explain: 'Non-invertible operations need state snapshots; Command-style inverse operations only work when an inverse exists.' },
+    { q: 'Calling <code>list.remove(x)</code> inside a for-each over an ArrayList typically causes…', options: ['ConcurrentModificationException from the fail-fast iterator', 'Silent success', 'A compile error', 'An infinite loop'], answer: 0, explain: 'The iterator detects a structural modification via modCount. Use iterator.remove() or removeIf().' },
+    { q: 'Which pairing of pattern and JDK/framework example is correct?', options: ['Runnable submitted to an ExecutorService — Command', 'Comparator — Observer', 'AbstractList — Mediator', 'Servlet FilterChain — Memento'], answer: 0, explain: 'Runnable is a command object executed by an invoker (executor). Comparator is Strategy, AbstractList is Template Method, FilterChain is Chain of Responsibility.' }
+  );
+
+  /* ======================= INTERVIEW ======================= */
+  interview.push(
+    { q: 'What are behavioral design patterns, and how do they differ from creational and structural ones?', level: 'B', a: `<p><b>Creational</b> patterns are about <i>creating</i> objects (Factory, Builder, Singleton). <b>Structural</b> patterns are about <i>composing</i> objects into bigger structures (Adapter, Decorator, Composite). <b>Behavioral</b> patterns are about <i>communication and responsibility at runtime</i>: who decides, who notifies whom, how a request travels, how actions are stored or undone. The GoF list has 11 (the ten in this module plus Interpreter). In interviews they show up as requirements: "pluggable pricing" (Strategy), "notify subscribers" (Observer), "undo" (Command/Memento), "order lifecycle" (State).</p>`, followUps: ['Name one behavioral pattern you used in a real project and why', 'Which behavioral pattern is built into Java\'s for-each loop?'] },
+    { q: 'Strategy vs State — they look identical. How do you explain the difference?', level: 'I', a: `<p>Both have a context holding a reference to an interface with several implementations. <b>Strategy</b>: the <i>client</i> picks an algorithm and the strategies are independent and unaware of each other (payment methods, sort orders). <b>State</b>: the object's behaviour changes with its internal mode, and <i>the states themselves</i> decide the next state (PaidState.ship() moves the order to Shipped). Clues: State has transitions and illegal actions; Strategy has interchangeable, equally valid choices. A vending machine is State; its pricing algorithm could be a Strategy inside it.</p>`, followUps: ['Can a State object hold a Strategy?', 'When would you use an enum transition table instead of State classes?'] },
+    { q: 'Design undo/redo for a text editor. Which pattern(s) and data structures?', level: 'I', a: `<p>Use <b>Command</b>: each edit is an object with <code>execute()</code>/<code>undo()</code> that stores only what it needs (position, inserted text, deleted text). An invoker keeps two stacks: run → execute, push on undo stack, <b>clear redo</b>; undo → pop, undo(), push on redo; redo → pop, execute(), push on undo. Coalesce consecutive keystrokes into one command (merge within a time window) and wrap multi-step operations in a MacroCommand. Cap history length. For non-invertible operations (filters, reformat-all) store a <b>Memento</b> snapshot inside the command. For collaborative editing, positions must be transformed (OT/CRDT).</p>`, followUps: ['How much memory does your design use for a 50 MB document?', 'How do you implement "undo typing" as a single step for a whole word?'] },
+    { q: 'What problems can Observer cause in production, and how do you mitigate them?', level: 'A', a: `<p>(1) <b>Memory leaks</b> from forgotten subscriptions (lapsed listeners) — return closeable subscription handles, tie them to lifecycles, or use weak references carefully. (2) <b>Concurrency</b> — mutating the list while notifying (CME) → CopyOnWriteArrayList; never notify while holding a lock (deadlock with re-entrant callbacks). (3) <b>Failure isolation</b> — wrap each callback in try/catch. (4) <b>Slow observers</b> block the subject — deliver asynchronously via executors/queues, with back-pressure. (5) <b>Cascades/re-entrancy</b> — an observer changing the subject triggers nested notifications; queue events. (6) <b>Ordering</b> — never rely on notification order. (7) Hard-to-follow control flow — log events and name them clearly.</p>`, followUps: ['How does java.util.concurrent.Flow add back-pressure?', 'When do you move from in-process Observer to Kafka?'] },
+    { q: 'Explain Chain of Responsibility with two real examples that use different semantics.', level: 'I', a: `<p>Handlers are linked; a request is passed along until handled. <b>First-match semantics</b>: expense approval (TeamLead ≤ ₹1k → Manager ≤ ₹10k → Director …) or ATM note dispensing — once someone handles it, the walk stops. <b>Pipeline semantics</b>: servlet filters / Express middleware / logging appenders — each handler does its part and calls next; any may short-circuit (401, 429). Key design points: build the chain in one place (config/DI), define what happens at the end (default handler), keep handlers stateless/thread-safe, and prefer a list-based pipeline over deep recursion for long chains.</p>`, followUps: ['How is CoR different from Decorator?', 'Where must an error-handling middleware sit and why?'] },
+    { q: 'When would you choose Template Method over Strategy, and vice versa?', level: 'I', a: `<p><b>Template Method</b> (inheritance): the algorithm skeleton is fixed and owned by a base class; subclasses override a few steps; the variation is chosen at compile time by picking the subclass. Good when steps share lots of protected state and the family is small and stable (importers, servlets, AbstractList). <b>Strategy</b> (composition): the varying step is an object passed in and swappable at runtime; strategies can be mixed and reused, and you avoid deep hierarchies and the fragile base class problem. If variations multiply combinatorially (format × validation × destination), Template Method explodes into many subclasses — switch to strategies. Many designs combine them: a final template method that delegates a step to an injected strategy.</p>`, followUps: ['What is the Hollywood Principle?', 'Why should you never call overridable methods from a constructor?'] },
+    { q: 'How would you implement an iterator over a binary search tree that uses less than O(N) memory?', level: 'I', a: `<p>Simulate in-order traversal with an explicit stack. Constructor pushes the left spine of the root. <code>next()</code> pops the top (the smallest unvisited value), then pushes the left spine of its right child, and returns the value. <code>hasNext()</code> is just "stack not empty" — idempotent. Memory is O(h) (log N if balanced) and <code>next()</code> is O(1) amortised because every node is pushed and popped exactly once. Implement <code>Iterator&lt;Integer&gt;</code>, throw NoSuchElementException when exhausted, and mention fail-fast behaviour if the tree is mutated during iteration.</p>`, followUps: ['How would you support prev()?', 'How would you make it fail-fast on concurrent modification?'] },
+    { q: 'Observer vs Mediator vs Pub/Sub — what is the difference?', level: 'A', a: `<p><b>Observer</b>: a subject keeps direct references to observers and broadcasts changes one-to-many; it contains no coordination logic. <b>Mediator</b>: many colleagues talk only to a central object that contains the <i>rules</i> of their interaction (chat room routing, control tower assigning runways) — many-to-many with logic in the hub. <b>Pub/Sub</b>: publishers and subscribers are fully decoupled by a broker and topics; they do not know each other at all, and the broker can persist, replay and distribute across machines (Kafka, SNS). A mediator is often implemented using observer-style callbacks; pub/sub is Observer scaled out with a broker in between.</p>`, followUps: ['Orchestration vs choreography in sagas — which pattern is which?', 'How do you prevent a mediator becoming a god object?'] },
+    { q: 'Memento vs Command for undo — trade-offs?', level: 'A', a: `<p><b>Command</b> stores the operation and its inverse data (inserted text, previous value): memory proportional to the edit, fast, but every operation needs a correct inverse and positions can go stale. <b>Memento</b> stores the state itself: works for any operation including non-invertible ones, simple to reason about, but memory proportional to the state per snapshot — mitigated by deltas, copy-on-write or immutable/persistent data structures with structural sharing. Real systems combine them: command log for fine-grained undo plus periodic snapshots (checkpoints) to bound replay time — exactly how databases combine a WAL with checkpoints and how event sourcing uses snapshots.</p>`, followUps: ['How do you keep a memento from leaking private state?', 'What does restore NOT undo?'] },
+    { q: 'Explain double dispatch and why the Visitor pattern needs accept().', level: 'A', a: `<p>Java selects <i>overloaded</i> methods at compile time using static argument types, and selects <i>overridden</i> methods at runtime using only the receiver's type (single dispatch). With <code>Expr e = new Add(...)</code>, calling <code>visitor.visit(e)</code> cannot select <code>visit(Add)</code>. Visitor bounces: <code>e.accept(v)</code> dispatches on the element's runtime type; inside <code>Add.accept</code>, <code>this</code> is statically an <code>Add</code>, so <code>v.visitAdd(this)</code> is chosen, and that call dispatches on the visitor's runtime type. Two virtual calls select the (element, operation) pair. Java 21 sealed interfaces with pattern-matching switch achieve the same with compiler-checked exhaustiveness and no accept boilerplate.</p>`, followUps: ['What is the expression problem?', 'When would you still prefer classic Visitor over sealed + switch?'] },
+    { q: 'Design an order lifecycle (NEW → PAID → SHIPPED → DELIVERED, cancellable before shipping) so that illegal transitions are impossible and concurrent requests are safe.', level: 'A', a: `<p>Draw the state diagram first. Implement State: an <code>OrderState</code> interface whose default methods throw IllegalStateException; each state overrides only legal events and returns/sets the next state, with entry actions (charge, refund, notify). Terminal states override nothing. Concurrency: in memory, synchronize transitions; in a database, use a conditional update — <code>UPDATE orders SET status='PAID', version=version+1 WHERE id=? AND status='NEW' AND version=?</code> — and treat 0 rows as a lost race. Persist the state name, rebuild the state object on load. Publish an event per transition (Observer) for emails/analytics, and keep an audit log of transitions.</p>`, followUps: ['How would you add ON_HOLD reachable from PAID?', 'How do you handle a payment webhook arriving twice?'] },
+    { q: 'You are given a 400-line method full of if/else on a "type" field. How do you decide which behavioral pattern (if any) to refactor to?', level: 'E', a: `<p>First ask <b>what varies and who decides</b>. If branches choose <i>how to compute</i> something and the type is chosen by the caller → Strategy (registry map). If branches depend on the object's <i>current status</i> and change it → State. If branches ask "can this branch handle it, else try the next" → Chain of Responsibility. If the same ladder over the same <i>types</i> appears in many operations → Visitor or sealed + switch. If branches differ only in a few steps of a shared sequence → Template Method. Then refactor safely: characterisation tests first, extract one branch at a time behind the interface, keep behaviour identical, and stop when the axis of change is isolated — do not add patterns where variation is not real.</p>`, followUps: ['How do you make this refactor safe with no tests?', 'When is a switch statement the better design?'] },
+    { q: 'How do behavioral patterns appear in AI/LLM applications and agent frameworks?', level: 'E', a: `<p><b>Command</b>: model tool calls are requests reified as data (name + JSON args) that the host validates, executes, logs and can undo. <b>Strategy</b>: model routing (cheap vs smart model), retrieval method, chunking policy. <b>Chain of Responsibility</b>: guardrail pipelines and fallback chains (cache → small model → large model → human). <b>Observer</b>: streaming token callbacks and tracing hooks. <b>State</b>: agent graphs (plan → act → observe → done) with persisted current state for resumption. <b>Mediator</b>: a supervisor/orchestrator agent coordinating worker agents. <b>Memento</b>: checkpointers that snapshot agent state for time-travel debugging and rollback of file edits. Naming these lets you reason about reliability: idempotent tool commands, bounded chains, terminal states and human approval gates.</p>`, followUps: ['How would you make agent tool calls safely undoable?', 'Why do agent frameworks model agents as explicit state graphs?'] },
+    { q: 'Implement Observer in Java today: what would you use instead of java.util.Observable?', level: 'I', a: `<p><code>Observable</code> is deprecated since Java 9: it is a class (forcing inheritance), its notification order and thread-safety are unspecified, and <code>setChanged()</code> is awkward. Today: define a small functional interface (<code>PriceListener</code>) so observers can be lambdas; keep them in a <code>CopyOnWriteArrayList</code>; return an <code>AutoCloseable</code> handle from <code>subscribe</code>; isolate failures per observer; deliver asynchronously with an <code>Executor</code> when observers do I/O. For streams with back-pressure use <code>java.util.concurrent.Flow</code> / Reactor / RxJava; in Spring, <code>ApplicationEventPublisher</code> + <code>@EventListener</code>; for JavaBeans properties, <code>PropertyChangeSupport</code>.</p>`, followUps: ['What is back-pressure and when do you need it?', 'How do you test that an observer was notified exactly once?'] }
+  );
+
+  /* Spread correct answers across positions (all MCQs are authored with the right answer first). */
+  function rotateMcq(q, k) {
+    if (!q || !q.options) return;
+    var n = q.options.length; k = k % n;
+    if (!k || q.answer !== 0) return;
+    var out = [];
+    for (var j = 0; j < n; j++) out.push(q.options[(j - k + n) % n]);
+    q.options = out; q.answer = k;
+  }
+  var mcqSeq = 0;
+  quiz.forEach(function (q) { rotateMcq(q, (mcqSeq++ * 3 + 1)); });
+  topics.forEach(function (t) { (t.problems || []).forEach(function (p) { rotateMcq(p.mcq, (mcqSeq++ * 3 + 1)); }); });
+  practice.forEach(function (p) { rotateMcq(p.mcq, (mcqSeq++ * 3 + 1)); });
+
   registerModule({
     id: 'lld06',
     title: 'Behavioral Design Patterns',

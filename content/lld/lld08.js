@@ -1584,5 +1584,349 @@ ${H.table(['Debts (6 IOUs)', 'Net after collapsing'], [['Ben→Asha 300, Chen→
 
   // paints every edge of a list with one highlight class (used by the debt graph)
   function paintAll(edges, cls) { var r = {}; edges.forEach(function (e) { r[e[0] + '-' + e[1]] = cls; }); return r; }
+
+  /* ======================= TOPIC 5: LIBRARY — CATALOG, COPIES, MEMBERS, CHECKOUT ======================= */
+  var LIB_MODEL = `// ================= Library Management core (compiles as-is) =================
+enum ItemStatus { AVAILABLE, LOANED, ON_HOLD, LOST, UNDER_REPAIR }
+
+enum MemberType {
+    STUDENT(5, 14), FACULTY(10, 30);
+    final int maxBooks, loanDays;
+    MemberType(int maxBooks, int loanDays) { this.maxBooks = maxBooks; this.loanDays = loanDays; }
+}
+
+// The TITLE in the catalogue: one per ISBN, no matter how many copies exist.
+final class Book {
+    final String isbn, title, subject;
+    final List<String> authors;
+    Book(String isbn, String title, String subject, List<String> authors) {
+        this.isbn = isbn; this.title = title; this.subject = subject; this.authors = List.copyOf(authors);
+    }
+}
+
+// A PHYSICAL copy with its own barcode, shelf and status. This is what gets lent.
+final class BookItem {
+    final String barcode;
+    final Book book;
+    final String rack;
+    ItemStatus status = ItemStatus.AVAILABLE;
+    BookItem(String barcode, Book book, String rack) { this.barcode = barcode; this.book = book; this.rack = rack; }
+}
+
+final class Member {
+    final String id, name;
+    final MemberType type;
+    boolean active = true;
+    long unpaidFinePaise;
+    final Map<String, Loan> loans = new LinkedHashMap<>();       // barcode -> active loan
+    Member(String id, String name, MemberType type) { this.id = id; this.name = name; this.type = type; }
+}
+
+final class Loan {
+    final BookItem item;
+    final Member member;
+    final LocalDate issuedOn;
+    LocalDate dueOn;
+    LocalDate returnedOn;
+    int renewals;
+    Loan(BookItem item, Member member, LocalDate issuedOn, LocalDate dueOn) {
+        this.item = item; this.member = member; this.issuedOn = issuedOn; this.dueOn = dueOn;
+    }
+    long daysLate(LocalDate on) { return Math.max(0, on.toEpochDay() - dueOn.toEpochDay()); }
+}
+
+// Search: an inverted index "word -> ISBNs" over title and author words.
+final class Catalog {
+    private final Map<String, Book> byIsbn = new HashMap<>();
+    private final Map<String, BookItem> byBarcode = new HashMap<>();
+    private final Map<String, List<BookItem>> copies = new HashMap<>();
+    private final Map<String, Set<String>> index = new HashMap<>();
+
+    void addBook(Book b) {
+        byIsbn.put(b.isbn, b);
+        List<String> words = new ArrayList<>(List.of(b.title.toLowerCase().split(" ")));
+        for (String a : b.authors) words.addAll(List.of(a.toLowerCase().split(" ")));
+        for (String w : words) if (!w.isBlank()) index.computeIfAbsent(w, k -> new TreeSet<>()).add(b.isbn);
+    }
+    void addItem(BookItem it) {
+        if (!byIsbn.containsKey(it.book.isbn)) throw new IllegalArgumentException("add the Book first");
+        byBarcode.put(it.barcode, it);
+        copies.computeIfAbsent(it.book.isbn, k -> new ArrayList<>()).add(it);
+    }
+    /** AND-search: every query word must match a title or author word. */
+    List<Book> search(String query) {
+        Set<String> result = null;
+        for (String w : query.toLowerCase().split(" ")) {
+            if (w.isBlank()) continue;
+            Set<String> hits = index.getOrDefault(w, Set.of());
+            if (result == null) result = new TreeSet<>(hits); else result.retainAll(hits);
+        }
+        if (result == null) return List.of();
+        return result.stream().map(byIsbn::get).toList();
+    }
+    Optional<BookItem> item(String barcode) { return Optional.ofNullable(byBarcode.get(barcode)); }
+    long availableCopies(String isbn) {
+        return copies.getOrDefault(isbn, List.of()).stream().filter(i -> i.status == ItemStatus.AVAILABLE).count();
+    }
+}
+
+final class LibraryService {
+    static final long MAX_UNPAID_FINE = 100_00;    // Rs 100
+    static final long FINE_PER_DAY = 10_00;        // Rs 10 (topic 6 makes this a pluggable FinePolicy)
+    static final int MAX_RENEWALS = 2;
+
+    private final Catalog catalog;
+    private final Map<String, Member> members = new HashMap<>();
+    private final Map<String, Loan> activeLoans = new HashMap<>();   // barcode -> loan
+
+    LibraryService(Catalog catalog) { this.catalog = catalog; }
+    void addMember(Member m) { members.put(m.id, m); }
+
+    private Member member(String id) {
+        Member m = members.get(id);
+        if (m == null) throw new IllegalArgumentException("unknown member " + id);
+        return m;
+    }
+
+    synchronized Loan checkout(String memberId, String barcode, LocalDate today) {
+        Member m = member(memberId);
+        BookItem it = catalog.item(barcode).orElseThrow(() -> new IllegalArgumentException("unknown barcode " + barcode));
+        if (!m.active) throw new IllegalStateException("membership inactive");
+        if (m.loans.size() >= m.type.maxBooks) throw new IllegalStateException("limit of " + m.type.maxBooks + " books reached");
+        if (m.unpaidFinePaise > MAX_UNPAID_FINE) throw new IllegalStateException("please clear fines first");
+        if (it.status != ItemStatus.AVAILABLE) throw new IllegalStateException("this copy is " + it.status);
+        Loan loan = new Loan(it, m, today, today.plusDays(m.type.loanDays));
+        it.status = ItemStatus.LOANED;
+        m.loans.put(barcode, loan);
+        activeLoans.put(barcode, loan);
+        return loan;
+    }
+
+    /** returns the fine charged (paise) */
+    synchronized long returnItem(String barcode, LocalDate today) {
+        Loan loan = activeLoans.remove(barcode);
+        if (loan == null) throw new IllegalStateException(barcode + " is not on loan");
+        loan.returnedOn = today;
+        loan.member.loans.remove(barcode);
+        loan.item.status = ItemStatus.AVAILABLE;            // topic 6: may become ON_HOLD for a waiting member
+        long fine = loan.daysLate(today) * FINE_PER_DAY;
+        loan.member.unpaidFinePaise += fine;
+        return fine;
+    }
+
+    synchronized Loan renew(String barcode, LocalDate today) {
+        Loan loan = activeLoans.get(barcode);
+        if (loan == null) throw new IllegalStateException(barcode + " is not on loan");
+        if (loan.daysLate(today) > 0) throw new IllegalStateException("overdue items cannot be renewed");
+        if (loan.renewals >= MAX_RENEWALS) throw new IllegalStateException("renewal limit reached");
+        loan.renewals++;
+        loan.dueOn = loan.dueOn.plusDays(loan.member.type.loanDays);
+        return loan;
+    }
+
+    synchronized void payFine(String memberId, long paise) {
+        Member m = member(memberId);
+        m.unpaidFinePaise = Math.max(0, m.unpaidFinePaise - paise);
+    }
+}
+
+public class LibraryDemo {
+    public static void main(String[] args) {
+        Catalog cat = new Catalog();
+        Book clean = new Book("978-0132350884", "Clean Code", "Software", List.of("Robert Martin"));
+        Book ddia = new Book("978-1449373320", "Designing Data Intensive Applications", "Databases", List.of("Martin Kleppmann"));
+        cat.addBook(clean);
+        cat.addBook(ddia);
+        cat.addItem(new BookItem("BC-001", clean, "R1-S3"));
+        cat.addItem(new BookItem("BC-002", clean, "R1-S3"));
+        cat.addItem(new BookItem("BC-003", ddia, "R4-S1"));
+        System.out.println(cat.search("martin").size() + " books by a Martin");     // 2
+        System.out.println(cat.search("clean martin").get(0).title);                // Clean Code
+
+        LibraryService lib = new LibraryService(cat);
+        lib.addMember(new Member("M1", "Priya", MemberType.STUDENT));
+        LocalDate d1 = LocalDate.of(2026, 10, 1);
+        Loan loan = lib.checkout("M1", "BC-001", d1);
+        System.out.println("due " + loan.dueOn + ", copies left " + cat.availableCopies(clean.isbn));  // 2026-10-15, 1
+        long fine = lib.returnItem("BC-001", LocalDate.of(2026, 10, 20));
+        System.out.println("fine paise = " + fine);                                 // 5 days late -> 5000
+    }
+}`;
+
+  topics.push({
+    title: 'Library Management I: Catalog, Copies, Members & the Checkout Flow',
+    analogy: `<p>A <b>recipe</b> and the <b>cakes</b> baked from it are different things. The recipe "Chocolate Truffle" is written once; the bakery may have five actual cakes on the shelf, one of which is already sold and one dropped on the floor. A library works the same way: the <b>Book</b> (title, author, ISBN) is the recipe in the catalogue; each <b>BookItem</b> is a physical copy with its own barcode sticker, its own shelf, and its own story (on loan to Priya, being repaired, lost). And your <b>library card</b> is like a credit card with a limit: at most 5 books at a time, 14 days each.</p>`,
+    explain: `<p><b>The question:</b> "Design a Library Management System" — a very common LLD round because it is all about <b>business rules</b>: limits, due dates, fines, renewals, reservations.</p>
+<h4>Requirements (clarify out loud)</h4>
+<ul>
+<li>Search the catalogue by title, author, subject, ISBN.</li>
+<li>Members borrow copies: <b>student</b> up to 5 books for 14 days, <b>faculty</b> up to 10 for 30 days.</li>
+<li>Return a book; charge a <b>fine</b> if late. Members with unpaid fines above ₹100 cannot borrow.</li>
+<li>Renew a loan (max 2 times, not if overdue, not if someone else reserved the title).</li>
+<li>Reserve a title that has no free copy; get notified when a copy is held for you (topic 6).</li>
+<li>Librarians add/remove books and copies, block members, mark copies lost/damaged.</li>
+</ul>
+<h4>The key modelling decision: Book vs BookItem</h4>
+${H.table(['', 'Book (title)', 'BookItem (copy)'], [['Identity', 'ISBN', 'Barcode'], ['How many', 'One per title', 'Many per title'], ['Has status?', H.c('r', 'No'), H.c('g', 'Yes: AVAILABLE / LOANED / ON_HOLD / LOST / UNDER_REPAIR')], ['Has a shelf?', 'No', 'Yes (rack R1-S3)'], ['Search works on', H.c('g', 'this'), '—'], ['Loans point to', '—', H.c('g', 'this')]])}
+<p>The <b>naive</b> design is a single <code>Book</code> class with <code>int copiesAvailable</code>. It looks fine until you ask: <i>which</i> copy does Priya have? Which copy is damaged? Where is it shelved? Who had copy #2 when the page was torn? A counter cannot answer any of that.</p>
+<h4>Other entities</h4>
+<ul>
+<li><b>Member</b> (type decides limits) and <b>Librarian</b> — both are accounts; a Librarian gets admin operations.</li>
+<li><b>Loan</b> — (BookItem, Member, issuedOn, dueOn, returnedOn, renewals). The lending history is a list of Loans.</li>
+<li><b>Reservation</b> — (Book, Member, createdAt, status). Reserves a <i>title</i>, not a specific copy.</li>
+<li><b>Catalog</b> — indexes for search (inverted index word → ISBNs, map barcode → item).</li>
+<li><b>LibraryService</b> — facade for checkout / return / renew / reserve; delegates rules to <b>LendingRule</b>s and fines to a <b>FinePolicy</b> (topic 6).</li>
+</ul>
+<h4>The checkout flow</h4>
+<p>Find member → find copy by barcode → run the rules (active? under limit? fines OK? copy available or on hold for this member?) → mark copy LOANED → create Loan with due date = today + loanDays → return the Loan (print the slip). If any rule fails, <b>nothing</b> changes.</p>`,
+    clues: [
+      '"Design a library management system" / "book lending system"',
+      '"A library has multiple copies of the same book" → split Book (title, ISBN) from BookItem (copy, barcode, status)',
+      '"Member can borrow at most 5 books for 14 days" → limits on MemberType (enum with fields) or a policy object',
+      '"Search by title, author, subject" → Catalog with inverted index / maps',
+      '"Fine for late returns", "block members with unpaid fines" → FinePolicy + a rule in the checkout chain',
+      '"Track who borrowed which copy" → Loan entity (history), not a field on the book'
+    ],
+    code: LIB_MODEL,
+    codeTitle: 'Library core: Book vs BookItem, Catalog search, checkout / return / renew (compilable Java)',
+    viz: [{
+      title: 'Build the Library class diagram step by step',
+      gen: function () {
+        return buildDiagram('Library class diagram', [
+          { narr: '<span class="c-r">Naive start:</span> one class <b>Book</b> with <code>int copiesAvailable</code>. Checkout = <code>copiesAvailable--</code>. Simple… until someone asks "which copy did Priya take, and where is it shelved?"', add: [B('BookN', 'Book (title, copies: int)', 20, 30, 24)], cls: 'bad', note: 'A counter loses identity. You cannot mark one copy as damaged, find it on a shelf, or know who had it last.' },
+          { narr: 'Split it. <b>Book</b> = the title in the catalogue (ISBN, title, authors, subject). <b>BookItem</b> = a physical copy with a barcode, rack and <b>status</b>.', remove: ['BookN'], add: [B('Book', 'Book (ISBN)', 15, 10), B('Item', 'BookItem (barcode, status)', 15, 40, 22)], edges: [['Item', 'Book', 'copy of']] },
+          { narr: 'A <b>Catalog</b> owns the indexes: ISBN → Book, barcode → BookItem, and an inverted index word → ISBNs for search.', add: [B('Cat', 'Catalog (search)', 45, 10)], edges: [['Cat', 'Book', 'indexes'], ['Cat', 'Item', 'by barcode']] },
+          { narr: '<b>Member</b> with a <b>MemberType</b> enum that carries the limits (STUDENT: 5 books / 14 days, FACULTY: 10 / 30). Putting the numbers on the enum keeps rules in one place.', add: [B('Mem', 'Member', 74, 40), B('MT', 'MemberType (limits)', 74, 62)], edges: [['Mem', 'MT', 'is a']] },
+          { narr: 'A <b>Loan</b> connects one BookItem to one Member with dates (issued, due, returned) and a renewal count. History = list of loans; nothing is overwritten.', add: [B('Loan', 'Loan (due, returned)', 48, 40)], edges: [['Loan', 'Item', 'of'], ['Loan', 'Mem', 'to']] },
+          { narr: 'A <b>Reservation</b> is for a <b>title</b> (Book), not a copy — any copy that comes back can satisfy it. Queue per ISBN, first come first served.', add: [B('Res', 'Reservation', 48, 62)], edges: [['Res', 'Book', 'for title'], ['Res', 'Mem', 'by']] },
+          { narr: '<b>LibraryService</b> is the facade (checkout, return, renew, reserve). It delegates "may this member borrow this copy?" to a list of <b>LendingRule</b>s and "how much is the fine?" to a <b>FinePolicy</b> — both Strategy-style interfaces (topic 6).', add: [B('LS', 'LibraryService', 74, 10), B('LR', '«interface» LendingRule', 92, 26, 15), B('FP', '«interface» FinePolicy', 92, 54, 15)], edges: [['LS', 'Cat', 'finds'], ['LS', 'Loan', 'creates'], ['LS', 'LR', 'checks'], ['LS', 'FP', 'asks']], note: 'Read it in the interview as: "catalogue on the left, people on the right, Loan and Reservation in the middle joining them, services on top."' }
+        ], 68);
+      }
+    }, {
+      title: 'Checkout flow: one request through the rule checks',
+      input: 'ok',
+      inputLabel: 'Scenario: ok | limit | fine | loaned | inactive',
+      gen: function (input) {
+        var sc = String(input || 'ok').trim().toLowerCase();
+        var allowed = ['ok', 'limit', 'fine', 'loaned', 'inactive'];
+        if (allowed.indexOf(sc) < 0) throw new Error('Type one of: ' + allowed.join(', '));
+        var mem = { name: 'Priya (STUDENT)', active: sc === 'inactive' ? 'false' : 'true', loans: sc === 'limit' ? '5 / 5' : '2 / 5', fines: sc === 'fine' ? '₹140' : '₹20' };
+        var item = sc === 'loaned' ? 'LOANED (to Rahul, due 18 Oct)' : 'AVAILABLE';
+        var nodes = [B('K', 'Kiosk / Librarian', 8, 30), B('LS', 'LibraryService', 30, 30), B('CAT', 'Catalog', 30, 6), B('R1', 'member active?', 56, 4), B('R2', 'under loan limit?', 56, 20), B('R3', 'fines ≤ ₹100?', 56, 36), B('R4', 'copy available?', 56, 52), B('BI', 'BookItem BC-001', 84, 52), B('LN', 'Loan', 84, 20)];
+        var edges = [['K', 'LS', 'checkout(M1, BC-001)'], ['LS', 'CAT', 'find'], ['LS', 'R1'], ['R1', 'R2'], ['R2', 'R3'], ['R3', 'R4'], ['R4', 'BI', 'mark LOANED'], ['BI', 'LN', 'new Loan']];
+        var mv = function (h) { return VARS('Member M1', mem, h || {}); };
+        var iv = function (st, h) { return VARS('BookItem BC-001 "Clean Code"', { status: st, rack: 'R1-S3' }, h || {}); };
+        var path = [
+          ['K', 'LS', 'cur', 'Priya scans her card (M1) and the barcode sticker of a copy of <i>Clean Code</i> (BC-001). The kiosk calls <code>checkout("M1", "BC-001", today)</code>.', [mv(), iv(item)]],
+          ['LS', 'CAT', 'ok', 'The service looks up the copy by barcode in the Catalog (O(1) map). Unknown barcode → error before anything else.', [iv(item, { status: 'cur' })]]
+        ];
+        var checks = [
+          ['LS', 'R1', 'inactive', 'Rule 1: is the membership active (not expired, not blocked)?', { active: 'bad' }, 'Membership inactive → rejected. Renew the card at the desk.'],
+          ['R1', 'R2', 'limit', 'Rule 2: does Priya already have the maximum books for a STUDENT (5)?', { loans: 'bad' }, 'Already 5 of 5 books → rejected. Return one first.'],
+          ['R2', 'R3', 'fine', 'Rule 3: are unpaid fines at or below ₹100?', { fines: 'bad' }, 'Unpaid fines ₹140 > ₹100 → rejected. Pay at the desk.'],
+          ['R3', 'R4', 'loaned', 'Rule 4: is <b>this copy</b> AVAILABLE (or ON_HOLD for Priya)?', null, 'This copy is LOANED to Rahul (it was probably mis-shelved). Suggest another copy or a reservation.']
+        ];
+        var failed = false;
+        checks.forEach(function (c) {
+          if (failed) return;
+          var fail = sc === c[2];
+          var extra = c[2] === 'loaned' ? [iv(item, fail ? { status: 'bad' } : { status: 'ok' })] : [mv(fail ? c[4] : {})];
+          path.push([c[0], c[1], fail ? 'bad' : 'ok', c[3] + (fail ? ' <span class="c-r">' + c[5] + '</span>' : ' <span class="c-g">Yes → next rule.</span>'), extra]);
+          if (fail) failed = true;
+        });
+        if (!failed) {
+          path.push(['R4', 'BI', 'ok', 'All rules passed. Now (and only now) we change state: BookItem BC-001 → <b>LOANED</b>.', [iv('LOANED', { status: 'ok' })]]);
+          path.push(['BI', 'LN', 'ok', 'Create a <b>Loan</b>: issued 1 Oct, due 1 Oct + 14 days = <b>15 Oct</b>. Add it to Priya\'s active loans (3 / 5). Print the slip.', [VARS('Loan L-77', { item: 'BC-001', member: 'M1', issued: '2026-10-01', due: '2026-10-15', renewals: 0 }, { due: 'ok' }), VARS('Member M1', { name: mem.name, active: 'true', loans: '3 / 5', fines: '₹20' }, { loans: 'ok' })]]);
+        }
+        var frames = walkFlow('Checkout request', nodes, edges, path, 62);
+        frames.push(F(failed ? 'Because a rule failed <b>before</b> any state changed, nothing needs rolling back: the copy, the member and the loan list are untouched. That is the "validate first, mutate last" rule.' : 'Success. Order matters: cheap member checks first, then the copy check, then mutate. Each rule is a separate class, so adding "reference books cannot be borrowed" is one new rule, not an edit to a giant if-else.', [TXT(H.table(['Rule', 'Class', 'Failure message'], [['active', 'ActiveMemberRule', 'membership inactive'], ['limit', 'LoanLimitRule', 'limit reached'], ['fines', 'FineThresholdRule', 'clear fines first'], ['copy', 'ItemAvailableRule', 'copy is LOANED / ON_HOLD for someone else']]), 'Rules as separate classes (topic 6)')]));
+        return frames;
+      }
+    }],
+    examples: [
+      { title: 'Search with an inverted index', html: `<p>Index: "clean" → {978-0132350884}, "martin" → {978-0132350884, 978-1449373320}, "designing" → {978-1449373320}. Query "clean martin" = intersection of the two sets → <b>Clean Code</b>. Each word lookup is O(1); intersection costs the size of the smaller set. Scanning every book's title with <code>contains()</code> is the naive O(total books × title length) approach.</p>${H.kv([['clean', '{0884}'], ['martin', '{0884, 3320}'], ['designing', '{3320}']], { label: 'word → ISBNs' })}` },
+      { title: 'Due date and fine arithmetic', html: `<p>Issued 1 Oct, STUDENT → due 15 Oct. Returned 20 Oct: daysLate = epochDay(20 Oct) − epochDay(15 Oct) = <b>5</b>. Flat ₹10/day → <b>₹50</b> (5000 paise). Use <code>LocalDate</code> (no time zone surprises at midnight) and <code>toEpochDay()</code> differences — never subtract day-of-month numbers (breaks across months).</p>`, code: `class DueDates {
+    public static void main(String[] args) {
+        LocalDate issued = LocalDate.of(2026, 10, 1);
+        LocalDate due = issued.plusDays(14);                       // 2026-10-15
+        LocalDate returned = LocalDate.of(2026, 11, 2);            // crosses a month boundary
+        long late = Math.max(0, returned.toEpochDay() - due.toEpochDay());
+        System.out.println(due + " late by " + late + " days");    // 18 days
+        System.out.println("wrong way: " + (returned.getDayOfMonth() - due.getDayOfMonth()));  // -13 !
+    }
+}` },
+      { title: 'Renewal blocked', html: `<p>Priya's loan is due 15 Oct. On 14 Oct she renews → renewals = 1, due = 29 Oct. On 30 Oct she tries again → ${H.c('r', 'rejected: overdue items cannot be renewed')} (she must return and pay ₹10). If another member had reserved the title, renewal would also be rejected — the reserver should get the next copy.</p>` },
+      { title: 'Lost copy', html: `<p>A member reports BC-002 lost. Mark the BookItem <b>LOST</b> (never delete it — history and audit need it), close the Loan with a "lost" flag, and charge the replacement price via the FinePolicy. The <b>Book</b> still exists with its other copies; <code>availableCopies</code> just drops by one.</p>` }
+    ],
+    deepDive: `<p><b>Persistence model.</b> Tables: <code>book(isbn PK)</code>, <code>book_item(barcode PK, isbn FK, status, rack)</code>, <code>member(id PK, type, active)</code>, <code>loan(id PK, barcode FK, member_id FK, issued_on, due_on, returned_on, renewals)</code> with a <b>partial unique index</b> "one open loan per barcode" (<code>WHERE returned_on IS NULL</code>) as the database-level guard against double lending.</p>
+<p><b>Concurrency.</b> Two librarians scanning the same copy at two desks is rare but possible (or a self-service kiosk and a desk). The in-memory service uses <code>synchronized</code>; finer-grained: lock per member + per item in a fixed order (member first, then item) to avoid deadlock, or rely on the DB conditional update <code>UPDATE book_item SET status='LOANED' WHERE barcode=? AND status='AVAILABLE'</code>.</p>
+<p><b>Time.</b> Libraries think in <b>dates</b>, not instants: use <code>LocalDate</code> in the library's zone, inject a <code>Clock</code> to compute "today", and decide whether holidays extend due dates (a <code>HolidayCalendar</code> dependency).</p>
+<p><b>Search at scale.</b> The in-memory inverted index is a toy Lucene/Elasticsearch: tokenisation, lower-casing, stemming ("designing" → "design"), stop words, ranking. In a real system the catalogue is indexed in a search engine and the lending tables live in a relational DB.</p>
+<p><b>Why MemberType as an enum with fields?</b> Limits stay next to the type, so adding "ALUMNI(2, 7)" is one line. If limits must change at runtime (admin screen), move them to a <code>MembershipPolicy</code> loaded from config instead.</p>
+<p><b>Audit trail.</b> Never overwrite: loans, fine payments and status changes are events. "Who damaged page 40?" is answered by the last loan before the copy was marked UNDER_REPAIR.</p>`,
+    aiEra: `<p><b>What AI changes:</b> a library LLD is a classic training-data example, so an assistant will produce the standard class list immediately. The interviewer's real test is whether you <i>question</i> it: Book vs BookItem, where the rules live, what happens to reservations when a copy is returned, how fines are computed across month boundaries.</p>
+<p><b>Use AI as a partner:</b> <code>Give me 15 edge-case scenarios for a library checkout/return/renew system (dates, limits, holds, lost books) as Given/When/Then.</code> Then turn them into JUnit tests with a fixed Clock.</p>
+<p><b>Where AI goes wrong:</b> one Book class with a copy counter; computing late days with <code>getDayOfMonth()</code> subtraction; mutating state before all checks pass; deleting lost items; putting every rule in one 80-line <code>checkout</code> method.</p>
+<p><b>What you must still own:</b> the entity split, the "validate first, mutate last" discipline, and a clean place for each business rule so the next rule is a new class rather than another <code>if</code>.</p>`,
+    problems: [{
+      title: 'Checkout with Pluggable Lending Rules',
+      level: 'Medium', tags: ['library', 'strategy', 'chain of responsibility', 'open-closed'], companies: ['Amazon', 'Microsoft', 'Zoho'],
+      statement: `<p>Implement <code>checkout(member, item, today)</code> that returns either a Loan or the <b>first</b> failure reason. The rules (in order): membership active; loans below the member type's limit; unpaid fine ≤ ₹100; item AVAILABLE; and a new rule product just added: <b>reference books cannot be borrowed</b>. Adding a rule must not require editing <code>checkout</code>.</p>`,
+      constraints: `≤ 20 rules, each rule O(1)`,
+      example: `<p>Member Priya (active, 2/5 loans, fine ₹20), item "Oxford Dictionary" (reference = true, AVAILABLE). Rules run in order: active ✔, limit ✔, fine ✔, available ✔, reference ✖ → ${H.c('r', '"reference books cannot be borrowed"')}. No state changes.</p>`,
+      brute: { why: `<p>Naive: one method with a growing if-else ladder. Every new policy (holidays, VIP members, reference books, age-restricted titles) edits the same method, breaks Open/Closed, and makes the rules impossible to unit-test one by one.</p>`, code: `class MonolithCheckout {
+    static String checkout(boolean active, int loans, int limit, long fine, String status, boolean reference) {
+        if (!active) return "membership inactive";
+        else if (loans >= limit) return "limit reached";
+        else if (fine > 100_00) return "clear fines first";
+        else if (!status.equals("AVAILABLE")) return "copy is " + status;
+        else if (reference) return "reference books cannot be borrowed";   // every new rule = edit here
+        return "OK";
+    }
+}` },
+      mcq: { q: 'Product adds "members under 18 cannot borrow adult titles". With the rule-list design, what changes?', options: ['Write a new AgeRestrictionRule class and register it', 'Edit checkout() and add an if', 'Change the Member constructor', 'Subclass LibraryService'], answer: 0, explain: 'Rules are objects in a list; adding behaviour = adding a class (Open/Closed).' },
+      hints: [`<p>Hint 1: every rule has the same shape: look at (member, item, today) and either allow or give a reason. That is an interface with one method.</p>`, `<p>Hint 2: <code>interface LendingRule { Optional&lt;String&gt; violation(Member m, Item i, LocalDate today); }</code> and a <code>List&lt;LendingRule&gt;</code> checked in order; the first non-empty Optional stops the chain.</p>`, `<p>Hint 3: only after the loop passes do you mutate (status → LOANED, add loan). Order cheap rules first; keep rules stateless so they are trivially testable and thread-safe.</p>`],
+      solution: {
+        approach: `<p>Chain of rules (a lightweight Chain of Responsibility / Specification pattern). The service owns an ordered list; new rules are registered, not coded into the method.</p>`,
+        code: `class RuleBasedLibrary {
+    static final class Member { boolean active = true; int loans; int limit = 5; long finePaise; public String toString() { return "member(" + loans + " loans)"; } }
+    static final class Item { String status = "AVAILABLE"; boolean reference; String title; Item(String t, boolean ref) { title = t; reference = ref; } public String toString() { return title; } }
+    record Loan(Item item, Member member, LocalDate due) {}
+
+    interface LendingRule { Optional<String> violation(Member m, Item i, LocalDate today); }
+
+    static final LendingRule ACTIVE = (m, i, d) -> m.active ? Optional.empty() : Optional.of("membership inactive");
+    static final LendingRule LIMIT = (m, i, d) -> m.loans < m.limit ? Optional.empty() : Optional.of("limit of " + m.limit + " reached");
+    static final LendingRule FINES = (m, i, d) -> m.finePaise <= 100_00 ? Optional.empty() : Optional.of("clear fines first");
+    static final LendingRule AVAILABLE = (m, i, d) -> i.status.equals("AVAILABLE") ? Optional.empty() : Optional.of("copy is " + i.status);
+    static final LendingRule NOT_REFERENCE = (m, i, d) -> i.reference ? Optional.of("reference books cannot be borrowed") : Optional.empty();
+
+    private final List<LendingRule> rules = new ArrayList<>(List.of(ACTIVE, LIMIT, FINES, AVAILABLE));
+    void register(LendingRule r) { rules.add(r); }
+
+    /** Left = failure reason, or a Loan. Mutates nothing unless every rule passes. */
+    Object checkout(Member m, Item i, LocalDate today) {
+        for (LendingRule r : rules) {
+            Optional<String> v = r.violation(m, i, today);
+            if (v.isPresent()) return v.get();
+        }
+        i.status = "LOANED";
+        m.loans++;
+        return new Loan(i, m, today.plusDays(14));
+    }
+
+    public static void main(String[] args) {
+        RuleBasedLibrary lib = new RuleBasedLibrary();
+        lib.register(NOT_REFERENCE);                               // new policy, no edits to checkout()
+        Member priya = new Member();
+        System.out.println(lib.checkout(priya, new Item("Oxford Dictionary", true), LocalDate.of(2026, 10, 1)));
+        System.out.println(lib.checkout(priya, new Item("Clean Code", false), LocalDate.of(2026, 10, 1)));
+    }
+}`,
+        complexity: `<p>O(R) per checkout for R rules (each O(1)). Rules are stateless lambdas → thread-safe and unit-testable in isolation.</p>`,
+        followUps: ['Return ALL violations instead of the first (for a nicer UI).', 'Load the rule list per member type from config.', 'Make the item-availability check atomic under concurrency.']
+      }
+    }]
+  });
   registerModule({ id: 'lld08', title: 'Case Studies: BookMyShow, Splitwise, Library Management', intro: '<p>tmp</p>', goals: [], prereqs: 'tmp', hours: 14, topics: topics, practice: practice, quiz: quiz, interview: interview });
 })();

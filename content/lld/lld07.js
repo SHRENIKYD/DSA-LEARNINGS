@@ -584,6 +584,576 @@
     }]
   });
 
+  /* =====================================================================
+     TOPIC 4 — PARKING LOT: PARK / UNPARK FLOW, PRICING, CONCURRENCY
+     ===================================================================== */
+  var PF_LAYOUT = [['S', 'C', 'C', 'L'], ['S', 'C', 'L', 'L']];
+  var PF_TYPE = { S: 'SMALL', C: 'COMPACT', L: 'LARGE' };
+  var PF_FITS = { bike: ['S', 'C', 'L'], car: ['C', 'L'], truck: ['L'] };
+  var PF_RATE = { bike: 10, car: 20, truck: 50 };
+  var PF_NODES = [B('In', 'EntryGate', 10, 8), B('Out', 'ExitGate', 10, 30), B('Lot', 'ParkingLot', 35, 19),
+    B('Alloc', 'AllocationStrategy', 64, 8), B('Price', 'PricingStrategy', 64, 30), B('Spot', 'ParkingSpot', 89, 19)];
+  var PF_EDGES = [['In', 'Lot', 'park'], ['Out', 'Lot', 'unpark'], ['Lot', 'Alloc', 'findSpot'], ['Lot', 'Price', 'fee'], ['Lot', 'Spot', 'assign / release']];
+
+  function pfFlow(kind) {
+    if (kind === 'park') return G('Call flow', PF_NODES, PF_EDGES, { h: 38, hl: { In: 'cur', Lot: 'ok', Alloc: 'ok', Spot: 'ok' }, ehl: { 'In-Lot': 'ok', 'Lot-Alloc': 'ok', 'Lot-Spot': 'ok' } });
+    if (kind === 'full') return G('Call flow', PF_NODES, PF_EDGES, { h: 38, hl: { In: 'cur', Lot: 'bad', Alloc: 'bad' }, ehl: { 'In-Lot': 'ok', 'Lot-Alloc': 'bad' }, tags: { Alloc: 'empty' } });
+    if (kind === 'unpark') return G('Call flow', PF_NODES, PF_EDGES, { h: 38, hl: { Out: 'cur', Lot: 'ok', Price: 'ok', Spot: 'sel' }, ehl: { 'Out-Lot': 'ok', 'Lot-Price': 'ok', 'Lot-Spot': 'sel' } });
+    if (kind === 'reject') return G('Call flow', PF_NODES, PF_EDGES, { h: 38, hl: { Out: 'cur', Lot: 'bad' }, ehl: { 'Out-Lot': 'bad' }, tags: { Lot: 'no ticket' } });
+    return G('Call flow', PF_NODES, PF_EDGES, { h: 38 });
+  }
+  function pfClock(h) { var d = Math.floor(h / 24), hh = h % 24; return (d ? 'day ' + (d + 1) + ' ' : '') + (hh < 10 ? '0' : '') + hh + ':00'; }
+
+  topics.push({
+    title: 'Parking Lot, Part 2: The Park / Unpark Flow, Ticket Lifecycle, Pricing and Concurrency',
+    analogy: `<p>A hotel cloakroom: you hand over your coat, the attendant hangs it on the first suitable free hook and gives you a numbered token. When you come back, the token is the <i>only</i> thing that matters — it tells them which hook, and once your coat is returned the token is dead. If two attendants grab the same empty hook for two coats at once, there is chaos.</p>
+      <p>Parking is the same three-beat flow: <b>find a hook (spot) → hand a token (ticket) → redeem it exactly once (exit and pay)</b>, with care when several attendants (gates) work at once.</p>`,
+    explain: `<p><b>Entry flow — <code>park(vehicle)</code></b>, step by step:</p>
+      ${H.table(['#', 'Step', 'Who does it', 'Can fail?'], [
+        ['1', 'Gate receives the vehicle and calls <code>lot.park(v)</code>', 'EntryGate', '—'],
+        ['2', 'Reject if the same plate is already inside', 'ParkingLot', H.c('r', 'IllegalStateException')],
+        ['3', 'Ask the strategy for a fitting free spot', 'SpotAllocationStrategy', H.c('r', 'empty → ParkingLotFullException')],
+        ['4', 'Mark the spot taken (validates fit and emptiness again)', 'ParkingSpot.assign()', 'only if there is a bug'],
+        ['5', 'Create the ticket with id, spot, vehicle, entry time', 'ParkingLot + TimeSource', '—'],
+        ['6', 'Register the ticket; notify display boards', 'ParkingLot', '—']
+      ])}
+      <p><b>Exit flow — <code>unpark(ticketId)</code></b>:</p>
+      ${H.table(['#', 'Step', 'Who does it'], [
+        ['1', 'Look up and <b>remove</b> the active ticket (so it can never be used twice)', 'ParkingLot'],
+        ['2', 'Compute the fee from entry time to now', 'PricingStrategy'],
+        ['3', 'Collect payment (cash / card / UPI)', 'PaymentProcessor (strategy)'],
+        ['4', 'Release the spot and notify listeners', 'ParkingSpot + observers'],
+        ['5', 'Return a receipt; barrier opens', 'ExitGate']
+      ])}
+      <p><b>The ticket lifecycle is a tiny state machine:</b> ${H.arr(['ACTIVE', 'PAID', 'EXITED'], { hl: { 0: 'y', 1: 'b', 2: 'g' } })} Only ACTIVE → PAID → EXITED is legal. A real mall separates "pay at the machine" from "exit at the barrier", so the exit gate must check the state — the reference code for this topic enforces it in one method, <code>moveTo()</code>.</p>
+      <p><b>Pricing worked example</b> (car, ₹20 per started hour, minimum 1 hour):</p>
+      ${H.table(['Minutes parked', 'Started hours = ⌈min / 60⌉', 'Fee'], [['10', 'max(1, 1) = 1', '₹20'], ['60', '1', '₹20'], ['61', '2', '₹40'], ['150', '3', '₹60']])}
+      <p><b>Concurrency in one sentence:</b> step 3 + step 4 of entry is a <i>check-then-act</i> ("is it free? then take it"), so it must be atomic. The simplest correct answer is <code>synchronized</code> on <code>park</code>/<code>unpark</code>; the scalable answer is a concurrent free-spot queue per type where <code>poll()</code> hands each spot to exactly one thread.</p>
+      <p>Play with the visualizer: type your own sequence of arrivals, waits and exits, and watch the spot grid, the active-ticket map and the call flow change at each step.</p>`,
+    clues: [
+      '"Issue a ticket at entry and charge at exit" → ticket = the key linking vehicle, spot and time; remove it on exit so it cannot be reused',
+      '"Pay at a machine, then exit" → ticket state machine ACTIVE → PAID → EXITED (State pattern if it grows)',
+      '"Several entry gates" or "concurrent requests" → the find-then-assign step is a race; make it atomic',
+      '"Lost ticket" → penalty fee + look up by plate; requires a plate → ticket index',
+      '"Partial hours", "first 2 hours flat", "daily cap" → pricing rules as composable strategies / decorators',
+      '"Real-time availability" → events to listeners (Observer) instead of polling every spot'
+    ],
+    code: J.t4_flow,
+    codeTitle: 'Entry → payment → exit with a ticket state machine, payment strategies and display listeners',
+    viz: {
+      title: 'Park and unpark, step by step, on a 2-floor lot',
+      input: 'car bike truck car +2h out:1 truck truck car +1h out:3 truck truck',
+      inputLabel: 'Events: car | bike | truck | +Nh (wait N hours) | out:N (exit with ticket TN)',
+      gen: function (input) {
+        var toks = words(input, 'Example: car bike truck +2h out:1', 24);
+        var occ = PF_LAYOUT.map(function (row) { return row.map(function () { return null; }); });
+        var tickets = {}, order = [], seq = 1, clock = 9, revenue = 0, frames = [];
+        function grid(hl) {
+          return { type: 'grid', label: 'Spots (S = SMALL, C = COMPACT, L = LARGE)', rowHead: ['Floor 0', 'Floor 1'], colHead: ['spot 0', 'spot 1', 'spot 2', 'spot 3'],
+            rows: PF_LAYOUT.map(function (row, f) { return row.map(function (t, i) { var o = occ[f][i]; return o ? t + ' · ' + o.id + ' ' + o.v : t + ' · free'; }); }), hl: hl || {} };
+        }
+        function ticketMap(hlKey, cls) {
+          var hl = {}; if (hlKey) hl[hlKey] = cls;
+          return { type: 'map', label: 'activeTickets', entries: order.map(function (id) { var t = tickets[id]; return [id, t.v + ' @ F' + t.f + '-S' + t.i + ' since ' + pfClock(t.entry)]; }), hl: hl };
+        }
+        function free() {
+          var c = { S: 0, C: 0, L: 0 };
+          PF_LAYOUT.forEach(function (row, f) { row.forEach(function (t, i) { if (!occ[f][i]) c[t]++; }); });
+          return c;
+        }
+        function vars(hlName) {
+          var c = free();
+          return VARS('Lot state', { clock: pfClock(clock), revenue: '₹' + revenue, freeSMALL: c.S, freeCOMPACT: c.C, freeLARGE: c.L }, hlName ? one(hlName, 'cur') : {});
+        }
+        frames.push(F('An empty lot: 2 floors × 4 spots. Strategy = <b>NearestFirst</b> (lowest floor first; on a floor, the smallest spot type that fits). Pricing = per started hour: bike ₹10, car ₹20, truck ₹50. The clock starts at 09:00.', [grid(), pfFlow('idle'), vars()]));
+        toks.forEach(function (tk) {
+          var veh = tk === 'c' ? 'car' : tk === 'b' ? 'bike' : tk === 't' ? 'truck' : tk;
+          var wait = /^\+(\d+)h?$/.exec(tk), out = /^(?:out:?|-)t?(\d+)$/.exec(tk);
+          if (PF_FITS[veh]) {
+            var chosen = null, checked = {};
+            for (var f = 0; f < PF_LAYOUT.length && !chosen; f++) {
+              for (var k = 0; k < PF_FITS[veh].length && !chosen; k++) {
+                for (var i = 0; i < PF_LAYOUT[f].length; i++) {
+                  if (PF_LAYOUT[f][i] !== PF_FITS[veh][k]) continue;
+                  if (occ[f][i]) { checked[f + ',' + i] = 'bad'; continue; }
+                  chosen = [f, i]; break;
+                }
+              }
+            }
+            if (!chosen) {
+              PF_LAYOUT.forEach(function (row, ff) { row.forEach(function (t, ii) { if (PF_FITS[veh].indexOf(t) >= 0) checked[ff + ',' + ii] = 'bad'; }); });
+              frames.push(F('A <b>' + veh + '</b> arrives, but every spot it fits (' + PF_FITS[veh].map(function (t) { return PF_TYPE[t]; }).join(', ') + ') is taken. The strategy returns <code>Optional.empty()</code> and <code>park()</code> throws <span class="c-r">ParkingLotFullException</span>. No ticket, no state change — the display board would already show 0 for this type.', [grid(checked), pfFlow('full'), ticketMap(), vars()]));
+              return;
+            }
+            var id = 'T' + seq++;
+            occ[chosen[0]][chosen[1]] = { id: id, v: veh };
+            tickets[id] = { v: veh, f: chosen[0], i: chosen[1], entry: clock };
+            order.push(id);
+            checked[chosen[0] + ',' + chosen[1]] = 'ok';
+            var skipped = Object.keys(checked).length - 1;
+            frames.push(F('A <b>' + veh + '</b> arrives at the entry gate. NearestFirst checks ' + (chosen[0] === 0 ? 'floor 0' : 'floors 0–' + chosen[0]) + ' for ' + PF_FITS[veh].map(function (t) { return PF_TYPE[t]; }).join(' → ') + (skipped ? ' (red = fitting but already taken)' : '') + ' and picks <span class="c-g">F' + chosen[0] + '-S' + chosen[1] + ' (' + PF_TYPE[PF_LAYOUT[chosen[0]][chosen[1]]] + ')</span>. <code>spot.assign()</code> runs, ticket <b>' + id + '</b> is issued at ' + pfClock(clock) + '.', [grid(checked), pfFlow('park'), ticketMap(id, 'ok'), vars()]));
+          } else if (wait) {
+            var hrs = parseInt(wait[1], 10);
+            if (hrs < 1 || hrs > 48) throw new Error('Waits must be between +1h and +48h');
+            clock += hrs;
+            frames.push(F('Time passes: <b>+' + hrs + ' hour' + (hrs > 1 ? 's' : '') + '</b>. Nothing in the lot changes, but every active ticket is now worth more. (In code this is <code>FakeTime.advance()</code> — the injected TimeSource is what makes this testable.)', [grid(), pfFlow('idle'), ticketMap(), vars('clock')]));
+          } else if (out) {
+            var tid = 'T' + out[1], t = tickets[tid];
+            if (!t) {
+              frames.push(F('Exit gate receives ticket <b>' + tid + '</b>, but it is not in <code>activeTickets</code> (never issued, or already used). <code>unpark()</code> throws <span class="c-r">NoSuchElementException</span> and the barrier stays down. Removing tickets on exit is what blocks reuse fraud.', [grid(), pfFlow('reject'), ticketMap(), vars()]));
+              return;
+            }
+            var hours = Math.max(1, clock - t.entry), fee = hours * PF_RATE[t.v];
+            delete tickets[tid];
+            order.splice(order.indexOf(tid), 1);
+            occ[t.f][t.i] = null;
+            revenue += fee;
+            frames.push(F('Exit with <b>' + tid + '</b> (' + t.v + ', in since ' + pfClock(t.entry) + '). Ticket removed first, then PricingStrategy: max(1, ' + (clock - t.entry) + ') h × ₹' + PF_RATE[t.v] + ' = <span class="c-b">₹' + fee + '</span>. Spot <span class="c-p">F' + t.f + '-S' + t.i + '</span> is released and becomes the nearest candidate again.', [grid(one(t.f + ',' + t.i, 'sel')), pfFlow('unpark'), ticketMap(), vars('revenue')]));
+          } else {
+            throw new Error('Unknown event "' + tk + '". Use car, bike, truck, +2h or out:1');
+          }
+        });
+        frames.push(F('End of the script. Revenue <b>₹' + revenue + '</b>, ' + order.length + ' vehicle(s) still inside. Notice what never happened: no if-else on vehicle type inside ParkingLot, no price formula in the gate, and no spot ever held two vehicles.', [grid(), ticketMap(), vars()]));
+        return frames;
+      }
+    },
+    examples: [
+      {
+        title: 'Trace of the default visualizer script',
+        html: `${H.table(['Event', 'Decision', 'Result'], [
+          ['car, bike, truck, car', 'F0: C→S1, S→S0, L→S3, C→S2', 'T1..T4 on floor 0'],
+          ['+2h, out:1', 'car 2 h × ₹20', H.c('b', '₹40, F0-S1 free')],
+          ['truck', 'F0 has no free LARGE → floor 1', H.c('g', 'T5 → F1-S2')],
+          ['truck', 'F1-S3', 'T6'],
+          ['car', 'F0-S1 is free again (nearest!)', 'T7 → F0-S1'],
+          ['+1h, out:3', 'truck in since 09:00 → 3 h × ₹50', H.c('b', '₹150')],
+          ['truck, truck', 'first takes F0-S3; second finds all LARGE taken', H.c('r', 'ParkingLotFullException')]
+        ])}`
+      },
+      {
+        title: 'Why remove the ticket BEFORE releasing the spot',
+        html: `<p>If <code>unpark</code> first frees the spot and then crashes before removing the ticket, the same ticket could be used again while another car now sits in that spot. Ordering the steps "remove ticket → price → release spot" (all under one lock) keeps every intermediate state safe. In a database this whole block is one transaction.</p>
+          ${H.chips(['remove ticket', 'compute fee', 'collect payment', 'release spot', 'notify'], { label: 'Safe order' })}`
+      },
+      {
+        title: 'The pay-then-exit split (code above)',
+        html: `${H.table(['Call', 'Ticket state before', 'Result'], [
+          ['exit(T1) right after entering', 'ACTIVE', H.c('r', 'IllegalStateException: ACTIVE → EXITED not allowed')],
+          ['pay(T1, +95 min, UPI)', 'ACTIVE', H.c('g', 'PAID, ₹80 (2 started hours × 40)')],
+          ['exit(T1)', 'PAID', H.c('g', 'EXITED, spot A1 freed, screen notified')],
+          ['pay(T1) again', 'EXITED', H.c('r', 'rejected')]
+        ])}`
+      },
+      {
+        title: 'Two gates, one free spot: the race made visible',
+        html: `${H.table(['Time', 'Gate A thread', 'Gate B thread'], [
+          ['t1', 'strategy finds F0-S2 free', ''],
+          ['t2', '', 'strategy finds F0-S2 free'],
+          ['t3', 'assign(car A) ✔', ''],
+          ['t4', '', H.c('r', 'assign(car B) → second car in same spot (without lock)')]
+        ])}<p>With <code>synchronized park()</code>, t2 cannot start until t3 finishes, so B sees the spot as taken. <code>ParkingSpot.assign()</code> also re-checks <code>isFree()</code> and throws — a second line of defence.</p>`
+      }
+    ],
+    deepDive: `<p><b>Lock granularity choices.</b> ${H.table(['Approach', 'Throughput', 'Complexity', 'Notes'], [
+        ['<code>synchronized</code> on ParkingLot', 'low under load', 'trivial', 'perfect for the interview default'],
+        ['ReentrantLock per floor', 'medium', 'medium', 'strategy must lock floors in a fixed order to avoid deadlock'],
+        ['Concurrent free queue per spot type', 'high', 'medium', '<code>poll()</code> is atomic; "nearest" becomes approximate'],
+        ['CAS on spot (<code>AtomicReference</code>)', 'high', 'medium', 'retry another spot on CAS failure'],
+        ['Distributed (DB row lock / Redis)', 'scales across servers', 'high', 'each gate is a separate machine']
+      ])}</p>
+      <p><b>Idempotency at the gate.</b> Barrier hardware may resend "vehicle arrived" after a timeout. Use the plate (or a request id) to make <code>park</code> idempotent: if the plate already holds an active ticket, return that ticket instead of a new spot. The reference design throws; mention the idempotent alternative as a production improvement.</p>
+      <p><b>Lost tickets.</b> Keep an index <code>plate → ticket</code>. Lost-ticket pricing is usually <code>max(normal fee, penalty)</code> — see the guided problem. Never let a lost ticket be cheaper than a found one, or people will "lose" tickets.</p>
+      <p><b>Time edge cases.</b> Clock changes (daylight saving) are why <code>Instant</code> (UTC) beats <code>LocalDateTime</code> for durations. Midnight crossings matter for daily caps. Stays longer than 24 h need per-day caps applied per started day, not once.</p>
+      <p><b>Events and eventual consistency.</b> Display boards updated by events can briefly disagree with reality (an event in flight). That is acceptable for a sign; it is <i>not</i> acceptable for allocation, which must read the authoritative state under the lock.</p>
+      <p><b>Payments fail.</b> In real systems payment is a remote call that can time out. Do not hold the lot lock while calling a payment gateway; compute the fee, release the lock, charge, then mark the ticket PAID. If the gateway is unsure, the ticket stays ACTIVE and the driver retries — idempotency keys prevent double charges.</p>`,
+    aiEra: `<p><b>What AI changes:</b> generating the happy-path flow is trivial for an assistant; the interview value has moved to <i>failure paths</i>: double exits, lost tickets, payment timeouts, two gates racing. Those are exactly the questions modern interviewers ask after you show working code.</p>
+      <p><b>Use AI as a partner:</b> <code>List every way the park/unpark flow can fail and which class should detect each failure</code>, or <code>Write a multi-threaded test that parks 1000 cars from 8 threads into 500 spots and asserts no spot is used twice</code>. Run it — AI-written concurrency tests are a great way to catch your own races.</p>
+      <p><b>Where AI goes wrong:</b> holding a lock across a payment call, using <code>HashMap</code> from several threads without synchronisation, computing fees with <code>double</code>, or rounding hours down. It often frees the spot before invalidating the ticket.</p>
+      <p><b>What you must still own:</b> the order of operations, the atomicity boundary, and the state machine. Be able to draw the race timeline from the examples on a whiteboard without help.</p>`,
+    problems: [{
+      title: 'Exit Flow: Slab Pricing, Daily Cap and Lost Tickets',
+      level: 'Medium', tags: ['strategy', 'decorator', 'pricing'], companies: ['Amazon', 'Walmart', 'Paytm'],
+      statement: `<p>Implement exit pricing: cars pay <b>₹30 for the first 2 hours</b>, then <b>₹20 per started hour</b>, capped at <b>₹200 per 24-hour day</b>; bikes and trucks have their own numbers. A <b>lost ticket</b> costs <code>max(normal fee, ₹500)</code>. New tariffs must be addable without editing existing ones.</p>`,
+      constraints: `Durations up to 30 days. Money as <code>long</code> rupees. Partial hours round up; minimum 1 hour.`,
+      example: `<p>Car 90 min → ${H.c('g', '₹30')} (inside the first block). Car 250 min = 5 started hours → ${H.c('g', '30 + 3×20 = ₹90')}. Car 30 h → day 1 capped ${H.c('b', '₹200')} + remaining 6 h = ${H.c('b', '₹110')} → ${H.c('g', '₹310')}. Lost ticket after 1 h → ${H.c('r', '₹500')}.</p>`,
+      brute: { why: `<p>One <code>fee()</code> method with an if-else ladder per vehicle type, each repeating the slab arithmetic with different numbers. The cap is copy-pasted (and forgotten for trucks), multi-day stays are wrong (the cap is applied once, not per day), and adding a weekend tariff means another branch in every type.</p>`, code: J.g4_brute },
+      mcq: { q: 'You need "₹200 cap per day" on top of ANY tariff. Which pattern composes best?', options: ['Inheritance: CappedSlabPricing extends SlabPricing', 'Decorator: DailyCap wraps any PricingStrategy', 'A boolean flag capEnabled in every strategy', 'Singleton PriceManager'], answer: 1, explain: 'A decorator implements the same interface and wraps another strategy, so the cap works on slab, hourly or flat pricing without new subclasses.' },
+      hints: [
+        `<p>Hint 1: separate "what does N hours cost?" (slab rule) from "never more than X per day" (cap rule). They change independently, so they are different classes.</p>`,
+        `<p>Hint 2: <code>interface PricingStrategy { long fee(Duration d); }</code>; <code>SlabPricing</code> implements it; <code>DailyCap</code> also implements it and holds an inner strategy.</p>`,
+        `<p>Hint 3: for a cap per started day: fullDays = hours / 24 → fullDays × cap + min(cap, inner.fee(remainder)). Lost ticket = <code>Math.max(normal, penalty)</code> in one place (a Tariff class mapping vehicle type → rule chain).</p>`
+      ],
+      solution: {
+        approach: `<p>Model each rule as a <code>PricingStrategy</code>: <code>SlabPricing</code> for the hourly tariff and <code>DailyCap</code> as a decorator. A <code>Tariff</code> maps each <code>VehicleType</code> to its chain and applies the lost-ticket rule. A weekend surcharge would be one more decorator — zero edits to existing classes.</p>`,
+        code: J.g4_sol,
+        complexity: `<p>O(1) per fee calculation (a few arithmetic operations per decorator layer). Space O(vehicle types).</p>`,
+        followUps: ['Add a <code>WeekendSurcharge</code> decorator (×1.5 on Saturday/Sunday entries)', 'Monthly pass holders pay 0 — where does that check go?', 'How would you show the driver an itemised receipt (slab, cap, penalty lines)?']
+      }
+    }]
+  });
+
+  /* =====================================================================
+     TOPIC 5 — TIC-TAC-TOE: FULL DESIGN + O(1) WIN DETECTION
+     ===================================================================== */
+  var TTT_COUNTER_CODE = [
+    'int add = (player == X) ? +1 : -1;',
+    'rows[r] += add;',
+    'cols[c] += add;',
+    'if (r == c) diag += add;',
+    'if (r + c == n - 1) anti += add;',
+    'int target = add * n;',
+    'if (rows[r] == target || cols[c] == target',
+    '    || diag == target || anti == target) return WON;',
+    'return board.isFull() ? DRAW : IN_PROGRESS;'
+  ].join('\n');
+
+  topics.push({
+    title: 'Tic-Tac-Toe: Full Object Design and O(1) Win Detection',
+    analogy: `<p>Imagine a referee at a tic-tac-toe tournament who, after every move, walks around the whole board checking all eight lines. Tiring. A smarter referee keeps a <b>tally sheet</b>: one box per row, per column and per diagonal. When X plays in row 1, she adds a tick to "row 1 — X". The moment any box hits 3 ticks for one player, she blows the whistle. She never re-reads the board.</p>
+      <p>That tally sheet is the O(1) win check. The rest of the design is about giving each role its own object: the <b>board</b> holds marks, the <b>players</b> choose moves, the <b>rules</b> decide wins, and the <b>game</b> keeps turn order.</p>`,
+    explain: `<p><b>Step 1 — Clarify.</b> Board size: always 3×3 or N×N? Two players or more? Human only, or bots too? Should illegal moves be rejected or re-asked? Undo? (Answering "N×N, 2+ players, pluggable bots, reject illegal moves" makes the design interesting without bloating it.)</p>
+      <p><b>Step 2–3 — Entities and APIs.</b></p>
+      ${H.table(['Type', 'Kind', 'Responsibility', 'Key API'], [
+        ['<code>Board</code>', 'class', 'cells, bounds and emptiness checks, "is full"', '<code>place(r, c, symbol)</code>, <code>isValid(r, c)</code>'],
+        ['<code>Player</code>', 'interface', 'chooses a move (human, scripted, bot)', '<code>int[] chooseMove(Board b)</code>'],
+        ['<code>Move</code>', 'record', 'who played where (history, undo, replay)', '—'],
+        ['<code>WinningStrategy</code>', 'interface', 'decides if the last move wins', '<code>isWinningMove(board, move, p)</code>'],
+        ['<code>GameStatus</code>', 'enum', 'IN_PROGRESS / WON / DRAW', '—'],
+        ['<code>Game</code>', 'class', 'turn order, status, history; orchestrates', '<code>makeMove(r, c)</code>, <code>play()</code>, <code>winner()</code>']
+      ])}
+      <p><b>Step 4 — Diagram in words:</b> Game ◆ Board (composition), Game ◇ Player (aggregation — players exist outside one game), Game → WinningStrategy (uses), Game ◆ List&lt;Move&gt; (history).</p>
+      <p><b>The win check, three ways:</b></p>
+      ${H.table(['Approach', 'Work per move', 'N = 3', 'N = 1000'], [
+        ['Rescan all rows, cols, diagonals', 'O(N²)', '9 cells', '1,000,000 cells'],
+        ['Scan only the row, col and diagonals of the last move', 'O(N)', '~12 cells', '~4,000 cells'],
+        [H.c('g', 'Counters per row / col / diagonal'), H.c('g', 'O(1)'), '4 additions', '4 additions']
+      ])}
+      <p><b>How the counters work (2 players):</b> X adds <b>+1</b>, O adds <b>−1</b> to <code>rows[r]</code>, <code>cols[c]</code>, and to <code>diag</code> if <code>r == c</code>, and <code>anti</code> if <code>r + c == n − 1</code>. A line is all-X exactly when its counter is <b>+n</b> and all-O when it is <b>−n</b>, because any O in the line pulls the sum below +n. For 3+ players, keep a separate counter array per player (the reference code does this).</p>
+      <p>Worked example on 3×3: X plays (1,1) → rows[1]=1, cols[1]=1, diag=1, anti=1 (the centre is on both diagonals). Later X plays (0,2) → anti=2 and (2,0) → anti=3 = n → <b>X wins</b>, detected with four additions.</p>
+      ${H.arr(['X', 'O', 'X', '·', 'X', '·', 'X', '·', '·'], { label: 'board row-major', hl: { 2: 'g', 4: 'g', 6: 'g' } })}`,
+    clues: [
+      '"Design Tic-Tac-Toe" / LeetCode 348 → counters per row/col/diagonal, O(1) per move',
+      '"N × N board" or "large board" → never rescan; update counters or check only lines through the last move',
+      '"Allow a computer player" → <code>Player</code> as an interface (Strategy); bot = minimax implementation',
+      '"Undo last move" → keep a history of <code>Move</code> objects (Command pattern) and make counter updates reversible',
+      '"K in a row" (Gomoku, Connect Four) → counters do not work directly; walk outward from the last move in 4 directions, O(K)',
+      '"Validate a given board" (LeetCode 794) → reason with counts of X and O plus who has a line'
+    ],
+    code: J.TicTacToeDemo,
+    codeTitle: 'Complete N×N Tic-Tac-Toe (players as strategies, O(1) counter-based win check, history)',
+    viz: {
+      title: 'Tic-tac-toe board with live win-detection counters',
+      input: '1,1 0,0 0,2 1,1 0,1 2,0',
+      inputLabel: 'Moves "row,col" in turn order (X first). Optional first token n=4 for a 4×4 board.',
+      gen: function (input) {
+        var toks = String(input === undefined ? '' : input).trim().toLowerCase().replace(/\s*,\s*/g, ',').split(/[\s;]+/).filter(function (t) { return t.length; });
+        if (!toks.length) throw new Error('Enter moves like: 1,1 0,0 0,2');
+        if (toks.length > 40) throw new Error('Use at most 40 moves');
+        var n = 3;
+        if (/^n=\d+$/.test(toks[0])) { n = parseInt(toks.shift().slice(2), 10); }
+        if (n < 3 || n > 6) throw new Error('Board size n must be between 3 and 6');
+        if (!toks.length) throw new Error('Add at least one move like 1,1');
+        var board = [], r, c;
+        for (r = 0; r < n; r++) { board.push([]); for (c = 0; c < n; c++) board[r].push('·'); }
+        var rows = [], cols = [], diag = 0, anti = 0, turn = 0, filled = 0, status = 'IN_PROGRESS', frames = [];
+        for (var k = 0; k < n; k++) { rows.push(0); cols.push(0); }
+        var SYM = ['X', 'O'];
+        var idx = []; for (k = 0; k < n; k++) idx.push(String(k));
+        function gridPart(hl, label) { return { type: 'grid', label: label || 'Board', rowHead: idx, colHead: idx, rows: board.map(function (row) { return row.slice(); }), hl: hl || {} }; }
+        function counters(rh, ch) {
+          return [
+            { type: 'array', label: 'rows[] (X +1, O −1)', values: rows.slice(), hl: rh === undefined ? {} : one(rh, 'cur') },
+            { type: 'array', label: 'cols[]', values: cols.slice(), hl: ch === undefined ? {} : one(ch, 'cur') }
+          ];
+        }
+        frames.push(F('Empty ' + n + '×' + n + ' board. Instead of rescanning after each move, we keep <b>' + (2 * n + 2) + ' counters</b>: one per row, one per column, and two diagonals. A counter reaching <b>+' + n + '</b> means X owns that whole line; <b>−' + n + '</b> means O does.', [gridPart()].concat(counters(), [VARS('Diagonals and status', { diag: diag, anti: anti, target: '±' + n, status: status }), CODE('Per-move work: O(1)', TTT_COUNTER_CODE)])));
+        for (var m = 0; m < toks.length; m++) {
+          var mm = /^(\d+),(\d+)$/.exec(toks[m]);
+          if (!mm) throw new Error('Bad move "' + toks[m] + '". Use row,col like 0,2');
+          if (status !== 'IN_PROGRESS') {
+            frames.push(F('Move ' + toks[m] + ' ignored: the game is already <b>' + status + '</b>. <code>makeMove()</code> throws <span class="c-r">IllegalStateException("Game is over")</span> — an invariant enforced in one place.', [gridPart()]));
+            break;
+          }
+          r = parseInt(mm[1], 10); c = parseInt(mm[2], 10);
+          var sym = SYM[turn];
+          if (r >= n || c >= n || board[r][c] !== '·') {
+            var why = (r >= n || c >= n) ? 'outside the board' : 'already taken by ' + board[r][c];
+            frames.push(F('<b>' + sym + '</b> tries (' + r + ',' + c + ') — ' + why + '. <code>Board.place()</code> throws <span class="c-r">IllegalArgumentException</span>; the turn does <b>not</b> pass and no counter changes. ' + sym + ' must choose again.', [gridPart(r < n && c < n ? one(r + ',' + c, 'bad') : {})].concat(counters(), [VARS('Diagonals and status', { diag: diag, anti: anti, turn: sym, status: status }, { turn: 'bad' })])));
+            continue;
+          }
+          var add = turn === 0 ? 1 : -1;
+          board[r][c] = sym; filled++;
+          rows[r] += add; cols[c] += add;
+          var onD = r === c, onA = r + c === n - 1;
+          if (onD) diag += add;
+          if (onA) anti += add;
+          var target = add * n, line = null;
+          if (rows[r] === target) line = { kind: 'row ' + r, cells: idx.map(function (q) { return r + ',' + q; }) };
+          else if (cols[c] === target) line = { kind: 'column ' + c, cells: idx.map(function (q) { return q + ',' + c; }) };
+          else if (onD && diag === target) line = { kind: 'main diagonal', cells: idx.map(function (q) { return q + ',' + q; }) };
+          else if (onA && anti === target) line = { kind: 'anti-diagonal', cells: idx.map(function (q) { return q + ',' + (n - 1 - q); }) };
+          var codeHl = { 1: 'cur', 2: 'ok', 3: 'ok' };
+          if (onD) codeHl[4] = 'ok';
+          if (onA) codeHl[5] = 'ok';
+          var touched = 'rows[' + r + ']=' + rows[r] + ', cols[' + c + ']=' + cols[c] + (onD ? ', diag=' + diag : '') + (onA ? ', anti=' + anti : '');
+          if (line) {
+            status = 'WON';
+            codeHl[7] = 'sel'; codeHl[8] = 'sel';
+            frames.push(F('<b>' + sym + '</b> plays (' + r + ',' + c + '): ' + touched + '. The ' + line.kind + ' counter hit <b>' + target + '</b> = ' + (add > 0 ? '+' : '−') + 'n, so every cell in it is ' + sym + '. <span class="c-g">' + sym + ' WINS</span> — found with ' + (2 + (onD ? 1 : 0) + (onA ? 1 : 0)) + ' additions and no board scan.', [gridPart(many(line.cells, 'sel'), 'Board — winning line')].concat(counters(r, c), [VARS('Diagonals and status', { diag: diag, anti: anti, target: target, status: status, winner: sym }, { status: 'ok', winner: 'ok' }), CODE('Per-move work: O(1)', TTT_COUNTER_CODE, codeHl)])));
+          } else if (filled === n * n) {
+            status = 'DRAW';
+            codeHl[9] = 'sel';
+            frames.push(F('<b>' + sym + '</b> plays (' + r + ',' + c + '): ' + touched + '. No counter reached ±' + n + ' and the board is full → <span class="c-y">DRAW</span>.', [gridPart(one(r + ',' + c, 'ok'))].concat(counters(r, c), [VARS('Diagonals and status', { diag: diag, anti: anti, status: status }, { status: 'cur' }), CODE('Per-move work: O(1)', TTT_COUNTER_CODE, codeHl)])));
+          } else {
+            frames.push(F('<b>' + sym + '</b> plays (' + r + ',' + c + '): update ' + touched + (onD && onA ? ' (the centre lies on <i>both</i> diagonals)' : '') + '. No counter equals ' + target + ', so the game goes on and the turn passes to ' + SYM[1 - turn] + '.', [gridPart(one(r + ',' + c, 'ok'))].concat(counters(r, c), [VARS('Diagonals and status', { diag: diag, anti: anti, target: target, next: SYM[1 - turn], status: status }, { next: 'cur' }), CODE('Per-move work: O(1)', TTT_COUNTER_CODE, codeHl)])));
+            turn = 1 - turn;
+          }
+        }
+        if (status === 'IN_PROGRESS') frames.push(F('Moves ran out with the game still <b>IN_PROGRESS</b>. Add more moves to finish it — or try <code>n=4</code> as the first token to see that nothing in the design changes for a bigger board.', [gridPart()].concat(counters())));
+        return frames;
+      }
+    },
+    examples: [
+      {
+        title: 'Dry run of the demo game in the code (X wins on the main diagonal)',
+        html: `${H.table(['Move', 'Player', 'rows', 'cols', 'diag', 'anti', 'Result'], [
+          ['(0,0)', 'X', '[1,0,0]', '[1,0,0]', '1', '0', 'continue'],
+          ['(0,1)', 'O', '[0,0,0]', '[1,-1,0]', '1', '0', 'continue'],
+          ['(1,1)', 'X', '[0,1,0]', '[1,0,0]', '2', '1', 'continue'],
+          ['(0,2)', 'O', '[-1,1,0]', '[1,0,-1]', '2', '0', 'continue'],
+          ['(2,2)', 'X', '[-1,1,1]', '[1,0,0]', H.c('g', '3'), '0', H.c('g', 'diag = +3 → X wins')]
+        ])}<p>(In the code each player keeps its own counter arrays, which also works for 3+ players; the ±1 trick shown here is the 2-player shortcut.)</p>`
+      },
+      {
+        title: 'Why a mixed line can never look like a win',
+        html: `<p>Row 0 holds X, O, X → counter = +1 −1 +1 = <b>+1</b>. To reach +3 all three entries must be +1, i.e. all X. In general a line with any O has sum ≤ n − 2. So <code>counter == ±n</code> is exactly "the whole line belongs to one player" — no false positives.</p>
+          ${H.arr(['X(+1)', 'O(−1)', 'X(+1)'], { label: 'row 0', hl: { 1: 'r' } })}`
+      },
+      {
+        title: 'Validation lives in exactly one place',
+        html: `${H.table(['Bad input', 'Caught by', 'Effect'], [
+          ['(3,1) on 3×3', '<code>Board.isValid()</code>', 'exception; turn does not advance'],
+          ['occupied cell', '<code>Board.isValid()</code>', 'exception; turn does not advance'],
+          ['move after game over', '<code>Game.makeMove()</code> status check', 'IllegalStateException'],
+          ['two players both "X"', '<code>Game</code> constructor', 'IllegalArgumentException'],
+          ['board 2×2', '<code>Board</code> constructor', 'IllegalArgumentException']
+        ])}`
+      },
+      {
+        title: 'The same design for 3 players on 4×4',
+        html: `<p>Nothing in <code>Game</code> mentions "2" or "3": players come in a list, turn is <code>(turn + 1) % players.size()</code>, and <code>CounterWinningStrategy</code> sizes its counters as <code>[players][n]</code>. A practice problem below adds spectators and replay on top of exactly this shape.</p>
+          ${H.kv([['Board', 'new Board(4)'], ['Players', 'List.of(x, o, z)'], ['Counters', 'int[3][4] rows, cols']], { label: 'Config' })}`
+      }
+    ],
+    deepDive: `<p><b>Why <code>Player</code> is an interface, not a class with a <code>Scanner</code>.</b> Reading from <code>System.in</code> inside the model makes the game untestable and ties it to a console. With <code>chooseMove(Board)</code>, a <code>ConsolePlayer</code>, a <code>ScriptedPlayer</code> (tests), a <code>MinimaxBot</code> and a <code>NetworkPlayer</code> are all equal citizens. The <code>Game</code> stays unaware of where moves come from.</p>
+      <p><b>Short-circuit trap in counter updates.</b> <code>if (++rows[p][r] == n) return true;</code> returns before incrementing the column and diagonal counters. That is fine when a win ends the game, but <b>wrong</b> if you later add undo (counters drift). For reversible designs, update all counters first, then test — the undo guided problem shows this.</p>
+      <p><b>Draw detection.</b> "Board full" is the simplest draw rule. An expert follow-up: detect an <i>inevitable</i> draw early — a line is "dead" once it contains two different symbols; when all 2n+2 lines are dead, no one can win. Track a per-line set of symbols present (or a bitmask) in O(1) per move.</p>
+      <p><b>K-in-a-row generalisation.</b> When the win needs K &lt; N in a row (Gomoku: 5 on 15×15), whole-line counters no longer work. Walk outward from the last move in 4 directions and count consecutive same symbols, O(K) per move — still independent of board size.</p>
+      <p><b>Immutability and history.</b> <code>Move</code> as a record makes history safe to expose. <code>Game.history()</code> returns an unmodifiable view so callers cannot rewrite the past. History enables replay, undo, and network sync (send moves, not boards).</p>
+      <p><b>Game theory note.</b> 3×3 tic-tac-toe has 5,478 legal positions and is a forced draw with perfect play — which is why a minimax bot (practice problem) never loses and why interviewers like it as a "plug in an AI player" follow-up.</p>`,
+    aiEra: `<p><b>What AI changes:</b> an assistant will produce a working 3×3 console game instantly — usually with a <code>Scanner</code> inside the game loop, a hard-coded 3, and an 8-line win check. Interviewers now jump straight to "make it N×N with 3 players and a bot" to see whether the structure bends or breaks.</p>
+      <p><b>Use AI as a partner:</b> <code>Generate 10 tricky tic-tac-toe move sequences: illegal moves, wins on the last cell, anti-diagonal wins on 4x4</code>, then run them through your design. Ask it to write the minimax bot <i>after</i> you have defined the <code>Player</code> interface, so it fits your design rather than dictating one.</p>
+      <p><b>Where AI goes wrong:</b> forgets that the centre lies on both diagonals, checks the anti-diagonal with <code>r == n - c</code> (off by one), lets the turn advance after an illegal move, or detects a draw before checking a win on the final move.</p>
+      <p><b>What you must still own:</b> the responsibility split (Board vs Game vs rules vs players), the O(1) argument and its proof, and the invariants. Be ready to explain why a mixed line can never reach ±n.</p>`,
+    problems: [{
+      title: 'Design Tic-Tac-Toe: O(1) per Move (LeetCode 348)',
+      level: 'Medium', tags: ['design', 'counting', 'matrix'], companies: ['Google', 'Microsoft', 'Amazon', 'Meta'],
+      statement: `<p>Design a class <code>TicTacToe(int n)</code> with <code>int move(int row, int col, int player)</code> where player is 1 or 2. Moves are guaranteed valid (empty cell, game not over). Return the winning player's number if this move wins, otherwise 0. Aim for better than O(n²) per move.</p>`,
+      constraints: `2 ≤ n ≤ 100; player ∈ {1, 2}; at most n² calls; every move is on an empty cell.`,
+      example: `<p>n = 3: moves (0,0,1) (0,2,2) (2,2,1) (1,1,2) (2,0,1) (1,0,2) (2,1,1) → outputs ${H.c('m', '0 0 0 0 0 0')} ${H.c('g', '1')}. The last move completes row 2 = 1, 1, 1 → rows[2] reaches +3.</p>`,
+      brute: { why: `<p>Store the board and, after each move, rescan every row, column and both diagonals: O(n²) per move and O(n⁴) for a whole game. For n = 100 that is 10,000 cells per move. Even the "check only the last move's lines" improvement is O(n).</p>`, code: J.g5_brute },
+      mcq: { q: 'Player 1 adds +1 and player 2 adds −1 to rows[r]. Why does rows[r] == n prove row r is all player 1?', options: ['Because n is odd', 'Because any player-2 cell lowers the sum below n, and the row has only n cells', 'Because rows are checked left to right', 'It does not prove it'], answer: 1, explain: 'Each of the n cells contributes at most +1; reaching exactly n needs every cell to be +1, i.e. player 1.' },
+      hints: [
+        `<p>Hint 1: you never need to know <i>which</i> cells are in a row — only whether one player owns all of them. A running sum can tell you that.</p>`,
+        `<p>Hint 2: arrays <code>rows[n]</code>, <code>cols[n]</code> and two ints <code>diag</code>, <code>anti</code>. Player 1 adds +1, player 2 adds −1.</p>`,
+        `<p>Hint 3: a cell is on the main diagonal if <code>row == col</code>, on the anti-diagonal if <code>row + col == n − 1</code> (the centre of an odd board is on both). After updating, compare each touched counter with <code>±n</code>.</p>`
+      ],
+      solution: {
+        approach: `<p>Keep 2n + 2 running sums. Each move updates at most 4 of them and compares them with the target (+n or −n). No board needed at all — that is the surprising part interviewers enjoy.</p>`,
+        code: J.g5_sol,
+        complexity: `<p>Time O(1) per move. Space O(n) for the counters (no O(n²) board).</p>`,
+        followUps: ['Support 3+ players (counter arrays per player)', 'Detect an inevitable draw early', 'Make it K-in-a-row on an R×C board — why do counters stop working?']
+      }
+    }]
+  });
+
+  /* =====================================================================
+     TOPIC 6 — EXTENSIBILITY: FOLLOW-UPS, PATTERNS, MACHINE-CODING ROUNDS
+     ===================================================================== */
+  var EXT_BASE = {
+    ttt: {
+      name: 'Tic-Tac-Toe',
+      nodes: [B('Game', 'Game', 45, 8), B('Board', 'Board', 12, 28), B('Player', '«I» Player', 45, 28), B('Win', '«I» WinningStrategy', 80, 28),
+        B('Human', 'HumanPlayer', 34, 48), B('Counter', 'CounterWinStrategy', 86, 48)],
+      edges: [['Game', 'Board', 'owns'], ['Game', 'Player', '2..*'], ['Game', 'Win', 'uses'], ['Human', 'Player', 'implements'], ['Counter', 'Win', 'implements']]
+    },
+    pl: {
+      name: 'Parking Lot',
+      nodes: [B('Lot', 'ParkingLot', 45, 8), B('Alloc', '«I» AllocationStrategy', 16, 28), B('Spot', 'ParkingSpot', 47, 28), B('Price', '«I» PricingStrategy', 80, 28),
+        B('Nearest', 'NearestFirst', 16, 48), B('ST', 'enum SpotType', 47, 48), B('Hourly', 'HourlyPricing', 88, 48)],
+      edges: [['Lot', 'Alloc', 'uses'], ['Lot', 'Spot', '1..*'], ['Lot', 'Price', 'uses'], ['Nearest', 'Alloc', 'implements'], ['Spot', 'ST'], ['Hourly', 'Price', 'implements']]
+    }
+  };
+  var EXT_REQS = {
+    bot: { base: 'ttt', req: '"Let me play against the computer."', axis: 'who chooses moves', touch: 'Player', node: B('New', 'MinimaxBot', 55, 66), edge: ['New', 'Player', 'implements'], pattern: 'Strategy', added: 1, edited: 0,
+      code: 'class MinimaxBot implements Player {\n  public int[] chooseMove(Board b) {\n    // try every free cell, score it with minimax,\n    // return the best one\n    return bestMove(b);\n  }\n}' },
+    kinarow: { base: 'ttt', req: '"Now play 5-in-a-row on a 15×15 board."', axis: 'what counts as a win', touch: 'Win', node: B('New', 'KInARowStrategy', 62, 66), edge: ['New', 'Win', 'implements'], pattern: 'Strategy', added: 1, edited: 0,
+      code: 'class KInARowStrategy implements WinningStrategy {\n  public boolean isWinningMove(Board b, Move m, int p) {\n    // walk 4 directions from the last move,\n    // count same symbols: O(K)\n    return longestRunThrough(b, m) >= k;\n  }\n}' },
+    undo: { base: 'ttt', req: '"Add undo for the last move."', axis: 'reversing history', touch: 'Game', node: B('New', 'MoveCommand', 12, 48), edge: ['Game', 'New', 'undo stack'], pattern: 'Command', added: 1, edited: 1,
+      code: 'class MoveCommand implements Command {\n  public void execute() { board.apply(r, c, p, +1); }\n  public void undo()    { board.apply(r, c, p, -1); }\n}\n// Game: Deque<MoveCommand> history; undo() pops one' },
+    scoreboard: { base: 'ttt', req: '"Show a live scoreboard and log every move." (Scoreboard implements a new GameListener interface)', axis: 'who reacts to game events', touch: 'Game', node: B('New', 'Scoreboard', 12, 66), edge: ['Game', 'New', 'notifies'], pattern: 'Observer', added: 2, edited: 1,
+      code: 'interface GameListener {\n  void moved(char who, int r, int c);\n  void ended(String result);\n}\nclass Scoreboard implements GameListener { /* counts wins */ }' },
+    ev: { base: 'pl', req: '"Add EV spots with a per-kWh charging fee."', axis: 'how money is computed', touch: 'Price', node: B('New', 'ChargingAddOn', 66, 66), edge: ['New', 'Price', 'wraps'], pattern: 'Decorator', added: 1, edited: 1,
+      code: 'class ChargingAddOn implements PricingStrategy {\n  private final PricingStrategy inner;\n  public long fee(Ticket t, Instant out) {\n    return inner.fee(t, out) + kwh(t) * perKwh;\n  }\n}\n// + EV constant in enum SpotType (data, not logic)' },
+    weekend: { base: 'pl', req: '"Weekends cost 1.5×."', axis: 'how money is computed', touch: 'Price', node: B('New', 'WeekendSurcharge', 66, 66), edge: ['New', 'Price', 'wraps'], pattern: 'Decorator', added: 1, edited: 0,
+      code: 'class WeekendSurcharge implements PricingStrategy {\n  private final PricingStrategy inner;\n  public long fee(Ticket t, Instant out) {\n    long base = inner.fee(t, out);\n    return isWeekend(t) ? base * 3 / 2 : base;\n  }\n}' },
+    gates: { base: 'pl', req: '"Give each driver the spot nearest to the gate they entered."', axis: 'which spot to choose', touch: 'Alloc', node: B('New', 'NearestToGate', 36, 66), edge: ['New', 'Alloc', 'implements'], pattern: 'Strategy', added: 1, edited: 0,
+      code: 'class NearestToGate implements SpotAllocationStrategy {\n  // one min-heap of free spots per gate,\n  // ordered by distance; lazy deletion\n  public Optional<ParkingSpot> findSpot(floors, type)\n  // -> poll the heap of the entry gate\n}' },
+    reserve: { base: 'pl', req: '"Allow booking a spot in advance for a time window."', axis: 'spot availability over time', touch: 'Spot', node: B('New', 'ReservationService', 24, 66), edge: ['New', 'Spot', 'calendar per spot'], pattern: 'new service + interval TreeMap', added: 2, edited: 1,
+      code: 'class SpotCalendar {\n  TreeMap<Integer, Integer> booked; // start -> end\n  boolean isFree(int s, int e) { /* floor + ceiling */ }\n}\n// ParkingLot.park() honours a reservation id' }
+  };
+
+  topics.push({
+    title: 'Extending the Design: Follow-ups, Patterns that Earn Their Place, and Machine-Coding Rounds',
+    analogy: `<p>A well-designed kitchen has <b>standard sockets</b>. When you buy a new air-fryer you plug it in — you do not rewire the house. A badly designed kitchen has every appliance hard-wired into the wall; a new toaster means calling an electrician and switching off the fridge.</p>
+      <p>Interfaces in your design are those sockets. The follow-up questions at the end of an LLD round ("add a bot", "add EV spots", "add undo") are the interviewer handing you a new appliance to see whether you have sockets or wires.</p>`,
+    explain: `<p><b>The extensibility checklist.</b> For every follow-up, answer three questions out loud:</p>
+      ${H.table(['Question', 'Example: "add a computer player"', 'Example: "weekend pricing"'], [
+        ['1. What is the <b>axis of change</b>?', 'who chooses moves', 'how money is computed'],
+        ['2. Which existing <b>abstraction</b> absorbs it?', '<code>Player</code> interface', '<code>PricingStrategy</code>'],
+        ['3. What is the <b>change set</b>?', '+1 class (MinimaxBot), 0 edits', '+1 decorator, 0 edits']
+      ])}
+      <p>If question 2 has no answer, you found a missing abstraction — introduce it now (that is fine and shows judgement), then plug the feature in.</p>
+      <p><b>Patterns mapped to follow-ups</b> you will meet in these two problems:</p>
+      ${H.table(['Follow-up', 'Pattern', 'Why it fits'], [
+        ['bot player, new allocation rule, new tariff', '<b>Strategy</b>', 'swap an algorithm behind one interface'],
+        ['weekend surcharge, daily cap, EV charging on top of a tariff', '<b>Decorator</b>', 'stack behaviours without subclass explosion'],
+        ['undo / redo / replay', '<b>Command</b> (+ history)', 'each move knows how to execute and undo itself'],
+        ['display board, scoreboard, audit log', '<b>Observer</b>', 'many listeners, publisher does not know them'],
+        ['ticket ACTIVE → PAID → EXITED, game IN_PROGRESS → WON', '<b>State</b>', 'behaviour depends on state; illegal transitions rejected'],
+        ['configuring size, players, rules', '<b>Builder</b>', 'many optional parameters, readable setup'],
+        ['creating spots/floors from a layout file', '<b>Factory</b>', 'hide construction details'],
+        ['CLI commands in machine coding', '<b>Command</b> map', 'new command = new class + 1 registration']
+      ])}
+      <p><b>Patterns that usually do NOT earn their place here:</b> Singleton (blocks multiple lots/games and parallel tests — prefer one instance created in <code>main</code> and passed in), Abstract Factory (one product family only), Visitor (too heavy for a few types).</p>
+      <p><b>The machine-coding round</b> (60–120 minutes, runnable code, often evaluated by running it):</p>
+      ${H.table(['Minute', 'Do this'], [
+        ['0–10', 'Read the problem twice; list commands/use cases; ask about input format and edge cases'],
+        ['10–20', 'Entities + interfaces on paper; decide in-memory structures (maps, TreeSet, queues)'],
+        ['20–70', 'Code models → services → command parser → <code>main()</code>; run after every feature'],
+        ['70–85', 'Edge cases: invalid commands, full lot, duplicates, empty results; never crash on bad input'],
+        ['85–90', 'Clean names, remove dead code, explain extension points in a short note']
+      ])}
+      <p>Evaluators look for: <b>it runs</b>, correct output for their hidden test file, separation of input parsing from domain logic, no God class, and readable code. The visualizer shows several follow-ups plugged into both designs.</p>`,
+    clues: [
+      '"How would you add ___?" → name the axis of change, the abstraction that absorbs it, and the exact change set (+N classes, M edits)',
+      '"Undo", "replay", "history" → Command objects stored in a stack or log',
+      '"Notify", "display", "subscribe", "real-time board" → Observer',
+      '"On top of", "plus a surcharge", "and also cap it" → Decorator over the existing strategy',
+      '"Machine coding", "input from a file of commands", "output must match" → parser → Command map → domain services; never let one bad line crash the run',
+      '"Configurable board size / players / rules" → Builder or a config object, not a 7-argument constructor'
+    ],
+    code: J.t6_extend,
+    codeTitle: 'Three follow-ups (bot, K-in-a-row, scoreboard) plugged into one Game via interfaces + a Builder',
+    viz: {
+      title: 'Plugging follow-up requirements into the design',
+      input: 'bot kinarow undo ev weekend',
+      inputLabel: 'Follow-ups: bot | kinarow | undo | scoreboard | ev | weekend | gates | reserve',
+      gen: function (input) {
+        var reqs = words(input, 'Try: bot kinarow undo ev', 8);
+        reqs.forEach(function (r) { if (!EXT_REQS[r]) throw new Error('Unknown follow-up "' + r + '". Use bot, kinarow, undo, scoreboard, ev, weekend, gates or reserve'); });
+        var frames = [], added = 0, edited = 0, rows = [];
+        frames.push(F('Two finished designs. Every <b>«I»</b> box is a socket — an interface where new behaviour can plug in. Each follow-up below gets three questions: <i>what is the axis of change? which socket absorbs it? what is the change set?</i>', [
+          G('Tic-Tac-Toe design', EXT_BASE.ttt.nodes, EXT_BASE.ttt.edges, { h: 56, hl: { Player: 'sel', Win: 'sel' } }),
+          G('Parking Lot design', EXT_BASE.pl.nodes, EXT_BASE.pl.edges, { h: 56, hl: { Alloc: 'sel', Price: 'sel' } })
+        ]));
+        reqs.forEach(function (r) {
+          var x = EXT_REQS[r], base = EXT_BASE[x.base];
+          var hl = many(base.nodes.map(function (n) { return n.id; }), 'done');
+          hl[x.touch] = 'cur';
+          frames.push(F('<b>' + base.name + ' follow-up:</b> ' + x.req + ' Axis of change: <b>' + x.axis + '</b>. Which existing box owns that decision? → <span class="c-y">' + base.nodes.filter(function (n) { return n.id === x.touch; })[0].label + '</span>.', [
+            G(base.name + ': find the socket', base.nodes, base.edges, { h: 56, hl: hl, tags: one(x.touch, 'absorbs it') })
+          ]));
+          added += x.added; edited += x.edited;
+          var hl2 = many(base.nodes.map(function (n) { return n.id; }), 'done');
+          hl2.New = 'ok'; hl2[x.touch] = x.edited ? 'cur' : 'done';
+          var maxY = x.node.y > 66 ? 90 : 76;
+          frames.push(F('Plug in <span class="c-g">' + x.node.label + '</span> (' + x.pattern + '). Change set: <b>+' + x.added + ' class' + (x.added > 1 ? 'es' : '') + '</b>, <b>' + x.edited + ' existing class' + (x.edited === 1 ? '' : 'es') + ' edited</b>' + (x.edited ? ' — honest note: this follow-up needs a small hook in the owner class the first time (a history stack / listener list), after which similar features are free.' : ' — the existing classes are not touched at all.'), [
+            G(base.name + ': after the change', base.nodes.concat([x.node]), base.edges.concat([x.edge]), { h: maxY, hl: hl2, ehl: one(x.edge[0] + '-' + x.edge[1], 'ok'), tags: { New: 'NEW' } }),
+            CODE('The new code (sketch)', x.code, { 1: 'ok' }),
+            VARS('Running change cost', { classesAdded: added, classesEdited: edited }, { classesAdded: 'ok' })
+          ]));
+          rows.push([r, base.name, x.pattern, '+' + x.added, String(x.edited)]);
+        });
+        frames.push(F('Summary. Most follow-ups were <b>pure additions</b>. The few edits were one-time hooks (an undo stack, a listener list). This table is exactly the answer an interviewer hopes to hear when they ask "how extensible is your design?"', [
+          TABLE('Follow-up scorecard', ['Request', 'Design', 'Pattern', 'Classes added', 'Classes edited'], rows.concat([['TOTAL', '', '', '+' + added, String(edited)]]), one(rows.length, 'sel'))
+        ]));
+        return frames;
+      }
+    },
+    examples: [
+      {
+        title: 'Follow-up answered well vs badly: "add a computer player"',
+        html: `${H.table(['Answer', 'What the interviewer hears'], [
+          [H.c('r', '"I\'ll add an isComputer flag to Game and an if in the loop."'), 'Game now knows about bots; next "network player" adds another flag. Closed for extension.'],
+          [H.c('g', '"Player is already an interface. MinimaxBot implements chooseMove(). Game is unchanged; I pass the bot in the players list."'), 'Clean Strategy usage; zero edits; testable bot in isolation.']
+        ])}`
+      },
+      {
+        title: 'Decorator vs subclass for stacking pricing rules',
+        html: `<p>Tariffs: hourly or flat. Add-ons: EV charging, valet, weekend surcharge. With subclasses you need a class per combination: 2 × 2<sup>3</sup> = <b>16 classes</b>. With decorators you need <b>2 + 3 = 5</b> and compose at runtime:</p>
+          ${H.chips(['new WeekendSurcharge(', 'new ChargingAddOn(', 'new HourlyPricing(20)', '))'], { label: 'composition' })}
+          <p>The practice problem "EV Charging Add-on" builds exactly this.</p>`
+      },
+      {
+        title: 'A mini machine-coding problem, scoped in 2 minutes',
+        html: `<p>Prompt: <i>"Build a parking-lot CLI: create_parking_lot N, park PLATE COLOUR, leave SLOT, status, registration_numbers_for_cars_with_colour C, slot_number_for_registration_number P."</i></p>
+          ${H.table(['Decision', 'Choice'], [
+            ['nearest free slot', '<code>TreeSet&lt;Integer&gt;</code> of free slots → <code>pollFirst()</code> O(log n)'],
+            ['colour queries', '<code>Map&lt;colour, TreeSet&lt;slot&gt;&gt;</code> — sorted output for free'],
+            ['plate lookup', '<code>Map&lt;plate, slot&gt;</code>'],
+            ['commands', 'Command map: name → handler class; unknown command prints an error, never crashes'],
+            ['domain vs I/O', '<code>Garage</code> knows nothing about text; handlers translate']
+          ])}<p>Full solution in the Hard practice problem "Machine Coding: Parking Lot Command Interpreter".</p>`
+      },
+      {
+        title: 'Undo done right (guided problem below)',
+        html: `<p>Snapshots (copy the whole board each move) cost O(n²) memory per move. A <code>MoveCommand</code> stores only (row, col, player) and reverses its own counter updates: O(1) per move. Rule: a new move after undo clears the redo stack — otherwise redo would resurrect a future that no longer exists.</p>
+          ${H.table(['Action', 'undo stack', 'redo stack'], [['play A, B, C', '[A, B, C]', '[]'], ['undo', '[A, B]', '[C]'], ['play D', '[A, B, D]', H.c('r', '[] (C discarded)')]])}`
+      }
+    ],
+    deepDive: `<p><b>Open/Closed is a budget, not a law.</b> No design is closed against every change. You choose which axes to protect based on the requirements and the interviewer's hints. Protecting the wrong axis (say, abstracting the board's storage format) costs complexity and buys nothing. Say explicitly: "I expect pricing and allocation to change, so those are interfaces; the floor layout is configuration."</p>
+      <p><b>Configuration over code.</b> Many "extensions" are really data: rates per vehicle type, spot layout per floor, board size, K. Put these in constructors/config objects (or enum fields) instead of new classes. Reserve new classes for new <i>behaviour</i>.</p>
+      <p><b>Dependency injection by hand.</b> In interviews, wire everything in <code>main()</code>: <code>new ParkingLot(floors, new NearestFirstStrategy(), new DailyCap(new HourlyPricing(rates), 200), clock)</code>. This "composition root" is where all decisions about concrete classes live; the rest of the code depends on interfaces. Mention that Spring or Guice does the same in production.</p>
+      <p><b>Event sourcing lite.</b> Storing moves (or parking events) as an append-only log gives undo, replay, audit and debugging for free: current state = fold over the events. The Hard practice problem builds a replayable multi-player game this way. Trade-off: rebuilding state can be slow — add periodic snapshots.</p>
+      <p><b>Testing extensibility.</b> A good sign: every new strategy can be unit-tested without constructing a whole lot or game. If testing <code>WeekendSurcharge</code> needs a <code>ParkingLot</code>, the abstraction leaks.</p>
+      <p><b>Machine-coding failure modes.</b> (1) Spending 40 minutes on input parsing; (2) no runnable state at minute 60; (3) one huge <code>Main</code> with a switch; (4) crashing on the first malformed line; (5) mutable public fields everywhere. Fix: get an end-to-end thin slice running first (create + park + leave), then widen.</p>`,
+    aiEra: `<p><b>What AI changes:</b> many companies now allow AI tools in machine-coding rounds or take-homes, and judge you on <i>direction</i>: did you define the interfaces, did you catch the assistant's mistakes, can you extend the code live? Follow-up questions are where human design judgement shows most clearly.</p>
+      <p><b>Use AI as a partner:</b> give it your interfaces and ask <code>Implement a WeekendSurcharge decorator for this PricingStrategy interface, with unit tests for Friday 23:59 and Saturday 00:00 entries</code>. Ask <code>Which of my classes would need edits to support reservations?</code> to stress-test your Open/Closed claims.</p>
+      <p><b>Where AI goes wrong:</b> it adds features by editing the central class (flags and if-else), creates subclasses for every combination, or introduces patterns with no requirement behind them. In CLI machine-coding it often mixes parsing with domain logic in one method.</p>
+      <p><b>What you must still own:</b> the axes of change, the composition root, and the honest change-set accounting ("+1 class, 0 edits"). The interviewer will ask you to make the change live — it is your structure that makes that fast.</p>`,
+    problems: [{
+      title: 'Add Undo / Redo to Tic-Tac-Toe with the Command Pattern',
+      level: 'Medium', tags: ['command', 'stack', 'undo'], companies: ['Microsoft', 'Adobe', 'Atlassian'],
+      statement: `<p>Extend Tic-Tac-Toe with <code>undo()</code> and <code>redo()</code>. Undo must restore the board, the turn, the game-over flag <b>and</b> the O(1) win-check counters exactly. A new move after an undo clears the redo history. Undo of a winning move re-opens the game.</p>`,
+      constraints: `n ≤ 100, up to n² moves. undo/redo must be O(1). Return <code>false</code> when there is nothing to undo/redo.`,
+      example: `<p>X(0,0) O(1,0) X(0,1) O(1,1) X(0,2) → ${H.c('g', 'X wins')}. <code>undo()</code> → row 0 becomes ${H.c('y', 'XX.')} and the game is open, still X to move. X plays (2,2) → ${H.c('b', 'ok')}. <code>redo()</code> → ${H.c('r', 'false')} (the redo branch was discarded).</p>`,
+      brute: { why: `<p>Copy the whole board before each move and pop a snapshot on undo. It restores the cells, but costs O(n²) time and memory per move, and it does <b>not</b> restore the counters, turn or game-over flag — after an undo the win check is silently wrong unless you rescan everything.</p>`, code: J.g6_brute },
+      mcq: { q: 'Why must the counter-update code avoid early returns once undo exists?', options: ['Early returns are slower', 'If the row check returns before the column/diagonal counters are incremented, undo (which decrements all of them) leaves counters wrong', 'Java forbids it', 'It breaks redo only'], answer: 1, explain: 'execute() and undo() must be exact mirrors. Update every counter, then check for a win.' },
+      hints: [
+        `<p>Hint 1: a move is fully described by (row, col, player). If applying it is "+1 to some counters and write a symbol", undoing it is "−1 to the same counters and clear the cell".</p>`,
+        `<p>Hint 2: <code>interface Command { void execute(); void undo(); }</code>; <code>MoveCommand</code> calls <code>board.apply(r, c, p, sym, +1 / −1)</code>. Keep two <code>Deque&lt;MoveCommand&gt;</code>: undo and redo.</p>`,
+        `<p>Hint 3: play → execute, push undo, clear redo. undo → pop, undo(), push redo, then fix turn/over: if the game was over, re-open it and keep the turn with the winner; otherwise flip the turn back. redo mirrors this.</p>`
+      ],
+      solution: {
+        approach: `<p>Each move becomes a <code>MoveCommand</code> that can apply or reverse itself in O(1). The game keeps undo/redo stacks. All counters are updated unconditionally (no early return), which makes reversal exact. Turn and game-over handling live in <code>UndoableGame</code>, the one class that owns turn order.</p>`,
+        code: J.g6_sol,
+        complexity: `<p>play / undo / redo: O(1) time. Memory O(moves) — a few ints per move instead of an n×n snapshot.</p>`,
+        followUps: ['Limit undo to the last 3 moves (bounded deque)', 'Undo in a networked game: who is allowed to undo?', 'Replace stacks with an event log + cursor to support "jump to move k"']
+      }
+    }]
+  });
+
   registerModule({
     id: 'lld07',
     title: 'LLD Interview Framework: Parking Lot & Tic-Tac-Toe',

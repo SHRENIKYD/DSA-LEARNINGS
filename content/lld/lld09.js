@@ -1358,6 +1358,375 @@ class LookScheduler {
     }]
   });
 
+  /* ======================= TOPIC 4: VENDING MACHINE ======================= */
+  var VM_NODES = [B('IDLE', 'IDLE', 14, 30), B('HAS_MONEY', 'HAS_MONEY', 50, 8), B('DISPENSING', 'DISPENSING', 86, 30), B('SOLD_OUT', 'SOLD_OUT', 86, 56), B('MAINTENANCE', 'MAINTENANCE', 18, 56)];
+  var VM_EDGES = [['IDLE', 'HAS_MONEY', 'coin'], ['HAS_MONEY', 'IDLE', 'cancel → refund'], ['HAS_MONEY', 'DISPENSING', 'select: paid + in stock + change ok'], ['DISPENSING', 'IDLE', 'item + change out'], ['DISPENSING', 'SOLD_OUT', 'last item sold'], ['SOLD_OUT', 'MAINTENANCE', 'operator'], ['IDLE', 'MAINTENANCE', 'operator'], ['MAINTENANCE', 'IDLE', 'done']];
+  var VM_DENOMS = [20, 10, 5, 2, 1];
+  // bounded change-making: largest coin first, with backtracking (pure greedy can fail with limited coins)
+  function vmChange(amount, box) {
+    var out = [];
+    function go(rest, i) {
+      if (rest === 0) return true;
+      if (i === VM_DENOMS.length) return false;
+      var c = VM_DENOMS[i], mx = Math.min(box[c] || 0, Math.floor(rest / c));
+      for (var k = mx; k >= 0; k--) {
+        for (var j = 0; j < k; j++) out.push(c);
+        if (go(rest - k * c, i + 1)) return true;
+        out.splice(out.length - k, k);
+      }
+      return false;
+    }
+    return go(amount, 0) ? out : null;
+  }
+  function vmPrep(inv) { return Object.keys(inv).map(function (k) { return [k, inv[k].name + ' ₹' + inv[k].price + ' ×' + inv[k].qty]; }); }
+  function vmBox(box) { return VM_DENOMS.map(function (d) { return ['₹' + d, box[d] || 0]; }); }
+
+  topics.push({
+    title: 'Vending Machine: States, Inventory, Coins and Change',
+    analogy: `<p>A vending machine is a <b>very strict shopkeeper with no eyes</b>. He only knows four things: "has this customer paid anything yet?", "is the snack still on the shelf?", "is the money enough?", and "do I have the right coins to give change?". If you ask for chips before paying, he points at the price. If you pay ₹20 for a ₹12 water, he must hand back ₹8 — and if his drawer only has ₹5 coins, he cannot sell to you at all and must give your ₹20 back. Each of those answers depends on <b>which state he is in</b> and <b>what is in his drawer and shelves</b>.</p>`,
+    explain: `<p><b>Requirements (clarify first):</b> which coins/notes are accepted (say ₹1, 2, 5, 10, 20), product slots with price and quantity, cancel/refund, change-making with a <b>limited coin box</b>, sold-out handling, and an operator mode to restock and collect cash.</p>
+${H.table(['Class', 'Responsibility'], [
+  ['<code>VendingMachine</code> (context)', 'public API: <code>insertCoin</code>, <code>select</code>, <code>cancel</code>, <code>service</code>, <code>restock</code>; holds state, inventory, coin box, escrow'],
+  ['<code>VmState</code> + 5 states', 'IDLE, HAS_MONEY, DISPENSING, SOLD_OUT, MAINTENANCE — each answers every event its own way'],
+  ['<code>Inventory</code>', 'slot code → product + quantity; <code>inStock</code>, <code>takeOne</code>, <code>allEmpty</code>'],
+  ['<code>Product</code> (record)', 'code, name, price — immutable'],
+  ['<code>Coin</code> (enum)', 'accepted denominations with values — invalid coins cannot even be represented'],
+  ['<code>CoinBox</code>', 'count per coin; <code>planChange(amount)</code> with limited coins'],
+  ['<b>Escrow</b> (list of inserted coins)', 'coins held aside until the sale completes — cancel returns <i>the exact coins</i> you put in']
+])}
+<p><b>The state × event table</b> (the heart of the design):</p>
+${H.table(['State \\ Event', 'insertCoin', 'select(code)', 'cancel', 'operator'], [
+  ['IDLE', H.c('g', '→ HAS_MONEY'), 'show price only', 'nothing to cancel', H.c('b', '→ MAINTENANCE')],
+  ['HAS_MONEY', 'add to balance', H.c('g', 'checks pass → DISPENSING') + ' / else stay + message', H.c('y', 'refund → IDLE'), 'finish sale first'],
+  ['DISPENSING', 'return coin, "please wait"', 'ignored', 'ignored', 'ignored'],
+  ['SOLD_OUT', 'return coin, "sold out"', 'sold out', '—', H.c('b', '→ MAINTENANCE')],
+  ['MAINTENANCE', 'return coin', 'ignored', '—', 'restock / done → IDLE or SOLD_OUT']
+])}
+<p><b>The four checks in HAS_MONEY.select()</b>, in this order: (1) slot exists, (2) slot is in stock, (3) balance ≥ price, (4) the machine <b>can make change</b> for balance − price using its coin box + the escrow coins. Only if all four pass do we move to DISPENSING. Doing check 4 <i>before</i> taking money and dropping the snack is what separates a senior answer from a junior one.</p>
+<p><b>Brute force:</b> <code>if (balance == 0) {…} else if (dispensing) {…}</code> inside every method, plus booleans <code>soldOut</code>, <code>inService</code>. Adding "card payment" or "maintenance" means editing every method; a refund path gets forgotten and the machine eats money. ${H.c('g', 'With State objects each row of the table is one small class.')}</p>`,
+    clues: [
+      '"Design a vending machine" — the interviewer expects: states, inventory, coins/change, cancel/refund, sold out. Mention all five in your first minute.',
+      '"Return change" + "limited coins" → bounded change-making; greedy can fail, so plan change <b>before</b> dispensing.',
+      '"Cancel returns the money" → escrow: keep inserted coins separate until the sale commits.',
+      '"Support new payment types (card, UPI) later" → a <code>PaymentMethod</code> Strategy feeding the same state machine.',
+      '"Operator restocks / collects cash" → a MAINTENANCE state instead of an <code>isAdmin</code> flag.',
+      '"Machine should never lose money or snacks" → transactional thinking: check everything, then commit stock + coins together.'
+    ],
+    code: { lang: 'java', title: 'Vending machine: State pattern + inventory + coin box with exact-change planning', code: `import java.util.*;
+
+enum Coin {
+    ONE(1), TWO(2), FIVE(5), TEN(10), TWENTY(20);
+    final int value;
+    Coin(int value) { this.value = value; }
+}
+
+record Product(String code, String name, int price) {}
+
+class Inventory {
+    private final Map<String, Product> products = new LinkedHashMap<>();
+    private final Map<String, Integer> stock = new HashMap<>();
+    void restock(Product p, int qty) { products.put(p.code(), p); stock.merge(p.code(), qty, Integer::sum); }
+    Product find(String code)        { return products.get(code); }
+    boolean inStock(String code)     { return stock.getOrDefault(code, 0) > 0; }
+    void takeOne(String code)        { stock.computeIfPresent(code, (k, q) -> q - 1); }
+    boolean allEmpty()               { return stock.values().stream().allMatch(q -> q == 0); }
+}
+
+class CoinBox {
+    private final EnumMap<Coin, Integer> coins = new EnumMap<>(Coin.class);
+    void add(Coin c, int n) { coins.merge(c, n, Integer::sum); }
+
+    /** Change for 'amount' using box coins + 'extra' (escrow). Largest-first with backtracking. */
+    Optional<List<Coin>> planChange(int amount, List<Coin> extra) {
+        EnumMap<Coin, Integer> avail = new EnumMap<>(coins);
+        extra.forEach(c -> avail.merge(c, 1, Integer::sum));
+        List<Coin> desc = new ArrayList<>(List.of(Coin.values()));
+        Collections.reverse(desc);                                 // 20, 10, 5, 2, 1
+        List<Coin> out = new ArrayList<>();
+        return search(amount, 0, desc, avail, out) ? Optional.of(out) : Optional.empty();
+    }
+    private boolean search(int amount, int i, List<Coin> desc, Map<Coin, Integer> avail, List<Coin> out) {
+        if (amount == 0) return true;
+        if (i == desc.size()) return false;
+        Coin c = desc.get(i);
+        int max = Math.min(avail.getOrDefault(c, 0), amount / c.value);
+        for (int k = max; k >= 0; k--) {                           // try many big coins first, back off if stuck
+            for (int j = 0; j < k; j++) out.add(c);
+            if (search(amount - k * c.value, i + 1, desc, avail, out)) return true;
+            for (int j = 0; j < k; j++) out.remove(out.size() - 1);
+        }
+        return false;
+    }
+    /** Commit a sale: escrow goes in, change comes out. */
+    void commit(List<Coin> escrow, List<Coin> change) {
+        escrow.forEach(c -> add(c, 1));
+        change.forEach(c -> add(c, -1));
+    }
+    @Override public String toString() { return coins.toString(); }
+}
+
+interface VmState {
+    String name();
+    default void insertCoin(VendingMachine m, Coin c)   { m.show(name() + ": coin returned"); m.giveBack(List.of(c)); }
+    default void select(VendingMachine m, String code)  { m.show(name() + ": cannot select now"); }
+    default void cancel(VendingMachine m)               { m.show(name() + ": nothing to cancel"); }
+    default void service(VendingMachine m)              { m.show(name() + ": cannot enter service now"); }
+    default void restock(VendingMachine m, Product p, int qty) { m.show(name() + ": open service mode first"); }
+    default void finishService(VendingMachine m)        { m.show(name() + ": not in service"); }
+}
+
+class Idle implements VmState {
+    public String name() { return "IDLE"; }
+    public void insertCoin(VendingMachine m, Coin c) { m.escrow().add(c); m.setState(new HasMoney()); }
+    public void select(VendingMachine m, String code) {
+        Product p = m.inventory().find(code);
+        m.show(p == null ? "No such slot" : p.name() + " costs Rs " + p.price() + ". Insert coins.");
+    }
+    public void service(VendingMachine m) { m.setState(new Maintenance()); }
+}
+
+class HasMoney implements VmState {
+    public String name() { return "HAS_MONEY"; }
+    public void insertCoin(VendingMachine m, Coin c) { m.escrow().add(c); m.show("Balance Rs " + m.balance()); }
+    public void select(VendingMachine m, String code) {
+        Product p = m.inventory().find(code);
+        if (p == null) { m.show("No such slot"); return; }                                  // check 1
+        if (!m.inventory().inStock(code)) { m.show(p.name() + " sold out, pick another"); return; } // check 2
+        int due = p.price() - m.balance();
+        if (due > 0) { m.show("Insert Rs " + due + " more"); return; }                     // check 3
+        Optional<List<Coin>> change = m.coinBox().planChange(-due, m.escrow());
+        if (change.isEmpty()) { m.show("Cannot make change, pick another or cancel"); return; } // check 4
+        m.setState(new Dispensing());
+        m.completeSale(p, change.get());                    // commit stock + coins together
+        m.setState(m.inventory().allEmpty() ? new SoldOut() : new Idle());
+    }
+    public void cancel(VendingMachine m) { m.giveBack(m.escrow()); m.escrow().clear(); m.setState(new Idle()); }
+}
+
+class Dispensing implements VmState {                     // in real hardware the motor takes ~2 s
+    public String name() { return "DISPENSING"; }
+}
+
+class SoldOut implements VmState {
+    public String name() { return "SOLD_OUT"; }
+    public void service(VendingMachine m) { m.setState(new Maintenance()); }
+}
+
+class Maintenance implements VmState {
+    public String name() { return "MAINTENANCE"; }
+    public void restock(VendingMachine m, Product p, int qty) { m.inventory().restock(p, qty); m.show("Restocked " + p.code()); }
+    public void finishService(VendingMachine m) { m.setState(m.inventory().allEmpty() ? new SoldOut() : new Idle()); }
+}
+
+class VendingMachine {
+    private VmState state = new Idle();
+    private final Inventory inventory = new Inventory();
+    private final CoinBox coinBox = new CoinBox();
+    private final List<Coin> escrow = new ArrayList<>();
+
+    // ---- public API: every call is a one-line delegation ----
+    void insertCoin(Coin c)              { state.insertCoin(this, c); }
+    void select(String code)             { state.select(this, code); }
+    void cancel()                        { state.cancel(this); }
+    void service()                       { state.service(this); }
+    void restock(Product p, int qty)     { state.restock(this, p, qty); }
+    void finishService()                 { state.finishService(this); }
+
+    // ---- used by states ----
+    void setState(VmState s)             { show("[" + state.name() + " -> " + s.name() + "]"); state = s; }
+    int balance()                        { return escrow.stream().mapToInt(c -> c.value).sum(); }
+    void completeSale(Product p, List<Coin> change) {
+        inventory.takeOne(p.code());
+        coinBox.commit(escrow, change);
+        escrow.clear();
+        show("Dropped " + p.name() + (change.isEmpty() ? "" : ", change " + change));
+    }
+    void giveBack(List<Coin> coins)      { if (!coins.isEmpty()) show("Returned " + coins); }
+    void show(String msg)                { System.out.println(msg); }
+    List<Coin> escrow()                  { return escrow; }
+    Inventory inventory()                { return inventory; }
+    CoinBox coinBox()                    { return coinBox; }
+    String stateName()                   { return state.name(); }
+
+    public static void main(String[] args) {
+        VendingMachine vm = new VendingMachine();
+        vm.service();
+        vm.restock(new Product("A1", "Chips", 15), 2);
+        vm.restock(new Product("B2", "Water", 12), 3);
+        vm.finishService();
+        vm.coinBox().add(Coin.ONE, 1); vm.coinBox().add(Coin.TWO, 2);
+        vm.select("A1");                                   // price only
+        vm.insertCoin(Coin.TEN); vm.insertCoin(Coin.FIVE);
+        vm.select("A1");                                   // exact money
+        vm.insertCoin(Coin.TWENTY);
+        vm.select("B2");                                   // change 8 = 5 + 2 + 1
+        vm.insertCoin(Coin.TEN);
+        vm.select("A1");                                   // needs 5 more
+        vm.cancel();                                       // refund the exact 10 coin
+        System.out.println("state=" + vm.stateName() + " box=" + vm.coinBox());
+    }
+}` },
+    viz: {
+      title: 'Vending machine: coins flow in, checks run, snack and change flow out',
+      input: 'coin 10, coin 5, select A1, coin 20, select B1, select B2, coin 10, select A2, coin 20, select B2, cancel',
+      inputLabel: 'Events: coin N (1,2,5,10,20), select A1|A2|B1|B2, cancel, service, restock CODE N, done',
+      gen: function (input) {
+        var evs = tokens(input, ',', 14, 'Example: coin 10, coin 5, select A1, cancel');
+        var inv = { A1: { name: 'Chips', price: 15, qty: 2 }, A2: { name: 'Soda', price: 25, qty: 1 }, B1: { name: 'Candy', price: 10, qty: 0 }, B2: { name: 'Water', price: 12, qty: 3 } };
+        var box = { 20: 0, 10: 1, 5: 0, 2: 1, 1: 1 };
+        var state = 'IDLE', escrow = [], frames = [], sales = 0;
+        function bal() { return escrow.reduce(function (a, b) { return a + b; }, 0); }
+        function allEmpty() { return Object.keys(inv).every(function (k) { return inv[k].qty === 0; }); }
+        function snap(narr, cur, cls, edge, ihl, bhl, msg) {
+          frames.push(F(narr, [
+            SM('Vending machine states', VM_NODES, VM_EDGES, cur, cls, edge, 'ok', null, 64),
+            MAP('Inventory (slot → product, price, qty)', vmPrep(inv), ihl || {}),
+            MAP('Coin box (machine\'s own coins)', vmBox(box), bhl || {}),
+            VARS('Customer side', { escrow: escrow.length ? escrow.join('+') : '—', balance: '₹' + bal(), display: msg || '' }, msg ? { display: cls === 'bad' ? 'bad' : 'cur' } : {})
+          ]));
+        }
+        snap('Machine starts <b>IDLE</b>. Inventory: B1 (Candy) is already empty. The coin box has only ₹10×1, ₹2×1, ₹1×1 for change — watch how that limits sales.', 'IDLE', 'cur', null, { B1: 'bad' }, {}, 'Insert coins');
+        evs.forEach(function (raw) {
+          var p = raw.trim().split(/\s+/), cmd = p[0].toLowerCase();
+          if (cmd === 'coin') {
+            var v = parseInt(p[1], 10);
+            if (VM_DENOMS.indexOf(v) < 0) throw new Error('Coins must be 1, 2, 5, 10 or 20');
+            if (state === 'IDLE' || state === 'HAS_MONEY') {
+              escrow.push(v);
+              var from = state; state = 'HAS_MONEY';
+              snap('<b>coin ₹' + v + '</b>: ' + (from === 'IDLE' ? '<code>Idle.insertCoin()</code> puts the coin in <b>escrow</b> (a holding tray, not yet the machine\'s money) and moves to HAS_MONEY.' : '<code>HasMoney.insertCoin()</code> adds it to escrow; still HAS_MONEY.') + ' Balance = ₹' + bal() + '.', 'HAS_MONEY', 'ok', from === 'IDLE' ? 'IDLE-HAS_MONEY' : null, {}, {}, 'Balance ₹' + bal());
+            } else {
+              snap('<b>coin ₹' + v + '</b> while ' + state + ': this state does not accept coins, so the default method <b>returns the coin</b> immediately. No money is ever kept in a state that cannot sell.', state, 'bad', null, {}, {}, 'Coin returned');
+            }
+          } else if (cmd === 'select') {
+            var code = String(p[1] || '').toUpperCase(), it = inv[code];
+            if (!it) throw new Error('Slots are A1, A2, B1, B2');
+            if (state === 'IDLE') { snap('<b>select ' + code + '</b> in IDLE: no money yet, so <code>Idle.select()</code> just shows the price.', 'IDLE', 'cur', null, one(code, 'cur'), {}, it.name + ' costs ₹' + it.price); return; }
+            if (state !== 'HAS_MONEY') { snap('<b>select ' + code + '</b> in ' + state + ': ignored by this state.', state, 'bad', null, {}, {}, 'Not available'); return; }
+            if (it.qty === 0) { snap('<b>select ' + code + '</b>: check 2 fails — ' + it.name + ' is <b>sold out</b>. Stay in HAS_MONEY so the customer can pick another item or cancel. The money is safe in escrow.', 'HAS_MONEY', 'bad', null, one(code, 'bad'), {}, it.name + ' sold out'); return; }
+            var due = it.price - bal();
+            if (due > 0) { snap('<b>select ' + code + '</b>: check 3 fails — price ₹' + it.price + ', balance ₹' + bal() + '. Need ₹' + due + ' more. Stay in HAS_MONEY.', 'HAS_MONEY', 'bad', null, one(code, 'cur'), {}, 'Insert ₹' + due + ' more'); return; }
+            var tmp = {}; VM_DENOMS.forEach(function (d) { tmp[d] = box[d] || 0; }); escrow.forEach(function (c) { tmp[c]++; });
+            var ch = vmChange(-due, tmp);
+            if (!ch) { snap('<b>select ' + code + '</b>: check 4 fails — change of ₹' + (-due) + ' is <b>impossible</b> with the coins available (box + escrow). We refuse <i>before</i> dropping the snack, so nothing needs undoing. Customer can pick another item or cancel.', 'HAS_MONEY', 'bad', null, one(code, 'cur'), {}, 'No change, pick another'); return; }
+            snap('<b>select ' + code + '</b>: all 4 checks pass (slot ok, in stock, ₹' + bal() + ' ≥ ₹' + it.price + ', change ₹' + (-due) + ' = ' + (ch.length ? ch.join('+') : 'none') + '). Move to <b>DISPENSING</b>: the motor turns and new coins/selections are refused until it finishes.', 'DISPENSING', 'cur', 'HAS_MONEY-DISPENSING', one(code, 'ok'), {}, 'Dispensing ' + it.name);
+            it.qty--; escrow.forEach(function (c) { box[c]++; }); ch.forEach(function (c) { box[c]--; });
+            var bhl = {}; escrow.forEach(function (c) { bhl['₹' + c] = 'ok'; }); ch.forEach(function (c) { bhl['₹' + c] = 'bad'; });
+            escrow = []; sales++;
+            var next = allEmpty() ? 'SOLD_OUT' : 'IDLE';
+            snap('<b>Commit</b>: stock of ' + code + ' −1, escrow coins move into the coin box (green), change coins leave it (red) — all in one step so stock and money always agree. Then → <b>' + next + '</b>.', next, 'ok', 'DISPENSING-' + next, one(code, 'ok'), bhl, 'Take ' + it.name + (ch.length ? ' + ₹' + (-due) + ' change' : ''));
+            state = next;
+          } else if (cmd === 'cancel') {
+            if (state === 'HAS_MONEY') {
+              var back = escrow.join('+'); escrow = []; state = 'IDLE';
+              snap('<b>cancel</b>: <code>HasMoney.cancel()</code> returns the <b>exact coins</b> from escrow (' + back + ') — the coin box is untouched — and goes back to IDLE.', 'IDLE', 'ok', 'HAS_MONEY-IDLE', {}, {}, 'Refunded ' + back);
+            } else snap('<b>cancel</b> in ' + state + ': nothing to cancel (default method).', state, 'cur', null, {}, {}, 'Nothing to cancel');
+          } else if (cmd === 'service') {
+            if (state === 'IDLE' || state === 'SOLD_OUT') { var f0 = state; state = 'MAINTENANCE'; snap('<b>service</b>: operator opens the machine → MAINTENANCE. Customers cannot buy now; coins are returned.', 'MAINTENANCE', 'ok', f0 + '-MAINTENANCE', {}, {}, 'Out of service'); }
+            else snap('<b>service</b> in ' + state + ': refused — finish or cancel the current sale first (never open the machine with a customer\'s money in escrow).', state, 'bad', null, {}, {}, 'Finish sale first');
+          } else if (cmd === 'restock') {
+            var rc = String(p[1] || '').toUpperCase(), n = parseInt(p[2], 10);
+            if (!inv[rc] || isNaN(n) || n < 1 || n > 20) throw new Error('restock CODE N, e.g. restock B1 5');
+            if (state !== 'MAINTENANCE') { snap('<b>restock</b> in ' + state + ': only allowed in MAINTENANCE.', state, 'bad', null, {}, {}, 'Open service mode first'); return; }
+            inv[rc].qty += n;
+            snap('<b>restock ' + rc + ' +' + n + '</b>: <code>Maintenance.restock()</code> updates the inventory.', 'MAINTENANCE', 'cur', null, one(rc, 'ok'), {}, 'Restocked');
+          } else if (cmd === 'done') {
+            if (state !== 'MAINTENANCE') { snap('<b>done</b> in ' + state + ': not in service mode.', state, 'bad', null, {}, {}, 'Not in service'); return; }
+            state = allEmpty() ? 'SOLD_OUT' : 'IDLE';
+            snap('<b>done</b>: leave MAINTENANCE → ' + state + (state === 'SOLD_OUT' ? ' (everything is still empty, so customers see SOLD OUT).' : '.'), state, 'ok', state === 'IDLE' ? 'MAINTENANCE-IDLE' : null, {}, {}, 'Ready');
+          } else throw new Error('Unknown event "' + raw + '". Use coin N, select CODE, cancel, service, restock CODE N, done');
+        });
+        snap('End of script: <b>' + sales + '</b> sale(s). Every rule above lived in the state that owns it; the <code>VendingMachine</code> class never asked "what state am I in?".', state, 'sel', null, {}, {}, 'Bye');
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'Why greedy change can fail with a limited coin box', html: `<p>Change needed: ₹6. Coin box: ₹5×1, ₹2×3 (no ₹1). Greedy takes ₹5, then needs ₹1 — none → "cannot make change" ✗. But ₹2+₹2+₹2 works ✓. ${H.table(['Approach', 'Coins tried', 'Result'], [['Greedy (largest first, no backtracking)', '5, then stuck at 1', H.c('r', 'fail')], ['Largest-first with backtracking', '5 → stuck → undo → 2+2+2', H.c('g', 'ok')], ['Bounded DP (fewest coins)', 'best over all combos', H.c('g', 'ok, optimal')]])} With unlimited coins of a <b>canonical</b> system (1, 2, 5, 10, 20) greedy is always optimal; the <i>limited counts</i> are what break it.</p>` },
+      { title: 'Escrow: the money is not yours until the sale commits', html: `<p>Customer inserts ₹10 + ₹10, then cancels. If the machine had dropped the coins straight into the coin box, it might refund with a ₹20 note it happens to have — or worse, not have ₹20 in coins at all. Real machines hold inserted coins in an <b>escrow</b> tray: cancel opens the tray (exact coins back), commit tips it into the box. In code: a <code>List&lt;Coin&gt; escrow</code> separate from <code>CoinBox</code>.</p>` },
+      { title: 'Add-a-state: CARD_AUTHORIZING for UPI/card payment', html: `<p>New requirement: pay by card. Add a <b>PaymentMethod</b> Strategy (Cash, Card, UPI) and one new state <b>AUTHORIZING</b>: HAS_SELECTION → AUTHORIZING (waiting for the bank) → DISPENSING on approval, → IDLE on decline/timeout. Cash flow is untouched. Because authorization is <i>slow and can fail</i>, it deserves its own state — while authorizing, coin inserts are rejected and cancel sends a "void" to the bank.</p>`, code: `interface PaymentMethod { boolean authorize(int amountRs); void voidAuth(); }
+class UpiPayment implements PaymentMethod {
+    public boolean authorize(int amountRs) { return amountRs <= 2000; }   // stub: UPI-lite limit
+    public void voidAuth() { System.out.println("UPI authorization voided"); }
+}` },
+      { title: 'Dispense failure: the snack gets stuck', html: `<p>The motor turns but the drop sensor sees nothing (the classic stuck packet). A good design has the DISPENSING state wait for a <b>drop-sensor</b> event: success → commit; timeout → retry the motor once, then <b>refund</b> (or offer another item) and mark the slot faulty. That is why DISPENSING is a real state and not just a method call — it is where hardware can fail.</p>` }
+    ],
+    deepDive: `<p><b>Commit ordering = money safety.</b> The safest order is: validate everything (slot, stock, balance, change plan) → <b>reserve</b> (mark the item and change coins as taken) → physically dispense → on drop-sensor success <b>commit</b> (stock −1, escrow → box, change out) → on failure <b>release</b> the reservation and refund. It is a tiny two-phase commit between software and hardware.</p>
+<p><b>Change-making complexity.</b> Largest-first with backtracking is fine for 5 denominations and small counts. For "fewest coins with limited counts", use bounded-knapsack DP: <code>dp[a]</code> = fewest coins for amount a, processing each denomination with its count (binary splitting keeps it O(D · A · log C)). Amounts are small (≤ ₹2000) so this is microseconds.</p>
+<p><b>"Exact change only" mode.</b> When the coin box runs low, real machines light an "EXACT CHANGE" lamp. That is a derived condition (<code>coinBox.canMakeAnyChangeUpTo(maxOverpay)</code>), better shown as a display flag than a full state, because it does not change which events are allowed — only which <i>sales</i> succeed. Knowing when <i>not</i> to make something a state is part of the skill.</p>
+<p><b>Thread safety.</b> A physical machine has one customer, but a "smart" machine also receives remote events (operator app, telemetry, card terminal callbacks). Run all events through one thread (an event queue) or make the context methods <code>synchronized</code>; never let a card callback and a coin insert transition the state at the same time.</p>
+<p><b>Inventory at scale.</b> A fleet of 10,000 machines reports stock and coin levels to a backend (IoT telemetry) so trucks restock before SOLD_OUT. The machine's state machine stays local and works offline; the backend is an Observer of state changes.</p>
+<p><b>Money as integers.</b> Store paise/rupees as <code>int</code>/<code>long</code>, never <code>double</code> — 0.1 + 0.2 ≠ 0.3 in floating point, and a machine that is off by a paisa per sale fails audits.</p>`,
+    aiEra: `<p><b>What AI changes:</b> "vending machine in Java" is one of the most generated LLD answers on the internet, so AI output looks polished. Typical gaps: no escrow (cancel refunds from the coin box), change computed <i>after</i> dispensing, greedy change with limited coins, <code>double</code> for money, and no DISPENSING failure path. Use those as your review checklist.</p>
+<p><b>Use AI as a partner:</b> <code>Generate 20 adversarial event sequences for my vending machine (cancel mid-dispense, coins during maintenance, exact-change edge cases) and the expected final inventory and coin box for each.</code> Then run them as tests. Also: <code>Prove or disprove: greedy change is optimal for coins {1, 3, 4}.</code> (It is not: 6 = 3+3, greedy gives 4+1+1.)</p>
+<p><b>Real-world 2026:</b> machines take UPI/QR and tap-to-pay; the payment callback arrives asynchronously from a network — the state machine gains an AUTHORIZING state and idempotent handling of duplicate callbacks. <b>What you must still own:</b> the state table, the money-safety ordering and the failure paths — the parts that cost real money when wrong.</p>`,
+    problems: [{
+      title: 'Exact Change from a Limited Coin Box', level: 'Medium', tags: ['vending machine', 'dp', 'change-making'], companies: ['Amazon', 'Walmart', 'Flipkart'],
+      statement: `<p>A vending machine must return <code>amount</code> rupees of change using its coin box, where <code>denoms[i]</code> has <code>counts[i]</code> coins available. Return the change using the <b>fewest coins</b> as a map denomination → count, or report that it is impossible (so the machine can refuse the sale <i>before</i> dispensing). Explain why greedy is not enough.</p>`,
+      constraints: `1 ≤ denominations ≤ 10, 0 ≤ amount ≤ 10<sup>4</sup>, counts ≤ 10<sup>3</sup>.`,
+      example: `<p>denoms = [1, 2, 5, 10], counts = [0, 3, 1, 1], amount = 6. Greedy: 5 → remaining 1 → ${H.c('r', 'no ₹1 coin, fails')}. Correct: ${H.c('g', '{2: 3}')} (3 coins). amount = 17 → ${H.c('g', '{10:1, 5:1, 2:1}')}. amount = 3 → ${H.c('r', 'impossible')} (only even coins and a 5/10).</p>`,
+      brute: { why: `<p>Try every combination of counts for every denomination: (c<sub>1</sub>+1) × (c<sub>2</sub>+1) × … combinations — with 4 denominations of 1000 coins each that is 10<sup>12</sup>. Plain greedy is fast but wrong with limited counts (example above).</p>`, code: `import java.util.*;
+class GreedyChange {
+    // WRONG with limited coins: 6 with {5:1, 2:3} returns null although 2+2+2 works
+    static Map<Integer, Integer> change(int[] denoms, int[] counts, int amount) {
+        Map<Integer, Integer> out = new TreeMap<>();
+        for (int i = denoms.length - 1; i >= 0 && amount > 0; i--) {
+            int take = Math.min(counts[i], amount / denoms[i]);
+            if (take > 0) { out.put(denoms[i], take); amount -= take * denoms[i]; }
+        }
+        return amount == 0 ? out : null;
+    }
+}` },
+      mcq: { q: 'Coins {1, 3, 4}, unlimited counts, amount 6. What does greedy give vs optimal?', options: ['Greedy 4+1+1 (3 coins), optimal 3+3 (2 coins)', 'Both give 3+3', 'Greedy fails entirely', 'Both give 4+1+1'], answer: 0, explain: 'Greedy is only guaranteed optimal for canonical coin systems with unlimited coins; {1,3,4} is not canonical.' },
+      hints: [`<p>Hint 1: This is a <b>bounded</b> knapsack: each denomination can be used at most counts[i] times; minimise the number of coins.</p>`, `<p>Hint 2: <code>dp[a]</code> = fewest coins to make a. Process denominations one by one; for each, use it k = 1..counts[i] times on top of the previous layer (iterate a from high to low or keep a copy of the previous layer).</p>`, `<p>Hint 3: To return the coins, store for each (denomination, amount) how many of that coin were used, then walk back. dp[0] = 0, others = ∞; answer impossible if dp[amount] = ∞.</p>`],
+      solution: {
+        approach: `<p>Layered DP. <code>prev[a]</code> = fewest coins for amount a using the denominations processed so far. For denomination d with count c, <code>cur[a] = min over k in 0..min(c, a/d) of prev[a − k·d] + k</code>. Record the best k in <code>used[i][a]</code> to reconstruct the answer by walking back from <code>amount</code>. O(D · A · C) worst case — tiny for vending amounts; binary splitting of counts brings it to O(D · A · log C).</p>`,
+        code: `import java.util.*;
+
+class ExactChange {
+    static final int INF = Integer.MAX_VALUE / 2;
+
+    /** Fewest coins with limited counts; returns null if impossible. */
+    static Map<Integer, Integer> change(int[] denoms, int[] counts, int amount) {
+        int n = denoms.length;
+        int[] prev = new int[amount + 1];
+        Arrays.fill(prev, INF);
+        prev[0] = 0;
+        int[][] used = new int[n][amount + 1];          // how many of coin i used to reach amount a
+        for (int i = 0; i < n; i++) {
+            int[] cur = new int[amount + 1];
+            for (int a = 0; a <= amount; a++) {
+                cur[a] = prev[a];                       // k = 0
+                int maxK = Math.min(counts[i], a / denoms[i]);
+                for (int k = 1; k <= maxK; k++) {
+                    int cand = prev[a - k * denoms[i]] + k;
+                    if (cand < cur[a]) { cur[a] = cand; used[i][a] = k; }
+                }
+            }
+            prev = cur;
+        }
+        if (prev[amount] >= INF) return null;
+        Map<Integer, Integer> out = new TreeMap<>(Comparator.reverseOrder());
+        int a = amount;
+        for (int i = n - 1; i >= 0; i--) {              // walk back layer by layer
+            int k = used[i][a];
+            if (k > 0) { out.put(denoms[i], k); a -= k * denoms[i]; }
+        }
+        return out;
+    }
+
+    public static void main(String[] args) {
+        int[] d = {1, 2, 5, 10}, c = {0, 3, 1, 1};
+        System.out.println(change(d, c, 6));            // {2=3}
+        System.out.println(change(d, c, 17));           // {10=1, 5=1, 2=1}
+        System.out.println(change(d, c, 3));            // null -> refuse the sale before dispensing
+    }
+}`,
+        complexity: `<p>Time O(D · A · C) with D denominations, amount A, max count C (≤ 10 · 10<sup>4</sup> · 10<sup>3</sup> worst case, but in practice A/d bounds k); space O(D · A) for reconstruction. For vending amounts (A ≤ 2000) this runs in well under a millisecond.</p>`,
+        followUps: ['Prefer giving away coins the machine has too many of (keep scarce ₹1 coins). How do you change the objective?', 'Light an "EXACT CHANGE ONLY" lamp: which amounts must be checked?', 'Make it work for notes + coins in a ticket kiosk with amounts up to ₹10,000.']
+      }
+    }]
+  });
+
   registerModule({
     id: 'lld09',
     title: 'State-Heavy Designs: Elevator, Vending Machine, ATM',
