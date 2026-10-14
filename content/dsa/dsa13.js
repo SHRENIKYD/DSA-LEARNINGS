@@ -1,0 +1,2503 @@
+(function () {
+  var topics = [], practice = [], quiz = [], interview = [];
+
+  // ---------- small shared helpers for the visualizers ----------
+  function parseNums(input, def, maxN, minN) {
+    var s = (input === undefined || input === null) ? def : String(input);
+    var toks = s.trim().split(/[\s,]+/).filter(function (x) { return x.length; });
+    if (toks.length < (minN || 1)) throw new Error('Enter at least ' + (minN || 1) + ' whole numbers separated by spaces, e.g. "' + def + '"');
+    var a = toks.map(Number);
+    if (a.some(function (x) { return isNaN(x) || !isFinite(x) || Math.floor(x) !== x; })) throw new Error('Enter whole numbers separated by spaces, e.g. "' + def + '"');
+    if (a.length > maxN) throw new Error('Please use at most ' + maxN + ' numbers so the picture fits on screen.');
+    return a;
+  }
+  function one(i, cls) { var h = {}; if (i !== undefined && i !== null && i >= 0) h[i] = cls; return h; }
+  function parseOps(input, def, allowed) {
+    var s = (input === undefined || input === null) ? def : String(input);
+    var raw = s.split(/[,;\n]+/).map(function (x) { return x.trim(); }).filter(function (x) { return x.length; });
+    if (!raw.length) throw new Error('Enter operations separated by commas, e.g. "' + def + '"');
+    if (raw.length > 16) throw new Error('Please use at most 16 operations.');
+    return raw.map(function (r) {
+      var p = r.split(/\s+/), name = p[0].toLowerCase();
+      if (allowed.indexOf(name) < 0) throw new Error('Unknown operation "' + r + '". Allowed: ' + allowed.join(', ') + '. Example: "' + def + '"');
+      if (name === 'push') {
+        var v = Number(p[1]);
+        if (p.length !== 2 || isNaN(v) || Math.floor(v) !== v) throw new Error('"push" needs one whole number, e.g. "push 5"');
+        return { op: 'push', v: v };
+      }
+      if (p.length !== 1) throw new Error('"' + name + '" takes no number. Example: "' + def + '"');
+      return { op: name };
+    });
+  }
+
+  // =====================================================================
+  // TOPIC 1 — Stack (LIFO) vs Queue (FIFO) in Java
+  // =====================================================================
+  topics.push({
+    title: 'Stack (LIFO) vs Queue (FIFO) — and why Java uses ArrayDeque',
+    analogy: `<p><b>Stack = a pile of plates</b> in a kitchen. You always put a clean plate on <b>top</b>, and you always take the plate from the <b>top</b>. The plate you put last is the first one you use. That is <b>LIFO</b>: <i>Last In, First Out</i>.</p>
+      <p><b>Queue = the line at a movie ticket counter.</b> New people join at the <b>back</b>, the person at the <b>front</b> gets served first. Whoever came first leaves first. That is <b>FIFO</b>: <i>First In, First Out</i>.</p>`,
+    explain: `<p>Both are just lists where you are <b>only allowed to touch the ends</b>. That small rule is exactly what makes them powerful: every add/remove is <b>O(1)</b>, and the order things come out tells you something useful (most recent first, or oldest first).</p>
+      ${H.arr([3, 5, 8], { label: 'stack (top is right)', hl: { 2: 'y' }, ptr: { 2: 'top' } })}
+      ${H.arr([3, 5, 8], { label: 'queue (front is left)', hl: { 0: 'y' }, ptr: { 0: 'front', 2: 'back' } })}
+      <p>Put in 3, then 5, then 8. The stack gives them back as ${H.c('y', '8, 5, 3')} (newest first). The queue gives them back as ${H.c('y', '3, 5, 8')} (oldest first).</p>
+      <h4>The Java cheat sheet</h4>
+      ${H.table(['What you want', 'Stack style (ArrayDeque)', 'Queue style (ArrayDeque)', 'If empty...'], [
+        ['add', '<code>push(x)</code> → goes on top', '<code>offer(x)</code> → joins the back', '—'],
+        ['remove', '<code>pop()</code> → removes top', '<code>poll()</code> → removes front', 'pop() throws, poll() returns null'],
+        ['look only', '<code>peek()</code> → top', '<code>peek()</code> → front', 'returns null'],
+        ['is it empty?', '<code>isEmpty()</code>', '<code>isEmpty()</code>', '—'],
+        ['size', '<code>size()</code>', '<code>size()</code>', '—']
+      ])}
+      <p>Declare them as <code>Deque&lt;Integer&gt; st = new ArrayDeque&lt;&gt;();</code> and <code>Queue&lt;Integer&gt; q = new ArrayDeque&lt;&gt;();</code>. A <b>Deque</b> ("deck", double-ended queue) lets you work at both ends: <code>offerFirst / offerLast / pollFirst / pollLast / peekFirst / peekLast</code>. We need that later for the sliding window.</p>
+      <h4>Why NOT the old <code>Stack</code> class?</h4>
+      <ul>
+        <li><code>java.util.Stack</code> is from Java 1.0 and extends <code>Vector</code>. Every method is <b>synchronized</b> (it takes a lock each call) → slower for no benefit in single-threaded code.</li>
+        <li>It lets you do <code>get(i)</code>, <code>add(index, x)</code>, <code>remove(index)</code> — touching the middle breaks the "only the top" idea and invites bugs.</li>
+        <li>The Java docs themselves say: <i>prefer <code>Deque</code> / <code>ArrayDeque</code></i>. <code>ArrayDeque</code> is a growable circular array: fast and cache friendly.</li>
+      </ul>
+      <h4>Three classic traps</h4>
+      <ul>
+        <li>${H.c('r', 'ArrayDeque refuses null')} — <code>push(null)</code> throws. Use a sentinel value instead.</li>
+        <li>${H.c('r', 'Comparing two Integer objects with ==')} — <code>st.peek() == q.peek()</code> compares <i>references</i>; it works for small numbers (-128..127 are cached) and silently fails for bigger ones. Use <code>.equals()</code> or unbox to <code>int</code> first.</li>
+        <li>${H.c('r', 'Calling pop() on an empty stack')} — always check <code>isEmpty()</code> first (very common in bracket problems).</li>
+      </ul>`,
+    clues: [
+      '"Most recent", "undo", "go back", "matching / nested" → <b>stack</b> (LIFO).',
+      '"In the order they arrived", "first come first served", "level by level" → <b>queue</b> (FIFO).',
+      'Need to add/remove at <b>both ends</b> (e.g. a sliding window) → <b>Deque</b> (ArrayDeque).',
+      'You see <code>Stack&lt;Integer&gt;</code> in old code → in interviews prefer <code>Deque&lt;Integer&gt; st = new ArrayDeque&lt;&gt;()</code>.',
+      'Recursion that might go 10<sup>5</sup> deep (stack overflow risk) → simulate it with your own explicit stack.'
+    ],
+    code: [`
+import java.util.*;
+
+class StackQueueDemo {
+    public static void main(String[] args) {
+        // ---------- STACK (LIFO) with ArrayDeque ----------
+        Deque<Integer> stack = new ArrayDeque<>();
+        stack.push(3);                       // stack: [3]          top = 3
+        stack.push(5);                       // stack: [5, 3]       top = 5
+        stack.push(8);                       // stack: [8, 5, 3]    top = 8
+        System.out.println(stack.peek());    // 8 -> look at the top, do NOT remove
+        System.out.println(stack.pop());     // 8 -> remove the top
+        System.out.println(stack.pop());     // 5
+        System.out.println(stack.size());    // 1 -> only 3 is left
+
+        // ---------- QUEUE (FIFO) with ArrayDeque ----------
+        Queue<Integer> queue = new ArrayDeque<>();
+        queue.offer(3);                      // queue: front [3] back
+        queue.offer(5);                      // queue: front [3, 5] back
+        queue.offer(8);                      // queue: front [3, 5, 8] back
+        System.out.println(queue.peek());    // 3 -> the oldest item (front)
+        System.out.println(queue.poll());    // 3 -> remove the front
+        System.out.println(queue.poll());    // 5
+
+        // ---------- DEQUE: work at BOTH ends ----------
+        Deque<Integer> dq = new ArrayDeque<>();
+        dq.offerLast(1);                     // [1]
+        dq.offerLast(2);                     // [1, 2]
+        dq.offerFirst(0);                    // [0, 1, 2]
+        System.out.println(dq.peekFirst());  // 0
+        System.out.println(dq.peekLast());   // 2
+        dq.pollLast();                       // [0, 1]
+        dq.pollFirst();                      // [1]
+
+        // ---------- Safe empty handling ----------
+        Deque<Integer> empty = new ArrayDeque<>();
+        System.out.println(empty.peek());    // null (no exception)
+        System.out.println(empty.poll());    // null (no exception)
+        if (!empty.isEmpty()) {              // ALWAYS guard pop()
+            empty.pop();                     // pop() on empty would throw NoSuchElementException
+        }
+
+        // ---------- Integer comparison trap ----------
+        Deque<Integer> a = new ArrayDeque<>();
+        Deque<Integer> b = new ArrayDeque<>();
+        a.push(1000);
+        b.push(1000);
+        boolean wrong = a.peek() == b.peek();            // compares object references: false!
+        boolean right = a.peek().equals(b.peek());       // compares values: true
+        int x = a.peek(), y = b.peek();                  // or unbox to int first
+        System.out.println(wrong + " " + right + " " + (x == y));
+    }
+}`, `
+import java.util.*;
+
+class LegacyStackWarning {
+    public static void main(String[] args) {
+        // Works, but NOT recommended: synchronized (slow) and allows middle access.
+        Stack<Integer> old = new Stack<>();
+        old.push(1);
+        old.push(2);
+        int middle = old.get(0);       // legal on Stack -> breaks the LIFO idea
+        System.out.println(middle + " " + old.peek());
+
+        // Recommended replacement: same push / pop / peek names.
+        Deque<Integer> st = new ArrayDeque<>();
+        st.push(1);
+        st.push(2);
+        System.out.println(st.peek()); // 2
+    }
+}`],
+    codeTitle: ['Stack, Queue and Deque with ArrayDeque', 'Legacy Stack vs ArrayDeque'],
+    examples: [
+      {
+        title: 'Browser Back button = stack, printer jobs = queue',
+        html: `<p>You visit pages A → B → C. The browser <b>pushes</b> each page on a history stack. Pressing Back <b>pops</b> C and shows B — the most recent page first. A printer works the other way: jobs from Asha, Ben and Chen print in the order they were sent (<b>FIFO</b>), so nobody can "cut the line".</p>
+          ${H.table(['action', 'history stack (top right)', 'printer queue (front left)'], [
+            ['visit A / send job Asha', 'A', 'Asha'],
+            ['visit B / send job Ben', 'A B', 'Asha Ben'],
+            ['visit C / send job Chen', 'A B <b>C</b>', '<b>Asha</b> Ben Chen'],
+            ['Back / print one', 'A B (C popped)', 'Ben Chen (Asha printed)']
+          ])}
+          <p>Same three inputs, opposite output order. The question is always: <b>"who should leave first — the newest or the oldest?"</b></p>`
+      },
+      {
+        title: 'Reverse a word with a stack (and why it is O(N))',
+        html: `<p>Push every character of <code>"CODE"</code>, then pop them all: you get <code>"EDOC"</code>. Each character is pushed once and popped once → 2N steps → O(N) time, O(N) extra space. This "push everything, pop everything" move is the simplest way to <b>reverse</b> any sequence — and it is exactly what the call stack does when recursion "unwinds".</p>
+          ${H.arr(['C', 'O', 'D', 'E'], { label: 'push order', hl: { 3: 'g' } })}
+          ${H.arr(['E', 'D', 'O', 'C'], { label: 'pop order', hl: { 0: 'g' } })}`,
+        code: `String reverse(String s) {
+    Deque<Character> st = new ArrayDeque<>();
+    for (char c : s.toCharArray()) st.push(c);      // C, O, D, E -> E on top
+    StringBuilder sb = new StringBuilder();
+    while (!st.isEmpty()) sb.append(st.pop());      // E, D, O, C
+    return sb.toString();
+}`
+      },
+      {
+        title: 'Explicit stack instead of recursion (DFS without StackOverflowError)',
+        html: `<p>A recursive DFS on a 10<sup>5</sup>-long chain can crash with <code>StackOverflowError</code> because every call uses a frame on the thread's call stack (often only ~512 KB–1 MB). Replace the hidden call stack with your <b>own</b> <code>ArrayDeque</code> on the heap: push the start, then loop "pop one, push its unvisited neighbours". Same order idea, no crash.</p>
+          <p>Swap the stack for a queue and the <b>same loop</b> becomes BFS (level by level). That one-word change — <code>pop()</code> vs <code>poll()</code> — is the cleanest demonstration of LIFO vs FIFO you will ever see.</p>`,
+        code: `List<Integer> dfsOrder(List<List<Integer>> adj, int start) {
+    List<Integer> order = new ArrayList<>();
+    boolean[] seen = new boolean[adj.size()];
+    Deque<Integer> st = new ArrayDeque<>();
+    st.push(start);
+    while (!st.isEmpty()) {
+        int u = st.pop();                       // LIFO -> goes deep first
+        if (seen[u]) continue;
+        seen[u] = true;
+        order.add(u);
+        for (int v : adj.get(u)) if (!seen[v]) st.push(v);
+    }
+    return order;
+}`
+      },
+      {
+        title: 'Picking the right method name (exception vs special value)',
+        html: `<p>Java gives every queue operation in two flavours. Mixing them up is a classic bug source:</p>
+          ${H.table(['operation', 'throws if it fails', 'returns special value'], [
+            ['insert at back', '<code>add(x)</code> / <code>addLast(x)</code>', '<code>offer(x)</code> → false'],
+            ['remove front', '<code>remove()</code> / <code>pop()</code>', '<code>poll()</code> → null'],
+            ['look at front', '<code>element()</code> / <code>getFirst()</code>', '<code>peek()</code> → null']
+          ])}
+          <p>On an <code>ArrayDeque</code> (unbounded) <code>offer</code> never fails, but <code>poll()</code> returning <code>null</code> and then auto-unboxing into <code>int</code> throws a <code>NullPointerException</code> one line later — far from the real mistake.</p>`
+      }
+    ],
+    deepDive: `<p><b>How ArrayDeque really works.</b> It is a <b>circular buffer</b>: one <code>Object[]</code> plus a <code>head</code> index and a <code>tail</code> index. <code>addFirst</code> moves head one slot left (wrapping to the end with modular arithmetic), <code>addLast</code> writes at tail and moves it right. No element is ever shifted, so both ends are O(1). When the array fills up it grows (the default constructor starts with about 16 slots; small arrays roughly double, large ones grow by ~50%) and copies the elements into the new array in order — an O(N) step that happens so rarely that each insert is still <b>amortized O(1)</b>.</p>
+      <p><b>ArrayDeque vs LinkedList.</b> <code>LinkedList</code> also implements <code>Deque</code> but allocates a node object (~24–40 bytes plus the boxed value) per element and chases pointers all over the heap → poor cache locality and extra garbage-collection work. In benchmarks <code>ArrayDeque</code> is typically several times faster for stack/queue work. <code>LinkedList</code> allows <code>null</code>; <code>ArrayDeque</code> does not (it uses <code>null</code> internally to mean "empty slot").</p>
+      <p><b>Boxing cost.</b> <code>Deque&lt;Integer&gt;</code> stores references to <code>Integer</code> objects. For hot loops with 10<sup>6</sup>+ operations, competitive programmers use a plain <code>int[] st = new int[n]; int top = 0;</code> — push is <code>st[top++] = x</code>, pop is <code>st[--top]</code>. Zero allocation, fastest possible. You can say this in an interview as a performance follow-up.</p>
+      <p><b>Concurrency.</b> Neither <code>ArrayDeque</code> nor <code>LinkedList</code> is thread-safe. For producer/consumer queues use <code>ArrayBlockingQueue</code>, <code>LinkedBlockingQueue</code> (blocking <code>put/take</code>) or the lock-free <code>ConcurrentLinkedDeque</code>. The legacy <code>Stack</code> is synchronized, but "synchronized per call" still does not make <i>check-then-pop</i> atomic, so it is not a real fix anyway.</p>
+      <p><b>Iteration order trap.</b> Iterating a <code>Deque</code> used as a stack goes <b>top → bottom</b> (most recent first), while <code>java.util.Stack</code> iterates bottom → top (it is a Vector). Printing both gives opposite orders.</p>`,
+    aiEra: `<p><b>What AI changes:</b> any assistant will happily type <code>Deque&lt;Integer&gt; st = new ArrayDeque&lt;&gt;()</code> for you, so memorising syntax is worth less. What is worth <b>more</b> is instantly recognising <i>which</i> discipline a problem needs (newest-first vs oldest-first vs both ends) — that decision comes before any code is generated, and a wrong decision makes the AI write perfect code for the wrong algorithm.</p>
+      <p><b>Use AI as a partner:</b> ask <code>"Here is my stack-based solution. List 6 adversarial inputs (empty, one element, all same, max size) and predict where it throws."</code> or <code>"Convert this recursive DFS to an explicit-stack version and explain why the visit order may differ."</code></p>
+      <p><b>Where AI goes wrong:</b> it still suggests the legacy <code>Stack</code> class, pushes <code>null</code> into an <code>ArrayDeque</code>, compares <code>Integer</code> objects with <code>==</code>, or mixes <code>push</code> (front) with <code>offer</code> (back) on the same deque and silently gets the order wrong. Read every generated deque call and ask "which end?"</p>
+      <p><b>What you must still own:</b> explaining LIFO/FIFO with an analogy, the amortized-growth argument, and spotting when recursion depth will blow the call stack.</p>`,
+    viz: [{
+      title: 'Same items, two rules: stack vs queue',
+      input: '3 5 8 2',
+      inputLabel: 'Numbers to insert (space separated, up to 8)',
+      gen: function (input) {
+        var a = parseNums(input, '3 5 8 2', 8, 1);
+        var st = [], q = [], frames = [], outS = [], outQ = [];
+        function vv() { return { type: 'vars', label: 'came out so far', vals: { 'stack out': outS.length ? outS.join(', ') : '—', 'queue out': outQ.length ? outQ.join(', ') : '—' } }; }
+        frames.push({ narr: 'We will put the <b>same numbers</b> into a stack (pile of plates) and a queue (ticket line), then take them all out and compare the order.', parts: [
+          { type: 'array', label: 'numbers to insert', values: a },
+          { type: 'stack', label: 'Stack (ArrayDeque, push/pop)', items: [] },
+          { type: 'queue', label: 'Queue (ArrayDeque, offer/poll)', items: [] }
+        ] });
+        for (var i = 0; i < a.length; i++) {
+          st.push(a[i]); q.push(a[i]);
+          frames.push({ narr: '<code>stack.push(' + a[i] + ')</code> puts it on the <b>top</b>. <code>queue.offer(' + a[i] + ')</code> puts it at the <b>back</b> of the line.', parts: [
+            { type: 'array', label: 'numbers to insert', values: a, hl: one(i, 'cur'), ptr: one(i, 'next') },
+            { type: 'stack', label: 'Stack (ArrayDeque, push/pop)', items: st.slice(), hl: one(st.length - 1, 'ok') },
+            { type: 'queue', label: 'Queue (ArrayDeque, offer/poll)', items: q.slice(), hl: one(q.length - 1, 'ok') }
+          ] });
+        }
+        while (st.length) {
+          frames.push({ narr: 'Now remove one from each. <code>pop()</code> takes the <b>top</b> plate (' + st[st.length - 1] + ', the newest). <code>poll()</code> serves the <b>front</b> person (' + q[0] + ', the oldest).', parts: [
+            { type: 'stack', label: 'Stack (ArrayDeque, push/pop)', items: st.slice(), hl: one(st.length - 1, 'bad') },
+            { type: 'queue', label: 'Queue (ArrayDeque, offer/poll)', items: q.slice(), hl: one(0, 'bad') },
+            vv()
+          ] });
+          outS.push(st.pop()); outQ.push(q.shift());
+        }
+        frames.push({ narr: 'Done. The stack gave them back <b>reversed</b> (LIFO: last in, first out). The queue gave them back in the <b>same order</b> (FIFO: first in, first out).', parts: [
+          { type: 'array', label: 'stack output order', values: outS.slice(), hl: one(0, 'sel') },
+          { type: 'array', label: 'queue output order', values: outQ.slice(), hl: one(0, 'sel') },
+          vv()
+        ] });
+        return frames;
+      }
+    }, {
+      title: 'Inside ArrayDeque: a circular buffer with head and tail',
+      input: 'addLast 1, addLast 2, addFirst 0, addLast 3, pollFirst, addLast 4, addLast 5, addLast 6, pollLast',
+      inputLabel: 'Ops: addFirst x / push x, addLast x / offer x, pollFirst / pop / poll, pollLast (comma separated, up to 14)',
+      gen: function (input) {
+        var s = (input === undefined || input === null) ? '' : String(input);
+        var raw = s.split(/[,;\n]+/).map(function (x) { return x.trim(); }).filter(function (x) { return x.length; });
+        if (!raw.length) throw new Error('Enter operations like "addLast 1, addFirst 0, pollFirst"');
+        if (raw.length > 14) throw new Error('Please use at most 14 operations.');
+        var alias = { push: 'addfirst', offer: 'addlast', pop: 'pollfirst', poll: 'pollfirst', addfirst: 'addfirst', addlast: 'addlast', pollfirst: 'pollfirst', polllast: 'polllast', offerfirst: 'addfirst', offerlast: 'addlast' };
+        var ops = raw.map(function (r) {
+          var p = r.split(/\s+/), name = alias[p[0].toLowerCase()];
+          if (!name) throw new Error('Unknown operation "' + r + '". Use addFirst x, addLast x, pollFirst, pollLast (or push/offer/pop/poll).');
+          if (name === 'addfirst' || name === 'addlast') {
+            var v = Number(p[1]);
+            if (p.length !== 2 || isNaN(v) || Math.floor(v) !== v) throw new Error('"' + p[0] + '" needs one whole number, e.g. "addLast 5"');
+            return { op: name, v: v };
+          }
+          return { op: name };
+        });
+        var cap = 4, buf = [null, null, null, null], head = 0, size = 0, frames = [];
+        function show(hl, extra) {
+          var vals = buf.map(function (x) { return x === null ? '·' : x; }), ptr = {};
+          var tail = (head + size) % cap;
+          if (size === 0) ptr[head] = 'head=tail';
+          else if (tail === head) ptr[head] = 'head=tail';
+          else { ptr[head] = 'head'; ptr[tail] = 'tail'; }
+          var logical = [];
+          for (var k = 0; k < size; k++) logical.push(buf[(head + k) % cap]);
+          return [
+            { type: 'array', label: 'elements[] (capacity ' + cap + ')', values: vals, hl: hl || {}, ptr: ptr, showIdx: true },
+            { type: 'queue', label: 'what the user sees (first → last)', items: logical, frontLabel: 'first', backLabel: 'last' },
+            { type: 'vars', vals: Object.assign({ head: head, tail: tail, size: size }, extra || {}) }
+          ];
+        }
+        frames.push({ narr: 'A tiny ArrayDeque with <b>4 slots</b> (the real one starts with about 16). <b>head</b> = index of the first element, <b>tail</b> = the next free slot after the last element. Nothing is ever shifted.', parts: show() });
+        function grow() {
+          var nb = [], k;
+          for (k = 0; k < size; k++) nb.push(buf[(head + k) % cap]);
+          var old = cap;
+          cap = cap * 2;
+          while (nb.length < cap) nb.push(null);
+          buf = nb; head = 0;
+          var h = {};
+          for (k = 0; k < size; k++) h[k] = 'win';
+          frames.push({ narr: 'The buffer was <span class="c-r">full</span> (' + old + '/' + old + '). Grow: allocate ' + cap + ' slots and copy the elements <b>in logical order</b> starting at index 0. This O(N) copy is rare, so adds stay <b>amortized O(1)</b>.', parts: show(h, { grew: old + ' → ' + cap }) });
+        }
+        ops.forEach(function (o) {
+          var h = {}, idx;
+          if (o.op === 'addfirst' || o.op === 'addlast') {
+            if (size === cap) grow();
+            if (o.op === 'addfirst') {
+              head = (head - 1 + cap) % cap; buf[head] = o.v; idx = head; size++;
+              h[idx] = 'ok';
+              frames.push({ narr: '<code>addFirst(' + o.v + ')</code>: head moves one step <b>left</b> — (head - 1 + cap) % cap = <b>' + head + '</b> — and ' + o.v + ' is written there. ' + (idx === cap - 1 ? 'It <b>wrapped around</b> to the end of the array!' : '') + ' <span class="c-g">O(1)</span>.', parts: show(h) });
+            } else {
+              idx = (head + size) % cap; buf[idx] = o.v; size++;
+              h[idx] = 'ok';
+              frames.push({ narr: '<code>addLast(' + o.v + ')</code>: write at tail index <b>' + idx + '</b>, then tail moves right (with wrap-around). <span class="c-g">O(1)</span>.', parts: show(h) });
+            }
+            return;
+          }
+          if (!size) { frames.push({ narr: '<code>' + o.op + '()</code> on an empty deque returns <b>null</b> (pollFirst/pollLast never throw). Nothing changes.', parts: show({}, { returned: 'null' }) }); return; }
+          if (o.op === 'pollfirst') {
+            idx = head; var v1 = buf[idx]; h[idx] = 'bad';
+            frames.push({ narr: '<code>pollFirst()</code>: take the element at head (' + v1 + ').', parts: show(h, { returned: v1 }) });
+            buf[idx] = null; head = (head + 1) % cap; size--;
+            frames.push({ narr: 'Clear the slot (set to null so the garbage collector can free it) and move head one step right → head = <b>' + head + '</b>.', parts: show({}, { returned: v1 }) });
+          } else {
+            idx = (head + size - 1) % cap; var v2 = buf[idx]; h[idx] = 'bad';
+            frames.push({ narr: '<code>pollLast()</code>: take the element just before tail (index ' + idx + ', value ' + v2 + ').', parts: show(h, { returned: v2 }) });
+            buf[idx] = null; size--;
+            frames.push({ narr: 'Clear the slot and move tail one step left. Both ends work in <b>O(1)</b> — that is why ArrayDeque is a great stack <i>and</i> queue.', parts: show({}, { returned: v2 }) });
+          }
+        });
+        frames.push({ narr: 'Done. Notice the elements can sit in any slots (even wrapped around), but head + size always tells us the logical order. Middle insert/remove is <b>not</b> supported — and you never need it for a stack or queue.', parts: show() });
+        return frames;
+      }
+    }],
+    problems: [{
+      title: 'Implement Stack using Queues',
+      level: 'Easy',
+      tags: ['stack', 'queue', 'design'],
+      companies: ['Amazon', 'Microsoft', 'Bloomberg'],
+      statement: `<p>Implement a LIFO stack <code>MyStack</code> with <code>push(x)</code>, <code>pop()</code>, <code>top()</code> and <code>empty()</code> using <b>only queue operations</b>: add to back, peek/remove from front, size and isEmpty.</p>`,
+      constraints: `1 ≤ x ≤ 9, at most 100 calls; pop and top are only called on a non-empty stack`,
+      example: `${H.table(['call', 'returns', 'stack (bottom→top)'], [
+        ['push(1)', '—', '1'], ['push(2)', '—', '1, 2'], ['top()', '<span class="c-p">2</span>', '1, 2'],
+        ['pop()', '<span class="c-p">2</span>', '1'], ['empty()', '<span class="c-p">false</span>', '1']
+      ])}<p>The <b>last</b> item pushed comes out first, even though a queue alone would give the <b>first</b> one.</p>`,
+      brute: {
+        why: `<p>Keep items in queue <code>q1</code> in arrival order. To pop, move the first <code>size - 1</code> items into helper queue <code>q2</code>, remove the last remaining one, then swap the queues. Every <code>pop</code> <b>and</b> every <code>top</code> costs O(N), and the code juggles two queues — easy to get wrong. It works, but we can make the expensive part happen only once per element and keep reads O(1).</p>`,
+        code: `
+import java.util.*;
+
+class MyStackTwoQueues {
+    private Queue<Integer> q1 = new ArrayDeque<>();
+    private Queue<Integer> q2 = new ArrayDeque<>();
+
+    public void push(int x) { q1.offer(x); }            // O(1)
+
+    public int pop() {
+        while (q1.size() > 1) q2.offer(q1.poll());      // move all but the newest: O(N)
+        int last = q1.poll();
+        Queue<Integer> t = q1; q1 = q2; q2 = t;          // swap roles
+        return last;
+    }
+
+    public int top() {
+        int x = pop();                                   // O(N) again just to peek
+        push(x);
+        return x;
+    }
+
+    public boolean empty() { return q1.isEmpty(); }
+}`
+      },
+      mcq: {
+        q: 'The queue (front→back) is <code>3, 2, 1</code>, meaning 3 is the stack top. We push 4 with the "rotate after push" trick. What does the queue look like after the rotation?',
+        options: ['<code>3, 2, 1, 4</code>', '<code>4, 3, 2, 1</code>', '<code>1, 2, 3, 4</code>', '<code>4, 1, 2, 3</code>'],
+        answer: 1,
+        explain: 'Offer 4 → <code>3, 2, 1, 4</code>. Then rotate size-1 = 3 times (poll front, offer back): 2,1,4,3 → 1,4,3,2 → 4,3,2,1. The newest item is at the front, so poll() returns it first.'
+      },
+      hints: [
+        `<p>Aha: a queue gives you the <b>oldest</b> item. If, right after every push, you move all the older items behind the new one, the newest item ends up at the <b>front</b> — so the queue front is always the stack top.</p>`,
+        `<p>One <code>Queue&lt;Integer&gt;</code> is enough. <code>push(x)</code>: <code>offer(x)</code>, then repeat <code>size - 1</code> times: <code>offer(poll())</code>. Now <code>pop()</code> = <code>poll()</code>, <code>top()</code> = <code>peek()</code>.</p>`,
+        `<p>Edge cases: rotating <code>size - 1</code> times (not <code>size</code>, which would undo the work); a single element needs zero rotations; <code>empty()</code> = <code>q.isEmpty()</code>. Recipe: push → offer, rotate n-1; pop → poll; top → peek; empty → isEmpty. Push becomes O(N), everything else O(1).</p>`
+      ],
+      solution: {
+        approach: `<p>Pay the O(N) cost <b>once at push time</b> by rotating the queue so the newest element sits at the front. Reads (<code>top</code>) and removals (<code>pop</code>) become O(1). Choose this when pops/tops are more frequent than pushes; choose the two-queue version when pushes dominate.</p>`,
+        code: `
+import java.util.*;
+
+class MyStack {
+    private final Queue<Integer> q = new ArrayDeque<>();   // front of q = top of stack
+
+    public void push(int x) {
+        q.offer(x);                                    // newest goes to the back...
+        for (int i = 0; i < q.size() - 1; i++) {
+            q.offer(q.poll());                         // ...then every older item walks behind it
+        }
+    }
+
+    public int pop() { return q.poll(); }              // front = newest = stack top
+    public int top() { return q.peek(); }
+    public boolean empty() { return q.isEmpty(); }
+
+    public static void main(String[] args) {
+        MyStack st = new MyStack();
+        st.push(1); st.push(2); st.push(3);
+        System.out.println(st.top());   // 3
+        System.out.println(st.pop());   // 3
+        System.out.println(st.pop());   // 2
+        System.out.println(st.empty()); // false
+    }
+}`,
+        dry: {
+          head: ['call', 'after offer (front→back)', 'rotations', 'queue after (front→back)', 'returns'],
+          rows: [
+            ['push(1)', '1', '0', '1', '—'],
+            ['push(2)', '1, 2', '1: move 1 behind', '<span class="c-g">2</span>, 1', '—'],
+            ['push(3)', '2, 1, 3', '2: move 2, then 1', '<span class="c-g">3</span>, 2, 1', '—'],
+            ['top()', '—', '—', '3, 2, 1', '<span class="c-p">3</span>'],
+            ['pop()', '—', '—', '2, 1', '<span class="c-p">3</span>'],
+            ['pop()', '—', '—', '1', '<span class="c-p">2</span>']
+          ]
+        },
+        complexity: `<p><b>push O(N)</b> (N - 1 rotations), <b>pop / top / empty O(1)</b>. Space O(N). Unlike the queue-from-two-stacks trick, these simple queue designs have <b>no</b> amortized O(1) version: with one or two queues some operation pays O(N) each time (nothing is "moved once and done"), you only choose which one.</p>`,
+        followUps: ['Which version would you choose if the workload is 90% push?', 'How would you add getMin() in O(1) to this stack?', 'Why is queue-from-two-stacks amortized O(1) while this design is not? (Hint: does any element get moved only once?)']
+      }
+    }]
+  });
+
+  // =====================================================================
+  // TOPIC 2 — Balanced Parentheses
+  // =====================================================================
+  topics.push({
+    title: 'Balanced Parentheses — matching brackets with a stack',
+    analogy: `<p>Think of <b>Russian nesting dolls</b> or <b>boxes inside boxes</b>. You open a big box, then a medium box inside it, then a small box. To close them properly you must close the <b>small one first</b> (the one you opened last), then the medium, then the big. If you try to close the big box while the small one is still open, something is wrong.</p>
+      <p>"The last thing I opened is the first thing I must close" — that is exactly a stack.</p>`,
+    explain: `<p>Read the string left to right:</p>
+      <ul>
+        <li>${H.c('g', 'Opening bracket')} <code>( [ {</code> → <b>push</b> it. It is "waiting for its partner".</li>
+        <li>${H.c('y', 'Closing bracket')} <code>) ] }</code> → it must match the <b>most recent unmatched opener</b>, which is the <b>top</b> of the stack. If the stack is empty or the top is the wrong type → ${H.c('r', 'invalid')}. Otherwise <b>pop</b>.</li>
+        <li>At the end the stack must be <b>empty</b> (no opener left waiting).</li>
+      </ul>
+      ${H.arr(['{', '[', '(', ')', ']', '}'], { label: 'valid', hl: { 2: 'g', 3: 'g', 1: 'b', 4: 'b', 0: 'p', 5: 'p' } })}
+      ${H.arr(['(', '[', ')', ']'], { label: 'invalid', hl: { 1: 'y', 2: 'r' } })}
+      <p>In <code>([)]</code> the <code>)</code> arrives while the top of the stack is ${H.c('y', '[')} — the inner box was not closed first → ${H.c('r', 'mismatch')}.</p>
+      ${H.table(['string', 'why it fails', 'what the stack sees'], [
+        ['<code>(]</code>', 'wrong type', 'top is ( but got ]'],
+        ['<code>())</code>', 'closer with nothing open', 'stack empty when ) arrives'],
+        ['<code>((</code>', 'something never closed', 'stack not empty at the end'],
+        ['<code>([)]</code>', 'wrong nesting order', 'top is [ but got )']
+      ])}
+      <p><b>Special case — only one bracket type <code>()</code>:</b> you don't even need a stack, just a counter: <code>+1</code> for <code>(</code>, <code>-1</code> for <code>)</code>; it must never go below 0 and must end at 0.</p>`,
+    clues: [
+      '"Valid parentheses", "balanced brackets", "well-formed", "properly nested" → stack of openers.',
+      '"Matching pairs" where the <b>latest open</b> must be <b>closed first</b> → LIFO → stack.',
+      'Only one bracket type → a simple <b>counter</b> (balance) is enough.',
+      '"Minimum additions/removals to make valid", "longest valid parentheses", "score of parentheses" → same stack idea (often store <b>indices</b>).',
+      'HTML/XML tag matching, undo of nested operations → same pattern.'
+    ],
+    code: [`
+import java.util.*;
+
+class Brackets {
+    // Map each closer to the opener it needs. Easy to extend with '<' '>' later.
+    private static final Map<Character, Character> PARTNER = Map.of(')', '(', ']', '[', '}', '{');
+
+    static boolean isValid(String s) {
+        Deque<Character> st = new ArrayDeque<>();
+        for (char ch : s.toCharArray()) {
+            if (PARTNER.containsValue(ch)) {
+                st.push(ch);                                   // opener: wait for a partner
+            } else if (PARTNER.containsKey(ch)) {
+                if (st.isEmpty() || !st.pop().equals(PARTNER.get(ch))) return false;   // equals, not ==
+            }                                                  // any other char: ignore it
+        }
+        return st.isEmpty();
+    }
+
+    // Only '(' and ')': a counter replaces the stack -> O(1) extra space
+    static boolean isValidSingleType(String s) {
+        int balance = 0;
+        for (char ch : s.toCharArray()) {
+            if (ch == '(') balance++;
+            else if (ch == ')' && --balance < 0) return false;   // closed more than opened
+        }
+        return balance == 0;
+    }
+
+    public static void main(String[] args) {
+        System.out.println(isValid("a*(b+[c-d])"));   // true  (letters are ignored)
+        System.out.println(isValid("{[}]"));          // false
+        System.out.println(isValidSingleType("(()())")); // true
+        System.out.println(isValidSingleType("())(")); // false
+    }
+}`, { lang: 'python', run: true, title: 'Same idea in Python (runnable)', code: `def is_valid(s):
+    partner = {')': '(', ']': '[', '}': '{'}
+    st = []
+    for ch in s:
+        if ch in '([{':
+            st.append(ch)                 # opener waits on the stack
+        elif ch in partner:
+            if not st or st.pop() != partner[ch]:
+                return False              # nothing open, or wrong type
+    return not st                         # leftovers were never closed
+
+for t in ["()[]{}", "([)]", "{[()()]}", "((", "))"]:
+    print(t, is_valid(t))` }],
+    codeTitle: ['Map-based checker + counter shortcut (Java)'],
+    examples: [
+      {
+        title: 'Valid nested example: {[()()]}',
+        html: `${H.table(['char', 'action', 'stack after'], [
+          ['{', 'push', '{'], ['[', 'push', '{ ['], ['(', 'push', '{ [ ('], [')', 'top ( matches → pop', '{ ['],
+          ['(', 'push', '{ [ ('], [')', 'pop', '{ ['], [']', 'top [ matches → pop', '{'], ['}', 'pop', '<span class="c-g">empty → valid</span>']
+        ])}<p>The stack height at any moment equals the <b>current nesting depth</b>. Max height here is 3 — that is the deepest nesting.</p>`
+      },
+      {
+        title: 'Counter is enough for one type: "(()" and "())("',
+        html: `<p>For only <code>(</code> and <code>)</code>, track <code>balance</code>:</p>
+          ${H.table(['string', 'balance after each char', 'verdict'], [
+            ['<code>(()</code>', '1, 2, 1', '<span class="c-r">ends at 1 → invalid</span> (one ( never closed)'],
+            ['<code>())(</code>', '1, 0, <b>-1</b>', '<span class="c-r">went negative → invalid</span> (a ) with nothing open)'],
+            ['<code>(())</code>', '1, 2, 1, 0', '<span class="c-g">never negative, ends at 0 → valid</span>']
+          ])}
+          <p>Why it fails for several types: <code>([)]</code> has balanced counts for each type, but the <b>order</b> is wrong — only a stack remembers <i>which</i> opener is most recent.</p>`
+      },
+      {
+        title: 'Minimum additions to make valid: "())(("',
+        html: `<p>Use the counter idea and count the repairs: when balance would go below 0, we need an extra <code>(</code> (count it, keep balance at 0). At the end, every unclosed <code>(</code> needs a <code>)</code>.</p>
+          ${H.table(['char', 'balance', 'extra ( needed'], [['(', '1', '0'], [')', '0', '0'], [')', '0 (would be -1)', '<span class="c-r">1</span>'], ['(', '1', '1'], ['(', '2', '1']])}
+          <p>Answer = 1 (extra opens) + 2 (final balance) = <b>3</b>. This is LeetCode 921 and runs in O(N) time, O(1) space.</p>`,
+        code: `int minAddToMakeValid(String s) {
+    int balance = 0, extraOpens = 0;
+    for (char c : s.toCharArray()) {
+        if (c == '(') balance++;
+        else if (balance > 0) balance--;   // this ) closes an earlier (
+        else extraOpens++;                 // unmatched ) -> must add a ( before it
+    }
+    return extraOpens + balance;           // plus a ) for every still-open (
+}`
+      },
+      {
+        title: 'Store indices to find WHERE it breaks',
+        html: `<p>Real editors highlight the unmatched bracket. Push the <b>index</b> instead of the character: when a closer has no partner, its own index is the error; at the end, every index left on the stack is an unclosed opener. The same "stack of indices" idea powers <i>Longest Valid Parentheses</i> and <i>Minimum Remove to Make Valid Parentheses</i> (see the Practice Arena).</p>
+          ${H.arr(['(', 'a', ')', ')', '(', 'b'], { label: 'input', hl: { 3: 'r', 4: 'r' } })}
+          <p>Index 3 is an unmatched <code>)</code>; index 4 is an unclosed <code>(</code>. Remove both → <code>(a)b</code>.</p>`
+      }
+    ],
+    deepDive: `<p><b>Why a stack is the right tool (and the theory behind it).</b> Balanced brackets form a <i>context-free</i> language (the Dyck language). Regular expressions cannot match arbitrarily deep nesting because they have no memory of depth; a stack is exactly the extra memory a <b>pushdown automaton</b> needs. Every parser for JSON, HTML, Java or SQL contains this idea, usually inside a recursive-descent parser where the call stack plays the role of your explicit stack.</p>
+      <p><b>Correctness proof sketch.</b> Invariant: after processing a prefix, the stack holds exactly the unmatched openers of that prefix, in order of appearance. A closer can only legally close the most recent unmatched opener (otherwise two pairs would cross, like <code>([)]</code>). So comparing with the top is both necessary and sufficient, and the string is valid iff no comparison fails and the final stack is empty.</p>
+      <p><b>Performance details.</b> <code>Deque&lt;Character&gt;</code> boxes every char (Java caches <code>Character</code> values 0–127, so ASCII brackets do not allocate, but there is still indirection). A <code>char[] st = new char[n]; int top = 0;</code> is faster and trivially O(N) space. Early exits: odd length → false; if the stack ever holds more than <code>n - i</code> openers it can never be closed in time.</p>
+      <p><b>Variants you should recognise:</b> wildcard <code>*</code> that can be <code>(</code>, <code>)</code> or empty (LeetCode 678) — greedy with a <i>range</i> of possible balances <code>[lo, hi]</code>; score of parentheses (LC 856) — the stack stores partial scores; generate all valid strings (LC 22) — backtracking where <code>close ≤ open ≤ n</code>; reverse substrings in brackets (LC 1190) — stack of StringBuilders or a "wormhole" pair index trick.</p>`,
+    aiEra: `<p><b>What AI changes:</b> "valid parentheses" is the most memorised interview problem in existence; every model writes it flawlessly, and interviewers know that. Expect them to jump straight to a <b>twist</b>: wildcards, minimum removals, reporting positions, streaming input, or extending to HTML tags. Your value is adapting the invariant, not reciting the code.</p>
+      <p><b>Use AI as a partner:</b> <code>"Generate 10 tricky bracket strings including empty-stack closers, leftovers, and crossing pairs, with expected answers"</code> — then run your solution against them. Or ask it to <code>"explain the Dyck-language view of this problem in 5 lines"</code> to deepen your understanding.</p>
+      <p><b>Where AI goes wrong:</b> generated code sometimes calls <code>pop()</code> without checking <code>isEmpty()</code> (crash on <code>")"</code>), forgets the final <code>isEmpty()</code> check (accepts <code>"(("</code>), or uses a counter for multiple bracket types (accepts <code>"([)]"</code>). These three bugs are exactly what you should test first.</p>
+      <p><b>What you must still own:</b> the invariant ("stack = unmatched openers in order"), when a counter suffices, and how to switch to indices when the question asks <i>where</i> or <i>how many</i>.</p>`,
+    viz: {
+      title: 'Bracket matching with a stack',
+      input: '{[()()]}(',
+      inputLabel: 'Brackets only: ( ) [ ] { }  (up to 16)',
+      gen: function (input) {
+        var s = (input === undefined ? '{[()()]}(' : String(input)).replace(/\s+/g, '');
+        if (!s.length) throw new Error('Type some brackets, e.g. {[()]}');
+        if (/[^()\[\]{}]/.test(s)) throw new Error('Use only the bracket characters ( ) [ ] { } — for example {[()]}');
+        if (s.length > 16) throw new Error('Please use at most 16 brackets.');
+        var ch = s.split(''), st = [], frames = [], pair = { ')': '(', ']': '[', '}': '{' };
+        frames.push({ narr: 'Scan left to right. Openers wait on the stack; every closer must match the <b>top</b> (the most recent opener).', parts: [
+          { type: 'array', label: 'string', values: ch },
+          { type: 'stack', label: 'open brackets waiting', items: [] }
+        ] });
+        for (var i = 0; i < ch.length; i++) {
+          var c = ch[i], hlA = {}, k;
+          for (k = 0; k < i; k++) hlA[k] = 'done';
+          if (!pair[c]) {
+            st.push(c); hlA[i] = 'ok';
+            frames.push({ narr: '<b>' + c + '</b> is an opener → <span class="c-g">push</span> it. It now waits for its partner.', parts: [
+              { type: 'array', label: 'string', values: ch, hl: hlA, ptr: one(i, 'i') },
+              { type: 'stack', label: 'open brackets waiting', items: st.slice(), hl: one(st.length - 1, 'ok') }
+            ] });
+          } else if (!st.length) {
+            hlA[i] = 'bad';
+            frames.push({ narr: '<b>' + c + '</b> is a closer but the stack is <span class="c-r">empty</span> — nothing is open to close. <b>Invalid.</b>', parts: [
+              { type: 'array', label: 'string', values: ch, hl: hlA, ptr: one(i, 'i') },
+              { type: 'stack', label: 'open brackets waiting', items: [] },
+              { type: 'vars', vals: { result: 'false' }, hl: { result: 'bad' } }
+            ] });
+            frames.push({ narr: 'Rule recap: a closer with an empty stack can never be fixed later, so we stop right away and return <b>false</b>.', parts: [
+              { type: 'vars', vals: { result: 'false', 'stopped at index': i }, hl: { result: 'bad' } }
+            ] });
+            return frames;
+          } else if (st[st.length - 1] !== pair[c]) {
+            hlA[i] = 'bad';
+            frames.push({ narr: '<b>' + c + '</b> needs <b>' + pair[c] + '</b> on top, but the top is <span class="c-r">' + st[st.length - 1] + '</span>. Wrong partner → <b>mismatch, invalid</b>.', parts: [
+              { type: 'array', label: 'string', values: ch, hl: hlA, ptr: one(i, 'i') },
+              { type: 'stack', label: 'open brackets waiting', items: st.slice(), hl: one(st.length - 1, 'bad') },
+              { type: 'vars', vals: { result: 'false' }, hl: { result: 'bad' } }
+            ] });
+            frames.push({ narr: 'Rule recap: the most recent opener must be closed first. Since it was not, we return <b>false</b> immediately.', parts: [
+              { type: 'vars', vals: { result: 'false', 'stopped at index': i }, hl: { result: 'bad' } }
+            ] });
+            return frames;
+          } else {
+            hlA[i] = 'sel';
+            frames.push({ narr: '<b>' + c + '</b> matches the top <b>' + pair[c] + '</b> → a pair is complete, <b>pop</b> the opener.', parts: [
+              { type: 'array', label: 'string', values: ch, hl: hlA, ptr: one(i, 'i') },
+              { type: 'stack', label: 'top matches → about to pop', items: st.slice(), hl: one(st.length - 1, 'sel') }
+            ] });
+            st.pop();
+          }
+        }
+        if (st.length) {
+          var bad = {};
+          for (var j = 0; j < st.length; j++) bad[j] = 'bad';
+          frames.push({ narr: 'End of string, but <span class="c-r">' + st.length + ' opener(s)</span> are still waiting with no partner → <b>invalid</b>.', parts: [
+            { type: 'array', label: 'string', values: ch },
+            { type: 'stack', label: 'unclosed openers', items: st.slice(), hl: bad },
+            { type: 'vars', vals: { result: 'false' }, hl: { result: 'bad' } }
+          ] });
+        } else {
+          frames.push({ narr: 'End of string and the stack is <span class="c-g">empty</span> — every opener found its partner in the right order → <b>valid</b>.', parts: [
+            { type: 'array', label: 'string', values: ch },
+            { type: 'stack', label: 'open brackets waiting', items: [] },
+            { type: 'vars', vals: { result: 'true' }, hl: { result: 'ok' } }
+          ] });
+        }
+        return frames;
+      }
+    },
+    problems: [{
+      title: 'Valid Parentheses',
+      level: 'Easy',
+      tags: ['stack', 'string'],
+      statement: `<p>Given a string <code>s</code> containing only the characters <code>( ) [ ] { }</code>, return <code>true</code> if it is valid. Valid means: every opening bracket is closed by the <b>same type</b> of bracket, and brackets are closed in the <b>correct order</b> (inner ones first).</p>`,
+      constraints: `1 ≤ s.length ≤ 10<sup>4</sup>, s contains only <code>()[]{}</code>`,
+      example: `${H.arr(['(', '[', ']', '{', '}', ')'], { hl: { 0: 'p', 5: 'p', 1: 'g', 2: 'g', 3: 'b', 4: 'b' } })}
+        <p>Output: ${H.c('g', 'true')} — ${H.c('g', '[ ]')} and ${H.c('b', '{ }')} close inside ${H.c('p', '( )')}.</p>
+        ${H.arr(['(', ']'], { hl: { 1: 'r' } })}
+        <p>Output: ${H.c('r', 'false')} — <code>]</code> arrives but the open bracket is <code>(</code>.</p>`,
+      brute: {
+        why: `<p>Keep deleting every adjacent pair <code>()</code>, <code>[]</code>, <code>{}</code> until nothing changes; valid if the string becomes empty. Each pass is O(N) and may delete only one pair, so up to N/2 passes → <b>O(N<sup>2</sup>)</b>. The waste: after each deletion we rescan the whole string from the start instead of remembering what was open.</p>`,
+        code: `
+boolean isValidBrute(String s) {
+    String prev = "";
+    while (!s.equals(prev)) {              // repeat while the last pass changed something
+        prev = s;
+        s = s.replace("()", "").replace("[]", "").replace("{}", "");
+    }
+    return s.isEmpty();                    // everything cancelled -> valid
+}`
+      },
+      mcq: {
+        q: 'You are scanning <code>{[(</code> and the next character is <code>]</code>. What happens?',
+        options: ['Pop <code>(</code> and continue', 'Return false: the top is <code>(</code>, not <code>[</code>', 'Skip it, maybe it matches later', 'Push <code>]</code> onto the stack'],
+        answer: 1,
+        explain: 'The most recently opened bracket is <code>(</code>. A <code>]</code> cannot close it, and the inner <code>(</code> must be closed first, so the string is already invalid.'
+      },
+      hints: [
+        `<p>Aha: a closing bracket must always match the <b>most recent opener that is still open</b>. "Most recent" = last in → first out.</p>`,
+        `<p>Use <code>Deque&lt;Character&gt; st = new ArrayDeque&lt;&gt;()</code>. Push openers. On a closer, compare it with <code>st.pop()</code>. A small map (or a switch) tells you which opener each closer needs.</p>`,
+        `<p>Traps: a closer when the stack is <b>empty</b> (e.g. <code>")("</code>) → false, don't call pop on empty; the stack must be <b>empty at the end</b> (e.g. <code>"(("</code>); odd length → instantly false. Recipe: for each ch: if opener → push; else if empty or pop() ≠ partner(ch) → false. Return st.isEmpty().</p>`
+      ],
+      solution: {
+        approach: `<p>One left-to-right scan; the stack holds openers still waiting for a partner.</p>`,
+        code: `
+import java.util.*;
+
+class Solution {
+    public boolean isValid(String s) {
+        if (s.length() % 2 == 1) return false;          // odd length can never pair up
+        Deque<Character> st = new ArrayDeque<>();       // openers waiting for a partner
+        for (char ch : s.toCharArray()) {
+            if (ch == '(' || ch == '[' || ch == '{') {
+                st.push(ch);                            // opener: wait on the stack
+            } else {
+                if (st.isEmpty()) return false;         // closer but nothing is open
+                char top = st.pop();                    // most recent unmatched opener
+                if (ch == ')' && top != '(') return false;
+                if (ch == ']' && top != '[') return false;
+                if (ch == '}' && top != '{') return false;
+            }
+        }
+        return st.isEmpty();                            // leftovers = never closed
+    }
+
+    public static void main(String[] args) {
+        Solution sol = new Solution();
+        System.out.println(sol.isValid("([]{})"));     // true
+        System.out.println(sol.isValid("(]"));         // false
+        System.out.println(sol.isValid("([)]"));       // false
+    }
+}`,
+        dry: {
+          head: ['i', 'ch', 'stack before (bottom→top)', 'action', 'stack after'],
+          rows: [
+            ['0', '(', '[ ]', '<span class="c-g">opener → push</span>', '[ ( ]'],
+            ['1', '[', '[ ( ]', '<span class="c-g">push</span>', '[ ( [ ]'],
+            ['2', ']', '[ ( [ ]', 'top [ matches → pop', '[ ( ]'],
+            ['3', '{', '[ ( ]', '<span class="c-g">push</span>', '[ ( { ]'],
+            ['4', '}', '[ ( { ]', 'top { matches → pop', '[ ( ]'],
+            ['5', ')', '[ ( ]', 'top ( matches → pop', '[ ]'],
+            ['end', '—', '[ ]', 'stack empty', '<span class="c-g">true</span>']
+          ]
+        },
+        complexity: `<p><b>Time O(N)</b>: each character is looked at once and pushed/popped at most once. <b>Space O(N)</b>: in the worst case (all openers, like <code>((((</code>) every character sits on the stack.</p>`
+      }
+    }]
+  });
+
+  // =====================================================================
+  // TOPIC 3 — Min Stack
+  // =====================================================================
+  topics.push({
+    title: 'Min Stack — get the minimum in O(1)',
+    analogy: `<p>Imagine a pile of exam papers. On each paper you also write a small sticky note: <b>"lowest score in the pile from here down"</b>. When you add a paper, you only compare its score with the note on the paper below it. When you remove the top paper, the paper underneath already has the correct note. You never have to search the whole pile.</p>`,
+    explain: `<p>A normal stack can push/pop/top in O(1), but finding the minimum would mean scanning everything: O(N). Trick: <b>store the minimum-so-far together with each value</b>.</p>
+      ${H.table(['operation', 'stack of (value, minSoFar) bottom→top', 'getMin()'], [
+        ['push 5', '(5,5)', '5'],
+        ['push 3', '(5,5) (3,<b>3</b>)', '3'],
+        ['push 7', '(5,5) (3,3) (7,<b>3</b>)', '3'],
+        ['push 2', '(5,5) (3,3) (7,3) (2,<b>2</b>)', '<span class="c-p">2</span>'],
+        ['pop', '(5,5) (3,3) (7,3)', '<span class="c-p">3</span> — restored for free!'],
+      ])}
+      <p>When we pop the 2, the paper below still says "min = 3", so the old minimum comes back automatically. New min on push = <code>min(x, minBelow)</code>.</p>
+      <p><b>Two ways to store it:</b> (1) one stack of pairs <code>int[]{value, min}</code>; (2) two stacks — a value stack and a min stack that you push to only when <code>x ≤ current min</code> (saves space when many big values arrive). Note the <code>≤</code>: duplicates of the minimum must be pushed too, or popping one copy would lose the min.</p>`,
+    clues: [
+      '"Design a stack that supports push, pop, top and <b>retrieving the minimum</b> in <b>constant time</b>" → pair each value with min-so-far.',
+      '"Max stack", "stack with getMax" → same trick with max.',
+      '"O(1) per operation" in a design problem → precompute the answer at push time and save it.',
+      'Queue with getMin → build it from two min-stacks (combine Topic 8 with this one).'
+    ],
+    code: [`
+import java.util.*;
+
+// Space-saving variant: a second stack that only stores "new record lows".
+class MinStackTwoStacks {
+    private final Deque<Integer> vals = new ArrayDeque<>();
+    private final Deque<Integer> mins = new ArrayDeque<>();   // top = current minimum
+
+    public void push(int x) {
+        vals.push(x);
+        if (mins.isEmpty() || x <= mins.peek()) mins.push(x);  // <= keeps duplicate minimums
+    }
+
+    public void pop() {
+        int x = vals.pop();                                   // unbox to int before comparing
+        if (x == mins.peek()) mins.pop();                     // int == Integer -> value compare
+    }
+
+    public int top() { return vals.peek(); }
+    public int getMin() { return mins.peek(); }
+
+    public static void main(String[] args) {
+        MinStackTwoStacks s = new MinStackTwoStacks();
+        s.push(5); s.push(2); s.push(2); s.push(9);
+        System.out.println(s.getMin()); // 2
+        s.pop(); s.pop();                // removes 9, then one of the 2s
+        System.out.println(s.getMin()); // 2 (the duplicate kept it alive)
+        s.pop();
+        System.out.println(s.getMin()); // 5
+    }
+}`, `
+import java.util.*;
+
+// O(1) extra space trick: store an "encoded" value when a new minimum arrives.
+class MinStackEncoded {
+    private final Deque<Long> st = new ArrayDeque<>();
+    private long min;
+
+    public void push(int x) {
+        if (st.isEmpty()) { st.push((long) x); min = x; return; }
+        if (x >= min) { st.push((long) x); return; }
+        st.push(2L * x - min);   // encoded value is < x, which flags "min changed here"
+        min = x;
+    }
+
+    public void pop() {
+        long t = st.pop();
+        if (t < min) min = 2 * min - t;   // decode: recover the previous minimum
+    }
+
+    public int top() {
+        long t = st.peek();
+        return (int) (t < min ? min : t); // a flagged entry means the real value is min
+    }
+
+    public int getMin() { return (int) min; }
+
+    public static void main(String[] args) {
+        MinStackEncoded s = new MinStackEncoded();
+        s.push(5); s.push(3); s.push(7); s.push(1);
+        System.out.println(s.getMin() + " " + s.top());  // 1 1
+        s.pop();
+        System.out.println(s.getMin() + " " + s.top());  // 3 7
+        s.pop(); s.pop();
+        System.out.println(s.getMin() + " " + s.top());  // 5 5
+    }
+}`],
+    codeTitle: ['Two-stack variant (stores only record lows)', 'Encoded O(1)-extra-space variant (uses long)'],
+    examples: [
+      {
+        title: 'Why ≤ and not &lt; in the two-stack version',
+        html: `<p>Push 2, then push 2 again. With <code>&lt;</code>, the second 2 is <b>not</b> pushed to <code>mins</code>:</p>
+          ${H.table(['op', 'vals', 'mins with &lt;', 'mins with ≤'], [
+            ['push 2', '2', '2', '2'], ['push 2', '2 2', '2', '2 2'],
+            ['pop (2)', '2', '<span class="c-r">(empty!)</span> — popped the only 2', '2'],
+            ['getMin()', '2', '<span class="c-r">crash / wrong</span>', '<span class="c-g">2</span>']
+          ])}<p>Duplicates of the current minimum must each have their own entry.</p>`
+      },
+      {
+        title: 'Max Stack is the same trick mirrored',
+        html: `<p>Store <code>max(x, maxBelow)</code> instead. Push 1, 4, 2 → notes 1, 4, 4. <code>getMax()</code> = 4; pop the 2 → still 4; pop the 4 → note 1. The harder LeetCode 716 version adds <code>popMax()</code>, which removes the max from the <i>middle</i> — that needs a <code>TreeMap</code> + doubly linked list (O(log N)), because a plain stack cannot delete from the middle.</p>`
+      },
+      {
+        title: 'Encoded trick on numbers: push 5, 3, 7, 1',
+        html: `${H.table(['op', 'stored', 'min after', 'note'], [
+          ['push 5', '5', '5', 'first element'],
+          ['push 3', '2·3 - 5 = <b>1</b>', '3', '1 &lt; 3 → flag "min changed"'],
+          ['push 7', '7', '3', '7 ≥ 3, stored as-is'],
+          ['push 1', '2·1 - 3 = <b>-1</b>', '1', '-1 &lt; 1 → flag'],
+          ['pop', 'removes -1', '2·1 - (-1) = <b>3</b>', 'decode previous min'],
+          ['pop', 'removes 7', '3', 'normal'],
+          ['pop', 'removes 1', '2·3 - 1 = <b>5</b>', 'decode again']
+        ])}<p>Why does it work? When x &lt; min, the stored value <code>2x - min = x - (min - x)</code> is <b>less than x</b>, the new min. Normal entries are always ≥ min. So "stored &lt; min" is an unambiguous flag, and <code>2·min - stored</code> recovers the old min. Use <code>long</code>: <code>2x - min</code> overflows int for values near ±2<sup>31</sup>.</p>`
+      }
+    ],
+    deepDive: `<p><b>Three designs, one invariant.</b> Every Min Stack keeps "minimum of the elements at or below each position" available in O(1). (1) Pairs: simplest, 2N ints. (2) Two stacks: the min stack only grows on new record lows (≤), so for random data it stays tiny (expected O(log N) entries for a random permutation, since record lows of a random sequence are rare), worst case N for a decreasing input. (3) Encoding: O(1) extra memory beyond the values but needs <code>long</code> and is harder to explain — mention it as a follow-up, do not lead with it.</p>
+      <p><b>Why not a heap?</b> A <code>PriorityQueue</code> gives getMin in O(1) but pop of an arbitrary (the top-of-stack) element costs O(N) in Java (<code>remove(Object)</code> scans), or O(log N) with lazy deletion. The stack's LIFO order is what makes the precomputed "min below me" trick valid: the elements below the top never change while the top exists.</p>
+      <p><b>Min Queue.</b> A queue does not have this property (the front leaves while newer items stay), so you combine two Min Stacks with the queue-from-two-stacks trick (amortized O(1)), or use a monotonic deque (Topic 9). This "two stacks with aggregates" pattern generalises to any associative operation (gcd, max, sum, matrix product) and is used for sliding-window aggregates in stream processing.</p>
+      <p><b>Production note:</b> immutable persistent stacks (linked nodes that point downward) let each node cache aggregates exactly like this, which is how functional languages get O(1) undo with history.</p>`,
+    aiEra: `<p><b>What AI changes:</b> the pair-based Min Stack is a 15-line answer any assistant produces instantly. Interviewers now probe <b>why</b> it is correct ("what invariant does each entry hold?") and the follow-ups: two-stack ≤ subtlety, O(1)-space encoding with overflow, Max Stack with popMax, Min Queue. Those are where candidates separate.</p>
+      <p><b>Use AI as a partner:</b> <code>"Write a randomized test that compares my MinStack against a brute force that scans the stack, 10,000 random operations"</code> — this kind of differential test is the fastest way to catch the ≤ bug or an <code>Integer ==</code> comparison bug.</p>
+      <p><b>Where AI goes wrong:</b> generated two-stack versions frequently compare <code>vals.peek() == mins.peek()</code> on <code>Integer</code> objects (works below 128, fails above), use <code>&lt;</code> instead of <code>≤</code>, or implement the encoded version with <code>int</code> and overflow. Always check boxing and boundaries.</p>
+      <p><b>What you must still own:</b> stating the invariant in one sentence, picking the variant that fits the memory constraint, and explaining why the trick works for stacks but not directly for queues.</p>`,
+    viz: {
+      title: 'Min Stack: every plate remembers the min below it',
+      input: 'push 5, push 3, push 7, push 2, getMin, pop, getMin, pop, pop, getMin',
+      inputLabel: 'Ops: push x, pop, top, getMin (comma separated)',
+      gen: function (input) {
+        var ops = parseOps(input, 'push 5, push 3, push 7, push 2, getMin, pop, getMin', ['push', 'pop', 'top', 'getmin']);
+        var vals = [], mins = [], frames = [];
+        frames.push({ narr: 'Two side-by-side stacks of the same height: the value, and the <b>minimum of everything at or below it</b>.', parts: [
+          { type: 'stack', label: 'values', items: [] }, { type: 'stack', label: 'min so far', items: [] }
+        ] });
+        ops.forEach(function (o) {
+          if (o.op === 'push') {
+            var m = mins.length ? Math.min(o.v, mins[mins.length - 1]) : o.v;
+            vals.push(o.v); mins.push(m);
+            frames.push({ narr: '<code>push(' + o.v + ')</code>: new min-so-far = min(' + o.v + ', ' + (mins.length > 1 ? mins[mins.length - 2] : 'nothing') + ') = <b>' + m + '</b>. Saved next to the value.', parts: [
+              { type: 'stack', label: 'values', items: vals.slice(), hl: one(vals.length - 1, 'ok') },
+              { type: 'stack', label: 'min so far', items: mins.slice(), hl: one(mins.length - 1, 'ok') }
+            ] });
+          } else if (!vals.length) {
+            frames.push({ narr: '<code>' + o.op + '()</code> on an <span class="c-r">empty</span> stack — not allowed (LeetCode guarantees it never happens). We skip it.', parts: [
+              { type: 'stack', label: 'values', items: [] }, { type: 'stack', label: 'min so far', items: [] }
+            ] });
+          } else if (o.op === 'pop') {
+            frames.push({ narr: '<code>pop()</code> removes ' + vals[vals.length - 1] + ' and its note. The note below already holds the correct older minimum.', parts: [
+              { type: 'stack', label: 'values', items: vals.slice(), hl: one(vals.length - 1, 'bad') },
+              { type: 'stack', label: 'min so far', items: mins.slice(), hl: one(mins.length - 1, 'bad') }
+            ] });
+            vals.pop(); mins.pop();
+          } else if (o.op === 'top') {
+            frames.push({ narr: '<code>top()</code> = <b>' + vals[vals.length - 1] + '</b> (just peek, O(1)).', parts: [
+              { type: 'stack', label: 'values', items: vals.slice(), hl: one(vals.length - 1, 'sel') },
+              { type: 'stack', label: 'min so far', items: mins.slice() }
+            ] });
+          } else {
+            frames.push({ narr: '<code>getMin()</code> = read the top note = <b>' + mins[mins.length - 1] + '</b>. No scanning needed → O(1).', parts: [
+              { type: 'stack', label: 'values', items: vals.slice() },
+              { type: 'stack', label: 'min so far', items: mins.slice(), hl: one(mins.length - 1, 'sel') }
+            ] });
+          }
+        });
+        frames.push({ narr: 'Every operation touched only the top → all O(1). The price: one extra number stored per element.', parts: [
+          { type: 'stack', label: 'values', items: vals.slice() }, { type: 'stack', label: 'min so far', items: mins.slice() }
+        ] });
+        return frames;
+      }
+    },
+    problems: [{
+      title: 'Min Stack',
+      level: 'Medium',
+      tags: ['stack', 'design'],
+      statement: `<p>Design a stack that supports <code>push(val)</code>, <code>pop()</code>, <code>top()</code> and <code>getMin()</code> (smallest element in the stack), <b>each in O(1) time</b>. Calls to pop/top/getMin are only made on a non-empty stack.</p>`,
+      constraints: `-2<sup>31</sup> ≤ val ≤ 2<sup>31</sup> - 1, at most 3·10<sup>4</sup> calls in total`,
+      example: `${H.table(['call', 'stack (bottom→top)', 'returns'], [
+        ['push(-2)', '-2', '—'], ['push(0)', '-2, 0', '—'], ['push(-3)', '-2, 0, -3', '—'],
+        ['getMin()', '-2, 0, -3', '<span class="c-p">-3</span>'], ['pop()', '-2, 0', '—'],
+        ['top()', '-2, 0', '<span class="c-p">0</span>'], ['getMin()', '-2, 0', '<span class="c-p">-2</span> (the -3 is gone)']
+      ])}`,
+      brute: {
+        why: `<p>Use a normal stack and, on <code>getMin()</code>, loop over all elements to find the smallest. That is <b>O(N) per getMin</b>; with 3·10<sup>4</sup> calls on a big stack it is ~10<sup>9</sup> steps. The waste: we recompute a minimum that hardly changes between calls.</p>`,
+        code: `
+import java.util.*;
+
+class MinStackBrute {
+    private final Deque<Integer> st = new ArrayDeque<>();
+    public void push(int val) { st.push(val); }
+    public void pop() { st.pop(); }
+    public int top() { return st.peek(); }
+    public int getMin() {
+        int min = Integer.MAX_VALUE;
+        for (int x : st) min = Math.min(min, x);   // scans the whole stack every time: O(N)
+        return min;
+    }
+}`
+      },
+      mcq: {
+        q: 'Stack (bottom→top) is 4, 1, 6 with min-so-far notes 4, 1, 1. We pop twice. What should getMin() return, and why is it O(1)?',
+        options: ['1, because 1 was the smallest ever', '4, read directly from the note on the remaining element', '6, the last pushed value', 'We must rescan, so it is O(N)'],
+        answer: 1,
+        explain: 'After two pops only (4, note 4) remains. The note was saved when 4 was pushed, so we just read it.'
+      },
+      hints: [
+        `<p>Aha: the minimum of the stack only depends on <b>what is below</b> the top. When you push <code>x</code>, the new min is <code>min(x, oldMin)</code>, and when you pop you want <code>oldMin</code> back — so <b>save it</b> at push time.</p>`,
+        `<p>Use <code>Deque&lt;int[]&gt;</code> where each entry is <code>{value, minSoFar}</code>. Or two <code>Deque&lt;Integer&gt;</code>: values, and mins (push to mins when <code>x ≤ mins.peek()</code>; on pop, pop mins too if the popped value equals <code>mins.peek()</code>).</p>`,
+        `<p>Traps: with the two-stack version use <code>≤</code> (not <code>&lt;</code>) so duplicate minimums are kept; compare <code>Integer</code> objects with <code>.equals</code> or unbox first. Recipe: push → newMin = empty ? x : min(x, top.min); push {x, newMin}. pop → pop. top → peek()[0]. getMin → peek()[1].</p>`
+      ],
+      solution: {
+        approach: `<p>Each stack entry carries its own "minimum of everything at or below me".</p>`,
+        code: `
+import java.util.*;
+
+class MinStack {
+    // each entry: [0] = the value, [1] = minimum of this entry and everything below it
+    private final Deque<int[]> st = new ArrayDeque<>();
+
+    public void push(int val) {
+        int minBelow = st.isEmpty() ? val : st.peek()[1];   // min of the stack before this push
+        st.push(new int[]{val, Math.min(val, minBelow)});  // remember the new minimum with the value
+    }
+
+    public void pop() {
+        st.pop();               // the entry below already knows its own minimum
+    }
+
+    public int top() {
+        return st.peek()[0];    // value on top
+    }
+
+    public int getMin() {
+        return st.peek()[1];    // min saved at push time -> O(1)
+    }
+
+    public static void main(String[] args) {
+        MinStack ms = new MinStack();
+        ms.push(-2); ms.push(0); ms.push(-3);
+        System.out.println(ms.getMin()); // -3
+        ms.pop();
+        System.out.println(ms.top());    // 0
+        System.out.println(ms.getMin()); // -2
+    }
+}`,
+        dry: {
+          head: ['call', 'entry pushed / removed', 'stack of {val,min} bottom→top', 'returns'],
+          rows: [
+            ['push(-2)', '{-2, -2}', '{-2,-2}', '—'],
+            ['push(0)', '{0, min(0,-2) = -2}', '{-2,-2} {0,-2}', '—'],
+            ['push(-3)', '{-3, min(-3,-2) = -3}', '{-2,-2} {0,-2} {-3,-3}', '—'],
+            ['getMin()', 'read top[1]', 'unchanged', '<span class="c-p">-3</span>'],
+            ['pop()', '<span class="c-r">remove {-3,-3}</span>', '{-2,-2} {0,-2}', '—'],
+            ['top()', 'read top[0]', 'unchanged', '<span class="c-p">0</span>'],
+            ['getMin()', 'read top[1]', 'unchanged', '<span class="c-p">-2</span>']
+          ]
+        },
+        complexity: `<p><b>Time O(1)</b> for every operation: each one touches only the top entry. <b>Space O(N)</b>: two ints per element instead of one (still linear).</p>`
+      }
+    }]
+  });
+
+  // =====================================================================
+  // TOPIC 4 — Infix / Postfix evaluation basics
+  // =====================================================================
+  topics.push({
+    title: 'Infix → Postfix and evaluating Postfix (RPN) with a stack',
+    analogy: `<p>Think of a <b>kitchen counter</b>. Postfix is a recipe written like: "put 3 on the counter, put 4 on the counter, put 2 on the counter, now <b>multiply</b> the top two things, now <b>add</b> the top two things". You never need brackets or rules like "multiply before add" — the order of the instructions already says what happens first. The counter is your stack.</p>`,
+    explain: `<p>Three ways to write the same sum:</p>
+      ${H.table(['name', 'operator position', 'example', 'value'], [
+        ['<b>Infix</b> (how humans write)', 'between operands', '<code>3 + 4 * 2</code>', '11'],
+        ['<b>Postfix</b> / RPN', 'after operands', '<code>3 4 2 * +</code>', '11'],
+        ['<b>Prefix</b> / Polish', 'before operands', '<code>+ 3 * 4 2</code>', '11']
+      ])}
+      <p>Infix needs precedence rules (<code>*</code> before <code>+</code>) and brackets. Postfix needs <b>neither</b>, which is why calculators and compilers like it.</p>
+      <h4>1) Evaluate postfix — one stack of numbers</h4>
+      <ul><li>Number → ${H.c('g', 'push')}.</li><li>Operator → ${H.c('r', 'pop b')} (top), ${H.c('r', 'pop a')} (next), push ${H.c('y', 'a op b')}. Order matters for <code>-</code> and <code>/</code>: the <b>first</b> pop is the <b>right</b> operand.</li></ul>
+      ${H.table(['token', 'action', 'stack after'], [
+        ['3', 'push', '3'], ['4', 'push', '3 4'], ['2', 'push', '3 4 2'],
+        ['*', 'b=2, a=4 → 4*2 = 8', '3 8'], ['+', 'b=8, a=3 → 3+8 = 11', '11'],
+        ['5', 'push', '11 5'], ['-', 'b=5, a=11 → 11-5 = 6', '<span class="c-p">6</span>']
+      ])}
+      <h4>2) Convert infix → postfix (Shunting-Yard, by Dijkstra) — one stack of operators</h4>
+      <ul>
+        <li>Operand → write it straight to the output.</li>
+        <li><code>(</code> → push. <code>)</code> → pop operators to output until the matching <code>(</code>, then throw the <code>(</code> away.</li>
+        <li>Operator <code>op</code> → first pop (to output) every operator on top that must happen <b>before</b> it: higher precedence, or same precedence and left-associative (<code>^</code> is right-associative, so it does not pop another <code>^</code>). Then push <code>op</code>.</li>
+        <li>End → pop everything left to the output.</li>
+      </ul>
+      ${H.table(['char', 'output so far', 'operator stack (bottom→top)', 'why'], [
+        ['a', 'a', '', 'operand'], ['+', 'a', '+', 'empty stack → push'], ['b', 'ab', '+', 'operand'],
+        ['*', 'ab', '+ *', '* beats +, so + stays'], ['(', 'ab', '+ * (', 'always push ('],
+        ['c', 'abc', '+ * (', 'operand'], ['-', 'abc', '+ * ( -', '( blocks popping'], ['d', 'abcd', '+ * ( -', 'operand'],
+        [')', 'abcd-', '+ *', 'pop until ('], ['end', '<span class="c-p">abcd-*+</span>', '', 'pop the rest']
+      ])}`,
+    clues: [
+      '"Evaluate reverse Polish notation", "postfix expression" → stack of numbers, pop two on each operator.',
+      '"Basic calculator", "evaluate the expression string with + - * / and parentheses" → operator stack + operand stack (or convert to postfix first).',
+      '"Convert infix to postfix / prefix" → Shunting-Yard with precedence.',
+      'Result must truncate toward zero → Java integer division <code>/</code> already does that.',
+      'Prefix (Polish) evaluation → same as postfix but scan <b>right to left</b>, and the first pop is the <b>left</b> operand.'
+    ],
+    code: `
+import java.util.*;
+
+class ExpressionBasics {
+    // precedence: bigger number = do it earlier
+    static int prec(char op) {
+        if (op == '+' || op == '-') return 1;
+        if (op == '*' || op == '/') return 2;
+        if (op == '^') return 3;
+        return -1;                                     // '(' is never popped by an operator
+    }
+
+    // "a+b*(c-d)" -> "abcd-*+"   (operands are single letters or digits)
+    static String infixToPostfix(String s) {
+        StringBuilder out = new StringBuilder();
+        Deque<Character> ops = new ArrayDeque<>();
+        for (char ch : s.toCharArray()) {
+            if (Character.isLetterOrDigit(ch)) {
+                out.append(ch);                        // operands go straight to the output
+            } else if (ch == '(') {
+                ops.push(ch);
+            } else if (ch == ')') {
+                while (!ops.isEmpty() && ops.peek() != '(') out.append(ops.pop());
+                ops.pop();                             // discard the '('
+            } else {
+                // pop operators that must run BEFORE ch
+                while (!ops.isEmpty() && ops.peek() != '('
+                        && (prec(ops.peek()) > prec(ch)
+                            || (prec(ops.peek()) == prec(ch) && ch != '^'))) {   // '^' is right-associative
+                    out.append(ops.pop());
+                }
+                ops.push(ch);
+            }
+        }
+        while (!ops.isEmpty()) out.append(ops.pop());  // flush remaining operators
+        return out.toString();
+    }
+
+    // tokens like {"3","4","2","*","+"} -> 11
+    static long evalPostfix(String[] tokens) {
+        Deque<Long> st = new ArrayDeque<>();
+        for (String t : tokens) {
+            if (t.equals("+") || t.equals("-") || t.equals("*") || t.equals("/")) {
+                long b = st.pop();                     // FIRST pop = RIGHT operand
+                long a = st.pop();                     // second pop = left operand
+                if (t.equals("+")) st.push(a + b);
+                else if (t.equals("-")) st.push(a - b);
+                else if (t.equals("*")) st.push(a * b);
+                else st.push(a / b);                   // truncates toward zero
+            } else {
+                st.push(Long.parseLong(t));            // a number (may be negative like "-7")
+            }
+        }
+        return st.pop();
+    }
+
+    public static void main(String[] args) {
+        System.out.println(infixToPostfix("a+b*(c-d)"));                          // abcd-*+
+        System.out.println(evalPostfix("3 4 2 * + 5 -".split(" ")));             // 6
+    }
+}`,
+    codeTitle: 'Infix → postfix and postfix evaluation',
+    examples: [
+      {
+        title: 'Evaluate "5 1 2 + 4 * + 3 -" (Wikipedia\'s classic)',
+        html: `${H.table(['token', 'action', 'stack after'], [
+          ['5', 'push', '5'], ['1', 'push', '5 1'], ['2', 'push', '5 1 2'], ['+', '1 + 2 = 3', '5 3'],
+          ['4', 'push', '5 3 4'], ['*', '3 * 4 = 12', '5 12'], ['+', '5 + 12 = 17', '17'], ['3', 'push', '17 3'], ['-', '17 - 3 = 14', '<span class="c-p">14</span>']
+        ])}<p>Infix form: <code>5 + (1 + 2) * 4 - 3</code> = 14. Notice the postfix needed no brackets: the position of <code>+</code> right after <code>1 2</code> already says "do this first".</p>`
+      },
+      {
+        title: 'Operand order matters: "7 2 -" and "7 2 /"',
+        html: `<p>Pop gives <b>b = 2</b> first (top), then <b>a = 7</b>. Compute <code>a - b = 5</code> and <code>a / b = 3</code>. If you write <code>b - a</code> you get <span class="c-r">-5</span> — the single most common bug in RPN code. Java's <code>/</code> truncates toward zero: <code>-7 / 2 = -3</code> (not -4), which matches what LeetCode 150 expects.</p>`
+      },
+      {
+        title: 'Right-associative power: a^b^c',
+        html: `<p><code>2^3^2</code> means <code>2^(3^2) = 2^9 = 512</code>, not <code>(2^3)^2 = 64</code>. In Shunting-Yard, an incoming <code>^</code> does <b>not</b> pop a <code>^</code> of equal precedence from the stack:</p>
+          ${H.table(['char', 'output', 'ops stack'], [['a', 'a', ''], ['^', 'a', '^'], ['b', 'ab', '^'], ['^', 'ab', '^ ^ (no pop: right-assoc)'], ['c', 'abc', '^ ^'], ['end', '<span class="c-p">abc^^</span>', '']])}
+          <p>For a left-associative operator like <code>-</code>: <code>a-b-c</code> → <code>ab-c-</code> = <code>(a-b)-c</code>, because the second <code>-</code> pops the first.</p>`
+      },
+      {
+        title: 'Prefix (Polish) evaluation: "- + 2 3 4"',
+        html: `<p>Scan <b>right to left</b>. Push 4, 3, 2. Then <code>+</code>: pop <b>a = 2</b> (first pop is now the LEFT operand), pop b = 3 → 5. Then <code>-</code>: pop a = 5, pop b = 4 → <b>1</b>. Infix: <code>(2 + 3) - 4 = 1</code>.</p>`,
+        code: `long evalPrefix(String[] t) {
+    Deque<Long> st = new ArrayDeque<>();
+    for (int i = t.length - 1; i >= 0; i--) {
+        String s = t[i];
+        if (s.length() == 1 && "+-*/".indexOf(s.charAt(0)) >= 0) {
+            long a = st.pop(), b = st.pop();     // right-to-left: first pop is the LEFT operand
+            switch (s.charAt(0)) {
+                case '+' -> st.push(a + b);
+                case '-' -> st.push(a - b);
+                case '*' -> st.push(a * b);
+                default -> st.push(a / b);
+            }
+        } else st.push(Long.parseLong(s));
+    }
+    return st.pop();
+}`
+      }
+    ],
+    deepDive: `<p><b>Why postfix exists.</b> Postfix (Reverse Polish Notation, popularised by HP calculators and the Forth/PostScript languages) is what compilers effectively produce: the JVM itself is a <b>stack machine</b>. <code>a + b * c</code> compiles to bytecode like <code>iload a; iload b; iload c; imul; iadd</code> — literally postfix evaluated on the operand stack of the current frame. Python's bytecode and WebAssembly are stack machines too.</p>
+      <p><b>Shunting-Yard correctness.</b> The operator stack is always ordered by increasing "binding strength" from bottom to top (ignoring parentheses, which act as barriers). An incoming operator pops everything that binds at least as tightly (strictly tighter for right-associative ones), so higher-precedence work is emitted first. Each token is pushed and popped at most once → O(N). Dijkstra published it in 1961.</p>
+      <p><b>Production pitfalls.</b> (1) Unary minus: <code>-3 + 4</code> or <code>2 * (-x)</code> — a <code>-</code> at the start or right after <code>(</code> / another operator is unary; real parsers treat it as a separate, higher-precedence operator or push a 0 first. (2) Multi-digit numbers: read the whole number with an inner loop. (3) Errors: mismatched parentheses show up as a <code>(</code> left on the stack at the end or a <code>)</code> with no <code>(</code>. (4) Overflow: use <code>long</code> for intermediate values.</p>
+      <p><b>Two-stack direct evaluation.</b> Instead of producing postfix, you can evaluate infix directly with an <b>operand stack</b> and an <b>operator stack</b>: whenever Shunting-Yard would output an operator, apply it to the top two operands instead. This is how LeetCode 224/227/772 ("Basic Calculator I/II/III") are usually solved; Calculator II (no parentheses) even collapses to a single stack where <code>*</code> and <code>/</code> are applied immediately and <code>-x</code> is pushed as a negative number.</p>
+      <p><b>Beyond:</b> a full parser uses <b>recursive descent</b> or <b>Pratt parsing</b> (precedence climbing), which is Shunting-Yard written with the call stack. Expression trees (AST) are what you get if each operator pops two subtrees instead of two numbers.</p>`,
+    aiEra: `<p><b>What AI changes:</b> nobody hand-writes an expression parser in production any more — you use a library or ask an assistant. But "Basic Calculator" remains a top interview problem precisely because it tests careful state handling (unary minus, multi-digit numbers, parentheses, operand order) that AI-generated code frequently fumbles on edge cases.</p>
+      <p><b>Use AI as a partner:</b> <code>"Give me 15 expressions with unary minus, nested parentheses, spaces and division truncation, plus expected values computed by a reference evaluator"</code>. Then run your code on all of them. Also useful: <code>"Show the JVM bytecode for a + b * c and map each instruction to a postfix token"</code>.</p>
+      <p><b>Where AI goes wrong:</b> swapped operands for <code>-</code> and <code>/</code>; using floating-point division instead of truncation; treating <code>^</code> as left-associative; forgetting unary minus after <code>(</code>; evaluating with <code>eval()</code>/script engines — a security hole if the expression comes from users.</p>
+      <p><b>What you must still own:</b> the precedence/associativity rule for popping, the operand-order rule, and a clear verbal walkthrough with a stack table — interviewers grade the explanation as much as the code.</p>`,
+    viz: [{
+      title: 'Evaluating a postfix expression',
+      input: '3 4 2 * + 5 -',
+      inputLabel: 'Postfix tokens separated by spaces (numbers and + - * /)',
+      gen: function (input) {
+        var s = input === undefined ? '3 4 2 * + 5 -' : String(input);
+        var toks = s.trim().split(/\s+/).filter(function (x) { return x.length; });
+        if (toks.length < 3) throw new Error('Enter at least 3 tokens, e.g. "3 4 2 * + 5 -"');
+        if (toks.length > 16) throw new Error('Please use at most 16 tokens.');
+        toks.forEach(function (t) { if (!/^-?\d+$/.test(t) && '+-*/'.indexOf(t) < 0) throw new Error('Token "' + t + '" is not a whole number or + - * /'); });
+        var st = [], frames = [];
+        frames.push({ narr: 'Read tokens left to right. Numbers wait on the stack; an operator grabs the <b>top two</b>.', parts: [
+          { type: 'array', label: 'tokens', values: toks }, { type: 'stack', label: 'number stack', items: [] }
+        ] });
+        for (var i = 0; i < toks.length; i++) {
+          var t = toks[i], hl = {}, k;
+          for (k = 0; k < i; k++) hl[k] = 'done';
+          hl[i] = 'cur';
+          if (/^-?\d+$/.test(t)) {
+            st.push(Number(t));
+            frames.push({ narr: '<b>' + t + '</b> is a number → <span class="c-g">push</span>.', parts: [
+              { type: 'array', label: 'tokens', values: toks, hl: hl, ptr: one(i, 'i') },
+              { type: 'stack', label: 'number stack', items: st.slice(), hl: one(st.length - 1, 'ok') }
+            ] });
+          } else {
+            if (st.length < 2) throw new Error('Not a valid postfix expression: operator "' + t + '" at position ' + i + ' needs two numbers before it.');
+            var b = st[st.length - 1], a = st[st.length - 2], r;
+            if (t === '/' && b === 0) throw new Error('Division by zero at position ' + i + '.');
+            r = t === '+' ? a + b : t === '-' ? a - b : t === '*' ? a * b : Math.trunc(a / b);
+            frames.push({ narr: 'Operator <b>' + t + '</b>: pop <b>b = ' + b + '</b> (top, the right side) and <b>a = ' + a + '</b> (the left side).', parts: [
+              { type: 'array', label: 'tokens', values: toks, hl: hl, ptr: one(i, 'i') },
+              { type: 'stack', label: 'number stack', items: st.slice(), hl: (function () { var h = {}; h[st.length - 1] = 'bad'; h[st.length - 2] = 'bad'; return h; })() }
+            ] });
+            st.pop(); st.pop(); st.push(r);
+            frames.push({ narr: 'Compute a ' + t + ' b = ' + a + ' ' + t + ' ' + b + ' = <b>' + r + '</b> and push the result back.' + (t === '/' ? ' (integer division truncates toward zero)' : ''), parts: [
+              { type: 'array', label: 'tokens', values: toks, hl: hl, ptr: one(i, 'i') },
+              { type: 'stack', label: 'number stack', items: st.slice(), hl: one(st.length - 1, 'ok') }
+            ] });
+          }
+        }
+        if (st.length !== 1) throw new Error('Not a valid postfix expression: ' + st.length + ' numbers are left over at the end (should be exactly 1).');
+        frames.push({ narr: 'All tokens used and exactly one number is left → the answer is <b>' + st[0] + '</b>.', parts: [
+          { type: 'stack', label: 'number stack', items: st.slice(), hl: { 0: 'sel' } }, { type: 'vars', vals: { answer: st[0] }, hl: { answer: 'sel' } }
+        ] });
+        return frames;
+      }
+    }, {
+      title: 'Shunting-Yard: infix → postfix with an operator stack',
+      input: 'a+b*(c-d)^e^f',
+      inputLabel: 'Infix with single-letter/digit operands and + - * / ^ ( )  (up to 20 chars)',
+      gen: function (input) {
+        var s = (input === undefined || input === null ? 'a+b*(c-d)^e^f' : String(input)).replace(/\s+/g, '');
+        if (!s.length) throw new Error('Type an infix expression such as a+b*(c-d)');
+        if (s.length > 20) throw new Error('Please use at most 20 characters.');
+        if (/[^A-Za-z0-9+\-*\/^()]/.test(s)) throw new Error('Use single letters/digits, + - * / ^ and parentheses only, e.g. a+b*(c-d)');
+        function prec(c) { return c === '+' || c === '-' ? 1 : c === '*' || c === '/' ? 2 : c === '^' ? 3 : -1; }
+        var ch = s.split(''), ops = [], out = [], frames = [];
+        function parts(i, hlOps, note) {
+          var hl = {}, k;
+          for (k = 0; k < i; k++) hl[k] = 'done';
+          if (i < ch.length) hl[i] = 'cur';
+          var p = [
+            { type: 'array', label: 'infix', values: ch, hl: hl, ptr: i < ch.length ? one(i, 'i') : {} },
+            { type: 'stack', label: 'operator stack', items: ops.slice(), hl: hlOps || {} },
+            { type: 'array', label: 'postfix output', values: out.length ? out.slice() : ['—'], hl: note ? one(out.length - 1, 'ok') : {} }
+          ];
+          return p;
+        }
+        frames.push({ narr: 'Operands go straight to the output. Operators wait on the stack until we know nothing stronger is coming. Precedence: <b>^</b> (3, right-assoc) &gt; <b>* /</b> (2) &gt; <b>+ -</b> (1).', parts: parts(0) });
+        for (var i = 0; i < ch.length; i++) {
+          var c = ch[i];
+          if (/[A-Za-z0-9]/.test(c)) {
+            out.push(c);
+            frames.push({ narr: '<b>' + c + '</b> is an operand → write it to the output immediately.', parts: parts(i, {}, true) });
+          } else if (c === '(') {
+            ops.push(c);
+            frames.push({ narr: '<b>(</b> → <span class="c-g">push</span>. It acts as a wall: nothing below it can be popped until the matching <b>)</b>.', parts: parts(i, one(ops.length - 1, 'ok')) });
+          } else if (c === ')') {
+            var popped = [];
+            while (ops.length && ops[ops.length - 1] !== '(') { popped.push(ops[ops.length - 1]); out.push(ops.pop()); }
+            if (!ops.length) throw new Error('Mismatched parentheses: a ) at position ' + i + ' has no matching (.');
+            var hlB = one(ops.length - 1, 'bad');
+            frames.push({ narr: '<b>)</b> → <span class="c-r">pop</span> operators to the output until the matching <b>(</b>' + (popped.length ? ' (moved: ' + popped.join(' ') + ')' : '') + ', then throw the ( away.', parts: parts(i, hlB, popped.length > 0) });
+            ops.pop();
+          } else {
+            var moved = [];
+            while (ops.length && ops[ops.length - 1] !== '(' && (prec(ops[ops.length - 1]) > prec(c) || (prec(ops[ops.length - 1]) === prec(c) && c !== '^'))) {
+              moved.push(ops[ops.length - 1]); out.push(ops.pop());
+            }
+            if (moved.length) {
+              frames.push({ narr: 'Operator <b>' + c + '</b> arrives. On top: ' + moved.join(', ') + ' bind(s) at least as tightly' + (c === '^' ? '' : ' (equal precedence + left-assoc counts)') + ' → <span class="c-r">pop</span> them to the output first.', parts: parts(i, {}, true) });
+            }
+            ops.push(c);
+            frames.push({ narr: '<span class="c-g">Push ' + c + '</span>. ' + (c === '^' && ops.length > 1 && ops[ops.length - 2] === '^' ? 'Note: ^ is <b>right-associative</b>, so it did <b>not</b> pop the ^ below it.' : 'It must wait: the next operator might bind more tightly.'), parts: parts(i, one(ops.length - 1, 'ok')) });
+          }
+        }
+        if (ops.indexOf('(') >= 0) throw new Error('Mismatched parentheses: a ( was never closed.');
+        if (ops.length) {
+          var hlAll = {};
+          for (var k = 0; k < ops.length; k++) hlAll[k] = 'bad';
+          frames.push({ narr: 'End of input → <span class="c-r">pop</span> every remaining operator (top first) to the output.', parts: parts(ch.length, hlAll) });
+          while (ops.length) out.push(ops.pop());
+        }
+        frames.push({ narr: 'Postfix = <b>' + out.join(' ') + '</b>. Evaluate it with the number stack from the previous visualizer — no brackets or precedence rules needed any more.', parts: [
+          { type: 'array', label: 'infix', values: ch },
+          { type: 'array', label: 'postfix output', values: out.slice(), hl: (function () { var h = {}; for (var q = 0; q < out.length; q++) h[q] = 'sel'; return h; })() }
+        ] });
+        return frames;
+      }
+    }],
+    problems: [{
+      title: 'Evaluate Reverse Polish Notation',
+      level: 'Medium',
+      tags: ['stack', 'math', 'expression'],
+      companies: ['Amazon', 'LinkedIn', 'Google'],
+      statement: `<p>You are given an array of string <code>tokens</code> that represents an arithmetic expression in <b>Reverse Polish Notation</b> (postfix). Valid operators are <code>+ - * /</code>; each operand is an integer (possibly negative, like <code>"-11"</code>). Division truncates toward zero. Return the value of the expression. The input is always valid and there is no division by zero.</p>`,
+      constraints: `1 ≤ tokens.length ≤ 10<sup>4</sup>, operands in [-200, 200], every intermediate result fits in a 32-bit int`,
+      example: `<p>tokens = <code>["4","13","5","/","+"]</code></p>
+        ${H.table(['token', 'stack after'], [['4', '4'], ['13', '4 13'], ['5', '4 13 5'], ['/', '4 ' + H.c('y', '2') + ' (13/5 truncates to 2)'], ['+', H.c('g', '6')]])}
+        <p>Output: <b>6</b>, i.e. <code>4 + (13 / 5)</code>.</p>`,
+      brute: {
+        why: `<p>Repeatedly scan the list for the first operator, replace "a b op" by its result, and rebuild the list. Each reduction is O(N) (find + rebuild), and there are up to N/2 operators → <b>O(N<sup>2</sup>)</b>. The waste: after each reduction we start scanning from the beginning again, although everything to the left of the operator was already "waiting" in the right order — exactly what a stack remembers.</p>`,
+        code: `
+int evalRPNBrute(String[] tokens) {
+    List<String> list = new ArrayList<>(Arrays.asList(tokens));
+    while (list.size() > 1) {
+        for (int i = 2; i < list.size(); i++) {
+            String op = list.get(i);
+            if (op.equals("+") || op.equals("-") || op.equals("*") || op.equals("/")) {
+                int a = Integer.parseInt(list.get(i - 2)), b = Integer.parseInt(list.get(i - 1));
+                int r = op.equals("+") ? a + b : op.equals("-") ? a - b : op.equals("*") ? a * b : a / b;
+                list.subList(i - 2, i + 1).clear();       // remove "a b op" (O(N) shift)
+                list.add(i - 2, String.valueOf(r));       // put the result back
+                break;                                    // rescan from the start
+            }
+        }
+    }
+    return Integer.parseInt(list.get(0));
+}`
+      },
+      mcq: {
+        q: 'The stack (bottom→top) is <code>10 3</code> and the next token is <code>"-"</code>. What is pushed?',
+        options: ['-7', '7', '13', '30'],
+        answer: 1,
+        explain: 'First pop is the RIGHT operand b = 3, second pop is the LEFT operand a = 10. Result a - b = 10 - 3 = 7.'
+      },
+      hints: [
+        `<p>Aha: in postfix, an operator always applies to the <b>two most recent unused values</b>. "Most recent" → a stack.</p>`,
+        `<p>Use <code>Deque&lt;Integer&gt;</code>. Number → push. Operator → <code>b = pop()</code>, <code>a = pop()</code>, push <code>a op b</code>. The answer is the single value left.</p>`,
+        `<p>Traps: <code>"-11"</code> is a number, not an operator — check for operators by exact string match (or length 1), not by the first character; operand order for - and /; Java <code>/</code> already truncates toward zero. Recipe: for t in tokens: if t is one of + - * /: b=pop, a=pop, push(apply); else push(parseInt(t)). return pop().</p>`
+      ],
+      solution: {
+        approach: `<p>Single left-to-right scan with a stack of numbers; each operator consumes the top two and pushes its result.</p>`,
+        code: `
+import java.util.*;
+
+class Solution {
+    public int evalRPN(String[] tokens) {
+        Deque<Integer> st = new ArrayDeque<>();
+        for (String t : tokens) {
+            switch (t) {
+                case "+" -> st.push(st.pop() + st.pop());          // order does not matter
+                case "*" -> st.push(st.pop() * st.pop());
+                case "-" -> { int b = st.pop(), a = st.pop(); st.push(a - b); }   // order matters!
+                case "/" -> { int b = st.pop(), a = st.pop(); st.push(a / b); }   // truncates toward 0
+                default -> st.push(Integer.parseInt(t));          // handles "-11" too
+            }
+        }
+        return st.pop();
+    }
+
+    public static void main(String[] args) {
+        Solution s = new Solution();
+        System.out.println(s.evalRPN(new String[]{"2", "1", "+", "3", "*"}));    // 9
+        System.out.println(s.evalRPN(new String[]{"4", "13", "5", "/", "+"}));   // 6
+        System.out.println(s.evalRPN(new String[]{"10", "6", "9", "3", "+", "-11", "*", "/", "*", "17", "+", "5", "+"})); // 22
+    }
+}`,
+        alt: [{ lang: 'python', code: `def eval_rpn(tokens):
+    st = []
+    for t in tokens:
+        if t in ('+', '-', '*', '/'):
+            b, a = st.pop(), st.pop()      # first pop is the RIGHT operand
+            if t == '+': st.append(a + b)
+            elif t == '-': st.append(a - b)
+            elif t == '*': st.append(a * b)
+            else: st.append(int(a / b))    # int() truncates toward zero (// would floor!)
+        else:
+            st.append(int(t))
+    return st.pop()
+
+print(eval_rpn(["4", "13", "5", "/", "+"]))  # 6`, run: true }],
+        dry: {
+          head: ['token', 'action', 'stack after (bottom→top)'],
+          rows: [
+            ['2', 'push', '2'], ['1', 'push', '2 1'], ['+', 'b=1, a=2 → 3', '3'],
+            ['3', 'push', '3 3'], ['*', 'b=3, a=3 → 9', '<span class="c-p">9</span>']
+          ]
+        },
+        complexity: `<p><b>Time O(N)</b>: each token is processed once with O(1) stack work. <b>Space O(N)</b>: up to about N/2 numbers can wait on the stack (e.g. many operands before the operators).</p>`,
+        followUps: ['Convert an infix string to RPN first (Shunting-Yard), then evaluate.', 'Support unary minus and the ^ operator.', 'Build an expression tree instead of a number.']
+      }
+    }]
+  });
+
+  // =====================================================================
+  // TOPIC 5 — Monotonic Stack: Next Greater Element
+  // =====================================================================
+  topics.push({
+    title: 'Monotonic Stack — Next Greater Element',
+    analogy: `<p>People stand in a line, all facing <b>right</b>. Each person wants to know: <b>"who is the first person to my right who is taller than me?"</b></p>
+      <p>Walk along the line. Short people who are still waiting for an answer raise their hand. When a tall person walks past, <b>every waiting person shorter than them</b> gets their answer at once ("it's you!") and lowers their hand. The people still waiting always form a <b>tall → short</b> staircase, because anyone shorter behind a newcomer would already have been answered by them.</p>`,
+    explain: `<p>Brute force asks every element to scan right: O(N<sup>2</sup>). The monotonic stack keeps only the <b>elements still waiting for an answer</b>. Their values are always <b>decreasing</b> from bottom to top — that's why it's called "monotonic".</p>
+      ${H.arr([4, 5, 2, 10, 8], { label: 'a', hl: { 3: 'y' } })}
+      ${H.arr([5, 10, 10, -1, -1], { label: 'NGE', hl: { 1: 'g', 2: 'g' } })}
+      <p>When ${H.c('y', '10')} arrives, the waiting stack holds 5 and 2 (decreasing). 10 beats both → ${H.c('g', 'both get answer 10')} and are popped. Then 10 waits itself.</p>
+      <p><b>Why O(N)?</b> Each index is <b>pushed once</b> and <b>popped at most once</b>. The inner <code>while</code> loop may look scary, but over the whole run it pops at most N times in total → 2N operations.</p>
+      <h4>The four siblings (memorize this table)</h4>
+      ${H.table(['want', 'scan', 'pop while', 'answer comes from', 'stack shape'], [
+        ['Next Greater (to the right)', 'left → right', '<code>a[top] &lt; x</code>', 'popped index gets <code>x</code>', 'decreasing'],
+        ['Next Smaller (to the right)', 'left → right', '<code>a[top] &gt; x</code>', 'popped index gets <code>x</code>', 'increasing'],
+        ['Previous Greater (to the left)', 'left → right', '<code>a[top] &lt;= x</code>', 'top after popping', 'decreasing'],
+        ['Previous Smaller (to the left)', 'left → right', '<code>a[top] &gt;= x</code>', 'top after popping', 'increasing']
+      ])}
+      <p>Store <b>indices</b>, not values: from an index you can get the value <i>and</i> the distance (needed for "how many days until...").</p>`,
+    clues: [
+      '"<b>Next greater</b> / next smaller element", "first element to the right that is bigger".',
+      '"<b>Nearest to the left</b> that is greater/smaller", "previous greater".',
+      '"How many days until a warmer temperature" → distance to next greater (store indices).',
+      '"For each element, how far can it extend" / "span" / "visible people" → monotonic stack.',
+      '<code>N ≤ 10<sup>5</sup></code> and the naive answer is "for each i scan right" (O(N<sup>2</sup>)) → monotonic stack makes it O(N).',
+      '"Circular array" next greater → loop <code>i</code> from 0 to 2N-1 and use <code>i % n</code>.'
+    ],
+    code: [`
+import java.util.*;
+
+class MonotonicFamily {
+    // Next Greater to the right (value), -1 if none. Stack: indices, values decreasing.
+    static int[] nextGreater(int[] a) {
+        int n = a.length; int[] res = new int[n]; Arrays.fill(res, -1);
+        Deque<Integer> st = new ArrayDeque<>();
+        for (int i = 0; i < n; i++) {
+            while (!st.isEmpty() && a[st.peek()] < a[i]) res[st.pop()] = a[i];
+            st.push(i);
+        }
+        return res;
+    }
+
+    // Previous Smaller to the left (index), -1 if none. Stack: indices, values increasing.
+    static int[] prevSmallerIndex(int[] a) {
+        int n = a.length; int[] res = new int[n];
+        Deque<Integer> st = new ArrayDeque<>();
+        for (int i = 0; i < n; i++) {
+            while (!st.isEmpty() && a[st.peek()] >= a[i]) st.pop();   // not strictly smaller -> useless
+            res[i] = st.isEmpty() ? -1 : st.peek();
+            st.push(i);
+        }
+        return res;
+    }
+
+    // Next Greater in a CIRCULAR array: walk the array twice, push only on the first lap.
+    static int[] nextGreaterCircular(int[] a) {
+        int n = a.length; int[] res = new int[n]; Arrays.fill(res, -1);
+        Deque<Integer> st = new ArrayDeque<>();
+        for (int i = 0; i < 2 * n; i++) {
+            int x = a[i % n];
+            while (!st.isEmpty() && a[st.peek()] < x) res[st.pop()] = x;
+            if (i < n) st.push(i);
+        }
+        return res;
+    }
+
+    public static void main(String[] args) {
+        int[] a = {4, 5, 2, 10, 8};
+        System.out.println(Arrays.toString(nextGreater(a)));          // [5, 10, 10, -1, -1]
+        System.out.println(Arrays.toString(prevSmallerIndex(a)));     // [-1, 0, -1, 2, 2]
+        System.out.println(Arrays.toString(nextGreaterCircular(new int[]{1, 2, 1}))); // [2, -1, 2]
+    }
+}`, { lang: 'python', run: true, title: 'Daily Temperatures in Python (runnable)', code: `def daily_temperatures(t):
+    ans = [0] * len(t)
+    st = []                                  # indices of days still waiting, temps decreasing
+    for i, x in enumerate(t):
+        while st and t[st[-1]] < x:          # today is warmer than those waiting days
+            j = st.pop()
+            ans[j] = i - j                   # distance, not value -> that's why we store indices
+        st.append(i)
+    return ans
+
+print(daily_temperatures([73, 74, 75, 71, 69, 72, 76, 73]))  # [1, 1, 4, 2, 1, 1, 0, 0]` }],
+    codeTitle: ['The monotonic family in one class (Java)'],
+    examples: [
+      {
+        title: 'Daily Temperatures: answer is a DISTANCE',
+        html: `${H.arr([73, 74, 75, 71, 69, 72, 76, 73], { label: 'temps', hl: { 2: 'y', 6: 'g' } })}
+          ${H.arr([1, 1, 4, 2, 1, 1, 0, 0], { label: 'wait days', hl: { 2: 'y' } })}
+          <p>Day 2 (75°) waits while 71, 69 and 72 arrive (none are warmer), then day 6 (${H.c('g', '76°')}) pops it: answer = 6 - 2 = <b>4</b>. Because the answer is <code>i - j</code>, we must store <b>indices</b> on the stack.</p>`
+      },
+      {
+        title: 'Equal values: strict vs non-strict pop',
+        html: `<p>Array <code>[2, 2, 3]</code>. With <code>while a[top] &lt; x</code> (strict), the second 2 does <b>not</b> pop the first → both 2s get answer 3. With <code>≤</code>, the second 2 would pop the first and give it answer <span class="c-r">2</span> — wrong for "strictly greater". Rule of thumb: the comparison in the <code>while</code> is the <b>opposite</b> of the answer condition. "Next strictly greater" → pop while <code>&lt;</code>. "Next greater-or-equal" → pop while <code>≤</code>.</p>`
+      },
+      {
+        title: 'Circular array: [1, 2, 1]',
+        html: `${H.table(['i', 'i % n', 'value', 'action', 'res'], [
+          ['0', '0', '1', 'push 0', '[-1,-1,-1]'], ['1', '1', '2', 'pop 0 → res[0]=2, push 1', '[2,-1,-1]'], ['2', '2', '1', 'push 2', '[2,-1,-1]'],
+          ['3', '0', '1', '1 is not &gt; 1, no push (2nd lap)', '[2,-1,-1]'], ['4', '1', '2', 'pop 2 → res[2]=2', '<span class="c-g">[2,-1,2]</span>'], ['5', '2', '1', 'nothing', '[2,-1,2]']
+        ])}<p>The last element found its answer by "wrapping around" to the start. The maximum (2) stays -1.</p>`
+      },
+      {
+        title: 'Next Greater Element I (two arrays + HashMap)',
+        html: `<p><code>nums1 = [4, 1, 2]</code> is a subset of <code>nums2 = [1, 3, 4, 2]</code>. Run the monotonic stack once on <code>nums2</code> and store <code>value → next greater</code> in a <code>HashMap</code>: {1→3, 3→4, 4→-1, 2→-1}. Then each query is an O(1) lookup → answers <code>[-1, 3, -1]</code>. Total O(N + M) instead of O(N·M).</p>`
+      }
+    ],
+    deepDive: `<p><b>The amortized argument, precisely.</b> The inner <code>while</code> can pop many items in one iteration, so a single step can be O(N). But define the potential Φ = stack size. Each iteration does 1 push (+1) and k pops (−k) with actual cost 1 + k, so amortized cost = (1 + k) + (1 − k) = 2. Over N steps the total is ≤ 2N → <b>O(N)</b>. This is the same "each element enters once, leaves once" argument used for the two-pointer and deque techniques.</p>
+      <p><b>Why the stack is monotonic.</b> Invariant: the stack holds exactly the indices that have not yet found their next greater element. If index j sits above index i on the stack (j &gt; i) and a[j] &gt; a[i], then j would have popped i when it arrived. So values must be non-increasing from bottom to top. The invariant also gives correctness: when x pops i, x is the <b>first</b> greater element after i, because every element between i and x was ≤ a[i] (otherwise it would have popped i earlier).</p>
+      <p><b>Both answers in one pass.</b> When x pops i, x is the next greater of i; at the same moment, after popping, the new top is the previous greater-or-equal of x. Many solutions (sum of subarray minimums, largest rectangle) collect left and right boundaries in a single scan this way.</p>
+      <p><b>Right-to-left variant.</b> Scanning from the right, keep candidates for "next greater": pop everything ≤ a[i] (they are hidden behind a[i]), then the top is the answer for i, then push i. Same O(N), sometimes easier to reason about because the answer is read immediately.</p>
+      <p><b>Performance:</b> with N = 10<sup>6</sup>, using an <code>int[]</code> as the stack instead of <code>ArrayDeque&lt;Integer&gt;</code> avoids a million boxed objects and is typically 3–5× faster in Java.</p>`,
+    aiEra: `<p><b>What AI changes:</b> assistants recognise "next greater element" instantly and produce the monotonic stack. The interview signal has moved to <b>pattern transfer</b>: can you see that "days until warmer", "car fleets", "visible people in a queue", "remove K digits" and "132 pattern" are all the same tool in disguise, and pick the right pop condition and stack order?</p>
+      <p><b>Use AI as a partner:</b> <code>"Give me 5 problems that secretly reduce to previous-smaller-element, without naming the technique"</code> — then practise spotting it. Or <code>"Explain the potential-function proof that this loop is O(N)"</code> to prepare for the "isn't that O(N²)?" follow-up.</p>
+      <p><b>Where AI goes wrong:</b> mixing up strict and non-strict comparisons (wrong answers on duplicates), storing values when distances are needed, forgetting the second lap for circular arrays, or claiming O(N²) because of the nested loop. Test duplicates and strictly increasing/decreasing arrays first.</p>
+      <p><b>What you must still own:</b> the four-sibling table (next/previous × greater/smaller), the invariant, and the amortized O(N) explanation in your own words.</p>`,
+    viz: {
+      title: 'Next Greater Element with a monotonic stack',
+      input: '4 5 2 10 8 3 9',
+      inputLabel: 'Array (space separated, up to 12)',
+      gen: function (input) {
+        var a = parseNums(input, '4 5 2 10 8 3 9', 12, 2);
+        var n = a.length, ans = a.map(function () { return '?'; }), st = [], frames = [];
+        function stItems() { return st.map(function (k) { return 'i' + k + ' (' + a[k] + ')'; }); }
+        frames.push({ narr: 'Stack = indices still <b>waiting</b> for a taller number to their right. Answers start as "?".', parts: [
+          { type: 'array', label: 'a', values: a }, { type: 'stack', label: 'waiting indices', items: [] }, { type: 'array', label: 'NGE answer', values: ans.slice() }
+        ] });
+        for (var i = 0; i < n; i++) {
+          var popped = [];
+          if (st.length && a[st[st.length - 1]] < a[i]) {
+            var hlS = {}, j = st.length - 1;
+            while (j >= 0 && a[st[j]] < a[i]) { hlS[j] = 'bad'; popped.push(st[j]); j--; }
+            frames.push({ narr: '<b>' + a[i] + '</b> arrives. It is taller than the waiting ' + popped.map(function (k) { return a[k]; }).join(', ') + ' → they <span class="c-r">pop</span> and their next greater is ' + a[i] + '.', parts: [
+              { type: 'array', label: 'a', values: a, hl: one(i, 'cur'), ptr: one(i, 'i') },
+              { type: 'stack', label: 'waiting indices', items: stItems(), hl: hlS },
+              { type: 'array', label: 'NGE answer', values: ans.slice() }
+            ] });
+            var hlAns = {};
+            popped.forEach(function (k) { ans[k] = a[i]; hlAns[k] = 'ok'; });
+            st.length = j + 1;
+            frames.push({ narr: 'Answers filled: ' + popped.map(function (k) { return 'NGE[' + k + '] = ' + a[i]; }).join(', ') + '. Stopped because ' + (st.length ? 'top ' + a[st[st.length - 1]] + ' is not smaller than ' + a[i] : 'the stack is empty') + '.', parts: [
+              { type: 'array', label: 'a', values: a, hl: one(i, 'cur'), ptr: one(i, 'i') },
+              { type: 'stack', label: 'waiting indices', items: stItems() },
+              { type: 'array', label: 'NGE answer', values: ans.slice(), hl: hlAns }
+            ] });
+          }
+          st.push(i);
+          frames.push({ narr: (popped.length ? '' : '<b>' + a[i] + '</b> is not taller than the top, nobody gets answered. ') + '<span class="c-g">Push index ' + i + '</span>: now ' + a[i] + ' waits for its own taller number. Stack values stay decreasing.', parts: [
+            { type: 'array', label: 'a', values: a, hl: one(i, 'cur'), ptr: one(i, 'i') },
+            { type: 'stack', label: 'waiting indices', items: stItems(), hl: one(st.length - 1, 'ok') },
+            { type: 'array', label: 'NGE answer', values: ans.slice() }
+          ] });
+        }
+        var hlEnd = {};
+        st.forEach(function (k) { ans[k] = -1; hlEnd[k] = 'sel'; });
+        frames.push({ narr: 'End of array. Whoever is still waiting has <b>no taller number</b> to the right → answer <b>-1</b>. Each index was pushed once and popped at most once → O(N).', parts: [
+          { type: 'array', label: 'a', values: a },
+          { type: 'stack', label: 'never answered', items: stItems() },
+          { type: 'array', label: 'NGE answer', values: ans.slice(), hl: hlEnd }
+        ] });
+        return frames;
+      }
+    },
+    after: `<p><b>Circular version</b> (LeetCode 503): the array wraps around. Loop <code>i</code> from <code>0</code> to <code>2n-1</code>, use <code>a[i % n]</code>, and only push when <code>i &lt; n</code>. The second lap lets the elements at the end find a greater element at the start.</p>`,
+    problems: [{
+      title: 'Next Greater Element',
+      level: 'Medium',
+      tags: ['monotonic stack', 'array'],
+      statement: `<p>Given an integer array <code>a</code> of size <code>N</code>, for every element find the <b>first element to its right that is strictly greater</b>. If none exists, the answer is <code>-1</code>. Return the answers as an array.</p>`,
+      constraints: `1 ≤ N ≤ 10<sup>5</sup>, -10<sup>9</sup> ≤ a[i] ≤ 10<sup>9</sup>`,
+      example: `${H.arr([4, 5, 2, 10, 8], { label: 'a' })}${H.arr([5, 10, 10, -1, -1], { label: 'out', hl: { 0: 'g', 1: 'g', 2: 'g', 3: 'r', 4: 'r' } })}
+        <p>4 → ${H.c('g', '5')} (right next to it). 5 → skip 2, ${H.c('g', '10')}. 2 → ${H.c('g', '10')}. 10 and 8 → nothing bigger on their right → ${H.c('r', '-1')}.</p>`,
+      brute: {
+        why: `<p>For each <code>i</code>, walk right until a bigger number appears. For a decreasing array like <code>9 8 7 ... 1</code> every walk goes to the end → N<sup>2</sup>/2 ≈ 5·10<sup>9</sup> steps for N = 10<sup>5</sup>. The waste: the same small numbers are re-scanned by every element to their left.</p>`,
+        code: `
+int[] nextGreaterBrute(int[] a) {
+    int n = a.length;
+    int[] ans = new int[n];
+    for (int i = 0; i < n; i++) {
+        ans[i] = -1;
+        for (int j = i + 1; j < n; j++) {
+            if (a[j] > a[i]) { ans[i] = a[j]; break; }   // first bigger one to the right
+        }
+    }
+    return ans;
+}`
+      },
+      mcq: {
+        q: 'The waiting stack (values, bottom→top) is <code>9, 6, 4</code>. Next number is <code>7</code>. What happens?',
+        options: ['Only 4 is popped, answer 7; then push 7 → <code>9, 6, 7</code>', '4 and 6 are popped with answer 7; then push 7 → <code>9, 7</code>', 'All three are popped', 'Nothing is popped because 9 &gt; 7'],
+        answer: 1,
+        explain: 'Pop while the top is smaller than 7: 4 &lt; 7 pop, 6 &lt; 7 pop, 9 &gt; 7 stop. Push 7. The stack stays decreasing: 9, 7.'
+      },
+      hints: [
+        `<p>Aha: if a number <code>x</code> arrives and is bigger than some earlier waiting numbers, <code>x</code> is the answer for <b>all</b> of them at once — they are finished and can leave. Whoever is still waiting must be at least as big as everything that came after them, so the waiting numbers always form a <b>decreasing</b> sequence.</p>`,
+        `<p>Use <code>Deque&lt;Integer&gt;</code> of <b>indices</b>. For each <code>i</code>: while the stack is not empty and <code>a[st.peek()] &lt; a[i]</code> → <code>ans[st.pop()] = a[i]</code>. Then <code>st.push(i)</code>.</p>`,
+        `<p>Traps: fill <code>ans</code> with <code>-1</code> first (leftovers never get popped); "strictly greater" means use <code>&lt;</code> in the while, so equal values keep waiting; store indices, not values, so you know <i>where</i> to write. Recipe: ans = all -1; for i in 0..n-1: pop smaller tops and give them a[i]; push i.</p>`
+      ],
+      solution: {
+        approach: `<p>Left-to-right scan with a decreasing stack of indices still waiting for an answer.</p>`,
+        code: `
+import java.util.*;
+
+class Solution {
+    public int[] nextGreater(int[] a) {
+        int n = a.length;
+        int[] ans = new int[n];
+        Arrays.fill(ans, -1);                         // default: no greater element
+        Deque<Integer> st = new ArrayDeque<>();       // indices waiting, values decreasing
+        for (int i = 0; i < n; i++) {
+            // a[i] answers every waiting element that is smaller than it
+            while (!st.isEmpty() && a[st.peek()] < a[i]) {
+                ans[st.pop()] = a[i];
+            }
+            st.push(i);                               // now a[i] waits for its own answer
+        }
+        return ans;                                   // indices left in the stack keep -1
+    }
+
+    public static void main(String[] args) {
+        System.out.println(Arrays.toString(new Solution().nextGreater(new int[]{4, 5, 2, 10, 8})));
+        // [5, 10, 10, -1, -1]
+    }
+}`,
+        dry: {
+          head: ['i', 'a[i]', 'popped (gets answer a[i])', 'stack after (indices: values)', 'ans'],
+          rows: [
+            ['0', '4', '—', '0:4', '[-1,-1,-1,-1,-1]'],
+            ['1', '5', '<span class="c-r">0:4</span> → ans[0]=5', '1:5', '[<span class="c-g">5</span>,-1,-1,-1,-1]'],
+            ['2', '2', '— (2 &lt; 5)', '1:5, 2:2', '[5,-1,-1,-1,-1]'],
+            ['3', '10', '<span class="c-r">2:2, 1:5</span> → ans[2]=10, ans[1]=10', '3:10', '[5,<span class="c-g">10</span>,<span class="c-g">10</span>,-1,-1]'],
+            ['4', '8', '— (8 &lt; 10)', '3:10, 4:8', '[5,10,10,-1,-1]'],
+            ['end', '—', 'indices 3, 4 stay → -1', '3:10, 4:8', '<span class="c-p">[5,10,10,-1,-1]</span>']
+          ]
+        },
+        complexity: `<p><b>Time O(N)</b>: every index is pushed once and popped at most once, so the inner while runs at most N times <i>in total</i> (≈ 2N operations). <b>Space O(N)</b>: the stack (e.g. a fully decreasing array keeps everyone waiting) plus the answer array.</p>`
+      }
+    }]
+  });
+
+  // =====================================================================
+  // TOPIC 6 — Stock Span (previous greater element)
+  // =====================================================================
+  topics.push({
+    title: 'Monotonic Stack — Stock Span (previous greater)',
+    analogy: `<p>You are standing in a line facing <b>left</b> (towards the people who came before you). You count how many people in a row, starting with yourself, are <b>not taller than you</b> — you stop counting at the first person who is <b>taller</b>. That count is your "span".</p>
+      <p>A stock trader asks the same thing: "for how many days in a row, up to today, has the price been ≤ today's price?"</p>`,
+    explain: `<p>Span of day <code>i</code> = distance back to the <b>previous strictly greater</b> price: <code>span[i] = i - prevGreaterIndex</code> (use <code>-1</code> when there is none, so span = <code>i + 1</code>).</p>
+      ${H.arr([100, 80, 60, 70, 60, 75, 85], { label: 'price', hl: { 5: 'y', 1: 'p', 2: 'b', 3: 'b', 4: 'b' } })}
+      ${H.arr([1, 1, 1, 2, 1, 4, 6], { label: 'span', hl: { 5: 'y' } })}
+      <p>Day 5 (price ${H.c('y', '75')}): looking left, ${H.c('b', '60, 70, 60')} are all ≤ 75, then ${H.c('p', '80')} is taller → span = 5 - 1 = <b>4</b> (days 2, 3, 4, 5).</p>
+      <p>Same monotonic-stack idea, but this time the answer is the <b>top that survives</b> after popping: pop every index whose price is <code>≤ price[i]</code> (they are hidden behind today's taller price forever), then the top is the previous greater. Stack values stay <b>strictly decreasing</b>.</p>
+      ${H.table(['i', 'price', 'popped (≤ price)', 'previous greater', 'span'], [
+        ['0', '100', '—', 'none (-1)', '0-(-1) = 1'], ['1', '80', '—', '0 (100)', '1'], ['2', '60', '—', '1 (80)', '1'],
+        ['3', '70', '60', '1 (80)', '2'], ['4', '60', '—', '3 (70)', '1'], ['5', '75', '60, 70', '1 (80)', '<span class="c-y">4</span>'], ['6', '85', '75, 80', '0 (100)', '6']
+      ])}`,
+    clues: [
+      '"How many consecutive days before today (including today) the price was ≤ today\'s price" → stock span.',
+      '"<b>Nearest to the left</b> that is greater" / "previous greater element" → pop smaller-or-equal, read the top.',
+      '"Online" / "called one day at a time" (StockSpanner) → stack of <code>(price, span)</code> pairs; a big span absorbs the small ones.',
+      '"Number of visible people", "how far back can I see" → same left-looking stack.'
+    ],
+    examples: [
+      {
+        title: 'Strictly increasing prices: spans 1, 2, 3, 4',
+        html: `${H.arr([10, 20, 30, 40], { label: 'price' })}${H.arr([1, 2, 3, 4], { label: 'span', hl: { 3: 'g' } })}
+          <p>Every new day is taller than everything before it, so it <span class="c-r">pops the whole stack</span> and finds no previous greater (index -1): span = i + 1. The stack never holds more than one element — yet the total work is still 2N.</p>`
+      },
+      {
+        title: 'Strictly decreasing prices: every span is 1',
+        html: `${H.arr([90, 70, 50, 30], { label: 'price' })}${H.arr([1, 1, 1, 1], { label: 'span' })}
+          <p>Nobody is ever popped: each previous day is taller, so the previous greater is just <code>i - 1</code>. The stack grows to N — this is the worst case for <b>space</b>, O(N).</p>`
+      },
+      {
+        title: 'Online StockSpanner: absorbing spans',
+        html: `<p>Calls: next(100), next(80), next(60), next(70), next(60), next(75), next(85).</p>
+          ${H.table(['price', 'popped pairs (price, span)', 'span = 1 + popped spans', 'stack after'], [
+            ['100', '—', '1', '(100,1)'], ['80', '—', '1', '(100,1) (80,1)'], ['60', '—', '1', '… (60,1)'],
+            ['70', '(60,1)', '1 + 1 = 2', '(100,1) (80,1) (70,2)'], ['60', '—', '1', '… (70,2) (60,1)'],
+            ['75', '(60,1) (70,2)', '1 + 1 + 2 = <b>4</b>', '(100,1) (80,1) (75,4)'],
+            ['85', '(75,4) (80,1)', '1 + 4 + 1 = <b>6</b>', '(100,1) (85,6)']
+          ])}<p>No indices needed: each popped pair carries the number of days it had already "swallowed".</p>`
+      },
+      {
+        title: 'Same tool, new story: "visible people to the left"',
+        html: `<p>"For each building, how many consecutive buildings to its left are not taller?" is span − 1. "Index of the nearest taller building on the left" is the previous-greater index itself. When a problem says <i>look back until something bigger blocks you</i>, reach for this stack.</p>`
+      }
+    ],
+    deepDive: `<p><b>Previous greater = what survives.</b> In Next Greater (Topic 5), the answer was given to the <b>popped</b> elements. In Stock Span, the answer is the <b>survivor</b> on top after popping. Both views happen in the same loop; recognising which one the question needs is the whole skill.</p>
+      <p><b>Why ≤ (pop equal prices).</b> The span counts days with price <b>≤</b> today, so an equal earlier price is inside the span and cannot be the blocker. Popping equals also keeps the stack <b>strictly</b> decreasing, which bounds the stack size by the number of distinct "record highs from the right".</p>
+      <p><b>Online amortized cost.</b> For the <code>StockSpanner</code> class, each call is amortized O(1): every price is pushed once and popped at most once over the lifetime of the object. A single call can still take O(N) (e.g. a new all-time high after N decreasing prices) — mention this if asked about latency guarantees (p99 vs average).</p>
+      <p><b>Memory in streaming systems.</b> The stack only keeps prices that are still potential blockers (a strictly decreasing staircase). For real price streams that rise over time, it stays small. For adversarial decreasing streams it grows linearly; a production system would cap history (e.g. only the last 365 days) and then you need a deque that can also drop old items from the bottom — exactly the monotonic deque of Topic 9.</p>
+      <p><b>Overflow:</b> spans are at most N ≤ 10<sup>5</sup>, so <code>int</code> is safe; prices are only compared, never added.</p>`,
+    aiEra: `<p><b>What AI changes:</b> "stock span" is a textbook classic; AI tools solve it instantly. Interviewers therefore like the <b>online</b> form (no array, one call at a time) and ask for the amortized vs worst-case latency discussion — reasoning that has to come from you.</p>
+      <p><b>Use AI as a partner:</b> ask it to <code>"generate a stream of 10^5 prices that makes a single next() call as slow as possible"</code> and measure; or <code>"rewrite my StockSpanner with a fixed int[] stack and compare speed"</code>.</p>
+      <p><b>Where AI goes wrong:</b> using <code>&lt;</code> instead of <code>≤</code> (equal prices break the span), returning <code>1</code> instead of <code>i + 1</code> when the stack is empty, or storing only prices in the online version and losing the absorbed counts.</p>
+      <p><b>What you must still own:</b> recognising "look left until blocked by something taller" in disguised wording and choosing between storing indices (offline array) and (price, span) pairs (online stream).</p>`,
+    viz: {
+      title: 'Stock span: popping smaller prices',
+      input: '100 80 60 70 60 75 85',
+      inputLabel: 'Prices (space separated, up to 12)',
+      gen: function (input) {
+        var p = parseNums(input, '100 80 60 70 60 75 85', 12, 2);
+        var n = p.length, span = p.map(function () { return '?'; }), st = [], frames = [];
+        function items() { return st.map(function (k) { return 'day ' + k + ' (' + p[k] + ')'; }); }
+        frames.push({ narr: 'Stack = earlier days that are still "visible" (taller than everything after them). Their prices are decreasing.', parts: [
+          { type: 'bars', label: 'price', values: p }, { type: 'stack', label: 'candidate previous-greater days', items: [] }, { type: 'array', label: 'span', values: span.slice() }
+        ] });
+        for (var i = 0; i < n; i++) {
+          var j = st.length - 1, hlS = {}, popped = [];
+          while (j >= 0 && p[st[j]] <= p[i]) { hlS[j] = 'bad'; popped.push(st[j]); j--; }
+          if (popped.length) {
+            var hb = {};
+            popped.forEach(function (k) { hb[k] = 'bad'; });
+            hb[i] = 'cur';
+            frames.push({ narr: 'Day ' + i + ' price <b>' + p[i] + '</b>. The days with price ' + popped.map(function (k) { return p[k]; }).join(', ') + ' are ≤ ' + p[i] + ' → <span class="c-r">pop</span>. They are hidden behind today forever.', parts: [
+              { type: 'bars', label: 'price', values: p, hl: hb, ptr: one(i, 'i') },
+              { type: 'stack', label: 'candidate previous-greater days', items: items(), hl: hlS },
+              { type: 'array', label: 'span', values: span.slice() }
+            ] });
+          }
+          st.length = j + 1;
+          var prev = st.length ? st[st.length - 1] : -1;
+          span[i] = i - prev;
+          var hb2 = {}, k2;
+          for (k2 = prev + 1; k2 < i; k2++) hb2[k2] = 'win';
+          hb2[i] = 'cur';
+          if (prev >= 0) hb2[prev] = 'sel';
+          st.push(i);
+          frames.push({ narr: (prev >= 0 ? 'Top is day ' + prev + ' (price ' + p[prev] + ') — the previous greater. ' : 'Stack empty — nobody earlier is taller. ') + 'span = ' + i + ' - (' + prev + ') = <b>' + span[i] + '</b>. <span class="c-g">Push day ' + i + '</span>.', parts: [
+            { type: 'bars', label: 'price', values: p, hl: hb2, ptr: one(i, 'i') },
+            { type: 'stack', label: 'candidate previous-greater days', items: items(), hl: one(st.length - 1, 'ok') },
+            { type: 'array', label: 'span', values: span.slice(), hl: one(i, 'ok') }
+          ] });
+        }
+        frames.push({ narr: 'All spans found in one pass. Every day was pushed once and popped at most once → O(N).', parts: [
+          { type: 'bars', label: 'price', values: p }, { type: 'array', label: 'span', values: span.slice(), hl: (function () { var h = {}; for (var q = 0; q < n; q++) h[q] = 'sel'; return h; })() }
+        ] });
+        return frames;
+      }
+    },
+    after: `<p><b>Online version</b> (LeetCode 901 — <code>StockSpanner.next(price)</code>, prices arrive one per call, no array): store pairs <code>(price, span)</code>. On a new price, pop every pair with price ≤ today and <b>add their spans</b> to today's span (they already "swallowed" the days behind them).</p>`,
+    code: `
+import java.util.*;
+
+class StockSpanner {
+    private final Deque<int[]> st = new ArrayDeque<>();   // {price, span}, prices strictly decreasing
+
+    public int next(int price) {
+        int span = 1;                                      // today counts
+        while (!st.isEmpty() && st.peek()[0] <= price) {
+            span += st.pop()[1];                           // absorb the days that day already covered
+        }
+        st.push(new int[]{price, span});
+        return span;
+    }
+
+    public static void main(String[] args) {
+        StockSpanner s = new StockSpanner();
+        int[] prices = {100, 80, 60, 70, 60, 75, 85};
+        for (int p : prices) System.out.print(s.next(p) + " ");   // 1 1 1 2 1 4 6
+    }
+}`,
+    codeTitle: 'Online StockSpanner (LeetCode 901)',
+    problems: [{
+      title: 'Stock Span Problem',
+      level: 'Medium',
+      tags: ['monotonic stack', 'previous greater'],
+      statement: `<p>Given daily stock prices <code>price[0..N-1]</code>, the <b>span</b> of day <code>i</code> is the number of consecutive days ending at day <code>i</code> (including day <code>i</code>) on which the price was <b>less than or equal to</b> <code>price[i]</code>. Return the span of every day.</p>`,
+      constraints: `1 ≤ N ≤ 10<sup>5</sup>, 1 ≤ price[i] ≤ 10<sup>9</sup>`,
+      example: `${H.arr([100, 80, 60, 70, 60, 75, 85], { label: 'price', hl: { 6: 'y' } })}${H.arr([1, 1, 1, 2, 1, 4, 6], { label: 'span', hl: { 6: 'g' } })}
+        <p>Day 6 price ${H.c('y', '85')}: days 1..6 (80, 60, 70, 60, 75, 85) are all ≤ 85, and day 0 (100) is taller → span ${H.c('g', '6')}.</p>`,
+      brute: {
+        why: `<p>For each day walk left while the price is ≤ today. For an increasing price list (1, 2, 3, ...) day <code>i</code> walks all the way back → 1 + 2 + ... + N ≈ N<sup>2</sup>/2 steps. The waste: once a big day has "covered" a stretch, later days re-walk that same stretch one day at a time.</p>`,
+        code: `
+int[] spanBrute(int[] price) {
+    int n = price.length;
+    int[] span = new int[n];
+    for (int i = 0; i < n; i++) {
+        int j = i;
+        while (j >= 0 && price[j] <= price[i]) j--;   // walk left until a taller price
+        span[i] = i - j;
+    }
+    return span;
+}`
+      },
+      mcq: {
+        q: 'Stack of (index: price) bottom→top is <code>0:100, 1:80, 3:70</code>. Day 4 has price 75. What is span[4]?',
+        options: ['1', '2', '3', '5'],
+        answer: 2,
+        explain: 'Pop 3:70 (70 ≤ 75). Top is now 1:80 &gt; 75 → previous greater is index 1. span = 4 - 1 = 3.'
+      },
+      hints: [
+        `<p>Aha: the span stops at the first <b>taller</b> day to the left, so <code>span[i] = i - (index of previous greater)</code>. If no taller day exists, use index <code>-1</code>.</p>`,
+        `<p>Keep a <code>Deque&lt;Integer&gt;</code> of indices with <b>strictly decreasing</b> prices. For day <code>i</code>: pop while <code>price[top] ≤ price[i]</code>; then the top (if any) is the previous greater. Push <code>i</code>.</p>`,
+        `<p>Traps: use <code>≤</code> (equal prices are included in the span, so they must be popped); empty stack → span is <code>i + 1</code>, not 1. Recipe: for i: pop smaller-or-equal; prev = empty ? -1 : peek; span[i] = i - prev; push i.</p>`
+      ],
+      solution: {
+        approach: `<p>Previous-greater-element with a strictly decreasing stack of indices.</p>`,
+        code: `
+import java.util.*;
+
+class Solution {
+    public int[] calculateSpan(int[] price) {
+        int n = price.length;
+        int[] span = new int[n];
+        Deque<Integer> st = new ArrayDeque<>();        // indices, prices strictly decreasing
+        for (int i = 0; i < n; i++) {
+            // days with price <= today are inside today's span and can never block a later day
+            while (!st.isEmpty() && price[st.peek()] <= price[i]) {
+                st.pop();
+            }
+            int prevGreater = st.isEmpty() ? -1 : st.peek();   // first taller day on the left
+            span[i] = i - prevGreater;
+            st.push(i);
+        }
+        return span;
+    }
+
+    public static void main(String[] args) {
+        int[] p = {100, 80, 60, 70, 60, 75, 85};
+        System.out.println(Arrays.toString(new Solution().calculateSpan(p)));   // [1, 1, 1, 2, 1, 4, 6]
+    }
+}`,
+        dry: {
+          head: ['i', 'price', 'popped', 'prevGreater', 'span', 'stack after (i:price)'],
+          rows: [
+            ['0', '100', '—', '-1', '1', '0:100'],
+            ['1', '80', '—', '0', '1', '0:100, 1:80'],
+            ['2', '60', '—', '1', '1', '0:100, 1:80, 2:60'],
+            ['3', '70', '<span class="c-r">2:60</span>', '1', '2', '0:100, 1:80, 3:70'],
+            ['4', '60', '—', '3', '1', '0:100, 1:80, 3:70, 4:60'],
+            ['5', '75', '<span class="c-r">4:60, 3:70</span>', '1', '<span class="c-g">4</span>', '0:100, 1:80, 5:75'],
+            ['6', '85', '<span class="c-r">5:75, 1:80</span>', '0', '<span class="c-g">6</span>', '0:100, 6:85']
+          ]
+        },
+        complexity: `<p><b>Time O(N)</b>: each day is pushed once and popped at most once, so all the while-loops together do at most N pops. <b>Space O(N)</b> for the stack (a strictly decreasing price list keeps every day on it).</p>`
+      }
+    }]
+  });
+
+  // =====================================================================
+  // TOPIC 7 — Largest Rectangle in Histogram
+  // =====================================================================
+  topics.push({
+    title: 'Monotonic Stack — Largest Rectangle in Histogram',
+    analogy: `<p>A row of buildings of different heights stands side by side. You want to paint the <b>biggest rectangular banner</b> across them, and the banner can only be as tall as the <b>shortest</b> building it covers.</p>
+      <p>Ask each building: "If the banner is exactly <b>my</b> height, how far can it stretch left and right?" It stretches until it hits a <b>shorter</b> building on each side. So we need, for every bar, the <b>nearest smaller bar on the left and on the right</b>.</p>`,
+    explain: `<p>For bar <code>i</code>: <code>area = h[i] × (rightSmaller - leftSmaller - 1)</code>.</p>
+      ${H.arr([2, 1, 5, 6, 2, 3], { label: 'h', hl: { 2: 'b', 3: 'b', 1: 'r', 4: 'r' } })}
+      <p>For the bar of height 5 (index 2): nearest smaller on the left is ${H.c('r', 'index 1 (h=1)')}, on the right is ${H.c('r', 'index 4 (h=2)')}. Width = 4 - 1 - 1 = 2, area = 5 × 2 = ${H.c('p', '10')} — the answer.</p>
+      <h4>One pass with an increasing stack</h4>
+      <ul>
+        <li>Keep indices whose heights are <b>increasing</b> from bottom to top.</li>
+        <li>When bar <code>i</code> is <b>shorter or equal</b> to the top, the top bar can't stretch further right: its right boundary is <code>i</code>. Pop it; its left boundary is the <b>new top</b> (the nearest smaller on the left) or <code>-1</code> if the stack is empty. Width = <code>i - left - 1</code>.</li>
+        <li>At the end, pretend there is an extra bar of height <b>0</b> at index <code>n</code>. It is shorter than everything, so it pops (and measures) every bar still on the stack.</li>
+      </ul>
+      ${H.table(['when popped', 'bar height', 'left (new top)', 'right (i)', 'width', 'area'], [
+        ['i=1', '2', '-1', '1', '1', '2'], ['i=4', '6', '2', '4', '1', '6'], ['i=4', '5', '1', '4', '2', '<span class="c-p">10</span>'],
+        ['i=6 (end)', '3', '4', '6', '1', '3'], ['i=6 (end)', '2', '1', '6', '4', '8'], ['i=6 (end)', '1', '-1', '6', '6', '6']
+      ])}`,
+    clues: [
+      '"<b>Largest rectangle</b> in a histogram", "max area under bars of width 1".',
+      '"For each element, the largest window where it is the <b>minimum</b>" → nearest smaller on both sides.',
+      '"Maximal rectangle of 1s in a binary matrix" → build a histogram per row, then this algorithm.',
+      '"Sum of subarray minimums", "max of (min × length)" → same left/right smaller boundaries.',
+      '<code>N ≤ 10<sup>5</sup></code> and O(N<sup>2</sup>) expand-from-each-bar is too slow → monotonic stack O(N).'
+    ],
+    code: `
+import java.util.*;
+
+class HistogramTwoPass {
+    // Easier to explain version: compute both boundaries explicitly, then one formula.
+    static long largestRectangle(int[] h) {
+        int n = h.length;
+        int[] left = new int[n], right = new int[n];
+        Deque<Integer> st = new ArrayDeque<>();
+        for (int i = 0; i < n; i++) {                     // previous strictly smaller
+            while (!st.isEmpty() && h[st.peek()] >= h[i]) st.pop();
+            left[i] = st.isEmpty() ? -1 : st.peek();
+            st.push(i);
+        }
+        st.clear();
+        for (int i = n - 1; i >= 0; i--) {                // next strictly smaller
+            while (!st.isEmpty() && h[st.peek()] >= h[i]) st.pop();
+            right[i] = st.isEmpty() ? n : st.peek();
+            st.push(i);
+        }
+        long best = 0;
+        for (int i = 0; i < n; i++) {
+            best = Math.max(best, (long) h[i] * (right[i] - left[i] - 1));   // long: no overflow
+        }
+        return best;
+    }
+
+    public static void main(String[] args) {
+        System.out.println(largestRectangle(new int[]{2, 1, 5, 6, 2, 3}));   // 10
+        System.out.println(largestRectangle(new int[]{2, 4}));               // 4
+    }
+}`,
+    codeTitle: 'Two-pass version (left/right smaller arrays)',
+    examples: [
+      {
+        title: 'Equal heights: [3, 3, 3]',
+        html: `${H.arr([3, 3, 3], { label: 'h', hl: { 0: 'b', 1: 'b', 2: 'b' } })}
+          <p>With the one-pass <code>≥</code> rule, bar 1 pops bar 0 (width 1, area 3) and bar 2 pops bar 1 (left = -1 now, width 2, area 6). The sentinel pops bar 2 with left = -1, width 3 → <b>9</b>. Earlier equal bars get an <i>underestimated</i> width, but the <b>last</b> equal bar always gets the full width — so the maximum is still correct.</p>`
+      },
+      {
+        title: 'Increasing histogram [1, 2, 3, 4, 5]',
+        html: `<p>Nothing is popped until the sentinel. Then, popping from the top: 5×1 = 5, 4×2 = 8, 3×3 = <b>9</b>, 2×4 = 8, 1×5 = 5. Answer <b>9</b>. Every bar's right wall is the end of the array.</p>
+          ${H.table(['popped bar', 'height', 'left wall', 'width', 'area'], [['4', '5', '3', '1', '5'], ['3', '4', '2', '2', '8'], ['2', '3', '1', '3', '<span class="c-p">9</span>'], ['1', '2', '0', '4', '8'], ['0', '1', '-1', '5', '5']])}`
+      },
+      {
+        title: 'Maximal Rectangle in a binary matrix',
+        html: `<p>Treat each row as the ground of a histogram: <code>heights[c]</code> = number of consecutive 1s ending at this row in column c (reset to 0 on a 0). Run the histogram algorithm per row.</p>
+          ${H.table(['row', 'matrix row', 'heights', 'best in row'], [
+            ['0', '1 0 1 0 0', '1 0 1 0 0', '1'], ['1', '1 0 1 1 1', '2 0 2 1 1', '3'],
+            ['2', '1 1 1 1 1', '3 1 3 2 2', '<span class="c-p">6</span>'], ['3', '1 0 0 1 0', '4 0 0 3 0', '4']
+          ])}<p>Answer 6 (rows 1–2, columns 2–4). Total O(R·C).</p>`
+      },
+      {
+        title: 'Zero-height bars split the histogram',
+        html: `<p><code>[4, 0, 4]</code>: the 0 pops the first 4 (area 4) and blocks every rectangle from crossing it. The answer is <b>4</b>, not 8. The sentinel 0 at the end is just one more such wall.</p>`
+      }
+    ],
+    deepDive: `<p><b>Why every candidate is checked.</b> The optimal rectangle has some shortest bar <code>m</code>. It cannot extend past the nearest strictly smaller bar on either side, and extending to them is always allowed. So the optimal area equals <code>h[m] × (right[m] − left[m] − 1)</code> for some m — checking all N bars covers it. The one-pass stack computes exactly these boundaries: <code>i</code> is the first bar ≤ on the right, the new top is the nearest strictly smaller on the left.</p>
+      <p><b>The duplicates subtlety.</b> Popping on <code>≥</code> means an equal bar to the right is treated as a wall, which underestimates the width for earlier equal bars. That is fine: among a run of equal-height bars, the last one popped sees the whole run. If you pop on <code>&gt;</code> instead, equal bars stay on the stack and the earliest one gets the full width. Either choice is correct as long as one bar of each equal group measures the full width — a good point to make aloud.</p>
+      <p><b>Overflow.</b> With heights up to 10<sup>4</sup> and N up to 10<sup>5</sup> the area fits in int (10<sup>9</sup> &lt; 2.1·10<sup>9</sup>), but with heights up to 10<sup>9</sup> you need <code>long</code>. Mention it before the interviewer does.</p>
+      <p><b>Related problems using the same boundaries:</b> Maximal Rectangle (per-row histograms, O(R·C)); Sum of Subarray Minimums (each a[i] is the min of <code>(i − left) × (right − i)</code> subarrays — careful with duplicates: use strict on one side and non-strict on the other to avoid double counting); Maximum Score of a Good Subarray; Trapping Rain Water (stack-based variant pops a "valley" floor and measures water between its walls).</p>
+      <p><b>Alternatives:</b> divide and conquer around the minimum (O(N log N) with a segment tree for range-min, O(N²) worst case without), or a sparse table. The stack is optimal: O(N) time, and you cannot do better since every bar must be read.</p>`,
+    aiEra: `<p><b>What AI changes:</b> Largest Rectangle is a famous "hard" problem; an assistant writes the sentinel version in seconds. What it cannot do for you in the interview room is <b>explain</b> why the popped bar's left wall is the new top, why the sentinel is needed, and why duplicates do not break correctness. Those explanations are what the interviewer grades.</p>
+      <p><b>Use AI as a partner:</b> <code>"Generate 1000 random histograms (length ≤ 8, heights ≤ 5) and compare my stack solution with the O(N²) brute force"</code> — small random tests are excellent at finding sentinel and duplicate bugs. Then ask <code>"Which of my variable names would confuse a reader?"</code>.</p>
+      <p><b>Where AI goes wrong:</b> forgetting to flush the stack at the end (missing the increasing-histogram answer), using <code>i - top</code> as the width instead of <code>i - left - 1</code>, and int overflow when constraints are larger. Also, for Sum of Subarray Minimums it often uses strict comparisons on both sides and double counts duplicates.</p>
+      <p><b>What you must still own:</b> the "each bar as the shortest bar" reformulation — once you see it, the stack is the natural tool.</p>`,
+    viz: {
+      title: 'Largest rectangle: bars + increasing stack',
+      input: '2 1 5 6 2 3',
+      inputLabel: 'Bar heights 0..30 (space separated, up to 12)',
+      gen: function (input) {
+        var h = parseNums(input, '2 1 5 6 2 3', 12, 2);
+        if (h.some(function (x) { return x < 0 || x > 30; })) throw new Error('Heights must be between 0 and 30.');
+        var n = h.length, hs = h.concat([0]), st = [], frames = [], best = 0, bestTxt = '—';
+        var idxL = h.map(function (_, k) { return String(k); }).concat(['end']);
+        function items() { return st.map(function (k) { return 'i' + k + ' (h=' + h[k] + ')'; }); }
+        frames.push({ narr: 'The last bar labelled "end" is an imaginary bar of height 0 — it will flush the stack at the end. Stack heights will stay <b>increasing</b>.', parts: [
+          { type: 'bars', label: 'heights', values: hs, idxLabels: idxL, hl: one(n, 'done') },
+          { type: 'stack', label: 'indices (heights increasing)', items: [] },
+          { type: 'vars', vals: { maxArea: 0 } }
+        ] });
+        for (var i = 0; i <= n; i++) {
+          var cur = i === n ? 0 : h[i];
+          while (st.length && h[st[st.length - 1]] >= cur) {
+            var top = st[st.length - 1];
+            var left = st.length > 1 ? st[st.length - 2] : -1;
+            var w = i - left - 1, area = h[top] * w, hb = {}, k;
+            for (k = left + 1; k < i; k++) hb[k] = 'win';
+            hb[top] = 'bad'; hb[i] = 'cur';
+            var improved = area > best;
+            if (improved) { best = area; bestTxt = 'height ' + h[top] + ' × width ' + w; }
+            frames.push({ narr: (i === n ? 'The imaginary 0-height bar' : 'Bar ' + i + ' (h=' + cur + ')') + ' is ≤ top bar ' + top + ' (h=' + h[top] + ') → <span class="c-r">pop ' + top + '</span>. Its right wall is ' + (i === n ? 'the end' : 'index ' + i) + ', its left wall is ' + (left >= 0 ? 'index ' + left + ' (the new top)' : 'nothing (stack empty → -1)') + '. Width = ' + i + ' - (' + left + ') - 1 = ' + w + ', area = ' + h[top] + ' × ' + w + ' = <b>' + area + '</b>' + (improved ? ' → <span class="c-g">new best!</span>' : '.'), parts: [
+              { type: 'bars', label: 'heights (blue = rectangle of the popped bar)', values: hs, idxLabels: idxL, hl: hb, ptr: one(i, 'i') },
+              { type: 'stack', label: 'indices (heights increasing)', items: items(), hl: one(st.length - 1, 'bad') },
+              { type: 'vars', vals: { area: area, maxArea: best, best: bestTxt }, hl: improved ? { maxArea: 'ok' } : {} }
+            ] });
+            st.pop();
+          }
+          if (i < n) {
+            st.push(i);
+            frames.push({ narr: 'Push bar ' + i + ' (h=' + h[i] + '). It is taller than the top, so it can still stretch to the right — we don\'t know its right wall yet.', parts: [
+              { type: 'bars', label: 'heights', values: hs, idxLabels: idxL, hl: one(i, 'ok'), ptr: one(i, 'i') },
+              { type: 'stack', label: 'indices (heights increasing)', items: items(), hl: one(st.length - 1, 'ok') },
+              { type: 'vars', vals: { maxArea: best, best: bestTxt } }
+            ] });
+          }
+        }
+        frames.push({ narr: 'Stack empty, every bar measured exactly once. Largest rectangle = <b>' + best + '</b> (' + bestTxt + ').', parts: [
+          { type: 'bars', label: 'heights', values: h },
+          { type: 'vars', vals: { maxArea: best, best: bestTxt }, hl: { maxArea: 'sel' } }
+        ] });
+        return frames;
+      }
+    },
+    problems: [{
+      title: 'Largest Rectangle in Histogram',
+      level: 'Hard',
+      tags: ['monotonic stack', 'nearest smaller'],
+      statement: `<p>Given an array <code>heights</code> where <code>heights[i]</code> is the height of a bar of width 1, return the area of the <b>largest rectangle</b> that fits entirely inside the histogram.</p>`,
+      constraints: `1 ≤ N ≤ 10<sup>5</sup>, 0 ≤ heights[i] ≤ 10<sup>4</sup>`,
+      example: `${H.arr([2, 1, 5, 6, 2, 3], { label: 'heights', hl: { 2: 'b', 3: 'b' } })}
+        <p>Output: ${H.c('p', '10')}. The rectangle covers ${H.c('b', 'bars 2 and 3')} (heights 5 and 6) at height 5: 5 × 2 = 10. Other candidates: height 2 across bars 2..5 → 2 × 4 = 8, height 1 across everything → 6.</p>`,
+      brute: {
+        why: `<p>For each bar, expand left and right while neighbours are ≥ it, then compute height × width. Each expansion can cover the whole array → <b>O(N<sup>2</sup>)</b> = 10<sup>10</sup> for N = 10<sup>5</sup>. The waste: neighbouring bars re-discover the same walls over and over.</p>`,
+        code: `
+int largestRectangleBrute(int[] h) {
+    int n = h.length, best = 0;
+    for (int i = 0; i < n; i++) {
+        int l = i, r = i;
+        while (l - 1 >= 0 && h[l - 1] >= h[i]) l--;   // stretch left
+        while (r + 1 < n && h[r + 1] >= h[i]) r++;    // stretch right
+        best = Math.max(best, h[i] * (r - l + 1));
+    }
+    return best;
+}`
+      },
+      mcq: {
+        q: 'While popping bar <code>top</code> at position <code>i</code>, the stack below it has index <code>L</code> on top. What is the width of the rectangle with height <code>h[top]</code>?',
+        options: ['<code>i - top</code>', '<code>i - L - 1</code>', '<code>top - L</code>', '<code>i - L + 1</code>'],
+        answer: 1,
+        explain: '<code>L</code> is the nearest smaller bar on the left and <code>i</code> the nearest smaller (or equal) on the right; the rectangle covers the bars strictly between them: <code>i - L - 1</code> bars. With an empty stack, use L = -1.'
+      },
+      hints: [
+        `<p>Aha: the best rectangle has the height of some bar <code>i</code> (its shortest bar). For that bar, width = distance between the <b>nearest shorter bar on the left</b> and the <b>nearest shorter bar on the right</b>, minus one.</p>`,
+        `<p>Keep a stack of indices with <b>increasing</b> heights. When <code>h[i] ≤ h[top]</code>, pop <code>top</code>: right wall = <code>i</code>, left wall = new top (or -1). Compute <code>h[top] × (i - left - 1)</code>.</p>`,
+        `<p>Traps: bars still on the stack at the end must be measured — loop <code>i</code> up to <code>n</code> with height 0 at <code>i == n</code>; empty stack → left = -1 (rectangle reaches index 0); use <code>long</code> or check that 10<sup>4</sup> × 10<sup>5</sup> = 10<sup>9</sup> fits in int (it does, barely). Recipe: for i in 0..n: cur = (i==n ? 0 : h[i]); while stack and h[top] ≥ cur: pop, measure; push i.</p>`
+      ],
+      solution: {
+        approach: `<p>Increasing stack; each bar is measured at the moment it is popped (when its right wall appears).</p>`,
+        code: `
+import java.util.*;
+
+class Solution {
+    public int largestRectangleArea(int[] heights) {
+        int n = heights.length, best = 0;
+        Deque<Integer> st = new ArrayDeque<>();            // indices, heights increasing
+        for (int i = 0; i <= n; i++) {
+            int cur = (i == n) ? 0 : heights[i];           // height-0 sentinel flushes the stack
+            while (!st.isEmpty() && heights[st.peek()] >= cur) {
+                int top = st.pop();                        // this bar cannot stretch past i
+                int left = st.isEmpty() ? -1 : st.peek();  // nearest smaller bar on the left
+                int width = i - left - 1;                  // bars strictly between the two walls
+                best = Math.max(best, heights[top] * width);
+            }
+            st.push(i);
+        }
+        return best;
+    }
+
+    public static void main(String[] args) {
+        System.out.println(new Solution().largestRectangleArea(new int[]{2, 1, 5, 6, 2, 3}));   // 10
+    }
+}`,
+        dry: {
+          head: ['i', 'cur h', 'popped → (left, width, area)', 'best', 'stack after (i:h)'],
+          rows: [
+            ['0', '2', '—', '0', '0:2'],
+            ['1', '1', '<span class="c-r">0</span> → (-1, 1, 2)', '2', '1:1'],
+            ['2', '5', '—', '2', '1:1, 2:5'],
+            ['3', '6', '—', '2', '1:1, 2:5, 3:6'],
+            ['4', '2', '<span class="c-r">3</span> → (2, 1, 6); <span class="c-r">2</span> → (1, 2, 10)', '<span class="c-g">10</span>', '1:1, 4:2'],
+            ['5', '3', '—', '10', '1:1, 4:2, 5:3'],
+            ['6 (sentinel)', '0', '<span class="c-r">5</span> → (4, 1, 3); <span class="c-r">4</span> → (1, 4, 8); <span class="c-r">1</span> → (-1, 6, 6)', '<span class="c-p">10</span>', '6 (sentinel)']
+          ]
+        },
+        complexity: `<p><b>Time O(N)</b>: each index is pushed once and popped once; every pop does O(1) work. <b>Space O(N)</b> for the stack (an increasing histogram keeps every bar on it until the end).</p>`
+      }
+    }]
+  });
+
+  // =====================================================================
+  // TOPIC 8 — Queue using two Stacks (amortized O(1))
+  // =====================================================================
+  topics.push({
+    title: 'Queue using Two Stacks — amortized O(1)',
+    analogy: `<p>A cafeteria has two tray piles. Washed trays are always dropped on the <b>"in" pile</b>. Customers always take from the <b>"out" pile</b>. When the out pile is empty, a worker picks up the in pile one tray at a time and builds the out pile — this <b>flips the order</b>, so the tray that was washed <b>first</b> is now on <b>top</b>. Oldest tray is served first: a queue made of two stacks!</p>
+      <p>The flip is a lot of work at once, but each tray is flipped <b>only once</b> in its life.</p>`,
+    explain: `<p>Two stacks: <code>in</code> (receives new items) and <code>out</code> (serves the front).</p>
+      <ul>
+        <li><b>push(x)</b>: <code>in.push(x)</code>. Always O(1).</li>
+        <li><b>pop() / peek()</b>: if <code>out</code> is empty, move <b>everything</b> from <code>in</code> to <code>out</code> (this reverses the order). Then pop/peek <code>out</code>.</li>
+        <li><b>empty()</b>: both stacks empty.</li>
+      </ul>
+      ${H.table(['step', 'in (bottom→top)', 'out (bottom→top)', 'note'], [
+        ['push 1, 2, 3', '1 2 3', '', 'oldest (1) is buried at the bottom of in'],
+        ['pop()', '', '3 2 <span class="c-y">1</span>', 'out empty → transfer: order flips, 1 on top'],
+        ['', '', '3 2', 'pop returns <span class="c-p">1</span>'],
+        ['push 4', '4', '3 2', 'new items never disturb out'],
+        ['pop()', '4', '3', 'out not empty → returns <span class="c-p">2</span>, no transfer']
+      ])}
+      <h4>What does "amortized O(1)" mean?</h4>
+      <p>One single pop can cost O(N) (a big transfer). But follow one item through its whole life: pushed into <code>in</code> once, moved to <code>out</code> once, popped from <code>out</code> once → <b>at most 4 stack operations per item</b>. So N queue operations cost at most ~4N stack operations total → <b>O(1) on average per operation</b>. "Amortized" = the cost of the rare expensive step, spread across all the cheap ones (like paying rent monthly, even though you sign the contract once).</p>
+      <p>${H.c('r', 'Important rule')}: only transfer when <code>out</code> is <b>empty</b>. If you pour <code>in</code> on top of a non-empty <code>out</code>, newer items land above older ones and the order breaks.</p>`,
+    clues: [
+      '"Implement a queue using only stack operations (push to top, peek/pop from top, size, isEmpty)".',
+      '"Amortized O(1)" / "each element is moved at most once" → the two-stack trick.',
+      'The reverse ("implement a stack using queues") → one queue, rotate it after each push (push O(N)).',
+      '"Queue with getMin/getMax" → two Min Stacks combined with this trick.'
+    ],
+    code: `
+import java.util.*;
+
+// Queue with O(1) amortized getMin: two stacks where every entry stores {value, minSoFar}.
+class MinQueue {
+    private final Deque<int[]> in = new ArrayDeque<>();
+    private final Deque<int[]> out = new ArrayDeque<>();
+
+    private static void pushWithMin(Deque<int[]> st, int x) {
+        int m = st.isEmpty() ? x : Math.min(x, st.peek()[1]);
+        st.push(new int[]{x, m});
+    }
+
+    public void offer(int x) { pushWithMin(in, x); }
+
+    public int poll() {
+        if (out.isEmpty()) {
+            while (!in.isEmpty()) pushWithMin(out, in.pop()[0]);   // re-compute mins while moving
+        }
+        return out.pop()[0];
+    }
+
+    public int getMin() {
+        if (in.isEmpty()) return out.peek()[1];
+        if (out.isEmpty()) return in.peek()[1];
+        return Math.min(in.peek()[1], out.peek()[1]);              // min of both halves
+    }
+
+    public static void main(String[] args) {
+        MinQueue q = new MinQueue();
+        q.offer(4); q.offer(2); q.offer(7);
+        System.out.println(q.getMin()); // 2
+        q.poll();                       // removes 4
+        q.poll();                       // removes 2
+        System.out.println(q.getMin()); // 7
+        q.offer(1);
+        System.out.println(q.getMin()); // 1
+    }
+}`,
+    codeTitle: 'Bonus: Min Queue = two Min Stacks',
+    examples: [
+      {
+        title: 'Count the moves: 4 pushes then 4 pops',
+        html: `${H.table(['call', 'stack operations', 'running total'], [
+          ['push 1..4', '4 × in.push', '4'], ['pop() #1', 'transfer 4 items (8 ops) + out.pop', '13'],
+          ['pop() #2', 'out.pop', '14'], ['pop() #3', 'out.pop', '15'], ['pop() #4', 'out.pop', '<b>16</b>']
+        ])}<p>8 queue operations cost 16 stack operations = <b>2 per queue operation on average</b>, even though pop #1 alone cost 9. That is amortized O(1) in action.</p>`
+      },
+      {
+        title: 'The broken "eager" version',
+        html: `<p>If you transfer from <code>in</code> to <code>out</code> on <b>every</b> pop (even when out is not empty), the order breaks: in = [3], out = [2] (2 on top). Pouring in gives out = [2, 3] with <span class="c-r">3 on top</span> → pop returns 3 although 2 is older. Transfer <b>only when out is empty</b>.</p>`
+      },
+      {
+        title: 'Worst-case latency vs average',
+        html: `<p>Push 10<sup>6</sup> items, then pop once: that single pop moves 10<sup>6</sup> items. The average stays O(1), but in a latency-sensitive system (a game loop, a trading engine) that one slow call might matter. Fix options: a circular-buffer queue (<code>ArrayDeque</code>, true O(1) except rare growth), or "incremental" transfer tricks used in real-time functional queues.</p>`
+      },
+      {
+        title: 'Real-life two-stack queues',
+        html: `<p>Functional languages (Haskell, Clojure, Scala) implement immutable queues as a <b>front list + reversed back list</b> — exactly this idea, because immutable singly linked lists are stacks. The "Banker's queue" by Okasaki makes the amortized bound hold even when old versions of the queue are reused.</p>`
+      }
+    ],
+    deepDive: `<p><b>Formal amortized analysis (accounting method).</b> Charge each <code>push</code> 3 credits: 1 pays for the push itself, 2 are saved on the item. When a transfer happens, each moved item spends its 2 saved credits for its pop-from-in and push-to-out. The final pop-from-out costs 1. So every operation is covered by a constant amount → amortized O(1). The <b>potential method</b> gives the same result with Φ = 2 × |in|.</p>
+      <p><b>Why amortized ≠ average-case.</b> Average-case depends on random inputs; amortized is a <b>worst-case guarantee over any sequence</b>: no matter what an adversary does, N operations cost O(N) total. The only thing it does not bound is a single operation's latency.</p>
+      <p><b>The opposite direction.</b> A stack from queues (Topic 1's guided problem) has no such trick with one or two queues: rotating moves every element on every push, so nothing is "moved once and done".</p>
+      <p><b>Generalisation: two-stack aggregates.</b> If each stack entry stores an aggregate (min, max, gcd, sum of an associative operation) of the entries below it, the queue can answer the aggregate of the whole window as <code>combine(in.agg, out.agg)</code>. This gives O(1) amortized sliding-window min/max/gcd for any associative operation — even non-invertible ones like gcd where prefix sums do not work. Streaming engines use this "two-stacks" trick for sliding window aggregations.</p>
+      <p><b>Java reality check:</b> in production you would just use <code>ArrayDeque</code> as the queue. The two-stack design matters for interviews, immutable/functional data structures, and aggregate windows.</p>`,
+    aiEra: `<p><b>What AI changes:</b> any assistant can implement MyQueue in seconds; the classic follow-up "what does amortized mean and prove it" is what interviewers actually listen for. With AI writing boilerplate, being able to give a crisp accounting or potential argument is a differentiator.</p>
+      <p><b>Use AI as a partner:</b> <code>"Simulate 20 random queue operations on my two-stack queue and a reference ArrayDeque and print where they differ"</code>; <code>"Explain the banker's queue and why persistence breaks naive amortization"</code> for a deeper dive.</p>
+      <p><b>Where AI goes wrong:</b> transferring on every pop, forgetting that <code>peek()</code> needs the transfer too, checking only one stack in <code>empty()</code>, or describing amortized cost as "average over random inputs".</p>
+      <p><b>What you must still own:</b> the one-line reason each element moves at most once, the difference between amortized and worst-case latency, and when the aggregate version (Min Queue) is the right tool.</p>`,
+    viz: {
+      title: 'Queue from two stacks: in, out and the transfer',
+      input: 'push 1, push 2, push 3, pop, push 4, peek, pop, pop, pop',
+      inputLabel: 'Ops: push x, pop, peek, empty (comma separated)',
+      gen: function (input) {
+        var ops = parseOps(input, 'push 1, push 2, push 3, pop, push 4, pop', ['push', 'pop', 'peek', 'empty']);
+        var inS = [], outS = [], frames = [], moves = 0;
+        function parts(hin, hout, extra) {
+          var p = [{ type: 'stack', label: 'in (new items land here)', items: inS.slice(), hl: hin || {} }, { type: 'stack', label: 'out (front of queue on top)', items: outS.slice(), hl: hout || {} }];
+          p.push({ type: 'vars', vals: Object.assign({ 'queue front→back': outS.slice().reverse().concat(inS).join(', ') || '—', 'total stack moves': moves }, extra || {}) });
+          return p;
+        }
+        frames.push({ narr: 'Two empty stacks. <b>in</b> receives new items, <b>out</b> serves the oldest item from its top.', parts: parts() });
+        ops.forEach(function (o) {
+          if (o.op === 'push') {
+            inS.push(o.v); moves++;
+            frames.push({ narr: '<code>push(' + o.v + ')</code> → just <span class="c-g">push onto in</span>. O(1), the out stack is untouched.', parts: parts(one(inS.length - 1, 'ok'), {}) });
+            return;
+          }
+          if (o.op === 'empty') {
+            frames.push({ narr: '<code>empty()</code> → both stacks empty? <b>' + (!inS.length && !outS.length) + '</b>.', parts: parts({}, {}, { 'empty()': String(!inS.length && !outS.length) }) });
+            return;
+          }
+          if (!inS.length && !outS.length) {
+            frames.push({ narr: '<code>' + o.op + '()</code> on an <span class="c-r">empty</span> queue — not allowed, we skip it.', parts: parts() });
+            return;
+          }
+          if (!outS.length) {
+            var cnt = inS.length;
+            frames.push({ narr: '<code>' + o.op + '()</code> but <b>out is empty</b>. The oldest item (' + inS[0] + ') is buried at the bottom of in. Time to transfer all ' + cnt + ' item(s).', parts: parts((function () { var h = {}; for (var k = 0; k < inS.length; k++) h[k] = 'cur'; h[0] = 'sel'; return h; })(), {}) });
+            while (inS.length) { outS.push(inS.pop()); moves += 2; }
+            frames.push({ narr: 'Moved them one by one (pop from in, push to out). The order <b>flipped</b>: the oldest item ' + outS[outS.length - 1] + ' is now on <b>top</b> of out. Each item will only ever be moved once.', parts: parts({}, (function () { var h = {}; for (var k = 0; k < outS.length; k++) h[k] = 'ok'; h[outS.length - 1] = 'sel'; return h; })()) });
+          }
+          var front = outS[outS.length - 1];
+          if (o.op === 'peek') {
+            frames.push({ narr: '<code>peek()</code> → look at the top of out: <b>' + front + '</b> (nothing removed).', parts: parts({}, one(outS.length - 1, 'sel'), { returned: front }) });
+          } else {
+            frames.push({ narr: '<code>pop()</code> → <span class="c-r">pop from out</span>: returns <b>' + front + '</b>, the oldest item still in the queue.', parts: parts({}, one(outS.length - 1, 'bad'), { returned: front }) });
+            outS.pop(); moves++;
+          }
+        });
+        frames.push({ narr: 'Done. Count the moves: every item costs at most push-to-in, pop-from-in, push-to-out, pop-from-out = 4 operations. That is why the queue is <b>amortized O(1)</b>.', parts: parts() });
+        return frames;
+      }
+    },
+    problems: [{
+      title: 'Implement Queue using Stacks',
+      level: 'Easy',
+      tags: ['stack', 'queue', 'design', 'amortized'],
+      statement: `<p>Implement a FIFO queue <code>MyQueue</code> with <code>push(x)</code>, <code>pop()</code>, <code>peek()</code> and <code>empty()</code>, using <b>only two stacks</b> and only standard stack operations (push to top, peek/pop from top, size, isEmpty). Follow-up: make every operation <b>amortized O(1)</b>.</p>`,
+      constraints: `1 ≤ x ≤ 9, at most 100 calls; pop and peek are only called on a non-empty queue`,
+      example: `${H.table(['call', 'returns', 'queue front→back'], [
+        ['push(1)', '—', '1'], ['push(2)', '—', '1, 2'], ['peek()', '<span class="c-p">1</span>', '1, 2'],
+        ['pop()', '<span class="c-p">1</span>', '2'], ['push(3)', '—', '2, 3'], ['pop()', '<span class="c-p">2</span>', '3'],
+        ['empty()', '<span class="c-p">false</span>', '3'], ['pop()', '<span class="c-p">3</span>', '(empty)']
+      ])}<p>The first item pushed is always the first one returned — FIFO.</p>`,
+      brute: {
+        why: `<p>Keep everything in one stack. To pop the front (at the bottom), move all items to a helper stack, pop the one on top, then move everything <b>back</b>. Each pop/peek costs O(N) <b>every time</b> → O(N<sup>2</sup>) for N operations. The waste: moving the items back undoes the useful reversal we just paid for.</p>`,
+        code: `
+import java.util.*;
+
+class MyQueueSlow {
+    private final Deque<Integer> main = new ArrayDeque<>();
+    private final Deque<Integer> help = new ArrayDeque<>();
+
+    public void push(int x) { main.push(x); }
+
+    public int pop() {
+        while (!main.isEmpty()) help.push(main.pop());   // reverse: front is now on top
+        int front = help.pop();
+        while (!help.isEmpty()) main.push(help.pop());   // move everything back: wasted work
+        return front;
+    }
+
+    public int peek() {
+        while (!main.isEmpty()) help.push(main.pop());
+        int front = help.peek();
+        while (!help.isEmpty()) main.push(help.pop());
+        return front;
+    }
+
+    public boolean empty() { return main.isEmpty(); }
+}`
+      },
+      mcq: {
+        q: 'in = [4, 5] (5 on top), out = [3] (3 on top). We call <code>pop()</code>. What happens?',
+        options: ['Transfer 5 and 4 onto out first, then pop', 'Pop 3 from out — no transfer because out is not empty', 'Pop 5 from in', 'Pop 4 from in'],
+        answer: 1,
+        explain: '3 is older than 4 and 5 (it was transferred earlier), so it is the front. Transfer only when out is empty; otherwise newer items would land on top of older ones.'
+      },
+      hints: [
+        `<p>Aha: pouring one stack into another <b>reverses</b> the order. A reversed stack has the <b>oldest</b> item on top — exactly the queue front.</p>`,
+        `<p>Two <code>Deque&lt;Integer&gt;</code>: <code>in</code> for pushes, <code>out</code> for pops/peeks. Only when <code>out</code> is empty, pour <b>all</b> of <code>in</code> into it.</p>`,
+        `<p>Traps: never transfer while <code>out</code> still has items (breaks the order); <code>empty()</code> must check <b>both</b> stacks; peek also needs the transfer step. Recipe: push → in.push(x). pop/peek → if out empty: while in not empty out.push(in.pop()); then out.pop()/out.peek(). empty → in.isEmpty() &amp;&amp; out.isEmpty().</p>`
+      ],
+      solution: {
+        approach: `<p>Lazy transfer: <code>out</code> is refilled only when it runs dry, so every element moves once.</p>`,
+        code: `
+import java.util.*;
+
+class MyQueue {
+    private final Deque<Integer> in = new ArrayDeque<>();   // newest on top
+    private final Deque<Integer> out = new ArrayDeque<>();  // oldest on top
+
+    public void push(int x) {
+        in.push(x);                         // O(1): new items always go to "in"
+    }
+
+    // Refill "out" only when it is empty. Pouring reverses the order -> oldest ends on top.
+    private void shiftIfNeeded() {
+        if (out.isEmpty()) {
+            while (!in.isEmpty()) {
+                out.push(in.pop());
+            }
+        }
+    }
+
+    public int pop() {
+        shiftIfNeeded();
+        return out.pop();                   // front of the queue
+    }
+
+    public int peek() {
+        shiftIfNeeded();
+        return out.peek();
+    }
+
+    public boolean empty() {
+        return in.isEmpty() && out.isEmpty();   // items may hide in either stack
+    }
+
+    public static void main(String[] args) {
+        MyQueue q = new MyQueue();
+        q.push(1); q.push(2);
+        System.out.println(q.peek());   // 1
+        System.out.println(q.pop());    // 1
+        q.push(3);
+        System.out.println(q.pop());    // 2
+        System.out.println(q.empty());  // false
+        System.out.println(q.pop());    // 3
+    }
+}`,
+        dry: {
+          head: ['call', 'in (bottom→top)', 'out (bottom→top)', 'what happens', 'returns'],
+          rows: [
+            ['push(1)', '1', '', 'in.push', '—'],
+            ['push(2)', '1 2', '', 'in.push', '—'],
+            ['peek()', '', '2 1', '<span class="c-y">out empty → transfer 2 then 1</span>', '<span class="c-p">1</span>'],
+            ['pop()', '', '2', 'out not empty → out.pop', '<span class="c-p">1</span>'],
+            ['push(3)', '3', '2', 'in.push (out untouched)', '—'],
+            ['pop()', '3', '', 'out.pop', '<span class="c-p">2</span>'],
+            ['empty()', '3', '', 'in has 3', '<span class="c-p">false</span>'],
+            ['pop()', '', '', '<span class="c-y">out empty → transfer 3</span>, out.pop', '<span class="c-p">3</span>']
+          ]
+        },
+        complexity: `<p><b>push O(1)</b>. <b>pop/peek amortized O(1)</b>: a single call can move many items, but each item is moved from <code>in</code> to <code>out</code> <b>at most once</b> in its life, so N operations do at most ~4N stack steps. <b>Space O(N)</b> for the items.</p>`
+      }
+    }]
+  });
+
+  // =====================================================================
+  // TOPIC 9 — Monotonic Deque: Sliding Window Maximum
+  // =====================================================================
+  topics.push({
+    title: 'Monotonic Deque — Sliding Window Maximum',
+    analogy: `<p>A coach watches a group of K kids walking past in a line and must always shout who is the <b>tallest in the current group</b>. Smart trick: when a new tall kid joins, every <b>shorter kid who joined earlier</b> can be forgotten forever — the new kid is taller <b>and</b> will stay in the group longer, so those shorter kids can never be the tallest again.</p>
+      <p>The coach's short list is therefore always sorted <b>tallest (oldest) → shortest (newest)</b>. The tallest is at the front — until they walk out of the group.</p>`,
+    explain: `<p>A <b>deque</b> lets us remove from both ends. We store <b>indices</b> whose values are <b>decreasing</b> from front to back.</p>
+      <p>For each new index <code>i</code>:</p>
+      <ol>
+        <li>${H.c('r', 'Front expired?')} If the front index is <code>≤ i - k</code>, it has left the window → <code>pollFirst()</code>.</li>
+        <li>${H.c('r', 'Back is useless?')} While the back value is <code>≤ a[i]</code> → <code>pollLast()</code> (shorter and older than the newcomer).</li>
+        <li>${H.c('g', 'Join')}: <code>offerLast(i)</code>.</li>
+        <li>${H.c('p', 'Answer')}: once the first window is full (<code>i ≥ k - 1</code>), the max is <code>a[front]</code>.</li>
+      </ol>
+      ${H.arr([1, 3, -1, -3, 5, 3, 6, 7], { label: 'a, k = 3', hl: { 1: 'b', 2: 'b', 3: 'b' } })}
+      ${H.table(['window', 'deque (indices: values) front→back', 'max'], [
+        ['[1 3 -1]', '1:3, 2:-1', '3'], ['[3 -1 -3]', '1:3, 2:-1, 3:-3', '3'], ['[-1 -3 5]', '4:5 (1 expired, -1 and -3 beaten)', '5'],
+        ['[-3 5 3]', '4:5, 5:3', '5'], ['[5 3 6]', '6:6', '6'], ['[3 6 7]', '7:7', '7']
+      ])}
+      <p><b>Why O(N)?</b> Every index enters the deque once and leaves it at most once (from the front or the back) → ≤ 2N deque operations, compared to O(N·K) for re-scanning each window.</p>
+      <p>Use <code>Deque&lt;Integer&gt; dq = new ArrayDeque&lt;&gt;()</code> with <code>peekFirst / pollFirst / peekLast / pollLast / offerLast</code>. For a <b>sliding window minimum</b>, flip the comparison (keep values increasing).</p>`,
+    clues: [
+      '"<b>Maximum (or minimum) in every window of size K</b>", "sliding window max".',
+      'Window <b>slides by one</b> and you need the max/min each time — a heap gives O(N log N), a monotonic deque gives O(N).',
+      '"Longest subarray where max - min ≤ limit" → two monotonic deques (one for max, one for min).',
+      '"Shortest subarray with sum ≥ K" with negatives, "constrained subsequence sum", "jump game VI" → DP + monotonic deque.',
+      '<code>N ≤ 10<sup>5</sup>, K ≤ N</code> → O(N·K) can be 10<sup>10</sup>; need O(N).'
+    ],
+    code: [`
+import java.util.*;
+
+class DequeWindows {
+    // Longest subarray where (max - min) <= limit: one decreasing deque for max, one increasing for min.
+    static int longestSubarray(int[] a, int limit) {
+        Deque<Integer> maxD = new ArrayDeque<>(), minD = new ArrayDeque<>();
+        int left = 0, best = 0;
+        for (int right = 0; right < a.length; right++) {
+            while (!maxD.isEmpty() && a[maxD.peekLast()] < a[right]) maxD.pollLast();
+            while (!minD.isEmpty() && a[minD.peekLast()] > a[right]) minD.pollLast();
+            maxD.offerLast(right);
+            minD.offerLast(right);
+            while (a[maxD.peekFirst()] - a[minD.peekFirst()] > limit) {   // window invalid -> shrink
+                left++;
+                if (maxD.peekFirst() < left) maxD.pollFirst();
+                if (minD.peekFirst() < left) minD.pollFirst();
+            }
+            best = Math.max(best, right - left + 1);
+        }
+        return best;
+    }
+
+    // Sliding window MINIMUM: same as maximum with the comparison flipped.
+    static int[] windowMin(int[] a, int k) {
+        int[] res = new int[a.length - k + 1];
+        Deque<Integer> dq = new ArrayDeque<>();                 // values increasing front -> back
+        for (int i = 0; i < a.length; i++) {
+            if (!dq.isEmpty() && dq.peekFirst() <= i - k) dq.pollFirst();
+            while (!dq.isEmpty() && a[dq.peekLast()] >= a[i]) dq.pollLast();
+            dq.offerLast(i);
+            if (i >= k - 1) res[i - k + 1] = a[dq.peekFirst()];
+        }
+        return res;
+    }
+
+    public static void main(String[] args) {
+        System.out.println(longestSubarray(new int[]{8, 2, 4, 7}, 4));                 // 2
+        System.out.println(longestSubarray(new int[]{10, 1, 2, 4, 7, 2}, 5));          // 4
+        System.out.println(Arrays.toString(windowMin(new int[]{4, 2, 12, 3, 8, 1}, 3)));  // [2, 2, 3, 1]
+    }
+}`, { lang: 'python', run: true, title: 'Sliding window maximum in Python (runnable)', code: `from collections import deque
+
+def max_sliding_window(nums, k):
+    dq, res = deque(), []          # indices, values decreasing front -> back
+    for i, x in enumerate(nums):
+        if dq and dq[0] <= i - k:  # front left the window
+            dq.popleft()
+        while dq and nums[dq[-1]] <= x:
+            dq.pop()               # beaten by a newer, bigger value
+        dq.append(i)
+        if i >= k - 1:
+            res.append(nums[dq[0]])
+    return res
+
+print(max_sliding_window([1, 3, -1, -3, 5, 3, 6, 7], 3))  # [3, 3, 5, 5, 6, 7]` }],
+    codeTitle: ['Two deques (max − min ≤ limit) + window minimum (Java)'],
+    examples: [
+      {
+        title: 'k = 1 and k = N (edge cases)',
+        html: `<p><b>k = 1</b>: every window is a single element, so the answer is the array itself; the deque never holds more than one index. <b>k = N</b>: one window, the answer is the global maximum; nothing ever expires. Good quick tests for off-by-one errors in <code>i ≥ k − 1</code> and <code>dq.peekFirst() ≤ i − k</code>.</p>`
+      },
+      {
+        title: 'Window minimum: [4, 2, 12, 3, 8, 1], k = 3',
+        html: `${H.table(['window', 'deque (values, increasing)', 'min'], [
+          ['[4 2 12]', '2, 12', '2'], ['[2 12 3]', '2, 3 (12 beaten by 3)', '2'], ['[12 3 8]', '3, 8 (2 expired)', '3'], ['[3 8 1]', '1 (all beaten)', '1']
+        ])}<p>Flip the comparison: pop the back while it is <b>≥</b> the newcomer, keeping values increasing.</p>`
+      },
+      {
+        title: 'Two deques: longest subarray with max − min ≤ 5 in [10, 1, 2, 4, 7, 2]',
+        html: `<p>Grow <code>right</code>; when <code>max − min &gt; 5</code>, move <code>left</code> forward and drop expired fronts. The window [2, 4, 7, 2] (indices 2..5) has max 7, min 2, difference 5 → length <b>4</b>. The deques give the window max and min in O(1) each step, so the whole scan is O(N).</p>`
+      },
+      {
+        title: 'Heap alternative and why it is slower',
+        html: `<p>A max-heap of (value, index) with <b>lazy deletion</b> also works: push each element, and while the top's index is outside the window, pop it. That is O(N log N) and uses more memory. The deque wins because it throws away dominated elements immediately instead of keeping them sorted.</p>`
+      }
+    ],
+    deepDive: `<p><b>Dominance is the key idea.</b> Index j is <i>dominated</i> by a later index i if a[i] ≥ a[j]: i is at least as good and leaves the window later, so j can never be the answer again. The deque stores exactly the non-dominated indices of the current window, which forces values to be decreasing and indices increasing — so the front is both the oldest survivor and the maximum.</p>
+      <p><b>Complexity.</b> Each index is added once and removed once (either expired from the front or dominated at the back) → at most 2N deque operations → O(N) time, O(k) extra space. This beats a heap (O(N log k)) and a balanced tree/<code>TreeMap</code> with counts (O(N log k)), and a sparse table (O(N log N) preprocessing, O(1) query — useful only when windows have arbitrary sizes).</p>
+      <p><b>Monotonic deque + DP.</b> Many DP recurrences look like <code>dp[i] = a[i] + max(dp[i-k..i-1])</code> (Jump Game VI, Constrained Subsequence Sum). The inner max over a sliding range is exactly sliding window maximum, so the DP drops from O(N·k) to O(N). Shortest Subarray with Sum ≥ K (with negatives) uses an <b>increasing</b> deque of prefix sums: pop the front while it forms a valid answer (it can only get longer later), pop the back while it is ≥ the current prefix (dominated). This family is called "monotone queue optimisation".</p>
+      <p><b>Ties.</b> Popping with <code>≤</code> keeps only the newest copy of equal values, which stays in the window longest — correct and slightly smaller deques. Popping with <code>&lt;</code> also works because the expiry check uses indices.</p>
+      <p><b>Java details:</b> use <code>ArrayDeque&lt;Integer&gt;</code> with <code>peekFirst/pollFirst/peekLast/pollLast/offerLast</code>; for maximum speed, a plain <code>int[] dq</code> with <code>head</code> and <code>tail</code> indices (no wrap needed because each index enters once) removes all boxing.</p>`,
+    aiEra: `<p><b>What AI changes:</b> sliding window maximum is a well-known hard problem and every model produces the deque solution. Interviewers increasingly test whether you can <b>reuse</b> the deque inside something else — two deques for max − min, a deque of prefix sums for "shortest subarray with sum ≥ K", or a deque inside a DP transition.</p>
+      <p><b>Use AI as a partner:</b> <code>"Give me a DP problem whose transition is a sliding window max, but don't tell me which one"</code>, or ask it to <code>"write a brute-force O(N·k) checker and fuzz my deque solution with random arrays including duplicates and negatives"</code>.</p>
+      <p><b>Where AI goes wrong:</b> storing values instead of indices (cannot detect expiry), using <code>while</code> for expiry but with <code>&lt;</code> instead of <code>≤ i − k</code> (off-by-one), answering before the first window is full, and using a heap without removing expired elements.</p>
+      <p><b>What you must still own:</b> the dominance argument in one sentence ("newer and bigger means the older one is useless forever") and the ability to spot a "max/min over a sliding range" hidden inside a larger problem.</p>`,
+    viz: {
+      title: 'Sliding window maximum with a deque of indices',
+      input: '1 3 -1 -3 5 3 6 7 | 3',
+      inputLabel: 'array | k   (up to 14 numbers)',
+      gen: function (input) {
+        var s = input === undefined ? '1 3 -1 -3 5 3 6 7 | 3' : String(input);
+        var sp = s.split('|');
+        if (sp.length !== 2) throw new Error('Format: numbers | k   e.g. "1 3 -1 -3 5 3 6 7 | 3"');
+        var a = parseNums(sp[0], '1 3 -1 -3 5 3 6 7', 14, 2);
+        var k = Number(sp[1].trim());
+        if (!sp[1].trim().length || isNaN(k) || Math.floor(k) !== k || k < 1 || k > a.length) throw new Error('k must be a whole number between 1 and the array length.');
+        var n = a.length, dq = [], res = [], frames = [];
+        function items() { return dq.map(function (x) { return 'i' + x + ' (' + a[x] + ')'; }); }
+        frames.push({ narr: 'Window size k = ' + k + '. The deque keeps indices whose values <b>decrease</b> from front to back; the front is always the window maximum.', parts: [
+          { type: 'array', label: 'a', values: a }, { type: 'queue', label: 'deque of indices', items: [], frontLabel: 'front (max)', backLabel: 'back' }
+        ] });
+        for (var i = 0; i < n; i++) {
+          var lo = Math.max(0, i - k + 1), notes = [], hlQ = {}, removed = false;
+          if (dq.length && dq[0] <= i - k) {
+            hlQ[0] = 'bad'; removed = true;
+            notes.push('front index ' + dq[0] + ' is outside the window [' + lo + '..' + i + '] → <span class="c-r">pollFirst</span>');
+          }
+          var j = dq.length - 1, beaten = [];
+          while (j >= (removed ? 1 : 0) && a[dq[j]] <= a[i]) { hlQ[j] = 'bad'; beaten.push(a[dq[j]]); j--; }
+          if (beaten.length) notes.push('back value(s) ' + beaten.join(', ') + ' ≤ ' + a[i] + ' can never be a max again → <span class="c-r">pollLast</span>');
+          if (notes.length) {
+            frames.push({ narr: 'i = ' + i + ' (value ' + a[i] + '): ' + notes.join('; ') + '.', parts: [
+              { type: 'array', label: 'a', values: a, range: [lo, i], hl: one(i, 'cur'), ptr: one(i, 'i') },
+              { type: 'queue', label: 'deque of indices', items: items(), hl: hlQ, frontLabel: 'front (max)', backLabel: 'back' },
+              { type: 'array', label: 'window maxima', values: res.length ? res.slice() : ['—'] }
+            ] });
+            if (removed) dq.shift();
+            dq.length = j + 1 - (removed ? 1 : 0);
+          }
+          dq.push(i);
+          var full = i >= k - 1;
+          if (full) res.push(a[dq[0]]);
+          var hA = one(i, 'cur');
+          if (full) hA[dq[0]] = 'sel';
+          frames.push({ narr: '<span class="c-g">offerLast(' + i + ')</span>. ' + (full ? 'Window [' + lo + '..' + i + '] is full → max = a[front] = a[' + dq[0] + '] = <b>' + a[dq[0]] + '</b>.' : 'The first window is not full yet (need ' + k + ' items), no answer yet.'), parts: [
+            { type: 'array', label: 'a', values: a, range: [lo, i], hl: hA, ptr: one(i, 'i') },
+            { type: 'queue', label: 'deque of indices', items: items(), hl: (function () { var h = {}; h[dq.length - 1] = 'ok'; if (full) h[0] = 'sel'; return h; })(), frontLabel: 'front (max)', backLabel: 'back' },
+            { type: 'array', label: 'window maxima', values: res.length ? res.slice() : ['—'], hl: full ? one(res.length - 1, 'ok') : {} }
+          ] });
+        }
+        frames.push({ narr: 'Done: ' + res.length + ' windows. Every index entered the deque once and left at most once → O(N) total.', parts: [
+          { type: 'array', label: 'a', values: a }, { type: 'array', label: 'window maxima', values: res.slice(), hl: (function () { var h = {}; for (var q = 0; q < res.length; q++) h[q] = 'sel'; return h; })() }
+        ] });
+        return frames;
+      }
+    },
+    problems: [{
+      title: 'Sliding Window Maximum',
+      level: 'Hard',
+      tags: ['monotonic deque', 'sliding window'],
+      statement: `<p>Given an array <code>nums</code> and a window size <code>k</code>, a window of size <code>k</code> slides from the far left to the far right, one step at a time. Return an array with the <b>maximum of each window</b>.</p>`,
+      constraints: `1 ≤ k ≤ N ≤ 10<sup>5</sup>, -10<sup>4</sup> ≤ nums[i] ≤ 10<sup>4</sup>`,
+      example: `${H.arr([1, 3, -1, -3, 5, 3, 6, 7], { label: 'nums', hl: { 2: 'b', 3: 'b', 4: 'y' } })}<p>k = 3 → output ${H.arr([3, 3, 5, 5, 6, 7], { label: 'max', hl: { 2: 'g' } })}</p>
+        <p>For example the window ${H.c('b', '[-1, -3,')} ${H.c('y', '5]')} (indices 2..4) has maximum ${H.c('g', '5')}. There are N - k + 1 = 6 windows.</p>`,
+      brute: {
+        why: `<p>For each of the N - k + 1 windows, loop over its k items to find the max → <b>O(N·K)</b>; with N = 10<sup>5</sup> and k = 5·10<sup>4</sup> that is ~2.5·10<sup>9</sup>. The waste: neighbouring windows share k - 1 items, but we re-scan them all every time.</p>`,
+        code: `
+int[] maxSlidingWindowBrute(int[] nums, int k) {
+    int n = nums.length;
+    int[] res = new int[n - k + 1];
+    for (int start = 0; start + k <= n; start++) {
+        int best = Integer.MIN_VALUE;
+        for (int j = start; j < start + k; j++) best = Math.max(best, nums[j]);   // rescan whole window
+        res[start] = best;
+    }
+    return res;
+}`
+      },
+      mcq: {
+        q: 'k = 3, deque (front→back) holds <code>2:9, 4:6</code> (index:value). Now i = 5 arrives with value 7. What is the deque after processing i = 5?',
+        options: ['<code>2:9, 4:6, 5:7</code>', '<code>5:7</code>', '<code>4:6, 5:7</code>', '<code>2:9, 5:7</code>'],
+        answer: 1,
+        explain: 'The window is now indices [3..5]. Front index 2 ≤ 5 - 3 = 2, so it has expired → pollFirst (even though 9 is big!). Then the back value 6 ≤ 7 → pollLast. Finally offerLast(5). Deque = <code>5:7</code>, and the window max is 7.'
+      },
+      hints: [
+        `<p>Aha: if <code>j &lt; i</code> and <code>a[j] ≤ a[i]</code>, then <code>a[j]</code> can <b>never</b> be the maximum of any future window — <code>a[i]</code> is at least as big and stays longer. So we can throw <code>j</code> away for good.</p>`,
+        `<p>Use <code>Deque&lt;Integer&gt;</code> of indices with values decreasing from front to back. Front = current max. Remove from the <b>front</b> when the index leaves the window; remove from the <b>back</b> when beaten by the newcomer.</p>`,
+        `<p>Traps: store <b>indices</b> (you need them to detect expiry); the expiry test is <code>dq.peekFirst() ≤ i - k</code>; only record answers when <code>i ≥ k - 1</code>; result length is <code>n - k + 1</code>. Recipe: for i: drop expired front; pop back while a[back] ≤ a[i]; offerLast(i); if i ≥ k-1: res[i-k+1] = a[front].</p>`
+      ],
+      solution: {
+        approach: `<p>Monotonic (decreasing) deque of indices; the front is the max of the current window.</p>`,
+        code: `
+import java.util.*;
+
+class Solution {
+    public int[] maxSlidingWindow(int[] nums, int k) {
+        int n = nums.length;
+        int[] res = new int[n - k + 1];
+        Deque<Integer> dq = new ArrayDeque<>();           // indices, values decreasing front -> back
+        for (int i = 0; i < n; i++) {
+            // 1) the front index fell out of the window [i-k+1 .. i]
+            if (!dq.isEmpty() && dq.peekFirst() <= i - k) {
+                dq.pollFirst();
+            }
+            // 2) smaller-or-equal values at the back can never be a max again
+            while (!dq.isEmpty() && nums[dq.peekLast()] <= nums[i]) {
+                dq.pollLast();
+            }
+            // 3) the newcomer joins at the back
+            dq.offerLast(i);
+            // 4) once the first window is complete, the front holds the max
+            if (i >= k - 1) {
+                res[i - k + 1] = nums[dq.peekFirst()];
+            }
+        }
+        return res;
+    }
+
+    public static void main(String[] args) {
+        int[] r = new Solution().maxSlidingWindow(new int[]{1, 3, -1, -3, 5, 3, 6, 7}, 3);
+        System.out.println(Arrays.toString(r));           // [3, 3, 5, 5, 6, 7]
+    }
+}`,
+        dry: {
+          head: ['i', 'nums[i]', 'expired front', 'popped from back', 'deque after (i:val)', 'res'],
+          rows: [
+            ['0', '1', '—', '—', '0:1', '—'],
+            ['1', '3', '—', '<span class="c-r">0:1</span>', '1:3', '—'],
+            ['2', '-1', '—', '—', '1:3, 2:-1', '[3]'],
+            ['3', '-3', '— (1 &gt; 0)', '—', '1:3, 2:-1, 3:-3', '[3,3]'],
+            ['4', '5', '<span class="c-r">1:3</span> (1 ≤ 1)', '<span class="c-r">3:-3, 2:-1</span>', '4:5', '[3,3,5]'],
+            ['5', '3', '—', '—', '4:5, 5:3', '[3,3,5,5]'],
+            ['6', '6', '— (4 &gt; 3)', '<span class="c-r">5:3, 4:5</span>', '6:6', '[3,3,5,5,6]'],
+            ['7', '7', '—', '<span class="c-r">6:6</span>', '7:7', '<span class="c-p">[3,3,5,5,6,7]</span>']
+          ]
+        },
+        complexity: `<p><b>Time O(N)</b>: each index is offered once and polled at most once (front or back) → at most 2N deque operations. <b>Space O(k)</b>: the deque only holds indices inside the current window (plus the O(N - k + 1) output).</p>`
+      }
+    }]
+  });
+
+  registerModule({
+    id: 'dsa13',
+    title: 'Stacks & Queues',
+    intro: `<p>Stacks and queues are the simplest data structures with the biggest pay-off in interviews. A <b>stack</b> (pile of plates, newest first) and a <b>queue</b> (ticket line, oldest first) only let you touch their ends — and that one restriction turns many O(N<sup>2</sup>) brute forces into clean O(N) scans.</p>
+      <p>In this module you will start with Java's <code>ArrayDeque</code> and why it replaced the old <code>Stack</code> class, then use stacks for <b>bracket matching</b>, <b>min stack</b> design and <b>expression evaluation</b> (infix → postfix, RPN). Next comes the star of the module: the <b>monotonic stack</b> — next greater element, stock span and the famous largest rectangle in a histogram — where you will watch elements get <span class="c-r">popped (red)</span> and <span class="c-g">pushed (green)</span> step by step. Finally you will build a <b>queue from two stacks</b> (and learn what <i>amortized O(1)</i> really means) and the <b>monotonic deque</b> for sliding window maximum.</p>
+      <p>Every topic opens with an everyday analogy, then a visualizer, worked examples, an expert deep dive and a section on working alongside AI. The Practice Arena mixes classic and disguised problems so you learn to <b>spot</b> the pattern from the wording.</p>`,
+    goals: [
+      'Use <code>ArrayDeque</code> correctly as a stack, a queue and a deque, and explain why it beats <code>Stack</code> and <code>LinkedList</code>',
+      'Solve bracket-matching, min-stack and expression-evaluation problems (RPN, infix → postfix) with a clear invariant',
+      'Recognise next/previous greater/smaller questions and solve them in O(N) with a monotonic stack, including stock span and largest rectangle in a histogram',
+      'Build a queue from two stacks and prove amortized O(1) with the "each element moves once" argument',
+      'Use a monotonic deque for sliding window maximum/minimum and spot it inside harder problems (max − min ≤ limit, DP transitions)',
+      'Read the clues in a question ("next greater", "nearest smaller", "valid parentheses", "window of size K") and pick the right structure in under a minute'
+    ],
+    prereqs: `DSA 1 (Programming Foundations), DSA 2 (Time/Space Complexity), DSA 5 (Arrays & Prefix Sums) and DSA 6 (Two Pointers & Sliding Window). DSA 12 (Linked Lists) helps for the "how is it stored" deep dives but is not required.`,
+    hours: 14,
+    topics: topics,
+    practice: practice,
+    quiz: quiz,
+    interview: interview
+  });
+})();

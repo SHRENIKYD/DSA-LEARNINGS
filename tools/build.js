@@ -34,6 +34,8 @@ for (const t of TRACKS) {
   for (const pm of t.modules) {
     const f = path.join(dir, pm.id + '.js');
     if (!fs.existsSync(f)) continue;
+    const chk = require('child_process').spawnSync(process.execPath, [path.join(__dirname, 'validate.js'), f], { encoding: 'utf8' });
+    if (chk.status !== 0) { console.warn('SKIP ' + pm.id + ': not finished (fails validation) — ' + (chk.stdout || '').trim().split('\n').pop()); warnings++; continue; }
     const src = fs.readFileSync(f, 'utf8');
     if (/<\/script/i.test(src)) { console.warn('SKIP ' + pm.id + ': contains </script'); warnings++; continue; }
     const ctx = context();
