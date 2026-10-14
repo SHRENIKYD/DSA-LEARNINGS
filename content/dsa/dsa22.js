@@ -2779,4 +2779,1250 @@ System.out.println(nodes + " nodes, source " + source + ", sink " + sink);` }
       }
     }]
   });
-registerModule({ id: 'dsa22', title: 'Advanced Graph Algorithms', intro: '<p>x</p>', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();
+
+  // =====================================================================
+  // PRACTICE — Easy
+  // =====================================================================
+  practice.push({
+    title: 'Find a Mother Vertex',
+    level: 'Easy', tags: ['scc', 'kosaraju idea', 'dfs'], companies: ['Amazon', 'Microsoft'],
+    statement: `<p>A <b>mother vertex</b> of a directed graph is a vertex from which every other vertex is reachable. Given <code>V</code> vertices and adjacency lists, return the <b>smallest-index</b> mother vertex, or <code>-1</code> if none exists.</p>`,
+    constraints: `<p>1 ≤ V ≤ 10<sup>5</sup>, 0 ≤ E ≤ 2·10<sup>5</sup>.</p>`,
+    example: `<p>V = 5, edges <code>0→2, 0→3, 1→0, 2→1, 3→4</code> → <b>${H.c('g', '0')}</b>.</p><p>Why: from 0 we reach 2, 3, then 1 (via 2) and 4 (via 3). Nodes 1 and 2 are mother vertices too (they reach 0, which reaches everyone) — 0 is the smallest.</p>`,
+    brute: {
+      why: `<p>Run a DFS from every vertex and check whether it reaches all V vertices: <b>O(V·(V + E))</b> ≈ 3·10<sup>10</sup>. The waste: Kosaraju's finish-time insight tells us only one vertex is worth testing.</p>`,
+      code: `class Brute {
+    int findMotherVertex(int V, List<List<Integer>> adj) {
+        for (int s = 0; s < V; s++) {
+            boolean[] seen = new boolean[V];
+            Deque<Integer> st = new ArrayDeque<>();
+            st.push(s);
+            seen[s] = true;
+            int count = 1;
+            while (!st.isEmpty()) {
+                int u = st.pop();
+                for (int w : adj.get(u)) if (!seen[w]) { seen[w] = true; count++; st.push(w); }
+            }
+            if (count == V) return s;            // first (smallest) success
+        }
+        return -1;
+    }
+}`
+    },
+    mcq: { q: 'You run DFS from 0, 1, 2, … skipping visited vertices. Which vertex is the only possible candidate?', options: ['The start of the LAST DFS tree (it finishes last)', 'Vertex 0', 'The vertex with the largest out-degree', 'Any leaf'], answer: 0, explain: 'The last-finishing vertex lies in a source SCC of the condensation. If any mother vertex exists, it must be in that SCC.' },
+    hints: [
+      `<p>Hint 1: A mother vertex must be in a <b>source</b> component of the SCC condensation (nothing outside can reach into it and still be reached from it). There can be only one such component if a mother vertex exists.</p>`,
+      `<p>Hint 2: The vertex that finishes last in a full DFS sweep lives in a source component (Kosaraju's lemma). Test only that vertex with one more DFS.</p>`,
+      `<p>Hint 3: For the smallest index: every mother vertex is in the same SCC as the candidate, i.e. it can reach the candidate. DFS on the reversed graph from the candidate and return the smallest reached index.</p>`
+    ],
+    solution: {
+      approach: `<p>Three linear passes: (1) DFS sweep, remember the root of the last DFS tree; (2) verify it reaches all vertices; (3) reverse DFS from it to collect its SCC-mates and return the smallest. Iterative DFS avoids stack overflow.</p>`,
+      code: `class Solution {
+    int findMotherVertex(int V, List<List<Integer>> adj) {
+        boolean[] seen = new boolean[V];
+        int last = -1;
+        for (int v = 0; v < V; v++)
+            if (!seen[v]) { dfs(v, adj, seen); last = v; }   // root of the last DFS tree finishes last
+        Arrays.fill(seen, false);
+        dfs(last, adj, seen);
+        for (boolean b : seen) if (!b) return -1;           // candidate fails -> nobody succeeds
+        List<List<Integer>> radj = new ArrayList<>();
+        for (int i = 0; i < V; i++) radj.add(new ArrayList<>());
+        for (int u = 0; u < V; u++) for (int w : adj.get(u)) radj.get(w).add(u);
+        boolean[] reachesLast = new boolean[V];
+        dfs(last, radj, reachesLast);                        // all mother vertices = can reach 'last'
+        for (int v = 0; v < V; v++) if (reachesLast[v]) return v;
+        return last;
+    }
+
+    private void dfs(int s, List<List<Integer>> adj, boolean[] seen) {
+        Deque<Integer> st = new ArrayDeque<>();
+        st.push(s);
+        seen[s] = true;
+        while (!st.isEmpty()) {
+            int u = st.pop();
+            for (int w : adj.get(u)) if (!seen[w]) { seen[w] = true; st.push(w); }
+        }
+    }
+}`,
+      complexity: `<p>Time <b>O(V + E)</b>, space <b>O(V + E)</b> (reverse graph).</p>`,
+      followUps: ['Return ALL mother vertices.', 'How many edges must be added so a mother vertex exists? (Number of source SCCs − 1.)']
+    }
+  });
+
+  practice.push({
+    title: 'Euler Circuit or Euler Path? (Undirected)',
+    level: 'Easy', tags: ['euler', 'degree', 'connectivity'], companies: ['Amazon', 'Adobe'],
+    statement: `<p>Given an undirected graph with <code>V</code> vertices (adjacency lists), return <b>2</b> if it has an Euler circuit, <b>1</b> if it has an Euler path but no circuit, and <b>0</b> otherwise. A graph with no edges counts as having a circuit.</p>`,
+    constraints: `<p>1 ≤ V ≤ 10<sup>5</sup>, 0 ≤ E ≤ 2·10<sup>5</sup>, no self-loops.</p>`,
+    example: `<p>Edges <code>0–1, 1–2, 2–0, 0–3</code> → <b>${H.c('g', '1')}</b>.</p><p>Why: degrees are 3, 2, 2, 1 → exactly two odd vertices (0 and 3), and all edges are connected. A path exists (3 → 0 → 1 → 2 → 0) but it cannot return to its start.</p>`,
+    brute: {
+      why: `<p>Backtracking over the order of edges from every start vertex tries up to E! orders. Even 12 edges is 479 million orders. The waste: Euler's degree argument answers the question without searching at all.</p>`,
+      code: `class Brute {
+    int isEulerian(int V, List<List<Integer>> adj) {
+        List<int[]> edges = new ArrayList<>();
+        for (int u = 0; u < V; u++) for (int w : adj.get(u)) if (u < w) edges.add(new int[]{u, w});
+        if (edges.isEmpty()) return 2;
+        boolean path = false;
+        for (int s = 0; s < V; s++) {
+            int r = walk(s, s, edges, new boolean[edges.size()], 0);
+            if (r == 2) return 2;
+            if (r == 1) path = true;
+        }
+        return path ? 1 : 0;
+    }
+
+    // 2 = used all edges and came back to start, 1 = used all edges elsewhere, 0 = stuck
+    private int walk(int start, int at, List<int[]> edges, boolean[] used, int count) {
+        if (count == edges.size()) return at == start ? 2 : 1;
+        int best = 0;
+        for (int i = 0; i < edges.size() && best < 2; i++) {
+            if (used[i]) continue;
+            int[] e = edges.get(i);
+            int next = e[0] == at ? e[1] : (e[1] == at ? e[0] : -1);
+            if (next < 0) continue;
+            used[i] = true;
+            best = Math.max(best, walk(start, next, edges, used, count + 1));
+            used[i] = false;
+        }
+        return best;
+    }
+}`
+    },
+    mcq: { q: 'Degrees are 2, 4, 3, 3, 2, 1, 1 and the graph is connected. Answer?', options: ['0 — four odd vertices', '1', '2', 'Cannot tell without searching'], answer: 0, explain: 'Odd-degree vertices: 3, 3, 1, 1 → four of them. A trail can have at most two "unpaired" endpoints.' },
+    hints: [
+      `<p>Hint 1: Each time a trail passes through a vertex it uses two edges. Only the two ends of the trail can have an unpaired edge.</p>`,
+      `<p>Hint 2: Count odd-degree vertices: 0 → circuit, 2 → path, otherwise none. Degrees alone are not enough — check connectivity too.</p>`,
+      `<p>Hint 3: Recipe — find any vertex with an edge, DFS from it, and make sure every vertex that has an edge was visited (isolated vertices are fine). Then apply the odd-count rule.</p>`
+    ],
+    solution: {
+      approach: `<p>Degree parity + one DFS for connectivity among non-isolated vertices.</p>`,
+      code: `class Solution {
+    int isEulerian(int V, List<List<Integer>> adj) {
+        int odd = 0, start = -1;
+        for (int v = 0; v < V; v++) {
+            if (adj.get(v).size() % 2 == 1) odd++;
+            if (start == -1 && !adj.get(v).isEmpty()) start = v;
+        }
+        if (start == -1) return 2;                          // no edges at all
+        boolean[] seen = new boolean[V];
+        Deque<Integer> st = new ArrayDeque<>();
+        st.push(start);
+        seen[start] = true;
+        while (!st.isEmpty()) {
+            int u = st.pop();
+            for (int w : adj.get(u)) if (!seen[w]) { seen[w] = true; st.push(w); }
+        }
+        for (int v = 0; v < V; v++)
+            if (!adj.get(v).isEmpty() && !seen[v]) return 0;  // edges live in two separate pieces
+        if (odd == 0) return 2;
+        return odd == 2 ? 1 : 0;
+    }
+}`,
+      complexity: `<p>Time <b>O(V + E)</b>, space <b>O(V)</b>.</p>`,
+      followUps: ['Directed version (in/out degrees).', 'Actually print the path with Hierholzer.']
+    }
+  });
+
+  practice.push({
+    title: 'Is the Graph Biconnected?',
+    level: 'Easy', tags: ['articulation points', 'low-link'], companies: ['Cisco', 'Amazon'],
+    statement: `<p>An undirected graph with <code>n ≥ 2</code> vertices is <b>biconnected</b> if it is connected and has <b>no articulation point</b> (removing any single vertex leaves it connected). Return true or false.</p>`,
+    constraints: `<p>2 ≤ n ≤ 10<sup>5</sup>, 1 ≤ E ≤ 2·10<sup>5</sup>.</p>`,
+    example: `<p>n = 4, edges <code>0–1, 1–2, 2–3, 3–0</code> → <b>${H.c('g', 'true')}</b> (a square: removing any corner leaves a path).</p><p>Add vertex 4 with edge <code>3–4</code> → <b>${H.c('r', 'false')}</b>: removing 3 cuts 4 off.</p>`,
+    brute: {
+      why: `<p>Remove each vertex in turn and BFS the rest: <b>O(V·(V + E))</b>. The waste: every BFS re-explores almost the same graph; one low-link DFS answers for all vertices at once.</p>`,
+      code: `class Brute {
+    boolean isBiconnected(int n, int[][] edges) {
+        for (int removed = -1; removed < n; removed++) {      // -1 = remove nothing (plain connectivity)
+            List<List<Integer>> adj = new ArrayList<>();
+            for (int i = 0; i < n; i++) adj.add(new ArrayList<>());
+            for (int[] e : edges) if (e[0] != removed && e[1] != removed) { adj.get(e[0]).add(e[1]); adj.get(e[1]).add(e[0]); }
+            int start = removed == 0 ? 1 : 0;
+            boolean[] seen = new boolean[n];
+            Deque<Integer> q = new ArrayDeque<>();
+            q.add(start);
+            seen[start] = true;
+            int count = 1;
+            while (!q.isEmpty()) {
+                int u = q.poll();
+                for (int w : adj.get(u)) if (!seen[w]) { seen[w] = true; count++; q.add(w); }
+            }
+            if (count != (removed == -1 ? n : n - 1)) return false;
+        }
+        return true;
+    }
+}`
+    },
+    mcq: { q: 'For articulation points, is it safe to skip the parent VERTEX (not edge id) in the DFS?', options: ['Yes — parallel edges never change whether removing a vertex disconnects the graph', 'No, it breaks on parallel edges', 'Only for trees', 'Only if the graph is directed'], answer: 0, explain: 'Removing vertex v deletes all its parallel edges at once, so they do not matter for cut vertices. For BRIDGES you must skip by edge id.' },
+    hints: [
+      `<p>Hint 1: Biconnected = connected + no cut vertex. One DFS from vertex 0 checks both: every vertex must get a disc time.</p>`,
+      `<p>Hint 2: Non-root v is a cut vertex if some child w has <code>low[w] ≥ disc[v]</code>; the root is one if it has ≥ 2 DFS children.</p>`,
+      `<p>Hint 3: Recipe — DFS(0, −1) computing disc/low and a flag; after it, if any disc is still −1 return false; else return !flag. For n = 10<sup>5</sup> chains consider an iterative DFS.</p>`
+    ],
+    solution: {
+      approach: `<p>Low-link DFS from vertex 0 with the two articulation-point rules, plus a visited check for connectivity.</p>`,
+      code: `class Solution {
+    private List<List<Integer>> adj;
+    private int[] disc, low;
+    private int timer = 0;
+    private boolean hasCut = false;
+
+    boolean isBiconnected(int n, int[][] edges) {
+        adj = new ArrayList<>();
+        for (int i = 0; i < n; i++) adj.add(new ArrayList<>());
+        for (int[] e : edges) { adj.get(e[0]).add(e[1]); adj.get(e[1]).add(e[0]); }
+        disc = new int[n];
+        low = new int[n];
+        Arrays.fill(disc, -1);
+        dfs(0, -1);
+        for (int v = 0; v < n; v++) if (disc[v] == -1) return false;   // not even connected
+        return !hasCut;
+    }
+
+    private void dfs(int v, int parent) {
+        disc[v] = low[v] = timer++;
+        int children = 0;
+        for (int w : adj.get(v)) {
+            if (w == parent) continue;
+            if (disc[w] == -1) {
+                children++;
+                dfs(w, v);
+                low[v] = Math.min(low[v], low[w]);
+                if (parent != -1 && low[w] >= disc[v]) hasCut = true;
+            } else {
+                low[v] = Math.min(low[v], disc[w]);
+            }
+        }
+        if (parent == -1 && children > 1) hasCut = true;
+    }
+}`,
+      complexity: `<p>Time <b>O(V + E)</b>, space <b>O(V + E)</b>.</p>`,
+      followUps: ['Is the graph 2-edge-connected (no bridges)?', 'List the biconnected components (edge stack).']
+    }
+  });
+
+  // =====================================================================
+  // PRACTICE — Medium
+  // =====================================================================
+  practice.push({
+    title: 'Articulation Points (Cut Vertices)',
+    level: 'Medium', tags: ['articulation points', 'low-link', 'tarjan'], companies: ['Amazon', 'Google', 'Cisco'],
+    statement: `<p>Given an undirected graph with <code>V</code> vertices (not necessarily connected), return all articulation points in <b>increasing</b> order, or <code>[-1]</code> if there are none.</p>`,
+    constraints: `<p>1 ≤ V ≤ 10<sup>5</sup>, 0 ≤ E ≤ 2·10<sup>5</sup>.</p>`,
+    example: `<p>Edges <code>0–1, 1–4, 4–2, 4–3, 3–2</code> → <b>${H.c('g', '[1, 4]')}</b>.</p><p>Why: removing 1 separates 0; removing 4 separates {0, 1} from {2, 3}. 2 and 3 sit on the triangle 2–3–4, so removing either keeps the rest connected.</p>`,
+    brute: {
+      why: `<p>For each vertex, delete it and count connected components with BFS; compare with the original count. <b>O(V·(V + E))</b>. The waste: the same graph is re-explored V times.</p>`,
+      code: `class Brute {
+    List<Integer> articulationPoints(int V, int[][] edges) {
+        int base = components(V, edges, -1);
+        List<Integer> ans = new ArrayList<>();
+        for (int v = 0; v < V; v++) if (components(V, edges, v) > base) ans.add(v);
+        if (ans.isEmpty()) ans.add(-1);
+        return ans;
+    }
+
+    private int components(int V, int[][] edges, int removed) {
+        List<List<Integer>> adj = new ArrayList<>();
+        for (int i = 0; i < V; i++) adj.add(new ArrayList<>());
+        for (int[] e : edges) if (e[0] != removed && e[1] != removed) { adj.get(e[0]).add(e[1]); adj.get(e[1]).add(e[0]); }
+        boolean[] seen = new boolean[V];
+        int count = 0;
+        for (int s = 0; s < V; s++) {
+            if (s == removed || seen[s]) continue;
+            count++;
+            Deque<Integer> q = new ArrayDeque<>();
+            q.add(s);
+            seen[s] = true;
+            while (!q.isEmpty()) { int u = q.poll(); for (int w : adj.get(u)) if (!seen[w]) { seen[w] = true; q.add(w); } }
+        }
+        return count;
+    }
+}`
+    },
+    mcq: { q: 'A DFS root has exactly 3 DFS children. Is it an articulation point?', options: ['Yes — its subtrees are connected only through it', 'No — roots never are', 'Only if it has degree ≥ 4', 'Need low values to decide'], answer: 0, explain: 'If any path linked two subtrees without the root, DFS would have reached the second subtree from the first. Two or more children ⇒ cut vertex.' },
+    hints: [
+      `<p>Hint 1: One DFS per connected component with disc[] and low[]. The graph may be disconnected — start a DFS from every unvisited vertex.</p>`,
+      `<p>Hint 2: Non-root v: cut vertex iff some child w has <code>low[w] ≥ disc[v]</code>. Root: cut vertex iff ≥ 2 DFS children.</p>`,
+      `<p>Hint 3: Use a boolean array, not a list, so a vertex with several qualifying children is reported once; collect in index order at the end for sorted output.</p>`
+    ],
+    solution: {
+      approach: `<p>Standard low-link DFS (Tarjan/Hopcroft 1973) over every component, marking cut vertices in a boolean array.</p>`,
+      code: `class Solution {
+    private List<List<Integer>> adj;
+    private int[] disc, low;
+    private boolean[] cut;
+    private int timer = 0;
+
+    List<Integer> articulationPoints(int V, int[][] edges) {
+        adj = new ArrayList<>();
+        for (int i = 0; i < V; i++) adj.add(new ArrayList<>());
+        for (int[] e : edges) { adj.get(e[0]).add(e[1]); adj.get(e[1]).add(e[0]); }
+        disc = new int[V];
+        low = new int[V];
+        cut = new boolean[V];
+        Arrays.fill(disc, -1);
+        for (int v = 0; v < V; v++) if (disc[v] == -1) dfs(v, -1);
+        List<Integer> ans = new ArrayList<>();
+        for (int v = 0; v < V; v++) if (cut[v]) ans.add(v);
+        if (ans.isEmpty()) ans.add(-1);
+        return ans;
+    }
+
+    private void dfs(int v, int parent) {
+        disc[v] = low[v] = timer++;
+        int children = 0;
+        for (int w : adj.get(v)) {
+            if (w == parent) continue;
+            if (disc[w] == -1) {
+                children++;
+                dfs(w, v);
+                low[v] = Math.min(low[v], low[w]);
+                if (parent != -1 && low[w] >= disc[v]) cut[v] = true;
+            } else {
+                low[v] = Math.min(low[v], disc[w]);   // must be disc[w], not low[w]
+            }
+        }
+        if (parent == -1 && children > 1) cut[v] = true;
+    }
+}`,
+      dry: {
+        head: ['vertex', 'disc', 'low', 'decision'],
+        rows: [
+          ['0', '0', '0', 'root with 1 child → not a cut'],
+          ['1', '1', '1', 'child 4 has low 2 ≥ 1 → ' + H.c('p', 'cut')],
+          ['4', '2', '2', 'child 2 has low 2 ≥ 2 → ' + H.c('p', 'cut')],
+          ['2', '3', '2', 'back edge (via 3) reaches 4'],
+          ['3', '4', '2', 'back edge 3–4']
+        ]
+      },
+      complexity: `<p>Time <b>O(V + E)</b>, space <b>O(V + E)</b>.</p>`,
+      followUps: ['For each cut vertex, how many components appear after removing it?', 'Build the block-cut tree.']
+    }
+  });
+
+  practice.push({
+    title: 'Kth Ancestor of a Tree Node',
+    level: 'Medium', tags: ['binary lifting', 'tree', 'design'], companies: ['Google', 'Amazon'],
+    statement: `<p>Design <code>TreeAncestor(int n, int[] parent)</code> for a tree where <code>parent[0] = -1</code> (node 0 is the root). Method <code>getKthAncestor(node, k)</code> returns the k-th ancestor of node, or <code>-1</code> if it does not exist. Up to 5·10<sup>4</sup> calls.</p>`,
+    constraints: `<p>1 ≤ k ≤ n ≤ 5·10<sup>4</sup>, 0 ≤ parent[i] &lt; n for i ≥ 1.</p>`,
+    example: `<p>parent = <code>[-1, 0, 0, 1, 1, 2, 2]</code>: getKthAncestor(3, 1) = <b>1</b>, (5, 2) = <b>0</b>, (6, 3) = <b>${H.c('r', '-1')}</b>.</p><p>Why: 6's ancestors are 2 (1 up) and 0 (2 up); a third does not exist.</p>`,
+    brute: {
+      why: `<p>Walk up k parent pointers: O(k) per call. A 5·10<sup>4</sup>-long chain with 5·10<sup>4</sup> queries → 2.5·10<sup>9</sup> steps. The waste: the same long stretches are walked again for every query.</p>`,
+      code: `class TreeAncestorBrute {
+    private final int[] parent;
+
+    TreeAncestorBrute(int n, int[] parent) { this.parent = parent.clone(); }
+
+    int getKthAncestor(int node, int k) {
+        while (k-- > 0 && node != -1) node = parent[node];
+        return node;
+    }
+}`
+    },
+    mcq: { q: 'k = 11. Which jumps does binary lifting make?', options: ['8, 2 and 1', '11 single steps', '4, 4, 2, 1', '16 then down 5'], answer: 0, explain: '11 = 1011 in binary → jumps of 2^3, 2^1, 2^0.' },
+    hints: [
+      `<p>Hint 1: Precompute up[j][v] = 2<sup>j</sup>-th ancestor. Any k is a sum of distinct powers of two (its binary digits).</p>`,
+      `<p>Hint 2: up[j][v] = up[j−1][ up[j−1][v] ], with −1 propagating: once you fall off the root you stay at −1.</p>`,
+      `<p>Hint 3: Recipe — LOG = 16 covers k ≤ 5·10<sup>4</sup>. Query: for each set bit j of k, node = up[j][node]; stop early if node becomes −1.</p>`
+    ],
+    solution: {
+      approach: `<p>Binary lifting with −1 as the "fell off the tree" sentinel. Build loops k outer, v inner, so row k−1 is complete before row k (works even if parents have larger indices than children).</p>`,
+      code: `class TreeAncestor {
+    private static final int LOG = 16;           // 2^16 = 65536 > 5 * 10^4
+    private final int[][] up;
+
+    public TreeAncestor(int n, int[] parent) {
+        up = new int[LOG][];
+        up[0] = parent.clone();
+        for (int j = 1; j < LOG; j++) {
+            up[j] = new int[n];
+            for (int v = 0; v < n; v++) {
+                int mid = up[j - 1][v];
+                up[j][v] = mid == -1 ? -1 : up[j - 1][mid];
+            }
+        }
+    }
+
+    public int getKthAncestor(int node, int k) {
+        for (int j = 0; j < LOG && node != -1; j++)
+            if ((k >> j & 1) == 1) node = up[j][node];
+        return node;
+    }
+}`,
+      complexity: `<p>Build <b>O(n log n)</b>, query <b>O(log k)</b>, memory <b>O(n log n)</b> ≈ 3.2 MB here.</p>`,
+      followUps: ['Answer each query in O(1) after O(n) preprocessing (ladder decomposition / long-path).', 'Support adding a new leaf online (its up-row is computable from its parent\'s rows).']
+    }
+  });
+
+  practice.push({
+    title: 'Maximum Dominoes on a Damaged Board',
+    level: 'Medium', tags: ['bipartite matching', 'grid', 'chessboard colouring'], companies: ['Google', 'Jane Street'],
+    statement: `<p>A board has <code>R × C</code> cells; <code>'.'</code> is usable, <code>'#'</code> is broken. Place as many <b>1×2 dominoes</b> as possible on usable cells (horizontal or vertical) with no overlap. Return the count.</p>`,
+    constraints: `<p>1 ≤ R, C ≤ 40.</p>`,
+    example: `<p><code>["..#", "...", "#.."]</code> → <b>${H.c('g', '3')}</b>.</p><p>Why: there are 7 usable cells, so at most ⌊7/2⌋ = 3 dominoes; one valid placement is (0,0)-(0,1), (1,0)-(1,1), (1,2)-(2,2) — and (2,1) is left alone.</p>`,
+    brute: {
+      why: `<p>Backtracking cell by cell: leave the cell empty, or cover it with a domino to the right or down. Exponential (about 3<sup>cells</sup> branches). The waste: it ignores the bipartite structure that turns this into a polynomial matching.</p>`,
+      code: `class Brute {
+    private int best = 0;
+
+    int maxDominoes(String[] board) {
+        int R = board.length, C = board[0].length();
+        boolean[][] used = new boolean[R][C];
+        go(board, used, 0, 0);
+        return best;
+    }
+
+    private void go(String[] b, boolean[][] used, int idx, int placed) {
+        int R = b.length, C = b[0].length();
+        if (idx == R * C) { best = Math.max(best, placed); return; }
+        int r = idx / C, c = idx % C;
+        go(b, used, idx + 1, placed);                                   // leave this cell
+        if (b[r].charAt(c) == '#' || used[r][c]) return;
+        if (c + 1 < C && b[r].charAt(c + 1) == '.' && !used[r][c + 1]) { // horizontal
+            used[r][c] = used[r][c + 1] = true;
+            go(b, used, idx + 1, placed + 1);
+            used[r][c] = used[r][c + 1] = false;
+        }
+        if (r + 1 < R && b[r + 1].charAt(c) == '.' && !used[r + 1][c]) { // vertical
+            used[r][c] = used[r + 1][c] = true;
+            go(b, used, idx + 1, placed + 1);
+            used[r][c] = used[r + 1][c] = false;
+        }
+    }
+}`
+    },
+    mcq: { q: 'Why is the cell graph bipartite?', options: ['Colour cells like a chessboard: every domino covers one black and one white cell', 'Because grids have no cycles', 'Because dominoes are rectangles', 'It is not bipartite'], answer: 0, explain: 'Neighbouring cells always have different (r + c) parity, so all edges go black–white.' },
+    hints: [
+      `<p>Hint 1: A domino = a pair of neighbouring usable cells. You want the largest set of pairs with no shared cell — a maximum matching.</p>`,
+      `<p>Hint 2: Cells with even (r + c) form the left side, odd the right side; every neighbour pair is left–right.</p>`,
+      `<p>Hint 3: Recipe — number cells r·C + c; for each usable even cell try Kuhn over its up to 4 usable neighbours. 1600 cells × ~6400 edges is tiny for Kuhn.</p>`
+    ],
+    solution: {
+      approach: `<p>Chessboard colouring + Kuhn's algorithm. The matching size is the domino count.</p>`,
+      code: `class Solution {
+    private int R, C;
+    private String[] b;
+    private int[] owner;            // owner[oddCell] = even cell matched to it, or -1
+    private boolean[] seen;
+    private final int[] dr = {1, -1, 0, 0}, dc = {0, 0, 1, -1};
+
+    int maxDominoes(String[] board) {
+        b = board;
+        R = board.length;
+        C = board[0].length();
+        owner = new int[R * C];
+        Arrays.fill(owner, -1);
+        int count = 0;
+        for (int r = 0; r < R; r++)
+            for (int c = 0; c < C; c++)
+                if ((r + c) % 2 == 0 && b[r].charAt(c) == '.') {
+                    seen = new boolean[R * C];
+                    if (tryCell(r, c)) count++;
+                }
+        return count;
+    }
+
+    private boolean tryCell(int r, int c) {
+        for (int d = 0; d < 4; d++) {
+            int nr = r + dr[d], nc = c + dc[d];
+            if (nr < 0 || nc < 0 || nr >= R || nc >= C || b[nr].charAt(nc) != '.') continue;
+            int id = nr * C + nc;
+            if (seen[id]) continue;
+            seen[id] = true;
+            if (owner[id] == -1 || tryCell(owner[id] / C, owner[id] % C)) {
+                owner[id] = r * C + c;
+                return true;
+            }
+        }
+        return false;
+    }
+}`,
+      complexity: `<p>Kuhn: O(V·E) = 1600 × 6400 ≈ 10<sup>7</sup> in the worst case. Space O(R·C).</p>`,
+      followUps: ['Count the number of ways to tile the full board (that is a DP over profiles / FKT algorithm, not matching).', 'Large boards (10<sup>3</sup> × 10<sup>3</sup>) → Hopcroft-Karp.']
+    }
+  });
+
+  practice.push({
+    title: 'Fewest Lines to Cover All Marked Cells',
+    level: 'Medium', tags: ['könig', 'vertex cover', 'bipartite matching'], companies: ['Google', 'Two Sigma'],
+    statement: `<p>A grid has some cells marked <code>1</code>. One "line" covers a whole row or a whole column. Return the <b>minimum number of lines</b> needed so every marked cell is covered.</p>`,
+    constraints: `<p>1 ≤ R, C ≤ 300.</p>`,
+    example: `<p>grid = <code>[[1,0,1],[0,1,0],[0,1,0]]</code> → <b>${H.c('g', '2')}</b>.</p><p>Why: row 0 covers (0,0) and (0,2); column 1 covers (1,1) and (2,1). One line cannot do it, because (0,0) and (1,1) share neither a row nor a column.</p>`,
+    brute: {
+      why: `<p>Try every subset of rows (2<sup>R</sup>); for each, all columns that still contain an uncovered 1 must be chosen. Take the minimum. O(2<sup>R</sup>·R·C) — fine for R ≤ 15, hopeless for 300.</p>`,
+      code: `class Brute {
+    int minLines(int[][] grid) {
+        int R = grid.length, C = grid[0].length, best = Integer.MAX_VALUE;
+        for (int mask = 0; mask < (1 << R); mask++) {
+            int lines = Integer.bitCount(mask);
+            for (int c = 0; c < C; c++) {
+                boolean need = false;
+                for (int r = 0; r < R; r++) if (grid[r][c] == 1 && (mask >> r & 1) == 0) need = true;
+                if (need) lines++;                       // this column must be a line
+            }
+            best = Math.min(best, lines);
+        }
+        return best;
+    }
+}`
+    },
+    mcq: { q: 'Rows are left vertices, columns right vertices, each marked cell an edge. "Fewest lines" is then…', options: ['A minimum vertex cover — equal to the maximum matching (König)', 'A maximum independent set', 'A shortest path', 'A spanning tree'], answer: 0, explain: 'Choosing a row/column = choosing a vertex; covering every marked cell = covering every edge.' },
+    hints: [
+      `<p>Hint 1: Model rows and columns as the two sides of a bipartite graph; every marked cell (r, c) is an edge r–c.</p>`,
+      `<p>Hint 2: Choosing lines that cover all cells = choosing vertices that touch all edges = minimum vertex cover. In bipartite graphs that equals the maximum matching (König).</p>`,
+      `<p>Hint 3: Recipe — Kuhn from every row over the columns with a 1. Answer = matching size. To output the lines, run the alternating search from unmatched rows and take (unvisited rows) ∪ (visited columns).</p>`
+    ],
+    solution: {
+      approach: `<p>König's theorem: min vertex cover = max matching. Kuhn on rows → columns.</p>`,
+      code: `class Solution {
+    private int[][] g;
+    private int[] owner;            // owner[col] = row matched to it, or -1
+    private boolean[] seen;
+
+    int minLines(int[][] grid) {
+        g = grid;
+        int R = grid.length, C = grid[0].length, matching = 0;
+        owner = new int[C];
+        Arrays.fill(owner, -1);
+        for (int r = 0; r < R; r++) {
+            seen = new boolean[C];
+            if (tryRow(r)) matching++;
+        }
+        return matching;            // = minimum vertex cover = fewest lines
+    }
+
+    private boolean tryRow(int r) {
+        for (int c = 0; c < g[r].length; c++) {
+            if (g[r][c] == 0 || seen[c]) continue;
+            seen[c] = true;
+            if (owner[c] == -1 || tryRow(owner[c])) { owner[c] = r; return true; }
+        }
+        return false;
+    }
+}`,
+      complexity: `<p>O(R · R · C) = 2.7·10<sup>7</sup> worst case; space O(C).</p>`,
+      followUps: ['Output which rows and columns to choose.', 'Each row and column has a different cost (weighted vertex cover → min cut).']
+    }
+  });
+
+  // =====================================================================
+  // PRACTICE — Hard
+  // =====================================================================
+  practice.push({
+    title: 'Cracking the Safe (de Bruijn Sequence)',
+    level: 'Hard', tags: ['euler circuit', 'hierholzer', 'de bruijn'], companies: ['Google', 'Amazon'],
+    statement: `<p>A safe has a password of <code>n</code> digits, each from <code>0 … k−1</code>. The safe checks the <b>last n digits typed</b> after every keystroke. Return any <b>shortest</b> string that is guaranteed to open the safe (contains every possible password as a substring).</p>`,
+    constraints: `<p>1 ≤ n ≤ 4, 1 ≤ k ≤ 10, k<sup>n</sup> ≤ 4096.</p>`,
+    example: `<p>n = 2, k = 2 → <b>${H.c('g', '"00110"')}</b> (length 2<sup>2</sup> + 1 = 5).</p><p>Why: its windows are 00, 01, 11, 10 — all four passwords, each exactly once. No shorter string can contain 4 different length-2 windows.</p>`,
+    brute: {
+      why: `<p>DFS that appends a digit only if the new n-digit window is unseen, and backtracks when stuck. Without the Euler-circuit argument there is no guarantee it never backtracks, so in the worst case it explores exponentially many strings. The waste: blind search where a linear-time construction exists.</p>`,
+      code: `class Brute {
+    public String crackSafe(int n, int k) {
+        int total = (int) Math.pow(k, n);
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < n; i++) sb.append('0');
+        Set<String> seen = new HashSet<>();
+        seen.add(sb.toString());
+        dfs(sb, seen, n, k, total);
+        return sb.toString();
+    }
+
+    private boolean dfs(StringBuilder sb, Set<String> seen, int n, int k, int total) {
+        if (seen.size() == total) return true;
+        String tail = sb.substring(sb.length() - n + 1);
+        for (int d = 0; d < k; d++) {
+            String w = tail + d;
+            if (seen.contains(w)) continue;
+            seen.add(w);
+            sb.append(d);
+            if (dfs(sb, seen, n, k, total)) return true;
+            sb.deleteCharAt(sb.length() - 1);            // backtrack
+            seen.remove(w);
+        }
+        return false;
+    }
+}`
+    },
+    mcq: { q: 'In the de Bruijn graph for this problem, what are the vertices and edges?', options: ['Vertices = (n−1)-digit strings, edges = n-digit passwords', 'Vertices = passwords, edges = keystrokes', 'Vertices = digits, edges = pairs of digits', 'Vertices = n-digit strings, edges = (n+1)-digit strings'], answer: 0, explain: 'Edge "abc" goes from "ab" to "bc". Each password is an edge, so an Euler circuit uses every password once.' },
+    hints: [
+      `<p>Hint 1: The shortest answer has length k<sup>n</sup> + n − 1: each new keystroke must create a brand-new password window.</p>`,
+      `<p>Hint 2: Make each (n−1)-digit string a vertex; appending digit d to vertex v moves to (v·k + d) mod k<sup>n−1</sup>. Every vertex has in = out = k → an Euler circuit exists.</p>`,
+      `<p>Hint 3: Recipe — iterative Hierholzer from vertex 0 (n−1 zeros) recording the digit of each edge when it is popped; reverse the digits and prepend n−1 zeros.</p>`
+    ],
+    solution: {
+      approach: `<p>Hierholzer on the de Bruijn graph with an explicit stack of (vertex, digit used to enter it). Post-order digits reversed = the Euler circuit's edge labels.</p>`,
+      code: `class Solution {
+    public String crackSafe(int n, int k) {
+        int nodes = 1;
+        for (int i = 0; i < n - 1; i++) nodes *= k;          // k^(n-1) vertices
+        int[] ptr = new int[nodes];                            // next digit to try from each vertex
+        Deque<Integer> nodeStack = new ArrayDeque<>(), digitStack = new ArrayDeque<>();
+        StringBuilder digits = new StringBuilder();
+        nodeStack.push(0);
+        digitStack.push(-1);                                   // nothing led into the start vertex
+        while (!nodeStack.isEmpty()) {
+            int v = nodeStack.peek();
+            if (ptr[v] < k) {
+                int d = ptr[v]++;
+                nodeStack.push((v * k + d) % nodes);           // drop the oldest digit, append d
+                digitStack.push(d);
+            } else {
+                nodeStack.pop();
+                int d = digitStack.pop();
+                if (d >= 0) digits.append(d);                  // post-order edge label
+            }
+        }
+        digits.reverse();
+        StringBuilder ans = new StringBuilder();
+        for (int i = 0; i < n - 1; i++) ans.append('0');       // the start vertex
+        return ans.append(digits).toString();
+    }
+}`,
+      complexity: `<p>Time and space <b>O(k<sup>n</sup>)</b> — one push and pop per password.</p>`,
+      followUps: ['Prove the length k<sup>n</sup> + n − 1 is optimal.', 'Genome assembly uses the same graph on k-mers — what breaks with sequencing errors?']
+    }
+  });
+
+  practice.push({
+    title: 'Valid Arrangement of Pairs',
+    level: 'Hard', tags: ['euler path', 'hierholzer', 'hashmap'], companies: ['Google', 'Microsoft'],
+    statement: `<p>You get <code>pairs[i] = [start, end]</code>. Rearrange all pairs so that for every i ≥ 1, <code>pairs[i−1][1] == pairs[i][0]</code>. A valid arrangement is guaranteed to exist; return any.</p>`,
+    constraints: `<p>1 ≤ pairs.length ≤ 10<sup>5</sup>, 0 ≤ values ≤ 10<sup>9</sup>, no two pairs are equal.</p>`,
+    example: `<p>pairs = <code>[[5,1],[4,5],[11,9],[9,4]]</code> → <b>${H.c('g', '[[11,9],[9,4],[4,5],[5,1]]')}</b>.</p><p>Why: values are vertices, pairs are directed edges; 11 has out − in = +1 so the chain must start there: 11 → 9 → 4 → 5 → 1.</p>`,
+    brute: {
+      why: `<p>Backtracking over which pair comes next tries up to n! orders; even with pruning it explodes on graphs with many cycles. The waste: an Euler path can be built greedily in O(n) with Hierholzer.</p>`,
+      code: `class Brute {
+    public int[][] validArrangement(int[][] pairs) {
+        int n = pairs.length;
+        int[][] ans = new int[n][];
+        boolean[] used = new boolean[n];
+        for (int i = 0; i < n; i++) {                    // try every pair as the first one
+            used[i] = true;
+            ans[0] = pairs[i];
+            if (go(pairs, used, ans, 1)) return ans;
+            used[i] = false;
+        }
+        return ans;
+    }
+
+    private boolean go(int[][] pairs, boolean[] used, int[][] ans, int pos) {
+        if (pos == pairs.length) return true;
+        for (int i = 0; i < pairs.length; i++) {
+            if (used[i] || pairs[i][0] != ans[pos - 1][1]) continue;
+            used[i] = true;
+            ans[pos] = pairs[i];
+            if (go(pairs, used, ans, pos + 1)) return true;
+            used[i] = false;
+        }
+        return false;
+    }
+}`
+    },
+    mcq: { q: 'All values are balanced (out = in). Where can the arrangement start?', options: ['At any start value that has an outgoing pair — it is an Euler circuit', 'Only at the smallest value', 'Nowhere — no arrangement exists', 'Only at pairs[0][1]'], answer: 0, explain: 'Balanced degrees + connectivity → Euler circuit, which can start anywhere on it.' },
+    hints: [
+      `<p>Hint 1: Values are vertices, pairs are directed edges, and "use every pair once, end of one = start of next" is an Euler path.</p>`,
+      `<p>Hint 2: Values go up to 10<sup>9</sup> → adjacency in a HashMap. Start at the value with out − in = +1, or at pairs[0][0] if all are balanced.</p>`,
+      `<p>Hint 3: Recipe — iterative Hierholzer: push start; while stack: if top has an unused out-edge, push its target; else pop into a list. Reverse the list (vertices) and turn consecutive vertices into pairs.</p>`
+    ],
+    solution: {
+      approach: `<p>Directed Euler path with Hierholzer on a hash-map graph.</p>`,
+      code: `class Solution {
+    public int[][] validArrangement(int[][] pairs) {
+        Map<Integer, Deque<Integer>> g = new HashMap<>();
+        Map<Integer, Integer> balance = new HashMap<>();          // out - in
+        for (int[] p : pairs) {
+            g.computeIfAbsent(p[0], x -> new ArrayDeque<>()).push(p[1]);
+            balance.merge(p[0], 1, Integer::sum);
+            balance.merge(p[1], -1, Integer::sum);
+        }
+        int start = pairs[0][0];
+        for (Map.Entry<Integer, Integer> e : balance.entrySet())
+            if (e.getValue() == 1) { start = e.getKey(); break; }
+        Deque<Integer> stack = new ArrayDeque<>();
+        List<Integer> order = new ArrayList<>();                 // vertices in reverse Euler order
+        stack.push(start);
+        while (!stack.isEmpty()) {
+            Deque<Integer> out = g.get(stack.peek());
+            if (out != null && !out.isEmpty()) stack.push(out.pop());
+            else order.add(stack.pop());
+        }
+        Collections.reverse(order);
+        int[][] ans = new int[pairs.length][];
+        for (int i = 0; i + 1 < order.size(); i++) ans[i] = new int[]{order.get(i), order.get(i + 1)};
+        return ans;
+    }
+}`,
+      complexity: `<p>Time <b>O(n)</b> expected (hashing), space <b>O(n)</b>.</p>`,
+      followUps: ['What if no arrangement is guaranteed? Add the degree and E + 1 length checks.', 'Lexicographically smallest arrangement.']
+    }
+  });
+
+  practice.push({
+    title: '2-SAT: Satisfy Every Two-Option Rule',
+    level: 'Hard', tags: ['scc', '2-sat', 'implication graph'], companies: ['Google', 'Jane Street', 'Citadel'],
+    statement: `<p>There are <code>n</code> boolean variables x<sub>1</sub> … x<sub>n</sub> and a list of clauses, each "<code>a OR b</code>" where a literal <code>+i</code> means x<sub>i</sub> and <code>−i</code> means NOT x<sub>i</sub>. Return any assignment that makes every clause true (index 1 … n), or <code>null</code> if impossible.</p>`,
+    constraints: `<p>1 ≤ n ≤ 10<sup>5</sup>, 1 ≤ clauses ≤ 2·10<sup>5</sup>.</p>`,
+    example: `<p>n = 2, clauses <code>(x1 ∨ x2), (¬x1 ∨ x2), (¬x2 ∨ x1)</code> → <b>${H.c('g', 'x1 = true, x2 = true')}</b>.</p><p>Why: clause 2 says "if x1 then x2", clause 3 says "if x2 then x1", clause 1 forbids both false → both true. Adding <code>(¬x1 ∨ ¬x2)</code> would make it impossible: x1 and ¬x1 would land in one SCC.</p>`,
+    brute: {
+      why: `<p>Try all 2<sup>n</sup> assignments and test every clause: O(2<sup>n</sup>·m). Fine for n ≤ 20, impossible for 10<sup>5</sup>. The waste: clauses with only two literals have implication structure that SCCs decide in linear time.</p>`,
+      code: `class Brute {
+    boolean[] solve2SAT(int n, int[][] clauses) {
+        for (int mask = 0; mask < (1 << n); mask++) {
+            boolean ok = true;
+            for (int[] c : clauses) {
+                if (!(lit(mask, c[0]) || lit(mask, c[1]))) { ok = false; break; }
+            }
+            if (ok) {
+                boolean[] value = new boolean[n + 1];
+                for (int i = 1; i <= n; i++) value[i] = (mask >> (i - 1) & 1) == 1;
+                return value;
+            }
+        }
+        return null;
+    }
+
+    private boolean lit(int mask, int l) {
+        boolean v = (mask >> (Math.abs(l) - 1) & 1) == 1;
+        return l > 0 ? v : !v;
+    }
+}`
+    },
+    mcq: { q: 'Clause (a ∨ b) becomes which implication edges?', options: ['¬a → b and ¬b → a', 'a → b and b → a', 'a → ¬b only', '¬a → ¬b'], answer: 0, explain: 'If a is false, b must be true; if b is false, a must be true. Both directions are needed for the graph to be symmetric.' },
+    hints: [
+      `<p>Hint 1: Make 2n nodes: x<sub>i</sub> and ¬x<sub>i</sub>. Each clause (a ∨ b) adds edges ¬a → b and ¬b → a.</p>`,
+      `<p>Hint 2: If x and ¬x are in the same SCC, x ⇒ ¬x and ¬x ⇒ x — contradiction, unsatisfiable. Otherwise a solution exists.</p>`,
+      `<p>Hint 3: Recipe — Kosaraju (iterative) numbers components in topological order. Set x<sub>i</sub> = true iff comp[x<sub>i</sub>] &gt; comp[¬x<sub>i</sub>] (choose the literal that comes later, so nothing it implies can force a contradiction).</p>`
+    ],
+    solution: {
+      approach: `<p>Implication graph + iterative Kosaraju. Node 2(i−1) is x<sub>i</sub>, node 2(i−1)+1 is ¬x<sub>i</sub>, so negation is <code>^ 1</code>.</p>`,
+      code: `class Solution {
+    boolean[] solve2SAT(int n, int[][] clauses) {
+        int N = 2 * n;
+        List<List<Integer>> g = new ArrayList<>(), rg = new ArrayList<>();
+        for (int i = 0; i < N; i++) { g.add(new ArrayList<>()); rg.add(new ArrayList<>()); }
+        for (int[] c : clauses) {
+            int a = node(c[0]), b = node(c[1]);
+            g.get(a ^ 1).add(b); rg.get(b).add(a ^ 1);          // NOT a -> b
+            g.get(b ^ 1).add(a); rg.get(a).add(b ^ 1);          // NOT b -> a
+        }
+        int[] order = new int[N], it = new int[N];
+        boolean[] seen = new boolean[N];
+        int cnt = 0;
+        Deque<Integer> st = new ArrayDeque<>();
+        for (int s = 0; s < N; s++) {                           // pass 1: finish order
+            if (seen[s]) continue;
+            seen[s] = true;
+            st.push(s);
+            while (!st.isEmpty()) {
+                int v = st.peek();
+                if (it[v] < g.get(v).size()) {
+                    int w = g.get(v).get(it[v]++);
+                    if (!seen[w]) { seen[w] = true; st.push(w); }
+                } else {
+                    st.pop();
+                    order[cnt++] = v;
+                }
+            }
+        }
+        int[] comp = new int[N];
+        Arrays.fill(comp, -1);
+        int c = 0;
+        for (int k = N - 1; k >= 0; k--) {                      // pass 2: topological component ids
+            int s = order[k];
+            if (comp[s] != -1) continue;
+            comp[s] = c;
+            st.push(s);
+            while (!st.isEmpty()) {
+                int v = st.pop();
+                for (int w : rg.get(v)) if (comp[w] == -1) { comp[w] = c; st.push(w); }
+            }
+            c++;
+        }
+        boolean[] value = new boolean[n + 1];
+        for (int i = 1; i <= n; i++) {
+            int x = 2 * (i - 1);
+            if (comp[x] == comp[x ^ 1]) return null;             // x <=> NOT x
+            value[i] = comp[x] > comp[x ^ 1];                    // later in topological order wins
+        }
+        return value;
+    }
+
+    private int node(int lit) { return lit > 0 ? 2 * (lit - 1) : 2 * (-lit - 1) + 1; }
+}`,
+      complexity: `<p>Time <b>O(n + m)</b>, space <b>O(n + m)</b>.</p>`,
+      followUps: ['Why does 3-SAT not have such an algorithm? (NP-complete.)', 'Model "exactly one of a, b" and "a implies b" as 2-SAT clauses.']
+    }
+  });
+
+  practice.push({
+    title: 'Max Flow with Node Capacities (Node Splitting)',
+    level: 'Hard', tags: ['max flow', 'node splitting', 'dinic'], companies: ['Google', 'Amazon', 'Cloudflare'],
+    statement: `<p>A data network has <code>n</code> routers. <code>links[i] = [u, v, c]</code> is a one-way link with bandwidth c. Every router v other than the source <code>s</code> and sink <code>t</code> can forward at most <code>limit[v]</code> units in total. Return the maximum throughput from s to t.</p>`,
+    constraints: `<p>2 ≤ n ≤ 2000, 1 ≤ links ≤ 10<sup>4</sup>, capacities ≤ 10<sup>9</sup>.</p>`,
+    example: `<p>n = 4, s = 0, t = 3, links <code>0→1:10, 0→2:10, 1→3:10, 2→3:10</code>, limit = <code>[∞, 4, 7, ∞]</code> → <b>${H.c('g', '11')}</b>.</p><p>Why: links allow 20, but router 1 forwards at most 4 and router 2 at most 7: 4 + 7 = 11.</p>`,
+    brute: {
+      why: `<p>Plain Ford-Fulkerson (DFS) on the split network is correct but O(E·F) with F up to ~10<sup>13</sup>. Ignoring node limits (plain max flow) is fast but <b>wrong</b> (answers 20 here). The fix is the model, then a fast algorithm.</p>`,
+      code: `class Brute {
+    long maxThroughput(int n, int[][] links, long[] limit, int s, int t) {
+        int N = 2 * n;                                       // v_in = v, v_out = v + n
+        long[][] r = new long[N][N];
+        for (int v = 0; v < n; v++) r[v][v + n] = (v == s || v == t) ? Long.MAX_VALUE / 4 : limit[v];
+        for (int[] l : links) r[l[0] + n][l[1]] += l[2];
+        long flow = 0, pushed;
+        while ((pushed = dfs(r, s, t + n, Long.MAX_VALUE, new boolean[N])) > 0) flow += pushed;
+        return flow;
+    }
+
+    long dfs(long[][] r, int v, int t, long f, boolean[] seen) {
+        if (v == t) return f;
+        seen[v] = true;
+        for (int w = 0; w < r.length; w++)
+            if (!seen[w] && r[v][w] > 0) {
+                long d = dfs(r, w, t, Math.min(f, r[v][w]), seen);
+                if (d > 0) { r[v][w] -= d; r[w][v] += d; return d; }
+            }
+        return 0;
+    }
+}`
+    },
+    mcq: { q: 'How do you put a capacity on a NODE?', options: ['Split it into v_in → v_out with that capacity; in-links go to v_in, out-links leave v_out', 'Divide each incident edge by its degree', 'Add a self-loop with that capacity', 'Cap the source edges only'], answer: 0, explain: 'All flow through v must cross the single edge v_in → v_out, so its capacity limits the node.' },
+    hints: [
+      `<p>Hint 1: Flow algorithms only limit edges. Turn each router into an edge.</p>`,
+      `<p>Hint 2: v becomes v_in (id v) and v_out (id v + n) with edge v_in → v_out of capacity limit[v] (∞ for s and t). Link u → v becomes u_out → v_in.</p>`,
+      `<p>Hint 3: Recipe — build the 2n-node network, run Dinic from s_in to t_out, use long and INF = Long.MAX_VALUE / 4.</p>`
+    ],
+    solution: {
+      approach: `<p>Node splitting + Dinic (forward-star arrays).</p>`,
+      code: `class Solution {
+    private int[] head, nxt, to, level, it;
+    private long[] cap;
+    private int cnt = 0;
+
+    long maxThroughput(int n, int[][] links, long[] limit, int s, int t) {
+        int N = 2 * n, M = n + links.length;
+        head = new int[N];
+        Arrays.fill(head, -1);
+        nxt = new int[2 * M];
+        to = new int[2 * M];
+        cap = new long[2 * M];
+        level = new int[N];
+        it = new int[N];
+        long INF = Long.MAX_VALUE / 4;
+        for (int v = 0; v < n; v++) add(v, v + n, (v == s || v == t) ? INF : limit[v]);   // v_in -> v_out
+        for (int[] l : links) add(l[0] + n, l[1], l[2]);                                 // u_out -> v_in
+        long flow = 0;
+        while (bfs(s, t + n, N)) {
+            System.arraycopy(head, 0, it, 0, N);
+            long f;
+            while ((f = dfs(s, t + n, INF)) > 0) flow += f;
+        }
+        return flow;
+    }
+
+    private void add(int u, int v, long c) {
+        to[cnt] = v; cap[cnt] = c; nxt[cnt] = head[u]; head[u] = cnt++;
+        to[cnt] = u; cap[cnt] = 0; nxt[cnt] = head[v]; head[v] = cnt++;
+    }
+
+    private boolean bfs(int s, int t, int N) {
+        Arrays.fill(level, -1);
+        int[] q = new int[N];
+        int qh = 0, qt = 0;
+        level[s] = 0;
+        q[qt++] = s;
+        while (qh < qt) {
+            int v = q[qh++];
+            for (int e = head[v]; e != -1; e = nxt[e])
+                if (cap[e] > 0 && level[to[e]] < 0) { level[to[e]] = level[v] + 1; q[qt++] = to[e]; }
+        }
+        return level[t] >= 0;
+    }
+
+    private long dfs(int v, int t, long f) {
+        if (v == t) return f;
+        for (; it[v] != -1; it[v] = nxt[it[v]]) {
+            int e = it[v];
+            if (cap[e] > 0 && level[to[e]] == level[v] + 1) {
+                long d = dfs(to[e], t, Math.min(f, cap[e]));
+                if (d > 0) { cap[e] -= d; cap[e ^ 1] += d; return d; }
+            }
+        }
+        return 0;
+    }
+}`,
+      complexity: `<p>Dinic O(V²·E) on 2n nodes and n + E edges; in practice very fast. Space O(n + E).</p>`,
+      followUps: ['Minimum number of routers to remove to disconnect s and t (all limits = 1, then min cut).', 'Undirected links.']
+    }
+  });
+
+  practice.push({
+    title: 'Project Selection: Maximum Profit with Prerequisites',
+    level: 'Hard', tags: ['min cut', 'max closure', 'dinic'], companies: ['Google', 'Two Sigma', 'Hudson River Trading'],
+    statement: `<p>There are <code>n</code> items with value <code>val[i]</code> (positive = profit, negative = cost). <code>req[j] = [a, b]</code> means "if you choose a you must also choose b". Choose a set of items closed under the requirements with <b>maximum total value</b> (choosing nothing gives 0).</p>`,
+    constraints: `<p>1 ≤ n ≤ 500, 0 ≤ req ≤ 5000, |val[i]| ≤ 10<sup>6</sup>.</p>`,
+    example: `<p>val = <code>[10, 7, -6, -9]</code>, req = <code>[0,2], [1,2], [1,3]</code> → <b>${H.c('g', '4')}</b>.</p><p>Why: item 0 (+10) needs item 2 (−6) → +4. Item 1 (+7) needs 2 and 3 → 7 − 6 − 9 alone is −8, and together with item 0 the total is 10 + 7 − 6 − 9 = 2 &lt; 4. Best is {0, 2}.</p>`,
+    brute: {
+      why: `<p>Enumerate all 2<sup>n</sup> subsets, keep the closed ones, take the best. O(2<sup>n</sup>·(n + req)). The waste: closure problems have a min-cut structure that solves them in polynomial time.</p>`,
+      code: `class Brute {
+    long maxProfit(long[] val, int[][] req) {
+        int n = val.length;
+        long best = 0;
+        for (int mask = 0; mask < (1 << n); mask++) {
+            boolean closed = true;
+            for (int[] r : req)
+                if ((mask >> r[0] & 1) == 1 && (mask >> r[1] & 1) == 0) { closed = false; break; }
+            if (!closed) continue;
+            long sum = 0;
+            for (int i = 0; i < n; i++) if ((mask >> i & 1) == 1) sum += val[i];
+            best = Math.max(best, sum);
+        }
+        return best;
+    }
+}`
+    },
+    mcq: { q: 'In the project-selection network, what does an ∞ edge a → b enforce?', options: ['If a is on the S-side (chosen), b must be too — otherwise the cut is infinite', 'a and b are never chosen together', 'b is cheaper than a', 'Nothing; ∞ edges are ignored'], answer: 0, explain: 'A finite cut can never cut an ∞ edge, so "a chosen, b not chosen" is impossible.' },
+    hints: [
+      `<p>Hint 1: Think "choose = S-side". Losing a profit or paying a cost should be exactly the capacity of the edges you cut.</p>`,
+      `<p>Hint 2: S → i with capacity val[i] for profits (cut = not chosen, profit lost); i → T with capacity −val[i] for costs (cut = chosen, cost paid); a → b with ∞ for each requirement.</p>`,
+      `<p>Hint 3: Recipe — answer = (sum of positive values) − maxflow(S, T). The chosen set = nodes reachable from S in the residual graph.</p>`
+    ],
+    solution: {
+      approach: `<p>Max-weight closure via min cut (Picard 1976). Every finite cut ↔ a closed set; cut capacity = lost profits + paid costs.</p>`,
+      code: `class Solution {
+    private int[] head, nxt, to, level, it;
+    private long[] cap;
+    private int cnt = 0;
+
+    long maxProfit(long[] val, int[][] req) {
+        int n = val.length, S = n, T = n + 1, N = n + 2, M = n + req.length;
+        head = new int[N];
+        Arrays.fill(head, -1);
+        nxt = new int[2 * M];
+        to = new int[2 * M];
+        cap = new long[2 * M];
+        level = new int[N];
+        it = new int[N];
+        long INF = Long.MAX_VALUE / 4, positive = 0;
+        for (int i = 0; i < n; i++) {
+            if (val[i] > 0) { add(S, i, val[i]); positive += val[i]; }   // cut = give up this profit
+            else add(i, T, -val[i]);                                     // cut = pay this cost
+        }
+        for (int[] r : req) add(r[0], r[1], INF);                         // a chosen => b chosen
+        long flow = 0;
+        while (bfs(S, T, N)) {
+            System.arraycopy(head, 0, it, 0, N);
+            long f;
+            while ((f = dfs(S, T, INF)) > 0) flow += f;
+        }
+        return positive - flow;
+    }
+
+    private void add(int u, int v, long c) {
+        to[cnt] = v; cap[cnt] = c; nxt[cnt] = head[u]; head[u] = cnt++;
+        to[cnt] = u; cap[cnt] = 0; nxt[cnt] = head[v]; head[v] = cnt++;
+    }
+
+    private boolean bfs(int s, int t, int N) {
+        Arrays.fill(level, -1);
+        int[] q = new int[N];
+        int qh = 0, qt = 0;
+        level[s] = 0;
+        q[qt++] = s;
+        while (qh < qt) {
+            int v = q[qh++];
+            for (int e = head[v]; e != -1; e = nxt[e])
+                if (cap[e] > 0 && level[to[e]] < 0) { level[to[e]] = level[v] + 1; q[qt++] = to[e]; }
+        }
+        return level[t] >= 0;
+    }
+
+    private long dfs(int v, int t, long f) {
+        if (v == t) return f;
+        for (; it[v] != -1; it[v] = nxt[it[v]]) {
+            int e = it[v];
+            if (cap[e] > 0 && level[to[e]] == level[v] + 1) {
+                long d = dfs(to[e], t, Math.min(f, cap[e]));
+                if (d > 0) { cap[e] -= d; cap[e ^ 1] += d; return d; }
+            }
+        }
+        return 0;
+    }
+}`,
+      dry: {
+        head: ['edge', 'capacity', 'in min cut?'],
+        rows: [
+          ['S → 0', '10', 'no (0 chosen)'],
+          ['S → 1', '7', H.c('r', 'yes: give up +7')],
+          ['2 → T', '6', H.c('r', 'yes: pay 6')],
+          ['3 → T', '9', 'no (3 not chosen)'],
+          ['total', 'positives 17', 'min cut 13 → profit <b>4</b>']
+        ]
+      },
+      complexity: `<p>Dinic on n + 2 nodes and n + req edges: O(V²·E) worst case, fast in practice.</p>`,
+      followUps: ['Return the chosen items (residual reachability from S).', 'Image segmentation is the same pattern with pixel-neighbour penalty edges.']
+    }
+  });
+
+  practice.push({
+    title: 'Minimum Path Cover in a DAG',
+    level: 'Hard', tags: ['bipartite matching', 'dag', 'könig'], companies: ['Google', 'Uber'],
+    statement: `<p>Tasks form a DAG: edge <code>u → v</code> means one worker may do v right after u. Each worker does a chain of tasks following edges, and every task must be done by exactly one worker. Return the <b>minimum number of workers</b> (vertex-disjoint path cover).</p>`,
+    constraints: `<p>1 ≤ n ≤ 500, 0 ≤ E ≤ 10<sup>4</sup>, the graph is acyclic.</p>`,
+    example: `<p>n = 5, edges <code>0→1, 1→2, 0→3, 3→4, 2→4</code> → <b>${H.c('g', '2')}</b>.</p><p>Why: chains 0→1→2→4 and 3 cover everything. One worker cannot: after 0 they must pick 1 or 3, and the other is left over.</p>`,
+    brute: {
+      why: `<p>Each task chooses its "next task" (or none) so that no task is chosen twice; try all choices by backtracking. Exponential (∏ out-degree + 1). The waste: "each node picks at most one successor, each node is picked at most once" is exactly a bipartite matching.</p>`,
+      code: `class Brute {
+    private int best = 0;
+
+    int minWorkers(int n, int[][] edges) {
+        List<List<Integer>> adj = new ArrayList<>();
+        for (int i = 0; i < n; i++) adj.add(new ArrayList<>());
+        for (int[] e : edges) adj.get(e[0]).add(e[1]);
+        go(adj, 0, new boolean[n], 0);
+        return n - best;                                   // every link merges two chains
+    }
+
+    private void go(List<List<Integer>> adj, int u, boolean[] takenAsNext, int links) {
+        if (u == adj.size()) { best = Math.max(best, links); return; }
+        go(adj, u + 1, takenAsNext, links);                // u is the end of its chain
+        for (int v : adj.get(u))
+            if (!takenAsNext[v]) {
+                takenAsNext[v] = true;
+                go(adj, u + 1, takenAsNext, links + 1);
+                takenAsNext[v] = false;
+            }
+    }
+}`
+    },
+    mcq: { q: 'n = 6 tasks and the maximum matching in the split graph is 4. How many workers?', options: ['2', '4', '6', '10'], answer: 0, explain: 'Start with 6 one-task chains; each matched edge glues two chains together: 6 − 4 = 2.' },
+    hints: [
+      `<p>Hint 1: Start with n chains of length 1. Linking u → v merges two chains — but each node may have at most one successor and at most one predecessor.</p>`,
+      `<p>Hint 2: Left copy = "u as predecessor", right copy = "v as successor", edge u–v for each DAG edge. A matching = a valid set of links.</p>`,
+      `<p>Hint 3: Recipe — Kuhn over the split graph; answer = n − matching. (If workers may share tasks / paths may overlap, first take the transitive closure.)</p>`
+    ],
+    solution: {
+      approach: `<p>Reduce to maximum bipartite matching (Fulkerson's/Dilworth-style reduction) and use Kuhn.</p>`,
+      code: `class Solution {
+    private List<List<Integer>> adj;
+    private int[] pred;              // pred[v] = task linked right before v, or -1
+    private boolean[] seen;
+
+    int minWorkers(int n, int[][] edges) {
+        adj = new ArrayList<>();
+        for (int i = 0; i < n; i++) adj.add(new ArrayList<>());
+        for (int[] e : edges) adj.get(e[0]).add(e[1]);
+        pred = new int[n];
+        Arrays.fill(pred, -1);
+        int links = 0;
+        for (int u = 0; u < n; u++) {
+            seen = new boolean[n];
+            if (link(u)) links++;
+        }
+        return n - links;
+    }
+
+    private boolean link(int u) {                    // give u a successor
+        for (int v : adj.get(u)) {
+            if (seen[v]) continue;
+            seen[v] = true;
+            if (pred[v] == -1 || link(pred[v])) { pred[v] = u; return true; }
+        }
+        return false;
+    }
+}`,
+      complexity: `<p>Kuhn O(V·E) = 5·10<sup>6</sup>; space O(V + E).</p>`,
+      followUps: ['Paths may share vertices (Dilworth: minimum chain cover of a partial order).', 'Print the chains.']
+    }
+  });
+
+  practice.push({
+    title: 'Heaviest Edge on a Tree Path (Binary Lifting with Aggregates)',
+    level: 'Hard', tags: ['binary lifting', 'lca', 'path query'], companies: ['Google', 'Codeforces-style', 'Amazon'],
+    statement: `<p>A weighted tree has <code>n</code> nodes. Answer <code>q</code> queries <code>(u, v)</code>: the <b>maximum edge weight</b> on the path between u and v (0 if u == v).</p>`,
+    constraints: `<p>1 ≤ n, q ≤ 10<sup>5</sup>, weights ≤ 10<sup>9</sup>.</p>`,
+    example: `<p>n = 5, edges <code>(0,1,4) (1,2,9) (1,3,2) (0,4,7)</code>, queries <code>(2,3) (3,4) (2,2)</code> → <b>${H.c('g', '[9, 7, 0]')}</b>.</p><p>Why: 2 → 1 → 3 uses weights 9, 2 → max 9. 3 → 1 → 0 → 4 uses 2, 4, 7 → max 7. A path from a node to itself has no edges → 0.</p>`,
+    brute: {
+      why: `<p>Climb from both nodes to their LCA one parent at a time, tracking the max: O(n) per query, 10<sup>10</sup> total on a chain. The waste: the same segments are re-scanned for every query.</p>`,
+      code: `class Brute {
+    long[] maxEdge(int n, int[][] edges, int[][] queries) {
+        List<List<int[]>> adj = new ArrayList<>();
+        for (int i = 0; i < n; i++) adj.add(new ArrayList<>());
+        for (int[] e : edges) { adj.get(e[0]).add(new int[]{e[1], e[2]}); adj.get(e[1]).add(new int[]{e[0], e[2]}); }
+        int[] par = new int[n], depth = new int[n];
+        long[] w = new long[n];
+        boolean[] seen = new boolean[n];
+        Deque<Integer> q = new ArrayDeque<>();
+        q.add(0);
+        seen[0] = true;
+        while (!q.isEmpty()) {
+            int v = q.poll();
+            for (int[] e : adj.get(v)) if (!seen[e[0]]) { seen[e[0]] = true; par[e[0]] = v; depth[e[0]] = depth[v] + 1; w[e[0]] = e[1]; q.add(e[0]); }
+        }
+        long[] ans = new long[queries.length];
+        for (int i = 0; i < queries.length; i++) {
+            int a = queries[i][0], b = queries[i][1];
+            long best = 0;
+            while (depth[a] > depth[b]) { best = Math.max(best, w[a]); a = par[a]; }
+            while (depth[b] > depth[a]) { best = Math.max(best, w[b]); b = par[b]; }
+            while (a != b) { best = Math.max(best, Math.max(w[a], w[b])); a = par[a]; b = par[b]; }
+            ans[i] = best;
+        }
+        return ans;
+    }
+}`
+    },
+    mcq: { q: 'How is mx[k][v] (max edge over the 2^k edges above v) built?', options: ['max(mx[k−1][v], mx[k−1][up[k−1][v]])', 'mx[k−1][v] + mx[k−1][v]', 'max over all children', 'mx[k−1][up[k][v]]'], answer: 0, explain: 'The 2^k segment is the first 2^(k−1) edges plus the next 2^(k−1) edges starting at the midpoint ancestor.' },
+    hints: [
+      `<p>Hint 1: Binary lifting can carry any "combinable" value along each jump — here the maximum edge weight over that jump.</p>`,
+      `<p>Hint 2: mx[0][v] = weight of edge (v, parent). mx[k][v] = max(mx[k−1][v], mx[k−1][up[k−1][v]]).</p>`,
+      `<p>Hint 3: Recipe — run the usual LCA lifting, and every time you jump u (or v) by 2<sup>k</sup>, fold mx[k][u] (or mx[k][v]) into the answer. In the last step add the two final parent edges.</p>`
+    ],
+    solution: {
+      approach: `<p>Binary lifting with an aggregate table alongside the ancestor table. O(log n) per query.</p>`,
+      code: `class Solution {
+    long[] maxEdge(int n, int[][] edges, int[][] queries) {
+        List<List<int[]>> adj = new ArrayList<>();
+        for (int i = 0; i < n; i++) adj.add(new ArrayList<>());
+        for (int[] e : edges) { adj.get(e[0]).add(new int[]{e[1], e[2]}); adj.get(e[1]).add(new int[]{e[0], e[2]}); }
+        int LOG = 1;
+        while ((1 << LOG) < n) LOG++;
+        int[][] up = new int[LOG][n];
+        long[][] mx = new long[LOG][n];
+        int[] depth = new int[n];
+        boolean[] seen = new boolean[n];
+        Deque<Integer> q = new ArrayDeque<>();
+        q.add(0);
+        seen[0] = true;                                    // root: up = itself, mx = 0
+        while (!q.isEmpty()) {
+            int v = q.poll();
+            for (int[] e : adj.get(v)) if (!seen[e[0]]) {
+                seen[e[0]] = true; up[0][e[0]] = v; mx[0][e[0]] = e[1]; depth[e[0]] = depth[v] + 1; q.add(e[0]);
+            }
+        }
+        for (int k = 1; k < LOG; k++)
+            for (int v = 0; v < n; v++) {
+                int mid = up[k - 1][v];
+                up[k][v] = up[k - 1][mid];
+                mx[k][v] = Math.max(mx[k - 1][v], mx[k - 1][mid]);
+            }
+        long[] ans = new long[queries.length];
+        for (int i = 0; i < queries.length; i++) {
+            int a = queries[i][0], b = queries[i][1];
+            long best = 0;
+            if (depth[a] < depth[b]) { int t = a; a = b; b = t; }
+            int diff = depth[a] - depth[b];
+            for (int k = 0; k < LOG; k++)
+                if ((diff >> k & 1) == 1) { best = Math.max(best, mx[k][a]); a = up[k][a]; }
+            if (a != b) {
+                for (int k = LOG - 1; k >= 0; k--)
+                    if (up[k][a] != up[k][b]) {
+                        best = Math.max(best, Math.max(mx[k][a], mx[k][b]));
+                        a = up[k][a];
+                        b = up[k][b];
+                    }
+                best = Math.max(best, Math.max(mx[0][a], mx[0][b]));   // the two edges into the LCA
+            }
+            ans[i] = best;
+        }
+        return ans;
+    }
+}`,
+      complexity: `<p>Build <b>O(n log n)</b>, each query <b>O(log n)</b>, memory O(n log n).</p>`,
+      followUps: ['Minimum spanning tree "second best" problems use exactly this query.', 'Edges change weight → Heavy-Light Decomposition + segment tree.']
+    }
+  });
+
+  // =====================================================================
+  // QUIZ
+  // =====================================================================
+  quiz.push(
+    { q: 'In Kosaraju\'s second pass, which graph do you search and in what order?', options: ['The <b>transposed</b> graph, in <b>decreasing</b> finish time', 'The original graph, in increasing finish time', 'The transposed graph, in increasing node id', 'The original graph, in BFS order'], answer: 0, explain: 'The last-finished node sits in a source component; flipping edges turns it into a sink, so the DFS collects exactly one SCC.' },
+    { q: 'Why is the condensation (SCCs squashed into single nodes) always a DAG?', options: ['If two components could reach each other, they would be one component', 'Because DFS never revisits nodes', 'Because Tarjan pops components in order', 'It is not always a DAG'], answer: 0, explain: 'A cycle between components would make all of them mutually reachable, contradicting maximality of SCCs.' },
+    { q: 'In Tarjan\'s SCC algorithm, an edge v → w reaches a node w that is visited but <b>not on the stack</b>. What do you do?', options: ['Ignore it — w\'s SCC is already closed', 'low[v] = min(low[v], disc[w])', 'low[v] = min(low[v], low[w])', 'Push w again'], answer: 0, explain: 'w belongs to a finished component that cannot reach back to v, so it must not lower v\'s low value.' },
+    { q: 'For a <b>non-root</b> vertex v with DFS child w, when is v an articulation point?', options: ['low[w] ≥ disc[v]', 'low[w] &gt; disc[v]', 'low[v] &lt; disc[w]', 'disc[w] ≥ low[v]'], answer: 0, explain: 'w\'s subtree cannot reach anything older than v, so removing v cuts it off. (Strict &gt; is the bridge test.)' },
+    { q: 'An undirected connected graph has odd-degree vertices with degrees 3 and 5, all others even. What exists?', options: ['An Euler path starting at one odd vertex and ending at the other, but no circuit', 'An Euler circuit', 'Neither', 'A Hamiltonian cycle'], answer: 0, explain: 'Exactly two odd vertices → Euler path between them; a circuit needs zero odd vertices.' },
+    { q: 'Hierholzer\'s algorithm, when the top vertex has no unused edges, …', options: ['pops it and puts it at the FRONT of the answer', 'declares failure', 'restarts from the start vertex', 'appends it to the END of the answer and keeps it on the stack'], answer: 0, explain: 'Vertices are produced in reverse order; prepending (or appending and reversing at the end) gives the Euler path.' },
+    { q: 'Binary lifting for LCA on N nodes costs…', options: ['O(N log N) build and O(log N) per query', 'O(N) build and O(1) per query', 'O(N²) build and O(1) per query', 'O(log N) build and O(N) per query'], answer: 0, explain: 'A table of LOG ≈ log₂N rows × N columns; a query does at most 2·LOG jumps.' },
+    { q: 'During the "jump both" loop of binary-lifting LCA, why do we skip a jump when up[k][u] == up[k][v]?', options: ['That jump lands on a common ancestor that may be ABOVE the lowest one', 'Because the table entry is invalid', 'To save memory', 'Because u and v are already equal'], answer: 0, explain: 'We only take jumps that keep u and v different; at the end both are children of the LCA.' },
+    { q: 'What is the purpose of reverse (residual) edges in Ford-Fulkerson?', options: ['They let later paths cancel ("undo") flow sent earlier, so a bad early choice can be fixed', 'They double the capacity', 'They make the graph undirected', 'They store the BFS parent'], answer: 0, explain: 'Without them greedy augmentation can get stuck below the maximum (e.g. 4 instead of 5 on the diamond network).' },
+    { q: 'Worst-case running time of Edmonds-Karp?', options: ['O(V · E²)', 'O(E · F) where F = max flow', 'O(V² · E)', 'O(E log V)'], answer: 0, explain: 'BFS augmentation: O(V·E) augmentations, each O(E). O(E·F) is plain Ford-Fulkerson; O(V²·E) is Dinic.' },
+    { q: 'After computing a maximum flow, how do you find a minimum S-T cut?', options: ['S-side = all nodes reachable from S in the residual graph; cut = original edges from S-side to the rest', 'Take all saturated edges', 'Take the edges of the last augmenting path', 'Run Kruskal on the flow values'], answer: 0, explain: 'Every edge leaving the residual-reachable set is full and every edge entering it is empty, so its capacity equals the flow.' },
+    { q: 'Dinic\'s algorithm on a unit-capacity bipartite matching network runs in…', options: ['O(E · √V) — the same as Hopcroft-Karp', 'O(V · E)', 'O(V² · E)', 'O(E²)'], answer: 0, explain: 'Shortest augmenting path lengths grow each phase; after √V phases at most √V augmentations remain.' },
+    { q: 'In a bipartite graph with 10 vertices and a maximum matching of size 4, the maximum independent set has size…', options: ['6', '4', '10', '14'], answer: 0, explain: 'König: minimum vertex cover = 4. Independent set = complement of a vertex cover → 10 − 4 = 6.' },
+    { q: 'Which statement is TRUE?', options: ['Euler path (every edge once) is solvable in linear time; Hamiltonian path (every vertex once) is NP-hard', 'Both are NP-hard', 'Both are linear', 'Euler is NP-hard, Hamiltonian is linear'], answer: 0, explain: 'Euler has a simple degree characterisation and Hierholzer\'s O(V + E) algorithm; no such thing is known for Hamiltonian paths.' }
+  );
+
+  // =====================================================================
+  // INTERVIEW Q&A
+  // =====================================================================
+  interview.push(
+    { q: 'What is a strongly connected component, and why is the condensation graph useful?', level: 'I',
+      a: `<p>In a <b>directed</b> graph, an SCC is a maximal set of nodes where every node can reach every other. Squashing each SCC into one node gives the <b>condensation</b>, which is always a <b>DAG</b> — if two components could reach each other they would be the same component. That is the useful part: once the graph is a DAG, I can use topological order, DP along it, and reason about sources/sinks. Examples: "minimum edges to make the graph strongly connected" = max(#sources, #sinks) in the condensation; "maximum coins collected when you may revisit nodes" = DAG DP where each SCC's coins are summed; 2-SAT checks whether x and ¬x share an SCC.</p>`,
+      followUps: ['How many sources/sinks can a condensation have?', 'How would you find the longest path that may revisit nodes?'] },
+    { q: 'Kosaraju or Tarjan — which would you implement and why?', level: 'A',
+      a: `<p>Both are O(V + E). <b>Kosaraju</b> is two DFS passes (finish order, then DFS on the transpose in decreasing finish time). It is easier to explain and naturally gives components in <b>topological</b> order, but it needs the transposed graph (roughly double memory). <b>Tarjan</b> is a single DFS with <code>disc</code>, <code>low</code>, an <code>onStack</code> flag and a stack; components pop out in <b>reverse topological</b> order, no transpose. In an interview I pick whichever I can write bug-free and explain — usually Kosaraju for clarity — and mention Tarjan if memory matters. For 10<sup>5</sup>+ nodes in Java or Python I make the DFS iterative to avoid stack overflow.</p>`,
+      followUps: ['Which one is easier to make iterative?', 'What order do you need for a 2-SAT assignment?'] },
+    { q: 'Explain low-link values and the exact conditions for bridges and articulation points.', level: 'A',
+      a: `<p>Run a DFS on an undirected graph. <code>disc[v]</code> is the visit time; <code>low[v]</code> is the smallest disc reachable from v's DFS subtree using tree edges downward and at most one back edge, never re-using the edge to the parent. For a tree edge v–w (w child): it is a <b>bridge</b> iff <code>low[w] &gt; disc[v]</code> — the subtree cannot even get back to v. A <b>non-root</b> v is an <b>articulation point</b> iff some child has <code>low[w] ≥ disc[v]</code> — the subtree can reach v but nothing older. The <b>root</b> is an articulation point iff it has at least two DFS children. Back edges update with <code>disc[w]</code>, not <code>low[w]</code>.</p>`,
+      followUps: ['Why does the root need its own rule?', 'What changes with parallel edges?', 'How do you get biconnected components?'] },
+    { q: 'Your bridge-finding code skips the parent vertex. A tester reports a wrong answer on a graph with two cables between the same pair of routers. Why?', level: 'A',
+      a: `<p>With two parallel edges A–B, neither edge is a bridge: cutting one leaves the other. If the DFS from B skips "the parent vertex A", it also skips the <b>second</b> cable, which is really a back edge. Then low[B] stays equal to disc[B] &gt; disc[A] and the code wrongly reports A–B as a bridge. The fix is to skip only the <b>edge id</b> we arrived by: store (neighbour, edgeId) in adjacency lists and pass the parent edge id down. For articulation points skipping the parent vertex is harmless, because removing a vertex deletes all its parallel edges anyway.</p>`,
+      followUps: ['Write the adjacency representation you would use.', 'Does the SCC algorithm have a similar issue?'] },
+    { q: 'When does an Euler path exist, and how does Hierholzer\'s algorithm find it in linear time?', level: 'A',
+      a: `<p>All edges must be in one connected piece. Undirected: 0 odd-degree vertices → circuit, exactly 2 → path between them. Directed: all in = out → circuit; or one vertex with out − in = 1 (start), one with in − out = 1 (end) → path. The reason: every pass through a vertex uses one in-edge and one out-edge. <b>Hierholzer</b>: push the start; repeatedly look at the top vertex — if it has an unused edge, take it and push the neighbour; if not, pop it to the front of the answer. Getting stuck early just means that vertex is final at that position; detours are spliced in automatically. Each edge is used once, so it is O(V + E). At the end, if the answer has fewer than E + 1 vertices, the edges were disconnected.</p>`,
+      followUps: ['How do you get the lexicographically smallest path?', 'Connect this to de Bruijn sequences.', 'What is the Chinese Postman problem?'] },
+    { q: 'Compare ways to answer many LCA queries on a static tree.', level: 'A',
+      a: `<p><b>Naive climbing</b>: O(depth) per query — fine for balanced trees or few queries. <b>Binary lifting</b>: up[k][v] = 2<sup>k</sup>-th ancestor, O(N log N) build, O(log N) query; it also gives k-th ancestor and path aggregates like max edge. <b>Euler tour + sparse table</b>: LCA is the shallowest node between first occurrences, O(N log N) build and <b>O(1)</b> query. <b>Tarjan's offline LCA</b> with DSU: near-linear if all queries are known up front. <b>Heavy-light decomposition</b>: O(log N) LCA and supports path updates with a segment tree. My default is binary lifting for flexibility; Euler+RMQ when queries vastly outnumber nodes; HLD when edge weights change.</p>`,
+      followUps: ['How much memory does binary lifting take for N = 10<sup>6</sup>?', 'How do you compute the distance between two nodes?'] },
+    { q: 'Why do max-flow algorithms need reverse edges? Give an example.', level: 'I',
+      a: `<p>Augmenting greedily can commit flow to a route that blocks better routes. Network S→A:3, S→B:2, A→B:2, A→T:2, B→T:3. If the first path is S→A→B→T (2 units), then S→A→T (1), we have 3 and the obvious remaining route S→B→T gives only 1 more → stuck at 4. The reverse edge B→A with residual 2 lets the path S→B→A→T push 1 unit, which really means "send 1 less on A→B and route it A→T instead". Then S→B→T adds the last unit → 5 = the min cut. Residual graph: forward residual = c − f, backward residual = f.</p>`,
+      followUps: ['What does the final flow look like on each edge?', 'How do you store edges so the reverse is found in O(1)?'] },
+    { q: 'State and justify the max-flow min-cut theorem. How do you extract the cut?', level: 'E',
+      a: `<p>For any flow f and any S-T cut, |f| ≤ capacity of the cut, because each unit must cross from the S-side to the T-side. When Ford-Fulkerson stops, let X be the nodes reachable from S in the residual graph. T ∉ X. Every edge from X to outside has residual 0 → it is <b>full</b>; every edge from outside into X has backward residual 0 → it carries <b>no flow</b>. So the net flow across (X, V∖X) equals its capacity, i.e. |f| = cut capacity, and by the inequality both are optimal. To extract it: after max flow, BFS from S over residual edges; the cut edges are original edges from visited to unvisited nodes. It is also a case of LP duality, which explains why König, Menger and Hall follow from it.</p>`,
+      followUps: ['Is the min cut unique?', 'How do you find edges that are in EVERY min cut?', 'Global min cut without fixed S and T?'] },
+    { q: 'Ford-Fulkerson, Edmonds-Karp, Dinic — what are their complexities and how do you choose?', level: 'E',
+      a: `<p><b>Ford-Fulkerson with DFS</b>: O(E·F) where F is the max-flow value — only safe with tiny integer capacities; can loop with irrational ones. <b>Edmonds-Karp</b> (shortest path by BFS): O(V·E²), independent of capacities, simple; good up to a few hundred nodes / few thousand edges. <b>Dinic</b> (BFS level graph + blocking flow with current-edge pointers): O(V²·E) in general, O(E·√E) for unit capacities and O(E·√V) for bipartite matching; my default for anything bigger. For very dense graphs or production solvers, <b>push-relabel</b> with heuristics is often fastest; libraries like OR-Tools implement it. I choose from the constraints: V ≤ 500 → EK is fine; V ~ 10<sup>4</sup>, E ~ 10<sup>5</sup> → Dinic.</p>`,
+      followUps: ['Why do Dinic phases strictly increase the S-T distance?', 'What does the current-edge pointer prevent?'] },
+    { q: 'Model this as flow: hospitals have doctors; each doctor can work at most c<sub>d</sub> shifts, at most one shift per holiday period, only on days they are available, and each day needs exactly one doctor.', level: 'E',
+      a: `<p>Source S → each doctor d with capacity <b>c<sub>d</sub></b> (total shifts). Doctor d → node (d, period p) with capacity <b>1</b> for each holiday period (at most one shift per period per doctor). (d, p) → day x with capacity 1 if x is in period p and d is available on x. Each day x → sink T with capacity <b>1</b>. A feasible schedule exists iff the max flow equals the number of days; by integrality, flow 1 on (d, p) → x means "doctor d works day x". The intermediate (d, p) nodes are the key trick: they enforce a per-doctor, per-group limit. This is the classic CLRS/Kleinberg–Tardos "holiday scheduling" exercise and shows the general recipe: one layer per type of constraint.</p>`,
+      followUps: ['How would you add a minimum number of shifts per doctor? (Lower bounds / circulation with demands.)', 'Minimise cost if doctors charge different rates? (Min-cost flow.)'] },
+    { q: 'How does Kuhn\'s algorithm work, and what is König\'s theorem good for?', level: 'A',
+      a: `<p>Process left vertices one by one. For left u, try each right neighbour r not yet visited in this round: if r is free, match it; otherwise recursively ask r's owner to find another partner. A successful chain is an <b>augmenting path</b> — flipping it grows the matching by one. Berge: no augmenting path ⇔ maximum. Cost O(V·E); Hopcroft-Karp improves it to O(E·√V) by augmenting many shortest paths per phase. <b>König</b> (bipartite only): max matching = minimum vertex cover; so max independent set = V − matching. Uses: fewest rows/columns to cover marked cells, minimum path cover of a DAG (n − matching on the split graph), and proving that a greedy-looking answer is optimal.</p>`,
+      followUps: ['How do you construct the vertex cover from the matching?', 'What changes for weighted matching or general (non-bipartite) graphs?'] },
+    { q: 'You need SCCs of a web-scale graph with billions of edges. What changes compared to the interview solution?', level: 'E',
+      a: `<p>Recursive DFS is out: depth can be millions and DFS is inherently sequential. On one large machine I would use an <b>iterative</b> Tarjan/Kosaraju over a compressed CSR representation (int arrays for offsets and targets, maybe memory-mapped), which handles billions of edges if memory allows. For distributed processing, systems use <b>forward-backward (FW-BW)</b> decomposition: pick a pivot, compute forward and backward reachable sets with parallel BFS; their intersection is the pivot's SCC and the three remaining parts can be processed independently. <b>Trimming</b> first removes nodes with in- or out-degree 0 (trivial SCCs), which are a large fraction of real web graphs. Frameworks like Spark GraphX/Pregel-style systems implement label-propagation variants. I would also question whether exact SCCs are needed or an approximation suffices.</p>`,
+      followUps: ['Why is DFS hard to parallelise?', 'How do you validate the result at that scale?'] },
+    { q: 'Explain how 2-SAT is solved with SCCs.', level: 'E',
+      a: `<p>Each variable x gets two nodes: x and ¬x. Each clause (a ∨ b) is equivalent to two implications ¬a → b and ¬b → a; add both edges. If x and ¬x are in the same SCC, then x ⇒ ¬x and ¬x ⇒ x — a contradiction, so unsatisfiable. Otherwise a solution exists: compute SCCs, and for each variable choose the literal whose component comes <b>later</b> in topological order (with Kosaraju's numbering: x = true iff comp[x] &gt; comp[¬x]; with Tarjan's reverse-topological numbering the inequality flips). Choosing the later one never forces anything false downstream. Total O(n + m). Real uses: scheduling with pairwise constraints, placing labels on maps, configuration problems.</p>`,
+      followUps: ['Encode "exactly one of a, b".', 'Why does this not extend to 3-SAT?'] },
+    { q: 'Recursive DFS works on small tests but crashes on the judge. What is happening and how do you fix it?', level: 'I',
+      a: `<p>Graph algorithms like Tarjan, bridges, Kosaraju or Kuhn recurse once per vertex on a path. A 10<sup>5</sup>-node chain makes 10<sup>5</sup> nested calls; Java's default thread stack (often 512 KB–1 MB) and Python's recursion limit (1000) cannot hold that → <code>StackOverflowError</code> / <code>RecursionError</code>. Fixes: (1) convert to an <b>iterative DFS</b> with an explicit stack of (vertex, next-edge index) pairs, and handle the "return" work (like low[parent] = min(low[parent], low[v])) when popping; (2) in Java, run the solver inside <code>new Thread(null, runnable, "main", 1 &lt;&lt; 27)</code> to get a 128 MB stack; (3) in Python, raise the limit and run in a thread with <code>threading.stack_size</code>, but iterative is safer.</p>`,
+      followUps: ['Rewrite Tarjan SCC iteratively.', 'Which algorithms in this module are naturally iterative?'] }
+  );
+
+  // =====================================================================
+  // MODULE
+  // =====================================================================
+  registerModule({
+    id: 'dsa22',
+    title: 'Advanced Graph Algorithms',
+    intro: `<p>This is the module where graphs stop being "BFS and DFS" and become a <b>modelling language</b>. You will learn to find the tightly knit groups of a directed graph (<b>strongly connected components</b> with Kosaraju and Tarjan), the single points of failure of a network (<b>bridges and articulation points</b> with low-link values), routes that use every edge exactly once (<b>Euler paths</b> with Hierholzer), fast ancestor and distance queries on trees (<b>LCA with binary lifting</b>), and the big one: <b>maximum flow</b> (Ford-Fulkerson, Edmonds-Karp, Dinic), its twin the <b>minimum cut</b>, and <b>bipartite matching</b>.</p>
+      <p>Every topic starts with an everyday picture, then a plain-English explanation, an interactive visualizer (watch <code>disc/low</code> tags change, flow/capacity labels fill up, augmenting paths reroute), worked examples, a deep dive into proofs and production reality, and an AI-era section on what still needs a human. These algorithms show up in senior interviews, competitive programming, and real systems: build tools, network reliability, schedulers, genome assembly and ride-hailing assignment.</p>`,
+    goals: [
+      'Find SCCs with Kosaraju and Tarjan, explain <code>disc</code>/<code>low</code>, and solve problems on the condensation DAG (min edges to strongly connect, 2-SAT).',
+      'Find bridges and articulation points in one O(V + E) DFS, including the root rule and parallel edges.',
+      'Decide Euler path/circuit existence from degrees and construct one with Hierholzer (itineraries, de Bruijn sequences).',
+      'Answer LCA, k-th ancestor, distance and path-maximum queries with binary lifting in O(log N).',
+      'Explain residual graphs and implement Edmonds-Karp and Dinic; choose between them from constraints.',
+      'Extract a minimum cut and model problems with node splitting, ∞ edges and super sources (project selection, edge-disjoint paths).',
+      'Solve bipartite matching with Kuhn / Hopcroft-Karp and apply König\'s theorem (vertex cover, path cover, independent set).'
+    ],
+    prereqs: `<p>DSA 19 (Graphs I: BFS, DFS, topological sort, DSU) and DSA 20 (Graphs II: shortest paths, MST). Comfort with recursion (DSA 11) and bit manipulation (DSA 4) helps for binary lifting.</p>`,
+    hours: 24,
+    topics: topics,
+    practice: practice,
+    quiz: quiz,
+    interview: interview
+  });
+})();

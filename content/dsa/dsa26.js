@@ -2147,7 +2147,7 @@ for n in (1_000, 10_000, 100_000):
     codeTitle: ['Skip list with insert / contains / remove / ceiling (Java)', 'Empirical O(log N) check (Python, runnable)'],
     viz: {
       title: 'Build a skip list with coin flips, then search riding the express lanes',
-      input: '3 7 9 12 19 21 25 26 | 25 | 4',
+      input: '3 7 9 12 19 21 25 26 | 25 | 18',
       inputLabel: 'keys (3 to 12 distinct numbers) | key to search | seed',
       gen: function (input) {
         var parts = splitBar(input, 3, 'keys | target | seed, e.g. "1 4 6 9 | 6 | 2"');
@@ -2388,5 +2388,993 @@ class Skiplist:
         followUps: ['Add rank(x) and kth(k) in O(log N) using span counts.', 'Make it thread-safe; why do skip lists suit lock-free designs better than red-black trees?', 'Choose p and MAX_LEVEL for 10<sup>9</sup> keys and justify the memory.']
       }
     }]
+  });
+
+  // =====================================================================
+  // PRACTICE — Easy
+  // =====================================================================
+  practice.push({
+    title: 'Valid Boomerang', level: 'Easy', tags: ['geometry', 'cross product'], companies: ['Google'],
+    statement: `<p>Given three points <code>points[i] = [x, y]</code>, return <code>true</code> if they form a <b>boomerang</b>: all three are distinct and they are <b>not</b> on one straight line. (LeetCode 1037.)</p>`,
+    constraints: `points.length == 3, 0 ≤ x, y ≤ 100`,
+    example: `<p><code>[[1,1],[2,3],[3,2]]</code> → ${H.c('g', 'true')}: cross = (2−1)(2−1) − (3−1)(3−1) = 1 − 4 = −3 ≠ 0.</p><p><code>[[1,1],[2,2],[3,3]]</code> → ${H.c('r', 'false')}: cross = 1·2 − 1·2 = 0 (collinear). Duplicate points also give cross 0.</p>`,
+    brute: {
+      why: `<p>Compare the slopes (y2−y1)/(x2−x1) and (y3−y1)/(x3−x1) as doubles and check duplicates separately. It needs special cases for vertical lines (division by zero) and duplicates, and floating comparison is fragile. Not slow — just error-prone.</p>`,
+      code: `class Solution {
+    public boolean isBoomerang(int[][] p) {
+        if (Arrays.equals(p[0], p[1]) || Arrays.equals(p[0], p[2]) || Arrays.equals(p[1], p[2])) return false;
+        int dx1 = p[1][0] - p[0][0], dx2 = p[2][0] - p[0][0];
+        if (dx1 == 0 && dx2 == 0) return false;          // both vertical: same line
+        if (dx1 == 0 || dx2 == 0) return true;           // exactly one vertical
+        double s1 = (double) (p[1][1] - p[0][1]) / dx1;
+        double s2 = (double) (p[2][1] - p[0][1]) / dx2;
+        return s1 != s2;                                  // fragile double comparison
+    }
+}`
+    },
+    mcq: { q: 'Why does a single cross-product test also catch duplicate points?', options: ['It does not; you must check duplicates separately', 'A duplicate makes one of the vectors (0,0), so the cross product is 0', 'Duplicates make the cross product negative', 'Because the constraints forbid duplicates'], answer: 1, explain: 'If two points coincide, B − A or C − A is the zero vector, and anything crossed with the zero vector is 0 — reported as "collinear", which is exactly "not a boomerang".' },
+    hints: [
+      `<p>Hint 1: "Not on a straight line" is the same as "the triangle they form has non-zero area".</p>`,
+      `<p>Hint 2: Twice the triangle area is |cross(B − A, C − A)|. No division needed.</p>`,
+      `<p>Hint 3: Return <code>(x2−x1)(y3−y1) − (y2−y1)(x3−x1) != 0</code>. Duplicates automatically give 0.</p>`
+    ],
+    solution: {
+      approach: `<p>One cross product. Non-zero ⇔ the three points make a real (non-flat) triangle ⇔ distinct and not collinear.</p>`,
+      code: `class Solution {
+    public boolean isBoomerang(int[][] p) {
+        return (p[1][0] - p[0][0]) * (p[2][1] - p[0][1])
+             - (p[1][1] - p[0][1]) * (p[2][0] - p[0][0]) != 0;
+    }
+}`,
+      alt: [{ lang: 'python', code: `class Solution:
+    def isBoomerang(self, p):
+        (x1, y1), (x2, y2), (x3, y3) = p
+        return (x2 - x1) * (y3 - y1) - (y2 - y1) * (x3 - x1) != 0` }],
+      dry: { head: ['input', 'B − A', 'C − A', 'cross', 'answer'], rows: [['[[1,1],[2,3],[3,2]]', '(1,2)', '(2,1)', '1·1 − 2·2 = −3', 'true'], ['[[1,1],[2,2],[3,3]]', '(1,1)', '(2,2)', '1·2 − 1·2 = 0', 'false'], ['[[0,0],[0,0],[1,2]]', '(0,0)', '(1,2)', '0', 'false']] },
+      complexity: `<p>O(1) time and space.</p>`,
+      followUps: ['Return the area of the triangle.', 'Given N points, count triples that form boomerangs.']
+    }
+  });
+
+  practice.push({
+    title: 'Largest Triangle Area', level: 'Easy', tags: ['geometry', 'shoelace', 'brute force'], companies: ['Google', 'Amazon'],
+    statement: `<p>Given an array of distinct points on the plane, return the area of the <b>largest triangle</b> that can be formed by any three of them. Answers within 10<sup>−5</sup> are accepted. (LeetCode 812.)</p>`,
+    constraints: `3 ≤ N ≤ 50, −50 ≤ x, y ≤ 50, all points distinct`,
+    example: `<p><code>[[0,0],[0,1],[1,0],[0,2],[2,0]]</code> → ${H.c('g', '2.0')}: triangle (0,0), (0,2), (2,0) has |cross| = |0·0 − 2·2| = 4 → area 2.</p>`,
+    brute: {
+      why: `<p>All triples are only C(50,3) = 19 600, so trying every triple is the intended solution. The <i>naive</i> part people get wrong is the area formula: Heron's formula needs three square roots for the side lengths and another for the area, losing precision (and giving NaN for flat triangles when rounding makes the radicand slightly negative).</p>`,
+      code: `class Solution {
+    public double largestTriangleArea(int[][] p) {
+        double best = 0;
+        int n = p.length;
+        for (int i = 0; i < n; i++)
+            for (int j = i + 1; j < n; j++)
+                for (int k = j + 1; k < n; k++) {
+                    double a = dist(p[i], p[j]), b = dist(p[j], p[k]), c = dist(p[i], p[k]);
+                    double s = (a + b + c) / 2;
+                    double sq = s * (s - a) * (s - b) * (s - c);   // can be slightly negative
+                    best = Math.max(best, Math.sqrt(Math.max(0, sq)));
+                }
+        return best;
+    }
+    private double dist(int[] u, int[] v) { return Math.hypot(u[0] - v[0], u[1] - v[1]); }
+}`
+    },
+    mcq: { q: 'Which formula gives the exact doubled area of triangle ABC from integer coordinates?', options: ['|AB| · |AC| / 2', '|(B−A) × (C−A)|', 'Heron with sides rounded to integers', '(B−A) · (C−A)'], answer: 1, explain: 'The absolute cross product equals the parallelogram area = 2 × triangle area, computed exactly with integer multiplication.' },
+    hints: [
+      `<p>Hint 1: N ≤ 50 → O(N<sup>3</sup>) triples is tiny. Focus on computing each area exactly and fast.</p>`,
+      `<p>Hint 2: Area = |cross(B − A, C − A)| / 2 — the shoelace formula for a triangle.</p>`,
+      `<p>Hint 3: Track the maximum doubled area as an integer and divide by 2.0 once at the end. For large N, note the best triangle's vertices lie on the convex hull.</p>`
+    ],
+    solution: {
+      approach: `<p>Enumerate all triples; keep the maximum |cross| as an exact integer; return it / 2.</p>`,
+      code: `class Solution {
+    public double largestTriangleArea(int[][] p) {
+        int n = p.length, best = 0;
+        for (int i = 0; i < n; i++)
+            for (int j = i + 1; j < n; j++)
+                for (int k = j + 1; k < n; k++) {
+                    int c = (p[j][0] - p[i][0]) * (p[k][1] - p[i][1])
+                          - (p[j][1] - p[i][1]) * (p[k][0] - p[i][0]);
+                    best = Math.max(best, Math.abs(c));     // twice the area, exact
+                }
+        return best / 2.0;
+    }
+}`,
+      alt: [{ lang: 'python', code: `from itertools import combinations
+
+class Solution:
+    def largestTriangleArea(self, p):
+        return max(abs((b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]))
+                   for a, b, c in combinations(p, 3)) / 2` }],
+      dry: { head: ['triple', 'cross', '|cross|/2', 'best'], rows: [['(0,0),(0,1),(1,0)', '0·0 − 1·1 = −1', '0.5', '0.5'], ['(0,0),(0,2),(2,0)', '0·0 − 2·2 = −4', '2', '2'], ['(0,1),(0,2),(2,0)', '0·(−1) − 1·2 = −2', '1', '2']] },
+      complexity: `<p>O(N<sup>3</sup>) = ~2·10<sup>4</sup> triples, O(1) space. Expert follow-up: hull first, then O(H<sup>2</sup>) with a rotating pointer.</p>`,
+      followUps: ['N = 10<sup>5</sup>: why do the optimal vertices lie on the convex hull?', 'Largest quadrilateral area.']
+    }
+  });
+
+  practice.push({
+    title: 'Rectangle Overlap', level: 'Easy', tags: ['geometry', 'intervals'], companies: ['Amazon', 'Microsoft'],
+    statement: `<p>An axis-aligned rectangle is <code>[x1, y1, x2, y2]</code> (bottom-left and top-right corners). Return <code>true</code> if two rectangles overlap with <b>positive area</b> (touching edges or corners does not count). (LeetCode 836.)</p>`,
+    constraints: `−10<sup>9</sup> ≤ coordinates ≤ 10<sup>9</sup>, each rectangle has positive area`,
+    example: `<p><code>rec1 = [0,0,2,2], rec2 = [1,1,3,3]</code> → ${H.c('g', 'true')} (overlap square [1,1]–[2,2]).</p><p><code>[0,0,1,1]</code> and <code>[1,0,2,1]</code> → ${H.c('r', 'false')}: they only share the edge x = 1.</p>`,
+    brute: {
+      why: `<p>Check every unit cell of rectangle 1 to see whether it lies inside rectangle 2. With coordinates up to 10<sup>9</sup> that is up to 10<sup>18</sup> cells — impossible. The waste: area overlap is decided by two independent 1D interval overlaps.</p>`,
+      code: `class Solution {
+    // Only usable for tiny coordinates: tests each unit cell of rec1.
+    public boolean isRectangleOverlap(int[] a, int[] b) {
+        for (long x = a[0]; x < a[2]; x++)
+            for (long y = a[1]; y < a[3]; y++)
+                if (x >= b[0] && x + 1 <= b[2] && y >= b[1] && y + 1 <= b[3]) return true;
+        return false;
+    }
+}`
+    },
+    mcq: { q: 'Two rectangles overlap with positive area exactly when…', options: ['their x-intervals overlap OR their y-intervals overlap', 'their x-intervals overlap with positive length AND their y-intervals overlap with positive length', 'one corner of A is inside B', 'their centres are closer than the sum of half-diagonals'], answer: 1, explain: 'The intersection of two axis-aligned rectangles is the product of the x-overlap and the y-overlap; it has positive area only if both lengths are positive. "Corner inside" fails for a plus-sign (cross) arrangement.' },
+    hints: [
+      `<p>Hint 1: Project both rectangles onto the x-axis: you get two intervals. Do the same for y.</p>`,
+      `<p>Hint 2: Interval overlap length = min(right ends) − max(left ends). Positive means real overlap.</p>`,
+      `<p>Hint 3: Return <code>min(a.x2, b.x2) &gt; max(a.x1, b.x1) &amp;&amp; min(a.y2, b.y2) &gt; max(a.y1, b.y1)</code>. Strict &gt; makes edge-touching return false.</p>`
+    ],
+    solution: {
+      approach: `<p>Separate the dimensions: overlap area = (x-overlap length) × (y-overlap length). Both must be strictly positive. This is also the 2D case of the "separating axis" idea used in game collision checks.</p>`,
+      code: `class Solution {
+    public boolean isRectangleOverlap(int[] a, int[] b) {
+        boolean xOverlap = Math.min(a[2], b[2]) > Math.max(a[0], b[0]);
+        boolean yOverlap = Math.min(a[3], b[3]) > Math.max(a[1], b[1]);
+        return xOverlap && yOverlap;
+    }
+}`,
+      alt: [{ lang: 'python', code: `class Solution:
+    def isRectangleOverlap(self, a, b):
+        return min(a[2], b[2]) > max(a[0], b[0]) and min(a[3], b[3]) > max(a[1], b[1])` }],
+      dry: { head: ['pair', 'x overlap', 'y overlap', 'answer'], rows: [['[0,0,2,2] & [1,1,3,3]', 'min(2,3) − max(0,1) = 1', '1', 'true'], ['[0,0,1,1] & [1,0,2,1]', 'min(1,2) − max(0,1) = 0', '1', 'false (edge only)'], ['[0,0,1,1] & [2,2,3,3]', '1 − 2 = −1', '−1', 'false']] },
+      complexity: `<p>O(1) time and space. The subtraction-free comparison form avoids overflow with coordinates near ±10<sup>9</sup>.</p>`,
+      followUps: ['Return the overlap area (Rectangle Area, LeetCode 223).', 'Union area of N rectangles (Rectangle Area II — practice Hard).']
+    }
+  });
+
+  practice.push({
+    title: 'Implement Queue using Stacks', level: 'Easy', tags: ['amortized analysis', 'stack', 'design'], companies: ['Amazon', 'Microsoft', 'Bloomberg'],
+    statement: `<p>Implement a FIFO queue with only two stacks: <code>push(x)</code>, <code>pop()</code>, <code>peek()</code>, <code>empty()</code>. Follow-up: make every operation <b>amortized O(1)</b>. (LeetCode 232.)</p>`,
+    constraints: `1 ≤ x ≤ 9, at most 100 calls (follow-up: assume 10<sup>6</sup>), pop/peek only on a non-empty queue`,
+    example: `<p>push 1, push 2, peek → ${H.c('g', '1')}, pop → ${H.c('g', '1')}, empty → ${H.c('r', 'false')}.</p>`,
+    brute: {
+      why: `<p>Keep the oldest element on top of a single stack: on every push, move everything to a helper stack, push x, move everything back. Each push is <b>O(N)</b>, so N pushes cost O(N<sup>2</sup>). The waste: we re-reverse the same elements on every push.</p>`,
+      code: `class MyQueue {
+    private final Deque<Integer> s = new ArrayDeque<>(), tmp = new ArrayDeque<>();
+
+    public void push(int x) {                       // O(N) every time
+        while (!s.isEmpty()) tmp.push(s.pop());
+        s.push(x);
+        while (!tmp.isEmpty()) s.push(tmp.pop());
+    }
+    public int pop() { return s.pop(); }
+    public int peek() { return s.peek(); }
+    public boolean empty() { return s.isEmpty(); }
+}`
+    },
+    mcq: { q: 'Over a long sequence, how many times can one element be moved from the in-stack to the out-stack?', options: ['Once per pop call', 'At most once in its lifetime', 'log N times', 'N times'], answer: 1, explain: 'We only transfer when out is empty, and an element in out leaves only by being popped. So each element is pushed to in once, moved once, popped once: O(1) amortized.' },
+    hints: [
+      `<p>Hint 1: Pouring stack A into stack B reverses the order — the oldest element ends up on top of B.</p>`,
+      `<p>Hint 2: Keep two stacks: <code>in</code> for pushes, <code>out</code> for pops. Only pour in → out when out is empty.</p>`,
+      `<p>Hint 3: pop/peek: if out is empty, move everything from in. Each element is moved at most once → amortized O(1) (one pop can still be O(N)).</p>`
+    ],
+    solution: {
+      approach: `<p>Lazy transfer. Elements wait in <code>in</code> in LIFO order; when <code>out</code> runs dry we reverse the whole batch once. Banker's view: charge 3 per push (push to in, move, pop from out).</p>`,
+      code: `class MyQueue {
+    private final Deque<Integer> in = new ArrayDeque<>(), out = new ArrayDeque<>();
+
+    public void push(int x) { in.push(x); }                 // O(1)
+
+    public int pop() { shift(); return out.pop(); }         // amortized O(1)
+
+    public int peek() { shift(); return out.peek(); }
+
+    public boolean empty() { return in.isEmpty() && out.isEmpty(); }
+
+    private void shift() {
+        if (out.isEmpty())                                   // only when out is dry
+            while (!in.isEmpty()) out.push(in.pop());        // each element moves once, ever
+    }
+}`,
+      alt: [{ lang: 'python', code: `class MyQueue:
+    def __init__(self):
+        self.inp, self.out = [], []
+
+    def push(self, x):
+        self.inp.append(x)
+
+    def _shift(self):
+        if not self.out:
+            while self.inp:
+                self.out.append(self.inp.pop())
+
+    def pop(self):
+        self._shift()
+        return self.out.pop()
+
+    def peek(self):
+        self._shift()
+        return self.out[-1]
+
+    def empty(self):
+        return not self.inp and not self.out` }],
+      dry: { head: ['op', 'in (bottom→top)', 'out (bottom→top)', 'result'], rows: [['push 1', '[1]', '[]', '—'], ['push 2', '[1, 2]', '[]', '—'], ['peek', '[]', '[2, 1]', '1 (transfer once)'], ['pop', '[]', '[2]', '1'], ['push 3', '[3]', '[2]', '—'], ['pop', '[3]', '[]', '2 (no transfer)']] },
+      complexity: `<p>push O(1); pop/peek <b>amortized O(1)</b>, worst case O(N) for a single call; space O(N).</p>`,
+      followUps: ['Implement a stack using queues (LeetCode 225).', 'Make pop worst-case O(1) (incremental transfer / real-time queue).']
+    }
+  });
+
+  // =====================================================================
+  // PRACTICE — Medium
+  // =====================================================================
+  practice.push({
+    title: 'Shuffle an Array', level: 'Medium', tags: ['randomized', 'Fisher-Yates', 'design'], companies: ['Google', 'Meta', 'Microsoft'],
+    statement: `<p>Implement <code>Solution(int[] nums)</code>, <code>int[] reset()</code> (return the original configuration) and <code>int[] shuffle()</code> (return a random shuffling where <b>all permutations are equally likely</b>). (LeetCode 384.)</p>`,
+    constraints: `1 ≤ N ≤ 50, all elements unique, at most 10<sup>4</sup> calls`,
+    example: `<p>nums = [1,2,3]: shuffle() might return ${H.c('b', '[3,1,2]')}; each of the 6 orders with probability 1/6. reset() returns ${H.c('g', '[1,2,3]')}.</p>`,
+    brute: {
+      why: `<p>Copy the elements into a list; repeatedly remove a random element and append it to the result. Correct and uniform, but <code>ArrayList.remove(i)</code> shifts elements → <b>O(N<sup>2</sup>)</b> per shuffle. Fisher–Yates does the same "pick from the remaining" in place with a swap, O(N).</p>`,
+      code: `class Solution {
+    private final int[] orig;
+    private final Random rnd = new Random();
+    public Solution(int[] nums) { orig = nums.clone(); }
+    public int[] reset() { return orig.clone(); }
+    public int[] shuffle() {
+        List<Integer> pool = new ArrayList<>();
+        for (int x : orig) pool.add(x);
+        int[] res = new int[orig.length];
+        for (int i = 0; i < res.length; i++)
+            res[i] = pool.remove(rnd.nextInt(pool.size()));   // O(N) removal each time
+        return res;
+    }
+}`
+    },
+    mcq: { q: 'Which loop produces a uniformly random permutation?', options: ['for i in 0..n−1: swap(a[i], a[rand(0..n−1)])', 'for i in n−1..1: swap(a[i], a[rand(0..i)])', 'for i in n−1..1: swap(a[i], a[rand(0..i−1)])', 'sort with a random comparator'], answer: 1, explain: 'Fisher–Yates draws j from [0, i] so the number of equally likely runs is n!. Option A gives n^n runs (biased), C is Sattolo (single cycles only), D is biased and may violate the comparator contract.' },
+    hints: [
+      `<p>Hint 1: Keep a pristine copy for reset(); shuffle a fresh copy each time (or shuffle in place and copy back on reset).</p>`,
+      `<p>Hint 2: Fill the array from the back: choose which remaining element goes to position i, uniformly among positions 0..i, and swap it there.</p>`,
+      `<p>Hint 3: Use <code>rnd.nextInt(i + 1)</code> (inclusive of i — the element may stay). n! equally likely runs ↔ n! permutations.</p>`
+    ],
+    solution: {
+      approach: `<p>Fisher–Yates on a copy. Each shuffle is O(N); reset returns a copy of the stored original so callers cannot mutate our state.</p>`,
+      code: `class Solution {
+    private final int[] orig;
+    private final Random rnd = new Random();
+
+    public Solution(int[] nums) { orig = nums.clone(); }
+
+    public int[] reset() { return orig.clone(); }
+
+    public int[] shuffle() {
+        int[] a = orig.clone();
+        for (int i = a.length - 1; i > 0; i--) {
+            int j = rnd.nextInt(i + 1);          // uniform in [0, i]
+            int t = a[i]; a[i] = a[j]; a[j] = t;
+        }
+        return a;
+    }
+}`,
+      alt: [{ lang: 'python', code: `import random
+
+class Solution:
+    def __init__(self, nums):
+        self.orig = nums[:]
+
+    def reset(self):
+        return self.orig[:]
+
+    def shuffle(self):
+        a = self.orig[:]
+        for i in range(len(a) - 1, 0, -1):
+            j = random.randint(0, i)
+            a[i], a[j] = a[j], a[i]
+        return a` }],
+      dry: { head: ['i', 'j drawn', 'array after swap'], rows: [['—', '—', '[1, 2, 3]'], ['2', '0', '[3, 2, 1]'], ['1', '1', '[3, 2, 1] (stays)']] },
+      complexity: `<p>shuffle O(N) time, O(N) for the returned copy; reset O(N).</p>`,
+      followUps: ['Shuffle a stream that does not fit in memory (assign random keys and external-sort, or reservoir-style "inside-out" Fisher–Yates).', 'Why can a 32-bit seeded RNG not produce all 52! deck orders?']
+    }
+  });
+
+  practice.push({
+    title: 'Random Pick Index', level: 'Medium', tags: ['reservoir sampling', 'randomized'], companies: ['Meta', 'Google'],
+    statement: `<p>Given an integer array <code>nums</code> with possible duplicates, implement <code>pick(target)</code> that returns a random index i with <code>nums[i] == target</code>; each valid index must be equally likely. The target always exists. Aim for O(1) extra space. (LeetCode 398.)</p>`,
+    constraints: `1 ≤ N ≤ 2·10<sup>4</sup>, at most 10<sup>4</sup> calls to pick`,
+    example: `<p>nums = [1,2,3,3,3]: pick(3) returns ${H.c('b', '2, 3 or 4')}, each with probability ⅓; pick(1) always returns ${H.c('g', '0')}.</p>`,
+    brute: {
+      why: `<p>Precompute <code>Map&lt;value, List&lt;index&gt;&gt;</code> and return a random element of the list: O(1) per pick but <b>O(N) extra memory</b>. Or collect the matching indices on each call — O(N) time and O(K) memory per call. Reservoir sampling needs no extra memory.</p>`,
+      code: `class Solution {
+    private final Map<Integer, List<Integer>> pos = new HashMap<>();
+    private final Random rnd = new Random();
+
+    public Solution(int[] nums) {
+        for (int i = 0; i < nums.length; i++)
+            pos.computeIfAbsent(nums[i], k -> new ArrayList<>()).add(i);  // O(N) memory
+    }
+
+    public int pick(int target) {
+        List<Integer> l = pos.get(target);
+        return l.get(rnd.nextInt(l.size()));
+    }
+}`
+    },
+    mcq: { q: 'Scanning left to right, you meet the 3rd index whose value equals target. With what probability do you switch your answer to it?', options: ['1/2', '1/3', '1/N', 'Always'], answer: 1, explain: 'Run reservoir sampling only over matching indices: the c-th match replaces the answer with probability 1/c.' },
+    hints: [
+      `<p>Hint 1: Treat the matching indices as a stream whose length you do not know in advance.</p>`,
+      `<p>Hint 2: Reservoir with k = 1: keep a counter c of matches; at each match, c++, replace the answer with probability 1/c.</p>`,
+      `<p>Hint 3: <code>if (nums[i] == target &amp;&amp; rnd.nextInt(++c) == 0) ans = i;</code> — one pass, O(1) space.</p>`
+    ],
+    solution: {
+      approach: `<p>Reservoir sampling restricted to positions holding the target. Each matching position ends up chosen with probability 1/(number of matches). Mention the trade-off: the hash-map version is faster per call when memory is available and calls are many.</p>`,
+      code: `class Solution {
+    private final int[] nums;
+    private final Random rnd = new Random();
+
+    public Solution(int[] nums) { this.nums = nums; }
+
+    public int pick(int target) {
+        int ans = -1, count = 0;
+        for (int i = 0; i < nums.length; i++) {
+            if (nums[i] != target) continue;
+            count++;
+            if (rnd.nextInt(count) == 0) ans = i;   // keep with probability 1/count
+        }
+        return ans;
+    }
+}`,
+      alt: [{ lang: 'python', code: `import random
+
+class Solution:
+    def __init__(self, nums):
+        self.nums = nums
+
+    def pick(self, target):
+        ans, c = -1, 0
+        for i, x in enumerate(self.nums):
+            if x == target:
+                c += 1
+                if random.randrange(c) == 0:
+                    ans = i
+        return ans` }],
+      dry: { head: ['i', 'nums[i]', 'count', 'roll nextInt(count)', 'ans'], rows: [['2', '3', '1', '0 → take', '2'], ['3', '3', '2', '1 → keep', '2'], ['4', '3', '3', '0 → take', '4']] },
+      complexity: `<p>pick: O(N) time, <b>O(1)</b> extra space. Hash-map alternative: O(1) per pick, O(N) space.</p>`,
+      followUps: ['Pick k distinct indices of the target uniformly.', 'Which version would you ship for 10<sup>9</sup> calls on a static array?']
+    }
+  });
+
+  practice.push({
+    title: 'Random Pick with Weight', level: 'Medium', tags: ['randomized', 'prefix sum', 'binary search'], companies: ['Google', 'Meta', 'Uber'],
+    statement: `<p>Given positive weights <code>w</code>, implement <code>pickIndex()</code> which returns index i with probability <code>w[i] / sum(w)</code>. (LeetCode 528.)</p>`,
+    constraints: `1 ≤ N ≤ 10<sup>4</sup>, 1 ≤ w[i] ≤ 10<sup>5</sup>, at most 10<sup>4</sup> calls`,
+    example: `<p>w = [1, 3]: index 0 with probability ${H.c('b', '1/4')}, index 1 with ${H.c('b', '3/4')}. Prefix sums [1, 4]; a random ticket in 1..4: ticket 1 → index 0, tickets 2–4 → index 1.</p>`,
+    brute: {
+      why: `<p>Expand the array — write index i exactly w[i] times — and pick a random slot: sum(w) can reach 10<sup>9</sup> slots, far too much memory. Scanning prefix sums linearly per call is O(N) per pick, 10<sup>8</sup> total — slow but feasible; binary search makes it O(log N).</p>`,
+      code: `class Solution {
+    private final int[] prefix;
+    private final Random rnd = new Random();
+
+    public Solution(int[] w) {
+        prefix = new int[w.length];
+        int s = 0;
+        for (int i = 0; i < w.length; i++) { s += w[i]; prefix[i] = s; }
+    }
+
+    public int pickIndex() {
+        int ticket = rnd.nextInt(prefix[prefix.length - 1]) + 1;   // 1..total
+        for (int i = 0; i < prefix.length; i++)                     // O(N) scan
+            if (ticket <= prefix[i]) return i;
+        return prefix.length - 1;
+    }
+}`
+    },
+    mcq: { q: 'Prefix sums are [2, 5, 6] and the ticket drawn uniformly from 1..6 is 5. Which index is returned?', options: ['0', '1', '2', 'It depends on the seed'], answer: 1, explain: 'Index 1 owns tickets 3..5 (prefix[0] = 2 < 5 ≤ prefix[1] = 5). The answer is the first prefix ≥ ticket — a lower-bound binary search.' },
+    hints: [
+      `<p>Hint 1: Lay the weights end to end on a number line of length S = sum(w). Index i owns a segment of length w[i].</p>`,
+      `<p>Hint 2: Prefix sums give the segment ends. Draw a ticket uniformly in [1, S] and find which segment contains it.</p>`,
+      `<p>Hint 3: That is the first index with prefix[i] ≥ ticket → binary search (lower bound). Use long if weights could sum past 2<sup>31</sup>.</p>`
+    ],
+    solution: {
+      approach: `<p>Prefix sums + uniform ticket + lower-bound binary search. Setup O(N), each pick O(log N). For O(1) picks after O(N) setup, use Walker's alias method.</p>`,
+      code: `class Solution {
+    private final long[] prefix;
+    private final Random rnd = new Random();
+
+    public Solution(int[] w) {
+        prefix = new long[w.length];
+        long s = 0;
+        for (int i = 0; i < w.length; i++) { s += w[i]; prefix[i] = s; }
+    }
+
+    public int pickIndex() {
+        long ticket = (long) (rnd.nextDouble() * prefix[prefix.length - 1]) + 1; // 1..total
+        int lo = 0, hi = prefix.length - 1;
+        while (lo < hi) {                       // first i with prefix[i] >= ticket
+            int mid = (lo + hi) >>> 1;
+            if (prefix[mid] >= ticket) hi = mid; else lo = mid + 1;
+        }
+        return lo;
+    }
+}`,
+      alt: [{ lang: 'python', code: `import random, bisect, itertools
+
+class Solution:
+    def __init__(self, w):
+        self.prefix = list(itertools.accumulate(w))
+
+    def pickIndex(self):
+        ticket = random.randint(1, self.prefix[-1])
+        return bisect.bisect_left(self.prefix, ticket)` }],
+      dry: { head: ['w', 'prefix', 'ticket', 'binary search', 'index'], rows: [['[2, 3, 1]', '[2, 5, 6]', '1', 'prefix[0] = 2 ≥ 1', '0'], ['[2, 3, 1]', '[2, 5, 6]', '5', 'prefix[1] = 5 ≥ 5', '1'], ['[2, 3, 1]', '[2, 5, 6]', '6', 'prefix[2] = 6 ≥ 6', '2']] },
+      complexity: `<p>Constructor O(N), pickIndex <b>O(log N)</b>, space O(N).</p>`,
+      followUps: ['Weights change between picks: use a Fenwick tree for O(log N) updates and picks.', 'Alias method: O(1) per pick — explain the table construction.']
+    }
+  });
+
+  practice.push({
+    title: 'K Closest Points to Origin', level: 'Medium', tags: ['quickselect', 'randomized', 'geometry'], companies: ['Amazon', 'Meta', 'LinkedIn'],
+    statement: `<p>Given points <code>points[i] = [x, y]</code> and an integer k, return the k points closest to the origin (Euclidean distance), in any order. (LeetCode 973.)</p>`,
+    constraints: `1 ≤ k ≤ N ≤ 10<sup>4</sup>, −10<sup>4</sup> ≤ x, y ≤ 10<sup>4</sup>`,
+    example: `<p><code>points = [[3,3],[5,−1],[−2,4]], k = 2</code> → ${H.c('g', '[[3,3],[−2,4]]')}: squared distances 18, 26, 20 — the two smallest are 18 and 20.</p>`,
+    brute: {
+      why: `<p>Sort all points by distance and take the first k: <b>O(N log N)</b>, ordering points we never return. A max-heap of size k is O(N log k). Quickselect only needs the k-th boundary: expected O(N).</p>`,
+      code: `class Solution {
+    public int[][] kClosest(int[][] points, int k) {
+        int[][] p = points.clone();
+        Arrays.sort(p, (a, b) -> Long.compare(dist(a), dist(b)));   // O(N log N)
+        return Arrays.copyOfRange(p, 0, k);
+    }
+    private long dist(int[] q) { return (long) q[0] * q[0] + (long) q[1] * q[1]; }
+}`
+    },
+    mcq: { q: 'Why compare x² + y² instead of √(x² + y²)?', options: ['√ is not available in Java', 'Squaring preserves the order of non-negative distances, and stays exact in integers', 'It changes which points are closest', 'Square roots are faster'], answer: 1, explain: 'For d ≥ 0, d₁ < d₂ ⇔ d₁² < d₂². Skipping the square root keeps everything in exact integer arithmetic.' },
+    hints: [
+      `<p>Hint 1: You need the k smallest by squared distance, in any order — that is a selection problem, not sorting.</p>`,
+      `<p>Hint 2: Quickselect on squared distances: random pivot, 3-way partition the points, keep the side containing position k − 1.</p>`,
+      `<p>Hint 3: When position k − 1 lands in the "equal" block, the first k positions hold the answer. Swap point references (int[]), compute distances in long.</p>`
+    ],
+    solution: {
+      approach: `<p>Randomized quickselect with a 3-way partition keyed on squared distance. After it stops, positions 0..k−1 contain the k closest points (in arbitrary order).</p>`,
+      code: `class Solution {
+    private final Random rnd = new Random();
+
+    public int[][] kClosest(int[][] points, int k) {
+        int lo = 0, hi = points.length - 1, target = k - 1;
+        while (lo < hi) {
+            long pivot = dist(points[lo + rnd.nextInt(hi - lo + 1)]);
+            int lt = lo, i = lo, gt = hi;
+            while (i <= gt) {
+                long d = dist(points[i]);
+                if (d < pivot) swap(points, lt++, i++);
+                else if (d > pivot) swap(points, i, gt--);
+                else i++;
+            }
+            if (target < lt) hi = lt - 1;
+            else if (target > gt) lo = gt + 1;
+            else break;                          // boundary found
+        }
+        return Arrays.copyOfRange(points, 0, k);
+    }
+
+    private long dist(int[] p) { return (long) p[0] * p[0] + (long) p[1] * p[1]; }
+
+    private void swap(int[][] a, int i, int j) { int[] t = a[i]; a[i] = a[j]; a[j] = t; }
+}`,
+      alt: [{ lang: 'python', code: `import heapq
+
+class Solution:
+    def kClosest(self, points, k):
+        # O(N log k) heap alternative: often fast enough and easy to get right
+        return heapq.nsmallest(k, points, key=lambda p: p[0] * p[0] + p[1] * p[1])` }],
+      dry: { head: ['round', 'range', 'pivot dist', 'partition (dists)', 'target 1 in…'], rows: [['1', '[0,2]', '26', '[18, 20 | 26 | ]', 'left → hi = 1'], ['2', '[0,1]', '18', '[ | 18 | 20]', 'right → lo = 1'], ['3', 'lo == hi', '—', '—', 'stop → first 2 points']] },
+      complexity: `<p>Expected <b>O(N)</b> time, O(1) extra space (in place). Heap: O(N log k) time, O(k) space, works on streams.</p>`,
+      followUps: ['Points arrive as a stream: keep a max-heap of size k.', 'Return them sorted by distance — sort only the k results: O(N + k log k).']
+    }
+  });
+
+  practice.push({
+    title: 'Online Stock Span', level: 'Medium', tags: ['monotonic stack', 'amortized analysis', 'design'], companies: ['Amazon', 'Goldman Sachs'],
+    statement: `<p>Design <code>StockSpanner</code> with <code>next(price)</code>: return today's <b>span</b> — the number of consecutive days ending today (including today) whose price was ≤ today's price. (LeetCode 901.)</p>`,
+    constraints: `1 ≤ price ≤ 10<sup>5</sup>, at most 10<sup>4</sup> calls (follow-up: 10<sup>6</sup>)`,
+    example: `<p>prices 100, 80, 60, 70, 60, 75, 85 → spans ${H.c('g', '1, 1, 1, 2, 1, 4, 6')}. For 75: the run 60, 70, 60, 75 are all ≤ 75 → 4.</p>`,
+    brute: {
+      why: `<p>Store every price and, for each new one, walk backwards until a larger price appears: <b>O(N)</b> per call, O(N<sup>2</sup>) for a rising sequence (10<sup>12</sup> steps for 10<sup>6</sup> calls). The waste: we re-scan days that an earlier, bigger price already "covered".</p>`,
+      code: `class StockSpanner {
+    private final List<Integer> prices = new ArrayList<>();
+
+    public int next(int price) {
+        prices.add(price);
+        int span = 0;
+        for (int i = prices.size() - 1; i >= 0 && prices.get(i) <= price; i--) span++;  // O(N)
+        return span;
+    }
+}`
+    },
+    mcq: { q: 'The inner while pops many entries for a single call. Why is the total still O(N) over N calls?', options: ['Because prices are bounded by 10<sup>5</sup>', 'Each day is pushed once and popped at most once', 'Because the stack is sorted', 'It is not; it is O(N log N)'], answer: 1, explain: 'Aggregate method: total pops ≤ total pushes = N, so all calls together do O(N) work → amortized O(1) per call.' },
+    hints: [
+      `<p>Hint 1: Once a price p is beaten by a later higher price q, p can never be the "blocker" for future days — q blocks first.</p>`,
+      `<p>Hint 2: Keep a stack of (price, span) with strictly decreasing prices. A new price absorbs (pops) all entries with price ≤ it, adding their spans.</p>`,
+      `<p>Hint 3: span = 1 + sum of popped spans; push (price, span). Each entry is pushed once and popped once → amortized O(1).</p>`
+    ],
+    solution: {
+      approach: `<p>Monotonic stack that compresses runs: each stack entry stands for a block of consecutive days already known to be ≤ its price. Amortized O(1) by the push-once/pop-once argument.</p>`,
+      code: `class StockSpanner {
+    private final Deque<int[]> st = new ArrayDeque<>();   // {price, span}, prices strictly decreasing
+
+    public int next(int price) {
+        int span = 1;
+        while (!st.isEmpty() && st.peek()[0] <= price)
+            span += st.pop()[1];                          // absorb the smaller block
+        st.push(new int[]{price, span});
+        return span;
+    }
+}`,
+      alt: [{ lang: 'python', code: `class StockSpanner:
+    def __init__(self):
+        self.st = []                      # (price, span)
+
+    def next(self, price):
+        span = 1
+        while self.st and self.st[-1][0] <= price:
+            span += self.st.pop()[1]
+        self.st.append((price, span))
+        return span` }],
+      dry: { head: ['price', 'popped', 'span', 'stack after (price:span)'], rows: [['100', '—', '1', '100:1'], ['80', '—', '1', '100:1, 80:1'], ['60', '—', '1', '…, 80:1, 60:1'], ['70', '60:1', '2', '…, 80:1, 70:2'], ['60', '—', '1', '…, 70:2, 60:1'], ['75', '60:1, 70:2', '4', '100:1, 80:1, 75:4'], ['85', '75:4, 80:1', '6', '100:1, 85:6']] },
+      complexity: `<p><b>Amortized O(1)</b> per call (worst single call O(N)); space O(N).</p>`,
+      followUps: ['Daily Temperatures (next greater to the right) — same stack, offline.', 'Return the span for an arbitrary past day in O(log N).']
+    }
+  });
+
+  practice.push({
+    title: 'Generate Random Point in a Circle', level: 'Medium', tags: ['randomized', 'rejection sampling', 'geometry'], companies: ['Google', 'Meta'],
+    statement: `<p>Given the radius and centre of a circle, implement <code>randPoint()</code> which returns a <b>uniformly random</b> point inside the circle (the boundary counts as inside). (LeetCode 478.)</p>`,
+    constraints: `0 &lt; radius ≤ 10<sup>8</sup>, −10<sup>7</sup> ≤ centre coordinates ≤ 10<sup>7</sup>, at most 3·10<sup>4</sup> calls`,
+    example: `<p>radius 1, centre (0,0): returns points like ${H.c('b', '[−0.02, −0.73]')}, ${H.c('b', '[0.67, 0.22]')} — every equal-area region of the disc equally likely.</p>`,
+    brute: {
+      why: `<p>"Random angle θ in [0, 2π), random radius ρ uniform in [0, r]" looks natural but is <b>biased toward the centre</b>: a ring at small ρ has little area but receives as many points as an outer ring of the same width. Half the points land within r/2, which covers only a quarter of the area.</p>`,
+      code: `class Solution {
+    private final double r, cx, cy;
+    private final Random rnd = new Random();
+    public Solution(double radius, double x, double y) { r = radius; cx = x; cy = y; }
+
+    public double[] randPoint() {               // BIASED: radius should be r * sqrt(u)
+        double theta = rnd.nextDouble() * 2 * Math.PI;
+        double rho = rnd.nextDouble() * r;
+        return new double[]{cx + rho * Math.cos(theta), cy + rho * Math.sin(theta)};
+    }
+}`
+    },
+    mcq: { q: 'To sample uniformly by angle and radius, the radius should be…', options: ['r · u', 'r · u²', 'r · √u', 'r · log(u)'], answer: 2, explain: 'The area within radius ρ grows like ρ². For a uniform point, P(radius ≤ ρ) = (ρ/r)², so ρ = r·√u inverts that CDF.' },
+    hints: [
+      `<p>Hint 1: Easiest exact method: rejection sampling — pick a uniform point in the bounding square, retry if it falls outside the circle (accept rate π/4 ≈ 78.5%).</p>`,
+      `<p>Hint 2: Polar method: uniform angle, but the radius must follow P(R ≤ ρ) = ρ²/r² because area grows with ρ².</p>`,
+      `<p>Hint 3: Inverse CDF: ρ = r·√u with u uniform in [0, 1]. Then x = cx + ρ cos θ, y = cy + ρ sin θ.</p>`
+    ],
+    solution: {
+      approach: `<p>Either rejection sampling (expected 4/π ≈ 1.27 tries, a Las Vegas algorithm) or the inverse-CDF polar method with √u. Both are exactly uniform; the polar method uses a fixed two random numbers per call.</p>`,
+      code: `class Solution {
+    private final double r, cx, cy;
+    private final Random rnd = new Random();
+
+    public Solution(double radius, double xCenter, double yCenter) {
+        r = radius; cx = xCenter; cy = yCenter;
+    }
+
+    public double[] randPoint() {
+        double theta = rnd.nextDouble() * 2 * Math.PI;
+        double rho = r * Math.sqrt(rnd.nextDouble());       // sqrt corrects the area density
+        return new double[]{cx + rho * Math.cos(theta), cy + rho * Math.sin(theta)};
+    }
+
+    // Alternative: rejection sampling, also exactly uniform.
+    public double[] randPointRejection() {
+        while (true) {
+            double x = (rnd.nextDouble() * 2 - 1) * r, y = (rnd.nextDouble() * 2 - 1) * r;
+            if (x * x + y * y <= r * r) return new double[]{cx + x, cy + y};
+        }
+    }
+}`,
+      alt: [{ lang: 'python', code: `import random, math
+
+class Solution:
+    def __init__(self, radius, x_center, y_center):
+        self.r, self.cx, self.cy = radius, x_center, y_center
+
+    def randPoint(self):
+        theta = random.uniform(0, 2 * math.pi)
+        rho = self.r * math.sqrt(random.random())
+        return [self.cx + rho * math.cos(theta), self.cy + rho * math.sin(theta)]` }],
+      dry: { head: ['u', 'naive ρ = r·u', 'correct ρ = r·√u', 'fraction of area inside ρ'], rows: [['0.25', '0.25r', '0.5r', '25%'], ['0.5', '0.5r', '0.707r', '50%'], ['0.81', '0.81r', '0.9r', '81%']] },
+      complexity: `<p>O(1) per call (rejection: expected O(1), about 1.27 iterations).</p>`,
+      followUps: ['Uniform point on the circle boundary only.', 'Uniform point in non-overlapping rectangles (LeetCode 497): weight by integer point count + binary search.', 'Uniform point inside a triangle (reflect when u + v &gt; 1).']
+    }
+  });
+
+  // =====================================================================
+  // PRACTICE — Hard
+  // =====================================================================
+  practice.push({
+    title: 'Max Points on a Line', level: 'Hard', tags: ['geometry', 'hashing', 'gcd'], companies: ['Google', 'Apple', 'LinkedIn', 'Twitter'],
+    statement: `<p>Given an array of <b>distinct</b> points <code>points[i] = [x, y]</code>, return the maximum number of points that lie on the same straight line. (LeetCode 149.)</p>`,
+    constraints: `1 ≤ N ≤ 300 (follow-up: 3000), −10<sup>4</sup> ≤ x, y ≤ 10<sup>4</sup>, all points distinct`,
+    example: `<p><code>[[1,1],[2,2],[3,3]]</code> → ${H.c('g', '3')}.</p><p><code>[[1,1],[3,2],[5,3],[4,1],[2,3],[1,4]]</code> → ${H.c('g', '4')}: (1,4), (2,3), (3,2), (4,1) lie on x + y = 5.</p>`,
+    brute: {
+      why: `<p>For every pair (i, j) count all points k with cross(P<sub>i</sub>, P<sub>j</sub>, P<sub>k</sub>) = 0: <b>O(N<sup>3</sup>)</b>. That is 2.7·10<sup>7</sup> for N = 300 (passes) but 2.7·10<sup>10</sup> for N = 3000. The waste: every line through i is rediscovered once per pair on it, and points are re-tested for each.</p>`,
+      code: `class Solution {
+    public int maxPoints(int[][] p) {
+        int n = p.length;
+        if (n <= 2) return n;
+        int best = 2;
+        for (int i = 0; i < n; i++)
+            for (int j = i + 1; j < n; j++) {
+                int cnt = 2;
+                for (int k = 0; k < n; k++) {
+                    if (k == i || k == j) continue;
+                    long c = (long) (p[j][0] - p[i][0]) * (p[k][1] - p[i][1])
+                           - (long) (p[j][1] - p[i][1]) * (p[k][0] - p[i][0]);
+                    if (c == 0) cnt++;
+                }
+                best = Math.max(best, cnt);
+            }
+        return best;
+    }
+}`
+    },
+    mcq: { q: 'Directions (2, 4) and (−1, −2) from the same anchor should count as the same line. Which key handles that exactly?', options: ['the double dy/dx', 'the pair (dx/g, dy/g) with g = gcd(|dx|,|dy|) and a fixed sign rule', 'the string dx + "/" + dy', 'atan2(dy, dx) rounded to 6 decimals'], answer: 1, explain: 'Dividing by the gcd gives (1, 2) and (−1, −2); forcing dx &gt; 0 (or dx = 0, dy &gt; 0) maps both to (1, 2). Exact, no floating point, no division by zero for vertical lines.' },
+    hints: [
+      `<p>Hint 1: Fix an anchor point A. Every other point B defines a direction from A; points on the same line through A share the direction.</p>`,
+      `<p>Hint 2: Represent a direction exactly: reduce (dx, dy) by their gcd and normalise the sign so that opposite vectors match. Count directions in a HashMap.</p>`,
+      `<p>Hint 3: Answer = max over anchors of (largest count + 1). Only pair each anchor with later points (j &gt; i): a line's best anchor is its first point. N = 1 → 1.</p>`
+    ],
+    solution: {
+      approach: `<p>For each anchor, bucket all later points by their reduced, sign-normalised direction. The largest bucket + the anchor is the best line through it. O(N<sup>2</sup>) hash operations, exact integer keys.</p>`,
+      code: `class Solution {
+    public int maxPoints(int[][] p) {
+        int n = p.length, best = 1;
+        for (int i = 0; i < n; i++) {
+            Map<Long, Integer> count = new HashMap<>();
+            for (int j = i + 1; j < n; j++) {
+                int dx = p[j][0] - p[i][0], dy = p[j][1] - p[i][1];
+                int g = gcd(Math.abs(dx), Math.abs(dy));      // > 0 because points are distinct
+                dx /= g; dy /= g;
+                if (dx < 0 || (dx == 0 && dy < 0)) { dx = -dx; dy = -dy; }  // canonical sign
+                long key = ((long) dx << 32) ^ (dy & 0xffffffffL);
+                best = Math.max(best, count.merge(key, 1, Integer::sum) + 1);
+            }
+        }
+        return best;
+    }
+
+    private int gcd(int a, int b) { return b == 0 ? a : gcd(b, a % b); }
+}`,
+      alt: [{ lang: 'python', code: `from math import gcd
+from collections import Counter
+
+class Solution:
+    def maxPoints(self, p):
+        best = 1
+        for i, (x1, y1) in enumerate(p):
+            cnt = Counter()
+            for x2, y2 in p[i + 1:]:
+                dx, dy = x2 - x1, y2 - y1
+                g = gcd(dx, dy)
+                dx, dy = dx // g, dy // g
+                if dx < 0 or (dx == 0 and dy < 0):
+                    dx, dy = -dx, -dy
+                cnt[(dx, dy)] += 1
+                best = max(best, cnt[(dx, dy)] + 1)
+        return best` }],
+      dry: { head: ['anchor', 'other point', '(dx, dy)', 'reduced key', 'count'], rows: [['(1,4)', '(2,3)', '(1,−1)', '(1,−1)', '1'], ['(1,4)', '(3,2)', '(2,−2)', '(1,−1)', '2'], ['(1,4)', '(4,1)', '(3,−3)', '(1,−1)', '3 → best = 4'], ['(1,4)', '(5,3)', '(4,−1)', '(4,−1)', '1']] },
+      complexity: `<p>Time <b>O(N<sup>2</sup> log C)</b> (gcd on coordinates up to C), space O(N) per anchor.</p>`,
+      followUps: ['Points may repeat: count duplicates of the anchor separately and add them to every line.', 'Return the line itself as a·x + b·y = c with integer coefficients.']
+    }
+  });
+
+  practice.push({
+    title: 'Perfect Rectangle', level: 'Hard', tags: ['geometry', 'hashing', 'area'], companies: ['Google', 'Apple'],
+    statement: `<p>Given N axis-aligned rectangles <code>[x1, y1, x2, y2]</code>, return <code>true</code> if together they form an <b>exact cover</b> of one rectangular region: no gaps and no overlaps. (LeetCode 391.)</p>`,
+    constraints: `1 ≤ N ≤ 2·10<sup>4</sup>, −10<sup>5</sup> ≤ coordinates ≤ 10<sup>5</sup>, each rectangle has positive area`,
+    example: `<p><code>[[1,1,3,3],[3,1,4,2],[3,2,4,4],[1,3,2,4],[2,3,3,4]]</code> → ${H.c('g', 'true')}: areas 4+1+2+1+1 = 9 = the 3×3 bounding box, and only the 4 outer corners appear an odd number of times.</p><p><code>[[1,1,2,3],[1,3,2,4],[3,1,4,2],[3,2,4,4]]</code> → ${H.c('r', 'false')}: a gap in the middle column.</p>`,
+    brute: {
+      why: `<p>Check (1) total area equals the bounding box area and (2) no two rectangles overlap (pairwise, Rectangle Overlap test). Correct, but the pair check is <b>O(N<sup>2</sup>)</b> = 2·10<sup>8</sup> overlap tests. Painting a grid is worse: up to 4·10<sup>10</sup> unit cells.</p>`,
+      code: `class Solution {
+    public boolean isRectangleCover(int[][] r) {
+        long area = 0;
+        int x1 = Integer.MAX_VALUE, y1 = Integer.MAX_VALUE, x2 = Integer.MIN_VALUE, y2 = Integer.MIN_VALUE;
+        for (int[] a : r) {
+            area += (long) (a[2] - a[0]) * (a[3] - a[1]);
+            x1 = Math.min(x1, a[0]); y1 = Math.min(y1, a[1]);
+            x2 = Math.max(x2, a[2]); y2 = Math.max(y2, a[3]);
+        }
+        if (area != (long) (x2 - x1) * (y2 - y1)) return false;
+        for (int i = 0; i < r.length; i++)                // O(N^2) overlap checks
+            for (int j = i + 1; j < r.length; j++)
+                if (Math.min(r[i][2], r[j][2]) > Math.max(r[i][0], r[j][0])
+                 && Math.min(r[i][3], r[j][3]) > Math.max(r[i][1], r[j][1])) return false;
+        return true;
+    }
+}`
+    },
+    mcq: { q: 'In a perfect cover, how often does an interior corner point (not one of the 4 outer corners) appear among all rectangle corners?', options: ['Exactly once', 'An even number of times (2 or 4)', 'Exactly 3 times', 'It never appears'], answer: 1, explain: 'Inside a perfect tiling every corner is shared by 2 rectangles (a T-junction) or 4 (a cross). Only the 4 bounding corners belong to a single rectangle. Toggling corners in a set leaves exactly those 4.' },
+    hints: [
+      `<p>Hint 1: Necessary: sum of areas == bounding-box area. Not sufficient — an overlap can exactly cancel a gap.</p>`,
+      `<p>Hint 2: Look at corners. In a perfect tiling, each internal corner point is shared by an even number of rectangles; the 4 outer corners appear exactly once.</p>`,
+      `<p>Hint 3: Toggle each rectangle's 4 corners in a HashSet (add if absent, remove if present). Valid ⇔ area matches AND the set is exactly the 4 bounding corners. Encode (x, y) as one long.</p>`
+    ],
+    solution: {
+      approach: `<p>Two O(N) invariants: area equality and corner parity. Area rules out gaps without overlaps (and vice versa); the corner condition rules out the case where a gap and an overlap of equal area cancel. Together they are necessary and sufficient (a known result for this problem).</p>`,
+      code: `class Solution {
+    public boolean isRectangleCover(int[][] rects) {
+        long area = 0;
+        int minX = Integer.MAX_VALUE, minY = Integer.MAX_VALUE, maxX = Integer.MIN_VALUE, maxY = Integer.MIN_VALUE;
+        Set<Long> corners = new HashSet<>();
+        for (int[] r : rects) {
+            area += (long) (r[2] - r[0]) * (r[3] - r[1]);
+            minX = Math.min(minX, r[0]); minY = Math.min(minY, r[1]);
+            maxX = Math.max(maxX, r[2]); maxY = Math.max(maxY, r[3]);
+            for (long c : new long[]{key(r[0], r[1]), key(r[0], r[3]), key(r[2], r[1]), key(r[2], r[3])})
+                if (!corners.add(c)) corners.remove(c);          // toggle: keeps odd-count corners
+        }
+        if (area != (long) (maxX - minX) * (maxY - minY)) return false;
+        return corners.size() == 4
+            && corners.contains(key(minX, minY)) && corners.contains(key(minX, maxY))
+            && corners.contains(key(maxX, minY)) && corners.contains(key(maxX, maxY));
+    }
+
+    private long key(int x, int y) { return ((long) x << 32) ^ (y & 0xffffffffL); }
+}`,
+      alt: [{ lang: 'python', code: `class Solution:
+    def isRectangleCover(self, rects):
+        area, corners = 0, set()
+        x1 = min(r[0] for r in rects); y1 = min(r[1] for r in rects)
+        x2 = max(r[2] for r in rects); y2 = max(r[3] for r in rects)
+        for a, b, c, d in rects:
+            area += (c - a) * (d - b)
+            corners ^= {(a, b), (a, d), (c, b), (c, d)}     # symmetric difference = toggle
+        return area == (x2 - x1) * (y2 - y1) and corners == {(x1, y1), (x1, y2), (x2, y1), (x2, y2)}` }],
+      dry: { head: ['rectangle', 'area', 'corners toggled', 'set size after'], rows: [['[1,1,3,3]', '4', '(1,1) (1,3) (3,1) (3,3) added', '4'], ['[3,1,4,2]', '1', '(3,1) removed; (3,2) (4,1) (4,2) added', '6'], ['[3,2,4,4]', '2', '(3,2) (4,2) removed; (3,4) (4,4) added', '6'], ['[1,3,2,4]', '1', '(1,3) removed; (1,4) (2,3) (2,4) added', '8'], ['[2,3,3,4]', '1', '(2,3) (2,4) (3,3) (3,4) removed', '<span class="c-g">4 = outer corners, area 9 = 9 → true</span>']] },
+      complexity: `<p>Time <b>O(N)</b> expected (hash set), space O(N).</p>`,
+      followUps: ['Return the overlapping pair if not perfect (sweep line with an interval tree: O(N log N)).', 'Prove why area + corner parity is sufficient.']
+    }
+  });
+
+  practice.push({
+    title: 'Rectangle Area II (Union of Rectangles)', level: 'Hard', tags: ['sweep line', 'geometry', 'coordinate compression'], companies: ['Google', 'Amazon'],
+    statement: `<p>Given N axis-aligned rectangles <code>[x1, y1, x2, y2]</code>, return the total area covered by their <b>union</b>, modulo 10<sup>9</sup> + 7. Overlapping parts count once. (LeetCode 850.)</p>`,
+    constraints: `1 ≤ N ≤ 200, 0 ≤ coordinates ≤ 10<sup>9</sup>`,
+    example: `<p><code>[[0,0,2,2],[1,0,2,3],[1,0,3,1]]</code> → ${H.c('g', '6')}. Strips: x∈[0,1] covers y∈[0,2] → 2; x∈[1,2] covers y∈[0,3] → 3; x∈[2,3] covers y∈[0,1] → 1. Total 6.</p>`,
+    brute: {
+      why: `<p>Coordinate-compress x and y (≤ 400 values each), mark every compressed cell each rectangle covers, then sum the areas of marked cells: <b>O(N<sup>3</sup>)</b> ≈ 200 × 400 × 400 = 3.2·10<sup>7</sup> — fine here, but 10<sup>12</sup> for N = 10<sup>4</sup>. The waste: re-marking cells one by one instead of measuring covered lengths per strip.</p>`,
+      code: `class Solution {
+    public int rectangleArea(int[][] rects) {
+        TreeSet<Integer> xs = new TreeSet<>(), ys = new TreeSet<>();
+        for (int[] r : rects) { xs.add(r[0]); xs.add(r[2]); ys.add(r[1]); ys.add(r[3]); }
+        Integer[] X = xs.toArray(new Integer[0]), Y = ys.toArray(new Integer[0]);
+        Map<Integer, Integer> xi = new HashMap<>(), yi = new HashMap<>();
+        for (int i = 0; i < X.length; i++) xi.put(X[i], i);
+        for (int i = 0; i < Y.length; i++) yi.put(Y[i], i);
+        boolean[][] covered = new boolean[X.length][Y.length];
+        for (int[] r : rects)
+            for (int i = xi.get(r[0]); i < xi.get(r[2]); i++)
+                for (int j = yi.get(r[1]); j < yi.get(r[3]); j++) covered[i][j] = true;
+        long area = 0;
+        for (int i = 0; i + 1 < X.length; i++)
+            for (int j = 0; j + 1 < Y.length; j++)
+                if (covered[i][j]) area += (long) (X[i + 1] - X[i]) * (Y[j + 1] - Y[j]);
+        return (int) (area % 1_000_000_007L);
+    }
+}`
+    },
+    mcq: { q: 'In the sweep, what do you multiply between two consecutive event x-coordinates?', options: ['The number of active rectangles × strip width', 'The total length of the UNION of active y-intervals × strip width', 'The sum of active y-interval lengths × strip width', 'The largest active y-interval × strip width'], answer: 1, explain: 'Inside a vertical strip with no events the covered set is constant: the union of the active y-intervals. Summing raw lengths would double-count overlaps.' },
+    hints: [
+      `<p>Hint 1: Sweep a vertical line left to right. Between two consecutive rectangle edges (events) the covered cross-section does not change.</p>`,
+      `<p>Hint 2: Events: (x1, open, y1, y2) and (x2, close, y1, y2). Before applying an event at x, add coveredY × (x − prevX).</p>`,
+      `<p>Hint 3: coveredY = length of the union of active y-intervals: sort them and merge (Merge Intervals). Keep the sum in long (≤ 10<sup>18</sup>), take mod at the end. A segment tree over compressed y makes it O(N log N).</p>`
+    ],
+    solution: {
+      approach: `<p>Sweep line over x with an active multiset of y-intervals; at each event, the strip area = (union length of active intervals) × (strip width). O(N) events × O(N log N) merge = O(N<sup>2</sup> log N), fine for N = 200. The union area is at most 10<sup>18</sup>, which fits in a long, so a single final mod is safe.</p>`,
+      code: `class Solution {
+    public int rectangleArea(int[][] rects) {
+        List<int[]> events = new ArrayList<>();                 // {x, type, y1, y2}
+        for (int[] r : rects) {
+            events.add(new int[]{r[0], 1, r[1], r[3]});        // left edge: open
+            events.add(new int[]{r[2], -1, r[1], r[3]});       // right edge: close
+        }
+        events.sort((a, b) -> Integer.compare(a[0], b[0]));
+        List<int[]> active = new ArrayList<>();
+        long area = 0;
+        int prevX = events.get(0)[0];
+        for (int[] e : events) {
+            area += coveredY(active) * (long) (e[0] - prevX);  // strip [prevX, x)
+            prevX = e[0];
+            if (e[1] == 1) active.add(new int[]{e[2], e[3]});
+            else {
+                for (int i = 0; i < active.size(); i++)
+                    if (active.get(i)[0] == e[2] && active.get(i)[1] == e[3]) { active.remove(i); break; }
+            }
+        }
+        return (int) (area % 1_000_000_007L);
+    }
+
+    // Length of the union of y-intervals (Merge Intervals).
+    private long coveredY(List<int[]> active) {
+        if (active.isEmpty()) return 0;
+        List<int[]> iv = new ArrayList<>(active);
+        iv.sort((a, b) -> Integer.compare(a[0], b[0]));
+        long total = 0;
+        int lo = iv.get(0)[0], hi = iv.get(0)[1];
+        for (int[] s : iv) {
+            if (s[0] > hi) { total += hi - lo; lo = s[0]; hi = s[1]; }   // gap: close the block
+            else hi = Math.max(hi, s[1]);                                  // overlap: extend
+        }
+        return total + (hi - lo);
+    }
+}`,
+      alt: [{ lang: 'python', code: `class Solution:
+    def rectangleArea(self, rects):
+        events = sorted([(x1, 1, y1, y2) for x1, y1, x2, y2 in rects] +
+                        [(x2, -1, y1, y2) for x1, y1, x2, y2 in rects])
+        active, area, prev = [], 0, events[0][0]
+
+        def covered():
+            total, hi = 0, -1
+            for lo, h in sorted(active):
+                if h > hi:
+                    total += h - max(lo, hi)
+                    hi = h
+            return total
+
+        for x, t, y1, y2 in events:
+            area += covered() * (x - prev)
+            prev = x
+            if t == 1:
+                active.append((y1, y2))
+            else:
+                active.remove((y1, y2))
+        return area % (10 ** 9 + 7)` }],
+      dry: { head: ['event x', 'strip', 'active before event', 'covered y', 'area +=', 'total'], rows: [['0 (open [0,2])', '—', '{}', '0', '0', '0'], ['1 (open [0,3], [0,1])', '[0,1]', '{[0,2]}', '2', '2', '2'], ['2 (close [0,2], [0,3])', '[1,2]', '{[0,2],[0,3],[0,1]}', '3', '3', '5'], ['3 (close [0,1])', '[2,3]', '{[0,1]}', '1', '1', '<span class="c-g">6</span>']] },
+      complexity: `<p>Time <b>O(N<sup>2</sup> log N)</b>, space O(N). With a segment tree over compressed y storing "cover count + covered length": <b>O(N log N)</b> (see DSA 21).</p>`,
+      followUps: ['N = 10<sup>5</sup>: implement the segment-tree version.', 'Perimeter of the union (IOI 1998 "Picture").', 'Union area of circles (numerical integration / Green\'s theorem on arcs).']
+    }
+  });
+
+  practice.push({
+    title: 'Erect the Fence II (Smallest Enclosing Circle)', level: 'Hard', tags: ['randomized', 'geometry', 'Welzl'], companies: ['Google'],
+    statement: `<p>Given tree positions <code>trees[i] = [x, y]</code>, find the <b>smallest circle</b> that contains every tree (on or inside). Return <code>[x, y, r]</code>; answers within 10<sup>−5</sup> are accepted. (LeetCode 1924.)</p>`,
+    constraints: `1 ≤ N ≤ 3000, 0 ≤ x, y ≤ 3000`,
+    example: `<p><code>[[1,1],[2,2],[2,0],[2,4],[3,3],[4,2]]</code> → ${H.c('g', '[2.0, 2.0, 2.0]')} (through (2,0), (2,4), (4,2)…).</p><p><code>[[1,2],[2,2],[4,2]]</code> → ${H.c('g', '[2.5, 2.0, 1.5]')}: collinear points — the circle with diameter (1,2)–(4,2).</p>`,
+    brute: {
+      why: `<p>The optimal circle is determined by 2 boundary points (as a diameter) or 3 (circumcircle). Try every pair and triple — O(N<sup>3</sup>) candidates — and verify each against all N points: <b>O(N<sup>4</sup>)</b> ≈ 8·10<sup>13</sup> for N = 3000. Hopeless; even O(N<sup>3</sup>) is too slow.</p>`,
+      code: `class Solution {
+    public double[] outerTrees(int[][] t) {
+        int n = t.length;
+        if (n == 1) return new double[]{t[0][0], t[0][1], 0};
+        double[] best = null;
+        for (int i = 0; i < n; i++)
+            for (int j = i + 1; j < n; j++) {
+                best = better(best, circle2(t[i], t[j]), t);
+                for (int k = j + 1; k < n; k++) best = better(best, circle3(t[i], t[j], t[k]), t);
+            }
+        return best;
+    }
+    private double[] better(double[] best, double[] c, int[][] t) {
+        if (c == null || (best != null && c[2] >= best[2])) return best;
+        for (int[] q : t) if (Math.hypot(q[0] - c[0], q[1] - c[1]) > c[2] + 1e-7) return best;  // O(N) verify
+        return c;
+    }
+    private double[] circle2(int[] a, int[] b) {
+        double cx = (a[0] + b[0]) / 2.0, cy = (a[1] + b[1]) / 2.0;
+        return new double[]{cx, cy, Math.hypot(a[0] - cx, a[1] - cy)};
+    }
+    private double[] circle3(int[] a, int[] b, int[] c) {
+        double bx = b[0] - a[0], by = b[1] - a[1], cx = c[0] - a[0], cy = c[1] - a[1];
+        double d = 2 * (bx * cy - by * cx);
+        if (d == 0) return null;                                  // collinear: no circumcircle
+        double b2 = bx * bx + by * by, c2 = cx * cx + cy * cy;
+        double ux = (cy * b2 - by * c2) / d, uy = (bx * c2 - cx * b2) / d;
+        return new double[]{a[0] + ux, a[1] + uy, Math.hypot(ux, uy)};
+    }
+}`
+    },
+    mcq: { q: 'Why does Welzl\'s algorithm shuffle the points first?', options: ['To make the answer unique', 'So that a point falls outside the current circle rarely: the i-th point is on the final boundary with probability ≤ 3/i, giving expected O(N)', 'Because the circle must be computed in sorted order', 'To avoid floating-point error'], answer: 1, explain: 'Backwards analysis: the minimal circle of the first i points is fixed by at most 3 of them, so the i-th (random) point is one of them with probability ≤ 3/i. Expensive inner loops are entered rarely, and the expected total work telescopes to O(N).' },
+    hints: [
+      `<p>Hint 1: Build the answer incrementally. If the next point is already inside the current circle, nothing changes. If not, that point must lie <b>on</b> the boundary of the new minimal circle.</p>`,
+      `<p>Hint 2: Nested loops: outer i (p<sub>i</sub> on boundary) → middle j &lt; i (p<sub>i</sub>, p<sub>j</sub> on boundary, start from the diameter circle) → inner k &lt; j (circumcircle of p<sub>i</sub>, p<sub>j</sub>, p<sub>k</sub>).</p>`,
+      `<p>Hint 3: Shuffle first (random order) → expected O(N). Use an epsilon (~1e−7) in the "inside" test, and guard the circumcircle against a zero determinant (collinear) by falling back to the widest pair.</p>`
+    ],
+    solution: {
+      approach: `<p>Welzl's randomized incremental algorithm (iterative form). Random insertion order makes each level's "point outside" event rare (probability ≤ 2/i or 3/i), so the expected cost of the three nested loops is O(N) — a Las Vegas algorithm: always correct, randomly fast.</p>`,
+      code: `class Solution {
+    private static final double EPS = 1e-7;
+
+    public double[] outerTrees(int[][] trees) {
+        int n = trees.length;
+        double[][] p = new double[n][];
+        for (int i = 0; i < n; i++) p[i] = new double[]{trees[i][0], trees[i][1]};
+        Random rnd = new Random(20260);
+        for (int i = n - 1; i > 0; i--) {                    // Fisher-Yates: random order
+            int j = rnd.nextInt(i + 1);
+            double[] t = p[i]; p[i] = p[j]; p[j] = t;
+        }
+        double[] c = {p[0][0], p[0][1], 0};
+        for (int i = 1; i < n; i++) {
+            if (inside(c, p[i])) continue;
+            c = new double[]{p[i][0], p[i][1], 0};           // p[i] is on the boundary
+            for (int j = 0; j < i; j++) {
+                if (inside(c, p[j])) continue;
+                c = diameter(p[i], p[j]);                    // p[i], p[j] on the boundary
+                for (int k = 0; k < j; k++) {
+                    if (inside(c, p[k])) continue;
+                    c = circumcircle(p[i], p[j], p[k]);      // all three on the boundary
+                }
+            }
+        }
+        return c;
+    }
+
+    private boolean inside(double[] c, double[] q) {
+        return Math.hypot(q[0] - c[0], q[1] - c[1]) <= c[2] + EPS;
+    }
+
+    private double[] diameter(double[] a, double[] b) {
+        double cx = (a[0] + b[0]) / 2, cy = (a[1] + b[1]) / 2;
+        return new double[]{cx, cy, Math.hypot(a[0] - cx, a[1] - cy)};
+    }
+
+    private double[] circumcircle(double[] a, double[] b, double[] c) {
+        double bx = b[0] - a[0], by = b[1] - a[1], cx = c[0] - a[0], cy = c[1] - a[1];
+        double d = 2 * (bx * cy - by * cx);
+        if (Math.abs(d) < 1e-12) {                           // collinear (rounding): widest pair
+            double[] best = diameter(a, b), d2 = diameter(a, c), d3 = diameter(b, c);
+            if (d2[2] > best[2]) best = d2;
+            if (d3[2] > best[2]) best = d3;
+            return best;
+        }
+        double b2 = bx * bx + by * by, c2 = cx * cx + cy * cy;
+        double ux = (cy * b2 - by * c2) / d, uy = (bx * c2 - cx * b2) / d;
+        return new double[]{a[0] + ux, a[1] + uy, Math.hypot(ux, uy)};
+    }
+}`,
+      alt: [{ lang: 'python', code: `import random, math
+
+class Solution:
+    def outerTrees(self, trees):
+        pts = [tuple(map(float, t)) for t in trees]
+        random.Random(7).shuffle(pts)
+        eps = 1e-7
+
+        def inside(c, p):
+            return math.dist((c[0], c[1]), p) <= c[2] + eps
+
+        def two(a, b):
+            cx, cy = (a[0] + b[0]) / 2, (a[1] + b[1]) / 2
+            return (cx, cy, math.dist((cx, cy), a))
+
+        def three(a, b, c):
+            bx, by, cx, cy = b[0] - a[0], b[1] - a[1], c[0] - a[0], c[1] - a[1]
+            d = 2 * (bx * cy - by * cx)
+            if abs(d) < 1e-12:
+                return max(two(a, b), two(a, c), two(b, c), key=lambda t: t[2])
+            b2, c2 = bx * bx + by * by, cx * cx + cy * cy
+            ux, uy = (cy * b2 - by * c2) / d, (bx * c2 - cx * b2) / d
+            return (a[0] + ux, a[1] + uy, math.hypot(ux, uy))
+
+        c = (pts[0][0], pts[0][1], 0.0)
+        for i in range(1, len(pts)):
+            if inside(c, pts[i]):
+                continue
+            c = (pts[i][0], pts[i][1], 0.0)
+            for j in range(i):
+                if inside(c, pts[j]):
+                    continue
+                c = two(pts[i], pts[j])
+                for k in range(j):
+                    if not inside(c, pts[k]):
+                        c = three(pts[i], pts[j], pts[k])
+        return list(c)` }],
+      dry: { head: ['step (order 1,2 | 2,2 | 4,2)', 'point', 'inside current?', 'new circle'], rows: [['start', '(1,2)', '—', 'centre (1,2), r 0'], ['i = 1', '(2,2)', 'no', 'diameter (1,2)-(2,2): centre (1.5,2), r 0.5'], ['i = 2', '(4,2)', 'no', 'start at (4,2) r 0; j = 0: (1,2) outside → diameter: centre (2.5,2), r 1.5'], ['i = 2, j = 1', '(2,2)', 'yes (distance 0.5 ≤ 1.5)', 'unchanged → answer [2.5, 2, 1.5]']] },
+      complexity: `<p><b>Expected O(N)</b> time (worst case O(N<sup>3</sup>) with vanishing probability), O(N) space for the shuffled copy.</p>`,
+      followUps: ['Prove the ≤ 3/i probability with backwards analysis.', 'Smallest enclosing sphere in 3D (same algorithm, up to 4 boundary points).', 'Why use a fixed seed in tests but a random seed in production?']
+    }
   });
 registerModule({ id: 'dsa26', title: 'Geometry, Randomized & Amortized Analysis', intro: '<p>x</p>', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();

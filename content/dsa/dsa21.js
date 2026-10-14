@@ -2976,4 +2976,1292 @@ print(r.query(1, 2, 4), r.query(0, 11, 33), r.query(5, 8, 22))  # 1 2 1`, run: t
     }]
   });
 
-registerModule({ id: 'dsa21', title: 'Range Query Data Structures', intro: '<p>x</p>', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();
+  // =====================================================================
+  // PRACTICE — Easy
+  // =====================================================================
+  practice.push({
+    title: 'Range Sum Query — Immutable',
+    level: 'Easy',
+    tags: ['prefix sums', 'static array', 'design'],
+    companies: ['Amazon', 'Meta', 'Bloomberg'],
+    statement: `<p>Design <code>NumArray</code>: the constructor receives an integer array <code>nums</code> that <b>never changes</b>; <code>sumRange(left, right)</code> returns the sum of <code>nums[left..right]</code> (inclusive). Many calls are made.</p>`,
+    constraints: `1 ≤ N ≤ 10<sup>4</sup>, −10<sup>5</sup> ≤ nums[i] ≤ 10<sup>5</sup>, at most 10<sup>4</sup> calls to sumRange.`,
+    example: `${H.arr([-2, 0, 3, -5, 2, -1], { label: 'nums', hl: { 2: 'g', 3: 'g', 4: 'g', 5: 'g' } })}
+      <p>sumRange(0, 2) → ${H.c('g', '1')}, sumRange(2, 5) → ${H.c('g', '−1')} (3 − 5 + 2 − 1), sumRange(0, 5) → ${H.c('g', '−3')}. With prefix sums pre = [0, −2, −2, 1, −4, −2, −3], sumRange(2, 5) = pre[6] − pre[2] = −3 − (−2) = −1.</p>`,
+    brute: {
+      why: `<p>Loop from left to right on every call: O(N) per call, 10<sup>8</sup> in the worst case. It works here but wastes time re-adding the same elements. Because the array is static, a segment tree or Fenwick would also be overkill — prefix sums give O(1).</p>`,
+      code: `
+        class NumArrayBrute {
+            private final int[] a;
+            NumArrayBrute(int[] nums) { a = nums.clone(); }
+            int sumRange(int left, int right) {
+                int s = 0;
+                for (int i = left; i <= right; i++) s += a[i];
+                return s;
+            }
+        }`
+    },
+    mcq: {
+      q: 'The array never changes. Which structure is the simplest with O(1) queries?',
+      options: ['Segment tree', 'Fenwick tree', 'Prefix sum array', 'Sparse table'],
+      answer: 2,
+      explain: 'Sum is invertible, so sum(l..r) = pre[r+1] − pre[l] in O(1) after an O(N) build. A sparse table would need O(log N) for sums (not idempotent); trees are for updates.'
+    },
+    hints: [
+      `<p><b>Aha:</b> sum(l..r) = (sum of the first r+1 elements) − (sum of the first l elements). Precompute all "first k elements" sums once.</p>`,
+      `<p>Build <code>pre</code> of length N+1 with <code>pre[0] = 0</code> and <code>pre[i+1] = pre[i] + nums[i]</code>. The extra leading zero removes the special case l = 0.</p>`,
+      `<p>Edge cases: left = 0, left = right, negative numbers. Recipe: build pre in the constructor → return pre[right + 1] − pre[left].</p>`
+    ],
+    solution: {
+      approach: `<p>Prefix sums with a leading zero; each query is one subtraction.</p>`,
+      code: `
+        class NumArray {
+            private final long[] pre;
+
+            public NumArray(int[] nums) {
+                pre = new long[nums.length + 1];
+                for (int i = 0; i < nums.length; i++) pre[i + 1] = pre[i] + nums[i];
+            }
+
+            public int sumRange(int left, int right) {
+                return (int) (pre[right + 1] - pre[left]);
+            }
+
+            public static void main(String[] args) {
+                NumArray na = new NumArray(new int[]{-2, 0, 3, -5, 2, -1});
+                System.out.println(na.sumRange(0, 2));  // 1
+                System.out.println(na.sumRange(2, 5));  // -1
+                System.out.println(na.sumRange(0, 5));  // -3
+            }
+        }`,
+      alt: [{ lang: 'python', code: `from itertools import accumulate
+
+
+class NumArray:
+    def __init__(self, nums):
+        self.pre = [0] + list(accumulate(nums))
+
+    def sumRange(self, left, right):
+        return self.pre[right + 1] - self.pre[left]
+
+
+na = NumArray([-2, 0, 3, -5, 2, -1])
+print(na.sumRange(0, 2), na.sumRange(2, 5), na.sumRange(0, 5))  # 1 -1 -3`, run: true }],
+      dry: { head: ['call', 'pre[right+1]', 'pre[left]', 'answer'], rows: [['(0, 2)', '1', '0', '1'], ['(2, 5)', '−3', '−2', '−1'], ['(0, 5)', '−3', '0', '−3']] },
+      complexity: `<p>Build O(N), query O(1), memory O(N).</p>`,
+      followUps: ['Now nums can change — what do you switch to?', '2D version: sum of a sub-rectangle with 2D prefix sums.']
+    }
+  });
+
+  practice.push({
+    title: 'Range Addition (Apply Many Range Adds, Read Once)',
+    level: 'Easy',
+    tags: ['difference array', 'offline updates'],
+    companies: ['Google', 'Amazon'],
+    statement: `<p>You start with an array of <code>length</code> zeros and a list of <code>updates</code>, each <code>[start, end, inc]</code> meaning "add <code>inc</code> to every element in <code>[start, end]</code>". Return the final array after all updates.</p>`,
+    constraints: `1 ≤ length ≤ 10<sup>5</sup>, 0 ≤ number of updates ≤ 10<sup>4</sup>, 0 ≤ start ≤ end &lt; length, −1000 ≤ inc ≤ 1000.`,
+    example: `<p>length = 5, updates = [[1,3,2], [2,4,3], [0,2,−2]]</p>
+      ${H.arr([-2, 0, 3, 5, 3], { label: 'result', hl: { 3: 'g' } })}
+      <p>After [1,3,+2]: [0,2,2,2,0]; after [2,4,+3]: [0,2,5,5,3]; after [0,2,−2]: ${H.c('g', '[−2,0,3,5,3]')}.</p>`,
+    brute: {
+      why: `<p>Apply each update element by element: up to 10<sup>4</sup> × 10<sup>5</sup> = 10<sup>9</sup> additions. The waste: we only need the final array, so there is no reason to keep it correct after every single update.</p>`,
+      code: `
+        int[] bruteRangeAddition(int length, int[][] updates) {
+            int[] a = new int[length];
+            for (int[] u : updates)
+                for (int i = u[0]; i <= u[1]; i++) a[i] += u[2];
+            return a;
+        }`
+    },
+    mcq: {
+      q: 'In a difference array d, how do you record "add v to [l, r]"?',
+      options: ['d[l] += v and d[r] −= v', 'd[l] += v and d[r + 1] −= v', 'd[l..r] += v', 'd[r + 1] += v only'],
+      answer: 1,
+      explain: 'The final array is the prefix sum of d. +v at l starts the bonus, −v at r+1 stops it right after r. (Skip the second write if r + 1 = length.)'
+    },
+    hints: [
+      `<p><b>Aha:</b> a range add changes the array's <i>differences</i> (a[i] − a[i−1]) at only two places: the start and just after the end.</p>`,
+      `<p>Difference array <code>d</code> of size length + 1: for each update <code>d[start] += inc; d[end + 1] −= inc</code>. At the end, a running sum over d rebuilds the array.</p>`,
+      `<p>Edge cases: end = length − 1 (d has the extra slot, so it is safe), no updates (all zeros). Recipe: O(1) per update, one O(N) prefix pass. If you had to <i>read</i> between updates you would need a Fenwick on d instead.</p>`
+    ],
+    solution: {
+      approach: `<p>Difference array: two writes per update, one prefix pass at the end. This is the "offline" cousin of lazy propagation.</p>`,
+      code: `
+        class Solution {
+            public int[] getModifiedArray(int length, int[][] updates) {
+                int[] d = new int[length + 1];
+                for (int[] u : updates) {
+                    d[u[0]] += u[2];          // bonus starts at start
+                    d[u[1] + 1] -= u[2];      // and stops right after end
+                }
+                int[] res = new int[length];
+                int run = 0;
+                for (int i = 0; i < length; i++) {
+                    run += d[i];
+                    res[i] = run;
+                }
+                return res;
+            }
+
+            public static void main(String[] args) {
+                int[][] ups = {{1, 3, 2}, {2, 4, 3}, {0, 2, -2}};
+                System.out.println(Arrays.toString(new Solution().getModifiedArray(5, ups)));  // [-2, 0, 3, 5, 3]
+            }
+        }`,
+      dry: { head: ['step', 'd (indices 0..5)', 'note'], rows: [['[1,3,+2]', '0 2 0 0 −2 0', 'start +2 at 1, stop at 4'], ['[2,4,+3]', '0 2 3 0 −2 −3', 'stop at 5 (extra slot)'], ['[0,2,−2]', '−2 2 3 2 −2 −3', ''], ['prefix', '−2 0 3 5 3', H.c('g', 'answer')]] },
+      complexity: `<p>O(N + U) time, O(N) extra memory.</p>`,
+      followUps: ['Interleave "what is a[i] now?" queries — Fenwick on the difference array.', 'Ranges in 2D (add to a sub-rectangle) — 2D difference array with four corners.']
+    }
+  });
+
+  practice.push({
+    title: 'Static Range Minimum Queries',
+    level: 'Easy',
+    tags: ['sparse table', 'RMQ'],
+    companies: ['CSES classic', 'Google'],
+    statement: `<p>Given a static array <code>a</code> of N integers and Q queries <code>[l, r]</code> (0-based, inclusive), return the minimum of each range.</p>`,
+    constraints: `1 ≤ N, Q ≤ 2·10<sup>5</sup>, 1 ≤ a[i] ≤ 10<sup>9</sup>`,
+    example: `${H.arr([3, 2, 4, 5, 1, 1, 5, 3], { label: 'a' })}
+      <p>Queries [1,3], [4,5], [0,7], [2,2] → ${H.c('g', '[2, 1, 1, 4]')}. For [1,3]: len 3, k = 1, windows [1,2] (min 2) and [2,3] (min 4) → 2.</p>`,
+    brute: {
+      why: `<p>Scan each range: O(N) per query → 4·10<sup>10</sup>. The waste: the same windows are scanned again and again although the array never changes, so their minima could be precomputed once.</p>`,
+      code: `
+        int[] bruteRmq(int[] a, int[][] qs) {
+            int[] res = new int[qs.length];
+            for (int i = 0; i < qs.length; i++) {
+                int m = Integer.MAX_VALUE;
+                for (int j = qs[i][0]; j <= qs[i][1]; j++) m = Math.min(m, a[j]);
+                res[i] = m;
+            }
+            return res;
+        }`
+    },
+    mcq: {
+      q: 'For the query [3, 9] (length 7), which two sparse-table cells answer it?',
+      options: ['st[2][3] and st[2][6]', 'st[3][3] and st[3][2]', 'st[2][3] and st[2][7]', 'st[1][3], st[1][5], st[1][7], st[0][9]'],
+      answer: 0,
+      explain: 'k = ⌊log₂ 7⌋ = 2 (length 4). One window starts at l = 3 → [3..6]; the other ends at r = 9 → starts at 9 − 4 + 1 = 6 → [6..9]. They overlap on 6, which is fine for min.'
+    },
+    hints: [
+      `<p><b>Aha:</b> min is idempotent, so two overlapping power-of-two windows that cover [l, r] give the exact answer.</p>`,
+      `<p>Build <code>st[k][i]</code> = min of a[i .. i + 2<sup>k</sup> − 1] from row k−1, plus <code>lg[]</code> for ⌊log₂⌋. Query: k = lg[len]; min(st[k][l], st[k][r − 2<sup>k</sup> + 1]).</p>`,
+      `<p>Edge cases: l = r (k = 0, both cells are the same), N = 1, exact powers of two. Use fast input for 2·10<sup>5</sup> queries. Memory: 18 rows × 2·10<sup>5</sup> ints ≈ 14 MB.</p>`
+    ],
+    solution: {
+      approach: `<p>Sparse table, O(N log N) build, O(1) per query.</p>`,
+      code: `
+        class Solution {
+            public int[] rangeMin(int[] a, int[][] qs) {
+                int n = a.length;
+                int[] lg = new int[n + 1];
+                for (int x = 2; x <= n; x++) lg[x] = lg[x / 2] + 1;
+                int[][] st = new int[lg[n] + 1][];
+                st[0] = a.clone();
+                for (int k = 1; k <= lg[n]; k++) {
+                    st[k] = new int[n - (1 << k) + 1];
+                    for (int i = 0; i + (1 << k) <= n; i++)
+                        st[k][i] = Math.min(st[k - 1][i], st[k - 1][i + (1 << (k - 1))]);
+                }
+                int[] res = new int[qs.length];
+                for (int i = 0; i < qs.length; i++) {
+                    int l = qs[i][0], r = qs[i][1], k = lg[r - l + 1];
+                    res[i] = Math.min(st[k][l], st[k][r - (1 << k) + 1]);
+                }
+                return res;
+            }
+
+            public static void main(String[] args) {
+                int[] a = {3, 2, 4, 5, 1, 1, 5, 3};
+                int[][] qs = {{1, 3}, {4, 5}, {0, 7}, {2, 2}};
+                System.out.println(Arrays.toString(new Solution().rangeMin(a, qs)));  // [2, 1, 1, 4]
+            }
+        }`,
+      dry: { head: ['query', 'len', 'k', 'cells', 'answer'], rows: [['[1,3]', '3', '1', 'st[1][1]=2, st[1][2]=4', '2'], ['[4,5]', '2', '1', 'st[1][4]=1 (twice)', '1'], ['[0,7]', '8', '3', 'st[3][0]=1', '1'], ['[2,2]', '1', '0', 'st[0][2]=4', '4']] },
+      complexity: `<p>Build O(N log N), each query O(1); memory O(N log N).</p>`,
+      followUps: ['Add point updates — what replaces the sparse table?', 'Return the index of the minimum (store indices, compare values).']
+    }
+  });
+
+  practice.push({
+    title: 'Dynamic Range Sum Queries',
+    level: 'Easy',
+    tags: ['fenwick tree', 'point update'],
+    companies: ['CSES classic', 'Microsoft'],
+    statement: `<p>Given an array <code>a</code> and a list of operations: <code>[1, k, u]</code> sets <code>a[k] = u</code>; <code>[2, l, r]</code> asks for the sum of <code>a[l..r]</code>. Return the answers of type-2 operations (0-based indices).</p>`,
+    constraints: `1 ≤ N, Q ≤ 2·10<sup>5</sup>, 1 ≤ a[i], u ≤ 10<sup>9</sup> → sums up to 2·10<sup>14</sup> (use long).`,
+    example: `${H.arr([3, 2, 4, 5, 1, 1, 5, 3], { label: 'a' })}
+      <p>Ops [2,0,3], [2,4,5], [1,2,1], [2,0,3] → ${H.c('g', '[14, 2, 11]')}. After setting a[2] = 1 the first four sum to 3 + 2 + 1 + 5 = 11.</p>`,
+    brute: {
+      why: `<p>Loop over [l, r] for each sum: O(N) → 4·10<sup>10</sup> worst case. Prefix sums would make sums O(1) but every set would cost O(N). The waste: one changed element forces rescanning or rebuilding everything.</p>`,
+      code: `
+        long[] bruteDynamic(int[] a0, int[][] ops) {
+            long[] a = new long[a0.length];
+            for (int i = 0; i < a0.length; i++) a[i] = a0[i];
+            List<Long> out = new ArrayList<>();
+            for (int[] op : ops) {
+                if (op[0] == 1) a[op[1]] = op[2];
+                else { long s = 0; for (int i = op[1]; i <= op[2]; i++) s += a[i]; out.add(s); }
+            }
+            long[] res = new long[out.size()];
+            for (int i = 0; i < res.length; i++) res[i] = out.get(i);
+            return res;
+        }`
+    },
+    mcq: {
+      q: 'A Fenwick tree supports "add delta at i". How do you implement "set a[k] = u"?',
+      options: ['add(k, u)', 'add(k, u − a[k]) and then a[k] = u, keeping a copy of the array', 'rebuild the tree', 'add(k, −u)'],
+      answer: 1,
+      explain: 'A Fenwick tree stores sums, not individual values, so remember the current values in a plain array and add only the difference.'
+    },
+    hints: [
+      `<p><b>Aha:</b> sum is invertible: sum(l..r) = prefix(r) − prefix(l − 1), and a Fenwick tree gives prefix sums with updates in O(log N).</p>`,
+      `<p>Keep <code>long[] cur</code> with the current values. "set" → <code>add(k + 1, u − cur[k]); cur[k] = u</code> (1-based inside the tree).</p>`,
+      `<p>Edge cases: l = 0 (prefix(0) = 0), setting to the same value (delta 0), overflow → long. Build in O(N) or with N adds.</p>`
+    ],
+    solution: {
+      approach: `<p>Fenwick tree over the array plus a copy of current values for computing deltas.</p>`,
+      code: `
+        class Solution {
+            private long[] bit;
+            private int n;
+
+            private void add(int i, long d) { for (; i <= n; i += i & -i) bit[i] += d; }
+            private long prefix(int i) { long s = 0; for (; i > 0; i -= i & -i) s += bit[i]; return s; }
+
+            public long[] process(int[] a, int[][] ops) {
+                n = a.length;
+                bit = new long[n + 1];
+                long[] cur = new long[n];
+                for (int i = 0; i < n; i++) { cur[i] = a[i]; add(i + 1, a[i]); }
+                List<Long> out = new ArrayList<>();
+                for (int[] op : ops) {
+                    if (op[0] == 1) {
+                        add(op[1] + 1, op[2] - cur[op[1]]);   // only the difference
+                        cur[op[1]] = op[2];
+                    } else {
+                        out.add(prefix(op[2] + 1) - prefix(op[1]));
+                    }
+                }
+                long[] res = new long[out.size()];
+                for (int i = 0; i < res.length; i++) res[i] = out.get(i);
+                return res;
+            }
+
+            public static void main(String[] args) {
+                int[] a = {3, 2, 4, 5, 1, 1, 5, 3};
+                int[][] ops = {{2, 0, 3}, {2, 4, 5}, {1, 2, 1}, {2, 0, 3}};
+                System.out.println(Arrays.toString(new Solution().process(a, ops)));  // [14, 2, 11]
+            }
+        }`,
+      complexity: `<p>O((N + Q) log N) time, O(N) memory.</p>`,
+      followUps: ['Range add instead of set — two Fenwicks.', 'Return the first index whose prefix sum reaches S — Fenwick binary lifting.']
+    }
+  });
+
+  // =====================================================================
+  // PRACTICE — Medium
+  // =====================================================================
+  practice.push({
+    title: 'Count Inversions',
+    level: 'Medium',
+    tags: ['fenwick tree', 'coordinate compression', 'counting'],
+    companies: ['Amazon', 'Microsoft', 'Adobe', 'Goldman Sachs'],
+    statement: `<p>Given an array <code>a</code>, count the pairs <code>(i, j)</code> with <code>i &lt; j</code> and <code>a[i] &gt; a[j]</code> (inversions).</p>`,
+    constraints: `1 ≤ N ≤ 2·10<sup>5</sup>, −10<sup>9</sup> ≤ a[i] ≤ 10<sup>9</sup>. The answer can reach ~2·10<sup>10</sup> → long.`,
+    example: `${H.arr([8, 4, 2, 1], { label: 'a' })}<p>Output ${H.c('g', '6')}: every pair is inverted (4·3/2). For [3, 1, 2] the answer is ${H.c('g', '2')}: (3,1) and (3,2).</p>`,
+    brute: {
+      why: `<p>Check all pairs: N(N−1)/2 ≈ 2·10<sup>10</sup> comparisons. The waste: for each new element we recount all earlier elements instead of keeping a running "how many seen values are greater than v".</p>`,
+      code: `
+        long bruteInversions(int[] a) {
+            long c = 0;
+            for (int i = 0; i < a.length; i++)
+                for (int j = i + 1; j < a.length; j++)
+                    if (a[i] > a[j]) c++;
+            return c;
+        }`
+    },
+    mcq: {
+      q: 'Scanning left to right with a BIT of value counts, how many earlier elements are strictly greater than the current value with rank r?',
+      options: ['prefix(r)', 'seen − prefix(r)', 'seen − prefix(r − 1)', 'prefix(N) − prefix(r − 1)'],
+      answer: 1,
+      explain: 'prefix(r) counts earlier values ≤ v (equal values are not inversions). seen − prefix(r) is the number of earlier values strictly greater.'
+    },
+    hints: [
+      `<p><b>Aha:</b> inversions ending at j = number of earlier values greater than a[j]. A data structure that counts "values ≤ v seen so far" answers that.</p>`,
+      `<p>Compress values to ranks 1..K, then BIT of counts: for each element add <code>seen − prefix(rank)</code>, then <code>add(rank, 1)</code>.</p>`,
+      `<p>Edge cases: duplicates (not inversions → use prefix(rank), not prefix(rank − 1)), N = 1 (0), long answer. Alternative: merge sort counting cross pairs.</p>`
+    ],
+    solution: {
+      approach: `<p>Coordinate compression + Fenwick tree of counts, one pass.</p>`,
+      code: `
+        class Solution {
+            public long countInversions(int[] a) {
+                int n = a.length;
+                int[] s = a.clone();
+                Arrays.sort(s);
+                int k = 0;
+                for (int i = 0; i < n; i++) if (i == 0 || s[i] != s[i - 1]) s[k++] = s[i];
+                int[] bit = new int[k + 1];
+                long inv = 0;
+                for (int seen = 0; seen < n; seen++) {
+                    int r = Arrays.binarySearch(s, 0, k, a[seen]) + 1;          // rank 1..k
+                    int le = 0;
+                    for (int i = r; i > 0; i -= i & -i) le += bit[i];          // earlier values <= a[seen]
+                    inv += seen - le;                                         // earlier values > a[seen]
+                    for (int i = r; i <= k; i += i & -i) bit[i]++;
+                }
+                return inv;
+            }
+
+            public static void main(String[] args) {
+                System.out.println(new Solution().countInversions(new int[]{8, 4, 2, 1}));     // 6
+                System.out.println(new Solution().countInversions(new int[]{3, 1, 2}));        // 2
+                System.out.println(new Solution().countInversions(new int[]{2, 2, 1}));        // 2
+            }
+        }`,
+      dry: { head: ['v', 'rank', 'seen', 'prefix(rank)', 'added', 'total'], rows: [['8', '4', '0', '0', '0', '0'], ['4', '3', '1', '0', '1', '1'], ['2', '2', '2', '0', '2', '3'], ['1', '1', '3', '0', '3', H.c('g', '6')]] },
+      complexity: `<p>O(N log N) time (sort + N BIT operations), O(N) memory.</p>`,
+      followUps: ['Count pairs with a[i] &gt; 2·a[j] (Reverse Pairs).', 'Minimum adjacent swaps to sort = number of inversions — why?']
+    }
+  });
+
+  practice.push({
+    title: 'Range Update, Point Query',
+    level: 'Medium',
+    tags: ['fenwick tree', 'difference array'],
+    companies: ['CSES classic', 'Uber'],
+    statement: `<p>Given an array <code>a</code>, process operations: <code>[1, l, r, u]</code> adds <code>u</code> to every element in <code>[l, r]</code>; <code>[2, k]</code> asks for the current value of <code>a[k]</code>. Return the answers (0-based).</p>`,
+    constraints: `1 ≤ N, Q ≤ 2·10<sup>5</sup>, 1 ≤ a[i], u ≤ 10<sup>9</sup> → values up to ~2·10<sup>14</sup> (long).`,
+    example: `${H.arr([3, 2, 4, 5, 1, 1, 5, 3], { label: 'a' })}
+      <p>Ops [2,3], [1,1,4,1], [2,3], [2,4] → ${H.c('g', '[5, 6, 2]')}. The add raises a[1..4] by 1, so a[3] becomes 6 and a[4] becomes 2.</p>`,
+    brute: {
+      why: `<p>Apply every add element by element: O(N) per add → 4·10<sup>10</sup> worst case. A difference array makes adds O(1) but then reading a[k] costs an O(N) prefix sum. The waste is on one side or the other.</p>`,
+      code: `
+        long[] bruteRangePoint(int[] a0, int[][] ops) {
+            long[] a = new long[a0.length];
+            for (int i = 0; i < a0.length; i++) a[i] = a0[i];
+            List<Long> out = new ArrayList<>();
+            for (int[] op : ops) {
+                if (op[0] == 1) for (int i = op[1]; i <= op[2]; i++) a[i] += op[3];
+                else out.add(a[op[1]]);
+            }
+            long[] res = new long[out.size()];
+            for (int i = 0; i < res.length; i++) res[i] = out.get(i);
+            return res;
+        }`
+    },
+    mcq: {
+      q: 'You keep a Fenwick tree over the difference array d. What is a[k]?',
+      options: ['d[k]', 'original a[k] + prefix(k) over the BIT of added differences', 'prefix(N) − prefix(k)', 'the max of d[0..k]'],
+      answer: 1,
+      explain: 'If the BIT only stores the added differences (start with zeros), the total bonus at k is prefix(k); add it to the original value.'
+    },
+    hints: [
+      `<p><b>Aha:</b> "add u to [l, r]" changes the difference array at two points; "value at k" is a prefix sum of differences. Both are Fenwick operations.</p>`,
+      `<p>BIT of size N+1 starting at zero (only the bonuses): <code>add(l, u); add(r + 1, −u)</code> (1-based). Answer = <code>a[k] + prefix(k)</code>.</p>`,
+      `<p>Edge cases: r = N − 1 → r + 2 &gt; N in 1-based, so the second add is skipped automatically by the loop; long values. Recipe: two BIT updates per add, one prefix per query.</p>`
+    ],
+    solution: {
+      approach: `<p>Fenwick tree over the differences of the bonuses; the original array stays untouched.</p>`,
+      code: `
+        class Solution {
+            public long[] process(int[] a, int[][] ops) {
+                int n = a.length;
+                long[] bit = new long[n + 2];
+                List<Long> out = new ArrayList<>();
+                for (int[] op : ops) {
+                    if (op[0] == 1) {
+                        int l = op[1] + 1, r = op[2] + 1;                          // 1-based
+                        for (int i = l; i <= n; i += i & -i) bit[i] += op[3];      // bonus starts at l
+                        for (int i = r + 1; i <= n; i += i & -i) bit[i] -= op[3];  // and stops after r
+                    } else {
+                        long bonus = 0;
+                        for (int i = op[1] + 1; i > 0; i -= i & -i) bonus += bit[i];
+                        out.add(a[op[1]] + bonus);
+                    }
+                }
+                long[] res = new long[out.size()];
+                for (int i = 0; i < res.length; i++) res[i] = out.get(i);
+                return res;
+            }
+
+            public static void main(String[] args) {
+                int[] a = {3, 2, 4, 5, 1, 1, 5, 3};
+                int[][] ops = {{2, 3}, {1, 1, 4, 1}, {2, 3}, {2, 4}};
+                System.out.println(Arrays.toString(new Solution().process(a, ops)));  // [5, 6, 2]
+            }
+        }`,
+      complexity: `<p>O(log N) per operation, O(N) memory.</p>`,
+      followUps: ['Also ask "sum of [l, r]" — two Fenwicks (range add + range sum).', 'Range assign instead of add — lazy segment tree.']
+    }
+  });
+
+  practice.push({
+    title: 'Range Sum Query 2D — Mutable',
+    level: 'Medium',
+    tags: ['2D fenwick tree', 'matrix', 'design'],
+    companies: ['Google', 'Meta', 'Bloomberg'],
+    statement: `<p>Design <code>NumMatrix</code> over an integer matrix: <code>update(row, col, val)</code> sets one cell; <code>sumRegion(r1, c1, r2, c2)</code> returns the sum of the rectangle with top-left (r1, c1) and bottom-right (r2, c2).</p>`,
+    constraints: `1 ≤ rows, cols ≤ 200, −1000 ≤ values ≤ 1000, at most 5000 calls in total.`,
+    example: `${H.table(['', 'c0', 'c1', 'c2', 'c3', 'c4'], [['r0', '3', '0', '1', '4', '2'], ['r1', '5', '6', '3', '2', '1'], ['r2', '1', H.c('g', '2'), H.c('g', '0'), H.c('g', '1'), '5'], ['r3', '4', H.c('g', '1'), H.c('g', '0'), H.c('g', '1'), '7'], ['r4', '1', H.c('g', '0'), H.c('g', '3'), H.c('g', '0'), '5']])}
+      <p>sumRegion(2,1,4,3) → ${H.c('g', '8')}; update(3,2,2); sumRegion(2,1,4,3) → ${H.c('g', '10')} (the 0 at (3,2) became 2).</p>`,
+    brute: {
+      why: `<p>Loop over the rectangle: up to 200 × 200 = 4·10<sup>4</sup> per query, 2·10<sup>8</sup> for 5000 calls — borderline. 2D prefix sums make queries O(1) but updates O(rows·cols). A 2D Fenwick tree balances both at O(log R · log C).</p>`,
+      code: `
+        class NumMatrixBrute {
+            private final int[][] m;
+            NumMatrixBrute(int[][] matrix) { m = new int[matrix.length][]; for (int i = 0; i < m.length; i++) m[i] = matrix[i].clone(); }
+            void update(int r, int c, int val) { m[r][c] = val; }
+            int sumRegion(int r1, int c1, int r2, int c2) {
+                int s = 0;
+                for (int r = r1; r <= r2; r++) for (int c = c1; c <= c2; c++) s += m[r][c];
+                return s;
+            }
+        }`
+    },
+    mcq: {
+      q: 'With a 2D prefix function P(r, c) = sum of the rectangle (0,0)..(r,c), the region sum is…',
+      options: ['P(r2,c2) − P(r1,c1)', 'P(r2,c2) − P(r1−1,c2) − P(r2,c1−1) + P(r1−1,c1−1)', 'P(r2,c2) − P(r1−1,c1−1)', 'P(r2,c2) + P(r1,c1)'],
+      answer: 1,
+      explain: 'Inclusion–exclusion: remove the strip above and the strip to the left, then add back the corner that was removed twice.'
+    },
+    hints: [
+      `<p><b>Aha:</b> a Fenwick tree works per dimension: a 2D BIT is "a Fenwick tree of Fenwick trees" — nested lowbit loops over rows and columns.</p>`,
+      `<p><code>add(r, c, d)</code>: for i = r; i ≤ R; i += i&amp;−i: for j = c; j ≤ C; j += j&amp;−j: t[i][j] += d. <code>prefix(r, c)</code> mirrors it with subtraction. Keep the matrix to compute deltas for updates.</p>`,
+      `<p>Edge cases: r1 = 0 or c1 = 0 (prefix with index 0 returns 0 in 1-based), single cell. Region = inclusion–exclusion of four prefixes.</p>`
+    ],
+    solution: {
+      approach: `<p>2D Fenwick tree with a copy of the matrix for deltas; inclusion–exclusion for regions.</p>`,
+      code: `
+        class NumMatrix {
+            private final int R, C;
+            private final int[][] t, val;
+
+            public NumMatrix(int[][] matrix) {
+                R = matrix.length; C = matrix[0].length;
+                t = new int[R + 1][C + 1];
+                val = new int[R][C];
+                for (int r = 0; r < R; r++) for (int c = 0; c < C; c++) update(r, c, matrix[r][c]);
+            }
+
+            public void update(int row, int col, int v) {
+                int d = v - val[row][col];
+                val[row][col] = v;
+                for (int i = row + 1; i <= R; i += i & -i)
+                    for (int j = col + 1; j <= C; j += j & -j) t[i][j] += d;
+            }
+
+            private int prefix(int row, int col) {           // sum of (0,0)..(row-1, col-1)
+                int s = 0;
+                for (int i = row; i > 0; i -= i & -i)
+                    for (int j = col; j > 0; j -= j & -j) s += t[i][j];
+                return s;
+            }
+
+            public int sumRegion(int r1, int c1, int r2, int c2) {
+                return prefix(r2 + 1, c2 + 1) - prefix(r1, c2 + 1) - prefix(r2 + 1, c1) + prefix(r1, c1);
+            }
+
+            public static void main(String[] args) {
+                int[][] m = {{3, 0, 1, 4, 2}, {5, 6, 3, 2, 1}, {1, 2, 0, 1, 5}, {4, 1, 0, 1, 7}, {1, 0, 3, 0, 5}};
+                NumMatrix nm = new NumMatrix(m);
+                System.out.println(nm.sumRegion(2, 1, 4, 3));  // 8
+                nm.update(3, 2, 2);
+                System.out.println(nm.sumRegion(2, 1, 4, 3));  // 10
+            }
+        }`,
+      complexity: `<p>Update and query O(log R · log C); build O(R·C·log R·log C) (or O(R·C) with the parent trick); memory O(R·C).</p>`,
+      followUps: ['Range add on rectangles + point query (2D difference + 2D BIT).', 'Huge sparse grid (10<sup>9</sup> × 10<sup>9</sup>) with offline queries — sweep line + 1D BIT.']
+    }
+  });
+
+  practice.push({
+    title: 'Dynamic Range Minimum Queries',
+    level: 'Medium',
+    tags: ['segment tree', 'range min', 'point update'],
+    companies: ['CSES classic', 'Amazon', 'Citadel'],
+    statement: `<p>Given an array <code>a</code>, process operations: <code>[1, k, u]</code> sets <code>a[k] = u</code>; <code>[2, l, r]</code> asks for the minimum of <code>a[l..r]</code>. Return the answers of type-2 operations (0-based).</p>`,
+    constraints: `1 ≤ N, Q ≤ 2·10<sup>5</sup>, 1 ≤ a[i], u ≤ 10<sup>9</sup>`,
+    example: `${H.arr([3, 2, 4, 5, 1, 1, 5, 3], { label: 'a' })}
+      <p>Ops [2,0,3], [2,4,5], [1,1,6], [2,0,3] → ${H.c('g', '[2, 1, 3]')}. After a[1] = 6, the first four are 3, 6, 4, 5 → min 3.</p>`,
+    brute: {
+      why: `<p>Scan [l, r] per query: O(N) → 4·10<sup>10</sup>. A sparse table answers in O(1) but each set forces an O(N log N) rebuild. A Fenwick tree cannot "un-min" a prefix. The waste: recomputing minima of unchanged blocks.</p>`,
+      code: `
+        int[] bruteDynMin(int[] a0, int[][] ops) {
+            int[] a = a0.clone();
+            List<Integer> out = new ArrayList<>();
+            for (int[] op : ops) {
+                if (op[0] == 1) a[op[1]] = op[2];
+                else { int m = Integer.MAX_VALUE; for (int i = op[1]; i <= op[2]; i++) m = Math.min(m, a[i]); out.add(m); }
+            }
+            int[] res = new int[out.size()];
+            for (int i = 0; i < res.length; i++) res[i] = out.get(i);
+            return res;
+        }`
+    },
+    mcq: {
+      q: 'Why can\'t a Fenwick tree answer min(a[l..r]) with arbitrary updates?',
+      options: ['It uses too much memory', 'min has no inverse: you cannot remove prefix(l − 1) from prefix(r)', 'It only works for powers of two', 'It cannot store negative numbers'],
+      answer: 1,
+      explain: 'Range answers in a BIT are prefix(r) "minus" prefix(l − 1). For sums subtraction exists; for min there is no way to undo the influence of the first l − 1 elements.'
+    },
+    hints: [
+      `<p><b>Aha:</b> min is associative with identity +∞, so a segment tree handles both operations in O(log N).</p>`,
+      `<p>Iterative tree: leaves at <code>t[n + i]</code>; set climbs <code>p &gt;&gt;= 1</code> recomputing <code>min(t[2p], t[2p+1])</code>; query uses the half-open [l, r+1) loop.</p>`,
+      `<p>Edge cases: l = r, N = 1, identity must be <code>Integer.MAX_VALUE</code> (not 0). Use fast I/O for 2·10<sup>5</sup> lines.</p>`
+    ],
+    solution: {
+      approach: `<p>Bottom-up segment tree for min: O(log N) per set and per query, 2N memory.</p>`,
+      code: `
+        class Solution {
+            public int[] process(int[] a, int[][] ops) {
+                int n = a.length;
+                int[] t = new int[2 * n];
+                for (int i = 0; i < n; i++) t[n + i] = a[i];
+                for (int p = n - 1; p >= 1; p--) t[p] = Math.min(t[2 * p], t[2 * p + 1]);
+                List<Integer> out = new ArrayList<>();
+                for (int[] op : ops) {
+                    if (op[0] == 1) {
+                        int p = op[1] + n;
+                        t[p] = op[2];
+                        for (p >>= 1; p >= 1; p >>= 1) t[p] = Math.min(t[2 * p], t[2 * p + 1]);
+                    } else {
+                        int res = Integer.MAX_VALUE;
+                        for (int l = op[1] + n, r = op[2] + n + 1; l < r; l >>= 1, r >>= 1) {
+                            if ((l & 1) == 1) res = Math.min(res, t[l++]);
+                            if ((r & 1) == 1) res = Math.min(res, t[--r]);
+                        }
+                        out.add(res);
+                    }
+                }
+                int[] res = new int[out.size()];
+                for (int i = 0; i < res.length; i++) res[i] = out.get(i);
+                return res;
+            }
+
+            public static void main(String[] args) {
+                int[] a = {3, 2, 4, 5, 1, 1, 5, 3};
+                int[][] ops = {{2, 0, 3}, {2, 4, 5}, {1, 1, 6}, {2, 0, 3}};
+                System.out.println(Arrays.toString(new Solution().process(a, ops)));  // [2, 1, 3]
+            }
+        }`,
+      complexity: `<p>O((N + Q) log N) time, O(N) memory.</p>`,
+      followUps: ['Also return how many times the minimum occurs (node = (min, count)).', 'Range add + range min — lazy propagation.']
+    }
+  });
+
+  practice.push({
+    title: 'Hotel Queries (First Position With Enough Capacity)',
+    level: 'Medium',
+    tags: ['segment tree', 'descent', 'range max'],
+    companies: ['CSES classic', 'Amazon', 'Booking.com'],
+    statement: `<p>There are N hotels in a row; hotel i has <code>h[i]</code> free rooms. Groups arrive one by one; group j needs <code>g[j]</code> rooms and takes the <b>first</b> hotel (smallest index) with at least that many free rooms, which then has <code>g[j]</code> fewer rooms. For each group output the 1-based hotel number, or 0 if no hotel fits.</p>`,
+    constraints: `1 ≤ N, M ≤ 2·10<sup>5</sup>, 1 ≤ h[i], g[j] ≤ 10<sup>9</sup>`,
+    example: `${H.arr([3, 2, 4, 1, 5, 5, 2, 6], { label: 'free rooms h (hotels 1..8)', start: 1 })}
+      <p>Groups [4, 4, 7, 1, 1] → ${H.c('g', '[3, 5, 0, 1, 1]')}. The first 4 goes to hotel 3 (now 0 rooms), the next 4 to hotel 5 (now 1), nobody has 7, then two groups of 1 both fit in hotel 1 (3 → 2 → 1).</p>`,
+    brute: {
+      why: `<p>Scan from hotel 1 for each group: O(N) per group → 4·10<sup>10</sup>. Binary search on "max of prefix" with a range-max tree would be O(log² N). The waste: we revisit many hotels that are too small, although one stored maximum per block tells us immediately whether a whole block can be skipped.</p>`,
+      code: `
+        int[] bruteHotels(int[] h0, int[] groups) {
+            int[] h = h0.clone();
+            int[] res = new int[groups.length];
+            for (int j = 0; j < groups.length; j++) {
+                for (int i = 0; i < h.length; i++)
+                    if (h[i] >= groups[j]) { h[i] -= groups[j]; res[j] = i + 1; break; }
+            }
+            return res;
+        }`
+    },
+    mcq: {
+      q: 'Each node stores the max of its range. At a node whose left child has max ≥ g, where do you go?',
+      options: ['Right child, to find a bigger hotel', 'Left child — the first fitting hotel must be there', 'Both children and compare', 'Stop: this node is the answer'],
+      answer: 1,
+      explain: 'If the left half contains any hotel with ≥ g rooms, the first such hotel is in the left half. Only if it does not do we go right. One root-to-leaf walk: O(log N).'
+    },
+    hints: [
+      `<p><b>Aha:</b> "first index with value ≥ g" can be found by walking down a max-segment tree: prefer the left child whenever its max is big enough.</p>`,
+      `<p>Max tree over h. For each group: if root max &lt; g → 0. Otherwise descend to the leaf, record its index, subtract g at that leaf and recompute maxima up the path.</p>`,
+      `<p>Edge cases: several hotels with exactly g (take the leftmost), rooms dropping to 0, 1-based output. The descent and the update are both O(log N).</p>`
+    ],
+    solution: {
+      approach: `<p>Range-max segment tree + descent (no binary search needed) + point update.</p>`,
+      code: `
+        class Solution {
+            private int n;
+            private int[] mx;
+
+            private void build(int[] h, int node, int l, int r) {
+                if (l == r) { mx[node] = h[l]; return; }
+                int mid = (l + r) >>> 1;
+                build(h, 2 * node, l, mid);
+                build(h, 2 * node + 1, mid + 1, r);
+                mx[node] = Math.max(mx[2 * node], mx[2 * node + 1]);
+            }
+
+            /** leftmost index with value >= need (caller checked mx[1] >= need). Subtracts need there. */
+            private int takeFirst(int node, int l, int r, int need) {
+                int idx;
+                if (l == r) { mx[node] -= need; return l; }
+                int mid = (l + r) >>> 1;
+                if (mx[2 * node] >= need) idx = takeFirst(2 * node, l, mid, need);   // prefer the left half
+                else idx = takeFirst(2 * node + 1, mid + 1, r, need);
+                mx[node] = Math.max(mx[2 * node], mx[2 * node + 1]);              // repair on the way up
+                return idx;
+            }
+
+            public int[] assign(int[] hotels, int[] groups) {
+                n = hotels.length;
+                mx = new int[4 * n];
+                build(hotels, 1, 0, n - 1);
+                int[] res = new int[groups.length];
+                for (int j = 0; j < groups.length; j++)
+                    res[j] = mx[1] < groups[j] ? 0 : takeFirst(1, 0, n - 1, groups[j]) + 1;
+                return res;
+            }
+
+            public static void main(String[] args) {
+                int[] h = {3, 2, 4, 1, 5, 5, 2, 6};
+                int[] g = {4, 4, 7, 1, 1};
+                System.out.println(Arrays.toString(new Solution().assign(h, g)));  // [3, 5, 0, 1, 1]
+            }
+        }`,
+      dry: { head: ['group', 'root max', 'walk', 'hotel', 'rooms after'], rows: [['4', '6', 'left [1..4] max 4 ≥ 4 → … → hotel 3', '3', 'h3 = 0'], ['4', '6', 'left max now 3 &lt; 4 → right → [5..6] → hotel 5', '5', 'h5 = 1'], ['7', '6', 'root max 6 &lt; 7', '0', '—'], ['1', '6', 'leftmost leaf', '1', 'h1 = 2'], ['1', '6', 'leftmost leaf', '1', 'h1 = 1']] },
+      complexity: `<p>O(N + M log N) time, O(N) memory.</p>`,
+      followUps: ['Groups may only use hotels in [l, r] — descent restricted to a range.', 'Find the first hotel with ≥ g rooms at or after position p.']
+    }
+  });
+
+  practice.push({
+    title: 'List Removals (k-th Remaining Element)',
+    level: 'Medium',
+    tags: ['fenwick tree', 'binary lifting', 'order statistics'],
+    companies: ['CSES classic', 'Google'],
+    statement: `<p>You have a list of N numbers. You remove elements one at a time: each step gives a position <code>p</code> (1-based, in the <b>current</b> list) and you remove the element at that position. Return the removed elements in order.</p>`,
+    constraints: `1 ≤ N ≤ 2·10<sup>5</sup>, 1 ≤ p ≤ current size, 1 ≤ values ≤ 10<sup>9</sup>`,
+    example: `${H.arr([2, 6, 1, 4, 2], { label: 'list', start: 1 })}
+      <p>Positions [3, 1, 3, 1, 1] → ${H.c('g', '[1, 2, 2, 6, 4]')}. Remove 3rd (1) → [2,6,4,2]; 1st (2) → [6,4,2]; 3rd (2) → [6,4]; 1st (6) → [4]; 1st (4).</p>`,
+    brute: {
+      why: `<p>An ArrayList removal shifts everything after it: O(N) per removal, O(N²) = 4·10<sup>10</sup> worst case. The waste: physically moving elements, when we only need to know "which original index is the p-th still alive".</p>`,
+      code: `
+        int[] bruteRemovals(int[] list, int[] positions) {
+            List<Integer> cur = new ArrayList<>();
+            for (int v : list) cur.add(v);
+            int[] out = new int[positions.length];
+            for (int i = 0; i < positions.length; i++) out[i] = cur.remove(positions[i] - 1);  // O(N) shift
+            return out;
+        }`
+    },
+    mcq: {
+      q: 'Keep a Fenwick tree with 1 for every alive index. The p-th alive element is at…',
+      options: ['index p', 'the smallest i with prefix(i) ≥ p', 'the largest i with prefix(i) ≤ p', 'index N − p'],
+      answer: 1,
+      explain: 'prefix(i) counts alive elements among the first i original positions. The p-th alive one is where that count first reaches p — found by Fenwick binary lifting in O(log N).'
+    },
+    hints: [
+      `<p><b>Aha:</b> never move elements; mark them dead. Then "the p-th alive" is an order-statistic query over a 0/1 array.</p>`,
+      `<p>Fenwick tree of ones. Find the smallest index with prefix ≥ p using binary lifting (walk powers of two from high to low), output list[idx], then <code>add(idx, −1)</code>.</p>`,
+      `<p>Edge cases: N = 1, always p = 1 (queue behaviour), always p = current size (stack behaviour). Build the all-ones BIT in O(N) with the parent trick or with N adds.</p>`
+    ],
+    solution: {
+      approach: `<p>Fenwick tree of alive flags + binary-lifting lower bound. Each removal is O(log N).</p>`,
+      code: `
+        class Solution {
+            public int[] removals(int[] list, int[] positions) {
+                int n = list.length;
+                int[] bit = new int[n + 1];
+                for (int i = 1; i <= n; i++) {                    // O(N) build of an all-ones array
+                    bit[i]++;
+                    int p = i + (i & -i);
+                    if (p <= n) bit[p] += bit[i];
+                }
+                int top = Integer.highestOneBit(n);
+                int[] out = new int[positions.length];
+                for (int q = 0; q < positions.length; q++) {
+                    int k = positions[q], pos = 0;
+                    for (int step = top; step > 0; step >>= 1)
+                        if (pos + step <= n && bit[pos + step] < k) { pos += step; k -= bit[pos]; }
+                    int idx = pos + 1;                              // 1-based original index of the k-th alive
+                    out[q] = list[idx - 1];
+                    for (int i = idx; i <= n; i += i & -i) bit[i]--;   // mark it dead
+                }
+                return out;
+            }
+
+            public static void main(String[] args) {
+                int[] list = {2, 6, 1, 4, 2};
+                int[] pos = {3, 1, 3, 1, 1};
+                System.out.println(Arrays.toString(new Solution().removals(list, pos)));  // [1, 2, 2, 6, 4]
+            }
+        }`,
+      complexity: `<p>O(N + Q log N) time, O(N) memory.</p>`,
+      followUps: ['Josephus problem with step k — same tool.', 'Support insertions at a position too — implicit treap or offline reverse processing.']
+    }
+  });
+
+  // =====================================================================
+  // PRACTICE — Hard
+  // =====================================================================
+  practice.push({
+    title: 'Maximum Subarray Sum with Point Updates',
+    level: 'Hard',
+    tags: ['segment tree', 'custom node', 'Kadane'],
+    companies: ['CSES classic', 'Google', 'Jane Street'],
+    statement: `<p>Given an array <code>a</code> and a list of updates <code>[k, x]</code> (set <code>a[k] = x</code>, 0-based), output after <b>each</b> update the maximum subarray sum of the whole array. The empty subarray is allowed (so the answer is at least 0).</p>`,
+    constraints: `1 ≤ N, M ≤ 2·10<sup>5</sup>, −10<sup>9</sup> ≤ a[i], x ≤ 10<sup>9</sup> (use long)`,
+    example: `${H.arr([1, 2, -3, 5, -1], { label: 'a' })}
+      <p>Updates [1,6], [2,1], [1,−2] → ${H.c('g', '[9, 13, 6]')}. After the first update [1, 6, −3, 5, −1]: best is 1 + 6 − 3 + 5 = 9. After the second: [1, 6, 1, 5, −1] → 13. After the third: [1, −2, 1, 5, −1] → 6 (just 1 + 5).</p>`,
+    brute: {
+      why: `<p>Run Kadane's algorithm after every update: O(N) each → 4·10<sup>10</sup>. The waste: one element changed, yet we recompute the best subarray of the untouched parts from scratch.</p>`,
+      code: `
+        long[] bruteMaxSub(int[] a0, int[][] ups) {
+            long[] a = new long[a0.length];
+            for (int i = 0; i < a0.length; i++) a[i] = a0[i];
+            long[] res = new long[ups.length];
+            for (int j = 0; j < ups.length; j++) {
+                a[ups[j][0]] = ups[j][1];
+                long best = 0, cur = 0;
+                for (long v : a) { cur = Math.max(0, cur + v); best = Math.max(best, cur); }   // Kadane
+                res[j] = best;
+            }
+            return res;
+        }`
+    },
+    mcq: {
+      q: 'Merging left L and right R, which formula gives the best subarray of the combined range?',
+      options: ['max(L.best, R.best)', 'L.best + R.best', 'max(L.best, R.best, L.suf + R.pref)', 'max(L.pref, R.suf)'],
+      answer: 2,
+      explain: 'The best subarray is entirely in L, entirely in R, or crosses the middle — then it is a suffix of L glued to a prefix of R.'
+    },
+    hints: [
+      `<p><b>Aha:</b> store four numbers per node — sum, best prefix, best suffix, best — and the best subarray of any range can be merged from its two halves.</p>`,
+      `<p>Merge: sum = L.sum + R.sum; pref = max(L.pref, L.sum + R.pref); suf = max(R.suf, R.sum + L.suf); best = max(L.best, R.best, L.suf + R.pref). Leaf with value v (empty allowed): pref = suf = best = max(0, v).</p>`,
+      `<p>Edge cases: all negative (answer 0), huge values (long), N = 1. Recipe: build → for each update: set leaf, recompute the path → print root.best.</p>`
+    ],
+    solution: {
+      approach: `<p>Segment tree with a 4-field node; each update recomputes O(log N) nodes and the answer is the root's best.</p>`,
+      code: `
+        class Solution {
+            private long[] sum, pref, suf, best;
+            private int n;
+
+            private void setLeaf(int node, long v) {
+                sum[node] = v;
+                pref[node] = suf[node] = best[node] = Math.max(0, v);   // empty subarray allowed
+            }
+
+            private void pull(int node) {
+                int L = 2 * node, R = 2 * node + 1;
+                sum[node] = sum[L] + sum[R];
+                pref[node] = Math.max(pref[L], sum[L] + pref[R]);
+                suf[node] = Math.max(suf[R], sum[R] + suf[L]);
+                best[node] = Math.max(Math.max(best[L], best[R]), suf[L] + pref[R]);
+            }
+
+            private void build(int[] a, int node, int l, int r) {
+                if (l == r) { setLeaf(node, a[l]); return; }
+                int mid = (l + r) >>> 1;
+                build(a, 2 * node, l, mid);
+                build(a, 2 * node + 1, mid + 1, r);
+                pull(node);
+            }
+
+            private void update(int node, int l, int r, int idx, long v) {
+                if (l == r) { setLeaf(node, v); return; }
+                int mid = (l + r) >>> 1;
+                if (idx <= mid) update(2 * node, l, mid, idx, v);
+                else update(2 * node + 1, mid + 1, r, idx, v);
+                pull(node);
+            }
+
+            public long[] process(int[] a, int[][] ups) {
+                n = a.length;
+                sum = new long[4 * n]; pref = new long[4 * n]; suf = new long[4 * n]; best = new long[4 * n];
+                build(a, 1, 0, n - 1);
+                long[] res = new long[ups.length];
+                for (int j = 0; j < ups.length; j++) {
+                    update(1, 0, n - 1, ups[j][0], ups[j][1]);
+                    res[j] = best[1];
+                }
+                return res;
+            }
+
+            public static void main(String[] args) {
+                int[] a = {1, 2, -3, 5, -1};
+                int[][] ups = {{1, 6}, {2, 1}, {1, -2}};
+                System.out.println(Arrays.toString(new Solution().process(a, ups)));  // [9, 13, 6]
+            }
+        }`,
+      dry: { head: ['update', 'array', 'best crossing / inside', 'root.best'], rows: [['a[1] = 6', '1 6 −3 5 −1', 'suffix [1,6] + prefix [−3,5] = 7 + 2', '9'], ['a[2] = 1', '1 6 1 5 −1', '[1,6,1,5]', '13'], ['a[1] = −2', '1 −2 1 5 −1', '[1,5] inside right part', '6']] },
+      complexity: `<p>Build O(N); each update O(log N); memory 16N longs.</p>`,
+      followUps: ['Answer max subarray sum inside [l, r] (combine nodes left-to-right in order).', 'Non-empty subarray required — change the leaf to pref = suf = best = v.']
+    }
+  });
+
+  practice.push({
+    title: 'Range Add, Range Assign, Range Sum',
+    level: 'Hard',
+    tags: ['lazy propagation', 'tag composition', 'segment tree'],
+    companies: ['CSES classic', 'Codenation', 'Tower Research'],
+    statement: `<p>Given an array <code>a</code>, process three kinds of operations (0-based, inclusive): <code>[1, l, r, x]</code> add x to every element in [l, r]; <code>[2, l, r, x]</code> set every element in [l, r] to x; <code>[3, l, r]</code> report the sum of [l, r].</p>`,
+    constraints: `1 ≤ N, Q ≤ 2·10<sup>5</sup>, 1 ≤ a[i], x ≤ 10<sup>6</sup> (sums need long).`,
+    example: `${H.arr([2, 3, 1, 1, 5, 3], { label: 'a' })}
+      <p>Ops [3,2,4], [1,1,3,2], [3,2,4], [2,1,3,5], [3,2,4] → ${H.c('g', '[7, 11, 15]')}. 1 + 1 + 5 = 7; after +2 on [1,3]: [2,5,3,3,5,3] → 3 + 3 + 5 = 11; after setting [1,3] to 5: [2,5,5,5,5,3] → 15.</p>`,
+    brute: {
+      why: `<p>Loop over [l, r] for every operation: O(N) each → 4·10<sup>10</sup>. The waste: assignments and adds on huge ranges touch every element, although the sums of whole blocks could be updated in O(1).</p>`,
+      code: `
+        long[] bruteAddAssign(int[] a0, int[][] ops) {
+            long[] a = new long[a0.length];
+            for (int i = 0; i < a0.length; i++) a[i] = a0[i];
+            List<Long> out = new ArrayList<>();
+            for (int[] op : ops) {
+                if (op[0] == 1) for (int i = op[1]; i <= op[2]; i++) a[i] += op[3];
+                else if (op[0] == 2) for (int i = op[1]; i <= op[2]; i++) a[i] = op[3];
+                else { long s = 0; for (int i = op[1]; i <= op[2]; i++) s += a[i]; out.add(s); }
+            }
+            long[] res = new long[out.size()];
+            for (int i = 0; i < res.length; i++) res[i] = out.get(i);
+            return res;
+        }`
+    },
+    mcq: {
+      q: 'A node already has the tag "set to 4, then add 3". A new "add 2" arrives for the whole node. The new tag is…',
+      options: ['set 4, add 2', 'set 4, add 5', 'set 6, add 0', 'add 5 (the set is dropped)'],
+      answer: 1,
+      explain: 'Adds stack on top of the pending set: every element will be 4 + 3 + 2 = 9. (Writing it as "set 9, add 0" is equivalent; dropping the set is wrong.) A new SET, on the other hand, would wipe both.'
+    },
+    hints: [
+      `<p><b>Aha:</b> keep a tag pair (set, add) meaning "first assign set (if present), then add add". Both effects on a node's sum are O(1): sum = set·len, then sum += add·len.</p>`,
+      `<p>Composition: new set x → (x, 0). New add v → (set, add + v). Push order: set first, then add. Use a boolean <code>hasSet</code> because 0 could be a legal value in variants.</p>`,
+      `<p>Edge cases: assigning after adds (adds disappear), long overflow in x·len, pushing only on internal nodes. Recipe: applySet, applyAdd, push, update(type), query — all with the three classic cases.</p>`
+    ],
+    solution: {
+      approach: `<p>Lazy segment tree with two tags and a fixed composition order (set before add). Every operation is O(log N).</p>`,
+      code: `
+        class Solution {
+            private long[] sum, addTag, setTag;
+            private boolean[] hasSet;
+            private int n;
+
+            private void applySet(int node, int l, int r, long x) {
+                sum[node] = x * (r - l + 1);
+                setTag[node] = x; hasSet[node] = true;
+                addTag[node] = 0;                                  // an assignment wipes older adds
+            }
+
+            private void applyAdd(int node, int l, int r, long x) {
+                sum[node] += x * (r - l + 1);
+                addTag[node] += x;                                 // stacks on top of any pending set
+            }
+
+            private void push(int node, int l, int r) {
+                int mid = (l + r) >>> 1;
+                if (hasSet[node]) {                                // order matters: set first
+                    applySet(2 * node, l, mid, setTag[node]);
+                    applySet(2 * node + 1, mid + 1, r, setTag[node]);
+                    hasSet[node] = false;
+                }
+                if (addTag[node] != 0) {                           // then add
+                    applyAdd(2 * node, l, mid, addTag[node]);
+                    applyAdd(2 * node + 1, mid + 1, r, addTag[node]);
+                    addTag[node] = 0;
+                }
+            }
+
+            private void build(int[] a, int node, int l, int r) {
+                if (l == r) { sum[node] = a[l]; return; }
+                int mid = (l + r) >>> 1;
+                build(a, 2 * node, l, mid);
+                build(a, 2 * node + 1, mid + 1, r);
+                sum[node] = sum[2 * node] + sum[2 * node + 1];
+            }
+
+            private void update(int node, int l, int r, int ql, int qr, int type, long x) {
+                if (qr < l || r < ql) return;
+                if (ql <= l && r <= qr) {
+                    if (type == 1) applyAdd(node, l, r, x); else applySet(node, l, r, x);
+                    return;
+                }
+                push(node, l, r);
+                int mid = (l + r) >>> 1;
+                update(2 * node, l, mid, ql, qr, type, x);
+                update(2 * node + 1, mid + 1, r, ql, qr, type, x);
+                sum[node] = sum[2 * node] + sum[2 * node + 1];
+            }
+
+            private long query(int node, int l, int r, int ql, int qr) {
+                if (qr < l || r < ql) return 0;
+                if (ql <= l && r <= qr) return sum[node];
+                push(node, l, r);
+                int mid = (l + r) >>> 1;
+                return query(2 * node, l, mid, ql, qr) + query(2 * node + 1, mid + 1, r, ql, qr);
+            }
+
+            public long[] process(int[] a, int[][] ops) {
+                n = a.length;
+                sum = new long[4 * n]; addTag = new long[4 * n]; setTag = new long[4 * n]; hasSet = new boolean[4 * n];
+                build(a, 1, 0, n - 1);
+                List<Long> out = new ArrayList<>();
+                for (int[] op : ops) {
+                    if (op[0] == 3) out.add(query(1, 0, n - 1, op[1], op[2]));
+                    else update(1, 0, n - 1, op[1], op[2], op[0], op[3]);
+                }
+                long[] res = new long[out.size()];
+                for (int i = 0; i < res.length; i++) res[i] = out.get(i);
+                return res;
+            }
+
+            public static void main(String[] args) {
+                int[] a = {2, 3, 1, 1, 5, 3};
+                int[][] ops = {{3, 2, 4}, {1, 1, 3, 2}, {3, 2, 4}, {2, 1, 3, 5}, {3, 2, 4}};
+                System.out.println(Arrays.toString(new Solution().process(a, ops)));  // [7, 11, 15]
+            }
+        }`,
+      complexity: `<p>O(log N) per operation, O(Q log N) total; memory ~4 arrays of 4N.</p>`,
+      followUps: ['Add "range min" queries too — what extra field per node?', 'Replace add with multiply (affine tags modulo p).']
+    }
+  });
+
+  practice.push({
+    title: 'Count of Range Sum',
+    level: 'Hard',
+    tags: ['fenwick tree', 'prefix sums', 'coordinate compression'],
+    companies: ['Google', 'Amazon', 'ByteDance'],
+    statement: `<p>Given an integer array <code>nums</code> and two integers <code>lower</code> and <code>upper</code>, return the number of subarrays whose sum lies in <code>[lower, upper]</code> (inclusive).</p>`,
+    constraints: `1 ≤ N ≤ 10<sup>5</sup>, −2<sup>31</sup> ≤ nums[i] ≤ 2<sup>31</sup> − 1, −10<sup>5</sup> ≤ lower ≤ upper ≤ 10<sup>5</sup>; the answer fits in an int. Prefix sums need long.`,
+    example: `${H.arr([-2, 5, -1], { label: 'nums' })}
+      <p>lower = −2, upper = 2 → ${H.c('g', '3')}: [0,0] sums to −2, [2,2] to −1, and [0,2] to 2. Prefix sums P = [0, −2, 3, 2]; we need pairs i &lt; j with −2 ≤ P[j] − P[i] ≤ 2.</p>`,
+    brute: {
+      why: `<p>Every (i, j) pair with a running sum: N²/2 = 5·10<sup>9</sup>. The waste: for each right end j we test every earlier prefix individually instead of asking "how many earlier prefixes lie in the window [P[j] − upper, P[j] − lower]" — a counting query.</p>`,
+      code: `
+        int bruteCountRangeSum(int[] nums, int lower, int upper) {
+            int c = 0;
+            for (int i = 0; i < nums.length; i++) {
+                long s = 0;
+                for (int j = i; j < nums.length; j++) {
+                    s += nums[j];
+                    if (s >= lower && s <= upper) c++;
+                }
+            }
+            return c;
+        }`
+    },
+    mcq: {
+      q: 'Subarray (i, j] has sum P[j] − P[i]. For a fixed j, which earlier prefixes P[i] count?',
+      options: ['lower ≤ P[i] ≤ upper', 'P[j] − upper ≤ P[i] ≤ P[j] − lower', 'P[j] + lower ≤ P[i] ≤ P[j] + upper', 'P[i] ≤ P[j]'],
+      answer: 1,
+      explain: 'lower ≤ P[j] − P[i] ≤ upper ⇔ P[j] − upper ≤ P[i] ≤ P[j] − lower. So each step is a "count values in a range" query over the prefixes seen so far.'
+    },
+    hints: [
+      `<p><b>Aha:</b> turn subarray sums into differences of prefix sums. For each j, count earlier prefixes inside a value window — a range-count over values.</p>`,
+      `<p>Compress all prefix sums (they are the only values ever inserted). BIT of counts over ranks. For window [lo, hi]: count = (# ≤ hi) − (# &lt; lo), found with binary searches on the sorted unique prefix array (the bounds themselves need not be present).</p>`,
+      `<p>Edge cases: insert P[0] = 0 before anything; use long everywhere (prefixes reach ±2·10<sup>14</sup>); query before inserting P[j] so i &lt; j. Alternative: merge sort counting (also O(N log N)).</p>`
+    ],
+    solution: {
+      approach: `<p>Prefix sums + coordinate compression + Fenwick tree of counts, sweeping j from left to right.</p>`,
+      code: `
+        class Solution {
+            public int countRangeSum(int[] nums, int lower, int upper) {
+                int n = nums.length;
+                long[] pre = new long[n + 1];
+                for (int i = 0; i < n; i++) pre[i + 1] = pre[i] + nums[i];
+                long[] vals = pre.clone();
+                Arrays.sort(vals);
+                int k = 0;
+                for (int i = 0; i <= n; i++) if (i == 0 || vals[i] != vals[i - 1]) vals[k++] = vals[i];
+                int[] bit = new int[k + 1];
+                long count = 0;
+                for (int j = 0; j <= n; j++) {
+                    long lo = pre[j] - upper, hi = pre[j] - lower;
+                    int below = lowerBound(vals, k, lo);          // ranks of values < lo
+                    int upto = lowerBound(vals, k, hi + 1);       // ranks of values <= hi
+                    count += prefix(bit, upto) - prefix(bit, below);
+                    int r = lowerBound(vals, k, pre[j]) + 1;      // 1-based rank of pre[j]
+                    for (int i = r; i <= k; i += i & -i) bit[i]++;
+                }
+                return (int) count;
+            }
+
+            private static int lowerBound(long[] a, int len, long x) {   // first index with a[idx] >= x
+                int lo = 0, hi = len;
+                while (lo < hi) { int mid = (lo + hi) >>> 1; if (a[mid] < x) lo = mid + 1; else hi = mid; }
+                return lo;
+            }
+
+            private static int prefix(int[] bit, int i) {
+                int s = 0;
+                for (; i > 0; i -= i & -i) s += bit[i];
+                return s;
+            }
+
+            public static void main(String[] args) {
+                System.out.println(new Solution().countRangeSum(new int[]{-2, 5, -1}, -2, 2));  // 3
+                System.out.println(new Solution().countRangeSum(new int[]{0}, 0, 0));          // 1
+            }
+        }`,
+      dry: { head: ['j', 'P[j]', 'window [P[j]−upper, P[j]−lower]', 'earlier prefixes inside', 'count'], rows: [['0', '0', '[−2, 2]', 'none yet', '0'], ['1', '−2', '[−4, 0]', '0', '1'], ['2', '3', '[1, 5]', '—', '1'], ['3', '2', '[0, 4]', '0 and 3', H.c('g', '3')]] },
+      complexity: `<p>O(N log N) time (sort + 2 binary searches + BIT ops per j), O(N) memory.</p>`,
+      followUps: ['Solve it with merge sort (count during the merge step).', 'Count subarrays with sum ≥ K only — simpler one-sided query.']
+    }
+  });
+
+  practice.push({
+    title: 'Powerful Array (Mo\'s Algorithm)',
+    level: 'Hard',
+    tags: ['mo\'s algorithm', 'offline queries', 'frequency counting'],
+    companies: ['Codeforces classic', 'DE Shaw'],
+    statement: `<p>For a subarray, let <code>K<sub>s</sub></code> be the number of occurrences of value <code>s</code> in it. Its <b>power</b> is <code>Σ K<sub>s</sub>² · s</code> over all values s. Given an array and Q queries <code>[l, r]</code> (0-based, inclusive, all known in advance), return the power of each subarray.</p>`,
+    constraints: `1 ≤ N, Q ≤ 2·10<sup>5</sup>, 1 ≤ a[i] ≤ 10<sup>6</sup>. Answers up to ~4·10<sup>16</sup> → long.`,
+    example: `${H.arr([1, 1, 2, 2, 1, 3, 1, 1], { label: 'a' })}
+      <p>Query [1, 6] covers [1, 2, 2, 1, 3, 1]: K₁ = 3, K₂ = 2, K₃ = 1 → 9·1 + 4·2 + 1·3 = ${H.c('g', '20')}. For a = [1, 2, 1], queries [0,1] → ${H.c('g', '3')} and [0,2] → ${H.c('g', '6')} (4·1 + 1·2).</p>`,
+    brute: {
+      why: `<p>Count frequencies for each query separately: O(length) each → 4·10<sup>10</sup>. The answer is not mergeable from halves cheaply (the K² terms interact), so segment trees do not help. The waste: neighbouring queries share most of their elements.</p>`,
+      code: `
+        long[] brutePower(int[] a, int[][] qs) {
+            long[] res = new long[qs.length];
+            for (int i = 0; i < qs.length; i++) {
+                Map<Integer, Long> cnt = new HashMap<>();
+                for (int j = qs[i][0]; j <= qs[i][1]; j++) cnt.merge(a[j], 1L, Long::sum);
+                long p = 0;
+                for (Map.Entry<Integer, Long> e : cnt.entrySet()) p += e.getValue() * e.getValue() * e.getKey();
+                res[i] = p;
+            }
+            return res;
+        }`
+    },
+    mcq: {
+      q: 'Value x currently appears c times in the window. You add one more x. How does the power change?',
+      options: ['+ x', '+ (c + 1)² · x', '+ (2c + 1) · x', '+ c · x'],
+      answer: 2,
+      explain: '(c + 1)²·x − c²·x = (2c + 1)·x. Removing one copy (going from c to c − 1) subtracts (2c − 1)·x. Both are O(1), so Mo\'s algorithm applies.'
+    },
+    hints: [
+      `<p><b>Aha:</b> when one element enters or leaves, only its own term K²·s changes, by (2K ± 1)·s. O(1) add/remove + offline queries + static array = Mo's algorithm.</p>`,
+      `<p>Plain <code>int[] cnt</code> of size 10<sup>6</sup> + 1 (no HashMap!), <code>long power</code>. Sort queries by (l / B, r) with odd-even trick, B ≈ N/√Q. Add: power += (2·cnt[x] + 1)·x; cnt[x]++. Remove: cnt[x]--; power −= (2·cnt[x] + 1)·x.</p>`,
+      `<p>Edge cases: long arithmetic in (2c + 1)·x, answers stored by original index, grow before shrink. ~(N + Q)√N ≈ 9·10<sup>7</sup> O(1) steps — fine with arrays and fast I/O.</p>`
+    ],
+    solution: {
+      approach: `<p>Mo's algorithm with O(1) add/remove updating the power incrementally.</p>`,
+      code: `
+        class Solution {
+            private long power;
+            private int[] cnt;
+
+            private void add(int x)    { power += (2L * cnt[x] + 1) * x; cnt[x]++; }
+            private void remove(int x) { cnt[x]--; power -= (2L * cnt[x] + 1) * x; }
+
+            public long[] powers(int[] a, int[][] qs) {
+                int n = a.length, q = qs.length, maxV = 0;
+                for (int v : a) maxV = Math.max(maxV, v);
+                cnt = new int[maxV + 1];
+                power = 0;
+                final int B = Math.max(1, (int) (n / Math.sqrt(Math.max(1, q))));
+                Integer[] order = new Integer[q];
+                for (int i = 0; i < q; i++) order[i] = i;
+                Arrays.sort(order, (x, y) -> {
+                    int bx = qs[x][0] / B, by = qs[y][0] / B;
+                    if (bx != by) return bx - by;
+                    return (bx & 1) == 0 ? qs[x][1] - qs[y][1] : qs[y][1] - qs[x][1];
+                });
+                long[] ans = new long[q];
+                int curL = 0, curR = -1;
+                for (int id : order) {
+                    int l = qs[id][0], r = qs[id][1];
+                    while (curR < r) add(a[++curR]);
+                    while (curL > l) add(a[--curL]);
+                    while (curR > r) remove(a[curR--]);
+                    while (curL < l) remove(a[curL++]);
+                    ans[id] = power;
+                }
+                return ans;
+            }
+
+            public static void main(String[] args) {
+                System.out.println(Arrays.toString(new Solution().powers(new int[]{1, 2, 1}, new int[][]{{0, 1}, {0, 2}})));   // [3, 6]
+                int[] a = {1, 1, 2, 2, 1, 3, 1, 1};
+                System.out.println(Arrays.toString(new Solution().powers(a, new int[][]{{1, 6}, {0, 5}, {1, 6}})));          // [20, 20, 20]
+            }
+        }`,
+      alt: [{ lang: 'python', code: `import math
+
+
+def powers(a, qs):
+    n, q = len(a), len(qs)
+    B = max(1, int(n / math.sqrt(max(1, q))))
+    order = sorted(range(q), key=lambda i: (qs[i][0] // B, qs[i][1] if (qs[i][0] // B) % 2 == 0 else -qs[i][1]))
+    cnt = [0] * (max(a) + 1)
+    power, cl, cr = 0, 0, -1
+    ans = [0] * q
+    for i in order:
+        l, r = qs[i]
+        while cr < r:
+            cr += 1; x = a[cr]; power += (2 * cnt[x] + 1) * x; cnt[x] += 1
+        while cl > l:
+            cl -= 1; x = a[cl]; power += (2 * cnt[x] + 1) * x; cnt[x] += 1
+        while cr > r:
+            x = a[cr]; cnt[x] -= 1; power -= (2 * cnt[x] + 1) * x; cr -= 1
+        while cl < l:
+            x = a[cl]; cnt[x] -= 1; power -= (2 * cnt[x] + 1) * x; cl += 1
+        ans[i] = power
+    return ans
+
+
+print(powers([1, 2, 1], [(0, 1), (0, 2)]))                          # [3, 6]
+print(powers([1, 1, 2, 2, 1, 3, 1, 1], [(1, 6), (0, 5), (1, 6)]))   # [20, 20, 20]`, run: true }],
+      dry: { head: ['step', 'element', 'cnt before', 'change', 'power'], rows: [['add a[0]', '1', '0', '+1·1', '1'], ['add a[1]', '2', '0', '+1·2', H.c('g', '3 (query [0,1])')], ['add a[2]', '1', '1', '+3·1', H.c('g', '6 (query [0,2])')]] },
+      complexity: `<p>O(Q log Q + (N + Q)·√N) time, O(N + Q + maxV) memory.</p>`,
+      followUps: ['Use Hilbert-curve ordering — why does it reduce pointer movement?', 'Add point updates: Mo\'s with a time dimension, B = N<sup>2/3</sup>.']
+    }
+  });
+
+  // =====================================================================
+  // QUIZ
+  // =====================================================================
+  quiz.push(
+    { q: 'An array never changes and you must answer 10<sup>6</sup> "minimum of a[l..r]" queries. Best choice?', options: ['Segment tree', 'Sparse table', 'Fenwick tree', 'Mo\'s algorithm'], answer: 1, explain: 'Static + idempotent op + huge Q → sparse table: O(N log N) build, O(1) per query. A segment tree would cost O(log N) per query and supports updates you do not need.' },
+    { q: 'Why does the two-overlapping-windows trick of a sparse table fail for range <b>sum</b>?', options: ['Sums can overflow', 'Elements in the overlap are counted twice', 'Sum is not associative', 'The table would need N² cells'], answer: 1, explain: 'min(x, x) = x, but x + x ≠ x. For sums use disjoint power-of-two blocks (O(log N)) or simply prefix sums (O(1)).' },
+    { q: 'What is <code>12 &amp; −12</code> (lowbit of 12)?', options: ['1', '2', '4', '8'], answer: 2, explain: '12 = 1100₂. The lowest set bit is the 4s bit, so lowbit(12) = 4. In a Fenwick tree, tree[12] covers a[9..12].' },
+    { q: 'Which boxes does Fenwick <code>prefix(13)</code> read?', options: ['13, 14, 16', '13, 12, 8', '13, 11, 7, 3', '1, 2, 4, 8'], answer: 1, explain: 'Strip the lowest set bit each time: 13 (1101) → 12 (1100) → 8 (1000) → 0. They cover [13], [9..12] and [1..8].' },
+    { q: 'In a range query on a segment tree, at most how many nodes per level are <i>partially</i> overlapped (and therefore recurse)?', options: ['1', '2', '4', 'log N'], answer: 1, explain: 'Only the node containing the left boundary and the node containing the right boundary can be partial. Everything between them is fully inside. Hence ≤ 4 visits per level and O(log N) total.' },
+    { q: 'For a recursive segment tree with node k having children 2k and 2k+1, how big should the array be to be always safe?', options: ['N', '2N', '2N − 1', '4N'], answer: 3, explain: 'Indices are not packed for non-powers of two; the largest index stays below 2<sup>⌈log₂ N⌉+1</sup> &lt; 4N. The iterative bottom-up tree needs only 2N.' },
+    { q: 'In lazy propagation, when must <code>push(node)</code> be called?', options: ['After every update at the root', 'Before recursing into the children of a partially covered node (in both updates and queries)', 'Only at leaves', 'Only during queries'], answer: 1, explain: 'Children may be stale while their parent holds an IOU. Anyone who looks inside a node must first hand the IOU down; forgetting it in queries is a classic bug.' },
+    { q: 'A segment tree for range <b>minimum</b>: what should a node that does not overlap the query return?', options: ['0', '−1', '+∞ (e.g. Integer.MAX_VALUE)', 'the node\'s own value'], answer: 2, explain: 'It must be the identity of min, which never wins: min(x, +∞) = x. Returning 0 silently breaks every query on positive data.' },
+    { q: 'Which is NOT a requirement of Mo\'s algorithm?', options: ['All queries known in advance', 'No updates to the array (basic version)', 'O(1)-ish add/remove of one element', 'The query answer must be mergeable from two halves'], answer: 3, explain: 'Mo\'s algorithm is exactly for answers that are NOT easily mergeable (distinct counts, pair counts). It needs offline queries, a static array and cheap add/remove.' },
+    { q: 'For sqrt decomposition with point updates and range sums, why is B ≈ √N the best block size?', options: ['Because √N is always an integer', 'Query cost ≈ 2B + N/B, which is smallest when B = N/B', 'It minimizes memory', 'Because the blocks then fit in the CPU cache'], answer: 1, explain: 'Partial blocks cost up to 2B, full blocks cost N/B. B + N/B is minimized at B = √N, giving O(√N) per query.' },
+    { q: 'You need "add v to a[l..r]" and "what is a[k] now?" (no range sums). Lightest structure?', options: ['Lazy segment tree', 'One Fenwick tree over the difference array', 'Sparse table', 'Two Fenwick trees'], answer: 1, explain: 'A range add touches the difference array at two points; a[k] is a prefix sum of differences. One BIT does both in O(log N). Two BITs are needed only for range sums.' },
+    { q: 'Which operation is idempotent and therefore works with the O(1) sparse-table query?', options: ['xor', 'product', 'gcd', 'sum of squares'], answer: 2, explain: 'gcd(x, x) = x, so counting an element twice does not change the result. xor, product and sums are not idempotent.' },
+    { q: 'Mo\'s algorithm with N = Q = 10<sup>5</sup> and block size √N performs about how many pointer moves?', options: ['≈ 10<sup>5</sup>', '≈ 6·10<sup>7</sup>', '≈ 10<sup>10</sup>', '≈ 10<sup>15</sup>'], answer: 1, explain: 'Right pointer ≤ N per block × √N blocks ≈ 3.2·10<sup>7</sup>; left pointer ≤ √N per query × Q ≈ 3.2·10<sup>7</sup>. Total ≈ 6·10<sup>7</sup>, versus up to 10<sup>10</sup> for scanning every query.' }
+  );
+
+  // =====================================================================
+  // INTERVIEW Q&A
+  // =====================================================================
+  interview.push(
+    {
+      q: 'What is a segment tree, and when would you reach for one instead of prefix sums?',
+      level: 'B',
+      a: `<p>A segment tree is a binary tree over an array where every node stores the answer (sum, min, max, gcd…) for a contiguous range; the root covers everything and each child covers half of its parent. It supports <b>point updates and range queries in O(log N)</b>, with O(N) build and 2N–4N memory.</p>
+        <p>Prefix sums give O(1) queries but O(N) updates, so they only win when the array is static (and the operation is invertible). I reach for a segment tree when the problem mixes updates and range queries, or when the operation is not invertible (min/max) or needs a custom merged node (max subarray sum).</p>`,
+      followUps: ['What operations can a segment tree support? (associative + identity)', 'How would you find the first index with value ≥ x?']
+    },
+    {
+      q: 'Explain lazy propagation. What invariant makes it correct?',
+      level: 'I',
+      a: `<p>For range updates, when an update fully covers a node I fix that node's stored value in O(1) (e.g. sum += v·len) and record a <b>lazy tag</b> ("my children still owe +v") instead of visiting the subtree. Before any later update or query descends into that node's children, I <b>push</b> the tag down (apply it to both children, clear it) and after recursing I <b>pull</b> the node's value from its children.</p>
+        <p>Invariant: every node's value is correct for its range taking into account all updates except tags still pending at its <i>ancestors</i>; since we push along the whole root-to-node path before reading, the nodes we read have no pending ancestors on that path. Requirements: the tag can update a node's aggregate without its children, and two tags can be composed into one.</p>`,
+      followUps: ['Design tags for range assign + range add.', 'Give an update that cannot be done lazily (√ or mod) and how to handle it.']
+    },
+    {
+      q: 'Fenwick tree vs segment tree: how do you decide?',
+      level: 'I',
+      a: `<p>Both give O(log N) point updates and range queries. A <b>Fenwick tree</b> uses N + 1 cells, about 10 lines, and is faster in practice — but it only answers prefix queries, so range answers need an <b>invertible</b> operation (sum, xor, counts). It is ideal for dynamic sums, inversion counting, order statistics with binary lifting, and range-add/range-sum via two BITs.</p>
+        <p>A <b>segment tree</b> handles any associative operation (min, max, gcd, matrix products), custom nodes, lazy range updates of many kinds, and tree descents. Rule: invertible op + simple updates → Fenwick; otherwise → segment tree.</p>`,
+      followUps: ['Can a Fenwick tree do prefix max? Under what restriction?', 'Derive the two-BIT formula for range add + range sum.']
+    },
+    {
+      q: 'Why does <code>i &amp; −i</code> give the lowest set bit, and how does a Fenwick tree use it?',
+      level: 'I',
+      a: `<p>In two's complement, <code>−i = ~i + 1</code>. Inverting flips every bit; adding 1 turns the trailing ones (which were trailing zeros of i) back into zeros and carries into the position of i's lowest set bit, making it 1 again. All bits above it are opposite to i's bits, so the AND keeps only that lowest set bit. Example: 12 = 01100, −12 = …10100, AND = 00100 = 4.</p>
+        <p>In a Fenwick tree, <code>tree[i]</code> stores the sum of the last lowbit(i) elements ending at i. A prefix query repeatedly subtracts lowbit (one box per set bit), an update repeatedly adds lowbit (climbing to every box that covers the index). Both take ≤ log₂ N + 1 steps.</p>`,
+      followUps: ['What happens if you call prefix with i = 0 in a loop "while (i != 0)" vs 0-based indices?', 'How does binary lifting find the k-th element?']
+    },
+    {
+      q: 'Prove that a segment tree range query runs in O(log N).',
+      level: 'A',
+      a: `<p>Claim: on each level at most two visited nodes are partially overlapping. A partial node must contain one of the query boundaries <code>ql</code> or <code>qr</code> strictly inside it — otherwise it would be either disjoint or fully covered. Nodes on the same level have disjoint ranges, so at most one contains <code>ql</code> and at most one contains <code>qr</code>.</p>
+        <p>Only partial nodes recurse, each into 2 children, so at most 4 nodes are visited per level. The height is ⌈log₂ N⌉, giving at most about 4·log₂ N + 1 visits. Fully covered nodes return immediately, disjoint ones return the identity. The same argument bounds range updates with lazy propagation.</p>`,
+      followUps: ['Does the same bound hold for the iterative bottom-up tree?', 'How many nodes does a point update touch?']
+    },
+    {
+      q: 'Why do recursive segment trees use an array of size 4N?',
+      level: 'A',
+      a: `<p>With root 1 and children 2k, 2k + 1, a node at depth d has index below 2<sup>d+1</sup>. The tree's depth is ⌈log₂ N⌉ because each level halves the range. So all indices are below 2<sup>⌈log₂ N⌉+1</sup>, and since 2<sup>⌈log₂ N⌉</sup> &lt; 2N, that bound is below 4N.</p>
+        <p>Only 2N − 1 nodes really exist, but for N that is not a power of two the numbering leaves holes (for N = 6 the largest index is 13). The iterative bottom-up layout stores leaves at [N, 2N) and needs exactly 2N, and a dynamic tree with explicit child indices needs 2N − 1 nodes allocated on demand.</p>`,
+      followUps: ['When is 2·(next power of two) the tighter choice?', 'How does the bottom-up tree handle non-commutative merges?']
+    },
+    {
+      q: 'A sparse table answers RMQ in O(1). Why only for some operations, and what are its costs?',
+      level: 'I',
+      a: `<p><code>st[k][i]</code> stores the answer for a[i .. i + 2<sup>k</sup> − 1]. A query [l, r] takes k = ⌊log₂(len)⌋ and combines the window starting at l with the window ending at r. These two windows overlap, so the operation must be <b>idempotent</b> (x ⊕ x = x): min, max, gcd, bitwise and/or. For sums, xor or products the overlap double counts; you can still split the length into disjoint powers of two for O(log N), or use a disjoint sparse table.</p>
+        <p>Costs: O(N log N) time and memory to build (80 MB for 10<sup>6</sup> ints × 20 levels) and <b>no updates</b> — any change means rebuilding.</p>`,
+      followUps: ['How would you get O(N) memory with O(1) queries?', 'Use RMQ to answer LCA queries.']
+    },
+    {
+      q: 'Explain Mo\'s algorithm and its complexity. How do you choose the block size?',
+      level: 'A',
+      a: `<p>Mo's algorithm answers offline range queries on a static array when you can add or remove one element from a window in O(1). Sort queries by (⌊l/B⌋, r) and move a window [curL, curR] from one query to the next with add/remove calls, storing answers by original index.</p>
+        <p>Within a block, r increases monotonically: ≤ N moves per block, N/B blocks → N²/B. The left pointer moves ≤ B per query → Q·B. Total O(Q·B + N²/B), minimized at B = N/√Q, giving O(N√Q) (≈ O((N + Q)√N) when N ≈ Q). Practical tweaks: odd-even ordering of r, Hilbert order, compressed values in plain arrays, grow before shrink.</p>`,
+      followUps: ['How do you support updates (Mo with time)?', 'When is an offline BIT sweep better than Mo?']
+    },
+    {
+      q: 'Design a segment tree that supports range assign, range add and range sum. What are the tag rules?',
+      level: 'A',
+      a: `<p>Each node keeps <code>sum</code> and a tag pair <code>(hasSet, setVal, add)</code> meaning "first assign setVal to every element (if hasSet), then add add". Applying to a node of length len: assign x → sum = x·len, tag = (true, x, 0); add v → sum += v·len, tag.add += v (a pending set stays).</p>
+        <p>Composition order is the crux: a newer assign wipes everything older; a newer add stacks on top. When pushing, apply the set to the children first, then the add. Use a separate boolean (not 0) for "no assignment" because 0 can be a real value, and long for x·len. Everything remains O(log N) per operation.</p>`,
+      followUps: ['Add range min queries — what changes?', 'Generalize to affine tags (multiply then add) modulo p.']
+    },
+    {
+      q: 'How would you answer "k-th smallest value in a[l..r]" online, with up to 10<sup>5</sup> queries?',
+      level: 'E',
+      a: `<p>Compress values to ranks. Build a <b>persistent segment tree</b> over ranks: version i is version i − 1 plus one insertion of rank(a[i]), sharing all untouched nodes, so each version costs O(log N) new nodes (O(N log N) total). The counts of values inside a[l..r] for any value range are <code>count(version r) − count(version l − 1)</code>.</p>
+        <p>To find the k-th smallest, walk both versions down in parallel: if the left child difference ≥ k go left, else subtract it and go right — O(log N) per query, fully online. Alternatives: a wavelet tree (O(log σ)), or offline parallel binary search; the merge-sort tree gives O(log³ N) with binary search over answers.</p>`,
+      followUps: ['How much memory does the persistent tree use for N = 10<sup>5</sup>?', 'Can you support point updates as well? (BIT of persistent trees / sqrt)']
+    },
+    {
+      q: 'Some range updates cannot be done lazily, e.g. "replace every a[i] in [l, r] by ⌊√a[i]⌋". How do you handle them?',
+      level: 'E',
+      a: `<p>Lazy propagation needs the node's new aggregate to be computable from the tag alone; the sum of square roots is not a function of the old sum. Instead use an <b>amortized</b> argument: any value ≤ 10<sup>18</sup> becomes 1 after about 6 square roots, and 1 stays 1. So store sum and max per node; on update, stop at nodes whose max ≤ 1 (nothing changes), otherwise recurse to the leaves.</p>
+        <p>Each element is touched O(log log V) times overall, so the total is O((N log log V + Q) log N). The same idea handles "a[i] mod x" (a value at least halves whenever the mod changes it). For range chmin/chmax with sum queries, <b>Segment Tree Beats</b> keeps max, second max and the max count to apply updates lazily when possible.</p>`,
+      followUps: ['Prove the mod-x amortization bound.', 'What does Segment Tree Beats store per node and why?']
+    },
+    {
+      q: 'Coordinates go up to 10<sup>9</sup>. How do you still use a Fenwick or segment tree?',
+      level: 'A',
+      a: `<p>If all coordinates are known in advance (offline), <b>coordinate compression</b>: collect them, sort, deduplicate, and map each to its rank 0..K−1 with binary search or a hash map. Then the tree has size K ≤ number of distinct coordinates. Careful with queries whose bounds are not present — use lower/upper bound to convert them to rank ranges.</p>
+        <p>If coordinates arrive online, use a <b>dynamic (implicit) segment tree</b> that allocates children only when touched (O(Q log C) nodes for C = 10<sup>9</sup>), or an ordered map-based structure. For interval problems, remember that compressing only endpoints can lose the gaps between them; add r + 1 points or work with half-open intervals.</p>`,
+      followUps: ['How many nodes does a dynamic tree create for Q = 10<sup>5</sup>, C = 10<sup>9</sup>?', 'Show a bug caused by compressing interval endpoints only.']
+    },
+    {
+      q: 'Where do range-aggregate ideas appear in real systems?',
+      level: 'E',
+      a: `<p>Monitoring and time-series systems pre-aggregate metrics into rollups at several granularities (minute, hour, day) so dashboards can answer "max latency over the last week" without scanning raw points — the same "precompute blocks, combine a few" idea as sparse tables and segment trees. Columnar databases keep per-block min/max statistics (zone maps) to skip whole blocks during scans, which is sqrt-decomposition thinking.</p>
+        <p>Order-statistic and aggregate B-trees store subtree counts or sums in internal nodes, supporting "rank of a key" or "sum over a key range" in O(log N). Schedulers and allocators keep trees of free capacity to find "first slot with enough room" by descent, like the Hotel Queries problem. In-memory interview trees are the clean version; production versions add concurrency control, persistence and cache-aware layouts.</p>`,
+      followUps: ['How would you make a range-sum structure safe for concurrent writers?', 'Why do databases prefer B-trees over binary segment trees?']
+    },
+    {
+      q: 'You wrote a segment tree in an interview and one test fails. How do you debug it quickly?',
+      level: 'I',
+      a: `<p>First shrink the failing case: N = 1, 2, 3 and a single query often reproduce it. Then check the usual suspects in order: identity value for disjoint nodes (0 vs +∞), boundary conditions (<code>qr &lt; l || r &lt; ql</code>), mid split consistency between build/update/query, array size (4N), overflow (long), and — for lazy trees — a missing push in the query or the wrong tag composition order.</p>
+        <p>The most reliable method is a 5-minute <b>stress test</b>: an O(N) brute force and a random generator with tiny sizes and small values, comparing results after every operation and printing the first mismatch. Narrate this plan to the interviewer; systematic debugging is part of the evaluation, especially when AI tools write the first draft.</p>`,
+      followUps: ['Which random sizes catch the most bugs?', 'How would you print the tree compactly to inspect it?']
+    },
+    {
+      q: 'Count distinct values in a[l..r]: compare the offline and online solutions.',
+      level: 'A',
+      a: `<p><b>Offline</b>: (1) Mo's algorithm with a frequency array — O((N + Q)√N), simple and general. (2) Better: sort queries by r and sweep i from left to right, keeping a 1 in a Fenwick tree only at the <i>last occurrence</i> of each value; a query (l, r) with r = i is answered by the sum over [l, r] — O((N + Q) log N).</p>
+        <p><b>Online</b>: define next[i] = next index with the same value (or N). The number of distinct values in [l, r] equals the number of i in [l, r] with next[i] &gt; r — a 2D dominance count, answered online with a persistent segment tree or a merge-sort tree in O(log N) or O(log² N). With updates, sqrt decomposition or a BIT of ordered sets is needed.</p>`,
+      followUps: ['Why does keeping only last occurrences work?', 'Add point updates to the online version — what is the complexity?']
+    }
+  );
+
+  registerModule({
+    id: 'dsa21',
+    title: 'Range Query Data Structures',
+    intro: `<p>So far, "sum of a[l..r]" was easy: build prefix sums once and subtract. Real problems are rarely that polite. Prices change while people ask for the cheapest day in a range. Bonuses are added to whole ranges of employees. Someone asks how many <i>different</i> values sit between two positions. Done naively, each request costs O(N), and with N, Q = 2·10<sup>5</sup> that is 4·10<sup>10</sup> steps, far over any time limit.</p>
+      <p>This module is your toolbox for those situations. It covers the <b>segment tree</b> (the all-rounder) with <b>lazy propagation</b> for range updates, the tiny and fast <b>Fenwick tree</b>, the O(1)-query <b>sparse table</b> for static data, <b>sqrt decomposition</b> for awkward queries, and <b>Mo's algorithm</b> for offline questions that cannot be merged. The last topic ties them together in a <b>decision guide</b>, so you can pick the lightest correct tool from the wording of a problem. That choice is what interviewers grade, especially now that AI can type any of these structures for you.</p>
+      <p>Every topic starts with an everyday analogy, then gives the mechanics with step-by-step visualizers (tree nodes labelled with their ranges, Fenwick bit jumps, the sparse-table grid, sliding Mo windows), worked examples, a deep dive into proofs and performance, and a section on working alongside AI.</p>`,
+    goals: [
+      'Build, update and query a segment tree (recursive and iterative) and prove its O(log N) bounds',
+      'Design lazy tags for range add / assign / affine updates and state the lazy-propagation invariant',
+      'Implement a Fenwick tree from the <code>i &amp; −i</code> trick and use it for inversions, k-th element, range-add + range-sum and 2D sums',
+      'Answer static RMQ / GCD queries in O(1) with a sparse table and explain why sums need a different trick',
+      'Use √N blocks and Mo\'s algorithm for queries that segment trees handle badly (counts ≤ x with updates, distinct values)',
+      'Choose the lightest correct structure from the constraints (static or dynamic, invertible or idempotent, online or offline) and justify it with an operation-count estimate'
+    ],
+    prereqs: `<p>DSA 5 (Arrays &amp; Prefix Sums), DSA 4 (Bit Manipulation, for <code>i &amp; −i</code>), DSA 10 (Binary Search), DSA 11 (Recursion), DSA 14 (Trees) and DSA 15 (Heaps, for array-based trees). It also helps to be comfortable with Big-O estimates from DSA 2.</p>`,
+    hours: 16,
+    topics: topics,
+    practice: practice,
+    quiz: quiz,
+    interview: interview
+  });
+})();

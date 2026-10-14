@@ -182,7 +182,7 @@ public class BeforeGenerics {
         });
         g.push({ l: [n + 2, n + 3], cls: errs.length ? 'done' : 'ok', v: { 'compile errors': errs.length }, hv: { 'compile errors': errs.length ? 'bad' : 'ok' }, out: errs.length ? errs.join('\n') + '\n' + errs.length + ' error(s) — fix them, then run' : 'Compiles cleanly. No cast needed in the loop.',
           narr: errs.length ? 'Summary: the <b>same mistake</b> moved from a runtime crash to a compile error you see in your editor. That is the whole point of generics.' : 'Every item was a String, so it compiles and runs. Try adding <code>42</code> to the input to see the compiler catch it.' });
-        return frames.concat(codeFrames(genCode, g, 'Generic code (List<String>)'));
+        return frames.concat(codeFrames(genCode, g, 'Generic code (List&lt;String&gt;)'));
       }
     }, {
       title: 'Plug a type argument into Box<T>',
@@ -257,7 +257,7 @@ System.out.println(b.get(0).length());     // 2 — get() is typed String, so .l
 <p><b>Where AI goes wrong:</b> it happily writes ${C('var x = new ArrayList<>()')} (silently ${C('ArrayList<Object>')}), suggests ${C('List<int>')} in pseudo-Java, adds ${C('@SuppressWarnings("unchecked")')} to whole classes to make warnings disappear, or invents a static field of type T.</p>
 <p><b>What you must still own:</b> deciding <b>what</b> should be a type parameter (too many parameters make APIs unreadable), explaining compile-time vs runtime checking, and spotting raw types in code review — warnings are the only alarm bell, and AI-generated diffs often hide them.</p>`,
     problems: [{
-      title: 'Build a Type-Safe Generic Stack<E>',
+      title: 'Build a Type-Safe Generic Stack&lt;E&gt;',
       level: 'Easy', tags: ['generic class', 'stack', 'type safety'], companies: ['Amazon', 'Infosys', 'Wipro'],
       statement: `<p>Write a generic class ${C('Stack<E>')} backed by an ${C('ArrayList<E>')} with ${C('push(E)')}, ${C('E pop()')}, ${C('E peek()')}, ${C('boolean isEmpty()')} and ${C('int size()')}. ${C('pop')}/${C('peek')} on an empty stack must throw ${C('NoSuchElementException')}. Using it with Strings must need <b>no casts</b>, and pushing an Integer into a ${C('Stack<String>')} must be a <b>compile error</b>.</p>`,
       constraints: `Up to 10<sup>6</sup> operations; each operation O(1) amortized.`,
@@ -575,6 +575,263 @@ class Mode {
         dry: { head: ['step', 'element', 'counts (insertion order)', 'best / bestCount'], rows: [['count', '"b"', '{b=1}', '—'], ['count', '"a"', '{b=1, a=1}', '—'], ['count', '"b"', '{b=2, a=1}', '—'], ['count', '"a"', '{b=2, a=2}', '—'], ['count', '"c"', '{b=2, a=2, c=1}', '—'], ['scan', 'b=2', '', 'b / 2'], ['scan', 'a=2', '', 'b / 2 (2 &gt; 2 is false)'], ['scan', 'c=1', '', H.c('g', 'b / 2 → return "b"')]] },
         complexity: `<p>O(n) expected time (hash lookups), O(k) extra space for k distinct elements. Generics add no runtime cost.</p>`,
         followUps: ['Return all modes as a <code>List&lt;T&gt;</code>.', 'Change the signature to accept <code>Collection&lt;? extends T&gt;</code> — what does the wildcard buy you?', 'Do it with streams: <code>groupingBy(identity(), LinkedHashMap::new, counting())</code>.']
+      }
+    }]
+  });
+
+  /* ======================================================================
+     TOPIC 3 — Bounded type parameters
+     ====================================================================== */
+  topics.push({
+    title: 'Bounded Type Parameters: extends, Multiple Bounds & Recursive Bounds',
+    analogy: `<p>A job advert that says "<b>any person</b>" can be answered by anyone — but then you cannot ask them to drive the delivery van. An advert for "<b>any person WITH a driving licence</b>" is narrower, and in return you are <b>allowed to hand them the keys</b>. A bound works the same way: ${C('<T>')} accepts every type but lets you call only ${C('Object')} methods on it; ${C('<T extends Comparable<T>>')} accepts fewer types, and in return you may call ${C('compareTo')}. "Licence <b>and</b> forklift certificate" is a multiple bound: ${C('<T extends Number & Comparable<T>>')}.</p>`,
+    explain: `<p>An unbounded ${C('T')} could be anything, so the compiler only lets you use the methods every object has (${C('equals')}, ${C('hashCode')}, ${C('toString')}). A <b>bound</b> narrows what T may be, and <b>unlocks</b> the methods of the bound.</p>
+<h4>1. Upper bound with extends</h4>
+${P(`
+static <T> T max(T a, T b) { return a.compareTo(b) > 0 ? a : b; }        // ❌ cannot find symbol: compareTo
+static <T extends Comparable<T>> T max(T a, T b) {                        // ✅
+    return a.compareTo(b) >= 0 ? a : b;
+}
+max(3, 9);          // 9      (Integer implements Comparable<Integer>)
+max("kiwi", "fig"); // "kiwi"
+max(new Object(), new Object()); // ❌ Object is not Comparable`)}
+<p>In a bound, ${C('extends')} means "is a subtype of" — it is used for <b>both</b> classes and interfaces (there is no ${C('implements')} in a bound).</p>
+<h4>2. Bounds on classes</h4>
+${P(`
+class Stats<N extends Number> {
+    private final List<N> data = new ArrayList<>();
+    void add(N n) { data.add(n); }
+    double mean() { return data.stream().mapToDouble(Number::doubleValue).average().orElse(0); }
+}
+Stats<Integer> ok;     // ✅
+Stats<String> bad;     // ❌ type argument String is not within bounds of type-variable N`)}
+<h4>3. Multiple bounds with &amp;</h4>
+<p>${C('<T extends Number & Comparable<T>>')}: T must be a Number <b>and</b> comparable to itself. Rules: at most <b>one class</b>, and it must come <b>first</b>; any number of interfaces after it. ${C('<T extends Comparable<T> & Number>')} is a compile error ("interface expected here").</p>
+${H.table(['Bound', 'Integer', 'String', 'BigDecimal', 'AtomicInteger'], [['T extends Number', H.c('g', '✓'), H.c('r', '✗'), H.c('g', '✓'), H.c('g', '✓')], ['T extends Comparable&lt;T&gt;', H.c('g', '✓'), H.c('g', '✓'), H.c('g', '✓'), H.c('r', '✗ not Comparable')], ['T extends Number &amp; Comparable&lt;T&gt;', H.c('g', '✓'), H.c('r', '✗'), H.c('g', '✓'), H.c('r', '✗')]])}
+<h4>4. Recursive bounds and the "? super T" upgrade</h4>
+<p>${C('<T extends Comparable<T>>')} mentions T inside its own bound — a <b>recursive bound</b>: "T can be compared with T". It breaks for subclasses: if ${C('Fruit implements Comparable<Fruit>')} and ${C('Apple extends Fruit')}, then Apple is a ${C('Comparable<Fruit>')}, <b>not</b> a ${C('Comparable<Apple>')}. Same for ${C('LocalDate')}, which implements ${C('Comparable<ChronoLocalDate>')}. The fix used all over the JDK:</p>
+${P(`
+static <T extends Comparable<? super T>> T max(List<T> list)   // "T can be compared with T or with a supertype of T"`)}
+<h4>5. No lower bounds on type parameters</h4>
+<p>${C('<T super Integer>')} does <b>not</b> exist. ${C('super')} is only allowed on <b>wildcards</b> (${C('? super Integer')}, Topic 4).</p>`,
+    clues: ['"find the max / min / sort for any comparable type" → <code>T extends Comparable&lt;? super T&gt;</code>', '"works for any numeric type" (sum, average, statistics) → <code>T extends Number</code>', 'compile error "cannot find symbol compareTo/doubleValue on T" → add a bound', '"type argument X is not within bounds of type-variable T" in an error message', 'a hierarchy where only the parent implements Comparable (Fruit/Apple, LocalDate) → you need <code>? super T</code> in the bound', '"fluent builder that subclasses can extend" → recursive (self) bound <code>B extends Builder&lt;B&gt;</code>'],
+    code: [`
+import java.util.*;
+import java.math.*;
+import java.time.*;
+
+class Bounds {
+    // Upper bound unlocks compareTo; "? super T" lets subclasses of a Comparable parent work too
+    static <T extends Comparable<? super T>> T max(List<T> list) {
+        if (list.isEmpty()) throw new NoSuchElementException("empty");
+        T best = list.get(0);
+        for (T t : list) if (t.compareTo(best) > 0) best = t;
+        return best;
+    }
+
+    // Number bound unlocks doubleValue()
+    static <N extends Number> double sum(List<N> nums) {
+        double s = 0;
+        for (N n : nums) s += n.doubleValue();
+        return s;
+    }
+
+    // Multiple bounds: a class first, then interfaces
+    static <T extends Number & Comparable<T>> T larger(T a, T b) {
+        System.out.println("as double: " + a.doubleValue() + " vs " + b.doubleValue()); // Number method
+        return a.compareTo(b) >= 0 ? a : b;                                             // Comparable method
+    }
+
+    public static void main(String[] args) {
+        System.out.println(max(List.of(3, 9, 4)));                                    // 9
+        System.out.println(max(List.of("fig", "kiwi", "apple")));                     // kiwi
+        System.out.println(max(List.of(LocalDate.of(2024, 5, 1), LocalDate.of(2025, 1, 1)))); // 2025-01-01
+        System.out.println(sum(List.of(1, 2, 3)) + " " + sum(List.of(1.5, 2.5)));      // 6.0 4.0
+        System.out.println(larger(new BigDecimal("1.5"), new BigDecimal("2")));       // prints the doubles, then 2
+    }
+}`],
+    codeTitle: ['Upper bound, Number bound and multiple bounds'],
+    viz: [{
+      title: 'Step through a bounded max()',
+      input: '4 9 2 9 7',
+      inputLabel: 'Integers (space separated, up to 10)',
+      gen: function (input) {
+        var a = String(input || '').trim().split(/[\s,]+/).map(Number);
+        if (!a.length || a.some(function (x) { return isNaN(x) || x !== Math.floor(x); })) throw new Error('Enter whole numbers separated by spaces, e.g. 4 9 2');
+        if (a.length > 10) throw new Error('Use at most 10 numbers');
+        var code = 'static <T extends Comparable<? super T>> T max(List<T> list) {\n    T best = list.get(0);\n    for (T t : list)\n        if (t.compareTo(best) > 0)\n            best = t;\n    return best;\n}';
+        var frames = [];
+        frames.push({ narr: 'Call <code>max(List.of(' + a.join(', ') + '))</code>. javac infers <b>T = Integer</b> and checks the bound: Integer implements <code>Comparable&lt;Integer&gt;</code>, and Integer is a "super or same" of Integer → <span class="c-g">bound satisfied</span>.', parts: [
+          { type: 'code', label: 'Bounded generic method', lang: 'java', code: code, hl: { 1: 'ok' } },
+          { type: 'table', label: 'Bound check at compile time', columns: ['question', 'answer'], rows: [['T inferred as', 'Integer'], ['Integer implements', 'Comparable<Integer>'], ['Is Integer a supertype-or-same of T?', 'yes → compiles']], hl: { 2: 'ok' } }] });
+        var best = a[0];
+        frames.push({ narr: 'Start with the first element as the best so far: <b>' + best + '</b>.', parts: [{ type: 'code', label: 'Bounded generic method', lang: 'java', code: code, hl: { 2: 'cur' } }, { type: 'array', label: 'list', values: a, hl: { 0: 'sel' }, ptr: { 0: 'best' } }, { type: 'vars', vals: { best: best }, hl: { best: 'sel' } }] });
+        var bi = 0;
+        for (var i = 0; i < a.length; i++) {
+          var c = a[i] > best ? 1 : a[i] < best ? -1 : 0;
+          var hl = {}; hl[i] = 'cur'; hl[bi] = 'sel';
+          var ptr = {}; ptr[i] = 't';
+          if (bi !== i) ptr[bi] = 'best';
+          frames.push({ narr: '<code>t.compareTo(best)</code> = <code>' + a[i] + '.compareTo(' + best + ')</code> → <b>' + c + '</b>. This call is legal <b>only because of the bound</b>: the compiler knows every T has compareTo. ' + (c > 0 ? 'Positive → new best.' : 'Not positive → keep ' + best + (c === 0 ? ' (ties keep the earlier element).' : '.')),
+            parts: [{ type: 'code', label: 'Bounded generic method', lang: 'java', code: code, hl: c > 0 ? { 4: 'ok', 5: 'ok' } : { 4: 'cur' } }, { type: 'array', label: 'list', values: a, hl: hl, ptr: ptr }, { type: 'vars', vals: { t: a[i], best: c > 0 ? a[i] : best, 'compareTo result': c }, hl: { 'compareTo result': c > 0 ? 'ok' : 'cur' } }] });
+          if (c > 0) { best = a[i]; bi = i; }
+        }
+        frames.push({ narr: 'Return <b>' + best + '</b>. After erasure the method signature becomes <code>Comparable max(List)</code> — T erases to its <b>first bound</b> (Comparable), not Object — and the call site gets a <code>checkcast Integer</code>.', parts: [{ type: 'code', label: 'Bounded generic method', lang: 'java', code: code, hl: { 6: 'ok' } }, { type: 'array', label: 'list', values: a, hl: one(bi, 'sel') }, { type: 'code', label: 'Erased signature', lang: 'java', code: 'static Comparable max(List list)   // T → Comparable (first bound)', hl: { 1: 'sel' } }] });
+        return frames;
+      }
+    }, {
+      title: 'Bound checker: which type arguments fit?',
+      gen: function () {
+        var rows = [
+          ['T extends Number', 'Integer', '✓', 'Integer extends Number'],
+          ['T extends Number', 'String', '✗', 'String is not a Number'],
+          ['T extends Comparable<T>', 'String', '✓', 'String implements Comparable<String>'],
+          ['T extends Comparable<T>', 'Apple (Fruit implements Comparable<Fruit>)', '✗', 'Apple is Comparable<Fruit>, not Comparable<Apple>'],
+          ['T extends Comparable<? super T>', 'Apple', '✓', 'Fruit is a supertype of Apple → accepted'],
+          ['T extends Comparable<T>', 'LocalDate', '✗', 'LocalDate implements Comparable<ChronoLocalDate>'],
+          ['T extends Comparable<? super T>', 'LocalDate', '✓', 'ChronoLocalDate is a supertype of LocalDate'],
+          ['T extends Number & Comparable<T>', 'BigDecimal', '✓', 'a Number AND Comparable<BigDecimal>'],
+          ['T extends Number & Comparable<T>', 'AtomicInteger', '✗', 'a Number but NOT Comparable']
+        ];
+        var narr = [
+          'Simple class bound: Integer is a subclass of Number, so <code>Stats&lt;Integer&gt;</code> compiles and you can call <code>doubleValue()</code>.',
+          'String is not a Number — <span class="c-r">"type argument String is not within bounds of type-variable N"</span>.',
+          'Recursive bound: "T can be compared with T". String compares with String → fits.',
+          '<span class="c-r">The classic trap.</span> Only the parent Fruit implements Comparable. Apple inherits <code>compareTo(Fruit)</code>, so Apple is a <code>Comparable&lt;Fruit&gt;</code>. The strict bound wants <code>Comparable&lt;Apple&gt;</code> → rejected.',
+          'Loosen the bound with a wildcard: "T can be compared with T <b>or a supertype of T</b>". Fruit is a supertype of Apple → <span class="c-g">accepted</span>. This is why <code>Collections.sort</code> and <code>max</code> use <code>? super T</code>.',
+          'A real JDK case: LocalDate implements <code>Comparable&lt;ChronoLocalDate&gt;</code> (its interface parent). The strict bound rejects <code>List&lt;LocalDate&gt;</code>!',
+          'With <code>? super T</code> LocalDate fits, because ChronoLocalDate is a supertype of LocalDate.',
+          'Multiple bounds: BigDecimal extends Number and implements <code>Comparable&lt;BigDecimal&gt;</code> → both conditions hold.',
+          'AtomicInteger is a Number but deliberately not Comparable (its value changes), so the second bound fails.'
+        ];
+        return rows.map(function (r, i) {
+          return { narr: narr[i], parts: [{ type: 'table', label: 'Does the type argument satisfy the bound?', columns: ['bound', 'type argument', 'fits?', 'why'], rows: rows.slice(0, i + 1), hl: one(i, r[2] === '✓' ? 'ok' : 'bad') }] };
+        });
+      }
+    }],
+    examples: [
+      { title: 'Does this compile? Calling a method the bound does not promise', html: `${P(`
+static <T> double half(T x) { return x.doubleValue() / 2; }                 // ❌ cannot find symbol doubleValue()
+static <T extends Number> double half(T x) { return x.doubleValue() / 2; }  // ✅`)}
+<p>Without a bound, T is only known to be an Object. The bound is a promise the compiler can rely on — and every caller must keep it: ${C('half("10")')} becomes a compile error.</p>`, code: `
+class Half {
+    static <T extends Number> double half(T x) { return x.doubleValue() / 2; }
+    public static void main(String[] args) {
+        System.out.println(half(10));       // 5.0  (Integer)
+        System.out.println(half(3.0f));     // 1.5  (Float)
+        // System.out.println(half("10")); // does not compile: String is not a Number
+    }
+}` },
+      { title: 'Fruit and Apple: why the JDK writes Comparable&lt;? super T&gt;', html: `<p>Only ${C('Fruit')} implements ${C('Comparable<Fruit>')}. With the strict bound, ${C('maxStrict(apples)')} fails with "inference variable T has incompatible equality constraints Fruit, Apple". With ${C('? super T')} it compiles and returns an Apple — no cast.</p>
+${H.table(['Method', 'maxStrict(List&lt;Apple&gt;)', 'maxFlex(List&lt;Apple&gt;)'], [['Bound', C('T extends Comparable<T>'), C('T extends Comparable<? super T>')], ['Result', H.c('r', 'compile error'), H.c('g', 'Apple9')]])}`, code: `
+class Fruit implements Comparable<Fruit> {
+    final int weight;
+    Fruit(int weight) { this.weight = weight; }
+    public int compareTo(Fruit o) { return Integer.compare(weight, o.weight); }
+    public String toString() { return getClass().getSimpleName() + weight; }
+}
+class Apple extends Fruit { Apple(int w) { super(w); } }
+
+class FruitDemo {
+    static <T extends Comparable<? super T>> T maxFlex(List<T> list) {
+        T best = list.get(0);
+        for (T t : list) if (t.compareTo(best) > 0) best = t;
+        return best;
+    }
+    public static void main(String[] args) {
+        List<Apple> apples = List.of(new Apple(3), new Apple(9));
+        Apple heaviest = maxFlex(apples);          // T = Apple; Apple is Comparable<Fruit>, Fruit super Apple ✓
+        System.out.println(heaviest);              // Apple9
+        System.out.println(Collections.max(apples)); // Apple9 — the JDK uses the same trick
+    }
+}` },
+      { title: 'Does this compile? Order of multiple bounds', html: `${P(`
+<T extends Comparable<T> & Number> void f(T t)   // ❌ interface expected here
+<T extends Number & Comparable<T>> void f(T t)   // ✅ class first, then interfaces
+<T extends Number & Integer> void f(T t)         // ❌ only ONE class allowed (and Integer is final anyway)`)}
+<p>Why the rule? Erasure replaces T with its <b>first</b> bound, and a JVM type can extend only one class. Putting the class first keeps the erased signature sensible.</p>`, code: `
+class MultiBound {
+    static <T extends Number & Comparable<T>> T clampToZero(T value, T zero) {
+        return value.compareTo(zero) < 0 ? zero : value;  // compareTo from Comparable
+    }
+    public static void main(String[] args) {
+        System.out.println(clampToZero(-5, 0));           // 0
+        System.out.println(clampToZero(2.5, 0.0));        // 2.5
+    }
+}` },
+      { title: 'Self-bounded types: Enum&lt;E extends Enum&lt;E&gt;&gt; and fluent builders', html: `<p>${C('java.lang.Enum')} is declared ${C('class Enum<E extends Enum<E>>')}. That recursive bound makes ${C('compareTo(E)')} accept only the <b>same</b> enum type. The same trick ("curiously recurring template pattern") gives builders a ${C('self()')} method so subclass setters can be chained without casts.</p>`, code: `
+abstract class Builder<B extends Builder<B>> {
+    String name;
+    B name(String n) { this.name = n; return self(); }   // returns the SUBCLASS type
+    abstract B self();
+}
+class CarBuilder extends Builder<CarBuilder> {
+    int wheels;
+    CarBuilder wheels(int w) { this.wheels = w; return this; }
+    CarBuilder self() { return this; }
+    public static void main(String[] args) {
+        CarBuilder b = new CarBuilder().name("mini").wheels(4);   // name() returns CarBuilder → chain works
+        System.out.println(b.name + " " + b.wheels);              // mini 4
+    }
+}` }
+    ],
+    deepDive: `<p><b>Erasure of bounded parameters.</b> A type parameter erases to its <b>leftmost bound</b>: ${C('<T extends Number>')} → ${C('Number')}, ${C('<T extends Comparable<T>>')} → ${C('Comparable')}, unbounded → ${C('Object')}. That is why ${C('Collections.max')} is declared ${C('<T extends Object & Comparable<? super T>> T max(Collection<? extends T> coll)')}: the redundant ${C('Object &')} makes the erased return type ${C('Object')}, which matches the <b>pre-Java-5 binary signature</b>. Changing it to Comparable would have broken every compiled caller. Interviewers love this one.</p>
+<p><b>Calls on additional bounds.</b> For ${C('<T extends Number & Comparable<T>>')}, the erased parameter type is ${C('Number')}. When you call ${C('t.compareTo(x)')}, javac inserts a ${C('checkcast Comparable')} before ${C('invokeinterface')}. Order affects bytecode, not semantics.</p>
+<p><b>Bounds are checked at compile time only.</b> At runtime nothing verifies ${C('T extends Number')} — if someone uses a raw type to sneak a String in, you get a ClassCastException at the first hidden cast.</p>
+<p><b>F-bounded polymorphism</b> (${C('B extends Builder<B>')}) lets a supertype refer to "my concrete subtype". It does not stop ${C('class Evil extends Builder<CarBuilder>')}, so the abstract ${C('self()')} method is still needed. Java has no "self type" keyword.</p>
+<p><b>Design guidance.</b> Bound as loosely as the method needs (just ${C('Comparable<? super T>')}, not your own interface hierarchy). Prefer a ${C('Comparator<? super T>')} parameter overload for types without natural ordering — the JDK pairs ${C('sort(List<T>)')} with ${C('sort(List<T>, Comparator<? super T>)')} for exactly this reason.</p>`,
+    aiEra: `<p><b>What AI changes:</b> AI tools write bounded signatures quickly and can explain a scary inference error in plain words, which used to take a senior engineer.</p>
+<p><b>Use AI as a partner:</b> ask <code>"Tighten or loosen this generic bound; show a caller that compiles with the new signature but failed with the old one"</code> — that forces a concrete test case like the Fruit/Apple or LocalDate example. Ask it to check binary compatibility if the method is part of a published library.</p>
+<p><b>Where AI goes wrong:</b> it writes the strict ${C('T extends Comparable<T>')} (fails on LocalDate and subclass hierarchies), invents ${C('<T super X>')} (illegal), orders multiple bounds wrongly, or adds a bound that is not needed and makes the API harder to call.</p>
+<p><b>What you must still own:</b> knowing that erasure uses the first bound (and why ${C('Collections.max')} has ${C('Object &')}), choosing between a bound and a ${C('Comparator')} parameter, and testing signatures with real subtype hierarchies before publishing them.</p>`,
+    problems: [{
+      title: 'Generic clamp() for Anything Comparable',
+      level: 'Medium', tags: ['bounded type', 'Comparable', 'generic method'], companies: ['Microsoft', 'Uber', 'Zoho'],
+      statement: `<p>Write ${C('static <T extends Comparable<? super T>> T clamp(T value, T lo, T hi)')} that returns ${C('lo')} if value is below lo, ${C('hi')} if above hi, otherwise value. Throw ${C('IllegalArgumentException')} if ${C('lo > hi')}. It must work for Integers, Strings, ${C('LocalDate')} and subclasses of a Comparable parent (e.g. Apple extends Fruit).</p>`,
+      constraints: `Arguments are non-null; comparisons follow each type's natural ordering.`,
+      example: `<p>${C('clamp(15, 0, 10)')} → ${H.c('g', '10')}; ${C('clamp("m", "a", "k")')} → ${H.c('g', '"k"')} (alphabetical); ${C('clamp(2020-01-01, 2021-01-01, 2022-01-01)')} → ${H.c('g', '2021-01-01')}; ${C('clamp(5, 9, 1)')} → ${H.c('r', 'IllegalArgumentException')}.</p>`,
+      brute: { why: `<p>The naive way writes one overload per type — ${C('clamp(int,…)')}, ${C('clamp(String,…)')}, ${C('clamp(LocalDate,…)')} — copying the same logic each time. Or it takes ${C('Comparable')} raw, which compiles with warnings, returns ${C('Comparable')} (callers must cast) and accepts mismatched types like ${C('clamp(5, "a", "z")')} until it crashes at runtime.</p>`, code: `
+class ClampRaw {
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    static Comparable clamp(Comparable v, Comparable lo, Comparable hi) {
+        if (v.compareTo(lo) < 0) return lo;     // unchecked call on a raw type
+        if (v.compareTo(hi) > 0) return hi;
+        return v;
+    }
+    public static void main(String[] args) {
+        Integer x = (Integer) clamp(15, 0, 10);  // cast needed
+        System.out.println(x);                   // 10
+        // clamp(5, "a", "z") compiles too — and throws ClassCastException at runtime
+    }
+}` },
+      mcq: { q: 'Why is <code>T extends Comparable&lt;? super T&gt;</code> better here than <code>T extends Comparable&lt;T&gt;</code>?', options: ['It is faster at runtime', 'It accepts types whose compareTo is inherited from a supertype, like LocalDate or Apple extends Fruit', 'It allows null arguments', 'It lets you pass mixed types like Integer and String'], answer: 1, explain: 'LocalDate implements Comparable&lt;ChronoLocalDate&gt;; Apple inherits Comparable&lt;Fruit&gt;. The strict bound demands Comparable&lt;T&gt; exactly and rejects them. Runtime speed is identical — erasure produces the same bytecode.' },
+      hints: [`<p>Hint 1: you need ${C('compareTo')} on T, so T needs a bound. The question already mentions subclasses of a Comparable parent — that is the "? super T" clue.</p>`, `<p>Hint 2: validate first: ${C('if (lo.compareTo(hi) > 0) throw …')}. Then two comparisons: below lo? above hi?</p>`, `<p>Hint 3: edge cases — value equal to lo or hi returns value (either is fine, but be consistent); lo == hi always returns lo. Recipe: check range → if value &lt; lo return lo → if value &gt; hi return hi → return value.</p>`],
+      solution: {
+        approach: `<p>A single bounded generic method. The bound guarantees ${C('compareTo')}; ${C('? super T')} widens it to inherited comparisons. All three parameters and the return share one T, so ${C('clamp(5, "a", "z")')} is a compile error and the caller never casts.</p>`,
+        code: `
+import java.time.*;
+
+class Clamp {
+    static <T extends Comparable<? super T>> T clamp(T value, T lo, T hi) {
+        if (lo.compareTo(hi) > 0) throw new IllegalArgumentException("lo > hi: " + lo + " > " + hi);
+        if (value.compareTo(lo) < 0) return lo;    // below the range
+        if (value.compareTo(hi) > 0) return hi;    // above the range
+        return value;                              // inside (inclusive)
+    }
+
+    public static void main(String[] args) {
+        System.out.println(clamp(15, 0, 10));                       // 10
+        System.out.println(clamp(-3, 0, 10));                       // 0
+        System.out.println(clamp("m", "a", "k"));                   // k
+        LocalDate d = clamp(LocalDate.of(2020, 1, 1), LocalDate.of(2021, 1, 1), LocalDate.of(2022, 1, 1));
+        System.out.println(d);                                      // 2021-01-01 (works thanks to ? super T)
+        // clamp(5, "a", "z");                                      // does not compile: no single T fits
+        try { clamp(5, 9, 1); } catch (IllegalArgumentException e) { System.out.println(e.getMessage()); } // lo > hi: 9 > 1
+    }
+}`,
+        dry: { head: ['call', 'T', 'lo vs hi', 'value vs lo', 'value vs hi', 'result'], rows: [['clamp(15, 0, 10)', 'Integer', 'ok', '15 &gt; 0', '15 &gt; 10', H.c('g', '10')], ['clamp(-3, 0, 10)', 'Integer', 'ok', '-3 &lt; 0', '—', H.c('g', '0')], ['clamp("m","a","k")', 'String', 'ok', '"m" &gt; "a"', '"m" &gt; "k"', H.c('g', '"k"')], ['clamp(5, 9, 1)', 'Integer', H.c('r', '9 &gt; 1'), '—', '—', H.c('r', 'IllegalArgumentException')]] },
+        complexity: `<p>O(1): at most three ${C('compareTo')} calls. No allocation besides autoboxing of int literals.</p>`,
+        followUps: ['Add an overload taking a <code>Comparator&lt;? super T&gt;</code> for types without natural order.', 'Java 21 added <code>Math.clamp</code> for primitives — why does it not cover generic types?', 'Why does the erased signature of this method use <code>Comparable</code> rather than <code>Object</code>?']
       }
     }]
   });

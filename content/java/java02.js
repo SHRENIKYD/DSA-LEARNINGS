@@ -1951,6 +1951,844 @@ class Palindrome {
     }]
   });
 
+  /* ======================================================================
+     PRACTICE — Easy
+     ====================================================================== */
+  practice.push({
+    title: 'FizzBuzz with a Switch Expression',
+    level: 'Easy', tags: ['switch expression', 'loops', 'classic'], companies: ['Every company', 'TCS', 'Bloomberg'],
+    statement: `<p>Return a <code>List&lt;String&gt;</code> for 1..n where multiples of 3 become "Fizz", multiples of 5 become "Buzz", multiples of both become "FizzBuzz", and other numbers become their decimal text. Write the decision as <b>one switch expression</b> instead of an if-ladder.</p>`,
+    constraints: `1 ≤ n ≤ 10<sup>4</sup>`,
+    example: `<p>n = 15 → [1, 2, ${H.c('y', 'Fizz')}, 4, ${H.c('b', 'Buzz')}, Fizz, 7, 8, Fizz, Buzz, 11, Fizz, 13, 14, ${H.c('g', 'FizzBuzz')}]. 15 is divisible by 3 <b>and</b> 5, so it must be checked as "both", not just "by 3".</p>`,
+    brute: { why: `<p>The usual if-ladder works, but the order is fragile: if you test <code>i % 3 == 0</code> before <code>i % 15 == 0</code>, 15 prints "Fizz". It also repeats the modulo work. Not slow — just easy to get wrong.</p>`, code: `
+static List<String> fizzBuzzLadder(int n) {
+    List<String> out = new ArrayList<>();
+    for (int i = 1; i <= n; i++) {
+        if (i % 15 == 0) out.add("FizzBuzz");      // must come FIRST
+        else if (i % 3 == 0) out.add("Fizz");
+        else if (i % 5 == 0) out.add("Buzz");
+        else out.add(String.valueOf(i));
+    }
+    return out;
+}` },
+    mcq: { q: 'How can two independent yes/no facts (divisible by 3? by 5?) drive ONE switch?', options: ['switch on a boolean', 'Combine them into one int code: (by3 ? 1 : 0) + (by5 ? 2 : 0) → values 0..3', 'Use two nested switches only', 'It is impossible'], answer: 1, explain: 'Java cannot switch on boolean, but you can pack two bits into an int 0..3 and switch on that — each case is one of the four combinations.' },
+    hints: [`<p>Hint 1: there are exactly four situations: neither, only 3, only 5, both.</p>`, `<p>Hint 2: encode them as a number: <code>int code = (i % 3 == 0 ? 1 : 0) + (i % 5 == 0 ? 2 : 0);</code> → 0, 1, 2 or 3.</p>`, `<p>Hint 3: <code>out.add(switch (code) { case 1 -&gt; "Fizz"; case 2 -&gt; "Buzz"; case 3 -&gt; "FizzBuzz"; default -&gt; String.valueOf(i); });</code></p>`],
+    solution: {
+      approach: `<p>Pack the two divisibility facts into a 2-bit code and switch on it. Each combination is spelled out exactly once, so the order bug is impossible.</p>`,
+      code: `
+class FizzBuzz {
+    static List<String> fizzBuzz(int n) {
+        List<String> out = new ArrayList<>(n);
+        for (int i = 1; i <= n; i++) {
+            int code = (i % 3 == 0 ? 1 : 0) + (i % 5 == 0 ? 2 : 0);   // bit 0 = by 3, bit 1 = by 5
+            out.add(switch (code) {
+                case 1 -> "Fizz";
+                case 2 -> "Buzz";
+                case 3 -> "FizzBuzz";
+                default -> String.valueOf(i);
+            });
+        }
+        return out;
+    }
+    public static void main(String[] args) {
+        System.out.println(fizzBuzz(15));
+    }
+}`,
+      dry: { head: ['i', 'i%3==0', 'i%5==0', 'code', 'output'], rows: [['3', 'yes', 'no', '1', 'Fizz'], ['5', 'no', 'yes', '2', 'Buzz'], ['7', 'no', 'no', '0', '7'], ['15', 'yes', 'yes', '3', 'FizzBuzz']] },
+      complexity: `<p>O(n) time, O(n) space for the output list.</p>`,
+      followUps: ['Add "Bazz" for multiples of 7 — how does the code grow?', 'Make the rules data-driven (a list of divisor → word pairs).']
+    }
+  });
+
+  practice.push({
+    title: 'Predict the Output: char, int, String and the Ternary',
+    level: 'Easy', tags: ['predict the output', 'char arithmetic', 'ternary', 'concatenation'], companies: ['Infosys', 'Capgemini', 'Oracle'],
+    statement: `<p>What does this program print, line by line? Explain each line.</p>
+<pre><code>char c = 'A';
+int i = 1;
+System.out.println(c + i);
+System.out.println((char) (c + i));
+System.out.println("" + c + i);
+System.out.println(c + i + "");
+System.out.println(false ? i : c);
+System.out.println(true ? 'x' : 0);</code></pre>`,
+    constraints: `'A' has code 65, 'x' has code 120`,
+    example: `<p>Line 1 is ${H.c('g', '66')}: <code>char + int</code> is numeric addition (65 + 1). Work out the other five the same way.</p>`,
+    brute: { why: `<p>Guessing from "what it looks like" (A1, B, A1, A1, A, x) gets three lines wrong. If you are allowed to run code, the debugging approach is to print the <b>type</b> as well — but in an interview you must know the rules: + is evaluated left to right, char + int is int, and a ternary's two arms are converted to one common type.</p>`, code: `
+char c = 'A';
+int i = 1;
+Object o1 = c + i;            // boxing reveals the static type of the expression
+Object o5 = false ? i : c;
+System.out.println(o1 + " is " + o1.getClass().getSimpleName());   // 66 is Integer
+System.out.println(o5 + " is " + o5.getClass().getSimpleName());   // 65 is Integer` },
+    mcq: { q: '<code>false ? i : c</code> (int i, char c = \'A\') prints…', options: ['A', '65', '1', 'Compile error'], answer: 1, explain: 'i is an int <b>variable</b> (not a constant), so both arms become int; the char arm is chosen and printed as its number 65.' },
+    hints: [`<p>Hint 1: <code>+</code> is evaluated <b>left to right</b>; it means string concatenation only once one side is already a String.</p>`, `<p>Hint 2: <code>char + int</code> → int. A cast <code>(char)</code> turns a number back into a character.</p>`, `<p>Hint 3: ternary typing: if one arm is char and the other an int <b>constant</b> that fits in a char (like 0), the type is char; if the other arm is an int <b>variable</b>, the type is int.</p>`],
+    solution: {
+      approach: `<p>Apply three rules: left-to-right +, numeric promotion of char, and ternary common-type rules.</p>`,
+      code: `
+char c = 'A';
+int i = 1;
+System.out.println(c + i);            // 66   char + int = int
+System.out.println((char) (c + i));   // B    66 cast back to char
+System.out.println("" + c + i);       // A1   "" + 'A' = "A", then "A" + 1 = "A1"
+System.out.println(c + i + "");       // 66   65 + 1 = 66 first, then "66"
+System.out.println(false ? i : c);    // 65   arms int and char (variable) → int
+System.out.println(true ? 'x' : 0);   // x    0 is a constant fitting in char → char`,
+      dry: { head: ['line', 'expression', 'type', 'prints'], rows: [['1', 'c + i', 'int', '66'], ['2', '(char)(c + i)', 'char', 'B'], ['3', '"" + c + i', 'String', 'A1'], ['4', 'c + i + ""', 'String', '66'], ['5', 'false ? i : c', 'int', '65'], ['6', "true ? 'x' : 0", 'char', 'x']] },
+      complexity: `<p>Not an algorithm question — the "cost" is knowing the rules. Each line is O(1).</p>`,
+      followUps: ['What does <code>System.out.println(\'a\' + \'b\' + "c")</code> print? (195c)', 'What is <code>char d = \'A\'; d += 1;</code> — does it compile? (Yes: compound assignment casts; d becomes \'B\'.)']
+    }
+  });
+
+  practice.push({
+    title: 'Second Largest Distinct Value in One Pass',
+    level: 'Easy', tags: ['arrays', 'single pass', 'loops'], companies: ['Amazon', 'Flipkart', 'Zoho'],
+    statement: `<p>Given an array of non-negative ints, return the second largest <b>distinct</b> value, or −1 if it does not exist. Use one pass and O(1) extra space.</p>`,
+    constraints: `1 ≤ n ≤ 10<sup>6</sup>; 0 ≤ a[i] ≤ 10<sup>9</sup>`,
+    example: `<p>[12, 35, 1, 10, 34, 1] → ${H.c('g', '34')}. [10, 10, 10] → ${H.c('r', '-1')} (only one distinct value). [5, 9] → 5.</p>`,
+    brute: { why: `<p>Sort a copy and walk from the end to the first value smaller than the max: O(n log n) time and O(n) extra memory, for a problem one scan can solve.</p>`, code: `
+static int secondLargestSort(int[] a) {
+    int[] c = a.clone();
+    Arrays.sort(c);
+    for (int i = c.length - 2; i >= 0; i--)
+        if (c[i] != c[c.length - 1]) return c[i];
+    return -1;
+}` },
+    mcq: { q: 'You see a value equal to the current largest. What should happen?', options: ['Make it the second largest', 'Ignore it (duplicates are not distinct)', 'Reset both trackers', 'Return immediately'], answer: 1, explain: 'The question asks for distinct values; a repeat of the max is not a new candidate for second place.' },
+    hints: [`<p>Hint 1: keep two trackers, <code>first</code> and <code>second</code>, both starting at −1 (valid because values are non-negative).</p>`, `<p>Hint 2: if x &gt; first: second = first, first = x. Else if x &lt; first and x &gt; second: second = x.</p>`, `<p>Hint 3: the strict <code>x &lt; first</code> check is what skips duplicates of the max. All equal → second stays −1.</p>`],
+    solution: {
+      approach: `<p>One scan with two trackers. A new maximum pushes the old one down to second place; a value strictly between second and first replaces second.</p>`,
+      code: `
+class SecondLargest {
+    static int secondLargest(int[] a) {
+        int first = -1, second = -1;
+        for (int x : a) {
+            if (x > first) {
+                second = first;     // old champion becomes runner-up
+                first = x;
+            } else if (x < first && x > second) {
+                second = x;         // new runner-up (strictly smaller than first)
+            }
+        }
+        return second;
+    }
+    public static void main(String[] args) {
+        System.out.println(secondLargest(new int[]{12, 35, 1, 10, 34, 1}));  // 34
+        System.out.println(secondLargest(new int[]{10, 10, 10}));            // -1
+    }
+}`,
+      dry: { head: ['x', 'first', 'second'], rows: [['12', '12', '-1'], ['35', '35', '12'], ['1', '35', '12'], ['10', '35', '12'], ['34', '35', H.c('g', '34')], ['1', '35', '34']] },
+      complexity: `<p>O(n) time, O(1) space.</p>`,
+      followUps: ['Allow negative values (use <code>long</code> sentinels or a boolean "found" flag).', 'Return the k-th largest distinct value for small k.']
+    }
+  });
+
+  practice.push({
+    title: 'Count Vowels, Consonants, Digits and Spaces',
+    level: 'Easy', tags: ['String', 'switch', 'Character'], companies: ['Wipro', 'HCL', 'Cognizant'],
+    statement: `<p>Return <code>int[]{vowels, consonants, digits, spaces}</code> for a String. Letters are counted case-insensitively (a, e, i, o, u are vowels; other English letters are consonants). Other symbols are ignored.</p>`,
+    constraints: `0 ≤ s.length() ≤ 10<sup>5</sup>; ASCII text`,
+    example: `<p>"Hello World 42" → vowels e, o, o = ${H.c('g', '3')}; consonants H, l, l, W, r, l, d = ${H.c('b', '7')}; digits 4, 2 = ${H.c('y', '2')}; spaces = 2 → <b>[3, 7, 2, 2]</b>.</p>`,
+    brute: { why: `<p>Calling <code>"aeiouAEIOU".contains(String.valueOf(c))</code> for every char creates a new String per character and scans the vowel list each time — fine for short text, wasteful for 10<sup>5</sup> characters, and still needs separate checks for digits and spaces.</p>`, code: `
+static int[] countBrute(String s) {
+    int v = 0, c = 0, d = 0, sp = 0;
+    for (int i = 0; i < s.length(); i++) {
+        String ch = String.valueOf(s.charAt(i));          // a new String every iteration
+        if ("aeiouAEIOU".contains(ch)) v++;
+        else if (ch.matches("[a-zA-Z]")) c++;             // regex per character: slow
+        else if (ch.matches("[0-9]")) d++;
+        else if (ch.equals(" ")) sp++;
+    }
+    return new int[]{v, c, d, sp};
+}` },
+    mcq: { q: 'Which is the cleanest way to test "is this char a vowel" once lower-cased?', options: ['A chain of five == comparisons with ||', 'A switch with <code>case \'a\', \'e\', \'i\', \'o\', \'u\' -&gt;</code>', 'A regex', 'A HashSet&lt;String&gt;'], answer: 1, explain: 'A switch on char with grouped labels reads clearly and compiles to a fast jump; no objects are created.' },
+    hints: [`<p>Hint 1: lower-case each char once (<code>Character.toLowerCase(c)</code>) so you only list five vowels.</p>`, `<p>Hint 2: a switch handles vowels; in <code>default</code> use <code>Character.isLetter</code>, <code>isDigit</code>, <code>c == ' '</code>.</p>`, `<p>Hint 3: careful: <code>Character.isLetter</code> is true for non-English letters too (é, ß). The statement says ASCII, but check <code>ch &gt;= 'a' &amp;&amp; ch &lt;= 'z'</code> to be strict.</p>`],
+    solution: {
+      approach: `<p>One loop over the chars, one switch on the lower-cased char. Vowel labels are grouped; everything else is classified in <code>default</code>.</p>`,
+      code: `
+class CharCounter {
+    static int[] count(String s) {
+        int vowels = 0, consonants = 0, digits = 0, spaces = 0;
+        for (int i = 0; i < s.length(); i++) {
+            char ch = Character.toLowerCase(s.charAt(i));
+            switch (ch) {
+                case 'a', 'e', 'i', 'o', 'u' -> vowels++;
+                case ' ' -> spaces++;
+                default -> {
+                    if (ch >= 'a' && ch <= 'z') consonants++;
+                    else if (ch >= '0' && ch <= '9') digits++;
+                    // anything else (punctuation) is ignored
+                }
+            }
+        }
+        return new int[]{vowels, consonants, digits, spaces};
+    }
+    public static void main(String[] args) {
+        System.out.println(Arrays.toString(count("Hello World 42")));  // [3, 7, 2, 2]
+    }
+}`,
+      dry: { head: ['char', 'lower', 'branch', 'counts [v, c, d, s]'], rows: [['H', 'h', 'consonant', '[0, 1, 0, 0]'], ['e', 'e', 'vowel', '[1, 1, 0, 0]'], ['␣', '␣', 'space', '…'], ['4', '4', 'digit', '…'], ['end', '', '', H.c('g', '[3, 7, 2, 2]')]] },
+      complexity: `<p>O(n) time, O(1) space.</p>`,
+      followUps: ['Also return the most frequent letter (int[26] counts).', 'Handle full Unicode letters with <code>Character.isLetter</code> and code points.']
+    }
+  });
+
+  /* ======================================================================
+     PRACTICE — Medium
+     ====================================================================== */
+  practice.push({
+    title: 'Predict the Output: The Pass-by-Value Puzzle',
+    level: 'Medium', tags: ['predict the output', 'pass-by-value', 'references', 'immutability'], companies: ['Goldman Sachs', 'Morgan Stanley', 'Oracle'],
+    statement: `<p>What does this print? Explain each of the four values.</p>
+<pre><code>static void change(int[] a, int b, StringBuilder sb, String s) {
+    a[0]++;
+    b++;
+    sb.append("!");
+    s += "!";
+    a = new int[]{100};
+    a[0]++;
+}
+// in main:
+int[] arr = {1};
+int n = 1;
+StringBuilder sb = new StringBuilder("hi");
+String s = "hi";
+change(arr, n, sb, s);
+System.out.println(arr[0] + " " + n + " " + sb + " " + s);</code></pre>`,
+    constraints: `Standard Java semantics; no threads involved`,
+    example: `<p>The answer has four parts. Hint for the first: <code>a[0]++</code> happens <b>before</b> <code>a</code> is reassigned, while it still points at the caller's array.</p>`,
+    brute: { why: `<p>"Objects are passed by reference, so everything changes" gives <code>101 2 hi! hi!</code> — wrong on three of four values. "Everything is a copy, nothing changes" gives <code>1 1 hi hi</code> — wrong on two. You need the precise rule: the <b>reference</b> is copied.</p>`, code: `
+class PuzzleTrace {
+    static void change(int[] a, int b, StringBuilder sb, String s) {
+        a[0]++;               System.out.println("a[0] in method = " + a[0]);
+        b++;                  System.out.println("b in method = " + b);
+        sb.append("!");       System.out.println("sb in method = " + sb);
+        s += "!";             System.out.println("s in method = " + s);
+        a = new int[]{100};
+        a[0]++;               System.out.println("new a[0] = " + a[0]);
+    }
+    public static void main(String[] args) {
+        int[] arr = {1};
+        change(arr, 1, new StringBuilder("hi"), "hi");   // trace prints show what each copy sees
+        System.out.println("caller's arr[0] = " + arr[0]);
+    }
+}` },
+    mcq: { q: 'After <code>a = new int[]{100}</code> inside the method, what does the caller\'s <code>arr</code> point to?', options: ['The new array {100}', 'Still the original array (now {2})', 'null', 'It depends on the JVM'], answer: 1, explain: 'Reassigning a parameter changes only the method\'s copy of the reference. The caller\'s variable is untouched.' },
+    hints: [`<p>Hint 1: draw two boxes for every parameter: the caller's variable and the method's copy. Arrows for references.</p>`, `<p>Hint 2: <code>a[0]++</code> and <code>sb.append</code> go <b>through</b> the arrow to the shared object. <code>b++</code>, <code>s += "!"</code> and <code>a = new …</code> only change the method's own box.</p>`, `<p>Hint 3: String is immutable: <code>s += "!"</code> builds a new String and points the copy at it. The last <code>a[0]++</code> changes the new array nobody else sees.</p>`],
+    solution: {
+      approach: `<p>Java copies every argument's value. For the array and the StringBuilder, the copied value is a reference to the caller's object, so mutations through it are visible. Primitive <code>b</code>, the String reassignment, and the array reassignment only affect the method's copies.</p>`,
+      code: `
+class Puzzle {
+    static void change(int[] a, int b, StringBuilder sb, String s) {
+        a[0]++;               // caller's array: 1 -> 2  (visible)
+        b++;                  // copy of n: 1 -> 2      (invisible)
+        sb.append("!");       // caller's builder: "hi!" (visible)
+        s += "!";             // new String for the copy (invisible)
+        a = new int[]{100};   // copy now points elsewhere
+        a[0]++;               // new array: 101         (invisible)
+    }
+    public static void main(String[] args) {
+        int[] arr = {1};
+        int n = 1;
+        StringBuilder sb = new StringBuilder("hi");
+        String s = "hi";
+        change(arr, n, sb, s);
+        System.out.println(arr[0] + " " + n + " " + sb + " " + s);   // 2 1 hi! hi
+    }
+}`,
+      dry: { head: ['statement', 'arr (caller)', 'n', 'sb', 's'], rows: [['before call', '{1}', '1', 'hi', 'hi'], ['a[0]++', H.c('g', '{2}'), '1', 'hi', 'hi'], ['b++', '{2}', '1', 'hi', 'hi'], ['sb.append("!")', '{2}', '1', H.c('g', 'hi!'), 'hi'], ['s += "!"', '{2}', '1', 'hi!', 'hi'], ['a = new …; a[0]++', '{2}', '1', 'hi!', 'hi']] },
+      complexity: `<p>O(1). The output is <b>2 1 hi! hi</b>.</p>`,
+      followUps: ['How would you let a method "return" a changed int to the caller? (return it, or use an int[1] / AtomicInteger holder)', 'What if <code>change</code> did <code>sb = new StringBuilder("bye")</code> before appending?']
+    }
+  });
+
+  practice.push({
+    title: 'Spiral Order of a Matrix',
+    level: 'Medium', tags: ['2D array', 'boundaries', 'simulation'], companies: ['Microsoft', 'Amazon', 'Apple'],
+    statement: `<p>Given an m × n matrix, return all elements in <b>clockwise spiral order</b>, starting at the top-left corner.</p>`,
+    constraints: `1 ≤ m, n ≤ 100; matrix is rectangular`,
+    example: `<p>[[1, 2, 3], [4, 5, 6], [7, 8, 9]] → ${H.c('g', '[1, 2, 3, 6, 9, 8, 7, 4, 5]')}. Go right along the top row, down the right column, left along the bottom, up the left column, then repeat one layer in.</p>`,
+    brute: { why: `<p>Walk with a direction vector and a <code>visited[][]</code> matrix, turning right whenever the next cell is outside or already visited. Correct and intuitive, but needs O(m·n) extra memory for visited and more bounds checks per step.</p>`, code: `
+static List<Integer> spiralVisited(int[][] m) {
+    int R = m.length, C = m[0].length;
+    boolean[][] seen = new boolean[R][C];
+    int[] dr = {0, 1, 0, -1}, dc = {1, 0, -1, 0};      // right, down, left, up
+    List<Integer> out = new ArrayList<>();
+    int r = 0, c = 0, d = 0;
+    for (int k = 0; k < R * C; k++) {
+        out.add(m[r][c]);
+        seen[r][c] = true;
+        int nr = r + dr[d], nc = c + dc[d];
+        if (nr < 0 || nr >= R || nc < 0 || nc >= C || seen[nr][nc]) {
+            d = (d + 1) % 4;                            // turn right
+            nr = r + dr[d]; nc = c + dc[d];
+        }
+        r = nr; c = nc;
+    }
+    return out;
+}` },
+    mcq: { q: 'With four boundaries top, bottom, left, right — when does the loop stop?', options: ['When top == bottom', 'When top &gt; bottom or left &gt; right', 'After m + n steps', 'When the output has m elements'], answer: 1, explain: 'Each finished side shrinks a boundary. Once the boundaries cross, there is no unvisited layer left.' },
+    hints: [`<p>Hint 1: keep four walls: <code>top = 0, bottom = m − 1, left = 0, right = n − 1</code>. Each side you walk shrinks one wall.</p>`, `<p>Hint 2: right along top (then top++), down along right (right--), left along bottom (bottom--), up along left (left++).</p>`, `<p>Hint 3: for a single remaining row or column, the "left along bottom" and "up along left" legs would repeat cells — guard them with <code>if (top &lt;= bottom)</code> and <code>if (left &lt;= right)</code>.</p>`],
+    solution: {
+      approach: `<p>Peel the matrix layer by layer using four shrinking boundaries. Guards on the third and fourth legs prevent double-counting when only one row or column remains.</p>`,
+      code: `
+class Spiral {
+    static List<Integer> spiral(int[][] m) {
+        List<Integer> out = new ArrayList<>();
+        int top = 0, bottom = m.length - 1, left = 0, right = m[0].length - 1;
+        while (top <= bottom && left <= right) {
+            for (int c = left; c <= right; c++) out.add(m[top][c]);      // → along the top
+            top++;
+            for (int r = top; r <= bottom; r++) out.add(m[r][right]);    // ↓ down the right side
+            right--;
+            if (top <= bottom) {                                         // a row is still left
+                for (int c = right; c >= left; c--) out.add(m[bottom][c]); // ← along the bottom
+                bottom--;
+            }
+            if (left <= right) {                                         // a column is still left
+                for (int r = bottom; r >= top; r--) out.add(m[r][left]);   // ↑ up the left side
+                left++;
+            }
+        }
+        return out;
+    }
+    public static void main(String[] args) {
+        System.out.println(spiral(new int[][]{{1, 2, 3}, {4, 5, 6}, {7, 8, 9}}));   // [1, 2, 3, 6, 9, 8, 7, 4, 5]
+        System.out.println(spiral(new int[][]{{1, 2, 3, 4}, {5, 6, 7, 8}}));        // [1, 2, 3, 4, 8, 7, 6, 5]
+    }
+}`,
+      dry: { head: ['leg', 'cells', 'walls after (t, b, l, r)'], rows: [['→ top', '1 2 3', '1, 2, 0, 2'], ['↓ right', '6 9', '1, 2, 0, 1'], ['← bottom', '8 7', '1, 1, 0, 1'], ['↑ left', '4', '1, 1, 1, 1'], ['→ top (then ↓ is empty)', '5', '2, 1, 1, 0 → stop']] },
+      complexity: `<p>O(m·n) time (each cell added once), O(1) extra space besides the output.</p>`,
+      followUps: ['Generate an n × n matrix filled 1..n² in spiral order.', 'Return the spiral counter-clockwise.']
+    }
+  });
+
+  practice.push({
+    title: "Pascal's Triangle as a Jagged Array",
+    level: 'Medium', tags: ['jagged array', 'nested loops', 'overflow'], companies: ['Google', 'Adobe'],
+    statement: `<p>Return the first <code>n</code> rows of Pascal's triangle as an <code>int[][]</code> where row i has exactly i + 1 elements. Each row starts and ends with 1; every inner element is the sum of the two elements above it.</p>`,
+    constraints: `1 ≤ n ≤ 30 (all values fit in int)`,
+    example: `<p>n = 5 → [[1], [1, 1], [1, 2, 1], [1, 3, 3, 1], [1, ${H.c('g', '4')}, 6, 4, 1]] — the green 4 = 1 + 3 from the row above.</p>`,
+    brute: { why: `<p>Compute every entry independently with C(i, j) = i! / (j!(i − j)!). It recomputes factorials over and over, and factorials overflow <code>long</code> beyond 20!, so rows past 20 come out wrong even though the entries themselves are small.</p>`, code: `
+static long fact(int k) { long f = 1; for (int i = 2; i <= k; i++) f *= i; return f; }   // overflows for k > 20
+static int[][] pascalFactorial(int n) {
+    int[][] t = new int[n][];
+    for (int i = 0; i < n; i++) {
+        t[i] = new int[i + 1];
+        for (int j = 0; j <= i; j++) t[i][j] = (int) (fact(i) / (fact(j) * fact(i - j)));
+    }
+    return t;
+}` },
+    mcq: { q: 'How should you allocate the triangle?', options: ['new int[n][n] and ignore the extra cells', 'new int[n][] then t[i] = new int[i + 1] for each row', 'An int[] of size n²', 'An ArrayList only'], answer: 1, explain: 'A jagged array stores exactly the needed cells, and t[i].length tells each row\'s size naturally.' },
+    hints: [`<p>Hint 1: each row only depends on the previous row — build top-down.</p>`, `<p>Hint 2: <code>t[i] = new int[i + 1]; t[i][0] = t[i][i] = 1;</code></p>`, `<p>Hint 3: inner loop <code>for (int j = 1; j &lt; i; j++) t[i][j] = t[i - 1][j - 1] + t[i - 1][j];</code>. Row 0 has a single 1 — the inner loop runs zero times.</p>`],
+    solution: {
+      approach: `<p>Allocate a jagged array, set the two border 1s of each row, and fill inner cells from the row above. Only additions — no overflow for n ≤ 30 (max entry C(29,14) = 77 558 760).</p>`,
+      code: `
+class Pascal {
+    static int[][] generate(int n) {
+        int[][] t = new int[n][];
+        for (int i = 0; i < n; i++) {
+            t[i] = new int[i + 1];
+            t[i][0] = 1;
+            t[i][i] = 1;
+            for (int j = 1; j < i; j++) t[i][j] = t[i - 1][j - 1] + t[i - 1][j];
+        }
+        return t;
+    }
+    public static void main(String[] args) {
+        System.out.println(Arrays.deepToString(generate(5)));  // [[1], [1, 1], [1, 2, 1], [1, 3, 3, 1], [1, 4, 6, 4, 1]]
+    }
+}`,
+      dry: { head: ['i', 'row created', 'inner cells', 'row'], rows: [['0', 'int[1]', '—', '[1]'], ['1', 'int[2]', '—', '[1, 1]'], ['2', 'int[3]', 't[2][1] = 1 + 1', '[1, 2, 1]'], ['3', 'int[4]', '1+2, 2+1', '[1, 3, 3, 1]']] },
+      complexity: `<p>O(n²) time and space — exactly the number of cells in the output.</p>`,
+      followUps: ['Return only row k using O(k) memory (update one array from right to left).', 'Print the triangle centred with String.repeat for the padding.']
+    }
+  });
+
+  practice.push({
+    title: 'Rotate an Array Right by k (In Place)',
+    level: 'Medium', tags: ['arrays', 'reverse trick', 'modulo'], companies: ['Microsoft', 'Amazon', 'Bloomberg'],
+    statement: `<p>Rotate <code>int[] a</code> to the right by k steps in place: every element moves k positions right, wrapping around. Use O(1) extra space.</p>`,
+    constraints: `1 ≤ n ≤ 10<sup>5</sup>; 0 ≤ k ≤ 10<sup>9</sup>`,
+    example: `<p>a = [1, 2, 3, 4, 5, 6, 7], k = 3 → ${H.c('g', '[5, 6, 7, 1, 2, 3, 4]')}. k = 10 is the same as k = 3 (10 % 7).</p>`,
+    brute: { why: `<p>Rotate by one position k times: each single rotation shifts all n elements, so O(n·k) — with k up to 10<sup>9</sup> that never finishes. Even after <code>k %= n</code> it is O(n²) in the worst case.</p>`, code: `
+static void rotateSlow(int[] a, int k) {
+    k %= a.length;
+    for (int step = 0; step < k; step++) {
+        int last = a[a.length - 1];
+        for (int i = a.length - 1; i > 0; i--) a[i] = a[i - 1];   // shift everything right by one
+        a[0] = last;
+    }
+}` },
+    mcq: { q: 'Which three reversals rotate right by k?', options: ['Reverse first k, reverse rest, reverse all', 'Reverse all, reverse first k, reverse the remaining n − k', 'Reverse all three times', 'Reverse last k only'], answer: 1, explain: 'Reversing everything puts the last k elements in front (backwards); reversing each part fixes their internal order.' },
+    hints: [`<p>Hint 1: first reduce <code>k %= n</code> — rotating by n changes nothing.</p>`, `<p>Hint 2: [1 2 3 4 5 6 7] reversed is [7 6 5 4 3 2 1]. The first 3 are the elements that must end up in front, just backwards.</p>`, `<p>Hint 3: write a helper <code>reverse(a, lo, hi)</code> with two pointers. Recipe: reverse(0, n−1); reverse(0, k−1); reverse(k, n−1).</p>`],
+    solution: {
+      approach: `<p>Three in-place reversals with one helper. Each element is swapped at most twice, so it is linear and needs no extra array.</p>`,
+      code: `
+class RotateArray {
+    static void rotate(int[] a, int k) {
+        int n = a.length;
+        k %= n;                       // k can be huge
+        reverse(a, 0, n - 1);         // [7 6 5 4 3 2 1]
+        reverse(a, 0, k - 1);         // [5 6 7 | 4 3 2 1]
+        reverse(a, k, n - 1);         // [5 6 7 | 1 2 3 4]
+    }
+    static void reverse(int[] a, int lo, int hi) {
+        while (lo < hi) {
+            int t = a[lo]; a[lo] = a[hi]; a[hi] = t;
+            lo++; hi--;
+        }
+    }
+    public static void main(String[] args) {
+        int[] a = {1, 2, 3, 4, 5, 6, 7};
+        rotate(a, 10);
+        System.out.println(Arrays.toString(a));   // [5, 6, 7, 1, 2, 3, 4]
+    }
+}`,
+      alt: [{ lang: 'python', code: `def rotate(a, k):\n    n = len(a)\n    k %= n\n    a[:] = a[-k:] + a[:-k] if k else a\n\na = [1, 2, 3, 4, 5, 6, 7]\nrotate(a, 10)\nprint(a)`, run: true }],
+      dry: { head: ['step', 'array'], rows: [['start (k = 10 % 7 = 3)', '[1, 2, 3, 4, 5, 6, 7]'], ['reverse all', '[7, 6, 5, 4, 3, 2, 1]'], ['reverse 0..2', '[5, 6, 7, 4, 3, 2, 1]'], ['reverse 3..6', H.c('g', '[5, 6, 7, 1, 2, 3, 4]')]] },
+      complexity: `<p>O(n) time, O(1) extra space. (A copy-based version with <code>System.arraycopy</code> is also O(n) but uses O(n) memory.)</p>`,
+      followUps: ['Rotate left by k.', 'Do it with the "cyclic replacements" method (gcd(n, k) cycles).']
+    }
+  });
+
+  practice.push({
+    title: 'Reverse the Words in a Sentence',
+    level: 'Medium', tags: ['String', 'split', 'StringBuilder'], companies: ['Microsoft', 'Amazon', 'Walmart'],
+    statement: `<p>Given a sentence that may have leading, trailing and multiple spaces between words, return the words in <b>reverse order</b> separated by exactly one space, with no leading or trailing spaces.</p>`,
+    constraints: `1 ≤ s.length() ≤ 10<sup>4</sup>; at least one word; words are runs of non-space characters`,
+    example: `<p>"␣␣the sky␣␣is blue␣" → ${H.c('g', '"blue is sky the"')}. The extra spaces vanish; each word keeps its own letters in order.</p>`,
+    brute: { why: `<p>Scan characters by hand and glue each word in front of the result with <code>result = word + " " + result</code>. Each prepend copies the whole result so far: O(n²) characters copied for long inputs, and it is easy to leave stray spaces.</p>`, code: `
+static String reverseWordsSlow(String s) {
+    String result = "", word = "";
+    for (int i = 0; i <= s.length(); i++) {
+        char c = i < s.length() ? s.charAt(i) : ' ';    // treat the end like a space
+        if (c != ' ') word += c;                         // O(len) copy each time
+        else if (!word.isEmpty()) {
+            result = result.isEmpty() ? word : word + " " + result;
+            word = "";
+        }
+    }
+    return result;
+}` },
+    mcq: { q: 'Why <code>split("\\\\s+")</code> on the <b>stripped</b> string rather than <code>split(" ")</code>?', options: ['split(" ") is slower', 'split(" ") produces empty strings between consecutive spaces (and a leading empty string)', 'split(" ") removes words', 'There is no difference'], answer: 1, explain: '"a  b".split(" ") gives [a, "", b]. "\\s+" treats any run of whitespace as one separator; stripping first avoids a leading empty piece.' },
+    hints: [`<p>Hint 1: three steps: tidy the ends, cut into words, glue them back in reverse.</p>`, `<p>Hint 2: <code>String[] w = s.strip().split("\\\\s+");</code></p>`, `<p>Hint 3: loop from the last word to the first, appending to a StringBuilder with a space between (not after the last). Or reverse the array and use <code>String.join(" ", w)</code>.</p>`],
+    solution: {
+      approach: `<p>Strip, split on whitespace runs, then build the answer backwards with a StringBuilder (O(n) total).</p>`,
+      code: `
+class ReverseWords {
+    static String reverseWords(String s) {
+        String[] words = s.strip().split("\\\\s+");
+        StringBuilder sb = new StringBuilder(s.length());
+        for (int i = words.length - 1; i >= 0; i--) {
+            sb.append(words[i]);
+            if (i > 0) sb.append(' ');          // single space between words, none at the end
+        }
+        return sb.toString();
+    }
+    public static void main(String[] args) {
+        System.out.println("[" + reverseWords("  the sky  is blue ") + "]");   // [blue is sky the]
+        System.out.println("[" + reverseWords("hello") + "]");                 // [hello]
+    }
+}`,
+      alt: [{ lang: 'python', code: `def reverse_words(s):\n    return " ".join(reversed(s.split()))\n\nprint("[" + reverse_words("  the sky  is blue ") + "]")`, run: true }],
+      dry: { head: ['step', 'value'], rows: [['strip', '"the sky  is blue"'], ['split("\\\\s+")', '[the, sky, is, blue]'], ['append from the end', 'blue → blue is → blue is sky → blue is sky the']] },
+      complexity: `<p>O(n) time and O(n) space.</p>`,
+      followUps: ['Do it in place on a <code>char[]</code>: reverse the whole array, then reverse each word.', 'Keep the original spacing between words.']
+    }
+  });
+
+  practice.push({
+    title: 'Predict the Output: Labels, continue and switch in Loops',
+    level: 'Medium', tags: ['predict the output', 'labels', 'break', 'continue', 'switch'], companies: ['Infosys', 'Accenture', 'SAP'],
+    statement: `<p>What do these two snippets print?</p>
+<pre><code>// Snippet A
+outer:
+for (int i = 1; i &lt;= 3; i++) {
+    for (int j = 1; j &lt;= 3; j++) {
+        if (j == 2) continue outer;
+        if (i == 3) break outer;
+        System.out.print(i + "" + j + " ");
+    }
+}
+System.out.println("end");
+
+// Snippet B
+for (int k = 0; k &lt; 4; k++) {
+    switch (k) {
+        case 1: continue;
+        case 2: break;
+        default: System.out.print("k" + k + " ");
+    }
+    System.out.print("after" + k + " ");
+}</code></pre>`,
+    constraints: `Standard Java semantics`,
+    example: `<p>In snippet A the very first print is <code>11</code> (i = 1, j = 1: neither condition is true). Now continue the trace.</p>`,
+    brute: { why: `<p>Treating <code>continue outer</code> like a plain <code>continue</code> (only skipping one j) predicts "11 13 21 23 end"; treating <code>break</code> inside the switch as leaving the loop predicts "k0 after0" only. Both are wrong. Tracing with a table of (i, j) and the jump target of each statement avoids it.</p>`, code: `
+// Instrumented trace for snippet A: log every decision
+outer:
+for (int i = 1; i <= 3; i++) {
+    for (int j = 1; j <= 3; j++) {
+        System.out.print("[i=" + i + ",j=" + j + "] ");
+        if (j == 2) { System.out.print("continue-outer "); continue outer; }
+        if (i == 3) { System.out.print("break-outer "); break outer; }
+        System.out.print(i + "" + j + " ");
+    }
+}
+System.out.println("end");` },
+    mcq: { q: 'In snippet B, what does <code>break</code> in <code>case 2</code> leave?', options: ['The for loop', 'The switch only', 'The method', 'Nothing — it is ignored'], answer: 1, explain: 'break exits the innermost enclosing switch or loop; here that is the switch, so "after2" is still printed.' },
+    hints: [`<p>Hint 1: <code>continue outer</code> abandons the <b>whole inner loop</b> and jumps to <code>i++</code> of the outer loop.</p>`, `<p>Hint 2: in snippet A, j never reaches 3 (j == 2 always jumps), and at i = 3 the first iteration breaks out before printing.</p>`, `<p>Hint 3: in snippet B, <code>continue</code> inside a switch belongs to the loop (skips "after1"); <code>break</code> belongs to the switch. Tabulate k = 0..3.</p>`],
+    solution: {
+      approach: `<p>Track exactly where each jump lands. A: prints 11 and 21, then breaks at i = 3. B: k = 1 skips the rest of the loop body; k = 2 only leaves the switch.</p>`,
+      code: `
+outer:
+for (int i = 1; i <= 3; i++) {
+    for (int j = 1; j <= 3; j++) {
+        if (j == 2) continue outer;
+        if (i == 3) break outer;
+        System.out.print(i + "" + j + " ");
+    }
+}
+System.out.println("end");                       // A: 11 21 end
+
+for (int k = 0; k < 4; k++) {
+    switch (k) {
+        case 1: continue;
+        case 2: break;
+        default: System.out.print("k" + k + " ");
+    }
+    System.out.print("after" + k + " ");
+}
+System.out.println();                            // B: k0 after0 after2 k3 after3`,
+      dry: { head: ['snippet', 'state', 'event', 'printed so far'], rows: [['A', 'i=1, j=1', 'print', '11'], ['A', 'i=1, j=2', 'continue outer', '11'], ['A', 'i=2, j=1', 'print', '11 21'], ['A', 'i=3, j=1', 'break outer', '11 21 end'], ['B', 'k=1', 'continue (loop)', 'k0 after0'], ['B', 'k=2', 'break (switch)', 'k0 after0 after2']] },
+      complexity: `<p>O(1) — a tracing exercise. Answers: <b>A → "11 21 end"</b>, <b>B → "k0 after0 after2 k3 after3"</b>.</p>`,
+      followUps: ['Rewrite snippet B with an arrow switch — can you still use <code>continue</code> inside it? (Yes in a switch statement with arrows; not inside a switch expression.)', 'Rewrite snippet A without labels.']
+    }
+  });
+
+  /* ======================================================================
+     PRACTICE — Hard
+     ====================================================================== */
+  practice.push({
+    title: 'Predict the Output: The Overload Resolution Gauntlet',
+    level: 'Hard', tags: ['predict the output', 'overloading', 'varargs', 'boxing'], companies: ['Oracle', 'Goldman Sachs', 'JP Morgan'],
+    statement: `<p>Given these overloads, what does each call print?</p>
+<pre><code>static String m(int x)     { return "int"; }
+static String m(long x)    { return "long"; }
+static String m(Integer x) { return "Integer"; }
+static String m(Object x)  { return "Object"; }
+static String m(int... x)  { return "int..."; }
+
+m((byte) 1);  m('c');  m(1L);  m(1.5f);
+m(Integer.valueOf(1));  m();  m(1, 2);  m(new int[]{1});</code></pre>
+<p>Bonus: does <code>m(null)</code> compile?</p>`,
+    constraints: `Java 21 compiler rules (JLS §15.12.2)`,
+    example: `<p><code>m((byte) 1)</code> → ${H.c('g', 'int')}: in phase 1 both m(int) and m(long) accept a byte by widening; m(int) is more specific because an int can be passed to m(long) but not the reverse.</p>`,
+    brute: { why: `<p>Guessing "closest looking type" fails on <code>m(1.5f)</code> (people say long or int), <code>m(new int[]{1})</code> (people say Object) and <code>m(null)</code>. The reliable method is mechanical: phase 1 (widening only) → phase 2 (+boxing) → phase 3 (+varargs), then "most specific" among the survivors.</p>`, code: `
+class OverloadProbe {
+    static String m(int x)     { return "int"; }
+    static String m(long x)    { return "long"; }
+    static String m(Integer x) { return "Integer"; }
+    static String m(Object x)  { return "Object"; }
+    static String m(int... x)  { return "int..."; }
+    public static void main(String[] args) {
+        // When you CAN run code: print each call next to its argument type
+        Object[][] calls = { {"(byte) 1", m((byte) 1)}, {"'c'", m('c')}, {"1.5f", m(1.5f)} };
+        for (Object[] c : calls) System.out.println(c[0] + " -> " + c[1]);
+    }
+}` },
+    mcq: { q: 'Why does <code>m(1.5f)</code> print "Object"?', options: ['float widens to long', 'Phase 1 fails (float → int/long is narrowing), phase 2 boxes to Float, and Float is an Object', 'Varargs accepts any number', 'Object is always the fallback'], answer: 1, explain: 'No primitive overload accepts a float without narrowing; in phase 2 boxing makes a Float, which only m(Object) accepts.' },
+    hints: [`<p>Hint 1: phase 1 allows only identity and widening. byte and char widen to int and long; float widens only to double.</p>`, `<p>Hint 2: in phases 1–2 the varargs method behaves like <code>m(int[] x)</code>, so <code>m(new int[]{1})</code> matches it exactly — and int[] is more specific than Object.</p>`, `<p>Hint 3: <code>m()</code> and <code>m(1, 2)</code> have the wrong arity for every fixed method, so only phase 3 (varargs) can serve them. <code>m(null)</code>: Integer, Object and int[] all accept null; Integer vs int[] — neither is more specific → ambiguous.</p>`],
+    solution: {
+      approach: `<p>Apply the three phases and the most-specific rule to each call. Results: int, int, long, Object, Integer, int..., int..., int...; and <code>m(null)</code> is a compile error ("reference to m is ambiguous").</p>`,
+      code: `
+class Overload {
+    static String m(int x)     { return "int"; }
+    static String m(long x)    { return "long"; }
+    static String m(Integer x) { return "Integer"; }
+    static String m(Object x)  { return "Object"; }
+    static String m(int... x)  { return "int..."; }
+    public static void main(String[] args) {
+        System.out.println(m((byte) 1));           // int      phase 1: byte→int, int more specific than long
+        System.out.println(m('c'));                // int      phase 1: char→int
+        System.out.println(m(1L));                 // long     phase 1: exact
+        System.out.println(m(1.5f));               // Object   phase 2: float→Float→Object
+        System.out.println(m(Integer.valueOf(1))); // Integer  phase 1: exact, more specific than Object
+        System.out.println(m());                   // int...   phase 3 only
+        System.out.println(m(1, 2));               // int...   phase 3 only
+        System.out.println(m(new int[]{1}));       // int...   phase 1: int[] matches int... as an array
+        // m(null);  // compile error: reference to m is ambiguous (m(Integer) and m(int...))
+    }
+}`,
+      dry: { head: ['call', 'phase that succeeds', 'candidates there', 'winner'], rows: [['m((byte) 1)', '1', 'int, long', 'int'], ["m('c')", '1', 'int, long', 'int'], ['m(1L)', '1', 'long', 'long'], ['m(1.5f)', '2', 'Object', 'Object'], ['m(Integer.valueOf(1))', '1', 'Integer, Object', 'Integer'], ['m()', '3', 'int...', 'int...'], ['m(new int[]{1})', '1', 'Object, int...', 'int...'], ['m(null)', '1', 'Integer, Object, int...', H.c('r', 'ambiguous')]] },
+      complexity: `<p>Compile-time reasoning only; nothing happens at runtime to choose the overload.</p>`,
+      followUps: ['Add <code>m(double x)</code>: which calls change? (m(1.5f) → double; long/int calls unchanged)', 'Remove <code>m(int x)</code>: what does <code>m(\'c\')</code> print now? (long)']
+    }
+  });
+
+  practice.push({
+    title: 'Implement split(char) Without Regex — Matching Java Semantics',
+    level: 'Hard', tags: ['String', 'parsing', 'edge cases', 'indexOf'], companies: ['Google', 'Uber', 'Atlassian'],
+    statement: `<p>Write <code>static String[] splitChar(String s, char d)</code> that returns exactly what <code>s.split(String.valueOf(d))</code> returns for a non-regex-special delimiter: cut at every occurrence of <code>d</code>, keep leading and middle empty pieces, <b>drop trailing empty pieces</b>, and return <code>[""]</code> for the empty string. Do not use any regex or <code>split</code>.</p>`,
+    constraints: `0 ≤ s.length() ≤ 10<sup>6</sup>; d is a letter, digit, comma, semicolon or space`,
+    example: `<p>${H.table(['s', 'result'], [['"a,b,,c,,"', '[a, b, "", c]'], ['",a"', '["", a]'], ['",,,"', H.c('y', '[] (empty array)')], ['""', H.c('y', '[""] (one empty string)')], ['"abc"', '[abc]']])}</p>`,
+    brute: { why: `<p>Repeatedly find the next delimiter and chop the front off with <code>s = s.substring(idx + 1)</code>. Every chop copies the rest of the string, so a string with many delimiters costs O(n²) character copies — about 10<sup>12</sup> for n = 10<sup>6</sup>. (It also tends to get the trailing-empty rule wrong.)</p>`, code: `
+static String[] splitSlow(String s, char d) {
+    List<String> parts = new ArrayList<>();
+    String rest = s;
+    int idx;
+    while ((idx = rest.indexOf(d)) >= 0) {
+        parts.add(rest.substring(0, idx));
+        rest = rest.substring(idx + 1);          // copies the remainder every time: O(n) each
+    }
+    parts.add(rest);
+    int end = parts.size();
+    while (end > 0 && parts.get(end - 1).isEmpty()) end--;
+    if (s.isEmpty()) return new String[]{""};
+    return parts.subList(0, end).toArray(new String[0]);
+}` },
+    mcq: { q: 'What does <code>",,,".split(",")</code> return?', options: ['[ "", "", "", "" ]', '[ "" ]', 'An empty array (length 0)', 'null'], answer: 2, explain: 'Cutting gives four empty pieces; all of them are trailing empties, and the default limit 0 removes trailing empties → length 0. Only the special case of an empty input returns [""].' },
+    hints: [`<p>Hint 1: one left-to-right scan with a <code>start</code> index. At each delimiter, the piece is <code>s.substring(start, i)</code>; then <code>start = i + 1</code>. After the loop add the last piece <code>s.substring(start)</code>.</p>`, `<p>Hint 2: then drop trailing empty pieces: shrink an <code>end</code> counter while the last kept piece is empty.</p>`, `<p>Hint 3: special case first: empty input → <code>new String[]{""}</code>. Verify your version against the real <code>split</code> on: "", ",", ",a", "a,", "a,,b", ",,,".</p>`],
+    solution: {
+      approach: `<p>Single scan collecting pieces (each substring copied once → O(n) total), then trim trailing empties, with the empty-input special case. A test loop compares against <code>String.split</code>.</p>`,
+      code: `
+class SplitChar {
+    static String[] splitChar(String s, char d) {
+        if (s.isEmpty()) return new String[]{""};          // Java's special case
+        List<String> parts = new ArrayList<>();
+        int start = 0;
+        for (int i = 0; i < s.length(); i++) {
+            if (s.charAt(i) == d) {
+                parts.add(s.substring(start, i));           // may be "" for consecutive delimiters
+                start = i + 1;
+            }
+        }
+        parts.add(s.substring(start));                      // last piece (may be "")
+        int end = parts.size();
+        while (end > 0 && parts.get(end - 1).isEmpty()) end--;   // drop TRAILING empties only
+        return parts.subList(0, end).toArray(new String[0]);
+    }
+    public static void main(String[] args) {
+        String[] tests = {"a,b,,c,,", ",a", ",,,", "", "abc", "a,", ",", "a,,b"};
+        for (String t : tests) {
+            String[] mine = splitChar(t, ',');
+            String[] real = t.split(",");
+            System.out.println("\\"" + t + "\\" -> " + Arrays.toString(mine) + "  same as split: " + Arrays.equals(mine, real));
+        }
+    }
+}`,
+      dry: { head: ['i', 's[i]', 'action', 'parts'], rows: [['1', ',', 'add "a", start = 2', '[a]'], ['3', ',', 'add "b", start = 4', '[a, b]'], ['4', ',', 'add "", start = 5', '[a, b, ""]'], ['6', ',', 'add "c", start = 7', '[a, b, "", c]'], ['7', ',', 'add "", start = 8', '[a, b, "", c, ""]'], ['end', '', 'add "" then trim 2 trailing', H.c('g', '[a, b, "", c]')]] },
+      complexity: `<p>O(n) time (each character examined once, each piece copied once); O(n) space for the pieces.</p>`,
+      followUps: ['Support the <code>limit</code> parameter: positive (at most limit pieces, last keeps the rest), negative (keep trailing empties).', 'Split on a multi-character delimiter like "::" using <code>indexOf(String, from)</code>.']
+    }
+  });
+
+  practice.push({
+    title: "Game of Life: Next Generation In Place",
+    level: 'Hard', tags: ['2D array', 'neighbours', 'in place', 'bit tricks'], companies: ['Google', 'Dropbox', 'Snap'],
+    statement: `<p>A board of cells is 1 (alive) or 0 (dead). Each cell looks at its 8 neighbours. A live cell with 2 or 3 live neighbours survives; otherwise it dies. A dead cell with exactly 3 live neighbours becomes alive. All cells update <b>simultaneously</b>. Update the board in place, using O(1) extra memory.</p>`,
+    constraints: `1 ≤ rows, cols ≤ 50`,
+    example: `<p>${H.table(['before', 'after'], [['0 1 0<br>0 0 1<br>1 1 1<br>0 0 0', '0 0 0<br>1 0 1<br>0 1 1<br>0 1 0']])} The cell at (1, 0) was dead with exactly 3 live neighbours (0,1), (2,0), (2,1) → it is ${H.c('g', 'born')}.</p>`,
+    brute: { why: `<p>Copy the board, read neighbours from the copy and write into the original. Simple and correct (simultaneous update is preserved) but uses O(rows · cols) extra memory. Updating the original <b>without</b> a copy is the classic bug: cells already updated pollute their neighbours' counts.</p>`, code: `
+static void lifeWithCopy(int[][] b) {
+    int R = b.length, C = b[0].length;
+    int[][] old = new int[R][];
+    for (int r = 0; r < R; r++) old[r] = b[r].clone();        // deep copy, row by row
+    for (int r = 0; r < R; r++)
+        for (int c = 0; c < C; c++) {
+            int live = 0;
+            for (int dr = -1; dr <= 1; dr++)
+                for (int dc = -1; dc <= 1; dc++) {
+                    if (dr == 0 && dc == 0) continue;
+                    int nr = r + dr, nc = c + dc;
+                    if (nr >= 0 && nr < R && nc >= 0 && nc < C) live += old[nr][nc];
+                }
+            b[r][c] = (old[r][c] == 1 && (live == 2 || live == 3)) || (old[r][c] == 0 && live == 3) ? 1 : 0;
+        }
+}` },
+    mcq: { q: 'How can one int cell remember both its OLD and NEW state?', options: ['Use negative numbers only', 'Bit 0 = current state, bit 1 = next state; read with <code>&amp; 1</code>, finish with <code>&gt;&gt;= 1</code>', 'Store the new state in a String', 'It cannot; a copy is required'], answer: 1, explain: 'Values 0..3 encode (next, current). Neighbour counting reads only bit 0, so pending updates do not interfere; a final shift moves next into place.' },
+    hints: [`<p>Hint 1: the problem is that writing new values early corrupts neighbour counts. Keep the old value readable while storing the new one.</p>`, `<p>Hint 2: cells only hold 0 or 1, so bit 1 is free. Set <code>b[r][c] |= 2</code> when the cell will be alive next round; count neighbours with <code>b[nr][nc] &amp; 1</code>.</p>`, `<p>Hint 3: neighbours via two loops <code>dr, dc ∈ {-1, 0, 1}</code> skipping (0, 0), with bounds checks. Second pass: <code>b[r][c] &gt;&gt;= 1</code>.</p>`],
+    solution: {
+      approach: `<p>Two passes. Pass 1 computes each cell's next state from bit 0 of its neighbours and stores it in bit 1. Pass 2 shifts every cell right by one, making the next state current.</p>`,
+      code: `
+class Life {
+    static void gameOfLife(int[][] b) {
+        int R = b.length, C = b[0].length;
+        for (int r = 0; r < R; r++) {
+            for (int c = 0; c < C; c++) {
+                int live = 0;
+                for (int dr = -1; dr <= 1; dr++) {
+                    for (int dc = -1; dc <= 1; dc++) {
+                        if (dr == 0 && dc == 0) continue;               // skip the cell itself
+                        int nr = r + dr, nc = c + dc;
+                        if (nr >= 0 && nr < R && nc >= 0 && nc < C) live += b[nr][nc] & 1; // OLD state only
+                    }
+                }
+                boolean alive = (b[r][c] & 1) == 1;
+                if ((alive && (live == 2 || live == 3)) || (!alive && live == 3)) b[r][c] |= 2;  // next = alive
+            }
+        }
+        for (int[] row : b)
+            for (int c = 0; c < C; c++) row[c] >>= 1;                   // next becomes current
+    }
+    public static void main(String[] args) {
+        int[][] b = {{0, 1, 0}, {0, 0, 1}, {1, 1, 1}, {0, 0, 0}};
+        gameOfLife(b);
+        System.out.println(Arrays.deepToString(b));   // [[0, 0, 0], [1, 0, 1], [0, 1, 1], [0, 1, 0]]
+    }
+}`,
+      dry: { head: ['cell', 'old', 'live neighbours', 'rule', 'new'], rows: [['(0,1)', '1', '1', 'under-population', '0'], ['(1,0)', '0', '3', 'birth', H.c('g', '1')], ['(1,2)', '1', '3', 'survives', '1'], ['(2,1)', '1', '3', 'survives', '1'], ['(3,1)', '0', '3', 'birth', H.c('g', '1')]] },
+      complexity: `<p>O(R·C·8) = O(R·C) time; O(1) extra space.</p>`,
+      followUps: ['Make the board wrap around (a torus) using modulo for neighbours.', 'The board is infinite and sparse: store live cells in a <code>HashSet</code> of coordinates.']
+    }
+  });
+
+  practice.push({
+    title: 'Run-Length Encoding and Decoding',
+    level: 'Hard', tags: ['String', 'StringBuilder', 'parsing', 'validation'], companies: ['Amazon', 'Bloomberg', 'Cisco'],
+    statement: `<p>Implement <code>encode</code>: replace each run of the same letter with the letter followed by the run length ("aaabccdddd" → "a3b1c2d4"). Implement <code>decode</code> to reverse it, supporting multi-digit counts ("x12") and throwing <code>IllegalArgumentException</code> for malformed input (starts with a digit, or a letter with no count). Input text contains letters only.</p>`,
+    constraints: `0 ≤ length ≤ 10<sup>5</sup>; decoded output ≤ 10<sup>6</sup> characters`,
+    example: `<p>encode("aaabccdddd") = ${H.c('g', '"a3b1c2d4"')}; encode("xxxxxxxxxxxx") = "x12"; decode("a3b1c2d4") = "aaabccdddd"; decode("3a") → ${H.c('r', 'IllegalArgumentException')}; decode("ab2") → ${H.c('r', 'IllegalArgumentException')} (a has no count).</p>`,
+    brute: { why: `<p>Building results with <code>+=</code> copies the whole output for every run: O(n²) for long inputs. Decoding by assuming counts are a single digit (<code>t.charAt(i + 1) - '0'</code>) breaks on "x12". Both are classic interview pitfalls.</p>`, code: `
+static String encodeSlow(String s) {
+    String out = "";
+    for (int i = 0; i < s.length(); ) {
+        int j = i;
+        while (j < s.length() && s.charAt(j) == s.charAt(i)) j++;
+        out += s.charAt(i) + "" + (j - i);           // copies out each time
+        i = j;
+    }
+    return out;
+}
+static String decodeSingleDigit(String t) {           // WRONG for counts >= 10
+    String out = "";
+    for (int i = 0; i + 1 < t.length(); i += 2)
+        out += String.valueOf(t.charAt(i)).repeat(t.charAt(i + 1) - '0');
+    return out;
+}` },
+    mcq: { q: 'Decoding "x12": how do you read a number that has several digits?', options: ['Read one digit only', 'count = count * 10 + (digit − \'0\') while the next char is a digit', 'Integer.parseInt of the whole string', 'Count the digits and multiply'], answer: 1, explain: 'Accumulating digit by digit builds 1, then 1·10 + 2 = 12, and stops at the next letter.' },
+    hints: [`<p>Hint 1 (encode): find each run with two pointers i (start) and j (first index after the run). The run length is j − i.</p>`, `<p>Hint 2 (decode): read a letter, then loop over following digits accumulating <code>count = count * 10 + d</code>. Zero digits read → malformed.</p>`, `<p>Hint 3: use StringBuilder for both directions; <code>String.valueOf(ch).repeat(count)</code> or a loop of appends. Empty input → empty output.</p>`],
+    solution: {
+      approach: `<p>Encode: scan runs with two pointers and append letter + length to a StringBuilder. Decode: a small parser — expect a letter, then one or more digits, append the letter count times; anything else throws.</p>`,
+      code: `
+class RunLength {
+    static String encode(String s) {
+        StringBuilder sb = new StringBuilder();
+        int i = 0;
+        while (i < s.length()) {
+            char ch = s.charAt(i);
+            int j = i;
+            while (j < s.length() && s.charAt(j) == ch) j++;   // j = first index after the run
+            sb.append(ch).append(j - i);
+            i = j;
+        }
+        return sb.toString();
+    }
+
+    static String decode(String t) {
+        StringBuilder sb = new StringBuilder();
+        int i = 0;
+        while (i < t.length()) {
+            char ch = t.charAt(i++);
+            if (!Character.isLetter(ch)) throw new IllegalArgumentException("expected a letter at index " + (i - 1));
+            int count = 0, digitsStart = i;
+            while (i < t.length() && Character.isDigit(t.charAt(i))) {
+                count = count * 10 + (t.charAt(i) - '0');   // multi-digit counts
+                i++;
+            }
+            if (i == digitsStart) throw new IllegalArgumentException("missing count after '" + ch + "'");
+            for (int k = 0; k < count; k++) sb.append(ch);
+        }
+        return sb.toString();
+    }
+
+    public static void main(String[] args) {
+        String e = encode("aaabccdddd");
+        System.out.println(e + " " + decode(e));              // a3b1c2d4 aaabccdddd
+        System.out.println(encode("xxxxxxxxxxxx"));            // x12
+        System.out.println(decode("x12").length());            // 12
+        try { decode("ab2"); } catch (IllegalArgumentException ex) { System.out.println(ex.getMessage()); } // missing count after 'a'
+    }
+}`,
+      dry: { head: ['phase', 'i', 'j / count', 'output so far'], rows: [['encode', '0', 'j = 3 (aaa)', 'a3'], ['encode', '3', 'j = 4 (b)', 'a3b1'], ['encode', '4', 'j = 6 (cc)', 'a3b1c2'], ['encode', '6', 'j = 10 (dddd)', 'a3b1c2d4'], ['decode "x12"', '1', 'count = 1 → 12', 'x × 12']] },
+      complexity: `<p>Encode O(n); decode O(n + output length); both use O(output) space.</p>`,
+      followUps: ['Only encode runs longer than 1 ("aaab" → "a3b"); how does decode change?', 'Encode digits in the input too (needs an escape scheme).']
+    }
+  });
+
+  practice.push({
+    title: 'Predict the Output: Loop, Increment and Overflow Traps',
+    level: 'Hard', tags: ['predict the output', 'loops', 'overflow', 'increment'], companies: ['Oracle', 'SAP', 'Qualcomm'],
+    statement: `<p>What does this print? Six lines.</p>
+<pre><code>int i = 0;
+while (i++ &lt; 3) System.out.print(i + " ");
+System.out.println("| i=" + i);
+
+int k = 5;
+do { k -= 2; } while (k &gt; 0);
+System.out.println(k);
+
+int count = 0;
+for (int j = 0; j &lt; 10; j += 3) count++;
+System.out.println(count);
+
+short s = Short.MAX_VALUE;
+s++;
+System.out.println(s);
+
+int x = 10;
+x += x++ + ++x;
+System.out.println(x);
+
+int bad = 0;
+for (int t = 0; t &lt; 3; t++) bad += Integer.MAX_VALUE;
+System.out.println(bad);</code></pre>`,
+    constraints: `Short.MAX_VALUE = 32767; Integer.MAX_VALUE = 2147483647`,
+    example: `<p>Line 2: k goes 5 → 3 → 1 → ${H.c('g', '-1')}; the check <code>k &gt; 0</code> happens after each subtraction, so the loop stops only once k is −1.</p>`,
+    brute: { why: `<p>Intuition says "1 2 3 | i=3", "1", "3", "32768", "22" and "6442450941". Five of those six are wrong. Each line hides one rule: post-increment in a condition, do-while checks last, a stride loop counts its starting value, small-type overflow, compound assignment saving the old left value, and silent int overflow.</p>`, code: `
+// When you can run code: print intermediate values to see each rule
+int bad = 0;
+for (int t = 0; t < 3; t++) {
+    bad += Integer.MAX_VALUE;
+    System.out.println("after t=" + t + ": " + bad);   // 2147483647, -2, 2147483645
+}
+long good = 0;
+for (int t = 0; t < 3; t++) good += Integer.MAX_VALUE;
+System.out.println("with long: " + good);              // 6442450941` },
+    mcq: { q: '<code>int x = 10; x += x++ + ++x;</code> — what is x?', options: ['22', '23', '32', '33'], answer: 2, explain: 'x += e means x = x + e with the OLD x (10) saved first. e = x++ (10, x becomes 11) + ++x (12) = 22. So x = 10 + 22 = 32.' },
+    hints: [`<p>Hint 1: <code>i++ &lt; 3</code> compares the old value and still increments on the final failing check.</p>`, `<p>Hint 2: <code>for (j = 0; j &lt; 10; j += 3)</code> runs for j = 0, 3, 6, 9. A short at 32767 plus one wraps to −32768 (and <code>s++</code> compiles because it includes a cast).</p>`, `<p>Hint 3: int overflow wraps modulo 2<sup>32</sup>: MAX + MAX = −2, then −2 + MAX = 2147483645. For <code>x += …</code>, the left x is read <b>before</b> the right side runs.</p>`],
+    solution: {
+      approach: `<p>Trace each line with its rule. Output:<br><code>1 2 3 | i=4</code><br><code>-1</code><br><code>4</code><br><code>-32768</code><br><code>32</code><br><code>2147483645</code></p>`,
+      code: `
+int i = 0;
+while (i++ < 3) System.out.print(i + " ");
+System.out.println("| i=" + i);            // 1 2 3 | i=4
+
+int k = 5;
+do { k -= 2; } while (k > 0);
+System.out.println(k);                     // -1
+
+int count = 0;
+for (int j = 0; j < 10; j += 3) count++;
+System.out.println(count);                 // 4  (j = 0, 3, 6, 9)
+
+short s = Short.MAX_VALUE;
+s++;                                       // s = (short) (s + 1)
+System.out.println(s);                     // -32768
+
+int x = 10;
+x += x++ + ++x;                            // x = 10 + (10 + 12)
+System.out.println(x);                     // 32
+
+int bad = 0;
+for (int t = 0; t < 3; t++) bad += Integer.MAX_VALUE;
+System.out.println(bad);                   // 2147483645 (wrapped twice)`,
+      dry: { head: ['line', 'key rule', 'answer'], rows: [['1', 'post-increment in condition', '1 2 3 | i=4'], ['2', 'do-while checks after the body', '-1'], ['3', 'stride loop: 0, 3, 6, 9', '4'], ['4', 'short overflow wraps', '-32768'], ['5', 'compound assignment saves old x', '32'], ['6', 'int overflow mod 2<sup>32</sup>', '2147483645']] },
+      complexity: `<p>All O(1). The skill tested is precise evaluation order and fixed-width arithmetic.</p>`,
+      followUps: ['Use <code>Math.addExact</code> to make line 6 throw instead of wrapping.', 'What does <code>for (byte b = 0; b &lt; 128; b++)</code> do? (infinite loop)']
+    }
+  });
+
   registerModule({
     id: 'java02',
     title: 'Control Flow, Methods, Arrays & String Basics',
