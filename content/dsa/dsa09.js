@@ -1932,4 +1932,1315 @@ static boolean isPal(String s, int l, int r) {
       }
     }]
   });
-registerModule({ id: 'dsa09', title: 'String Algorithms', intro: '<p>x</p>', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();
+
+  // =====================================================================
+  // PRACTICE — Easy
+  // =====================================================================
+  practice.push({
+    title: 'First Unique Character in a String',
+    level: 'Easy',
+    tags: ['char arithmetic', 'counting'],
+    companies: ['Amazon', 'Bloomberg', 'Microsoft'],
+    statement: `<p>Given a string <code>s</code>, find the <b>first</b> character that appears exactly once and return its index. If no such character exists, return <code>-1</code>.</p>`,
+    constraints: `1 ≤ |s| ≤ 10<sup>5</sup>; s has only lowercase English letters.`,
+    example: `${H.arr('loveleetcode'.split(''), { hl: { 2: 'g', 0: 'r', 1: 'r', 4: 'r', 3: 'r' } })}
+      <p>Output <b class="c-g">2</b>: "l" and "o" appear twice, "${H.c('g', 'v')}" (index 2) is the first letter with count 1. <code>"aabb"</code> → <b>-1</b> (every letter repeats).</p>`,
+    brute: {
+      why: `<p>For each index i, scan the whole string to see whether s[i] appears anywhere else: O(N) per index → O(N<sup>2</sup>) = 10<sup>10</sup> for N = 10<sup>5</sup>. The wasted work: we recount the same letters over and over.</p>`,
+      code: `
+        int firstUniqBrute(String s) {
+            for (int i = 0; i < s.length(); i++) {
+                boolean repeated = false;
+                for (int j = 0; j < s.length(); j++) {
+                    if (i != j && s.charAt(i) == s.charAt(j)) { repeated = true; break; }
+                }
+                if (!repeated) return i;
+            }
+            return -1;
+        }`
+    },
+    mcq: {
+      q: 'Why do we need <b>two</b> passes over the string?',
+      options: ['The first pass sorts it', 'The first pass counts every letter; only then can the second pass know which letter is unique', 'Two passes are needed to handle uppercase', 'One pass is enough with a HashSet'],
+      answer: 1,
+      explain: 'While scanning left to right you cannot know whether a letter will appear again later. Count everything first, then the first index whose count is 1 is the answer.'
+    },
+    hints: [
+      `<p><b>Aha:</b> "appears exactly once" is a <b>count</b> question. Once you know every letter's total, the answer is just the first index whose letter has count 1.</p>`,
+      `<p>Use <code>int[26]</code> with <code>cnt[c - 'a']++</code> in pass 1. In pass 2 walk the string in order and return the first i with <code>cnt[s.charAt(i) - 'a'] == 1</code>.</p>`,
+      `<p><b>Traps:</b> walk the <b>string</b> in pass 2, not the alphabet (alphabet order would return the smallest letter, not the first position); return −1 if nothing is found. <b>Recipe:</b> count all; for i in 0..n−1: if cnt[s[i]] == 1 return i; return −1.</p>`
+    ],
+    solution: {
+      approach: `<p>Count letters in an int[26], then return the first index whose letter count is 1.</p>`,
+      code: `
+        class Solution {
+            public int firstUniqChar(String s) {
+                int[] cnt = new int[26];
+                for (int i = 0; i < s.length(); i++) cnt[s.charAt(i) - 'a']++;   // pass 1: count
+                for (int i = 0; i < s.length(); i++) {
+                    if (cnt[s.charAt(i) - 'a'] == 1) return i;                  // pass 2: first unique
+                }
+                return -1;
+            }
+
+            public static void main(String[] args) {
+                Solution sol = new Solution();
+                System.out.println(sol.firstUniqChar("leetcode"));      // 0
+                System.out.println(sol.firstUniqChar("loveleetcode"));  // 2
+                System.out.println(sol.firstUniqChar("aabb"));          // -1
+            }
+        }`,
+      dry: {
+        head: ['pass', 'i', 's[i]', 'cnt[s[i]]', 'action'],
+        rows: [
+          ['1', '0..11', 'all', 'l2 o2 v1 e4 t1 c1 d1', 'counts done'],
+          ['2', '0', 'l', '2', 'skip'],
+          ['2', '1', 'o', '2', 'skip'],
+          ['2', '2', 'v', '1', '<span class="c-g">return 2</span>']
+        ]
+      },
+      complexity: `<p><b>Time O(N)</b> (two passes). <b>Space O(1)</b> (26 counters).</p>`,
+      followUps: ['Stream of characters: answer "first unique so far" after each new char (queue + counts, or LinkedHashMap).', 'Unicode input: HashMap&lt;Character, Integer&gt; or LinkedHashMap.']
+    }
+  });
+
+  practice.push({
+    title: 'Reverse Only Letters',
+    level: 'Easy',
+    tags: ['two pointers', 'char array'],
+    companies: ['Amazon', 'Google'],
+    statement: `<p>Given a string <code>s</code>, reverse only the English letters (upper or lower case). Every non-letter character must stay at its original index.</p>`,
+    constraints: `1 ≤ |s| ≤ 100; s has printable ASCII characters (codes 33 to 122) and contains no double quote or backslash.`,
+    example: `${H.arr('ab-cd'.split(''), { hl: { 2: 'm', 0: 'g', 4: 'g', 1: 'y', 3: 'y' } })}
+      <p>"ab-cd" → <b>"dc-ba"</b>: ${H.c('g', 'a ↔ d')}, ${H.c('y', 'b ↔ c')}, the ${H.c('m', '"-"')} stays at index 2. "a-bC-dEf-ghIj" → "j-Ih-gfE-dCba".</p>`,
+    brute: {
+      why: `<p>Collect all letters into a list, reverse it, then rebuild the string with <code>+=</code>, filling letters back in. Correct, but uses an extra list, and <code>+=</code> in a loop is O(N<sup>2</sup>) copying. The wasted work: we copy everything twice when two pointers can swap in place.</p>`,
+      code: `
+        String reverseOnlyLettersBrute(String s) {
+            List<Character> letters = new ArrayList<>();
+            for (char c : s.toCharArray()) if (Character.isLetter(c)) letters.add(c);
+            Collections.reverse(letters);
+            String res = "";
+            int k = 0;
+            for (char c : s.toCharArray()) res += Character.isLetter(c) ? letters.get(k++) : c; // O(N) copy each time
+            return res;
+        }`
+    },
+    mcq: {
+      q: 'Left pointer is on <code>\'-\'</code>, right pointer is on a letter. What happens?',
+      options: ['Swap them anyway', 'Move only the left pointer (skip the non-letter)', 'Move both pointers', 'Stop: answer found'],
+      answer: 1,
+      explain: 'Non-letters never move. Skip it with l++ and keep r on its letter until l also lands on a letter — then swap.'
+    },
+    hints: [
+      `<p><b>Aha:</b> this is the palindrome two-pointer walk, but instead of <i>comparing</i> s[l] and s[r] you <i>swap</i> them — and you skip non-letters exactly like Valid Palindrome skips junk.</p>`,
+      `<p>Strings are immutable, so work on <code>char[] a = s.toCharArray()</code>. l = 0, r = n − 1; skip non-letters on each side with <code>Character.isLetter</code>; swap; move both inward.</p>`,
+      `<p><b>Traps:</b> keep <code>l &lt; r</code> inside the skip loops; build the answer with <code>new String(a)</code>. <b>Recipe:</b> while l &lt; r: if !letter(a[l]) l++; else if !letter(a[r]) r−−; else swap(a[l], a[r]), l++, r−−.</p>`
+    ],
+    solution: {
+      approach: `<p>Two pointers on a char array; skip non-letters; swap letters.</p>`,
+      code: `
+        class Solution {
+            public String reverseOnlyLetters(String s) {
+                char[] a = s.toCharArray();                 // mutable copy
+                int l = 0, r = a.length - 1;
+                while (l < r) {
+                    if (!Character.isLetter(a[l])) l++;          // non-letter stays: skip
+                    else if (!Character.isLetter(a[r])) r--;     // same on the right
+                    else {
+                        char tmp = a[l]; a[l] = a[r]; a[r] = tmp; // swap two letters
+                        l++;
+                        r--;
+                    }
+                }
+                return new String(a);
+            }
+
+            public static void main(String[] args) {
+                Solution sol = new Solution();
+                System.out.println(sol.reverseOnlyLetters("ab-cd"));          // dc-ba
+                System.out.println(sol.reverseOnlyLetters("a-bC-dEf-ghIj"));  // j-Ih-gfE-dCba
+            }
+        }`,
+      dry: {
+        head: ['l', 'r', 'a[l]', 'a[r]', 'action', 'array'],
+        rows: [
+          ['0', '4', 'a', 'd', 'swap', 'd b - c a'],
+          ['1', '3', 'b', 'c', 'swap', 'd c - b a'],
+          ['2', '2', '-', '-', 'l = r → stop', '<span class="c-g">"dc-ba"</span>']
+        ]
+      },
+      complexity: `<p><b>Time O(N)</b> — each pointer crosses the string once. <b>Space O(N)</b> for the char array (the output itself).</p>`,
+      followUps: ['Reverse only the vowels (LeetCode 345).', 'Reverse each word in place but keep word order.']
+    }
+  });
+
+  practice.push({
+    title: 'Longest Common Prefix',
+    level: 'Easy',
+    tags: ['string', 'vertical scan'],
+    companies: ['Google', 'Amazon', 'Adobe'],
+    statement: `<p>Given an array of strings <code>strs</code>, return the longest prefix shared by <b>all</b> of them. If there is none, return the empty string <code>""</code>.</p>`,
+    constraints: `1 ≤ strs.length ≤ 200; 0 ≤ |strs[i]| ≤ 200; lowercase English letters.`,
+    example: `${H.table(['col', '0', '1', '2'], [['flower', '<span class="c-g">f</span>', '<span class="c-g">l</span>', '<span class="c-r">o</span>'], ['flow', '<span class="c-g">f</span>', '<span class="c-g">l</span>', '<span class="c-r">o</span>'], ['flight', '<span class="c-g">f</span>', '<span class="c-g">l</span>', '<span class="c-r">i</span>']])}
+      <p>Columns 0 and 1 agree everywhere; column 2 has o, o, ${H.c('r', 'i')} → stop. Output <b class="c-g">"fl"</b>. ["dog", "racecar", "car"] → "".</p>`,
+    brute: {
+      why: `<p>Try every prefix of strs[0] from longest to shortest and test it against all strings with <code>startsWith</code>: up to L prefixes × N strings × L chars = O(N·L<sup>2</sup>). The wasted work: each candidate re-checks the characters the previous candidate already verified.</p>`,
+      code: `
+        String lcpBrute(String[] strs) {
+            for (int len = strs[0].length(); len > 0; len--) {
+                String p = strs[0].substring(0, len);
+                boolean ok = true;
+                for (String s : strs) if (!s.startsWith(p)) { ok = false; break; }
+                if (ok) return p;
+            }
+            return "";
+        }`
+    },
+    mcq: {
+      q: 'Scanning column by column, when must you stop?',
+      options: ['When any string ends OR any string has a different char in this column', 'Only when the first string ends', 'After checking all columns of the longest string', 'When two strings are equal'],
+      answer: 0,
+      explain: 'The prefix can never be longer than the shortest string, and one disagreeing character ends it. Either condition stops the scan.'
+    },
+    hints: [
+      `<p><b>Aha:</b> stack the strings vertically; the answer is the number of leading columns where every row has the same character.</p>`,
+      `<p>For column i = 0, 1, …: let c = strs[0].charAt(i); for every other string, if it is too short or has a different char at i, return <code>strs[0].substring(0, i)</code>.</p>`,
+      `<p><b>Traps:</b> check <code>i &lt; s.length()</code> before charAt; an empty string in the input makes the answer ""; a single string is its own prefix. <b>Recipe:</b> for i over strs[0]: for s in strs: if i == len(s) or s[i] ≠ strs[0][i]: return prefix of length i. Return strs[0].</p>`
+    ],
+    solution: {
+      approach: `<p>Vertical scanning: compare column i across all strings, stop at the first disagreement or the first string that ends.</p>`,
+      code: `
+        class Solution {
+            public String longestCommonPrefix(String[] strs) {
+                String first = strs[0];
+                for (int i = 0; i < first.length(); i++) {
+                    char c = first.charAt(i);
+                    for (int k = 1; k < strs.length; k++) {
+                        // string too short or different char -> the prefix ends before column i
+                        if (i == strs[k].length() || strs[k].charAt(i) != c) {
+                            return first.substring(0, i);
+                        }
+                    }
+                }
+                return first;                                  // every column of strs[0] matched
+            }
+
+            public static void main(String[] args) {
+                Solution sol = new Solution();
+                System.out.println(sol.longestCommonPrefix(new String[]{"flower", "flow", "flight"})); // fl
+                System.out.println("[" + sol.longestCommonPrefix(new String[]{"dog", "racecar", "car"}) + "]"); // []
+            }
+        }`,
+      dry: {
+        head: ['column i', 'c = strs[0][i]', 'flow[i]', 'flight[i]', 'result'],
+        rows: [
+          ['0', 'f', 'f', 'f', 'all match'],
+          ['1', 'l', 'l', 'l', 'all match'],
+          ['2', 'o', 'o', '<span class="c-r">i</span>', '<span class="c-g">return "fl"</span>']
+        ]
+      },
+      complexity: `<p><b>Time O(S)</b> where S = total characters examined (≤ N × length of the shortest string). <b>Space O(1)</b> besides the output.</p>`,
+      followUps: ['Many queries "LCP of strs[i] and strs[j]" → sort, or build a Trie (Heaps & Tries module).', 'Binary search on the prefix length + hashing for very long strings.']
+    }
+  });
+
+  practice.push({
+    title: 'Find the Index of the First Occurrence (strStr) — with KMP',
+    level: 'Easy',
+    tags: ['kmp', 'string matching'],
+    companies: ['Microsoft', 'Meta', 'Apple'],
+    statement: `<p>Given two strings <code>haystack</code> and <code>needle</code>, return the index of the first occurrence of <code>needle</code> in <code>haystack</code>, or <code>-1</code> if it is not part of it. Solve it in O(n + m) worst case (no <code>indexOf</code>).</p>`,
+    constraints: `1 ≤ |haystack|, |needle| ≤ 10<sup>4</sup>; lowercase English letters.`,
+    example: `${H.arr('sadbutsad'.split(''), { hl: { 0: 'g', 1: 'g', 2: 'g', 6: 'b', 7: 'b', 8: 'b' } })}
+      <p>needle = "sad" occurs at ${H.c('g', '0')} and ${H.c('b', '6')}; the <b>first</b> is <b>0</b>. haystack = "leetcode", needle = "leeto" → <b>-1</b>.</p>`,
+    brute: {
+      why: `<p>Check every start i with an inner loop over the needle: O(n·m) = 10<sup>8</sup> in the worst case ("aaaa…a" vs "aaa…ab"). The wasted work: after a long partial match fails, the next attempt re-reads almost the same characters.</p>`,
+      code: `
+        int strStrBrute(String h, String nd) {
+            for (int i = 0; i + nd.length() <= h.length(); i++) {
+                int k = 0;
+                while (k < nd.length() && h.charAt(i + k) == nd.charAt(k)) k++;
+                if (k == nd.length()) return i;
+            }
+            return -1;
+        }`
+    },
+    mcq: {
+      q: 'In KMP, once <code>j == m</code> (full match) in this problem, what should you do?',
+      options: ['Set j = lps[m − 1] and continue', 'Return i − m immediately', 'Return i', 'Restart with i = i − m + 1'],
+      answer: 1,
+      explain: 'We only need the <b>first</b> occurrence. When j reaches m, the text pointer i is one past the match, so the match started at i − m.'
+    },
+    hints: [
+      `<p><b>Aha:</b> this is exactly KMP search with an early exit at the first full match.</p>`,
+      `<p>Build lps for the needle (pointers i, len), then scan the haystack with i (text) and j (needle). Match → i++, j++; mismatch with j &gt; 0 → j = lps[j − 1]; else i++.</p>`,
+      `<p><b>Traps:</b> the moment j == m return <code>i − m</code> (i has already advanced); needle longer than haystack → −1. <b>Recipe:</b> lps = build(needle); i = j = 0; while i &lt; n: if h[i]==nd[j]: i++, j++, if j==m return i−m; else if j &gt; 0: j = lps[j−1]; else i++. Return −1.</p>`
+    ],
+    solution: {
+      approach: `<p>KMP: O(m) LPS build + O(n) single forward scan, stop at the first full match.</p>`,
+      code: `
+        class Solution {
+            public int strStr(String haystack, String needle) {
+                int n = haystack.length(), m = needle.length();
+                int[] lps = new int[m];
+                for (int i = 1, len = 0; i < m; ) {               // build LPS of the needle
+                    if (needle.charAt(i) == needle.charAt(len)) lps[i++] = ++len;
+                    else if (len > 0) len = lps[len - 1];
+                    else lps[i++] = 0;
+                }
+                int i = 0, j = 0;                                  // i -> haystack, j -> needle
+                while (i < n) {
+                    if (haystack.charAt(i) == needle.charAt(j)) {
+                        i++;
+                        j++;
+                        if (j == m) return i - m;                  // first full match
+                    } else if (j > 0) {
+                        j = lps[j - 1];                            // reuse matched border
+                    } else {
+                        i++;
+                    }
+                }
+                return -1;
+            }
+
+            public static void main(String[] args) {
+                Solution sol = new Solution();
+                System.out.println(sol.strStr("sadbutsad", "sad"));  // 0
+                System.out.println(sol.strStr("leetcode", "leeto")); // -1
+                System.out.println(sol.strStr("aaaaab", "aab"));     // 3
+            }
+        }`,
+      dry: {
+        head: ['i', 'j', 'h[i]', 'nd[j]', 'action (needle "aab", lps [0,1,0])'],
+        rows: [
+          ['0', '0', 'a', 'a', 'match → i=1, j=1'],
+          ['1', '1', 'a', 'a', 'match → i=2, j=2'],
+          ['2', '2', 'a', 'b', 'mismatch → j = lps[1] = 1 (keep one "a")'],
+          ['2', '1', 'a', 'a', 'match → i=3, j=2'],
+          ['3', '2', 'a', 'b', 'mismatch → j = 1'],
+          ['3', '1', 'a', 'a', 'match → i=4, j=2'],
+          ['4', '2', 'a', 'b', 'mismatch → j = 1; then a = a → i=5, j=2'],
+          ['5', '2', 'b', 'b', '<span class="c-g">match → j = 3 = m → return 6 − 3 = 3</span>']
+        ]
+      },
+      complexity: `<p><b>Time O(n + m)</b> worst case. <b>Space O(m)</b> for lps.</p>`,
+      followUps: ['Return all occurrences (keep going with j = lps[m − 1]).', 'Compare with Rabin-Karp and Z — which would you code under time pressure?']
+    }
+  });
+
+  practice.push({
+    title: 'Rotate String',
+    level: 'Easy',
+    tags: ['kmp', 'string matching', 'rotation'],
+    companies: ['Amazon', 'Microsoft'],
+    statement: `<p>Given strings <code>s</code> and <code>goal</code>, return <code>true</code> if <code>s</code> can become <code>goal</code> after some number of <b>shifts</b>. A shift moves the leftmost character to the right end ("abcde" → "bcdea").</p>`,
+    constraints: `1 ≤ |s|, |goal| ≤ 10<sup>5</sup> (the original problem allows 100; we want a linear solution); lowercase letters.`,
+    example: `${H.arr('abcdeabcde'.split(''), { label: 's + s', hl: { 2: 'g', 3: 'g', 4: 'g', 5: 'g', 6: 'g' } })}
+      <p>s = "abcde", goal = "cdeab": every rotation of s is a window of length n inside <b>s + s</b>, and "cdeab" sits at index 2 → <b class="c-g">true</b>. goal = "abced" → not in s + s → <b class="c-r">false</b>.</p>`,
+    brute: {
+      why: `<p>Generate all n rotations (each a new O(n) String) and compare each with goal: O(n<sup>2</sup>) = 10<sup>10</sup> for n = 10<sup>5</sup>. The wasted work: building rotation strings that already exist as windows of s + s.</p>`,
+      code: `
+        boolean rotateBrute(String s, String goal) {
+            if (s.length() != goal.length()) return false;
+            for (int k = 0; k < s.length(); k++) {
+                String rot = s.substring(k) + s.substring(0, k);   // O(n) new string
+                if (rot.equals(goal)) return true;
+            }
+            return false;
+        }`
+    },
+    mcq: {
+      q: 'Why does searching for goal inside <code>s + s</code> work?',
+      options: ['Because s + s is sorted', 'Because every rotation of s appears as a length-n window of s + s', 'Because it doubles the hash', 'It only works for palindromes'],
+      answer: 1,
+      explain: 'Rotation by k = s[k..] + s[..k), which is exactly (s + s)[k .. k + n). So "is goal a rotation?" becomes "does goal occur in s + s?" — a pattern-matching question.'
+    },
+    hints: [
+      `<p><b>Aha:</b> write s twice: "abcdeabcde". Every rotation is sitting inside it as a window of length n.</p>`,
+      `<p>Check lengths first, then run any linear matcher (KMP from this module) for goal inside s + s.</p>`,
+      `<p><b>Traps:</b> different lengths → false (otherwise "ab" would match inside "abcabc"); use KMP for guaranteed O(n). <b>Recipe:</b> if |s| ≠ |goal| return false; return kmpFind(s + s, goal) ≥ 0.</p>`
+    ],
+    solution: {
+      approach: `<p>Length check + KMP search of goal in s + s.</p>`,
+      code: `
+        class Solution {
+            public boolean rotateString(String s, String goal) {
+                if (s.length() != goal.length()) return false;
+                return kmpFind(s + s, goal) >= 0;       // rotation <=> goal occurs in s+s
+            }
+
+            private int kmpFind(String t, String p) {
+                int m = p.length();
+                int[] lps = new int[m];
+                for (int i = 1, len = 0; i < m; ) {
+                    if (p.charAt(i) == p.charAt(len)) lps[i++] = ++len;
+                    else if (len > 0) len = lps[len - 1];
+                    else lps[i++] = 0;
+                }
+                for (int i = 0, j = 0; i < t.length(); ) {
+                    if (t.charAt(i) == p.charAt(j)) {
+                        i++;
+                        j++;
+                        if (j == m) return i - m;
+                    } else if (j > 0) j = lps[j - 1];
+                    else i++;
+                }
+                return -1;
+            }
+
+            public static void main(String[] args) {
+                Solution sol = new Solution();
+                System.out.println(sol.rotateString("abcde", "cdeab")); // true
+                System.out.println(sol.rotateString("abcde", "abced")); // false
+            }
+        }`,
+      dry: {
+        head: ['step', 'value', 'note'],
+        rows: [
+          ['length check', '5 == 5', 'continue'],
+          ['s + s', '"abcdeabcde"', 'all 5 rotations live inside'],
+          ['KMP for "cdeab"', 'found at 2', '<span class="c-g">true</span>']
+        ]
+      },
+      complexity: `<p><b>Time O(n)</b>, <b>Space O(n)</b> for s + s and lps.</p>`,
+      followUps: ['Find the minimum number of shifts (the first match index).', 'Lexicographically smallest rotation (Booth\'s algorithm / Duval).']
+    }
+  });
+
+  // =====================================================================
+  // PRACTICE — Medium
+  // =====================================================================
+  practice.push({
+    title: 'Find All Anagrams in a String',
+    level: 'Medium',
+    tags: ['sliding window', 'char counting'],
+    companies: ['Amazon', 'Meta', 'Uber'],
+    statement: `<p>Given strings <code>s</code> and <code>p</code>, return all start indices of substrings of <code>s</code> that are <b>anagrams</b> of <code>p</code> (same letters, same counts). Any order is fine.</p>`,
+    constraints: `1 ≤ |s|, |p| ≤ 3·10<sup>4</sup>; lowercase English letters.`,
+    example: `${H.arr('cbaebabacd'.split(''), { hl: { 0: 'g', 1: 'g', 2: 'g', 6: 'b', 7: 'b', 8: 'b' } })}
+      <p>p = "abc" → <b>[0, 6]</b>: ${H.c('g', '"cba"')} at 0 and ${H.c('b', '"bac"')} at 6 both use one a, one b, one c.</p>`,
+    brute: {
+      why: `<p>For each of the n − m + 1 windows, sort it (or count it from scratch) and compare with p: O(n·m log m) or O(n·m). With n = m/2 … 3·10<sup>4</sup> that is up to ~10<sup>8</sup>–10<sup>9</sup>. The wasted work: neighbouring windows share m − 1 letters, yet we recount all of them.</p>`,
+      code: `
+        List<Integer> findAnagramsBrute(String s, String p) {
+            List<Integer> res = new ArrayList<>();
+            char[] target = p.toCharArray();
+            Arrays.sort(target);
+            for (int i = 0; i + p.length() <= s.length(); i++) {
+                char[] w = s.substring(i, i + p.length()).toCharArray();
+                Arrays.sort(w);                                  // O(m log m) per window
+                if (Arrays.equals(w, target)) res.add(i);
+            }
+            return res;
+        }`
+    },
+    mcq: {
+      q: 'The window slides from s[i..i+m−1] to s[i+1..i+m]. How do you update the window counts?',
+      options: ['Recount all m letters', 'cnt[s[i+m]]++ and cnt[s[i]]−− — one letter enters, one leaves', 'Sort the new window', 'Clear the counts every time'],
+      answer: 1,
+      explain: 'A fixed-size sliding window changes by exactly one letter on each side, so two O(1) updates keep the counts correct.'
+    },
+    hints: [
+      `<p><b>Aha:</b> "anagram of p" = "same letter counts as p". A window of fixed length |p| sliding over s only changes by one letter in and one letter out.</p>`,
+      `<p>Two <code>int[26]</code> arrays: need (counts of p) and win (counts of the current window). After each slide, compare with <code>Arrays.equals(need, win)</code> — 26 operations, constant.</p>`,
+      `<p><b>Traps:</b> if |p| &gt; |s| return empty; record the start index i − m + 1 once the window is full. <b>Recipe:</b> count p; for i in 0..n−1: win[s[i]]++; if i ≥ m: win[s[i−m]]−−; if i ≥ m−1 and win == need: add i−m+1.</p>`
+    ],
+    solution: {
+      approach: `<p>Fixed-size sliding window with two 26-slot count arrays.</p>`,
+      code: `
+        class Solution {
+            public List<Integer> findAnagrams(String s, String p) {
+                List<Integer> res = new ArrayList<>();
+                int n = s.length(), m = p.length();
+                if (m > n) return res;
+                int[] need = new int[26], win = new int[26];
+                for (int k = 0; k < m; k++) need[p.charAt(k) - 'a']++;
+                for (int i = 0; i < n; i++) {
+                    win[s.charAt(i) - 'a']++;                    // letter enters on the right
+                    if (i >= m) win[s.charAt(i - m) - 'a']--;    // letter leaves on the left
+                    if (i >= m - 1 && Arrays.equals(need, win)) {
+                        res.add(i - m + 1);                      // window start
+                    }
+                }
+                return res;
+            }
+
+            public static void main(String[] args) {
+                System.out.println(new Solution().findAnagrams("cbaebabacd", "abc")); // [0, 6]
+                System.out.println(new Solution().findAnagrams("abab", "ab"));        // [0, 1, 2]
+            }
+        }`,
+      dry: {
+        head: ['i', 'window', 'counts (a,b,c,…)', 'equal to need?', 'res'],
+        rows: [
+          ['2', 'cba', 'a1 b1 c1', '<span class="c-g">yes</span>', '[0]'],
+          ['3', 'bae', 'a1 b1 e1', 'no', '[0]'],
+          ['4', 'aeb', 'a1 b1 e1', 'no', '[0]'],
+          ['5', 'eba', 'a1 b1 e1', 'no', '[0]'],
+          ['6', 'bab', 'a1 b2', 'no', '[0]'],
+          ['7', 'aba', 'a2 b1', 'no', '[0]'],
+          ['8', 'bac', 'a1 b1 c1', '<span class="c-g">yes</span>', '[0, 6]'],
+          ['9', 'acd', 'a1 c1 d1', 'no', '<span class="c-p">[0, 6]</span>']
+        ]
+      },
+      complexity: `<p><b>Time O(26·n) = O(n)</b>. <b>Space O(1)</b> (two arrays of 26). Optimisation: keep a counter of how many of the 26 slots match to make each step O(1).</p>`,
+      followUps: ['Permutation in String (LeetCode 567) — just return true at the first hit.', 'Minimum Window Substring — variable-size window with the same counting.']
+    }
+  });
+
+  practice.push({
+    title: 'Group Anagrams',
+    level: 'Medium',
+    tags: ['hashing', 'char counting', 'stringbuilder'],
+    companies: ['Amazon', 'Google', 'Meta', 'Microsoft'],
+    statement: `<p>Given an array of strings, group the anagrams together. Return the groups in any order.</p>`,
+    constraints: `1 ≤ strs.length ≤ 10<sup>4</sup>; 0 ≤ |strs[i]| ≤ 100; lowercase English letters.`,
+    example: `<p>["eat","tea","tan","ate","nat","bat"] → [${H.c('g', '["eat","tea","ate"]')}, ${H.c('b', '["tan","nat"]')}, ${H.c('p', '["bat"]')}]</p>
+      ${H.kv([['a1e1t1', 'eat, tea, ate'], ['a1n1t1', 'tan, nat'], ['a1b1t1', 'bat']], { label: 'key → group', hl: { a1e1t1: 'g', a1n1t1: 'b', a1b1t1: 'p' } })}`,
+    brute: {
+      why: `<p>Compare every pair of words with an anagram check and union them: O(N<sup>2</sup>·L) ≈ 10<sup>8</sup>·100 = 10<sup>10</sup>. The wasted work: words in the same family are re-compared many times. A canonical <b>key</b> per word lets a HashMap group them in one pass.</p>`,
+      code: `
+        List<List<String>> groupBrute(String[] strs) {
+            List<List<String>> res = new ArrayList<>();
+            boolean[] used = new boolean[strs.length];
+            for (int i = 0; i < strs.length; i++) {
+                if (used[i]) continue;
+                List<String> g = new ArrayList<>(List.of(strs[i]));
+                used[i] = true;
+                for (int j = i + 1; j < strs.length; j++) {
+                    if (!used[j] && sameLetters(strs[i], strs[j])) { g.add(strs[j]); used[j] = true; }
+                }
+                res.add(g);
+            }
+            return res;
+        }
+
+        boolean sameLetters(String a, String b) {
+            if (a.length() != b.length()) return false;
+            int[] c = new int[26];
+            for (int k = 0; k < a.length(); k++) { c[a.charAt(k) - 'a']++; c[b.charAt(k) - 'a']--; }
+            for (int x : c) if (x != 0) return false;
+            return true;
+        }`
+    },
+    mcq: {
+      q: 'Which is a correct HashMap key that is identical for all anagrams?',
+      options: ['The word itself', 'The sorted letters, or the 26 counts written as a string like "a1e1t1"', 'The word length', 'The first letter'],
+      answer: 1,
+      explain: 'Anagrams have the same multiset of letters. Sorting them, or writing their 26 counts, produces the same canonical form for every member of the family and a different one for any other family.'
+    },
+    hints: [
+      `<p><b>Aha:</b> give each word a "fingerprint" that ignores order — then all anagrams share it and a HashMap groups them automatically.</p>`,
+      `<p>Fingerprint = counts of 26 letters. Build it with a <code>StringBuilder</code> (e.g. append each count followed by '#'), use it as the key of <code>HashMap&lt;String, List&lt;String&gt;&gt;</code>, and <code>computeIfAbsent</code> to add the word.</p>`,
+      `<p><b>Traps:</b> separate counts with a delimiter ("1#11#" vs "11#1#" must differ); the empty string is a valid word with all-zero key. <b>Recipe:</b> for each word: cnt[26]; key = join counts with '#'; map[key].add(word). Return map values.</p>`
+    ],
+    solution: {
+      approach: `<p>Canonical count key per word built with a StringBuilder; HashMap from key to group.</p>`,
+      code: `
+        class Solution {
+            public List<List<String>> groupAnagrams(String[] strs) {
+                Map<String, List<String>> groups = new HashMap<>();
+                for (String w : strs) {
+                    int[] cnt = new int[26];
+                    for (int i = 0; i < w.length(); i++) cnt[w.charAt(i) - 'a']++;
+                    StringBuilder key = new StringBuilder();
+                    for (int c : cnt) key.append(c).append('#');   // e.g. "1#0#0#0#1#...": order-free fingerprint
+                    groups.computeIfAbsent(key.toString(), k -> new ArrayList<>()).add(w);
+                }
+                return new ArrayList<>(groups.values());
+            }
+
+            public static void main(String[] args) {
+                List<List<String>> g = new Solution().groupAnagrams(new String[]{"eat", "tea", "tan", "ate", "nat", "bat"});
+                System.out.println(g.size() + " groups: " + g);   // 3 groups (order may vary)
+            }
+        }`,
+      dry: {
+        head: ['word', 'counts', 'key exists?', 'groups'],
+        rows: [
+          ['eat', 'a1 e1 t1', 'no → new', '{aet: [eat]}'],
+          ['tea', 'a1 e1 t1', 'yes', '{aet: [eat, tea]}'],
+          ['tan', 'a1 n1 t1', 'no → new', '{aet: [eat, tea], ant: [tan]}'],
+          ['ate', 'a1 e1 t1', 'yes', 'aet: [eat, tea, ate]'],
+          ['nat', 'a1 n1 t1', 'yes', 'ant: [tan, nat]'],
+          ['bat', 'a1 b1 t1', 'no → new', '<span class="c-p">3 groups</span>']
+        ]
+      },
+      complexity: `<p><b>Time O(N·L)</b> (count each word, key has 26 parts). Sorting keys would be O(N·L log L). <b>Space O(N·L)</b> for the map.</p>`,
+      followUps: ['Unicode words → sort code points for the key.', 'Stream of words arriving one by one — same map, incremental.']
+    }
+  });
+
+  practice.push({
+    title: 'String to Integer (atoi)',
+    level: 'Medium',
+    tags: ['char arithmetic', 'parsing', 'overflow'],
+    companies: ['Amazon', 'Microsoft', 'Bloomberg', 'Goldman Sachs'],
+    statement: `<p>Implement <code>myAtoi(s)</code>: skip leading spaces; read an optional '+' or '-'; read digits until a non-digit or the end; convert them to a 32-bit signed integer; if the value is out of range, <b>clamp</b> to [−2<sup>31</sup>, 2<sup>31</sup> − 1]. If no digits are read the result is 0.</p>`,
+    constraints: `0 ≤ |s| ≤ 200; s has English letters, digits, ' ', '+', '-' and '.'.`,
+    example: `${H.table(['input', 'reading', 'output'], [['"   -42"', 'skip spaces, sign −, digits 4 2', '<b>-42</b>'], ['"4193 with words"', 'digits 4 1 9 3, stop at space', '<b>4193</b>'], ['"words 987"', 'first char is a letter → no digits', '<b>0</b>'], ['"-91283472332"', 'too small', '<b>-2147483648</b> (clamped)']])}`,
+    brute: {
+      why: `<p>Extract the digit substring and call <code>Long.parseLong</code>, then clamp. It breaks on long digit strings (more than 19 digits overflow even a long and throw NumberFormatException), and hides the overflow logic interviewers want to see. The wasted/risky part: building a substring and trusting a library for out-of-range input.</p>`,
+      code: `
+        int atoiBrute(String s) {
+            s = s.trim();
+            if (s.isEmpty()) return 0;
+            int i = 0;
+            String sign = "";
+            if (s.charAt(0) == '-' || s.charAt(0) == '+') { sign = s.substring(0, 1); i = 1; }
+            int j = i;
+            while (j < s.length() && Character.isDigit(s.charAt(j))) j++;
+            if (j == i) return 0;
+            long v = Long.parseLong(sign + s.substring(i, j));   // throws for > 19 digits!
+            return (int) Math.max(Integer.MIN_VALUE, Math.min(Integer.MAX_VALUE, v));
+        }`
+    },
+    mcq: {
+      q: 'Before doing <code>res = res * 10 + d</code> (res is an int, positive), which check prevents overflow?',
+      options: ['res &lt; 0', 'res &gt; (Integer.MAX_VALUE − d) / 10', 'd &gt; 9', 'res * 10 &gt; Integer.MAX_VALUE'],
+      answer: 1,
+      explain: 'res·10 + d ≤ MAX ⇔ res ≤ (MAX − d)/10. Checking <code>res * 10 &gt; MAX</code> is useless because the multiplication itself already overflowed.'
+    },
+    hints: [
+      `<p><b>Aha:</b> it is a tiny state machine — spaces → sign → digits → stop. Each digit is <code>c - '0'</code> and is added with <code>res = res * 10 + d</code>.</p>`,
+      `<p>Keep <code>sign</code> (±1) and a non-negative <code>int res</code>. Before adding a digit, test <code>res &gt; (Integer.MAX_VALUE - d) / 10</code>; if true, return MAX or MIN depending on the sign.</p>`,
+      `<p><b>Traps:</b> only one sign allowed ("+-12" → 0); stop at the first non-digit; "-2147483648" must return MIN exactly (the clamp handles it); empty or all-space input → 0. <b>Recipe:</b> i skips spaces; read sign; while digit: d = c − '0'; if overflow → clamp; res = res·10 + d. Return sign·res.</p>`
+    ],
+    solution: {
+      approach: `<p>Linear scan with char arithmetic and an overflow test before every multiply.</p>`,
+      code: `
+        class Solution {
+            public int myAtoi(String s) {
+                int i = 0, n = s.length();
+                while (i < n && s.charAt(i) == ' ') i++;              // 1) skip leading spaces
+                int sign = 1;
+                if (i < n && (s.charAt(i) == '+' || s.charAt(i) == '-')) {
+                    sign = s.charAt(i) == '-' ? -1 : 1;               // 2) optional sign
+                    i++;
+                }
+                int res = 0;
+                while (i < n && Character.isDigit(s.charAt(i))) {     // 3) digits
+                    int d = s.charAt(i) - '0';                        // char -> digit value
+                    if (res > (Integer.MAX_VALUE - d) / 10) {         // res*10+d would overflow
+                        return sign == 1 ? Integer.MAX_VALUE : Integer.MIN_VALUE;
+                    }
+                    res = res * 10 + d;
+                    i++;
+                }
+                return sign * res;
+            }
+
+            public static void main(String[] args) {
+                Solution sol = new Solution();
+                System.out.println(sol.myAtoi("   -42"));           // -42
+                System.out.println(sol.myAtoi("4193 with words"));  // 4193
+                System.out.println(sol.myAtoi("words 987"));        // 0
+                System.out.println(sol.myAtoi("-91283472332"));     // -2147483648
+            }
+        }`,
+      dry: {
+        head: ['char', 'state', 'd', 'res', 'note'],
+        rows: [
+          ['␣ ␣ ␣', 'spaces', '—', '0', 'skipped'],
+          ['-', 'sign', '—', '0', 'sign = −1'],
+          ['4', 'digits', '4', '4', '0·10 + 4'],
+          ['2', 'digits', '2', '42', '4·10 + 2'],
+          ['end', 'stop', '—', '42', '<span class="c-g">return −42</span>']
+        ]
+      },
+      complexity: `<p><b>Time O(n)</b>, <b>Space O(1)</b>.</p>`,
+      followUps: ['Parse a 64-bit long the same way.', 'Handle decimal points / exponents (a full number parser state machine).']
+    }
+  });
+
+  practice.push({
+    title: 'Multiply Strings',
+    level: 'Medium',
+    tags: ['char arithmetic', 'simulation', 'stringbuilder'],
+    companies: ['Meta', 'Amazon', 'Microsoft', 'Twitter'],
+    statement: `<p>Given two non-negative integers <code>num1</code> and <code>num2</code> as strings, return their product as a string. You may not convert the inputs to integers directly or use BigInteger.</p>`,
+    constraints: `1 ≤ |num1|, |num2| ≤ 200; digits only; no leading zeros except the number 0 itself.`,
+    example: `${H.table(['', '', '1', '2', '3'], [['', '×', '', '4', '5'], ['', '', '6', '1', '5'], ['', '4', '9', '2', ''], ['', '<b>5</b>', '<b>5</b>', '<b>3</b>', '<b>5</b>']])}
+      <p>"123" × "45" = <b>"5535"</b>. Key fact: digit i of num1 times digit j of num2 lands in result position <b>i + j + 1</b> (with carry going to i + j).</p>`,
+    brute: {
+      why: `<p>Repeated addition (add num1 to itself num2 times) is O(value) — impossible for 200-digit numbers. Converting to <code>long</code> overflows beyond 19 digits. We need schoolbook multiplication on digit arrays: O(n·m).</p>`,
+      code: `
+        String multiplyBrute(String a, String b) {
+            // only works while the product fits in a long (about 18 digits) -> wrong for big inputs
+            long x = Long.parseLong(a), y = Long.parseLong(b);
+            return String.valueOf(x * y);
+        }`
+    },
+    mcq: {
+      q: 'num1[i] × num2[j] (0-based from the left, lengths n and m) contributes to which slots of a result array of size n + m?',
+      options: ['i and j', 'i + j (carry) and i + j + 1 (ones digit)', 'n − i and m − j', 'Only slot 0'],
+      answer: 1,
+      explain: 'The product has at most n + m digits. Position i + j + 1 receives the units of the partial product and position i + j receives the carry.'
+    },
+    hints: [
+      `<p><b>Aha:</b> do grade-school multiplication, but store every partial product in an <code>int[n + m]</code> at the right place instead of writing shifted rows.</p>`,
+      `<p>Loop i from n−1 down, j from m−1 down: <code>mul = (num1[i]−'0')·(num2[j]−'0')</code>; <code>sum = mul + pos[i+j+1]</code>; <code>pos[i+j+1] = sum % 10</code>; <code>pos[i+j] += sum / 10</code>.</p>`,
+      `<p><b>Traps:</b> skip leading zeros when building the answer with a StringBuilder; if everything is zero return "0". <b>Recipe:</b> fill pos as above; sb = digits of pos skipping leading zeros; return sb empty ? "0" : sb.</p>`
+    ],
+    solution: {
+      approach: `<p>Schoolbook multiplication into a position array, then build the string with a StringBuilder.</p>`,
+      code: `
+        class Solution {
+            public String multiply(String num1, String num2) {
+                int n = num1.length(), m = num2.length();
+                int[] pos = new int[n + m];                         // product has at most n+m digits
+                for (int i = n - 1; i >= 0; i--) {
+                    for (int j = m - 1; j >= 0; j--) {
+                        int mul = (num1.charAt(i) - '0') * (num2.charAt(j) - '0');
+                        int sum = mul + pos[i + j + 1];             // add to what is already there
+                        pos[i + j + 1] = sum % 10;                  // ones digit stays
+                        pos[i + j] += sum / 10;                     // carry moves left
+                    }
+                }
+                StringBuilder sb = new StringBuilder();
+                for (int d : pos) {
+                    if (sb.length() == 0 && d == 0) continue;       // skip leading zeros
+                    sb.append(d);
+                }
+                return sb.length() == 0 ? "0" : sb.toString();
+            }
+
+            public static void main(String[] args) {
+                Solution sol = new Solution();
+                System.out.println(sol.multiply("123", "45"));  // 5535
+                System.out.println(sol.multiply("0", "52"));    // 0
+                System.out.println(sol.multiply("99", "99"));   // 9801
+            }
+        }`,
+      dry: {
+        head: ['i, j', 'digits', 'mul', 'pos after (index 0..4)'],
+        rows: [
+          ['2, 1', '3 × 5', '15', '[0, 0, 0, 1, 5]'],
+          ['2, 0', '3 × 4', '12', '[0, 0, 1, 3, 5]'],
+          ['1, 1', '2 × 5', '10', '[0, 0, 2, 3, 5]'],
+          ['1, 0', '2 × 4', '8', '[0, 1, 0, 3, 5]'],
+          ['0, 1', '1 × 5', '5', '[0, 1, 0, 3, 5] → pos[2] = 5, carry 0 → [0, 1, 5, 3, 5]'],
+          ['0, 0', '1 × 4', '4', '[0, 5, 5, 3, 5] → <span class="c-g">"5535"</span>']
+        ]
+      },
+      complexity: `<p><b>Time O(n·m)</b>, <b>Space O(n + m)</b>. (Karatsuba / FFT multiply faster for huge numbers — that is what BigInteger does for very large inputs.)</p>`,
+      followUps: ['Add Strings / Add Binary (same carry idea, O(n)).', 'Divide a big number string by a small int.']
+    }
+  });
+
+  practice.push({
+    title: 'Count and Say',
+    level: 'Medium',
+    tags: ['stringbuilder', 'run-length encoding', 'simulation'],
+    companies: ['Meta', 'Apple', 'Amazon'],
+    statement: `<p>The count-and-say sequence starts with "1". Each next term <b>describes</b> the previous one by reading runs of equal digits: "1" → one 1 → "11" → two 1s → "21" → one 2, one 1 → "1211" … Given n, return the n-th term.</p>`,
+    constraints: `1 ≤ n ≤ 30 (terms grow ~30% per step; term 30 has about 4 400 characters).`,
+    example: `${H.table(['n', 'term', 'read aloud'], [['1', '1', '—'], ['2', '11', 'one 1'], ['3', '21', 'two 1s'], ['4', '<b class="c-g">1211</b>', 'one 2, one 1'], ['5', '111221', 'one 1, one 2, two 1s']])}`,
+    brute: {
+      why: `<p>Same simulation but building each term with <code>next += count + digit</code>. Terms reach thousands of characters and each += copies the whole term-so-far → quadratic per term. The wasted work is re-copying; with StringBuilder each term costs O(length).</p>`,
+      code: `
+        String countAndSayBrute(int n) {
+            String cur = "1";
+            for (int t = 1; t < n; t++) {
+                String next = "";
+                int i = 0;
+                while (i < cur.length()) {
+                    int j = i;
+                    while (j < cur.length() && cur.charAt(j) == cur.charAt(i)) j++;
+                    next += (j - i) + "" + cur.charAt(i);   // full copy each time
+                    i = j;
+                }
+                cur = next;
+            }
+            return cur;
+        }`
+    },
+    mcq: {
+      q: 'Reading "111221": what are the runs?',
+      options: ['1, 1, 1, 2, 2, 1', '"111", "22", "1" → three 1s, two 2s, one 1 → "312211"', '"11", "1221"', '"1112", "21"'],
+      answer: 1,
+      explain: 'A run is a maximal block of equal neighbours. "111" + "22" + "1" → "31" + "22" + "11" = "312211".'
+    },
+    hints: [
+      `<p><b>Aha:</b> each step is run-length encoding (the String Compression problem in Topic 3) with the count written <b>before</b> the digit.</p>`,
+      `<p>Loop n − 1 times; inside, two pointers i (run start) and j (run end) over the current term; append <code>(j − i)</code> then the digit to a StringBuilder.</p>`,
+      `<p><b>Traps:</b> n = 1 → "1"; use a fresh StringBuilder per term; do not use +=. <b>Recipe:</b> cur = "1"; repeat n−1 times: sb = new; for each run [i, j): sb.append(j−i).append(cur[i]); cur = sb.toString().</p>`
+    ],
+    solution: {
+      approach: `<p>Iterative run-length encoding with two pointers and a StringBuilder.</p>`,
+      code: `
+        class Solution {
+            public String countAndSay(int n) {
+                String cur = "1";
+                for (int t = 1; t < n; t++) {
+                    StringBuilder sb = new StringBuilder();
+                    int i = 0;
+                    while (i < cur.length()) {
+                        int j = i;
+                        while (j < cur.length() && cur.charAt(j) == cur.charAt(i)) j++;  // end of run
+                        sb.append(j - i).append(cur.charAt(i));                          // count, then digit
+                        i = j;
+                    }
+                    cur = sb.toString();
+                }
+                return cur;
+            }
+
+            public static void main(String[] args) {
+                Solution sol = new Solution();
+                System.out.println(sol.countAndSay(4));  // 1211
+                System.out.println(sol.countAndSay(6));  // 312211
+            }
+        }`,
+      dry: {
+        head: ['t', 'cur', 'runs', 'next'],
+        rows: [
+          ['1', '1', '"1"', '11'],
+          ['2', '11', '"11"', '21'],
+          ['3', '21', '"2", "1"', '<span class="c-g">1211</span>']
+        ]
+      },
+      complexity: `<p><b>Time O(total length of all terms)</b> — each term is scanned once. <b>Space O(length of the last term)</b>.</p>`,
+      followUps: ['Why can no digit greater than 3 ever appear? (Conway\'s analysis of the look-and-say sequence.)', 'Decode a run-length encoded string.']
+    }
+  });
+
+  practice.push({
+    title: 'Repeated DNA Sequences',
+    level: 'Medium',
+    tags: ['rolling hash', 'bit manipulation', 'hashset'],
+    companies: ['LinkedIn', 'Amazon', 'Google'],
+    statement: `<p>A DNA string uses the letters A, C, G, T. Return all <b>10-letter-long</b> substrings that occur <b>more than once</b> (each reported once, any order).</p>`,
+    constraints: `1 ≤ |s| ≤ 10<sup>5</sup>; s[i] ∈ {A, C, G, T}.`,
+    example: `<p>s = "AAAAACCCCCAAAAACCCCCCAAAAAGGGTTT" → <b>["AAAAACCCCC", "CCCCCAAAAA"]</b>.</p>
+      ${H.table(['letter', 'A', 'C', 'G', 'T'], [['2-bit code', '00', '01', '10', '11']])}
+      <p>10 letters × 2 bits = 20 bits → each window is a single int below 2<sup>20</sup>: a <b>perfect</b> rolling hash (no collisions possible).</p>`,
+    brute: {
+      why: `<p>Put every 10-letter <code>substring</code> into a HashSet&lt;String&gt;: creates N strings of 10 chars and hashes each (10 operations) — O(10·N), fine here, but memory-heavy. For a general window length L it is O(N·L). The rolling-hash version makes each window O(1) and stores ints.</p>`,
+      code: `
+        List<String> dnaBrute(String s) {
+            Set<String> seen = new HashSet<>(), rep = new HashSet<>();
+            for (int i = 0; i + 10 <= s.length(); i++) {
+                String w = s.substring(i, i + 10);       // new 10-char String every step
+                if (!seen.add(w)) rep.add(w);
+            }
+            return new ArrayList<>(rep);
+        }`
+    },
+    mcq: {
+      q: 'With 2 bits per letter and a 20-bit window, how do you roll from window i to i + 1?',
+      options: ['Recompute 10 letters', 'h = ((h &lt;&lt; 2) | code(new)) &amp; ((1 &lt;&lt; 20) − 1)', 'h = h + code(new)', 'h = h ^ code(new)'],
+      answer: 1,
+      explain: 'Shift left by 2 (base 4 multiply), OR in the new letter, and mask to 20 bits, which drops the oldest letter. This is the rolling hash with B = 4 and "mod 2<sup>20</sup>" — but exact because 4<sup>10</sup> = 2<sup>20</sup>.'
+    },
+    hints: [
+      `<p><b>Aha:</b> only 4 letters → 2 bits each → a 10-letter window fits in 20 bits. The window's number <b>is</b> the window, so equal numbers mean equal strings.</p>`,
+      `<p>Roll: <code>h = ((h &lt;&lt; 2) | code) &amp; 0xFFFFF</code>. Use a <code>HashSet&lt;Integer&gt;</code> seen and another set for already-reported windows (or a byte array of size 2<sup>20</sup> as a counter).</p>`,
+      `<p><b>Traps:</b> start checking only once i ≥ 9 (window full); report each repeat once; |s| &lt; 10 → empty. <b>Recipe:</b> for i: h = roll(h, s[i]); if i ≥ 9: if h in seen and h not in added: add substring(i−9, i+1); seen.add(h).</p>`
+    ],
+    solution: {
+      approach: `<p>2-bit rolling encoding into a 20-bit int; sets of seen and reported codes.</p>`,
+      code: `
+        class Solution {
+            public List<String> findRepeatedDnaSequences(String s) {
+                List<String> res = new ArrayList<>();
+                if (s.length() < 10) return res;
+                int[] code = new int[128];
+                code['A'] = 0; code['C'] = 1; code['G'] = 2; code['T'] = 3;
+                Set<Integer> seen = new HashSet<>(), added = new HashSet<>();
+                int h = 0, mask = (1 << 20) - 1;                    // keep only the last 10 letters
+                for (int i = 0; i < s.length(); i++) {
+                    h = ((h << 2) | code[s.charAt(i)]) & mask;      // roll in the new letter
+                    if (i >= 9) {                                   // window s[i-9..i] is full
+                        if (!seen.add(h) && added.add(h)) {
+                            res.add(s.substring(i - 9, i + 1));     // second time seen -> report once
+                        }
+                    }
+                }
+                return res;
+            }
+
+            public static void main(String[] args) {
+                System.out.println(new Solution().findRepeatedDnaSequences("AAAAACCCCCAAAAACCCCCCAAAAAGGGTTT"));
+                // [AAAAACCCCC, CCCCCAAAAA]
+            }
+        }`,
+      dry: {
+        head: ['i', 'window', 'code (binary groups)', 'seen before?', 'res'],
+        rows: [
+          ['9', 'AAAAACCCCC', '00×5 01×5', 'no', '[]'],
+          ['10..18', '…', 'new codes', 'no', '[]'],
+          ['19', 'AAAAACCCCC', 'same as i = 9', '<span class="c-g">yes</span>', '[AAAAACCCCC]'],
+          ['20', 'AAAACCCCCC', 'new', 'no', '[AAAAACCCCC]'],
+          ['25', 'CCCCCAAAAA', 'same as i = 14', '<span class="c-g">yes</span>', '<span class="c-p">[AAAAACCCCC, CCCCCAAAAA]</span>']
+        ]
+      },
+      complexity: `<p><b>Time O(N)</b>, <b>Space O(N)</b> ints (at most 2<sup>20</sup> distinct codes).</p>`,
+      followUps: ['General window length L and alphabet → polynomial rolling hash mod a large prime (+ verification).', 'Longest repeated substring → binary search on L (see Longest Duplicate Substring).']
+    }
+  });
+
+  practice.push({
+    title: 'Repeated String Match',
+    level: 'Medium',
+    tags: ['kmp', 'string matching'],
+    companies: ['Google', 'Amazon'],
+    statement: `<p>Given strings <code>a</code> and <code>b</code>, return the minimum number of times you must repeat <code>a</code> so that <code>b</code> becomes a substring of the repeated string, or <code>-1</code> if impossible.</p>`,
+    constraints: `1 ≤ |a|, |b| ≤ 10<sup>4</sup>; lowercase English letters.`,
+    example: `<p>a = "abcd", b = "cdabcdab". "abcd" × 3 = "ab<b class="c-g">cdabcdab</b>cd" contains b → <b>3</b>. (× 2 = "abcdabcd" is too short to contain it.)</p>
+      <p>a = "a", b = "aa" → 2. a = "abc", b = "wxyz" → −1.</p>`,
+    brute: {
+      why: `<p>Keep appending a and calling <code>contains</code> until the string becomes "too long" — without a clear stopping rule this can loop forever, and each contains is O(n·m) worst case. The insight: b can start anywhere inside the first copy of a, so you only ever need q = ⌈|b| / |a|⌉ or q + 1 copies.</p>`,
+      code: `
+        int repeatedBrute(String a, String b) {
+            StringBuilder sb = new StringBuilder(a);
+            for (int k = 1; k <= b.length() / a.length() + 2; k++) {   // safe upper bound
+                if (sb.toString().contains(b)) return k;              // O(n*m) worst each time
+                sb.append(a);
+            }
+            return -1;
+        }`
+    },
+    mcq: {
+      q: 'Why is q + 1 copies (q = ⌈|b|/|a|⌉) always enough if any answer exists?',
+      options: ['Because b is sorted', 'Because b must start somewhere inside one copy of a; one extra copy covers any starting offset', 'Because KMP needs it', 'It is not enough; you may need 2q copies'],
+      answer: 1,
+      explain: 'If b occurs in a repeated a, shift the occurrence so it starts within the first copy (offset &lt; |a|). It then ends before |a| + |b| ≤ (q + 1)·|a|.'
+    },
+    hints: [
+      `<p><b>Aha:</b> the answer is either q = ⌈|b|/|a|⌉, q + 1, or impossible — no other values need testing.</p>`,
+      `<p>Build t = a repeated q + 1 times with a StringBuilder, run KMP for b once, and look at <b>where</b> the first match ends: if it ends within q copies the answer is q, else q + 1.</p>`,
+      `<p><b>Traps:</b> match end index = start + |b|; needed copies = ⌈end / |a|⌉. <b>Recipe:</b> q = ceil; t = a×(q+1); pos = kmp(t, b); if pos &lt; 0 return −1; return ceil((pos + |b|) / |a|).</p>`
+    ],
+    solution: {
+      approach: `<p>Repeat a q + 1 times, one KMP search, compute how many copies the first match spans.</p>`,
+      code: `
+        class Solution {
+            public int repeatedStringMatch(String a, String b) {
+                int q = (b.length() + a.length() - 1) / a.length();   // ceil(|b| / |a|)
+                StringBuilder sb = new StringBuilder();
+                for (int k = 0; k <= q; k++) sb.append(a);            // q + 1 copies
+                int pos = kmpFind(sb.toString(), b);
+                if (pos < 0) return -1;
+                int end = pos + b.length();                            // exclusive end of the match
+                return (end + a.length() - 1) / a.length();           // copies needed to cover it
+            }
+
+            private int kmpFind(String t, String p) {
+                int m = p.length();
+                int[] lps = new int[m];
+                for (int i = 1, len = 0; i < m; ) {
+                    if (p.charAt(i) == p.charAt(len)) lps[i++] = ++len;
+                    else if (len > 0) len = lps[len - 1];
+                    else lps[i++] = 0;
+                }
+                for (int i = 0, j = 0; i < t.length(); ) {
+                    if (t.charAt(i) == p.charAt(j)) {
+                        i++;
+                        j++;
+                        if (j == m) return i - m;
+                    } else if (j > 0) j = lps[j - 1];
+                    else i++;
+                }
+                return -1;
+            }
+
+            public static void main(String[] args) {
+                Solution sol = new Solution();
+                System.out.println(sol.repeatedStringMatch("abcd", "cdabcdab")); // 3
+                System.out.println(sol.repeatedStringMatch("a", "aa"));          // 2
+                System.out.println(sol.repeatedStringMatch("abc", "wxyz"));      // -1
+            }
+        }`,
+      dry: {
+        head: ['step', 'value'],
+        rows: [
+          ['q = ⌈8 / 4⌉', '2'],
+          ['t = a × 3', '"abcdabcdabcd"'],
+          ['KMP first match of "cdabcdab"', 'pos = 2'],
+          ['end = 2 + 8', '10'],
+          ['copies = ⌈10 / 4⌉', '<span class="c-g">3</span>']
+        ]
+      },
+      complexity: `<p><b>Time O(|a| + |b|)</b> (t has length ≤ |b| + 2|a|). <b>Space O(|a| + |b|)</b>.</p>`,
+      followUps: ['Solve it with Rabin-Karp instead.', 'What if a can also be rotated before repeating?']
+    }
+  });
+
+  // =====================================================================
+  // PRACTICE — Hard
+  // =====================================================================
+  practice.push({
+    title: 'Longest Happy Prefix',
+    level: 'Hard',
+    tags: ['kmp', 'lps', 'prefix function'],
+    companies: ['Google', 'Amazon'],
+    statement: `<p>A <b>happy prefix</b> is a non-empty prefix of <code>s</code> that is also a suffix of <code>s</code>, excluding <code>s</code> itself. Return the longest happy prefix, or <code>""</code> if none exists.</p>`,
+    constraints: `1 ≤ |s| ≤ 10<sup>5</sup>; lowercase English letters.`,
+    example: `${H.arr('ababab'.split(''), { hl: { 0: 'b', 1: 'b', 2: 'p', 3: 'p', 4: 'g', 5: 'g' } })}
+      <p>"ababab" → <b>"abab"</b>: prefix ${H.c('b', 'ab')}${H.c('p', 'ab')} (indices 0–3) equals suffix ${H.c('p', 'ab')}${H.c('g', 'ab')} (indices 2–5) — they overlap, which is allowed. "level" → "l". "abc" → "".</p>`,
+    brute: {
+      why: `<p>Try every length L from n − 1 down to 1 and compare prefix and suffix (<code>startsWith</code> / <code>endsWith</code>): up to n lengths × n characters = O(n<sup>2</sup>) = 10<sup>10</sup> on "aaaa…ab". The wasted work: each length re-compares characters that previous lengths already examined.</p>`,
+      code: `
+        String happyBrute(String s) {
+            int n = s.length();
+            for (int len = n - 1; len > 0; len--) {
+                if (s.regionMatches(0, s, n - len, len)) return s.substring(0, len); // O(len) compare
+            }
+            return "";
+        }`
+    },
+    mcq: {
+      q: 'Which single number from KMP answers this problem directly?',
+      options: ['lps[0]', 'lps[n − 1] — the longest proper prefix of the whole string that is also its suffix', 'The number of matches', 'max(lps)'],
+      answer: 1,
+      explain: 'By definition lps[i] is the longest proper border of s[0..i]. For i = n − 1 that is exactly the longest happy prefix. max(lps) can come from a shorter prefix and is wrong.'
+    },
+    hints: [
+      `<p><b>Aha:</b> "prefix that is also a suffix" is word-for-word the definition of the LPS array. Look at its last cell.</p>`,
+      `<p>Build lps for s with the i / len pointers (fallback <code>len = lps[len − 1]</code>). Answer = <code>s.substring(0, lps[n − 1])</code>.</p>`,
+      `<p><b>Traps:</b> use lps[n − 1], not the maximum over all lps; "proper" excludes the whole string (lps never equals i + 1, so this is automatic). Alternative: compare prefix and suffix hashes for every length (O(n) with rolling hashes, but probabilistic). <b>Recipe:</b> lps = build(s); return s[0 .. lps[n−1]).</p>`
+    ],
+    solution: {
+      approach: `<p>Prefix function (LPS); answer is the prefix of length lps[n − 1].</p>`,
+      code: `
+        class Solution {
+            public String longestPrefix(String s) {
+                int n = s.length();
+                int[] lps = new int[n];
+                int len = 0, i = 1;
+                while (i < n) {
+                    if (s.charAt(i) == s.charAt(len)) {
+                        lps[i++] = ++len;           // border grows
+                    } else if (len > 0) {
+                        len = lps[len - 1];         // try the next shorter border
+                    } else {
+                        lps[i++] = 0;
+                    }
+                }
+                return s.substring(0, lps[n - 1]);  // longest proper border of the whole string
+            }
+
+            public static void main(String[] args) {
+                Solution sol = new Solution();
+                System.out.println(sol.longestPrefix("level"));   // l
+                System.out.println(sol.longestPrefix("ababab"));  // abab
+                System.out.println("[" + sol.longestPrefix("abc") + "]"); // []
+            }
+        }`,
+      dry: {
+        head: ['i', 's[i]', 'len before', 'compare', 'lps[i]'],
+        rows: [
+          ['1', 'b', '0', 'b ≠ a, len 0', '0'],
+          ['2', 'a', '0', 'a = a', '1'],
+          ['3', 'b', '1', 'b = b', '2'],
+          ['4', 'a', '2', 'a = a', '3'],
+          ['5', 'b', '3', 'b = b', '<span class="c-g">4 → "abab"</span>']
+        ]
+      },
+      complexity: `<p><b>Time O(n)</b> (amortized LPS build). <b>Space O(n)</b>.</p>`,
+      followUps: ['Return all borders (follow lps[n−1], lps[lps[n−1]−1], …).', 'Solve with the Z-array: largest i with i + Z[i] == n gives border length n − i.']
+    }
+  });
+
+  practice.push({
+    title: 'Shortest Palindrome',
+    level: 'Hard',
+    tags: ['kmp', 'palindrome', 'lps'],
+    companies: ['Google', 'Amazon', 'Microsoft'],
+    statement: `<p>You may add characters <b>only in front</b> of string <code>s</code>. Return the shortest palindrome you can make this way.</p>`,
+    constraints: `0 ≤ |s| ≤ 5·10<sup>4</sup>; lowercase English letters.`,
+    example: `<p>"aacecaaa" → <b>"aaacecaaa"</b>: the longest palindromic <b>prefix</b> is ${H.c('g', '"aacecaa"')}; the leftover ${H.c('r', '"a"')} is reversed and put in front.</p>
+      <p>"abcd" → longest palindromic prefix is just "a"; leftover "bcd" reversed = "dcb" → <b>"dcbabcd"</b>.</p>`,
+    brute: {
+      why: `<p>Try prefix lengths k = n, n − 1, …, and check if s[0..k) is a palindrome (O(k) each): O(n<sup>2</sup>) = 2.5·10<sup>9</sup> for "aaaa…ab"-like inputs. The wasted work: re-checking overlapping prefixes from scratch.</p>`,
+      code: `
+        String shortestBrute(String s) {
+            int k = s.length();
+            while (k > 0) {
+                int l = 0, r = k - 1;
+                boolean ok = true;
+                while (l < r) if (s.charAt(l++) != s.charAt(r--)) { ok = false; break; }
+                if (ok) break;                      // s[0..k) is the longest palindromic prefix
+                k--;
+            }
+            return new StringBuilder(s.substring(k)).reverse() + s;
+        }`
+    },
+    mcq: {
+      q: 'In t = s + "#" + reverse(s), what does lps[last] measure?',
+      options: ['The number of palindromes in s', 'The longest prefix of s that equals a suffix of reverse(s) — i.e. the longest palindromic prefix of s', 'The length of s', 'The longest palindromic substring'],
+      answer: 1,
+      explain: 'A prefix P of s equals a suffix of reverse(s) exactly when reverse(P) = P, i.e. P is a palindrome. The "#" stops the border from growing past s into reverse(s).'
+    },
+    hints: [
+      `<p><b>Aha:</b> whatever we add in front must mirror the part of s that is <b>not</b> already a palindrome at the start. So find the <b>longest palindromic prefix</b>.</p>`,
+      `<p>Longest palindromic prefix = lps[last] of <code>s + "#" + reverse(s)</code> (KMP). Then answer = reverse(s.substring(k)) + s.</p>`,
+      `<p><b>Traps:</b> without "#", lps could exceed |s| (e.g. s = "aaa"); empty s → ""; use StringBuilder.reverse. <b>Recipe:</b> rev = reverse(s); t = s + "#" + rev; k = lps(t)[last]; return rev.substring(0, n − k) + s.</p>`
+    ],
+    solution: {
+      approach: `<p>KMP prefix function on s#reverse(s) gives the longest palindromic prefix in O(n).</p>`,
+      code: `
+        class Solution {
+            public String shortestPalindrome(String s) {
+                int n = s.length();
+                String rev = new StringBuilder(s).reverse().toString();
+                String t = s + "#" + rev;                       // '#' never appears in s
+                int[] lps = new int[t.length()];
+                for (int i = 1, len = 0; i < t.length(); ) {
+                    if (t.charAt(i) == t.charAt(len)) lps[i++] = ++len;
+                    else if (len > 0) len = lps[len - 1];
+                    else lps[i++] = 0;
+                }
+                int k = lps[t.length() - 1];                     // longest palindromic prefix length
+                return rev.substring(0, n - k) + s;             // mirror the leftover in front
+            }
+
+            public static void main(String[] args) {
+                Solution sol = new Solution();
+                System.out.println(sol.shortestPalindrome("aacecaaa")); // aaacecaaa
+                System.out.println(sol.shortestPalindrome("abcd"));     // dcbabcd
+            }
+        }`,
+      dry: {
+        head: ['s', 't = s#rev', 'lps[last] = k', 'leftover s[k..]', 'answer'],
+        rows: [
+          ['aacecaaa', 'aacecaaa#aaacecaa', '7', '"a"', '<span class="c-g">a + aacecaaa</span>'],
+          ['abcd', 'abcd#dcba', '1', '"bcd"', '<span class="c-g">dcb + abcd</span>']
+        ]
+      },
+      complexity: `<p><b>Time O(n)</b>, <b>Space O(n)</b>. (A rolling-hash version compares forward and backward prefix hashes in one pass — also O(n), probabilistic.)</p>`,
+      followUps: ['Characters may only be added at the end instead (mirror image of this problem).', 'Minimum insertions anywhere → n − LPS (longest palindromic subsequence), a DP problem.']
+    }
+  });
+
+  practice.push({
+    title: 'Sum of Scores of Built Strings',
+    level: 'Hard',
+    tags: ['z-algorithm', 'lcp'],
+    companies: ['Google'],
+    statement: `<p>A string s of length n is built by prepending characters one at a time; s<sub>i</sub> is the string after i characters, which equals the <b>suffix</b> of s of length i. The score of s<sub>i</sub> is the length of the longest common prefix of s<sub>i</sub> and s. Return the sum of all scores.</p>`,
+    constraints: `1 ≤ n ≤ 10<sup>5</sup>; lowercase English letters. The answer can exceed 2<sup>31</sup> — use long.`,
+    example: `<p>s = "babab": suffixes b, ab, bab, abab, babab score 1, 0, 3, 0, 5 → <b>9</b>.</p>
+      ${H.arr([0, 0, 3, 0, 1], { label: 'Z of "babab"', hl: { 2: 'p', 4: 'p' } })}
+      <p>Score of the suffix starting at i is Z[i] (and n for i = 0). "azbazbzaz" → 9 + 3 + 2 = <b>14</b>.</p>`,
+    brute: {
+      why: `<p>For each suffix compare it with s character by character: O(n) per suffix → O(n<sup>2</sup>) = 10<sup>10</sup> on "aaaa…a". The wasted work: overlapping comparisons the Z-box reuses.</p>`,
+      code: `
+        long sumScoresBrute(String s) {
+            int n = s.length();
+            long total = 0;
+            for (int i = 0; i < n; i++) {
+                int k = 0;
+                while (i + k < n && s.charAt(k) == s.charAt(i + k)) k++;   // LCP from scratch
+                total += k;
+            }
+            return total;
+        }`
+    },
+    mcq: {
+      q: 'The score of the suffix starting at index i equals…',
+      options: ['lps[i]', 'Z[i] (with the full string scoring n)', 'n − i', 'The number of distinct characters'],
+      answer: 1,
+      explain: 'Z[i] is the length of the longest substring starting at i that matches a prefix of s — exactly the LCP of suffix i with s.'
+    },
+    hints: [
+      `<p><b>Aha:</b> "longest common prefix of each suffix with the whole string" is the definition of the Z-array.</p>`,
+      `<p>Compute Z with the [L, R] box in O(n); answer = n + Σ Z[i] for i ≥ 1.</p>`,
+      `<p><b>Traps:</b> sum in <code>long</code> (n = 10<sup>5</sup> of "a" gives ~5·10<sup>9</sup>); remember the full string's own score n (Z[0] is 0 by convention). <b>Recipe:</b> z = zArray(s); total = n + sum(z[1..]); return total.</p>`
+    ],
+    solution: {
+      approach: `<p>Z-algorithm; sum of Z plus n.</p>`,
+      code: `
+        class Solution {
+            public long sumScores(String s) {
+                int n = s.length();
+                int[] z = new int[n];
+                long total = n;                                   // s_n = s scores n
+                for (int i = 1, L = 0, R = 0; i < n; i++) {
+                    if (i <= R) z[i] = Math.min(R - i + 1, z[i - L]);
+                    while (i + z[i] < n && s.charAt(z[i]) == s.charAt(i + z[i])) z[i]++;
+                    if (i + z[i] - 1 > R) {
+                        L = i;
+                        R = i + z[i] - 1;
+                    }
+                    total += z[i];
+                }
+                return total;
+            }
+
+            public static void main(String[] args) {
+                Solution sol = new Solution();
+                System.out.println(sol.sumScores("babab"));      // 9
+                System.out.println(sol.sumScores("azbazbzaz"));  // 14
+            }
+        }`,
+      dry: {
+        head: ['i', 'free start', 'Z[i]', 'box', 'total'],
+        rows: [
+          ['—', '—', '—', '—', '5 (whole string)'],
+          ['1', '0', '0 (a ≠ b)', '[0, 0]', '5'],
+          ['2', '0', '3 (bab)', '[2, 4]', '8'],
+          ['3', 'min(2, Z[1] = 0) = 0', '0', '[2, 4]', '8'],
+          ['4', 'min(1, Z[2] = 3) = 1', '1 (end)', '[2, 4]', '<span class="c-g">9</span>']
+        ]
+      },
+      complexity: `<p><b>Time O(n)</b>, <b>Space O(n)</b>.</p>`,
+      followUps: ['Count how many times each prefix occurs in s (Z or prefix-function counting).', 'Answer LCP(i, j) for arbitrary suffix pairs → suffix array + LCP or hashing + binary search.']
+    }
+  });
+
+  practice.push({
+    title: 'Longest Duplicate Substring',
+    level: 'Hard',
+    tags: ['rolling hash', 'binary search', 'rabin-karp'],
+    companies: ['Google', 'Meta', 'Amazon'],
+    statement: `<p>Given a string <code>s</code>, return any longest substring that occurs <b>at least twice</b> (occurrences may overlap). If none exists, return <code>""</code>.</p>`,
+    constraints: `2 ≤ |s| ≤ 3·10<sup>4</sup>; lowercase English letters.`,
+    example: `${H.arr('banana'.split(''), { hl: { 1: 'g', 2: 'g', 3: 'p', 4: 'b', 5: 'b' } })}
+      <p>"banana" → <b>"ana"</b>, found at 1 and 3 (they share the middle ${H.c('p', 'a')}). "abcd" → "" (no letter repeats).</p>`,
+    brute: {
+      why: `<p>For each length L (n of them), put all substrings of length L in a HashSet&lt;String&gt; — O(n·L) per length → O(n<sup>3</sup>) overall ≈ 2.7·10<sup>13</sup>. Two wastes: trying every L (the answer is monotonic, so binary search works) and hashing whole substrings (rolling hash makes each window O(1)).</p>`,
+      code: `
+        String dupBrute(String s) {
+            for (int len = s.length() - 1; len > 0; len--) {
+                Set<String> seen = new HashSet<>();
+                for (int i = 0; i + len <= s.length(); i++) {
+                    if (!seen.add(s.substring(i, i + len))) return s.substring(i, i + len);
+                }
+            }
+            return "";
+        }`
+    },
+    mcq: {
+      q: 'Why can we binary search on the length L?',
+      options: ['Because s is sorted', 'If some substring of length L repeats, its first L − 1 characters also repeat — so "a duplicate of length L exists" is monotonic', 'Because hashes are sorted', 'We cannot; it must be linear'],
+      answer: 1,
+      explain: 'Feasibility is true for all L up to the answer and false after it — the classic "binary search on the answer" shape (see the Binary Search module).'
+    },
+    hints: [
+      `<p><b>Aha:</b> two ideas combine: (1) binary search the answer length L; (2) for a fixed L, find a repeated window in O(n) with a rolling hash.</p>`,
+      `<p>Precompute prefix hashes and powers once; for a given L, hash every window with <code>(pre[i+L] − pre[i]·pw[L]) mod M</code> into a <code>HashMap&lt;Long, List&lt;Integer&gt;&gt;</code>; on an equal hash, confirm with <code>regionMatches</code> before declaring a duplicate.</p>`,
+      `<p><b>Traps:</b> verify on hash hits (or use double hashing) — a false positive breaks the binary search; char values must be non-zero (use the char code itself with base 131); keep products below 2<sup>63</sup>. <b>Recipe:</b> lo = 1, hi = n − 1; while lo ≤ hi: mid; st = findDup(mid); if st ≥ 0: best = (st, mid), lo = mid + 1 else hi = mid − 1.</p>`
+    ],
+    solution: {
+      approach: `<p>Binary search on length + Rabin-Karp window hashing (verified) — O(n log n) expected.</p>`,
+      code: `
+        class Solution {
+            static final long B = 131, M = 1_000_000_007L;
+            private long[] pre, pw;
+            private String s;
+
+            public String longestDupSubstring(String s) {
+                this.s = s;
+                int n = s.length();
+                pre = new long[n + 1];
+                pw = new long[n + 1];
+                pw[0] = 1;
+                for (int i = 0; i < n; i++) {
+                    pre[i + 1] = (pre[i] * B + s.charAt(i)) % M;   // char code is never 0
+                    pw[i + 1] = pw[i] * B % M;
+                }
+                int lo = 1, hi = n - 1, bestStart = -1, bestLen = 0;
+                while (lo <= hi) {                                  // binary search on the length
+                    int mid = (lo + hi) >>> 1;
+                    int st = findDup(mid);
+                    if (st >= 0) { bestStart = st; bestLen = mid; lo = mid + 1; }
+                    else hi = mid - 1;
+                }
+                return bestStart < 0 ? "" : s.substring(bestStart, bestStart + bestLen);
+            }
+
+            private long hash(int l, int len) {                     // hash of s[l .. l+len-1]
+                return ((pre[l + len] - pre[l] * pw[len]) % M + M) % M;
+            }
+
+            private int findDup(int len) {                          // start of a repeated window, or -1
+                Map<Long, List<Integer>> seen = new HashMap<>();
+                for (int i = 0; i + len <= s.length(); i++) {
+                    List<Integer> starts = seen.computeIfAbsent(hash(i, len), k -> new ArrayList<>());
+                    for (int j : starts) {
+                        if (s.regionMatches(j, s, i, len)) return i;  // verified: not a collision
+                    }
+                    starts.add(i);
+                }
+                return -1;
+            }
+
+            public static void main(String[] args) {
+                Solution sol = new Solution();
+                System.out.println(sol.longestDupSubstring("banana"));          // ana
+                System.out.println("[" + sol.longestDupSubstring("abcd") + "]"); // []
+            }
+        }`,
+      dry: {
+        head: ['lo', 'hi', 'mid', 'repeated window of length mid?', 'best'],
+        rows: [
+          ['1', '5', '3', '"ana" at 1 and 3 → <span class="c-g">yes</span>', 'ana'],
+          ['4', '5', '4', 'bana, anan, nana — all distinct → no', 'ana'],
+          ['4', '3', '—', 'lo &gt; hi → stop', '<span class="c-p">"ana"</span>']
+        ]
+      },
+      complexity: `<p><b>Time O(n log n)</b> expected (log n lengths × O(n) windows). <b>Space O(n)</b>. A suffix array + LCP array solves it deterministically in O(n log n) too.</p>`,
+      followUps: ['Count distinct substrings (hash all windows of every length, or suffix automaton).', 'Longest substring that appears at least k times.']
+    }
+  });
+
+  // =====================================================================
+  // QUIZ
+  // =====================================================================
+  quiz.push({ q: 'What does this print? <code>String s = "cat"; s.toUpperCase(); System.out.println(s);</code>', options: ['CAT', 'cat', 'Cat', 'Compile error'], answer: 1, explain: 'Strings are immutable. toUpperCase() returns a new String "CAT" that is thrown away because it is not assigned; s still points to "cat".' });
+  quiz.push({ q: 'For a lowercase letter <code>c</code>, what is <code>c - \'a\'</code> when c = \'e\'?', options: ['5', '4', '101', '\'e\''], answer: 1, explain: '\'e\' is 101 and \'a\' is 97 in ASCII/Unicode, so the difference is 4 — the 0-based slot of e in an int[26].' });
+  quiz.push({ q: '<code>String a = "hi"; String c = new String("hi");</code> — which is true?', options: ['a == c is true', 'a.equals(c) is true and a == c is false', 'Both are false', 'Both are true'], answer: 1, explain: 'new always creates a separate object, so the references differ (== false), while the letters are the same (equals true).' });
+  quiz.push({ q: 'Building a string of N characters with <code>s += c</code> inside a loop costs…', options: ['O(N)', 'O(N log N)', 'O(N<sup>2</sup>) — each += copies the whole string so far', 'O(1)'], answer: 2, explain: 'Copies of length 1 + 2 + … + N = N(N+1)/2. A StringBuilder makes it O(N) amortized.' });
+  quiz.push({ q: 'How many centers does expand-around-center try for a string of length N?', options: ['N', 'N − 1', '2N − 1 (N letters + N − 1 gaps)', 'N<sup>2</sup>'], answer: 2, explain: 'Odd palindromes are centered on a letter (N choices); even palindromes on the gap between two letters (N − 1 choices).' });
+  quiz.push({ q: 'After <code>expand(l, r)</code> stops, the palindrome found has length…', options: ['r − l', 'r − l + 1', 'r − l − 1', 'r + l'], answer: 2, explain: 'The loop exits one step too far on both sides, so the palindrome is s[l+1 .. r−1], whose length is (r − 1) − (l + 1) + 1 = r − l − 1.' });
+  quiz.push({ q: 'In Rabin-Karp, why do we compare characters when the window hash equals the pattern hash?', options: ['To make it faster', 'Because different strings can share a hash (collision)', 'Because Java requires it', 'We never need to'], answer: 1, explain: 'Hashing maps many strings to fewer values, so equal hashes only mean "possibly equal". Verifying (or double hashing) rules out spurious hits.' });
+  quiz.push({ q: 'In Java, <code>(-5) % 7</code> evaluates to…', options: ['2', '-5', '5', '-2'], answer: 1, explain: 'Java\'s % keeps the sign of the dividend. That is why rolling-hash code writes (x % M + M) % M or Math.floorMod after subtracting.' });
+  quiz.push({ q: 'What is the LPS array of <code>"ababaca"</code>?', options: ['[0,0,1,2,3,0,1]', '[0,1,2,3,4,5,6]', '[0,0,1,2,0,0,1]', '[1,0,1,0,1,0,1]'], answer: 0, explain: 'Borders: "a"(i=2) → 1, "ab" → 2, "aba" → 3, then "c" breaks everything → 0, final "a" → 1.' });
+  quiz.push({ q: 'In KMP search, a mismatch happens with j &gt; 0. What do you do?', options: ['i = i − j + 1, j = 0', 'j = lps[j − 1] and keep i', 'j = lps[j] and i++', 'i++ and j++'], answer: 1, explain: 'The longest border of the matched part pat[0..j−1] is lps[j − 1]; those characters are already matched, so continue comparing pat[lps[j−1]] with the same text character. i never moves back.' });
+  quiz.push({ q: 'Z-array of <code>"aabxaab"</code> (with Z[0] = 0) is…', options: ['[0,1,0,0,3,1,0]', '[0,1,0,0,2,1,0]', '[0,0,0,0,3,0,0]', '[7,1,0,0,3,1,0]'], answer: 0, explain: 'Z[1] = 1 ("a"), Z[4] = 3 ("aab" matches the prefix), Z[5] = 1 ("a"), others 0.' });
+  quiz.push({ q: 'To find pattern p in text t with the Z-algorithm, why build <code>p + "$" + t</code>?', options: ['To sort the characters', 'The separator caps every Z value at |p|, so Z[i] == |p| exactly marks a match', 'To make the string a palindrome', 'Because Z needs even length'], answer: 1, explain: 'Without the separator a match could run past the pattern into the text and give Z values larger than |p| that mix the two strings.' });
+  quiz.push({ q: 'The question says "the string is made by repeating a substring several times". Using KMP, the smallest repeating unit has length…', options: ['lps[n − 1]', 'n − lps[n − 1], valid if it divides n and lps[n − 1] &gt; 0', 'n / 2', 'max(lps)'], answer: 1, explain: 'The smallest period is n − lps[n − 1]. The string is a full repetition only if that period divides n (and is shorter than n).' });
+
+  // =====================================================================
+  // INTERVIEW Q&A
+  // =====================================================================
+  interview.push({ q: 'Why are Strings immutable in Java, and what does that buy us?', level: 'B', a: `<p>Once created, a String's characters can never change; every "modification" returns a new String. Benefits: (1) <b>safe sharing</b> — literals are pooled and many references can point to one object; (2) <b>thread safety</b> without locks; (3) <b>hash caching</b> — hashCode is computed once and stored, which makes Strings ideal HashMap keys; (4) <b>security</b> — file paths, class names and URLs cannot be altered after validation. The cost: editing in a loop creates garbage and can be O(N<sup>2</sup>), which is why we use StringBuilder or char[] for building.</p>`, followUps: ['What would break if a String used as a HashMap key could change?', 'How do you "edit" a String efficiently?'] });
+  interview.push({ q: 'Explain == vs equals for Strings, and when == happens to return true.', level: 'B', a: `<p><code>==</code> compares references (are these the same object?); <code>equals</code> compares the character content. == returns true for two identical <b>literals</b> (both point to the pooled object), for compile-time constant expressions like <code>"he" + "llo"</code>, and after <code>intern()</code>. Strings built at runtime (concatenation with variables, input, substring) are new objects, so == fails even when the letters match. Rule: always use <code>equals</code> (or <code>Objects.equals</code> for null-safety).</p>`, followUps: ['What does intern() do and when is it useful?', 'Is comparing two char values with == okay?'] });
+  interview.push({ q: 'How would you count character frequencies, and when is int[26] better than a HashMap?', level: 'B', a: `<p>If the problem guarantees lowercase a–z, use <code>int[26]</code> and <code>cnt[c - 'a']++</code>: no hashing, no boxing, contiguous memory, O(1) space, and comparing two count arrays costs 26 steps. For full ASCII use <code>int[128]</code>. For arbitrary Unicode or unknown alphabets use <code>HashMap&lt;Character, Integer&gt;</code> (or code points). The array version is typically several times faster and is what interviewers expect when they say "lowercase English letters".</p>`, followUps: ['How do you compare two frequency arrays quickly in a sliding window?', 'What breaks if the input contains uppercase letters?'] });
+  interview.push({ q: 'Why is StringBuilder append amortized O(1)? Prove it.', level: 'I', a: `<p>StringBuilder keeps a backing array with spare capacity. An append writes into the next free cell (O(1)). When full, it allocates roughly double the capacity and copies once. Copy sizes are c, 2c, 4c, …, all ≤ N, and that geometric series sums to less than 2N. Adding the N single writes gives fewer than 3N operations for N appends, so the <b>average</b> cost per append is O(1) even though an individual append can cost O(N). Pre-sizing with <code>new StringBuilder(n)</code> removes the copies entirely.</p>`, followUps: ['What if capacity grew by +10 instead of ×2?', 'Which StringBuilder operations are O(N) and should be avoided in loops?'] });
+  interview.push({ q: 'Walk me through finding the longest palindromic substring. What are the alternatives?', level: 'I', a: `<p>Every palindrome is symmetric around a center — a letter (odd length) or a gap (even length) — so there are 2N − 1 centers. From each, expand l−−, r++ while s[l] == s[r]; length = r − l − 1, start = c − (len − 1)/2. Time O(N<sup>2</sup>), space O(1). Alternatives: brute force O(N<sup>3</sup>); DP table pal[i][j] in O(N<sup>2</sup>) time and space (useful when many palindrome queries follow); hashing + binary search O(N log N); Manacher's algorithm O(N) using a mirror/box idea on "#a#b#…".</p>`, followUps: ['How would you count all palindromic substrings?', 'Explain the idea behind Manacher in two sentences.'] });
+  interview.push({ q: 'Explain the polynomial rolling hash and how Rabin-Karp uses it.', level: 'I', a: `<p>Treat a string as a number in base B: hash = s[0]·B<sup>m−1</sup> + … + s[m−1], all mod a large prime M. Sliding the window right: subtract the outgoing char × B<sup>m−1</sup>, multiply by B, add the incoming char — O(1). Rabin-Karp hashes the pattern and each text window; only on equal hashes does it compare characters (to rule out collisions). Expected O(N + M); worst case O(N·M) if many verifications happen. With prefix hashes, any substring's hash is O(1): pre[r+1] − pre[l]·B<sup>len</sup>.</p>`, followUps: ['Why must letter values start at 1, not 0?', 'How do you handle negative values after the subtraction in Java?'] });
+  interview.push({ q: 'How do you reduce hash collisions, and how likely are they?', level: 'A', a: `<p>For a prime modulus M and a random base, two different strings of length L collide with probability ≤ L/M. Across many comparisons the birthday effect matters: with K hashes in a set, collisions become likely around K ≈ √M. Mitigations: (1) verify characters on every hash hit (always correct); (2) <b>double hashing</b> with two independent (B, M) pairs — false positives ≈ 1/(M<sub>1</sub>M<sub>2</sub>); (3) a 61-bit Mersenne prime modulus with 128-bit multiplication; (4) choose the base randomly at runtime so adversaries cannot craft collisions. Avoid relying on overflow mod 2<sup>64</sup> — Thue–Morse strings break it.</p>`, followUps: ['Why is a fixed base dangerous on a public judge or a web service?', 'How would you pack two hashes into one HashMap key?'] });
+  interview.push({ q: 'What is the LPS array and how do you build it in O(M)?', level: 'I', a: `<p>lps[i] = length of the longest <b>proper</b> prefix of pat[0..i] that is also a suffix of it. Build with two pointers: i scans the pattern, len is the current border length. If pat[i] == pat[len], len++ and lps[i] = len, i++. On mismatch with len &gt; 0, fall back to the next shorter border len = lps[len − 1] without moving i. On mismatch with len = 0, lps[i] = 0, i++. len increases at most M times and every fallback decreases it, so total work is O(M).</p>`, followUps: ['Compute the LPS of "aabaaab" by hand.', 'Why is the fallback lps[len − 1] and not lps[len]?'] });
+  interview.push({ q: 'Prove that KMP search runs in O(N + M).', level: 'A', a: `<p>Each loop iteration either moves the text pointer i forward, or decreases the pattern pointer j via j = lps[j − 1]. i moves forward at most N times. j only increases together with i (at most N increments total), and it never goes below 0, so the total number of decreases is also at most N. Hence the search loop runs at most 2N times; the LPS build by the same argument runs at most 2M times. Total O(N + M), deterministic — unlike Rabin-Karp, no luck is involved.</p>`, followUps: ['Does the text pointer ever move backwards?', 'How would you handle finding overlapping matches?'] });
+  interview.push({ q: 'Explain the Z-algorithm and the [L, R] box.', level: 'A', a: `<p>Z[i] is the length of the longest substring starting at i that equals a prefix of s. We keep the box [L, R] — the matching segment reaching furthest right, meaning s[L..R] = s[0..R−L]. For i inside the box, its mirror i − L near the start gives a free lower bound Z[i] ≥ min(R − i + 1, Z[i − L]). Then we extend by direct comparisons beyond R, and move the box if we pass R. Each successful comparison pushes R right, so total time is O(N). For pattern search, compute Z of pat + "$" + txt and report indices where Z == |pat|.</p>`, followUps: ['Why cap the free value at R − i + 1?', 'What do you do if no separator character is safe?'] });
+  interview.push({ q: 'KMP vs Z vs Rabin-Karp — how do you choose?', level: 'A', a: `<p><b>KMP:</b> deterministic O(N + M), memory O(M), reads the text once left to right — ideal for streams, and its LPS array directly answers border/period/shortest-palindrome questions. <b>Z:</b> same guarantee, simpler mental model, but the concatenation needs O(N + M) memory and a safe separator; natural for "match the prefix at each position" questions (sum of scores). <b>Rabin-Karp:</b> probabilistic but flexible — O(1) comparison of <i>any</i> two substrings via prefix hashes, multiple patterns of equal length, 2D matching, binary search on length (longest duplicate substring). In interviews, pick the one you can code bug-free and state its guarantees.</p>`, followUps: ['Which would you use for many patterns at once? (Aho–Corasick)', 'Which one does Java\'s indexOf use?'] });
+  interview.push({ q: 'How would you check if one string is a rotation of another in O(N)?', level: 'I', a: `<p>Check that the lengths are equal, then test whether goal occurs in s + s. Every rotation of s by k positions is (s + s)[k .. k + n), so rotations of s are exactly the length-n windows of s + s. Use KMP or Z for a guaranteed O(N) search (Java's contains is fast in practice but O(N·M) worst case). The length check matters: without it, "ab" would wrongly be accepted as a rotation of "abc" since it appears in "abcabc".</p>`, followUps: ['How do you find the lexicographically smallest rotation?', 'What if you also need the number of shifts?'] });
+  interview.push({ q: 'Design: you need to detect near-duplicate documents across 100 million web pages. Where do string algorithms come in?', level: 'E', a: `<p>Exact matching per pair is impossible (10<sup>16</sup> pairs), so we fingerprint. Split each document into k-word shingles, hash each shingle with a <b>rolling hash</b> (Rabin fingerprints) so shingles are produced in O(length). Then compute a <b>MinHash</b> signature (the minimum hash under many hash functions) — similar documents share many minima — and use <b>locality-sensitive hashing</b> to bucket candidates so only likely pairs are compared. "Winnowing" (selecting minimum fingerprints in sliding windows) is the same idea used by MOSS for plagiarism detection. This pipeline is also standard for deduplicating LLM training data and RAG corpora.</p>`, followUps: ['How do you pick k for shingles?', 'Why is a rolling hash essential here rather than hashing each shingle from scratch?'] });
+  interview.push({ q: 'An AI assistant wrote your string-matching code. How do you review it quickly for correctness and performance?', level: 'E', a: `<p>I check the known failure points: (1) <b>String concatenation in loops</b> (+= → O(N<sup>2</sup>)) and repeated substring copies; (2) <b>== on Strings</b>; (3) for hashing — letter values starting at 0, negative modulo, int overflow, missing verification on equal hashes; (4) for KMP — using lps[j] instead of lps[j − 1], resetting j to 0 after a match (misses overlaps), moving i on fallback; (5) for Z — missing the R − i + 1 cap or an unsafe separator; (6) Unicode assumptions like c − 'a'. Then I run a <b>stress test</b>: a brute-force O(N·M) reference against the fast version on thousands of random small inputs, plus adversarial cases ("aaaa…ab").</p>`, followUps: ['How would you write that stress test in 10 lines?', 'Which inputs make naive matching quadratic?'] });
+
+  registerModule({
+    id: 'dsa09',
+    title: 'String Algorithms',
+    intro: `<p>Strings are the most common input type in coding interviews — names, logs, DNA, URLs, chat messages. This module starts with how Java really stores text (immutability, <code>c - 'a'</code> arithmetic, the String pool, why <code>+=</code> in a loop is secretly O(N<sup>2</sup>)), then builds up to the classic algorithms every strong candidate knows: <b>two-pointer palindromes</b>, <b>expand around center</b> for the longest palindromic substring, the <b>polynomial rolling hash</b> behind Rabin-Karp, <b>KMP with its LPS array</b>, and the <b>Z-algorithm</b>.</p>
+      <p>Every topic opens with an everyday analogy, then shows a step-by-step visualizer you can feed your own input, worked examples, an expert deep dive and an AI-era section. It builds directly on hashing (DSA 8) and the two-pointer / sliding-window ideas (DSA 6). By the end you will read a question like "find all occurrences in linear time" or "longest prefix that is also a suffix" and immediately know which tool to reach for.</p>`,
+    goals: [
+      'Explain String immutability, the String pool and == vs equals, and use <code>c - \'a\'</code> counting arrays instead of HashMaps when the alphabet is small',
+      'Spot hidden O(N<sup>2</sup>) string building and replace it with StringBuilder or char[] (and prove why append is amortized O(1))',
+      'Check palindromes with two pointers in O(1) space and find the longest palindromic substring with expand-around-center (odd and even centers)',
+      'Implement a polynomial rolling hash (prefix hashes, O(1) substring hash, mod arithmetic, collision handling) and Rabin-Karp search',
+      'Build the KMP LPS array by hand and in code, search in guaranteed O(N + M), and use LPS for periods, happy prefixes and shortest palindromes',
+      'Compute the Z-array with the [L, R] box and solve pattern search and prefix-matching problems with pat + "$" + txt',
+      'Choose between KMP, Z and hashing from the wording and constraints of a question'
+    ],
+    prereqs: `DSA 1 (Programming Foundations — Java strings and arrays), DSA 2 (Complexity), DSA 3 (Modular arithmetic: (a − b + m) % m and fast power), DSA 6 (Two Pointers &amp; Sliding Window) and DSA 8 (Hashing Masterclass).`,
+    hours: 14,
+    topics: topics,
+    practice: practice,
+    quiz: quiz,
+    interview: interview
+  });
+})();

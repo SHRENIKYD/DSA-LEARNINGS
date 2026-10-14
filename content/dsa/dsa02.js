@@ -88,9 +88,9 @@ class LoopCounts {
       {
         title: 'Triangle loop counter: j starts at i + 1',
         input: '5',
-        inputLabel: 'N (1 to 8)',
+        inputLabel: 'N (2 to 8)',
         gen: function (input) {
-          var n = parseOneInt(input, 1, 8, 5);
+          var n = parseOneInt(input, 2, 8, 5);
           var frames = [], count = 0, grid = [], rowHead = [], colHead = [], r, c;
           for (r = 0; r < n; r++) {
             grid.push([]);
@@ -156,9 +156,9 @@ class LoopCounts {
       {
         title: 'Doubling inner loop: i *= 2 inside a j loop',
         input: '6',
-        inputLabel: 'N (1 to 12)',
+        inputLabel: 'N (2 to 12)',
         gen: function (input) {
-          var n = parseOneInt(input, 1, 12, 6);
+          var n = parseOneInt(input, 2, 12, 6);
           var inner = [];
           for (var v = 1; v <= n; v *= 2) inner.push(v);
           var outer = [];
@@ -1784,6 +1784,1109 @@ class Solution {
       }
     ]
   });
+
+  // =====================================================================
+  // PRACTICE — Easy
+  // =====================================================================
+  practice.push({
+    title: 'Missing Number (Gauss Sum)',
+    level: 'Easy',
+    tags: ['AP sum', 'math', 'array'],
+    companies: ['Amazon', 'Microsoft', 'Apple'],
+    statement: `<p>An array <code>nums</code> holds <code>n</code> <b>distinct</b> numbers taken from the range <code>0, 1, 2, …, n</code>. Exactly one number of that range is missing. Return it.</p>`,
+    constraints: `1 ≤ n ≤ 10<sup>5</sup>, 0 ≤ nums[i] ≤ n, all values distinct. Aim for O(n) time and O(1) extra space.`,
+    example: `<p>Input: ${H.arr([3, 0, 1])} → Output: ${H.c('p', '<b>2</b>')}</p>
+<p>Why: n = 3, the range is 0..3 whose sum is 3·4/2 = ${H.c('b', '6')}. The array sums to ${H.c('y', '4')}. The missing number is 6 − 4 = ${H.c('p', '2')}.</p>`,
+    brute: {
+      why: `<p>For every candidate value v from 0 to n, scan the whole array to see if v is there: (n+1) × n ≈ 10<sup>10</sup> steps for n = 10<sup>5</sup> → TLE. Wasted work: we search for each value separately, although one single total already "remembers" every value.</p>`,
+      code: `
+int missingBrute(int[] nums) {
+    int n = nums.length;
+    for (int v = 0; v <= n; v++) {          // every candidate value
+        boolean found = false;
+        for (int x : nums) {                // scan the whole array for it
+            if (x == v) { found = true; break; }
+        }
+        if (!found) return v;
+    }
+    return -1;                              // never reached for valid input
+}`
+    },
+    mcq: {
+      q: 'Which quantity instantly reveals the missing number?',
+      options: ['The maximum of the array', '(0 + 1 + … + n) − (sum of the array)', 'The number of even values', 'The product of the array'],
+      answer: 1,
+      explain: 'Every present value appears in both sums and cancels out; only the missing value is left over. 0 + … + n = n(n+1)/2 is an AP sum computed in O(1).'
+    },
+    hints: [
+      `<p>If nothing were missing, the numbers would be exactly 0..n, whose sum you know without a loop: n(n+1)/2 (Gauss pairing).</p>`,
+      `<p>One pass to add up the array into a <code>long</code>. The difference between the expected total and the actual total is the answer. (An XOR of 0..n and all elements works too and can never overflow.)</p>`,
+      `<p>Edge cases: missing 0 (array is 1..n) and missing n (array is 0..n−1) both work automatically. With n up to 10<sup>5</sup> the sum ~5·10<sup>9</sup> overflows <code>int</code> → use <code>long</code>. Recipe: expected = n(n+1)/2; actual = Σ nums; return expected − actual.</p>`
+    ],
+    solution: {
+      approach: `<p>Expected sum of 0..n by the AP formula, minus the actual sum. Everything present cancels out.</p>`,
+      code: `
+class Solution {
+    public int missingNumber(int[] nums) {
+        long n = nums.length;
+        long expected = n * (n + 1) / 2;   // 0 + 1 + ... + n, Gauss formula
+        long actual = 0;
+        for (int x : nums) actual += x;    // one pass, O(1) extra space
+        return (int) (expected - actual);  // only the missing value survives
+    }
+
+    public static void main(String[] args) {
+        Solution s = new Solution();
+        System.out.println(s.missingNumber(new int[]{3, 0, 1}));                   // 2
+        System.out.println(s.missingNumber(new int[]{9, 6, 4, 2, 3, 5, 7, 0, 1})); // 8
+        System.out.println(s.missingNumber(new int[]{0}));                         // 1
+    }
+}`,
+      alt: [{ lang: 'python', code: `def missing_number(nums):
+    n = len(nums)
+    return n * (n + 1) // 2 - sum(nums)   # Python ints never overflow
+
+print(missing_number([3, 0, 1]))  # 2`, run: true }],
+      dry: {
+        head: ['step', 'value', 'note'],
+        rows: [['n', '3', 'length of [3, 0, 1]'], ['expected', '3·4/2 = 6', '0+1+2+3'], ['actual', '3+0+1 = 4', 'one pass'], ['answer', H.c('p', '6 − 4 = 2'), 'missing value']]
+      },
+      complexity: `<p><b>Time O(n)</b> for one pass (the formula itself is O(1)). <b>Space O(1)</b>. The brute force is O(n<sup>2</sup>).</p>`,
+      followUps: ['Solve it with XOR so no overflow is ever possible.', 'Two numbers are missing: use the sum and the sum of squares (two equations).']
+    }
+  });
+
+  practice.push({
+    title: 'Sum of Multiples of 3 or 5 Below N',
+    level: 'Easy',
+    tags: ['AP sum', 'inclusion-exclusion', 'math'],
+    companies: ['Google', 'Adobe'],
+    statement: `<p>Return the sum of all natural numbers <b>strictly below</b> <code>N</code> that are multiples of 3 or 5.</p>`,
+    constraints: `1 ≤ N ≤ 10<sup>9</sup> (the answer fits in a <code>long</code>)`,
+    example: `<p>Input: <b>N = 10</b> → Output: ${H.c('p', '<b>23</b>')}</p>
+<p>Multiples of 3: ${H.c('b', '3, 6, 9')} (sum 18). Multiples of 5: ${H.c('y', '5')} (sum 5). Nothing is a multiple of 15 below 10. Total 18 + 5 = 23.</p>`,
+    brute: {
+      why: `<p>Loop i from 1 to N−1 and add i if <code>i % 3 == 0 || i % 5 == 0</code>. That is 10<sup>9</sup> iterations for the largest N — around 2–10 seconds in Java, and hopeless if N were 10<sup>18</sup>. Wasted work: the multiples of 3 form an AP whose sum has a formula.</p>`,
+      code: `
+long brute(long n) {
+    long sum = 0;
+    for (long i = 1; i < n; i++) {
+        if (i % 3 == 0 || i % 5 == 0) sum += i;
+    }
+    return sum;
+}`
+    },
+    mcq: {
+      q: 'Why must we subtract the multiples of 15?',
+      options: ['They are not multiples of 3', 'They were added twice: once as multiples of 3 and once as multiples of 5', 'Because 15 is odd', 'We must not; the formula already handles it'],
+      answer: 1,
+      explain: '15, 30, 45 … are in both lists. Inclusion-exclusion: |A ∪ B| = |A| + |B| − |A ∩ B|, and the same works for sums.'
+    },
+    hints: [
+      `<p>Multiples of k below N are k, 2k, …, m·k with m = ⌊(N−1)/k⌋. Their sum is k·(1 + 2 + … + m) = k·m(m+1)/2.</p>`,
+      `<p>Write a helper <code>sumOfMultiples(k, limit)</code>. Answer = f(3) + f(5) − f(15).</p>`,
+      `<p>Traps: "below N" means up to N−1 (N = 10 must not include 10); N = 1 → 0; use <code>long</code>: m(m+1) ≈ 1.1·10<sup>17</sup>, times 3 still fits. Recipe: lim = N − 1; return f(3) + f(5) − f(15) where f(k) = k·m(m+1)/2, m = lim/k.</p>`
+    ],
+    solution: {
+      approach: `<p>Each set of multiples is an AP; add the two APs and subtract the overlap (multiples of 15).</p>`,
+      code: `
+class Solution {
+    // k + 2k + ... + m*k where m*k <= limit
+    static long sumOfMultiples(long k, long limit) {
+        long m = limit / k;            // how many multiples
+        return k * (m * (m + 1) / 2);  // k * (1 + 2 + ... + m)
+    }
+
+    static long solve(long n) {
+        long lim = n - 1;              // strictly below n
+        return sumOfMultiples(3, lim) + sumOfMultiples(5, lim) - sumOfMultiples(15, lim);
+    }
+
+    public static void main(String[] args) {
+        System.out.println(solve(10));          // 23
+        System.out.println(solve(1000));        // 233168
+        System.out.println(solve(1_000_000_000L)); // 233333333166666668
+    }
+}`,
+      dry: {
+        head: ['k', 'm = ⌊9/k⌋', 'k·m(m+1)/2', 'sign'],
+        rows: [['3', '3', '3·3·4/2 = 18', '+'], ['5', '1', '5·1·2/2 = 5', '+'], ['15', '0', '0', '−'], ['total', '', H.c('p', '23'), '']]
+      },
+      complexity: `<p><b>Time O(1)</b> and <b>space O(1)</b>: three formula evaluations regardless of N.</p>`,
+      followUps: ['Multiples of 3, 5 or 7: inclusion-exclusion over all non-empty subsets of {3, 5, 7}.', 'Return the result modulo 10<sup>9</sup>+7 with N up to 10<sup>18</sup>.']
+    }
+  });
+
+  practice.push({
+    title: 'Count Digits of N in Base B (No Floating Point)',
+    level: 'Easy',
+    tags: ['logarithm', 'number bases', 'precision'],
+    companies: ['Bloomberg', 'Goldman Sachs'],
+    statement: `<p>Given a non-negative integer <code>N</code> and a base <code>B</code>, return how many digits <code>N</code> has when written in base <code>B</code>. (0 is written as one digit "0".)</p>`,
+    constraints: `0 ≤ N ≤ 10<sup>18</sup>, 2 ≤ B ≤ 36`,
+    example: `<p>N = 1000, B = 10 → ${H.c('p', '<b>4</b>')}. N = 13, B = 2 → 1101₂ → ${H.c('p', '<b>4</b>')}. N = 255, B = 16 → FF → ${H.c('p', '<b>2</b>')}.</p>
+<p>Why: the digit count is ⌊log<sub>B</sub> N⌋ + 1 = the number of times you can divide by B before reaching 0.</p>`,
+    brute: {
+      why: `<p>The "one-liner" <code>(int)(Math.log(n) / Math.log(b)) + 1</code> is O(1) but <b>wrong</b>: Math.log(1000)/Math.log(10) evaluates to 2.9999999999999996, so it returns 3 digits for 1000. Doubles cannot represent most logarithms exactly, and values just below an integer get truncated. It also crashes logically for N = 0 (log 0 = −∞).</p>`,
+      code: `
+int digitsWithLogs(long n, int b) {
+    // Fast-looking but wrong for n = 1000, b = 10 (prints 3) and undefined for n = 0
+    return (int) (Math.log(n) / Math.log(b)) + 1;
+}`
+    },
+    mcq: {
+      q: 'How many loop iterations does "divide N by B until it becomes 0" take for N = 10<sup>18</sup>, B = 2?',
+      options: ['18', '60', '10<sup>9</sup>', '10<sup>18</sup>'],
+      answer: 1,
+      explain: 'The loop runs once per digit: 10<sup>18</sup> has ⌊log₂ 10<sup>18</sup>⌋ + 1 = 60 binary digits. O(log N) with integers — exact and fast.'
+    },
+    hints: [
+      `<p>Each division by B removes exactly one digit from the right (just like dividing by 10 removes the last decimal digit). Count how many divisions it takes to reach 0.</p>`,
+      `<p>A <code>while (n &gt; 0) { n /= b; count++; }</code> loop with <code>long</code>. Special-case N = 0 → 1.</p>`,
+      `<p>Traps: N = 0 must return 1, not 0; never use <code>Math.log</code> for exact integer answers; exact powers (1000 in base 10, 1024 in base 2) are where float code breaks. Recipe: if n == 0 return 1; count = 0; while n &gt; 0: n /= b, count++; return count.</p>`
+    ],
+    solution: {
+      approach: `<p>Repeated integer division by B counts the digits exactly in O(log<sub>B</sub> N) steps.</p>`,
+      code: `
+class Solution {
+    static int digits(long n, int b) {
+        if (n == 0) return 1;      // "0" is one digit
+        int count = 0;
+        while (n > 0) {
+            n /= b;                // drop the last base-b digit
+            count++;
+        }
+        return count;              // = floor(log_b n) + 1, computed exactly
+    }
+
+    public static void main(String[] args) {
+        System.out.println(digits(1000, 10));                     // 4
+        System.out.println(digits(13, 2));                        // 4
+        System.out.println(digits(255, 16));                      // 2
+        System.out.println(digits(1_000_000_000_000_000_000L, 2)); // 60
+        System.out.println((int) (Math.log(1000) / Math.log(10)) + 1); // 3  <- the float bug
+    }
+}`,
+      dry: {
+        head: ['n before', 'n / 10', 'count'],
+        rows: [['1000', '100', '1'], ['100', '10', '2'], ['10', '1', '3'], ['1', '0', '4'], ['0', 'stop', H.c('p', '4')]]
+      },
+      complexity: `<p><b>Time O(log<sub>B</sub> N)</b> — at most 60 iterations for N ≤ 10<sup>18</sup>. <b>Space O(1)</b>.</p>`,
+      followUps: ['Count the digits of N! in base 10 without computing N! (sum of log10 i, then think about precision).', 'Return the digits themselves as a string in base B.']
+    }
+  });
+
+  practice.push({
+    title: 'Arranging Coins (Staircase Rows)',
+    level: 'Easy',
+    tags: ['AP sum', 'binary search', 'math'],
+    companies: ['Amazon', 'GoDaddy'],
+    statement: `<p>You have <code>n</code> coins and build a staircase: row 1 has 1 coin, row 2 has 2 coins, row k has k coins. The last row may be incomplete. Return the number of <b>complete</b> rows.</p>`,
+    constraints: `1 ≤ n ≤ 10<sup>18</sup>`,
+    example: `<p>n = 8: rows use 1, 2, 3 coins (total 6), the 4th row would need 4 but only 2 coins are left.</p>
+${H.table(['row k', 'coins needed', 'total used', 'complete?'], [['1', '1', '1', H.c('g', 'yes')], ['2', '2', '3', H.c('g', 'yes')], ['3', '3', '6', H.c('g', 'yes')], ['4', '4', '10 &gt; 8', H.c('r', 'no')]])}
+<p>Output ${H.c('p', '<b>3</b>')}: the largest k with k(k+1)/2 ≤ n.</p>`,
+    brute: {
+      why: `<p>Build row after row, subtracting k coins each time. The number of rows is about √(2n) ≈ 1.4·10<sup>9</sup> for n = 10<sup>18</sup> → several seconds → TLE. Wasted work: the total after k rows is an AP sum we can compute directly, so we can <b>jump</b> to the right k.</p>`,
+      code: `
+long bruteRows(long n) {
+    long k = 0;
+    while (n >= k + 1) {   // enough coins for the next row?
+        k++;
+        n -= k;            // build row k
+    }
+    return k;
+}`
+    },
+    mcq: {
+      q: 'The coins used by k complete rows are 1 + 2 + … + k. The answer is therefore…',
+      options: ['the largest k with k(k+1)/2 ≤ n', 'n / 2', '⌊log₂ n⌋', 'the smallest k with k<sup>2</sup> ≥ n'],
+      answer: 0,
+      explain: 'k(k+1)/2 grows with k, so "largest k that fits" is a monotonic yes/no question — perfect for binary search (or the quadratic formula with integer correction).'
+    },
+    hints: [
+      `<p>Coins for k rows = k(k+1)/2 (AP). "Does k fit?" is <b>yes</b> for small k and <b>no</b> after some point — a monotone predicate.</p>`,
+      `<p>Binary search k in [0, 2·10<sup>9</sup>]: if mid(mid+1)/2 ≤ n move right, else move left. Alternatively k ≈ (√(8n+1) − 1)/2, then nudge k up/down with exact integer checks.</p>`,
+      `<p>Traps: mid·(mid+1) for mid = 2·10<sup>9</sup> is 4·10<sup>18</sup> — still fits in a <code>long</code> (max 9.2·10<sup>18</sup>), but a larger upper bound would overflow; use overflow-safe bounds. Recipe: lo = 0, hi = 2e9; while lo &lt; hi: mid = (lo + hi + 1)/2; if mid(mid+1)/2 ≤ n → lo = mid else hi = mid − 1; return lo.</p>`
+    ],
+    solution: {
+      approach: `<p>Binary search on k for the last k whose AP sum k(k+1)/2 fits in n.</p>`,
+      code: `
+class Solution {
+    static long arrangeCoins(long n) {
+        long lo = 0, hi = 2_000_000_000L;        // sqrt(2 * 10^18) < 1.5e9, so 2e9 is a safe upper bound
+        while (lo < hi) {
+            long mid = lo + (hi - lo + 1) / 2;   // upper middle: avoids infinite loop when lo = mid
+            if (mid * (mid + 1) / 2 <= n) lo = mid;   // mid rows fit -> answer is mid or more
+            else hi = mid - 1;                        // too many rows
+        }
+        return lo;
+    }
+
+    public static void main(String[] args) {
+        System.out.println(arrangeCoins(8));                          // 3
+        System.out.println(arrangeCoins(5));                          // 2
+        System.out.println(arrangeCoins(1_000_000_000_000_000_000L)); // 1414213561
+    }
+}`,
+      dry: {
+        head: ['lo', 'hi', 'mid', 'mid(mid+1)/2 ≤ 8 ?'],
+        rows: [['0', '2e9', '1e9', 'no → hi = 1e9 − 1'], ['…', '…', '…', '(≈ 30 halvings)'], ['3', '4', '4', '10 ≤ 8? no → hi = 3'], ['3', '3', '—', H.c('p', 'return 3')]]
+      },
+      complexity: `<p><b>Time O(log n)</b> — about 31 iterations because the range [0, 2·10<sup>9</sup>] halves each time. <b>Space O(1)</b>. The brute force is O(√n).</p>`,
+      followUps: ['Solve it in O(1) with the quadratic formula plus integer correction.', 'Rows grow by 2 each time (1, 3, 5, …): the total is k<sup>2</sup>, so the answer is ⌊√n⌋.']
+    }
+  });
+
+  // =====================================================================
+  // PRACTICE — Medium
+  // =====================================================================
+  practice.push({
+    title: 'Integer Square Root up to 10¹⁸',
+    level: 'Medium',
+    tags: ['square root', 'binary search', 'overflow', 'precision'],
+    companies: ['Amazon', 'Microsoft', 'Bloomberg'],
+    statement: `<p>Given a non-negative integer <code>x</code>, return ⌊√x⌋ — the largest integer r with r·r ≤ x. You may not use a built-in square-root as your final answer without verifying it with exact integer arithmetic.</p>`,
+    constraints: `0 ≤ x ≤ 10<sup>18</sup>`,
+    example: `<p>x = 8 → ${H.c('p', '<b>2</b>')} (2·2 = 4 ≤ 8, 3·3 = 9 &gt; 8).</p>
+<p>x = 999,999,999,999,999,999 → ${H.c('p', '<b>999,999,999</b>')}. ${H.c('r', '(long) Math.sqrt(x) returns 1,000,000,000')} because x rounds up to 10<sup>18</sup> when converted to a double.</p>`,
+    brute: {
+      why: `<p>Try r = 0, 1, 2, … while (r+1)·(r+1) ≤ x. That is √x steps = 10<sup>9</sup> for x = 10<sup>18</sup> → several seconds → TLE. Wasted work: the condition r·r ≤ x is monotone, so most candidates can be skipped by halving.</p>`,
+      code: `
+long sqrtBrute(long x) {
+    long r = 0;
+    while ((r + 1) * (r + 1) <= x) r++;   // ~sqrt(x) iterations
+    return r;
+}`
+    },
+    mcq: {
+      q: 'Inside the binary search, why compare <code>mid &lt;= x / mid</code> instead of <code>mid * mid &lt;= x</code>?',
+      options: ['Division is faster', 'mid * mid can overflow a long when mid is large', 'It rounds better', 'There is no difference'],
+      answer: 1,
+      explain: 'If the search range starts above ~3.04·10<sup>9</sup>, mid·mid exceeds 9.22·10<sup>18</sup> and wraps negative. mid ≤ x / mid (integer division) is equivalent for positive mid and can never overflow.'
+    },
+    hints: [
+      `<p>"r·r ≤ x" is true for r = 0..answer and false afterwards: a yes-then-no pattern. Binary search finds the last "yes" in O(log x) steps.</p>`,
+      `<p>Search r in [0, min(x, 2·10<sup>9</sup>)]. Use the upper-middle <code>mid = lo + (hi − lo + 1)/2</code> because you move <code>lo = mid</code> on success.</p>`,
+      `<p>Traps: x = 0 and x = 1; overflow in mid·mid; floating-point <code>Math.sqrt</code> off by one near 10<sup>18</sup>. Alternative O(1) recipe: r = (long)Math.sqrt(x); while r·r &gt; x: r−−; while (r+1)·(r+1) ≤ x: r++ — the corrections fix the double's rounding.</p>`
+    ],
+    solution: {
+      approach: `<p>Binary search on the answer with an overflow-safe comparison.</p>`,
+      code: `
+class Solution {
+    static long isqrt(long x) {
+        long lo = 0, hi = Math.min(x, 2_000_000_000L);   // sqrt(1e18) = 1e9, so 2e9 is plenty
+        while (lo < hi) {
+            long mid = lo + (hi - lo + 1) / 2;              // upper middle
+            if (mid <= x / mid) lo = mid;                   // mid*mid <= x without overflow
+            else hi = mid - 1;
+        }
+        return lo;
+    }
+
+    // O(1) alternative: floating guess + exact integer correction
+    static long isqrtFast(long x) {
+        long r = (long) Math.sqrt((double) x);
+        while (r > 0 && r > x / r) r--;                     // guess too big
+        while ((r + 1) <= x / (r + 1)) r++;                 // guess too small
+        return r;
+    }
+
+    public static void main(String[] args) {
+        System.out.println(isqrt(8));                        // 2
+        System.out.println(isqrt(999_999_999_999_999_999L)); // 999999999
+        System.out.println(isqrtFast(999_999_999_999_999_999L)); // 999999999
+        System.out.println((long) Math.sqrt(999_999_999_999_999_999L)); // 1000000000 (wrong)
+    }
+}`,
+      dry: {
+        head: ['lo', 'hi', 'mid', 'mid ≤ 8 / mid ?', 'move'],
+        rows: [['0', '8', '4', '4 ≤ 2? no', 'hi = 3'], ['0', '3', '2', '2 ≤ 4? yes', 'lo = 2'], ['2', '3', '3', '3 ≤ 2? no', 'hi = 2'], ['2', '2', '—', '—', H.c('p', 'return 2')]]
+      },
+      complexity: `<p><b>Time O(log x)</b> ≈ 31 iterations; the corrected <code>Math.sqrt</code> version is O(1). <b>Space O(1)</b>.</p>`,
+      followUps: ['Count perfect squares in [L, R] = isqrt(R) − isqrt(L − 1).', 'Integer cube root up to 10<sup>18</sup> (careful: mid·mid·mid overflows even sooner).']
+    }
+  });
+
+  practice.push({
+    title: 'Fast Modular Exponentiation (aᵇ mod m)',
+    level: 'Medium',
+    tags: ['logarithm', 'binary exponentiation', 'modular arithmetic'],
+    companies: ['Google', 'Amazon', 'Flipkart'],
+    statement: `<p>Compute <code>a<sup>b</sup> mod m</code>. The exponent is so large that multiplying b times is impossible.</p>`,
+    constraints: `0 ≤ a ≤ 10<sup>9</sup>, 0 ≤ b ≤ 10<sup>18</sup>, 1 ≤ m ≤ 2·10<sup>9</sup>`,
+    example: `<p>a = 3, b = 13, m = 1000 → 3<sup>13</sup> = 1,594,323 → ${H.c('p', '<b>323</b>')}.</p>
+${H.table(['bit of 13 (right→left)', 'base (mod 1000)', 'result'], [['1', '3', H.c('g', '3')], ['0', '9', '3 (skip)'], ['1', '81', H.c('g', '243')], ['1', '6561 → 561', H.c('g', '243·561 mod 1000 = 323')]])}`,
+    brute: {
+      why: `<p>Multiply the result by a, b times: O(b) = 10<sup>18</sup> multiplications ≈ 300 years. Wasted work: a<sup>2k</sup> = (a<sup>k</sup>)<sup>2</sup>, so half the multiplications can be replaced by one squaring — and that halving repeats.</p>`,
+      code: `
+long powBrute(long a, long b, long m) {
+    long r = 1 % m;
+    for (long i = 0; i < b; i++) r = r * (a % m) % m;   // b iterations
+    return r;
+}`
+    },
+    mcq: {
+      q: 'How many loop iterations does binary exponentiation need for b = 10<sup>18</sup>?',
+      options: ['About 18', 'About 60', 'About 10<sup>9</sup>', 'About 10<sup>18</sup>'],
+      answer: 1,
+      explain: 'Each iteration halves b (b &gt;&gt;= 1), so the loop runs once per bit of b: ⌊log₂ 10<sup>18</sup>⌋ + 1 = 60.'
+    },
+    hints: [
+      `<p>Write b in binary. a<sup>13</sup> = a<sup>8</sup>·a<sup>4</sup>·a<sup>1</sup> because 13 = 1101₂. The powers a, a², a⁴, a⁸ … come from repeated squaring.</p>`,
+      `<p>Loop while b &gt; 0: if the lowest bit is 1, result = result·base mod m; base = base·base mod m; b &gt;&gt;= 1.</p>`,
+      `<p>Traps: m = 1 → answer 0 (start with result = 1 % m); reduce a mod m first; with m ≤ 2·10<sup>9</sup>, base·base &lt; 4·10<sup>18</sup> fits in a <code>long</code> — but for m up to 10<sup>18</sup> you would need <code>Math.multiplyHigh</code> or BigInteger. 0<sup>0</sup> is treated as 1.</p>`
+    ],
+    solution: {
+      approach: `<p>Square-and-multiply over the bits of b: O(log b) multiplications.</p>`,
+      code: `
+class Solution {
+    static long modPow(long a, long b, long m) {
+        long result = 1 % m;          // handles m = 1
+        long base = a % m;
+        while (b > 0) {
+            if ((b & 1) == 1) result = result * base % m;  // this bit contributes base
+            base = base * base % m;                         // a, a^2, a^4, a^8, ...
+            b >>= 1;                                        // next bit: b halves
+        }
+        return result;
+    }
+
+    public static void main(String[] args) {
+        System.out.println(modPow(3, 13, 1000));                         // 323
+        System.out.println(modPow(2, 1_000_000_000_000_000_000L, 1_000_000_007L)); // 2^(1e18) mod 1e9+7
+        System.out.println(modPow(5, 0, 1));                              // 0
+    }
+}`,
+      dry: {
+        head: ['b (binary)', 'low bit', 'result', 'base after squaring'],
+        rows: [['1101', '1', '3', '9'], ['110', '0', '3', '81'], ['11', '1', '243', '561'], ['1', '1', '243·561 % 1000 = 323', '…'], ['0', '—', H.c('p', '323'), 'stop']]
+      },
+      complexity: `<p><b>Time O(log b)</b> — at most 60 iterations. <b>Space O(1)</b>. The brute force is O(b).</p>`,
+      followUps: ['Recursive version: pow(a, b) = pow(a, b/2)² · (b odd ? a : 1). What is its stack depth?', 'Modular inverse via Fermat: a<sup>m−2</sup> mod m for prime m.']
+    }
+  });
+
+  practice.push({
+    title: 'Count Iterations of a Triple Loop (i < j < k)',
+    level: 'Medium',
+    tags: ['loop counting', 'combinatorics', 'overflow'],
+    companies: ['Uber', 'Microsoft'],
+    statement: `<p>Return the final value of <code>count</code> without running the loops:</p>
+<pre>long count = 0;
+for (long i = 0; i &lt; n; i++)
+  for (long j = i + 1; j &lt; n; j++)
+    for (long k = j + 1; k &lt; n; k++)
+      count++;</pre>`,
+    constraints: `0 ≤ n ≤ 3·10<sup>6</sup> (the answer fits in a <code>long</code>, but n(n−1)(n−2) does not)`,
+    example: `<p>n = 5 → ${H.c('p', '<b>10</b>')}: the loop visits each set of 3 different indices exactly once: {0,1,2}, {0,1,3}, {0,1,4}, {0,2,3}, {0,2,4}, {0,3,4}, {1,2,3}, {1,2,4}, {1,3,4}, {2,3,4}. That is C(5, 3) = 5·4·3/6 = 10.</p>`,
+    brute: {
+      why: `<p>Running the triple loop is O(n<sup>3</sup>/6) = 4.5·10<sup>18</sup> increments for n = 3·10<sup>6</sup> — centuries. Even the formula is a trap: n(n−1)(n−2) ≈ 2.7·10<sup>19</sup> <b>overflows</b> a long (max ≈ 9.22·10<sup>18</sup>) before you divide by 6, giving garbage.</p>`,
+      code: `
+long brute(long n) {
+    long count = 0;
+    for (long i = 0; i < n; i++)
+        for (long j = i + 1; j < n; j++)
+            for (long k = j + 1; k < n; k++)
+                count++;
+    return count;
+}`
+    },
+    mcq: {
+      q: 'Why is <code>n * (n - 1) * (n - 2) / 6</code> wrong for n = 3·10<sup>6</sup> in Java?',
+      options: ['The formula is wrong', 'The product overflows long before the division happens', 'Integer division by 6 rounds', 'Java evaluates right-to-left'],
+      answer: 1,
+      explain: 'The true product 2.7·10<sup>19</sup> exceeds Long.MAX_VALUE ≈ 9.22·10<sup>18</sup>, so it wraps around. Divide factors early: one of the three consecutive numbers is divisible by 3 and at least one by 2.'
+    },
+    hints: [
+      `<p>The loop picks every triple i &lt; j &lt; k exactly once, so count = C(n, 3) = n(n−1)(n−2)/6. Check: n = 5 → 10.</p>`,
+      `<p>Put the three factors in variables x = n, y = n−1, z = n−2. Divide whichever is divisible by 2 by 2, and whichever (possibly the same, now updated) is divisible by 3 by 3. Then multiply — the result is exact and fits.</p>`,
+      `<p>Traps: n &lt; 3 → 0 (one factor becomes 0 or negative — return 0 explicitly); the divide-early trick needs the divisibility checks <i>after</i> the first division; double-check with <code>Math.multiplyExact</code> or BigInteger on large n. Recipe: if n &lt; 3 return 0; fix /2 and /3 on factors; return x·y·z.</p>`
+    ],
+    solution: {
+      approach: `<p>count = C(n, 3). Cancel the 2 and 3 of the denominator against the factors before multiplying so nothing overflows.</p>`,
+      code: `
+class Solution {
+    static long tripleLoopCount(long n) {
+        if (n < 3) return 0;
+        long[] f = {n, n - 1, n - 2};
+        // cancel the 2: at least one of two neighbours is even
+        for (int t = 0; t < 3; t++) if (f[t] % 2 == 0) { f[t] /= 2; break; }
+        // cancel the 3: one of three consecutive numbers is a multiple of 3
+        for (int t = 0; t < 3; t++) if (f[t] % 3 == 0) { f[t] /= 3; break; }
+        return f[0] * f[1] * f[2];          // <= 4.5e18, fits in long
+    }
+
+    public static void main(String[] args) {
+        System.out.println(tripleLoopCount(5));          // 10
+        System.out.println(tripleLoopCount(3_000_000));  // 4499995500001000000
+        System.out.println(java.math.BigInteger.valueOf(3_000_000).multiply(java.math.BigInteger.valueOf(2_999_999))
+            .multiply(java.math.BigInteger.valueOf(2_999_998)).divide(java.math.BigInteger.valueOf(6))); // same, via BigInteger
+    }
+}`,
+      dry: {
+        head: ['step', 'factors', 'note'],
+        rows: [['start (n = 5)', '[5, 4, 3]', ''], ['cancel 2', '[5, 2, 3]', '4 is even'], ['cancel 3', '[5, 2, 1]', '3 is a multiple of 3'], ['multiply', H.c('p', '10'), '= C(5,3)']]
+      },
+      complexity: `<p><b>Time O(1)</b>, <b>space O(1)</b>. The loop itself is Θ(n<sup>3</sup>).</p>`,
+      followUps: ['Generalise to d nested loops i₁ &lt; i₂ &lt; … &lt; i<sub>d</sub>: C(n, d).', 'What if the loops were j ≥ i and k ≥ j (non-strict)? (Combinations with repetition: C(n+2, 3).)']
+    }
+  });
+
+  practice.push({
+    title: 'Bulb Switcher (Harmonic Loop → √N)',
+    level: 'Medium',
+    tags: ['harmonic series', 'square root', 'divisors'],
+    companies: ['Microsoft', 'Amazon'],
+    statement: `<p>There are <code>n</code> bulbs, all off. In round i (1 ≤ i ≤ n) you toggle every i-th bulb (bulbs i, 2i, 3i, …). How many bulbs are on after n rounds?</p>`,
+    constraints: `0 ≤ n ≤ 10<sup>18</sup>`,
+    example: `<p>n = 10:</p>
+${H.table(['bulb', 'toggled in rounds (its divisors)', 'toggles', 'final'], [['1', '1', '1', H.c('g', 'on')], ['2', '1, 2', '2', 'off'], ['4', '1, 2, 4', '3', H.c('g', 'on')], ['6', '1, 2, 3, 6', '4', 'off'], ['9', '1, 3, 9', '3', H.c('g', 'on')]])}
+<p>Bulbs 1, 4, 9 stay on → ${H.c('p', '<b>3</b>')}.</p>`,
+    brute: {
+      why: `<p>Simulate: round i touches n/i bulbs, total n/1 + n/2 + … + n/n ≈ n ln n (harmonic loop). For n = 10<sup>18</sup> that is ~4·10<sup>19</sup> operations — and a boolean array of 10<sup>18</sup> entries cannot even be allocated. Wasted work: we only care about the <b>parity</b> of each bulb's number of divisors.</p>`,
+      code: `
+int bruteBulbs(int n) {
+    boolean[] on = new boolean[n + 1];
+    for (int i = 1; i <= n; i++)
+        for (int j = i; j <= n; j += i)   // harmonic loop: n/1 + n/2 + ... + n/n
+            on[j] = !on[j];
+    int count = 0;
+    for (int j = 1; j <= n; j++) if (on[j]) count++;
+    return count;
+}`
+    },
+    mcq: {
+      q: 'A bulb ends up ON exactly when it is toggled an odd number of times. Which numbers have an odd number of divisors?',
+      options: ['Primes', 'Even numbers', 'Perfect squares', 'Powers of two'],
+      answer: 2,
+      explain: 'Divisors come in pairs (d, k/d). The pair collapses into one divisor only when d = k/d, i.e. k = d² — so only perfect squares have an odd count. The answer is the number of squares ≤ n = ⌊√n⌋.'
+    },
+    hints: [
+      `<p>Bulb k is toggled once for each divisor of k. Final state = ON iff the number of divisors is odd.</p>`,
+      `<p>Divisors pair up as (d, k/d); only perfect squares have an unpaired divisor (√k). Count the perfect squares 1, 4, 9, … ≤ n.</p>`,
+      `<p>That count is ⌊√n⌋. Compute it exactly for n up to 10<sup>18</sup>: take <code>(long)Math.sqrt(n)</code> then correct with integer checks (see Integer Square Root). n = 0 → 0.</p>`
+    ],
+    solution: {
+      approach: `<p>Only perfect squares stay on; answer = ⌊√n⌋ with integer correction.</p>`,
+      code: `
+class Solution {
+    static long bulbSwitch(long n) {
+        long r = (long) Math.sqrt((double) n);
+        while (r > 0 && r > n / r) r--;            // fix double rounding up
+        while ((r + 1) <= n / (r + 1)) r++;        // fix double rounding down
+        return r;                                  // number of squares 1, 4, 9, ... <= n
+    }
+
+    public static void main(String[] args) {
+        System.out.println(bulbSwitch(10));                         // 3
+        System.out.println(bulbSwitch(0));                          // 0
+        System.out.println(bulbSwitch(999_999_999_999_999_999L));   // 999999999
+    }
+}`,
+      dry: {
+        head: ['n', '(long) Math.sqrt(n)', 'corrections', 'answer'],
+        rows: [['10', '3', '3 ≤ 10/3 ✓; 4 ≤ 10/4? no', H.c('p', '3')], ['999…9 (18 nines)', '1,000,000,000', 'r &gt; n/r → r−− once', H.c('p', '999,999,999')]]
+      },
+      complexity: `<p><b>Time O(1)</b> (a square root plus at most a couple of corrections). <b>Space O(1)</b>. The simulation is O(n log n) time and O(n) memory.</p>`,
+      followUps: ['Count numbers ≤ n with exactly 3 divisors (squares of primes).', 'Which bulbs are on if round i toggles only bulbs i, 2i, … but round 1 is skipped?']
+    }
+  });
+
+  practice.push({
+    title: 'Minimum Moves to Reach Target (Double or +1)',
+    level: 'Medium',
+    tags: ['greedy', 'logarithm', 'halving'],
+    companies: ['Google', 'Amazon'],
+    statement: `<p>You start with the number 1. In one move you can <b>add 1</b> or <b>double</b> the number, but you can double at most <code>maxDoubles</code> times. Return the minimum number of moves to reach exactly <code>target</code>.</p>`,
+    constraints: `1 ≤ target ≤ 10<sup>9</sup>, 0 ≤ maxDoubles ≤ 100`,
+    example: `<p>target = 19, maxDoubles = 2 → ${H.c('p', '<b>7</b>')}: 1 → 2 → 3 → 4 (+1 ×3), → 8 (double), → 9 (+1), → 18 (double), → 19 (+1).</p>
+<p>Going <b>backwards</b> from 19 is easier: odd → subtract 1, even → halve (while doubles remain): 19 → 18 → 9 → 8 → 4, then 3 more −1 steps to reach 1. Moves = 1 + 1 + 1 + 1 + 3 = 7.</p>`,
+    brute: {
+      why: `<p>BFS over (value, doubles used) states: values up to 10<sup>9</sup> × 101 double-counts = 10<sup>11</sup> states — impossible in time and memory. Wasted work: a greedy rule decides every step, and each halving shrinks the number, so only O(log target) real decisions exist.</p>`,
+      code: `
+int bruteBfs(int target, int maxDoubles) {
+    // state = value * (maxDoubles + 1) + doublesUsed ; fine only for tiny targets
+    int states = (target + 1) * (maxDoubles + 1);
+    int[] dist = new int[states];
+    Arrays.fill(dist, -1);
+    ArrayDeque<int[]> q = new ArrayDeque<>();
+    q.add(new int[]{1, 0});
+    dist[1 * (maxDoubles + 1)] = 0;
+    while (!q.isEmpty()) {
+        int[] cur = q.poll();
+        int v = cur[0], d = cur[1], here = dist[v * (maxDoubles + 1) + d];
+        if (v == target) return here;
+        int[][] next = {{v + 1, d}, {v * 2, d + 1}};
+        for (int[] nx : next) {
+            if (nx[0] > target || nx[1] > maxDoubles) continue;
+            int id = nx[0] * (maxDoubles + 1) + nx[1];
+            if (dist[id] == -1) { dist[id] = here + 1; q.add(nx); }
+        }
+    }
+    return -1;
+}`
+    },
+    mcq: {
+      q: 'Working backwards from the target, when should you use a "halve" move?',
+      options: ['Never', 'Whenever the number is even and doubles remain — halving removes the most distance', 'Only at the very end', 'Only when the number is odd'],
+      answer: 1,
+      explain: 'Halving a large even number removes half its value in one move; using doubles while the number is big saves the most +1 moves. Odd numbers must first lose 1 to become halvable.'
+    },
+    hints: [
+      `<p>Reverse the process: from target, the reverse moves are "−1" and "halve (if even)". Halving big numbers is far more valuable than halving small ones, so spend doubles early in reverse.</p>`,
+      `<p>Loop while target &gt; 1 and maxDoubles &gt; 0: if odd → target−−, moves++; else → target /= 2, maxDoubles−−, moves++. After the loop, add target − 1 for the remaining −1 steps.</p>`,
+      `<p>Edge cases: maxDoubles = 0 → answer target − 1 (an AP of +1 steps); target = 1 → 0. Without the "add target − 1 at once" shortcut, a target of 10<sup>9</sup> with 0 doubles would loop 10<sup>9</sup> times. The loop runs at most about 2·log₂ target times.</p>`
+    ],
+    solution: {
+      approach: `<p>Greedy in reverse: halve when even (while doubles remain), otherwise subtract 1; finish the rest with one subtraction.</p>`,
+      code: `
+class Solution {
+    static int minMoves(int target, int maxDoubles) {
+        int moves = 0;
+        while (target > 1 && maxDoubles > 0) {
+            if (target % 2 == 1) {
+                target--;               // make it even
+            } else {
+                target /= 2;            // reverse of a double
+                maxDoubles--;
+            }
+            moves++;
+        }
+        return moves + (target - 1);    // only +1 moves remain: jump straight to 1
+    }
+
+    public static void main(String[] args) {
+        System.out.println(minMoves(19, 2));           // 7
+        System.out.println(minMoves(10, 4));           // 4
+        System.out.println(minMoves(1_000_000_000, 0)); // 999999999
+    }
+}`,
+      dry: {
+        head: ['target', 'doubles left', 'action', 'moves'],
+        rows: [['19', '2', 'odd → 18', '1'], ['18', '2', 'even → 9', '2'], ['9', '1', 'odd → 8', '3'], ['8', '1', 'even → 4', '4'], ['4', '0', 'no doubles: + (4 − 1)', H.c('p', '7')]]
+      },
+      complexity: `<p><b>Time O(min(maxDoubles, log target))</b> loop iterations (each halving needs at most one −1 before it). <b>Space O(1)</b>.</p>`,
+      followUps: ['Unlimited doubles: the answer is (bit length − 1) + (number of 1-bits − 1). Why?', 'Allow "triple" moves too.']
+    }
+  });
+
+  practice.push({
+    title: 'Total Digits to Number Pages 1..N',
+    level: 'Medium',
+    tags: ['logarithm', 'grouping', 'GP'],
+    companies: ['Adobe', 'Amazon'],
+    statement: `<p>A printer numbers the pages of a book 1, 2, 3, …, N. How many digits does it print in total?</p>`,
+    constraints: `1 ≤ N ≤ 10<sup>17</sup> (the answer fits in a <code>long</code>)`,
+    example: `<p>N = 13 → pages 1–9 use 1 digit each (${H.c('b', '9 digits')}), pages 10–13 use 2 digits each (${H.c('y', '8 digits')}). Total ${H.c('p', '<b>17</b>')}.</p>
+${H.table(['digit length d', 'pages', 'count', 'digits'], [['1', '1–9', '9', '9'], ['2', '10–13', '4', '8'], ['total', '', '', H.c('p', '17')]])}`,
+    brute: {
+      why: `<p>For each page count its digits: O(N · log N) ≈ 10<sup>17</sup> × 17 steps — impossible. Wasted work: all 900 three-digit pages contribute 3 each; groups by digit length are a GP (9, 90, 900, …) and there are only 17 of them.</p>`,
+      code: `
+long bruteDigits(long n) {
+    long total = 0;
+    for (long p = 1; p <= n; p++) {
+        for (long x = p; x > 0; x /= 10) total++;   // digits of page p
+    }
+    return total;
+}`
+    },
+    mcq: {
+      q: 'How many pages have exactly d digits (when N is large enough)?',
+      options: ['10<sup>d</sup>', '9 · 10<sup>d−1</sup>', 'd · 10', '2<sup>d</sup>'],
+      answer: 1,
+      explain: 'd-digit numbers run from 10<sup>d−1</sup> to 10<sup>d</sup> − 1: that is 10<sup>d</sup> − 10<sup>d−1</sup> = 9·10<sup>d−1</sup> numbers (9, 90, 900, …).'
+    },
+    hints: [
+      `<p>Group pages by digit length: [1, 9], [10, 99], [100, 999], … Each group starts at a power of 10.</p>`,
+      `<p>Loop with <code>start</code> = 1, 10, 100, … and <code>d</code> = 1, 2, 3, …: group end = min(N, 10·start − 1); add d × (end − start + 1).</p>`,
+      `<p>Traps: the last group is cut short by N; stop when start &gt; N; with N ≤ 10<sup>17</sup>, 10·start stays ≤ 10<sup>18</sup> — fits a long (for N up to 10<sup>18</sup> you would overflow both start and the total). Recipe: total = 0, start = 1, d = 1; while start ≤ N: end = min(N, start·10 − 1); total += d·(end − start + 1); start *= 10; d++.</p>`
+    ],
+    solution: {
+      approach: `<p>Sum over digit-length groups: about log₁₀ N groups, each O(1).</p>`,
+      code: `
+class Solution {
+    static long totalDigits(long n) {
+        long total = 0, start = 1;
+        int d = 1;
+        while (start <= n) {
+            long end = Math.min(n, start * 10 - 1);   // last page with d digits
+            total += (long) d * (end - start + 1);    // every page in the group prints d digits
+            start *= 10;
+            d++;
+        }
+        return total;
+    }
+
+    public static void main(String[] args) {
+        System.out.println(totalDigits(13));    // 17
+        System.out.println(totalDigits(100));   // 192
+        System.out.println(totalDigits(100_000_000_000_000_000L)); // 10^17 pages
+    }
+}`,
+      dry: {
+        head: ['d', 'start', 'end = min(N, 10·start − 1)', 'added', 'total'],
+        rows: [['1', '1', '9', '9', '9'], ['2', '10', 'min(13, 99) = 13', '2·4 = 8', '17'], ['3', '100', '— (100 &gt; 13: stop)', '—', H.c('p', '17')]]
+      },
+      complexity: `<p><b>Time O(log₁₀ N)</b> — at most 18 groups. <b>Space O(1)</b>.</p>`,
+      followUps: ['Reverse question: given the total digits D, how many pages does the book have?', 'Count how many times the digit 7 is printed.']
+    }
+  });
+
+  practice.push({
+    title: 'Nth Digit of 123456789101112…',
+    level: 'Medium',
+    tags: ['grouping', 'GP', 'logarithm'],
+    companies: ['Google', 'Microsoft', 'Amazon'],
+    statement: `<p>Write all positive integers one after another: <code>123456789101112131415…</code>. Return the <code>n</code>-th digit (1-indexed) of this infinite string.</p>`,
+    constraints: `1 ≤ n ≤ 10<sup>15</sup>`,
+    example: `<p>n = 3 → ${H.c('p', '<b>3</b>')}. n = 11 → the string is 1 2 3 4 5 6 7 8 9 ${H.c('b', '1 0')} ${H.c('y', '1 1')} …, digit 11 is the "0" of 10 → ${H.c('p', '<b>0</b>')}.</p>`,
+    brute: {
+      why: `<p>Build the string (or walk number by number, subtracting digit counts) until you reach n: for n = 10<sup>15</sup> that is ~7·10<sup>13</sup> numbers → hours, and the string would need petabytes. Wasted work: whole blocks (all 2-digit numbers = 180 digits, all 3-digit = 2700 digits …) can be skipped at once.</p>`,
+      code: `
+int bruteNthDigit(long n) {
+    for (long num = 1; ; num++) {
+        String s = Long.toString(num);
+        if (n <= s.length()) return s.charAt((int) (n - 1)) - '0';
+        n -= s.length();          // skip this whole number
+    }
+}`
+    },
+    mcq: {
+      q: 'How many digits do all 3-digit numbers (100..999) contribute together?',
+      options: ['900', '2700', '999', '300'],
+      answer: 1,
+      explain: '900 numbers × 3 digits = 2700. In general block d contributes 9·10<sup>d−1</sup>·d digits.'
+    },
+    hints: [
+      `<p>Skip whole blocks: block d (numbers with d digits) has 9·10<sup>d−1</sup> numbers and 9·10<sup>d−1</sup>·d digits. While n is bigger than the block's size, subtract it and move to the next block.</p>`,
+      `<p>Inside block d starting at <code>start</code> = 10<sup>d−1</sup>: the target number is start + (n − 1)/d, and the digit index inside it is (n − 1) % d.</p>`,
+      `<p>Traps: use <code>long</code> — 9·10<sup>d−1</sup>·d overflows int already at d = 9; keep n 1-indexed carefully (subtract 1 before dividing). Recipe: d = 1, count = 9, start = 1; while n &gt; d·count: n −= d·count; d++; count *= 10; start *= 10. num = start + (n−1)/d; return digit (n−1) % d of num.</p>`
+    ],
+    solution: {
+      approach: `<p>Skip blocks of equal digit length (a GP of block sizes), then index directly into the right number.</p>`,
+      code: `
+class Solution {
+    static int findNthDigit(long n) {
+        long d = 1, count = 9, start = 1;     // block of 1-digit numbers: 1..9
+        while (n > d * count) {               // whole block lies before the answer
+            n -= d * count;
+            d++;
+            count *= 10;                      // 9, 90, 900, ...
+            start *= 10;                      // 1, 10, 100, ...
+        }
+        long num = start + (n - 1) / d;       // the number containing the digit
+        String s = Long.toString(num);
+        return s.charAt((int) ((n - 1) % d)) - '0';
+    }
+
+    public static void main(String[] args) {
+        System.out.println(findNthDigit(3));    // 3
+        System.out.println(findNthDigit(11));   // 0
+        System.out.println(findNthDigit(190));  // 1  (first digit of 100)
+    }
+}`,
+      dry: {
+        head: ['n', 'd', 'block digits d·count', 'action'],
+        rows: [['11', '1', '9', '11 &gt; 9 → n = 2, d = 2, start = 10'], ['2', '2', '180', '2 ≤ 180 → stop'], ['—', '—', '—', 'num = 10 + (2−1)/2 = 10, index (2−1)%2 = 1 → ' + H.c('p', '0')]]
+      },
+      complexity: `<p><b>Time O(log₁₀ n)</b> — at most ~15 blocks. <b>Space O(1)</b> (a short string for one number).</p>`,
+      followUps: ['Return the digit in base 2 concatenation (1 10 11 100 …).', 'What is the sum of the first n digits of the sequence?']
+    }
+  });
+
+  // =====================================================================
+  // PRACTICE — Hard
+  // =====================================================================
+  practice.push({
+    title: 'Count the Harmonic Loop: Σ ⌊N / i⌋ for N up to 10¹²',
+    level: 'Hard',
+    tags: ['harmonic series', 'sqrt decomposition', 'loop counting'],
+    companies: ['Google', 'Codeforces-style'],
+    statement: `<p>Return the exact number of times <code>count++</code> runs:</p>
+<pre>for (long i = 1; i &lt;= n; i++)
+    for (long j = i; j &lt;= n; j += i)
+        count++;</pre>
+<p>Equivalently: the number of pairs (i, k) of positive integers with i·k ≤ n, or Σ<sub>i=1..n</sub> ⌊n/i⌋.</p>`,
+    constraints: `1 ≤ n ≤ 10<sup>12</sup>`,
+    example: `<p>n = 10: ⌊10/i⌋ for i = 1..10 is ${H.arr([10, 5, 3, 2, 2, 1, 1, 1, 1, 1], { start: 1, hl: { 3: 'y', 4: 'y', 5: 'b', 6: 'b', 7: 'b', 8: 'b', 9: 'b' } })}</p>
+<p>Sum = ${H.c('p', '<b>27</b>')}. Notice the long runs of equal values (${H.c('y', '2, 2')}, ${H.c('b', '1, 1, 1, 1, 1')}) — that is the key.</p>`,
+    brute: {
+      why: `<p>Running the loops is ≈ n ln n ≈ 2.8·10<sup>13</sup> steps. Even the smarter O(n) sum of ⌊n/i⌋ is 10<sup>12</sup> divisions ≈ hours. Wasted work: ⌊n/i⌋ takes only about 2√n <b>distinct values</b> (2·10<sup>6</sup> for n = 10<sup>12</sup>), and long stretches of i share the same value.</p>`,
+      code: `
+long bruteSum(long n) {
+    long total = 0;
+    for (long i = 1; i <= n; i++) total += n / i;   // O(n): 10^12 iterations for the max n
+    return total;
+}`
+    },
+    mcq: {
+      q: 'For n = 10<sup>12</sup>, roughly how many different values does ⌊n/i⌋ take as i goes from 1 to n?',
+      options: ['About 10<sup>12</sup>', 'About 2·10<sup>6</sup>', 'About 40', 'Exactly 2'],
+      answer: 1,
+      explain: 'For i ≤ √n the values n/i are all different (≤ 10<sup>6</sup> of them). For i &gt; √n, n/i &lt; √n, so there are at most √n more values. Total ≤ 2√n = 2·10<sup>6</sup>.'
+    },
+    hints: [
+      `<p>Fix q = ⌊n/i⌋. The <b>largest</b> i' with the same quotient is i' = ⌊n/q⌋. So all of i..i' contribute q each: add q·(i' − i + 1) and jump to i' + 1.</p>`,
+      `<p>Each jump lands on a new distinct quotient, and there are at most 2√n of them → O(√n) iterations ≈ 2·10<sup>6</sup>. Use <code>long</code> everywhere.</p>`,
+      `<p>Check: n = 10 → blocks [1,1]→10, [2,2]→5, [3,3]→3, [4,5]→2, [6,10]→1 → 10 + 5 + 3 + 4 + 5 = 27. Total ≈ n ln n ≈ 2.8·10<sup>13</sup> fits easily. Recipe: i = 1; while i ≤ n: q = n/i; last = n/q; total += q·(last − i + 1); i = last + 1.</p>`
+    ],
+    solution: {
+      approach: `<p>Block decomposition over equal quotients ("√n trick"): O(√n) blocks, O(1) work each.</p>`,
+      code: `
+class Solution {
+    static long harmonicCount(long n) {
+        long total = 0;
+        for (long i = 1; i <= n; ) {
+            long q = n / i;              // the quotient for this block
+            long last = n / q;           // last index with the same quotient
+            total += q * (last - i + 1); // whole block at once
+            i = last + 1;                // jump to the next distinct quotient
+        }
+        return total;
+    }
+
+    public static void main(String[] args) {
+        System.out.println(harmonicCount(10));                   // 27
+        System.out.println(harmonicCount(1_000_000_000_000L));   // ~2.8e13
+    }
+}`,
+      dry: {
+        head: ['i', 'q = ⌊10/i⌋', 'last = ⌊10/q⌋', 'added', 'total'],
+        rows: [['1', '10', '1', '10', '10'], ['2', '5', '2', '5', '15'], ['3', '3', '3', '3', '18'], ['4', '2', '5', '2·2 = 4', '22'], ['6', '1', '10', '1·5 = 5', H.c('p', '27')]]
+      },
+      complexity: `<p><b>Time O(√n)</b> ≈ 2·10<sup>6</sup> iterations for n = 10<sup>12</sup>. <b>Space O(1)</b>.</p>`,
+      followUps: ['Σ i·⌊n/i⌋ (sum of divisors of all numbers up to n) with the same blocks and an AP sum per block.', 'Answer modulo 10<sup>9</sup>+7 for n up to 10<sup>15</sup>.']
+    }
+  });
+
+  practice.push({
+    title: 'Geometric Series Modulo Any m',
+    level: 'Hard',
+    tags: ['GP', 'divide and conquer', 'modular arithmetic', 'logarithm'],
+    companies: ['Google', 'DE Shaw'],
+    statement: `<p>Compute S = 1 + r + r<sup>2</sup> + … + r<sup>n−1</sup> modulo <code>m</code>. Note: <code>m</code> is <b>not</b> necessarily prime, so you cannot rely on dividing by (r − 1).</p>`,
+    constraints: `0 ≤ n ≤ 10<sup>18</sup>, 0 ≤ r ≤ 10<sup>9</sup>, 1 ≤ m ≤ 10<sup>9</sup>`,
+    example: `<p>r = 2, n = 5, m = 100 → 1 + 2 + 4 + 8 + 16 = 31 → ${H.c('p', '<b>31</b>')}.</p>
+<p>r = 3, n = 4, m = 6 → 1 + 3 + 9 + 27 = 40 → 40 mod 6 = ${H.c('p', '<b>4</b>')}. The formula (3<sup>4</sup> − 1)/(3 − 1) needs "divide by 2 mod 6", which ${H.c('r', 'does not exist')} (2 has no inverse mod 6).</p>`,
+    brute: {
+      why: `<p>Add the n terms one by one: O(n) = 10<sup>18</sup> steps. The closed form a(r<sup>n</sup> − 1)/(r − 1) needs a modular inverse of (r − 1), which exists only when gcd(r − 1, m) = 1 — false for many m (and r = 1 divides by zero). Wasted work: the second half of the series is just the first half multiplied by r<sup>n/2</sup>.</p>`,
+      code: `
+long bruteGp(long r, long n, long m) {
+    long sum = 0, term = 1 % m;
+    for (long i = 0; i < n; i++) {
+        sum = (sum + term) % m;
+        term = term * (r % m) % m;
+    }
+    return sum;
+}`
+    },
+    mcq: {
+      q: 'S(2k) = 1 + r + … + r<sup>2k−1</sup>. Which identity lets us halve the problem?',
+      options: ['S(2k) = 2·S(k)', 'S(2k) = S(k) · (1 + r<sup>k</sup>)', 'S(2k) = S(k)<sup>2</sup>', 'S(2k) = r · S(k)'],
+      answer: 1,
+      explain: 'Split into the first k terms S(k) and the last k terms r<sup>k</sup>·S(k). Factor out S(k): S(k)(1 + r<sup>k</sup>). Only multiplications and additions — valid for every modulus.'
+    },
+    hints: [
+      `<p>Even n: S(n) = S(n/2)·(1 + r<sup>n/2</sup>). Odd n: S(n) = 1 + r·S(n − 1). Both use only + and ×, so they work mod any m.</p>`,
+      `<p>Return a pair (S(n), r<sup>n</sup>) from the recursion so the power is not recomputed: even → (s(1 + p), p²); odd → (1 + r·s, p·r). Depth ≤ 2·log₂ n ≈ 120 — safe for the call stack.</p>`,
+      `<p>Traps: m = 1 → everything is 0 (take % m after every operation, including the "1 +"); reduce r mod m first; values &lt; 10<sup>9</sup> so products &lt; 10<sup>18</sup> fit in long; n = 0 → S = 0, r<sup>0</sup> = 1. Base case f(0) = (0, 1 % m).</p>`
+    ],
+    solution: {
+      approach: `<p>Divide and conquer on n that returns both the partial sum and the power; O(log n) steps, no division needed.</p>`,
+      code: `
+class Solution {
+    static long R, M;
+
+    // returns {S(n) mod M, R^n mod M}
+    static long[] gp(long n) {
+        if (n == 0) return new long[]{0, 1 % M};
+        if (n % 2 == 1) {
+            long[] t = gp(n - 1);                         // S(n-1), R^(n-1)
+            long s = (1 + R * t[0]) % M;                  // S(n) = 1 + R * S(n-1)
+            long p = t[1] * R % M;                        // R^n
+            return new long[]{s, p};
+        }
+        long[] h = gp(n / 2);                             // S(n/2), R^(n/2)
+        long s = h[0] * ((1 + h[1]) % M) % M;             // S(n) = S(n/2) * (1 + R^(n/2))
+        long p = h[1] * h[1] % M;                         // R^n = (R^(n/2))^2
+        return new long[]{s, p};
+    }
+
+    static long gpSum(long r, long n, long m) {
+        M = m;
+        R = r % m;
+        return gp(n)[0];
+    }
+
+    public static void main(String[] args) {
+        System.out.println(gpSum(2, 5, 100));                         // 31
+        System.out.println(gpSum(3, 4, 6));                           // 4
+        System.out.println(gpSum(1, 1_000_000_000_000_000_000L, 1_000_000_000L)); // 10^18 mod 10^9 = 0
+        System.out.println(gpSum(7, 1_000_000_000_000_000_000L, 999_999_937L));   // fast even for n = 10^18
+    }
+}`,
+      dry: {
+        head: ['call', 'rule', 'S', 'rⁿ'],
+        rows: [['gp(0)', 'base', '0', '1'], ['gp(1)', 'odd: 1 + 2·0', '1', '2'], ['gp(2)', 'even: 1·(1+2)', '3', '4'], ['gp(4)', 'even: 3·(1+4)', '15', '16'], ['gp(5)', 'odd: 1 + 2·15', H.c('p', '31'), '32']]
+      },
+      complexity: `<p><b>Time O(log n)</b>: every two levels at least halve n, so ≤ 2·log₂ n ≈ 120 calls. <b>Space O(log n)</b> recursion stack (≈ 120 frames — tiny).</p>`,
+      followUps: ['Write it iteratively over the bits of n.', 'Compute Σ k·r<sup>k</sup> mod m the same way (track one more quantity).', 'Use 2×2 matrix exponentiation: [[r, 1], [0, 1]]<sup>n</sup> contains S(n).']
+    }
+  });
+
+  practice.push({
+    title: 'Preimage Size of Factorial Zeroes',
+    level: 'Hard',
+    tags: ['logarithm', 'binary search', 'GP', 'math'],
+    companies: ['Adobe', 'Amazon'],
+    statement: `<p>Let z(x) be the number of trailing zeroes of x! (for example z(3) = 0 since 3! = 6, z(11) = 2 since 11! = 39916800). Given <code>k</code>, return how many non-negative integers x have z(x) = k.</p>`,
+    constraints: `0 ≤ k ≤ 10<sup>9</sup>`,
+    example: `<p>k = 0 → x ∈ {0, 1, 2, 3, 4} → ${H.c('p', '<b>5</b>')}. k = 5 → ${H.c('p', '<b>0</b>')}: z(24) = 4 but z(25) = 6 — it jumps over 5 because 25 = 5·5 adds <b>two</b> factors of 5.</p>
+${H.table(['x', '20–24', '25–29'], [['z(x) = ⌊x/5⌋ + ⌊x/25⌋', '4', H.c('r', '6')]])}`,
+    brute: {
+      why: `<p>Walk x = 0, 1, 2, … computing z(x) until it exceeds k. Since z(x) ≈ x/4, that is about 4k ≈ 4·10<sup>9</sup> values, each costing O(log₅ x) → ~5·10<sup>10</sup> operations → TLE. Wasted work: z(x) is non-decreasing, so we can binary search instead of walking.</p>`,
+      code: `
+long z(long x) {
+    long c = 0;
+    for (long p = 5; p <= x; p *= 5) c += x / p;   // log_5(x) terms
+    return c;
+}
+
+long brute(long k) {
+    long count = 0;
+    for (long x = 0; ; x++) {
+        long zx = z(x);
+        if (zx == k) count++;
+        else if (zx > k) return count;
+    }
+}`
+    },
+    mcq: {
+      q: 'Why is the answer always either 0 or 5?',
+      options: ['Because factorials end in 0 or 5', 'z(x) only changes at multiples of 5, so equal values come in blocks of exactly 5 (or a value is skipped)', 'Because k ≤ 10<sup>9</sup>', 'It can be any number'],
+      answer: 1,
+      explain: 'x!, (x+1)!, … only gain factors of 5 when the new factor is a multiple of 5. So z is constant on blocks 5j..5j+4. Either some block has value k (5 numbers) or the jump at a multiple of 25 skips k (0 numbers).'
+    },
+    hints: [
+      `<p>Legendre's formula: z(x) = ⌊x/5⌋ + ⌊x/25⌋ + ⌊x/125⌋ + … — a GP of divisors, only log₅ x ≈ 14 terms. z is non-decreasing in x.</p>`,
+      `<p>Let lb(k) = smallest x with z(x) ≥ k (binary search on x in [0, 5k]). The number of x with z(x) = k is lb(k + 1) − lb(k).</p>`,
+      `<p>Why 5k is a safe upper bound: z(5k) ≥ ⌊5k/5⌋ = k. Use <code>long</code> (5·(10<sup>9</sup> + 1) &gt; int range). Recipe: lb(t): lo = 0, hi = 5t; while lo &lt; hi: mid = (lo + hi)/2; if z(mid) &lt; t → lo = mid + 1 else hi = mid. Answer = lb(k+1) − lb(k).</p>`
+    ],
+    solution: {
+      approach: `<p>Binary search on x over a monotone function computed in O(log x); answer = lowerBound(k+1) − lowerBound(k).</p>`,
+      code: `
+class Solution {
+    // trailing zeroes of x!  (Legendre: count factors of 5)
+    static long z(long x) {
+        long c = 0;
+        while (x > 0) {
+            x /= 5;           // x/5 + x/25 + x/125 + ...
+            c += x;
+        }
+        return c;
+    }
+
+    // smallest x with z(x) >= t
+    static long lowerBound(long t) {
+        long lo = 0, hi = 5 * t;
+        while (lo < hi) {
+            long mid = lo + (hi - lo) / 2;
+            if (z(mid) < t) lo = mid + 1;
+            else hi = mid;
+        }
+        return lo;
+    }
+
+    static int preimageSizeFZF(long k) {
+        return (int) (lowerBound(k + 1) - lowerBound(k));
+    }
+
+    public static void main(String[] args) {
+        System.out.println(preimageSizeFZF(0));            // 5
+        System.out.println(preimageSizeFZF(5));            // 0
+        System.out.println(preimageSizeFZF(3));            // 5
+        System.out.println(preimageSizeFZF(1_000_000_000)); // 5
+    }
+}`,
+      dry: {
+        head: ['query', 'lowerBound', 'meaning'],
+        rows: [['k = 5', 'lb(5) = 25', 'z(24) = 4, z(25) = 6 ≥ 5'], ['k + 1 = 6', 'lb(6) = 25', 'z(25) = 6 ≥ 6'], ['answer', H.c('p', '25 − 25 = 0'), 'value 5 is skipped']]
+      },
+      complexity: `<p><b>Time O(log k · log k)</b>: two binary searches of ~log₂(5k) ≈ 33 steps, each computing z in ≈ 14 divisions. <b>Space O(1)</b>.</p>`,
+      followUps: ['Trailing zeroes of x! in base 12 = 2²·3 (count factors of 2 and 3, take the bottleneck).', 'Smallest x whose factorial has at least k trailing zeroes (that is just lowerBound(k)).']
+    }
+  });
+
+  practice.push({
+    title: 'Smallest Good Base',
+    level: 'Hard',
+    tags: ['GP', 'logarithm', 'overflow', 'math'],
+    companies: ['Google', 'Amazon'],
+    statement: `<p>A base k ≥ 2 is <b>good</b> for n if every digit of n written in base k is 1, i.e. n = 1 + k + k<sup>2</sup> + … + k<sup>m</sup> for some m ≥ 1. Given n, return the <b>smallest</b> good base.</p>`,
+    constraints: `3 ≤ n ≤ 10<sup>18</sup>`,
+    example: `<p>n = 13 → ${H.c('p', '<b>3</b>')} since 13 = 111₃ = 1 + 3 + 9.</p>
+<p>n = 4681 → ${H.c('p', '<b>8</b>')} since 4681 = 11111₈ = 1 + 8 + 64 + 512 + 4096.</p>
+<p>n = 10<sup>18</sup> → ${H.c('p', '<b>999999999999999999</b>')}: no base works with 3+ ones, but every n is "11" in base n − 1.</p>`,
+    brute: {
+      why: `<p>Try every base k = 2, 3, … , n − 1 and convert n to base k: up to 10<sup>18</sup> bases → impossible. Wasted work: the number of ones (m + 1) can only be from 2 to ~60 (because k ≥ 2 means 2<sup>m</sup> ≤ n), and for each fixed m there is at most <b>one</b> candidate k ≈ n<sup>1/m</sup>.</p>`,
+      code: `
+long bruteGoodBase(long n) {
+    for (long k = 2; k < n; k++) {          // up to 10^18 candidate bases
+        long x = n;
+        boolean allOnes = true;
+        while (x > 0) {
+            if (x % k != 1) { allOnes = false; break; }
+            x /= k;
+        }
+        if (allOnes) return k;
+    }
+    return n - 1;
+}`
+    },
+    mcq: {
+      q: 'If n = 1 + k + … + k<sup>m</sup> with k ≥ 2, what is the largest m worth trying for n ≤ 10<sup>18</sup>?',
+      options: ['About 10<sup>9</sup>', 'About 60 (since 2<sup>m</sup> ≤ n)', 'About 18', 'Exactly 2'],
+      answer: 1,
+      explain: 'Even with the smallest base 2, the sum exceeds 2<sup>m</sup>. So 2<sup>m</sup> &lt; n ≤ 10<sup>18</sup> &lt; 2<sup>60</sup> → m ≤ 59. More ones means a smaller base, so try m from large to small.'
+    },
+    hints: [
+      `<p>More digits ⇒ smaller base. So loop m (number of ones − 1) from ⌊log₂ n⌋ down to 2 and return the first base that works; if none, the answer is n − 1 (two ones).</p>`,
+      `<p>For a fixed m, k<sup>m</sup> &lt; n &lt; (k + 1)<sup>m</sup>, so k = ⌊n<sup>1/m</sup>⌋. Compute it with <code>Math.pow</code>, then also test k − 1 and k + 1 to absorb floating-point error.</p>`,
+      `<p>Check "1 + k + … + k<sup>m</sup> == n" without overflow: before multiplying, if cur &gt; (n − sum)/k the sum would exceed n → reject. Only bases k ≥ 2 count. Recipe: for m = 59..2: for k in {⌊n<sup>1/m</sup>⌋ − 1, ⌊n<sup>1/m</sup>⌋, ⌊n<sup>1/m</sup>⌋ + 1}: if k ≥ 2 and gpEquals(k, m, n) return k. Return n − 1.</p>`
+    ],
+    solution: {
+      approach: `<p>Try every possible length of the all-ones representation (≤ 60), derive the only possible base from n<sup>1/m</sup>, verify the GP sum exactly with overflow-safe arithmetic.</p>`,
+      code: `
+class Solution {
+    // does 1 + k + k^2 + ... + k^m equal n exactly? (overflow-safe)
+    static boolean gpEquals(long k, int m, long n) {
+        long sum = 1, cur = 1;
+        for (int i = 1; i <= m; i++) {
+            if (cur > (n - sum) / k) return false;   // cur*k would push sum past n
+            cur *= k;
+            sum += cur;
+        }
+        return sum == n;
+    }
+
+    static String smallestGoodBase(String s) {
+        long n = Long.parseLong(s);
+        int maxM = 63 - Long.numberOfLeadingZeros(n);      // floor(log2 n)
+        for (int m = maxM; m >= 2; m--) {                   // more ones first = smaller base
+            long k = (long) Math.pow(n, 1.0 / m);
+            for (long cand = k - 1; cand <= k + 1; cand++) {
+                if (cand >= 2 && gpEquals(cand, m, n)) return Long.toString(cand);
+            }
+        }
+        return Long.toString(n - 1);                        // "11" in base n-1 always works
+    }
+
+    public static void main(String[] args) {
+        System.out.println(smallestGoodBase("13"));                   // 3
+        System.out.println(smallestGoodBase("4681"));                 // 8
+        System.out.println(smallestGoodBase("1000000000000000000"));  // 999999999999999999
+        System.out.println(smallestGoodBase("2251799813685247"));     // 2  (2^51 - 1)
+    }
+}`,
+      dry: {
+        head: ['m', 'k ≈ 13<sup>1/m</sup>', 'candidates', 'check'],
+        rows: [['3', '2.35 → 2', '1, 2, 3', '1+2+4+8 = 15 ≠ 13; 1+3+9+27 &gt; 13'], ['2', '3.6 → 3', '2, 3, 4', '1+2+4 = 7; ' + H.c('g', '1+3+9 = 13 ✓')], ['—', '—', '—', H.c('p', 'return 3')]]
+      },
+      complexity: `<p><b>Time O(log² n)</b>: ≤ 60 values of m × 3 candidates × ≤ 60 multiplications ≈ 10<sup>4</sup> operations. <b>Space O(1)</b>.</p>`,
+      followUps: ['Return the largest good base other than n − 1, if any.', 'Replace Math.pow with an integer binary search for k (fully exact).']
+    }
+  });
+
+  // =====================================================================
+  // QUIZ
+  // =====================================================================
+  quiz.push(
+    { q: 'How many times does <code>count++</code> run? <code>for (i = 0; i &lt; n; i++) for (j = i + 1; j &lt; n; j++) count++;</code> with n = 6', options: ['36', '30', '15', '21'], answer: 2, explain: 'Inner counts are 5, 4, 3, 2, 1, 0 → 15 = 6·5/2. A triangle loop runs n(n−1)/2 times — still O(n<sup>2</sup>).' },
+    { q: 'What is the time complexity of <code>for (i = n; i &gt; 0; i /= 2) for (j = 0; j &lt; i; j++) work();</code>?', options: ['O(n log n)', 'O(n)', 'O(log n)', 'O(n<sup>2</sup>)'], answer: 1, explain: 'The inner work is n + n/2 + n/4 + … &lt; 2n — a geometric series dominated by its first term. Multiplying "n × log n" is wrong because the inner loop shrinks.' },
+    { q: '1 + 2 + 4 + 8 + … + 2<sup>k</sup> equals…', options: ['2<sup>k</sup>', '2<sup>k+1</sup> − 1', 'k·2<sup>k</sup>', '2<sup>k−1</sup> + 1'], answer: 1, explain: 'GP with r = 2: (2<sup>k+1</sup> − 1)/(2 − 1). The sum of all smaller powers of two is one less than the next power: 1 + 2 + 4 = 7 = 8 − 1.' },
+    { q: 'Roughly how many times can you halve 10<sup>9</sup> before reaching 1?', options: ['9', '30', '1000', '31,623'], answer: 1, explain: '2<sup>10</sup> ≈ 10<sup>3</sup>, so 10<sup>9</sup> ≈ 2<sup>30</sup> → about 30 halvings (exactly ⌊log₂ 10<sup>9</sup>⌋ = 29).' },
+    { q: 'Which statement about f(n) = 3n<sup>2</sup> + 100n is TRUE?', options: ['f is O(n) for large n', 'f is Θ(n<sup>2</sup>)', 'f is Ω(n<sup>3</sup>)', 'f is O(n<sup>2</sup>) only if n &lt; 100'], answer: 1, explain: 'For large n, 3n<sup>2</sup> ≤ f(n) ≤ 4n<sup>2</sup> (from n ≥ 100), so f is bounded above and below by multiples of n<sup>2</sup>: Θ(n<sup>2</sup>).' },
+    { q: 'A function loops over array A (size N) and, for each element, over array B (size M). The best description is…', options: ['O(N<sup>2</sup>)', 'O(N + M)', 'O(N · M)', 'O(max(N, M))'], answer: 2, explain: 'Nested loops over two different inputs multiply: N·M. Sequential loops would add: N + M. Never merge different inputs into one letter.' },
+    { q: 'What is the extra (auxiliary) space of recursive binary search on an array of N elements?', options: ['O(1)', 'O(log N)', 'O(N)', 'O(N log N)'], answer: 1, explain: 'Each call halves the range, so the recursion is log₂ N deep, and each frame stays on the call stack until the deepest call returns. The iterative version is O(1).' },
+    { q: 'N ≤ 2·10<sup>5</sup>, time limit 1 second. Which complexity is the intended one?', options: ['O(N<sup>2</sup>)', 'O(N log N)', 'O(2<sup>N</sup>)', 'O(N<sup>3</sup>)'], answer: 1, explain: 'N<sup>2</sup> = 4·10<sup>10</sup> → ~400× over the 10<sup>8</sup> budget. N log N ≈ 3.5·10<sup>6</sup> fits comfortably.' },
+    { q: 'N ≤ 20. Which approach is most likely intended?', options: ['O(N log N) greedy only', 'Trying all 2<sup>N</sup> subsets (≈ 10<sup>6</sup>)', 'Nothing — N is too small to matter', 'A segment tree'], answer: 1, explain: 'A tiny limit like 20 is a loud clue that exponential work is allowed: 2<sup>20</sup> ≈ 10<sup>6</sup>, 2<sup>20</sup>·20 ≈ 2·10<sup>7</sup>.' },
+    { q: 'Why can <code>(int) Math.log10(n) + 1</code> give the wrong digit count for n = 999,999,999,999,999,999?', options: ['log10 is not defined for long', 'Converting n to double rounds it up to 10<sup>18</sup>, so log10 returns exactly 18', 'Java truncates log10 to 15 digits', 'It is correct'], answer: 1, explain: 'A double has 53 bits of precision (~16 decimal digits). 10<sup>18</sup> − 1 is not representable and rounds to 10<sup>18</sup>, so the code prints 19. Count digits with integer division instead.' },
+    { q: 'How many times does the body run? <code>for (i = 1; i &lt;= n; i++) for (j = i; j &lt;= n; j += i)</code>', options: ['Θ(n<sup>2</sup>)', 'Θ(n log n)', 'Θ(n)', 'Θ(n √n)'], answer: 1, explain: 'For each i the inner loop runs ⌊n/i⌋ times: n(1 + 1/2 + … + 1/n) ≈ n ln n — the harmonic series.' },
+    { q: 'An algorithm needs a <code>long[10000][10000]</code> table. With a 256 MB memory limit…', options: ['Fine: 10<sup>8</sup> bytes', 'MLE: 10<sup>8</sup> longs × 8 bytes = 800 MB', 'Fine: Java compresses arrays', 'MLE only on 32-bit JVMs'], answer: 1, explain: '10<sup>4</sup> × 10<sup>4</sup> = 10<sup>8</sup> cells × 8 bytes = 800 MB. Look for a rolling-array or 1D reformulation.' },
+    { q: 'Building a max-heap bottom-up does n/4·1 + n/8·2 + n/16·3 + … sift steps. Its complexity is…', options: ['O(n log n)', 'O(n)', 'O(log n)', 'O(n<sup>2</sup>)'], answer: 1, explain: 'The series Σ k/2<sup>k+1</sup> converges to a constant, so the total is O(n). Most nodes are near the bottom and sift only a short distance — a GP-style dominance argument.' }
+  );
+
+  // =====================================================================
+  // INTERVIEW Q&A
+  // =====================================================================
+  interview.push(
+    {
+      q: 'What does Big-O notation mean, in plain words?', level: 'B',
+      a: `<p>Big-O describes <b>how the running time (or memory) grows as the input grows</b>, ignoring constant factors and smaller terms. O(n) means "double the input, roughly double the work"; O(n<sup>2</sup>) means "double the input, four times the work". Formally, f(n) = O(g(n)) if f(n) ≤ c·g(n) for all n beyond some n₀ — it is an <b>upper bound</b>. In interviews "the complexity" usually means the worst-case upper bound, and people often say O when they mean the tight Θ.</p>`,
+      followUps: ['Why do we drop constants?', 'Is O(2n) different from O(n)?', 'Give an O(1), O(log n) and O(n log n) operation from the Java collections.']
+    },
+    {
+      q: 'Explain the difference between O, Ω and Θ with an example.', level: 'B',
+      a: `<p><b>O</b> is an upper bound ("at most"), <b>Ω</b> a lower bound ("at least"), <b>Θ</b> both at once ("exactly this growth"). Linear search: the worst case is Θ(n) (scan everything), the best case is Θ(1) (first element). So "linear search is O(n)" and "linear search is Ω(1)" are both true statements about all inputs. Bounds are a separate idea from cases: you can give O, Ω or Θ for the best, worst or average case.</p>`,
+      followUps: ['Is "merge sort is O(n<sup>2</sup>)" a true statement?', 'What is the Θ of insertion sort on already-sorted input?']
+    },
+    {
+      q: 'How do you find the complexity of nested loops when the inner loop depends on the outer variable?', level: 'B',
+      a: `<p>Fix the outer variable, count the inner iterations as a function of it, then <b>sum over all outer values</b>. If the inner loop runs i times, the total is 0 + 1 + … + (n−1) = n(n−1)/2 → O(n<sup>2</sup>). If it runs n/i times (step i), it is the harmonic series n·H<sub>n</sub> ≈ n ln n → O(n log n). If the work halves each round (n, n/2, …), it is a geometric series &lt; 2n → O(n). Writing a small table of values for n = 8 is the quickest sanity check.</p>`,
+      followUps: ['What is the complexity if the inner loop is <code>for (j = 1; j &lt; i; j *= 2)</code>?', 'How does a two-pointer while loop end up O(n)?']
+    },
+    {
+      q: 'Why is log n so common in complexities, and why does its base not matter?', level: 'B',
+      a: `<p>log₂ n counts how many times you can halve n before reaching 1. Any algorithm that discards a constant fraction of the work per step — binary search, balanced tree descent, heap operations, fast exponentiation, divide and conquer depth — gets a log factor. The base does not matter in Big-O because log<sub>a</sub> n = log<sub>b</sub> n / log<sub>b</sub> a: changing base only multiplies by a constant. It is tiny in practice: log₂(10<sup>18</sup>) ≈ 60.</p>`,
+      followUps: ['When does the base matter? (Hint: inside an exponent.)', 'How many comparisons does binary search need on 10<sup>9</sup> items?']
+    },
+    {
+      q: 'What is space complexity, and does the input count?', level: 'B',
+      a: `<p>Space complexity measures how much memory an algorithm uses as a function of input size. Usually we report <b>auxiliary space</b> — memory beyond the input (and often beyond the output). Arrays/maps you allocate, and the <b>recursion call stack</b>, count. Reversing an array in place with two pointers is O(1) auxiliary; copying it is O(n); a recursive DFS on a path of n nodes is O(n) because n frames are alive at once. Always state which convention you use.</p>`,
+      followUps: ['Is recursive Fibonacci O(2<sup>n</sup>) space?', 'What is the space of merge sort vs heap sort?']
+    },
+    {
+      q: 'Given constraints N ≤ 10<sup>5</sup>, how do you decide what complexity to aim for?', level: 'I',
+      a: `<p>Use the rule of thumb of about <b>10<sup>8</sup> simple operations per second</b>. Plug N in: N<sup>2</sup> = 10<sup>10</sup> → ~100 s, too slow; N log N ≈ 1.7·10<sup>6</sup> and even N√N ≈ 3·10<sup>7</sup> are fine. So the target is O(N log N) or better — sorting, binary search, heaps, hashing, prefix sums. I also check other numbers: Q queries multiply per-query cost, "sum of N over all tests" bounds total work, value ranges decide <code>int</code> vs <code>long</code>, and the memory limit caps tables.</p>`,
+      followUps: ['What would you aim for with N ≤ 500? N ≤ 20? N ≤ 10<sup>18</sup>?', 'Why is the 10<sup>8</sup> rule only approximate?']
+    },
+    {
+      q: 'What is the difference between worst-case, average-case, amortised and expected complexity?', level: 'I',
+      a: `<p><b>Worst case:</b> the maximum cost over all inputs of size n. <b>Average case:</b> the mean cost over a distribution of inputs (e.g. random arrays). <b>Expected:</b> the mean over the algorithm's own random choices, for the worst input (randomised quicksort: expected O(n log n) on every input). <b>Amortised:</b> a guarantee on the total cost of a sequence of operations divided by their count — ArrayList.add is O(1) amortised because the occasional O(n) resize is paid for by the many cheap adds (copies total 1 + 2 + 4 + … &lt; 2n).</p>`,
+      followUps: ['Why is HashMap.get O(1) average but not worst case?', 'Prove that doubling gives O(1) amortised but growing by +10 does not.']
+    },
+    {
+      q: 'Why is building a heap O(n) but inserting n items one by one O(n log n)?', level: 'I',
+      a: `<p>One-by-one insertion sifts each new item <b>up</b> a path of length up to log n, and most items sit near the bottom, so the total is Θ(n log n) in the worst case. Bottom-up heapify sifts <b>down</b>, and a node's cost is its <i>height</i>: about n/2 leaves cost 0, n/4 nodes cost 1, n/8 cost 2… Total Σ (n/2<sup>k+1</sup>)·k = n·Σ k/2<sup>k+1</sup> ≤ n — a convergent series. Most of the work is attached to the many short paths at the bottom, not the few long ones.</p>`,
+      followUps: ['Where else does a geometric series make an algorithm linear?', 'What is the height of a heap with n nodes?']
+    },
+    {
+      q: 'Your recursive solution throws StackOverflowError on large input. What do you do?', level: 'I',
+      a: `<p>First compute the recursion <b>depth</b>: O(n) depth (linked list, path-shaped graph, skewed tree) exceeds Java's default stack (~10<sup>4</sup>–10<sup>5</sup> frames). Options: (1) rewrite iteratively, or with an explicit <code>ArrayDeque</code> stack on the heap; (2) change the algorithm to bound depth (e.g. quicksort recursing on the smaller part → O(log n)); (3) as a pragmatic fix in contests, run the code in a <code>Thread</code> created with a large stack size; (4) increase <code>-Xss</code> in production only if you control the JVM. Java has no tail-call optimisation, so tail recursion does not help.</p>`,
+      followUps: ['How do you keep the same visit order when converting DFS to an explicit stack?', 'Why does quicksort recursing on the smaller side guarantee O(log n) depth?']
+    },
+    {
+      q: 'Is an O(√N) primality test polynomial time?', level: 'A',
+      a: `<p>No — not in the formal sense. Complexity is measured against the <b>size of the input in bits</b>. A number N is written with b = log₂ N bits, so √N = 2<sup>b/2</sup> is <b>exponential in b</b>. It is fast for 64-bit numbers (≈ 3·10<sup>9</sup> steps worst case, still too slow for many contests at 10<sup>18</sup>), but for 2048-bit cryptographic numbers it is hopeless — that is why we use Miller–Rabin (polynomial in b). The same idea gives "pseudo-polynomial" algorithms like 0/1-knapsack O(n·W).</p>`,
+      followUps: ['Why is knapsack NP-hard if O(n·W) exists?', 'What is the complexity of Euclid\'s GCD in terms of bits?']
+    },
+    {
+      q: 'How do you get the complexity of a recursive function such as T(n) = 2T(n/2) + n?', level: 'A',
+      a: `<p>Draw the recursion tree and sum level by level. Level k has 2<sup>k</sup> calls of size n/2<sup>k</sup>, each doing n/2<sup>k</sup> work → every level costs n. There are log₂ n levels → <b>Θ(n log n)</b>. The GP dominance rule generalises it: if level costs grow geometrically, the bottom (leaves) dominates; if they shrink, the root dominates (T(n) = T(n/2) + n → Θ(n)); if equal, multiply one level by the number of levels. That is exactly what the Master Theorem packages up.</p>`,
+      followUps: ['Solve T(n) = T(n−1) + n and T(n) = 2T(n−1) + 1.', 'What is the space complexity of merge sort\'s recursion?']
+    },
+    {
+      q: 'When can an algorithm with a better Big-O be slower in practice?', level: 'E',
+      a: `<p>Big-O hides constants and memory behaviour. For realistic sizes, an O(n log n) sort over a contiguous <code>int[]</code> can beat an "O(n)" approach that uses a <code>HashMap&lt;Integer,Integer&gt;</code> because of boxing, hashing, allocation and cache misses (~100 cycles each). Insertion sort beats merge sort for n ≲ 32, which is why TimSort and introsort switch to it for small runs. Big-O also ignores I/O: a "fast" algorithm that does one database round trip per item is dominated by network latency. Measure at realistic sizes with a proper harness (JMH) before deciding.</p>`,
+      followUps: ['How would you design a benchmark to compare two implementations fairly?', 'Why do linked lists lose to arrays even for O(1) inserts?']
+    },
+    {
+      q: 'How do you use complexity reasoning in system or production work, not just interviews?', level: 'E',
+      a: `<p>It becomes <b>capacity planning</b>. Translate traffic into operations: 10<sup>6</sup> daily users × 100 requests ≈ 1,200 requests/second. If each request scans 10<sup>5</sup> rows (O(n)), that is 1.2·10<sup>8</sup> row-reads per second — you need an index (O(log n)) or a cache (O(1)). Watch for O(n<sup>2</sup>) hiding in "for each user, check each order", N+1 database queries, and unbounded in-memory lists that cause out-of-memory errors as data grows. In code review I look for loops over growing collections and ask "what happens at 100× today's data?"</p>`,
+      followUps: ['How would you find an accidental O(n<sup>2</sup>) in a slow endpoint?', 'When is an O(n) full scan acceptable in production?']
+    }
+  );
 
   registerModule({
     id: 'dsa02',
