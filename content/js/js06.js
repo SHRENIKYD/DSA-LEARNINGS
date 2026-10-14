@@ -1928,8 +1928,8 @@ console.log(Color.fromHex('#ff8000'), Color.fromHex('#ff8000') === Color.fromHex
     deepDive: `<p><b>How private names work.</b> Each <code>#x</code> declaration creates a unique <b>Private Name</b> value when the class is evaluated (evaluate the same class expression twice → two different private names). Instances carry a <code>[[PrivateElements]]</code> list. <code>this.#x</code> does <code>PrivateFieldFind(obj, name)</code>: if the object has no element for that exact Private Name → <code>TypeError</code>. Private methods are not stored per instance as functions; <code>PrivateMethodOrAccessorAdd</code> records a "brand" on the instance during construction, and the method itself lives once on the class. That is why <code>#m in obj</code> works for methods too.</p>
 <p><b>Lexical scoping.</b> Private names are resolved <b>lexically</b> like variables: any code physically inside the class body (including nested functions, arrow functions, nested classes, and static blocks) can use them. The static-block "friend" pattern exploits this: <code>let getX; class A { #x; static { getX = (a) =&gt; a.#x; } }</code> exports a controlled accessor to the rest of the module. <code>eval</code> inside the class body can also see them.</p>
 <p><b>The "return override" trick.</b> Because a base constructor may return any object, a subclass whose parent returns an arbitrary object will <b>stamp its private fields onto that object</b> — this can attach private state to frozen objects or even to objects created elsewhere (used in polyfills for "private symbols"). It is also why proposals like "nonextensible applies to privates" are discussed in TC39.</p>
-<p><b>Performance.</b> V8 implements private fields with special private symbols on the object, so access speed matches normal properties and they participate in hidden classes and inline caches. Brand checks and private methods are cheap. Older Babel transpilation used <code>WeakMap</code>s (one per field) — noticeably slower and memory-hungry, a reason to target ES2022+ today (all evergreen browsers and Node ≥ 14.6/16 support them; static blocks and <code>#x in obj</code> need Node 16.4+/Chrome 91+/Safari 15+).</p>
-<p><b>Statics and inheritance.</b> Public static fields are defined <b>on each class separately</b> (define semantics), while static methods are inherited through <code>Object.getPrototypeOf(Child) === Parent</code>. A static field mutated via <code>this.counter++</code> in a method called on a subclass creates an own <code>counter</code> on the subclass (a write → shadowing!) — a subtle bug when you wanted one shared counter.</p>`,
+<p><b>Performance.</b> V8 implements private fields with special private symbols on the object, so access speed matches normal properties and they participate in hidden classes and inline caches. Brand checks and private methods are cheap. Older Babel transpilation used <code>WeakMap</code>s (one per field) — noticeably slower and memory-hungry, a reason to target ES2022+ today (private fields since Node 12, private methods since Node 14.6; <code>#x in obj</code> needs Node 16.4+ / Chrome 91+ / Safari 15+, and static blocks Node 16.11+ / Chrome 94+ / Safari 16.4+ — all fine in any 2026 runtime).</p>
+<p><b>Statics and inheritance.</b> A public static field is an own property of the class that <b>declares</b> it; subclasses only <b>read</b> it through the constructor chain (<code>Object.getPrototypeOf(Child) === Parent</code>), exactly like static methods. A static field mutated via <code>this.counter++</code> in a method called on a subclass creates an own <code>counter</code> on the subclass (a write → shadowing!) — a subtle bug when you wanted one shared counter.</p>`,
     aiEra: `<p><b>What AI changes:</b> AI often produces TypeScript with <code>private</code> keywords and assumes the data is hidden at runtime; or produces <code>_underscore</code> fields because of older training data. Knowing when you need <b>runtime</b> privacy (library boundaries, security-sensitive tokens, multi-tenant objects) is a human judgement.</p>
 <p><b>Use AI as a partner:</b> "<i>convert these underscore fields to #private and list everything that will break</i>" (expect: JSON serialisation, tests reading internals, Proxies, subclasses touching fields, <code>structuredClone</code>); "<i>add a brand-checked static isX to this class</i>"; "<i>find static methods that use this.#x and could be called on a subclass</i>".</p>
 <p><b>Where AI goes wrong:</b> writing <code>obj['#x']</code> as if it accessed the private field; putting <code>#x</code> on instances and expecting subclasses to read it; wrapping <code>#</code>-using instances in Proxies (reactive stores) without the bind fix; static counters incremented via <code>this</code> from subclasses.</p>
@@ -2006,6 +2006,240 @@ console.log(a.history().length);                               // 2 — internal
         dry: { head: ['call', 'check', 'a.#balance', 'b.#balance'], rows: [['a.deposit(100)', '100 > 0 ✓', '100', '0'], ['transfer(a, b, 30)', 'brands ✓, 30 ≤ 100 ✓', '70', '30'], ['transfer(a, b, 500)', H.c('r', '500 > 70 → throw before mutating'), '70', '30'], ['transfer(fake, b, 5)', H.c('r', '#balance in fake → false'), '70', '30']] },
         complexity: `<p>All operations O(1) except <code>history()</code>, which is O(n) for the defensive copy.</p>`,
         followUps: ['Make it safe for subclasses (<code>class Savings extends Account</code>) — which parts already are?', 'Add an <code>#frozen</code> flag and a static <code>freeze(account)</code> only the class can call.', 'How would you serialise and restore an account (toJSON / static fromJSON) without exposing a public setter?']
+      }
+    }]
+  });
+
+  /* ======================================================================
+     TOPIC 8 — instanceof, isPrototypeOf, Symbol.hasInstance and type checks
+     ====================================================================== */
+  topics.push({
+    title: 'instanceof Under the Hood (and Better Type Checks)',
+    analogy: `<p>A club checks membership by looking for the club's <b>official stamp</b> anywhere in your passport's pages — not by your name, not by how you dress. <code>x instanceof Dog</code> flips through <code>x</code>'s prototype chain page by page, looking for <b>that exact object</b> <code>Dog.prototype</code>.</p>
+<p>Two consequences: someone can <b>forge</b> a passport by gluing in the right page (<code>Object.setPrototypeOf</code>), and a member of the <b>identical club in another city</b> (another iframe/realm) gets rejected, because their stamp is a different physical stamp — even though it looks the same.</p>`,
+    explain: `<p><code>x instanceof C</code> answers one precise question: <b>"Does <code>C.prototype</code> appear anywhere in <code>x</code>'s prototype chain?"</b> It compares object <b>identity</b> at each step.</p>
+<h4>The algorithm (simplified)</h4>
+<ol>
+<li>If <code>C</code> is not an object → <code>TypeError</code>. If <code>C</code> has a <code>Symbol.hasInstance</code> method, return what it says (classes can customise <code>instanceof</code>).</li>
+<li>Otherwise <code>C</code> must be callable, else <code>TypeError: Right-hand side of 'instanceof' is not callable</code>.</li>
+<li>If <code>x</code> is a primitive (number, string, boolean, null, undefined, symbol, bigint) → <code>false</code>. No boxing happens.</li>
+<li>Let <code>target = C.prototype</code>. Walk <code>p = Object.getPrototypeOf(x)</code>, then its prototype, … If some <code>p === target</code> → <code>true</code>. If you reach <code>null</code> → <code>false</code>.</li>
+</ol>
+${H.table(['Expression', 'Why', 'Result'], [
+  ['<code>rex instanceof Animal</code>', 'Animal.prototype is 2 hops up', H.c('g', 'true')],
+  ['<code>[] instanceof Object</code>', 'Array.prototype → Object.prototype', H.c('g', 'true')],
+  ['<code>Object.create(null) instanceof Object</code>', 'chain is empty', H.c('r', 'false')],
+  ["<code>'hi' instanceof String</code>", 'primitive', H.c('r', 'false')],
+  ["<code>new String('hi') instanceof String</code>", 'wrapper object', H.c('g', 'true')],
+  ['<code>Object.create(Dog.prototype) instanceof Dog</code>', 'chain has Dog.prototype — no constructor ran!', H.c('y', 'true (forged)')]
+])}
+<h4>Related tools</h4>
+<ul>
+<li><code>Dog.prototype.isPrototypeOf(x)</code> — the same walk, but you name the prototype object directly. Works for <code>Object.create</code>-style objects that have no constructor function at all.</li>
+<li><code>Object.getPrototypeOf(x) === Dog.prototype</code> — "is it <b>directly</b> a Dog" (not a subclass).</li>
+</ul>
+<h4>When <code>instanceof</code> lies</h4>
+<ul>
+<li><b>Changed prototypes</b>: <code>Object.setPrototypeOf</code>, or replacing <code>C.prototype</code> after instances exist (old instances become "not instances").</li>
+<li><b>Cross-realm</b>: an array from an iframe or <code>vm</code> context has a <i>different</i> <code>Array.prototype</code>, so <code>arr instanceof Array</code> is <b>false</b>. Use <code>Array.isArray</code>. Same problem with multiple copies of a library in <code>node_modules</code> (two different <code>class Foo</code>s).</li>
+<li><b>Primitives</b> always give false; use <code>typeof</code> for them.</li>
+</ul>
+<h4>The type-check toolbox</h4>
+${H.table(['You want to know…', 'Use'], [
+  ['primitive type (string, number, bigint, boolean, symbol, undefined, function)', '<code>typeof x</code> (beware: <code>typeof null === \'object\'</code>)'],
+  ['is it an array (any realm)?', '<code>Array.isArray(x)</code>'],
+  ['built-in kind (Date, RegExp, Map…) robustly', "<code>Object.prototype.toString.call(x)</code> → '[object Date]'"],
+  ['was it built by my class (unforgeable)?', 'brand check <code>#field in x</code>'],
+  ['does it inherit from C (normal case)?', '<code>x instanceof C</code>'],
+  ['does it have the method I need?', "duck typing: <code>typeof x.then === 'function'</code>"]
+])}`,
+    clues: [
+      '"Implement <code>instanceof</code> yourself" → walk <code>Object.getPrototypeOf</code> comparing with <code>C.prototype</code>.',
+      '"<code>arr instanceof Array</code> is false for an array from an iframe" → cross-realm; use <code>Array.isArray</code>.',
+      '"Predict: <code>\'str\' instanceof String</code>, <code>Object.create(null) instanceof Object</code>, <code>Function instanceof Object</code>" → algorithm edge cases.',
+      '"Make <code>instanceof</code> return true for objects that match an interface" → <code>static [Symbol.hasInstance]</code>.',
+      '"How do you reliably check the type of a value in JS?" → the toolbox: typeof / isArray / toString tag / brand check / duck typing.',
+      '"Two copies of the same library and <code>instanceof</code> fails" → identity-based check across module instances.'
+    ],
+    code: { lang: 'js', run: true, title: 'instanceof walks the chain by identity (runnable)', code: `class Animal {}
+class Dog extends Animal {}
+class Cat extends Animal {}
+const rex = new Dog();
+
+console.log(rex instanceof Dog, rex instanceof Animal, rex instanceof Object); // true true true
+console.log(rex instanceof Cat);                       // false
+console.log(Animal.prototype.isPrototypeOf(rex));      // true (same walk)
+console.log(Object.getPrototypeOf(rex) === Animal.prototype); // false: not DIRECTLY an Animal
+
+console.log('hi' instanceof String, new String('hi') instanceof String); // false true
+console.log(Object.create(null) instanceof Object);    // false (empty chain)
+
+const forged = Object.create(Dog.prototype);           // no constructor ever ran
+console.log(forged instanceof Dog);                    // true — instanceof only checks the chain
+
+Object.setPrototypeOf(rex, Cat.prototype);             // re-link (slow, demo only)
+console.log(rex instanceof Dog, rex instanceof Cat);   // false true
+
+try { rex instanceof {}; } catch (e) { console.log(e.constructor.name); } // TypeError (RHS not callable)
+` },
+    viz: {
+      title: 'Run instanceof step by step',
+      input: 'rex Animal',
+      inputLabel: 'value and constructor — values: rex, fake, arr, obj, bare, fn, num, str · constructors: Dog, Animal, Cat, Object, Array, Function',
+      gen: function (input) {
+        var VALS = {
+          rex: { desc: "new Dog() (Dog extends Animal)", chain: ['Dog.prototype', 'Animal.prototype', 'Object.prototype'] },
+          fake: { desc: 'Object.create(Dog.prototype) — no constructor ran', chain: ['Dog.prototype', 'Animal.prototype', 'Object.prototype'] },
+          arr: { desc: '[1, 2]', chain: ['Array.prototype', 'Object.prototype'] },
+          obj: { desc: '{ a: 1 }', chain: ['Object.prototype'] },
+          bare: { desc: 'Object.create(null)', chain: [] },
+          fn: { desc: 'function () {}', chain: ['Function.prototype', 'Object.prototype'] },
+          num: { desc: '42 (primitive)', prim: true },
+          str: { desc: "'hi' (primitive)", prim: true }
+        };
+        var CTORS = ['Dog', 'Animal', 'Cat', 'Object', 'Array', 'Function'];
+        var t = String(input === undefined ? 'rex Animal' : input).trim().split(/\s+/);
+        if (t.length !== 2 || !VALS[t[0]] || CTORS.indexOf(t[1]) < 0) throw new Error('Type a value and a constructor, e.g. "rex Animal", "arr Object", "bare Object", "str String"… values: ' + Object.keys(VALS).join(', ') + '; constructors: ' + CTORS.join(', '));
+        var v = VALS[t[0]], C = t[1], target = C + '.prototype', frames = [];
+        var expr = t[0] + ' instanceof ' + C;
+        frames.push({ narr: 'Evaluate <code>' + esc(expr) + '</code>, where <code>' + esc(t[0]) + '</code> = ' + esc(v.desc) + '.', parts: [{ type: 'vars', label: 'instanceof', vals: { left: t[0], right: C }, hl: {} }, note('Question being asked: does <b>' + esc(target) + '</b> appear anywhere in ' + esc(t[0]) + '\'s prototype chain?')] });
+        frames.push({ narr: 'Step 1: is the right side an object with a custom <code>Symbol.hasInstance</code>? <b>' + esc(C) + '</b> only has the default one inherited from <code>Function.prototype</code>, which runs the ordinary algorithm. Is it callable? Yes → continue.', parts: [{ type: 'vars', label: 'instanceof', vals: { right: C, 'custom hasInstance': 'no', callable: 'yes' }, hl: { callable: 'ok' } }] });
+        if (v.prim) {
+          frames.push({ narr: 'Step 2: the left side is a <b>primitive</b>. <code>instanceof</code> does <b>not</b> box primitives — it returns <span class="c-r"><b>false</b></span> immediately. (Use <code>typeof</code> for primitives.)', parts: [{ type: 'vars', label: 'instanceof', vals: { left: v.desc, result: 'false' }, hl: { result: 'bad' } }] });
+          frames.push({ narr: 'Compare: <code>Object(' + esc(t[0]) + ')</code> would create a wrapper object whose chain starts at ' + (t[0] === 'num' ? 'Number' : 'String') + '.prototype — then <code>instanceof Object</code> would be true. Primitives themselves never are.', parts: [{ type: 'list', label: 'Chain of the WRAPPER object (not the primitive)', values: ['Object(' + t[0] + ')', (t[0] === 'num' ? 'Number' : 'String') + '.prototype', 'Object.prototype'], next: [1, 2, -1], hl: { 0: 'done' } }] });
+          return frames;
+        }
+        var nodes = [t[0]].concat(v.chain);
+        frames.push({ narr: 'Step 2: <code>target = ' + esc(C) + '.prototype</code>. Now walk the chain starting from <code>Object.getPrototypeOf(' + esc(t[0]) + ')</code>.', parts: [{ type: 'list', label: 'Chain of ' + t[0], values: nodes, next: nodes.map(function (_, i) { return i + 1 < nodes.length ? i + 1 : -1; }), hl: { 0: 'cur' } }, { type: 'vars', vals: { target: target }, hl: { target: 'sel' } }] });
+        if (!v.chain.length) {
+          frames.push({ narr: '<code>Object.getPrototypeOf(' + esc(t[0]) + ')</code> is <b>null</b> right away — the chain is empty. Nothing can match → <span class="c-r"><b>false</b></span>. Even <code>instanceof Object</code> is false for null-prototype objects!', parts: [{ type: 'list', label: 'Chain of ' + t[0], values: [t[0]], next: [-1], hl: { 0: 'bad' } }, { type: 'vars', vals: { target: target, p: 'null', result: 'false' }, hl: { result: 'bad' } }] });
+          return frames;
+        }
+        for (var i = 0; i < v.chain.length; i++) {
+          var hit = v.chain[i] === target, hl = {}, ptr = {};
+          for (var j = 1; j <= i; j++) hl[j] = 'done';
+          hl[i + 1] = hit ? 'ok' : 'cur'; ptr[i + 1] = 'p';
+          frames.push({ narr: 'Hop ' + (i + 1) + ': <code>p = ' + esc(v.chain[i]) + '</code>. Is <code>p === ' + esc(target) + '</code>? ' + (hit ? '<span class="c-g"><b>Yes — same object!</b></span> Return <b>true</b>.' : '<span class="c-r">No.</span> Move to <code>Object.getPrototypeOf(p)</code>.'), parts: [{ type: 'list', label: 'Chain of ' + t[0], values: nodes, next: nodes.map(function (_, k) { return k + 1 < nodes.length ? k + 1 : -1; }), hl: hl, ptr: ptr }, { type: 'vars', vals: { target: target, p: v.chain[i], 'p === target': String(hit) }, hl: { 'p === target': hit ? 'ok' : 'bad' } }] });
+          if (hit) {
+            frames.push({ narr: '<code>' + esc(expr) + '</code> → <span class="c-g"><b>true</b></span>.' + (t[0] === 'fake' ? ' Notice: <b>no constructor ever ran</b> for fake — instanceof only looks at the chain, so it can be fooled. A <code>#private</code> brand check cannot.' : ' It took ' + (i + 1) + ' hop' + (i ? 's' : '') + '.'), parts: [{ type: 'vars', vals: { result: 'true', hops: i + 1 }, hl: { result: 'ok' } }, note('Equivalent: <code>' + esc(C) + '.prototype.isPrototypeOf(' + esc(t[0]) + ')</code>')] });
+            return frames;
+          }
+        }
+        frames.push({ narr: 'Next <code>Object.getPrototypeOf(Object.prototype)</code> is <b>null</b> — end of chain, no match. <code>' + esc(expr) + '</code> → <span class="c-r"><b>false</b></span>.', parts: [{ type: 'list', label: 'Chain of ' + t[0], values: nodes, next: nodes.map(function (_, k) { return k + 1 < nodes.length ? k + 1 : -1; }), hl: (function () { var h = {}; for (var k = 1; k < nodes.length; k++) h[k] = 'done'; return h; })() }, { type: 'vars', vals: { target: target, p: 'null', result: 'false' }, hl: { result: 'bad' } }] });
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'Predict: replacing C.prototype orphans old instances', html: `<p><code>instanceof</code> reads <code>C.prototype</code> <b>now</b>. Objects created before the swap point to the <b>old</b> prototype object, so they stop being "instances". Classes protect against this (their <code>prototype</code> is read-only).</p>
+${H.table(['', 'before swap', 'after swap'], [['old instanceof F', H.c('g', 'true'), H.c('r', 'false')], ['new instanceof F', '—', H.c('g', 'true')]])}`, code: { lang: 'js', run: true, code: `function F() {}
+const old = new F();
+console.log(old instanceof F);   // true
+F.prototype = {};                // swap
+const fresh = new F();
+console.log(old instanceof F, fresh instanceof F);   // false true
+
+class K {}
+K.prototype = {};                // ignored: class prototype is non-writable (sloppy)
+console.log(new K() instanceof K);                   // true` } },
+      { title: 'Cross-realm: why Array.isArray exists', html: `<p>Each realm (iframe, Web Worker, Node <code>vm</code> context) has its own <code>Array</code> and <code>Array.prototype</code>. An array created in another realm fails <code>instanceof Array</code> in yours. <code>Array.isArray</code> checks the internal "is an Array exotic object" flag instead, and <code>Object.prototype.toString.call</code> reads the tag. This snippet uses Node's <code>vm</code> module, so it runs in Node rather than in the browser sandbox.</p>`, code: { lang: 'js', code: `const vm = require('vm');
+const foreign = vm.runInNewContext('[1, 2, 3]');   // array from another realm
+console.log(foreign instanceof Array);             // false — different Array.prototype
+console.log(Array.isArray(foreign));               // true
+console.log(Object.prototype.toString.call(foreign)); // [object Array]` } },
+      { title: 'Customising instanceof with Symbol.hasInstance', html: `<p>If the right-hand side has a <code>Symbol.hasInstance</code> method, <code>instanceof</code> just calls it. Useful for <b>interface-like</b> checks (duck typing behind a familiar syntax) — but surprising to readers, so use sparingly.</p>`, code: { lang: 'js', run: true, code: `class Even {
+  static [Symbol.hasInstance](n) { return Number.isInteger(n) && n % 2 === 0; }
+}
+console.log(2 instanceof Even, 3 instanceof Even);   // true false — primitives allowed here!
+
+const Thenable = {
+  [Symbol.hasInstance](x) { return x != null && typeof x.then === 'function'; }
+};
+console.log(Promise.resolve(1) instanceof Thenable);  // true
+console.log({ then() {} } instanceof Thenable);       // true
+console.log({} instanceof Thenable);                  // false` } },
+      { title: 'The type-check toolbox in action', html: `<p>Pick the tool by the question. <code>typeof</code> for primitives (watch out for <code>null</code>), <code>Array.isArray</code> for arrays, <code>Object.prototype.toString</code> tags for built-ins, <code>instanceof</code> for your own class hierarchies.</p>
+${H.table(['value', 'typeof', 'toString tag'], [['null', "'object' (historic bug)", '[object Null]'], ['[]', "'object'", '[object Array]'], ['new Date()', "'object'", '[object Date]'], ['() =&gt; 1', "'function'", '[object Function]'], ['10n', "'bigint'", '[object BigInt]']])}`, code: { lang: 'js', run: true, code: `const tag = (x) => Object.prototype.toString.call(x).slice(8, -1);
+const samples = [null, undefined, 1, 'a', 10n, Symbol('s'), [], {}, new Date(0), /re/, new Map(), () => 1, Promise.resolve()];
+for (const x of samples) {
+  console.log(String(typeof x).padEnd(9), tag(x));
+}
+class Temp { get [Symbol.toStringTag]() { return 'Temperature'; } }
+console.log(tag(new Temp()));   // Temperature — custom tag` } },
+      { title: 'Predict: the top-of-the-world instanceof puzzle', html: `<p>Use the algorithm, not intuition. <code>Function instanceof Function</code>: Function's chain is Function.prototype → Object.prototype → null, and the target is <code>Function.prototype</code> → <b>true</b>. <code>Object instanceof Object</code>: Object → Function.prototype → Object.prototype ✓ → <b>true</b>. <code>Dog instanceof Animal</code> (classes): Dog's chain starts with <b>Animal itself</b>, then Function.prototype — never Animal.prototype → <b>false</b>.</p>`, code: { lang: 'js', run: true, code: `class Animal {}
+class Dog extends Animal {}
+console.log(Function instanceof Function);  // true
+console.log(Object instanceof Object);      // true
+console.log(Function instanceof Object);    // true
+console.log(Object instanceof Function);    // true
+console.log(Dog instanceof Animal);         // false (Dog is a function, not an animal)
+console.log(Dog instanceof Function);       // true
+console.log(Animal.isPrototypeOf(Dog));     // true — the static chain` } }
+    ],
+    deepDive: `<p><b>Spec path.</b> <code>InstanceofOperator(V, target)</code>: (1) if <code>target</code> is not an Object → TypeError; (2) <code>instOfHandler = GetMethod(target, @@hasInstance)</code>; if defined, return <code>ToBoolean(Call(handler, target, « V »))</code>; (3) if target is not callable → TypeError; (4) return <code>OrdinaryHasInstance(target, V)</code>. Every function inherits <code>Function.prototype[Symbol.hasInstance]</code> (non-writable, so it cannot be overwritten by plain assignment on a function — you must use <code>static [Symbol.hasInstance]</code> or <code>defineProperty</code>), which calls <code>OrdinaryHasInstance</code>.</p>
+<p><b>OrdinaryHasInstance(C, O)</b>: if <code>C</code> is a <b>bound function</b>, recurse with its target function (so <code>x instanceof f.bind(null)</code> works like <code>x instanceof f</code>); if <code>O</code> is not an object → false; <code>P = Get(C, 'prototype')</code>, and if P is not an object → <b>TypeError</b> (e.g. <code>x instanceof (() =&gt; {})</code> throws "Function has non-object prototype 'undefined' in instanceof check"); then loop <code>O = O.[[GetPrototypeOf]]()</code> comparing with <code>SameValue</code>. Proxies participate: the walk calls the <code>getPrototypeOf</code> trap, so a Proxy can make itself an "instance" of anything.</p>
+<p><b>Speed.</b> V8 optimises <code>instanceof</code> with known constant right-hand sides into a short loop or even a constant when the object's map is known. A custom <code>Symbol.hasInstance</code> defeats that and costs a call. In hot code, checking a <b>brand</b> or a discriminant field (<code>x.kind === 'circle'</code>, as in TypeScript discriminated unions) is both faster and more robust than deep <code>instanceof</code> chains.</p>
+<p><b>Real-world failure modes.</b> Duplicate package versions (two copies of <code>class ValidationError</code> after a bad dependency resolution) make <code>err instanceof ValidationError</code> false — libraries like AWS SDK v3 and RxJS moved to name/brand checks or <code>Symbol.for</code>-based markers for this reason. Errors crossing <code>postMessage</code>/<code>structuredClone</code> lose custom prototypes. Serialised data (JSON) never satisfies <code>instanceof</code> — you must rehydrate with a factory (<code>User.fromJSON</code>). Node's <code>util.types.isPromise</code>/<code>isDate</code> and <code>Error.isError</code> (a recent proposal, already shipping in some engines) exist precisely because realm-safe checks are hard.</p>`,
+    aiEra: `<p><b>What AI changes:</b> generated code sprinkles <code>instanceof</code> checks freely — <code>if (err instanceof AxiosError)</code>, <code>if (data instanceof Array)</code> — which fail across realms, bundles, and duplicate packages. Knowing when identity checks are fragile is now a key review skill, especially in micro-frontends and serverless code where realms and bundles multiply.</p>
+<p><b>Use AI as a partner:</b> "<i>find every instanceof in this repo and tell me which could see cross-realm or JSON-deserialised values</i>"; "<i>write a myInstanceof with tests for bound functions, Symbol.hasInstance, primitives and null-prototype objects</i>"; "<i>generate tricky instanceof predict-the-output puzzles involving Function and Object</i>".</p>
+<p><b>Where AI goes wrong:</b> <code>myInstanceof</code> implementations that box primitives (returning true for <code>'a' instanceof String</code>), loop on <code>__proto__</code> (crashes on null-prototype objects in some engines), forget the non-callable TypeError, or claim <code>Array.isArray</code> and <code>instanceof Array</code> are equivalent.</p>
+<p><b>What you must still own:</b> the exact algorithm, its failure modes, and picking the right check (typeof, isArray, tag, brand, discriminant, duck typing) for the situation.</p>`,
+    problems: [{
+      title: 'Implement instanceof: myInstanceof(value, Ctor)',
+      level: 'Easy', tags: ['polyfill', 'instanceof', 'prototype chain'], companies: ['Amazon', 'Flipkart', 'CRED', 'Adobe'],
+      statement: `<p>Implement <code>myInstanceof(value, Ctor)</code> that returns the same boolean as <code>value instanceof Ctor</code> for ordinary constructors. Requirements: primitives → <code>false</code>; non-callable <code>Ctor</code> → <code>TypeError</code>; respect a custom <code>Ctor[Symbol.hasInstance]</code> if <code>Ctor</code> defines its own; work with null-prototype objects.</p>`,
+      constraints: `Do not use the <code>instanceof</code> operator or <code>isPrototypeOf</code>. Chains are finite (no cycles possible).`,
+      example: `<p><code>myInstanceof(new Dog(), Animal)</code> → ${H.c('g', 'true')} (Animal.prototype is 2 hops up); <code>myInstanceof('hi', String)</code> → ${H.c('r', 'false')}; <code>myInstanceof(Object.create(null), Object)</code> → ${H.c('r', 'false')}; <code>myInstanceof({}, {})</code> → ${H.c('r', 'TypeError')}.</p>`,
+      brute: {
+        why: `<p>A common first attempt compares <code>value.constructor === Ctor</code>. It ignores inheritance (a Dog is not reported as an Animal), is fooled by any object with a fake <code>constructor</code> property, and crashes on <code>null</code>/<code>undefined</code> and returns <code>true</code> for primitives via boxing (<code>'a'.constructor === String</code>).</p>`,
+        code: { lang: 'js', run: true, code: `function myInstanceofBrute(value, Ctor) {
+  return value.constructor === Ctor;          // only the direct class, easily faked
+}
+class Animal {}
+class Dog extends Animal {}
+console.log(myInstanceofBrute(new Dog(), Animal));        // false  (wrong)
+console.log(myInstanceofBrute('hi', String));             // true   (wrong: primitive)
+console.log(myInstanceofBrute({ constructor: Dog }, Dog));// true   (wrong: faked)` }
+      },
+      mcq: { q: 'Your loop compares each prototype <code>p</code> with what?', options: ['<code>Ctor</code>', '<code>Ctor.prototype</code>', '<code>Ctor.constructor</code>', '<code>Object.getPrototypeOf(Ctor)</code>'], answer: 1, explain: 'Instances are linked to <code>Ctor.prototype</code> (that is what <code>new</code> set up), so that is the object to look for in the chain. Comparing with <code>Ctor</code> itself is the classic mistake.' },
+      hints: [
+        `<p>Hint 1: guard clauses first — non-callable <code>Ctor</code> → throw; if <code>Ctor</code> has its <b>own</b> or inherited-from-a-class <code>Symbol.hasInstance</code> that differs from <code>Function.prototype[Symbol.hasInstance]</code>, delegate to it.</p>`,
+        `<p>Hint 2: primitives: <code>value === null || (typeof value !== 'object' &amp;&amp; typeof value !== 'function')</code> → false.</p>`,
+        `<p>Hint 3: <code>target = Ctor.prototype</code> (throw if it is not an object); <code>p = Object.getPrototypeOf(value)</code>; while <code>p !== null</code>: if <code>p === target</code> return true; <code>p = Object.getPrototypeOf(p)</code>. Return false.</p>`
+      ],
+      solution: {
+        approach: `<p>Mirror the spec: validate the right side, honour a custom <code>Symbol.hasInstance</code>, short-circuit primitives, then walk the linked list of prototypes comparing by identity with <code>Ctor.prototype</code>. Use <code>Object.getPrototypeOf</code> (not <code>__proto__</code>) so null-prototype objects and Proxies behave correctly.</p>`,
+        code: { lang: 'js', run: true, code: `function myInstanceof(value, Ctor) {
+  if (Ctor === null || (typeof Ctor !== 'object' && typeof Ctor !== 'function')) {
+    throw new TypeError("Right-hand side of 'instanceof' is not an object");
+  }
+  const custom = Ctor[Symbol.hasInstance];
+  if (custom !== undefined && custom !== Function.prototype[Symbol.hasInstance]) {
+    return Boolean(custom.call(Ctor, value));                  // user-defined rule
+  }
+  if (typeof Ctor !== 'function') throw new TypeError("Right-hand side of 'instanceof' is not callable");
+  if (value === null || (typeof value !== 'object' && typeof value !== 'function')) return false; // primitives
+  const target = Ctor.prototype;
+  if (target === null || (typeof target !== 'object' && typeof target !== 'function')) {
+    throw new TypeError('Function has non-object prototype in instanceof check');
+  }
+  let p = Object.getPrototypeOf(value);
+  while (p !== null) {
+    if (p === target) return true;          // identity, not structure
+    p = Object.getPrototypeOf(p);
+  }
+  return false;
+}
+
+class Animal {}
+class Dog extends Animal {}
+class Even { static [Symbol.hasInstance](n) { return n % 2 === 0; } }
+const cases = [[new Dog(), Animal], [new Dog(), Array], ['hi', String], [new String('hi'), String],
+  [Object.create(null), Object], [[], Object], [Function, Object], [4, Even]];
+for (const [v, C] of cases) console.log(C.name, myInstanceof(v, C) === (v instanceof C), myInstanceof(v, C));
+try { myInstanceof({}, {}); } catch (e) { console.log(e.name); }   // TypeError` },
+        dry: { head: ['p', 'target = Animal.prototype', 'p === target?', 'next'], rows: [['Dog.prototype', 'Animal.prototype', 'no', 'getPrototypeOf'], ['Animal.prototype', 'Animal.prototype', H.c('g', 'yes'), H.c('g', 'return true')]] },
+        complexity: `<p>Time O(d) where d = chain depth; space O(1).</p>`,
+        followUps: ['Handle bound functions like the spec (<code>myInstanceof(x, F.bind(null))</code>).', 'Write a realm-safe <code>isArrayLike</code> / <code>isPlainObject</code> helper.', 'Why does <code>Function.prototype[Symbol.hasInstance]</code> have to be non-writable?']
       }
     }]
   });
