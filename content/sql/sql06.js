@@ -95,7 +95,10 @@ CREATE TABLE user_profiles (id INTEGER PRIMARY KEY, email TEXT NOT NULL, plan TE
 INSERT INTO user_profiles VALUES
  (1,'a@x.io','free','2024-02-01'),(2,'b@x.io','free','2024-02-03'),
  (3,'a@x.io','pro','2024-03-10'),(4,'c@x.io','team','2024-01-20'),
- (5,'b@x.io','pro','2024-02-03'),(6,'a@x.io','team','2024-02-15');`
+ (5,'b@x.io','pro','2024-02-03'),(6,'a@x.io','team','2024-02-15');
+CREATE TABLE readings (id INTEGER PRIMARY KEY, ts TEXT NOT NULL, reading INTEGER);
+INSERT INTO readings VALUES
+ (1,'08:00',20),(2,'08:05',NULL),(3,'08:10',NULL),(4,'08:15',23),(5,'08:20',NULL),(6,'08:25',25),(7,'08:30',NULL);`
   };
 
   /* ---------- small helpers shared by the visualizers ---------- */
@@ -1429,6 +1432,730 @@ ORDER BY e.salary DESC, e.id;` } }
 <p><b>Where AI goes wrong:</b> using PERCENTILE_CONT in SQLite/MySQL; confusing PERCENT_RANK (starts at 0) with CUME_DIST (never 0); calling NTILE(100) a "percentile" on small tables.</p>
 <p><b>What you must still own:</b> the formulas (so you can sanity-check numbers by hand) and the business rule for ties.</p>`
   });
+
+  /* =====================================================================
+     PRACTICE — Easy
+     ===================================================================== */
+  practice.push({
+    title: 'Each Order\'s Share of Customer and Overall Spend',
+    level: 'Easy', tags: ['window', 'sum over', 'percent of total'], companies: ['Shopify', 'Flipkart', 'Amazon'],
+    statement: `<p>Table <code>orders(id, customer, order_date, amount)</code>. For every order return <code>id, customer, amount, pct_of_customer, pct_of_all</code>: the order's amount as a percentage of that customer's total spend and of all spend, each rounded to 1 decimal. Order by customer, id.</p>`,
+    constraints: `Up to 10<sup>6</sup> orders. Amounts are positive integers (watch integer division).`,
+    example: `${H.table(['id', 'customer', 'amount', 'pct_of_customer', 'pct_of_all'], [['1', 'asha', '50', '<span class="c-g">43.5</span> (50 / 115)', '11.6 (50 / 430)'], ['9', 'dan', '90', '<span class="c-g">100.0</span>', '20.9']])}<p>asha spent 115 in total, so her 50 order is 43.5% of her spend. All orders total 430. dan has one order → 100% of his spend.</p>`,
+    brute: {
+      why: `<p>Compute the customer total with a correlated subquery per row (and another for the grand total). Each row triggers a scan of that customer's orders → O(N × orders per customer), and the grand-total subquery may be re-evaluated per row in naive engines.</p>`,
+      code: { lang: 'sql', db: 'shop', code: `SELECT o.id, o.customer, o.amount,
+       ROUND(100.0 * o.amount / (SELECT SUM(o2.amount) FROM orders o2 WHERE o2.customer = o.customer), 1) AS pct_of_customer,
+       ROUND(100.0 * o.amount / (SELECT SUM(amount) FROM orders), 1) AS pct_of_all
+FROM orders o
+ORDER BY o.customer, o.id;` }
+    },
+    mcq: { q: 'Which expression gives the grand total on every row?', options: ['SUM(amount) OVER (PARTITION BY customer)', 'SUM(amount) OVER ()', 'SUM(amount) OVER (ORDER BY id)', 'SUM(amount) GROUP BY ALL'], answer: 1, explain: 'Empty OVER () makes the whole result one window, so every row sees the grand total. With ORDER BY you would get a running total instead.' },
+    hints: [
+      `<p>You need two different totals on every row without collapsing rows — that is two window aggregates.</p>`,
+      `<p>Customer total = SUM(amount) OVER (PARTITION BY customer). Grand total = SUM(amount) OVER (). No ORDER BY inside, or it becomes a running sum.</p>`,
+      `<p>Multiply by 100.0 before dividing so SQLite does not do integer division, then ROUND(..., 1). Recipe: 100.0 * amount / SUM(amount) OVER (...).</p>`
+    ],
+    solution: {
+      approach: `<p>Two unframed window sums: one partitioned by customer and one over the whole result. Each is computed once per partition by the engine and stamped on every row; the division is plain arithmetic.</p>`,
+      code: { lang: 'sql', db: 'shop', code: `SELECT id, customer, amount,
+       ROUND(100.0 * amount / SUM(amount) OVER (PARTITION BY customer), 1) AS pct_of_customer,
+       ROUND(100.0 * amount / SUM(amount) OVER (), 1)                      AS pct_of_all
+FROM orders
+ORDER BY customer, id;` },
+      complexity: `<p>One sort by customer + O(N) pass. The OVER () total is computed once.</p>`,
+      followUps: ['Show only orders that are more than 40% of the customer\'s spend.', 'Do the same per customer per month.']
+    }
+  });
+
+  practice.push({
+    title: 'Rank Scores (Dense Ranking)',
+    level: 'Easy', tags: ['window', 'dense_rank'], companies: ['Amazon', 'Adobe', 'Yahoo'],
+    statement: `<p>Table <code>scores(id, player, score)</code>. Return every <code>score</code> with its <code>rank</code> from highest to lowest. Equal scores share a rank and the next rank is the next consecutive integer (no gaps). Order by score descending.</p>`,
+    constraints: `Up to 10<sup>5</sup> rows; scores are decimals and may repeat.`,
+    example: `${H.table(['score', 'rank'], [['4.00', '1'], ['4.00', '1'], ['3.85', '<span class="c-g">2</span>'], ['3.65', '3'], ['3.65', '3'], ['3.50', '4']])}<p>Two 4.00s share rank 1; 3.85 gets <b>2</b> (not 3) because there must be no gaps.</p>`,
+    brute: {
+      why: `<p>Rank = number of distinct scores greater than or equal to mine. A correlated COUNT(DISTINCT) per row scans the table each time: O(N²). Correct and a good answer for "without window functions".</p>`,
+      code: { lang: 'sql', db: 'metrics', code: `SELECT s.score,
+       (SELECT COUNT(DISTINCT s2.score) FROM scores s2 WHERE s2.score >= s.score) AS "rank"
+FROM scores s
+ORDER BY s.score DESC;` }
+    },
+    mcq: { q: 'Expected ranks are 1, 1, 2, 3, 3, 4. Which function?', options: ['ROW_NUMBER', 'RANK', 'DENSE_RANK', 'NTILE(4)'], answer: 2, explain: 'Ties share and no gaps → DENSE_RANK. RANK would give 1, 1, 3, 4, 4, 6.' },
+    hints: [
+      `<p>"No gaps after ties" is the signature of one specific ranking function.</p>`,
+      `<p>DENSE_RANK() OVER (ORDER BY score DESC). No PARTITION BY — the whole table is one leaderboard.</p>`,
+      `<p><code>rank</code> is a keyword-like name in some engines; quote it or alias as <code>"rank"</code>. Remember the outer ORDER BY score DESC.</p>`
+    ],
+    solution: {
+      approach: `<p>A single DENSE_RANK window ordered by score descending; the outer ORDER BY presents the leaderboard.</p>`,
+      code: { lang: 'sql', db: 'metrics', code: `SELECT score,
+       DENSE_RANK() OVER (ORDER BY score DESC) AS "rank"
+FROM scores
+ORDER BY score DESC;` },
+      complexity: `<p>O(N log N) sort + O(N). The correlated version is O(N²).</p>`,
+      followUps: ['Return player names too and break display ties alphabetically.', 'Return only players in the top 2 distinct scores.']
+    }
+  });
+
+  practice.push({
+    title: 'Rising Temperature (Previous Calendar Day)',
+    level: 'Easy', tags: ['window', 'lag', 'dates'], companies: ['Microsoft', 'Apple', 'Adobe'],
+    statement: `<p>Table <code>weather(day, temp)</code>, one row per day but some days are missing. Return <code>day, temp, prev_temp</code> for every day that was <b>warmer than the previous calendar day</b> (yesterday must exist in the table). Order by day.</p>`,
+    constraints: `Up to 10<sup>5</sup> days. Days are ISO 'YYYY-MM-DD' strings.`,
+    example: `${H.table(['day', 'temp', 'yesterday?', 'output?'], [['01-02', '25', '01-01: 10', '<span class="c-g">yes</span>'], ['01-04', '30', '01-03: 20', '<span class="c-g">yes</span>'], ['01-06', '35', '<span class="c-r">01-05 missing</span>', '<span class="c-r">no</span> (previous row is 01-04)']])}<p>01-06 is warmer than the previous <i>row</i> but that row is two days earlier, so it does not count.</p>`,
+    brute: {
+      why: `<p>Self-join each day with the row exactly one day earlier. It is actually correct for gaps (the join simply finds no partner) and with an index on day it is fine — but it needs date arithmetic in the join condition, which often prevents index use, making it O(N²).</p>`,
+      code: { lang: 'sql', db: 'metrics', code: `SELECT w.day, w.temp, y.temp AS prev_temp
+FROM weather w
+JOIN weather y ON julianday(w.day) - julianday(y.day) = 1   -- y is exactly yesterday
+WHERE w.temp > y.temp
+ORDER BY w.day;` }
+    },
+    mcq: { q: 'A pure LAG(temp) solution returns 01-06 as well. Why is that wrong?', options: ['LAG skips NULLs', 'LAG returns the previous row, which is 01-04 because 01-05 is missing', 'LAG needs PARTITION BY', 'LAG sorts descending'], answer: 1, explain: 'LAG is positional. With a gap, the previous row is not yesterday, so you must also check the date difference.' },
+    hints: [
+      `<p>LAG(temp) gives the previous row's temperature; LAG(day) gives the previous row's date. You need both.</p>`,
+      `<p>Compute them in a CTE ordered by day, then filter outside (window functions are not allowed in WHERE).</p>`,
+      `<p>Keep rows where temp &gt; prev_temp AND julianday(day) − julianday(prev_day) = 1. The first row has NULLs and drops out automatically.</p>`
+    ],
+    solution: {
+      approach: `<p>One ordered window provides both the previous temperature and the previous date. The outer filter requires the previous row to be exactly one day earlier and colder.</p>`,
+      code: { lang: 'sql', db: 'metrics', code: `WITH t AS (
+  SELECT day, temp,
+         LAG(day)  OVER (ORDER BY day) AS prev_day,
+         LAG(temp) OVER (ORDER BY day) AS prev_temp
+  FROM weather
+)
+SELECT day, temp, prev_temp
+FROM t
+WHERE temp > prev_temp
+  AND julianday(day) - julianday(prev_day) = 1
+ORDER BY day;` },
+      complexity: `<p>O(N log N) sort (free if day is the primary key) + O(N).</p>`,
+      followUps: ['Return days warmer than the average of the previous 3 calendar days.', 'Find the longest run of consecutive warming days.']
+    }
+  });
+
+  practice.push({
+    title: 'Each Customer\'s First Order',
+    level: 'Easy', tags: ['window', 'row_number', 'greatest-n-per-group'], companies: ['Swiggy', 'Uber Eats', 'Etsy'],
+    statement: `<p>Table <code>orders(id, customer, order_date, amount)</code>. Return one row per customer with their <b>first</b> order: <code>customer, first_order_id, order_date, amount</code>. If two orders share the first date, the lower id is first. Order by customer.</p>`,
+    constraints: `Up to 10<sup>7</sup> orders; up to 10<sup>6</sup> customers.`,
+    example: `${H.table(['customer', 'first_order_id', 'order_date', 'amount'], [['asha', '1', '2024-01-01', '50'], ['ben', '2', '2024-01-01', '30'], ['cara', '4', '2024-01-03', '70'], ['dan', '9', '2024-01-08', '90']])}<p>Exactly one row per customer — even if ties existed, the id tiebreaker picks one.</p>`,
+    brute: {
+      why: `<p>Anti-join: keep an order if no earlier order of the same customer exists. Each row probes the customer's other orders → O(N × orders per customer) without an index; the tie rule makes the condition verbose and error-prone.</p>`,
+      code: { lang: 'sql', db: 'shop', code: `SELECT o.customer, o.id AS first_order_id, o.order_date, o.amount
+FROM orders o
+WHERE NOT EXISTS (
+  SELECT 1 FROM orders e
+  WHERE e.customer = o.customer
+    AND (e.order_date < o.order_date OR (e.order_date = o.order_date AND e.id < o.id))
+)
+ORDER BY o.customer;` }
+    },
+    mcq: { q: 'Why ROW_NUMBER rather than RANK for "the first order"?', options: ['RANK is slower', 'RANK could return two rows for one customer if two orders tie on the first date', 'ROW_NUMBER sorts faster', 'RANK cannot take PARTITION BY'], answer: 1, explain: 'The question wants exactly one row per customer. RANK = 1 keeps all tied orders; ROW_NUMBER with a tiebreaker keeps exactly one.' },
+    hints: [
+      `<p>"One row per group, the earliest" = greatest-n-per-group with N = 1.</p>`,
+      `<p>ROW_NUMBER() OVER (PARTITION BY customer ORDER BY order_date, id) in a CTE.</p>`,
+      `<p>Filter rn = 1 outside. The id in the ORDER BY handles the tie rule exactly as stated.</p>`
+    ],
+    solution: {
+      approach: `<p>Number each customer's orders chronologically with a deterministic tiebreaker and keep number 1.</p>`,
+      code: { lang: 'sql', db: 'shop', code: `WITH r AS (
+  SELECT customer, id, order_date, amount,
+         ROW_NUMBER() OVER (PARTITION BY customer ORDER BY order_date, id) AS rn
+  FROM orders
+)
+SELECT customer, id AS first_order_id, order_date, amount
+FROM r
+WHERE rn = 1
+ORDER BY customer;` },
+      complexity: `<p>O(N log N) sort (or index scan on (customer, order_date, id)) + O(N).</p>`,
+      followUps: ['Return each customer\'s first AND second order date in one row.', 'Compute how many days passed between first and second order.']
+    }
+  });
+
+  /* =====================================================================
+     PRACTICE — Medium
+     ===================================================================== */
+  practice.push({
+    title: 'Second Highest Salary in Every Department',
+    level: 'Medium', tags: ['window', 'dense_rank', 'nth highest'], companies: ['Amazon', 'Goldman Sachs', 'Infosys'],
+    statement: `<p>Table <code>employees(id, name, dept, salary, hire_date)</code>. For each department return the employee(s) earning the <b>second highest distinct salary</b>: <code>dept, name, salary</code>. Departments with only one distinct salary return nothing. Order by dept, name.</p>`,
+    constraints: `Up to 10<sup>6</sup> employees. Ties are common.`,
+    example: `${H.table(['dept', 'name', 'salary'], [['Engineering', 'Chen', '110000'], ['HR', 'Leo', '60000'], ['HR', 'Mia', '60000'], ['Sales', 'Hal', '85000'], ['Sales', 'Ivy', '85000']])}<p>Engineering's top salary 120000 is shared by two people, so the second <i>distinct</i> salary is 110000 (Chen). With RANK, Chen would be rank 3 and nobody would be rank 2.</p>`,
+    brute: {
+      why: `<p>"Max salary below the department max" with nested correlated subqueries: for each employee compute the department max, then the max below it, then compare. Two nested scans per row → O(N²/D) and it does not generalise to the 3rd or Nth salary.</p>`,
+      code: { lang: 'sql', db: 'hr', code: `SELECT e.dept, e.name, e.salary
+FROM employees e
+WHERE e.salary = (
+  SELECT MAX(x.salary) FROM employees x
+  WHERE x.dept = e.dept
+    AND x.salary < (SELECT MAX(y.salary) FROM employees y WHERE y.dept = e.dept)
+)
+ORDER BY e.dept, e.name;` }
+    },
+    mcq: { q: 'Which filter is correct for "second highest distinct salary"?', options: ['ROW_NUMBER() = 2', 'RANK() = 2', 'DENSE_RANK() = 2', 'NTILE(2) = 2'], answer: 2, explain: 'DENSE_RANK counts distinct values, so = 2 is exactly the second distinct salary, and all employees sharing it are returned.' },
+    hints: [
+      `<p>"Second highest <b>distinct</b>" — ties at the top must not use up position 2.</p>`,
+      `<p>DENSE_RANK() OVER (PARTITION BY dept ORDER BY salary DESC) in a CTE.</p>`,
+      `<p>Filter dr = 2 outside. Departments with a single distinct salary have no dr = 2 rows and naturally disappear.</p>`
+    ],
+    solution: {
+      approach: `<p>Dense-rank salaries inside each department, then keep rank 2. This generalises to any N by changing one number.</p>`,
+      code: { lang: 'sql', db: 'hr', code: `WITH r AS (
+  SELECT dept, name, salary,
+         DENSE_RANK() OVER (PARTITION BY dept ORDER BY salary DESC) AS dr
+  FROM employees
+)
+SELECT dept, name, salary
+FROM r
+WHERE dr = 2
+ORDER BY dept, name;` },
+      complexity: `<p>O(N log N) + O(N). The nested-subquery version is O(N²/D).</p>`,
+      followUps: ['Return NULL for departments that have no second salary (LEFT JOIN from a departments list).', 'Generalise to the Nth highest with N as a parameter.']
+    }
+  });
+
+  practice.push({
+    title: 'Numbers Appearing Three Times in a Row',
+    level: 'Medium', tags: ['window', 'lag', 'lead', 'consecutive'], companies: ['Meta', 'Amazon', 'Uber'],
+    statement: `<p>Table <code>logs(id, num)</code>; ids are consecutive integers in insertion order. Find all distinct numbers that appear <b>at least three times consecutively</b>. Return <code>consecutive_num</code> ordered ascending.</p>`,
+    constraints: `Up to 10<sup>6</sup> rows.`,
+    example: `${H.arr([1, 1, 1, 2, 1, 2, 2, 2, 3, 3], { label: 'num by id', hl: { 0: 'g', 1: 'g', 2: 'g', 5: 'b', 6: 'b', 7: 'b' } })}<p>1 appears at ids 1–3 and 2 appears at ids 6–8 → output <b>1, 2</b>. 3 appears only twice in a row.</p>`,
+    brute: {
+      why: `<p>Triple self-join on id, id+1, id+2. It works only because ids are gap-free — one deleted row breaks it silently — and it builds joins over three copies of the table.</p>`,
+      code: { lang: 'sql', db: 'metrics', code: `SELECT DISTINCT a.num AS consecutive_num
+FROM logs a
+JOIN logs b ON b.id = a.id + 1 AND b.num = a.num
+JOIN logs c ON c.id = a.id + 2 AND c.num = a.num
+ORDER BY a.num;` }
+    },
+    mcq: { q: 'Why is LAG/LEAD more robust than joining on id + 1?', options: ['It is shorter', 'It uses row order, so gaps in id values do not break it', 'It handles NULLs differently', 'It avoids DISTINCT'], answer: 1, explain: 'LAG/LEAD look at the previous/next row in ORDER BY id, regardless of whether id values are contiguous.' },
+    hints: [
+      `<p>A row is the middle of a run of three if its previous and next rows have the same number.</p>`,
+      `<p>Compute LAG(num) and LEAD(num) OVER (ORDER BY id) in a CTE.</p>`,
+      `<p>Keep rows where num = prev AND num = next; SELECT DISTINCT num. Longer runs produce several middle rows — DISTINCT collapses them.</p>`
+    ],
+    solution: {
+      approach: `<p>Look one row back and one row ahead in id order. Any row whose neighbours both match is the centre of a run of at least three.</p>`,
+      code: { lang: 'sql', db: 'metrics', code: `WITH t AS (
+  SELECT num,
+         LAG(num)  OVER (ORDER BY id) AS prev_num,
+         LEAD(num) OVER (ORDER BY id) AS next_num
+  FROM logs
+)
+SELECT DISTINCT num AS consecutive_num
+FROM t
+WHERE num = prev_num AND num = next_num
+ORDER BY num;` },
+      complexity: `<p>O(N) after an id-ordered scan (primary key order).</p>`,
+      followUps: ['Find numbers appearing at least K times in a row (use gaps-and-islands).', 'Return the start id and length of each run.']
+    }
+  });
+
+  practice.push({
+    title: 'Last Person to Fit on the Bus',
+    level: 'Medium', tags: ['window', 'running total'], companies: ['Amazon', 'Bloomberg'],
+    statement: `<p>Table <code>bus_queue(person_id, person_name, weight, turn)</code>. People board in <code>turn</code> order; the bus holds at most <b>1000 kg</b>. Return the <code>person_name</code> of the last person who can board without exceeding the limit.</p>`,
+    constraints: `Up to 10<sup>5</sup> people; turn values are unique; the first person always fits.`,
+    example: `${H.table(['turn', 'name', 'weight', 'running total'], [['1', 'Arun', '250', '250'], ['2', 'Chris', '350', '600'], ['3', 'Dina', '400', '<span class="c-g">1000</span>'], ['4', 'Femi', '200', '<span class="c-r">1200</span>']])}<p>Dina brings the total to exactly 1000 — allowed. Femi would exceed it. Output: <b>Dina</b>.</p>`,
+    brute: {
+      why: `<p>For each person, sum the weights of everyone with turn ≤ theirs via a correlated subquery: 1 + 2 + … + N = O(N²) additions.</p>`,
+      code: { lang: 'sql', db: 'metrics', code: `SELECT q.person_name
+FROM bus_queue q
+WHERE (SELECT SUM(q2.weight) FROM bus_queue q2 WHERE q2.turn <= q.turn) <= 1000
+ORDER BY q.turn DESC
+LIMIT 1;` }
+    },
+    mcq: { q: 'Which frame is right for the running weight?', options: ['ROWS UNBOUNDED PRECEDING ordered by turn', 'RANGE BETWEEN 1 PRECEDING AND CURRENT ROW', 'The whole partition', 'ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING'], answer: 0, explain: 'Everyone up to and including the current person boards, so the frame is from the first row to the current row in turn order.' },
+    hints: [
+      `<p>Boarding order + "total so far" = running total ordered by turn.</p>`,
+      `<p>SUM(weight) OVER (ORDER BY turn ROWS UNBOUNDED PRECEDING) in a CTE.</p>`,
+      `<p>Keep rows with total ≤ 1000, take the one with the highest turn (ORDER BY turn DESC LIMIT 1).</p>`
+    ],
+    solution: {
+      approach: `<p>Running total of weight in boarding order; the answer is the latest turn whose running total is still within the limit.</p>`,
+      code: { lang: 'sql', db: 'metrics', code: `WITH t AS (
+  SELECT person_name, turn,
+         SUM(weight) OVER (ORDER BY turn ROWS UNBOUNDED PRECEDING) AS total_weight
+  FROM bus_queue
+)
+SELECT person_name
+FROM t
+WHERE total_weight <= 1000
+ORDER BY turn DESC
+LIMIT 1;` },
+      complexity: `<p>O(N log N) sort by turn + O(N).</p>`,
+      followUps: ['Several buses leave in sequence: assign each person a bus number.', 'What if the weight limit differs per bus?']
+    }
+  });
+
+  practice.push({
+    title: '7-Day Rolling Revenue (Full Windows Only)',
+    level: 'Medium', tags: ['window', 'moving average', 'range frame'], companies: ['DoorDash', 'Zomato', 'Grubhub'],
+    statement: `<p>Table <code>daily_revenue(day, region, revenue)</code>. First total revenue per day across all regions. Then for each day return <code>day, amount_7d, avg_7d</code>: the sum and average (2 decimals) of daily revenue over the 7 calendar days ending on that day. Only output days that have 6 earlier calendar days available (i.e. from the 7th day of data onwards). Order by day.</p>`,
+    constraints: `Up to 10<sup>4</sup> days; at least one region has data every day in this dataset.`,
+    example: `${H.table(['day', 'daily total', 'amount_7d', 'avg_7d'], [['03-01..03-06', '180, 215, 185, 60, 260, 250', '(not output: fewer than 7 days)', ''], ['03-07', '230', '<span class="c-g">1380</span>', '197.14'], ['03-08', '310', '1510', '215.71']])}<p>03-07's window is 03-01..03-07: 180+215+185+60+260+250+230 = 1380; 1380 / 7 = 197.14.</p>`,
+    brute: {
+      why: `<p>Self-join the daily totals to every day within the previous 6 days and GROUP BY: 7 joined rows per day, and the join on a computed date expression usually cannot use an index → O(D²) comparisons.</p>`,
+      code: { lang: 'sql', db: 'shop', code: `WITH daily AS (
+  SELECT day, SUM(revenue) AS revenue FROM daily_revenue GROUP BY day
+)
+SELECT d.day, SUM(p.revenue) AS amount_7d, ROUND(AVG(p.revenue), 2) AS avg_7d
+FROM daily d
+JOIN daily p ON julianday(p.day) BETWEEN julianday(d.day) - 6 AND julianday(d.day)
+WHERE d.day >= (SELECT date(MIN(day), '+6 days') FROM daily)
+GROUP BY d.day
+ORDER BY d.day;` }
+    },
+    mcq: { q: 'How many PRECEDING rows/days make a 7-day window including today?', options: ['7', '6', '8', 'It depends on ROWS vs RANGE'], answer: 1, explain: '6 PRECEDING + CURRENT ROW = 7 days. "7 PRECEDING" would be 8 days — a very common off-by-one.' },
+    hints: [
+      `<p>Two levels: GROUP BY day first (one row per day), then the window over those daily rows.</p>`,
+      `<p>Frame: ORDER BY julianday(day) RANGE BETWEEN 6 PRECEDING AND CURRENT ROW (calendar-correct even if a day were missing).</p>`,
+      `<p>Filter days ≥ first day + 6 days in the outer query: <code>date(MIN(day), '+6 days')</code>.</p>`
+    ],
+    solution: {
+      approach: `<p>Aggregate to daily totals in a CTE, compute the 7-day SUM/AVG with a calendar RANGE frame, then drop warm-up days.</p>`,
+      code: { lang: 'sql', db: 'shop', code: `WITH daily AS (
+  SELECT day, SUM(revenue) AS revenue
+  FROM daily_revenue
+  GROUP BY day
+),
+w AS (
+  SELECT day,
+         SUM(revenue)           OVER win AS amount_7d,
+         ROUND(AVG(revenue) OVER win, 2) AS avg_7d
+  FROM daily
+  WINDOW win AS (ORDER BY julianday(day) RANGE BETWEEN 6 PRECEDING AND CURRENT ROW)
+)
+SELECT day, amount_7d, avg_7d
+FROM w
+WHERE day >= (SELECT date(MIN(day), '+6 days') FROM daily)
+ORDER BY day;` },
+      complexity: `<p>O(N) to aggregate + O(D log D) sort + O(D) sliding frame.</p>`,
+      followUps: ['Divide by 7 even when a day is missing (treat it as zero).', 'Compute the same per region.']
+    }
+  });
+
+  practice.push({
+    title: 'Deduplicate Profiles, Keep the Latest',
+    level: 'Medium', tags: ['window', 'row_number', 'dedupe'], companies: ['Salesforce', 'HubSpot', 'Atlassian'],
+    statement: `<p>Table <code>user_profiles(id, email, plan, updated_at)</code> contains duplicate emails from repeated sign-ups. Keep only the most recently updated row per email (if two rows tie on updated_at, keep the higher id). Return the surviving rows <code>id, email, plan, updated_at</code> ordered by email — and show the DELETE that would clean the table.</p>`,
+    constraints: `Up to 10<sup>8</sup> rows in production; this is a nightly cleanup job.`,
+    example: `${H.table(['id', 'email', 'updated_at', 'keep?'], [['1', 'a@x.io', '2024-02-01', '<span class="c-r">no</span>'], ['6', 'a@x.io', '2024-02-15', '<span class="c-r">no</span>'], ['3', 'a@x.io', '2024-03-10', '<span class="c-g">yes</span>'], ['2', 'b@x.io', '2024-02-03', '<span class="c-r">no</span> (tie, lower id)'], ['5', 'b@x.io', '2024-02-03', '<span class="c-g">yes</span>']])}<p>Survivors: ids 3, 5 and 4 (c@x.io has only one row).</p>`,
+    brute: {
+      why: `<p>Keep a row if no "better" row with the same email exists (NOT EXISTS with a two-part comparison). Each row probes all rows with the same email — fine with an index, but the tie rule makes the predicate complicated and easy to get wrong.</p>`,
+      code: { lang: 'sql', db: 'metrics', code: `SELECT p.id, p.email, p.plan, p.updated_at
+FROM user_profiles p
+WHERE NOT EXISTS (
+  SELECT 1 FROM user_profiles b
+  WHERE b.email = p.email
+    AND (b.updated_at > p.updated_at OR (b.updated_at = p.updated_at AND b.id > p.id))
+)
+ORDER BY p.email;` }
+    },
+    mcq: { q: 'Which rows should the DELETE remove?', options: ['rn = 1', 'rn &gt; 1', 'RANK() &gt; 1', 'All rows with duplicate emails'], answer: 1, explain: 'Number rows per email from newest to oldest; rn = 1 is the keeper, every rn &gt; 1 is a duplicate to delete. RANK could keep two rows on a tie.' },
+    hints: [
+      `<p>Dedupe = "keep exactly one row per key" = ROW_NUMBER with PARTITION BY key.</p>`,
+      `<p>ORDER BY updated_at DESC, id DESC so the newest (and the higher id on ties) is row 1.</p>`,
+      `<p>SELECT the rn = 1 rows; for cleanup, DELETE FROM user_profiles WHERE id IN (SELECT id FROM ranked WHERE rn &gt; 1).</p>`
+    ],
+    solution: {
+      approach: `<p>Rank rows per email newest-first with ROW_NUMBER and a deterministic tiebreaker. rn = 1 is the survivor; rn &gt; 1 identifies the ids to delete. Run the DELETE inside a transaction and verify counts before committing.</p>`,
+      code: { lang: 'sql', db: 'metrics', code: `WITH ranked AS (
+  SELECT id, email, plan, updated_at,
+         ROW_NUMBER() OVER (PARTITION BY email ORDER BY updated_at DESC, id DESC) AS rn
+  FROM user_profiles
+)
+SELECT id, email, plan, updated_at
+FROM ranked
+WHERE rn = 1
+ORDER BY email;` },
+      alt: [{ lang: 'sql', db: 'metrics', title: 'The cleanup DELETE (then show what is left)', code: `DELETE FROM user_profiles
+WHERE id IN (
+  SELECT id FROM (
+    SELECT id, ROW_NUMBER() OVER (PARTITION BY email ORDER BY updated_at DESC, id DESC) AS rn
+    FROM user_profiles
+  )
+  WHERE rn > 1
+);
+SELECT * FROM user_profiles ORDER BY email;` }],
+      complexity: `<p>O(N log N) sort by (email, updated_at) + O(N). On 10<sup>8</sup> rows, batch the DELETE or rebuild the table (CREATE TABLE AS SELECT rn = 1) to avoid a huge transaction.</p>`,
+      followUps: ['Add a UNIQUE constraint afterwards and an UPSERT so duplicates cannot come back.', 'Merge fields instead of picking one row (e.g. keep the earliest created_at).']
+    }
+  });
+
+  practice.push({
+    title: 'Customers Making Up 80% of Revenue (Pareto)',
+    level: 'Medium', tags: ['window', 'running total', 'percent of total'], companies: ['Amazon', 'Walmart', 'McKinsey'],
+    statement: `<p>Table <code>orders(id, customer, order_date, amount)</code>. Rank customers by total spend (highest first, ties by name). Return the <b>smallest</b> set of top customers whose combined spend reaches at least 80% of all revenue: <code>customer, total, cum_pct</code> (cumulative % rounded to 1 decimal), ordered by total descending.</p>`,
+    constraints: `Up to 10<sup>6</sup> customers.`,
+    example: `${H.table(['customer', 'total', 'cum_pct', 'included?'], [['cara', '130', '30.2', 'yes'], ['asha', '115', '57.0', 'yes'], ['ben', '95', '79.1', 'yes — still below 80%'], ['dan', '90', '<span class="c-g">100.0</span>', '<span class="c-g">yes — crosses 80%</span>']])}<p>After ben we only have 79.1%, so dan is needed to reach 80%. A customer is included if the total <b>before</b> them is still below 80%.</p>`,
+    brute: {
+      why: `<p>For each customer, a correlated subquery sums the totals of all customers ranked above them (which itself needs the per-customer totals) → O(C²) over customers, and expressing "ranked above with tie by name" is messy.</p>`,
+      code: { lang: 'sql', db: 'shop', code: `WITH c AS (SELECT customer, SUM(amount) AS total FROM orders GROUP BY customer)
+SELECT c1.customer, c1.total,
+       ROUND(100.0 * (SELECT SUM(c2.total) FROM c c2
+                      WHERE c2.total > c1.total OR (c2.total = c1.total AND c2.customer <= c1.customer))
+             / (SELECT SUM(total) FROM c), 1) AS cum_pct
+FROM c c1
+WHERE (SELECT SUM(c2.total) FROM c c2
+       WHERE c2.total > c1.total OR (c2.total = c1.total AND c2.customer < c1.customer))
+      < 0.8 * (SELECT SUM(total) FROM c)
+   OR c1.total = (SELECT MAX(total) FROM c)
+ORDER BY c1.total DESC;` }
+    },
+    mcq: { q: 'Why filter on "running − total &lt; 80%" instead of "running &lt;= 80%"?', options: ['It is faster', 'It includes the customer who crosses the 80% line', 'It excludes ties', 'It avoids NULLs'], answer: 1, explain: 'running − total is the cumulative spend before this customer. If that is still below 80%, this customer is needed — including the one who pushes the total over the line.' },
+    hints: [
+      `<p>Aggregate per customer first; the window then runs on the grouped rows.</p>`,
+      `<p>Running SUM(total) OVER (ORDER BY total DESC, customer ROWS UNBOUNDED PRECEDING) and grand total SUM(total) OVER ().</p>`,
+      `<p>Include a customer if running − total &lt; 0.8 × grand. cum_pct = 100.0 × running / grand.</p>`
+    ],
+    solution: {
+      approach: `<p>Customer totals in a CTE, then a running sum ordered by spend and the grand total on every row. The "spend before me" test selects exactly the minimal prefix reaching 80%.</p>`,
+      code: { lang: 'sql', db: 'shop', code: `WITH c AS (
+  SELECT customer, SUM(amount) AS total
+  FROM orders
+  GROUP BY customer
+),
+r AS (
+  SELECT customer, total,
+         SUM(total) OVER (ORDER BY total DESC, customer ROWS UNBOUNDED PRECEDING) AS running,
+         SUM(total) OVER () AS grand
+  FROM c
+)
+SELECT customer, total, ROUND(100.0 * running / grand, 1) AS cum_pct
+FROM r
+WHERE running - total < 0.8 * grand
+ORDER BY total DESC;` },
+      complexity: `<p>O(N) aggregate + O(C log C) sort of customers + O(C).</p>`,
+      followUps: ['Do it per product category.', 'Label every customer A/B/C (ABC analysis: 80% / 15% / 5%).']
+    }
+  });
+
+  /* =====================================================================
+     PRACTICE — Hard
+     ===================================================================== */
+  practice.push({
+    title: 'Stadium Rush: 3+ Consecutive Busy Visits',
+    level: 'Hard', tags: ['window', 'gaps and islands', 'row_number'], companies: ['Meta', 'Amazon', 'Twitter'],
+    statement: `<p>Table <code>stadium(id, visit_date, people)</code>; <code>id</code> increases with visit_date. Return every row that belongs to a run of <b>three or more consecutive ids</b> where each visit had <code>people &gt;= 100</code>. Order by visit_date.</p>`,
+    constraints: `Up to 10<sup>6</sup> rows. ids are consecutive integers (dates may skip — consecutiveness is by id).`,
+    example: `${H.table(['id', 'people', 'busy?', 'id − ROW_NUMBER (among busy)'], [['2', '109', 'yes', '2 − 1 = 1'], ['3', '150', 'yes', '3 − 2 = 1'], ['4', '99', '<span class="c-r">no</span>', '—'], ['5', '145', 'yes', '<span class="c-g">5 − 3 = 2</span>'], ['6', '1455', 'yes', '<span class="c-g">2</span>'], ['7', '199', 'yes', '<span class="c-g">2</span>'], ['8', '188', 'yes', '<span class="c-g">2</span>']])}<p>Group 1 (ids 2–3) has only 2 rows; group 2 (ids 5–8) has 4 → output ids 5, 6, 7, 8.</p>`,
+    brute: {
+      why: `<p>Triple self-join covering the three positions a row can have inside a run (first, middle, last of a triple). It is a cross product of three copies filtered by six conditions, needs DISTINCT, and does not generalise to "K or more".</p>`,
+      code: { lang: 'sql', db: 'metrics', code: `SELECT DISTINCT s1.*
+FROM stadium s1, stadium s2, stadium s3
+WHERE s1.people >= 100 AND s2.people >= 100 AND s3.people >= 100
+  AND (   (s2.id = s1.id + 1 AND s3.id = s1.id + 2)   -- s1 first of a triple
+       OR (s2.id = s1.id - 1 AND s3.id = s1.id + 1)   -- s1 in the middle
+       OR (s2.id = s1.id - 2 AND s3.id = s1.id - 1))  -- s1 last
+ORDER BY s1.id;` }
+    },
+    mcq: { q: 'In gaps-and-islands, why is id − ROW_NUMBER() constant inside a run?', options: ['ROW_NUMBER resets every run', 'Both increase by exactly 1 per row inside a run, so their difference does not change; a gap changes it', 'It is a coincidence of the sample data', 'Because ids are unique'], answer: 1, explain: 'Inside a consecutive run, id and the row number (over busy rows only) both step by 1. When a non-busy row is skipped, id jumps by 2+ but ROW_NUMBER only by 1, so the difference changes — a new island.' },
+    hints: [
+      `<p>Filter to busy rows first. Consecutive ids then form "islands" separated by gaps.</p>`,
+      `<p>Island key: id − ROW_NUMBER() OVER (ORDER BY id), computed over busy rows only. Same key = same island.</p>`,
+      `<p>COUNT(*) OVER (PARTITION BY key) gives each island's size; keep rows where it is ≥ 3. Order by visit_date.</p>`
+    ],
+    solution: {
+      approach: `<p>Classic gaps-and-islands. After filtering busy rows, subtracting a dense row number from the id produces a constant label per run. A second window counts rows per label, and runs of length ≥ 3 survive. Works for any K by changing one number.</p>`,
+      code: { lang: 'sql', db: 'metrics', code: `WITH busy AS (
+  SELECT id, visit_date, people,
+         id - ROW_NUMBER() OVER (ORDER BY id) AS grp      -- island label
+  FROM stadium
+  WHERE people >= 100
+),
+sized AS (
+  SELECT *, COUNT(*) OVER (PARTITION BY grp) AS run_len
+  FROM busy
+)
+SELECT id, visit_date, people
+FROM sized
+WHERE run_len >= 3
+ORDER BY visit_date;` },
+      complexity: `<p>O(N log N) sort + two O(N) window passes. The triple self-join is O(N³) in the worst case without indexes.</p>`,
+      followUps: ['Use visit_date consecutiveness instead of ids (julianday − ROW_NUMBER).', 'Return each run\'s start, end and length instead of the rows.']
+    }
+  });
+
+  practice.push({
+    title: 'Longest Login Streak per User',
+    level: 'Hard', tags: ['window', 'gaps and islands', 'dates', 'dedupe'], companies: ['Duolingo', 'Snap', 'LinkedIn'],
+    statement: `<p>Table <code>logins(user_id, login_date)</code> — a user may log in several times a day (duplicate rows). For each user return their longest streak of consecutive calendar days: <code>user_id, start_date, end_date, longest_streak</code>. If two streaks tie, return the earlier one. Order by user_id.</p>`,
+    constraints: `Up to 10<sup>8</sup> login rows, 10<sup>6</sup> users.`,
+    example: `${H.table(['user', 'distinct days', 'streaks', 'answer'], [['1', '01, 02, 03, 05, 06', '01–03 (3), 05–06 (2)', '<span class="c-g">01-01 → 01-03, 3</span>'], ['2', '01, 03, 04, 05, 06', '01 (1), 03–06 (4)', '<span class="c-g">01-03 → 01-06, 4</span>'], ['3', '02, <span class="c-r">02</span>, 03', 'duplicate removed → 02–03', '2']])}<p>Without de-duplication, user 3's duplicate 01-02 would break the date − row-number trick.</p>`,
+    brute: {
+      why: `<p>Without windows: for each login day, walk forward with a recursive CTE while the next day exists, or self-join each day to all later days and check "no missing day in between" with NOT EXISTS over a calendar. Each start day can scan up to the full streak → O(N × streak length) or worse, and the SQL is long. The brute force below starts a recursive walk from every login day and extends it one day at a time — many overlapping walks for the same streak.</p>`,
+      code: { lang: 'sql', db: 'metrics', code: `WITH RECURSIVE d AS (
+  SELECT DISTINCT user_id, login_date FROM logins
+),
+walk(user_id, start_date, cur_date, len) AS (
+  SELECT user_id, login_date, login_date, 1 FROM d          -- every day starts a candidate streak
+  UNION ALL
+  SELECT w.user_id, w.start_date, d.login_date, w.len + 1
+  FROM walk w
+  JOIN d ON d.user_id = w.user_id AND d.login_date = date(w.cur_date, '+1 day')
+),
+best AS (
+  SELECT user_id, start_date, cur_date AS end_date, len,
+         ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY len DESC, start_date) AS rn
+  FROM walk
+)
+SELECT user_id, start_date, end_date, len AS longest_streak
+FROM best
+WHERE rn = 1
+ORDER BY user_id;` }
+    },
+    mcq: { q: 'Why must you SELECT DISTINCT dates before computing julianday(date) − ROW_NUMBER()?', options: ['To make it faster', 'A duplicate date bumps ROW_NUMBER without moving the date, splitting one streak into two labels', 'ROW_NUMBER rejects duplicates', 'julianday fails on duplicates'], answer: 1, explain: 'The trick relies on date and row number both increasing by 1 per row. A duplicate date increases only the row number, changing the difference mid-streak.' },
+    hints: [
+      `<p>Consecutive dates form islands; date − row number (in days) is constant within an island.</p>`,
+      `<p>Steps: DISTINCT (user, date) → grp = julianday(date) − ROW_NUMBER() OVER (PARTITION BY user ORDER BY date) → GROUP BY user, grp for start, end, length.</p>`,
+      `<p>Then pick the longest per user with ROW_NUMBER() OVER (PARTITION BY user ORDER BY len DESC, start_date) = 1.</p>`
+    ],
+    solution: {
+      approach: `<p>Gaps-and-islands on dates, done per user. De-duplicate first, label islands with julianday − ROW_NUMBER, aggregate each island, then top-1 per user with a tiebreak on the earlier start. Three window/aggregate passes, all linear after sorting.</p>`,
+      code: { lang: 'sql', db: 'metrics', code: `WITH d AS (
+  SELECT DISTINCT user_id, login_date FROM logins
+),
+g AS (
+  SELECT user_id, login_date,
+         julianday(login_date)
+           - ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY login_date) AS grp
+  FROM d
+),
+streaks AS (
+  SELECT user_id, MIN(login_date) AS start_date, MAX(login_date) AS end_date, COUNT(*) AS len
+  FROM g
+  GROUP BY user_id, grp
+),
+best AS (
+  SELECT *, ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY len DESC, start_date) AS rn
+  FROM streaks
+)
+SELECT user_id, start_date, end_date, len AS longest_streak
+FROM best
+WHERE rn = 1
+ORDER BY user_id;` },
+      complexity: `<p>O(N log N) to de-duplicate and sort per user, then O(N) passes. The recursive walk is O(Σ streak lengths²) in the worst case.</p>`,
+      followUps: ['Return each user\'s current streak as of today.', 'Allow one missed day ("streak freeze") without breaking the streak.']
+    }
+  });
+
+  practice.push({
+    title: 'Sessionize Clickstream (30-Minute Inactivity)',
+    level: 'Hard', tags: ['window', 'lag', 'running sum', 'sessionization'], companies: ['Google', 'Amplitude', 'Pinterest'],
+    statement: `<p>Table <code>clicks(user_id, ts)</code> with timestamps 'YYYY-MM-DD HH:MM'. A new session starts at a user's first click or whenever more than <b>30 minutes</b> passed since that user's previous click. Return <code>user_id, session_id, session_start, session_end, clicks</code>, where session_id counts 1, 2, 3… per user. Order by user_id, session_id.</p>`,
+    constraints: `Up to 10<sup>9</sup> clicks per day in production; must be a single pass per user.`,
+    example: `${H.table(['user', 'ts', 'gap (min)', 'new session?', 'session_id'], [['1', '09:00', '—', '1', '1'], ['1', '09:10', '10', '0', '1'], ['1', '09:20', '10', '0', '1'], ['1', '10:05', '<span class="c-r">45</span>', '1', '<span class="c-g">2</span>'], ['1', '10:15', '10', '0', '2'], ['1', '12:00', '105', '1', '3']])}<p>Running SUM of the "new session" flag gives the session number.</p>`,
+    brute: {
+      why: `<p>For each click, count how many "session-starting" clicks of the same user happened at or before it, where a start is found by a correlated "previous click" subquery. That is a nested correlated subquery per row → O(N²) per user. Shown here for small data only.</p>`,
+      code: { lang: 'sql', db: 'metrics', code: `WITH flagged AS (
+  SELECT c.user_id, c.ts,
+         CASE WHEN (SELECT MAX(p.ts) FROM clicks p WHERE p.user_id = c.user_id AND p.ts < c.ts) IS NULL
+                OR (julianday(c.ts) - julianday((SELECT MAX(p.ts) FROM clicks p
+                                                  WHERE p.user_id = c.user_id AND p.ts < c.ts))) * 1440 > 30
+              THEN 1 ELSE 0 END AS is_start
+  FROM clicks c
+),
+numbered AS (
+  SELECT f.user_id, f.ts,
+         (SELECT SUM(f2.is_start) FROM flagged f2 WHERE f2.user_id = f.user_id AND f2.ts <= f.ts) AS session_id
+  FROM flagged f
+)
+SELECT user_id, session_id, MIN(ts) AS session_start, MAX(ts) AS session_end, COUNT(*) AS clicks
+FROM numbered
+GROUP BY user_id, session_id
+ORDER BY user_id, session_id;` }
+    },
+    mcq: { q: 'What turns the 0/1 "new session" flags into session numbers?', options: ['ROW_NUMBER over the flags', 'A running SUM of the flags per user ordered by time', 'DENSE_RANK of the timestamps', 'NTILE(number of sessions)'], answer: 1, explain: 'Each 1 marks a session start; summing flags from the beginning up to each row counts how many sessions have started so far — that count is the session id.' },
+    hints: [
+      `<p>Step 1: LAG(ts) per user gives the previous click time; compute the gap in minutes with (julianday(ts) − julianday(prev)) × 1440.</p>`,
+      `<p>Step 2: flag = 1 if prev is NULL or gap &gt; 30, else 0. Step 3: session_id = SUM(flag) OVER (PARTITION BY user ORDER BY ts ROWS UNBOUNDED PRECEDING).</p>`,
+      `<p>Step 4: GROUP BY user_id, session_id for MIN(ts), MAX(ts), COUNT(*). Use separate CTEs because a window cannot be nested inside another window.</p>`
+    ],
+    solution: {
+      approach: `<p>The "flag + running sum" pattern: LAG detects boundaries, a cumulative SUM of boundary flags numbers the groups, and a GROUP BY summarises each group. This is how product-analytics tools and dbt sessionization models work.</p>`,
+      code: { lang: 'sql', db: 'metrics', code: `WITH t AS (
+  SELECT user_id, ts,
+         CASE WHEN LAG(ts) OVER w IS NULL
+                OR (julianday(ts) - julianday(LAG(ts) OVER w)) * 1440 > 30
+              THEN 1 ELSE 0 END AS new_session
+  FROM clicks
+  WINDOW w AS (PARTITION BY user_id ORDER BY ts)
+),
+s AS (
+  SELECT user_id, ts,
+         SUM(new_session) OVER (PARTITION BY user_id ORDER BY ts
+                                ROWS UNBOUNDED PRECEDING) AS session_id
+  FROM t
+)
+SELECT user_id, session_id,
+       MIN(ts) AS session_start, MAX(ts) AS session_end, COUNT(*) AS clicks
+FROM s
+GROUP BY user_id, session_id
+ORDER BY user_id, session_id;` },
+      complexity: `<p>One sort by (user_id, ts) + two O(N) window passes + O(N) aggregation. The correlated version is O(N²) per user.</p>`,
+      followUps: ['Compute average session length per user in minutes.', 'Also start a new session at midnight.', 'How would you do this incrementally in a streaming system (session windows in Flink/Kafka Streams)?']
+    }
+  });
+
+  practice.push({
+    title: 'Median Salary per Department (No PERCENTILE_CONT)',
+    level: 'Hard', tags: ['window', 'row_number', 'count over', 'median'], companies: ['Google', 'Pinterest', 'Two Sigma'],
+    statement: `<p>Table <code>employees(id, name, dept, salary, hire_date)</code>. Return <code>dept, median_salary</code> for every department using only standard window functions (SQLite has no PERCENTILE_CONT). For an even count, the median is the average of the two middle salaries. Order by dept.</p>`,
+    constraints: `Up to 10<sup>7</sup> employees. Salaries can tie.`,
+    example: `${H.table(['dept', 'sorted salaries', 'count', 'middle positions', 'median'], [['Engineering', '80, 95, <b>95, 110</b>, 120, 120', '6', '3 and 4', '<span class="c-g">(95000 + 110000) / 2 = 102500</span>'], ['HR', '60, <b>60</b>, 75', '3', '2', '60000'], ['Sales', '70, <b>85, 85</b>, 90', '4', '2 and 3', '85000']])}<p>For c rows, the middle positions are (c+1)/2 and (c+2)/2 using integer division — the same position twice when c is odd.</p>`,
+    brute: {
+      why: `<p>Without windows: for each employee count how many in the department sort before them (with an id tiebreaker) and compare to the department size — two correlated subqueries per row → O(N²/D). It works but is slow and the position arithmetic is fiddly.</p>`,
+      code: { lang: 'sql', db: 'hr', code: `SELECT e.dept, AVG(e.salary) AS median_salary
+FROM employees e
+WHERE (SELECT COUNT(*) FROM employees x
+       WHERE x.dept = e.dept
+         AND (x.salary < e.salary OR (x.salary = e.salary AND x.id < e.id)))   -- 0-based position
+      IN (((SELECT COUNT(*) FROM employees y WHERE y.dept = e.dept) - 1) / 2,
+          (SELECT COUNT(*) FROM employees y WHERE y.dept = e.dept) / 2)
+GROUP BY e.dept
+ORDER BY e.dept;` }
+    },
+    mcq: { q: 'With c = 6 rows, which ROW_NUMBER positions hold the middle values?', options: ['3 only', '3 and 4', '4 only', '3, 4 and 5'], answer: 1, explain: '(c+1)/2 = 3 and (c+2)/2 = 4 with integer division. For c = 5 both formulas give 3.' },
+    hints: [
+      `<p>You need each row's position in sorted order and the size of its department on the same row.</p>`,
+      `<p>ROW_NUMBER() OVER (PARTITION BY dept ORDER BY salary, id) and COUNT(*) OVER (PARTITION BY dept).</p>`,
+      `<p>Keep rows where rn IN ((c + 1) / 2, (c + 2) / 2) and AVG(salary) per dept. Integer division handles odd and even counts at once.</p>`
+    ],
+    solution: {
+      approach: `<p>Number salaries within each department and attach the department size. The one or two middle rows are selected with integer arithmetic and averaged. ROW_NUMBER (not RANK) is required so tied salaries still occupy distinct positions.</p>`,
+      code: { lang: 'sql', db: 'hr', code: `WITH r AS (
+  SELECT dept, salary,
+         ROW_NUMBER() OVER (PARTITION BY dept ORDER BY salary, id) AS rn,
+         COUNT(*)     OVER (PARTITION BY dept)                     AS c
+  FROM employees
+)
+SELECT dept, AVG(salary) AS median_salary
+FROM r
+WHERE rn IN ((c + 1) / 2, (c + 2) / 2)
+GROUP BY dept
+ORDER BY dept;` },
+      alt: [{ lang: 'sql', check: false, title: 'PostgreSQL / Oracle / Snowflake', code: `SELECT dept,
+       PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY salary) AS median_salary
+FROM employees
+GROUP BY dept
+ORDER BY dept;` }],
+      complexity: `<p>O(N log N) sort + O(N). At warehouse scale, approximate medians (APPROX_PERCENTILE, t-digest) avoid a full sort.</p>`,
+      followUps: ['Return employees whose salary is above their department median.', 'Compute the 90th percentile the same way.']
+    }
+  });
+
+  practice.push({
+    title: 'Forward-Fill Missing Sensor Readings',
+    level: 'Hard', tags: ['window', 'count over', 'locf', 'ignore nulls emulation'], companies: ['Tesla', 'Siemens', 'Datadog'],
+    statement: `<p>Table <code>readings(id, ts, reading)</code>; some readings are NULL because the sensor skipped a beat. Return <code>id, ts, reading, filled</code> where <code>filled</code> is the reading itself, or — if NULL — the most recent earlier non-NULL reading ("last observation carried forward"). SQLite has no <code>IGNORE NULLS</code>. Order by id.</p>`,
+    constraints: `Up to 10<sup>8</sup> rows; the first row is not NULL.`,
+    example: `${H.table(['id', 'reading', 'COUNT(reading) so far = grp', 'filled'], [['1', '20', '1', '20'], ['2', 'NULL', '<span class="c-b">1</span>', '<span class="c-g">20</span>'], ['3', 'NULL', '<span class="c-b">1</span>', '<span class="c-g">20</span>'], ['4', '23', '2', '23'], ['5', 'NULL', '<span class="c-b">2</span>', '<span class="c-g">23</span>']])}<p>COUNT(reading) ignores NULLs, so it only increases on real readings — every NULL shares the group of the reading before it.</p>`,
+    brute: {
+      why: `<p>For each row, a correlated subquery fetches the latest non-NULL reading at or before it (ORDER BY id DESC LIMIT 1). One index probe per row at best; without an index it rescans the table per row — O(N²).</p>`,
+      code: { lang: 'sql', db: 'metrics', code: `SELECT r.id, r.ts, r.reading,
+       (SELECT r2.reading FROM readings r2
+        WHERE r2.id <= r.id AND r2.reading IS NOT NULL
+        ORDER BY r2.id DESC LIMIT 1) AS filled
+FROM readings r
+ORDER BY r.id;` }
+    },
+    mcq: { q: 'Why does a running COUNT(reading) create the right groups?', options: ['COUNT counts NULLs as 0', 'COUNT(col) skips NULLs, so it only increments on real readings', 'COUNT resets after NULL', 'It does not; you need ROW_NUMBER'], answer: 1, explain: 'COUNT(column) counts non-NULL values only. The running count therefore stays flat across NULL rows, gluing them to the last real reading.' },
+    hints: [
+      `<p>Engines with IGNORE NULLS would use LAST_VALUE(reading IGNORE NULLS). Emulate it by building groups.</p>`,
+      `<p>grp = COUNT(reading) OVER (ORDER BY id ROWS UNBOUNDED PRECEDING) — constant from a real reading until the next one.</p>`,
+      `<p>Each group has exactly one non-NULL value, so filled = MAX(reading) OVER (PARTITION BY grp). Use two CTE levels.</p>`
+    ],
+    solution: {
+      approach: `<p>Two windows: a running non-NULL count labels each "real reading + following NULLs" block; a partition MAX (or FIRST_VALUE) over that label broadcasts the real reading to the whole block.</p>`,
+      code: { lang: 'sql', db: 'metrics', code: `WITH g AS (
+  SELECT id, ts, reading,
+         COUNT(reading) OVER (ORDER BY id ROWS UNBOUNDED PRECEDING) AS grp
+  FROM readings
+)
+SELECT id, ts, reading,
+       MAX(reading) OVER (PARTITION BY grp) AS filled
+FROM g
+ORDER BY id;` },
+      alt: [{ lang: 'sql', check: false, title: 'Snowflake / BigQuery / Oracle / SQL Server 2022', code: `SELECT id, ts, reading,
+       LAST_VALUE(reading IGNORE NULLS) OVER (ORDER BY id
+         ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS filled
+FROM readings
+ORDER BY id;` }],
+      complexity: `<p>Two O(N) passes after the sort by id. The correlated version is O(N log N) with an index and O(N²) without.</p>`,
+      followUps: ['Forward-fill per sensor (add PARTITION BY sensor_id to both windows).', 'Fill with linear interpolation between neighbours instead.']
+    }
+  });
+
+  /* =====================================================================
+     QUIZ
+     ===================================================================== */
+  quiz.push(
+    { q: 'What is the key difference between <code>SUM(salary) ... GROUP BY dept</code> and <code>SUM(salary) OVER (PARTITION BY dept)</code>?', options: ['They return different totals', 'GROUP BY returns one row per department; the window keeps every row and repeats the total on each', 'The window version is always slower', 'The window version ignores NULLs'], answer: 1, explain: 'Both compute the same department totals. GROUP BY collapses rows; a window function annotates each row without collapsing.' },
+    { q: 'Why does <code>WHERE ROW_NUMBER() OVER (ORDER BY salary) = 1</code> fail?', options: ['ROW_NUMBER needs PARTITION BY', 'Window functions are evaluated after WHERE, so they cannot be used there', 'SQLite does not support ROW_NUMBER', 'It needs DESC'], answer: 1, explain: 'Logical order: FROM → WHERE → GROUP BY → HAVING → window → SELECT → ORDER BY. Compute the window in a CTE/subquery and filter outside.' },
+    { q: 'Salaries 100, 100, 90. What does RANK() OVER (ORDER BY salary DESC) return?', options: ['1, 2, 3', '1, 1, 2', '1, 1, 3', '1, 1, 1'], answer: 2, explain: 'RANK gives ties the same rank and skips the following positions: 1, 1, 3. DENSE_RANK would give 1, 1, 2.' },
+    { q: 'With <code>ORDER BY</code> but no frame clause, what frame do aggregate window functions use?', options: ['The whole partition', 'ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW', 'RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW (includes peers)', 'Only the current row'], answer: 2, explain: 'The SQL default is RANGE … CURRENT ROW, which includes all rows tied with the current row — the cause of running totals that "jump" on duplicate timestamps.' },
+    { q: '<code>LAST_VALUE(name) OVER (PARTITION BY dept ORDER BY salary DESC, id)</code> returns what on each row?', options: ['The lowest earner of the department', 'The current row\'s name (the frame ends at the current row)', 'NULL', 'The top earner'], answer: 1, explain: 'The default frame stops at the current row, so the "last" row of the frame is the current row. Use ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING.' },
+    { q: 'Which window gives a 7-day trailing sum including today on one-row-per-day data?', options: ['ROWS BETWEEN 7 PRECEDING AND CURRENT ROW', 'ROWS BETWEEN 6 PRECEDING AND CURRENT ROW', 'ROWS BETWEEN 6 PRECEDING AND 1 FOLLOWING', 'RANGE UNBOUNDED PRECEDING'], answer: 1, explain: '6 preceding rows + the current row = 7 rows. 7 PRECEDING is an 8-row window.' },
+    { q: 'North has rows for 03-03 and 03-05 but not 03-04. What does <code>LAG(revenue) OVER (ORDER BY day)</code> return on 03-05?', options: ['NULL', '03-03\'s revenue', '0', 'An error'], answer: 1, explain: 'LAG is positional — it returns the previous row, which is 03-03. Check the date gap if you need "yesterday".' },
+    { q: 'You need "top 3 per department, exactly 3 rows each, ties broken by seniority". Which is right?', options: ['DENSE_RANK() &lt;= 3', 'RANK() &lt;= 3', 'ROW_NUMBER() OVER (PARTITION BY dept ORDER BY salary DESC, hire_date) &lt;= 3', 'NTILE(3) = 1'], answer: 2, explain: 'Only ROW_NUMBER guarantees exactly N rows; the hire_date tiebreaker makes it deterministic and matches the stated rule.' },
+    { q: 'NTILE(4) over 13 rows produces bucket sizes of…', options: ['4, 3, 3, 3', '3, 3, 3, 4', '3, 3, 3, 3 and one row unassigned', '4, 4, 4, 1'], answer: 0, explain: '⌊13/4⌋ = 3 per bucket; 13 mod 4 = 1 extra row goes to the first bucket.' },
+    { q: 'For 4 rows with distinct values, CUME_DIST of the 2nd row (ordered) is…', options: ['0.25', '0.333', '0.5', '0.75'], answer: 2, explain: 'CUME_DIST = rows at or before the current row / N = 2 / 4 = 0.5. PERCENT_RANK would be (2 − 1)/(4 − 1) = 0.333.' },
+    { q: 'In gaps-and-islands, which expression labels runs of consecutive dates per user?', options: ['ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY d)', 'julianday(d) − ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY d)', 'LAG(d) OVER (ORDER BY d)', 'DENSE_RANK() OVER (ORDER BY user_id)'], answer: 1, explain: 'Inside a run, date and row number both increase by 1, so their difference is constant; a gap changes it. Remove duplicate dates first.' },
+    { q: '<code>RANGE BETWEEN 2 PRECEDING AND CURRENT ROW</code> ordered by <code>julianday(day)</code> on 03-06 with 03-04 missing includes…', options: ['03-03, 03-05, 03-06', '03-05 and 03-06 only', '03-04, 03-05, 03-06 with 03-04 as 0', 'Only 03-06'], answer: 1, explain: 'RANGE uses the value distance: days 03-04..03-06. 03-04 has no row, so only 03-05 and 03-06 are in the frame.' },
+    { q: 'Which function ignores the frame clause?', options: ['SUM', 'LAST_VALUE', 'ROW_NUMBER', 'NTH_VALUE'], answer: 2, explain: 'Ranking (ROW_NUMBER, RANK, DENSE_RANK, NTILE, PERCENT_RANK, CUME_DIST) and navigation (LAG, LEAD) functions depend only on partition and order. Aggregates and FIRST/LAST/NTH_VALUE use the frame.' }
+  );
+
+  /* =====================================================================
+     INTERVIEW Q&A
+     ===================================================================== */
+  interview.push(
+    { q: 'What is a window function, and how is it different from GROUP BY?', level: 'B',
+      a: `<p>A window function computes a value for each row using a set of related rows (its <b>window</b>) defined by <code>OVER (PARTITION BY … ORDER BY … frame)</code>. Unlike GROUP BY it does <b>not collapse</b> rows: 13 employees in → 13 rows out, each carrying e.g. its department total. GROUP BY returns one row per group and you lose the detail columns. Use windows when the question says "for each row, also show…", "rank within", "previous", "running" or "top N per".</p>`,
+      followUps: ['Can you combine GROUP BY and a window function in the same query?', 'What does an empty OVER () mean?'] },
+    { q: 'Explain ROW_NUMBER, RANK and DENSE_RANK with an example involving ties.', level: 'B',
+      a: `<p>For salaries 120, 120, 110: <b>ROW_NUMBER</b> → 1, 2, 3 (always unique; tie order arbitrary unless you add a tiebreaker). <b>RANK</b> → 1, 1, 3 (ties share, then a gap — Olympic style). <b>DENSE_RANK</b> → 1, 1, 2 (ties share, no gap). I choose ROW_NUMBER for "exactly one row per group" (dedupe, latest record), RANK for competition leaderboards, and DENSE_RANK for "Nth highest distinct value".</p>`,
+      followUps: ['Which one would you use for "second highest salary" and why?', 'How do you make ROW_NUMBER deterministic?'] },
+    { q: 'Where in the logical query order are window functions evaluated, and what follows from that?', level: 'I',
+      a: `<p>Order: FROM/JOIN → WHERE → GROUP BY → HAVING → <b>window functions</b> → SELECT → DISTINCT → ORDER BY → LIMIT. Consequences: (1) you cannot use a window function in WHERE, GROUP BY or HAVING — wrap it in a CTE and filter outside; (2) a window can wrap an aggregate, e.g. <code>SUM(SUM(x)) OVER ()</code> or <code>RANK() OVER (ORDER BY COUNT(*) DESC)</code>; (3) windows see only rows that survived WHERE; (4) the final ORDER BY may reference window results. Warehouses like Snowflake/BigQuery/DuckDB add QUALIFY for filtering on windows directly.</p>`,
+      followUps: ['Rewrite a QUALIFY query for PostgreSQL.', 'Does LIMIT affect which rows a window sees?'] },
+    { q: 'How do you get the top 3 earners per department?', level: 'I',
+      a: `<p>Rank inside each department in a CTE, then filter: <code>WITH r AS (SELECT *, DENSE_RANK() OVER (PARTITION BY dept ORDER BY salary DESC) dr FROM employees) SELECT * FROM r WHERE dr &lt;= 3</code>. I first clarify ties: exactly 3 people → ROW_NUMBER with a tiebreaker; 3 places with ties included → RANK; top 3 distinct salaries → DENSE_RANK. Without window functions it is a correlated COUNT of higher salaries &lt; 3, which is O(N²) per department. For few groups on huge tables, a LATERAL join with an index on (dept, salary DESC) and LIMIT 3 can be faster.</p>`,
+      followUps: ['How does PostgreSQL optimise rn &lt;= N filters?', 'How would you do it in MySQL 5.7?'] },
+    { q: 'Write a running total and explain the ROWS vs RANGE difference.', level: 'I',
+      a: `<p><code>SUM(amount) OVER (PARTITION BY account ORDER BY ts ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)</code>. If I omit the frame, the default is <b>RANGE</b> UNBOUNDED PRECEDING → CURRENT ROW, where "current row" includes all <b>peers</b> (same ts). Two transactions at the same timestamp would then show the same balance — the total "jumps". ROWS counts physical rows so every row gets its own value. Best practice: unique ORDER BY (add id) and explicit ROWS. On SQL Server ROWS is also faster because RANGE uses an on-disk spool.</p>`,
+      followUps: ['When is RANGE actually the right choice?', 'How would you reset the running total every month?'] },
+    { q: 'How would you compute month-over-month growth?', level: 'I',
+      a: `<p>Aggregate to one row per month first, then use LAG: <code>WITH m AS (SELECT strftime('%Y-%m', d) mon, SUM(rev) rev FROM sales GROUP BY 1) SELECT mon, rev, ROUND(100.0*(rev - LAG(rev) OVER (ORDER BY mon)) / NULLIF(LAG(rev) OVER (ORDER BY mon), 0), 1) AS mom_pct FROM m</code>. Watch for: 100.0 to avoid integer division, NULLIF for zero months, PARTITION BY if per product, and missing months — LAG returns the previous <i>row</i>, so build a month spine (recursive CTE) if months can be empty.</p>`,
+      followUps: ['Year-over-year for monthly data?', 'How do you handle a month with zero revenue?'] },
+    { q: 'What is the LAST_VALUE trap?', level: 'I',
+      a: `<p>With ORDER BY and no frame, the frame is RANGE UNBOUNDED PRECEDING → CURRENT ROW, so <code>LAST_VALUE(x)</code> returns the current row (or its last peer) — not the last row of the partition. Fix: <code>ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING</code>, or use <code>FIRST_VALUE</code> with the order reversed. NTH_VALUE has the same issue (it is NULL until the frame has n rows). FIRST_VALUE is safe because the frame always starts at the partition's first row.</p>`,
+      followUps: ['What does NTH_VALUE(x, 3) return on the first row with the default frame?', 'How would you forward-fill NULLs without IGNORE NULLS?'] },
+    { q: 'Explain ROWS, RANGE and GROUPS frames with an example where they differ.', level: 'A',
+      a: `<p>Data (day, value): (1,100), (2,120), (3,90), (5,150), (5,20), (6,130). For <code>SUM(v) ... BETWEEN 1 PRECEDING AND CURRENT ROW</code> on the first day-5 row: <b>ROWS</b> = previous physical row + this row = 90 + 150 = 240; <b>RANGE</b> = rows with day in [4, 5] incl. peers = 150 + 20 = 170; <b>GROUPS</b> = previous peer group {3} + current group {5, 5} = 260. ROWS counts rows, RANGE measures distance in the ORDER BY value (needs a single numeric/date key), GROUPS counts distinct ORDER BY values. RANGE with offsets gives calendar-correct moving windows over gappy data. MySQL lacks GROUPS; SQL Server lacks numeric RANGE offsets.</p>`,
+      followUps: ['What does EXCLUDE TIES do?', 'Why does RANGE with an offset need exactly one ORDER BY column?'] },
+    { q: 'Solve "find users with 3+ consecutive login days" and explain the trick.', level: 'A',
+      a: `<p>Gaps-and-islands: de-duplicate (user, date); compute <code>grp = julianday(date) − ROW_NUMBER() OVER (PARTITION BY user ORDER BY date)</code>. Within a run of consecutive dates both terms rise by 1, so grp is constant; any gap changes it. Then <code>GROUP BY user, grp HAVING COUNT(*) &gt;= 3</code>. De-duplication is essential: a repeated date bumps ROW_NUMBER without moving the date and splits the island. An alternative is LAG to flag "date ≠ previous + 1" and a running SUM of flags as the island id — the same pattern used for sessionization.</p>`,
+      followUps: ['Return the longest streak per user.', 'How would you allow one missed day?'] },
+    { q: 'How do you sessionize a clickstream with a 30-minute inactivity timeout in SQL?', level: 'A',
+      a: `<p>Three steps: (1) <code>LAG(ts) OVER (PARTITION BY user ORDER BY ts)</code> to get the previous click; (2) flag = 1 if previous is NULL or the gap &gt; 30 min; (3) <code>SUM(flag) OVER (PARTITION BY user ORDER BY ts ROWS UNBOUNDED PRECEDING)</code> = session number. Then GROUP BY user, session for start, end, clicks, duration. It is one sort plus linear passes. In streaming systems this is a "session window" (Flink, Kafka Streams, Beam), which must also handle late events that can merge two sessions.</p>`,
+      followUps: ['How would late-arriving events change your batch job?', 'How do you compute average session duration?'] },
+    { q: 'How does a database execute window functions, and how do you make them fast?', level: 'A',
+      a: `<p>The planner sorts input by (PARTITION BY keys, ORDER BY keys), then a window operator streams through each partition maintaining state: counters for ranking, a ring buffer for LAG/LEAD, an accumulator for running aggregates, and add/subtract ("inverse transition") for sliding SUM/AVG. Cost is O(N log N) for the sort + ~O(N). To speed up: an index on (partition, order) columns can remove the sort; reuse one window spec (named WINDOW) so several functions share one sort; filter rows early (WHERE before the window); avoid full-partition frames on giant partitions (memory/spill); in PostgreSQL look for WindowAgg and Sort in EXPLAIN, in SQL Server prefer ROWS over RANGE.</p>`,
+      followUps: ['Why can sliding MAX be more expensive than sliding SUM?', 'What happens with two windows that have different PARTITION BY?'] },
+    { q: 'Compute a median per group without PERCENTILE_CONT.', level: 'A',
+      a: `<p>Use ROW_NUMBER and COUNT over the group: <code>rn = ROW_NUMBER() OVER (PARTITION BY g ORDER BY x, id)</code>, <code>c = COUNT(*) OVER (PARTITION BY g)</code>, keep <code>rn IN ((c+1)/2, (c+2)/2)</code> with integer division and AVG(x). Odd c selects one row, even c the two middle rows. ROW_NUMBER (not RANK) ensures tied values still occupy separate positions. On PostgreSQL/Snowflake use PERCENTILE_CONT(0.5) WITHIN GROUP; at warehouse scale use approximate sketches (t-digest/KLL) because exact percentiles need a full sort and are not mergeable.</p>`,
+      followUps: ['Difference between PERCENTILE_CONT and PERCENTILE_DISC?', 'How would you compute a median over a 7-day sliding window?'] },
+    { q: 'You inherit a dashboard query with ROW_NUMBER() = 1 that returns different results on each run. What is going on and how do you fix it?', level: 'E',
+      a: `<p>The window ORDER BY is not unique, so rows tied on it are numbered in an implementation-dependent order that can change with parallelism, plan changes, replicas or data reloads. Fix: append a unique, business-meaningful tiebreaker (event id, ingestion sequence, primary key) and agree the rule with stakeholders. Add a data test (e.g. dbt) that asserts uniqueness of the ordering key per partition, and check other window functions sensitive to tie order (LAG/LEAD, FIRST_VALUE, NTILE, ROWS frames). RANK/DENSE_RANK are deterministic but may return multiple rows, which may be the honest answer.</p>`,
+      followUps: ['Which window functions are deterministic even with ties?', 'How would you test this in CI?'] },
+    { q: 'Window functions on a 5-billion-row event table in a distributed warehouse: what are the risks and how do you design for them?', level: 'E',
+      a: `<p>A window requires all rows of a partition on one worker, sorted. Risks: <b>skew</b> (a single hot partition such as a bot user or NULL key overwhelms one node), <b>no partition</b> (<code>OVER ()</code> or global ORDER BY forces everything through one worker), huge full-frame buffers spilling to disk, and repeated sorts for different window specs. Mitigations: always partition by a high-cardinality key; pre-aggregate to the needed grain first (daily, per user); filter early and prune by date partitions; use incremental models so only new days are recomputed; prefer QUALIFY / rn filters that engines can push down; use approximate functions for percentiles; and isolate skewed keys. Validate with EXPLAIN/query profiles, checking spilled bytes and the slowest task.</p>`,
+      followUps: ['How would you compute a global running total at this scale?', 'How do incremental models handle LAG across the incremental boundary?'] }
+  );
 
   registerModule({
     id: 'sql06',

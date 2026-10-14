@@ -655,6 +655,196 @@ SELECT * FROM order_items WHERE order_id = 77;`),
       }
     }]
   });
+
+  /* =====================================================================
+     TOPIC 4 - Hash indexes vs B+trees
+     ===================================================================== */
+  topics.push({
+    title: 'Hash Indexes vs B+tree Indexes',
+    analogy: `<p>A <b>coat-check counter</b>: you hand over your coat and get ticket <b>#57</b>; when you come back the attendant walks straight to hook 57. Instant — that is a <b>hash index</b>: a formula turns the key into a slot number. But ask the attendant "bring me every coat from tickets 40 to 60 that arrived after 9pm" or "all coats whose owner's name starts with K" and the numbering is useless — the hooks are not arranged by name or time, so they must check every hook. A <b>B+tree</b> is a <b>sorted shelf</b>: slightly slower to find one item (a few signposts), but it can answer <i>ranges, prefixes and sorted order</i>.</p>`,
+    explain: `<p>A <b>hash index</b> stores entries in <b>buckets</b>. To insert or find key <code>k</code>, compute <code>bucket = hash(k) mod number_of_buckets</code> and go straight there. Average cost <b>O(1)</b> for <b>equality</b> (<code>=</code>, and <code>IN (…)</code> as several equalities).</p>
+<p>What it <b>cannot</b> do, because a good hash function deliberately <b>scatters</b> neighbouring keys:</p>
+<ul>
+<li>Range predicates: <code>&lt;</code>, <code>&gt;</code>, <code>BETWEEN</code> — 41 and 42 land in unrelated buckets.</li>
+<li><code>ORDER BY</code>, <code>MIN</code>/<code>MAX</code> — there is no order to walk.</li>
+<li>Prefix matches: <code>LIKE 'abc%'</code>.</li>
+<li>Partial use of a multi-column key: a hash of <code>(a, b)</code> cannot be probed with only <code>a</code> — there is no left-prefix rule for hashes.</li>
+</ul>
+${H.table(['Need', 'Hash index', 'B+tree index'], [
+  ['<code>WHERE token = ?</code>', '<span class="c-g">O(1), 1 bucket</span>', 'O(log N), 3–4 pages'],
+  ['<code>WHERE created_at &gt; ?</code>', '<span class="c-r">unusable → full scan</span>', '<span class="c-g">seek + walk leaves</span>'],
+  ['<code>ORDER BY x LIMIT 10</code>', '<span class="c-r">unusable</span>', '<span class="c-g">read 10 leaf entries</span>'],
+  ['<code>LIKE \'ab%\'</code>', '<span class="c-r">unusable</span>', '<span class="c-g">range scan</span>'],
+  ['UNIQUE constraint', 'Postgres: not supported', 'yes'],
+  ['Where you meet it', 'Postgres <code>USING hash</code>, MySQL MEMORY tables, InnoDB adaptive hash index, hash joins, Redis/key-value stores', 'default everywhere']
+])}
+<p><b>Where hash indexes exist in practice:</b></p>
+<ul>
+<li><b>PostgreSQL</b> <code>CREATE INDEX … USING hash (col)</code> — crash-safe and replicated since PG 10. Single column, equality only, no UNIQUE. Can be smaller than a B-tree for <b>long keys</b> (it stores only a 4-byte hash code), e.g. long URLs.</li>
+<li><b>MySQL</b>: the MEMORY engine supports <code>USING HASH</code>; InnoDB silently ignores <code>USING HASH</code> and builds a B-tree, but it has an automatic in-memory <b>Adaptive Hash Index</b> on top of hot B-tree pages.</li>
+<li><b>SQLite</b>: B-trees only. The playground below therefore uses B-tree indexes and a Python simulation of a hash index.</li>
+<li><b>Everywhere, implicitly</b>: the <b>hash join</b> operator builds a temporary in-memory hash table on the join key; key-value stores (Redis, DynamoDB partition keys, Bitcask) are hash-indexed at heart.</li>
+</ul>
+<p>Interview default: <b>"B+tree unless I only ever need exact-match lookups on a large key, and even then measure."</b></p>`,
+    clues: [
+      '"Only exact-match lookups, never ranges" (session tokens, API keys, short-URL codes) → hash index is a valid option',
+      '"BETWEEN / ORDER BY / prefix LIKE / MIN-MAX" in the workload → must be a B+tree',
+      '"Why don\'t databases use hash indexes by default?" → no ordering, no ranges, no left-prefix, resize cost, historically not crash-safe in PG',
+      '"Design a key-value store / cache lookup" → hashing (O(1) equality), LSM or B-tree only if range scans are needed',
+      '"Join two big tables on equality with no useful index" → planner builds a hash table (hash join)'
+    ],
+    code: [py(`# Toy comparison: hash index vs sorted (B+tree-like) index, counting "slots touched".
+import bisect
+
+keys = [15, 22, 8, 41, 29, 36, 3, 50, 17, 44, 26, 33]
+BUCKETS = 7
+
+# ---- hash index: bucket = key mod 7 ----
+hash_index = {b: [] for b in range(BUCKETS)}
+for k in keys:
+    hash_index[k % BUCKETS].append(k)
+
+def hash_equal(k):
+    bucket = hash_index[k % BUCKETS]          # jump straight to one bucket
+    return (k in bucket), 1                   # 1 bucket touched
+
+def hash_range(lo, hi):
+    found, touched = [], 0
+    for b in range(BUCKETS):                  # no order -> must visit EVERY bucket
+        touched += 1
+        found += [k for k in hash_index[b] if lo <= k <= hi]
+    return sorted(found), touched
+
+# ---- sorted index (what the B+tree leaf level looks like) ----
+sorted_keys = sorted(keys)
+
+def tree_range(lo, hi):
+    i = bisect.bisect_left(sorted_keys, lo)  # "descend" to the first key >= lo
+    out = []
+    while i < len(sorted_keys) and sorted_keys[i] <= hi:
+        out.append(sorted_keys[i]); i += 1    # walk the leaves in order
+    return out, len(out) + 1                  # entries read + the stop check
+
+print("buckets:", hash_index)
+print("hash  =29      ->", hash_equal(29))
+print("hash  20..40   ->", hash_range(20, 40), "(every bucket visited)")
+print("btree 20..40   ->", tree_range(20, 40), "(only the matching slice)")`, 'Hash vs sorted index (▶ Run)'),
+    pg(`-- PostgreSQL: a hash index (equality only, single column, no UNIQUE)
+CREATE INDEX idx_sessions_token_hash ON sessions USING hash (token);
+EXPLAIN SELECT user_id FROM sessions WHERE token = 'f3a9...';      -- Index Scan using idx_sessions_token_hash
+EXPLAIN SELECT user_id FROM sessions WHERE token > 'f';            -- cannot use it: Seq Scan
+
+-- MySQL MEMORY engine supports HASH; InnoDB ignores USING HASH and builds a BTREE
+CREATE TABLE lookup (code CHAR(8), val INT, INDEX USING HASH (code)) ENGINE = MEMORY;
+SHOW ENGINE INNODB STATUS;   -- section "INSERT BUFFER AND ADAPTIVE HASH INDEX"`, 'Hash indexes in Postgres / MySQL (not runnable here)'),
+    shop(`-- SQLite only has B-trees, and a B-tree handles equality AND ranges:
+CREATE INDEX idx_products_sku ON products(sku);
+EXPLAIN QUERY PLAN SELECT * FROM products WHERE sku = 'SKU-00042';                     -- equality seek
+EXPLAIN QUERY PLAN SELECT * FROM products WHERE sku BETWEEN 'SKU-00100' AND 'SKU-00110'; -- range seek
+EXPLAIN QUERY PLAN SELECT sku FROM products ORDER BY sku LIMIT 3;                       -- ordered walk
+SELECT sku, name FROM products WHERE sku BETWEEN 'SKU-00100' AND 'SKU-00103';`, 'One B-tree serves =, ranges and ORDER BY')],
+    codeTitle: ['Simulation', 'Postgres / MySQL syntax', 'SQLite B-tree does it all'],
+    viz: [{
+      title: 'Hash buckets: instant equality, useless for ranges',
+      input: '15 22 8 41 29 36 3 50 17 44; 29; 20-40',
+      inputLabel: 'keys ; key to find ; range lo-hi',
+      gen: function (input) {
+        var parts = String(input).split(';');
+        if (parts.length !== 3) throw new Error('Format: keys ; find ; lo-hi  e.g. 15 22 8 41 29; 29; 20-40');
+        var keys = parts[0].trim().split(/[\s,]+/).map(Number), find = Number(parts[1].trim()), rg = parts[2].trim().split('-').map(Number);
+        if (!keys.length || keys.some(function (k) { return isNaN(k) || k < 0 || k > 999; }) || keys.length > 14) throw new Error('Use 1-14 keys between 0 and 999');
+        if (isNaN(find) || rg.length !== 2 || rg.some(isNaN) || rg[0] > rg[1]) throw new Error('find must be a number and the range lo-hi with lo ≤ hi');
+        var B = 7, buckets = [], i, frames = [];
+        for (i = 0; i < B; i++) buckets.push([]);
+        var show = function () { return buckets.map(function (b) { return b.length ? b.join(',') : '—'; }); };
+        var bl = []; for (i = 0; i < B; i++) bl.push('bucket ' + i);
+        frames.push({ narr: 'A hash index with <b>7 buckets</b>. Hash function (toy version): <code>bucket = key mod 7</code>. Real ones use a strong hash (e.g. Postgres hashes to 32 bits), so neighbouring keys land far apart on purpose.', parts: [
+          { type: 'array', label: 'buckets', values: show(), idxLabels: bl }
+        ] });
+        keys.forEach(function (k) {
+          var b = k % B; buckets[b].push(k);
+          var hl = {}; hl[b] = 'cur';
+          frames.push({ narr: 'Insert <b>' + k + '</b>: ' + k + ' mod 7 = <b>' + b + '</b> → append to bucket ' + b + '.' + (buckets[b].length > 1 ? ' Bucket already had keys — a <b>collision</b>; they share the bucket and are compared one by one.' : ''), parts: [
+            { type: 'array', label: 'buckets', values: show(), idxLabels: bl, hl: hl }
+          ] });
+        });
+        var fb = find % B, hit = buckets[fb].indexOf(find) >= 0, h1 = {}; h1[fb] = hit ? 'ok' : 'bad';
+        frames.push({ narr: '<b>Equality</b> <code>WHERE key = ' + find + '</code>: hash it → bucket <b>' + fb + '</b>, look only there. ' + (hit ? '<span class="c-g">Found</span>' : '<span class="c-r">Not present</span>') + ' after touching <b>1</b> bucket, no matter how many keys exist. This is where hash indexes shine.', parts: [
+          { type: 'array', label: 'buckets', values: show(), idxLabels: bl, hl: h1 },
+          { type: 'vars', vals: { buckets_touched: 1, found: hit ? 'yes' : 'no' } }
+        ] });
+        var lo = rg[0], hi = rg[1], got = [], h2 = {};
+        for (i = 0; i < B; i++) {
+          var inB = buckets[i].filter(function (k) { return k >= lo && k <= hi; });
+          got = got.concat(inB);
+          h2[i] = inB.length ? 'ok' : 'bad';
+          var h3 = Object.assign({}, h2); h3[i] = inB.length ? 'ok' : 'cur';
+          frames.push({ narr: '<b>Range</b> <code>WHERE key BETWEEN ' + lo + ' AND ' + hi + '</code>: hashing tells us nothing about where in-range keys live, so check bucket ' + i + ' → ' + (inB.length ? 'keep ' + inB.join(', ') : 'nothing useful (wasted read)') + '.', parts: [
+            { type: 'array', label: 'buckets (all must be visited)', values: show(), idxLabels: bl, hl: h3 },
+            { type: 'vars', vals: { buckets_touched: i + 1, found_so_far: got.length } }
+          ] });
+        }
+        var sorted = keys.slice().sort(function (a, b) { return a - b; }), hs = {}, first = -1;
+        sorted.forEach(function (k, j) { if (k >= lo && k <= hi) { hs[j] = 'ok'; if (first < 0) first = j; } });
+        var treeCost = 2 + Math.max(1, Object.keys(hs).length);
+        frames.push({ narr: 'Same range on a <b>B+tree</b>: keys are kept sorted in the leaves, so descend to ' + lo + ' and walk right until a key exceeds ' + hi + '. Only the matching slice is read, and it comes out <b>already sorted</b>: [' + got.slice().sort(function (a, b) { return a - b; }).join(', ') + '].', parts: [
+          { type: 'array', label: 'B+tree leaf level (sorted)', values: sorted, hl: hs, range: first >= 0 ? [first, first + Object.keys(hs).length - 1] : undefined }
+        ] });
+        frames.push({ narr: 'Scorecard. Hash: equality = 1 bucket, range = all ' + B + ' buckets (a full scan in disguise). B+tree: equality ≈ height (3–4 pages in real life), range ≈ height + matching leaves. That asymmetry is why B+tree is the default index type everywhere.', parts: [
+          { type: 'bars', label: 'units of work', values: [1, B, 3, treeCost], idxLabels: ['hash =', 'hash range', 'B+tree =', 'B+tree range'], hl: { 0: 'ok', 1: 'bad', 2: 'cur', 3: 'ok' } }
+        ] });
+        return frames;
+      }
+    }],
+    examples: [
+      { title: 'Session tokens: equality only', html: `<p><code>SELECT user_id FROM sessions WHERE token = ?</code> — 64-char random tokens, never ranged, never sorted. A Postgres hash index stores 4-byte hash codes instead of 64-byte keys, so it can be noticeably smaller than a B-tree. But expiry cleanup (<code>WHERE expires_at &lt; now()</code>) is a range → that column needs a B-tree. One table, two index types, each for its job.</p>` },
+      { title: 'Short-URL service', html: `<p>Lookup <code>WHERE code = 'aZ3k9Q'</code> is pure equality, and the code is the primary key. In a relational DB a B-tree PK is already O(log N) ≈ 3 pages with the top levels cached — fine. In a key-value store (DynamoDB, Redis) the code is a <b>hash partition key</b>: O(1) routing to a partition and a hash lookup inside it. Analytics like "codes created this week" then need a separate sorted index (e.g. a DynamoDB GSI with a sort key on created_at).</p>` },
+      { title: 'Hash join: the hash table the planner builds for you', html: `<p>Joining two large tables on equality with no helpful index, Postgres/MySQL 8.0.18+/SQL Server build a temporary <b>hash table</b> on the smaller input's join key and probe it with each row of the bigger input: O(N + M) instead of O(N × M). It is a per-query hash index, thrown away afterwards. SQLite instead builds a temporary B-tree "automatic index" for nested-loop joins.</p>`, code: shop(`-- No index on orders.product_id: SQLite builds a temporary (automatic) index for the join.
+EXPLAIN QUERY PLAN
+SELECT p.category, COUNT(*) FROM products p JOIN orders o ON o.product_id = p.id
+WHERE p.price_cents > 90000 GROUP BY p.category;`) }
+    ],
+    deepDive: `<p><b>Postgres hash index internals.</b> Buckets are pages; the index stores the 32-bit hash code (not the key) plus TID, and re-checks the heap tuple for the real value. It grows by <b>linear hashing</b> — splitting one bucket at a time instead of rehashing everything — with overflow pages for collisions. Before PG 10 hash indexes were not WAL-logged (unsafe after a crash, not replicated) — the origin of the folklore "never use hash indexes". Today they are safe but still: single column, no uniqueness, no index-only scans, no ordering.</p>
+<p><b>Collisions and skew.</b> Many identical keys (low-cardinality column) all hash to one bucket → long overflow chains → O(N) worst case. A B-tree degrades gracefully (with dedup). Hash indexes also need periodic resizing; a B-tree grows one split at a time.</p>
+<p><b>InnoDB Adaptive Hash Index (AHI).</b> InnoDB watches B-tree lookups; for hot pages with repeated equal-prefix searches it builds an in-memory hash from key prefix → leaf record, skipping the tree descent. Great for read-heavy point lookups, but its latch was a contention point under heavy writes, so many teams disable it (<code>innodb_adaptive_hash_index=OFF</code>; MySQL 8.4 turned it off by default).</p>
+<p><b>Beyond B-tree and hash.</b> Postgres also offers GIN (inverted index for arrays/JSONB/full-text), GiST/SP-GiST (geometric, ranges, nearest-neighbour), BRIN (tiny min/max summaries per block range for huge append-only tables), and Bloom. Vector databases use HNSW / IVF indexes for approximate nearest-neighbour search (pgvector supports both). Picking the index <i>type</i> from the predicate type is an expert-level skill.</p>`,
+    aiEra: `<p><b>What AI changes:</b> AI features push databases toward new index types — <b>vector indexes</b> (HNSW, IVFFlat in pgvector) sit next to B-trees and hashes, and you will be asked which index serves which predicate: <code>=</code> → hash/B-tree, ranges → B-tree, <code>@&gt;</code> on JSONB → GIN, <code>ORDER BY embedding &lt;-&gt; $1 LIMIT 10</code> → HNSW.</p>
+<p><b>Use AI as a partner:</b> list your predicates and ask the assistant to map each to an index type, then challenge it: "what breaks if I also need ORDER BY created_at?"</p>
+<p><b>Where AI goes wrong:</b> it recommends <code>USING HASH</code> on InnoDB (silently ignored), suggests hash indexes for columns also used in ranges, or claims hash indexes support UNIQUE in Postgres. <b>What you must still own:</b> knowing that a hash destroys order, and that order is what ranges, sorting and prefix matching all depend on.</p>`,
+    problems: [{
+      title: 'Hash or B-tree for the Sessions Table?',
+      level: 'Easy', tags: ['hash index', 'b-tree', 'index type choice'], companies: ['Stripe', 'Okta', 'Atlassian'],
+      statement: `<p>A <code>sessions(token, user_id, expires_at)</code> table serves two queries: (1) every API request: <code>SELECT user_id FROM sessions WHERE token = ?</code>; (2) a cron job every minute: <code>DELETE FROM sessions WHERE expires_at &lt; ?</code>. Which index type fits each, and what can you build in SQLite (B-trees only)?</p>`,
+      constraints: `<p>Tokens are 40-character random strings and unique. 3,000 sessions in the demo; millions in production.</p>`,
+      example: `<p>Query 1 is ${H.c('g', 'equality only')} → hash or B-tree both work; UNIQUE requires B-tree in Postgres. Query 2 is a ${H.c('r', 'range')} → hash is useless, B-tree on expires_at needed.</p>`,
+      brute: { why: `<p>No indexes: every API request scans all sessions to find one token, and the cleanup scans everything to find expired ones. Request latency grows with the number of logged-in users — exactly the wrong scaling.</p>`, code: lab(`CREATE TABLE sessions (token TEXT NOT NULL, user_id INTEGER NOT NULL, expires_at TEXT NOT NULL);
+INSERT INTO sessions WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 3000)
+SELECT hex(randomblob(20)), i % 900, datetime('2026-10-14', '+' || (i % 720) || ' minutes') FROM n;
+EXPLAIN QUERY PLAN SELECT user_id FROM sessions WHERE token = 'ABC';
+EXPLAIN QUERY PLAN DELETE FROM sessions WHERE expires_at < '2026-10-14 03:00:00';`) },
+      mcq: { q: 'Why can\'t a hash index on expires_at speed up <code>expires_at &lt; ?</code>?', options: ['Hashing scatters neighbouring timestamps into unrelated buckets, so there is no "start here, walk right"', 'Hash indexes do not support timestamps', 'Hash indexes are only for primary keys', 'It can, if the table is small'], answer: 0, explain: 'A range needs ordered storage. Hash order is random by design.' },
+      hints: [`<p>Hint 1: classify each predicate: equality or range?</p>`, `<p>Hint 2: equality on a unique token → a UNIQUE B-tree also enforces uniqueness (Postgres hash indexes cannot be UNIQUE). Range on expires_at → B-tree.</p>`, `<p>Hint 3: in SQLite: <code>CREATE UNIQUE INDEX … (token)</code> and <code>CREATE INDEX … (expires_at)</code>; check both plans become SEARCH.</p>`],
+      solution: {
+        approach: `<p>Query 1: equality on a unique key. In Postgres a hash index would work, but a <b>UNIQUE B-tree</b> is the better default because it also enforces uniqueness and the top levels are cached (3–4 pages ≈ 1 I/O). Query 2: a range on <code>expires_at</code> → B-tree is mandatory. In SQLite both are B-trees.</p>`,
+        code: lab(`CREATE TABLE sessions (token TEXT NOT NULL, user_id INTEGER NOT NULL, expires_at TEXT NOT NULL);
+INSERT INTO sessions WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 3000)
+SELECT hex(randomblob(20)), i % 900, datetime('2026-10-14', '+' || (i % 720) || ' minutes') FROM n;
+
+CREATE UNIQUE INDEX ux_sessions_token ON sessions(token);   -- equality + uniqueness
+CREATE INDEX idx_sessions_expires ON sessions(expires_at);   -- range for the cleanup job
+
+EXPLAIN QUERY PLAN SELECT user_id FROM sessions WHERE token = 'ABC';                -- SEARCH ... ux_sessions_token (token=?)
+EXPLAIN QUERY PLAN DELETE FROM sessions WHERE expires_at < '2026-10-14 03:00:00';  -- SEARCH ... (expires_at<?)
+DELETE FROM sessions WHERE expires_at < '2026-10-14 03:00:00';
+SELECT COUNT(*) AS remaining FROM sessions;`),
+        alt: [pg(`-- PostgreSQL variant: hash for the hot equality path (no uniqueness needed if tokens are random 160-bit values)
+CREATE INDEX idx_sessions_token_hash ON sessions USING hash (token);
+CREATE INDEX idx_sessions_expires ON sessions (expires_at);`, 'PostgreSQL alternative')],
+        complexity: `<p>Token lookup: O(log N) B-tree (O(1) average with hash). Cleanup: O(log N + k) for k expired rows instead of O(N). Each insert now updates 2 indexes — acceptable for a lookup-heavy table.</p>`,
+        followUps: ['Would you even store sessions in SQL? (Redis with TTL = hash + automatic expiry)', 'Why might a hash index be smaller than a B-tree for 64-byte tokens?']
+      }
+    }]
+  });
   registerModule({
     id: 'sql10', title: 'Index Internals', lang: 'sql',
     intro: `<p>tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro</p>`,
