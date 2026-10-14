@@ -1874,7 +1874,8 @@ public class Main {
         var defining = ALL.filter(function (x) { return has[x]; });
         frames.push({ narr: 'C extends class Base and implements J and K; K extends I. Types that define <code>hello()</code>: <b>' + (defining.length ? defining.join(', ') : 'none') + '</b>. Java applies three rules in order.', parts: [c({ 7: 'cur' }), g({})] });
         var winner = null, error = null, fix = null;
-        if (has.C) { winner = 'C'; frames.push({ narr: '<b>Rule 0:</b> C declares <code>hello()</code> itself, so its own version is used. Nothing else matters.', parts: [c({ 5: 'ok' }), g({ C: 'ok' })] }); }
+        if (has.C) { winner = 'C'; frames.push({ narr: '<b>Rule 0:</b> C declares <code>hello()</code> itself, so its own version is used. Nothing else matters.', parts: [c({ 5: 'ok' }), g({ C: 'ok' })] });
+          frames.push({ narr: 'Rules 1 and 2 are never consulted: a method declared in the class itself overrides every inherited version — from Base and from all interfaces' + (defining.length > 1 ? ' (' + defining.filter(function (x) { return x !== 'C'; }).join(', ') + ' are ignored)' : '') + '. Inside, C could still call <code>J.super.hello()</code> or <code>K.super.hello()</code> if it wanted to reuse them.', parts: [c((function () { var o = { 5: 'ok' }; defining.forEach(function (x) { if (x !== 'C') o[LINE[x]] = 'done'; }); return o; })()), g({ C: 'ok' })] }); }
         else {
           frames.push({ narr: '<b>Rule 0:</b> C does not declare <code>hello()</code> itself. Look further.', parts: [c({ 5: 'cur' }), g({ C: 'cur' })] });
           if (has.Base) { winner = 'Base'; frames.push({ narr: '<b>Rule 1 — class wins:</b> superclass Base has a concrete <code>hello()</code>. A class method <b>always</b> beats interface defaults' + (has.I || has.J || has.K ? ' (so the defaults in ' + ['I', 'J', 'K'].filter(function (x) { return has[x]; }).join(', ') + ' are ignored)' : '') + '. This keeps old class code working when new defaults appear.', parts: [c({ 4: 'ok' }), g({ Base: 'ok', I: has.I ? 'done' : undefined, J: has.J ? 'done' : undefined, K: has.K ? 'done' : undefined })] }); }
@@ -2093,6 +2094,996 @@ public class Main {
           },
           complexity: `<p>O(1). The value is in maintainability: each format is defined exactly once.</p>`,
           followUps: ['What happens if SmartBulb extends a class <code>Device</code> that has <code>public String status()</code>?', 'Why can you not write <code>Object.super.toString()</code>-style calls for non-direct interfaces?', 'Make the interfaces sealed — who may implement them now?']
+        }
+      }
+    ]
+  });
+
+  /* ======================================================================
+     TOPIC 7 — final
+     ====================================================================== */
+  topics.push({
+    title: 'final: Variables, References, Methods and Classes',
+    analogy: `<p>A <b>name written in permanent marker on a box</b>. Once you write "Toys" on the box (a <code>final</code> reference), you cannot change the label to point at another box — but you can still put things in and take things out of the box. <code>final</code> fixes the <b>label</b>, not the <b>contents</b>. A <code>final</code> method is a <b>house rule set by grandparents</b> that children cannot rewrite. A <code>final</code> class is a <b>sealed, factory-closed jar</b>: you can use it, but nobody can make a "new improved" version of it by extending it.</p>`,
+    explain: `<p>The keyword <code>final</code> means "<b>this cannot change after it is set</b>" — but what "this" is depends on where you write it:</p>
+      ${H.table(['Where', 'Meaning', 'Example'], [
+        ['local variable / parameter', 'assigned exactly once', '<code>final int max = 3;</code>'],
+        ['instance field', 'must be assigned exactly once by the end of <b>every</b> constructor', '<code>private final String id;</code>'],
+        ['static field', 'a class-wide constant; assigned once (inline or in a static block)', '<code>static final double TAX = 0.18;</code>'],
+        ['method', 'cannot be <b>overridden</b> by subclasses', '<code>final boolean verify()</code>'],
+        ['class', 'cannot be <b>extended</b>', '<code>String</code>, <code>Integer</code>, <code>Math</code>, <code>LocalDate</code>, records']
+      ])}
+      <p><b>The #1 interview trap:</b> a <code>final</code> reference is <b>not</b> an immutable object.</p>
+      <ul>
+        <li><code>final List&lt;String&gt; names = new ArrayList&lt;&gt;(); names.add("x");</code> ${H.c('g', 'compiles')} — the list changes, the variable still points to the same list.</li>
+        <li><code>names = new ArrayList&lt;&gt;();</code> ${H.c('r', 'compile error')} — that would change the reference.</li>
+      </ul>
+      <p>To make the <i>object</i> unchangeable you need <b>immutability</b>: a final class, private final fields, no setters, and defensive copies of mutable parts (or immutable types like <code>List.copyOf</code>, <code>LocalDate</code>, records).</p>
+      <p><b>Blank final:</b> a final field without an initializer must be assigned in every constructor path — the compiler checks this ("definite assignment"). <b>Effectively final:</b> a local variable you never reassign, even without the keyword; lambdas and anonymous/inner classes may only capture such variables.</p>
+      <p><b>Do not confuse:</b> <code>final</code> (keyword) · <code>finally</code> (block that always runs after try/catch) · <code>finalize()</code> (deprecated <code>Object</code> cleanup method).</p>`,
+    clues: [
+      '"Can a final List be modified?" → yes, contents yes; reference no',
+      '"Why is String final?" → security, string pool sharing, cached hashCode, thread safety',
+      '"Make this class immutable" → final class + private final fields + defensive copies + no setters',
+      '"Variable used in lambda expression should be final or effectively final" → capture rules',
+      '"Difference between final, finally and finalize"',
+      '"Prevent a method from being overridden / a class from being extended" → final method / final (or sealed) class'
+    ],
+    code: [`
+      import java.util.*;
+
+      final class Money {                                  // final class: no subclass can break immutability
+          private final long paise;                        // final field: assigned once
+          private final String currency;
+
+          Money(long paise, String currency) {
+              if (paise < 0) throw new IllegalArgumentException("negative");
+              this.paise = paise;
+              this.currency = Objects.requireNonNull(currency);
+          }
+
+          Money plus(Money other) {                        // "changing" returns a NEW object
+              if (!currency.equals(other.currency)) throw new IllegalArgumentException("currency mismatch");
+              return new Money(paise + other.paise, currency);
+          }
+
+          @Override public String toString() { return currency + " " + paise / 100 + "." + String.format("%02d", paise % 100); }
+      }
+
+      public class Main {
+          static final int MAX_ITEMS = 3;                  // compile-time constant
+
+          public static void main(String[] args) {
+              final List<String> cart = new ArrayList<>();  // final REFERENCE to a mutable list
+              cart.add("pen");                             // OK: contents may change
+              // cart = new ArrayList<>();                 // ERROR: cannot assign a value to final variable cart
+              Money a = new Money(1050, "INR");
+              Money b = a.plus(new Money(250, "INR"));
+              System.out.println(a + " | " + b + " | " + cart + " | max " + MAX_ITEMS);
+              // INR 10.50 | INR 13.00 | [pen] | max 3
+          }
+      }`],
+    codeTitle: ['final in every position: class, fields, constant, local reference'],
+    viz: {
+      title: 'final fixes the label, not the box',
+      input: 'Asha Ben',
+      inputLabel: '1–4 names to add to the final list',
+      gen: function (input) {
+        var names = String(input === undefined || input === null ? '' : input).trim().split(/[\s,]+/).filter(Boolean);
+        if (names.length < 1 || names.length > 4 || names.some(function (n) { return !/^[A-Za-z]{1,10}$/.test(n); })) throw new Error('Give 1-4 names (letters only), e.g. Asha Ben');
+        var lines = ['final int MAX = 3;', '// MAX = 4;                       ERROR: cannot assign a value to final variable MAX', 'final List<String> names = new ArrayList<>();'];
+        names.forEach(function (n) { lines.push('names.add("' + n + '");                // OK: the LIST changes, not the reference'); });
+        var L = lines.length;
+        lines.push('// names = new ArrayList<>();     ERROR: cannot reassign a final reference');
+        lines.push('final int[] scores = {10, 20};');
+        lines.push('scores[0] = 99;                   // OK: array elements are not final');
+        lines.push('final List<String> frozen = List.copyOf(names);');
+        lines.push('frozen.add("Zed");                // compiles, but throws UnsupportedOperationException');
+        lines.push('final int total;                  // blank final');
+        lines.push('total = scores[0] + scores[1];    // first (and only) assignment');
+        lines.push('// total = 0;                     ERROR: variable total might already have been assigned');
+        var code = lines.join('\n');
+        var frames = [], vars = {}, heap = [], list = [];
+        function snap(hlLine, cls, hv, hh, narr) {
+          var h = {}; h[hlLine] = cls;
+          var heapEntries = heap.map(function (e) { return [e[0], typeof e[1] === 'function' ? e[1]() : e[1]]; });
+          frames.push({ narr: narr, parts: [
+            { type: 'code', label: 'Statements (run top to bottom)', lang: 'java', code: code, hl: h },
+            { type: 'vars', label: 'Stack: final variables (the labels)', vals: JSON.parse(JSON.stringify(vars)), hl: hv || {} },
+            { type: 'map', label: 'Heap: objects (the boxes)', entries: heapEntries.length ? heapEntries : [['(empty)', '']], hl: hh || {} }
+          ] });
+        }
+        vars.MAX = 3;
+        snap(1, 'ok', { MAX: 'ok' }, {}, '<code>final int MAX = 3</code>: a primitive final. The value itself is locked.');
+        snap(2, 'bad', { MAX: 'bad' }, {}, 'Reassigning <code>MAX</code> is a <span class="c-r">compile error</span>. For primitives, "final" really means the value can never change.');
+        vars.names = '→ #1';
+        heap.push(['#1 ArrayList', function () { return '[' + list.join(', ') + ']'; }]);
+        snap(3, 'ok', { names: 'ok' }, { '#1 ArrayList': 'ok' }, '<code>names</code> is a final <b>reference</b> (label) pointing at ArrayList #1 on the heap (the box).');
+        names.forEach(function (n, i) {
+          list.push(n);
+          snap(4 + i, 'ok', { names: 'cur' }, { '#1 ArrayList': 'ok' }, '<code>names.add("' + n + '")</code> is fine: we change what is <b>inside</b> box #1. The label <code>names</code> still points to the same box.');
+        });
+        snap(L + 1, 'bad', { names: 'bad' }, { '#1 ArrayList': 'cur' }, 'Pointing <code>names</code> at a <b>new</b> list would move the label → <span class="c-r">compile error</span>. That is all final protects.');
+        vars.scores = '→ #2';
+        var sc = [10, 20];
+        heap.push(['#2 int[]', function () { return '[' + sc.join(', ') + ']'; }]);
+        snap(L + 2, 'ok', { scores: 'ok' }, { '#2 int[]': 'ok' }, 'Arrays are objects too: <code>scores</code> is a final label on array #2.');
+        sc[0] = 99;
+        snap(L + 3, 'ok', { scores: 'cur' }, { '#2 int[]': 'ok' }, '<code>scores[0] = 99</code> compiles and runs — array <b>elements</b> are never final. (A "final array constant" is a classic security bug.)');
+        vars.frozen = '→ #3';
+        var frozenTxt = '[' + list.join(', ') + '] (unmodifiable copy)';
+        heap.push(['#3 ImmutableList', frozenTxt]);
+        snap(L + 4, 'ok', { frozen: 'ok' }, { '#3 ImmutableList': 'ok' }, 'Want the <b>box</b> locked as well? Use an immutable object. <code>List.copyOf</code> makes an unmodifiable snapshot #3.');
+        snap(L + 5, 'bad', { frozen: 'cur' }, { '#3 ImmutableList': 'bad' }, '<code>frozen.add(...)</code> compiles (the type is just <code>List</code>) but <span class="c-r">throws UnsupportedOperationException</span> at runtime. Immutability is a property of the object, not of the variable.');
+        vars.total = '(unassigned)';
+        snap(L + 6, 'cur', { total: 'cur' }, {}, '<b>Blank final</b>: declared without a value. The compiler tracks it and allows exactly one assignment on every path.');
+        vars.total = sc[0] + sc[1];
+        snap(L + 7, 'ok', { total: 'ok' }, {}, 'First assignment: <code>total = 99 + 20 = ' + (sc[0] + sc[1]) + '</code>.');
+        snap(L + 8, 'bad', { total: 'bad' }, {}, 'A second assignment is a <span class="c-r">compile error</span> ("might already have been assigned"). Summary: final = <b>one assignment</b>; immutability = <b>no changes to the object</b>.');
+        return frames;
+      }
+    },
+    examples: [
+      {
+        title: 'Effectively final and lambdas',
+        html: `<p>A lambda can use a local variable only if it is <b>final or effectively final</b> (never reassigned). The lambda captures a <i>copy</i> of the value; if the variable could change later, the copy and the variable would disagree. Workarounds: compute into a new variable, or use a mutable holder such as <code>AtomicInteger</code> (and think twice).</p>`,
+        code: `import java.util.*;
+import java.util.concurrent.atomic.*;
+
+public class Main {
+    public static void main(String[] args) {
+        List<Integer> nums = List.of(1, 2, 3, 4);
+        int threshold = 2;                              // effectively final: never reassigned
+        nums.stream().filter(n -> n > threshold).forEach(System.out::println);   // 3 4
+
+        int count = 0;
+        // nums.forEach(n -> count++);                  // ERROR: local variables referenced from a lambda must be final or effectively final
+        AtomicInteger counter = new AtomicInteger();   // the REFERENCE is effectively final; the object is mutable
+        nums.forEach(n -> counter.incrementAndGet());
+        System.out.println(counter.get() + count);     // 4
+    }
+}`
+      },
+      {
+        title: 'Blank finals: assigned once on every path',
+        html: `<p>The compiler proves each <code>final</code> field gets exactly one value in every constructor branch. Static finals can be computed in a <code>static</code> block.</p>`,
+        code: `import java.util.*;
+
+class Config {
+    static final Map<String, Integer> LIMITS;           // static blank final
+    static {
+        Map<String, Integer> m = new HashMap<>();
+        m.put("free", 5);
+        m.put("pro", 500);
+        LIMITS = Collections.unmodifiableMap(m);        // assigned exactly once
+    }
+
+    private final String plan;
+    private final int limit;                            // instance blank final
+
+    Config(String plan) {
+        if (LIMITS.containsKey(plan)) {
+            this.plan = plan;
+            this.limit = LIMITS.get(plan);
+        } else {
+            this.plan = "free";                         // every branch must assign both fields
+            this.limit = LIMITS.get("free");
+        }
+    }
+    int limit() { return limit; }
+}
+
+public class Main {
+    public static void main(String[] args) {
+        System.out.println(new Config("pro").limit() + " " + new Config("gold").limit());   // 500 5
+    }
+}`
+      },
+      {
+        title: 'final methods protect a security check',
+        html: `<p>If a subclass could override <code>authorize()</code>, it could simply return <code>true</code>. Marking it <code>final</code> keeps the rule in the parent while still allowing subclasses to customise other steps.</p>`,
+        code: `abstract class BankOperation {
+    // final: no subclass can weaken the check
+    final String run(String user, long amount) {
+        if (!authorize(user, amount)) return "DENIED " + user;
+        return execute(amount);
+    }
+    final boolean authorize(String user, long amount) {
+        return user != null && !user.isBlank() && amount > 0 && amount <= 100_000;
+    }
+    protected abstract String execute(long amount);
+}
+
+class Transfer extends BankOperation {
+    @Override protected String execute(long amount) { return "transferred " + amount; }
+    // @Override boolean authorize(String u, long a) { return true; }   // ERROR: authorize is final
+}
+
+public class Main {
+    public static void main(String[] args) {
+        BankOperation op = new Transfer();
+        System.out.println(op.run("asha", 5_000));    // transferred 5000
+        System.out.println(op.run("asha", 900_000));  // DENIED asha
+    }
+}`
+      },
+      {
+        title: 'Compile-time constants are inlined (and can be switch labels)',
+        html: `<p>A <code>static final</code> primitive or String initialised with a constant expression is a <b>constant variable</b>. javac copies its value into every class that uses it, and it may be used as a <code>case</code> label. A <code>static final</code> computed at runtime is final, but <b>not</b> a constant.</p>
+          ${H.table(['Declaration', 'Constant variable?', 'Usable as case label?'], [['<code>static final int GOLD = 3;</code>', H.c('g', 'yes'), H.c('g', 'yes')], ['<code>static final int SILVER = Integer.parseInt("2");</code>', H.c('r', 'no (runtime value)'), H.c('r', 'no')], ['<code>static final Integer BRONZE = 1;</code>', H.c('r', 'no (boxed type)'), H.c('r', 'no')]])}`,
+        code: `public class Main {
+    static final int GOLD = 3;                              // constant variable: inlined by javac
+    static final int SILVER = Integer.parseInt("2");        // final but NOT a compile-time constant
+
+    static String tier(int level) {
+        switch (level) {
+            case GOLD: return "gold";                       // OK: constant
+            // case SILVER: return "silver";                // ERROR: constant expression required
+            default: return level == SILVER ? "silver" : "basic";
+        }
+    }
+    public static void main(String[] args) {
+        System.out.println(tier(3) + " " + tier(2) + " " + tier(1));   // gold silver basic
+    }
+}`
+      }
+    ],
+    deepDive: `<p><b>1. final fields and the Java Memory Model.</b> JLS §17.5 gives final fields a special guarantee: once a constructor finishes (and <code>this</code> did not escape during construction), <b>every thread</b> that sees a reference to the object sees the correctly initialized values of its final fields — without <code>volatile</code> or locks. That is why immutable objects are automatically thread-safe and can be shared freely. Non-final fields get no such guarantee under a data race.</p>
+      <p><b>2. Constant inlining has a deployment trap.</b> If library A has <code>public static final int TIMEOUT = 30;</code> and app B uses it, the number 30 is compiled <i>into</i> B. Change A to 60 and redeploy only A → B still uses 30 until recompiled. For values that may change, use a non-constant (e.g. a static method or a value read at runtime).</p>
+      <p><b>3. Performance.</b> Modern JITs devirtualize non-final methods via Class Hierarchy Analysis anyway, so <code>final</code> methods are not a meaningful speed-up. Use <code>final</code> for <b>design and safety</b>; the JIT does treat <code>static final</code> fields as true constants, which helps constant folding.</p>
+      <p><b>4. Reflection and final.</b> Deep reflection (<code>Field.setAccessible(true)</code> + <code>set</code>) can still change a final <i>instance</i> field of a normal class, but not <code>static final</code> fields, record fields, or hidden-class fields. JEP 500 ("Prepare to Make Final Mean Final") makes the JDK warn about such mutation as a first step toward blocking it — do not rely on it.</p>
+      <p><b>5. Why is String final?</b> Strings are used for class names, file paths, URLs and as HashMap keys. If a subclass could make a "String" mutable, a value checked for security could change after the check, pooled literals shared by unrelated code could be corrupted, and the cached <code>hashCode</code> would lie. final + immutability makes all of this safe.</p>
+      <p><b>6. Between open and final: sealed (Java 17).</b> <code>sealed class Shape permits Circle, Square</code> allows only the listed subclasses; each must be <code>final</code>, <code>sealed</code> or <code>non-sealed</code>. Records and enums are implicitly final (an enum constant with a body becomes an anonymous subclass internally).</p>`,
+    aiEra: `<p><b>What AI changes:</b> some generated code sprinkles <code>final</code> on every local and parameter; other code omits it on fields that should never change. Neither shows judgement. AI also loves "make it final" as an immutability fix, which is wrong for mutable collections.</p>
+      <p><b>Use AI as a partner:</b> <code>Audit this class: which fields can be final, which mutable objects leak, and is it truly immutable?</code> · <code>Explain why this lambda capture fails to compile</code> · <code>Which constants here are inlined into callers?</code></p>
+      <p><b>Where AI goes wrong:</b> claiming a <code>final List</code> cannot be modified, forgetting defensive copies in "immutable" classes, or suggesting <code>final</code> for performance.</p>
+      <p><b>What you must still own:</b> the difference between a fixed reference and an immutable object, the thread-safety value of final fields, and when to close a class (final/sealed) versus leaving it open.</p>`,
+    problems: [
+      {
+        title: 'Guided: Make the Order Class Truly Immutable',
+        level: 'Medium', tags: ['final', 'immutability', 'defensive copy'], companies: ['Goldman Sachs', 'Morgan Stanley', 'Atlassian'],
+        statement: `<p>An <code>Order</code> has an id and a list of item names. The team marked every field <code>final</code> and thinks it is immutable — but a bug report shows orders changing after creation. Rewrite <code>Order</code> so that <b>nothing</b> outside the class can change an order after it is built. Provide <code>withItem(String)</code> that returns a <b>new</b> Order with one more item.</p>`,
+        constraints: `Java 21. Up to 10<sup>4</sup> items per order. Must be safe to share between threads without locks.`,
+        example: `<p>Caller builds <code>items = [pen]</code>, creates an Order, then does <code>items.add("laptop")</code> and <code>order.items().add("free tv")</code>. Expected: order still shows ${H.c('g', '[pen]')}. <code>order.withItem("ink")</code> → a new order ${H.c('b', '[pen, ink]')}; the original stays ${H.c('g', '[pen]')}.</p>`,
+        brute: {
+          why: `<p>"All fields final" only freezes the <b>references</b>. The constructor stores the caller's own list (so the caller can still change it), and the getter hands out that same list (so anyone can change it). The class can also be subclassed to add mutable state.</p>`,
+          code: `import java.util.*;
+
+class Order {
+    private final String id;
+    private final List<String> items;            // final reference... to a list others can change
+    Order(String id, List<String> items) { this.id = id; this.items = items; }   // stores caller's list
+    List<String> items() { return items; }       // hands out the real list
+}
+
+public class Main {
+    public static void main(String[] args) {
+        List<String> items = new ArrayList<>(List.of("pen"));
+        Order o = new Order("A1", items);
+        items.add("laptop");                     // caller mutates through its own reference
+        o.items().add("free tv");                // anyone mutates through the getter
+        System.out.println(o.items());           // [pen, laptop, free tv]  <- not immutable!
+    }
+}`
+        },
+        mcq: { q: 'Which single change fixes BOTH leaks (constructor and getter) at once?', options: ['Store List.copyOf(items) in the constructor and return that field', 'Mark the getter final', 'Make the items field volatile', 'Return items.toString()'], answer: 0, explain: 'List.copyOf makes an unmodifiable snapshot independent of the caller\'s list; returning it is safe because nobody can modify it. (It also rejects null elements.)' },
+        hints: [
+          `<p>Hint 1: There are two doors into the list — the constructor argument and the getter's return value. Both must be closed.</p>`,
+          `<p>Hint 2: <code>this.items = List.copyOf(items);</code> copies in and produces an unmodifiable list, which can then be returned directly. Make the class <code>final</code> so no subclass adds mutable state.</p>`,
+          `<p>Hint 3: "Changing" = building a new object: copy into a new <code>ArrayList</code>, add, and pass to the constructor (which copies again). Validate null id.</p>`
+        ],
+        solution: {
+          approach: `<p>Apply the immutability recipe: <code>final</code> class, <code>private final</code> fields, validate and <b>copy in</b> with <code>List.copyOf</code> (unmodifiable, independent snapshot), expose that unmodifiable list directly, no setters, and "modifier" methods that return new instances. Thanks to final-field semantics, the result is thread-safe without locks.</p>`,
+          code: `import java.util.*;
+
+final class Order {                                       // no subclasses can add mutable state
+    private final String id;
+    private final List<String> items;                     // unmodifiable snapshot
+
+    Order(String id, List<String> items) {
+        this.id = Objects.requireNonNull(id, "id");
+        this.items = List.copyOf(items);                  // copy IN: caller's list is no longer connected
+    }
+
+    String id() { return id; }
+    List<String> items() { return items; }                // safe: List.copyOf result is unmodifiable
+
+    Order withItem(String item) {                         // "change" = new object
+        List<String> next = new ArrayList<>(items);
+        next.add(Objects.requireNonNull(item));
+        return new Order(id, next);
+    }
+
+    @Override public String toString() { return id + items; }
+}
+
+public class Main {
+    public static void main(String[] args) {
+        List<String> items = new ArrayList<>(List.of("pen"));
+        Order o = new Order("A1", items);
+        items.add("laptop");                              // no effect on o
+        try {
+            o.items().add("free tv");
+        } catch (UnsupportedOperationException e) {
+            System.out.println("getter is read-only");
+        }
+        Order o2 = o.withItem("ink");
+        System.out.println(o + " " + o2);                 // A1[pen] A1[pen, ink]
+    }
+}`,
+          alt: [{ lang: 'java', code: `import java.util.*;
+
+// The same thing as a record (Java 16+): records are final with private final fields.
+record Order(String id, List<String> items) {
+    Order {                                               // compact constructor
+        Objects.requireNonNull(id, "id");
+        items = List.copyOf(items);                       // defensive copy: records are only SHALLOWLY immutable
+    }
+    Order withItem(String item) {
+        List<String> next = new ArrayList<>(items);
+        next.add(item);
+        return new Order(id, next);
+    }
+}
+
+public class Main {
+    public static void main(String[] args) {
+        List<String> src = new ArrayList<>(List.of("pen"));
+        Order o = new Order("A1", src);
+        src.add("laptop");
+        System.out.println(o + " " + o.withItem("ink"));
+    }
+}` }],
+          dry: {
+            head: ['action', 'brute (final fields only)', 'immutable version'],
+            rows: [
+              ['new Order("A1", items=[pen])', 'stores the same list', 'stores copy [pen]'],
+              ['items.add("laptop")', H.c('r', 'order becomes [pen, laptop]'), H.c('g', 'order stays [pen]')],
+              ['o.items().add("free tv")', H.c('r', 'succeeds'), H.c('g', 'UnsupportedOperationException')],
+              ['o.withItem("ink")', 'n/a', 'new order [pen, ink]; o unchanged']
+            ]
+          },
+          complexity: `<p>Constructor and <code>withItem</code> are O(k) for k items (the copy) — the price of safety. Reads are O(1). For very frequent appends, consider a persistent collection or a builder.</p>`,
+          followUps: ['Why does final-field semantics make this safe to share across threads?', 'What if items were mutable objects (e.g. <code>Item</code> with setters) — is <code>List.copyOf</code> still enough?', 'Write a Builder for Order and compare with <code>withItem</code>.']
+        }
+      }
+    ]
+  });
+
+  /* ======================================================================
+     TOPIC 8 — Composition vs inheritance
+     ====================================================================== */
+  topics.push({
+    title: 'Composition vs Inheritance: HAS-A Beats IS-A (Most of the Time)',
+    analogy: `<p><b>Welding vs Lego.</b> Inheritance is like <b>welding</b> a new part onto an old machine: strong and quick, but now the two are one piece. If the old machine's inner wiring changes, your welded part may short-circuit, and you can never unbolt it. Composition is <b>Lego</b>: a car <b>has an</b> engine block clicked in. Want an electric engine? Pop the old block out, click a new one in — even while the car is "running". Most real-world reuse is "has a" (a car has an engine, a phone has a camera), not "is a".</p>`,
+    explain: `<p><b>Inheritance (IS-A)</b>: <code>class Car extends Vehicle</code>. You get all of the parent's code, and you are tied to all of its <b>implementation details</b>.</p>
+      <p><b>Composition (HAS-A)</b>: <code>class Car { private final Engine engine; }</code>. The car holds a reference to another object and <b>delegates</b> work to it (<code>engine.start()</code>). The engine is usually typed as an <b>interface</b>, so any implementation can be plugged in.</p>
+      ${H.table(['Question', 'Inheritance', 'Composition'], [
+        ['Coupling', 'tight — depends on parent internals', 'loose — depends only on the public interface'],
+        ['Change behaviour at runtime?', 'no (class fixed at compile time)', 'yes (swap the field)'],
+        ['Combining features', 'class explosion (2<sup>n</sup> subclasses)', 'mix and match n parts'],
+        ['Parent changes internals', 'can silently break child (<b>fragile base class</b>)', 'unaffected'],
+        ['Code to write', 'least', 'a little more (forwarding methods)'],
+        ['Testing', 'hard to isolate from parent', 'easy: inject a fake/mock part']
+      ])}
+      <p><b>The fragile base class problem</b> (Effective Java, item 18): you extend <code>HashSet</code> to count insertions by overriding <code>add</code> and <code>addAll</code>. Adding 3 items reports <b>6</b>, because the inherited <code>addAll</code> internally calls <code>add</code> — <i>your</i> overridden <code>add</code>. That "self-use" is an undocumented implementation detail you inherited by accident. The visualizer below steps through it.</p>
+      <p><b>When IS inheritance right?</b> When all of these hold: (1) it is a true IS-A that passes the <b>Liskov test</b> ("can a subclass object be used everywhere the parent is, without surprises?"), (2) the parent was <b>designed and documented for extension</b> (or you own both classes, in the same package), and (3) you want the subclass to change when the parent changes. Otherwise: <b>favour composition</b>.</p>`,
+    clues: [
+      '"Favor composition over inheritance — why?" → coupling, fragile base class, runtime flexibility',
+      '"IS-A vs HAS-A"',
+      '"Behaviour must change at runtime" / "pluggable algorithm" → Strategy (composition)',
+      '"Features combine freely (milk + sugar + whip)" → Decorator / composition, not 2<sup>n</sup> subclasses',
+      '"Is Square a Rectangle?", "Stack extends Vector" → Liskov violations and JDK design mistakes',
+      '"Extend a class you do not control" (e.g. HashSet) → wrap it instead (forwarding)'
+    ],
+    code: [`
+      // Strategy via composition: the behaviour is an object you can swap at runtime
+      interface FlyBehavior { String fly(); }
+      class FlyWithWings implements FlyBehavior { public String fly() { return "flaps wings"; } }
+      class NoFly implements FlyBehavior { public String fly() { return "cannot fly"; } }
+      class RocketFly implements FlyBehavior { public String fly() { return "zooms on a rocket!"; } }
+
+      class Duck {
+          private final String name;
+          private FlyBehavior flyBehavior;                 // HAS-A
+          Duck(String name, FlyBehavior fb) { this.name = name; this.flyBehavior = fb; }
+          void setFlyBehavior(FlyBehavior fb) { this.flyBehavior = fb; }   // swap at runtime
+          String performFly() { return name + " " + flyBehavior.fly(); }   // delegate
+      }
+
+      public class Main {
+          public static void main(String[] args) {
+              Duck mallard = new Duck("Mallard", new FlyWithWings());
+              Duck rubber = new Duck("Rubber duck", new NoFly());
+              System.out.println(mallard.performFly());     // Mallard flaps wings
+              System.out.println(rubber.performFly());      // Rubber duck cannot fly
+              rubber.setFlyBehavior(new RocketFly());       // impossible with inheritance
+              System.out.println(rubber.performFly());      // Rubber duck zooms on a rocket!
+          }
+      }`],
+    codeTitle: ['Composition + interface = Strategy pattern'],
+    viz: {
+      title: 'Fragile base class: counting additions to a HashSet',
+      input: 'a b c',
+      inputLabel: '1–5 elements to addAll (letters or numbers)',
+      gen: function (input) {
+        var els = String(input === undefined || input === null ? '' : input).trim().split(/[\s,]+/).filter(Boolean);
+        if (els.length < 1 || els.length > 5 || els.some(function (e) { return !/^[A-Za-z0-9]{1,6}$/.test(e); })) throw new Error('Give 1-5 short elements, e.g. a b c');
+        var n = els.length;
+        var codeA = [
+          'class InstrumentedSet<E> extends HashSet<E> {      // IS-A HashSet',
+          '    int addCount = 0;',
+          '    @Override public boolean add(E e) {',
+          '        addCount++;',
+          '        return super.add(e);',
+          '    }',
+          '    @Override public boolean addAll(Collection<? extends E> c) {',
+          '        addCount += c.size();',
+          '        return super.addAll(c);',
+          '    }',
+          '}',
+          '// inherited AbstractCollection.addAll (JDK, simplified):',
+          '//     for (E e : c) if (add(e)) modified = true;   <- calls add() VIRTUALLY',
+          '// main: s.addAll(List.of(' + els.map(function (e) { return '"' + e + '"'; }).join(', ') + '));  print(s.addCount);'
+        ].join('\n');
+        var codeB = [
+          'class CountingSet<E> {                             // HAS-A Set',
+          '    private final Set<E> inner;',
+          '    private int addCount = 0;',
+          '    CountingSet(Set<E> inner) { this.inner = inner; }',
+          '    public boolean add(E e) { addCount++; return inner.add(e); }',
+          '    public boolean addAll(Collection<? extends E> c) {',
+          '        addCount += c.size();',
+          '        return inner.addAll(c);    // inner calls ITS OWN add(), not ours',
+          '    }',
+          '}',
+          '// main: s.addAll(List.of(' + els.map(function (e) { return '"' + e + '"'; }).join(', ') + '));  print(s.addCount);'
+        ].join('\n');
+        var frames = [], cnt = 0, set = [];
+        function fa(hl, st, narr, hv) {
+          frames.push({ narr: narr, parts: [{ type: 'code', label: 'Inheritance version', lang: 'java', code: codeA, hl: hl }, { type: 'stack', label: 'Call stack', items: st, hl: one(st.length - 1, 'cur') }, { type: 'vars', label: 'State', vals: { addCount: cnt, 'expected': n }, hl: hv || {} }, { type: 'set', label: 'elements in the set', items: set.slice() }] });
+        }
+        fa({ 14: 'cur' }, ['main'], 'We add <b>' + n + '</b> elements with one <code>addAll</code> call. Obviously addCount should end at <b>' + n + '</b>... right?');
+        cnt += n;
+        fa({ 7: 'cur', 8: 'ok' }, ['main', 'InstrumentedSet.addAll'], 'Our <code>addAll</code> adds <code>c.size()</code> = ' + n + ' to the counter. So far so good: addCount = <b>' + cnt + '</b>.', { addCount: 'ok' });
+        fa({ 9: 'cur', 13: 'cur' }, ['main', 'InstrumentedSet.addAll', 'AbstractCollection.addAll'], '<code>super.addAll(c)</code> — HashSet does not have its own addAll, so the inherited <code>AbstractCollection.addAll</code> runs. Its secret: it loops and calls <code>add(e)</code> for each element. That call is <b>virtual</b>, and the object is an InstrumentedSet...');
+        els.forEach(function (e, i) {
+          cnt++;
+          if (set.indexOf(e) < 0) set.push(e);
+          fa({ 3: 'bad', 4: 'bad', 13: 'cur' }, ['main', 'InstrumentedSet.addAll', 'AbstractCollection.addAll', 'InstrumentedSet.add("' + e + '")'], '...so <b>our</b> <code>add("' + e + '")</code> runs and increments again → addCount = <b>' + cnt + '</b>' + (i === n - 1 ? '. Every element was counted twice!' : '.'), { addCount: 'bad' });
+        });
+        fa({ 14: 'bad' }, ['main'], '<span class="c-r">Result: addCount = ' + cnt + ', expected ' + n + '.</span> We depended on an undocumented detail of the parent ("addAll uses add"). If a future JDK changed that detail, the bug would flip or vanish — that is the <b>fragile base class</b> problem.', { addCount: 'bad' });
+        cnt = 0; set = [];
+        function fb(hl, st, narr, hv) {
+          frames.push({ narr: narr, parts: [{ type: 'code', label: 'Composition version', lang: 'java', code: codeB, hl: hl }, { type: 'stack', label: 'Call stack', items: st, hl: one(st.length - 1, 'cur') }, { type: 'vars', label: 'State', vals: { addCount: cnt, 'expected': n }, hl: hv || {} }, { type: 'set', label: 'elements in inner set', items: set.slice() }] });
+        }
+        cnt += n;
+        fb({ 6: 'cur', 7: 'ok' }, ['main', 'CountingSet.addAll'], 'Composition: <code>CountingSet</code> <b>has</b> a Set. Its addAll adds ' + n + ' → addCount = <b>' + cnt + '</b>.', { addCount: 'ok' });
+        els.forEach(function (e) { if (set.indexOf(e) < 0) set.push(e); });
+        fb({ 8: 'cur' }, ['main', 'CountingSet.addAll', 'HashSet.addAll (inner)'], '<code>inner.addAll(c)</code> runs on the <b>inner HashSet object</b>. When it internally calls <code>add</code>, that is <i>HashSet\'s</i> add on the inner object — our wrapper is not involved, so nothing is double counted.');
+        fb({ 11: 'ok' }, ['main'], '<span class="c-g">Result: addCount = ' + cnt + ' — correct.</span> The wrapper depends only on Set\'s <b>public contract</b>, so it works with any Set (HashSet, TreeSet, LinkedHashSet) and survives JDK changes.', { addCount: 'ok' });
+        frames.push({ narr: 'The two designs side by side. IS-A ties you to the parent\'s internals; HAS-A ties you only to an interface.', parts: [
+          { type: 'graph', label: 'Inheritance (IS-A) vs composition (HAS-A)', directed: true, height: 50, nodes: [
+            { id: 'IS', label: 'InstrumentedSet', x: 18, y: 38, shape: 'box' }, { id: 'HS', label: 'HashSet', x: 18, y: 10, shape: 'box' },
+            { id: 'CS', label: 'CountingSet', x: 70, y: 38, shape: 'box' }, { id: 'SI', label: 'Set (interface)', x: 70, y: 10, shape: 'box' }, { id: 'IMPL', label: 'any Set impl', x: 92, y: 24, shape: 'box' }
+          ], edges: [['IS', 'HS', 'extends (internals leak)'], ['CS', 'SI', 'has-a field'], ['IMPL', 'SI', 'implements']], hl: { IS: 'bad', CS: 'ok' }, ehl: { 'IS-HS': 'bad', 'CS-SI': 'ok' } },
+          { type: 'table', label: 'Outcome', columns: ['Design', 'addCount after addAll(' + n + ')'], rows: [['extends HashSet', String(2 * n)], ['wraps a Set', String(n)]], hl: { 0: 'bad', 1: 'ok' } }
+        ] });
+        return frames;
+      }
+    },
+    examples: [
+      {
+        title: 'A JDK mistake: Stack extends Vector',
+        html: `<p><code>java.util.Stack</code> (Java 1.0) <b>extends</b> <code>Vector</code>, so it inherits <code>add(index, e)</code>, <code>remove(index)</code>, <code>get(i)</code>… A "stack" that lets you insert in the middle is not a stack. Had it <b>wrapped</b> a Vector, only push/pop/peek would be exposed. Today use <code>ArrayDeque</code> through the <code>Deque</code> interface.</p>`,
+        code: `import java.util.*;
+
+public class Main {
+    public static void main(String[] args) {
+        Stack<Integer> st = new Stack<>();
+        st.push(1);
+        st.push(2);
+        st.add(0, 99);                           // inherited from Vector: breaks LIFO thinking
+        System.out.println(st + " top=" + st.peek());   // [99, 1, 2] top=2
+
+        Deque<Integer> dq = new ArrayDeque<>();  // modern choice: only stack/queue operations
+        dq.push(1);
+        dq.push(2);
+        System.out.println(dq.pop() + " " + dq.pop());  // 2 1
+    }
+}`
+      },
+      {
+        title: 'Avoiding the 2^n class explosion',
+        html: `<p>Coffee with optional milk, sugar and whipped cream. With inheritance you would need <code>MilkCoffee</code>, <code>SugarCoffee</code>, <code>MilkSugarCoffee</code>, <code>MilkSugarWhipCoffee</code>… 2<sup>3</sup> = 8 classes, and 16 when a fourth option arrives. Composing a coffee from a list of add-ons needs one class per add-on.</p>
+          ${H.table(['Options', 'Subclasses needed', 'Add-on objects needed'], [['3', '8', '3'], ['4', '16', '4'], ['10', '1024', '10']])}`,
+        code: `import java.util.*;
+
+interface AddOn { String name(); int price(); }
+record Milk() implements AddOn { public String name() { return "milk"; } public int price() { return 20; } }
+record Sugar() implements AddOn { public String name() { return "sugar"; } public int price() { return 5; } }
+record Whip() implements AddOn { public String name() { return "whip"; } public int price() { return 30; } }
+
+class Coffee {
+    private final List<AddOn> addOns;                 // HAS-A list of parts
+    Coffee(AddOn... addOns) { this.addOns = List.of(addOns); }
+    int price() { return 100 + addOns.stream().mapToInt(AddOn::price).sum(); }
+    String describe() {
+        StringBuilder sb = new StringBuilder("coffee");
+        for (AddOn a : addOns) sb.append(" + ").append(a.name());
+        return sb.toString();
+    }
+}
+
+public class Main {
+    public static void main(String[] args) {
+        Coffee c = new Coffee(new Milk(), new Whip());
+        System.out.println(c.describe() + " = " + c.price());   // coffee + milk + whip = 150
+    }
+}`
+      },
+      {
+        title: 'Square extends Rectangle breaks Liskov',
+        html: `<p>Mathematically a square IS-A rectangle. In code, a mutable <code>Rectangle</code> promises "setting the width does not change the height". A <code>Square</code> must break that promise, so code written for rectangles gets wrong answers. IS-A in English ≠ IS-A in code; the test is <b>behaviour</b>.</p>`,
+        code: `class Rectangle {
+    protected int w, h;
+    void setWidth(int w) { this.w = w; }
+    void setHeight(int h) { this.h = h; }
+    int area() { return w * h; }
+}
+
+class Square extends Rectangle {
+    @Override void setWidth(int s) { w = s; h = s; }    // must keep sides equal...
+    @Override void setHeight(int s) { w = s; h = s; }   // ...which breaks Rectangle's promise
+}
+
+public class Main {
+    static int stretch(Rectangle r) {                   // written for rectangles
+        r.setWidth(5);
+        r.setHeight(4);
+        return r.area();                                // a rectangle caller expects 20
+    }
+    public static void main(String[] args) {
+        System.out.println(stretch(new Rectangle()));   // 20
+        System.out.println(stretch(new Square()));      // 16  <- surprise: substitution failed
+    }
+}`
+      },
+      {
+        title: 'Decorator: composition that keeps the same interface',
+        html: `<p>A decorator <b>implements</b> an interface and <b>wraps</b> another object of that same interface, adding behaviour before/after delegating. Java I/O is built this way: <code>new BufferedReader(new InputStreamReader(...))</code>. You stack features at runtime in any order.</p>`,
+        code: `interface Notifier { String send(String msg); }
+
+class EmailNotifier implements Notifier {
+    public String send(String msg) { return "email(" + msg + ")"; }
+}
+
+class LoggingNotifier implements Notifier {           // decorator
+    private final Notifier inner;
+    LoggingNotifier(Notifier inner) { this.inner = inner; }
+    public String send(String msg) { return "log>" + inner.send(msg); }
+}
+
+class UppercaseNotifier implements Notifier {         // another decorator
+    private final Notifier inner;
+    UppercaseNotifier(Notifier inner) { this.inner = inner; }
+    public String send(String msg) { return inner.send(msg.toUpperCase()); }
+}
+
+public class Main {
+    public static void main(String[] args) {
+        Notifier n = new LoggingNotifier(new UppercaseNotifier(new EmailNotifier()));
+        System.out.println(n.send("hi"));             // log>email(HI)
+    }
+}`
+      }
+    ],
+    deepDive: `<p><b>1. Self-use is the root cause.</b> When a class calls its own overridable methods internally, those calls become hidden extension points. Effective Java (items 18–19): either <b>design and document for inheritance</b> (<code>@implSpec</code> notes such as "This implementation calls <code>add</code> for each element") or <b>prohibit it</b> (final class or private constructors + static factories).</p>
+      <p><b>2. Forwarding classes.</b> Java has no built-in delegation syntax (Kotlin has <code>class X(s: Set) : Set by s</code>). The idiom is a reusable <code>ForwardingSet&lt;E&gt; implements Set&lt;E&gt;</code> that forwards all ~15 methods to a wrapped set; your wrappers extend <i>that</i>, which is safe because ForwardingSet has no self-use. Guava ships <code>ForwardingSet</code>, <code>ForwardingMap</code> etc. IDEs and AI generate the boilerplate in seconds.</p>
+      <p><b>3. Liskov Substitution Principle, precisely.</b> A subtype must not strengthen preconditions, weaken postconditions, or break invariants of the supertype. <code>Square</code> breaks the postcondition of <code>setWidth</code>; an immutable <code>Rectangle</code> (no setters) would make Square-as-subclass harmless.</p>
+      <p><b>4. Performance.</b> Delegation adds one call; the JIT inlines it almost always. The extra object costs ~16 bytes. Not a reason to choose inheritance.</p>
+      <p><b>5. Frameworks lean on composition.</b> Dependency injection (Spring, Guice, Dagger) wires objects together via constructor parameters — composition. Testing replaces a collaborator with a mock or fake; with inheritance you cannot "swap your parent" in a test.</p>
+      <p><b>6. Inheritance still has a place:</b> template-method skeletons designed for it (<code>AbstractList</code>), sealed hierarchies of data types, exception hierarchies (<code>IOException extends Exception</code>), and UI/framework base classes documented for extension. Keep such hierarchies shallow.</p>`,
+    aiEra: `<p><b>What AI changes:</b> forwarding methods, decorators and strategy interfaces — the "extra typing" that once pushed people toward <code>extends</code> — now cost seconds to generate. The economic argument for inheritance-for-reuse is basically gone.</p>
+      <p><b>Use AI as a partner:</b> <code>Rewrite this subclass of HashMap as a wrapper that exposes only what callers need</code> · <code>Does this subclass pass the Liskov test? Give a caller that breaks</code> · <code>Generate a ForwardingList and a decorator that logs every mutation</code>.</p>
+      <p><b>Where AI goes wrong:</b> it happily writes <code>class MyList extends ArrayList</code> to add one method, misses self-use bugs like the double count, and produces "god" base classes. It also sometimes over-applies patterns (a Strategy interface with one implementation forever).</p>
+      <p><b>What you must still own:</b> recognising true IS-A vs "I want to reuse code", spotting fragile-base-class risks, and choosing the simplest design that will survive change.</p>`,
+    problems: [
+      {
+        title: 'Guided: Fix the Double-Counting Set with Composition',
+        level: 'Medium', tags: ['composition', 'fragile base class', 'delegation'], companies: ['Microsoft', 'Uber', 'LinkedIn'],
+        statement: `<p><code>InstrumentedSet extends HashSet</code> counts how many elements were <i>attempted</i> to be added. After <code>addAll(List.of("a","b","c"))</code> it reports <b>6</b>. Rewrite it as <code>CountingSet&lt;E&gt;</code> that <b>wraps</b> any <code>Set&lt;E&gt;</code> (so it also works with a TreeSet), supports <code>add</code>, <code>addAll</code>, <code>contains</code>, <code>size</code>, and reports the correct count.</p>`,
+        constraints: `Java 21. Up to 10<sup>5</sup> additions. Must not depend on how any Set implementation is written internally.`,
+        example: `<p><code>s.add("x"); s.addAll(List.of("a","b","c")); s.add("a");</code> → addCount ${H.c('g', '5')} (5 attempts), size ${H.c('b', '4')} (duplicate "a" not stored). The inheritance version reports ${H.c('r', '8')}.</p>`,
+        brute: {
+          why: `<p>Extending HashSet and overriding both <code>add</code> and <code>addAll</code> double counts, because the inherited <code>addAll</code> calls the overridden <code>add</code>. "Fixing" it by removing the <code>addAll</code> override happens to work today but relies on the same hidden detail — a future JDK that implements addAll without calling add would silently undercount.</p>`,
+          code: `import java.util.*;
+
+class InstrumentedSet<E> extends HashSet<E> {
+    int addCount = 0;
+    @Override public boolean add(E e) { addCount++; return super.add(e); }
+    @Override public boolean addAll(Collection<? extends E> c) {
+        addCount += c.size();
+        return super.addAll(c);              // internally calls our add() again
+    }
+}
+
+public class Main {
+    public static void main(String[] args) {
+        InstrumentedSet<String> s = new InstrumentedSet<>();
+        s.add("x");
+        s.addAll(List.of("a", "b", "c"));
+        s.add("a");
+        System.out.println(s.addCount);      // 8, not 5
+    }
+}`
+        },
+        mcq: { q: 'Why does the composition version count correctly?', options: ['inner.addAll() calls add() on the inner set, not on the wrapper', 'HashSet.addAll is final', 'Composition disables dynamic dispatch', 'Because addCount is private'], answer: 0, explain: 'Dynamic dispatch still happens — but on the inner object, whose add() is HashSet\'s own. The wrapper\'s methods are only called by outside code.' },
+        hints: [
+          `<p>Hint 1: The bug comes from <i>being</i> a HashSet. If you only <i>hold</i> one, its internal calls can never reach your methods.</p>`,
+          `<p>Hint 2: <code>private final Set&lt;E&gt; inner;</code> passed in through the constructor; each public method forwards to <code>inner</code> after updating the counter.</p>`,
+          `<p>Hint 3: Count attempts in both <code>add</code> (+1) and <code>addAll</code> (+c.size()). For a full <code>Set</code> implementation, implement <code>Set&lt;E&gt;</code> and forward every method (or extend a ForwardingSet).</p>`
+        ],
+        solution: {
+          approach: `<p>Wrap instead of extend: the counter class holds a <code>Set</code> and forwards to it. Because the inner set is a different object, its internal self-calls never reach our overrides, so each attempt is counted exactly once, and the wrapper works with any <code>Set</code> implementation.</p>`,
+          code: `import java.util.*;
+
+class CountingSet<E> {
+    private final Set<E> inner;                       // HAS-A
+    private int addCount = 0;
+
+    CountingSet(Set<E> inner) { this.inner = Objects.requireNonNull(inner); }
+
+    public boolean add(E e) {
+        addCount++;
+        return inner.add(e);
+    }
+    public boolean addAll(Collection<? extends E> c) {
+        addCount += c.size();
+        return inner.addAll(c);                       // inner's own add() is used internally
+    }
+    public boolean contains(Object o) { return inner.contains(o); }
+    public int size() { return inner.size(); }
+    public int addCount() { return addCount; }
+    @Override public String toString() { return inner + " attempts=" + addCount; }
+}
+
+public class Main {
+    public static void main(String[] args) {
+        CountingSet<String> s = new CountingSet<>(new TreeSet<>());   // works with any Set
+        s.add("x");
+        s.addAll(List.of("a", "b", "c"));
+        s.add("a");
+        System.out.println(s);                        // [a, b, c, x] attempts=5
+        System.out.println(s.size() + " " + s.contains("b"));   // 4 true
+    }
+}`,
+          dry: {
+            head: ['call', 'wrapper addCount', 'inner set', 'inheritance version addCount'],
+            rows: [
+              ['add("x")', '1', '[x]', '1'],
+              ['addAll([a,b,c])', '1 + 3 = 4', '[a, b, c, x]', H.c('r', '1 + 3 + 3 = 7')],
+              ['add("a")', '5', 'unchanged (duplicate)', H.c('r', '8')],
+              ['final', H.c('g', '5'), 'size 4', H.c('r', '8')]
+            ]
+          },
+          complexity: `<p>Same as the wrapped set (HashSet O(1) average, TreeSet O(log N) per add) plus O(1) counting. Space: one extra object and one int.</p>`,
+          followUps: ['Make CountingSet implement <code>Set&lt;E&gt;</code> fully — which methods need counting?', 'What does <code>removeIf</code> on the inner set mean for your wrapper\'s guarantees?', 'How would you count with a decorator over <code>Collection</code> instead?']
+        }
+      }
+    ]
+  });
+
+  /* ======================================================================
+     TOPIC 9 — java.lang.Object methods
+     ====================================================================== */
+  topics.push({
+    title: 'The Object Class: equals, hashCode, toString, getClass, clone, wait/notify, finalize',
+    analogy: `<p>Every Java object is born with a <b>starter kit</b> from its great-ancestor <code>Object</code>, like every new phone ships with factory apps. <code>toString()</code> is the <b>name tag</b> (the factory one just says "Phone@1b6d3586"). <code>equals()</code> answers <b>"are we the same?"</b> (factory answer: only if you are literally the same device). <code>hashCode()</code> is the <b>locker number</b> a HashMap uses to decide where to store you. <code>getClass()</code> is your <b>birth certificate</b>. <code>clone()</code> is a <b>photocopier</b> that copies the page but not the things the page points to. <code>wait()/notify()</code> are the <b>waiting-room bell</b>. <code>finalize()</code> is an old, unreliable "last words" app that is being removed.</p>`,
+    explain: `<p>Every class extends <code>java.lang.Object</code>, directly or indirectly, so every object has these <b>11 methods</b>:</p>
+      ${H.table(['Method', 'Default behaviour', 'Override?'], [
+        ['<code>boolean equals(Object o)</code>', 'identity: <code>this == o</code>', H.c('g', 'yes') + ' for value-like classes'],
+        ['<code>int hashCode()</code>', 'identity hash (not the memory address in modern HotSpot)', H.c('g', 'yes — ALWAYS together with equals')],
+        ['<code>String toString()</code>', '<code>getClass().getName() + "@" + Integer.toHexString(hashCode())</code>', H.c('g', 'yes') + ' for logs/debugging'],
+        ['<code>Class&lt;?&gt; getClass()</code>', 'the runtime class', H.c('r', 'no (final)')],
+        ['<code>Object clone()</code>', 'protected; shallow field-by-field copy; needs <code>Cloneable</code> else <code>CloneNotSupportedException</code>', H.c('y', 'rarely — prefer copy constructors')],
+        ['<code>void finalize()</code>', 'called (maybe) before GC; deprecated since 9, for removal since 18', H.c('r', 'never — use try-with-resources / Cleaner')],
+        ['<code>wait()</code>, <code>wait(long)</code>, <code>wait(long, int)</code>, <code>notify()</code>, <code>notifyAll()</code>', 'thread coordination on the object\'s monitor', H.c('r', 'no (final)')]
+      ])}
+      <p><b>The equals contract</b> (for non-null x, y, z): <b>reflexive</b> <code>x.equals(x)</code>; <b>symmetric</b> x.equals(y) ⇔ y.equals(x); <b>transitive</b>; <b>consistent</b> (same answer while nothing changes); and <code>x.equals(null)</code> is <b>false</b>.</p>
+      <p><b>The hashCode contract:</b> if <code>a.equals(b)</code> then <code>a.hashCode() == b.hashCode()</code>. The reverse is not required (collisions are allowed, just slower).</p>
+      <p><b>Why both together?</b> <code>HashMap</code>/<code>HashSet</code> first use <code>hashCode()</code> to pick a bucket, and only then call <code>equals()</code> inside that bucket. Override equals but not hashCode → two "equal" keys land in different buckets → <code>get</code> returns <code>null</code>, sets keep duplicates. The visualizer shows exactly this.</p>
+      <p><b>A good equals in 4 steps:</b> (1) <code>if (this == o) return true;</code> (2) type check — <code>o instanceof Point p</code> or <code>getClass() != o.getClass()</code> (also handles null); (3) compare significant fields (<code>==</code> for int, <code>Double.compare</code> for double, <code>Objects.equals</code> for references); (4) use the <b>same</b> fields in <code>hashCode</code> via <code>Objects.hash(...)</code>. Or let a <b>record</b> generate all of it.</p>`,
+    clues: [
+      '"I put an object in a HashMap and get() returns null" → equals overridden without hashCode (or a mutable key)',
+      '"equals and hashCode contract" / "what if two unequal objects have the same hashCode?"',
+      '"Methods of the Object class" — list all 11, which are final',
+      '"Shallow vs deep copy" / "clone() problems" → Cloneable is broken-by-design; copy constructor',
+      '"instanceof vs getClass() in equals" → subclass symmetry vs Liskov',
+      '"Why are wait/notify in Object, not Thread?" → every object can be a monitor (lock)'
+    ],
+    code: [`
+      import java.util.*;
+
+      final class Point {
+          private final int x, y;
+          Point(int x, int y) { this.x = x; this.y = y; }
+
+          @Override
+          public boolean equals(Object o) {
+              if (this == o) return true;                       // 1. same object: fast path
+              if (!(o instanceof Point p)) return false;        // 2. type check (also false for null)
+              return x == p.x && y == p.y;                      // 3. compare significant fields
+          }
+
+          @Override
+          public int hashCode() { return Objects.hash(x, y); }  // 4. SAME fields as equals
+
+          @Override
+          public String toString() { return "Point(" + x + ", " + y + ")"; }
+      }
+
+      public class Main {
+          public static void main(String[] args) {
+              Point a = new Point(1, 2), b = new Point(1, 2);
+              System.out.println(a == b);                       // false: two different objects
+              System.out.println(a.equals(b));                  // true: same value
+              System.out.println(a.hashCode() == b.hashCode()); // true: contract holds
+              Map<Point, String> places = new HashMap<>();
+              places.put(a, "home");
+              System.out.println(places.get(b));                // home
+              System.out.println(Set.of(a).contains(b) + " " + a);   // true Point(1, 2)
+              System.out.println(a.getClass().getSimpleName()); // Point
+          }
+      }`],
+    codeTitle: ['A correct value class: equals + hashCode + toString'],
+    viz: {
+      title: 'HashMap lookup: why equals without hashCode fails',
+      input: '1 2',
+      inputLabel: 'Point coordinates x y (each between -1000 and 1000)',
+      gen: function (input) {
+        var p = String(input === undefined || input === null ? '' : input).trim().split(/[\s,]+/).filter(Boolean).map(Number);
+        if (p.length !== 2 || p.some(function (v) { return !Number.isInteger(v) || v < -1000 || v > 1000; })) throw new Error('Enter two integers between -1000 and 1000, e.g. 1 2');
+        var X = p[0], Y = p[1];
+        function spread(h) { return (h ^ (h >>> 16)) | 0; }
+        function idx(h) { return spread(h) & 15; }
+        function hex(h) { return '0x' + (h >>> 0).toString(16); }
+        var mk = function (withHash) {
+          return ['class Point {', '    final int x, y;', '    Point(int x, int y) { this.x = x; this.y = y; }', '    @Override public boolean equals(Object o) {', '        return o instanceof Point p && x == p.x && y == p.y;', '    }',
+            withHash ? '    @Override public int hashCode() { return Objects.hash(x, y); }   // = 31*(31+x)+y' : '    // hashCode() NOT overridden -> Object\'s identity hash',
+            '}', 'Map<Point, String> map = new HashMap<>();   // 16 buckets', 'map.put(new Point(' + X + ', ' + Y + '), "home");', 'System.out.println(map.get(new Point(' + X + ', ' + Y + ')));'].join('\n');
+        };
+        var codeA = mk(false), codeB = mk(true);
+        function buckets(entries, hlB) {
+          var e = [];
+          for (var b = 0; b < 16; b++) { var it = entries[b]; if (it) e.push(['bucket ' + b, it]); }
+          if (!e.length) e.push(['(all 16 buckets empty)', '']);
+          var h = {}; if (hlB) Object.keys(hlB).forEach(function (k) { h['bucket ' + k] = hlB[k]; });
+          return { type: 'map', label: 'HashMap buckets (non-empty only)', entries: e, hl: h };
+        }
+        var frames = [];
+        var idA = 460141958, idB = 1163157884;   // typical identity hashes for two different objects
+        var bA = idx(idA), bB = idx(idB);
+        var store = {}; store[bA] = 'Point(' + X + ',' + Y + ')#1 → "home"';
+        frames.push({ narr: '<b>Version 1:</b> equals is overridden, hashCode is <b>not</b>. <code>put</code> computes the key\'s hash. With no override, that is the <b>identity hash</b> of object #1, e.g. ' + hex(idA) + ' — basically a random number per object.', parts: [{ type: 'code', label: 'Without hashCode', lang: 'java', code: codeA, hl: { 7: 'bad', 10: 'cur' } }, { type: 'vars', label: 'put(): hashing key #1', vals: { 'identity hash': hex(idA), 'h ^ (h >>> 16)': hex(spread(idA)), 'bucket = spread & 15': bA }, hl: { 'bucket = spread & 15': 'cur' } }, buckets({})] });
+        frames.push({ narr: 'The entry is stored in <b>bucket ' + bA + '</b> (HashMap mixes the high bits into the low bits, then keeps the low 4 bits because the table has 16 buckets).', parts: [{ type: 'code', label: 'Without hashCode', lang: 'java', code: codeA, hl: { 10: 'ok' } }, { type: 'bits', label: 'spread hash (low 12 bits); low 4 bits = bucket', value: spread(idA) & 4095, width: 12, hl: { 0: 'cur', 1: 'cur', 2: 'cur', 3: 'cur' } }, buckets(store, one(bA, 'ok'))] });
+        frames.push({ narr: '<code>get(new Point(' + X + ', ' + Y + '))</code> uses a <b>different object #2</b>. Its identity hash is unrelated: ' + hex(idB) + ' → bucket <b>' + bB + '</b>. ' + (bB === bA ? 'Same bucket by luck — but HashMap compares the stored hash first (' + hex(idA) + ' ≠ ' + hex(idB) + ') and never even calls equals.' : 'Bucket ' + bB + ' is empty.'), parts: [{ type: 'code', label: 'Without hashCode', lang: 'java', code: codeA, hl: { 11: 'cur' } }, { type: 'vars', label: 'get(): hashing key #2', vals: { 'identity hash': hex(idB), 'bucket': bB, 'stored entry hash': hex(idA) }, hl: { bucket: 'bad' } }, buckets(store, (function () { var o = {}; o[bA] = 'win'; o[bB] = 'bad'; return o; })())] });
+        frames.push({ narr: '<span class="c-r">Prints null.</span> equals() would have said "equal", but it was <b>never asked</b>. The hashCode contract (equal objects ⇒ equal hash codes) is broken, so hash-based collections break.', parts: [{ type: 'code', label: 'Without hashCode', lang: 'java', code: codeA, hl: { 7: 'bad', 11: 'bad' } }, buckets(store), out('null')] });
+        var h = 31 * (31 + X) + Y, b = idx(h);
+        var store2 = {}; store2[b] = 'Point(' + X + ',' + Y + ') → "home"';
+        frames.push({ narr: '<b>Version 2:</b> add <code>hashCode() = Objects.hash(x, y)</code> = 31·(31 + ' + X + ') + ' + Y + ' = <b>' + h + '</b>. It depends only on the <b>field values</b>, so every Point(' + X + ', ' + Y + ') gets the same number.', parts: [{ type: 'code', label: 'With hashCode', lang: 'java', code: codeB, hl: { 7: 'ok', 10: 'cur' } }, { type: 'vars', label: 'put(): hashing key #1', vals: { 'hashCode()': h, 'h ^ (h >>> 16)': spread(h), 'bucket': b }, hl: { bucket: 'ok' } }, buckets(store2, one(b, 'ok'))] });
+        frames.push({ narr: '<code>get</code> with object #2: same fields → same hash <b>' + h + '</b> → same bucket <b>' + b + '</b>. Inside the bucket, HashMap checks <code>e.hash == hash</code> ✓ and then <code>key.equals(e.key)</code> ✓.', parts: [{ type: 'code', label: 'With hashCode', lang: 'java', code: codeB, hl: { 5: 'ok', 11: 'cur' } }, { type: 'vars', label: 'get(): hashing key #2', vals: { 'hashCode()': h, bucket: b, 'hash match': 'yes', 'equals()': 'true' }, hl: { 'equals()': 'ok' } }, buckets(store2, one(b, 'sel'))] });
+        frames.push({ narr: '<span class="c-g">Prints home.</span> Rule: <b>override equals ⇒ override hashCode</b>, using the same fields. And never mutate a field used in hashCode while the object is a key — it would be "lost" in the wrong bucket.', parts: [{ type: 'code', label: 'With hashCode', lang: 'java', code: codeB, hl: { 7: 'ok', 11: 'ok' } }, buckets(store2), out('home')] });
+        return frames;
+      }
+    },
+    examples: [
+      {
+        title: 'Default toString and identity equals',
+        html: `<p>Without overrides, <code>toString</code> prints the class name and a hex hash, and <code>equals</code> is just <code>==</code>. Two objects with identical fields are "not equal". Records generate sensible versions automatically.</p>
+          ${H.table(['Expression', 'class Box (no overrides)', 'record BoxR'], [['<code>toString()</code>', 'Box@&lt;hex&gt; (varies per run)', 'BoxR[w=2]'], ['<code>new X(2).equals(new X(2))</code>', H.c('r', 'false'), H.c('g', 'true')]])}`,
+        code: `class Box { final int w; Box(int w) { this.w = w; } }
+record BoxR(int w) { }
+
+public class Main {
+    public static void main(String[] args) {
+        Box b = new Box(2);
+        System.out.println(b.toString().startsWith("Box@"));         // true (e.g. Box@1b6d3586)
+        System.out.println(new Box(2).equals(new Box(2)));           // false: identity comparison
+        System.out.println(new BoxR(2) + " " + new BoxR(2).equals(new BoxR(2)));   // BoxR[w=2] true
+    }
+}`
+      },
+      {
+        title: 'instanceof vs getClass() in equals — the symmetry trap',
+        html: `<p><code>ColorPoint extends Point</code> adds a colour. If both use <code>instanceof</code>, then <code>p.equals(cp)</code> is true but <code>cp.equals(p)</code> is false → <b>symmetry broken</b>. Using <code>getClass()</code> restores symmetry but means a subclass is never equal to its parent (breaks Liskov). Effective Java's conclusion: you cannot extend an instantiable class, add a value field, <i>and</i> keep the equals contract — <b>use composition</b> (ColorPoint <i>has</i> a Point).</p>`,
+        code: `class Point {
+    final int x, y;
+    Point(int x, int y) { this.x = x; this.y = y; }
+    @Override public boolean equals(Object o) {
+        return o instanceof Point p && x == p.x && y == p.y;
+    }
+    @Override public int hashCode() { return 31 * x + y; }
+}
+
+class ColorPoint extends Point {
+    final String color;
+    ColorPoint(int x, int y, String color) { super(x, y); this.color = color; }
+    @Override public boolean equals(Object o) {
+        return o instanceof ColorPoint cp && super.equals(cp) && color.equals(cp.color);
+    }
+}
+
+public class Main {
+    public static void main(String[] args) {
+        Point p = new Point(1, 2);
+        ColorPoint cp = new ColorPoint(1, 2, "red");
+        System.out.println(p.equals(cp));   // true   (cp IS-A Point)
+        System.out.println(cp.equals(p));   // false  (p is not a ColorPoint) -> asymmetric!
+    }
+}`
+      },
+      {
+        title: 'clone() is shallow — copy constructors are clearer',
+        html: `<p><code>Object.clone()</code> copies field values. For a reference field that means copying the <b>reference</b>, so the clone and the original share the same array. You must deep-copy mutable fields yourself. Most teams avoid <code>Cloneable</code> and write a copy constructor or static factory.</p>
+          ${H.table(['After <code>copy.tags[0] = "X"</code>', 'original.tags[0]'], [['shallow clone()', H.c('r', '"X" (shared array)')], ['copy constructor with tags.clone()', H.c('g', '"a" (independent)')]])}`,
+        code: `class Note implements Cloneable {
+    String title;
+    String[] tags;
+    Note(String title, String[] tags) { this.title = title; this.tags = tags; }
+    Note(Note other) {                                  // copy constructor: explicit deep copy
+        this(other.title, other.tags.clone());
+    }
+    @Override public Note clone() {                     // covariant return, public access
+        try {
+            return (Note) super.clone();                // shallow: tags array is SHARED
+        } catch (CloneNotSupportedException e) {
+            throw new AssertionError(e);                // cannot happen: we implement Cloneable
+        }
+    }
+}
+
+public class Main {
+    public static void main(String[] args) {
+        Note original = new Note("todo", new String[] {"a", "b"});
+        Note shallow = original.clone();
+        shallow.tags[0] = "X";
+        System.out.println(original.tags[0]);           // X  (shared!)
+        Note deep = new Note(original);
+        deep.tags[1] = "Y";
+        System.out.println(original.tags[1]);           // b  (independent)
+    }
+}`
+      },
+      {
+        title: 'wait/notify live on Object because any object can be a lock',
+        html: `<p>Every object has a <b>monitor</b>. <code>synchronized (lock)</code> acquires it; <code>lock.wait()</code> releases it and sleeps; <code>lock.notifyAll()</code> wakes waiters. You must hold the monitor (else <code>IllegalMonitorStateException</code>) and wait <b>in a loop</b> because of spurious wake-ups. In new code prefer <code>java.util.concurrent</code> (<code>CountDownLatch</code>, <code>BlockingQueue</code>).</p>`,
+        code: `public class Main {
+    private static final Object lock = new Object();
+    private static boolean ready = false;
+
+    public static void main(String[] args) throws InterruptedException {
+        Thread worker = new Thread(() -> {
+            synchronized (lock) {
+                while (!ready) {                     // loop: guards against spurious wake-ups
+                    try { lock.wait(); } catch (InterruptedException e) { return; }
+                }
+                System.out.println("worker: got the signal");
+            }
+        });
+        worker.start();
+        synchronized (lock) {
+            ready = true;
+            lock.notifyAll();                        // wake everyone waiting on this monitor
+        }
+        worker.join();
+        System.out.println("main: done");
+    }
+}`
+      }
+    ],
+    deepDive: `<p><b>1. Identity hash code in HotSpot.</b> It is <b>not</b> the memory address (objects move during GC). It is generated lazily on the first call (default: a thread-local xorshift random number) and stored in the object's header (mark word), so it stays stable for the object's lifetime. <code>System.identityHashCode(o)</code> returns it even when <code>hashCode</code> is overridden.</p>
+      <p><b>2. How HashMap uses it.</b> <code>hash = h ^ (h &gt;&gt;&gt; 16)</code>, bucket = <code>hash &amp; (n - 1)</code> with n a power of two. Entries store the hash; lookup compares stored hash, then reference, then <code>equals</code>. Buckets with ≥ 8 entries (table ≥ 64) become red-black trees, which is why a terrible <code>hashCode</code> (e.g. <code>return 42;</code>) degrades to O(log N) rather than O(N) if keys are <code>Comparable</code>.</p>
+      <p><b>3. Floating-point fields.</b> Compare with <code>Double.compare(a, b) == 0</code>, not <code>==</code>: <code>NaN != NaN</code> would break reflexivity, and <code>0.0 == -0.0</code> would break consistency with <code>Double.hashCode</code>. Records and <code>Arrays.equals</code> use the right semantics.</p>
+      <p><b>4. Mutable keys.</b> Changing a field used by <code>hashCode</code> after insertion strands the entry in the old bucket: <code>contains</code> returns false, <code>remove</code> fails, and the map leaks. Use immutable keys (String, records with immutable fields).</p>
+      <p><b>5. hashCode quality and caching.</b> <code>Objects.hash</code> allocates a varargs array — fine normally; hot paths write <code>31 * x + y</code> manually. <code>String</code> caches its hash in a field (computed once; immutable makes this safe).</p>
+      <p><b>6. finalize is going away.</b> JEP 421 (Java 18) deprecated finalization for removal: unpredictable timing, can resurrect objects, slows GC. Use <code>try</code>-with-resources for deterministic cleanup and <code>java.lang.ref.Cleaner</code> as a safety net.</p>
+      <p><b>7. Records and future value classes.</b> Records derive equals/hashCode/toString from their components. Project Valhalla's value classes go further: objects without identity, so <code>==</code> compares state and identity-based operations (synchronization, identity hash) are not available.</p>`,
+    aiEra: `<p><b>What AI changes:</b> IDEs and assistants generate equals/hashCode/toString instantly, and records remove the need altogether for data carriers. The boilerplate is solved; the <b>semantics</b> are not.</p>
+      <p><b>Use AI as a partner:</b> <code>Which fields define identity for this entity: database id or business fields?</code> · <code>Write a property test that checks equals is symmetric and transitive and consistent with hashCode</code> · <code>Find mutable fields used in hashCode</code>.</p>
+      <p><b>Where AI goes wrong:</b> generating <code>equals(MyType)</code> overloads, including mutable or lazily-loaded fields (e.g. JPA collections) in hashCode, using <code>==</code> for doubles or Strings, adding <code>toString</code> that prints passwords or tokens, and recommending <code>clone()</code>.</p>
+      <p><b>What you must still own:</b> choosing what "equal" means for your domain (value vs entity identity), keeping the contracts, and never leaking secrets through <code>toString</code> into logs.</p>`,
+    problems: [
+      {
+        title: 'Guided: Deduplicate Employees in a HashSet',
+        level: 'Easy', tags: ['equals', 'hashCode', 'toString', 'HashSet'], companies: ['Amazon', 'Adobe', 'Capgemini'],
+        statement: `<p>An HR import file contains duplicate employee rows. Two rows are the <b>same employee</b> if they have the same <code>id</code> (names may differ in case or spacing). Write <code>Employee</code> so that putting all rows into a <code>HashSet</code> removes duplicates, and printing the set shows readable entries like <code>Employee{id=7, name=Asha}</code>.</p>`,
+        constraints: `Up to 10<sup>6</sup> rows; ids are positive ints; names are non-null.`,
+        example: `<p>Rows: (7, "Asha"), (9, "Ben"), (7, "ASHA ") → set size ${H.c('g', '2')}. Without overrides the size is ${H.c('r', '3')}; with equals but no hashCode it is ${H.c('r', 'usually 3')} as well.</p>`,
+        brute: {
+          why: `<p>Overriding only <code>equals</code> (or nothing) leaves Object's identity hashCode, so equal employees land in different buckets and are never compared. A quadratic workaround — scanning a <code>List</code> with <code>equals</code> for every row — works but is O(N<sup>2</sup>): 10<sup>12</sup> comparisons for a million rows.</p>`,
+          code: `import java.util.*;
+
+class Employee {
+    final int id; final String name;
+    Employee(int id, String name) { this.id = id; this.name = name; }
+    @Override public boolean equals(Object o) {           // equals only: hashCode missing
+        return o instanceof Employee e && id == e.id;
+    }
+}
+
+public class Main {
+    public static void main(String[] args) {
+        Set<Employee> set = new HashSet<>(List.of(new Employee(7, "Asha"), new Employee(9, "Ben")));
+        set.add(new Employee(7, "ASHA "));
+        System.out.println(set.size());                    // 3 (almost always): duplicate not detected
+    }
+}`
+        },
+        mcq: { q: 'Which fields belong in hashCode() here?', options: ['Only id — exactly the fields compared in equals', 'id and name', 'name only', 'None; return a constant 1'], answer: 0, explain: 'hashCode must use the same (or a subset of the) fields used by equals. Including name would give equal employees (same id, different spelling) different hash codes. A constant is legal but turns the HashSet into a slow list.' },
+        hints: [
+          `<p>Hint 1: HashSet asks <code>hashCode()</code> first, then <code>equals()</code> — both must agree that rows with the same id are the same.</p>`,
+          `<p>Hint 2: <code>equals</code>: same reference → true; <code>o instanceof Employee e</code>; compare <code>id == e.id</code>. <code>hashCode</code>: <code>Integer.hashCode(id)</code>.</p>`,
+          `<p>Hint 3: Make fields <code>final</code> (keys must not change). Add <code>toString</code> for readable output. Which name survives? The first one added — <code>HashSet.add</code> keeps the existing element and returns false.</p>`
+        ],
+        solution: {
+          approach: `<p>Define equality by <code>id</code> only, and derive <code>hashCode</code> from exactly that field so equal employees always land in the same bucket. Fields are final so a key can never move buckets. <code>toString</code> makes debugging and logs readable.</p>`,
+          code: `import java.util.*;
+
+final class Employee {
+    private final int id;
+    private final String name;
+
+    Employee(int id, String name) { this.id = id; this.name = Objects.requireNonNull(name).trim(); }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof Employee e)) return false;
+        return id == e.id;                                // identity of an employee = id
+    }
+
+    @Override
+    public int hashCode() { return Integer.hashCode(id); }   // same field as equals
+
+    @Override
+    public String toString() { return "Employee{id=" + id + ", name=" + name + "}"; }
+}
+
+public class Main {
+    public static void main(String[] args) {
+        Set<Employee> set = new LinkedHashSet<>();         // keeps insertion order for printing
+        set.add(new Employee(7, "Asha"));
+        set.add(new Employee(9, "Ben"));
+        System.out.println(set.add(new Employee(7, "ASHA ")));   // false: duplicate rejected
+        System.out.println(set.size() + " " + set);         // 2 [Employee{id=7, name=Asha}, Employee{id=9, name=Ben}]
+    }
+}`,
+          alt: [{ lang: 'java', code: `import java.util.*;
+
+// Record version: equals/hashCode use ALL components, so to dedupe by id only,
+// make the record hold just the identity, or override equals/hashCode explicitly.
+record EmployeeId(int id) { }
+
+public class Main {
+    public static void main(String[] args) {
+        Map<EmployeeId, String> byId = new LinkedHashMap<>();
+        byId.putIfAbsent(new EmployeeId(7), "Asha");
+        byId.putIfAbsent(new EmployeeId(9), "Ben");
+        byId.putIfAbsent(new EmployeeId(7), "ASHA ");     // ignored: key already present
+        System.out.println(byId);                         // {EmployeeId[id=7]=Asha, EmployeeId[id=9]=Ben}
+    }
+}` }],
+          dry: {
+            head: ['add', 'hashCode', 'bucket has equal element?', 'set after'],
+            rows: [
+              ['(7, Asha)', '7', 'no', '[7 Asha]'],
+              ['(9, Ben)', '9', 'no', '[7 Asha, 9 Ben]'],
+              ['(7, "ASHA ")', '7', H.c('g', 'yes: equals by id → reject'), '[7 Asha, 9 Ben]']
+            ]
+          },
+          complexity: `<p>O(1) average per insertion, O(N) total for N rows; O(U) space for U unique employees.</p>`,
+          followUps: ['If two rows with the same id should be merged (keep the longest name), which structure would you use?', 'What breaks if <code>id</code> were mutable and changed after insertion?', 'Should a JPA entity use the database id in equals? What about before it is saved?']
         }
       }
     ]

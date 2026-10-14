@@ -109,7 +109,7 @@ var App = (function () {
       s.code = code;
       var runnable = (s.lang === 'sql' && s.db !== undefined) || ((s.lang === 'js' || s.lang === 'javascript' || s.lang === 'python' || s.lang === 'py') && s.run);
       h += '<div class="cpane" data-pane="' + i + '"' + (i ? ' hidden' : '') + '><div class="code-head"><span>' + esc(s.title || (LANGS[s.lang] || LANGS.text).name) + '</span><span class="code-btns">' +
-        (runnable ? '<button class="btn run" type="button" data-snip="' + k + '">▶ Run</button><button class="btn edit" type="button">✎ Edit</button>' : '') +
+        (runnable ? '<button class="btn run" type="button" data-lang="' + s.lang + '" data-snip="' + k + '">▶ Run</button><button class="btn edit" type="button">✎ Edit</button>' : '') +
         '<button class="btn copy" type="button">Copy</button></span></div><pre><code>' + highlight(code, s.lang) + '</code></pre>' + (runnable ? '<div class="run-out" hidden></div>' : '') + '</div>';
     });
     return h + '</div>';

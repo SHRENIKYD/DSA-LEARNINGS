@@ -57,15 +57,16 @@ const server = http.createServer((req, res) => {
         return out;
       });
       // run SQL + JS snippets
-      const runs = await page.$$('.btn.run');
+      const runs = await page.evaluate(() => {
+        let n = 0;
+        document.querySelectorAll('.btn.run').forEach((b) => {
+          if (/^py/.test(b.getAttribute('data-lang'))) return;
+          b.click(); n++;
+        });
+        return { length: n };
+      });
       const runErr = [];
-      for (const b of runs) {
-        const lang = await b.evaluate((el) => el.closest('.cpane').querySelector('.code-head span').textContent);
-        const isPy = await b.evaluate((el) => /python/i.test(el.closest('.cpane').querySelector('.code-head span').textContent));
-        if (isPy) continue;
-        await b.click();
-        await page.waitForTimeout(lang && /sql/i.test(lang) ? 400 : 50);
-      }
+      await page.waitForTimeout(600);
       if (runs.length) await page.waitForTimeout(3200);
       const outs = await page.evaluate(() => [...document.querySelectorAll('.run-out')].filter((o) => !o.hidden).map((o) => o.textContent));
       outs.forEach((o) => { if (/SQL error|Uncaught|Unhandled|Could not load/.test(o)) runErr.push(o.slice(0, 160)); });

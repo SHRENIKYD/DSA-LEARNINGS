@@ -1110,5 +1110,541 @@ class CopyIf {
     }]
   });
 
+  /* ======================================================================
+     TOPIC 5 — Type erasure and its consequences
+     ====================================================================== */
+  topics.push({
+    title: 'Type Erasure: What Survives to Runtime (and What Does Not)',
+    analogy: `<p>Think of a <b>parcel sorting centre</b>. At the front desk (compile time) a strict clerk reads every label — "<i>fragile glass, this way up, for Asha</i>" — and refuses parcels whose label does not match the form. Once accepted, the labels are <b>peeled off</b> and every parcel becomes a plain brown box on the conveyor belt (runtime). The belt still works perfectly, but if someone later asks a box "<i>are you glass for Asha?</i>" the box cannot answer — that is why ${C('instanceof List<String>')} is impossible. And if someone sneaks a box in through the back door (a raw type), nobody notices until a customer opens it and finds a brick: a ${C('ClassCastException')} far from where the mistake happened.</p>`,
+    explain: `<p><b>Type erasure</b> means: generics are checked by the compiler and then <b>removed</b>. The JVM runs the same bytecode it ran before Java 5. javac does three things:</p>
+<ol><li><b>Replace</b> every type parameter with its bound — ${C('T')} → ${C('Object')}, ${C('T extends Number')} → ${C('Number')} (the first bound).</li>
+<li><b>Insert casts</b> (${C('checkcast')} instructions) where your code reads a T into a concrete type.</li>
+<li><b>Generate bridge methods</b> so overriding still works after the types are erased.</li></ol>
+${P(`
+// You write                                  // The JVM sees (roughly)
+List<String> list = new ArrayList<>();        List list = new ArrayList();
+list.add("hi");                               list.add("hi");
+String s = list.get(0);                       String s = (String) list.get(0);`)}
+<h4>Consequences — the famous "you cannot" list</h4>
+${H.table(['You cannot…', 'Because…', 'Do this instead'], [[C('new T()'), 'T is unknown at runtime', 'pass a ' + C('Supplier<T>') + ' or ' + C('Class<T>')], [C('new T[n]') + ', ' + C('new List<String>[n]'), 'arrays must know their element type at runtime', C('Object[]') + ' + cast, ' + C('Array.newInstance') + ', ' + C('IntFunction<T[]>')], [C('x instanceof List<String>'), 'the runtime object has no &lt;String&gt;', C('x instanceof List<?>') + ' then check elements'], [C('List<String>.class'), 'only one Class object exists: ' + C('List.class'), 'a ' + C('Class<T>') + ' token or a TypeReference'], [C('void f(List<String>)') + ' + ' + C('void f(List<Integer>)'), 'both erase to ' + C('f(List)') + ' — "name clash: same erasure"', 'different method names'], [C('static T field'), 'one static per class, not per T', 'instance field, or a Map keyed by Class'], [C('catch (T e)') + ', ' + C('class Oops<T> extends Exception'), 'catch needs a runtime type', 'non-generic exception classes'], [C('List<int>'), 'erasure needs Object-compatible types', C('List<Integer>') + ' or ' + C('int[]')]])}
+<h4>Reifiable vs non-reifiable</h4>
+<p>A type is <b>reifiable</b> if its full information exists at runtime: primitives, non-generic classes (${C('String')}), raw types (${C('List')}), unbounded wildcards (${C('List<?>')}) and arrays of these. ${C('List<String>')}, ${C('T')} and ${C('List<? extends Number>')} are <b>non-reifiable</b>.</p>
+<h4>The unchecked cast that does not check</h4>
+${P(`
+@SuppressWarnings("unchecked")
+static <T> T unsafeCast(Object o) { return (T) o; }   // erased to (Object) o — checks NOTHING
+Object  ok  = unsafeCast(42);   // no exception at all
+String  bad = unsafeCast(42);   // ClassCastException HERE, at the caller's hidden checkcast`)}
+<p>${C('(T) o')} compiles to nothing. The real cast happens later, wherever a concrete type is needed — often in someone else's code. That is <b>heap pollution</b> (more in Topic 6).</p>`,
+    clues: ['"what is type erasure and why did Java choose it?" (classic intermediate/senior question)', '"why can\'t I do new T() / new T[] / instanceof List&lt;String&gt;?"', 'error "name clash: … have the same erasure"', '"ClassCastException on a line with no cast" → hidden checkcast from erasure', '"how do Jackson / Gson deserialize List&lt;User&gt;?" → super type tokens / TypeReference', '"what is a bridge method?" / javap shows a synthetic method you did not write'],
+    code: [`
+import java.util.*;
+import java.util.function.*;
+import java.lang.reflect.*;
+
+class ErasureDemo {
+    List<String> names = new ArrayList<>();          // field's generic type is kept in the class file
+
+    // Workaround for "new T()": ask the caller for a factory
+    static <T> List<T> fill(int n, Supplier<T> factory) {
+        List<T> out = new ArrayList<>();
+        for (int i = 0; i < n; i++) out.add(factory.get());
+        return out;
+    }
+
+    // Workaround for "instanceof T": a Class<T> token checks at runtime for real
+    static <T> List<T> onlyOfType(List<?> mixed, Class<T> type) {
+        List<T> out = new ArrayList<>();
+        for (Object o : mixed) if (type.isInstance(o)) out.add(type.cast(o));   // checked cast
+        return out;
+    }
+
+    public static void main(String[] args) throws Exception {
+        List<String> a = new ArrayList<>();
+        List<Integer> b = new ArrayList<>();
+        System.out.println(a.getClass() == b.getClass());          // true — one runtime class
+        System.out.println(a.getClass().getName());                // java.util.ArrayList
+
+        Object o = a;
+        System.out.println(o instanceof List<?>);                  // true  (List<String> is not allowed here)
+
+        System.out.println(fill(2, StringBuilder::new).size());    // 2
+        System.out.println(onlyOfType(List.of(1, "x", 2.5, "y"), String.class)); // [x, y]
+
+        Field f = ErasureDemo.class.getDeclaredField("names");
+        System.out.println(f.getType());          // interface java.util.List      (erased)
+        System.out.println(f.getGenericType());   // java.util.List<java.lang.String> (Signature attribute)
+    }
+}`],
+    codeTitle: ['Erasure in action and the standard workarounds'],
+    viz: [{
+      title: 'Source vs erased view of a bounded generic class',
+      gen: function () {
+        var src = 'class Box<T extends Comparable<T>> {\n    private T value;\n    Box(T v) { value = v; }\n    T get() { return value; }\n    boolean bigger(T other) { return value.compareTo(other) > 0; }\n}\nBox<String> b = new Box<>("kiwi");\nString s = b.get();\nboolean big = b.bigger("fig");';
+        var era = 'class Box {\n    private Comparable value;\n    Box(Comparable v) { value = v; }\n    Comparable get() { return value; }\n    boolean bigger(Comparable other) { return value.compareTo(other) > 0; }\n}\nBox b = new Box("kiwi");\nString s = (String) b.get();      // checkcast inserted by javac\nboolean big = b.bigger("fig");';
+        return srcVsErased(src, era, [
+          { a: 1, b: 1, narr: 'The type parameter list <code>&lt;T extends Comparable&lt;T&gt;&gt;</code> disappears from the class. There is exactly <b>one</b> <code>Box</code> class at runtime, whatever T is.' },
+          { a: 2, b: 2, cls: 'sel', narr: 'Every <code>T</code> becomes its <b>first bound</b>: <code>Comparable</code>. (Without a bound it would be <code>Object</code>.)' },
+          { a: [3, 4], b: [3, 4], cls: 'sel', narr: 'Constructor and getter: parameter and return types are erased the same way. The method descriptor in the class file is <code>get()Ljava/lang/Comparable;</code>.' },
+          { a: 5, b: 5, cls: 'ok', narr: '<code>value.compareTo(other)</code> compiles in the source because of the bound; after erasure it is a normal interface call on <code>Comparable</code>.' },
+          { a: 7, b: 7, narr: 'At the use site, <code>Box&lt;String&gt;</code> becomes plain <code>Box</code>. The diamond and the type argument leave no trace in the bytecode of this line.' },
+          { a: 8, b: 8, cls: 'ok', cls2: 'sel', narr: '<b>The hidden cast.</b> <code>get()</code> really returns Comparable, so javac inserts <code>checkcast String</code>. Your source has no cast, yet a ClassCastException can be thrown <b>on this line</b> if the box was polluted.', extra: [note('javap -c (excerpt)', '<code>invokevirtual Box.get:()Ljava/lang/Comparable;<br>checkcast java/lang/String<br>astore_2</code>')] },
+          { a: 9, b: 9, narr: 'Passing <code>"fig"</code>: compile-time check against T = String; at runtime it is just a Comparable argument. No cast needed for arguments.' },
+          { a: [1, 7, 8], b: [1, 7, 8], cls: 'done', cls2: 'sel', narr: 'Summary: checks happen in the source view (left), the program runs in the erased view (right). The only runtime traces of generics are the <b>casts</b> and some <b>metadata</b> (Signature attributes) that reflection can read.', extra: [{ type: 'table', label: 'Erasure rules', columns: ['declared', 'erases to'], rows: [['T', 'Object'], ['T extends Number', 'Number'], ['T extends Number & Comparable<T>', 'Number (first bound)'], ['List<String>', 'List'], ['T[]', 'Object[] (or bound[])']] }] }
+        ]);
+      }
+    }, {
+      title: 'Bridge methods: how overriding survives erasure',
+      gen: function () {
+        var src = 'class Node<T> {\n    T data;\n    void setData(T d) { data = d; }\n}\nclass IntNode extends Node<Integer> {\n    @Override void setData(Integer d) { super.setData(d); }\n}\nNode<Integer> n = new IntNode();\nn.setData(5);\nNode raw = n;\nraw.setData("hello");';
+        var era = 'class Node {\n    Object data;\n    void setData(Object d) { data = d; }\n}\nclass IntNode extends Node {\n    void setData(Integer d) { super.setData(d); }\n    /* synthetic bridge */ void setData(Object d) { setData((Integer) d); }\n}\nNode n = new IntNode();\nn.setData(5);   // invokevirtual Node.setData(Object)\nNode raw = n;\nraw.setData("hello");';
+        return srcVsErased(src, era, [
+          { a: 3, b: 3, narr: 'After erasure <code>Node.setData(T)</code> becomes <code>setData(Object)</code>.' },
+          { a: 6, b: 6, narr: '<code>IntNode.setData(Integer)</code> keeps its Integer parameter. Problem: <code>setData(Integer)</code> and <code>setData(Object)</code> are <b>different signatures</b> to the JVM — it is an overload, not an override!' },
+          { a: 6, b: 7, cls: 'ok', narr: 'So javac generates a <b>synthetic bridge method</b> <code>setData(Object)</code> in IntNode that casts and forwards. Now the JVM override works. (Reflection: <code>Method.isBridge() == true</code>.)' },
+          { a: 9, b: [10, 7, 6], cls: 'ok', narr: '<code>n.setData(5)</code> compiles to a call of <code>Node.setData(Object)</code>. Dynamic dispatch finds IntNode\'s bridge, which casts 5 to Integer and calls the real method.', extra: [{ type: 'stack', label: 'Call stack', items: ['main', 'IntNode.setData(Object)  [bridge]', 'IntNode.setData(Integer)'], hl: { 2: 'cur' } }] },
+          { a: 11, b: [12, 7], cls: 'bad', narr: 'Through a raw reference, <code>raw.setData("hello")</code> compiles (with a warning). The bridge runs <code>(Integer) "hello"</code> → <span class="c-r">ClassCastException inside a method you never wrote</span>. The bridge is also what keeps the heap safe here.', extra: [{ type: 'stack', label: 'Call stack', items: ['main', 'IntNode.setData(Object)  [bridge] ✗ CCE'], hl: { 1: 'bad' } }, out('java.lang.ClassCastException: class java.lang.String cannot be cast to class java.lang.Integer')] },
+          { a: [5, 6], b: [5, 6, 7], cls: 'sel', narr: 'Bridges also appear for <b>covariant return types</b> and for classes like <code>String implements Comparable&lt;String&gt;</code>: String has a synthetic <code>compareTo(Object)</code> that casts and calls <code>compareTo(String)</code>.' }
+        ]);
+      }
+    }, {
+      title: 'Is this type reifiable? (what you may do with it at runtime)',
+      input: 'List<String>',
+      inputLabel: 'A type, e.g. List<String>, List<?>, String[], List<?>[], Map<String,Integer>, int, T, ArrayList',
+      gen: function (input) {
+        var t = String(input || '').replace(/\s+/g, '');
+        if (!t || t.length > 50 || !/^[A-Za-z_][A-Za-z0-9_<>,?\[\]]*$/.test(t)) throw new Error('Enter a Java type like List<String>, List<?>, String[] or int');
+        var depth = 0;
+        for (var i = 0; i < t.length; i++) { if (t[i] === '<') depth++; if (t[i] === '>') depth--; if (depth < 0) break; }
+        if (depth !== 0) throw new Error('Angle brackets do not balance — try List<String>');
+        var dims = 0, base = t;
+        while (/\[\]$/.test(base)) { base = base.slice(0, -2); dims++; }
+        var prims = ['int', 'long', 'double', 'float', 'boolean', 'char', 'byte', 'short'];
+        var reason, reif, kind;
+        var lt = base.indexOf('<');
+        var name = lt < 0 ? base : base.slice(0, lt);
+        var args = lt < 0 ? '' : base.slice(lt + 1, -1);
+        if (prims.indexOf(base) >= 0) { reif = true; kind = 'primitive'; reason = 'Primitives are always fully known at runtime.'; }
+        else if (/^[A-Z]$/.test(base)) { reif = false; kind = 'type variable'; reason = 'A type variable like ' + base + ' is erased to its bound — the runtime does not know what it was.'; }
+        else if (lt < 0) { reif = true; kind = 'plain class / raw type'; reason = name + ' has no type arguments, so nothing was erased (if ' + name + ' is generic, this is its raw type).'; }
+        else if (args.split(',').every(function (x) { return x === '?'; })) { reif = true; kind = 'unbounded wildcard'; reason = 'All type arguments are unbounded <code>?</code> — that claims nothing that erasure removed, so it is reifiable.'; }
+        else { reif = false; kind = 'parameterized type'; reason = 'The arguments <code>&lt;' + esc(args) + '&gt;</code> are erased at runtime, so the JVM cannot check them.'; }
+        var shown = t;
+        var frames = [];
+        frames.push({ narr: 'Type: <code>' + esc(shown) + '</code>' + (dims ? ' — an array (' + dims + 'D) of <code>' + esc(base) + '</code>. An array is reifiable exactly when its element type is.' : '.'), parts: [{ type: 'vars', label: 'Parsed', vals: { type: shown, 'element / base': base, 'array dims': dims, kind: kind }, hl: { kind: 'cur' } }] });
+        frames.push({ narr: reason + ' → <b>' + (reif ? '<span class="c-g">reifiable</span>' : '<span class="c-r">NOT reifiable</span>') + '</b>.', parts: [{ type: 'vars', label: 'Verdict', vals: { type: shown, reifiable: reif ? 'yes' : 'no' }, hl: { reifiable: reif ? 'ok' : 'bad' } }, { type: 'table', label: 'Reifiable types', columns: ['kind', 'examples', 'reifiable?'], rows: [['primitive', 'int, double', 'yes'], ['non-generic class', 'String, Integer', 'yes'], ['raw type', 'List, Map', 'yes'], ['unbounded wildcard', 'List<?>, Map<?,?>', 'yes'], ['array of reifiable', 'String[], List<?>[]', 'yes'], ['parameterized', 'List<String>, List<? extends Number>', 'no'], ['type variable', 'T, E', 'no']], hl: one(kind === 'primitive' ? 0 : kind === 'plain class / raw type' ? 1 : kind === 'unbounded wildcard' ? 3 : kind === 'type variable' ? 6 : 5, reif ? 'ok' : 'bad') }] });
+        var isPrim = prims.indexOf(base) >= 0 && !dims;
+        var inst = isPrim ? 'n/a for primitives' : reif ? 'allowed' : (kind === 'parameterized type' ? 'error (unless the cast would be safe, Java 16+)' : 'error');
+        frames.push({ narr: '<code>obj instanceof ' + esc(shown) + '</code>: ' + (isPrim ? 'primitives are not objects, so instanceof does not apply.' : reif ? '<span class="c-g">allowed</span> — the JVM can check it.' : '<span class="c-r">not allowed</span> in general: "Object cannot be safely cast to ' + esc(shown) + '". (Java 16+ accepts it only when the static type already guarantees the arguments, e.g. a <code>List&lt;String&gt;</code> variable tested against <code>ArrayList&lt;String&gt;</code>.)'), parts: [{ type: 'code', label: 'instanceof', lang: 'java', code: 'if (obj instanceof ' + shown + ') { }', hl: { 1: isPrim ? 'done' : reif ? 'ok' : 'bad' } }, { type: 'vars', vals: { instanceof: inst }, hl: { instanceof: reif && !isPrim ? 'ok' : 'bad' } }] });
+        var arrOk = reif;
+        frames.push({ narr: '<code>new ' + esc(base) + '[10]</code>: ' + (arrOk ? '<span class="c-g">allowed</span> — the array can record its element type.' : '<span class="c-r">"generic array creation" error</span> — an array must store its exact element type at runtime, and this one was erased (Topic 6).'), parts: [{ type: 'code', label: 'Array creation', lang: 'java', code: 'Object arr = new ' + base + '[10' + ']' + '[]'.repeat(dims) + ';', hl: { 1: arrOk ? 'ok' : 'bad' } }] });
+        var lit = (lt < 0) ? 'allowed (' + shown + '.class)' : 'error: only the raw ' + name + '.class exists';
+        if (kind === 'type variable') lit = 'error: T.class does not exist — pass a Class<T> token';
+        frames.push({ narr: 'Class literal <code>' + esc(shown) + '.class</code>: ' + esc(lit) + '. There is one <code>Class</code> object per runtime class, never per parameterization.', parts: [{ type: 'vars', label: 'Class literal', vals: { literal: shown + '.class', result: lit }, hl: { result: lt < 0 && kind !== 'type variable' ? 'ok' : 'bad' } }] });
+        frames.push({ narr: 'Summary for <code>' + esc(shown) + '</code>. Try <code>List&lt;?&gt;[]</code> (allowed!), <code>T</code>, or <code>Map&lt;String,Integer&gt;</code>.', parts: [{ type: 'table', label: 'What you can do at runtime', columns: ['operation', 'result'], rows: [['reifiable', reif ? 'yes' : 'no'], ['instanceof', inst], ['new X[n]', arrOk ? 'allowed' : 'generic array creation error'], ['X.class', lit]], hl: { 0: reif ? 'ok' : 'bad' } }] });
+        return frames;
+      }
+    }],
+    examples: [
+      { title: 'Predict the output: getClass() and erasure', html: `<p>All parameterizations share one runtime class. Even ${C('List.of')} implementations are chosen by size, not by type argument.</p>
+${H.table(['Expression', 'Prints'], [[C('new ArrayList<String>().getClass() == new ArrayList<Integer>().getClass()'), H.c('g', 'true')], [C('new ArrayList<String>().getClass().getName()'), 'java.util.ArrayList'], [C('new ArrayList<String>() instanceof ArrayList<?>'), 'true']])}`, code: `
+System.out.println(new ArrayList<String>().getClass() == new ArrayList<Integer>().getClass()); // true
+System.out.println(new ArrayList<String>().getClass().getName());                          // java.util.ArrayList
+Object o = new ArrayList<String>();
+System.out.println(o instanceof ArrayList<?>);                                             // true` },
+      { title: 'Does this compile? Overloads with the same erasure', html: `${P(`
+class Printer {
+    void print(List<String> s)  { }
+    void print(List<Integer> i) { }   // ❌ name clash: print(List<Integer>) and print(List<String>) have the same erasure
+}`)}
+<p>Both erase to ${C('print(List)')} — the JVM could not tell them apart. Use different names (${C('printNames')}, ${C('printIds')}). Note: overloads that differ by <b>return type</b> only are not allowed either, generic or not.</p>`, code: `
+class Printer {
+    void printNames(List<String> names) { names.forEach(n -> System.out.println("name " + n)); }
+    void printIds(List<Integer> ids)    { ids.forEach(i -> System.out.println("id " + i)); }
+    public static void main(String[] args) {
+        new Printer().printNames(List.of("asha"));   // name asha
+        new Printer().printIds(List.of(7));          // id 7
+    }
+}` },
+      { title: 'Predict where the ClassCastException is thrown', html: `<p>${C('unsafeCast')} returns ${C('(T) o')}, which erases to a no-op. The exception happens at the caller's <b>hidden checkcast</b> — and only if the caller needs a concrete type.</p>
+${H.table(['Line', 'Exception?', 'Why'], [[C('Object a = unsafeCast(42);'), H.c('g', 'no'), 'T inferred as Object → no cast inserted'], [C('Integer b = unsafeCast(42);'), H.c('g', 'no'), 'checkcast Integer succeeds'], [C('String c = unsafeCast(42);'), H.c('r', 'yes, on THIS line'), 'checkcast String fails — not inside unsafeCast']])}`, code: `
+class UnsafeCast {
+    @SuppressWarnings("unchecked")
+    static <T> T unsafeCast(Object o) { return (T) o; }   // compiles to just "return o"
+    public static void main(String[] args) {
+        Object a = unsafeCast(42);
+        Integer b = unsafeCast(42);
+        System.out.println(a + " " + b);                   // 42 42
+        try {
+            String c = unsafeCast(42);                    // CCE thrown here, at the caller
+        } catch (ClassCastException e) {
+            System.out.println("CCE at the call site");
+        }
+    }
+}` },
+      { title: 'Super type tokens: how Jackson reads List&lt;User&gt;', html: `<p>Erasure removes type arguments from <b>objects</b>, but the class file keeps them for <b>declarations</b> (fields, method signatures, superclasses) in Signature attributes. An anonymous subclass ${C('new TypeRef<List<String>>() {}')} records ${C('List<String>')} as its generic superclass — reflection can read it back. Jackson's ${C('TypeReference')}, Gson's ${C('TypeToken')} and Spring's ${C('ParameterizedTypeReference')} all use this trick.</p>`, code: `
+import java.lang.reflect.*;
+
+abstract class TypeRef<T> {
+    final Type type;
+    protected TypeRef() {
+        // getGenericSuperclass() returns TypeRef<List<String>> for the anonymous subclass below
+        type = ((ParameterizedType) getClass().getGenericSuperclass()).getActualTypeArguments()[0];
+    }
+}
+class TokenDemo {
+    public static void main(String[] args) {
+        TypeRef<List<String>> ref = new TypeRef<List<String>>() {};   // note the {} — an anonymous subclass
+        System.out.println(ref.type);   // java.util.List<java.lang.String>
+    }
+}` }
+    ],
+    deepDive: `<p><b>Why erasure?</b> Migration compatibility (2004): millions of lines of pre-generic code and compiled libraries had to keep working, and a generic ${C('ArrayList')} had to be the <b>same class</b> as the old one so old and new code could pass lists to each other. C# (2005) chose <b>reified</b> generics and created a separate ${C('System.Collections.Generic')} namespace instead — runtime type info and value-type specialization, at the cost of a split library.</p>
+<p><b>What actually survives.</b> The class file keeps a ${C('Signature')} attribute for classes, fields and methods, readable through ${C('getGenericType()')}, ${C('getGenericReturnType()')}, ${C('getGenericSuperclass()')} and ${C('getTypeParameters()')}. Local variables keep generic info only in the optional LocalVariableTypeTable (debug info). <b>Objects</b> keep nothing: an ArrayList instance does not know its E.</p>
+<p><b>Bridge methods</b> are flagged ${C('ACC_BRIDGE | ACC_SYNTHETIC')}. They appear when (1) a subclass overrides a generic method with a concrete parameter type, (2) a class implements a generic interface (${C('Comparable<String>')} → ${C('compareTo(Object)')}), and (3) covariant return types. Stack traces sometimes show them as an extra frame on the same line number.</p>
+<p><b>Java 16+ instanceof refinement.</b> ${C('list instanceof ArrayList<String> al')} compiles when ${C('list')} is statically a ${C('List<String>')}, because the check is then provably safe (JEP 394). ${C('obj instanceof List<String>')} on an ${C('Object')} still fails.</p>
+<p><b>Performance reality.</b> ${C('checkcast')} is very cheap and often eliminated by the JIT through type profiling. The real erasure costs are design-level: boxing, inability to specialise, and API workarounds (Class tokens, factories). Project Valhalla's goal of specialized generics targets exactly these.</p>`,
+    aiEra: `<p><b>What AI changes:</b> AI can decompile and annotate bytecode (${C('javap -c')}) in seconds, which makes erasure, hidden casts and bridge methods easy to <i>see</i> instead of memorise.</p>
+<p><b>Use AI as a partner:</b> paste a stack trace with a ClassCastException on a line without a cast and ask <code>"Which hidden checkcast threw this, and where could the wrong element have entered the collection?"</code>. Ask for a "source vs erased" rewrite of a class to check your understanding.</p>
+<p><b>Where AI goes wrong:</b> generated code tries ${C('new T()')}, ${C('T.class')} or ${C('instanceof List<String>')}; suggests ${C('getClass()')} to tell ${C('List<String>')} from ${C('List<Integer>')}; or "fixes" deserialization of ${C('List<User>')} by passing ${C('List.class')} (which silently yields a list of ${C('LinkedHashMap')}s in Jackson).</p>
+<p><b>What you must still own:</b> explaining the erasure trade-off (compatibility vs reification) in interviews, knowing which operations need runtime types, and choosing the right workaround — ${C('Class<T>')}, ${C('Supplier<T>')}, or a type token — for your API.</p>`,
+    problems: [{
+      title: 'Type-Safe Heterogeneous Container (Class&lt;T&gt; keys)',
+      level: 'Medium', tags: ['type erasure', 'Class token', 'map'], companies: ['Google', 'Oracle', 'LinkedIn'],
+      statement: `<p>Build ${C('Favorites')}: a container that stores <b>one favourite value per type</b>, e.g. a favourite String, a favourite Integer and a favourite ${C('Class')}. API: ${C('<T> void put(Class<T> type, T value)')} and ${C('<T> T get(Class<T> type)')}. Reads must need <b>no casts</b> at the call site, and a malicious raw call like ${C('((Class) Integer.class)')} with a String value must fail <b>immediately in put</b>, not later.</p>`,
+      constraints: `Up to 10<sup>5</sup> operations; get of a missing type returns null; null type → NullPointerException.`,
+      example: `<p>${C('put(String.class, "Java"); put(Integer.class, 0xcafe);')} then ${C('get(String.class)')} → ${H.c('g', '"Java"')}, ${C('get(Integer.class)')} → ${H.c('g', '51966')}, ${C('get(Double.class)')} → ${H.c('m', 'null')}.</p>`,
+      brute: { why: `<p>A ${C('Map<String, Object>')} keyed by type name: every read needs a manual cast, nothing ties the key to the value type, and a wrong value only explodes when someone casts it later — the exact problem erasure creates.</p>`, code: `
+class FavoritesBrute {
+    private final Map<String, Object> m = new HashMap<>();
+    void put(String typeName, Object v) { m.put(typeName, v); }
+    Object get(String typeName) { return m.get(typeName); }
+    public static void main(String[] args) {
+        FavoritesBrute f = new FavoritesBrute();
+        f.put("String", 42);                       // wrong value — accepted
+        try {
+            String s = (String) f.get("String");   // fails later, at the reader
+            System.out.println(s);
+        } catch (ClassCastException e) {
+            System.out.println("late failure");
+        }
+    }
+}` },
+      mcq: { q: 'Why does <code>get</code> use <code>type.cast(obj)</code> rather than <code>(T) obj</code>?', options: ['They are identical after compilation', '<code>(T) obj</code> is erased to a no-op, while <code>Class.cast</code> performs a real runtime check', '<code>(T) obj</code> does not compile', '<code>Class.cast</code> is faster'], answer: 1, explain: 'Because of erasure, (T) obj checks nothing and only produces an unchecked warning. Class.cast uses the reified Class object to check isInstance and throws ClassCastException on the spot — no warning and no heap pollution.' },
+      hints: [`<p>Hint 1: erasure means you cannot ask "what is T?" at runtime — but a ${C('Class<T>')} object <b>is</b> runtime information, and its type parameter links it to T at compile time.</p>`, `<p>Hint 2: store values in a ${C('Map<Class<?>, Object>')}. The map itself is untyped inside; the public generic methods restore type safety at the boundary.</p>`, `<p>Hint 3: in ${C('get')}, return ${C('type.cast(map.get(type))')}. In ${C('put')}, store ${C('type.cast(value)')} so a raw-type attack fails right there. ${C('Objects.requireNonNull(type)')} for the null key.</p>`],
+      solution: {
+        approach: `<p>Use the ${C('Class')} object as both the <b>key</b> and the <b>runtime type check</b>. The generic signatures tie ${C('Class<T>')} to ${C('T')} at compile time; ${C('Class.cast')} enforces it at runtime, defeating raw-type tricks. This is Effective Java Item 33.</p>`,
+        code: `
+import java.util.*;
+
+class Favorites {
+    private final Map<Class<?>, Object> favorites = new HashMap<>();
+
+    <T> void put(Class<T> type, T value) {
+        Objects.requireNonNull(type, "type");
+        favorites.put(type, type.cast(value));   // dynamic check: stops raw-type abuse right here
+    }
+
+    <T> T get(Class<T> type) {
+        return type.cast(favorites.get(type));   // checked cast, no unchecked warning; null passes through
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    public static void main(String[] args) {
+        Favorites f = new Favorites();
+        f.put(String.class, "Java");
+        f.put(Integer.class, 0xcafe);
+        f.put(Class.class, Favorites.class);
+        String s = f.get(String.class);                  // no cast at the call site
+        int n = f.get(Integer.class);
+        System.out.println(s + " " + n + " " + f.get(Class.class).getSimpleName()); // Java 51966 Favorites
+        System.out.println(f.get(Double.class));         // null
+        try {
+            f.put((Class) Integer.class, "not a number");  // raw-type attack
+        } catch (ClassCastException e) {
+            System.out.println("rejected in put");      // fails immediately
+        }
+    }
+}`,
+        dry: { head: ['call', 'map after', 'returns / effect'], rows: [['put(String.class, "Java")', '{String=Java}', 'cast ok'], ['put(Integer.class, 51966)', '{String=Java, Integer=51966}', 'cast ok'], ['get(String.class)', 'unchanged', '"Java" (typed String)'], ['get(Double.class)', 'unchanged', 'null'], ['put((Class) Integer.class, "x")', 'unchanged', H.c('r', 'ClassCastException in put')]] },
+        complexity: `<p>O(1) expected per operation (HashMap); O(k) space for k types. ${C('Class.cast')} is a cheap isInstance check.</p>`,
+        followUps: ['Why can this container not store a favourite <code>List&lt;String&gt;</code> separately from a <code>List&lt;Integer&gt;</code>? (both keys are List.class — use a TypeRef key)', 'Restrict keys to subtypes of an annotation type with a bounded token: <code>Class&lt;? extends Annotation&gt;</code>.', 'Make it thread-safe — is <code>ConcurrentHashMap</code> enough?']
+      }
+    }]
+  });
+
+  /* ======================================================================
+     TOPIC 6 — Generic arrays, varargs heap pollution & raw types
+     ====================================================================== */
+  topics.push({
+    title: 'Generic Arrays, Heap Pollution & Raw Types',
+    analogy: `<p>An <b>array</b> is like an egg tray stamped "<b>EGGS ONLY</b>" at the factory — the stamp travels with the tray, and a guard checks every item you put in (the runtime ${C('ArrayStoreException')}). A <b>generic list</b> is a tray whose label was checked at the shop counter and then torn off (erasure). Try to make "an egg tray stamped with a label that will be torn off" (${C('new T[]')}) and Java refuses — it cannot stamp a type it will not know. A <b>raw type</b> is the old unlabeled tray from before labels existed: everything fits, and the warning sticker ("unchecked") is the only thing between you and a rotten surprise. When a wrong item sneaks into a labelled tray through such a back door, the tray is <b>polluted</b>: it looks fine until somebody reaches in expecting an egg.</p>`,
+    explain: `<h4>1. Why new T[n] and new List&lt;String&gt;[n] are illegal</h4>
+<p>Arrays are <b>reified</b> (they know their element type at runtime) and <b>covariant</b>. Generics are <b>erased</b> and <b>invariant</b>. Mixing them would break safety:</p>
+${P(`
+List<String>[] lsa = new List<String>[1];  // ❌ "generic array creation" — suppose it compiled…
+Object[] oa = lsa;                          // fine: arrays are covariant
+oa[0] = List.of(42);                        // runtime sees only "List" → no ArrayStoreException!
+String s = lsa[0].get(0);                   // ClassCastException, far away`)}
+<p>What <b>is</b> allowed: ${C('new List<?>[10]')} (unbounded wildcard = reifiable), and arrays of non-generic types.</p>
+<h4>2. How real generic containers store elements</h4>
+${H.table(['Technique', 'Example', 'Notes'], [['Object[] + cast on read', C('Object[] data; E get(i) { return (E) data[i]; }'), H.c('g', 'what ArrayList does — safest')], ['(E[]) new Object[n]', C('E[] data = (E[]) new Object[n];'), H.c('y', 'fine internally; NEVER return it as E[]')], ['Array.newInstance', C('(T[]) Array.newInstance(type, n)'), 'real T[] — needs a Class&lt;T&gt;'], ['Generator', C('list.toArray(String[]::new)'), 'Java 11+, clean and typed']])}
+<h4>3. Varargs + generics = hidden generic array</h4>
+<p>${C('static <T> List<T> listOf(T... xs)')} — calling it creates an array of T behind the scenes, so javac warns "<b>possible heap pollution</b>". If the method only <b>reads</b> the array and never lets it escape, it is safe; say so with ${C('@SafeVarargs')} (allowed on static, final and private methods and constructors). ${C('List.of')}, ${C('Arrays.asList')} and ${C('Stream.of')} carry it.</p>
+<h4>4. Raw types</h4>
+<p>A <b>raw type</b> is a generic type used without type arguments: ${C('List')}, ${C('Map')}, ${C('Comparable')}. They exist only so pre-2004 code still compiles. Using one <b>switches off generic checking</b> for that expression:</p>
+${H.table(['', C('List') + ' (raw)', C('List<Object>'), C('List<?>')], [['Accepts a List&lt;String&gt;?', H.c('g', 'yes'), H.c('r', 'no (invariant)'), H.c('g', 'yes')], ['add("x")?', H.c('y', 'yes, unchecked warning'), H.c('g', 'yes, safe'), H.c('r', 'no')], ['get(0) gives', 'Object', 'Object', 'Object'], ['Type-safe?', H.c('r', 'NO'), H.c('g', 'yes'), H.c('g', 'yes')]])}
+<p><b>Surprising rule:</b> using a raw type erases <b>all</b> generics in its members — even ones that have nothing to do with T. If ${C('class Box<T>')} has ${C('List<String> names()')}, then on a raw ${C('Box')} it returns a raw ${C('List')}, and ${C('String s = rawBox.names().get(0)')} does <b>not compile</b>.</p>
+<p><b>Legit raw uses:</b> class literals (${C('List.class')}) and old APIs. ${C('x instanceof List')} works but ${C('x instanceof List<?>')} says the same thing more clearly.</p>`,
+    clues: ['"generic array creation" compile error, or "how does ArrayList store E internally?"', '"Possible heap pollution from parameterized vararg type" warning → @SafeVarargs (only if truly safe)', '"ClassCastException: [Ljava.lang.Object; cannot be cast to [Ljava.lang.String;" → an (E[]) array escaped', '"legacy code with List list = new ArrayList()" / "what is a raw type and why avoid it?"', '"difference between List, List&lt;Object&gt;, List&lt;?&gt;" (very common interview question)', '"find where the wrong element entered the collection" → Collections.checkedList'],
+    code: [`
+import java.util.*;
+import java.util.function.*;
+import java.lang.reflect.Array;
+
+class GenericArrays {
+    // 1) ArrayList-style: Object[] storage, cast on the way out
+    static final class Bag<E> {
+        private Object[] data = new Object[2];
+        private int size;
+        void add(E e) {
+            if (size == data.length) data = Arrays.copyOf(data, size * 2);
+            data[size++] = e;
+        }
+        @SuppressWarnings("unchecked")      // safe: only E values are ever stored by add(E)
+        E get(int i) { Objects.checkIndex(i, size); return (E) data[i]; }
+        // 2) Typed array out: let the caller supply the array constructor
+        E[] toArray(IntFunction<E[]> gen) {
+            E[] out = gen.apply(size);
+            for (int i = 0; i < size; i++) out[i] = get(i);
+            return out;
+        }
+    }
+
+    // 3) Real T[] via reflection, using a Class<T> token
+    @SuppressWarnings("unchecked")
+    static <T> T[] newArray(Class<T> type, int n) { return (T[]) Array.newInstance(type, n); }
+
+    // 4) Safe generic varargs: only reads the array, never stores into it or leaks it
+    @SafeVarargs
+    static <T> List<T> listOf(T... items) { return new ArrayList<>(Arrays.asList(items)); }
+
+    public static void main(String[] args) {
+        Bag<String> bag = new Bag<>();
+        bag.add("a"); bag.add("b"); bag.add("c");             // grows from 2 to 4
+        String[] arr = bag.toArray(String[]::new);            // a REAL String[]
+        System.out.println(arr.getClass().getSimpleName() + " " + Arrays.toString(arr)); // String[] [a, b, c]
+
+        Integer[] nums = newArray(Integer.class, 3);
+        System.out.println(nums.getClass().getSimpleName() + " " + nums.length);        // Integer[] 3
+
+        List<?>[] buckets = new List<?>[2];                   // allowed: List<?> is reifiable
+        buckets[0] = List.of(1, 2);
+        buckets[1] = List.of("x");
+        System.out.println(Arrays.toString(buckets));          // [[1, 2], [x]]
+        System.out.println(listOf("p", "q"));                  // [p, q]
+    }
+}`],
+    codeTitle: ['Four safe ways to deal with arrays of a generic type'],
+    viz: [{
+      title: 'Heap pollution: the time bomb in a raw alias',
+      gen: function () {
+        var code = 'List<String> names = new ArrayList<>(List.of("asha"));\nList raw = names;                  // raw alias: warning only\nraw.add(42);                       // unchecked: Integer sneaks in\nSystem.out.println(names.size());  // no error yet\nfor (String n : names)             // hidden checkcast String\n    System.out.println(n.toUpperCase());';
+        function heap(vals, hl) { return { type: 'array', label: 'The ONE ArrayList object on the heap (names and raw both point here)', values: vals, hl: hl || {} }; }
+        var f = codeFrames(code, [
+          { l: 1, cls: 'ok', v: { names: 'List<String> → #1' }, extra: [heap(['"asha"'])], narr: 'A normal, type-checked <code>List&lt;String&gt;</code> with one element.' },
+          { l: 2, cls: 'cur', v: { names: 'List<String> → #1', raw: 'List (raw) → #1' }, hv: { raw: 'bad' }, extra: [heap(['"asha"'])], narr: 'A <b>raw</b> variable points to the same object. The compiler only warns. Both variables now share one list.' },
+          { l: 3, cls: 'bad', v: { names: 'List<String> → #1', raw: 'List (raw) → #1' }, extra: [heap(['"asha"', '42 (Integer)'], { 1: 'r' })], narr: '<span class="c-r">Heap pollution.</span> Through the raw alias, <code>add(Object)</code> accepts an Integer. The <b>list object itself cannot object</b> — after erasure it is just an array of Objects.' },
+          { l: 4, cls: 'cur', v: { 'names.size()': 2 }, out: '2', extra: [heap(['"asha"', '42 (Integer)'], { 1: 'r' })], narr: 'Still no error! <code>size()</code> does not look at element types. The bomb is planted but silent — in real systems this might sit in a cache for hours.' },
+          { l: [5, 6], cls: 'ok', v: { n: '"asha"' }, out: '2\nASHA', extra: [heap(['"asha"', '42 (Integer)'], { 0: 'g', 1: 'r' })], narr: 'The loop reads element 0 with a hidden <code>checkcast String</code> → fine, prints ASHA.' },
+          { l: 5, cls: 'bad', v: { n: '42 ✗' }, hv: { n: 'bad' }, out: '2\nASHA\nException in thread "main" java.lang.ClassCastException: class java.lang.Integer cannot be cast to class java.lang.String', extra: [heap(['"asha"', '42 (Integer)'], { 0: 'm', 1: 'r' })], narr: '<span class="c-r">Boom — on line 5</span>, a line with no visible cast, two lines after the real bug (line 3). That distance is what makes heap pollution so painful to debug.' }
+        ], 'Polluting a List&lt;String&gt;');
+        var code2 = 'List<String> names = Collections.checkedList(new ArrayList<>(), String.class);\nList raw = names;\nraw.add(42);                       // fails RIGHT HERE';
+        return f.concat(codeFrames(code2, [
+          { l: 1, cls: 'ok', v: { names: 'checked List<String>' }, narr: 'Debugging tip: wrap the list in <code>Collections.checkedList(..., String.class)</code>. It keeps a <b>Class token</b> and checks every insertion at runtime.' },
+          { l: 3, cls: 'bad', v: { names: 'checked List<String>' }, out: 'java.lang.ClassCastException: Attempt to insert class java.lang.Integer element into collection with element type class java.lang.String', narr: 'Now the exception points at the <b>real culprit line</b>. Use it temporarily to hunt pollution, then fix the raw type.' }
+        ], 'Catching pollution at the source'));
+      }
+    }, {
+      title: 'Why an (E[]) array must never escape',
+      gen: function () {
+        var code = 'class ToyList<E> {\n    E[] items = (E[]) new Object[4];   // real type: Object[]\n    int n;\n    void add(E e) { items[n++] = e; }\n    E get(int i) { return items[i]; }\n    E[] toArray() { return Arrays.copyOf(items, n); }\n}\nToyList<String> t = new ToyList<>();\nt.add("hi");\nString s = t.get(0);\nString[] arr = t.toArray();';
+        return codeFrames(code, [
+          { l: 2, cls: 'cur', v: { 'static type of items': 'E[]', 'runtime class': 'Object[]' }, hv: { 'runtime class': 'bad' }, narr: '<code>new E[4]</code> is illegal, so people write <code>(E[]) new Object[4]</code>. Unchecked warning. The variable says E[], but the <b>real array is an Object[]</b> — and arrays never forget their real type.' },
+          { l: [8, 9], cls: 'ok', v: { 'runtime class': 'Object[]', 'items[0]': '"hi"' }, narr: 'Inside the class, everything is erased to Object[], so storing "hi" works.' },
+          { l: [5, 10], cls: 'ok', v: { s: '"hi"' }, hv: { s: 'ok' }, narr: '<code>get</code> returns one element; the caller\'s hidden <code>checkcast String</code> checks the <b>element</b> → fine.' },
+          { l: [6, 11], cls: 'bad', v: { 'returned array class': 'Object[]', 'caller expects': 'String[]' }, hv: { 'returned array class': 'bad' }, out: 'java.lang.ClassCastException: class [Ljava.lang.Object; cannot be cast to class [Ljava.lang.String;', narr: '<span class="c-r">ClassCastException.</span> <code>toArray()</code> returns the Object[] itself; the caller\'s hidden cast checks the <b>array</b> type, and an Object[] is not a String[] — even though every element is a String.' },
+          { l: 6, cls: 'ok', v: { fix: 'E[] toArray(IntFunction<E[]> gen)' }, hv: { fix: 'ok' }, narr: 'Fix: let the caller create the array (<code>t.toArray(String[]::new)</code>), or take a <code>Class&lt;E&gt;</code> and use <code>Array.newInstance</code>, or just return a <code>List&lt;E&gt;</code>. Rule: an <code>(E[])</code> array may live <b>inside</b> the class, never outside.' }
+        ], 'The (E[]) new Object[] trick');
+      }
+    }, {
+      title: 'Raw List vs List<Object> vs List<?>',
+      gen: function () {
+        var rows = [
+          ['List x = new ArrayList<String>()', '✓ (unchecked)', '✗ invariant', '✓'],
+          ['x.add("hi")', '✓ (unchecked)', '✓', '✗'],
+          ['x.add(42)', '✓ (unchecked)', '✓', '✗'],
+          ['Object o = x.get(0)', '✓', '✓', '✓'],
+          ['String s = x.get(0)', '✗ (Object)', '✗ (Object)', '✗ (Object)'],
+          ['x.add(null)', '✓', '✓', '✓'],
+          ['Type safe overall?', '✗ NO', '✓ yes', '✓ yes']
+        ];
+        var narr = [
+          'Assigning a <code>List&lt;String&gt;</code>: raw accepts with a warning; <code>List&lt;Object&gt;</code> refuses (invariance); <code>List&lt;?&gt;</code> accepts safely.',
+          'Adding a String: raw allows it unchecked; <code>List&lt;Object&gt;</code> is happy; <code>List&lt;?&gt;</code> refuses because the real element type is unknown.',
+          'Adding an Integer: with the raw type this <b>pollutes</b> a list that is really a <code>List&lt;String&gt;</code>. <code>List&lt;Object&gt;</code> is fine because it really is a list of anything.',
+          'Reading as Object works everywhere.',
+          'Reading as String needs a cast in all three — none of them knows the elements are Strings.',
+          'null is a member of every type, so all three accept it.',
+          'Verdict: <code>List&lt;?&gt;</code> = "a list of something, read-only"; <code>List&lt;Object&gt;</code> = "a list that holds anything"; raw <code>List</code> = "no checking at all" — avoid in new code.'
+        ];
+        return rows.map(function (r, i) {
+          return { narr: narr[i], parts: [{ type: 'table', label: 'Same operation on three declarations of x', columns: ['operation', 'List (raw)', 'List<Object>', 'List<?>'], rows: rows.slice(0, i + 1), hl: one(i, 'cur') }] };
+        });
+      }
+    }],
+    examples: [
+      { title: 'Does this compile? Five array declarations', html: `${H.table(['Code', 'Compiles?', 'Reason'], [[C('T[] a = new T[10];'), H.c('r', 'no'), 'generic array creation'], [C('List<String>[] a = new List<String>[10];'), H.c('r', 'no'), 'generic array creation'], [C('List<?>[] a = new List<?>[10];'), H.c('g', 'yes'), 'unbounded wildcard is reifiable'], [C('List<String>[] a = new List[10];'), H.c('y', 'yes, unchecked warning'), 'raw array assigned to a generic array type'], [C('T[] a = (T[]) new Object[10];'), H.c('y', 'yes, unchecked warning'), 'safe only if the array never escapes']])}`, code: `
+class ArrayDecls<T> {
+    List<?>[] wild = new List<?>[10];                 // fine
+    @SuppressWarnings("unchecked")
+    List<String>[] rawMade = new List[10];            // compiles with an unchecked warning
+    @SuppressWarnings("unchecked")
+    T[] internal = (T[]) new Object[10];              // compiles; keep it private
+}` },
+      { title: 'Predict: the pickTwo varargs trap (Effective Java Item 32)', html: `<p>${C('toArray(T... args)')} just returns its varargs array. Inside the generic ${C('pickTwo')}, T is erased, so the compiler builds an <b>Object[]</b> for the call. The caller's hidden cast to ${C('String[]')} then fails.</p>
+${H.table(['Call', 'Array created', 'Result'], [[C('String[] a = toArray("x", "y")'), 'String[] (T known = String at this site)', H.c('g', 'works')], [C('String[] b = pickTwo("a", "b", "c")'), 'Object[] (inside pickTwo T is erased)', H.c('r', 'ClassCastException')]])}`, code: `
+class PickTwo {
+    @SafeVarargs                              // a LIE here: the array escapes via return
+    static <T> T[] toArray(T... args) { return args; }
+    static <T> T[] pickTwo(T a, T b, T c) { return toArray(a, b); }
+    public static void main(String[] args) {
+        String[] ok = toArray("x", "y");
+        System.out.println(ok.length);        // 2
+        try {
+            String[] bad = pickTwo("a", "b", "c");
+            System.out.println(bad.length);
+        } catch (ClassCastException e) {
+            System.out.println("CCE: Object[] is not a String[]");
+        }
+    }
+}` },
+      { title: 'Does this compile? A raw type erases unrelated generics', html: `<p>${C('names()')} returns ${C('List<String>')} and has nothing to do with T — yet through a raw ${C('Box')} it returns a raw ${C('List')}.</p>
+${P(`
+Box raw = new Box<Integer>();
+String s = raw.names().get(0);     // ❌ incompatible types: Object cannot be converted to String
+Box<?> wild = new Box<Integer>();
+String t = wild.names().get(0);    // ✅ wildcard keeps member signatures intact`)}`, code: `
+class Box<T> {
+    List<String> names() { return List.of("asha"); }
+    public static void main(String[] args) {
+        Box<?> wild = new Box<Integer>();
+        String t = wild.names().get(0);   // compiles: Box<?> is not raw
+        System.out.println(t);            // asha
+    }
+}` },
+      { title: 'Migrating a raw-type method safely', html: `<p>Legacy: ${C('static double total(List prices)')} with casts inside. Modern: decide the role (producer → ${C('? extends Number')}), delete casts, compile with ${C('-Xlint:unchecked -Werror')} so new raw uses fail the build.</p>
+${H.table(['Step', 'Action'], [['1', 'Turn on -Xlint:unchecked and count warnings'], ['2', 'Generify leaf utilities first (they have no generic callers)'], ['3', 'Replace raw parameters with wildcards (PECS)'], ['4', 'Put @SuppressWarnings on the smallest scope with a comment proving safety'], ['5', 'Add -Werror once warnings reach zero']])}`, code: `
+class Prices {
+    // before: static double total(List prices) { ... (Number) prices.get(i) ... }
+    static double total(List<? extends Number> prices) {
+        double sum = 0;
+        for (Number p : prices) sum += p.doubleValue();   // no casts
+        return sum;
+    }
+    public static void main(String[] args) {
+        System.out.println(total(List.of(10, 2.5)));      // 12.5
+    }
+}` }
+    ],
+    deepDive: `<p><b>Heap pollution</b> (JLS 4.12.2): a variable of a parameterized type refers to an object that is not of that type. Sources: raw types, unchecked casts, generic varargs, mixing compiled code from different versions, and reflection/deserialization. The Java guarantee is: <b>if the whole program compiles without unchecked warnings, there is no heap pollution</b>. Every ${C('@SuppressWarnings("unchecked")')} is a promise you personally sign.</p>
+<p><b>@SafeVarargs contract.</b> Safe means the method (1) does not <b>store</b> anything into the varargs array, and (2) does not let a <b>reference to the array escape</b> (return it, store it in a field, pass it to code that might). Passing it to another ${C('@SafeVarargs')} method or using only its contents (like ${C('Arrays.asList')} reading them) is fine. Since Java 9 it is allowed on private instance methods too; it is not allowed on overridable methods because subclasses could break the promise.</p>
+<p><b>How the JDK does it.</b> ${C('ArrayList')} keeps ${C('transient Object[] elementData')} and casts in ${C('elementData(int)')}. ${C('Arrays.copyOf(T[] original, int n)')} uses ${C('original.getClass()')} to make a correctly-typed array, which is why ${C('list.toArray(new String[0])')} works. Java 11 added ${C('Collection.toArray(IntFunction<T[]>)')}. Passing a zero-length array is as fast or faster than a presized one on modern JVMs (Shipilëv's benchmark).</p>
+<p><b>Collections.checkedList / checkedMap</b> hold a ${C('Class')} token and type-check each insertion — a debugging aid with a small runtime cost; Guava and modern code bases rarely ship with them permanently.</p>
+<p><b>Raw types in the JLS.</b> The spec says raw types are for compatibility only and "it is possible that future versions … will disallow the use of raw types". Static analysers (Error Prone ${C('RawTypes')}, Sonar S3740) flag them; many companies compile with ${C('-Werror')}.</p>`,
+    aiEra: `<p><b>What AI changes:</b> AI can mass-migrate raw types and explain each unchecked warning. Large-scale refactors that took weeks (generifying a legacy module) now take an afternoon — if someone checks the result.</p>
+<p><b>Use AI as a partner:</b> <code>"List every unchecked warning in this file, classify each as provably safe / needs redesign, and propose the smallest @SuppressWarnings scope with a justification comment"</code>. Ask it to write a test that would expose heap pollution (insert through a raw alias, then read).</p>
+<p><b>Where AI goes wrong:</b> it sprinkles ${C('@SuppressWarnings("unchecked")')} on whole classes, adds ${C('@SafeVarargs')} to methods that return the array, writes ${C('(T[]) new Object[n]')} and exposes it, or "fixes" generic array errors with raw arrays.</p>
+<p><b>What you must still own:</b> the safety proof behind every suppression, the rule "no unchecked warnings ⇒ no heap pollution", and the judgement to prefer ${C('List<E>')} over ${C('E[]')} in APIs (Effective Java Item 28).</p>`,
+    problems: [{
+      title: 'Generic Growable Array DynArray&lt;E&gt;',
+      level: 'Medium', tags: ['generic arrays', 'erasure', 'amortized'], companies: ['Adobe', 'Samsung', 'Oracle'],
+      statement: `<p>Implement ${C('DynArray<E>')} with ${C('add(E)')}, ${C('E get(int)')}, ${C('E set(int, E)')}, ${C('int size()')} and ${C('E[] toArray(IntFunction<E[]> gen)')}. Start with capacity 2 and double when full. You may not use any ${C('java.util')} collection internally. Your public API must never return an ${C('Object[]')} disguised as ${C('E[]')}, and the class must compile with at most one, justified, unchecked suppression.</p>`,
+      constraints: `Up to 10<sup>6</sup> adds; get/set O(1); add amortized O(1); index out of range → IndexOutOfBoundsException.`,
+      example: `<p>add a, b, c → capacity 2 → 4 (one resize). ${C('get(1)')} → ${H.c('g', '"b"')}. ${C('toArray(String[]::new)')} → ${H.c('g', 'a real String[] [a, b, c]')}. ${C('get(3)')} → ${H.c('r', 'IndexOutOfBoundsException')}.</p>`,
+      brute: { why: `<p>The naive version declares ${C('E[] data = (E[]) new Object[2]')} and returns ${C('data')} (or a copy of it) from ${C('toArray()')}. It compiles with a warning and appears to work, until a caller writes ${C('String[] s = d.toArray()')} and gets ${C('ClassCastException: [Ljava.lang.Object; cannot be cast to [Ljava.lang.String;')}. It also grows by +1, making n adds cost O(n<sup>2</sup>) copying.</p>`, code: `
+class DynArrayNaive<E> {
+    @SuppressWarnings("unchecked")
+    private E[] data = (E[]) new Object[2];
+    private int size;
+    void add(E e) {
+        if (size == data.length) data = Arrays.copyOf(data, size + 1);   // +1 growth: O(n^2) total
+        data[size++] = e;
+    }
+    E[] toArray() { return Arrays.copyOf(data, size); }                    // leaks an Object[] as E[]
+    public static void main(String[] args) {
+        DynArrayNaive<String> d = new DynArrayNaive<>();
+        d.add("a");
+        try { String[] s = d.toArray(); System.out.println(s.length); }
+        catch (ClassCastException e) { System.out.println("CCE: Object[] escaped"); }
+    }
+}` },
+      mcq: { q: 'Which storage choice keeps the unchecked cast in exactly one, provably safe place?', options: ['<code>E[] data = (E[]) new Object[n]</code> and return it from toArray', '<code>Object[] data</code> plus a single <code>(E)</code> cast inside a private elementAt(i)', '<code>new E[n]</code>', 'A raw <code>Object[]</code> and make callers cast'], answer: 1, explain: 'Only add/set write into data, and both take an E — so every slot provably holds an E and the (E) cast in one private helper is safe. new E[n] does not compile; returning (E[]) arrays causes CCE at callers.' },
+      hints: [`<p>Hint 1: you cannot write ${C('new E[n]')}. Store elements in a plain ${C('Object[]')} — that is what ArrayList does.</p>`, `<p>Hint 2: put the one unchecked cast in a private ${C('E elementAt(int i)')} with ${C('@SuppressWarnings("unchecked")')} and a comment: "only E values are ever stored". Double capacity with ${C('Arrays.copyOf(data, data.length * 2)')}.</p>`, `<p>Hint 3: for ${C('toArray')}, let the caller build the real array: ${C('E[] out = gen.apply(size)')} then copy. Check indices with ${C('Objects.checkIndex(i, size)')}. Recipe: grow if full → store → size++.</p>`],
+      solution: {
+        approach: `<p>Object[] storage, doubling growth, a single private unchecked cast whose safety follows from the fact that only ${C('add(E)')} and ${C('set(int, E)')} write to the array. Typed arrays leave only through a caller-supplied generator, so the runtime array class is always right.</p>`,
+        code: `
+import java.util.*;
+import java.util.function.*;
+
+class DynArray<E> {
+    private Object[] data = new Object[2];
+    private int size;
+
+    void add(E e) {
+        if (size == data.length) data = Arrays.copyOf(data, data.length * 2);  // amortized O(1)
+        data[size++] = e;
+    }
+
+    E get(int i) {
+        Objects.checkIndex(i, size);
+        return elementAt(i);
+    }
+
+    E set(int i, E e) {
+        Objects.checkIndex(i, size);
+        E old = elementAt(i);
+        data[i] = e;
+        return old;
+    }
+
+    int size() { return size; }
+
+    E[] toArray(IntFunction<E[]> gen) {
+        E[] out = gen.apply(size);              // caller creates a REAL E[] (e.g. String[]::new)
+        for (int i = 0; i < size; i++) out[i] = elementAt(i);
+        return out;
+    }
+
+    @SuppressWarnings("unchecked")              // safe: add/set are the only writers and both take an E
+    private E elementAt(int i) { return (E) data[i]; }
+
+    public static void main(String[] args) {
+        DynArray<String> d = new DynArray<>();
+        d.add("a"); d.add("b"); d.add("c");       // capacity 2 → 4
+        System.out.println(d.get(1));             // b
+        System.out.println(d.set(0, "z"));        // a
+        String[] arr = d.toArray(String[]::new);
+        System.out.println(arr.getClass().getSimpleName() + " " + Arrays.toString(arr)); // String[] [z, b, c]
+        try { d.get(3); } catch (IndexOutOfBoundsException e) { System.out.println("out of range"); }
+    }
+}`,
+        dry: { head: ['operation', 'capacity', 'size', 'data (Object[])', 'note'], rows: [['add("a")', '2', '1', '[a, _]', ''], ['add("b")', '2', '2', '[a, b]', 'now full'], ['add("c")', H.c('y', '4'), '3', '[a, b, c, _]', 'copyOf doubled'], ['get(1)', '4', '3', 'unchanged', '"b" via (E) cast'], ['toArray(String[]::new)', '4', '3', 'unchanged', H.c('g', 'new String[3] filled')]] },
+        complexity: `<p>get/set O(1); add amortized O(1) (doubling copies 1 + 2 + 4 + … &lt; 2n elements in total); toArray O(n). Space O(capacity) ≤ 2n.</p>`,
+        followUps: ['Implement <code>Iterable&lt;E&gt;</code> with a fail-fast iterator (modCount).', 'Add a constructor taking <code>Class&lt;E&gt;</code> and a no-arg <code>E[] toArray()</code> using <code>Array.newInstance</code>.', 'Why does <code>ArrayList.toArray()</code> (no args) return <code>Object[]</code> rather than <code>E[]</code>?']
+      }
+    }]
+  });
+
   registerModule({ id: 'java08', title: 'Generics', lang: 'java', intro: `<p>stub</p>`, goals: [], prereqs: `x`, hours: 12, topics: topics, practice: practice, quiz: quiz, interview: interview });
 })();
