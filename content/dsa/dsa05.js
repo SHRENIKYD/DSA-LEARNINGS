@@ -3373,7 +3373,7 @@ System.out.println(P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1]
   registerModule({
     id: 'dsa05',
     title: 'Arrays, Prefix Sums & Carry Forward',
-    intro: `<p>Arrays are the bread and butter of coding interviews — roughly one in three first-round questions is an array or matrix question in disguise. In this module you learn how arrays and matrices really sit in memory, and then a toolbox of <b>"remember-as-you-go"</b> tricks that turn slow O(N<sup>2</sup>) loops into fast O(N) ones:</p>
+    intro: `<p>Arrays are the bread and butter of coding interviews — a large share of first-round questions are array or matrix questions in disguise. In this module you learn how arrays and matrices really sit in memory, and then a toolbox of <b>"remember-as-you-go"</b> tricks that turn slow O(N<sup>2</sup>) loops into fast O(N) ones:</p>
       <ul>
         <li><b>Prefix sums</b> — running totals that answer any range-sum question with one subtraction (plus even/odd-index versions and a 2D version for matrices).</li>
         <li><b>Carry forward</b> — carry one helpful number (a count, a max, a min, a last index) along the loop instead of looking back every time.</li>
