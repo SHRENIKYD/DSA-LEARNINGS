@@ -1118,4 +1118,273 @@ System.out.println(best / 2.0);   // 2.0` }
       }
     }]
   });
+
+  // =====================================================================
+  // TOPIC 5 — Reservoir sampling
+  // =====================================================================
+  topics.push({
+    title: 'Reservoir Sampling: Fair Random Picks from a Stream of Unknown Length',
+    analogy: `<p>You are the doorkeeper at a party and must give <b>one</b> fair lucky-draw prize to a guest. Guests arrive one at a time, you have no guest list, and nobody tells you how many will come. You may hold only <b>one</b> name card in your pocket.</p>
+      <p>Trick: the 1st guest's card goes in your pocket. When the 2nd guest arrives, swap cards with probability ½. The 3rd guest: swap with probability ⅓. The i-th guest: swap with probability 1/i. When the door closes, whatever card is in your pocket is a perfectly fair winner — every guest had exactly the same chance, even though you never knew the total. Your pocket is the "reservoir".</p>`,
+    explain: `<p><b>Problem:</b> pick k items uniformly at random from a stream of N items, where N is unknown or too large to store, using only O(k) memory and one pass.</p>
+      <p><b>k = 1 rule:</b> keep item i (1-based) with probability <b>1/i</b>, replacing the current pick.</p>
+      <p><b>Why it is fair (N = 4):</b> item 2 ends up chosen if it is picked at step 2 <i>and</i> not replaced at steps 3 and 4:</p>
+      ${H.table(['item', 'picked when it arrives', 'survives step 3', 'survives step 4', 'final chance'], [
+        ['1', '1', '2/3', '3/4', '1 · ½ · ⅔ · ¾ = ' + H.c('g', '1/4')],
+        ['2', '1/2', '2/3', '3/4', '½ · ⅔ · ¾ = ' + H.c('g', '1/4')],
+        ['3', '1/3', '—', '3/4', '⅓ · ¾ = ' + H.c('g', '1/4')],
+        ['4', '1/4', '—', '—', H.c('g', '1/4')]
+      ])}
+      <p>(Item 1 also has to survive step 2 with chance ½.) The products <b>telescope</b>: (1/i) · (i/(i+1)) · … · ((N−1)/N) = 1/N for every i.</p>
+      <p><b>General k (Algorithm R):</b></p>
+      <ol>
+        <li>Put the first k items straight into the reservoir array.</li>
+        <li>For item number i (0-based, i ≥ k): draw <code>j = random integer in [0, i]</code>. If <code>j &lt; k</code>, replace <code>reservoir[j]</code> with the item. (So the item enters with probability k/(i+1), and evicts a uniformly random current member.)</li>
+      </ol>
+      <p><b>Proof sketch:</b> after processing i+1 items, each one is in the reservoir with probability <code>k/(i+1)</code>. An existing member gets evicted at step i with probability (k/(i+1)) · (1/k) = 1/(i+1), so it survives with i/(i+1); multiply: (k/i) · (i/(i+1)) = k/(i+1). ✓</p>
+      <p><b>Cost:</b> O(N) time, <b>O(k)</b> memory, one pass, works on streams, files too big for RAM, linked lists, and log lines arriving forever (the reservoir is a valid sample at every moment).</p>`,
+    clues: [
+      '"Pick a random element from a <b>linked list / stream</b>" with "length unknown" or "cannot fit in memory" → reservoir sampling (k = 1).',
+      '"Randomly sample <b>k</b> items <b>uniformly</b> in <b>one pass</b>" → Algorithm R.',
+      '"Return a random <b>index</b> of the target value; the array is huge" (LeetCode 398) → reservoir over the matching positions only.',
+      '"Each element must have <b>equal probability</b>" + "O(1) extra space" → reservoir, not copying into an ArrayList.',
+      '"Sample proportional to <b>weights</b> from a stream" → weighted reservoir (A-Res: key = u<sup>1/w</sup>, keep the k largest).',
+      'Follow-up "What if the stream is <b>distributed</b> across machines?" → sample per shard, then merge reservoirs weighted by shard counts.'
+    ],
+    code: [`
+      // Algorithm R: k uniform samples from an Iterator of unknown length, O(k) memory.
+      static <T> List<T> reservoirSample(Iterator<T> stream, int k, Random rnd) {
+          List<T> res = new ArrayList<>(k);
+          int i = 0;                                   // number of items seen so far
+          while (stream.hasNext()) {
+              T item = stream.next();
+              if (i < k) {
+                  res.add(item);                       // fill phase
+              } else {
+                  int j = rnd.nextInt(i + 1);          // uniform in [0, i]  (nextInt has no modulo bias)
+                  if (j < k) res.set(j, item);         // enter with prob k/(i+1), evict a random member
+              }
+              i++;
+          }
+          return res;                                  // fewer than k items if the stream was short
+      }`, `
+      // Weighted reservoir (Efraimidis-Spirakis "A-Res"): item with weight w gets key u^(1/w),
+      // u uniform in (0,1); keep the k LARGEST keys. Heavier items tend to get larger keys.
+      static List<String> weightedSample(String[] items, double[] w, int k, Random rnd) {
+          PriorityQueue<double[]> heap = new PriorityQueue<>((a, b) -> Double.compare(a[0], b[0])); // min-heap by key
+          for (int i = 0; i < items.length; i++) {
+              double u = 1.0 - rnd.nextDouble();                    // (0, 1], avoids log/pow of 0
+              double key = Math.pow(u, 1.0 / w[i]);
+              if (heap.size() < k) heap.add(new double[]{key, i});
+              else if (key > heap.peek()[0]) { heap.poll(); heap.add(new double[]{key, i}); }
+          }
+          List<String> out = new ArrayList<>();
+          for (double[] e : heap) out.add(items[(int) e[1]]);
+          return out;
+      }`, { lang: 'python', run: true, title: 'Empirical fairness check (Python, runnable)', code: `import random
+
+def reservoir(stream, k, rnd):
+    res = []
+    for i, x in enumerate(stream):
+        if i < k:
+            res.append(x)
+        else:
+            j = rnd.randint(0, i)        # inclusive on both ends
+            if j < k:
+                res[j] = x
+    return res
+
+rnd = random.Random(2026)              # fixed seed -> reproducible
+n, k, trials = 6, 2, 60000
+count = [0] * n
+for _ in range(trials):
+    for x in reservoir(range(n), k, rnd):
+        count[x] += 1
+print("expected frequency k/n =", round(k / n, 4))
+for x in range(n):
+    print("item", x, "chosen", round(count[x] / trials, 4))
+
+# A WRONG variant: replace with probability 1/2 every time -> late items dominate
+count = [0] * n
+for _ in range(trials):
+    pick = 0
+    for x in range(1, n):
+        if rnd.random() < 0.5:
+            pick = x
+    count[pick] += 1
+print("wrong 'coin flip' variant:", [round(c / trials, 3) for c in count])` }],
+    codeTitle: ['Algorithm R (Java)', 'Weighted reservoir A-Res (Java)', 'Fair vs unfair, measured (Python, runnable)'],
+    viz: [{
+      title: 'Algorithm R step by step (seeded, so it replays the same way)',
+      input: '10 20 30 40 50 60 70 80 90 | 3 | 7',
+      inputLabel: 'stream values | k | seed   (2 to 14 values)',
+      gen: function (input) {
+        var parts = splitBar(input, 3, 'values | k | seed, e.g. "10 20 30 40 | 2 | 5"');
+        var a = parseNums(parts[0], 'stream values', 2, 14, -999, 999);
+        var k = Number(parts[1]), seed = Number(parts[2]);
+        if (!(k >= 1 && k <= a.length && Math.floor(k) === k)) throw new Error('k must be a whole number between 1 and the stream length.');
+        if (!isFinite(seed)) throw new Error('seed must be a number.');
+        var r = rng(seed), res = [], frames = [];
+        frames.push({ narr: 'A stream of ' + a.length + ' items arrives one at a time (pretend we cannot see the future). We keep a reservoir of <b>k = ' + k + '</b>. Memory never grows beyond k.',
+          parts: [{ type: 'array', label: 'stream (unseen)', values: a, hl: (function () { var h = {}; a.forEach(function (_, i) { h[i] = 'done'; }); return h; })() }, { type: 'array', label: 'reservoir', values: [] }] });
+        for (var i = 0; i < a.length; i++) {
+          var hlS = {}; for (var q = 0; q < i; q++) hlS[q] = 'done'; hlS[i] = 'cur';
+          if (i < k) {
+            res.push(a[i]);
+            frames.push({ narr: 'Item #' + i + ' = <b>' + a[i] + '</b>: reservoir not full yet → just add it.', parts: [
+              { type: 'array', label: 'stream', values: a, hl: hlS, ptr: one(i, 'i') },
+              { type: 'array', label: 'reservoir', values: res.slice(), hl: one(res.length - 1, 'ok') },
+              { type: 'vars', vals: { i: i, 'P(item i enters)': '1 (fill phase)' } }] });
+          } else {
+            var j = randInt(r, 0, i), ok = j < k;
+            var before = res.slice();
+            if (ok) res[j] = a[i];
+            frames.push({ narr: 'Item #' + i + ' = <b>' + a[i] + '</b>: draw j uniformly from [0, ' + i + '] → <b>j = ' + j + '</b>. ' + (ok ? 'j &lt; k → <span class="c-g">replace reservoir[' + j + ']</span> (' + before[j] + ' leaves).' : 'j ≥ k → <span class="c-r">skip</span>, reservoir unchanged.') + ' Chance this item enters = k/(i+1) = ' + k + '/' + (i + 1) + '.',
+              parts: [
+                { type: 'array', label: 'stream', values: a, hl: hlS, ptr: one(i, 'i') },
+                { type: 'array', label: 'reservoir', values: res.slice(), hl: ok ? one(j, 'ok') : {}, ptr: ok ? one(j, 'j') : {} },
+                { type: 'vars', vals: { i: i, j: j, k: k, 'P(enter)': k + '/' + (i + 1) }, hl: { j: ok ? 'ok' : 'bad' } },
+                { type: 'code', lang: 'java', label: 'line running', code: 'int j = rnd.nextInt(i + 1);\nif (j < k) res.set(j, item);', hl: ok ? { 2: 'ok' } : { 1: 'cur' } }] });
+          }
+        }
+        frames.push({ narr: 'Stream over. Final sample: <b>[' + res.join(', ') + ']</b>. Over many runs (different seeds), every item would appear with probability k/N = ' + k + '/' + a.length + '. Try other seeds to see different — but equally likely — samples.',
+          parts: [{ type: 'array', label: 'final reservoir', values: res.slice(), hl: (function () { var h = {}; res.forEach(function (_, x) { h[x] = 'sel'; }); return h; })() }] });
+        return frames;
+      }
+    }, {
+      title: 'Why it is fair: every seen item always has the same chance k/(i+1)',
+      input: '6 | 2',
+      inputLabel: 'N (2..10) | k',
+      gen: function (input) {
+        var parts = splitBar(input, 2, 'N | k, e.g. "6 | 2"');
+        var n = Number(parts[0]), k = Number(parts[1]);
+        if (!(n >= 2 && n <= 10 && Math.floor(n) === n)) throw new Error('N must be a whole number from 2 to 10.');
+        if (!(k >= 1 && k <= n && Math.floor(k) === k)) throw new Error('k must be between 1 and N.');
+        var frames = [];
+        for (var i = 0; i < n; i++) {
+          var vals = [], texts = [], idx = [], hl = {};
+          for (var j = 0; j <= i; j++) {
+            // P(item j in reservoir after step i) = (j < k ? 1 : k/(j+1)) * prod_{t=max(j,k-1)+1..i} t/(t+1)
+            var p = j < k ? 1 : k / (j + 1);
+            for (var t = Math.max(j, k - 1) + 1; t <= i; t++) p *= t / (t + 1);
+            vals.push(Math.round(p * 1000) / 10); texts.push(Math.round(p * 1000) / 10 + '%'); idx.push('#' + j);
+            hl[j] = j === i ? 'cur' : 'ok';
+          }
+          frames.push({ narr: i < k ? 'After item #' + i + ' (fill phase): every seen item is in the reservoir with probability <b>1</b>.' : 'After item #' + i + ': the new item entered with chance k/(i+1) = ' + k + '/' + (i + 1) + '; each older member survived with chance i/(i+1) = ' + i + '/' + (i + 1) + '. Every bar is now exactly <b>k/(i+1) = ' + (Math.round(k / (i + 1) * 1000) / 10) + '%</b> — the products telescope.',
+            parts: [{ type: 'bars', label: 'P(item is in the reservoir) after ' + (i + 1) + ' items', values: vals, texts: texts, idxLabels: idx, hl: hl },
+              { type: 'vars', vals: { 'items seen': i + 1, k: k, 'k / seen': k + '/' + (i + 1) } }] });
+        }
+        frames.push({ narr: 'Final: all ' + n + ' bars equal k/N = ' + k + '/' + n + '. That is the definition of a <b>uniform</b> sample, achieved without ever knowing N in advance.',
+          parts: [{ type: 'text', html: 'Proof in one line: <code>P = (k/(j+1)) · ((j+1)/(j+2)) · … · ((N−1)/N) = k/N</code>.' }] });
+        return frames;
+      }
+    }],
+    examples: [
+      { title: 'The coin-flip trap', html: `<p>"Replace the pick with probability ½ each time" sounds fair but is not: with 6 items the last item wins with chance ½, item 0 only with (½)<sup>5</sup> ≈ 3%. The probability must <b>shrink</b> as 1/i so that early items are protected by the growing number of later competitors. The runnable Python snippet measures both.</p>
+        ${H.table(['item', '0', '1', '2', '3', '4', '5'], [['coin flip', '3%', '3%', '6%', '13%', '25%', H.c('r', '50%')], ['reservoir', '16.7%', '16.7%', '16.7%', '16.7%', '16.7%', H.c('g', '16.7%')]])}` },
+      { title: 'Random line from a 200 GB log file', html: `<p>You cannot load it, and counting lines first means reading 200 GB twice. Reservoir with k = 1 reads it <b>once</b>, holds one line in memory, and is a valid uniform sample even if you stop early. For k = 10 000 lines (a training-data sample), memory is 10 000 lines, not 200 GB.</p>` },
+      { title: 'Random Pick Index on a huge array', html: `<p>nums = [1, 2, 3, 3, 3], target = 3. Run the reservoir only over positions where nums[i] == target: count c = 1 at i=2 (keep 2), c = 2 at i=3 (keep 3 with prob ½), c = 3 at i=4 (keep 4 with prob ⅓). Each of 2, 3, 4 is returned with probability ⅓ using O(1) extra space.</p>`, code: `int[] nums = {1, 2, 3, 3, 3};
+int target = 3, count = 0, pick = -1;
+Random rnd = new Random(1);
+for (int i = 0; i < nums.length; i++) {
+    if (nums[i] != target) continue;
+    count++;
+    if (rnd.nextInt(count) == 0) pick = i;   // keep with probability 1/count
+}
+System.out.println(pick);` },
+      { title: 'Distributed reservoir merge', html: `<p>Shard A saw 900 items and keeps a sample of k; shard B saw 100. To merge into one uniform sample of k, draw each output slot from A with probability 900/1000 and from B with 100/1000 (sampling without replacement inside each reservoir, updating the remaining counts). Simply concatenating and re-sampling equally would over-represent B 9×.</p>` }
+    ],
+    deepDive: `<p><b>Algorithm L (skip ahead).</b> Algorithm R calls the RNG N times. Vitter's/Li's <b>Algorithm L</b> computes how many items to <i>skip</i> before the next replacement using a geometric distribution: <code>W ← W · exp(log(random())/k)</code>, <code>skip = floor(log(random()) / log(1 − W))</code>. Expected RNG calls drop to O(k(1 + log(N/k))) — a big win when the stream is a fast file scan and RNG cost dominates.</p>
+      <p><b>Weighted sampling.</b> A-Res (key = u<sup>1/w</sup>) gives inclusion probabilities matching sequential weighted sampling without replacement; A-ExpJ adds exponential jumps like Algorithm L. For "sample with replacement proportional to weight" from a static array, use prefix sums + binary search (Random Pick with Weight) or Walker's <b>alias method</b> for O(1) per draw after O(N) setup.</p>
+      <p><b>RNG details that matter.</b> <code>rand() % n</code> has <b>modulo bias</b> when 2<sup>32</sup> is not a multiple of n; Java's <code>nextInt(bound)</code> uses rejection to be exactly uniform. <code>java.util.Random</code> is a 48-bit LCG — fine for algorithms, not for security (use <code>SecureRandom</code>). In multi-threaded code use <code>ThreadLocalRandom</code> or <code>SplittableRandom</code> to avoid contention. Always allow a <b>seed</b> for reproducible tests.</p>
+      <p><b>Production reality.</b> Reservoirs back metric systems (Dropwizard/Micrometer histograms used reservoirs to estimate latency percentiles — and their bias toward old data led to "exponentially decaying" reservoirs that favour recent samples), tracing systems sampling requests, database <code>TABLESAMPLE</code>, and ML pipelines sampling training examples from unbounded logs.</p>`,
+    aiEra: `<p><b>What AI changes:</b> the code is ten lines and every assistant knows Algorithm R. What still trips people (and models) is the <b>probability argument</b> — interviewers now ask you to prove fairness or spot the bias in a slightly-wrong variant, because "write it" is trivial.</p>
+      <p><b>Use AI as a partner:</b> have it generate a Monte Carlo test harness (as in the runnable snippet) or a chi-squared test to check uniformity of your sampler. Ask it to derive Algorithm L's skip formula step by step and then verify it numerically yourself.</p>
+      <p><b>Where AI goes wrong:</b> off-by-one in the random range (<code>nextInt(i)</code> vs <code>nextInt(i + 1)</code>, which silently makes the newest item impossible or too likely), using <code>Math.random() * n</code> cast incorrectly, sharing one <code>Random</code> across threads, and merging distributed reservoirs naïvely.</p>
+      <p><b>What you must still own:</b> the telescoping proof, the 0-based vs 1-based range, and the ability to explain why a sample is uniform at <i>every</i> moment of the stream.</p>`,
+    problems: [{
+      title: 'Linked List Random Node', level: 'Medium', tags: ['reservoir sampling', 'linked list', 'randomized'], companies: ['Google', 'Meta', 'Amazon'],
+      statement: `<p>Given a singly linked list, implement <code>Solution(ListNode head)</code> and <code>int getRandom()</code>, which returns a random node's value such that <b>each node has the same probability</b> of being chosen. Follow-up: the list is extremely large and its length is unknown — solve it with O(1) extra space. (LeetCode 382.)</p>`,
+      constraints: `1 ≤ number of nodes ≤ 10<sup>4</sup>, at most 10<sup>4</sup> calls to getRandom (follow-up: assume the list may not fit in memory)`,
+      example: `<p>List 1 → 2 → 3. Each call returns 1, 2 or 3 with probability ⅓ each. One possible sequence of calls: ${H.c('b', '1, 3, 2, 2, 3')}.</p>`,
+      brute: {
+        why: `<p>Copy all values into an <code>ArrayList</code> in the constructor, then return <code>list.get(rnd.nextInt(size))</code>. O(1) per call, but <b>O(N) extra memory</b> — exactly what the follow-up forbids — and impossible if the list is a stream that cannot be stored or its length changes.</p>`,
+        code: `class Solution {
+    private final List<Integer> vals = new ArrayList<>();
+    private final Random rnd = new Random();
+
+    public Solution(ListNode head) {
+        for (ListNode cur = head; cur != null; cur = cur.next) vals.add(cur.val);  // O(N) memory
+    }
+
+    public int getRandom() {
+        return vals.get(rnd.nextInt(vals.size()));
+    }
+}`
+      },
+      mcq: { q: 'While walking the list you are at the 5th node (1-based). With what probability should it replace the current pick?', options: ['1/2', '1/5', '5/N', '1/N — but N is unknown'], answer: 1, explain: 'Reservoir with k = 1 keeps the i-th item with probability 1/i. The telescoping product then makes every node’s final chance 1/N.' },
+      hints: [
+        `<p>Hint 1: You do not need N in advance. Decide on the fly: is this node "the winner so far"?</p>`,
+        `<p>Hint 2: At the i-th node (1-based) replace the current pick with probability 1/i — <code>rnd.nextInt(i) == 0</code>.</p>`,
+        `<p>Hint 3: Recipe — pick = head.val; i = 1; for node in head.next…: i++; if nextInt(i) == 0, pick = node.val. Return pick. Each call is O(N) time, O(1) space.</p>`
+      ],
+      solution: {
+        approach: `<p>Reservoir sampling with k = 1 on every call. The i-th node survives as the pick with probability (1/i) · (i/(i+1)) · … · ((N−1)/N) = 1/N, so the result is uniform without storing or counting the list.</p>`,
+        code: `class Solution {
+    private final ListNode head;
+    private final Random rnd = new Random();
+
+    public Solution(ListNode head) {
+        this.head = head;                       // O(1) memory: keep only the head
+    }
+
+    public int getRandom() {
+        int pick = head.val, i = 1;             // first node: chosen with probability 1/1
+        for (ListNode cur = head.next; cur != null; cur = cur.next) {
+            i++;
+            if (rnd.nextInt(i) == 0) pick = cur.val;   // replace with probability 1/i
+        }
+        return pick;
+    }
+}`,
+        alt: [{ lang: 'python', code: `import random
+
+class Solution:
+    def __init__(self, head):
+        self.head = head
+
+    def getRandom(self):
+        pick, i, cur = self.head.val, 1, self.head.next
+        while cur:
+            i += 1
+            if random.randrange(i) == 0:   # probability 1/i
+                pick = cur.val
+            cur = cur.next
+        return pick` }, { lang: 'cpp', code: `struct ListNode { int val; ListNode* next; ListNode(int x) : val(x), next(nullptr) {} };  // LeetCode provides this
+
+class Solution {
+    ListNode* head;
+    mt19937 gen{random_device{}()};
+public:
+    Solution(ListNode* h) : head(h) {}
+    int getRandom() {
+        int pick = head->val, i = 1;
+        for (ListNode* cur = head->next; cur; cur = cur->next) {
+            ++i;
+            if (uniform_int_distribution<int>(0, i - 1)(gen) == 0) pick = cur->val;
+        }
+        return pick;
+    }
+};` }],
+        dry: { head: ['node (i)', 'value', 'roll nextInt(i)', 'replace?', 'pick'], rows: [
+          ['1', '1', '—', 'start', '1'],
+          ['2', '2', '1', 'no (need 0)', '1'],
+          ['3', '3', '0', '<span class="c-g">yes</span>', '3'],
+          ['end', '—', '—', '—', '<span class="c-b">return 3</span>']
+        ] },
+        complexity: `<p>Constructor O(1). <b>getRandom: O(N) time, O(1) space.</b> (The array copy gives O(1) per call but O(N) space — the classic time/space trade-off; mention both.)</p>`,
+        followUps: ['Return k distinct random nodes (Algorithm R with a k-array).', 'Many calls, list fits in memory: which version would you ship? (Copy once: O(1) per call.)', 'Make the sample weighted by node value.']
+      }
+    }]
+  });
 registerModule({ id: 'dsa26', title: 'Geometry, Randomized & Amortized Analysis', intro: '<p>x</p>', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();

@@ -664,4 +664,1016 @@ print(count_all("banana", ["ana", "na", "x", "banana"]))   # [2, 2, 0, 1]` }],
       }
     }]
   });
+
+  // =====================================================================
+  // TOPIC 3 — LCP array with Kasai
+  // =====================================================================
+  topics.push({
+    title: 'LCP Array with Kasai’s Algorithm (and Range-Min Superpowers)',
+    analogy: `<p><b>Open a dictionary and look at two neighbouring words</b>: <i>international</i> and <i>internet</i>. They share the first 6 letters <code>intern</code>. If you write, next to every word, “how many starting letters I share with the word right above me”, you get the <b>LCP array</b> (Longest Common Prefix).</p>
+      <p>Kasai’s trick is like <b>a bookmark that can only slip back one page</b>. When you go from the suffix <code>anana</code> to the next one in the text, <code>nana</code>, you just chopped off one letter. Whatever overlap <code>anana</code> had with its dictionary neighbour, <code>nana</code> keeps at least that overlap minus one. So you never restart counting from zero — and the total work stays linear.</p>`,
+    explain: `<h4>1. What LCP means</h4>
+      <p>With the suffix array in hand, define <code>lcp[r]</code> = length of the longest common prefix of the suffixes at ranks <code>r − 1</code> and <code>r</code> (neighbours in sorted order). <code>lcp[0] = 0</code> by convention.</p>
+      ${H.table(['rank r', 'SA[r]', 'suffix', 'lcp[r] (with the row above)'], [
+        ['0', '5', '<code>a</code>', '0'],
+        ['1', '3', '<code>ana</code>', '1 (<code>a</code>)'],
+        ['2', '1', '<code>anana</code>', H.c('g', '<b>3</b> (<code>ana</code>)')],
+        ['3', '0', '<code>banana</code>', '0'],
+        ['4', '4', '<code>na</code>', '0'],
+        ['5', '2', '<code>nana</code>', '2 (<code>na</code>)']
+      ])}
+      ${H.arr([0, 1, 3, 0, 0, 2], { label: 'lcp for "banana"', hl: { 2: 'g' }, idx: true })}
+      <h4>2. Naive vs Kasai</h4>
+      <p>Comparing each neighbour pair from scratch costs up to O(N) per pair → O(N<sup>2</sup>) on <code>aaaa…</code>. <b>Kasai (2001)</b> processes suffixes in <b>text order</b> (i = 0, 1, 2, …), not sorted order, and carries a counter <code>h</code>:</p>
+      <ol>
+        <li>Find the sorted neighbour above suffix i: <code>j = SA[rank[i] − 1]</code>.</li>
+        <li>Extend <code>h</code> while <code>s[i + h] == s[j + h]</code>.</li>
+        <li>Store <code>lcp[rank[i]] = h</code>, then do <code>h = max(h − 1, 0)</code> and move to i + 1.</li>
+      </ol>
+      <p><b>Why h may only drop by 1:</b> suffix i and j share h letters. Remove the first letter of both → suffixes i + 1 and j + 1 share h − 1 letters, and j + 1 sorts before i + 1. The true neighbour of i + 1 sits between them in sorted order, so it shares <b>at least</b> h − 1 letters too. h rises at most N times in total and falls at most N times → <b>O(N)</b>.</p>
+      <h4>3. LCP of ANY two suffixes = a range minimum</h4>
+      <p>For ranks a &lt; b, LCP(suffix SA[a], suffix SA[b]) = <b>min(lcp[a + 1 .. b])</b>. Shared prefixes can only shrink as you walk through the sorted list. With a sparse table (DSA 21) every such query is O(1) after O(N log N) prep. This lets you compare any two substrings of s in O(1).</p>
+      <h4>4. The questions LCP answers instantly</h4>
+      ${H.table(['Question', 'Recipe', 'Time'], [
+        ['Longest repeated substring (occurs ≥ 2 times, may overlap)', 'max lcp[r]', 'O(N)'],
+        ['Longest substring occurring ≥ k times', 'max over windows of k consecutive ranks of min(lcp inside window)', 'O(N) with a monotonic deque'],
+        ['Number of distinct substrings', 'N(N+1)/2 − Σ lcp[r]', 'O(N)'],
+        ['Longest common substring of A and B', 'SA of A + "#" + B; max lcp[r] where ranks r−1 and r come from different strings', 'O((|A|+|B|) log)'],
+        ['LCP / comparison of any two substrings', 'rank lookup + range-min on lcp', 'O(1) per query']
+      ])}`,
+    clues: [
+      '"<b>longest repeated / duplicate</b> substring" (possibly overlapping) → max of the LCP array.',
+      '"substring that appears <b>at least k times</b>" → sliding window of size k over SA, window-min of LCP.',
+      '"count <b>distinct</b> substrings" with N ≥ 10<sup>4</sup> → N(N+1)/2 − Σ lcp.',
+      '"<b>longest common substring</b> of two (or k) strings" → concatenate with unique separators, SA + LCP.',
+      '"compare two substrings lexicographically many times" → ranks + RMQ on LCP (O(1) per comparison).',
+      'You already have a suffix array and the question mentions “shared prefix”, “overlap”, “repeat” → you need LCP.'
+    ],
+    code: [`
+      class LcpToolkit {
+          static int[] buildSA(String s) {                       // O(N log^2 N) prefix doubling
+              int n = s.length();
+              Integer[] sa = new Integer[n];
+              int[] rank = new int[n], tmp = new int[n];
+              for (int i = 0; i < n; i++) { sa[i] = i; rank[i] = s.charAt(i); }
+              for (int k = 1; n > 1; k <<= 1) {
+                  final int K = k;
+                  final int[] r = rank;
+                  Comparator<Integer> c = (x, y) -> r[x] != r[y] ? Integer.compare(r[x], r[y])
+                          : Integer.compare(x + K < n ? r[x + K] : -1, y + K < n ? r[y + K] : -1);
+                  Arrays.sort(sa, c);
+                  tmp[sa[0]] = 0;
+                  for (int i = 1; i < n; i++) tmp[sa[i]] = tmp[sa[i - 1]] + (c.compare(sa[i - 1], sa[i]) < 0 ? 1 : 0);
+                  System.arraycopy(tmp, 0, rank, 0, n);
+                  if (rank[sa[n - 1]] == n - 1) break;
+              }
+              int[] res = new int[n];
+              for (int i = 0; i < n; i++) res[i] = sa[i];
+              return res;
+          }
+
+          // Kasai: lcp[r] = LCP(suffix SA[r-1], suffix SA[r]); lcp[0] = 0. O(N).
+          static int[] kasai(String s, int[] sa) {
+              int n = s.length();
+              int[] rank = new int[n], lcp = new int[n];
+              for (int r = 0; r < n; r++) rank[sa[r]] = r;
+              int h = 0;
+              for (int i = 0; i < n; i++) {                      // TEXT order, not sorted order
+                  if (rank[i] == 0) { h = 0; continue; }         // no neighbour above
+                  int j = sa[rank[i] - 1];                       // sorted neighbour above suffix i
+                  while (i + h < n && j + h < n && s.charAt(i + h) == s.charAt(j + h)) h++;
+                  lcp[rank[i]] = h;
+                  if (h > 0) h--;                                // the "bookmark slips back one" step
+              }
+              return lcp;
+          }
+
+          static String longestRepeated(String s) {
+              int[] sa = buildSA(s), lcp = kasai(s, sa);
+              int best = 0, at = 0;
+              for (int r = 1; r < s.length(); r++) if (lcp[r] > best) { best = lcp[r]; at = sa[r]; }
+              return s.substring(at, at + best);
+          }
+
+          static String longestCommon(String a, String b) {
+              String s = a + "#" + b;                            // '#' must not appear in a or b
+              int[] sa = buildSA(s), lcp = kasai(s, sa);
+              int n1 = a.length(), best = 0, at = 0;
+              for (int r = 1; r < s.length(); r++) {
+                  boolean fromA = sa[r] < n1, prevFromA = sa[r - 1] < n1;
+                  if (fromA != prevFromA && lcp[r] > best) { best = lcp[r]; at = sa[r]; }
+              }
+              return s.substring(at, at + best);
+          }
+
+          public static void main(String[] args) {
+              String s = "banana";
+              int[] sa = buildSA(s);
+              System.out.println(Arrays.toString(kasai(s, sa)));         // [0, 1, 3, 0, 0, 2]
+              System.out.println(longestRepeated("banana"));             // ana
+              System.out.println(longestCommon("xabcdey", "zzbcdq"));    // bcd
+          }
+      }`, `
+      class LcpRmq {
+          // O(1) LCP of any two suffixes with a sparse table over lcp[].
+          final int[][] sp;
+          final int[] rank, log;
+          LcpRmq(int[] sa, int[] lcp) {
+              int n = sa.length;
+              rank = new int[n];
+              for (int r = 0; r < n; r++) rank[sa[r]] = r;
+              log = new int[n + 1];
+              for (int i = 2; i <= n; i++) log[i] = log[i / 2] + 1;
+              sp = new int[log[Math.max(n, 1)] + 1][];
+              sp[0] = lcp.clone();
+              for (int k = 1; k < sp.length; k++) {
+                  sp[k] = new int[n];
+                  for (int i = 0; i + (1 << k) <= n; i++) sp[k][i] = Math.min(sp[k - 1][i], sp[k - 1][i + (1 << (k - 1))]);
+              }
+          }
+          // LCP of suffixes starting at positions i and j (i != j)
+          int lcp(int i, int j) {
+              int a = Math.min(rank[i], rank[j]) + 1, b = Math.max(rank[i], rank[j]);
+              int k = log[b - a + 1];
+              return Math.min(sp[k][a], sp[k][b - (1 << k) + 1]);
+          }
+          public static void main(String[] args) {
+              // banana: SA = [5,3,1,0,4,2], lcp = [0,1,3,0,0,2]
+              LcpRmq q = new LcpRmq(new int[]{5, 3, 1, 0, 4, 2}, new int[]{0, 1, 3, 0, 0, 2});
+              System.out.println(q.lcp(1, 3));   // anana vs ana -> 3
+              System.out.println(q.lcp(5, 1));   // a vs anana   -> 1
+              System.out.println(q.lcp(0, 2));   // banana vs nana -> 0
+          }
+      }`],
+    codeTitle: ['Kasai + longest repeated + longest common substring (Java)', 'O(1) LCP of any two suffixes with a sparse table (Java)'],
+    viz: {
+      title: 'Kasai: the bookmark that only slips back one step',
+      input: 'banana',
+      inputLabel: 'Lowercase word (max 12 letters)',
+      gen: function (input) {
+        var s = readWord(input, 'banana', 12, 'the word');
+        var n = s.length, sa = saJS(s), rank = [], lcp = [], frames = [], i, comps = 0;
+        for (i = 0; i < n; i++) { rank[sa[i]] = i; lcp.push(0); }
+        function rows() { return sa.map(function (x, r) { return [r, x, s.slice(x), r === 0 ? '—' : (lcp[r] === null ? '?' : lcp[r])]; }); }
+        for (i = 1; i < n; i++) lcp[i] = null;
+        frames.push({ narr: 'Start with the suffix array of <b>' + H.esc(s) + '</b>. We want lcp[r] for every row (overlap with the row above). Kasai visits suffixes in <b>text order</b> i = 0, 1, 2 … and carries a counter h between steps.', parts: [
+          { type: 'table', label: 'sorted suffixes', columns: ['rank', 'SA', 'suffix', 'lcp'], rows: rows() },
+          { type: 'array', label: 'rank[i] (where suffix i sits)', values: rank.slice(), showIdx: true }
+        ] });
+        var h = 0;
+        for (i = 0; i < n; i++) {
+          var hl = {};
+          if (rank[i] === 0) {
+            h = 0; hl[0] = 'cur';
+            frames.push({ narr: 'i = ' + i + ' (<code>' + H.esc(s.slice(i)) + '</code>) is the smallest suffix (rank 0) — nobody above it. Reset h = 0.', parts: [
+              { type: 'table', label: 'sorted suffixes', columns: ['rank', 'SA', 'suffix', 'lcp'], rows: rows(), hl: hl },
+              { type: 'vars', vals: { i: i, h: h, 'char comparisons': comps } }
+            ] });
+            continue;
+          }
+          var j = sa[rank[i] - 1], h0 = h;
+          while (i + h < n && j + h < n && s[i + h] === s[j + h]) { h++; comps++; }
+          if (i + h < n && j + h < n) comps++;
+          lcp[rank[i]] = h;
+          hl[rank[i]] = 'cur'; hl[rank[i] - 1] = 'win';
+          var shared = s.slice(i, i + h);
+          frames.push({ narr: 'i = ' + i + ': suffix <code>' + H.esc(s.slice(i)) + '</code> sits at rank ' + rank[i] + '; the row above is <code>' + H.esc(s.slice(j)) + '</code>. We already know they share <b>h = ' + h0 + '</b> letters (carried over), so we only compare from position ' + h0 + ' on → extended by ' + (h - h0) + ' → lcp[' + rank[i] + '] = <b>' + h + '</b>' + (h ? ' (<code>' + H.esc(shared) + '</code>)' : '') + '. Then h drops by one to ' + Math.max(h - 1, 0) + ' for suffix i + 1.', parts: [
+            { type: 'table', label: 'sorted suffixes', columns: ['rank', 'SA', 'suffix', 'lcp'], rows: rows(), hl: hl },
+            { type: 'vars', vals: { i: i, j: j, 'h carried in': h0, 'h after extend': h, 'char comparisons': comps }, hl: { 'h after extend': 'ok' } }
+          ] });
+          if (h > 0) h--;
+        }
+        var best = 0, br = 0, sum = 0;
+        for (i = 1; i < n; i++) { sum += lcp[i]; if (lcp[i] > best) { best = lcp[i]; br = i; } }
+        var hl2 = {}; if (best > 0) { hl2[br] = 'sel'; hl2[br - 1] = 'sel'; }
+        frames.push({ narr: 'Done with only <b>' + comps + '</b> character comparisons (≤ 2N). Max lcp = ' + best + (best ? ' → longest repeated substring <b>' + H.esc(s.substr(sa[br], best)) + '</b>' : ' → no letter repeats') + '. Distinct substrings = N(N+1)/2 − Σlcp = ' + (n * (n + 1) / 2) + ' − ' + sum + ' = <b>' + (n * (n + 1) / 2 - sum) + '</b>.', parts: [
+          { type: 'table', label: 'final', columns: ['rank', 'SA', 'suffix', 'lcp'], rows: rows(), hl: hl2 },
+          { type: 'bars', label: 'lcp array', values: lcp.map(function (v) { return v || 0; }), hl: hlOne(best ? br : -1, 'sel') }
+        ] });
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'Longest repeated substring of "banana"', html: `<p>lcp = [0, 1, 3, 0, 0, 2]. Max = 3 at rank 2 (<code>anana</code> vs <code>ana</code>) → <b>"ana"</b>. Note the two copies <i>overlap</i> (positions 1 and 3) — the LCP method allows overlap automatically. If the problem forbids overlap, you need extra checks (|SA[r] − SA[r−1]| ≥ length).</p>` },
+      { title: 'At least k = 3 times in "aaaa"', html: `<p>SA = [3, 2, 1, 0] (<code>a, aa, aaa, aaaa</code>), lcp = [0, 1, 2, 3]. A substring appearing ≥ 3 times = prefix shared by 3 consecutive ranks = min of 2 consecutive lcp values. Windows: min(1, 2) = 1, min(2, 3) = 2 → answer <b>"aa"</b> (at 0, 1, 2). ✔</p>` },
+      { title: 'Longest common substring via a separator', html: `<p>A = <code>xabcdey</code>, B = <code>zzbcdq</code>. Build SA of <code>xabcdey#zzbcdq</code>. The suffixes <code>bcdey#…</code> (from A) and <code>bcdq</code> (from B) become neighbours with lcp 3 → <b>"bcd"</b>. The unique <code>#</code> stops any common prefix from leaking across the boundary.</p>` },
+      { title: 'O(1) substring comparison', html: `<p>Compare s[i..i+L) with s[j..j+L): let l = LCP(i, j) from the sparse table. If l ≥ L they are equal; otherwise compare the single characters s[i + l] and s[j + l]. This is how suffix-array solutions compare substrings in O(1) where hashing would be probabilistic.</p>` }
+    ],
+    deepDive: `<p><b>Formal lemma (Kasai et al., 2001).</b> Let rank[i] &gt; 0 and h = lcp[rank[i]] &gt; 0. Let j = SA[rank[i] − 1], so suffix j &lt; suffix i and they share h letters. Then suffix j+1 &lt; suffix i+1 and they share h − 1 letters. Every suffix ranked between j+1 and i+1 must share those h − 1 letters with i+1 (sorted order keeps common prefixes), in particular the immediate predecessor of i+1. Hence lcp[rank[i+1]] ≥ h − 1. Potential argument: h ≤ N always, decreases by ≤ 1 per step (≤ N total decrements), so total increments ≤ 2N.</p>
+      <p><b>The LCP interval tree.</b> Ranges of SA where all lcp values are ≥ ℓ form intervals — exactly the internal nodes of the suffix tree at string depth ℓ. Many “suffix tree” algorithms (bottom-up traversal, maximal repeats, supermaximal repeats) can be run over SA + LCP with one stack in O(N) — the same monotonic-stack idea as “largest rectangle in histogram” (DSA 13). For example, “maximise length × occurrence count of a substring” is <b>largest rectangle in the LCP histogram</b>.</p>
+      <p><b>Engineering notes.</b> Kasai needs s, SA, rank and lcp in memory: 13N bytes for ASCII + ints. Variants (Φ-algorithm by Kärkkäinen, Manzini &amp; Puglisi) reduce memory traffic and cache misses — Kasai’s random access <code>SA[rank[i] − 1]</code> jumps across memory. For k strings, use k distinct separators (or an array of ints where separators are negative unique values) so no LCP crosses a boundary, and track which string each suffix came from.</p>`,
+    aiEra: `<p><b>What AI changes:</b> generating Kasai is trivial for an assistant, but <b>the conventions</b> differ everywhere — some define lcp[r] with the row <i>below</i>, some store N−1 values, some use 1-based ranks. Mixing a generated SA (one convention) with a generated LCP (another) is the #1 source of silent bugs.</p>
+      <p><b>Use AI as a partner:</b> ask <code>State the exact convention of your lcp array in a comment, and write a brute-force checker that computes lcp by direct comparison for every N ≤ 10 string over {a,b}</code>. Exhaustive tiny tests over a 2-letter alphabet catch nearly every off-by-one. For data work, AI tools can propose “find repeated boilerplate across 10k documents” pipelines — knowing SA + LCP lets you judge whether they will scale.</p>
+      <p><b>Where AI goes wrong:</b> forgetting to reset h when rank[i] = 0 (works on most tests, fails on some), allowing LCP to cross a separator in the two-string version because the separator also appears in the input, and returning overlapping repeats when the problem demands non-overlapping ones. <b>What you must still own:</b> the h − 1 lemma (interviewers love asking “why is this linear?”) and the mapping from question words (“repeated”, “≥ k times”, “distinct”, “common”) to an LCP recipe.</p>`,
+    problems: [{
+      title: 'Longest Duplicate Substring', level: 'Hard', tags: ['suffix array', 'lcp', 'kasai', 'binary search', 'rolling hash'], companies: ['Google', 'Amazon', 'Bloomberg'],
+      statement: `<p>Given a string <code>s</code>, return <b>any</b> duplicated substring (a substring that occurs at least twice; occurrences may overlap) that has the longest possible length. If there is none, return <code>""</code>.</p>`,
+      constraints: `2 ≤ |s| ≤ 3·10<sup>4</sup>, lowercase English letters (LeetCode 1044)`,
+      example: `<p>s = <code>"banana"</code> → <b>"ana"</b> (at ${H.c('g', 'index 1')} and ${H.c('b', 'index 3')}, overlapping). s = <code>"abcd"</code> → <b>""</b> (no letter repeats).</p>`,
+      brute: { why: `<p>For every length L from long to short, put all substrings of length L in a HashSet → O(N<sup>2</sup>) substrings, each costing O(N) to hash/copy → O(N<sup>3</sup>) ≈ 2.7·10<sup>13</sup>. The waste: re-hashing the same characters for every L and every start.</p>`, code: `
+        class Brute {
+            String longestDupSubstring(String s) {
+                int n = s.length();
+                for (int len = n - 1; len >= 1; len--) {
+                    Set<String> seen = new HashSet<>();
+                    for (int i = 0; i + len <= n; i++) {
+                        String sub = s.substring(i, i + len);   // O(len) copy each time
+                        if (!seen.add(sub)) return sub;
+                    }
+                }
+                return "";
+            }
+        }` },
+      mcq: { q: 'After building SA and the LCP array, the longest duplicated substring has length…', options: ['the minimum LCP', 'the maximum LCP', 'Σ LCP', 'N − max LCP'], answer: 1, explain: 'A repeated substring is a common prefix of two suffixes; the longest such common prefix is attained by some sorted neighbours, i.e. max lcp.' },
+      hints: [`<p>A substring occurs twice ⇔ it is a common prefix of two different suffixes. The longest common prefix of any two suffixes is achieved by two suffixes that are <b>neighbours</b> in sorted order.</p>`, `<p>Build the suffix array, then the LCP array with Kasai. Answer = max lcp[r], starting at SA[r]. (Alternative: binary search on length + Rabin–Karp with a strong hash.)</p>`, `<p>Edge cases: all lcp = 0 → return "". Use the O(N log<sup>2</sup> N) builder — N = 3·10<sup>4</sup> is small. Recipe: SA → rank → Kasai with carried h → track argmax → substring.</p>`],
+      solution: {
+        approach: `<p>Deterministic O(N log<sup>2</sup> N): suffix array + Kasai’s LCP. The answer is the largest lcp value; its suffix SA[r] begins with the duplicate. No hashing, so no collision risk — a nice talking point versus the usual Rabin–Karp + binary-search solution.</p>`,
+        code: `
+          class Solution {
+              public String longestDupSubstring(String s) {
+                  int n = s.length();
+                  int[] sa = buildSA(s);
+                  int[] rank = new int[n];
+                  for (int r = 0; r < n; r++) rank[sa[r]] = r;
+                  int h = 0, best = 0, at = 0;
+                  for (int i = 0; i < n; i++) {
+                      if (rank[i] == 0) { h = 0; continue; }
+                      int j = sa[rank[i] - 1];
+                      while (i + h < n && j + h < n && s.charAt(i + h) == s.charAt(j + h)) h++;
+                      if (h > best) { best = h; at = i; }        // lcp[rank[i]] = h
+                      if (h > 0) h--;
+                  }
+                  return s.substring(at, at + best);
+              }
+
+              private int[] buildSA(String s) {
+                  int n = s.length();
+                  Integer[] sa = new Integer[n];
+                  int[] rank = new int[n], tmp = new int[n];
+                  for (int i = 0; i < n; i++) { sa[i] = i; rank[i] = s.charAt(i); }
+                  for (int k = 1; n > 1; k <<= 1) {
+                      final int K = k;
+                      final int[] r = rank;
+                      Comparator<Integer> c = (x, y) -> r[x] != r[y] ? Integer.compare(r[x], r[y])
+                              : Integer.compare(x + K < n ? r[x + K] : -1, y + K < n ? r[y + K] : -1);
+                      Arrays.sort(sa, c);
+                      tmp[sa[0]] = 0;
+                      for (int i = 1; i < n; i++) tmp[sa[i]] = tmp[sa[i - 1]] + (c.compare(sa[i - 1], sa[i]) < 0 ? 1 : 0);
+                      System.arraycopy(tmp, 0, rank, 0, n);
+                      if (rank[sa[n - 1]] == n - 1) break;
+                  }
+                  int[] res = new int[n];
+                  for (int i = 0; i < n; i++) res[i] = sa[i];
+                  return res;
+              }
+          }`,
+        alt: [{ lang: 'python', code: `
+class Solution:
+    def longestDupSubstring(self, s: str) -> str:
+        # Binary search on length + Rabin-Karp with a 61-bit Mersenne modulus (probabilistic, verified).
+        MOD, B = (1 << 61) - 1, 911382323
+        n = len(s)
+        pref, pw = [0] * (n + 1), [1] * (n + 1)
+        for i, ch in enumerate(s):
+            pref[i + 1] = (pref[i] * B + ord(ch)) % MOD
+            pw[i + 1] = pw[i] * B % MOD
+
+        def find(L):
+            seen = {}
+            for i in range(n - L + 1):
+                h = (pref[i + L] - pref[i] * pw[L]) % MOD
+                if h in seen and s[seen[h]:seen[h] + L] == s[i:i + L]:   # verify to rule out collisions
+                    return i
+                seen.setdefault(h, i)
+            return -1
+
+        lo, hi, start = 1, n - 1, -1
+        best = 0
+        while lo <= hi:
+            mid = (lo + hi) // 2
+            pos = find(mid)
+            if pos != -1:
+                best, start, lo = mid, pos, mid + 1
+            else:
+                hi = mid - 1
+        return s[start:start + best] if best else ""` }],
+        dry: { head: ['i (text order)', 'suffix i', 'neighbour above j', 'h carried', 'h after extend', 'best'], rows: [
+          ['0', 'banana', '1 (anana)', '0', '0', '0'],
+          ['1', 'anana', '3 (ana)', '0', '<b>3</b>', H.c('g', '3 at 1')],
+          ['2', 'nana', '4 (na)', '2', '2', '3'],
+          ['3', 'ana', '5 (a)', '1', '1', '3'],
+          ['4', 'na', '0 (banana)', '0', '0', '3'],
+          ['5', 'a', '— (rank 0)', 'reset', '0', H.c('g', '<b>"ana"</b>')]
+        ] },
+        complexity: `<p>SA O(N log<sup>2</sup> N), Kasai O(N), space O(N). Deterministic. The hash + binary search alternative is O(N log N) expected but needs collision handling.</p>`,
+        followUps: ['Non-overlapping version: longest substring occurring twice <b>without overlap</b> (binary search on L + check max/min SA in each LCP ≥ L group).', 'Longest substring occurring at least <b>k</b> times.', 'Return the duplicate that is lexicographically smallest among the longest ones.']
+      }
+    }]
+  });
+
+  // =====================================================================
+  // TOPIC 4 — Aho-Corasick
+  // =====================================================================
+  function buildAhoJS(pats) {
+    var nodes = [{ ch: '', str: '', parent: -1, depth: 0, kids: {}, fail: 0, pat: [] }];
+    pats.forEach(function (p, k) {
+      var v = 0;
+      for (var i = 0; i < p.length; i++) {
+        var c = p[i];
+        if (nodes[v].kids[c] === undefined) {
+          nodes.push({ ch: c, str: nodes[v].str + c, parent: v, depth: nodes[v].depth + 1, kids: {}, fail: 0, pat: [] });
+          nodes[v].kids[c] = nodes.length - 1;
+        }
+        v = nodes[v].kids[c];
+      }
+      nodes[v].pat.push(k);
+    });
+    return nodes;
+  }
+  function layoutTrie(nodes) {
+    var slot = 0, maxD = 1, H;
+    nodes.forEach(function (nd) { if (nd.depth > maxD) maxD = nd.depth; });
+    var ys = [];
+    function dfs(v) {
+      var ks = Object.keys(nodes[v].kids).sort();
+      if (!ks.length) { ys[v] = slot++; return; }
+      var sum = 0;
+      ks.forEach(function (c) { dfs(nodes[v].kids[c]); sum += ys[nodes[v].kids[c]]; });
+      ys[v] = sum / ks.length;
+    }
+    dfs(0);
+    H = Math.max(36, (slot + 1) * 8);
+    return { height: H, pos: nodes.map(function (nd, v) { return { x: 6 + nd.depth * (86 / maxD), y: (ys[v] + 1) * (H / (slot + 1)) }; }) };
+  }
+
+  topics.push({
+    title: 'Aho–Corasick: Searching for Many Patterns in One Pass',
+    analogy: `<p><b>Picture a librarian checking a long letter for 1,000 banned words.</b> Running 1,000 separate searches would mean reading the letter 1,000 times. Instead, she memorises all the words in one big “word tree” (a trie) and reads the letter <b>once</b>, following the tree letter by letter.</p>
+      <p>When the next letter does not fit (she was reading <code>his</code> and now sees <code>h</code>), she does not start over. She asks: <i>“What is the longest ending of what I just read that is still the start of some banned word?”</i> — here <code>s</code>, because <code>she</code> starts with <code>s</code>. That “plan B” arrow is the <b>failure link</b>. It is KMP’s idea (DSA 9), stretched from one pattern to a whole dictionary.</p>`,
+    explain: `<h4>1. The problem</h4>
+      <p>Text of length <b>N</b>, k patterns of total length <b>M</b>. Report every (pattern, position) match, or count them. Running KMP k times costs O(k·N + M) — with k = 10<sup>4</sup> patterns and N = 10<sup>6</sup> that is 10<sup>10</sup>. Aho–Corasick (1975) costs <b>O(N + M·σ + Z)</b>, where σ = alphabet size and Z = number of matches reported.</p>
+      <h4>2. Step 1 — put all patterns in a trie</h4>
+      <p>Patterns <code>he, she, his, hers</code>: each node is a prefix of some pattern; nodes where a pattern ends are marked.</p>
+      ${H.table(['node', 'string', 'pattern ends here?'], [
+        ['0', '(root)', ''], ['1', 'h', ''], ['2', 'he', H.c('g', 'he')], ['3', 's', ''], ['4', 'sh', ''],
+        ['5', 'she', H.c('g', 'she')], ['6', 'hi', ''], ['7', 'his', H.c('g', 'his')], ['8', 'her', ''], ['9', 'hers', H.c('g', 'hers')]
+      ])}
+      <h4>3. Step 2 — failure links by BFS</h4>
+      <p><code>fail(v)</code> = the node for the <b>longest proper suffix</b> of v’s string that is also in the trie. Compute in BFS order (shallow first): for child u = v + c, <code>fail(u) = go(fail(v), c)</code>.</p>
+      ${H.table(['node', 'fail →', 'why'], [
+        ['h, s', 'root', 'depth-1 nodes always fail to the root'],
+        ['sh', H.c('b', 'h'), 'longest suffix of “sh” in the trie is “h”'],
+        ['she', H.c('b', 'he'), 'suffix “he” is a node — and a pattern! So reaching “she” also means “he” ended here'],
+        ['his', H.c('b', 's'), 'suffix “s” is a node (start of “she”)'],
+        ['hers', H.c('b', 's'), 'suffixes “ers”, “rs” are not nodes; “s” is']
+      ])}
+      <h4>4. Step 3 — outputs through the fail chain</h4>
+      <p>A match can hide inside another: at “she” the pattern “he” also ends. So the matches at a state are: its own pattern(s) + those of fail(v), fail(fail(v)), … Store a <b>dictionary (output) link</b> = nearest node on the fail chain that ends a pattern, so you jump only to real matches. If you only need <b>counts</b>, add visit counts up the fail tree at the end (see the guided problem) — no chain walking at all.</p>
+      <h4>5. Step 4 — scan the text once</h4>
+      <p>Precompute the complete transition table <code>go[v][c]</code> (missing edges point to <code>go[fail(v)][c]</code>), and scanning becomes one array lookup per character:</p>
+      ${H.table(['i', 'char', 'state after', 'matches ending here'], [
+        ['0', 'a', 'root', ''], ['1', 'h', 'h', ''], ['2', 'i', 'hi', ''], ['3', 's', 'his', H.c('g', 'his')],
+        ['4', 'h', 'sh (via fail his → s)', ''], ['5', 'e', 'she', H.c('g', 'she, he')], ['6', 'r', 'her (via fail she → he)', ''], ['7', 's', 'hers', H.c('g', 'hers')]
+      ])}
+      <p>Text <code>ahishers</code> → 4 matches in a single left-to-right pass.</p>`,
+    clues: [
+      '"given a <b>dictionary / list of words</b>, find all occurrences in a text" → one trie + failure links, not k separate searches.',
+      '"<b>stream of characters</b>: after each new char, does some word end here?" → Aho–Corasick state machine (or a reversed trie for short words).',
+      '"<b>banned words</b>", "virus signatures", "keyword filter", "block list", "intrusion detection" → multi-pattern matching.',
+      '"text must <b>not contain</b> any forbidden pattern; count strings of length L" → DP over Aho–Corasick states (states × length).',
+      '"<b>build the target</b> from given words with minimum cost" with Σ|words| up to 5·10<sup>4</sup> → Aho–Corasick to list which words end at each position, then DP.',
+      'Constraints like Σ|patterns| ≤ 10<sup>5</sup> and |text| ≤ 10<sup>6</sup> together → linear-ish multi-pattern search.'
+    ],
+    code: [`
+      class AhoCorasick {
+          private final int[][] go;        // complete transition table (after build)
+          private final int[] fail;        // failure link of each node
+          private final int[] dictLink;    // nearest node on the fail chain that ends a pattern (-1 if none)
+          private final int[] patAt;       // pattern index ending at node, or -1 (assumes distinct patterns)
+          private final int[] patLen;
+          private int nodes = 1;
+
+          AhoCorasick(String[] patterns) {
+              int cap = 1;
+              for (String p : patterns) cap += p.length();
+              go = new int[cap][26];
+              for (int[] row : go) Arrays.fill(row, -1);
+              fail = new int[cap];
+              dictLink = new int[cap];
+              patAt = new int[cap];
+              Arrays.fill(patAt, -1);
+              patLen = new int[patterns.length];
+              // 1) trie
+              for (int k = 0; k < patterns.length; k++) {
+                  int v = 0;
+                  for (char ch : patterns[k].toCharArray()) {
+                      int c = ch - 'a';
+                      if (go[v][c] == -1) go[v][c] = nodes++;
+                      v = go[v][c];
+                  }
+                  patAt[v] = k;
+                  patLen[k] = patterns[k].length();
+              }
+              // 2) BFS: failure links, dictionary links, complete transitions
+              ArrayDeque<Integer> q = new ArrayDeque<>();
+              dictLink[0] = -1;
+              for (int c = 0; c < 26; c++) {
+                  int u = go[0][c];
+                  if (u == -1) go[0][c] = 0;                       // stay at root
+                  else { fail[u] = 0; dictLink[u] = -1; q.add(u); }
+              }
+              while (!q.isEmpty()) {
+                  int v = q.poll();
+                  for (int c = 0; c < 26; c++) {
+                      int u = go[v][c];
+                      if (u == -1) { go[v][c] = go[fail[v]][c]; continue; }   // borrow plan B's edge
+                      fail[u] = go[fail[v]][c];
+                      dictLink[u] = patAt[fail[u]] != -1 ? fail[u] : dictLink[fail[u]];
+                      q.add(u);
+                  }
+              }
+          }
+
+          // every match as {patternIndex, startPosition}
+          List<int[]> findAll(String text) {
+              List<int[]> res = new ArrayList<>();
+              int v = 0;
+              for (int i = 0; i < text.length(); i++) {
+                  v = go[v][text.charAt(i) - 'a'];                     // ONE lookup per character
+                  for (int u = patAt[v] != -1 ? v : dictLink[v]; u != -1; u = dictLink[u])
+                      res.add(new int[]{patAt[u], i - patLen[patAt[u]] + 1});
+              }
+              return res;
+          }
+
+          public static void main(String[] args) {
+              String[] pats = {"he", "she", "his", "hers"};
+              AhoCorasick ac = new AhoCorasick(pats);
+              for (int[] m : ac.findAll("ahishers"))
+                  System.out.println(pats[m[0]] + " at " + m[1]);   // his at 1, she at 3, he at 4, hers at 4
+          }
+      }`, { lang: 'python', run: true, title: 'Aho–Corasick in Python (runnable)', code: `
+from collections import deque
+
+def aho_corasick(patterns, text):
+    goto, fail, out = [{}], [0], [[]]          # node 0 = root
+    for p in patterns:                          # 1) trie
+        v = 0
+        for ch in p:
+            if ch not in goto[v]:
+                goto.append({}); fail.append(0); out.append([])
+                goto[v][ch] = len(goto) - 1
+            v = goto[v][ch]
+        out[v].append(p)
+    q = deque(goto[0].values())                 # 2) BFS failure links
+    while q:
+        v = q.popleft()
+        for ch, u in goto[v].items():
+            f = fail[v]
+            while f and ch not in goto[f]:
+                f = fail[f]
+            fail[u] = goto[f].get(ch, 0)          # longest proper suffix that is a trie node
+            out[u] = out[u] + out[fail[u]]      # inherit matches hidden in the suffix
+            q.append(u)
+    v, found = 0, []                            # 3) one pass over the text
+    for i, ch in enumerate(text):
+        while v and ch not in goto[v]:
+            v = fail[v]                         # plan B
+        v = goto[v].get(ch, 0)
+        for p in out[v]:
+            found.append((p, i - len(p) + 1))
+    return found
+
+print(aho_corasick(["he", "she", "his", "hers"], "ahishers"))
+print(aho_corasick(["a", "aa", "aaa"], "aaaa"))
+` }],
+    codeTitle: ['Aho–Corasick with complete goto table + dictionary links (Java)', 'Dictionary-based version (Python, runnable)'],
+    viz: {
+      title: 'Aho–Corasick: build the trie, add failure links, scan once',
+      input: 'he she his hers | ahishers',
+      inputLabel: 'patterns separated by spaces | text',
+      gen: function (input) {
+        var raw = String(input === undefined || input === null ? 'he she his hers | ahishers' : input);
+        var parts = raw.split('|');
+        if (parts.length !== 2) throw new Error('Format: patterns separated by spaces | text   (example: he she his hers | ahishers)');
+        var pats = parts[0].trim().split(/\s+/).filter(function (x) { return x.length; });
+        var text = parts[1].replace(/\s+/g, '');
+        if (!pats.length || !text.length) throw new Error('Need at least one pattern and a non-empty text.');
+        if (pats.length > 6) throw new Error('Use at most 6 patterns.');
+        pats.forEach(function (p) { if (!/^[a-z]{1,5}$/.test(p)) throw new Error('Each pattern: 1-5 lowercase letters.'); });
+        if (!/^[a-z]{1,14}$/.test(text)) throw new Error('Text: 1-14 lowercase letters.');
+        var nodes = buildAhoJS(pats), L = layoutTrie(nodes), frames = [];
+        function gnodes(upto) {
+          var arr = [];
+          for (var v = 0; v < nodes.length && v < upto; v++) arr.push({ id: 'n' + v, label: v === 0 ? 'root' : nodes[v].str, x: L.pos[v].x, y: L.pos[v].y });
+          return arr;
+        }
+        function trieEdges(upto) {
+          var e = [];
+          for (var v = 1; v < nodes.length && v < upto; v++) e.push(['n' + nodes[v].parent, 'n' + v, nodes[v].ch]);
+          return e;
+        }
+        function tagsFor(upto) {
+          var t = {};
+          for (var v = 1; v < nodes.length && v < upto; v++) if (nodes[v].pat.length) t['n' + v] = '✔ ' + nodes[v].pat.map(function (k) { return pats[k]; }).join(',');
+          return t;
+        }
+        frames.push({ narr: 'Patterns: <b>' + pats.map(H.esc).join(', ') + '</b>. Text: <b>' + H.esc(text) + '</b>. Step 1 — insert every pattern into one trie (shared prefixes share nodes).', parts: [
+          { type: 'graph', label: 'trie', directed: true, height: L.height, nodes: gnodes(1), edges: [], hl: { n0: 'cur' } }
+        ] });
+        // insertion frames: nodes are numbered in creation order, so "first v nodes" = trie after some patterns
+        var created = 1;
+        pats.forEach(function (p) {
+          var v = 0, newOnes = {}, path = {};
+          for (var i = 0; i < p.length; i++) { v = nodes[v].kids[p[i]]; if (v >= created) newOnes['n' + v] = 'ok'; else path['n' + v] = 'win'; }
+          var before = created;
+          created = Math.max(created, v + 1);
+          for (var z = before; z < created; z++) newOnes['n' + z] = 'ok';
+          var hl = cp(path); for (var key in newOnes) hl[key] = newOnes[key];
+          frames.push({ narr: 'Insert <code>' + H.esc(p) + '</code>: ' + (Object.keys(path).length ? 'reuse existing prefix nodes (blue), ' : '') + 'create ' + (created - before) + ' new node(s) (green). Mark the last node as “pattern ends here”.', parts: [
+            { type: 'graph', label: 'trie', directed: true, height: L.height, nodes: gnodes(created), edges: trieEdges(created), hl: hl, tags: tagsFor(created) }
+          ] });
+        });
+        // BFS failure links
+        var order = [], q = [], head = 0, failEdges = [], v, u;
+        Object.keys(nodes[0].kids).sort().forEach(function (c) { q.push(nodes[0].kids[c]); nodes[nodes[0].kids[c]].fail = 0; });
+        while (head < q.length) {
+          v = q[head++]; order.push(v);
+          Object.keys(nodes[v].kids).sort().forEach(function (c) {
+            u = nodes[v].kids[c];
+            var f = nodes[v].fail;
+            while (f !== 0 && nodes[f].kids[c] === undefined) f = nodes[f].fail;
+            nodes[u].fail = (nodes[f].kids[c] !== undefined && nodes[f].kids[c] !== u) ? nodes[f].kids[c] : 0;
+            q.push(u);
+          });
+        }
+        var shownFail = 0;
+        order.forEach(function (w) {
+          var f = nodes[w].fail;
+          if (f !== 0) failEdges.push(['n' + w, 'n' + f, 'fail']);
+          var inherit = [];
+          for (var g = f; g !== 0; g = nodes[g].fail) nodes[g].pat.forEach(function (k) { inherit.push(pats[k]); });
+          var hl = {}; hl['n' + w] = 'cur'; hl['n' + f] = 'sel';
+          var ehl = {}; if (f !== 0) ehl['n' + w + '-n' + f] = 'cur';
+          if (shownFail < 16) {
+            frames.push({ narr: 'BFS visits <code>' + H.esc(nodes[w].str) + '</code>: the longest proper suffix that is also in the trie is <b>' + (f === 0 ? 'empty → root' : '<code>' + H.esc(nodes[f].str) + '</code>') + '</b>. ' + (inherit.length ? '<span class="c-g">Reaching here also means ' + inherit.map(H.esc).join(', ') + ' just ended</span> (inherited through the fail chain).' : '') + (f === 0 ? ' (Links to root are not drawn.)' : ''), parts: [
+              { type: 'graph', label: 'trie + failure links', directed: true, height: L.height, nodes: gnodes(nodes.length), edges: trieEdges(nodes.length).concat(failEdges), hl: hl, ehl: ehl, tags: tagsFor(nodes.length) }
+            ] });
+            shownFail++;
+          }
+        });
+        // scan text
+        var state = 0, found = [], allEdges = trieEdges(nodes.length).concat(failEdges);
+        for (var i = 0; i < text.length; i++) {
+          var c = text[i], hops = [];
+          if (state !== 0 && nodes[state].kids[c] === undefined) hops.push(nodes[state].str);
+          while (state !== 0 && nodes[state].kids[c] === undefined) { state = nodes[state].fail; hops.push(state === 0 ? 'root' : nodes[state].str); }
+          var nxt = nodes[state].kids[c];
+          state = nxt === undefined ? 0 : nxt;
+          var here = [];
+          for (var g2 = state; g2 !== 0; g2 = nodes[g2].fail) nodes[g2].pat.forEach(function (k) { here.push(pats[k]); });
+          here.forEach(function (p) { found.push(p + '@' + (i - p.length + 1)); });
+          var hl2 = {}; hl2['n' + state] = here.length ? 'ok' : 'cur';
+          var thl = {}; thl[i] = 'cur';
+          frames.push({ narr: 'Read <code>' + c + '</code> (i = ' + i + '). ' + (hops.length ? 'No edge “' + c + '” from <code>' + H.esc(hops[0]) + '</code> → follow fail link(s) ' + hops.map(function (x) { return '<code>' + H.esc(x) + '</code>'; }).join(' → ') + (nxt === undefined ? ' (no edge there either) → ' : ', then take edge “' + c + '” → ') : '') + 'now at <b>' + (state === 0 ? 'root' : '<code>' + H.esc(nodes[state].str) + '</code>') + '</b>. ' + (here.length ? '<span class="c-g">Match: ' + here.map(H.esc).join(', ') + '</span>' : 'No pattern ends here.'), parts: [
+            { type: 'array', label: 'text', values: text.split(''), hl: thl, ptr: hlOne(i, 'i'), showIdx: true },
+            { type: 'graph', label: 'automaton', directed: true, height: L.height, nodes: gnodes(nodes.length), edges: allEdges, hl: hl2, tags: tagsFor(nodes.length) },
+            { type: 'set', label: 'matches (pattern@start)', items: found.slice(), hl: (function () { var h = {}; here.forEach(function (p) { h[p + '@' + (i - p.length + 1)] = 'ok'; }); return h; })() }
+          ] });
+        }
+        frames.push({ narr: 'One pass over ' + text.length + ' characters found <b>' + found.length + '</b> match(es) for ' + pats.length + ' patterns. Each character costs O(1) amortised (fail hops are paid for by earlier forward steps), plus O(1) per reported match.', parts: [
+          { type: 'set', label: 'all matches', items: found.slice() },
+          { type: 'vars', vals: { 'text length N': text.length, 'trie nodes': nodes.length, matches: found.length } }
+        ] });
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'Nested patterns: a, aa, aaa in "aaaa"', html: `<p>States walk root → a → aa → aaa → aaa (via fail aaa → aa, then edge a). Outputs through the fail chain: after char 0: {a}; char 1: {aa, a}; char 2: {aaa, aa, a}; char 3: {aaa, aa, a}. Counts: a = 4, aa = 3, aaa = 2 → <b>Z = 9</b> matches. With k nested patterns Z can be Θ(N·k) — which is why counting via the fail tree (no listing) matters.</p>` },
+      { title: 'Why BFS order?', html: `<p>fail(u) has a <b>shorter</b> string than u, so it lives at a smaller depth. BFS finishes all of depth d before depth d+1, so when we compute fail(u) = go(fail(v), c), the node fail(v) and its transitions are already final. DFS order would read half-built links.</p>` },
+      { title: 'Forbidden-word DP on the automaton', html: `<p>“Count strings of length L over {a, b} that avoid <code>aba</code> and <code>bb</code>.” States = automaton nodes that are not (and do not inherit) a pattern end. dp[len][state] → for each letter, go[state][letter]; skip “bad” states. Answer = Σ dp[L][*]. Complexity O(L · nodes · σ) — the automaton turns “avoid many patterns” into a tiny graph walk.</p>` },
+      { title: 'Stream of characters, reversed-trie alternative', html: `<p>LeetCode 1032: after each streamed letter, does a suffix of the stream equal a word? Option A: Aho–Corasick, keep one state, O(1) per letter + output check. Option B: trie of <b>reversed</b> words and walk the last ≤ maxLen letters backwards, O(maxLen) per letter. A is asymptotically better; B is shorter to write when words are ≤ 200 letters.</p>` }
+    ],
+    deepDive: `<p><b>Complexity accounting.</b> Without the complete goto table, each text step may follow several fail links, but each hop decreases the current depth and each character increases it by at most one, so total hops ≤ N (same potential argument as KMP). With the goto table, build costs O(M·σ) time and memory — 26 ints per node is fine for 10<sup>5</sup> nodes (10 MB) but not for Unicode alphabets; there you keep sparse maps and follow fail links on the fly, or compress the alphabet to the symbols actually present.</p>
+      <p><b>The fail tree.</b> Fail links form a tree rooted at the root (each node points to a strictly shallower node). “Number of times pattern k occurs” = number of text positions whose state lies in the <b>subtree</b> of k’s node in the fail tree. So: count visits per state, then sum children into parents in reverse BFS order — or flatten the fail tree with an Euler tour and answer online queries with a Fenwick tree (DSA 21) when patterns or text change.</p>
+      <p><b>Real systems.</b> GNU <code>grep -F</code> with many patterns, the Rust <code>aho-corasick</code> crate behind ripgrep, network intrusion detection systems (Snort/Suricata rule pre-filters), antivirus signature scanners and content-moderation block lists all use Aho–Corasick or SIMD-accelerated relatives (Intel Hyperscan, Teddy). Practical tweaks: leftmost-longest vs. overlapping match semantics, case folding, DFA vs NFA representation (complete table vs fail-following) trading memory for speed.</p>`,
+    aiEra: `<p><b>What AI changes:</b> LLM systems are full of multi-pattern matching: checking streamed output for any of several <b>stop sequences</b>, redacting secrets that match many key prefixes, guardrail block lists, and splitting special tokens out of text before tokenisation (Hugging Face <code>tokenizers</code>, for example, uses an Aho–Corasick automaton for added tokens). When the list has thousands of entries and text streams token by token, one automaton state per stream is the right design — not a loop of <code>contains()</code> calls.</p>
+      <p><b>Use AI as a partner:</b> ask it to generate the automaton, then ask for a <code>randomised test: 50 random patterns over {a,b} of length ≤ 4, random text of length 200, compare with brute-force indexOf for every pattern</code>. Ask it to draw the fail links for your sample in ASCII and check against the visualizer.</p>
+      <p><b>Where AI goes wrong:</b> computing fail links in DFS order, forgetting to inherit outputs (missing “he” inside “she”), setting fail(u) = u for depth-1 nodes in the dictionary version (infinite loops), and listing all matches when the question only needs counts (Θ(N·k) blow-up on <code>a, aa, aaa…</code>). <b>What you must still own:</b> spotting “many patterns, one text” in the wording, choosing counts-via-fail-tree versus listing, and estimating the memory of a 26-wide table.</p>`,
+    problems: [{
+      title: 'Count Occurrences of Every Dictionary Word', level: 'Hard', tags: ['aho-corasick', 'trie', 'bfs', 'fail tree'], companies: ['Google', 'Microsoft', 'Cloudflare'],
+      statement: `<p>Given a text and a list of words, return an array where entry k is the number of (possibly overlapping) occurrences of <code>words[k]</code> in the text. Words may repeat in the list and may be prefixes/suffixes of each other.</p>`,
+      constraints: `1 ≤ |text| ≤ 10<sup>6</sup>, 1 ≤ k ≤ 10<sup>5</sup>, Σ|words| ≤ 10<sup>5</sup>, lowercase letters. Answers fit in a long.`,
+      example: `<p>text = <code>"ahishers"</code>, words = [he, she, his, hers] → <b>[1, 1, 1, 1]</b>.</p><p>text = <code>"aaaa"</code>, words = [a, aa, aaa] → <b>[4, 3, 2]</b> (${H.c('y', 'aa')} starts at 0, 1, 2).</p>`,
+      brute: { why: `<p>For each word, scan the whole text: O(k · N) = 10<sup>11</sup>. Even listing all matches with plain Aho–Corasick can be O(N · k) on nested words like a, aa, aaa, …, because every position matches many words. The waste: walking the same fail chains again and again.</p>`, code: `
+        class Brute {
+            long[] count(String text, String[] words) {
+                long[] ans = new long[words.length];
+                for (int k = 0; k < words.length; k++) {
+                    int from = 0;
+                    while ((from = text.indexOf(words[k], from)) != -1) { ans[k]++; from++; }
+                }
+                return ans;
+            }
+        }` },
+      mcq: { q: 'You counted how many text positions ended in each automaton state. How do you get the count for word w?', options: ['Read the count of w’s node only', 'Sum the counts over w’s subtree in the fail tree', 'Sum counts along the path from root to w in the trie', 'Divide by |w|'], answer: 1, explain: 'A position ends an occurrence of w exactly when w is a suffix of the state’s string, i.e. w’s node is on that state’s fail chain — equivalently the state is in w’s fail-subtree.' },
+      hints: [`<p>Scan the text through the automaton and just do <code>cnt[state]++</code> at each position. Don’t walk output chains.</p>`, `<p>w occurs ending at a position iff w’s node is an ancestor of that position’s state in the <b>fail tree</b>. So push counts upward: process nodes in <b>reverse BFS order</b> and do <code>cnt[fail[v]] += cnt[v]</code>.</p>`, `<p>Duplicate words share a node — remember each word’s end node and read <code>cnt[end[k]]</code>. Use long counts. Recipe: trie → BFS (fail + goto) saving BFS order → scan → reverse-BFS accumulation → read answers.</p>`],
+      solution: {
+        approach: `<p>Build the automaton (trie + BFS failure links + complete goto table). Scan once, counting visits per state. Every visit to state s is an occurrence of every word on s’s fail chain, so accumulating counts from deep to shallow along fail links gives each node the number of positions where its string ends. Total O(N + M·σ), independent of how many matches there are.</p>`,
+        code: `
+          class Solution {
+              public long[] countOccurrences(String text, String[] words) {
+                  int cap = 1;
+                  for (String w : words) cap += w.length();
+                  int[][] go = new int[cap][26];
+                  for (int[] row : go) Arrays.fill(row, -1);
+                  int[] fail = new int[cap], end = new int[words.length];
+                  int nodes = 1;
+                  for (int k = 0; k < words.length; k++) {           // 1) trie
+                      int v = 0;
+                      for (char ch : words[k].toCharArray()) {
+                          int c = ch - 'a';
+                          if (go[v][c] == -1) go[v][c] = nodes++;
+                          v = go[v][c];
+                      }
+                      end[k] = v;                                     // duplicates share the node
+                  }
+                  int[] order = new int[nodes];                       // 2) BFS, remember the order
+                  int head = 0, tail = 0;
+                  order[tail++] = 0;
+                  while (head < tail) {
+                      int v = order[head++];
+                      for (int c = 0; c < 26; c++) {
+                          int u = go[v][c];
+                          if (u == -1) go[v][c] = (v == 0) ? 0 : go[fail[v]][c];
+                          else { fail[u] = (v == 0) ? 0 : go[fail[v]][c]; order[tail++] = u; }
+                      }
+                  }
+                  long[] cnt = new long[nodes];                       // 3) scan: one visit count per position
+                  int v = 0;
+                  for (int i = 0; i < text.length(); i++) { v = go[v][text.charAt(i) - 'a']; cnt[v]++; }
+                  for (int i = tail - 1; i > 0; i--) cnt[fail[order[i]]] += cnt[order[i]];   // 4) push up the fail tree
+                  long[] ans = new long[words.length];
+                  for (int k = 0; k < words.length; k++) ans[k] = cnt[end[k]];
+                  return ans;
+              }
+          }`,
+        alt: [{ lang: 'python', code: `
+from collections import deque
+
+def count_occurrences(text, words):
+    go, fail = [[-1] * 26], [0]
+    end = []
+    for w in words:
+        v = 0
+        for ch in w:
+            c = ord(ch) - 97
+            if go[v][c] == -1:
+                go[v][c] = len(go); go.append([-1] * 26); fail.append(0)
+            v = go[v][c]
+        end.append(v)
+    order, q = [], deque([0])
+    while q:
+        v = q.popleft(); order.append(v)
+        for c in range(26):
+            u = go[v][c]
+            if u == -1:
+                go[v][c] = 0 if v == 0 else go[fail[v]][c]
+            else:
+                fail[u] = 0 if v == 0 else go[fail[v]][c]
+                q.append(u)
+    cnt, v = [0] * len(go), 0
+    for ch in text:
+        v = go[v][ord(ch) - 97]
+        cnt[v] += 1
+    for v in reversed(order[1:]):
+        cnt[fail[v]] += cnt[v]
+    return [cnt[e] for e in end]
+
+print(count_occurrences("aaaa", ["a", "aa", "aaa"]))   # [4, 3, 2]` }],
+        dry: { head: ['i', 'char', 'state after', 'how', 'cnt[state]++'], rows: [
+          ['0', 'a', 'root', 'no edge from root', 'root = 1'],
+          ['1', 'h', 'h', 'trie edge', 'h = 1'],
+          ['2', 'i', 'hi', 'trie edge', 'hi = 1'],
+          ['3', 's', 'his', 'trie edge', 'his = 1'],
+          ['4', 'h', 'sh', 'goto(his, h) = goto(s, h)', 'sh = 1'],
+          ['5', 'e', 'she', 'trie edge', 'she = 1'],
+          ['6', 'r', 'her', 'goto(she, r) = goto(he, r)', 'her = 1'],
+          ['7', 's', 'hers', 'trie edge', 'hers = 1'],
+          ['push-up', '', '', 'reverse BFS: hers→s, she→he, his→s, sh→h', H.c('g', 'he = 1, she = 1, his = 1, hers = 1')]
+        ] },
+        complexity: `<p>Build O(M·26), scan O(N), push-up O(M). Space O(M·26). No dependence on the number of matches Z.</p>`,
+        followUps: ['Words are added online between texts — use the Euler tour of the fail tree + Fenwick tree.', 'Report the <b>first</b> position of each word instead of the count.', 'Alphabet is all of Unicode — replace the 26-wide table with hash maps and fail-following.']
+      }
+    }]
+  });
+
+  // =====================================================================
+  // TOPIC 5 — Polynomial hashing, double hashing, anti-hash tests
+  // =====================================================================
+  topics.push({
+    title: 'Polynomial Hashing, Double Hashing & Anti-Hash Tests',
+    analogy: `<p><b>A string hash is a fingerprint.</b> Comparing two 10,000-page books letter by letter is slow; comparing their fingerprints is instant. Fingerprints are <i>almost</i> always unique — but two different books can, rarely, share one. That is a <b>collision</b>.</p>
+      <p><b>Double hashing</b> is checking <i>two</i> fingerprints from two different machines: a fake would have to fool both at once. <b>Anti-hash tests</b> are what a clever forger does when they know <i>exactly</i> which machine you use: they build a fake that fools it on purpose. Your defence is to pick the machine settings (the base) <b>at random when the program starts</b>, so the forger cannot prepare.</p>`,
+    explain: `<h4>1. The polynomial hash</h4>
+      <p>Treat the string as a number written in base <b>B</b>, then take it modulo a big prime <b>M</b>. Map letters to 1..26 (never 0 — otherwise <code>"a"</code> and <code>"aa"</code> both hash to 0):</p>
+      <p><code>H(s) = (s₀·B<sup>n−1</sup> + s₁·B<sup>n−2</sup> + … + s<sub>n−1</sub>) mod M</code></p>
+      <p><b>Prefix hashes</b> make every substring hash O(1): <code>pre[i+1] = (pre[i]·B + s<sub>i</sub>) mod M</code> and</p>
+      <p><code>H(s[l..r]) = (pre[r+1] − pre[l]·B<sup>r−l+1</sup>) mod M</code> (add M if negative).</p>
+      ${H.table(['step', 'value (B = 31, M = 101, a=1 b=2 c=3)'], [
+        ['pre[0]', '0'], ['pre[1] = 0·31 + 1', '1'], ['pre[2] = 1·31 + 2', '33'], ['pre[3] = 33·31 + 3 = 1026', '1026 mod 101 = <b>16</b>'],
+        ['H("bc") = pre[3] − pre[1]·31<sup>2</sup>', '16 − 961 mod 101 = 16 − 52 = −36 → <b>65</b>'],
+        ['check directly: 2·31 + 3', H.c('g', '<b>65</b> ✔')]
+      ])}
+      <p><b>Rolling</b> a fixed window one step right: <code>h = ((h − s<sub>i</sub>·B<sup>m−1</sup>)·B + s<sub>i+m</sub>) mod M</code> — this is Rabin–Karp.</p>
+      <h4>2. How likely is a collision?</h4>
+      <p>For two fixed different strings of length n and a <b>random</b> base, the chance they collide is at most n/M (a degree-n polynomial has at most n roots mod a prime). But if you compare <b>many</b> hashes with each other (put K hashes in a set), the <b>birthday paradox</b> kicks in: expected collisions ≈ K<sup>2</sup>/(2M).</p>
+      ${H.table(['K hashes in one set', 'M ≈ 10<sup>9</sup> (one mod)', 'M ≈ 10<sup>18</sup> (two mods or 2<sup>61</sup>−1)'], [
+        ['10<sup>3</sup>', '≈ 0.0005', '≈ 5·10<sup>−13</sup>'],
+        ['10<sup>5</sup>', H.c('r', '≈ 5 — expect collisions!'), '≈ 5·10<sup>−9</sup>'],
+        ['10<sup>6</sup>', H.c('r', '≈ 500'), H.c('g', '≈ 5·10<sup>−7</sup>')]
+      ])}
+      <p>Rule of thumb: <b>one 32-bit-ish modulus is only safe for a handful of comparisons</b>. For “count distinct substrings” style problems use two moduli (a pair) or one 61-bit Mersenne prime.</p>
+      <h4>3. Double hashing</h4>
+      <p>Compute hashes with two independent (B<sub>1</sub>, M<sub>1</sub>) and (B<sub>2</sub>, M<sub>2</sub>) and compare the <b>pair</b> (or pack it into one <code>long</code>: <code>h1 · 2<sup>32</sup> + h2</code>). Collision chance multiplies: ≈ 1/(M<sub>1</sub>M<sub>2</sub>). Alternative: a single modulus <b>M = 2<sup>61</sup> − 1</b> with 128-bit multiplication (<code>Math.multiplyHigh</code> in Java) — one hash, ~10<sup>18</sup> range, and reduction is just shifts and adds.</p>
+      <h4>4. Anti-hash tests — how hashes get broken on purpose</h4>
+      ${H.table(['Weak choice', 'Attack', 'Fix'], [
+        ['Modulus 2<sup>64</sup> (just let <code>long</code> overflow)', H.c('r', 'Thue–Morse strings of length 2048 collide for <b>every</b> odd base'), 'use a prime modulus'],
+        ['Fixed, publicly known base and prime', 'attacker precomputes a collision (birthday search or lattice reduction)', H.c('g', 'random base chosen at runtime')],
+        ['Single ~10<sup>9</sup> modulus with many comparisons', 'birthday paradox, no attacker needed', 'double hash or 2<sup>61</sup>−1'],
+        ['Java <code>String.hashCode</code> (fixed base 31, mod 2<sup>32</sup>)', '<code>"Aa"</code> and <code>"BB"</code> both hash to 2112 → hash-flooding a HashMap', 'Java 8 treeifies buckets; Python/Rust use keyed SipHash']
+      ])}
+      <p><b>Golden rules:</b> prime modulus, random base in [256, M − 1], two hashes or 61 bits, letters mapped to non-zero values, and <b>verify</b> with a real comparison whenever a wrong “equal” would be a wrong answer.</p>`,
+    clues: [
+      '"compare substrings many times", "is s[a..b] equal to s[c..d]?" → prefix hashes, O(1) per comparison.',
+      '"<b>longest</b> substring that … (repeats / is common / is a palindrome)" + monotonic yes/no → <b>binary search on length + hashing</b>.',
+      '"count <b>distinct</b> substrings with property X" with N ≤ 2000–5000 → O(N<sup>2</sup>) substring hashes in a set (use a double hash!).',
+      'Codeforces-style "hacks allowed" / "uphacks" → expect <b>anti-hash tests</b>: random base, prime modulus, no 2<sup>64</sup> overflow.',
+      '"2D grid pattern" / "find a sub-matrix" → 2D rolling hash (hash rows, then hash the column of row-hashes).',
+      'Fixed-length windows ("all substrings of length 10", DNA) → rolling hash or bit-packing in O(N).'
+    ],
+    code: [`
+      class StringHasher {
+          // Double polynomial hash with RANDOM bases (anti-hash safe for interview/contest use).
+          static final long M1 = 1_000_000_007L, M2 = 998_244_353L;
+          final long[] p1, p2, h1, h2;
+
+          StringHasher(String s) {
+              Random rnd = new Random();                           // seeded by time → bases unknown to an attacker
+              long b1 = 256 + rnd.nextInt((int) (M1 - 512));
+              long b2 = 256 + rnd.nextInt((int) (M2 - 512));
+              int n = s.length();
+              p1 = new long[n + 1]; p2 = new long[n + 1]; h1 = new long[n + 1]; h2 = new long[n + 1];
+              p1[0] = p2[0] = 1;
+              for (int i = 0; i < n; i++) {
+                  int v = s.charAt(i) + 1;                         // never map a char to 0
+                  p1[i + 1] = p1[i] * b1 % M1;
+                  p2[i + 1] = p2[i] * b2 % M2;
+                  h1[i + 1] = (h1[i] * b1 + v) % M1;
+                  h2[i + 1] = (h2[i] * b2 + v) % M2;
+              }
+          }
+
+          // hash of s[l, r) packed into one long: (h1 << 32) | h2
+          long get(int l, int r) {
+              long x = (h1[r] - h1[l] * p1[r - l] % M1 + M1) % M1;
+              long y = (h2[r] - h2[l] * p2[r - l] % M2 + M2) % M2;
+              return (x << 32) | y;
+          }
+
+          boolean equal(int a, int b, int len) { return get(a, a + len) == get(b, b + len); }
+
+          public static void main(String[] args) {
+              StringHasher h = new StringHasher("abcabcx");
+              System.out.println(h.equal(0, 3, 3));   // "abc" vs "abc" -> true
+              System.out.println(h.equal(0, 4, 3));   // "abc" vs "bcx" -> false
+          }
+      }`, `
+      class Mersenne61 {
+          // Single hash modulo 2^61 - 1 using a 128-bit product. ~2.3e18 possible values.
+          static final long MOD = (1L << 61) - 1;
+
+          static long mulMod(long a, long b) {                     // a, b < 2^61
+              long hi = Math.multiplyHigh(a, b), lo = a * b;       // 128-bit product = hi:lo
+              long low61 = lo & MOD;
+              long rest = (lo >>> 61) | (hi << 3);                 // product >> 61
+              long r = low61 + rest;                               // because 2^61 ≡ 1 (mod MOD)
+              r = (r & MOD) + (r >>> 61);
+              return r >= MOD ? r - MOD : r;
+          }
+
+          public static void main(String[] args) {
+              long base = 1_000_003L + new Random().nextInt(1 << 30);   // random base at runtime
+              String s = "hashing";
+              long h = 0;
+              for (char c : s.toCharArray()) h = (mulMod(h, base) + c + 1) % MOD;
+              System.out.println("hash computed: " + (h >= 0 && h < MOD));
+          }
+      }`, `
+      class ThueMorseAttack {
+          // Shows why "let long overflow" (mod 2^64) is NOT a hash: Thue–Morse strings collide for ANY odd base.
+          public static void main(String[] args) {
+              int n = 1 << 11;                                      // 2048 characters
+              StringBuilder s = new StringBuilder(), t = new StringBuilder();
+              for (int i = 0; i < n; i++) {
+                  boolean bit = Integer.bitCount(i) % 2 == 1;           // Thue–Morse sequence
+                  s.append(bit ? 'b' : 'a');
+                  t.append(bit ? 'a' : 'b');                            // its complement
+              }
+              for (long base : new long[]{31, 131, 1_000_003, 0x9E3779B97F4A7C15L | 1}) {
+                  long hs = 0, ht = 0;
+                  for (int i = 0; i < n; i++) { hs = hs * base + s.charAt(i); ht = ht * base + t.charAt(i); }
+                  System.out.println("base " + base + ": equal hash = " + (hs == ht) + ", equal strings = " + s.toString().equals(t.toString()));
+              }
+          }
+      }`, { lang: 'python', run: true, title: 'Anti-hash demo in Python (runnable)', code: `
+# Thue-Morse attack on "natural overflow" hashing (mod 2**64)
+n = 1 << 11
+S = ''.join('b' if bin(i).count('1') % 2 else 'a' for i in range(n))
+T = ''.join('a' if c == 'b' else 'b' for c in S)
+
+def h(s, base, mod):
+    x = 0
+    for c in s:
+        x = (x * base + ord(c)) % mod
+    return x
+
+for base in [31, 131, 1_000_003]:
+    print("base", base, "mod 2^64 collide:", h(S, base, 2**64) == h(T, base, 2**64),
+          "| mod 2^61-1 collide:", h(S, base, (1 << 61) - 1) == h(T, base, (1 << 61) - 1))
+
+# Java's fixed String.hashCode: "Aa" and "BB" collide
+java_hash = lambda s: h(s, 31, 2**32)
+print("Aa ->", java_hash("Aa"), " BB ->", java_hash("BB"))
+` }],
+    codeTitle: ['Double hash with random bases (Java)', 'Mod 2⁶¹−1 with 128-bit multiply (Java)', 'Thue–Morse breaks mod 2⁶⁴ (Java)', 'Anti-hash demo (Python, runnable)'],
+    viz: [{
+      title: 'Rabin–Karp with two hashes: a tiny modulus collides, the second hash catches it',
+      input: 'bananabandana|ana',
+      inputLabel: 'text|pattern (lowercase, text ≤ 20, pattern ≤ 6)',
+      gen: function (input) {
+        var raw = String(input === undefined || input === null ? 'bananabandana|ana' : input).split('|');
+        if (raw.length !== 2) throw new Error('Format: text|pattern   e.g. bananabandana|ana');
+        var T = readWord(raw[0], 'bananabandana', 20, 'the text'), P = readWord(raw[1], 'ana', 6, 'the pattern');
+        if (P.length > T.length) throw new Error('Pattern must not be longer than the text.');
+        var B = 31, M1 = 13, M2 = 1009, m = P.length, frames = [], i;
+        function val(c) { return c.charCodeAt(0) - 96; }
+        function full(s, M) { var x = 0; for (var k = 0; k < s.length; k++) x = (x * B + val(s[k])) % M; return x; }
+        var pw1 = 1, pw2 = 1;
+        for (i = 1; i < m; i++) { pw1 = pw1 * B % M1; pw2 = pw2 * B % M2; }
+        var hp1 = full(P, M1), hp2 = full(P, M2), w1 = full(T.slice(0, m), M1), w2 = full(T.slice(0, m), M2);
+        frames.push({ narr: 'Pattern <b>' + H.esc(P) + '</b>: hash1 (mod <b>13</b>, deliberately tiny) = ' + hp1 + ', hash2 (mod 1009) = ' + hp2 + '. Base B = 31, letters a=1 … z=26. We slide a window of length ' + m + ' and update both hashes in O(1) per step.', parts: [
+          { type: 'array', label: 'text', values: T.split(''), showIdx: true },
+          { type: 'vars', label: 'pattern hashes', vals: { 'H1(P) mod 13': hp1, 'H2(P) mod 1009': hp2, 'B^(m-1) mod 13': pw1, 'B^(m-1) mod 1009': pw2 } }
+        ] });
+        var real = 0, fake = 0, found = [];
+        for (i = 0; i + m <= T.length; i++) {
+          if (i > 0) {
+            w1 = ((w1 - val(T[i - 1]) * pw1 % M1 + M1) * B + val(T[i + m - 1])) % M1;
+            w2 = ((w2 - val(T[i - 1]) * pw2 % M2 + M2) * B + val(T[i + m - 1])) % M2;
+          }
+          var win = T.slice(i, i + m), verdict, cls, hl = {};
+          if (w1 === hp1 && w2 === hp2) { verdict = '<span class="c-g">both hashes match → verify letters → real match at ' + i + '</span>'; cls = 'ok'; real++; found.push(i); }
+          else if (w1 === hp1) { verdict = '<span class="c-r">hash1 matches but the strings differ — a COLLISION!</span> hash2 (' + w2 + ' ≠ ' + hp2 + ') saves us.'; cls = 'bad'; fake++; }
+          else { verdict = 'hash1 differs → skip instantly, no letter comparison needed.'; cls = 'win'; }
+          for (var z = i; z < i + m; z++) hl[z] = cls;
+          frames.push({ narr: 'Window [' + i + ', ' + (i + m - 1) + '] = <code>' + H.esc(win) + '</code>' + (i > 0 ? ' (rolled: remove <code>' + T[i - 1] + '</code>, add <code>' + T[i + m - 1] + '</code>)' : '') + ': H1 = ' + w1 + ', H2 = ' + w2 + '. ' + verdict, parts: [
+            { type: 'array', label: 'text', values: T.split(''), hl: hl, range: [i, i + m - 1], showIdx: true },
+            { type: 'vars', vals: { 'H1(window)': w1, 'H1(P)': hp1, 'H2(window)': w2, 'H2(P)': hp2, 'real matches': real, 'collisions caught': fake }, hl: { 'H1(window)': w1 === hp1 ? (cls === 'ok' ? 'ok' : 'bad') : '', 'H2(window)': cls === 'ok' ? 'ok' : '' } }
+          ] });
+        }
+        frames.push({ narr: 'Done: <b>' + real + '</b> real match(es) at ' + (found.length ? found.join(', ') : '—') + ', and <b>' + fake + '</b> false alarm(s) from the tiny modulus 13. With a single ~10<sup>9</sup> modulus false alarms are rare; with a pair (~10<sup>18</sup>) they are practically impossible — but only if the bases are <b>random</b>.', parts: [
+          { type: 'vars', vals: { windows: T.length - m + 1, 'real matches': real, 'false alarms (mod 13 only)': fake }, hl: { 'false alarms (mod 13 only)': fake ? 'bad' : 'ok' } },
+          { type: 'text', html: 'Expected false alarms with one modulus M ≈ (windows) / M. Here ≈ ' + ((T.length - m + 1) / 13).toFixed(2) + ' for M = 13, but ≈ ' + ((T.length - m + 1) / 1e9).toExponential(1) + ' for M = 10<sup>9</sup>.' }
+        ] });
+        return frames;
+      }
+    }, {
+      title: 'Anti-hash test: Thue–Morse vs. overflow hashing (mod 2⁶⁴)',
+      input: '131',
+      inputLabel: 'An odd base B (e.g. 31, 131, 1000003)',
+      gen: function (input) {
+        var b = parseInt(String(input === undefined || input === null ? '131' : input).trim(), 10);
+        if (isNaN(b) || b < 3 || b > 1e12) throw new Error('Type an integer base between 3 and 10^12, e.g. 131.');
+        var MOD = BigInt(1) << BigInt(64), B = BigInt(b), frames = [];
+        var S = 'a', T = 'b';
+        function hash(s) { var x = BigInt(0); for (var i = 0; i < s.length; i++) x = (x * B + BigInt(s.charCodeAt(i))) % MOD; return x; }
+        function tz(x) { if (x === BigInt(0)) return 64; var c = 0; while ((x & BigInt(1)) === BigInt(0)) { x >>= BigInt(1); c++; } return c; }
+        frames.push({ narr: 'Hash = Σ s<sub>i</sub>·B<sup>n−1−i</sup> computed with a 64-bit integer that simply overflows (i.e. mod 2<sup>64</sup>). Base B = <b>' + b + '</b>' + (b % 2 === 0 ? ' (even! then B<sup>64</sup> ≡ 0 and only the last 64 characters even matter — broken even faster)' : '') + '. Start: S<sub>0</sub> = <code>a</code>, T<sub>0</sub> = <code>b</code> (its complement).', parts: [
+          { type: 'vars', vals: { S0: 'a', T0: 'b', 'H(S)−H(T) mod 2^64': ((hash(S) - hash(T)) % MOD + MOD) % MOD + '' } }
+        ] });
+        for (var k = 1; k <= 11; k++) {
+          var ns = S + T, nt = T + S;
+          S = ns; T = nt;
+          var d = ((hash(S) - hash(T)) % MOD + MOD) % MOD, z = tz(d);
+          var low32 = Number(d & BigInt(0xffffffff));
+          var hl = {};
+          for (var bit = 0; bit < Math.min(z, 32); bit++) hl[bit] = 'ok';
+          frames.push({ narr: 'k = ' + k + ': S<sub>k</sub> = S<sub>k−1</sub> + T<sub>k−1</sub>, T<sub>k</sub> = T<sub>k−1</sub> + S<sub>k−1</sub> (length ' + S.length + '). The difference H(S) − H(T) gets multiplied by (B<sup>' + (S.length / 2) + '</sup> − 1), which adds at least ' + k + ' more factors of 2. Trailing zero bits now: <b>' + z + '</b> (theory: ≥ ' + (k * (k + 1) / 2) + ').' + (d === BigInt(0) ? ' <span class="c-r"><b>Difference is 0 mod 2<sup>64</sup> → the two different strings have the SAME hash.</b></span>' : ''), parts: [
+            { type: 'bits', label: 'low 32 bits of H(S) − H(T)  (green = guaranteed zero bits)', value: low32 | 0, width: 32, hl: hl },
+            { type: 'vars', vals: { k: k, length: S.length, 'trailing zero bits': z, 'S starts with': S.slice(0, 16) + (S.length > 16 ? '…' : ''), 'T starts with': T.slice(0, 16) + (T.length > 16 ? '…' : '') }, hl: { 'trailing zero bits': z >= 64 ? 'bad' : 'cur' } }
+          ] });
+        }
+        frames.push({ narr: 'Length-2048 strings S ≠ T with identical overflow hashes — for <b>any</b> odd base. This is the classic anti-hash test. Fix: use a <b>prime</b> modulus (10<sup>9</sup>+7 pair, or 2<sup>61</sup>−1) and a <b>random</b> base.', parts: [
+          { type: 'vars', vals: { 'H(S) mod 2^64': hash(S).toString(), 'H(T) mod 2^64': hash(T).toString(), 'S equals T?': 'false' }, hl: { 'H(S) mod 2^64': 'bad', 'H(T) mod 2^64': 'bad' } }
+        ] });
+        return frames;
+      }
+    }],
+    examples: [
+      { title: '"Aa" vs "BB" in Java', html: `<p><code>String.hashCode</code> = Σ c·31<sup>n−1−i</sup> mod 2<sup>32</sup>. "Aa": 65·31 + 97 = <b>2112</b>. "BB": 66·31 + 66 = <b>2112</b>. Concatenations of these blocks (<code>AaAa, AaBB, BBAa, BBBB</code>, …) give 2<sup>k</sup> strings with one hash — a classic HashMap flooding attack. Java 8+ limits the damage by turning long buckets into red-black trees (O(log n) instead of O(n)).</p>` },
+      { title: 'Binary search on length + hashing', html: `<p>“Longest substring occurring twice”: if some length-L substring repeats, a length-(L−1) one does too → the answer is monotonic. Binary search L; for each L hash all windows into a set (O(N)). Total O(N log N). With one 10<sup>9</sup> modulus and N = 3·10<sup>4</sup> windows per check, birthday collisions are ≈ 0.45 per check — real risk! Use a double hash or verify candidates.</p>` },
+      { title: 'Palindrome check with forward + reverse hashes', html: `<p>Keep prefix hashes of s and of reverse(s). s[l..r] is a palindrome ⇔ H(s[l..r]) == H(rev[n−1−r .. n−1−l]). O(1) per query after O(N) prep — an alternative to Manacher when you also need equality checks between different substrings.</p>` },
+      { title: 'Rolling hash in numbers', html: `<p>B = 10, M = 97, text digits <code>3 1 4 1 5</code>, window 3. H(314) = 314 mod 97 = 23. Roll: remove 3 → (23 − 3·100 mod 97) = 23 − 9 = 14; ×10 → 140; + 1 → 141 mod 97 = <b>44</b>. Check: 141 mod 97 = 44 ✔ (the window is 141).</p>` }
+    ],
+    deepDive: `<p><b>Why random bases give a guarantee.</b> If s ≠ t (same length n), H<sub>B</sub>(s) − H<sub>B</sub>(t) is a non-zero polynomial in B of degree ≤ n − 1 over the field Z<sub>M</sub>. It has at most n − 1 roots, so a uniformly random B collides with probability ≤ (n − 1)/M (Schwartz–Zippel). The guarantee is about <b>your random choice</b>, not about the input — that is why a fixed base can be attacked and a random one cannot (unless the program leaks it). For K strings compared all-pairs, apply a union bound: ≤ K<sup>2</sup>·n/(2M).</p>
+      <p><b>Why 2<sup>64</sup> fails.</b> 2<sup>64</sup> is not prime, so Z<sub>2<sup>64</sup></sub> is not a field and the root-counting argument breaks. For Thue–Morse S<sub>k</sub>, T<sub>k</sub>: D<sub>k</sub> = D<sub>k−1</sub>·(B<sup>2<sup>k−1</sup></sup> − 1), and for odd B, B<sup>2<sup>j</sup></sup> − 1 is divisible by 2<sup>j+1</sup>. So D<sub>k</sub> has ≥ k(k+1)/2 factors of two: k = 11 gives 66 ≥ 64 → zero. Lattice-reduction attacks (LLL) can even find collisions for a <i>known</i> prime modulus and base pair, which is why randomness matters more than size.</p>
+      <p><b>Engineering.</b> Java <code>long</code> products of two values &lt; 2<sup>30</sup> fit easily; for M ≈ 2<sup>61</sup> you need <code>Math.multiplyHigh</code> (or <code>unsigned __int128</code> in C++). Keep the prefix arrays as <code>long[]</code>, precompute powers, and pack two 30-bit hashes into one long for HashSet keys (avoids allocating pair objects). Real-world cousins: rsync and content-defined chunking (Rabin fingerprints / Gear hash) in backup systems and dedup storage; Python, Rust and Ruby use <b>keyed SipHash</b> for strings so web requests cannot flood hash tables (Python since 3.4, with <code>PYTHONHASHSEED</code> randomised per process).</p>`,
+    aiEra: `<p><b>What AI changes:</b> assistants love writing Rabin–Karp with <code>long</code> overflow or a single fixed <code>MOD = 1e9+7, BASE = 31</code>. That passes LeetCode tests and gets <b>hacked</b> in contests or exploited in production (hash flooding). Knowing the anti-hash story lets you review AI code in seconds: “prime modulus? random base? two hashes or verification? zero-free mapping?”.</p>
+      <p><b>Use AI as a partner:</b> ask it to <code>generate an anti-hash test for this code</code> — it can produce Thue–Morse inputs or a birthday-search script that finds collisions for a fixed 32-bit modulus. Watching your own solution fail on it is the fastest way to internalise the rules. Also ask it to compute the birthday-paradox collision probability for your K and M before you choose single vs double hashing.</p>
+      <p><b>Where AI goes wrong:</b> negative values after subtraction (forgetting <code>+ M</code>), multiplying two values near 2<sup>61</sup> in a plain <code>long</code> (silent overflow), mapping <code>'a'</code> to 0, and “double hashing” with two moduli but the <i>same</i> fixed base. <b>What you must still own:</b> the decision of when hashing is acceptable (randomised, small failure probability) versus when you must be deterministic (suffix array / KMP / Z), and explaining that trade-off to an interviewer.</p>`,
+    problems: [{
+      title: 'Distinct Echo Substrings', level: 'Hard', tags: ['rolling hash', 'double hashing', 'string'], companies: ['Google', 'Amazon'],
+      statement: `<p>Return the number of <b>distinct</b> non-empty substrings of <code>text</code> that can be written as <code>a + a</code> (some string concatenated with itself).</p>`,
+      constraints: `1 ≤ |text| ≤ 2000, lowercase letters (LeetCode 1316)`,
+      example: `<p>text = <code>"abcabcabc"</code> → <b>3</b>: ${H.c('g', 'abcabc')}, ${H.c('b', 'bcabca')}, ${H.c('p', 'cabcab')} (the second <code>abcabc</code> at index 3 is not distinct).</p><p>text = <code>"leetcodeleetcode"</code> → <b>2</b>: <code>ee</code> and <code>leetcodeleetcode</code>.</p>`,
+      brute: { why: `<p>For every start i and half-length L, compare the two halves character by character (O(L)) and store the substring in a HashSet&lt;String&gt; (O(L) to copy and hash) → O(N<sup>3</sup>) ≈ 8·10<sup>9</sup> in the worst case (<code>aaaa…</code>, where nearly everything is an echo). The waste: re-reading characters already hashed.</p>`, code: `
+        class Brute {
+            int distinctEchoSubstrings(String text) {
+                int n = text.length();
+                Set<String> seen = new HashSet<>();
+                for (int i = 0; i < n; i++)
+                    for (int len = 1; i + 2 * len <= n; len++)
+                        if (text.substring(i, i + len).equals(text.substring(i + len, i + 2 * len)))
+                            seen.add(text.substring(i, i + 2 * len));
+                return seen.size();
+            }
+        }` },
+      mcq: { q: 'There are about N<sup>2</sup>/4 = 10<sup>6</sup> candidate (start, half) pairs. You store echo hashes in a set with ONE modulus ≈ 10<sup>9</sup>. What is the main risk?', options: ['Overflow', 'Birthday collisions merge different substrings and undercount', 'TLE', 'None'], answer: 1, explain: 'Up to 10<sup>6</sup> hashes in one set with M ≈ 10<sup>9</sup> gives ≈ 500 expected colliding pairs — the answer becomes wrong. Use a double hash (≈ 10<sup>18</sup>).' },
+      hints: [`<p>An echo is fixed by (start i, half-length L). Check “left half == right half” in O(1) with prefix hashes instead of comparing letters.</p>`, `<p>To count <b>distinct</b> echoes, insert the hash of the whole substring text[i, i + 2L) into a HashSet&lt;Long&gt;. Only substrings of equal length can be equal, so you can also keep one set per length.</p>`, `<p>Use two moduli with random bases and pack them into one long. Recipe: prefix hashes → loop i, L → if get(i, i+L) == get(i+L, i+2L) add get(i, i+2L) → return set size.</p>`],
+      solution: {
+        approach: `<p>Prefix double-hashes give O(1) substring hashes. Enumerate all O(N<sup>2</sup>) (start, half) pairs, test the halves by hash, and add the full substring’s hash to a set. Packing two independent hashes into a long keeps the collision probability around 10<sup>−6</sup> overall even with 10<sup>6</sup> insertions.</p>`,
+        code: `
+          class Solution {
+              static final long M1 = 1_000_000_007L, M2 = 998_244_353L;
+              long[] h1, h2, p1, p2;
+
+              public int distinctEchoSubstrings(String text) {
+                  int n = text.length();
+                  Random rnd = new Random();
+                  long b1 = 256 + rnd.nextInt(1_000_000), b2 = 256 + rnd.nextInt(1_000_000);   // random bases
+                  h1 = new long[n + 1]; h2 = new long[n + 1]; p1 = new long[n + 1]; p2 = new long[n + 1];
+                  p1[0] = p2[0] = 1;
+                  for (int i = 0; i < n; i++) {
+                      int v = text.charAt(i) - 'a' + 1;
+                      h1[i + 1] = (h1[i] * b1 + v) % M1;  p1[i + 1] = p1[i] * b1 % M1;
+                      h2[i + 1] = (h2[i] * b2 + v) % M2;  p2[i + 1] = p2[i] * b2 % M2;
+                  }
+                  Set<Long> seen = new HashSet<>();
+                  for (int len = 1; 2 * len <= n; len++)
+                      for (int i = 0; i + 2 * len <= n; i++)
+                          if (get(i, i + len) == get(i + len, i + 2 * len))
+                              seen.add(get(i, i + 2 * len));            // hash of the whole echo
+                  return seen.size();
+              }
+
+              private long get(int l, int r) {
+                  long x = ((h1[r] - h1[l] * p1[r - l]) % M1 + M1) % M1;
+                  long y = ((h2[r] - h2[l] * p2[r - l]) % M2 + M2) % M2;
+                  return (x << 32) | y;
+              }
+          }`,
+        alt: [{ lang: 'python', code: `
+import random
+
+class Solution:
+    def distinctEchoSubstrings(self, text: str) -> int:
+        M = (1 << 61) - 1                       # one big Mersenne prime is enough in Python (big ints)
+        B = random.randrange(256, M - 1)
+        n = len(text)
+        pre, pw = [0] * (n + 1), [1] * (n + 1)
+        for i, ch in enumerate(text):
+            pre[i + 1] = (pre[i] * B + ord(ch)) % M
+            pw[i + 1] = pw[i] * B % M
+        get = lambda l, r: (pre[r] - pre[l] * pw[r - l]) % M
+        seen = set()
+        for L in range(1, n // 2 + 1):
+            for i in range(n - 2 * L + 1):
+                if get(i, i + L) == get(i + L, i + 2 * L):
+                    seen.add((L, get(i, i + 2 * L)))
+        return len(seen)` }],
+        dry: { head: ['half L', 'start i', 'left half', 'right half', 'equal?', 'set size'], rows: [
+          ['1', '0..7', 'a,b,c,…', 'b,c,a,…', 'never', '0'],
+          ['2', '0..5', 'ab, bc, …', 'ca, ab, …', 'never', '0'],
+          ['3', '0', 'abc', 'abc', H.c('g', 'yes → add "abcabc"'), '1'],
+          ['3', '1', 'bca', 'bca', H.c('g', 'yes → add "bcabca"'), '2'],
+          ['3', '2', 'cab', 'cab', H.c('g', 'yes → add "cabcab"'), '3'],
+          ['3', '3', 'abc', 'abc', 'yes → "abcabc" already in set', '3'],
+          ['4', '0', 'abca', 'bcab', 'no', H.c('g', '<b>3</b>')]
+        ] },
+        complexity: `<p>O(N<sup>2</sup>) hash comparisons ≈ 10<sup>6</sup> for N = 2000, O(N<sup>2</sup>) set space in the worst case (<code>aaaa…</code> has only N/2 distinct echoes, but random texts are small too).</p>`,
+        followUps: ['Count echo <b>occurrences</b> instead of distinct ones (no set needed).', 'N = 10<sup>5</sup>: Main–Lorentz / runs-based algorithms find all squares in O(N log N).', 'Make it deterministic: compare with the suffix-array LCP query instead of hashes.']
+      }
+    }]
+  });
 registerModule({ id: 'dsa24', title: 'Advanced String Algorithms', intro: '<p>x</p>', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();

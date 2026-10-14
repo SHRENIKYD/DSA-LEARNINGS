@@ -1316,4 +1316,245 @@ print(constrained_subset_sum([10, 2, -10, 5, 20], 2))  # 37`, run: true }],
       }
     }]
   });
+
+  // =====================================================================
+  // TOPIC 6 — Divide & Conquer optimization
+  // =====================================================================
+  topics.push({
+    title: 'Divide & Conquer Optimization: Monotone Split Points',
+    analogy: `<p>A school bus route has houses along one road, and you must split them into K groups, one bus each. Think about where the <b>last bus's group begins</b>. If the road gets <i>longer</i> (more houses at the end), the best start of the last group never moves <b>backwards</b> — it stays or shifts right. That "never moves backwards" fact is gold.</p>
+      <p>So you solve the <b>middle</b> house first: scan all candidate starts, find the best one, say house 37. Now every house to the left of the middle only needs to look at starts ≤ 37, and every house to the right only at starts ≥ 37. Halve, recurse — like binary search for answers. That's the divide &amp; conquer optimization.</p>`,
+    explain: `<p><b>The shape.</b> Layered DP for "split an array into K contiguous groups":</p>
+      <p style="text-align:center"><code>dp[k][i] = min over j &lt; i of ( dp[k−1][j] + cost(j, i) )</code></p>
+      <p>(the k-th group covers elements j+1..i). Naively: K layers × N values of i × N values of j = <b>O(K·N<sup>2</sup>)</b>.</p>
+      <p><b>The key property.</b> Let <code>opt(i)</code> = the best j for i (take the smallest if tied). If</p>
+      <p style="text-align:center"><code>opt(i) ≤ opt(i + 1)</code> for all i &nbsp;&nbsp;(split points are monotone)</p>
+      <p>then we can compute one layer in <b>O(N log N)</b>:</p>
+      <ol>
+        <li><code>solve(l, r, optL, optR)</code> must fill dp[k][l..r], knowing every answer lies in [optL, optR].</li>
+        <li>Take <code>mid = (l + r)/2</code>. Scan j from optL to min(mid − 1, optR), keep the best → dp[k][mid] and <code>best</code>.</li>
+        <li>Recurse <code>solve(l, mid − 1, optL, best)</code> and <code>solve(mid + 1, r, best, optR)</code>.</li>
+      </ol>
+      <p>Each recursion level scans about N + (number of calls) candidates in total, and there are log N levels → O(N log N) per layer → <b>O(K·N log N)</b> overall.</p>
+      ${H.table(['N', 'K', 'naive K·N²', 'D&amp;C K·N·log N'], [['5 000', '20', '5·10<sup>8</sup>', '1.2·10<sup>6</sup>'], ['10<sup>5</sup>', '20', '2·10<sup>11</sup> ✗', '3.4·10<sup>7</sup> ✓']])}
+      <p><b>When does opt move monotonically?</b> A sufficient condition is the <b>quadrangle inequality</b> on the cost: for a ≤ b ≤ c ≤ d, <code>cost(a, c) + cost(b, d) ≤ cost(a, d) + cost(b, c)</code> — "two overlapping groups are never worse than one big group plus one small group inside it". Squares of non-negative sums, sums of distances to a median, "number of equal pairs inside a segment" all satisfy it. When unsure, <b>stress-test</b>: compare against the O(K·N<sup>2</sup>) version on random small inputs (see the runnable example).</p>`,
+    clues: [
+      '"split / partition the array into <b>exactly K contiguous</b> groups (or at most K)" + minimise a sum of group costs',
+      'N up to 10<sup>4</sup>–10<sup>5</sup> with K ≤ a few hundred → O(K·N log N) target',
+      'group cost is "convex-ish": (sum)<sup>2</sup>, distance to median, number of inversions/equal pairs inside → quadrangle inequality likely',
+      'you can compute cost(j, i) in O(1) (prefix sums) or amortised with moving pointers',
+      '"place K facilities (mailboxes, warehouses, guards) on a line" → layers over facilities, D&amp;C over positions',
+      'your O(K·N<sup>2</sup>) layered DP is correct but TLE → check if opt(i) is monotone'
+    ],
+    code: [`
+      // Generic Divide & Conquer optimisation for  dp[k][i] = min_{j<i} dp[k-1][j] + cost(j, i).
+      // cost(j, i) = cost of one group covering elements j+1..i (1-based prefix positions).
+      class DivideConquerDP {
+          interface Cost { long of(int j, int i); }
+          static final long INF = Long.MAX_VALUE / 4;
+          long[] prev, cur;
+          Cost cost;
+
+          // Fill cur[l..r]; the best split for every i in [l, r] is known to lie in [optL, optR].
+          void solve(int l, int r, int optL, int optR) {
+              if (l > r) return;
+              int mid = (l + r) >>> 1;
+              long best = INF; int bestJ = optL;
+              for (int j = optL; j <= Math.min(mid - 1, optR); j++) {
+                  if (prev[j] >= INF) continue;
+                  long v = prev[j] + cost.of(j, mid);
+                  if (v < best) { best = v; bestJ = j; }      // strict '<' keeps the smallest argmin
+              }
+              cur[mid] = best;
+              solve(l, mid - 1, optL, bestJ);                 // left half: splits ≤ bestJ
+              solve(mid + 1, r, bestJ, optR);                 // right half: splits ≥ bestJ
+          }
+
+          long run(int n, int K, Cost c) {
+              cost = c;
+              prev = new long[n + 1];
+              Arrays.fill(prev, INF);
+              for (int i = 1; i <= n; i++) prev[i] = cost.of(0, i);   // one group
+              for (int k = 2; k <= K; k++) {
+                  cur = new long[n + 1];
+                  Arrays.fill(cur, INF);
+                  solve(k, n, k - 1, n - 1);                  // each of k groups needs ≥ 1 element
+                  prev = cur;
+              }
+              return prev[n];
+          }
+      }`, { lang: 'python', code: `import random
+
+def brute(a, K):
+    n = len(a); P = [0]
+    for x in a: P.append(P[-1] + x)
+    INF = float('inf')
+    dp = [0] + [INF] * n
+    for _ in range(K):
+        nd = [INF] * (n + 1)
+        for i in range(1, n + 1):
+            nd[i] = min((dp[j] + (P[i] - P[j]) ** 2 for j in range(i) if dp[j] < INF), default=INF)
+        dp = nd
+    return dp[n]
+
+def dnc(a, K):
+    n = len(a); P = [0]
+    for x in a: P.append(P[-1] + x)
+    INF = float('inf')
+    prev = [INF] + [P[i] ** 2 for i in range(1, n + 1)]
+    for k in range(2, K + 1):
+        cur = [INF] * (n + 1)
+        def solve(l, r, ol, orr):
+            if l > r: return
+            mid = (l + r) // 2
+            best, bj = INF, ol
+            for j in range(ol, min(mid - 1, orr) + 1):
+                v = prev[j] + (P[mid] - P[j]) ** 2
+                if v < best: best, bj = v, j
+            cur[mid] = best
+            solve(l, mid - 1, ol, bj); solve(mid + 1, r, bj, orr)
+        solve(k, n, k - 1, n - 1)
+        prev = cur
+    return prev[n]
+
+random.seed(23)
+bad = 0
+for _ in range(300):                       # stress test: D&C must equal brute force
+    n = random.randint(1, 9); K = random.randint(1, n)
+    a = [random.randint(0, 9) for _ in range(n)]
+    if dnc(a, K) != brute(a, K): bad += 1
+print("mismatches:", bad)                  # 0
+print(dnc([1, 3, 2, 4, 1, 5, 2], 3))       # 110`, run: true, title: 'Stress test D&C vs brute force (Python, runnable)' }],
+    codeTitle: ['Divide & Conquer DP template (Java)', 'Random stress test (Python)'],
+    viz: {
+      title: 'solve(l, r, optL, optR): shrinking the search for split points',
+      input: '1 3 2 4 1 5 2 | 3',
+      inputLabel: 'non-negative array | K groups (cost = (group sum)²)',
+      gen: function (input) {
+        var p = splitBar(input, 2, '"1 3 2 4 1 5 2 | 3"');
+        var a = parseNums(p[0], 'the array', 2, 10, 0, 20), K = parseNums(p[1], 'K', 1, 1, 2, a.length)[0];
+        var n = a.length, P = [0], i;
+        for (i = 0; i < n; i++) P.push(P[i] + a[i]);
+        var INF = Infinity, prev = [INF], frames = [], stack = [], optArr = [];
+        for (i = 1; i <= n; i++) prev.push(P[i] * P[i]);
+        var pos = []; for (i = 0; i <= n; i++) pos.push(i);
+        frames.push({ narr: 'Prefix positions 0..' + n + ': position i means "the first i elements". Layer 1 (one group) is just (prefix sum)²: ' + prev.slice(1).join(', ') + '. Now compute layers 2..' + K + ' with divide &amp; conquer.', parts: [{ type: 'array', label: 'array', values: a, start: 1, showIdx: true }, { type: 'array', label: 'dp[1][i]', values: prev.map(show), idxLabels: pos.map(function (x) { return 'i=' + x; }) }] });
+        for (var k = 2; k <= K; k++) {
+          var cur = []; optArr = [];
+          for (i = 0; i <= n; i++) { cur.push(INF); optArr.push('·'); }
+          (function solve(l, r, oL, oR) {
+            if (l > r) return;
+            var mid = (l + r) >> 1, best = INF, bj = oL, hi = Math.min(mid - 1, oR), tried = [];
+            for (var j = oL; j <= hi; j++) { if (prev[j] === INF) continue; var v = prev[j] + (P[mid] - P[j]) * (P[mid] - P[j]); tried.push(j + '→' + v); if (v < best) { best = v; bj = j; } }
+            cur[mid] = best; optArr[mid] = bj;
+            stack.push('solve(' + l + ',' + r + ' | ' + oL + '..' + oR + ')');
+            var hl = {}; for (var q = oL; q <= hi; q++) hl[q] = 'win'; hl[bj] = 'ok';
+            var hc = {}; hc[mid] = 'cur'; for (q = l; q <= r; q++) if (q !== mid) hc[q] = 'win';
+            frames.push({ narr: 'Layer ' + k + ': fill i ∈ [' + l + ', ' + r + '] knowing splits lie in [' + oL + ', ' + oR + ']. Middle i = <b>' + mid + '</b>: only try j = ' + oL + '..' + hi + ' (' + tried.join(', ') + '). Best j = <b>' + bj + '</b>, dp = ' + best + '. Left half will search j ≤ ' + bj + ', right half j ≥ ' + bj + '.',
+              parts: [{ type: 'array', label: 'dp[' + (k - 1) + '][j] — candidates (blue), chosen (green)', values: prev.map(show), idxLabels: pos.map(function (x) { return 'j=' + x; }), hl: hl },
+                { type: 'array', label: 'dp[' + k + '][i] being filled', values: cur.map(show), idxLabels: pos.map(function (x) { return 'i=' + x; }), hl: hc },
+                { type: 'array', label: 'opt[i] (best split) so far', values: optArr.slice(), idxLabels: pos.map(function (x) { return 'i=' + x; }), hl: one(mid, 'ok') },
+                { type: 'stack', label: 'recursion stack', items: stack.slice(), hl: one(stack.length - 1, 'cur') }] });
+            solve(l, mid - 1, oL, bj);
+            solve(mid + 1, r, bj, oR);
+            stack.pop();
+          })(k, n, k - 1, n - 1);
+          frames.push({ narr: 'Layer ' + k + ' done. Look at opt[i]: <b>' + optArr.slice(k).join(' ≤ ') + '</b> — non-decreasing, exactly the property that let us shrink every search range.', parts: [{ type: 'array', label: 'dp[' + k + '][i]', values: cur.map(show), idxLabels: pos.map(function (x) { return 'i=' + x; }) }, { type: 'array', label: 'opt[i]', values: optArr.slice(), idxLabels: pos.map(function (x) { return 'i=' + x; }), hl: one(n, 'sel') }] });
+          prev = cur;
+        }
+        frames.push({ narr: '<b>Answer dp[' + K + '][' + n + '] = ' + prev[n] + '</b>: the minimum sum of squared group sums with ' + K + ' groups.', parts: [{ type: 'vars', vals: { K: K, n: n, answer: prev[n] }, hl: { answer: 'sel' } }] });
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'Checking the quadrangle inequality with numbers', html: `<p>cost(j, i) = (P[i] − P[j])² for a = [1, 3, 2, 4] (P = 0, 1, 4, 6, 10). Take a=0, b=1, c=2, d=4: cost(0,2) + cost(1,4) = 4² + 9² = 16 + 81 = <b>97</b>; cost(0,4) + cost(1,2) = 10² + 3² = 100 + 9 = <b>109</b>. 97 ≤ 109 ✓. Intuition: squaring punishes one huge group more than two medium ones. With <i>negative</i> elements the prefix sums are not monotone and the inequality can fail — then D&amp;C may give wrong answers.</p>` },
+      { title: 'K = 3 split of [1, 3, 2, 4, 1, 5, 2]', html: `<p>Total 18, ideal 6 per group. Answer <b>110</b> = [1, 3, 2] (6² = 36) + [4, 1] (5² = 25) + [5, 2] (7² = 49). The visualizer shows the opt row for layer 3: opt[3..7] = 2, 3, 3, 5, 5 — non-decreasing.</p>` },
+      { title: 'Costs that are not O(1): moving-pointer cost (CF 868F)', html: `<p>"Split into K segments, cost of a segment = number of pairs of equal elements inside it." No prefix-sum formula. Keep a global window [L, R] with a frequency array and move its ends to the requested (j+1, i) — adding element x adds freq[x] pairs. Inside one solve() call the requested windows move monotonically, so the total pointer movement is O(N log N) per layer — the same bound as the scans. Cost function trick: <code>while (R &lt; i) add(++R); while (L &gt; j+1) add(--L); while (R &gt; i) remove(R--); while (L &lt; j+1) remove(L++);</code></p>` },
+      { title: 'Recognising the 1D cousin', html: `<p>If there is no K (just <code>dp[i] = min<sub>j</sub> dp[j] + cost(j, i)</code> with dp on both sides), D&amp;C does not apply directly because dp[j] for the same layer is not ready. Use the <b>monotone queue + binary search</b> ("decision monotonicity") technique, CHT if the cost is linear-ish, or CDQ divide and conquer. Or add a K dimension and remove it with the Aliens trick.</p>` }
+    ],
+    deepDive: `<p><b>Why QI ⇒ monotone opt.</b> Suppose i &lt; i' but opt(i') = j' &lt; j = opt(i). Apply QI with j' ≤ j ≤ i ≤ i': cost(j', i) + cost(j, i') ≤ cost(j', i') + cost(j, i). Add dp[j'] + dp[j] to both sides and rearrange: [dp[j] + cost(j, i')] − [dp[j'] + cost(j', i')] ≤ [dp[j] + cost(j, i)] − [dp[j'] + cost(j', i)] &lt; 0 (j is strictly better for i, taking smallest argmin). So j beats j' for i' too — contradiction. Hence opt(i) ≤ opt(i').</p>
+      <p><b>Complexity accounting.</b> At recursion depth d there are 2<sup>d</sup> calls; their [optL, optR] ranges overlap only at endpoints, so the total scan length per depth is ≤ N + 2<sup>d</sup>. Depth ≤ log N → O(N log N) per layer. Recursion depth is only log N, so no stack overflow risk in Java.</p>
+      <p><b>D&amp;C vs Knuth.</b> D&amp;C needs monotone opt along i within a layer; Knuth (next topic) needs the stronger two-sided condition opt[i][j−1] ≤ opt[i][j] ≤ opt[i+1][j] and gives O(N<sup>2</sup>) for interval DPs. For layered partition DPs, Knuth can also be applied as opt[k−1][i] ≤ opt[k][i] ≤ opt[k][i+1] giving O(N<sup>2</sup>) total regardless of K — better when K is close to N.</p>
+      <p><b>Removing K entirely.</b> If the answer as a function of K is <b>convex</b> (often true when QI holds), the Aliens trick (WQS / Lagrangian relaxation) binary searches a penalty λ per group and solves an unconstrained 1D DP each time: O(N log N · log C) — wins when K is large.</p>
+      <p><b>Practical tips.</b> Use <code>long</code> and an INF of Long.MAX_VALUE/4 to survive additions. Iterate i only from k (each group non-empty). Break ties consistently (strict &lt; → smallest argmin). Always stress-test against the naive layer DP: monotonicity bugs give answers that are "almost right".</p>`,
+    aiEra: `<p><b>What AI changes:</b> D&amp;C optimization is a short template; AI writes it reliably. The hard part — and what interviewers at quant firms and contest-heavy teams test — is <b>justifying</b> that opt is monotone. LLMs frequently assert "this cost satisfies the quadrangle inequality" without checking; with negative values or non-convex costs that claim is false and the code silently returns a slightly wrong answer.</p>
+      <p><b>Use AI as a partner:</b> ask it to write the brute-force layered DP and a randomized comparison (like the Python cell), including negative numbers and ties. If mismatches appear, you have learned that the optimisation does not apply. Ask it to <i>prove</i> QI for your cost in two lines — then check the proof yourself.</p>
+      <p><b>Where AI goes wrong:</b> mixing 0-based and 1-based prefix indices (cost(j, i) covering j..i vs j+1..i), scanning j up to mid instead of mid − 1 (empty group), forgetting that layer k must start at i = k, and INF overflow. <b>You own:</b> the monotonicity argument, the indexing convention, and the decision between D&amp;C, Knuth, Aliens or CHT.</p>`,
+    problems: [{
+      title: 'Split Array into K Groups Minimising the Sum of Squared Group Sums',
+      level: 'Hard', tags: ['dp', 'divide and conquer optimization', 'prefix sums'], companies: ['Citadel', 'Two Sigma', 'Google'],
+      statement: `<p>Given an array of <b>non-negative</b> integers <code>a</code> and an integer <code>K</code>, split the array into exactly <code>K</code> non-empty contiguous groups. The cost of a group is (sum of its elements)<sup>2</sup>. Return the minimum total cost.</p>`,
+      constraints: `1 ≤ K ≤ N ≤ 10<sup>4</sup>, 0 ≤ a[i] ≤ 10<sup>4</sup> (answers fit in long)`,
+      example: `${H.arr([1, 3, 2, 4, 1, 5, 2], { label: 'a, K = 3', hl: { 0: 'g', 1: 'g', 2: 'g', 3: 'b', 4: 'b', 5: 'p', 6: 'p' } })}<p>Output <b>110</b> = (1+3+2)² + (4+1)² + (5+2)² = 36 + 25 + 49. Sums 6, 5, 7 are as equal as possible — squaring rewards balance.</p>`,
+      brute: { why: `<p>Layered DP with a full scan: O(K·N<sup>2</sup>) = 10<sup>4</sup> · 10<sup>8</sup> = 10<sup>12</sup> for the max input. The waste: for i and i + 1 we scan all j again, although the best j for i + 1 is never left of the best j for i.</p>`, code: `
+        long bruteSplit(int[] a, int K) {
+            int n = a.length;
+            long[] P = new long[n + 1];
+            for (int i = 0; i < n; i++) P[i + 1] = P[i] + a[i];
+            long INF = Long.MAX_VALUE / 4;
+            long[][] dp = new long[K + 1][n + 1];
+            for (long[] row : dp) Arrays.fill(row, INF);
+            dp[0][0] = 0;
+            for (int k = 1; k <= K; k++)
+                for (int i = 1; i <= n; i++)
+                    for (int j = 0; j < i; j++)                     // last group = a[j..i-1]
+                        if (dp[k - 1][j] < INF) {
+                            long s = P[i] - P[j];
+                            dp[k][i] = Math.min(dp[k][i], dp[k - 1][j] + s * s);
+                        }
+            return dp[K][n];
+        }` },
+      mcq: { q: 'In layer k we found opt(mid = 5) = 3. Which j values must solve() try for i = 6 or 7?', options: ['Only j ≥ 3', 'Only j ≤ 3', 'All j from k−1 to i−1', 'Only j = 3'], answer: 0, explain: 'Monotone opt: i &gt; mid ⇒ opt(i) ≥ opt(mid) = 3. The right half searches [3, optR]. The left half (i &lt; 5) searches [optL, 3].' },
+      hints: [`<p><b>Aha:</b> dp[k][i] = min<sub>j</sub> dp[k−1][j] + (P[i] − P[j])². As i grows, the best start of the last group never moves left (non-negative values + convex square cost).</p>`, `<p>Compute each layer with solve(l, r, optL, optR): fix mid, scan j ∈ [optL, min(mid−1, optR)], then recurse with the found best split as the new bound.</p>`, `<p>Edge cases: K = 1 → (total)²; K = N → Σ a[i]²; groups must be non-empty → layer k fills i ∈ [k, n] and j ∈ [k−1, i−1]. Use long; INF = Long.MAX_VALUE marker skipped explicitly.</p>`],
+      solution: {
+        approach: `<p>Layer by layer, each in O(N log N) via divide &amp; conquer on the monotone split point. Total O(K·N log N) ≈ 10<sup>4</sup> · 10<sup>4</sup> · 14 = 1.4·10<sup>9</sup> elementary steps in the worst case — fine in C++, tight in Java; combine with Knuth (O(N<sup>2</sup>)) if K is huge.</p>`,
+        code: `
+          class Solution {
+              long[] P, prev, cur;
+
+              long cost(int j, int i) { long s = P[i] - P[j]; return s * s; }   // group a[j..i-1]
+
+              void compute(int l, int r, int optL, int optR) {
+                  if (l > r) return;
+                  int mid = (l + r) >>> 1;
+                  long best = Long.MAX_VALUE; int bestJ = optL;
+                  for (int j = optL; j <= Math.min(mid - 1, optR); j++) {
+                      if (prev[j] == Long.MAX_VALUE) continue;              // impossible state
+                      long v = prev[j] + cost(j, mid);
+                      if (v < best) { best = v; bestJ = j; }
+                  }
+                  cur[mid] = best;
+                  compute(l, mid - 1, optL, bestJ);
+                  compute(mid + 1, r, bestJ, optR);
+              }
+
+              public long minSquaredSplit(int[] a, int K) {
+                  int n = a.length;
+                  P = new long[n + 1];
+                  for (int i = 0; i < n; i++) P[i + 1] = P[i] + a[i];
+                  prev = new long[n + 1];
+                  Arrays.fill(prev, Long.MAX_VALUE);
+                  for (int i = 1; i <= n; i++) prev[i] = cost(0, i);        // layer 1
+                  for (int k = 2; k <= K; k++) {
+                      cur = new long[n + 1];
+                      Arrays.fill(cur, Long.MAX_VALUE);
+                      compute(k, n, k - 1, n - 1);
+                      prev = cur;
+                  }
+                  return prev[n];
+              }
+          }`,
+        dry: { head: ['layer', 'call (l..r | optL..optR)', 'mid', 'j tried → value', 'dp[mid], opt'], rows: [
+          ['2', '2..7 | 1..6', '4', '1→82, 2→52, 3→52', '52, j=2'],
+          ['2', '5..7 | 2..6', '6', '2→160, 3→136, 4→136, 5→146', '136, j=3'],
+          ['2', '7..7 | 3..6', '7', '3→180, 4→164, 5→170, 6→260', '164, j=4'],
+          ['3', '3..7 | 2..6', '5', '2→59, 3→45, 4→53', '45, j=3'],
+          ['3', '6..7 | 3..6', '6', '3→120, 4→88, 5→86', '86, j=5'],
+          ['3', '7..7 | 5..6', '7', '5→110, 6→140', '<span class="c-g">110</span>, j=5']
+        ] },
+        complexity: `<p>Time O(K · N log N), space O(N) (two rolling layers).</p>`,
+        followUps: ['Print the groups (store opt per layer: O(K·N) memory, or recompute).', 'Elements may be negative — does the method still work? (Stress-test it; generally no.)', 'K up to N: switch to Knuth O(N²) or Aliens trick O(N log N log C).']
+      }
+    }]
+  });
 registerModule({ id: 'dsa23', title: 'Advanced Dynamic Programming', intro: `<p>temp</p>`, goals: [], prereqs: `x`, hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();

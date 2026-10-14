@@ -890,7 +890,7 @@ print("min coins for 3 with 2:", min_coins([2], 3))            # -1
         var used = [], hh = {}, x = A;
         while (x > 0) { hh[x] = 'sel'; used.push(last[x]); x -= last[x]; }
         hh[0] = 'sel';
-        frames.push({ narr: 'Answer: <b>' + dp[A] + '</b> coins. Follow the "last coin" links back from ' + A + ' to 0 to list them: <b>' + used.join(' + ') + '</b>.', parts: [
+        frames.push({ narr: 'Answer: <b>' + dp[A] + '</b> ' + (dp[A] === 1 ? 'coin' : 'coins') + '. Follow the "last coin" links back from ' + A + ' to 0 to list them: <b>' + used.join(' + ') + '</b>.', parts: [
           { type: 'array', label: 'dp[a]', values: dp.map(show), hl: hh },
           { type: 'set', label: 'coins used', items: used.map(String) }
         ] });
@@ -2196,4 +2196,626 @@ print(min_path([[1, 3, 1], [1, 5, 1], [4, 2, 1]]))                      # (7, [1
     }]
   });
 
-registerModule({ id: 'dsa17', title: 'Dynamic Programming I', intro: '<p>x</p>', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();
+  // =====================================================================
+  // PRACTICE — Easy
+  // =====================================================================
+  practice.push({
+    title: 'N-th Tribonacci Number', level: 'Easy', tags: ['dp', '1d dp'], companies: ['Amazon', 'Bloomberg'],
+    statement: `<p>The Tribonacci sequence is T0 = 0, T1 = 1, T2 = 1 and T(n+3) = T(n) + T(n+1) + T(n+2). Given <code>n</code>, return T(n).</p>`,
+    constraints: `0 ≤ n ≤ 37 (answer fits in a 32-bit int)`,
+    example: `${H.arr([0, 1, 1, 2, 4, 7], { label: 'T', hl: { 1: 'b', 2: 'b', 3: 'b', 4: 'g' } })}<p>n = 4 → <b>4</b> = ${H.c('b', '1 + 1 + 2')}.</p>`,
+    brute: { why: `<p>Three-way recursion recomputes small terms constantly: ~1.84<sup>n</sup> calls (≈ 6·10<sup>9</sup> for n = 37) — too slow.</p>`, code: `int trib(int n) {
+    if (n == 0) return 0;
+    if (n <= 2) return 1;
+    return trib(n - 1) + trib(n - 2) + trib(n - 3);
+}` },
+    mcq: { q: 'How many rolling variables does the O(1)-space solution need?', options: ['1', '2', '3', 'n'], answer: 2, explain: 'Each term reads the previous three terms.' },
+    hints: [`<p>Hint 1: Exactly like Fibonacci, but each term looks three steps back instead of two.</p>`, `<p>Hint 2: Keep a = T(i−3), b = T(i−2), c = T(i−1) and slide them forward each step.</p>`, `<p>Hint 3: Return n directly for n = 0 and 1 for n = 1 or 2; otherwise loop i = 3..n computing d = a + b + c then shift.</p>`],
+    solution: {
+      approach: `<p>Bottom-up with a three-number sliding window.</p>`,
+      code: `class Solution {
+    public int tribonacci(int n) {
+        if (n == 0) return 0;
+        if (n <= 2) return 1;
+        int a = 0, b = 1, c = 1;               // T(i-3), T(i-2), T(i-1)
+        for (int i = 3; i <= n; i++) {
+            int d = a + b + c;
+            a = b; b = c; c = d;               // slide the window
+        }
+        return c;
+    }
+}`,
+      dry: { head: ['i', 'a', 'b', 'c', 'd'], rows: [['3', '0', '1', '1', '2'], ['4', '1', '1', '2', H.c('g', '4')]] },
+      complexity: `<p>Time O(n), space O(1).</p>`
+    }
+  });
+
+  practice.push({
+    title: 'Min Cost Climbing Stairs', level: 'Easy', tags: ['dp', '1d dp', 'min cost'], companies: ['Amazon', 'Adobe', 'Google'],
+    statement: `<p><code>cost[i]</code> is the cost of stepping on stair i. After paying, you may climb 1 or 2 stairs. You may start at stair 0 or stair 1. Return the minimum cost to reach the top (the position just past the last stair).</p>`,
+    constraints: `2 ≤ cost.length ≤ 1000, 0 ≤ cost[i] ≤ 999`,
+    example: `${H.arr([1, 100, 1, 1, 1, 100, 1, 1, 100, 1], { label: 'cost', hl: { 0: 'g', 2: 'g', 4: 'g', 6: 'g', 7: 'g', 9: 'g' } })}<p>Output <b>6</b>: start at stair 0 and step only on the six green stairs (0 → 2 → 4 → 6 → 7 → 9 → top), each costing 1, hopping over every 100.</p>`,
+    brute: { why: `<p>Recursively try 1 or 2 steps from each stair: 2-way branching → ~1.6<sup>n</sup> calls; n = 1000 is impossible. The cheapest way from stair 7 to the top is recomputed for every route that reaches stair 7.</p>`, code: `int from(int[] cost, int i) {
+    if (i >= cost.length) return 0;                      // reached the top
+    return cost[i] + Math.min(from(cost, i + 1), from(cost, i + 2));
+}
+int minCost(int[] cost) { return Math.min(from(cost, 0), from(cost, 1)); }` },
+    mcq: { q: 'Let dp[i] = min cost to <i>stand on</i> position i (before paying cost[i]). What is dp[i]?', options: ['min(dp[i−1] + cost[i−1], dp[i−2] + cost[i−2])', 'dp[i−1] + dp[i−2]', 'cost[i] + cost[i−1]', 'max(dp[i−1], dp[i−2])'], answer: 0, explain: 'You arrived from i−1 (paying cost[i−1]) or from i−2 (paying cost[i−2]). dp[0] = dp[1] = 0 because you may start on either for free.' },
+    hints: [`<p>Hint 1: It is Climbing Stairs with min instead of +: how did you arrive at position i, and what did that last step cost?</p>`, `<p>Hint 2: dp[i] = min(dp[i−1] + cost[i−1], dp[i−2] + cost[i−2]), dp[0] = dp[1] = 0, answer dp[n] (the top).</p>`, `<p>Hint 3: Only two previous values are needed → two variables. Be careful: the top is index n, one past the last stair.</p>`],
+    solution: {
+      approach: `<p>dp over positions 0..n where n is the top; two rolling variables.</p>`,
+      code: `class Solution {
+    public int minCostClimbingStairs(int[] cost) {
+        int twoBack = 0, oneBack = 0;          // dp[i-2], dp[i-1]; dp[0] = dp[1] = 0
+        for (int i = 2; i <= cost.length; i++) {
+            int cur = Math.min(oneBack + cost[i - 1], twoBack + cost[i - 2]);
+            twoBack = oneBack;
+            oneBack = cur;
+        }
+        return oneBack;                        // dp[n] = cost to reach the top
+    }
+}`,
+      alt: [{ lang: 'python', code: `class Solution:
+    def minCostClimbingStairs(self, cost):
+        two, one = 0, 0
+        for i in range(2, len(cost) + 1):
+            two, one = one, min(one + cost[i - 1], two + cost[i - 2])
+        return one` }],
+      dry: { head: ['i', 'from i-1', 'from i-2', 'dp[i]'], rows: [['2 (cost=[10,15,20])', '0 + 15', '0 + 10', '10'], ['3 (top)', '10 + 20 = 30', '0 + 15 = 15', H.c('g', '15')]] },
+      complexity: `<p>Time O(n), space O(1).</p>`,
+      followUps: ['Allow jumps of 1..k stairs → O(n·k), or O(n) with a monotonic deque.']
+    }
+  });
+
+  practice.push({
+    title: 'Pascal\'s Triangle', level: 'Easy', tags: ['dp', 'combinatorics'], companies: ['Amazon', 'Apple', 'Microsoft'],
+    statement: `<p>Given <code>numRows</code>, return the first numRows rows of Pascal's triangle. Each number is the sum of the two numbers directly above it; the edges are 1.</p>`,
+    constraints: `1 ≤ numRows ≤ 30`,
+    example: `<p>numRows = 5 →</p>${H.arr([1], { idx: false })}${H.arr([1, 1], { idx: false })}${H.arr([1, 2, 1], { idx: false })}${H.arr([1, 3, 3, 1], { idx: false, hl: { 1: 'b', 2: 'b' } })}${H.arr([1, 4, 6, 4, 1], { idx: false, hl: { 2: 'g' } })}<p>${H.c('g', '6')} = ${H.c('b', '3 + 3')}. Entry j of row i is C(i, j).</p>`,
+    brute: { why: `<p>Compute each entry C(i, j) independently with factorials: 30! overflows long, and recomputing factorials per entry is wasteful (O(n) per entry). Or recursively C(i, j) = C(i−1, j−1) + C(i−1, j) without memo → exponential.</p>`, code: `long C(int n, int k) {
+    if (k == 0 || k == n) return 1;
+    return C(n - 1, k - 1) + C(n - 1, k);      // exponential without memo
+}` },
+    mcq: { q: 'Which DP relation builds row i from row i−1?', options: ['row[i][j] = row[i−1][j−1] + row[i−1][j]', 'row[i][j] = row[i−1][j] × 2', 'row[i][j] = row[i][j−1] + 1', 'row[i][j] = i × j'], answer: 0, explain: 'Pascal\'s rule: C(i, j) = C(i−1, j−1) + C(i−1, j) — choose item i or not.' },
+    hints: [`<p>Hint 1: Each row depends only on the row above it, like a 2D DP table filled row by row.</p>`, `<p>Hint 2: Start every row with 1, fill the middle with sums of the two above, end with 1.</p>`, `<p>Hint 3: Row i has i+1 entries; handle row 0 = [1] as the base. Use List&lt;List&lt;Integer&gt;&gt; and read the previous row with get(i−1).</p>`],
+    solution: {
+      approach: `<p>Build row by row; middle entries are sums of the two entries above.</p>`,
+      code: `class Solution {
+    public List<List<Integer>> generate(int numRows) {
+        List<List<Integer>> rows = new ArrayList<>();
+        for (int i = 0; i < numRows; i++) {
+            List<Integer> row = new ArrayList<>();
+            for (int j = 0; j <= i; j++) {
+                if (j == 0 || j == i) row.add(1);                       // edges
+                else row.add(rows.get(i - 1).get(j - 1) + rows.get(i - 1).get(j));
+            }
+            rows.add(row);
+        }
+        return rows;
+    }
+}`,
+      dry: { head: ['i', 'row'], rows: [['0', '1'], ['1', '1 1'], ['2', '1 2 1'], ['3', '1 3 3 1'], ['4', H.c('g', '1 4 6 4 1')]] },
+      complexity: `<p>Time O(numRows<sup>2</sup>), space O(numRows<sup>2</sup>) for the output.</p>`,
+      followUps: ['Return only row k using O(k) space (update right-to-left, like 0/1 knapsack).', 'nCr mod p for large n → factorials + modular inverse (DSA 3).']
+    }
+  });
+
+  practice.push({
+    title: 'Counting Bits', level: 'Easy', tags: ['dp', 'bit manipulation'], companies: ['Amazon', 'Apple', 'Adobe'],
+    statement: `<p>Given <code>n</code>, return an array <code>ans</code> of length n + 1 where ans[i] is the number of 1 bits in the binary form of i.</p>`,
+    constraints: `0 ≤ n ≤ 10<sup>5</sup>; follow-up: O(n) without a built-in popcount`,
+    example: `<p>n = 5 → <b>[0, 1, 1, 2, 1, 2]</b>.</p>${H.table(['i', 'binary', 'i &gt;&gt; 1', 'ans[i] = ans[i&gt;&gt;1] + (i &amp; 1)'], [['4', '100', '2 (10)', '1 + 0 = 1'], ['5', '101', '2 (10)', H.c('g', '1 + 1 = 2')]])}`,
+    brute: { why: `<p>Count bits of every i separately with a loop over its bits: O(n log n). Fine for 10<sup>5</sup>, but it ignores that i shifted right by one was already counted — the follow-up asks for O(n).</p>`, code: `int[] countBits(int n) {
+    int[] ans = new int[n + 1];
+    for (int i = 0; i <= n; i++) {
+        int x = i, c = 0;
+        while (x > 0) { c += x & 1; x >>= 1; }   // O(log i) per number
+        ans[i] = c;
+    }
+    return ans;
+}` },
+    mcq: { q: 'Why is ans[i] = ans[i &gt;&gt; 1] + (i &amp; 1) valid DP?', options: ['i &gt;&gt; 1 &lt; i so it is already computed, and it has the same bits except the last one', 'Because of 2\'s complement', 'Because popcount is multiplicative', 'It only works for powers of two'], answer: 0, explain: 'Dropping the last bit gives a smaller number already in the table; add back the dropped bit.' },
+    hints: [`<p>Hint 1: Look for a smaller number whose bit count is already known and differs from i in a predictable way.</p>`, `<p>Hint 2: i &gt;&gt; 1 removes the last bit: ans[i] = ans[i &gt;&gt; 1] + (i &amp; 1). Alternatively ans[i] = ans[i &amp; (i − 1)] + 1 (drop the lowest set bit).</p>`, `<p>Hint 3: Base ans[0] = 0; fill i = 1..n in increasing order — every dependency is smaller than i.</p>`],
+    solution: {
+      approach: `<p>1D DP where each number's answer comes from a strictly smaller number.</p>`,
+      code: `class Solution {
+    public int[] countBits(int n) {
+        int[] ans = new int[n + 1];                 // ans[0] = 0
+        for (int i = 1; i <= n; i++) {
+            ans[i] = ans[i >> 1] + (i & 1);         // same bits as i/2, plus the last bit
+        }
+        return ans;
+    }
+}`,
+      dry: { head: ['i', 'i>>1', 'i&1', 'ans[i]'], rows: [['1', '0', '1', '1'], ['2', '1', '0', '1'], ['3', '1', '1', '2'], ['4', '2', '0', '1'], ['5', '2', '1', H.c('g', '2')]] },
+      complexity: `<p>Time O(n), space O(n) for the output.</p>`
+    }
+  });
+
+  // =====================================================================
+  // PRACTICE — Medium
+  // =====================================================================
+  practice.push({
+    title: 'House Robber II (circular street)', level: 'Medium', tags: ['dp', 'take or skip'], companies: ['Amazon', 'Microsoft', 'Google'],
+    statement: `<p>Same as House Robber, but the houses are arranged in a <b>circle</b>: the first house is adjacent to the last. Return the maximum amount you can rob without robbing two adjacent houses.</p>`,
+    constraints: `1 ≤ n ≤ 100, 0 ≤ nums[i] ≤ 1000`,
+    example: `<p>[2, 3, 2] → <b>3</b> (houses 0 and 2 are neighbours now). [1, 2, 3, 1] → <b>4</b> (1 + 3).</p>`,
+    brute: { why: `<p>Enumerate all non-adjacent subsets and reject those containing both the first and last house: exponential (~1.6<sup>n</sup>), and the same suffix questions are recomputed.</p>`, code: `int go(int[] a, int i, boolean tookFirst) {
+    if (i >= a.length) return 0;
+    if (i == a.length - 1 && tookFirst) return 0;          // last house touches the first
+    int skip = go(a, i + 1, tookFirst);
+    int take = a[i] + go(a, i + 2, tookFirst || i == 0);
+    return Math.max(skip, take);
+}` },
+    mcq: { q: 'How do you break the circle?', options: ['Solve the line twice: without the last house, and without the first house; take the max', 'Always skip house 0', 'Rob every other house', 'Double the array'], answer: 0, explain: 'First and last can\'t both be robbed, so at least one of them is excluded; each case is a plain line problem.' },
+    hints: [`<p>Hint 1: The only new conflict is between house 0 and house n−1. At least one of them is not robbed.</p>`, `<p>Hint 2: Answer = max(robLine(0..n−2), robLine(1..n−1)), each solved with the two-variable House Robber.</p>`, `<p>Hint 3: Special case n = 1 → nums[0] (both ranges would be empty otherwise).</p>`],
+    solution: {
+      approach: `<p>Reduce the circle to two line problems.</p>`,
+      code: `class Solution {
+    public int rob(int[] nums) {
+        int n = nums.length;
+        if (n == 1) return nums[0];
+        return Math.max(line(nums, 0, n - 2), line(nums, 1, n - 1));
+    }
+    private int line(int[] a, int lo, int hi) {
+        int prev2 = 0, prev1 = 0;
+        for (int i = lo; i <= hi; i++) {
+            int cur = Math.max(prev1, prev2 + a[i]);
+            prev2 = prev1;
+            prev1 = cur;
+        }
+        return prev1;
+    }
+}`,
+      dry: { head: ['range', 'houses', 'best'], rows: [['0..n-2', '1 2 3', '4 (1 + 3)'], ['1..n-1', '2 3 1', '3'], ['answer', '', H.c('g', '4')]] },
+      complexity: `<p>Time O(n), space O(1).</p>`
+    }
+  });
+
+  practice.push({
+    title: 'Coin Change II (number of combinations)', level: 'Medium', tags: ['dp', 'unbounded knapsack', 'counting'], companies: ['Amazon', 'Google', 'Microsoft'],
+    statement: `<p>Given an integer <code>amount</code> and an array of distinct coin denominations (unlimited supply), return the number of <b>combinations</b> that make up that amount. Order does not matter. If no combination works, return 0.</p>`,
+    constraints: `1 ≤ coins.length ≤ 300, 1 ≤ coins[i] ≤ 5000, 0 ≤ amount ≤ 5000; answer fits in a signed 32-bit int`,
+    example: `<p>amount = 5, coins = [1, 2, 5] → <b>4</b>: 5 · 2+2+1 · 2+1+1+1 · 1+1+1+1+1.</p>`,
+    brute: { why: `<p>Recursion choosing "how many of coin i" for each coin in order: exponential in amount/smallest coin. The same (coin index, remaining amount) pair is solved repeatedly.</p>`, code: `int ways(int[] coins, int i, int left) {
+    if (left == 0) return 1;
+    if (i == coins.length || left < 0) return 0;
+    return ways(coins, i, left - coins[i])     // use coin i again
+         + ways(coins, i + 1, left);           // move on to the next coin type
+}` },
+    mcq: { q: 'Which loop order counts each combination exactly once?', options: ['for coin { for a = coin..amount }', 'for a { for coin }', 'Either, they are identical', 'for a = amount down to coin'], answer: 0, explain: 'Coins outer means coin types are added in a fixed order, so each multiset is built once. Amount outer counts orderings (LC 377).' },
+    hints: [`<p>Hint 1: To avoid counting 1+2 and 2+1 twice, decide coin types one at a time in a fixed order.</p>`, `<p>Hint 2: ways[a] += ways[a − c] with coins in the outer loop and amounts going up in the inner loop (unbounded → forwards).</p>`, `<p>Hint 3: ways[0] = 1 (empty combination). amount = 0 → 1. Answer ways[amount].</p>`],
+    solution: {
+      approach: `<p>1D unbounded counting DP with coins as the outer loop.</p>`,
+      code: `class Solution {
+    public int change(int amount, int[] coins) {
+        int[] ways = new int[amount + 1];
+        ways[0] = 1;
+        for (int c : coins)
+            for (int a = c; a <= amount; a++)
+                ways[a] += ways[a - c];
+        return ways[amount];
+    }
+}`,
+      dry: { head: ['after coin', 'ways[0..5]'], rows: [['(start)', '1 0 0 0 0 0'], ['1', '1 1 1 1 1 1'], ['2', '1 1 2 2 3 3'], ['5', '1 1 2 2 3 ' + H.c('g', '4')]] },
+      complexity: `<p>Time O(amount × coins) = 1.5·10<sup>6</sup>; space O(amount).</p>`
+    }
+  });
+
+  practice.push({
+    title: 'Combination Sum IV (ordered sequences)', level: 'Medium', tags: ['dp', 'counting', 'permutations'], companies: ['Google', 'Meta', 'Amazon'],
+    statement: `<p>Given an array of <b>distinct</b> positive integers <code>nums</code> and a <code>target</code>, return the number of possible <b>sequences</b> (order matters) of numbers from nums (with repetition) that add up to target.</p>`,
+    constraints: `1 ≤ nums.length ≤ 200, 1 ≤ nums[i] ≤ 1000, 1 ≤ target ≤ 1000; answer fits in 32-bit int`,
+    example: `<p>nums = [1, 2, 3], target = 4 → <b>7</b>: (1,1,1,1) (1,1,2) (1,2,1) (2,1,1) (2,2) (1,3) (3,1).</p>`,
+    brute: { why: `<p>Recursively pick the next number: f(t) = Σ f(t − x). Without memo the tree is exponential; f(1) and f(2) are recomputed in every branch.</p>`, code: `int count(int[] nums, int t) {
+    if (t == 0) return 1;
+    int total = 0;
+    for (int x : nums) if (x <= t) total += count(nums, t - x);
+    return total;
+}` },
+    mcq: { q: 'This is just which earlier problem with arbitrary step sizes?', options: ['Climbing Stairs', '0/1 Knapsack', 'Edit Distance', 'House Robber'], answer: 0, explain: 'ways(t) = Σ ways(t − step) over allowed steps — exactly climbing stairs where steps = nums.' },
+    hints: [`<p>Hint 1: Think about the LAST number in the sequence. If it is x, the rest is any sequence summing to target − x.</p>`, `<p>Hint 2: dp[t] = Σ dp[t − x] for x in nums, x ≤ t; dp[0] = 1. Loop t outer, nums inner.</p>`, `<p>Hint 3: Intermediate dp values can exceed int even when the final answer fits; in Java the wrapped values don't matter for the final result when it fits, but use long with a cap (or mod) to be safe.</p>`],
+    solution: {
+      approach: `<p>Amount-outer counting DP (permutations).</p>`,
+      code: `class Solution {
+    public int combinationSum4(int[] nums, int target) {
+        long[] dp = new long[target + 1];
+        dp[0] = 1;
+        for (int t = 1; t <= target; t++) {
+            for (int x : nums) {
+                if (x <= t) dp[t] = Math.min(Integer.MAX_VALUE, dp[t] + dp[t - x]); // cap to avoid overflow
+            }
+        }
+        return (int) dp[target];
+    }
+}`,
+      dry: { head: ['t', 'dp[t-1]', 'dp[t-2]', 'dp[t-3]', 'dp[t]'], rows: [['1', '1', '—', '—', '1'], ['2', '1', '1', '—', '2'], ['3', '2', '1', '1', '4'], ['4', '4', '2', '1', H.c('g', '7')]] },
+      complexity: `<p>Time O(target × n) = 2·10<sup>5</sup>; space O(target).</p>`,
+      followUps: ['Negative numbers allowed? Then infinitely many sequences may exist — you must cap the length.']
+    }
+  });
+
+  practice.push({
+    title: 'Partition Equal Subset Sum', level: 'Medium', tags: ['dp', '0/1 knapsack', 'subset sum'], companies: ['Amazon', 'Meta', 'Microsoft', 'Uber'],
+    statement: `<p>Given an array of positive integers, return true if it can be split into two subsets with equal sums.</p>`,
+    constraints: `1 ≤ n ≤ 200, 1 ≤ nums[i] ≤ 100`,
+    example: `<p>[1, 5, 11, 5] → <b>true</b> (${H.c('g', '1 + 5 + 5 = 11')} and 11). [1, 2, 3, 5] → <b>false</b> (total 11 is odd).</p>`,
+    brute: { why: `<p>Try all 2<sup>n</sup> subsets for one with sum total/2. n = 200 → 2<sup>200</sup>. But the only thing that matters after looking at some numbers is "which sums are reachable" — at most total/2 + 1 ≤ 10 001 values.</p>`, code: `boolean can(int[] a, int i, int left) {
+    if (left == 0) return true;
+    if (i == a.length || left < 0) return false;
+    return can(a, i + 1, left - a[i]) || can(a, i + 1, left);
+}` },
+    mcq: { q: 'The total is 23. What do you return?', options: ['false immediately', 'Run subset sum for 11', 'Run subset sum for 12', 'true'], answer: 0, explain: 'Two equal integer halves need an even total.' },
+    hints: [`<p>Hint 1: If two halves are equal, each is total/2. So the question is "is there a subset with sum total/2?"</p>`, `<p>Hint 2: Boolean 0/1 knapsack: can[s] |= can[s − x], looping s from target down to x (each number once).</p>`, `<p>Hint 3: Odd total → false. can[0] = true. Early exit as soon as can[target] becomes true.</p>`],
+    solution: {
+      approach: `<p>Subset-sum DP over reachable sums, backward loop.</p>`,
+      code: `class Solution {
+    public boolean canPartition(int[] nums) {
+        int total = 0;
+        for (int x : nums) total += x;
+        if (total % 2 == 1) return false;
+        int target = total / 2;
+        boolean[] can = new boolean[target + 1];
+        can[0] = true;
+        for (int x : nums) {
+            for (int s = target; s >= x; s--) {        // backwards: each number once
+                can[s] = can[s] || can[s - x];
+            }
+            if (can[target]) return true;
+        }
+        return can[target];
+    }
+}`,
+      dry: { head: ['after x', 'reachable sums ≤ 11'], rows: [['1', '{0, 1}'], ['5', '{0, 1, 5, 6}'], ['11', '{0, 1, 5, 6, ' + H.c('g', '11') + '} → true']] },
+      complexity: `<p>Time O(n × total/2) ≤ 200 × 10 000 = 2·10<sup>6</sup>; space O(total). BitSet version: O(n·total/64).</p>`
+    }
+  });
+
+  practice.push({
+    title: 'Target Sum', level: 'Medium', tags: ['dp', '0/1 knapsack', 'counting'], companies: ['Meta', 'Google', 'Amazon'],
+    statement: `<p>Given an integer array <code>nums</code> and an integer <code>target</code>, put a '+' or '−' before each number and concatenate them into an expression. Return the number of different expressions that evaluate to target.</p>`,
+    constraints: `1 ≤ n ≤ 20, 0 ≤ nums[i] ≤ 1000, sum(nums) ≤ 1000, −1000 ≤ target ≤ 1000`,
+    example: `<p>[1, 1, 1, 1, 1], target 3 → <b>5</b> (choose which single 1 gets the minus sign).</p>`,
+    brute: { why: `<p>2<sup>n</sup> sign assignments: for n = 20 that is ~10<sup>6</sup> — actually feasible, which is why the follow-up asks for the DP: with sum ≤ 1000 the DP is ~2·10<sup>4</sup> steps and scales to larger n.</p>`, code: `int count(int[] a, int i, int sum, int target) {
+    if (i == a.length) return sum == target ? 1 : 0;
+    return count(a, i + 1, sum + a[i], target) + count(a, i + 1, sum - a[i], target);
+}` },
+    mcq: { q: 'With P = sum of "+" numbers and total = sum of all, which is true?', options: ['P = (total + target) / 2', 'P = total − target', 'P = target / 2', 'P = total'], answer: 0, explain: 'P − (total − P) = target ⇒ 2P = total + target.' },
+    hints: [`<p>Hint 1: Split the numbers into a plus group P and a minus group. Write an equation linking P, total and target.</p>`, `<p>Hint 2: P = (total + target)/2 → count subsets with that sum: ways[s] += ways[s − x], s going down.</p>`, `<p>Hint 3: If total + target is odd or |target| &gt; total → 0. Zeros are handled naturally: each 0 doubles the count (both signs).</p>`],
+    solution: {
+      approach: `<p>Algebra turns signs into a subset-count problem → counting 0/1 knapsack.</p>`,
+      code: `class Solution {
+    public int findTargetSumWays(int[] nums, int target) {
+        int total = 0;
+        for (int x : nums) total += x;
+        if (Math.abs(target) > total || (total + target) % 2 != 0) return 0;
+        int p = (total + target) / 2;
+        int[] ways = new int[p + 1];
+        ways[0] = 1;
+        for (int x : nums)
+            for (int s = p; s >= x; s--)               // each number used once
+                ways[s] += ways[s - x];
+        return ways[p];
+    }
+}`,
+      dry: { head: ['after x', 'ways[0..4]'], rows: [['1', '1 1 0 0 0'], ['1', '1 2 1 0 0'], ['1', '1 3 3 1 0'], ['1', '1 4 6 4 1'], ['1', '1 5 10 10 ' + H.c('g', '5')]] },
+      complexity: `<p>Time O(n × P), space O(P).</p>`
+    }
+  });
+
+  practice.push({
+    title: 'Perfect Squares', level: 'Medium', tags: ['dp', 'unbounded knapsack', 'min'], companies: ['Google', 'Amazon', 'Adobe'],
+    statement: `<p>Given an integer <code>n</code>, return the least number of perfect square numbers (1, 4, 9, 16, …) that sum to n.</p>`,
+    constraints: `1 ≤ n ≤ 10<sup>4</sup>`,
+    example: `<p>n = 12 → <b>3</b> (${H.c('g', '4 + 4 + 4')}); greedy 9 + 1 + 1 + 1 uses ${H.c('r', '4')}. n = 13 → <b>2</b> (4 + 9).</p>`,
+    brute: { why: `<p>Recursion over "which square is last" without memo is exponential; f(k) for small k is recomputed many times.</p>`, code: `int f(int n) {
+    if (n == 0) return 0;
+    int best = Integer.MAX_VALUE;
+    for (int s = 1; s * s <= n; s++) best = Math.min(best, 1 + f(n - s * s));
+    return best;
+}` },
+    mcq: { q: 'This is coin change (min coins) with which coins?', options: ['All perfect squares ≤ n', 'Only 1 and 4', 'All primes', 'Powers of two'], answer: 0, explain: 'Each square can be reused any number of times — unbounded min-coin DP.' },
+    hints: [`<p>Hint 1: Treat each perfect square as a coin you may use any number of times.</p>`, `<p>Hint 2: dp[a] = 1 + min dp[a − s²] for all s² ≤ a; dp[0] = 0.</p>`, `<p>Hint 3: There are only √n coins, so O(n√n) ≈ 10<sup>6</sup>. (Math follow-up: Lagrange — every number is a sum of at most 4 squares.)</p>`],
+    solution: {
+      approach: `<p>Unbounded min DP over amounts with square "coins".</p>`,
+      code: `class Solution {
+    public int numSquares(int n) {
+        int[] dp = new int[n + 1];
+        Arrays.fill(dp, Integer.MAX_VALUE);
+        dp[0] = 0;
+        for (int a = 1; a <= n; a++)
+            for (int s = 1; s * s <= a; s++)
+                dp[a] = Math.min(dp[a], dp[a - s * s] + 1);   // dp[a - s*s] is always finite (1 is a square)
+        return dp[n];
+    }
+}`,
+      dry: { head: ['a', 'options', 'dp[a]'], rows: [['4', 'dp[3]+1 = 4, dp[0]+1 = 1', '1'], ['8', 'dp[7]+1 = 5, dp[4]+1 = 2', '2'], ['12', 'dp[11]+1 = 4, dp[8]+1 = 3, dp[3]+1 = 4', H.c('g', '3')]] },
+      complexity: `<p>Time O(n√n), space O(n).</p>`
+    }
+  });
+
+  practice.push({
+    title: 'Longest Palindromic Subsequence', level: 'Medium', tags: ['dp', 'lcs', 'strings'], companies: ['Amazon', 'LinkedIn', 'Uber'],
+    statement: `<p>Given a string <code>s</code>, return the length of its longest palindromic subsequence.</p>`,
+    constraints: `1 ≤ s.length ≤ 1000, lowercase letters`,
+    example: `<p>"bbbab" → <b>4</b> ("bbbb"). "cbbd" → <b>2</b> ("bb").</p>`,
+    brute: { why: `<p>Check all 2<sup>n</sup> subsequences for being a palindrome — impossible for n = 1000. The answer for a middle part s[i..j] is needed by many outer parts.</p>`, code: `int lps(String s, int i, int j) {
+    if (i > j) return 0;
+    if (i == j) return 1;
+    if (s.charAt(i) == s.charAt(j)) return 2 + lps(s, i + 1, j - 1);
+    return Math.max(lps(s, i + 1, j), lps(s, i, j - 1));
+}` },
+    mcq: { q: 'Which reduction gives the LPS length?', options: ['LCS(s, reverse(s))', 'Edit distance(s, reverse(s))', 'Longest common substring of s and reverse(s)', 'n − number of distinct letters'], answer: 0, explain: 'A palindromic subsequence is common to s and its reverse; the LCS of the two has the max length.' },
+    hints: [`<p>Hint 1: A palindrome reads the same forwards and backwards. What is common between s and reverse(s)?</p>`, `<p>Hint 2: Answer = LCS(s, reverse(s)) using the standard O(n²) table (two rows enough).</p>`, `<p>Hint 3: Alternative interval DP: dp[i][j] = 2 + dp[i+1][j−1] if s[i] == s[j], else max(dp[i+1][j], dp[i][j−1]); fill i from n−1 down.</p>`],
+    solution: {
+      approach: `<p>LCS of s with its reverse, two rolling rows.</p>`,
+      code: `class Solution {
+    public int longestPalindromeSubseq(String s) {
+        String t = new StringBuilder(s).reverse().toString();
+        int n = s.length();
+        int[] prev = new int[n + 1], cur = new int[n + 1];
+        for (int i = 1; i <= n; i++) {
+            for (int j = 1; j <= n; j++) {
+                if (s.charAt(i - 1) == t.charAt(j - 1)) cur[j] = prev[j - 1] + 1;
+                else cur[j] = Math.max(prev[j], cur[j - 1]);
+            }
+            int[] tmp = prev; prev = cur; cur = tmp;
+        }
+        return prev[n];
+    }
+}`,
+      dry: { head: ['s', 'reverse', 'LCS'], rows: [['bbbab', 'babbb', H.c('g', 'bbbb → 4')], ['cbbd', 'dbbc', 'bb → 2']] },
+      complexity: `<p>Time O(n²) = 10<sup>6</sup>, space O(n).</p>`,
+      followUps: ['Minimum insertions to make s a palindrome = n − LPS (see Hard practice).']
+    }
+  });
+
+  practice.push({
+    title: 'Triangle (minimum path)', level: 'Medium', tags: ['dp', 'grid dp', 'bottom-up'], companies: ['Amazon', 'Apple', 'Bloomberg'],
+    statement: `<p>Given a triangle array, return the minimum path sum from top to bottom. From index j in one row you may move to index j or j+1 in the next row.</p>`,
+    constraints: `1 ≤ rows ≤ 200, −10<sup>4</sup> ≤ value ≤ 10<sup>4</sup>; follow-up: O(rows) extra space`,
+    example: `<p>[[2], [3,4], [6,5,7], [4,1,8,3]] → <b>11</b> (${H.c('g', '2 + 3 + 5 + 1')}).</p>`,
+    brute: { why: `<p>Every path makes a left/right choice per row → 2<sup>rows−1</sup> paths ≈ 10<sup>60</sup> for 200 rows. The best path from any middle cell to the bottom is recomputed for each path reaching it.</p>`, code: `int best(List<List<Integer>> t, int i, int j) {
+    if (i == t.size()) return 0;
+    return t.get(i).get(j) + Math.min(best(t, i + 1, j), best(t, i + 1, j + 1));
+}` },
+    mcq: { q: 'Why is bottom-up nicer than top-down here?', options: ['No edge cases: every cell has exactly two children below, and the answer ends in one cell', 'It uses less time asymptotically', 'Top-down is wrong', 'Negative numbers break top-down'], answer: 0, explain: 'Going up, dp[j] = val + min(dp[j], dp[j+1]) works for every cell, and the final answer is dp[0].' },
+    hints: [`<p>Hint 1: The best path from a cell to the bottom depends only on the two cells below it.</p>`, `<p>Hint 2: Start from the bottom row and move up: dp[j] = tri[i][j] + min(dp[j], dp[j+1]).</p>`, `<p>Hint 3: Use an array of size rows + 1 filled with 0 so the bottom row needs no special case; answer dp[0].</p>`],
+    solution: {
+      approach: `<p>Bottom-up DP in one array.</p>`,
+      code: `class Solution {
+    public int minimumTotal(List<List<Integer>> triangle) {
+        int n = triangle.size();
+        int[] dp = new int[n + 1];                     // zeros below the last row
+        for (int i = n - 1; i >= 0; i--)
+            for (int j = 0; j <= i; j++)
+                dp[j] = triangle.get(i).get(j) + Math.min(dp[j], dp[j + 1]);
+        return dp[0];
+    }
+}`,
+      dry: { head: ['row', 'dp after processing'], rows: [['4 1 8 3', '4 1 8 3'], ['6 5 7', '7 6 10'], ['3 4', '9 10'], ['2', H.c('g', '11')]] },
+      complexity: `<p>Time O(rows²), space O(rows).</p>`
+    }
+  });
+
+  // =====================================================================
+  // PRACTICE — Hard
+  // =====================================================================
+  practice.push({
+    title: 'Distinct Subsequences', level: 'Hard', tags: ['dp', 'strings', 'counting'], companies: ['Google', 'Amazon', 'Bloomberg'],
+    statement: `<p>Given strings <code>s</code> and <code>t</code>, return the number of distinct subsequences of s that equal t (different index choices count separately).</p>`,
+    constraints: `1 ≤ s.length, t.length ≤ 1000; answer fits in a 32-bit signed int`,
+    example: `<p>s = "rabbbit", t = "rabbit" → <b>3</b>: choose which one of the three b's to drop.</p>`,
+    brute: { why: `<p>Enumerate all 2<sup>|s|</sup> subsequences of s and compare with t — impossible for |s| = 1000. The count for "suffix of s from i matching suffix of t from j" is needed again and again.</p>`, code: `int count(String s, String t, int i, int j) {
+    if (j == t.length()) return 1;                  // matched all of t
+    if (i == s.length()) return 0;                  // ran out of s
+    int res = count(s, t, i + 1, j);                // do not use s[i]
+    if (s.charAt(i) == t.charAt(j)) res += count(s, t, i + 1, j + 1);   // use s[i] for t[j]
+    return res;
+}` },
+    mcq: { q: 'dp[i][j] = ways to form t[0..j−1] from s[0..i−1]. If s[i−1] == t[j−1], dp[i][j] = ?', options: ['dp[i−1][j] + dp[i−1][j−1]', 'dp[i−1][j−1] only', 'max(dp[i−1][j], dp[i][j−1])', 'dp[i][j−1] + 1'], answer: 0, explain: 'Either ignore s[i−1] (dp[i−1][j]) or use it to match t[j−1] (dp[i−1][j−1]). Counting → add.' },
+    hints: [`<p>Hint 1: Same prefix-grid as LCS, but you <b>count</b> ways instead of maximising. Look at s's last character.</p>`, `<p>Hint 2: dp[i][j] = dp[i−1][j] (skip s[i−1]) + (s[i−1] == t[j−1] ? dp[i−1][j−1] : 0). Base dp[i][0] = 1 (empty t), dp[0][j&gt;0] = 0.</p>`, `<p>Hint 3: One array over j, updated from j = m down to 1 so dp[j−1] is still the previous row. Use long; intermediate values can exceed int even when the answer fits.</p>`],
+    solution: {
+      approach: `<p>Counting DP on prefixes, compressed into one array iterated right-to-left.</p>`,
+      code: `class Solution {
+    public int numDistinct(String s, String t) {
+        int m = t.length();
+        long[] dp = new long[m + 1];
+        dp[0] = 1;                                   // empty t: one way (pick nothing)
+        for (int i = 1; i <= s.length(); i++) {
+            char c = s.charAt(i - 1);
+            for (int j = Math.min(i, m); j >= 1; j--) {   // backwards: dp[j-1] is still row i-1
+                if (c == t.charAt(j - 1)) dp[j] += dp[j - 1];
+            }
+        }
+        return (int) dp[m];
+    }
+}`,
+      dry: { head: ['s char', 'dp over t = "" r a b b i t'], rows: [['r', '1 1 0 0 0 0 0'], ['a', '1 1 1 0 0 0 0'], ['b', '1 1 1 1 0 0 0'], ['b', '1 1 1 2 1 0 0'], ['b', '1 1 1 3 3 0 0'], ['i', '1 1 1 3 3 3 0'], ['t', '1 1 1 3 3 3 ' + H.c('g', '3')]] },
+      complexity: `<p>Time O(|s|·|t|) = 10<sup>6</sup>; space O(|t|).</p>`
+    }
+  });
+
+  practice.push({
+    title: 'Shortest Common Supersequence', level: 'Hard', tags: ['dp', 'lcs', 'reconstruction'], companies: ['Google', 'Amazon', 'Microsoft'],
+    statement: `<p>Given strings <code>str1</code> and <code>str2</code>, return the shortest string that has both as subsequences. If several exist, return any.</p>`,
+    constraints: `1 ≤ str1.length, str2.length ≤ 1000, lowercase letters`,
+    example: `<p>str1 = "abac", str2 = "cab" → <b>"cabac"</b> (length 5 = 4 + 3 − LCS("ab") 2).</p>`,
+    brute: { why: `<p>Try candidate strings in increasing length and test both subsequence conditions — the number of candidates is 26<sup>L</sup>. Hopeless; the structure is entirely determined by an LCS.</p>`, code: `boolean isSubseq(String small, String big) {
+    int i = 0;
+    for (int j = 0; j < big.length() && i < small.length(); j++)
+        if (small.charAt(i) == big.charAt(j)) i++;
+    return i == small.length();     // brute force would call this on 26^L candidates
+}` },
+    mcq: { q: 'Length of the shortest common supersequence?', options: ['n + m − LCS', 'n + m', 'max(n, m)', 'LCS'], answer: 0, explain: 'Shared LCS characters are written once; every other character of both strings must appear.' },
+    hints: [`<p>Hint 1: Characters in the LCS can be shared; all the others must be written separately. So length = n + m − LCS.</p>`, `<p>Hint 2: Build the LCS table, then walk back from (n, m): on match emit the char and go diagonal; otherwise emit the char of the direction you leave (the bigger neighbour) and move.</p>`, `<p>Hint 3: When one index reaches 0, emit the remaining prefix of the other string. Reverse the result at the end.</p>`],
+    solution: {
+      approach: `<p>LCS table + reconstruction that also emits the non-LCS characters in order.</p>`,
+      code: `class Solution {
+    public String shortestCommonSupersequence(String a, String b) {
+        int n = a.length(), m = b.length();
+        int[][] dp = new int[n + 1][m + 1];
+        for (int i = 1; i <= n; i++)
+            for (int j = 1; j <= m; j++)
+                dp[i][j] = a.charAt(i - 1) == b.charAt(j - 1) ? dp[i - 1][j - 1] + 1
+                                                              : Math.max(dp[i - 1][j], dp[i][j - 1]);
+        StringBuilder sb = new StringBuilder();
+        int i = n, j = m;
+        while (i > 0 && j > 0) {
+            if (a.charAt(i - 1) == b.charAt(j - 1)) { sb.append(a.charAt(i - 1)); i--; j--; }   // shared
+            else if (dp[i - 1][j] >= dp[i][j - 1]) { sb.append(a.charAt(i - 1)); i--; }         // only in a
+            else { sb.append(b.charAt(j - 1)); j--; }                                           // only in b
+        }
+        while (i > 0) sb.append(a.charAt(--i));
+        while (j > 0) sb.append(b.charAt(--j));
+        return sb.reverse().toString();
+    }
+}`,
+      dry: { head: ['(i, j)', 'compare', 'action', 'emitted so far (backwards)'], rows: [['(4,3)', 'c vs b', 'up ≥ left → emit c', 'c'], ['(3,3)', 'a vs b', 'up ≥ left → emit a', 'ca'], ['(2,3)', 'b vs b', 'match → emit b', 'cab'], ['(1,2)', 'a vs a', 'match → emit a', 'caba'], ['(0,1)', '—', 'emit rest of str2: c', 'cabac'], ['done', '', 'reverse', H.c('g', '"cabac"')]] },
+      complexity: `<p>Time O(n·m), space O(n·m) for reconstruction.</p>`,
+      followUps: ['Prove the result has length n + m − LCS.', 'Return the lexicographically smallest SCS (needs more careful tie-breaking).']
+    }
+  });
+
+  practice.push({
+    title: 'Dungeon Game', level: 'Hard', tags: ['dp', 'grid dp', 'backward dp'], companies: ['Google', 'Microsoft', 'Amazon'],
+    statement: `<p>A knight starts at the top-left of a dungeon grid and must reach the princess at the bottom-right, moving only right or down. Each cell adds (positive) or removes (negative) health. If health ever drops to 0 or below, the knight dies. Return the minimum initial health needed.</p>`,
+    constraints: `1 ≤ m, n ≤ 200, −1000 ≤ dungeon[i][j] ≤ 1000`,
+    example: `<p>[[−2, −3, 3], [−5, −10, 1], [10, 30, −5]] → <b>7</b>. Path right → right → down → down: 7 − 2 − 3 + 3 + 1 − 5 = 1, never ≤ 0 along the way.</p>`,
+    brute: { why: `<p>Try every path (C(m+n−2, m−1)) and compute the health it needs (1 − minimum prefix sum). Exponential, and a forward DP needs two numbers per cell (current health and lowest point) that conflict — so the naive forward table is wrong, not just slow.</p>`, code: `int need(int[][] d, int r, int c) {
+    int m = d.length, n = d[0].length;
+    if (r == m - 1 && c == n - 1) return Math.max(1, 1 - d[r][c]);
+    int best = Integer.MAX_VALUE;
+    if (r + 1 < m) best = Math.min(best, need(d, r + 1, c));
+    if (c + 1 < n) best = Math.min(best, need(d, r, c + 1));
+    return Math.max(1, best - d[r][c]);          // exponential without memo
+}` },
+    mcq: { q: 'Why fill this grid from the bottom-right?', options: ['Because "minimum health needed from here on" is a single number that depends only on the future', 'Because it is faster', 'Because the start cell is negative', 'It does not matter'], answer: 0, explain: 'Forward you must track both current health and the worst dip; backward one number (health needed on entering) captures everything.' },
+    hints: [`<p>Hint 1: Define need[r][c] = minimum health required when <i>entering</i> cell (r, c) so that you can still finish alive.</p>`, `<p>Hint 2: need[r][c] = max(1, min(need[r+1][c], need[r][c+1]) − dungeon[r][c]). Fill from the bottom-right backwards.</p>`, `<p>Hint 3: Pad with a row and column of +∞, except the two cells next to the princess set to 1 so the formula works at the goal. Answer need[0][0].</p>`],
+    solution: {
+      approach: `<p>Backward grid DP on "health needed on entry", one row array.</p>`,
+      code: `class Solution {
+    public int calculateMinimumHP(int[][] dungeon) {
+        int m = dungeon.length, n = dungeon[0].length;
+        int[] need = new int[n + 1];
+        Arrays.fill(need, Integer.MAX_VALUE);
+        need[n - 1] = 1;                                    // "after" the princess you need 1
+        for (int r = m - 1; r >= 0; r--) {
+            for (int c = n - 1; c >= 0; c--) {
+                int next = Math.min(need[c], need[c + 1]);  // below (old need[c]) or right
+                need[c] = Math.max(1, next - dungeon[r][c]);
+            }
+        }
+        return need[0];
+    }
+}`,
+      dry: { head: ['cell', 'min(next)', 'value', 'need'], rows: [['(2,2)', '1', '−5', '6'], ['(1,2)', '6', '1', '5'], ['(0,2)', '5', '3', '2'], ['(0,1)', 'min(11, 2) = 2', '−3', '5'], ['(0,0)', 'min(6, 5) = 5', '−2', H.c('g', '7')]] },
+      complexity: `<p>Time O(m·n), space O(n).</p>`
+    }
+  });
+
+  practice.push({
+    title: 'Minimum Insertion Steps to Make a String Palindrome', level: 'Hard', tags: ['dp', 'lcs', 'palindrome'], companies: ['Google', 'Amazon', 'Uber'],
+    statement: `<p>Given a string <code>s</code>, in one step you may insert any character at any index. Return the minimum number of steps to make s a palindrome.</p>`,
+    constraints: `1 ≤ s.length ≤ 500, lowercase letters`,
+    example: `<p>"zzazz" → <b>0</b> (already a palindrome). "mbadm" → <b>2</b> ("mbdadbm"). "leetcode" → <b>5</b>.</p>`,
+    brute: { why: `<p>Interval recursion f(i, j): if s[i] == s[j] recurse inside, else 1 + min(f(i+1, j), f(i, j−1)). Without memo it branches twice per mismatch → exponential; only n² distinct (i, j) intervals exist.</p>`, code: `int f(String s, int i, int j) {
+    if (i >= j) return 0;
+    if (s.charAt(i) == s.charAt(j)) return f(s, i + 1, j - 1);
+    return 1 + Math.min(f(s, i + 1, j), f(s, i, j - 1));
+}` },
+    mcq: { q: 'Minimum insertions equals…', options: ['n − LPS(s) = n − LCS(s, reverse(s))', 'number of distinct letters', 'edit distance(s, reverse(s))', 'n / 2'], answer: 0, explain: 'Keep the longest palindromic subsequence; every other character needs a mirrored partner inserted.' },
+    hints: [`<p>Hint 1: Characters that already form a palindromic subsequence need no help. Every other character needs one inserted twin.</p>`, `<p>Hint 2: Answer = n − LPS, and LPS = LCS(s, reverse(s)).</p>`, `<p>Hint 3: Two-row LCS keeps memory at O(n). Check: "mbadm" → LPS "mam"/"mbm" (3) → 5 − 3 = 2.</p>`],
+    solution: {
+      approach: `<p>Reduce to LCS with the reversed string.</p>`,
+      code: `class Solution {
+    public int minInsertions(String s) {
+        int n = s.length();
+        String r = new StringBuilder(s).reverse().toString();
+        int[] prev = new int[n + 1], cur = new int[n + 1];
+        for (int i = 1; i <= n; i++) {
+            for (int j = 1; j <= n; j++) {
+                cur[j] = s.charAt(i - 1) == r.charAt(j - 1) ? prev[j - 1] + 1
+                                                            : Math.max(prev[j], cur[j - 1]);
+            }
+            int[] t = prev; prev = cur; cur = t;
+        }
+        return n - prev[n];                          // n - LPS
+    }
+}`,
+      dry: { head: ['s', 'LPS', 'answer'], rows: [['zzazz', '5', '0'], ['mbadm', '3', H.c('g', '2')], ['leetcode', '3 ("eee"/"ete")', '5']] },
+      complexity: `<p>Time O(n²) = 2.5·10<sup>5</sup>, space O(n).</p>`
+    }
+  });
+
+  // =====================================================================
+  // QUIZ
+  // =====================================================================
+  quiz.push({ q: 'Which pair of properties makes a problem a good fit for dynamic programming?', options: ['Overlapping subproblems + optimal substructure', 'Sorted input + binary search', 'Greedy choice + matroid', 'Independent subproblems + merging'], answer: 0, explain: 'Repeated subproblems make a memo useful; optimal substructure makes combining best sub-answers correct. Independent subproblems = divide &amp; conquer.' });
+  quiz.push({ q: 'Merge sort splits an array into halves recursively. Why is it not DP?', options: ['Its subproblems never repeat, so memoizing gains nothing', 'It has no recursion', 'It lacks optimal substructure', 'It runs in O(n log n)'], answer: 0, explain: 'Each half is a distinct subarray; no subproblem is solved twice, so there is nothing to cache.' });
+  quiz.push({ q: 'A DP has n·m states and each state does O(k) work. Total time?', options: ['O(n·m·k)', 'O(n + m + k)', 'O(n·m)', 'O(k<sup>n</sup>)'], answer: 0, explain: 'Time = number of states × work per state — the universal DP estimate.' });
+  quiz.push({ q: 'In the 1D 0/1 knapsack, the capacity loop runs from W down to w because…', options: ['dp[c − w] must still hold the value from before this item', 'it is faster', 'Java requires it', 'otherwise dp[0] changes'], answer: 0, explain: 'Going upward would read an already-updated dp[c − w], i.e. use the same item twice (unbounded behaviour).' });
+  quiz.push({ q: 'coins = {1, 2, 5}, amount = 5. "Amount outer, coins inner" counting gives 9. What does it count?', options: ['Ordered sequences (permutations)', 'Combinations (multisets)', 'Minimum coins', 'Subsets of distinct coins'], answer: 0, explain: 'With amount outer, the last coin can be any type at every step, so 1+2+2 and 2+1+2 are separate. Coin-outer would give 4.' });
+  quiz.push({ q: 'Coins {1, 3, 4}, amount 6. Greedy (largest coin first) uses 3 coins. What is optimal?', options: ['2 (3 + 3)', '3', '1', '6'], answer: 0, explain: 'dp[6] = 1 + min(dp[5], dp[3], dp[2]) = 1 + 1 = 2. Greedy is only safe for canonical coin systems.' });
+  quiz.push({ q: 'House Robber on [2, 1, 1, 2] returns…', options: ['4', '3', '2', '6'], answer: 0, explain: 'Rob houses 0 and 3 (gap of two houses). "Every other house" only reaches 3.' });
+  quiz.push({ q: 'In LCS, when text1[i−1] == text2[j−1], dp[i][j] equals…', options: ['dp[i−1][j−1] + 1', 'max(dp[i−1][j], dp[i][j−1])', 'dp[i−1][j] + dp[i][j−1]', '0'], answer: 0, explain: 'Using the matching pair as the last LCS character is always safe (exchange argument).' });
+  quiz.push({ q: 'In edit distance, moving from dp[i−1][j] to dp[i][j] (the ↑ arrow) represents…', options: ['Deleting word1[i−1]', 'Inserting word2[j−1]', 'Replacing a character', 'A free match'], answer: 0, explain: 'After deleting word1\'s last char, we still need to turn word1[0..i−2] into word2[0..j−1] = dp[i−1][j].' });
+  quiz.push({ q: 'Unique Paths II: first row is [0, 1, 0, 0] (1 = obstacle). Its path counts are…', options: ['1 0 0 0', '1 0 1 1', '1 1 1 1', '0 0 0 0'], answer: 0, explain: 'Row 0 cells can only be entered from the left; the obstacle stops the flow for everything after it.' });
+  quiz.push({ q: 'Why does a grid with moves in all 4 directions break grid DP?', options: ['Cycles appear, so there is no order in which all dependencies are computed first', 'The grid is too big', 'DP only works on 1D arrays', 'Min becomes max'], answer: 0, explain: 'DP needs a DAG of states. With 4-way moves, use BFS/Dijkstra.' });
+  quiz.push({ q: '0/1 knapsack with n = 100, W = 10<sup>9</sup>, values ≤ 100. Best approach?', options: ['DP over total value: minWeight[v], v ≤ 10<sup>4</sup>', 'dp over capacity 0..W', 'Greedy by ratio', 'Brute force 2<sup>100</sup>'], answer: 0, explain: 'Total value ≤ 100 × 100 = 10<sup>4</sup>, so index the table by value and store the least weight.' });
+  quiz.push({ q: 'You memoize with <code>memo[i] == 0</code> meaning "not computed" in a min-cost DP where real answers can be 0. What happens?', options: ['States whose answer is 0 are recomputed every time (can become exponential)', 'Compile error', 'Always wrong answer', 'Nothing changes'], answer: 0, explain: 'A genuine 0 looks like "unknown", so those states never hit the cache. Use −1 or a separate visited array.' });
+
+  // =====================================================================
+  // INTERVIEW Q&A
+  // =====================================================================
+  interview.push({ level: 'B', q: 'What is dynamic programming, in plain words?', a: `<p>DP is solving a problem by breaking it into smaller versions of itself, solving each distinct smaller version <b>once</b>, storing the answer, and reusing it. It applies when (1) the same subproblems appear many times (overlapping subproblems) and (2) the best answer is built from best answers of subproblems (optimal substructure). Example: fib(n) with a memo goes from ~1.6<sup>n</sup> calls to O(n).</p>`, followUps: ['How is DP different from divide &amp; conquer?', 'How is it different from greedy?'] });
+  interview.push({ level: 'B', q: 'Memoization vs tabulation — which do you prefer?', a: `<p><b>Memoization</b> (top-down) = recursion + cache; easy to write from the brute force and only computes reachable states, but pays function-call overhead and risks stack overflow at depth ~10<sup>4</sup>–10<sup>5</sup> in Java. <b>Tabulation</b> (bottom-up) = loops in dependency order; no recursion, cache-friendly, and makes space optimization obvious. I usually derive the recurrence top-down, then write it bottom-up for the final answer, unless the state space is sparse (then top-down with a HashMap).</p>`, followUps: ['When is top-down strictly better?', 'How do you avoid stack overflow in Java?'] });
+  interview.push({ level: 'B', q: 'Walk me through how you design a DP solution from scratch.', a: `<p>Five steps: (1) <b>State</b> — say in one sentence what dp[...] means; (2) <b>transition</b> — look at the last decision and combine sub-answers with +, min/max or OR; (3) <b>base cases</b>; (4) <b>order</b> — fill so dependencies are ready; (5) <b>answer</b> location. Then complexity = states × work per state, then space optimization if each row depends only on the previous one. I validate with a tiny hand-filled table before coding.</p>`, followUps: ['What if you can\'t find the state?', 'How do you test a DP?'] });
+  interview.push({ level: 'I', q: 'Climbing Stairs: why does ways(n) = ways(n−1) + ways(n−2) not double count?', a: `<p>Split all valid step sequences by their <b>last move</b>. Sequences ending with a 1-step are in bijection with sequences reaching n−1; those ending with a 2-step with sequences reaching n−2. The two groups are disjoint (different last moves) and cover everything, so adding them counts each sequence exactly once. This "partition by last choice" argument is how to justify any counting DP.</p>`, followUps: ['Steps from a set S?', 'What if some stairs are broken?'] });
+  interview.push({ level: 'I', q: 'Why does greedy fail for coin change and when does it work?', a: `<p>Greedy commits to the largest coin without considering what it leaves behind. With {1, 3, 4} and 6, taking 4 forces 1 + 1 (3 coins), while 3 + 3 uses 2. Greedy is optimal only for <b>canonical</b> coin systems (real currencies are designed that way). DP checks every possible last coin: dp[a] = 1 + min dp[a − c], O(amount × coins). If a greedy fails, a counterexample exists below the sum of the two largest coins, which gives a quick test.</p>`, followUps: ['How do you prove greedy is safe for {1, 5, 10, 25}?', 'Return the coins, not just the count.'] });
+  interview.push({ level: 'I', q: 'Explain the difference between Coin Change II (LC 518) and Combination Sum IV (LC 377).', a: `<p>Both count ways to reach an amount with reusable values. LC 518 counts <b>combinations</b> (1+2 = 2+1): loop coins outside, amounts inside — coins are introduced in a fixed order, so each multiset is generated once. LC 377 counts <b>sequences</b>: loop amounts outside, coins inside — each step can end with any coin, so orderings are distinct. Same transition ways[a] += ways[a − c], different loop order, different answer (4 vs 9 for {1,2,5}, 5).</p>`, followUps: ['What does each loop order look like as a 2D table?', 'How would you count combinations using each coin at most once?'] });
+  interview.push({ level: 'I', q: 'Derive the 0/1 knapsack recurrence and its space-optimized form.', a: `<p>State dp[i][c] = best value using the first i items with capacity c. Item i is either skipped (dp[i−1][c]) or taken once (dp[i−1][c − w<sub>i</sub>] + v<sub>i</sub> if it fits) → max of the two. Both reads come from row i−1, so one array suffices if we iterate c from W down to w<sub>i</sub>: then dp[c − w] still holds the previous row. O(n·W) time, O(W) space. To list chosen items, keep the 2D table and walk back: a change between rows means the item was taken.</p>`, followUps: ['Why is it called pseudo-polynomial?', 'How do you handle W = 10<sup>9</sup>?'] });
+  interview.push({ level: 'I', q: 'What changes between 0/1 and unbounded knapsack?', a: `<p>Only where the "take" arrow points. 0/1: take → dp[i−1][c − w] (item consumed). Unbounded: take → dp[i][c − w] (item still available, can be taken again). In 1D form that becomes the loop direction: backward for 0/1, forward for unbounded. Coin change, rod cutting and perfect squares are unbounded; subset sum, partition and target sum are 0/1.</p>`, followUps: ['Bounded knapsack (each item k times)?', 'Does loop order matter for max value in unbounded knapsack?'] });
+  interview.push({ level: 'I', q: 'How do you reconstruct the actual LCS string, and what memory does it need?', a: `<p>Fill the full (n+1)×(m+1) table, then walk back from (n, m): if the characters match, emit it and go diagonal; otherwise move to the larger of up/left (ties broken consistently). Reverse the collected characters. This needs the whole table, O(n·m) memory. If memory is tight, Hirschberg's algorithm recovers the string in O(n + m) space by divide &amp; conquer with forward/backward two-row passes, at about twice the time.</p>`, followUps: ['How would you print all LCSs?', 'LCS when one string has distinct characters?'] });
+  interview.push({ level: 'A', q: 'Edit distance: justify the three transitions and give the space-optimized version.', a: `<p>Consider the last characters of the two prefixes in an optimal alignment: either word1's last char is deleted (dp[i−1][j] + 1), word2's last char is inserted (dp[i][j−1] + 1), or they are aligned — free if equal (dp[i−1][j−1]) else a replace (+1). These cases are exhaustive, so min over them is exact. Space: one row plus a variable saving the old diagonal before overwrite → O(m). For "distance ≤ k" questions compute only a diagonal band of width 2k+1 → O(n·k).</p>`, followUps: ['Add adjacent transposition (Damerau).', 'How do search engines do fuzzy matching at scale?'] });
+  interview.push({ level: 'A', q: 'How would you handle a DP whose table does not fit in memory?', a: `<p>Options: (1) <b>rolling arrays</b> when a row depends only on the previous one(s); (2) <b>change the state</b> — index by value instead of weight, or compress coordinates; (3) <b>top-down with a HashMap</b> if only a sparse set of states is reachable; (4) <b>Hirschberg / divide &amp; conquer</b> to reconstruct answers in linear space; (5) <b>bitsets</b> for boolean DPs (64 states per word). I'd first measure: states × bytes per state, e.g. 10<sup>4</sup> × 10<sup>4</sup> ints = 400 MB — too much, so rolling rows.</p>`, followUps: ['When does rolling the array lose information?', 'How do you pack a pair (i, j) into one long key?'] });
+  interview.push({ level: 'A', q: 'Unique Paths with obstacles vs Dungeon Game — why does one fill forward and the other backward?', a: `<p>In Unique Paths, the number of ways to reach a cell depends only on the past (cells above/left), so forward works. In Dungeon Game, the answer for a prefix depends on two numbers — current health and the lowest dip so far — that trade off, so a forward table can't pick one value per cell. Backward, "minimum health needed when entering this cell" is a single number determined by the future: need = max(1, min(next) − cell). Rule: fill in the direction where the remaining problem is summarised by one value.</p>`, followUps: ['Could binary search on the initial health work?', 'What if moves can go in 4 directions?'] });
+  interview.push({ level: 'E', q: 'Is 0/1 knapsack polynomial? What do production systems do for large instances?', a: `<p>O(n·W) is <b>pseudo-polynomial</b>: polynomial in the numeric value W but exponential in its bit-length, and 0/1 knapsack is (weakly) NP-hard. In production: if W or total value is small, the DP; otherwise <b>branch-and-bound</b> with the fractional (greedy) relaxation as an upper bound, <b>FPTAS</b> by scaling values to get a (1 − ε) approximation, <b>meet-in-the-middle</b> for n ≤ 40, or an ILP/CP solver (OR-Tools, Gurobi). Cutting-stock and ad-budget allocation use column generation with knapsack DPs as subproblems.</p>`, followUps: ['Explain the FPTAS scaling idea.', 'How would you parallelise the DP?'] });
+  interview.push({ level: 'E', q: 'An AI assistant gave you a DP that passes the samples. How do you verify it before shipping?', a: `<p>(1) Re-derive the state and transition myself and check the code matches them line by line (loop direction, base cases, sentinel values). (2) Write a brute-force enumerator for tiny inputs and run a randomized <b>stress test</b> comparing both for thousands of cases, including edge cases (empty input, n = 1, zeros, impossible targets, max values for overflow). (3) Check complexity against constraints (states × work). (4) For reconstruction, verify the output independently (e.g. the printed LCS is a subsequence of both strings). AI often gets loop order, sentinels and overflow wrong — exactly what stress tests catch.</p>`, followUps: ['How do you choose random test sizes?', 'What invariants would you assert inside the DP?'] });
+
+  // ---------- spread correct answers across positions (A/B/C/D) ----------
+  function placeAnswer(m, k) {
+    if (!m || !m.options) return;
+    var correct = m.options[m.answer], rest = m.options.filter(function (_, i) { return i !== m.answer; });
+    k = k % m.options.length;
+    rest.splice(k, 0, correct);
+    m.options = rest;
+    m.answer = k;
+  }
+  var POS = [1, 3, 0, 2, 2, 1, 3, 0, 1, 2, 0, 3, 1, 2, 3, 0];
+  quiz.forEach(function (q, i) { placeAnswer(q, POS[i % POS.length]); });
+  practice.forEach(function (p, i) { placeAnswer(p.mcq, POS[(i + 5) % POS.length]); });
+  topics.forEach(function (t, i) { (t.problems || []).forEach(function (p, j) { placeAnswer(p.mcq, POS[(i + j + 9) % POS.length]); }); });
+
+  registerModule({
+    id: 'dsa17',
+    title: 'Dynamic Programming I',
+    intro: `<p>Dynamic programming (DP) has a scary name for a simple habit: <b>never solve the same small question twice — write the answer down and reuse it</b>. This module takes you from "what is DP?" to confidently solving the classic interview families: 1D DP (Fibonacci, climbing stairs, house robber), coin change (min coins and number of ways), 0/1 and unbounded knapsack, two-string DP (longest common subsequence, edit distance) and grid DP (paths with obstacles, minimum path sum).</p>
+      <p>Every topic follows the same <b>5-step recipe</b> — state, transition, base cases, fill order, answer — and every topic has a visualizer where you watch the DP table fill cell by cell, with the <span class="c-y">current cell</span> and the <span class="c-b">cells it depends on</span> highlighted. You will learn memoization → tabulation → space optimization as a sequence of small safe steps, how to reconstruct the actual choices (which coins, which items, which edits), and how to spot DP from the wording of a question.</p>
+      <p>DP is the single most feared interview topic, and in the AI era it is still tested heavily because it checks reasoning rather than recall: finding the state, proving the transition, and choosing loop order are things you must own.</p>`,
+    goals: [
+      'Recognise a DP problem from its wording ("number of ways", "minimum cost", "is it possible", choices at each step) and justify overlapping subproblems + optimal substructure',
+      'Apply the 5-step recipe (state → transition → base → order → answer) and estimate complexity as states × work per state',
+      'Convert any recursion into memoization, then tabulation, then a space-optimized version — and know when each is the better choice',
+      'Solve climbing stairs, house robber, coin change (min + combinations + permutations), 0/1 and unbounded knapsack without notes, including the correct 1D loop direction',
+      'Fill and trace back 2D tables for LCS, edit distance, unique paths with obstacles and minimum path sum, reconstructing the actual answer',
+      'Reduce disguised problems (partition, target sum, perfect squares, palindromic subsequence, delete-and-earn) to the patterns in this module'
+    ],
+    prereqs: `<p>DSA 11 (Recursion &amp; Backtracking — recursion trees, the call stack, pick/not-pick), DSA 2 (Time/Space Complexity), DSA 5 (Arrays &amp; Prefix Sums). DSA 16 (Greedy) helps for the "why greedy fails" comparisons. Comfortable with 2D arrays in Java.</p>`,
+    hours: 16,
+    topics: topics,
+    practice: practice,
+    quiz: quiz,
+    interview: interview
+  });
+})();
