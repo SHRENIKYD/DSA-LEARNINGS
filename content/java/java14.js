@@ -3775,8 +3775,8 @@ class DiDemo {
   }
   quiz.forEach(function (q, i) { rotate(q, i * 3 + 1); });
   var mcqIdx = 0;
-  topics.forEach(function (t) { (t.problems || []).forEach(function (p) { rotate(p.mcq, mcqIdx++ * 2 + 1); }); });
-  practice.forEach(function (p) { rotate(p.mcq, mcqIdx++ * 2 + 1); });
+  topics.forEach(function (t) { (t.problems || []).forEach(function (p) { rotate(p.mcq, mcqIdx++ * 3 + 2); }); });
+  practice.forEach(function (p) { rotate(p.mcq, mcqIdx++ * 3 + 2); });
 
   registerModule({
     id: 'java14',
