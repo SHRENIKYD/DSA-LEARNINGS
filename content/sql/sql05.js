@@ -877,7 +877,7 @@ ORDER BY p.category, p.price DESC;` } }
       statement: `<p>Using the <code>shop</code> database, compute each registered customer's <b>total spend</b> (sum of <code>qty × unit_price</code> over their non-cancelled orders). Return the customers whose total spend is <b>greater than the average total spend per customer</b> (average over customers who bought something), with their spend and the average.</p>`,
       constraints: `<p>Exclude <code>status = 'cancelled'</code> and guest orders (customer_id NULL). Average is per <b>customer</b>, not per order.</p>`,
       example: `${H.table(['customer', 'spend'], [['<span class="c-g">Asha</span>', '1500 + 45 + 1080 = 2625'], ['Dana', '1190'], ['Ben', '880 + 180 = 1060'], ['Chen', '390 (order 104 cancelled)']])}<p>Average per customer = (2625 + 1190 + 1060 + 390) / 4 = <b>1316.25</b>. Only <b>Asha</b> is above it.</p>`,
-      brute: { why: `<p>The tempting one-liner compares each customer with <code>AVG(qty * unit_price)</code> — the average <b>line item</b>, not the average <b>customer</b>. That value is only about 393, so every customer except Chen looks like a "big spender". Mixing aggregation levels is the #1 bug in multi-step analytics.</p>`, code: { lang: 'sql', db: 'shop', code: `-- WRONG LEVEL: compares customer totals with the average LINE ITEM value
+      brute: { why: `<p>The tempting one-liner compares each customer with <code>AVG(qty * unit_price)</code> — the average <b>line item</b>, not the average <b>customer</b>. That value is only 375, so <b>all four</b> customers (even Chen with 390) look like "big spenders". Mixing aggregation levels is the #1 bug in multi-step analytics.</p>`, code: { lang: 'sql', db: 'shop', code: `-- WRONG LEVEL: compares customer totals with the average LINE ITEM value
 SELECT o.customer_id, SUM(oi.qty * oi.unit_price) AS spend
 FROM orders o JOIN order_items oi ON oi.order_id = o.id
 WHERE o.status <> 'cancelled' AND o.customer_id IS NOT NULL
@@ -905,6 +905,247 @@ ORDER BY s.total DESC;` },
         dry: { head: ['step', 'rows', 'note'], rows: [['spend CTE', 'Asha 2625, Dana 1190, Ben 1060, Chen 390', 'cancelled 104 and guest 109 excluded'], ['AVG(total)', '1316.25', 'average over 4 customers'], ['filter', 'Asha 2625 &gt; 1316.25', '<span class="c-g">keep</span>'], ['filter', 'Dana 1190', '<span class="c-r">drop</span>']] },
         complexity: `<p>One pass over orders + items to build the CTE (O(N) with hash aggregation), then O(C) to filter. If the engine re-evaluates the CTE twice (SQL Server), cost doubles — still linear.</p>`,
         followUps: ['Return the top 2 customers per city by spend (needs window functions).', 'Include customers with zero spend in the average — how does the answer change?', 'Rewrite with a window function: <code>AVG(total) OVER ()</code>.']
+      }
+    }]
+  });
+
+  /* =====================================================================
+     TOPIC 5 — Recursive CTEs I: how recursion works + number/date series
+     ===================================================================== */
+  topics.push({
+    title: 'Recursive CTEs: How They Work + Number & Date Series',
+    analogy: `<p>Think of a row of dominoes. You push the <b>first</b> one by hand (the <b>anchor</b>). After that you do nothing: each falling domino knocks over the next one (the <b>recursive step</b>). The chain stops when there is no next domino (the <b>stop condition</b>).</p>
+<p>A recursive CTE works the same way: the anchor query produces the first rows, then the recursive query is applied to the rows just produced to make the next rows, again and again, until a round produces nothing new.</p>`,
+    explain: `<p>Shape of every recursive CTE:</p>
+<pre>WITH RECURSIVE n(x) AS (
+    SELECT 1                 -- ① anchor: the starting row(s)
+    UNION ALL
+    SELECT x + 1 FROM n      -- ② recursive member: reads the rows made in the previous round
+    WHERE x &lt; 10             -- ③ stop condition: eventually produces no rows
+)
+SELECT x FROM n;             -- ④ use it like a table</pre>
+<p><b>How the engine evaluates it (the "working table" algorithm):</b></p>
+${H.table(['Round', 'Working table (input)', 'Recursive member produces', 'Result so far'], [['anchor', '—', '<b>1</b>', '1'], ['1', '{1}', '<b>2</b>', '1, 2'], ['2', '{2}', '<b>3</b>', '1, 2, 3'], ['…', '…', '…', '…'], ['9', '{9}', '<b>10</b>', '1 … 10'], ['10', '{10}', '<span class="c-r">nothing (10 &lt; 10 is false)</span>', 'STOP']])}
+<ol>
+<li>Run the anchor. Its rows go into the <b>result</b> and into a <b>working table</b>.</li>
+<li>Run the recursive member, where the CTE's name means "<b>only the working table</b>" — not the whole result.</li>
+<li>New rows are appended to the result and become the next working table.</li>
+<li>Repeat until a round produces zero rows.</li>
+</ol>
+<p><b>UNION ALL vs UNION:</b> <code>UNION ALL</code> keeps every row (fast, the usual choice). <code>UNION</code> throws away rows already in the result — a built-in stop for graphs that revisit the <i>same exact row</i>, but it costs a duplicate check per row and does not help when rows differ (e.g. a growing depth or path column).</p>
+<p><b>Why generate series?</b> Reports need a row for <b>every</b> day / month / number, even when the data has gaps. SQLite (before the <code>generate_series</code> extension) and MySQL have no built-in series generator — a recursive CTE is the portable tool: build the calendar, then <code>LEFT JOIN</code> the facts onto it and <code>COALESCE</code> missing values to 0.</p>
+<p><b>Safety:</b> forget the stop condition and the query runs forever (SQLite, PostgreSQL) or errors at a limit (SQL Server: 100 levels by default, MySQL: 1000). Always have a WHERE that must eventually fail, or a depth counter.</p>`,
+    clues: [
+      '"report must show <b>every day</b> / every month, including days with zero sales" → recursive date series + LEFT JOIN',
+      '"generate numbers 1..N", "fill the gaps", "missing IDs" → recursive number series',
+      'Each row is computed from the <b>previous</b> row (Fibonacci, compound interest, running balance by rule) → recursive CTE',
+      '"split a comma-separated string into rows" in an engine without a split function → recursive string peeling',
+      'No <code>generate_series</code> available (SQLite core, MySQL) → <code>WITH RECURSIVE</code>',
+      '"how many levels deep" / unknown number of steps → recursion, not a fixed number of self-joins'
+    ],
+    code: [
+      { lang: 'sql', db: 'shop', title: 'Numbers 1..10 and a step series', code: `WITH RECURSIVE n(x) AS (
+    SELECT 1                    -- anchor
+    UNION ALL
+    SELECT x + 1 FROM n         -- recursive member reads the previous round
+    WHERE x < 10                -- stop condition
+)
+SELECT x FROM n;
+
+-- Every 3rd number from 1 to 20
+WITH RECURSIVE s(x) AS (SELECT 1 UNION ALL SELECT x + 3 FROM s WHERE x + 3 <= 20)
+SELECT group_concat(x, ', ') AS series FROM s;` },
+      { lang: 'sql', db: 'shop', title: 'Calendar + LEFT JOIN: daily revenue with zero days', code: `WITH RECURSIVE days(d) AS (
+        SELECT '2024-07-01'
+        UNION ALL
+        SELECT date(d, '+1 day') FROM days WHERE d < '2024-07-07'
+     ),
+     daily AS (
+        SELECT o.order_date, SUM(oi.qty * oi.unit_price) AS revenue
+        FROM orders o JOIN order_items oi ON oi.order_id = o.id
+        WHERE o.status <> 'cancelled'
+        GROUP BY o.order_date
+     )
+SELECT days.d AS day, COALESCE(daily.revenue, 0) AS revenue
+FROM days
+LEFT JOIN daily ON daily.order_date = days.d
+ORDER BY day;` },
+      { lang: 'sql', db: 'shop', title: 'Carrying state: Fibonacci and factorial', code: `-- Each row carries the two previous Fibonacci numbers
+WITH RECURSIVE fib(n, a, b) AS (
+    SELECT 1, 0, 1
+    UNION ALL
+    SELECT n + 1, b, a + b FROM fib WHERE n < 15
+)
+SELECT n, a AS fibonacci FROM fib;
+
+WITH RECURSIVE f(n, fact) AS (
+    SELECT 1, 1
+    UNION ALL
+    SELECT n + 1, fact * (n + 1) FROM f WHERE n < 10
+)
+SELECT n, fact FROM f;` }
+    ],
+    codeTitle: ['Number series', 'Date series (fill gaps)', 'State-carrying recursion'],
+    viz: {
+      title: 'Recursive CTE rounds: anchor → working table → new rows → stop',
+      input: '1 20 3',
+      inputLabel: '"start end step" for a number series, or "fib N" for N Fibonacci rows',
+      gen: function (input) {
+        var s = String(input || '').trim().toLowerCase(), m, fib = false, start, end, step, N;
+        if ((m = s.match(/^fib\s+(\d+)$/))) { fib = true; N = Number(m[1]); if (N < 2 || N > 20) throw new Error('fib N: choose N between 2 and 20'); }
+        else if ((m = s.match(/^(-?\d+)\s+(-?\d+)\s+(\d+)$/))) {
+          start = Number(m[1]); end = Number(m[2]); step = Number(m[3]);
+          if (step <= 0) throw new Error('step must be a positive integer');
+          if (end < start) throw new Error('end must be ≥ start');
+          if ((end - start) / step > 22) throw new Error('Too many rows: keep (end - start) / step ≤ 22');
+        } else throw new Error('Type "start end step" like "1 20 3", or "fib 8"');
+        var frames = [], result = [], cols, sql, round = 0, cur;
+        if (fib) {
+          cols = ['n', 'a', 'b'];
+          sql = 'WITH RECURSIVE fib(n, a, b) AS (\n  SELECT 1, 0, 1\n  UNION ALL\n  SELECT n + 1, b, a + b FROM fib\n  WHERE n < ' + N + '\n)\nSELECT n, a FROM fib;';
+          cur = [1, 0, 1];
+        } else {
+          cols = ['x'];
+          sql = 'WITH RECURSIVE s(x) AS (\n  SELECT ' + start + '\n  UNION ALL\n  SELECT x + ' + step + ' FROM s\n  WHERE x + ' + step + ' <= ' + end + '\n)\nSELECT x FROM s;';
+          cur = [start];
+        }
+        frames.push({ narr: 'Read the CTE top to bottom: line 2 is the <b>anchor</b>, line 4 the <b>recursive member</b> (it mentions its own name), line 5 the <b>stop condition</b>. Nothing has run yet.', parts: [
+          { type: 'code', label: 'Query', lang: 'sql', code: sql, hl: { 2: 'cur', 4: 'cur', 5: 'cur' } },
+          { type: 'table', label: 'Result (empty)', columns: cols, rows: [] }
+        ] });
+        result.push(cur.slice());
+        frames.push({ narr: '<b>Anchor</b> runs once and produces <b>' + JSON.stringify(cur) + '</b>. The row goes into the result AND into the <b>working table</b> — the only rows the next round can see.', parts: [
+          { type: 'code', label: 'Query', lang: 'sql', code: sql, hl: { 2: 'ok' } },
+          { type: 'queue', label: 'Working table (input for next round)', items: [cur.join(', ')], hl: { 0: 'ok' }, frontLabel: 'next', backLabel: '' },
+          { type: 'table', label: 'Result', columns: cols, rows: result.map(function (r) { return r.slice(); }), hl: { 0: 'ok' } },
+          { type: 'vars', label: 'Progress', vals: { round: 'anchor', rows_in_result: 1 } }
+        ] });
+        while (true) {
+          round++;
+          var next, okCond, condText;
+          if (fib) { next = [cur[0] + 1, cur[2], cur[1] + cur[2]]; okCond = cur[0] < N; condText = 'n &lt; ' + N + ' → ' + cur[0] + ' &lt; ' + N; }
+          else { next = [cur[0] + step]; okCond = cur[0] + step <= end; condText = 'x + ' + step + ' ≤ ' + end + ' → ' + (cur[0] + step) + ' ≤ ' + end; }
+          if (!okCond) {
+            frames.push({ narr: 'Round ' + round + ': the working table holds <b>' + JSON.stringify(cur) + '</b>. The stop condition <code>' + condText + '</code> is <span class="c-r">FALSE</span>, so the recursive member produces <b>zero rows</b>. An empty round ends the recursion.', parts: [
+              { type: 'code', label: 'Query', lang: 'sql', code: sql, hl: { 4: 'cur', 5: 'bad' } },
+              { type: 'queue', label: 'Working table', items: [cur.join(', ')], hl: { 0: 'cur' } },
+              { type: 'table', label: 'New rows this round', columns: cols, rows: [] },
+              { type: 'vars', label: 'Progress', vals: { round: round, new_rows: 0, rows_in_result: result.length }, hl: { new_rows: 'bad' } }
+            ] });
+            break;
+          }
+          result.push(next.slice());
+          var rh = {}; rh[result.length - 1] = 'ok';
+          frames.push({ narr: 'Round ' + round + ': the recursive member reads the working table <b>' + JSON.stringify(cur) + '</b> (not the whole result!). Condition <code>' + condText + '</code> is <span class="c-g">TRUE</span>, so it emits <b>' + JSON.stringify(next) + '</b>' + (fib ? ' — the new <i>a</i> is the old <i>b</i>, the new <i>b</i> is <i>a + b</i>.' : '.') + ' That row becomes the next working table.', parts: [
+            { type: 'code', label: 'Query', lang: 'sql', code: sql, hl: { 4: 'ok', 5: 'ok' } },
+            { type: 'queue', label: 'Working table', items: [cur.join(', '), '→ ' + next.join(', ')], hl: { 0: 'done', 1: 'ok' } },
+            { type: 'table', label: 'Result (grows by one row per round)', columns: cols, rows: result.map(function (r) { return r.slice(); }), hl: rh },
+            { type: 'vars', label: 'Progress', vals: { round: round, new_rows: 1, rows_in_result: result.length }, hl: { new_rows: 'ok' } }
+          ] });
+          cur = next;
+        }
+        var fin = fib ? result.map(function (r) { return [r[0], r[1]]; }) : result.map(function (r) { return [r[0]]; });
+        frames.push({ narr: 'Final SELECT reads the accumulated result: <b>' + fin.length + '</b> rows from 1 anchor row + ' + (fin.length - 1) + ' recursive rounds. Without the stop condition this would never end (SQLite/PostgreSQL) or hit a recursion limit (SQL Server 100, MySQL 1000).', parts: [
+          { type: 'table', label: 'Query result', columns: fib ? ['n', 'fibonacci'] : ['x'], rows: fin, hl: (function () { var h = {}; fin.forEach(function (r, k) { h[k] = 'sel'; }); return h; })() },
+          { type: 'bars', label: fib ? 'Fibonacci values' : 'Series values', values: fin.map(function (r) { return r[r.length - 1]; }) }
+        ] });
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'Multiplication table with two counters', html: `<p>A recursive CTE can carry several columns. Here <code>(i, j)</code> walks a 3×3 grid: when <code>j</code> reaches 3 it resets to 1 and <code>i</code> advances. A CROSS JOIN of two series is the simpler alternative — shown second.</p>`, code: { lang: 'sql', code: `WITH RECURSIVE t(i, j) AS (
+    SELECT 1, 1
+    UNION ALL
+    SELECT CASE WHEN j = 3 THEN i + 1 ELSE i END,
+           CASE WHEN j = 3 THEN 1     ELSE j + 1 END
+    FROM t
+    WHERE NOT (i = 3 AND j = 3)
+)
+SELECT i, j, i * j AS product FROM t;
+
+-- Same grid with two simple series and a CROSS JOIN
+WITH RECURSIVE a(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM a WHERE i < 3)
+SELECT x.i, y.i AS j, x.i * y.i AS product FROM a x CROSS JOIN a y ORDER BY x.i, y.i;` } },
+      { title: 'Split a comma-separated tags column into rows', html: `<p>Each round peels one tag off the front of <code>rest</code>. Appending a trailing comma to the anchor makes every tag end with a comma, so one rule handles all of them. Then a normal GROUP BY counts tags: <b>portable</b> and <b>work</b> appear 3 times each. Atlas (tags NULL) is skipped in the anchor.</p>${H.table(['round', 'tag', 'rest'], [['anchor', 'NULL', 'work,portable,premium,'], ['1', 'work', 'portable,premium,'], ['2', 'portable', 'premium,'], ['3', 'premium', '<span class="c-m">\'\' → stop</span>']])}`, code: { lang: 'sql', db: 'shop', code: `WITH RECURSIVE split(id, tag, rest) AS (
+    SELECT id, NULL, tags || ','               -- anchor: whole string + trailing comma
+    FROM products WHERE tags IS NOT NULL
+    UNION ALL
+    SELECT id,
+           substr(rest, 1, instr(rest, ',') - 1),   -- text before first comma
+           substr(rest, instr(rest, ',') + 1)       -- everything after it
+    FROM split
+    WHERE rest <> ''                                -- stop when nothing is left
+)
+SELECT tag, COUNT(*) AS products
+FROM split
+WHERE tag IS NOT NULL
+GROUP BY tag
+ORDER BY products DESC, tag;` } },
+      { title: 'Monthly calendar for sign-ups (months with zero still shown)', html: `<p><code>date(month, '+1 month')</code> steps a month at a time. A correlated COUNT then counts sign-ups per month — June 2024 has 1 (Fatima), July–September have 0, and they still appear because the calendar drives the query.</p>`, code: { lang: 'sql', db: 'shop', code: `WITH RECURSIVE months(m) AS (
+    SELECT '2024-01-01'
+    UNION ALL
+    SELECT date(m, '+1 month') FROM months WHERE m < '2024-09-01'
+)
+SELECT strftime('%Y-%m', m) AS month,
+       (SELECT COUNT(*) FROM customers c
+        WHERE strftime('%Y-%m', c.signup_date) = strftime('%Y-%m', months.m)) AS signups
+FROM months;` } },
+      { title: 'LIMIT as a safety net, and UNION as a duplicate stop', html: `<p>In SQLite (and in practice PostgreSQL) an outer <code>LIMIT</code> stops an otherwise infinite recursion once enough rows exist. With <code>UNION</code> (not ALL), a row already in the result is discarded, so the cycle 1 → 2 → 3 → 1 stops by itself after 3 rows.</p>`, code: { lang: 'sql', code: `-- No stop condition, but LIMIT ends it after 5 rows
+WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM n)
+SELECT x FROM n LIMIT 5;
+
+-- UNION removes repeats: 1, 2, 3 then 1 again is discarded → stop
+WITH RECURSIVE c(x) AS (SELECT 1 UNION SELECT x % 3 + 1 FROM c)
+SELECT x FROM c;` } }
+    ],
+    deepDive: `<p><b>Semantics precisely.</b> The SQL standard defines recursive CTEs as a <i>fixpoint</i>: keep applying the recursive member until no new rows appear. Engines implement it with the working-table loop (semi-naive evaluation): each round only feeds the <b>new</b> rows from the last round into the recursive member, which is why the member sees the working table, not the full result. SQLite uses a <b>queue</b> and processes one row at a time; adding <code>ORDER BY</code> inside the recursive member turns the queue into a priority queue (SQLite extension), letting you choose depth-first vs breadth-first order.</p>
+<p><b>Restrictions on the recursive member</b> (vary by engine): it must reference the CTE exactly once; no aggregates (<code>SUM</code>, <code>COUNT</code>) or window functions over the recursive reference; no <code>DISTINCT</code> / <code>GROUP BY</code> in it (PostgreSQL); the CTE cannot be on the inner side of a LEFT JOIN or inside NOT EXISTS. Do aggregation <b>after</b> the recursion in the outer query.</p>
+<p><b>Types are fixed by the anchor.</b> In PostgreSQL and SQL Server the column types come from the anchor. Building a path string with <code>'a'</code> as anchor gives a short type and the recursive part errors or truncates ("types don't match between the anchor and the recursive part"). Cast in the anchor: <code>CAST(name AS VARCHAR(1000))</code> / <code>name::text</code>. SQLite is dynamically typed and does not care.</p>
+<p><b>Limits.</b> SQL Server: <code>OPTION (MAXRECURSION n)</code>, default 100, 0 = unlimited. MySQL: <code>cte_max_recursion_depth</code> (1000) and <code>max_execution_time</code>. PostgreSQL and SQLite: no limit — protect yourself with a depth counter (<code>WHERE depth &lt; 50</code>).</p>
+<p><b>Built-ins.</b> PostgreSQL has <code>generate_series(start, stop, step)</code> for numbers and timestamps; SQLite ships it as a table-valued function in the CLI and many builds (since 3.42 bundled in the amalgamation as an extension), DuckDB has <code>range</code>/<code>generate_series</code>. Prefer them when available — they are faster and clearer — but recursive CTEs are the portable fallback every interviewer accepts.</p>
+<p><b>Performance.</b> A series of N rows costs O(N) rounds. For a million-row calendar, a recursive CTE is fine (milliseconds); a permanent <i>calendar / numbers table</i> is the production pattern for data warehouses (with holiday flags, fiscal weeks, etc.).</p>`,
+    aiEra: `<p><b>What AI changes:</b> "generate every date between X and Y" is a one-line prompt today, and AI usually gets the anchor/step right. The bugs are at the edges: off-by-one end dates, time zones, and infinite loops.</p>
+<p><b>Use AI as a partner:</b> <code>Write a recursive CTE for all Mondays in 2024 in SQLite, then tell me the first and last rows and the row count so I can verify</code>. <code>Port this recursive CTE from SQLite to SQL Server: fix types, MAXRECURSION and date functions</code>. Ask it to trace the first three rounds of the working table so you can check its mental model against yours.</p>
+<p><b>Where AI goes wrong:</b> stop conditions that check the old value (<code>WHERE x &lt;= 10</code> producing 11), string types that truncate in PostgreSQL/SQL Server, using <code>generate_series</code> in an engine that lacks it, and suggesting <code>UNION</code> as cycle protection when rows carry a changing depth column (it never stops).</p>
+<p><b>What you must still own:</b> proving termination, counting rows (end − start) / step + 1 before you run, and choosing a calendar table vs on-the-fly series in production.</p>`,
+    problems: [{
+      title: 'Daily Revenue Report With Zero-Sales Days',
+      level: 'Medium', tags: ['recursive CTE', 'date series', 'LEFT JOIN'], companies: ['Amazon', 'Uber', 'Zomato'],
+      statement: `<p>Finance wants revenue for <b>every day from 2024-07-01 to 2024-07-07</b> (inclusive), one row per day. Revenue = sum of <code>qty × unit_price</code> over non-cancelled orders placed that day (guest orders count). Days without sales must show <b>0</b>, not be missing.</p>`,
+      constraints: `<p>SQLite dates are TEXT in <code>YYYY-MM-DD</code>; use <code>date(d, '+1 day')</code>. Output exactly 7 rows ordered by day.</p>`,
+      example: `${H.table(['day', 'revenue', 'why'], [['2024-07-01', '1500', 'order 101'], ['2024-07-02', '<span class="c-y">0</span>', 'no orders'], ['2024-07-03', '880', 'order 103'], ['2024-07-04', '<span class="c-y">0</span>', 'order 104 cancelled'], ['2024-07-06', '60', 'guest order 109']])}`,
+      brute: { why: `<p>Grouping the orders table directly only produces days that <b>have</b> data, so the report shows 3 rows instead of 7 — charts draw a straight line over the gaps and averages per day are inflated. You cannot GROUP BY your way to rows that do not exist.</p>`, code: { lang: 'sql', db: 'shop', code: `-- Only days WITH sales appear: 3 rows, not 7
+SELECT o.order_date AS day, SUM(oi.qty * oi.unit_price) AS revenue
+FROM orders o JOIN order_items oi ON oi.order_id = o.id
+WHERE o.status <> 'cancelled'
+  AND o.order_date BETWEEN '2024-07-01' AND '2024-07-07'
+GROUP BY o.order_date
+ORDER BY day;` } },
+      mcq: { q: 'Which table should be on the LEFT side of the LEFT JOIN?', options: ['The generated calendar of days', 'The orders table', 'order_items', 'It does not matter'], answer: 0, explain: 'The calendar must drive the query so every day survives; facts are attached when they exist and COALESCE turns the missing ones into 0.' },
+      hints: [`<p>Hint 1: The rows you need (every day) do not exist in any table — you must <b>generate</b> them first.</p>`, `<p>Hint 2: <code>WITH RECURSIVE days(d) AS (SELECT '2024-07-01' UNION ALL SELECT date(d, '+1 day') FROM days WHERE d &lt; '2024-07-07')</code>, then aggregate revenue per date in a second CTE.</p>`, `<p>Hint 3: <code>days LEFT JOIN daily ON daily.order_date = days.d</code>, then <code>COALESCE(revenue, 0)</code>. Put the cancelled filter inside the revenue CTE (filtering in the outer WHERE would turn the LEFT JOIN back into an inner join).</p>`],
+      solution: {
+        approach: `<p>Generate the calendar with a recursive CTE, aggregate the facts per day in a second CTE, and LEFT JOIN facts onto the calendar so every day appears. Missing days get NULL, which COALESCE turns into 0.</p>`,
+        code: { lang: 'sql', db: 'shop', code: `WITH RECURSIVE days(d) AS (
+        SELECT '2024-07-01'                                   -- anchor: first day
+        UNION ALL
+        SELECT date(d, '+1 day') FROM days                     -- next day
+        WHERE d < '2024-07-07'                                 -- stop after the last day
+     ),
+     daily AS (                                                -- facts per day
+        SELECT o.order_date, SUM(oi.qty * oi.unit_price) AS revenue
+        FROM orders o
+        JOIN order_items oi ON oi.order_id = o.id
+        WHERE o.status <> 'cancelled'
+        GROUP BY o.order_date
+     )
+SELECT days.d                    AS day,
+       COALESCE(daily.revenue, 0) AS revenue
+FROM days
+LEFT JOIN daily ON daily.order_date = days.d
+ORDER BY day;` },
+        dry: { head: ['round', 'working table', 'new day', 'revenue after LEFT JOIN'], rows: [['anchor', '—', '2024-07-01', '1500'], ['1', '07-01', '2024-07-02', '0'], ['2', '07-02', '2024-07-03', '880'], ['6', '07-06', '2024-07-07', '0'], ['7', '07-07', '<span class="c-r">none — stop</span>', '7 rows total']] },
+        complexity: `<p>O(D) rounds for D days + O(N) to aggregate orders + a hash join: O(D + N). For multi-year dashboards, keep a permanent calendar table.</p>`,
+        followUps: ['Make the range dynamic: from the first to the last order date.', 'Add a 3-day moving average (window functions, next module).', 'Count orders per day per status, still showing zero days.']
       }
     }]
   });

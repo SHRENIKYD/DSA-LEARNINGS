@@ -1440,5 +1440,249 @@ undo.dismiss(); // success path → undo does nothing</pre>`,
       }
     }]
   });
+
+  /* ======================================================================
+     TOPIC 6 — COROUTINES (C++20) BASICS
+     ====================================================================== */
+  function coroViz(input) {
+    var N = intIn(input, '3', 1, 6, 'Countdown start');
+    var code = 'Generator countdown(int n) {\n    for (int i = n; i > 0; --i)\n        co_yield i;           // suspend + hand i out\n}                             // falls off end: final_suspend\n// ---- caller ----\nauto g = countdown(' + N + ');\nwhile (g.next())              // resume until next co_yield\n    std::cout << g.value();\n// g destroyed -> h.destroy()';
+    var frames = [], out = '';
+    function F(narr, hl, stack, frame, fhl, extra) {
+      frames.push({ narr: narr, parts: [codePart('generator + caller', code, hl), { type: 'stack', label: 'thread call stack', items: stack, hl: { [stack.length - 1]: 'cur' } },
+        { type: 'vars', label: 'coroutine frame (on the heap)', vals: frame, hl: fhl || {} }, { type: 'vars', label: 'output so far', vals: { stdout: out === '' ? '(nothing)' : out } }].concat(extra || []) });
+    }
+    F('<code>countdown(' + N + ')</code> is called. Because its body uses <code>co_yield</code>, it is a <b>coroutine</b>: the compiler allocates a <b>coroutine frame on the heap</b> (holding parameters, locals and the <code>promise</code>), builds the return object <code>Generator</code> via <code>get_return_object()</code>, then hits <code>initial_suspend()</code> → <code>suspend_always</code>: it pauses <b>before running a single line of the body</b>.',
+      { 6: 'cur', 1: 'win' }, ['main()'], { n: N, i: '(not yet)', 'promise.current': 0, state: 'suspended at start' }, { state: 'cur' });
+    var i = N;
+    for (var k = 0; k < N; k++) {
+      F((k === 0 ? 'First <code>g.next()</code> calls <code>h.resume()</code>. The coroutine body now runs <b>on top of the caller\'s stack</b> (stackless: it borrows the thread\'s stack while running). <code>i = ' + i + '</code>.' : '<code>g.next()</code> resumes the coroutine <b>exactly where it paused</b> — right after the previous <code>co_yield</code>. <code>--i</code> → i = ' + i + ', the loop test passes.'),
+        { 7: 'cur', 2: 'ok' }, ['main()', 'g.next()', 'countdown (resumed)'], { n: N, i: i, 'promise.current': k === 0 ? 0 : i + 1, state: 'running' }, { i: 'ok', state: 'ok' });
+      F('<code>co_yield ' + i + '</code> = <code>co_await promise.yield_value(' + i + ')</code>: the promise stores ' + i + ' and returns <code>suspend_always</code>. The coroutine <b>suspends</b>: its frame (with i = ' + i + ') stays on the heap, its stack frames are popped, and control returns to <code>next()</code>, which reports <code>!done()</code> = true.',
+        { 3: 'cur' }, ['main()', 'g.next()'], { n: N, i: i, 'promise.current': i, state: 'suspended at co_yield' }, { 'promise.current': 'sel', state: 'cur' });
+      out += i + ' ';
+      F('Back in <code>main</code>: <code>g.value()</code> reads <code>promise.current</code> = <b>' + i + '</b> and prints it. The coroutine is frozen, holding its local <code>i</code>, until someone resumes it.',
+        { 8: 'ok' }, ['main()'], { n: N, i: i, 'promise.current': i, state: 'suspended at co_yield' }, {});
+      i--;
+    }
+    F('Resume once more: <code>--i</code> → 0, loop condition <code>i &gt; 0</code> fails, execution <b>falls off the end</b> of the body = implicit <code>co_return;</code> → <code>promise.return_void()</code> → <code>final_suspend()</code> (suspend_always) — the coroutine stops for good but its frame is kept so <code>done()</code> can be queried safely.',
+      { 4: 'cur', 7: 'cur' }, ['main()', 'g.next()', 'countdown (resumed)'], { n: N, i: 0, 'promise.current': 1, state: 'final suspend (done)' }, { state: 'bad' });
+    F('<code>next()</code> returns <code>!h.done()</code> = false → the while loop ends. Output so far: <b>' + out.trim() + '</b>.',
+      { 7: 'bad' }, ['main()'], { n: N, i: 0, 'promise.current': 1, state: 'done' }, {});
+    F('<code>g</code> goes out of scope; the <code>Generator</code> destructor calls <code>h.destroy()</code>, which runs destructors of the frame\'s locals and <b>frees the heap frame</b>. Forget this and every generator leaks its frame — the handle is a raw resource, so wrap it in RAII.',
+      { 9: 'ok' }, ['main()'], { frame: 'freed' }, { frame: 'bad' },
+      [{ type: 'table', label: 'what the compiler generated around your body', columns: ['hook (promise_type)', 'when'], rows: [['get_return_object()', 'right after frame allocation'], ['initial_suspend()', 'before the body (lazy vs eager)'], ['yield_value(v)', 'each co_yield v'], ['return_void() / return_value(v)', 'co_return'], ['unhandled_exception()', 'an exception escapes the body'], ['final_suspend()', 'after the body finishes']] }]);
+    return frames;
+  }
+
+  topics.push({
+    title: 'Coroutines (C++20) Basics: co_yield, co_await, co_return',
+    analogy: `<p>Reading a <b>book with a bookmark</b>. A normal function is like reading a whole chapter in one sitting — once you stop, you start over next time. A <b>coroutine</b> is reading with a bookmark: you read until a good stopping point (<code>co_yield</code>), put the bookmark in, go do something else, and later open the book exactly where you left off, remembering everything you'd read. The bookmark + your notes are the <b>coroutine frame</b>; the person who decides when you read again is the <b>caller holding the handle</b>.</p>`,
+    explain: `<p>🟢 <b>The plain idea.</b> A coroutine is a function that can <b>pause</b> in the middle and later <b>resume</b> where it left off, with all its local variables intact. In C++20 any function whose body contains one of three keywords is a coroutine:</p>
+      ${H.table(['keyword', 'meaning', 'used for'], [['<code>co_yield v</code>', 'pause and hand a value to the caller', 'generators / lazy sequences'], ['<code>co_await expr</code>', 'pause until something is ready (I/O, timer, another task)', 'async code that reads like sync code'], ['<code>co_return v</code>', 'finish, optionally with a result', 'tasks returning a value']])}
+      <p><b>What happens under the hood:</b></p>
+      <ul>
+        <li>The compiler allocates a <b>coroutine frame</b> (usually on the heap) holding the parameters (copied), locals that live across suspensions, the current suspension point, and a <b>promise object</b>.</li>
+        <li>The <b>return type</b> (e.g. <code>Generator</code>) must contain a nested <code>promise_type</code>. The compiler calls its hooks: <code>get_return_object</code>, <code>initial_suspend</code>, <code>yield_value</code>, <code>return_void</code>/<code>return_value</code>, <code>unhandled_exception</code>, <code>final_suspend</code>.</li>
+        <li>The caller controls the coroutine through a <code>std::coroutine_handle&lt;promise_type&gt;</code>: <code>resume()</code>, <code>done()</code>, <code>destroy()</code>, <code>promise()</code>.</li>
+        <li>C++20 coroutines are <b>stackless</b>: while running, they use the caller's stack; when suspended, only the frame survives. You can only suspend in the coroutine body itself, not in a function it calls.</li>
+      </ul>
+      <p><b>Important:</b> C++20 gives you the <b>language machinery but almost no library types</b>. You write (or import) <code>Generator</code>/<code>Task</code> yourself or use a library (cppcoro, Boost.Asio, folly::coro). C++23 adds <code>std::generator</code>; C++26 adds <code>std::execution</code> (senders/receivers) for async.</p>
+      ${H.table(['', 'normal function', 'thread', 'coroutine'], [['can pause mid-way?', 'no', 'yes (blocks)', '<span class="c-g">yes (cooperatively)</span>'], ['memory per instance', 'stack frame', '~1–8 MB stack', '<span class="c-g">one heap frame (bytes to KB)</span>'], ['switch cost', '—', 'kernel context switch (µs)', '<span class="c-g">function-call-like (ns)</span>'], ['parallelism', 'no', 'yes', 'no by itself (runs on whoever resumes it)']])}`,
+    clues: [
+      '"Lazy sequence", "infinite stream", "produce values on demand" → generator with <code>co_yield</code>',
+      '"Async code without callback hell", "await an I/O operation" → <code>co_await</code> + a Task type',
+      '"What is <code>promise_type</code>?", "what is a coroutine handle?" → C++20 coroutine machinery',
+      '"Stackful vs stackless coroutines" → C++20 is stackless (frame on heap, suspend only in the body)',
+      '"10k concurrent connections without 10k threads" → coroutines on an event loop (Asio)',
+      '"Why does my coroutine crash after the caller\'s string went away?" → reference parameter dangles across suspension'
+    ],
+    code: [R`
+      #include <coroutine>
+      #include <iostream>
+      #include <exception>
+      #include <utility>
+
+      // A minimal lazy integer generator built on C++20 coroutines.
+      struct Generator {
+          struct promise_type {                                  // the compiler looks for this exact name
+              int current = 0;                                   // last value passed to co_yield
+              Generator get_return_object() {                    // called first: build the caller's handle
+                  return Generator{std::coroutine_handle<promise_type>::from_promise(*this)};
+              }
+              std::suspend_always initial_suspend() noexcept { return {}; }   // lazy: don't run until asked
+              std::suspend_always final_suspend() noexcept { return {}; }     // keep frame alive so done() works
+              std::suspend_always yield_value(int v) noexcept { current = v; return {}; }  // co_yield v
+              void return_void() noexcept {}                     // co_return; / falling off the end
+              void unhandled_exception() { std::terminate(); }
+          };
+          using handle = std::coroutine_handle<promise_type>;
+
+          explicit Generator(handle h) : h_(h) {}
+          Generator(Generator&& o) noexcept : h_(std::exchange(o.h_, {})) {}
+          Generator(const Generator&) = delete;
+          ~Generator() { if (h_) h_.destroy(); }                 // RAII: free the coroutine frame
+
+          bool next() { h_.resume(); return !h_.done(); }        // run until the next co_yield (or end)
+          int value() const { return h_.promise().current; }
+      private:
+          handle h_;
+      };
+
+      Generator countdown(int from) {        // looks like a normal function, but it is a coroutine
+          for (int i = from; i > 0; --i)
+              co_yield i;                    // suspend here, hand i to the caller
+      }                                      // falling off the end = co_return;
+
+      Generator fib() {                      // infinite stream — fine, because it's lazy
+          long a = 0, b = 1;
+          while (true) { co_yield static_cast<int>(a); auto t = a + b; a = b; b = t; }
+      }
+
+      int main() {
+          auto g = countdown(3);
+          while (g.next()) std::cout << g.value() << " ";     // 3 2 1
+          auto f = fib();
+          for (int i = 0; i < 8 && f.next(); ++i) std::cout << f.value() << ",";   // 0,1,1,2,3,5,8,13,
+          std::cout << "\n";
+      }
+    `],
+    codeTitle: ['A complete minimal Generator + two coroutines'],
+    viz: { title: 'A generator suspending and resuming', input: '3', inputLabel: 'Countdown start n (1 to 6)', gen: coroViz },
+    examples: [
+      { title: 'co_await step by step: the awaiter protocol', html: `<p><code>co_await x</code> asks the awaiter three questions: <code>await_ready()</code> — "is the result already available?" (true = don't suspend); <code>await_suspend(h)</code> — "we're suspending; here's the handle, arrange for someone to resume it" (e.g. register with an I/O reactor); <code>await_resume()</code> — "we're back; what's the value of the co_await expression?". Trace the output order below.</p>
+        ${H.table(['order', 'printed', 'who'], [['1', 'start', 'coroutine body (eager: suspend_never)'], ['2', 'ready?', 'await_ready → false'], ['3', 'suspend', 'await_suspend stores the handle'], ['4', '| main runs |', 'control is back in main'], ['5', 'resume', 'main called saved.resume() → await_resume'], ['6', 'got 42', 'body continues with v = 42']])}`,
+        code: R`
+          #include <coroutine>
+          #include <iostream>
+          #include <exception>
+          struct Task {
+              struct promise_type {
+                  Task get_return_object() { return {}; }
+                  std::suspend_never initial_suspend() noexcept { return {}; }   // start running immediately
+                  std::suspend_never final_suspend() noexcept { return {}; }     // free the frame at the end
+                  void return_void() noexcept {}
+                  void unhandled_exception() { std::terminate(); }
+              };
+          };
+          std::coroutine_handle<> saved;                    // someone must remember how to resume us
+          struct Pause {
+              bool await_ready() const noexcept { std::cout << "ready? "; return false; }   // false = do suspend
+              void await_suspend(std::coroutine_handle<> h) noexcept { std::cout << "suspend "; saved = h; }
+              int await_resume() const noexcept { std::cout << "resume "; return 42; }      // value of co_await
+          };
+          Task work() {
+              std::cout << "start ";
+              int v = co_await Pause{};
+              std::cout << "got " << v << " ";
+          }
+          int main() {
+              work();
+              std::cout << "| main runs | ";
+              saved.resume();
+              std::cout << "\n";       // start ready? suspend | main runs | resume got 42
+          }` },
+      { title: 'The #1 coroutine bug: reference parameters that dangle', html: `<p>Parameters are copied into the frame — but a <b>reference</b> parameter copies only the reference. If the caller passes a temporary (<code>words(std::string("a b c"))</code>), the temporary dies at the end of the full expression, while the lazy coroutine has not even started. When it later runs, it reads a destroyed string → <b>undefined behavior</b>. Rule: coroutine parameters should be <b>by value</b> (or the caller must guarantee lifetime).</p>
+        ${H.table(['signature', 'called with a temporary', 'safe?'], [['<code>Gen words(const std::string&amp; s)</code>', 'reference to a dead temporary', '<span class="c-r">UB</span>'], ['<code>Gen words(std::string s)</code>', 'string moved into the frame', '<span class="c-g">yes</span>'], ['<code>Gen words(std::string_view s)</code>', 'view of a dead temporary', '<span class="c-r">UB</span>']])}` },
+      { title: 'Making a generator range-for friendly (and C++23 std::generator)', html: `<p>Add an <code>iterator</code> whose <code>operator++</code> resumes the handle, whose <code>operator*</code> reads <code>promise().current</code>, and which compares equal to <code>std::default_sentinel</code> when <code>done()</code>. Then <code>for (int x : range(0, 10, 3))</code> just works. In C++23 the standard ships this as <code>std::generator&lt;T&gt;</code>:</p>
+        <pre>std::generator&lt;int&gt; iota(int n) { for (int i = 0; i &lt; n; ++i) co_yield i; }   // C++23
+for (int x : iota(5)) std::cout &lt;&lt; x;                                           // 01234</pre>
+        <p>The guided problem below builds the iterator version yourself.</p>` },
+      { title: 'Never hold a lock across co_await', html: `<p>A <code>std::lock_guard</code> declared before a <code>co_await</code> lives in the frame and stays locked while the coroutine is suspended — possibly for a long time, blocking every other user. Worse, if the coroutine resumes on a <b>different thread</b>, that thread unlocks a <code>std::mutex</code> it doesn't own → <b>undefined behavior</b>. Use an async mutex (<code>co_await mtx.lock()</code> style) or release before suspending.</p>
+        ${H.table(['pattern', 'risk'], [['<code>std::lock_guard lk(m); co_await io();</code>', '<span class="c-r">blocks others; UB if resumed on another thread</span>'], ['<code>{ std::lock_guard lk(m); copy = data; } co_await io(copy);</code>', '<span class="c-g">lock released before suspending</span>']])}` }
+    ],
+    deepDive: `<p>🟣 <b>Internals and production reality.</b></p>
+      <ul>
+        <li><b>The transformation.</b> The compiler rewrites the body into a state machine: a frame struct (promise, params, live locals, an index of the current suspension point) plus a resume function with a <code>switch</code> on that index. <code>co_yield e</code> becomes <code>co_await promise.yield_value(e)</code>; <code>co_return e</code> calls <code>promise.return_value(e)</code> then jumps to the final suspend.</li>
+        <li><b>Allocation.</b> The frame is allocated with <code>operator new</code> (customizable via <code>promise_type::operator new</code>, e.g. for pooling). Compilers can elide it (<b>HALO</b>: heap allocation elision) when the coroutine's lifetime is provably nested inside the caller — common for generators consumed in the same function, not guaranteed.</li>
+        <li><b>Symmetric transfer.</b> <code>await_suspend</code> may return another <code>coroutine_handle</code> to resume next — a tail-call between coroutines that avoids stack growth in long chains of tasks awaiting tasks.</li>
+        <li><b>Lazy vs eager:</b> <code>initial_suspend</code> returning <code>suspend_always</code> makes the coroutine lazy (structured, nothing runs until awaited — preferred for Tasks); <code>suspend_never</code> makes it eager. <code>final_suspend</code> returning <code>suspend_always</code> keeps the frame so the owner can read the result and then <code>destroy()</code> it; returning <code>suspend_never</code> self-destroys — then <b>nobody may touch the handle again</b>.</li>
+        <li><b>Exceptions:</b> an exception escaping the body goes to <code>unhandled_exception()</code>; typical Tasks store <code>std::current_exception()</code> and rethrow it in the awaiter's <code>await_resume</code>.</li>
+        <li><b>Coroutines are not threads.</b> They give concurrency (many in-flight operations) on one thread, and parallelism only if an executor resumes them on a pool. Production async C++ uses Boost.Asio (<code>co_spawn</code>, <code>awaitable&lt;T&gt;</code>), folly::coro, or libunifex/stdexec rather than hand-written promise types.</li>
+      </ul>`,
+    aiEra: `<p>🤖 <b>What AI changes:</b> the promise_type boilerplate is verbose and formulaic — assistants generate a correct Generator or Task skeleton quickly, and explain compiler errors that mention <code>promise_type</code> or <code>await_suspend</code>.</p>
+      <p><b>Use AI as a partner:</b> "Annotate this Task type with when each hook runs", "Convert this callback-based Asio handler into a co_await version", "Find lifetime bugs: reference params, captured <code>this</code> in coroutine lambdas, locks across co_await".</p>
+      <p><b>Where AI goes wrong:</b> it forgets to <code>destroy()</code> the handle (leaks frames), destroys a self-destroying coroutine twice, uses <code>suspend_never</code> as final_suspend and then reads <code>promise()</code>, takes parameters by reference, and mixes up C++20 (no std::generator) with C++23.</p>
+      <p><b>What you must own:</b> the mental model — frame on the heap, promise hooks, handle ownership, stackless suspension — so you can review generated coroutine code for lifetime bugs, which tests often miss.</p>`,
+    problems: [{
+      title: 'range(start, stop, step) as a Lazy Generator', level: 'Medium', tags: ['coroutines', 'generator', 'iterators'], companies: ['Google', 'Microsoft', 'Nvidia'],
+      statement: `<p>Implement Python-like <code>range(start, stop, step)</code> in C++20 as a <b>coroutine generator</b> that works with range-based <code>for</code>. It must handle negative steps, return nothing when the range is empty or <code>step == 0</code>, and produce values lazily (O(1) memory even for a range of a billion numbers).</p>`,
+      constraints: `<p>C++20 only (no <code>std::generator</code>). The generator type owns its coroutine handle (RAII, move-only).</p>`,
+      example: `<pre>for (int x : range(0, 10, 3))  → ${H.c('g', '0 3 6 9')}
+for (int x : range(5, 0, -2))  → ${H.c('g', '5 3 1')}
+for (int x : range(1, 1))      → ${H.c('m', '(nothing)')}</pre>`,
+      brute: { why: `<p>The eager approach fills a <code>std::vector</code> with every value first. It works for small ranges but uses O(n) memory, does all the work even if the caller stops after 3 values, and cannot express infinite sequences.</p>`,
+        code: R`
+          #include <vector>
+          #include <iostream>
+          std::vector<int> rangeEager(int start, int stop, int step = 1) {
+              std::vector<int> out;
+              if (step == 0) return out;
+              for (int i = start; step > 0 ? i < stop : i > stop; i += step) out.push_back(i);   // O(n) memory
+              return out;
+          }
+          int main() { for (int x : rangeEager(0, 10, 3)) std::cout << x << " "; }` },
+      mcq: { q: 'In <code>begin()</code>, why do we call <code>h_.resume()</code> once before returning the iterator?', options: ['Because initial_suspend is suspend_always — the body has not produced the first value yet', 'To destroy the frame', 'To reset the coroutine to the start', 'It is not needed'], answer: 0, explain: 'A lazy coroutine stops before its first line. Resuming once runs it to the first <code>co_yield</code> so <code>*it</code> has a value (or it finishes immediately for an empty range, making <code>it == end</code>).' },
+      hints: [`<p>Start from the Generator in this topic: <code>promise_type</code> with <code>current</code>, <code>yield_value</code>, lazy initial suspend, suspend_always final suspend.</p>`, `<p>Add <code>struct iterator { handle h; int operator*(); iterator&amp; operator++() { h.resume(); ... }; bool operator==(std::default_sentinel_t) const { return h.done(); } };</code> and <code>end()</code> returning <code>std::default_sentinel</code>.</p>`, `<p>Loop condition depends on the sign of step: <code>step &gt; 0 ? i &lt; stop : i &gt; stop</code>. Guard <code>step == 0</code> with <code>co_return;</code>. Make the type move-only and destroy the handle in the destructor.</p>`],
+      solution: {
+        approach: `<p>A move-only generator type owns the <code>coroutine_handle</code>. Its iterator resumes the coroutine on <code>++</code> and reads <code>promise().current</code> on <code>*</code>; equality with <code>default_sentinel</code> means <code>done()</code>. The coroutine body is a plain loop with <code>co_yield</code>, so values are produced one at a time.</p>`,
+        code: R`
+          #include <coroutine>
+          #include <exception>
+          #include <iostream>
+          #include <iterator>
+          #include <utility>
+
+          class IntGen {
+          public:
+              struct promise_type {
+                  int current = 0;
+                  IntGen get_return_object() { return IntGen{std::coroutine_handle<promise_type>::from_promise(*this)}; }
+                  std::suspend_always initial_suspend() noexcept { return {}; }
+                  std::suspend_always final_suspend() noexcept { return {}; }
+                  std::suspend_always yield_value(int v) noexcept { current = v; return {}; }
+                  void return_void() noexcept {}
+                  void unhandled_exception() { throw; }              // rethrow into whoever called resume()
+              };
+              using handle = std::coroutine_handle<promise_type>;
+
+              struct iterator {
+                  handle h;
+                  int operator*() const { return h.promise().current; }
+                  iterator& operator++() { h.resume(); return *this; }
+                  bool operator==(std::default_sentinel_t) const { return !h || h.done(); }
+              };
+
+              explicit IntGen(handle h) : h_(h) {}
+              IntGen(IntGen&& o) noexcept : h_(std::exchange(o.h_, {})) {}
+              IntGen(const IntGen&) = delete;
+              IntGen& operator=(const IntGen&) = delete;
+              ~IntGen() { if (h_) h_.destroy(); }
+
+              iterator begin() { h_.resume(); return iterator{h_}; }   // run to the first co_yield
+              std::default_sentinel_t end() { return {}; }
+          private:
+              handle h_;
+          };
+
+          IntGen range(int start, int stop, int step = 1) {
+              if (step == 0) co_return;                              // avoid an infinite loop
+              for (int i = start; step > 0 ? i < stop : i > stop; i += step)
+                  co_yield i;
+          }
+
+          int main() {
+              for (int x : range(0, 10, 3)) std::cout << x << " ";   // 0 3 6 9
+              for (int x : range(5, 0, -2)) std::cout << x << " ";   // 5 3 1
+              for (int x : range(1, 1)) std::cout << x << " ";       // (nothing)
+              std::cout << "\n";
+          }`,
+        dry: { head: ['caller action', 'coroutine does', 'i', 'promise.current', 'done()'], rows: [
+          ['range(0,10,3)', 'frame created, suspended at start', '—', '0', 'false'], ['begin(): resume', 'i=0, co_yield 0', '0', '0', 'false'], ['print 0; ++it', 'i=3, co_yield 3', '3', '3', 'false'], ['print 3; ++it', 'i=6, co_yield 6', '6', '6', 'false'], ['print 6; ++it', 'i=9, co_yield 9', '9', '9', 'false'], ['print 9; ++it', 'i=12 fails test → final_suspend', '12', '9', '<span class="c-g">true → loop ends</span>']] },
+        complexity: `<p>O(1) memory (one frame) regardless of range length; O(1) work per produced value; one frame allocation per range (possibly elided).</p>`,
+        followUps: ['Make it a template <code>Gen&lt;T&gt;</code> and add <code>take(n)</code> and <code>filter(pred)</code> as coroutines that consume another generator.', 'What happens if the caller breaks out of the for loop early? (Destructor destroys the suspended frame — locals are destroyed properly.)', 'How would you support <code>std::ranges</code> algorithms? (Model <code>input_range</code>: add <code>value_type</code>, <code>difference_type</code>, post-increment.)']
+      }
+    }]
+  });
   registerModule({ id: 'cpp13', title: 'Expert Idioms + Question Bank', intro: '<p>stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub</p>', goals: ['aaaaaaaaaaaa','bbbbbbbbbbbbbb','cccccccccccc'], prereqs: 'xxxxxxxxxxxxxxxxxxxx', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview });
 })();

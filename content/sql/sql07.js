@@ -349,6 +349,274 @@ ORDER BY currency;`),
       }
     }]
   });
+  /* ======================= TOPIC 2: CREATE / ALTER / DROP ======================= */
+  topics.push({
+    title: 'CREATE, ALTER & DROP: Building and Changing the Shape of Data',
+    analogy: `<p>A table is like a <b>printed form</b> at a bank. <b>CREATE</b> designs a new form (which boxes, which are mandatory). <b>ALTER</b> reprints the form with a new box or a renamed one — easy if you add an optional box, painful if you suddenly make a box mandatory when thousands of old forms already left it empty. <b>DROP</b> shreds the form design <i>and</i> every filled-in copy. You redesign forms carefully because customers already filled the old ones in.</p>`,
+    explain: `<p><b>DDL</b> (Data Definition Language) is the part of SQL that changes the <b>structure</b> — tables, columns, indexes, views — rather than the rows. The three verbs:</p>
+${H.table(['Statement', 'What it does', 'Typical use'], [
+  ['<code>CREATE TABLE t (...)</code>', 'makes a new, empty table with columns + constraints', 'first version of a schema, new feature'],
+  ['<code>CREATE TABLE IF NOT EXISTS</code>', 'does nothing if the table is already there', 'idempotent setup scripts'],
+  ['<code>CREATE TABLE t2 AS SELECT ...</code>', 'copies the <b>data</b> of a query — ' + H.c('r', 'but not the constraints'), 'quick backups, reports'],
+  ['<code>ALTER TABLE t ADD COLUMN c ...</code>', 'adds a column; old rows get its DEFAULT (or NULL)', 'new attribute'],
+  ['<code>ALTER TABLE t RENAME COLUMN a TO b</code>', 'renames; SQLite also fixes indexes/views/triggers that mention it', 'better names'],
+  ['<code>ALTER TABLE t RENAME TO t2</code>', 'renames the table', 'refactors, table rebuilds'],
+  ['<code>ALTER TABLE t DROP COLUMN c</code>', 'removes a column and its data', 'cleanup'],
+  ['<code>DROP TABLE [IF EXISTS] t</code>', 'removes the table structure <b>and</b> every row', 'retiring a feature']
+])}
+<h4>Anatomy of CREATE TABLE</h4>
+<pre>CREATE TABLE customers (
+  id    INTEGER PRIMARY KEY,                -- column name, type, column constraint
+  email TEXT NOT NULL,
+  name  TEXT NOT NULL DEFAULT 'Anonymous',
+  CONSTRAINT uq_customers_email UNIQUE (email)   -- table constraint (can span columns)
+);</pre>
+<p>Column constraints sit next to one column. Table constraints sit at the end and can cover several columns (<code>PRIMARY KEY (order_id, product_id)</code>). Naming them (<code>CONSTRAINT uq_...</code>) gives you readable error messages and lets you drop them later in Postgres/MySQL.</p>
+<h4>What SQLite's ALTER TABLE can and cannot do</h4>
+${H.table(['Change', 'SQLite', 'Postgres / MySQL'], [
+  ['add a nullable column', H.c('g', 'yes, instant'), H.c('g', 'yes, instant')],
+  ['add NOT NULL column', H.c('y', 'only with a non-NULL DEFAULT'), H.c('y', 'needs DEFAULT (PG 11+: instant)')],
+  ['add UNIQUE / PRIMARY KEY column', H.c('r', 'no'), H.c('g', 'yes (builds an index)')],
+  ['change a column type / add CHECK later', H.c('r', 'no → rebuild table'), H.c('g', 'ALTER COLUMN / ADD CONSTRAINT')],
+  ['drop a column', H.c('y', 'yes, unless PK / UNIQUE / indexed / FK / used by view'), H.c('g', 'yes')]
+])}
+<p>When SQLite cannot alter something, you use the official <b>table rebuild</b>: create a new table with the right shape, copy the rows, drop the old one, rename the new one — inside one transaction.</p>
+<h4>DROP vs DELETE vs TRUNCATE</h4>
+<p><code>DELETE FROM t</code> removes rows (can have WHERE, fires triggers, keeps the table). <code>TRUNCATE t</code> (Postgres/MySQL) empties the whole table fast. <code>DROP TABLE t</code> removes rows <b>and</b> the table definition. In SQLite there is no TRUNCATE; <code>DELETE FROM t</code> without WHERE is optimised to do the same job.</p>`,
+    clues: [
+      '"add a required column to a table with millions of rows" → expand (nullable) → backfill → contract (NOT NULL)',
+      '"zero-downtime migration" / "deploy without locking the table" → small, backward-compatible DDL steps',
+      '"rename a column without breaking the app" → add new + dual-write + switch reads + drop old',
+      '"SQLite can\'t ALTER this" → 12-step table rebuild inside a transaction',
+      '"backup table lost its primary key" → <code>CREATE TABLE AS SELECT</code> copies data, not constraints',
+      '"difference between DROP, DELETE and TRUNCATE" → structure vs rows vs fast-empty',
+      '"migration failed half-way" → transactional DDL (Postgres/SQLite) vs implicit commits (MySQL)'
+    ],
+    code: [
+      lab(`-- Version 1 of the schema
+CREATE TABLE IF NOT EXISTS customers (
+  id    INTEGER PRIMARY KEY,
+  name  TEXT NOT NULL,
+  email TEXT NOT NULL UNIQUE
+);
+INSERT INTO customers (name, email) VALUES ('Asha', 'asha@mail.com'), ('Ben', 'ben@mail.com');
+
+-- Version 2: evolve it step by step
+ALTER TABLE customers ADD COLUMN country TEXT NOT NULL DEFAULT 'IN';  -- old rows get 'IN'
+ALTER TABLE customers RENAME COLUMN name TO full_name;
+ALTER TABLE customers ADD COLUMN phone TEXT;                          -- nullable: old rows get NULL
+ALTER TABLE customers DROP COLUMN phone;                              -- changed our mind
+
+SELECT * FROM customers;
+
+-- Inspect the current shape (works like DESCRIBE in MySQL / \\d in psql)
+SELECT name, type, "notnull" AS not_null, dflt_value, pk
+FROM pragma_table_info('customers');`, 'Create, then evolve, then inspect'),
+      lab(`-- The SQLite "table rebuild": change what ALTER cannot (here: price REAL -> INTEGER cents + CHECK)
+CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT, price REAL);
+INSERT INTO products VALUES (1, 'Cable', 9.99), (2, 'Phone', 499.00);
+
+PRAGMA foreign_keys = OFF;          -- must be outside a transaction
+BEGIN;
+CREATE TABLE products_new (
+  id          INTEGER PRIMARY KEY,
+  name        TEXT    NOT NULL,
+  price_cents INTEGER NOT NULL CHECK (price_cents > 0)
+);
+INSERT INTO products_new (id, name, price_cents)
+  SELECT id, name, CAST(ROUND(price * 100) AS INTEGER) FROM products;
+DROP TABLE products;
+ALTER TABLE products_new RENAME TO products;
+PRAGMA foreign_key_check;           -- should return no rows
+COMMIT;
+PRAGMA foreign_keys = ON;
+
+SELECT * FROM products;
+SELECT sql FROM sqlite_master WHERE name = 'products';`, 'Rebuild a table to change a column type')
+    ],
+    codeTitle: ['CREATE / ALTER walkthrough', 'The table-rebuild recipe'],
+    viz: {
+      title: 'Schema evolution: run your own ALTER TABLE migrations',
+      input: "ADD country TEXT NOT NULL DEFAULT 'IN'; ADD phone TEXT; RENAME name TO full_name; ADD tier TEXT NOT NULL; DROP email; DROP phone",
+      inputLabel: "Commands separated by ; — ADD col TYPE [NOT NULL] [DEFAULT v] [UNIQUE] · RENAME a TO b · DROP col",
+      gen: function (input) {
+        var cmds = String(input === undefined || input === null ? '' : input).split(';').map(function (s) { return s.trim(); }).filter(function (s) { return s.length; });
+        if (!cmds.length) throw new Error("Type commands like: ADD phone TEXT; RENAME name TO full_name; DROP phone");
+        if (cmds.length > 10) throw new Error('Use at most 10 commands');
+        var cols = [
+          { name: 'id', type: 'INTEGER', cons: 'PRIMARY KEY', pk: true },
+          { name: 'name', type: 'TEXT', cons: 'NOT NULL' },
+          { name: 'email', type: 'TEXT', cons: 'NOT NULL UNIQUE', uq: true }
+        ];
+        var rows = [[1, 'Asha', 'asha@mail.com'], [2, 'Ben', 'ben@mail.com']];
+        var ident = /^[A-Za-z_]\w*$/;
+        function schemaRows() { return cols.map(function (c) { return [c.name, c.type, c.cons || '—']; }); }
+        function find(n) { for (var i = 0; i < cols.length; i++) if (cols[i].name.toLowerCase() === String(n).toLowerCase()) return i; return -1; }
+        function snap(narr, stmt, ok, schemaHl, dataHl) {
+          return { narr: narr, parts: [
+            { type: 'code', label: 'migration statement', lang: 'sql', code: stmt, hl: { 1: ok ? 'ok' : 'bad' } },
+            { type: 'table', label: 'schema of customers', columns: ['column', 'type', 'constraints'], rows: schemaRows(), hl: schemaHl || {} },
+            { type: 'table', label: 'rows in customers', columns: cols.map(function (c) { return c.name; }), rows: copyRows(rows).map(function (r) { return r.map(function (v) { return v === null ? 'NULL' : v; }); }), hl: dataHl || {} }
+          ] };
+        }
+        var frames = [snap('Starting point: <b>customers</b> already holds 2 real rows. Every change must keep those rows valid — that is what makes migrations harder than the first CREATE.', 'CREATE TABLE customers (\n  id INTEGER PRIMARY KEY,\n  name TEXT NOT NULL,\n  email TEXT NOT NULL UNIQUE\n);', true)];
+        cmds.forEach(function (cmd) {
+          var w = cmd.split(/\s+/), verb = w[0].toUpperCase(), m, i;
+          if (verb === 'ADD') {
+            var name = w[1], type = (w[2] || '').toUpperCase();
+            if (!name || !ident.test(name) || !/^[A-Z]+$/.test(type)) throw new Error('ADD needs a name and a type, e.g. ADD phone TEXT');
+            var rest = w.slice(3).join(' ');
+            var nn = /NOT\s+NULL/i.test(rest), uq = /UNIQUE/i.test(rest), pk = /PRIMARY\s+KEY/i.test(rest);
+            var dm = rest.match(/DEFAULT\s+('[^']*'|[^\s]+)/i), def = dm ? dm[1] : null;
+            var stmt = 'ALTER TABLE customers ADD COLUMN ' + name + ' ' + type + (rest ? ' ' + rest : '') + ';';
+            if (find(name) >= 0) { frames.push(snap('<span class="c-r">Error: duplicate column name "' + H.esc(name) + '".</span> Nothing changed.', stmt, false)); return; }
+            if (pk || uq) { frames.push(snap('<span class="c-r">Error: Cannot add a ' + (pk ? 'PRIMARY KEY' : 'UNIQUE') + ' column.</span> SQLite would have to check uniqueness of existing rows in one go; it refuses. Fix: add the column plain, fill it, then <code>CREATE UNIQUE INDEX</code>.', stmt, false)); return; }
+            if (nn && (def === null || /^null$/i.test(def))) { frames.push(snap('<span class="c-r">Error: Cannot add a NOT NULL column with default value NULL.</span> The 2 existing rows would instantly break the rule. Fix: give a DEFAULT, or add it nullable → backfill → tighten (expand/contract).', stmt, false)); return; }
+            var v = def === null ? null : (/^'.*'$/.test(def) ? def.slice(1, -1) : (isNaN(Number(def)) ? def : Number(def)));
+            cols.push({ name: name, type: type, cons: (nn ? 'NOT NULL' : '') + (def !== null ? (nn ? ' ' : '') + 'DEFAULT ' + def : '') });
+            rows.forEach(function (r) { r.push(v); });
+            frames.push(snap('Added <b>' + H.esc(name) + '</b>. Existing rows got ' + (v === null ? '<b>NULL</b> (no default)' : 'the DEFAULT <b>' + H.esc(String(v)) + '</b>') + '. This is a metadata-only change in SQLite and modern Postgres — instant even on huge tables.', stmt, true, one(cols.length - 1, 'ok'), {}));
+          } else if (verb === 'RENAME') {
+            m = cmd.match(/^RENAME\s+(\w+)\s+TO\s+(\w+)$/i);
+            if (!m) throw new Error('RENAME format: RENAME old_name TO new_name');
+            var st = 'ALTER TABLE customers RENAME COLUMN ' + m[1] + ' TO ' + m[2] + ';';
+            i = find(m[1]);
+            if (i < 0) { frames.push(snap('<span class="c-r">Error: no such column "' + H.esc(m[1]) + '".</span>', st, false)); return; }
+            if (find(m[2]) >= 0) { frames.push(snap('<span class="c-r">Error: duplicate column name "' + H.esc(m[2]) + '".</span>', st, false)); return; }
+            cols[i].name = m[2];
+            frames.push(snap('Renamed <b>' + H.esc(m[1]) + '</b> → <b>' + H.esc(m[2]) + '</b>. Data untouched. SQLite rewrites indexes/views/triggers that mention it — but your <b>application code</b> still says <code>' + H.esc(m[1]) + '</code>, so in production you deploy code that handles both names first.', st, true, one(i, 'cur')));
+          } else if (verb === 'DROP') {
+            var cn = w[1];
+            if (!cn || !ident.test(cn)) throw new Error('DROP format: DROP column_name');
+            var sd = 'ALTER TABLE customers DROP COLUMN ' + cn + ';';
+            i = find(cn);
+            if (i < 0) { frames.push(snap('<span class="c-r">Error: no such column "' + H.esc(cn) + '".</span>', sd, false)); return; }
+            if (cols[i].pk || cols[i].uq) { frames.push(snap('<span class="c-r">Error: cannot drop ' + (cols[i].pk ? 'PRIMARY KEY' : 'UNIQUE') + ' column "' + H.esc(cn) + '".</span> SQLite refuses to drop a column that a key/index depends on. You would need the table rebuild recipe.', sd, false, one(i, 'bad'))); return; }
+            var before = schemaRows(), hlb = one(i, 'bad');
+            frames.push({ narr: 'Dropping <b>' + H.esc(cn) + '</b>: the column and <b>all its values</b> are about to be deleted. There is no undo outside a transaction/backup.', parts: [
+              { type: 'code', label: 'migration statement', lang: 'sql', code: sd, hl: { 1: 'cur' } },
+              { type: 'table', label: 'schema of customers', columns: ['column', 'type', 'constraints'], rows: before, hl: hlb }
+            ] });
+            cols.splice(i, 1);
+            rows.forEach(function (r) { r.splice(i, 1); });
+            frames.push(snap('Column <b>' + H.esc(cn) + '</b> is gone. Any old code still selecting it will now fail — another reason to remove usages from the app <i>before</i> the DROP.', sd, true));
+          } else throw new Error('Unknown command "' + w[0] + '". Use ADD, RENAME or DROP.');
+        });
+        frames.push({ narr: 'Final shape. Compare: <code>DELETE FROM customers</code> would empty the rows but keep this schema; <code>DROP TABLE customers</code> would remove both the schema and the rows.', parts: [
+          { type: 'table', label: 'final schema', columns: ['column', 'type', 'constraints'], rows: schemaRows() },
+          { type: 'table', label: 'final rows', columns: cols.map(function (c) { return c.name; }), rows: copyRows(rows).map(function (r) { return r.map(function (v) { return v === null ? 'NULL' : v; }); }) },
+          { type: 'text', html: 'Rules seen: ADD NOT NULL needs a DEFAULT · no ADD UNIQUE/PK columns · cannot DROP key columns · RENAME keeps data.' }
+        ] });
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'CREATE TABLE AS SELECT copies data, not rules', html: `<p>A "quick backup" made with <code>CREATE TABLE ... AS SELECT</code> has no PRIMARY KEY, no NOT NULL, no UNIQUE. Look at the stored SQL: plain columns only. If you later restore from it, duplicates and NULLs can creep in. For a real copy, write the CREATE TABLE yourself and then <code>INSERT INTO ... SELECT</code>.</p>`,
+        code: lab(`CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT NOT NULL UNIQUE);
+INSERT INTO users (email) VALUES ('a@x.com'), ('b@x.com');
+CREATE TABLE users_backup AS SELECT * FROM users;
+INSERT INTO users_backup VALUES (1, NULL);   -- duplicate id AND null email: accepted!
+SELECT name, sql FROM sqlite_master WHERE name IN ('users', 'users_backup');`) },
+      { title: 'DDL inside a transaction can be rolled back (SQLite & Postgres)', html: `<p>In SQLite and Postgres, CREATE/ALTER/DROP are transactional: if step 3 of a migration fails you can ROLLBACK and the schema is untouched. MySQL is different — most DDL causes an <b>implicit commit</b>, so a half-applied migration stays half-applied. That is why MySQL teams keep each migration tiny.</p>`,
+        code: lab(`CREATE TABLE keep_me (id INTEGER PRIMARY KEY);
+BEGIN;
+  CREATE TABLE temp_feature (id INTEGER PRIMARY KEY);
+  DROP TABLE keep_me;
+ROLLBACK;     -- undo both DDL statements
+SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name;   -- keep_me is back, temp_feature never existed`) },
+      { title: 'Idempotent migrations with a version table', html: `<p>Real projects never run DDL by hand. A migration tool (Flyway, Liquibase, Alembic, Prisma, Rails) stores which versions ran in a table and applies only new ones, in order. <code>IF NOT EXISTS</code> / <code>IF EXISTS</code> make scripts safe to re-run.</p>`,
+        code: lab(`CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+-- migration 1
+CREATE TABLE IF NOT EXISTS tags (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE);
+INSERT OR IGNORE INTO schema_migrations (version) VALUES (1);
+-- running migration 1 again is harmless:
+CREATE TABLE IF NOT EXISTS tags (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE);
+INSERT OR IGNORE INTO schema_migrations (version) VALUES (1);
+DROP TABLE IF EXISTS old_unused_table;   -- no error even though it never existed
+SELECT version FROM schema_migrations;`) },
+      { title: 'DROP COLUMN refuses key columns', html: `<p>You can drop a plain column, but SQLite will stop you dropping a column that is a PRIMARY KEY, has a UNIQUE constraint, is indexed, or is used in a foreign key, view, trigger or CHECK. Drop the index first, or rebuild the table. The failing line is left as a comment so the snippet runs.</p>`,
+        code: lab(`CREATE TABLE people (id INTEGER PRIMARY KEY, email TEXT UNIQUE, nickname TEXT, bio TEXT);
+CREATE INDEX idx_people_nickname ON people(nickname);
+ALTER TABLE people DROP COLUMN bio;            -- fine: plain column
+-- ALTER TABLE people DROP COLUMN email;       -- error: cannot drop UNIQUE column
+DROP INDEX idx_people_nickname;                -- remove the dependency first...
+ALTER TABLE people DROP COLUMN nickname;       -- ...then the drop works
+SELECT name FROM pragma_table_info('people');`) }
+    ],
+    deepDive: `<h4>What really happens on ALTER in big databases</h4>
+<p>Some changes are <b>metadata-only</b> (instant): adding a nullable column, adding a column with a constant DEFAULT (Postgres 11+, MySQL 8.0 <code>ALGORITHM=INSTANT</code>), renaming. Others <b>rewrite every row</b>: changing a column type, adding a column with a volatile default like <code>now()</code> (Postgres), or rebuilding in SQLite. A rewrite on a 500 GB table can take hours and may hold a lock that blocks writes — an outage.</p>
+<h4>Locks: the hidden danger</h4>
+<p>In Postgres, almost every ALTER TABLE takes an <code>ACCESS EXCLUSIVE</code> lock, even briefly. If a long-running query is holding a weaker lock, the ALTER waits — and every new query queues <i>behind the ALTER</i>. Production rule: set <code>lock_timeout</code> (e.g. 2s) before DDL and retry. Add constraints in two steps: <code>ADD CONSTRAINT ... NOT VALID</code> (instant, checks only new rows) then <code>VALIDATE CONSTRAINT</code> (scans without blocking writes). Create indexes with <code>CREATE INDEX CONCURRENTLY</code>.</p>
+<h4>Expand → migrate → contract</h4>
+<p>Zero-downtime schema changes are done in backward-compatible steps, because old and new app versions run at the same time during a deploy: (1) <b>expand</b> — add new nullable columns/tables; (2) deploy code that writes both old and new; (3) <b>backfill</b> old rows in small batches; (4) switch reads to new; (5) <b>contract</b> — add NOT NULL / drop old columns. Renaming a hot column is really "add new, dual-write, backfill, switch, drop old".</p>
+<h4>SQLite's 12-step rebuild (the official recipe, simplified)</h4>
+<p>Turn off FKs → BEGIN → note dependent indexes/triggers/views → CREATE new table → INSERT ... SELECT → DROP old → RENAME new → recreate indexes/triggers/views → <code>PRAGMA foreign_key_check</code> → COMMIT → FKs back on. Renaming the <i>new</i> table to the old name (not the other way round) keeps foreign keys in other tables pointing at the right name.</p>
+<h4>Tools</h4>
+<p>gh-ost and pt-online-schema-change (MySQL) copy the table in the background and swap it in. Postgres has pg_repack. Schema-as-code tools (Atlas, Prisma Migrate, Alembic autogenerate) diff the desired schema against the live one and generate migrations — always review the generated SQL for rewrites and locks.</p>`,
+    aiEra: `<p><b>What AI changes:</b> ORMs and assistants can now generate migrations from a model diff in one command, and an LLM can write a full rebuild script for SQLite instantly. The typing is no longer the hard part. The hard part is knowing <i>which</i> generated statement will lock a 2-billion-row table at 7 pm on a sale day.</p>
+<p><b>Use AI as a partner:</b> paste the generated migration and ask <code>"For Postgres 16, which of these statements rewrites the table or takes an ACCESS EXCLUSIVE lock for long? Rewrite it as an expand/contract sequence with lock_timeout and NOT VALID constraints."</code> Ask it to produce a rollback script for every forward step.</p>
+<p><b>Where AI goes wrong:</b> it suggests <code>ALTER TABLE ... ALTER COLUMN TYPE</code> in SQLite (doesn't exist), forgets that MySQL DDL auto-commits, and happily combines "add column NOT NULL" + backfill in one step. <b>What you must still own:</b> the deploy order (code vs schema), backfill batching, verification queries before tightening constraints, and the judgment of when to schedule risky DDL.</p>`,
+    problems: [{
+      title: 'Add a Required Column to a Live Table',
+      level: 'Medium', tags: ['ALTER TABLE', 'migration', 'NOT NULL'], companies: ['Shopify', 'GitHub', 'Atlassian'],
+      statement: `<p>The <code>customers</code> table (id, name, email) already has data. Product now says every customer <b>must</b> have a phone number in international format (starts with <code>+</code>). The real phone numbers exist in a CRM export table <code>crm_phones(email, phone)</code>. Write a SQLite migration that ends with <code>phone</code> being <code>NOT NULL</code> with a CHECK, containing the real numbers — without inventing fake data.</p>`,
+      constraints: `<ul><li>Existing rows must not be lost or changed (except getting a phone).</li><li>The final column must be <code>NOT NULL</code> and <code>CHECK (phone LIKE '+%')</code>.</li><li>The app must keep working between steps (think zero-downtime).</li></ul>`,
+      example: `<p>customers: (1, Asha, asha@mail.com), (2, Ben, ben@mail.com). crm_phones: asha → +91-98450-00001, ben → +44-7700-900002.</p>${H.table(['id', 'name', 'phone'], [['1', 'Asha', H.c('g', '+91-98450-00001')], ['2', 'Ben', H.c('g', '+44-7700-900002')]])}<p>The verification query must return <b>0 missing</b> before the column is tightened.</p>`,
+      brute: {
+        why: `<p>The tempting one-liner <code>ALTER TABLE customers ADD COLUMN phone TEXT NOT NULL;</code> fails immediately ("Cannot add a NOT NULL column with default value NULL"). The "fix" people reach for — <code>DEFAULT ''</code> — runs, but now every old customer has an <b>empty-string phone that satisfies NOT NULL</b>. The constraint is technically met and the data is garbage; nobody can tell a real missing phone from a placeholder, and the CHECK you wanted can never be added.</p>`,
+        code: lab(`CREATE TABLE customers (id INTEGER PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE);
+INSERT INTO customers VALUES (1, 'Asha', 'asha@mail.com'), (2, 'Ben', 'ben@mail.com');
+-- ALTER TABLE customers ADD COLUMN phone TEXT NOT NULL;   -- ERROR: NOT NULL column with default NULL
+ALTER TABLE customers ADD COLUMN phone TEXT NOT NULL DEFAULT '';   -- "works"... with fake data
+SELECT id, name, quote(phone) AS phone FROM customers;   -- '' everywhere: NOT NULL satisfied, data useless`)
+      },
+      mcq: { q: 'What is the safest FIRST step?', options: ['Add phone as NOT NULL DEFAULT \'unknown\'', 'Add phone as a nullable column', 'Drop and recreate customers with the new column', 'Ask users to re-register'], answer: 1, explain: 'A nullable column is instant and backward compatible. Fill it, verify, and only then tighten to NOT NULL.' },
+      hints: [
+        '<p>Hint 1: You cannot make a column mandatory while old rows have no value. Split the change into steps that are each valid on their own.</p>',
+        '<p>Hint 2: Expand (add nullable) → backfill with a correlated <code>UPDATE ... SET phone = (SELECT ... FROM crm_phones WHERE ...)</code> → verify with <code>COUNT(*) WHERE phone IS NULL</code>.</p>',
+        '<p>Hint 3: SQLite cannot add NOT NULL/CHECK to an existing column, so the contract step is a table rebuild: FKs off → BEGIN → CREATE new → INSERT SELECT → DROP old → RENAME → foreign_key_check → COMMIT. (Postgres: <code>ALTER COLUMN phone SET NOT NULL</code>.)</p>'
+      ],
+      solution: {
+        approach: `<p>Expand → backfill → verify → contract. Each step leaves the database valid and old code working. The final rebuild bakes in <code>NOT NULL</code> and the CHECK, so from now on the database itself guarantees every customer has a real international phone.</p>`,
+        code: lab(`CREATE TABLE customers (id INTEGER PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE);
+INSERT INTO customers VALUES (1, 'Asha', 'asha@mail.com'), (2, 'Ben', 'ben@mail.com');
+CREATE TABLE crm_phones (email TEXT PRIMARY KEY, phone TEXT NOT NULL);
+INSERT INTO crm_phones VALUES ('asha@mail.com', '+91-98450-00001'), ('ben@mail.com', '+44-7700-900002');
+
+-- 1) EXPAND: nullable column, instant, old code unaffected
+ALTER TABLE customers ADD COLUMN phone TEXT;
+
+-- 2) BACKFILL from the real source (in production: in batches of a few thousand ids)
+UPDATE customers
+SET phone = (SELECT p.phone FROM crm_phones p WHERE p.email = customers.email)
+WHERE phone IS NULL;
+
+-- 3) VERIFY: must be 0 before tightening
+SELECT COUNT(*) AS still_missing FROM customers WHERE phone IS NULL OR phone NOT LIKE '+%';
+
+-- 4) CONTRACT: rebuild with the real rules (Postgres: ALTER TABLE customers ALTER COLUMN phone SET NOT NULL;)
+PRAGMA foreign_keys = OFF;
+BEGIN;
+CREATE TABLE customers_new (
+  id    INTEGER PRIMARY KEY,
+  name  TEXT NOT NULL,
+  email TEXT NOT NULL UNIQUE,
+  phone TEXT NOT NULL CHECK (phone LIKE '+%')
+);
+INSERT INTO customers_new (id, name, email, phone) SELECT id, name, email, phone FROM customers;
+DROP TABLE customers;
+ALTER TABLE customers_new RENAME TO customers;
+PRAGMA foreign_key_check;
+COMMIT;
+PRAGMA foreign_keys = ON;
+
+SELECT * FROM customers;
+SELECT sql FROM sqlite_master WHERE name = 'customers';`),
+        complexity: `<p>Expand is O(1) (metadata). Backfill is O(N) updates — batch it to keep locks short. Verify is one O(N) scan. The SQLite rebuild copies the table once, O(N) time and O(N) temporary space; in Postgres <code>SET NOT NULL</code> is a scan (PG 12+ can skip it if a validated CHECK (phone IS NOT NULL) exists).</p>`,
+        followUps: ['What if 3% of customers have no phone in the CRM? (keep nullable + app prompt, or a sentinel table of exceptions — never fake data)', 'How would you rename <code>phone</code> to <code>phone_e164</code> with zero downtime?']
+      }
+    }]
+  });
   registerModule({
     id: 'sql07',
     title: 'DDL, Constraints & ER Modelling',
