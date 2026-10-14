@@ -1700,7 +1700,7 @@ record Pair<A, B>(A first, B second) {
     level: 'Easy', tags: ['wildcards', 'invariance', 'does it compile'], companies: ['Infosys', 'Capgemini', 'Paytm'],
     statement: `<p>A teammate wrote ${C('static double sum(List<Number> nums)')}. These calls fail to compile: ${C('sum(listOfIntegers)')}, ${C('sum(listOfDoubles)')}. Fix <b>only the signature</b> so that ${C('List<Integer>')}, ${C('List<Double>')}, ${C('List<Number>')} and ${C('Set<Long>')} all work, with no casts and no warnings.</p>`,
     constraints: `Up to 10<sup>6</sup> elements; elements are non-null.`,
-    example: `<p>${C('sum(List.of(1, 2, 3))')} → ${H.c('g', '6.0')}; ${C('sum(Set.of(10L))')} → ${H.c('g', '10.0')}. Before the fix: ${H.c('r', 'incompatible types: List<Integer> cannot be converted to List<Number>')}.</p>`,
+    example: `<p>${C('sum(List.of(1, 2, 3))')} → ${H.c('g', '6.0')}; ${C('sum(Set.of(10L))')} → ${H.c('g', '10.0')}. Before the fix: ${H.c('r', 'incompatible types: List&lt;Integer&gt; cannot be converted to List&lt;Number&gt;')}.</p>`,
     brute: { why: `<p>Copying into a new ${C('List<Number>')} at every call site compiles, but it allocates a whole new list (O(n) extra memory) and spreads boilerplate everywhere — it treats the symptom (invariance) instead of fixing the API.</p>`, code: `
 class SumCopy {
     static double sum(List<Number> nums) {
@@ -1881,7 +1881,7 @@ class MaxBy {
   });
 
   practice.push({
-    title: 'Reverse a List<?> In Place (Wildcard Capture)',
+    title: 'Reverse a List&lt;?&gt; In Place (Wildcard Capture)',
     level: 'Medium', tags: ['wildcard capture', 'helper method', 'two pointers'], companies: ['Google', 'Bloomberg', 'Zoho'],
     statement: `<p>Implement ${C('public static void reverse(List<?> list)')} that reverses any list in place. The public signature must stay ${C('List<?>')} (callers should not care about the type). A direct implementation fails with "${C('capture#1 of ?')}" errors — fix it without unchecked casts or raw types.</p>`,
     constraints: `0 ≤ n ≤ 10<sup>6</sup>; the list supports set(); O(1) extra space.`,
@@ -2152,6 +2152,369 @@ class GroupBy {
 }`,
       complexity: `<p>O(n) expected time, O(n) space.</p>`,
       followUps: ['Add a downstream reducer: <code>&lt;T, K, R&gt; Map&lt;K, R&gt; groupBy(…, Function&lt;? super List&lt;T&gt;, ? extends R&gt;)</code>.', 'Make the map type caller-chosen with a <code>Supplier&lt;M&gt;</code> where <code>M extends Map&lt;K, List&lt;T&gt;&gt;</code>.']
+    }
+  });
+
+  /* ======================================================================
+     PRACTICE — Hard
+     ====================================================================== */
+  practice.push({
+    title: 'Generic Binary Min-Heap with Comparator or Natural Order',
+    level: 'Hard', tags: ['generic class', 'heap', 'bounded factory', 'Object[] storage'], companies: ['Google', 'Amazon', 'Citadel'],
+    statement: `<p>Implement ${C('MinHeap<E>')} with ${C('offer(E)')}, ${C('E poll()')}, ${C('E peek()')}, ${C('int size()')}. Two ways to create one: ${C('new MinHeap<>(comparator)')} for any E, and a static factory ${C('MinHeap.natural()')} that must <b>only compile</b> for types with a natural order (${C('MinHeap.<Object>natural()')} must be a compile error, unlike ${C('java.util.PriorityQueue')}, which accepts it and fails at runtime).</p>`,
+    constraints: `Up to 10<sup>6</sup> operations; offer/poll O(log n); no java.util collections inside; null elements rejected.`,
+    example: `<p>natural heap: offer 5, 1, 4, 1 → poll ${H.c('g', '1')}, ${H.c('g', '1')}, ${H.c('g', '4')}, ${H.c('g', '5')}. With ${C('Comparator.comparing(String::length)')}: offer "ccc", "a", "bb" → poll ${H.c('g', '"a"')}.</p>`,
+    brute: { why: `<p>A sorted array with insertion is O(n) per offer; a linear scan for the min is O(n) per poll. And copying PriorityQueue's design (cast every element to ${C('Comparable')} at runtime when no comparator is given) moves a type error from compile time to a ClassCastException in production.</p>`, code: `
+class SlowMinHeap<E> {
+    private final List<E> items = new ArrayList<>();
+    private final Comparator<? super E> cmp;
+    SlowMinHeap(Comparator<? super E> cmp) { this.cmp = cmp; }
+    void offer(E e) { items.add(e); }
+    E poll() {                                    // O(n) scan every time
+        if (items.isEmpty()) return null;
+        int best = 0;
+        for (int i = 1; i < items.size(); i++) if (cmp.compare(items.get(i), items.get(best)) < 0) best = i;
+        return items.remove(best);
+    }
+}` },
+    mcq: { q: 'How can the factory guarantee at COMPILE time that E has a natural order?', options: ['Check <code>instanceof Comparable</code> in the constructor', 'Declare it as <code>static &lt;E extends Comparable&lt;? super E&gt;&gt; MinHeap&lt;E&gt; natural()</code> and pass <code>Comparator.naturalOrder()</code>', 'Use a raw Comparable cast', 'It is impossible because of erasure'], answer: 1, explain: 'A bounded type parameter on the static factory restricts which E callers may choose. Comparator.naturalOrder() has the same bound, so no unchecked cast is needed anywhere. Erasure does not matter — the check is a compile-time one.' },
+    hints: [`<p>Hint 1: store elements in ${C('Object[]')} (as in Topic 6) with one private ${C('@SuppressWarnings("unchecked") E at(int i)')}. Children of i are 2i + 1 and 2i + 2; parent is (i − 1) / 2.</p>`, `<p>Hint 2: keep a ${C('Comparator<? super E>')} field (consumer of Es → super). The factory ${C('static <E extends Comparable<? super E>> MinHeap<E> natural()')} returns ${C('new MinHeap<>(Comparator.naturalOrder())')}.</p>`, `<p>Hint 3: offer → append, sift up while smaller than parent. poll → save root, move last to root, null out the old last slot (avoid memory leaks), sift down choosing the smaller child. Grow with ${C('Arrays.copyOf')} doubling.</p>`],
+    solution: {
+      approach: `<p>Array-backed binary heap, comparator-driven. The bounded static factory moves "is this type comparable?" from a runtime ClassCastException (PriorityQueue's behaviour) to a compile error.</p>`,
+      code: `
+import java.util.*;
+
+class MinHeap<E> {
+    private Object[] heap = new Object[8];
+    private int size;
+    private final Comparator<? super E> cmp;
+
+    MinHeap(Comparator<? super E> cmp) { this.cmp = Objects.requireNonNull(cmp); }
+
+    static <E extends Comparable<? super E>> MinHeap<E> natural() {
+        return new MinHeap<>(Comparator.naturalOrder());     // compile-time guarantee, no casts
+    }
+
+    void offer(E e) {
+        Objects.requireNonNull(e);
+        if (size == heap.length) heap = Arrays.copyOf(heap, size * 2);
+        heap[size] = e;
+        siftUp(size++);
+    }
+
+    E peek() { return size == 0 ? null : at(0); }
+
+    E poll() {
+        if (size == 0) return null;
+        E root = at(0);
+        heap[0] = heap[--size];
+        heap[size] = null;                                   // let GC reclaim it
+        if (size > 0) siftDown(0);
+        return root;
+    }
+
+    int size() { return size; }
+
+    private void siftUp(int i) {
+        while (i > 0) {
+            int p = (i - 1) / 2;
+            if (cmp.compare(at(i), at(p)) >= 0) break;
+            swap(i, p);
+            i = p;
+        }
+    }
+
+    private void siftDown(int i) {
+        while (true) {
+            int l = 2 * i + 1, r = l + 1, m = i;
+            if (l < size && cmp.compare(at(l), at(m)) < 0) m = l;
+            if (r < size && cmp.compare(at(r), at(m)) < 0) m = r;
+            if (m == i) return;
+            swap(i, m);
+            i = m;
+        }
+    }
+
+    private void swap(int a, int b) { Object t = heap[a]; heap[a] = heap[b]; heap[b] = t; }
+
+    @SuppressWarnings("unchecked")                           // safe: only offer(E) writes elements
+    private E at(int i) { return (E) heap[i]; }
+
+    public static void main(String[] args) {
+        MinHeap<Integer> h = MinHeap.natural();
+        for (int x : new int[]{5, 1, 4, 1}) h.offer(x);
+        StringBuilder sb = new StringBuilder();
+        while (h.size() > 0) sb.append(h.poll()).append(' ');
+        System.out.println(sb.toString().trim());            // 1 1 4 5
+
+        MinHeap<String> byLen = new MinHeap<>(Comparator.comparing(String::length));
+        byLen.offer("ccc"); byLen.offer("a"); byLen.offer("bb");
+        System.out.println(byLen.poll());                    // a
+        // MinHeap<Object> bad = MinHeap.natural();          // does not compile: Object is not Comparable
+    }
+}`,
+      dry: { head: ['operation', 'heap array', 'note'], rows: [['offer 5', '[5]', ''], ['offer 1', '[1, 5]', '1 &lt; 5 → sift up'], ['offer 4', '[1, 5, 4]', '4 ≥ 1 → stay'], ['offer 1', '[1, 1, 4, 5]', '1 &lt; 5 → swap, 1 ≥ 1 → stop'], ['poll', '[1, 5, 4]', 'returns 1; last (5) to root, sift down'], ['poll', '[4, 5]', 'returns 1']] },
+      complexity: `<p>offer/poll O(log n), peek O(1), space O(n). Doubling growth keeps offer amortized O(log n).</p>`,
+      followUps: ['Add <code>static &lt;E&gt; MinHeap&lt;E&gt; heapify(Collection&lt;? extends E&gt;, Comparator&lt;? super E&gt;)</code> in O(n).', 'Why does <code>java.util.PriorityQueue</code> accept non-Comparable elements at compile time? (one class, two constructors, pre-generics design)', 'Make it a max-heap without new code — <code>cmp.reversed()</code>.']
+    }
+  });
+
+  practice.push({
+    title: 'Type-Safe Event Bus with Class Tokens',
+    level: 'Hard', tags: ['Class token', 'Consumer', 'PECS', 'reflection'], companies: ['Uber', 'LinkedIn', 'Atlassian'],
+    statement: `<p>Build ${C('EventBus')} with ${C('<E> void subscribe(Class<E> type, Consumer<? super E> handler)')} and ${C('int publish(Object event)')}. Publishing delivers the event to handlers registered for its exact class, every superclass, and every interface it implements (each handler at most once), returning the number of deliveries. No unchecked casts, no raw types, and a handler must receive a correctly typed event.</p>`,
+    constraints: `Up to 10<sup>4</sup> subscriptions and 10<sup>6</sup> publishes; single-threaded.`,
+    example: `<p>${C('interface Event')}, ${C('record OrderPlaced(String id) implements Event')}. Subscribe handlers for OrderPlaced, Event and Object; ${C('publish(new OrderPlaced("A1"))')} → ${H.c('g', '3 deliveries')}; ${C('publish("hello")')} → ${H.c('g', '1')} (only the Object handler).</p>`,
+    brute: { why: `<p>A ${C('Map<Class<?>, List<Consumer>>')} with raw consumers compiles (with warnings) and calls ${C('handler.accept(event)')} without any check — a handler for OrderPlaced registered under the wrong key receives a String and crashes inside user code. Exact-class lookup only also misses supertype subscribers.</p>`, code: `
+class RawBus {
+    private final Map<Class<?>, List<java.util.function.Consumer>> handlers = new HashMap<>();
+    @SuppressWarnings("rawtypes")
+    void subscribe(Class<?> type, java.util.function.Consumer h) { handlers.computeIfAbsent(type, k -> new ArrayList<>()).add(h); }
+    @SuppressWarnings("unchecked")
+    void publish(Object e) {
+        for (java.util.function.Consumer h : handlers.getOrDefault(e.getClass(), List.of())) h.accept(e); // exact class only, unchecked
+    }
+}` },
+    mcq: { q: 'How can handlers of different event types live in ONE map without unchecked casts?', options: ['Store <code>Consumer&lt;?&gt;</code> and cast on dispatch', 'Wrap each handler at subscribe time as <code>Consumer&lt;Object&gt;</code>: <code>o -&gt; handler.accept(type.cast(o))</code>', 'Use a raw Consumer', 'Use one map per event type created with reflection'], answer: 1, explain: 'At subscribe time you still know E and have the Class&lt;E&gt; token. type.cast performs a real runtime check and returns an E, so the wrapper is a fully type-safe Consumer&lt;Object&gt;.' },
+    hints: [`<p>Hint 1: the ${C('Class<E>')} parameter both keys the map and carries runtime type info. ${C('Consumer<? super E>')} lets a ${C('Consumer<Event>')} subscribe to OrderPlaced.</p>`, `<p>Hint 2: store ${C('Map<Class<?>, List<Consumer<Object>>>')}; on subscribe add ${C('o -> handler.accept(type.cast(o))')}.</p>`, `<p>Hint 3: on publish, collect supertypes with a BFS over ${C('getSuperclass()')} and ${C('getInterfaces()')} into a ${C('LinkedHashSet<Class<?>>')} (visits each type once), then call each type's handlers.</p>`],
+    solution: {
+      approach: `<p>Type tokens + adapter lambdas: type safety is checked once at subscribe (compile time) and enforced by ${C('Class.cast')} at dispatch (runtime). Supertype dispatch uses a BFS over the class hierarchy.</p>`,
+      code: `
+import java.util.*;
+import java.util.function.*;
+
+interface Event {}
+record OrderPlaced(String id) implements Event {}
+
+class EventBus {
+    private final Map<Class<?>, List<Consumer<Object>>> handlers = new HashMap<>();
+
+    <E> void subscribe(Class<E> type, Consumer<? super E> handler) {
+        Objects.requireNonNull(handler);
+        handlers.computeIfAbsent(type, k -> new ArrayList<>())
+                .add(o -> handler.accept(type.cast(o)));          // checked adapter, no warnings
+    }
+
+    int publish(Object event) {
+        int delivered = 0;
+        for (Class<?> t : supertypes(event.getClass())) {
+            for (Consumer<Object> h : handlers.getOrDefault(t, List.of())) {
+                h.accept(event);
+                delivered++;
+            }
+        }
+        return delivered;
+    }
+
+    private static Set<Class<?>> supertypes(Class<?> start) {
+        Set<Class<?>> seen = new LinkedHashSet<>();
+        Deque<Class<?>> todo = new ArrayDeque<>(List.of(start));
+        while (!todo.isEmpty()) {
+            Class<?> c = todo.poll();
+            if (!seen.add(c)) continue;
+            if (c.getSuperclass() != null) todo.add(c.getSuperclass());
+            todo.addAll(Arrays.asList(c.getInterfaces()));
+        }
+        return seen;
+    }
+
+    public static void main(String[] args) {
+        EventBus bus = new EventBus();
+        List<String> log = new ArrayList<>();
+        bus.subscribe(OrderPlaced.class, e -> log.add("order " + e.id()));   // e is typed OrderPlaced
+        Consumer<Event> audit = e -> log.add("audit " + e.getClass().getSimpleName());
+        bus.subscribe(OrderPlaced.class, audit);                            // Consumer<? super OrderPlaced>
+        bus.subscribe(Object.class, o -> log.add("any " + o));
+        System.out.println(bus.publish(new OrderPlaced("A1")));             // 3
+        System.out.println(bus.publish("hello"));                           // 1
+        System.out.println(log);
+    }
+}`,
+      dry: { head: ['publish', 'supertypes visited', 'handlers fired'], rows: [['OrderPlaced("A1")', 'OrderPlaced, Record, Event, Object', 'order A1, audit OrderPlaced, any OrderPlaced[id=A1]'], ['"hello"', 'String, Object, Serializable, Comparable, CharSequence, Constable, ConstantDesc', 'any hello']] },
+      complexity: `<p>publish: O(S + H) where S = number of supertypes (small, cacheable per class) and H = handlers fired. subscribe O(1) amortized. Space O(total handlers).</p>`,
+      followUps: ['Cache <code>supertypes</code> per class in a <code>ClassValue</code> or <code>ConcurrentHashMap</code>.', 'Make it thread-safe with <code>CopyOnWriteArrayList</code> handler lists — why is that a good fit?', 'How would you support generic events like <code>Changed&lt;User&gt;</code> vs <code>Changed&lt;Order&gt;</code>? (erasure → TypeRef keys)']
+    }
+  });
+
+  practice.push({
+    title: 'Self-Bounded Builder Hierarchy (Pizza / Calzone)',
+    level: 'Hard', tags: ['recursive bound', 'builder pattern', 'covariant return'], companies: ['Microsoft', 'JPMorgan', 'Booking.com'],
+    statement: `<p>Design an abstract ${C('Pizza')} with a nested abstract ${C('Builder')} that adds toppings, and two subclasses — ${C('NyPizza')} (required size) and ${C('Calzone')} (optional ${C('sauceInside()')}). This chain must compile with <b>no casts</b>: ${C('new Calzone.Builder().addTopping(HAM).sauceInside().build()')} — note that ${C('addTopping')} is declared in the parent builder but must return the <b>child</b> builder type, and ${C('build()')} must return the concrete pizza type.</p>`,
+    constraints: `Toppings are an enum; builders are single-use; build() copies state defensively.`,
+    example: `<p>${C('new NyPizza.Builder(SMALL).addTopping(ONION).addTopping(HAM).build()')} → ${H.c('g', 'NyPizza SMALL [HAM, ONION]')}; ${C('new Calzone.Builder().addTopping(HAM).sauceInside().build()')} → ${H.c('g', 'Calzone sauceInside=true [HAM]')}.</p>`,
+    brute: { why: `<p>With a non-generic parent builder, ${C('addTopping')} returns ${C('Pizza.Builder')}, so ${C('.sauceInside()')} is not visible after it — callers must cast ${C('((Calzone.Builder) b.addTopping(HAM)).sauceInside()')} or call methods in a fixed order. Every new subclass multiplies the casts.</p>`, code: `
+class PlainPizza {
+    static class Builder {
+        final List<String> toppings = new ArrayList<>();
+        Builder addTopping(String t) { toppings.add(t); return this; }   // returns the PARENT type
+    }
+    static class CalzoneBuilder extends Builder {
+        boolean sauceInside;
+        CalzoneBuilder sauceInside() { sauceInside = true; return this; }
+    }
+    public static void main(String[] args) {
+        CalzoneBuilder b = (CalzoneBuilder) new CalzoneBuilder().addTopping("ham");   // cast needed
+        b.sauceInside();
+        System.out.println(b.toppings + " " + b.sauceInside);                        // [ham] true
+    }
+}` },
+    mcq: { q: 'What does the recursive bound in <code>abstract static class Builder&lt;T extends Builder&lt;T&gt;&gt;</code> provide?', options: ['Runtime type checks on toppings', 'A way for parent methods to return the concrete subclass builder type T via an abstract self() method', 'Thread safety', 'Automatic implementation of build()'], answer: 1, explain: 'Each subclass declares itself as T (Calzone.Builder extends Pizza.Builder&lt;Calzone.Builder&gt;), so addTopping returns T = Calzone.Builder and chaining continues with subclass methods. Java has no self type, so self() returns this with the right static type.' },
+    hints: [`<p>Hint 1: parent builder declaration: ${C('abstract static class Builder<T extends Builder<T>>')} with ${C('protected abstract T self();')}. Parent setters ${C('return self();')}.</p>`, `<p>Hint 2: each subclass: ${C('static class Builder extends Pizza.Builder<Builder>')} with ${C('self() { return this; }')} and a <b>covariant</b> ${C('NyPizza build()')} (overrides ${C('abstract Pizza build()')}).</p>`, `<p>Hint 3: the Pizza constructor takes ${C('Builder<?> builder')} and copies ${C('builder.toppings.clone()')} (EnumSet) so later builder changes do not leak into built pizzas.</p>`],
+    solution: {
+      approach: `<p>Simulated self-type via a recursive bound (Effective Java Item 2). Parent methods return T; subclasses bind T to themselves; build() uses covariant return types — which javac implements with bridge methods.</p>`,
+      code: `
+import java.util.*;
+
+abstract class Pizza {
+    enum Topping { HAM, MUSHROOM, ONION, PEPPER }
+    final Set<Topping> toppings;
+
+    abstract static class Builder<T extends Builder<T>> {
+        EnumSet<Topping> toppings = EnumSet.noneOf(Topping.class);
+        T addTopping(Topping t) {
+            toppings.add(Objects.requireNonNull(t));
+            return self();                       // returns the SUBCLASS builder type
+        }
+        abstract Pizza build();                  // subclasses override with a covariant return
+        protected abstract T self();
+    }
+
+    Pizza(Builder<?> builder) { toppings = builder.toppings.clone(); }   // defensive copy
+}
+
+class NyPizza extends Pizza {
+    enum Size { SMALL, MEDIUM, LARGE }
+    final Size size;
+
+    static class Builder extends Pizza.Builder<Builder> {
+        private final Size size;
+        Builder(Size size) { this.size = Objects.requireNonNull(size); }
+        @Override NyPizza build() { return new NyPizza(this); }
+        @Override protected Builder self() { return this; }
+    }
+
+    private NyPizza(Builder b) { super(b); size = b.size; }
+    @Override public String toString() { return "NyPizza " + size + " " + toppings; }
+}
+
+class Calzone extends Pizza {
+    final boolean sauceInside;
+
+    static class Builder extends Pizza.Builder<Builder> {
+        private boolean sauceInside = false;
+        Builder sauceInside() { sauceInside = true; return this; }
+        @Override Calzone build() { return new Calzone(this); }
+        @Override protected Builder self() { return this; }
+    }
+
+    private Calzone(Builder b) { super(b); sauceInside = b.sauceInside; }
+    @Override public String toString() { return "Calzone sauceInside=" + sauceInside + " " + toppings; }
+
+    public static void main(String[] args) {
+        NyPizza ny = new NyPizza.Builder(NyPizza.Size.SMALL)
+                .addTopping(Topping.ONION).addTopping(Topping.HAM).build();     // build() returns NyPizza
+        Calzone cz = new Calzone.Builder()
+                .addTopping(Topping.HAM).sauceInside().build();                 // no casts anywhere
+        System.out.println(ny);   // NyPizza SMALL [HAM, ONION]
+        System.out.println(cz);   // Calzone sauceInside=true [HAM]
+    }
+}`,
+      dry: { head: ['call', 'static type returned', 'state'], rows: [['new Calzone.Builder()', 'Calzone.Builder', 'toppings {}'], ['.addTopping(HAM)', 'Calzone.Builder (T)', 'toppings {HAM}'], ['.sauceInside()', 'Calzone.Builder', 'sauceInside = true'], ['.build()', 'Calzone (covariant)', 'Calzone sauceInside=true [HAM]']] },
+      complexity: `<p>O(1) per builder call; build() copies the topping set (EnumSet copy is O(1) — a bit vector).</p>`,
+      followUps: ['What stops <code>class Evil extends Pizza.Builder&lt;NyPizza.Builder&gt;</code>? (nothing — that is why self() is abstract)', 'Compare with Lombok <code>@SuperBuilder</code> — what does it generate?', 'How do Java records change the builder trade-off?']
+    }
+  });
+
+  practice.push({
+    title: 'Sealed Result&lt;T&gt; with map, flatMap and Generic orElseThrow',
+    level: 'Hard', tags: ['sealed interface', 'generic records', 'PECS', 'pattern matching', 'generic exceptions'], companies: ['Stripe', 'Goldman Sachs', 'Atlassian'],
+    statement: `<p>Create ${C('sealed interface Result<T>')} with records ${C('Ok<T>(T value)')} and ${C('Err<T>(Exception error)')}. Provide ${C('static <T> Result<T> of(Callable<? extends T>)')}, ${C('map')}, ${C('flatMap')}, ${C('orElse')}, and ${C('orElseThrow(mapper)')} that throws an exception type chosen by the caller <b>and declared generically</b> (so a checked exception must be caught, but an unchecked one need not be). Use Java 21 pattern matching; no casts.</p>`,
+    constraints: `Java 21; all methods are default/static methods on the interface; no unchecked warnings.`,
+    example: `<p>${C('of(() -> Integer.parseInt("21")).map(n -> n * 2)')} → ${H.c('g', 'Ok[value=42]')}. ${C('of(() -> Integer.parseInt("x2")).orElse(-1)')} → ${H.c('g', '-1')}. ${C('bad.orElseThrow(e -> new IllegalStateException("bad input", e))')} → ${H.c('r', 'IllegalStateException caused by NumberFormatException')}.</p>`,
+    brute: { why: `<p>Returning ${C('null')} or throwing raw exceptions from every step forces try/catch blocks at each call and loses the original cause. An Object-based result (${C('Object value; Exception error;')}) needs casts and lets callers read the value of a failure by mistake.</p>`, code: `
+class NaiveParse {
+    static Integer parseOrNull(String s) {
+        try { return Integer.parseInt(s); } catch (NumberFormatException e) { return null; }   // cause lost
+    }
+    public static void main(String[] args) {
+        Integer n = parseOrNull("x2");
+        System.out.println(n == null ? "failed (why?)" : String.valueOf(n * 2));
+    }
+}` },
+    mcq: { q: 'Why is <code>orElseThrow</code> declared as <code>&lt;X extends Throwable&gt; T orElseThrow(Function&lt;? super Exception, ? extends X&gt; f) throws X</code>?', options: ['Because generic exceptions cannot be caught', 'So the compiler infers X from the caller\'s lambda: checked exceptions must be handled, unchecked ones need not be', 'To erase the exception type', 'It is required by sealed interfaces'], answer: 1, explain: 'A type parameter may appear in a throws clause. When the mapper returns IllegalStateException, X = IllegalStateException (unchecked) and callers need no try/catch; returning IOException would force handling. Optional.orElseThrow(Supplier&lt;? extends X&gt;) uses the same idea.' },
+    hints: [`<p>Hint 1: generic records implement the sealed interface: ${C('record Ok<T>(T value) implements Result<T>')}. A switch over ${C('this')} with ${C('case Ok<T>(T v)')} and ${C('case Err<T>(Exception e)')} is exhaustive — no default needed.</p>`, `<p>Hint 2: ${C('map(Function<? super T, ? extends R> f)')} → on Ok wrap ${C('of(() -> f.apply(v))')} (so exceptions in f become Err); on Err return ${C('new Err<>(e)')} (a new Err with the new type parameter R).</p>`, `<p>Hint 3: ${C('flatMap(Function<? super T, ? extends Result<? extends R>> f)')} — unwrap the inner result with a nested switch to convert ${C('Result<? extends R>')} into ${C('Result<R>')}. For orElseThrow, a switch case may itself ${C('throw toThrow.apply(e)')}.</p>`],
+    solution: {
+      approach: `<p>A sealed sum type of two generic records. Pattern-matching switches make every operation exhaustive and cast-free; PECS on every function parameter; a type parameter in the throws clause gives caller-chosen exceptions.</p>`,
+      code: `
+import java.util.*;
+import java.util.function.*;
+import java.util.concurrent.*;
+
+sealed interface Result<T> permits Result.Ok, Result.Err {
+    record Ok<T>(T value) implements Result<T> {}
+    record Err<T>(Exception error) implements Result<T> {}
+
+    static <T> Result<T> of(Callable<? extends T> action) {
+        try { return new Ok<>(action.call()); }
+        catch (Exception e) { return new Err<>(e); }
+    }
+
+    default <R> Result<R> map(Function<? super T, ? extends R> f) {
+        return switch (this) {
+            case Ok<T>(T v) -> Result.of(() -> f.apply(v));      // exceptions inside f become Err
+            case Err<T>(Exception e) -> new Err<>(e);           // same error, new type parameter
+        };
+    }
+
+    default <R> Result<R> flatMap(Function<? super T, ? extends Result<? extends R>> f) {
+        return switch (this) {
+            case Ok<T>(T v) -> {
+                Result<? extends R> next = f.apply(v);
+                yield switch (next) {                           // widen Result<? extends R> to Result<R>
+                    case Ok<? extends R>(var r) -> new Ok<R>(r);
+                    case Err<? extends R>(var e) -> new Err<R>(e);
+                };
+            }
+            case Err<T>(Exception e) -> new Err<>(e);
+        };
+    }
+
+    default T orElse(T fallback) {
+        return this instanceof Ok<T>(T v) ? v : fallback;
+    }
+
+    default <X extends Throwable> T orElseThrow(Function<? super Exception, ? extends X> toThrow) throws X {
+        return switch (this) {
+            case Ok<T>(T v) -> v;
+            case Err<T>(Exception e) -> throw toThrow.apply(e);
+        };
+    }
+}
+
+class ResultDemo {
+    static Result<Integer> parse(String s) { return Result.of(() -> Integer.parseInt(s)); }
+
+    public static void main(String[] args) {
+        Result<Integer> ok = parse("21").map(n -> n * 2);
+        Result<Integer> bad = parse("x2").map(n -> n * 2);
+        System.out.println(ok);                                   // Ok[value=42]
+        System.out.println(bad.orElse(-1));                       // -1
+        Result<Double> inv = parse("4").flatMap(n -> n == 0
+                ? new Result.Err<Double>(new ArithmeticException("zero"))
+                : new Result.Ok<>(1.0 / n));
+        System.out.println(inv.orElse(Double.NaN));               // 0.25
+        try {
+            bad.orElseThrow(e -> new IllegalStateException("bad input", e));   // unchecked: no throws needed
+        } catch (IllegalStateException e) {
+            System.out.println(e.getMessage() + " <- " + e.getCause().getClass().getSimpleName()); // bad input <- NumberFormatException
+        }
+        int v = ok.orElseThrow(IllegalArgumentException::new);    // X = IllegalArgumentException
+        System.out.println(v);                                    // 42
+    }
+}`,
+      dry: { head: ['expression', 'variant', 'value / error'], rows: [['parse("21")', 'Ok&lt;Integer&gt;', '21'], ['.map(n -&gt; n * 2)', 'Ok&lt;Integer&gt;', '42'], ['parse("x2")', 'Err&lt;Integer&gt;', 'NumberFormatException'], ['.map(n -&gt; n * 2)', 'Err&lt;Integer&gt;', 'same exception (f never runs)'], ['parse("4").flatMap(1.0 / n)', 'Ok&lt;Double&gt;', '0.25']] },
+      complexity: `<p>O(1) per operation plus the cost of the user functions; each step allocates one small record.</p>`,
+      followUps: ['Add <code>recover(Function&lt;? super Exception, ? extends T&gt;)</code>.', 'Why can\'t <code>Err</code> be generic in the exception type, e.g. <code>Err&lt;T, E extends Exception&gt;</code>, and still be caught by type? (catch needs reifiable types)', 'Compare with <code>CompletableFuture.thenApply / thenCompose</code> — same PECS shapes.']
     }
   });
 

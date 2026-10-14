@@ -1875,7 +1875,7 @@ public class Main {
         frames.push({ narr: 'C extends class Base and implements J and K; K extends I. Types that define <code>hello()</code>: <b>' + (defining.length ? defining.join(', ') : 'none') + '</b>. Java applies three rules in order.', parts: [c({ 7: 'cur' }), g({})] });
         var winner = null, error = null, fix = null;
         if (has.C) { winner = 'C'; frames.push({ narr: '<b>Rule 0:</b> C declares <code>hello()</code> itself, so its own version is used. Nothing else matters.', parts: [c({ 5: 'ok' }), g({ C: 'ok' })] });
-          frames.push({ narr: 'Rules 1 and 2 are never consulted: a method declared in the class itself overrides every inherited version — from Base and from all interfaces' + (defining.length > 1 ? ' (' + defining.filter(function (x) { return x !== 'C'; }).join(', ') + ' are ignored)' : '') + '. Inside, C could still call <code>J.super.hello()</code> or <code>K.super.hello()</code> if it wanted to reuse them.', parts: [c((function () { var o = { 5: 'ok' }; defining.forEach(function (x) { if (x !== 'C') o[LINE[x]] = 'done'; }); return o; })()), g({ C: 'ok' })] }); }
+          frames.push({ narr: 'Rules 1 and 2 are never consulted: a method declared in the class itself overrides every inherited version — from Base and from all interfaces' + (defining.length > 1 ? ' (ignored here: ' + defining.filter(function (x) { return x !== 'C'; }).join(', ') + ')' : '') + '. Inside, C could still call <code>J.super.hello()</code> or <code>K.super.hello()</code> if it wanted to reuse them.', parts: [c((function () { var o = { 5: 'ok' }; defining.forEach(function (x) { if (x !== 'C') o[LINE[x]] = 'done'; }); return o; })()), g({ C: 'ok' })] }); }
         else {
           frames.push({ narr: '<b>Rule 0:</b> C does not declare <code>hello()</code> itself. Look further.', parts: [c({ 5: 'cur' }), g({ C: 'cur' })] });
           if (has.Base) { winner = 'Base'; frames.push({ narr: '<b>Rule 1 — class wins:</b> superclass Base has a concrete <code>hello()</code>. A class method <b>always</b> beats interface defaults' + (has.I || has.J || has.K ? ' (so the defaults in ' + ['I', 'J', 'K'].filter(function (x) { return has[x]; }).join(', ') + ' are ignored)' : '') + '. This keeps old class code working when new defaults appear.', parts: [c({ 4: 'ok' }), g({ Base: 'ok', I: has.I ? 'done' : undefined, J: has.J ? 'done' : undefined, K: has.K ? 'done' : undefined })] }); }
@@ -2945,7 +2945,7 @@ public class Main {
 
 public class Main {
     public static void main(String[] args) {
-        Note original = new Note("todo", new String[] {"a", "b"});
+        Note original = new Note("groceries", new String[] {"a", "b"});
         Note shallow = original.clone();
         shallow.tags[0] = "X";
         System.out.println(original.tags[0]);           // X  (shared!)
@@ -3087,5 +3087,1104 @@ public class Main {
         }
       }
     ]
+  });
+
+  /* ======================================================================
+     PRACTICE — Easy
+     ====================================================================== */
+  practice.push({
+    title: 'Predict the Output: Fields, Methods and Statics Through a Parent Reference',
+    level: 'Easy', tags: ['output prediction', 'field hiding', 'overriding', 'static'], companies: ['TCS', 'Wipro', 'Infosys', 'Accenture'],
+    statement: `<p>What does this print? Give both lines.</p>
+      <pre>class Parent {
+    String name = "Parent";
+    String getName() { return name; }
+    static String kind() { return "P"; }
+}
+class Child extends Parent {
+    String name = "Child";
+    @Override String getName() { return name; }
+    static String kind() { return "C"; }
+}
+Parent p = new Child();
+print(p.name + " " + p.getName() + " " + p.kind());
+Child c = (Child) p;
+print(c.name + " " + c.getName() + " " + c.kind());</pre>`,
+    constraints: `Java 21. <code>print</code> = <code>System.out.println</code>.`,
+    example: `<p>Line 1: ${H.c('b', 'Parent')} ${H.c('g', 'Child')} ${H.c('b', 'P')} — the field and the static method use the <b>reference type</b> (Parent); only the instance method uses the <b>object</b> (Child).<br>Line 2: ${H.c('g', 'Child Child C')} — now the reference type is Child too.</p>`,
+    brute: {
+      why: `<p>The naive mental model "everything follows the object" predicts <code>Child Child C</code> twice. It forgets that only <b>instance methods</b> are dispatched at runtime; fields and static methods are bound at compile time from the declared type.</p>`,
+      code: `class Parent {
+    String name = "Parent";
+    String getName() { return name; }
+    static String kind() { return "P"; }
+}
+
+class Child extends Parent {
+    String name = "Child";
+    @Override String getName() { return name; }
+    static String kind() { return "C"; }
+}
+
+public class Main {
+    @SuppressWarnings("static-access")
+    public static void main(String[] args) {
+        Parent p = new Child();
+        // naive guess: "Child Child C" -- wrong
+        System.out.println(p.name + " " + p.getName() + " " + p.kind());
+    }
+}`
+    },
+    mcq: { q: 'Which of these is decided by the OBJECT\'s runtime class?', options: ['p.getName()', 'p.name', 'p.kind()', 'All three'], answer: 0, explain: 'Only non-static, non-private instance methods are virtual. Field access and static calls are resolved from the declared type at compile time.' },
+    hints: [
+      `<p>Hint 1: Ask for each expression: is it an instance method (object decides) or a field / static method (reference type decides)?</p>`,
+      `<p>Hint 2: <code>p</code> is declared <code>Parent</code>: <code>p.name</code> → Parent's field, <code>p.kind()</code> → Parent.kind(). <code>getName()</code> is overridden → Child's version, which reads Child's own <code>name</code>.</p>`,
+      `<p>Hint 3: After the cast, the declared type is <code>Child</code>, so all three resolve to Child's members. The object never changed — only the label did.</p>`
+    ],
+    solution: {
+      approach: `<p>Separate compile-time binding (fields, statics, overload choice) from runtime dispatch (overridden instance methods). Then fix the design smell: keep fields <code>private</code> and expose them through methods, so the hidden-field confusion cannot happen.</p>`,
+      code: `class Parent {
+    String name = "Parent";
+    String getName() { return name; }
+    static String kind() { return "P"; }
+}
+
+class Child extends Parent {
+    String name = "Child";                       // hides Parent.name (second field)
+    @Override String getName() { return name; }  // overrides: runtime dispatch
+    static String kind() { return "C"; }         // hides Parent.kind()
+}
+
+public class Main {
+    @SuppressWarnings("static-access")
+    public static void main(String[] args) {
+        Parent p = new Child();
+        System.out.println(p.name + " " + p.getName() + " " + p.kind());   // Parent Child P
+        Child c = (Child) p;
+        System.out.println(c.name + " " + c.getName() + " " + c.kind());   // Child Child C
+        // Better style: call statics via the class name, never through a reference
+        System.out.println(Parent.kind() + Child.kind());                    // PC
+    }
+}`,
+      dry: { head: ['expression', 'binding', 'result'], rows: [['p.name', 'compile time (Parent)', 'Parent'], ['p.getName()', 'runtime (Child object)', 'Child'], ['p.kind()', 'compile time (Parent)', 'P'], ['c.name / c.getName() / c.kind()', 'Child / Child object / Child', 'Child Child C']] },
+      complexity: `<p>Constant time; the lesson is about binding rules: fields and statics are static-bound, overridden instance methods are dynamically dispatched.</p>`,
+      followUps: ['What if <code>getName()</code> were <code>private</code> in Parent?', 'What does <code>((Parent) c).getName()</code> print?']
+    }
+  });
+
+  practice.push({
+    title: 'Total Area of Mixed Shapes',
+    level: 'Easy', tags: ['abstract class', 'polymorphism', 'coding'], companies: ['Amazon', 'Zoho', 'Freshworks'],
+    statement: `<p>Model <code>Circle(r)</code>, <code>Rectangle(w, h)</code> and <code>Triangle(base, height)</code> so that a method <code>totalArea(List&lt;Shape&gt;)</code> returns the sum of their areas. Adding a new shape must not require changing <code>totalArea</code>. Reject negative dimensions.</p>`,
+    constraints: `0 ≤ dimensions ≤ 10<sup>4</sup>; up to 10<sup>5</sup> shapes; print with 2 decimals.`,
+    example: `<p>[Circle(1), Rectangle(2, 3), Triangle(4, 5)] → π + 6 + 10 = ${H.c('g', '19.14')}.</p>`,
+    brute: {
+      why: `<p>Storing a type string plus loose numbers and switching on the string means every new shape edits the switch, the numbers' meaning depends on the type (is <code>a</code> a radius or a width?), and typos like <code>"circel"</code> silently contribute 0.</p>`,
+      code: `import java.util.*;
+
+public class Main {
+    // each shape = {type, a, b}: meaning of a and b depends on the type string
+    static double totalArea(List<Object[]> shapes) {
+        double sum = 0;
+        for (Object[] s : shapes) {
+            String type = (String) s[0];
+            double a = (double) s[1], b = (double) s[2];
+            if (type.equals("circle")) sum += Math.PI * a * a;
+            else if (type.equals("rect")) sum += a * b;
+            else if (type.equals("triangle")) sum += 0.5 * a * b;
+        }
+        return sum;
+    }
+    public static void main(String[] args) {
+        List<Object[]> shapes = List.of(new Object[] {"circle", 1.0, 0.0}, new Object[] {"rect", 2.0, 3.0}, new Object[] {"triangle", 4.0, 5.0});
+        System.out.printf("%.2f%n", totalArea(shapes));   // 19.14
+    }
+}`
+    },
+    mcq: { q: 'What should Shape be?', options: ['An abstract class or interface with abstract area()', 'A concrete class whose area() returns 0', 'An enum of shape names', 'A record with a type field'], answer: 0, explain: 'An abstract area() forces every concrete shape to provide its formula; a concrete default of 0 would let a forgotten override pass silently.' },
+    hints: [
+      `<p>Hint 1: The only thing that differs between shapes is the area formula — make it an abstract method.</p>`,
+      `<p>Hint 2: <code>sealed interface Shape permits Circle, Rectangle, Triangle { double area(); }</code> with records works nicely; validate in compact constructors.</p>`,
+      `<p>Hint 3: <code>totalArea</code> = loop or <code>shapes.stream().mapToDouble(Shape::area).sum()</code>. Empty list → 0.0.</p>`
+    ],
+    solution: {
+      approach: `<p>Each shape owns its formula behind a common <code>area()</code> contract; <code>totalArea</code> depends only on that contract, so new shapes plug in without edits. Records keep the data classes tiny and immutable.</p>`,
+      code: `import java.util.*;
+
+interface Shape { double area(); }
+
+record Circle(double r) implements Shape {
+    Circle { if (r < 0) throw new IllegalArgumentException("r < 0"); }
+    public double area() { return Math.PI * r * r; }
+}
+
+record Rectangle(double w, double h) implements Shape {
+    Rectangle { if (w < 0 || h < 0) throw new IllegalArgumentException("negative side"); }
+    public double area() { return w * h; }
+}
+
+record Triangle(double base, double height) implements Shape {
+    Triangle { if (base < 0 || height < 0) throw new IllegalArgumentException("negative"); }
+    public double area() { return 0.5 * base * height; }
+}
+
+public class Main {
+    static double totalArea(List<? extends Shape> shapes) {
+        return shapes.stream().mapToDouble(Shape::area).sum();   // dynamic dispatch per element
+    }
+    public static void main(String[] args) {
+        List<Shape> shapes = List.of(new Circle(1), new Rectangle(2, 3), new Triangle(4, 5));
+        System.out.printf("%.2f%n", totalArea(shapes));          // 19.14
+    }
+}`,
+      complexity: `<p>O(N) time, O(1) extra space for N shapes.</p>`,
+      followUps: ['Add <code>perimeter()</code> — what changes?', 'Rewrite using a sealed interface and an exhaustive switch; compare.']
+    }
+  });
+
+  practice.push({
+    title: 'Predict the Output: Overloads with null, char and long',
+    level: 'Easy', tags: ['overloading', 'compile-time polymorphism', 'output prediction'], companies: ['Oracle', 'Cognizant', 'HCL'],
+    statement: `<p>Given these overloads, what do the five calls print?</p>
+      <pre>static void print(Object o) { out("Object"); }
+static void print(String s) { out("String"); }
+static void print(int i)    { out("int"); }
+static void print(long l)   { out("long"); }
+
+print(null);  print('a');  print(5L);
+Object o = "hi";  print(o);  print("hi");</pre>`,
+    constraints: `Java 21. <code>out</code> = <code>System.out.println</code>.`,
+    example: `<p>${H.c('g', 'String')}, ${H.c('g', 'int')}, ${H.c('g', 'long')}, ${H.c('b', 'Object')}, ${H.c('g', 'String')}. For <code>print(o)</code> the declared type of <code>o</code> is Object — the fact that it holds a String at runtime does not matter for overloading.</p>`,
+    brute: {
+      why: `<p>Guessing from the runtime value ("o holds a String, so String") or thinking <code>'a'</code> is a String gives wrong answers. Overload resolution is a compile-time decision using declared types and the phase rules.</p>`,
+      code: `public class Main {
+    static void print(Object o) { System.out.println("Object"); }
+    static void print(String s) { System.out.println("String"); }
+    static void print(int i)    { System.out.println("int"); }
+    static void print(long l)   { System.out.println("long"); }
+
+    public static void main(String[] args) {
+        Object o = "hi";
+        print(o);          // naive guess "String" -- the runtime value does not matter
+    }
+}`
+    },
+    mcq: { q: 'Why does print(null) choose print(String)?', options: ['null fits both Object and String; String is more specific', 'null is a String literal', 'Object methods are never chosen for null', 'It is random'], answer: 0, explain: 'Both reference overloads are applicable in phase 1; String is a subtype of Object, so it is the most specific.' },
+    hints: [
+      `<p>Hint 1: Only the <b>declared</b> type of each argument matters: null type, char, long, Object, String.</p>`,
+      `<p>Hint 2: <code>char</code> widens to <code>int</code> and to <code>long</code> in phase 1; <code>int</code> is more specific than <code>long</code>. <code>5L</code> fits only <code>long</code> without boxing.</p>`,
+      `<p>Hint 3: null → most specific reference type among applicable (String over Object). If there were also <code>print(Integer)</code>, <code>print(null)</code> would be ambiguous.</p>`
+    ],
+    solution: {
+      approach: `<p>For each call, list the applicable overloads in phase 1 (widening only), then pick the most specific. No call here needs boxing or varargs.</p>`,
+      code: `public class Main {
+    static void print(Object o) { System.out.println("Object"); }
+    static void print(String s) { System.out.println("String"); }
+    static void print(int i)    { System.out.println("int"); }
+    static void print(long l)   { System.out.println("long"); }
+
+    public static void main(String[] args) {
+        print(null);       // String  (String more specific than Object)
+        print('a');        // int     (char widens to int and long; int more specific)
+        print(5L);         // long    (exact match)
+        Object o = "hi";
+        print(o);          // Object  (declared type is Object)
+        print("hi");       // String  (exact match)
+        print((Object) "hi");   // Object  (a cast changes the static type)
+    }
+}`,
+      dry: { head: ['call', 'arg static type', 'phase-1 candidates', 'chosen'], rows: [['print(null)', 'null', 'Object, String', 'String'], ["print('a')", 'char', 'int, long', 'int'], ['print(5L)', 'long', 'long', 'long'], ['print(o)', 'Object', 'Object', 'Object'], ['print("hi")', 'String', 'Object, String', 'String']] },
+      complexity: `<p>Resolved entirely at compile time; zero runtime cost for choosing.</p>`,
+      followUps: ['Add <code>print(Integer)</code> — which calls change or fail?', 'What prints for <code>byte b = 1; print(b);</code>?']
+    }
+  });
+
+  practice.push({
+    title: 'Predict the Output: super Calls and Virtual Calls Mixed',
+    level: 'Easy', tags: ['super', 'dynamic dispatch', 'output prediction'], companies: ['Goldman Sachs', 'Deloitte', 'Capgemini'],
+    statement: `<p>What do the three lines print?</p>
+      <pre>class A { String who() { return "A"; }
+          String hi()  { return "hi from " + who(); } }
+class B extends A { @Override String who() { return "B"; } }
+class C extends B { @Override String hi() { return super.hi() + "!"; } }
+
+A x = new C();
+print(x.hi());  print(new B().hi());  print(new A().hi());</pre>`,
+    constraints: `Java 21.`,
+    example: `<p>${H.c('g', 'hi from B!')} — C.hi calls <code>super.hi()</code>, which runs A's code; inside it, <code>who()</code> is a virtual call on the C object, and the nearest <code>who()</code> above C is B's. Then ${H.c('g', 'hi from B')} and ${H.c('g', 'hi from A')}.</p>`,
+    brute: {
+      why: `<p>A common wrong guess is "hi from A!" — assuming that once you jump into the parent with <code>super</code>, everything inside also runs the parent's versions. In fact <code>super</code> only affects that one call; <code>this</code> is still the C object.</p>`,
+      code: `class A {
+    String who() { return "A"; }
+    String hi() { return "hi from " + who(); }
+}
+class B extends A { @Override String who() { return "B"; } }
+class C extends B { @Override String hi() { return super.hi() + "!"; } }
+
+public class Main {
+    public static void main(String[] args) {
+        A x = new C();
+        System.out.println(x.hi());    // naive guess: "hi from A!" -- wrong
+    }
+}`
+    },
+    mcq: { q: 'Inside A.hi() reached via super.hi() from C, what is "this"?', options: ['The C object', 'A new A object', 'A B object', 'null'], answer: 0, explain: 'super.hi() only selects which method body runs (A\'s). The receiver is unchanged, so further virtual calls dispatch on C.' },
+    hints: [
+      `<p>Hint 1: <code>x.hi()</code>: object is C, and C overrides hi → C.hi runs.</p>`,
+      `<p>Hint 2: <code>super.hi()</code> from C: the nearest hi above C is A.hi (B does not override hi). It calls <code>who()</code> — virtual on the C object.</p>`,
+      `<p>Hint 3: who() lookup from C: C (no) → B (yes) → "B". So "hi from B" + "!".</p>`
+    ],
+    solution: {
+      approach: `<p>Trace each call with two questions: which body runs (super = start lookup at the parent; otherwise start at the object's class), and what is <code>this</code> (always the original object). Every unqualified call inside a method is <code>this.method()</code> → virtual.</p>`,
+      code: `class A {
+    String who() { return "A"; }
+    String hi() { return "hi from " + who(); }        // who() == this.who(): virtual
+}
+class B extends A { @Override String who() { return "B"; } }
+class C extends B { @Override String hi() { return super.hi() + "!"; } }
+
+public class Main {
+    public static void main(String[] args) {
+        A x = new C();
+        System.out.println(x.hi());          // hi from B!
+        System.out.println(new B().hi());    // hi from B
+        System.out.println(new A().hi());    // hi from A
+    }
+}`,
+      dry: { head: ['step', 'running', 'this', 'value'], rows: [['x.hi()', 'C.hi', 'C object', '…'], ['super.hi()', 'A.hi', 'C object', '"hi from " + who()'], ['who()', 'B.who (C→B)', 'C object', '"B"'], ['return', 'C.hi', 'C object', 'hi from B!']] },
+      complexity: `<p>Constant; each virtual call is one vtable lookup (or inlined by the JIT).</p>`,
+      followUps: ['What if A.who() were private?', 'What if A.who() were static?']
+    }
+  });
+
+  /* ======================================================================
+     PRACTICE — Medium
+     ====================================================================== */
+  practice.push({
+    title: 'Predict the Output: Overridable Method Called From a Constructor',
+    level: 'Medium', tags: ['constructors', 'dynamic dispatch', 'initialization order'], companies: ['Google', 'Amazon', 'JP Morgan'],
+    statement: `<p>What does <code>new Derived()</code> print? Then fix the design so the parent cannot observe a half-built child.</p>
+      <pre>class Base {
+    Base() { print("Base sees: " + describe()); }
+    String describe() { return "base"; }
+}
+class Derived extends Base {
+    private int size = 10;
+    private String label = "box";
+    Derived() { print("Derived sees: " + describe()); }
+    @Override String describe() { return label + ":" + size; }
+}</pre>`,
+    constraints: `Java 21.`,
+    example: `<p>${H.c('r', 'Base sees: null:0')} then ${H.c('g', 'Derived sees: box:10')}. During <code>Base()</code> the object is already a Derived (so Derived.describe runs) but Derived's field initializers have not run yet.</p>`,
+    brute: {
+      why: `<p>Expecting "Base sees: base" assumes the object is "still a Base" inside Base's constructor. Expecting "box:10" assumes fields are set before the parent constructor. Both are wrong — and in real code this produces <code>NullPointerException</code>s that only happen during construction.</p>`,
+      code: `class Base {
+    Base() { System.out.println("Base sees: " + describe()); }
+    String describe() { return "base"; }
+}
+
+class Derived extends Base {
+    private int size = 10;
+    private String label = "box";
+    Derived() { System.out.println("Derived sees: " + describe()); }
+    @Override String describe() { return label + ":" + size; }
+}
+
+public class Main {
+    public static void main(String[] args) {
+        new Derived();   // naive guess: "Base sees: base" -- wrong
+    }
+}`
+    },
+    mcq: { q: 'When does "size = 10" execute for new Derived()?', options: ['Right after Base() returns, before the rest of Derived()', 'Before Base() starts', 'At class loading', 'Only if Derived() assigns it'], answer: 0, explain: 'Instance initializers of a class run immediately after its super(...) call returns, before the remaining constructor body.' },
+    hints: [
+      `<p>Hint 1: Memory is allocated with all fields at defaults (0, null) before any constructor runs.</p>`,
+      `<p>Hint 2: <code>describe()</code> in Base() is a virtual call; the object's class is Derived from the very first moment.</p>`,
+      `<p>Hint 3: Fix: never call overridable methods from constructors. Make the helper <code>private</code>/<code>final</code>, or move the work to a static factory that runs after construction.</p>`
+    ],
+    solution: {
+      approach: `<p>Trace: allocate (label=null, size=0) → Derived() calls super() → Base() calls describe() virtually → Derived.describe → "null:0" → Base returns → Derived's field initializers set size=10, label="box" → Derived body prints "box:10". The fix makes construction self-contained and moves "announce" logic to a factory method called after the object is complete.</p>`,
+      code: `class Base {
+    Base() { }                                       // no overridable calls here
+    String describe() { return "base"; }
+    final void announce() { System.out.println("ready: " + describe()); }
+}
+
+class Derived extends Base {
+    private final int size = 10;
+    private final String label;
+    private Derived(String label) { this.label = label; }
+    static Derived create(String label) {            // factory: object fully built first
+        Derived d = new Derived(label);
+        d.announce();
+        return d;
+    }
+    @Override String describe() { return label + ":" + size; }
+}
+
+class BadBase {
+    BadBase() { System.out.println("Base sees: " + describe()); }
+    String describe() { return "base"; }
+}
+
+class BadDerived extends BadBase {
+    private int size = 10;
+    private String label = "box";
+    BadDerived() { System.out.println("Derived sees: " + describe()); }
+    @Override String describe() { return label + ":" + size; }
+}
+
+public class Main {
+    public static void main(String[] args) {
+        new BadDerived();          // Base sees: null:0   then   Derived sees: box:10
+        Derived.create("box");     // ready: box:10
+    }
+}`,
+      dry: { head: ['moment', 'size', 'label', 'printed'], rows: [['allocation', '0', 'null', ''], ['Base() → describe()', '0', 'null', 'Base sees: null:0'], ['Derived field init', '10', '"box"', ''], ['Derived() body', '10', '"box"', 'Derived sees: box:10']] },
+      complexity: `<p>Constant. The cost of the bug is correctness: NPEs or wrong state during construction.</p>`,
+      followUps: ['What prints if <code>size</code> is declared <code>final int size = 10;</code>? (Hint: constant variable.)', 'Why do frameworks use init methods / @PostConstruct instead of constructors for this?']
+    }
+  });
+
+  practice.push({
+    title: 'Predict the Output: Widening, Boxing, Varargs and the List.remove Trap',
+    level: 'Medium', tags: ['overloading', 'boxing', 'varargs', 'collections'], companies: ['Microsoft', 'Salesforce', 'Atlassian'],
+    statement: `<p>Predict both output lines.</p>
+      <pre>static String f(long x)    { return "long"; }
+static String f(Integer x) { return "Integer"; }
+static String f(Object x)  { return "Object"; }
+static String f(int... x)  { return "varargs"; }
+
+byte b = 1; Integer boxed = 7; Long big = 8L;
+print(f(b) + " " + f(boxed) + " " + f(big) + " " + f(3.0));
+
+List&lt;Integer&gt; list = new ArrayList&lt;&gt;(List.of(10, 20, 1));
+list.remove(1);
+list.remove(Integer.valueOf(1));
+print(list);</pre>`,
+    constraints: `Java 21.`,
+    example: `<p>Line 1: ${H.c('g', 'long Integer Object Object')}. Line 2: ${H.c('g', '[10]')} — <code>remove(1)</code> removes <b>index</b> 1 (value 20) because <code>remove(int)</code> matches in phase 1; <code>remove(Integer.valueOf(1))</code> removes the <b>value</b> 1.</p>`,
+    brute: {
+      why: `<p>Intuition says "7 is an int, so long", "8L is a long, so long", "remove(1) removes the 1". Each is wrong because phase 1 (no boxing/unboxing) wins whenever anything matches, and a <code>Long</code> object matches <code>Object</code> by plain reference widening.</p>`,
+      code: `import java.util.*;
+
+public class Main {
+    public static void main(String[] args) {
+        List<Integer> list = new ArrayList<>(List.of(10, 20, 1));
+        list.remove(1);                 // naive intent: remove the value 1
+        System.out.println(list);       // [10, 1]  <- removed index 1 instead
+    }
+}`
+    },
+    mcq: { q: 'Why does f(big) with Long big print "Object"?', options: ['Phase 1 allows Long → Object (reference widening) but not Long → long (unboxing)', 'Long cannot be unboxed', 'Object is always preferred', 'varargs is skipped for Long'], answer: 0, explain: 'f(Object) is applicable in phase 1, so phase 2 (where unboxing to long would be allowed) is never reached.' },
+    hints: [
+      `<p>Hint 1: Write each argument\'s static type: byte, Integer, Long, double. Then test phase 1 (exact/widening only).</p>`,
+      `<p>Hint 2: byte → long widens (phase 1). Integer → Integer exact. Long → Object widens. double → nothing in phase 1; phase 2 boxes to Double → Object.</p>`,
+      `<p>Hint 3: <code>List&lt;Integer&gt;</code> has <code>remove(int index)</code> and <code>remove(Object o)</code>. An int literal matches <code>remove(int)</code> in phase 1.</p>`
+    ],
+    solution: {
+      approach: `<p>Apply the three phases to each call; stop at the first phase with a match and choose the most specific candidate. For the list, overload resolution picks <code>remove(int)</code> for an int argument — use <code>Integer.valueOf</code> (or a cast to <code>Object</code>) to remove by value.</p>`,
+      code: `import java.util.*;
+
+public class Main {
+    static String f(long x)    { return "long"; }
+    static String f(Integer x) { return "Integer"; }
+    static String f(Object x)  { return "Object"; }
+    static String f(int... x)  { return "varargs"; }
+
+    public static void main(String[] args) {
+        byte b = 1;
+        Integer boxed = 7;
+        Long big = 8L;
+        System.out.println(f(b) + " " + f(boxed) + " " + f(big) + " " + f(3.0));   // long Integer Object Object
+
+        List<Integer> list = new ArrayList<>(List.of(10, 20, 1));
+        list.remove(1);                      // remove(int index): removes 20
+        list.remove(Integer.valueOf(1));     // remove(Object o): removes the value 1
+        System.out.println(list);            // [10]
+    }
+}`,
+      dry: { head: ['call', 'static type', 'phase that matches', 'chosen'], rows: [['f(b)', 'byte', '1 (widening)', 'long'], ['f(boxed)', 'Integer', '1 (exact)', 'Integer'], ['f(big)', 'Long', '1 (Long→Object)', 'Object'], ['f(3.0)', 'double', '2 (box to Double→Object)', 'Object'], ['list.remove(1)', 'int', '1', 'remove(int index)']] },
+      complexity: `<p>Compile-time decisions. <code>ArrayList.remove</code> is O(N) either way because elements shift.</p>`,
+      followUps: ['Which call would ever reach varargs here?', 'How does <code>Set&lt;Integer&gt;.remove(1)</code> behave, and why is it different?']
+    }
+  });
+
+  practice.push({
+    title: 'Rental Quotes with Interface Default Methods',
+    level: 'Medium', tags: ['interfaces', 'default methods', 'coding'], companies: ['Uber', 'Ola', 'Zoomcar'],
+    statement: `<p>Build a quote system for rentals. Every <code>Rentable</code> has a <code>dailyRate()</code> (paise). Default pricing: <code>cost(days)</code> = rate × days, with <b>10% off when days ≥ 7</b>. Things that are <code>Insurable</code> add a default insurance of <b>5,000 paise/day</b>. A <code>Car</code> is rentable and insurable. A <code>Bike</code> is rentable but its <code>cost</code> has <b>no weekly discount</b>. Implement <code>quote(item, days)</code> = cost + insurance (if insurable).</p>`,
+    constraints: `1 ≤ days ≤ 365; rates up to 10<sup>7</sup> paise; use <code>long</code>.`,
+    example: `<p>Car rate 200,000 × 7 days = 1,400,000 → −10% = 1,260,000 + insurance 35,000 = ${H.c('g', '1,295,000')}. Bike rate 50,000 × 7 = ${H.c('g', '350,000')} (no discount, no insurance).</p>`,
+    brute: {
+      why: `<p>Copy-pasting the pricing formula into every class means the "10% off weekly" rule exists in N places; changing it to 12% requires hunting through every vehicle class. An abstract base class would also work, but then a <code>Boat</code> that already extends <code>Asset</code> could not reuse it (single inheritance).</p>`,
+      code: `class Car {
+    long rate = 200_000;
+    long cost(int days) { long c = rate * days; return days >= 7 ? c * 90 / 100 : c; }   // copy #1
+    long insurance(int days) { return 5_000L * days; }
+}
+
+class Bike {
+    long rate = 50_000;
+    long cost(int days) { return rate * days; }
+}
+
+public class Main {
+    public static void main(String[] args) {
+        Car car = new Car();
+        System.out.println(car.cost(7) + car.insurance(7));   // 1295000
+        System.out.println(new Bike().cost(7));               // 350000
+    }
+}`
+    },
+    mcq: { q: 'How should quote() add insurance only for insurable items?', options: ['if (item instanceof Insurable ins) add ins.insurance(days)', 'Give every Rentable an insurance() returning 0', 'Catch ClassCastException', 'Use reflection'], answer: 0, explain: 'Insurable is a separate capability; a pattern-matching instanceof checks and casts in one step. (Adding a zero default to Rentable also works but blurs two concepts.)' },
+    hints: [
+      `<p>Hint 1: Two capabilities → two interfaces. Shared formulas → default methods.</p>`,
+      `<p>Hint 2: <code>interface Rentable { long dailyRate(); default long cost(int days) {...} }</code>, <code>interface Insurable { default long insurance(int days) { return 5_000L * days; } }</code>.</p>`,
+      `<p>Hint 3: Bike overrides <code>cost</code>. Use integer math: <code>c * 90 / 100</code>. Validate days ≥ 1.</p>`
+    ],
+    solution: {
+      approach: `<p>Capabilities as interfaces with default methods hold the shared rules once. Classes implement whichever capabilities they have and override only what differs (Bike's cost). <code>quote</code> depends on the interfaces and uses pattern matching for the optional capability.</p>`,
+      code: `interface Rentable {
+    long dailyRate();
+    default long cost(int days) {
+        if (days < 1) throw new IllegalArgumentException("days >= 1");
+        long c = dailyRate() * days;
+        return days >= 7 ? c * 90 / 100 : c;            // the weekly rule lives in ONE place
+    }
+}
+
+interface Insurable {
+    default long insurance(int days) { return 5_000L * days; }
+}
+
+class Car implements Rentable, Insurable {
+    public long dailyRate() { return 200_000; }
+}
+
+class Bike implements Rentable {
+    public long dailyRate() { return 50_000; }
+    @Override public long cost(int days) { return dailyRate() * days; }   // no weekly discount
+}
+
+public class Main {
+    static long quote(Rentable item, int days) {
+        long total = item.cost(days);                   // dynamic dispatch: Bike overrides
+        if (item instanceof Insurable ins) total += ins.insurance(days);
+        return total;
+    }
+    public static void main(String[] args) {
+        System.out.println(quote(new Car(), 7));         // 1295000
+        System.out.println(quote(new Car(), 3));         // 615000
+        System.out.println(quote(new Bike(), 7));        // 350000
+    }
+}`,
+      complexity: `<p>O(1) per quote.</p>`,
+      followUps: ['A Truck has its own insurance formula — what do you override?', 'What if both interfaces had a default <code>cost</code>?']
+    }
+  });
+
+  practice.push({
+    title: 'Broken equals Symmetry: Predict, Then Fix with Composition',
+    level: 'Medium', tags: ['equals', 'hashCode', 'composition', 'Liskov'], companies: ['Google', 'Bloomberg', 'Morgan Stanley'],
+    statement: `<p><code>Point(x, y)</code> uses <code>instanceof</code> in equals. <code>ColorPoint extends Point</code> adds a colour and also uses <code>instanceof</code>. Predict the four printed booleans, explain which contract rule is broken, and redesign so equality is correct.</p>
+      <pre>Point p = new Point(1, 2);
+ColorPoint red = new ColorPoint(1, 2, "red");
+print(p.equals(red));  print(red.equals(p));
+Set&lt;Point&gt; s = new HashSet&lt;&gt;(List.of(red));
+print(s.contains(p));  print(List.of(p).contains(red));</pre>`,
+    constraints: `Java 21. Point's hashCode = 31·x + y; ColorPoint does not override hashCode.`,
+    example: `<p>${H.c('g', 'true')}, ${H.c('r', 'false')}, ${H.c('y', 'true')}, ${H.c('y', 'false')}. Symmetry is broken (p equals red but red does not equal p), so collection results depend on <b>which</b> object's equals the library happens to call: <code>HashMap</code> calls <code>argument.equals(stored)</code> → <code>p.equals(red)</code> → true; <code>List.contains</code> calls <code>argument.equals(element)</code> → <code>red.equals(p)</code> → false.</p>`,
+    brute: {
+      why: `<p>"Just use getClass() everywhere" restores symmetry, but then a ColorPoint is never equal to any Point — even where your program treats it as a Point (Liskov). And trying to make ColorPoint compare colour only "when both are ColorPoints" breaks <b>transitivity</b>. There is no inheritance-based fix that keeps the full contract.</p>`,
+      code: `import java.util.*;
+
+class Point {
+    final int x, y;
+    Point(int x, int y) { this.x = x; this.y = y; }
+    @Override public boolean equals(Object o) { return o instanceof Point p && x == p.x && y == p.y; }
+    @Override public int hashCode() { return 31 * x + y; }
+}
+
+class ColorPoint extends Point {
+    final String color;
+    ColorPoint(int x, int y, String color) { super(x, y); this.color = color; }
+    @Override public boolean equals(Object o) {
+        return o instanceof ColorPoint cp && super.equals(cp) && color.equals(cp.color);
+    }
+}
+
+public class Main {
+    public static void main(String[] args) {
+        Point p = new Point(1, 2);
+        ColorPoint red = new ColorPoint(1, 2, "red");
+        System.out.println(p.equals(red));                      // true
+        System.out.println(red.equals(p));                      // false
+        Set<Point> s = new HashSet<>(List.of(red));
+        System.out.println(s.contains(p));                      // true  (HashMap runs p.equals(red))
+        System.out.println(List.of(p).contains(red));           // false (List runs red.equals(p))
+        System.out.println(new HashSet<Point>(List.of(p)).contains(red));   // false: same pair, other side
+    }
+}`
+    },
+    mcq: { q: 'Which equals rule does the inheritance design break?', options: ['Symmetry', 'Reflexivity', 'Non-nullity', 'Consistency'], answer: 0, explain: 'p.equals(red) is true while red.equals(p) is false — the definition of an asymmetric relation.' },
+    hints: [
+      `<p>Hint 1: For each call, find whose <code>equals</code> runs. Both <code>HashMap.get/containsKey</code> and <code>List.contains</code> call <code>argument.equals(storedElement)</code> (after HashMap matches the hash).</p>`,
+      `<p>Hint 2: Effective Java: you cannot extend an instantiable class, add a value component, and preserve the equals contract. Prefer composition: <code>ColorPoint</code> <b>has</b> a Point and exposes <code>asPoint()</code>.</p>`,
+      `<p>Hint 3: With records: <code>record Point(int x, int y)</code> and <code>record ColorPoint(Point point, String color)</code> — generated equals/hashCode are symmetric and consistent automatically.</p>`
+    ],
+    solution: {
+      approach: `<p>Trace each equals call by its receiver: <code>p.equals(red)</code> uses Point's rule (true); <code>red.equals(p)</code> uses ColorPoint's rule (false). <code>HashSet.contains(p)</code> finds the bucket by hash (both hash to 33) and then evaluates <code>p.equals(red)</code> → true, while <code>List.of(p).contains(red)</code> evaluates <code>red.equals(p)</code> → false. Ask the same question from the other side and the answer flips — that is what an asymmetric equals does to collections. The fix is to stop pretending a ColorPoint IS-A Point for equality: compose it (ColorPoint has a Point) and let records generate symmetric, consistent equals/hashCode.</p>`,
+      code: `import java.util.*;
+
+record Point(int x, int y) { }
+
+record ColorPoint(Point point, String color) {        // HAS-A Point instead of IS-A Point
+    ColorPoint { Objects.requireNonNull(point); Objects.requireNonNull(color); }
+    Point asPoint() { return point; }                   // explicit view when you need a Point
+}
+
+public class Main {
+    public static void main(String[] args) {
+        Point p = new Point(1, 2);
+        ColorPoint red = new ColorPoint(p, "red");
+        System.out.println(p.equals(red) + " " + red.equals(p));          // false false (symmetric)
+        System.out.println(red.asPoint().equals(p));                      // true (explicit, intended)
+        Set<Object> s = new HashSet<>(List.of(red));
+        System.out.println(s.contains(p) + " " + s.contains(new ColorPoint(new Point(1, 2), "red")));   // false true
+    }
+}`,
+      dry: { head: ['call', 'equals that runs', 'result (inheritance design)'], rows: [['p.equals(red)', 'Point.equals', 'true'], ['red.equals(p)', 'ColorPoint.equals', 'false'], ['set{red}.contains(p)', 'p.equals(red) inside HashMap', 'true'], ['List.of(p).contains(red)', 'red.equals(p) inside indexOf', 'false']] },
+      complexity: `<p>O(1) per equals; the real cost is unpredictable collection behaviour when equals is asymmetric.</p>`,
+      followUps: ['Run the brute version: why do <code>set{red}.contains(p)</code> and <code>set{p}.contains(red)</code> disagree?', 'How do records guarantee symmetric equals?']
+    }
+  });
+
+  practice.push({
+    title: 'Predict the Output: Default Methods, Class-Wins and X.super Chains',
+    level: 'Medium', tags: ['interfaces', 'default methods', 'diamond', 'output prediction'], companies: ['Amazon', 'ServiceNow', 'Intuit'],
+    statement: `<p>What do the three lines print?</p>
+      <pre>interface Greeter { default String greet() { return "Hello"; } }
+interface Polite extends Greeter {
+    default String greet() { return Greeter.super.greet() + ", please"; } }
+interface Loud { default String greet() { return "HEY"; } }
+class Base { public String greet() { return "Base"; } }
+
+class A implements Polite { }
+class B extends Base implements Polite, Loud { }
+class C implements Polite, Loud {
+    public String greet() { return Loud.super.greet() + " / " + Polite.super.greet(); } }
+
+print(new A().greet()); print(new B().greet()); print(new C().greet());</pre>`,
+    constraints: `Java 21. All of this compiles.`,
+    example: `<p>${H.c('g', 'Hello, please')} (Polite is more specific than Greeter) · ${H.c('g', 'Base')} (class wins, even though Polite and Loud conflict) · ${H.c('g', 'HEY / Hello, please')} (C resolves the conflict itself).</p>`,
+    brute: {
+      why: `<p>Guessing "B does not compile because Polite and Loud conflict" forgets rule 1: a superclass method beats all interface defaults, so there is no conflict to resolve. Guessing "A prints Hello" forgets that Polite overrides Greeter's default.</p>`,
+      code: `interface Greeter { default String greet() { return "Hello"; } }
+interface Polite extends Greeter {
+    default String greet() { return Greeter.super.greet() + ", please"; }
+}
+interface Loud { default String greet() { return "HEY"; } }
+class Base { public String greet() { return "Base"; } }
+class B extends Base implements Polite, Loud { }      // naive guess: compile error -- wrong
+
+public class Main {
+    public static void main(String[] args) {
+        System.out.println(new B().greet());
+    }
+}`
+    },
+    mcq: { q: 'Why does class B compile even though Polite and Loud both have default greet()?', options: ['Base.greet() is a class method, and class wins over interface defaults', 'Loud is ignored because it is listed last', 'Polite wins because it extends Greeter', 'Defaults are ignored when a class has a superclass'], answer: 0, explain: 'Rule 1: a method inherited from the superclass chain takes priority over every interface default, so no ambiguity arises.' },
+    hints: [
+      `<p>Hint 1: Apply the rules in order: class itself → superclass chain → most specific interface → otherwise must override.</p>`,
+      `<p>Hint 2: A: only Polite (which overrides Greeter) → "Hello, please". B: Base.greet exists → "Base".</p>`,
+      `<p>Hint 3: C overrides and calls both: <code>Loud.super.greet()</code> = "HEY", <code>Polite.super.greet()</code> = "Hello" + ", please".</p>`
+    ],
+    solution: {
+      approach: `<p>Resolve each class with the diamond rules. Note that <code>Greeter.super.greet()</code> is legal inside Polite because Greeter is Polite's direct superinterface; similarly C may name Loud and Polite (its direct superinterfaces) but not Greeter.</p>`,
+      code: `interface Greeter { default String greet() { return "Hello"; } }
+interface Polite extends Greeter {
+    default String greet() { return Greeter.super.greet() + ", please"; }
+}
+interface Loud { default String greet() { return "HEY"; } }
+class Base { public String greet() { return "Base"; } }
+
+class A implements Polite { }
+class B extends Base implements Polite, Loud { }
+class C implements Polite, Loud {
+    @Override public String greet() { return Loud.super.greet() + " / " + Polite.super.greet(); }
+    // Greeter.super.greet() here would NOT compile: Greeter is not a direct superinterface of C
+}
+
+public class Main {
+    public static void main(String[] args) {
+        System.out.println(new A().greet());   // Hello, please
+        System.out.println(new B().greet());   // Base
+        System.out.println(new C().greet());   // HEY / Hello, please
+    }
+}`,
+      dry: { head: ['class', 'rule applied', 'output'], rows: [['A', 'most specific interface (Polite over Greeter)', 'Hello, please'], ['B', 'class wins (Base)', 'Base'], ['C', 'own override', 'HEY / Hello, please']] },
+      complexity: `<p>Resolved at compile/link time; each call is an ordinary virtual/interface call.</p>`,
+      followUps: ['Remove <code>greet()</code> from C — what error do you get?', 'Make Base.greet() package-private: what happens to B?']
+    }
+  });
+
+  practice.push({
+    title: 'Import Pipeline with a Template Method and Hooks',
+    level: 'Medium', tags: ['abstract class', 'template method', 'coding'], companies: ['Flipkart', 'Razorpay', 'Atlassian'],
+    statement: `<p>Write an abstract <code>Importer&lt;T&gt;</code> whose <b>final</b> <code>run(List&lt;String&gt; lines)</code> does: skip blank lines → <code>parse(line)</code> (abstract; may throw <code>IllegalArgumentException</code>) → <code>validate(item)</code> (hook, default accepts) → collect. It returns a result with the accepted items and the count of rejected lines. Implement <code>UserImporter</code> for lines like <code>"asha,31"</code> that rejects ages outside 0–150.</p>`,
+    constraints: `Up to 10<sup>6</sup> lines; a bad line must not stop the import.`,
+    example: `<p>Lines ["asha,31", "", "ben,x", "chen,200", "dev,45"] → accepted ${H.c('g', '[User[name=asha, age=31], User[name=dev, age=45]]')}, rejected ${H.c('r', '2')} ("ben,x" fails parse; "chen,200" fails validate; the blank line is skipped, not rejected).</p>`,
+    brute: {
+      why: `<p>Writing a separate loop for every importer (users, products, orders) duplicates the skip/try/catch/count skeleton. One importer forgets to catch the parse error and a single bad line aborts a million-line import.</p>`,
+      code: `import java.util.*;
+
+public class Main {
+    record User(String name, int age) { }
+    static List<User> importUsers(List<String> lines) {   // skeleton copy #1 of many
+        List<User> out = new ArrayList<>();
+        for (String line : lines) {
+            if (line.isBlank()) continue;
+            String[] p = line.split(",");
+            out.add(new User(p[0], Integer.parseInt(p[1])));   // one bad line throws and aborts everything
+        }
+        return out;
+    }
+    public static void main(String[] args) {
+        System.out.println(importUsers(List.of("asha,31", "dev,45")));
+    }
+}`
+    },
+    mcq: { q: 'Which part belongs in the final template method?', options: ['The loop, blank-line skipping, error handling and counting', 'Parsing a user line', 'The age range check', 'The CSV delimiter for users'], answer: 0, explain: 'The template holds what is identical for every importer; parse and validate are the varying steps.' },
+    hints: [
+      `<p>Hint 1: Fixed skeleton: for each line → skip blank → try parse → validate → add or count rejection.</p>`,
+      `<p>Hint 2: <code>protected abstract T parse(String line)</code>; <code>protected boolean validate(T item) { return true; }</code> as a hook.</p>`,
+      `<p>Hint 3: Catch <code>IllegalArgumentException</code> (NumberFormatException is a subclass) per line. Return a small record <code>Result&lt;T&gt;(List&lt;T&gt; accepted, int rejected)</code>.</p>`
+    ],
+    solution: {
+      approach: `<p>The abstract parent owns the robust loop in a <code>final</code> method; subclasses only describe how to parse one line and (optionally) what makes an item valid. Every future importer automatically gets the same error handling and statistics.</p>`,
+      code: `import java.util.*;
+
+record Result<T>(List<T> accepted, int rejected) { }
+
+abstract class Importer<T> {
+    public final Result<T> run(List<String> lines) {      // template method
+        List<T> ok = new ArrayList<>();
+        int bad = 0;
+        for (String line : lines) {
+            if (line == null || line.isBlank()) continue;  // skipped, not rejected
+            try {
+                T item = parse(line.trim());
+                if (validate(item)) ok.add(item); else bad++;
+            } catch (IllegalArgumentException e) {         // includes NumberFormatException
+                bad++;
+            }
+        }
+        return new Result<>(List.copyOf(ok), bad);
+    }
+    protected abstract T parse(String line);
+    protected boolean validate(T item) { return true; }   // hook
+}
+
+record User(String name, int age) { }
+
+class UserImporter extends Importer<User> {
+    @Override protected User parse(String line) {
+        String[] p = line.split(",");
+        if (p.length != 2) throw new IllegalArgumentException("expected name,age");
+        return new User(p[0].trim(), Integer.parseInt(p[1].trim()));
+    }
+    @Override protected boolean validate(User u) { return u.age() >= 0 && u.age() <= 150; }
+}
+
+public class Main {
+    public static void main(String[] args) {
+        Result<User> r = new UserImporter().run(List.of("asha,31", "", "ben,x", "chen,200", "dev,45"));
+        System.out.println(r.accepted() + " rejected=" + r.rejected());
+        // [User[name=asha, age=31], User[name=dev, age=45]] rejected=2
+    }
+}`,
+      dry: { head: ['line', 'parse', 'validate', 'outcome'], rows: [['"asha,31"', 'User(asha,31)', 'true', 'accepted'], ['""', '—', '—', 'skipped'], ['"ben,x"', 'NumberFormatException', '—', 'rejected 1'], ['"chen,200"', 'User(chen,200)', 'false', 'rejected 2'], ['"dev,45"', 'User(dev,45)', 'true', 'accepted']] },
+      complexity: `<p>O(total characters) time; O(accepted items) space.</p>`,
+      followUps: ['Collect the rejected lines with reasons instead of a count.', 'Rewrite with composition: an Importer holding a <code>Function&lt;String,T&gt;</code> and a <code>Predicate&lt;T&gt;</code>. Pros and cons?']
+    }
+  });
+
+  /* ======================================================================
+     PRACTICE — Hard
+     ====================================================================== */
+  practice.push({
+    title: 'Expression Tree: Evaluate, Print and Simplify (Sealed Types + Polymorphism)',
+    level: 'Hard', tags: ['polymorphism', 'sealed interfaces', 'records', 'pattern matching'], companies: ['Google', 'JetBrains', 'Databricks'],
+    statement: `<p>Model arithmetic expressions built from numbers, <code>+</code>, <code>*</code> and unary minus. Support:</p>
+      <ol><li><code>eval()</code> — the value (as <code>long</code>),</li>
+      <li><code>show()</code> — a fully parenthesised string,</li>
+      <li><code>simplify(e)</code> — remove <code>x + 0</code>, <code>0 + x</code>, <code>x * 1</code>, <code>1 * x</code>, turn <code>x * 0</code> into <code>0</code>, and <code>--x</code> into <code>x</code>, recursively.</li></ol>
+      <p>Adding a new node type should be caught by the compiler wherever it is not handled.</p>`,
+    constraints: `Tree depth ≤ 1000; values fit in long. Java 21.`,
+    example: `<p><code>(2 + 3) * -4</code> → show ${H.c('b', '((2 + 3) * -4)')}, eval ${H.c('g', '-20')}.<br><code>(x + 0) * 1</code> with x = <code>--7</code> → simplify → ${H.c('g', '7')}.</p>`,
+    brute: {
+      why: `<p>One <code>Node</code> class with a <code>String op</code> and nullable children: every operation is an if/else chain on the string, invalid shapes (a "num" with children, a "+" with one child) are representable, and a new operator silently falls into the default branch.</p>`,
+      code: `public class Main {
+    static class Node {
+        String op; long value; Node left, right;               // which fields matter depends on op
+        Node(String op, long value, Node l, Node r) { this.op = op; this.value = value; left = l; right = r; }
+    }
+    static long eval(Node n) {
+        if (n.op.equals("num")) return n.value;
+        if (n.op.equals("+")) return eval(n.left) + eval(n.right);
+        if (n.op.equals("*")) return eval(n.left) * eval(n.right);
+        if (n.op.equals("neg")) return -eval(n.left);
+        return 0;                                                // a new op silently evaluates to 0
+    }
+    public static void main(String[] args) {
+        Node e = new Node("*", 0, new Node("+", 0, new Node("num", 2, null, null), new Node("num", 3, null, null)),
+                                  new Node("neg", 0, new Node("num", 4, null, null), null));
+        System.out.println(eval(e));                             // -20
+    }
+}`
+    },
+    mcq: { q: 'Why make Expr a sealed interface?', options: ['So a switch over Expr can be exhaustive and the compiler flags unhandled new types', 'Sealed types run faster', 'Records cannot implement normal interfaces', 'To allow multiple inheritance of state'], answer: 0, explain: 'With a closed set of permitted subtypes, a pattern-matching switch needs no default, and adding a new record makes every non-exhaustive switch a compile error.' },
+    hints: [
+      `<p>Hint 1: Behaviour that every node must have (<code>eval</code>, <code>show</code>) fits naturally as polymorphic methods on each record.</p>`,
+      `<p>Hint 2: <code>simplify</code> looks at <b>shapes</b> of subtrees (Neg inside Neg, Num(0) on one side) — a perfect job for a switch with nested record patterns: <code>case Neg(Neg(Expr inner)) -&gt; simplify(inner)</code>.</p>`,
+      `<p>Hint 3: Simplify children first (bottom-up), then match on the simplified results. Put the more specific pattern (<code>Neg(Neg(...))</code>) before the general one (<code>Neg(Expr e)</code>) or the compiler reports dominance.</p>`
+    ],
+    solution: {
+      approach: `<p>Use both styles where each shines: <b>overriding</b> for operations every type implements uniformly (<code>eval</code>, <code>show</code>), and a <b>sealed + pattern-matching switch</b> for a cross-cutting operation that inspects nested shapes (<code>simplify</code>). Records make nodes immutable, so simplified trees can safely share subtrees.</p>`,
+      code: `sealed interface Expr permits Num, Add, Mul, Neg {
+    long eval();
+    String show();
+}
+record Num(long v) implements Expr {
+    public long eval() { return v; }
+    public String show() { return Long.toString(v); }
+}
+record Add(Expr l, Expr r) implements Expr {
+    public long eval() { return l.eval() + r.eval(); }
+    public String show() { return "(" + l.show() + " + " + r.show() + ")"; }
+}
+record Mul(Expr l, Expr r) implements Expr {
+    public long eval() { return l.eval() * r.eval(); }
+    public String show() { return "(" + l.show() + " * " + r.show() + ")"; }
+}
+record Neg(Expr e) implements Expr {
+    public long eval() { return -e.eval(); }
+    public String show() { return "-" + e.show(); }
+}
+
+public class Main {
+    static boolean isNum(Expr e, long k) { return e instanceof Num n && n.v() == k; }
+
+    static Expr simplify(Expr e) {
+        return switch (e) {                                   // exhaustive: no default needed
+            case Num n -> n;
+            case Neg(Neg(Expr inner)) -> simplify(inner);     // --x  ->  x
+            case Neg(Expr inner) -> {
+                Expr s = simplify(inner);
+                yield s instanceof Neg(Expr x) ? x : new Neg(s);
+            }
+            case Add(Expr l, Expr r) -> {
+                Expr a = simplify(l), b = simplify(r);
+                if (isNum(a, 0)) yield b;
+                if (isNum(b, 0)) yield a;
+                yield new Add(a, b);
+            }
+            case Mul(Expr l, Expr r) -> {
+                Expr a = simplify(l), b = simplify(r);
+                if (isNum(a, 0) || isNum(b, 0)) yield new Num(0);
+                if (isNum(a, 1)) yield b;
+                if (isNum(b, 1)) yield a;
+                yield new Mul(a, b);
+            }
+        };
+    }
+
+    public static void main(String[] args) {
+        Expr e = new Mul(new Add(new Num(2), new Num(3)), new Neg(new Num(4)));
+        System.out.println(e.show() + " = " + e.eval());          // ((2 + 3) * -4) = -20
+        Expr messy = new Mul(new Add(new Neg(new Neg(new Num(7))), new Num(0)), new Num(1));
+        System.out.println(messy.show() + " -> " + simplify(messy).show());   // ((--7 + 0) * 1) -> 7
+    }
+}`,
+      dry: { head: ['node (bottom-up)', 'rule', 'result'], rows: [['Neg(Neg(7))', '--x → x', '7'], ['Add(7, 0)', 'x + 0 → x', '7'], ['Mul(7, 1)', 'x * 1 → x', '7'], ['eval of original e', '(2+3) * -4', '-20']] },
+      complexity: `<p><code>eval</code>, <code>show</code>, <code>simplify</code>: O(N) for N nodes, O(depth) recursion stack (use an explicit stack for very deep trees).</p>`,
+      followUps: ['Add a <code>Var(String name)</code> node: which code does the compiler force you to update?', 'When would you move <code>eval</code> into the switch style too (or <code>simplify</code> into methods)?', 'Implement <code>derive(String var)</code> for symbolic differentiation.']
+    }
+  });
+
+  practice.push({
+    title: 'Predict the Output: Constant Variables vs Plain Finals During Construction',
+    level: 'Hard', tags: ['final', 'constants', 'initialization order', 'output prediction'], companies: ['Oracle', 'Jane Street', 'Goldman Sachs'],
+    statement: `<p>The parent constructor calls an overridden method that prints four <code>final</code> fields of the child. What are the two output lines?</p>
+      <pre>class Base { Base() { show(); } void show() { print("Base"); } }
+class Derived extends Base {
+    final int constant = 5;
+    final int computed = Integer.parseInt("7");
+    final String label = "L";
+    final Integer boxed = 9;
+    @Override void show() { print(constant + " " + computed + " " + label + " " + boxed); }
+}
+new Derived().show();</pre>`,
+    constraints: `Java 21, standard javac.`,
+    example: `<p>${H.c('y', '5 0 L null')} then ${H.c('g', '5 7 L 9')}. <code>constant</code> and <code>label</code> are <b>constant variables</b>: javac replaces <code>constant</code> with the literal <code>5</code> inside <code>show()</code>, so they look "initialised" even before the field initialisers run.</p>`,
+    brute: {
+      why: `<p>The usual (half-right) rule "fields are not initialised yet during the parent constructor" predicts <code>0 0 null null</code>. It misses compile-time constant inlining: a <code>final</code> primitive/String field initialised with a constant expression is never read from the object at all.</p>`,
+      code: `class Base {
+    Base() { show(); }
+    void show() { System.out.println("Base"); }
+}
+
+class Derived extends Base {
+    final int constant = 5;
+    final int computed = Integer.parseInt("7");
+    final String label = "L";
+    final Integer boxed = 9;
+    @Override void show() { System.out.println(constant + " " + computed + " " + label + " " + boxed); }
+}
+
+public class Main {
+    public static void main(String[] args) {
+        new Derived().show();     // naive guess for line 1: "0 0 null null" -- wrong
+    }
+}`
+    },
+    mcq: { q: 'Which field is a "constant variable" that javac inlines?', options: ['final int constant = 5', 'final int computed = Integer.parseInt("7")', 'final Integer boxed = 9', 'None — instance fields are never inlined'], answer: 0, explain: 'A constant variable is a final variable of primitive or String type initialised with a constant expression. Method calls are not constant expressions, and Integer is a boxed type.' },
+    hints: [
+      `<p>Hint 1: Order: allocate (all defaults) → Base() → show() dispatches to Derived.show() → only then Derived's field initialisers run.</p>`,
+      `<p>Hint 2: JLS §4.12.4: <code>final</code> + primitive/String + constant-expression initialiser = constant variable. References to it compile to the literal value.</p>`,
+      `<p>Hint 3: So in the first call, <code>constant</code>→5 and <code>label</code>→"L" (inlined), <code>computed</code>→0 and <code>boxed</code>→null (real field reads of defaults).</p>`
+    ],
+    solution: {
+      approach: `<p>Combine two rules: (1) the parent constructor's virtual call runs the child method before child fields are initialised, so real field reads see defaults; (2) constant variables are not real reads — javac substitutes their values at compile time. The fix for production code is the same as always: do not call overridable methods from constructors.</p>`,
+      code: `class Base {
+    Base() { show(); }                            // virtual call during construction (anti-pattern)
+    void show() { System.out.println("Base"); }
+}
+
+class Derived extends Base {
+    final int constant = 5;                       // constant variable -> inlined as 5
+    final int computed = Integer.parseInt("7");   // final, but runtime value -> real field read
+    final String label = "L";                     // constant variable -> inlined as "L"
+    final Integer boxed = 9;                      // boxed: not a constant variable
+    @Override void show() {
+        System.out.println(constant + " " + computed + " " + label + " " + boxed);
+    }
+}
+
+public class Main {
+    public static void main(String[] args) {
+        new Derived().show();
+        // 5 0 L null   <- printed from inside Base(): computed and boxed still hold defaults
+        // 5 7 L 9      <- printed after construction completed
+    }
+}`,
+      dry: { head: ['moment', 'constant', 'computed', 'label', 'boxed'], rows: [['inside Base()', '5 (inlined)', '0', 'L (inlined)', 'null'], ['after new Derived()', '5', '7', 'L', '9']] },
+      complexity: `<p>Constant. The trap matters in real code: logs and validation in parent constructors show half-built state.</p>`,
+      followUps: ['Make <code>constant</code> a <code>static final</code> — anything change?', 'Use <code>javap -c Derived</code>: which fields does show() actually read with getfield?']
+    }
+  });
+
+  practice.push({
+    title: 'Pricing Engine with Composable Discount Rules',
+    level: 'Hard', tags: ['composition', 'strategy', 'composite', 'design'], companies: ['Amazon', 'Walmart', 'Swiggy', 'Shopify'],
+    statement: `<p>Design a checkout pricing engine. A cart has items (name, unit price, quantity). Discount rules are applied <b>in order</b>, each seeing the running total; the total may never go below 0. Support:</p>
+      <ul><li><code>BulkItemOff(item, minQty, pct)</code> — pct% off that item's line if quantity ≥ minQty,</li>
+      <li><code>PercentOff(pct)</code> — pct% off the running total,</li>
+      <li><code>FlatOff(amount, minSpend)</code> — flat amount if running total ≥ minSpend,</li>
+      <li><code>BestOf(rules...)</code> — applies only the single most valuable of its rules.</li></ul>
+      <p>Marketing invents new rules every week; adding one must not touch the engine. Return the final total and a log of applied discounts.</p>`,
+    constraints: `Amounts in whole rupees as <code>long</code>; up to 10<sup>4</sup> items and 50 rules; integer division rounds down.`,
+    example: `<p>Cart: shirt 1000 × 2, socks 100 × 5 → 2500. Rules: BulkItemOff(socks, 5, 20%) → −100 (2400); BestOf(PercentOff 10%, FlatOff 300 if ≥ 2000) → 240 vs 300 → −300 → ${H.c('g', '2100')}.</p>`,
+    brute: {
+      why: `<p>A <code>Cart</code> subclass per promotion (<code>FestiveCart</code>, <code>BulkFestiveCart</code>, <code>BulkFestiveCouponCart</code>…) explodes combinatorially, and a single giant <code>if</code> method with boolean flags grows forever and cannot express "best of these two". Both need engine edits for every new promotion.</p>`,
+      code: `import java.util.*;
+
+public class Main {
+    record Item(String name, long price, int qty) { }
+    // every new promotion = another flag and another branch in this method
+    static long checkout(List<Item> cart, boolean bulkSocks, boolean festive10, boolean flat300) {
+        long total = 0;
+        for (Item i : cart) total += i.price() * i.qty();
+        if (bulkSocks) for (Item i : cart) if (i.name().equals("socks") && i.qty() >= 5) total -= i.price() * i.qty() * 20 / 100;
+        if (festive10 && flat300) total -= Math.max(total * 10 / 100, total >= 2000 ? 300 : 0);
+        else if (festive10) total -= total * 10 / 100;
+        else if (flat300 && total >= 2000) total -= 300;
+        return Math.max(0, total);
+    }
+    public static void main(String[] args) {
+        List<Item> cart = List.of(new Item("shirt", 1000, 2), new Item("socks", 100, 5));
+        System.out.println(checkout(cart, true, true, true));   // 2100
+    }
+}`
+    },
+    mcq: { q: 'BestOf(rules) should itself be…', options: ['A DiscountRule that contains other DiscountRules (Composite)', 'A subclass of PercentOff', 'A boolean flag in the engine', 'A static utility method only'], answer: 0, explain: 'Making BestOf implement the same interface lets it be used anywhere a rule is expected, nested to any depth — composition at its best.' },
+    hints: [
+      `<p>Hint 1: One interface: <code>long discount(List&lt;Item&gt; cart, long runningTotal)</code>. Each promotion is a small class (record) implementing it.</p>`,
+      `<p>Hint 2: The engine <b>has</b> a <code>List&lt;DiscountRule&gt;</code> (injected) and loops: d = clamp(rule.discount(...), 0, total); total -= d; log it.</p>`,
+      `<p>Hint 3: <code>BestOf</code> implements DiscountRule and returns the max of its children for the same running total. Clamp inside the engine so a buggy rule cannot create a negative total.</p>`
+    ],
+    solution: {
+      approach: `<p>Strategy + Composite via composition: every promotion is an independent <code>DiscountRule</code>; <code>BestOf</code> is a rule made of rules; the engine owns ordering, clamping and logging and never changes when rules are added. Records keep rules immutable and self-describing (their <code>toString</code> doubles as the log label).</p>`,
+      code: `import java.util.*;
+
+record Item(String name, long price, int qty) {
+    Item { if (price < 0 || qty < 0) throw new IllegalArgumentException("negative"); }
+    long lineTotal() { return price * qty; }
+}
+
+interface DiscountRule { long discount(List<Item> cart, long runningTotal); }
+
+record BulkItemOff(String item, int minQty, int pct) implements DiscountRule {
+    public long discount(List<Item> cart, long running) {
+        long d = 0;
+        for (Item i : cart) if (i.name().equals(item) && i.qty() >= minQty) d += i.lineTotal() * pct / 100;
+        return d;
+    }
+}
+
+record PercentOff(int pct) implements DiscountRule {
+    public long discount(List<Item> cart, long running) { return running * pct / 100; }
+}
+
+record FlatOff(long amount, long minSpend) implements DiscountRule {
+    public long discount(List<Item> cart, long running) { return running >= minSpend ? amount : 0; }
+}
+
+record BestOf(List<DiscountRule> options) implements DiscountRule {      // composite
+    BestOf { options = List.copyOf(options); }
+    public long discount(List<Item> cart, long running) {
+        long best = 0;
+        for (DiscountRule r : options) best = Math.max(best, r.discount(cart, running));
+        return best;
+    }
+}
+
+final class PricingEngine {
+    private final List<DiscountRule> rules;                              // HAS-A list of strategies
+    PricingEngine(List<DiscountRule> rules) { this.rules = List.copyOf(rules); }
+
+    long checkout(List<Item> cart, List<String> log) {
+        long total = 0;
+        for (Item i : cart) total += i.lineTotal();
+        for (DiscountRule rule : rules) {
+            long d = Math.max(0, Math.min(rule.discount(cart, total), total));   // clamp: never negative
+            if (d > 0) log.add(rule + " -" + d);
+            total -= d;
+        }
+        return total;
+    }
+}
+
+public class Main {
+    public static void main(String[] args) {
+        List<Item> cart = List.of(new Item("shirt", 1000, 2), new Item("socks", 100, 5));
+        PricingEngine engine = new PricingEngine(List.of(
+            new BulkItemOff("socks", 5, 20),
+            new BestOf(List.of(new PercentOff(10), new FlatOff(300, 2000)))));
+        List<String> log = new ArrayList<>();
+        System.out.println(engine.checkout(cart, log));    // 2100
+        log.forEach(System.out::println);
+        // BulkItemOff[item=socks, minQty=5, pct=20] -100
+        // BestOf[options=[PercentOff[pct=10], FlatOff[amount=300, minSpend=2000]]] -300
+    }
+}`,
+      dry: { head: ['step', 'rule', 'running before', 'discount', 'running after'], rows: [['0', 'cart sum', '—', '—', '2500'], ['1', 'BulkItemOff(socks,5,20)', '2500', '500×20% = 100', '2400'], ['2', 'BestOf(10%, Flat300≥2000)', '2400', 'max(240, 300) = 300', H.c('g', '2100')]] },
+      complexity: `<p>O(R × N) for R rules and N items (BulkItemOff scans the cart); O(R) log space.</p>`,
+      followUps: ['Add a rule that caps the total discount at 30% of the original price — where does it live?', 'How would you load rules from a database/JSON config safely?', 'Should rule order be data (priority field) instead of list position?']
+    }
+  });
+
+  practice.push({
+    title: 'Shallow clone() vs Deep Copy: Predict, Then Fix',
+    level: 'Hard', tags: ['clone', 'Object methods', 'deep copy', 'output prediction'], companies: ['Microsoft', 'Adobe', 'Citadel'],
+    statement: `<p><code>Team</code> implements <code>Cloneable</code> and uses <code>super.clone()</code>. Predict what is printed for <code>a</code>, then write a correct deep copy.</p>
+      <pre>Team a = new Team("Lions", new ArrayList&lt;&gt;(List.of("x", "y")), new Coach("Ravi"), new int[] {1, 2});
+Team b = a.clone();
+b.name = "Tigers";
+b.members.add("z");
+b.coach.name = "Meera";
+b.scores[0] = 99;
+b.coach = new Coach("Sam");
+print(a.name + " " + a.members + " " + a.coach.name + " " + a.scores[0]);</pre>`,
+    constraints: `Java 21. Coach is mutable (public name field).`,
+    example: `<p>${H.c('r', 'Lions [x, y, z] Meera 99')}. Reassigning a field of <code>b</code> (<code>name</code>, later <code>coach</code>) never affects <code>a</code>; <b>mutating</b> an object that both share (the list, the Coach, the array) does.</p>`,
+    brute: {
+      why: `<p>Believing "clone = independent copy" predicts <code>Lions [x, y] Ravi 1</code>. <code>Object.clone()</code> copies each field's <b>value</b>; for reference fields that value is a pointer, so the list, coach and array are shared.</p>`,
+      code: `import java.util.*;
+
+class Coach { String name; Coach(String n) { name = n; } }
+
+class Team implements Cloneable {
+    String name; List<String> members; Coach coach; int[] scores;
+    Team(String n, List<String> m, Coach c, int[] s) { name = n; members = m; coach = c; scores = s; }
+    @Override public Team clone() {
+        try { return (Team) super.clone(); }                 // SHALLOW
+        catch (CloneNotSupportedException e) { throw new AssertionError(e); }
+    }
+}
+
+public class Main {
+    public static void main(String[] args) {
+        Team a = new Team("Lions", new ArrayList<>(List.of("x", "y")), new Coach("Ravi"), new int[] {1, 2});
+        Team b = a.clone();
+        b.name = "Tigers";
+        b.members.add("z");
+        b.coach.name = "Meera";
+        b.scores[0] = 99;
+        b.coach = new Coach("Sam");
+        System.out.println(a.name + " " + a.members + " " + a.coach.name + " " + a.scores[0]);   // Lions [x, y, z] Meera 99
+    }
+}`
+    },
+    mcq: { q: 'After b = a.clone(), why does "b.coach = new Coach(\'Sam\')" NOT change a?', options: ['It reassigns b\'s own field; a.coach still points to the old Coach object', 'Coach is immutable', 'clone() deep-copies Coach', 'Strings are interned'], answer: 0, explain: 'Each Team has its own coach field. Reassignment changes only that field; mutation through a shared reference (b.coach.name = ...) changes the object both point to.' },
+    hints: [
+      `<p>Hint 1: Draw two Team boxes after the clone: each field holds the <b>same</b> pointer as the original (list #1, coach #2, array #3).</p>`,
+      `<p>Hint 2: For each statement decide: reassign b's field (a unaffected) or mutate a shared object (a affected). Order matters: the coach is mutated <i>before</i> b.coach is reassigned.</p>`,
+      `<p>Hint 3: Fix with a copy constructor: <code>new ArrayList&lt;&gt;(other.members)</code>, <code>new Coach(other.coach.name)</code>, <code>other.scores.clone()</code>. Strings are immutable, so sharing them is safe.</p>`
+    ],
+    solution: {
+      approach: `<p>Classify each field: immutable (String) → share; mutable (List, Coach, int[]) → copy. A copy constructor makes this explicit, works with final fields (clone() cannot assign final fields after <code>super.clone()</code>), and needs no <code>Cloneable</code>, casts or checked exceptions.</p>`,
+      code: `import java.util.*;
+
+class Coach {
+    String name;
+    Coach(String n) { name = n; }
+    Coach(Coach other) { this(other.name); }                  // copy constructor
+}
+
+class Team {
+    String name;                                              // immutable String: safe to share
+    final List<String> members;
+    Coach coach;
+    final int[] scores;
+
+    Team(String n, List<String> m, Coach c, int[] s) { name = n; members = m; coach = c; scores = s; }
+
+    Team(Team other) {                                        // DEEP copy
+        this(other.name,
+             new ArrayList<>(other.members),                  // new list (elements are immutable Strings)
+             new Coach(other.coach),                          // new Coach
+             other.scores.clone());                           // new array (primitives copied)
+    }
+}
+
+public class Main {
+    public static void main(String[] args) {
+        Team a = new Team("Lions", new ArrayList<>(List.of("x", "y")), new Coach("Ravi"), new int[] {1, 2});
+        Team b = new Team(a);
+        b.name = "Tigers";
+        b.members.add("z");
+        b.coach.name = "Meera";
+        b.scores[0] = 99;
+        b.coach = new Coach("Sam");
+        System.out.println(a.name + " " + a.members + " " + a.coach.name + " " + a.scores[0]);   // Lions [x, y] Ravi 1
+        System.out.println(b.name + " " + b.members + " " + b.coach.name + " " + b.scores[0]);   // Tigers [x, y, z] Sam 99
+    }
+}`,
+      dry: { head: ['statement (on b)', 'kind', 'a after (shallow clone)', 'a after (deep copy)'], rows: [['b.name = "Tigers"', 'reassign', 'Lions', 'Lions'], ['b.members.add("z")', 'mutate shared list', H.c('r', '[x, y, z]'), '[x, y]'], ['b.coach.name = "Meera"', 'mutate shared Coach', H.c('r', 'Meera'), 'Ravi'], ['b.scores[0] = 99', 'mutate shared array', H.c('r', '99'), '1'], ['b.coach = new Coach("Sam")', 'reassign', 'Meera (unchanged by this line)', 'Ravi']] },
+      complexity: `<p>Deep copy is O(total size of the copied structures); shallow clone is O(number of fields). Deep copy of graphs with cycles needs an identity map to avoid infinite recursion.</p>`,
+      followUps: ['How would you deep-copy a structure with cycles (e.g. Team ↔ Coach back-reference)?', 'Why can clone() not assign a final field of the copy?', 'When is a shallow copy exactly what you want?']
+    }
   });
 registerModule({ id: 'java04', title: 'OOP Pillars in Java', intro: '<p>x</p>', goals: [], prereqs: 'x', hours: 12, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();

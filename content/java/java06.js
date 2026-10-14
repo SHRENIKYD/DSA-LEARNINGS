@@ -2513,7 +2513,7 @@ class Vanish {
     }
 }`,
       dry: { head: ['call', 'after try', 'after catch', 'after finally', 'result'], rows: [['1st', '1', '11 (throws)', '111', 'returns 111, exception lost'], ['2nd', '112', '122 (throws)', '222', 'returns 222, exception lost']] },
-      complexity: `<p>O(1).</p>`,
+      complexity: `<p>O(1) per call — this is about control flow, not cost.</p>`,
       followUps: ['What if finally contained <code>throw new IllegalArgumentException()</code> instead of return?', 'How does try-with-resources avoid losing exceptions?', 'Which compiler lint flag warns about this? (<code>-Xlint:finally</code>)']
     }
   });
