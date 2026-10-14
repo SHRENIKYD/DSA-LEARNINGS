@@ -412,7 +412,7 @@ System.out.println(Integer.toUnsignedString(x)); // 4294967295`
           <p>And 29 % 8 = 5 ✔. Java's <code>HashMap</code> uses exactly this: table size is a power of two, bucket = <code>hash &amp; (size − 1)</code>.</p>`
       },
       {
-        title: 'Unpack an RGB colour with >>> and & 0xFF',
+        title: 'Unpack an RGB colour with &gt;&gt;&gt; and &amp; 0xFF',
         html: `<p>A colour packs three bytes into one int: <code>0x12AB34</code> → red 0x12, green 0xAB, blue 0x34. Slide the wanted byte down to the bottom, then cut away everything above it.</p>
           ${H.table(['channel', 'expression', 'value'], [['red', '(c &gt;&gt;&gt; 16) &amp; 0xFF', '18'], ['green', '(c &gt;&gt;&gt; 8) &amp; 0xFF', '171'], ['blue', 'c &amp; 0xFF', '52']])}
           <p>Packing goes the other way: <code>(r &lt;&lt; 16) | (g &lt;&lt; 8) | b</code>.</p>`,
@@ -422,12 +422,12 @@ System.out.println(r + " " + g + " " + b);              // 18 171 52
 System.out.println(((r << 16) | (g << 8) | b) == c);    // true`
       },
       {
-        title: 'The precedence trap: x & 1 == 0',
+        title: 'The precedence trap: x &amp; 1 == 0',
         html: `<p>In Java <code>==</code> is evaluated <b>before</b> <code>&amp;</code>. So <code>x &amp; 1 == 0</code> means <code>x &amp; (1 == 0)</code> → int &amp; boolean → <span class="c-r">compile error</span>. In C++ it compiles and silently computes <code>x &amp; 0</code> = 0 — a wrong answer with no warning. Always bracket: <code>(x &amp; 1) == 0</code>.</p>
           ${H.table(['you write', 'Java reads it as', 'result'], [['x &amp; 1 == 0', 'x &amp; (1 == 0)', '<span class="c-r">does not compile</span>'], ['(x &amp; 1) == 0', '(x &amp; 1) == 0', '<span class="c-g">true for even x</span>']])}`
       },
       {
-        title: '&& vs & on booleans',
+        title: '&amp;&amp; vs &amp; on booleans',
         html: `<p>On booleans, <code>&amp;</code> and <code>|</code> are also allowed but they <b>always evaluate both sides</b>. <code>&amp;&amp;</code> and <code>||</code> stop early. So <code>i &lt; n &amp;&amp; a[i] &gt; 0</code> is safe, but <code>i &lt; n &amp; a[i] &gt; 0</code> can throw <code>ArrayIndexOutOfBoundsException</code> when i == n.</p>`,
         code: `int[] a = {5};
 int i = 1;
@@ -859,7 +859,7 @@ System.out.println(mask); // 11`
     codeTitle: 'Kernighan loop',
     examples: [
       {
-        title: 'Counting bits for every number 0..n (DP on n & (n − 1))',
+        title: 'Counting bits for every number 0..n (DP on n &amp; (n − 1))',
         html: `<p><code>i &amp; (i − 1)</code> is i with one fewer ON bit, and it is <b>smaller</b> than i, so its answer is already known: <code>bits[i] = bits[i &amp; (i − 1)] + 1</code>.</p>
           ${H.table(['i', 'binary', 'i &amp; (i − 1)', 'bits[i]'], [['0', '000', '–', '0'], ['1', '001', '0', '0 + 1 = 1'], ['2', '010', '0', '0 + 1 = 1'], ['3', '011', '2', '1 + 1 = 2'], ['4', '100', '0', '0 + 1 = 1'], ['5', '101', '4', '1 + 1 = 2'], ['6', '110', '4', '1 + 1 = 2'], ['7', '111', '6', '2 + 1 = 3']])}
           <p>O(n) total instead of O(n log n).</p>`,
@@ -1147,6 +1147,10 @@ print(reduce(xor, [-3, 5, -3], 0))  # 5` }],
           narr: 'Start with <b>res = 0</b> (0 changes nothing under XOR). We will XOR every number into res. On the right we also track which values have been seen an <b>odd</b> number of times so far — that is exactly what res secretly "contains".',
           parts: [{ type: 'array', label: 'nums', values: a.slice() }, { type: 'bits', label: 'res', value: 0, width: w }, { type: 'set', label: 'values currently "inside" res (seen odd times)', items: [] }]
         });
+        frames.push({
+          narr: 'The two rules that make this work: <b>x ^ x = 0</b> (twins cancel) and <b>x ^ 0 = x</b> (0 changes nothing). And XOR does not care about order, so twins cancel even when they are far apart in the array.',
+          parts: [{ type: 'text', html: H.table(['rule', 'example'], [['x ^ x = 0', '5 ^ 5 = 0'], ['x ^ 0 = x', '5 ^ 0 = 5'], ['order is free', '5 ^ 3 ^ 5 = 5 ^ 5 ^ 3 = 3']]) }, { type: 'code', label: 'the whole algorithm', lang: 'java', code: 'int res = 0;\nfor (int x : nums) res ^= x;\nreturn res;', hl: { 2: 'cur' } }]
+        });
         for (var i = 0; i < a.length; i++) {
           var before = res; res ^= a[i];
           var k = odd.indexOf(a[i]), cancel = k >= 0, hlS = {};
@@ -1195,8 +1199,8 @@ print(reduce(xor, [-3, 5, -3], 0))  # 5` }],
         },
         mcq: {
           q: 'What is <code>7 ^ 3 ^ 7</code>?',
-          options: ['3', '7', '0', '4'],
-          answer: 0,
+          options: ['7', '0', '3', '4'],
+          answer: 2,
           explain: 'Reorder: 7 ^ 7 ^ 3 = 0 ^ 3 = 3. The two 7s cancel no matter where they stand.'
         },
         hints: [
@@ -1383,8 +1387,8 @@ System.out.println(ans); // 6`
         },
         mcq: {
           q: 'Why does XOR-ing everything fail for "every element appears three times"?',
-          options: ['Because x ^ x ^ x = x, so the triplets do not cancel', 'Because XOR does not work on negative numbers', 'Because XOR is not commutative', 'It does not fail; XOR still works'],
-          answer: 0,
+          options: ['Because XOR does not work on negative numbers', 'Because x ^ x ^ x = x, so the triplets do not cancel', 'Because XOR is not commutative', 'It does not fail; XOR still works'],
+          answer: 1,
           explain: 'Two copies cancel to 0, the third copy brings x back. You need a counter that resets every 3, i.e. count % 3 per bit.'
         },
         hints: [
@@ -1596,8 +1600,8 @@ System.out.println(a + " " + b);     // 5 2`
         },
         mcq: {
           q: 'After XOR-ing all numbers you get xr = 6 (110). What does that tell you about the two loners?',
-          options: ['They differ in bits 1 and 2, and agree in every other bit', 'Their sum is 6', 'One of them is 6', 'They are both even'],
-          answer: 0,
+          options: ['Their sum is 6', 'One of them is 6', 'They are both even', 'They differ in bits 1 and 2, and agree in every other bit'],
+          answer: 3,
           explain: 'xr = a ^ b, and XOR is 1 exactly where the bits differ. So a and b differ at bits 1 and 2 only. (3 and 5: 011 vs 101.)'
         },
         hints: [
@@ -1843,6 +1847,10 @@ System.out.println(best); // 2`
           narr: 's became 0, so the loop condition <code>s &gt; 0</code> stops. Add the <b>empty</b> submask 0 by hand. Total: <b>' + seen.length + '</b> submasks, each once, from largest to smallest.',
           parts: [{ type: 'set', label: 'all submasks of ' + m, items: seen.slice(), hl: one('0', 'sel') }, { type: 'vars', vals: { count: seen.length, expected: 1 << popcount(m) }, hl: { count: 'ok' } }]
         });
+        frames.push({
+          narr: 'The whole loop in code. Remember the two details: the loop stops at <code>s &gt; 0</code>, so the empty submask 0 is handled separately; and over <b>all</b> masks m of n bits, this inner loop runs 3<sup>n</sup> times in total.',
+          parts: [{ type: 'code', label: 'submask enumeration', lang: 'java', code: 'for (int s = m; s > 0; s = (s - 1) & m) {\n    visit(s);\n}\nvisit(0); // the empty submask', hl: { 1: 'cur', 4: 'ok' } }]
+        });
         return frames;
       }
     }],
@@ -1949,8 +1957,8 @@ System.out.println(best); // 2`
     },
     mcq: {
       q: 'Why is XOR safer than the formula n(n+1)/2 − sum(nums)?',
-      options: ['XOR can never overflow, the sum can for large n', 'XOR is always faster', 'The formula is wrong for n = 1', 'XOR works on unsorted input, the formula does not'],
-      answer: 0,
+      options: ['XOR is always faster', 'XOR can never overflow, the sum can for large n', 'The formula is wrong for n = 1', 'XOR works on unsorted input, the formula does not'],
+      answer: 1,
       explain: 'Both work on unsorted input and both are O(N). But n(n+1)/2 overflows int when n is about 65,536 or more; XOR results never exceed the bit width of the inputs.'
     },
     hints: [
@@ -2005,8 +2013,8 @@ System.out.println(best); // 2`
     },
     mcq: {
       q: 'Which expression gives the Hamming distance in Java?',
-      options: ['<code>Integer.bitCount(x ^ y)</code>', '<code>Integer.bitCount(x &amp; y)</code>', '<code>Integer.bitCount(x | y)</code>', '<code>Math.abs(x - y)</code>'],
-      answer: 0,
+      options: ['<code>Integer.bitCount(x &amp; y)</code>', '<code>Integer.bitCount(x | y)</code>', '<code>Integer.bitCount(x ^ y)</code>', '<code>Math.abs(x - y)</code>'],
+      answer: 2,
       explain: 'x ^ y has a 1 exactly in the differing columns; bitCount counts them. AND counts common ones, OR counts columns where at least one is 1.'
     },
     hints: [
@@ -2060,8 +2068,8 @@ System.out.println(best); // 2`
     },
     mcq: {
       q: 'For num = 10 (1010), which mask must you XOR with?',
-      options: ['15 (1111)', '7 (0111)', '−1 (all ones)', '8 (1000)'],
-      answer: 0,
+      options: ['7 (0111)', '−1 (all ones)', '8 (1000)', '15 (1111)'],
+      answer: 3,
       explain: 'The mask must have the same length as num (4 bits) and be all ones: (highestOneBit(10) &lt;&lt; 1) − 1 = 16 − 1 = 15. 10 ^ 15 = 5 (0101).'
     },
     hints: [
@@ -2117,8 +2125,8 @@ System.out.println(best); // 2`
     },
     mcq: {
       q: 'Which recurrence is correct for the number of 1 bits?',
-      options: ['ans[i] = ans[i &gt;&gt; 1] + (i &amp; 1)', 'ans[i] = ans[i − 1] + 1', 'ans[i] = 2 · ans[i &gt;&gt; 1]', 'ans[i] = ans[i &amp; (i − 1)] − 1'],
-      answer: 0,
+      options: ['ans[i] = ans[i − 1] + 1', 'ans[i] = 2 · ans[i &gt;&gt; 1]', 'ans[i] = ans[i &gt;&gt; 1] + (i &amp; 1)', 'ans[i] = ans[i &amp; (i − 1)] − 1'],
+      answer: 2,
       explain: 'i &gt;&gt; 1 drops bit 0 and keeps all other bits, so ans[i] = ans[i &gt;&gt; 1] + (bit 0 of i). ans[i − 1] + 1 fails for i = 4 (ans[3] + 1 = 3, but 4 has one bit).'
     },
     hints: [
@@ -2170,8 +2178,8 @@ System.out.println(best); // 2`
     },
     mcq: {
       q: 'Why must the loop use <code>n &gt;&gt;&gt;= 1</code> instead of <code>n &gt;&gt;= 1</code> if you loop while n ≠ 0?',
-      options: ['&gt;&gt; copies the sign bit, so a negative n never becomes 0', '&gt;&gt; is slower', '&gt;&gt;&gt; also reverses the bits', 'There is no difference'],
-      answer: 0,
+      options: ['&gt;&gt; is slower', '&gt;&gt; copies the sign bit, so a negative n never becomes 0', '&gt;&gt;&gt; also reverses the bits', 'There is no difference'],
+      answer: 1,
       explain: 'For negative n, &gt;&gt; keeps shifting in 1s, so n stays negative forever. &gt;&gt;&gt; shifts in 0s. (With a fixed 32-iteration loop either works, since we read bit 0 each time.)'
     },
     hints: [
@@ -2299,8 +2307,8 @@ print(get_sum(2, 3), get_sum(-2, 3), get_sum(-5, -7))  # 5 1 -12` }],
     },
     mcq: {
       q: 'Why does any bit below the common prefix of left and right become 0?',
-      options: ['Between two numbers that differ there, the counter passes a number with that bit 0 (e.g. ...0111 → ...1000)', 'Because AND always returns 0 for ranges', 'Because right is always even', 'It does not; only bit 0 becomes 0'],
-      answer: 0,
+      options: ['Because AND always returns 0 for ranges', 'Because right is always even', 'It does not; only bit 0 becomes 0', 'Between two numbers that differ there, the counter passes a number with that bit 0 (e.g. ...0111 → ...1000)'],
+      answer: 3,
       explain: 'If left and right first differ at bit k, then the range crosses a point where bit k flips from 0 to 1 and all lower bits reset to 0 — so every bit ≤ k is 0 in some number of the range.'
     },
     hints: [
@@ -2355,8 +2363,8 @@ print(get_sum(2, 3), get_sum(-2, 3), get_sum(-5, -7))  # 5 1 -12` }],
     },
     mcq: {
       q: 'A bit column has k ones among N numbers. How many pairs differ in that column?',
-      options: ['k · (N − k)', 'k · k', 'N − k', 'k(k − 1)/2'],
-      answer: 0,
+      options: ['k · k', 'k · (N − k)', 'N − k', 'k(k − 1)/2'],
+      answer: 1,
       explain: 'A pair differs in this column exactly when one number has 1 and the other has 0: choose one of the k ones and one of the N − k zeros.'
     },
     hints: [
@@ -2417,8 +2425,8 @@ print(get_sum(2, 3), get_sum(-2, 3), get_sum(-5, -7))  # 5 1 -12` }],
     },
     mcq: {
       q: 'In a column where c has 0 and both a and b have 1, how many flips are needed?',
-      options: ['2', '1', '0', 'It is impossible'],
-      answer: 0,
+      options: ['1', '0', '2', 'It is impossible'],
+      answer: 2,
       explain: 'For a | b to be 0 both bits must be 0, so both 1s must be flipped.'
     },
     hints: [
@@ -2556,8 +2564,8 @@ print(get_sum(2, 3), get_sum(-2, 3), get_sum(-5, -7))  # 5 1 -12` }],
     },
     mcq: {
       q: 'What is the Gray code of i = 6 using g = i ^ (i &gt;&gt; 1)?',
-      options: ['5 (101)', '6 (110)', '3 (011)', '4 (100)'],
-      answer: 0,
+      options: ['6 (110)', '3 (011)', '4 (100)', '5 (101)'],
+      answer: 3,
       explain: '6 = 110, 6 &gt;&gt; 1 = 011, XOR = 101 = 5.'
     },
     hints: [
@@ -2613,8 +2621,8 @@ print(get_sum(2, 3), get_sum(-2, 3), get_sum(-5, -7))  # 5 1 -12` }],
     },
     mcq: {
       q: 'With px[i] = arr[0] ^ … ^ arr[i − 1], what is XOR(arr[l..r])?',
-      options: ['px[r + 1] ^ px[l]', 'px[r] − px[l]', 'px[r] ^ px[l − 1] ^ arr[l]', 'px[r + 1] &amp; px[l]'],
-      answer: 0,
+      options: ['px[r] − px[l]', 'px[r + 1] ^ px[l]', 'px[r] ^ px[l − 1] ^ arr[l]', 'px[r + 1] &amp; px[l]'],
+      answer: 1,
       explain: 'px[r + 1] covers 0..r and px[l] covers 0..l−1. XOR-ing them cancels the shared part 0..l−1, leaving l..r. Unlike sums there is no subtraction: XOR is its own inverse.'
     },
     hints: [
@@ -2672,8 +2680,8 @@ print(get_sum(2, 3), get_sum(-2, 3), get_sum(-5, -7))  # 5 1 -12` }],
     },
     mcq: {
       q: 'Which identity makes the O(N + M) solution work?',
-      options: ['(a<sub>1</sub> &amp; b) ^ (a<sub>2</sub> &amp; b) = (a<sub>1</sub> ^ a<sub>2</sub>) &amp; b', '(a &amp; b) ^ (a | b) = 0', 'a ^ b = a + b', '(a &amp; b) | (a ^ b) = a &amp; b'],
-      answer: 0,
+      options: ['(a &amp; b) ^ (a | b) = 0', 'a ^ b = a + b', '(a<sub>1</sub> &amp; b) ^ (a<sub>2</sub> &amp; b) = (a<sub>1</sub> ^ a<sub>2</sub>) &amp; b', '(a &amp; b) | (a ^ b) = a &amp; b'],
+      answer: 2,
       explain: 'Per bit, AND is multiplication and XOR is addition mod 2, and multiplication distributes over addition. So XOR over all pairs = (XOR of arr1) &amp; (XOR of arr2).'
     },
     hints: [
@@ -2741,8 +2749,8 @@ print(get_sum(2, 3), get_sum(-2, 3), get_sum(-5, -7))  # 5 1 -12` }],
     },
     mcq: {
       q: 'Why is the answer for n = 2<sup>k</sup> equal to 2<sup>k+1</sup> − 1?',
-      options: ['Clearing the top bit needs bit k−1 set first, which recursively costs the full sequence; the moves walk through every k+1-bit Gray code', 'Because each bit costs exactly 2 moves', 'Because you must flip bit 0 k times', 'It is a coincidence'],
-      answer: 0,
+      options: ['Because each bit costs exactly 2 moves', 'Because you must flip bit 0 k times', 'Clearing the top bit needs bit k−1 set first, which recursively costs the full sequence; the moves walk through every k+1-bit Gray code', 'It is a coincidence'],
+      answer: 2,
       explain: 'The moves are exactly the steps of the binary-reflected Gray code. The number 2<sup>k</sup> = 100…0 is the Gray code of index 2<sup>k+1</sup> − 1, so reaching 0 takes that many steps.'
     },
     hints: [
@@ -2808,8 +2816,8 @@ print([min_ops(n) for n in range(9)])  # [0, 1, 3, 2, 7, 6, 4, 5, 15]` }],
     },
     mcq: {
       q: 'For a fixed z, which pair-AND values x satisfy x &amp; z == 0?',
-      options: ['Exactly the submasks of ~z (within 16 bits)', 'Only x = 0', 'All x smaller than z', 'All x with fewer bits than z'],
-      answer: 0,
+      options: ['Only x = 0', 'Exactly the submasks of ~z (within 16 bits)', 'All x smaller than z', 'All x with fewer bits than z'],
+      answer: 1,
       explain: 'x &amp; z == 0 means x has no ON bit where z has one, i.e. x ⊆ complement(z). So enumerate submasks of (~z &amp; 0xFFFF) and add their pair counts.'
     },
     hints: [
@@ -2874,8 +2882,8 @@ print([min_ops(n) for n in range(9)])  # [0, 1, 3, 2, 7, 6, 4, 5, 15]` }],
     },
     mcq: {
       q: 'What should the DP state be?',
-      options: ['dp[skillMask] = smallest team whose skills union is exactly skillMask', 'dp[person] = number of skills of that person', 'dp[i][j] = whether person i has skill j', 'dp[teamSize] = best skill mask'],
-      answer: 0,
+      options: ['dp[person] = number of skills of that person', 'dp[i][j] = whether person i has skill j', 'dp[teamSize] = best skill mask', 'dp[skillMask] = smallest team whose skills union is exactly skillMask'],
+      answer: 3,
       explain: 'The skill universe is tiny (16), so 2<sup>16</sup> skill masks is a small state space. Each person is a transition mask → mask | personMask.'
     },
     hints: [
