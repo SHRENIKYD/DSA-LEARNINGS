@@ -2161,7 +2161,7 @@ line 5: ${H.c('y', "copy(a') move(a') dtor(~)")}</pre>`,
               std::cout << "copy(a') copy(a'') dtor(a')\n";   // line 5  WRONG: return t; moves
           }` },
       mcq: { q: 'Why does <code>return t;</code> in <code>Tracer pass(Tracer t)</code> <b>move</b> instead of copy, but cannot be elided?', options: ['Returning a named parameter is an implicit-move context, but parameters live in the caller-built slot so NRVO does not apply', 'Because Tracer has a noexcept move constructor', 'Because the function is inline', 'It actually copies'], answer: 0, explain: 'C++ treats <code>return local_or_param;</code> as an rvalue first (implicit move). NRVO is only permitted for local variables, not function parameters.' },
-      hints: [`<p>Lines 1–2 are ordinary construction and copy-construction. Line 3: <code>make</code> returns a <b>prvalue</b> → guaranteed elision, so only one constructor runs.</p>`, `<p>Line 4: <code>std::move(c)</code> is an xvalue → move-assignment; c\'s name becomes <code>~</code>. Line 5: <code>a</code> is copied into the by-value parameter <code>t</code>, then <code>return t;</code> implicitly moves into <code>d</code>, then <code>t</code> (now <code>~</code>) is destroyed.</p>`, `<p>End of main destroys d, c, b, a (reverse order). To save a call on line 5, take the parameter by const reference and return a copy? No — that still copies once. Instead make <code>pass</code> take <code>Tracer&amp;&amp;</code>... or simply call <code>pass(std::move(a))</code> to turn the copy into a move. Think about which is "one character" (hint: change the parameter to <code>const Tracer&amp;</code> and <code>return t;</code> copies once with NRVO impossible — count calls!).</p>`],
+      hints: [`<p>Lines 1–2 are ordinary construction and copy-construction. Line 3: <code>make</code> returns a <b>prvalue</b> → guaranteed elision, so only one constructor runs.</p>`, `<p>Line 4: <code>std::move(c)</code> is an xvalue → move-assignment; c\'s name becomes <code>~</code>. Line 5: <code>a</code> is copied into the by-value parameter <code>t</code>, then <code>return t;</code> implicitly moves into <code>d</code>, then <code>t</code> (now <code>~</code>) is destroyed.</p>`, `<p>End of main destroys d, c, b, a (reverse declaration order). For the one-character change, ask: which object on line 5 exists only because the parameter is <b>by value</b>? Add a single <code>&amp;</code> to the parameter so no parameter object is built; then <code>return t;</code> has to copy once into the return slot and nothing else runs.</p>`],
       solution: {
         approach: `<p>Apply the rules in order: prvalue elision (line 3), xvalue → move-assignment (line 4), parameter copy + implicit move on return + parameter destruction (line 5), reverse-order destruction at the end. For the one-character change: declare the parameter as <code>const Tracer&amp; t</code> — then <code>return t;</code> must copy once into the return slot (no parameter object exists), giving <code>copy(a')</code> only: one call instead of three (copy, move, dtor).</p>`,
         code: R`
@@ -2193,6 +2193,462 @@ line 5: ${H.c('y', "copy(a') move(a') dtor(~)")}</pre>`,
         followUps: ['What prints if <code>Tracer</code>\'s move constructor is deleted? (Line 3 still compiles — guaranteed elision needs no move.)', 'What changes if <code>make</code> is <code>Tracer x(n); return x;</code>? (Optional NRVO: usually still just ctor.)', 'Why is <code>return std::move(x);</code> a pessimization for a local x?']
       }
     }]
+  });
+
+  /* ======================================================================
+     PRACTICE — Easy
+     ====================================================================== */
+  practice.push({
+    title: 'Comparable Mixin: All Six Comparisons from operator<', level: 'Easy', tags: ['crtp', 'mixin', 'operators'], companies: ['Bloomberg', 'Microsoft'],
+    statement: `<p>Write a CRTP base <code>Comparable&lt;D&gt;</code>. Any class that inherits from it and defines only <code>operator&lt;</code> must automatically support <code>&gt;</code>, <code>&lt;=</code>, <code>&gt;=</code>, <code>==</code> and <code>!=</code>. Show it working for a <code>Money{long cents}</code> type and a <code>Date{y, m, d}</code> type.</p>`,
+    constraints: `<p>No virtual functions, no macros. Operators must be found for both <code>Money</code> and <code>Date</code> without writing them per class.</p>`,
+    example: `<pre>Money{150} &gt; Money{99}   → ${H.c('g', 'true')}
+Date{2024,1,5} &lt;= Date{2024,1,5} → ${H.c('g', 'true')}
+Date{2024,1,5} != Date{2023,12,31} → ${H.c('g', 'true')}</pre>`,
+    brute: { why: `<p>Writing all six operators by hand for every class: 5 extra functions × N classes, each a chance to get a sign or a <code>!</code> wrong, and they drift apart when the ordering rule changes.</p>`,
+      code: R`
+        struct Money {
+            long cents;
+            friend bool operator<(const Money& a, const Money& b)  { return a.cents < b.cents; }
+            friend bool operator>(const Money& a, const Money& b)  { return a.cents > b.cents; }   // duplicated logic
+            friend bool operator<=(const Money& a, const Money& b) { return a.cents <= b.cents; }
+            friend bool operator>=(const Money& a, const Money& b) { return a.cents >= b.cents; }
+            friend bool operator==(const Money& a, const Money& b) { return a.cents == b.cents; }
+            friend bool operator!=(const Money& a, const Money& b) { return a.cents != b.cents; }
+        };
+        int main() { return Money{1} < Money{2} ? 0 : 1; }` },
+    mcq: { q: 'Why are the derived operators written as <b>friend functions defined inside</b> <code>Comparable&lt;D&gt;</code>?', options: ['They become hidden friends found by ADL for D, and both operands get symmetric conversions', 'Friends are faster than members', 'Templates cannot have member operators', 'To make them virtual'], answer: 0, explain: 'A friend defined inside the class template is injected for each instantiation and found through argument-dependent lookup when a D is an argument.' },
+    hints: [`<p>Everything can be expressed with <code>&lt;</code>: <code>a &gt; b</code> is <code>b &lt; a</code>; <code>a &lt;= b</code> is <code>!(b &lt; a)</code>; <code>a == b</code> is <code>!(a &lt; b) &amp;&amp; !(b &lt; a)</code>.</p>`, `<p>Make the parameters <code>const D&amp;</code> — the base knows D through the template parameter.</p>`, `<p>Each class: <code>struct Money : Comparable&lt;Money&gt; { ... friend bool operator&lt;(...) ... };</code>. Bonus: compare with C++20 <code>operator&lt;=&gt;</code> = default.</p>`],
+    solution: {
+      approach: `<p>The CRTP base defines five hidden-friend operators in terms of the derived class's <code>operator&lt;</code>. Each derived class writes only its ordering rule. (In C++20 you'd normally write <code>auto operator&lt;=&gt;(const Date&amp;) const = default;</code> — the CRTP version is the pre-C++20 idiom and a classic interview exercise.)</p>`,
+      code: R`
+        #include <iostream>
+        #include <tuple>
+
+        template <typename D>
+        struct Comparable {
+            friend bool operator>(const D& a, const D& b)  { return b < a; }
+            friend bool operator<=(const D& a, const D& b) { return !(b < a); }
+            friend bool operator>=(const D& a, const D& b) { return !(a < b); }
+            friend bool operator==(const D& a, const D& b) { return !(a < b) && !(b < a); }
+            friend bool operator!=(const D& a, const D& b) { return (a < b) || (b < a); }
+        };
+
+        struct Money : Comparable<Money> {
+            long cents;
+            explicit Money(long c) : cents(c) {}
+            friend bool operator<(const Money& a, const Money& b) { return a.cents < b.cents; }
+        };
+        struct Date : Comparable<Date> {
+            int y, m, d;
+            Date(int yy, int mm, int dd) : y(yy), m(mm), d(dd) {}
+            friend bool operator<(const Date& a, const Date& b) { return std::tie(a.y, a.m, a.d) < std::tie(b.y, b.m, b.d); }
+        };
+
+        int main() {
+            std::cout << (Money{150} > Money{99})
+                      << (Date{2024, 1, 5} <= Date{2024, 1, 5})
+                      << (Date{2024, 1, 5} != Date{2023, 12, 31}) << "\n";   // 111
+        }`,
+      complexity: `<p>Each derived operator calls <code>&lt;</code> once or twice: O(cost of &lt;). No runtime overhead after inlining.</p>`,
+      followUps: ['Rewrite with C++20 <code>operator&lt;=&gt;</code> and explain what <code>= default</code> generates.', 'Why is <code>==</code> via two <code>&lt;</code> calls only "equivalence", not equality, for some types (e.g. case-insensitive strings)?']
+    }
+  });
+
+  practice.push({
+    title: 'Fix a Leaking, Self-Assignment-Unsafe operator=', level: 'Easy', tags: ['copy-and-swap', 'rule of three'], companies: ['Amazon', 'Cisco'],
+    statement: `<p>The <code>Image</code> class below owns a <code>unsigned char* pixels_</code> of <code>w*h</code> bytes. Its assignment operator leaks the old buffer, breaks on <code>img = img</code>, and leaves the object half-assigned if allocation fails. Rewrite the special members using copy-and-swap.</p>`,
+    constraints: `<p>Keep a raw pointer (no vector). All five special members must be correct; swap must be noexcept.</p>`,
+    example: `<pre>Image a(2,2,7), b(1,1,9);
+a = b;  → a is 1×1 with pixel 9, old 4-byte buffer ${H.c('g', 'freed')}
+a = a;  → a ${H.c('g', 'unchanged')}, no crash</pre>`,
+    brute: { why: `<p>The original code allocates a new buffer and overwrites the pointer without freeing the old one (leak). On self-assignment it is merely wasteful here, but the "fix" people usually add — <code>delete[]</code> first — turns it into a use-after-free and loses the strong guarantee.</p>`,
+      code: R`
+        #include <cstring>
+        class Image {
+            int w_, h_; unsigned char* pixels_;
+        public:
+            Image(int w, int h, unsigned char v) : w_(w), h_(h), pixels_(new unsigned char[w * h]) { std::memset(pixels_, v, w * h); }
+            ~Image() { delete[] pixels_; }
+            Image(const Image& o) : w_(o.w_), h_(o.h_), pixels_(new unsigned char[o.w_ * o.h_]) { std::memcpy(pixels_, o.pixels_, w_ * h_); }
+            Image& operator=(const Image& o) {
+                pixels_ = new unsigned char[o.w_ * o.h_];      // LEAK: old buffer never freed
+                std::memcpy(pixels_, o.pixels_, o.w_ * o.h_);
+                w_ = o.w_; h_ = o.h_;
+                return *this;
+            }
+        };
+        int main() { Image a(2, 2, 7), b(1, 1, 9); a = b; }` },
+    mcq: { q: 'With <code>Image&amp; operator=(Image other)</code>, which special member frees a\'s <b>old</b> buffer after <code>a = b</code>?', options: ['The destructor of the parameter <code>other</code>, after the swap', 'The copy constructor', 'swap()', 'Nobody — it leaks'], answer: 0, explain: 'swap moves the old buffer into <code>other</code>; when the function returns, <code>other</code> is destroyed and its destructor deletes it.' },
+    hints: [`<p>Keep the (correct) copy constructor and destructor; they will do all the work.</p>`, `<p>Add <code>friend void swap(Image&amp;, Image&amp;) noexcept</code> swapping w_, h_ and pixels_. Add a move constructor that steals with <code>std::exchange</code>.</p>`, `<p>Assignment: take <code>Image other</code> by value, <code>swap(*this, other); return *this;</code>.</p>`],
+    solution: {
+      approach: `<p>Copy-and-swap: by-value parameter (copy or move happens before the body), noexcept member-wise swap, the parameter's destructor frees the old buffer. One operator handles copy and move assignment, self-assignment and exceptions.</p>`,
+      code: R`
+        #include <cstring>
+        #include <iostream>
+        #include <utility>
+
+        class Image {
+            int w_ = 0, h_ = 0;
+            unsigned char* pixels_ = nullptr;
+        public:
+            Image(int w, int h, unsigned char v) : w_(w), h_(h), pixels_(new unsigned char[w * h]) { std::memset(pixels_, v, w * h); }
+            ~Image() { delete[] pixels_; }
+            Image(const Image& o) : w_(o.w_), h_(o.h_), pixels_(new unsigned char[o.w_ * o.h_]) {
+                std::memcpy(pixels_, o.pixels_, w_ * h_);
+            }
+            Image(Image&& o) noexcept
+                : w_(std::exchange(o.w_, 0)), h_(std::exchange(o.h_, 0)), pixels_(std::exchange(o.pixels_, nullptr)) {}
+            friend void swap(Image& a, Image& b) noexcept {
+                using std::swap;
+                swap(a.w_, b.w_); swap(a.h_, b.h_); swap(a.pixels_, b.pixels_);
+            }
+            Image& operator=(Image other) noexcept { swap(*this, other); return *this; }
+            int at(int i) const { return pixels_[i]; }
+            int size() const { return w_ * h_; }
+        };
+
+        int main() {
+            Image a(2, 2, 7), b(1, 1, 9);
+            a = b;                                            // copy, old 4-byte buffer freed by ~other
+            a = a;                                            // safe
+            a = Image(3, 1, 5);                               // move path (elided temporary)
+            std::cout << a.size() << " " << a.at(0) << " " << b.at(0) << "\n";   // 3 5 9
+        }`,
+      complexity: `<p>Copy-assign O(w·h) with one allocation; move-assign O(1); swap O(1).</p>`,
+      followUps: ['Run the original under <code>-fsanitize=address</code> — what does LeakSanitizer report?', 'How would <code>std::vector&lt;unsigned char&gt;</code> let you delete all five special members (rule of zero)?']
+    }
+  });
+
+  practice.push({
+    title: 'Move-Only FileHandle RAII Wrapper', level: 'Easy', tags: ['raii', 'move semantics', 'c api'], companies: ['Google', 'Meta'],
+    statement: `<p>Write <code>FileHandle</code> wrapping a C <code>std::FILE*</code>: opens in the constructor (throws <code>std::runtime_error</code> on failure), closes in the destructor, is <b>move-only</b> (copying must not compile), offers <code>get()</code>, <code>release()</code> and <code>close()</code> (which reports whether <code>fclose</code> succeeded).</p>`,
+    constraints: `<p>No double close, no leak on any path, destructor never throws.</p>`,
+    example: `<pre>FileHandle f("/dev/null", "w");     → opened
+FileHandle g = std::move(f);        → f.get() == ${H.c('g', 'nullptr')}, g owns it
+FileHandle h = g;                   → ${H.c('r', 'compile error (copy deleted)')}
+FileHandle bad("/no/such/dir/x", "r") → ${H.c('r', 'throws runtime_error')}</pre>`,
+    brute: { why: `<p>Manual <code>fopen</code>/<code>fclose</code> pairs: every early return or exception between them leaks the handle, and copying the raw pointer around leads to double <code>fclose</code>.</p>`,
+      code: R`
+        #include <cstdio>
+        #include <stdexcept>
+        void process(bool fail) {
+            std::FILE* f = std::fopen("/dev/null", "w");
+            if (!f) return;
+            if (fail) throw std::runtime_error("oops");   // LEAK: fclose never runs
+            std::fclose(f);
+        }
+        int main() { try { process(true); } catch (...) {} }` },
+    mcq: { q: 'Why should the move constructor set the source\'s pointer to <code>nullptr</code>?', options: ['So the moved-from object\'s destructor does not close the same FILE a second time', 'Because nullptr is faster', 'To make the handle copyable', 'It is optional'], answer: 0, explain: 'Both objects run their destructors; only one may own the FILE.' },
+    hints: [`<p>Members: <code>std::FILE* f_ = nullptr;</code>. Delete copy constructor and copy assignment.</p>`, `<p>Move constructor: <code>f_(std::exchange(o.f_, nullptr))</code>. Move assignment: close your current file first (or swap), then steal.</p>`, `<p><code>close()</code> returns <code>std::fclose(f_) == 0</code> and sets <code>f_ = nullptr</code>; the destructor calls <code>if (f_) std::fclose(f_);</code> and ignores errors.</p>`],
+    solution: {
+      approach: `<p>A unique-ownership RAII class: one pointer, deleted copies, stealing moves, explicit <code>close()</code> for callers who need the error code, best-effort destructor. (Equivalent: <code>std::unique_ptr&lt;FILE, Closer&gt;</code> — mention it.)</p>`,
+      code: R`
+        #include <cstdio>
+        #include <iostream>
+        #include <stdexcept>
+        #include <string>
+        #include <utility>
+
+        class FileHandle {
+            std::FILE* f_ = nullptr;
+        public:
+            FileHandle(const char* path, const char* mode) : f_(std::fopen(path, mode)) {
+                if (!f_) throw std::runtime_error(std::string("cannot open ") + path);
+            }
+            ~FileHandle() { if (f_) std::fclose(f_); }               // best effort, never throws
+            FileHandle(const FileHandle&) = delete;
+            FileHandle& operator=(const FileHandle&) = delete;
+            FileHandle(FileHandle&& o) noexcept : f_(std::exchange(o.f_, nullptr)) {}
+            FileHandle& operator=(FileHandle&& o) noexcept {
+                if (this != &o) { if (f_) std::fclose(f_); f_ = std::exchange(o.f_, nullptr); }
+                return *this;
+            }
+            std::FILE* get() const noexcept { return f_; }
+            std::FILE* release() noexcept { return std::exchange(f_, nullptr); }   // caller now owns it
+            bool close() noexcept { if (!f_) return true; bool ok = std::fclose(f_) == 0; f_ = nullptr; return ok; }
+        };
+
+        int main() {
+            FileHandle f("/dev/null", "w");
+            std::fputs("hi", f.get());
+            FileHandle g = std::move(f);
+            std::cout << (f.get() == nullptr) << " " << g.close() << "\n";       // 1 1
+            try { FileHandle bad("/no/such/dir/x", "r"); }
+            catch (const std::runtime_error& e) { std::cout << e.what() << "\n"; } // cannot open /no/such/dir/x
+        }`,
+      complexity: `<p>O(1) everything; sizeof(FileHandle) == sizeof(FILE*).</p>`,
+      followUps: ['Implement the same with <code>std::unique_ptr&lt;std::FILE, decltype([](std::FILE* f){ std::fclose(f); })&gt;</code> (C++20).', 'Why is a throwing constructor the right way to report "cannot open" here?']
+    }
+  });
+
+  practice.push({
+    title: 'Predict the Lifetime Trace (globals, temporaries, statics)', level: 'Easy', tags: ['output prediction', 'object lifetime'], companies: ['Bloomberg', 'Qualcomm', 'Optiver'],
+    statement: `<p>Predict the exact output of the program below. <code>X</code> prints <code>+id</code> when constructed and <code>-id</code> when destroyed.</p>
+      <pre>X g(1);
+X make(int i) { return X(i); }
+int main() {
+    X a(2);
+    { X b(3); }
+    X(4);
+    static X s(5);
+    const X&amp; r = make(7);
+    X c(6);
+    cout &lt;&lt; "| ";
+}</pre>`,
+    constraints: `<p>Standard C++20 semantics; one translation unit.</p>`,
+    example: `<p>Answer: <code>${H.c('g', '+1 +2 +3 -3 +4 -4 +5 +7 +6 | -6 -7 -2 -5 -1')}</code></p>`,
+    brute: { why: `<p>The usual wrong guess forgets that <code>X(4);</code> is a temporary that dies immediately, that <code>r</code> <b>extends</b> the lifetime of the temporary from <code>make(7)</code> to the end of main, and that statics/globals die <b>after</b> main in reverse order of construction.</p>`,
+      code: R`
+        #include <iostream>
+        // A typical wrong prediction, printed for comparison:
+        int main() { std::cout << "+1 +2 +3 -3 +4 +5 +7 -7 +6 | -6 -4 -2 -5 -1\n"; }` },
+    mcq: { q: 'When is the temporary returned by <code>make(7)</code> destroyed?', options: ['At the end of main, as if it were a local declared at that point (lifetime extension)', 'At the end of the statement', 'After s(5) is destroyed', 'Never — it leaks'], answer: 0, explain: 'Binding a prvalue to a <code>const X&amp;</code> local extends the temporary\'s lifetime to the reference\'s scope; it is destroyed in reverse order with the other locals (after c, before a).' },
+    hints: [`<p>Globals are constructed before main. A block <code>{ }</code> ends lifetimes immediately. An unnamed <code>X(4);</code> is destroyed at the semicolon.</p>`, `<p>Function-local statics are constructed when control first passes through them and destroyed after main returns.</p>`, `<p>Locals die in reverse order: c, then the extended temporary (7), then a. Then statics/globals in reverse order of construction: s(5) was built after g(1) → -5 then -1.</p>`],
+    solution: {
+      approach: `<p>Walk the program with the lifetime rules: global before main; block scope; full-expression temporaries; lazy statics; lifetime extension through <code>const&amp;</code>; reverse destruction of locals at <code>}</code>; then reverse destruction of statics and globals.</p>`,
+      code: R`
+        #include <iostream>
+        struct X {
+            int id;
+            X(int i) : id(i) { std::cout << "+" << id << " "; }
+            ~X() { std::cout << "-" << id << " "; }
+        };
+        X g(1);
+        X make(int i) { return X(i); }
+        int main() {
+            X a(2);
+            { X b(3); }
+            X(4);
+            static X s(5);
+            const X& r = make(7);
+            X c(6);
+            std::cout << "| ";
+        }   // +1 +2 +3 -3 +4 -4 +5 +7 +6 | -6 -7 -2 -5 -1`,
+      dry: { head: ['event', 'output'], rows: [['global g(1) before main', '+1'], ['X a(2)', '+2'], ['{ X b(3); }', '+3 -3'], ['X(4); temporary', '+4 -4'], ['static s(5)', '+5'], ['const X&amp; r = make(7)', '+7 (extended)'], ['X c(6)', '+6'], ['} locals reversed', '-6 -7 -2'], ['after main: statics/globals reversed', '-5 -1']] },
+      complexity: `<p>Not algorithmic — it's about lifetime rules.</p>`,
+      followUps: ['What changes if <code>r</code> were declared as <code>X&amp;&amp; r = make(7);</code>? (Same extension.)', 'What if <code>make</code> returned <code>const X&amp;</code> to a local? (Dangling → UB.)']
+    }
+  });
+
+  /* ======================================================================
+     PRACTICE — Medium
+     ====================================================================== */
+  practice.push({
+    title: 'Polymorphic clone() Once for a Whole Hierarchy (CRTP)', level: 'Medium', tags: ['crtp', 'virtual constructor', 'smart pointers'], companies: ['Bloomberg', 'Adobe', 'Autodesk'],
+    statement: `<p>You have <code>std::vector&lt;std::unique_ptr&lt;Shape&gt;&gt;</code> and need to deep-copy it. Each concrete shape needs <code>std::unique_ptr&lt;Shape&gt; clone() const</code>, but writing it in 20 classes is error-prone (copy-paste a wrong type and you silently slice). Write a CRTP helper <code>Cloneable&lt;Derived, Base&gt;</code> that implements <code>clone()</code> for any derived class.</p>`,
+    constraints: `<p>Shape is an abstract base with a virtual destructor. Derived classes write <b>no</b> clone code. C++20.</p>`,
+    example: `<pre>vector&lt;unique_ptr&lt;Shape&gt;&gt; a; a.push_back(make_unique&lt;Circle&gt;(1)); a.push_back(make_unique&lt;Square&gt;(2));
+auto b = deepCopy(a);   → b[0]->name() = ${H.c('g', '"Circle"')}, b[1]->name() = ${H.c('g', '"Square"')}, distinct objects</pre>`,
+    brute: { why: `<p>Hand-written <code>clone()</code> in every class: repetitive, and the copy-paste bug <code>return std::make_unique&lt;Circle&gt;(*this);</code> inside <code>Square</code> compiles only if conversions exist — or worse, a forgotten override silently uses an intermediate base's clone and <b>slices</b>.</p>`,
+      code: R`
+        #include <memory>
+        #include <string>
+        struct Shape { virtual ~Shape() = default; virtual std::unique_ptr<Shape> clone() const = 0; virtual std::string name() const = 0; };
+        struct Circle : Shape {
+            double r; explicit Circle(double x) : r(x) {}
+            std::unique_ptr<Shape> clone() const override { return std::make_unique<Circle>(*this); }   // repeated
+            std::string name() const override { return "Circle"; }
+        };
+        struct Square : Shape {
+            double s; explicit Square(double x) : s(x) {}
+            std::unique_ptr<Shape> clone() const override { return std::make_unique<Square>(*this); }   // repeated
+            std::string name() const override { return "Square"; }
+        };
+        int main() { Circle c(1); auto p = c.clone(); return p->name() == "Circle" ? 0 : 1; }` },
+    mcq: { q: 'Inside <code>Cloneable&lt;D, Base&gt;::clone()</code>, what does <code>static_cast&lt;const D&amp;&gt;(*this)</code> give you that <code>*this</code> does not?', options: ['The full derived object, so make_unique&lt;D&gt; copies all of it (no slicing)', 'A virtual call', 'A shallow copy', 'Thread safety'], answer: 0, explain: 'In the base, <code>*this</code> has the static type of the CRTP base; casting to D lets the copy constructor of D run on the whole object.' },
+    hints: [`<p><code>template &lt;class D, class Base&gt; struct Cloneable : Base { std::unique_ptr&lt;Base&gt; clone() const override { ... } };</code> — the helper sits <b>between</b> Shape and the concrete class.</p>`, `<p>Body: <code>return std::make_unique&lt;D&gt;(static_cast&lt;const D&amp;&gt;(*this));</code></p>`, `<p>Concrete classes: <code>struct Circle : Cloneable&lt;Circle, Shape&gt; { ... };</code>. Forward constructors with <code>using Base::Base;</code> if Base has constructors.</p>`],
+    solution: {
+      approach: `<p>A CRTP layer inserted between the abstract base and each concrete class overrides <code>clone()</code> once, using the known derived type. Runtime polymorphism (virtual clone) and compile-time code generation (CRTP) work together: this is the "virtual constructor" idiom without the boilerplate.</p>`,
+      code: R`
+        #include <iostream>
+        #include <memory>
+        #include <string>
+        #include <vector>
+
+        struct Shape {
+            virtual ~Shape() = default;
+            virtual std::unique_ptr<Shape> clone() const = 0;
+            virtual std::string name() const = 0;
+        };
+
+        template <typename D, typename Base>
+        struct Cloneable : Base {
+            using Base::Base;                                   // inherit Base's constructors
+            std::unique_ptr<Base> clone() const override {
+                return std::make_unique<D>(static_cast<const D&>(*this));   // copies the WHOLE D
+            }
+        };
+
+        struct Circle : Cloneable<Circle, Shape> {
+            double r;
+            explicit Circle(double x) : r(x) {}
+            std::string name() const override { return "Circle"; }
+        };
+        struct Square : Cloneable<Square, Shape> {
+            double s;
+            explicit Square(double x) : s(x) {}
+            std::string name() const override { return "Square"; }
+        };
+
+        std::vector<std::unique_ptr<Shape>> deepCopy(const std::vector<std::unique_ptr<Shape>>& v) {
+            std::vector<std::unique_ptr<Shape>> out;
+            out.reserve(v.size());
+            for (const auto& p : v) out.push_back(p->clone());
+            return out;
+        }
+
+        int main() {
+            std::vector<std::unique_ptr<Shape>> a;
+            a.push_back(std::make_unique<Circle>(1));
+            a.push_back(std::make_unique<Square>(2));
+            auto b = deepCopy(a);
+            std::cout << b[0]->name() << " " << b[1]->name() << " " << (a[0].get() != b[0].get()) << "\n";   // Circle Square 1
+        }`,
+      complexity: `<p>O(n) clones for a vector of n; each clone is one allocation + the derived copy constructor.</p>`,
+      followUps: ['Support covariant return (<code>std::unique_ptr&lt;Circle&gt;</code>) — why can\'t smart pointers be covariant, and how do you work around it?', 'How does this interact with a three-level hierarchy (Shape → Polygon → Square)?']
+    }
+  });
+
+  practice.push({
+    title: 'Fluent Builder That Keeps the Derived Type (CRTP chaining)', level: 'Medium', tags: ['crtp', 'fluent interface', 'builder'], companies: ['Amazon', 'Salesforce'],
+    statement: `<p>A base <code>RequestBuilder</code> has chainable setters <code>url()</code> and <code>header()</code>; a derived <code>JsonRequestBuilder</code> adds <code>json()</code>. With ordinary inheritance, <code>JsonRequestBuilder{}.url("x").json("{}")</code> fails: <code>url()</code> returns <code>RequestBuilder&amp;</code>, which has no <code>json()</code>. Fix it with CRTP so chaining keeps the most-derived type.</p>`,
+    constraints: `<p>No virtual functions, no casts at the call site. The final <code>build()</code> returns a <code>std::string</code> describing the request.</p>`,
+    example: `<pre>JsonRequestBuilder{}.url("/api").header("A", "1").json("{\"x\":1}").build()
+→ ${H.c('g', '"POST /api [A: 1] {\\"x\\":1}"')}</pre>`,
+    brute: { why: `<p>The non-CRTP version returns <code>RequestBuilder&amp;</code> from base setters, so after the first base call the static type "forgets" the derived class; you'd need to reorder calls (derived first) or <code>static_cast</code> at every call site.</p>`,
+      code: R`
+        #include <string>
+        struct RequestBuilder {
+            std::string u;
+            RequestBuilder& url(std::string s) { u = std::move(s); return *this; }   // returns the BASE type
+        };
+        struct JsonRequestBuilder : RequestBuilder {
+            std::string body;
+            JsonRequestBuilder& json(std::string b) { body = std::move(b); return *this; }
+        };
+        int main() {
+            JsonRequestBuilder j;
+            j.json("{}").url("/api");            // works only in this order
+            // j.url("/api").json("{}");         // ERROR: RequestBuilder has no member 'json'
+        }` },
+    mcq: { q: 'What should the base setters return in the CRTP version?', options: ['<code>Derived&amp;</code>, via <code>static_cast&lt;Derived&amp;&gt;(*this)</code>', '<code>RequestBuilder&amp;</code>', '<code>void</code>', 'A copy of the builder'], answer: 0, explain: 'Returning <code>Derived&amp;</code> keeps the full static type through the chain, so derived-only methods remain callable.' },
+    hints: [`<p>Make the base a template: <code>template &lt;class Derived&gt; struct BuilderBase</code> with a private <code>Derived&amp; self()</code>.</p>`, `<p>Every setter ends with <code>return self();</code>.</p>`, `<p><code>struct JsonRequestBuilder : BuilderBase&lt;JsonRequestBuilder&gt;</code>; if you also want a plain builder, write <code>struct PlainBuilder : BuilderBase&lt;PlainBuilder&gt; {};</code>.</p>`],
+    solution: {
+      approach: `<p>CRTP base parameterised on the final builder type; setters return <code>Derived&amp;</code>. The chain's static type stays the derived builder, so base and derived setters can be mixed in any order. (C++23 alternative: deducing <code>this</code> — <code>auto&amp;&amp; url(this auto&amp;&amp; self, std::string s)</code>.)</p>`,
+      code: R`
+        #include <iostream>
+        #include <string>
+        #include <utility>
+        #include <vector>
+
+        template <typename Derived>
+        class BuilderBase {
+        protected:
+            std::string url_, method_ = "GET";
+            std::vector<std::pair<std::string, std::string>> headers_;
+            Derived& self() { return static_cast<Derived&>(*this); }
+        public:
+            Derived& url(std::string u) { url_ = std::move(u); return self(); }
+            Derived& header(std::string k, std::string v) { headers_.emplace_back(std::move(k), std::move(v)); return self(); }
+            std::string describeHead() const {
+                std::string s = method_ + " " + url_;
+                for (const auto& [k, v] : headers_) s += " [" + k + ": " + v + "]";
+                return s;
+            }
+        };
+
+        class JsonRequestBuilder : public BuilderBase<JsonRequestBuilder> {
+            std::string body_;
+        public:
+            JsonRequestBuilder& json(std::string b) { body_ = std::move(b); method_ = "POST"; return *this; }
+            std::string build() const { return describeHead() + " " + body_; }
+        };
+
+        int main() {
+            std::cout << JsonRequestBuilder{}.url("/api").header("A", "1").json(R"({"x":1})").build() << "\n";
+            // POST /api [A: 1] {"x":1}
+        }`,
+      complexity: `<p>O(total string length); zero dispatch overhead.</p>`,
+      followUps: ['Rewrite with C++23 deducing this — what does it remove?', 'How would you make <code>build()</code> only callable after <code>url()</code> was set, at compile time? (Typestate builder with template flags.)']
+    }
+  });
+
+  practice.push({
+    title: 'Heterogeneous Printable Container via Type Erasure', level: 'Medium', tags: ['type erasure', 'value semantics'], companies: ['Google', 'Two Sigma'],
+    statement: `<p>Implement <code>Printable</code>, a value type that can hold <b>any</b> object for which <code>os &lt;&lt; obj</code> works (int, std::string, a user <code>Point</code> with its own <code>operator&lt;&lt;</code>), so you can write <code>std::vector&lt;Printable&gt; v{42, std::string("hi"), Point{1,2}};</code> and print them all. Copies must be deep.</p>`,
+    constraints: `<p>No common base class for the stored types; no std::any/std::function. The template constructor must not hijack copies of Printable.</p>`,
+    example: `<pre>vector&lt;Printable&gt; v{42, string("hi"), Point{1,2}, 3.5};
+for (auto&amp; p : v) cout &lt;&lt; p &lt;&lt; ' ';   → ${H.c('g', '42 hi (1,2) 3.5')}</pre>`,
+    brute: { why: `<p>The inheritance approach requires every stored type to derive from an <code>IPrintable</code> interface — impossible for <code>int</code> and <code>std::string</code>, and it forces a vector of <code>unique_ptr</code> (no value semantics, no easy copying).</p>`,
+      code: R`
+        #include <iostream>
+        #include <memory>
+        #include <vector>
+        struct IPrintable { virtual ~IPrintable() = default; virtual void print(std::ostream&) const = 0; };
+        struct Point : IPrintable {                 // intrusive: Point must know about IPrintable
+            int x, y; Point(int a, int b) : x(a), y(b) {}
+            void print(std::ostream& os) const override { os << "(" << x << "," << y << ")"; }
+        };
+        int main() {
+            std::vector<std::unique_ptr<IPrintable>> v;
+            v.push_back(std::make_unique<Point>(1, 2));
+            // v.push_back(42);                      // impossible: int can't inherit IPrintable
+            for (auto& p : v) p->print(std::cout);
+        }` },
+    mcq: { q: 'What goes wrong if the template constructor <code>template &lt;class T&gt; Printable(T&amp;&amp; t)</code> is <b>unconstrained</b> and you copy a non-const Printable?', options: ['It is a better match than the copy constructor (T = Printable&amp;), so it wraps a Printable inside a Printable', 'Nothing', 'Compilation error always', 'It moves from the source'], answer: 0, explain: 'For a non-const lvalue, <code>T&amp;&amp;</code> with T = Printable&amp; is an exact match, beating <code>const Printable&amp;</code>. Constrain it away with requires.' },
+    hints: [`<p>Concept/Model: <code>struct Concept { virtual void print(std::ostream&amp;) const = 0; virtual std::unique_ptr&lt;Concept&gt; clone() const = 0; virtual ~Concept() = default; };</code></p>`, `<p><code>template &lt;class T&gt; struct Model : Concept { T v; void print(std::ostream&amp; os) const override { os &lt;&lt; v; } ... };</code></p>`, `<p>Constrain the constructor: <code>requires (!std::same_as&lt;std::remove_cvref_t&lt;T&gt;, Printable&gt;)</code> and a concept that checks <code>os &lt;&lt; t</code> compiles. Add a <code>friend operator&lt;&lt;</code> for Printable.</p>`],
+    solution: {
+      approach: `<p>Type erasure with a constrained template constructor and a concept for good errors. Each element is a value: copying clones the model, so the vector of Printables behaves like a vector of ints.</p>`,
+      code: R`
+        #include <concepts>
+        #include <iostream>
+        #include <memory>
+        #include <ostream>
+        #include <string>
+        #include <type_traits>
+        #include <vector>
+
+        template <typename T>
+        concept Streamable = requires(std::ostream& os, const T& t) { { os << t } -> std::same_as<std::ostream&>; };
+
+        class Printable {
+            struct Concept {
+                virtual ~Concept() = default;
+                virtual void print(std::ostream& os) const = 0;
+                virtual std::unique_ptr<Concept> clone() const = 0;
+            };
+            template <typename T>
+            struct Model final : Concept {
+                T v;
+                explicit Model(T x) : v(std::move(x)) {}
+                void print(std::ostream& os) const override { os << v; }
+                std::unique_ptr<Concept> clone() const override { return std::make_unique<Model>(*this); }
+            };
+            std::unique_ptr<Concept> self_;
+        public:
+            template <typename T>
+                requires (!std::same_as<std::remove_cvref_t<T>, Printable> && Streamable<std::remove_cvref_t<T>>)
+            Printable(T&& t) : self_(std::make_unique<Model<std::remove_cvref_t<T>>>(std::forward<T>(t))) {}
+            Printable(const Printable& o) : self_(o.self_->clone()) {}
+            Printable(Printable&&) noexcept = default;
+            Printable& operator=(Printable o) noexcept { self_.swap(o.self_); return *this; }
+            friend std::ostream& operator<<(std::ostream& os, const Printable& p) { p.self_->print(os); return os; }
+        };
+
+        struct Point { int x, y; };
+        std::ostream& operator<<(std::ostream& os, const Point& p) { return os << "(" << p.x << "," << p.y << ")"; }
+
+        int main() {
+            std::vector<Printable> v{42, std::string("hi"), Point{1, 2}, 3.5};
+            Printable copy = v[2];                      // non-const lvalue: copy ctor, not the template
+            v[2] = std::string("replaced");
+            for (const auto& p : v) std::cout << p << ' ';
+            std::cout << "| " << copy << "\n";          // 42 hi replaced 3.5 | (1,2)
+        }`,
+      complexity: `<p>One allocation per element; printing is one virtual call each; copy O(size of stored value).</p>`,
+      followUps: ['Add small buffer optimization for types up to 16 bytes.', 'Add a second operation (e.g. <code>size()</code>) — what has to change? (Concept and Model: the "expression problem".)']
+    }
   });
   registerModule({ id: 'cpp13', title: 'Expert Idioms + Question Bank', intro: '<p>stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub</p>', goals: ['aaaaaaaaaaaa','bbbbbbbbbbbbbb','cccccccccccc'], prereqs: 'xxxxxxxxxxxxxxxxxxxx', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview });
 })();

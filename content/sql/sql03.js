@@ -213,7 +213,7 @@ CREATE TABLE activity (
 );
 INSERT INTO activity VALUES
   (1, 2, '2025-03-01', 5), (1, 2, '2025-03-02', 6),
-  (2, 3, '2025-06-25', 1),
+  (2, 3, '2025-06-25', 1), (2, 3, '2025-06-27', 2), (2, 3, '2025-06-28', 1),
   (3, 1, '2025-03-02', 0), (3, 4, '2025-07-03', 5),
   (4, 1, '2025-05-10', 3), (4, 1, '2025-05-11', 2), (4, 2, '2025-05-20', 4);
 CREATE TABLE campaigns (
@@ -1718,7 +1718,646 @@ ORDER BY channel;` },
       }
     }]
   });
-  registerModule({ id: 'sql03', title: 'Aggregates, GROUP BY, HAVING & CASE', intro: '<p>stub</p>', goals: [], prereqs: 'x', hours: 8,
+
+  /* =====================================================================
+     PRACTICE — Easy
+     ===================================================================== */
+  practice.push({
+    title: 'Department Headcount & Payroll',
+    level: 'Easy', tags: ['GROUP BY', 'COUNT', 'COALESCE'], companies: ['Workday', 'Infosys', 'TCS'],
+    statement: `<p>From <code>employees</code> (DB <b>company</b>), return one row per department with <code>dept</code> (show NULL as <code>'Unassigned'</code>), <code>headcount</code>, <code>payroll</code> (sum of salaries, 0 if none) and <code>pending_offers</code> (employees whose salary is NULL). Order by headcount descending, then dept.</p>`,
+    constraints: `<p>dept and salary may be NULL. 12 rows.</p>`,
+    example: `${H.table(['dept', 'headcount', 'payroll', 'pending_offers'], [['Engineering', '4', '320000', '<span class="c-y">1</span>'], ['Sales', '4', '222000', '0'], ['HR', '2', '93000', '0'], ['Marketing', '1', '70000', '0'], ['<span class="c-b">Unassigned</span>', '1', '40000', '0']])}<p>Kofi (Engineering) has no salary yet: he counts in headcount but not in payroll, and shows up as a pending offer. Jia has no department → 'Unassigned'.</p>`,
+    brute: {
+      why: `<p>Using <code>COUNT(salary)</code> as headcount silently drops Kofi (Engineering shows <b class="c-r">3</b>), and the NULL department is shown as a blank NULL row that business users can't read. Without ORDER BY the order is whatever the engine produced.</p>`,
+      code: { lang: 'sql', db: 'company', code: `SELECT dept, COUNT(salary) AS headcount, SUM(salary) AS payroll
+FROM employees
+GROUP BY dept;` }
+    },
+    mcq: { q: 'Which expression counts employees whose salary is NULL in each group?', options: ['COUNT(salary IS NULL)', 'COUNT(*) - COUNT(salary)', 'COUNT(NULL)', 'SUM(salary) - COUNT(*)'], answer: 1, explain: 'COUNT(*) counts all rows, COUNT(salary) only non-NULL ones; the difference is the NULLs. COUNT(salary IS NULL) counts every row because the comparison result 0/1 is never NULL.' },
+    hints: [
+      `<p>Hint 1: "per department" → GROUP BY dept. NULL departments already form one group; you only need to <i>label</i> it.</p>`,
+      `<p>Hint 2: Headcount counts people → COUNT(*). Payroll → SUM(salary) wrapped in COALESCE(…, 0).</p>`,
+      `<p>Hint 3: Pending = COUNT(*) − COUNT(salary). Label with COALESCE(dept, 'Unassigned') in SELECT and GROUP BY; ORDER BY headcount DESC, dept.</p>`
+    ],
+    solution: {
+      approach: `<p>Group by the labelled department; COUNT(*) for people, COALESCE(SUM) for money, and the COUNT difference for NULL salaries.</p>`,
+      code: { lang: 'sql', db: 'company', code: `SELECT COALESCE(dept, 'Unassigned')   AS dept,
+       COUNT(*)                       AS headcount,
+       COALESCE(SUM(salary), 0)       AS payroll,
+       COUNT(*) - COUNT(salary)       AS pending_offers
+FROM employees
+GROUP BY COALESCE(dept, 'Unassigned')
+ORDER BY headcount DESC, dept;` },
+      complexity: `<p>O(N) scan with hash/sort aggregation; O(#departments) memory.</p>`,
+      followUps: ['Include departments with zero employees (Legal) from the departments table — needs a LEFT JOIN.', 'Add each department\'s share of total payroll as a percentage.']
+    }
+  });
+
+  practice.push({
+    title: 'Duplicate Emails',
+    level: 'Easy', tags: ['GROUP BY', 'HAVING', 'duplicates'], companies: ['Amazon', 'Uber', 'Adobe'],
+    statement: `<p>Find every email address that belongs to more than one employee in <code>employees</code> (DB <b>company</b>). Return a single column <code>email</code>. (LeetCode 182 style.)</p>`,
+    constraints: `<p>email may be NULL — a NULL is not a duplicate email.</p>`,
+    example: `${H.table(['email'], [['<span class="c-r">ben@co.com</span>']])}<p>Ben and Lena share <code>ben@co.com</code> (a data-entry mistake). Ivan's NULL email forms a NULL group of size 1, so it is not reported.</p>`,
+    brute: {
+      why: `<p>Plain <code>SELECT DISTINCT email</code> or <code>GROUP BY email</code> without HAVING returns <b>every</b> email (12 rows), duplicates or not — grouping removes the repeats instead of finding them. The duplicate test is about the <i>size of the group</i>, which needs HAVING.</p>`,
+      code: { lang: 'sql', db: 'company', code: `-- Returns all distinct emails, not the duplicated ones
+SELECT email
+FROM employees
+GROUP BY email;` }
+    },
+    mcq: { q: 'Which clause expresses "appears more than once"?', options: ['WHERE COUNT(*) > 1', 'HAVING COUNT(*) > 1', 'ORDER BY COUNT(*) DESC LIMIT 1', 'SELECT DISTINCT'], answer: 1, explain: 'The count of rows per email exists only after GROUP BY, so it must be filtered with HAVING. WHERE with an aggregate is an error.' },
+    hints: [
+      `<p>Hint 1: Put all rows with the same email into one bucket.</p>`,
+      `<p>Hint 2: A duplicate email is a bucket with 2 or more rows → HAVING COUNT(*) &gt; 1.</p>`,
+      `<p>Hint 3: NULL emails would form a bucket too; add WHERE email IS NOT NULL to be explicit. Recipe: WHERE email IS NOT NULL → GROUP BY email → HAVING COUNT(*) &gt; 1.</p>`
+    ],
+    solution: {
+      approach: `<p>Group by email and keep groups with more than one row. Filtering NULL first makes intent explicit (and protects against a table with several NULL emails being reported as a "duplicate NULL").</p>`,
+      code: { lang: 'sql', db: 'company', code: `SELECT email
+FROM employees
+WHERE email IS NOT NULL
+GROUP BY email
+HAVING COUNT(*) > 1;` },
+      complexity: `<p>O(N) with hashing (or O(N log N) sort). A UNIQUE index on email would have prevented the bug in the first place.</p>`,
+      followUps: ['Treat Ben@co.com and ben@co.com as the same (GROUP BY LOWER(TRIM(email))).', 'Return the names sharing each duplicate (GROUP_CONCAT(name) in SQLite, STRING_AGG in Postgres).', 'Delete the duplicates keeping the lowest id (LeetCode 196).']
+    }
+  });
+
+  practice.push({
+    title: 'Clubs With At Least 3 Students',
+    level: 'Easy', tags: ['COUNT DISTINCT', 'HAVING'], companies: ['Microsoft', 'Coursera'],
+    statement: `<p>In <code>club_signups</code> (DB <b>school</b>) a student may accidentally sign up for the same club twice. Return <code>club</code> and <code>members</code> for clubs with <b>at least 3 different students</b>, most members first. (LeetCode 596 "Classes More Than 5 Students" style.)</p>`,
+    constraints: `<p>(student_id, club) pairs may repeat.</p>`,
+    example: `${H.table(['club', 'members'], [['Chess', '4'], ['Robotics', '3']])}<p>Chess has 5 sign-up rows but Bilal appears twice → 4 members. Drama has 3 rows but Esha twice → only 2 members → excluded.</p>`,
+    brute: {
+      why: `<p><code>HAVING COUNT(*) &gt;= 3</code> counts sign-up <i>rows</i>, so the duplicate Drama sign-up makes Drama look like a 3-member club and Chess reports <b class="c-r">5</b> members.</p>`,
+      code: { lang: 'sql', db: 'school', code: `SELECT club, COUNT(*) AS members
+FROM club_signups
+GROUP BY club
+HAVING COUNT(*) >= 3;   -- counts duplicate rows` }
+    },
+    mcq: { q: 'Bilal signed up for Chess twice. What do COUNT(*) and COUNT(DISTINCT student_id) give for Chess?', options: ['4 and 4', '5 and 4', '5 and 5', '4 and 5'], answer: 1, explain: 'COUNT(*) counts the 5 rows; COUNT(DISTINCT student_id) counts 4 different students.' },
+    hints: [
+      `<p>Hint 1: "different students" is the trigger word for DISTINCT.</p>`,
+      `<p>Hint 2: The threshold is on a per-club count → HAVING COUNT(DISTINCT student_id) &gt;= 3.</p>`,
+      `<p>Hint 3: Select the same expression as members and ORDER BY members DESC.</p>`
+    ],
+    solution: {
+      approach: `<p>Group by club, count distinct students, keep groups reaching the threshold.</p>`,
+      code: { lang: 'sql', db: 'school', code: `SELECT club, COUNT(DISTINCT student_id) AS members
+FROM club_signups
+GROUP BY club
+HAVING COUNT(DISTINCT student_id) >= 3
+ORDER BY members DESC, club;` },
+      complexity: `<p>O(N) plus a per-group distinct set; a UNIQUE(student_id, club) constraint would make plain COUNT(*) correct.</p>`,
+      followUps: ['Which students joined 2 or more clubs?', 'How many duplicate sign-up rows exist in total? (COUNT(*) − COUNT of distinct pairs)']
+    }
+  });
+
+  practice.push({
+    title: 'Order Status Summary With Share',
+    level: 'Easy', tags: ['GROUP BY', 'percentage', 'COALESCE'], companies: ['Flipkart', 'Shopify'],
+    statement: `<p>For <code>orders</code> (DB <b>shop</b>) show per <code>status</code>: number of <code>orders</code>, total <code>amount</code> (0 if none), and <code>pct</code> = that status's share of <b>all</b> orders, rounded to 1 decimal. Order by orders descending, then status.</p>`,
+    constraints: `<p>amount may be NULL. Percentages must not be truncated by integer division.</p>`,
+    example: `${H.table(['status', 'orders', 'amount', 'pct'], [['delivered', '10', '3190', '71.4'], ['cancelled', '2', '150', '14.3'], ['pending', '1', '15', '7.1'], ['returned', '1', '120', '7.1']])}<p>14 orders in total; delivered = 10/14 = 71.43% → 71.4.</p>`,
+    brute: {
+      why: `<p><code>100 * COUNT(*) / 14</code> uses integer division (71, 14, 7, 7 — they no longer add to 100) and hard-codes the total, which breaks the moment a new order arrives.</p>`,
+      code: { lang: 'sql', db: 'shop', code: `SELECT status, COUNT(*) AS orders, 100 * COUNT(*) / 14 AS pct   -- integer math, magic number
+FROM orders
+GROUP BY status;` }
+    },
+    mcq: { q: 'Inside a GROUP BY status query, how do you get the total number of orders across ALL statuses?', options: ['COUNT(*) — it already counts everything', 'A scalar subquery (SELECT COUNT(*) FROM orders), or a window SUM(COUNT(*)) OVER ()', 'SUM(status)', 'COUNT(DISTINCT status)'], answer: 1, explain: 'Inside a group, COUNT(*) only sees that group\'s rows. The grand total needs a separate scalar subquery (or a window function over the grouped result, module 6).' },
+    hints: [
+      `<p>Hint 1: Per status → GROUP BY status; COUNT(*) and COALESCE(SUM(amount), 0).</p>`,
+      `<p>Hint 2: The denominator is the whole table, not the group: <code>(SELECT COUNT(*) FROM orders)</code>.</p>`,
+      `<p>Hint 3: Multiply by 100.0 before dividing; ROUND(…, 1); wrap the denominator in NULLIF(…, 0) for an empty table.</p>`
+    ],
+    solution: {
+      approach: `<p>Aggregate per status, divide by a scalar subquery for the grand total, using decimal arithmetic and a zero guard.</p>`,
+      code: { lang: 'sql', db: 'shop', code: `SELECT status,
+       COUNT(*)                   AS orders,
+       COALESCE(SUM(amount), 0)   AS amount,
+       ROUND(100.0 * COUNT(*) / NULLIF((SELECT COUNT(*) FROM orders), 0), 1) AS pct
+FROM orders
+GROUP BY status
+ORDER BY orders DESC, status;` },
+      alt: [{ lang: 'sql', db: 'shop', title: 'With a window function (module 6 preview)', code: `SELECT status, COUNT(*) AS orders,
+       ROUND(100.0 * COUNT(*) / SUM(COUNT(*)) OVER (), 1) AS pct
+FROM orders
+GROUP BY status
+ORDER BY orders DESC, status;` }],
+      complexity: `<p>Two scans (the subquery runs once — it is not correlated). The window version needs only one.</p>`,
+      followUps: ['Share of revenue instead of share of orders.', 'Make the percentages add up to exactly 100.0 after rounding (largest remainder method).']
+    }
+  });
+
+  /* =====================================================================
+     PRACTICE — Medium
+     ===================================================================== */
+  practice.push({
+    title: 'Monthly Transactions I',
+    level: 'Medium', tags: ['conditional aggregation', 'GROUP BY expression'], companies: ['Wayfair', 'Stripe', 'PayPal'],
+    statement: `<p>For <code>transactions</code> (DB <b>app</b>) report, for each month (<code>'YYYY-MM'</code>) and country: <code>trans_count</code>, <code>approved_count</code>, <code>trans_total_amount</code>, <code>approved_total_amount</code>. (LeetCode 1193.)</p>`,
+    constraints: `<p>state ∈ {approved, declined}. country may be NULL and must still be reported as its own group.</p>`,
+    example: `${H.table(['month', 'country', 'trans_count', 'approved_count', 'trans_total_amount', 'approved_total_amount'], [['2024-12', 'US', '2', '1', '3000', '1000'], ['2025-01', '<span class="c-m">NULL</span>', '1', '1', '300', '300'], ['2025-01', 'DE', '2', '1', '2500', '2000'], ['2025-01', 'IN', '2', '<span class="c-y">0</span>', '1100', '<span class="c-y">0</span>'], ['2025-01', 'US', '1', '1', '2000', '2000']])}<p>India had only declined transactions → approved values must be <b>0</b>, not missing.</p>`,
+    brute: {
+      why: `<p>Filtering <code>WHERE state = 'approved'</code> makes the approved numbers easy but destroys the overall counts, and India (all declined) <b class="c-r">disappears</b> entirely. Two separate queries joined later is slow and error-prone.</p>`,
+      code: { lang: 'sql', db: 'app', code: `SELECT substr(trans_date, 1, 7) AS month, country,
+       COUNT(*) AS approved_count, SUM(amount) AS approved_total_amount
+FROM transactions
+WHERE state = 'approved'          -- loses declined rows and the IN group
+GROUP BY month, country;` }
+    },
+    mcq: { q: 'How do you count approved transactions without losing the declined ones from trans_count?', options: ['WHERE state = \'approved\'', 'SUM(CASE WHEN state = \'approved\' THEN 1 ELSE 0 END)', 'COUNT(state = \'approved\')', 'HAVING state = \'approved\''], answer: 1, explain: 'The CASE inside SUM counts only approved rows while every row still reaches COUNT(*). COUNT(state = \'approved\') counts every non-NULL comparison result (0 or 1) — i.e. all rows.' },
+    hints: [
+      `<p>Hint 1: One row per (month, country) → GROUP BY an expression for month plus country.</p>`,
+      `<p>Hint 2: All four numbers come from the same rows → conditional aggregation: SUM(CASE WHEN state = 'approved' THEN 1 ELSE 0 END) and SUM(CASE WHEN … THEN amount ELSE 0 END).</p>`,
+      `<p>Hint 3: Use ELSE 0 so all-declined groups show 0. NULL country groups automatically. Month: substr(trans_date, 1, 7).</p>`
+    ],
+    solution: {
+      approach: `<p>Single pass: group by month and country; plain COUNT/SUM for totals, CASE-filtered SUMs for approved figures.</p>`,
+      code: { lang: 'sql', db: 'app', code: `SELECT substr(trans_date, 1, 7)                                  AS month,
+       country,
+       COUNT(*)                                                   AS trans_count,
+       SUM(CASE WHEN state = 'approved' THEN 1 ELSE 0 END)        AS approved_count,
+       SUM(amount)                                                AS trans_total_amount,
+       SUM(CASE WHEN state = 'approved' THEN amount ELSE 0 END)   AS approved_total_amount
+FROM transactions
+GROUP BY month, country
+ORDER BY month, country;` },
+      complexity: `<p>O(N), one scan, four accumulators per group.</p>`,
+      followUps: ['Add approval rate per group.', 'Monthly Transactions II (chargebacks from another table — UNION ALL then aggregate).']
+    }
+  });
+
+  practice.push({
+    title: 'Queries Quality and Percentage',
+    level: 'Medium', tags: ['AVG', 'conditional aggregation', 'integer division'], companies: ['Facebook', 'Google'],
+    statement: `<p>For each <code>query_name</code> in <code>queries</code> (DB <b>app</b>): <code>quality</code> = average of rating ÷ position, and <code>poor_query_percentage</code> = percentage of results with rating &lt; 3. Round both to 2 decimals. (LeetCode 1211.)</p>`,
+    constraints: `<p>rating 1–5, position 1–500, both integers.</p>`,
+    example: `${H.table(['query_name', 'quality', 'poor_query_percentage'], [['Bird', '0.24', '100.0'], ['Cat', '0.66', '33.33'], ['Dog', '2.5', '33.33']])}<p>Dog: (5/1 + 5/2 + 1/200) / 3 = 2.50; one of three ratings is below 3 → 33.33%.</p>`,
+    brute: {
+      why: `<p>In SQLite/PostgreSQL <code>rating / position</code> on integers is integer division: 5/2 = <b class="c-r">2</b>, 3/5 = <b class="c-r">0</b>. Quality comes out 2.33 for Dog and 0.0 for Bird, and <code>SUM(…)/COUNT(*)*100</code> divides integers first → 0 for Cat.</p>`,
+      code: { lang: 'sql', db: 'app', code: `SELECT query_name,
+       ROUND(AVG(rating / position), 2)                                    AS quality,   -- integer division
+       ROUND(SUM(CASE WHEN rating < 3 THEN 1 ELSE 0 END) / COUNT(*) * 100, 2) AS poor_query_percentage
+FROM queries
+GROUP BY query_name;` }
+    },
+    mcq: { q: 'In SQLite, what is 3 / 5 * 100?', options: ['60', '60.0', '0', '0.6'], answer: 2, explain: 'Both operands are integers, so 3 / 5 = 0 (truncated), then 0 * 100 = 0. Write 100.0 * 3 / 5 = 60.0.' },
+    hints: [
+      `<p>Hint 1: "average of a per-row ratio" really is AVG(ratio) here — the question defines quality that way.</p>`,
+      `<p>Hint 2: Force decimals: <code>AVG(1.0 * rating / position)</code>. For the percentage use <code>AVG(CASE WHEN rating &lt; 3 THEN 100.0 ELSE 0 END)</code> or 100.0 * SUM(...) / COUNT(*).</p>`,
+      `<p>Hint 3: GROUP BY query_name, ROUND(…, 2) both.</p>`
+    ],
+    solution: {
+      approach: `<p>Group by query name; AVG of a decimal ratio for quality; conditional AVG of 100/0 for the poor percentage.</p>`,
+      code: { lang: 'sql', db: 'app', code: `SELECT query_name,
+       ROUND(AVG(1.0 * rating / position), 2)                     AS quality,
+       ROUND(AVG(CASE WHEN rating < 3 THEN 100.0 ELSE 0 END), 2)  AS poor_query_percentage
+FROM queries
+GROUP BY query_name
+ORDER BY query_name;` },
+      complexity: `<p>O(N), a single pass with two accumulators per query_name.</p>`,
+      followUps: ['Why is "average of ratios" right here but wrong for conversion rate across days?', 'Exclude queries with fewer than 3 results (HAVING COUNT(*) >= 3).']
+    }
+  });
+
+  practice.push({
+    title: 'Actors and Directors Who Cooperated At Least 3 Times',
+    level: 'Medium', tags: ['GROUP BY multiple columns', 'HAVING'], companies: ['Amazon', 'Netflix'],
+    statement: `<p>Table <code>cooperation(actor_id, director_id, timestamp)</code> (DB <b>app</b>) has one row per film collaboration. Return <code>actor_id, director_id</code> pairs that worked together at least 3 times. (LeetCode 1050.)</p>`,
+    constraints: `<p>timestamp is unique per row.</p>`,
+    example: `${H.table(['actor_id', 'director_id'], [['1', '1'], ['2', '1']])}<p>(1,1) appears 3 times, (2,1) 3 times, (1,2) only twice, (3,3) once.</p>`,
+    brute: {
+      why: `<p>Grouping by <code>actor_id</code> alone counts all of actor 1's films (5) regardless of director, so actor 1 qualifies even if no single director reached 3. The question is about <b>pairs</b> — the group key must be both columns.</p>`,
+      code: { lang: 'sql', db: 'app', code: `SELECT actor_id, COUNT(*) AS films
+FROM cooperation
+GROUP BY actor_id            -- wrong grain: per actor, not per pair
+HAVING COUNT(*) >= 3;` }
+    },
+    mcq: { q: 'What does GROUP BY actor_id, director_id produce?', options: ['One group per actor', 'One group per director', 'One group per distinct (actor, director) combination', 'A cross join of actors and directors'], answer: 2, explain: 'Multiple grouping columns create one bucket per existing combination of values.' },
+    hints: [
+      `<p>Hint 1: The thing being counted is a <i>pair</i>.</p>`,
+      `<p>Hint 2: Make the pair the bucket key: GROUP BY actor_id, director_id.</p>`,
+      `<p>Hint 3: HAVING COUNT(*) &gt;= 3 keeps pairs with 3+ rows.</p>`
+    ],
+    solution: {
+      approach: `<p>Two-column grouping plus a HAVING threshold.</p>`,
+      code: { lang: 'sql', db: 'app', code: `SELECT actor_id, director_id
+FROM cooperation
+GROUP BY actor_id, director_id
+HAVING COUNT(*) >= 3
+ORDER BY actor_id, director_id;` },
+      complexity: `<p>O(N); an index on (actor_id, director_id) lets the engine stream groups without a sort.</p>`,
+      followUps: ['Return the pair with the most collaborations (ORDER BY COUNT(*) DESC LIMIT 1 — what about ties?).']
+    }
+  });
+
+  practice.push({
+    title: 'Second Highest Salary (NULL If None)',
+    level: 'Medium', tags: ['MAX', 'subquery', 'NULL'], companies: ['Amazon', 'Apple', 'Accenture'],
+    statement: `<p>Return the second highest <b>distinct</b> salary from <code>employees</code> (DB <b>company</b>) as a column <code>SecondHighestSalary</code>. If there is no second highest salary, return a single row containing NULL. (LeetCode 176.) The same query, restricted to <code>dept = 'Marketing'</code>, must return NULL.</p>`,
+    constraints: `<p>salary may be NULL; ties possible.</p>`,
+    example: `${H.table(['SecondHighestSalary'], [['105000']])}<p>Highest is 120000 (Asha); next distinct is 105000 (Chen). For Marketing (only Ivan) → <span class="c-y">NULL</span>.</p>`,
+    brute: {
+      why: `<p><code>ORDER BY salary DESC LIMIT 1 OFFSET 1</code> works on this data but has two bugs: with a tie at the top (two people at 120000) it returns 120000 again, and when there is no second salary it returns <b class="c-r">zero rows</b> instead of one NULL row — failing the requirement.</p>`,
+      code: { lang: 'sql', db: 'company', code: `SELECT salary AS SecondHighestSalary
+FROM employees
+WHERE dept = 'Marketing'
+ORDER BY salary DESC
+LIMIT 1 OFFSET 1;          -- zero rows, not NULL` }
+    },
+    mcq: { q: 'Why does SELECT MAX(salary) FROM employees WHERE salary < 120000 AND dept = \'Marketing\' return a NULL row rather than no rows?', options: ['Because MAX ignores WHERE', 'An aggregate without GROUP BY always returns exactly one row; MAX over nothing is NULL', 'Because Marketing has NULL salaries', 'It returns no rows'], answer: 1, explain: 'Without GROUP BY the whole (possibly empty) input is one group, so there is always one output row; MAX of an empty set is NULL.' },
+    hints: [
+      `<p>Hint 1: The second highest is "the highest among salaries that are below the highest".</p>`,
+      `<p>Hint 2: <code>MAX(salary) WHERE salary &lt; (SELECT MAX(salary) …)</code> handles ties automatically.</p>`,
+      `<p>Hint 3: A plain aggregate always returns one row, so "no second salary" naturally becomes NULL — no special casing.</p>`
+    ],
+    solution: {
+      approach: `<p>Use the "aggregate over empty input returns NULL" rule: take MAX over all salaries strictly below the overall MAX.</p>`,
+      code: { lang: 'sql', db: 'company', code: `SELECT MAX(salary) AS SecondHighestSalary
+FROM employees
+WHERE salary < (SELECT MAX(salary) FROM employees);
+
+-- Same pattern for one department (returns one NULL row for Marketing)
+SELECT MAX(salary) AS SecondHighestSalary
+FROM employees
+WHERE dept = 'Marketing'
+  AND salary < (SELECT MAX(salary) FROM employees WHERE dept = 'Marketing');` },
+      alt: [{ lang: 'sql', db: 'company', title: 'LIMIT/OFFSET fixed: DISTINCT + wrap in a scalar subquery', code: `SELECT (SELECT DISTINCT salary
+        FROM employees
+        WHERE salary IS NOT NULL
+        ORDER BY salary DESC
+        LIMIT 1 OFFSET 1) AS SecondHighestSalary;   -- scalar subquery → NULL when empty` }],
+      complexity: `<p>Two scans (or two index probes with an index on salary: O(log N) each).</p>`,
+      followUps: ['Nth highest salary (LeetCode 177) — DENSE_RANK or OFFSET N-1 with DISTINCT.', 'Second highest per department (window functions, module 6).']
+    }
+  });
+
+  practice.push({
+    title: 'Revenue Pivot: One Column Per Month',
+    level: 'Medium', tags: ['pivot', 'conditional aggregation'], companies: ['Microsoft', 'Zomato', 'Deloitte'],
+    statement: `<p>Using delivered orders in <code>orders</code> (DB <b>shop</b>), produce one row per <code>customer_id</code> with columns <code>jan, feb, mar, apr</code> (2024 revenue in each month, 0 if none) and <code>total</code>. Order by total descending. (LeetCode 1179 "Reformat Department Table" style.)</p>`,
+    constraints: `<p>order_date is 'YYYY-MM-DD'. amount may be NULL (adds nothing).</p>`,
+    example: `${H.table(['customer_id', 'jan', 'feb', 'mar', 'apr', 'total'], [['1', '920', '0', '50', '55', '1025'], ['5', '0', '0', '1020', '0', '1020'], ['4', '0', '0', '900', '0', '900'], ['2', '135', '25', '0', '45', '205'], ['3', '0', '40', '0', '0', '40']])}<p>Each order row adds its amount to exactly one month column of its customer's row.</p>`,
+    brute: {
+      why: `<p>Grouping by customer <i>and month</i> gives the right numbers but in the wrong shape: 9 long rows instead of 5 wide ones, so the "report" still has to be pivoted by hand in a spreadsheet. Running 4 separate per-month queries and gluing them is slower (4 scans) and fragile.</p>`,
+      code: { lang: 'sql', db: 'shop', code: `SELECT customer_id, substr(order_date, 1, 7) AS month, SUM(amount) AS revenue
+FROM orders
+WHERE status = 'delivered'
+GROUP BY customer_id, month;   -- long format, not the requested pivot` }
+    },
+    mcq: { q: 'In SUM(CASE WHEN order_date LIKE \'2024-02%\' THEN amount ELSE 0 END), what does a January row contribute?', options: ['NULL', '0', 'Its amount', 'It is skipped by WHERE'], answer: 1, explain: 'The CASE condition is false, so ELSE 0 is returned and the SUM is unchanged. That is how one pass fills every column.' },
+    hints: [
+      `<p>Hint 1: Wide output = one row per customer → GROUP BY customer_id only.</p>`,
+      `<p>Hint 2: One conditional SUM per month column: <code>SUM(CASE WHEN order_date LIKE '2024-01%' THEN amount ELSE 0 END) AS jan</code>.</p>`,
+      `<p>Hint 3: total = SUM(amount); WHERE status = 'delivered'; ORDER BY total DESC.</p>`
+    ],
+    solution: {
+      approach: `<p>Group by customer and build each month column with a CASE-filtered SUM; ELSE 0 makes empty months 0.</p>`,
+      code: { lang: 'sql', db: 'shop', code: `SELECT customer_id,
+       SUM(CASE WHEN order_date LIKE '2024-01%' THEN amount ELSE 0 END) AS jan,
+       SUM(CASE WHEN order_date LIKE '2024-02%' THEN amount ELSE 0 END) AS feb,
+       SUM(CASE WHEN order_date LIKE '2024-03%' THEN amount ELSE 0 END) AS mar,
+       SUM(CASE WHEN order_date LIKE '2024-04%' THEN amount ELSE 0 END) AS apr,
+       SUM(amount)                                                       AS total
+FROM orders
+WHERE status = 'delivered'
+GROUP BY customer_id
+ORDER BY total DESC;` },
+      complexity: `<p>One scan, O(N); 5 accumulators per customer.</p>`,
+      followUps: ['Add a final "all customers" row (UNION ALL a query without GROUP BY).', 'Generate the 12 month columns automatically (dynamic SQL in app code).']
+    }
+  });
+
+  practice.push({
+    title: 'Departments Paying Above the Company Average',
+    level: 'Medium', tags: ['HAVING', 'scalar subquery', 'AVG'], companies: ['Goldman Sachs', 'Oracle'],
+    statement: `<p>Return <code>dept</code> and <code>dept_avg</code> (rounded to whole numbers) for departments whose average salary is higher than the average salary of the whole company (DB <b>company</b>). Ignore employees without a department. Order by dept_avg descending.</p>`,
+    constraints: `<p>salary may be NULL (ignored by AVG). Company average includes everyone with a salary, even unassigned employees.</p>`,
+    example: `${H.table(['dept', 'dept_avg'], [['Engineering', '106667.0'], ['Marketing', '70000.0']])}<p>Company average = 745000 ÷ 11 = 67727.27. Sales (55500) and HR (46500) fall below it.</p>`,
+    brute: {
+      why: `<p>Comparing each <b>employee</b> with the average in WHERE (<code>WHERE salary &gt; 67727</code>) and then grouping answers a different question ("departments that have some above-average employee") and also hard-codes a number that goes stale.</p>`,
+      code: { lang: 'sql', db: 'company', code: `SELECT dept, ROUND(AVG(salary)) AS dept_avg
+FROM employees
+WHERE salary > 67727          -- per-employee filter + magic number
+GROUP BY dept;` }
+    },
+    mcq: { q: 'Where does the comparison "department average > company average" belong?', options: ['WHERE', 'HAVING', 'ORDER BY', 'GROUP BY'], answer: 1, explain: 'The department average exists only after grouping, so the comparison is a group filter → HAVING. The company average is a scalar subquery.' },
+    hints: [
+      `<p>Hint 1: Two averages at different grains: per department (GROUP BY) and whole company (no GROUP BY).</p>`,
+      `<p>Hint 2: The company number is a scalar subquery <code>(SELECT AVG(salary) FROM employees)</code> usable inside HAVING.</p>`,
+      `<p>Hint 3: WHERE dept IS NOT NULL → GROUP BY dept → HAVING AVG(salary) &gt; (subquery) → ORDER BY dept_avg DESC.</p>`
+    ],
+    solution: {
+      approach: `<p>Aggregate per department and filter groups by comparing with a scalar subquery computed once.</p>`,
+      code: { lang: 'sql', db: 'company', code: `SELECT dept, ROUND(AVG(salary)) AS dept_avg
+FROM employees
+WHERE dept IS NOT NULL
+GROUP BY dept
+HAVING AVG(salary) > (SELECT AVG(salary) FROM employees)
+ORDER BY dept_avg DESC;` },
+      complexity: `<p>Two scans: one for the uncorrelated subquery (evaluated once), one for grouping.</p>`,
+      followUps: ['Compare each department with the average of the OTHER departments (correlated subquery).', 'List employees earning above their own department\'s average (module 5/6).']
+    }
+  });
+
+  /* =====================================================================
+     PRACTICE — Hard
+     ===================================================================== */
+  practice.push({
+    title: 'Trips and Users: Daily Cancellation Rate',
+    level: 'Hard', tags: ['conditional aggregation', 'ratio', 'filter both sides'], companies: ['Uber', 'Ola', 'Lyft'],
+    statement: `<p>Tables <code>trips</code> and <code>users</code> (DB <b>app</b>). The cancellation rate of a day = (trips cancelled by client or driver) ÷ (all trips) counting only trips where <b>both the client and the driver are not banned</b>. Return <code>day</code> and <code>cancellation_rate</code> (2 decimals) for 2025-10-01 to 2025-10-03. (LeetCode 262.)</p>`,
+    constraints: `<p>status ∈ {completed, cancelled_by_driver, cancelled_by_client}. banned ∈ {'Yes','No'}. Days with no unbanned trips may be omitted.</p>`,
+    example: `${H.table(['day', 'cancellation_rate'], [['2025-10-01', '0.5'], ['2025-10-02', '0.0'], ['2025-10-03', '0.5']])}<p>Oct 1: trips 2 (banned client 2) and 4 (banned driver 13) are excluded from <b>both</b> numerator and denominator; of trips 1 and 3, one was cancelled → 1/2 = 0.50.</p>`,
+    brute: {
+      why: `<p>Ignoring the banned users gives Oct 1 = 3 cancellations ÷ 4 trips = <b class="c-r">0.75</b> and Oct 3 = <b class="c-r">0.33</b>. Another classic mistake is filtering banned users only in the numerator, which mixes two different populations into one ratio. Numerator and denominator must come from the <i>same</i> filtered rows — conditional aggregation guarantees that.</p>`,
+      code: { lang: 'sql', db: 'app', code: `-- Wrong: banned users still counted
+SELECT request_at AS day,
+       ROUND(1.0 * SUM(CASE WHEN status <> 'completed' THEN 1 ELSE 0 END) / COUNT(*), 2) AS cancellation_rate
+FROM trips
+GROUP BY request_at;` }
+    },
+    mcq: { q: 'Which expression gives the fraction of cancelled trips in a group, as a decimal, in one pass?', options: ['COUNT(status <> \'completed\') / COUNT(*)', 'AVG(CASE WHEN status <> \'completed\' THEN 1.0 ELSE 0 END)', 'SUM(status) / COUNT(*)', 'COUNT(CASE WHEN status <> \'completed\' THEN 1 ELSE 0 END) / COUNT(*)'], answer: 1, explain: 'The average of 1.0/0 flags is the fraction of 1s, and it is already decimal. Options 1 and 4 count every row (0 is not NULL), giving 1.' },
+    hints: [
+      `<p>Hint 1: First decide the population: only trips whose client AND driver are unbanned. That is a row filter — do it before grouping (join to users twice, once per role).</p>`,
+      `<p>Hint 2: Per day → GROUP BY request_at. The rate is cancelled ÷ total over the same rows: <code>AVG(CASE WHEN status &lt;&gt; 'completed' THEN 1.0 ELSE 0 END)</code>.</p>`,
+      `<p>Hint 3: Restrict dates with BETWEEN, ROUND(…, 2), ORDER BY day. Recipe: trips ⨝ users c (client, unbanned) ⨝ users d (driver, unbanned) → WHERE date range → GROUP BY day → AVG of flag.</p>`
+    ],
+    solution: {
+      approach: `<p>Join users twice (as client and as driver) keeping only unbanned ones, so both parts of the ratio see the same rows. Then a conditional AVG per day produces the rate in one pass. (JOINs are covered in depth next module; here they are just a row filter.)</p>`,
+      code: { lang: 'sql', db: 'app', code: `SELECT t.request_at AS day,
+       ROUND(AVG(CASE WHEN t.status <> 'completed' THEN 1.0 ELSE 0 END), 2) AS cancellation_rate
+FROM trips t
+JOIN users c ON c.user_id = t.client_id AND c.banned = 'No'   -- unbanned client
+JOIN users d ON d.user_id = t.driver_id AND d.banned = 'No'   -- unbanned driver
+WHERE t.request_at BETWEEN '2025-10-01' AND '2025-10-03'
+GROUP BY t.request_at
+ORDER BY day;` },
+      alt: [{ lang: 'sql', db: 'app', title: 'Without joins: IN subquery filter', code: `SELECT request_at AS day,
+       ROUND(1.0 * SUM(CASE WHEN status LIKE 'cancelled%' THEN 1 ELSE 0 END) / COUNT(*), 2) AS cancellation_rate
+FROM trips
+WHERE client_id NOT IN (SELECT user_id FROM users WHERE banned = 'Yes')
+  AND driver_id NOT IN (SELECT user_id FROM users WHERE banned = 'Yes')
+  AND request_at BETWEEN '2025-10-01' AND '2025-10-03'
+GROUP BY request_at
+ORDER BY day;` }],
+      complexity: `<p>O(T) for trips with hash lookups into users (O(U) build). One aggregation pass.</p>`,
+      followUps: ['Also return days with zero eligible trips (calendar table + LEFT JOIN).', 'Separate rates for driver vs client cancellations in the same row.']
+    }
+  });
+
+  practice.push({
+    title: 'Salary Categories Including Empty Ones',
+    level: 'Hard', tags: ['CASE', 'UNION ALL', 'zero rows'], companies: ['Amazon', 'Capital One'],
+    statement: `<p>For the <b>Sales</b> department in <code>employees</code> (DB <b>company</b>) report how many employees fall into each category: <code>'Low Salary'</code> (&lt; 50000), <code>'Average Salary'</code> (50000–100000 inclusive), <code>'High Salary'</code> (&gt; 100000). <b>All three categories must appear</b>, even with a count of 0. (LeetCode 1907 style.)</p>`,
+    constraints: `<p>Output exactly 3 rows: category, employees. NULL salaries belong to no category.</p>`,
+    example: `${H.table(['category', 'employees'], [['Low Salary', '<span class="c-y">0</span>'], ['Average Salary', '4'], ['High Salary', '<span class="c-y">0</span>']])}<p>All four Sales salaries (60000, 52000, 58000, 52000) are average. Low and High must still be shown with 0.</p>`,
+    brute: {
+      why: `<p><code>GROUP BY</code> a CASE label can only produce groups that have at least one row, so the result is <b class="c-r">one row</b> ('Average Salary', 4). The empty categories vanish — GROUP BY never invents groups.</p>`,
+      code: { lang: 'sql', db: 'company', code: `SELECT CASE WHEN salary < 50000 THEN 'Low Salary'
+            WHEN salary <= 100000 THEN 'Average Salary'
+            ELSE 'High Salary' END AS category,
+       COUNT(*) AS employees
+FROM employees
+WHERE dept = 'Sales'
+GROUP BY category;      -- missing the zero categories` }
+    },
+    mcq: { q: 'Why does SELECT \'Low Salary\', SUM(CASE WHEN salary &lt; 50000 THEN 1 ELSE 0 END) FROM employees WHERE dept = \'Sales\' always return a row?', options: ['Because of the CASE', 'An aggregate query without GROUP BY returns exactly one row, even if no row matches', 'Because SUM never returns NULL', 'It does not; it returns no rows when the count is 0'], answer: 1, explain: 'No GROUP BY → one summary row. That property lets each category be its own one-row query; UNION ALL stacks them.' },
+    hints: [
+      `<p>Hint 1: GROUP BY can't create a group with zero members. You need a construct that always yields a row per category.</p>`,
+      `<p>Hint 2: An aggregate query without GROUP BY always yields exactly one row. Write one per category with a conditional SUM and stack them with UNION ALL.</p>`,
+      `<p>Hint 3: SUM over an empty input is NULL — wrap in COALESCE(…, 0) in case the department has no rows at all. Alternative: a VALUES list of categories LEFT JOINed to the grouped counts.</p>`
+    ],
+    solution: {
+      approach: `<p>Three single-row aggregate queries (each counting its own category with SUM(CASE)) glued with UNION ALL. Each always returns one row, so every category appears with its count or 0.</p>`,
+      code: { lang: 'sql', db: 'company', code: `SELECT 'Low Salary' AS category,
+       COALESCE(SUM(CASE WHEN salary < 50000 THEN 1 ELSE 0 END), 0) AS employees
+FROM employees WHERE dept = 'Sales'
+UNION ALL
+SELECT 'Average Salary',
+       COALESCE(SUM(CASE WHEN salary BETWEEN 50000 AND 100000 THEN 1 ELSE 0 END), 0)
+FROM employees WHERE dept = 'Sales'
+UNION ALL
+SELECT 'High Salary',
+       COALESCE(SUM(CASE WHEN salary > 100000 THEN 1 ELSE 0 END), 0)
+FROM employees WHERE dept = 'Sales';` },
+      alt: [{ lang: 'sql', db: 'company', title: 'Category list + LEFT JOIN (one scan of employees)', code: `WITH cats(category, ord) AS (VALUES ('Low Salary', 1), ('Average Salary', 2), ('High Salary', 3)),
+     counted AS (
+       SELECT CASE WHEN salary < 50000 THEN 'Low Salary'
+                   WHEN salary <= 100000 THEN 'Average Salary'
+                   ELSE 'High Salary' END AS category,
+              COUNT(*) AS n
+       FROM employees
+       WHERE dept = 'Sales' AND salary IS NOT NULL
+       GROUP BY 1)
+SELECT cats.category, COALESCE(counted.n, 0) AS employees
+FROM cats LEFT JOIN counted ON counted.category = cats.category
+ORDER BY cats.ord;` }],
+      complexity: `<p>UNION ALL version: 3 scans (fine for small tables). LEFT JOIN version: 1 scan + a tiny join.</p>`,
+      followUps: ['Run it for every department at once with all categories per department (cross join departments × categories).', 'Move the band boundaries into a table.']
+    }
+  });
+
+  practice.push({
+    title: 'Customers Who Bought From Every Category',
+    level: 'Hard', tags: ['relational division', 'COUNT DISTINCT', 'HAVING'], companies: ['Amazon', 'Instacart'],
+    statement: `<p>Return the <code>name</code> of customers (DB <b>shop</b>) who have ordered at least one product from <b>every</b> category in <code>products</code> (any order status). (LeetCode 1045 style.) Tables: customers, orders, order_items, products.</p>`,
+    constraints: `<p>The set of categories can change — don't hard-code 4.</p>`,
+    example: `${H.table(['name', 'categories'], [['<span class="c-g">Aarav</span>', '4']])}<p>Aarav bought Electronics (laptop), Sports (football, yoga mat), Books (cookbook, novel) and Home (desk lamp). Bella has Electronics, Books, Sports — no Home.</p>`,
+    brute: {
+      why: `<p><code>HAVING COUNT(*) &gt;= 4</code> counts <b>item rows</b>, not categories. Bella bought 5 items from 3 categories and wrongly qualifies; buying four novels would also "complete" the set. Hard-coding 4 also breaks when a category is added.</p>`,
+      code: { lang: 'sql', db: 'shop', code: `SELECT c.name, COUNT(*) AS items
+FROM customers c
+JOIN orders o       ON o.customer_id = c.id
+JOIN order_items oi ON oi.order_id = o.id
+JOIN products p     ON p.id = oi.product_id
+GROUP BY c.id, c.name
+HAVING COUNT(*) >= 4;      -- counts items, not distinct categories` }
+    },
+    mcq: { q: 'What is the core test for "bought from every category"?', options: ['COUNT(*) = number of products', 'COUNT(DISTINCT category) per customer = COUNT(DISTINCT category) in products', 'MAX(category) = MIN(category)', 'SUM(qty) &gt;= 4'], answer: 1, explain: 'Relational division: a customer covers the set when the number of distinct categories they touched equals the size of the whole set.' },
+    hints: [
+      `<p>Hint 1: Get one row per (customer, purchased item) by joining orders → order_items → products.</p>`,
+      `<p>Hint 2: Per customer, count <b>distinct</b> categories.</p>`,
+      `<p>Hint 3: Compare in HAVING with a scalar subquery <code>(SELECT COUNT(DISTINCT category) FROM products)</code>.</p>`
+    ],
+    solution: {
+      approach: `<p>Relational division by counting: join to reach the category of each purchased item, group by customer, and require the distinct-category count to equal the total number of categories.</p>`,
+      code: { lang: 'sql', db: 'shop', code: `SELECT c.name, COUNT(DISTINCT p.category) AS categories
+FROM customers c
+JOIN orders o       ON o.customer_id = c.id
+JOIN order_items oi ON oi.order_id = o.id
+JOIN products p     ON p.id = oi.product_id
+GROUP BY c.id, c.name
+HAVING COUNT(DISTINCT p.category) = (SELECT COUNT(DISTINCT category) FROM products);` },
+      complexity: `<p>O(items) join + aggregation; distinct-category sets per customer are tiny.</p>`,
+      followUps: ['Only count delivered orders.', 'Solve with double NOT EXISTS ("there is no category the customer did not buy").', 'Which category is each near-miss customer missing?']
+    }
+  });
+
+  practice.push({
+    title: 'Game Play Analysis: Next-Day Retention',
+    level: 'Hard', tags: ['MIN', 'derived table', 'ratio'], companies: ['GSN Games', 'Zynga', 'Dream11'],
+    statement: `<p>From <code>activity</code> (DB <b>app</b>), compute the fraction of players who logged in again on the day <b>right after their first login</b>, rounded to 2 decimals, as <code>fraction</code>. (LeetCode 550.)</p>`,
+    constraints: `<p>(player_id, event_date) is unique. Dates are ISO text; use <code>date(d, '+1 day')</code> in SQLite.</p>`,
+    example: `${H.table(['fraction'], [['0.5']])}<p>First logins: player 1 (03-01, back 03-02 ✔), player 2 (06-25, next login 06-27 ✘), player 3 (03-02 ✘), player 4 (05-10, back 05-11 ✔) → 2 of 4.</p>`,
+    brute: {
+      why: `<p>Checking for <i>any</i> two consecutive days counts player 2 (06-27 → 06-28) even though that is not the day after their <b>first</b> login → <b class="c-r">0.75</b>. The question anchors on the first-login date, which is a per-player MIN — an aggregate you need before the check.</p>`,
+      code: { lang: 'sql', db: 'app', code: `-- Wrong: any consecutive pair, not "day after first login"
+SELECT ROUND(1.0 * COUNT(DISTINCT a.player_id) /
+             (SELECT COUNT(DISTINCT player_id) FROM activity), 2) AS fraction
+FROM activity a
+JOIN activity b ON b.player_id = a.player_id
+               AND b.event_date = date(a.event_date, '+1 day');` }
+    },
+    mcq: { q: 'What gives each player\'s first login date?', options: ['SELECT player_id, event_date FROM activity ORDER BY event_date LIMIT 1', 'SELECT player_id, MIN(event_date) FROM activity GROUP BY player_id', 'SELECT DISTINCT player_id, event_date FROM activity', 'SELECT MIN(player_id), event_date FROM activity'], answer: 1, explain: 'MIN per group gives one first-login row per player. LIMIT 1 gives one row for the whole table.' },
+    hints: [
+      `<p>Hint 1: Step 1 is an aggregate: first_login = MIN(event_date) per player (a derived table).</p>`,
+      `<p>Hint 2: Join that back to activity and flag rows where event_date = date(first_login, '+1 day').</p>`,
+      `<p>Hint 3: fraction = flagged players ÷ all players: <code>1.0 * SUM(flag) / COUNT(DISTINCT player_id)</code>, ROUND to 2.</p>`
+    ],
+    solution: {
+      approach: `<p>Aggregate twice: first MIN per player to find the anchor date, then a conditional SUM over the joined rows divided by the number of players.</p>`,
+      code: { lang: 'sql', db: 'app', code: `SELECT ROUND(1.0 * SUM(CASE WHEN a.event_date = date(f.first_login, '+1 day') THEN 1 ELSE 0 END)
+             / COUNT(DISTINCT f.player_id), 2) AS fraction
+FROM (SELECT player_id, MIN(event_date) AS first_login
+      FROM activity
+      GROUP BY player_id) AS f
+JOIN activity a ON a.player_id = f.player_id;` },
+      complexity: `<p>Two passes over activity (one for MIN, one for the join), O(N) with hashing; an index on (player_id, event_date) makes the MIN and the lookup cheap.</p>`,
+      followUps: ['Day-7 retention per signup cohort month.', 'Rewrite with a CTE and with window functions (FIRST_VALUE / MIN OVER).']
+    }
+  });
+
+  practice.push({
+    title: 'Loyal in Both March and April',
+    level: 'Hard', tags: ['conditional aggregation', 'HAVING', 'each period'], companies: ['Amazon', 'Myntra'],
+    statement: `<p>Return the <code>name</code> of customers (DB <b>shop</b>) who spent <b>at least 50 in March 2024 AND at least 50 in April 2024</b> on delivered orders, with the March and April totals. (LeetCode 1511 "Customer Order Frequency" style.)</p>`,
+    constraints: `<p>Each month must independently reach the threshold.</p>`,
+    example: `${H.table(['name', 'march', 'april'], [['<span class="c-g">Aarav</span>', '50', '55']])}<p>Emma spent 1020 in March but nothing delivered in April; Deepa 900 in March only. Aarav is the only one above 50 in both.</p>`,
+    brute: {
+      why: `<p>Filtering to March–April and requiring <code>SUM(amount) &gt;= 50</code> checks the <b>combined</b> total, so Emma (1020 + 0) and Deepa (900 + 0) wrongly qualify. Each month needs its own total — two conditional SUMs in HAVING.</p>`,
+      code: { lang: 'sql', db: 'shop', code: `SELECT customer_id, SUM(amount) AS spend
+FROM orders
+WHERE status = 'delivered'
+  AND order_date BETWEEN '2024-03-01' AND '2024-04-30'
+GROUP BY customer_id
+HAVING SUM(amount) >= 50;    -- combined total: returns 1, 4, 5` }
+    },
+    mcq: { q: 'How do you require a per-month threshold for two months in one GROUP BY customer query?', options: ['Two WHERE conditions joined with AND', 'HAVING SUM(CASE WHEN march THEN amount ELSE 0 END) >= 50 AND SUM(CASE WHEN april THEN amount ELSE 0 END) >= 50', 'GROUP BY customer, month HAVING SUM(amount) >= 50', 'HAVING COUNT(DISTINCT month) = 2'], answer: 1, explain: 'Conditional SUMs compute each month\'s total inside the customer group; HAVING then checks both. Grouping by month (option 3) checks each month separately but cannot require both at once.' },
+    hints: [
+      `<p>Hint 1: You need two different totals per customer in the same row.</p>`,
+      `<p>Hint 2: Conditional aggregation: <code>SUM(CASE WHEN order_date LIKE '2024-03%' THEN amount ELSE 0 END)</code> and the same for April.</p>`,
+      `<p>Hint 3: Put both conditions in HAVING (joined with AND); join customers for names; WHERE status = 'delivered'.</p>`
+    ],
+    solution: {
+      approach: `<p>Group per customer, compute each month's total with a CASE-filtered SUM, and require both in HAVING. The same pattern scales to "every month of the quarter".</p>`,
+      code: { lang: 'sql', db: 'shop', code: `SELECT c.name,
+       SUM(CASE WHEN o.order_date LIKE '2024-03%' THEN o.amount ELSE 0 END) AS march,
+       SUM(CASE WHEN o.order_date LIKE '2024-04%' THEN o.amount ELSE 0 END) AS april
+FROM customers c
+JOIN orders o ON o.customer_id = c.id
+WHERE o.status = 'delivered'
+GROUP BY c.id, c.name
+HAVING SUM(CASE WHEN o.order_date LIKE '2024-03%' THEN o.amount ELSE 0 END) >= 50
+   AND SUM(CASE WHEN o.order_date LIKE '2024-04%' THEN o.amount ELSE 0 END) >= 50;` },
+      complexity: `<p>One scan of orders (plus the join), O(N); two accumulators per customer.</p>`,
+      followUps: ['Customers active in every month of Q1 (COUNT(DISTINCT month) = 3).', 'Customers whose April spend dropped more than 50% versus March.']
+    }
+  });
+
+  /* =====================================================================
+     QUIZ
+     ===================================================================== */
+  quiz.push(
+    { q: 'A column has values 10, NULL, 20. What does AVG(col) return?', options: ['10', '15', 'NULL', '30'], answer: 1, explain: 'AVG skips NULL: (10 + 20) / 2 = 15. Treating NULL as 0 would give 10.' },
+    { q: 'SELECT SUM(amount) FROM orders WHERE 1 = 0 returns…', options: ['No rows', 'One row with 0', 'One row with NULL', 'An error'], answer: 2, explain: 'Without GROUP BY there is always one result row; SUM over an empty set is NULL. COUNT would return 0.' },
+    { q: 'customers has 6 rows; 2 have a NULL phone; 2 share the same phone. What is COUNT(DISTINCT phone)?', options: ['6', '4', '3', '2'], answer: 2, explain: 'COUNT(DISTINCT) ignores NULLs (4 non-NULL values remain) and counts the shared phone once → 3.' },
+    { q: 'Which query is rejected by PostgreSQL but accepted by SQLite?', options: ['SELECT dept, COUNT(*) FROM e GROUP BY dept', 'SELECT dept, name, COUNT(*) FROM e GROUP BY dept', 'SELECT COUNT(*) FROM e', 'SELECT dept FROM e GROUP BY dept HAVING COUNT(*) > 1'], answer: 1, explain: 'name is neither grouped nor aggregated. PostgreSQL raises an error; SQLite returns an arbitrary name from each group.' },
+    { q: 'In which clause can you NOT use COUNT(*)?', options: ['SELECT', 'HAVING', 'ORDER BY', 'WHERE'], answer: 3, explain: 'WHERE is evaluated per row before grouping, so aggregates don\'t exist yet ("misuse of aggregate").' },
+    { q: 'GROUP BY dept on a table where 3 rows have dept NULL produces…', options: ['3 separate NULL groups', 'One NULL group with 3 rows', 'No group for them — NULL rows are dropped', 'An error'], answer: 1, explain: 'GROUP BY (like DISTINCT) treats NULLs as equal, so they form one group.' },
+    { q: 'CASE WHEN x >= 10 THEN \'a\' WHEN x >= 20 THEN \'b\' ELSE \'c\' END for x = 25 returns…', options: ['a', 'b', 'c', 'NULL'], answer: 0, explain: 'The first TRUE branch wins: 25 >= 10 is TRUE, so \'a\'. The \'b\' branch can never fire — put higher thresholds first.' },
+    { q: 'What does CASE score WHEN NULL THEN \'absent\' ELSE \'present\' END return when score is NULL?', options: ['absent', 'present', 'NULL', 'error'], answer: 1, explain: 'The simple form compares score = NULL, which is UNKNOWN, never TRUE. Use CASE WHEN score IS NULL.' },
+    { q: 'COUNT(CASE WHEN status = \'cancelled\' THEN 1 ELSE 0 END) over 14 orders with 2 cancelled returns…', options: ['2', '12', '14', '0'], answer: 2, explain: '0 is not NULL, so COUNT counts every row. Use SUM(... ELSE 0) or COUNT(CASE ... THEN 1 END) without ELSE.' },
+    { q: 'NULLIF(clicks, 0) when clicks = 0 returns…', options: ['0', 'NULL', '1', 'An error'], answer: 1, explain: 'NULLIF(a, b) returns NULL when a = b — perfect as a denominator guard: x / NULL = NULL instead of a division-by-zero error.' },
+    { q: 'COALESCE(NULL, NULL, \'x\', \'y\') returns…', options: ['NULL', 'x', 'y', 'xy'], answer: 1, explain: 'COALESCE returns the first non-NULL argument, scanning left to right.' },
+    { q: 'bonus is non-NULL for 6 of 12 employees totalling 43000. AVG(COALESCE(bonus, 0)) is…', options: ['7166.67', '3583.33', '43000', 'NULL'], answer: 1, explain: 'COALESCE turns the 6 NULLs into 0, so the average is over 12 rows: 43000 / 12 = 3583.33. AVG(bonus) would be 43000 / 6.' },
+    { q: 'In SQLite, SELECT 7 / 2 returns…', options: ['3.5', '3', '4', 'NULL'], answer: 1, explain: 'Integer ÷ integer is integer division (truncated). Write 7.0 / 2 or 1.0 * 7 / 2 for 3.5.' },
+    { q: 'Which is the correct logical processing order?', options: ['SELECT → FROM → WHERE → GROUP BY', 'FROM → WHERE → GROUP BY → HAVING → SELECT → ORDER BY', 'FROM → GROUP BY → WHERE → SELECT → HAVING', 'WHERE → FROM → SELECT → GROUP BY'], answer: 1, explain: 'Rows are produced (FROM), filtered (WHERE), grouped, groups filtered (HAVING), projected (SELECT), then sorted.' }
+  );
+
+  /* =====================================================================
+     INTERVIEW Q&A
+     ===================================================================== */
+  interview.push(
+    { q: 'What is the difference between COUNT(*), COUNT(col) and COUNT(DISTINCT col)?', level: 'B',
+      a: `<p><b>COUNT(*)</b> counts rows, including rows full of NULLs. <b>COUNT(col)</b> counts rows where col is not NULL. <b>COUNT(DISTINCT col)</b> counts different non-NULL values. On our customers table: 6 rows, 4 phones, 4 countries. Practical uses: COUNT(*) for "how many orders", COUNT(DISTINCT customer_id) for "how many buyers", COUNT(*) − COUNT(col) for "how many missing". COUNT(1) is identical to COUNT(*) in every modern engine.</p>`,
+      followUps: ['How would you count distinct pairs of columns in SQLite?', 'Why can COUNT(DISTINCT) be expensive on billions of rows, and what is HyperLogLog?'] },
+    { q: 'Explain WHERE vs HAVING with an example.', level: 'B',
+      a: `<p>WHERE filters <b>rows</b> before grouping and cannot use aggregates; HAVING filters <b>groups</b> after GROUP BY and can. "Departments with at least 2 employees earning 50k+": <code>WHERE salary &gt;= 50000</code> removes low earners row by row, <code>GROUP BY dept</code> buckets the rest, <code>HAVING COUNT(*) &gt;= 2</code> removes small buckets. Non-aggregate conditions belong in WHERE even if HAVING would accept them, because filtering early shrinks the work.</p>`,
+      followUps: ['Can you use HAVING without GROUP BY?', 'Can you reference a SELECT alias in HAVING? Does it depend on the database?'] },
+    { q: 'What is the logical order of SQL clause evaluation, and why does it matter?', level: 'B',
+      a: `<p>FROM/JOIN → WHERE → GROUP BY → HAVING → SELECT → DISTINCT → ORDER BY → LIMIT. It explains classic errors: aggregates are illegal in WHERE (they don't exist yet), SELECT aliases aren't visible in WHERE (they're created later), but ORDER BY can use aliases (it runs after SELECT). It is a model of meaning — the optimizer may physically reorder work (push filters down, use indexes) as long as the result is the same.</p>`,
+      followUps: ['Where do window functions fit in this order?', 'Why does SQLite let you use an alias in WHERE while PostgreSQL does not?'] },
+    { q: 'What is the GROUP BY "golden rule", and what happens in SQLite or old MySQL if you break it?', level: 'I',
+      a: `<p>Every SELECT column must be in GROUP BY or inside an aggregate (or functionally dependent on the grouping key, e.g. grouping by a primary key). PostgreSQL, SQL Server, Oracle and MySQL 5.7+ (ONLY_FULL_GROUP_BY) reject violations. SQLite and old MySQL return a value from an arbitrary row of the group — it looks plausible and is silently wrong. SQLite's only documented exception: with a single MIN() or MAX(), bare columns come from the min/max row. To get "the employee with the top salary per department", use a window function or join back to the per-group MAX.</p>`,
+      followUps: ['What is functional dependency and how does PostgreSQL use it?', 'Write "top earner per department" without window functions.'] },
+    { q: 'How do aggregate functions handle NULLs, and how do you make SUM return 0 for empty groups?', level: 'B',
+      a: `<p>SUM, AVG, MIN, MAX and COUNT(col) ignore NULLs; COUNT(*) counts rows. Over an empty set (or all-NULL values) COUNT returns 0 but SUM/AVG/MIN/MAX return NULL. So <code>COALESCE(SUM(amount), 0)</code> is the standard fix. Beware the difference between <code>AVG(x)</code> (ignore missing) and <code>AVG(COALESCE(x, 0))</code> (missing counts as 0) — they answer different business questions, so confirm which is meant.</p>`,
+      followUps: ['Is SUM(COALESCE(x,0)) ever different from COALESCE(SUM(x),0)?', 'What does SQLite\'s TOTAL() do?'] },
+    { q: 'What is conditional aggregation? Give two examples.', level: 'I',
+      a: `<p>Putting a CASE (or FILTER clause) inside an aggregate so one pass computes several differently-filtered metrics. Examples: approval stats <code>SUM(CASE WHEN state = 'approved' THEN amount ELSE 0 END)</code> next to <code>SUM(amount)</code>; pivots <code>MAX(CASE WHEN subject = 'Math' THEN score END) AS math</code>. Benefits: one scan instead of many queries, and numerator/denominator of a ratio guaranteed to use the same rows. Standard alternative: <code>COUNT(*) FILTER (WHERE …)</code> in PostgreSQL and SQLite 3.30+.</p>`,
+      followUps: ['Why is COUNT(CASE WHEN x THEN 1 ELSE 0 END) a bug?', 'How would you pivot when the set of columns is not known in advance?'] },
+    { q: 'How do you pivot rows into columns in SQL?', level: 'I',
+      a: `<p>GROUP BY the row label, then one conditional aggregate per output column: <code>SUM(CASE WHEN month = 'Jan' THEN amount ELSE 0 END) AS jan</code>, etc. Use <code>ELSE 0</code> for additive measures where "no data" means zero, and no ELSE with MAX/MIN for single facts (a missing exam should be NULL, not 0). Dialects add helpers (SQL Server/Snowflake/BigQuery <code>PIVOT</code>, PostgreSQL <code>crosstab</code>), but CASE works everywhere. Unpivot = UNION ALL of one SELECT per column, or <code>UNPIVOT</code>/<code>LATERAL VALUES</code>.</p>`,
+      followUps: ['How would you detect duplicates that a MAX(CASE) pivot would hide?', 'When should pivoting be done in the BI tool instead of SQL?'] },
+    { q: 'What are the pitfalls of CASE expressions?', level: 'I',
+      a: `<p>(1) First TRUE wins — overlapping ranges must go from most to least specific, or later branches never fire. (2) No ELSE → NULL. (3) <code>CASE col WHEN NULL</code> never matches; use <code>WHEN col IS NULL</code>. (4) Boundary gaps/overlaps (&lt; 100 vs &gt; 100 leaves 100 out). (5) Mixed THEN types error in PostgreSQL. (6) CASE in WHERE or GROUP BY prevents index use — consider a generated column. (7) Large, changing mappings belong in a lookup table, not a hard-coded ladder.</p>`,
+      followUps: ['Is CASE guaranteed to short-circuit?', 'How would you test a CASE ladder for boundary bugs?'] },
+    { q: 'How do you avoid division-by-zero errors in SQL, and how do engines differ?', level: 'I',
+      a: `<p>Wrap the denominator: <code>x / NULLIF(y, 0)</code>. NULLIF returns NULL when y = 0, and anything divided by NULL is NULL, so the row gets NULL instead of the whole query failing. PostgreSQL, SQL Server and Oracle raise an error on ÷0; MySQL and SQLite return NULL; BigQuery offers SAFE_DIVIDE, Snowflake DIV0NULL. Then decide deliberately whether to show NULL ("undefined") or COALESCE it to 0. Also force decimal arithmetic (<code>1.0 *</code> or CAST) to avoid integer division.</p>`,
+      followUps: ['Why is a CASE WHEN y = 0 guard sometimes not enough?', 'What does integer division do to percentages?'] },
+    { q: 'Find the second highest salary, returning NULL if it does not exist.', level: 'I',
+      a: `<p><code>SELECT MAX(salary) AS second FROM employees WHERE salary &lt; (SELECT MAX(salary) FROM employees);</code> It handles ties automatically (strictly below the top) and returns one NULL row when nothing qualifies, because an aggregate without GROUP BY always yields one row. <code>ORDER BY salary DESC LIMIT 1 OFFSET 1</code> fails on ties (needs DISTINCT) and returns zero rows when empty unless wrapped in a scalar subquery. For the Nth highest, use DENSE_RANK.</p>`,
+      followUps: ['Generalise to the Nth highest per department.', 'What index makes this fast?'] },
+    { q: 'Average of ratios vs ratio of averages/totals — which is right for a conversion rate?', level: 'A',
+      a: `<p>For an overall rate, use the <b>ratio of totals</b>: <code>SUM(signups) / SUM(visits)</code>. <code>AVG(signups / visits)</code> gives every day/campaign equal weight regardless of size, so a day with 2 visits and 1 signup (50%) counts as much as a day with 900 visits (10%) — giving 30% instead of the true ~10.1%. Averaging ratios is correct only when the metric is defined per item (e.g. LeetCode "query quality" = average of rating/position). This is Simpson's-paradox territory; always ask what the denominator population is.</p>`,
+      followUps: ['How would you compute a weighted average in SQL?', 'Give a case where averaging ratios is the right definition.'] },
+    { q: 'How is GROUP BY executed internally, and how can indexes help?', level: 'A',
+      a: `<p>Two strategies: <b>hash aggregation</b> (hash table key → accumulators, O(N), memory proportional to groups, spills to disk when too big) and <b>sort/stream aggregation</b> (sort by key or read an index in key order, then close a group when the key changes). An index on the grouping columns lets the engine skip the sort; an index on (dept, salary) can answer MAX(salary) per dept by reading one entry per group (loose index scan). Aggregates like SUM/COUNT/AVG are mergeable, so distributed engines compute partial aggregates per node and combine them; exact median and COUNT(DISTINCT) are not, hence approximate sketches.</p>`,
+      followUps: ['What does "USE TEMP B-TREE FOR GROUP BY" in SQLite\'s EXPLAIN QUERY PLAN mean?', 'Why can\'t a median be computed with partial aggregates?'] },
+    { q: 'Why can JOINs inflate aggregates, and how do you prevent it?', level: 'A',
+      a: `<p>A one-to-many join repeats the "one" side per matching row: customers ⨝ orders ⨝ order_items gives one row per item, so <code>SUM(o.amount)</code> adds each order's amount once per item and <code>COUNT(*)</code> counts items, not customers. Fixes: aggregate each child table to the parent grain <b>before</b> joining (subquery/CTE), use <code>COUNT(DISTINCT id)</code> for counts, and always state the grain of every table. This "fan-out" is the most common source of wrong dashboard numbers.</p>`,
+      followUps: ['Does SUM(DISTINCT amount) fix it?', 'How would you write a test that detects fan-out?'] },
+    { q: 'Using AI to write aggregate queries: what do you trust and what do you verify?', level: 'E',
+      a: `<p>Trust the boilerplate: GROUP BY skeletons, repetitive pivot columns, syntax across dialects. Verify the semantics: the grain (rows vs entities), COUNT(*) vs COUNT(DISTINCT), NULL handling (AVG skip vs COALESCE to 0), ELSE 0 vs NULL, integer division, numerator/denominator on the same population, WHERE vs HAVING for "customers whose total…", dialect support (FILTER, aliases in HAVING, ÷0 behaviour), and fan-out after joins. My workflow: give the model the schema and grain, ask for edge-case test rows (NULLs, zeros, duplicates, empty groups), run both the AI query and a hand-written check, and compare totals.</p>`,
+      followUps: ['What reconciliation query would you run to sanity-check a pivot?', 'How do you review an AI-generated query for portability to PostgreSQL?'] }
+  );
+
+  registerModule({
+    id: 'sql03',
+    title: 'Aggregates, GROUP BY, HAVING & CASE',
+    intro: `<p>So far you have pulled individual rows out of a table. Real questions are rarely about one row: <i>"How much did we sell per month?"</i>, <i>"Which departments have more than 3 people?"</i>, <i>"What percentage of trips were cancelled each day?"</i>. This module teaches the tools that squash many rows into answers: the five <b>aggregate functions</b>, the three flavours of <b>COUNT</b>, <b>GROUP BY</b> buckets and their rules, <b>HAVING</b> vs WHERE, <b>CASE</b> expressions, <b>conditional aggregation</b> (pivots and rates in one pass) and the NULL-tamers <b>COALESCE</b> and <b>NULLIF</b>.</p>
+      <p>Every query runs live (▶ Run) against four small, realistic databases — <b>company</b>, <b>shop</b>, <b>school</b> and <b>app</b> — that deliberately contain NULLs, duplicates, zero denominators and empty groups, because that is where interview questions (and production bugs) live. Visualizers show rows dropping into buckets, accumulators updating, HAVING removing groups and CASE ladders firing.</p>`,
+    goals: [
+      'Use COUNT, SUM, AVG, MIN and MAX correctly, predicting exactly how each treats NULLs and empty inputs.',
+      'Choose between COUNT(*), COUNT(col) and COUNT(DISTINCT col) from the wording of a question.',
+      'Write GROUP BY queries on columns and expressions that respect the golden rule and handle NULL groups.',
+      'Place each condition correctly in WHERE or HAVING using the logical processing order.',
+      'Write CASE expressions for labels, bands, custom sorts and updates without branch-order or NULL bugs.',
+      'Solve classic interview problems with conditional aggregation: pivots, approval counts, cancellation rates, "every category".',
+      'Use COALESCE and NULLIF to produce honest defaults and crash-free ratios across SQLite, PostgreSQL and MySQL.'
+    ],
+    prereqs: `<p>SQL module 2 (SELECT, WHERE, ORDER BY, LIMIT & NULLs) — especially three-valued logic. A few Hard problems use a simple JOIN, previewing module 4.</p>`,
+    hours: 9,
     databases: { company: DB_COMPANY, shop: DB_SHOP, school: DB_SCHOOL, app: DB_APP },
-    topics: topics, practice: practice, quiz: quiz, interview: interview });
+    topics: topics,
+    practice: practice,
+    quiz: quiz,
+    interview: interview
+  });
 })();
