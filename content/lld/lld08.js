@@ -1324,5 +1324,265 @@ ${H.table(['Class', 'Responsibility'], [['<b>User</b>', 'id, name, contact'], ['
       }
     }]
   });
+
+  /* ======================= TOPIC 4: SPLITWISE — SIMPLIFYING DEBTS ======================= */
+  var SW_SIMPLIFY = `// ===== Debt simplification: greedy (fast, at most n-1 transfers) + exact minimum (bitmask DP) =====
+record Transfer(String from, String to, long amount) {}
+
+final class DebtSimplifier {
+
+    /** Step 1: collapse any list of debts into one net number per person. */
+    static Map<String, Long> netOf(List<Transfer> debts) {
+        Map<String, Long> net = new TreeMap<>();
+        for (Transfer d : debts) {
+            net.merge(d.from(), -d.amount(), Long::sum);   // debtor goes down
+            net.merge(d.to(), d.amount(), Long::sum);       // creditor goes up
+        }
+        return net;
+    }
+
+    /** Step 2 (greedy): biggest debtor pays biggest creditor, repeat. Each step zeroes at least one person. */
+    static List<Transfer> greedy(Map<String, Long> net) {
+        // creditors: largest positive first; debtors: most negative first; ties broken by name for determinism
+        PriorityQueue<long[]> cred = new PriorityQueue<>((x, y) -> x[0] != y[0] ? Long.compare(y[0], x[0]) : Long.compare(x[1], y[1]));
+        PriorityQueue<long[]> debt = new PriorityQueue<>((x, y) -> x[0] != y[0] ? Long.compare(x[0], y[0]) : Long.compare(x[1], y[1]));
+        List<String> names = new ArrayList<>(net.keySet());
+        for (int i = 0; i < names.size(); i++) {
+            long v = net.get(names.get(i));
+            if (v > 0) cred.add(new long[]{v, i});
+            else if (v < 0) debt.add(new long[]{v, i});
+        }
+        List<Transfer> out = new ArrayList<>();
+        while (!cred.isEmpty() && !debt.isEmpty()) {
+            long[] c = cred.poll(), d = debt.poll();
+            long amt = Math.min(c[0], -d[0]);
+            out.add(new Transfer(names.get((int) d[1]), names.get((int) c[1]), amt));
+            if (c[0] - amt > 0) cred.add(new long[]{c[0] - amt, c[1]});
+            if (d[0] + amt < 0) debt.add(new long[]{d[0] + amt, d[1]});
+        }
+        return out;
+    }
+
+    /** Exact minimum number of transfers (NP-hard in general; fine for n <= ~20).
+     *  Answer = (#non-zero people) - (max number of disjoint zero-sum groups). */
+    static int minTransfers(Map<String, Long> net) {
+        long[] b = net.values().stream().mapToLong(Long::longValue).filter(v -> v != 0).toArray();
+        int n = b.length, full = 1 << n;
+        long[] sum = new long[full];
+        int[] groups = new int[full];          // groups[mask] = max zero-sum groups that exactly cover mask
+        for (int mask = 1; mask < full; mask++) {
+            int low = Integer.numberOfTrailingZeros(mask);
+            sum[mask] = sum[mask & (mask - 1)] + b[low];
+            int best = 0;
+            for (int i = 0; i < n; i++)
+                if ((mask >> i & 1) == 1) best = Math.max(best, groups[mask ^ (1 << i)]);
+            groups[mask] = best + (sum[mask] == 0 ? 1 : 0);
+        }
+        return n == 0 ? 0 : n - groups[full - 1];
+    }
+
+    public static void main(String[] args) {
+        List<Transfer> debts = List.of(
+            new Transfer("ben", "asha", 300), new Transfer("chen", "asha", 300), new Transfer("chen", "ben", 150),
+            new Transfer("asha", "chen", 60), new Transfer("dev", "ben", 100), new Transfer("dev", "chen", 80));
+        Map<String, Long> net = netOf(debts);
+        System.out.println("net = " + net);                       // {asha=540, ben=-50, chen=-310, dev=-180}
+        List<Transfer> plan = greedy(net);
+        plan.forEach(System.out::println);                        // 3 transfers instead of 6
+        System.out.println("exact minimum = " + minTransfers(net));
+
+        // Greedy is NOT always optimal: +4 +3 -2 -2 -3 -> greedy 4 transfers, optimum 3 ({+3,-3}, {+4,-2,-2})
+        Map<String, Long> tricky = new TreeMap<>(Map.of("a", 4L, "b", 3L, "x", -2L, "y", -2L, "z", -3L));
+        System.out.println("greedy = " + greedy(tricky).size() + ", optimal = " + minTransfers(tricky));
+    }
+}`;
+
+  topics.push({
+    title: 'Splitwise II: Simplifying Debts (who pays whom, in the fewest transfers)',
+    analogy: `<p>Ben owes Asha ₹100, and Asha owes Chen ₹100. Should Ben pay Asha so that Asha can pay Chen? That is two UPI transfers and Asha is just a middle-man. Simpler: <b>Ben pays Chen ₹100 directly</b> and Asha is done. It is like a chain of passing a parcel through friends' hands when the sender could just hand it to the receiver. Debt simplification removes the middle-men: only the <b>final position</b> of each person (how much they are up or down overall) matters, not the path the IOUs took.</p>`,
+    explain: `<p><b>Goal:</b> given all debts in a group, produce a list of payments so that everyone ends at zero, using as <b>few transfers</b> as possible — without changing how much anyone pays or receives in total.</p>
+<h4>Step 1 — Only the net balance matters</h4>
+<p>For each debt "X owes Y a": <code>net[X] −= a</code>, <code>net[Y] += a</code>. Positive net = <b>creditor</b> (should receive), negative = <b>debtor</b> (should pay). Sum of nets = 0. Two very different debt graphs with the same nets need exactly the same settlement.</p>
+${H.table(['Debts (6 IOUs)', 'Net after collapsing'], [['Ben→Asha 300, Chen→Asha 300, Chen→Ben 150, Asha→Chen 60, Dev→Ben 100, Dev→Chen 80', 'Asha ' + H.c('g', '+540') + ', Ben ' + H.c('r', '−50') + ', Chen ' + H.c('r', '−310') + ', Dev ' + H.c('r', '−180')]])}
+<h4>Step 2 — Greedy: largest debtor pays largest creditor</h4>
+<ol>
+<li>Put creditors in a max-heap by amount, debtors in a max-heap by amount owed.</li>
+<li>Pop the top of each. Transfer <code>m = min(credit, debt)</code>. At least one of the two becomes zero.</li>
+<li>Push back whoever still has a non-zero balance. Repeat until heaps are empty.</li>
+</ol>
+<p>Here: Chen pays Asha 310 → Dev pays Asha 180 → Ben pays Asha 50. <b>3 transfers instead of 6.</b> Because every step zeroes at least one person and the last step zeroes two, greedy uses <b>at most n − 1</b> transfers for n non-zero people. It runs in O(n log n).</p>
+<h4>Step 3 — Is greedy optimal? No (and the exact problem is NP-hard)</h4>
+<p>Nets +4, +3, −2, −2, −3. Greedy: −3 pays +4 (left +1), −2 pays +3 (left +1), −2 pays +1, … → <b>4</b> transfers. Optimal: {+3, −3} settle among themselves (1 transfer) and {+4, −2, −2} (2 transfers) → <b>3</b>. In general, min transfers = <b>n − (maximum number of disjoint zero-sum groups)</b>, because a group of k people that sums to zero needs k − 1 transfers. Finding the max number of zero-sum groups is a partition-type problem (NP-hard), solvable for small groups (n ≤ 20) with bitmask DP in O(2<sup>n</sup>·n).</p>
+<h4>Design placement</h4>
+<p>Make it a <b>Strategy</b>: <code>interface SettlementStrategy { List&lt;Transfer&gt; plan(Map&lt;String, Long&gt; net); }</code> with <code>GreedySettlement</code>, <code>ExactSettlement</code> (small groups), and <code>PairwiseSettlement</code> (no simplification — some users dislike paying strangers). The group setting "simplify debts: on/off" picks the strategy.</p>`,
+    clues: [
+      '"Minimise the number of transactions to settle up" / "simplify debts" → collapse to net balances first',
+      '"Optimal account balancing" (LeetCode 465), n ≤ 12 → exact bitmask DP / backtracking',
+      '"Large group, good-enough answer, fast" → greedy max-creditor vs max-debtor with two heaps, ≤ n − 1 transfers',
+      '"Nobody should pay or receive a different total" → any plan that zeroes every net is valid',
+      '"Cash flow minimisation among friends / banks" → same problem (classic GfG)',
+      '"Users do not want to pay strangers" → constrain transfers to existing edges (a flow problem) or turn simplification off'
+    ],
+    code: SW_SIMPLIFY,
+    codeTitle: 'DebtSimplifier: net balances → greedy plan → exact minimum (compilable Java)',
+    viz: {
+      title: 'Simplify debts: before graph → net table → greedy → after graph',
+      input: 'Ben>Asha 300, Chen>Asha 300, Chen>Ben 150, Asha>Chen 60, Dev>Ben 100, Dev>Chen 80',
+      inputLabel: 'Debts: Debtor>Creditor amount, … (max 10 debts, 6 people)',
+      gen: function (input) {
+        var items = String(input || '').split(',').map(function (s) { return s.trim(); }).filter(function (s) { return s; });
+        if (!items.length) throw new Error('Format: Ben>Asha 300, Chen>Ben 150');
+        if (items.length > 10) throw new Error('Use at most 10 debts');
+        var people = [], debts = [];
+        items.forEach(function (it) {
+          var m = /^([A-Za-z]+)\s*>\s*([A-Za-z]+)\s+(\d+)$/.exec(it);
+          if (!m) throw new Error('Each debt looks like Ben>Asha 300 (Ben owes Asha ₹300). Bad: ' + it);
+          var a = cap(m[1]), b = cap(m[2]), amt = Number(m[3]);
+          if (a === b) throw new Error(a + ' cannot owe themselves');
+          if (amt <= 0 || amt > 1000000) throw new Error('Amounts must be 1..1000000');
+          [a, b].forEach(function (p) { if (people.indexOf(p) < 0) people.push(p); });
+          debts.push([a, b, amt]);
+        });
+        if (people.length > 6) throw new Error('Use at most 6 people');
+        var pos = {};
+        people.forEach(function (p, i) { var ang = -Math.PI / 2 + 2 * Math.PI * i / people.length; pos[p] = N(p, p, Math.round(50 + 34 * Math.cos(ang)), Math.round(30 + 24 * Math.sin(ang))); });
+        var nodes = people.map(function (p) { return pos[p]; });
+        var mergeEdges = function (list) { var m = {}, out = []; list.forEach(function (d) { var k = d[0] + '-' + d[1]; if (m[k] === undefined) { m[k] = out.length; out.push([d[0], d[1], d[2]]); } else out[m[k]][2] += d[2]; }); return out; };
+        var before = mergeEdges(debts);
+        var net = {};
+        people.forEach(function (p) { net[p] = 0; });
+        var netTable = function (hlP, label) {
+          var hl = {};
+          var rows = people.map(function (p, i) { if (hlP && hlP.indexOf(p) >= 0) hl[i] = 'cur'; var v = net[p]; return [p, (v > 0 ? '+' : '') + v, v > 0 ? 'creditor (receives)' : v < 0 ? 'debtor (pays)' : 'settled']; });
+          return TABLE(label || 'Net balance', ['person', 'net ₹', 'role'], rows, hl);
+        };
+        var frames = [];
+        frames.push(F('The group\'s raw IOUs: <b>' + before.length + ' separate debts</b> (an arrow X → Y means X owes Y). Settling each one directly needs ' + before.length + ' UPI transfers, and some people both pay and receive.', [G('Before: raw debts', nodes, before, { h: 60, ehl: paintAll(before, 'cur') }), VARS('Transfers needed', { naive: before.length }, { naive: 'bad' })]));
+        debts.forEach(function (d, i) {
+          net[d[0]] -= d[2]; net[d[1]] += d[2];
+          if (i < 6 || i === debts.length - 1) {
+            var eh = {}; eh[d[0] + '-' + d[1]] = 'cur';
+            frames.push(F('Collapse debt ' + (i + 1) + ': ' + d[0] + ' owes ' + d[1] + ' ₹' + d[2] + ' → net[' + d[0] + '] −= ' + d[2] + ', net[' + d[1] + '] += ' + d[2] + '.', [G('Before: raw debts', nodes, before, { h: 60, ehl: eh, hl: (function () { var h = {}; h[d[0]] = 'bad'; h[d[1]] = 'ok'; return h; })() }), netTable([d[0], d[1]])]));
+          }
+        });
+        var total = people.reduce(function (a, p) { return a + net[p]; }, 0);
+        var cred = people.filter(function (p) { return net[p] > 0; }), debt = people.filter(function (p) { return net[p] < 0; });
+        var sortHeaps = function () {
+          cred.sort(function (a, b) { return net[b] - net[a] || (a < b ? -1 : 1); });
+          debt.sort(function (a, b) { return net[a] - net[b] || (a < b ? -1 : 1); });
+        };
+        sortHeaps();
+        var heapTables = function () {
+          return [TABLE('Creditor max-heap', ['who', 'to receive'], cred.length ? cred.map(function (p) { return [p, '₹' + net[p]]; }) : [['(empty)', '-']], cred.length ? { 0: 'sel' } : {}),
+            TABLE('Debtor max-heap', ['who', 'to pay'], debt.length ? debt.map(function (p) { return [p, '₹' + (-net[p])]; }) : [['(empty)', '-']], debt.length ? { 0: 'sel' } : {})];
+        };
+        frames.push(F('Net balances sum to <b>' + total + '</b> (always 0). Only these numbers matter now — the original arrows can be forgotten. Put creditors and debtors into two max-heaps.', [netTable(null, 'Final net balances')].concat(heapTables())));
+        var after = [], nz = cred.length + debt.length;
+        var guard = 0;
+        while (cred.length && debt.length && guard++ < 20) {
+          var c = cred[0], d = debt[0], amt = Math.min(net[c], -net[d]);
+          after.push([d, c, amt]);
+          net[c] -= amt; net[d] += amt;
+          var eh2 = {}; eh2[d + '-' + c] = 'ok';
+          var hl2 = {}; hl2[d] = net[d] === 0 ? 'done' : 'cur'; hl2[c] = net[c] === 0 ? 'done' : 'cur';
+          frames.push(F('Pop the top of each heap: biggest debtor <b>' + d + '</b> pays biggest creditor <b>' + c + '</b> min(' + (net[c] + amt) + ', ' + (-(net[d] - amt)) + ') = <b>₹' + amt + '</b>. ' + (net[c] === 0 && net[d] === 0 ? 'Both are now settled.' : (net[c] === 0 ? c : d) + ' is settled; the other goes back into its heap with the remainder.'), [G('After: simplified plan', nodes, after, { h: 60, ehl: eh2, hl: hl2 }), netTable([c, d])]));
+          cred = cred.filter(function (p) { return net[p] > 0; });
+          debt = debt.filter(function (p) { return net[p] < 0; });
+          sortHeaps();
+        }
+        frames.push(F('Done: <b>' + after.length + ' transfer(s)</b> instead of ' + before.length + '. Everyone pays or receives exactly their net amount. Greedy guarantees ≤ n − 1 = ' + Math.max(0, nz - 1) + ' transfers for ' + nz + ' non-zero people (each step settles at least one person).', [G('After: simplified plan', nodes, after, { h: 60, ehl: paintAll(after, 'ok') }), VARS('Transfers', { before: before.length, after: after.length }, { after: 'ok', before: 'bad' })]));
+        frames.push(F('Caveat: greedy is fast but not always the absolute minimum. Nets +4, +3, −2, −2, −3 → greedy makes 4 transfers, while the best plan makes 3 ({+3, −3} and {+4, −2, −2} settle separately). The exact answer = non-zero people − max number of zero-sum groups, solved with bitmask DP for small groups.', [TABLE('Greedy vs optimal on a tricky case', ['plan', 'transfers'], [['greedy: z→a 3, x→b 2, y→a 1, y→b 1', '4'], ['optimal: z→b 3, x→a 2, y→a 2', '3']], { 1: 'ok' })]));
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'Cycle: everyone owes the next person ₹50', html: `<p>A→B 50, B→C 50, C→A 50. Nets: A = −50 + 50 = 0, B = 0, C = 0. ${H.c('g', 'Zero transfers needed')} — the three IOUs cancel out completely. A naive "settle each debt" design would move ₹150 around for nothing.</p>` },
+      { title: 'Chain: A owes B, B owes C', html: `<p>A→B 100, B→C 100. Nets: A −100, B 0, C +100. Greedy: A pays C 100. One transfer, B is not involved at all. This is the classic "remove the middle-man" case shown in Splitwise's onboarding.</p>` },
+      { title: 'Where greedy is not optimal (and the exact fix)', html: `<p>Nets a:+4, b:+3, x:−2, y:−2, z:−3 (sum 0).</p>${H.table(['Approach', 'Plan', 'Count'], [['Greedy', 'z→a 3, x→b 2, y→a 1, y→b 1', H.c('r', '4')], ['Exact (zero-sum groups)', '{b, z}: z→b 3 · {a, x, y}: x→a 2, y→a 2', H.c('g', '3')]])}<p>Two zero-sum groups → 5 people − 2 groups = 3 transfers. The bitmask DP finds the maximum number of such groups.</p>`, code: `class MinTransfersDemo {
+    // dp over subsets: groups[mask] = max zero-sum groups exactly covering 'mask'
+    static int minTransfers(long[] b) {
+        int n = b.length, full = 1 << n;
+        long[] sum = new long[full];
+        int[] groups = new int[full];
+        for (int mask = 1; mask < full; mask++) {
+            sum[mask] = sum[mask & (mask - 1)] + b[Integer.numberOfTrailingZeros(mask)];
+            int best = 0;
+            for (int i = 0; i < n; i++) if ((mask >> i & 1) == 1) best = Math.max(best, groups[mask ^ (1 << i)]);
+            groups[mask] = best + (sum[mask] == 0 ? 1 : 0);
+        }
+        return n - groups[full - 1];
+    }
+    public static void main(String[] args) {
+        System.out.println(minTransfers(new long[]{4, 3, -2, -2, -3}));   // 3
+    }
+}` },
+      { title: 'Constraint: only pay people you already owe', html: `<p>Some groups dislike "pay Chen, whom you never met". Then the settlement may only use <b>existing edges</b> (and their directions). That turns the problem into a <b>flow</b> problem: reduce flow along cycles (cycle cancelling) without creating new edges. Splitwise's own "simplify debts" setting is per-group and off by default for exactly this reason.</p>` }
+    ],
+    deepDive: `<p><b>Why greedy is bounded by n − 1.</b> Each iteration zeroes at least one person (the smaller of the two balances). With n non-zero people there can be at most n − 1 iterations before the last two cancel together (the last transfer zeroes both, since the totals sum to zero).</p>
+<p><b>Why the exact problem is hard.</b> A zero-sum group of size k can always be settled with k − 1 transfers, and no group can do better than that if it contains no smaller zero-sum subgroup. So minimising transfers ⇔ <b>maximising the number of disjoint zero-sum subsets</b> — a generalisation of the PARTITION problem, NP-hard. The subset DP is O(2<sup>n</sup>·n); a DFS with pruning (skip zeros, only pair with opposite signs, skip duplicate values) also works well for n ≤ 12–15.</p>
+<p><b>Correctness of the DP.</b> Order people one by one; every time the running prefix sum hits zero, a group closes. <code>groups[mask]</code> = best over "which person was added last". The recurrence <code>max over i of groups[mask − i] + [sum(mask) == 0]</code> captures exactly that.</p>
+<p><b>Product reality.</b> Simplification changes <i>who</i> you pay, which surprises users; show "simplified from 6 to 3 payments" and let them toggle it. Recompute on every expense (cheap: O(n log n)). For very large groups (a 200-person office), greedy is the only practical choice; prefer stable tie-breaking so the plan does not reshuffle wildly after every small expense.</p>
+<p><b>Precision.</b> Do all of this on <code>long</code> paise. Floating-point nets like 0.0000001 will never "hit zero" and break both the greedy stop condition and the DP's zero-sum test.</p>
+<p><b>Multi-currency:</b> simplify per currency independently, or convert to one currency first (a product decision).</p>`,
+    aiEra: `<p><b>What AI changes:</b> "minimise transactions" is a famous problem — an assistant will instantly produce the greedy or the LeetCode 465 DFS. Interviewers therefore ask the follow-ups: is greedy optimal (no), why is the exact version hard, what bound does greedy give, how do you test it?</p>
+<p><b>Use AI as a partner:</b> <code>Generate 1000 random net-balance vectors (n ≤ 8, sum 0) and compare my greedy against a brute-force exact solver; print any case where greedy is worse.</code> That is how you discover the +4 +3 −2 −2 −3 counterexample yourself.</p>
+<p><b>Where AI goes wrong:</b> claims greedy is optimal; uses doubles so balances never reach exactly zero; forgets to collapse to nets first and "simplifies" edge by edge; mutates entries while they are inside a PriorityQueue (breaking heap order) instead of poll → modify → re-add.</p>
+<p><b>What you must still own:</b> the reduction to net balances, the n − 1 bound argument, the counterexample, and the product trade-off (fewer payments vs paying strangers).</p>`,
+    problems: [{
+      title: 'Minimize Cash Flow Among Friends',
+      level: 'Medium', tags: ['splitwise', 'greedy', 'heap'], companies: ['Splitwise', 'Amazon', 'Goldman Sachs', 'Uber'],
+      statement: `<p>You are given a list of debts <code>[from, to, amount]</code> among n friends (ids 0..n−1). Return a list of settlements <code>[from, to, amount]</code> such that, after applying them instead of the original debts, every friend pays or receives exactly the same total as before, using <b>at most n − 1</b> settlements. Use the "largest debtor pays largest creditor" rule; break ties by smaller id.</p>`,
+      constraints: `1 ≤ n ≤ 10<sup>5</sup>, ≤ 2·10<sup>5</sup> debts, amounts ≤ 10<sup>9</sup>`,
+      example: `<p>n = 3, debts = [[0,1,1000],[1,2,5000],[0,2,2000]]. Nets: 0 → −3000, 1 → 1000 − 5000 = −4000, 2 → +7000. Settlements: ${H.c('g', '[1,2,4000], [0,2,3000]')} — 2 transfers instead of 3.</p>`,
+      brute: { why: `<p>Naive design: replay every debt as its own payment (m transfers, people both pay and receive), or only net each <i>pair</i> (still up to n(n−1)/2 transfers). Both ignore that money is fungible — only each person's final net matters.</p>`, code: `class PairwiseOnly {
+    // nets each PAIR only: still O(n^2) transfers in the worst case
+    static List<long[]> settle(int n, int[][] debts) {
+        long[][] owe = new long[n][n];
+        for (int[] d : debts) { owe[d[0]][d[1]] += d[2]; owe[d[1]][d[0]] -= d[2]; }
+        List<long[]> out = new ArrayList<>();
+        for (int i = 0; i < n; i++)
+            for (int j = 0; j < n; j++)
+                if (owe[i][j] > 0) out.add(new long[]{i, j, owe[i][j]});
+        return out;
+    }
+}` },
+      mcq: { q: 'After collapsing to nets, Ben is −300 and Chen is +300 (nobody else non-zero). How many transfers?', options: ['1', '2', '0', 'Depends on the original debts'], answer: 0, explain: 'Only nets matter: Ben pays Chen 300. The original debt graph is irrelevant once nets are known.' },
+      hints: [`<p>Hint 1: compute <code>net[i]</code> = received − paid over all debts. The settlement only has to zero every net.</p>`, `<p>Hint 2: two priority queues — creditors by largest positive net, debtors by most negative net. Pop one of each, transfer the min, push back any remainder.</p>`, `<p>Hint 3: every round zeroes at least one person, so ≤ n − 1 rounds. Use <code>long</code> nets (sum of up to 2·10<sup>5</sup> × 10<sup>9</sup>). Skip people whose net is already 0.</p>`],
+      solution: {
+        approach: `<p>Collapse to nets in O(m), then greedy with two heaps in O(n log n). Ties by id make the output deterministic.</p>`,
+        code: `class MinCashFlow {
+    static List<long[]> settle(int n, int[][] debts) {
+        long[] net = new long[n];
+        for (int[] d : debts) { net[d[0]] -= d[2]; net[d[1]] += d[2]; }
+        // entries: {amount, id}
+        PriorityQueue<long[]> cred = new PriorityQueue<>((a, b) -> a[0] != b[0] ? Long.compare(b[0], a[0]) : Long.compare(a[1], b[1]));
+        PriorityQueue<long[]> debt = new PriorityQueue<>((a, b) -> a[0] != b[0] ? Long.compare(b[0], a[0]) : Long.compare(a[1], b[1]));
+        for (int i = 0; i < n; i++) {
+            if (net[i] > 0) cred.add(new long[]{net[i], i});
+            else if (net[i] < 0) debt.add(new long[]{-net[i], i});
+        }
+        List<long[]> out = new ArrayList<>();
+        while (!cred.isEmpty() && !debt.isEmpty()) {
+            long[] c = cred.poll(), d = debt.poll();
+            long amt = Math.min(c[0], d[0]);
+            out.add(new long[]{d[1], c[1], amt});
+            if (c[0] > amt) cred.add(new long[]{c[0] - amt, c[1]});
+            if (d[0] > amt) debt.add(new long[]{d[0] - amt, d[1]});
+        }
+        return out;
+    }
+    public static void main(String[] args) {
+        int[][] debts = {{0, 1, 1000}, {1, 2, 5000}, {0, 2, 2000}};
+        for (long[] t : settle(3, debts)) System.out.println(t[0] + " pays " + t[1] + " " + t[2]);
+    }
+}`,
+        complexity: `<p>O(m + n log n) time, O(n) space. Transfers ≤ n − 1.</p>`,
+        followUps: ['Return the exact minimum for n ≤ 15 (bitmask DP).', 'Only allow transfers along existing debt edges.', 'Update the plan incrementally after one new expense.']
+      }
+    }]
+  });
+
+  // paints every edge of a list with one highlight class (used by the debt graph)
+  function paintAll(edges, cls) { var r = {}; edges.forEach(function (e) { r[e[0] + '-' + e[1]] = cls; }); return r; }
   registerModule({ id: 'lld08', title: 'Case Studies: BookMyShow, Splitwise, Library Management', intro: '<p>tmp</p>', goals: [], prereqs: 'tmp', hours: 14, topics: topics, practice: practice, quiz: quiz, interview: interview });
 })();
