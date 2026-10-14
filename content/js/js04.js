@@ -2706,6 +2706,21 @@ let later = 1;</pre>`, options: ['<code>"undefined"</code>, then ReferenceError'
       followUps: ['Why is the empty dependency array the usual culprit?', 'How do signals-based frameworks avoid this class of bug?'] }
   );
 
+  /* Spread correct answers across positions (options were authored with the right one first).
+     Deterministic rotation, so the page is identical on every load. */
+  var mcqCounter = 0;
+  function spread(m) {
+    if (!m || !m.options || m.options.length < 2) return;
+    var n = m.options.length, k = (mcqCounter * 7 + 2) % n;
+    mcqCounter++;
+    var correct = m.options[m.answer];
+    m.options = m.options.slice(k).concat(m.options.slice(0, k));
+    m.answer = m.options.indexOf(correct);
+  }
+  quiz.forEach(spread);
+  topics.forEach(function (t) { (t.problems || []).forEach(function (p) { spread(p.mcq); }); });
+  practice.forEach(function (p) { spread(p.mcq); });
+
   /* ======================================================================
      MODULE REGISTRATION
      ====================================================================== */
