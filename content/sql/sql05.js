@@ -619,7 +619,7 @@ SELECT name FROM customers WHERE id IN (SELECT customer_id FROM orders);
 SELECT c.name FROM customers c WHERE EXISTS (SELECT 1 FROM orders o WHERE o.customer_id = c.id);` } },
       { title: 'ALL rewritten for SQLite with MAX', html: `<p>SQLite has no <code>ANY</code>/<code>ALL</code>. "More expensive than every furniture item" = more than the furniture <b>maximum</b> (300) → Laptop and Phone. "More expensive than at least one book" would be <code>&gt; (SELECT MIN(...))</code>. Watch the empty-set difference: <code>&gt; ALL(empty)</code> is TRUE, but <code>&gt; MAX(empty)</code> is NULL.</p>`, code: { lang: 'sql', db: 'shop', code: `SELECT name, price FROM products
 WHERE price > (SELECT MAX(price) FROM products WHERE category = 'Furniture');` } },
-      { title: 'Three-valued logic in one SELECT', html: `<p>Run this to see SQLite print 1 for TRUE, 0 for FALSE and NULL for UNKNOWN. The middle column proves IN is fine for positive matches; the first and last show the UNKNOWN that kills NOT IN.</p>`, code: { lang: 'sql', code: `SELECT 5 NOT IN (1, 2, NULL) AS not_in_with_null,   -- NULL (unknown)
+      { title: 'Three-valued logic in one SELECT', html: `<p>Run this to see SQLite print 1 for TRUE, 0 for FALSE and NULL for UNKNOWN. The middle column proves IN is fine for positive matches; the first and last show the UNKNOWN that kills NOT IN.</p>`, code: { lang: 'sql', db: 'shop', code: `SELECT 5 NOT IN (1, 2, NULL) AS not_in_with_null,   -- NULL (unknown)
        1 IN (1, NULL)        AS in_found,           -- 1 (true)
        5 IN (1, NULL)        AS in_not_found,       -- NULL (unknown)
        5 NOT IN (1, 2)       AS not_in_no_null;     -- 1 (true)` } },
@@ -1053,7 +1053,7 @@ SELECT n, fact FROM f;` }
       }
     },
     examples: [
-      { title: 'Multiplication table with two counters', html: `<p>A recursive CTE can carry several columns. Here <code>(i, j)</code> walks a 3×3 grid: when <code>j</code> reaches 3 it resets to 1 and <code>i</code> advances. A CROSS JOIN of two series is the simpler alternative — shown second.</p>`, code: { lang: 'sql', code: `WITH RECURSIVE t(i, j) AS (
+      { title: 'Multiplication table with two counters', html: `<p>A recursive CTE can carry several columns. Here <code>(i, j)</code> walks a 3×3 grid: when <code>j</code> reaches 3 it resets to 1 and <code>i</code> advances. A CROSS JOIN of two series is the simpler alternative — shown second.</p>`, code: { lang: 'sql', db: 'shop', code: `WITH RECURSIVE t(i, j) AS (
     SELECT 1, 1
     UNION ALL
     SELECT CASE WHEN j = 3 THEN i + 1 ELSE i END,
@@ -1090,7 +1090,7 @@ SELECT strftime('%Y-%m', m) AS month,
        (SELECT COUNT(*) FROM customers c
         WHERE strftime('%Y-%m', c.signup_date) = strftime('%Y-%m', months.m)) AS signups
 FROM months;` } },
-      { title: 'LIMIT as a safety net, and UNION as a duplicate stop', html: `<p>In SQLite (and in practice PostgreSQL) an outer <code>LIMIT</code> stops an otherwise infinite recursion once enough rows exist. With <code>UNION</code> (not ALL), a row already in the result is discarded, so the cycle 1 → 2 → 3 → 1 stops by itself after 3 rows.</p>`, code: { lang: 'sql', code: `-- No stop condition, but LIMIT ends it after 5 rows
+      { title: 'LIMIT as a safety net, and UNION as a duplicate stop', html: `<p>In SQLite (and in practice PostgreSQL) an outer <code>LIMIT</code> stops an otherwise infinite recursion once enough rows exist. With <code>UNION</code> (not ALL), a row already in the result is discarded, so the cycle 1 → 2 → 3 → 1 stops by itself after 3 rows.</p>`, code: { lang: 'sql', db: 'shop', code: `-- No stop condition, but LIMIT ends it after 5 rows
 WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM n)
 SELECT x FROM n LIMIT 5;
 
@@ -1654,6 +1654,527 @@ ORDER BY spend DESC, c.name;` },
       }
     }]
   });
+
+  /* =====================================================================
+     PRACTICE ARENA — Easy
+     ===================================================================== */
+  practice.push({
+    title: 'Highest-Paid Engineer(s), Ties Included',
+    level: 'Easy', tags: ['scalar subquery', 'ties'], companies: ['Amazon', 'TCS', 'Infosys'],
+    statement: `<p>In the <code>company</code> database, return the name and salary of the highest-paid employee(s) whose <code>title</code> is exactly <code>'Engineer'</code>. If several engineers share the top salary, return all of them.</p>`,
+    constraints: `<p>Four employees have title 'Engineer'. Salaries are integers.</p>`,
+    example: `${H.table(['name', 'salary', 'top?'], [['<span class="c-g">Neha</span>', '105000', 'yes'], ['<span class="c-g">Priya</span>', '105000', 'yes (tie)'], ['Arjun', '95000', 'no'], ['Vikram', '88000', 'no']])}<p>Expected: <b>Neha and Priya</b>.</p>`,
+    brute: { why: `<p><code>ORDER BY salary DESC LIMIT 1</code> returns exactly one row, so one of the two tied engineers is dropped — and which one is arbitrary, so the report can even change between runs.</p>`, code: { lang: 'sql', db: 'company', code: `SELECT name, salary FROM employees
+WHERE title = 'Engineer'
+ORDER BY salary DESC
+LIMIT 1;           -- loses the tie` } },
+    mcq: { q: 'Which filter keeps all tied top earners?', options: ['<code>salary = (SELECT MAX(salary) … same filter)</code>', '<code>LIMIT 1</code>', '<code>LIMIT 2</code>', '<code>DISTINCT salary</code>'], answer: 0, explain: 'Comparing every row with the maximum keeps every row that equals it, however many there are.' },
+    hints: [`<p>Hint 1: First find the single top value, then keep every row equal to it.</p>`, `<p>Hint 2: Scalar subquery <code>(SELECT MAX(salary) FROM employees WHERE title = 'Engineer')</code>.</p>`, `<p>Hint 3: Apply the same title filter inside and outside the subquery, otherwise a non-engineer's salary becomes the target.</p>`],
+    solution: {
+      approach: `<p>Compute the maximum engineer salary once with an uncorrelated scalar subquery, then return every engineer equal to it. Ties survive naturally.</p>`,
+      code: { lang: 'sql', db: 'company', code: `SELECT name, salary
+FROM employees
+WHERE title = 'Engineer'
+  AND salary = (SELECT MAX(salary) FROM employees WHERE title = 'Engineer')
+ORDER BY name;` },
+      complexity: `<p>Two scans (or two index lookups with an index on <code>(title, salary)</code>): O(N).</p>`,
+      followUps: ['Top earner per title (correlated version).', 'What if the inner filter is forgotten?']
+    }
+  });
+
+  practice.push({
+    title: 'Employees Working in Mumbai Offices',
+    level: 'Easy', tags: ['IN', 'subquery'], companies: ['Flipkart', 'Wipro'],
+    statement: `<p>Return the names of employees whose department is located in <b>Mumbai</b>. Do not hard-code department ids — locations change.</p>`,
+    constraints: `<p><code>departments(id, name, location)</code>; Sales (2) and Marketing (4) are in Mumbai today.</p>`,
+    example: `<p>Mumbai departments = {2, 4}. Employees in them: <b>Meera, Rohan, Sneha, Imran, Zoya, Dev</b> (6 rows).</p>`,
+    brute: { why: `<p>Hard-coding <code>dept_id IN (2, 4)</code> works today but silently breaks when a department moves or a new Mumbai team opens. The list should come from the data.</p>`, code: { lang: 'sql', db: 'company', code: `SELECT name FROM employees WHERE dept_id IN (2, 4);   -- hard-coded ids` } },
+    mcq: { q: 'Can <code>dept_id IN (SELECT id FROM departments WHERE location = \'Mumbai\')</code> return an employee twice?', options: ['No — IN is a semi-join, each outer row appears at most once', 'Yes, once per matching department', 'Only if there are NULLs', 'Only in SQLite'], answer: 0, explain: 'IN asks "is there at least one match?" and never multiplies outer rows, unlike a JOIN.' },
+    hints: [`<p>Hint 1: Build the list of Mumbai department ids with a subquery.</p>`, `<p>Hint 2: <code>WHERE dept_id IN (SELECT id FROM departments WHERE location = 'Mumbai')</code>.</p>`, `<p>Hint 3: The CEO's NULL dept_id never matches anything, which is correct here.</p>`],
+    solution: {
+      approach: `<p>An uncorrelated column subquery produces the current Mumbai department ids; <code>IN</code> keeps employees whose dept_id is in that list.</p>`,
+      code: { lang: 'sql', db: 'company', code: `SELECT name
+FROM employees
+WHERE dept_id IN (SELECT id FROM departments WHERE location = 'Mumbai')
+ORDER BY name;` },
+      alt: [{ lang: 'sql', db: 'company', title: 'JOIN version', code: `SELECT e.name
+FROM employees e
+JOIN departments d ON d.id = e.dept_id
+WHERE d.location = 'Mumbai'
+ORDER BY e.name;` }],
+      complexity: `<p>The list is built once (SQLite: LIST SUBQUERY) and each employee probes it: O(N + D).</p>`,
+      followUps: ['Employees NOT in Mumbai — careful with the CEO\'s NULL dept.', 'Count employees per city.']
+    }
+  });
+
+  practice.push({
+    title: 'Departments That Run at Least One Project',
+    level: 'Easy', tags: ['EXISTS', 'semi-join', 'duplicates'], companies: ['Microsoft', 'Accenture'],
+    statement: `<p>List each department that owns at least one project, <b>once</b>.</p>`,
+    constraints: `<p>Engineering owns 3 projects; Legal owns none.</p>`,
+    example: `<p>Expected: <b>Engineering, Sales, HR, Marketing</b> — four rows, Engineering only once.</p>`,
+    brute: { why: `<p>A plain JOIN returns one row per (department, project) pair: Engineering appears <b>three</b> times. Adding DISTINCT patches it but hides the intent and sorts/hashes the whole joined result.</p>`, code: { lang: 'sql', db: 'company', code: `SELECT d.name
+FROM departments d
+JOIN projects p ON p.dept_id = d.id;     -- Engineering x3` } },
+    mcq: { q: 'Inside <code>EXISTS (SELECT … )</code>, what does the SELECT list matter?', options: ['Nothing — only whether a row exists', 'It must be SELECT *', 'It must be SELECT 1', 'It decides which columns are returned'], answer: 0, explain: 'EXISTS only checks for at least one row; SELECT 1, SELECT * and SELECT NULL are equivalent.' },
+    hints: [`<p>Hint 1: "at least one" = existence check, not a join.</p>`, `<p>Hint 2: <code>WHERE EXISTS (SELECT 1 FROM projects p WHERE p.dept_id = d.id)</code>.</p>`, `<p>Hint 3: EXISTS stops at the first matching project, so Engineering is checked once and kept once.</p>`],
+    solution: {
+      approach: `<p>Correlated EXISTS semi-join: for each department, probe projects for one matching row. No duplicates by construction.</p>`,
+      code: { lang: 'sql', db: 'company', code: `SELECT d.name
+FROM departments d
+WHERE EXISTS (SELECT 1 FROM projects p WHERE p.dept_id = d.id)
+ORDER BY d.id;` },
+      complexity: `<p>Semi-join: O(D + P) with hashing, or D index probes on <code>projects(dept_id)</code>.</p>`,
+      followUps: ['Departments with a project but no employees assigned to it.', 'Rewrite with IN.']
+    }
+  });
+
+  practice.push({
+    title: 'Squares and Cubes from 1 to N',
+    level: 'Easy', tags: ['recursive CTE', 'number series'], companies: ['Oracle', 'SAP'],
+    statement: `<p>Without any table of numbers, output n, n², n³ for n = 1 … 12.</p>`,
+    constraints: `<p>Exactly 12 rows. SQLite has no built-in series generator in core.</p>`,
+    example: `${H.table(['n', 'square', 'cube'], [['1', '1', '1'], ['2', '4', '8'], ['12', '144', '1728']])}`,
+    brute: { why: `<p>Typing every row with UNION ALL works for 12 rows but does not scale, is error-prone and must be edited whenever N changes.</p>`, code: { lang: 'sql', db: 'shop', code: `SELECT 1 AS n, 1 AS square, 1 AS cube
+UNION ALL SELECT 2, 4, 8
+UNION ALL SELECT 3, 9, 27
+UNION ALL SELECT 4, 16, 64;      -- and 8 more lines by hand` } },
+    mcq: { q: 'Your recursive member is <code>SELECT n + 1 FROM s WHERE n &lt;= 12</code> with anchor 1. How many rows?', options: ['13', '12', '11', 'Infinite'], answer: 0, explain: 'When n = 12 the condition 12 ≤ 12 is still true, so 13 is produced. Use n &lt; 12 to stop at 12.' },
+    hints: [`<p>Hint 1: Anchor the series at 1; each recursive round adds 1 to the previous row.</p>`, `<p>Hint 2: <code>WITH RECURSIVE s(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM s WHERE n &lt; 12)</code>.</p>`, `<p>Hint 3: Compute squares and cubes in the outer SELECT, not inside the recursion.</p>`],
+    solution: {
+      approach: `<p>Generate the series with a recursive CTE, then derive columns in the final SELECT.</p>`,
+      code: { lang: 'sql', db: 'shop', code: `WITH RECURSIVE s(n) AS (
+    SELECT 1
+    UNION ALL
+    SELECT n + 1 FROM s WHERE n < 12     -- stops after 12
+)
+SELECT n, n * n AS square, n * n * n AS cube FROM s;` },
+      complexity: `<p>O(N) rounds, one row each.</p>`,
+      followUps: ['Only perfect squares below 500.', 'Print the series as one comma-separated string.']
+    }
+  });
+
+  /* =====================================================================
+     PRACTICE ARENA — Medium
+     ===================================================================== */
+  practice.push({
+    title: 'Nth Highest Distinct Salary (N = 4, Engineering)',
+    level: 'Medium', tags: ['correlated subquery', 'Nth highest', 'NULL'], companies: ['Amazon', 'Google', 'Goldman Sachs'],
+    statement: `<p>Return the <b>4th highest distinct salary</b> in Engineering (dept_id = 1) as a single value. If fewer than 4 distinct salaries exist, return <b>NULL</b> (one row), not an empty result. (The famous "second highest salary" is the same problem with N = 2.)</p>`,
+    constraints: `<p>Engineering salaries: 180000, 125000, 105000, 105000, 102000, 95000, 88000.</p>`,
+    example: `<p>Distinct, descending: 180000, 125000, 105000, <b class="c-g">102000</b>, 95000, 88000 → answer <b>102000</b>.</p>`,
+    brute: { why: `<p><code>LIMIT 1 OFFSET 3</code> counts <b>rows</b>, not distinct values: the duplicate 105000 takes two positions and the query returns 105000. It also returns zero rows (not NULL) when there are too few salaries.</p>`, code: { lang: 'sql', db: 'company', code: `SELECT salary FROM employees
+WHERE dept_id = 1
+ORDER BY salary DESC
+LIMIT 1 OFFSET 3;        -- 105000: wrong because of the tie` } },
+    mcq: { q: 'How do you make "no 4th salary" return a NULL row instead of nothing?', options: ['Wrap the query as a scalar subquery: <code>SELECT (SELECT …) AS nth</code>', 'Add <code>IS NULL</code>', 'Use <code>COUNT(*)</code>', 'Use <code>LIMIT 0</code>'], answer: 0, explain: 'A scalar subquery with no row evaluates to NULL, and the outer SELECT always produces exactly one row.' },
+    hints: [`<p>Hint 1: A salary is the Nth highest distinct one exactly when N − 1 distinct salaries are greater than it.</p>`, `<p>Hint 2: Correlated count: <code>(SELECT COUNT(DISTINCT x.salary) FROM employees x WHERE x.dept_id = 1 AND x.salary &gt; e.salary) = 3</code>.</p>`, `<p>Hint 3: Use DISTINCT on the outer salary too, and wrap everything in <code>SELECT (…) AS fourth_highest</code> to get NULL when absent. Alternative: <code>SELECT DISTINCT … LIMIT 1 OFFSET 3</code> inside the scalar wrapper.</p>`],
+    solution: {
+      approach: `<p>Use the correlated "how many distinct salaries beat me" count to find the value with exactly N − 1 above it, and wrap it in a scalar subquery so the result is one row, NULL if missing. The alternative applies DISTINCT before OFFSET.</p>`,
+      code: { lang: 'sql', db: 'company', code: `SELECT (
+    SELECT DISTINCT e.salary
+    FROM employees e
+    WHERE e.dept_id = 1
+      AND (SELECT COUNT(DISTINCT x.salary)
+           FROM employees x
+           WHERE x.dept_id = 1 AND x.salary > e.salary) = 3   -- N - 1 = 3
+) AS fourth_highest;` },
+      alt: [{ lang: 'sql', db: 'company', title: 'DISTINCT + OFFSET inside a scalar wrapper', code: `SELECT (SELECT DISTINCT salary FROM employees
+        WHERE dept_id = 1
+        ORDER BY salary DESC
+        LIMIT 1 OFFSET 3) AS fourth_highest;` }],
+      complexity: `<p>Correlated count: O(N²) without an index, O(N log N) with <code>(dept_id, salary)</code>. DISTINCT + OFFSET: one sort, O(N log N). With window functions: <code>DENSE_RANK()</code> (next module).</p>`,
+      followUps: ['Nth highest per department.', 'Make N a parameter.', 'Solve with DENSE_RANK.']
+    }
+  });
+
+  practice.push({
+    title: 'Products That Were Never Ordered',
+    level: 'Medium', tags: ['NOT EXISTS', 'anti-join'], companies: ['Amazon', 'Meesho'],
+    statement: `<p>Return the names of products that never appear in <code>order_items</code>.</p>`,
+    constraints: `<p>9 products; <code>order_items.product_id</code> is NOT NULL here, but write the query so it would stay correct if it were nullable.</p>`,
+    example: `<p>Every product except <b>Atlas</b> appears in some order line → answer: <b>Atlas</b>.</p>`,
+    brute: { why: `<p>Joining on <code>p.id &lt;&gt; oi.product_id</code> means "there is some order line for a <i>different</i> product" — which is true for every product, so all 9 names come back. "Not equal to some" is not "equal to none".</p>`, code: { lang: 'sql', db: 'shop', code: `SELECT DISTINCT p.name
+FROM products p
+JOIN order_items oi ON p.id <> oi.product_id;   -- returns all 9 products` } },
+    mcq: { q: '"Not matching ANY row" corresponds to…', options: ['NOT EXISTS (… = …)', 'JOIN … ON a &lt;&gt; b', 'IN (…)', 'LEFT JOIN without a WHERE'], answer: 0, explain: 'NOT EXISTS with an equality inside means no row equals it. A join on &lt;&gt; matches almost everything.' },
+    hints: [`<p>Hint 1: This is an anti-join: keep products for which no order line exists.</p>`, `<p>Hint 2: <code>NOT EXISTS (SELECT 1 FROM order_items oi WHERE oi.product_id = p.id)</code>.</p>`, `<p>Hint 3: Prefer NOT EXISTS over NOT IN so a future NULL product_id cannot empty the result.</p>`],
+    solution: {
+      approach: `<p>NOT EXISTS anti-join on product_id. Null-safe and planned as a hash anti-join or index probes.</p>`,
+      code: { lang: 'sql', db: 'shop', code: `SELECT p.name
+FROM products p
+WHERE NOT EXISTS (SELECT 1 FROM order_items oi WHERE oi.product_id = p.id)
+ORDER BY p.name;` },
+      complexity: `<p>O(P + I) hashed, or P index probes on <code>order_items(product_id)</code>.</p>`,
+      followUps: ['Products never ordered in a delivered order.', 'Products ordered by every city.']
+    }
+  });
+
+  practice.push({
+    title: 'Latest Order of Each Customer (Whole Row)',
+    level: 'Medium', tags: ['correlated subquery', 'greatest per group'], companies: ['Uber', 'Swiggy', 'DoorDash'],
+    statement: `<p>For every registered customer who has orders, return their <b>most recent order</b>: order id, customer_id, order_date and status.</p>`,
+    constraints: `<p>Ignore guest orders (customer_id NULL). Assume at most one order per customer per day.</p>`,
+    example: `${H.table(['id', 'customer_id', 'order_date', 'status'], [['108', '1', '2024-09-02', 'shipped'], ['107', '2', '2024-08-20', 'delivered'], ['105', '3', '2024-08-10', 'delivered'], ['106', '4', '2024-08-12', 'shipped']])}`,
+    brute: { why: `<p>Selecting <code>id</code> and <code>status</code> next to <code>MAX(order_date)</code> in a GROUP BY uses "bare columns". PostgreSQL rejects it, MySQL with ONLY_FULL_GROUP_BY rejects it, and older MySQL returns values from <b>any</b> row. SQLite happens to take them from the max row (a special rule for a single MIN/MAX), so it looks right here — non-portable and fragile (add a second aggregate and the rule no longer applies). It also includes the guest NULL group.</p>`, code: { lang: 'sql', db: 'shop', code: `SELECT customer_id, MAX(order_date) AS order_date, id, status   -- bare columns
+FROM orders
+GROUP BY customer_id;` } },
+    mcq: { q: 'Which pattern returns the full row holding the per-group maximum, portably?', options: ['Correlated <code>order_date = (SELECT MAX(...) WHERE same customer)</code>', 'GROUP BY with bare columns', 'ORDER BY order_date DESC LIMIT 1', 'DISTINCT customer_id'], answer: 0, explain: 'Compare each row with its own group maximum (or use ROW_NUMBER in the next module). Bare columns are not standard SQL.' },
+    hints: [`<p>Hint 1: For each order row, ask "is this the latest date for this customer?".</p>`, `<p>Hint 2: <code>o.order_date = (SELECT MAX(o2.order_date) FROM orders o2 WHERE o2.customer_id = o.customer_id)</code>.</p>`, `<p>Hint 3: Exclude NULL customer_id; if two orders share the max date both are returned — add a tie-breaker on id if needed.</p>`],
+    solution: {
+      approach: `<p>Correlated "greatest-n-per-group": keep each order whose date equals the maximum date of its own customer. Index <code>orders(customer_id, order_date)</code> makes each inner MAX a single seek.</p>`,
+      code: { lang: 'sql', db: 'shop', code: `SELECT o.id, o.customer_id, o.order_date, o.status
+FROM orders o
+WHERE o.customer_id IS NOT NULL
+  AND o.order_date = (SELECT MAX(o2.order_date)
+                      FROM orders o2
+                      WHERE o2.customer_id = o.customer_id)
+ORDER BY o.customer_id;` },
+      complexity: `<p>O(N log N) with an index on <code>(customer_id, order_date)</code>; O(N²) without.</p>`,
+      followUps: ['Latest delivered order only.', 'Two latest orders per customer.', 'Rewrite with ROW_NUMBER().']
+    }
+  });
+
+  practice.push({
+    title: 'Category Breadcrumbs',
+    level: 'Medium', tags: ['recursive CTE', 'tree', 'path'], companies: ['Flipkart', 'eBay', 'Etsy'],
+    statement: `<p>The <code>network.categories</code> table stores a category tree with <code>parent_id</code>. Produce a breadcrumb for every category, e.g. <code>All &gt; Electronics &gt; Audio &gt; Headphones</code>, plus its depth (All = 0).</p>`,
+    constraints: `<p>10 categories, one root (parent_id NULL). Depth may grow.</p>`,
+    example: `${H.table(['id', 'depth', 'breadcrumb'], [['1', '0', 'All'], ['6', '2', 'All &gt; Electronics &gt; Audio'], ['7', '3', 'All &gt; Electronics &gt; Audio &gt; Headphones'], ['10', '3', 'All &gt; Furniture &gt; Office &gt; Chairs']])}`,
+    brute: { why: `<p>LEFT JOINing the table to itself three times builds breadcrumbs only up to a fixed depth, produces awkward NULL handling, and needs one more join every time the tree deepens.</p>`, code: { lang: 'sql', db: 'network', code: `SELECT c.id,
+       COALESCE(g.name || ' > ', '') || COALESCE(p.name || ' > ', '') || c.name AS breadcrumb
+FROM categories c
+LEFT JOIN categories p ON p.id = c.parent_id
+LEFT JOIN categories g ON g.id = p.parent_id;     -- misses the 4th level ('All')` } },
+    mcq: { q: 'Where should the breadcrumb string start?', options: ['In the anchor, with the root name', 'In the final SELECT', 'In a separate CTE', 'It cannot be built in SQL'], answer: 0, explain: 'Top-down: anchor the root with path = name; each round appends the child name to the parent path.' },
+    hints: [`<p>Hint 1: Walk top-down from the root, carrying the path.</p>`, `<p>Hint 2: Anchor <code>SELECT id, 0, name FROM categories WHERE parent_id IS NULL</code>; recursive member joins <code>c.parent_id = t.id</code>.</p>`, `<p>Hint 3: Append with <code>t.path || ' &gt; ' || c.name</code> and add 1 to depth. In PostgreSQL cast the anchor path to text.</p>`],
+    solution: {
+      approach: `<p>Top-down recursive CTE from the root, appending each child's name to its parent's path and incrementing depth.</p>`,
+      code: { lang: 'sql', db: 'network', code: `WITH RECURSIVE crumbs(id, depth, breadcrumb) AS (
+    SELECT id, 0, name
+    FROM categories WHERE parent_id IS NULL
+    UNION ALL
+    SELECT c.id, t.depth + 1, t.breadcrumb || ' > ' || c.name
+    FROM categories c
+    JOIN crumbs t ON c.parent_id = t.id
+)
+SELECT id, depth, breadcrumb FROM crumbs ORDER BY breadcrumb;` },
+      complexity: `<p>Each category produced once: O(N) rows, with an index on <code>parent_id</code> O(N log N).</p>`,
+      followUps: ['Breadcrumb for one leaf only (bottom-up).', 'Count products per category including sub-categories.']
+    }
+  });
+
+  practice.push({
+    title: 'Chain of Command as One String',
+    level: 'Medium', tags: ['recursive CTE', 'bottom-up', 'string aggregation'], companies: ['Microsoft', 'Workday'],
+    statement: `<p>Return a single string showing the chain of command from <b>Imran</b> up to the CEO, e.g. <code>Imran &lt; Sneha &lt; Meera &lt; Asha</code>.</p>`,
+    constraints: `<p>Depth is unknown; the CEO has manager_id NULL.</p>`,
+    example: `<p>Imran → manager Sneha → manager Meera → manager Asha → NULL (stop). Output: <b>Imran &lt; Sneha &lt; Meera &lt; Asha</b>.</p>`,
+    brute: { why: `<p>Two LEFT JOINs reach only two managers up and print <i>Imran, Sneha, Meera</i> — Asha is missing. Fixed joins cannot follow an unknown number of levels.</p>`, code: { lang: 'sql', db: 'company', code: `SELECT e.name || ' < ' || m1.name || ' < ' || m2.name AS chain
+FROM employees e
+LEFT JOIN employees m1 ON m1.id = e.manager_id
+LEFT JOIN employees m2 ON m2.id = m1.manager_id
+WHERE e.name = 'Imran';` } },
+    mcq: { q: 'Walking UP the hierarchy, the recursive join is…', options: ['<code>m.id = c.manager_id</code>', '<code>m.manager_id = c.id</code>', '<code>m.id = c.id</code>', '<code>m.manager_id = c.manager_id</code>'], answer: 0, explain: 'The next row is the manager of the row found last time: its id equals that row\'s manager_id.' },
+    hints: [`<p>Hint 1: Anchor on Imran with steps = 0; each round fetches the manager of the previous row.</p>`, `<p>Hint 2: Recursion ends when manager_id is NULL (the join finds nothing).</p>`, `<p>Hint 3: Concatenate in step order: <code>group_concat(name, ' &lt; ')</code> over a subquery ordered by steps (or carry the string inside the recursion).</p>`],
+    solution: {
+      approach: `<p>Bottom-up recursion carrying the chain string itself, then pick the longest (last) row. This avoids depending on aggregate ordering.</p>`,
+      code: { lang: 'sql', db: 'company', code: `WITH RECURSIVE chain(id, manager_id, steps, path) AS (
+    SELECT id, manager_id, 0, name
+    FROM employees WHERE name = 'Imran'
+    UNION ALL
+    SELECT m.id, m.manager_id, c.steps + 1, c.path || ' < ' || m.name
+    FROM employees m
+    JOIN chain c ON m.id = c.manager_id          -- one step up
+)
+SELECT path AS chain_of_command
+FROM chain
+ORDER BY steps DESC
+LIMIT 1;                                          -- the row that reached the CEO` },
+      complexity: `<p>O(depth) primary-key lookups.</p>`,
+      followUps: ['Chain for every employee at once.', 'Find each employee\'s top-level (level-1) executive.']
+    }
+  });
+
+  practice.push({
+    title: 'Projects Costing More Than Their Department\'s Payroll',
+    level: 'Medium', tags: ['correlated subquery', 'aggregate'], companies: ['Deloitte', 'Salesforce'],
+    statement: `<p>Return projects whose <code>budget</code> is greater than the <b>total salary</b> of all employees in the department that owns the project. Show project name, budget and that payroll.</p>`,
+    constraints: `<p>A department with no employees has payroll NULL — such projects should not be returned.</p>`,
+    example: `${H.table(['project', 'budget', 'dept payroll', 'keep?'], [['Data Lake', '900000', '800000 (Eng)', '<span class="c-g">yes</span>'], ['Mobile App', '750000', '800000', '<span class="c-r">no</span>'], ['Q4 Campaign', '200000', '162000 (Mkt)', '<span class="c-g">yes</span>'], ['CRM Rollout', '300000', '387000 (Sales)', '<span class="c-r">no</span>']])}`,
+    brute: { why: `<p>Comparing every budget with the <b>company-wide</b> payroll (1,744,000) uses an uncorrelated subquery when the question is per department — no project qualifies and the report is empty.</p>`, code: { lang: 'sql', db: 'company', code: `SELECT name, budget FROM projects
+WHERE budget > (SELECT SUM(salary) FROM employees);   -- not per department` } },
+    mcq: { q: 'What makes this subquery correlated?', options: ['It filters employees by <code>e.dept_id = p.dept_id</code>, the outer project\'s department', 'It uses SUM', 'It is in WHERE', 'It returns one value'], answer: 0, explain: 'Referencing the outer row (p.dept_id) inside the subquery makes it correlated.' },
+    hints: [`<p>Hint 1: Each project needs its own department's payroll.</p>`, `<p>Hint 2: <code>(SELECT SUM(e.salary) FROM employees e WHERE e.dept_id = p.dept_id)</code>.</p>`, `<p>Hint 3: Compare in WHERE and repeat it in SELECT (or use a CTE of payroll per dept and JOIN).</p>`],
+    solution: {
+      approach: `<p>Aggregate payroll per department once in a CTE and join it to projects; the inner join also drops departments without employees. The correlated version is equivalent.</p>`,
+      code: { lang: 'sql', db: 'company', code: `WITH payroll AS (
+    SELECT dept_id, SUM(salary) AS total
+    FROM employees
+    WHERE dept_id IS NOT NULL
+    GROUP BY dept_id
+)
+SELECT p.name, p.budget, pr.total AS dept_payroll
+FROM projects p
+JOIN payroll pr ON pr.dept_id = p.dept_id
+WHERE p.budget > pr.total
+ORDER BY p.budget DESC;` },
+      alt: [{ lang: 'sql', db: 'company', title: 'Correlated version', code: `SELECT p.name, p.budget
+FROM projects p
+WHERE p.budget > (SELECT SUM(e.salary) FROM employees e WHERE e.dept_id = p.dept_id)
+ORDER BY p.budget DESC;` }],
+      complexity: `<p>CTE + hash join: O(N + P). Correlated: P inner aggregates, cheap with an index on <code>employees(dept_id, salary)</code>.</p>`,
+      followUps: ['Compare with payroll of people actually assigned to the project.', 'Show departments whose total project budget exceeds payroll.']
+    }
+  });
+
+  /* =====================================================================
+     PRACTICE ARENA — Hard
+     ===================================================================== */
+  practice.push({
+    title: 'Colleagues Who Worked on Every Project Neha Worked On',
+    level: 'Hard', tags: ['relational division', 'NOT EXISTS'], companies: ['Google', 'Meta', 'Oracle'],
+    statement: `<p>Return employees (other than Neha) who are assigned to <b>every</b> project that Neha is assigned to. They may have extra projects.</p>`,
+    constraints: `<p><code>assignments(emp_id, project_id, hours)</code>. Neha (id 7) works on projects 1 and 2.</p>`,
+    example: `${H.table(['employee', 'projects', 'covers {1, 2}?'], [['<span class="c-g">Priya</span>', '1, 2', '<span class="c-g">yes</span>'], ['Arjun', '1', 'no'], ['Karan', '1', 'no'], ['Vikram', '2', 'no']])}<p>Answer: <b>Priya</b>.</p>`,
+    brute: { why: `<p>Using <code>IN</code> answers "worked on <b>any</b> of Neha's projects" and returns five people. "Every" needs division: no project of Neha's may be missing for the candidate.</p>`, code: { lang: 'sql', db: 'company', code: `SELECT DISTINCT e.name
+FROM employees e JOIN assignments a ON a.emp_id = e.id
+WHERE a.project_id IN (SELECT project_id FROM assignments WHERE emp_id = 7)
+  AND e.id <> 7;                        -- ANY, not EVERY` } },
+    mcq: { q: '"X did all of S" is best rewritten as…', options: ['There is no element of S that X did not do (double NOT EXISTS)', 'X did at least one of S', 'X did more than |S| things', 'X and S share a row'], answer: 0, explain: 'Universal quantification becomes a double negation in SQL: NOT EXISTS (s in S such that NOT EXISTS (X did s)).' },
+    hints: [`<p>Hint 1: Rephrase: keep e if there is <b>no</b> Neha project that e is <b>not</b> on.</p>`, `<p>Hint 2: Outer NOT EXISTS over Neha's assignments; inner NOT EXISTS over e's assignments for that project.</p>`, `<p>Hint 3: Counting alternative: count e's assignments among Neha's projects and compare with Neha's project count. Exclude Neha herself.</p>`],
+    solution: {
+      approach: `<p>Relational division with double NOT EXISTS: for each candidate, look for a Neha project the candidate lacks; keep the candidate if none is found.</p>`,
+      code: { lang: 'sql', db: 'company', code: `SELECT e.name
+FROM employees e
+WHERE e.name <> 'Neha'
+  AND NOT EXISTS (                              -- no project of Neha's...
+        SELECT 1
+        FROM assignments na
+        JOIN employees n ON n.id = na.emp_id
+        WHERE n.name = 'Neha'
+          AND NOT EXISTS (                      -- ...that e is not assigned to
+                SELECT 1 FROM assignments a
+                WHERE a.emp_id = e.id
+                  AND a.project_id = na.project_id));` },
+      alt: [{ lang: 'sql', db: 'company', title: 'Counting version', code: `WITH neha AS (SELECT project_id FROM assignments WHERE emp_id = 7)
+SELECT e.name
+FROM employees e
+JOIN assignments a ON a.emp_id = e.id AND a.project_id IN (SELECT project_id FROM neha)
+WHERE e.id <> 7
+GROUP BY e.id, e.name
+HAVING COUNT(DISTINCT a.project_id) = (SELECT COUNT(*) FROM neha);` }],
+      complexity: `<p>With an index on <code>assignments(emp_id, project_id)</code> (the primary key here) each inner probe is O(log A): about O(E × |S| × log A).</p>`,
+      followUps: ['Employees on exactly the same set of projects as Neha.', 'What does the query return if Neha has no projects?']
+    }
+  });
+
+  practice.push({
+    title: 'Bill of Materials: Raw Parts Cost of One Bike',
+    level: 'Hard', tags: ['recursive CTE', 'BOM', 'aggregation'], companies: ['Tesla', 'SAP', 'Bosch'],
+    statement: `<p>Table <code>bom(parent, child, qty)</code> says how many of each child go into one parent; <code>part_costs(part, unit_cost)</code> prices the <b>raw</b> (leaf) parts. Compute how many of each raw part one <b>Bike</b> needs, their cost, and the total raw-material cost.</p>`,
+    constraints: `<p>Parts can appear under several parents (Bolt is in Frame and Seat). Depth is unknown.</p>`,
+    example: `${H.table(['part', 'qty', 'unit', 'cost'], [['Rim', '2', '20', '40'], ['Spoke', '2 × 32 = 64', '0.5', '32'], ['Tube', '3', '10', '30'], ['Tire', '2', '15', '30'], ['Bolt', '6 + 2 = 8', '0.25', '2']])}<p>Total = <b>134</b>.</p>`,
+    brute: { why: `<p>Joining only one level (Bike's direct children) prices Frame, Wheel and Seat, which have no unit cost, and ignores that one Bike needs 2 wheels × 32 spokes. Quantities must be <b>multiplied</b> along every path and <b>summed</b> across paths.</p>`, code: { lang: 'sql', db: 'network', code: `SELECT b.child, b.qty, pc.unit_cost
+FROM bom b LEFT JOIN part_costs pc ON pc.part = b.child
+WHERE b.parent = 'Bike';          -- one level only, no multiplication` } },
+    mcq: { q: 'When recursing from Wheel (needed ×2) to Spoke (32 per wheel), the carried quantity becomes…', options: ['2 × 32 = 64', '2 + 32 = 34', '32', '2'], answer: 0, explain: 'Quantities multiply down a path: each of the 2 wheels needs 32 spokes.' },
+    hints: [`<p>Hint 1: Anchor = ('Bike', 1). Each round: child qty = parent qty × bom.qty.</p>`, `<p>Hint 2: After the recursion, GROUP BY part and SUM(qty), because a part can be reached by several paths.</p>`, `<p>Hint 3: Join part_costs (inner join keeps only priced leaf parts) and compute qty × unit_cost; a window or a UNION ALL row gives the grand total.</p>`],
+    solution: {
+      approach: `<p>Explode the BOM with a recursive CTE carrying the multiplied quantity, aggregate per part, then price leaf parts. A final UNION ALL adds the total row.</p>`,
+      code: { lang: 'sql', db: 'network', code: `WITH RECURSIVE explode(part, qty) AS (
+    SELECT 'Bike', 1
+    UNION ALL
+    SELECT b.child, x.qty * b.qty                -- multiply along the path
+    FROM bom b
+    JOIN explode x ON b.parent = x.part
+),
+needs AS (
+    SELECT part, SUM(qty) AS qty                 -- add up all paths to the same part
+    FROM explode GROUP BY part
+),
+priced AS (
+    SELECT n.part, n.qty, pc.unit_cost, n.qty * pc.unit_cost AS cost
+    FROM needs n JOIN part_costs pc ON pc.part = n.part
+)
+SELECT part, qty, unit_cost, cost FROM priced
+UNION ALL
+SELECT 'TOTAL', NULL, NULL, SUM(cost) FROM priced;` },
+      complexity: `<p>Rows produced = number of root-to-node paths (can blow up in heavily shared DAGs); aggregation is linear in that.</p>`,
+      followUps: ['Cost of building 50 bikes when 10 wheels are already in stock.', 'Detect a BOM cycle (a part containing itself).']
+    }
+  });
+
+  practice.push({
+    title: 'Cheapest Route Between Two Cities (With Cycles)',
+    level: 'Hard', tags: ['recursive CTE', 'graph', 'cycle detection'], companies: ['MakeMyTrip', 'Google', 'Booking.com'],
+    statement: `<p>Table <code>routes(src, dst, cost)</code> holds directed flights and contains a cycle (… MAA → DEL). Find the cheapest way to fly from <b>DEL</b> to <b>MAA</b>, with the path and the number of hops.</p>`,
+    constraints: `<p>No city may be visited twice. Any number of hops is allowed.</p>`,
+    example: `${H.table(['path', 'cost', 'hops'], [['<span class="c-g">DEL→BOM→BLR→MAA</span>', '220', '3'], ['DEL→BOM→GOA→BLR→MAA', '250', '4'], ['DEL→BOM→GOA→MAA', '280', '3'], ['DEL→BLR→MAA', '290', '2']])}`,
+    brute: { why: `<p>Capping the search at 2 hops (to stay safe from the cycle) only finds DEL→BLR→MAA for 290 and misses the cheaper 3-hop route. Removing the cap without a visited check makes the recursion loop forever around DEL→BOM→BLR→MAA→DEL.</p>`, code: { lang: 'sql', db: 'network', code: `WITH RECURSIVE trip(city, path, cost, hops) AS (
+    SELECT 'DEL', 'DEL', 0, 0
+    UNION ALL
+    SELECT r.dst, t.path || '>' || r.dst, t.cost + r.cost, t.hops + 1
+    FROM trip t JOIN routes r ON r.src = t.city
+    WHERE t.hops < 2                      -- arbitrary cap: misses the best route
+)
+SELECT path, cost FROM trip WHERE city = 'MAA' ORDER BY cost LIMIT 1;` } },
+    mcq: { q: 'Why wrap city codes in commas in the visited path (<code>,DEL,BOM,</code>)?', options: ['So <code>instr</code> matches whole codes, not substrings of other codes', 'Commas are faster', 'SQLite requires it', 'To sort paths'], answer: 0, explain: 'With ids like 2 and 12, searching "2" in "12" gives a false hit. Delimiters on both sides make the membership test exact.' },
+    hints: [`<p>Hint 1: Enumerate simple paths from DEL with a recursive CTE carrying city, path and cost.</p>`, `<p>Hint 2: Block revisits: <code>WHERE instr(t.path, ',' || r.dst || ',') = 0</code>.</p>`, `<p>Hint 3: Filter <code>city = 'MAA'</code>, ORDER BY cost, LIMIT 1. Optional pruning: stop extending paths already at MAA.</p>`],
+    solution: {
+      approach: `<p>Recursive enumeration of simple paths with a delimited visited list, then pick the cheapest that ends in MAA. Paths that already reached the destination are not extended further.</p>`,
+      code: { lang: 'sql', db: 'network', code: `WITH RECURSIVE trip(city, path, cost, hops) AS (
+    SELECT 'DEL', ',DEL,', 0, 0
+    UNION ALL
+    SELECT r.dst, t.path || r.dst || ',', t.cost + r.cost, t.hops + 1
+    FROM trip t
+    JOIN routes r ON r.src = t.city
+    WHERE instr(t.path, ',' || r.dst || ',') = 0   -- never revisit a city
+      AND t.city <> 'MAA'                           -- stop once we arrived
+)
+SELECT trim(replace(path, ',', ' '), ' ') AS route, cost, hops
+FROM trip
+WHERE city = 'MAA'
+ORDER BY cost, hops
+LIMIT 1;` },
+      complexity: `<p>Exponential in the worst case (all simple paths). Fine for small networks; use Dijkstra outside SQL for large graphs.</p>`,
+      followUps: ['All cities reachable from DEL within 300.', 'Fewest hops instead of cheapest.', 'Use PostgreSQL CYCLE clause instead of instr.']
+    }
+  });
+
+  practice.push({
+    title: 'Total Team Size and Salary Cost for Every Manager',
+    level: 'Hard', tags: ['recursive CTE', 'closure', 'subtree aggregation'], companies: ['LinkedIn', 'Workday', 'Rippling'],
+    statement: `<p>For every employee who manages anyone, return the number of people in their <b>whole</b> team (direct and indirect reports) and the total salary of that team (excluding the manager).</p>`,
+    constraints: `<p>Depth unknown. Output: manager, team_size, team_cost, sorted by team_cost DESC.</p>`,
+    example: `${H.table(['manager', 'team_size', 'team_cost'], [['Asha', '15', '1494000'], ['Ravi', '6', '620000'], ['Meera', '3', '237000'], ['Karan', '2', '200000']])}<p>Ravi: Karan, Divya + their 4 engineers = 6 people.</p>`,
+    brute: { why: `<p>A single self-join counts only <b>direct</b> reports: Ravi shows 2 people / 227,000 instead of 6 / 620,000, and Asha shows 4 instead of 15.</p>`, code: { lang: 'sql', db: 'company', code: `SELECT m.name, COUNT(e.id) AS team_size, SUM(e.salary) AS team_cost
+FROM employees m
+JOIN employees e ON e.manager_id = m.id         -- direct reports only
+GROUP BY m.id, m.name
+ORDER BY team_cost DESC;` } },
+    mcq: { q: 'The closure anchor <code>SELECT id, id FROM employees</code> means…', options: ['Every employee is the root of their own subtree', 'Only the CEO is processed', 'It creates duplicates to remove later', 'It joins managers to managers'], answer: 0, explain: 'Starting one walk per employee produces every (ancestor, descendant) pair, so grouping by ancestor gives each subtree.' },
+    hints: [`<p>Hint 1: You need every (ancestor, descendant) pair, not just one root's subtree.</p>`, `<p>Hint 2: Anchor <code>(id, id)</code> for all employees; recurse <code>JOIN employees e ON e.manager_id = c.descendant</code> keeping the ancestor.</p>`, `<p>Hint 3: GROUP BY ancestor; subtract 1 from COUNT and the manager's salary from SUM; HAVING COUNT(*) &gt; 1 keeps only managers.</p>`],
+    solution: {
+      approach: `<p>Build the transitive closure of the reporting relation with a recursive CTE (one walk per employee), then aggregate descendants per ancestor.</p>`,
+      code: { lang: 'sql', db: 'company', code: `WITH RECURSIVE closure(ancestor, descendant) AS (
+    SELECT id, id FROM employees
+    UNION ALL
+    SELECT c.ancestor, e.id
+    FROM closure c
+    JOIN employees e ON e.manager_id = c.descendant
+)
+SELECT m.name                   AS manager,
+       COUNT(*) - 1             AS team_size,
+       SUM(e.salary) - m.salary AS team_cost
+FROM closure c
+JOIN employees m ON m.id = c.ancestor
+JOIN employees e ON e.id = c.descendant
+GROUP BY m.id, m.name, m.salary
+HAVING COUNT(*) > 1
+ORDER BY team_cost DESC;` },
+      complexity: `<p>Closure size = Σ (depth + 1) over employees: O(N × depth) rows. For very deep/large orgs, store a closure table maintained on writes.</p>`,
+      followUps: ['Average salary per team.', 'Managers whose team cost exceeds their department payroll share.']
+    }
+  });
+
+  practice.push({
+    title: 'Lowest Common Manager of Two Employees',
+    level: 'Hard', tags: ['recursive CTE', 'ancestors', 'LCA'], companies: ['Google', 'Amazon', 'Atlassian'],
+    statement: `<p>Find the <b>lowest common manager</b> of Arjun and Vikram: the closest person who appears in both chains of command (an employee counts as their own ancestor at distance 0).</p>`,
+    constraints: `<p>Single-rooted tree. Return name plus the distance from each employee.</p>`,
+    example: `<p>Arjun: Arjun(0) → Karan(1) → Ravi(2) → Asha(3). Vikram: Vikram(0) → Divya(1) → <b>Ravi(2)</b> → Asha(3). Common: Ravi, Asha → lowest = <b>Ravi</b>.</p>`,
+    brute: { why: `<p>Comparing direct managers only (<code>a.manager_id = b.manager_id</code>) works for siblings but returns nothing for cousins like Arjun and Vikram, whose managers differ. The common ancestor can be any number of levels up.</p>`, code: { lang: 'sql', db: 'company', code: `SELECT m.name
+FROM employees a
+JOIN employees b ON b.name = 'Vikram'
+JOIN employees m ON m.id = a.manager_id
+WHERE a.name = 'Arjun'
+  AND a.manager_id = b.manager_id;     -- empty: they have different managers` } },
+    mcq: { q: 'After computing both ancestor lists with distances, how do you choose the LOWEST common one?', options: ['Join the two lists on id and take the smallest distance', 'Take the largest distance', 'Take the CEO', 'UNION the lists'], answer: 0, explain: 'Ancestors in both lists are common; the closest one has the smallest distance from the employees.' },
+    hints: [`<p>Hint 1: Compute all ancestors of Arjun with their distance (bottom-up recursion), same for Vikram.</p>`, `<p>Hint 2: Two recursive CTEs in one WITH RECURSIVE; JOIN them on ancestor id.</p>`, `<p>Hint 3: ORDER BY the distance from either side and LIMIT 1. Include distance 0 so that if one employee manages the other, that manager is the answer.</p>`],
+    solution: {
+      approach: `<p>Walk up from each employee with a recursive CTE recording distance, intersect the two ancestor sets with a join, and return the common ancestor nearest to the employees.</p>`,
+      code: { lang: 'sql', db: 'company', code: `WITH RECURSIVE
+up_a(id, dist) AS (
+    SELECT id, 0 FROM employees WHERE name = 'Arjun'
+    UNION ALL
+    SELECT e.manager_id, u.dist + 1
+    FROM up_a u JOIN employees e ON e.id = u.id
+    WHERE e.manager_id IS NOT NULL
+),
+up_b(id, dist) AS (
+    SELECT id, 0 FROM employees WHERE name = 'Vikram'
+    UNION ALL
+    SELECT e.manager_id, u.dist + 1
+    FROM up_b u JOIN employees e ON e.id = u.id
+    WHERE e.manager_id IS NOT NULL
+)
+SELECT m.name AS lowest_common_manager, a.dist AS from_arjun, b.dist AS from_vikram
+FROM up_a a
+JOIN up_b b ON b.id = a.id
+JOIN employees m ON m.id = a.id
+ORDER BY a.dist + b.dist
+LIMIT 1;` },
+      complexity: `<p>O(depth) primary-key lookups per employee plus a tiny join: O(depth).</p>`,
+      followUps: ['Try Imran and Rohan (answer: Meera).', 'Number of levels between the two employees through the LCA.']
+    }
+  });
+
+  /* =====================================================================
+     QUIZ
+     ===================================================================== */
+  quiz.push(
+    { q: 'A scalar subquery finds <b>no rows</b>. What value does it produce?', options: ['NULL', '0', 'An error', 'An empty string'], answer: 0, explain: 'An empty scalar subquery evaluates to NULL. Comparisons with NULL are UNKNOWN, so the outer row is filtered out unless you COALESCE.' },
+    { q: 'In PostgreSQL, a scalar subquery returns 3 rows for some outer row. What happens? (And in SQLite?)', options: ['PostgreSQL raises an error; SQLite silently uses the first row', 'Both use the first row', 'Both raise an error', 'Both return NULL'], answer: 0, explain: 'PostgreSQL/MySQL/SQL Server error with "more than one row returned". SQLite takes the first row — make single-row-ness explicit.' },
+    { q: '<code>orders.customer_id</code> contains a NULL. What does <code>SELECT name FROM customers WHERE id NOT IN (SELECT customer_id FROM orders)</code> return?', options: ['No rows at all', 'Customers without orders', 'All customers', 'An error'], answer: 0, explain: 'x NOT IN (…, NULL) is never TRUE: it is FALSE when x matches and UNKNOWN otherwise. Use NOT EXISTS.' },
+    { q: 'What makes a subquery <b>correlated</b>?', options: ['It references a column of the outer query', 'It uses an aggregate', 'It appears in the SELECT list', 'It returns more than one row'], answer: 0, explain: 'Correlation = dependency on the current outer row, so logically it is re-evaluated per outer row.' },
+    { q: 'In a recursive CTE, what does the CTE\'s name refer to inside the recursive member?', options: ['Only the rows produced in the previous round (the working table)', 'All rows produced so far', 'The anchor rows only', 'The final result after recursion'], answer: 0, explain: 'Each round reads only the new rows from the previous round; that is why each row is extended exactly once.' },
+    { q: 'When does a recursive CTE stop?', options: ['When a round produces zero new rows', 'After 100 rounds in every engine', 'When the anchor is exhausted', 'When UNION ALL finds a duplicate'], answer: 0, explain: 'Evaluation reaches a fixpoint when the recursive member yields nothing. Engine limits (SQL Server 100, MySQL 1000) are safety nets, not the definition.' },
+    { q: 'You carry a <code>depth</code> column and the graph has a cycle. Will switching <code>UNION ALL</code> to <code>UNION</code> stop the loop?', options: ['No — rows differ by depth, so none are exact duplicates', 'Yes, always', 'Only in SQLite', 'Only if depth starts at 1'], answer: 0, explain: 'UNION only discards identical rows. With an increasing depth or path column, rows are never identical; use a visited path or a depth cap.' },
+    { q: 'Which statement about CTEs is correct for modern engines?', options: ['PostgreSQL 12+ usually inlines a single-reference CTE; SQL Server re-executes a CTE at each reference', 'All engines always materialize CTEs', 'CTEs are stored permanently like views', 'A CTE can only be used once'], answer: 0, explain: 'PostgreSQL ≤ 11 treated CTEs as fences; 12+ inlines unless MATERIALIZED. SQL Server never materializes, so multiple references mean multiple executions.' },
+    { q: 'For an org chart top-down CTE (<code>JOIN cte ON e.manager_id = cte.id</code>), which index matters most?', options: ['An index on employees(manager_id)', 'An index on employees(name)', 'An index on employees(salary)', 'No index can help recursion'], answer: 0, explain: 'Each round probes employees by manager_id. Foreign keys are not automatically indexed in PostgreSQL or SQLite.' },
+    { q: 'Which query returns each customer at most once even if they have many orders?', options: ['<code>WHERE EXISTS (SELECT 1 FROM orders o WHERE o.customer_id = c.id)</code>', '<code>JOIN orders o ON o.customer_id = c.id</code>', '<code>CROSS JOIN orders</code>', '<code>LEFT JOIN orders</code>'], answer: 0, explain: 'EXISTS/IN are semi-joins: they test for a match without multiplying outer rows.' },
+    { q: 'You rewrite <code>WHERE (SELECT COUNT(*) FROM orders o WHERE o.customer_id = c.id) = 0</code> as an INNER JOIN to a grouped orders table filtered on count = 0. Result?', options: ['Empty — customers with zero orders have no group row (the COUNT bug)', 'Same rows', 'Duplicates', 'An error'], answer: 0, explain: 'Grouped tables have no row for zero-order customers. Use LEFT JOIN + COALESCE, or simply NOT EXISTS.' },
+    { q: 'SQLite\'s <code>EXPLAIN QUERY PLAN</code> shows <code>CORRELATED SCALAR SUBQUERY 1</code> followed by <code>SCAN e2</code>. What does it mean?', options: ['A full scan of e2 runs for every outer row — add an index or rewrite', 'The subquery runs once', 'The planner turned it into a hash join', 'The query is invalid'], answer: 0, explain: 'SCAN inside a correlated subquery = O(N×M). SEARCH … USING INDEX would mean a cheap seek per row.' },
+    { q: 'Which is a valid replacement for <code>price &gt; ALL (SELECT price FROM products WHERE category = \'Furniture\')</code> in SQLite?', options: ['<code>price &gt; (SELECT MAX(price) FROM products WHERE category = \'Furniture\')</code>', '<code>price &gt; (SELECT MIN(price) …)</code>', '<code>price IN (SELECT price …)</code>', '<code>price &gt; ANY (…)</code>'], answer: 0, explain: '&gt; ALL means greater than the largest value. (Edge case: ALL over an empty set is TRUE, MAX over empty is NULL.)' }
+  );
+
+  /* =====================================================================
+     INTERVIEW Q&A
+     ===================================================================== */
+  interview.push(
+    { q: 'What is the difference between a correlated and a non-correlated subquery?', level: 'B', a: `<p>A <b>non-correlated</b> subquery is self-contained: it does not reference the outer query, so it can be evaluated <b>once</b> and its result reused (e.g. <code>salary &gt; (SELECT AVG(salary) FROM employees)</code>). A <b>correlated</b> subquery references a column of the outer row (<code>WHERE e2.dept_id = e.dept_id</code>), so logically it is re-evaluated for each outer row. Physically, optimizers may decorrelate it into a join, memoize results per distinct key, or execute it as an index seek per row. In SQLite's plan you can tell them apart: <code>SCALAR SUBQUERY</code> vs <code>CORRELATED SCALAR SUBQUERY</code>.</p>`, followUps: ['Can a correlated subquery appear in the SELECT list?', 'How would you rewrite one as a join?'] },
+    { q: 'Explain the NOT IN NULL trap and how to avoid it.', level: 'I', a: `<p><code>x NOT IN (a, b, NULL)</code> expands to <code>x &lt;&gt; a AND x &lt;&gt; b AND x &lt;&gt; NULL</code>. The last comparison is UNKNOWN, so the whole expression can only be FALSE or UNKNOWN — never TRUE — and WHERE drops every row. A single NULL in the subquery column (a guest order, an employee without a department) makes "customers who never ordered" return nothing. Fixes: use <code>NOT EXISTS</code> (two-valued, null-safe), add <code>WHERE col IS NOT NULL</code> inside the subquery, use a LEFT JOIN … IS NULL anti-join, or declare the column NOT NULL. NOT EXISTS is also easier for optimizers to turn into an anti-join.</p>`, followUps: ['Does IN have the same problem?', 'Why can NOT IN be slower than NOT EXISTS in PostgreSQL?'] },
+    { q: 'IN vs EXISTS — which is faster?', level: 'I', a: `<p>For positive checks they are semantically equivalent, and modern optimizers (PostgreSQL, SQL Server, Oracle, MySQL 8) plan both as a <b>semi-join</b>, so performance is usually identical. The old rule "EXISTS is faster" comes from MySQL 5.x/Oracle 8 era optimizers that re-ran IN subqueries per row. Practical guidance: use IN for a short uncorrelated list, EXISTS for correlated multi-column conditions, and always NOT EXISTS rather than NOT IN for negation. Then check the plan: what matters is semi-join vs per-row scan and whether the probed column is indexed.</p>`, followUps: ['What does SQLite do with IN (SELECT …)?', 'When does a JOIN beat both?'] },
+    { q: 'What is a CTE and why would you use one instead of a subquery?', level: 'B', a: `<p>A CTE (<code>WITH name AS (SELECT …)</code>) is a named, temporary result that exists only for one statement. Benefits: top-to-bottom readability (named steps instead of inside-out nesting), <b>reuse</b> of the same intermediate result several times, easy debugging (select from any step), and <b>recursion</b> with <code>WITH RECURSIVE</code>. Performance is usually the same as the equivalent subquery because engines inline CTEs — with caveats: PostgreSQL ≤ 11 always materialized them (optimization fence), SQL Server re-executes a CTE at each reference, and materialized CTEs have no statistics or indexes.</p>`, followUps: ['When would you force MATERIALIZED?', 'CTE vs temp table vs view?'] },
+    { q: 'Walk me through how a recursive CTE is executed.', level: 'I', a: `<p>1) Run the <b>anchor</b> member; its rows go into the result and into a <b>working table</b>. 2) Run the <b>recursive member</b> with the CTE name bound to the working table only. 3) Append its output to the result; that output becomes the new working table. 4) Repeat until a round returns zero rows (a fixpoint). With UNION (not ALL), rows already in the result are discarded each round. Termination relies on the recursive WHERE eventually failing, a depth cap, a visited-path check, or engine limits (SQL Server MAXRECURSION 100 by default, MySQL cte_max_recursion_depth 1000; PostgreSQL and SQLite have none).</p>`, followUps: ['Why can you not use aggregates in the recursive member?', 'How do you get depth-first order?'] },
+    { q: 'Write a query for all direct and indirect reports of a manager.', level: 'I', a: `<p>Top-down recursive CTE on the adjacency list:</p><pre>WITH RECURSIVE team(id, name, lvl) AS (
+  SELECT id, name, 0 FROM employees WHERE name = 'Ravi'
+  UNION ALL
+  SELECT e.id, e.name, t.lvl + 1
+  FROM employees e JOIN team t ON e.manager_id = t.id)
+SELECT * FROM team WHERE lvl &gt; 0;</pre><p>Anchor = the manager; each round finds employees whose manager was found last round; it stops when a round finds nobody. Carry <code>lvl</code> for depth and a path string for ordering. Index <code>manager_id</code>. If the data might be corrupted with cycles, add a visited-path check or a depth limit.</p>`, followUps: ['How do you walk upward instead?', 'How would you count each manager\'s full team in one query?'] },
+    { q: 'How do you detect or prevent cycles in a recursive query over graph data?', level: 'A', a: `<p>Carry the visited nodes in each row and refuse to extend into one already visited: a delimited path string with <code>instr(path, ',' || next || ',') = 0</code> (portable), a PostgreSQL array with <code>NOT next = ANY(path)</code>, or the standard <code>CYCLE id SET is_cycle USING path</code> clause (PostgreSQL 14+). Oracle has <code>CONNECT BY NOCYCLE</code>. Always add a depth cap as a backstop. <code>UNION</code> instead of UNION ALL only helps when the repeating rows are identical — not when you carry depth/path. For pure reachability you can carry only the node id and use UNION, which de-duplicates nodes and terminates.</p>`, followUps: ['Why delimiters around ids?', 'What is the complexity of enumerating all simple paths?'] },
+    { q: 'Generate a row for every date in a range and show zero for dates without sales.', level: 'I', a: `<p>Generate the calendar, then LEFT JOIN facts onto it:</p><pre>WITH RECURSIVE days(d) AS (
+  SELECT '2024-07-01'
+  UNION ALL SELECT date(d, '+1 day') FROM days WHERE d &lt; '2024-07-07')
+SELECT d, COALESCE(SUM(oi.qty * oi.unit_price), 0) AS revenue
+FROM days
+LEFT JOIN orders o ON o.order_date = d AND o.status &lt;&gt; 'cancelled'
+LEFT JOIN order_items oi ON oi.order_id = o.id
+GROUP BY d ORDER BY d;</pre><p>Key points: the calendar is on the left; filters on the right table go in the ON clause (in WHERE they would turn the LEFT JOIN into an inner join); COALESCE turns missing sums into 0. In PostgreSQL use <code>generate_series</code>; in a warehouse keep a permanent calendar table.</p>`, followUps: ['Why does putting status in WHERE break it?', 'How do you generate months instead?'] },
+    { q: 'Find the second (or Nth) highest salary. Discuss ties and empty results.', level: 'I', a: `<p>Second highest: <code>SELECT MAX(salary) FROM employees WHERE salary &lt; (SELECT MAX(salary) FROM employees)</code> — returns NULL automatically if there is no second value and handles ties at the top. General Nth distinct: <code>SELECT (SELECT DISTINCT salary FROM employees ORDER BY salary DESC LIMIT 1 OFFSET N-1)</code> — the outer scalar wrapper yields NULL instead of no row. Correlated alternative: a salary with exactly N−1 distinct salaries above it. With window functions: <code>DENSE_RANK() = N</code>. The common bug is <code>LIMIT 1 OFFSET N-1</code> without DISTINCT, which counts duplicate salaries as separate positions.</p>`, followUps: ['Nth highest per department?', 'RANK vs DENSE_RANK here?'] },
+    { q: 'When would you choose a window function over a correlated subquery?', level: 'A', a: `<p>When each row needs a value computed over its group or neighbours — group average, rank, running total, previous row. <code>AVG(salary) OVER (PARTITION BY dept_id)</code> computes all group averages in one pass (a sort or hash by dept), whereas a correlated subquery logically re-runs per row and, without decorrelation or an index, costs O(N²). Window functions also handle ties and ordering cleanly (ROW_NUMBER / RANK). Correlated subqueries are still the right tool for existence checks (EXISTS), lookups of one related row by key, and engines/versions without window support. Remember you cannot filter on a window result in the same SELECT — wrap it in a CTE.</p>`, followUps: ['Rewrite "top earner per department" both ways.', 'Do window functions work in recursive CTE members?'] },
+    { q: 'What is decorrelation (subquery unnesting) and what is the COUNT bug?', level: 'E', a: `<p>Decorrelation rewrites a correlated subquery into joins and group-bys so it can use set-oriented algorithms (hash/merge joins) instead of per-row execution. EXISTS/IN become semi-joins, NOT EXISTS an anti-join, and a correlated aggregate becomes "group the inner table by the correlation key, then join". The <b>COUNT bug</b> (Kim 1982): unnesting <code>(SELECT COUNT(*) … WHERE inner.k = outer.k)</code> into an inner join with a grouped table loses outer rows with no matches — their count should be 0, but the join produces no row. Correct unnesting uses an outer join plus COALESCE(count, 0). Modern systems (SQL Server, Oracle, DuckDB/Umbra via Neumann–Kemper) unnest nearly everything; SQLite mostly runs subqueries as written.</p>`, followUps: ['Which engines memoize correlated subqueries?', 'What is LATERAL / CROSS APPLY?'] },
+    { q: 'How would you store and query a category tree with millions of nodes? Compare encodings.', level: 'E', a: `<p><b>Adjacency list</b> (parent_id): trivial writes and moves, reads via recursive CTE — index parent_id; good default. <b>Materialized path</b> ('/1/4/9/'): subtree = prefix LIKE with an index, ancestors by parsing; moving a subtree rewrites every descendant path. <b>Nested sets</b> (lft/rgt): subtree = range query, very fast reads, but inserts renumber large parts of the tree. <b>Closure table</b> (ancestor, descendant, depth): any ancestor/descendant query is a simple indexed join, extra storage O(N × depth), inserts add depth+1 rows. Engine helpers: PostgreSQL <code>ltree</code>, SQL Server <code>hierarchyid</code>. For a read-heavy catalogue I would keep parent_id as the source of truth plus a closure table or materialized path maintained transactionally (or by trigger), and cache breadcrumbs.</p>`, followUps: ['How do you move a subtree in each model?', 'How do you prevent cycles on insert?'] },
+    { q: 'A report with several subqueries in the SELECT list is slow. How do you approach it?', level: 'A', a: `<p>1) Run <code>EXPLAIN</code> / <code>EXPLAIN ANALYZE</code> and look for per-row subplans that scan (SQLite: CORRELATED SCALAR SUBQUERY → SCAN). 2) If several subqueries read the same table for the same key (count, sum, max of orders per customer), replace them with <b>one</b> grouped CTE/derived table and a LEFT JOIN, using COALESCE for zero rows and COUNT(DISTINCT) when joins multiply rows. 3) If the subqueries must stay, add covering indexes on (correlation key, aggregated column). 4) Consider window functions for per-group values. 5) Verify equivalence on edge cases (no orders, NULL keys, ties) and measure on production-sized data, since small samples hide O(N²) behaviour.</p>`, followUps: ['Why COUNT(DISTINCT o.id) after joining order_items?', 'What if the CTE gets materialized without statistics?'] },
+    { q: 'Can you write a relational division query ("customers who bought every product in a category")?', level: 'A', a: `<p>Double NOT EXISTS: keep customer c if there is <b>no</b> product p in the category for which there is <b>no</b> order line of c with p.</p><pre>SELECT c.name FROM customers c
+WHERE NOT EXISTS (
+  SELECT 1 FROM products p WHERE p.category = 'Electronics'
+  AND NOT EXISTS (
+    SELECT 1 FROM orders o JOIN order_items oi ON oi.order_id = o.id
+    WHERE o.customer_id = c.id AND oi.product_id = p.id));</pre><p>Counting alternative: group the customer's distinct qualifying products and compare with the category's product count via HAVING. Edge case: if the category is empty, the double NOT EXISTS returns every customer (vacuous truth) — decide whether that is desired.</p>`, followUps: ['Exact division (bought exactly those products)?', 'Which version scales better?'] }
+  );
 
   registerModule({
     id: 'sql05',

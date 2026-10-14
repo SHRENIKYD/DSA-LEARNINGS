@@ -1821,6 +1821,530 @@ ORDER BY total_comp DESC;` }],
       }
     }]
   });
-registerModule({ id: 'sql02', title: 'SELECT, WHERE, ORDER BY, LIMIT & NULLs', intro: '<p>x</p>', goals: [], prereqs: 'x', hours: 8,
-  databases: { hr: buildDb(['employees']), shop: buildDb(['customers', 'products', 'orders']), movies: buildDb(['movies']) },
-  topics: topics, practice: practice, quiz: quiz, interview: interview }); })();
+
+  /* =====================================================================
+     PRACTICE — Easy
+     ===================================================================== */
+  practice.push({
+    title: 'Cheap Stationery', level: 'Easy', tags: ['where', 'and', 'case sensitivity'], companies: ['Amazon', 'Walmart'],
+    statement: `<p>Return <code>name, price</code> of products in the <b>Stationery</b> category that cost <b>less than 200</b>, cheapest first. Table: <code>products(id, name, category, price, stock, discount_pct)</code>.</p>`,
+    constraints: `<p>12 products. Category values are stored with a capital first letter (<code>'Stationery'</code>). Price may be NULL.</p>`,
+    example: `${H.table(['name', 'price'], [['Notebook A5', '149'], ['Gel Pen 10-pack', '199']])}<p>Both Stationery items are under 200. "Less than" is strict, so a 200 item would be excluded.</p>`,
+    brute: { why: `<p>Typing the category in lower case returns <b>zero rows</b>: in SQLite (and PostgreSQL) <code>=</code> on text is case-sensitive, so <code>'stationery' ≠ 'Stationery'</code>. No error is raised — the result is just silently empty.</p>`, code: { lang: 'sql', db: 'shop', code: `SELECT name, price
+FROM products
+WHERE category = 'stationery' AND price < 200   -- wrong case → 0 rows
+ORDER BY price;` } },
+    mcq: { q: 'In SQLite, is <code>\'Stationery\' = \'stationery\'</code> TRUE?', options: ['No — = compares text case-sensitively by default', 'Yes — SQL ignores case', 'Only inside LIKE', 'It returns NULL'], answer: 0, explain: 'The default BINARY collation compares exact characters. LIKE is case-insensitive for ASCII; = is not.' },
+    hints: [
+      `<p>Hint 1: two conditions must both hold — the category test and the price test — so join them with AND.</p>`,
+      `<p>Hint 2: match the stored spelling exactly (<code>'Stationery'</code>), or compare case-insensitively with <code>LOWER(category) = 'stationery'</code>.</p>`,
+      `<p>Hint 3: finish with <code>ORDER BY price</code> (ascending is the default). NULL prices fail <code>price &lt; 200</code> automatically.</p>`
+    ],
+    solution: {
+      approach: `<p>Filter with two AND-ed predicates, using the exact stored category spelling, and sort ascending by price.</p>`,
+      code: { lang: 'sql', db: 'shop', code: `SELECT name, price
+FROM products
+WHERE category = 'Stationery'
+  AND price < 200
+ORDER BY price;` },
+      complexity: `<p>O(N) scan, or an index range seek on <code>(category, price)</code> which also returns rows already sorted by price.</p>`,
+      followUps: ['Make the category match case-insensitive without breaking index use (hint: COLLATE NOCASE index).', 'Include items with an unknown price as well.']
+    }
+  });
+
+  practice.push({
+    title: 'Customers Without an Email', level: 'Easy', tags: ['null', 'is null'], companies: ['HubSpot', 'Salesforce'],
+    statement: `<p>The CRM team needs every customer whose <b>email is missing</b>. Return <code>id, name</code> ordered by id.</p>`,
+    constraints: `<p><code>customers.email</code> is nullable. 12 customers.</p>`,
+    example: `${H.table(['id', 'name'], [['3', 'Chen Wei'], ['7', 'Gabriel Silva']])}<p>Only these two rows have NULL in <code>email</code>.</p>`,
+    brute: { why: `<p><code>email = NULL</code> compares with an unknown value, which is UNKNOWN for every row, and WHERE drops UNKNOWN — the query always returns <b>0 rows</b>, no matter how many emails are missing.</p>`, code: { lang: 'sql', db: 'shop', code: `SELECT id, name
+FROM customers
+WHERE email = NULL      -- always UNKNOWN → 0 rows
+ORDER BY id;` } },
+    mcq: { q: 'What does <code>WHERE email = NULL</code> return?', options: ['Always zero rows', 'Rows with missing email', 'Rows with an email', 'A syntax error'], answer: 0, explain: 'Any = comparison with NULL is UNKNOWN; WHERE keeps only TRUE rows. Use IS NULL.' },
+    hints: [
+      `<p>Hint 1: NULL is not a value you can compare with =; it is a marker meaning "unknown".</p>`,
+      `<p>Hint 2: SQL has a dedicated predicate for this: <code>col IS NULL</code>, which always returns TRUE or FALSE.</p>`,
+      `<p>Hint 3: if empty strings <code>''</code> could also mean "missing" in your data, add <code>OR email = ''</code>.</p>`
+    ],
+    solution: {
+      approach: `<p>Use the IS NULL predicate, which is designed for missing values and never yields UNKNOWN.</p>`,
+      code: { lang: 'sql', db: 'shop', code: `SELECT id, name
+FROM customers
+WHERE email IS NULL
+ORDER BY id;` },
+      complexity: `<p>O(N) scan; B-tree indexes in SQLite/PostgreSQL/MySQL store NULLs, so an index on email can answer IS NULL directly.</p>`,
+      followUps: ['Also treat blank or whitespace-only emails as missing.', 'Count customers with and without email; check the two counts add up to 12.']
+    }
+  });
+
+  practice.push({
+    title: 'Three Most Expensive Products', level: 'Easy', tags: ['order by', 'limit', 'null'], companies: ['Flipkart', 'eBay'],
+    statement: `<p>Return the <b>3 most expensive</b> products (<code>name, price</code>), most expensive first. Products with an unknown price must not appear.</p>`,
+    constraints: `<p>12 products; one (Desk Lamp) has a NULL price. The query should give the same answer on SQLite and PostgreSQL.</p>`,
+    example: `${H.table(['name', 'price'], [['Running_Shoes', '4999'], ['Mechanical Keyboard', '3499'], ['French Press', '1899']])}<p>In PostgreSQL, <code>ORDER BY price DESC</code> puts NULL <b>first</b> — Desk Lamp would steal the top spot unless filtered.</p>`,
+    brute: { why: `<p><code>LIMIT 3</code> without ORDER BY returns whichever three rows the engine reads first (here the first three by storage order: mouse, keyboard, cable) — "top 3" has no meaning without a sort.</p>`, code: { lang: 'sql', db: 'shop', code: `SELECT name, price
+FROM products
+LIMIT 3;          -- no ORDER BY → arbitrary 3 rows` } },
+    mcq: { q: 'Which clause runs <b>last</b> in the logical order?', options: ['LIMIT', 'ORDER BY', 'WHERE', 'SELECT'], answer: 0, explain: 'LIMIT cuts the final, already sorted list — so it needs ORDER BY to be meaningful.' },
+    hints: [
+      `<p>Hint 1: "most expensive first" is a descending sort on price.</p>`,
+      `<p>Hint 2: NULL placement differs between databases; the safest way to exclude unknown prices is <code>WHERE price IS NOT NULL</code>.</p>`,
+      `<p>Hint 3: recipe: filter NULLs → ORDER BY price DESC → LIMIT 3. Consider a tie-breaker (id) if prices can repeat.</p>`
+    ],
+    solution: {
+      approach: `<p>Remove unknown prices in WHERE, sort descending, keep three rows. A tie-breaker on id makes the result deterministic if two products share a price.</p>`,
+      code: { lang: 'sql', db: 'shop', code: `SELECT name, price
+FROM products
+WHERE price IS NOT NULL
+ORDER BY price DESC, id
+LIMIT 3;` },
+      complexity: `<p>Top-k heap: O(N log 3) ≈ O(N). With an index on price: read 3 index entries from the high end, O(log N).</p>`,
+      followUps: ['Return every product tied for 3rd place too.', 'Return the 3 cheapest in-stock products.']
+    }
+  });
+
+  practice.push({
+    title: 'Unique Customer Cities, Alphabetical', level: 'Easy', tags: ['distinct', 'is not null', 'order by'], companies: ['Uber', 'Airbnb'],
+    statement: `<p>Return the list of <b>distinct cities</b> our customers live in, alphabetically, <b>without</b> the unknown (NULL) city. One column: <code>city</code>.</p>`,
+    constraints: `<p>12 customers; two have NULL city; London and Mumbai appear twice.</p>`,
+    example: `${H.table(['city'], [['Delhi'], ['Dubai'], ['London'], ['Mumbai'], ['New York'], ['Sao Paulo'], ['Shanghai'], ['Tokyo']])}<p>8 cities. London and Mumbai appear once each; NULL is removed.</p>`,
+    brute: { why: `<p>Without DISTINCT, London and Mumbai each appear twice; without the NULL filter, a NULL row appears first (SQLite sorts NULL smallest). 12 rows instead of 8.</p>`, code: { lang: 'sql', db: 'shop', code: `SELECT city
+FROM customers
+ORDER BY city;      -- duplicates and NULLs` } },
+    mcq: { q: 'Two customers have NULL city. How many NULL rows does <code>SELECT DISTINCT city</code> return?', options: ['One', 'Two', 'Zero', 'It depends on ORDER BY'], answer: 0, explain: 'DISTINCT treats NULLs as not distinct from each other, so they collapse into a single NULL row.' },
+    hints: [
+      `<p>Hint 1: "unique" → DISTINCT right after SELECT.</p>`,
+      `<p>Hint 2: WHERE runs before DISTINCT, so <code>WHERE city IS NOT NULL</code> removes the unknowns early.</p>`,
+      `<p>Hint 3: alphabetical = <code>ORDER BY city</code>. Use COLLATE NOCASE if casing in the data is inconsistent.</p>`
+    ],
+    solution: {
+      approach: `<p>Filter out NULL cities, de-duplicate with DISTINCT, sort ascending.</p>`,
+      code: { lang: 'sql', db: 'shop', code: `SELECT DISTINCT city
+FROM customers
+WHERE city IS NOT NULL
+ORDER BY city;` },
+      complexity: `<p>O(N) hashing or O(N log N) sorting for the de-duplication; an index on city lets the engine stream distinct values in order.</p>`,
+      followUps: ['Show each distinct (country, city) pair.', 'How many distinct cities are there? (COUNT(DISTINCT city))']
+    }
+  });
+
+  practice.push({
+    title: 'Movies From the 1990s', level: 'Easy', tags: ['between', 'inclusive range'], companies: ['Netflix', 'IMDb'],
+    statement: `<p>Return <code>title, year</code> of all movies released in the <b>1990s</b> (1990 through 1999 inclusive), ordered by year then title.</p>`,
+    constraints: `<p>14 movies; one has a NULL year.</p>`,
+    example: `${H.table(['title', 'year'], [['Groundhog Day', '1993'], ['Jurassic Park', '1993'], ['Se7en', '1995'], ['Toy Story', '1995'], [H.c('g', 'The Matrix'), H.c('g', '1999')]])}<p>The Matrix (1999) is part of the 1990s — an exclusive upper bound would wrongly drop it.</p>`,
+    brute: { why: `<p>Using strict comparisons <code>year &gt; 1990 AND year &lt; 1999</code> excludes both boundary years, so ${H.c('r', 'The Matrix (1999)')} disappears. "Through" means inclusive.</p>`, code: { lang: 'sql', db: 'movies', code: `SELECT title, year
+FROM movies
+WHERE year > 1990 AND year < 1999     -- drops 1990 and 1999
+ORDER BY year, title;` } },
+    mcq: { q: '<code>year BETWEEN 1990 AND 1999</code> is equivalent to…', options: ['<code>year &gt;= 1990 AND year &lt;= 1999</code>', '<code>year &gt; 1990 AND year &lt; 1999</code>', '<code>year &gt;= 1990 AND year &lt; 1999</code>', '<code>year IN (1990, 1999)</code>'], answer: 0, explain: 'BETWEEN includes both ends.' },
+    hints: [
+      `<p>Hint 1: decide whether the boundaries belong: 1990 and 1999 are both "in the 90s".</p>`,
+      `<p>Hint 2: BETWEEN low AND high is inclusive on both ends; the smaller number must come first.</p>`,
+      `<p>Hint 3: sort with two keys: <code>ORDER BY year, title</code> to break ties between same-year films.</p>`
+    ],
+    solution: {
+      approach: `<p>An inclusive range check with BETWEEN; the NULL-year movie fails the test (UNKNOWN) and is excluded automatically. Two sort keys give a deterministic order.</p>`,
+      code: { lang: 'sql', db: 'movies', code: `SELECT title, year
+FROM movies
+WHERE year BETWEEN 1990 AND 1999
+ORDER BY year, title;` },
+      complexity: `<p>O(N) scan or one index range scan on year.</p>`,
+      followUps: ['Movies NOT from the 1990s — what happens to the NULL-year film?', 'Write it as a half-open range.']
+    }
+  });
+
+  /* =====================================================================
+     PRACTICE — Medium
+     ===================================================================== */
+  practice.push({
+    title: 'Employees Whose Name Starts With a Vowel', level: 'Medium', tags: ['like', 'in', 'string functions'], companies: ['Oracle', 'HackerRank'],
+    statement: `<p>Return <code>name</code> of employees whose name <b>starts with a vowel</b> (a, e, i, o, u — any case), alphabetically.</p>`,
+    constraints: `<p>12 employees. Must work in SQLite. (HackerRank's "Weather Observation Station" family uses the same idea.)</p>`,
+    example: `${H.table(['name'], [['Aisha Bello'], ['Arjun Mehta'], ['Olivia Brown']])}<p>Only these three begin with A or O.</p>`,
+    brute: { why: `<p>The bracket pattern <code>'[aeiou]%'</code> is SQL Server syntax. SQLite's LIKE treats <code>[</code> literally, so it searches for names starting with the text "[aeiou]" and returns <b>nothing</b>.</p>`, code: { lang: 'sql', db: 'hr', code: `SELECT name
+FROM employees
+WHERE name LIKE '[aeiou]%'      -- SQL Server only; 0 rows in SQLite
+ORDER BY name;` } },
+    mcq: { q: 'Which SQLite expression extracts the first character of name?', options: ['<code>SUBSTR(name, 1, 1)</code>', '<code>SUBSTR(name, 0, 1)</code>', '<code>LEFT(name, 1)</code> (works in SQLite)', '<code>name[0]</code>'], answer: 0, explain: 'SQL strings are 1-indexed. SQLite has no LEFT() function; MySQL/SQL Server/PostgreSQL do.' },
+    hints: [
+      `<p>Hint 1: get the first letter with <code>SUBSTR(name, 1, 1)</code> and lower-case it.</p>`,
+      `<p>Hint 2: then test membership with <code>IN ('a','e','i','o','u')</code>.</p>`,
+      `<p>Hint 3: an alternative is five LIKE tests joined by OR (<code>name LIKE 'a%' OR …</code>) — LIKE is case-insensitive in SQLite, or use GLOB <code>'[AEIOUaeiou]*'</code>.</p>`
+    ],
+    solution: {
+      approach: `<p>Take the first character, normalise its case, and check it against the vowel list with IN. Portable to any engine that has SUBSTR/SUBSTRING and LOWER.</p>`,
+      code: { lang: 'sql', db: 'hr', code: `SELECT name
+FROM employees
+WHERE LOWER(SUBSTR(name, 1, 1)) IN ('a', 'e', 'i', 'o', 'u')
+ORDER BY name;` },
+      alt: [{ lang: 'sql', db: 'hr', title: 'SQLite GLOB with a character class', code: `SELECT name
+FROM employees
+WHERE name GLOB '[AEIOUaeiou]*'
+ORDER BY name;` }],
+      complexity: `<p>O(N): the function on the column prevents index use (non-sargable). Five prefix LIKEs on an index with matching collation could use five range scans.</p>`,
+      followUps: ['Names that start AND end with a vowel.', 'Names that do not start with a vowel — careful with NULL names.']
+    }
+  });
+
+  practice.push({
+    title: 'Page 2 of Recent Orders', level: 'Medium', tags: ['limit', 'offset', 'pagination', 'tie-breaker'], companies: ['Shopify', 'Stripe', 'Razorpay'],
+    statement: `<p>An admin screen shows orders <b>newest first</b>, <b>4 per page</b>. Return <code>id, order_date, amount</code> for <b>page 2</b>. Two orders can share a date, so the order must be fully deterministic (break ties by id, highest first).</p>`,
+    constraints: `<p>14 orders; page numbers start at 1.</p>`,
+    example: `${H.table(['id', 'order_date', 'amount'], [['110', '2024-08-25', H.c('m', 'NULL')], ['109', '2024-08-20', '2398'], ['108', '2024-08-18', '149'], ['107', '2024-08-15', '1899']])}<p>Page 1 = orders 114, 113, 112, 111. Page 2 skips those four: OFFSET = (2 − 1) × 4 = 4.</p>`,
+    brute: { why: `<p>Using the page number as the offset (<code>OFFSET 2</code>) returns rows 3–6, overlapping page 1. Also, sorting only by date would let tied dates swap between pages.</p>`, code: { lang: 'sql', db: 'shop', code: `SELECT id, order_date, amount
+FROM orders
+ORDER BY order_date DESC
+LIMIT 4 OFFSET 2;     -- wrong offset, no tie-breaker` } },
+    mcq: { q: 'Page size 4, page 5. What OFFSET?', options: ['16', '20', '5', '4'], answer: 0, explain: 'OFFSET = (page − 1) × size = 4 × 4 = 16.' },
+    hints: [
+      `<p>Hint 1: OFFSET counts rows to skip, not pages: (page − 1) × page_size.</p>`,
+      `<p>Hint 2: make the sort unique: <code>ORDER BY order_date DESC, id DESC</code>.</p>`,
+      `<p>Hint 3: <code>LIMIT 4 OFFSET 4</code> — or in SQLite/MySQL short form <code>LIMIT 4, 4</code> (offset first!).</p>`
+    ],
+    solution: {
+      approach: `<p>Deterministic sort (date, then id, both descending), skip one page of 4 rows, take 4.</p>`,
+      code: { lang: 'sql', db: 'shop', code: `SELECT id, order_date, amount
+FROM orders
+ORDER BY order_date DESC, id DESC
+LIMIT 4 OFFSET 4;` },
+      alt: [{ lang: 'sql', db: 'shop', title: 'Keyset version (page 1 ended at 2024-08-28, id 111)', code: `-- Page 1's last row was (order_date '2024-08-28', id 111)
+SELECT id, order_date, amount
+FROM orders
+WHERE (order_date, id) < ('2024-08-28', 111)
+ORDER BY order_date DESC, id DESC
+LIMIT 4;` }],
+      complexity: `<p>OFFSET reads offset + limit rows (O(page × size)); keyset reads only the page with an index on (order_date, id).</p>`,
+      followUps: ['Also return the total number of pages.', 'What goes wrong with OFFSET if a new order arrives while the user is on page 1?']
+    }
+  });
+
+  practice.push({
+    title: 'Products With an Underscore in the Name', level: 'Medium', tags: ['like', 'escape', 'wildcards'], companies: ['Atlassian', 'GitHub'],
+    statement: `<p>A data-quality job must find products whose name contains a <b>literal underscore</b> character (<code>_</code>). Return <code>id, name</code>.</p>`,
+    constraints: `<p>12 products; <code>_</code> is a wildcard in LIKE patterns.</p>`,
+    example: `${H.table(['id', 'name'], [['11', 'Running_Shoes']])}<p>Only one product actually contains the underscore character.</p>`,
+    brute: { why: `<p>In LIKE, <code>_</code> means "any single character", so <code>'%_%'</code> means "at least one character" and matches <b>all 12</b> products.</p>`, code: { lang: 'sql', db: 'shop', code: `SELECT id, name
+FROM products
+WHERE name LIKE '%_%';     -- matches every non-empty name` } },
+    mcq: { q: 'What does the pattern <code>\'%_%\'</code> match?', options: ['Any string with at least one character', 'Strings containing an underscore', 'Empty strings only', 'Nothing'], answer: 0, explain: '_ is the single-character wildcard; surrounded by % it matches any non-empty string.' },
+    hints: [
+      `<p>Hint 1: you must tell LIKE that this particular <code>_</code> is literal.</p>`,
+      `<p>Hint 2: choose an escape character and declare it: <code>LIKE '%\\_%' ESCAPE '\\'</code>.</p>`,
+      `<p>Hint 3: alternatives without LIKE: <code>INSTR(name, '_') &gt; 0</code> or SQLite <code>GLOB '*_*'</code> (in GLOB, _ is not special).</p>`
+    ],
+    solution: {
+      approach: `<p>Escape the wildcard so LIKE treats it as a literal character. INSTR is a wildcard-free alternative.</p>`,
+      code: { lang: 'sql', db: 'shop', code: `SELECT id, name
+FROM products
+WHERE name LIKE '%\\_%' ESCAPE '\\';` },
+      alt: [{ lang: 'sql', db: 'shop', title: 'No wildcards at all', code: `SELECT id, name
+FROM products
+WHERE INSTR(name, '_') > 0;` }],
+      complexity: `<p>O(N): a leading % prevents index use. For frequent searches consider a full-text or trigram index.</p>`,
+      followUps: ['Find names containing a literal % sign.', 'Replace the underscores with spaces in the output.']
+    }
+  });
+
+  practice.push({
+    title: 'Orders That Did Not Use WELCOME10', level: 'Medium', tags: ['null', 'is not', 'three-valued logic'], companies: ['Swiggy', 'Instacart'],
+    statement: `<p>Marketing wants every order that did <b>not</b> use the coupon <code>WELCOME10</code> — including orders with <b>no coupon at all</b>. Return <code>id, coupon</code> ordered by id.</p>`,
+    constraints: `<p>14 orders; <code>coupon</code> is NULL when no coupon was used; 3 orders used WELCOME10.</p>`,
+    example: `${H.table(['id', 'coupon'], [['101', H.c('m', 'NULL')], ['103', H.c('m', 'NULL')], ['104', 'FIT15'], ['…', '…'], ['107', 'KITCHEN5'], ['…', '…'], ['114', H.c('m', 'NULL')]])}<p>11 rows: 14 orders minus the 3 that used WELCOME10.</p>`,
+    brute: { why: `<p><code>coupon &lt;&gt; 'WELCOME10'</code> is UNKNOWN for the 9 orders with a NULL coupon, so only FIT15 and KITCHEN5 come back — 2 rows instead of 11.</p>`, code: { lang: 'sql', db: 'shop', code: `SELECT id, coupon
+FROM orders
+WHERE coupon <> 'WELCOME10'     -- NULL coupons vanish
+ORDER BY id;` } },
+    mcq: { q: 'Which condition keeps NULL coupons?', options: ["<code>coupon IS NOT 'WELCOME10'</code> (SQLite)", "<code>coupon &lt;&gt; 'WELCOME10'</code>", "<code>NOT coupon = 'WELCOME10'</code>", "<code>coupon != 'WELCOME10'</code>"], answer: 0, explain: 'IS / IS NOT are null-safe in SQLite: NULL IS NOT \'WELCOME10\' is TRUE. The other three are UNKNOWN for NULL.' },
+    hints: [
+      `<p>Hint 1: count the cases: coupon = WELCOME10, coupon = something else, coupon unknown. The question wants the last two.</p>`,
+      `<p>Hint 2: add <code>OR coupon IS NULL</code>, or use the null-safe <code>IS NOT</code> / <code>IS DISTINCT FROM</code>.</p>`,
+      `<p>Hint 3: sanity check: 3 + 11 = 14 orders.</p>`
+    ],
+    solution: {
+      approach: `<p>Use a null-safe inequality so that "no coupon" counts as "not WELCOME10".</p>`,
+      code: { lang: 'sql', db: 'shop', code: `SELECT id, coupon
+FROM orders
+WHERE coupon IS DISTINCT FROM 'WELCOME10'   -- standard; SQLite also: coupon IS NOT 'WELCOME10'
+ORDER BY id;` },
+      alt: [{ lang: 'sql', db: 'shop', title: 'Works on every database', code: `SELECT id, coupon
+FROM orders
+WHERE coupon <> 'WELCOME10' OR coupon IS NULL
+ORDER BY id;` }],
+      complexity: `<p>O(N) scan. MySQL spells null-safe equality <code>&lt;=&gt;</code>, so there: <code>NOT (coupon &lt;=&gt; 'WELCOME10')</code>.</p>`,
+      followUps: ['Count orders by "used coupon" vs "no coupon".', 'Why is <code>COALESCE(coupon, \'\') &lt;&gt; \'WELCOME10\'</code> correct but less index-friendly?']
+    }
+  });
+
+  practice.push({
+    title: 'Weak or Unrated Movies', level: 'Medium', tags: ['or', 'is null', 'order by nulls'], companies: ['Netflix', 'Hulu'],
+    statement: `<p>Return <code>title, rating</code> of movies that are <b>rated below 8.2 or not rated at all</b>. Show unrated movies first, then by rating ascending, ties by title.</p>`,
+    constraints: `<p>14 movies; 2 have NULL rating.</p>`,
+    example: `${H.table(['title', 'rating'], [['Dune: Part Three', H.c('m', 'NULL')], ['Untitled Indie Film', H.c('m', 'NULL')], ['The Room', '3.6'], ['Groundhog Day', '8.0'], ['Lagaan', '8.1']])}<p>5 rows. Jurassic Park (8.2) is not <i>below</i> 8.2.</p>`,
+    brute: { why: `<p><code>NOT (rating &gt;= 8.2)</code> looks like "below 8.2 or unknown", but NOT UNKNOWN is still UNKNOWN, so both unrated movies are dropped — 3 rows instead of 5.</p>`, code: { lang: 'sql', db: 'movies', code: `SELECT title, rating
+FROM movies
+WHERE NOT (rating >= 8.2)
+ORDER BY rating, title;` } },
+    mcq: { q: 'For a NULL rating, <code>NOT (rating &gt;= 8.2)</code> is…', options: ['UNKNOWN', 'TRUE', 'FALSE', 'An error'], answer: 0, explain: 'rating >= 8.2 is UNKNOWN, and NOT UNKNOWN = UNKNOWN.' },
+    hints: [
+      `<p>Hint 1: two separate reasons qualify a movie: a low rating, or a missing rating.</p>`,
+      `<p>Hint 2: <code>rating &lt; 8.2 OR rating IS NULL</code> — UNKNOWN OR TRUE is TRUE for the unrated films.</p>`,
+      `<p>Hint 3: for "unrated first", SQLite's ascending default already puts NULLs first, but write <code>NULLS FIRST</code> to be explicit and portable to PostgreSQL.</p>`
+    ],
+    solution: {
+      approach: `<p>OR the low-rating condition with an explicit IS NULL check; sort ascending with NULLS FIRST and title as tie-breaker.</p>`,
+      code: { lang: 'sql', db: 'movies', code: `SELECT title, rating
+FROM movies
+WHERE rating < 8.2 OR rating IS NULL
+ORDER BY rating ASC NULLS FIRST, title;` },
+      complexity: `<p>O(N) scan + small sort.</p>`,
+      followUps: ['Exclude films that have not been released yet (year after 2026 or NULL).', 'Make it portable to MySQL (no NULLS FIRST).']
+    }
+  });
+
+  practice.push({
+    title: 'Fifth-Largest Distinct Order Amount', level: 'Medium', tags: ['distinct', 'limit', 'offset', 'nth highest'], companies: ['Amazon', 'Bloomberg'],
+    statement: `<p>Return the <b>5th largest distinct</b> order amount as a column named <code>amount</code>. Ignore orders with an unknown amount. If it does not exist, return NULL.</p>`,
+    constraints: `<p>14 orders; amount 1899 appears twice; one amount is NULL.</p>`,
+    example: `${H.table(['rank', 'distinct amount'], [['1', '4999'], ['2', '3499'], ['3', '2398'], ['4', '1899 ' + H.c('m', '(×2)')], [H.c('g', '5'), H.c('g', '1598')]])}<p>Answer: <b>1598</b>. Counting rows instead of values would give 1899 (the duplicate fills two positions).</p>`,
+    brute: { why: `<p>Without DISTINCT, the two 1899 orders occupy positions 4 and 5, so OFFSET 4 lands on the second 1899 — ${H.c('r', '1899')} instead of 1598.</p>`, code: { lang: 'sql', db: 'shop', code: `SELECT amount
+FROM orders
+WHERE amount IS NOT NULL
+ORDER BY amount DESC
+LIMIT 1 OFFSET 4;` } },
+    mcq: { q: 'In logical order, when are duplicates removed relative to OFFSET?', options: ['Before — DISTINCT runs before ORDER BY and LIMIT/OFFSET', 'After OFFSET', 'At the same time', 'DISTINCT is ignored with OFFSET'], answer: 0, explain: 'SELECT → DISTINCT → ORDER BY → LIMIT/OFFSET.' },
+    hints: [
+      `<p>Hint 1: positions must be counted over distinct <i>values</i>.</p>`,
+      `<p>Hint 2: 5th largest → <code>ORDER BY amount DESC LIMIT 1 OFFSET 4</code> after DISTINCT.</p>`,
+      `<p>Hint 3: wrap in a scalar subquery <code>SELECT ( … ) AS amount</code> so a missing value yields NULL rather than no row.</p>`
+    ],
+    solution: {
+      approach: `<p>Drop NULLs, de-duplicate, sort descending, skip 4, take 1 — inside a scalar subquery for the NULL-if-missing guarantee.</p>`,
+      code: { lang: 'sql', db: 'shop', code: `SELECT (
+    SELECT DISTINCT amount
+    FROM orders
+    WHERE amount IS NOT NULL
+    ORDER BY amount DESC
+    LIMIT 1 OFFSET 4
+) AS amount;` },
+      complexity: `<p>O(N log N) for the sort of distinct values (O(N) hashing + top-k in smart engines).</p>`,
+      followUps: ['Parameterise N (a function in PostgreSQL / a bind variable).', 'Return every order having that amount.']
+    }
+  });
+
+  /* =====================================================================
+     PRACTICE — Hard
+     ===================================================================== */
+  practice.push({
+    title: 'Keyset Pagination With Mixed Sort Directions', level: 'Hard', tags: ['keyset pagination', 'order by', 'ties'], companies: ['LinkedIn', 'Twitter/X', 'Stripe'],
+    statement: `<p>A salary report is sorted by <b>salary descending</b>, then <b>id ascending</b>, 3 rows per page. The client sends the cursor of the last row it saw: <code>(salary = 120000, id = 3)</code>. Return the <b>next page</b> (<code>id, name, salary</code>) <b>without using OFFSET</b>.</p>`,
+    constraints: `<p>Two employees earn exactly 120000 (ids 3 and 4) — the cursor sits in the middle of a tie. Salaries are NOT NULL here.</p>`,
+    example: `${H.table(['id', 'name', 'salary'], [[H.c('g', '4'), H.c('g', 'Marco Rossi'), '120000'], ['11', 'Zoe Martin', '110000'], ['7', 'Aisha Bello', '95000']])}<p>Marco (120000, id 4) comes right after Lena (120000, id 3) because ids ascend within a salary tie. He must not be skipped.</p>`,
+    brute: { why: `<p>Filtering only on the first key, <code>salary &lt; 120000</code>, skips ${H.c('r', 'Marco (id 4)')}, who shares the cursor's salary. The row-value shortcut <code>(salary, id) &lt; (120000, 3)</code> is also wrong here because the two keys sort in <b>opposite directions</b>.</p>`, code: { lang: 'sql', db: 'hr', code: `SELECT id, name, salary
+FROM employees
+WHERE salary < 120000          -- loses the rest of the tie
+ORDER BY salary DESC, id
+LIMIT 3;` } },
+    mcq: { q: 'Sort is <code>salary DESC, id ASC</code>. Which predicate means "strictly after (S, I)"?', options: ['<code>salary &lt; S OR (salary = S AND id &gt; I)</code>', '<code>(salary, id) &lt; (S, I)</code>', '<code>salary &lt;= S AND id &gt; I</code>', '<code>salary &lt; S AND id &gt; I</code>'], answer: 0, explain: 'Either the first key is strictly further along (lower salary), or it ties and the second key is further along (higher id). Row values only work when all keys share one direction.' },
+    hints: [
+      `<p>Hint 1: "after the cursor" in sort order means: strictly later on the first key, or equal on the first key and strictly later on the second.</p>`,
+      `<p>Hint 2: "later" for a DESC key means smaller; for an ASC key it means larger.</p>`,
+      `<p>Hint 3: write <code>salary &lt; 120000 OR (salary = 120000 AND id &gt; 3)</code>, keep the same ORDER BY, and LIMIT 3.</p>`
+    ],
+    solution: {
+      approach: `<p>Expand the lexicographic comparison by hand because the directions differ. The ORDER BY must match the cursor definition exactly, and its last key must be unique (id) so no row can be skipped or repeated.</p>`,
+      code: { lang: 'sql', db: 'hr', code: `SELECT id, name, salary
+FROM employees
+WHERE salary < 120000
+   OR (salary = 120000 AND id > 3)
+ORDER BY salary DESC, id ASC
+LIMIT 3;` },
+      alt: [{ lang: 'sql', db: 'hr', title: 'Same-direction trick: negate one key so row values work', code: `-- Sorting by (-salary ASC, id ASC) is the same order; both keys now ascend
+SELECT id, name, salary
+FROM employees
+WHERE (-salary, id) > (-120000, 3)
+ORDER BY -salary, id
+LIMIT 3;` }],
+      complexity: `<p>With an index on <code>(salary DESC, id)</code> each page is an O(log N) seek + 3 reads, regardless of depth — versus O(offset) for OFFSET pagination.</p>`,
+      followUps: ['How would you encode the cursor in an API response?', 'What changes if salary can be NULL?', 'How do you support a "previous page" button?']
+    }
+  });
+
+  practice.push({
+    title: 'Employees Who Manage Nobody (the NOT IN Trap)', level: 'Hard', tags: ['not in', 'null', 'subquery', 'three-valued logic'], companies: ['Meta', 'Google', 'Microsoft'],
+    statement: `<p>Return <code>id, name</code> of every employee who is <b>not anybody's manager</b>, ordered by id. <code>employees.manager_id</code> points to another employee's id and is NULL for top-level leaders.</p>`,
+    constraints: `<p>12 employees; 4 have a NULL manager_id. You may use a subquery in WHERE (formally covered in SQL 5).</p>`,
+    example: `${H.table(['id', 'name'], [['3', 'Lena Fischer'], ['4', 'Marco Rossi'], ['6', 'Tom Becker'], ['7', 'Aisha Bello'], ['9', 'Olivia Brown'], ['10', 'Rahul Verma'], ['11', 'Zoe Martin'], ['12', 'Nina Kowalski']])}<p>Managers are ids {1, 2, 5, 8}; everyone else (8 people) manages nobody.</p>`,
+    brute: { why: `<p>The subquery returns <code>{NULL, 1, 2, 5, 8}</code>. <code>id NOT IN (…)</code> expands to <code>id &lt;&gt; NULL AND id &lt;&gt; 1 AND …</code>; the first part is always UNKNOWN, so no row is ever TRUE and the query returns <b>zero rows</b> — silently.</p>`, code: { lang: 'sql', db: 'hr', code: `SELECT id, name
+FROM employees
+WHERE id NOT IN (SELECT manager_id FROM employees)   -- contains NULL → 0 rows
+ORDER BY id;` } },
+    mcq: { q: '<code>3 NOT IN (1, 2, NULL)</code> evaluates to…', options: ['UNKNOWN', 'TRUE', 'FALSE', 'An error'], answer: 0, explain: '3<>1 TRUE, 3<>2 TRUE, 3<>NULL UNKNOWN; TRUE AND TRUE AND UNKNOWN = UNKNOWN.' },
+    hints: [
+      `<p>Hint 1: run the subquery alone and look at its values — is there a NULL?</p>`,
+      `<p>Hint 2: remove the NULLs inside the subquery: <code>WHERE manager_id IS NOT NULL</code>.</p>`,
+      `<p>Hint 3: the industry-standard fix is <code>NOT EXISTS (SELECT 1 FROM employees r WHERE r.manager_id = e.id)</code>, which is immune to NULLs and usually becomes an efficient anti-join.</p>`
+    ],
+    solution: {
+      approach: `<p>Exclude NULLs from the NOT IN list so the comparison can become TRUE, or switch to NOT EXISTS, whose correlated test simply finds no matching row.</p>`,
+      code: { lang: 'sql', db: 'hr', code: `SELECT id, name
+FROM employees
+WHERE id NOT IN (SELECT manager_id
+                 FROM employees
+                 WHERE manager_id IS NOT NULL)
+ORDER BY id;` },
+      alt: [{ lang: 'sql', db: 'hr', title: 'NOT EXISTS (preferred)', code: `SELECT e.id, e.name
+FROM employees AS e
+WHERE NOT EXISTS (SELECT 1
+                  FROM employees AS r
+                  WHERE r.manager_id = e.id)
+ORDER BY e.id;` }],
+      complexity: `<p>Naively O(N·M); engines turn NOT EXISTS (and NULL-safe NOT IN) into a hash anti-join, O(N + M). An index on manager_id makes each probe O(log N).</p>`,
+      followUps: ['Return managers with exactly one direct report (needs GROUP BY).', 'Why can the optimizer not always turn NOT IN into an anti-join?']
+    }
+  });
+
+  practice.push({
+    title: 'Safe Product Search for User Input', level: 'Hard', tags: ['like', 'escape', 'security'], companies: ['Shopify', 'Etsy', 'Atlassian'],
+    statement: `<p>A search box passes the user's text into a "name contains" query. The user types <code>_S</code> and expects products whose name literally contains "_S" (case-insensitive). Return <code>id, name</code>. Your query must treat <code>%</code> and <code>_</code> in user input as <b>literal characters</b>.</p>`,
+    constraints: `<p>The term comes from the user; assume the app escapes it before binding. Escape character: backslash.</p>`,
+    example: `${H.table(['id', 'name'], [['11', 'Running_Shoes']])}<p>Only one name contains the two characters "_S". The naive query returns 5 rows.</p>`,
+    brute: { why: `<p>Dropping the raw term into <code>'%' || term || '%'</code> makes <code>_</code> a wildcard: <code>'%_S%'</code> = "any character followed by s" → Wireless Mouse, USB-C Cable, French Press, Running_Shoes, Desk Lamp. A user typing just <code>%</code> would dump the whole table.</p>`, code: { lang: 'sql', db: 'shop', code: `SELECT id, name
+FROM products
+WHERE name LIKE '%' || '_S' || '%';     -- user text used as a pattern` } },
+    mcq: { q: 'Which characters must be escaped in the user term before using it in LIKE with ESCAPE \'\\\'?', options: ['<code>%</code>, <code>_</code> and the escape character <code>\\</code> itself', 'Only <code>%</code>', 'Only single quotes', 'Nothing if you use bind parameters'], answer: 0, explain: 'Bind parameters stop SQL injection but not wildcard interpretation. Escape %, _ and the escape character (otherwise a trailing backslash breaks the pattern).' },
+    hints: [
+      `<p>Hint 1: there are two separate problems: SQL injection (solved by bind parameters) and wildcard injection (solved by escaping).</p>`,
+      `<p>Hint 2: in the app: <code>term.replace('\\\\', '\\\\\\\\').replace('%', '\\\\%').replace('_', '\\\\_')</code> — escape the backslash first.</p>`,
+      `<p>Hint 3: in SQL you can also escape inside the query with nested REPLACE calls, then <code>LIKE '%' || escaped || '%' ESCAPE '\\'</code>.</p>`
+    ],
+    solution: {
+      approach: `<p>Escape the escape character, then % and _, and declare the escape character with ESCAPE. Doing it in SQL with REPLACE keeps the example self-contained; in production pass the raw term as a bind parameter and escape in code (or in SQL exactly like this).</p>`,
+      code: { lang: 'sql', db: 'shop', code: `-- :term = '_S' (would be a bind parameter in an app)
+SELECT id, name
+FROM products
+WHERE name LIKE '%' ||
+      REPLACE(REPLACE(REPLACE('_S', '\\', '\\\\'), '%', '\\%'), '_', '\\_')
+      || '%' ESCAPE '\\';` },
+      alt: [{ lang: 'sql', db: 'shop', title: 'Wildcard-free alternative', code: `SELECT id, name
+FROM products
+WHERE INSTR(LOWER(name), LOWER('_S')) > 0;` }],
+      complexity: `<p>O(N) per search (leading wildcard). At scale use full-text search (SQLite FTS5, PostgreSQL tsvector/pg_trgm) where escaping rules differ again.</p>`,
+      followUps: ['Rank results that START with the term above results that merely contain it.', 'Why is INSTR safe from wildcard injection?']
+    }
+  });
+
+  practice.push({
+    title: 'Department Roster With Unknowns Last', level: 'Hard', tags: ['distinct', 'coalesce', 'order by expression', 'logical order'], companies: ['Workday', 'Rippling', 'Deel'],
+    statement: `<p>Produce the distinct list of (<code>dept_name</code>, <code>title</code>) pairs. Show a missing department as <code>'N/A'</code>. Sort departments alphabetically, but <b>'N/A' must come last</b>; within a department sort titles alphabetically.</p>`,
+    constraints: `<p>12 employees, 9 distinct pairs; Engineering has 3 Engineers. 'N/A' would sort between Marketing and Sales alphabetically.</p>`,
+    example: `${H.table(['dept_name', 'title'], [['Engineering', 'Engineer'], ['Engineering', 'Senior Engineer'], ['Engineering', 'VP Engineering'], ['HR', 'HR Manager'], ['Marketing', 'Designer'], ['Marketing', 'Marketing Lead'], ['Sales', 'Account Exec'], ['Sales', 'VP Sales'], [H.c('y', 'N/A'), 'Intern']])}<p>Plain alphabetical order would put N/A before Sales — the requirement says last.</p>`,
+    brute: { why: `<p>Sorting by the display alias alone puts ${H.c('r', "'N/A'")} in the middle ('M' &lt; 'N' &lt; 'S'). Sorting by the raw <code>dept</code> with NULLS LAST would work in SQLite but sorts by a column that is not in the DISTINCT select list — an error in PostgreSQL.</p>`, code: { lang: 'sql', db: 'hr', code: `SELECT DISTINCT COALESCE(dept, 'N/A') AS dept_name, title
+FROM employees
+ORDER BY dept_name, title;      -- N/A lands between Marketing and Sales` } },
+    mcq: { q: 'What does <code>ORDER BY dept_name = \'N/A\', dept_name</code> do?', options: ['Sorts real departments (0) before N/A (1), then alphabetically', 'Filters out N/A', 'Sorts N/A first', 'Is a syntax error'], answer: 0, explain: 'A comparison yields 0/1 in SQLite; ascending puts 0 (real departments) first. Elsewhere use CASE WHEN dept_name = \'N/A\' THEN 1 ELSE 0 END.' },
+    hints: [
+      `<p>Hint 1: DISTINCT runs on the output columns, so compute <code>COALESCE(dept, 'N/A')</code> in SELECT and de-duplicate that.</p>`,
+      `<p>Hint 2: ORDER BY runs after SELECT and can use the alias; add a first sort key that is 1 for 'N/A' and 0 otherwise.</p>`,
+      `<p>Hint 3: recipe: <code>ORDER BY dept_name = 'N/A', dept_name, title</code> (or a CASE expression for portability).</p>`
+    ],
+    solution: {
+      approach: `<p>Project the display value with COALESCE, de-duplicate pairs with DISTINCT, then sort by a boolean "is unknown" key first. Every ORDER BY expression only uses select-list columns, which keeps it legal under strict DISTINCT rules.</p>`,
+      code: { lang: 'sql', db: 'hr', code: `SELECT DISTINCT COALESCE(dept, 'N/A') AS dept_name,
+                title
+FROM employees
+ORDER BY dept_name = 'N/A',   -- 0 for real departments, 1 for N/A
+         dept_name,
+         title;` },
+      alt: [{ lang: 'sql', db: 'hr', title: 'Portable CASE version (PostgreSQL / SQL Server)', code: `SELECT dept_name, title
+FROM (SELECT DISTINCT COALESCE(dept, 'N/A') AS dept_name, title
+      FROM employees) AS t
+ORDER BY CASE WHEN dept_name = 'N/A' THEN 1 ELSE 0 END,
+         dept_name,
+         title;` }],
+      complexity: `<p>O(N) to hash-deduplicate + O(K log K) to sort the K distinct pairs.</p>`,
+      followUps: ['Show only the first 5 pairs.', 'Add a headcount per pair (GROUP BY — SQL 3).']
+    }
+  });
+
+  /* =====================================================================
+     QUIZ
+     ===================================================================== */
+  quiz.push(
+    { q: 'What is the correct <b>logical</b> processing order?', options: ['FROM → WHERE → SELECT → DISTINCT → ORDER BY → LIMIT', 'SELECT → FROM → WHERE → ORDER BY → LIMIT → DISTINCT', 'FROM → SELECT → WHERE → ORDER BY → DISTINCT → LIMIT', 'WHERE → FROM → SELECT → LIMIT → ORDER BY'], answer: 0, explain: 'Rows are sourced, filtered, projected, de-duplicated, sorted and finally cut.' },
+    { q: '<code>SELECT name FROM employees WHERE email = NULL;</code> returns…', options: ['Zero rows, always', 'Employees without email', 'Employees with email', 'An error in every database'], answer: 0, explain: 'Comparing with NULL yields UNKNOWN; WHERE keeps only TRUE. Use IS NULL.' },
+    { q: 'What is <code>TRUE OR UNKNOWN</code>?', options: ['TRUE', 'UNKNOWN', 'FALSE', 'NULL error'], answer: 0, explain: 'Whatever the unknown is, OR with TRUE is TRUE.' },
+    { q: 'What is <code>FALSE OR UNKNOWN</code>?', options: ['UNKNOWN', 'FALSE', 'TRUE', 'It depends on the database'], answer: 0, explain: 'The result depends on the unknown value, so it stays UNKNOWN.' },
+    { q: '<code>WHERE dept = \'Sales\' OR dept = \'HR\' AND salary &gt; 100000</code> is read as…', options: ["<code>dept = 'Sales' OR (dept = 'HR' AND salary &gt; 100000)</code>", "<code>(dept = 'Sales' OR dept = 'HR') AND salary &gt; 100000</code>", 'A syntax error', 'Left to right with no precedence'], answer: 0, explain: 'AND binds tighter than OR.' },
+    { q: '<code>price BETWEEN 100 AND 200</code> includes…', options: ['Both 100 and 200', 'Neither 100 nor 200', 'Only 100', 'Only 200'], answer: 0, explain: 'BETWEEN is inclusive on both ends: >= 100 AND <= 200.' },
+    { q: 'Which LIKE pattern matches names whose <b>second</b> letter is "a"?', options: ["<code>'_a%'</code>", "<code>'%a_'</code>", "<code>'a%'</code>", "<code>'%_a'</code>"], answer: 0, explain: '_ matches exactly one character (the first), then a, then anything.' },
+    { q: 'The subquery for <code>x NOT IN (SELECT y FROM t)</code> returns 1, 2 and NULL. For x = 5 the condition is…', options: ['UNKNOWN, so the row is dropped', 'TRUE', 'FALSE', 'An error'], answer: 0, explain: '5 <> NULL is UNKNOWN, which makes the whole AND-chain UNKNOWN.' },
+    { q: 'In SQLite, with <code>ORDER BY rating DESC</code>, NULL ratings appear…', options: ['Last', 'First', 'Randomly', 'Not at all'], answer: 0, explain: 'SQLite treats NULL as the smallest value: first in ASC, last in DESC. PostgreSQL is the opposite.' },
+    { q: '<code>SELECT DISTINCT dept, title FROM employees</code> removes rows that are equal in…', options: ['Both dept and title together', 'dept only', 'title only', 'The first column only'], answer: 0, explain: 'DISTINCT compares the whole output row.' },
+    { q: 'In SQLite/MySQL, <code>LIMIT 10, 5</code> means…', options: ['Skip 10 rows, return 5', 'Skip 5 rows, return 10', 'Return rows 5 to 10', 'Return 10 rows then 5 more'], answer: 0, explain: 'In the comma form the offset comes first: LIMIT offset, count.' },
+    { q: 'Why can you use a SELECT alias in ORDER BY but (in standard SQL) not in WHERE?', options: ['ORDER BY runs after SELECT; WHERE runs before it', 'WHERE does not support names', 'Aliases are only for display', 'ORDER BY ignores aliases anyway'], answer: 0, explain: 'The alias is created in the SELECT step; only later steps can see it.' },
+    { q: 'In SQLite, <code>SELECT 7 / 2</code> returns…', options: ['3', '3.5', '4', 'An error'], answer: 0, explain: 'Integer divided by integer truncates. Use 7 / 2.0 for 3.5.' },
+    { q: 'Which query reliably returns the employee(s) with no department?', options: ['<code>WHERE dept IS NULL</code>', "<code>WHERE dept = ''</code>", '<code>WHERE dept = NULL</code>', "<code>WHERE dept &lt;&gt; 'Sales' AND dept &lt;&gt; 'HR'</code>"], answer: 0, explain: 'Only IS NULL tests for the missing marker; the others are UNKNOWN or test an empty string.' },
+    { q: 'Why is <code>LIMIT 20 OFFSET 1000000</code> slow on a big table?', options: ['The engine must produce and discard the first million rows', 'OFFSET disables indexes completely', 'LIMIT forces a full table lock', 'It is not slow; OFFSET is O(1)'], answer: 0, explain: 'Rows have no stored position; skipping k rows costs O(k). Keyset pagination avoids that.' }
+  );
+
+  /* =====================================================================
+     INTERVIEW Q&A
+     ===================================================================== */
+  interview.push(
+    { q: 'Explain the logical query processing order of a SELECT statement.', level: 'B', a: `<p>Logically: <b>FROM</b> (and JOINs) → <b>WHERE</b> → <b>GROUP BY</b> → <b>HAVING</b> → <b>SELECT</b> (expressions, aliases, window functions) → <b>DISTINCT</b> → <b>ORDER BY</b> → <b>LIMIT/OFFSET</b>. Each step consumes the table produced by the previous one. This explains why aliases are unavailable in WHERE, why aggregates need HAVING, why ORDER BY can use aliases and why LIMIT without ORDER BY is arbitrary. It is the <i>logical</i> definition; the optimizer may execute a different physical plan (index order, predicate pushdown, early termination) as long as the result is identical.</p>`, followUps: ['Where do window functions fit and what does that imply for filtering on them?', 'Give an example where the physical plan differs from the logical order.'] },
+    { q: 'What is NULL, and why does <code>WHERE col = NULL</code> never return rows?', level: 'B', a: `<p>NULL is a marker for a <b>missing or unknown</b> value — not zero and not an empty string. Any comparison with NULL (<code>=</code>, <code>&lt;&gt;</code>, <code>&lt;</code>…) yields <b>UNKNOWN</b>, the third truth value. WHERE keeps only rows whose condition is TRUE, so UNKNOWN rows are dropped. <code>col = NULL</code> is UNKNOWN for every row → empty result. Use <code>IS NULL</code> / <code>IS NOT NULL</code>, or a null-safe comparison (<code>IS DISTINCT FROM</code>, SQLite <code>IS</code>, MySQL <code>&lt;=&gt;</code>).</p>`, followUps: ['How does DISTINCT treat NULLs?', 'How does a UNIQUE constraint treat multiple NULLs?'] },
+    { q: 'Walk me through three-valued logic for AND, OR and NOT.', level: 'B', a: `<p>Values: TRUE, FALSE, UNKNOWN. <b>AND</b>: FALSE if either side is FALSE; else UNKNOWN if either is UNKNOWN; else TRUE. <b>OR</b>: TRUE if either side is TRUE; else UNKNOWN if either is UNKNOWN; else FALSE. <b>NOT</b>: swaps TRUE/FALSE, keeps UNKNOWN. A quick rule: substitute TRUE and FALSE for the unknown — if both give the same answer, that is the result, otherwise UNKNOWN. Consequence: <code>WHERE x = 5 OR x &lt;&gt; 5</code> does not return rows where x is NULL (no law of excluded middle).</p>`, followUps: ['Do De Morgan\'s laws still hold?', 'How do CHECK constraints treat UNKNOWN?'] },
+    { q: 'Why is <code>NOT IN</code> with a subquery dangerous, and what do you use instead?', level: 'I', a: `<p><code>x NOT IN (a, b, NULL)</code> expands to <code>x &lt;&gt; a AND x &lt;&gt; b AND x &lt;&gt; NULL</code>. The last term is always UNKNOWN, so the predicate can never be TRUE and the query returns <b>no rows</b> — silently. Any subquery over a nullable column can introduce a NULL. Fixes: add <code>WHERE col IS NOT NULL</code> inside the subquery, or (preferred) use <code>NOT EXISTS</code>, which checks for a matching row and is immune to NULLs. NOT EXISTS also maps cleanly to an anti-join; many optimizers cannot turn NOT IN into an anti-join unless the columns are declared NOT NULL.</p>`, followUps: ['Does IN (positive) have the same problem?', 'How would you rewrite with a LEFT JOIN … IS NULL?'] },
+    { q: 'What is the difference between WHERE and SELECT in terms of what they filter?', level: 'B', a: `<p>WHERE filters <b>rows</b>: it decides which rows survive, evaluating a condition per row and keeping only TRUE. SELECT chooses and computes <b>columns</b> for the surviving rows (projection). WHERE can reference any column of the source, even columns not in the select list, because it runs earlier; SELECT can create new computed columns and aliases. Neither changes the stored data. A common confusion is thinking that leaving a column out of SELECT prevents filtering on it — it does not.</p>`, followUps: ['Can SELECT reduce the number of rows?', 'Where does DISTINCT fit?'] },
+    { q: 'How do you get the N-th highest salary? What edge cases matter?', level: 'I', a: `<p><code>SELECT (SELECT DISTINCT salary FROM employees WHERE salary IS NOT NULL ORDER BY salary DESC LIMIT 1 OFFSET N-1) AS nth;</code>. Edge cases: <b>duplicates</b> (DISTINCT so tied values occupy one position), <b>missing value</b> (scalar subquery returns NULL instead of an empty set, which graders like LeetCode 176/177 expect), <b>NULL salaries</b> (filter them; in PostgreSQL DESC would put NULL first), and <b>dialects</b> (TOP/OFFSET FETCH in SQL Server). Alternatives: <code>DENSE_RANK()</code> window function, or <code>MAX(salary) WHERE salary &lt; (SELECT MAX…)</code> for N = 2.</p>`, followUps: ['Return all employees earning the N-th highest salary.', 'Which approach is fastest with an index on salary?'] },
+    { q: 'Compare OFFSET pagination with keyset (seek) pagination.', level: 'A', a: `<p><b>OFFSET</b>: <code>ORDER BY k LIMIT n OFFSET m</code>. Simple, supports jumping to any page, but costs O(m + n) because skipped rows must still be produced, and under concurrent inserts/deletes rows shift so users see duplicates or miss rows. <b>Keyset</b>: remember the last row's sort key and query <code>WHERE (k, id) &lt; (:k, :id) ORDER BY k DESC, id DESC LIMIT n</code>. With an index on (k, id) each page is an O(log N) seek, latency is flat at any depth, and results are stable under writes. Downsides: no random page access, the sort key must be unique (add id), mixed sort directions need an expanded OR predicate, and NULLable keys need care. APIs expose it as an opaque cursor.</p>`, followUps: ['How would you implement "previous page" with keyset?', 'How do you show a total count cheaply?'] },
+    { q: 'Why might the same query return rows in a different order on different days?', level: 'I', a: `<p>Without an ORDER BY, SQL guarantees <b>no</b> order — a table is a set. The order you observe is a side effect of the physical plan: heap layout, which index is chosen, parallel workers, hash operations, vacuum/compaction, buffer cache state, or a version upgrade. Even with ORDER BY, rows that <b>tie</b> on all sort keys can come back in any order. Fix: always ORDER BY when order matters, and make the last sort key unique (e.g., the primary key). An ORDER BY inside a subquery or view is not guaranteed to survive to the outer result.</p>`, followUps: ['How does this break pagination?', 'Is SQL sort stable?'] },
+    { q: 'How do NULLs sort, and how do you control it portably?', level: 'I', a: `<p>It depends on the engine: SQLite, MySQL and SQL Server treat NULL as the smallest value (first in ASC, last in DESC); PostgreSQL and Oracle treat it as the largest (last in ASC, first in DESC). The standard <code>NULLS FIRST / NULLS LAST</code> works in PostgreSQL, Oracle and SQLite 3.30+, but not MySQL or SQL Server. A portable trick is to sort by a null indicator first: <code>ORDER BY col IS NULL, col</code> (or <code>CASE WHEN col IS NULL THEN 1 ELSE 0 END</code>) to push NULLs last. Indexes can include NULL ordering (<code>CREATE INDEX … (col DESC NULLS LAST)</code> in PostgreSQL) so the sort can still be avoided.</p>`, followUps: ['What happens to NULLs in a "top 3 by price DESC" query on PostgreSQL?', 'How does GROUP BY handle NULL keys?'] },
+    { q: 'What does DISTINCT actually compare, and when is it a code smell?', level: 'I', a: `<p>DISTINCT compares <b>entire output rows</b> — all selected columns together — treating NULLs as equal. <code>SELECT DISTINCT(a), b</code> is still distinct on (a, b). It runs after SELECT and before ORDER BY/LIMIT, implemented by hashing or sorting (cost O(N) to O(N log N) plus memory). It is a smell when used to hide duplicates produced by a join that fans out (1-to-many): the query is wrong at its grain and DISTINCT masks it while burning CPU. Better: fix the join, use <code>EXISTS</code> for "has at least one", or aggregate deliberately with GROUP BY.</p>`, followUps: ['DISTINCT vs GROUP BY — any performance difference?', 'What is PostgreSQL DISTINCT ON?'] },
+    { q: 'How is LIKE matched and when can it use an index?', level: 'I', a: `<p>LIKE matches the whole string against a pattern where <code>%</code> = any sequence (including empty) and <code>_</code> = exactly one character; other characters must match literally (case-insensitive for ASCII in SQLite/MySQL default collations, case-sensitive in PostgreSQL). A B-tree index helps only with a <b>constant prefix</b>, e.g. <code>'abc%'</code>, which becomes a range scan <code>&gt;= 'abc' AND &lt; 'abd'</code> — provided collation matches (SQLite NOCASE index / case_sensitive_like; PostgreSQL text_pattern_ops or C collation). A leading wildcard (<code>'%abc'</code>) forces a full scan; use trigram (pg_trgm GIN), full-text (FTS5, tsvector) or a reversed-string column. User input needs escaping of %, _ and the escape character.</p>`, followUps: ['How would you implement "ends with" efficiently?', 'Difference between LIKE and GLOB in SQLite?'] },
+    { q: 'What happens with <code>salary + bonus</code> when bonus is NULL, and how do COALESCE and IFNULL help?', level: 'B', a: `<p>Arithmetic and string operations with NULL return NULL (unknown + 100 is still unknown), so total comp becomes NULL and any filter on it becomes UNKNOWN. <code>COALESCE(a, b, …)</code> returns the first non-NULL argument (standard, any number of arguments); <code>IFNULL(a, b)</code> (SQLite/MySQL) and <code>ISNULL(a, b)</code> (SQL Server) are two-argument versions; Oracle has <code>NVL</code>. Use them when "missing" truly means a default (bonus 0). Do not blindly replace NULLs in averages — <code>AVG(COALESCE(x,0))</code> changes the meaning compared with <code>AVG(x)</code>, which ignores NULLs.</p>`, followUps: ['What does NULLIF do and where is it useful?', 'Does COALESCE(col, 0) = 0 use an index?'] },
+    { q: 'Why does <code>SELECT name, salary*12 AS annual FROM emp WHERE annual &gt; 100000</code> fail in PostgreSQL but work in SQLite?', level: 'I', a: `<p>By the logical order WHERE is evaluated before SELECT, so the alias <code>annual</code> does not exist yet; PostgreSQL, SQL Server, Oracle and MySQL raise "column does not exist". SQLite, as a convenience, resolves unknown identifiers in WHERE against result-column aliases. Portable fixes: repeat the expression (<code>WHERE salary*12 &gt; 100000</code>) or compute it in a derived table/CTE and filter in the outer query. Optimizers treat both the same, so there is no performance penalty. Relying on dialect leniency is a common source of bugs when prototypes move from SQLite to a production database.</p>`, followUps: ['Can you use the alias in GROUP BY in MySQL? In PostgreSQL?', 'Can a SELECT expression refer to another alias in the same select list?'] },
+    { q: 'What is a sargable predicate? Give examples from WHERE clauses.', level: 'A', a: `<p>Sargable (Search ARGument ABLE) means the predicate can be answered by an index seek/range scan: the indexed column appears bare on one side of a comparison with a constant or parameter. Sargable: <code>price &lt; 500</code>, <code>name LIKE 'Ab%'</code>, <code>created_at &gt;= '2024-08-01' AND created_at &lt; '2024-09-01'</code>, <code>col IN (1,2,3)</code>, <code>col IS NULL</code>. Not sargable: <code>LOWER(name) = 'x'</code>, <code>price * 1.18 &lt; 500</code>, <code>SUBSTR(code,1,2) = 'IN'</code>, <code>name LIKE '%x'</code>, <code>COALESCE(col,0) = 0</code>, <code>DATE(created_at) = '2024-08-01'</code>. Rewrite by moving the arithmetic to the constant side, using ranges instead of functions, or creating an expression index (<code>CREATE INDEX … ON t(LOWER(name))</code>).</p>`, followUps: ['How would you check whether an index is used in SQLite?', 'Is an OR across two different columns sargable?'] },
+    { q: 'How would you design the SQL behind a product search box with filters, sorting and pagination?', level: 'E', a: `<p>Build the query from parameterised pieces only (never string-concatenate user text). Filters: equality/IN for facets (category, brand), BETWEEN/half-open ranges for price and dates, an escaped LIKE or — at scale — a full-text/trigram/vector index for the text box. Explicitly handle NULL semantics per filter (does "not brand X" include unbranded items?). Sorting: whitelist allowed sort columns and directions, always append the primary key as a tie-breaker, and define NULL placement. Pagination: keyset cursors encoding (sort key, id) for infinite scroll; OFFSET only for small admin pages. Indexes: composite indexes matching the most common (filter, sort) combinations so the engine can seek and stream without sorting; avoid functions on indexed columns. Return a total count asynchronously or approximately, because <code>COUNT(*)</code> over a large filtered set can cost more than the page. Monitor with EXPLAIN and slow-query logs.</p>`, followUps: ['How do you prevent SQL injection with a dynamic ORDER BY column?', 'When would you move search out of the OLTP database entirely?'] }
+  );
+
+  // Spread correct answers across positions (options were authored with the correct one first)
+  function rotate(m, i) {
+    if (!m || !m.options) return;
+    var n = m.options.length, k = (i * 2 + 1) % n;
+    if (!k) return;
+    m.options = m.options.slice(k).concat(m.options.slice(0, k));
+    m.answer = (m.answer - k + n) % n;
+  }
+  quiz.forEach(function (q, i) { rotate(q, i); });
+  practice.forEach(function (p, i) { rotate(p.mcq, i + 1); });
+  topics.forEach(function (t, i) { (t.problems || []).forEach(function (p) { if (p.mcq.answer === 0) rotate(p.mcq, i); }); });
+
+  registerModule({
+    id: 'sql02',
+    title: 'SELECT, WHERE, ORDER BY, LIMIT & NULLs',
+    lang: 'sql',
+    intro: `<p>This is where you start <b>asking the database questions</b>. You will learn to pick columns and compute new ones (<code>SELECT</code>), keep only the rows you care about (<code>WHERE</code> with comparisons, AND/OR/NOT, <code>IN</code>, <code>BETWEEN</code>, <code>LIKE</code>), sort them (<code>ORDER BY</code>), take the top few or one page at a time (<code>LIMIT/OFFSET</code>) and remove duplicates (<code>DISTINCT</code>).</p>
+<p>Two ideas run through the whole module because interviewers test them relentlessly: <b>NULL and three-valued logic</b> (why <code>= NULL</code> never matches and why <code>NOT IN</code> can return nothing), and the <b>logical query processing order</b> FROM → WHERE → SELECT → DISTINCT → ORDER BY → LIMIT (why aliases fail in WHERE and why LIMIT needs ORDER BY). Every visualizer is a tiny query engine: edit the SQL and watch rows get filtered, projected, de-duplicated, sorted and cut — and every ▶ Run button executes against real SQLite sample databases (<code>hr</code>, <code>shop</code>, <code>movies</code>) full of deliberate NULLs and ties.</p>`,
+    goals: [
+      'Write SELECT queries with explicit columns, computed expressions and aliases, avoiding integer-division and NULL-propagation bugs',
+      'Translate English requirements into correct WHERE conditions using comparisons, AND/OR/NOT with parentheses, IN, BETWEEN and anchored/escaped LIKE patterns',
+      'Predict the result of any condition involving NULL using three-valued logic, and fix <code>= NULL</code>, <code>&lt;&gt;</code> and <code>NOT IN</code> traps',
+      'Produce deterministic sorted output with multi-key ORDER BY and explicit NULL placement, and paginate with LIMIT/OFFSET or keyset cursors',
+      'Recite the logical processing order and use it to explain alias scope, DISTINCT vs LIMIT, and "N-th highest" queries in interviews'
+    ],
+    prereqs: `<p>SQL 1 (Databases &amp; the Relational Model): what tables, rows, columns and primary keys are. No programming background needed — but comfort with basic comparisons (&gt;, &lt;, =) helps.</p>`,
+    hours: 9,
+    databases: {
+      hr: buildDb(['employees']),
+      shop: buildDb(['customers', 'products', 'orders']),
+      movies: buildDb(['movies'])
+    },
+    topics: topics,
+    practice: practice,
+    quiz: quiz,
+    interview: interview
+  });
+})();

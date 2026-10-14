@@ -255,6 +255,221 @@ SELECT id, status, total_cents, created_at FROM orders WHERE customer_id = 42;`)
       }
     }]
   });
+
+  /* =====================================================================
+     TOPIC 2 - B+tree internals
+     ===================================================================== */
+  var BT_SEP = [51, 27, 75, 15, 39, 63, 87];
+  var BT_LEAVES = [[3, 7, 10, 12], [15, 18, 21, 24], [27, 30, 33, 36], [39, 42, 45, 48], [51, 54, 57, 60], [63, 66, 69, 72], [75, 78, 81, 84], [87, 90, 93, 96]];
+  function btArr() { return BT_SEP.concat(['L1', 'L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'L8']); }
+  // Descend from the root to the leaf that may contain key. Returns the list of node indexes visited.
+  function btPath(key) {
+    var path = [0], k = 0;
+    while (k < 7) { k = key >= BT_SEP[k] ? 2 * k + 2 : 2 * k + 1; path.push(k); }
+    return path;
+  }
+
+  topics.push({
+    title: 'Inside a B+tree: Search Level by Level & Range Scans',
+    analogy: `<p>Think of an old <b>phone book</b> or a big <b>dictionary</b>. You never read it page by page. The spine says "A–F | G–M | N–S | T–Z", you open the right section, the <b>guide words</b> printed at the top of each page ("Kale — Kettle") tell you whether to flip forward or back, and within a couple of jumps you land on the exact page. Then, if you want <i>every</i> name from "Kim" to "Kumar", you just keep <b>turning pages forward</b> — no need to go back to the spine. A B+tree is exactly that: signposts on top, the real sorted entries at the bottom, and the bottom pages chained together so you can keep reading in order.</p>`,
+    explain: `<p>Almost every relational index (PostgreSQL, MySQL InnoDB, SQL Server, Oracle, SQLite) is a <b>B+tree</b>. Picture three kinds of pages:</p>
+<ul>
+<li><b>Root page</b> (top): a few separator keys and pointers to child pages. "Keys &lt; 51 go left, ≥ 51 go right."</li>
+<li><b>Internal pages</b> (middle): more separators, more pointers. They hold <b>no row data</b> — only signposts — so hundreds of them fit in one page.</li>
+<li><b>Leaf pages</b> (bottom): <b>every key, in sorted order</b>, each with a pointer to its row (or the row itself, for a clustered index). Each leaf also points to the <b>next leaf</b> (and usually the previous one) — a linked list across the whole bottom level.</li>
+</ul>
+<p><b>Point lookup</b> (<code>WHERE id = 42</code>): start at the root, compare 42 with the separators, follow one pointer per level, reach a leaf, find 42 inside it. One page read per level.</p>
+<p><b>Range scan</b> (<code>WHERE id BETWEEN 20 AND 45</code>): descend once to the leaf holding 20, then walk <b>sideways</b> along the leaf chain, collecting keys until you pass 45. You never climb back up. This is also why an index gives you <b>ORDER BY for free</b> — the leaves are already sorted.</p>
+<p><b>Why so shallow?</b> The number of children per page (the <b>fanout</b>) is huge. A 16 KB page with 8-byte keys + 6-byte pointers holds ~1,000 children. So:</p>
+${H.table(['Levels', 'Leaf pages reachable', 'Rows (≈100 per leaf)'], [['1 (root is a leaf)', '1', '100'], ['2', '1,000', '100 thousand'], ['3', '1,000,000', '100 million'], ['4', '1,000,000,000', '100 billion']])}
+<p>A <b>billion-row</b> table needs only <b>3–4 page reads</b> per lookup — and the top 2 levels are almost always cached in RAM. Compare a binary search tree: log<sub>2</sub>(10<sup>9</sup>) ≈ 30 levels → 30 random reads. That is why databases use wide, shallow trees.</p>
+<p><b>Staying balanced.</b> When a leaf is full and a new key arrives, the leaf <b>splits</b> into two half-full leaves and a new separator is pushed up into the parent; if the parent is full it splits too; if the root splits, the tree grows one level taller — at the top, so <b>all leaves stay at the same depth</b>. Every lookup costs the same number of levels.</p>`,
+    clues: [
+      '"How does a database index work internally?" → B+tree: sorted leaves, linked leaf chain, high fanout, height 3–4',
+      '"Why a B+tree and not a binary search tree / hash table?" → disk pages + fanout (shallow) and ordered range scans',
+      '"Range queries / BETWEEN / ORDER BY ... LIMIT are fast with an index" → descend once, then walk the leaf chain',
+      '"How many disk reads to find a row in a 1-billion-row table?" → ~log<sub>1000</sub>(10<sup>9</sup>) ≈ 3–4 page reads',
+      '"Random UUID primary keys make inserts slow" → random leaf splits all over the tree (vs append-only at the right edge)'
+    ],
+    code: [shop(`-- Range on the primary key (the table's own B+tree): descend once, walk the leaves.
+EXPLAIN QUERY PLAN SELECT * FROM orders WHERE id BETWEEN 100 AND 120;
+
+-- Range on a secondary column: first a scan...
+EXPLAIN QUERY PLAN SELECT id, created_at FROM orders
+WHERE created_at >= '2026-03-01' AND created_at < '2026-03-02';
+
+-- ...then build a B+tree on created_at and the same range becomes a SEARCH (created_at>? AND created_at<?).
+CREATE INDEX idx_orders_created ON orders(created_at);
+EXPLAIN QUERY PLAN SELECT id, created_at FROM orders
+WHERE created_at >= '2026-03-01' AND created_at < '2026-03-02';
+
+-- ORDER BY + LIMIT straight from the sorted leaves: no "USE TEMP B-TREE FOR ORDER BY" line.
+EXPLAIN QUERY PLAN SELECT id, created_at FROM orders ORDER BY created_at DESC LIMIT 5;
+SELECT id, created_at FROM orders ORDER BY created_at DESC LIMIT 5;`, 'Ranges and ORDER BY ride the leaf chain'),
+    py(`# How tall does a B+tree get? (pure arithmetic, no database needed)
+import math
+
+def btree_height(rows, leaf_capacity, fanout):
+    """Number of levels (leaf level included) needed to index 'rows' entries."""
+    pages = math.ceil(rows / leaf_capacity)   # leaf pages
+    levels = 1
+    while pages > 1:                           # keep adding parent levels until one root page remains
+        pages = math.ceil(pages / fanout)
+        levels += 1
+    return levels
+
+for rows in [1_000, 1_000_000, 100_000_000, 10_000_000_000]:
+    h = btree_height(rows, leaf_capacity=100, fanout=1000)
+    bst = math.ceil(math.log2(rows))
+    print(f"{rows:>15,} rows -> B+tree height {h}  (a binary tree would need ~{bst} levels)")`, 'B+tree height vs binary tree height (▶ Run)')],
+    codeTitle: ['Range scans and free ORDER BY', 'Why fanout makes trees shallow'],
+    viz: [{
+      title: 'B+tree point lookup — one page per level',
+      input: '42',
+      inputLabel: 'key to search (1-99)',
+      gen: function (input) {
+        var key = parseInt(String(input).trim(), 10);
+        if (isNaN(key) || key < 1 || key > 99) throw new Error('Enter one whole number between 1 and 99, e.g. 42');
+        var arr = btArr(), path = btPath(key), frames = [];
+        frames.push({ narr: 'A 4-level B+tree over 32 keys. Circles on top are <b>signpost pages</b> holding one separator each (real pages hold hundreds — we draw one so it fits). Rule at every signpost: key <b>&lt;</b> separator → go <b>left</b>, key <b>≥</b> separator → go <b>right</b>. Bottom row L1…L8 are <b>leaf pages</b> holding the real sorted keys. Looking for <b>' + key + '</b>.', parts: [
+          { type: 'tree', label: 'B+tree (separators on top, leaf pages at the bottom)', arr: arr },
+          { type: 'vars', vals: { search_key: key, pages_read: 0 } }
+        ] });
+        for (var s = 0; s < path.length - 1; s++) {
+          var node = path[s], next = path[s + 1], hl = {}, ehl = {}, tags = {};
+          for (var q = 0; q < s; q++) hl[path[q]] = 'done';
+          hl[node] = 'cur'; ehl[next] = 'ok'; tags[node] = 'page ' + (s + 1);
+          var right = key >= BT_SEP[node];
+          frames.push({ narr: 'Level ' + (s + 1) + ': read page with separator <b>' + BT_SEP[node] + '</b>. ' + key + (right ? ' ≥ ' : ' &lt; ') + BT_SEP[node] + ' → go <b>' + (right ? 'right' : 'left') + '</b>. Everything on the other side is skipped without ever being read — that is half the tree ignored in one comparison (with real fanout ~1000, 99.9% ignored).', parts: [
+            { type: 'tree', label: 'descending…', arr: arr, hl: hl, ehl: ehl, tags: tags },
+            { type: 'vars', vals: { search_key: key, pages_read: s + 1, level: s + 1 }, hl: { pages_read: 'cur' } }
+          ] });
+        }
+        var leafNode = path[path.length - 1], leaf = BT_LEAVES[leafNode - 7], pos = leaf.indexOf(key);
+        var hl2 = {}, tags2 = {}; path.forEach(function (p) { hl2[p] = 'done'; }); hl2[leafNode] = pos >= 0 ? 'ok' : 'bad'; tags2[leafNode] = 'page ' + path.length;
+        var ahl = {}; leaf.forEach(function (v, i) { ahl[i] = v === key ? 'ok' : (v < key ? 'done' : ''); });
+        frames.push({ narr: 'Level ' + path.length + ': arrive at leaf <b>' + arr[leafNode] + '</b> and binary-search inside the page (it is in memory now, so this is cheap CPU work, not I/O). ' + (pos >= 0 ? '<span class="c-g">Found ' + key + '</span> with its row pointer.' : '<span class="c-r">' + key + ' is not here</span>, and since this is the only leaf where it could live, it does not exist in the table. Proven with ' + path.length + ' page reads.'), parts: [
+          { type: 'tree', label: 'reached the leaf', arr: arr, hl: hl2, tags: tags2 },
+          { type: 'array', label: 'keys inside leaf ' + arr[leafNode], values: leaf, hl: ahl },
+          { type: 'vars', vals: { search_key: key, pages_read: path.length, found: pos >= 0 ? 'yes' : 'no' }, hl: { found: pos >= 0 ? 'ok' : 'bad' } }
+        ] });
+        if (pos >= 0) frames.push({ narr: 'The leaf entry is <b>(' + key + ' → row pointer)</b>. In a secondary index we follow the pointer to fetch the row (+1 page). In a clustered index (InnoDB primary key, SQLite rowid table) the row itself is stored right here in the leaf — no extra hop.', parts: [
+          { type: 'table', label: 'leaf entry', columns: ['key', 'payload'], rows: [[key, 'rowid / PK → full row']], hl: { 0: 'sel' } },
+          { type: 'bars', label: 'pages read: index seek vs scanning all 8 leaves', values: [path.length, 8], idxLabels: ['seek', 'scan leaves'], hl: { 0: 'ok', 1: 'bad' } }
+        ] });
+        frames.push({ narr: 'Every lookup costs exactly <b>height</b> page reads because the tree is perfectly balanced — all leaves sit at the same depth. Try a key that does not exist (e.g. 44) or one at the edge (3, 96).', parts: [
+          { type: 'text', html: 'Cost of a point lookup = <b>tree height</b> = log<sub>fanout</sub>(N). Real databases: 3–4 pages for billions of rows.' }
+        ] });
+        return frames;
+      }
+    }, {
+      title: 'Range scan: descend once, then walk the linked leaves',
+      input: '20 45',
+      inputLabel: 'range low high (1-99)',
+      gen: function (input) {
+        var a = String(input).trim().split(/[\s,]+/).map(Number);
+        if (a.length !== 2 || a.some(isNaN) || a[0] > a[1] || a[0] < 1 || a[1] > 99) throw new Error('Enter two numbers low high with 1 ≤ low ≤ high ≤ 99, e.g. 20 45');
+        var lo = a[0], hi = a[1], all = [], lab = [], start = [], frames = [];
+        BT_LEAVES.forEach(function (lf, li) { start.push(all.length); lf.forEach(function (v) { all.push(v); lab.push('L' + (li + 1)); }); });
+        var path = btPath(lo), arr = btArr();
+        var hl = {}; path.forEach(function (p) { hl[p] = 'done'; }); hl[path[path.length - 1]] = 'cur';
+        frames.push({ narr: 'Query: <code>WHERE key BETWEEN ' + lo + ' AND ' + hi + '</code>. Step 1 is an ordinary lookup for the <b>low end</b> (' + lo + '): ' + path.length + ' page reads take us down to leaf <b>' + arr[path[path.length - 1]] + '</b>.', parts: [
+          { type: 'tree', label: 'descend to the first leaf', arr: arr, hl: hl },
+          { type: 'array', label: 'leaf level = one sorted linked list (labels = leaf page)', values: all, idxLabels: lab }
+        ] });
+        var i = 0; while (i < all.length && all[i] < lo) i++;
+        var pages = path.length, got = [], curLeaf = -1, collected = {};
+        if (i >= all.length) {
+          frames.push({ narr: 'Every key is below ' + lo + ' → the range is empty.', parts: [{ type: 'array', values: all, idxLabels: lab }] });
+        }
+        while (i < all.length) {
+          var li = Math.floor(i / 4);
+          if (li !== curLeaf) {
+            if (curLeaf !== -1) {
+              pages++;
+              var r0 = [start[li], start[li] + 3];
+              frames.push({ narr: 'End of leaf L' + (curLeaf + 1) + '. Follow its <b>next-leaf pointer</b> sideways to L' + (li + 1) + ' (+1 page read). No trip back to the root needed.', parts: [
+                { type: 'array', label: 'leaf chain', values: all, idxLabels: lab, range: r0, hl: Object.assign({}, collected) },
+                { type: 'vars', vals: { pages_read: pages, rows_found: got.length }, hl: { pages_read: 'cur' } }
+              ] });
+            }
+            curLeaf = li;
+          }
+          var ptr = {}; ptr[i] = 'cur';
+          var r = [start[li], start[li] + 3];
+          if (all[i] > hi) {
+            var hb = Object.assign({}, collected); hb[i] = 'bad';
+            frames.push({ narr: 'Key <b>' + all[i] + '</b> &gt; ' + hi + ' → <span class="c-r">stop</span>. Because the leaves are sorted, nothing after this can match. Range done: <b>' + got.length + '</b> keys [' + got.join(', ') + '] for <b>' + pages + '</b> page reads.', parts: [
+              { type: 'array', label: 'leaf chain', values: all, idxLabels: lab, range: r, hl: hb, ptr: ptr },
+              { type: 'vars', vals: { pages_read: pages, rows_found: got.length }, hl: { rows_found: 'ok' } }
+            ] });
+            break;
+          }
+          got.push(all[i]); collected[i] = 'ok';
+          frames.push({ narr: 'Read key <b>' + all[i] + '</b> (inside ' + lo + '…' + hi + ') → add to result. Moving right inside the same leaf page is free — it is already in memory.', parts: [
+            { type: 'array', label: 'leaf chain', values: all, idxLabels: lab, range: r, hl: Object.assign({}, collected), ptr: ptr },
+            { type: 'vars', vals: { pages_read: pages, rows_found: got.length } }
+          ] });
+          i++;
+          if (i >= all.length) frames.push({ narr: 'Reached the last leaf — no next pointer. Range done: <b>' + got.length + '</b> keys for <b>' + pages + '</b> page reads.', parts: [{ type: 'array', values: all, idxLabels: lab, hl: Object.assign({}, collected) }] });
+        }
+        frames.push({ narr: 'Cost of a range scan = <b>height</b> (find the start) + <b>number of leaf pages the range spans</b>. That is why <code>BETWEEN</code>, <code>&gt;</code>, <code>&lt;</code>, prefix <code>LIKE \'abc%\'</code> and <code>ORDER BY … LIMIT</code> all love B+trees — and why a hash index (no order) cannot do any of them.', parts: [
+          { type: 'bars', label: 'pages read', values: [pages, path.length - 1 + 8], idxLabels: ['range via index', 'scan every leaf'], hl: { 0: 'ok', 1: 'bad' } }
+        ] });
+        return frames;
+      }
+    }],
+    examples: [
+      { title: 'Height of a real index (InnoDB-style numbers)', html: `<p>16 KB pages. Internal entry = 8-byte BIGINT key + 6-byte child pointer ≈ 14 bytes → ~1,170 children per internal page. Leaf rows ≈ 1 KB each → ~16 rows per leaf (clustered index). Height 3 holds 1,170 × 1,170 × 16 ≈ <b>21.9 million rows</b>; height 4 holds ~<b>25.6 billion</b>. So a PK lookup on a 20M-row InnoDB table is 3 page reads, and the first two are almost certainly in the buffer pool.</p>` },
+      { title: 'ORDER BY … LIMIT without sorting', html: `<p><code>SELECT … ORDER BY created_at DESC LIMIT 5</code>: without an index the database reads all 20,000 rows and sorts them (SQLite plan: <code>USE TEMP B-TREE FOR ORDER BY</code>). With an index on <code>created_at</code> it jumps to the <b>right end</b> of the leaf chain and walks backwards 5 entries — leaves are doubly linked, so DESC works too.</p>`, code: shop(`EXPLAIN QUERY PLAN SELECT id FROM orders ORDER BY created_at DESC LIMIT 5;   -- SCAN + TEMP B-TREE
+CREATE INDEX idx_orders_created ON orders(created_at);
+EXPLAIN QUERY PLAN SELECT id FROM orders ORDER BY created_at DESC LIMIT 5;   -- SCAN orders USING INDEX (reads 5 entries then stops)`) },
+      { title: 'Prefix search is a range scan', html: `<p><code>WHERE last_name LIKE 'Ra%'</code> means "keys from 'Ra' up to (but not including) 'Rb'" — a range on the sorted leaves. SQLite only does this rewrite when the index collation matches LIKE's case-insensitive rule (index with <code>COLLATE NOCASE</code>) or when you use the case-sensitive <code>GLOB 'Ra*'</code>. A leading wildcard <code>'%ra'</code> has no starting point in the sort order → full scan.</p>`, code: shop(`CREATE INDEX idx_cust_last ON customers(last_name);
+EXPLAIN QUERY PLAN SELECT id FROM customers WHERE last_name GLOB 'Ra*';   -- SEARCH (last_name>? AND last_name<?)
+EXPLAIN QUERY PLAN SELECT id FROM customers WHERE last_name LIKE '%ao';   -- leading wildcard: no seek possible
+SELECT DISTINCT last_name FROM customers WHERE last_name GLOB 'Ra*';`) }
+    ],
+    deepDive: `<p><b>B-tree vs B+tree.</b> In a classic B-tree, internal nodes also store records, so some lookups stop early but internal nodes hold fewer keys (lower fanout) and range scans must bounce up and down the tree. A B+tree keeps <b>all records in leaves</b> and links them, giving maximal fanout and cheap sequential range scans. Databases say "B-tree" loosely but implement B+tree variants (Postgres nbtree is a Lehman–Yao <b>B-link tree</b> with right-sibling links so readers don't block on concurrent splits).</p>
+<p><b>Splits and fill factor.</b> A full leaf splits 50/50 — except the <b>rightmost</b> leaf on append-only keys (auto-increment, time-ordered), where engines do a 90/10 or "fast-path" split so pages stay full. Random keys (UUIDv4) insert all over the tree: every leaf ends up ~70% full on average, the working set is the whole index instead of the right edge, and buffer pool misses explode. Fixes: sequential surrogate keys or time-ordered IDs (<b>UUIDv7</b>, ULID, Snowflake). Postgres <code>fillfactor</code> (default 90 for B-tree leaves) leaves room for future inserts.</p>
+<p><b>Deletes</b> usually just mark entries dead; pages merge rarely. Long-lived indexes accumulate <b>bloat</b> (half-empty pages) → <code>REINDEX</code> / <code>pg_repack</code> / <code>OPTIMIZE TABLE</code>. Postgres 13+ deduplicates repeated keys in leaves; 14+ does bottom-up deletion to fight version-churn bloat.</p>
+<p><b>Page internals.</b> Keys inside a page are kept in a sorted slot array and binary-searched. Engines use <b>prefix/suffix truncation</b> (separators only need enough bytes to separate), so long string keys still give high fanout. Concurrency uses short-lived <b>latches</b> with latch crabbing (hold parent until child is safe) — different from transaction locks.</p>
+<p><b>Complexities:</b> search O(log<sub>F</sub> N) pages, insert/delete O(log<sub>F</sub> N) amortised, range O(log<sub>F</sub> N + k/B) where k = matches and B = entries per leaf.</p>`,
+    aiEra: `<p><b>What AI changes:</b> assistants explain B+tree mechanics well and can generate toy implementations instantly, so interviewers expect you to go beyond "it's a balanced tree" — to page sizes, fanout arithmetic, splits, and why UUIDv4 keys hurt.</p>
+<p><b>Use AI as a partner:</b> "Simulate inserting keys 1..50 into a B+tree of order 4 and print the tree after each split" is a great way to build intuition; "estimate index height for my table: 300M rows, 24-byte keys, 8 KB pages" gives you a quick sanity check — redo the arithmetic yourself.</p>
+<p><b>Where AI goes wrong:</b> it mixes up B-tree and B+tree (claims data lives in internal nodes of InnoDB), quotes binary-tree heights (log<sub>2</sub>) for disk indexes, and invents page sizes. <b>What you must still own:</b> the fanout → height reasoning, the leaf-chain range scan, and connecting those to real plans (<code>SEARCH … (x&gt;? AND x&lt;?)</code>, no TEMP B-TREE for ORDER BY).</p>`,
+    problems: [{
+      title: 'How Many Page Reads to Find One Row?',
+      level: 'Medium', tags: ['b+tree', 'capacity estimation'], companies: ['Google', 'Microsoft', 'Oracle'],
+      statement: `<p>A table has <b>50 million</b> rows. Its B+tree index has leaf pages holding <b>100</b> entries each and internal pages with a fanout of <b>500</b>. (a) How tall is the tree? (b) How many page reads does a point lookup need, and how many does a full scan of the leaf level need? Compute it <b>in SQL</b> with a recursive CTE.</p>`,
+      constraints: `<p>Integer arithmetic only (ceil(a/b) = (a + b − 1) / b). No math extension functions.</p>`,
+      example: `<p>Leaf pages = ⌈50,000,000 / 100⌉ = ${H.c('b', '500,000')}. Parents: ⌈500,000 / 500⌉ = 1,000 → ⌈1,000 / 500⌉ = 2 → 1 root. Levels: 500,000 · 1,000 · 2 · 1 → ${H.c('g', 'height 4')}. Lookup = 4 page reads vs ${H.c('r', '500,000')} for a full leaf scan.</p>`,
+      brute: { why: `<p>The "brute force" access path is the full scan: read all 500,000 leaf pages (or all table pages). At ~0.1 ms per uncached SSD page that is ~50 seconds versus ~0.4 ms for 4 page reads. The waste: 499,996 pages read that cannot contain the key.</p>`, code: lab(`-- Brute force cost: every leaf page is read.
+SELECT (50000000 + 100 - 1) / 100 AS pages_read_by_full_scan;`) },
+      mcq: { q: 'If the fanout doubled from 500 to 1000, the height would…', options: ['stay 4 or drop by at most one level', 'halve to 2', 'double to 8', 'not change because only leaves matter'], answer: 0, explain: 'Height grows with log base fanout; doubling the base barely changes it: 500,000 → 500 → 1 gives height 3 with fanout 1000. Small change, because log is so flat.' },
+      hints: [`<p>Hint 1: start from the bottom: how many leaf pages are needed for 50M entries at 100 per page?</p>`, `<p>Hint 2: each level above has ⌈pages_below / 500⌉ pages. Keep going until one page (the root) remains — a recursive CTE with <code>WHERE pages &gt; 1</code>.</p>`, `<p>Hint 3: height = number of rows the CTE produced. Lookup cost = height page reads (+1 for a non-covering secondary index to fetch the row).</p>`],
+      solution: {
+        approach: `<p>Build the tree bottom-up in a recursive CTE: level 1 = leaf pages; each next level = ceil(previous / fanout); stop when a level has 1 page (the root). The row count of the CTE is the height. A point lookup reads one page per level.</p>`,
+        code: lab(`WITH RECURSIVE lvl(level, pages) AS (
+  SELECT 1, (50000000 + 100 - 1) / 100          -- leaf pages (ceil)
+  UNION ALL
+  SELECT level + 1, (pages + 500 - 1) / 500       -- parents needed for the level below
+  FROM lvl
+  WHERE pages > 1                                 -- stop once a single root page exists
+)
+SELECT level, pages,
+       CASE WHEN pages = 1 THEN 'root' WHEN level = 1 THEN 'leaves' ELSE 'internal' END AS kind
+FROM lvl;
+
+-- Height = number of levels = cost of a point lookup in page reads.
+WITH RECURSIVE lvl(level, pages) AS (
+  SELECT 1, (50000000 + 99) / 100 UNION ALL SELECT level + 1, (pages + 499) / 500 FROM lvl WHERE pages > 1)
+SELECT MAX(level) AS height, MAX(level) AS lookup_page_reads, (SELECT pages FROM lvl WHERE level = 1) AS full_leaf_scan_pages
+FROM lvl;`),
+        complexity: `<p>Lookup: O(log<sub>500</sub> N) = 4 pages. Full scan: O(N / 100) = 500,000 pages. Root + level 2 (1 + 2 pages) are always cached, so a real lookup does ~1–2 physical reads.</p>`,
+        followUps: ['How much RAM to cache all internal levels? (≈ 1,003 pages × page size)', 'How does a 16-byte UUID key instead of an 8-byte BIGINT change the fanout and height?']
+      }
+    }]
+  });
   registerModule({
     id: 'sql10', title: 'Index Internals', lang: 'sql',
     intro: `<p>tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro</p>`,

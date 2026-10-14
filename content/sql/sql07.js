@@ -1181,7 +1181,7 @@ WHERE o.customer_id = 1;
       }
       var rh = {}; rh[a] = 'cur'; rh[b] = 'cur';
       if (card === '1-N') {
-        var col = a === b ? 'manager_id' : addFk(b, a);
+        var col = a === b ? 'parent_id' : addFk(b, a);
         if (a === b) { tabs[a].ref = tabs[a].ref || {}; if (tabs[a].fks.indexOf(col) < 0) { tabs[a].fks.push(col); tabs[a].cols.push(col); tabs[a].ref[col] = a + '.id'; } }
         if (a !== b) edges.push([a, b, '1 : N ' + verb]);
         var eh = {}; eh[a + '-' + b] = 'cur';
@@ -1411,6 +1411,256 @@ GROUP BY c.id
 ORDER BY c.code;`),
         complexity: `<p>Enrol/check duplicate: O(log N) via the composite PK index. "Courses of a student" uses the PK prefix; "students of a course" uses idx_enrollments_course. The report is one O(E) pass over enrollments.</p>`,
         followUps: ['Add multiple attempts at the same course (retakes) — what happens to the primary key?', 'Add a seat limit per course. Can a CHECK enforce it? (no — needs a counter column or trigger)']
+      }
+    }]
+  });
+  /* ======================= TOPIC 6: E-COMMERCE SCHEMA ======================= */
+  topics.push({
+    title: 'Modelling a Real Schema: E-commerce from Requirements to DDL',
+    analogy: `<p>Designing a schema from requirements is like <b>planning a restaurant kitchen from the menu</b>. The menu (requirements) tells you which stations you need (entities), which dishes pass between them (relationships), where the fridge must be locked (constraints), and which shelf must be within arm's reach because the chef grabs it 500 times a night (indexes for the hot queries). Nobody starts by buying pans.</p>`,
+    explain: `<p>Interviewers say "design the database for an online store" and watch <b>how</b> you get there. Use the same 7-step recipe every time:</p>
+<ol>
+<li><b>Read requirements → underline nouns and verbs.</b> Nouns become entity candidates, verbs relationships.</li>
+<li><b>Entities + keys.</b> Customer, Address, Category, Product, Order, OrderItem, Payment, Review. Surrogate <code>id</code> + UNIQUE natural keys (email, SKU).</li>
+<li><b>Relationships + cardinality</b>, both directions. Order ↔ Product is N-M → <code>order_items</code>.</li>
+<li><b>Attributes + types</b>: money in integer cents, timestamps in UTC, status as a constrained set.</li>
+<li><b>Constraints</b>: NOT NULL for mandatory, CHECK for business rules (qty &gt; 0, rating 1–5, stock ≥ 0), UNIQUE for "only one".</li>
+<li><b>Delete policies</b> per FK: CASCADE for parts, SET NULL for optional history, RESTRICT for money.</li>
+<li><b>Indexes for access patterns</b>: "my orders" → <code>orders(customer_id, placed_at)</code>; "products in category" → <code>products(category_id)</code>.</li>
+</ol>
+<h4>The decisions that separate good answers from great ones</h4>
+${H.table(['Requirement / risk', 'Decision', 'Why'], [
+  ['prices change over time', 'copy <code>unit_price_cents</code> into order_items', 'an old invoice must never change when the catalogue does'],
+  ['shipping address can be edited later', 'snapshot the address on the order (or reference an immutable address row)', 'parcels already shipped went to the old address'],
+  ['a product that was sold is "deleted"', 'soft delete (<code>is_active = 0</code>) + RESTRICT on order_items', 'history and accounting stay intact'],
+  ['one review per customer per product', '<code>UNIQUE (product_id, customer_id)</code>', 'stops spam and double ratings'],
+  ['stock must never go negative', '<code>CHECK (stock &gt;= 0)</code> + conditional UPDATE', 'two shoppers buying the last item cannot both win'],
+  ['order status', '<code>CHECK (status IN (...))</code> or a lookup table', 'no typos like \'shiped\''],
+  ['payments can fail and be retried', 'Order 1-N Payment, with status', 'one order, several attempts/refunds'],
+  ['order total', 'compute from items (or store + verify)', 'derived data can drift if stored blindly']
+])}
+<p>The <b>shop</b> sample database in this module is exactly this design — every runnable query here uses it.</p>`,
+    clues: [
+      '"design the schema for Amazon / Flipkart / a food-delivery app" → 7-step recipe; start with entities and cardinalities',
+      '"the product price changed and old invoices changed too" → snapshot unit price into order_items',
+      '"customer deleted, order history disappeared" → RESTRICT / soft delete for financial tables',
+      '"two people bought the last item" → <code>CHECK (stock &gt;= 0)</code> + <code>UPDATE ... WHERE stock &gt;= ?</code>',
+      '"show a user\'s recent orders fast" → composite index <code>(customer_id, placed_at)</code>',
+      '"products have different attributes per category" → core columns + JSON specs (or EAV, carefully)',
+      '"support multiple currencies / sellers / warehouses" → extend entities, don\'t widen columns'
+    ],
+    code: [
+      shop(`-- 1) What tables exist, and how many rows each? (the shop DB = this topic's design)
+SELECT name AS table_name FROM sqlite_master WHERE type = 'table' ORDER BY name;
+
+-- 2) A real business query across the schema: order totals with customer and city
+SELECT o.id AS order_id, c.name AS customer, o.status,
+       COALESCE(a.city, '(no address)') AS ship_city,
+       SUM(oi.qty)                                        AS items,
+       printf('%.2f', SUM(oi.qty * oi.unit_price_cents) / 100.0) AS total
+FROM orders o
+JOIN customers c        ON c.id = o.customer_id
+JOIN order_items oi     ON oi.order_id = o.id
+LEFT JOIN addresses a   ON a.id = o.ship_address_id
+GROUP BY o.id
+ORDER BY o.id;
+
+-- 3) Integrity audit: every check should return 0
+SELECT 'orphan order_items' AS check_name, COUNT(*) AS violations
+  FROM order_items oi LEFT JOIN orders o ON o.id = oi.order_id WHERE o.id IS NULL
+UNION ALL SELECT 'orders without items', COUNT(*)
+  FROM orders o WHERE NOT EXISTS (SELECT 1 FROM order_items oi WHERE oi.order_id = o.id)
+UNION ALL SELECT 'customers with 2+ default addresses', COUNT(*)
+  FROM (SELECT customer_id FROM addresses WHERE is_default = 1 GROUP BY customer_id HAVING COUNT(*) > 1);`, 'Explore and audit the shop schema')
+    ],
+    codeTitle: ['Shop schema in action'],
+    viz: {
+      title: 'E-commerce ER diagram, built one requirement at a time',
+      gen: function () {
+        var N = {
+          Customer: { x: 12, y: 10 }, Address: { x: 12, y: 52 }, Category: { x: 88, y: 31 }, Product: { x: 88, y: 52 },
+          Order: { x: 50, y: 10 }, OrderItem: { x: 50, y: 52 }, Payment: { x: 88, y: 10 }, Review: { x: 31, y: 31 }
+        };
+        var steps = [
+          { add: ['Customer'], edges: [], req: 'Customers sign up with a unique email', dec: 'customers(id PK, email UNIQUE NOT NULL, name NOT NULL, created_at DEFAULT now)' },
+          { add: ['Address'], edges: [['Customer', 'Address', '1:N saves', 'CASCADE']], req: 'Customers save many addresses, one default', dec: 'addresses.customer_id FK ON DELETE CASCADE + partial UNIQUE (customer_id) WHERE is_default = 1' },
+          { add: ['Category'], edges: [], req: 'Categories nest (Electronics → Phones)', dec: 'categories.parent_id → categories.id ON DELETE SET NULL (self-reference)', tag: { Category: 'parent_id → self' } },
+          { add: ['Product'], edges: [['Category', 'Product', '1:N groups', 'SET NULL']], req: 'Products have a unique SKU, a price and stock', dec: 'products(sku UNIQUE, price_cents CHECK > 0, stock CHECK >= 0, is_active for soft delete, category_id SET NULL)' },
+          { add: ['Order'], edges: [['Customer', 'Order', '1:N places', 'RESTRICT']], req: 'Customers place orders; order history is a financial record', dec: 'orders.customer_id NOT NULL ON DELETE RESTRICT; status CHECK IN (pending, paid, shipped, delivered, cancelled)' },
+          { add: ['OrderItem'], edges: [['Order', 'OrderItem', '1:N contains', 'CASCADE'], ['Product', 'OrderItem', '1:N sold as', 'RESTRICT']], req: 'An order has many products, each with a quantity', dec: 'Order N-M Product → order_items(order_id, product_id) PK; qty CHECK > 0; unit_price_cents = price snapshot' },
+          { add: ['Payment'], edges: [['Order', 'Payment', '1:N paid by', 'RESTRICT']], req: 'Payments can fail and be retried; refunds happen', dec: 'payments(order_id FK RESTRICT, amount_cents, status, provider_ref UNIQUE) — 1-N, not a column on orders' },
+          { add: ['Review'], edges: [['Customer', 'Review', '1:N writes', 'SET NULL'], ['Product', 'Review', '1:N receives', 'CASCADE']], req: 'One review per customer per product, rating 1-5', dec: 'reviews UNIQUE(product_id, customer_id), rating CHECK BETWEEN 1 AND 5, author SET NULL on account deletion' }
+        ];
+        var nodes = [], edges = [], pol = {}, tags = {}, decisions = [], frames = [];
+        var polCls = { CASCADE: 'bad', 'SET NULL': 'cur', RESTRICT: 'win' };
+        function graph(hl, ehl) {
+          return { type: 'graph', directed: false, height: 62, label: 'e-commerce ER diagram', nodes: nodes.map(function (n) { return { id: n, label: n, x: N[n].x, y: N[n].y, shape: 'box' }; }), edges: edges.map(function (e) { return e.slice(); }), hl: hl || {}, ehl: ehl || {}, tags: JSON.parse(JSON.stringify(tags)) };
+        }
+        frames.push({ narr: 'Requirements first, tables later. Each step reads one requirement, adds the entity it implies, connects it with a labelled relationship, and writes down the design decision.', parts: [
+          { type: 'text', html: '<b>Requirements:</b> customers with unique emails · saved addresses · nested categories · products with SKU/price/stock · orders with many items · retryable payments · one review per customer per product.' },
+          { type: 'table', label: 'design decisions', columns: ['requirement', 'decision'], rows: [] }
+        ] });
+        steps.forEach(function (s, k) {
+          var hl = {}, ehl = {};
+          s.add.forEach(function (n) { nodes.push(n); hl[n] = 'ok'; tags[n] = 'PK id'; });
+          if (s.tag) Object.keys(s.tag).forEach(function (n) { tags[n] = s.tag[n]; });
+          s.edges.forEach(function (e) { edges.push([e[0], e[1], e[2]]); ehl[e[0] + '-' + e[1]] = 'cur'; pol[e[0] + '-' + e[1]] = e[3]; hl[e[0]] = hl[e[0]] || 'cur'; });
+          decisions.push([s.req, s.dec]);
+          frames.push({ narr: '<b>Step ' + (k + 1) + ':</b> "' + s.req + '" → ' + s.add.join(', ') + (s.edges.length ? ' + ' + s.edges.map(function (e) { return e[0] + ' ' + e[2] + ' ' + e[1] + ' (ON DELETE ' + e[3] + ')'; }).join(', ') : '') + '.', parts: [graph(hl, ehl), { type: 'table', label: 'design decisions', columns: ['requirement', 'decision'], rows: copyRows(decisions), hl: one(decisions.length - 1, 'ok') }] });
+        });
+        var ehl = {}; Object.keys(pol).forEach(function (k) { ehl[k] = polCls[pol[k]]; });
+        frames.push({ narr: 'Same diagram coloured by <b>ON DELETE policy</b>: <span class="c-r">red = CASCADE</span> (parts die with the whole), <span class="c-y">amber = SET NULL</span> (keep history, forget the parent), <span class="c-b">blue = RESTRICT</span> (money and history: refuse). Notice that every path from Customer to money is blue.', parts: [graph({}, ehl), { type: 'table', label: 'delete policies', columns: ['relationship', 'ON DELETE', 'reason'], rows: [
+          ['Customer → Address', 'CASCADE', 'personal data, useless alone'], ['Customer → Order', 'RESTRICT', 'financial record'], ['Order → OrderItem', 'CASCADE', 'part of the order'],
+          ['Product → OrderItem', 'RESTRICT', 'invoice lines must survive'], ['Order → Payment', 'RESTRICT', 'audit trail'], ['Category → Product', 'SET NULL', 'product can be re-categorised'],
+          ['Customer → Review', 'SET NULL', 'keep the review, anonymise it'], ['Product → Review', 'CASCADE', 'reviews of a removed product are noise']] }] });
+        frames.push({ narr: 'Last pass: <b>indexes for the hot queries</b>. Every FK column gets an index (fast joins + fast cascades), plus composites for the screens users hit most.', parts: [{ type: 'table', label: 'access pattern → index', columns: ['screen / query', 'index'], rows: [
+          ['My orders, newest first', 'orders(customer_id, placed_at DESC)'], ['Category page', 'products(category_id) WHERE is_active = 1'], ['Order detail', 'order_items PK (order_id, product_id)'],
+          ['"Which orders contain product X?"', 'order_items(product_id)'], ['Product reviews', 'reviews UNIQUE(product_id, customer_id)'], ['Login', 'customers UNIQUE(email)']] }] });
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'Price snapshot: change the catalogue, old orders stay correct', html: `<p>The phone's price drops from ₹499 to ₹449. Order 1 was paid at ₹499 and must still say ₹499 — that is why <code>order_items.unit_price_cents</code> is a copy, not a lookup. (This is deliberate, safe redundancy: the copy is a historical fact, not duplicated current data.)</p>`,
+        code: shop(`UPDATE products SET price_cents = 44900 WHERE id = 1;   -- price drop today
+SELECT oi.order_id, p.name,
+       oi.unit_price_cents AS price_paid,      -- historical fact, unchanged
+       p.price_cents       AS price_today
+FROM order_items oi JOIN products p ON p.id = oi.product_id
+WHERE oi.product_id = 1;`) },
+      { title: 'Stock that can never go negative (even with two buyers)', html: `<p>Read-then-write ("SELECT stock; if &gt; 0 then UPDATE") races: two shoppers both read 1 and both buy. Do the check <b>inside</b> the UPDATE: <code>WHERE stock &gt;= qty</code>. If <code>changes()</code> is 0, the item sold out. The CHECK (stock &gt;= 0) is the last line of defence.</p>`,
+        code: shop(`-- Headphones (id 4) have stock 0; Cable (id 2) has 200
+UPDATE products SET stock = stock - 1 WHERE id = 4 AND stock >= 1;
+SELECT 'buy headphones' AS attempt, changes() AS succeeded;    -- 0: sold out, nothing changed
+UPDATE products SET stock = stock - 3 WHERE id = 2 AND stock >= 3;
+SELECT 'buy 3 cables' AS attempt, changes() AS succeeded;      -- 1
+-- UPDATE products SET stock = stock - 500 WHERE id = 2;       -- would hit CHECK (stock >= 0): error
+SELECT id, name, stock FROM products ORDER BY id;`) },
+      { title: 'Status: CHECK list vs lookup table', html: `<p><code>CHECK (status IN (...))</code> is simple and fast, but adding a status means a migration (a table rebuild in SQLite). A <b>lookup table</b> with an FK lets you add statuses with an INSERT and store extra facts (display name, is_final). Pick lookup tables when the list changes or carries metadata.</p>`,
+        code: lab(`PRAGMA foreign_keys = ON;
+CREATE TABLE order_statuses (code TEXT PRIMARY KEY, label TEXT NOT NULL, is_final INTEGER NOT NULL CHECK (is_final IN (0, 1)));
+INSERT INTO order_statuses VALUES ('pending', 'Awaiting payment', 0), ('paid', 'Paid', 0), ('shipped', 'On the way', 0),
+                                  ('delivered', 'Delivered', 1), ('cancelled', 'Cancelled', 1);
+CREATE TABLE orders (id INTEGER PRIMARY KEY,
+  status TEXT NOT NULL DEFAULT 'pending' REFERENCES order_statuses(code) ON UPDATE CASCADE);
+INSERT INTO orders (id, status) VALUES (1, 'paid'), (2, 'delivered');
+INSERT INTO orders (id) VALUES (3);                                -- status omitted -> DEFAULT 'pending'
+INSERT INTO order_statuses VALUES ('returned', 'Returned', 1);      -- new status: no DDL needed
+INSERT INTO orders VALUES (4, 'returned');
+SELECT o.id, s.label, s.is_final FROM orders o JOIN order_statuses s ON s.code = o.status ORDER BY o.id;`) },
+      { title: 'Prove the index is used for "my orders"', html: `<p>Design isn't finished until the hot query is fast. <code>EXPLAIN QUERY PLAN</code> shows whether SQLite uses <code>idx_orders_customer</code> (a SEARCH) or reads the whole table (a SCAN).</p>`,
+        code: shop(`EXPLAIN QUERY PLAN
+SELECT id, status, placed_at FROM orders WHERE customer_id = 1 ORDER BY placed_at DESC;
+
+-- better for this screen: a composite index matching filter + sort
+CREATE INDEX idx_orders_customer_placed ON orders(customer_id, placed_at);
+EXPLAIN QUERY PLAN
+SELECT id, status, placed_at FROM orders WHERE customer_id = 1 ORDER BY placed_at DESC;`) }
+    ],
+    deepDive: `<h4>Things a senior engineer adds to the e-commerce design</h4>
+<ul>
+<li><b>Order address snapshot</b>: copy name/line1/city/postcode onto the order (or into an <code>order_addresses</code> table) so editing or deleting a saved address never rewrites history — in our shop DB the FK is SET NULL, which keeps the order but loses where it shipped; a snapshot is safer.</li>
+<li><b>Money</b>: <code>amount_minor BIGINT</code> + <code>currency CHAR(3)</code> everywhere, including order_items and payments. Taxes and discounts as separate line types or columns so totals are explainable.</li>
+<li><b>Idempotency</b>: <code>payments.provider_ref UNIQUE</code> and an <code>idempotency_key UNIQUE</code> on order creation, so a retried HTTP request cannot create two orders.</li>
+<li><b>Inventory at scale</b>: one <code>stock</code> column becomes a hotspot during sales. Real systems use per-warehouse stock rows, reservations with expiry (<code>reserved_until</code>), and an append-only stock movement ledger whose sum is the stock.</li>
+<li><b>Product variants</b>: size/colour → <code>product_variants</code> (the SKU-level entity) under a <code>products</code> parent. Order items reference the variant.</li>
+<li><b>Flexible attributes</b>: a JSON <code>specs</code> column for per-category attributes (screen size, pages), with generated columns + indexes for the few that are filtered on. Avoid full EAV (entity-attribute-value) unless attributes are truly user-defined: it destroys types and constraints.</li>
+<li><b>Audit</b>: <code>created_at</code>, <code>updated_at</code>, and an <code>order_status_history(order_id, from_status, to_status, changed_at)</code> table — state machines need history.</li>
+<li><b>Soft delete + partial unique</b>: <code>deleted_at</code> on customers, with <code>UNIQUE (email) WHERE deleted_at IS NULL</code>, so a deleted user can re-register.</li>
+</ul>
+<h4>OLTP vs analytics</h4>
+<p>This normalized design serves the shop's transactions (OLTP). Dashboards ("revenue by category by month") are run on a separate warehouse in a <b>star schema</b> (fact_order_items + dimension tables), fed by CDC/ETL. Next module (Normalization &amp; Denormalization) explains why the two shapes differ.</p>
+<h4>Multi-tenant / marketplace</h4>
+<p>Marketplaces add Seller as an entity (Product N-1 Seller, OrderItem carries seller_id, payouts per seller). SaaS adds <code>tenant_id</code> to every table and composite FKs <code>(tenant_id, x_id)</code> so a row can never reference another tenant's data.</p>`,
+    aiEra: `<p><b>What AI changes:</b> "Design an e-commerce schema" is a prompt any LLM answers instantly with 8 plausible tables. In 2026 interviews, the bar has moved: interviewers expect you to <b>critique and evolve</b> a design — price snapshots, delete policies, race conditions on stock, idempotency — not just list tables. Some interviews now hand you an AI-generated schema and ask what is wrong with it.</p>
+<p><b>Use AI as a partner:</b> generate the first draft, then interrogate it: <code>"For each FK, what is the ON DELETE action and why? What happens to order 123's total if the product price changes? Show me the SQL that two concurrent buyers of the last item would run, and prove stock can't go negative."</code> Ask it to produce seed data and an integrity-audit query (like the one above) so you can test the design immediately.</p>
+<p><b>Where AI goes wrong:</b> it stores <code>price</code> only on products (no snapshot), uses <code>FLOAT</code> for money, forgets payments are 1-N, puts <code>ON DELETE CASCADE</code> from customers to orders, and invents an <code>order_total</code> column with nothing keeping it correct. <b>What you must still own:</b> the business conversation (what must never change, what must be deletable), the read/write patterns that drive indexes, and the judgment to stop adding tables before the interview ends.</p>`,
+    problems: [{
+      title: 'Design an E-commerce Schema from Requirements',
+      level: 'Hard', tags: ['schema design', 'ER modelling', 'constraints', 'cascades'], companies: ['Amazon', 'Flipkart', 'Shopify', 'Walmart'],
+      statement: `<p>Design a SQLite schema for a small online store. Requirements:</p><ol>
+<li>Customers have a unique email (case-insensitive) and a name.</li>
+<li>Products have a unique SKU, a name, a price and stock; stock can never be negative; sold products can be retired but not deleted.</li>
+<li>An order belongs to one customer and contains one or more products with quantities; the price paid must be preserved forever.</li>
+<li>Order status is one of pending, paid, shipped, delivered, cancelled.</li>
+<li>Deleting a customer who has orders must be impossible; deleting an order removes its lines.</li></ol>
+<p>Write the DDL, load sample data, and write a query that shows each order's total.</p>`,
+      constraints: `<ul><li>Must run in SQLite with <code>PRAGMA foreign_keys = ON</code>.</li><li>Every requirement must be enforced by the database, not by comments.</li></ul>`,
+      example: `<p>Asha orders 1 phone (₹499.00) + 2 cables (₹9.99): total ₹518.98. Later the cable price changes to ₹12.00 — the order total must still be ₹518.98.</p>${H.table(['order', 'customer', 'status', 'total'], [['1', 'Asha', 'paid', H.c('g', '518.98')], ['2', 'Ben', 'pending', H.c('g', '29.99')]])}`,
+      brute: {
+        why: `<p>The spreadsheet design: one flat <code>order_lines_flat</code> row per product bought, repeating the customer's email, name, city and the product price on every line. Asha's city is "Bengaluru" on one row and "Mumbai" on another — which is true? Ben is "Ben" and "Benjamin". Prices are floats. Changing a customer's email means updating N rows (update anomaly); a customer with no orders cannot exist (insertion anomaly); deleting the last order deletes the customer (deletion anomaly).</p>`,
+        code: messy(`-- The flat "one big table" design and its contradictions
+SELECT customer_email,
+       COUNT(DISTINCT customer_name) AS different_names,
+       COUNT(DISTINCT customer_city) AS different_cities
+FROM order_lines_flat GROUP BY customer_email;
+
+SELECT product_name, COUNT(DISTINCT product_price) AS different_prices
+FROM order_lines_flat GROUP BY product_name HAVING COUNT(DISTINCT product_price) > 1;
+
+-- float money: totals carry binary noise
+SELECT order_id, SUM(product_price * qty) AS total FROM order_lines_flat GROUP BY order_id;`)
+      },
+      mcq: { q: 'Where should the price the customer actually paid be stored?', options: ['Only in products.price_cents', 'In order_items.unit_price_cents (copied at purchase time)', 'In orders as a JSON blob', 'Recomputed from products at report time'], answer: 1, explain: 'The paid price is a historical fact about that line. Copying it into order_items keeps invoices correct when the catalogue price changes.' },
+      hints: [
+        '<p>Hint 1: Nouns → customers, products, orders, order_items. Order ↔ Product is N-M, so order_items is the junction carrying qty and the price snapshot.</p>',
+        '<p>Hint 2: Map each requirement to a constraint: email <code>COLLATE NOCASE UNIQUE</code>; <code>CHECK (stock &gt;= 0)</code>; <code>is_active</code> flag + order_items.product_id RESTRICT; status CHECK; orders.customer_id RESTRICT; order_items.order_id CASCADE.</p>',
+        '<p>Hint 3: Money as integer cents. Total = <code>SUM(qty * unit_price_cents)</code> grouped by order. Test the "price changes later" requirement with an UPDATE and re-run the total.</p>'
+      ],
+      solution: {
+        approach: `<p>Four core tables. Every numbered requirement maps to a declarative rule: (1) NOCASE UNIQUE email; (2) UNIQUE sku, CHECK stock, soft-delete flag + RESTRICT; (3) NOT NULL FK + junction with qty CHECK and price snapshot; (4) status CHECK; (5) RESTRICT on customer, CASCADE on lines. Indexes on FK columns keep joins and cascades fast. The final query proves the snapshot by changing a price and showing totals unchanged.</p>`,
+        code: lab(`PRAGMA foreign_keys = ON;
+
+CREATE TABLE customers (
+  id    INTEGER PRIMARY KEY,
+  email TEXT NOT NULL COLLATE NOCASE UNIQUE,                       -- req 1
+  name  TEXT NOT NULL
+);
+CREATE TABLE products (
+  id          INTEGER PRIMARY KEY,
+  sku         TEXT    NOT NULL UNIQUE,                             -- req 2
+  name        TEXT    NOT NULL,
+  price_cents INTEGER NOT NULL CHECK (price_cents > 0),
+  stock       INTEGER NOT NULL DEFAULT 0 CHECK (stock >= 0),       -- never negative
+  is_active   INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1))  -- retire, don't delete
+);
+CREATE TABLE orders (
+  id          INTEGER PRIMARY KEY,
+  customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE RESTRICT,   -- req 3 + 5
+  status      TEXT    NOT NULL DEFAULT 'pending'
+              CHECK (status IN ('pending', 'paid', 'shipped', 'delivered', 'cancelled')),  -- req 4
+  placed_at   TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE order_items (
+  order_id         INTEGER NOT NULL REFERENCES orders(id)   ON DELETE CASCADE,   -- req 5
+  product_id       INTEGER NOT NULL REFERENCES products(id) ON DELETE RESTRICT,  -- req 2
+  qty              INTEGER NOT NULL CHECK (qty > 0),
+  unit_price_cents INTEGER NOT NULL CHECK (unit_price_cents > 0),                -- req 3 snapshot
+  PRIMARY KEY (order_id, product_id)
+);
+CREATE INDEX idx_orders_customer ON orders(customer_id, placed_at);
+CREATE INDEX idx_order_items_product ON order_items(product_id);
+
+INSERT INTO customers VALUES (1, 'asha@mail.com', 'Asha'), (2, 'ben@mail.com', 'Ben');
+INSERT INTO products (id, sku, name, price_cents, stock) VALUES
+  (1, 'PH-001', 'Pixel Phone', 49900, 10), (2, 'CB-002', 'USB-C Cable', 999, 100), (3, 'BK-003', 'SQL Book', 2999, 5);
+INSERT INTO orders (id, customer_id, status) VALUES (1, 1, 'paid'), (2, 2, 'pending');
+-- copy the CURRENT price into the line at purchase time
+INSERT INTO order_items (order_id, product_id, qty, unit_price_cents)
+  SELECT 1, id, CASE id WHEN 1 THEN 1 ELSE 2 END, price_cents FROM products WHERE id IN (1, 2);
+INSERT INTO order_items (order_id, product_id, qty, unit_price_cents)
+  SELECT 2, id, 1, price_cents FROM products WHERE id = 3;
+INSERT OR IGNORE INTO customers (email, name) VALUES ('ASHA@mail.com', 'Impostor');   -- blocked (NOCASE UNIQUE)
+
+UPDATE products SET price_cents = 1200 WHERE id = 2;   -- cable price changes later...
+
+SELECT o.id AS order_id, c.name AS customer, o.status,
+       printf('%.2f', SUM(oi.qty * oi.unit_price_cents) / 100.0) AS total   -- ...totals unchanged
+FROM orders o
+JOIN customers c    ON c.id = o.customer_id
+JOIN order_items oi ON oi.order_id = o.id
+GROUP BY o.id ORDER BY o.id;`),
+        complexity: `<p>Inserts: O(log N) per unique/PK/FK check. Order total: O(lines of that order) via the order_items PK prefix. Customer's orders: O(log N + k) via idx_orders_customer. Deleting an order: O(log N + lines) cascade; deleting a customer with orders is rejected in O(log N) by the FK index.</p>`,
+        followUps: ['Add payments that can be retried and partially refunded.', 'Add product variants (size/colour) — which table do order_items point to now?', 'How do you enforce "an order has at least one line"? (transaction + deferred check / trigger / app)']
       }
     }]
   });
