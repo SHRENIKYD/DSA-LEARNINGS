@@ -1713,4 +1713,246 @@ class GcLogAnalyzer {
     }]
   });
 
+  /* ======================================================================
+     TOPIC 8 — Memory leaks in a garbage-collected language
+     ====================================================================== */
+  topics.push({
+    title: 'Memory Leaks in Java: Classic Patterns, Reference Types & How to Hunt Them',
+    analogy: `<p>A GC is like a cleaner who throws away anything nobody is holding. A <b>leak</b> in Java is not "the cleaner forgot" — it is <b>you still holding a string tied to the balloon</b>. A forgotten guest list (static map) that keeps every visitor's coat, a lost-and-found box that is never emptied (unbounded cache), a coat-check ticket handed to a staff member who never leaves (ThreadLocal in a pool thread). The cleaner cannot throw those coats away because, technically, someone still points at them.</p>`,
+    explain: `<p>A <b>Java memory leak</b> = objects that are <b>still reachable</b> from a GC root but that your program will <b>never use again</b>. The GC is doing its job perfectly; your references are wrong. Over hours or days the old generation fills, GC runs harder and harder, CPU rises, latency rises, and finally ${C('OutOfMemoryError')}.</p>
+<h4>1. The leak signature</h4>
+<p>Look at old-gen occupancy <b>right after</b> each mixed/full GC (the "floor" of the sawtooth). Healthy: flat. Leak: the floor keeps rising, regardless of load.</p>
+<h4>2. The classic leak patterns</h4>
+${H.table(['Pattern', 'What holds the objects', 'Fix'], [
+  ['Unbounded static cache / map', C('static Map<K,V>') + ' that only grows', 'bounded cache with eviction (LRU, size/time: Caffeine), or don\'t cache'],
+  ['Listeners / callbacks never removed', 'event bus / observable keeps listener → listener keeps its whole screen/session', C('removeListener') + ' in close/dispose; weak listeners'],
+  [C('ThreadLocal') + ' in thread pools', 'pool threads live forever → their ThreadLocalMap values live forever', C('try { tl.set(x); … } finally { tl.remove(); }')],
+  ['Non-static inner class / lambda capturing ' + C('this'), 'a long-lived task/callback holds a hidden ref to the outer (huge) object', 'static nested class, capture only needed fields'],
+  ['Mutable keys in HashMap/HashSet', 'key\'s hashCode changed after insert → entry unreachable by lookup, never removed', 'immutable keys (records), never mutate fields used in hashCode'],
+  ['Unclosed resources', 'streams, connections, ' + C('ResultSet') + ' hold native memory / file handles', C('try-with-resources')],
+  ['Unbounded queues', C('newFixedThreadPool') + ' uses an unbounded ' + C('LinkedBlockingQueue') + '; producers faster than consumers', 'bounded queue + rejection/backpressure'],
+  ['Class loader leaks', 'one object from a web app referenced from a parent loader (JDBC DriverManager, ThreadLocal, static registry)', 'deregister on shutdown; avoid static references across loaders']
+])}
+<h4>3. Reference strengths (tools, not magic)</h4>
+${H.table(['Type', 'Cleared when', 'Use for'], [
+  ['Strong (normal)', 'never while reachable', 'everything by default'],
+  [C('SoftReference'), 'only under memory pressure (before OOM)', 'rarely a good idea; memory-sensitive caches — prefer explicit bounds'],
+  [C('WeakReference'), 'at the next GC once only weakly reachable', C('WeakHashMap') + ' keys, canonicalising maps, weak listeners'],
+  [C('PhantomReference'), 'after the object is finalized-dead; ' + C('get()') + ' always null', 'cleanup of native resources (' + C('Cleaner') + ')']
+])}
+<p><b>Careful:</b> ${C('WeakHashMap')} holds <b>keys</b> weakly but <b>values strongly</b>. If the value references its own key, the entry never clears — a leak inside the leak fix.</p>
+<h4>4. How to hunt one (the method)</h4>
+<ol><li>Confirm: old-gen floor rising (GC logs, ${C('jstat -gcutil')}, metrics).</li>
+<li>Compare class histograms over time: ${C('jcmd <pid> GC.class_histogram')} twice, 10 minutes apart — which class counts grow?</li>
+<li>Take a heap dump (${C('jcmd <pid> GC.heap_dump /tmp/h.hprof')}) and open in <b>Eclipse MAT</b> / VisualVM / IntelliJ: <b>Leak Suspects</b>, <b>Dominator tree</b> (who retains the most), <b>Path to GC roots</b> (excluding weak refs).</li>
+<li>Find the root holder (usually a static field, a thread, or a cache) and fix the lifecycle.</li>
+<li>Prove it: run the same load and watch the floor stay flat.</li></ol>`,
+    clues: [
+      '"Memory grows slowly over days until OOM" / "restart fixes it" → leak; compare histograms + heap dump',
+      '"Can a garbage-collected language leak memory?" → yes, reachable-but-unused objects',
+      '"Thread pool + ThreadLocal + per-request user context" → ThreadLocal leak, remove() in finally',
+      '"Metaspace grows on every redeploy" → class loader leak',
+      '"Cache with no eviction", "static HashMap", "listener registry" → unbounded growth',
+      '"Shallow vs retained size", "dominator tree" → heap-dump analysis vocabulary (MAT)'
+    ],
+    code: [`
+// Five leaks in one class, each with its fix noted. Hunting practice: spot them before reading the comments.
+class LeakyService {
+    // LEAK 1: unbounded static cache - grows with every distinct key forever.
+    static final Map<String, byte[]> CACHE = new HashMap<>();
+
+    // LEAK 2: ThreadLocal set by pool threads and never removed.
+    static final ThreadLocal<byte[]> BUFFER = new ThreadLocal<>();
+
+    // LEAK 3: listeners added on every request, never removed.
+    static final List<Runnable> LISTENERS = new ArrayList<>();
+
+    private final byte[] bigState = new byte[10_000_000];
+
+    void handle(String key, ExecutorService pool) {
+        CACHE.computeIfAbsent(key, k -> new byte[1024]);          // fix: bounded LRU / Caffeine
+        pool.submit(() -> {
+            BUFFER.set(new byte[64 * 1024]);                      // fix: try { ... } finally { BUFFER.remove(); }
+            return BUFFER.get().length;
+        });
+        // LEAK 4: this lambda captures 'this' (to read bigState), so every listener pins 10 MB.
+        LISTENERS.add(() -> System.out.println(bigState.length)); // fix: remove on close, capture only an int
+    }
+
+    // LEAK 5: a mutable key - after mutation the entry can never be found or removed.
+    static final class MutableKey {
+        int id;
+        MutableKey(int id) { this.id = id; }
+        @Override public boolean equals(Object o) { return o instanceof MutableKey m && m.id == id; }
+        @Override public int hashCode() { return Integer.hashCode(id); }
+    }
+    static void mutableKeyLeak() {
+        Set<MutableKey> set = new HashSet<>();
+        MutableKey k = new MutableKey(1);
+        set.add(k);
+        k.id = 2;                                                  // hash changed -> wrong bucket
+        System.out.println(set.remove(k) + " size=" + set.size()); // false size=1  (stuck forever)
+    }
+}`, `
+// The fixed versions.
+class FixedService {
+    // Bounded LRU: evicts the least-recently-used entry beyond MAX_ENTRIES.
+    static final int MAX_ENTRIES = 10_000;
+    static final Map<String, byte[]> CACHE = Collections.synchronizedMap(
+        new LinkedHashMap<String, byte[]>(16, 0.75f, true) {          // accessOrder = true
+            @Override protected boolean removeEldestEntry(Map.Entry<String, byte[]> eldest) {
+                return size() > MAX_ENTRIES;
+            }
+        });
+
+    static final ThreadLocal<byte[]> BUFFER = new ThreadLocal<>();
+
+    static int work(String input) {
+        BUFFER.set(new byte[64 * 1024]);
+        try {
+            return input.length() + BUFFER.get().length;
+        } finally {
+            BUFFER.remove();                                             // always clean pool-thread state
+        }
+    }
+
+    // Listener registration that returns a handle to unregister (AutoCloseable = try-with-resources friendly).
+    static final List<Runnable> LISTENERS = new CopyOnWriteArrayList<>();
+    static AutoCloseable addListener(Runnable r) {
+        LISTENERS.add(r);
+        return () -> LISTENERS.remove(r);
+    }
+}`],
+    codeTitle: ['Spot the leaks', 'Fixed: bounded cache, ThreadLocal cleanup, removable listeners'],
+    viz: [{
+      title: 'A leak vs a bounded cache: watch the heap floor after each GC',
+      input: 'requests=10 cap=3',
+      inputLabel: 'requests (each caches one 1 MB report under a new key), cap = LRU limit for the fixed version',
+      gen: function (input) {
+        var o = kvParse(input, { requests: 10, cap: 3 });
+        var N = num(o.requests, 3, 20, 'requests'), cap = num(o.cap, 1, 10, 'cap');
+        var F = [], leakFloor = [], fixFloor = [], labels = [], leak = [], lru = [];
+        function graph(entries, title, hlCls) {
+          var nodes = [{ id: 'ROOT', label: 'static CACHE (GC root)', x: 12, y: 30, shape: 'box', w: 22 }], edges = [], hl = { ROOT: 'sel' };
+          var show = entries.slice(-6);
+          show.forEach(function (k, i) { var id = 'n' + i; nodes.push({ id: id, label: k + ' → 1 MB', x: 62, y: 5 + i * 10, shape: 'box', w: 20 }); edges.push(['ROOT', id]); hl[id] = hlCls; });
+          if (entries.length > show.length) nodes.push({ id: 'more', label: '+' + (entries.length - show.length) + ' older…', x: 90, y: 30, shape: 'box', w: 14 });
+          return { type: 'graph', label: title, directed: true, height: 64, nodes: nodes, edges: edges, hl: hl };
+        }
+        F.push({ narr: 'A report service caches each generated report in a <code>static HashMap</code>, keyed by request id. Keys never repeat, so nothing is ever read twice. Watch what the GC can and cannot reclaim.', parts: [graph([], 'Leaky version: reachability from the static map', 'bad'), { type: 'bars', label: 'Old-gen floor after each GC (MB)', values: [0], idxLabels: ['start'] }] });
+        for (var i = 1; i <= N; i++) {
+          leak.push('r' + i);
+          lru.push('r' + i); if (lru.length > cap) lru.shift();
+          leakFloor.push(leak.length + 2); fixFloor.push(lru.length + 2); labels.push('#' + i);
+          if (i <= 3 || i === N || i % 3 === 0) {
+            F.push({ narr: 'Request #' + i + ' → report r' + i + ' cached. A GC runs: every report is still <b>reachable from the static map</b>, so <span class="c-r">nothing is freed</span>. Heap floor = ' + (leak.length + 2) + ' MB (2 MB of real live data + ' + leak.length + ' MB of dead-weight reports).', parts: [graph(leak, 'Leaky version: everything reachable from a GC root', 'bad'), { type: 'bars', label: 'Leaky: old-gen floor after each GC (MB)', values: leakFloor.slice(), idxLabels: labels.slice(), hl: one(leakFloor.length - 1, 'bad') }] });
+          }
+        }
+        F.push({ narr: 'Leak signature: the floor rises <b>linearly with requests</b>, independent of current load. Extrapolate: at 10k req/hour this service dies in a few hours with <code>OutOfMemoryError: Java heap space</code> — and GC CPU climbs long before that.', parts: [{ type: 'bars', label: 'Leaky floor (MB)', values: leakFloor.slice(), idxLabels: labels.slice(), hl: one(leakFloor.length - 1, 'bad') }, note('Heap dump would show', 'Dominator tree: <code>HashMap</code> held by <code>ReportService.CACHE</code> retains ' + leak.length + ' MB (' + Math.round(100 * leak.length / (leak.length + 2)) + '% of heap). Path to GC root: static field → HashMap → Node[] → byte[].')] });
+        F.push({ narr: 'Fix: an LRU cache bounded at <b>' + cap + '</b> entries (<code>LinkedHashMap</code> with <code>removeEldestEntry</code>, or Caffeine with <code>maximumSize</code>). When r' + (cap + 1) + ' arrives, r1 is evicted → no longer reachable → GC frees it.', parts: [graph(lru, 'Fixed version: only the newest ' + cap + ' stay reachable', 'ok'), { type: 'bars', label: 'Fixed: old-gen floor after each GC (MB)', values: fixFloor.slice(), idxLabels: labels.slice(), hl: one(fixFloor.length - 1, 'ok') }] });
+        F.push({ narr: 'Side by side: the fixed floor is <b>flat at ' + (cap + 2) + ' MB</b>; the leaky floor is ' + (N + 2) + ' MB and still climbing. Better still: ask whether a cache is needed at all — a cache with a 0% hit rate is just a leak with good intentions.', parts: [{ type: 'bars', label: 'Leaky floor', values: leakFloor.slice(), idxLabels: labels.slice(), hl: one(leakFloor.length - 1, 'bad') }, { type: 'bars', label: 'Bounded floor', values: fixFloor.slice(), idxLabels: labels.slice(), hl: one(fixFloor.length - 1, 'ok') }] });
+        return F;
+      }
+    }, {
+      title: 'Strong, soft, weak, phantom: what survives a GC?',
+      gen: function () {
+        var rows0 = [['strong', 'Report r = new Report()', 'alive'], ['soft', 'new SoftReference<>(report2)', 'alive'], ['weak', 'new WeakReference<>(report3)', 'alive'], ['phantom', 'new PhantomReference<>(report4, queue)', 'get() = null always']];
+        function t(rows, hl, narr, extra) { var p = [{ type: 'table', label: 'Each referent is reachable ONLY through the reference shown', columns: ['kind', 'how', 'state'], rows: rows, hl: hl }]; (extra || []).forEach(function (x) { p.push(x); }); return { narr: narr, parts: p }; }
+        function ch(i, v) { var r = rows0.map(function (x) { return x.slice(); }); return r; }
+        var r1 = ch(); r1[2][2] = 'CLEARED (get() → null)'; r1[3][2] = 'enqueued → run cleanup';
+        var r2 = r1.map(function (x) { return x.slice(); }); r2[1][2] = 'CLEARED under memory pressure';
+        return [
+          t(rows0, {}, 'Four objects, each held by a different kind of reference. Only the first is held <b>strongly</b>.'),
+          t(rows0, { 0: 'ok' }, '<b>Strong</b> references keep objects alive no matter what. If the JVM runs out of memory, it throws OOM rather than free a strongly reachable object.'),
+          t(r1, { 2: 'bad', 3: 'cur' }, 'A normal GC runs with plenty of free memory: the <b>weakly</b> reachable report3 is cleared immediately (WeakReference.get() returns null). The <b>phantom</b> referent is collected and its reference is put on the ReferenceQueue so cleanup code (e.g. <code>Cleaner</code>) can free native resources.', [note('Typical use', '<code>WeakHashMap&lt;Key, Meta&gt;</code>: metadata disappears automatically when the key object is no longer used elsewhere.')]),
+          t(r1, { 1: 'ok' }, 'The <b>soft</b> reference survived: soft referents are kept until memory gets tight (HotSpot uses an LRU-ish policy: roughly 1 s of lifetime per free MB, <code>SoftRefLRUPolicyMSPerMB</code>).'),
+          t(r2, { 1: 'bad' }, 'Under memory pressure (just before an OOM would be thrown), <b>soft</b> references are cleared too. Sounds perfect for caches — but it makes GC behaviour hard to predict (heap stays full until pressure, then mass-clears) and harms latency. Prefer explicitly bounded caches.'),
+          t(r2, { 0: 'sel' }, 'Summary: strong &gt; soft &gt; weak &gt; phantom. A leak is almost always an unwanted <b>strong</b> path from a GC root; weak references are a tool to avoid creating one, not a cure for every leak.')
+        ];
+      }
+    }],
+    examples: [
+      { title: 'ThreadLocal leak in a Tomcat/Spring app', html: `<p>A filter stores the current ${C('User')} (with a 2 MB permissions graph) in a ${C('ThreadLocal')} but forgets ${C('remove()')}. 200 pool threads × 2 MB = 400 MB pinned forever, and worse: the next request on that thread sees the <i>previous</i> user — a <b>security bug</b>. On redeploy, the ThreadLocal value's class keeps the old web app's class loader alive (Metaspace leak, Tomcat logs "created a ThreadLocal … but failed to remove it"). With Java 21+, consider ${C('ScopedValue')} (final in JDK 25) whose bindings end automatically with the scope.</p>` },
+      { title: 'Shallow vs retained size', html: `<p>In MAT, a ${C('HashMap')} object itself is ~48 bytes (<b>shallow</b> size), but it may <b>retain</b> 1.2 GB: everything that would be freed if this map became unreachable. The <b>dominator tree</b> lists objects by retained size — the leak's holder is almost always near the top. "Path to GC roots, excluding weak/soft references" tells you <i>who</i> is holding it.</p>` },
+      { title: 'Unbounded executor queue', html: `<p>${C('Executors.newFixedThreadPool(8)')} uses an <b>unbounded</b> ${C('LinkedBlockingQueue')}. Downstream slows down, producers keep submitting → millions of queued tasks, each capturing request data → OOM. Not a "classic" leak (tasks would eventually run), but the same symptom. Fix: bounded queue + rejection policy (backpressure).</p>`, code: `
+ExecutorService pool = new ThreadPoolExecutor(
+        8, 8, 0L, TimeUnit.MILLISECONDS,
+        new ArrayBlockingQueue<>(1_000),                     // bounded: memory is capped
+        new ThreadPoolExecutor.CallerRunsPolicy());          // backpressure: caller runs the task
+pool.submit(() -> System.out.println("work"));
+pool.shutdown();` },
+      { title: 'Off-heap leak that heap dumps cannot see', html: `<p>RSS grows by 1 GB/day while heap and Metaspace are flat. ${C('jcmd VM.native_memory summary.diff')} shows "Other" growing → direct ${C('ByteBuffer')}s from a library allocated per request and kept in a pool that never shrinks. Heap dumps only show the tiny ${C('DirectByteBuffer')} wrappers (a few bytes each) — look at their ${C('capacity')} field in MAT to see the real size.</p>` }
+    ],
+    deepDive: `<p><b>Why leaks hurt before the OOM.</b> As the live set grows, every marking cycle and mixed GC copies/scans more data, the free headroom shrinks, GCs run more often, and CPU rises — latency degrades for hours before the crash. With Parallel GC you may see ${C('GC overhead limit exceeded')} (98% time in GC, &lt; 2% recovered). That is why leak detection should alert on the <b>trend of the post-GC floor</b>, not just on OOM.</p>
+<p><b>Heap dump mechanics.</b> ${C('jcmd <pid> GC.heap_dump')} (or ${C('jmap -dump:live,format=b,file=h.hprof <pid>')}) pauses the JVM, triggers a full GC when "live" is requested, and writes every object: the file is roughly the size of the used heap. On a 30 GB heap that is a long pause and a big file — do it on one instance taken out of the load balancer. ${C('-XX:+HeapDumpOnOutOfMemoryError')} captures the state at death automatically. Dumps contain secrets (passwords, tokens, PII) — handle them like production data.</p>
+<p><b>JFR Old Object Sample.</b> The ${C('jdk.OldObjectSample')} event samples allocations that stay alive a long time and, with ${C('path-to-gc-roots=true')}, records the reference chain — leak hunting in production with ~1% overhead and no giant dump. JDK Mission Control's "Memory Leak" view uses it.</p>
+<p><b>Class loader leak anatomy.</b> A web app's class loader L is pinned if <i>anything</i> outside the app references any object whose class was loaded by L, the class itself, or L. Common culprits: JDBC drivers registered in ${C('DriverManager')} (bootstrap-loaded), threads started by the app that outlive undeploy (their context class loader = L), ThreadLocals on container threads, ${C('java.beans.Introspector')} caches, logging frameworks, JMX MBeans, shutdown hooks. Each redeploy then leaks the whole set of classes → ${C('OutOfMemoryError: Metaspace')}.</p>
+<p><b>String.intern and duplicates.</b> Interned strings live in the heap's string table and can be collected when unreferenced (since Java 7), but massive interning of unique values bloats the table. MAT's "duplicate strings" query often finds hundreds of MB of identical strings — a footprint win via dedup or canonicalisation rather than a leak.</p>
+<p><b>Leaks in collections you own.</b> Hand-rolled stacks/pools that don't null out slots, lists used as queues that only grow, ${C('subList')} views keeping huge parents, ${C('ConcurrentHashMap')} used as a "cache" with ${C('computeIfAbsent')} on unbounded keys (user ids, URLs with query params) — all are reachability bugs.</p>`,
+    aiEra: `<p><b>What AI changes:</b> heap dumps are huge, but their <i>summaries</i> (MAT leak-suspect report, dominator tree top 20, histogram diffs) are small and text-friendly. Feeding those to an assistant gets you a ranked list of suspects and the likely code location in minutes. AI code review is also good at flagging ${C('ThreadLocal')} without ${C('remove')}, unbounded static maps and listener registrations without unregistration.</p>
+<p><b>Where AI goes wrong:</b> it suggests ${C('System.gc()')} or bigger ${C('-Xmx')} as "fixes" (they only delay the crash), recommends ${C('SoftReference')} caches as best practice, or wraps everything in ${C('WeakReference')} — creating heisenbugs where objects vanish while still needed. It may also blame the GC when the data shows a reachability problem. Never paste a raw production heap dump into an external AI tool — it contains customer data and secrets.</p>
+<p><b>What you still own:</b> the reachability reasoning ("who holds this, and why is that holder alive?"), owning object lifecycles in your design (caches with bounds, registrations with deregistration, scoped context), and verifying a fix with a flat post-GC floor under load.</p>`,
+    problems: [{
+      title: 'Fix the Leaking Cache: Bounded LRU',
+      level: 'Medium', tags: ['memory leak', 'LRU', 'LinkedHashMap'], companies: ['Amazon', 'Uber', 'Booking.com'],
+      statement: `<p>A service caches computed prices in ${C('static Map<String, Long> PRICES = new HashMap<>()')} keyed by "sku:region:currency:promo". There are 10<sup>8</sup> possible keys, so the map grows forever and the service OOMs every few days. Implement ${C('PriceCache')} with ${C('get(key)')} (returns null if absent) and ${C('put(key, value)')} that keeps <b>at most ${C('capacity')}</b> entries, evicting the <b>least recently used</b> one. Both operations must be O(1).</p>`,
+      constraints: `1 ≤ capacity ≤ 10<sup>6</sup>, up to 10<sup>7</sup> operations. Single-threaded is fine for the core; discuss thread safety.`,
+      example: `<p>capacity = 2: put(a,1), put(b,2), get(a) → 1 (a becomes most recent), put(c,3) → evicts <b>b</b> (least recently used), get(b) → ${H.c('r', 'null')}, get(c) → ${H.c('g', '3')}.</p><p>Memory is now bounded: at most 2 entries are reachable from the static field, everything evicted becomes garbage.</p>`,
+      brute: { why: `<p>"Clear the whole map when it gets big" or scan all entries for the oldest timestamp on every insert. Clearing destroys the hit rate (thundering herd of recomputation right after), and scanning is O(n) per put — 10<sup>6</sup> × 10<sup>7</sup> operations.</p>`, code: `
+class ScanEvictCache {
+    private final int capacity;
+    private final Map<String, Long> values = new HashMap<>();
+    private final Map<String, Long> lastUsed = new HashMap<>();
+    private long clock = 0;
+    ScanEvictCache(int capacity) { this.capacity = capacity; }
+    Long get(String k) { Long v = values.get(k); if (v != null) lastUsed.put(k, ++clock); return v; }
+    void put(String k, long v) {
+        if (!values.containsKey(k) && values.size() == capacity) {
+            String oldest = null;
+            for (Map.Entry<String, Long> e : lastUsed.entrySet())              // O(n) scan per eviction
+                if (oldest == null || e.getValue() < lastUsed.get(oldest)) oldest = e.getKey();
+            values.remove(oldest); lastUsed.remove(oldest);
+        }
+        values.put(k, v); lastUsed.put(k, ++clock);
+    }
+}` },
+      mcq: { q: 'Why does an LRU cache stop the leak even though it still uses a static map?', options: ['Its size is bounded: evicted entries lose their last strong reference and become collectable', 'Static maps are weak by default', 'LinkedHashMap entries are stored off-heap', 'The GC treats caches specially'], answer: 0, explain: 'Leaks are about unbounded reachable growth. A bound + eviction removes references, so evicted values become unreachable and the GC can reclaim them.' },
+      hints: [`<p>Hint 1: You need O(1) lookup (hash map) <b>and</b> O(1) "which entry is oldest?" (a linked list ordered by recency). ${C('LinkedHashMap')} is exactly both.</p>`, `<p>Hint 2: Construct it with ${C('accessOrder = true')} so ${C('get')} moves an entry to the end, and override ${C('removeEldestEntry')} to return ${C('size() > capacity')}.</p>`, `<p>Hint 3: Edge cases — updating an existing key must not evict; capacity 1 works; for concurrency wrap with a lock or use Caffeine (W-TinyLFU, lock-free reads) in production.</p>`],
+      solution: {
+        approach: `<p>Use ${C('LinkedHashMap')} in access order: it keeps a doubly-linked list through the hash entries, so moving an accessed entry to the tail and removing the head are O(1). ${C('removeEldestEntry')} is called after every insertion and evicts the head when the size exceeds capacity. Evicted values become unreachable → the GC can reclaim them → memory is bounded.</p>`,
+        code: `
+class PriceCache {
+    private final Map<String, Long> map;
+
+    PriceCache(int capacity) {
+        if (capacity <= 0) throw new IllegalArgumentException("capacity must be positive");
+        this.map = new LinkedHashMap<>(Math.min(capacity, 1 << 16), 0.75f, true) {   // accessOrder = true
+            @Override
+            protected boolean removeEldestEntry(Map.Entry<String, Long> eldest) {
+                return size() > capacity;                     // evict least-recently-used beyond the bound
+            }
+        };
+    }
+
+    Long get(String key) { return map.get(key); }            // also moves key to most-recent position
+    void put(String key, long value) { map.put(key, value); }
+    int size() { return map.size(); }
+
+    public static void main(String[] args) {
+        PriceCache c = new PriceCache(2);
+        c.put("a", 1); c.put("b", 2);
+        System.out.println(c.get("a"));                       // 1  -> order now b, a
+        c.put("c", 3);                                        // evicts b
+        System.out.println(c.get("b") + " " + c.get("c") + " size=" + c.size());   // null 3 size=2
+    }
+}`,
+        dry: { head: ['op', 'recency list (LRU → MRU)', 'evicted', 'returns'], rows: [
+          ['put(a,1)', '[a]', '—', '—'], ['put(b,2)', '[a, b]', '—', '—'], ['get(a)', '[b, a]', '—', '1'], ['put(c,3)', '[a, c]', H.c('r', 'b'), '—'], ['get(b)', '[a, c]', '—', 'null'], ['get(c)', '[a, c]', '—', H.c('g', '3')]
+        ] },
+        complexity: `<p>O(1) average for get and put; memory O(capacity) — bounded, which is the whole point. For multi-threaded production use, Caffeine gives near-optimal hit rates (W-TinyLFU) and concurrent O(1) operations.</p>`,
+        followUps: ['Add time-based expiry (expireAfterWrite) — what data structure?', 'Why is SoftReference-based caching not a good replacement?', 'How would you size capacity from hit-rate metrics and heap budget?']
+      }
+    }]
+  });
+
 registerModule({ id: 'java13', title: 'JVM Internals & Performance', intro: '<p>x</p>', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();

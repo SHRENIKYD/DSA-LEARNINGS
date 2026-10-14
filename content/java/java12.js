@@ -2011,7 +2011,7 @@ class TokenCache {
     codeTitle: ['10,000 blocking tasks on virtual threads', 'Semaphore to protect a downstream', 'ReentrantLock instead of synchronized (Java 21 pinning)'],
     viz: {
       title: 'Virtual threads hopping across carriers (with optional pinning)',
-      input: '2 5 V3',
+      input: '2 6 V1',
       inputLabel: 'carriers virtualThreads [pinned ones, e.g. V3 V4]  — each VT: 1 tick CPU, 2 ticks I/O, 1 tick CPU',
       gen: function (input) {
         var m = String(input).match(/\d+|V\d+/gi);
@@ -2117,6 +2117,872 @@ public class Crawler {
       }
     }]
   });
+
+  /* ======================================================================
+     PRACTICE — Easy
+     ====================================================================== */
+  practice.push({
+    title: 'Run Tasks and Shut the Pool Down Properly',
+    level: 'Easy', tags: ['ExecutorService', 'shutdown', 'awaitTermination'], companies: ['TCS', 'Infosys', 'Capgemini', 'Amazon'],
+    statement: `<p>Write ${C('int runAll(List<Runnable> tasks, int threads, long timeoutSec)')} that runs every task on a fixed pool, waits up to ${C('timeoutSec')} for them to finish, force-stops whatever is left, and returns the number of tasks that <b>never started</b>. The program must always exit (no lingering threads).</p>`,
+    constraints: `1 ≤ tasks ≤ 10<sup>4</sup>, 1 ≤ threads ≤ 64. Tasks respond to interrupts.`,
+    example: `<p>5 quick tasks, 2 threads, timeout 5 s → all finish → returns ${H.c('g', '0')}. 100 tasks that each sleep 1 s, 2 threads, timeout 1 s → ~2-4 done, the rest are returned by ${C('shutdownNow()')} → returns ${H.c('y', '~96')}.</p>`,
+    brute: { why: `<p>Submitting tasks and returning without ${C('shutdown()')} leaves non-daemon worker threads alive — the JVM never exits. Calling only ${C('shutdownNow()')} immediately interrupts tasks that would have completed fine.</p>`, code: `
+static void runAllLeaky(List<Runnable> tasks) {
+    ExecutorService pool = Executors.newFixedThreadPool(2);
+    tasks.forEach(pool::execute);
+    // no shutdown: worker threads wait for more work forever, the JVM never exits
+}` },
+    mcq: { q: 'What does shutdown() do to tasks already sitting in the queue?', options: ['Discards them', 'Lets them run to completion', 'Interrupts them', 'Returns them as a list'], answer: 1, explain: 'shutdown() only stops new submissions; queued and running tasks complete. shutdownNow() is the one that interrupts and returns the never-started list.' },
+    hints: [`<p>Hint 1: the official two-phase pattern from the ExecutorService Javadoc: ${C('shutdown()')}, then ${C('awaitTermination')}, then ${C('shutdownNow()')}.</p>`, `<p>Hint 2: ${C('shutdownNow()')} returns ${C('List<Runnable>')} of tasks that were still queued — its size is your answer.</p>`, `<p>Hint 3: if the current thread is interrupted while awaiting, call ${C('shutdownNow()')} and restore the interrupt flag.</p>`],
+    solution: {
+      approach: `<p>Graceful first, forceful second. Count the never-started tasks from ${C('shutdownNow()')}'s return value.</p>`,
+      code: `
+public class Shutdown {
+    static int runAll(List<Runnable> tasks, int threads, long timeoutSec) {
+        ExecutorService pool = Executors.newFixedThreadPool(threads);
+        tasks.forEach(pool::execute);
+        pool.shutdown();                                         // phase 1: no new work
+        int neverStarted = 0;
+        try {
+            if (!pool.awaitTermination(timeoutSec, TimeUnit.SECONDS)) {
+                neverStarted = pool.shutdownNow().size();        // phase 2: interrupt + drain queue
+                pool.awaitTermination(timeoutSec, TimeUnit.SECONDS);
+            }
+        } catch (InterruptedException e) {
+            neverStarted = pool.shutdownNow().size();
+            Thread.currentThread().interrupt();
+        }
+        return neverStarted;
+    }
+
+    public static void main(String[] args) {
+        List<Runnable> quick = new ArrayList<>();
+        for (int i = 0; i < 5; i++) { final int id = i; quick.add(() -> System.out.println("task " + id)); }
+        System.out.println("never started: " + runAll(quick, 2, 5));   // 0
+    }
+}`,
+      complexity: `<p>O(T) to submit; waiting time bounded by 2 × timeoutSec.</p>`,
+      followUps: ['Java 19+: rewrite with try-with-resources — what does close() do differently?', 'How would you log which tasks were dropped?']
+    }
+  });
+
+  practice.push({
+    title: 'Thread-Safe Hit Counter',
+    level: 'Easy', tags: ['AtomicLong', 'LongAdder', 'race condition'], companies: ['Google', 'Dropbox', 'Microsoft'],
+    statement: `<p>A web server calls ${C('hit()')} from many request threads and a dashboard calls ${C('total()')}. Implement a correct, fast ${C('HitCounter')}. Then explain why the version using a plain ${C('long')} with ${C('volatile')} is still wrong.</p>`,
+    constraints: `Up to 200 threads, 10<sup>6</sup> hits/s; total() is called once per second.`,
+    example: `<p>4 threads × 100,000 hits → ${C('total()')} must be exactly ${H.c('g', '400000')}. The volatile version typically prints something like ${H.c('r', '273914')}.</p>`,
+    brute: { why: `<p>${C('volatile')} guarantees every thread sees the latest value, but ${C('count++')} is still read-modify-write: two threads read 41, both write 42, one hit is lost. Making the method ${C('synchronized')} is correct but makes all 200 threads queue for one monitor.</p>`, code: `
+class VolatileCounter {
+    private volatile long count;
+    void hit() { count++; }          // NOT atomic: lost updates
+    long total() { return count; }
+}` },
+    mcq: { q: 'Why is LongAdder a better fit than AtomicLong here?', options: ['It is exact while AtomicLong is approximate', 'Writes are very frequent and reads rare; LongAdder spreads writes across cells to avoid CAS contention', 'It uses less memory', 'It is the only one that works with virtual threads'], answer: 1, explain: 'Both are exact for increments. LongAdder trades a more expensive sum() for much cheaper concurrent increments — perfect for write-heavy metrics.' },
+    hints: [`<p>Hint 1: the bug is atomicity, not visibility.</p>`, `<p>Hint 2: ${C('AtomicLong.incrementAndGet()')} works; under heavy contention ${C('LongAdder.increment()')} scales better.</p>`, `<p>Hint 3: ${C('sum()')} is not a point-in-time snapshot under concurrent updates — fine for dashboards, not for unique ids.</p>`],
+    solution: {
+      approach: `<p>LongAdder: per-thread-ish cells, summed on read. Exact once writers stop; "close enough" while running, which is what a dashboard wants.</p>`,
+      code: `
+public class HitCounter {
+    private final LongAdder hits = new LongAdder();
+    void hit() { hits.increment(); }
+    long total() { return hits.sum(); }
+
+    public static void main(String[] args) throws InterruptedException {
+        HitCounter c = new HitCounter();
+        Thread[] ts = new Thread[4];
+        for (int i = 0; i < 4; i++) {
+            ts[i] = new Thread(() -> { for (int k = 0; k < 100_000; k++) c.hit(); });
+            ts[i].start();
+        }
+        for (Thread t : ts) t.join();
+        System.out.println(c.total());   // 400000
+    }
+}`,
+      complexity: `<p>hit(): O(1), mostly uncontended. total(): O(#cells) ≤ O(#CPUs).</p>`,
+      followUps: ['Count hits in the last 5 minutes only (ring buffer of per-second LongAdders)', 'When would AtomicLong be the right choice?']
+    }
+  });
+
+  practice.push({
+    title: 'Parallel File Line Counts with invokeAll',
+    level: 'Easy', tags: ['Callable', 'invokeAll', 'Future'], companies: ['Oracle', 'SAP', 'Walmart'],
+    statement: `<p>Given a list of in-memory "files" (${C('List<String>')} contents), return a ${C('List<Integer>')} of line counts <b>in the same order</b>, computing them in parallel with ${C('invokeAll')}. A failing file should produce ${C('-1')} instead of failing everything.</p>`,
+    constraints: `1 ≤ files ≤ 1000, each up to 10 MB.`,
+    example: `<p>["a\\nb", "x", null] → ${H.c('g', '[2, 1, -1]')} (null content throws NullPointerException inside its task → -1).</p>`,
+    brute: { why: `<p>Sequential counting is fine for small inputs but uses one core. Submitting tasks and then collecting results in a <i>completion</i> order would scramble the required ordering.</p>`, code: `
+static List<Integer> countSequential(List<String> files) {
+    List<Integer> out = new ArrayList<>();
+    for (String f : files) out.add(f == null ? -1 : (int) f.lines().count());
+    return out;
+}` },
+    mcq: { q: 'invokeAll returns futures in which order?', options: ['Completion order', 'Same order as the input collection', 'Random', 'Sorted by result'], answer: 1, explain: 'The returned list matches the iteration order of the given task collection, and every future is already done.' },
+    hints: [`<p>Hint 1: map each file to a ${C('Callable<Integer>')}.</p>`, `<p>Hint 2: ${C('invokeAll')} blocks until all are done, so ${C('get()')} never waits afterwards.</p>`, `<p>Hint 3: catch ${C('ExecutionException')} per future and add -1.</p>`],
+    solution: {
+      approach: `<p>Build tasks, invokeAll, unwrap each future individually so one failure is isolated.</p>`,
+      code: `
+public class LineCounts {
+    static List<Integer> count(List<String> files) throws InterruptedException {
+        ExecutorService ex = Executors.newFixedThreadPool(Math.min(8, Math.max(1, files.size())));
+        try {
+            List<Callable<Integer>> jobs = new ArrayList<>();
+            for (String f : files) jobs.add(() -> (int) f.lines().count());   // NPE for null -> captured
+            List<Integer> out = new ArrayList<>();
+            for (Future<Integer> fu : ex.invokeAll(jobs)) {
+                try { out.add(fu.get()); }
+                catch (ExecutionException e) { out.add(-1); }
+            }
+            return out;
+        } finally {
+            ex.shutdown();
+        }
+    }
+
+    public static void main(String[] args) throws InterruptedException {
+        System.out.println(count(Arrays.asList("a" + System.lineSeparator() + "b", "x", null))); // [2, 1, -1]
+    }
+}`,
+      complexity: `<p>Work O(total characters), wall time ≈ largest file / per-thread speed when files ≥ threads.</p>`,
+      followUps: ['Process results as they finish with ExecutorCompletionService', 'Add an overall deadline using invokeAll(tasks, timeout, unit)']
+    }
+  });
+
+  practice.push({
+    title: 'Print in Order with CountDownLatch',
+    level: 'Easy', tags: ['CountDownLatch', 'ordering', 'LeetCode 1114'], companies: ['Microsoft', 'Bloomberg', 'Apple'],
+    statement: `<p>Three threads call ${C('first()')}, ${C('second()')} and ${C('third()')} on the same object in <b>any</b> order. Guarantee the output is always "firstsecondthird". Use ${C('CountDownLatch')} (the semaphore version is shown in the lesson).</p>`,
+    constraints: `Each method is called exactly once, by different threads.`,
+    example: `<p>Thread C calls third() first → it waits. Thread A calls first() → prints "first", opens latch 1. Thread B's second() passes latch 1, prints, opens latch 2 → C proceeds. Output ${H.c('g', 'firstsecondthird')}.</p>`,
+    brute: { why: `<p>Busy-waiting on a ${C('volatile int stage')} (${C('while (stage != 2) {}')}) works but burns a whole CPU core per waiting thread. Using a non-volatile flag can loop forever because the change is never seen.</p>`, code: `
+class SpinFoo {
+    private volatile int stage = 1;
+    void first(Runnable p) { p.run(); stage = 2; }
+    void second(Runnable p) { while (stage != 2) Thread.onSpinWait(); p.run(); stage = 3; }  // burns CPU
+    void third(Runnable p) { while (stage != 3) Thread.onSpinWait(); p.run(); }
+}` },
+    mcq: { q: 'Which statement about countDown() is true?', options: ['It blocks until count is 0', 'It never blocks and decrementing below 0 has no effect', 'It throws when called twice', 'It resets the latch'], answer: 1, explain: 'countDown never blocks; once at zero, further calls do nothing.' },
+    hints: [`<p>Hint 1: two "events": first done, second done → two latches of count 1.</p>`, `<p>Hint 2: second() awaits latch1; third() awaits latch2.</p>`, `<p>Hint 3: the latch also guarantees memory visibility of what happened before countDown.</p>`],
+    solution: {
+      approach: `<p>Two one-shot gates. Parked threads use no CPU.</p>`,
+      code: `
+public class PrintInOrder {
+    private final CountDownLatch firstDone = new CountDownLatch(1);
+    private final CountDownLatch secondDone = new CountDownLatch(1);
+
+    void first(Runnable p) { p.run(); firstDone.countDown(); }
+    void second(Runnable p) throws InterruptedException { firstDone.await(); p.run(); secondDone.countDown(); }
+    void third(Runnable p) throws InterruptedException { secondDone.await(); p.run(); }
+
+    public static void main(String[] args) throws InterruptedException {
+        PrintInOrder f = new PrintInOrder();
+        Thread c = new Thread(() -> { try { f.third(() -> System.out.print("third")); } catch (InterruptedException e) { Thread.currentThread().interrupt(); } });
+        Thread b = new Thread(() -> { try { f.second(() -> System.out.print("second")); } catch (InterruptedException e) { Thread.currentThread().interrupt(); } });
+        Thread a = new Thread(() -> f.first(() -> System.out.print("first")));
+        c.start(); b.start(); a.start();
+        a.join(); b.join(); c.join();
+        System.out.println();
+    }
+}`,
+      complexity: `<p>O(1) time and space; waiting threads are parked.</p>`,
+      followUps: ['Make it reusable for many rounds (semaphores or a CyclicBarrier)', 'Generalise to N ordered stages']
+    }
+  });
+
+  /* ======================================================================
+     PRACTICE — Medium
+     ====================================================================== */
+  practice.push({
+    title: 'Odd-Even Printer with Two Semaphores',
+    level: 'Medium', tags: ['Semaphore', 'thread signalling', 'turn-taking'], companies: ['Amazon', 'Paytm', 'Zoho', 'Walmart'],
+    statement: `<p>Two threads print numbers 1..N together: the "odd" thread prints only odd numbers, the "even" thread only even ones, and the output must be strictly ${C('1 2 3 4 … N')}. Implement it with semaphores and make sure the program terminates for both odd and even N.</p>`,
+    constraints: `1 ≤ N ≤ 10<sup>6</sup>.`,
+    example: `<p>N = 5 → ${H.c('g', '1 2 3 4 5')}. Odd prints 1 → hands turn to even → even prints 2 → hands back … odd prints 5 and stops; even must also stop (it would otherwise wait forever for its turn at 6).</p>`,
+    brute: { why: `<p>${C('synchronized')} + ${C('wait/notify')} with a shared counter works but is easy to get wrong: using ${C('if')} instead of ${C('while')}, or ${C('notify')} waking the wrong thread, or forgetting to notify on exit → a thread waits forever.</p>`, code: `
+class WaitNotifyPrinter {
+    private int n = 1; private final int max;
+    WaitNotifyPrinter(int max) { this.max = max; }
+    synchronized void print(boolean odd) throws InterruptedException {
+        while (n <= max) {
+            while (n <= max && (n % 2 == 1) != odd) wait();   // not my turn
+            if (n <= max) { System.out.print(n + " "); n++; }
+            notifyAll();
+        }
+    }
+}` },
+    mcq: { q: 'What initial permits do the two semaphores need?', options: ['odd = 1, even = 1', 'odd = 1, even = 0', 'odd = 0, even = 0', 'odd = N, even = N'], answer: 1, explain: 'Odd must go first, so it holds the only permit; even starts blocked and gets its permit when odd releases it.' },
+    hints: [`<p>Hint 1: a semaphore with 0/1 permits is a "your turn" token passed between threads.</p>`, `<p>Hint 2: odd loop: ${C('oddTurn.acquire(); print(i); evenTurn.release();')} for i = 1, 3, 5 … and symmetric for even.</p>`, `<p>Hint 3: each thread loops over exactly its own numbers, so it ends on its own — no extra wake-up needed.</p>`],
+    solution: {
+      approach: `<p>Token passing: exactly one permit circulates between the two semaphores, so the threads strictly alternate. Each thread iterates only over its own numbers, so both exit naturally.</p>`,
+      code: `
+public class OddEven {
+    public static void main(String[] args) throws InterruptedException {
+        int n = 10;
+        Semaphore oddTurn = new Semaphore(1), evenTurn = new Semaphore(0);
+        StringBuffer out = new StringBuffer();                    // thread-safe appends
+        Thread odd = new Thread(() -> {
+            try {
+                for (int i = 1; i <= n; i += 2) { oddTurn.acquire(); out.append(i).append(' '); evenTurn.release(); }
+            } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        });
+        Thread even = new Thread(() -> {
+            try {
+                for (int i = 2; i <= n; i += 2) { evenTurn.acquire(); out.append(i).append(' '); oddTurn.release(); }
+            } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        });
+        odd.start(); even.start();
+        odd.join(); even.join();
+        System.out.println(out.toString().trim());                // 1 2 3 4 5 6 7 8 9 10
+    }
+}`,
+      complexity: `<p>O(N) prints, 2 context switches per number (this is slow by design — turn-taking serialises everything).</p>`,
+      followUps: ['Three threads printing 1,2,3,1,2,3…', 'LeetCode 1116 Print Zero Even Odd', 'Why is this a terrible way to parallelise real work?']
+    }
+  });
+
+  practice.push({
+    title: 'Bounded Blocking Queue from Scratch',
+    level: 'Medium', tags: ['ReentrantLock', 'Condition', 'LeetCode 1188'], companies: ['LinkedIn', 'Uber', 'Rubrik', 'Nutanix'],
+    statement: `<p>Implement ${C('BoundedBlockingQueue(int capacity)')} with ${C('void enqueue(int x)')} (blocks while full), ${C('int dequeue()')} (blocks while empty) and ${C('int size()')} — without using any class from java.util.concurrent except locks.</p>`,
+    constraints: `1 ≤ capacity ≤ 30, many producer and consumer threads.`,
+    example: `<p>capacity 2: enqueue(1), enqueue(2), enqueue(3) blocks → dequeue() returns 1 and wakes the producer → queue [2, 3].</p>`,
+    brute: { why: `<p>A version with one ${C('synchronized')} method pair using ${C('wait()')} and ${C('notify()')} (not notifyAll) can deadlock: a consumer's notify may wake another consumer instead of a producer, and everyone ends up waiting.</p>`, code: `
+class BrokenQueue {
+    private final Deque<Integer> q = new ArrayDeque<>(); private final int cap;
+    BrokenQueue(int cap) { this.cap = cap; }
+    synchronized void enqueue(int x) throws InterruptedException { while (q.size() == cap) wait(); q.addLast(x); notify(); }   // may wake the wrong kind
+    synchronized int dequeue() throws InterruptedException { while (q.isEmpty()) wait(); int v = q.removeFirst(); notify(); return v; }
+}` },
+    mcq: { q: 'Why two Condition objects instead of one?', options: ['Required by the JDK', 'So signal() wakes exactly the kind of thread that can make progress (producer vs consumer)', 'It doubles throughput by using two locks', 'Conditions cannot be shared'], answer: 1, explain: 'With separate notFull/notEmpty wait sets, a consumer signals notFull (producers only) and a producer signals notEmpty (consumers only), so single signal() is safe and cheap.' },
+    hints: [`<p>Hint 1: one ReentrantLock, conditions ${C('notFull')} and ${C('notEmpty')}.</p>`, `<p>Hint 2: ${C('while (count == cap) notFull.await();')} — while, never if.</p>`, `<p>Hint 3: after enqueue signal notEmpty; after dequeue signal notFull; unlock in finally.</p>`],
+    solution: {
+      approach: `<p>Monitor pattern with explicit lock and two wait sets (the same design as ArrayBlockingQueue).</p>`,
+      code: `
+public class BoundedBlockingQueue {
+    private final Deque<Integer> q = new ArrayDeque<>();
+    private final int cap;
+    private final ReentrantLock lock = new ReentrantLock();
+    private final Condition notFull = lock.newCondition(), notEmpty = lock.newCondition();
+
+    BoundedBlockingQueue(int capacity) { this.cap = capacity; }
+
+    void enqueue(int x) throws InterruptedException {
+        lock.lock();
+        try {
+            while (q.size() == cap) notFull.await();
+            q.addLast(x);
+            notEmpty.signal();
+        } finally { lock.unlock(); }
+    }
+
+    int dequeue() throws InterruptedException {
+        lock.lock();
+        try {
+            while (q.isEmpty()) notEmpty.await();
+            int v = q.removeFirst();
+            notFull.signal();
+            return v;
+        } finally { lock.unlock(); }
+    }
+
+    int size() {
+        lock.lock();
+        try { return q.size(); } finally { lock.unlock(); }
+    }
+
+    public static void main(String[] args) throws InterruptedException {
+        BoundedBlockingQueue bq = new BoundedBlockingQueue(2);
+        Thread prod = new Thread(() -> {
+            try { for (int i = 1; i <= 5; i++) bq.enqueue(i); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        });
+        prod.start();
+        for (int i = 0; i < 5; i++) System.out.print(bq.dequeue() + " ");   // 1 2 3 4 5
+        prod.join();
+        System.out.println("size=" + bq.size());
+    }
+}`,
+      complexity: `<p>O(1) per operation plus waiting. One lock means producers and consumers serialise; LinkedBlockingQueue's two-lock design removes that.</p>`,
+      followUps: ['Add offer(x, timeout) using awaitNanos', 'Implement the two-lock variant', 'Why must await be in a while loop even with two conditions?']
+    }
+  });
+
+  practice.push({
+    title: 'Compute-Once Memoizer (Cache Stampede Protection)',
+    level: 'Medium', tags: ['ConcurrentHashMap', 'CompletableFuture', 'memoization'], companies: ['Netflix', 'Meta', 'Shopify'],
+    statement: `<p>Wrap an expensive function ${C('Function<K, V> f')} in a thread-safe cache such that, when 100 threads ask for the <b>same missing key</b> at the same moment, ${C('f')} runs <b>exactly once</b> and all 100 get the same result. Different keys must compute in parallel. If the computation fails, the failure must not be cached forever.</p>`,
+    constraints: `f takes 10 ms - 2 s; thousands of distinct keys; high read concurrency.`,
+    example: `<p>100 threads call ${C('get("user:7")')} → one database call, 99 threads wait for the same future → ${H.c('g', '1 call')}, not 100 (a "thundering herd").</p>`,
+    brute: { why: `<p>${C('if (!map.containsKey(k)) map.put(k, f.apply(k))')} is check-then-act: all 100 threads see "missing" and compute. Making ${C('get')} synchronized fixes duplicates but serialises <i>all</i> keys — a slow key blocks every other lookup.</p>`, code: `
+class NaiveMemo<K, V> {
+    private final Map<K, V> cache = new ConcurrentHashMap<>();
+    private final Function<K, V> f;
+    NaiveMemo(Function<K, V> f) { this.f = f; }
+    V get(K k) {
+        V v = cache.get(k);
+        if (v == null) { v = f.apply(k); cache.put(k, v); }   // race: many threads compute the same key
+        return v;
+    }
+}` },
+    mcq: { q: 'Why store CompletableFuture&lt;V&gt; in the map rather than V?', options: ['Futures are smaller', 'So the first thread can publish a placeholder instantly and others wait on it while the slow computation runs outside any map lock', 'ConcurrentHashMap cannot store V', 'To make get() non-blocking for the first caller'], answer: 1, explain: 'computeIfAbsent of a cheap future is fast; the expensive work happens outside the map bin lock, and every other caller joins the same future.' },
+    hints: [`<p>Hint 1: ${C('computeIfAbsent')} with the expensive function directly would block the map's bin (and other keys in it) for 2 s and forbids recursive updates — keep the lambda cheap.</p>`, `<p>Hint 2: ${C('ConcurrentHashMap<K, CompletableFuture<V>>')}: putIfAbsent a new future; the winner completes it.</p>`, `<p>Hint 3: on failure, ${C('remove(k, future)')} so a later call retries; then rethrow.</p>`],
+    solution: {
+      approach: `<p>The "Memoizer" from Java Concurrency in Practice, modernised: an atomic putIfAbsent decides a single winner per key; losers join the winner's future; failures are evicted.</p>`,
+      code: `
+public class Memoizer<K, V> {
+    private final ConcurrentHashMap<K, CompletableFuture<V>> cache = new ConcurrentHashMap<>();
+    private final Function<K, V> f;
+    Memoizer(Function<K, V> f) { this.f = f; }
+
+    V get(K k) {
+        CompletableFuture<V> fut = cache.get(k);
+        if (fut == null) {
+            CompletableFuture<V> mine = new CompletableFuture<>();
+            fut = cache.putIfAbsent(k, mine);              // atomic: exactly one winner
+            if (fut == null) {                             // we won: compute outside any lock
+                fut = mine;
+                try {
+                    mine.complete(f.apply(k));
+                } catch (RuntimeException e) {
+                    cache.remove(k, mine);                 // don't cache failures
+                    mine.completeExceptionally(e);
+                }
+            }
+        }
+        return fut.join();                                 // losers wait for the winner
+    }
+
+    public static void main(String[] args) throws InterruptedException {
+        AtomicInteger calls = new AtomicInteger();
+        Memoizer<String, Integer> m = new Memoizer<>(k -> { calls.incrementAndGet(); return k.length(); });
+        Thread[] ts = new Thread[50];
+        for (int i = 0; i < ts.length; i++) { ts[i] = new Thread(() -> m.get("user:7")); ts[i].start(); }
+        for (Thread t : ts) t.join();
+        System.out.println("value=" + m.get("user:7") + " computed " + calls.get() + " time(s)"); // 6, 1
+    }
+}`,
+      complexity: `<p>O(1) map operations; each key computed once while successful. Memory grows with keys — add expiry/size bounds (Caffeine does all of this in production).</p>`,
+      followUps: ['Add time-based expiry', 'What does Caffeine\'s AsyncLoadingCache add?', 'How does this relate to request coalescing in CDNs?']
+    }
+  });
+
+  practice.push({
+    title: 'Object Pool (DB Connections) with Semaphore',
+    level: 'Medium', tags: ['Semaphore', 'resource pool', 'timeouts'], companies: ['Oracle', 'Atlassian', 'Intuit'],
+    statement: `<p>Implement ${C('class Pool<T>')} holding a fixed list of reusable objects. ${C('T borrow(long timeoutMs)')} returns a free object or throws ${C('TimeoutException')} if none frees up in time; ${C('void giveBack(T t)')} returns it. Never hand the same object to two borrowers.</p>`,
+    constraints: `Pool size 1..200, thousands of borrowers.`,
+    example: `<p>Pool of 2 connections. A and B borrow; C waits; A gives back → C gets A's connection. D waits 100 ms with nobody returning → ${H.c('r', 'TimeoutException')}.</p>`,
+    brute: { why: `<p>A synchronized list with ${C('while (free.isEmpty()) wait();')} works but has no clean timeout handling and holds the monitor while scanning. Using a Semaphore alone (without a thread-safe container) limits the count but two borrowers might take the same object.</p>`, code: `
+class SyncPool<T> {
+    private final Deque<T> free;
+    SyncPool(Collection<T> items) { free = new ArrayDeque<>(items); }
+    synchronized T borrow() throws InterruptedException { while (free.isEmpty()) wait(); return free.pop(); }  // no timeout
+    synchronized void giveBack(T t) { free.push(t); notifyAll(); }
+}` },
+    mcq: { q: 'If borrow() acquires a permit but then the container is unexpectedly empty, what went wrong?', options: ['Nothing, it can happen normally', 'A permit was released without returning an object (or released twice) — permits and objects got out of sync', 'Semaphores are approximate', 'The fairness flag is off'], answer: 1, explain: 'The invariant is permits == free objects. Since semaphores do not track owners, a double giveBack or a release on an error path breaks it.' },
+    hints: [`<p>Hint 1: Semaphore(size) counts free objects; a ${C('ConcurrentLinkedQueue')} holds them.</p>`, `<p>Hint 2: ${C('tryAcquire(timeout)')} then ${C('poll()')}; giveBack = ${C('offer')} then ${C('release()')}.</p>`, `<p>Hint 3: guard giveBack against foreign or double returns with a ${C('Set')} of borrowed objects (identity-based).</p>`],
+    solution: {
+      approach: `<p>Semaphore gates how many can be out; a lock-free queue stores the free objects; a concurrent set catches double returns. Order in giveBack matters: put the object back <b>before</b> releasing the permit, so whoever gets the permit finds an object.</p>`,
+      code: `
+public class Pool<T> {
+    private final Semaphore available;
+    private final Queue<T> free = new ConcurrentLinkedQueue<>();
+    private final Set<T> borrowed = ConcurrentHashMap.newKeySet();
+
+    Pool(Collection<T> items) {
+        free.addAll(items);
+        available = new Semaphore(items.size(), true);
+    }
+
+    T borrow(long timeoutMs) throws InterruptedException, TimeoutException {
+        if (!available.tryAcquire(timeoutMs, TimeUnit.MILLISECONDS)) throw new TimeoutException("pool exhausted");
+        T t = free.poll();                     // guaranteed non-null while the invariant holds
+        borrowed.add(t);
+        return t;
+    }
+
+    void giveBack(T t) {
+        if (!borrowed.remove(t)) throw new IllegalStateException("not borrowed: " + t);
+        free.offer(t);                         // object first ...
+        available.release();                   // ... then the permit
+    }
+
+    public static void main(String[] args) throws Exception {
+        Pool<String> p = new Pool<>(List.of("conn-1", "conn-2"));
+        String a = p.borrow(100), b = p.borrow(100);
+        try { p.borrow(100); } catch (TimeoutException e) { System.out.println("timeout as expected"); }
+        p.giveBack(a);
+        System.out.println("got " + p.borrow(100) + ", still holding " + b);
+    }
+}`,
+      complexity: `<p>O(1) borrow/return; waiting bounded by the timeout. Fair semaphore prevents starvation of long-waiting borrowers.</p>`,
+      followUps: ['Validate connections on borrow and replace broken ones', 'How does HikariCP make borrow faster (thread-local affinity, ConcurrentBag)?']
+    }
+  });
+
+  practice.push({
+    title: 'Parallel Word Frequency with CompletableFuture',
+    level: 'Medium', tags: ['CompletableFuture', 'allOf', 'map-reduce'], companies: ['Google', 'Databricks', 'Twitter/X'],
+    statement: `<p>Given a list of documents, compute the total word frequency map in parallel: count each document asynchronously into its <b>own</b> map (map step), then merge all maps when every count is done (reduce step). Use ${C('CompletableFuture.supplyAsync')} with your own executor and ${C('allOf')}.</p>`,
+    constraints: `Up to 10<sup>4</sup> documents, 10<sup>5</sup> words each. Words are lowercase, separated by spaces.`,
+    example: `<p>["a b a", "b c"] → doc maps {a=2, b=1} and {b=1, c=1} → merged ${H.c('g', '{a=2, b=2, c=1}')}.</p>`,
+    brute: { why: `<p>Many threads updating one shared ${C('HashMap')} corrupts it; one shared ${C('ConcurrentHashMap')} with ${C('merge')} is correct but every word is a contended write. Per-document local maps need no synchronisation at all until the cheap merge.</p>`, code: `
+static Map<String, Integer> countSequential(List<String> docs) {
+    Map<String, Integer> m = new HashMap<>();
+    for (String d : docs) for (String w : d.split(" ")) m.merge(w, 1, Integer::sum);
+    return m;
+}` },
+    mcq: { q: 'Why does each task build its own HashMap instead of writing to one shared map?', options: ['HashMap is faster than any concurrent map, and confinement means zero contention until the merge', 'CompletableFuture forbids shared state', 'Shared maps are always wrong', 'To save memory'], answer: 0, explain: 'Thread confinement: data owned by one thread needs no locks. The merge happens once per document, which is cheap compared to per-word contention.' },
+    hints: [`<p>Hint 1: map step: ${C('supplyAsync(() -> countDoc(doc), ex)')} returns ${C('CompletableFuture<Map<String,Integer>>')}.</p>`, `<p>Hint 2: ${C('allOf(...)')} then ${C('thenApply')} to merge with ${C('merge(k, v, Integer::sum)')}.</p>`, `<p>Hint 3: the result of a completed future is safely visible (happens-before), so the plain HashMaps can be read in the merge.</p>`],
+    solution: {
+      approach: `<p>Map-reduce with thread confinement: async per-document counting into private maps, then a single-threaded merge after allOf.</p>`,
+      code: `
+public class WordFreq {
+    static Map<String, Integer> countDoc(String doc) {
+        Map<String, Integer> m = new HashMap<>();
+        for (String w : doc.split(" ")) if (!w.isEmpty()) m.merge(w, 1, Integer::sum);
+        return m;
+    }
+
+    static Map<String, Integer> count(List<String> docs, ExecutorService ex) {
+        List<CompletableFuture<Map<String, Integer>>> parts = docs.stream()
+                .map(d -> CompletableFuture.supplyAsync(() -> countDoc(d), ex))
+                .toList();
+        return CompletableFuture.allOf(parts.toArray(new CompletableFuture[0]))
+                .thenApply(v -> {
+                    Map<String, Integer> total = new TreeMap<>();
+                    for (CompletableFuture<Map<String, Integer>> p : parts)
+                        p.join().forEach((k, c) -> total.merge(k, c, Integer::sum));
+                    return total;
+                })
+                .join();
+    }
+
+    public static void main(String[] args) {
+        ExecutorService ex = Executors.newFixedThreadPool(4);
+        try {
+            System.out.println(count(List.of("a b a", "b c"), ex));   // {a=2, b=2, c=1}
+        } finally {
+            ex.shutdown();
+        }
+    }
+}`,
+      complexity: `<p>O(total words) work split across threads + O(distinct words × docs) merge. Memory O(distinct words per doc) per task.</p>`,
+      followUps: ['Merge pairwise in parallel (tree reduction) for huge numbers of documents', 'Compare with parallelStream().collect(groupingByConcurrent(...))']
+    }
+  });
+
+  practice.push({
+    title: 'Building H2O (Barrier + Semaphores)',
+    level: 'Medium', tags: ['Semaphore', 'CyclicBarrier', 'LeetCode 1117'], companies: ['Microsoft', 'Uber', 'Bloomberg'],
+    statement: `<p>Hydrogen and oxygen threads arrive randomly and call ${C('hydrogen(release)')} or ${C('oxygen(release)')}. Threads must be grouped into molecules: each group of 3 must contain exactly 2 H and 1 O, and all 3 must "bond" (print) before any thread of the next molecule. Implement the class.</p>`,
+    constraints: `Total H = 2 × total O; up to 60 threads.`,
+    example: `<p>Arrival "OOHHHH" → valid outputs like ${H.c('g', 'HHOHHO')}, ${H.c('g', 'HOHOHH')} … each consecutive triple has 2 H and 1 O. "HHHHOO" printed as "HHH…" is ${H.c('r', 'invalid')}.</p>`,
+    brute: { why: `<p>Counting H and O with synchronized counters and wait/notifyAll is possible but subtle: you must also stop a <b>third</b> H from joining a molecule early and reset counts at exactly the right moment — classic bugs.</p>`, code: `
+class H2OCounters {
+    private int h, o;                                   // shared counters, easy to get wrong
+    synchronized void hydrogen(Runnable r) throws InterruptedException { while (h == 2) wait(); h++; r.run(); if (h == 2 && o == 1) { h = 0; o = 0; } notifyAll(); }
+    synchronized void oxygen(Runnable r) throws InterruptedException { while (o == 1) wait(); o++; r.run(); if (h == 2 && o == 1) { h = 0; o = 0; } notifyAll(); }
+}` },
+    mcq: { q: 'What does the CyclicBarrier(3) add on top of Semaphore(2) for H and Semaphore(1) for O?', options: ['Nothing', 'It makes the 3 admitted threads wait for each other, so a whole molecule forms before permits are released for the next one', 'It limits the total number of threads', 'It orders H before O'], answer: 1, explain: 'Semaphores admit at most 2 H and 1 O; the barrier ensures those 3 complete together and only then release their permits.' },
+    hints: [`<p>Hint 1: ${C('Semaphore h = new Semaphore(2), o = new Semaphore(1)')} limit membership of the current molecule.</p>`, `<p>Hint 2: after acquiring, call ${C('barrier.await()')} on a ${C('CyclicBarrier(3)')}, then print, then release your permit.</p>`, `<p>Hint 3: the barrier resets itself automatically for the next molecule.</p>`],
+    solution: {
+      approach: `<p>Admission control (semaphores) + group rendezvous (cyclic barrier). Printing before or after await both satisfy the grouping requirement; releasing permits only after the barrier is the key.</p>`,
+      code: `
+public class H2O {
+    private final Semaphore hSlots = new Semaphore(2), oSlots = new Semaphore(1);
+    private final CyclicBarrier molecule = new CyclicBarrier(3);
+
+    void hydrogen(Runnable releaseHydrogen) throws InterruptedException, BrokenBarrierException {
+        hSlots.acquire();
+        try {
+            molecule.await();
+            releaseHydrogen.run();
+        } finally {
+            hSlots.release();
+        }
+    }
+
+    void oxygen(Runnable releaseOxygen) throws InterruptedException, BrokenBarrierException {
+        oSlots.acquire();
+        try {
+            molecule.await();
+            releaseOxygen.run();
+        } finally {
+            oSlots.release();
+        }
+    }
+
+    public static void main(String[] args) throws InterruptedException {
+        H2O h2o = new H2O();
+        StringBuffer out = new StringBuffer();
+        List<Thread> ts = new ArrayList<>();
+        for (char c : "OOHHHH".toCharArray()) {
+            Thread t = new Thread(() -> {
+                try {
+                    if (c == 'H') h2o.hydrogen(() -> out.append('H')); else h2o.oxygen(() -> out.append('O'));
+                } catch (InterruptedException | BrokenBarrierException e) { Thread.currentThread().interrupt(); }
+            });
+            ts.add(t);
+            t.start();
+        }
+        for (Thread t : ts) t.join();
+        System.out.println(out);   // e.g. HHOHOH - every triple has 2 H + 1 O
+    }
+}`,
+      complexity: `<p>O(1) per thread; at most 3 threads in the bonding phase at once.</p>`,
+      followUps: ['Generalise to molecules like CH4', 'What happens if the input has the wrong H:O ratio (barrier never completes) and how would you time out?']
+    }
+  });
+
+  /* ======================================================================
+     PRACTICE — Hard
+     ====================================================================== */
+  practice.push({
+    title: 'Build Your Own Thread Pool',
+    level: 'Hard', tags: ['thread pool', 'BlockingQueue', 'design', 'shutdown'], companies: ['Amazon', 'Google', 'Rubrik', 'Confluent'],
+    statement: `<p>Implement ${C('class SimplePool implements Executor')} with a fixed number of worker threads, a <b>bounded</b> task queue, ${C('execute(Runnable)')} that throws ${C('RejectedExecutionException')} when full or shut down, ${C('shutdown()')} (finish queued tasks, then workers exit), and ${C('awaitTermination(timeout)')}. A task that throws must <b>not</b> kill its worker.</p>`,
+    constraints: `1 ≤ threads ≤ 64, queue capacity ≤ 10<sup>4</sup>; must not lose tasks accepted before shutdown; must not busy-wait.`,
+    example: `<p>2 workers, capacity 3: submit 5 slow tasks → 2 running + 3 queued; the 6th → ${H.c('r', 'RejectedExecutionException')}. shutdown() → all 5 complete, workers exit, awaitTermination returns ${H.c('g', 'true')}.</p>`,
+    brute: { why: `<p>${C('new Thread(task).start()')} per task: unbounded threads, no reuse, no back-pressure. A homemade pool whose workers loop on ${C('queue.take()')} forever never exits, and a task exception that escapes ${C('run()')} kills the worker silently, shrinking the pool.</p>`, code: `
+class ThreadPerTask implements Executor {
+    public void execute(Runnable r) { new Thread(r).start(); }   // unbounded, no lifecycle
+}` },
+    mcq: { q: 'How should workers learn that shutdown happened if they are blocked in queue.take() on an empty queue?', options: ['They poll a volatile flag every millisecond', 'Use poll(timeout) in a loop and exit when the flag is set and the queue is empty — or put one poison pill per worker', 'Call Thread.stop()', 'They never need to know'], answer: 1, explain: 'A blocked take() never sees a flag. Either wake periodically with poll(timeout) and re-check, or enqueue a sentinel per worker (after all real tasks, so nothing is lost).' },
+    hints: [`<p>Hint 1: state = ${C('ArrayBlockingQueue<Runnable>')}, ${C('List<Thread> workers')}, ${C('volatile boolean shutdown')}, and a ${C('CountDownLatch(threads)')} counted down when each worker exits.</p>`, `<p>Hint 2: ${C('execute')}: if shutdown → reject; if ${C('!queue.offer(r)')} → reject. Worker loop: ${C('Runnable r = queue.poll(100, ms)')}; if r == null and shutdown → exit; else run inside try/catch(Throwable).</p>`, `<p>Hint 3: race to think about: a task offered just as shutdown flips — check the flag <i>after</i> offering too, or accept that tasks offered before the flag is seen will still run because workers drain the queue before exiting.</p>`],
+    solution: {
+      approach: `<p>Workers run a loop: poll with timeout → run with exception isolation → exit only when shut down <b>and</b> the queue is empty, so every accepted task completes. The termination latch makes ${C('awaitTermination')} trivial and gives happens-before from worker actions to the waiter.</p>`,
+      code: `
+public class SimplePool implements Executor {
+    private final BlockingQueue<Runnable> queue;
+    private final List<Thread> workers = new ArrayList<>();
+    private final CountDownLatch terminated;
+    private volatile boolean shutdown;
+
+    SimplePool(int threads, int capacity) {
+        queue = new ArrayBlockingQueue<>(capacity);
+        terminated = new CountDownLatch(threads);
+        for (int i = 0; i < threads; i++) {
+            Thread t = new Thread(this::workLoop, "simple-pool-" + i);
+            workers.add(t);
+            t.start();
+        }
+    }
+
+    private void workLoop() {
+        try {
+            while (true) {
+                Runnable r = queue.poll(50, TimeUnit.MILLISECONDS);
+                if (r == null) {
+                    if (shutdown && queue.isEmpty()) return;       // drained: exit
+                    continue;
+                }
+                try {
+                    r.run();
+                } catch (Throwable t) {                            // isolate task failures
+                    System.err.println(Thread.currentThread().getName() + " task failed: " + t);
+                }
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();                    // shutdownNow-style exit
+        } finally {
+            terminated.countDown();
+        }
+    }
+
+    @Override
+    public void execute(Runnable r) {
+        if (shutdown) throw new RejectedExecutionException("pool is shut down");
+        if (!queue.offer(r)) throw new RejectedExecutionException("queue full");
+    }
+
+    void shutdown() { shutdown = true; }
+
+    boolean awaitTermination(long timeout, TimeUnit unit) throws InterruptedException {
+        return terminated.await(timeout, unit);
+    }
+
+    public static void main(String[] args) throws InterruptedException {
+        SimplePool pool = new SimplePool(2, 3);
+        AtomicInteger done = new AtomicInteger();
+        for (int i = 0; i < 6; i++) {
+            final int id = i;
+            try {
+                pool.execute(() -> {
+                    try { Thread.sleep(100); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+                    if (id == 1) throw new IllegalStateException("boom");   // worker must survive
+                    done.incrementAndGet();
+                });
+            } catch (RejectedExecutionException e) {
+                System.out.println("task " + id + " rejected: " + e.getMessage());
+            }
+        }
+        pool.shutdown();
+        System.out.println("terminated=" + pool.awaitTermination(5, TimeUnit.SECONDS) + " done=" + done.get());
+    }
+}`,
+      complexity: `<p>O(1) per submit; idle workers wake every 50 ms (negligible). A production pool would avoid that polling by using poison pills or interrupts, add a ThreadFactory, metrics and shutdownNow.</p>`,
+      followUps: ['Add shutdownNow() that interrupts workers and returns queued tasks', 'Add submit(Callable) returning a Future (wrap in FutureTask)', 'Add growth between core and max like ThreadPoolExecutor']
+    }
+  });
+
+  practice.push({
+    title: 'Lock-Free Token Bucket Rate Limiter',
+    level: 'Hard', tags: ['CAS', 'AtomicReference', 'rate limiting', 'design'], companies: ['Stripe', 'Cloudflare', 'Uber', 'Razorpay'],
+    statement: `<p>Implement ${C('boolean tryAcquire()')} for a token bucket with capacity ${C('B')} that refills at ${C('R')} tokens per second, safe for hundreds of threads and <b>without locks</b>. Tokens refill lazily based on elapsed time (no background thread). Use an injectable clock so it is testable.</p>`,
+    constraints: `1 ≤ B ≤ 10<sup>6</sup>, 1 ≤ R ≤ 10<sup>6</sup>/s, nanosecond clock; tryAcquire must never block.`,
+    example: `<p>B = 5, R = 1/s. At t = 0, six calls → ${H.c('g', 'true ×5')}, ${H.c('r', 'false')}. At t = 2.5 s → 2.5 tokens accumulated → 2 calls succeed, the 3rd fails.</p>`,
+    brute: { why: `<p>A ${C('synchronized tryAcquire()')} is correct and actually fine at moderate load. At very high rates all threads queue on one monitor. Using two separate atomics (tokens and lastRefill) is <b>wrong</b>: a thread can refill using one thread's timestamp and another thread's token count — the pair must change together.</p>`, code: `
+class SyncBucket {
+    private final long capacity; private final double perNano;
+    private double tokens; private long last;
+    SyncBucket(long capacity, double perSecond) { this.capacity = capacity; this.perNano = perSecond / 1e9; tokens = capacity; last = System.nanoTime(); }
+    synchronized boolean tryAcquire() {
+        long now = System.nanoTime();
+        tokens = Math.min(capacity, tokens + (now - last) * perNano);
+        last = now;
+        if (tokens < 1) return false;
+        tokens -= 1;
+        return true;
+    }
+}` },
+    mcq: { q: 'Why keep tokens and lastRefill inside ONE immutable object behind an AtomicReference?', options: ['Records are faster than doubles', 'Both fields must be read and replaced together; one CAS on a reference swaps the pair atomically', 'AtomicDouble does not exist', 'To reduce garbage'], answer: 1, explain: 'Compound state needs a single atomic unit. CAS on a reference to an immutable snapshot is the lock-free way to update multiple fields consistently.' },
+    hints: [`<p>Hint 1: ${C('record State(double tokens, long lastNanos)')}; ${C('AtomicReference<State>')}.</p>`, `<p>Hint 2: loop: read s; compute refilled = min(B, s.tokens + elapsed × rate); if refilled &lt; 1 → return false (no CAS needed… but you may CAS the refill to save work); else CAS(s, new State(refilled − 1, now)).</p>`, `<p>Hint 3: use a ${C('LongSupplier clock')}; guard against the clock going backwards (${C('max(0, elapsed)')}).</p>`],
+    solution: {
+      approach: `<p>Immutable snapshot + CAS loop. Each attempt computes the bucket state "as of now" from the snapshot and publishes the decremented state only if no other thread changed the snapshot meanwhile. Failure path returns false without writing, so rejected calls are read-only and cheap.</p>`,
+      code: `
+public class TokenBucket {
+    private record State(double tokens, long lastNanos) {}
+
+    private final double capacity, perNano;
+    private final LongSupplier clock;
+    private final AtomicReference<State> state;
+
+    TokenBucket(double capacity, double perSecond, LongSupplier clock) {
+        this.capacity = capacity;
+        this.perNano = perSecond / 1_000_000_000.0;
+        this.clock = clock;
+        this.state = new AtomicReference<>(new State(capacity, clock.getAsLong()));
+    }
+
+    boolean tryAcquire() {
+        while (true) {
+            State s = state.get();
+            long now = clock.getAsLong();
+            long elapsed = Math.max(0, now - s.lastNanos());
+            double tokens = Math.min(capacity, s.tokens() + elapsed * perNano);
+            if (tokens < 1.0) return false;                          // read-only rejection
+            if (state.compareAndSet(s, new State(tokens - 1.0, now))) return true;
+            // another thread changed the bucket: recompute from the fresh snapshot
+        }
+    }
+
+    public static void main(String[] args) {
+        long[] fake = {0};                                           // controllable clock
+        TokenBucket b = new TokenBucket(5, 1, () -> fake[0]);
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < 6; i++) sb.append(b.tryAcquire()).append(' ');
+        System.out.println(sb);                                      // true x5 false
+        fake[0] = 2_500_000_000L;                                    // +2.5 s
+        System.out.println(b.tryAcquire() + " " + b.tryAcquire() + " " + b.tryAcquire()); // true true false
+    }
+}`,
+      complexity: `<p>O(1) expected per call; retries only under contention. Each success allocates one small record (cheap for the young GC). For extreme rates, shard buckets per thread/core and split the capacity.</p>`,
+      followUps: ['Make it distributed across servers (Redis + Lua script, or a gateway)', 'Implement a sliding-window log limiter and compare memory', 'Add blocking acquire() that sleeps exactly until the next token']
+    }
+  });
+
+  practice.push({
+    title: 'Implement a Reusable CyclicBarrier',
+    level: 'Hard', tags: ['ReentrantLock', 'Condition', 'generations', 'barrier'], companies: ['Google', 'Two Sigma', 'Citadel'],
+    statement: `<p>Implement ${C('class MyBarrier')} with ${C('MyBarrier(int parties, Runnable action)')} and ${C('int await()')}: blocks until ${C('parties')} threads have called it, runs ${C('action')} once (in the last arriving thread), releases everyone, and <b>automatically resets</b> for the next round. Return the arrival index (parties − 1 for the first, 0 for the last), like the JDK.</p>`,
+    constraints: `2 ≤ parties ≤ 1000, many rounds. Spurious wakeups must not release threads early. A slow thread from round k must never be confused with round k + 1.`,
+    example: `<p>parties = 3, two rounds: T1, T2 wait; T3 arrives → action prints "round done" → all three return; immediately T1 arrives for round 2 and waits again (count was reset to 3).</p>`,
+    brute: { why: `<p>A version that waits with ${C('while (count > 0) cond.await()')} and resets ${C('count = parties')} when the last arrives has a bug: the reset happens before the woken threads re-check the condition, so they see count = parties again and go back to sleep forever. You need a way to tell rounds apart.</p>`, code: `
+class BuggyBarrier {
+    private final int parties; private int count;
+    private final ReentrantLock lock = new ReentrantLock(); private final Condition trip = lock.newCondition();
+    BuggyBarrier(int parties) { this.parties = parties; this.count = parties; }
+    void await() throws InterruptedException {
+        lock.lock();
+        try {
+            if (--count == 0) { count = parties; trip.signalAll(); return; }   // reset too early ...
+            while (count > 0) trip.await();                                    // ... waiters never see 0
+        } finally { lock.unlock(); }
+    }
+}` },
+    mcq: { q: 'What is the purpose of the "generation" object in CyclicBarrier?', options: ['To count parties', 'To let waiters recognise that their round has finished even after the count was reset', 'To store the barrier action', 'To make the barrier fair'], answer: 1, explain: 'A waiter remembers the generation it arrived in and leaves when the current generation differs — independent of the reset counter.' },
+    hints: [`<p>Hint 1: keep a ${C('Generation')} object (or a long round number). Each waiter remembers the one it arrived in.</p>`, `<p>Hint 2: last arrival: run action, create a new generation, reset count, ${C('signalAll()')}.</p>`, `<p>Hint 3: waiters loop ${C('while (g == generation) trip.await();')} — the spurious-wakeup-safe condition is "still my round".</p>`],
+    solution: {
+      approach: `<p>Generation counting under a single lock. The last arriving thread advances the generation; waiters compare their saved generation with the current one, so resets can never confuse them. (The JDK version also handles breaking on interrupt/timeout.)</p>`,
+      code: `
+public class MyBarrier {
+    private final int parties;
+    private final Runnable action;
+    private final ReentrantLock lock = new ReentrantLock();
+    private final Condition trip = lock.newCondition();
+    private int waiting;              // how many still to arrive in this round
+    private long generation;          // round number
+
+    MyBarrier(int parties, Runnable action) {
+        this.parties = parties;
+        this.action = action;
+        this.waiting = parties;
+    }
+
+    int await() throws InterruptedException {
+        lock.lock();
+        try {
+            long myGen = generation;
+            int index = --waiting;
+            if (index == 0) {                         // last one in
+                if (action != null) action.run();
+                generation++;                         // new round
+                waiting = parties;                    // reset
+                trip.signalAll();
+                return 0;
+            }
+            while (myGen == generation) trip.await(); // safe against spurious wakeups
+            return index;
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    public static void main(String[] args) throws InterruptedException {
+        AtomicInteger rounds = new AtomicInteger();
+        MyBarrier b = new MyBarrier(3, () -> System.out.println("round " + rounds.incrementAndGet() + " done"));
+        List<Thread> ts = new ArrayList<>();
+        for (int i = 0; i < 3; i++) {
+            Thread t = new Thread(() -> {
+                try { for (int r = 0; r < 2; r++) b.await(); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+            });
+            ts.add(t);
+            t.start();
+        }
+        for (Thread t : ts) t.join();
+        System.out.println("rounds = " + rounds.get());   // 2
+    }
+}`,
+      complexity: `<p>O(1) per await plus an O(parties) signalAll per round.</p>`,
+      followUps: ['Add a timeout and "broken" state like the JDK (BrokenBarrierException for all waiters)', 'Implement it with wait/notifyAll', 'How does Phaser avoid the single lock for thousands of parties?']
+    }
+  });
+
+  practice.push({
+    title: 'Multithreaded Web Crawler (Same-Host, No Duplicates)',
+    level: 'Hard', tags: ['virtual threads', 'ConcurrentHashMap', 'Phaser', 'LeetCode 1242'], companies: ['Dropbox', 'Google', 'Bloomberg', 'Anthropic'],
+    statement: `<p>Given a start URL and an ${C('HtmlParser')} whose ${C('getUrls(url)')} is a slow blocking call, return all URLs reachable from the start URL that share its hostname. Crawl concurrently (each fetch in its own thread), visit each URL <b>once</b>, and return only when the crawl is complete — you do not know the number of pages in advance.</p>`,
+    constraints: `Up to 1000 URLs, getUrls takes ~15 ms each; result order does not matter.`,
+    example: `<p>start "http://news.ex.com/a" links to /b, /c and "http://other.org/x"; /b links back to /a → ${H.c('g', '{/a, /b, /c on news.ex.com}')}; other.org is ignored; /a is not fetched twice.</p>`,
+    brute: { why: `<p>Sequential BFS is correct but 1000 × 15 ms = 15 s. A naive concurrent version uses a plain HashSet (race: two threads both see "not visited" and crawl twice) and a ${C('Thread.sleep(1000)')} "probably done by now" instead of real completion tracking.</p>`, code: `
+interface HtmlParser { List<String> getUrls(String url); }
+
+static List<String> crawlSequential(String start, HtmlParser parser) {
+    String host = start.split("/")[2];
+    Set<String> seen = new HashSet<>(List.of(start));
+    Deque<String> frontier = new ArrayDeque<>(List.of(start));
+    while (!frontier.isEmpty()) {
+        for (String next : parser.getUrls(frontier.poll())) {
+            if (next.split("/")[2].equals(host) && seen.add(next)) frontier.add(next);
+        }
+    }
+    return new ArrayList<>(seen);
+}` },
+    mcq: { q: 'Tasks spawn new tasks and you do not know the total in advance. Which tool tracks completion?', options: ['CountDownLatch with a guessed count', 'Phaser: register before submitting each child task, arriveAndDeregister when a task finishes; the main thread waits for the phase to advance', 'Thread.sleep until the set stops growing', 'CyclicBarrier(1000)'], answer: 1, explain: 'A Phaser supports a dynamic number of parties. Registering a child before the parent deregisters guarantees the count never hits zero early. (Alternatives: an AtomicInteger of pending tasks plus a latch, or ForkJoin/structured tasks.)' },
+    hints: [`<p>Hint 1: visited = ${C('ConcurrentHashMap.newKeySet()')}; ${C('visited.add(url)')} is an atomic "claim" — only the thread that gets true crawls it.</p>`, `<p>Hint 2: completion = Phaser. Main registers itself; before submitting a child, ${C('phaser.register()')}; at the end of each task, ${C('arriveAndDeregister()')}. Main: ${C('arriveAndAwaitAdvance()')}.</p>`, `<p>Hint 3: blocking fetches → ${C('newVirtualThreadPerTaskExecutor()')}. Register children <b>before</b> the parent arrives, otherwise the party count can drop to zero too early.</p>`],
+    solution: {
+      approach: `<p>Thread-per-URL on virtual threads, an atomic claim set for de-duplication, and a Phaser for dynamic completion tracking. The phase advances only when every registered task (including ones registered by other tasks) has arrived.</p>`,
+      code: `
+public class Crawler2 {
+    interface HtmlParser { List<String> getUrls(String url); }
+
+    static String host(String url) { return url.split("/")[2]; }
+
+    static List<String> crawl(String start, HtmlParser parser) {
+        String host = host(start);
+        Set<String> visited = ConcurrentHashMap.newKeySet();
+        Phaser phaser = new Phaser(1);                     // main thread is a party
+        try (ExecutorService ex = Executors.newVirtualThreadPerTaskExecutor()) {
+            visited.add(start);
+            submit(start, host, parser, visited, phaser, ex);
+            phaser.arriveAndAwaitAdvance();                // wait for every (dynamic) task
+        }
+        return new ArrayList<>(visited);
+    }
+
+    static void submit(String url, String host, HtmlParser parser, Set<String> visited, Phaser phaser, ExecutorService ex) {
+        phaser.register();                                 // register BEFORE starting the child
+        ex.execute(() -> {
+            try {
+                for (String next : parser.getUrls(url)) {  // slow blocking call
+                    if (host(next).equals(host) && visited.add(next)) {
+                        submit(next, host, parser, visited, phaser, ex);
+                    }
+                }
+            } finally {
+                phaser.arriveAndDeregister();              // this task is done
+            }
+        });
+    }
+
+    public static void main(String[] args) {
+        Map<String, List<String>> web = Map.of(
+                "http://news.ex.com/a", List.of("http://news.ex.com/b", "http://news.ex.com/c", "http://other.org/x"),
+                "http://news.ex.com/b", List.of("http://news.ex.com/a"),
+                "http://news.ex.com/c", List.of());
+        HtmlParser parser = url -> {
+            try { Thread.sleep(15); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+            return web.getOrDefault(url, List.of());
+        };
+        List<String> found = crawl("http://news.ex.com/a", parser);
+        Collections.sort(found);
+        System.out.println(found);
+    }
+}`,
+      complexity: `<p>Each URL fetched once: O(V + E) work. Wall time ≈ depth of the link graph × fetch latency (all pages at the same depth are fetched concurrently). Add a Semaphore to respect politeness limits per host.</p>`,
+      followUps: ['Limit to 10 concurrent requests per host', 'Add a max depth and a global deadline', 'Distribute across machines (URL frontier in Kafka, de-dup in Redis/Bloom filter)']
+    }
+  });
+
+  /* ======================================================================
+     QUIZ
+     ====================================================================== */
+  quiz.push(
+    { q: `A ThreadPoolExecutor has core = 2, max = 10 and an <b>unbounded</b> LinkedBlockingQueue. 1,000 long tasks are submitted at once. How many threads run them?`, options: ['2', '10', '1,000', 'It depends on the CPU count'], answer: 0, explain: `The pool only grows past core when the queue rejects an offer. An unbounded queue never rejects, so the pool stays at 2 threads and 998 tasks wait in the queue.` },
+    { q: `What happens to an exception thrown inside a task passed to ${C('submit()')} if nobody calls ${C('get()')}?`, options: ['It is printed to stderr', 'It kills the JVM', 'It is stored in the Future and silently lost', 'The pool retries the task'], answer: 2, explain: `submit wraps the task in a FutureTask, which catches the exception and stores it as the outcome. Only get() rethrows it (wrapped in ExecutionException).` },
+    { q: `${C('f.get(1, SECONDS)')} throws TimeoutException. What is the state of the task?`, options: ['Cancelled automatically', 'Possibly still running — you should cancel it if you no longer need it', 'Finished with an error', 'Restarted'], answer: 1, explain: `A timeout only ends your waiting. The task keeps running; call f.cancel(true) to interrupt it (which helps only if the task responds to interrupts).` },
+    { q: `Which is TRUE about ReentrantLock compared with synchronized?`, options: ['It releases automatically when an exception is thrown', 'It supports tryLock, timed and interruptible acquisition, fairness and multiple Conditions', 'It is always much faster', 'It is not reentrant'], answer: 1, explain: `Those are exactly the extra capabilities. You must unlock in finally yourself; performance is similar when uncontended.` },
+    { q: `Two threads hold the read lock of a ReentrantReadWriteLock. One of them calls ${C('writeLock().lock()')} without releasing its read lock. What happens?`, options: ['It upgrades immediately', 'It waits until the other reader leaves, then upgrades', 'It blocks forever — read-to-write upgrade is not supported', 'It throws IllegalMonitorStateException'], answer: 2, explain: `The write lock requires zero readers, including the caller itself. Since it never releases its own read lock, it waits forever. Downgrading (write → read) is the supported direction.` },
+    { q: `What is the key difference between CountDownLatch and CyclicBarrier?`, options: ['Latch is reusable, barrier is not', 'A latch waits for N events and is one-shot; a barrier makes N threads wait for each other and resets for the next round', 'Barrier counts up, latch counts down — otherwise identical', 'Only the latch can time out'], answer: 1, explain: `countDown never blocks and the latch cannot be reset; barrier parties block until all arrive and the barrier then resets automatically.` },
+    { q: `A ${C('Semaphore(3)')} is created. A thread that never acquired calls ${C('release()')}. What happens?`, options: ['IllegalMonitorStateException', 'Nothing', 'availablePermits becomes 4 — semaphores do not track owners', 'The call blocks'], answer: 2, explain: `Permits are just a counter. Releasing without acquiring increases it, which is a classic bug that silently raises the concurrency limit.` },
+    { q: `Why is ${C('count++')} on a ${C('volatile int')} not thread-safe?`, options: ['volatile variables cannot be incremented', 'volatile guarantees visibility but the read-add-write sequence is still three separate steps that can interleave', 'volatile only works on long', 'It is thread-safe'], answer: 1, explain: `Two threads can read the same value and both write value + 1, losing an update. Use AtomicInteger, LongAdder or a lock.` },
+    { q: `In a CAS retry loop, a thread's ${C('compareAndSet(expected, next)')} returns false. What does that mean?`, options: ['Memory is corrupted', 'Another thread changed the value since it was read; re-read and retry', 'The thread must take a lock now', 'The value was null'], answer: 1, explain: `A failed CAS is normal: it means some other thread made progress. The loop re-reads the fresh value and recomputes.` },
+    { q: `Which counter scales best for 64 threads incrementing a metric millions of times per second, read once per second?`, options: ['synchronized long', 'AtomicLong', 'LongAdder', 'volatile long'], answer: 2, explain: `LongAdder stripes updates over cells (one per contending thread, padded against false sharing), so writes rarely collide; sum() adds the cells.` },
+    { q: `${C('getUser()')} returns ${C('CompletableFuture<User>')} and ${C('getOrders(User)')} returns ${C('CompletableFuture<List<Order>>')}. Which call yields ${C('CompletableFuture<List<Order>>')}?`, options: [C('getUser().thenApply(this::getOrders)'), C('getUser().thenCompose(this::getOrders)'), C('getUser().thenCombine(this::getOrders)'), C('getUser().thenAccept(this::getOrders)')], answer: 1, explain: `thenCompose flattens a function that returns a future (like flatMap). thenApply would give a nested future.` },
+    { q: `You call ${C('CompletableFuture.supplyAsync(() -> httpCall())')} with no executor in a busy service. What is the risk?`, options: ['None', 'Blocking I/O runs on ForkJoinPool.commonPool, which has about (cores − 1) threads shared JVM-wide — it can starve parallel streams and other async work', 'It runs on the caller thread', 'It creates a new platform thread per call, always'], answer: 1, explain: `The default async executor is the common pool. Pass a dedicated executor (or a virtual-thread executor) for blocking work.` },
+    { q: `Which statement about Java 21 virtual threads is FALSE?`, options: ['They are cheap enough to create one per task', 'They make CPU-bound computations run faster', 'They unmount from their carrier when blocking on most I/O', 'They are always daemon threads'], answer: 1, explain: `Virtual threads make waiting cheap; CPU-bound work is still limited by the number of cores.` },
+    { q: `On Java 21, a virtual thread performs a blocking socket read inside a ${C('synchronized')} block. What happens?`, options: ['It unmounts as usual', 'It is pinned: the carrier thread stays blocked too', 'It throws an exception', 'The JVM converts it to a platform thread permanently'], answer: 1, explain: `In Java 21-23 monitors pin the virtual thread to its carrier. Java 24 (JEP 491) removed this limitation; on 21 prefer ReentrantLock around blocking calls.` }
+  );
+
+  /* ======================================================================
+     INTERVIEW Q&A
+     ====================================================================== */
+  interview.push(
+    { q: `Walk me through what happens when you submit a task to a ThreadPoolExecutor.`, level: 'I', a: `<p>Four rules, in order: (1) if fewer than <b>corePoolSize</b> threads are running, start a new thread with this task as its first job (even if other threads are idle); (2) otherwise <b>offer</b> the task to the work queue; (3) if the queue is full and fewer than <b>maximumPoolSize</b> threads exist, start a non-core thread for it; (4) otherwise call the <b>RejectedExecutionHandler</b> (Abort by default, or CallerRuns, Discard, DiscardOldest). Workers loop taking tasks from the queue; non-core threads die after keepAliveTime idle. The consequence people miss: with an unbounded queue the pool never grows past core, and memory becomes the limit.</p>`, followUps: ['Why does newCachedThreadPool use a SynchronousQueue?', 'How would you size the pool for an I/O-bound service?', 'What does allowCoreThreadTimeOut do?'] },
+    { q: `Why are Executors.newFixedThreadPool and newCachedThreadPool often banned in production code reviews?`, level: 'I', a: `<p><b>newFixedThreadPool</b> (and newSingleThreadExecutor) use an <b>unbounded LinkedBlockingQueue</b>: if producers outpace consumers, tasks pile up until OutOfMemoryError, and latency grows without bound long before that. <b>newCachedThreadPool</b> has an unbounded <b>maximum</b> pool size with a SynchronousQueue: a burst creates one platform thread per concurrent task — thousands of threads, each with stack memory, context-switch thrashing, or "unable to create native thread". Guidelines such as Alibaba's Java manual require constructing ThreadPoolExecutor explicitly so the queue bound, max threads, thread names and rejection policy are conscious decisions. With Java 21, blocking-I/O work often goes to a virtual-thread-per-task executor plus semaphores instead.</p>`, followUps: ['Which rejection policy gives back-pressure?', 'How do you monitor pool saturation?'] },
+    { q: `Explain the difference between Runnable, Callable, Future and FutureTask.`, level: 'B', a: `<p><b>Runnable</b>: ${C('void run()')}, no result, no checked exceptions. <b>Callable&lt;V&gt;</b>: ${C('V call() throws Exception')} — returns a value and may throw. <b>Future&lt;V&gt;</b>: a handle to a pending result with ${C('get')}, timed ${C('get')}, ${C('isDone')}, ${C('cancel')}. <b>FutureTask</b>: a concrete class that is both a Runnable and a Future — it wraps a Callable, runs it once, stores the result or exception, and wakes waiting threads. ${C('ExecutorService.submit')} wraps your task in a FutureTask, which is why exceptions are captured instead of propagating to the worker thread.</p>`, followUps: ['What does cancel(true) actually do?', 'What are Future.state() and resultNow() (Java 19)?'] },
+    { q: `When would you choose ReentrantLock over synchronized? Give concrete cases.`, level: 'I', a: `<p>When I need something synchronized can't do: (1) <b>tryLock / timed tryLock</b> to avoid deadlock or to fail fast under load (e.g. "busy, retry" instead of a stuck request); (2) <b>lockInterruptibly</b> so a cancelled task stops waiting; (3) <b>several Conditions</b> on one lock, like notFull/notEmpty in a bounded buffer; (4) <b>fairness</b> when starvation is observed; (5) lock and unlock in different methods/scopes; (6) on Java 21-23 with virtual threads, to avoid <b>pinning</b> around blocking I/O. Otherwise synchronized is simpler, can't leak a held lock, and performs similarly. Always ${C('lock()')} before ${C('try')} and ${C('unlock()')} in ${C('finally')}.</p>`, followUps: ['What is lock barging?', 'What does AQS do?', 'What changed in Java 24 for synchronized and virtual threads?'] },
+    { q: `How does ReentrantReadWriteLock work, and when is it a bad idea?`, level: 'A', a: `<p>It keeps a shared read lock and an exclusive write lock on one AQS state word (upper 16 bits: read holds, lower 16 bits: write holds). Many readers can hold it simultaneously; a writer needs zero readers and no other writer. It supports reentrancy, downgrading (write → read) but <b>not upgrading</b> (read → write deadlocks). It's a bad idea when the read section is very short (readers still CAS the shared state, causing cache-line contention — a plain lock or ConcurrentHashMap may be faster), when writes are frequent, or when writers starve under a constant stream of readers in non-fair mode. For hot read paths of small data, StampedLock's optimistic reads or an immutable snapshot in a volatile/AtomicReference (copy-on-write) usually win.</p>`, followUps: ['Explain StampedLock validate()', 'How would you implement a read-mostly config with no locks at all?'] },
+    { q: `Compare CountDownLatch, CyclicBarrier, Semaphore and Phaser with a real use case for each.`, level: 'I', a: `<p><b>CountDownLatch(N)</b>: one-shot; threads wait until N events happen. Use: service startup waits for DB, cache and Kafka consumers to be ready; or a start gate in a load test. <b>CyclicBarrier(N)</b>: N threads wait for each other, optional barrier action, auto-reset; breaks for all if one fails. Use: parallel simulation where each step needs all partitions finished. <b>Semaphore(N)</b>: N permits, no ownership. Use: cap concurrent calls to a fragile dependency (bulkhead) or bound an object pool. <b>Phaser</b>: reusable, dynamic number of parties, multiple phases, tiered for scale. Use: a crawler where tasks spawn tasks and you wait for all of them, or phases where workers join and leave.</p>`, followUps: ['What happens if a worker throws before countDown?', 'Why can a CyclicBarrier deadlock in a thread pool?'] },
+    { q: `What is CAS, and how do atomic classes use it? What are its downsides?`, level: 'A', a: `<p>Compare-And-Swap is a CPU instruction that atomically checks that a memory location holds an expected value and, if so, writes a new one, reporting success. Atomic classes build lock-free operations from it: read the current value, compute the new one, CAS; on failure (another thread won) re-read and retry. Downsides: (1) under heavy contention many retries waste CPU and the cache line ping-pongs between cores — LongAdder or a lock can be better; (2) it protects only a <b>single</b> variable — multi-field invariants need a lock or an AtomicReference to an immutable object; (3) the <b>ABA</b> problem in pointer-based structures (fixed with AtomicStampedReference/versioning); (4) lock-free code is hard to reason about and test (use jcstress).</p>`, followUps: ['Why does incrementAndGet use LOCK XADD on x86?', 'Explain false sharing and @Contended'] },
+    { q: `Explain the ABA problem with an example and how to prevent it.`, level: 'E', a: `<p>In a lock-free stack, thread T1 reads top = A (A.next = B) and prepares CAS(top, A → B). T1 is paused. T2 pops A, pops B, then pushes A back (now A.next = C). T1 resumes: top is A again, so CAS(A, B) <b>succeeds</b> and sets top to B — a node that was already removed. The stack is corrupted even though every CAS "looked right". Prevention: pair the reference with a version stamp (${C('AtomicStampedReference')}) incremented on every change, so the stale CAS fails; or avoid node reuse (in Java, GC helps: a node cannot be recycled while T1 still references it, but logical reuse like pushing the same object back can still cause ABA); or use hazard pointers/epochs in non-GC languages.</p>`, followUps: ['Does Java\'s GC fully eliminate ABA?', 'What is AtomicMarkableReference used for?'] },
+    { q: `Design a producer-consumer pipeline in Java. How do you handle shutdown and overload?`, level: 'I', a: `<p>Use a <b>bounded</b> BlockingQueue (ArrayBlockingQueue for predictable memory, LinkedBlockingQueue with a bound for higher throughput thanks to two locks). Producers call ${C('put')} (blocks when full = back-pressure) or ${C('offer(timeout)')} to fail fast and return 503; consumers run in an ExecutorService looping on ${C('take')}. <b>Shutdown</b>: after the last item, put one poison pill per consumer (or have each consumer re-insert the pill), then shutdown + awaitTermination; or use interrupts via shutdownNow for abort. <b>Overload</b>: choose explicitly between buffering (larger queue, higher latency) and shedding (offer with timeout, drop/reject, metrics, alerts). Monitor queue depth and consumer lag. Batching consumers can use ${C('drainTo')}. Across machines, the same pattern becomes Kafka/SQS with consumer groups.</p>`, followUps: ['Why notifyAll instead of notify in a hand-written version?', 'How would you guarantee per-key ordering with many consumers?'] },
+    { q: `What is the difference between thenApply, thenCompose, thenCombine, and which thread runs each callback?`, level: 'A', a: `<p>${C('thenApply(fn)')} transforms a result synchronously (map). ${C('thenCompose(fn)')} chains a function that itself returns a CompletableFuture and flattens it (flatMap) — use it for dependent async calls. ${C('thenCombine(other, fn)')} waits for two independent futures and merges both results (zip). Non-Async variants run the callback on the thread that completes the previous stage — or immediately on the <b>calling</b> thread if the stage is already complete. ${C('*Async(fn)')} variants submit the callback to the common pool, ${C('*Async(fn, executor)')} to your executor. So a heavy or blocking callback without Async can stall an I/O thread; and supplyAsync without an executor puts blocking work on the shared commonPool.</p>`, followUps: ['How do exceptions propagate through a chain?', 'Does cancel() interrupt the underlying task?'] },
+    { q: `How do you handle errors and timeouts in CompletableFuture chains?`, level: 'A', a: `<p>An exception completes the stage exceptionally; downstream thenApply/thenCompose stages are <b>skipped</b>, and the error propagates wrapped in ${C('CompletionException')}. Recovery operators: ${C('exceptionally(ex -> fallback)')} (only on failure), ${C('handle((v, ex) -> ...)')} (always; can transform both), ${C('exceptionallyCompose')} for an async fallback; ${C('whenComplete')} only observes (logging) and passes the result through. Timeouts (Java 9+): ${C('orTimeout')} fails with TimeoutException, ${C('completeOnTimeout(default)')} supplies a value. Neither stops the underlying work. Place recovery per dependency when the failure of one should not sink the whole result (e.g. each vendor in a price aggregator), and unwrap ${C('getCause()')} when logging.</p>`, followUps: ['What does join() throw vs get()?', 'How would you add retries with backoff?'] },
+    { q: `What are virtual threads, how are they implemented, and when should you NOT use them?`, level: 'A', a: `<p>Virtual threads (final in Java 21, JEP 444) are ${C('java.lang.Thread')} instances scheduled by the JVM onto a small ForkJoinPool of <b>carrier</b> platform threads. When a virtual thread blocks in a JDK I/O or locking API, its stack (a continuation) is saved to the heap and it <b>unmounts</b>, freeing the carrier; when ready it remounts, maybe on another carrier. They cost a few hundred bytes to KBs, so millions are feasible and thread-per-request is cheap again, with normal stack traces and debugging. Don't use them for: CPU-bound work (no speed-up), as a pooled resource (create per task; limit concurrency with semaphores), code that blocks inside synchronized on Java 21-23 or in native code (pinning), or code relying on heavy ThreadLocal caches. Remember the real limits move to DB connections, downstream rate limits and CPU.</p>`, followUps: ['What is pinning and how do you detect it?', 'How do ScopedValue and StructuredTaskScope relate to virtual threads?'] },
+    { q: `Your service switched to virtual threads and latency got worse under load. How do you investigate?`, level: 'E', a: `<p>Hypotheses and tools: (1) <b>Downstream saturation</b> — with thousands of concurrent virtual threads, the DB connection pool (e.g. Hikari max 20) becomes the queue; check pool wait times and add explicit limits/back-pressure. (2) <b>Pinning</b> — enable JFR and look for ${C('jdk.VirtualThreadPinned')} events (synchronized + I/O in a driver or our code on Java 21-23); fix with ReentrantLock or upgrade to 24+. (3) <b>CPU-bound work</b> on carriers starving others — profile with async-profiler/JFR; move heavy compute to a bounded platform pool. (4) <b>ThreadLocal bloat</b> and GC pressure — heap histograms (${C('jmap -histo')}), GC logs. (5) Use ${C('jcmd <pid> Thread.dump_to_file -format=json')} to see virtual threads and where they wait. Then load-test with realistic dependency latency.</p>`, followUps: ['How would you cap concurrency per downstream?', 'When would you roll back to a platform thread pool?'] },
+    { q: `What is thread-starvation deadlock in a pool and how do you avoid it?`, level: 'E', a: `<p>It happens when tasks running in a bounded pool block waiting for other tasks submitted to the <b>same</b> pool. Example: a pool of 4 threads, each running a parent task that submits a child and calls ${C('child.get()')}. All 4 threads are blocked on children that sit in the queue with no free thread to run them — nothing progresses, though no locks are involved. Same with a CyclicBarrier whose party count exceeds the pool size. Avoid it by: using separate pools for parent and child work; never blocking on futures from inside pool tasks (compose with thenCompose instead); using ForkJoinPool, whose join can run other tasks while waiting; sizing pools so parties fit; or using virtual threads, where blocking doesn't consume a scarce pool thread.</p>`, followUps: ['How does ForkJoinPool.join avoid blocking?', 'How would a thread dump reveal this?'] }
+  );
 
   registerModule({
     id: 'java12',
