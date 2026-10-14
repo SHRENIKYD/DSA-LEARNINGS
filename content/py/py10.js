@@ -419,6 +419,7 @@ print("all done")
               else { produced++; notes.push('Producer <b>put()</b> ' + next + '.'); }
             } else { pState = 'BLOCKED'; notes.push('<span class="c-r">Queue full → producer blocks in put()</span> until the consumer makes room.'); }
           }
+          if (!notes.length) notes.push('Consumer is still busy with <b>' + cur + '</b>; the producer ' + (pState === 'done' ? 'has already finished.' : 'is waiting.'));
           snap('<b>Tick ' + t + '.</b> ' + notes.join(' '));
           if (cState === 'exited') break;
         }

@@ -2110,7 +2110,7 @@ print(a, b, c)   # 0 10 [15, 10]` },
   practice.push({
     title: 'Celsius → Fahrenheit Table',
     level: 'Easy', tags: ['f-strings', 'float', 'range'], companies: ['Wipro', 'Cognizant'],
-    statement: R`<p>Write <code>temp_table(start, stop, step)</code> that returns a list of lines for Celsius values from <code>start</code> to <code>stop</code> inclusive, formatted as <code>"  -10°C =   14.0°F"</code>: Celsius right-aligned in 5 characters, Fahrenheit right-aligned in 7 characters with one decimal. Formula: F = C × 9/5 + 32.</p>`,
+    statement: R`<p>Write <code>temp_table(start, stop, step)</code> that returns a list of lines for Celsius values from <code>start</code> to <code>stop</code> inclusive, formatted as <code>"  -10°C =    14.0°F"</code>: Celsius right-aligned in 5 characters, Fahrenheit right-aligned in 7 characters with one decimal. Formula: F = C × 9/5 + 32.</p>`,
     constraints: R`−273 ≤ start ≤ stop ≤ 1000, step ≥ 1 (all ints).`,
     example: R`<p><code>temp_table(-10, 10, 10)</code> →</p><pre>  -10°C =    14.0°F
     0°C =    32.0°F
