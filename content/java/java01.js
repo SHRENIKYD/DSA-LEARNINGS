@@ -902,11 +902,1725 @@ public class SmallestType {
     }]
   });
 
+  /* ======================================================================
+     TOPIC 5 — Type casting: widening, narrowing, promotion
+     ====================================================================== */
+  topics.push({
+    title: 'Type Casting: Widening, Narrowing & Numeric Promotion',
+    analogy: R`<p>Pouring water between glasses. Pouring a <b>small glass into a big jug</b> (byte → int) is always safe — Java does it for you silently. That is <b>widening</b>. Pouring a <b>big jug into a small glass</b> (int → byte) may spill, so Java makes you say "I know, pour anyway" with a <b>cast</b>: <code>(byte) jug</code>. Whatever does not fit simply spills on the floor — it is <b>not</b> rounded or clamped, the top part is just gone. That is <b>narrowing</b>.</p>`,
+    explain: R`<h4>1. Widening — automatic and (mostly) safe</h4>
+<p>Java converts a smaller type into a bigger one automatically:</p>
+<p><b>byte → short → int → long → float → double</b>, and <b>char → int</b> (and onward).</p>
+${H.table(['Code', 'What happens'], [['<code>int i = 100; long l = i;</code>', 'fine, value kept'], ['<code>long l = 5; double d = l;</code>', 'fine, d = 5.0'], ["<code>int code = 'A';</code>", 'fine, code = 65'], ['<code>float f = 16_777_217;</code>', H.c('y', 'compiles, but f = 1.6777216E7 — precision lost!')]])}
+<p>The last row surprises people: int → float and long → float/double are called widening, but floats have only ~7 significant digits, so big integers get <b>rounded</b>.</p>
+<h4>2. Narrowing — you must cast, and bits get chopped</h4>
+${H.table(['Cast', 'Result', 'Why'], [
+  ['<code>(int) 3.99</code>', '3', 'decimal part dropped (toward zero)'],
+  ['<code>(int) -3.99</code>', '-3', 'toward zero, not down'],
+  ['<code>(byte) 300</code>', H.c('r', '44'), '300 = 1_0010_1100; keep the low 8 bits 0010_1100 = 44'],
+  ['<code>(byte) 200</code>', H.c('r', '-56'), 'low 8 bits 1100_1000; top bit is the sign → 200 − 256'],
+  ['<code>(char) 65</code>', "'A'", 'char is just a 16-bit number'],
+  ['<code>(int) 1e20</code>', 'Integer.MAX_VALUE', 'double → int <b>saturates</b> at the limits'],
+  ['<code>(int) Double.NaN</code>', '0', 'special rule'],
+  ['<code>(byte) 300.7</code>', '44', 'double → int (300) first, then int → byte']
+])}
+<h4>3. Numeric promotion — the rule that causes most compile errors</h4>
+<p>Before doing <code>+ - * / %</code> (and comparisons, bitwise ops), Java promotes both operands:</p>
+<ol><li>If either is <code>double</code> → both become double.</li><li>Else if either is <code>float</code> → float.</li><li>Else if either is <code>long</code> → long.</li><li>Else → <b>both become int</b> — even <code>byte + byte</code>!</li></ol>
+<p>So <code>byte a = 1, b = 2; byte c = a + b;</code> is a <span class="c-r">compile error</span> (<i>possible lossy conversion from int to byte</i>). Fix: <code>byte c = (byte) (a + b);</code>.</p>
+<h4>4. The two "secret casts"</h4>
+<ul><li><b>Compound assignment</b> <code>+=, -=, *=, ...</code> hides a cast: <code>b += 1</code> means <code>b = (byte)(b + 1)</code>. So <code>int m = 10; m += 3.7;</code> compiles and gives <b>13</b>.</li>
+<li><b>Compile-time constants</b> may narrow silently if they fit: <code>byte b = 10;</code> and <code>char c = 65;</code> are fine because 10 and 65 are constants in range. <code>final int k = 10; byte x = k;</code> also works; without <code>final</code> it does not.</li></ul>
+<h4>5. Things you cannot cast</h4>
+<p><code>boolean</code> ↔ numbers: never. <code>String</code> ↔ numbers: not by casting — use <code>Integer.parseInt("42")</code> and <code>String.valueOf(42)</code>.</p>`,
+    clues: [
+      '"possible lossy conversion from int to byte" → numeric promotion made it int; cast or use compound assignment',
+      '"Why does b += 1 compile but b = b + 1 doesn\'t?" → compound assignment contains an implicit cast',
+      '"(byte) 200 prints −56" → narrowing keeps low bits, top bit becomes the sign',
+      '"Round to nearest" vs "cast" → <code>(int)</code> truncates toward zero; use Math.round / floor / ceil',
+      '"Convert a large long timestamp to float" → widening can still lose precision (24-bit mantissa)',
+      '"Ternary returns a different type than expected" → both branches go through numeric promotion'
+    ],
+    code: [R`
+public class Casting {
+    public static void main(String[] args) {
+        // Widening: automatic
+        byte small = 42;
+        int  i = small;          // 42
+        long l = i;              // 42
+        double d = l;            // 42.0
+        System.out.println(i + " " + l + " " + d);
+
+        // Narrowing: explicit cast, bits are chopped
+        System.out.println((byte) 300);      // 44
+        System.out.println((byte) 200);      // -56
+        System.out.println((short) 70000);   // 4464
+        System.out.println((int) 3.99);      // 3
+        System.out.println((int) -3.99);     // -3  (toward zero)
+        System.out.println((int) 1e20);      // 2147483647 (saturates)
+        System.out.println((char) 65);       // A
+
+        // Promotion: byte + byte is int
+        byte a = 10, b = 20;
+        // byte c = a + b;                   // compile error: possible lossy conversion
+        byte c = (byte) (a + b);             // OK: 30
+        a += 5;                              // OK: hidden cast, a = 15
+        System.out.println(c + " " + a);
+
+        // Rounding is not casting
+        System.out.println(Math.round(2.5) + " " + Math.round(-2.5) + " " + Math.floor(-2.5) + " " + Math.ceil(2.1));
+        // 3 -2 -3.0 3.0   (Math.round = floor(x + 0.5))
+    }
+}`, R`
+// Safe conversions that throw instead of silently corrupting data
+public class SafeCasts {
+    public static void main(String[] args) {
+        long fits = 123L, tooBig = 3_000_000_000L;
+        System.out.println(Math.toIntExact(fits));          // 123
+        try {
+            System.out.println(Math.toIntExact(tooBig));    // throws
+        } catch (ArithmeticException e) {
+            System.out.println("refused: " + e.getMessage()); // integer overflow
+        }
+        byte raw = (byte) 0xF0;                             // a byte read from a file: -16
+        System.out.println(raw + " vs unsigned " + Byte.toUnsignedInt(raw)); // -16 vs unsigned 240
+        System.out.println(Integer.parseInt("-42") + 1);    // String -> int: -41
+        System.out.println(String.valueOf(42) + 1);         // int -> String: 421
+    }
+}`],
+    codeTitle: ['Widening, narrowing, promotion and rounding', 'Safe, checked conversions'],
+    viz: [{
+      title: 'Narrowing cast: what (byte), (short) and (char) really keep',
+      input: '300',
+      inputLabel: 'An int value (try 200, 128, -1, 65601, 70000)',
+      gen: function (input) {
+        var x = clampInt(input, -2147483648, 2147483647, 'Enter a whole number in int range (-2147483648 … 2147483647)');
+        var low8 = x & 0xFF, b = (x << 24) >> 24, s = (x << 16) >> 16, ch = x & 0xFFFF;
+        var f = [];
+        var hiAll = {}; for (var i = 0; i < 32; i++) hiAll[i] = i < 8 ? 'cur' : 'done';
+        f.push({ narr: 'The int <b>' + x + '</b> occupies 32 bits (' + hex(x, 8) + '). A cast to <code>byte</code> will keep only the <b>lowest 8 bits</b> (amber). The other 24 are thrown away — no rounding, no clamping.', parts: [{ type: 'bits', label: 'int ' + x + ' (32 bits)', value: x, width: 32, hl: hiAll }] });
+        var h8 = {}; h8[7] = 'sel';
+        f.push({ narr: 'Low 8 bits as an unsigned number: <b>' + low8 + '</b>. But <code>byte</code> is signed: bit 7 (purple) is the <b>sign bit</b> worth −128 instead of +128. Here it is <b>' + ((low8 >> 7) & 1) + '</b>.', parts: [{ type: 'bits', label: 'kept bits', value: low8, width: 8, hl: h8, dec: low8 + ' if read as unsigned' }] });
+        f.push({ narr: ((low8 >> 7) & 1) ? 'Sign bit is 1 → value = ' + low8 + ' − 256 = <b>' + b + '</b>. So <code>(byte) ' + x + '</code> is <b>' + b + '</b>.' : 'Sign bit is 0 → value = <b>' + b + '</b>. So <code>(byte) ' + x + '</code> is <b>' + b + '</b>.', parts: [{ type: 'bits', label: '(byte) ' + x, value: b, width: 8, hl: h8, dec: b }, { type: 'code', label: 'Java', lang: 'java', code: 'byte r = (byte) ' + x + ';\nSystem.out.println(r);   // ' + b, hl: { 2: 'ok' } }] });
+        var h16 = {}; for (i = 0; i < 16; i++) h16[i] = 'cur'; h16[15] = 'sel';
+        f.push({ narr: '<code>(short)</code> keeps the low <b>16</b> bits, again with a sign bit (bit 15): result <b>' + s + '</b>.', parts: [{ type: 'bits', label: '(short) ' + x, value: s, width: 16, hl: h16, dec: s }] });
+        var hc16 = {}; for (i = 0; i < 16; i++) hc16[i] = 'ok';
+        f.push({ narr: '<code>(char)</code> also keeps 16 bits but char is <b>unsigned</b>: no sign bit, so the result is <b>' + ch + '</b>' + (ch >= 32 && ch < 127 ? ' which prints as \'' + H.esc(String.fromCharCode(ch)) + '\'' : '') + '. Same bits as short, different meaning!', parts: [{ type: 'bits', label: '(char) ' + x + ' as a number', value: ch, width: 16, hl: hc16, dec: ch }] });
+        var hs = {}; for (i = 8; i < 32; i++) hs[i] = 'sel'; for (i = 0; i < 8; i++) hs[i] = 'ok';
+        f.push({ narr: 'Going back up: <code>int back = r;</code> (byte → int, widening). Java copies the sign bit into all 24 new top bits (<b>sign extension</b>, purple), so the value stays <b>' + b + '</b>. The original ' + x + ' is lost forever' + (b === x ? ' — except here it fit, so nothing was lost.' : '.'), parts: [{ type: 'bits', label: 'int back = (byte) ' + x, value: b, width: 32, hl: hs, dec: b }] });
+        var u = b & 0xFF;
+        f.push({ narr: 'Need the byte as 0..255 (e.g. reading a file)? Mask it: <code>r &amp; 0xFF</code> = <b>' + u + '</b> (or <code>Byte.toUnsignedInt(r)</code>). The mask clears the sign-extended bits.', parts: [{ type: 'bits', label: 'r & 0xFF', value: u, width: 32, hl: (function () { var o = {}; for (var k = 0; k < 8; k++) o[k] = 'ok'; return o; })(), dec: u }] });
+        f.push({ narr: 'Summary for <b>' + x + '</b>. Narrowing = "keep the low bits, reinterpret". If the value fit in the target range, nothing changes.', parts: [{ type: 'table', label: 'Casts of ' + x, columns: ['expression', 'result', 'value preserved?'], rows: [['(byte) ' + x, String(b), b === x ? 'yes' : 'no'], ['(short) ' + x, String(s), s === x ? 'yes' : 'no'], ['(char) ' + x, String(ch), ch === x ? 'yes' : 'no'], ['(long) ' + x, String(x), 'yes (widening)']], hl: { 0: b === x ? 'ok' : 'bad', 1: s === x ? 'ok' : 'bad', 2: ch === x ? 'ok' : 'bad', 3: 'ok' } }] });
+        return f;
+      }
+    }, {
+      title: 'Binary numeric promotion: what type is a op b?',
+      input: 'byte + short',
+      inputLabel: 'type op type (types: byte short char int long float double)',
+      gen: function (input) {
+        var m = String(input).trim().match(/^(\w+)\s*([+\-*\/%])\s*(\w+)$/);
+        var T = ['byte', 'short', 'char', 'int', 'long', 'float', 'double'];
+        if (!m || T.indexOf(m[1]) < 0 || T.indexOf(m[3]) < 0) throw new Error('Format: type op type, e.g. "byte + short" or "int * long"');
+        var A = m[1], op = m[2], B = m[3];
+        var nodes = [
+          { id: 'byte', label: 'byte', x: 8, y: 12, shape: 'box' }, { id: 'short', label: 'short', x: 24, y: 12, shape: 'box' },
+          { id: 'char', label: 'char', x: 24, y: 32, shape: 'box' }, { id: 'int', label: 'int', x: 42, y: 22, shape: 'box' },
+          { id: 'long', label: 'long', x: 58, y: 22, shape: 'box' }, { id: 'float', label: 'float', x: 74, y: 22, shape: 'box' },
+          { id: 'double', label: 'double', x: 91, y: 22, shape: 'box' }
+        ];
+        var edges = [['byte', 'short'], ['short', 'int'], ['char', 'int'], ['int', 'long'], ['long', 'float'], ['float', 'double']];
+        function g(hl, tags) { return { type: 'graph', label: 'Widening ladder (arrows = automatic)', directed: true, height: 42, nodes: nodes, edges: edges, hl: hl, tags: tags || {} }; }
+        var base = {}; base[A] = 'cur'; base[B] = 'cur';
+        var tg = {}; tg[A] = 'a'; tg[B] = (A === B ? 'a, b' : 'b');
+        var f = [];
+        f.push({ narr: 'We compute <code>a ' + H.esc(op) + ' b</code> where a is <b>' + A + '</b> and b is <b>' + B + '</b>. Java first promotes both operands to a common type using four rules, checked in order.', parts: [g(base, tg)] });
+        var res = null, rules = [['double', 'Is either operand double?'], ['float', 'Is either operand float?'], ['long', 'Is either operand long?']];
+        for (var i = 0; i < rules.length && !res; i++) {
+          var hit = A === rules[i][0] || B === rules[i][0];
+          var hl = Object.assign({}, base); hl[rules[i][0]] = hit ? 'ok' : 'done';
+          f.push({ narr: 'Rule ' + (i + 1) + ': ' + rules[i][1] + ' → <b>' + (hit ? 'yes' : 'no') + '</b>.' + (hit ? ' Both become <b>' + rules[i][0] + '</b>.' : ''), parts: [g(hl, tg)] });
+          if (hit) res = rules[i][0];
+        }
+        if (!res) {
+          res = 'int';
+          var hl2 = Object.assign({}, base); hl2['int'] = 'sel';
+          f.push({ narr: 'Rule 4: otherwise <b>both become int</b>. ' + (A !== 'int' && B !== 'int' ? 'Yes — even though neither operand was an int! The JVM has no byte/short/char arithmetic instructions; it only has int, long, float and double versions.' : ''), parts: [g(hl2, tg)] });
+        }
+        var fin = {}; fin[res] = 'sel';
+        var ok = res === A;
+        f.push({ narr: 'Result type: <b>' + res + '</b>. Assigning it back to a <b>' + A + '</b> variable ' + (ok ? 'is fine.' : 'is a <span class="c-r">compile error</span> (possible lossy conversion from ' + res + ' to ' + A + '). Fix with an explicit cast or a compound assignment.'), parts: [g(fin, (function () { var o = {}; o[res] = 'result'; return o; })()), { type: 'code', label: 'Does it compile?', lang: 'java', code: A + ' r1 = a ' + op + ' b;' + (ok ? '                // OK' : '                // ERROR') + '\n' + A + ' r2 = (' + A + ') (a ' + op + ' b);       // OK: explicit cast\n' + (res === A || ['byte', 'short', 'char', 'int', 'long', 'float', 'double'].indexOf(res) >= 0 ? A + ' r3 = a; r3 ' + op + '= b;       // OK: hidden cast in ' + op + '=' : ''), hl: { 1: ok ? 'ok' : 'bad', 2: 'ok', 3: 'ok' } }] });
+        return f;
+      }
+    }],
+    examples: [
+      { title: 'Predict the output: the ternary type trap (X88)', html: R`<p>Both branches of <code>?:</code> are promoted to one type. In the first, <code>0</code> is a constant that fits in char, so the type stays <b>char</b> → prints <code>X</code>. In the second, <code>i</code> is an int <i>variable</i>, so the result is <b>int</b> → prints <code>88</code> (the code of 'X'). Output: <code>X88</code>.</p>`, code: R`
+char x = 'X';
+int i = 0;
+System.out.print(true ? x : 0);     // X
+System.out.println(false ? i : x);  // 88` },
+      { title: 'Predict the output: compound assignment hides a cast', html: R`<p><code>m += 3.7</code> is <code>m = (int)(m + 3.7)</code> = (int) 13.7 = 13. <code>sh *= 10000</code> is <code>(short)(100000)</code> = 100000 − 131072 = −31072. Output: <code>13 -31072</code>. No warning, no error — a silent bug factory.</p>`, code: R`
+int m = 10;
+m += 3.7;
+short sh = 10;
+sh *= 10000;
+System.out.println(m + " " + sh);   // 13 -31072` },
+      { title: 'Widening that loses precision', html: R`<p>16,777,217 = 2<sup>24</sup> + 1 needs 25 significant bits; float has 24. Output: <code>1.6777216E7 true</code>. The same thing happens with <code>long</code> timestamps in nanoseconds stored as <code>double</code> beyond 2<sup>53</sup>.</p>`, code: R`
+int big = 16_777_217;
+float f = big;                       // widening, no cast needed... but rounded
+System.out.println(f + " " + (f == 16_777_216f));` },
+      { title: 'Constant narrowing works only in assignments', html: R`<p><code>byte b = 10;</code> compiles because 10 is a constant that fits. But passing <code>10</code> to a method that takes a <code>byte</code> does <b>not</b> compile — method calls do not allow implicit narrowing. You must write <code>take((byte) 10)</code>.</p>`, code: R`
+public class ConstNarrow {
+    static void take(byte b) { System.out.println("got " + b); }
+    public static void main(String[] args) {
+        byte ok = 10;                 // allowed: constant fits
+        final int k = 20;
+        byte alsoOk = k;              // allowed: k is a compile-time constant
+        // take(10);                  // compile error: int cannot be converted to byte
+        take((byte) 10);              // fine
+        System.out.println(ok + alsoOk);  // 30 (byte + byte -> int)
+    }
+}` }
+    ],
+    deepDive: R`<h4>The JLS conversion contexts</h4>
+<p>Java decides what conversions are allowed by <b>context</b>: <i>assignment</i> (widening, plus constant narrowing for byte/short/char, plus boxing/unboxing), <i>method invocation</i> (widening and boxing, but <b>no</b> constant narrowing — so overload resolution stays predictable), <i>casting</i> (almost anything numeric), <i>string</i> (anything with <code>+ ""</code>), and <i>numeric promotion</i> (unary and binary). A famous boxing trap: <code>Long x = 10;</code> fails (int cannot box to Long), while <code>long y = 10;</code> and <code>Long z = 10L;</code> work.</p>
+<h4>Exact narrowing rules</h4>
+<ul><li>Integer → smaller integer: discard high bits (two's complement truncation). Cost: zero — the CPU just reads the low register part.</li>
+<li>float/double → int or long: NaN → 0; otherwise round <b>toward zero</b>; values beyond the range <b>saturate</b> to MIN/MAX. x86's <code>cvttsd2si</code> returns 0x80000000 on overflow, so HotSpot adds a fix-up path to implement Java's saturation.</li>
+<li>float/double → byte/short/char: first to <b>int</b> (rules above), then int → small type. Hence <code>(byte) 1e20</code> = <code>(byte) Integer.MAX_VALUE</code> = −1, and <code>(char) -1.5</code> = <code>(char) -1</code> = 65535.</li>
+<li>double → float: rounds to nearest float; too large → Infinity.</li></ul>
+<h4>Unsigned helpers (Java has no unsigned int)</h4>
+<p><code>Byte.toUnsignedInt</code>, <code>Integer.toUnsignedLong</code>, <code>Integer.toUnsignedString</code>, <code>Integer.divideUnsigned</code>, <code>Integer.compareUnsigned</code>, <code>Long.parseUnsignedLong</code>. The mask idiom <code>b &amp; 0xFF</code> is everywhere in I/O, hashing and networking code.</p>
+<h4>Production reality</h4>
+<ul><li>Database IDs as <code>long</code> cast to <code>int</code> work for years, then silently wrap at 2<sup>31</sup>. Use <code>Math.toIntExact</code>.</li>
+<li>JSON numbers above 2<sup>53</sup> lose precision when parsed into <code>double</code> (and in JavaScript clients!) — send big IDs as strings.</li>
+<li>Static analysis (ErrorProne, SpotBugs, IntelliJ inspections) flags <i>narrowing compound assignment</i> and <i>int multiplication cast to long</i> — keep them enabled in CI.</li></ul>`,
+    aiEra: R`<p><b>What AI changes:</b> when javac says <i>possible lossy conversion</i>, an assistant will instantly "fix" it — almost always by inserting a cast. That makes the error disappear and can hide a real bug.</p>
+<p><b>Use AI as a partner:</b> ask <code>Is this cast safe for every input? Give me a value that breaks it</code> instead of <code>fix the compile error</code>. Ask it to replace raw casts with <code>Math.toIntExact</code> where overflow should be an error, and to list every compound assignment that narrows.</p>
+<p><b>Where AI goes wrong:</b> claiming <code>(int) 2.7</code> rounds to 3, that <code>(int)</code> on a negative double floors (it truncates toward zero), that widening is always lossless (long → double is not), or that <code>(int) "42"</code> works. It also tends to sprinkle <code>(long)</code> casts in the wrong place: <code>(long) (a * b)</code> casts <i>after</i> the overflow already happened.</p>
+<p><b>What you must still own:</b> predicting the result of any cast at the bit level, the four promotion rules, and the judgment of whether a narrowing should truncate, round, clamp, or throw.</p>`,
+    problems: [{
+      title: 'Simulate (byte) Without Casting',
+      level: 'Medium', tags: ['casting', 'bit manipulation', 'two\'s complement'], companies: ['Qualcomm', 'Nvidia', 'Google'],
+      statement: R`<p>Implement <code>static int toByte(int x)</code> that returns exactly what <code>(byte) x</code> would give, but <b>without</b> using any cast to byte, short or char. Only arithmetic and bitwise operators are allowed.</p>`,
+      constraints: R`<code>Integer.MIN_VALUE ≤ x ≤ Integer.MAX_VALUE</code>.`,
+      example: R`${H.table(['x', 'binary (low 8 bits)', 'toByte(x)'], [['300', '0010 1100', '44'], ['200', H.c('p', '1') + '100 1000', '-56'], ['-1', H.c('p', '1') + '111 1111', '-1'], ['-129', '0111 1111', '127']])}<p>The purple bit is the sign: if it is 1, subtract 256.</p>`,
+      brute: { why: R`<p>Arithmetic with <code>%</code>: <code>r = x % 256</code>, fix negative remainders, then subtract 256 if r ≥ 128. It works but needs two fix-ups because Java's <code>%</code> keeps the sign of the left operand — easy to get wrong for negative x.</p>`, code: R`
+static int toByteBrute(int x) {
+    int r = x % 256;            // -255 .. 255
+    if (r < 0) r += 256;        // 0 .. 255
+    if (r >= 128) r -= 256;     // -128 .. 127
+    return r;
+}` },
+      mcq: { q: 'What does <code>(x &lt;&lt; 24) &gt;&gt; 24</code> do?', options: ['Always returns 0', 'Moves the low byte to the top, then arithmetic-shifts back, copying its sign bit', 'Same as x &amp; 0xFF', 'Overflows and throws'], answer: 1, explain: '<code>&lt;&lt; 24</code> puts bit 7 into the sign position; <code>&gt;&gt;</code> (signed shift) brings it back while copying that sign — exactly sign extension of the low byte.' },
+      hints: [R`<p>Hint 1: <code>x &amp; 0xFF</code> gives the low 8 bits as a number 0..255.</p>`, R`<p>Hint 2: if that number is ≥ 128 the byte's sign bit is set, so its signed value is <code>n − 256</code>.</p>`, R`<p>Hint 3: a branch-free version: shift left 24 so bit 7 lands on bit 31, then signed-shift right 24 (sign extension). Test with 127, 128, 255, 256, −1, MIN_VALUE.</p>`],
+      solution: {
+        approach: R`<p>Mask to get the unsigned low byte, then reinterpret the top bit as −128. Or use the shift pair for a branch-free version — that is literally how the JVM's <code>i2b</code> instruction behaves.</p>`,
+        code: R`
+public class ToByte {
+    static int toByte(int x) {
+        int n = x & 0xFF;               // low 8 bits, 0..255
+        return n >= 128 ? n - 256 : n;  // bit 7 is worth -128, not +128
+    }
+    static int toByteShift(int x) {
+        return (x << 24) >> 24;         // sign-extend the low byte
+    }
+    public static void main(String[] args) {
+        int[] tests = {300, 200, -1, -129, 127, 128, Integer.MIN_VALUE, Integer.MAX_VALUE};
+        for (int t : tests) {
+            int expected = (byte) t;    // only used to verify
+            System.out.println(t + " -> " + toByte(t) + " " + toByteShift(t) + " " + (toByte(t) == expected));
+        }
+    }
+}`,
+        dry: { head: ['x', 'x &amp; 0xFF', '≥ 128?', 'result'], rows: [['300', '44', 'no', '44'], ['200', '200', 'yes', '200 − 256 = -56'], ['-1', '255', 'yes', '-1'], ['-129', '127', 'no', '127'], ['MIN_VALUE', '0', 'no', '0']] },
+        complexity: R`<p>O(1) time and space.</p>`,
+        followUps: ['Generalize to <code>toBits(x, n)</code> for any width 1..31.', 'Write <code>toChar(x)</code> — why is it just <code>x &amp; 0xFFFF</code>?']
+      }
+    }]
+  });
+
+  /* ======================================================================
+     TOPIC 6 — Operators, precedence & evaluation order
+     ====================================================================== */
+  topics.push({
+    title: 'Operators: Arithmetic, ++/--, Logical, Bitwise, Shifts & Precedence',
+    analogy: R`<p>An expression is like a <b>kitchen order ticket</b>. <b>Precedence</b> is the restaurant rule "desserts are plated after mains" — it decides which parts group together (<code>*</code> before <code>+</code>). <b>Evaluation order</b> is the waiter reading the ticket strictly <b>left to right</b>, collecting each ingredient in turn. And <code>x++</code> is a waiter who <b>writes down the old number on the ticket first</b>, then updates the stock count; <code>++x</code> updates the stock first and writes the new number.</p>`,
+    explain: R`<h4>Arithmetic: + − * / %</h4>
+${H.table(['Expression', 'Result', 'Rule'], [
+  ['<code>7 / 2</code>', '3', 'int / int → int, fraction dropped (toward zero)'],
+  ['<code>-7 / 2</code>', '-3', 'toward zero, not −4'],
+  ['<code>7 % 3</code> / <code>-7 % 3</code>', '1 / -1', '<code>%</code> takes the sign of the <b>left</b> number'],
+  ['<code>Math.floorMod(-7, 3)</code>', '2', 'always in 0..2 — use for clocks, circular arrays'],
+  ['<code>7 / 2.0</code>', '3.5', 'one double makes it double maths'],
+  ['<code>5 / 0</code>', H.c('r', 'ArithmeticException'), 'int division by zero throws'],
+  ['<code>5.0 / 0</code>', 'Infinity', 'floating point never throws; <code>0.0 / 0</code> is NaN']
+])}
+<h4>Increment and decrement</h4>
+<p><code>x++</code> (post): use the <b>old</b> value, then add 1. <code>++x</code> (pre): add 1, then use the <b>new</b> value. On a line of their own (<code>i++;</code>) they are identical. Inside expressions they differ:</p>
+${H.table(['Code (x starts at 5)', 'y', 'x after'], [['<code>y = x++;</code>', '5', '6'], ['<code>y = ++x;</code>', '6', '6'], ['<code>x = x++;</code>', '—', H.c('r', '5 (unchanged!)')]])}
+<h4>Comparison and logic</h4>
+<ul><li><code>== != &lt; &gt; &lt;= &gt;=</code> give a <code>boolean</code>. For objects, <code>==</code> compares <b>references</b> (covered in the Strings module).</li>
+<li><code>&amp;&amp;</code> and <code>||</code> <b>short-circuit</b>: the right side runs only if needed. <code>if (s != null &amp;&amp; s.length() &gt; 0)</code> is safe because the right side is skipped when s is null.</li>
+<li><code>&amp;</code>, <code>|</code>, <code>^</code> on booleans evaluate <b>both</b> sides (no short circuit). <code>!</code> negates.</li></ul>
+<h4>Bitwise and shifts (on int/long)</h4>
+${H.table(['Op', 'Meaning', 'Example (8-bit view)'], [
+  ['<code>&amp;</code>', '1 where both are 1', '1100 &amp; 1010 = 1000'],
+  ['<code>|</code>', '1 where either is 1', '1100 | 1010 = 1110'],
+  ['<code>^</code>', '1 where they differ', '1100 ^ 1010 = 0110'],
+  ['<code>~</code>', 'flip every bit', '~5 = −6 (always −x − 1)'],
+  ['<code>&lt;&lt; k</code>', 'shift left, fill 0 (×2<sup>k</sup>)', '3 &lt;&lt; 2 = 12'],
+  ['<code>&gt;&gt; k</code>', 'shift right, copy the sign bit', '−8 &gt;&gt; 1 = −4'],
+  ['<code>&gt;&gt;&gt; k</code>', 'shift right, fill 0 (unsigned)', '−8 &gt;&gt;&gt; 1 = 2147483644']
+])}
+<p>Shift distances are taken <b>mod 32</b> for int (mod 64 for long): <code>1 &lt;&lt; 32</code> is 1, not 0.</p>
+<h4>String concatenation</h4>
+<p><code>+</code> with a String on either side means "join as text", and it works <b>left to right</b>: <code>1 + 2 + "3"</code> = <code>"33"</code> but <code>"1" + 2 + 3</code> = <code>"123"</code>.</p>
+<h4>Precedence (high → low) — the part you must remember</h4>
+${H.table(['Level', 'Operators'], [['postfix', '<code>x++ x--</code>'], ['unary', '<code>++x --x + - ! ~ (cast)</code>'], ['multiplicative', '<code>* / %</code>'], ['additive', '<code>+ -</code>'], ['shift', '<code>&lt;&lt; &gt;&gt; &gt;&gt;&gt;</code>'], ['relational', '<code>&lt; &gt; &lt;= &gt;= instanceof</code>'], ['equality', '<code>== !=</code>'], ['bitwise', '<code>&amp;</code> then <code>^</code> then <code>|</code>'], ['logical', '<code>&amp;&amp;</code> then <code>||</code>'], ['ternary', '<code>?:</code>'], ['assignment', '<code>= += -= ...</code> (right to left)']])}
+<p><b>Golden rule:</b> precedence decides <i>grouping</i>; operands are still <b>evaluated left to right</b>. When in doubt, add brackets — readers will thank you.</p>`,
+    clues: [
+      '"Predict the output" with <code>i++ + ++i</code> → evaluate operands left to right, tracking the variable after each step',
+      '"i = i++" → the old value is saved, the increment is overwritten: i is unchanged',
+      '"Avoid NullPointerException in a condition" → short-circuit <code>&amp;&amp;</code> with the null check first',
+      '"Negative index / wrap around a circular buffer" → <code>Math.floorMod</code> instead of <code>%</code>',
+      '"Check odd / power of two / divide by 2 fast" → <code>x &amp; 1</code>, <code>x &amp; (x − 1)</code>, <code>x &gt;&gt; 1</code>',
+      '"Unsigned right shift" / "hash spreading" / "binary search mid" → <code>&gt;&gt;&gt;</code>'
+    ],
+    code: [R`
+public class Ops {
+    public static void main(String[] args) {
+        // Arithmetic
+        System.out.println(7 / 2 + " " + -7 / 2 + " " + 7 % 3 + " " + -7 % 3);   // 3 -3 1 -1
+        System.out.println(Math.floorDiv(-7, 2) + " " + Math.floorMod(-7, 3));   // -4 2
+
+        // ++ / --
+        int x = 5;
+        int a = x++;          // a = 5, x = 6
+        int b = ++x;          // x = 7, b = 7
+        System.out.println(a + " " + b + " " + x);                                // 5 7 7
+
+        // Short-circuit protects us
+        String s = null;
+        if (s != null && s.length() > 3) System.out.println("long");
+        else System.out.println("null or short");                                // null or short
+
+        // Bitwise
+        int n = 12;                                   // 1100
+        System.out.println((n & 1) == 0 ? "even" : "odd");                       // even
+        System.out.println((n & (n - 1)) == 0);       // power of two? false
+        System.out.println(n << 2);                   // 48
+        System.out.println(-8 >> 1);                  // -4
+        System.out.println(-8 >>> 1);                 // 2147483644
+        System.out.println(1 << 32);                  // 1 (shift distance 32 & 31 = 0)
+
+        // String concatenation, left to right
+        System.out.println(1 + 2 + "3" + 4 + 5);      // 3345
+        System.out.println("sum: " + (4 + 5));        // sum: 9
+    }
+}`],
+    codeTitle: ['Operators cheat-sheet in code'],
+    viz: [{
+      title: 'Why i = i++ leaves i unchanged (bytecode view)',
+      input: '5',
+      inputLabel: 'Starting value of i',
+      gen: function (input) {
+        var i0 = clampInt(input, -1000000, 1000000, 'Enter a whole number between -1000000 and 1000000');
+        var code = 'iload_1      // push the CURRENT value of i\niinc 1, 1    // add 1 directly in local slot 1\nistore_1     // pop the saved value back into i';
+        var f = [];
+        function P(line, stack, i, narr, cls) { var h = {}; if (line) h[line] = cls || 'cur'; f.push({ narr: narr, parts: [{ type: 'code', label: 'Java', lang: 'java', code: 'int i = ' + i0 + ';\ni = i++;\nSystem.out.println(i);', hl: { 2: 'cur' } }, { type: 'code', label: 'Bytecode for  i = i++;', lang: 'text', code: code, hl: h }, { type: 'stack', label: 'Operand stack', items: stack }, { type: 'vars', label: 'Local slot 1', vals: { i: i }, hl: { i: cls === 'bad' ? 'bad' : (line === 2 ? 'ok' : '') } }] }); }
+        P(0, [], i0, 'Start: <code>i = ' + i0 + '</code>. Java evaluates the <b>right side first</b>, then assigns. The right side is <code>i++</code> — "use the old value, then increment".');
+        P(1, [i0], i0, '<code>iload_1</code>: the <b>old value ' + i0 + '</b> is pushed onto the operand stack. This is the value the expression <code>i++</code> will produce.');
+        P(2, [i0], i0 + 1, '<code>iinc 1, 1</code>: the side effect happens — the local i becomes <b>' + (i0 + 1) + '</b>. But the stack still holds the old ' + i0 + '.', 'ok');
+        P(3, [], i0, '<code>istore_1</code>: the assignment <code>i = ...</code> stores the stacked value <b>' + i0 + '</b> into i, <span class="c-r">overwriting the increment</span>.', 'bad');
+        f.push({ narr: 'Compare <code>i = ++i</code>: bytecode is <code>iinc 1,1</code> → <code>iload_1</code> → <code>istore_1</code>. It increments first, then loads the new value, so i becomes ' + (i0 + 1) + '. And plain <code>i++;</code> is just <code>iinc</code>.', parts: [{ type: 'table', label: 'Three ways', columns: ['statement', 'bytecode', 'i after'], rows: [['i = i++;', 'iload, iinc, istore', String(i0)], ['i = ++i;', 'iinc, iload, istore', String(i0 + 1)], ['i++;', 'iinc', String(i0 + 1)]], hl: { 0: 'bad', 1: 'ok', 2: 'ok' } }] });
+        f.push({ narr: 'Output: <b>' + i0 + '</b>. This is a top-10 Java interview puzzle. Real code should never write <code>i = i++</code> — linters (ErrorProne, SonarQube) flag it as a self-assignment bug.', parts: [{ type: 'text', label: 'Console', html: '<b>' + i0 + '</b>' }] });
+        return f;
+      }
+    }, {
+      title: 'Left-to-right evaluation: y = x++ + ++x * x--',
+      input: '5',
+      inputLabel: 'Starting value of x',
+      gen: function (input) {
+        var x = clampInt(input, -10000, 10000, 'Enter a whole number between -10000 and 10000');
+        var x0 = x, f = [], vals = [];
+        var code = 'int x = ' + x0 + ';\nint y = x++ + ++x * x--;\nSystem.out.println(y + " " + x);';
+        function P(narr, hlv, extra) { f.push({ narr: narr, parts: [{ type: 'code', label: 'Java', lang: 'java', code: code, hl: { 2: 'cur' } }, { type: 'array', label: 'Operand values collected (left → right)', values: vals.length ? vals.slice() : ['—'], idxLabels: ['x++', '++x', 'x--'].slice(0, Math.max(1, vals.length)) , hl: hlv || {} }, { type: 'vars', label: 'Variable', vals: { x: x }, hl: { x: 'cur' } }].concat(extra || []) }); }
+        P('Precedence groups it as <code>x++ + ((++x) * (x--))</code>. But Java still <b>evaluates the three operands left to right</b> before doing the arithmetic each needs.');
+        vals.push(x); x++; P('Operand 1: <code>x++</code> → value <b>' + vals[0] + '</b> (old), then x becomes ' + x + '.', { 0: 'ok' });
+        x++; vals.push(x); P('Operand 2: <code>++x</code> → x becomes ' + x + ' first, value <b>' + vals[1] + '</b>.', { 1: 'ok' });
+        vals.push(x); x--; P('Operand 3: <code>x--</code> → value <b>' + vals[2] + '</b> (old), then x becomes ' + x + '.', { 2: 'ok' });
+        var prod = Math.imul(vals[1], vals[2]);
+        P('Now the operators, by precedence: multiplication first: ' + vals[1] + ' * ' + vals[2] + ' = <b>' + prod + '</b>.', { 1: 'sel', 2: 'sel' });
+        var y = (vals[0] + prod) | 0;
+        P('Then addition: ' + vals[0] + ' + ' + prod + ' = <b>' + y + '</b>. Prints <b>' + y + ' ' + x + '</b>.', { 0: 'sel', 1: 'sel', 2: 'sel' }, [{ type: 'text', label: 'Console', html: '<b>' + y + ' ' + x + '</b>' }]);
+        f.push({ narr: 'A common wrong answer evaluates <code>++x * x--</code> before <code>x++</code> "because * binds tighter". No: precedence decides grouping, <b>not</b> the order in which operands are read. Java guarantees left-to-right (C/C++ do not — there this would be undefined behaviour!).', parts: [{ type: 'table', label: 'Right vs wrong mental model', columns: ['model', 'operands read', 'y'], rows: [['Java (left to right)', vals.join(', '), String(y)], ['"* first" (wrong)', 'evaluates ++x and x-- first', 'different']], hl: { 0: 'ok', 1: 'bad' } }] });
+        return f;
+      }
+    }, {
+      title: 'Shift lab: <<, >> and >>> on 32 bits',
+      input: '-8 1',
+      inputLabel: 'value and shift distance (e.g. "-8 1", "1 33", "96 4")',
+      gen: function (input) {
+        var t = String(input).trim().split(/[\s,]+/);
+        if (t.length !== 2) throw new Error('Type a value and a distance, e.g. "-8 1"');
+        var v = clampInt(t[0], -2147483648, 2147483647, 'value must be an int');
+        var d = clampInt(t[1], 0, 200, 'distance must be 0..200');
+        var e = d & 31, f = [];
+        var sl = v << e, sr = v >> e, ur = v >>> e;
+        var top = {}; for (var i = 31; i > 31 - e && i >= 0; i--) top[i] = 'sel';
+        var bot = {}; for (i = 0; i < e; i++) bot[i] = 'sel';
+        var sg = {}; sg[31] = 'cur';
+        f.push({ narr: 'Value <b>' + v + '</b> in 32 bits. Bit 31 (amber) is the sign bit: <b>' + ((v >>> 31) & 1) + '</b>.', parts: [{ type: 'bits', label: 'v = ' + v, value: v, width: 32, hl: sg }] });
+        f.push({ narr: 'Java uses only the low 5 bits of the distance for int: ' + d + ' &amp; 31 = <b>' + e + '</b>.' + (d !== e ? ' <span class="c-y">So shifting by ' + d + ' is the same as shifting by ' + e + '!</span>' : ''), parts: [{ type: 'bits', label: 'distance ' + d, value: d, width: 8, hl: { 0: 'ok', 1: 'ok', 2: 'ok', 3: 'ok', 4: 'ok', 5: 'done', 6: 'done', 7: 'done' } }, { type: 'vars', label: 'effective', vals: { 'distance & 31': e }, hl: { 'distance & 31': 'ok' } }] });
+        f.push({ narr: '<code>v &lt;&lt; ' + e + '</code>: everything moves left, ' + e + ' zeros enter on the right (purple). Bits pushed past bit 31 are lost. Result <b>' + sl + '</b>' + (e && sl !== v * Math.pow(2, e) ? ' — not v × 2<sup>' + e + '</sup> because bits fell off (overflow).' : (e ? ' = v × 2<sup>' + e + '</sup>.' : '.')), parts: [{ type: 'bits', label: 'v << ' + e, value: sl, width: 32, hl: bot }] });
+        var sgn = (v >>> 31) & 1;
+        f.push({ narr: '<code>v &gt;&gt; ' + e + '</code> (signed / arithmetic): bits move right and the <b>sign bit is copied</b> into the ' + e + ' new top positions (' + sgn + 's). Result <b>' + sr + '</b> = floor(v / 2<sup>' + e + '</sup>).', parts: [{ type: 'bits', label: 'v >> ' + e, value: sr, width: 32, hl: top }] });
+        f.push({ narr: '<code>v &gt;&gt;&gt; ' + e + '</code> (unsigned / logical): bits move right and <b>zeros</b> fill the top. ' + (sgn && e ? 'For a negative number this gives a big positive result: <b>' + (ur | 0) + '</b>.' : 'For non-negative numbers it equals &gt;&gt;: <b>' + (ur | 0) + '</b>.'), parts: [{ type: 'bits', label: 'v >>> ' + e, value: ur | 0, width: 32, hl: top, dec: ur | 0 }] });
+        f.push({ narr: 'Summary. Uses: <code>&lt;&lt;</code> fast multiply by powers of two and building bit masks; <code>&gt;&gt;</code> divide rounding down; <code>&gt;&gt;&gt;</code> treat an int as unsigned (hashing, <code>(lo + hi) &gt;&gt;&gt; 1</code>).', parts: [{ type: 'table', label: 'Results', columns: ['expression', 'value'], rows: [['v << ' + d, String(sl)], ['v >> ' + d, String(sr)], ['v >>> ' + d, String(ur | 0)]], hl: { 2: 'sel' } }] });
+        return f;
+      }
+    }],
+    examples: [
+      { title: 'Predict the output: concatenation order', html: R`<p>Left to right: <code>1 + 2</code> = 3 (both ints), then <code>3 + "3"</code> = "33", then "33" + 4 = "334", then "3345". The char line: <code>'a' + 'b'</code> is int maths (97 + 98). Output:</p><pre>3345
+195
+ab
+a1</pre>`, code: R`
+System.out.println(1 + 2 + "3" + 4 + 5);   // 3345
+System.out.println('a' + 'b');             // 195
+System.out.println("" + 'a' + 'b');        // ab
+System.out.println("a" + 1);               // a1` },
+      { title: 'Predict the output: side effects in compound assignment', html: R`<p><code>a += a++</code> saves the left value (5) first, then evaluates <code>a++</code> (5, a becomes 6), adds 5 + 5 = 10 and stores it — the increment is lost again. <code>k = k++ + ++k</code>: operands 5 then 7 → 12. Output: <code>10 12</code>.</p>`, code: R`
+int a = 5;
+a += a++;
+int k = 5;
+k = k++ + ++k;
+System.out.println(a + " " + k);   // 10 12` },
+      { title: 'Short-circuit vs non-short-circuit', html: R`<p>With <code>&amp;&amp;</code> the method <code>check()</code> is never called because the left side is false. With <code>&amp;</code> both sides run. Output: <code>calls = 1</code>. Use <code>&amp;&amp;</code>/<code>||</code> in conditions; use <code>&amp;</code>/<code>|</code> only for bits or when both sides must run.</p>`, code: R`
+public class ShortCircuit {
+    static int calls = 0;
+    static boolean check() { calls++; return true; }
+    public static void main(String[] args) {
+        boolean r1 = false && check();   // check() skipped
+        boolean r2 = false & check();    // check() runs
+        System.out.println("calls = " + calls);
+    }
+}` },
+      { title: 'Circular index with floorMod', html: R`<p>Moving left from index 0 in a ring of 5 seats should land on seat 4. <code>(0 - 1) % 5</code> = <span class="c-r">−1</span> (crash on an array!). <code>Math.floorMod(0 - 1, 5)</code> = <span class="c-g">4</span>. Equivalent manual trick: <code>((i % n) + n) % n</code>.</p>${H.arr(['A', 'B', 'C', 'D', 'E'], { hl: { 0: 'y', 4: 'g' }, ptr: { 0: 'i', 4: 'i−1' } })}`, code: R`
+int n = 5, i = 0;
+System.out.println((i - 1) % n);              // -1
+System.out.println(Math.floorMod(i - 1, n));  // 4
+System.out.println(((i - 1) % n + n) % n);    // 4` }
+    ],
+    deepDive: R`<h4>The precise evaluation rules (JLS §15.7)</h4>
+<ul><li>The left operand of a binary operator is <b>fully evaluated</b> (including its side effects) before any part of the right operand.</li>
+<li>For <code>a op= b</code>, the value of <code>a</code> is saved <b>before</b> <code>b</code> is evaluated — that is why <code>a += a++</code> loses the increment.</li>
+<li>Method arguments are evaluated left to right; array index expressions before the right-hand side of an assignment: <code>arr[i] = i = 2</code> stores into the <b>old</b> <code>arr[i]</code>.</li>
+<li>If the left operand throws, the right operand is never evaluated.</li></ul>
+<p>Java made these rules strict on purpose; in C/C++ <code>i = i++ + ++i</code> is <i>undefined behaviour</i>.</p>
+<h4>Division and remainder identities</h4>
+<p>Java guarantees <code>(a / b) * b + (a % b) == a</code> for all ints (except b = 0). Division truncates toward zero, so the remainder carries the dividend's sign. <code>Math.floorDiv/floorMod</code> round toward −∞ instead; <code>Math.ceilDiv</code> (Java 18) toward +∞. Overflow corner: <code>Integer.MIN_VALUE / -1</code> = MIN_VALUE (no exception!) and <code>MIN_VALUE % -1</code> = 0.</p>
+<h4>Precedence traps</h4>
+<ul><li><code>if (flags &amp; MASK == 0)</code> parses as <code>flags &amp; (MASK == 0)</code> → compile error for ints. Write <code>(flags &amp; MASK) == 0</code>.</li>
+<li><code>x &lt;&lt; 1 + 1</code> is <code>x &lt;&lt; 2</code> (additive binds tighter than shift).</li>
+<li><code>"Total: " + a + b</code> concatenates; <code>"Total: " + (a + b)</code> adds.</li>
+<li>The ternary is right-associative: <code>a ? b : c ? d : e</code> = <code>a ? b : (c ? d : e)</code>.</li></ul>
+<h4>Performance notes</h4>
+<p>Modern JITs turn <code>x / 8</code> into shifts with a sign correction and division by any constant into a multiply-by-reciprocal, so write the clear version. <code>%</code> by a power of two can be <code>x &amp; (n − 1)</code> <b>only for non-negative x</b> — that is how <code>HashMap</code> picks a bucket (after spreading the hash with <code>h ^ (h &gt;&gt;&gt; 16)</code>). String <code>+</code> in a single expression compiles to an efficient <code>invokedynamic</code> (StringConcatFactory, since Java 9); in loops, still use <code>StringBuilder</code>.</p>`,
+    aiEra: R`<p><b>What AI changes:</b> LLMs can evaluate tricky expressions and explain them, and an agent can just run the snippet in <code>jshell</code> to get the ground truth. Output-prediction trivia matters less in day-to-day work.</p>
+<p><b>Use AI as a partner:</b> generate drills — <code>Give me 10 Java predict-the-output questions about ++, compound assignment and string concatenation, answers hidden</code>. Then verify each answer in jshell, never by trusting the model.</p>
+<p><b>Where AI goes wrong:</b> it frequently applies C/C++ intuition ("undefined behaviour", "depends on the compiler") to Java, mixes up <code>&gt;&gt;</code> and <code>&gt;&gt;&gt;</code> for negatives, forgets shift-distance masking (claims <code>1 &lt;&lt; 32 == 0</code>), and evaluates <code>i++ + ++i</code> wrongly when it reasons token by token. Treat any confident explanation of a side-effect puzzle as a hypothesis.</p>
+<p><b>What you must still own:</b> interviewers still ask these puzzles to test precision. You must be able to trace evaluation left to right on a whiteboard, know when <code>%</code> goes negative, and write readable code (brackets, no side effects inside complex expressions) so humans and AI reviewers both get it right.</p>`,
+    problems: [{
+      title: 'Implement floorDiv and floorMod',
+      level: 'Medium', tags: ['operators', 'division', 'math'], companies: ['Google', 'Microsoft', 'Bloomberg'],
+      statement: R`<p>Java's <code>/</code> rounds toward zero and <code>%</code> follows the sign of the dividend. Implement <code>floorDiv(a, b)</code> (round toward −∞) and <code>floorMod(a, b)</code> (result has the sign of <code>b</code>) using only <code>/</code>, <code>%</code>, comparisons and bit operators — no <code>Math</code> calls, no <code>double</code>.</p>`,
+      constraints: R`<code>b ≠ 0</code>; any int a, b. For <code>floorDiv(MIN_VALUE, -1)</code> return MIN_VALUE (same overflow as Java).`,
+      example: R`${H.table(['a, b', 'a / b', 'a % b', 'floorDiv', 'floorMod'], [['7, 2', '3', '1', '3', '1'], ['-7, 2', '-3', '-1', H.c('g', '-4'), H.c('g', '1')], ['7, -2', '-3', '1', H.c('g', '-4'), H.c('g', '-1')], ['-8, 2', '-4', '0', '-4', '0']])}<p>Check: floorDiv · b + floorMod = a, e.g. (−4)·2 + 1 = −7.</p>`,
+      brute: { why: R`<p>Convert to <code>double</code>, call <code>Math.floor(a / (double) b)</code>, cast back. It looks fine but doubles have only 53 bits of precision — for longs it breaks, it is slower, and it is banned by the problem. Another brute: loop subtracting b until crossing zero — O(|a|) time, 2 billion steps worst case.</p>`, code: R`
+static int floorDivBrute(int a, int b) {
+    return (int) Math.floor((double) a / b);   // ok for int, wrong idea for long
+}
+static int floorModBrute(int a, int b) {
+    return a - floorDivBrute(a, b) * b;
+}` },
+      mcq: { q: 'When does <code>a / b</code> differ from <code>floorDiv(a, b)</code>?', options: ['Whenever a is negative', 'When the signs of a and b differ AND the division is not exact', 'When b is negative', 'Never for ints'], answer: 1, explain: 'Truncation and floor only disagree for a negative non-integer quotient: signs differ and remainder ≠ 0. Then floor is one less.' },
+      hints: [R`<p>Hint 1: start from <code>q = a / b</code>. It is already correct when the quotient is positive or exact.</p>`, R`<p>Hint 2: the signs differ exactly when <code>(a ^ b) &lt; 0</code> (the XOR's sign bit is 1). If they differ and <code>a % b != 0</code>, subtract 1 from q.</p>`, R`<p>Hint 3: for floorMod: <code>m = a % b</code>; if m ≠ 0 and m's sign differs from b's (<code>(m ^ b) &lt; 0</code>), add b. Test (−7,2), (7,−2), (−8,2), (MIN_VALUE, −1).</p>`],
+      solution: {
+        approach: R`<p>Correct truncation into flooring with one adjustment, detected by an XOR sign test — exactly how the JDK implements <code>Math.floorDiv</code>/<code>floorMod</code>. No overflow except the inherent <code>MIN_VALUE / -1</code>.</p>`,
+        code: R`
+public class FloorOps {
+    static int floorDiv(int a, int b) {
+        int q = a / b;                          // truncates toward zero
+        if ((a % b != 0) && ((a ^ b) < 0)) q--; // negative, inexact -> one lower
+        return q;
+    }
+    static int floorMod(int a, int b) {
+        int m = a % b;                          // sign of a
+        if (m != 0 && ((m ^ b) < 0)) m += b;    // move into b's sign range
+        return m;
+    }
+    public static void main(String[] args) {
+        int[][] t = {{7, 2}, {-7, 2}, {7, -2}, {-8, 2}, {Integer.MIN_VALUE, -1}};
+        for (int[] p : t) {
+            int a = p[0], b = p[1];
+            System.out.println(a + "," + b + " -> " + floorDiv(a, b) + " " + floorMod(a, b)
+                + " (Math: " + Math.floorDiv(a, b) + " " + Math.floorMod(a, b) + ")");
+        }
+    }
+}`,
+        dry: { head: ['a, b', 'q = a/b', 'a%b', 'signs differ?', 'floorDiv', 'floorMod'], rows: [['-7, 2', '-3', '-1', 'yes', '-4', '-1 + 2 = 1'], ['7, -2', '-3', '1', 'yes', '-4', '1 + (-2) = -1'], ['-8, 2', '-4', '0', 'yes', '-4 (exact)', '0'], ['7, 2', '3', '1', 'no', '3', '1']] },
+        complexity: R`<p>O(1) time and space.</p>`,
+        followUps: ['Write <code>ceilDiv</code> the same way.', 'Why does <code>x &amp; (n − 1)</code> equal <code>floorMod(x, n)</code> for any int x when n is a power of two?']
+      }
+    }]
+  });
+
+  /* ======================================================================
+     TOPIC 7 — Integer overflow
+     ====================================================================== */
+  topics.push({
+    title: 'Integer Overflow: Wrap-Around, Detection & Prevention',
+    analogy: R`<p>An old car <b>odometer</b> with 6 digits shows 999,999 km. Drive one more kilometre and it shows <b>000,000</b> — it did not explode, it just <b>wrapped around</b>, and now it lies to you. Java's <code>int</code> is a 32-bit odometer with a twist: the moment it passes 2,147,483,647 it shows <b>−2,147,483,648</b>. No alarm, no exception — the car keeps driving with a wrong number. That silence is what makes overflow dangerous.</p>`,
+    explain: R`<h4>What overflow is</h4>
+<p>Every integer type has a fixed number of bits. When the true mathematical result does not fit, Java keeps only the low bits (like a cast) and carries on. The result is off by a multiple of 2<sup>32</sup> (for int) or 2<sup>64</sup> (for long).</p>
+${H.table(['Expression', 'True value', 'Java int result'], [
+  ['<code>Integer.MAX_VALUE + 1</code>', '2,147,483,648', H.c('r', '−2,147,483,648')],
+  ['<code>Integer.MIN_VALUE − 1</code>', '−2,147,483,649', H.c('r', '2,147,483,647')],
+  ['<code>1_000_000 * 1_000_000</code>', '10<sup>12</sup>', H.c('r', '−727,379,968')],
+  ['<code>2_000_000_000 + 2_000_000_000</code>', '4 × 10<sup>9</sup>', H.c('r', '−294,967,296')],
+  ['<code>Math.abs(Integer.MIN_VALUE)</code>', '2,147,483,648', H.c('r', '−2,147,483,648 (still negative!)')],
+  ['<code>Integer.MIN_VALUE / -1</code>', '2,147,483,648', H.c('r', '−2,147,483,648 (no exception)')]
+])}
+<h4>Why no error?</h4>
+<p>The CPU adds 32-bit numbers in one instruction and simply drops the carry. Java's spec says integer arithmetic <b>wraps</b> (it is defined behaviour, unlike C where signed overflow is undefined). Checking every operation would slow down every program, so Java gives you opt-in checks instead.</p>
+<h4>The classic trap: the long on the left does not help</h4>
+<pre>long bad  = 1_000_000 * 1_000_000;        // int * int overflows FIRST, then widens: -727379968
+long good = 1_000_000L * 1_000_000;       // long * int -> long maths: 1000000000000
+long good2 = (long) a * b;                // cast ONE operand before multiplying</pre>
+<p>Java computes the right side with the operand types, and only afterwards widens the (already broken) result. The type of the variable you assign to does not matter.</p>
+<h4>Your toolbox</h4>
+${H.table(['Tool', 'Use when'], [
+  ['<code>long</code> instead of <code>int</code>', 'sums, products, counters that can pass ~2.1 billion'],
+  ['<code>(long) a * b</code>', 'multiplying two ints whose product can exceed int'],
+  ['<code>Math.addExact / subtractExact / multiplyExact / incrementExact / negateExact / toIntExact / absExact</code>', 'overflow is a bug → throw <code>ArithmeticException</code> instead of lying'],
+  ['pre-check: <code>a &gt; Integer.MAX_VALUE - b</code>', 'decide before adding (b ≥ 0)'],
+  ['<code>BigInteger</code>', 'no upper limit (factorials, crypto)'],
+  ['<code>lo + (hi - lo) / 2</code> or <code>(lo + hi) &gt;&gt;&gt; 1</code>', 'midpoint in binary search'],
+  ['<code>Integer.compare(a, b)</code>', 'never <code>return a - b;</code> in a comparator']
+])}
+<h4>Quick limits to memorise</h4>
+<p>int max ≈ <b>2.1 × 10<sup>9</sup></b> (10 digits). long max ≈ <b>9.2 × 10<sup>18</sup></b> (19 digits). 12! fits in int, 13! does not. 20! fits in long, 21! does not. 46,341² is the first square above int max.</p>`,
+    clues: [
+      '"Return 0 if the reversed integer overflows" / "assume a 32-bit environment" → check bounds before multiplying by 10',
+      '"Answer may be large" / "values up to 10<sup>9</sup>" with sums or products → use long, cast before multiplying',
+      '"Return the answer modulo 10<sup>9</sup> + 7" → keep intermediates in long and reduce after every multiply',
+      '"Find the midpoint" in binary search on large ranges → <code>lo + (hi − lo) / 2</code>',
+      '"Comparator sorts wrongly for negative numbers" → subtraction overflow; use Integer.compare',
+      '"abs / negate of a negative number" → MIN_VALUE has no positive twin in int'
+    ],
+    code: [R`
+public class Overflow {
+    public static void main(String[] args) {
+        int max = Integer.MAX_VALUE;
+        System.out.println(max + 1);                       // -2147483648 (wrapped)
+        System.out.println(1_000_000 * 1_000_000);         // -727379968
+        long wrong = 1_000_000 * 1_000_000;                // overflow happens before widening
+        long right = 1_000_000L * 1_000_000;               // 1000000000000
+        System.out.println(wrong + " vs " + right);
+
+        // Make overflow loud
+        try {
+            Math.addExact(max, 1);
+        } catch (ArithmeticException e) {
+            System.out.println("caught: " + e.getMessage()); // integer overflow
+        }
+
+        // Safe pre-check (for b >= 0)
+        int a = 2_000_000_000, b = 500_000_000;
+        if (a > Integer.MAX_VALUE - b) System.out.println("a + b would overflow");
+
+        // Binary-search midpoint
+        int lo = 2_000_000_000, hi = 2_100_000_000;
+        System.out.println((lo + hi) / 2);         // -97483648  (bug!)
+        System.out.println(lo + (hi - lo) / 2);    // 2050000000
+        System.out.println((lo + hi) >>> 1);       // 2050000000 (treat the sum as unsigned)
+
+        // abs of MIN_VALUE
+        System.out.println(Math.abs(Integer.MIN_VALUE));   // -2147483648
+    }
+}`, R`
+// The comparator bug: subtraction overflows for far-apart values
+import java.util.*;
+
+public class CompareBug {
+    public static void main(String[] args) {
+        Integer[] arr = {Integer.MIN_VALUE, 1, -5, Integer.MAX_VALUE};
+        Integer[] copy = arr.clone();
+        Arrays.sort(arr, (x, y) -> x - y);                 // BROKEN: MIN_VALUE - 1 overflows
+        Arrays.sort(copy, Integer::compare);               // correct
+        System.out.println(Arrays.toString(arr));          // order is wrong
+        System.out.println(Arrays.toString(copy));         // [-2147483648, -5, 1, 2147483647]
+    }
+}`],
+    codeTitle: ['Overflow in action and the fixes', 'Never compare with subtraction'],
+    viz: [{
+      title: 'Watch a 32-bit int overflow',
+      input: '2147483647 + 1',
+      inputLabel: 'a op b with op in + - * (both in int range)',
+      gen: function (input) {
+        var m = String(input).trim().match(/^(-?\d+)\s*([+\-*])\s*(-?\d+)$/);
+        if (!m) throw new Error('Format: a op b, e.g. "2147483647 + 1" or "1000000 * 1000000"');
+        var a = clampInt(m[1], -2147483648, 2147483647, 'a must be in int range'), op = m[2];
+        var b = clampInt(m[3], -2147483648, 2147483647, 'b must be in int range');
+        var A = BigInt(a), B = BigInt(b);
+        var tr = op === '+' ? A + B : op === '-' ? A - B : A * B;
+        var w = Number(BigInt.asIntN(32, tr));
+        var over = BigInt(w) !== tr;
+        var sg = { 31: 'sel' };
+        var f = [];
+        f.push({ narr: 'Two ints: a = <b>' + a + '</b>, b = <b>' + b + '</b>. Each is 32 bits; bit 31 (purple) is the sign.', parts: [{ type: 'bits', label: 'a', value: a, width: 32, hl: sg }, { type: 'bits', label: 'b', value: b, width: 32, hl: sg }] });
+        f.push({ narr: 'The true mathematical answer of <code>a ' + op + ' b</code> is <b>' + tr + '</b>. int can only hold −2,147,483,648 … 2,147,483,647. ' + (over ? '<span class="c-r">It does not fit!</span>' : '<span class="c-g">It fits.</span>'), parts: [{ type: 'bars', label: 'true result vs int limits', values: [-2147483648, Number(tr) > 1e12 ? 1e12 : Number(tr) < -1e12 ? -1e12 : Number(tr), 2147483647], texts: ['MIN', String(tr), 'MAX'], idxLabels: ['int min', 'a ' + op + ' b', 'int max'], hl: { 1: over ? 'bad' : 'ok' } }] });
+        if (over) {
+          var k = (tr - BigInt(w)) / 4294967296n;
+          f.push({ narr: 'The hardware keeps only the low 32 bits of the true result — it subtracts ' + (k < 0n ? '−' : '') + (k < 0n ? -k : k) + ' × 2<sup>32</sup> (4,294,967,296). Whatever lands in bit 31 is read as the sign.', parts: [{ type: 'vars', label: 'Wrap arithmetic', vals: { 'true result': String(tr), 'multiples of 2^32 dropped': String(k), 'kept': String(w) }, hl: { kept: 'bad' } }] });
+        }
+        f.push({ narr: 'Java result: <b>' + w + '</b>' + (over ? ' — <span class="c-r">silently wrong</span>, and the sign may even have flipped.' : ' — correct.'), parts: [{ type: 'bits', label: 'int result of a ' + op + ' b', value: w, width: 32, hl: sg }, { type: 'code', label: 'Java', lang: 'java', code: 'int r = ' + a + ' ' + op + ' ' + (b < 0 ? '(' + b + ')' : b) + ';\nSystem.out.println(r);   // ' + w, hl: { 2: over ? 'bad' : 'ok' } }] });
+        var fn = op === '+' ? 'addExact' : op === '-' ? 'subtractExact' : 'multiplyExact';
+        f.push({ narr: 'Option 1 — make it loud: <code>Math.' + fn + '(a, b)</code> ' + (over ? 'throws <code>ArithmeticException: integer overflow</code>. A crash is better than a wrong bank balance.' : 'returns ' + w + ' normally.'), parts: [{ type: 'code', label: 'Checked arithmetic', lang: 'java', code: 'int r = Math.' + fn + '(a, b);', hl: { 1: over ? 'bad' : 'ok' } }, { type: 'text', label: 'Result', html: over ? '<span class="c-r">java.lang.ArithmeticException: integer overflow</span>' : String(w) } ] });
+        var lr = BigInt.asIntN(64, tr);
+        f.push({ narr: 'Option 2 — use a bigger box: <code>(long) a ' + op + ' b</code> computes in 64 bits → <b>' + lr + '</b>' + (lr === tr ? ' (correct).' : ' (even long overflowed — use BigInteger).') + ' Cast <b>one operand before</b> the operation, not the result after.', parts: [{ type: 'table', label: 'Same numbers, three ways', columns: ['code', 'result'], rows: [['int r = a ' + op + ' b', String(w)], ['long r = (long) (a ' + op + ' b)', String(w) + ' (too late!)'], ['long r = (long) a ' + op + ' b', String(lr)]], hl: { 0: over ? 'bad' : 'ok', 1: over ? 'bad' : 'ok', 2: 'ok' } }] });
+        return f;
+      }
+    }, {
+      title: 'The int odometer: counting past MAX_VALUE',
+      input: '2147483645 6',
+      inputLabel: 'start value and number of +1 steps (max 12)',
+      gen: function (input) {
+        var t = String(input).trim().split(/[\s,]+/);
+        if (t.length !== 2) throw new Error('Type a start value and a step count, e.g. "2147483645 6"');
+        var v = clampInt(t[0], -2147483648, 2147483647, 'start must be an int');
+        var n = clampInt(t[1], 3, 12, 'steps must be 3..12');
+        var f = [], hist = [];
+        for (var i = 0; i <= n; i++) {
+          hist.push(v);
+          var wrapped = i > 0 && v === -2147483648 && hist[i - 1] === 2147483647;
+          var hl = {}; hl[31] = wrapped ? 'bad' : 'sel';
+          f.push({ narr: i === 0 ? 'Start the odometer at <b>' + v + '</b>. Each step does <code>x++</code>.' : (wrapped ? '<span class="c-r">WRAP!</span> 0111…1 + 1 = 1000…0. The carry ran into the sign bit: MAX_VALUE + 1 = <b>MIN_VALUE</b>. No exception was thrown.' : 'Step ' + i + ': x = <b>' + v + '</b>.'), parts: [{ type: 'bits', label: 'x', value: v, width: 32, hl: hl }, { type: 'array', label: 'history', values: hist.slice(), hl: (function () { var o = {}; o[hist.length - 1] = wrapped ? 'bad' : 'cur'; return o; })() }] });
+          v = (v + 1) | 0;
+        }
+        f.push({ narr: 'Real incidents caused by this exact wrap: a Boeing 787 power-unit counter (hundredths of a second, overflowing after ~248 days of uptime), YouTube\'s view counter for "Gangnam Style" (passed 2,147,483,647 in 2014 and was moved to 64-bit), and countless hash/ID bugs.', parts: [{ type: 'table', label: 'How long until a 32-bit counter wraps?', columns: ['counts per second', 'time to pass 2^31'], rows: [['1', '68 years'], ['100', '248 days'], ['1,000', '24.8 days'], ['1,000,000', '36 minutes']], hl: { 1: 'bad' } }] });
+        return f;
+      }
+    }],
+    examples: [
+      { title: 'Predict the output: the "long division" puzzle', html: R`<p>Both constants are computed in <b>int</b> (all literals are ints) before being stored in a long. MICROS overflows to 500,654,080, so the division prints <code>5</code> instead of <code>1000</code>. Fix: make the first literal a long: <code>24L * 60 * 60 * 1000 * 1000</code>.</p>`, code: R`
+final long MICROS_PER_DAY = 24 * 60 * 60 * 1000 * 1000;   // int overflow!
+final long MILLIS_PER_DAY = 24 * 60 * 60 * 1000;
+System.out.println(MICROS_PER_DAY / MILLIS_PER_DAY);       // 5
+final long FIXED = 24L * 60 * 60 * 1000 * 1000;
+System.out.println(FIXED / MILLIS_PER_DAY);                // 1000` },
+      { title: 'Factorial: where each type gives up', html: R`${H.table(['n', 'n!', 'int result', 'long result'], [['12', '479,001,600', H.c('g', 'correct'), H.c('g', 'correct')], ['13', '6,227,020,800', H.c('r', '1,932,053,504'), H.c('g', 'correct')], ['20', '2,432,902,008,176,640,000', H.c('r', 'garbage'), H.c('g', 'correct')], ['21', '51,090,942,171,709,440,000', H.c('r', 'garbage'), H.c('r', '−4,249,290,049,419,214,848')]])}<p>Notice 13! in int is still <i>positive</i> — overflow does not always flip the sign, so "check if negative" is <b>not</b> a valid detector.</p>`, code: R`
+static java.math.BigInteger factorial(int n) {
+    java.math.BigInteger r = java.math.BigInteger.ONE;
+    for (int i = 2; i <= n; i++) r = r.multiply(java.math.BigInteger.valueOf(i));
+    return r;                       // exact for any n
+}` },
+      { title: 'Sum of a big array', html: R`<p>N = 10<sup>5</sup> values each up to 10<sup>9</sup> → total up to 10<sup>14</sup>. An <code>int</code> accumulator silently wraps; a <code>long</code> accumulator is correct. Same with streams: <code>IntStream.sum()</code> returns int (wraps), <code>asLongStream().sum()</code> or <code>mapToLong</code> is safe.</p>`, code: R`
+int[] a = new int[100_000];
+java.util.Arrays.fill(a, 1_000_000_000);
+int badSum = 0;  long goodSum = 0;
+for (int x : a) { badSum += x; goodSum += x; }
+System.out.println(badSum + " vs " + goodSum);     // wrapped value vs 100000000000000
+System.out.println(java.util.Arrays.stream(a).asLongStream().sum()); // 100000000000000` },
+      { title: 'Modular arithmetic without overflow', html: R`<p>"Return the answer modulo 10<sup>9</sup> + 7": each value is &lt; 2<sup>30</sup>, so a product of two is &lt; 2<sup>60</sup> — fits in long. Reduce after <b>every</b> multiplication, otherwise the next one overflows.</p>`, code: R`
+static long modPow(long base, long exp, long mod) {
+    long result = 1;
+    base %= mod;
+    while (exp > 0) {
+        if ((exp & 1) == 1) result = result * base % mod;   // < 2^60 before %
+        base = base * base % mod;
+        exp >>= 1;
+    }
+    return result;
+}` }
+    ],
+    deepDive: R`<h4>Detecting overflow with bits</h4>
+<p>For <code>r = a + b</code>, overflow happened <b>iff</b> a and b have the same sign and r has a different sign. In one line: <code>((a ^ r) &amp; (b ^ r)) &lt; 0</code>. That is exactly how <code>Math.addExact</code> is written. For subtraction: <code>((a ^ b) &amp; (a ^ r)) &lt; 0</code>. For multiplication, <code>multiplyExact(int,int)</code> does the product in long and checks <code>(int) r != r</code>; for longs it uses <code>Math.multiplyHigh</code> (the upper 64 bits of the 128-bit product). The JIT turns these into an add plus a "jump on overflow" (<code>jo</code>) instruction — practically free, so prefer them over hand-written checks.</p>
+<h4>Asymmetry of two's complement</h4>
+<p>There is one more negative number than positive: <code>-Integer.MIN_VALUE == Integer.MIN_VALUE</code>, <code>Math.abs(MIN_VALUE) &lt; 0</code>, <code>MIN_VALUE / -1 == MIN_VALUE</code>. Code that "normalizes" a hash with <code>Math.abs(h) % n</code> can therefore produce a negative index once in 4 billion — use <code>Math.floorMod(h, n)</code> or <code>(h &amp; 0x7fffffff) % n</code>. <code>Math.absExact</code> (Java 15) throws instead.</p>
+<h4>The famous binary-search bug</h4>
+<p><code>int mid = (low + high) / 2;</code> sat in textbooks and in <code>java.util.Arrays.binarySearch</code> for about nine years before Joshua Bloch's 2006 write-up: for arrays with more than 2<sup>30</sup> elements, <code>low + high</code> overflows to a negative index. The JDK fix is <code>(low + high) &gt;&gt;&gt; 1</code>: the sum's 32 bits are correct as an unsigned number, and an unsigned shift divides it correctly.</p>
+<h4>Floating-point overflow is different</h4>
+<p><code>Double.MAX_VALUE * 2</code> = <code>Infinity</code>, and tiny results underflow gradually to 0. No exception either — check with <code>Double.isFinite</code>. The Ariane 5 rocket (1996) was lost because a 64-bit float was converted to a 16-bit integer that could not hold it — a narrowing-conversion overflow.</p>
+<h4>When wrapping is wanted</h4>
+<p>Hash functions (<code>31 * h + c</code> in <code>String.hashCode</code>), checksums, random-number generators and ring-buffer sequence numbers rely on wrap-around intentionally. Compare sequence numbers with <code>a - b &lt; 0</code> (wrap-safe for nearby values) instead of <code>a &lt; b</code> — that is how <code>System.nanoTime()</code> differences must be compared.</p>`,
+    aiEra: R`<p><b>What AI changes:</b> static analysers and AI reviewers are good at spotting the classic shapes: <code>int * int</code> assigned to long, subtraction comparators, <code>Math.abs(hash) % n</code>, int loop counters over long sizes. Ask for that review on every PR.</p>
+<p><b>Use AI as a partner:</b> <code>Find every arithmetic expression in this file that could overflow for inputs up to 10^9 and propose the minimal fix</code>. <code>Generate boundary tests with MAX_VALUE, MIN_VALUE, -1 and 0 for this method</code> — then run them.</p>
+<p><b>Where AI goes wrong:</b> generated solutions to "mod 10^9+7" problems often forget to reduce after a multiply; generated comparators still use <code>a - b</code>; "fixes" put the <code>(long)</code> cast around the whole product (too late). Some models claim Java throws on overflow (it does not) or that checking <code>result &lt; 0</code> detects it (13! shows it does not).</p>
+<p><b>What you must still own:</b> estimating the maximum magnitude of every intermediate value from the constraints <i>before</i> coding. In interviews, saying "this sum can reach 10<sup>14</sup>, so I'll use long" earns visible points — and no assistant is there to say it for you.</p>`,
+    problems: [{
+      title: 'Reverse Integer (32-bit Safe)',
+      level: 'Medium', tags: ['overflow', 'math', 'digits'], companies: ['Amazon', 'Apple', 'Bloomberg', 'Adobe'],
+      statement: R`<p>Given a 32-bit signed int <code>x</code>, return x with its digits reversed. If reversing makes the value go outside [−2<sup>31</sup>, 2<sup>31</sup> − 1], return <b>0</b>. Assume the environment cannot store 64-bit integers — <b>no <code>long</code></b>.</p>`,
+      constraints: R`−2<sup>31</sup> ≤ x ≤ 2<sup>31</sup> − 1.`,
+      example: R`${H.table(['x', 'output', 'why'], [['123', '321', 'plain reversal'], ['-120', '-21', 'sign stays, trailing zero vanishes'], ['1534236469', H.c('r', '0'), '9646324351 &gt; 2147483647'], ['-2147483648', H.c('r', '0'), '−8463847412 &lt; MIN']])}`,
+      brute: { why: R`<p>Reverse the digits as text (<code>new StringBuilder(...).reverse()</code>), then parse with <code>Long.parseLong</code> and range-check. It works, but it uses <code>long</code> (forbidden) and string allocation. Without long, <code>Integer.parseInt</code> on the reversed text throws on overflow — using exceptions as control flow.</p>`, code: R`
+static int reverseBrute(int x) {
+    String s = new StringBuilder(String.valueOf(Math.abs((long) x))).reverse().toString();
+    long r = Long.parseLong(s) * (x < 0 ? -1 : 1);
+    return (r > Integer.MAX_VALUE || r < Integer.MIN_VALUE) ? 0 : (int) r;
+}` },
+      mcq: { q: 'Before computing <code>rev * 10 + d</code> (positive case), which check prevents overflow?', options: ['rev * 10 + d &gt; MAX', 'rev &gt; MAX / 10 || (rev == MAX / 10 &amp;&amp; d &gt; 7)', 'rev &lt; 0', 'd &gt; 9'], answer: 1, explain: 'MAX = 2147483647, so MAX / 10 = 214748364 and the last digit is 7. Check before multiplying; the first option overflows while checking.' },
+      hints: [R`<p>Hint 1: peel digits with <code>d = x % 10</code> and <code>x /= 10</code>. For negative x, Java gives negative digits — which is perfect: the reversed number builds up negative automatically.</p>`, R`<p>Hint 2: the danger is the step <code>rev = rev * 10 + d</code>. Check <b>before</b> it whether rev is already past <code>MAX / 10</code> (or below <code>MIN / 10</code>).</p>`, R`<p>Hint 3: edge digits — if <code>rev == MAX / 10</code> then d must be ≤ 7; if <code>rev == MIN / 10</code> then d must be ≥ −8. Recipe: loop while x ≠ 0: pop d, check bounds, push d.</p>`],
+      solution: {
+        approach: R`<p>Pop digits from x and push onto rev. Before each push, compare rev with <code>MAX_VALUE / 10</code> and <code>MIN_VALUE / 10</code> (214748364 and −214748364), with a last-digit tie-break. Negative x needs no special case because Java's <code>%</code> keeps the sign.</p>`,
+        code: R`
+public class ReverseInteger {
+    static int reverse(int x) {
+        int rev = 0;
+        while (x != 0) {
+            int d = x % 10;          // last digit (negative if x is negative)
+            x /= 10;
+            if (rev > Integer.MAX_VALUE / 10 || (rev == Integer.MAX_VALUE / 10 && d > 7)) return 0;
+            if (rev < Integer.MIN_VALUE / 10 || (rev == Integer.MIN_VALUE / 10 && d < -8)) return 0;
+            rev = rev * 10 + d;      // now guaranteed to fit
+        }
+        return rev;
+    }
+    public static void main(String[] args) {
+        System.out.println(reverse(123));          // 321
+        System.out.println(reverse(-120));         // -21
+        System.out.println(reverse(1534236469));   // 0
+        System.out.println(reverse(1463847412));   // 2147483641 (fits)
+        System.out.println(reverse(Integer.MIN_VALUE)); // 0
+    }
+}`,
+        dry: { head: ['x', 'd', 'rev before', 'safe?', 'rev after'], rows: [['123', '3', '0', 'yes', '3'], ['12', '2', '3', 'yes', '32'], ['1', '1', '32', 'yes', '321'], ['…(1534236469) step 10', '1', '964632435', '<span class="c-r">964632435 &gt; 214748364</span>', 'return 0']] },
+        complexity: R`<p>O(log₁₀ |x|) ≤ 10 iterations, O(1) space.</p>`,
+        followUps: ['Use <code>Math.multiplyExact</code>/<code>addExact</code> with try/catch instead — trade-offs?', 'Reverse the bits of an int instead of the digits (<code>Integer.reverse</code>).']
+      }
+    }]
+  });
+
+  /* ======================================================================
+     TOPIC 8 — char, ASCII & Unicode
+     ====================================================================== */
+  topics.push({
+    title: 'char, ASCII & Unicode (UTF-16, Code Points, Emoji)',
+    analogy: R`<p>Imagine a gigantic <b>numbered catalogue</b> of every symbol humans write: 'A' is item 65, 'é' is 233, '☕' is 9,749, '😀' is 128,512. That catalogue is <b>Unicode</b>. A Java <code>char</code> is a <b>16-bit ticket</b> that can print numbers only up to 65,535. Most symbols fit on one ticket; for the newer, bigger numbers like emoji, Java staples <b>two special tickets</b> together (a <i>surrogate pair</i>). So "how many tickets?" (<code>length()</code>) and "how many symbols?" (<code>codePointCount</code>) can give different answers.</p>`,
+    explain: R`<h4>A char is a number</h4>
+<p><code>char</code> is a 16-bit <b>unsigned</b> integer (0 … 65,535) that Java prints as a character. That is why you can do maths with it:</p>
+${H.table(['Expression', 'Result', 'Why'], [
+  ["<code>(int) 'A'</code>", '65', 'the code of A'],
+  ["<code>'a' + 1</code>", '98', 'char + int → int'],
+  ["<code>(char) ('a' + 1)</code>", "'b'", 'cast back to char'],
+  ["<code>'7' - '0'</code>", '7', 'digit character → its value'],
+  ["<code>'c' - 'a'</code>", '2', 'letter → index 0..25 (for int[26] counters)'],
+  ["<code>'a' - 'A'</code>", '32', 'lowercase is 32 above uppercase in ASCII'],
+  ["<code>char c = 'a'; c++;</code>", "'b'", '++ and += hide a cast; <code>c = c + 1</code> does not compile']
+])}
+<h4>ASCII — the first 128 codes</h4>
+${H.table(['Range', 'Characters'], [['48 … 57', "'0' … '9'"], ['65 … 90', "'A' … 'Z'"], ['97 … 122', "'a' … 'z'"], ['32', "space ' '"], ['10 / 9', "newline '\\n' / tab '\\t'"]])}
+<p>Handy facts: digits, uppercase and lowercase letters are each <b>contiguous</b>, so <code>c &gt;= 'a' &amp;&amp; c &lt;= 'z'</code> tests a lowercase ASCII letter. For "any language" letters use <code>Character.isLetter(c)</code>.</p>
+<h4>Unicode and UTF-16</h4>
+<p>Unicode assigns every character a <b>code point</b> from U+0000 to U+10FFFF (over a million slots; about 150,000 used). Java strings store text as <b>UTF-16</b>:</p>
+<ul><li>Code points up to U+FFFF (the <i>Basic Multilingual Plane</i>: Latin, Greek, Hindi, Chinese, '☕'…) take <b>one char</b>.</li>
+<li>Code points above U+FFFF (most emoji like 😀, rare CJK, historic scripts) take <b>two chars</b>: a <i>high surrogate</i> (0xD800–0xDBFF) followed by a <i>low surrogate</i> (0xDC00–0xDFFF).</li></ul>
+${H.table(['Text', 'length()', 'codePointCount', 'UTF-8 bytes'], [['"Hi"', '2', '2', '2'], ['"é"', '1', '1', '2'], ['"☕"', '1', '1', '3'], ['"😀"', H.c('r', '2'), '1', '4'], ['"👍🏽" (thumb + skin tone)', H.c('r', '4'), '2', '8']])}
+<h4>Useful APIs</h4>
+<ul><li><code>s.charAt(i)</code> — one UTF-16 unit (may be half an emoji!). <code>s.codePointAt(i)</code> — the full code point starting at i.</li>
+<li><code>s.codePoints()</code> — an <code>IntStream</code> of real characters. <code>Character.toChars(cp)</code> / <code>new String(Character.toChars(cp))</code> — back to text.</li>
+<li><code>Character.isLetter</code>, <code>isDigit</code>, <code>isWhitespace</code>, <code>isUpperCase</code>, <code>toUpperCase</code>, <code>getNumericValue</code> — all Unicode-aware; overloads take an <code>int</code> code point.</li></ul>
+<h4>Escapes</h4>
+<p><code>'\n'</code> newline, <code>'\t'</code> tab, <code>'\''</code> quote, <code>'\\'</code> backslash, <code>'\u0041'</code> = 'A' by its hex code. Java 15+ text blocks (<code>"""</code>) make multi-line strings easy.</p>`,
+    clues: [
+      '"Count frequency of lowercase letters" → <code>int[26]</code> indexed by <code>c - \'a\'</code>',
+      '"Convert digit character to int" → <code>c - \'0\'</code> (or Character.getNumericValue for any script)',
+      '"String contains emoji / international text" → length() counts UTF-16 units; use codePoints()',
+      '"Toggle case" / "is uppercase" for ASCII → ranges or <code>c ^ 32</code>; for real text → Character methods',
+      '"Why does char c = c + 1 not compile?" → char + int is int; use c++ or a cast',
+      '"Encode as bytes for network / file" → char ≠ byte; specify UTF-8 explicitly'
+    ],
+    code: [R`
+public class Chars {
+    public static void main(String[] args) {
+        char c = 'A';
+        System.out.println((int) c);            // 65
+        System.out.println(c + 1);              // 66 (int maths)
+        System.out.println((char) (c + 1));     // B
+        c++;                                    // OK: hidden cast
+        System.out.println(c);                  // B
+
+        // Letter counting with an int[26]
+        String word = "banana";
+        int[] freq = new int[26];
+        for (char ch : word.toCharArray()) freq[ch - 'a']++;
+        System.out.println("a=" + freq[0] + " b=" + freq[1] + " n=" + freq['n' - 'a']); // a=3 b=1 n=2
+
+        // Digit characters to numbers
+        String digits = "4096";
+        int value = 0;
+        for (int i = 0; i < digits.length(); i++) value = value * 10 + (digits.charAt(i) - '0');
+        System.out.println(value + 1);          // 4097
+
+        // Unicode awareness
+        String s = "Hi\u2615\uD83D\uDE00";      // Hi, coffee, grinning face
+        System.out.println(s.length());                         // 5  (UTF-16 units)
+        System.out.println(s.codePointCount(0, s.length()));    // 4  (real characters)
+        System.out.println(Integer.toHexString(s.codePointAt(3))); // 1f600
+        s.codePoints().forEach(cp -> System.out.print(Character.getName(cp) + " | "));
+        System.out.println();
+    }
+}`],
+    codeTitle: ['char arithmetic, counting and Unicode in one program'],
+    viz: [{
+      title: 'Inside a Java String: chars vs code points',
+      input: 'Hi☕😀',
+      inputLabel: 'Any text (emoji welcome, max 16 UTF-16 units)',
+      gen: function (input) {
+        var s = String(input);
+        if (!s.length) throw new Error('Type some text, e.g. Hi☕😀');
+        if (s.length > 16) throw new Error('Keep it to 16 UTF-16 units or fewer');
+        var units = [], labels = [];
+        for (var i = 0; i < s.length; i++) { units.push(s.charCodeAt(i)); labels.push(String(i)); }
+        function shown(k) { var u = units[k]; if (u >= 0xD800 && u <= 0xDBFF) return 'hi-sur'; if (u >= 0xDC00 && u <= 0xDFFF) return 'lo-sur'; if (u < 32) return '\\u' + u.toString(16); return String.fromCharCode(u); }
+        var cells = units.map(function (_, k) { return shown(k); });
+        var f = [], cps = [], utf8 = 0;
+        f.push({ narr: 'Java stores <b>"' + H.esc(s) + '"</b> as <b>' + s.length + '</b> UTF-16 code units (chars). That is what <code>length()</code> returns.', parts: [{ type: 'array', label: 'char[] inside the String', values: cells, idxLabels: labels }, { type: 'array', label: 'hex value of each char', values: units.map(function (u) { return hex(u, 4); }), idxLabels: labels }] });
+        i = 0;
+        while (i < s.length) {
+          var u = units[i], hl = {}, cp, kind, w;
+          if (u >= 0xD800 && u <= 0xDBFF && i + 1 < s.length && units[i + 1] >= 0xDC00 && units[i + 1] <= 0xDFFF) {
+            cp = (u - 0xD800) * 0x400 + (units[i + 1] - 0xDC00) + 0x10000; hl[i] = 'sel'; hl[i + 1] = 'sel'; w = 2;
+            kind = 'a <b>surrogate pair</b>: high ' + hex(u, 4) + ' + low ' + hex(units[i + 1], 4) + ' → code point (' + hex(u, 4) + ' − 0xD800) × 0x400 + (' + hex(units[i + 1], 4) + ' − 0xDC00) + 0x10000 = <b>U+' + cp.toString(16).toUpperCase() + '</b> (' + cp + '). <code>charAt(' + i + ')</code> alone would give you only half of it!';
+          } else {
+            cp = u; hl[i] = 'cur'; w = 1;
+            kind = (u < 128 ? 'plain <b>ASCII</b>' : 'a single char in the Basic Multilingual Plane') + ': code point <b>U+' + cp.toString(16).toUpperCase().padStart(4, '0') + '</b> (' + cp + ').';
+          }
+          var b = cp < 0x80 ? 1 : cp < 0x800 ? 2 : cp < 0x10000 ? 3 : 4;
+          utf8 += b;
+          cps.push(String.fromCodePoint(cp));
+          var parts = [{ type: 'array', label: 'chars', values: cells, idxLabels: labels, hl: hl, ptr: (function () { var o = {}; o[i] = 'i'; return o; })() }];
+          parts.push({ type: 'bits', label: 'charAt(' + i + ') as 16 bits', value: u, width: 16, dec: u });
+          parts.push({ type: 'vars', label: 'this character', vals: { 'code point': 'U+' + cp.toString(16).toUpperCase(), 'chars used': w, 'UTF-8 bytes': b }, hl: { 'chars used': w === 2 ? 'sel' : 'ok' } });
+          parts.push({ type: 'set', label: 'code points so far', items: cps.slice() });
+          f.push({ narr: 'Index ' + i + ': ' + kind + (w === 2 ? ' Loop with <code>i += Character.charCount(cp)</code> to jump over both halves.' : ''), parts: parts });
+          i += w;
+        }
+        f.push({ narr: 'Totals: <code>length()</code> = <b>' + s.length + '</b>, <code>codePointCount</code> = <b>' + cps.length + '</b>, UTF-8 size = <b>' + utf8 + ' bytes</b>. Use code points when you count, reverse or truncate user-visible text.', parts: [{ type: 'table', label: 'Three ways to measure "' + H.esc(s) + '"', columns: ['measure', 'value', 'Java'], rows: [['UTF-16 units', String(s.length), 's.length()'], ['code points', String(cps.length), 's.codePointCount(0, s.length())'], ['UTF-8 bytes', String(utf8), 's.getBytes(UTF_8).length']], hl: { 1: 'sel' } }] });
+        return f;
+      }
+    }, {
+      title: 'char arithmetic: Caesar cipher step by step',
+      input: 'Zebra 3',
+      inputLabel: 'word and shift (letters only in the word, shift 0..25)',
+      gen: function (input) {
+        var m = String(input).trim().match(/^(\S{1,10})\s+(\d{1,2})$/);
+        if (!m) throw new Error('Format: word shift, e.g. "Zebra 3" (word up to 10 chars)');
+        var w = m[1], k = Number(m[2]);
+        if (k > 25) throw new Error('Shift must be 0..25');
+        var out = [], f = [];
+        var code = 'char base = Character.isUpperCase(c) ? \'A\' : \'a\';\nint idx = c - base;            // 0..25\nint moved = (idx + k) % 26;    // wrap around\nchar r = (char) (base + moved);';
+        f.push({ narr: 'Shift every letter of <b>' + H.esc(w) + '</b> by <b>' + k + '</b>, wrapping z → a. All we need is the fact that chars are numbers.', parts: [{ type: 'array', label: 'input', values: w.split('') }, { type: 'code', label: 'per character', lang: 'java', code: code }] });
+        for (var i = 0; i < w.length; i++) {
+          var c = w.charCodeAt(i), ch = w[i];
+          var up = c >= 65 && c <= 90, lo = c >= 97 && c <= 122;
+          if (!up && !lo) { out.push(ch); f.push({ narr: '<b>' + H.esc(ch) + '</b> is not an ASCII letter, so it is copied unchanged.', parts: [{ type: 'array', label: 'input', values: w.split(''), hl: (function () { var o = {}; o[i] = 'done'; return o; })() }, { type: 'array', label: 'output', values: out.slice() }] }); continue; }
+          var base = up ? 65 : 97, idx = c - base, mv = (idx + k) % 26, r = String.fromCharCode(base + mv);
+          out.push(r);
+          f.push({ narr: '\'' + ch + '\' = ' + c + '. base = \'' + String.fromCharCode(base) + '\' (' + base + '). idx = ' + c + ' − ' + base + ' = ' + idx + '. (' + idx + ' + ' + k + ') % 26 = ' + mv + (idx + k >= 26 ? ' <span class="c-y">(wrapped!)</span>' : '') + '. ' + base + ' + ' + mv + ' = ' + (base + mv) + ' → <b>\'' + r + '\'</b>.', parts: [{ type: 'array', label: 'input', values: w.split(''), hl: (function () { var o = {}; o[i] = 'cur'; return o; })() }, { type: 'vars', label: 'numbers behind the letters', vals: { c: c, base: base, idx: idx, moved: mv, 'r': '\'' + r + '\' (' + (base + mv) + ')' }, hl: { moved: idx + k >= 26 ? 'sel' : 'ok' } }, { type: 'code', label: 'per character', lang: 'java', code: code, hl: { 3: 'cur', 4: 'ok' } }, { type: 'array', label: 'output', values: out.slice(), hl: (function () { var o = {}; o[out.length - 1] = 'ok'; return o; })() }] });
+        }
+        f.push({ narr: 'Result: <b>' + H.esc(out.join('')) + '</b>. Decoding is the same with shift <b>' + ((26 - k) % 26) + '</b>. Note the cast <code>(char)</code>: <code>base + moved</code> is an int.', parts: [{ type: 'array', label: 'encrypted', values: out.slice(), hl: (function () { var o = {}; for (var q = 0; q < out.length; q++) o[q] = 'sel'; return o; })() }] });
+        return f;
+      }
+    }],
+    examples: [
+      { title: 'Predict the output: char meets int and String', html: R`<p>A cast binds tighter than <code>+</code>, so <code>(char) 97 + 1</code> is <code>'a' + 1</code> = 98 (int). Output:</p><pre>98
+b
+a1
+c</pre>`, code: R`
+System.out.println((char) 97 + 1);      // 98
+System.out.println((char) (97 + 1));    // b
+System.out.println("" + (char) 97 + 1); // a1
+char c = 'a';
+c += 1;
+c++;
+System.out.println(c);                  // c` },
+      { title: 'Toggle ASCII case with one XOR', html: R`<p>'A' = 0100 0001, 'a' = 0110 0001: they differ only in bit 5 (value 32). <code>c ^ 32</code> flips it. Works only for ASCII letters — for 'é' or 'ß' use <code>Character.toUpperCase</code> / <code>String.toUpperCase(Locale.ROOT)</code> ("Straße".toUpperCase() is "STRASSE", one letter becomes two!).</p>${H.bits(65, 8, { label: "'A'", hl: { 5: 'y' } })}${H.bits(97, 8, { label: "'a'", hl: { 5: 'y' } })}`, code: R`
+String s = "Hello World";
+StringBuilder sb = new StringBuilder();
+for (char ch : s.toCharArray())
+    sb.append(Character.isLetter(ch) && ch < 128 ? (char) (ch ^ 32) : ch);
+System.out.println(sb);    // hELLO wORLD` },
+      { title: 'Emoji break naive code', html: R`<p><code>substring(0, 1)</code> on "😀!" returns a lone high surrogate — an invalid half character that prints as <code>?</code>. Loop by code points instead.</p>`, code: R`
+String s = "\uD83D\uDE00!";                    // grinning face + '!'
+System.out.println(s.length());                // 3
+String half = s.substring(0, 1);
+System.out.println(Character.isHighSurrogate(half.charAt(0)));   // true: broken text
+int firstEnd = s.offsetByCodePoints(0, 1);     // index after the first code point
+System.out.println(s.substring(0, firstEnd).codePointCount(0, firstEnd)); // 1 whole emoji
+for (int i = 0; i < s.length(); ) {
+    int cp = s.codePointAt(i);
+    System.out.println("U+" + Integer.toHexString(cp).toUpperCase());     // U+1F600, U+21
+    i += Character.charCount(cp);
+}` },
+      { title: 'The unicode-escape trap', html: R`<p>javac converts <code>\uXXXX</code> escapes <b>before</b> it even looks for comments and strings. So <code>\u000a</code> (newline) inside a comment ends the comment, and the rest of the line becomes code! Similarly <code>char c = '\u000a';</code> is a compile error (it becomes a real line break inside the quotes) — write <code>'\n'</code>. This program prints <code>surprise</code>:</p>`, code: R`
+public class Trap {
+    public static void main(String[] args) {
+        // the next escape is a newline: \u000a System.out.println("surprise");
+    }
+}` }
+    ],
+    deepDive: R`<h4>Why Java has 16-bit chars</h4>
+<p>Java (1995) adopted Unicode when it was believed 65,536 code points would be enough (UCS-2). Unicode 2.0 (1996) expanded to 1,114,112 code points, and Java 5 (2004) added surrogate-pair support and the code-point APIs. Hence the split personality: <code>char</code> = UTF-16 code unit, <code>int</code> = code point.</p>
+<h4>Grapheme clusters: what users call a "character"</h4>
+<p>Even code points are not the end: "👍🏽" is thumbs-up + skin-tone modifier (2 code points, 4 chars); "é" can be one code point (U+00E9) or 'e' + combining accent (U+0065 U+0301); family emoji join several people with zero-width joiners. For cursor movement, truncation and "max 280 characters" rules, use <code>java.text.BreakIterator.getCharacterInstance()</code> or regex <code>\X</code>, and normalize with <code>java.text.Normalizer</code> (NFC) before comparing.</p>
+<h4>How Strings are stored now (compact strings)</h4>
+<p>Since Java 9, a <code>String</code> holds a <code>byte[]</code> plus a <i>coder</i> flag: if every char fits in Latin-1 (≤ 0xFF), it uses <b>1 byte per char</b>; otherwise 2 bytes per char (UTF-16). The API still behaves as UTF-16 — this is invisible except in memory savings (often ~40% of heap in string-heavy apps).</p>
+<h4>chars vs bytes: encodings</h4>
+<p>Files and networks carry <b>bytes</b>. Converting needs a charset: <code>s.getBytes(StandardCharsets.UTF_8)</code> and <code>new String(bytes, StandardCharsets.UTF_8)</code>. UTF-8 uses 1 byte for ASCII, 2 for most European/Middle-Eastern letters, 3 for the rest of the BMP (Hindi, CJK, '☕'), 4 for supplementary (emoji). Since JDK 18 the default charset is UTF-8 everywhere (JEP 400), ending the "works on Linux, garbled on Windows" era — but always pass the charset explicitly anyway.</p>
+<h4>Unicode-aware gotchas</h4>
+<ul><li><code>Character.isDigit('\u0663')</code> is true (Arabic-Indic three) and <code>Integer.parseInt</code> accepts such digits — validate with <code>[0-9]</code> if you need ASCII only.</li>
+<li><code>toUpperCase()</code> without a locale is locale-sensitive: in Turkish, "i".toUpperCase() is "İ". Use <code>Locale.ROOT</code> for identifiers and protocol keywords.</li>
+<li><code>String.length()</code> limits in databases/APIs may count bytes, UTF-16 units or code points — know which.</li></ul>`,
+    aiEra: R`<p><b>What AI changes:</b> LLMs themselves read text as <b>tokens</b>, not characters, which is why they famously miscount letters in a word. Treat any character-level claim from a model ("this string has 12 characters") as unverified.</p>
+<p><b>Use AI as a partner:</b> <code>Write JUnit tests for my truncate() with emoji, combining accents, Turkish i and CJK</code>; <code>Explain the UTF-8 bytes of this string</code>. Use it to look up Unicode properties and character names quickly — then confirm with <code>Character.getName(cp)</code>.</p>
+<p><b>Where AI goes wrong:</b> generated string utilities almost always iterate with <code>charAt</code> and <code>length()</code>, which splits emoji; they use <code>c - 'a'</code> on input that may contain capitals or non-letters (negative index → crash); they call <code>toUpperCase()</code> without a locale; and they forget to specify UTF-8 when converting to bytes.</p>
+<p><b>What you must still own:</b> knowing that char is a 16-bit number, the ASCII ranges, the difference between code units, code points and graphemes, and when each matters. Prompt and token limits, search indexes and username validation in AI products all hinge on exactly this.</p>`,
+    problems: [{
+      title: 'Reverse a String Without Breaking Emoji',
+      level: 'Medium', tags: ['unicode', 'strings', 'two pointers'], companies: ['Meta', 'Apple', 'Twitter/X', 'Microsoft'],
+      statement: R`<p>Reverse a string by <b>code points</b>: each Unicode character (including emoji outside the BMP) must stay intact. Do not use <code>StringBuilder.reverse()</code> — implement it yourself.</p>`,
+      constraints: R`0 ≤ length ≤ 10<sup>5</sup> UTF-16 units; the input is well-formed (no unpaired surrogates).`,
+      example: R`<p>Input <code>"ab😀"</code> = chars <code>['a', 'b', 0xD83D, 0xDE00]</code>.</p>${H.table(['approach', 'result'], [['reverse chars', H.c('r', "['\\uDE00', '\\uD83D', 'b', 'a'] → broken pair (prints ??ba)")], ['reverse code points', H.c('g', '"😀ba"')]])}`,
+      brute: { why: R`<p>Swapping <code>char</code>s from both ends is the textbook reverse — but it puts the low surrogate before the high one, producing invalid UTF-16 that prints as <code>??</code>.</p>`, code: R`
+static String reverseChars(String s) {
+    char[] a = s.toCharArray();
+    for (int i = 0, j = a.length - 1; i < j; i++, j--) {
+        char t = a[i]; a[i] = a[j]; a[j] = t;     // splits surrogate pairs!
+    }
+    return new String(a);
+}` },
+      mcq: { q: 'How do you move to the next character when looping by code points?', options: ['i++', 'i += 2', 'i += Character.charCount(s.codePointAt(i))', 'i += s.codePointAt(i)'], answer: 2, explain: 'charCount returns 1 for BMP code points and 2 for supplementary ones.' },
+      hints: [R`<p>Hint 1: <code>s.codePoints().toArray()</code> gives an <code>int[]</code> where every element is one whole character.</p>`, R`<p>Hint 2: reverse that int array (two pointers), then rebuild the String with <code>new String(int[] codePoints, 0, n)</code> or <code>StringBuilder.appendCodePoint</code>.</p>`, R`<p>Hint 3: without an extra int array: walk from the end — <code>cp = s.codePointBefore(i)</code>, append it, <code>i -= Character.charCount(cp)</code>. Test "", "a", "😀", "ab😀c😀".</p>`],
+      solution: {
+        approach: R`<p>Walk backwards by code point using <code>codePointBefore</code>, appending each whole character to a <code>StringBuilder</code>. Single pass, no surrogate maths by hand.</p>`,
+        code: R`
+public class ReverseCodePoints {
+    static String reverse(String s) {
+        StringBuilder sb = new StringBuilder(s.length());
+        int i = s.length();
+        while (i > 0) {
+            int cp = s.codePointBefore(i);     // whole character ending at i
+            sb.appendCodePoint(cp);
+            i -= Character.charCount(cp);      // 1 or 2 chars
+        }
+        return sb.toString();
+    }
+    public static void main(String[] args) {
+        String in = "ab\uD83D\uDE00c";         // a b grinning-face c
+        String out = reverse(in);
+        System.out.println(out.codePointCount(0, out.length()));      // 4
+        out.codePoints().forEach(cp -> System.out.print(Integer.toHexString(cp) + " "));
+        System.out.println();                                         // 63 1f600 62 61
+        System.out.println(new StringBuilder(in).reverse().toString().equals(out)); // true: JDK also respects pairs
+    }
+}`,
+        dry: { head: ['i', 'codePointBefore(i)', 'charCount', 'sb'], rows: [['5', "'c' (0x63)", '1', 'c'], ['4', 'U+1F600 (chars 2-3)', '2', 'c😀'], ['2', "'b'", '1', 'c😀b'], ['1', "'a'", '1', 'c😀ba'], ['0', '—', '—', '<span class="c-g">done</span>']] },
+        complexity: R`<p>O(N) time, O(N) space for the output.</p>`,
+        followUps: ['Make it keep grapheme clusters (👍🏽, flags, accented letters) intact using <code>BreakIterator</code>.', 'Reverse in place in a <code>char[]</code>: reverse all chars, then swap back each reversed surrogate pair.']
+      }
+    }]
+  });
+
+  /* ======================================================================
+     PRACTICE — Easy
+     ====================================================================== */
+  practice.push({
+    title: 'Celsius to Fahrenheit: Fix the Integer Division',
+    level: 'Easy', tags: ['operators', 'casting', 'integer division'], companies: ['TCS', 'Infosys', 'Accenture'],
+    statement: R`<p>A teammate wrote <code>return 9 / 5 * c + 32;</code> to convert an <code>int</code> Celsius value to Fahrenheit, and every result is off. Implement <code>static double toF(int c)</code> that returns the exact value of <code>c × 9 / 5 + 32</code> as a double.</p>`,
+    constraints: R`−273 ≤ c ≤ 10<sup>6</sup>.`,
+    example: R`${H.table(['c', 'buggy 9 / 5 * c + 32', 'correct'], [['100', H.c('r', '132'), H.c('g', '212.0')], ['37', H.c('r', '69'), H.c('g', '98.6')], ['-40', H.c('r', '-8'), H.c('g', '-40.0')]])}<p><code>9 / 5</code> is <b>int division = 1</b>, so the buggy code computes c + 32.</p>`,
+    brute: { why: R`<p>The buggy version divides two ints first: 9 / 5 = 1. Moving the division later (<code>c * 9 / 5 + 32</code>) helps but still truncates: 37 → 333 / 5 = 66 → 98 instead of 98.6. Integer division throws away information as soon as it happens.</p>`, code: R`
+static double toFBuggy(int c) {
+    return 9 / 5 * c + 32;          // 9 / 5 == 1 -> returns c + 32 (widened to double)
+}` },
+    mcq: { q: 'Which expression gives 98.6 for c = 37?', options: ['c * 9 / 5 + 32', '(double) (c * 9 / 5) + 32', 'c * 9.0 / 5 + 32', '9 / 5 * (double) c + 32'], answer: 2, explain: 'Only option 3 makes the division a double division: 333.0 / 5 = 66.6. Option 2 casts after the int division already truncated; option 4 still computes 9 / 5 = 1 first.' },
+    hints: [R`<p>Hint 1: in <code>a / b</code>, if both are ints, the fraction is dropped <i>at that moment</i>. Later casts cannot bring it back.</p>`, R`<p>Hint 2: make one operand a double <b>before</b> dividing: a literal <code>9.0</code> or a cast <code>(double) c</code>.</p>`, R`<p>Hint 3: recipe — <code>return c * 9.0 / 5 + 32;</code>. Test 100 → 212.0, −40 → −40.0, 37 → 98.6.</p>`],
+    solution: {
+      approach: R`<p>Promote to double before the division. Evaluation is left to right: <code>c * 9.0</code> is double, so <code>/ 5</code> is double division.</p>`,
+      code: R`
+public class Temperature {
+    static double toF(int c) {
+        return c * 9.0 / 5 + 32;    // 9.0 makes the whole chain double maths
+    }
+    public static void main(String[] args) {
+        System.out.println(toF(100));   // 212.0
+        System.out.println(toF(37));    // 98.6
+        System.out.println(toF(-40));   // -40.0
+    }
+}`,
+      dry: { head: ['c', 'c * 9.0', '/ 5', '+ 32'], rows: [['37', '333.0', '66.6', '98.6'], ['-40', '-360.0', '-72.0', '-40.0']] },
+      complexity: R`<p>O(1).</p>`,
+      followUps: ['Round to one decimal place for display: <code>String.format("%.1f", f)</code>.', 'Why might <code>toF(x) == 98.6</code> be risky in general?']
+    }
+  });
+
+  practice.push({
+    title: 'Seat Label: char + int Is Not a String',
+    level: 'Easy', tags: ['char', 'string concatenation', 'operators'], companies: ['Amazon', 'Booking.com'],
+    statement: R`<p>A cinema labels seats by row letter and seat number: row <code>'C'</code>, seat <code>7</code> → <code>"C7"</code>. The current code <code>return row + seat + "";</code> returns <code>"74"</code>. Write <code>static String label(char row, int seat)</code> correctly, and <code>static char nextRow(char row)</code> returning the following row letter (assume row &lt; 'Z').</p>`,
+    constraints: R`<code>'A' ≤ row ≤ 'Y'</code>, 1 ≤ seat ≤ 999.`,
+    example: R`${H.table(['call', 'buggy', 'correct'], [["label('C', 7)", H.c('r', '"74"'), H.c('g', '"C7"')], ["label('A', 12)", H.c('r', '"77"'), H.c('g', '"A12"')], ["nextRow('C')", H.c('r', '68 (int)'), H.c('g', "'D'")]])}<p>'C' is 67; 67 + 7 = 74, then 74 + "" = "74".</p>`,
+    brute: { why: R`<p><code>row + seat</code> is evaluated first, and char + int is <b>numeric</b> addition. The String only joins at the end, too late. Similarly <code>row + 1</code> is an int, not a char.</p>`, code: R`
+static String labelBuggy(char row, int seat) {
+    return row + seat + "";          // (67 + 7) + "" = "74"
+}` },
+    mcq: { q: "What does <code>'A' + 'B' + \"!\"</code> evaluate to?", options: ['"AB!"', '"131!"', '"A66!"', 'compile error'], answer: 1, explain: "'A' + 'B' = 65 + 66 = 131 (int), then 131 + \"!\" = \"131!\"." },
+    hints: [R`<p>Hint 1: <code>+</code> is evaluated left to right; it only means "join text" once one side is already a String.</p>`, R`<p>Hint 2: start with a String: <code>"" + row + seat</code>, or <code>String.valueOf(row) + seat</code>, or <code>Character.toString(row) + seat</code>.</p>`, R`<p>Hint 3: for the next row, compute the int and cast back: <code>(char) (row + 1)</code>. Or use <code>row++</code> on a local copy, which casts implicitly.</p>`],
+    solution: {
+      approach: R`<p>Force string context from the first operand; cast arithmetic results back to <code>char</code>.</p>`,
+      code: R`
+public class Seats {
+    static String label(char row, int seat) {
+        return String.valueOf(row) + seat;   // "C" + 7 = "C7"
+    }
+    static char nextRow(char row) {
+        return (char) (row + 1);             // 67 + 1 = 68 -> 'D'
+    }
+    public static void main(String[] args) {
+        System.out.println(label('C', 7));    // C7
+        System.out.println(label('A', 12));   // A12
+        System.out.println(nextRow('C'));     // D
+        System.out.println('C' + 7 + "");     // 74 (the bug)
+    }
+}`,
+      dry: { head: ['expression', 'step 1', 'step 2', 'result'], rows: [["row + seat + \"\"", '67 + 7 = 74', '74 + ""', '"74"'], ['String.valueOf(row) + seat', '"C"', '"C" + 7', '"C7"']] },
+      complexity: R`<p>O(1) (tiny string).</p>`,
+      followUps: ['Generate all labels A1..E10 with nested loops over <code>char</code> and <code>int</code>.', 'What prints for <code>System.out.println(\'C\' + "" + 7);</code>?']
+    }
+  });
+
+  practice.push({
+    title: 'Digit Sum That Survives Integer.MIN_VALUE',
+    level: 'Easy', tags: ['operators', 'overflow', 'digits'], companies: ['Microsoft', 'Goldman Sachs'],
+    statement: R`<p>Return the sum of the decimal digits of any <code>int n</code>, ignoring the sign. Your code must be correct for <code>Integer.MIN_VALUE</code> too.</p>`,
+    constraints: R`−2<sup>31</sup> ≤ n ≤ 2<sup>31</sup> − 1.`,
+    example: R`${H.table(['n', 'digit sum'], [['4096', '19'], ['-123', '6'], ['0', '0'], ['-2147483648', H.c('y', '47')]])}`,
+    brute: { why: R`<p>The usual first step <code>n = Math.abs(n)</code> fails for MIN_VALUE: its absolute value does not fit in int, so <code>Math.abs</code> returns MIN_VALUE (still negative). Then <code>while (n &gt; 0)</code> never runs and the answer is 0.</p>`, code: R`
+static int digitSumBrute(int n) {
+    n = Math.abs(n);                 // MIN_VALUE stays negative!
+    int s = 0;
+    while (n > 0) { s += n % 10; n /= 10; }
+    return s;                        // 0 for MIN_VALUE
+}` },
+    mcq: { q: 'What is <code>-123 % 10</code> in Java?', options: ['3', '-3', '7', '0'], answer: 1, explain: '% keeps the sign of the dividend: −123 = −12 × 10 + (−3).' },
+    hints: [R`<p>Hint 1: you do not need to make n positive. Java's <code>%</code> on a negative number gives a negative digit (e.g. −3).</p>`, R`<p>Hint 2: loop while <code>n != 0</code> and add <code>Math.abs(n % 10)</code> — a single digit's absolute value is always safe.</p>`, R`<p>Hint 3: alternative: widen first, <code>long m = Math.abs((long) n)</code>. Test 0, −1, MIN_VALUE (47), MAX_VALUE (46).</p>`],
+    solution: {
+      approach: R`<p>Process the number with its sign; take the absolute value of each digit only. Never negates MIN_VALUE, so no overflow.</p>`,
+      code: R`
+public class DigitSum {
+    static int digitSum(int n) {
+        int s = 0;
+        while (n != 0) {
+            s += Math.abs(n % 10);   // digit in -9..9, abs is safe
+            n /= 10;                 // truncates toward zero, reaches 0 from either side
+        }
+        return s;
+    }
+    public static void main(String[] args) {
+        System.out.println(digitSum(4096));               // 19
+        System.out.println(digitSum(-123));               // 6
+        System.out.println(digitSum(Integer.MIN_VALUE));  // 47
+        System.out.println(digitSum(Integer.MAX_VALUE));  // 46
+    }
+}`,
+      dry: { head: ['n', 'n % 10', 'abs', 's'], rows: [['-123', '-3', '3', '3'], ['-12', '-2', '2', '5'], ['-1', '-1', '1', '6'], ['0', '—', '—', '<span class="c-g">6</span>']] },
+      complexity: R`<p>O(number of digits) ≤ 10 iterations, O(1) space.</p>`,
+      followUps: ['Return the digital root (repeat until one digit) in O(1) with <code>1 + (s − 1) % 9</code>.', 'Do the same for <code>long</code>.']
+    }
+  });
+
+  practice.push({
+    title: 'Alphabet Position Encoder',
+    level: 'Easy', tags: ['char', 'ascii', 'strings'], companies: ['Codewars classic', 'Zoho'],
+    statement: R`<p>Replace every English letter in a string by its position in the alphabet (a/A = 1 … z/Z = 26), separated by single spaces. Ignore every other character.</p>`,
+    constraints: R`0 ≤ length ≤ 10<sup>5</sup>; ASCII input.`,
+    example: R`<p><code>"Java 21!"</code> → <code>"10 1 22 1"</code> (J=10, a=1, v=22, a=1; digits, space and ! ignored).</p>${H.arr(['J', 'a', 'v', 'a', ' ', '2', '1', '!'], { hl: { 0: 'g', 1: 'g', 2: 'g', 3: 'g', 4: 'm', 5: 'm', 6: 'm', 7: 'm' } })}`,
+    brute: { why: R`<p>Searching each character in a 26-letter string with <code>indexOf</code> works (O(26) per char) and needs two alphabets for upper/lower case. It ignores the key fact: letters are consecutive numbers, so the position is just a subtraction.</p>`, code: R`
+static String encodeBrute(String s) {
+    String lower = "abcdefghijklmnopqrstuvwxyz";
+    StringBuilder sb = new StringBuilder();
+    for (char c : s.toCharArray()) {
+        int p = lower.indexOf(Character.toLowerCase(c));
+        if (p >= 0) { if (sb.length() > 0) sb.append(' '); sb.append(p + 1); }
+    }
+    return sb.toString();
+}` },
+    mcq: { q: "Position of uppercase <code>c</code> is…", options: ["c - 'A'", "c - 'A' + 1", "c - 64 - 1", "(char) c"], answer: 1, explain: "'A' − 'A' = 0, so add 1 for 1-based positions. (c − 64 is equivalent, but magic numbers hurt readability.)" },
+    hints: [R`<p>Hint 1: <code>'a'..'z'</code> are 97..122 and <code>'A'..'Z'</code> are 65..90 — two contiguous ranges.</p>`, R`<p>Hint 2: for a lowercase letter the position is <code>c - 'a' + 1</code>; for uppercase <code>c - 'A' + 1</code>. Or lowercase first with <code>c | 32</code> for ASCII letters.</p>`, R`<p>Hint 3: use a <code>StringBuilder</code> and add a space only before every number except the first. Empty input → empty output.</p>`],
+    solution: {
+      approach: R`<p>One pass. Range-check each char, subtract the base letter, append to a StringBuilder with separators.</p>`,
+      code: R`
+public class AlphabetPosition {
+    static String encode(String s) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            int pos;
+            if (c >= 'a' && c <= 'z') pos = c - 'a' + 1;
+            else if (c >= 'A' && c <= 'Z') pos = c - 'A' + 1;
+            else continue;                          // not a letter: skip
+            if (sb.length() > 0) sb.append(' ');
+            sb.append(pos);
+        }
+        return sb.toString();
+    }
+    public static void main(String[] args) {
+        System.out.println(encode("Java 21!"));   // 10 1 22 1
+        System.out.println(encode("Zz"));         // 26 26
+        System.out.println("[" + encode("123") + "]");  // []
+    }
+}`,
+      dry: { head: ['c', 'code', 'range', 'pos'], rows: [["'J'", '74', 'upper', '74 − 65 + 1 = 10'], ["'a'", '97', 'lower', '1'], ["'v'", '118', 'lower', '22'], ["'2'", '50', 'none', 'skip']] },
+      complexity: R`<p>O(N) time, O(N) output.</p>`,
+      followUps: ['Decode: turn "10 1 22 1" back into "java".', 'Make it Unicode-aware for accented letters — what should "é" map to?']
+    }
+  });
+
+  /* ======================================================================
+     PRACTICE — Medium
+     ====================================================================== */
+  practice.push({
+    title: 'Overflow-Safe Average of Two Ints',
+    level: 'Medium', tags: ['overflow', 'bit manipulation'], companies: ['Google', 'Nvidia', 'Jane Street'],
+    statement: R`<p>Return <b>floor((a + b) / 2)</b> for any two ints, without using <code>long</code>, <code>double</code> or <code>BigInteger</code>.</p>`,
+    constraints: R`−2<sup>31</sup> ≤ a, b ≤ 2<sup>31</sup> − 1.`,
+    example: R`${H.table(['a, b', '(a + b) / 2 in Java', 'correct floor average'], [['2147483647, 2147483647', H.c('r', '-1'), H.c('g', '2147483647')], ['-3, 0', H.c('r', '-1 (truncated)'), H.c('g', '-2')], ['4, 7', '5', '5']])}`,
+    brute: { why: R`<p><code>(a + b) / 2</code> overflows when the sum leaves int range, and <code>/</code> rounds toward zero instead of down for negative sums. <code>a + (b − a) / 2</code> fixes overflow only when a and b have the same sign (b − a itself can overflow).</p>`, code: R`
+static int avgBrute(int a, int b) {
+    return (a + b) / 2;      // overflows; also rounds toward zero
+}` },
+    mcq: { q: 'Why does <code>(a &amp; b) + ((a ^ b) &gt;&gt; 1)</code> work?', options: ['It is a random trick', 'a + b = 2·(a &amp; b) + (a ^ b): shared bits counted twice plus differing bits once, so halve each part separately', 'It uses unsigned arithmetic', 'It only works for positives'], answer: 1, explain: 'AND gives the carries (bits in both), XOR the bits in exactly one. Halving 2·(a&amp;b) is exact; halving (a^b) with &gt;&gt; floors. No intermediate exceeds the range.' },
+    hints: [R`<p>Hint 1: binary addition: <code>a + b == 2 * (a &amp; b) + (a ^ b)</code> — the common bits are the carries.</p>`, R`<p>Hint 2: divide both parts by 2 separately: <code>(a &amp; b)</code> + <code>(a ^ b) &gt;&gt; 1</code>. The signed shift floors, which is exactly what we want.</p>`, R`<p>Hint 3: test (MAX, MAX), (MIN, MIN), (MIN, MAX) → −1, (−3, 0) → −2, (4, 7) → 5.</p>`],
+    solution: {
+      approach: R`<p>Split the sum into carry bits and non-carry bits; halve each without ever forming the full sum. The arithmetic shift <code>&gt;&gt;</code> gives floor division by 2 for negatives too.</p>`,
+      code: R`
+public class SafeAverage {
+    static int floorAvg(int a, int b) {
+        return (a & b) + ((a ^ b) >> 1);
+    }
+    public static void main(String[] args) {
+        System.out.println(floorAvg(Integer.MAX_VALUE, Integer.MAX_VALUE)); // 2147483647
+        System.out.println(floorAvg(Integer.MIN_VALUE, Integer.MIN_VALUE)); // -2147483648
+        System.out.println(floorAvg(Integer.MIN_VALUE, Integer.MAX_VALUE)); // -1
+        System.out.println(floorAvg(-3, 0));   // -2
+        System.out.println(floorAvg(4, 7));    // 5
+    }
+}`,
+      dry: { head: ['a, b', 'a &amp; b', 'a ^ b', '(a^b) &gt;&gt; 1', 'result'], rows: [['4, 7', '4', '3', '1', '5'], ['-3, 0', '0', '-3', '-2', '-2'], ['MAX, MAX', 'MAX', '0', '0', 'MAX']] },
+      complexity: R`<p>O(1).</p>`,
+      followUps: ['Ceiling average: <code>(a | b) - ((a ^ b) &gt;&gt; 1)</code>. Why?', 'For non-negative ints, why is <code>(a + b) &gt;&gt;&gt; 1</code> enough?']
+    }
+  });
+
+  practice.push({
+    title: 'String to Integer (atoi) with Clamping',
+    level: 'Medium', tags: ['overflow', 'parsing', 'char'], companies: ['Amazon', 'Microsoft', 'Meta', 'Uber'],
+    statement: R`<p>Implement <code>myAtoi(String s)</code>: skip leading spaces, read an optional <code>+</code>/<code>-</code>, then read digits until a non-digit. Return the number, <b>clamped</b> to [−2<sup>31</sup>, 2<sup>31</sup> − 1]. If no digits are read, return 0. Do not use <code>long</code> or library parsers.</p>`,
+    constraints: R`0 ≤ length ≤ 200; letters, digits, ' ', '+', '-', '.'.`,
+    example: R`${H.table(['s', 'result'], [['"42"', '42'], ['"   -042abc"', '-42'], ['"words 99"', '0'], ['"91283472332"', H.c('y', '2147483647 (clamped)')], ['"-91283472332"', H.c('y', '-2147483648 (clamped)')], ['"+-12"', '0']])}`,
+    brute: { why: R`<p>Extract the digit substring and call <code>Integer.parseInt</code> inside try/catch, clamping in the catch. It cannot tell whether a <code>NumberFormatException</code> came from overflow or from bad input, needs special handling of signs, and uses exceptions for control flow.</p>`, code: R`
+static int atoiBrute(String s) {
+    s = s.stripLeading();
+    int i = 0;
+    if (i < s.length() && (s.charAt(i) == '+' || s.charAt(i) == '-')) i++;
+    int j = i;
+    while (j < s.length() && Character.isDigit(s.charAt(j))) j++;
+    if (j == i) return 0;
+    String num = s.substring(0, j);
+    try { return Integer.parseInt(num); }
+    catch (NumberFormatException e) { return num.startsWith("-") ? Integer.MIN_VALUE : Integer.MAX_VALUE; }
+}` },
+    mcq: { q: 'Positive case: <code>res = 214748364</code>, next digit 8. What should happen?', options: ['res becomes 2147483648', 'clamp: return 2147483647', 'return 0', 'throw'], answer: 1, explain: 'res == MAX / 10 and digit 8 &gt; 7 means the next step exceeds MAX_VALUE → clamp.' },
+    hints: [R`<p>Hint 1: three phases with one index: skip spaces, read sign, read digits with <code>c - '0'</code>.</p>`, R`<p>Hint 2: before <code>res = res * 10 + d</code> check <code>res &gt; (MAX - d) / 10</code> — if true, the next step overflows; return MAX or MIN depending on sign.</p>`, R`<p>Hint 3: build the positive magnitude and apply the sign at the end. MIN_VALUE's magnitude is MAX + 1, which clamping handles: for "-2147483648" the check fires and returns MIN.</p>`],
+    solution: {
+      approach: R`<p>Single scan with an overflow check before each multiply-add: <code>res &gt; (Integer.MAX_VALUE − d) / 10</code> is exact integer reasoning that never overflows.</p>`,
+      code: R`
+public class Atoi {
+    static int myAtoi(String s) {
+        int i = 0, n = s.length();
+        while (i < n && s.charAt(i) == ' ') i++;          // 1. spaces
+        int sign = 1;
+        if (i < n && (s.charAt(i) == '+' || s.charAt(i) == '-')) {
+            sign = s.charAt(i) == '-' ? -1 : 1;           // 2. sign
+            i++;
+        }
+        int res = 0;
+        while (i < n && s.charAt(i) >= '0' && s.charAt(i) <= '9') {   // 3. digits
+            int d = s.charAt(i) - '0';
+            if (res > (Integer.MAX_VALUE - d) / 10)       // res*10 + d would exceed MAX
+                return sign == 1 ? Integer.MAX_VALUE : Integer.MIN_VALUE;
+            res = res * 10 + d;
+            i++;
+        }
+        return sign * res;
+    }
+    public static void main(String[] args) {
+        String[] tests = {"42", "   -042abc", "words 99", "91283472332", "-91283472332", "+-12", "-2147483648", "2147483647"};
+        for (String t : tests) System.out.println("\"" + t + "\" -> " + myAtoi(t));
+    }
+}`,
+      dry: { head: ['char', 'd', 'check res &gt; (MAX−d)/10', 'res'], rows: [["' ' x3", '—', 'skip', '0'], ["'-'", '—', 'sign = −1', '0'], ["'0'", '0', '0 &gt; 214748364? no', '0'], ["'4'", '4', 'no', '4'], ["'2'", '2', 'no', '42'], ["'a'", '—', 'stop', '<span class="c-g">−42</span>']] },
+      complexity: R`<p>O(N) time, O(1) space.</p>`,
+      followUps: ['Why is "-2147483648" returned correctly even though its magnitude does not fit?', 'Support underscores like Java literals (1_000).']
+    }
+  });
+
+  practice.push({
+    title: 'Detect Overflow Before It Happens',
+    level: 'Medium', tags: ['overflow', 'bit manipulation'], companies: ['Bloomberg', 'Citadel', 'Oracle'],
+    statement: R`<p>Implement <code>static boolean addOverflows(int a, int b)</code> and <code>static boolean mulOverflows(int a, int b)</code> that report whether <code>a + b</code> / <code>a * b</code> would overflow 32-bit int. Do not call <code>Math.*Exact</code>, and do not catch exceptions.</p>`,
+    constraints: R`Any int values.`,
+    example: R`${H.table(['call', 'answer', 'why'], [['addOverflows(MAX, 1)', 'true', 'sum = 2<sup>31</sup>'], ['addOverflows(MIN, -1)', 'true', 'sum = −2<sup>31</sup> − 1'], ['addOverflows(MAX, MIN)', 'false', 'sum = −1'], ['mulOverflows(46341, 46341)', 'true', '2,147,488,281 &gt; MAX'], ['mulOverflows(-1, MIN)', 'true', '−MIN does not fit']])}`,
+    brute: { why: R`<p>Check whether the result "looks wrong": <code>a &gt; 0 &amp;&amp; b &gt; 0 &amp;&amp; a + b &lt; 0</code>. That catches some addition cases but you must enumerate every sign combination, and for multiplication the wrapped product can have any sign (13! stays positive), so sign checks are useless there.</p>`, code: R`
+static boolean addOverflowsBrute(int a, int b) {
+    int r = a + b;
+    return (a > 0 && b > 0 && r < 0) || (a < 0 && b < 0 && r >= 0);
+}` },
+    mcq: { q: '<code>((a ^ r) &amp; (b ^ r)) &lt; 0</code> with r = a + b is true exactly when…', options: ['a and b have different signs', 'r has a different sign from BOTH a and b', 'r is negative', 'a or b is zero'], answer: 1, explain: 'a ^ r is negative when a and r differ in sign; ANDing requires both to differ — only possible when a and b share a sign and the sum flipped it.' },
+    hints: [R`<p>Hint 1: addition can only overflow when both operands have the same sign, and then the wrapped result has the opposite sign.</p>`, R`<p>Hint 2: "signs differ" in one operation: <code>(x ^ y) &lt; 0</code>. Combine for both operands with <code>&amp;</code>.</p>`, R`<p>Hint 3: for multiplication, compute the exact product in a <code>long</code> (fits: |a·b| ≤ 2<sup>62</sup>) and check <code>p != (int) p</code>.</p>`],
+    solution: {
+      approach: R`<p>Addition: the XOR sign test from the JDK's <code>addExact</code>. Multiplication: widen to long, which is exact for int × int, and check whether narrowing changes the value.</p>`,
+      code: R`
+public class OverflowCheck {
+    static boolean addOverflows(int a, int b) {
+        int r = a + b;                         // wraps silently
+        return ((a ^ r) & (b ^ r)) < 0;        // r's sign differs from both a and b
+    }
+    static boolean mulOverflows(int a, int b) {
+        long p = (long) a * b;                 // exact: |p| <= 2^62
+        return p != (int) p;                   // narrowing changed it -> overflow
+    }
+    public static void main(String[] args) {
+        System.out.println(addOverflows(Integer.MAX_VALUE, 1));          // true
+        System.out.println(addOverflows(Integer.MIN_VALUE, -1));         // true
+        System.out.println(addOverflows(Integer.MAX_VALUE, Integer.MIN_VALUE)); // false
+        System.out.println(mulOverflows(46341, 46341));                  // true
+        System.out.println(mulOverflows(46340, 46340));                  // false
+        System.out.println(mulOverflows(-1, Integer.MIN_VALUE));         // true
+    }
+}`,
+      dry: { head: ['a, b', 'r = a + b', 'a ^ r &lt; 0', 'b ^ r &lt; 0', 'overflow'], rows: [['MAX, 1', 'MIN', 'yes', 'yes', 'true'], ['MAX, MIN', '-1', 'yes', 'no', 'false'], ['5, -3', '2', 'no', 'yes', 'false']] },
+      complexity: R`<p>O(1).</p>`,
+      followUps: ['Write <code>mulOverflows(long, long)</code> using <code>Math.multiplyHigh</code>.', 'Write <code>subOverflows</code> — which operands do you XOR?']
+    }
+  });
+
+  practice.push({
+    title: 'Number of 1 Bits (Treat int as Unsigned)',
+    level: 'Medium', tags: ['bit manipulation', 'shifts'], companies: ['Apple', 'Qualcomm', 'Microsoft'],
+    statement: R`<p>Given an <code>int n</code> that represents an <b>unsigned</b> 32-bit value, return the number of 1 bits (Hamming weight). Negative ints are just large unsigned numbers here, e.g. −3 = 0xFFFFFFFD has 31 ones.</p>`,
+    constraints: R`Any 32-bit pattern.`,
+    example: R`${H.bits(11, 8, { label: 'n = 11', hl: { 0: 'g', 1: 'g', 3: 'g' } })}<p>11 = 1011₂ → <b>3</b>. n = −3 → <b>31</b>. n = −1 → <b>32</b>.</p>`,
+    brute: { why: R`<p>Converting to text with <code>Integer.toBinaryString(n)</code> and counting '1' characters is correct but allocates a String per call. The classic bug is the hand-written loop with <code>n &gt;&gt;= 1</code>: for negative n, the sign bit is copied in forever, n never reaches 0, and the loop never ends.</p>`, code: R`
+static int bitsBrute(int n) {
+    int count = 0;
+    for (char c : Integer.toBinaryString(n).toCharArray())   // two's complement text for negatives
+        if (c == '1') count++;
+    return count;
+}` },
+    mcq: { q: 'Why does <code>while (n != 0) { c += n &amp; 1; n &gt;&gt;= 1; }</code> hang for n = −1?', options: ['−1 &amp; 1 is 0', '&gt;&gt; copies the sign bit, so −1 &gt;&gt; 1 is still −1', 'Java forbids shifting negatives', 'The loop is fine'], answer: 1, explain: 'Arithmetic shift fills with the sign bit; use &gt;&gt;&gt; to fill with zeros.' },
+    hints: [R`<p>Hint 1: use the unsigned shift <code>n &gt;&gt;&gt;= 1</code> so zeros come in from the left and n eventually becomes 0.</p>`, R`<p>Hint 2: faster: <code>n &amp;= n - 1</code> clears the lowest set bit, so the loop runs once per 1 bit (Brian Kernighan's trick).</p>`, R`<p>Hint 3: in production call <code>Integer.bitCount(n)</code> — the JIT maps it to the CPU's POPCNT instruction. Test 0, 1, −1, MIN_VALUE.</p>`],
+    solution: {
+      approach: R`<p>Kernighan's loop: each <code>n &amp; (n − 1)</code> removes exactly one 1-bit, independent of sign. Runs at most 32 times.</p>`,
+      code: R`
+public class HammingWeight {
+    static int hammingWeight(int n) {
+        int count = 0;
+        while (n != 0) {
+            n &= n - 1;          // drop the lowest set bit
+            count++;
+        }
+        return count;
+    }
+    static int viaUnsignedShift(int n) {
+        int count = 0;
+        while (n != 0) { count += n & 1; n >>>= 1; }   // >>> fills with zeros
+        return count;
+    }
+    public static void main(String[] args) {
+        int[] t = {11, -3, -1, Integer.MIN_VALUE, 0};
+        for (int x : t)
+            System.out.println(x + " -> " + hammingWeight(x) + " " + viaUnsignedShift(x) + " " + Integer.bitCount(x));
+    }
+}`,
+      dry: { head: ['n (binary)', 'n − 1', 'n &amp; (n−1)', 'count'], rows: [['1011', '1010', '1010', '1'], ['1010', '1001', '1000', '2'], ['1000', '0111', '0000', '3 → stop']] },
+      complexity: R`<p>O(number of 1 bits) ≤ 32, O(1) space.</p>`,
+      followUps: ['Count bits for every number 0..n in O(n) with <code>dp[i] = dp[i &gt;&gt; 1] + (i &amp; 1)</code>.', 'Is a number a power of two? <code>n &gt; 0 &amp;&amp; (n &amp; (n − 1)) == 0</code>.']
+    }
+  });
+
+  practice.push({
+    title: 'Predict the Output, Then Untangle the Side Effects',
+    level: 'Medium', tags: ['operators', 'evaluation order', 'output prediction'], companies: ['Infosys', 'Capgemini', 'Oracle'],
+    statement: R`<p>Predict the exact output of the program below <b>without running it</b>. Then rewrite it so every line has at most one side effect and produces the same output.</p>
+<pre>int x = 3;
+int y = x++ * 2 + --x;
+int z = x &lt;&lt; 2 &gt;&gt; 1;
+boolean b = x &gt; 2 || ++x &gt; 0;
+System.out.println(y + " " + z + " " + b + " " + x);</pre>`,
+    constraints: R`Standard Java semantics (JLS): operands left to right, precedence for grouping, short-circuit for <code>||</code>.`,
+    example: R`<p>Output: <code>${'9 6 true 3'}</code>.</p>${H.table(['step', 'x', 'value'], [['x++ (old value)', '4', '3'], ['× 2', '4', '6'], ['--x', '3', '3'], ['y = 6 + 3', '3', '9'], ['(3 &lt;&lt; 2) &gt;&gt; 1', '3', '12 → 6'], ['x &gt; 2 is true → ++x skipped', '3', 'true']])}`,
+    brute: { why: R`<p>The original program is legal but hard to reason about: three different side effects on <code>x</code> hide inside expressions, and one (<code>++x</code>) silently never runs because of short-circuiting. Code reviewers and linters flag this style.</p>`, code: R`
+int x = 3;
+int y = x++ * 2 + --x;
+int z = x << 2 >> 1;
+boolean b = x > 2 || ++x > 0;
+System.out.println(y + " " + z + " " + b + " " + x);   // 9 6 true 3` },
+    mcq: { q: 'How is <code>x &lt;&lt; 2 &gt;&gt; 1</code> grouped?', options: ['x &lt;&lt; (2 &gt;&gt; 1)', '(x &lt;&lt; 2) &gt;&gt; 1', 'compile error', 'depends on the JVM'], answer: 1, explain: 'Shift operators share one precedence level and are left-associative.' },
+    hints: [R`<p>Hint 1: trace a little table of x after each operand: <code>x++</code> yields 3 and makes x 4; <code>--x</code> makes x 3 and yields 3.</p>`, R`<p>Hint 2: <code>||</code> evaluates its right side only when the left is false. Here <code>x &gt; 2</code> is already true.</p>`, R`<p>Hint 3: in the rewrite, copy the "old value" to a temp before changing x, and drop the dead <code>++x</code> (it never executes) — or keep it in an explicit <code>if</code> to preserve meaning.</p>`],
+    solution: {
+      approach: R`<p>Make every read and write explicit and in order. Behaviour is identical, and the short-circuit becomes a visible <code>if</code>.</p>`,
+      code: R`
+public class Untangled {
+    public static void main(String[] args) {
+        int x = 3;
+        int old = x;          // value produced by x++
+        x = x + 1;            // side effect of x++      -> 4
+        x = x - 1;            // --x                     -> 3
+        int y = old * 2 + x;  // 3 * 2 + 3 = 9
+        int z = (x << 2) >> 1;  // 12 >> 1 = 6
+        boolean b = x > 2;
+        if (!b) {             // the right side of || runs only when left is false
+            x = x + 1;
+            b = x > 0;
+        }
+        System.out.println(y + " " + z + " " + b + " " + x);   // 9 6 true 3
+    }
+}`,
+      dry: { head: ['line', 'x', 'new value'], rows: [['old = x', '3', 'old = 3'], ['x = x + 1', '4', '—'], ['x = x − 1', '3', '—'], ['y', '3', '9'], ['z', '3', '6'], ['b', '3', 'true (if skipped)']] },
+      complexity: R`<p>O(1).</p>`,
+      followUps: ['What if x starts at 1? (Now the right side of || runs.)', 'Replace <code>||</code> with <code>|</code> — what changes?']
+    }
+  });
+
+  practice.push({
+    title: 'Unicode-Aware Character Classifier',
+    level: 'Medium', tags: ['unicode', 'char', 'code points'], companies: ['Google', 'Meta', 'Shopify'],
+    statement: R`<p>Return <code>int[4]</code> = {letters, digits, whitespace, other} for a string, counting <b>code points</b> (so an emoji counts once). Letters and digits are Unicode-aware (Hindi, Arabic, accented letters count).</p>`,
+    constraints: R`0 ≤ length ≤ 10<sup>5</sup> UTF-16 units; well-formed text.`,
+    example: R`<p><code>"Hi 5😀!"</code> → letters 2 (H, i), digits 1, whitespace 1, other 2 (😀 and !) → <b>[2, 1, 1, 2]</b>. A char-based loop would report other = 3, because 😀 is two chars.</p>`,
+    brute: { why: R`<p>Looping with <code>charAt</code> and ASCII ranges (<code>c &gt;= 'a' &amp;&amp; c &lt;= 'z'</code>) misses 'é', 'ß', 'अ', counts each emoji twice and classifies surrogate halves as "other" separately.</p>`, code: R`
+static int[] classifyBrute(String s) {
+    int[] r = new int[4];
+    for (int i = 0; i < s.length(); i++) {
+        char c = s.charAt(i);                                   // half an emoji at a time
+        if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) r[0]++;
+        else if (c >= '0' && c <= '9') r[1]++;
+        else if (c == ' ') r[2]++;
+        else r[3]++;
+    }
+    return r;
+}` },
+    mcq: { q: 'Which call correctly classifies a supplementary character like U+1D400 (𝐀, MATHEMATICAL BOLD CAPITAL A)?', options: ['Character.isLetter(s.charAt(i))', 'Character.isLetter(s.codePointAt(i))', "s.charAt(i) &gt;= 'A'", 'Character.isLetterOrDigit((char) cp)'], answer: 1, explain: 'The int overloads take a full code point. The char overloads see only a surrogate half (not a letter); casting to char truncates.' },
+    hints: [R`<p>Hint 1: iterate with <code>s.codePoints()</code> (an IntStream) or with <code>codePointAt</code> + <code>Character.charCount</code>.</p>`, R`<p>Hint 2: use the <code>int</code> overloads: <code>Character.isLetter(cp)</code>, <code>isDigit(cp)</code>, <code>isWhitespace(cp)</code>.</p>`, R`<p>Hint 3: test with "", "é1 ", "😀😀", Devanagari "नमस्ते" (note: some of its code points are combining marks, which are not letters!).</p>`],
+    solution: {
+      approach: R`<p>Walk code points once and classify each with Unicode-aware <code>Character</code> methods.</p>`,
+      code: R`
+public class Classifier {
+    static int[] classify(String s) {
+        int[] r = new int[4];
+        for (int i = 0; i < s.length(); ) {
+            int cp = s.codePointAt(i);
+            if (Character.isLetter(cp)) r[0]++;
+            else if (Character.isDigit(cp)) r[1]++;
+            else if (Character.isWhitespace(cp)) r[2]++;
+            else r[3]++;
+            i += Character.charCount(cp);          // skip both halves of a surrogate pair
+        }
+        return r;
+    }
+    public static void main(String[] args) {
+        System.out.println(java.util.Arrays.toString(classify("Hi 5😀!")));  // [2, 1, 1, 2]
+        System.out.println(java.util.Arrays.toString(classify("café ٣")));    // [4, 1, 1, 0]
+    }
+}`,
+      dry: { head: ['i', 'code point', 'class', 'counts'], rows: [['0', "'H'", 'letter', '[1,0,0,0]'], ['1', "'i'", 'letter', '[2,0,0,0]'], ['2', "' '", 'space', '[2,0,1,0]'], ['3', "'5'", 'digit', '[2,1,1,0]'], ['4', 'U+1F600 (2 chars)', 'other', '[2,1,1,1]'], ['6', "'!'", 'other', '[2,1,1,2]']] },
+      complexity: R`<p>O(N) time, O(1) extra space.</p>`,
+      followUps: ['Count grapheme clusters instead of code points with <code>BreakIterator</code>.', 'Classify by <code>Character.UnicodeScript.of(cp)</code> (LATIN, DEVANAGARI, HAN…).']
+    }
+  });
+
+  practice.push({
+    title: 'Valid UTF-8',
+    level: 'Medium', tags: ['bit manipulation', 'unicode', 'bytes'], companies: ['Google', 'Meta', 'Cloudflare'],
+    statement: R`<p>Given <code>int[] data</code> where each element is one byte (only the low 8 bits matter), decide whether it is a valid UTF-8 sequence. A character is 1–4 bytes:</p>
+${H.table(['bytes', 'pattern'], [['1', '0xxxxxxx'], ['2', '110xxxxx 10xxxxxx'], ['3', '1110xxxx 10xxxxxx 10xxxxxx'], ['4', '11110xxx 10xxxxxx 10xxxxxx 10xxxxxx']])}`,
+    constraints: R`1 ≤ data.length ≤ 2 · 10<sup>4</sup>; 0 ≤ data[i] ≤ 255 (ignore higher bits if present).`,
+    example: R`<p>[197, 130, 1] = 11000101 10000010 00000001 → a 2-byte char then a 1-byte char → <span class="c-g"><b>true</b></span>. [235, 140, 4] = 11101011 10001100 00000100 → a 3-byte lead needs two continuation bytes but the third byte is 0xxxxxxx → <span class="c-r"><b>false</b></span>.</p>`,
+    brute: { why: R`<p>Convert every byte to an 8-character binary String with <code>Integer.toBinaryString</code> and padding, then compare prefixes with <code>startsWith("110")</code>. Correct but slow and allocation-heavy; masks do the same with one AND per byte.</p>`, code: R`
+static boolean validUtf8Brute(int[] data) {
+    int need = 0;
+    for (int x : data) {
+        String b = String.format("%8s", Integer.toBinaryString(x & 0xFF)).replace(' ', '0');
+        if (need == 0) {
+            if (b.startsWith("0")) need = 0;
+            else if (b.startsWith("110")) need = 1;
+            else if (b.startsWith("1110")) need = 2;
+            else if (b.startsWith("11110")) need = 3;
+            else return false;
+        } else {
+            if (!b.startsWith("10")) return false;
+            need--;
+        }
+    }
+    return need == 0;
+}` },
+    mcq: { q: 'Which test checks that byte b is a continuation byte (10xxxxxx)?', options: ['(b &amp; 0x80) == 0x80', '(b &amp; 0xC0) == 0x80', '(b &gt;&gt; 6) == 1', 'b &gt;= 128'], answer: 1, explain: 'Mask the top two bits (0xC0 = 11000000) and require them to be 10 (0x80).' },
+    hints: [R`<p>Hint 1: keep a counter <code>need</code> = how many continuation bytes are still expected.</p>`, R`<p>Hint 2: when need is 0, classify the lead byte with masks: <code>(b &amp; 0x80) == 0</code> → 1 byte; <code>(b &amp; 0xE0) == 0xC0</code> → need 1; <code>(b &amp; 0xF0) == 0xE0</code> → need 2; <code>(b &amp; 0xF8) == 0xF0</code> → need 3; else invalid.</p>`, R`<p>Hint 3: when need &gt; 0, the byte must satisfy <code>(b &amp; 0xC0) == 0x80</code>. At the end, need must be 0 (no truncated character).</p>`],
+    solution: {
+      approach: R`<p>A tiny state machine driven by bit masks. Mask each input with <code>0xFF</code> first, exactly like reading signed Java bytes from a stream.</p>`,
+      code: R`
+public class ValidUtf8 {
+    static boolean validUtf8(int[] data) {
+        int need = 0;
+        for (int x : data) {
+            int b = x & 0xFF;                       // only the low 8 bits matter
+            if (need == 0) {
+                if ((b & 0x80) == 0) continue;      // 0xxxxxxx
+                else if ((b & 0xE0) == 0xC0) need = 1;
+                else if ((b & 0xF0) == 0xE0) need = 2;
+                else if ((b & 0xF8) == 0xF0) need = 3;
+                else return false;                  // 10xxxxxx or 11111xxx cannot start a char
+            } else {
+                if ((b & 0xC0) != 0x80) return false;
+                need--;
+            }
+        }
+        return need == 0;
+    }
+    public static void main(String[] args) {
+        System.out.println(validUtf8(new int[]{197, 130, 1}));   // true
+        System.out.println(validUtf8(new int[]{235, 140, 4}));   // false
+        System.out.println(validUtf8(new int[]{0xF0, 0x9F, 0x98, 0x80}));  // true (grinning face)
+    }
+}`,
+      dry: { head: ['byte', 'binary', 'need before', 'action'], rows: [['197', '11000101', '0', 'lead of 2 → need 1'], ['130', '10000010', '1', 'continuation → need 0'], ['1', '00000001', '0', 'ASCII'], ['end', '—', '0', '<span class="c-g">true</span>']] },
+      complexity: R`<p>O(N) time, O(1) space.</p>`,
+      followUps: ['Also reject overlong encodings (e.g. C0 80) and surrogates (ED A0 80) like a strict decoder.', 'Use <code>CharsetDecoder</code> with <code>CodingErrorAction.REPORT</code> to do this with the JDK.']
+    }
+  });
+
+  /* ======================================================================
+     PRACTICE — Hard
+     ====================================================================== */
+  practice.push({
+    title: 'Divide Two Integers Without *, / or %',
+    level: 'Hard', tags: ['overflow', 'bit manipulation', 'math'], companies: ['Meta', 'Microsoft', 'Amazon', 'Google'],
+    statement: R`<p>Compute <code>dividend / divisor</code> truncated toward zero without using multiplication, division or mod. If the result overflows (only <code>MIN_VALUE / -1</code>), return <code>Integer.MAX_VALUE</code>. No <code>long</code>.</p>`,
+    constraints: R`−2<sup>31</sup> ≤ dividend, divisor ≤ 2<sup>31</sup> − 1; divisor ≠ 0.`,
+    example: R`${H.table(['dividend, divisor', 'result'], [['10, 3', '3'], ['7, -3', '-2'], ['-2147483648, -1', H.c('y', '2147483647 (clamped)')], ['-2147483648, 1', '-2147483648'], ['-2147483648, 2', '-1073741824']])}`,
+    brute: { why: R`<p>Repeated subtraction counts how many times the divisor fits: up to 2<sup>31</sup> iterations for <code>MIN_VALUE / 1</code> — seconds of CPU. It also needs <code>Math.abs</code>, which breaks on MIN_VALUE.</p>`, code: R`
+static int divideBrute(int dividend, int divisor) {
+    if (dividend == Integer.MIN_VALUE && divisor == -1) return Integer.MAX_VALUE;
+    boolean neg = (dividend < 0) ^ (divisor < 0);
+    long a = Math.abs((long) dividend), b = Math.abs((long) divisor);   // cheats with long
+    int q = 0;
+    while (a >= b) { a -= b; q++; }                                     // O(quotient)
+    return neg ? -q : q;
+}` },
+    mcq: { q: 'Why convert both numbers to <b>negative</b> instead of positive?', options: ['Negatives are faster', 'Every int has a negative counterpart, but MIN_VALUE has no positive one', 'Subtraction only works on negatives', 'To avoid using abs'], answer: 1, explain: 'The negative range is one larger, so working in negatives never overflows when "taking the absolute value".' },
+    hints: [R`<p>Hint 1: handle <code>MIN_VALUE / -1</code> first. Then remember the result's sign with XOR and turn both numbers <b>negative</b>.</p>`, R`<p>Hint 2: instead of subtracting the divisor once, double it (<code>t += t</code>) while it still fits into what remains — exponential search, like long division in binary.</p>`, R`<p>Hint 3: guard the doubling with <code>t &gt;= (Integer.MIN_VALUE &gt;&gt; 1)</code> so <code>t + t</code> cannot overflow, and keep the quotient negative too. Recipe: while a ≤ b: find the largest doubled t ≥ a, subtract it, add its multiple.</p>`],
+    solution: {
+      approach: R`<p>Work entirely in the negative range (no overflow), and subtract the largest power-of-two multiple of the divisor each round. Each outer round removes at least half of what is left, giving O(log² N) total steps — at most ~31 × 31.</p>`,
+      code: R`
+public class Divide {
+    static int divide(int dividend, int divisor) {
+        if (dividend == Integer.MIN_VALUE && divisor == -1) return Integer.MAX_VALUE;
+        boolean negative = (dividend < 0) ^ (divisor < 0);
+        int a = dividend > 0 ? -dividend : dividend;   // both made negative: always safe
+        int b = divisor > 0 ? -divisor : divisor;
+        int q = 0;                                     // kept negative as well
+        while (a <= b) {                               // |a| >= |b|
+            int t = b, m = -1;
+            while (t >= (Integer.MIN_VALUE >> 1) && a <= t + t) {
+                t += t;                                // double the chunk
+                m += m;                                // and its multiple
+            }
+            a -= t;
+            q += m;
+        }
+        return negative ? q : -q;
+    }
+    public static void main(String[] args) {
+        int[][] tests = {{10, 3}, {7, -3}, {Integer.MIN_VALUE, -1}, {Integer.MIN_VALUE, 1}, {Integer.MIN_VALUE, 2}, {Integer.MAX_VALUE, 1}, {-7, 2}, {1, 2}};
+        for (int[] t : tests) {
+            int expected = (t[0] == Integer.MIN_VALUE && t[1] == -1) ? Integer.MAX_VALUE : t[0] / t[1];
+            System.out.println(t[0] + " / " + t[1] + " = " + divide(t[0], t[1]) + " " + (divide(t[0], t[1]) == expected));
+        }
+    }
+}`,
+      dry: { head: ['a', 'b', 'largest t (m)', 'a − t', 'q'], rows: [['−10', '−3', '−6 (−2)', '−4', '−2'], ['−4', '−3', '−3 (−1)', '−1', '−3'], ['−1', '−3', 'stop (a &gt; b)', '—', '−3 → result 3']] },
+      complexity: R`<p>O(log² N) time (≤ ~1000 steps), O(1) space.</p>`,
+      followUps: ['Make it O(log N) by precomputing the doubled values once and walking them from largest to smallest.', 'Where exactly would the positive-range version overflow?']
+    }
+  });
+
+  practice.push({
+    title: 'Multiply Two Longs Modulo m Without Overflow',
+    level: 'Hard', tags: ['overflow', 'modular arithmetic', 'bit manipulation'], companies: ['Jane Street', 'Two Sigma', 'Google'],
+    statement: R`<p>Return <code>(a × b) mod m</code> for non-negative longs where <b>m can be up to 10<sup>18</sup></b>. The product can reach 10<sup>36</sup>, far beyond long. Do not use <code>BigInteger</code> in the main solution.</p>`,
+    constraints: R`1 ≤ m ≤ 10<sup>18</sup>; 0 ≤ a, b &lt; 2<sup>63</sup>.`,
+    example: R`<p>a = 10<sup>18</sup> − 1, b = 10<sup>18</sup> − 2, m = 10<sup>18</sup> → (−1)(−2) mod m = <b>2</b>. The direct <code>a * b % m</code> overflows and prints garbage.</p>`,
+    brute: { why: R`<p><code>a * b % m</code> works only while a·b &lt; 2<sup>63</sup> ≈ 9.2 × 10<sup>18</sup> — fine for m ≈ 10<sup>9</sup> (products &lt; 10<sup>18</sup>) but wrong for m ≈ 10<sup>18</sup>. Using BigInteger is correct but ~50× slower in hot loops (e.g. Miller–Rabin primality tests).</p>`, code: R`
+static long mulModBrute(long a, long b, long m) {
+    return (a % m) * (b % m) % m;        // overflows when the product exceeds 2^63
+}` },
+    mcq: { q: 'In "double-and-add", why is <code>a += a; if (a &gt;= m) a -= m;</code> safe for m ≤ 10<sup>18</sup>?', options: ['Because a is always 0', 'a &lt; m ≤ 10<sup>18</sup>, so 2a &lt; 2 × 10<sup>18</sup> &lt; 2<sup>63</sup>', 'Java checks overflow for longs', 'It is not safe'], answer: 1, explain: 'Every intermediate stays below 2m, which is below Long.MAX_VALUE ≈ 9.22 × 10<sup>18</sup>.' },
+    hints: [R`<p>Hint 1: multiplication is repeated addition; binary exponentiation's cousin "binary multiplication" adds <code>a·2<sup>k</sup></code> for every set bit k of b.</p>`, R`<p>Hint 2: keep everything reduced mod m after each addition, so values stay below 2m and never overflow when m &lt; 2<sup>62</sup>.</p>`, R`<p>Hint 3: recipe — reduce a, b mod m; r = 0; while b &gt; 0: if b odd, r = (r + a) mod m; a = (2a) mod m; b &gt;&gt;= 1. Use subtraction instead of % for speed.</p>`],
+    solution: {
+      approach: R`<p>Double-and-add (Russian peasant multiplication) with modular reduction after each step: O(log b) additions, every intermediate &lt; 2m. A production alternative is <code>Math.multiplyHigh</code> to get the full 128-bit product and reduce it.</p>`,
+      code: R`
+import java.math.BigInteger;
+
+public class MulMod {
+    static long mulMod(long a, long b, long m) {
+        a %= m;
+        b %= m;
+        long r = 0;
+        while (b > 0) {
+            if ((b & 1) == 1) {
+                r += a;                 // r < m and a < m  ->  r + a < 2m < 2^63
+                if (r >= m) r -= m;
+            }
+            a += a;                     // double a (mod m)
+            if (a >= m) a -= m;
+            b >>= 1;
+        }
+        return r;
+    }
+    public static void main(String[] args) {
+        long m = 1_000_000_000_000_000_000L;
+        long a = m - 1, b = m - 2;
+        System.out.println(mulMod(a, b, m));                          // 2
+        System.out.println(a * b % m);                                // garbage (overflow)
+        System.out.println(BigInteger.valueOf(a).multiply(BigInteger.valueOf(b))
+                .mod(BigInteger.valueOf(m)));                         // 2 (reference)
+    }
+}`,
+      dry: { head: ['b (binary)', 'bit', 'r', 'a'], rows: [['101 (5), a=7, m=10', '1', '0+7 = 7', '14 → 4'], ['10', '0', '7', '8'], ['1', '1', '7+8 = 15 → 5', '16 → 6'], ['0', '—', '<span class="c-g">5 = 35 mod 10</span>', '—']] },
+      complexity: R`<p>O(log b) ≤ 63 iterations, O(1) space.</p>`,
+      followUps: ['Use it inside <code>modPow</code> for a deterministic Miller–Rabin primality test on 64-bit numbers.', 'Implement it with <code>Math.multiplyHigh</code> (Java 9) / <code>Math.unsignedMultiplyHigh</code> (Java 18).']
+    }
+  });
+
+  practice.push({
+    title: 'Encode a Code Point as UTF-8 Bytes',
+    level: 'Hard', tags: ['unicode', 'casting', 'bit manipulation'], companies: ['Apple', 'Mozilla', 'Cloudflare'],
+    statement: R`<p>Write <code>static byte[] encode(int cp)</code> returning the UTF-8 encoding of a Unicode code point as Java <code>byte</code>s (remember: Java bytes are <b>signed</b>, so 0xE2 is stored as −30). Throw <code>IllegalArgumentException</code> for values outside 0..0x10FFFF or in the surrogate range 0xD800..0xDFFF. Then use it to encode a whole String by code points.</p>`,
+    constraints: R`Any int input; strings up to 10<sup>5</sup> chars.`,
+    example: R`${H.table(['cp', 'char', 'UTF-8 (hex)', 'Java bytes'], [['0x41', 'A', '41', '[65]'], ['0xE9', 'é', 'C3 A9', '[-61, -87]'], ['0x20AC', '€', 'E2 82 AC', '[-30, -126, -84]'], ['0x1F600', '😀', 'F0 9F 98 80', '[-16, -97, -104, -128]']])}`,
+    brute: { why: R`<p>Calling <code>new String(Character.toChars(cp)).getBytes(StandardCharsets.UTF_8)</code> gives the right bytes for valid input, but it hides the bit layout you are asked to implement, and for a surrogate code point it silently writes <code>?</code> (0x3F) instead of rejecting it.</p>`, code: R`
+static byte[] encodeBrute(int cp) {
+    return new String(Character.toChars(cp)).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+}` },
+    mcq: { q: 'Encoding needs 3 bytes. Which expression builds the first byte?', options: ['(byte) (0xE0 | (cp &gt;&gt; 12))', '(byte) (cp &amp; 0x3F)', '(byte) (0xC0 | (cp &gt;&gt; 6))', '(byte) cp'], answer: 0, explain: '3-byte form is 1110xxxx 10xxxxxx 10xxxxxx: the top 4 of the 16 payload bits go into the lead byte after the 1110 marker (0xE0).' },
+    hints: [R`<p>Hint 1: choose the length by range: &lt; 0x80 → 1, &lt; 0x800 → 2, &lt; 0x10000 → 3, else 4. Reject surrogates and values &gt; 0x10FFFF first.</p>`, R`<p>Hint 2: payload bits are cut into 6-bit groups from the right: <code>(cp &gt;&gt; 6k) &amp; 0x3F</code>, each OR-ed with the continuation marker <code>0x80</code>. The lead byte gets 0xC0, 0xE0 or 0xF0 OR-ed with the remaining high bits.</p>`, R`<p>Hint 3: values ≥ 128 become negative when cast to <code>byte</code> — that is expected. Verify against <code>getBytes(UTF_8)</code> for many code points, and print with <code>b &amp; 0xFF</code> to see hex.</p>`],
+    solution: {
+      approach: R`<p>Range-based length selection plus shifts and masks; the final <code>(byte)</code> casts keep the low 8 bits, which is exactly the byte we built. For strings, iterate by code point and append into a growable buffer.</p>`,
+      code: R`
+import java.io.ByteArrayOutputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
+
+public class Utf8Encoder {
+    static byte[] encode(int cp) {
+        if (cp < 0 || cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF))
+            throw new IllegalArgumentException("not a Unicode scalar value: " + cp);
+        if (cp < 0x80) return new byte[]{(byte) cp};
+        if (cp < 0x800) return new byte[]{
+            (byte) (0xC0 | (cp >> 6)),
+            (byte) (0x80 | (cp & 0x3F))};
+        if (cp < 0x10000) return new byte[]{
+            (byte) (0xE0 | (cp >> 12)),
+            (byte) (0x80 | ((cp >> 6) & 0x3F)),
+            (byte) (0x80 | (cp & 0x3F))};
+        return new byte[]{
+            (byte) (0xF0 | (cp >> 18)),
+            (byte) (0x80 | ((cp >> 12) & 0x3F)),
+            (byte) (0x80 | ((cp >> 6) & 0x3F)),
+            (byte) (0x80 | (cp & 0x3F))};
+    }
+    static byte[] encode(String s) {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        s.codePoints().forEach(cp -> out.writeBytes(encode(cp)));
+        return out.toByteArray();
+    }
+    public static void main(String[] args) {
+        System.out.println(Arrays.toString(encode(0x20AC)));        // [-30, -126, -84]
+        System.out.println(Arrays.toString(encode(0x1F600)));       // [-16, -97, -104, -128]
+        String text = "Aé€😀";
+        System.out.println(Arrays.equals(encode(text), text.getBytes(StandardCharsets.UTF_8))); // true
+        try { encode(0xD800); } catch (IllegalArgumentException e) { System.out.println("rejected surrogate"); }
+    }
+}`,
+      dry: { head: ['cp = 0x20AC', 'expression', 'bits', 'byte'], rows: [['lead', '0xE0 | (cp &gt;&gt; 12)', '1110 0010', '0xE2 → −30'], ['mid', '0x80 | ((cp &gt;&gt; 6) &amp; 0x3F)', '1000 0010', '0x82 → −126'], ['last', '0x80 | (cp &amp; 0x3F)', '1010 1100', '0xAC → −84']] },
+      complexity: R`<p>O(1) per code point; O(N) for a string.</p>`,
+      followUps: ['Write the decoder (bytes → code points) including validation of overlong forms.', 'Why does Java\'s "modified UTF-8" (used in class files) encode U+0000 as C0 80?']
+    }
+  });
+
+  practice.push({
+    title: 'Parse a Signed Long in Any Radix (Overflow-Exact)',
+    level: 'Hard', tags: ['overflow', 'parsing', 'char'], companies: ['Oracle', 'Bloomberg', 'Stripe'],
+    statement: R`<p>Re-implement <code>Long.parseLong(s, radix)</code>: optional leading <code>+</code>/<code>-</code>, then one or more digits valid in the radix (2..36, letters a–z/A–Z for 10..35). Throw <code>NumberFormatException</code> for empty input, bad characters, a lone sign, or a value outside the long range. It must accept <code>"-9223372036854775808"</code> exactly. No BigInteger, no library parsing.</p>`,
+    constraints: R`2 ≤ radix ≤ 36; length ≤ 100.`,
+    example: R`${H.table(['s, radix', 'result'], [['"ff", 16', '255'], ['"-1010", 2', '-10'], ['"-9223372036854775808", 10', H.c('g', 'Long.MIN_VALUE')], ['"9223372036854775808", 10', H.c('r', 'NumberFormatException')], ['"+", 10', H.c('r', 'NumberFormatException')], ['"zz", 36', '1295']])}`,
+    brute: { why: R`<p>Accumulating a <b>positive</b> result (<code>r = r * radix + d</code>) and negating at the end cannot represent MIN_VALUE's magnitude (2<sup>63</sup>), and detecting overflow after it happened is unreliable because the wrapped value can land anywhere.</p>`, code: R`
+static long parseBrute(String s, int radix) {
+    boolean neg = s.startsWith("-");
+    int i = (neg || s.startsWith("+")) ? 1 : 0;
+    long r = 0;
+    for (; i < s.length(); i++) {
+        int d = Character.digit(s.charAt(i), radix);
+        if (d < 0) throw new NumberFormatException(s);
+        r = r * radix + d;                       // silently wraps; MIN_VALUE unreachable
+    }
+    return neg ? -r : r;
+}` },
+    mcq: { q: 'Why does the JDK accumulate the value as a <b>negative</b> number?', options: ['Style preference', 'The negative range includes 2<sup>63</sup> in magnitude (MIN_VALUE), the positive range does not', 'Multiplying negatives is faster', 'To support the minus sign'], answer: 1, explain: 'Accumulating downward reaches MIN_VALUE exactly; positives are produced by negating at the end, which is safe for every value ≥ −MAX_VALUE.' },
+    hints: [R`<p>Hint 1: let <code>limit</code> be <code>-Long.MAX_VALUE</code> for positives and <code>Long.MIN_VALUE</code> for negatives. Build <code>result</code> downward: <code>result = result * radix - d</code>.</p>`, R`<p>Hint 2: before multiplying, check <code>result &lt; limit / radix</code> (precomputed as <code>multmin</code>) → overflow. After multiplying, check <code>result &lt; limit + d</code> → subtracting d would pass the limit.</p>`, R`<p>Hint 3: <code>Character.digit(c, radix)</code> returns −1 for invalid characters. Return <code>neg ? result : -result</code>. Test "", "-", "+0", MAX, MIN, MAX+1, MIN−1, and radix 2/36.</p>`],
+    solution: {
+      approach: R`<p>The JDK algorithm: accumulate negatively against a sign-dependent limit, with two exact pre-checks per digit. No step can overflow, and MIN_VALUE is reachable.</p>`,
+      code: R`
+public class ParseLong {
+    static long parse(String s, int radix) {
+        if (s == null || s.isEmpty()) throw new NumberFormatException("empty");
+        if (radix < 2 || radix > 36) throw new NumberFormatException("bad radix " + radix);
+        int i = 0, n = s.length();
+        boolean neg = false;
+        long limit = -Long.MAX_VALUE;
+        char first = s.charAt(0);
+        if (first == '-' || first == '+') {
+            if (n == 1) throw new NumberFormatException("lone sign");
+            if (first == '-') { neg = true; limit = Long.MIN_VALUE; }
+            i = 1;
+        }
+        long multmin = limit / radix;
+        long result = 0;
+        for (; i < n; i++) {
+            int d = Character.digit(s.charAt(i), radix);
+            if (d < 0 || result < multmin) throw new NumberFormatException("For input: \"" + s + "\"");
+            result *= radix;                      // safe: result >= multmin
+            if (result < limit + d) throw new NumberFormatException("For input: \"" + s + "\"");
+            result -= d;                          // accumulate negatively
+        }
+        return neg ? result : -result;
+    }
+    public static void main(String[] args) {
+        System.out.println(parse("ff", 16));                         // 255
+        System.out.println(parse("-1010", 2));                       // -10
+        System.out.println(parse("-9223372036854775808", 10));       // -9223372036854775808
+        System.out.println(parse("zz", 36));                         // 1295
+        for (String bad : new String[]{"9223372036854775808", "+", "", "12x"}) {
+            try { parse(bad, 10); } catch (NumberFormatException e) { System.out.println("rejected [" + bad + "]"); }
+        }
+    }
+}`,
+      dry: { head: ['s = "-128", r=10', 'd', 'result before', 'checks', 'result after'], rows: [["'1'", '1', '0', 'ok', '−1'], ["'2'", '2', '−1', 'ok', '−12'], ["'8'", '8', '−12', 'ok', '−128'], ['end', '—', '−128', 'neg', '<span class="c-g">−128</span>']] },
+      complexity: R`<p>O(N) time, O(1) space.</p>`,
+      followUps: ['Add support for underscores between digits like Java literals.', 'Parse unsigned 64-bit values (<code>Long.parseUnsignedLong</code>) — what changes?']
+    }
+  });
+
+  /* ======================================================================
+     QUIZ
+     ====================================================================== */
+  quiz.push({ q: R`Which tool turns <code>Hello.java</code> into <code>Hello.class</code>, and which package must you install to get it?`, options: [R`<code>java</code>, from any JRE`, R`<code>javac</code>, from the JDK`, R`<code>javap</code>, from the JRE`, R`<code>jshell</code>, from the JVM`], answer: 1, explain: R`javac is the compiler and ships only with the JDK. <code>java</code> runs bytecode; <code>javap</code> disassembles it.` });
+  quiz.push({ q: R`You compiled into <code>out/</code>. Which command runs the program?`, options: [R`<code>java out/Hello.class</code>`, R`<code>java -cp out Hello</code>`, R`<code>javac -run Hello</code>`, R`<code>java Hello.class -cp out</code>`], answer: 1, explain: R`The launcher takes a class name (no extension) and a classpath telling it where to look. Options must come before the class name.` });
+  quiz.push({ q: R`Predict the output: <code>System.out.println(1 + 2 + "3" + 4 + 5);</code>`, options: ['15', '3345', '12345', '339'], answer: 1, explain: R`Left to right: 1 + 2 = 3 (ints), then "33", "334", "3345" (string concatenation from the first String onward).` });
+  quiz.push({ q: R`Predict the output: <code>byte b = (byte) 200; System.out.println(b);</code>`, options: ['200', '127', '-56', 'compile error'], answer: 2, explain: R`200 = 1100 1000. In a signed byte the top bit is worth −128: −128 + 72 = −56 (or 200 − 256).` });
+  quiz.push({ q: R`Predict the output: <code>int i = 5; i = i++; System.out.println(i);</code>`, options: ['5', '6', '4', 'undefined behaviour'], answer: 0, explain: R`<code>i++</code> yields the old value 5 and increments i to 6, then the assignment stores 5 back. Java defines this exactly — no undefined behaviour.` });
+  quiz.push({ q: R`What is stored in <code>x</code>? <code>long x = 1_000_000 * 1_000_000;</code>`, options: ['1000000000000', '-727379968', 'compile error', 'ArithmeticException'], answer: 1, explain: R`Both literals are ints, so the multiplication is done in int and overflows <b>before</b> being widened to long. Write <code>1_000_000L * 1_000_000</code>.` });
+  quiz.push({ q: R`Which line compiles?`, options: [R`<code>float f = 1.5;</code>`, R`<code>long l = 3000000000;</code>`, R`<code>byte b = 10; b += 5;</code>`, R`<code>char c = 'a'; c = c + 1;</code>`], answer: 2, explain: R`Compound assignment hides a cast. The others: 1.5 is a double; 3000000000 is too large for an int literal (needs L); <code>c + 1</code> is an int.` });
+  quiz.push({ q: R`What does <code>Math.abs(Integer.MIN_VALUE)</code> return?`, options: ['2147483648', '2147483647', '-2147483648', 'throws ArithmeticException'], answer: 2, explain: R`+2<sup>31</sup> does not fit in int, so negation wraps back to MIN_VALUE. Use <code>Math.absExact</code> to get an exception instead.` });
+  quiz.push({ q: R`What is <code>"😀".length()</code> (one 😀 emoji)?`, options: ['1', '2', '4', 'depends on the OS'], answer: 1, explain: R`😀 is U+1F600, above U+FFFF, so UTF-16 needs a surrogate pair: 2 chars. <code>codePointCount</code> would return 1.` });
+  quiz.push({ q: R`Predict the output: <code>System.out.println('a' + 1);</code>`, options: ['b', 'a1', '98', 'compile error'], answer: 2, explain: R`char + int is numeric promotion to int: 97 + 1 = 98. You need <code>(char) ('a' + 1)</code> to print b.` });
+  quiz.push({ q: R`Predict: <code>System.out.println(-7 / 2 + " " + -7 % 2);</code>`, options: ['-4 1', '-3 -1', '-3 1', '-4 -1'], answer: 1, explain: R`Division truncates toward zero (−3.5 → −3); the remainder takes the dividend's sign: −7 − (−3 × 2) = −1.` });
+  quiz.push({ q: R`Predict: <code>int x = 010; System.out.println(x + 1);</code>`, options: ['11', '9', '1', 'compile error'], answer: 1, explain: R`A leading 0 makes an octal literal: 010 = 8. So 8 + 1 = 9.` });
+  quiz.push({ q: R`Predict: <code>System.out.println(1 &lt;&lt; 33);</code>`, options: ['0', '8589934592', '2', 'compile error'], answer: 2, explain: R`For int, only the low 5 bits of the shift distance are used: 33 &amp; 31 = 1, so it is 1 &lt;&lt; 1 = 2.` });
+  quiz.push({ q: R`Predict: <code>System.out.println(-1 &gt;&gt;&gt; 28);</code>`, options: ['-1', '15', '0', '268435455'], answer: 1, explain: R`−1 is 32 ones. Unsigned shift by 28 leaves the top 4 ones in the low positions: 1111₂ = 15. (<code>-1 &gt;&gt; 28</code> would still be −1.)` });
+  quiz.push({ q: R`Predict: <code>char x = 'X'; int i = 0; System.out.print(true ? x : 0); System.out.print(false ? i : x);</code>`, options: ['XX', 'X88', '8888', '88X'], answer: 1, explain: R`In the first ternary, the constant 0 fits in char, so the type is char → X. In the second, i is an int variable, so binary numeric promotion makes it int → 88.` });
+  quiz.push({ q: R`Inside a method, <code>int count = 3; int[] arr = new int[3];</code>. Where do they live?`, options: ['Both on the heap', 'Both in the stack frame', R`<code>count</code> and the reference <code>arr</code> in the stack frame; the array object on the heap`, 'In Metaspace'], answer: 2, explain: R`Locals (primitives and references) live in the method's frame; every object, including arrays, is allocated on the heap.` });
+  quiz.push({ q: R`Predict: <code>System.out.println(0.1 + 0.2 == 0.3);</code>`, options: ['true', 'false', 'compile error', 'depends on the CPU'], answer: 1, explain: R`0.1 and 0.2 are not exactly representable in binary; their double sum is 0.30000000000000004. Since Java 17 all floating point is strict IEEE 754, so it is false on every CPU.` });
+  quiz.push({ q: R`Your jar was built with JDK 25 (no <code>--release</code>) and the server runs Java 21. What happens?`, options: ['It runs fine', 'UnsupportedClassVersionError at startup', 'It runs in compatibility mode', 'javac refuses to compile'], answer: 1, explain: R`Class files carry a major version (69 for Java 25). A Java 21 JVM only understands up to 65. Compile with <code>--release 21</code>.` });
+
+  /* ======================================================================
+     INTERVIEW Q&A
+     ====================================================================== */
+  interview.push({ level: 'B', q: R`What is the difference between the JDK, the JRE and the JVM?`,
+    a: R`<p>They are nested boxes. The <b>JVM</b> is the engine that loads, verifies and executes bytecode, manages memory and garbage collection. The <b>JRE</b> is the JVM plus the standard class library (<code>java.base</code> and friends) and the <code>java</code> launcher — everything needed to <i>run</i> a program. The <b>JDK</b> is the JRE plus development tools: <code>javac</code>, <code>jar</code>, <code>javap</code>, <code>jshell</code>, <code>jlink</code>, <code>jcmd</code>, debuggers and profilers — everything needed to <i>build</i> one. Modern nuance: since JDK 11 OpenJDK no longer publishes a separate JRE; you install a JDK for development and ship either a JDK image or a slim runtime created with <code>jlink</code>.</p>`,
+    followUps: ['Which of the three is platform-specific?', 'How would you shrink the runtime inside a Docker image?', 'Can you run a .class file with only the JRE?'] });
+  interview.push({ level: 'B', q: R`Why is Java called platform independent? Is the JVM itself platform independent?`,
+    a: R`<p>javac compiles source code into <b>bytecode</b>, an instruction set for a virtual machine rather than for a real CPU. The same <code>.class</code>/<code>.jar</code> file runs anywhere a compatible JVM exists — "write once, run anywhere". The <b>JVM is not</b> platform independent: there are separate builds for Windows x64, Linux x64/aarch64, macOS aarch64 and so on, each translating bytecode into native instructions for its own OS and CPU. Fixed primitive sizes (int is always 32 bits) and strict IEEE floating point (since Java 17) also guarantee identical results across platforms. Caveats: native libraries via JNI, file paths and line separators can still break portability.</p>`,
+    followUps: ['What is bytecode? Show an example with javap.', 'What can still make a Java program behave differently on Windows vs Linux?'] });
+  interview.push({ level: 'B', q: R`Explain every word of <code>public static void main(String[] args)</code>. Can main be overloaded? What if it is missing?`,
+    a: R`<p><b>public</b>: the launcher, which lives outside your class, must be able to call it. <b>static</b>: the JVM calls it before any object exists, so it must belong to the class. <b>void</b>: it returns nothing; the exit status is set by <code>System.exit(n)</code> or by how main ends (0 normally, 1 on an uncaught exception). <b>main</b>: the name the launcher searches for. <b>String[] args</b>: the command-line arguments (empty array, never null, when there are none). You may overload <code>main</code> with other parameter lists; the launcher only picks the <code>String[]</code> one. Without a valid main, Java 21 prints "Main method not found in class X". Since Java 25 (JEP 512) a compact source file can declare just <code>void main()</code> — the launcher accepts non-static, non-public, parameterless mains — but the classic form remains standard.</p>`,
+    followUps: ['Why can\'t main simply return an int like in C?', 'What runs before main? (static initializers)', 'How do you read a JVM option like -Dmode=prod inside main?'] });
+  interview.push({ level: 'B', q: R`List Java's primitive types with their sizes. Why is <code>char</code> 2 bytes?`,
+    a: R`<p>byte 8 bits (−128..127), short 16 (−32,768..32,767), char 16 unsigned (0..65,535), int 32 (≈ ±2.1 × 10<sup>9</sup>), long 64 (≈ ±9.2 × 10<sup>18</sup>), float 32 (IEEE 754, ~7 significant digits), double 64 (~15–16 digits), boolean (true/false; size unspecified, typically 1 byte in arrays). Signed types use two's complement, hence one extra negative value. <code>char</code> is 16 bits because Java was designed in 1995 around Unicode, which then fit in 16 bits; today a char is a UTF-16 <b>code unit</b>, and characters above U+FFFF (emoji) need two chars. Fields get defaults (0, false, '\u0000'); local variables must be assigned before use.</p>`,
+    followUps: ['How many bytes does a boolean[] of 1000 elements use?', 'When would you pick float over double?', 'Why is Byte.MIN_VALUE −128 but MAX_VALUE 127?'] });
+  interview.push({ level: 'I', q: R`What happens when you compute <code>Integer.MAX_VALUE + 1</code>? How do you detect or prevent overflow?`,
+    a: R`<p>It silently wraps to <code>Integer.MIN_VALUE</code> (−2,147,483,648). Java integer arithmetic is defined as two's complement modulo 2<sup>32</sup> (2<sup>64</sup> for long); no exception is thrown. Prevention: choose <code>long</code> when values can exceed ~2.1 × 10<sup>9</sup>; cast <b>one operand before</b> multiplying (<code>(long) a * b</code>); use <code>Math.addExact</code>, <code>multiplyExact</code>, <code>toIntExact</code>, <code>negateExact</code>, <code>absExact</code> to throw <code>ArithmeticException</code>; pre-check bounds (<code>a &gt; Integer.MAX_VALUE - b</code>); use <code>BigInteger</code> for unbounded values. Classic traps: <code>Math.abs(MIN_VALUE)</code> is negative, <code>(lo + hi) / 2</code> in binary search, comparators written as <code>a - b</code>.</p>`,
+    followUps: ['Does checking "result &lt; 0" detect overflow? (No — 13! stays positive)', 'How does Math.addExact detect it internally?', 'What happens on floating-point overflow?'] });
+  interview.push({ level: 'I', q: R`Explain widening vs narrowing conversions. Why does <code>byte b = 1; b = b + 1;</code> fail but <code>b += 1;</code> compile?`,
+    a: R`<p><b>Widening</b> (byte → short → int → long → float → double, char → int) is automatic because the target can represent the range — though int/long → float and long → double may lose precision. <b>Narrowing</b> requires an explicit cast and keeps only the low bits (integers) or truncates toward zero and saturates (floating → integer). <code>b + 1</code> undergoes binary numeric promotion: byte, short and char operands are promoted to <b>int</b>, so the result is int and assigning it to a byte needs a cast. Compound assignment is specified as <code>b = (byte)(b + 1)</code> — it contains an implicit narrowing cast, which is convenient but can hide overflow (<code>short s = 10; s *= 10000;</code> gives −31072). Constant expressions that fit (<code>byte b = 10;</code>) may narrow implicitly in assignment context only.</p>`,
+    followUps: ['What is (int) 3.99, (int) -3.99 and (int) Double.NaN?', 'Why can\'t you call a method taking a byte with the literal 10?', 'Predict: char x = \'X\'; System.out.print(false ? 0 : x) vs with an int variable.'] });
+  interview.push({ level: 'I', q: R`Is Java compiled or interpreted?`,
+    a: R`<p>Both. <b>javac</b> compiles source to platform-neutral bytecode ahead of time. At run time, HotSpot starts by <b>interpreting</b> bytecode (fast startup), profiles which methods and branches are hot, compiles them with the quick <b>C1</b> JIT, and later recompiles the hottest code with the optimizing <b>C2</b> JIT (tiered compilation). C2 uses runtime profiles for inlining, escape analysis, loop unrolling and vectorization, and can <b>deoptimize</b> if assumptions break. That is why long-running Java can rival C++ but benchmarks need warm-up (JMH). Other options: GraalVM native-image compiles ahead of time into a native binary; Project Leyden's AOT cache (JDK 24+) stores class-loading and profiling work from a training run to speed up startup.</p>`,
+    followUps: ['What is deoptimization and when does it happen?', 'Why do microbenchmarks without warm-up lie?', 'Trade-offs of native-image vs JIT?'] });
+  interview.push({ level: 'I', q: R`Why does <code>int i = 5; i = i++;</code> leave i at 5?`,
+    a: R`<p>The right-hand side is evaluated completely before the assignment. <code>i++</code> evaluates to the <b>old</b> value (5) and, as a side effect, increments the variable to 6. Then the assignment stores the saved value 5 back into i, overwriting the increment. In bytecode it is <code>iload_1</code> (push 5), <code>iinc 1,1</code> (local becomes 6), <code>istore_1</code> (store 5). Java's evaluation order is fully specified (JLS §15.7: left operand before right, operands before the operation, the left side of a compound assignment saved first), so unlike C/C++ this is not undefined behaviour — it is deterministic but useless code that linters flag. Related: <code>a += a++</code> also loses the increment; <code>i = i++ + ++i</code> with i = 5 gives 12.</p>`,
+    followUps: ['Predict int x = 5; int y = x++ + ++x * x--;', 'What does arr[i] = i = 2 do when i starts at 0?'] });
+  interview.push({ level: 'I', q: R`Why is <code>0.1 + 0.2 != 0.3</code>, and how should money be represented in Java?`,
+    a: R`<p><code>double</code> is IEEE 754 binary floating point with a 53-bit significand. Most decimal fractions (0.1 = 1/10) have infinite binary expansions, so they are rounded to the nearest representable value; the rounding errors of 0.1 and 0.2 add up to 0.30000000000000004, which is a different double from the one nearest to 0.3. For money use <b>BigDecimal</b> constructed from Strings or <code>BigDecimal.valueOf</code> (never <code>new BigDecimal(0.1)</code>), with an explicit scale and <code>RoundingMode</code>, or store integer <b>minor units</b> (cents) in a <code>long</code>. Compare doubles with a tolerance (<code>Math.abs(a - b) &lt; 1e-9</code>) or <code>Double.compare</code>, and remember NaN != NaN and −0.0 == 0.0.</p>`,
+    followUps: ['Why does 0.1f + 0.2f print 0.3?', 'What does BigDecimal.equals vs compareTo do with 1.0 and 1.00?', 'Which rounding mode do banks typically use?'] });
+  interview.push({ level: 'I', q: R`How does Java represent characters, and why can <code>"😀".length()</code> be 2? How do you process such strings correctly?`,
+    a: R`<p>A <code>char</code> is a 16-bit unsigned UTF-16 <b>code unit</b>. Unicode code points range up to U+10FFFF; those above U+FFFF (most emoji, some CJK and historic scripts) are encoded as a <b>surrogate pair</b> of two chars, so <code>length()</code>, which counts chars, returns 2 for 😀. To process real characters use code-point APIs: <code>codePoints()</code>, <code>codePointAt</code>, <code>codePointCount</code>, <code>Character.charCount</code>, <code>appendCodePoint</code>, and the int overloads of <code>Character.isLetter</code> etc. For user-perceived characters (emoji with skin tones, flags, combining accents) use <code>BreakIterator</code> or regex <code>\X</code>, and normalize with <code>Normalizer</code>. When converting to bytes always specify a charset (UTF-8 is the default since JDK 18). Internally, compact strings store Latin-1 text with 1 byte per char.</p>`,
+    followUps: ['How do you safely truncate a username to 20 "characters"?', 'Why might Character.isDigit accept non-ASCII digits, and when is that a problem?'] });
+  interview.push({ level: 'A', q: R`Walk me through exactly what happens when you type <code>java -cp out com.acme.App input.txt</code>.`,
+    a: R`<p>The native launcher parses JVM options (<code>-cp</code>), creates the JVM (heap, GC, JIT threads, CDS archive mapping) and starts the <b>main thread</b>. The application class loader finds <code>com/acme/App.class</code> under <code>out/</code> using parent delegation (bootstrap → platform → app). The class is <b>linked</b>: the verifier checks bytecode type-safety, static fields are prepared with defaults, symbolic references resolve lazily. Then <b>initialization</b> runs static initializers. The launcher looks up <code>main</code> (validating its signature) and invokes it with <code>args = {"input.txt"}</code>. Bytecode is interpreted, hot methods get JIT-compiled. When main returns, the JVM waits for all <b>non-daemon</b> threads, runs shutdown hooks and exits with status 0; an uncaught exception prints a stack trace to stderr and yields exit code 1; <code>System.exit(n)</code> forces exit with n.</p>`,
+    followUps: ['What causes "Could not find or load main class"?', 'Why might the JVM not exit after main returns?', 'What do shutdown hooks guarantee under SIGKILL?'] });
+  interview.push({ level: 'A', q: R`Describe the JVM's runtime memory areas. When do you get StackOverflowError vs OutOfMemoryError?`,
+    a: R`<p>Shared by all threads: the <b>heap</b> (all objects and arrays, managed by the GC — generational in G1 and ZGC) and <b>Metaspace</b> (class metadata, method bytecode, constant pools; native memory since Java 8 replaced PermGen). Per thread: the <b>JVM stack</b> of frames (each with a local-variable array and an operand stack; long/double take two slots), the <b>PC register</b>, and the native method stack. There is also the JIT code cache and direct (off-heap) buffers. <b>StackOverflowError</b> happens when one thread's stack runs out of space — typically unbounded recursion; tune with <code>-Xss</code> only if recursion depth is legitimate. <b>OutOfMemoryError</b> comes in flavours: <i>Java heap space</i> (leak or undersized heap), <i>Metaspace</i> (class-loader leaks, runaway proxies), <i>unable to create native thread</i>, <i>Direct buffer memory</i>. Diagnose with heap dumps, <code>jcmd</code>, JFR and GC logs.</p>`,
+    followUps: ['Which areas need garbage collection and which do not?', 'How does the JVM size the heap inside a container?', 'Can escape analysis keep an object off the heap?'] });
+  interview.push({ level: 'A', q: R`Explain <code>&gt;&gt;</code> vs <code>&gt;&gt;&gt;</code>, and the famous binary-search midpoint bug.`,
+    a: R`<p><code>&gt;&gt;</code> is the arithmetic (signed) right shift: it copies the sign bit into the vacated positions, so it divides by 2<sup>k</sup> rounding toward −∞ (−8 &gt;&gt; 1 = −4). <code>&gt;&gt;&gt;</code> is the logical (unsigned) shift: zeros come in, so negative numbers become large positives (−8 &gt;&gt;&gt; 1 = 2147483644). Shift distances are masked to 5 bits for int and 6 for long. The bug: <code>int mid = (low + high) / 2;</code> overflows when low + high exceeds 2<sup>31</sup> − 1 (arrays over ~1 billion elements), producing a negative index; it lived in <code>Arrays.binarySearch</code> until 2006. Fixes: <code>low + (high - low) / 2</code>, or <code>(low + high) &gt;&gt;&gt; 1</code> — the wrapped sum's bits are still correct as an unsigned 32-bit value, and the unsigned shift halves it correctly. Also note <code>byte b = -1; b &gt;&gt;&gt;= 4;</code> leaves b at −1 because of promotion to int and narrowing back.</p>`,
+    followUps: ['Why is (lo + hi) >>> 1 wrong if lo and hi can be negative?', 'Where does HashMap use >>>?'] });
+  interview.push({ level: 'E', q: R`A legacy service casts a <code>long</code> order ID to <code>int</code>. After two years, orders start colliding. Walk through diagnosis, fix and prevention.`,
+    a: R`<p><b>Diagnosis:</b> IDs crossed 2<sup>31</sup> − 1 = 2,147,483,647; <code>(int) id</code> keeps the low 32 bits, so new IDs wrap to negative values or alias older ones (id and id + 2<sup>32</sup> map to the same int). Confirm by finding the first failing ID, checking it against 2<sup>31</sup>, and grepping for <code>(int)</code> casts, <code>intValue()</code>, int-typed DTO fields, DB columns declared <code>INT</code>, and caches keyed by int. <b>Fix:</b> widen end-to-end — Java fields to <code>long</code>, DB columns to <code>BIGINT</code> (online migration), API contracts to 64-bit (send as strings to JavaScript clients, which lose precision above 2<sup>53</sup>); replace remaining narrowing with <code>Math.toIntExact</code> so any future overflow fails loudly; repair collided data. <b>Prevention:</b> static analysis rules for narrowing casts and int multiplications widened to long, boundary tests seeded with IDs near 2<sup>31</sup> and 2<sup>32</sup>, capacity alarms at 70% of any counter's range, and reviewing type ranges in design docs.</p>`,
+    followUps: ['How would you migrate an INT primary key to BIGINT with zero downtime?', 'Why can a JavaScript frontend corrupt 64-bit IDs?', 'Which other counters in a system typically overflow?'] });
+  interview.push({ level: 'E', q: R`How would you package and run a Java 25 service in containers in 2026 for fast startup and low memory?`,
+    a: R`<p>Build with a pinned toolchain and <code>--release</code>, run tests on the same JDK. For the image: a multi-stage build — JDK stage compiles, then <code>jdeps</code> + <code>jlink</code> create a trimmed runtime (only needed modules, <code>--strip-debug</code>), copied into a minimal base image; or use a vendor JRE-style image. Startup: enable application <b>Class Data Sharing</b> or, on JDK 24+, the Project Leyden <b>AOT cache</b> (<code>-XX:AOTCache</code>) created from a training run so classes come pre-loaded and pre-linked; for scale-to-zero functions consider <b>GraalVM native-image</b>, accepting closed-world limits on reflection and longer builds. Memory: rely on container awareness, set <code>-XX:MaxRAMPercentage</code>, choose G1 (default) or generational ZGC for latency, use virtual threads (Java 21+) to avoid thread-stack bloat. Observe with JFR, GC logs and <code>jcmd</code>; handle SIGTERM via shutdown hooks for graceful drain.</p>`,
+    followUps: ['When is native-image the wrong choice?', 'How do you decide heap size vs container limit?', 'What does jdeps tell you that the pom.xml does not?'] });
+
   registerModule({
     id: 'java01',
     title: 'JDK, JRE, JVM & Java Basics',
-    intro: R`<p>x</p>`,
-    goals: [], prereqs: R`x`, hours: 9,
+    intro: R`<p>Welcome to Java! Before objects, collections or threads, every Java developer needs a rock-solid picture of <b>what happens between typing code and seeing output</b>, and of the small building blocks every line is made of. In this module you will install a JDK, compile with <code>javac</code> and run with <code>java</code>, open up the JVM to see the class loader, stack frames and JIT, and master the eight primitive types: their ranges, how casting chops bits, how operators really evaluate, why <code>int</code> silently overflows, and why <code>"😀".length()</code> is 2.</p>
+<p>These topics are interview favourites precisely because they look easy: <i>"What does <code>i = i++</code> print?"</i>, <i>"JDK vs JRE vs JVM?"</i>, <i>"Why is <code>(byte) 200</code> −56?"</i>. Every topic has an everyday analogy, step-by-step visualizers (bytecode on an operand stack, bits being truncated, stack vs heap), predict-the-output examples, coding exercises from easy to hard, and a note on how AI assistants change — and do not change — what you need to know in 2026.</p>`,
+    goals: [
+      'Install a JDK, compile with <code>javac</code>, run with <code>java</code> (and <code>java File.java</code>), use <code>-cp</code>, <code>--release</code>, <code>javap</code> and <code>jshell</code>, and fix the common launcher errors',
+      'Explain JDK vs JRE vs JVM and the JVM\'s insides (class loading, heap vs stack, interpreter + JIT + GC) clearly enough for an interview',
+      'Write and explain <code>public static void main(String[] args)</code>, handle command-line arguments safely, and use exit codes and stderr properly (and know Java 25\'s simpler <code>void main()</code>)',
+      'State the range of every primitive type, pick the right type from problem constraints, and predict the result of any widening, narrowing or promotion at the bit level',
+      'Trace tricky expressions (<code>++</code>, compound assignment, shifts, short-circuit, string concatenation) left to right and get predict-the-output questions right',
+      'Recognise, prevent and detect integer overflow (<code>long</code>, <code>Math.*Exact</code>, safe midpoints, comparators) and work correctly with <code>char</code>, Unicode code points and UTF-8'
+    ],
+    prereqs: R`None — this is the first Java module. Basic comfort with a terminal (opening it, changing folders) helps. Knowing binary numbers is useful but each topic re-explains the bits you need. Pairs well with DSA 1 (Java syntax for problem solving).`,
+    hours: 10,
     topics: topics, practice: practice, quiz: quiz, interview: interview
   });
 })();

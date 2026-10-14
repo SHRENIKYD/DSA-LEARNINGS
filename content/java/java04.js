@@ -1449,4 +1449,652 @@ public class Main {
       }
     ]
   });
+
+  /* ======================================================================
+     TOPIC 5 — Abstract classes
+     ====================================================================== */
+  topics.push({
+    title: 'Abstract Classes: Half-Built Blueprints and the Template Method',
+    analogy: `<p>A <b>cake-mix box</b>. The box already contains the flour, sugar and the printed steps: <i>"1. Empty mix into bowl. 2. Add ______. 3. Bake 30 minutes."</i> Step 2 is blank — you <b>must</b> fill it (eggs? banana? yoghurt?) before you get a cake. You cannot eat the box itself; you can only eat a cake made <i>from</i> it. An <b>abstract class</b> is that box: some work done (fields, concrete methods, the order of steps), some blanks left (<b>abstract methods</b>), and you can never create an object of the box itself — only of a subclass that fills every blank.</p>`,
+    explain: `<p>Mark a class <code>abstract</code> when it represents a <b>general idea</b> that should never exist on its own — "a Shape", "an Employee", "a Report" — but that has <b>shared state and code</b> worth writing once.</p>
+      <ul>
+        <li><b>Cannot be instantiated:</b> <code>new Shape()</code> is a compile error. A variable of type <code>Shape</code> is fine (it points to a Circle, Square…).</li>
+        <li><b>Abstract methods</b> have no body: <code>abstract double area();</code> Every concrete subclass <b>must</b> override all of them, or be declared abstract itself.</li>
+        <li><b>Can have everything a normal class has:</b> fields (any access, mutable or final), <b>constructors</b> (called via <code>super(...)</code>), concrete methods, static methods, even <code>main</code>.</li>
+        <li>A class with even one abstract method <b>must</b> be abstract. An abstract class may have <b>zero</b> abstract methods (to just forbid instantiation).</li>
+      </ul>
+      ${H.table(['Combination', 'Legal?', 'Why'], [
+        ['<code>abstract</code> + <code>final</code> class', H.c('r', 'no'), 'abstract needs subclasses, final forbids them'],
+        ['<code>abstract</code> + <code>private</code> method', H.c('r', 'no'), 'subclasses could never see it to implement it'],
+        ['<code>abstract</code> + <code>static</code> method', H.c('r', 'no'), 'static methods are not overridden, so nobody could ever supply the body'],
+        ['abstract class with a constructor', H.c('g', 'yes'), 'it initializes the shared fields; runs when a subclass is created'],
+        ['abstract class implementing an interface without implementing its methods', H.c('g', 'yes'), 'concrete subclasses finish the job']
+      ])}
+      <p><b>The Template Method pattern</b> is the #1 reason to use an abstract class: the parent defines the <b>fixed order of steps</b> in a (usually <code>final</code>) method, and subclasses fill in individual steps. Frameworks are built this way: <code>HttpServlet.service()</code> calls your <code>doGet()</code>; JUnit lifecycle; <code>AbstractList</code> builds a full <code>List</code> from your <code>get()</code> and <code>size()</code>.</p>`,
+    clues: [
+      '"Can an abstract class have a constructor?" → yes, it runs via super(...) when a subclass is built',
+      '"Same algorithm, different steps" / "define the skeleton, let subclasses fill in" → Template Method with an abstract class',
+      '"Shared state + shared code among closely related classes" → abstract class (interfaces cannot hold instance state)',
+      '"Can we instantiate an abstract class?" → no; but an anonymous subclass is allowed',
+      '"Abstract class vs interface — when to use which?"',
+      '"abstract final / abstract static / abstract private — legal?" → all illegal'
+    ],
+    code: [`
+      abstract class Shape {
+          private final String name;                    // shared state: interfaces cannot have this
+          protected Shape(String name) {                 // constructor of an abstract class
+              if (name == null) throw new IllegalArgumentException("name");
+              this.name = name;
+          }
+          abstract double area();                        // blank to fill
+          abstract double perimeter();
+
+          // concrete method that USES the abstract ones (written once for all shapes)
+          @Override public String toString() {
+              return String.format("%s: area=%.2f perimeter=%.2f", name, area(), perimeter());
+          }
+      }
+
+      class Circle extends Shape {
+          private final double r;
+          Circle(double r) { super("Circle"); this.r = r; }
+          double area() { return Math.PI * r * r; }
+          double perimeter() { return 2 * Math.PI * r; }
+      }
+
+      class Rectangle extends Shape {
+          private final double w, h;
+          Rectangle(double w, double h) { super("Rectangle"); this.w = w; this.h = h; }
+          double area() { return w * h; }
+          double perimeter() { return 2 * (w + h); }
+      }
+
+      public class Main {
+          public static void main(String[] args) {
+              // Shape s = new Shape("blob");            // ERROR: Shape is abstract; cannot be instantiated
+              Shape[] shapes = { new Circle(1), new Rectangle(2, 3) };
+              for (Shape s : shapes) System.out.println(s);
+              // Circle: area=3.14 perimeter=6.28
+              // Rectangle: area=6.00 perimeter=10.00
+          }
+      }`],
+    codeTitle: ['Abstract class with state, constructor, abstract and concrete methods'],
+    viz: {
+      title: 'Template Method: the parent runs the recipe, the subclass fills the blanks',
+      input: 'html ann bob',
+      inputLabel: 'Report kind (csv or html) followed by 1–4 names',
+      gen: function (input) {
+        var t = String(input === undefined || input === null ? '' : input).trim().split(/\s+/).filter(Boolean);
+        if (!t.length || (t[0] !== 'csv' && t[0] !== 'html')) throw new Error('Start with csv or html, then 1-4 names, e.g. html ann bob');
+        var rows = t.slice(1);
+        if (rows.length < 1 || rows.length > 4 || rows.some(function (r) { return !/^[A-Za-z]{1,10}$/.test(r); })) throw new Error('Give 1-4 names made of letters, e.g. csv ann bob');
+        var csv = t[0] === 'csv', K = csv ? 'CsvReport' : 'HtmlReport';
+        var code = [
+          'abstract class Report {',
+          '    // the fixed recipe: final so subclasses cannot reorder the steps',
+          '    final String build(List<String> rows) {',
+          '        StringBuilder sb = new StringBuilder(header());',
+          '        for (String r : rows) sb.append(row(r));',
+          '        sb.append(footer());',
+          '        return sb.toString();',
+          '    }',
+          '    abstract String header();              // MUST be supplied by each subclass',
+          '    abstract String row(String r);',
+          '    String footer() { return " (end)"; }   // hook: optional to override',
+          '}',
+          'class CsvReport extends Report {',
+          '    String header() { return "name;"; }',
+          '    String row(String r) { return r + ";"; }',
+          '}',
+          'class HtmlReport extends Report {',
+          '    String header() { return "[ul]"; }',
+          '    String row(String r) { return "[li]" + r + "[/li]"; }',
+          '    @Override String footer() { return "[/ul]"; }',
+          '}',
+          '// main:  Report rep = new ' + K + '();  rep.build(rows);'
+        ].join('\n');
+        var nodes = [{ id: 'Report', label: 'Report (abstract)', x: 50, y: 8, w: 30 }, { id: 'CsvReport', x: 25, y: 34 }, { id: 'HtmlReport', x: 75, y: 34 }];
+        var edges = [['CsvReport', 'Report', 'extends'], ['HtmlReport', 'Report', 'extends']];
+        function g(cur) { var hl = {}; hl[K] = 'sel'; if (cur) hl[cur] = 'cur'; var tags = {}; tags[K] = 'the object'; return hier('Who owns the code that runs now?', nodes, edges, hl, {}, tags, 44); }
+        var sb = '', frames = [];
+        var base = ['main'];
+        frames.push({ narr: '<code>rep</code> is declared as <code>Report</code> but the object is a <b>' + K + '</b>. (<code>new Report()</code> would not compile — it is abstract.) We call <code>rep.build(' + JSON.stringify(rows) + ')</code>.', parts: [{ type: 'code', label: 'Template method', lang: 'java', code: code, hl: { 22: 'cur' } }, g(null), { type: 'stack', label: 'Call stack', items: base.slice(), hl: { 0: 'cur' } }] });
+        frames.push({ narr: '<code>build</code> lives in the <b>abstract parent</b>. It is <code>final</code>, so every report follows the same recipe: header → one row per item → footer. First it needs <code>header()</code> — an <b>abstract</b> method, so the call is dispatched to the object\'s class.', parts: [{ type: 'code', label: 'Template method', lang: 'java', code: code, hl: { 3: 'cur', 4: 'cur' } }, g('Report'), { type: 'stack', label: 'Call stack', items: base.concat(['Report.build']), hl: { 1: 'cur' } }] });
+        var h = csv ? 'name;' : '[ul]';
+        sb += h;
+        frames.push({ narr: K + '.header() runs (line ' + (csv ? 14 : 18) + ') and returns <b>' + esc(h) + '</b>. The parent wrote the algorithm; the child supplied this one step.', parts: [{ type: 'code', label: 'Template method', lang: 'java', code: code, hl: one(csv ? 14 : 18, 'ok') }, g(K), { type: 'stack', label: 'Call stack', items: base.concat(['Report.build', K + '.header']), hl: { 2: 'cur' } }, { type: 'vars', label: 'build() locals', vals: { sb: '"' + sb + '"' }, hl: { sb: 'ok' } }] });
+        rows.forEach(function (r, i) {
+          var piece = csv ? r + ';' : '[li]' + r + '[/li]';
+          sb += piece;
+          frames.push({ narr: 'Loop item ' + (i + 1) + ': <code>row("' + r + '")</code> → ' + K + '.row (line ' + (csv ? 15 : 19) + ') returns <b>' + esc(piece) + '</b>, appended to sb.', parts: [{ type: 'code', label: 'Template method', lang: 'java', code: code, hl: (function () { var o = {}; o[5] = 'cur'; o[csv ? 15 : 19] = 'ok'; return o; })() }, g(K), { type: 'stack', label: 'Call stack', items: base.concat(['Report.build', K + '.row']), hl: { 2: 'cur' } }, { type: 'array', label: 'rows', values: rows.slice(), hl: one(i, 'cur') }, { type: 'vars', label: 'build() locals', vals: { r: '"' + r + '"', sb: '"' + sb + '"' }, hl: { sb: 'ok' } }] });
+        });
+        var f = csv ? ' (end)' : '[/ul]';
+        sb += f;
+        frames.push({ narr: '<code>footer()</code> is a <b>hook</b>: concrete in the parent, optionally overridden. ' + (csv ? 'CsvReport did not override it, so the parent\'s default (line 11) runs: <b>" (end)"</b>.' : 'HtmlReport overrides it (line 20): <b>[/ul]</b>.'), parts: [{ type: 'code', label: 'Template method', lang: 'java', code: code, hl: (function () { var o = {}; o[6] = 'cur'; o[csv ? 11 : 20] = 'ok'; return o; })() }, g(csv ? 'Report' : K), { type: 'stack', label: 'Call stack', items: base.concat(['Report.build', (csv ? 'Report' : K) + '.footer']), hl: { 2: 'cur' } }, { type: 'vars', label: 'build() locals', vals: { sb: '"' + sb + '"' }, hl: { sb: 'ok' } }] });
+        frames.push({ narr: '<code>build</code> returns the finished text. Switch the input between <code>csv</code> and <code>html</code>: the recipe (lines 3–8) never changes, only the steps do. That is the Template Method pattern — and the reason the abstract class exists.', parts: [{ type: 'code', label: 'Template method', lang: 'java', code: code, hl: { 7: 'ok' } }, g(null), out(sb)] });
+        return frames;
+      }
+    },
+    examples: [
+      {
+        title: 'Abstract classes cannot be instantiated — but anonymous subclasses can',
+        html: `<p><code>new Greeter()</code> fails. <code>new Greeter() { ... }</code> creates an <b>anonymous subclass</b> on the spot that fills the blank, and that is legal. (For a single-method <i>interface</i> you would use a lambda instead; lambdas do <b>not</b> work for abstract classes.)</p>`,
+        code: `abstract class Greeter {
+    abstract String name();
+    String greet() { return "Hello, " + name() + "!"; }
+}
+
+public class Main {
+    public static void main(String[] args) {
+        // Greeter g = new Greeter();          // ERROR: Greeter is abstract; cannot be instantiated
+        Greeter g = new Greeter() {            // anonymous subclass
+            @Override String name() { return "Priya"; }
+        };
+        System.out.println(g.greet());         // Hello, Priya!
+        System.out.println(g.getClass().getSuperclass().getSimpleName());   // Greeter
+    }
+}`
+      },
+      {
+        title: 'The JDK\'s skeletal implementation: a full List from two methods',
+        html: `<p><code>AbstractList</code> implements ~25 <code>List</code> methods (<code>contains</code>, <code>indexOf</code>, iterators, <code>subList</code>, <code>equals</code>, <code>hashCode</code>…) in terms of two abstract ones: <code>get(int)</code> and <code>size()</code>. Fill those two and you get a complete read-only list. This "interface + Abstract skeleton" pairing appears all over the JDK (<code>AbstractMap</code>, <code>AbstractSet</code>, <code>AbstractQueue</code>).</p>`,
+        code: `import java.util.*;
+
+class Range extends AbstractList<Integer> {      // numbers lo..hi-1 without storing them
+    private final int lo, hi;
+    Range(int lo, int hi) { this.lo = lo; this.hi = hi; }
+    @Override public Integer get(int i) {
+        if (i < 0 || i >= size()) throw new IndexOutOfBoundsException(i);
+        return lo + i;
+    }
+    @Override public int size() { return hi - lo; }
+}
+
+public class Main {
+    public static void main(String[] args) {
+        List<Integer> r = new Range(3, 8);
+        System.out.println(r);                    // [3, 4, 5, 6, 7]   (toString from AbstractCollection)
+        System.out.println(r.contains(6));        // true              (inherited)
+        System.out.println(r.indexOf(7));         // 4                 (inherited)
+        System.out.println(r.subList(1, 3));      // [4, 5]            (inherited)
+        System.out.println(r.equals(List.of(3, 4, 5, 6, 7)));   // true
+    }
+}`
+      },
+      {
+        title: 'An abstract subclass may leave some blanks for its own children',
+        html: `<p>A class that does not implement every abstract method must itself be <code>abstract</code>. This lets you build layers: <code>Vehicle</code> (abstract: wheels, fuel) → <code>Car</code> (abstract: fills wheels=4) → <code>ElectricCar</code> (concrete: fills fuel).</p>
+          ${H.table(['Class', 'wheels()', 'fuel()', 'Instantiable?'], [['Vehicle', 'abstract', 'abstract', H.c('r', 'no')], ['Car', '4', 'abstract', H.c('r', 'no')], ['ElectricCar', '4 (inherited)', '"battery"', H.c('g', 'yes')]])}`,
+        code: `abstract class Vehicle {
+    abstract int wheels();
+    abstract String fuel();
+    String spec() { return wheels() + " wheels, runs on " + fuel(); }
+}
+
+abstract class Car extends Vehicle {             // fills one blank, still abstract
+    @Override int wheels() { return 4; }
+}
+
+class ElectricCar extends Car {
+    @Override String fuel() { return "battery"; }
+}
+
+public class Main {
+    public static void main(String[] args) {
+        Vehicle v = new ElectricCar();
+        System.out.println(v.spec());             // 4 wheels, runs on battery
+    }
+}`
+      },
+      {
+        title: 'Danger: calling an abstract method from the constructor',
+        html: `<p>The parent constructor runs <b>before</b> the subclass's fields are set. If it calls an abstract (overridden) method, the subclass version sees default values. Output below is <code>label = null</code>, not <code>label = sensor-1</code>.</p>`,
+        code: `abstract class Device {
+    Device() {
+        System.out.println("label = " + label());   // calls the subclass version too early
+    }
+    abstract String label();
+}
+
+class Sensor extends Device {
+    private final String id;
+    Sensor(String id) {
+        super();                                    // Device() runs here, id is still null
+        this.id = id;
+    }
+    @Override String label() { return id; }
+}
+
+public class Main {
+    public static void main(String[] args) {
+        Sensor s = new Sensor("sensor-1");          // prints: label = null
+        System.out.println(s.label());              // sensor-1 (fine once construction is done)
+    }
+}`
+      }
+    ],
+    deepDive: `<p><b>1. Bytecode view.</b> An abstract class gets the <code>ACC_ABSTRACT</code> flag; abstract methods have no <code>Code</code> attribute. The JVM refuses <code>new</code> on such a class with <code>InstantiationError</code> (the compiler stops you earlier). The abstract class still has an <code>&lt;init&gt;</code> constructor that subclasses call.</p>
+      <p><b>2. Abstract class vs interface (Java 8+).</b></p>
+      ${H.table(['', 'Abstract class', 'Interface'], [
+        ['Instance fields', 'yes, any kind', 'no (only public static final constants)'],
+        ['Constructors', 'yes', 'no'],
+        ['Method bodies', 'any', 'default, static, private (Java 9+)'],
+        ['Access of members', 'any', 'public (or private helpers)'],
+        ['How many per class', 'one (extends)', 'many (implements)'],
+        ['Relationship', 'IS-A, shared identity', 'CAN-DO capability'],
+        ['Lambda-friendly', 'no', 'yes, if exactly one abstract method']
+      ])}
+      <p><b>3. Skeletal implementation pattern (Effective Java item 20).</b> Publish an <b>interface</b> as the type (flexible: anyone can implement it) and an <b>abstract class</b> that implements most of it (convenient). Users choose: extend the skeleton for convenience, or implement the interface directly when they already have a superclass.</p>
+      <p><b>4. Template method + final.</b> Mark the template method <code>final</code> so subclasses cannot break the sequence; make the steps <code>protected abstract</code> so they are not part of the public API. "Hooks" (concrete methods with empty/default bodies) give optional extension points.</p>
+      <p><b>5. Sealed abstract classes (Java 17).</b> <code>sealed abstract class Payment permits Card, Upi, Cash</code> fixes the list of subclasses, so a <code>switch</code> over them can be exhaustive, and nobody outside can add a surprise subclass.</p>
+      <p><b>6. Testing.</b> Test an abstract class through a tiny concrete test subclass, or test each concrete subclass. Heavy abstract base classes with many hooks are hard to test — another reason to prefer composition when the "shared code" is really a separate responsibility.</p>`,
+    aiEra: `<p><b>What AI changes:</b> asking an assistant for "a base class for all our services" often yields a large abstract class full of hooks and protected fields — instant coupling. AI is also quick to scaffold correct Template Method code.</p>
+      <p><b>Use AI as a partner:</b> <code>Is this abstract class doing Template Method, or is it just a bag of shared utilities that should be a separate helper class?</code> · <code>Convert this abstract class into an interface + skeletal implementation and show what breaks</code>.</p>
+      <p><b>Where AI goes wrong:</b> calling abstract methods from constructors, making the template method non-final, writing <code>abstract static</code> methods (illegal), or trying to use a lambda for an abstract class.</p>
+      <p><b>What you must still own:</b> the abstract-class-vs-interface decision (state? one parent? lambda?), which steps are fixed vs pluggable, and keeping the hierarchy shallow.</p>`,
+    problems: [
+      {
+        title: 'Guided: Beverage Machine with a Template Method',
+        level: 'Easy', tags: ['abstract class', 'template method', 'hooks'], companies: ['Swiggy', 'Zomato', 'Infosys'],
+        statement: `<p>A drinks machine makes Tea and Coffee. Both follow the same recipe: <b>boil water → brew → pour in cup → (optionally) add condiments</b>. Tea brews by "steep tea" and adds "lemon"; Coffee brews by "drip coffee" and adds "milk" — but a <b>black coffee</b> skips condiments. Write the classes so the recipe is written <b>once</b> and cannot be reordered. <code>prepare()</code> returns the list of steps.</p>`,
+        constraints: `Java 21. New drinks (e.g. HotChocolate) must be addable without touching the recipe.`,
+        example: `<p><code>new Tea().prepare()</code> → ${H.c('g', '[boil water, steep tea, pour in cup, add lemon]')}<br><code>new Coffee(true).prepare()</code> (black) → ${H.c('g', '[boil water, drip coffee, pour in cup]')} — the hook <code>wantsCondiments()</code> returned false.</p>`,
+        brute: {
+          why: `<p>Two independent classes, each with its own copy of the recipe. Fixing a step (say "boil filtered water") means editing every copy; one copy gets missed, and the drinks drift apart. Nothing stops a new drink from pouring before brewing.</p>`,
+          code: `import java.util.*;
+
+class Tea {
+    List<String> prepare() {
+        return new ArrayList<>(List.of("boil water", "steep tea", "pour in cup", "add lemon"));
+    }
+}
+
+class Coffee {
+    boolean black;
+    Coffee(boolean black) { this.black = black; }
+    List<String> prepare() {                         // same recipe, copy-pasted
+        List<String> s = new ArrayList<>(List.of("boil water", "drip coffee", "pour in cup"));
+        if (!black) s.add("add milk");
+        return s;
+    }
+}
+
+public class Main {
+    public static void main(String[] args) {
+        System.out.println(new Tea().prepare());
+        System.out.println(new Coffee(true).prepare());
+    }
+}`
+        },
+        mcq: { q: 'Which method should be final in the abstract Beverage class?', options: ['prepare() — the recipe itself', 'brew() — every drink brews', 'addCondiments()', 'None; final is never useful'], answer: 0, explain: 'The template method fixes the order of steps; making it final stops subclasses from reordering or skipping steps. The steps themselves are the parts meant to vary.' },
+        hints: [
+          `<p>Hint 1: Separate what never changes (the order of steps) from what varies (brew, condiments, whether to add them).</p>`,
+          `<p>Hint 2: <code>abstract class Beverage</code> with <code>final List&lt;String&gt; prepare()</code>, <code>abstract String brew()</code>, <code>abstract String condiment()</code>, and a hook <code>boolean wantsCondiments() { return true; }</code>.</p>`,
+          `<p>Hint 3: Coffee overrides the hook to return <code>!black</code>. Recipe: list ← boil; list ← brew(); list ← pour; if hook() list ← "add " + condiment(); return list.</p>`
+        ],
+        solution: {
+          approach: `<p>The abstract parent owns the algorithm in a <code>final</code> template method and calls abstract "step" methods plus one hook. Each drink fills in only what differs. New drinks plug in without editing the recipe, and no drink can reorder it.</p>`,
+          code: `import java.util.*;
+
+abstract class Beverage {
+    // the template method: fixed order, cannot be overridden
+    final List<String> prepare() {
+        List<String> steps = new ArrayList<>();
+        steps.add("boil water");
+        steps.add(brew());                              // step supplied by subclass
+        steps.add("pour in cup");
+        if (wantsCondiments()) steps.add("add " + condiment());   // hook decides
+        return steps;
+    }
+    protected abstract String brew();
+    protected abstract String condiment();
+    protected boolean wantsCondiments() { return true; }         // hook with a default
+}
+
+class Tea extends Beverage {
+    @Override protected String brew() { return "steep tea"; }
+    @Override protected String condiment() { return "lemon"; }
+}
+
+class Coffee extends Beverage {
+    private final boolean black;
+    Coffee(boolean black) { this.black = black; }
+    @Override protected String brew() { return "drip coffee"; }
+    @Override protected String condiment() { return "milk"; }
+    @Override protected boolean wantsCondiments() { return !black; }
+}
+
+public class Main {
+    public static void main(String[] args) {
+        System.out.println(new Tea().prepare());          // [boil water, steep tea, pour in cup, add lemon]
+        System.out.println(new Coffee(true).prepare());   // [boil water, drip coffee, pour in cup]
+        System.out.println(new Coffee(false).prepare());  // [boil water, drip coffee, pour in cup, add milk]
+    }
+}`,
+          dry: {
+            head: ['call', 'step', 'method that runs', 'steps so far'],
+            rows: [
+              ['Coffee(true).prepare()', '1', 'Beverage.prepare (final)', '[boil water]'],
+              ['', '2', 'Coffee.brew', '[boil water, drip coffee]'],
+              ['', '3', 'Beverage.prepare', '[…, pour in cup]'],
+              ['', '4', 'Coffee.wantsCondiments → false', H.c('g', 'skip condiments')],
+              ['Tea().prepare()', '4', 'Beverage.wantsCondiments → true; Tea.condiment', '[…, add lemon]']
+            ]
+          },
+          complexity: `<p>O(1) per drink (4 steps). The win is structural: the recipe exists in exactly one place.</p>`,
+          followUps: ['Add HotChocolate in one class — what did you have to touch?', 'Rewrite with composition: a Beverage holding a BrewStrategy. Which is more flexible?', 'Why make the steps <code>protected</code> rather than <code>public</code>?']
+        }
+      }
+    ]
+  });
+
+  /* ======================================================================
+     TOPIC 6 — Interfaces: default, static and private methods
+     ====================================================================== */
+  topics.push({
+    title: 'Interfaces: Contracts, default & static Methods, and the Diamond Rules',
+    analogy: `<p>A <b>driving licence</b>. It does not care who your parents are (your class hierarchy); it only certifies a <b>capability</b>: "this person CAN drive". You can hold many such certificates at once — driving, swimming, first aid — but you have only one set of biological parents. That is the class/interface split: <b>one superclass (who you are), many interfaces (what you can do)</b>. A <b>default method</b> is like the licence coming with a free standard instruction booklet: use it as-is, or replace it with your own. If two certificates ship <i>conflicting</i> booklets for the same thing, the law makes <b>you</b> write your own version.</p>`,
+    explain: `<p>An <b>interface</b> is a named contract: a list of methods a class promises to provide. A class <code>implements</code> it; an interface <code>extends</code> other interfaces (several at once).</p>
+      ${H.table(['Member', 'Since', 'Implicit modifiers', 'Notes'], [
+        ['abstract method <code>void pay();</code>', 'Java 1', '<code>public abstract</code>', 'implementations must be <code>public</code>'],
+        ['constant <code>int MAX = 5;</code>', 'Java 1', '<code>public static final</code>', 'no instance fields allowed'],
+        ['<code>default</code> method (with body)', 'Java 8', '<code>public</code>', 'inherited by implementers; may be overridden'],
+        ['<code>static</code> method', 'Java 8', '<code>public</code>', 'called as <code>Iface.m()</code>; <b>not</b> inherited by implementing classes'],
+        ['<code>private</code> method', 'Java 9', '—', 'helper shared by default methods'],
+        ['nested types, <code>sealed</code> … <code>permits</code>', 'Java 17', '', 'restrict who may implement']
+      ])}
+      <p><b>Why default methods?</b> To <b>evolve</b> an interface without breaking every existing implementation. Java 8 added <code>Collection.stream()</code>, <code>Iterable.forEach()</code>, <code>List.sort()</code>, <code>Map.getOrDefault()</code> as defaults — otherwise millions of user classes implementing <code>List</code> would have stopped compiling.</p>
+      <p><b>Diamond rules</b> — when a class inherits the same method from several places:</p>
+      <ol>
+        <li><b>Class wins:</b> a method from the class itself or any superclass beats every interface default.</li>
+        <li><b>More specific interface wins:</b> if <code>K extends I</code> and both have a default, K's version wins.</li>
+        <li><b>Otherwise it is a compile error:</b> the class must override the method itself; inside, it may pick one with <code>J.super.hello()</code> (only for <b>direct</b> superinterfaces).</li>
+      </ol>
+      <p><b>Functional interface</b> = exactly one abstract method (defaults and statics do not count), e.g. <code>Runnable</code>, <code>Comparator</code>, <code>Function</code>. Any such interface can be implemented with a <b>lambda</b>. <code>@FunctionalInterface</code> makes the compiler enforce it.</p>`,
+    clues: [
+      '"Why were default methods added in Java 8?" → evolve interfaces (stream(), forEach) without breaking implementers',
+      '"A class implements two interfaces with the same default method — what happens?" → diamond rules, X.super.m()',
+      '"Can an interface have a constructor / instance fields / static methods / private methods?" → no / no / yes (8) / yes (9)',
+      '"Multiple inheritance in Java" → only of type and behaviour through interfaces, not of state',
+      '"Abstract class vs interface" → state + constructor + single parent vs capability + many + lambdas',
+      '"Functional interface", "@FunctionalInterface", "SAM type" → exactly one abstract method'
+    ],
+    code: [`
+      @FunctionalInterface
+      interface Validator {
+          boolean test(String s);                         // the single abstract method
+
+          default Validator and(Validator other) {        // default: inherited behaviour
+              return s -> test(s) && other.test(s);
+          }
+          default Validator negate() { return s -> !test(s); }
+
+          static Validator nonBlank() { return s -> s != null && !s.isBlank(); }   // static factory
+          static Validator maxLength(int n) { return s -> s.length() <= n; }
+
+          private static String quote(String s) { return "'" + s + "'"; }          // private helper (Java 9)
+          default String explain(String s) { return quote(s) + (test(s) ? " OK" : " REJECTED"); }
+      }
+
+      public class Main {
+          public static void main(String[] args) {
+              Validator username = Validator.nonBlank().and(Validator.maxLength(8));
+              System.out.println(username.explain("asha"));        // 'asha' OK
+              System.out.println(username.explain("   "));         // '   ' REJECTED
+              System.out.println(username.explain("verylongname")); // 'verylongname' REJECTED
+              Validator hasDigit = s -> s.chars().anyMatch(Character::isDigit);   // lambda
+              System.out.println(hasDigit.negate().test("abc"));   // true
+          }
+      }`],
+    codeTitle: ['One interface using abstract, default, static and private methods'],
+    viz: {
+      title: 'Diamond resolution: who wins c.hello()?',
+      input: 'I J',
+      inputLabel: 'Which types define hello()? Any of: C Base I J K (K extends I; class C extends Base implements J, K)',
+      gen: function (input) {
+        var toks = String(input === undefined || input === null ? '' : input).trim().split(/[\s,]+/).filter(Boolean);
+        var ALL = ['C', 'Base', 'I', 'J', 'K'], has = {};
+        toks.forEach(function (x) { if (ALL.indexOf(x) < 0) throw new Error('Use names from: C Base I J K, e.g. "I J" or "Base I"'); has[x] = true; });
+        function body(t, iface) { return has[t] ? ' { ' + (iface ? 'default ' : 'public ') + 'String hello() { return "' + t + '"; } }' : ' { }'; }
+        var code = [
+          'interface I' + body('I', true),
+          'interface J' + body('J', true),
+          'interface K extends I' + body('K', true),
+          'class Base' + body('Base', false),
+          'class C extends Base implements J, K' + body('C', false),
+          '',
+          '// main:  System.out.println(new C().hello());'
+        ].join('\n');
+        var LINE = { I: 1, J: 2, K: 3, Base: 4, C: 5 };
+        var nodes = [{ id: 'I', label: 'interface I', x: 18, y: 8, w: 22 }, { id: 'K', label: 'interface K', x: 18, y: 30, w: 22 }, { id: 'J', label: 'interface J', x: 50, y: 30, w: 22 }, { id: 'Base', label: 'class Base', x: 82, y: 30, w: 22 }, { id: 'C', label: 'class C', x: 50, y: 54, w: 22 }];
+        var edges = [['K', 'I', 'extends'], ['C', 'K', 'implements'], ['C', 'J', 'implements'], ['C', 'Base', 'extends']];
+        function g(hl, tags) { var t = {}; ALL.forEach(function (x) { if (has[x]) t[x] = 'has hello()'; }); Object.keys(tags || {}).forEach(function (k) { t[k] = tags[k]; }); var h2 = {}; Object.keys(hl || {}).forEach(function (k) { if (hl[k]) h2[k] = hl[k]; }); return hier('Type hierarchy', nodes, edges, h2, {}, t, 62); }
+        function c(hl) { return { type: 'code', label: 'Declarations', lang: 'java', code: code, hl: hl }; }
+        var frames = [];
+        var defining = ALL.filter(function (x) { return has[x]; });
+        frames.push({ narr: 'C extends class Base and implements J and K; K extends I. Types that define <code>hello()</code>: <b>' + (defining.length ? defining.join(', ') : 'none') + '</b>. Java applies three rules in order.', parts: [c({ 7: 'cur' }), g({})] });
+        var winner = null, error = null, fix = null;
+        if (has.C) { winner = 'C'; frames.push({ narr: '<b>Rule 0:</b> C declares <code>hello()</code> itself, so its own version is used. Nothing else matters.', parts: [c({ 5: 'ok' }), g({ C: 'ok' })] }); }
+        else {
+          frames.push({ narr: '<b>Rule 0:</b> C does not declare <code>hello()</code> itself. Look further.', parts: [c({ 5: 'cur' }), g({ C: 'cur' })] });
+          if (has.Base) { winner = 'Base'; frames.push({ narr: '<b>Rule 1 — class wins:</b> superclass Base has a concrete <code>hello()</code>. A class method <b>always</b> beats interface defaults' + (has.I || has.J || has.K ? ' (so the defaults in ' + ['I', 'J', 'K'].filter(function (x) { return has[x]; }).join(', ') + ' are ignored)' : '') + '. This keeps old class code working when new defaults appear.', parts: [c({ 4: 'ok' }), g({ Base: 'ok', I: has.I ? 'done' : undefined, J: has.J ? 'done' : undefined, K: has.K ? 'done' : undefined })] }); }
+          else {
+            frames.push({ narr: '<b>Rule 1 — class wins:</b> no class in C\'s superclass chain (Base, Object) defines <code>hello()</code>. Move on to the interfaces.', parts: [c({ 4: 'cur' }), g({ Base: 'cur' })] });
+            var cands = ['I', 'J', 'K'].filter(function (x) { return has[x]; });
+            var removed = [];
+            if (has.I && has.K) { cands = cands.filter(function (x) { return x !== 'I'; }); removed.push('I'); }
+            var hl2 = {}; cands.forEach(function (x) { hl2[x] = 'cur'; }); removed.forEach(function (x) { hl2[x] = 'done'; });
+            frames.push({ narr: '<b>Rule 2 — most specific interface wins:</b> ' + (removed.length ? 'K extends I and both define <code>hello()</code>, so K\'s version <b>overrides</b> I\'s; I is dropped. ' : '') + 'Remaining candidates: <b>' + (cands.length ? cands.join(', ') : 'none') + '</b>.', parts: [c((function () { var o = {}; cands.forEach(function (x) { o[LINE[x]] = 'cur'; }); removed.forEach(function (x) { o[LINE[x]] = 'done'; }); return o; })()), g(hl2)] });
+            if (cands.length === 1) winner = cands[0];
+            else if (cands.length === 0) error = '<span class="c-r">Compile error: cannot find symbol hello()</span> — nobody defines it.';
+            else {
+              error = '<span class="c-r">Compile error: class C inherits unrelated defaults for hello()</span> from ' + cands.join(' and ') + '. Neither is more specific, so Java refuses to guess.';
+              fix = cands.map(function (x) { return x === 'I' ? 'K.super.hello()' : x + '.super.hello()'; });
+            }
+          }
+        }
+        if (winner) {
+          frames.push({ narr: '<b>Result:</b> <code>new C().hello()</code> runs <b>' + winner + '</b>\'s version and prints <b>' + winner + '</b>. Try inputs: <code>I J</code> (conflict), <code>I K</code> (K wins), <code>Base J K</code> (class wins), <code>J</code>.', parts: [c(one(LINE[winner], 'sel')), g(one(winner, 'sel'), one(winner, 'WINNER')), out(winner)] });
+        } else {
+          frames.push({ narr: '<b>Result:</b> ' + error, parts: [c({ 5: 'bad', 7: 'bad' }), g({ C: 'bad' })] });
+          if (fix) {
+            frames.push({ narr: '<b>Fix:</b> C must override <code>hello()</code> and may delegate with <code>X.super.hello()</code>. Only <b>direct</b> superinterfaces can be named that way' + (has.I && !has.K ? ' — I is not a direct superinterface of C, so its default is reached as <code>K.super.hello()</code> (K inherits it)' : '') + '.', parts: [{ type: 'code', label: 'The fix inside class C', lang: 'java', code: 'class C extends Base implements J, K {\n    @Override public String hello() {\n        return ' + fix.join(' + "+" + ') + ';\n    }\n}', hl: { 2: 'ok', 3: 'ok' } }, g({ C: 'ok' }), out(fix.map(function (f) { return f.indexOf('K.super') === 0 ? (has.K ? 'K' : 'I') : f.charAt(0); }).join('+'))] });
+          }
+        }
+        return frames;
+      }
+    },
+    examples: [
+      {
+        title: 'Evolving an interface without breaking anyone',
+        html: `<p>Version 1 of <code>PaymentGateway</code> had only <code>charge</code>. Version 2 adds <code>refund</code>. As an <b>abstract</b> method, every existing implementation (including ones in other companies' code) would stop compiling. As a <b>default</b> method with a safe fallback, old classes keep working and new ones can override.</p>`,
+        code: `interface PaymentGateway {
+    String charge(long paise);
+    // added in v2 — existing implementations still compile
+    default String refund(long paise) {
+        return "refund of " + paise + " not supported by " + getClass().getSimpleName();
+    }
+}
+
+class OldGateway implements PaymentGateway {              // written for v1, never edited
+    public String charge(long paise) { return "charged " + paise; }
+}
+
+class NewGateway implements PaymentGateway {
+    public String charge(long paise) { return "charged " + paise; }
+    @Override public String refund(long paise) { return "refunded " + paise; }
+}
+
+public class Main {
+    public static void main(String[] args) {
+        System.out.println(new OldGateway().refund(500));   // refund of 500 not supported by OldGateway
+        System.out.println(new NewGateway().refund(500));   // refunded 500
+    }
+}`
+      },
+      {
+        title: 'Static interface methods are NOT inherited',
+        html: `<p>Unlike static methods in classes, a static method of an interface is reachable <b>only</b> through the interface name. This avoids diamond confusion for statics.</p>
+          ${H.table(['Call', 'Compiles?'], [['<code>Shapes.unitSquare()</code>', H.c('g', 'yes')], ['<code>Square.unitSquare()</code> (Square implements Shapes)', H.c('r', 'no — cannot find symbol')], ['<code>sq.unitSquare()</code>', H.c('r', 'no')]])}`,
+        code: `interface Shapes {
+    double area();
+    static Shapes unitSquare() { return new Square(1); }   // factory lives on the interface
+}
+
+class Square implements Shapes {
+    private final double side;
+    Square(double side) { this.side = side; }
+    public double area() { return side * side; }
+}
+
+public class Main {
+    public static void main(String[] args) {
+        System.out.println(Shapes.unitSquare().area());      // 1.0
+        // System.out.println(Square.unitSquare());         // ERROR: static interface methods are not inherited
+    }
+}`
+      },
+      {
+        title: 'Resolving a default-method conflict with X.super',
+        html: `<p>Two unrelated interfaces both provide <code>describe()</code>. The class <b>must</b> override, and can combine both through <code>Interface.super.method()</code>.</p>`,
+        code: `interface Camera { default String describe() { return "12MP camera"; } }
+interface Phone  { default String describe() { return "5G phone"; } }
+
+class SmartPhone implements Camera, Phone {
+    @Override
+    public String describe() {                               // required: otherwise compile error
+        return Phone.super.describe() + " with " + Camera.super.describe();
+    }
+}
+
+public class Main {
+    public static void main(String[] args) {
+        System.out.println(new SmartPhone().describe());     // 5G phone with 12MP camera
+    }
+}`
+      },
+      {
+        title: 'Constants and a custom functional interface with lambdas',
+        html: `<p>Fields in an interface are automatically <code>public static final</code>. A single-abstract-method interface works with lambdas and method references — the backbone of modern Java APIs.</p>`,
+        code: `import java.util.*;
+
+@FunctionalInterface
+interface DiscountRule {
+    int MAX_PERCENT = 50;                                    // implicitly public static final
+    double apply(double price);                              // the one abstract method
+    default DiscountRule then(DiscountRule next) { return p -> next.apply(apply(p)); }
+}
+
+public class Main {
+    public static void main(String[] args) {
+        DiscountRule festive = p -> p * 0.9;                 // lambda
+        DiscountRule flat100 = p -> Math.max(0, p - 100);
+        DiscountRule combo = festive.then(flat100);
+        System.out.println(combo.apply(1000));               // 800.0
+        System.out.println(DiscountRule.MAX_PERCENT);        // 50
+    }
+}`
+      }
+    ],
+    deepDive: `<p><b>1. Why no state in interfaces?</b> Default methods give multiple inheritance of <i>behaviour</i>, but never of <i>state</i>. Two interfaces cannot each bring a field <code>name</code>, so the "which constructor runs, which field wins" diamond cannot happen. Defaults can only use other interface methods (abstract ones the class implements).</p>
+      <p><b>2. Defaults cannot override Object's methods.</b> <code>default boolean equals(Object o)</code> is a compile error: by the "class wins" rule, <code>Object.equals</code> would always beat it anyway, so it would be dead code.</p>
+      <p><b>3. Dispatch cost.</b> Interface calls compile to <code>invokeinterface</code>. HotSpot uses <b>itables</b> plus inline caches; after JIT warm-up a monomorphic interface call is as fast as a class call. Lambdas are created via <code>invokedynamic</code> + <code>LambdaMetafactory</code>, producing a hidden class that implements the interface.</p>
+      <p><b>4. Marker interfaces.</b> <code>Serializable</code>, <code>Cloneable</code>, <code>RandomAccess</code> have no methods; they tag a type so code can check <code>instanceof</code>. Annotations do a similar job but cannot be used as a <i>type</i> in method parameters — a marker interface can.</p>
+      <p><b>5. The constant-interface anti-pattern.</b> Implementing an interface just to use its constants leaks them into your public API forever. Prefer a <code>final</code> utility class or an <code>enum</code>, and <code>import static</code>.</p>
+      <p><b>6. Default-method pitfalls.</b> A default added later can silently change behaviour of classes that happened to have a same-named method with a different meaning — or break them (Java 8's <code>Collection.removeIf</code> vs synchronized wrappers needed overrides for thread safety). Defaults are for evolution, not a substitute for abstract classes.</p>
+      <p><b>7. Sealed interfaces + records (Java 17/21)</b> model closed sets of alternatives (<code>sealed interface Result permits Ok, Err</code>); combined with exhaustive pattern-matching <code>switch</code> they give algebraic data types in Java.</p>`,
+    aiEra: `<p><b>What AI changes:</b> assistants produce interface + implementation pairs instantly (often too many: an <code>IUserService</code> for every class with exactly one implementation). They are also good at wiring lambdas and default-method combinators like <code>and()</code>/<code>then()</code>.</p>
+      <p><b>Use AI as a partner:</b> <code>Which of these interfaces has only one implementation and adds no testing or extension value?</code> · <code>Explain which hello() runs here using the three diamond rules</code> · <code>Generate a sealed interface hierarchy for these API responses</code>.</p>
+      <p><b>Where AI goes wrong:</b> trying to call a static interface method through an implementing class, writing <code>I.super.m()</code> for a non-direct superinterface, putting mutable "fields" in interfaces, or forgetting that implementations must be <code>public</code>.</p>
+      <p><b>What you must still own:</b> designing small, focused interfaces (Interface Segregation), deciding interface vs abstract class, and knowing the diamond rules cold.</p>`,
+    problems: [
+      {
+        title: 'Guided: Smart Bulb with Two Conflicting Defaults',
+        level: 'Medium', tags: ['interfaces', 'default methods', 'diamond'], companies: ['Google', 'Samsung', 'Bosch'],
+        statement: `<p>Two interfaces from different teams both provide a <code>default String status()</code>:</p>
+          <ul><li><code>Switchable</code>: <code>"power:on"</code> / <code>"power:off"</code>, based on abstract <code>boolean isOn()</code>.</li>
+          <li><code>Connectable</code>: <code>"wifi:up"</code> / <code>"wifi:down"</code>, based on abstract <code>boolean isConnected()</code>.</li></ul>
+          <p>Write <code>SmartBulb implements Switchable, Connectable</code> whose <code>status()</code> returns both parts, e.g. <code>"power:on, wifi:down"</code>, <b>reusing</b> the interfaces' logic rather than copying it.</p>`,
+        constraints: `Do not change the interfaces. Java 21.`,
+        example: `<p>bulb on, wifi off → ${H.c('g', '"power:on, wifi:down"')}. Without an override in SmartBulb the class ${H.c('r', 'does not compile')}: it inherits two unrelated defaults for <code>status()</code>.</p>`,
+        brute: {
+          why: `<p>Overriding <code>status()</code> by <b>copy-pasting</b> both formats compiles, but the logic now lives in three places. When the Switchable team changes its format to <code>"PWR=1"</code>, the bulb keeps printing the old text and nobody notices.</p>`,
+          code: `interface Switchable {
+    boolean isOn();
+    default String status() { return "power:" + (isOn() ? "on" : "off"); }
+}
+
+interface Connectable {
+    boolean isConnected();
+    default String status() { return "wifi:" + (isConnected() ? "up" : "down"); }
+}
+
+class SmartBulb implements Switchable, Connectable {
+    boolean on = true, wifi = false;
+    public boolean isOn() { return on; }
+    public boolean isConnected() { return wifi; }
+    @Override public String status() {                       // duplicated formatting logic
+        return "power:" + (on ? "on" : "off") + ", wifi:" + (wifi ? "up" : "down");
+    }
+}
+
+public class Main {
+    public static void main(String[] args) {
+        System.out.println(new SmartBulb().status());         // power:on, wifi:down
+    }
+}`
+        },
+        mcq: { q: 'Inside SmartBulb, how do you call Switchable\'s default status()?', options: ['Switchable.super.status()', 'super.status()', 'Switchable.status()', '((Switchable) this).status()'], answer: 0, explain: 'X.super.m() selects a direct superinterface\'s default. super.status() refers to the superclass (Object), Switchable.status() would mean a static method, and casting this still dispatches to SmartBulb.status() — infinite recursion.' },
+        hints: [
+          `<p>Hint 1: Rule 3 of the diamond: two unrelated interfaces, no class method → the class <b>must</b> override <code>status()</code>.</p>`,
+          `<p>Hint 2: Inside the override you can still reach each default with <code>Switchable.super.status()</code> and <code>Connectable.super.status()</code>.</p>`,
+          `<p>Hint 3: Watch the trap: <code>((Switchable) this).status()</code> calls SmartBulb's own override again → <code>StackOverflowError</code>. Recipe: override → join the two super calls with ", ".</p>`
+        ],
+        solution: {
+          approach: `<p>Override <code>status()</code> in SmartBulb (forced by the compiler) and delegate to both interface defaults via <code>X.super.status()</code>. Each format stays owned by its interface; the bulb just composes them.</p>`,
+          code: `interface Switchable {
+    boolean isOn();
+    default String status() { return "power:" + (isOn() ? "on" : "off"); }
+}
+
+interface Connectable {
+    boolean isConnected();
+    default String status() { return "wifi:" + (isConnected() ? "up" : "down"); }
+}
+
+class SmartBulb implements Switchable, Connectable {
+    private boolean on, wifi;
+    SmartBulb(boolean on, boolean wifi) { this.on = on; this.wifi = wifi; }
+    public boolean isOn() { return on; }
+    public boolean isConnected() { return wifi; }
+
+    @Override
+    public String status() {
+        // reuse both defaults instead of copying their logic
+        return Switchable.super.status() + ", " + Connectable.super.status();
+    }
+}
+
+public class Main {
+    public static void main(String[] args) {
+        System.out.println(new SmartBulb(true, false).status());   // power:on, wifi:down
+        Switchable s = new SmartBulb(false, true);
+        System.out.println(s.status());                            // power:off, wifi:up  (dynamic dispatch)
+    }
+}`,
+          dry: {
+            head: ['call', 'resolves to', 'returns'],
+            rows: [
+              ['bulb.status()', 'SmartBulb.status (class wins)', '…'],
+              ['Switchable.super.status()', 'Switchable default → isOn() = true', '"power:on"'],
+              ['Connectable.super.status()', 'Connectable default → isConnected() = false', '"wifi:down"'],
+              ['join', '', H.c('g', '"power:on, wifi:down"')]
+            ]
+          },
+          complexity: `<p>O(1). The value is in maintainability: each format is defined exactly once.</p>`,
+          followUps: ['What happens if SmartBulb extends a class <code>Device</code> that has <code>public String status()</code>?', 'Why can you not write <code>Object.super.toString()</code>-style calls for non-direct interfaces?', 'Make the interfaces sealed — who may implement them now?']
+        }
+      }
+    ]
+  });
 registerModule({ id: 'java04', title: 'OOP Pillars in Java', intro: '<p>x</p>', goals: [], prereqs: 'x', hours: 12, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();
