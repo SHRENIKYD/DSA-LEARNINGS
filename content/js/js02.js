@@ -2785,5 +2785,281 @@ console.log(a === b, a === c, JSON.stringify(a) === JSON.stringify(b)); // true 
     }
   });
 
-  registerModule({ id: 'js02', title: 'Functions, Arrays & Objects', intro: '<p>stub</p>', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview });
-})();
+  /* ================= PRACTICE: Hard ================= */
+  practice.push({
+    title: 'Spec-Faithful reduce Polyfill',
+    level: 'Hard', tags: ['polyfill', 'reduce', 'spec', 'holes'], companies: ['Uber', 'Flipkart', 'Atlassian', 'Microsoft'],
+    statement: `<p>Implement <code>Array.prototype.myReduce(callback, initialValue)</code> exactly like the built-in: callback gets <code>(acc, element, index, array)</code>; with no initial value the <b>first present element</b> is the accumulator and iteration starts after it; an empty array (or all holes) with no initial value throws <code>TypeError</code>; holes are skipped; an explicitly passed <code>undefined</code> initial value <b>counts</b> as provided.</p>`,
+    constraints: `<p>No built-in iteration methods. Use <code>arguments.length</code> (or rest) to tell "not passed" apart from "passed undefined".</p>`,
+    example: `<p><code>[1, 2, 3].myReduce((a, b) =&gt; a + b)</code> → ${H.c('g', '6')} (callback called 2×)<br><code>[, , 5].myReduce((a, b) =&gt; a + b)</code> → ${H.c('g', '5')} (callback never called)<br><code>[].myReduce((a, b) =&gt; a + b)</code> → ${H.c('r', 'TypeError')}<br><code>[1].myReduce((a, b) =&gt; [a, b], undefined)</code> → ${H.c('g', '[undefined, 1]')} (undefined WAS provided)</p>`,
+    brute: { why: `<p>The common interview answer <code>let acc = init ?? this[0]</code> is wrong in three ways: it treats a passed <code>undefined</code> (or <code>null</code>!) as "missing", it starts at index 0 or 1 without checking for holes, and it returns <code>undefined</code> on an empty array instead of throwing.</p>`, code: { lang: 'js', run: true, code: `Array.prototype.naiveReduce = function (cb, init) {
+  let acc = init ?? this[0];                 // null/undefined treated as missing
+  const start = init === undefined ? 1 : 0;  // ignores holes
+  for (let i = start; i < this.length; i++) acc = cb(acc, this[i], i, this);
+  return acc;
+};
+console.log([].naiveReduce((a, b) => a + b));            // undefined (should throw)
+console.log([1, 2].naiveReduce((a, b) => a + b, null));  // 3 (built-in gives null + 1 + 2 = 3 too, but by luck)
+console.log([, , 5].naiveReduce((a, b) => a + b));       // NaN (should be 5)
+delete Array.prototype.naiveReduce;` } },
+    mcq: { q: 'How can the polyfill distinguish <code>reduce(fn)</code> from <code>reduce(fn, undefined)</code>?', options: ['Check <code>arguments.length &gt;= 2</code> (or use a rest parameter and check its length)', 'Check <code>initialValue === undefined</code>', 'Check <code>typeof initialValue</code>', 'It is impossible in JavaScript'], answer: 0, explain: 'Both calls make initialValue undefined, but arguments.length is 1 vs 2. The spec makes exactly this distinction.' },
+    hints: [`<p>Three phases: validate the callback; find the starting accumulator and index; loop the remaining present indices.</p>`, `<p>If <code>arguments.length &gt;= 2</code>, acc = initialValue, start at 0. Otherwise scan forward for the first <code>k in this</code>; if none, throw <code>TypeError('Reduce of empty array with no initial value')</code>; acc = this[k], start at k + 1.</p>`, `<p>In the loop, skip holes with <code>if (i in this)</code>, and read <code>len</code> once before the loop. Define it non-enumerable with <code>Object.defineProperty</code>.</p>`],
+    solution: {
+      approach: `<p>Mirror the spec (Array.prototype.reduce, steps 1–10): length captured once; "initial value present" decided by argument count; first present element search when absent; TypeError if none; loop skipping holes; return the accumulator.</p>`,
+      code: { lang: 'js', run: true, code: `Object.defineProperty(Array.prototype, 'myReduce', {
+  value: function (callback, initialValue) {
+    if (typeof callback !== 'function') throw new TypeError(callback + ' is not a function');
+    const O = Object(this);
+    const len = O.length >>> 0;                // read length once
+    let k = 0;
+    let acc;
+    if (arguments.length >= 2) {
+      acc = initialValue;                      // provided, even if undefined
+    } else {
+      while (k < len && !(k in O)) k++;        // find first present element
+      if (k >= len) throw new TypeError('Reduce of empty array with no initial value');
+      acc = O[k++];
+    }
+    for (; k < len; k++) {
+      if (k in O) acc = callback(acc, O[k], k, O); // skip holes
+    }
+    return acc;
+  },
+  writable: true, configurable: true, enumerable: false,
+});
+
+let calls = 0;
+console.log([1, 2, 3].myReduce((a, b) => { calls++; return a + b; }), 'calls:', calls); // 6 calls: 2
+console.log([, , 5].myReduce((a, b) => a + b));                 // 5
+console.log([1].myReduce((a, b) => [a, b], undefined));         // [ undefined, 1 ]
+try { [].myReduce((a, b) => a + b); } catch (e) { console.log(e.name + ': ' + e.message); }
+console.log([1, 2, 3].myReduce((a, b) => a + b, 10) === [1, 2, 3].reduce((a, b) => a + b, 10)); // true
+console.log(Array.prototype.myReduce.call('abc', (a, ch) => ch + a, '')); // cba (works on array-likes)` },
+      dry: { head: ['input', 'args', 'start acc / k', 'calls', 'result'], rows: [['[1, 2, 3]', '1', 'acc = 1, k = 1', '(1,2) (3,3)', '6'], ['[ , , 5]', '1', 'skip 0,1 → acc = 5, k = 3', 'none', '5'], ['[]', '1', 'no present element', '—', '<span class="c-r">TypeError</span>'], ['[1]', '2 (undefined)', 'acc = undefined, k = 0', '(undefined, 1)', '[undefined, 1]']] },
+      complexity: `<p>Time O(n), extra space O(1).</p>`,
+      followUps: ['Implement reduceRight', 'Implement map and filter on top of myReduce', 'Why does <code>len &gt;&gt;&gt; 0</code> appear in old polyfills?']
+    }
+  });
+
+  practice.push({
+    title: 'Deep Clone with Cycles, Dates, Maps and Sets',
+    level: 'Hard', tags: ['objects', 'recursion', 'WeakMap', 'cloning'], companies: ['Google', 'Microsoft', 'Rippling'],
+    statement: `<p>Implement <code>deepClone(value)</code> without <code>structuredClone</code> or JSON. Support primitives, arrays, plain objects, <code>Date</code>, <code>RegExp</code>, <code>Map</code>, <code>Set</code>, and <b>circular references</b> (a cycle in the input becomes the same cycle in the copy). Preserve the prototype of plain/class objects and copy own enumerable string and symbol keys. Functions are returned as-is (shared).</p>`,
+    constraints: `<p>Up to 10<sup>5</sup> nodes; nesting depth ≤ 1000.</p>`,
+    example: `<p><code>const a = { when: new Date(0), tags: new Set(['x']), list: [1, { y: 2 }] }; a.self = a;</code><br><code>const b = deepClone(a)</code> → ${H.c('g', 'b.self === b')}, ${H.c('g', 'b.when instanceof Date')}, ${H.c('g', "b.tags.has('x')")}, ${H.c('g', 'b.list[1] !== a.list[1]')}</p>`,
+    brute: { why: `<p><code>JSON.parse(JSON.stringify(x))</code> turns Dates into strings, Maps/Sets into <code>{}</code>, drops undefined and functions, loses prototypes — and <b>throws</b> on cycles. A naive recursive copy without a "visited" map recurses forever on cycles (stack overflow).</p>`, code: { lang: 'js', run: true, code: `const a = { when: new Date(0), tags: new Set(['x']) };
+const viaJson = JSON.parse(JSON.stringify(a));
+console.log(typeof viaJson.when, viaJson.tags);   // string {}
+a.self = a;
+try { JSON.stringify(a); } catch (e) { console.log(e.name); } // TypeError (circular)` } },
+    mcq: { q: 'Why record the clone in the WeakMap BEFORE recursing into children?', options: ['So a child that points back to the parent finds the half-built clone instead of recursing forever', 'WeakMap needs entries sorted', 'To save memory', 'Order does not matter'], answer: 0, explain: 'In a cycle, the recursion reaches the same object again while still building it. If the clone is registered first, that lookup returns it and the cycle is reproduced.' },
+    hints: [`<p>Primitives and functions: return as-is. Objects: check a <code>WeakMap</code> of original → clone first, to handle cycles and shared references.</p>`, `<p>Branch by type: Date → <code>new Date(v.getTime())</code>; RegExp → <code>new RegExp(v.source, v.flags)</code>; Map/Set → new collection, cloning keys and values; arrays → <code>new Array(len)</code>; others → <code>Object.create(Object.getPrototypeOf(v))</code>.</p>`, `<p>Register the empty clone in the WeakMap <b>before</b> filling it. Copy keys with <code>Reflect.ownKeys</code> filtered to enumerable ones (gets symbols too).</p>`],
+    solution: {
+      approach: `<p>Recursive copy with a WeakMap "visited" table. Each object type gets its own construction; the empty clone is registered before children are cloned, so cycles and shared sub-objects are reproduced faithfully.</p>`,
+      code: { lang: 'js', run: true, code: `function deepClone(value, seen = new WeakMap()) {
+  if (value === null || typeof value !== 'object') return value; // primitives & functions
+  if (seen.has(value)) return seen.get(value);                     // cycle / shared ref
+
+  let copy;
+  if (value instanceof Date) return new Date(value.getTime());
+  if (value instanceof RegExp) return new RegExp(value.source, value.flags);
+  if (value instanceof Map) {
+    copy = new Map();
+    seen.set(value, copy);
+    value.forEach((v, k) => copy.set(deepClone(k, seen), deepClone(v, seen)));
+    return copy;
+  }
+  if (value instanceof Set) {
+    copy = new Set();
+    seen.set(value, copy);
+    value.forEach(v => copy.add(deepClone(v, seen)));
+    return copy;
+  }
+  copy = Array.isArray(value) ? new Array(value.length) : Object.create(Object.getPrototypeOf(value));
+  seen.set(value, copy);                                           // register BEFORE recursing
+  for (const key of Reflect.ownKeys(value)) {                      // strings + symbols
+    const desc = Object.getOwnPropertyDescriptor(value, key);
+    if (desc.enumerable) copy[key] = deepClone(value[key], seen);
+  }
+  return copy;
+}
+
+class Point { constructor(x) { this.x = x; } norm() { return Math.abs(this.x); } }
+const tag = Symbol('tag');
+const a = { when: new Date(0), tags: new Set(['x']), list: [1, { y: 2 }], p: new Point(-3), re: /ab+c/gi, [tag]: 'sym' };
+a.self = a;
+a.map = new Map([['back', a]]);
+
+const b = deepClone(a);
+console.log(b.self === b, b.map.get('back') === b);       // true true   (cycles preserved)
+console.log(b.when instanceof Date, b.tags.has('x'));     // true true
+console.log(b.list[1] !== a.list[1], b.list[1].y);        // true 2
+console.log(b.p instanceof Point, b.p.norm());            // true 3
+console.log(b.re.flags, b[tag]);                          // gi sym
+b.list[1].y = 99;
+console.log(a.list[1].y);                                 // 2 (independent)` },
+      dry: { head: ['visiting', 'seen?', 'action'], rows: [['a (object)', 'no', 'create copy B, seen.set(a, B)'], ['a.when', '—', 'new Date(0)'], ['a.list → [1, {y}]', 'no', 'new array, recurse'], ['a.self = a', '<span class="c-g">yes</span>', 'return B (cycle reproduced)'], ['a.map → Map', 'no', 'new Map; value a → seen → B']] },
+      complexity: `<p>Time O(number of nodes + edges); space O(nodes) for the copy and the WeakMap, plus O(depth) stack.</p>`,
+      followUps: ['Make it iterative to survive 100 000-deep nesting', 'Copy property descriptors (getters/setters, non-writable) exactly', 'Compare with structuredClone: what does each support that the other does not?']
+    }
+  });
+
+  practice.push({
+    title: 'get and set by Path ("a.b[0].c")',
+    level: 'Hard', tags: ['objects', 'strings', 'parsing', 'immutability'], companies: ['Lodash-style utilities', 'Amazon', 'Postman'],
+    statement: `<p>Implement <code>get(obj, path, fallback)</code> and an <b>immutable</b> <code>setIn(obj, path, value)</code>. Paths look like <code>"user.addresses[0].city"</code> (dots and <code>[index]</code>). <code>get</code> returns <code>fallback</code> when any step is missing (never throws). <code>setIn</code> returns a new object with copies along the path only, creating missing containers: an array if the next key is a number, otherwise an object. Reject the keys <code>__proto__</code>, <code>constructor</code> and <code>prototype</code>.</p>`,
+    constraints: `<p>Path length ≤ 100 segments; objects up to 10<sup>5</sup> nodes.</p>`,
+    example: `<p><code>get(data, 'user.addresses[0].city')</code> → ${H.c('g', "'Pune'")}; <code>get(data, 'user.phone.home', 'n/a')</code> → ${H.c('m', "'n/a'")}<br><code>setIn({}, 'a.list[1].x', 5)</code> → ${H.c('g', '{ a: { list: [ &lt;empty&gt;, { x: 5 } ] } }')}</p>`,
+    brute: { why: `<p><code>path.split('.')</code> fails on bracket indexes, chained <code>obj.a.b.c</code> access throws on the first missing level, and a mutating <code>set</code> changes shared state (and with keys like <code>__proto__</code>, can pollute <code>Object.prototype</code> for the whole app).</p>`, code: { lang: 'js', run: true, code: `function naiveGet(obj, path) {
+  return path.split('.').reduce((cur, key) => cur[key], obj); // throws on missing levels
+}
+const data = { user: { addresses: [{ city: 'Pune' }] } };
+try {
+  console.log(naiveGet(data, 'user.addresses[0].city'));
+} catch (e) {
+  console.log(e.name); // TypeError: 'addresses[0]' is not a key
+}` } },
+    mcq: { q: 'What does <code>setIn</code> copy when updating <code>a.b.c</code>?', options: ['The root, a, and a.b (the path); everything else is shared', 'Every object in the tree', 'Only the leaf', 'Nothing — it mutates'], answer: 0, explain: 'Structural sharing: copy each container on the path so the original is untouched, and reuse all untouched branches. That is how Redux/Immer stay fast.' },
+    hints: [`<p>First turn the path into segments: replace <code>[n]</code> with <code>.n</code>, split on dots, drop empty pieces, and convert digit-only pieces to numbers.</p>`, `<p>get: walk the segments; if the current value is <code>null</code>/<code>undefined</code> or does not own the key, return the fallback. setIn: recursive — copy the current container (<code>Array.isArray ? [...c] : { ...c }</code>), then set <code>copy[key] = setIn(child, rest, value)</code>.</p>`, `<p>When a container is missing, create <code>[]</code> if the next segment is a number, else <code>{}</code>. Throw on forbidden keys before touching anything.</p>`],
+    solution: {
+      approach: `<p>A tiny path parser produces segments. <code>get</code> walks them defensively with own-property checks. <code>setIn</code> recurses along the path, shallow-copying each container (structural sharing) and creating missing ones based on the next segment's type. Dangerous keys are rejected.</p>`,
+      code: { lang: 'js', run: true, code: String.raw`const FORBIDDEN = new Set(['__proto__', 'constructor', 'prototype']);
+
+function parsePath(path) {
+  const segs = path
+    .replace(/\[(\d+)\]/g, '.$1')      // a[0].b -> a.0.b
+    .split('.')
+    .filter(s => s.length > 0)
+    .map(s => (/^\d+$/.test(s) ? Number(s) : s));
+  for (const s of segs) if (FORBIDDEN.has(String(s))) throw new Error('Forbidden key: ' + s);
+  return segs;
+}
+
+function get(obj, path, fallback) {
+  let cur = obj;
+  for (const key of parsePath(path)) {
+    if (cur === null || typeof cur !== 'object' || !Object.hasOwn(cur, key)) return fallback;
+    cur = cur[key];
+  }
+  return cur === undefined ? fallback : cur;
+}
+
+function setIn(obj, path, value) {
+  const segs = typeof path === 'string' ? parsePath(path) : path;
+  if (segs.length === 0) return value;
+  const [key, ...rest] = segs;
+  const container =
+    obj !== null && typeof obj === 'object'
+      ? (Array.isArray(obj) ? [...obj] : { ...obj })   // copy this level
+      : (typeof key === 'number' ? [] : {});           // create missing level
+  container[key] = setIn(container[key], rest, value); // recurse into the child
+  return container;
+}
+
+const data = { user: { name: 'Asha', addresses: [{ city: 'Pune' }, { city: 'Goa' }] }, settings: { dark: true } };
+console.log(get(data, 'user.addresses[0].city'));         // Pune
+console.log(get(data, 'user.phone.home', 'n/a'));         // n/a
+console.log(get(data, 'user.addresses[5].city', 'none')); // none
+
+const next = setIn(data, 'user.addresses[1].city', 'Delhi');
+console.log(next.user.addresses[1].city, data.user.addresses[1].city); // Delhi Goa
+console.log(next.settings === data.settings);                          // true (shared)
+console.log(next.user.addresses[0] === data.user.addresses[0]);        // true (shared)
+console.log(JSON.stringify(setIn({}, 'a.list[1].x', 5)));              // {"a":{"list":[null,{"x":5}]}}
+try { setIn({}, '__proto__.polluted', true); } catch (e) { console.log(e.message); }
+console.log({}.polluted);                                              // undefined` },
+      dry: { head: ['setIn level', 'key', 'container', 'action'], rows: [['root', 'user', 'copy of data', 'recurse into data.user'], ['user', 'addresses', 'copy of user', 'recurse'], ['addresses', '1', 'copy of array', 'recurse into element 1'], ['element 1', 'city', '{ ...{ city: Goa } }', "set 'Delhi'"], ['leaf', '—', '—', 'return value']] },
+      complexity: `<p>get: O(path length). setIn: O(sum of sizes of the containers on the path) for the shallow copies; untouched branches are shared, so memory grows only along the path.</p>`,
+      followUps: ['Support quoted keys like <code>a["weird.key"]</code>', 'Write <code>updateIn(obj, path, fn)</code>', 'Add TypeScript types that infer the value type from the path string']
+    }
+  });
+
+  practice.push({
+    title: 'Write Your Own JSON.stringify (core rules)',
+    level: 'Hard', tags: ['JSON', 'recursion', 'strings', 'polyfill'], companies: ['Meta', 'Google', 'Atlassian'],
+    statement: `<p>Implement <code>toJSON(value)</code> matching <code>JSON.stringify(value)</code> (no replacer/space) for: strings (escape <code>"</code>, <code>\\</code>, and control characters), finite numbers (NaN/±Infinity → <code>null</code>), booleans, <code>null</code>, arrays (undefined/function/symbol → <code>null</code>), plain objects (undefined/function/symbol values → key skipped), objects with a <code>toJSON()</code> method (e.g. Date), and a top-level <code>undefined</code>/function → <code>undefined</code>. Cycles must throw <code>TypeError</code>.</p>`,
+    constraints: `<p>No calls to the real JSON.stringify inside your implementation. Depth ≤ 1000.</p>`,
+    example: `<p><code>toJSON({ a: [1, undefined, 'x"y'], b: undefined, c: NaN, d: new Date(0) })</code><br>→ ${H.c('g', '{"a":[1,null,"x\\"y"],"c":null,"d":"1970-01-01T00:00:00.000Z"}')}</p>`,
+    brute: { why: `<p>A first attempt usually wraps strings in quotes without escaping (<code>'"' + s + '"'</code>), so a value containing a quote produces <b>invalid JSON</b>; it prints <code>undefined</code> inside arrays, keeps keys with undefined values, and recurses forever on cycles.</p>`, code: { lang: 'js', run: true, code: `function naive(v) {
+  if (typeof v === 'string') return '"' + v + '"';         // no escaping!
+  if (Array.isArray(v)) return '[' + v.map(naive).join(',') + ']';
+  if (v && typeof v === 'object') return '{' + Object.keys(v).map(k => '"' + k + '":' + naive(v[k])).join(',') + '}';
+  return String(v);
+}
+const out = naive({ a: [1, undefined, 'x"y'], b: undefined });
+console.log(out);
+try { JSON.parse(out); } catch (e) { console.log('invalid JSON:', e.name); }` } },
+    mcq: { q: 'Inside an ARRAY, what does stringify output for <code>undefined</code>?', options: ['<code>null</code> — positions must be preserved', 'Nothing — the item is skipped', '<code>"undefined"</code>', 'It throws'], answer: 0, explain: 'Objects can drop a key, but arrays cannot drop a position without shifting every later index, so the spec writes null.' },
+    hints: [`<p>Write one recursive function <code>ser(value, inArray)</code> that returns a string, or <code>undefined</code> meaning "nothing to write". The caller decides: skip the key (object) or write <code>null</code> (array).</p>`, `<p>Order of checks: call <code>toJSON</code> if present → null → boolean → number (finite?) → string (escape) → undefined/function/symbol → array → object. Keep a <code>Set</code> of objects on the current path to detect cycles.</p>`, `<p>Escaping: <code>\\</code> → <code>\\\\</code>, <code>"</code> → <code>\\"</code>, newline → <code>\\n</code>, other chars below U+0020 → <code>\\u00XX</code>. Remove the object from the path set after serialising it (shared, non-cyclic references are allowed).</p>`],
+    solution: {
+      approach: `<p>Recursive serializer returning <code>undefined</code> for "no representation". Arrays turn that into <code>null</code>; objects skip the key. A path Set detects true cycles while still allowing the same object to appear twice in different branches. Strings are escaped per the JSON grammar.</p>`,
+      code: { lang: 'js', run: true, code: String.raw`function quote(s) {
+  const map = { '"': '\\"', '\\': '\\\\', '\n': '\\n', '\r': '\\r', '\t': '\\t', '\b': '\\b', '\f': '\\f' };
+  let out = '"';
+  for (const ch of s) {
+    const code = ch.charCodeAt(0);
+    if (map[ch]) out += map[ch];
+    else if (code < 0x20) out += '\\u' + code.toString(16).padStart(4, '0');
+    else out += ch;
+  }
+  return out + '"';
+}
+
+function toJSON(value) {
+  const path = new Set(); // objects currently being serialised (cycle detection)
+
+  function ser(v) {
+    if (v !== null && typeof v === 'object' && typeof v.toJSON === 'function') v = v.toJSON();
+    if (v === null) return 'null';
+    switch (typeof v) {
+      case 'boolean': return String(v);
+      case 'number': return Number.isFinite(v) ? String(v) : 'null';
+      case 'string': return quote(v);
+      case 'bigint': throw new TypeError('Do not know how to serialize a BigInt');
+      case 'undefined': case 'function': case 'symbol': return undefined; // "nothing"
+    }
+    if (path.has(v)) throw new TypeError('Converting circular structure to JSON');
+    path.add(v);
+    let result;
+    if (Array.isArray(v)) {
+      const parts = [];
+      for (let i = 0; i < v.length; i++) {
+        const s = ser(v[i]);
+        parts.push(s === undefined ? 'null' : s);     // arrays keep positions
+      }
+      result = '[' + parts.join(',') + ']';
+    } else {
+      const parts = [];
+      for (const key of Object.keys(v)) {
+        const s = ser(v[key]);
+        if (s !== undefined) parts.push(quote(key) + ':' + s); // objects skip the key
+      }
+      result = '{' + parts.join(',') + '}';
+    }
+    path.delete(v);
+    return result;
+  }
+  return ser(value);
+}
+
+const samples = [
+  { a: [1, undefined, 'x"y'], b: undefined, c: NaN, d: new Date(0) },
+  ['line\nbreak', 'tab\there', 'back\\slash', '\u0001'],
+  { nested: { deep: [true, false, null, -0, 1e21] }, fn() {} },
+  'plain', 42, null, undefined,
+];
+for (const s of samples) {
+  const mine = toJSON(s), real = JSON.stringify(s);
+  console.log(mine === real ? 'MATCH' : 'DIFF ', mine);
+}
+const shared = { k: 1 };
+console.log(toJSON({ x: shared, y: shared }));       // {"x":{"k":1},"y":{"k":1}} (shared is fine)
+const cyc = { name: 'c' }; cyc.me = cyc;
+try { toJSON(cyc); } catch (e) { console.log(e.name + ': ' + e.message); }` },
+      dry: { head: ['value', 'branch', 'returns', 'caller writes'], rows: [['1', 'number, finite', '"1"', '1'], ['undefined (in array)', 'undefined', 'undefined', '<b>null</b>'], ['\'x"y\'', 'string', '"x\\"y"', '"x\\"y"'], ['b: undefined (in object)', 'undefined', 'undefined', '<span class="c-m">key skipped</span>'], ['NaN', 'number, not finite', '"null"', 'null'], ['Date(0)', 'toJSON → string', '"1970-01-01T…Z"', 'ISO string']] },
+      complexity: `<p>Time O(total size of the value + output length). Space O(depth) for recursion and the path set, plus the output string.</p>`,
+      followUps: ['Add the <code>space</code> argument for pretty printing', 'Add replacer function and replacer-array support', 'Serialise Map and Set as tagged objects and write the matching reviver']
+    }
+  });
+
+registerModule({ id: 'js02', title: 'Functions, Arrays & Objects', intro: '<p>stub</p>', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();
