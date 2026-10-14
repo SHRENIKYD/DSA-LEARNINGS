@@ -1387,4 +1387,300 @@ public:
       }
     }]
   });
+
+  // =====================================================================
+  // TOPIC 6 — Randomized algorithms: Fisher-Yates shuffle & quickselect
+  // =====================================================================
+  topics.push({
+    title: 'Randomized Algorithms: Fisher–Yates Shuffle & Randomized Quickselect',
+    analogy: `<p><b>Shuffling:</b> to shuffle a deck fairly, pull a card at random from the cards still in your hand and put it face-down on the table. Repeat with the cards left. Every card had an equal chance for every position, so every order of the deck is equally likely. That is Fisher–Yates.</p>
+      <p><b>Selecting:</b> to find the 3rd shortest person in a hall of 500 without sorting everybody, pick a <b>random</b> person and ask everyone to stand left (shorter) or right (taller). If 40 people are on the left, the 3rd shortest is among them — send the other 460 home and repeat. A random pick is almost never the very tallest or shortest, so the crowd shrinks fast. That is quickselect, and the randomness is what protects it from an unlucky (or malicious) line-up.</p>`,
+    explain: `<p><b>Two flavours of randomized algorithm:</b></p>
+      ${H.table(['type', 'always correct?', 'running time', 'examples'], [
+        ['<b>Las Vegas</b>', H.c('g', 'yes'), 'random — we bound the <i>expected</i> time', 'randomized quickselect / quicksort, treaps, skip lists, Welzl\'s min circle'],
+        ['<b>Monte Carlo</b>', H.c('y', 'with high probability'), 'fixed / bounded', 'Miller–Rabin primality, Karger min cut, Bloom filters, hashing-based checks']
+      ])}
+      <p><b>Fisher–Yates (Knuth) shuffle:</b> for <code>i = n−1</code> down to <code>1</code>: pick <code>j</code> uniformly in <code>[0, i]</code> and swap <code>a[i]</code>, <code>a[j]</code>. Position i is then final. The number of possible choice sequences is n · (n−1) · … · 2 = <b>n!</b>, one per permutation — so each permutation has probability exactly 1/n!.</p>
+      <p><b>The classic bug:</b> "for every i, swap a[i] with a[random 0..n−1]". That makes n<sup>n</sup> equally likely choice sequences. For n = 3 that is 27, which cannot split evenly into 6 permutations (27/6 = 4.5) — some orders <i>must</i> appear more often:</p>
+      ${H.table(['permutation', 'ABC', 'ACB', 'BAC', 'BCA', 'CAB', 'CBA'], [['naive (out of 27)', '4', H.c('r', '5'), H.c('r', '5'), H.c('r', '5'), '4', '4'], ['Fisher–Yates (out of 6)', '1', '1', '1', '1', '1', '1']])}
+      <p><b>Randomized quickselect (k-th smallest):</b></p>
+      <ol>
+        <li>Pick a pivot uniformly at random in the current range.</li>
+        <li>Partition: smaller left, larger right (3-way partition puts equals in the middle).</li>
+        <li>If the target index is in the left part, continue left; if right, continue right; if in the middle block, the pivot is the answer.</li>
+      </ol>
+      <p><b>Why expected O(N):</b> a pivot is "good" if it lands in the middle half of the range — probability ½. A good pivot shrinks the range to at most ¾. On average you need 2 tries per good pivot, so expected work ≤ 2·(N + ¾N + (¾)<sup>2</sup>N + …) = 2·4N = <b>8N = O(N)</b>. The worst case O(N<sup>2</sup>) still exists, but it needs bad luck on almost every step — probability vanishingly small, and no input can force it (unlike a fixed "first element" pivot on sorted input).</p>`,
+    clues: [
+      '"<b>Shuffle</b> an array so every permutation is <b>equally likely</b>" → Fisher–Yates, backwards loop, j in [0, i].',
+      '"<b>k-th largest / smallest</b>", "<b>median</b>", "top k unsorted" in O(N) average → randomized quickselect (or a heap for O(N log k)).',
+      '"Avoid worst case on <b>sorted / adversarial</b> input" → randomize the pivot or shuffle first.',
+      '"<b>Expected</b> running time" / "with high probability" in the statement → a Las Vegas / Monte Carlo analysis is expected.',
+      '"Random pick with <b>blacklist / weight / in a circle / in rectangles</b>" → map the random number to the answer space uniformly (prefix sums, rejection sampling).',
+      'Many duplicates (e.g. all elements equal) → use a <b>3-way partition</b>, otherwise quickselect degrades to O(N<sup>2</sup>).'
+    ],
+    code: [`
+      // Fisher-Yates: every one of the n! permutations has probability exactly 1/n!.
+      static void shuffle(int[] a, Random rnd) {
+          for (int i = a.length - 1; i > 0; i--) {
+              int j = rnd.nextInt(i + 1);   // uniform in [0, i] -- NOT [0, n-1]
+              int t = a[i]; a[i] = a[j]; a[j] = t;
+          }
+      }
+
+      // Sattolo's variant: j in [0, i-1] produces a uniformly random single CYCLE
+      // (nobody stays in place) -- useful for "secret santa" style derangements of one loop.
+      static void sattolo(int[] a, Random rnd) {
+          for (int i = a.length - 1; i > 0; i--) {
+              int j = rnd.nextInt(i);       // excludes i
+              int t = a[i]; a[i] = a[j]; a[j] = t;
+          }
+      }`, `
+      // Randomized quickselect with 3-way partition. Returns the k-th smallest (0-based k).
+      // Expected O(N) time, O(1) extra space; robust to duplicates and sorted input.
+      static int quickselect(int[] a, int k, Random rnd) {
+          int lo = 0, hi = a.length - 1;
+          while (true) {
+              int pivot = a[lo + rnd.nextInt(hi - lo + 1)];
+              int lt = lo, i = lo, gt = hi;            // a[lo..lt-1] < p, a[lt..i-1] == p, a[gt+1..hi] > p
+              while (i <= gt) {
+                  if (a[i] < pivot) { int t = a[lt]; a[lt] = a[i]; a[i] = t; lt++; i++; }
+                  else if (a[i] > pivot) { int t = a[gt]; a[gt] = a[i]; a[i] = t; gt--; }
+                  else i++;
+              }
+              if (k < lt) hi = lt - 1;                  // answer is in the "smaller" part
+              else if (k > gt) lo = gt + 1;             // answer is in the "larger" part
+              else return pivot;                        // k lands in the "equal" block
+          }
+      }`, { lang: 'python', run: true, title: 'Exhaustive bias check: naive vs Fisher-Yates (Python, runnable)', code: `from itertools import product
+from collections import Counter
+
+def apply(choices, mode, n):
+    a = list("ABCD"[:n])
+    if mode == "naive":                 # for i in 0..n-1: swap a[i], a[rand(0..n-1)]
+        for i, j in enumerate(choices):
+            a[i], a[j] = a[j], a[i]
+    else:                               # Fisher-Yates: for i = n-1..1: swap a[i], a[rand(0..i)]
+        for i, j in zip(range(n - 1, 0, -1), choices):
+            a[i], a[j] = a[j], a[i]
+    return "".join(a)
+
+n = 3
+naive = Counter(apply(c, "naive", n) for c in product(range(n), repeat=n))
+fy_choices = product(*[range(i + 1) for i in range(n - 1, 0, -1)])   # j ranges [0..2], [0..1]
+fy = Counter(apply(c, "fy", n) for c in fy_choices)
+print("naive  (27 equally likely runs):", dict(sorted(naive.items())))
+print("Fisher-Yates (6 equally likely runs):", dict(sorted(fy.items())))` }],
+    codeTitle: ['Fisher–Yates and Sattolo (Java)', 'Randomized quickselect, 3-way partition (Java)', 'Count every possible run (Python, runnable)'],
+    viz: [{
+      title: 'Fisher–Yates: lock in one position per step, right to left',
+      input: 'A B C D E F G | 11',
+      inputLabel: 'items (2 to 12, space separated) | seed',
+      gen: function (input) {
+        var parts = splitBar(input, 2, 'items | seed, e.g. "A B C D | 3"');
+        var a = parts[0].split(/\s+/).filter(function (x) { return x; });
+        if (a.length < 2 || a.length > 12) throw new Error('Give 2 to 12 items.');
+        a = a.map(function (x) { return x.slice(0, 4); });
+        var seed = Number(parts[1]);
+        if (!isFinite(seed)) throw new Error('seed must be a number.');
+        var r = rng(seed), n = a.length, frames = [];
+        frames.push({ narr: 'Start with ' + n + ' items. We go from the <b>last</b> position down. At position i we pick j uniformly in <b>[0, i]</b> (only among the not-yet-locked items) and swap. Total equally likely runs = ' + n + '! — exactly one per permutation.',
+          parts: [{ type: 'array', label: 'array', values: a.slice() }] });
+        for (var i = n - 1; i > 0; i--) {
+          var j = randInt(r, 0, i), hl = {}, k;
+          for (k = i + 1; k < n; k++) hl[k] = 'done';
+          hl[i] = 'cur'; hl[j] = j === i ? 'cur' : 'sel';
+          frames.push({ narr: 'i = ' + i + ': choose j uniformly from 0..' + i + ' (' + (i + 1) + ' equally likely options) → <b>j = ' + j + '</b>. ' + (j === i ? 'j = i: the item stays where it is (this is allowed and necessary for fairness).' : 'Swap a[' + i + '] = ' + a[i] + ' with a[' + j + '] = ' + a[j] + '.'),
+            parts: [{ type: 'array', label: 'before swap', values: a.slice(), hl: hl, ptr: j === i ? one(i, 'i=j') : (function () { var p = {}; p[i] = 'i'; p[j] = 'j'; return p; })(), range: [0, i] },
+              { type: 'vars', vals: { i: i, j: j, 'choices here': i + 1 } }] });
+          var t = a[i]; a[i] = a[j]; a[j] = t;
+          var hl2 = {}; for (k = i; k < n; k++) hl2[k] = k === i ? 'ok' : 'done';
+          frames.push({ narr: 'Position ' + i + ' is now <b>locked</b> with ' + a[i] + '. It will never be touched again; the rest (0..' + (i - 1) + ') is a smaller copy of the same problem.',
+            parts: [{ type: 'array', label: 'after swap', values: a.slice(), hl: hl2, range: [0, i - 1] }] });
+        }
+        frames.push({ narr: 'Done: <b>' + a.join(' ') + '</b>. Each run picks one of ' + n + '·' + (n - 1) + '·…·2 = ' + n + '! paths, and each path gives a different permutation → perfectly uniform.',
+          parts: [{ type: 'array', label: 'shuffled', values: a.slice(), hl: (function () { var h = {}; a.forEach(function (_, x) { h[x] = 'ok'; }); return h; })() }] });
+        return frames;
+      }
+    }, {
+      title: 'Why the naive shuffle is biased: count every possible run',
+      input: '3',
+      inputLabel: 'n = 3 or 4',
+      gen: function (input) {
+        var n = Number(txt(input));
+        if (n !== 3 && n !== 4) throw new Error('Type 3 or 4 (the number of runs grows as n^n).');
+        var base = 'ABCD'.slice(0, n).split(''), perms = [], frames = [];
+        (function gen(pre, rest) { if (!rest.length) { perms.push(pre.join('')); return; } rest.forEach(function (x, i) { gen(pre.concat([x]), rest.slice(0, i).concat(rest.slice(i + 1))); }); })([], base);
+        var cnt = {}; perms.forEach(function (p) { cnt[p] = 0; });
+        var total = Math.pow(n, n);
+        frames.push({ narr: 'The naive loop does <code>swap(a[i], a[rand(0..' + (n - 1) + ')])</code> for every i. That is ' + n + '<sup>' + n + '</sup> = <b>' + total + '</b> equally likely runs, but only ' + n + '! = <b>' + perms.length + '</b> permutations. ' + total + ' / ' + perms.length + ' is not a whole number, so it cannot be uniform. Let us count.',
+          parts: [{ type: 'bars', label: 'runs ending in each permutation', values: perms.map(function () { return 0; }), idxLabels: perms }] });
+        for (var first = 0; first < n; first++) {
+          for (var c = 0; c < Math.pow(n, n - 1); c++) {
+            var ch = [first], x = c;
+            for (var q = 1; q < n; q++) { ch.push(x % n); x = Math.floor(x / n); }
+            var arr = base.slice();
+            for (var i = 0; i < n; i++) { var t = arr[i]; arr[i] = arr[ch[i]]; arr[ch[i]] = t; }
+            cnt[arr.join('')]++;
+          }
+          frames.push({ narr: 'Counted all runs whose first swap partner is ' + first + ' (' + (first + 1) * Math.pow(n, n - 1) + ' of ' + total + ' runs so far).',
+            parts: [{ type: 'bars', label: 'runs ending in each permutation', values: perms.map(function (p) { return cnt[p]; }), idxLabels: perms }] });
+        }
+        var vals = perms.map(function (p) { return cnt[p]; }), mx = Math.max.apply(null, vals), mn = Math.min.apply(null, vals), hl = {};
+        vals.forEach(function (v, i) { hl[i] = v === mx ? 'bad' : v === mn ? 'win' : ''; });
+        frames.push({ narr: 'Final counts: the most likely permutation appears <b>' + mx + '</b> times, the least likely <b>' + mn + '</b> times — a ' + Math.round((mx / mn - 1) * 100) + '% bias. Fisher–Yates has exactly ' + perms.length + ' runs, one per permutation, so every bar would be 1.',
+          parts: [{ type: 'bars', label: 'naive shuffle (red = over-represented)', values: vals, idxLabels: perms, hl: hl },
+            { type: 'bars', label: 'Fisher–Yates', values: perms.map(function () { return 1; }), idxLabels: perms, hl: (function () { var h = {}; perms.forEach(function (_, i) { h[i] = 'ok'; }); return h; })() }] });
+        return frames;
+      }
+    }, {
+      title: 'Randomized quickselect: partition around a random pivot, keep one side',
+      input: '7 2 9 4 1 8 3 6 5 | 3 | 22',
+      inputLabel: 'array (3 to 14 numbers) | k (1 = smallest) | seed',
+      gen: function (input) {
+        var parts = splitBar(input, 3, 'array | k | seed, e.g. "5 1 4 2 3 | 2 | 7"');
+        var a = parseNums(parts[0], 'array', 3, 14, -99, 99), k = Number(parts[1]), seed = Number(parts[2]);
+        if (!(k >= 1 && k <= a.length && Math.floor(k) === k)) throw new Error('k must be between 1 and the array length.');
+        if (!isFinite(seed)) throw new Error('seed must be a number.');
+        var r = rng(seed), target = k - 1, lo = 0, hi = a.length - 1, frames = [], round = 0;
+        frames.push({ narr: 'Find the <b>' + k + (k % 100 >= 11 && k % 100 <= 13 ? 'th' : (['th', 'st', 'nd', 'rd'][k % 10] || 'th')) + ' smallest</b> = the value that would sit at index ' + target + ' after sorting. Sorting costs N log N; we will only partition, and keep the side that contains index ' + target + '.',
+          parts: [{ type: 'array', label: 'array', values: a.slice(), ptr: one(target, 'target') }] });
+        while (round < 20) {
+          round++;
+          var pi = randInt(r, lo, hi), pivot = a[pi];
+          var hl0 = {}; hl0[pi] = 'sel';
+          frames.push({ narr: 'Round ' + round + ': range [' + lo + ', ' + hi + '] (' + (hi - lo + 1) + ' elements). Random pivot index ' + pi + ' → <b>pivot = ' + pivot + '</b>.',
+            parts: [{ type: 'array', label: 'array', values: a.slice(), hl: hl0, range: [lo, hi], ptr: (function () { var p = {}; p[target] = 'target'; if (pi !== target) p[pi] = 'pivot'; else p[pi] = ['pivot', 'target']; return p; })() },
+              { type: 'vars', vals: { lo: lo, hi: hi, pivot: pivot, target: target } }] });
+          var lt = lo, i = lo, gt = hi, t;
+          while (i <= gt) {
+            if (a[i] < pivot) { t = a[lt]; a[lt] = a[i]; a[i] = t; lt++; i++; }
+            else if (a[i] > pivot) { t = a[gt]; a[gt] = a[i]; a[i] = t; gt--; }
+            else i++;
+          }
+          var hl = {}, x;
+          for (x = lo; x < lt; x++) hl[x] = 'win';
+          for (x = lt; x <= gt; x++) hl[x] = 'sel';
+          for (x = gt + 1; x <= hi; x++) hl[x] = 'cur';
+          var where = target < lt ? 'left (smaller) part' : target > gt ? 'right (larger) part' : 'equal block';
+          frames.push({ narr: 'After 3-way partition: blue = smaller than ' + pivot + ' [' + lo + '..' + (lt - 1) + '], purple = equal [' + lt + '..' + gt + '], amber = larger [' + (gt + 1) + '..' + hi + ']. Target index ' + target + ' is in the <b>' + where + '</b>' + (where === 'equal block' ? ' → <span class="c-g">answer = ' + pivot + '</span>.' : ' → discard the other ' + (target < lt ? hi - lt + 1 : gt - lo + 1) + ' elements.'),
+            parts: [{ type: 'array', label: 'partitioned', values: a.slice(), hl: hl, ptr: one(target, 'target') },
+              { type: 'vars', vals: { lt: lt, gt: gt, target: target, 'kept size': where === 'equal block' ? 0 : (target < lt ? lt - lo : hi - gt) }, hl: { target: 'cur' } }] });
+          if (target < lt) hi = lt - 1;
+          else if (target > gt) lo = gt + 1;
+          else {
+            var sorted = a.slice().sort(function (p, q) { return p - q; });
+            frames.push({ narr: 'Done in ' + round + ' round(s). Check: sorted array is [' + sorted.join(', ') + '], index ' + target + ' holds <b>' + sorted[target] + '</b> ✓. Work done ≈ size of each range scanned, a shrinking series — expected O(N).',
+              parts: [{ type: 'array', label: 'sorted (for checking only)', values: sorted, hl: one(target, 'ok') }] });
+            break;
+          }
+        }
+        return frames;
+      }
+    }],
+    examples: [
+      { title: 'Off-by-one that breaks Fisher–Yates', html: `<p>Writing <code>rnd.nextInt(i)</code> instead of <code>rnd.nextInt(i + 1)</code> means an element can never stay in place — you get <b>Sattolo's algorithm</b>, which only produces permutations that form a single cycle ((n−1)! of them). For n = 3, only BCA and CAB can ever appear. A one-character bug, a totally different distribution.</p>
+        ${H.table(['code', 'outcomes', 'uniform over all n!?'], [['nextInt(i + 1)', 'n!', H.c('g', 'yes')], ['nextInt(i)', '(n−1)! single cycles', H.c('r', 'no')], ['nextInt(n) for every i', 'n<sup>n</sup> runs', H.c('r', 'no (biased)')]])}` },
+      { title: 'Quickselect trace: 2nd largest of [3, 2, 1, 5, 6, 4]', html: `<p>2nd largest = index 4 in ascending order. Pivot 3 → [2, 1 | 3 | 6, 4, 5]; index 4 is in the right part [3..5]. Pivot 5 → [4 | 5 | 6]; index 4 is the equal block → answer <b>5</b>. Two partitions touched 6 + 3 = 9 elements instead of sorting.</p>` },
+      { title: 'Why a fixed pivot is dangerous', html: `<p>Quickselect with "pivot = first element" on an already sorted array of 10<sup>5</sup> elements, asking for the largest: each partition removes only one element → 10<sup>5</sup> + (10<sup>5</sup> − 1) + … ≈ 5·10<sup>9</sup> steps → TLE. LeetCode 215 contains exactly such tests. A random pivot makes no input bad; a 3-way partition handles the all-equal array.</p>` },
+      { title: 'Random point in a circle (rejection sampling)', html: `<p>Pick x, y uniformly in the square [−r, r]<sup>2</sup>; if x<sup>2</sup> + y<sup>2</sup> &gt; r<sup>2</sup>, try again. Acceptance probability = π/4 ≈ 78.5%, so the expected number of tries is 4/π ≈ 1.27 — a Las Vegas algorithm. The tempting "random angle + random radius" is <b>biased</b> toward the centre; the correct polar method uses radius = r·√u.</p>`, code: `Random rnd = new Random(7);
+double r = 1.0, x, y;
+int tries = 0;
+do {
+    x = (rnd.nextDouble() * 2 - 1) * r;
+    y = (rnd.nextDouble() * 2 - 1) * r;
+    tries++;
+} while (x * x + y * y > r * r);          // reject points outside the circle
+System.out.println(x + ", " + y + " after " + tries + " tries");` }
+    ],
+    deepDive: `<p><b>Quickselect's exact expectation.</b> Using indicator variables (elements i and j are compared iff one of them is the first pivot chosen among the values between them), expected comparisons for quickselect are at most ≈ 3.39N (and 2N ln N ≈ 1.39 N log<sub>2</sub>N for quicksort). <b>Floyd–Rivest</b> picks the pivot from a small random sample and needs only about N + min(k, N−k) + o(N) comparisons. Deterministic linear time exists — <b>median of medians</b> (groups of 5, recursion on the medians) — but its constant (~20N) makes it slower in practice; libraries use <b>introselect</b> (C++ <code>std::nth_element</code>): quickselect, falling back to a guaranteed method if recursion gets too deep.</p>
+      <p><b>Adversaries.</b> A deterministic pivot rule can be attacked: McIlroy's "killer adversary" builds inputs that make any fixed-pivot quicksort quadratic. Randomness defeats this <i>only if the attacker cannot predict the RNG</i> — the same reason hash tables use random seeds (hash-flooding DoS attacks, 2011). Java's <code>Arrays.sort</code> for primitives is a dual-pivot quicksort that falls back to heapsort when recursion gets too deep, so it cannot be driven quadratic; for objects it uses TimSort (stable, worst case O(N log N)).</p>
+      <p><b>Shuffling in production.</b> Use <code>Collections.shuffle</code> (Fisher–Yates inside). A 32-bit seed has only ~4·10<sup>9</sup> states, but 52! ≈ 8·10<sup>67</sup>: most deck orders are <b>unreachable</b> from such a generator. A famous 1999 online-poker flaw seeded the shuffle with the system clock, letting researchers predict hands in real time. For gambling or security, use <code>SecureRandom</code>.</p>
+      <p><b>Analysing randomized code:</b> linearity of expectation (no independence needed), geometric distribution (expected tries = 1/p), Markov/Chernoff bounds for "with high probability" claims, and the birthday paradox (√N draws until the first repeat) for hashing and ID collisions.</p>`,
+    aiEra: `<p><b>What AI changes:</b> LLMs reliably write <code>Collections.shuffle</code> or a textbook Fisher–Yates; they are less reliable at <i>reasoning about distributions</i>. Interviews increasingly hand you a subtly biased sampler or an O(N<sup>2</sup>)-prone quickselect and ask "is this uniform / what is its worst case?"</p>
+      <p><b>Use AI as a partner:</b> ask it to enumerate every run of a small randomized procedure (as in the bias visualizer), or to write a chi-squared test for your shuffle. Ask for an adversarial input generator against your pivot rule. Ask it to explain the median-of-medians recurrence T(N) = T(N/5) + T(7N/10) + O(N) and check its algebra.</p>
+      <p><b>Where AI goes wrong:</b> <code>nextInt(n)</code> instead of <code>nextInt(i + 1)</code>, sorting with a random comparator (<code>(a, b) -&gt; rnd.nextInt(3) - 1</code> — biased and can throw "Comparison method violates its general contract"), Lomuto partition on many duplicates, and claiming "O(N) worst case" for randomized quickselect.</p>
+      <p><b>What you must still own:</b> the counting argument (n! paths vs n<sup>n</sup> runs), the good-pivot expectation argument, and the difference between expected, amortized and worst-case bounds.</p>`,
+    problems: [{
+      title: 'Kth Largest Element in an Array', level: 'Medium', tags: ['quickselect', 'randomized', 'partition'], companies: ['Meta', 'Amazon', 'Microsoft', 'LinkedIn'],
+      statement: `<p>Given an integer array <code>nums</code> and an integer <code>k</code>, return the <b>k-th largest</b> element in sorted order (not the k-th distinct). Can you do it without sorting? (LeetCode 215.)</p>`,
+      constraints: `1 ≤ k ≤ N ≤ 10<sup>5</sup>, −10<sup>4</sup> ≤ nums[i] ≤ 10<sup>4</sup> (lots of duplicates are possible)`,
+      example: `<p><code>nums = [3,2,1,5,6,4], k = 2</code> → ${H.c('g', '5')} (sorted: 1 2 3 4 <b>5</b> 6).</p>
+        <p><code>nums = [3,2,3,1,2,4,5,5,6], k = 4</code> → ${H.c('g', '4')} (sorted descending: 6 5 5 <b>4</b> …).</p>`,
+      brute: {
+        why: `<p>Sort and return <code>nums[N − k]</code>: <b>O(N log N)</b>. It does far more work than needed — it fully orders thousands of elements we never look at. A size-k min-heap is O(N log k), better but still not linear.</p>`,
+        code: `class Solution {
+    public int findKthLargest(int[] nums, int k) {
+        int[] a = nums.clone();
+        Arrays.sort(a);                 // O(N log N): orders everything
+        return a[a.length - k];
+    }
+}`
+      },
+      mcq: { q: 'nums has 10<sup>5</sup> copies of the same number. Which quickselect variant stays fast?', options: ['Lomuto partition with a random pivot', 'Hoare partition with pivot = first element', '3-way (Dutch flag) partition with a random pivot', 'Any — duplicates do not matter'], answer: 2, explain: 'With 2-way partitions all equal keys go to one side, so each round removes one element → O(N²). A 3-way partition puts all equal keys in the middle block and finishes in one round.' },
+      hints: [
+        `<p>Hint 1: The k-th largest is the element at index <code>N − k</code> of the sorted array. You only need to know which element lands there, not the full order.</p>`,
+        `<p>Hint 2: Partition around a random pivot into &lt; p, = p, &gt; p. Only one side can contain index N − k; drop the rest and loop.</p>`,
+        `<p>Hint 3: Use a 3-way partition (lt, i, gt pointers) so duplicates finish instantly. Loop: pick pivot in [lo, hi]; partition; if target &lt; lt → hi = lt − 1; if target &gt; gt → lo = gt + 1; else return pivot.</p>`
+      ],
+      solution: {
+        approach: `<p>Randomized quickselect with a Dutch-national-flag partition. Each round is linear in the current range; the range shrinks geometrically in expectation, giving expected O(N). Randomness protects against sorted inputs; the 3-way split protects against duplicates.</p>`,
+        code: `class Solution {
+    private final Random rnd = new Random();
+
+    public int findKthLargest(int[] nums, int k) {
+        int target = nums.length - k;            // index in ascending order
+        int lo = 0, hi = nums.length - 1;
+        while (true) {
+            int pivot = nums[lo + rnd.nextInt(hi - lo + 1)];
+            int lt = lo, i = lo, gt = hi;        // < pivot | == pivot | unknown | > pivot
+            while (i <= gt) {
+                if (nums[i] < pivot) swap(nums, lt++, i++);
+                else if (nums[i] > pivot) swap(nums, i, gt--);
+                else i++;
+            }
+            if (target < lt) hi = lt - 1;        // go left
+            else if (target > gt) lo = gt + 1;   // go right
+            else return pivot;                   // inside the equal block
+        }
+    }
+
+    private void swap(int[] a, int i, int j) { int t = a[i]; a[i] = a[j]; a[j] = t; }
+}`,
+        alt: [{ lang: 'python', code: `import random
+
+class Solution:
+    def findKthLargest(self, nums, k):
+        target, lo, hi = len(nums) - k, 0, len(nums) - 1
+        while True:
+            p = nums[random.randint(lo, hi)]
+            lt, i, gt = lo, lo, hi
+            while i <= gt:
+                if nums[i] < p:
+                    nums[lt], nums[i] = nums[i], nums[lt]; lt += 1; i += 1
+                elif nums[i] > p:
+                    nums[gt], nums[i] = nums[i], nums[gt]; gt -= 1
+                else:
+                    i += 1
+            if target < lt:
+                hi = lt - 1
+            elif target > gt:
+                lo = gt + 1
+            else:
+                return p` }, { lang: 'cpp', code: `class Solution {
+public:
+    int findKthLargest(vector<int>& nums, int k) {
+        // The standard library already ships introselect: expected O(N), worst O(N log N).
+        nth_element(nums.begin(), nums.begin() + (nums.size() - k), nums.end());
+        return nums[nums.size() - k];
+    }
+};` }],
+        dry: { head: ['round', 'range', 'pivot', 'array after partition', 'lt..gt', 'target 4 is…'], rows: [
+          ['1', '[0, 5]', '3', '[2, 1, <b>3</b>, 6, 4, 5]', '2..2', 'right → lo = 3'],
+          ['2', '[3, 5]', '5', '[2, 1, 3, 4, <b>5</b>, 6]', '4..4', '<span class="c-g">equal block → return 5</span>']
+        ] },
+        complexity: `<p><b>Expected O(N)</b> time (≈ a few N comparisons), worst case O(N<sup>2</sup>) with negligible probability; <b>O(1)</b> extra space (iterative, in place — note it reorders the input; clone it if the caller needs the original).</p>`,
+        followUps: ['Return the k largest elements in any order (they are everything right of the answer after the final partition).', 'Stream of numbers: maintain the k-th largest online (min-heap of size k, LeetCode 703).', 'Guarantee O(N) worst case (median of medians) — and explain why libraries rarely use it.']
+      }
+    }]
+  });
 registerModule({ id: 'dsa26', title: 'Geometry, Randomized & Amortized Analysis', intro: '<p>x</p>', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();

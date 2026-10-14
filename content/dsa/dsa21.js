@@ -1994,7 +1994,7 @@ print("3000 random range-add / range-sum ops match, block size", sd.B)` }],
               bhl[b] = 'sel';
               if (op.kind === 'sum') {
                 s += bsum[b] + badd[b] * B;
-                frames.push({ narr: 'Block b' + b + ' lies <b>completely inside</b> → read its label: ' + bsum[b] + (badd[b] ? ' + pending ' + badd[b] + ' × ' + B : '') + ' = ' + (bsum[b] + badd[b] * B) + '. One step for ' + B + ' elements. Running sum = <b>' + s + '</b>.',
+                frames.push({ narr: 'Block b' + b + ' lies <b>completely inside</b> → read its label: ' + (badd[b] ? bsum[b] + ' + pending ' + badd[b] + ' × ' + B + ' = ' + (bsum[b] + badd[b] * B) : bsum[b]) + '. One step for ' + B + ' elements. Running sum = <b>' + s + '</b>.',
                   parts: parts(copy(ahl), copy(bhl), { op: name, 'running sum': s, steps: steps }, [l, r]) });
               } else {
                 badd[b] += v;
@@ -2204,6 +2204,385 @@ print(process([5, 1, 4, 8, 2, 7, 3, 6, 9], [[2, 1, 7, 5], [1, 3, 0], [2, 1, 7, 5
         },
         complexity: `<p>Build O(N log N). Query O(B + (N/B) log B), update O(B). With B = √N: ≈ O(√N log N) per query. Memory O(N).</p>`,
         followUps: ['Pick B to minimise B + (N/B)·log B — what is the best B for N = 5·10<sup>4</sup>?', 'Offline alternative: sort queries by x and points by value, use a BIT (only without updates).', 'How would a merge-sort tree answer the static version in O(log² N)?']
+      }
+    }]
+  });
+
+  // =====================================================================
+  // TOPIC 6 — Mo's algorithm (offline range queries)
+  // =====================================================================
+  topics.push({
+    title: 'Mo\'s Algorithm: Answer Offline Range Queries by Sliding a Window Smartly',
+    analogy: `<p>A courier must visit 200 addresses today, given in random order. Driving them in the given order zig-zags across the city all day. A smart courier first <b>groups the stops by neighbourhood</b>, and inside each neighbourhood drives along the main road in increasing house number. Same stops, a fraction of the driving.</p>
+      <p>Mo's algorithm is that courier. Every query [l, r] is a "stop". You hold a <b>stretchy window</b> over the array whose two ends you can move one step at a time, updating a running answer (like a frequency counter). Answering queries in the given order makes the window ends fly back and forth; <b>sorting the queries</b> by "block of l, then r" keeps the total movement around N·√N instead of N·Q.</p>`,
+    explain: `<p><b>When it applies.</b> Three conditions:</p>
+      <ol>
+        <li><b>Offline:</b> you know all queries in advance and may answer them in any order (then put answers back in the original order).</li>
+        <li><b>No updates</b> to the array (there is an extended "Mo's with updates" variant).</li>
+        <li>You can <b>add</b> one element to the window and <b>remove</b> one element from it in O(1) (or O(log N)), keeping the answer up to date.</li>
+      </ol>
+      <p>Typical query: "how many <b>distinct</b> values in a[l..r]?" — hard to merge from two halves (a segment tree would need sets), but trivial to maintain while sliding: keep <code>cnt[value]</code> and a counter <code>distinct</code>; adding x with cnt[x] = 0 makes distinct + 1, removing the last copy makes it − 1.</p>
+      <p><b>The algorithm.</b></p>
+      <ol>
+        <li>Choose block size <code>B ≈ √N</code> (more precisely N/√Q).</li>
+        <li>Sort queries by <code>(l / B, r)</code> — first by the block of the left end, then by right end.</li>
+        <li>Start with an empty window <code>curL = 0, curR = −1</code>. For each query in sorted order move <code>curR</code> and <code>curL</code> step by step to <code>r</code> and <code>l</code>, calling add/remove; record the answer under the query's original index.</li>
+      </ol>
+      ${H.arr([1, 2, 1, 3, 2, 2, 4, 1, 3, 1], { label: 'a (N = 10, B = 3)' })}
+      ${H.table(['query', 'l', 'r', 'block = l / 3', 'sorted position'], [
+        ['q0', '0', '4', '0', '2nd'], ['q1', '2', '7', '0', '3rd'], ['q2', '1', '3', '0', '1st'], ['q3', '5', '9', '1', '4th'], ['q4', '6', '8', '2', '5th']
+      ])}
+      <p>(Sorted order: q2 [1,3], q0 [0,4], q1 [2,7] in block 0 by increasing r; q3 [5,9] in block 1; q4 [6,8] in block 2.) Within one block, <code>r</code> only moves <b>right</b>, and <code>l</code> wobbles inside a block of width B.</p>
+      <p><b>Why it is fast.</b></p>
+      ${H.table(['pointer', 'movement bound', 'with N = Q = 10<sup>5</sup>, B = 316'], [
+        ['right end r', 'sorted inside a block → ≤ N per block, N/B blocks → N²/B', '≈ 3.2·10<sup>7</sup>'],
+        ['left end l', 'stays within one block (± B) per query → Q·B', '≈ 3.2·10<sup>7</sup>'],
+        ['total', 'O((N + Q)·√N)', H.c('g', '≈ 6·10<sup>7</sup> O(1) steps')]
+      ])}
+      <p>Compare with answering each query by scanning: up to N·Q = 10<sup>10</sup>.</p>
+      <p><b>Pointer order matters.</b> Grow before you shrink: first extend <code>curR</code> right and <code>curL</code> left, then shrink. Shrinking first can make the window "negative" (curL &gt; curR + 1) and drive counts below zero.</p>`,
+    clues: [
+      '"Answer Q queries: number of <b>distinct</b> elements / pairs of equal elements / most frequent count in a[l..r]" with <b>no updates</b> → Mo\'s algorithm.',
+      'All queries are given <b>up front</b> ("offline", "read all queries first") and the per-range statistic is <b>not mergeable</b> from two halves.',
+      '<code>N, Q ≤ 2·10<sup>5</sup></code>, time limit 2–5 s → O((N + Q)√N) ≈ 10<sup>8</sup> simple steps is the intended budget.',
+      '"Sum over values of cnt[x]² · x in a range" (Powerful Array) / "count of x with cnt[x] = x" → add/remove change the answer in O(1).',
+      '"Queries on <b>paths</b> of a static tree, count distinct colours" → Mo\'s on trees (Euler tour flattening).',
+      'Queries arrive <b>online</b> (each depends on the previous answer, "decode with lastans") → Mo\'s is <b>impossible</b>; think persistent segment tree or sqrt structures.'
+    ],
+    code: [`
+      // Mo's algorithm: offline "number of distinct values in a[l..r]".
+      class MoDistinct {
+          private int[] cnt;          // cnt[v] = copies of compressed value v inside the window
+          private int distinct;       // number of values with cnt > 0
+
+          private void add(int v)    { if (cnt[v]++ == 0) distinct++; }   // first copy enters
+          private void remove(int v) { if (--cnt[v] == 0) distinct--; }   // last copy leaves
+
+          int[] solve(int[] a, int[][] queries) {
+              int n = a.length, q = queries.length;
+              // 1) compress values to 0..k-1 so cnt[] is a plain array (no HashMap in the hot loop)
+              int[] sorted = a.clone();
+              Arrays.sort(sorted);
+              int k = 0;
+              for (int i = 0; i < n; i++) if (i == 0 || sorted[i] != sorted[i - 1]) sorted[k++] = sorted[i];
+              int[] comp = new int[n];
+              for (int i = 0; i < n; i++) comp[i] = Arrays.binarySearch(sorted, 0, k, a[i]);
+              cnt = new int[k];
+              distinct = 0;
+
+              // 2) sort queries by (block of l, r); odd blocks sweep r backwards ("odd-even" trick)
+              final int B = Math.max(1, (int) (n / Math.sqrt(Math.max(1, q))));
+              Integer[] order = new Integer[q];
+              for (int i = 0; i < q; i++) order[i] = i;
+              Arrays.sort(order, (x, y) -> {
+                  int bx = queries[x][0] / B, by = queries[y][0] / B;
+                  if (bx != by) return Integer.compare(bx, by);
+                  return (bx & 1) == 0 ? Integer.compare(queries[x][1], queries[y][1])
+                                       : Integer.compare(queries[y][1], queries[x][1]);
+              });
+
+              // 3) slide the window from query to query; grow first, then shrink
+              int[] ans = new int[q];
+              int curL = 0, curR = -1;                       // empty window
+              for (int id : order) {
+                  int l = queries[id][0], r = queries[id][1];
+                  while (curR < r) add(comp[++curR]);
+                  while (curL > l) add(comp[--curL]);
+                  while (curR > r) remove(comp[curR--]);
+                  while (curL < l) remove(comp[curL++]);
+                  ans[id] = distinct;                        // store under the ORIGINAL index
+              }
+              return ans;
+          }
+
+          public static void main(String[] args) {
+              int[] a = {1, 2, 1, 3, 2, 2, 4, 1, 3, 1};
+              int[][] qs = {{0, 4}, {2, 7}, {1, 3}, {5, 9}, {6, 8}};
+              System.out.println(Arrays.toString(new MoDistinct().solve(a, qs)));   // [3, 4, 3, 4, 3]
+          }
+      }`, { lang: 'python', run: true, title: 'Python Mo\'s + move counting vs naive (runnable)', code: `import math
+import random
+
+
+def mo_distinct(a, queries):
+    n, q = len(a), len(queries)
+    B = max(1, int(n / math.sqrt(max(1, q))))
+    order = sorted(range(q), key=lambda i: (queries[i][0] // B,
+                                            queries[i][1] if (queries[i][0] // B) % 2 == 0 else -queries[i][1]))
+    cnt, distinct, moves = {}, 0, 0
+    ans = [0] * q
+    cur_l, cur_r = 0, -1
+
+    def add(x):
+        nonlocal distinct
+        cnt[x] = cnt.get(x, 0) + 1
+        if cnt[x] == 1:
+            distinct += 1
+
+    def remove(x):
+        nonlocal distinct
+        cnt[x] -= 1
+        if cnt[x] == 0:
+            distinct -= 1
+
+    for i in order:
+        l, r = queries[i]
+        while cur_r < r:
+            cur_r += 1; add(a[cur_r]); moves += 1
+        while cur_l > l:
+            cur_l -= 1; add(a[cur_l]); moves += 1
+        while cur_r > r:
+            remove(a[cur_r]); cur_r -= 1; moves += 1
+        while cur_l < l:
+            remove(a[cur_l]); cur_l += 1; moves += 1
+        ans[i] = distinct
+    return ans, moves
+
+
+print(mo_distinct([1, 2, 1, 3, 2, 2, 4, 1, 3, 1], [(0, 4), (2, 7), (1, 3), (5, 9), (6, 8)])[0])  # [3, 4, 3, 4, 3]
+
+random.seed(2)
+n, q = 3000, 3000
+a = [random.randint(1, 50) for _ in range(n)]
+qs = []
+for _ in range(q):
+    l = random.randrange(n)
+    qs.append((l, random.randrange(l, n)))
+ans, moves = mo_distinct(a, qs)
+assert all(ans[i] == len(set(a[l:r + 1])) for i, (l, r) in enumerate(qs))
+naive = sum(r - l + 1 for l, r in qs)
+print("pointer moves with Mo:", moves, "| elements a naive scan touches:", naive)` }],
+    codeTitle: ['Mo\'s algorithm in Java (distinct values)', 'Python + how many moves Mo saves'],
+    viz: {
+      title: 'Mo\'s algorithm: sort queries, then slide one window across all of them',
+      input: '1 2 1 3 2 2 4 1 3 1 | 0 4 ; 2 7 ; 1 3 ; 5 9 ; 6 8',
+      inputLabel: 'array (2–16 numbers, 0..20) | queries "l r" separated by ";" (0-based, up to 6)',
+      gen: function (input) {
+        var p = splitBar(input, 2, 'array | queries   e.g.  1 2 1 3 | 0 2 ; 1 3');
+        var a = parseNums(p[0], 'the array', 2, 16, 0, 20), n = a.length;
+        var qs = p[1].split(';').map(function (s) { return s.trim(); }).filter(function (s) { return s.length; });
+        if (!qs.length || qs.length > 6) throw new Error('Give 1 to 6 queries separated by ";".');
+        qs = qs.map(function (s) {
+          var v = parseNums(s, 'query "' + s + '"', 2, 2, 0, n - 1);
+          if (v[0] > v[1]) throw new Error('Query "' + s + '" needs l ≤ r.');
+          return v;
+        });
+        var B = Math.max(1, Math.floor(Math.sqrt(n))), frames = [], i;
+        var order = qs.map(function (_, k) { return k; }).sort(function (x, y) {
+          var bx = Math.floor(qs[x][0] / B), by = Math.floor(qs[y][0] / B);
+          return bx !== by ? bx - by : (qs[x][1] - qs[y][1]) || (x - y);
+        });
+        var ans = qs.map(function () { return '?'; });
+        function qTable(hlRow, sorted) {
+          var ids = sorted ? order : qs.map(function (_, k) { return k; });
+          return { type: 'table', label: sorted ? 'queries in Mo order (block of l, then r)' : 'queries as given', columns: ['query', 'l', 'r', 'block = ⌊l/' + B + '⌋', 'answer'],
+            rows: ids.map(function (k) { return ['q' + k, qs[k][0], qs[k][1], Math.floor(qs[k][0] / B), ans[k]]; }), hl: hlRow === undefined ? {} : one(hlRow, 'cur') };
+        }
+        frames.push({ narr: 'We have ' + qs.length + ' queries "how many <b>distinct</b> values in a[l..r]?". Answering them in this order would move the window ends back and forth. Block size B = ⌊√' + n + '⌋ = ' + B + '.',
+          parts: [{ type: 'array', label: 'a', values: a }, qTable(undefined, false)] });
+        frames.push({ narr: 'Sort the queries by <b>block of l</b> first, then by <b>r</b>. Inside one block, r will only move to the right, and l only wiggles inside a block of width ' + B + '. Answers will be written back under each query\'s original name.',
+          parts: [{ type: 'array', label: 'a', values: a }, qTable(undefined, true)] });
+        var cnt = {}, distinct = 0, curL = 0, curR = -1, moves = 0;
+        function mapEntries() { var e = []; Object.keys(cnt).sort(function (x, y) { return x - y; }).forEach(function (k) { if (cnt[k] > 0) e.push([k, cnt[k]]); }); return e; }
+        function frame(narr, hlIdx, cls, pos, extraHl) {
+          var h = {}; if (hlIdx !== null) h[hlIdx] = cls;
+          var ptr = {};
+          if (curL <= curR) { ptr[curL] = 'L'; ptr[curR] = curL === curR ? ['L', 'R'] : 'R'; }
+          frames.push({ narr: narr, parts: [
+            { type: 'array', label: 'a — window [curL, curR] in blue', values: a, range: curL <= curR ? [curL, curR] : null, hl: h, ptr: ptr },
+            { type: 'map', label: 'cnt[value] inside the window', entries: mapEntries(), hl: extraHl || {} },
+            { type: 'vars', label: 'state', vals: { curL: curL, curR: curR, distinct: distinct, 'total pointer moves': moves } },
+            qTable(pos, true)] });
+        }
+        order.forEach(function (id, pos) {
+          var l = qs[id][0], r = qs[id][1], v;
+          frame('Next: <b>q' + id + ' = [' + l + ', ' + r + ']</b>. Move the window ends from [' + curL + ', ' + curR + '] to [' + l + ', ' + r + '] one step at a time (grow first, then shrink).', null, '', pos);
+          while (curR < r) { curR++; moves++; v = a[curR]; cnt[v] = (cnt[v] || 0) + 1; if (cnt[v] === 1) distinct++;
+            frame('curR → ' + curR + ': <b>add</b> ' + v + '. cnt[' + v + '] = ' + cnt[v] + (cnt[v] === 1 ? ' → a brand-new value, distinct = ' + distinct : ' → already present, distinct stays ' + distinct) + '.', curR, 'ok', pos, one(String(v), 'ok')); }
+          while (curL > l) { curL--; moves++; v = a[curL]; cnt[v] = (cnt[v] || 0) + 1; if (cnt[v] === 1) distinct++;
+            frame('curL → ' + curL + ': <b>add</b> ' + v + ' on the left. cnt[' + v + '] = ' + cnt[v] + ', distinct = ' + distinct + '.', curL, 'ok', pos, one(String(v), 'ok')); }
+          while (curR > r) { v = a[curR]; cnt[v]--; if (cnt[v] === 0) distinct--; moves++; var was = curR; curR--;
+            frame('Shrink right: <b>remove</b> a[' + was + '] = ' + v + '. cnt[' + v + '] = ' + cnt[v] + (cnt[v] === 0 ? ' → last copy gone, distinct = ' + distinct : ', distinct stays ' + distinct) + '.', was, 'bad', pos, one(String(v), 'bad')); }
+          while (curL < l) { v = a[curL]; cnt[v]--; if (cnt[v] === 0) distinct--; moves++; var wl = curL; curL++;
+            frame('Shrink left: <b>remove</b> a[' + wl + '] = ' + v + '. cnt[' + v + '] = ' + cnt[v] + (cnt[v] === 0 ? ' → last copy gone, distinct = ' + distinct : ', distinct stays ' + distinct) + '.', wl, 'bad', pos, one(String(v), 'bad')); }
+          ans[id] = distinct;
+          frame('Window = [' + l + ', ' + r + '] → answer for q' + id + ' is <b>' + distinct + '</b> (the number of keys in the cnt map).', null, '', pos);
+        });
+        var naive = 0; qs.forEach(function (q) { naive += q[1] - q[0] + 1; });
+        frames.push({ narr: 'All queries answered with <b>' + moves + '</b> pointer moves; scanning each range separately would touch ' + naive + ' elements. On tiny inputs the gap is small, but for N = Q = 10<sup>5</sup> it is ~6·10<sup>7</sup> vs up to 10<sup>10</sup>.',
+          parts: [{ type: 'array', label: 'a', values: a }, qTable(undefined, false), { type: 'vars', label: 'cost', vals: { 'Mo pointer moves': moves, 'naive element reads': naive } }] });
+        return frames;
+      }
+    },
+    examples: [
+      {
+        title: 'The sorted order and the window\'s journey',
+        html: `<p>a = [1, 2, 1, 3, 2, 2, 4, 1, 3, 1], B = 3, queries q0 [0,4], q1 [2,7], q2 [1,3], q3 [5,9], q4 [6,8].</p>
+          ${H.table(['order', 'query', 'window move', 'moves', 'distinct'], [
+            ['1', 'q2 [1,3]', 'empty window at curL = 0: grow right adding 1, 2, 1, 3, then remove a[0] = 1', '5', '3'],
+            ['2', 'q0 [0,4]', 'curR 3→4 (+2), curL 1→0 (+1)', '2', '3'],
+            ['3', 'q1 [2,7]', 'curR 4→7 (+2,+4,+1), curL 0→2 (−1,−2)', '5', '4'],
+            ['4', 'q3 [5,9]', 'curR 7→9 (+3,+1), curL 2→5 (−1,−3,−2)', '5', '4'],
+            ['5', 'q4 [6,8]', 'curR 9→8 (−1), curL 5→6 (−2)', '2', '3']
+          ])}
+          <p>Final answers in original order: <b>[3, 4, 3, 4, 3]</b>. Notice r never had to jump back across the array within block 0.</p>`
+      },
+      {
+        title: 'Count pairs of equal elements in a range',
+        html: `<p>Query: number of pairs i &lt; j in [l, r] with a[i] = a[j]. Maintain <code>pairs</code>:</p>
+          <ul><li>add x: the new copy pairs up with every existing copy → <code>pairs += cnt[x]; cnt[x]++</code></li>
+          <li>remove x: <code>cnt[x]--; pairs -= cnt[x]</code></li></ul>
+          <p>Window [2, 2, 5, 2]: adding the three 2s contributes 0 + 1 + 2 = 3 pairs; the 5 adds 0 → <b>3</b> = C(3, 2) ✔. Both updates are O(1), so Mo's applies directly.</p>`
+      },
+      {
+        title: 'Choosing B: N/√Q is better than √N when Q ≠ N',
+        html: `<p>Total cost ≈ Q·B (left pointer) + N·(N/B) (right pointer). Minimising gives <b>B = N/√Q</b> and cost <b>O(N√Q)</b>.</p>
+          ${H.table(['N', 'Q', 'B = √N → cost', 'B = N/√Q → cost'], [
+            ['10<sup>5</sup>', '10<sup>3</sup>', 'B = 316 → 3.2·10<sup>5</sup> + 3.2·10<sup>7</sup>', 'B = 3 162 → 3.2·10<sup>6</sup> + 3.2·10<sup>6</sup> = ' + H.c('g', '6.3·10<sup>6</sup>')],
+            ['10<sup>5</sup>', '10<sup>5</sup>', '≈ 6.3·10<sup>7</sup>', 'same (B = 316)']
+          ])}
+          <p>With few queries, wider blocks are much better.</p>`
+      },
+      {
+        title: 'Distinct values without Mo: offline BIT by right endpoint',
+        html: `<p>Sort queries by r. Sweep i = 0..N−1; for value a[i] keep only its <b>last occurrence</b> marked with 1 in a Fenwick tree (unmark the previous occurrence). For every query with r = i, the answer is the number of marks in [l, r] = <code>prefix(r) − prefix(l − 1)</code>. Total O((N + Q) log N) — asymptotically better than Mo's. Mo's remains the general tool when no such clever invariant exists (pairs, cnt² sums, "count values with cnt = k").</p>`
+      }
+    ],
+    deepDive: `<p><b>Proof of the bound.</b> Group queries by block of l. Inside a group r is sorted, so r moves ≤ N per group; there are ⌈N/B⌉ groups → O(N²/B). Between consecutive queries l moves ≤ 2B inside a group, and ≤ 2B + (block jump) across groups, which sums to O(N) over all groups → O(Q·B + N). Total O(Q·B + N²/B) → with B = N/√Q, O(N√Q). Each move is one add/remove, so the add/remove cost multiplies everything — keep them O(1) with plain arrays (compress values first).</p>
+      <p><b>Constant-factor tricks.</b> (1) <b>Odd-even ordering</b>: in odd blocks sort r descending so r sweeps back instead of resetting to the left — often ~2× fewer moves. (2) <b>Hilbert curve order</b>: map (l, r) to its position on a Hilbert curve and sort by that; empirically faster for large Q. (3) Avoid HashMap and boxing in add/remove; a 2·10<sup>5</sup>-size int array is far faster.</p>
+      <p><b>Variants.</b></p>
+      <ul>
+        <li><b>Mo's with updates</b>: add a time coordinate t (number of updates applied). Sort by (l/B, r/B, t) with B ≈ N<sup>2/3</sup>; moving t applies/undoes one update. Total O(N<sup>5/3</sup>) for N ≈ Q.</li>
+        <li><b>Mo's on trees</b>: flatten with an Euler tour that records entry and exit times; a path u–v becomes a range in which nodes appearing twice cancel out (toggle on/off), plus a special case for the LCA.</li>
+        <li><b>Rollback Mo's</b> (a.k.a. "Mo's without delete"): when removal is hard (e.g. maintaining a maximum), for each block reset the window to the block boundary, only ever <i>add</i> to the right, and for the left part add then roll back using a saved snapshot. Same O(N√Q).</li>
+      </ul>
+      <p><b>Limits.</b> Mo's needs every query in memory and answers out of order — it is impossible when queries are online (forced decoding with the previous answer). With N, Q around 10<sup>6</sup> it is usually too slow; offline sweeps with BITs or persistent segment trees take over.</p>`,
+    aiEra: `<p><b>What AI changes:</b> Mo's algorithm has a fixed template, and assistants reproduce it well. Where they stumble is the <b>problem-specific add/remove</b> logic and the subtle ordering of pointer moves. Also, AI tools will sometimes suggest Mo's for online problems or problems with updates, where it simply does not apply.</p>
+      <p><b>Typical AI mistakes:</b> shrinking before growing (counts go negative); forgetting to store answers under the original query index; using <code>HashMap&lt;Integer,Integer&gt;</code> in the hot loop (5–10× slower); block size computed as <code>sqrt(Q)</code> instead of N/√Q; missing the O(N log N) offline-BIT alternative for distinct counts.</p>
+      <p><b>Use AI as a partner:</b> describe your statistic and ask "give me O(1) add and remove functions and prove they keep the invariant"; ask it to count pointer moves for different block sizes on random data (the Python snippet does exactly this). <b>What you must own:</b> checking the three preconditions (offline, static, cheap add/remove), the O(N√Q) argument, and knowing when a smarter offline sweep exists.</p>`,
+    problems: [{
+      title: 'Distinct Values Queries',
+      level: 'Hard',
+      tags: ['mo\'s algorithm', 'offline queries', 'coordinate compression'],
+      companies: ['Google', 'Codeforces-style OA', 'Flipkart'],
+      statement: `<p>Given an array <code>a</code> of N integers and Q queries <code>[l, r]</code> (0-based, inclusive), return for each query the number of <b>distinct</b> values in <code>a[l..r]</code>. All queries are known in advance.</p>`,
+      constraints: `1 ≤ N, Q ≤ 2·10<sup>5</sup>, 1 ≤ a[i] ≤ 10<sup>9</sup>`,
+      example: `${H.arr([3, 2, 3, 1, 2], { label: 'a' })}<p>Queries [0,2], [1,3], [2,4], [0,4] → ${H.c('g', '[2, 3, 3, 3]')}. [3,2,3] has {2,3}; [2,3,1] has {1,2,3}; [3,1,2] has {1,2,3}; the whole array has {1,2,3}.</p>`,
+      brute: {
+        why: `<p>For each query build a HashSet of a[l..r]: O(length) each → up to 2·10<sup>5</sup> × 2·10<sup>5</sup> = 4·10<sup>10</sup>. The waste: consecutive queries overlap heavily, yet every set is rebuilt from scratch.</p>`,
+        code: `
+          int[] bruteDistinct(int[] a, int[][] qs) {
+              int[] ans = new int[qs.length];
+              for (int i = 0; i < qs.length; i++) {
+                  Set<Integer> seen = new HashSet<>();
+                  for (int j = qs[i][0]; j <= qs[i][1]; j++) seen.add(a[j]);
+                  ans[i] = seen.size();
+              }
+              return ans;
+          }`
+      },
+      mcq: {
+        q: 'Which property of "distinct count" makes Mo\'s algorithm work?',
+        options: ['It is idempotent, like min', 'It can be updated in O(1) when one element enters or leaves the window (using cnt[])', 'It can be merged from two halves in O(1)', 'It has an inverse operation, like sum'],
+        answer: 1,
+        explain: 'Distinct count is NOT cheaply mergeable (two halves may share values) and not idempotent/invertible in the usual sense. But with a frequency array, adding/removing a single element changes it in O(1) — exactly what Mo needs.'
+      },
+      hints: [
+        `<p><b>Aha:</b> if you already know the answer for [l, r], the answer for [l, r+1] needs only one look at a[r+1] — if its count was 0 it is new. So answers can be "walked" from one range to the next.</p>`,
+        `<p>Mo's algorithm: compress values to 0..K−1, keep <code>cnt[]</code> and <code>distinct</code>; sort queries by (l / B, r) with B ≈ N/√Q; move the window, grow before shrink; store answers by original index.</p>`,
+        `<p>Edge cases: equal queries, l = r, all values equal, huge values (compress!). Recipe: compress → order queries → curL = 0, curR = −1 → four while-loops → ans[id] = distinct. Bonus: the offline BIT solution sorts by r and marks last occurrences.</p>`
+      ],
+      solution: {
+        approach: `<p>Mo's algorithm with value compression and the odd-even ordering. O((N + Q)·√N) ≈ 10<sup>8</sup> very cheap steps for the maximum input. (The asymptotically faster O((N + Q) log N) offline-BIT approach is a great follow-up.)</p>`,
+        code: `
+          class Solution {
+              private int[] cnt;
+              private int distinct;
+
+              public int[] distinctQueries(int[] a, int[][] qs) {
+                  int n = a.length, q = qs.length;
+                  int[] vals = a.clone();
+                  Arrays.sort(vals);
+                  int k = 0;
+                  for (int i = 0; i < n; i++) if (i == 0 || vals[i] != vals[i - 1]) vals[k++] = vals[i];
+                  int[] c = new int[n];
+                  for (int i = 0; i < n; i++) c[i] = Arrays.binarySearch(vals, 0, k, a[i]);
+                  cnt = new int[k];
+                  distinct = 0;
+
+                  final int B = Math.max(1, (int) (n / Math.sqrt(Math.max(1, q))));
+                  Integer[] order = new Integer[q];
+                  for (int i = 0; i < q; i++) order[i] = i;
+                  Arrays.sort(order, (x, y) -> {
+                      int bx = qs[x][0] / B, by = qs[y][0] / B;
+                      if (bx != by) return bx - by;
+                      return (bx & 1) == 0 ? qs[x][1] - qs[y][1] : qs[y][1] - qs[x][1];
+                  });
+
+                  int[] ans = new int[q];
+                  int curL = 0, curR = -1;
+                  for (int id : order) {
+                      int l = qs[id][0], r = qs[id][1];
+                      while (curR < r) { if (cnt[c[++curR]]++ == 0) distinct++; }
+                      while (curL > l) { if (cnt[c[--curL]]++ == 0) distinct++; }
+                      while (curR > r) { if (--cnt[c[curR--]] == 0) distinct--; }
+                      while (curL < l) { if (--cnt[c[curL++]] == 0) distinct--; }
+                      ans[id] = distinct;
+                  }
+                  return ans;
+              }
+
+              public static void main(String[] args) {
+                  int[] a = {3, 2, 3, 1, 2};
+                  int[][] qs = {{0, 2}, {1, 3}, {2, 4}, {0, 4}};
+                  System.out.println(Arrays.toString(new Solution().distinctQueries(a, qs)));   // [2, 3, 3, 3]
+              }
+          }`,
+        alt: [{ lang: 'python', code: `def distinct_queries(a, qs):
+    # Offline BIT by right endpoint: O((N + Q) log N)
+    n = len(a)
+    bit = [0] * (n + 1)
+
+    def add(i, v):
+        i += 1
+        while i <= n:
+            bit[i] += v
+            i += i & -i
+
+    def pre(i):                      # sum of marks at positions 0..i
+        i += 1
+        s = 0
+        while i > 0:
+            s += bit[i]
+            i -= i & -i
+        return s
+
+    by_r = sorted(range(len(qs)), key=lambda i: qs[i][1])
+    last, ans, j = {}, [0] * len(qs), 0
+    for i, v in enumerate(a):
+        if v in last:
+            add(last[v], -1)         # only the latest copy of v stays marked
+        last[v] = i
+        add(i, 1)
+        while j < len(by_r) and qs[by_r[j]][1] == i:
+            l, r = qs[by_r[j]]
+            ans[by_r[j]] = pre(r) - (pre(l - 1) if l > 0 else 0)
+            j += 1
+    return ans
+
+
+print(distinct_queries([3, 2, 3, 1, 2], [(0, 2), (1, 3), (2, 4), (0, 4)]))  # [2, 3, 3, 3]`, run: true }],
+        dry: {
+          head: ['Mo order', 'query', 'window moves', 'cnt after', 'distinct'],
+          rows: [
+            ['1', '[0,2]', 'add 3, 2, 3', '{3:2, 2:1}', '2'],
+            ['2', '[1,3]', 'add a[3]=1; remove a[0]=3 (cnt 2→1)', '{1:1, 2:1, 3:1}', '3'],
+            ['3', '[0,4]', 'add a[4]=2; add a[0]=3', '{1:1, 2:2, 3:2}', '3'],
+            ['4', '[2,4] (block 1)', 'remove a[0]=3, remove a[1]=2', '{1:1, 2:1, 3:1}', '3']
+          ]
+        },
+        complexity: `<p>Mo's: O(Q log Q + (N + Q)·√N) time, O(N + Q) memory. Offline BIT: O((N + Q) log N).</p>`,
+        followUps: ['Queries become online ("l = (l + lastAns) mod N") — what now? (persistent segment tree on "next occurrence")', 'Add point updates — Mo\'s with updates, B = N<sup>2/3</sup>.', 'Count values that appear exactly twice in [l, r].']
       }
     }]
   });

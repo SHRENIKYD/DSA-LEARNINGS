@@ -978,4 +978,1077 @@ for day in range(1, 4):
       }
     }]
   });
+
+  // =====================================================================
+  // TOPIC 5 — Mock interview walkthroughs
+  // =====================================================================
+  function parseGrid(input) {
+    var rows = String(input === undefined ? '' : input).trim().split('/').map(function (r) {
+      return r.trim().split(/[\s,]+/).filter(function (x) { return x !== ''; }).map(Number);
+    });
+    if (!rows.length || rows.length > 6) throw new Error('Use 1 to 6 rows separated by /, e.g. 2 1 1 / 1 1 0 / 0 1 1');
+    var C = rows[0].length;
+    if (!C || C > 7) throw new Error('Use 1 to 7 cells per row');
+    rows.forEach(function (r) {
+      if (r.length !== C) throw new Error('Every row needs the same number of cells');
+      if (r.some(function (x) { return [0, 1, 2].indexOf(x) < 0; })) throw new Error('Cells must be 0 (empty), 1 (fresh) or 2 (rotten)');
+    });
+    return rows;
+  }
+  function orangeGrid(g, label, extra) {
+    var hl = {};
+    g.forEach(function (r, i) { r.forEach(function (v, j) { if (v === 1) hl[i + ',' + j] = 'ok'; else if (v === 2) hl[i + ',' + j] = 'bad'; }); });
+    Object.keys(extra || {}).forEach(function (k) { hl[k] = extra[k]; });
+    return { type: 'grid', label: label, rows: g.map(function (r) { return r.map(function (v) { return v === 0 ? '·' : v === 1 ? '🍊' : '🟤'; }); }), hl: hl };
+  }
+
+  topics.push({
+    title: 'Mock Interview Walkthroughs: What a Strong Round Sounds Like',
+    analogy: `<p>A cooking show does not just show the finished dish. The chef <b>talks while cooking</b>: "I am salting the water now because pasta absorbs it… I am tasting before plating." You learn the dish <i>and</i> the judgement.</p>
+      <p>A coding interview is a cooking show with one viewer — the interviewer. They cannot see inside your head. If you stay silent for ten minutes and then produce perfect code, they saw a magic trick, not an engineer. These walkthroughs show the full "talk while cooking" script.</p>`,
+    explain: `<p>A typical 45-minute coding round has a predictable shape. Knowing it lowers stress, because nothing comes as a surprise:</p>
+      ${H.table(['minutes', 'phase', 'what the interviewer is checking'], [
+        ['0–5', 'intro, problem shared', 'are you calm and friendly?'],
+        ['5–12', 'clarify + examples + brute force', 'do you understand before acting? do you ask good questions?'],
+        ['12–20', 'optimise + agree on approach', 'problem solving: can you find and justify the right pattern?'],
+        ['20–35', 'code', 'clean, correct, readable code; talking while typing'],
+        ['35–40', 'test + fix', 'do you verify your own work, or wait to be told?'],
+        ['40–45', 'follow-ups + your questions', 'depth: scale, variants, trade-offs']
+      ])}
+      <h4>Walkthrough 1 — Rotting Oranges (multi-source BFS)</h4>
+      <p><b>Problem:</b> grid cells are 0 (empty), 1 (fresh orange) or 2 (rotten). Each minute, rotten oranges rot their 4 neighbours. Return the minutes until no fresh orange remains, or −1 if impossible.</p>
+      ${H.table(['speaker', 'line', 'why it is strong'], [
+        ['Candidate', '"Can rot spread diagonally? Can the grid be empty, or have no fresh oranges at all?"', 'clarifies edge cases (answer 0 when no fresh)'],
+        ['Candidate', '"Brute force: simulate minute by minute, scanning the whole grid each minute. That is O((R·C)<sup>2</sup>) worst case."', 'baseline + complexity'],
+        ['Candidate', '"Rot spreads one step per minute from <b>all</b> rotten oranges at once — that is BFS from multiple sources. Each BFS level is one minute."', 'names the pattern and the reason'],
+        ['Interviewer', '"Why BFS and not DFS?"', 'probe'],
+        ['Candidate', '"BFS processes cells in order of distance, so the level number is exactly the minute a cell rots. DFS would reach cells by long paths first and need extra work to fix times."', 'justifies, compares'],
+        ['Candidate', '(codes, narrating) "I count fresh oranges first; at the end, if fresh &gt; 0, return −1."', 'plans the impossible case up front'],
+        ['Candidate', '"Let me trace the sample: level 0 = {(0,0)}, level 1 rots (0,1),(1,0)…"', 'tests without being asked'],
+        ['Candidate', '"O(R·C) time and space: every cell enters the queue at most once."', 'closes with complexity']
+      ])}
+      <h4>What interviewers' phrases usually mean</h4>
+      ${H.table(['they say', 'it usually means', 'good response'], [
+        ['"Are you sure about that line?"', 'there is a bug there', 'trace that line with a tiny input, out loud'],
+        ['"Can we do better?"', 'a faster or leaner solution exists', 'find the repeated work in your current solution'],
+        ['"What if the input does not fit in memory?"', 'scaling follow-up', 'streaming, chunking, external sort, approximate structures'],
+        ['"Let’s move on to coding."', 'your approach is accepted — stop optimising', 'start coding immediately'],
+        ['"Interesting…" + silence', 'they are waiting to see if you notice something', 're-check the last step, test an edge case'],
+        ['"What about duplicates / negatives?"', 'an edge case breaks the current idea', 'adjust or explain why it still works']
+      ])}`,
+    clues: [
+      'Interviewer gives a <b>vague statement</b> on purpose → they are grading your clarifying questions; ask 2–4 sharp ones.',
+      'Interviewer asks "<b>why X and not Y?</b>" → they want a comparison with a reason, not a change of answer.',
+      'Interviewer says "<b>let us move on</b>" → stop polishing; coding time is precious.',
+      'Interviewer repeats your words back as a question → usually a <b>hint that something is off</b>.',
+      'Last 5 minutes with "<b>any follow-ups?</b>" → expect scale, streaming, or a variant; think out loud.'
+    ],
+    code: [{ lang: 'python', run: true, title: 'Walkthrough 1 code: rotting oranges, level by level (runnable)', code: `from collections import deque
+
+def oranges_rotting(grid):
+    R, C = len(grid), len(grid[0])
+    q = deque()
+    fresh = 0
+    for r in range(R):
+        for c in range(C):
+            if grid[r][c] == 2:
+                q.append((r, c))           # every rotten orange is a BFS source
+            elif grid[r][c] == 1:
+                fresh += 1
+    minutes = 0
+    while q and fresh:
+        for _ in range(len(q)):           # one full level = one minute
+            r, c = q.popleft()
+            for dr, dc in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                nr, nc = r + dr, c + dc
+                if 0 <= nr < R and 0 <= nc < C and grid[nr][nc] == 1:
+                    grid[nr][nc] = 2       # mark when ENQUEUED, so no cell enters twice
+                    fresh -= 1
+                    q.append((nr, nc))
+        minutes += 1
+    return -1 if fresh else minutes
+
+print(oranges_rotting([[2, 1, 1], [1, 1, 0], [0, 1, 1]]))  # 4
+print(oranges_rotting([[2, 1, 1], [0, 1, 1], [1, 0, 1]]))  # -1 (bottom-left is unreachable)
+print(oranges_rotting([[0, 2]]))                           # 0 (nothing fresh)
+` }, `
+// Walkthrough 3 code: LRU cache with O(1) get/put — HashMap for lookup + doubly linked list for order.
+class LRUCache {
+    private static class Node { int key, val; Node prev, next; Node(int k, int v) { key = k; val = v; } }
+    private final int capacity;
+    private final Map<Integer, Node> map = new HashMap<>();
+    private final Node head = new Node(0, 0), tail = new Node(0, 0); // sentinels: no null checks
+
+    public LRUCache(int capacity) {
+        this.capacity = capacity;
+        head.next = tail; tail.prev = head;
+    }
+    public int get(int key) {
+        Node n = map.get(key);
+        if (n == null) return -1;
+        unlink(n); addFront(n);                 // touched -> most recently used
+        return n.val;
+    }
+    public void put(int key, int value) {
+        Node n = map.get(key);
+        if (n != null) { n.val = value; unlink(n); addFront(n); return; }
+        if (map.size() == capacity) {           // evict least recently used (just before tail)
+            Node lru = tail.prev;
+            unlink(lru); map.remove(lru.key);
+        }
+        n = new Node(key, value);
+        map.put(key, n); addFront(n);
+    }
+    private void unlink(Node n) { n.prev.next = n.next; n.next.prev = n.prev; }
+    private void addFront(Node n) { n.next = head.next; n.prev = head; head.next.prev = n; head.next = n; }
+}`],
+    codeTitle: ['Rotting oranges (Python, runnable)', 'LRU cache (Java)'],
+    viz: {
+      title: 'Mock round replay: Rotting Oranges with the candidate’s script',
+      input: '2 1 1 / 1 1 0 / 0 1 1',
+      inputLabel: 'Grid rows separated by / (0 empty, 1 fresh, 2 rotten)',
+      gen: function (input) {
+        var g = parseGrid(input);
+        var R = g.length, C = g[0].length, frames = [];
+        frames.push({ narr: '<b>Interviewer:</b> "Here is a grid of oranges…" <b>Candidate:</b> "Before I start: rot spreads only up/down/left/right? If there are no fresh oranges I return 0, and if some can never be reached I return −1?" — two edge cases nailed in the first minute.', parts: [
+          orangeGrid(g, 'grid (🍊 fresh, 🟤 rotten, · empty)'), txt('Phase', 'Clarify (minutes 0–5)')
+        ] });
+        frames.push({ narr: '<b>Candidate:</b> "Brute force would re-scan the whole grid every minute: O((R·C)²). But every rotten orange spreads at the same speed — that is <b>BFS from many sources at once</b>. One BFS level = one minute." <b>Interviewer:</b> "Sounds good, go ahead."', parts: [
+          orangeGrid(g, 'grid'), txt('Phase', 'Approach agreed (minutes 5–15). Pattern: multi-source BFS (DSA 20).')
+        ] });
+        var q = [], fresh = 0;
+        g.forEach(function (r, i) { r.forEach(function (v, j) { if (v === 2) q.push([i, j]); else if (v === 1) fresh++; }); });
+        frames.push({ narr: '<b>Candidate (coding):</b> "First pass: put every rotten orange in the queue and count fresh ones. Fresh = ' + fresh + '." Narrating each line keeps the interviewer with you.', parts: [
+          orangeGrid(g, 'grid'), { type: 'queue', label: 'BFS queue (level 0 sources)', items: q.map(function (p) { return '(' + p[0] + ',' + p[1] + ')'; }), frontLabel: 'front', backLabel: 'back' },
+          { type: 'vars', vals: { fresh: fresh, minute: 0 } }
+        ] });
+        var minute = 0, guard = 0;
+        while (q.length && fresh > 0 && guard++ < 40) {
+          var next = [], newly = {};
+          q.forEach(function (p) {
+            [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(function (d) {
+              var r = p[0] + d[0], c = p[1] + d[1];
+              if (r >= 0 && c >= 0 && r < R && c < C && g[r][c] === 1) { g[r][c] = 2; fresh--; next.push([r, c]); newly[r + ',' + c] = 'cur'; }
+            });
+          });
+          minute++;
+          q = next;
+          frames.push({ narr: 'Minute <b>' + minute + '</b>: the whole current level spreads at once. ' + next.length + ' orange(s) rot now (amber). <b>Candidate:</b> "I mark them rotten when I enqueue them, so no cell is added twice." Fresh left: ' + fresh + '.', parts: [
+            orangeGrid(g, 'grid after minute ' + minute, newly),
+            { type: 'queue', label: 'next level', items: next.map(function (p) { return '(' + p[0] + ',' + p[1] + ')'; }) },
+            { type: 'vars', vals: { minute: minute, fresh: fresh }, hl: { minute: 'cur' } }
+          ] });
+        }
+        var ans = fresh > 0 ? -1 : minute;
+        frames.push({ narr: fresh > 0 ? '<b>Queue empty but ' + fresh + ' fresh orange(s) remain</b> — walled off by empty cells. <b>Candidate:</b> "That is the −1 case I mentioned at the start." Answer <b>−1</b>.' : 'No fresh oranges left → answer <b>' + ans + '</b> minutes. <b>Candidate:</b> "Let me double-check the boundary: if the grid had no fresh oranges, the loop never runs and I return 0. Good."', parts: [
+          orangeGrid(g, 'final grid'), { type: 'vars', label: 'result', vals: { answer: ans }, hl: { answer: ans < 0 ? 'bad' : 'sel' } }
+        ] });
+        frames.push({ narr: '<b>Interviewer follow-up:</b> "What if the grid is huge and arrives row by row?" <b>Candidate:</b> "BFS needs random access to neighbours, so I would process it in bands with a halo of one row, or switch to a distance-transform style two-pass DP. Time stays O(R·C)." Strong close: complexity + a sensible scaling idea.', parts: [
+          txt('Scorecard', 'Problem solving ✔ (pattern + justification) · Coding ✔ (clean BFS) · Verification ✔ (traced, edge cases) · Communication ✔ (narrated throughout)')
+        ] });
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'Walkthrough 2 — Longest Substring Without Repeating Characters', html: `<details><summary>Show the full transcript</summary>
+        <p><b>C:</b> "Characters are ASCII? Empty string returns 0?" <b>I:</b> "Yes and yes."</p>
+        <p><b>C:</b> "Brute force: every substring, check uniqueness with a set — O(N³), or O(N²) if I extend from each start."</p>
+        <p><b>C:</b> "The clues are <i>substring</i> and <i>longest</i>, and the condition 'no repeats' only gets worse as the window grows — a sliding window fits. I keep the last index of each character; when s[right] was seen inside the window, jump left past it."</p>
+        <p><b>I:</b> "Why jump instead of moving left one step at a time?" <b>C:</b> "Both are O(N) overall, but jumping is one assignment. I must use max(left, last+1) so left never moves backwards."</p>
+        <p><b>C:</b> (traces "abba") "At the second 'a', last['a'] = 0 but left is already 2 — the max() saves me. Answer 2."</p></details>
+        <p>The key moment: the candidate <b>tested the tricky case "abba"</b> on their own. That one trace is worth more than five easy ones.</p>`, code: `int lengthOfLongestSubstring(String s) {
+    int[] last = new int[128];
+    Arrays.fill(last, -1);
+    int left = 0, best = 0;
+    for (int right = 0; right < s.length(); right++) {
+        char ch = s.charAt(right);
+        left = Math.max(left, last[ch] + 1);   // never move left backwards ("abba")
+        last[ch] = right;
+        best = Math.max(best, right - left + 1);
+    }
+    return best;
+}` },
+      { title: 'Walkthrough 3 — Design an LRU cache', html: `<p><b>C:</b> "Both get and put must be O(1). O(1) lookup means a HashMap. O(1) 'move to most recent' and 'remove least recent' means a doubly linked list — I can unlink a node in O(1) if I hold a pointer to it, which the map gives me."</p>
+        <p><b>C:</b> "I'll use two sentinel nodes, head and tail, so I never check for null when inserting or removing."</p>
+        <p><b>I:</b> "Could you use Java's LinkedHashMap?" <b>C:</b> "Yes — with accessOrder = true and removeEldestEntry overridden it is an LRU in 10 lines. I'll mention it, but I'll build it by hand since that is what you are assessing. In production I would use the library or Caffeine."</p>
+        <p>Strong because: complexity requirement → data structures, explicit sentinel choice, and an honest production note.</p>` },
+      { title: 'Weak vs strong at the same moment', html: `${H.table(['moment', 'weak candidate', 'strong candidate'], [
+        ['problem read', 'starts typing immediately', 'restates, asks about edge cases'],
+        ['stuck', 'silence for 4 minutes', '"I am considering a heap, but the update cost worries me because…"'],
+        ['bug found by interviewer', 'gets defensive or random-edits', '"Good catch — let me trace it with [1,2]… I see, the loop bound should be ≤."'],
+        ['finished code', '"I think it works."', 'traces a normal case and an edge case, states complexity'],
+        ['follow-up', '"I don’t know."', '"I haven’t done that, but my first idea would be…"']
+      ])}` },
+      { title: 'Handling a follow-up you have never seen', html: `<p><b>I:</b> "Now the oranges also have a 'resistance' — some take 2 minutes to rot." This changes edge weights from 1 to {1, 2}. Strong answer: "Then BFS levels no longer equal time. With small integer weights I can use a <b>Dijkstra</b> with a heap, or a bucket queue / 0-1 BFS style deque if weights were 0 or 1. Complexity becomes O(R·C log(R·C))." You connected the twist back to the map (DSA 21) instead of panicking.</p>` }
+    ],
+    deepDive: `<p><b>How rounds are actually scored.</b> Most big-tech rubrics have 4 dimensions — problem solving, coding, verification/testing, communication — each rated roughly from "strong no" to "strong yes", plus a free-text summary. Hiring committees read the text. A sentence like "candidate spotted multi-source BFS quickly, explained why BFS gives minutes, traced the −1 case unprompted" is what gets offers. Your job is to <b>generate evidence</b> for those sentences.</p>
+      <p><b>Hints are not failures.</b> Interviewers note how much help you needed and how fast you used it. Taking a hint and running with it is a mild signal; needing the same hint repeated is a strong one. Ask for hints with structure: "I am choosing between a heap and sorting; is there a constraint I am missing?"</p>
+      <p><b>Silence budget.</b> Thinking silently for 30–60 seconds is fine if you announce it: "Let me think about this for a moment." Beyond 2 minutes the interviewer has nothing to write down — narrate partial thoughts instead.</p>
+      <p><b>Code quality signals:</b> meaningful names (<code>fresh</code>, <code>minutes</code>, not <code>x</code>, <code>t</code>), helper functions for the inner check, early returns for edge cases, no dead code. Reviewers mentally ask "would I approve this PR?"</p>
+      <p><b>Mock practice that works:</b> record yourself (screen + voice) solving a problem, then watch it at 1.5×. Count silent gaps over 60 seconds and places where you coded before agreeing on an approach. Two recordings fix more habits than twenty silent solves.</p>`,
+    aiEra: `<p><b>What AI changes:</b> AI makes excellent mock interviewers — patient, available at 2 a.m., and able to play a strict or friendly persona. Voice-mode assistants can run a full 45-minute round, interrupt with "why?", and give rubric-based feedback afterwards.</p>
+      <p><b>Prompt for a realistic mock:</b> <code>You are a senior engineer interviewing me for an SDE-2 role. Give me one medium graph problem. Answer clarifying questions briefly. Do not give hints unless I ask, and keep count of hints. When I say 'done', score me 1-4 on problem solving, coding, testing, communication, with quotes from my answers as evidence.</code></p>
+      <p><b>AI-assisted rounds (growing in 2025–2026):</b> some companies let you use an assistant during the interview. The bar then shifts: generate code fast, but <b>review it out loud</b> — "This BFS marks cells when dequeued, which can add duplicates; I'll move the mark to enqueue time." Catching AI's subtle bugs is the new signal of seniority.</p>
+      <p><b>What you must still own:</b> composure, live reasoning, and judgement about trade-offs. No tool sits in the room for you in a traditional round.</p>`,
+    problems: [{
+      title: 'Mock Round: Rotting Oranges', level: 'Medium', tags: ['multi-source BFS', 'grid', 'graph'], companies: ['Amazon', 'Microsoft', 'Google'],
+      statement: `<p>In an R × C grid, 0 = empty, 1 = fresh orange, 2 = rotten orange. Every minute, each rotten orange rots its 4-directional fresh neighbours. Return the minimum minutes until no fresh orange remains, or −1 if that is impossible.</p><p>Solve it as if in a live round: clarify, brute force, pattern, code, trace.</p>`,
+      constraints: `1 ≤ R, C ≤ 10 (follow-up: up to 1000), grid[i][j] ∈ {0, 1, 2}`,
+      example: `<p>[[2,1,1],[1,1,0],[0,1,1]] → <b>${H.c('g', '4')}</b>. The bottom-right orange is 4 steps from the only rotten one. [[2,1,1],[0,1,1],[1,0,1]] → <b>${H.c('r', '−1')}</b>: the bottom-left orange is walled off.</p>`,
+      brute: { why: `<p>Simulate minute by minute: scan the whole grid, rot neighbours of rotten cells (using a copy so new rot does not spread in the same minute). Up to R·C minutes × R·C cells = O((R·C)<sup>2</sup>). The waste: rescanning cells that cannot change.</p>`, code: `int bruteRotting(int[][] grid) {
+    int R = grid.length, C = grid[0].length, minutes = 0;
+    int[] dr = {1, -1, 0, 0}, dc = {0, 0, 1, -1};
+    while (true) {
+        int[][] next = new int[R][];
+        for (int r = 0; r < R; r++) next[r] = grid[r].clone();
+        boolean changed = false;
+        for (int r = 0; r < R; r++)
+            for (int c = 0; c < C; c++) {
+                if (grid[r][c] != 2) continue;
+                for (int d = 0; d < 4; d++) {
+                    int nr = r + dr[d], nc = c + dc[d];
+                    if (nr >= 0 && nc >= 0 && nr < R && nc < C && grid[nr][nc] == 1) { next[nr][nc] = 2; changed = true; }
+                }
+            }
+        if (!changed) break;
+        grid = next; minutes++;
+    }
+    for (int[] row : grid) for (int v : row) if (v == 1) return -1;
+    return minutes;
+}` },
+      mcq: { q: 'Why must the BFS start with ALL rotten oranges in the queue at once?', options: ['They all spread simultaneously, so level k of a multi-source BFS is exactly minute k', 'To save memory', 'Because DFS would be faster otherwise', 'It does not matter; one source at a time gives the same answer'], answer: 0, explain: 'Running BFS from one source at a time would compute distances from that source only; the true minute is the distance to the NEAREST rotten orange, which a multi-source BFS gives directly.' },
+      hints: [`<p>Hint 1: The minute a fresh orange rots = its distance to the nearest rotten orange.</p>`, `<p>Hint 2: Multi-source BFS: enqueue every rotten cell first. Process the queue level by level; each level is one minute.</p>`, `<p>Hint 3: Count fresh oranges up front, decrement as they rot. Mark rotten when enqueuing. If fresh &gt; 0 at the end → −1; if fresh was 0 from the start → 0.</p>`],
+      solution: {
+        approach: `<p>Multi-source BFS (DSA 20). All rotten cells are level 0. Each level rots all fresh neighbours of the current level. Stop when the queue is empty or no fresh oranges remain.</p>`,
+        code: `class Solution {
+    public int orangesRotting(int[][] grid) {
+        int R = grid.length, C = grid[0].length, fresh = 0;
+        Deque<int[]> q = new ArrayDeque<>();
+        for (int r = 0; r < R; r++)
+            for (int c = 0; c < C; c++) {
+                if (grid[r][c] == 2) q.add(new int[]{r, c}); // every rotten orange is a source
+                else if (grid[r][c] == 1) fresh++;
+            }
+        int minutes = 0;
+        int[] dr = {1, -1, 0, 0}, dc = {0, 0, 1, -1};
+        while (!q.isEmpty() && fresh > 0) {
+            for (int size = q.size(); size > 0; size--) {   // one level = one minute
+                int[] cur = q.poll();
+                for (int d = 0; d < 4; d++) {
+                    int nr = cur[0] + dr[d], nc = cur[1] + dc[d];
+                    if (nr < 0 || nc < 0 || nr >= R || nc >= C || grid[nr][nc] != 1) continue;
+                    grid[nr][nc] = 2;                           // mark at enqueue time
+                    fresh--;
+                    q.add(new int[]{nr, nc});
+                }
+            }
+            minutes++;
+        }
+        return fresh == 0 ? minutes : -1;
+    }
+}`,
+        dry: { head: ['minute', 'level (rotting now)', 'fresh left'], rows: [['0', '(0,0) sources', '6'], ['1', '(1,0) (0,1)', '4'], ['2', '(1,1) (0,2)', '2'], ['3', '(2,1)', '1'], ['4', '(2,2)', H.c('g', '0 → answer 4')]] },
+        complexity: `<p>Time O(R·C): each cell is enqueued at most once and checks 4 neighbours. Space O(R·C) for the queue in the worst case.</p>`,
+        followUps: ['Return the time each orange rots (store distances).', 'Some cells take 2 minutes to rot — what algorithm now?', 'Do it without modifying the input grid.']
+      }
+    }]
+  });
+
+  // =====================================================================
+  // TOPIC 6 — Debugging under pressure
+  // =====================================================================
+  var BUGGY = 'int lo = 0, hi = n - 1;\nwhile (lo < hi) {\n  int mid = (lo + hi) / 2;\n  if (a[mid] < t) lo = mid;\n  else hi = mid;\n}\nreturn lo;';
+  var FIXED = 'int lo = 0, hi = n;          // answer can be n\nwhile (lo < hi) {\n  int mid = lo + (hi - lo) / 2;\n  if (a[mid] < t) lo = mid + 1; // mid is too small: skip it\n  else hi = mid;\n}\nreturn lo;';
+
+  topics.push({
+    title: 'Debugging Under Pressure',
+    analogy: `<p>When a car will not start, a good mechanic does not randomly swap parts. She checks the <b>usual suspects in order</b> — battery, fuel, starter — and tests each with a simple tool. Random part-swapping is how a 10-minute fix becomes a 3-hour mess.</p>
+      <p>In an interview your code "will not start" at the worst moment: the sample gives the wrong answer and the clock is ticking. Panic-editing (changing <code>&lt;</code> to <code>&lt;=</code> and hoping) is the random part-swap. This topic gives you the mechanic’s order of checks.</p>`,
+    explain: `<p>Bugs under pressure are almost never exotic. They come from a short list, and a calm, fixed routine finds them fast.</p>
+      <h4>The 5-step debugging routine</h4>
+      ${H.table(['step', 'do this', 'not this'], [
+        ['1. <b>Stop typing</b>', 'say "Let me trace this instead of guessing."', 'edit lines at random'],
+        ['2. <b>Shrink the input</b>', 'find the smallest failing case: 1–3 elements, a single row, k = 1', 'trace a 10-element example'],
+        ['3. <b>Trace with a state table</b>', 'write the variables per iteration, as in the dry-run tables in this course', 'trace "in your head"'],
+        ['4. <b>Compare with intent</b>', 'at each row ask "is this what I meant this variable to hold?" — the first wrong row is the bug', 'jump to the end result'],
+        ['5. <b>Fix the cause, re-run all tests</b>', 'one minimal change, then re-trace the failing case and one earlier passing case', 'stack several fixes at once']
+      ])}
+      <h4>The usual suspects (check in this order)</h4>
+      ${H.table(['suspect', 'looks like', 'quick test'], [
+        ['Off-by-one in bounds', '<code>i &lt;= n</code>, <code>hi = n - 1</code> when the answer can be n', 'input of size 1 and target past the end'],
+        ['Loop that cannot shrink', '<code>lo = mid</code> with <code>mid = (lo+hi)/2</code>', 'two elements left: does the range get smaller?'],
+        ['Wrong initial value', '<code>best = 0</code> when all values can be negative', 'all-negative input'],
+        ['Integer overflow', '<code>int sum</code> of 10<sup>5</sup> values up to 10<sup>9</sup>; <code>(lo+hi)/2</code>', 'max values; use <code>long</code>'],
+        ['Visited marked too late', 'BFS marks on dequeue → same cell queued many times', 'count queue pushes on a small grid'],
+        ['State not reset', 'global array or static field reused between test cases', 'run two test cases back to back'],
+        ['Aliasing', '<code>Arrays.fill(grid, row)</code> — every row is the same object; adding a list to results then mutating it', 'change one cell, print all rows'],
+        ['Java object equality', '<code>Integer a == Integer b</code> fails above 127; <code>String ==</code>', 'values like 1000'],
+        ['Comparator overflow', '<code>(a, b) -&gt; a - b</code> with large negatives', 'sort [Integer.MIN_VALUE, 1]'],
+        ['Missing base case / return', 'recursion never stops, or the result of a recursive call is ignored', 'smallest input (n = 0, null node)']
+      ])}
+      <h4>What to say while debugging</h4>
+      <p>"My output is 3 but expected 2. Let me take the smallest failing input, [1, 2], and trace. lo = 0, hi = 1, mid = 0… here <code>lo</code> stays 0 — the range does not shrink. The fix is <code>lo = mid + 1</code> because mid is already known to be too small." The interviewer sees a <b>method</b>, which is graded more kindly than the bug itself.</p>`,
+    clues: [
+      'The code works on the sample but the interviewer asks "<b>what about [x]?</b>" → they have found the bug; trace exactly that input.',
+      'Your program <b>hangs</b> → a loop range that cannot shrink (binary search <code>lo = mid</code>) or a missing visited mark.',
+      'Answers are <b>slightly off</b> (by 1) → boundary conditions: &lt; vs ≤, n vs n−1, inclusive vs exclusive end.',
+      'Answers are <b>wildly wrong or negative</b> for big inputs → integer overflow.',
+      'Correct alone, wrong when run <b>after another test</b> → state not reset (static fields, reused arrays).'
+    ],
+    code: [{ lang: 'python', run: true, title: 'Stress testing: let random small inputs find the bug (runnable)', code: `import random
+
+def max_subarray_buggy(a):
+    best = 0                      # BUG: assumes the answer is at least 0
+    cur = 0
+    for x in a:
+        cur = max(x, cur + x)
+        best = max(best, cur)
+    return best
+
+def max_subarray_brute(a):        # obviously-correct O(N^2) oracle
+    return max(sum(a[i:j + 1]) for i in range(len(a)) for j in range(i, len(a)))
+
+random.seed(1)
+for trial in range(1, 1001):
+    n = random.randint(1, 4)                       # SMALL inputs: easy to trace by hand
+    a = [random.randint(-5, 5) for _ in range(n)]
+    if max_subarray_buggy(a) != max_subarray_brute(a):
+        print("trial", trial, "counterexample:", a)
+        print("  buggy says", max_subarray_buggy(a), "but correct is", max_subarray_brute(a))
+        break
+else:
+    print("no difference found")
+
+def max_subarray_fixed(a):
+    best = cur = a[0]             # FIX: start from a real element
+    for x in a[1:]:
+        cur = max(x, cur + x)
+        best = max(best, cur)
+    return best
+
+print("fixed passes all:", all(max_subarray_fixed(t) == max_subarray_brute(t)
+      for t in ([random.randint(-5, 5) for _ in range(random.randint(1, 6))] for _ in range(2000))))
+` }, `
+// The same stress-test harness in Java: fast solution vs brute force on thousands of tiny random inputs.
+class StressTest {
+    static int fast(int[] a, int t) {                 // lower bound: first index with a[i] >= t
+        int lo = 0, hi = a.length;
+        while (lo < hi) {
+            int mid = lo + (hi - lo) / 2;
+            if (a[mid] < t) lo = mid + 1; else hi = mid;
+        }
+        return lo;
+    }
+    static int brute(int[] a, int t) {
+        for (int i = 0; i < a.length; i++) if (a[i] >= t) return i;
+        return a.length;
+    }
+    public static void main(String[] args) {
+        Random rnd = new Random(42);
+        for (int trial = 0; trial < 10000; trial++) {
+            int n = rnd.nextInt(6);                    // include the empty array!
+            int[] a = new int[n];
+            for (int i = 0; i < n; i++) a[i] = rnd.nextInt(10);
+            Arrays.sort(a);
+            int t = rnd.nextInt(12) - 1;
+            if (fast(a, t) != brute(a, t)) {
+                System.out.println("MISMATCH " + Arrays.toString(a) + " t=" + t);
+                return;
+            }
+        }
+        System.out.println("all 10000 tiny tests agree");
+    }
+}`],
+    codeTitle: ['Stress test finds the bug (Python, runnable)', 'Stress-test harness (Java)'],
+    viz: {
+      title: 'Trace a buggy binary search, catch the infinite loop, then fix it',
+      input: '1 3 5 7 9 | 6',
+      inputLabel: 'sorted numbers | target',
+      gen: function (input) {
+        var sp = String(input === undefined ? '' : input).split('|');
+        if (sp.length !== 2) throw new Error('Format: sorted numbers | target, e.g. 1 3 5 7 9 | 6');
+        var a = parseNums(sp[0], 1, 12, -99, 99, 'the array');
+        for (var z = 1; z < a.length; z++) if (a[z] < a[z - 1]) throw new Error('The array must be sorted ascending');
+        var t = Number(sp[1].trim());
+        if (!Number.isInteger(t) || t < -99 || t > 999) throw new Error('Target must be a whole number');
+        var n = a.length, frames = [];
+        frames.push({ narr: 'Goal: return the <b>first index i with a[i] ≥ ' + t + '</b> (where to insert ' + t + '). The first draft below fails on the sample. Rule 1: <b>stop editing, start tracing</b>.', parts: [
+          { type: 'array', label: 'a', values: a, showIdx: true }, { type: 'code', label: 'buggy draft', lang: 'java', code: BUGGY, hl: {} }
+        ] });
+        var lo = 0, hi = n - 1, seen = {}, steps = 0, hung = false, rows = [];
+        while (lo < hi && steps < 12) {
+          var mid = Math.floor((lo + hi) / 2), key = lo + ',' + hi;
+          var repeat = seen[key];
+          seen[key] = true;
+          var goRight = a[mid] < t;
+          rows.push([steps + 1, lo, hi, mid, a[mid], goRight ? 'lo = mid' : 'hi = mid']);
+          var ptr = {}; ptr[lo] = 'lo'; ptr[hi] = (ptr[hi] ? ptr[hi] + '/' : '') + 'hi'; ptr[mid] = (ptr[mid] ? ptr[mid] + '/' : '') + 'mid';
+          frames.push({ narr: (repeat ? '<span class="c-r"><b>Same (lo, hi) = (' + lo + ', ' + hi + ') as before!</b></span> The range did not shrink, so this loop will spin forever. Found it: when a[mid] &lt; t we set <code>lo = mid</code>, and with two elements left mid == lo.' : 'Trace row ' + (steps + 1) + ': lo=' + lo + ', hi=' + hi + ', mid=' + mid + ', a[mid]=' + a[mid] + (goRight ? ' &lt; ' : ' ≥ ') + t + ' → ' + (goRight ? '<code>lo = mid</code>' : '<code>hi = mid</code>') + '.'), parts: [
+            { type: 'array', label: 'a', values: a, ptr: ptr, range: [lo, hi], hl: one(mid, repeat ? 'bad' : 'cur') },
+            { type: 'table', label: 'state table (write this on the whiteboard)', columns: ['row', 'lo', 'hi', 'mid', 'a[mid]', 'action'], rows: rows.slice(), hl: one(rows.length - 1, repeat ? 'bad' : 'cur') },
+            { type: 'code', label: 'buggy draft', lang: 'java', code: BUGGY, hl: { 3: 'cur', 4: goRight ? (repeat ? 'bad' : 'cur') : '', 5: goRight ? '' : 'cur' } }
+          ] });
+          if (repeat) { hung = true; break; }
+          if (goRight) lo = mid; else hi = mid;
+          steps++;
+        }
+        if (!hung) {
+          var wrong = lo, truth = 0;
+          while (truth < n && a[truth] < t) truth++;
+          frames.push({ narr: 'The buggy loop ended with <b>' + wrong + '</b>; the correct answer is <b>' + truth + '</b>. ' + (wrong === truth ? 'It happens to be right on this input — that is why bugs survive! Try a target bigger than every element (answer should be n = ' + n + ', but <code>hi = n − 1</code> can never return n), or a target between two neighbours.' : '<span class="c-r">Wrong</span>: the search space <code>[0, n−1]</code> never includes n, and/or <code>lo = mid</code> stalls.'), parts: [
+            { type: 'array', label: 'a', values: a, hl: one(Math.min(wrong, n - 1), wrong === truth ? 'ok' : 'bad') },
+            { type: 'table', label: 'state table', columns: ['row', 'lo', 'hi', 'mid', 'a[mid]', 'action'], rows: rows.length ? rows.slice() : [['—', 0, n - 1, '—', '—', 'loop skipped']] }
+          ] });
+        }
+        frames.push({ narr: 'Two minimal fixes, each with a reason: (1) <code>hi = n</code> because "insert at the end" is a valid answer; (2) <code>lo = mid + 1</code> because a[mid] &lt; t proves mid is <b>not</b> the answer, and +1 guarantees the range shrinks. Also use <code>lo + (hi − lo) / 2</code> out of habit.', parts: [
+          { type: 'code', label: 'fixed', lang: 'java', code: FIXED, hl: { 1: 'ok', 4: 'ok' } }
+        ] });
+        lo = 0; hi = n; rows = [];
+        var guard = 0;
+        while (lo < hi && guard++ < 20) {
+          var m2 = lo + Math.floor((hi - lo) / 2), r2 = a[m2] < t;
+          rows.push([rows.length + 1, lo, hi, m2, a[m2], r2 ? 'lo = mid+1' : 'hi = mid']);
+          var p2 = {}; p2[lo] = 'lo'; if (hi < n) p2[hi] = (p2[hi] ? p2[hi] + '/' : '') + 'hi'; p2[m2] = (p2[m2] ? p2[m2] + '/' : '') + 'mid';
+          if (r2) lo = m2 + 1; else hi = m2;
+          frames.push({ narr: 'Fixed trace row ' + rows.length + ': a[' + m2 + '] = ' + a[m2] + (r2 ? ' &lt; ' : ' ≥ ') + t + ' → ' + (r2 ? 'lo = ' + lo : 'hi = ' + hi) + '. The range <b>always shrinks</b> now.', parts: [
+            { type: 'array', label: 'a', values: a, ptr: p2, hl: one(m2, 'cur'), range: [Math.min(lo, n - 1), Math.min(Math.max(hi - 1, lo), n - 1)] },
+            { type: 'table', label: 'fixed state table', columns: ['row', 'lo', 'hi', 'mid', 'a[mid]', 'action'], rows: rows.slice(), hl: one(rows.length - 1, 'ok') }
+          ] });
+        }
+        frames.push({ narr: 'Answer: <b>' + lo + '</b>' + (lo === n ? ' (insert at the very end)' : ' (a[' + lo + '] = ' + a[lo] + ' is the first value ≥ ' + t + ')') + '. Finally re-run the earlier passing tests too — a fix that breaks old cases is not a fix.', parts: [
+          { type: 'array', label: 'a', values: a, hl: lo < n ? one(lo, 'sel') : {} }, { type: 'vars', vals: { answer: lo, n: n }, hl: { answer: 'sel' } }
+        ] });
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'The Integer cache trap', html: `<p>Two <code>Integer</code> objects compared with <code>==</code> compare <b>references</b>. Java caches −128..127, so small tests pass and large ones fail — a classic "works on the sample, fails on hidden tests" bug.</p>`, code: `Map<String, Integer> a = new HashMap<>(), b = new HashMap<>();
+a.put("x", 1000); b.put("x", 1000);
+System.out.println(a.get("x") == b.get("x"));        // false: different Integer objects
+System.out.println(a.get("x").equals(b.get("x")));   // true: compares values
+System.out.println(a.get("x").intValue() == b.get("x")); // true: unboxed comparison` },
+      { title: 'Comparator overflow', html: `<p><code>(x, y) -&gt; x - y</code> looks fine until x = −2,000,000,000 and y = 2,000,000,000: the subtraction overflows to a positive number and the sort order flips. Always use <code>Integer.compare(x, y)</code>.</p>`, code: `Integer[] v = {2_000_000_000, -2_000_000_000, 0};
+Arrays.sort(v, (x, y) -> Integer.compare(x, y));   // safe
+System.out.println(Arrays.toString(v));             // [-2000000000, 0, 2000000000]` },
+      { title: 'Aliasing in backtracking results', html: `<p>In subsets/permutations, <code>result.add(path)</code> stores a <b>reference</b> to the list you keep mutating — at the end every stored "answer" is the same, usually empty, list. Fix: <code>result.add(new ArrayList&lt;&gt;(path))</code>. Quick test: print the result for input [1,2]; if you see [[], [], [], []] it is aliasing.</p>` },
+      { title: 'BFS marks visited on dequeue', html: `<p>On a 3×3 open grid, marking a cell visited only when it is <i>dequeued</i> lets neighbours enqueue it several times. It still gives correct distances but can blow up to O(4<sup>depth</sup>) queue size and TLE on 1000×1000 grids. Mark when you <b>enqueue</b>. Spotting it: count total pushes — more than R·C means a bug.</p>` }
+    ],
+    deepDive: `<p><b>Why tracing beats staring.</b> Reading code, your brain sees what you <i>meant</i> to write. Writing the state table forces you to compute what the code <i>does</i>. The first row where "does" ≠ "meant" is the bug. This is the same principle as a debugger's single-step, available on a whiteboard.</p>
+      <p><b>Invariants as debugging tools.</b> For each loop, state one sentence that must be true at the top of every iteration: "everything left of <code>lo</code> is &lt; t; everything from <code>hi</code> on is ≥ t". Then check it on each row of your trace. Invariants also tell you the right update: if a[mid] &lt; t, the invariant says mid belongs to the left side, so <code>lo = mid + 1</code>, not <code>mid</code>.</p>
+      <p><b>Stress testing (competitive programmers' secret).</b> Write a brute force you trust, a random generator of <b>tiny</b> inputs, and compare thousands of runs. Tiny inputs matter: when a mismatch appears it is small enough to trace by hand. In real interviews you cannot run code, but you can mentally "stress test" by trying size 0, 1, 2 and all-equal inputs.</p>
+      <p><b>Binary search on the bug.</b> For longer code, check the state halfway through (print or trace). If it is already wrong, the bug is in the first half; otherwise the second. Debugging is search too.</p>
+      <p><b>Production reality.</b> The same classes of bugs cause real outages: integer overflow (the Ariane 5 rocket, many YouTube-view-counter style counters), off-by-one in pagination, aliasing in caches returning mutable objects, and missing resets in pooled objects. Interview debugging habits are production habits.</p>`,
+    aiEra: `<p><b>What AI changes:</b> Paste a failing snippet into an assistant and it will often spot an off-by-one instantly. That is great for practice — and dangerous as a habit, because AI also "fixes" bugs by changing several lines at once, sometimes masking the real issue or breaking another case.</p>
+      <p><b>Good use:</b> <code>Here is my function and a failing input. Do not fix it. Ask me questions that lead me to the bug.</code> Or: <code>Write a stress-test harness comparing my solution to a brute force on random inputs of size ≤ 6.</code> Let the tool generate tests; you find the cause.</p>
+      <p><b>In AI-allowed interviews:</b> generated code will contain subtle bugs — wrong boundary, visited marked late, int overflow. Saying "I'll trace this on [1, 2] before trusting it" and finding the bug yourself is a top-tier signal.</p>
+      <p><b>What you must own:</b> the calm, systematic routine. Under pressure, the person who traces wins over the person who guesses — with or without AI.</p>`,
+    problems: [{
+      title: 'Debug It: Search Insert Position', level: 'Easy', tags: ['binary search', 'debugging', 'off-by-one'], companies: ['Amazon', 'Apple', 'Adobe'],
+      statement: `<p>A teammate wrote this to return the index where <code>target</code> is found in a sorted array of distinct integers, or where it would be inserted:</p><pre>int lo = 0, hi = nums.length - 1;
+while (lo &lt; hi) {
+    int mid = (lo + hi) / 2;
+    if (nums[mid] &lt; target) lo = mid;
+    else hi = mid;
+}
+return lo;</pre><p>It hangs on some inputs and returns wrong answers on others. Find every bug, explain each with a failing input, and write a correct O(log N) version.</p>`,
+      constraints: `1 ≤ N ≤ 10<sup>4</sup>, −10<sup>4</sup> ≤ nums[i], target ≤ 10<sup>4</sup>, nums sorted ascending, distinct`,
+      example: `<p>nums = [1,3,5,6]: target 5 → <b>2</b>; target 2 → <b>1</b>; target 7 → <b>${H.c('g', '4')}</b> (insert at the end — the buggy code can never return 4 because hi starts at 3).</p>`,
+      brute: { why: `<p>Linear scan for the first element ≥ target: O(N). Correct and a perfect oracle for testing, but it ignores the sorted order the problem gave us.</p>`, code: `int searchInsertBrute(int[] nums, int target) {
+    for (int i = 0; i < nums.length; i++)
+        if (nums[i] >= target) return i;   // first position that is not smaller
+    return nums.length;                     // larger than everything: insert at the end
+}` },
+      mcq: { q: 'With nums = [1, 3] and target 2, what happens in the buggy code?', options: ['lo=0, hi=1, mid=0, nums[0] &lt; 2 so lo = 0 again — infinite loop', 'It returns 1 correctly', 'It returns 0', 'It throws ArrayIndexOutOfBounds'], answer: 0, explain: 'lo = mid does not move when mid == lo, which happens whenever only two elements remain.' },
+      hints: [`<p>Hint 1: Trace [1,3] with target 2. Does the range [lo, hi] get smaller on every iteration?</p>`, `<p>Hint 2: If nums[mid] &lt; target, mid can never be the answer, so the next range should exclude it: lo = mid + 1.</p>`, `<p>Hint 3: The answer can be N (insert after everything), so the search range must be [0, N]: start hi = nums.length. Recipe: lo=0, hi=N; while lo&lt;hi: mid; if nums[mid] &lt; target: lo=mid+1 else hi=mid; return lo.</p>`],
+      solution: {
+        approach: `<p>Bug 1 (hang): <code>lo = mid</code> does not shrink the range when mid == lo. Bug 2 (wrong answer): <code>hi = n − 1</code> excludes the valid answer n. Minor: <code>(lo + hi) / 2</code> is fine here but <code>lo + (hi − lo) / 2</code> is the overflow-safe habit. Fixed version is the lower-bound template with invariant: everything before lo is &lt; target, everything from hi on is ≥ target.</p>`,
+        code: `class Solution {
+    public int searchInsert(int[] nums, int target) {
+        int lo = 0, hi = nums.length;           // answer lies in [0, n]
+        while (lo < hi) {                       // invariant: nums[..lo-1] < target <= nums[hi..]
+            int mid = lo + (hi - lo) / 2;       // overflow-safe
+            if (nums[mid] < target) lo = mid + 1; // mid is too small: exclude it
+            else hi = mid;                      // mid might be the answer: keep it
+        }
+        return lo;
+    }
+}`,
+        alt: [{ lang: 'python', code: `def search_insert(nums, target):
+    lo, hi = 0, len(nums)
+    while lo < hi:
+        mid = (lo + hi) // 2
+        if nums[mid] < target:
+            lo = mid + 1
+        else:
+            hi = mid
+    return lo
+
+print(search_insert([1, 3, 5, 6], 5), search_insert([1, 3, 5, 6], 2), search_insert([1, 3, 5, 6], 7))  # 2 1 4`, run: true }],
+        dry: { head: ['lo', 'hi', 'mid', 'nums[mid] vs 7', 'action'], rows: [['0', '4', '2', '5 &lt; 7', 'lo = 3'], ['3', '4', '3', '6 &lt; 7', 'lo = 4'], ['4', '4', '—', 'loop ends', H.c('g', 'return 4')]] },
+        complexity: `<p>Time O(log N), space O(1).</p>`,
+        followUps: ['Return the last index with nums[i] ≤ target (upper bound − 1).', 'Duplicates allowed: return the first occurrence of target or −1.', 'Write the invariant as a comment and prove termination.']
+      }
+    }]
+  });
+
+  // =====================================================================
+  // TOPIC 7 — Communicating trade-offs
+  // =====================================================================
+  topics.push({
+    title: 'Communicating Trade-offs Like a Senior Engineer',
+    analogy: `<p>Buying a phone: one has the best camera, another the longest battery, a third is the cheapest. A good salesperson does not say "this one is best". She asks how you use it, then says: "You travel a lot, so the battery matters more than the camera — take this one, and here is what you give up."</p>
+      <p>Interviewers want the same answer about algorithms: <b>options, costs, a choice tied to the constraints, and what you give up</b>. "It depends" alone is not an answer; "it depends on X, and since X is true here, I choose Y" is.</p>`,
+    explain: `<p>Almost every problem has more than one reasonable solution. Explaining the trade-off between them is often the difference between a "hire" and a "strong hire", especially at mid and senior levels.</p>
+      <h4>The trade-off axes you should know by name</h4>
+      ${H.table(['axis', 'option A', 'option B', 'example'], [
+        ['Time vs space', 'faster, more memory', 'slower, less memory', 'HashSet duplicate check O(N)/O(N) vs sort + scan O(N log N)/O(1)'],
+        ['Preprocess vs per-query', 'build once, answer fast', 'no build, slow answers', 'prefix sums vs re-summing each query'],
+        ['Read-heavy vs write-heavy', 'cheap reads, costly updates', 'cheap updates, costly reads', 'prefix sums (O(N) update) vs Fenwick (O(log N) both)'],
+        ['Average vs worst case', 'great on average', 'guaranteed bound', 'HashMap / quickselect vs TreeMap / heap'],
+        ['Simplicity vs optimality', 'short, obviously correct', 'faster, trickier', 'O(N<sup>2</sup>) DP at N = 2000 vs an O(N log N) trick'],
+        ['In-place vs copy', 'O(1) extra space', 'input left untouched', 'sorting the caller’s array vs sorting a copy'],
+        ['Recursion vs iteration', 'clear code', 'no stack overflow', 'DFS on a 10<sup>5</sup>-deep chain'],
+        ['Exact vs approximate', 'exact answer', 'tiny memory, small error', 'HashSet distinct count vs HyperLogLog'],
+        ['Online vs offline', 'answer as data arrives', 'see all data first', 'two-heap running median vs sort at the end']
+      ])}
+      <h4>A 4-sentence template</h4>
+      <ol>
+        <li><b>Options:</b> "I see two approaches: A, which is O(…) time / O(…) space, and B, which is O(…) / O(…)."</li>
+        <li><b>Deciding factor:</b> "The difference matters because N is up to 10<sup>5</sup> and there are 10<sup>5</sup> queries."</li>
+        <li><b>Choice:</b> "So I will go with B."</li>
+        <li><b>Cost acknowledged:</b> "The price is O(N) extra memory and a slightly longer build, which is fine here."</li>
+      </ol>
+      <h4>Same problem, three answers — Kth largest element</h4>
+      ${H.table(['approach', 'time', 'space', 'when to pick it'], [
+        ['Sort, take index n−k', 'O(N log N)', 'O(1)–O(N)', 'one-off, simplest code, N small'],
+        ['Min-heap of size k', 'O(N log k)', 'O(k)', 'k ≪ N, or data is a <b>stream</b>'],
+        ['Quickselect', 'O(N) average, O(N<sup>2</sup>) worst', 'O(1)', 'one-off, large N, can shuffle / pick random pivot'],
+        ['Counting (values in small range)', 'O(N + range)', 'O(range)', 'values bounded, e.g. 0..10<sup>4</sup>']
+      ])}
+      <p>A strong candidate names at least two rows, picks one using the constraints, and mentions the worst case of quickselect without being asked.</p>`,
+    clues: [
+      'Interviewer asks "<b>what if memory is limited?</b>" → switch to the space-lean option and state the time cost.',
+      '"<b>Many queries</b>" or "called millions of times" → move work to preprocessing.',
+      '"<b>Data arrives as a stream</b>" → online structures (heaps, windows, sketches); no sorting the whole input.',
+      '"<b>Updates</b> mixed with queries" → balanced structure (Fenwick, segment tree, TreeMap) over static prefix arrays.',
+      '"<b>Is there a simpler way?</b>" → they may prefer readable O(N log N) over a fragile O(N).',
+      'You hear "<b>worst case</b>" → hash maps and quickselect lose their guarantees; mention adversarial inputs.'
+    ],
+    code: { lang: 'python', run: true, title: 'Same answer, different costs: Kth largest three ways (runnable)', code: `import heapq, random
+
+def by_sort(a, k):            # O(N log N) time, simplest
+    return sorted(a)[-k]
+
+def by_heap(a, k):            # O(N log k) time, O(k) space, works on streams
+    h = []
+    for x in a:
+        heapq.heappush(h, x)
+        if len(h) > k:
+            heapq.heappop(h)   # drop the smallest; h keeps the k largest
+    return h[0]
+
+def by_quickselect(a, k):     # O(N) average, O(N^2) worst; random pivot avoids bad cases
+    a = a[:]                  # trade-off: copy to keep the caller's list untouched
+    target = len(a) - k
+    lo, hi = 0, len(a) - 1
+    rnd = random.Random(0)
+    while True:
+        p = rnd.randint(lo, hi)
+        a[p], a[hi] = a[hi], a[p]
+        store = lo
+        for i in range(lo, hi):            # Lomuto partition around a[hi]
+            if a[i] < a[hi]:
+                a[i], a[store] = a[store], a[i]
+                store += 1
+        a[store], a[hi] = a[hi], a[store]
+        if store == target:
+            return a[store]
+        if store < target:
+            lo = store + 1
+        else:
+            hi = store - 1
+
+data = [3, 2, 1, 5, 6, 4, 9, 7, 8]
+for k in (1, 2, 4):
+    print(k, by_sort(data, k), by_heap(data, k), by_quickselect(data, k))
+` },
+    viz: {
+      title: 'Range queries: the same problem, five designs, one decision',
+      input: 'N=100000 Q=100000 U=0',
+      inputLabel: 'N (array size), Q (sum queries), U (point updates)',
+      gen: function (input) {
+        var s = String(input === undefined ? '' : input);
+        function grab(k) { var m = s.match(new RegExp(k + '\\s*=\\s*(\\d+)', 'i')); return m ? Number(m[1]) : NaN; }
+        var N = grab('N'), Q = grab('Q'), U = grab('U');
+        if ([N, Q, U].some(function (x) { return !isFinite(x); })) throw new Error('Format: N=100000 Q=100000 U=0');
+        if (N < 1 || N > 1e7 || Q > 1e7 || U > 1e7) throw new Error('Keep N, Q, U at most 10000000');
+        var lg = Math.max(1, Math.ceil(Math.log2(N))), sq = Math.ceil(Math.sqrt(N));
+        var D = [
+          { name: 'Naive loop', build: 0, q: N / 2, u: 1, mem: N, note: 'no build; each query sums up to N values' },
+          { name: 'Prefix sums', build: N, q: 1, u: N, mem: 2 * N, note: 'O(1) query, but one update rewrites O(N) prefixes' },
+          { name: 'Sqrt blocks', build: N, q: 2 * sq, u: 1, mem: N + sq, note: 'O(√N) query, O(1) update, simple' },
+          { name: 'Fenwick tree', build: N, q: 2 * lg, u: lg, mem: 2 * N, note: 'O(log N) both, tiny code' },
+          { name: 'Segment tree', build: 2 * N, q: 4 * lg, u: 2 * lg, mem: 5 * N, note: 'O(log N) both; also min/max, lazy range updates' }
+        ];
+        var frames = [], tot = [], names = [], memv = [];
+        frames.push({ narr: 'Workload: array of <b>' + N.toLocaleString('en-US') + '</b>, <b>' + Q.toLocaleString('en-US') + '</b> range-sum queries and <b>' + U.toLocaleString('en-US') + '</b> point updates. We price each design as <i>build + Q·query + U·update</i>. Budget ≈ 10<sup>8</sup>.', parts: [
+          { type: 'vars', label: 'workload', vals: { N: N, Q: Q, U: U } },
+          txt('Why this matters', 'There is no single "best" structure. The <b>mix of reads and writes</b> decides.')
+        ] });
+        D.forEach(function (d, i) {
+          var total = d.build + Q * d.q + U * d.u;
+          var lgT = Math.round(Math.log10(Math.max(1, total)) * 10) / 10;
+          tot.push(lgT); names.push(d.name); memv.push(Math.round(d.mem / N * 10) / 10);
+          var hl = {}; tot.forEach(function (v, j) { hl[j] = v <= 8 ? 'ok' : 'bad'; }); hl[i] = 'cur';
+          frames.push({ narr: '<b>' + d.name + '</b>: ' + d.note + '. Total ≈ 10<sup>' + lgT + '</sup> steps → ' + (lgT <= 8 ? '<span class="c-g">within budget</span>' : '<span class="c-r">too slow</span>') + '. Memory ≈ ' + (d.mem / N).toFixed(1) + '×N.', parts: [
+            { type: 'bars', label: 'log10(total steps) — lower is better, 8 = budget', values: tot.slice(), idxLabels: names.slice(), hl: hl },
+            { type: 'bars', label: 'memory in multiples of N', values: memv.slice(), idxLabels: names.slice(), hl: one(i, 'cur') },
+            { type: 'vars', vals: { build: Math.round(d.build), 'per query': Math.round(d.q), 'per update': Math.round(d.u) } }
+          ] });
+        });
+        var fits = D.map(function (d, i) { return { d: d, t: tot[i], i: i }; }).filter(function (x) { return x.t <= 8; });
+        var pick = function (nm) { return fits.filter(function (x) { return x.d.name === nm; })[0]; };
+        var simplest = (U === 0 && pick('Prefix sums')) || pick('Fenwick tree') || fits[0] || null;
+        var finHl = {}; tot.forEach(function (v, j) { finHl[j] = v <= 8 ? 'ok' : 'done'; }); if (simplest) finHl[simplest.i] = 'sel';
+        frames.push({ narr: simplest ? 'Decision: <b>' + simplest.d.name + '</b>. Say it: "Several designs fit; I pick ' + simplest.d.name + ' because ' + (simplest.d.name === 'Prefix sums' ? 'there are no updates, so O(1) queries with the simplest code win' : simplest.d.name === 'Fenwick tree' ? 'updates are mixed with queries, and a Fenwick tree gives O(log N) for both with very little code' : 'it is the cheapest design that fits this workload') + '. The cost is ' + (simplest.d.mem / N).toFixed(0) + '×N memory."' : 'Nothing fits the budget — ask whether queries can be answered offline (sort them, Mo’s algorithm) or whether the limits are really that large.', parts: [
+          { type: 'bars', label: 'final comparison', values: tot.slice(), idxLabels: names.slice(), hl: finHl },
+          { type: 'table', label: 'trade-off summary', columns: ['design', 'query', 'update', 'fits?'], rows: D.map(function (d, j) { return [d.name, Math.round(d.q), Math.round(d.u), tot[j] <= 8 ? 'yes' : 'no']; }), hl: simplest ? one(simplest.i, 'sel') : {} }
+        ] });
+        frames.push({ narr: 'Try <code>U=100000</code> to watch prefix sums collapse, or <code>N=1000 Q=10 U=0</code> to see the naive loop become perfectly fine. The <b>workload</b>, not the fanciest structure, decides.', parts: [
+          txt('Takeaway', 'Name options → price them against the constraints → choose → state what you give up.')
+        ] });
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'Top K frequent: heap vs bucket sort', html: `<p><b>Heap:</b> count with a HashMap (O(N)), keep a min-heap of size k (O(U log k) for U unique values). <b>Bucket sort:</b> frequencies are between 1 and N, so put values into N+1 buckets by frequency and read from the top: O(N) total. Say: "Bucket sort is linear and I'd use it for a one-off batch. If the data were a stream or k were tiny, the heap uses only O(k) extra beyond the counts and supports updates."</p>` },
+      { title: 'Recursion vs iteration on a degenerate tree', html: `<p>A "tree" of 10<sup>5</sup> nodes that is really a linked list (every node has only a right child) makes recursive DFS 10<sup>5</sup> frames deep. Java's default thread stack often overflows around 10<sup>4</sup>–10<sup>5</sup> frames. Trade-off: recursion is clearer; an explicit stack is safe. In an interview: write recursion, then say "for very deep inputs I'd convert to an explicit stack" — and show you can.</p>`, code: `int maxDepthIterative(TreeNode root) {
+    if (root == null) return 0;
+    Deque<Object[]> st = new ArrayDeque<>();
+    st.push(new Object[]{root, 1});
+    int best = 0;
+    while (!st.isEmpty()) {
+        Object[] top = st.pop();
+        TreeNode node = (TreeNode) top[0];
+        int d = (Integer) top[1];
+        best = Math.max(best, d);
+        if (node.left != null) st.push(new Object[]{node.left, d + 1});
+        if (node.right != null) st.push(new Object[]{node.right, d + 1});
+    }
+    return best;
+}` },
+      { title: 'HashMap vs TreeMap', html: `${H.table(['need', 'HashMap', 'TreeMap'], [
+        ['get / put', 'O(1) average', 'O(log N) guaranteed'],
+        ['iterate in key order', H.c('r', 'no'), H.c('g', 'yes')],
+        ['"smallest key ≥ x" (ceiling), ranges', H.c('r', 'no'), H.c('g', 'yes: ceilingKey, subMap')],
+        ['adversarial keys', 'may degrade (Java treeifies buckets → O(log N))', 'unaffected']
+      ])}<p>Clue: the moment a question says "the next booking after time t" or "all keys in a range", switch to TreeMap (e.g. My Calendar, time-based key-value store).</p>` },
+      { title: 'In-place vs copy: "Remove duplicates from sorted array"', html: `<p>The in-place two-pointer version uses O(1) space but <b>destroys the caller's data</b>. In an interview, ask: "Am I allowed to modify the input?" If yes, in-place; if it's shared (e.g., used by another thread), copy first. Asking this question is itself a trade-off signal interviewers note.</p>` }
+    ],
+    deepDive: `<p><b>Big-O hides constants — say so when it matters.</b> A Fenwick tree and a segment tree are both O(log N), but Fenwick is ~3× faster and uses half the memory; a segment tree supports more operations (min, max, lazy range updates). Sorting an array of primitives (dual-pivot quicksort) beats a HashMap for dedup at moderate N because of cache locality, despite the extra log factor.</p>
+      <p><b>Amortised vs worst-case latency.</b> ArrayList append is O(1) amortised, but an individual append can cost O(N) when it resizes. For a latency-sensitive service that occasional spike matters; pre-size the list. Same for HashMap rehashing. Mentioning this distinction signals production experience.</p>
+      <p><b>Hash flooding.</b> Hash maps are O(1) only on average. An attacker who knows your hash function can force collisions. Java mitigates this by turning long bucket chains into red-black trees (O(log N)); Python randomises string hashes per process. In competitive programming, anti-hash tests target unordered_map in C++.</p>
+      <p><b>Space is also time.</b> Using 5×N memory can push data out of CPU caches and slow everything down. A smaller structure (bitset instead of boolean[], int[26] instead of HashMap) can be faster despite identical big-O.</p>
+      <p><b>Engineering trade-offs beyond Big-O:</b> readability and maintainability, testability, library availability (use <code>PriorityQueue</code>, do not hand-roll a heap in production), and failure modes (recursion depth, overflow). Senior answers mention at least one non-asymptotic factor.</p>`,
+    aiEra: `<p><b>What AI changes:</b> AI lists trade-offs fluently — sometimes too fluently, producing generic tables that do not reference <i>your</i> constraints. Interviewers can smell a memorised list. The value you add is <b>tying each trade-off to the numbers in this problem</b>.</p>
+      <p><b>Practise with:</b> <code>Give me two solutions to this problem with different trade-offs. Then argue for each one as if you were a different engineer. Then ask me which I would ship given N = 10^6 and 10^5 updates per second.</code></p>
+      <p><b>Where AI goes wrong:</b> claims like "quickselect is O(N)" without the average-case caveat, or "HashMap is always faster than TreeMap". Correcting those nuances is exactly the depth interviewers probe.</p>
+      <p><b>What you must own:</b> the decision. AI can enumerate options; the engineer chooses one, defends it with the constraints, and owns the downside. In system-level follow-ups ("what if this runs on 100 machines?") that judgement is the whole interview.</p>`,
+    problems: [{
+      title: 'Trade-off Design: Two Sum Data Structure', level: 'Easy', tags: ['design', 'hashing', 'trade-offs'], companies: ['LinkedIn', 'Meta'],
+      statement: `<p>Design a class with two operations: <code>add(number)</code> stores a number, and <code>find(value)</code> returns true if any <b>two stored numbers</b> (different entries, possibly equal values) sum to <code>value</code>.</p><p>There are two natural designs with opposite costs. Implement one and explain when you would pick the other.</p>`,
+      constraints: `−10<sup>5</sup> ≤ number ≤ 10<sup>5</sup>, −2<sup>31</sup> ≤ value ≤ 2<sup>31</sup> − 1, up to 10<sup>4</sup> calls total`,
+      example: `<p>add(1), add(3), add(5); find(4) → <b>${H.c('g', 'true')}</b> (1 + 3); find(7) → <b>${H.c('r', 'false')}</b>; add(3) then find(6) → <b>${H.c('g', 'true')}</b> (3 + 3 uses two different entries).</p>`,
+      brute: { why: `<p>Store numbers in a list; find checks every pair: O(1) add, O(N<sup>2</sup>) find. The waste: for each number we search linearly for its complement instead of looking it up.</p>`, code: `class TwoSumBrute {
+    private final List<Integer> nums = new ArrayList<>();
+    public void add(int number) { nums.add(number); }
+    public boolean find(int value) {
+        for (int i = 0; i < nums.size(); i++)
+            for (int j = i + 1; j < nums.size(); j++)
+                if ((long) nums.get(i) + nums.get(j) == value) return true;
+        return false;
+    }
+}` },
+      mcq: { q: 'The workload is 1 million find calls and only 100 add calls. Which design fits best?', options: ['Precompute all pair sums into a HashSet on add: add O(N), find O(1)', 'Count map: add O(1), find O(N)', 'Keep a sorted list and two-pointer on every find', 'Brute force pairs'], answer: 0, explain: 'Read-heavy workload → pay at write time. With only 100 adds, the set holds at most ~5000 sums and every find is O(1).' },
+      hints: [`<p>Hint 1: For find, you need "is value − x present?" for some stored x — a HashMap lookup.</p>`, `<p>Hint 2: Store counts, not just presence: value 6 with a single 3 stored must return false; with two 3s, true.</p>`, `<p>Hint 3: Opposite design: on add, insert number + every existing number into a "sums" set → O(N) add, O(1) find. Pick by read/write ratio.</p>`],
+      solution: {
+        approach: `<p><b>Write-cheap design (implemented):</b> HashMap value → count. add O(1); find iterates distinct keys, O(U). <b>Read-cheap design:</b> maintain a HashSet of all pairwise sums; add costs O(N) and memory O(N<sup>2</sup>), find is O(1). Choose by the ratio of adds to finds — and by memory: N<sup>2</sup> sums is 10<sup>8</sup> for N = 10<sup>4</sup>, which is too much.</p>`,
+        code: `class TwoSum {
+    private final Map<Integer, Integer> count = new HashMap<>();
+
+    public void add(int number) {
+        count.merge(number, 1, Integer::sum);         // O(1): write-cheap
+    }
+
+    public boolean find(int value) {
+        for (Map.Entry<Integer, Integer> e : count.entrySet()) {
+            long need = (long) value - e.getKey();    // long: value - key can overflow int
+            if (need < Integer.MIN_VALUE || need > Integer.MAX_VALUE) continue;
+            int other = (int) need;
+            if (other == e.getKey()) {
+                if (e.getValue() >= 2) return true;   // same value needs two entries
+            } else if (count.containsKey(other)) {
+                return true;
+            }
+        }
+        return false;
+    }
+}`,
+        dry: { head: ['call', 'count map', 'check', 'result'], rows: [['add 1, 3, 5', '{1:1, 3:1, 5:1}', '—', '—'], ['find(4)', 'same', 'key 1 → need 3, present', H.c('g', 'true')], ['find(7)', 'same', '1→6 no, 3→4 no, 5→2 no', H.c('r', 'false')], ['add 3; find(6)', '{1:1, 3:2, 5:1}', 'key 1 → need 5, present', H.c('g', 'true')]] },
+        complexity: `<p>add O(1), find O(U) with U distinct values, space O(U). Alternative: add O(N), find O(1), space O(N<sup>2</sup>).</p>`,
+        followUps: ['Support remove(number).', 'Thread-safe version: which operations need locking?', 'Values arrive as a stream and finds must be O(1) but memory is limited — what do you give up?']
+      }
+    }]
+  });
+
+  // =====================================================================
+  // TOPIC 8 — Common mistakes
+  // =====================================================================
+  function to32(x) { return x | 0; }
+
+  topics.push({
+    title: 'Common Mistakes (and the Habit That Prevents Each)',
+    analogy: `<p>Pilots do not crash because they forget how to fly. They crash from a short, well-known list of slips — wrong fuel setting, a skipped checklist item, a misread altimeter. Aviation got safe by <b>naming those slips and building a habit against each one</b>.</p>
+      <p>Interviews are the same. Strong candidates rarely fail because they do not know DSA. They fail from a handful of repeatable slips. Learn the list once, attach a habit to each, and most of your "bad luck" disappears.</p>`,
+    explain: `<p>Mistakes fall into four families. Each comes with a <b>preventive habit</b> — a tiny action you do every time.</p>
+      <h4>1. Process mistakes</h4>
+      ${H.table(['mistake', 'habit that prevents it'], [
+        ['Coding before agreeing on the approach', 'Say "Shall I code this?" and wait for a yes'],
+        ['Never stating complexity', 'End every approach with "That is O(…) time, O(…) space"'],
+        ['Going silent when stuck', 'Narrate what you are considering, even half-ideas'],
+        ['Over-engineering (segment tree for a prefix-sum problem)', 'Pick the simplest structure that meets the budget'],
+        ['Ignoring the interviewer’s hint', 'Repeat the hint back and act on it right away'],
+        ['Declaring "done" without testing', 'Always trace one normal + one edge case before saying done']
+      ])}
+      <h4>2. Pattern mistakes (right tool, wrong job)</h4>
+      ${H.table(['mistake', 'why it fails', 'counter-check'], [
+        ['Sliding window with negative numbers', 'shrinking may increase the sum', 'any negatives? → prefix sum + hash'],
+        ['Greedy without proof', 'local best ≠ global best (coins {1,3,4}, amount 6)', 'try to break it with a 3-element example'],
+        ['BFS on a weighted graph', 'fewest edges ≠ cheapest path', 'weights all equal? else Dijkstra / 0-1 BFS'],
+        ['Dijkstra with negative edges', 'a settled node can later get cheaper', 'negatives → Bellman-Ford'],
+        ['Binary search on a non-monotone check', 'the yes/no answer flips more than once', 'prove "if x works, x+1 works"'],
+        ['DP state missing a dimension', 'two different situations share one cell', 'does the future depend on anything not in the state?'],
+        ['Topological sort without cycle check', 'returns a partial order silently', 'output size &lt; V → cycle']
+      ])}
+      <h4>3. Code mistakes</h4>
+      ${H.table(['mistake', 'example', 'fix'], [
+        ['int overflow', '<code>int sum</code>, <code>a * b</code> with values to 10<sup>9</sup>', '<code>long</code>, cast before multiplying'],
+        ['Negative modulo in Java', '<code>-7 % 3 == -1</code>', '<code>((x % m) + m) % m</code>'],
+        ['Off-by-one', '<code>i &lt;= n</code>, missing last window', 'test sizes 0, 1, 2'],
+        ['Wrong initial value', '<code>max = 0</code> with all-negative input', 'start from the first element or MIN_VALUE'],
+        ['Modifying a collection while iterating', '<code>ConcurrentModificationException</code>', 'iterator.remove() or collect then remove'],
+        ['String concatenation in a loop', 'O(N<sup>2</sup>) copying', '<code>StringBuilder</code>'],
+        ['Shared mutable result', '<code>res.add(path)</code> in backtracking', '<code>res.add(new ArrayList&lt;&gt;(path))</code>'],
+        ['Deep recursion', 'StackOverflowError at depth ~10<sup>4</sup>–10<sup>5</sup>', 'iterative version / explicit stack']
+      ])}
+      <h4>4. Communication mistakes</h4>
+      <p>Arguing with a correct hint, bluffing about something you do not know ("I'm not sure, but my reasoning is…" is always better), and not asking any questions at the end. Interviewers forgive bugs much faster than they forgive defensiveness.</p>`,
+    clues: [
+      'You wrote a <b>greedy</b> → before coding, spend 60 seconds trying to break it with a tiny counterexample.',
+      'Values up to <b>10<sup>9</sup></b> being added or multiplied → overflow alarm; use <code>long</code>.',
+      'Statement mentions <b>negative numbers</b> → re-check every "max starts at 0", window and modulo assumption.',
+      'Your solution uses <b>recursion over N up to 10<sup>5</sup></b> → stack depth alarm.',
+      'You are about to say "<b>done</b>" → you have not traced an edge case yet.'
+    ],
+    code: [`
+// A gallery of classic slips and their fixes — each line compiles and shows the difference.
+class MistakeGallery {
+    public static void main(String[] args) {
+        // 1) Overflow in the midpoint
+        int lo = 2_000_000_000, hi = 2_100_000_000;
+        int badMid = (lo + hi) / 2;               // lo + hi overflows -> negative
+        int goodMid = lo + (hi - lo) / 2;         // never exceeds hi
+        System.out.println("bad mid = " + badMid + ", good mid = " + goodMid);
+
+        // 2) Negative modulo
+        int x = -7, m = 3;
+        System.out.println("-7 % 3 = " + (x % m) + ", fixed = " + (((x % m) + m) % m));
+
+        // 3) Product overflow: cast BEFORE multiplying
+        int a = 100_000, b = 100_000;
+        long wrong = a * b;                       // multiplied as int, then widened (already wrapped)
+        long right = (long) a * b;
+        System.out.println("wrong = " + wrong + ", right = " + right);
+
+        // 4) Greedy coin change fails for coins {1, 3, 4}, amount 6
+        int[] coins = {4, 3, 1};
+        int amount = 6, greedyCount = 0;
+        for (int c : coins) while (amount >= c) { amount -= c; greedyCount++; }
+        System.out.println("greedy uses " + greedyCount + " coins, but 3 + 3 uses 2");
+    }
+}`],
+    codeTitle: ['Mistake gallery (Java)'],
+    viz: {
+      title: 'Mistake replay: overflow, negative mod and a greedy that lies',
+      input: '2000000000 2100000000',
+      inputLabel: 'lo hi (two whole numbers up to 2147483647)',
+      gen: function (input) {
+        var v = parseNums(input, 2, 2, 0, 2147483647, 'lo and hi');
+        var lo = v[0], hi = v[1];
+        if (lo > hi) throw new Error('lo must be ≤ hi');
+        var frames = [];
+        frames.push({ narr: 'Mistake #1 — <b>overflow</b>. lo = ' + lo + ', hi = ' + hi + '. A Java <code>int</code> has 32 bits; the largest value is 2,147,483,647 (bit 31 is the sign bit).', parts: [
+          { type: 'bits', label: 'lo', value: lo, width: 32 }, { type: 'bits', label: 'hi', value: hi, width: 32 }
+        ] });
+        var sum = to32(lo + hi), over = lo + hi > 2147483647;
+        frames.push({ narr: '<code>lo + hi</code> = ' + (lo + hi) + (over ? ' — too big! The carry lands in the <b>sign bit</b>, so Java sees <span class="c-r">' + sum + '</span>.' : ' — fits this time, but only by luck of the input.'), parts: [
+          { type: 'bits', label: 'lo + hi as int', value: sum >>> 0, width: 32, hl: over ? { 31: 'bad' } : {} },
+          { type: 'vars', vals: { 'true sum': lo + hi, 'int sum': sum }, hl: { 'int sum': over ? 'bad' : 'ok' } }
+        ] });
+        var badMid = to32(sum / 2), goodMid = lo + Math.floor((hi - lo) / 2);
+        frames.push({ narr: '(lo + hi) / 2 = <b>' + badMid + '</b>' + (over ? ' → a negative index → ArrayIndexOutOfBounds, or a binary search that runs off into nonsense.' : '.') + ' The safe form <code>lo + (hi − lo) / 2</code> = <b>' + goodMid + '</b> never exceeds hi. Habit: always write it the safe way.', parts: [
+          { type: 'vars', vals: { 'bad mid': badMid, 'good mid': goodMid }, hl: { 'bad mid': over ? 'bad' : '', 'good mid': 'ok' } },
+          { type: 'code', lang: 'java', code: 'int mid = (lo + hi) / 2;        // can overflow\nint mid = lo + (hi - lo) / 2;  // safe', hl: { 1: over ? 'bad' : '', 2: 'ok' } }
+        ] });
+        frames.push({ narr: 'Mistake #2 — <b>negative modulo</b>. In Java (and C++), <code>-7 % 3</code> is <span class="c-r">−1</span>, not 2. If you use it as an array index or hash bucket, you crash. Fix: <code>((x % m) + m) % m</code> = 2.', parts: [
+          { type: 'table', label: 'x % 3 in Java vs math', columns: ['x', 'Java x % 3', 'fixed ((x%3)+3)%3'], rows: [[-7, -1, 2], [-6, 0, 0], [-5, -2, 1], [5, 2, 2]], hl: { 0: 'bad', 2: 'bad' } }
+        ] });
+        frames.push({ narr: 'Mistake #3 — <b>trusting greedy</b>. Coins {1, 3, 4}, amount 6. Greedy grabs the biggest coin first: 4, then 1, then 1 = <span class="c-r">3 coins</span>.', parts: [
+          { type: 'bars', label: 'greedy picks', values: [4, 1, 1], idxLabels: ['pick 1', 'pick 2', 'pick 3'], hl: { 0: 'cur', 1: 'bad', 2: 'bad' } }
+        ] });
+        frames.push({ narr: 'But 3 + 3 = 6 uses only <span class="c-g">2 coins</span>. Greedy is wrong here, so the problem needs <b>DP</b> (DSA 18). Habit: before coding a greedy, spend one minute hunting for a small counterexample like this.', parts: [
+          { type: 'bars', label: 'optimal picks', values: [3, 3], idxLabels: ['pick 1', 'pick 2'], hl: { 0: 'ok', 1: 'ok' } },
+          { type: 'array', label: 'dp[amount] = min coins (0..6)', values: [0, 1, 2, 1, 1, 2, 2], hl: { 6: 'sel' }, showIdx: true }
+        ] });
+        frames.push({ narr: 'Mistake #4 — <b>max starts at 0</b>. Maximum subarray of [−3, −1, −2] is −1, but <code>best = 0</code> returns 0 (an empty subarray nobody allowed). Habit: initialise from the first real element.', parts: [
+          { type: 'array', label: 'all negative input', values: [-3, -1, -2], hl: { 1: 'sel' } },
+          { type: 'vars', vals: { 'best = 0 gives': 0, 'best = a[0] gives': -1 }, hl: { 'best = 0 gives': 'bad', 'best = a[0] gives': 'ok' } }
+        ] });
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'Dijkstra with a negative edge', html: `<p>Edges: A→B 2, A→C 5, C→B −4. Dijkstra settles B at cost 2 first (cheapest in the heap), then finds A→C→B = 1 too late — B was already "final". Correct answer 1, textbook Dijkstra (with a settled set) says 2. Versions that allow re-insertion happen to fix this tiny case but can take exponential time on bigger ones. ${H.c('r', 'Either way, negative edges break the "settled = final" guarantee')}. Use Bellman-Ford (DSA 21), or Johnson’s reweighting for all-pairs.</p>` },
+      { title: 'Sliding window with negatives', html: `<p>"Shortest subarray with sum ≥ K", array [1, −5, 4, 4], K = 8. The window grows: running sums 1, −4, 0, 4 — never reaching 8, so it never shrinks and answers "none". But [4, 4] = 8 exists! The −5 inside the window drags the sum down, and a plain window has no rule for "drop the left part because it hurts". The correct tool is prefix sums + a monotonic deque (LeetCode 862). Clue: <b>negatives + "shortest/longest with sum"</b>.</p>` },
+      { title: 'String building in a loop', html: `<p><code>s = s + c</code> inside a loop copies the whole string each time: 1 + 2 + … + N = O(N<sup>2</sup>) characters copied. For N = 10<sup>5</sup> that is 5·10<sup>9</sup> — TLE disguised as an O(N) algorithm.</p>`, code: `StringBuilder sb = new StringBuilder();
+for (int i = 0; i < 5; i++) sb.append(i).append(',');  // amortised O(1) per append
+System.out.println(sb);  // 0,1,2,3,4,` },
+      { title: 'DP state missing a dimension: stock with cooldown', html: `<p>Defining <code>dp[i]</code> = best profit up to day i is not enough: whether you may buy on day i depends on whether you <b>hold a stock</b> and whether you <b>sold yesterday</b>. Two different situations share one cell → wrong answers. Fix: states hold / sold / rest (DSA 19). The check: "Does the future depend on anything not stored in my state?" If yes, add it.</p>` }
+    ],
+    deepDive: `<p><b>Why the same slips repeat.</b> Under stress the brain falls back on the most practised pattern ("windows solve subarray problems") and skips verification. The fix is not more knowledge but <b>cheap checks inserted at fixed points</b>: after choosing a pattern (counter-check table), after writing a loop (sizes 0/1/2), before saying done (edge case trace).</p>
+      <p><b>Proof sketches kill pattern mistakes.</b> Greedy needs an exchange argument ("any optimal solution can be changed to include my greedy choice without getting worse"). Binary search on the answer needs monotonicity. Dijkstra needs non-negative weights. DP needs a state that captures everything the future depends on (the Markov property). If you cannot sketch the proof in two sentences, test with a small counterexample.</p>
+      <p><b>Overflow arithmetic in detail.</b> Java ints wrap modulo 2<sup>32</sup> silently (no exception, unlike Rust in debug mode or Python's big ints). <code>Math.addExact</code> / <code>Math.multiplyExact</code> throw on overflow — useful while testing. When computing modular products, cast to long before multiplying: (10<sup>9</sup>+6)<sup>2</sup> ≈ 10<sup>18</sup> fits in a long (max ≈ 9.2·10<sup>18</sup>), but the sum of two such products does not.</p>
+      <p><b>Floating point.</b> Comparing doubles with == fails (0.1 + 0.2 ≠ 0.3). Use integer arithmetic where possible (compare a/b with c/d as a·d vs c·b in long), or an epsilon. Geometry problems (DSA 26) use integer cross products for exactly this reason.</p>
+      <p><b>Track your personal list.</b> Everyone has 3–5 favourite slips. Your error log (Topic 4) will reveal them within two weeks. Put them on a sticky note next to your screen in practice — and recite them silently before a real round.</p>`,
+    aiEra: `<p><b>What AI changes:</b> AI-generated code makes the <i>same</i> classic mistakes, just faster: <code>(lo + hi) / 2</code>, <code>best = 0</code>, greedy where DP is needed, BFS marking visited on dequeue. Reviewing AI output against this mistake list is one of the most practical skills of 2026.</p>
+      <p><b>Use AI deliberately:</b> <code>Write a solution to 'maximum product subarray' that contains one realistic bug from this list: overflow, wrong initial value, missed zero handling. Don't tell me which. I'll find it.</code> Bug-hunting drills train the exact eye interviewers test.</p>
+      <p><b>Where AI helps most:</b> generating adversarial tests ("all negatives", "max values", "single element", "cycle in the graph") for your code. Ask for edge cases, not solutions.</p>
+      <p><b>What you must own:</b> the reflexes — the overflow alarm when you see 10<sup>9</sup>, the counterexample hunt before a greedy, the edge-case trace before "done". AI does not have stakes in your interview; you do.</p>`,
+    problems: [{
+      title: 'Mistake Minefield: Maximum Product Subarray', level: 'Medium', tags: ['dp', 'kadane variant', 'edge cases'], companies: ['Amazon', 'LinkedIn', 'Google'],
+      statement: `<p>Given an integer array <code>nums</code>, return the largest product of a non-empty contiguous subarray. This problem is a minefield of the common mistakes: negatives flip signs, zeros reset everything, and "start at 0" is wrong.</p>`,
+      constraints: `1 ≤ N ≤ 2·10<sup>4</sup>, −10 ≤ nums[i] ≤ 10, the answer fits in a 32-bit integer`,
+      example: `${H.arr([2, 3, -2, 4], { hl: { 0: 'g', 1: 'g' } })}<p>Output <b>${H.c('g', '6')}</b> from [2, 3]. And [−2, 3, −4] → <b>24</b>: two negatives multiply to a positive, which a "max only" Kadane misses.</p>`,
+      brute: { why: `<p>Every start, extend to every end, track the product: O(N<sup>2</sup>) = 4·10<sup>8</sup> at the max size. The waste: we never reuse the best/worst product ending at the previous index.</p>`, code: `int bruteMaxProduct(int[] nums) {
+    int best = nums[0];                         // not 0: all-negative inputs exist
+    for (int i = 0; i < nums.length; i++) {
+        long prod = 1;
+        for (int j = i; j < nums.length; j++) {
+            prod *= nums[j];
+            best = (int) Math.max(best, prod);
+        }
+    }
+    return best;
+}` },
+      mcq: { q: 'Why do we track the MINIMUM product ending at each index too?', options: ['A very negative product times a negative number becomes the new maximum', 'To handle zeros only', 'To make the code shorter', 'Because the answer could be negative'], answer: 0, explain: 'min × (negative) can jump to the top. Tracking both lets a sign flip promote the old minimum to the new maximum.' },
+      hints: [`<p>Hint 1: Kadane tracks the best sum ending here. For products, a negative number swaps the roles of the best and worst.</p>`, `<p>Hint 2: Keep curMax and curMin ending at i. New values come from {x, curMax·x, curMin·x}.</p>`, `<p>Hint 3: Compute both new values from the OLD pair (use temporaries). Initialise everything with nums[0], not 0 or 1. Zero naturally resets because x itself is a candidate.</p>`],
+      solution: {
+        approach: `<p>Kadane variant (DSA 5 + DSA 19 state-machine flavour): two states per index — the largest and smallest product of a subarray ending here. A negative x swaps their roles; a zero resets both to 0, and the next element restarts fresh via the "x alone" candidate.</p>`,
+        code: `class Solution {
+    public int maxProduct(int[] nums) {
+        int curMax = nums[0], curMin = nums[0], best = nums[0]; // start from a real element
+        for (int i = 1; i < nums.length; i++) {
+            int x = nums[i];
+            int a = curMax * x, b = curMin * x;          // both from the OLD values
+            curMax = Math.max(x, Math.max(a, b));        // x alone = restart (handles zeros)
+            curMin = Math.min(x, Math.min(a, b));
+            best = Math.max(best, curMax);
+        }
+        return best;
+    }
+}`,
+        dry: { head: ['i', 'x', 'curMax', 'curMin', 'best'], rows: [['0', '−2', '−2', '−2', '−2'], ['1', '3', '3', '−6', '3'], ['2', '−4', H.c('g', '24'), '−12', H.c('g', '24')]] },
+        complexity: `<p>Time O(N), space O(1).</p>`,
+        followUps: ['Return the subarray boundaries as well.', 'What if values can be up to 10<sup>9</sup>? (Products overflow quickly — use logs or BigInteger and discuss.)', 'Prefix/suffix product trick: explain why the answer is the max over all prefix and suffix products split at zeros.']
+      }
+    }]
+  });
+
+  // =====================================================================
+  // TOPIC 9 — Final revision checklists
+  // =====================================================================
+  topics.push({
+    title: 'Final Revision Checklists & Your Last-Week Plan',
+    analogy: `<p>Before a long road trip you do not re-learn how to drive. You run a short checklist: tyres, fuel, documents, route. Ten minutes of checking prevents the breakdown that a year of driving skill cannot.</p>
+      <p>The last week before interviews is the same. You will not learn twenty new patterns. You will <b>refresh</b> the ones you have, plug the two or three weakest, and walk in with checklists so your preparation actually shows.</p>`,
+    explain: `<h4>Checklist 1 — The pattern sheet (one line each, can you produce the template from memory?)</h4>
+      ${H.table(['pattern', 'invariant to remember', 'signature problems'], [
+        ['Two pointers (opposite)', 'answer never lies outside [L, R]; move the side that cannot help', '3Sum, Container With Most Water'],
+        ['Sliding window', 'window always valid after the shrink loop', 'Longest Substring w/o Repeat, Min Window Substring'],
+        ['Prefix sum + hash', 'sum(i..j) = pf[j] − pf[i−1]; seed {0:1}', 'Subarray Sum = K, Contiguous Array'],
+        ['Binary search (index)', 'everything before lo fails, from hi on passes', 'Search Rotated Array, First/Last Position'],
+        ['Binary search (answer)', 'feasible(x) is monotone', 'Koko, Split Array Largest Sum, Ship Within D Days'],
+        ['Monotonic stack', 'stack stays sorted; pop = answer found for popped item', 'Daily Temperatures, Largest Rectangle'],
+        ['Monotonic deque', 'front = best in window; drop out-of-window and dominated', 'Sliding Window Maximum'],
+        ['Heap', 'size-k heap keeps the k best so far', 'Top K Frequent, Merge K Lists, Median Stream'],
+        ['Fast &amp; slow pointers', 'fast moves 2, slow 1; they meet in a cycle', 'Linked List Cycle II, Middle of List'],
+        ['Tree DFS', 'return info upward; combine children', 'Diameter, Max Path Sum, LCA'],
+        ['BFS (grid/graph)', 'first visit = shortest (unweighted); mark on enqueue', 'Rotting Oranges, Word Ladder'],
+        ['Topological sort', 'indegree 0 can go next; leftover = cycle', 'Course Schedule II, Alien Dictionary'],
+        ['Union-Find', 'find with path compression, union by rank', 'Redundant Connection, Accounts Merge'],
+        ['Dijkstra', 'pop smallest; skip stale entries', 'Network Delay, Path With Min Effort'],
+        ['Backtracking', 'choose → explore → unchoose', 'Subsets, Permutations, N-Queens'],
+        ['DP', 'state in one sentence; last-step transition', 'Coin Change, LIS, Edit Distance, Word Break'],
+        ['Greedy', 'exchange argument or a counterexample check', 'Jump Game, Non-overlapping Intervals'],
+        ['Trie', 'node per character; end-of-word flag', 'Implement Trie, Word Search II']
+      ])}
+      <h4>Checklist 2 — Before you say "done" (every problem)</h4>
+      <ol>
+        <li>Traced the sample through <b>the code</b> (not the idea).</li>
+        <li>Edge cases: empty / size 1 / all equal / negatives / max values / duplicates / disconnected graph / cycle.</li>
+        <li>Overflow: any sum or product that can exceed 2·10<sup>9</sup>? → <code>long</code>.</li>
+        <li>Loop bounds and pointer moves: does every loop make progress?</li>
+        <li>Stated time and space complexity, and why.</li>
+      </ol>
+      <h4>Checklist 3 — The timeline</h4>
+      ${H.table(['when', 'do', 'do not'], [
+        ['1 week before', '2 mixed timed sets per day; redo every error-log problem; 2 full mocks', 'start a brand-new advanced topic'],
+        ['2 days before', 'skim the pattern sheet; type 5 skeletons from memory; review your stories (behavioural)', 'grind 10 new Hards'],
+        ['Night before', 'light review only (30–45 min), prepare setup, sleep 7–8 hours', 'cram until 2 a.m.'],
+        ['1 hour before', 'one easy warm-up problem; water; test camera/mic/editor', 'look at problems you cannot solve'],
+        ['During', 'the 8-step loop; narrate; trace before "done"', 'go silent; argue with hints'],
+        ['After each round', 'write down the problem and what went well/badly', 'replay it all evening — next round matters more']
+      ])}`,
+    clues: [
+      'You can describe a pattern but <b>cannot type its skeleton in 2 minutes</b> → that pattern goes on today’s revision list.',
+      'Your error log shows the <b>same pattern twice</b> → it is your top-priority weak spot.',
+      'Interview in <b>≤ 7 days</b> → revision and mocks only, no new advanced topics.',
+      'You feel the urge to <b>cram late</b> the night before → sleep improves recall more than one more problem.',
+      'You solved a problem <b>only after reading the solution</b> → schedule a from-scratch redo in 2–3 days.'
+    ],
+    code: [`
+// Java toolkit check: you should be able to write every line below without looking anything up.
+class JavaToolkit {
+    void toolkit() {
+        Deque<Integer> stack = new ArrayDeque<>();            // stack AND queue (faster than Stack/LinkedList)
+        stack.push(1); stack.peek(); stack.pop();
+        Deque<Integer> queue = new ArrayDeque<>();
+        queue.offer(1); queue.peek(); queue.poll();
+
+        PriorityQueue<int[]> minByFirst = new PriorityQueue<>((a, b) -> Integer.compare(a[0], b[0]));
+        PriorityQueue<Integer> maxHeap = new PriorityQueue<>(Collections.reverseOrder());
+        minByFirst.offer(new int[]{3, 7}); maxHeap.offer(5);
+
+        Map<String, List<Integer>> groups = new HashMap<>();
+        groups.computeIfAbsent("a", k -> new ArrayList<>()).add(1);  // grouping idiom
+        Map<Integer, Integer> freq = new HashMap<>();
+        freq.merge(42, 1, Integer::sum);                              // counting idiom
+
+        TreeMap<Integer, String> tm = new TreeMap<>();
+        tm.put(10, "x"); tm.put(20, "y");
+        Integer ceil = tm.ceilingKey(15);                             // 20: smallest key >= 15
+        Integer floor = tm.floorKey(15);                              // 10: largest key <= 15
+
+        int[][] intervals = {{5, 6}, {1, 3}};
+        Arrays.sort(intervals, (a, b) -> Integer.compare(a[0], b[0])); // never a[0] - b[0]
+
+        int[][] grid = new int[3][4];
+        for (int[] row : grid) Arrays.fill(row, -1);                  // fill each row separately
+
+        StringBuilder sb = new StringBuilder("abc");
+        sb.reverse(); sb.append('d'); sb.setCharAt(0, 'z');
+
+        long big = (long) Integer.MAX_VALUE * 2;                      // cast before multiply
+        int mod = 1_000_000_007;
+        long m = ((-7 % 3) + 3) % 3;                                  // positive modulo
+        System.out.println(ceil + " " + floor + " " + sb + " " + big + " " + m + " " + mod);
+    }
+}`],
+    codeTitle: ['Java toolkit you must know cold'],
+    viz: {
+      title: 'Last-week revision planner: weakest patterns get the most (spaced) slots',
+      input: 'TwoPointers:4 Window:3 BinarySearch:2 Graphs:3 DP:1 Heap:4 Backtracking:2',
+      inputLabel: 'pattern:confidence pairs (confidence 1 = weak … 5 = strong)',
+      gen: function (input) {
+        var toks = String(input === undefined ? '' : input).trim().split(/\s+/).filter(function (x) { return x; });
+        if (toks.length < 2 || toks.length > 9) throw new Error('Give 2 to 9 pairs like DP:1 Graphs:3');
+        var P = toks.map(function (t) {
+          var q = t.split(':');
+          var c = Number(q[1]);
+          if (q.length !== 2 || !q[0] || !Number.isInteger(c) || c < 1 || c > 5) throw new Error('Each pair looks like Name:3 with confidence 1..5');
+          return { name: q[0].slice(0, 14), c: c };
+        });
+        var frames = [];
+        frames.push({ narr: 'Your self-rated confidence per pattern (from the error log and from "can I type the skeleton in 2 minutes?"). Taller = stronger.', parts: [
+          { type: 'bars', label: 'confidence (1–5)', values: P.map(function (p) { return p.c; }), idxLabels: P.map(function (p) { return p.name; }) }
+        ] });
+        var sorted = P.slice().sort(function (a, b) { return a.c - b.c; });
+        frames.push({ narr: 'Sort weakest first. Rule: weak patterns (1–2) get <b>3 sessions</b> spaced over the week, medium (3) get <b>2</b>, strong (4–5) get <b>1</b> quick refresh. Spacing beats cramming one topic for a whole day.', parts: [
+          { type: 'bars', label: 'sorted by confidence', values: sorted.map(function (p) { return p.c; }), idxLabels: sorted.map(function (p) { return p.name; }), hl: (function () { var h = {}; sorted.forEach(function (p, i) { h[i] = p.c <= 2 ? 'bad' : p.c === 3 ? 'cur' : 'ok'; }); return h; })() }
+        ] });
+        var days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+        var plan = days.map(function () { return []; });
+        var offsets = { 3: [0, 2, 5], 2: [1, 4], 1: [3] };
+        function width() { return Math.max(3, Math.max.apply(null, plan.map(function (d) { return d.length; }))); }
+        function planRows() { var W = width(); return plan.map(function (d, i) { var r = [days[i]]; for (var c = 0; c < W; c++) r.push(d[c] || ''); return r; }); }
+        function slotHead() { var h = ['day']; for (var c = 1; c <= width(); c++) h.push('slot ' + c); return h; }
+        sorted.forEach(function (p, idx) {
+          var k = p.c <= 2 ? 3 : p.c === 3 ? 2 : 1;
+          offsets[k].forEach(function (d) {
+            var day = (d + idx) % 6;                       // Sunday kept for a full mock
+            var guard = 0;
+            while (plan[day].length >= 3 && guard++ < 6) day = (day + 1) % 6;
+            plan[day].push(p.name);
+          });
+          var rows = planRows();
+          var hl = {};
+          rows.forEach(function (r, i) { for (var c = 1; c < r.length; c++) if (r[c] === p.name) hl[i + ',' + c] = 'cur'; });
+          frames.push({ narr: 'Schedule <b>' + p.name + '</b> (confidence ' + p.c + ') for ' + k + ' session' + (k > 1 ? 's' : '') + (k > 1 ? ', spread out so each review happens just as you start to forget' : '') + '.', parts: [
+            { type: 'grid', label: 'week plan (about 3 slots per day)', rows: rows, colHead: slotHead(), hl: hl }
+          ] });
+        });
+        var finalRows = planRows();
+        finalRows[6] = ['Sun', 'FULL MOCK', '45 min ×2', 'review log'];
+        while (finalRows[6].length < finalRows[0].length) finalRows[6].push('');
+        frames.push({ narr: 'Final plan. Each session = type the skeleton from memory + one <b>mixed</b> timed problem that uses it + one redo from the error log. Sunday is a full mock interview. Light review only on the last evening.', parts: [
+          { type: 'grid', label: 'week plan', rows: finalRows, colHead: slotHead(), hl: { '6,1': 'sel', '6,2': 'sel', '6,3': 'sel' } },
+          txt('Each session', '10 min skeleton from memory → 25 min mixed problem → 10 min redo + error log')
+        ] });
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'Pattern flash cards (front → back)', html: `${H.table(['front (clue)', 'back (technique + one-line invariant)'], [
+        ['"how many days until a warmer day"', 'monotonic decreasing stack of indices; pop when a warmer day arrives'],
+        ['"minimum capacity to finish within D days"', 'binary search on capacity; greedy day count is monotone'],
+        ['"return all combinations that sum to target"', 'backtracking: choose, recurse with remaining, unchoose'],
+        ['"cheapest flight with at most K stops"', 'Bellman-Ford for K+1 rounds on a copy of dist (or BFS by levels)'],
+        ['"merge k sorted lists"', 'min-heap of list heads; pop, push its next']
+      ])}<p>Make 30–50 of these from your error log. Review the deck daily in the last week; it takes 10 minutes.</p>` },
+      { title: 'Complexity cheat sheet for Java collections', html: `${H.table(['structure', 'add', 'remove', 'lookup', 'notes'], [
+        ['ArrayList', 'O(1) amortised (end)', 'O(N) (middle)', 'O(1) by index', 'contains is O(N)'],
+        ['ArrayDeque', 'O(1) both ends', 'O(1) both ends', '—', 'use for stacks and queues'],
+        ['HashMap / HashSet', 'O(1) avg', 'O(1) avg', 'O(1) avg', 'no order'],
+        ['TreeMap / TreeSet', 'O(log N)', 'O(log N)', 'O(log N)', 'floor/ceiling/range'],
+        ['PriorityQueue', 'O(log N)', 'O(log N) poll; O(N) remove(obj)', 'O(1) peek', 'not sorted when iterated'],
+        ['LinkedHashMap', 'O(1)', 'O(1)', 'O(1)', 'insertion/access order → LRU']
+      ])}` },
+      { title: 'The 20-minute night-before routine', html: `<ol><li>Read the pattern sheet once (5 min).</li><li>Type two skeletons from memory: sliding window + BFS (8 min).</li><li>Read your top 5 error-log lines (3 min).</li><li>Prepare: charger, water, quiet room, editor tested, ID/links ready (4 min).</li></ol><p>Then stop. Recall the next day is better after sleep than after an extra two hours of grinding.</p>` },
+      { title: 'A one-line answer to "tell me the complexity" for 10 classics', html: `${H.table(['algorithm', 'time', 'space'], [
+        ['binary search', 'O(log N)', 'O(1)'], ['merge sort', 'O(N log N)', 'O(N)'], ['heap build / k pops', 'O(N) / O(k log N)', 'O(N)'],
+        ['BFS / DFS', 'O(V + E)', 'O(V)'], ['Dijkstra (binary heap)', 'O((V + E) log V)', 'O(V + E)'], ['topological sort', 'O(V + E)', 'O(V)'],
+        ['union-find (both optimisations)', 'O(α(N)) per op ≈ O(1)', 'O(N)'], ['LCS / edit distance', 'O(N·M)', 'O(min(N, M)) rolling'],
+        ['subsets / permutations', 'O(2<sup>N</sup>·N) / O(N!·N)', 'O(N) + output'], ['segment tree query/update', 'O(log N)', 'O(N)']
+      ])}` }
+    ],
+    deepDive: `<p><b>Why checklists work for experts.</b> In medicine, the WHO Surgical Safety Checklist cut complications substantially — not because surgeons lacked skill, but because stress causes skipped steps. A coding interview is a stressful, time-boxed performance; checklists protect the skill you already built.</p>
+      <p><b>Retrieval over review.</b> Re-reading notes feels productive but creates an "illusion of fluency". Typing a skeleton from a blank file, or answering a flash card before flipping it, is <i>retrieval practice</i> and roughly doubles retention in many studies. Your last week should be ≥ 80% retrieval (solve, type, recall) and ≤ 20% reading.</p>
+      <p><b>Spacing math.</b> Memory decays roughly exponentially; each successful recall flattens the curve. Reviews at increasing gaps (1 day, 3 days, 7 days) give the most retention per minute — the logic behind Anki and the planner above.</p>
+      <p><b>Sleep and performance.</b> Sleep consolidates procedural memory (like typing templates) and protects working memory under stress. One night of short sleep measurably hurts problem solving — the exact skill being tested. Cramming late trades a lot of tomorrow’s performance for a little extra exposure.</p>
+      <p><b>Company calibration.</b> In the last week, skim recently reported question themes for your target company and level (forums, your recruiter's prep guide). Do not memorise problems — calibrate difficulty and pattern mix (e.g. heavier on graphs/design at some companies, on arrays/strings at others).</p>`,
+    aiEra: `<p><b>What AI changes:</b> AI can turn your error log into a personalised revision plan, flash-card deck and quiz in seconds. That removes the planning overhead that used to eat hours of the last week.</p>
+      <p><b>Prompts that work:</b> <code>Here is my error log (pasted). Build a 7-day plan using spaced repetition: weak patterns 3 times, medium twice, strong once; leave Sunday for a mock. Then generate 30 flash cards (clue → technique + invariant) from my mistakes only.</code></p>
+      <p><b>Quiz yourself with AI:</b> <code>Ask me one pattern-recognition question at a time. Wait for my answer. Tell me if I'm right and what the giveaway clue was.</code> This is retrieval practice on demand.</p>
+      <p><b>What you must still own:</b> the honest self-rating (AI cannot see that you peeked), the discipline to stop the night before, and the checklists in your head — on interview day there is no assistant to remind you to check for overflow.</p>`
+  });
 registerModule({ id: 'dsa28', title: 'Interview Mastery', intro: `<p>xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx</p>`, goals: ['aaaaaaaaaaaaa','bbbbbbbbbbbbbbbb','cccccccccccccccc'], prereqs: `ddddddddddddddddddddd`, hours: 10, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();

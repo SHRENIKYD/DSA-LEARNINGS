@@ -1723,4 +1723,182 @@ print(dnc([1, 3, 2, 4, 1, 5, 2], 3))       # 110`, run: true, title: 'Stress tes
       }
     }]
   });
+
+  // =====================================================================
+  // TOPIC 8 — SOS DP (Sum over Subsets) intro
+  // =====================================================================
+  topics.push({
+    title: 'SOS DP (Sum over Subsets): Aggregating Over All Submasks in O(n·2ⁿ)',
+    analogy: `<p>A pizza shop has 3 toppings: cheese, olive, mushroom. Each customer ordered some <b>combination</b>. Now the owner asks, for every combination: "how many customers would be <b>happy</b> with this pizza?" — a customer is happy if everything they asked for is on it (their order is a <b>subset</b> of the pizza).</p>
+      <p>Checking every pizza against every order is slow. Smarter: handle <b>one topping at a time</b>. First, let every pizza that has cheese also collect the counts of the same pizza <i>without</i> cheese. Then do the same for olive, then mushroom. After the three passes, each pizza has collected every order that fits inside it — exactly once. That's SOS DP: a prefix sum, but on the corners of a cube instead of along a line.</p>`,
+    explain: `<p><b>The task.</b> Given a value <code>A[mask]</code> for every mask of n bits, compute</p>
+      <p style="text-align:center"><code>F[mask] = Σ A[sub] over all sub ⊆ mask</code> (sub &amp; mask == sub)</p>
+      <ul>
+        <li>Naive: for each mask, for each other mask, test subset → <b>O(4<sup>n</sup>)</b>.</li>
+        <li>Submask enumeration (<code>sub = (sub − 1) &amp; mask</code>) → <b>O(3<sup>n</sup>)</b> (topic 1).</li>
+        <li><b>SOS DP</b> → <b>O(n · 2<sup>n</sup>)</b>. For n = 20: 2·10<sup>7</sup> vs 3.5·10<sup>9</sup> vs 10<sup>12</sup>.</li>
+      </ul>
+      <h4>The 3-line algorithm</h4>
+      <p>Start with <code>F = A</code>. For each bit i from 0 to n−1: for every mask that <b>has</b> bit i, do <code>F[mask] += F[mask ^ (1 &lt;&lt; i)]</code>.</p>
+      <p><b>Why it works:</b> after processing bits 0..i, <code>F[mask]</code> = sum of A[sub] for sub ⊆ mask that agree with mask on all bits <i>above</i> i. Processing bit i lets bit i be "either": if mask has it, add the version without it. After all bits, every bit is free → all submasks, each counted once (each submask is reached by exactly one sequence of "drop or keep" decisions).</p>
+      ${H.table(['mask', 'A', 'after bit 0', 'after bit 1', 'after bit 2 = F'], [
+        ['000', '1', '1', '1', '1'], ['001', '2', '3', '3', '3'], ['010', '3', '3', '4', '4'], ['011', '4', '7', '10', '10'],
+        ['100', '5', '5', '5', '6'], ['101', '6', '11', '11', '14'], ['110', '7', '7', '12', '16'], ['111', '8', '15', '<b>26</b>', '<b>36</b>']
+      ])}
+      <p>Check F[111] = 1+2+…+8 = 36 ✓ (every mask is a subset of 111). F[101] = A[000]+A[001]+A[100]+A[101] = 1+2+5+6 = 14 ✓.</p>
+      <h4>Three variants you'll use</h4>
+      <ul>
+        <li><b>Sum over supersets</b>: for masks <i>without</i> bit i, <code>F[mask] += F[mask | 1&lt;&lt;i]</code>. ("How many numbers contain all bits of mask?")</li>
+        <li><b>Inverse (Möbius)</b>: same loops with <code>−=</code> recovers A from F.</li>
+        <li><b>Any / max / min</b> instead of sum — e.g. "some element that is a submask of mask" (guided problem).</li>
+      </ul>`,
+    clues: [
+      'values up to 2<sup>20</sup> (≈10<sup>6</sup>) and a condition with <b>&amp; / |</b>: "a[i] &amp; a[j] == 0", "a[i] | a[j] == a[i]", "x is a submask of y"',
+      '"for every mask, count / sum / max over all its <b>submasks</b> (or supersets)"',
+      '"number of subsets whose AND is 0 / whose OR is X" → SOS + inclusion–exclusion',
+      'n ≤ 20 and an O(3<sup>n</sup>) submask loop is too slow (3<sup>20</sup> ≈ 3.5·10<sup>9</sup>) → SOS O(n·2<sup>n</sup>)',
+      '"for each element find another compatible element" with bitwise compatibility',
+      'OR-convolution / "count pairs with OR equal to each value" → zeta transform, multiply, Möbius'
+    ],
+    code: [`
+      // SOS DP: F[mask] = sum of A[sub] over all sub ⊆ mask. O(n * 2^n).
+      long[] sumOverSubsets(long[] A, int n) {
+          long[] F = A.clone();
+          for (int bit = 0; bit < n; bit++)
+              for (int mask = 0; mask < (1 << n); mask++)
+                  if ((mask & (1 << bit)) != 0)
+                      F[mask] += F[mask ^ (1 << bit)];   // bring in the version without this bit
+          return F;
+      }
+
+      // Sum over SUPERsets: G[mask] = sum of A[sup] over all sup ⊇ mask.
+      long[] sumOverSupersets(long[] A, int n) {
+          long[] G = A.clone();
+          for (int bit = 0; bit < n; bit++)
+              for (int mask = 0; mask < (1 << n); mask++)
+                  if ((mask & (1 << bit)) == 0)
+                      G[mask] += G[mask | (1 << bit)];
+          return G;
+      }
+
+      // Count ordered pairs (i, j) with a[i] & a[j] == 0, values < 2^n.
+      long countAndZeroPairs(int[] a, int n) {
+          long[] cnt = new long[1 << n];
+          for (int x : a) cnt[x]++;
+          long[] F = sumOverSubsets(cnt, n);          // F[m] = how many values are submasks of m
+          int full = (1 << n) - 1;
+          long pairs = 0;
+          for (int x : a) pairs += F[full ^ x];       // partners must avoid every bit of x
+          return pairs;
+      }`, { lang: 'python', code: `def sos(A, n):
+    F = A[:]
+    for bit in range(n):
+        for mask in range(1 << n):
+            if mask >> bit & 1:
+                F[mask] += F[mask ^ (1 << bit)]
+    return F
+
+def brute(A, n):
+    return [sum(A[s] for s in range(1 << n) if s & m == s) for m in range(1 << n)]
+
+A = [1, 2, 3, 4, 5, 6, 7, 8]
+print(sos(A, 3))                  # [1, 3, 4, 10, 6, 14, 16, 36]
+print(sos(A, 3) == brute(A, 3))   # True
+
+# Count ordered pairs with a & b == 0 (including i == j only if a[i] == 0)
+a = [1, 2, 4, 3, 0]
+n = 3
+cnt = [0] * (1 << n)
+for x in a: cnt[x] += 1
+F = sos(cnt, n)
+print(sum(F[((1 << n) - 1) ^ x] for x in a))   # 17`, run: true, title: 'SOS + brute-force check (Python, runnable)' }],
+    codeTitle: ['SOS over subsets / supersets + AND-zero pairs (Java)', 'SOS in Python with a brute-force check'],
+    viz: {
+      title: 'One bit at a time: F[mask] += F[mask without bit]',
+      input: '1 2 3 4 5 6 7 8',
+      inputLabel: 'A[0..7] for n = 3 bits (or 4 values for n = 2, 16 for n = 4)',
+      gen: function (input) {
+        var A = parseNums(input, 'A', 4, 16, -999, 999);
+        var n = A.length === 4 ? 2 : A.length === 8 ? 3 : A.length === 16 ? 4 : -1;
+        if (n < 0) throw new Error('Give exactly 4, 8 or 16 values (n = 2, 3 or 4 bits).');
+        var F = A.slice(), size = 1 << n, labels = [], frames = [];
+        for (var m = 0; m < size; m++) labels.push(bin(m, n));
+        frames.push({ narr: 'Start with F = A. Index labels are the masks in binary. Goal: F[mask] = sum of A over every submask. We will sweep bit 0, then bit 1, … — like doing a prefix sum along each of the n dimensions of a cube.', parts: [{ type: 'array', label: 'F (= A for now)', values: F.slice(), idxLabels: labels }] });
+        for (var bit = 0; bit < n; bit++) {
+          for (m = 0; m < size; m++) {
+            if (!(m >> bit & 1)) continue;
+            var src = m ^ (1 << bit), before = F[m];
+            F[m] += F[src];
+            var hl = {}; hl[m] = 'ok'; hl[src] = 'win';
+            frames.push({ narr: 'Bit ' + bit + ': mask <b>' + bin(m, n) + '</b> has bit ' + bit + ' set, so it adds F[' + bin(src, n) + '] = ' + F[src] + ' (the same mask with that bit removed): ' + before + ' + ' + F[src] + ' = <b>' + F[m] + '</b>.', parts: [{ type: 'bits', label: 'mask', value: m, width: n, hl: one(bit, 'cur') }, { type: 'array', label: 'F after processing bits 0..' + bit + ' (partially)', values: F.slice(), idxLabels: labels, hl: hl }] });
+          }
+          frames.push({ narr: 'Bit ' + bit + ' done. Now F[mask] sums A[sub] over submasks that may differ from mask only in bits 0..' + bit + '.', parts: [{ type: 'array', label: 'F after bit ' + bit, values: F.slice(), idxLabels: labels }] });
+        }
+        var check = 0, full = size - 1; for (m = 0; m < size; m++) check += A[m];
+        frames.push({ narr: '<b>Done.</b> F[' + bin(full, n) + '] = ' + F[full] + ' = sum of all A (' + check + ') ✓, since every mask is a submask of all-ones. Work: n · 2<sup>n</sup>/2 additions = ' + (n * size / 2) + ', versus 3<sup>n</sup> = ' + Math.pow(3, n) + ' pairs for submask enumeration.', parts: [{ type: 'array', label: 'F = sum over subsets', values: F.slice(), idxLabels: labels, hl: one(full, 'sel') }] });
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'Counting AND-zero pairs', html: `<p>a = [1, 2, 4, 3, 0] with 3 bits; cnt[v] = 1 for each of these values. A partner of x must be a submask of the complement 111 ^ x:</p>${H.table(['x', 'complement', 'array values inside it', 'partners'], [['1 (001)', '110', '2, 4, 0', '3'], ['2 (010)', '101', '1, 4, 0', '3'], ['4 (100)', '011', '1, 2, 3, 0', '4'], ['3 (011)', '100', '4, 0', '2'], ['0 (000)', '111', 'all five', '5']])}<p>Total ordered pairs = <b>17</b> (this counts (0, 0) as a valid self-pair; subtract self-pairs or halve for unordered pairs if the problem asks). One SOS pass gives every row in O(1).</p>` },
+      { title: 'Supersets: "how many numbers contain these bits?"', html: `<p>Query: how many array values have <i>all</i> bits of q set (q is a submask of the value)? Build cnt, run sum-over-supersets → G[q] answers each query in O(1). With values &lt; 2<sup>20</sup> and 10<sup>6</sup> queries: 2·10<sup>7</sup> preprocessing + 10<sup>6</sup> lookups.</p>` },
+      { title: 'Subsets with AND = 0 (inclusion–exclusion)', html: `<p>G[m] = how many values are supersets of m. Every non-empty subset chosen from those G[m] values has an AND that contains m: 2<sup>G[m]</sup> − 1 of them. Inclusion–exclusion over m: #(AND = 0) = Σ<sub>m</sub> (−1)<sup>popcount(m)</sup> (2<sup>G[m]</sup> − 1). This is practice problem "Jzzhu and Numbers".</p>` },
+      { title: 'OR convolution in one picture', html: `<p>Want C[k] = Σ<sub>i | j = k</sub> A[i]·B[j]? Apply SOS (zeta) to A and B, multiply pointwise, apply the inverse (Möbius, with −=). Pointwise products of subset-sums count pairs whose OR is a submask; Möbius peels it back to "exactly k". O(n·2<sup>n</sup>) instead of O(4<sup>n</sup>). (AND convolution uses supersets; XOR convolution needs the Walsh–Hadamard transform.)</p>` }
+    ],
+    deepDive: `<p><b>It's an n-dimensional prefix sum.</b> View a mask as a point in {0,1}<sup>n</sup>. "sub ⊆ mask" means "sub ≤ mask in every coordinate" — exactly the condition of an n-D prefix sum. A 2D prefix sum can be computed by summing along rows, then along columns; SOS does the same along each of the n axes, each axis having length 2.</p>
+      <p><b>Loop order.</b> The bit loop must be <b>outside</b>. Swapping the loops (mask outer, bit inner) double-counts. Within a bit, iteration order of masks doesn't matter, because <code>mask ^ bit</code> lacks the bit and is not modified in this pass.</p>
+      <p><b>Memory and speed.</b> 2<sup>20</sup> longs = 8 MB; 2<sup>22</sup> ints = 16 MB. The double loop is branchy; a faster form iterates blocks: <code>for (bit) for (base = 0; base &lt; size; base += 2*step) for (k = 0; k &lt; step; k++) F[base + step + k] += F[base + k];</code> — no branch, cache-friendly, vectorisable.</p>
+      <p><b>Overflow and mod.</b> Sums can reach N · (number of submasks); use long or mod arithmetic. For the inverse transform under a modulus, add MOD before taking %.</p>
+      <p><b>Subset-sum convolution</b> (Σ over disjoint i, j with i | j = k) adds a popcount dimension: "ranked zeta transform", O(n<sup>2</sup>·2<sup>n</sup>) — used for counting set partitions and in exact algorithms for graph colouring (Björklund–Husfeldt–Koivisto: chromatic number in O*(2<sup>n</sup>)). That's the expert horizon of this topic.</p>`,
+    aiEra: `<p><b>What AI changes:</b> SOS DP is short and well documented; an assistant will write it correctly most of the time. The interview signal is <b>reduction</b>: turning "a[i] &amp; a[j] == 0" into "a[j] is a submask of the complement of a[i]", or "AND of subset is 0" into inclusion–exclusion over supersets. Those translations are where candidates (and AIs) stumble.</p>
+      <p><b>Use AI as a partner:</b> ask for the O(4<sup>n</sup>) brute force for n ≤ 8 and a randomized equality test against your SOS — exactly the Python cell above. Ask it to explain "why the bit loop must be outermost" in two sentences and see if you agree.</p>
+      <p><b>Where AI goes wrong:</b> swapping loop order, confusing subsets with supersets, forgetting that i = j pairs are counted (ordered vs unordered pairs), sizing the array by max(a) instead of the next power of two, and int overflow in counts. Also, AIs sometimes claim O(2<sup>n</sup>) — it's O(n·2<sup>n</sup>). <b>You own:</b> the reduction to a sub/superset aggregate, the counting convention, and the complexity budget.</p>`,
+    problems: [{
+      title: 'Compatible Numbers (find any partner with AND = 0)',
+      level: 'Hard', tags: ['sos dp', 'bitmask', 'bit manipulation'], companies: ['Codeforces', 'Google', 'Tower Research'],
+      statement: `<p>Given an array <code>a</code>, for each <code>a[i]</code> output <b>any</b> element <code>a[j]</code> of the array such that <code>a[i] &amp; a[j] == 0</code>, or <code>−1</code> if none exists.</p>`,
+      constraints: `1 ≤ N ≤ 10<sup>6</sup>, 1 ≤ a[i] ≤ 4·10<sup>6</sup> (&lt; 2<sup>22</sup>)`,
+      example: `${H.arr([10, 6, 9, 8, 2], { label: 'a' })}<p>One valid output: <b>[−1, 9, 6, 6, 9]</b>. 10 = 1010 shares a bit with every other value (6 = 0110, 9 = 1001, 8 = 1000, 2 = 0010) → ${H.c('r', '−1')}. 6 &amp; 9 = 0110 &amp; 1001 = 0 ✓. 8 &amp; 6 = 0 ✓. 2 &amp; 9 = 0 ✓. Other valid partners are fine too (e.g. 8 for 6).</p>`,
+      brute: { why: `<p>Check every pair: N<sup>2</sup> = 10<sup>12</sup>. The waste: we don't need a specific j, only "does any value fit inside the complement of a[i]?" — a question about masks, which has only 2<sup>22</sup> possible answers.</p>`, code: `
+        int[] brutePartners(int[] a) {
+            int[] res = new int[a.length];
+            for (int i = 0; i < a.length; i++) {
+                res[i] = -1;
+                for (int j = 0; j < a.length; j++)
+                    if ((a[i] & a[j]) == 0) { res[i] = a[j]; break; }
+            }
+            return res;
+        }` },
+      mcq: { q: 'a[i] = 0101 (4 bits). A valid partner must be…', options: ['a submask of 1010', 'a superset of 1010', 'equal to 1010', 'any number with an even popcount'], answer: 0, explain: 'a[i] &amp; x == 0 means x has no bit where a[i] has one, i.e. all of x\'s bits lie inside ~a[i] = 1010. So x ⊆ 1010 — a submask query.' },
+      hints: [`<p><b>Aha:</b> a[i] &amp; x == 0 ⇔ x ⊆ complement(a[i]) = FULL ^ a[i]. So we need "any array value that is a submask of mask M" for M = FULL ^ a[i].</p>`, `<p>SOS with "any" instead of sum: any[v] = v for values in the array, −1 elsewhere; for each bit, for masks with the bit: if any[mask] == −1 take any[mask ^ bit].</p>`, `<p>Edge cases: duplicates are fine; a value can partner with itself only if it's 0 (not possible here since a[i] ≥ 1). Use FULL = 2<sup>22</sup> − 1; array of 4 M ints = 16 MB. Recipe: build any[], SOS pass over 22 bits, answer any[FULL ^ a[i]].</p>`],
+      solution: {
+        approach: `<p>Sum-over-subsets with an "any witness" aggregate. After the passes, any[M] is some array value that is a submask of M (or −1). Each query is one lookup.</p>`,
+        code: `
+          class Solution {
+              public int[] compatible(int[] a) {
+                  final int B = 22, FULL = (1 << B) - 1;
+                  int[] any = new int[1 << B];
+                  Arrays.fill(any, -1);
+                  for (int x : a) any[x] = x;                     // every value is a submask of itself
+                  for (int bit = 0; bit < B; bit++)
+                      for (int mask = 0; mask <= FULL; mask++)
+                          if ((mask & (1 << bit)) != 0 && any[mask] == -1)
+                              any[mask] = any[mask ^ (1 << bit)];   // inherit a witness without this bit
+                  int[] res = new int[a.length];
+                  for (int i = 0; i < a.length; i++) res[i] = any[FULL ^ a[i]];
+                  return res;
+              }
+          }`,
+        dry: { head: ['a[i]', 'binary', 'complement (4-bit view)', 'any[complement]', 'check'], rows: [
+          ['10', '1010', '0101', '−1 (submasks 0101, 0100, 0001, 0000 absent)', '<span class="c-r">−1</span>'],
+          ['6', '0110', '1001', '9 (9 itself is in the array)', '6 &amp; 9 = 0 ✓'],
+          ['9', '1001', '0110', '6', '9 &amp; 6 = 0 ✓'],
+          ['8', '1000', '0111', '6 (inherited from 0110 via bit 0)', '8 &amp; 6 = 0 ✓'],
+          ['2', '0010', '1101', '9 (inherited from 1001 via bit 2)', '2 &amp; 9 = 0 ✓']
+        ] },
+        complexity: `<p>Time O(B·2<sup>B</sup> + N) with B = 22 ≈ 9.2·10<sup>7</sup> simple steps. Space O(2<sup>B</sup>).</p>`,
+        followUps: ['Count, for each i, how many j are compatible (sum instead of any).', 'Find the pair with maximum a[i] + a[j] among compatible pairs (SOS with top-2 values).', 'Values up to 10<sup>18</sup>? SOS is impossible — switch to tries or randomized bit-sampling.']
+      }
+    }]
+  });
 registerModule({ id: 'dsa23', title: 'Advanced Dynamic Programming', intro: `<p>temp</p>`, goals: [], prereqs: `x`, hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();

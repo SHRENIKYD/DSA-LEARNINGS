@@ -1614,4 +1614,628 @@ for comp in tarjan(len(names), adj):
       }
     }]
   });
+
+  // =====================================================================
+  // TOPIC 6 — Max flow: Ford-Fulkerson & Edmonds-Karp (residual graph)
+  // =====================================================================
+  function flowViz(input, fixedMode) {
+    var sp = String(input === undefined || input === null ? '' : input).split('|'), mode = fixedMode || 'bfs', body = input;
+    if (sp.length === 2) { mode = sp[0].trim().toLowerCase(); body = sp[1]; }
+    if (mode !== 'bfs' && mode !== 'dfs') throw new Error('Mode must be "bfs" (Edmonds-Karp) or "dfs" (plain Ford-Fulkerson), e.g. "dfs | S>A:3 A>T:2"');
+    var P = parseFlow(body), N = buildNet(P.ids, P.edges), E = N.E, s = N.idx.S, t = N.idx.T;
+    var nodes = layered(P.ids, P.edges, 'S', 'T', 70), frames = [], total = 0, round = 0;
+    function G(hl, extra, label) {
+      var ehl = flowEhl(P.edges, E);
+      for (var k in extra) ehl[k] = extra[k];
+      return { type: 'graph', label: label, directed: true, height: 70, nodes: nodes, edges: flowEdges(P.edges, E), hl: hl || {}, ehl: ehl };
+    }
+    frames.push({ narr: '<b>' + (mode === 'bfs' ? 'Edmonds-Karp' : 'Ford-Fulkerson (DFS)') + '</b>. Every edge label is <b>flow/capacity</b>; all flows start at 0. We repeatedly find an <b>augmenting path</b> S → T in the residual graph, push its bottleneck, and stop when no path is left.', parts: [G({ S: 'sel', T: 'sel' }, {}, 'network (label = flow/capacity)'), { type: 'vars', label: 'state', vals: { 'total flow': 0, 'search': mode === 'bfs' ? 'BFS (shortest path)' : 'DFS (any path)' } }] });
+    function findPath() {
+      var via = P.ids.map(function () { return -1; }), seen = P.ids.map(function () { return false; });
+      seen[s] = true;
+      if (mode === 'bfs') {
+        var q = [s];
+        while (q.length && !seen[t]) {
+          var v = q.shift();
+          N.g[v].forEach(function (id) { var w = E[id].v; if (!seen[w] && resid(E, id) > 0) { seen[w] = true; via[w] = id; q.push(w); } });
+        }
+      } else {
+        (function dfs(v) {
+          if (v === t) return true;
+          for (var j = 0; j < N.g[v].length; j++) {
+            var id = N.g[v][j], w = E[id].v;
+            if (!seen[w] && resid(E, id) > 0) { seen[w] = true; via[w] = id; if (dfs(w)) return true; }
+          }
+          return false;
+        })(s);
+      }
+      if (!seen[t]) return { path: null, seen: seen };
+      var path = [];
+      for (var x = t; x !== s; x = E[via[x]].u) path.unshift(via[x]);
+      return { path: path, seen: seen };
+    }
+    var guard = 0;
+    while (guard++ < 40) {
+      var r = findPath();
+      if (!r.path) {
+        var hl = {};
+        P.ids.forEach(function (id, i) { hl[id] = r.seen[i] ? 'ok' : 'bad'; });
+        frames.push({ narr: 'No augmenting path is left: from S the residual graph only reaches the <span class="c-g">green</span> nodes, T is <span class="c-r">unreachable</span>. <b>Maximum flow = ' + total + '</b>. (The edges from green to red are all full — that is the minimum cut, next topics.)', parts: [G(hl, {}, 'final flow'), { type: 'vars', label: 'result', vals: { 'max flow': total, 'augmenting paths used': round } }] });
+        break;
+      }
+      round++;
+      var b = Infinity, ex = {}, rows = [], hlp = {}, usesBack = false;
+      r.path.forEach(function (id) {
+        var e = E[id], orig = P.edges[e.k], key = orig[0] + '-' + orig[1], back = (id & 1) === 1;
+        b = Math.min(b, resid(E, id));
+        ex[key] = back ? 'sel' : 'cur';
+        hlp[P.ids[e.u]] = 'cur'; hlp[P.ids[e.v]] = 'cur';
+        if (back) usesBack = true;
+        rows.push([P.ids[e.u] + '→' + P.ids[e.v], back ? 'undo ' + orig[0] + '→' + orig[1] : 'forward', String(resid(E, id))]);
+      });
+      hlp.S = 'sel'; hlp.T = 'sel';
+      var names = [P.ids[s]].concat(r.path.map(function (id) { return P.ids[E[id].v]; }));
+      frames.push({ narr: 'Path #' + round + ' (' + (mode === 'bfs' ? 'BFS: fewest edges' : 'DFS: first one found') + '): <b>' + names.join(' → ') + '</b>. The <b>bottleneck</b> (smallest residual on the path) is <b>' + b + '</b>.' + (usesBack ? ' <span class="c-p">Purple step = a reverse edge: we push flow "backwards", which cancels flow sent earlier and reroutes it.</span>' : ''), parts: [G(hlp, ex, 'augmenting path'), { type: 'table', label: 'residual capacities on the path', columns: ['step', 'kind', 'residual'], rows: rows }, { type: 'vars', vals: { bottleneck: b, 'total flow': total } }] });
+      r.path.forEach(function (id) { push(E, id, b); });
+      total += b;
+      frames.push({ narr: 'Push <b>' + b + '</b> along the path: forward edges gain ' + b + ' flow' + (usesBack ? ', the reverse step <b>removes</b> ' + b + ' from the edge it undoes' : '') + '. Total flow = <b>' + total + '</b>. Red edges are now full (saturated).', parts: [G(hlp, {}, 'after augmenting'), { type: 'vars', vals: { 'total flow': total } }] });
+    }
+    return frames;
+  }
+
+  topics.push({
+    title: 'Maximum Flow I: Residual Graphs, Ford-Fulkerson & Edmonds-Karp',
+    analogy: `<p>A city's water network: a <b>reservoir</b> (source S), a <b>town</b> (sink T), and pipes with different widths (capacities). How many litres per second can reach the town? Water may split at a junction and merge later, but every junction must pass on exactly what it receives — pipes do not leak or store water.</p>
+      <p>The algorithm is what a plumber would do: find any route with spare room, push as much as the <b>narrowest pipe</b> allows, repeat. The clever bit is an <b>"undo" valve</b>: if an earlier choice was bad, you are allowed to push water <i>backwards</i> through a pipe, which simply means "send less that way" and reroute it.</p>`,
+    explain: `<p><b>The vocabulary in one table:</b></p>
+      ${H.table(['word', 'plain meaning'], [
+        ['network', 'directed graph with a source <b>S</b>, a sink <b>T</b>, and a capacity c(u, v) ≥ 0 on each edge'],
+        ['flow f(u, v)', 'how much we send on the edge; <code>0 ≤ f ≤ c</code> (capacity rule)'],
+        ['conservation', 'for every node except S and T: total in = total out'],
+        ['value of the flow', 'total leaving S (= total arriving at T)'],
+        ['residual capacity', 'forward: <code>c − f</code> (room left); backward: <code>f</code> (how much we could undo)'],
+        ['augmenting path', 'an S → T path in the residual graph where every step has residual &gt; 0'],
+        ['bottleneck', 'the smallest residual on that path = how much we can push']
+      ])}
+      <p><b>Ford-Fulkerson method:</b> start with zero flow; while an augmenting path exists, push its bottleneck. That is it. When no path exists, the flow is maximum (proved in the Min-Cut topic).</p>
+      <p><b>Why reverse edges are essential — the classic trap:</b></p>
+      ${H.table(['step', 'path chosen', 'pushed', 'total'], [
+        ['1', 'S → A → B → T (unlucky: uses the middle edge)', '2', '2'],
+        ['2', 'S → A → T', '1', '3'],
+        ['3', 'S → B → ' + H.c('p', 'A (reverse of A→B)') + ' → T', '1', '4'],
+        ['4', 'S → B → T', '1', H.c('g', '5 = max')]
+      ])}
+      <p>Network: S→A:3, S→B:2, A→B:2, A→T:2, B→T:3. Without the reverse step 3, a greedy "never undo" approach gets stuck at 4. The reverse edge B→A says: "the 2 units that went A→B — let one of them go A→T instead, and B will fill its own pipe to T from S."</p>
+      <p><b>Ford-Fulkerson vs Edmonds-Karp:</b> Ford-Fulkerson does not say <i>how</i> to find the path. With DFS and integer capacities it runs in <b>O(E · F)</b> where F = max flow value — terrible when capacities are 10<sup>9</sup>. <b>Edmonds-Karp</b> = always take the <b>shortest</b> augmenting path (BFS). This gives <b>O(V · E²)</b> regardless of the capacities.</p>`,
+    clues: [
+      '"<b>Maximum</b> amount of water / data / traffic / goods from A to B" with <b>capacities</b> on edges → max flow.',
+      '"Maximum number of <b>edge-disjoint paths</b>" → max flow with every capacity = 1.',
+      '"Assign people to jobs / students to projects, each with a <b>limit</b>" → bipartite graph + super source and super sink, capacities = limits.',
+      '"Each node can be used at most k times" → <b>split the node</b> into in/out halves joined by an edge of capacity k.',
+      'Small V (≤ 500) and E (≤ 5000) in a "flow / assignment / routing" story → Edmonds-Karp is enough; bigger → Dinic.',
+      'You see the phrases "<b>residual</b>", "<b>augmenting path</b>", "bottleneck" in a hint → flow family.'
+    ],
+    code: [`
+      class EdmondsKarp {
+          private final int n;
+          private final List<List<Integer>> g = new ArrayList<>();   // g[v] = ids of edges leaving v
+          private final List<Integer> to = new ArrayList<>();
+          private final List<Long> cap = new ArrayList<>();          // RESIDUAL capacity of each edge
+
+          EdmondsKarp(int n) {
+              this.n = n;
+              for (int i = 0; i < n; i++) g.add(new ArrayList<>());
+          }
+
+          void addEdge(int u, int v, long c) {
+              g.get(u).add(to.size()); to.add(v); cap.add(c);    // forward edge: even id
+              g.get(v).add(to.size()); to.add(u); cap.add(0L);   // reverse edge: id ^ 1, starts at 0
+          }
+
+          long maxFlow(int s, int t) {
+              long flow = 0;
+              while (true) {
+                  int[] via = new int[n];                         // edge used to reach each node
+                  Arrays.fill(via, -1);
+                  boolean[] seen = new boolean[n];
+                  Deque<Integer> q = new ArrayDeque<>();
+                  q.add(s);
+                  seen[s] = true;
+                  while (!q.isEmpty() && !seen[t]) {              // BFS = shortest augmenting path
+                      int v = q.poll();
+                      for (int id : g.get(v)) {
+                          int w = to.get(id);
+                          if (!seen[w] && cap.get(id) > 0) { seen[w] = true; via[w] = id; q.add(w); }
+                      }
+                  }
+                  if (!seen[t]) return flow;                      // no path left: flow is maximum
+                  long push = Long.MAX_VALUE;                     // bottleneck along the path
+                  for (int v = t; v != s; v = to.get(via[v] ^ 1)) push = Math.min(push, cap.get(via[v]));
+                  for (int v = t; v != s; v = to.get(via[v] ^ 1)) {
+                      int id = via[v];
+                      cap.set(id, cap.get(id) - push);            // use forward room
+                      cap.set(id ^ 1, cap.get(id ^ 1) + push);    // create "undo" room
+                  }
+                  flow += push;
+              }
+          }
+      }`, `
+      class FordFulkersonMatrix {
+          // Plain Ford-Fulkerson with DFS on a capacity matrix: O(E * maxFlow). Small integer capacities only.
+          static int maxFlow(int[][] cap, int s, int t) {
+              int n = cap.length;
+              int[][] r = new int[n][];
+              for (int i = 0; i < n; i++) r[i] = cap[i].clone();   // residual = capacity at the start
+              int flow = 0;
+              while (true) {
+                  int pushed = dfs(r, s, t, Integer.MAX_VALUE, new boolean[n]);
+                  if (pushed == 0) return flow;
+                  flow += pushed;
+              }
+          }
+
+          static int dfs(int[][] r, int v, int t, int f, boolean[] seen) {
+              if (v == t) return f;
+              seen[v] = true;
+              for (int w = 0; w < r.length; w++) {
+                  if (!seen[w] && r[v][w] > 0) {
+                      int d = dfs(r, w, t, Math.min(f, r[v][w]), seen);
+                      if (d > 0) { r[v][w] -= d; r[w][v] += d; return d; }   // r[w][v] is the undo room
+                  }
+              }
+              return 0;
+          }
+      }`],
+    codeTitle: ['Edmonds-Karp (BFS augmenting paths) in Java', 'Ford-Fulkerson with DFS on a matrix (simplest, small inputs)'],
+    viz: {
+      title: 'Augmenting paths live: bottleneck, push, and the reverse-edge "undo"',
+      input: 'dfs | S>A:3 S>B:2 A>B:2 A>T:2 B>T:3',
+      inputLabel: 'mode (bfs = Edmonds-Karp, dfs = Ford-Fulkerson) | edges "u>v:capacity" with source S and sink T',
+      gen: function (input) { return flowViz(input); }
+    },
+    examples: [
+      { title: 'Single path: the narrowest pipe wins', html: `<p>S→A:5, A→B:2, B→T:9. Only one route; bottleneck = min(5, 2, 9) = <b>2</b>. Max flow 2. After pushing, A→B is saturated and no path remains.</p>${H.arr([5, 2, 9], { label: 'capacities on the only path', hl: { 1: 'r' } })}` },
+      { title: 'Why DFS Ford-Fulkerson can be painfully slow', html: `<p>S→A:10<sup>9</sup>, S→B:10<sup>9</sup>, A→T:10<sup>9</sup>, B→T:10<sup>9</sup>, A→B:1. An unlucky DFS alternates S→A→B→T and S→B→A→T (using the reverse of A→B), pushing just <b>1</b> unit each time → <b>2·10<sup>9</sup></b> iterations. BFS (Edmonds-Karp) finds the 2-edge paths S→A→T and S→B→T first and finishes in <b>2</b> iterations.</p>` },
+      { title: 'Flow decomposition', html: `<p>A final flow can always be split into at most E simple S→T paths (plus cycles that carry no value). For the viz default (max 5): 2 units on S→A→T, 2 units on S→B→T, 1 unit on S→A→B→T. That decomposition is how you turn a flow into concrete routes for trucks or packets.</p>` },
+      { title: 'Undirected edge with capacity c', html: `<p>Model it as <b>two</b> directed edges u→v and v→u, each with capacity c. Their reverse "undo" edges handle cancellation automatically. (Shortcut used in contests: add u→v with capacity c and set the paired reverse edge's capacity to c too, instead of 0.)</p>` }
+    ],
+    deepDive: `<p><b>Why Edmonds-Karp is O(V·E²).</b> Two facts. (1) With BFS augmentation, the shortest-path distance from S to every node in the residual graph <b>never decreases</b>. (2) Every augmentation saturates at least one <b>critical</b> edge (u, v) on the path; before (u, v) can be critical again, flow must go back along (v, u), which forces dist(u) to grow by at least 2. Distances are at most V, so each edge is critical O(V) times → O(V·E) augmentations, each a BFS of O(E) → <b>O(V·E²)</b>.</p>
+      <p><b>Integrality theorem:</b> if all capacities are integers, Ford-Fulkerson produces an integer max flow (every bottleneck is an integer). This is why flow solves <b>combinatorial</b> problems like matching: "1 unit of flow on an edge" can be read as "this pair is chosen".</p>
+      <p><b>Irrational capacities:</b> plain Ford-Fulkerson with a bad path choice may never terminate and may even converge to the wrong value (Zwick's example with the golden ratio). With BFS it always terminates — another reason to never use "any DFS" in production.</p>
+      <p><b>Implementation details that matter:</b> store edges in arrays with the reverse at <code>id ^ 1</code> (edges 0/1, 2/3, …), so pushing flow is two array writes. Use <code>long</code> when capacities × paths can exceed 2<sup>31</sup>. Parallel edges are fine (they just add capacity). In real systems, max flow appears in network bandwidth planning, airline crew and baseball elimination problems, image segmentation, and as a building block for min-cost flow (used in ride-hailing and logistics assignment).</p>`,
+    aiEra: `<p><b>What AI changes:</b> an AI writes Edmonds-Karp or calls <code>networkx.maximum_flow</code> / OR-Tools <code>SimpleMaxFlow</code> instantly. The scarce skill is the <b>modelling</b>: what are the nodes, what does one unit of flow mean, where do the capacities come from, and which constraints need node splitting or a super source.</p>
+      <p><b>Use AI as a partner:</b> describe the business problem in words and ask for 2–3 alternative flow models; then prove to yourself which one is correct by checking that every valid real-world plan maps to a flow and back. Ask it for adversarial tests like the 10<sup>9</sup>-capacity example to show why DFS is unsafe.</p>
+      <p><b>Where AI goes wrong:</b> forgetting reverse edges (code "works" on simple tests and fails on the diamond), using <code>int</code> for sums of 10<sup>9</sup> capacities, modelling an undirected edge as one directed edge, and confusing "max flow" with "widest path" (maximum bottleneck of a single path — a Dijkstra variant, not flow).</p>
+      <p><b>What you must still own:</b> the residual-graph idea, why the result is optimal (min-cut), and a correct model of the problem — a library cannot fix a wrong graph.</p>`,
+    problems: [{
+      title: 'Maximum Flow in a Network',
+      level: 'Medium', tags: ['max flow', 'edmonds-karp', 'bfs'], companies: ['Google', 'Amazon', 'Uber'],
+      statement: `<p>A directed network has <code>n</code> nodes (0 … n−1). <code>edges[i] = [u, v, c]</code> is a pipe from u to v with capacity c. Return the maximum flow from node <code>0</code> to node <code>n−1</code>.</p>`,
+      constraints: `<p>2 ≤ n ≤ 500, 1 ≤ E ≤ 5000, 1 ≤ c ≤ 10<sup>9</sup>. Parallel edges may appear.</p>`,
+      example: `<p>n = 4, edges <code>0→1:3, 0→2:2, 1→2:2, 1→3:2, 2→3:3</code> → <b>${H.c('g', '5')}</b>.</p><p>Why: everything leaving node 0 is 3 + 2 = 5 and we can route all of it: 2 via 0→2→3, 2 via 0→1→3, 1 via 0→1→2→3. No flow can exceed what leaves the source.</p>`,
+      brute: {
+        why: `<p>Plain Ford-Fulkerson with DFS is correct but may push 1 unit per iteration: <b>O(E · F)</b> with F up to ~5·10<sup>12</sup> — it can run forever in practice. The wasted work: long, zig-zagging paths with tiny bottlenecks.</p>`,
+        code: `class Brute {
+    long maxFlow(int n, int[][] edges) {
+        long[][] r = new long[n][n];
+        for (int[] e : edges) r[e[0]][e[1]] += e[2];          // parallel edges add up
+        long flow = 0, pushed;
+        while ((pushed = dfs(r, 0, n - 1, Long.MAX_VALUE, new boolean[n])) > 0) flow += pushed;
+        return flow;
+    }
+
+    long dfs(long[][] r, int v, int t, long f, boolean[] seen) {
+        if (v == t) return f;
+        seen[v] = true;
+        for (int w = 0; w < r.length; w++) {
+            if (!seen[w] && r[v][w] > 0) {
+                long d = dfs(r, w, t, Math.min(f, r[v][w]), seen);
+                if (d > 0) { r[v][w] -= d; r[w][v] += d; return d; }
+            }
+        }
+        return 0;
+    }
+}`
+      },
+      mcq: { q: 'You pushed 4 units on edge A→B (capacity 6). What are the residual capacities of A→B and B→A?', options: ['A→B: 2, B→A: 4', 'A→B: 4, B→A: 2', 'A→B: 2, B→A: 0', 'A→B: 6, B→A: 4'], answer: 0, explain: 'Forward room = 6 − 4 = 2. Backward residual = the flow we could undo = 4.' },
+      hints: [
+        `<p>Hint 1: Greedy "push along any path and never look back" can get stuck below the optimum. You need reverse (undo) edges with residual = current flow.</p>`,
+        `<p>Hint 2: Store each edge and its reverse as a pair (ids 2i and 2i+1) so <code>id ^ 1</code> finds the partner. Find paths with BFS (Edmonds-Karp) to bound the number of rounds.</p>`,
+        `<p>Hint 3: Recipe — loop: BFS from 0 over edges with residual &gt; 0, remembering the edge used to reach each node; if n−1 is unreached, stop; walk back from n−1 to find the bottleneck; subtract it on path edges and add it on their partners; add to the answer. Use long.</p>`
+      ],
+      solution: {
+        approach: `<p>Edmonds-Karp on an array-based edge list (forward-star): <code>head[v]</code> points to v's latest edge and <code>next[e]</code> to the one before. Arrays avoid boxing and are several times faster than lists of objects.</p>`,
+        code: `class Solution {
+    long maxFlow(int n, int[][] edges) {
+        int m = edges.length;
+        int[] to = new int[2 * m], next = new int[2 * m], head = new int[n];
+        long[] cap = new long[2 * m];
+        Arrays.fill(head, -1);
+        for (int i = 0; i < m; i++) {
+            int u = edges[i][0], v = edges[i][1];
+            to[2 * i] = v;     cap[2 * i] = edges[i][2]; next[2 * i] = head[u];     head[u] = 2 * i;
+            to[2 * i + 1] = u; cap[2 * i + 1] = 0;       next[2 * i + 1] = head[v]; head[v] = 2 * i + 1;
+        }
+        int s = 0, t = n - 1;
+        long flow = 0;
+        int[] via = new int[n], q = new int[n];
+        while (true) {
+            Arrays.fill(via, -1);
+            via[s] = -2;                                    // mark the source as visited
+            int qh = 0, qt = 0;
+            q[qt++] = s;
+            while (qh < qt && via[t] == -1) {               // BFS for the shortest augmenting path
+                int v = q[qh++];
+                for (int e = head[v]; e != -1; e = next[e]) {
+                    if (cap[e] > 0 && via[to[e]] == -1) { via[to[e]] = e; q[qt++] = to[e]; }
+                }
+            }
+            if (via[t] == -1) return flow;                  // sink unreachable: done
+            long push = Long.MAX_VALUE;
+            for (int v = t; v != s; v = to[via[v] ^ 1]) push = Math.min(push, cap[via[v]]);
+            for (int v = t; v != s; v = to[via[v] ^ 1]) { cap[via[v]] -= push; cap[via[v] ^ 1] += push; }
+            flow += push;
+        }
+    }
+}`,
+        dry: {
+          head: ['round', 'BFS path (head order = latest edge first)', 'bottleneck', 'total'],
+          rows: [
+            ['1', '0 → 2 → 3', 'min(2, 3) = 2', '2'],
+            ['2', '0 → 1 → 3', 'min(3, 2) = 2', '4'],
+            ['3', '0 → 1 → 2 → 3', 'min(1, 2, 1) = 1', '5'],
+            ['4', '0→1 and 0→2 both full → 3 unreachable', '—', H.c('g', '<b>5</b>')]
+          ]
+        },
+        complexity: `<p>Time <b>O(V · E²)</b> worst case (in practice far less), space <b>O(V + E)</b>.</p>`,
+        followUps: ['Return the flow on every original edge.', 'Several sources and sinks? (Add a super source and a super sink.)', 'Find the edges of a minimum cut.']
+      }
+    }]
+  });
+
+  // =====================================================================
+  // TOPIC 7 — Dinic's algorithm (level graph + blocking flow)
+  // =====================================================================
+  topics.push({
+    title: 'Maximum Flow II: Dinic\'s Algorithm (Level Graph + Blocking Flow)',
+    analogy: `<p>Evacuating a stadium. Edmonds-Karp sends <b>one group at a time</b> down the shortest corridor, then re-plans from scratch. Dinic is smarter: first a steward walks the building and paints each corridor with its <b>distance from the field</b> (level 1, 2, 3, …). Then crowds are only allowed to walk <b>forward one level at a time</b>, and many groups are sent in one go until every forward route is jammed.</p>
+      <p>Corridors that turned out to be dead ends get a "<b>closed</b>" sign so nobody wastes time there again. Only when all forward routes are full does the steward repaint the distances.</p>`,
+    explain: `<p>Dinic (1970) runs in <b>phases</b>. Each phase has two steps:</p>
+      <ol>
+        <li><b>BFS → level graph.</b> From S, compute <code>level[v]</code> = BFS distance in the residual graph. Keep only edges with residual &gt; 0 that go from level L to level <b>L + 1</b>. This "level graph" has no cycles and every S→T path in it is a <b>shortest</b> path.</li>
+        <li><b>DFS → blocking flow.</b> Push flow along S→T paths of the level graph again and again until <b>every</b> S→T path in it has a full edge ("blocked"). The trick that makes this fast is the <b>current-edge pointer</b> <code>it[v]</code>: once an edge out of v is useless (full, or leads to a dead end), v never looks at it again in this phase.</li>
+      </ol>
+      <p>Repeat phases until BFS cannot reach T. Each phase makes the S→T distance <b>strictly longer</b>, so there are at most <b>V − 1</b> phases.</p>
+      ${H.table(['algorithm', 'one round does', 'worst case', 'typical use'], [
+        ['Ford-Fulkerson (DFS)', 'one path, any length', 'O(E · F)', 'tiny capacities only'],
+        ['Edmonds-Karp', 'one shortest path', 'O(V · E²)', 'small graphs, easy to write'],
+        [H.c('g', 'Dinic'), 'a whole blocking flow on shortest paths', 'O(V² · E)', 'default choice in contests and interviews'],
+        ['Dinic, unit capacities', '—', 'O(E · √E)', 'edge-disjoint paths'],
+        ['Dinic, unit bipartite graph', '—', 'O(E · √V)', 'matching (= Hopcroft-Karp)']
+      ])}
+      <p><b>Mini example</b> (S→A:10, S→C:10, A→B:4, A→C:2, A→D:8, C→D:9, D→B:6, B→T:10, D→T:10). Phase 1 levels: S = 0; A, C = 1; B, D = 2; T = 3. Edges A→C and D→B stay inside one level / go sideways, so they are <b>not</b> in the level graph. The blocking flow sends S→A→B→T (4), S→A→D→T (6), S→C→D→T (4)… until the level graph is jammed; the next phase uses longer paths such as S→C→D→B→T.</p>`,
+    clues: [
+      'Max-flow with <code>V ≈ 10<sup>3</sup>–10<sup>4</sup></code>, <code>E ≈ 10<sup>4</sup>–10<sup>5</sup></code> → Dinic (Edmonds-Karp will likely TLE).',
+      '"<b>Edge-disjoint</b> / <b>vertex-disjoint</b> paths" (unit capacities) → Dinic runs in O(E√E).',
+      '"Maximum matching" on a big bipartite graph (10<sup>5</sup> edges) → Dinic on the unit network (same bound as Hopcroft-Karp).',
+      'Any flow model built by you (super source, node splitting, project selection) in a contest → write Dinic once and reuse it.',
+      'Hints mentioning "<b>level graph</b>", "<b>blocking flow</b>", or "<b>current arc</b>" → Dinic.'
+    ],
+    code: [`
+      class Dinic {
+          private final int n;
+          private final int[] head, level, it;
+          private final int[] next, to;      // forward-star edge storage; edge e's partner is e ^ 1
+          private final long[] cap;          // residual capacities
+          private int cnt = 0;
+
+          Dinic(int n, int maxEdges) {
+              this.n = n;
+              head = new int[n];
+              Arrays.fill(head, -1);
+              level = new int[n];
+              it = new int[n];
+              next = new int[2 * maxEdges];
+              to = new int[2 * maxEdges];
+              cap = new long[2 * maxEdges];
+          }
+
+          void addEdge(int u, int v, long c) {
+              to[cnt] = v; cap[cnt] = c; next[cnt] = head[u]; head[u] = cnt++;
+              to[cnt] = u; cap[cnt] = 0; next[cnt] = head[v]; head[v] = cnt++;
+          }
+
+          private boolean bfs(int s, int t) {                // build levels; true if t reachable
+              Arrays.fill(level, -1);
+              int[] q = new int[n];
+              int qh = 0, qt = 0;
+              level[s] = 0;
+              q[qt++] = s;
+              while (qh < qt) {
+                  int v = q[qh++];
+                  for (int e = head[v]; e != -1; e = next[e])
+                      if (cap[e] > 0 && level[to[e]] < 0) { level[to[e]] = level[v] + 1; q[qt++] = to[e]; }
+              }
+              return level[t] >= 0;
+          }
+
+          private long dfs(int v, int t, long f) {            // one augmenting path in the level graph
+              if (v == t) return f;
+              for (; it[v] != -1; it[v] = next[it[v]]) {      // it[v]: never retry a useless edge this phase
+                  int e = it[v], w = to[e];
+                  if (cap[e] > 0 && level[w] == level[v] + 1) {
+                      long d = dfs(w, t, Math.min(f, cap[e]));
+                      if (d > 0) { cap[e] -= d; cap[e ^ 1] += d; return d; }
+                  }
+              }
+              return 0;                                       // v is a dead end for this phase
+          }
+
+          long maxFlow(int s, int t) {
+              long flow = 0;
+              while (bfs(s, t)) {                             // at most V - 1 phases
+                  System.arraycopy(head, 0, it, 0, n);        // reset current-edge pointers
+                  long f;
+                  while ((f = dfs(s, t, Long.MAX_VALUE)) > 0) flow += f;   // blocking flow
+              }
+              return flow;
+          }
+      }`, {
+      lang: 'python', run: true, title: 'Dinic in Python on the CLRS network (answer 23) — runnable',
+      code: `from collections import deque
+
+
+class Dinic:
+    def __init__(self, n):
+        self.n = n
+        self.g = [[] for _ in range(n)]     # g[v] = ids of edges leaving v
+        self.to, self.cap = [], []
+
+    def add_edge(self, u, v, c):
+        self.g[u].append(len(self.to)); self.to.append(v); self.cap.append(c)
+        self.g[v].append(len(self.to)); self.to.append(u); self.cap.append(0)
+
+    def bfs(self, s, t):
+        self.level = [-1] * self.n
+        self.level[s] = 0
+        q = deque([s])
+        while q:
+            v = q.popleft()
+            for e in self.g[v]:
+                w = self.to[e]
+                if self.cap[e] > 0 and self.level[w] < 0:
+                    self.level[w] = self.level[v] + 1
+                    q.append(w)
+        return self.level[t] >= 0
+
+    def dfs(self, v, t, f):
+        if v == t:
+            return f
+        while self.it[v] < len(self.g[v]):
+            e = self.g[v][self.it[v]]
+            w = self.to[e]
+            if self.cap[e] > 0 and self.level[w] == self.level[v] + 1:
+                d = self.dfs(w, t, min(f, self.cap[e]))
+                if d > 0:
+                    self.cap[e] -= d
+                    self.cap[e ^ 1] += d
+                    return d
+            self.it[v] += 1                 # this edge is useless for the rest of the phase
+        return 0
+
+    def max_flow(self, s, t):
+        flow, phases = 0, 0
+        while self.bfs(s, t):
+            phases += 1
+            self.it = [0] * self.n
+            while True:
+                f = self.dfs(s, t, float("inf"))
+                if f == 0:
+                    break
+                flow += f
+        return flow, phases
+
+
+d = Dinic(6)    # s=0, v1=1, v2=2, v3=3, v4=4, t=5
+for u, v, c in [(0, 1, 16), (0, 2, 13), (1, 2, 10), (2, 1, 4), (1, 3, 12),
+                (3, 2, 9), (2, 4, 14), (4, 3, 7), (3, 5, 20), (4, 5, 4)]:
+    d.add_edge(u, v, c)
+flow, phases = d.max_flow(0, 5)
+print("max flow =", flow, "found in", phases, "phases")
+`
+    }],
+    codeTitle: ['Dinic in Java (forward-star arrays, current-edge pointers)', 'Dinic in Python'],
+    viz: {
+      title: 'Dinic live: BFS levels (tags), level-graph edges (blue), blocking flow, dead-end pruning',
+      input: 'S>A:10 S>C:10 A>B:4 A>C:2 A>D:8 C>D:9 D>B:6 B>T:10 D>T:10',
+      inputLabel: 'Edges "u>v:capacity" with source S and sink T (up to 9 nodes, 16 edges)',
+      gen: function (input) {
+        var P = parseFlow(input), N = buildNet(P.ids, P.edges), E = N.E, s = N.idx.S, t = N.idx.T;
+        var nodes = layered(P.ids, P.edges, 'S', 'T', 70), frames = [], total = 0, phase = 0, level = [];
+        function tagsNow() { var o = {}; P.ids.forEach(function (id, i) { o[id] = level[i] >= 0 ? 'L' + level[i] : 'L—'; }); return o; }
+        function G(hl, extra, label) {
+          var ehl = flowEhl(P.edges, E);
+          for (var k in extra) ehl[k] = extra[k];
+          return { type: 'graph', label: label, directed: true, height: 70, nodes: nodes, edges: flowEdges(P.edges, E), hl: hl || {}, ehl: ehl, tags: tagsNow() };
+        }
+        level = P.ids.map(function () { return -1; });
+        frames.push({ narr: '<b>Dinic</b>: labels are flow/capacity. Each phase = (1) BFS to give every node a <b>level</b>, (2) push a <b>blocking flow</b> using only edges that go exactly one level forward.', parts: [G({ S: 'sel', T: 'sel' }, {}, 'network'), { type: 'vars', vals: { phase: 0, 'total flow': 0 } }] });
+        while (phase < 10) {
+          level = P.ids.map(function () { return -1; });
+          level[s] = 0;
+          var q = [s];
+          while (q.length) { var v = q.shift(); N.g[v].forEach(function (id) { var w = E[id].v; if (resid(E, id) > 0 && level[w] < 0) { level[w] = level[v] + 1; q.push(w); } }); }
+          if (level[t] < 0) {
+            var fh = {};
+            P.ids.forEach(function (id, i) { fh[id] = level[i] >= 0 ? 'ok' : 'bad'; });
+            frames.push({ narr: 'BFS can no longer reach T (tag L— = unreachable). <b>Maximum flow = ' + total + '</b> after ' + phase + ' phase' + (phase === 1 ? '' : 's') + '. Green = still reachable from S, red = not: the full edges between them form a minimum cut.', parts: [G(fh, {}, 'final flow'), { type: 'vars', label: 'result', vals: { 'max flow': total, phases: phase } }] });
+            break;
+          }
+          phase++;
+          var lvlE = {};
+          P.edges.forEach(function (e, k) {
+            var a = N.idx[e[0]], b = N.idx[e[1]];
+            if (resid(E, 2 * k) > 0 && level[b] === level[a] + 1) lvlE[e[0] + '-' + e[1]] = 'win';
+            else if (resid(E, 2 * k + 1) > 0 && level[a] === level[b] + 1) lvlE[e[0] + '-' + e[1]] = 'sel';
+          });
+          frames.push({ narr: '<b>Phase ' + phase + ' — BFS levels</b> (tags L0, L1, …). The level graph keeps only edges with spare room going from level L to L + 1 (<span class="c-b">blue</span>)' + (Object.keys(lvlE).some(function (k) { return lvlE[k] === 'sel'; }) ? ', plus usable <b>reverse</b> edges (<span class="c-p">purple</span> = flow can be undone in that direction)' : '') + '. S→T distance is now <b>' + level[t] + '</b>.', parts: [G({ S: 'sel', T: 'sel' }, lvlE, 'level graph, phase ' + phase), { type: 'vars', vals: { phase: phase, 'dist(S,T)': level[t], 'total flow': total } }] });
+          var it = P.ids.map(function () { return 0; }), dead = {}, phaseFlow = 0, guard = 0;
+          while (guard++ < 30) {
+            var path = [];
+            var d = (function dfs(v, f) {
+              if (v === t) return f;
+              for (; it[v] < N.g[v].length; it[v]++) {
+                var id = N.g[v][it[v]], w = E[id].v;
+                if (resid(E, id) > 0 && level[w] === level[v] + 1) {
+                  var got = dfs(w, Math.min(f, resid(E, id)));
+                  if (got > 0) { path.unshift(id); return got; }
+                }
+              }
+              if (v !== s) dead[P.ids[v]] = true;
+              return 0;
+            })(s, Infinity);
+            var dh = {};
+            Object.keys(dead).forEach(function (k) { dh[k] = 'bad'; });
+            if (!d) {
+              frames.push({ narr: 'No more S→T paths inside this level graph — the flow is <b>blocking</b>. Phase ' + phase + ' added <b>' + phaseFlow + '</b>.' + (Object.keys(dead).length ? ' Dead ends found and skipped forever this phase: <b>' + Object.keys(dead).join(', ') + '</b> (red).' : '') + ' Rebuild levels.', parts: [G(dh, {}, 'blocked'), { type: 'vars', vals: { phase: phase, 'phase flow': phaseFlow, 'total flow': total } }] });
+              break;
+            }
+            var ex = {}, hl = {}, names = ['S'];
+            path.forEach(function (id) { var e = E[id], o = P.edges[e.k]; ex[o[0] + '-' + o[1]] = (id & 1) ? 'sel' : 'cur'; hl[P.ids[e.v]] = 'cur'; names.push(P.ids[e.v]); });
+            hl.S = 'cur';
+            Object.keys(dead).forEach(function (k) { hl[k] = 'bad'; });
+            path.forEach(function (id) { push(E, id, d); });
+            total += d; phaseFlow += d;
+            frames.push({ narr: 'DFS in the level graph: <b>' + names.join(' → ') + '</b>, bottleneck <b>' + d + '</b>. Pushed. ' + (Object.keys(dead).length ? 'Dead ends so far (never retried this phase): ' + Object.keys(dead).join(', ') + '. ' : '') + 'Total flow = <b>' + total + '</b>.', parts: [G(hl, ex, 'phase ' + phase + ': pushing'), { type: 'vars', vals: { phase: phase, pushed: d, 'phase flow': phaseFlow, 'total flow': total } }] });
+          }
+        }
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'Why the level graph forbids "sideways" edges', html: `<p>In phase 1 of the default network, A→C goes from level 1 to level 1. Using it would make a path longer than the shortest S→T distance (3). Dinic only augments along <b>shortest</b> paths in a phase, which is exactly what guarantees the distance grows after every phase.</p>${H.table(['edge', 'levels', 'in level graph?'], [['S→A', '0 → 1', H.c('g', 'yes')], ['A→C', '1 → 1', H.c('r', 'no')], ['D→B', '2 → 2', H.c('r', 'no')], ['B→T', '2 → 3', H.c('g', 'yes')]])}` },
+      { title: 'The current-edge pointer saves the day', html: `<p>Without <code>it[v]</code>, each DFS restarts scanning v's edges from the first one, re-checking full edges and dead ends: a phase can cost O(V·E²). With it, every edge is skipped at most once per phase, and each augmenting path costs O(V) extra → a phase is <b>O(V·E)</b>, total <b>O(V²·E)</b>.</p>` },
+      { title: 'Unit capacities: edge-disjoint paths', html: `<p>All capacities 1. Every augmenting path saturates all its edges, so blocking flows are found very quickly; after about √E phases the remaining flow is at most √E. Total <b>O(E·√E)</b>. For bipartite matching (unit network where every middle node has in-degree or out-degree 1) it becomes <b>O(E·√V)</b> — the same as Hopcroft-Karp.</p>` },
+      { title: 'Python check on the CLRS network', html: `<p>The runnable Python above prints <code>max flow = 23</code> for the textbook network (Cormen et al., Figure 26.1). The number of phases is small (a handful) even though Edmonds-Karp would need more separate BFS rounds — each Dinic phase pushes several paths.</p>` }
+    ],
+    deepDive: `<p><b>Proof that phases ≤ V − 1.</b> After a blocking flow, every shortest S→T path in the old level graph contains a saturated edge. New residual edges created by pushing go from level L+1 back to level L (reverse edges), which cannot create a path of the same length. So the new shortest distance is strictly larger. Distances are at most V − 1 → at most V − 1 phases.</p>
+      <p><b>Recursion depth:</b> the DFS goes at most level[t] ≤ V deep, so for V ≤ 10<sup>4</sup> recursion is fine in Java; for huge V write it iteratively or raise the thread stack.</p>
+      <p><b>Engineering tricks used in fast implementations:</b></p>
+      <ul>
+        <li><b>Multi-push DFS</b>: instead of returning after one path, let <code>dfs(v, f)</code> keep pushing through other edges until f is used up — fewer recursive calls.</li>
+        <li><b>Mark dead nodes</b>: if dfs(w) returns 0, set <code>level[w] = -1</code> so nobody enters w again this phase.</li>
+        <li><b>Capacity scaling</b>: run phases only on edges with residual ≥ Δ, halving Δ — O(V·E·log U) and great for wildly different capacities.</li>
+        <li><b>Push-relabel</b> (Goldberg–Tarjan, with gap and global-relabel heuristics) is often the fastest in practice for dense graphs; modern theory has almost-linear-time max flow (Chen, Kyng, Liu, Peng, Probst Gutenberg, Sachdeva, 2022), but contests and industry still mostly use Dinic or push-relabel.</li>
+      </ul>
+      <p><b>Real-world use:</b> OR-Tools, LEMON and Boost all ship push-relabel and related solvers; image-segmentation graph cuts use the Boykov–Kolmogorov algorithm, which is tuned for grid-like graphs.</p>`,
+    aiEra: `<p><b>What AI changes:</b> a Dinic template is easy to paste. Competitive programmers have done that for decades; AI just makes it universal. What still separates people is <b>modelling</b> (turning a story into a network) and <b>debugging</b> a wrong model.</p>
+      <p><b>Use AI as a partner:</b> keep one trusted Dinic and ask AI to build random networks plus a slow Edmonds-Karp to cross-check. Ask it "<i>Which edges of this flow model have capacity infinity and why?</i>" — making it explain your own model is a great sanity check.</p>
+      <p><b>Where AI goes wrong:</b> forgetting to reset <code>it[]</code> at the start of each phase, resetting it inside the inner loop (back to O(V·E²)), checking <code>level[w] &gt; level[v]</code> instead of <code>== level[v] + 1</code>, and using <code>Integer.MAX_VALUE</code> as "infinity" while summing capacities in <code>int</code> (overflow).</p>
+      <p><b>What you must still own:</b> knowing the complexity bounds well enough to choose Edmonds-Karp vs Dinic vs push-relabel from the constraints, and the unit-capacity special cases that make Dinic dramatically faster.</p>`,
+    problems: [{
+      title: 'Maximum Number of Edge-Disjoint Paths',
+      level: 'Medium', tags: ['max flow', 'dinic', 'menger'], companies: ['Google', 'Cisco', 'Juniper'],
+      statement: `<p>A directed graph has <code>n</code> nodes and a list of one-way roads. Return the maximum number of paths from <code>s</code> to <code>t</code> such that <b>no road is used by two paths</b> (paths may share nodes).</p>`,
+      constraints: `<p>2 ≤ n ≤ 10<sup>4</sup>, 1 ≤ E ≤ 10<sup>5</sup>, s ≠ t.</p>`,
+      example: `<p>n = 6, s = 0, t = 5, roads <code>0→1, 1→4, 1→2, 2→5, 0→3, 3→4, 4→5</code> → <b>${H.c('g', '2')}</b>: paths 0→1→2→5 and 0→3→4→5.</p><p>Why it is tricky: the "shortest-looking" path 0→1→4→5 blocks both of these, and after taking it greedily only <b>1</b> path remains possible.</p>`,
+      brute: {
+        why: `<p>The tempting brute: find a path, delete its roads, repeat. It is <b>wrong</b>, not just slow: on the example BFS finds 0→1→4→5 first and then nothing else, answering 1 instead of 2. Fixing it needs the ability to <b>undo</b> a road choice — which is exactly what reverse edges in a flow network give you.</p>`,
+        code: `class Brute {
+    // Tempting but WRONG: take a shortest path, delete its roads, repeat.
+    int edgeDisjointPaths(int n, int[][] edges, int s, int t) {
+        boolean[] removed = new boolean[edges.length];
+        int count = 0;
+        while (true) {
+            int[] via = new int[n];
+            Arrays.fill(via, -1);
+            boolean[] seen = new boolean[n];
+            Deque<Integer> q = new ArrayDeque<>();
+            q.add(s);
+            seen[s] = true;
+            while (!q.isEmpty()) {
+                int u = q.poll();
+                for (int i = 0; i < edges.length; i++)
+                    if (!removed[i] && edges[i][0] == u && !seen[edges[i][1]]) {
+                        seen[edges[i][1]] = true; via[edges[i][1]] = i; q.add(edges[i][1]);
+                    }
+            }
+            if (!seen[t]) return count;
+            for (int v = t; v != s; v = edges[via[v]][0]) removed[via[v]] = true;   // delete the path
+            count++;
+        }
+    }
+}`
+      },
+      mcq: { q: 'What capacity should each road get in the flow model?', options: ['1', 'infinity', 'its length', 'the number of nodes'], answer: 0, explain: 'Each road may be used by at most one path, so capacity 1. By integrality, a max flow of value k splits into k edge-disjoint paths (Menger\'s theorem).' },
+      hints: [
+        `<p>Hint 1: "Each road used at most once" = capacity 1 on every edge. The number of disjoint paths equals the max flow (Menger's theorem).</p>`,
+        `<p>Hint 2: Greedy path deletion fails; flow fixes it with reverse edges. With unit capacities Dinic needs only O(√E) phases.</p>`,
+        `<p>Hint 3: Recipe — build Dinic with cap 1 per road, run maxFlow(s, t). To list the paths, repeatedly walk from s along edges with flow 1, clearing them as you go.</p>`
+      ],
+      solution: {
+        approach: `<p>Unit-capacity network + Dinic. Adjacency lists keep edges in input order so the dry run matches. Phase 2 of the example shows the reverse edge 4→1 rerouting the first path.</p>`,
+        code: `class Solution {
+    private int[] to, cap, level, it;
+    private List<List<Integer>> g;
+
+    int edgeDisjointPaths(int n, int[][] edges, int s, int t) {
+        int m = edges.length;
+        to = new int[2 * m];
+        cap = new int[2 * m];
+        g = new ArrayList<>();
+        for (int i = 0; i < n; i++) g.add(new ArrayList<>());
+        for (int i = 0; i < m; i++) {
+            int u = edges[i][0], v = edges[i][1];
+            to[2 * i] = v;     cap[2 * i] = 1;     g.get(u).add(2 * i);       // each road usable once
+            to[2 * i + 1] = u; cap[2 * i + 1] = 0; g.get(v).add(2 * i + 1);   // undo edge
+        }
+        level = new int[n];
+        it = new int[n];
+        int paths = 0;
+        while (bfs(s, t, n)) {
+            Arrays.fill(it, 0);
+            int f;
+            while ((f = dfs(s, t, Integer.MAX_VALUE)) > 0) paths += f;
+        }
+        return paths;
+    }
+
+    private boolean bfs(int s, int t, int n) {
+        Arrays.fill(level, -1);
+        level[s] = 0;
+        Deque<Integer> q = new ArrayDeque<>();
+        q.add(s);
+        while (!q.isEmpty()) {
+            int v = q.poll();
+            for (int e : g.get(v)) if (cap[e] > 0 && level[to[e]] < 0) { level[to[e]] = level[v] + 1; q.add(to[e]); }
+        }
+        return level[t] >= 0;
+    }
+
+    private int dfs(int v, int t, int f) {
+        if (v == t) return f;
+        for (; it[v] < g.get(v).size(); it[v]++) {
+            int e = g.get(v).get(it[v]), w = to[e];
+            if (cap[e] > 0 && level[w] == level[v] + 1) {
+                int d = dfs(w, t, Math.min(f, cap[e]));
+                if (d > 0) { cap[e] -= d; cap[e ^ 1] += d; return d; }
+            }
+        }
+        return 0;
+    }
+}`,
+        dry: {
+          head: ['phase', 'levels', 'DFS result', 'paths'],
+          rows: [
+            ['1', '0:L0 · 1,3:L1 · 4,2:L2 · 5:L3', '0→1→4→5 (push 1)', '1'],
+            ['1', 'same', '0→3→4: road 4→5 full, 4 is a dead end → blocked', '1'],
+            ['2', '0:L0 · 3:L1 · 4:L2 · 1:L3 (via reverse 4→1) · 2:L4 · 5:L5', '0→3→4→' + H.c('p', '1') + '→2→5 (undoes 1→4)', '2'],
+            ['3', 'both roads out of 0 are full → 5 unreachable', 'stop', H.c('g', '<b>2</b>')]
+          ]
+        },
+        complexity: `<p>Unit capacities: <b>O(E·√E)</b> time, <b>O(V + E)</b> space.</p>`,
+        followUps: ['Vertex-disjoint paths instead (hint: split each node v into v_in → v_out with capacity 1).', 'Undirected roads.', 'Print the actual paths.']
+      }
+    }]
+  });
 registerModule({ id: 'dsa22', title: 'Advanced Graph Algorithms', intro: '<p>x</p>', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();
