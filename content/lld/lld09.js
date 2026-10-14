@@ -1727,6 +1727,518 @@ class ExactChange {
     }]
   });
 
+  /* ======================= TOPIC 5: ATM ======================= */
+  var ATM_NODES = [B('IDLE', 'IDLE', 12, 32), B('CARD_INSERTED', 'CARD_INSERTED', 42, 9), B('AUTHENTICATED', 'AUTHENTICATED', 82, 9), B('IN_TRANSACTION', 'IN_TRANSACTION', 82, 52), B('CARD_RETAINED', 'CARD_RETAINED', 46, 52), B('OUT_OF_SERVICE', 'OUT_OF_SERVICE', 14, 60)];
+  var ATM_EDGES = [['IDLE', 'CARD_INSERTED', 'insert card'], ['CARD_INSERTED', 'AUTHENTICATED', 'PIN ok'], ['CARD_INSERTED', 'CARD_RETAINED', '3rd wrong PIN'], ['CARD_RETAINED', 'IDLE', 'card kept'], ['AUTHENTICATED', 'IN_TRANSACTION', 'withdraw / deposit / balance'], ['IN_TRANSACTION', 'AUTHENTICATED', 'done'], ['AUTHENTICATED', 'IDLE', 'eject'], ['CARD_INSERTED', 'IDLE', 'cancel'], ['IDLE', 'OUT_OF_SERVICE', 'no cash'], ['OUT_OF_SERVICE', 'IDLE', 'refilled']];
+  var ATM_NOTES = [2000, 500, 200, 100];
+  // chain of note handlers with backtracking; returns {note: count} or null
+  function atmPlan(amount, cas) {
+    function go(i, rest) {
+      if (rest === 0) return {};
+      if (i === ATM_NOTES.length) return null;
+      var n = ATM_NOTES[i];
+      for (var use = Math.min(cas[n], Math.floor(rest / n)); use >= 0; use--) {
+        var r = go(i + 1, rest - use * n);
+        if (r) { if (use) r[n] = use; return r; }
+      }
+      return null;
+    }
+    return go(0, amount);
+  }
+  function planTxt(p) { return ATM_NOTES.filter(function (n) { return p[n]; }).map(function (n) { return '₹' + n + '×' + p[n]; }).join(' + '); }
+  function casEntries(cas) { return ATM_NOTES.map(function (n) { return ['₹' + n, cas[n]]; }); }
+
+  topics.push({
+    title: 'ATM: Card and PIN States, Transaction Flows, Cash Dispensing and Rollback',
+    analogy: `<p>An ATM is a <b>bank teller locked in a steel box</b> who follows a strict script. First he wants your card (who are you?). Then your PIN (prove it). Only then does he show the menu. When you ask for cash he checks his own drawer, phones the head office to approve and <b>hold</b> the money, counts out notes, and if the drawer jams he <b>phones back to cancel the hold</b> so you are never charged for cash you did not get. Get the PIN wrong three times and he keeps your card. Each step only makes sense after the previous one — a perfect state machine, plus a careful money conversation with the bank.</p>`,
+    explain: `<p><b>Requirements to clarify:</b> card + PIN authentication (max 3 attempts, then retain card), withdraw (multiples of ₹100, daily limit, enough balance, ATM must have the right notes), balance enquiry, deposit, receipt, cancel at any time, out-of-service when cash is low. The ATM <b>never</b> stores balances or PINs — the bank does.</p>
+${H.table(['Class', 'Responsibility'], [
+  ['<code>Atm</code> (context)', 'events: <code>insertCard</code>, <code>enterPin</code>, <code>withdraw</code>, <code>deposit</code>, <code>balance</code>, <code>eject</code>; holds state, current card, PIN attempts'],
+  ['<code>AtmState</code> + states', 'IDLE, CARD_INSERTED, AUTHENTICATED, IN_TRANSACTION, CARD_RETAINED (transient), OUT_OF_SERVICE'],
+  ['<code>Transaction</code> (Command)', '<code>WithdrawTxn</code>, <code>DepositTxn</code>, <code>BalanceTxn</code> — each one object with <code>run(atm)</code>, logged with an id'],
+  ['<code>BankService</code> (interface)', '<code>verifyPin</code>, <code>debit(acct, amt, txnId)</code>, <code>reverse(txnId)</code>, <code>credit</code> — idempotent by txnId'],
+  ['<code>CashDispenser</code> + <code>NoteHandler</code> chain', '₹2000 → ₹500 → ₹200 → ₹100 (Chain of Responsibility); plan first, then dispense'],
+  ['<code>CardReader</code>, <code>Keypad</code>, <code>Screen</code>, <code>Printer</code>', 'hardware adapters behind interfaces (easy to fake in tests)']
+])}
+<p><b>Withdrawal flow — the order matters:</b></p>
+<ol>
+<li><b>Validate locally</b>: amount &gt; 0 and a multiple of 100.</li>
+<li><b>Plan notes</b>: can the dispenser make this amount with the notes it has? If not, stop now — nothing has been charged.</li>
+<li><b>Debit at the bank with a unique txnId</b>: bank checks balance and daily limit, then debits (or places a hold).</li>
+<li><b>Dispense</b> the planned notes.</li>
+<li>Success → <b>confirm</b> + receipt. Jam / timeout → <b>reverse(txnId)</b> so the customer is not charged.</li>
+</ol>
+<p>${H.c('r', 'Wrong order = lost money:')} dispensing before the bank approves gives away free cash on a network failure; debiting before checking notes charges people for cash the machine cannot give. Because messages can be lost, every bank call carries a <b>txnId</b> and the bank treats repeats as no-ops (<b>idempotency</b>).</p>
+<p><b>Brute force:</b> <code>if (!cardInserted) … else if (!pinOk) … else if (choice == 1) …</code> in one giant <code>handleKey()</code> — the classic student ATM. Adding "change PIN" or "mini-statement" means touching the whole ladder, and the "3 wrong PINs" counter ends up checked in places where no card is even inserted.</p>`,
+    clues: [
+      '"Design an ATM" → states (card/PIN/menu), transactions as Command objects, BankService interface, cash dispenser chain. Say all four early.',
+      '"Dispense with fewest notes / limited notes in each cassette" → Chain of Responsibility over denominations (+ backtracking when counts are limited).',
+      '"What if cash does not come out?" / "network fails mid-transaction" → reversal with an idempotent txnId; never dispense before approval.',
+      '"Lock the card after 3 wrong PINs" → attempts counter that lives with the CARD_INSERTED session, reset on success.',
+      '"Daily limit", "insufficient balance" → bank-side checks; the ATM must not trust its own cache of balances.',
+      '"Add a new transaction type (mini statement, PIN change, bill pay)" → new Command class; states unchanged.'
+    ],
+    code: { lang: 'java', title: 'ATM: states + transactions as commands + idempotent bank + note chain (runnable)', code: `import java.util.*;
+
+record Card(String number, String account) {}
+
+/** Everything about money lives at the bank. Every call is idempotent by txnId. */
+interface BankService {
+    boolean verifyPin(Card card, String pin);
+    long balance(String account);
+    String debit(String account, long amount, String txnId);   // null = approved, else reason
+    void reverse(String txnId);
+    void credit(String account, long amount, String txnId);
+}
+
+class InMemoryBank implements BankService {
+    static final long DAILY_LIMIT = 10_000;
+    record Debit(String account, long amount) {}
+    private final Map<String, Long> balances = new HashMap<>();
+    private final Map<String, String> pins = new HashMap<>();
+    private final Map<String, Long> withdrawnToday = new HashMap<>();
+    private final Map<String, Debit> debits = new HashMap<>();
+    private final Set<String> reversed = new HashSet<>(), credits = new HashSet<>();
+
+    void open(String account, String pin, long balance) { balances.put(account, balance); pins.put(account, pin); }
+    public boolean verifyPin(Card c, String pin) { return pin.equals(pins.get(c.account())); }
+    public synchronized long balance(String a) { return balances.getOrDefault(a, 0L); }
+
+    public synchronized String debit(String a, long amt, String txnId) {
+        if (debits.containsKey(txnId)) return null;                   // retry of an approved debit: no double charge
+        if (balance(a) < amt) return "INSUFFICIENT_FUNDS";
+        if (withdrawnToday.getOrDefault(a, 0L) + amt > DAILY_LIMIT) return "DAILY_LIMIT_EXCEEDED";
+        balances.merge(a, -amt, Long::sum);
+        withdrawnToday.merge(a, amt, Long::sum);
+        debits.put(txnId, new Debit(a, amt));
+        return null;
+    }
+    public synchronized void reverse(String txnId) {
+        Debit d = debits.get(txnId);
+        if (d == null || !reversed.add(txnId)) return;               // unknown or already reversed: no-op
+        balances.merge(d.account(), d.amount(), Long::sum);
+        withdrawnToday.merge(d.account(), -d.amount(), Long::sum);
+    }
+    public synchronized void credit(String a, long amt, String txnId) {
+        if (credits.add(txnId)) balances.merge(a, amt, Long::sum);
+    }
+}
+
+/** Chain of Responsibility: each cassette serves what it can and passes the rest on. */
+class NoteHandler {
+    final int note;
+    int count;
+    private NoteHandler next;
+    NoteHandler(int note, int count) { this.note = note; this.count = count; }
+    NoteHandler then(NoteHandler n) { next = n; return n; }
+
+    /** Plan only (no notes move). Backtracks: uses fewer big notes if the chain below gets stuck. */
+    boolean plan(int amount, Map<Integer, Integer> out) {
+        for (int use = Math.min(count, amount / note); use >= 0; use--) {
+            int rest = amount - use * note;
+            if (rest == 0 || (next != null && next.plan(rest, out))) {
+                if (use > 0) out.put(note, use);
+                return true;
+            }
+        }
+        return false;
+    }
+    void commit(Map<Integer, Integer> plan) { count -= plan.getOrDefault(note, 0); if (next != null) next.commit(plan); }
+    long total() { return (long) note * count + (next == null ? 0 : next.total()); }
+}
+
+class CashDispenser {
+    private final NoteHandler head;
+    boolean jamNext = false;                                        // test hook: simulate a hardware jam
+    CashDispenser(int n2000, int n500, int n200, int n100) {
+        head = new NoteHandler(2000, n2000);
+        head.then(new NoteHandler(500, n500)).then(new NoteHandler(200, n200)).then(new NoteHandler(100, n100));
+    }
+    Map<Integer, Integer> plan(int amount) {
+        Map<Integer, Integer> p = new TreeMap<>(Comparator.reverseOrder());
+        return head.plan(amount, p) ? p : null;
+    }
+    boolean dispense(Map<Integer, Integer> plan) {
+        if (jamNext) { jamNext = false; return false; }
+        head.commit(plan);
+        return true;
+    }
+    long total() { return head.total(); }
+}
+
+/** Command pattern: each transaction is an object with an id that can be logged and audited. */
+interface Transaction { String run(Atm atm); }
+
+class WithdrawTxn implements Transaction {
+    private final long amount;
+    WithdrawTxn(long amount) { this.amount = amount; }
+    public String run(Atm atm) {
+        if (amount <= 0 || amount % 100 != 0) return "Amount must be a positive multiple of 100";   // 1. validate
+        Map<Integer, Integer> plan = atm.dispenser().plan((int) amount);                           // 2. plan notes
+        if (plan == null) return "This ATM cannot dispense Rs " + amount;
+        String txnId = atm.newTxnId();
+        String err = atm.bank().debit(atm.card().account(), amount, txnId);                         // 3. debit
+        if (err != null) return "Declined: " + err;
+        if (!atm.dispenser().dispense(plan)) {                                                      // 4. dispense
+            atm.bank().reverse(txnId);                                                              // 5b. rollback
+            return "Could not dispense. Your account was NOT charged (" + txnId + " reversed)";
+        }
+        return "Take Rs " + amount + " as " + plan + " [" + txnId + "]";                           // 5a. success
+    }
+}
+class BalanceTxn implements Transaction {
+    public String run(Atm atm) { return "Balance Rs " + atm.bank().balance(atm.card().account()); }
+}
+class DepositTxn implements Transaction {
+    private final long amount;
+    DepositTxn(long amount) { this.amount = amount; }
+    public String run(Atm atm) {
+        if (amount <= 0 || amount % 100 != 0) return "Invalid deposit";
+        String txnId = atm.newTxnId();
+        atm.bank().credit(atm.card().account(), amount, txnId);
+        return "Deposited Rs " + amount + " [" + txnId + "]";
+    }
+}
+
+interface AtmState {
+    String name();
+    default void insertCard(Atm a, Card c)   { a.show(name() + ": card not accepted now"); }
+    default void enterPin(Atm a, String pin) { a.show(name() + ": insert card first"); }
+    default void choose(Atm a, Transaction t){ a.show(name() + ": enter PIN first"); }
+    default void eject(Atm a)                { a.show(name() + ": no card to eject"); }
+}
+
+class AtmIdle implements AtmState {
+    public String name() { return "IDLE"; }
+    public void insertCard(Atm a, Card c) { a.startSession(c); a.setState(new CardInserted()); }
+}
+class CardInserted implements AtmState {
+    static final int MAX_ATTEMPTS = 3;
+    public String name() { return "CARD_INSERTED"; }
+    public void enterPin(Atm a, String pin) {
+        if (a.bank().verifyPin(a.card(), pin)) { a.setState(new Authenticated()); return; }
+        int tries = a.failedPin();
+        if (tries >= MAX_ATTEMPTS) { a.retainCard(); return; }       // CARD_RETAINED, then IDLE
+        a.show("Wrong PIN, " + (MAX_ATTEMPTS - tries) + " attempt(s) left");
+    }
+    public void eject(Atm a) { a.endSession(); }
+}
+class Authenticated implements AtmState {
+    public String name() { return "AUTHENTICATED"; }
+    public void choose(Atm a, Transaction t) {
+        a.setState(new InTransaction());                            // other inputs rejected meanwhile
+        a.show(t.run(a));
+        a.setState(new Authenticated());                            // "another transaction?"
+    }
+    public void eject(Atm a) { a.endSession(); }
+}
+class InTransaction implements AtmState { public String name() { return "IN_TRANSACTION"; } }
+class OutOfService implements AtmState { public String name() { return "OUT_OF_SERVICE"; } }
+
+class Atm {
+    private AtmState state = new AtmIdle();
+    private final BankService bank;
+    private final CashDispenser dispenser;
+    private Card card;
+    private int failedPins;
+    private int txnSeq = 0;
+
+    Atm(BankService bank, CashDispenser dispenser) { this.bank = bank; this.dispenser = dispenser; }
+
+    // public API
+    void insertCard(Card c)   { state.insertCard(this, c); }
+    void enterPin(String pin) { state.enterPin(this, pin); }
+    void withdraw(long amt)   { state.choose(this, new WithdrawTxn(amt)); }
+    void deposit(long amt)    { state.choose(this, new DepositTxn(amt)); }
+    void balance()            { state.choose(this, new BalanceTxn()); }
+    void eject()              { state.eject(this); }
+
+    // used by states and transactions
+    void setState(AtmState s) { show("  [" + state.name() + " -> " + s.name() + "]"); state = s; }
+    void startSession(Card c) { card = c; failedPins = 0; }
+    int failedPin()           { return ++failedPins; }
+    void retainCard()         { show("Card " + card.number() + " retained. Contact your bank."); setState(new AtmIdle()); card = null; }
+    void endSession() {
+        show("Card returned");
+        card = null;
+        setState(dispenser.total() < 100 ? new OutOfService() : new AtmIdle());
+    }
+    String newTxnId()         { return "T" + (++txnSeq); }
+    void show(String msg)     { System.out.println(msg); }
+    BankService bank()        { return bank; }
+    CashDispenser dispenser() { return dispenser; }
+    Card card()               { return card; }
+
+    public static void main(String[] args) {
+        InMemoryBank bank = new InMemoryBank();
+        bank.open("ACC1", "1234", 15_000);
+        CashDispenser cash = new CashDispenser(2, 10, 10, 10);
+        Atm atm = new Atm(bank, cash);
+        atm.balance();                                  // rejected: no card
+        atm.insertCard(new Card("4111-01", "ACC1"));
+        atm.enterPin("1111");                           // wrong
+        atm.enterPin("1234");
+        atm.withdraw(2750);                             // not a multiple of 100
+        atm.withdraw(2700);                             // 2000 + 500 + 200
+        cash.jamNext = true;
+        atm.withdraw(1000);                             // jam -> reversed, not charged
+        atm.withdraw(9000);                             // daily limit (2700 + 9000 > 10000)
+        atm.balance();                                  // 12300
+        atm.eject();
+        atm.insertCard(new Card("4111-02", "ACC1"));
+        atm.enterPin("0000"); atm.enterPin("1111"); atm.enterPin("2222");   // card retained
+    }
+}` },
+    viz: [{
+      title: 'ATM state machine: card, PIN attempts, transactions, eject',
+      input: 'balance, insert, pin 1111, pin 1234, withdraw 2750, withdraw 2700, balance, eject, insert, pin 0000, pin 1111, pin 2222',
+      inputLabel: 'Events: insert, pin NNNN (correct = 1234), withdraw N, deposit N, balance, eject',
+      gen: function (input) {
+        var evs = tokens(input, ',', 16, 'Example: insert, pin 1234, withdraw 2700, eject');
+        var st = 'IDLE', bal = 15000, today = 0, LIMIT = 10000, tries = 0, card = false, frames = [], txn = 0;
+        var cas = { 2000: 2, 500: 10, 200: 10, 100: 10 };
+        function snap(narr, cls, edge, msg, mhl) {
+          frames.push(F(narr, [
+            SM('ATM states', ATM_NODES, ATM_EDGES, st, cls, edge, 'ok', null, 66),
+            VARS('Session + bank', { card: card ? 'inside' : '—', pinTries: tries + '/3', balance: '₹' + bal, withdrawnToday: '₹' + today + ' / ₹' + LIMIT, screen: msg }, { screen: cls === 'bad' ? 'bad' : 'cur' }),
+            MAP('Note cassettes', casEntries(cas), mhl || {})
+          ]));
+        }
+        snap('The ATM is <b>IDLE</b>: welcome screen, card slot open. The bank holds the account (₹15,000, daily limit ₹10,000, PIN 1234). The ATM only knows its own cash cassettes.', 'cur', null, 'Insert card');
+        evs.forEach(function (raw) {
+          var p = raw.trim().split(/\s+/), cmd = p[0].toLowerCase();
+          if (cmd === 'insert') {
+            if (st !== 'IDLE') { snap('<b>insert</b> while ' + st + ': the slot is busy — default method rejects it.', 'bad', null, 'Card already inside'); return; }
+            card = true; tries = 0; st = 'CARD_INSERTED';
+            snap('<b>insert card</b>: <code>AtmIdle.insertCard()</code> starts a session (attempts = 0) → <b>CARD_INSERTED</b>. The menu is still locked.', 'ok', 'IDLE-CARD_INSERTED', 'Enter PIN');
+          } else if (cmd === 'pin') {
+            if (st !== 'CARD_INSERTED') { snap('<b>pin</b> while ' + st + ': ' + (st === 'IDLE' ? 'no card — the keypad input is ignored.' : 'PIN already accepted.'), 'bad', null, st === 'IDLE' ? 'Insert card first' : 'Already logged in'); return; }
+            if (p[1] === '1234') { st = 'AUTHENTICATED'; tries = 0; snap('<b>PIN ****</b>: the ATM sends the (encrypted) PIN to the bank, which says OK → <b>AUTHENTICATED</b>. The menu unlocks.', 'ok', 'CARD_INSERTED-AUTHENTICATED', 'Choose a transaction'); return; }
+            tries++;
+            if (tries >= 3) {
+              st = 'CARD_RETAINED';
+              snap('<b>Wrong PIN #3</b>: <code>CardInserted.enterPin()</code> hits the limit → <b>CARD_RETAINED</b>. The card is swallowed and the bank is told (possible theft).', 'bad', 'CARD_INSERTED-CARD_RETAINED', 'Card retained');
+              st = 'IDLE'; card = false;
+              snap('CARD_RETAINED is a short <b>transient</b> state: it logs the event and returns to <b>IDLE</b> for the next customer.', 'cur', 'CARD_RETAINED-IDLE', 'Insert card');
+            } else snap('<b>Wrong PIN</b> (' + tries + '/3). Stay in CARD_INSERTED — the attempts counter belongs to this card session.', 'bad', null, 'Wrong PIN, ' + (3 - tries) + ' left');
+          } else if (cmd === 'withdraw' || cmd === 'deposit' || cmd === 'balance') {
+            if (st !== 'AUTHENTICATED') { snap('<b>' + cmd + '</b> while ' + st + ': the default method says "enter PIN first". This is the bug the if/else ATM often has — here it is impossible by construction.', 'bad', null, st === 'IDLE' ? 'Insert card first' : 'Enter PIN first'); return; }
+            var amt = parseInt(p[1], 10);
+            st = 'IN_TRANSACTION';
+            if (cmd === 'balance') {
+              snap('<b>balance</b>: AUTHENTICATED creates a <code>BalanceTxn</code> command and moves to <b>IN_TRANSACTION</b> (keypad locked while the bank answers).', 'cur', 'AUTHENTICATED-IN_TRANSACTION', 'Please wait…');
+              st = 'AUTHENTICATED'; snap('Bank replies: balance <b>₹' + bal + '</b>. Back to AUTHENTICATED ("another transaction?").', 'ok', 'IN_TRANSACTION-AUTHENTICATED', 'Balance ₹' + bal);
+              return;
+            }
+            if (isNaN(amt) || amt <= 0 || amt > 100000) throw new Error(cmd + ' needs an amount, e.g. ' + cmd + ' 2700');
+            if (cmd === 'deposit') {
+              if (amt % 100) { st = 'AUTHENTICATED'; snap('<b>deposit ₹' + amt + '</b>: notes only, multiples of 100 — rejected.', 'bad', null, 'Invalid amount'); return; }
+              txn++; bal += amt;
+              snap('<b>deposit ₹' + amt + '</b>: <code>DepositTxn</code> counts the notes, then <code>bank.credit(acct, ' + amt + ', T' + txn + ')</code>. Same txnId twice = credited once.', 'cur', 'AUTHENTICATED-IN_TRANSACTION', 'Counting notes…');
+              st = 'AUTHENTICATED'; snap('Deposit credited (T' + txn + '). Balance ₹' + bal + '.', 'ok', 'IN_TRANSACTION-AUTHENTICATED', 'Deposited ₹' + amt);
+              return;
+            }
+            if (amt % 100) { snap('<b>withdraw ₹' + amt + '</b>: step 1 (validate) fails — not a multiple of 100. Nothing was sent to the bank.', 'bad', 'AUTHENTICATED-IN_TRANSACTION', 'Multiples of ₹100 only'); st = 'AUTHENTICATED'; snap('Back to the menu.', 'cur', 'IN_TRANSACTION-AUTHENTICATED', 'Choose a transaction'); return; }
+            var plan = atmPlan(amt, cas);
+            if (!plan) { snap('<b>withdraw ₹' + amt + '</b>: step 2 (plan notes) fails — the cassettes cannot make this amount. Stop before touching the bank.', 'bad', 'AUTHENTICATED-IN_TRANSACTION', 'Cannot dispense ₹' + amt); st = 'AUTHENTICATED'; snap('Back to the menu.', 'cur', 'IN_TRANSACTION-AUTHENTICATED', 'Try another amount'); return; }
+            if (bal < amt || today + amt > LIMIT) { snap('<b>withdraw ₹' + amt + '</b>: notes OK (' + planTxt(plan) + '), but the bank declines: ' + (bal < amt ? 'insufficient funds' : 'daily limit (₹' + today + ' + ₹' + amt + ' &gt; ₹' + LIMIT + ')') + '. No money moved.', 'bad', 'AUTHENTICATED-IN_TRANSACTION', 'Declined'); st = 'AUTHENTICATED'; snap('Back to the menu.', 'cur', 'IN_TRANSACTION-AUTHENTICATED', 'Choose a transaction'); return; }
+            txn++;
+            snap('<b>withdraw ₹' + amt + '</b>: validate ✓ → plan notes ✓ (' + planTxt(plan) + ') → <code>bank.debit(acct, ' + amt + ', T' + txn + ')</code> approved. Now in <b>IN_TRANSACTION</b> the dispenser counts notes.', 'cur', 'AUTHENTICATED-IN_TRANSACTION', 'Counting cash…');
+            bal -= amt; today += amt;
+            var mhl = {}; ATM_NOTES.forEach(function (n) { if (plan[n]) { cas[n] -= plan[n]; mhl['₹' + n] = 'bad'; } });
+            st = 'AUTHENTICATED';
+            snap('Cash presented and taken: cassettes drop (red). Bank balance ₹' + bal + ', withdrawn today ₹' + today + '. Back to AUTHENTICATED.', 'ok', 'IN_TRANSACTION-AUTHENTICATED', 'Take your cash', mhl);
+          } else if (cmd === 'eject') {
+            if (st !== 'AUTHENTICATED' && st !== 'CARD_INSERTED') { snap('<b>eject</b> while ' + st + ': no card to eject.', 'bad', null, 'No card'); return; }
+            var from = st; st = 'IDLE'; card = false; tries = 0;
+            snap('<b>eject</b>: session ends, card returned, attempts forgotten → <b>IDLE</b>.', 'ok', from + '-IDLE', 'Thank you');
+          } else throw new Error('Unknown event "' + raw + '". Use insert, pin N, withdraw N, deposit N, balance, eject');
+        });
+        snap('Script finished. Notice how "3 wrong PINs", "menu only after PIN" and "keypad locked while processing" were each enforced by exactly one state class.', 'sel', null, 'Bye');
+        return frames;
+      }
+    }, {
+      title: 'Withdrawal flow across components: approve, dispense, and roll back on failure',
+      input: 'amount=2700; fail=dispense',
+      inputLabel: 'amount = multiple of 100 (≤ 10000); fail = none | dispense | network',
+      gen: function (input) {
+        var o = kvParse(input, 'Format: amount=2700; fail=none|dispense|network');
+        var amt = parseInt(o.amount, 10), fail = String(o.fail || 'none').toLowerCase();
+        if (isNaN(amt) || amt <= 0 || amt > 10000 || amt % 100) throw new Error('amount must be a multiple of 100 between 100 and 10000');
+        if (['none', 'dispense', 'network'].indexOf(fail) < 0) throw new Error('fail must be none, dispense or network');
+        var nodes = [B('U', 'Customer', 8, 30), B('A', 'ATM Controller', 34, 30), B('BK', 'Bank (core banking)', 74, 9), B('D', 'Cash Dispenser', 74, 52)];
+        var edges = [['U', 'A', ''], ['A', 'U', ''], ['A', 'BK', ''], ['BK', 'A', ''], ['A', 'D', ''], ['D', 'A', '']];
+        var bal = 15000, hold = 0, log = [], frames = [];
+        function step(narr, from, to, label, cls, hlNode) {
+          var e = edges.map(function (x) { return [x[0], x[1], (x[0] === from && x[1] === to) ? label : '']; });
+          var ehl = {}; if (from) ehl[from + '-' + to] = cls || 'ok';
+          var hl = {}; if (hlNode) hl[hlNode] = cls === 'bad' ? 'bad' : 'cur';
+          if (from) log.push([log.length + 1, nodes.filter(function (n) { return n.id === from; })[0].label + ' → ' + nodes.filter(function (n) { return n.id === to; })[0].label, label]);
+          frames.push(F(narr, [G('Components (active message highlighted)', nodes, e, { hl: hl, ehl: ehl, h: 62 }), TABLE('Message journal (the ATM writes every step to disk)', ['#', 'from → to', 'message'], log, one(log.length - 1, cls === 'bad' ? 'bad' : 'cur')), VARS('Account at the bank', { balance: '₹' + bal, debitedFor: hold ? '₹' + hold + ' (T42)' : '—' })]));
+        }
+        step('Customer is AUTHENTICATED and asks to withdraw <b>₹' + amt + '</b>. The ATM creates a <code>WithdrawTxn</code> with id <b>T42</b> and writes it to its journal <i>before</i> talking to anyone — so it can recover after a crash.', 'U', 'A', 'withdraw ₹' + amt, 'cur', 'A');
+        step('Step 2: ask the dispenser to <b>plan</b> the notes (no notes move yet). If the cassettes cannot make ₹' + amt + ', we stop here and the bank is never called.', 'A', 'D', 'plan ₹' + amt + '?', 'cur', 'D');
+        step('Dispenser: "Yes, I can" (Chain of Responsibility over ₹2000 → ₹500 → ₹200 → ₹100).', 'D', 'A', 'plan OK', 'ok', 'A');
+        step('Step 3: <code>bank.debit(acct, ' + amt + ', "T42")</code>. The bank checks balance and daily limit.', 'A', 'BK', 'debit ₹' + amt + ' T42', 'cur', 'BK');
+        bal -= amt; hold = amt;
+        if (fail === 'network') {
+          step('The bank <b>approved and debited</b>… but the reply is <b>lost</b> on the network. The ATM times out and does <b>not know</b> whether the money was taken.', 'BK', 'A', 'approved (LOST)', 'bad', 'BK');
+          step('Rule: <b>never dispense without a confirmed approval</b>. The ATM sends <code>reverse("T42")</code>. Because the bank keys everything by txnId, the reversal undoes the debit if it happened and is a harmless no-op if it did not.', 'A', 'BK', 'reverse T42', 'cur', 'BK');
+          bal += amt; hold = 0;
+          step('Bank: reversal done (balance restored). It would also ignore a late duplicate of "debit T42" because T42 is already settled.', 'BK', 'A', 'reversed', 'ok', 'A');
+          step('Customer sees "Unable to process, your account has not been charged". Money is safe on both sides; the journal proves it.', 'A', 'U', 'sorry, not charged', 'bad', 'U');
+        } else {
+          step('Bank: <b>approved</b>, ₹' + amt + ' debited under T42.', 'BK', 'A', 'approved T42', 'ok', 'A');
+          step('Step 4: dispense the planned notes.', 'A', 'D', 'dispense', 'cur', 'D');
+          if (fail === 'dispense') {
+            step('<b>Jam!</b> The notes never reach the tray (sensor sees nothing). They are diverted to a sealed reject bin.', 'D', 'A', 'JAM', 'bad', 'D');
+            step('Step 5b: <b>compensate</b> — <code>bank.reverse("T42")</code>. This is a saga-style rollback: the debit already committed, so we undo it with a new, opposite action.', 'A', 'BK', 'reverse T42', 'cur', 'BK');
+            bal += amt; hold = 0;
+            step('Bank: reversed. If the ATM crashes before this, on restart it replays its journal ("T42 debited, not dispensed") and sends the reversal again — safe because it is idempotent.', 'BK', 'A', 'reversed', 'ok', 'A');
+            step('Customer: "Could not dispense. Your account was NOT charged." Ops later reconciles the reject bin against the journal.', 'A', 'U', 'not charged', 'bad', 'U');
+          } else {
+            step('Dispenser: notes presented and taken by the customer (tray sensor confirms).', 'D', 'A', 'presented ✓', 'ok', 'A');
+            step('Step 5a: tell the bank the cash was dispensed so the hold becomes final (some networks call this completion/advice).', 'A', 'BK', 'confirm T42', 'cur', 'BK');
+            step('Customer gets cash + receipt. Back to the AUTHENTICATED menu.', 'A', 'U', 'cash + receipt', 'ok', 'U');
+          }
+        }
+        frames.push(F('Summary: the order <b>validate → plan notes → debit (with txnId) → dispense → confirm / reverse</b> guarantees the customer is charged <i>if and only if</i> cash came out. Try <code>fail=none</code>, <code>fail=dispense</code> and <code>fail=network</code>.', [TABLE('Failure → what protects the money', ['failure', 'protection'], [['cannot make the amount', 'plan notes before calling the bank'], ['bank declines', 'nothing dispensed, nothing to undo'], ['reply lost (timeout)', 'reverse(txnId), idempotent at bank'], ['note jam', 'reverse(txnId) + reject bin reconciliation'], ['ATM crash mid-way', 'journal replay on restart']]), VARS('Final account', { balance: '₹' + bal })]));
+        return frames;
+      }
+    }, {
+      title: 'Cash dispenser chain: ₹2000 → ₹500 → ₹200 → ₹100 (and when greedy gets stuck)',
+      input: 'amount=600; notes=2000x1 500x1 200x3 100x0',
+      inputLabel: 'amount = multiple of 100; notes = counts per cassette, e.g. 2000x1 500x2 200x5 100x3',
+      gen: function (input) {
+        var o = kvParse(input, 'Format: amount=600; notes=2000x1 500x1 200x3 100x0');
+        var amt = parseInt(o.amount, 10);
+        if (isNaN(amt) || amt <= 0 || amt > 50000 || amt % 100) throw new Error('amount must be a multiple of 100, at most 50000');
+        var cas = { 2000: 0, 500: 0, 200: 0, 100: 0 };
+        tokens(o.notes || '', /\s+/, 4, 'notes=2000x1 500x1 200x3 100x0').forEach(function (t) {
+          var m = /^(2000|500|200|100)x(\d{1,2})$/.exec(t);
+          if (!m) throw new Error('Each cassette is NOTExCOUNT, e.g. 500x2 (count ≤ 99)');
+          cas[m[1]] = Number(m[2]);
+        });
+        var nodes = ATM_NOTES.map(function (n, i) { return B('N' + n, '₹' + n + ' handler', 13 + i * 25, 22); });
+        var edges = [['N2000', 'N500', 'rest'], ['N500', 'N200', 'rest'], ['N200', 'N100', 'rest']];
+        var frames = [], rest = amt, used = {};
+        frames.push(F('Request <b>₹' + amt + '</b>. Each cassette is a <b>handler</b> in a chain. A handler takes as many of its notes as it can (without exceeding the amount or its stock) and passes the <b>rest</b> to the next handler. This is the classic Chain of Responsibility answer.', [G('Note handler chain', nodes, edges, { h: 40 }), MAP('Cassettes', casEntries(cas)), VARS('Plan', { remaining: '₹' + rest })]));
+        ATM_NOTES.forEach(function (n, i) {
+          var use = Math.min(cas[n], Math.floor(rest / n));
+          used[n] = use; rest -= use * n;
+          var hl = {}; hl['N' + n] = 'cur';
+          var ehl = {}; if (i > 0) ehl['N' + ATM_NOTES[i - 1] + '-N' + n] = 'ok';
+          frames.push(F('₹' + n + ' handler: stock ' + cas[n] + ', can use up to ' + Math.floor((rest + use * n) / n) + ' → takes <b>' + use + '</b>. Remaining <b>₹' + rest + '</b>' + (i < 3 ? ' passed down the chain.' : '.'), [G('Note handler chain', nodes, edges, { h: 40, hl: hl, ehl: ehl }), MAP('Cassettes', casEntries(cas), one('₹' + n, use ? 'ok' : 'cur')), VARS('Plan', { remaining: '₹' + rest, plan: planTxt(used) || '—' })]));
+        });
+        if (rest === 0) {
+          frames.push(F('Greedy chain succeeded: <b>' + planTxt(used) + '</b>. Only now (after the bank approves) are notes actually moved — planning never touches the cassettes.', [G('Note handler chain', nodes, edges, { h: 40, hl: { N100: 'ok', N200: 'ok', N500: 'ok', N2000: 'ok' } }), VARS('Plan', { result: planTxt(used) })]));
+        } else {
+          var bt = atmPlan(amt, cas);
+          frames.push(F('<span class="c-r">Stuck with ₹' + rest + ' left!</span> The greedy chain took a big note too early. With limited stock, "take as many as possible" is not always right.', [G('Note handler chain', nodes, edges, { h: 40, hl: { N100: 'bad' } }), VARS('Greedy result', { remaining: '₹' + rest, verdict: 'FAIL' }, { verdict: 'bad' })]));
+          frames.push(F(bt ? 'Fix: each handler tries <b>use = max … 0</b> and asks the rest of the chain; if the chain below fails, it backs off by one note (backtracking). Result: <b>' + planTxt(bt) + '</b>. Still a chain; each handler still only knows its own note and its successor.' : 'Even with backtracking no combination makes ₹' + amt + ' from these cassettes — the ATM must say "cannot dispense this amount" <b>before</b> calling the bank.', [TABLE('Greedy vs backtracking', ['approach', 'plan', 'ok?'], [['greedy chain', planTxt(used) + ' (₹' + rest + ' short)', 'no'], ['backtracking chain', bt ? planTxt(bt) : 'none exists', bt ? 'yes' : 'no']], one(1, bt ? 'ok' : 'bad'))]));
+        }
+        return frames;
+      }
+    }],
+    examples: [
+      { title: 'PIN attempts: whose counter is it?', html: `<p>The counter resets when a <b>new card session</b> starts and on a correct PIN. If you put it in a field that survives sessions, customer B inherits customer A's two wrong tries and gets their card retained after one typo. Real systems also count failures <b>at the bank</b> per card (across ATMs) — the ATM counter is only a local safety net. ${H.table(['Event', 'attempts', 'state'], [['insert card', '0', 'CARD_INSERTED'], ['PIN 1111', '1', 'CARD_INSERTED'], ['PIN 0000', '2', 'CARD_INSERTED'], ['PIN 9999', '3', H.c('r', 'CARD_RETAINED → IDLE')]])}</p>` },
+      { title: 'Transactions as Command objects', html: `<p>Each user choice becomes an object (<code>WithdrawTxn(2700)</code>) with an id. Benefits: the AUTHENTICATED state has one method <code>choose(Transaction t)</code> instead of one per menu item; each transaction is written to the <b>journal</b> before running (crash recovery); and adding "mini statement" or "PIN change" is a new class, nothing else.</p>`, code: `interface Txn { String run(); }
+record MiniStatement(String account) implements Txn {
+    public String run() { return "Last 5 transactions for " + account; }   // new feature = new class
+}` },
+      { title: 'Idempotency in one picture', html: `<p>${H.table(['Bank receives', 'Bank state before', 'Result'], [['debit 2700 T42', 'T42 unknown', H.c('g', 'debit, store T42')], ['debit 2700 T42 (retry)', 'T42 debited', H.c('b', 'no-op, reply approved')], ['reverse T42', 'T42 debited', H.c('g', 'credit back, mark reversed')], ['reverse T42 (retry)', 'T42 reversed', H.c('b', 'no-op')]])} Without txnIds, a network retry charges the customer twice — the number one ATM bug interviewers probe.</p>` },
+      { title: 'Out of service: a state, not a flag', html: `<p>When total cash drops below ₹100 (or a cassette faults, or the printer is out of paper for a bank that requires receipts), the ATM moves to <b>OUT_OF_SERVICE</b> after the current customer ejects. In that state <code>insertCard</code> is rejected by default. Partial modes are common: "no ₹100 notes" just shrinks the allowed amounts (handled by the planner), while "no cash at all" is a real state change.</p>` }
+    ],
+    deepDive: `<p><b>Two-phase money movement.</b> Real card networks use <b>authorization</b> (hold funds) then <b>completion/settlement</b>. For ATMs the debit is usually immediate, with a <b>reversal</b> message if dispensing fails — a compensating action, exactly the Saga pattern. The ATM never holds money state; the bank's ledger is the source of truth, and the ATM's <b>electronic journal</b> is the evidence.</p>
+<p><b>Idempotency keys done right.</b> The txnId must be generated <i>by the ATM</i> before the first send and persisted to its journal, so a retry after a crash reuses the same id. The bank stores processed ids (with a TTL long enough to cover retries). A reversal that arrives <i>before</i> its debit (messages reordered) should leave a tombstone so the late debit is refused.</p>
+<p><b>Security.</b> The PIN is encrypted inside the keypad (EPP — encrypting PIN pad) into a <b>PIN block</b>; the ATM software never sees it in clear. Card data uses EMV chip cryptograms. In LLD terms: <code>Keypad</code> returns an opaque <code>PinBlock</code>, not a <code>String</code> — a great detail to mention.</p>
+<p><b>Timeouts are events.</b> Customer walks away at the menu → after 30 s the AUTHENTICATED state receives <code>Timeout</code> → eject card; if not taken in 20 s → retain it. Cash presented but not taken → retract and reverse. Each is a transition in the table, which is why ATMs are textbook state machines.</p>
+<p><b>Chain of Responsibility vs DP.</b> The handler chain is easy to extend (add a ₹50 cassette = new handler) and with backtracking it is correct for limited stock. For "fewest notes" with limited stock across many denominations, bounded-knapsack DP is the exact algorithm; with 4–5 cassettes backtracking is tiny and clearer.</p>
+<p><b>Concurrency.</b> One ATM serves one customer, but the <b>bank</b> serves thousands of ATMs, mobile apps and UPI at once on the same account. Debits must be atomic at the bank (row lock or <code>UPDATE … SET bal = bal − ? WHERE id = ? AND bal &gt;= ?</code>), and daily limits must be counted at the bank, never per ATM.</p>`,
+    aiEra: `<p><b>What AI changes:</b> AI writes the menu-driven ATM in seconds. The review is where you add value: Is there a txnId? Is reversal idempotent? Is the PIN a <code>String</code> sitting in memory? Does withdraw debit before planning notes? Can a customer reach the menu without a PIN through some path? Each question maps to a real-world fraud or loss.</p>
+<p><b>Use AI as a partner:</b> <code>Act as a chaos tester: list every point in my withdrawal flow where the process could crash or a message could be lost, and say what my design does in each case.</code> Then turn the list into tests with a fake bank that drops, duplicates and reorders messages.</p>
+<p><b>Banking in 2026:</b> cardless withdrawals (UPI-ATM / QR codes), biometric auth and app-initiated "pre-staged" withdrawals add new states (WAITING_FOR_QR_APPROVAL) and new Command types — the State + Command + Chain structure absorbs them. AI fraud models score withdrawals in real time at the bank; the ATM just sees a decline reason.</p>
+<p><b>What you must still own:</b> the order of operations, idempotency, compensation, and the security boundary (what the ATM software must never see). These are judgment calls an LLM will not reliably make for you.</p>`,
+    problems: [{
+      title: 'ATM Cash Dispenser with Limited Notes (Chain of Responsibility)', level: 'Medium', tags: ['atm', 'chain of responsibility', 'backtracking'], companies: ['Goldman Sachs', 'JPMorgan', 'Amazon', 'PhonePe'],
+      statement: `<p>Implement the cash dispenser of an ATM. Cassettes hold notes of ₹2000, ₹500, ₹200 and ₹100 in limited quantities. <code>plan(amount)</code> must return how many notes of each type to dispense, preferring bigger notes, or report that the amount cannot be dispensed — without changing the cassettes. <code>dispense(plan)</code> then removes the notes. Design it so a new denomination (e.g. ₹50) can be added without editing existing handler code.</p>`,
+      constraints: `Amount ≤ 50,000 and a multiple of 100 (or 50 once ₹50 is added). Up to 2,000 notes per cassette.`,
+      example: `<p>Cassettes: ₹2000×1, ₹500×1, ₹200×3, ₹100×0. Request ₹600. Greedy: ₹500 → remaining ₹100 → ${H.c('r', 'no ₹100 notes, stuck')}. Correct plan: ${H.c('g', '₹200×3')}. Request ₹2700 with ₹2000×2, ₹500×10, ₹200×10, ₹100×10 → ${H.c('g', '₹2000×1 + ₹500×1 + ₹200×1')}.</p>`,
+      brute: { why: `<p>A single method with hard-coded <code>if (amount &gt;= 2000) … if (amount &gt;= 500) …</code> greedy steps. It fails on limited stock (₹600 case), and adding ₹50 means editing the method. Trying all combinations of all counts (2001<sup>4</sup>) is far too slow.</p>`, code: `class HardCodedDispenser {
+    int n2000, n500, n200, n100;
+    HardCodedDispenser(int a, int b, int c, int d) { n2000 = a; n500 = b; n200 = c; n100 = d; }
+    // greedy + hard-coded denominations: wrong on limited stock, closed to extension
+    int[] plan(int amount) {
+        int a = Math.min(n2000, amount / 2000); amount -= a * 2000;
+        int b = Math.min(n500, amount / 500);   amount -= b * 500;
+        int c = Math.min(n200, amount / 200);   amount -= c * 200;
+        int d = Math.min(n100, amount / 100);   amount -= d * 100;
+        return amount == 0 ? new int[] {a, b, c, d} : null;   // 600 with {1,1,3,0} -> null (wrong!)
+    }
+}` },
+      mcq: { q: 'Why does the plan step come before calling the bank in a withdrawal?', options: ['So the customer is never charged for an amount the ATM cannot physically dispense', 'Because the bank needs the note breakdown', 'To make the transaction faster', 'It does not matter'], answer: 0, explain: 'Planning is local and side-effect free; if it fails, nothing needs undoing. Debit-then-discover-you-cannot-dispense forces a reversal.' },
+      hints: [`<p>Hint 1: Make each denomination a <b>handler</b> that knows its note value, its stock and the next handler. The chain order (big → small) is set up once at construction.</p>`, `<p>Hint 2: Plain "take as many as you can" fails on limited stock. Let each handler try <code>use = max … 0</code> and ask the next handler to solve the remainder; return true on the first success (backtracking). Write into the plan only on success.</p>`, `<p>Hint 3: Keep <code>plan()</code> pure (no stock changes) and a separate <code>commit(plan)</code> that walks the chain subtracting counts. Adding ₹50 = link one more handler.</p>`],
+      solution: {
+        approach: `<p>Chain of Responsibility with backtracking. Each <code>NoteHandler</code> tries the largest feasible number of its notes first and delegates the remainder; if the rest of the chain fails, it retries with one fewer note. This returns the plan that uses the most big notes among feasible plans (lexicographically largest from the top), matches greedy whenever greedy works, and finds a plan whenever one exists. <code>commit</code> applies a plan after the bank approves.</p>`,
+        code: `import java.util.*;
+
+class Cassette {
+    final int note;
+    int count;
+    private Cassette next;
+    Cassette(int note, int count) { this.note = note; this.count = count; }
+    Cassette link(Cassette n) { next = n; return n; }
+
+    /** Pure planning: no counts change. Backtracks when the rest of the chain cannot finish. */
+    boolean plan(int amount, Map<Integer, Integer> out) {
+        for (int use = Math.min(count, amount / note); use >= 0; use--) {
+            int rest = amount - use * note;
+            if (rest == 0 || (next != null && next.plan(rest, out))) {
+                if (use > 0) out.put(note, use);
+                return true;
+            }
+        }
+        return false;
+    }
+    void commit(Map<Integer, Integer> plan) {
+        count -= plan.getOrDefault(note, 0);
+        if (next != null) next.commit(plan);
+    }
+}
+
+class Dispenser {
+    private final Cassette head;
+    Dispenser(Cassette head) { this.head = head; }
+
+    Optional<Map<Integer, Integer>> plan(int amount) {
+        if (amount <= 0) return Optional.empty();
+        Map<Integer, Integer> p = new TreeMap<>(Comparator.reverseOrder());
+        return head.plan(amount, p) ? Optional.of(p) : Optional.empty();
+    }
+    void dispense(Map<Integer, Integer> plan) { head.commit(plan); }
+
+    public static void main(String[] args) {
+        Cassette c2000 = new Cassette(2000, 1);
+        c2000.link(new Cassette(500, 1)).link(new Cassette(200, 3)).link(new Cassette(100, 0));
+        Dispenser d = new Dispenser(c2000);
+        System.out.println(d.plan(600));      // Optional[{200=3}]
+        System.out.println(d.plan(2700));     // Optional[{2000=1, 500=1, 200=1}]
+        System.out.println(d.plan(300));      // Optional.empty -> refuse before calling the bank
+
+        Cassette big = new Cassette(2000, 2);  // adding a Rs 50 cassette = one more link()
+        big.link(new Cassette(500, 10)).link(new Cassette(200, 10)).link(new Cassette(100, 10)).link(new Cassette(50, 4));
+        Dispenser d2 = new Dispenser(big);
+        Map<Integer, Integer> p = d2.plan(2750).orElseThrow();
+        d2.dispense(p);
+        System.out.println(p);                // {2000=1, 500=1, 200=1, 50=1}
+    }
+}`,
+        complexity: `<p>Greedy-feasible cases run in O(D) (no backtracking). Worst case backtracking explores O(∏ counts) branches, but with 4–5 denominations, the descending order and early success it is tiny in practice; for guaranteed bounds use bounded-knapsack DP, O(D · A/100). Space O(D) recursion.</p>`,
+        followUps: ['Prefer to keep ₹100 notes for small withdrawals: change the preference order without breaking correctness.', 'A cassette reports a fault mid-day: how does the chain skip it?', 'Customer asks for "₹2000 in ₹500 notes": how would you add a note-preference option?']
+      }
+    }]
+  });
+
   registerModule({
     id: 'lld09',
     title: 'State-Heavy Designs: Elevator, Vending Machine, ATM',

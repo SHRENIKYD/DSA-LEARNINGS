@@ -1154,6 +1154,388 @@
     }]
   });
 
+  /* =====================================================================
+     PRACTICE — EASY
+     ===================================================================== */
+  practice.push({
+    title: 'Vehicle–Spot Fit Rules with an Ordered Enum',
+    level: 'Easy', tags: ['enum', 'modelling', 'parking lot'], companies: ['Amazon', 'Flipkart'],
+    statement: `<p>Model spot sizes and vehicle types so that <code>canPark(spotType)</code> works for every vehicle, and <code>fits()</code> lists the usable spot types smallest-first. Adding a new vehicle type (e.g. BUS needing LARGE) must be a one-line change.</p>`,
+    constraints: `Spot sizes are ordered SMALL &lt; COMPACT &lt; LARGE. A vehicle fits any spot at least as big as its minimum.`,
+    example: `<p><code>CAR.canPark(SMALL)</code> → ${H.c('r', 'false')}; <code>CAR.canPark(LARGE)</code> → ${H.c('g', 'true')}; <code>BIKE.fits()</code> → ${H.c('b', '[SMALL, COMPACT, LARGE]')}; <code>TRUCK.fits()</code> → ${H.c('b', '[LARGE]')}.</p>`,
+    brute: { why: `<p>String comparisons in a static helper: <code>"Car"</code> vs <code>"CAR"</code> silently returns false, the rule is duplicated wherever someone needs it, and a new type means editing an if-chain.</p>`, code: J.p01_brute },
+    mcq: { q: 'Which representation turns "a vehicle fits any spot at least as big as X" into one comparison?', options: ['A HashMap&lt;String, List&lt;String&gt;&gt;', 'Enums whose declaration order is the size order, compared by <code>ordinal()</code>', 'A switch statement per vehicle', 'Subclasses Car, Bike, Truck'], answer: 1, explain: 'Declaring SMALL, COMPACT, LARGE in order makes ordinal() a size rank; fit = spot.ordinal() ≥ min.ordinal().' },
+    hints: [
+      `<p>Hint 1: the rule is really "minimum size" — each vehicle needs one number (its smallest acceptable spot); everything else follows.</p>`,
+      `<p>Hint 2: give <code>VehicleType</code> a constructor field <code>SpotType minSpot</code>; compare with <code>ordinal()</code> (or give SpotType an explicit <code>rank</code> field if you fear reordering).</p>`,
+      `<p>Hint 3: <code>fits()</code> = iterate <code>SpotType.values()</code> (already in size order) and keep those where <code>canPark</code> is true. Adding BUS = <code>BUS(SpotType.LARGE)</code>.</p>`
+    ],
+    solution: {
+      approach: `<p>Two enums. SpotType declares sizes in ascending order. VehicleType stores its minimum spot; <code>canPark</code> compares ranks; <code>fits()</code> derives the preference list. All rules live in one place, typos are compile errors, and new types are one line.</p>`,
+      code: J.p01_sol,
+      complexity: `<p>canPark O(1); fits() O(#spot types) — tiny and could be cached in a field.</p>`,
+      followUps: ['Why might relying on <code>ordinal()</code> be fragile? Add an explicit rank field', 'Motorbikes may share a COMPACT spot two at a time — how does the model change?', 'Add HANDICAPPED spots that only permit-holders can use']
+    }
+  });
+
+  practice.push({
+    title: 'Find the Winner of a Tic-Tac-Toe Game (LeetCode 1275)',
+    level: 'Easy', tags: ['simulation', 'counting', 'tic-tac-toe'], companies: ['Amazon', 'Zoho', 'Apple'],
+    statement: `<p>Given a list of moves on a 3×3 board (A plays first as X, then B as O, alternating), return <code>"A"</code> or <code>"B"</code> if that player wins, <code>"Draw"</code> if all 9 cells are filled with no winner, or <code>"Pending"</code> otherwise. All moves are valid and the game stops at a win.</p>`,
+    constraints: `1 ≤ moves.length ≤ 9; moves[i] = [row, col]; 0 ≤ row, col ≤ 2; no repeated cells.`,
+    example: `<p>moves = [[0,0],[2,0],[1,1],[2,1],[2,2]] → A has (0,0), (1,1), (2,2) = main diagonal → ${H.c('g', '"A"')}. moves = [[0,0],[1,1]] → ${H.c('y', '"Pending"')}.</p>`,
+    brute: { why: `<p>Rebuild the board and check all 8 lines for both players. Fine for 3×3 (it is "easy"), but it is O(n²) and does not stop at the winning move — in an interview, show you know the O(1)-per-move counter version.</p>`, code: J.p02_brute },
+    mcq: { q: 'Move index i (0-based) belongs to which player?', options: ['A if i is odd', 'A if i is even', 'Whoever has fewer marks', 'Cannot tell'], answer: 1, explain: 'A moves first: indices 0, 2, 4, ... are A; 1, 3, 5, ... are B.' },
+    hints: [
+      `<p>Hint 1: player of move i = A if i % 2 == 0. You can decide the winner the moment their counter reaches 3.</p>`,
+      `<p>Hint 2: use rows[3], cols[3], diag, anti with +1 for A and −1 for B, exactly like LeetCode 348.</p>`,
+      `<p>Hint 3: after the loop, no winner: return "Draw" if moves.length == 9 else "Pending". Remember the centre updates both diagonals.</p>`
+    ],
+    solution: {
+      approach: `<p>Replay the moves while maintaining ±1 counters; return as soon as any touched counter has absolute value 3. This is the same win-detection component as the full design, used standalone.</p>`,
+      code: J.p02_sol,
+      complexity: `<p>O(m) time for m moves with O(1) per move; O(n) space for the counters.</p>`,
+      followUps: ['Generalise to n×n and k players', 'Return the winning line cells as well', 'Detect an illegal move list (cell played twice) without a board']
+    }
+  });
+
+  practice.push({
+    title: 'Display Board with O(1) Free-Spot Counts (Observer)',
+    level: 'Easy', tags: ['observer', 'counters', 'parking lot'], companies: ['Amazon', 'Ola'],
+    statement: `<p>The entrance screen shows free spots per type and refreshes many times a second. Instead of scanning every spot on each refresh, make the lot <b>publish</b> "occupied" and "freed" events and let the display board keep counters. The lot must not depend on the concrete board class (screens, a mobile app and analytics may all subscribe).</p>`,
+    constraints: `Up to 10<sup>5</sup> spots; board reads must be O(1); occupying a taken spot or freeing a free spot is an error.`,
+    example: `<p>Spots ${H.arr(['SMALL', 'COMPACT', 'COMPACT', 'LARGE'])} occupy(1), occupy(3) → board ${H.c('b', '{SMALL=1, COMPACT=1, LARGE=0}')}; free(3) → ${H.c('g', '{SMALL=1, COMPACT=1, LARGE=1}')}.</p>`,
+    brute: { why: `<p>Recount on every refresh: O(total spots) per read. With 10<sup>5</sup> spots and several screens refreshing 10× per second, that is millions of wasted checks per second — and the lot code ends up calling the screen directly.</p>`, code: J.p03_brute },
+    mcq: { q: 'Why should ParkingLot depend on a <code>SpotListener</code> interface instead of <code>DisplayBoard</code>?', options: ['Interfaces are faster', 'So any number of different subscribers can be added without changing the lot (Dependency Inversion + Observer)', 'Java requires it', 'To make DisplayBoard a Singleton'], answer: 1, explain: 'The publisher knows only the interface; new subscribers (app, analytics) plug in with zero edits.' },
+    hints: [
+      `<p>Hint 1: a count changes only when a spot is occupied or freed — update it at that moment instead of recomputing later.</p>`,
+      `<p>Hint 2: <code>interface SpotListener { void onOccupied(SpotType t); void onFreed(SpotType t); }</code>; the lot keeps a list of listeners and calls them after each change.</p>`,
+      `<p>Hint 3: seed the board once with a full scan at startup, then apply deltas. Validate double occupy / double free in the lot so listeners never see bogus events.</p>`
+    ],
+    solution: {
+      approach: `<p>Observer pattern: the lot publishes events; the board maintains an <code>EnumMap</code> of counters updated in O(1). Reading is a map lookup. The lot has no idea what a screen is.</p>`,
+      code: J.p03_sol,
+      complexity: `<p>Event O(listeners); read O(1). One initial O(spots) scan.</p>`,
+      followUps: ['Make listener calls asynchronous so a slow screen cannot block parking', 'Per-floor boards: filter events by floor', 'What if an event is lost? Periodic reconciliation scan']
+    }
+  });
+
+  practice.push({
+    title: 'Flat, Hourly and Lambda Tariffs with the Strategy Pattern',
+    level: 'Easy', tags: ['strategy', 'functional interface', 'pricing'], companies: ['Paytm', 'Swiggy'],
+    statement: `<p>A fee calculator must support flat pricing, hourly pricing, and ad-hoc promotions ("first 15 minutes free"), switchable at runtime (e.g. on weekends). Design it so a new tariff never edits the calculator.</p>`,
+    constraints: `Minutes 0 ≤ m ≤ 10<sup>6</sup>; hourly charges per started hour with a minimum of 1 hour.`,
+    example: `<p>Hourly ₹40, 61 min → 2 started hours → ${H.c('g', '₹80')}. Switch to flat ₹100 → ${H.c('g', '₹100')}. Promotion lambda <code>m -&gt; m &lt;= 15 ? 0 : 50</code>, 10 min → ${H.c('g', '₹0')}.</p>`,
+    brute: { why: `<p>A <code>switch</code> on a mode string with copy-pasted formulas. Each new tariff (weekend, festival, promo) adds a case to the same method; a typo in the mode string is a runtime crash.</p>`, code: J.p04_brute },
+    mcq: { q: 'Marking <code>PricingStrategy</code> with <code>@FunctionalInterface</code> buys you…', options: ['Faster execution', 'The ability to pass small tariffs as lambdas, plus a compile error if someone adds a second abstract method', 'Automatic thread safety', 'Nothing'], answer: 1, explain: 'One abstract method → lambdas allowed; the annotation enforces it.' },
+    hints: [
+      `<p>Hint 1: the varying part is a function minutes → amount. That is exactly what a one-method interface describes.</p>`,
+      `<p>Hint 2: <code>FlatPricing</code> and <code>HourlyPricing</code> implement it; <code>FeeCalculator</code> holds one and offers <code>setStrategy()</code>.</p>`,
+      `<p>Hint 3: started hours = <code>(m + 59) / 60</code>, then <code>Math.max(1, ...)</code>. Test 0, 59, 60, 61 minutes.</p>`
+    ],
+    solution: {
+      approach: `<p>Classic Strategy: the calculator (context) delegates to a pluggable strategy. Simple tariffs can be lambdas; complex ones are classes. Runtime switching is a setter (or better, chosen by a factory based on the entry date).</p>`,
+      code: J.p04_sol,
+      complexity: `<p>O(1) time and O(1) extra space per charge; switching strategy is O(1).</p>`,
+      followUps: ['Choose the strategy automatically from the entry date (a factory)', 'Combine strategies: min(hourly, flat) as a composite', 'Make FeeCalculator immutable and thread-safe']
+    }
+  });
+
+  /* =====================================================================
+     PRACTICE — MEDIUM
+     ===================================================================== */
+  practice.push({
+    title: 'Valid Tic-Tac-Toe State (LeetCode 794)',
+    level: 'Medium', tags: ['game rules', 'invariants', 'tic-tac-toe'], companies: ['Microsoft', 'Google'],
+    statement: `<p>Given a 3×3 board as 3 strings of <code>'X'</code>, <code>'O'</code> and <code>' '</code>, return true if it can occur during a valid game: X moves first, players alternate, and nobody moves after someone wins.</p>`,
+    constraints: `board.length == 3; each row has length 3; characters are 'X', 'O' or ' '.`,
+    example: `<p>${H.c('r', '["O  ","   ","   "]')} → false (O cannot move first). ${H.c('r', '["XXX","   ","OOO"]')} → false (both cannot win). ${H.c('g', '["XOX","O O","XOX"]')} → true (5 X, 4 O, no winner).</p>`,
+    brute: { why: `<p>Generate every reachable position by DFS from the empty board (5,478 positions) and test membership. Correct and fast for 3×3, but it explores the whole game tree, and the idea collapses for larger boards — the interviewer wants the invariants.</p>`, code: J.p05_brute },
+    mcq: { q: 'X has three in a row. What must be true of the counts for the board to be valid?', options: ['x == o', 'x == o + 1', 'o == x + 1', 'Anything'], answer: 1, explain: 'X just made the winning move, so X has played exactly one more time than O.' },
+    hints: [
+      `<p>Hint 1: think about what each move changes: counts of X and O, and possibly a winning line. Write down the invariants a real game must satisfy.</p>`,
+      `<p>Hint 2: count rule: <code>o ≤ x ≤ o + 1</code>. Win rules: not both win; if X wins then x == o + 1; if O wins then x == o.</p>`,
+      `<p>Hint 3: write a <code>wins(board, p)</code> helper checking 3 rows, 3 cols, 2 diagonals. (Two X lines at once is fine — one move can complete two lines.)</p>`
+    ],
+    solution: {
+      approach: `<p>Validate the invariants instead of searching: turn-order count constraints plus the "game stops at a win" constraints. These are exactly the invariants your <code>Game</code> class enforces at runtime, used here in reverse.</p>`,
+      code: J.p05_sol,
+      complexity: `<p>O(1) for a fixed 3×3 board (O(n²) for n×n).</p>`,
+      followUps: ['Generalise to n×n with K players', 'Return the move sequence that produces the board', 'Which invariant becomes an exception inside your Game class?']
+    }
+  });
+
+  practice.push({
+    title: 'Connect Four: Gravity Drops and Local Win Checks',
+    level: 'Medium', tags: ['game design', 'matrix', 'directions'], companies: ['Amazon', 'Uber', 'Microsoft'],
+    statement: `<p>Design Connect Four on an R×C grid: <code>drop(col, symbol)</code> places a disc in the lowest empty cell of that column and returns <code>"WIN"</code>, <code>"DRAW"</code> or <code>"OK"</code>. A win is K or more same discs in a row horizontally, vertically or diagonally. Reject full or invalid columns.</p>`,
+    constraints: `4 ≤ R, C ≤ 100; K ≤ min(R, C); up to R × C drops.`,
+    example: `<p>6×7, K = 4. Drops by column, alternating R/Y: 0,1,1,2,2,3,2,3,3,6,3 → red discs at (5,0), (4,1), (3,2), (2,3) → ${H.c('g', '"WIN"')} on the last drop (a rising diagonal).</p>`,
+    brute: { why: `<p>After each drop, scan every cell in 4 directions: O(R × C × K) per move. Most of that work re-checks lines that could not have changed — only lines through the new disc can create a win.</p>`, code: J.p06_brute },
+    mcq: { q: 'How do you find the landing row of a drop in O(1)?', options: ['Scan the column from the top', 'Keep <code>height[col]</code> = number of discs in the column', 'Binary search', 'You cannot'], answer: 1, explain: 'The next disc lands at row rows − 1 − height[col]; increment height after placing.' },
+    hints: [
+      `<p>Hint 1: a new win must include the disc just dropped, so only inspect the 4 lines through it.</p>`,
+      `<p>Hint 2: for direction (dr, dc), count same discs going forward and backward from the new disc: total = 1 + run(+d) + run(−d).</p>`,
+      `<p>Hint 3: keep <code>height[]</code> per column for O(1) landing and full-column checks; draw when moves == R × C.</p>`
+    ],
+    solution: {
+      approach: `<p>Board + per-column heights make drops O(1). Win detection walks outward from the last disc in 4 directions, so each move costs O(K) regardless of board size. The same <code>run()</code> helper powers K-in-a-row games generally.</p>`,
+      code: J.p06_sol,
+      complexity: `<p>drop: O(K) time; space O(R × C).</p>`,
+      followUps: ['Pop-out variant: remove a bottom disc (heights and wins both change)', 'Plug the win check in as a WinningStrategy', 'Add a bot that blocks immediate threats']
+    }
+  });
+
+  practice.push({
+    title: 'K-in-a-Row on an R×C Board with a Pluggable Win Rule',
+    level: 'Medium', tags: ['strategy', 'game design', 'gomoku'], companies: ['Google', 'Adobe'],
+    statement: `<p>Write a <code>GridGame</code> that supports any board size, any number of players and any win rule. Implement the rule <code>KInARow(k)</code> (Gomoku: 5 in a row on 15×15) so it checks only the lines through the last move. The game class must not change when a new rule is added.</p>`,
+    constraints: `R, C ≤ 1000; 3 ≤ k ≤ 10; players 2–4.`,
+    example: `<p>15×15, k = 5. X plays (7,3), (7,4), (7,5), (7,6), (7,7) while O plays elsewhere → ${H.c('g', 'Winner: X')} after X's 5th move. Counters per whole line would not work: the row has 15 cells but only 5 are needed.</p>`,
+    brute: { why: `<p>Rescan the whole board after each move: O(R × C × k). On a 1000×1000 board that is billions of operations over a game.</p>`, code: J.p07_brute },
+    mcq: { q: 'Why can\'t the O(1) row/column counters from Tic-Tac-Toe detect 5-in-a-row on 15×15?', options: ['They can', 'A counter tells you how many marks a player has in the whole row, not whether they are consecutive', 'Counters overflow', 'Diagonals do not exist'], answer: 1, explain: 'Five X marks scattered across a 15-cell row reach count 5 without being a win.' },
+    hints: [
+      `<p>Hint 1: a win must pass through the last move. Check 4 directions from it: horizontal, vertical, two diagonals.</p>`,
+      `<p>Hint 2: <code>interface WinRule { boolean isWin(char[][] b, int r, int c); }</code> — the game asks the rule after each move.</p>`,
+      `<p>Hint 3: count = 1 + same cells walking +d + same cells walking −d, stop early once count reaches k. That bounds work by O(k).</p>`
+    ],
+    solution: {
+      approach: `<p>Strategy for rules; the game keeps turn order and delegates the win question. <code>KInARow</code> counts consecutive same symbols through the last move in both senses of 4 directions, capped at k.</p>`,
+      code: J.p07_sol,
+      complexity: `<p>O(k) per move; O(R × C) space for the board.</p>`,
+      followUps: ['"Exactly 5" (overlines of 6 do not count) — how does the rule change?', 'Swap in tic-tac-toe rules with zero game changes', 'Infinite board: store cells in a HashMap of coordinates']
+    }
+  });
+
+  practice.push({
+    title: 'Parking Reservations with a Per-Spot Interval Calendar',
+    level: 'Medium', tags: ['treemap', 'intervals', 'parking lot'], companies: ['Uber', 'Booking.com', 'Amazon'],
+    statement: `<p>Add advance bookings: <code>reserve(type, start, end)</code> returns a reservation on some spot of that type free for the whole half-open window <code>[start, end)</code>, or empty. <code>cancel(id)</code> frees it. Overlapping bookings on one spot are forbidden; back-to-back ([9,12) then [12,14)) is allowed.</p>`,
+    constraints: `Up to 10<sup>4</sup> spots and 10<sup>5</sup> reservations; times are integers (hours); start &lt; end.`,
+    example: `<p>Spots A1, A2. reserve 9–12 → ${H.c('g', 'A1')}; 10–11 → ${H.c('g', 'A2')}; 11–13 → ${H.c('g', 'A2')} (A2's booking ends exactly at 11); 12–14 → ${H.c('g', 'A1')}; cancel R2, then 10–11 → ${H.c('g', 'A2')} again.</p>`,
+    brute: { why: `<p>A single list of every reservation, scanned once per spot per request: O(spots × reservations). At 10<sup>4</sup> × 10<sup>5</sup> that is 10<sup>9</sup> checks per request.</p>`, code: J.p08_brute },
+    mcq: { q: 'Bookings on a spot are non-overlapping and sorted by start. To test [s, e), which neighbours must you check?', options: ['All bookings', 'Only the booking with the greatest start ≤ s and the booking with the smallest start ≥ s', 'Only the first and last', 'None'], answer: 1, explain: 'Non-overlapping sorted intervals: only the immediate predecessor and successor can collide (TreeMap floorEntry / ceilingKey).' },
+    hints: [
+      `<p>Hint 1: give every spot its own sorted calendar; then a free-check only looks at that spot's neighbours of <code>start</code>.</p>`,
+      `<p>Hint 2: <code>TreeMap&lt;Integer, Integer&gt;</code> start → end. <code>floorEntry(s)</code> must end ≤ s; <code>ceilingKey(s)</code> must be ≥ e (or absent).</p>`,
+      `<p>Hint 3: keep indexes <code>type → calendars</code> and <code>reservationId → reservation</code> for O(log n) cancel. Make reserve/cancel synchronized (two apps can book at once).</p>`
+    ],
+    solution: {
+      approach: `<p>A <code>SpotCalendar</code> per spot holds disjoint intervals in a TreeMap; a <code>ReservationService</code> tries spots of the requested type and books the first free one. ParkingLot can later check reservations at entry — the existing allocation code is untouched.</p>`,
+      code: J.p08_sol,
+      complexity: `<p>reserve: O(S × log B) for S spots of the type and B bookings per spot; cancel O(log B).</p>`,
+      followUps: ['No-shows: release a reservation 15 minutes after start (scheduled task)', 'Prefer the spot whose gaps fit best (minimise fragmentation)', 'How does ParkingLot.park() honour a reservation id at the gate?']
+    }
+  });
+
+  practice.push({
+    title: 'EV Charging and Valet Add-ons with the Decorator Pattern',
+    level: 'Medium', tags: ['decorator', 'factory', 'pricing'], companies: ['Tesla', 'Ather', 'Amazon'],
+    statement: `<p>Pricing now has a base tariff plus optional add-ons: <b>EV charging</b> (per kWh) and <b>valet</b> (flat fee when used). Any combination must be possible, and adding a new add-on must not create new combination classes. EV spots automatically include the charging add-on.</p>`,
+    constraints: `Stays up to 72 h; energy up to 100 kWh; money as long rupees (round charging to the nearest rupee).`,
+    example: `<p>EV spot, 3 h, 10 kWh, no valet: hourly ₹20 × 3 = 60, + 10 × 15 = 150 → ${H.c('g', '₹210')}. Regular spot, 3 h, valet: 60 + 100 → ${H.c('g', '₹160')}. <code>describe()</code> → ${H.c('b', 'hourly@20 + valet + charging@15.0/kWh')}.</p>`,
+    brute: { why: `<p>Subclass explosion: HourlyWithCharging, HourlyWithValet, HourlyWithChargingAndValet, then the same again for flat and weekend tariffs. Classes = tariffs × 2<sup>add-ons</sup> — 3 tariffs and 3 add-ons already need 24 classes.</p>`, code: J.p09_brute },
+    mcq: { q: 'With 3 base tariffs and 3 optional add-ons, how many classes do decorators need?', options: ['24', '6', '9', '3'], answer: 1, explain: '3 base classes + 3 decorator classes; combinations are built at runtime by wrapping.' },
+    hints: [
+      `<p>Hint 1: an add-on "is a" pricing (same interface) and "has a" pricing (the one it adds to). That double relationship is the Decorator signature.</p>`,
+      `<p>Hint 2: <code>abstract class PricingAddOn implements Pricing { protected final Pricing inner; }</code>; each add-on returns <code>inner.fee(s) + extra</code>.</p>`,
+      `<p>Hint 3: a small factory decides the chain by spot kind: regular = valet(hourly); EV = charging(valet(hourly)). Pass usage data in a <code>Stay</code> record so the interface stays stable.</p>`
+    ],
+    solution: {
+      approach: `<p>Base tariffs implement <code>Pricing</code>; add-ons wrap another <code>Pricing</code>. A factory composes chains per spot kind. New add-on = one class; nothing else changes. <code>describe()</code> shows the chain — handy for itemised receipts.</p>`,
+      code: J.p09_sol,
+      complexity: `<p>O(d) per fee for d decorator layers (tiny). Classes grow linearly with features.</p>`,
+      followUps: ['Itemised receipt: each layer appends a line item', 'Does decorator order matter? (cap then surcharge vs surcharge then cap)', 'Idle fee: EV stays plugged in after charging completes']
+    }
+  });
+
+  practice.push({
+    title: 'Nearest Spot to the Entry Gate with Per-Gate Heaps',
+    level: 'Medium', tags: ['priority queue', 'strategy', 'lazy deletion'], companies: ['Amazon', 'Google', 'Uber'],
+    statement: `<p>A lot has G entry gates and S spots; <code>dist[g][s]</code> is the walking distance from gate g to spot s. Implement a <code>GateAwareStrategy</code>: <code>allocate(gate)</code> returns the free spot nearest that gate (ties → smaller id), <code>release(spot)</code> frees it. Make allocation faster than scanning all spots.</p>`,
+    constraints: `G ≤ 20, S ≤ 10<sup>5</sup>, up to 10<sup>6</sup> operations.`,
+    example: `<p>dist = gate0 ${H.arr([1, 2, 3, 4])} gate1 ${H.arr([4, 3, 2, 1])}. allocate(0) → ${H.c('g', '0')}; allocate(1) → ${H.c('g', '3')}; allocate(1) → ${H.c('g', '2')}; release(3); allocate(1) → ${H.c('g', '3')}; allocate(0) → ${H.c('g', '1')}.</p>`,
+    brute: { why: `<p>For every arriving car, scan all S spots and compute the minimum distance: O(S) per allocation — 10<sup>5</sup> × 10<sup>6</sup> operations is far too slow.</p>`, code: J.p10_brute },
+    mcq: { q: 'A spot taken through gate 0 still sits in gate 1\'s heap. What is the cheapest correct handling?', options: ['Remove it from every heap immediately (O(S) each)', 'Lazy deletion: when gate 1 pops it later, see it is taken and pop again', 'Ignore it — double allocation is fine', 'Rebuild all heaps'], answer: 1, explain: 'Lazy deletion keeps operations O(log S) amortised; stale entries are skipped when popped.' },
+    hints: [
+      `<p>Hint 1: each gate needs its own ordering of spots, so keep one min-heap per gate keyed by that gate's distance.</p>`,
+      `<p>Hint 2: removing an arbitrary element from a <code>PriorityQueue</code> is O(S). Instead, leave it and skip it when it surfaces (check a shared <code>taken[]</code>).</p>`,
+      `<p>Hint 3: release pushes the spot back into every gate's heap. Synchronize allocate/release (or use one lock) because gates run concurrently.</p>`
+    ],
+    solution: {
+      approach: `<p>G heaps over the same spots with different comparators, a shared <code>taken[]</code> array and lazy deletion. The class plugs into ParkingLot as just another allocation strategy — the lot never learns about gates or heaps.</p>`,
+      code: J.p10_sol,
+      complexity: `<p>allocate: O(log S) amortised (stale pops are paid for by earlier pushes); release: O(G log S). Space O(G × S) for heap entries.</p>`,
+      followUps: ['Bound heap growth from repeated releases (periodic rebuild)', 'Combine with spot types: one heap per (gate, type)', 'Make it lock-free per gate — what breaks?']
+    }
+  });
+
+  /* =====================================================================
+     PRACTICE — HARD
+     ===================================================================== */
+  practice.push({
+    title: 'Concurrent Parking Lot: Many Gates, Zero Double Allocation',
+    level: 'Hard', tags: ['concurrency', 'CAS', 'concurrent queue'], companies: ['Uber', 'Goldman Sachs', 'Amazon'],
+    statement: `<p>Eight entry gates run on eight threads and call <code>park(plate, type)</code> at the same time; exit gates call <code>leave(plate)</code>. Guarantee: no spot is ever given to two vehicles, a plate cannot be inside twice, and gates should not all queue behind a single global lock. Prove it with a stress test.</p>`,
+    constraints: `Up to 10<sup>5</sup> spots and 64 gate threads. park/leave should be lock-free or fine-grained. Return empty when no spot of that type is free.`,
+    example: `<p>500 COMPACT spots, 8 threads × 125 cars = 1000 arrivals → ${H.c('g', 'parked=500 duplicates=0 inside=500')}. With the racy version the same test occasionally prints ${H.c('r', 'duplicates &gt; 0')} — and only occasionally, which is what makes races dangerous.</p>`,
+    brute: { why: `<p>Check-then-act on a shared array: two threads both read <code>spots[i] == null</code> and both write. Adding <code>synchronized</code> fixes correctness but serialises every gate on one monitor. The interviewer wants you to name the race, fix it, then improve throughput.</p>`, code: J.p11_brute },
+    mcq: { q: 'Why is <code>ConcurrentLinkedQueue.poll()</code> enough to stop two gates getting the same free spot?', options: ['It is synchronized internally on the whole lot', 'It atomically removes the head: each element is returned to at most one caller', 'It sorts spots by distance', 'It blocks until a spot is free'], answer: 1, explain: 'poll() uses CAS so exactly one thread wins each element; the losing thread gets the next one or null.' },
+    hints: [
+      `<p>Hint 1: the dangerous moment is "find a free spot" + "mark it taken". Make that one atomic operation instead of two steps.</p>`,
+      `<p>Hint 2: keep free spots in a <code>ConcurrentLinkedQueue</code> per type — <code>poll()</code> is the atomic hand-off. Claim the plate atomically too (<code>Set.add</code> on a concurrent set returns false if present).</p>`,
+      `<p>Hint 3: on leave: remove the plate's mapping (only one thread can), clear the spot with a CAS, <i>then</i> offer it back to the queue — publishing before clearing would let another gate grab a dirty spot. Stress-test with an executor and a set of seen spot ids.</p>`
+    ],
+    solution: {
+      approach: `<p>Per-type lock-free free-lists give O(1) atomic allocation; an <code>AtomicReference</code> on each spot double-checks invariants with CAS; a concurrent plate set prevents duplicate entries; <code>ConcurrentHashMap</code> maps plate → spot for exit. No global lock — gates only contend on the queue head of the same type. Trade-off: "nearest" becomes FIFO order unless you use per-floor queues.</p>`,
+      code: J.p11_sol,
+      complexity: `<p>park / leave: O(1) expected, lock-free. Memory O(spots + vehicles inside).</p>`,
+      followUps: ['Keep "nearest first" under concurrency (per-floor queues, try floors in order)', 'Spread the lot over 3 servers — where does atomicity live now?', 'Add a fair waiting queue when the lot is full (BlockingQueue with timeout)']
+    }
+  });
+
+  practice.push({
+    title: 'Unbeatable Tic-Tac-Toe Bot as a Player Strategy (Minimax + Alpha-Beta)',
+    level: 'Hard', tags: ['minimax', 'game tree', 'strategy'], companies: ['Google', 'Meta', 'DeepMind'],
+    statement: `<p>Implement <code>MinimaxBot implements Player</code> so it plugs into the existing game without any change to <code>Game</code>. The bot must never lose on 3×3: take a win when available, block the opponent's win, and prefer faster wins / slower losses.</p>`,
+    constraints: `3×3 board; the bot may be X or O; respond within a few milliseconds.`,
+    example: `<p>Board ${H.c('b', 'XX. / OO. / ...')}, bot = O → plays ${H.c('g', '(1,2)')} — winning now beats blocking. Board ${H.c('b', 'XX. / .O. / ...')}, bot = O → plays ${H.c('g', '(0,2)')} — the only move that does not lose.</p>`,
+    brute: { why: `<p>A "first free cell" bot. It fits the interface but loses to any human in a few moves. (Plain minimax without pruning is also acceptable for 3×3 — at most 9! ≈ 362,880 leaves — but alpha-beta is the expected upgrade and is essential for bigger boards.)</p>`, code: J.p12_brute },
+    mcq: { q: 'Why score a win as <code>10 − depth</code> rather than a flat +10?', options: ['To avoid integer overflow', 'So the bot prefers the fastest win (and the slowest loss) among equally winning lines', 'Depth is required by alpha-beta', 'It makes no difference'], answer: 1, explain: 'Without depth, a win in 1 and a win in 5 look the same and the bot may "play with its food" and dither.' },
+    hints: [
+      `<p>Hint 1: assume both sides play perfectly. The bot maximises the score, the opponent minimises it; recurse over every free cell.</p>`,
+      `<p>Hint 2: terminal scores: bot wins → 10 − depth; opponent wins → depth − 10; full board → 0. Place, recurse, then undo the move on the same array (no copies).</p>`,
+      `<p>Hint 3: alpha-beta: keep the best score each side can already guarantee; when <code>beta ≤ alpha</code>, the remaining siblings cannot change the decision — return early.</p>`
+    ],
+    solution: {
+      approach: `<p>The bot is just another implementation of the <code>Player</code> strategy, so the game loop does not change. Minimax with alpha-beta explores the game tree with in-place make/undo moves; depth-adjusted scores choose the quickest win.</p>`,
+      code: J.p12_sol,
+      complexity: `<p>Worst case O(b<sup>d</sup>) with b ≤ 9, d ≤ 9; alpha-beta reduces it toward O(b<sup>d/2</sup>) with good move ordering. Memo by board string (transposition table) collapses 3×3 to its 5,478 positions.</p>`,
+      followUps: ['Add a transposition table (HashMap of board → score)', 'Difficulty levels: depth limit or random blunders', 'Why does full minimax not scale to 15×15 Gomoku? (heuristics, MCTS)']
+    }
+  });
+
+  practice.push({
+    title: 'Machine Coding: Parking Lot Command Interpreter',
+    level: 'Hard', tags: ['machine coding', 'command pattern', 'treeset'], companies: ['Gojek', 'Flipkart', 'Swiggy', 'PhonePe'],
+    statement: `<p>The classic 90-minute round. Build a program that reads commands and prints exact outputs:</p>
+      ${H.table(['Command', 'Output'], [
+        ['<code>create_parking_lot 6</code>', 'Created a parking lot with 6 slots'],
+        ['<code>park KA-01-HH-1234 White</code>', 'Allocated slot number: 1 (nearest = lowest number) / Sorry, parking lot is full'],
+        ['<code>leave 4</code>', 'Slot number 4 is free'],
+        ['<code>registration_numbers_for_cars_with_colour White</code>', 'plates in slot order, comma separated, or Not found'],
+        ['<code>slot_number_for_registration_number KA-01-HH-3141</code>', 'slot or Not found']
+      ])}
+      <p>Bad lines must print an error, never crash. New commands must be addable without touching the existing ones.</p>`,
+    constraints: `Up to 10<sup>5</sup> slots and 10<sup>6</sup> commands; colour matching case-insensitive; outputs must match exactly.`,
+    example: `<p>create 3; park ×3 → ${H.c('g', 'slots 1, 2, 3')}; 4th park → ${H.c('r', 'Sorry, parking lot is full')}; leave 2 → ${H.c('b', 'Slot number 2 is free')}; park → ${H.c('g', 'Allocated slot number: 2')} (lowest free); colour White → ${H.c('g', 'KA-01-HH-1234, KA-01-BB-0001')}; <code>fly_away now</code> → ${H.c('r', 'Unknown command: fly_away')}.</p>`,
+    brute: { why: `<p>Everything in one class with an if-else ladder over the command word and linear scans for the nearest slot and colour queries: O(n) per park and query, no validation (a missing argument throws), and each new command grows the ladder. It may pass the sample but fails the evaluator's large hidden input and the code-quality rubric.</p>`, code: J.p13_brute },
+    mcq: { q: 'Which structure gives "nearest free slot" in O(log n) and supports freeing any slot?', options: ['ArrayList scanned from the start', 'TreeSet&lt;Integer&gt; of free slots with pollFirst()', 'HashSet&lt;Integer&gt;', 'Stack&lt;Integer&gt;'], answer: 1, explain: 'A sorted set keeps the smallest free slot first; add() on leave and pollFirst() on park are both O(log n). (A min-heap also works.)' },
+    hints: [
+      `<p>Hint 1: separate three layers: text parsing, command handlers, and the domain (<code>Garage</code>) that knows nothing about strings like "park".</p>`,
+      `<p>Hint 2: domain indexes: <code>TreeSet</code> of free slots, <code>Map&lt;plate, slot&gt;</code>, <code>Map&lt;colour, TreeSet&lt;slot&gt;&gt;</code> (sorted output for free).</p>`,
+      `<p>Hint 3: <code>Map&lt;String, CliCommand&gt;</code> + an arity table; check "lot created" and argument counts before dispatching; wrap execution in try/catch so one bad line prints an error and the run continues. Drive it from a list of lines (or stdin) in <code>main()</code>.</p>`
+    ],
+    solution: {
+      approach: `<p>Command pattern for the CLI (one small class per command, registered in a map), a clean <code>Garage</code> domain with the right indexes, and defensive parsing. This is exactly what machine-coding evaluators score: runs on their input, O(log n) operations, no God class, and a new command is one class + one <code>register()</code> line.</p>`,
+      code: J.p13_sol,
+      complexity: `<p>park / leave: O(log n); colour query O(k) for k matches; plate lookup O(1). Memory O(n).</p>`,
+      followUps: ['Add <code>status</code> printing a table of slot, plate, colour', 'Read commands from a file path given as an argument', 'Add multi-level lots without changing any command class']
+    }
+  });
+
+  practice.push({
+    title: 'Multiplayer Tic-Tac-Toe with Spectators and Replay (Observer + Event Log)',
+    level: 'Hard', tags: ['observer', 'event sourcing', 'sealed interfaces'], companies: ['Microsoft', 'Zynga', 'Atlassian'],
+    statement: `<p>Support P players on a (P+1)×(P+1) board (a full line wins). Spectators (TV screen, logger, scoreboard) must receive every event without the game knowing their classes. Every game must be <b>replayable</b>: rebuild the board as it looked after any move k from stored history alone.</p>`,
+    constraints: `2 ≤ P ≤ 8; win check O(1) per move; replay O(moves); events are immutable.`,
+    example: `<p>Players X, O, Z on 4×4. Moves (0,0) (1,0) (2,0) (0,1) (1,1) (2,1) (0,2) (1,2) (2,2) (0,3) → TV sees ${H.c('g', 'X WINS')} (row 0). <code>replay(events, 4, 3)</code> → ${H.c('b', 'X... / O... / Z... / ....')}.</p>`,
+    brute: { why: `<p>The game prints directly ("Player X played…") and copy-pastes a second println for the TV. No history is stored, so replay is impossible, and every new spectator means editing <code>play()</code>.</p>`, code: J.p14_brute },
+    mcq: { q: 'Why model events as a <b>sealed</b> interface of records?', options: ['Records are faster', 'The compiler knows every event type, so a <code>switch</code> over events is checked for exhaustiveness and events are immutable', 'Sealed classes are required for Observer', 'To prevent subclassing Game'], answer: 1, explain: 'Sealed + records = closed set of immutable facts; pattern-matching switches must handle each one or fail to compile.' },
+    hints: [
+      `<p>Hint 1: anything that happened (move, win, draw) is a fact — store it as an immutable event in an append-only list.</p>`,
+      `<p>Hint 2: <code>emit(e)</code> appends to the log and calls every <code>GameListener</code>. Spectators never touch game state; they only read events.</p>`,
+      `<p>Hint 3: per-player counter arrays <code>[P][n]</code> keep the win check O(1) — update all counters (non-short-circuit <code>|</code>) before deciding. Replay = start from an empty board and apply MovePlayed events with seq ≤ k.</p>`
+    ],
+    solution: {
+      approach: `<p>The game state changes only by emitting events; listeners (Observer) receive them; the event log doubles as history for replay (event sourcing, lite). A sealed event hierarchy with records gives immutability and exhaustive <code>switch</code> handling in spectators.</p>`,
+      code: J.p14_sol,
+      complexity: `<p>play: O(1) + O(listeners); replay to move k: O(events). Memory O(events).</p>`,
+      followUps: ['Persist events to a file and resume a game after a crash', 'Snapshot every 50 moves to speed up replay', 'Run listeners asynchronously so a slow spectator cannot stall the game']
+    }
+  });
+
+  /* =====================================================================
+     QUIZ
+     ===================================================================== */
+  quiz.push({ q: 'An interviewer says "Design a parking lot." What should your first two minutes produce?', options: ['A ParkingLot class with a main method', 'A written list of clarified requirements: vehicle types, floors, pricing, concurrency, out-of-scope items', 'A UML diagram of every possible class', 'A database schema'], answer: 1, explain: 'Clarifying requirements first fixes the scope; every later step (entities, APIs, patterns) depends on it.' });
+  quiz.push({ q: 'Which noun from "drivers get a ticket at the gate" most clearly deserves its own class?', options: ['driver', 'ticket', 'gate (as a String)', 'at'], answer: 1, explain: 'A ticket has its own data (id, vehicle, spot, entry time) and lifecycle; the driver usually has no data the system needs.' });
+  quiz.push({ q: 'Vehicle types BIKE, CAR, TRUCK differ only in which spots they fit and their hourly rate. The simplest extensible model is…', options: ['Abstract class Vehicle with three empty subclasses', 'An enum VehicleType with fields for fit list and rate', 'Three String constants', 'A Singleton VehicleRegistry'], answer: 1, explain: 'When variants differ only by data, an enum with fields keeps rules in one place; a new type is one line.' });
+  quiz.push({ q: 'Why is a Singleton ParkingLot usually a poor choice in an LLD interview?', options: ['Singletons cannot have methods', 'It hides a global dependency, prevents multiple lots and makes tests share state', 'Java forbids it', 'It is slower'], answer: 1, explain: 'Create one instance in main() and inject it; the "only one" constraint is a deployment decision, not a class property.' });
+  quiz.push({ q: 'Two entry gates call park() at the same moment and both get spot F0-S2. What is the root cause?', options: ['A bad allocation strategy', 'A check-then-act race: finding a free spot and marking it taken are not atomic', 'Using enums', 'Pricing logic'], answer: 1, explain: 'Make find+assign one atomic step: synchronized park(), per-floor locks, or a concurrent free queue whose poll() is atomic.' });
+  quiz.push({ q: 'In unpark(), which order is safest?', options: ['release spot → compute fee → remove ticket', 'remove ticket → compute fee → release spot', 'compute fee → release spot → keep ticket for audit as active', 'any order'], answer: 1, explain: 'Removing the ticket first makes reuse impossible even if a later step fails; the spot is released last.' });
+  quiz.push({ q: 'A car parks for 61 minutes at ₹20 per started hour (minimum 1 hour). The fee is…', options: ['₹20', '₹40', '₹20.33', '₹60'], answer: 1, explain: 'Started hours = ⌈61/60⌉ = 2 → 2 × 20 = ₹40.' });
+  quiz.push({ q: 'On an n×n tic-tac-toe board with counters (X = +1, O = −1), X wins when…', options: ['any counter is positive', 'a touched row, column or diagonal counter equals +n', 'the sum of all counters is n', 'n moves have been made'], answer: 1, explain: 'Only a line fully owned by X can reach +n; any O in it lowers the sum.' });
+  quiz.push({ q: 'Cell (1,1) on a 3×3 board updates which counters?', options: ['rows[1] and cols[1] only', 'rows[1], cols[1], diag and anti', 'diag only', 'anti only'], answer: 1, explain: 'The centre satisfies both r == c and r + c == n − 1, so it lies on both diagonals.' });
+  quiz.push({ q: 'The interviewer asks to add a computer opponent. In a good design this is…', options: ['a new flag isComputer in Game', 'a new class implementing the existing Player interface; Game unchanged', 'a subclass of Board', 'impossible without rewriting Game'], answer: 1, explain: 'Player is a Strategy; a bot is another implementation. Zero edits to Game is the Open/Closed principle in action.' });
+  quiz.push({ q: 'You need "₹200 daily cap" and "weekend 1.5×" on top of any tariff, in any combination. Best fit?', options: ['Subclass per combination', 'Decorators wrapping a PricingStrategy', 'A static utility with boolean flags', 'Observer'], answer: 1, explain: 'Decorators implement the same interface and wrap another strategy, so features stack without class explosion.' });
+  quiz.push({ q: 'Which is the strongest reason interviewers reject a single-class procedural solution that produces correct output?', options: ['It uses too few lines', 'Follow-up requirements force edits across tangled code; responsibilities and invariants are not modelled', 'Procedural code cannot compile in Java', 'It does not use inheritance'], answer: 1, explain: 'The LLD rubric scores modelling, separation of concerns and extensibility, not just output.' });
+  quiz.push({ q: 'Undo is added with MoveCommand objects. Why must execute() update ALL counters before checking for a win?', options: ['For speed', 'So undo(), which reverses every counter, restores an exact previous state', 'Because of Java rules', 'It is not necessary'], answer: 1, explain: 'An early return would skip some increments; the matching decrements in undo would then corrupt the counters.' });
+  // vary the position of the correct option so it is not always the second one
+  (function () {
+    var shifts = [0, 2, 1, 3, 2, 0, 3, 1, 2, 0, 3, 1, 2];
+    quiz.forEach(function (q, i) {
+      var s = shifts[i % shifts.length] % q.options.length;
+      if (!s) return;
+      var correct = q.options[q.answer];
+      for (var k = 0; k < s; k++) q.options.unshift(q.options.pop());
+      q.answer = q.options.indexOf(correct);
+    });
+  })();
+
+  /* =====================================================================
+     INTERVIEW Q&A
+     ===================================================================== */
+  interview.push({ level: 'B', q: 'Walk me through how you approach any LLD interview question.',
+    a: `<p>I use seven steps and keep them visible. <b>1. Clarify</b>: actors, use cases, variants, scale/concurrency, out of scope — written down. <b>2. Entities</b>: nouns become classes, enums or records; verbs become methods on the class that owns the data. <b>3. APIs</b>: public signatures with inputs, outputs and failure cases. <b>4. Class diagram</b>: relationships and multiplicities. <b>5. Patterns</b>: interfaces only where the requirements say something will vary. <b>6. Code</b>: dependency order, then a <code>main()</code> demo. <b>7. Extend</b>: take one follow-up and show it is a new class, not edits everywhere. I timebox: about a quarter of the round on steps 1–5, half on code.</p>`,
+    followUps: ['What do you cut when only 10 minutes remain?', 'How does the framework change for a 90-minute machine-coding round?'] });
+  interview.push({ level: 'B', q: 'What clarifying questions would you ask for "Design a parking lot"?',
+    a: `<p>How many floors and spots; which spot sizes and vehicle types, and which fits where; how pricing works (hourly, slabs, caps, per type); how many entry/exit gates and whether they operate concurrently; payment modes; whether we need a display of free spots; whether reservations, monthly passes, EV charging or lost tickets are in scope; and whether it is in-memory or persisted. I also ask what is explicitly out of scope, so I do not build features nobody needs.</p>`,
+    followUps: ['Which answer changes your design the most?', 'What would you assume if the interviewer says "your call"?'] });
+  interview.push({ level: 'B', q: 'Why not just write the parking lot as one class with arrays? It works.',
+    a: `<p>It works for the demo but fails the purpose of the round. Types as strings and parallel arrays mean rules are duplicated as if-else ladders (fit rules, prices), so a new vehicle type or tariff needs edits in several methods — shotgun surgery. Printing, pricing and payment are tangled, so nothing can be tested alone. There is no place to enforce invariants like "a ticket is used once", and check-then-act on shared arrays races under multiple gates. A modelled design turns each of those follow-ups into one new class.</p>`,
+    followUps: ['When IS a single class acceptable?', 'How would you refactor it safely if you inherited it?'] });
+  interview.push({ level: 'I', q: 'Which design patterns did you use in the parking lot, and why each one?',
+    a: `<p><b>Strategy</b> for spot allocation and for pricing — the two rules the business will change most. <b>Facade</b>: <code>ParkingLot</code> is the single entry point for gates, hiding floors and spots. <b>Observer</b> for display boards reacting to spot changes with O(1) counters. <b>Decorator</b> when pricing rules stack (daily cap, weekend surcharge, EV charging). <b>Dependency Inversion</b> via an injected <code>TimeSource</code> so fees are testable. I deliberately avoided Singleton (global state, hard to test) and vehicle subclasses that would carry no behaviour.</p>`,
+    followUps: ['Would you use the State pattern for tickets?', 'Where would a Factory help?'] });
+  interview.push({ level: 'I', q: 'How do you prevent two gates from assigning the same spot?',
+    a: `<p>The race is check-then-act: "find a free spot" followed by "mark it taken". It must be atomic. Simplest: <code>synchronized</code> on <code>park</code>/<code>unpark</code> — correct but serialises gates. Better: per-floor <code>ReentrantLock</code>s (acquired in a fixed order), or a per-type <code>ConcurrentLinkedQueue</code> of free spots where <code>poll()</code> atomically hands a spot to exactly one thread, plus a CAS on the spot as a safety net. Across multiple servers, the atomic step moves into the database (row lock / conditional update) or Redis. I would also make <code>ParkingSpot.assign()</code> re-check emptiness and throw.</p>`,
+    followUps: ['How do you keep "nearest spot" ordering with a lock-free queue?', 'What deadlock risk do per-floor locks add?'] });
+  interview.push({ level: 'I', q: 'How would you model the ticket lifecycle and payment?',
+    a: `<p>A ticket moves ACTIVE → PAID → EXITED. I keep the status on the ticket and allow only legal transitions in one method that throws otherwise, so "exit without paying" and "pay twice" are impossible. Payment is a <code>PaymentProcessor</code> strategy (cash, card, UPI). I never hold the lot lock while calling a remote payment gateway: compute the fee, release the lock, charge with an idempotency key, then mark PAID. If transitions or behaviour per state grow (grace periods, refunds), I would move to the State pattern.</p>`,
+    followUps: ['What happens if the gateway times out?', 'How do you handle a lost ticket?'] });
+  interview.push({ level: 'I', q: 'Explain your O(1) win check for N×N Tic-Tac-Toe and prove it is correct.',
+    a: `<p>Keep counters for each row, each column, and the two diagonals. With two players, X adds +1 and O adds −1 to the row, column and (if applicable) diagonal counters of the cell played. A line of n cells reaches +n only if every cell contributes +1, i.e. all X; any O lowers the maximum possible sum to n − 2. So <code>counter == ±n</code> exactly means a full line for one player. Each move touches at most four counters: O(1) time, O(n) space. For 3+ players, keep separate counter arrays per player and test for n.</p>`,
+    followUps: ['Why does it break for K-in-a-row with K &lt; N?', 'How do you support undo with counters?'] });
+  interview.push({ level: 'I', q: 'How did you split responsibilities in Tic-Tac-Toe?',
+    a: `<p><code>Board</code> owns cells and validates moves (bounds, empty). <code>Player</code> is an interface that chooses moves, so humans, scripted test players and bots are interchangeable. <code>WinningStrategy</code> decides whether the last move won, so rule variants plug in. <code>Game</code> orchestrates: turn order, status (an enum), history of <code>Move</code> records, and the invariant "no moves after the game ends". No class reads from <code>System.in</code> except a console player, which keeps the model testable.</p>`,
+    followUps: ['Where does the draw check go and why?', 'How would you add a networked player?'] });
+  interview.push({ level: 'A', q: 'Add undo/redo to Tic-Tac-Toe. What changes?',
+    a: `<p>Each move becomes a <code>MoveCommand</code> with <code>execute()</code> and <code>undo()</code> that apply ±1 to exactly the same counters and set/clear the cell — so counter updates must not short-circuit. <code>Game</code> keeps an undo deque and a redo deque: play → execute, push to undo, clear redo; undo → pop, reverse, push to redo, and fix turn/game-over (undoing a winning move re-opens the game with the same player to move). This is O(1) per operation versus O(n²) for board snapshots. The only edit to existing code is the history hook in <code>Game</code>.</p>`,
+    followUps: ['Why must a new move clear the redo stack?', 'How would you limit undo to the last 3 moves?'] });
+  interview.push({ level: 'A', q: 'The interviewer adds "EV spots with charging fees" at minute 40. Walk through your change.',
+    a: `<p>Axis of change: spot kind and how money is computed. I add an <code>EV</code> value to <code>SpotType</code> (data) and teach the fit rules that only EV-capable vehicles may use it — or keep EV as an attribute so other cars can still use EV spots when the lot is full, which I would clarify. Pricing: a <code>ChargingAddOn</code> decorator wraps the existing <code>PricingStrategy</code> and adds kWh × rate; a small factory wraps it only for EV spots. <code>ParkingLot</code>, gates and allocation stay untouched. Change set: one enum constant, one or two new classes, zero edits to core flow.</p>`,
+    followUps: ['How do you measure kWh — whose responsibility is it?', 'What about an idle fee after charging ends?'] });
+  interview.push({ level: 'A', q: 'How would you scale the parking design to 50,000 spots and peak traffic?',
+    a: `<p>Replace scanning allocation with indexes: a free list per (floor, spot type) — a <code>TreeSet</code> if "nearest" order matters, or a deque if any spot will do — giving O(log n) or O(1) allocation. Display boards use event-driven counters, not scans. Use finer locks (per floor/type) or lock-free queues so gates do not serialise. Keep tickets in a <code>ConcurrentHashMap</code> and add a plate → ticket index for lost tickets. If the lot spans servers, move the authoritative state and atomic allocation into a database or Redis and keep the same interfaces in front.</p>`,
+    followUps: ['What is your bottleneck now?', 'How do you make park() idempotent if a gate retries?'] });
+  interview.push({ level: 'E', q: 'How do you decide which parts of a design get interfaces and which stay concrete?',
+    a: `<p>I add an interface where the requirements or the interviewer name a variation (pricing, allocation, players, win rules), where I need a seam for testing (time, payment gateway, storage), or where several implementations already exist. Everything else stays concrete and simple; variants that differ only by data go into enums or configuration. Each interface has a cost — indirection and more files — so I want to be able to say in one sentence which future change it absorbs. Over-abstracting (factories for one product, Singleton managers) is penalised as much as a God class.</p>`,
+    followUps: ['Give an example of an interface you would remove from a typical AI-generated design', 'How does this relate to YAGNI?'] });
+  interview.push({ level: 'E', q: 'You are in a 90-minute machine-coding round and at minute 60 nothing runs yet. What do you do?',
+    a: `<p>Stop widening and get a thin vertical slice running end to end: create, the single most important operation (park), and its inverse (leave), wired from input to output with the real domain classes — even if other commands are missing. Evaluators run the code; a running subset with clean structure beats a complete but non-compiling design. Then add commands one by one, running after each. In the last 10 minutes: error handling for bad input so nothing crashes, remove dead code, and leave a short note on extension points and known gaps.</p>`,
+    followUps: ['What do you sacrifice first: tests, validation, or features?', 'How do you avoid spending 30 minutes on input parsing?'] });
+
   registerModule({
     id: 'lld07',
     title: 'LLD Interview Framework: Parking Lot & Tic-Tac-Toe',

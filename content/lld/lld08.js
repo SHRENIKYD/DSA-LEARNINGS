@@ -1822,7 +1822,7 @@ ${H.table(['', 'Book (title)', 'BookItem (copy)'], [['Identity', 'ISBN', 'Barcod
         ];
         var checks = [
           ['LS', 'R1', 'inactive', 'Rule 1: is the membership active (not expired, not blocked)?', { active: 'bad' }, 'Membership inactive → rejected. Renew the card at the desk.'],
-          ['R1', 'R2', 'limit', 'Rule 2: does Priya already have the maximum books for a STUDENT (5)?', { loans: 'bad' }, 'Already 5 of 5 books → rejected. Return one first.'],
+          ['R1', 'R2', 'limit', 'Rule 2: is Priya below the STUDENT limit of 5 books on loan?', { loans: 'bad' }, 'Already 5 of 5 books → rejected. Return one first.'],
           ['R2', 'R3', 'fine', 'Rule 3: are unpaid fines at or below ₹100?', { fines: 'bad' }, 'Unpaid fines ₹140 > ₹100 → rejected. Pay at the desk.'],
           ['R3', 'R4', 'loaned', 'Rule 4: is <b>this copy</b> AVAILABLE (or ON_HOLD for Priya)?', null, 'This copy is LOANED to Rahul (it was probably mis-shelved). Suggest another copy or a reservation.']
         ];
@@ -1925,6 +1925,372 @@ ${H.table(['', 'Book (title)', 'BookItem (copy)'], [['Identity', 'ISBN', 'Barcod
 }`,
         complexity: `<p>O(R) per checkout for R rules (each O(1)). Rules are stateless lambdas → thread-safe and unit-testable in isolation.</p>`,
         followUps: ['Return ALL violations instead of the first (for a nicer UI).', 'Load the rule list per member type from config.', 'Make the item-availability check atomic under concurrency.']
+      }
+    }]
+  });
+
+  /* ======================= TOPIC 6: LIBRARY — RULES, FINES, RESERVATIONS, STATES ======================= */
+  var LIB_RULES = `// ===== Library lending rules, fine policies, reservations (Observer) and a copy state machine =====
+enum CopyState {
+    AVAILABLE, LOANED, ON_HOLD, LOST, UNDER_REPAIR;
+
+    private static final Map<CopyState, Set<CopyState>> NEXT = new EnumMap<>(CopyState.class);
+    static {
+        NEXT.put(AVAILABLE, EnumSet.of(LOANED, ON_HOLD, UNDER_REPAIR, LOST));
+        NEXT.put(LOANED, EnumSet.of(AVAILABLE, ON_HOLD, LOST, UNDER_REPAIR));
+        NEXT.put(ON_HOLD, EnumSet.of(LOANED, AVAILABLE, ON_HOLD));      // ON_HOLD -> ON_HOLD = pass to next waiter
+        NEXT.put(UNDER_REPAIR, EnumSet.of(AVAILABLE, ON_HOLD, LOST));
+        NEXT.put(LOST, EnumSet.of(AVAILABLE));                          // found again
+    }
+    boolean canGo(CopyState to) { return NEXT.get(this).contains(to); }
+}
+
+final class Copy {
+    final String barcode, isbn;
+    final long pricePaise;
+    CopyState state = CopyState.AVAILABLE;
+    String holdFor;                 // patron id while ON_HOLD
+    LocalDate holdUntil;
+    Copy(String barcode, String isbn, long pricePaise) { this.barcode = barcode; this.isbn = isbn; this.pricePaise = pricePaise; }
+    void moveTo(CopyState to) {
+        if (!state.canGo(to)) throw new IllegalStateException(barcode + ": " + state + " -> " + to + " is not allowed");
+        state = to;
+    }
+}
+
+final class Patron {
+    final String id;
+    final boolean faculty;
+    boolean active = true;
+    int loans;
+    long finePaise;
+    Patron(String id, boolean faculty) { this.id = id; this.faculty = faculty; }
+    int limit() { return faculty ? 10 : 5; }
+}
+
+// ---------- Fines: Strategy (+ a Decorator for discounts) ----------
+interface FinePolicy { long fine(long daysLate, Copy copy, Patron p); }
+
+final class FlatFine implements FinePolicy {
+    private final long perDay;
+    FlatFine(long perDay) { this.perDay = perDay; }
+    public long fine(long d, Copy c, Patron p) { return d * perDay; }
+}
+
+/** First 7 late days Rs 2/day, then Rs 5/day, never more than the book's price. */
+final class TieredCappedFine implements FinePolicy {
+    public long fine(long d, Copy c, Patron p) {
+        long f = Math.min(d, 7) * 2_00 + Math.max(0, d - 7) * 5_00;
+        return Math.min(f, c.pricePaise);
+    }
+}
+
+final class FacultyHalfPrice implements FinePolicy {      // decorator: wraps any other policy
+    private final FinePolicy inner;
+    FacultyHalfPrice(FinePolicy inner) { this.inner = inner; }
+    public long fine(long d, Copy c, Patron p) { long f = inner.fine(d, c, p); return p.faculty ? f / 2 : f; }
+}
+
+// ---------- Lending rules: each one a tiny class ----------
+interface LendingRule { Optional<String> violation(Patron p, Copy c, LocalDate today); }
+
+final class Rules {
+    private Rules() {}
+    static final LendingRule ACTIVE = (p, c, d) -> p.active ? Optional.empty() : Optional.of("membership inactive");
+    static final LendingRule LIMIT = (p, c, d) -> p.loans < p.limit() ? Optional.empty() : Optional.of("limit " + p.limit() + " reached");
+    static final LendingRule FINES = (p, c, d) -> p.finePaise <= 100_00 ? Optional.empty() : Optional.of("clear fines above Rs 100 first");
+    static final LendingRule COPY_FREE = (p, c, d) -> {
+        if (c.state == CopyState.AVAILABLE) return Optional.empty();
+        boolean myHold = c.state == CopyState.ON_HOLD && p.id.equals(c.holdFor) && !d.isAfter(c.holdUntil);
+        return myHold ? Optional.empty() : Optional.of("copy is " + c.state);
+    };
+}
+
+// ---------- Reservations: FIFO queue per title + Observer notifications ----------
+interface HoldListener { void onHoldPlaced(String patronId, Copy copy, LocalDate pickupBy); }
+
+final class ReservationDesk {
+    static final int PICKUP_DAYS = 3;
+    private final Map<String, Deque<String>> waitlist = new HashMap<>();   // isbn -> patron ids
+    private final List<HoldListener> listeners = new ArrayList<>();
+
+    void subscribe(HoldListener l) { listeners.add(l); }
+
+    boolean reserve(String isbn, String patronId) {
+        Deque<String> q = waitlist.computeIfAbsent(isbn, k -> new ArrayDeque<>());
+        if (q.contains(patronId)) return false;                         // no duplicate reservations
+        q.addLast(patronId);
+        return true;
+    }
+
+    boolean hasWaiters(String isbn) { return !waitlist.getOrDefault(isbn, new ArrayDeque<>()).isEmpty(); }
+
+    /** A copy just became free: returned, repaired, or its previous hold expired. */
+    void copyFreed(Copy c, LocalDate today) {
+        Deque<String> q = waitlist.get(c.isbn);
+        String next = q == null ? null : q.pollFirst();
+        if (next == null) {
+            c.moveTo(CopyState.AVAILABLE);
+            c.holdFor = null; c.holdUntil = null;
+            return;
+        }
+        c.moveTo(CopyState.ON_HOLD);
+        c.holdFor = next;
+        c.holdUntil = today.plusDays(PICKUP_DAYS);
+        for (HoldListener l : listeners) l.onHoldPlaced(next, c, c.holdUntil);
+    }
+
+    /** Run once a day (or lazily on access): pass expired holds to the next person. */
+    void expireHolds(Collection<Copy> copies, LocalDate today) {
+        for (Copy c : copies)
+            if (c.state == CopyState.ON_HOLD && today.isAfter(c.holdUntil)) copyFreed(c, today);
+    }
+}
+
+// ---------- The desk that ties it all together ----------
+final class LendingDesk {
+    private final List<LendingRule> rules = new ArrayList<>(List.of(Rules.ACTIVE, Rules.LIMIT, Rules.FINES, Rules.COPY_FREE));
+    private final FinePolicy finePolicy;
+    private final ReservationDesk reservations;
+    private final Map<String, LocalDate> dueDates = new HashMap<>();     // barcode -> due date
+
+    LendingDesk(FinePolicy finePolicy, ReservationDesk reservations) { this.finePolicy = finePolicy; this.reservations = reservations; }
+
+    synchronized String checkout(Patron p, Copy c, LocalDate today) {
+        for (LendingRule r : rules) {
+            Optional<String> v = r.violation(p, c, today);
+            if (v.isPresent()) return "REFUSED: " + v.get();
+        }
+        c.moveTo(CopyState.LOANED);
+        c.holdFor = null; c.holdUntil = null;
+        p.loans++;
+        LocalDate due = today.plusDays(p.faculty ? 30 : 14);
+        dueDates.put(c.barcode, due);
+        return "OK, due " + due;
+    }
+
+    synchronized long giveBack(Patron p, Copy c, LocalDate today) {
+        LocalDate due = dueDates.remove(c.barcode);
+        long late = Math.max(0, today.toEpochDay() - due.toEpochDay());
+        long fine = finePolicy.fine(late, c, p);
+        p.finePaise += fine;
+        p.loans--;
+        reservations.copyFreed(c, today);          // AVAILABLE, or ON_HOLD for the first waiter
+        return fine;
+    }
+
+    synchronized boolean renew(Patron p, Copy c, LocalDate today) {
+        LocalDate due = dueDates.get(c.barcode);
+        if (due == null || today.isAfter(due) || reservations.hasWaiters(c.isbn)) return false;
+        dueDates.put(c.barcode, due.plusDays(p.faculty ? 30 : 14));
+        return true;
+    }
+}
+
+public class LibraryRulesDemo {
+    public static void main(String[] args) {
+        ReservationDesk res = new ReservationDesk();
+        res.subscribe((who, copy, by) -> System.out.println("SMS to " + who + ": " + copy.barcode + " is held for you until " + by));
+        LendingDesk desk = new LendingDesk(new FacultyHalfPrice(new TieredCappedFine()), res);
+
+        Copy ddia = new Copy("BC-9", "978-1449373320", 300_00);
+        Patron priya = new Patron("priya", false), ravi = new Patron("ravi", false), meena = new Patron("meena", true);
+        LocalDate d0 = LocalDate.of(2026, 10, 1);
+
+        System.out.println(desk.checkout(priya, ddia, d0));                  // OK, due 2026-10-15
+        res.reserve(ddia.isbn, "ravi");
+        res.reserve(ddia.isbn, "meena");
+        System.out.println("renew? " + desk.renew(priya, ddia, d0.plusDays(10)));   // false: people are waiting
+        long fine = desk.giveBack(priya, ddia, d0.plusDays(23));             // 9 days late -> 7*200 + 2*500 = 2400
+        System.out.println("fine paise = " + fine + ", state = " + ddia.state);     // ON_HOLD for ravi
+        System.out.println(desk.checkout(meena, ddia, d0.plusDays(24)));     // REFUSED: held for ravi
+        res.expireHolds(List.of(ddia), d0.plusDays(27));                     // ravi never came -> meena
+        System.out.println(desk.checkout(meena, ddia, d0.plusDays(28)));     // OK
+    }
+}`;
+
+  topics.push({
+    title: 'Library Management II: Lending Rules, Fines, Reservations & Copy States',
+    analogy: `<p>Think of the <b>pickup counter at a bakery</b> that bakes fresh bread a few times a day. People who pre-ordered are on a list; when a loaf comes out, the baker keeps it aside with the <b>first name on the list</b> and calls them. If they do not come within an hour, the loaf goes to the <b>next name</b>. If nobody is waiting, it goes on the open shelf for anyone. And if you are late collecting a loan from the bank, there is a late fee — small at first, bigger later, but never more than the loan itself. A library's reservation shelf and fine rules work exactly like this.</p>`,
+    explain: `<p>Topic 5 built the skeleton. Now we make the <b>business rules</b> clean and extensible — this is where interviewers separate "it works" from "it is well designed".</p>
+<h4>1. Lending rules as objects</h4>
+<p><code>interface LendingRule { Optional&lt;String&gt; violation(Patron p, Copy c, LocalDate today); }</code>. Each rule is a tiny class (or lambda): ActiveMember, LoanLimit, FineThreshold, CopyFreeForPatron, NotReferenceBook, AgeRestriction… The desk loops over an ordered list and stops at the first violation. New policy = new class (Open/Closed). This is a light <b>Chain of Responsibility</b> / <b>Specification</b> pattern.</p>
+<h4>2. Fines as a Strategy (with a Decorator)</h4>
+${H.table(['Policy', 'Rule', '9 days late, book ₹300'], [['FlatFine(₹10)', '₹10 × days', '₹90'], ['TieredCappedFine', 'days 1–7: ₹2/day, then ₹5/day, max = book price', '7×2 + 2×5 = <b>₹24</b>'], ['FacultyHalfPrice(Tiered)', 'decorator: halves any inner policy for faculty', '₹12 for faculty, ₹24 for students']])}
+<h4>3. Reservations: a FIFO queue per <i>title</i></h4>
+<ul>
+<li><code>Map&lt;isbn, Deque&lt;patronId&gt;&gt;</code>. Reserve = add to the back (no duplicates).</li>
+<li>When <b>any</b> copy of that title is freed (returned or repaired), the first waiter gets it: copy → <b>ON_HOLD</b>(for = Ravi, until = today + 3 days), and Ravi is notified (<b>Observer</b>: SMS/email/push listeners).</li>
+<li>Ravi does not come within 3 days → the hold <b>expires</b> → the copy passes to the next waiter (ON_HOLD → ON_HOLD), or becomes AVAILABLE if the queue is empty.</li>
+<li>While people are waiting, <b>renewals are refused</b> — otherwise one person could keep a popular book forever.</li>
+</ul>
+<h4>4. Copy states as an explicit state machine</h4>
+${H.table(['From', 'Allowed to'], [['AVAILABLE', 'LOANED, ON_HOLD, UNDER_REPAIR, LOST'], ['LOANED', 'AVAILABLE (no queue), ON_HOLD (queue), LOST, UNDER_REPAIR (returned damaged)'], ['ON_HOLD', 'LOANED (picked up), ON_HOLD (next waiter), AVAILABLE (queue empty)'], ['UNDER_REPAIR', 'AVAILABLE, ON_HOLD, LOST'], ['LOST', 'AVAILABLE (found)']])}
+<p>Encoding this table (an <code>EnumMap&lt;State, EnumSet&lt;State&gt;&gt;</code>) makes illegal moves like LOST → LOANED throw immediately instead of silently corrupting data. For richer behaviour per state, upgrade to the full <b>State pattern</b> (covered in the next module).</p>`,
+    clues: [
+      '"Member can reserve a book that is currently issued" → FIFO waitlist per ISBN + ON_HOLD state',
+      '"Notify the member when the book is available" → Observer (HoldListener: SMS, email, push)',
+      '"Reserved book must be collected within 3 days" → hold expiry, then pass to the next waiter',
+      '"Different fine rules for students and faculty / cap at book price" → FinePolicy strategy + decorator',
+      '"Cannot renew if someone else reserved it" → renewal rule consults the reservation desk',
+      '"Book can be lost, damaged, under repair" → explicit copy state machine with allowed transitions'
+    ],
+    code: LIB_RULES,
+    codeTitle: 'Rules, fine strategies, reservation queue + Observer, copy state machine (compilable Java)',
+    viz: {
+      title: 'A returned copy: fine → hold queue → pickup or expiry',
+      input: 'late=9; waitlist=Ravi,Meena,Zoya; pickup=no,yes',
+      inputLabel: 'late=days late; waitlist=names in order; pickup=yes/no per waiter',
+      gen: function (input) {
+        var cfg = { late: 9, waitlist: [], pickup: [] };
+        String(input || '').split(';').map(function (s) { return s.trim(); }).filter(function (s) { return s; }).forEach(function (kv) {
+          var m = /^(late|waitlist|pickup)\s*=\s*(.*)$/i.exec(kv);
+          if (!m) throw new Error('Format: late=9; waitlist=Ravi,Meena; pickup=no,yes');
+          var k = m[1].toLowerCase(), v = m[2].trim();
+          if (k === 'late') { var n = Number(v); if (!isFinite(n) || n < 0 || n > 120 || Math.floor(n) !== n) throw new Error('late must be a whole number 0..120'); cfg.late = n; }
+          else if (k === 'waitlist') cfg.waitlist = v ? v.split(',').map(cap).filter(function (x) { return x; }) : [];
+          else cfg.pickup = v ? v.split(',').map(function (x) { var t = x.trim().toLowerCase(); if (t !== 'yes' && t !== 'no') throw new Error('pickup values are yes or no'); return t; }) : [];
+        });
+        if (cfg.waitlist.length > 5) throw new Error('At most 5 people on the waitlist');
+        var nodes = [B('AV', 'AVAILABLE', 12, 30), B('LO', 'LOANED', 50, 6), B('OH', 'ON_HOLD', 88, 30), B('UR', 'UNDER_REPAIR', 50, 56), B('LS', 'LOST', 12, 56)];
+        var edges = [['AV', 'LO', 'checkout'], ['LO', 'AV', 'return, no queue'], ['LO', 'OH', 'return, queue'], ['OH', 'LO', 'picked up'], ['OH', 'AV', 'expired, queue empty'], ['AV', 'UR', 'damaged'], ['UR', 'AV', 'repaired'], ['LO', 'LS', 'reported lost'], ['LS', 'AV', 'found']];
+        var sm = function (cur, edgeKey, cls) { var hl = {}; hl[cur] = 'cur'; var eh = {}; if (edgeKey) eh[edgeKey] = cls || 'ok'; return G('Copy BC-9 state machine', nodes, edges, { h: 62, hl: hl, ehl: eh }); };
+        var q = cfg.waitlist.slice();
+        var frames = [];
+        frames.push(F('Copy BC-9 of <i>Designing Data-Intensive Applications</i> (price ₹300) is <b>LOANED</b> to Priya, due 15 Oct. ' + (q.length ? q.length + ' people reserved the title meanwhile.' : 'Nobody reserved it.'), [sm('LO'), QUEUE('Reservation queue for this ISBN', q.length ? q : ['(empty)'], {}, 'next', 'last')]));
+        var perDay = [], total = 0;
+        for (var d = 1; d <= Math.min(cfg.late, 30); d++) perDay.push(d <= 7 ? 2 : 5);
+        for (var d2 = 1; d2 <= cfg.late; d2++) total += d2 <= 7 ? 2 : 5;
+        var capped = Math.min(total, 300);
+        var tier1 = Math.min(cfg.late, 7), tier2 = Math.max(0, cfg.late - 7);
+        frames.push(F('Priya returns it <b>' + cfg.late + ' day(s) late</b>. The desk asks the <b>FinePolicy</b> (TieredCapped): first 7 days ₹2/day, after that ₹5/day, never above the book price.', [perDay.length ? { type: 'bars', label: 'Fine charged per late day (₹)' + (cfg.late > 30 ? ' — first 30 days shown' : ''), values: perDay, hl: (function () { var h = {}; perDay.forEach(function (v, i) { h[i] = v === 2 ? 'ok' : 'cur'; }); return h; })() } : TXT('Returned on time — no bars to draw.'), TABLE('Fine calculation', ['tier', 'days', 'rate', 'amount'], [['days 1–7', String(tier1), '₹2', '₹' + tier1 * 2], ['day 8+', String(tier2), '₹5', '₹' + tier2 * 5], ['total', '', '', '₹' + total], ['cap (book price)', '', '', '₹300'], ['<b>charged</b>', '', '', '<b>₹' + capped + '</b>']], { 4: 'sel' })]));
+        if (!q.length) {
+          frames.push(F('Return → the ReservationDesk sees an <b>empty queue</b>, so the copy goes <b>LOANED → AVAILABLE</b> and back on the shelf.', [sm('AV', 'LO-AV'), QUEUE('Reservation queue', ['(empty)'])]));
+          frames.push(F('Anyone may now borrow it. Try adding a waitlist in the input (e.g. waitlist=Ravi,Meena; pickup=no,yes) to see holds.', [sm('AV'), TXT('With nobody waiting, renewals would also be allowed.')]));
+          return frames;
+        }
+        var day = 0, who = q.shift();
+        frames.push(F('Return → the queue is not empty, so the copy does <b>not</b> go to the open shelf. It moves <b>LOANED → ON_HOLD</b> for <b>' + who + '</b> until day +3, and every HoldListener fires (SMS, email, app push) — the <b>Observer</b> pattern.', [sm('OH', 'LO-OH'), QUEUE('Reservation queue', q.length ? q : ['(empty)'], {}, 'next', 'last'), VARS('Copy BC-9', { state: 'ON_HOLD', holdFor: who, holdUntil: 'day +3' }, { holdFor: 'cur' }), TXT('📱 "Hi ' + who + ', your reserved book is waiting at the desk until day +3."', 'Notification sent')]));
+        var i = 0, picked = false;
+        while (true) {
+          var answer = cfg.pickup[i] || 'yes';
+          if (answer === 'yes') {
+            frames.push(F('<b>' + who + '</b> comes to the desk on day +' + (day + 1) + '. Rule <code>COPY_FREE</code> passes because the copy is ON_HOLD <b>for this patron</b> and the hold is still valid. ON_HOLD → <b>LOANED</b>.', [sm('LO', 'OH-LO'), QUEUE('Reservation queue', q.length ? q : ['(empty)']), VARS('Copy BC-9', { state: 'LOANED', borrower: who, holdFor: '-' }, { state: 'ok' })]));
+            picked = true;
+            break;
+          }
+          day += 4;
+          var nxt = q.shift();
+          if (nxt) {
+            frames.push(F('<b>' + who + '</b> never comes. On day +' + day + ' the daily job (or the next access, lazily) sees <code>today &gt; holdUntil</code> → the hold expires and passes to <b>' + nxt + '</b>: ON_HOLD → ON_HOLD with a fresh 3-day window and a new notification.', [sm('OH'), QUEUE('Reservation queue', q.length ? q : ['(empty)'], {}, 'next', 'last'), VARS('Copy BC-9', { state: 'ON_HOLD', holdFor: nxt, expired: who }, { holdFor: 'cur', expired: 'bad' })]));
+            who = nxt;
+            i++;
+          } else {
+            frames.push(F('<b>' + who + '</b> never comes, and the queue is now <b>empty</b>. The hold expires: ON_HOLD → <b>AVAILABLE</b>. The book goes back to the open shelf.', [sm('AV', 'OH-AV'), QUEUE('Reservation queue', ['(empty)']), VARS('Copy BC-9', { state: 'AVAILABLE', holdFor: '-' }, { state: 'ok' })]));
+            break;
+          }
+        }
+        frames.push(F(picked ? 'Done. Notice what we never did: hand the copy to whoever walked in first, or let it sit on the hold shelf forever. Queue + expiry + notifications make it fair and keep books moving.' : 'Done. Every waiter got a fair chance; an unclaimed book never stays stuck on the hold shelf.', [TXT(H.table(['Concern', 'Pattern / class'], [['Is the patron allowed?', 'LendingRule list'], ['How much is the fine?', 'FinePolicy strategy (+ decorator)'], ['Who gets the copy next?', 'ReservationDesk FIFO queue'], ['Tell the patron', 'HoldListener observers'], ['Which moves are legal?', 'CopyState transition table']]), 'Who owns what')]));
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'Tiered fine with a cap, worked out', html: `<p>Book price ₹300. Late 9 days: 7×₹2 + 2×₹5 = <b>₹24</b>. Late 70 days: 7×2 + 63×5 = 14 + 315 = ₹329 → capped at ${H.c('g', '₹300')} (we would rather the member just buy a replacement). Faculty with the <code>FacultyHalfPrice</code> decorator: ₹12 and ₹150.</p>${H.table(['Days late', 'Raw', 'Charged (student)', 'Charged (faculty)'], [['0', '₹0', '₹0', '₹0'], ['5', '₹10', '₹10', '₹5'], ['9', '₹24', '₹24', '₹12'], ['70', '₹329', '₹300', '₹150']])}` },
+      { title: 'Renewal refused because of a reservation', html: `<p>Priya's loan is due 15 Oct; Ravi reserved the title on 5 Oct. On 10 Oct Priya tries to renew → <code>reservations.hasWaiters(isbn)</code> is true → ${H.c('r', 'refused')}. Without this rule, a popular title could be renewed forever and the queue would never move.</p>` },
+      { title: 'Illegal transition caught by the state machine', html: `<p>A buggy admin script tries to check out a LOST copy. <code>copy.moveTo(LOANED)</code> looks up <code>NEXT.get(LOST) = {AVAILABLE}</code> → throws <code>IllegalStateException("BC-4: LOST -> LOANED is not allowed")</code>. The bug is caught at the exact line, instead of a phantom loan appearing in reports months later.</p>`, code: `class TransitionCheck {
+    enum S { AVAILABLE, LOANED, LOST }
+    static final Map<S, Set<S>> NEXT = new EnumMap<>(Map.of(
+        S.AVAILABLE, EnumSet.of(S.LOANED, S.LOST),
+        S.LOANED, EnumSet.of(S.AVAILABLE, S.LOST),
+        S.LOST, EnumSet.of(S.AVAILABLE)));
+
+    static S move(S from, S to) {
+        if (!NEXT.get(from).contains(to)) throw new IllegalStateException(from + " -> " + to + " is not allowed");
+        return to;
+    }
+    public static void main(String[] args) {
+        System.out.println(move(S.AVAILABLE, S.LOANED));
+        try { move(S.LOST, S.LOANED); } catch (IllegalStateException e) { System.out.println(e.getMessage()); }
+    }
+}` },
+      { title: 'Observer: adding WhatsApp without touching the desk', html: `<p>The ReservationDesk only knows <code>List&lt;HoldListener&gt;</code>. SMS and email listeners exist today. Product wants WhatsApp → write <code>WhatsAppHoldListener implements HoldListener</code> and <code>subscribe()</code> it at startup. The desk, the rules and the fine logic are untouched. In production, the listener usually just publishes an event to a queue so a slow SMS provider never blocks the desk.</p>` }
+    ],
+    deepDive: `<p><b>Holds are per copy, reservations are per title.</b> A reservation says "I want <i>any</i> copy of ISBN X". When a specific copy frees up, it becomes ON_HOLD for the head of the queue. If two copies come back at once, the first two waiters each get one. Reserving a specific copy is almost never what users want.</p>
+<p><b>Lazy vs scheduled expiry</b> (same idea as seat holds in BookMyShow): checking <code>today &gt; holdUntil</code> whenever the copy is touched keeps correctness; a nightly job moves expired holds forward and sends the next notification. Both should call the same <code>copyFreed()</code> so there is exactly one code path for "who gets it next".</p>
+<p><b>Fairness edge cases:</b> a member with fines above the threshold reaches the head of the queue — skip them (and notify) or hold anyway and refuse at checkout? A member cancels a reservation while a copy is on hold for them → immediately pass it on. A member already at their loan limit → still allowed to reserve, but must return something before pickup. Decide and state the rules explicitly.</p>
+<p><b>State pattern vs transition table.</b> A table is enough when states differ only in which moves are legal. When behaviour differs per state (e.g. <code>onReturn()</code> does different things in LOANED vs UNDER_REPAIR), give each state its own class implementing a <code>CopyStateBehaviour</code> interface. Both are valid; the table is shorter for interviews.</p>
+<p><b>Money and history.</b> Fines are <b>ledger entries</b> (charged, waived, paid), not a single mutable number; <code>finePaise</code> on Patron is a cached balance of that ledger. Waivers need an audit trail (who waived, why).</p>
+<p><b>Concurrency.</b> Return and checkout of the same copy can race at two desks; the desk methods are <code>synchronized</code> here. With a database, the copy row's status update is the atomic step (<code>UPDATE ... WHERE status = 'ON_HOLD' AND hold_for = ?</code>).</p>`,
+    aiEra: `<p><b>What AI changes:</b> an assistant will happily generate a fine calculator or a reservation queue. What it rarely does unprompted is connect the pieces: renewals consulting reservations, holds expiring and moving on, illegal transitions being rejected, fines capped at the book price. Your value is the <b>system of rules</b>, not one rule.</p>
+<p><b>Use AI as a partner:</b> <code>Here is my CopyState transition table. Generate a test that tries EVERY (from, to) pair and asserts exactly the allowed ones succeed.</code> And: <code>List policies a real university library has that my LendingRule list does not cover.</code></p>
+<p><b>Where AI goes wrong:</b> notifying listeners synchronously inside a lock (a slow SMS API freezes checkouts); recursion when a hold expires and the next waiter is also expired; reserving a specific copy instead of a title; using <code>Period.between(...).getDays()</code> for late days (ignores months).</p>
+<p><b>What you must still own:</b> the exact rule set agreed with the "product owner" (the interviewer), and a design where each new rule is a new class.</p>`,
+    problems: [{
+      title: 'Reservation Queue with a Pickup Window',
+      level: 'Medium', tags: ['library', 'queue', 'observer', 'expiry'], companies: ['Amazon', 'Oracle', 'Infosys'],
+      statement: `<p>Implement <code>HoldShelf</code> for one title with several copies: <code>reserve(patron, day)</code>, <code>copyReturned(copyId, day)</code>, <code>tick(day)</code> (expire holds older than 3 days and pass them on), <code>pickUp(patron, copyId, day)</code> (true only if that copy is on hold for that patron and not expired). Return the list of notifications sent ("copyId held for patron until day X"). FIFO fairness; no duplicate reservations.</p>`,
+      constraints: `≤ 10<sup>4</sup> reservations, ≤ 100 copies, days are integers`,
+      example: `<p>reserve(Ravi,1), reserve(Meena,2). copyReturned(C1, 5) → ${H.c('y', 'C1 held for Ravi until 8')}. tick(9): Ravi's hold expired → ${H.c('y', 'C1 held for Meena until 12')}. pickUp(Meena, C1, 10) → ${H.c('g', 'true')}. pickUp(Ravi, C1, 10) → ${H.c('r', 'false')}.</p>`,
+      brute: { why: `<p>Naive: no queue — a returned copy goes straight to the open shelf and whoever walks in first gets it (unfair to people who reserved weeks ago). The other naive version holds forever with no expiry, so a single no-show blocks the book indefinitely.</p>`, code: `class NaiveShelf {
+    private final Set<String> onShelf = new HashSet<>();
+    void copyReturned(String copyId) { onShelf.add(copyId); }        // reservations ignored
+    boolean pickUp(String anyone, String copyId) { return onShelf.remove(copyId); }   // first come wins
+}` },
+      mcq: { q: 'Ravi\'s hold expired and Meena is next in the queue. What state change happens to the copy?', options: ['ON_HOLD (Ravi) → ON_HOLD (Meena) with a new pickup deadline', 'ON_HOLD → AVAILABLE', 'ON_HOLD → LOANED to Meena', 'Nothing until Ravi cancels'], answer: 0, explain: 'The copy stays on the hold shelf but is re-assigned to the next waiter, who gets a fresh window and a notification.' },
+      hints: [`<p>Hint 1: two structures — a FIFO <code>Deque&lt;String&gt;</code> of waiting patrons, and a map <code>copyId → (patron, until)</code> of active holds.</p>`, `<p>Hint 2: write ONE method <code>assign(copyId, day)</code>: pop the next waiter; if none, the copy goes to the open shelf; else record the hold and add a notification. Both <code>copyReturned</code> and expiry in <code>tick</code> call it.</p>`, `<p>Hint 3: in <code>tick</code>, collect expired copy ids first, then reassign (do not modify the map while iterating it). Reject duplicate reservations with a Set mirror of the queue.</p>`],
+      solution: {
+        approach: `<p>FIFO queue + hold map + one shared "assign next" path used by both returns and expiries. Notifications are collected (an Observer would publish them).</p>`,
+        code: `class HoldShelf {
+    static final int WINDOW = 3;
+    private final Deque<String> queue = new ArrayDeque<>();
+    private final Set<String> queued = new HashSet<>();
+    private final Map<String, String> holdFor = new TreeMap<>();      // copyId -> patron
+    private final Map<String, Integer> holdUntil = new HashMap<>();
+    private final Set<String> openShelf = new TreeSet<>();
+    final List<String> notifications = new ArrayList<>();
+
+    boolean reserve(String patron) {
+        if (!queued.add(patron)) return false;
+        queue.addLast(patron);
+        return true;
+    }
+
+    private void assign(String copyId, int day) {
+        String next = queue.pollFirst();
+        if (next == null) { openShelf.add(copyId); return; }
+        queued.remove(next);
+        holdFor.put(copyId, next);
+        holdUntil.put(copyId, day + WINDOW);
+        notifications.add(copyId + " held for " + next + " until " + (day + WINDOW));
+    }
+
+    void copyReturned(String copyId, int day) { assign(copyId, day); }
+
+    void tick(int day) {
+        List<String> expired = new ArrayList<>();
+        for (String c : holdFor.keySet()) if (day > holdUntil.get(c)) expired.add(c);
+        for (String c : expired) { holdFor.remove(c); holdUntil.remove(c); assign(c, day); }
+    }
+
+    boolean pickUp(String patron, String copyId, int day) {
+        if (!patron.equals(holdFor.get(copyId)) || day > holdUntil.get(copyId)) return false;
+        holdFor.remove(copyId);
+        holdUntil.remove(copyId);
+        return true;
+    }
+
+    public static void main(String[] args) {
+        HoldShelf s = new HoldShelf();
+        s.reserve("ravi");
+        s.reserve("meena");
+        s.copyReturned("C1", 5);
+        s.tick(9);
+        System.out.println(s.pickUp("meena", "C1", 10) + " " + s.pickUp("ravi", "C1", 10));
+        s.notifications.forEach(System.out::println);
+    }
+}`,
+        complexity: `<p>reserve / pickUp O(1); copyReturned O(1); tick O(H) for H active holds (or O(log H) per expiry with a min-heap by deadline).</p>`,
+        followUps: ['Use a PriorityQueue by deadline so tick only touches expired holds.', 'Skip waiters who are blocked by fines and notify them.', 'Support cancel(patron) in O(1) (lazy deletion with the Set).']
       }
     }]
   });
