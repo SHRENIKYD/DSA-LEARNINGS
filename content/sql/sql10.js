@@ -470,6 +470,191 @@ FROM lvl;`),
       }
     }]
   });
+
+  /* =====================================================================
+     TOPIC 3 - Clustered vs non-clustered (secondary) indexes
+     ===================================================================== */
+  var CL_ROWS = [[101, 'Rao', 'Pune'], [102, 'Lee', 'Austin'], [103, 'Kim', 'Leeds'], [104, 'Lee', 'Berlin'], [105, 'Patel', 'Recife'], [106, 'Khan', 'Delhi'],
+    [107, 'Lee', 'Boston'], [108, 'Kim', 'London'], [109, 'Rao', 'Munich'], [110, 'Lee', 'Rio'], [111, 'Silva', 'Pune'], [112, 'Patel', 'Austin']];
+
+  topics.push({
+    title: 'Clustered vs Non-Clustered (Secondary) Indexes',
+    analogy: `<p>A <b>dictionary</b> is its own index: the words are printed in alphabetical order, so finding "mango" <i>is</i> finding its definition — that is a <b>clustered index</b> (the data itself is stored in key order). A <b>textbook</b> is printed in chapter order, and the index at the back says "photosynthesis → p. 412" — you look up the word, <i>then</i> flip to the page. That is a <b>non-clustered (secondary) index</b>. A book can only be <i>printed</i> in one order, so a table can have only <b>one</b> clustered index, but it can have many back-of-book indexes.</p>`,
+    explain: `<p><b>Clustered index</b> = the table's rows are physically stored inside the leaves of a B+tree, sorted by the clustering key. Finding a row by that key finds the row itself — no extra hop. Range scans on that key read neighbouring rows from the same pages. Only <b>one</b> per table.</p>
+<p><b>Non-clustered / secondary index</b> = a separate B+tree whose leaves hold <code>(indexed columns → a pointer to the row)</code>. A lookup is two steps: seek the secondary index, then follow the pointer to fetch the row (the <b>"key lookup"</b>, "bookmark lookup" or "table access by rowid"). Many per table.</p>
+${H.table(['Engine', 'How the table is stored', 'What a secondary index leaf points to'], [
+  ['MySQL InnoDB', 'Always clustered by the PRIMARY KEY (or the first UNIQUE NOT NULL key, or a hidden 6-byte row id)', 'the <b>primary key value</b> → second B+tree descent'],
+  ['SQL Server', 'Clustered index if you create one (PK is clustered by default), otherwise a heap', 'clustering key (or RID for a heap)'],
+  ['PostgreSQL', 'Always a <b>heap</b> (unordered); every index is secondary. <code>CLUSTER</code> reorders once, not maintained', 'TID = (page, slot) physical address'],
+  ['SQLite rowid table', 'Clustered by the 64-bit rowid (<code>INTEGER PRIMARY KEY</code>)', 'the rowid'],
+  ['SQLite <code>WITHOUT ROWID</code>', 'Clustered by the declared PRIMARY KEY', 'the primary key columns']
+])}
+<p><b>Consequences you must be able to explain:</b></p>
+<ul>
+<li>In InnoDB the PK is copied into <b>every</b> secondary index. A fat PK (e.g. a 36-char UUID string) makes every index fat. Prefer a compact key (BIGINT, or a 16-byte binary time-ordered UUIDv7).</li>
+<li>Secondary-index lookups that match <b>many rows</b> pay one extra random fetch per row — this is why the planner abandons a secondary index when too many rows match.</li>
+<li>Range queries on the <b>clustering key</b> are the cheapest queries you can write: rows with neighbouring keys live on the same pages. Choose the clustering key to match your hottest range query (e.g. <code>(customer_id, order_id)</code> clusters each customer's orders together).</li>
+<li>Postgres pointers are physical: updating a row creates a new version at a new TID, so every index must get a new entry — unless the update is <b>HOT</b> (heap-only tuple: no indexed column changed and the page has room).</li>
+</ul>`,
+    clues: [
+      '"Clustered vs non-clustered index — what\'s the difference?" → data stored in key order (one per table) vs separate structure with pointers (many)',
+      '"Why should the InnoDB primary key be small / sequential?" → PK is the clustering key AND is copied into every secondary index',
+      '"Key lookup / bookmark lookup / Heap Fetches is expensive in the plan" → secondary index needs a second hop per row; consider covering',
+      '"UUID primary key made inserts slow" → random clustering key → page splits across the whole table',
+      '"Range queries over one customer\'s data must be fast" → choose a clustering key that starts with customer_id'
+    ],
+    code: [shop(`-- A rowid table is clustered by rowid. A secondary index secretly stores the rowid too:
+CREATE INDEX idx_cust_last ON customers(last_name);
+SELECT seqno, cid, name, key FROM pragma_index_xinfo('idx_cust_last');
+-- row with cid = -1 and name NULL is the hidden rowid "pointer" column
+
+-- Lookup through the secondary index = seek index + fetch row by rowid:
+EXPLAIN QUERY PLAN SELECT * FROM customers WHERE last_name = 'Lee';
+
+-- Lookup by the clustering key needs no second hop:
+EXPLAIN QUERY PLAN SELECT * FROM customers WHERE id = 1500;`, 'Secondary index leaves carry the row pointer'),
+    lab(`-- WITHOUT ROWID: the table is clustered by its declared PRIMARY KEY (InnoDB-style).
+CREATE TABLE order_items (
+  order_id   INTEGER NOT NULL,
+  product_id INTEGER NOT NULL,
+  qty        INTEGER NOT NULL,
+  PRIMARY KEY (order_id, product_id)
+) WITHOUT ROWID;
+
+INSERT INTO order_items
+WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 5000)
+SELECT (i + 2) / 3, (i * 37) % 400 + 1, 1 + i % 4 FROM n;
+
+-- All items of one order are neighbours in the clustered B+tree: one seek, no lookup.
+EXPLAIN QUERY PLAN SELECT * FROM order_items WHERE order_id = 77;
+
+-- A secondary index on product_id stores (product_id, order_id) — the PK is its pointer.
+CREATE INDEX idx_items_product ON order_items(product_id);
+SELECT seqno, name, key FROM pragma_index_xinfo('idx_items_product');
+EXPLAIN QUERY PLAN SELECT order_id FROM order_items WHERE product_id = 9;   -- covered: PK is inside the index
+EXPLAIN QUERY PLAN SELECT * FROM order_items WHERE product_id = 9;          -- needs qty → second descent by PK`, 'WITHOUT ROWID = clustered by primary key'),
+    pg(`-- SQL Server: choose the clustered index explicitly
+CREATE CLUSTERED INDEX cx_orders_customer ON dbo.orders (customer_id, order_id);
+CREATE NONCLUSTERED INDEX ix_orders_status ON dbo.orders (status) INCLUDE (total_cents);
+
+-- PostgreSQL: heap table; CLUSTER physically reorders ONCE (takes an ACCESS EXCLUSIVE lock, not maintained)
+CLUSTER orders USING idx_orders_customer;
+
+-- MySQL InnoDB: the PRIMARY KEY *is* the clustered index
+CREATE TABLE orders (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  customer_id BIGINT UNSIGNED NOT NULL,
+  created_at DATETIME NOT NULL,
+  PRIMARY KEY (id),
+  KEY idx_customer (customer_id)        -- leaf entries: (customer_id, id)
+) ENGINE = InnoDB;`, 'Other engines (not runnable here)')],
+    codeTitle: ['Hidden pointer inside a secondary index', 'Clustered table with WITHOUT ROWID', 'SQL Server / Postgres / MySQL'],
+    viz: [{
+      title: 'Secondary index seek + key lookups vs a clustered range read',
+      input: 'Lee',
+      inputLabel: 'last_name to find (Rao, Lee, Kim, Patel, Khan, Silva)',
+      gen: function (input) {
+        var name = String(input).trim();
+        name = name.charAt(0).toUpperCase() + name.slice(1).toLowerCase();
+        var names = ['Rao', 'Lee', 'Kim', 'Patel', 'Khan', 'Silva'];
+        if (names.indexOf(name) < 0) throw new Error('Pick one of: ' + names.join(', '));
+        var rows = CL_ROWS.map(function (r, i) { return ['P' + (Math.floor(i / 3) + 1), r[0], r[1], r[2]]; });
+        var cols = ['page', 'id (PK)', 'last_name', 'city'];
+        var sec = CL_ROWS.map(function (r) { return [r[1], r[0]]; }).sort(function (a, b) { return a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : a[1] - b[1]; });
+        var frames = [];
+        frames.push({ narr: 'The table is <b>clustered by id</b>: rows live in id order, 3 rows per page (P1…P4). A <b>secondary index</b> on last_name stores <b>(last_name, id)</b>, sorted by name. Query: <code>SELECT * FROM customers WHERE last_name = \'' + name + '\'</code>.', parts: [
+          { type: 'table', label: 'secondary index idx_last (leaf entries)', columns: ['last_name', '→ id'], rows: sec },
+          { type: 'table', label: 'clustered table (B+tree leaves ordered by id)', columns: cols, rows: rows }
+        ] });
+        var hs = {}, ids = [];
+        sec.forEach(function (e, i) { if (e[0] === name) { hs[i] = 'ok'; ids.push(e[1]); } });
+        var pages = 2;
+        frames.push({ narr: 'Step 1 — seek the secondary index (≈2 page reads in this small tree). The ' + ids.length + ' "' + name + '" entries are adjacent because the index is sorted by name. They give us primary keys, <b>not rows</b>: ' + ids.join(', ') + '.', parts: [
+          { type: 'table', label: 'secondary index idx_last', columns: ['last_name', '→ id'], rows: sec, hl: hs },
+          { type: 'vars', vals: { pages_read: pages, pks_found: ids.join(', ') }, hl: { pks_found: 'ok' } }
+        ] });
+        var seen = {}, hr = {};
+        ids.forEach(function (id, k) {
+          var ri = id - 101, pg = rows[ri][0];
+          pages += 2; seen[pg] = 1;
+          Object.keys(hr).forEach(function (x) { hr[x] = 'done'; });
+          hr[ri] = 'sel';
+          frames.push({ narr: 'Step 2.' + (k + 1) + ' — <b>key lookup</b> for id ' + id + ': descend the clustered B+tree from the root again (≈2 pages) to land on page <b>' + pg + '</b>. ' + (k > 0 ? 'Notice the matches are scattered across different pages — each one is a separate random hop.' : 'This second descent is the price of a secondary index.'), parts: [
+            { type: 'table', label: 'clustered table', columns: cols, rows: rows, hl: Object.assign({}, hr) },
+            { type: 'vars', vals: { pages_read: pages, lookups_done: k + 1, distinct_pages_touched: Object.keys(seen).length }, hl: { pages_read: 'cur' } }
+          ] });
+          hr[ri] = 'sel';
+        });
+        var clustered = 2 + Math.ceil(ids.length / 3);
+        var sorted = CL_ROWS.slice().sort(function (a, b) { return a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : a[0] - b[0]; });
+        var rows2 = sorted.map(function (r, i) { return ['P' + (Math.floor(i / 3) + 1), r[0], r[1], r[2]]; });
+        var h2 = {}; rows2.forEach(function (r, i) { if (r[2] === name) h2[i] = 'win'; });
+        frames.push({ narr: 'What if the table were <b>clustered by last_name</b> instead? All "' + name + '" rows would sit next to each other: one descent (2 pages) then read ' + Math.ceil(ids.length / 3) + ' consecutive page(s). But you only get <b>one</b> physical order — clustering by name would make id lookups the secondary path.', parts: [
+          { type: 'table', label: 'hypothetical table clustered by (last_name, id)', columns: cols, rows: rows2, hl: h2 }
+        ] });
+        frames.push({ narr: 'Score: secondary index + key lookups = <b>' + pages + '</b> page reads (2 + 2 per match). Clustered range read = <b>' + clustered + '</b>. With 10,000 matches the gap becomes ~20,000 random reads vs a few hundred sequential ones — exactly why planners switch to a full scan when a secondary index matches too many rows, and why <b>covering indexes</b> (skip step 2 entirely) exist.', parts: [
+          { type: 'bars', label: 'page reads', values: [pages, clustered], idxLabels: ['secondary + lookups', 'clustered range'], hl: { 0: 'bad', 1: 'ok' } }
+        ] });
+        return frames;
+      }
+    }],
+    examples: [
+      { title: 'InnoDB: why the primary key choice leaks into every index', html: `<p>Table <code>users</code> with PK <code>uuid CHAR(36)</code> and 4 secondary indexes. Each secondary entry stores the 36-byte PK as its pointer → 4 × 36 bytes of extra payload per row, lower fanout, more RAM. Switching to <code>BIGINT</code> (8 bytes) or <code>BINARY(16)</code> UUIDv7 shrinks every index and, because v7 is time-ordered, inserts append at the right edge of the clustered tree instead of splitting random pages.</p>` },
+      { title: 'Multi-tenant SaaS: cluster by tenant', html: `<p>Hot query: <code>SELECT * FROM invoices WHERE tenant_id = ? AND created_at &gt;= ? ORDER BY created_at</code>. With PK <code>(tenant_id, created_at, id)</code> (InnoDB or WITHOUT ROWID) one tenant's recent invoices are physically contiguous: a single seek plus a sequential leaf walk, no key lookups, already sorted. With PK <code>id</code> they would be scattered across the whole table.</p>`, code: lab(`CREATE TABLE invoices (
+  tenant_id INTEGER NOT NULL, created_at TEXT NOT NULL, id INTEGER NOT NULL, amount INTEGER NOT NULL,
+  PRIMARY KEY (tenant_id, created_at, id)
+) WITHOUT ROWID;
+INSERT INTO invoices WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 3000)
+SELECT i % 30, date('2026-01-01', '+' || (i % 200) || ' days'), i, 100 + i % 900 FROM n;
+EXPLAIN QUERY PLAN
+SELECT * FROM invoices WHERE tenant_id = 7 AND created_at >= '2026-06-01' ORDER BY created_at;`) },
+      { title: 'PostgreSQL: Heap Fetches and HOT updates', html: `<p>Postgres has no clustered index; every index points at heap TIDs. <code>EXPLAIN (ANALYZE, BUFFERS)</code> shows <code>Index Scan</code> (index + heap fetch per row) vs <code>Index Only Scan … Heap Fetches: 0</code>. An <code>UPDATE users SET last_seen = now()</code> on an unindexed column can be a <b>HOT</b> update (no index touched) if the page has free space — set <code>fillfactor = 90</code> on update-heavy tables to leave room. Index <code>last_seen</code> and every such update must write all indexes again.</p>` }
+    ],
+    deepDive: `<p><b>InnoDB details.</b> If you declare no PK, InnoDB uses the first <code>UNIQUE NOT NULL</code> index, else a hidden 6-byte <code>DB_ROW_ID</code> (global counter → contention). Secondary indexes always have the PK columns appended, so an index on <code>(status)</code> is really <code>(status, id)</code> — it can serve <code>WHERE status = ? ORDER BY id</code> and covers <code>SELECT id … WHERE status = ?</code>. Secondary entries are not MVCC-versioned per row, so a secondary lookup may need to check the clustered record for visibility.</p>
+<p><b>SQL Server.</b> Without a clustered index the table is a heap and secondary indexes store an 8-byte RID; with one they store the clustering key (made unique with a hidden 4-byte "uniquifier" if needed). Plans show <code>Key Lookup</code> / <code>RID Lookup</code> operators — the classic tuning move is adding <code>INCLUDE</code> columns to remove them.</p>
+<p><b>PostgreSQL.</b> Heap + TID pointers make secondary lookups cheap (one hop, no second tree descent) but every non-HOT update writes a new tuple and new entries in <b>every</b> index (the write amplification behind Uber's 2016 Postgres→MySQL post). <code>pg_stats.correlation</code> measures how well heap order matches an index order; high correlation makes index range scans nearly sequential. <code>CLUSTER</code> or <code>pg_repack</code> can restore it temporarily. Index-organized tables exist in Oracle (IOT).</p>
+<p><b>SQLite.</b> Rowid tables store rows in a B+tree keyed by rowid (table B-tree with data in leaves); indexes are separate B-trees storing <code>(columns…, rowid)</code>. <code>WITHOUT ROWID</code> tables are clustered by PK and work best when rows are small (&lt; ~1/20 of a page) and the PK is the main access path.</p>
+<p><b>Trade-off summary:</b> clustered = fastest PK point and range reads, ordered storage, but inserts must go in key order (random keys → splits) and updating the clustering key moves the row. Secondary = flexible, many per table, but each match costs an extra hop unless the index covers the query.</p>`,
+    aiEra: `<p><b>What AI changes:</b> ORMs and AI code generators happily create tables with <code>UUID</code> string primary keys and no thought about clustering. Reviewing generated migrations for <b>PK type, PK order and secondary index pointer size</b> is now a core backend skill.</p>
+<p><b>Use AI as a partner:</b> "Given this InnoDB schema and these 3 queries, which ones will do key lookups, and how would you change the PK or add covering columns?" — then confirm with <code>EXPLAIN FORMAT=TREE</code> / <code>EXPLAIN ANALYZE</code>.</p>
+<p><b>Where AI goes wrong:</b> it claims Postgres has clustered indexes (it has a one-off <code>CLUSTER</code> command), says a table can have several clustered indexes, or forgets that InnoDB secondaries already contain the PK (and suggests adding <code>id</code> to an index needlessly). <b>What you must still own:</b> knowing your engine's storage model and choosing a clustering key from the real access pattern.</p>`,
+    problems: [{
+      title: 'Cluster the Order Items Table',
+      level: 'Medium', tags: ['clustered index', 'without rowid', 'primary key design'], companies: ['Amazon', 'Walmart', 'Instacart'],
+      statement: `<p><code>order_items(order_id, product_id, qty)</code> is read almost exclusively as "all items of order X" (cart page, invoice, shipping). Today it is a rowid table with a separate index on <code>(order_id, product_id)</code>. Redesign it so "all items of order X" is a single clustered range read with <b>no lookups</b>, and keep "which orders contain product Y" reasonably fast.</p>`,
+      constraints: `<p>SQLite. 5,000 item rows, ~3 per order. (order_id, product_id) is unique.</p>`,
+      example: `<p>Before: ${H.c('r', 'SEARCH order_items USING INDEX idx_items_order (order_id=?)')} — seek the index, then fetch each row by rowid.<br>After: ${H.c('g', 'SEARCH order_items USING PRIMARY KEY (order_id=?)')} — the rows are in the clustered leaves.</p>`,
+      brute: { why: `<p>Without any index it is a full scan of all item rows for every cart view. With a rowid table + secondary index it is a seek plus one extra rowid lookup per item — a hop that exists only because the data is stored in rowid order rather than order_id order.</p>`, code: lab(`CREATE TABLE order_items (id INTEGER PRIMARY KEY, order_id INTEGER NOT NULL, product_id INTEGER NOT NULL, qty INTEGER NOT NULL);
+INSERT INTO order_items (order_id, product_id, qty)
+WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 5000)
+SELECT (i + 2) / 3, (i * 37) % 400 + 1, 1 + i % 4 FROM n;
+EXPLAIN QUERY PLAN SELECT * FROM order_items WHERE order_id = 77;     -- SCAN: brute force
+CREATE INDEX idx_items_order ON order_items(order_id, product_id);
+EXPLAIN QUERY PLAN SELECT * FROM order_items WHERE order_id = 77;     -- seek + rowid lookups`) },
+      mcq: { q: 'Which primary key gives the best clustering for "all items of order X"?', options: ['<code>(order_id, product_id)</code>', '<code>(product_id, order_id)</code>', 'a random UUID', 'an auto-increment id'], answer: 0, explain: 'Leading with order_id puts every item of one order next to each other in the clustered B+tree; product_id makes it unique.' },
+      hints: [`<p>Hint 1: the hottest query filters on order_id only — so the physical order should start with order_id.</p>`, `<p>Hint 2: SQLite clusters by the declared PRIMARY KEY when you add <code>WITHOUT ROWID</code>. The natural key <code>(order_id, product_id)</code> is unique, so no surrogate id is needed.</p>`, `<p>Hint 3: add a secondary index on product_id for the reverse question; its leaves automatically carry order_id (the PK), so "which orders contain product Y" is covered.</p>`],
+      solution: {
+        approach: `<p>Make the natural composite key the clustering key: <code>PRIMARY KEY (order_id, product_id) WITHOUT ROWID</code>. Items of one order become one contiguous leaf range — seek once, read 3 neighbours, done. A secondary index on product_id stores (product_id, order_id) and covers the reverse lookup without touching the table.</p>`,
+        code: lab(`CREATE TABLE order_items (
+  order_id   INTEGER NOT NULL,
+  product_id INTEGER NOT NULL,
+  qty        INTEGER NOT NULL CHECK (qty > 0),
+  PRIMARY KEY (order_id, product_id)          -- clustering key: one order's items are neighbours
+) WITHOUT ROWID;
+INSERT INTO order_items
+WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 5000)
+SELECT (i + 2) / 3, (i * 37) % 400 + 1, 1 + i % 4 FROM n;
+
+CREATE INDEX idx_items_product ON order_items(product_id);   -- leaf = (product_id, order_id)
+
+EXPLAIN QUERY PLAN SELECT * FROM order_items WHERE order_id = 77;          -- SEARCH ... USING PRIMARY KEY
+EXPLAIN QUERY PLAN SELECT order_id FROM order_items WHERE product_id = 9;  -- COVERING INDEX
+SELECT * FROM order_items WHERE order_id = 77;`),
+        complexity: `<p>Order lookup: O(log N) to the first item + O(k) adjacent entries, zero extra hops. Product lookup: O(log N + k) entirely inside the secondary index. Trade-off: inserts must place rows in (order_id, product_id) order — fine because new orders get increasing ids (append at the right edge).</p>`,
+        followUps: ['What happens to this design if order ids are random UUIDv4?', 'Would you do the same in Postgres? (no clustered tables — use a composite index, maybe INCLUDE (qty) for index-only scans)']
+      }
+    }]
+  });
   registerModule({
     id: 'sql10', title: 'Index Internals', lang: 'sql',
     intro: `<p>tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro</p>`,

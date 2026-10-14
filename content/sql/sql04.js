@@ -1170,7 +1170,7 @@ FROM employees e
 JOIN employees m ON m.emp_id = e.manager_id
 ORDER BY e.emp_id;` }
       },
-      mcq: { q: 'In <code>FROM employees e LEFT JOIN employees m ON …</code>, which ON clause attaches each employee\'s <b>manager</b>?', options: ['<code>m.emp_id = e.manager_id</code>', '<code>e.emp_id = m.manager_id</code>', '<code>e.emp_id = m.emp_id</code>', '<code>e.manager_id = m.manager_id</code>'], answer: 0, explain: 'The manager is the row whose emp_id equals my manager_id. Option 2 attaches the people I manage; option 3 matches every row to itself; option 4 pairs colleagues who share a manager.' },
+      mcq: { q: 'In <code>FROM employees e LEFT JOIN employees m ON …</code>, which ON clause attaches each employee\'s <b>manager</b>?', options: ['<code>m.emp_id = e.manager_id</code>', '<code>e.emp_id = m.manager_id</code>', '<code>e.emp_id = m.emp_id</code>', '<code>e.manager_id = m.manager_id</code>'], answer: 0, explain: 'The manager is the row whose emp_id equals my manager_id. <code>e.emp_id = m.manager_id</code> attaches the people I manage; <code>e.emp_id = m.emp_id</code> matches every row to itself; <code>e.manager_id = m.manager_id</code> pairs colleagues who share a manager.' },
       hints: [
         `<p>Hint 1: Same table, two roles: <code>e</code> = employee, <code>m</code> = manager. Read the ON aloud: "the manager's emp_id is my manager_id".</p>`,
         `<p>Hint 2: "Every employee" → LEFT self join, so the CEO and Neha survive with <code>m.name = NULL</code>.</p>`,
@@ -2033,7 +2033,458 @@ ORDER BY d.dept_id;` }],
     }]
   });
 
-  registerModule({ id: 'sql04', title: 'JOINs', intro: '<p>temp intro temp intro temp intro temp intro temp intro temp intro temp intro temp intro temp intro temp intro temp intro temp intro</p>', goals: ['aaaaaaaaaaaa', 'bbbbbbbbbbbbb', 'cccccccccccc'], prereqs: 'SQL 3 aggregates etc', hours: 10,
+  /* ================= PRACTICE: EASY ================= */
+  practice.push({
+    title: 'Employee Directory with Department (Combine Two Tables)', level: 'Easy', tags: ['left join'], companies: ['Amazon', 'Adobe'],
+    statement: `<p>Like LeetCode 175 "Combine Two Tables": return <code>name, dept_name, location</code> for <b>every</b> employee in the company DB. If an employee has no (valid) department, dept_name and location are NULL. Order by emp_id.</p>`,
+    constraints: `<p>10 employees; Vikram's dept_id is NULL, Ishaan's dept_id 50 does not exist. Output must have 10 rows.</p>`,
+    example: `${H.table(['name', 'dept_name', 'location'], [['Meera', 'Engineering', 'Bengaluru'], ['Vikram', '<span class="c-p">NULL</span>', '<span class="c-p">NULL</span>'], ['Ishaan', '<span class="c-p">NULL</span>', '<span class="c-p">NULL</span>']])}<p>"Every employee" → employees is the ${H.c('g', 'preserved')} table.</p>`,
+    brute: { why: `<p>An INNER JOIN drops Vikram (NULL key) and Ishaan (orphan key): 8 rows instead of 10. The question's word "every" was ignored.</p>`, code: { lang: 'sql', db: 'company', code: `
+-- WRONG: inner join loses 2 employees
+SELECT e.name, d.dept_name, d.location
+FROM employees e
+JOIN departments d ON d.dept_id = e.dept_id
+ORDER BY e.emp_id;` } },
+    mcq: { q: 'Which join keeps all 10 employees?', options: ['employees LEFT JOIN departments', 'employees INNER JOIN departments', 'departments LEFT JOIN employees', 'employees CROSS JOIN departments'], answer: 0, explain: 'LEFT JOIN from employees preserves every employee. departments LEFT JOIN employees would preserve departments (and drop Vikram/Ishaan), CROSS JOIN gives 40 rows.' },
+    hints: [`<p>Hint 1: Which table must not lose rows? The one after "every": employees. Put it first.</p>`, `<p>Hint 2: Use LEFT JOIN departments ON d.dept_id = e.dept_id; missing departments become NULL automatically.</p>`, `<p>Hint 3: Do not add any WHERE on department columns, or the NULL-filled rows disappear again. ORDER BY e.emp_id.</p>`],
+    solution: { approach: `<p>LEFT JOIN from the preserved table on the foreign key. Because dept_id is the departments primary key, each employee matches at most one department, so the output has exactly 10 rows.</p>`, code: { lang: 'sql', db: 'company', code: `
+SELECT e.name, d.dept_name, d.location
+FROM employees AS e
+LEFT JOIN departments AS d
+       ON d.dept_id = e.dept_id
+ORDER BY e.emp_id;` }, complexity: `<p>O(E log D) with PK lookups (or O(E + D) hash join); output = E rows.</p>`, followUps: ['Show "Unassigned" instead of NULL.', 'Count employees per location including NULL location.'] }
+  });
+
+  practice.push({
+    title: 'Customers Who Never Order', level: 'Easy', tags: ['anti-join', 'not exists', 'null trap'], companies: ['Amazon', 'Bloomberg', 'Apple'],
+    statement: `<p>LeetCode 183 on the shop DB: return the <code>name</code> of every customer who has <b>never</b> placed an order (any status). Note that <code>orders.customer_id</code> can be NULL.</p>`,
+    constraints: `<p>6 customers, 8 orders (one guest order with NULL customer_id).</p>`,
+    example: `${H.table(['name'], [['Eli'], ['Fay']])}<p>Everyone else has at least one order. The guest order's NULL must not ${H.c('r', 'empty the result')}.</p>`,
+    brute: { why: `<p><code>NOT IN (SELECT customer_id FROM orders)</code> returns <span class="c-r">no rows</span>: the subquery contains NULL, so every "not in" test is UNKNOWN for customers without orders. The query looks textbook-correct and passes on clean data.</p>`, code: { lang: 'sql', db: 'shop', code: `
+-- WRONG on real data: returns nothing because of the NULL customer_id
+SELECT name FROM customers
+WHERE customer_id NOT IN (SELECT customer_id FROM orders);` } },
+    mcq: { q: 'Which construct is NULL-safe for "has no matching row"?', options: ['NOT EXISTS (correlated subquery)', 'NOT IN (subquery on a nullable column)', '&lt;&gt; ALL (subquery on a nullable column)', 'INNER JOIN'], answer: 0, explain: 'NOT EXISTS only asks whether a row with a TRUE condition exists; NULL comparisons are simply non-matches. NOT IN and &lt;&gt; ALL are both poisoned by a NULL.' },
+    hints: [`<p>Hint 1: "Never ordered" = an anti-join: keep a customer when no order row matches them.</p>`, `<p>Hint 2: WHERE NOT EXISTS (SELECT 1 FROM orders o WHERE o.customer_id = c.customer_id).</p>`, `<p>Hint 3: Alternatives: LEFT JOIN orders … WHERE o.order_id IS NULL, or NOT IN with a WHERE customer_id IS NOT NULL filter inside the subquery.</p>`],
+    solution: { approach: `<p>Correlated NOT EXISTS: for each customer, probe orders for a match; keep the customer if none exists. NULL customer_ids never match and therefore cannot interfere.</p>`, code: { lang: 'sql', db: 'shop', code: `
+SELECT c.name
+FROM customers AS c
+WHERE NOT EXISTS (
+  SELECT 1 FROM orders AS o
+  WHERE o.customer_id = c.customer_id
+)
+ORDER BY c.name;` }, alt: [{ lang: 'sql', db: 'shop', code: `
+SELECT c.name
+FROM customers c
+LEFT JOIN orders o ON o.customer_id = c.customer_id
+WHERE o.order_id IS NULL
+ORDER BY c.name;` }], complexity: `<p>Hash anti-join O(C + O), or O(C log O) with an index on orders.customer_id.</p>`, followUps: ['Customers who never placed a PAID order.', 'Customers whose last order was over 60 days ago.'] }
+  });
+
+  practice.push({
+    title: 'T-Shirt Variant Catalogue', level: 'Easy', tags: ['cross join'], companies: ['Myntra', 'Shopify'],
+    statement: `<p>Generate every T-shirt variant from <code>sizes</code> and <code>colors</code> in the shop DB with a code like <code>TEE-M-BLUE</code>. Columns: <code>size, color, code</code>, ordered by color then size order S, M, L.</p>`,
+    constraints: `<p>3 sizes × 2 colors → exactly 6 rows.</p>`,
+    example: `${H.table(['size', 'color', 'code'], [['S', 'Blue', 'TEE-S-BLUE'], ['M', 'Blue', 'TEE-M-BLUE'], ['L', 'Blue', 'TEE-L-BLUE'], ['S', 'Red', 'TEE-S-RED']])}<p>No matching rule exists between sizes and colors — every pair is wanted.</p>`,
+    brute: { why: `<p>A beginner tries UNION to "combine" the tables: that stacks 3 sizes and 2 colors into 5 rows of a single column — no pairs at all. Combining <b>side by side</b> needs a join; pairing <b>everything</b> needs a cross join.</p>`, code: { lang: 'sql', db: 'shop', code: `
+-- WRONG: UNION stacks rows vertically, it does not pair them
+SELECT size AS value FROM sizes
+UNION
+SELECT color FROM colors;` } },
+    mcq: { q: 'How many rows does <code>sizes CROSS JOIN colors</code> return?', options: ['6', '5', '3', '2'], answer: 0, explain: 'Cartesian product: 3 × 2 = 6.' },
+    hints: [`<p>Hint 1: You need every size paired with every color — a Cartesian product.</p>`, `<p>Hint 2: FROM sizes CROSS JOIN colors; build the code with || and UPPER().</p>`, `<p>Hint 3: Size order S, M, L is not alphabetical — sort with CASE size WHEN 'S' THEN 1 WHEN 'M' THEN 2 ELSE 3 END.</p>`],
+    solution: { approach: `<p>CROSS JOIN produces all 6 pairs; string concatenation builds the SKU code; a CASE expression gives the natural size order.</p>`, code: { lang: 'sql', db: 'shop', code: `
+SELECT s.size, c.color,
+       'TEE-' || s.size || '-' || UPPER(c.color) AS code
+FROM sizes s
+CROSS JOIN colors c
+ORDER BY c.color,
+         CASE s.size WHEN 'S' THEN 1 WHEN 'M' THEN 2 WHEN 'L' THEN 3 END;` }, complexity: `<p>O(S × C) — unavoidable, the output itself has S × C rows.</p>`, followUps: ['Exclude the combination L-Red (discontinued) — where does that filter go?', 'Add a third dimension (fabric) — how many rows now?'] }
+  });
+
+  practice.push({
+    title: 'Units Sold per Product (zeros included)', level: 'Easy', tags: ['left join', 'aggregation'], companies: ['Walmart', 'Target'],
+    statement: `<p>For <b>every</b> product return <code>name</code> and <code>units_sold</code> = total qty across all order lines (0 if never sold). Order by units_sold descending, then name.</p>`,
+    constraints: `<p>7 products; Mystery Box and Plant Pot were never sold; one order line references a deleted product (99) and must be ignored.</p>`,
+    example: `${H.table(['name', 'units_sold'], [['Pen Set', '7'], ['Mouse', '6'], ['Mystery Box', '<span class="c-g">0</span>']])}<p>Mouse: 2 + 1 + 3 = 6. Pen Set: 2 + 2 + 3 = 7. Unsold products show ${H.c('g', '0')}.</p>`,
+    brute: { why: `<p>Starting from order_items and joining products returns only products that were sold — Mystery Box and Plant Pot vanish. (It also has to drop product 99 via the inner join, which is fine.)</p>`, code: { lang: 'sql', db: 'shop', code: `
+-- WRONG: unsold products never appear
+SELECT p.name, SUM(i.qty) AS units_sold
+FROM order_items i
+JOIN products p ON p.product_id = i.product_id
+GROUP BY p.product_id, p.name
+ORDER BY units_sold DESC, p.name;` } },
+    mcq: { q: 'Why use <code>COALESCE(SUM(i.qty), 0)</code>?', options: ['SUM over only NULLs is NULL, not 0', 'SUM ignores zeros', 'COALESCE makes the query faster', 'SQLite requires it'], answer: 0, explain: 'Unsold products have one NULL-filled row; SUM of NULLs is NULL, so COALESCE converts it to 0.' },
+    hints: [`<p>Hint 1: "Every product" → start FROM products and LEFT JOIN order_items.</p>`, `<p>Hint 2: GROUP BY product and SUM(i.qty).</p>`, `<p>Hint 3: COALESCE the sum to 0; product 99 has no products row, so it never appears when products is the preserved side.</p>`],
+    solution: { approach: `<p>Preserve products, attach lines, aggregate quantities, convert NULL sums to 0.</p>`, code: { lang: 'sql', db: 'shop', code: `
+SELECT p.name, COALESCE(SUM(i.qty), 0) AS units_sold
+FROM products p
+LEFT JOIN order_items i ON i.product_id = p.product_id
+GROUP BY p.product_id, p.name
+ORDER BY units_sold DESC, p.name;` }, complexity: `<p>O(P + L) with hash join and hash aggregation.</p>`, followUps: ['Only count units from paid orders (one more join — careful with its type and filter placement).', 'Revenue per category including NULL category.'] }
+  });
+
+  /* ================= PRACTICE: MEDIUM ================= */
+  practice.push({
+    title: 'Employees Earning More Than Their Managers', level: 'Medium', tags: ['self join'], companies: ['Amazon', 'Microsoft', 'Uber'],
+    statement: `<p>LeetCode 181 on the company DB: return <code>employee, salary, manager, manager_salary</code> for every employee who earns <b>strictly more</b> than their direct manager.</p>`,
+    constraints: `<p>Employees with no manager or a missing manager cannot be compared and must not appear.</p>`,
+    example: `${H.table(['employee', 'salary', 'manager', 'manager_salary'], [['Kabir', '190000', 'Arjun', '180000'], ['Tara', '175000', 'Priya', '170000']])}<p>Join each employee to the row whose emp_id equals their manager_id, then ${H.c('b', 'compare the two salaries')}.</p>`,
+    brute: { why: `<p>The ON clause is reversed: <code>e.emp_id = m.manager_id</code> attaches each person's <b>reports</b>, not their manager. The query then finds managers who out-earn reports — 6 rows, the opposite question.</p>`, code: { lang: 'sql', db: 'company', code: `
+-- WRONG: reversed roles (e is matched to people it manages)
+SELECT e.name AS employee, e.salary, m.name AS manager, m.salary AS manager_salary
+FROM employees e
+JOIN employees m ON e.emp_id = m.manager_id
+WHERE e.salary > m.salary;` } },
+    mcq: { q: 'Should this self join be INNER or LEFT?', options: ['INNER — rows without a manager cannot satisfy the salary comparison anyway', 'LEFT — to keep the CEO', 'FULL — to keep managers too', 'CROSS — to compare everyone'], answer: 0, explain: 'The WHERE e.salary &gt; m.salary would reject NULL-filled rows anyway, so LEFT adds nothing; INNER states the intent.' },
+    hints: [`<p>Hint 1: Two roles of one table: e (employee) and m (manager).</p>`, `<p>Hint 2: ON m.emp_id = e.manager_id — "the manager is the row whose id is my manager_id".</p>`, `<p>Hint 3: WHERE e.salary &gt; m.salary; strict inequality so equal salaries are excluded.</p>`],
+    solution: { approach: `<p>Self join each employee to their manager row, then filter on the salary comparison.</p>`, code: { lang: 'sql', db: 'company', code: `
+SELECT e.name AS employee, e.salary,
+       m.name AS manager,  m.salary AS manager_salary
+FROM employees AS e
+JOIN employees AS m ON m.emp_id = e.manager_id
+WHERE e.salary > m.salary
+ORDER BY e.salary DESC;` }, complexity: `<p>One PK lookup per employee: O(N log N); hash join O(N).</p>`, followUps: ['Employees earning more than their manager\'s manager.', 'Managers whose average report salary exceeds their own.'] }
+  });
+
+  practice.push({
+    title: 'Rising Temperature', level: 'Medium', tags: ['self join', 'dates'], companies: ['Adobe', 'Yahoo', 'Amazon'],
+    statement: `<p>LeetCode 197 on the weather DB: return the <code>id</code> of every day whose temperature is higher than the <b>previous calendar day</b>. If the previous day is missing from the table, that day cannot qualify.</p>`,
+    constraints: `<p>record_date is unique, stored as ISO text. 2026-01-04 is missing.</p>`,
+    example: `${H.table(['id', 'date', 'temp', 'yesterday', 'rising?'], [['2', '01-02', '25', '10', '<span class="c-g">yes</span>'], ['4', '01-05', '30', '<span class="c-m">missing</span>', '<span class="c-r">no</span>'], ['7', '01-08', '35', '28', '<span class="c-g">yes</span>']])}<p>Answer: ids 2 and 7.</p>`,
+    brute: { why: `<p>Joining on <code>id - 1</code> assumes ids are consecutive days. Here id 4 is 2026-01-05 and id 3 is 01-03 — two days apart — so the query wrongly reports id 4 (30 &gt; 20). Ids are identifiers, not calendars.</p>`, code: { lang: 'sql', db: 'weather', code: `
+-- WRONG: previous ROW is not the previous DAY when a date is missing
+SELECT t.id
+FROM weather t
+JOIN weather y ON y.id = t.id - 1
+WHERE t.temperature > y.temperature;` } },
+    mcq: { q: 'In SQLite, which expression gives the day before <code>t.record_date</code>?', options: ['DATE(t.record_date, \'-1 day\')', 't.record_date - 1', 'DATEADD(day, -1, t.record_date)', 't.record_date - INTERVAL 1 DAY'], answer: 0, explain: 'SQLite uses date modifiers. Subtracting 1 from a text date yields a number. DATEADD is SQL Server, INTERVAL is MySQL/PostgreSQL syntax.' },
+    hints: [`<p>Hint 1: Compare each row with another row of the same table → self join (roles: today, yesterday).</p>`, `<p>Hint 2: Join on the date, not the id: y.record_date = DATE(t.record_date, '-1 day').</p>`, `<p>Hint 3: Inner join automatically drops days whose yesterday is missing; then filter t.temperature &gt; y.temperature.</p>`],
+    solution: { approach: `<p>Self join "today" to "yesterday" using real date arithmetic, then compare temperatures. Missing days produce no partner and drop out.</p>`, code: { lang: 'sql', db: 'weather', code: `
+SELECT t.id
+FROM weather AS t                                   -- today
+JOIN weather AS y                                   -- yesterday
+  ON y.record_date = DATE(t.record_date, '-1 day')
+WHERE t.temperature > y.temperature
+ORDER BY t.id;` }, alt: [{ lang: 'sql', db: 'weather', title: 'Window-function version (LAG) with a date check', code: `
+SELECT id
+FROM (SELECT id, record_date, temperature,
+             LAG(record_date) OVER (ORDER BY record_date) AS prev_date,
+             LAG(temperature) OVER (ORDER BY record_date) AS prev_temp
+      FROM weather)
+WHERE prev_date = DATE(record_date, '-1 day') AND temperature > prev_temp
+ORDER BY id;` }], complexity: `<p>O(N log N) with an index on record_date (one lookup per row); LAG version is one sort.</p>`, followUps: ['Return the longest streak of rising days (gaps and islands).', 'Compare with the same day last week instead.'] }
+  });
+
+  practice.push({
+    title: 'Project Staffing Summary', level: 'Medium', tags: ['multi-table join', 'left join', 'aggregation'], companies: ['Atlassian', 'Accenture'],
+    statement: `<p>For <b>every</b> project return <code>project, dept_name, assignments</code> (number of assignment rows) and <code>total_hours</code> (0 if none). Order by total_hours descending, then project.</p>`,
+    constraints: `<p>Company DB. Compliance has no assignments. Assignment (11, 1) refers to a deleted employee but still counts as an assignment row.</p>`,
+    example: `${H.table(['project', 'dept_name', 'assignments', 'total_hours'], [['Search', 'Engineering', '3', '55'], ['Payments', 'Engineering', '2', '50'], ['CRM', 'Sales', '3', '45'], ['Hiring Portal', 'HR', '1', '20'], ['Compliance', 'Legal', '<span class="c-g">0</span>', '<span class="c-g">0</span>']])}`,
+    brute: { why: `<p>Inner joins all the way drop Compliance (no assignments), and joining employees (not needed here!) would also drop the orphan assignment — 4 rows with Search reporting 50 hours instead of 55.</p>`, code: { lang: 'sql', db: 'company', code: `
+-- WRONG: inner joins + an unnecessary join to employees
+SELECT p.name AS project, d.dept_name, COUNT(*) AS assignments, SUM(a.hours) AS total_hours
+FROM projects p
+JOIN departments d ON d.dept_id = p.dept_id
+JOIN assignments a ON a.project_id = p.project_id
+JOIN employees e   ON e.emp_id = a.emp_id
+GROUP BY p.project_id, p.name, d.dept_name
+ORDER BY total_hours DESC, project;` } },
+    mcq: { q: 'Why not join employees in this query?', options: ['No employee column is needed, and an inner join to employees would drop the orphan assignment row', 'Employees is too big', 'It would create a cross join', 'SQLite cannot join 4 tables'], answer: 0, explain: 'Every extra join can change row counts. Join only the tables the answer needs.' },
+    hints: [`<p>Hint 1: Preserve projects; departments is a many-to-one lookup; assignments is the optional one-to-many side.</p>`, `<p>Hint 2: LEFT JOIN assignments, count a.project_id (not *), SUM hours with COALESCE.</p>`, `<p>Hint 3: Group by project id and name plus the department name.</p>`],
+    solution: { approach: `<p>Projects LEFT JOIN departments (lookup) LEFT JOIN assignments (facts), then aggregate per project. Only one one-to-many branch exists, so no double counting.</p>`, code: { lang: 'sql', db: 'company', code: `
+SELECT p.name                     AS project,
+       d.dept_name,
+       COUNT(a.project_id)        AS assignments,
+       COALESCE(SUM(a.hours), 0)  AS total_hours
+FROM projects p
+LEFT JOIN departments d ON d.dept_id    = p.dept_id
+LEFT JOIN assignments a ON a.project_id = p.project_id
+GROUP BY p.project_id, p.name, d.dept_name
+ORDER BY total_hours DESC, project;` }, complexity: `<p>O(P + D + A) with hash joins and hash aggregation.</p>`, followUps: ['Also count distinct valid employees (exclude orphans) without losing projects.', 'Which employees work on a project outside their own department?'] }
+  });
+
+  practice.push({
+    title: 'Product Catalogue Audit (both directions)', level: 'Medium', tags: ['full outer join', 'data quality'], companies: ['Flipkart', 'Amazon'],
+    statement: `<p>Audit products against order lines. Return <code>product_id, name, problem</code> for products that were <b>never sold</b> (<code>'never sold'</code>) and for order lines whose product <b>does not exist</b> (<code>'missing product'</code>, show the line's product_id and order_id as name like <code>'order 105'</code>). One row per problem product id.</p>`,
+    constraints: `<p>Shop DB. Expected: Mystery Box, Plant Pot (never sold) and product 99 (missing).</p>`,
+    example: `${H.table(['product_id', 'name', 'problem'], [['6', 'Mystery Box', 'never sold'], ['7', 'Plant Pot', 'never sold'], ['99', 'order 105', '<span class="c-r">missing product</span>']])}`,
+    brute: { why: `<p>A LEFT JOIN from products finds unsold products but can never see order lines for products that are not in the catalogue — the most serious problem (selling something that does not exist) is invisible.</p>`, code: { lang: 'sql', db: 'shop', code: `
+-- INCOMPLETE: only one direction
+SELECT p.product_id, p.name, 'never sold' AS problem
+FROM products p
+LEFT JOIN order_items i ON i.product_id = p.product_id
+WHERE i.product_id IS NULL;` } },
+    mcq: { q: 'Which join sees problems on both sides at once?', options: ['FULL OUTER JOIN', 'LEFT JOIN', 'INNER JOIN', 'CROSS JOIN'], answer: 0, explain: 'FULL keeps unmatched rows from both tables, so both kinds of orphan appear with NULLs on the other side.' },
+    hints: [`<p>Hint 1: Problems exist in both tables → FULL OUTER JOIN products and order_items on product_id.</p>`, `<p>Hint 2: Keep rows where p.product_id IS NULL or i.product_id IS NULL.</p>`, `<p>Hint 3: COALESCE the id; label with CASE; DISTINCT/GROUP BY so a missing product sold on several lines appears once.</p>`],
+    solution: { approach: `<p>FULL OUTER JOIN, keep only one-sided rows, label by which side is missing.</p>`, code: { lang: 'sql', db: 'shop', code: `
+SELECT COALESCE(p.product_id, i.product_id)                   AS product_id,
+       COALESCE(p.name, 'order ' || MIN(i.order_id))           AS name,
+       CASE WHEN p.product_id IS NULL THEN 'missing product'
+            ELSE 'never sold' END                               AS problem
+FROM products p
+FULL OUTER JOIN order_items i ON i.product_id = p.product_id
+WHERE p.product_id IS NULL OR i.product_id IS NULL
+GROUP BY COALESCE(p.product_id, i.product_id), p.product_id, p.name
+ORDER BY product_id;` }, complexity: `<p>Hash full join O(P + L), then a small aggregation.</p>`, followUps: ['Rewrite without FULL JOIN for MySQL.', 'Turn it into a CHECK that runs in CI and fails on any row.'] }
+  });
+
+  practice.push({
+    title: 'Headcount per Salary Grade (non-equi join)', level: 'Medium', tags: ['non-equi join', 'left join'], companies: ['Oracle', 'SAP'],
+    statement: `<p>Using <code>salary_grades(grade, min_sal, max_sal)</code>, return every grade with <code>headcount</code> and <code>avg_salary</code> (rounded, NULL if empty), ordered by grade. An employee belongs to the grade whose range contains their salary.</p>`,
+    constraints: `<p>Ranges do not overlap and cover all salaries. Company DB.</p>`,
+    example: `${H.table(['grade', 'headcount', 'avg_salary'], [['A', '3', '90000'], ['B', '2', '115000'], ['C', '4', '178750'], ['D', '1', '250000']])}<p>There is no shared key — the match is ${H.c('b', 'salary BETWEEN min_sal AND max_sal')}.</p>`,
+    brute: { why: `<p>Trying an equi-join on <code>salary = min_sal</code> matches only salaries sitting exactly on a boundary — almost nobody. Range lookups need a non-equi ON condition.</p>`, code: { lang: 'sql', db: 'company', code: `
+-- WRONG: equality on a range boundary
+SELECT g.grade, COUNT(e.emp_id) AS headcount
+FROM salary_grades g
+LEFT JOIN employees e ON e.salary = g.min_sal
+GROUP BY g.grade
+ORDER BY g.grade;` } },
+    mcq: { q: 'Which physical join algorithm can evaluate <code>ON e.salary BETWEEN g.min_sal AND g.max_sal</code> in every engine?', options: ['Nested loop', 'Hash join', 'Neither', 'Only merge join'], answer: 0, explain: 'Hash joins need equality. Nested loop (optionally with an index range scan) handles any predicate; some engines also use merge-style range joins.' },
+    hints: [`<p>Hint 1: The ON condition can be any boolean expression — use BETWEEN.</p>`, `<p>Hint 2: "Every grade" → grades LEFT JOIN employees.</p>`, `<p>Hint 3: COUNT(e.emp_id), ROUND(AVG(e.salary)) — AVG over no rows is NULL, which is what the spec wants.</p>`],
+    solution: { approach: `<p>Non-equi LEFT JOIN from grades to employees on the range, then aggregate per grade.</p>`, code: { lang: 'sql', db: 'company', code: `
+SELECT g.grade,
+       COUNT(e.emp_id)         AS headcount,
+       ROUND(AVG(e.salary))    AS avg_salary
+FROM salary_grades g
+LEFT JOIN employees e
+       ON e.salary BETWEEN g.min_sal AND g.max_sal
+GROUP BY g.grade
+ORDER BY g.grade;` }, complexity: `<p>Nested loop O(G × E); with an index on employees.salary each grade is a range scan: O(G log E + E).</p>`, followUps: ['What happens if two grade ranges overlap?', 'Assign grades using a CASE instead — when is the table version better?'] }
+  });
+
+  practice.push({
+    title: 'Customers Living in the Same City', level: 'Medium', tags: ['self join', 'pairs'], companies: ['Meta', 'Swiggy'],
+    statement: `<p>Return every pair of <b>different</b> customers who live in the same city, each pair once: <code>city, customer_1, customer_2</code> with customer_1's id smaller. Customers with NULL city must not be paired.</p>`,
+    constraints: `<p>Shop DB, 6 customers (Eli's city is NULL).</p>`,
+    example: `${H.table(['city', 'customer_1', 'customer_2'], [['Delhi', 'Ben', 'Fay'], ['Pune', 'Asha', 'Chen']])}`,
+    brute: { why: `<p>Joining on city alone pairs each customer with themselves and lists every pair twice: 6 rows of which 4 are noise (Asha–Asha, Chen–Asha, …).</p>`, code: { lang: 'sql', db: 'shop', code: `
+-- WRONG: self-pairs and mirrored duplicates
+SELECT a.city, a.name AS customer_1, b.name AS customer_2
+FROM customers a
+JOIN customers b ON b.city = a.city;` } },
+    mcq: { q: 'Why does Eli (city NULL) never pair with anyone, not even himself?', options: ['NULL = NULL is UNKNOWN, so the ON condition is never TRUE', 'Self joins skip NULL rows', 'Because of a.customer_id &lt; b.customer_id', 'SQLite removes NULL rows before joining'], answer: 0, explain: 'Equality with NULL is UNKNOWN, and joins keep only TRUE pairs.' },
+    hints: [`<p>Hint 1: Pairs from one table → self join with roles a and b.</p>`, `<p>Hint 2: ON b.city = a.city AND a.customer_id &lt; b.customer_id.</p>`, `<p>Hint 3: The &lt; removes both self-pairs and mirror duplicates; NULL cities drop out automatically.</p>`],
+    solution: { approach: `<p>Self join on city with an ordering guard so each unordered pair appears once.</p>`, code: { lang: 'sql', db: 'shop', code: `
+SELECT a.city, a.name AS customer_1, b.name AS customer_2
+FROM customers a
+JOIN customers b
+  ON b.city = a.city
+ AND a.customer_id < b.customer_id
+ORDER BY a.city, customer_1;` }, complexity: `<p>Within a city of size k the output is k(k−1)/2 — quadratic in the largest group; hash join on city otherwise O(N + output).</p>`, followUps: ['Count pairs per city without listing them (k·(k−1)/2 via GROUP BY).', 'Find duplicate customer accounts (same name and city).'] }
+  });
+
+  /* ================= PRACTICE: HARD ================= */
+  practice.push({
+    title: 'Outstanding Balance per Customer (beat the chasm trap)', level: 'Hard', tags: ['pre-aggregation', 'left join', 'fan-out'], companies: ['Stripe', 'PayPal', 'Razorpay'],
+    statement: `<p>For <b>every</b> customer return <code>name, billed, paid, balance</code>: billed = sum of <code>orders.amount</code> for their <b>non-cancelled</b> orders, paid = sum of payments made for those orders, balance = billed − paid. Customers with nothing show 0s. Order by balance descending, then name.</p>`,
+    constraints: `<p>Shop DB. Order 101 has 2 payments, order 108 has 2 payments. Orphan payments (order 110) and orders without customers are ignored. Exactly 6 rows.</p>`,
+    example: `${H.table(['name', 'billed', 'paid', 'balance'], [['Chen', '340', '40', '<span class="c-r">300</span>'], ['Dev', '75', '70', '<span class="c-r">5</span>'], ['Asha', '330', '330', '0'], ['Ben', '0', '0', '0']])}<p>Chen's pending order 107 is billed but unpaid; Dev under-paid order 108. Asha's two payments for order 101 must not ${H.c('r', 'double her billed amount')}.</p>`,
+    brute: { why: `<p>Joining customers → orders → payments in one go repeats each order once per payment. Order 101 (two payments) contributes its 250 twice, so Asha appears billed <span class="c-r">580</span>; Dev's order 108 shows billed 150. The payment sums happen to be right, which makes the bug harder to spot.</p>`, code: { lang: 'sql', db: 'shop', code: `
+-- WRONG: billed is multiplied by the number of payments per order
+SELECT c.name,
+       COALESCE(SUM(o.amount), 0) AS billed,
+       COALESCE(SUM(p.amount), 0) AS paid,
+       COALESCE(SUM(o.amount), 0) - COALESCE(SUM(p.amount), 0) AS balance
+FROM customers c
+LEFT JOIN orders o   ON o.customer_id = c.customer_id AND o.status <> 'cancelled'
+LEFT JOIN payments p ON p.order_id = o.order_id
+GROUP BY c.customer_id, c.name
+ORDER BY balance DESC, c.name;` } },
+    mcq: { q: 'What is the safest way to combine orders with payments when an order can have many payments?', options: ['Aggregate payments to one row per order first, then join', 'Use SUM(DISTINCT o.amount)', 'Use SELECT DISTINCT', 'Use an INNER JOIN instead of LEFT'], answer: 0, explain: 'Pre-aggregation makes the join one-to-one. SUM(DISTINCT) breaks when two orders have equal amounts; DISTINCT and INNER do not address the multiplication.' },
+    hints: [`<p>Hint 1: Find the one-to-many edge that multiplies rows: orders → payments.</p>`, `<p>Hint 2: CTE <code>paid</code>: SELECT order_id, SUM(amount) FROM payments GROUP BY order_id. Then orders LEFT JOIN paid is 1:1.</p>`, `<p>Hint 3: Aggregate per customer in a second CTE (excluding cancelled orders), then customers LEFT JOIN that CTE and COALESCE everything to 0.</p>`],
+    solution: { approach: `<p>Reduce payments to order grain, attach them to non-cancelled orders (1:1), aggregate to customer grain, and finally LEFT JOIN customers so everyone appears. Every join is at matching grain, so nothing is double counted.</p>`, code: { lang: 'sql', db: 'shop', code: `
+WITH paid AS (                                   -- grain: order
+  SELECT order_id, SUM(amount) AS paid
+  FROM payments
+  GROUP BY order_id
+), per_customer AS (                             -- grain: customer
+  SELECT o.customer_id,
+         SUM(o.amount)            AS billed,
+         SUM(COALESCE(p.paid, 0)) AS paid
+  FROM orders o
+  LEFT JOIN paid p ON p.order_id = o.order_id    -- 1:1, safe
+  WHERE o.status <> 'cancelled'                  -- preserved-side filter: WHERE is right
+  GROUP BY o.customer_id
+)
+SELECT c.name,
+       COALESCE(pc.billed, 0)                          AS billed,
+       COALESCE(pc.paid, 0)                            AS paid,
+       COALESCE(pc.billed, 0) - COALESCE(pc.paid, 0)   AS balance
+FROM customers c
+LEFT JOIN per_customer pc ON pc.customer_id = c.customer_id
+ORDER BY balance DESC, c.name;` }, complexity: `<p>Each table is read once and aggregated: O(C + O + P) with hash joins/aggregation.</p>`, followUps: ['Also list payments that cannot be matched to any order (orphans) as a separate reconciliation line.', 'Show only customers whose balance has been positive for more than 30 days.'] }
+  });
+
+  practice.push({
+    title: 'Students Who Took Every Course Chitra Took', level: 'Hard', tags: ['relational division', 'not exists', 'semi-join'], companies: ['Google', 'Amazon', 'IBM'],
+    statement: `<p>Return the names of students (other than Chitra) who are enrolled in <b>every</b> course Chitra is enrolled in. They may have taken extra courses too.</p>`,
+    constraints: `<p>School DB. Chitra took C1 and C3. Enrollments contain a NULL course_id and an orphan student; neither may affect the answer.</p>`,
+    example: `${H.table(['name', 'courses', 'covers C1 &amp; C3?'], [['Aanya', 'C1, C2, C3', '<span class="c-g">yes</span>'], ['Bilal', 'C1, C2', '<span class="c-r">no (missing C3)</span>'], ['Dhruv', 'C2', '<span class="c-r">no</span>']])}<p>Answer: Aanya.</p>`,
+    brute: { why: `<p><code>IN (Chitra's courses)</code> tests "<b>at least one</b> shared course", not "all of them" — Bilal shares C1 and is wrongly returned. "For all" cannot be expressed by a single join or IN.</p>`, code: { lang: 'sql', db: 'school', code: `
+-- WRONG: any overlap, not full coverage
+SELECT DISTINCT s.name
+FROM students s
+JOIN enrollments e ON e.student_id = s.student_id
+WHERE s.name <> 'Chitra'
+  AND e.course_id IN (SELECT e2.course_id
+                      FROM enrollments e2
+                      JOIN students s2 ON s2.student_id = e2.student_id
+                      WHERE s2.name = 'Chitra');` } },
+    mcq: { q: '"Student S took all of Chitra\'s courses" is logically equivalent to…', options: ['There is no course of Chitra\'s that S did not take', 'S took at least one of Chitra\'s courses', 'S took more courses than Chitra', 'S and Chitra share a course'], answer: 0, explain: 'Universal quantification becomes a double negation: NOT EXISTS (course of Chitra AND NOT EXISTS (S took it)).' },
+    hints: [`<p>Hint 1: Rephrase: "there does not exist a course of Chitra's that this student has not taken".</p>`, `<p>Hint 2: Outer NOT EXISTS over Chitra's enrollments; inner NOT EXISTS checking the student's enrollment for that course.</p>`, `<p>Hint 3: Exclude Chitra herself; ignore NULL course_ids. Counting alternative: COUNT(DISTINCT matched course) = COUNT(DISTINCT Chitra's courses) via HAVING.</p>`],
+    solution: { approach: `<p>Relational division with a double NOT EXISTS. For each candidate, search for a counter-example course; if none exists, the student covers all of Chitra's courses. (If Chitra had no courses, every student would qualify — "vacuous truth", worth mentioning in an interview.)</p>`, code: { lang: 'sql', db: 'school', code: `
+SELECT s.name
+FROM students s
+WHERE s.name <> 'Chitra'
+  AND NOT EXISTS (                                  -- no counter-example course ...
+        SELECT 1
+        FROM enrollments ce
+        JOIN students cs ON cs.student_id = ce.student_id
+        WHERE cs.name = 'Chitra'
+          AND ce.course_id IS NOT NULL
+          AND NOT EXISTS (                          -- ... that s has not taken
+                SELECT 1 FROM enrollments e
+                WHERE e.student_id = s.student_id
+                  AND e.course_id  = ce.course_id))
+ORDER BY s.name;` }, alt: [{ lang: 'sql', db: 'school', title: 'Counting version', code: `
+WITH target AS (
+  SELECT DISTINCT e.course_id
+  FROM enrollments e JOIN students s ON s.student_id = e.student_id
+  WHERE s.name = 'Chitra' AND e.course_id IS NOT NULL
+)
+SELECT s.name
+FROM students s
+JOIN enrollments e ON e.student_id = s.student_id
+JOIN target t      ON t.course_id  = e.course_id      -- only Chitra's courses count
+WHERE s.name <> 'Chitra'
+GROUP BY s.student_id, s.name
+HAVING COUNT(DISTINCT e.course_id) = (SELECT COUNT(*) FROM target)
+ORDER BY s.name;` }], complexity: `<p>Double NOT EXISTS: O(S × T) probes with an index on enrollments(student_id, course_id). Counting version: one join + group, O(E).</p>`, followUps: ['Students who took EXACTLY Chitra\'s courses (no more, no less).', 'Why does the counting version need DISTINCT and the join to target?'] }
+  });
+
+  practice.push({
+    title: 'Two-Level Referral Network', level: 'Hard', tags: ['self join', 'left join', 'count distinct'], companies: ['Dropbox', 'Uber', 'CRED'],
+    statement: `<p>For every customer who referred at least one person, return <code>referrer, direct</code> (people they referred), <code>second_level</code> (people referred by their referrals) and <code>network</code> = direct + second_level. Order by network descending, then name.</p>`,
+    constraints: `<p>Shop DB, <code>customers.referred_by</code> → customers.customer_id. Assume no cycles.</p>`,
+    example: `${H.table(['referrer', 'direct', 'second_level', 'network'], [['Asha', '2', '2', '4'], ['Ben', '1', '0', '1'], ['Chen', '1', '0', '1']])}<p>Asha → Ben, Chen; Ben → Dev; Chen → Fay. So Asha's second level is ${H.c('b', 'Dev and Fay')}.</p>`,
+    brute: { why: `<p>Using INNER joins for both levels requires a second level to exist: Ben and Chen (whose referrals referred nobody) <span class="c-r">disappear</span>. And counting with COUNT(*) instead of COUNT(DISTINCT) would inflate "direct" whenever a direct referral has several second-level referrals (fan-out).</p>`, code: { lang: 'sql', db: 'shop', code: `
+-- WRONG: inner second-level join drops Ben and Chen; COUNT(*) fans out
+SELECT r.name AS referrer, COUNT(*) AS direct, COUNT(*) AS second_level
+FROM customers r
+JOIN customers d1 ON d1.referred_by = r.customer_id
+JOIN customers d2 ON d2.referred_by = d1.customer_id
+GROUP BY r.customer_id, r.name;` } },
+    mcq: { q: 'After <code>r JOIN d1 LEFT JOIN d2</code>, Asha has one row per (direct, second-level) pair. How should "direct" be counted?', options: ['COUNT(DISTINCT d1.customer_id)', 'COUNT(*)', 'COUNT(d2.customer_id)', 'SUM(d1.customer_id)'], answer: 0, explain: 'The second join fans out each direct referral by its own referrals. Counting distinct direct ids undoes the fan-out.' },
+    hints: [`<p>Hint 1: Three roles of one table: r (referrer), d1 (direct), d2 (second level).</p>`, `<p>Hint 2: r JOIN d1 (must have ≥ 1 referral) then LEFT JOIN d2 (optional).</p>`, `<p>Hint 3: COUNT(DISTINCT d1.customer_id) and COUNT(DISTINCT d2.customer_id); network is their sum. Deeper levels → recursive CTE.</p>`],
+    solution: { approach: `<p>Chain two self joins, keep the second optional, and count distinct ids per level to neutralise the fan-out created by the second join.</p>`, code: { lang: 'sql', db: 'shop', code: `
+SELECT r.name                              AS referrer,
+       COUNT(DISTINCT d1.customer_id)      AS direct,
+       COUNT(DISTINCT d2.customer_id)      AS second_level,
+       COUNT(DISTINCT d1.customer_id) + COUNT(DISTINCT d2.customer_id) AS network
+FROM customers r
+JOIN customers d1      ON d1.referred_by = r.customer_id     -- level 1 (required)
+LEFT JOIN customers d2 ON d2.referred_by = d1.customer_id    -- level 2 (optional)
+GROUP BY r.customer_id, r.name
+ORDER BY network DESC, referrer;` }, complexity: `<p>Two indexed lookups on referred_by per row: O(N log N) plus output fan-out; add an index on customers(referred_by).</p>`, followUps: ['Generalise to any depth with a recursive CTE and a cycle guard.', 'Total spend of each referrer\'s network (careful: pre-aggregate orders per customer first).'] }
+  });
+
+  practice.push({
+    title: 'Frequently Bought Together (product pairs)', level: 'Hard', tags: ['self join', 'market basket', 'many-to-many'], companies: ['Amazon', 'Instacart', 'BigBasket'],
+    statement: `<p>Find every pair of <b>existing</b> products that appear together in the same order. Return <code>product_a, product_b, orders_together</code> (number of distinct orders containing both), each unordered pair once, most frequent first.</p>`,
+    constraints: `<p>Shop DB. Order 105 contains product 99, which no longer exists — pairs involving it must be excluded.</p>`,
+    example: `${H.table(['product_a', 'product_b', 'orders_together'], [['Keyboard', 'Mouse', '1'], ['Desk Lamp', 'Pen Set', '1']])}<p>Order 101 has Keyboard + Mouse; order 103 has Desk Lamp + Pen Set. Order 105's Mouse + product 99 ${H.c('r', 'is dropped')} (no such product).</p>`,
+    brute: { why: `<p>Self joining order_items on order_id with <code>&lt;&gt;</code> lists each pair twice (Keyboard–Mouse and Mouse–Keyboard), and without joining products the deleted product 99 sneaks in. Counting with COUNT(*) would also over-count if a product appeared on two lines of the same order.</p>`, code: { lang: 'sql', db: 'shop', code: `
+-- WRONG: mirrored duplicates and a non-existent product id
+SELECT a.product_id, b.product_id, COUNT(*) AS orders_together
+FROM order_items a
+JOIN order_items b ON b.order_id = a.order_id AND b.product_id <> a.product_id
+GROUP BY a.product_id, b.product_id;` } },
+    mcq: { q: 'Which ON condition lists each unordered product pair exactly once per order?', options: ['b.order_id = a.order_id AND a.product_id &lt; b.product_id', 'b.order_id = a.order_id AND a.product_id &lt;&gt; b.product_id', 'b.order_id = a.order_id', 'a.product_id = b.product_id'], answer: 0, explain: 'The strict ordering removes self-pairs and mirror pairs, exactly like the round-robin trick.' },
+    hints: [`<p>Hint 1: A pair of lines from the same order = self join of order_items on order_id.</p>`, `<p>Hint 2: Add a.product_id &lt; b.product_id; inner join products twice (p1, p2) for names — that also drops non-existent products.</p>`, `<p>Hint 3: COUNT(DISTINCT a.order_id) per pair; ORDER BY orders_together DESC, names.</p>`],
+    solution: { approach: `<p>Self join the bridge table (order_items) on order_id with an ordering guard, join products twice in two roles, group by pair and count distinct orders.</p>`, code: { lang: 'sql', db: 'shop', code: `
+SELECT p1.name                     AS product_a,
+       p2.name                     AS product_b,
+       COUNT(DISTINCT a.order_id)  AS orders_together
+FROM order_items a
+JOIN order_items b ON b.order_id   = a.order_id
+                  AND a.product_id < b.product_id     -- each pair once
+JOIN products p1   ON p1.product_id = a.product_id    -- role: first product
+JOIN products p2   ON p2.product_id = b.product_id    -- role: second product
+GROUP BY a.product_id, b.product_id, p1.name, p2.name
+ORDER BY orders_together DESC, product_a, product_b;` }, complexity: `<p>For an order with k lines the self join makes k(k−1)/2 pairs: O(Σ k<sup>2</sup>) — fine for baskets, dangerous for orders with thousands of lines (cap basket size or sample).</p>`, followUps: ['Compute support and confidence (pairs / orders containing A).', 'Exclude cancelled orders — which join gets the filter?'] }
+  });
+
+  /* ================= QUIZ ================= */
+  quiz.push(
+    { q: 'customers has 6 rows, orders has 8. Two orders have no matching customer and two customers have no orders. How many rows does <code>customers INNER JOIN orders</code> return if every matched order matches exactly one customer?', options: ['6', '8', '10', '48'], answer: 0, explain: '8 orders − 2 unmatched = 6 matched orders, each producing one row. Unmatched customers add nothing to an inner join.' },
+    { q: 'Same data: how many rows does <code>customers LEFT JOIN orders</code> return?', options: ['8', '6', '10', '12'], answer: 0, explain: '6 matched rows + 2 customers without orders (NULL-filled) = 8.' },
+    { q: 'And <code>customers FULL OUTER JOIN orders</code>?', options: ['10', '8', '12', '14'], answer: 0, explain: '6 matches + 2 left-only customers + 2 right-only orders = 10.' },
+    { q: 'What does <code>NULL = NULL</code> evaluate to in a join condition?', options: ['UNKNOWN, so the rows do not match', 'TRUE', 'FALSE, but rows still match in LEFT JOIN', 'An error'], answer: 0, explain: 'Comparisons with NULL are UNKNOWN; joins keep only pairs whose condition is TRUE. Use IS NOT DISTINCT FROM (or SQLite IS) for NULL-safe equality.' },
+    { q: '<code>FROM a LEFT JOIN b ON a.id = b.a_id WHERE b.status = \'x\'</code> behaves like…', options: ['An INNER JOIN with the filter', 'A LEFT JOIN that keeps all of a', 'A FULL OUTER JOIN', 'A CROSS JOIN'], answer: 0, explain: 'The WHERE rejects NULL-filled rows (NULL = \'x\' is UNKNOWN), so unmatched a rows disappear — exactly the inner join result.' },
+    { q: 'Where should a filter on the <b>optional</b> table go in a LEFT JOIN when you still want every row of the preserved table?', options: ['In the ON clause', 'In WHERE', 'In HAVING', 'In SELECT'], answer: 0, explain: 'In ON it only restricts which rows can match; the preserved row survives either way.' },
+    { q: '<code>SELECT name FROM customers WHERE customer_id NOT IN (SELECT customer_id FROM orders)</code> returns 0 rows although some customers never ordered. The most likely cause?', options: ['orders.customer_id contains a NULL', 'customers has duplicate ids', 'NOT IN is not supported for subqueries', 'The subquery needs DISTINCT'], answer: 0, explain: 'x NOT IN (…, NULL) is never TRUE. Use NOT EXISTS or filter NULLs inside the subquery.' },
+    { q: 'Which query returns each customer who has at least one order <b>exactly once</b>, without DISTINCT?', options: ['WHERE EXISTS (SELECT 1 FROM orders o WHERE o.customer_id = c.customer_id)', 'customers JOIN orders', 'customers LEFT JOIN orders', 'customers CROSS JOIN orders'], answer: 0, explain: 'EXISTS is a semi-join: it only checks for a match and never multiplies rows.' },
+    { q: 'sizes has 4 rows and colors has 5. How many rows does <code>sizes CROSS JOIN colors</code> produce?', options: ['20', '9', '5', '1'], answer: 0, explain: 'Cartesian product: 4 × 5 = 20.' },
+    { q: 'Order 7 has 3 items and 2 payments. Joining orders → items → payments, how many rows does order 7 contribute?', options: ['6', '5', '3', '2'], answer: 0, explain: 'Two independent one-to-many branches multiply: 3 × 2 = 6 rows, so SUMs from either branch are inflated (chasm trap).' },
+    { q: 'Why is <code>SUM(DISTINCT p.amount)</code> a bad fix for double-counted payments?', options: ['Two genuine payments with the same amount collapse into one', 'SUM cannot take DISTINCT', 'It is slower than SUM', 'It ignores NULLs'], answer: 0, explain: 'DISTINCT de-duplicates values, not rows. Pre-aggregate payments per order before joining instead.' },
+    { q: 'In <code>employees e LEFT JOIN employees m ON m.emp_id = e.manager_id</code>, what is <code>m.name</code> for the CEO (manager_id NULL)?', options: ['NULL', 'The CEO\'s own name', 'The row is removed', 'An empty string'], answer: 0, explain: 'The CEO matches no manager row; LEFT JOIN keeps the CEO with all m.* columns NULL.' },
+    { q: '<code>customers LEFT JOIN orders o ON … INNER JOIN order_items i ON i.order_id = o.order_id</code>: what happens to customers with no orders?', options: ['They are dropped by the INNER join (o.order_id is NULL)', 'They stay with NULL items', 'They appear twice', 'The query errors'], answer: 0, explain: 'The NULL-filled row cannot satisfy i.order_id = NULL, so the inner join removes it — the LEFT-then-INNER trap. LEFT JOIN order_items too (or nest the join).' },
+    { q: 'What does <code>NATURAL JOIN</code> join on?', options: ['Every column name the two tables have in common', 'The primary key / foreign key pair', 'The first column of each table', 'Nothing — it is a cross join'], answer: 0, explain: 'All same-named columns. Tables sharing "name" or "updated_at" get silently wrong joins — prefer explicit ON or USING.' },
+    { q: 'For INNER JOIN, moving a filter from WHERE into ON…', options: ['Does not change the result', 'Turns it into a LEFT JOIN', 'Always makes it faster', 'Removes duplicates'], answer: 0, explain: 'Inner joins keep only TRUE pairs either way; the difference only matters for outer joins. Optimizers treat both forms the same.' }
+  );
+
+  /* ================= INTERVIEW ================= */
+  interview.push(
+    { q: 'Explain INNER, LEFT, RIGHT and FULL OUTER JOIN to a non-technical stakeholder.', level: 'B', a: `<p>All joins pair rows from two tables using a matching rule. <b>INNER</b> keeps only pairs that match — like a guest list of couples who both showed up. <b>LEFT</b> keeps every row of the first table, filling blanks (NULL) when there is no partner — "every customer, with orders if any". <b>RIGHT</b> is the mirror: every row of the second table. <b>FULL</b> keeps every row from both, matched where possible — ideal for reconciling two lists. I would show a 4-customer/5-order example with counts: inner 3, left 5, full 7 — the counts make the difference obvious.</p>`, followUps: ['Can you always rewrite a RIGHT JOIN as a LEFT JOIN?', 'Which join can return fewer rows than either input?'] },
+    { q: 'What is the difference between putting a condition in ON vs WHERE?', level: 'I', a: `<p>ON is evaluated while matching; WHERE runs afterwards on the joined rows. For INNER joins they are equivalent. For OUTER joins they differ: a condition on the optional side in ON just limits matches (preserved rows survive NULL-filled), while in WHERE it removes NULL-filled rows, turning the LEFT JOIN into an INNER JOIN. Conversely a preserved-side condition in ON does not filter the preserved table at all. Rule: optional-side filters in ON, preserved-side filters in WHERE; the only intended WHERE on the optional side is <code>IS NULL</code> for anti-joins.</p>`, followUps: ['Why does <code>WHERE b.x = 1 OR b.id IS NULL</code> not fully fix it?', 'How can EXPLAIN reveal that a LEFT JOIN was converted to INNER?'] },
+    { q: 'Write a query to find employees who earn more than their managers. What edge cases do you handle?', level: 'B', a: `<p><code>SELECT e.name FROM employees e JOIN employees m ON m.emp_id = e.manager_id WHERE e.salary &gt; m.salary;</code> It is a self join: one table in two roles. Edge cases: the CEO (NULL manager_id) and dangling manager ids cannot be compared, so INNER is correct; equal salaries are excluded by strict &gt;; NULL salaries make the comparison UNKNOWN and drop out; a reversed ON (<code>e.emp_id = m.manager_id</code>) silently answers the opposite question. An index on emp_id (PK) makes each lookup O(log n).</p>`, followUps: ['Now include the manager\'s manager.', 'How would you return employees who earn more than everyone above them in the chain?'] },
+    { q: 'Why can NOT IN return no rows, and what do you use instead?', level: 'I', a: `<p><code>x NOT IN (a, b, NULL)</code> expands to <code>x &lt;&gt; a AND x &lt;&gt; b AND x &lt;&gt; NULL</code>; the last term is UNKNOWN, so the conjunction can only be FALSE or UNKNOWN, never TRUE, and WHERE discards the row. One NULL in the subquery empties the result. Use <code>NOT EXISTS</code> — a correlated anti-join where NULL comparisons simply do not match — or <code>LEFT JOIN … WHERE b.pk IS NULL</code>, or add <code>WHERE col IS NOT NULL</code> in the subquery. Optimizers can also only turn NOT IN into an efficient anti-join when both sides are provably non-NULL.</p>`, followUps: ['Is IN (positive) affected by NULLs?', 'How do NOT EXISTS and LEFT JOIN IS NULL compare in performance?'] },
+    { q: 'What is a semi-join and why prefer EXISTS over JOIN + DISTINCT?', level: 'I', a: `<p>A semi-join returns rows of A that have at least one match in B, each A row once, with no B columns. EXISTS expresses it directly: the engine can stop probing at the first match and never builds duplicates. JOIN + DISTINCT first multiplies rows (a customer with 100 orders appears 100 times), then sorts or hashes to remove duplicates — more work — and DISTINCT can also merge two genuinely different rows that look alike (two customers named Asha). Modern planners often convert IN/EXISTS to the same semi-join operator; EXISTS is clearest and NULL-safe.</p>`, followUps: ['When would IN be clearer than EXISTS?', 'How does a hash semi join work?'] },
+    { q: 'Your revenue report doubled after you added a join to the payments table. What happened and how do you fix it?', level: 'I', a: `<p>Fan-out / chasm trap: an order with several payments now appears once per payment, so any order-level or item-level SUM is multiplied. Diagnose by checking the grain: count rows per order before and after the join, and check key uniqueness with <code>GROUP BY order_id HAVING COUNT(*) &gt; 1</code>. Fix by aggregating payments to one row per order in a CTE (or using a correlated subquery / EXISTS) and joining 1:1. Do not patch with DISTINCT or SUM(DISTINCT) — they hide the symptom and break when equal values occur. Add tests asserting uniqueness of the join key.</p>`, followUps: ['When is COUNT(DISTINCT) a legitimate fix?', 'How do BI tools model this (fan trap vs chasm trap)?'] },
+    { q: 'How would you find all orders without a customer and all customers without an order in one query?', level: 'I', a: `<p>FULL OUTER JOIN customers and orders on customer_id and keep rows where either side's key is NULL: <code>WHERE c.customer_id IS NULL OR o.order_id IS NULL</code>, labelled with CASE ('customer without orders' / 'order without customer'), using <code>COALESCE(c.customer_id, o.customer_id)</code> as the key. In MySQL (no FULL JOIN) use a LEFT JOIN anti-join UNION ALL the reverse anti-join. I would also separate NULL customer_id (guest) from orphan ids (deleted customer) by looking at o.customer_id.</p>`, followUps: ['Why is UNION (not ALL) a bad emulation?', 'How would you schedule this as a data-quality check?'] },
+    { q: 'What happens if you forget the join condition? How do you detect it?', level: 'B', a: `<p>You get a Cartesian product: |A| × |B| rows. With comma syntax (<code>FROM a, b</code>) this is easy to do accidentally; with JOIN … ON most engines require the ON (SQLite and MySQL allow JOIN without ON). Symptoms: huge row counts (≈ product of table sizes), queries that never finish, duplicated values everywhere, totals multiplied by a constant. Detect by estimating expected cardinality before running, using EXPLAIN (a nested loop with no join predicate), and always writing explicit JOIN … ON so a missing condition is visible.</p>`, followUps: ['When is a CROSS JOIN useful on purpose?', 'Estimate the result size of a 3-table join with one missing condition.'] },
+    { q: 'How does a database physically execute a join? Compare nested loop, hash and merge join.', level: 'A', a: `<p><b>Nested loop</b>: for each outer row, scan or index-seek the inner table; O(N·M) without an index, O(N log M) with one; supports any condition (non-equi too) and is best when the outer side is small. <b>Hash join</b>: build a hash table on the smaller input keyed by the join column, probe with the other; ~O(N + M), equality only, needs memory (spills to disk otherwise). <b>Merge join</b>: both inputs sorted on the key, advance two pointers; O(N + M) after sorting, great when indexes already provide order, supports range conditions in some engines. SQLite uses nested loops with (automatic) indexes; PostgreSQL, SQL Server, Oracle and MySQL 8.0.18+ choose among them by cost.</p>`, followUps: ['Which algorithms can implement FULL OUTER JOIN?', 'Why does an index on the foreign key matter so much?'] },
+    { q: 'How do you write "students who took ALL required courses" in SQL?', level: 'A', a: `<p>This is relational division. Option 1, double NOT EXISTS: keep a student if there is no required course for which no enrollment exists — <code>NOT EXISTS (SELECT 1 FROM required r WHERE NOT EXISTS (SELECT 1 FROM enrollments e WHERE e.student_id = s.id AND e.course_id = r.course_id))</code>. Option 2, counting: join enrollments to the required set, <code>GROUP BY student HAVING COUNT(DISTINCT course_id) = (SELECT COUNT(*) FROM required)</code>. Watch for duplicates (DISTINCT), courses outside the required set (join to it, do not just count), NULL course ids, and the empty-divisor case where everyone qualifies vacuously.</p>`, followUps: ['How do you get students who took EXACTLY the required set?', 'Which version is easier for the optimizer?'] },
+    { q: 'When would you use a CROSS JOIN deliberately?', level: 'I', a: `<p>(1) Generating combinations: product variants, schedules, test matrices. (2) Building a scaffold for zero-filled reports — every (date, store) or (student, course) pair — then LEFT JOINing the facts so missing combinations show 0 instead of disappearing. (3) Attaching a single-row result (grand total, config values, "today") to every row, e.g. percentage of total. (4) Self cross join with <code>a.id &lt; b.id</code> for all pairs. I always check sizes first: a scaffold of 10 M users × 100 k products is 10<sup>12</sup> rows; for totals a window function <code>SUM(x) OVER ()</code> is often simpler.</p>`, followUps: ['How would you generate the dates for a calendar scaffold?', 'What is CROSS JOIN LATERAL / CROSS APPLY?'] },
+    { q: 'You join 6 tables and one LEFT JOIN seems to "not work" — preserved rows are missing. How do you debug it?', level: 'A', a: `<p>First check for null-rejecting conditions downstream of the LEFT JOIN: a WHERE predicate on the optional table, or a later INNER JOIN whose ON references the optional table (LEFT-then-INNER trap). Either removes the NULL-filled rows. Debug by building the query incrementally as CTEs, one leg at a time, and printing row counts and a sample of padded rows after each step; EXPLAIN may show the outer join simplified to inner. Fixes: move optional-side filters into ON, LEFT JOIN every table hanging off the optional branch, or group the branch in parentheses <code>LEFT JOIN (b JOIN c ON …) ON …</code>.</p>`, followUps: ['When is it correct for a later INNER JOIN to remove those rows?', 'How can join order change meaning with outer joins?'] },
+    { q: 'What is the difference between USING and ON, and why avoid NATURAL JOIN?', level: 'B', a: `<p><code>ON</code> takes any boolean condition and keeps both key columns (a.id and b.id). <code>USING (col)</code> is shorthand for equality on same-named columns and returns one merged column (for FULL JOIN that column is COALESCE(a.col, b.col)). <code>NATURAL JOIN</code> implicitly uses <b>every</b> shared column name: tables that both have <code>name</code>, <code>status</code> or <code>updated_at</code> get extra, unintended conditions, and adding a column later silently changes query results. Explicit ON is the safest and most readable default.</p>`, followUps: ['Can you reference a USING column with a table prefix?', 'How would a schema change break a NATURAL JOIN?'] },
+    { q: 'How do you design a schema and indexes so that common joins stay fast as data grows?', level: 'E', a: `<p>Model relationships with foreign keys and keep join keys the same type and collation. Index every foreign key column on the child side (orders.customer_id, order_items.order_id) so nested-loop probes become index seeks and FK cascades are cheap; primary keys are indexed already. Use composite indexes matching multi-column join keys and covering indexes for hot lookups. Keep statistics fresh so the planner estimates cardinalities well; avoid functions on join columns (non-sargable). For analytics, use star schemas (facts join dimensions on surrogate keys, no fan-out) and pre-aggregate facts to shared grain. At very large scale, co-locate or co-partition tables by the join key (distributed SQL) so joins avoid network shuffles, or denormalize carefully where reads dominate.</p>`, followUps: ['What is a broadcast join vs a shuffle join?', 'When does denormalizing beat joining?'] }
+  );
+
+  /* Spread correct answers across positions (deterministic rotation). */
+  function rotateMcq(q, k) {
+    var n = q.options.length, s = k % n;
+    if (!s) return;
+    var opts = q.options.slice(n - s).concat(q.options.slice(0, n - s));
+    q.options = opts; q.answer = (q.answer + s) % n;
+  }
+  quiz.forEach(function (q, i) { rotateMcq(q, i + 1); });
+  var mcqIdx = 0;
+  topics.forEach(function (t) { (t.problems || []).forEach(function (p) { rotateMcq(p.mcq, (mcqIdx++) * 2 + 1); }); });
+  practice.forEach(function (p) { rotateMcq(p.mcq, (mcqIdx++) * 2 + 1); });
+
+  registerModule({
+    id: 'sql04',
+    title: 'JOINs',
+    intro: `<p>Real databases split information across many tables — customers in one, orders in another, products in a third — so that nothing is stored twice. <b>JOINs</b> put the pieces back together at query time, and they are the single most-tested SQL topic in interviews. They are also where the most expensive silent bugs live: rows that quietly vanish, NULLs that never match, and totals that double without any error message.</p>
+<p>In this module you will see every join as a <b>pair-by-pair matching process</b> in the visualizers (green = match, red = no match, purple = NULL-filled), then run every query live against small but deliberately messy sample databases: customers who never ordered, guest orders with NULL keys, orphan rows pointing at deleted records, an order paid in two instalments. You will master INNER, LEFT, RIGHT, FULL OUTER, CROSS and self joins; the ON-vs-WHERE trap; semi-joins and anti-joins with EXISTS / NOT EXISTS and the famous NOT IN + NULL trap; long join chains through bridge tables; and the duplicate-row explosions that inflate reports — plus how to fix each one.</p>`,
+    goals: [
+      'Predict the exact row count of INNER, LEFT, RIGHT, FULL OUTER and CROSS joins before running them, including NULL keys, orphans and duplicate keys',
+      'Write self joins for hierarchies (employee → manager → skip-level), row-to-row comparisons (rising temperature) and unique pairs (a.id &lt; b.id)',
+      'Place every filter correctly in ON or WHERE and explain why a LEFT JOIN can silently become an INNER JOIN',
+      'Answer "has / has never / has all" questions with EXISTS, NOT EXISTS, LEFT JOIN … IS NULL and relational division — never falling into the NOT IN + NULL trap',
+      'Chain joins across 3–5 tables and bridge tables, avoiding the LEFT-then-INNER trap and choosing the right starting grain',
+      'Detect and fix fan-out and chasm-trap double counting with pre-aggregation, COUNT(DISTINCT pk) and semi-joins',
+      'Solve the classic interview join problems: Combine Two Tables, Customers Who Never Order, Employees Earning More Than Managers, Rising Temperature, reconciliation reports'
+    ],
+    prereqs: `<p>SQL 2 (SELECT, WHERE, NULLs and three-valued logic) and SQL 3 (Aggregates, GROUP BY, HAVING, CASE, COALESCE). SQL 1 (primary and foreign keys, 1-N and N-N relationships) is assumed — joins follow exactly those key relationships.</p>`,
+    hours: 12,
     databases: { shop: DB_SHOP, company: DB_COMPANY, school: DB_SCHOOL, weather: DB_WEATHER },
-    topics: topics, practice: practice, quiz: quiz, interview: interview });
+    topics: topics,
+    practice: practice,
+    quiz: quiz,
+    interview: interview
+  });
 })();

@@ -706,6 +706,386 @@ WHERE EXISTS (SELECT 1 FROM keys k WHERE k.start & a.bit);`,
     }]
   });
 
+  /* =====================================================================
+     TOPIC 3 — 0NF → 1NF: atomic values, no repeating groups
+     ===================================================================== */
+  topics.push({
+    title: 'From 0NF to 1NF: Atomic Values & No Repeating Groups',
+    analogy: `<p>A shopping receipt where one line says <b>"milk, eggs, bread — ₹210"</b>. You can't tell what the eggs cost, you can't count how many people bought eggs this month, and you can't sort by item. A proper receipt has <b>one item per line</b>. First Normal Form is exactly that: <b>one value per cell, one fact per row</b>.</p>`,
+    explain: `<p><b>🟢 The plain idea.</b> A table is in <b>0NF</b> (also called <b>UNF</b>, unnormalized form) when a cell holds a <b>list</b> or a row carries a <b>repeating group</b> of columns. It is in <b>1NF</b> when:</p>
+<ol>
+<li>Every cell holds <b>one atomic value</b> — no comma-separated lists, no "phone1, phone2, phone3" style column families, no nested tables.</li>
+<li>Every row is <b>unique</b> — the table has a key.</li>
+<li>Column order and row order carry no meaning.</li>
+</ol>
+<p>Two common 0NF shapes:</p>
+${H.table(['shape', 'example', 'pain'], [
+  ['list in a cell', 'courses = "SQL, Java"', H.c('r', 'LIKE \'%SQL%\' also matches "NoSQL"; no FK; no index; can\'t count')],
+  ['repeating group', 'course1, course2, course3', H.c('r', 'a 4th course needs ALTER TABLE; NULL-filled columns; queries must OR across 3 columns')]])}
+<p><b>🔵 How it really works.</b> Fix: move the multi-valued attribute into its <b>own child table</b> with one row per value, and a foreign key back to the parent:</p>
+${H.table(['students', '', 'student_courses'], [['student_id (PK), name', '←', 'student_id (FK), course — PK(student_id, course)']])}
+<p>A tempting shortcut is to "explode" the list into rows inside the <b>same</b> table: (1, Asha, SQL), (1, Asha, Java). That is technically 1NF (key = student_id + course), but now <b>name</b> repeats per course — you have traded a 1NF problem for a 2NF problem. Splitting into a child table solves both at once.</p>
+<p><b>"Atomic" means atomic for how you use it.</b> A date <code>2026-03-01</code> is atomic if you always treat it as a date. A <code>full_name</code> is atomic unless the business needs to sort by surname. An address string is fine if you only print it, but not if you need "all customers in pincode 411001" — then pincode deserves its own column. Ask: <i>will anyone query, filter, join or constrain a part of this value?</i> If yes, the part should be its own column or row.</p>
+<p><b>Migrating real data</b> is a classic interview task: given a column with comma-separated values, write SQL that splits it into rows. In SQLite you use a recursive CTE (or <code>json_each</code> if the column holds a JSON array); in PostgreSQL <code>unnest(string_to_array(col, ','))</code>; in SQL Server <code>STRING_SPLIT</code>; in MySQL 8 <code>JSON_TABLE</code> or a numbers table.</p>`,
+    clues: [
+      'A column named <code>tags</code>, <code>skills</code>, <code>phones</code>, <code>roles</code> holding "a, b, c" — classic 0NF',
+      'Columns <code>phone1, phone2, phone3</code> or <code>item1_qty, item2_qty</code> — a repeating group',
+      '"How do I find all users with skill X?" answered with <code>LIKE \'%X%\'</code> — a smell that the data is not in 1NF',
+      '"Split a comma-separated column into rows" — recursive CTE / string_to_array / STRING_SPLIT / json_each',
+      '"Can I store a JSON array in a column?" — fine for read-only blobs, not for anything you filter, join or constrain',
+      '"Is this table in 1NF?" — check atomic cells AND that a key exists'
+    ],
+    code: [{ lang: 'sql', title: 'Migrate a comma-separated column to a 1NF child table', code: `PRAGMA foreign_keys = ON;
+-- 0NF: courses is a list stuffed into one cell
+CREATE TABLE students_0nf (student_id INTEGER PRIMARY KEY, name TEXT NOT NULL, courses TEXT);
+INSERT INTO students_0nf VALUES (1, 'Asha', 'SQL, Java'), (2, 'Ben', 'Python'),
+                                (3, 'Chen', 'SQL,Go, Rust'), (4, 'Dara', '');
+
+-- 1NF target: parent + child (one row per course)
+CREATE TABLE students (student_id INTEGER PRIMARY KEY, name TEXT NOT NULL);
+CREATE TABLE student_courses (
+  student_id INTEGER NOT NULL REFERENCES students(student_id) ON DELETE CASCADE,
+  course     TEXT    NOT NULL,
+  PRIMARY KEY (student_id, course)          -- no duplicate course per student
+);
+INSERT INTO students SELECT student_id, name FROM students_0nf;
+
+-- Split "a, b, c" with a recursive CTE: peel one item off the front each round
+INSERT INTO student_courses (student_id, course)
+WITH RECURSIVE split(student_id, item, rest) AS (
+  SELECT student_id, '', COALESCE(courses, '') || ',' FROM students_0nf
+  UNION ALL
+  SELECT student_id,
+         TRIM(SUBSTR(rest, 1, INSTR(rest, ',') - 1)),   -- text before the first comma
+         SUBSTR(rest, INSTR(rest, ',') + 1)              -- everything after it
+  FROM split WHERE rest <> ''
+)
+SELECT student_id, item FROM split WHERE item <> '';
+
+-- Questions that were painful are now plain SQL
+SELECT course, COUNT(*) AS students FROM student_courses GROUP BY course ORDER BY students DESC, course;` },
+    { lang: 'sql', title: 'Repeating group (phone1..phone3) → child table, and the json_each variant', code: `CREATE TABLE contacts_0nf (id INTEGER PRIMARY KEY, name TEXT, phone1 TEXT, phone2 TEXT, phone3 TEXT, emails_json TEXT);
+INSERT INTO contacts_0nf VALUES
+  (1, 'Asha', '98450', '98451', NULL,  '["asha@mail.com","asha@work.com"]'),
+  (2, 'Ben',  '99000', NULL,    NULL,  '["ben@mail.com"]');
+
+CREATE TABLE contact_phones (contact_id INTEGER NOT NULL, phone TEXT NOT NULL, PRIMARY KEY (contact_id, phone));
+-- Unpivot the repeating group with UNION ALL
+INSERT INTO contact_phones
+SELECT id, phone1 FROM contacts_0nf WHERE phone1 IS NOT NULL
+UNION ALL SELECT id, phone2 FROM contacts_0nf WHERE phone2 IS NOT NULL
+UNION ALL SELECT id, phone3 FROM contacts_0nf WHERE phone3 IS NOT NULL;
+
+CREATE TABLE contact_emails (contact_id INTEGER NOT NULL, email TEXT NOT NULL UNIQUE, PRIMARY KEY (contact_id, email));
+-- JSON array → rows with the json_each table-valued function
+INSERT INTO contact_emails
+SELECT c.id, j.value FROM contacts_0nf c, json_each(c.emails_json) AS j;
+
+SELECT c.name, p.phone, NULL AS email FROM contacts_0nf c JOIN contact_phones p ON p.contact_id = c.id
+UNION ALL
+SELECT c.name, NULL, e.email FROM contacts_0nf c JOIN contact_emails e ON e.contact_id = c.id
+ORDER BY 1, 2, 3;` }],
+    codeTitle: ['Comma list → child table', 'Repeating group & JSON → child tables'],
+    viz: {
+      title: '0NF list cells exploding into 1NF tables',
+      input: 'Asha: SQL, Java | Ben: Python | Chen: SQL, Go, Rust | Dara:',
+      inputLabel: 'Students  (name: course, course | name: …)',
+      gen: function (input) {
+        var groups = String(input || '').split('|').map(function (s) { return s.trim(); }).filter(Boolean);
+        if (!groups.length) throw new Error('Format: Name: c1, c2 | Name2: c3');
+        if (groups.length > 7) throw new Error('Use at most 7 students');
+        var studs = groups.map(function (g, i) {
+          var p = g.split(':');
+          if (p.length !== 2 || !p[0].trim()) throw new Error('Each student needs "Name: course, course" (problem near "' + g + '")');
+          var cs = p[1].split(',').map(function (c) { return c.trim(); }).filter(Boolean);
+          if (cs.length > 6) throw new Error('At most 6 courses per student');
+          return { id: i + 1, name: p[0].trim(), cs: cs };
+        });
+        var maxC = Math.max(1, Math.max.apply(null, studs.map(function (s) { return s.cs.length; })));
+        var frames = [];
+        var zero = studs.map(function (s) { return [s.id, s.name, s.cs.join(', ')]; });
+        var badAll = {}; studs.forEach(function (s, i) { if (s.cs.length > 1) badAll[i] = 'bad'; });
+        frames.push({ narr: '<b>0NF:</b> the <code>courses</code> cell holds a <b>list</b>. Red rows hold more than one value in one cell — you cannot index, count, join or put a foreign key on "SQL, Java".', parts: [{ type: 'table', label: 'students_0nf', columns: ['student_id', 'name', 'courses'], rows: zero, hl: badAll }] });
+        var cols = ['student_id', 'name']; for (var c = 1; c <= Math.max(3, maxC); c++) cols.push('course' + c);
+        var wide = studs.map(function (s) { var r = [s.id, s.name]; for (var c = 0; c < Math.max(3, maxC); c++) r.push(s.cs[c] !== undefined ? s.cs[c] : null); return r; });
+        frames.push({ narr: 'The other 0NF shape: a <b>repeating group</b> course1…course' + Math.max(3, maxC) + '. NULLs everywhere, a hard limit on courses, and "who takes SQL?" needs <code>course1=\'SQL\' OR course2=\'SQL\' OR …</code>. Also 0NF.', parts: [{ type: 'table', label: 'students_wide (repeating group)', columns: cols, rows: wide, hl: badAll }] });
+        var flat = [], fh = {};
+        studs.forEach(function (s, i) {
+          var before = flat.length;
+          s.cs.forEach(function (cname) { flat.push([s.id, s.name, cname]); });
+          fh = {}; for (var k = before; k < flat.length; k++) fh[k] = 'ok';
+          var zh = {}; zh[i] = 'cur';
+          frames.push({ narr: s.cs.length ? 'Explode <b>' + s.name + '</b>: ' + s.cs.length + ' value(s) → ' + s.cs.length + ' row(s), one course per row.' : '<b>' + s.name + '</b> has no courses → no rows in the flat version (we would lose ' + s.name + ' entirely — keep that in mind!).', parts: [{ type: 'table', label: 'students_0nf', columns: ['student_id', 'name', 'courses'], rows: zero, hl: zh }, { type: 'table', label: 'exploded rows (1NF, key = student_id + course)', columns: ['student_id', 'name', 'course'], rows: flat.map(function (r) { return r.slice(); }), hl: fh }] });
+        });
+        var rep = {}; flat.forEach(function (r, i) { var n = flat.filter(function (x) { return x[0] === r[0]; }).length; if (n > 1) rep[i] = 'bad'; });
+        frames.push({ narr: 'This flat table <b>is</b> 1NF (atomic cells, key = (student_id, course)). But look: <b>name repeats</b> for every course (red) — that is a partial dependency (student_id → name), the 2NF problem. And a student with zero courses vanished.', parts: [{ type: 'table', label: 'flat 1NF table', columns: ['student_id', 'name', 'course'], rows: flat, hl: rep }, fdGraph(['student_id', 'name', 'course'], [{ l: ['student_id'], r: ['name'] }], false, { fdHl: { 0: 'bad' } })] });
+        var sc = flat.map(function (r) { return [r[0], r[2]]; }), sch = {}; sc.forEach(function (_, i) { sch[i] = 'ok'; });
+        frames.push({ narr: 'Better 1NF design: <b>parent + child</b>. <code>students</code> keeps one row per student (Dara survives). <code>student_courses</code> has one row per (student, course) with a foreign key back.', parts: [{ type: 'table', label: 'students', columns: ['student_id (PK)', 'name'], rows: studs.map(function (s) { return [s.id, s.name]; }) }, { type: 'table', label: 'student_courses  PK(student_id, course)', columns: ['student_id (FK)', 'course'], rows: sc, hl: sch }] });
+        var counts = {}; flat.forEach(function (r) { counts[r[2]] = (counts[r[2]] || 0) + 1; });
+        var cr = Object.keys(counts).sort(function (a, b) { return counts[b] - counts[a] || (a < b ? -1 : 1); }).map(function (k) { return [k, counts[k]]; });
+        frames.push({ narr: 'Payoff: "students per course" is now a plain <code>GROUP BY course</code> — exact matches, indexable, and a course can even get a foreign key to a <code>courses</code> table.', parts: [{ type: 'code', label: 'query', lang: 'sql', code: 'SELECT course, COUNT(*) AS students\nFROM student_courses\nGROUP BY course\nORDER BY students DESC;', hl: { 3: 'cur' } }, { type: 'table', label: 'result', columns: ['course', 'students'], rows: cr, hl: { 0: 'sel' } }] });
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'Three phone columns → contact_phones', html: `<p><code>customers(id, name, phone1, phone2, phone3)</code>. A customer with 4 numbers forces an ALTER TABLE; "find the customer with phone 98450" needs 3 OR conditions and 3 indexes. Fix: <code>customer_phones(customer_id, phone, kind)</code> with PK (customer_id, phone) — unlimited numbers, one index, and you can add <code>kind IN ('mobile','work')</code> as a CHECK.</p>` },
+      { title: 'The LIKE trap on list columns', html: `<p><code>WHERE skills LIKE '%SQL%'</code> on <code>skills = 'NoSQL, Go'</code> returns a match — wrong. Fixing it with <code>',' || skills || ',' LIKE '%,SQL,%'</code> breaks on spaces after commas. A 1NF child table turns it into <code>WHERE skill = 'SQL'</code>: exact, indexable, and constrainable.</p>`, code: { lang: 'sql', code: `CREATE TABLE devs (id INTEGER PRIMARY KEY, name TEXT, skills TEXT);
+INSERT INTO devs VALUES (1, 'Asha', 'SQL, Java'), (2, 'Ben', 'NoSQL, Go');
+SELECT name AS wrongly_matched FROM devs WHERE skills LIKE '%SQL%';   -- Asha AND Ben (Ben is a false hit)
+
+CREATE TABLE dev_skills (dev_id INTEGER NOT NULL, skill TEXT NOT NULL, PRIMARY KEY (dev_id, skill));
+INSERT INTO dev_skills VALUES (1, 'SQL'), (1, 'Java'), (2, 'NoSQL'), (2, 'Go');
+SELECT d.name AS correctly_matched FROM devs d JOIN dev_skills s ON s.dev_id = d.id WHERE s.skill = 'SQL';` } },
+      { title: 'Is a JSON / array column a 1NF violation?', html: `<p>Strict theory says yes (a non-atomic value). Practice says: it depends on use. PostgreSQL <code>text[]</code> or <code>jsonb</code> with a GIN index is fine for <b>tags you only display or filter by containment</b>. It is <b>wrong</b> for anything that needs referential integrity (a tag must exist in a tags table), uniqueness across rows, or per-element updates by many writers. Rule of thumb: if an element has its own attributes or relationships, it deserves a row.</p>` },
+      { title: 'Atomic for whom? Names and addresses', html: `<p><code>full_name = 'Asha Rao'</code> is atomic for a greeting e-mail but not for "sort by surname" — store <code>given_name</code> and <code>family_name</code> if that is a requirement (and remember many cultures do not fit two fields). <code>address = '12 MG Road, Pune 411001'</code> is fine for a label printer but not for delivery-zone pricing by pincode. 1NF is decided by the <b>queries</b>, not by the string.</p>` }
+    ],
+    deepDive: `<h4>🟣 Codd's original 1NF and the "relation-valued attribute" debate</h4>
+<p>Codd (1970) defined normalization as eliminating <b>non-simple domains</b> — attributes whose values are themselves relations. Later, C. J. Date argued that "atomic" has no absolute meaning (a string is a list of characters; a date has parts) and that a domain may even be relation-valued as long as operators treat it as a value. The practical consensus in 2026: 1NF means <b>no repeating groups and every value is treated as a single value by the operations you run on it</b>. If you ever need to look inside, normalize.</p>
+<h4>Row uniqueness is part of 1NF</h4>
+<p>A table with duplicate rows is a <b>bag</b>, not a relation. SQL allows bags (a table with no key), which breaks set reasoning: deleting "one of two identical rows" is impossible without ctid/rowid hacks, and COUNT results become meaningless. Always declare a key — even on staging and junction tables.</p>
+<h4>Performance reality</h4>
+<p>Child tables cost a join, but the join is on an indexed FK and returns few rows per parent. Arrays and JSON columns win when you always read the whole list with the parent and never query by element; they lose badly on "find parents having element X" without specialized indexes, and on concurrent updates (two sessions appending to the same array rewrite the same row → lock contention or lost updates in read-modify-write code).</p>
+<h4>Document databases</h4>
+<p>MongoDB embeds arrays by design — the 1NF "violation" is intentional, optimized for "read the whole aggregate at once". It is a denormalization decision (topic 8), and the same trade-offs apply: great for bounded lists owned by one parent, bad for unbounded lists or many-to-many relationships.</p>`,
+    aiEra: `<p><b>What AI changes:</b> LLM extraction pipelines love to output lists — <code>"skills": ["SQL", "Go"]</code> — and code assistants often map them straight to a TEXT or JSON column. You will be cleaning up 0NF data produced by AI agents more often than by humans.</p>
+<p><b>Use AI as a partner:</b> ask it to write the splitting migration for your dialect (<code>string_to_array</code>, <code>STRING_SPLIT</code>, <code>json_each</code>), then test it on edge cases it tends to forget: empty string, trailing comma, extra spaces, duplicates inside one cell, and NULL. Also ask it to <b>normalize vocabularies</b> ("Postgres", "PostgreSQL", "postgres") before loading the child table — LLMs are genuinely good at that fuzzy clean-up.</p>
+<p><b>Where AI goes wrong:</b> it "explodes" lists into the same table (creating 2NF redundancy), forgets that rows with an empty list disappear, and suggests <code>LIKE '%x%'</code> searches. <b>What you must still own:</b> deciding when a JSON array is acceptable and when the element needs its own table with constraints.</p>`,
+    problems: [{
+      title: 'Pizza Orders with a Toppings List',
+      level: 'Easy', tags: ['1NF', 'multi-valued attribute', 'migration'], companies: ['Domino\'s', 'Swiggy', 'Zomato'],
+      statement: `<p>A pizza shop stores <code>orders(order_id, customer, toppings)</code> where toppings is text like <code>'cheese, pepperoni'</code>. The owner asks "how many orders had <b>pepper</b>?" and the query <code>LIKE '%pepper%'</code> returns too many. Explain why the table is not in 1NF, then write SQL that creates a 1NF design, migrates the data and answers the question correctly.</p>`,
+      constraints: `<p>SQLite. Toppings are separated by commas with optional spaces. An order can have zero toppings. The same topping must not appear twice in one order.</p>`,
+      example: `<p>Orders: 1 → "cheese, pepper", 2 → "pepperoni", 3 → "pepper, onion, pepperoni".<br>LIKE '%pepper%' returns ${H.c('r', '3 orders')} (order 2 has only pepperoni). Correct answer: ${H.c('g', '2 orders')} (1 and 3).</p>`,
+      brute: {
+        why: `<p>Keeping the list column means every question becomes string matching. <code>LIKE '%pepper%'</code> matches <b>pepperoni</b>; adding commas around it breaks on spaces; no index can help a leading wildcard, so it scans every row; and nothing stops a typo like "peper".</p>`,
+        code: `CREATE TABLE orders (order_id INTEGER PRIMARY KEY, customer TEXT NOT NULL, toppings TEXT);
+INSERT INTO orders VALUES (1, 'Asha', 'cheese, pepper'), (2, 'Ben', 'pepperoni'), (3, 'Chen', 'pepper, onion, pepperoni');
+SELECT COUNT(*) AS orders_with_pepper_WRONG
+FROM orders WHERE toppings LIKE '%pepper%';      -- 3: order 2 is a false positive`
+      },
+      mcq: { q: 'Why is <code>toppings = \'cheese, pepper\'</code> a 1NF violation?', options: ['One cell holds several values (a list)', 'The table has no primary key', 'Text columns are not allowed in 1NF', 'Because pepper is a substring of pepperoni'], answer: 0, explain: '1NF requires one atomic value per cell; the substring problem is a symptom, not the definition.' },
+      hints: [`<p>Hint 1: Each topping in an order is its own fact: "order 3 has onion". Facts belong in rows, not inside a string.</p>`, `<p>Hint 2: Create order_toppings(order_id, topping) with a composite primary key; optionally a toppings lookup table for valid names.</p>`, `<p>Hint 3: Migrate with a recursive CTE that peels text up to the first comma, TRIM it, skip empty items. Then count with <code>WHERE topping = 'pepper'</code>.</p>`],
+      solution: {
+        approach: `<p>Create a <b>toppings</b> lookup (so only valid names exist), keep <b>orders</b> without the list, and add a junction table <b>order_toppings</b> with PK (order_id, topping) — that PK also prevents duplicate toppings per order. Migrate the old text with a recursive splitting CTE (TRIM handles spaces; the WHERE skips empty strings so zero-topping orders produce no rows but the order itself survives in <code>orders</code>). The question becomes an exact-match count on an indexed column.</p>`,
+        code: `PRAGMA foreign_keys = ON;
+CREATE TABLE orders_old (order_id INTEGER PRIMARY KEY, customer TEXT NOT NULL, toppings TEXT);
+INSERT INTO orders_old VALUES (1, 'Asha', 'cheese, pepper'), (2, 'Ben', 'pepperoni'),
+                              (3, 'Chen', 'pepper, onion, pepperoni'), (4, 'Dara', '');
+
+CREATE TABLE toppings (name TEXT PRIMARY KEY);
+CREATE TABLE orders   (order_id INTEGER PRIMARY KEY, customer TEXT NOT NULL);
+CREATE TABLE order_toppings (
+  order_id INTEGER NOT NULL REFERENCES orders(order_id) ON DELETE CASCADE,
+  topping  TEXT    NOT NULL REFERENCES toppings(name),
+  PRIMARY KEY (order_id, topping)
+);
+CREATE INDEX idx_order_toppings_topping ON order_toppings(topping);   -- "orders with X" lookups
+
+INSERT INTO orders SELECT order_id, customer FROM orders_old;
+
+CREATE TEMP TABLE split_rows AS
+WITH RECURSIVE split(order_id, item, rest) AS (
+  SELECT order_id, '', COALESCE(toppings, '') || ',' FROM orders_old
+  UNION ALL
+  SELECT order_id, TRIM(SUBSTR(rest, 1, INSTR(rest, ',') - 1)), SUBSTR(rest, INSTR(rest, ',') + 1)
+  FROM split WHERE rest <> ''
+)
+SELECT DISTINCT order_id, LOWER(item) AS topping FROM split WHERE item <> '';
+
+INSERT INTO toppings SELECT DISTINCT topping FROM split_rows;
+INSERT INTO order_toppings SELECT order_id, topping FROM split_rows;
+
+SELECT COUNT(*) AS orders_with_pepper FROM order_toppings WHERE topping = 'pepper';   -- 2
+SELECT o.order_id, o.customer, COALESCE(GROUP_CONCAT(t.topping, ', '), '(plain)') AS toppings
+FROM orders o LEFT JOIN order_toppings t ON t.order_id = o.order_id
+GROUP BY o.order_id ORDER BY o.order_id;`,
+        complexity: `<p>Migration: O(total characters). Query: an index lookup on <code>topping</code> — O(log N + matches) instead of a full scan with string matching.</p>`,
+        followUps: ['Toppings now have prices and an extra-cheese count — where do those columns go?', 'How would you migrate with zero downtime while the old app still writes the text column?']
+      }
+    }]
+  });
+
+  /* =====================================================================
+     TOPIC 4 — 2NF: no partial dependencies
+     ===================================================================== */
+  topics.push({
+    title: '2NF: Kill Partial Dependencies (the Whole Key)',
+    analogy: `<p>A class attendance sheet is keyed by <b>(student, date)</b> — one tick per student per day. Someone also writes the student's <b>home address</b> on every line. The address has nothing to do with the date; it depends on <b>only half</b> of the key. Thirty school days → thirty copies of the address. 2NF says: <b>a fact must depend on the whole key, not part of it</b>. Move the address to a "students" page.</p>`,
+    explain: `<p><b>🟢 The plain idea.</b> 2NF only matters when a table's key has <b>more than one column</b>. A <b>partial dependency</b> is a non-key column that depends on <b>just part</b> of a composite key. The rule:</p>
+<p style="padding-left:1em"><b>2NF</b> = 1NF <b>and</b> no non-prime attribute is partially dependent on any candidate key.</p>
+<p>Our order-lines table, key = (order_id, sku):</p>
+${H.table(['column', 'depends on', 'full or partial?'], [
+  ['qty', '(order_id, sku)', H.c('g', 'full ✔')],
+  ['order_date, customer', 'order_id only', H.c('r', 'partial ✘')],
+  ['product_name, unit_price', 'sku only', H.c('r', 'partial ✘')]])}
+<p>Every partial dependency is a redundancy: the order date is copied for every line of the order, the product price for every order that contains it.</p>
+<p><b>🔵 How it really works — the recipe:</b></p>
+<ol>
+<li>Write down the candidate keys (closure, topic 2). If every key is a <b>single column</b>, the table is automatically in 2NF — stop.</li>
+<li>For each <b>proper subset</b> S of a composite key, compute S⁺. Any <b>non-prime</b> attribute in S⁺ is partially dependent on the key.</li>
+<li>Move S plus everything it determines into a new table with key S. Leave S behind in the original table as a foreign key.</li>
+<li>The original table keeps the full key and the fully dependent columns.</li>
+</ol>
+${H.table(['after the split', 'key', 'columns'], [['orders', 'order_id', 'order_date, customer, city'], ['products', 'sku', 'product_name, unit_price'], ['order_items', '(order_id, sku)', 'qty']])}
+<p>Every split here is <b>lossless</b>: the shared column (order_id or sku) is the key of the new table, so joining back gives exactly the original rows (topic 7 proves it).</p>
+<p><b>Watch out:</b> 2NF says nothing about dependencies <b>between non-key columns</b>. <code>orders</code> above still has customer → city — that is a <b>transitive</b> dependency, fixed by 3NF in the next topic. Also, prime attributes are exempt: if a part of one key determines a column that belongs to another key, 2NF does not complain (BCNF will).</p>`,
+    clues: [
+      'A composite primary key (junction / line-item / enrollment / attendance tables) plus descriptive columns → check 2NF',
+      '"Product name and price are repeated on every order line" → partial dependency on sku',
+      '"Is a table with a single-column primary key always in 2NF?" → yes, if it is in 1NF and has no other composite candidate key',
+      '"Convert this to 2NF" — find each proper subset of the key that determines non-prime columns',
+      'Interview phrase "every non-key attribute must depend on the whole key" — the 2NF slogan',
+      'Exploded 1NF tables (list → rows in the same table) usually violate 2NF immediately'
+    ],
+    code: [{ lang: 'sql', db: 'messy', title: 'Migrate orders_flat to 2NF and prove nothing was lost', code: `-- 2NF target tables (city still sits in orders: that's a 3NF issue, next topic)
+CREATE TABLE products (
+  sku TEXT PRIMARY KEY, product_name TEXT NOT NULL, unit_price INTEGER NOT NULL);
+CREATE TABLE orders (
+  order_id INTEGER PRIMARY KEY, order_date TEXT NOT NULL,
+  customer_email TEXT NOT NULL, customer_name TEXT NOT NULL, customer_city TEXT NOT NULL);
+CREATE TABLE order_items (
+  order_id INTEGER NOT NULL REFERENCES orders(order_id),
+  sku      TEXT    NOT NULL REFERENCES products(sku),
+  qty      INTEGER NOT NULL,
+  PRIMARY KEY (order_id, sku));
+
+-- Each partial dependency becomes a SELECT DISTINCT on (part of key, what it determines)
+INSERT INTO products SELECT DISTINCT product_sku, product_name, unit_price FROM orders_flat;
+INSERT INTO orders   SELECT DISTINCT order_id, order_date, customer_email, customer_name, customer_city FROM orders_flat;
+INSERT INTO order_items SELECT order_id, product_sku, qty FROM orders_flat;
+-- (If a SELECT DISTINCT produced two rows for one key, the PK would reject it: the FD was false in the data!)
+
+-- Lossless check: rejoin and compare both directions. Both counts must be 0.
+WITH rejoined AS (
+  SELECT o.order_id, o.order_date, o.customer_email, o.customer_name, o.customer_city,
+         p.sku, p.product_name, p.unit_price, i.qty
+  FROM order_items i JOIN orders o USING (order_id) JOIN products p USING (sku))
+SELECT (SELECT COUNT(*) FROM (SELECT * FROM orders_flat EXCEPT SELECT * FROM rejoined)) AS rows_lost,
+       (SELECT COUNT(*) FROM (SELECT * FROM rejoined EXCEPT SELECT * FROM orders_flat)) AS rows_invented,
+       (SELECT COUNT(*) FROM products) AS product_rows,
+       (SELECT COUNT(*) FROM orders)   AS order_rows;` },
+    { lang: 'sql', db: 'messy', title: 'Detect partial dependencies in data before you split', code: `-- For key (order_id, product_sku): does order_id alone determine the order columns?
+SELECT 'order_id -> order_date, customer_email' AS candidate_fd,
+       SUM(cnt > 1) AS violating_groups
+FROM (SELECT order_id, COUNT(DISTINCT order_date || '|' || customer_email) AS cnt
+      FROM orders_flat GROUP BY order_id)
+UNION ALL
+-- Does product_sku alone determine name and price?
+SELECT 'product_sku -> product_name, unit_price', SUM(cnt > 1)
+FROM (SELECT product_sku, COUNT(DISTINCT product_name || '|' || unit_price) AS cnt
+      FROM orders_flat GROUP BY product_sku);
+-- 0 violations = the partial dependency holds in today's data → candidate for a split` }],
+    codeTitle: ['Split to 2NF + lossless check', 'Find partial dependencies with GROUP BY'],
+    viz: {
+      title: 'Order lines → 2NF, one partial dependency at a time',
+      gen: function () {
+        var cols = ['order_id', 'sku', 'qty', 'order_date', 'customer', 'city', 'product', 'price'];
+        var rows = [
+          [101, 'P-LAMP', 1, '03-01', 'Asha', 'Pune', 'Desk Lamp', 1200],
+          [101, 'P-MUG', 2, '03-01', 'Asha', 'Pune', 'Coffee Mug', 300],
+          [102, 'P-MUG', 4, '03-02', 'Ben', 'Delhi', 'Coffee Mug', 300],
+          [103, 'P-PEN', 10, '03-05', 'Asha', 'Pune', 'Gel Pen', 50],
+          [104, 'P-CHAIR', 1, '03-07', 'Chen', 'Mumbai', 'Ergo Chair', 9000],
+          [105, 'P-LAMP', 2, '03-09', 'Ben', 'Delhi', 'Desk Lamp', 1200]
+        ];
+        var fds = [{ l: ['order_id', 'sku'], r: ['qty'] }, { l: ['order_id'], r: ['order_date', 'customer'] }, { l: ['customer'], r: ['city'] }, { l: ['sku'], r: ['product', 'price'] }];
+        var f = [];
+        f.push({ narr: 'A 1NF table: atomic cells, key = <b>(order_id, sku)</b>. Is it 2NF? We must check whether any non-key column depends on only <b>part</b> of the key.', parts: [{ type: 'table', label: 'order_lines  KEY (order_id, sku)', columns: cols, rows: rows }] });
+        f.push({ narr: 'Draw the FDs. qty needs the whole key (green). But order_id alone → order_date, customer, and sku alone → product, price (red): <b>partial dependencies</b>.', parts: [fdGraph(['order_id', 'sku', 'qty', 'order_date', 'customer', 'city', 'product', 'price'], fds, false, { fdHl: { 0: 'ok', 1: 'bad', 3: 'bad' }, attrHl: { order_id: 'sel', sku: 'sel' } })] });
+        f.push({ narr: 'Partial dependency #1 in the data: sku → product, price. "Desk Lamp, 1200" appears in rows 0 and 5; "Coffee Mug, 300" in rows 1 and 2. Change a price → must touch every order line.', parts: [{ type: 'table', label: 'order_lines', columns: cols, rows: rows, hl: { 0: 'bad', 5: 'bad', 1: 'cur', 2: 'cur' } }] });
+        var prods = [['P-LAMP', 'Desk Lamp', 1200], ['P-MUG', 'Coffee Mug', 300], ['P-PEN', 'Gel Pen', 50], ['P-CHAIR', 'Ergo Chair', 9000]];
+        var r1 = rows.map(function (r) { return r.slice(0, 6); });
+        f.push({ narr: 'Split it out: <code>products(sku PK, product, price)</code> = SELECT DISTINCT sku, product, price. sku <b>stays behind</b> as a foreign key so we can join back.', parts: [{ type: 'table', label: 'products (new)', columns: ['sku', 'product', 'price'], rows: prods, hl: { 0: 'ok', 1: 'ok', 2: 'ok', 3: 'ok' } }, { type: 'table', label: 'order_lines (product columns removed)', columns: cols.slice(0, 6), rows: r1 }] });
+        f.push({ narr: 'Partial dependency #2: order_id → order_date, customer (and city rides along). Order 101 has two lines, so its date, customer and city are stored twice (red).', parts: [{ type: 'table', label: 'order_lines', columns: cols.slice(0, 6), rows: r1, hl: { 0: 'bad', 1: 'bad' } }] });
+        var ords = [[101, '03-01', 'Asha', 'Pune'], [102, '03-02', 'Ben', 'Delhi'], [103, '03-05', 'Asha', 'Pune'], [104, '03-07', 'Chen', 'Mumbai'], [105, '03-09', 'Ben', 'Delhi']];
+        f.push({ narr: 'Split it out: <code>orders(order_id PK, order_date, customer, city)</code>. Everything that order_id determines (directly or through customer) goes together.', parts: [{ type: 'table', label: 'orders (new)', columns: ['order_id', 'order_date', 'customer', 'city'], rows: ords, hl: { 0: 'ok', 1: 'ok', 2: 'ok', 3: 'ok', 4: 'ok' } }] });
+        var items = rows.map(function (r) { return [r[0], r[1], r[2]]; });
+        f.push({ narr: 'What is left: <code>order_items(order_id, sku, qty)</code>. qty depends on the <b>whole</b> key — no partial dependency remains. <b>All three tables are in 2NF.</b>', parts: [{ type: 'table', label: 'order_items  KEY (order_id, sku)', columns: ['order_id', 'sku', 'qty'], rows: items, hl: { 0: 'ok', 1: 'ok', 2: 'ok', 3: 'ok', 4: 'ok', 5: 'ok' } }, { type: 'table', label: 'products', columns: ['sku', 'product', 'price'], rows: prods }, { type: 'table', label: 'orders', columns: ['order_id', 'order_date', 'customer', 'city'], rows: ords }] });
+        f.push({ narr: 'Lossless? Join order_items ⋈ orders (on order_id, the key of orders) ⋈ products (on sku, the key of products). Each line finds exactly one partner → the 6 original rows come back, no extras.', parts: [{ type: 'code', label: 'rejoin', lang: 'sql', code: 'SELECT *\nFROM order_items i\nJOIN orders   o USING (order_id)  -- key of orders\nJOIN products p USING (sku);      -- key of products', hl: { 3: 'ok', 4: 'ok' } }, { type: 'table', label: 'rejoined = original (6 rows)', columns: cols, rows: rows, hl: { 0: 'ok', 1: 'ok', 2: 'ok', 3: 'ok', 4: 'ok', 5: 'ok' } }] });
+        f.push({ narr: 'But 2NF is not the finish line. In <code>orders</code>, customer → city: Asha + Pune is still stored for orders 101 <b>and</b> 103 (amber). That is a <b>transitive</b> dependency — 3NF fixes it next.', parts: [{ type: 'table', label: 'orders (2NF, not yet 3NF)', columns: ['order_id', 'order_date', 'customer', 'city'], rows: ords, hl: { 0: 'cur', 2: 'cur' } }, fdGraph(['order_id', 'order_date', 'customer', 'city'], [{ l: ['order_id'], r: ['order_date', 'customer'] }, { l: ['customer'], r: ['city'] }], false, { fdHl: { 1: 'cur' } })] });
+        return f;
+      }
+    },
+    examples: [
+      { title: 'Single-column key → automatically 2NF', html: `<p><code>employees(emp_id PK, name, dept_id, dept_name)</code>. The only key is emp_id — a single column has no proper non-empty subset, so a partial dependency is impossible. The table is in 2NF even though dept_name is clearly redundant: that is a <b>3NF</b> problem (dept_id → dept_name), not a 2NF one. Interviewers love this trap.</p>` },
+      { title: 'Two candidate keys: check both', html: `<p><code>flights(flight_no, flight_date, tail_number, departure_ts, aircraft_model)</code> with keys (flight_no, flight_date) <b>and</b> (tail_number, departure_ts) — one plane can't take off twice at the same instant — and tail_number → aircraft_model. aircraft_model depends on <b>part</b> of the second key → 2NF violation, even though it looks fine relative to the primary key you picked. 2NF is defined against <b>every</b> candidate key.</p>` },
+      { title: 'Prime attributes are exempt', html: `<p>R(student, subject, tutor) with keys (student, subject) and (student, tutor), and tutor → subject. tutor is part of a key and subject is <b>prime</b>, so 2NF (and even 3NF) is satisfied. The redundancy ("tutor T teaches maths" repeated per student) survives until BCNF. 2NF and 3NF only police <b>non-prime</b> columns.</p>` },
+      { title: 'Data check before splitting', html: `<p>Before moving <code>course_title</code> out of <code>enrollments</code>, run <code>SELECT course_id FROM enrollments GROUP BY course_id HAVING COUNT(DISTINCT course_title) &gt; 1</code>. If a course has two spellings, the split's PK will reject the migration — clean the data first (pick the canonical title) and only then run <code>INSERT INTO courses SELECT DISTINCT …</code>.</p>`, code: { lang: 'sql', code: `CREATE TABLE enrollments (student_id INT, course_id TEXT, grade TEXT, course_title TEXT, PRIMARY KEY (student_id, course_id));
+INSERT INTO enrollments VALUES (1, 'DB1', 'A', 'Databases'), (2, 'DB1', 'B', 'Data Bases'), (2, 'OS1', 'A', 'Operating Systems');
+-- Dirty data: DB1 has two titles, so course_id -> course_title is violated in the data
+SELECT course_id, GROUP_CONCAT(DISTINCT course_title) AS titles_seen
+FROM enrollments GROUP BY course_id HAVING COUNT(DISTINCT course_title) > 1;` } }
+    ],
+    deepDive: `<h4>🟣 Full functional dependency, formally</h4>
+<p>X → A is <b>full</b> if no proper subset X' ⊂ X has X' → A. A non-prime A violates 2NF iff some candidate key K has a proper subset S with A ∈ S⁺. Algorithmically: for every candidate key K with |K| ≥ 2 and every proper non-empty subset S, compute S⁺ and intersect with the non-prime set. For textbook sizes that is a handful of closures.</p>
+<h4>Why 2NF is "historical" but still asked</h4>
+<p>Codd introduced 2NF and 3NF together (1971) as stepping stones. In practice designers jump straight to 3NF/BCNF, and 3NF implies 2NF (a partial dependency on a key is a special case of "non-superkey determinant → non-prime attribute"). Interviews still ask about 2NF because it tests whether you understand <b>composite keys</b> and <b>prime vs non-prime</b> attributes.</p>
+<h4>Surrogate keys can hide 2NF problems</h4>
+<p>If you add <code>id INTEGER PRIMARY KEY</code> to the order-lines table, the "only key" looks single-column and the table appears to be 2NF. It is not: (order_id, sku) is still a <b>candidate key</b> (and should be declared UNIQUE), and sku → price is still a partial dependency on it. A surrogate key changes the label, not the dependencies — normal forms are about <b>all</b> candidate keys.</p>
+<h4>Snapshots vs partial dependencies</h4>
+<p>Real order lines usually keep <code>unit_price_at_sale</code>. That column depends on (order_id, sku) — the price <b>in that order</b> — so it is fully dependent and perfectly 2NF. Only the <b>current catalogue price</b> depends on sku alone. Name columns so the dependency is obvious.</p>`,
+    aiEra: `<p><b>What AI changes:</b> asking an assistant "normalize this to 2NF" usually produces a correct split for textbook tables in seconds. The value you add is checking <b>which</b> dependencies are real and catching the cases models routinely get wrong.</p>
+<p><b>Use AI as a partner:</b> give it the column list plus your business rules and ask for (1) candidate keys, (2) each partial dependency with the key subset it uses, (3) the migration SQL with <code>SELECT DISTINCT</code>, and (4) an <code>EXCEPT</code>-based lossless check. Run the check — if a <code>SELECT DISTINCT</code> produces two rows per key, your data disagrees with the "rule".</p>
+<p><b>Where AI goes wrong:</b> it calls single-key tables "not 2NF" because of transitive dependencies (mixing up 2NF and 3NF), ignores secondary candidate keys hidden behind a surrogate id, and moves snapshot columns like price-at-sale into the product table. <b>What you must still own:</b> the definitions — whole key, every candidate key, non-prime only.</p>`,
+    problems: [{
+      title: 'Course Enrollments to 2NF',
+      level: 'Medium', tags: ['2NF', 'partial dependency', 'composite key'], companies: ['Infosys', 'Coursera', 'Google'],
+      statement: `<p><code>enrollments(student_id, course_id, grade, student_name, student_email, course_title, credits)</code>, key (student_id, course_id). Rules: a student has one name and email; a course has one title and credit value; a grade belongs to a student in a course. Identify every partial dependency and decompose to 2NF with SQL. Show that the rejoin gives back exactly the original rows.</p>`,
+      constraints: `<p>SQLite. Use primary and foreign keys so the rules are enforced. Include a lossless check with <code>EXCEPT</code> in both directions.</p>`,
+      example: `<p>Rows (1, DB1, A, Asha, a@x, Databases, 4) and (1, OS1, B, Asha, a@x, Operating Systems, 3): ${H.c('r', 'Asha, a@x')} copied twice (student_id → name, email); DB1's title/credits copied for every student in DB1 (course_id → title, credits).</p>`,
+      brute: {
+        why: `<p>One table means renaming a course touches every enrollment row, a course with no students can't exist, and dropping the last student from a course deletes the course's title and credits. Each partial dependency multiplies a fact by the number of rows sharing that half of the key.</p>`,
+        code: `CREATE TABLE enrollments (
+  student_id INTEGER NOT NULL, course_id TEXT NOT NULL, grade TEXT,
+  student_name TEXT NOT NULL, student_email TEXT NOT NULL,
+  course_title TEXT NOT NULL, credits INTEGER NOT NULL,
+  PRIMARY KEY (student_id, course_id));
+INSERT INTO enrollments VALUES
+  (1, 'DB1', 'A', 'Asha', 'a@x', 'Databases', 4),
+  (1, 'OS1', 'B', 'Asha', 'a@x', 'Operating Systems', 3),
+  (2, 'DB1', 'A', 'Ben',  'b@x', 'Databases', 4);
+-- Credits change for DB1: an update that misses rows creates two "truths"
+UPDATE enrollments SET credits = 5 WHERE course_id = 'DB1' AND student_id = 1;
+SELECT course_id, GROUP_CONCAT(DISTINCT credits) AS credits_on_file FROM enrollments GROUP BY course_id;`
+      },
+      mcq: { q: 'Which dependency is NOT partial?', options: ['(student_id, course_id) → grade', 'student_id → student_name', 'course_id → credits', 'course_id → course_title'], answer: 0, explain: 'A grade needs both the student and the course — it depends on the whole key.' },
+      hints: [`<p>Hint 1: The key has two parts. Ask of each non-key column: "do I need both student_id and course_id to know this?"</p>`, `<p>Hint 2: student_id → name, email (partial). course_id → title, credits (partial). Only grade needs both.</p>`, `<p>Hint 3: Tables: students(student_id PK, …), courses(course_id PK, …), enrollments(student_id FK, course_id FK, grade, PK both). Migrate with SELECT DISTINCT, check with EXCEPT both ways.</p>`],
+      solution: {
+        approach: `<p>Candidate key: (student_id, course_id). Proper subsets: {student_id}⁺ = {student_id, student_name, student_email}; {course_id}⁺ = {course_id, course_title, credits}. Both contain non-prime attributes → two partial dependencies. Move each subset with what it determines into its own table, keep the full key + grade in enrollments. Because each split shares a column that is a key of the new table, the decomposition is lossless; the EXCEPT queries prove it on the data.</p>`,
+        code: `PRAGMA foreign_keys = ON;
+CREATE TABLE enrollments_old (
+  student_id INTEGER NOT NULL, course_id TEXT NOT NULL, grade TEXT,
+  student_name TEXT NOT NULL, student_email TEXT NOT NULL,
+  course_title TEXT NOT NULL, credits INTEGER NOT NULL,
+  PRIMARY KEY (student_id, course_id));
+INSERT INTO enrollments_old VALUES
+  (1, 'DB1', 'A', 'Asha', 'a@x', 'Databases', 4),
+  (1, 'OS1', 'B', 'Asha', 'a@x', 'Operating Systems', 3),
+  (2, 'DB1', 'A', 'Ben',  'b@x', 'Databases', 4);
+
+CREATE TABLE students (student_id INTEGER PRIMARY KEY, student_name TEXT NOT NULL, student_email TEXT NOT NULL UNIQUE);
+CREATE TABLE courses  (course_id TEXT PRIMARY KEY, course_title TEXT NOT NULL, credits INTEGER NOT NULL CHECK (credits BETWEEN 1 AND 10));
+CREATE TABLE enrollments (
+  student_id INTEGER NOT NULL REFERENCES students(student_id),
+  course_id  TEXT    NOT NULL REFERENCES courses(course_id),
+  grade      TEXT,
+  PRIMARY KEY (student_id, course_id));
+
+INSERT INTO students SELECT DISTINCT student_id, student_name, student_email FROM enrollments_old;
+INSERT INTO courses  SELECT DISTINCT course_id, course_title, credits FROM enrollments_old;
+INSERT INTO enrollments SELECT student_id, course_id, grade FROM enrollments_old;
+
+WITH rejoined AS (
+  SELECT e.student_id, e.course_id, e.grade, s.student_name, s.student_email, c.course_title, c.credits
+  FROM enrollments e JOIN students s USING (student_id) JOIN courses c USING (course_id))
+SELECT (SELECT COUNT(*) FROM (SELECT * FROM enrollments_old EXCEPT SELECT * FROM rejoined)) AS rows_lost,
+       (SELECT COUNT(*) FROM (SELECT * FROM rejoined EXCEPT SELECT * FROM enrollments_old)) AS rows_invented;`,
+        complexity: `<p>Migration O(N) with DISTINCT (a sort or hash per table). Updates to a course or student are now one row instead of one per enrollment.</p>`,
+        followUps: ['Credits can change each semester — how do you model that without losing history?', 'Add a lecturer column: lecturer depends on (course_id, semester). Where does it go?']
+      }
+    }]
+  });
+
   registerModule({
     id: 'sql08',
     title: 'Normalization & Denormalization',
