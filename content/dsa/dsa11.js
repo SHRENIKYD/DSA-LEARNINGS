@@ -518,7 +518,7 @@
         { type: 'vars', vals: { n: n, open: open, close: close } },
         { type: 'set', label: 'answers (' + res.length + ')', items: res.slice(), hl: resHl ? one(resHl, 'ok') : {} }
       ] });
-      if (frames.length > 120) stopped = true;
+      if (frames.length > 260) stopped = true;
     }
     snap('Build a string of ' + (2 * n) + ' brackets one character at a time. State = (sb, open used, close used). Choices = add "(" or add ")". Pruning rules keep every partial string <b>fixable</b>.', 1, 'cur', 0, 0);
     function bt(open, close) {
@@ -550,7 +550,7 @@
       }
     }
     bt(0, 0);
-    frames.push({ narr: stopped ? 'Long search — the movie stops here (' + res.length + ' answers so far).' : 'Done: <b>' + res.length + '</b> valid strings (the ' + n + '-th Catalan number). Pruning meant we never built a single invalid string, instead of generating all 2<sup>' + (2 * n) + '</sup> = ' + Math.pow(2, 2 * n) + ' strings and filtering.', parts: [
+    frames.push({ narr: stopped ? 'Long search — the movie stops here (' + res.length + ' answers so far).' : 'Done: <b>' + res.length + '</b> valid string(s) — Catalan number C<sub>' + n + '</sub>. Pruning meant we never built a single invalid string, instead of generating all 2<sup>' + (2 * n) + '</sup> = ' + Math.pow(2, 2 * n) + ' strings and filtering.', parts: [
       { type: 'set', label: 'answers', items: res.slice() },
       { type: 'vars', vals: { n: n, answers: res.length, 'blind strings avoided': Math.pow(2, 2 * n) }, hl: { answers: 'sel' } }
     ] });
