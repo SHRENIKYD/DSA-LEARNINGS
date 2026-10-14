@@ -1991,7 +1991,7 @@ print(max_vowels("leetcode", 3))    # 2`
         var fh = {};
         for (var q = bestL; q <= bestR; q++) fh[q] = 'sel';
         frames.push({
-          narr: 'Done. Longest good window: indices <b>' + bestL + '..' + bestR + '</b>, length <span class="c-p"><b>' + best + '</b></span>. Flipping its zeros gives the longest run of 1s. Again L and R each moved at most N times → O(N).',
+          narr: best === 0 ? 'Done. Every window broke the rule (all zeros and K = 0), so the answer is <span class="c-r"><b>0</b></span>.' : 'Done. Longest good window: indices <b>' + bestL + '..' + bestR + '</b>, length <span class="c-p"><b>' + best + '</b></span>. Flipping its zeros gives the longest run of 1s. Again L and R each moved at most N times → O(N).',
           parts: [
             { type: 'array', label: 'a', values: a.slice(), hl: fh },
             { type: 'vars', label: 'answer', vals: { longest: best }, hl: { longest: 'sel' } }
