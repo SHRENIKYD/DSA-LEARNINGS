@@ -626,6 +626,496 @@ ORDER BY total_cents DESC LIMIT 10;` },
     ]
   });
 
+  /* =====================================================================
+     TOPIC 3 — Access paths: scans vs seeks
+     ===================================================================== */
+  var HEAP_CUST = [7, 3, 11, 7, 1, 9, 5, 7, 6, 2, 8, 4, 10, 6, 7, 3];   // customer_id stored in rowid 1..16, 4 rows per page
+
+  topics.push({
+    title: 'Access Paths: Full Scans vs Index Seeks vs Covering Scans',
+    analogy: `<p>You need every mention of "photosynthesis" in a 600-page biology book. <b>Option 1 — scan:</b> read every page from start to end. Slow, but you just flip forward; no jumping around. <b>Option 2 — seek:</b> open the <b>index at the back</b>, find "photosynthesis → pages 41, 87, 312", and jump to each page. Super fast for 3 pages… but if the index said "pages 1–550", jumping back and forth 550 times would be <i>slower</i> than just reading the book. <b>Option 3 — covering:</b> if all you needed was <i>the page numbers</i>, the index itself is the answer — you never open the book.</p>`,
+    explain: `<p>An <b>access path</b> is how the engine reads one table. There are only a handful, and every plan is built from them:</p>
+${H.table(['Access path', 'How it works', 'Cost shape', 'Plan text'], [
+  ['<b>Full table scan</b>', 'Read every page of the table, test each row', 'All pages, but <b>sequential</b> I/O (fast per page, prefetch)', 'SQLite <code>SCAN t</code> · PG <code>Seq Scan</code> · MySQL <code>type=ALL</code>'],
+  ['<b>Index seek + lookup</b>', 'Descend the B+tree (3–4 levels) to the first match, walk the leaf entries, then fetch each row from the table', 'log N + one <b>random</b> table read per match', '<code>SEARCH t USING INDEX</code> · <code>Index Scan</code> · <code>ref/range</code>'],
+  ['<b>Covering / index-only</b>', 'Every column the query needs is inside the index → never touch the table', 'log N + matching entries only', '<code>USING COVERING INDEX</code> · <code>Index Only Scan</code> · <code>Using index</code>'],
+  ['<b>Full index scan</b>', 'Read the whole index in key order (to avoid a sort, or because it is smaller than the table)', 'All index pages', '<code>SCAN t USING INDEX</code> · <code>type=index</code>'],
+  ['<b>Bitmap scan</b> (PG)', 'Collect matching row ids from one or more indexes, sort them by page, read each table page once', 'Between seek and scan; combines indexes with AND/OR', '<code>Bitmap Index Scan</code> → <code>Bitmap Heap Scan</code>'],
+  ['<b>Row-id / PK lookup</b>', 'Jump straight to one row by its key', '≈ log N, the cheapest', '<code>USING INTEGER PRIMARY KEY</code> · <code>eq_ref/const</code>']
+])}
+<p><b>A seek is not always better than a scan.</b> A seek pays a <i>random</i> table read for every matching row. A scan pays a <i>sequential</i> read for every page. Disk (and even SSD/cache) is much happier with sequential reads, so once a query needs more than a small fraction of the table — often around <b>2–20% of rows</b>, depending on how the rows are physically ordered — a full scan wins. Good planners know this and will ignore your index on purpose.</p>
+${H.table(['Query on 3,000 orders', 'rows matched', 'best path'], [
+  ['<code>WHERE id = 42</code>', '1', H.c('g', 'PK lookup')],
+  ['<code>WHERE customer_id = 42</code>', '10 (0.3%)', H.c('g', 'index seek')],
+  ['<code>WHERE status = \'delivered\'</code>', '1,760 (59%)', H.c('y', 'scan (PostgreSQL would choose it)')],
+  ['<code>SELECT count(*) WHERE status = \'delivered\'</code>', '1,760', H.c('g', 'covering index — no table access at all')]
+])}
+<p><b>Seek predicate vs filter.</b> In a composite index <code>(status, created_at)</code>, the engine can <i>seek</i> on <code>status = ?</code> and then on a range of <code>created_at</code> (left-prefix rule from SQL 10). A condition on a column that is <i>not</i> part of the seek is applied afterwards as a <b>filter</b> (PG shows <code>Index Cond</code> vs <code>Filter</code>). Rows read and then thrown away by a filter are wasted work — <code>Rows Removed by Filter</code> tells you how much.</p>`,
+    clues: [
+      '"The table has an index on that column, so why is it doing a full scan?" → low selectivity, tiny table, stale stats, or a function on the column',
+      '"Query returns 40% of the table" → a full scan is probably the right plan; stop forcing the index',
+      '"Index Only Scan … Heap Fetches: 120000" → visibility map not up to date, VACUUM the table',
+      '"Rows Removed by Filter" is large on an Index Scan → index covers the wrong columns or wrong column order',
+      '"Show the 20 most recent orders of a customer" → composite index (customer_id, created_at) for seek + order, add columns to cover it',
+      '"Key lookup" / "bookmark lookup" heavy in SQL Server → add INCLUDE columns to make the index covering'
+    ],
+    code: [
+      { lang: 'sql', db: 'shop', title: 'Every access path on the same table (▶ Run)', code: `-- PK lookup: the cheapest
+EXPLAIN QUERY PLAN SELECT * FROM orders WHERE id = 42;
+-- Index seek + table lookups (10 rows)
+EXPLAIN QUERY PLAN SELECT * FROM orders WHERE customer_id = 42;
+-- Covering index: count needs only the index
+EXPLAIN QUERY PLAN SELECT count(*) FROM orders WHERE status = 'delivered';
+-- Full scan: no usable index for total_cents
+EXPLAIN QUERY PLAN SELECT * FROM orders WHERE total_cents > 15000;
+-- Full index scan in order (to avoid sorting) + PK lookups into customers
+EXPLAIN QUERY PLAN
+SELECT o.id, c.name FROM orders o JOIN customers c ON c.id = o.customer_id
+ORDER BY o.created_at DESC LIMIT 20;
+-- Force a scan to compare (SQLite: NOT INDEXED)
+EXPLAIN QUERY PLAN SELECT * FROM orders NOT INDEXED WHERE customer_id = 42;` }
+    ],
+    codeTitle: ['Access paths in SQLite'],
+    viz: [
+      {
+        title: 'Find one customer\'s orders: full scan vs B+tree seek vs covering seek',
+        input: '7',
+        inputLabel: 'customer_id to find (1–12; 12 is not in the table)',
+        gen: function (input) {
+          var k = parseInt(String(input).trim(), 10);
+          if (isNaN(k) || k < 1 || k > 12) throw new Error('Enter a customer_id between 1 and 12');
+          var heap = HEAP_CUST.slice(), frames = [];
+          var vals = heap.map(function (v, i) { return v; });
+          var pageLbl = heap.map(function (v, i) { return 'p' + (Math.floor(i / 4) + 1) + ':r' + (i + 1); });
+          frames.push({ narr: 'The <b>orders table</b> stores rows in insertion order — 16 rows on 4 pages (4 rows per page). Values shown are <code>customer_id</code>. We want <b>customer_id = ' + k + '</b>.', parts: [{ type: 'array', label: 'table pages (heap): customer_id per row', values: vals, idxLabels: pageLbl }] });
+          // full scan
+          var hits = 0, checked = 0;
+          for (var i = 0; i < heap.length; i += 4) {
+            var hl = {}, ptr = {};
+            for (var j = 0; j < i; j++) hl[j] = heap[j] === k ? 'ok' : 'done';
+            for (var q = i; q < i + 4; q++) { checked++; if (heap[q] === k) { hits++; hl[q] = 'ok'; } else hl[q] = 'cur'; }
+            ptr[i] = 'page ' + (i / 4 + 1);
+            frames.push({ narr: '<b>Full scan</b>, page ' + (i / 4 + 1) + ' of 4: read the page <i>sequentially</i> and test all 4 rows. Matches so far: ' + hits + '. A scan cannot stop early — a match could be on the last page.', parts: [{ type: 'array', label: 'SCAN orders', values: vals, hl: hl, ptr: ptr, idxLabels: pageLbl }, { type: 'vars', label: 'scan cost so far', vals: { pagesRead: i / 4 + 1, rowsTested: checked, matches: hits } }] });
+          }
+          // index
+          var ent = heap.map(function (v, i) { return { k: v, r: i + 1 }; }).sort(function (a, b) { return a.k - b.k || a.r - b.r; });
+          var leaves = [ent.slice(0, 4), ent.slice(4, 8), ent.slice(8, 12), ent.slice(12, 16)];
+          var lab = function (L) { return L[0].k + '…' + L[L.length - 1].k; };
+          var sep1 = leaves[2][0].k, sepL = leaves[1][0].k, sepR = leaves[3][0].k;
+          var treeArr = ['<' + sep1 + ' | ≥' + sep1, '<' + sepL + ' | ≥' + sepL, '<' + sepR + ' | ≥' + sepR, lab(leaves[0]), lab(leaves[1]), lab(leaves[2]), lab(leaves[3])];
+          var leafIdx = []; leaves.forEach(function (L, li) { if (L.some(function (e) { return e.k === k; })) leafIdx.push(li); });
+          var first = leafIdx.length ? leafIdx[0] : (k < sep1 ? (k < sepL ? 0 : 1) : (k < sepR ? 2 : 3));
+          var internal = first < 2 ? 1 : 2;
+          var entVals = ent.map(function (e) { return e.k + '→r' + e.r; });
+          frames.push({ narr: 'Now the <b>index</b> <code>idx_orders_customer</code>: the same values, but <b>sorted</b>, each with a pointer (rowid) back to the table row, stored in a B+tree. Root and inner pages hold separator keys that steer the search.', parts: [{ type: 'tree', label: 'B+tree (3 levels)', arr: treeArr, hl: { 0: 'cur' } }, { type: 'array', label: 'leaf entries (customer_id → rowid), sorted', values: entVals }] });
+          var thl = {}; thl[0] = 'done'; thl[internal] = 'cur';
+          frames.push({ narr: '<b>Seek, level 1→2:</b> ' + k + (k < sep1 ? ' &lt; ' : ' ≥ ') + sep1 + ' → go ' + (internal === 1 ? 'left' : 'right') + '. One page read per level — that is the <b>log N</b> part. Even 100 million rows need only ~4 levels.', parts: [{ type: 'tree', label: 'B+tree', arr: treeArr, hl: thl, ehl: (function () { var e = {}; e[internal] = 'ok'; return e; })() }] });
+          var thl2 = {}; thl2[0] = 'done'; thl2[internal] = 'done'; thl2[3 + first] = 'cur';
+          var ehl2 = {}; ehl2[internal] = 'ok'; ehl2[3 + first] = 'ok';
+          frames.push({ narr: '<b>Seek, level 2→leaf:</b> land on the leaf page that holds the first entry ≥ ' + k + '.', parts: [{ type: 'tree', label: 'B+tree', arr: treeArr, hl: thl2, ehl: ehl2 }] });
+          var match = [], ehl3 = {};
+          ent.forEach(function (e, i) { if (e.k === k) { match.push(e.r); ehl3[i] = 'ok'; } });
+          var lo = -1, hi = -1; ent.forEach(function (e, i) { if (e.k === k) { if (lo < 0) lo = i; hi = i; } });
+          frames.push({ narr: match.length ? '<b>Range walk on the leaves:</b> entries for ' + k + ' sit <b>next to each other</b> (that is the magic of sorting): rowids ' + match.join(', ') + '. Stop at the first entry with a bigger key.' : 'No entry equals ' + k + ' — the seek proves "zero rows" after reading just 3 index pages. A scan would have needed all 4 table pages to prove the same.', parts: [{ type: 'array', label: 'leaf entries', values: entVals, hl: ehl3, range: lo >= 0 ? [lo, hi] : undefined }] });
+          var pages = {}, steps = 0;
+          match.forEach(function (r, idx) {
+            pages[Math.ceil(r / 4)] = true; steps++;
+            var hh = {}; match.slice(0, idx + 1).forEach(function (x) { hh[x - 1] = 'ok'; }); hh[r - 1] = 'cur';
+            var pt = {}; pt[r - 1] = 'fetch';
+            frames.push({ narr: '<b>Table lookup ' + (idx + 1) + '/' + match.length + ':</b> rowid ' + r + ' lives on page ' + Math.ceil(r / 4) + '. This is a <b>random</b> read — jumping around the table. Each match costs one jump.', parts: [{ type: 'array', label: 'table pages', values: vals, hl: hh, ptr: pt, idxLabels: pageLbl }, { type: 'vars', label: 'seek cost so far', vals: { indexPages: 3, tableJumps: steps, distinctTablePages: Object.keys(pages).length } }] });
+          });
+          var seekCost = 3 + match.length * 4, scanCost = 4, coverCost = 3;
+          frames.push({ narr: 'Cost in "page units" (sequential page = 1, random jump = 4, like PostgreSQL defaults). <b>Scan</b> = 4 sequential pages = 4. <b>Seek</b> = 3 index pages + ' + match.length + ' random jumps × 4 = ' + seekCost + '. <b>Covering seek</b> (if the query only needs customer_id and id) = 3. ' + (seekCost > scanCost ? H.c('y', 'On a 4-page table the scan wins! Indexes pay off on big tables with selective predicates.') : H.c('g', 'The seek wins.')) + ' On a 1,000,000-page table the scan would cost 1,000,000 while the seek still costs ~' + (4 + match.length * 4) + '.', parts: [{ type: 'bars', label: 'estimated cost (lower is better)', values: [scanCost, seekCost, coverCost], idxLabels: ['full scan', 'seek + lookups', 'covering seek'], hl: (function () { var m = Math.min(scanCost, seekCost, coverCost), h = {};[scanCost, seekCost, coverCost].forEach(function (v, i) { if (v === m) h[i] = 'ok'; }); return h; })() }] });
+          return frames;
+        }
+      },
+      {
+        title: 'Where does the index stop paying? (selectivity crossover)',
+        input: '100000 1000',
+        inputLabel: 'table rows, table pages',
+        gen: function (input) {
+          var p = String(input || '').trim().split(/[\s,]+/).map(Number);
+          if (p.length !== 2 || p.some(function (x) { return !(x > 0); })) throw new Error('Enter two positive numbers: rows pages   e.g. 100000 1000');
+          var N = Math.min(p[0], 1e9), P = Math.min(p[1], N), frames = [];
+          var sels = [0.0001, 0.001, 0.005, 0.01, 0.05, 0.2, 0.5, 1];
+          var scan = P * 1 + N * 0.0125;
+          frames.push({ narr: 'Toy model with PostgreSQL default costs: sequential page = 1.0, random page = 4.0, per-row CPU ≈ 0.0125 (tuple + one filter). A full scan always costs the same: ' + P + ' pages + ' + N + ' rows × 0.0125 = <b>' + Math.round(scan) + '</b>, whatever the WHERE clause.', parts: [{ type: 'vars', label: 'table', vals: { rows: N, pages: P, rowsPerPage: Math.round(N / P), scanCost: Math.round(scan) } }] });
+          sels.forEach(function (s) {
+            var m = Math.max(1, Math.round(N * s));
+            var randPages = Math.min(m, P);   // uncorrelated: each match likely a different page (capped at all pages)
+            var descent = 4 * Math.max(1, Math.ceil(Math.log(N) / Math.log(300)));
+            var seek = descent + Math.ceil(m / 300) + m * 0.005 + randPages * 4 + m * 0.0125;
+            var bitmapPages = P * (1 - Math.pow(1 - 1 / P, m)), frac = bitmapPages / P;
+            var bitmap = 10 + descent + Math.ceil(m / 300) + m * 0.005 + bitmapPages * (4 - 3 * Math.sqrt(frac)) + m * 0.0125;
+            var cover = descent + Math.ceil(m / 300) + m * 0.005;
+            var vals = [Math.round(scan), Math.round(seek), Math.round(bitmap), Math.round(cover)];
+            var best = 0; vals.slice(0, 3).forEach(function (v, i) { if (v < vals[best]) best = i; });
+            var hl = {}; hl[best] = 'ok';
+            frames.push({ narr: '<b>' + (s * 100) + '%</b> of rows match (' + m + ' rows). Index seek ≈ ' + vals[1] + ' (one random page per match), bitmap scan ≈ ' + vals[2] + ' (each page read once, in order), full scan = ' + vals[0] + '. ' + ['Full scan', 'Index seek', 'Bitmap scan'][best] + ' wins among plans that must read the table. A covering index (' + vals[3] + ') beats them all because it never touches the table.', parts: [{ type: 'bars', label: 'cost at ' + (s * 100) + '% selectivity', values: vals, idxLabels: ['full scan', 'index seek', 'bitmap scan', 'covering'], hl: hl }] });
+          });
+          frames.push({ narr: 'Lesson: with rows spread randomly, a plain index seek stops paying at a <b>surprisingly small</b> fraction (here under 1%). A bitmap scan stretches the useful range because it reads each page once, in order; when nearly every page must be read anyway, the plain full scan wins. If the table is physically sorted by the indexed column (high <b>correlation</b>, e.g. an append-only created_at), matches share pages and the crossover moves much higher. Planners read this from statistics — you should, too.', parts: [{ type: 'text', html: 'Change the input (e.g. <code>1000000 50000</code>) and watch the crossover move.' }] });
+          return frames;
+        }
+      }
+    ],
+    examples: [
+      { title: 'Covering index for a "customer order history" page', html: `<p>The page runs <code>SELECT created_at, total_cents FROM orders WHERE customer_id = ? ORDER BY created_at DESC</code>. With only <code>idx_orders_customer</code> the plan is ${H.c('y', 'SEARCH … idx_orders_customer (customer_id=?)')} + ${H.c('r', 'USE TEMP B-TREE FOR ORDER BY')}: 10 random table reads plus a sort. A composite index <code>(customer_id, created_at, total_cents)</code> gives ${H.c('g', 'SEARCH orders USING COVERING INDEX idx_orders_cust_created (customer_id=?)')}: seek to the customer, entries are already ordered by created_at (walked backwards for DESC), and total_cents is right there. No table, no sort.</p>`, code: { lang: 'sql', db: 'shop', code: `EXPLAIN QUERY PLAN
+SELECT created_at, total_cents FROM orders
+WHERE customer_id = 42 ORDER BY created_at DESC;
+
+CREATE INDEX idx_orders_cust_created ON orders(customer_id, created_at, total_cents);
+
+EXPLAIN QUERY PLAN
+SELECT created_at, total_cents FROM orders
+WHERE customer_id = 42 ORDER BY created_at DESC;
+
+SELECT created_at, total_cents FROM orders
+WHERE customer_id = 42 ORDER BY created_at DESC LIMIT 3;` } },
+      { title: 'SQLite skip-scan: using an index without its first column', html: `<p>Rule of thumb: an index on <code>(status, created_at)</code> can't seek on <code>created_at</code> alone (left-prefix rule). But when the leading column has <b>very few distinct values</b> (status has 4), the engine can do a <b>skip scan</b>: one small seek per status value — "pending + date, cancelled + date, …". SQLite does this only after <code>ANALYZE</code> tells it the leading column has ≥ 18 rows per value; the plan shows ${H.c('g', 'ANY(status) AND created_at&gt;?')}. MySQL 8.0.13+, Oracle and <b>PostgreSQL 18</b> (2025) also have skip scan.</p>`, code: { lang: 'sql', db: 'shop', code: `DROP INDEX idx_orders_created;   -- pretend we only have (status, created_at)
+ANALYZE;                         -- skip-scan needs statistics
+EXPLAIN QUERY PLAN
+SELECT id FROM orders WHERE created_at >= '2026-09-01';
+SELECT count(*) AS orders_since_sep FROM orders WHERE created_at >= '2026-09-01';` } },
+      { title: 'Clustered (InnoDB) vs heap (PostgreSQL) vs rowid (SQLite) tables', html: `${H.table(['Engine', 'Where rows live', 'Secondary index stores', 'Seek via secondary index costs'], [
+  ['MySQL InnoDB', 'In the primary-key B+tree itself (clustered)', 'the <b>primary key</b> value', 'secondary B+tree descent + <b>second</b> descent of the PK tree ("double lookup")'],
+  ['PostgreSQL', 'Unordered heap pages', 'a physical TID (page, slot)', 'index descent + one heap page fetch (+ visibility check)'],
+  ['SQLite rowid table', 'B-tree keyed by rowid', 'the <b>rowid</b>', 'index descent + rowid descent (like InnoDB)'],
+  ['SQL Server', 'Clustered index or heap', 'clustering key or RID', '"Key Lookup" / "RID Lookup" per row']
+])}<p>Consequences: in InnoDB a short PK keeps every secondary index small, and range scans on the PK are physically sequential. In PostgreSQL, <code>CLUSTER</code> sorts the heap once (not maintained), and the planner's <code>correlation</code> stat measures how sorted it still is.</p>` },
+      { title: 'A planner that guesses: SQLite and "created_at &gt; 2025-01-01"', html: `<p><code>SELECT * FROM orders WHERE created_at &gt; '2025-01-01'</code> matches <b>all 3,000 rows</b>, yet SQLite picks ${H.c('y', 'SEARCH orders USING INDEX idx_orders_created (created_at&gt;?)')} — 3,000 index entries plus 3,000 table lookups, more work than a plain scan. Without histogram statistics (SQLite's optional <code>sqlite_stat4</code>), it assumes a range predicate is fairly selective. PostgreSQL would check its histogram, see ~100% selectivity, and choose a Seq Scan. Lesson: know <i>what</i> your engine knows.</p>`, code: { lang: 'sql', db: 'shop', code: `EXPLAIN QUERY PLAN SELECT * FROM orders WHERE created_at > '2025-01-01';
+SELECT count(*) AS matched, (SELECT count(*) FROM orders) AS total
+FROM orders WHERE created_at > '2025-01-01';` } }
+    ],
+    deepDive: `<h4>Why random I/O hurts, even on SSDs</h4>
+<p>On spinning disks a random read costs ~5–10 ms vs ~0.1 ms per sequential page — a 50–100× gap, hence PostgreSQL's <code>random_page_cost = 4</code> (it assumes most random reads hit the cache). On NVMe SSDs the gap shrinks to ~2–4× for single reads, but sequential scans still win through <b>read-ahead</b>, larger I/O sizes, CPU cache locality and no B-tree descent per row. Most SSD-backed Postgres deployments set <code>random_page_cost ≈ 1.1–1.5</code> and <code>effective_cache_size</code> to ~50–75% of RAM so the planner prefers indexes more often.</p>
+<h4>Index-only scans and MVCC</h4>
+<p>In PostgreSQL an index entry doesn't know if its row version is visible to your transaction. An <b>Index Only Scan</b> checks the <b>visibility map</b>: if the page is marked all-visible (set by VACUUM), it skips the heap; otherwise it fetches the heap page anyway (<code>Heap Fetches: N</code>). Heavily-updated tables need frequent (auto)vacuum to keep index-only scans truly index-only. Use <code>INCLUDE (col)</code> to carry extra columns in the leaf without making them part of the key.</p>
+<h4>Bitmap scans in detail</h4>
+<p>A Bitmap Index Scan builds an in-memory bitmap of matching TIDs (exact, or "lossy" per page when <code>work_mem</code> is small, which forces a <code>Recheck Cond</code>). Bitmaps from several indexes can be combined with <code>BitmapAnd</code>/<code>BitmapOr</code> — that's how PostgreSQL answers <code>a = 1 OR b = 2</code> with two single-column indexes. The heap is then read in physical page order: each page once.</p>
+<h4>Other access paths</h4>
+<ul><li><b>Index skip scan</b> (Oracle, MySQL 8.0.13+, SQLite with stats, PostgreSQL 18): seek once per distinct leading value.</li>
+<li><b>Loose index scan</b> (MySQL) for <code>GROUP BY a</code> / <code>DISTINCT a</code>: jump from one distinct value to the next. Emulate in PG with a recursive CTE.</li>
+<li><b>Partition pruning</b>: skip whole partitions using the partition key (plan shows fewer partitions or "Subplans Removed").</li>
+<li><b>Zone maps / min-max indexes</b> (BRIN in PG, column stores): skip blocks whose min/max range can't match — tiny index, great for append-only time data.</li>
+<li><b>TABLESAMPLE</b> and <b>parallel seq scans</b> (Gather + workers) for big analytics.</li></ul>`,
+    aiEra: `<p><b>What AI changes:</b> Index advisors are everywhere now — cloud consoles (Azure SQL automatic tuning, AWS Performance Insights, Google AlloyDB/Cloud SQL index advisor), <code>pg_qualstats</code> + <code>hypopg</code> hypothetical indexes, and LLM assistants that read slow-query logs and propose <code>CREATE INDEX</code> statements.</p>
+<p><b>Use AI as a partner:</b> give it the query, the plan, the table sizes and the <b>write rate</b>, and ask "would a covering index help? Estimate rows read before/after." Then test with <code>hypopg</code> (PG) or on a copy before creating anything for real.</p>
+<p><b>Where AI goes wrong:</b> it recommends an index for every slow query (index sprawl slows writes, eats RAM and bloats backups), forgets the left-prefix rule, proposes indexes on low-selectivity columns like <code>status</code> alone, and doesn't know that PostgreSQL will choose a seq scan for a 40%-selective predicate no matter what.</p>
+<p><b>What you must still own:</b> estimating selectivity in your head, knowing when a scan is the <i>right</i> answer, and weighing read speed against write cost.</p>`,
+    problems: [
+      {
+        title: 'Make the order-history page index-only', level: 'Medium', tags: ['covering index', 'composite index', 'ORDER BY'], companies: ['Amazon', 'Shopify', 'Meesho'],
+        statement: `<p>The order-history page runs, for one customer at a time:</p><pre>SELECT created_at, total_cents
+FROM orders
+WHERE customer_id = ?
+ORDER BY created_at DESC
+LIMIT 20;</pre><p>Today's plan does an index seek, then a table lookup per row, then a sort. Design <b>one</b> index so the plan is a single covering seek with no temporary B-tree.</p>`,
+        constraints: `SQLite <code>shop</code>; one new index; same results. Explain the column order you chose.`,
+        example: `<p>For customer 42 the first row is ${H.c('g', '2026-09-04 08:07:17 | 8797')}. Target plan: ${H.c('g', 'SEARCH orders USING COVERING INDEX … (customer_id=?)')} and nothing else.</p>`,
+        brute: { why: `<p>With only <code>idx_orders_customer(customer_id)</code> the engine seeks the customer's entries (cheap), then does one <b>random table read per order</b> to get <code>created_at</code> and <code>total_cents</code>, then <b>sorts</b> them. For a power user with 50,000 orders that is 50,000 random reads + a 50,000-row sort to show 20 rows.</p>`, code: { lang: 'sql', db: 'shop', code: `EXPLAIN QUERY PLAN
+SELECT created_at, total_cents FROM orders
+WHERE customer_id = 42
+ORDER BY created_at DESC LIMIT 20;
+-- SEARCH orders USING INDEX idx_orders_customer (customer_id=?)
+-- USE TEMP B-TREE FOR ORDER BY` } },
+        mcq: { q: 'Which column order makes the index serve the WHERE, the ORDER BY and the SELECT list?', options: ['(created_at, customer_id, total_cents)', '(customer_id, created_at, total_cents)', '(total_cents, created_at, customer_id)', '(customer_id, total_cents, created_at)'], answer: 1, explain: 'Equality column first (seek), then the ORDER BY column (entries for one customer are already sorted by it), then extra columns just to cover the SELECT list.' },
+        hints: [`<p>Hint 1: Three jobs — find the customer, order by date, return two columns. One B+tree can do all three if the columns are in the right order.</p>`, `<p>Hint 2: Equality columns first, then the sort/range column, then "passenger" columns that are only read.</p>`, `<p>Hint 3: Recipe: <code>CREATE INDEX … ON orders(customer_id, created_at, total_cents)</code>, re-run EXPLAIN QUERY PLAN, confirm "COVERING" and no temp B-tree, run the query.</p>`],
+        solution: {
+          approach: `<p>Put the <b>equality</b> column first so the engine can seek straight to customer 42. Inside that customer's slice of the index, entries are sorted by the <b>second</b> column, <code>created_at</code> — so walking backwards gives DESC order for free and the LIMIT stops after 20. The <b>third</b> column, <code>total_cents</code>, is a passenger that makes the index <b>covering</b>. In PostgreSQL/SQL Server you would write <code>(customer_id, created_at) INCLUDE (total_cents)</code> to keep the key smaller.</p>`,
+          code: { lang: 'sql', db: 'shop', code: `CREATE INDEX idx_orders_cust_created ON orders(customer_id, created_at, total_cents);
+
+EXPLAIN QUERY PLAN
+SELECT created_at, total_cents FROM orders
+WHERE customer_id = 42
+ORDER BY created_at DESC LIMIT 20;
+-- SEARCH orders USING COVERING INDEX idx_orders_cust_created (customer_id=?)
+
+SELECT created_at, total_cents FROM orders
+WHERE customer_id = 42
+ORDER BY created_at DESC LIMIT 20;` },
+          complexity: `<p>O(log N + 20) index reads, zero table reads, zero sorting — independent of how many orders the customer has. Trade-off: a wider index (more disk, slower inserts); the old <code>idx_orders_customer</code> is now redundant (left prefix of the new one) and can be dropped.</p>`,
+          followUps: ['Why is <code>idx_orders_customer</code> now redundant?', 'What changes if the page also shows <code>status</code>?']
+        }
+      }
+    ]
+  });
+
+  /* =====================================================================
+     TOPIC 4 — Join algorithms: nested loop, hash join, merge join
+     ===================================================================== */
+  function fmtN(x) { x = Math.round(x); if (x >= 1e9) return (x / 1e9).toFixed(1) + 'B'; if (x >= 1e6) return (x / 1e6).toFixed(1) + 'M'; if (x >= 1e3) return (x / 1e3).toFixed(1) + 'K'; return String(x); }
+
+  topics.push({
+    title: 'Join Algorithms: Nested Loop, Hash Join & Merge Join',
+    analogy: `<p>You must match a class list of 40 students with a pile of 40 exam papers.</p>
+<ul><li><b>Nested loop:</b> take student #1, flip through the whole pile looking for their paper; then student #2, flip through the whole pile again… 40 × 40 = 1,600 looks. But if the pile is <b>alphabetised with tabs</b> (an index), each student is one quick flip — that is an <i>index</i> nested loop.</li>
+<li><b>Hash join:</b> first sort the papers into 26 trays by the first letter of the name (build). Then for each student, go straight to their tray and look only there (probe). Two passes, but you need table space for 26 trays (memory).</li>
+<li><b>Merge join:</b> if the class list <i>and</i> the pile are both already in alphabetical order, put them side by side and walk down both with two fingers. One pass, almost no thinking — but only if both are sorted.</li></ul>`,
+    explain: `<p>Once the planner decides which two inputs to join, it must pick <b>how</b>. Every engine uses some mix of three algorithms (call the inputs <b>outer R</b> with N rows and <b>inner S</b> with M rows):</p>
+${H.table(['', 'Nested loop (NLJ)', 'Hash join', 'Merge join'], [
+  ['Idea', 'For each R row, look through S', 'Build a hash table on the smaller input, probe it with the other', 'Both sorted by the key; walk two pointers'],
+  ['Cost', 'N × M plain; <b>N × log M</b> with an index on S', '<b>N + M</b> (if build fits in memory)', '<b>N + M</b> if pre-sorted; + N log N + M log M to sort'],
+  ['Join condition', H.c('g', 'any') + ' (=, &lt;, BETWEEN, LIKE, functions)', H.c('y', 'equality only'), 'equality (and some ranges)'],
+  ['Memory', 'none', 'build side (work_mem / join_buffer_size)', 'sort memory if not pre-sorted'],
+  ['First row arrives', H.c('g', 'immediately'), 'after the whole build side is read', 'after sorting (immediately if pre-sorted)'],
+  ['Shines when', 'outer is <b>small</b> and inner has an <b>index</b> on the join key; LIMIT queries', '<b>big, unsorted</b> inputs, no useful index, analytics', 'inputs <b>already sorted</b> (index order, previous merge), huge inputs, FULL OUTER JOIN'],
+  ['Plan text', 'PG <code>Nested Loop</code>, SQLite <code>SCAN a</code> + <code>SEARCH b</code>', 'PG <code>Hash Join</code> + <code>Hash</code>; MySQL 8.0.18+ <code>hash join</code>', 'PG <code>Merge Join</code> (+ <code>Sort</code>)']
+])}
+<p><b>Rules of thumb you can say in an interview:</b></p>
+<ul>
+<li>Small × indexed → <b>index nested loop</b> (OLTP: "this user's orders").</li>
+<li>Big × big, equality, no order needed → <b>hash join</b> (reports, ETL, analytics). Put the <b>smaller</b> input on the build side.</li>
+<li>Big × big, both already sorted on the key, or result must be sorted anyway → <b>merge join</b>.</li>
+<li>Non-equality condition (<code>a.ts BETWEEN b.start AND b.end</code>) → only <b>nested loop</b> works (some engines have special range/interval joins).</li>
+</ul>
+<p><b>Which engines have what:</b> PostgreSQL, SQL Server and Oracle have all three. MySQL had only nested loops until 8.0.18 added hash join (8.0.20 replaced block nested loop with it). <b>SQLite only does nested loops</b> — but it builds an <b>automatic index</b> (and a <b>Bloom filter</b>) on the inner table at run time when no index exists, which gives hash-join-like behaviour.</p>`,
+    clues: [
+      '"Two tables with millions of rows joined on a key, no index" → hash join (build on the smaller side)',
+      '"Fetch this one customer\'s orders with product names" → index nested loop; tiny outer, indexed inner',
+      '"Join on a range: timestamp BETWEEN start AND end" → only nested loop supports non-equi joins',
+      '"Hash Join … Batches: 32, Disk usage" → build side larger than work_mem, spilled to disk',
+      '"Nested Loop … loops=2,000,000" with a Seq Scan inside → missing index or underestimated outer rows',
+      '"Both inputs come from indexes ordered by the join key" / FULL OUTER JOIN → merge join'
+    ],
+    code: [
+      { lang: 'sql', db: 'shop', title: 'SQLite: index nested loop, automatic index, and a plain nested loop (▶ Run)', code: `-- Index nested loop: 60 pending orders (outer) → seek order_items by order_id (inner)
+EXPLAIN QUERY PLAN
+SELECT o.id, i.product_id, i.qty
+FROM orders o JOIN order_items i ON i.order_id = o.id
+WHERE o.status = 'pending';
+
+-- Equi-join with NO index on either column: SQLite builds an automatic index
+-- (and a Bloom filter) on the smaller side at run time — its stand-in for a hash join
+EXPLAIN QUERY PLAN
+SELECT o.id, p.name
+FROM orders o JOIN products p ON p.price_cents = o.total_cents;
+
+-- Turn automatic indexes off: now it is a plain N x M nested loop (3,000 x 60 checks)
+PRAGMA automatic_index = OFF;
+EXPLAIN QUERY PLAN
+SELECT o.id, p.name
+FROM orders o JOIN products p ON p.price_cents = o.total_cents;` },
+      { lang: 'text', title: 'PostgreSQL shows all three algorithms (EXPLAIN output, abbreviated)', code: `-- Small outer + index → Nested Loop
+Nested Loop  (rows=10)
+  ->  Index Scan using customers_pkey on customers c   (Index Cond: (id = 42))
+  ->  Index Scan using idx_orders_customer on orders o (Index Cond: (customer_id = 42))
+
+-- Two big inputs, equality, no useful order → Hash Join (build = smaller input)
+Hash Join  (rows=3000000)
+  Hash Cond: (i.order_id = o.id)
+  ->  Seq Scan on order_items i                      -- probe side (bigger)
+  ->  Hash  (Buckets: 2097152  Batches: 1  Memory Usage: 98304kB)
+        ->  Seq Scan on orders o                     -- build side (smaller)
+
+-- Both inputs already ordered by the key → Merge Join
+Merge Join  (rows=3000000)
+  Merge Cond: (o.id = i.order_id)
+  ->  Index Scan using orders_pkey on orders o
+  ->  Index Scan using order_items_pkey on order_items i
+
+-- Force a choice only for experiments (never in production):
+SET enable_hashjoin = off;  SET enable_mergejoin = off;  SET enable_nestloop = off;` }
+    ],
+    codeTitle: ['Joins in SQLite', 'Joins in PostgreSQL (text)'],
+    viz: [
+      {
+        title: 'Nested loop join: every outer row scans the inner table',
+        input: '3 1 4 1 | 1 4 4 9 3',
+        inputLabel: 'outer R keys | inner S keys (≤ 8 each)',
+        gen: function (input) {
+          var L = twoLists(input), R = L.R, S = L.S, frames = [], out = [], cmp = 0;
+          frames.push({ narr: '<b>Nested loop</b>: the outer loop walks R; for <i>each</i> R row the inner loop walks <b>all</b> of S comparing keys. Simple, works for any condition, needs no memory.', parts: [{ type: 'table', label: 'R (outer)', columns: ['row', 'key'], rows: rowsOf(R, 'r') }, { type: 'table', label: 'S (inner)', columns: ['row', 'key'], rows: rowsOf(S, 's') }, { type: 'code', label: 'algorithm', lang: 'python', code: 'for r in R:\n    for s in S:\n        if r.key == s.key:\n            emit(r, s)' }] });
+          for (var i = 0; i < R.length; i++) {
+            for (var j = 0; j < S.length; j++) {
+              cmp++;
+              var m = R[i] === S[j];
+              if (m) out.push(['r' + (i + 1), 's' + (j + 1), R[i]]);
+              var rh = {}; rh[i] = 'cur'; var sh = {}; sh[j] = m ? 'ok' : 'cur';
+              var oh = {}; if (m) oh[out.length - 1] = 'ok';
+              frames.push({ narr: 'r' + (i + 1) + ' (key ' + R[i] + ') vs s' + (j + 1) + ' (key ' + S[j] + '): ' + (m ? H.c('g', 'match → emit') : 'no match') + '. Comparisons so far: <b>' + cmp + '</b>.', parts: [{ type: 'table', label: 'R (outer)', columns: ['row', 'key'], rows: rowsOf(R, 'r'), hl: rh }, { type: 'table', label: 'S (inner) — scanned again for every R row', columns: ['row', 'key'], rows: rowsOf(S, 's'), hl: sh }, { type: 'table', label: 'output', columns: ['R row', 'S row', 'key'], rows: out.slice(), hl: oh }, { type: 'vars', vals: { comparisons: cmp, 'N×M': R.length * S.length }, hl: { comparisons: 'cur' } }] });
+            }
+          }
+          var lg = Math.ceil(Math.log(Math.max(2, S.length)) / Math.LN2);
+          frames.push({ narr: 'Done: <b>' + cmp + '</b> comparisons = N × M = ' + R.length + ' × ' + S.length + ' for ' + out.length + ' output rows. With an <b>index on S.key</b>, each outer row would instead do one seek (~log₂M = ' + lg + ' steps) plus its matches: ≈ ' + (R.length * lg + out.length) + ' steps. That is the <b>index nested loop</b> — the workhorse of OLTP. With 1M × 1M rows the plain version is 10<sup>12</sup> comparisons; the indexed one ~2×10<sup>7</sup>.', parts: [{ type: 'bars', label: 'work', values: [cmp, R.length * lg + out.length], idxLabels: ['plain NLJ', 'index NLJ'], hl: { 1: 'ok' } }, { type: 'table', label: 'output', columns: ['R row', 'S row', 'key'], rows: out }] });
+          return frames;
+        }
+      },
+      {
+        title: 'Hash join: build a hash table on the smaller side, then probe',
+        input: '3 1 4 1 5 9 2 6 | 1 4 4 9 3',
+        inputLabel: 'R keys | S keys (≤ 8 each)',
+        gen: function (input) {
+          var L = twoLists(input), frames = [];
+          var buildIsS = L.S.length <= L.R.length;
+          var B = buildIsS ? L.S : L.R, P = buildIsS ? L.R : L.S, bn = buildIsS ? 's' : 'r', pn = buildIsS ? 'r' : 's';
+          var NB = 4, buckets = [[], [], [], []], ops = 0;
+          var ent = function () { return buckets.map(function (b, i) { return ['bucket ' + i, b.length ? b.map(function (e) { return e.k + '@' + e.row; }).join(', ') : '—']; }); };
+          frames.push({ narr: '<b>Hash join</b>, phase 1 = <b>build</b>. Pick the <b>smaller</b> input (' + (buildIsS ? 'S' : 'R') + ', ' + B.length + ' rows) and load it into a hash table in memory. Bucket = key mod ' + NB + ' (a real engine uses a good hash function and thousands of buckets).', parts: [{ type: 'table', label: 'build side (' + (buildIsS ? 'S' : 'R') + ')', columns: ['row', 'key'], rows: rowsOf(B, bn) }, { type: 'map', label: 'hash table (empty)', entries: ent() }] });
+          B.forEach(function (k, i) {
+            var b = ((k % NB) + NB) % NB; buckets[b].push({ k: k, row: bn + (i + 1) }); ops++;
+            var h = {}; h['bucket ' + b] = 'ok'; var th = {}; th[i] = 'cur';
+            frames.push({ narr: 'Build: ' + bn + (i + 1) + ' has key ' + k + ' → hash(' + k + ') mod ' + NB + ' = <b>' + b + '</b> → put it in bucket ' + b + '. One cheap operation per build row.', parts: [{ type: 'table', label: 'build side', columns: ['row', 'key'], rows: rowsOf(B, bn), hl: th }, { type: 'map', label: 'hash table', entries: ent(), hl: h }, { type: 'vars', vals: { operations: ops } }] });
+          });
+          var out = [];
+          frames.push({ narr: 'Phase 2 = <b>probe</b>. Stream the bigger input (' + P.length + ' rows) once. For each row, hash its key and look <b>only inside one bucket</b> — no full scan of the other side.', parts: [{ type: 'table', label: 'probe side (' + (buildIsS ? 'R' : 'S') + ')', columns: ['row', 'key'], rows: rowsOf(P, pn) }, { type: 'map', label: 'hash table (complete)', entries: ent() }] });
+          P.forEach(function (k, i) {
+            var b = ((k % NB) + NB) % NB, found = 0; ops++;
+            buckets[b].forEach(function (e) { ops++; if (e.k === k) { found++; out.push([pn + (i + 1), e.row, k]); } });
+            var h = {}; h['bucket ' + b] = found ? 'ok' : 'bad'; var th = {}; th[i] = 'cur';
+            var oh = {}; for (var z = out.length - found; z < out.length; z++) oh[z] = 'ok';
+            frames.push({ narr: 'Probe: ' + pn + (i + 1) + ' key ' + k + ' → bucket ' + b + ' holds ' + buckets[b].length + ' entr' + (buckets[b].length === 1 ? 'y' : 'ies') + '; compare keys inside it (different keys can share a bucket = collision). ' + (found ? H.c('g', found + ' match(es) emitted.') : H.c('r', 'No match.')), parts: [{ type: 'table', label: 'probe side', columns: ['row', 'key'], rows: rowsOf(P, pn), hl: th }, { type: 'map', label: 'hash table', entries: ent(), hl: h }, { type: 'table', label: 'output', columns: ['probe row', 'build row', 'key'], rows: out.slice(), hl: oh }, { type: 'vars', vals: { operations: ops } }] });
+          });
+          frames.push({ narr: 'Total ≈ <b>' + ops + '</b> operations ≈ N + M (+ bucket comparisons), versus ' + (L.R.length * L.S.length) + ' for a plain nested loop. Price: memory for the build side, and no output until the build finishes. If the build side doesn\'t fit in memory (PostgreSQL <code>work_mem</code>), both inputs are split into <b>batches</b> on disk by hash and joined batch by batch (grace hash join) — still linear, but 2–3× the I/O.', parts: [{ type: 'bars', label: 'work', values: [L.R.length * L.S.length, ops], idxLabels: ['nested loop', 'hash join'], hl: { 1: 'ok' } }, { type: 'table', label: 'output', columns: ['probe row', 'build row', 'key'], rows: out }] });
+          return frames;
+        }
+      },
+      {
+        title: 'Merge join: sort both sides, then zip them together with two pointers',
+        input: '3 1 4 1 5 | 1 4 4 9 3 1',
+        inputLabel: 'R keys | S keys (≤ 8 each)',
+        gen: function (input) {
+          var L = twoLists(input), frames = [];
+          var R = L.R.map(function (k, i) { return { k: k, row: 'r' + (i + 1) }; }).sort(function (a, b) { return a.k - b.k; });
+          var S = L.S.map(function (k, i) { return { k: k, row: 's' + (i + 1) }; }).sort(function (a, b) { return a.k - b.k; });
+          var rv = R.map(function (e) { return e.k; }), sv = S.map(function (e) { return e.k; });
+          var rl = R.map(function (e) { return e.row; }), sl = S.map(function (e) { return e.row; });
+          frames.push({ narr: '<b>Merge join</b>, phase 1: both inputs must be <b>sorted by the join key</b>. If they come from an index on the key (or from an earlier merge) this is free; otherwise it costs a sort: O(N log N + M log M).', parts: [{ type: 'array', label: 'R as given', values: L.R }, { type: 'array', label: 'S as given', values: L.S }] });
+          frames.push({ narr: 'Sorted. Now put two fingers at the start of each list.', parts: [{ type: 'array', label: 'R sorted', values: rv, idxLabels: rl, ptr: { 0: 'i' } }, { type: 'array', label: 'S sorted', values: sv, idxLabels: sl, ptr: { 0: 'j' } }] });
+          var i = 0, j = 0, out = [], steps = 0, guard = 0;
+          function fr(narr, hr, hs) {
+            var pr = {}, ps = {}; if (i < rv.length) pr[i] = 'i'; if (j < sv.length) ps[j] = 'j';
+            frames.push({ narr: narr, parts: [{ type: 'array', label: 'R sorted', values: rv, idxLabels: rl, ptr: pr, hl: hr || {} }, { type: 'array', label: 'S sorted', values: sv, idxLabels: sl, ptr: ps, hl: hs || {} }, { type: 'table', label: 'output', columns: ['R row', 'S row', 'key'], rows: out.slice() }, { type: 'vars', vals: { steps: steps } }] });
+          }
+          while (i < rv.length && j < sv.length && guard++ < 60) {
+            steps++;
+            if (rv[i] < sv[j]) { var h1 = {}; h1[i] = 'bad'; fr('R[i] = ' + rv[i] + ' &lt; S[j] = ' + sv[j] + ' → nothing in S can match it any more (S only grows). <b>Advance i.</b>', h1, {}); i++; }
+            else if (rv[i] > sv[j]) { var h2 = {}; h2[j] = 'bad'; fr('R[i] = ' + rv[i] + ' &gt; S[j] = ' + sv[j] + ' → <b>advance j.</b>', {}, h2); j++; }
+            else {
+              var key = rv[i], mark = j, hs = {}, hr = {}; hr[i] = 'ok';
+              while (j < sv.length && sv[j] === key) { out.push([rl[i], sl[j], key]); hs[j] = 'ok'; j++; steps++; }
+              fr('Keys equal (' + key + '): emit R row ' + rl[i] + ' with <b>every</b> S row in the run of ' + key + 's (' + (j - mark) + ' match' + (j - mark > 1 ? 'es' : '') + ').', hr, hs);
+              i++;
+              if (i < rv.length && rv[i] === key) { j = mark; var hm = {}; hm[mark] = 'sel'; fr('The next R row has the <b>same key</b> ' + key + ' → rewind j to the <b>mark</b> (start of the run) and replay it. This rewind is how merge join handles duplicates on both sides.', {}, hm); }
+            }
+          }
+          fr('One side is exhausted → <b>done</b>. After sorting, the merge itself touched each row about once: <b>' + steps + '</b> steps for ' + out.length + ' output rows (vs ' + (rv.length * sv.length) + ' for a nested loop). Bonus: the output is <b>already sorted</b> by the key, which can satisfy an ORDER BY or feed the next merge join.', {}, {});
+          return frames;
+        }
+      },
+      {
+        title: 'Cost comparison: which algorithm wins for these table sizes?',
+        input: '5000 2000000 100000',
+        inputLabel: 'outer rows N, inner rows M, rows that fit in join memory',
+        gen: function (input) {
+          var p = String(input || '').trim().split(/[\s,]+/).map(Number);
+          if (p.length !== 3 || p.some(function (x) { return !(x >= 1); })) throw new Error('Enter three positive numbers: N M memoryRows   e.g. 5000 2000000 100000');
+          var N = Math.min(p[0], 1e10), M = Math.min(p[1], 1e10), mem = p[2], frames = [];
+          var lg = function (x) { return Math.max(1, Math.log(x) / Math.LN2); };
+          var nl = N * M;
+          var inl = N * (lg(M) + 4);
+          var build = Math.min(N, M), batches = Math.max(1, Math.ceil(build / mem));
+          var hj = (N + M) * (batches > 1 ? 3 : 1) + build;
+          var mjSort = N * lg(N) + M * lg(M) + N + M, mjPre = N + M;
+          var names = ['plain nested loop', 'index nested loop', 'hash join', 'merge join (needs sort)', 'merge join (pre-sorted)'];
+          var costs = [nl, inl, hj, mjSort, mjPre];
+          var show = function (k, narr) {
+            var vals = costs.slice(0, k + 1).map(function (c) { return Math.round(Math.log(c) / Math.LN10 * 10) / 10; });
+            var hl = {}; hl[k] = 'cur';
+            frames.push({ narr: narr, parts: [{ type: 'bars', label: 'log₁₀(work) — each step up is 10× more work', values: vals, idxLabels: names.slice(0, k + 1), texts: costs.slice(0, k + 1).map(fmtN), hl: hl }, { type: 'vars', vals: { N: fmtN(N), M: fmtN(M), memoryRows: fmtN(mem) } }] });
+          };
+          show(0, '<b>Plain nested loop</b>: N × M = ' + fmtN(nl) + ' comparisons. Only acceptable when both sides are tiny.');
+          show(1, '<b>Index nested loop</b>: for each of N outer rows, one B-tree seek into M (~log₂M ≈ ' + Math.round(lg(M)) + ' steps) plus a fetch ≈ ' + fmtN(inl) + '. Needs an index on the inner join key. Cost depends on <b>N</b> (outer size), barely on M.');
+          show(2, '<b>Hash join</b>: read both inputs once + build ' + fmtN(build) + ' entries ≈ ' + fmtN(hj) + '. ' + (batches > 1 ? H.c('r', 'Build side (' + fmtN(build) + ') > memory (' + fmtN(mem) + ') → ' + batches + ' batches spilled to disk, ~3× the I/O.') : H.c('g', 'Build side fits in memory — single pass.')));
+          show(3, '<b>Merge join on unsorted input</b>: sort both (N log N + M log M) then one merge pass ≈ ' + fmtN(mjSort) + '.');
+          show(4, '<b>Merge join on pre-sorted input</b> (both read from indexes on the key): just N + M ≈ ' + fmtN(mjPre) + '.');
+          var best = 0; costs.forEach(function (c, i) { if (i < 4 && c < costs[best]) best = i; });
+          var vals = costs.map(function (c) { return Math.round(Math.log(c) / Math.LN10 * 10) / 10; }), hl = {}; hl[best] = 'ok'; hl[4] = 'sel';
+          frames.push({ narr: 'Verdict for unsorted inputs: <b>' + names[best] + '</b>. ' + (best === 1 ? 'Small outer side + index on the inner key: classic OLTP shape.' : best === 2 ? 'Big inputs, equality, no index needed — classic reporting shape.' : best === 3 ? 'Sorting is cheaper than spilling a huge hash table here.' : '') + ' If both inputs were already sorted, the pre-sorted merge (purple) is hard to beat. Try <code>10 1000000 100000</code> (tiny outer) or <code>3000000 2000000 100000</code> (two huge sides, small memory).', parts: [{ type: 'bars', label: 'log₁₀(work)', values: vals, idxLabels: names, texts: costs.map(fmtN), hl: hl }] });
+          return frames;
+        }
+      }
+    ],
+    examples: [
+      { title: 'Picking the algorithm from the scenario', html: `${H.table(['Scenario', 'Best join', 'Why'], [
+  ['Show customer 42\'s orders with product names', 'Index nested loop', '1 outer row; PK/FK indexes on the inner sides'],
+  ['Daily revenue per category over 50M order lines', 'Hash join', 'big × small (products), equality, no order needed; build products (small)'],
+  ['Join two 500M-row tables both clustered by <code>order_id</code>', 'Merge join', 'already sorted → one pass, tiny memory'],
+  ['Match each event to the session whose [start, end) contains it', 'Nested loop (or a range-join trick)', 'non-equi condition; hash and merge need equality'],
+  ['Same as row 2, but the planner thinks products has 1 row and it has 2M', 'Plan goes wrong', 'build on the "small" side spills; or NLJ picked with 2M inner scans → fix stats']
+])}` },
+      { title: 'A range join can only be a nested loop', html: `<p>Bucket each order into a price band. The join condition is <code>total_cents &gt;= lo AND total_cents &lt; hi</code> — no equality, so no hash or merge join. SQLite scans the 3 bands (outer) and, for each, scans orders (inner): 3 × 3,000 = 9,000 checks — fine because the outer side is tiny. If the band table were large, an index on <code>orders(total_cents)</code> would turn each inner scan into a range seek.</p>`, code: { lang: 'sql', db: 'shop', code: `WITH bands(band, lo, hi) AS (
+  VALUES ('small', 0, 5000), ('medium', 5000, 15000), ('large', 15000, 1000000)
+)
+SELECT b.band, count(*) AS orders
+FROM orders o
+JOIN bands b ON o.total_cents >= b.lo AND o.total_cents < b.hi
+GROUP BY b.band
+ORDER BY orders DESC;` } },
+      { title: 'Build side matters: hash the small table, stream the big one', html: `<p>Hash joining <code>order_items</code> (6,000) with <code>products</code> (60): building on products needs 60 hash entries; building on order_items needs 6,000. Planners pick the smaller estimated input as the build side. If the estimate is wrong (say, after a filter the planner thinks leaves 10 rows but really leaves 10 million), the "small" build side overflows <code>work_mem</code> and spills into many batches. In PostgreSQL look for <code>Batches: 64  Memory Usage: …  Disk Usage: …</code> under the <code>Hash</code> node. Fixes: better statistics, a higher <code>work_mem</code> for that session (<code>SET LOCAL work_mem = '256MB'</code>), or pre-aggregating before the join.</p>` },
+      { title: 'Why nested loops dominate OLTP (and LIMIT)', html: `<p>Index nested loop is the only algorithm that produces the <b>first row immediately</b> and does work proportional to the <b>outer</b> side. For <code>… ORDER BY o.created_at DESC LIMIT 20</code> SQLite walks <code>idx_orders_created</code> backwards and does a PK lookup into customers for each order — after 20 rows it stops. A hash join would have to read <i>all</i> of one side first. That's why PostgreSQL's cost has a <i>startup</i> part: with LIMIT, low startup cost wins.</p>`, code: { lang: 'sql', db: 'shop', code: `EXPLAIN QUERY PLAN
+SELECT o.id, o.created_at, c.name
+FROM orders o JOIN customers c ON c.id = o.customer_id
+ORDER BY o.created_at DESC
+LIMIT 20;
+SELECT o.id, o.created_at, c.name
+FROM orders o JOIN customers c ON c.id = o.customer_id
+ORDER BY o.created_at DESC
+LIMIT 3;` } }
+    ],
+    deepDive: `<h4>Variants you should be able to name</h4>
+<ul>
+<li><b>Block nested loop</b>: read a chunk of outer rows into a buffer and scan the inner once per chunk — cuts inner scans by the chunk size (MySQL's old BNL with <code>join_buffer_size</code>; removed in 8.0.20 in favour of hash join).</li>
+<li><b>Batched key access / MRR</b> (MySQL): collect outer keys, sort them, then probe the inner index in key order to turn random I/O into sequential-ish I/O.</li>
+<li><b>Grace / hybrid hash join</b>: partition both inputs by hash into P buckets on disk so each build partition fits in memory; hybrid keeps the first partition in RAM. PostgreSQL 11+ also has a <b>parallel</b> hash join with a shared hash table.</li>
+<li><b>Semi- and anti-joins</b>: <code>EXISTS</code> / <code>NOT EXISTS</code> become <i>Hash Semi Join</i>, <i>Hash Anti Join</i>, <i>Merge Anti Join</i>, <i>Nested Loop Semi Join</i> — they stop at the first match per outer row.</li>
+<li><b>Bloom filters / runtime filters</b>: build a small bit-array from the build side and push it down to the probe-side scan to drop non-matching rows early (SQLite's <code>BLOOM FILTER</code>, Spark/Trino dynamic filtering, ClickHouse, SQL Server bitmap filters).</li>
+<li><b>Memoize</b> (PostgreSQL 14+): caches inner results of a parameterized nested loop when the same outer key repeats.</li>
+<li><b>Adaptive join</b> (SQL Server): starts as a hash build; if the build side turns out tiny, switches to a nested loop.</li>
+<li><b>Distributed joins</b>: <i>broadcast</i> the small side to every node, or <i>shuffle/repartition</i> both sides by the join key (Spark, BigQuery, Snowflake, CockroachDB). Data skew on the key creates hot partitions — salting is the standard fix.</li>
+</ul>
+<h4>Merge join with duplicates</h4><p>When both sides have runs of the same key, the engine marks the start of the inner run and rewinds to it for every outer duplicate. Output for one key = (outer run length × inner run length), so many-to-many joins can still explode — that's a property of the data, not the algorithm.</p>
+<h4>Join order × algorithm</h4><p>The planner chooses join order and algorithm together. A left-deep plan of hash joins can pipeline probes through several hash tables built from small dimension tables (the classic star-schema plan); nested loops make the outer row count the key driver, so a bad cardinality estimate on the first table poisons everything above it.</p>`,
+    aiEra: `<p><b>What AI changes:</b> Assistants can explain "why did Postgres choose a hash join here?" quickly, and some cloud warehouses now pick join strategies adaptively at run time, so you write fewer hints. Distributed engines (Spark AQE, Databricks, BigQuery) automatically switch shuffle joins to broadcast joins when a side turns out small.</p>
+<p><b>Use AI as a partner:</b> paste the plan and ask "which side is the build side, does it spill, and what are the estimated vs actual row counts of the outer side of each nested loop?" — these are the three questions that explain 90% of bad joins.</p>
+<p><b>Where AI goes wrong:</b> it says SQLite or old MySQL "uses a hash join" (they don't), tells you to "disable nested loops" globally (dangerous), or blames the algorithm when the real cause is a misestimate feeding it.</p>
+<p><b>What you must still own:</b> simulating each algorithm on paper (interviewers ask you to), knowing their cost formulas and memory needs, and reasoning about which side should be outer/build.</p>`,
+    problems: [
+      {
+        title: 'The join that built its own index', level: 'Medium', tags: ['nested loop', 'automatic index', 'join algorithms'], companies: ['Microsoft', 'Oracle', 'Zomato'],
+        statement: `<p>Marketing asks: "which orders have a total exactly equal to some product's list price?"</p><pre>SELECT o.id, p.name
+FROM orders o JOIN products p ON p.price_cents = o.total_cents;</pre><p>(1) Explain what SQLite does with and without <code>PRAGMA automatic_index</code>. (2) Count the comparisons of the plain nested loop. (3) Make the fast plan permanent so it doesn't rebuild a temporary index on every run.</p>`,
+        constraints: `SQLite <code>shop</code>: orders = 3,000 rows, products = 60 rows; neither join column is indexed.`,
+        example: `<p>Automatic index on: ${H.c('y', 'SCAN o → BLOOM FILTER ON p → SEARCH p USING AUTOMATIC COVERING INDEX (price_cents=?)')}. Off: ${H.c('r', 'SCAN o → SCAN p')} = 3,000 × 60 = <b>180,000</b> comparisons. Result: 9 matching orders (e.g. order 725 ↔ Product 48).</p>`,
+        brute: { why: `<p>With no index, the only join SQLite can run is a plain nested loop: for each of the 3,000 orders, scan all 60 products — 180,000 comparisons. At 3M orders × 60K products that is 1.8×10<sup>11</sup> — hours. In PostgreSQL the planner would pick a hash join instead; SQLite has no hash join, so it compensates with an automatic index.</p>`, code: { lang: 'sql', db: 'shop', code: `PRAGMA automatic_index = OFF;   -- show the raw nested loop
+EXPLAIN QUERY PLAN
+SELECT o.id, p.name
+FROM orders o JOIN products p ON p.price_cents = o.total_cents;
+-- SCAN o
+-- SCAN p          <- 60 rows scanned for EACH of 3,000 orders
+SELECT count(*) AS matches
+FROM orders o JOIN products p ON p.price_cents = o.total_cents;` } },
+        mcq: { q: 'In PostgreSQL, with no indexes and 3,000 × 60 rows joined on equality, which algorithm would the planner most likely choose?', options: ['Plain nested loop', 'Hash join with products as the build side', 'Hash join with orders as the build side', 'Merge join without sorting'], answer: 1, explain: 'Equality + no index + small table → hash join, building the hash table on the smaller input (60 products) and probing with the 3,000 orders.' },
+        hints: [`<p>Hint 1: Read the plan with automatic indexes ON — SQLite is building a temporary index on the <i>smaller</i> table each time the query runs. That's a hint about what a permanent fix would be.</p>`, `<p>Hint 2: An index on <code>products(price_cents)</code> turns each outer row's inner scan into a seek: index nested loop.</p>`, `<p>Hint 3: Bonus — include <code>name</code> in the index so the lookup is covering. Recipe: show the bad plan, create the index, show the new plan, run the query.</p>`],
+        solution: {
+          approach: `<p>The plain nested loop is N × M. SQLite's automatic index is a runtime fix: it builds a temporary B-tree on <code>p(price_cents)</code> (60 entries) — conceptually the same as a hash join's build phase — plus a Bloom filter that rejects most orders without even touching that index. A permanent index on <code>products(price_cents, name)</code> gives an <b>index nested loop</b> with a covering lookup and avoids rebuilding the temporary index on every execution. Work becomes ~3,000 × (log₂60 ≈ 6) ≈ 18,000 steps instead of 180,000.</p>`,
+          code: { lang: 'sql', db: 'shop', code: `CREATE INDEX idx_products_price ON products(price_cents, name);
+
+EXPLAIN QUERY PLAN
+SELECT o.id, p.name
+FROM orders o JOIN products p ON p.price_cents = o.total_cents;
+-- SCAN o
+-- SEARCH p USING COVERING INDEX idx_products_price (price_cents=?)
+
+SELECT o.id, o.total_cents, p.name
+FROM orders o JOIN products p ON p.price_cents = o.total_cents
+ORDER BY o.id;` },
+          complexity: `<p>Plain NLJ: O(N·M) = 180,000. Index NLJ: O(N log M) ≈ 18,000. Hash join (PostgreSQL): O(N + M) ≈ 3,060 + 60 hash inserts, but needs memory and reads all of one side before the first row.</p>`,
+          followUps: ['Which side should be the outer table here, and why does SQLite agree?', 'If products had 5M rows and orders 50, would you still want this index?']
+        }
+      }
+    ]
+  });
+
   registerModule({
     id: 'sql11',
     title: 'Query Execution & Optimization',

@@ -502,5 +502,737 @@ class FetchDemo {
       }
     }]
   });
+  /* =====================================================================
+     TOPIC 3 — FACADE
+     ===================================================================== */
+  var FACADE_CODE = 'Receipt placeOrder(String item, int qty, String card) {\n' +
+    '  if (!inventory.inStock(item, qty)) return Receipt.outOfStock();\n' +
+    '  inventory.reserve(item, qty);\n' +
+    '  if (!payments.charge(card, catalog.price(item) * qty)) {\n' +
+    '    inventory.release(item, qty);   // compensate\n' +
+    '    return Receipt.declined(); }\n' +
+    '  String tracking = shipping.schedule(item, qty);\n' +
+    '  notifier.email("Order placed: " + tracking);\n' +
+    '  return Receipt.ok(tracking); }';
+  var FAC_STOCK = { laptop: 5, phone: 1, book: 10, watch: 3 };
+  var FAC_PRICE = { laptop: 60000, phone: 30000, book: 500, watch: 15000 };
+
+  topics.push({
+    title: 'Facade — One Simple Front Door',
+    analogy: `<p>You order food on a delivery app. Behind the scenes a restaurant cooks, a payment gateway charges your card, a rider is matched, a map service plans the route and an SMS service texts you updates. You touched <b>one button</b>: "Place order". The app is a <b>facade</b> — a simple front desk in front of a complicated back office.</p>
+      <p>A hotel reception desk is the same: you ask the receptionist for a taxi, a wake-up call and laundry; you never call the garage, the phone system and the laundry room yourself.</p>`,
+    explain: `<p><b>The problem.</b> Placing an order needs five subsystems in the right order: check stock, reserve it, charge the card, book shipping, send an email — and undo the reservation if payment fails. If every controller, CLI tool and batch job does these five calls itself, the sequence gets copy-pasted, someone forgets the "undo" step, and every caller now depends on five classes.</p>
+      <p><b>The fix.</b> Create one class, <code>OrderFacade</code>, with one high-level method <code>placeOrder(item, qty, card)</code>. It knows the subsystems and the correct order; callers know only the facade.</p>
+      ${H.table(['', 'Without facade', 'With facade'], [
+        ['Classes each caller depends on', H.c('r', '5 (Inventory, Payment, Shipping, Notifier, Catalog)'), H.c('g', '1 (OrderFacade)')],
+        ['Where the "order of steps" lives', H.c('r', 'copied into every caller'), H.c('g', 'one method')],
+        ['Change Shipping API', H.c('r', 'edit every caller'), H.c('g', 'edit the facade only')]
+      ])}
+      <p><b>Important:</b> a facade does <b>not</b> hide or lock the subsystems. Power users can still call <code>Inventory</code> directly. It just offers a <i>convenient default path</i>. It also does not add new business behaviour of its own — it <b>coordinates</b>.</p>
+      <p><b>Facade vs Adapter</b> (a favourite interview question): an Adapter makes <i>one</i> existing interface fit an interface the client <i>already expects</i>. A Facade <i>invents a new, simpler</i> interface over <i>many</i> classes. Adapter = translator; Facade = receptionist.</p>
+      <p><b>Seen in the wild:</b> ${H.chips(['SLF4J LoggerFactory', 'Spring JdbcTemplate (hides Connection/Statement/ResultSet)', 'java.net.http.HttpClient.send()', 'A service layer over repositories', 'An SDK client: s3.putObject()'], { label: 'facades' })}</p>`,
+    clues: ['"the client has to call many classes <b>in a specific order</b>" / "complex subsystem"', '"provide a <b>simple API</b> / one entry point / SDK" for a library', '"reduce coupling between UI/controllers and N services"', '"the same multi-step workflow is duplicated in several places"', '"layered architecture": controllers talk to a <b>service layer</b>, not to DAOs directly', '"wrap a legacy subsystem so we can replace it later"'],
+    code: [`
+// ----- subsystem classes (could be big, separate modules) -----
+class Inventory {
+    private final Map<String, Integer> stock = new HashMap<>(Map.of("laptop", 5, "phone", 1));
+    boolean inStock(String item, int qty) { return stock.getOrDefault(item, 0) >= qty; }
+    void reserve(String item, int qty) { stock.merge(item, -qty, Integer::sum); }
+    void release(String item, int qty) { stock.merge(item, qty, Integer::sum); }
+}
+class Catalog { long price(String item) { return item.equals("laptop") ? 60_000 : 30_000; } }
+class PaymentGateway { boolean charge(String card, long amount) { return amount <= 100_000; } }
+class ShippingService { String schedule(String item, int qty) { return "TRK-" + Math.abs((item + qty).hashCode()); } }
+class EmailNotifier { void email(String msg) { System.out.println("email: " + msg); } }
+
+record Receipt(String status, String tracking) {
+    static Receipt ok(String t) { return new Receipt("OK", t); }
+    static Receipt declined() { return new Receipt("PAYMENT_DECLINED", null); }
+    static Receipt outOfStock() { return new Receipt("OUT_OF_STOCK", null); }
+}
+
+// ----- the Facade: one simple method, knows the right order -----
+class OrderFacade {
+    private final Inventory inventory;
+    private final Catalog catalog;
+    private final PaymentGateway payments;
+    private final ShippingService shipping;
+    private final EmailNotifier notifier;
+
+    OrderFacade(Inventory i, Catalog c, PaymentGateway p, ShippingService s, EmailNotifier n) {
+        inventory = i; catalog = c; payments = p; shipping = s; notifier = n;   // injected, testable
+    }
+
+    Receipt placeOrder(String item, int qty, String card) {
+        if (!inventory.inStock(item, qty)) return Receipt.outOfStock();
+        inventory.reserve(item, qty);
+        if (!payments.charge(card, catalog.price(item) * qty)) {
+            inventory.release(item, qty);                 // compensating action lives in ONE place
+            return Receipt.declined();
+        }
+        String tracking = shipping.schedule(item, qty);
+        notifier.email("Order placed: " + tracking);
+        return Receipt.ok(tracking);
+    }
+}
+
+class Shop {
+    public static void main(String[] args) {
+        OrderFacade shop = new OrderFacade(new Inventory(), new Catalog(), new PaymentGateway(),
+                                           new ShippingService(), new EmailNotifier());
+        System.out.println(shop.placeOrder("laptop", 1, "4111"));  // OK
+        System.out.println(shop.placeOrder("laptop", 2, "4111"));  // PAYMENT_DECLINED
+        System.out.println(shop.placeOrder("phone", 3, "4111"));   // OUT_OF_STOCK
+    }
+}`, `
+// A facade over JDK classes: callers get "read a whole file as lines, safely" in one call
+final class Files2 {
+    private Files2() {}
+
+    static List<String> readLines(String text) {
+        // hides: Reader construction, buffering, loop, closing, exception wrapping
+        List<String> out = new ArrayList<>();
+        try (BufferedReader r = new BufferedReader(new StringReader(text))) {
+            String line;
+            while ((line = r.readLine()) != null) out.add(line.strip());
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+        return out;
+    }
+
+    public static void main(String[] args) {
+        System.out.println(readLines(" a \\n b "));   // [a, b]
+    }
+}`],
+    codeTitle: ['OrderFacade over five subsystems', 'A tiny utility facade over java.io'],
+    viz: {
+      title: 'placeOrder() lighting up each subsystem in order',
+      input: 'laptop 1',
+      inputLabel: 'item qty (items: laptop, phone, book, watch; card limit ₹1,00,000)',
+      gen: function (input) {
+        var w = words(input, 'Example: laptop 1', 2);
+        var item = w[0].toLowerCase(), qty = Number(w[1] || 1);
+        if (!FAC_STOCK.hasOwnProperty(item)) throw new Error('Item must be laptop, phone, book or watch');
+        if (!(qty >= 1 && qty <= 20 && Math.floor(qty) === qty)) throw new Error('Quantity must be a whole number from 1 to 20');
+        var stock = FAC_STOCK[item], amount = FAC_PRICE[item] * qty;
+        var nodes = [B('U', 'Client', 8, 30), B('F', 'OrderFacade', 34, 30), B('I', 'Inventory', 75, 4), B('P', 'Payment', 75, 20), B('S', 'Shipping', 75, 38), B('N', 'Email', 75, 56)];
+        var edges = [['U', 'F', 'placeOrder()'], ['F', 'I'], ['F', 'P'], ['F', 'S'], ['F', 'N']];
+        var bad = [B('U', 'Controller', 8, 30), B('I', 'Inventory', 70, 4), B('P', 'Payment', 70, 20), B('S', 'Shipping', 70, 38), B('N', 'Email', 70, 56), B('K', 'CLI tool', 8, 6), B('J', 'Batch job', 8, 54)];
+        var badE = [['U', 'I'], ['U', 'P'], ['U', 'S'], ['U', 'N'], ['K', 'I'], ['K', 'P'], ['K', 'S'], ['K', 'N'], ['J', 'I'], ['J', 'P'], ['J', 'S'], ['J', 'N']];
+        var f = [];
+        var be = {}; badE.forEach(function (e) { be[e[0] + '-' + e[1]] = 'bad'; });
+        f.push(F('<b>Before:</b> three callers each talk to four subsystems = <b>12 dependencies</b>, and each caller has its own copy of "the right order" (and its own bugs, like forgetting to release stock when payment fails).',
+          [G('No facade: spaghetti dependencies', bad, badE, { ehl: be })]));
+        f.push(F('<b>After:</b> callers depend only on <code>OrderFacade</code>. The facade is the one place that knows the workflow. Now let us run <code>placeOrder("' + item + '", ' + qty + ')</code>.',
+          [G('With facade', nodes, edges, { hl: { F: 'sel' }, tags: { F: '1 method' } }), CODE('OrderFacade.placeOrder', FACADE_CODE, { 1: 'cur' })]));
+        var ok = stock >= qty;
+        f.push(F('Step 1 — <b>Inventory.inStock</b>: we have ' + stock + ' ' + item + '(s), need ' + qty + '. ' + (ok ? H.c('g', 'Enough.') : H.c('r', 'Not enough → return OUT_OF_STOCK immediately. Nothing else is touched.')),
+          [G('Facade → Inventory', nodes, edges, { hl: { U: 'done', F: 'cur', I: ok ? 'ok' : 'bad' }, ehl: { 'U-F': 'done', 'F-I': ok ? 'cur' : 'bad' } }), CODE('OrderFacade.placeOrder', FACADE_CODE, { 2: ok ? 'ok' : 'bad' }), VARS('state', { stock: stock, need: qty })]));
+        if (!ok) {
+          f.push(F('The client gets <b>OUT_OF_STOCK</b>. It never had to know Inventory exists.', [G('Result', nodes, edges, { hl: { U: 'sel' }, ehl: { 'U-F': 'bad' } }), VARS('Receipt', { status: 'OUT_OF_STOCK' }, { status: 'bad' })]));
+          f.push(F('Try <code>laptop 2</code> to see the payment-failure path, or <code>book 3</code> for the happy path.', [TXT('Every path — happy, out-of-stock, declined — is coded <b>once</b>, inside the facade.')]));
+          return f;
+        }
+        f.push(F('Step 2 — <b>Inventory.reserve</b>: hold ' + qty + ' unit(s) so nobody else buys them while we charge the card. Stock is now ' + (stock - qty) + '.',
+          [G('Reserve', nodes, edges, { hl: { F: 'cur', I: 'ok' }, ehl: { 'F-I': 'ok' } }), CODE('OrderFacade.placeOrder', FACADE_CODE, { 3: 'cur' }), VARS('state', { stock: stock - qty, reserved: qty }, { reserved: 'ok' })]));
+        var paid = amount <= 100000;
+        f.push(F('Step 3 — <b>Payment.charge(₹' + amount + ')</b>. ' + (paid ? H.c('g', 'Approved.') : H.c('r', 'Declined: above the ₹1,00,000 card limit.')),
+          [G('Facade → Payment', nodes, edges, { hl: { F: 'cur', I: 'done', P: paid ? 'ok' : 'bad' }, ehl: { 'F-I': 'done', 'F-P': paid ? 'cur' : 'bad' } }), CODE('OrderFacade.placeOrder', FACADE_CODE, { 4: paid ? 'ok' : 'bad' }), VARS('payment', { amount: amount, limit: 100000 }, { amount: paid ? 'ok' : 'bad' })]));
+        if (!paid) {
+          f.push(F('<b>Compensate:</b> the facade calls <code>inventory.release</code> so the stock is not lost. This "undo" step is exactly what callers forget when they orchestrate by hand.',
+            [G('Undo the reservation', nodes, edges, { hl: { F: 'cur', I: 'cur', P: 'bad' }, ehl: { 'F-I': 'cur', 'F-P': 'bad' } }), CODE('OrderFacade.placeOrder', FACADE_CODE, { 5: 'cur', 6: 'bad' }), VARS('state', { stock: stock, reserved: 0 }, { stock: 'ok' })]));
+          f.push(F('Client receives <b>PAYMENT_DECLINED</b>. Shipping and Email were never touched.', [G('Result', nodes, edges, { hl: { U: 'sel', S: 'done', N: 'done' }, ehl: { 'U-F': 'bad' } }), VARS('Receipt', { status: 'PAYMENT_DECLINED' }, { status: 'bad' })]));
+          return f;
+        }
+        var trk = 'TRK-' + (1000 + amount % 9000);
+        f.push(F('Step 4 — <b>Shipping.schedule</b> returns tracking id <b>' + trk + '</b>.',
+          [G('Facade → Shipping', nodes, edges, { hl: { F: 'cur', P: 'done', S: 'ok' }, ehl: { 'F-P': 'done', 'F-S': 'cur' } }), CODE('OrderFacade.placeOrder', FACADE_CODE, { 7: 'cur' })]));
+        f.push(F('Step 5 — <b>Email</b>: "Order placed: ' + trk + '".',
+          [G('Facade → Email', nodes, edges, { hl: { F: 'cur', S: 'done', N: 'ok' }, ehl: { 'F-S': 'done', 'F-N': 'cur' } }), CODE('OrderFacade.placeOrder', FACADE_CODE, { 8: 'cur' })]));
+        f.push(F('The client gets one tidy <b>Receipt(OK, ' + trk + ')</b>. Four subsystems, one call, zero subsystem knowledge in the caller.',
+          [G('Done', nodes, edges, { hl: { U: 'sel', F: 'ok', I: 'done', P: 'done', S: 'done', N: 'done' }, ehl: { 'U-F': 'ok' } }), VARS('Receipt', { status: 'OK', tracking: trk }, { status: 'ok' })]));
+        return f;
+      }
+    },
+    examples: [
+      { title: 'Home theatre "watch movie" button', html: `<p>Lights dim, projector on, screen down, amplifier to HDMI-2, volume 30, player starts. <code>HomeTheaterFacade.watchMovie(title)</code> runs these six calls; <code>endMovie()</code> reverses them. The remote control (client) knows one class instead of six.</p>`, code: `class Lights { void dim(int pct) { System.out.println("lights " + pct + "%"); } }
+class Projector { void on() { System.out.println("projector on"); } }
+class Player { void play(String t) { System.out.println("playing " + t); } }
+class HomeTheater {
+    private final Lights l = new Lights(); private final Projector p = new Projector(); private final Player pl = new Player();
+    void watchMovie(String title) { l.dim(10); p.on(); pl.play(title); }
+}` },
+      { title: 'Spring JdbcTemplate', html: `<p>Raw JDBC: get a <code>Connection</code>, create a <code>PreparedStatement</code>, bind parameters, execute, loop the <code>ResultSet</code>, close all three in the right order, translate <code>SQLException</code>. <code>jdbcTemplate.query(sql, rowMapper, args)</code> is a facade over all of it. You can still drop down to raw JDBC when you need something unusual — facades do not lock the door.</p>` },
+      { title: 'Service layer = facade over repositories', html: `<p>A <code>TransferService.transfer(from, to, amount)</code> method loads two accounts, checks balances, writes two rows and an audit log inside one transaction. Controllers call the service, never the repositories. This keeps transaction boundaries and business order in one place. ${H.chips(['Controller', '→ TransferService (facade)', '→ AccountRepo, AuditRepo, TxManager'])}</p>` },
+      { title: 'Facade that grew into a god class (anti-example)', html: `<p>Teams keep adding "one more convenience method" until <code>AppFacade</code> has 120 methods and imports every module. Fix: split by use case (<code>OrderFacade</code>, <code>RefundFacade</code>, <code>AccountFacade</code>). A facade should be <b>thin</b> — if it holds rules like "orders above ₹50k need approval", move those rules into a domain class.</p>` }
+    ],
+    deepDive: `<p><b>Facade and the Law of Demeter.</b> Callers talk to one friend instead of reaching through it (<code>order.getCustomer().getWallet().debit()</code>). This lowers coupling, which is the whole point: you can rewrite <code>ShippingService</code> without touching any caller.</p>
+      <p><b>Facade vs Mediator.</b> Both sit in the middle of many classes. A facade is <i>one-directional</i>: clients call it, it calls subsystems, and subsystems do not know it exists. A mediator is <i>two-directional</i>: colleagues talk to the mediator and the mediator talks back to them, coordinating their interaction.</p>
+      <p><b>Production concerns.</b> (1) <b>Partial failure</b> — once the facade spans remote services, "charge succeeded but shipping failed" needs compensation or a saga; the facade is the natural place for the orchestration, but keep it idempotent (use an order id as an idempotency key). (2) <b>Transactions</b> — in a monolith the facade method is usually the transaction boundary (<code>@Transactional</code>). (3) <b>Testability</b> — inject subsystems via the constructor (as in the code above) so tests can pass fakes; a facade that does <code>new PaymentGateway()</code> inside is hard to test. (4) <b>Versioning</b> — public SDKs are facades; keep their surface small because every public method is a promise.</p>
+      <p><b>At system scale</b> the same idea is an <b>API gateway</b> or a <b>Backend-for-Frontend</b>: one endpoint for the mobile app that fans out to many microservices.</p>`,
+    aiEra: `<p><b>What AI changes:</b> AI agents are often given a <i>facade</i> on purpose. Instead of exposing 40 low-level endpoints as tools, you expose 5 task-level tools (<code>place_order</code>, <code>refund_order</code>) — fewer tools means fewer wrong calls, and the facade enforces the correct order and the undo steps the model might forget. Designing that tool surface is facade design.</p>
+      <p><b>Use AI as a partner:</b> <code>Here are the 5 subsystem interfaces. Write a facade method for "place order", list every failure point, and say which earlier steps must be undone at each.</code> Then check the compensation list yourself. <b>Where AI goes wrong:</b> it creates a single giant facade for the whole app, puts business rules inside it, hard-codes <code>new</code> for every dependency (untestable), and ignores partial failure. <b>What you must still own:</b> deciding the use-case boundaries, keeping the facade thin, and designing failure handling.</p>`,
+    problems: [{
+      title: 'One-Call Video Upload',
+      level: 'Easy', tags: ['facade', 'orchestration'], companies: ['Google', 'Netflix', 'ShareChat'],
+      statement: `<p>Uploading a video requires: <code>Validator.check(file)</code>, <code>Transcoder.toMp4(file)</code>, <code>ThumbnailMaker.make(mp4)</code>, <code>Storage.save(mp4, thumb)</code> (returns a video id), and <code>Notifier.notifyFollowers(userId, id)</code>. Today the web controller, the mobile API and an import script each do these five calls themselves. Design a single entry point <code>upload(userId, file)</code> that returns the video id or throws a clear error.</p>`,
+      constraints: `<p>Invalid file → <code>IllegalArgumentException</code> before any expensive work. Subsystems must stay usable directly (an admin tool re-generates thumbnails). Dependencies must be injectable for tests.</p>`,
+      example: `<p><code>upload("u7", "cat.mov")</code> → check ${H.c('g', 'ok')} → "cat.mp4" → "cat.jpg" → saved as ${H.c('b', 'vid-1')} → followers notified → returns <b>vid-1</b>. <code>upload("u7", "virus.exe")</code> → ${H.c('r', 'IllegalArgumentException')} and the transcoder is never called.</p>`,
+      brute: { why: `<p>Each caller repeats the five-step sequence. When the transcoder starts needing a "quality" parameter, three places change; the import script forgot validation, so it transcodes junk files and wastes CPU. Callers are coupled to five classes each.</p>`, code: `class Validator { boolean check(String f) { return f.endsWith(".mov") || f.endsWith(".mp4"); } }
+class Transcoder { String toMp4(String f) { return f.replaceAll("[.]mov$", ".mp4"); } }
+class ThumbnailMaker { String make(String mp4) { return mp4.replace(".mp4", ".jpg"); } }
+class Storage { String save(String mp4, String thumb) { return "vid-1"; } }
+class Notifier { void notifyFollowers(String u, String id) { System.out.println(u + " posted " + id); } }
+
+class WebController {        // copy #1 of the workflow
+    String handle(String user, String file) {
+        if (!new Validator().check(file)) throw new IllegalArgumentException(file);
+        String mp4 = new Transcoder().toMp4(file);
+        String id = new Storage().save(mp4, new ThumbnailMaker().make(mp4));
+        new Notifier().notifyFollowers(user, id);
+        return id;
+    }
+}
+class ImportScript {         // copy #2 — and it forgot validation
+    String run(String user, String file) {
+        String mp4 = new Transcoder().toMp4(file);
+        return new Storage().save(mp4, new ThumbnailMaker().make(mp4));
+    }
+}` },
+      mcq: { q: 'The admin tool needs only ThumbnailMaker. What should it do once the facade exists?', options: ['Go through the facade and add a regenerateThumbnail() method to it', 'Call ThumbnailMaker directly — a facade does not hide subsystems', 'Copy ThumbnailMaker into the admin tool', 'Make ThumbnailMaker private to the facade'], answer: 1, explain: 'A facade offers a convenient default path; it does not prevent direct use of subsystems. Bloating it with every niche method turns it into a god class.' },
+      hints: [`<p>Hint 1: The repeated <i>sequence</i> is the smell. Put the sequence in one class.</p>`, `<p>Hint 2: <code>VideoUploadFacade</code> takes all five subsystems in its constructor (dependency injection) and exposes one method.</p>`, `<p>Hint 3: Validate first and fail fast; then transcode → thumbnail → save → notify. Notification failure should not lose the upload — catch and log it after saving.</p>`],
+      solution: {
+        approach: `<p>Create <code>VideoUploadFacade</code> holding the five subsystems (constructor-injected). <code>upload</code> runs the sequence once, validating first so nothing expensive happens on bad input. Because the video is already saved when notification runs, a notifier error is caught and logged rather than failing the whole upload. Every caller (web, mobile, script) now makes one call and cannot skip validation.</p>`,
+        code: `class Validator { boolean check(String f) { return f.endsWith(".mov") || f.endsWith(".mp4"); } }
+class Transcoder { String toMp4(String f) { return f.replaceAll("[.]mov$", ".mp4"); } }
+class ThumbnailMaker { String make(String mp4) { return mp4.replace(".mp4", ".jpg"); } }
+class Storage {
+    private int next = 1;
+    String save(String mp4, String thumb) { return "vid-" + next++; }
+}
+class Notifier { void notifyFollowers(String u, String id) { System.out.println(u + " posted " + id); } }
+
+class VideoUploadFacade {
+    private final Validator validator;
+    private final Transcoder transcoder;
+    private final ThumbnailMaker thumbs;
+    private final Storage storage;
+    private final Notifier notifier;
+
+    VideoUploadFacade(Validator v, Transcoder t, ThumbnailMaker th, Storage s, Notifier n) {
+        validator = v; transcoder = t; thumbs = th; storage = s; notifier = n;
+    }
+
+    String upload(String userId, String file) {
+        if (!validator.check(file))                               // fail fast, cheap check first
+            throw new IllegalArgumentException("Unsupported file: " + file);
+        String mp4 = transcoder.toMp4(file);
+        String id = storage.save(mp4, thumbs.make(mp4));
+        try {
+            notifier.notifyFollowers(userId, id);
+        } catch (RuntimeException e) {                            // upload already succeeded
+            System.err.println("notify failed for " + id + ": " + e.getMessage());
+        }
+        return id;
+    }
+
+    public static void main(String[] args) {
+        VideoUploadFacade up = new VideoUploadFacade(new Validator(), new Transcoder(),
+                new ThumbnailMaker(), new Storage(), new Notifier());
+        System.out.println(up.upload("u7", "cat.mov"));   // vid-1
+    }
+}`,
+        complexity: `<p>Same work as before (dominated by transcoding); the facade adds O(1) overhead. Coupling drops from 5 dependencies per caller to 1.</p>`,
+        followUps: ['Transcoding takes 2 minutes — how would the facade change to return immediately (async job + status)?', 'Storage succeeded but the DB row failed — what compensation is needed?', 'How would you expose this facade as a single tool to an AI agent?']
+      }
+    }]
+  });
+  /* =====================================================================
+     TOPIC 4 — PROXY
+     ===================================================================== */
+  var PROXY_CODE = 'public void display(String user) {\n' +
+    '  if (!acl.canView(user, name))          // protection proxy\n' +
+    '    throw new SecurityException(user);\n' +
+    '  if (real == null)                      // virtual proxy: lazy\n' +
+    '    real = new RealImage(name);          // slow disk load\n' +
+    '  real.display(user);                    // delegate\n' +
+    '}';
+
+  topics.push({
+    title: 'Proxy — A Stand-In That Controls Access',
+    analogy: `<p>A celebrity does not take every call personally. Their <b>manager</b> answers first: "Who are you? Do you have an appointment? Oh, she already answered that question — here is the reply." The manager looks like the celebrity's phone number to you, but decides <i>whether</i>, <i>when</i> and <i>how</i> the call reaches the real person.</p>
+      <p>Your <b>debit card</b> is another proxy: it stands in for the cash in your bank account. Same "pay" action, but the card adds a PIN check and only touches the real money when needed.</p>`,
+    explain: `<p><b>The idea.</b> A <b>Proxy</b> implements the <i>same interface</i> as the real object (the "real subject") and holds a reference to it. The client cannot tell them apart. Before or after forwarding the call, the proxy can <b>check permission</b>, <b>create the real object late</b>, <b>return a cached answer</b>, <b>count / log</b>, or <b>send the call over the network</b>.</p>
+      ${H.table(['Kind of proxy', 'What it controls', 'Everyday example'], [
+        ['<b>Virtual</b> (lazy)', 'creates the expensive object only on first real use', 'image placeholder until you scroll to it; Hibernate lazy-loaded entities'],
+        ['<b>Protection</b>', 'checks who is calling', '"only the owner may delete this document"'],
+        ['<b>Caching</b>', 'returns a stored answer for repeated requests', 'currency rates cached for 60 s'],
+        ['<b>Remote</b>', 'hides a network call behind a local-looking object', 'gRPC/RMI stubs, Feign clients'],
+        ['<b>Smart reference / logging</b>', 'counts uses, logs, measures, releases resources', 'connection-pool handle, Spring AOP'],
+      ])}
+      <p><b>Roles:</b> ${H.kv([['Subject', 'the shared interface (Image)'], ['RealSubject', 'the object doing the real work (RealImage — loads 5 MB from disk)'], ['Proxy', 'same interface, holds/creates the RealSubject, adds control']])}</p>
+      <p><b>Proxy vs Decorator</b> — they look identical in code (wrap + same interface + delegate). The difference is <b>intent and who builds it</b>: a decorator <i>adds features</i> and the client stacks it on purpose; a proxy <i>controls access to the same feature</i> and is usually handed to the client by a factory or framework, which may even create the real object itself. Most proxies manage the real object's <b>lifecycle</b>; decorators never do.</p>
+      <p><b>Java gives you proxies for free:</b> <code>java.lang.reflect.Proxy</code> builds a proxy for any interface at runtime, routing every call to one <code>InvocationHandler</code>. Spring <code>@Transactional</code>, <code>@Cacheable</code>, Mockito mocks and Hibernate lazy loading all use generated proxies.</p>`,
+    clues: ['"<b>lazy loading</b>" / "do not load the large object until it is needed"', '"<b>access control</b>" / "only admins can call delete" without changing the service', '"<b>cache</b> the results of an expensive / remote call" transparently', '"the object lives on <b>another machine</b> but should feel local" (RPC stub)', '"count / log / rate-limit every call to X" with the same interface', '"<b>placeholder</b>" / "stand-in" / "surrogate" / "the client must not know"'],
+    code: [`
+interface Image { void display(String user); }
+
+// RealSubject: expensive to create
+class RealImage implements Image {
+    private final String name;
+    RealImage(String name) {
+        this.name = name;
+        System.out.println("Loading " + name + " from disk (slow)...");
+    }
+    public void display(String user) { System.out.println("Showing " + name + " to " + user); }
+}
+
+class AccessList {
+    private final Map<String, Set<String>> allowed = new HashMap<>();
+    void allow(String user, String image) { allowed.computeIfAbsent(user, k -> new HashSet<>()).add(image); }
+    boolean canView(String user, String image) { return allowed.getOrDefault(user, Set.of()).contains(image); }
+}
+
+// Proxy: virtual (lazy) + protection in one
+class ImageProxy implements Image {
+    private final String name;
+    private final AccessList acl;
+    private RealImage real;            // null until first allowed use
+
+    ImageProxy(String name, AccessList acl) { this.name = name; this.acl = acl; }
+
+    @Override
+    public void display(String user) {
+        if (!acl.canView(user, name)) throw new SecurityException(user + " cannot view " + name);
+        if (real == null) real = new RealImage(name);   // created lazily, exactly once
+        real.display(user);
+    }
+}
+
+class Gallery {
+    public static void main(String[] args) {
+        AccessList acl = new AccessList();
+        acl.allow("asha", "beach.png");
+        Image img = new ImageProxy("beach.png", acl);   // cheap: nothing loaded yet
+        img.display("asha");    // loads, then shows
+        img.display("asha");    // shows, no second load
+        try { img.display("eve"); } catch (SecurityException e) { System.out.println("Blocked: " + e.getMessage()); }
+    }
+}`, `
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
+
+interface Calculator { int add(int a, int b); int mul(int a, int b); }
+
+class SlowCalculator implements Calculator {
+    public int add(int a, int b) { return a + b; }
+    public int mul(int a, int b) { return a * b; }
+}
+
+// One handler can proxy ANY interface: here, it logs and times every method
+class TimingHandler implements InvocationHandler {
+    private final Object target;
+    TimingHandler(Object target) { this.target = target; }
+
+    @Override
+    public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+        long t0 = System.nanoTime();
+        try {
+            return method.invoke(target, args);
+        } finally {
+            System.out.println(method.getName() + Arrays.toString(args) + " took " + (System.nanoTime() - t0) + " ns");
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    static <T> T wrap(T target, Class<T> iface) {
+        return (T) Proxy.newProxyInstance(iface.getClassLoader(), new Class<?>[]{iface}, new TimingHandler(target));
+    }
+
+    public static void main(String[] args) {
+        Calculator c = wrap(new SlowCalculator(), Calculator.class);
+        System.out.println(c.add(2, 3));   // logged + timed, client code unchanged
+    }
+}`],
+    codeTitle: ['Virtual + protection proxy for images', 'JDK dynamic proxy (java.lang.reflect.Proxy)'],
+    viz: {
+      title: 'Proxy intercepting each request (lazy load, cache, access check)',
+      input: 'img1 img2 img1 !img3 img2 img1',
+      inputLabel: 'Requests in order (prefix ! = request from a user without permission)',
+      gen: function (input) {
+        var reqs = words(input, 'Example: img1 img2 img1 !img3', 10);
+        var nodes = [B('C', 'Client', 10, 34), B('S', 'Image', 50, 6), B('P', 'ImageProxy', 45, 40), B('R', 'RealImage', 86, 40)];
+        var edges = [['C', 'P', 'display()'], ['P', 'S', 'implements'], ['R', 'S', 'implements'], ['P', 'R', 'load / delegate']];
+        var tagsBase = { S: '«interface»', P: 'cheap stand-in', R: 'expensive (disk)' };
+        var f = [], loaded = [], loads = 0, hits = 0, denied = 0;
+        f.push(F('<b>Structure.</b> Proxy and RealImage both implement <code>Image</code>, so the client holds an <code>Image</code> and never knows which one it got. The proxy creates RealImage <i>only when first needed</i> and checks permission <i>before</i> every call.',
+          [G('Proxy class structure', nodes, edges, { tags: tagsBase, hl: { P: 'sel' } }), CODE('ImageProxy.display', PROXY_CODE, {})]));
+        reqs.forEach(function (raw, i) {
+          var deny = raw.charAt(0) === '!', name = deny ? raw.slice(1) : raw;
+          if (!name) throw new Error('Empty image name after "!"');
+          var mapE = loaded.map(function (n) { return [n, 'RealImage (loaded)']; });
+          if (deny) {
+            denied++;
+            f.push(F('Request ' + (i + 1) + ': an unauthorised user asks for <b>' + name + '</b>. The proxy checks the access list <i>first</i> → ' + H.c('r', 'SecurityException') + '. The real object is never touched — not even loaded.',
+              [G('Request ' + (i + 1) + ': blocked at the proxy', nodes, edges, { hl: { C: 'cur', P: 'bad' }, ehl: { 'C-P': 'bad' }, tags: tagsBase }), CODE('ImageProxy.display', PROXY_CODE, { 2: 'bad', 3: 'bad' }), { type: 'map', label: 'objects already loaded', entries: mapE.length ? mapE : [['(none)', '-']] }, VARS('counters', { diskLoads: loads, cacheHits: hits, denied: denied }, { denied: 'bad' })]));
+            return;
+          }
+          if (loaded.indexOf(name) >= 0) {
+            hits++;
+            f.push(F('Request ' + (i + 1) + ': <b>' + name + '</b> again. Permission ok, and the proxy already holds the RealImage → delegate directly. ' + H.c('g', 'No disk read (~800 ms saved).'),
+              [G('Request ' + (i + 1) + ': reuse', nodes, edges, { hl: { C: 'cur', P: 'ok', R: 'ok' }, ehl: { 'C-P': 'ok', 'P-R': 'ok' }, tags: tagsBase }), CODE('ImageProxy.display', PROXY_CODE, { 4: 'ok', 6: 'ok' }), { type: 'map', label: 'objects already loaded', entries: mapE, hl: one(name, 'ok') }, VARS('counters', { diskLoads: loads, cacheHits: hits, denied: denied }, { cacheHits: 'ok' })]));
+            return;
+          }
+          f.push(F('Request ' + (i + 1) + ': <b>' + name + '</b>. Permission ok. Intercepted: <code>real == null</code>, so the proxy creates <code>new RealImage("' + name + '")</code> now — the slow disk load happens on first <i>use</i>, not at startup.',
+            [G('Request ' + (i + 1) + ': lazy creation', nodes, edges, { hl: { C: 'done', P: 'cur', R: 'cur' }, ehl: { 'C-P': 'cur', 'P-R': 'cur' }, tags: tagsBase }), CODE('ImageProxy.display', PROXY_CODE, { 4: 'cur', 5: 'cur' }), { type: 'map', label: 'objects already loaded', entries: mapE.length ? mapE : [['(none)', '-']] }, VARS('counters', { diskLoads: loads, cacheHits: hits, denied: denied })]));
+          loads++; loaded.push(name);
+          f.push(F('RealImage for <b>' + name + '</b> is ready and stored inside the proxy. The call is forwarded and the picture is shown.',
+            [G('Request ' + (i + 1) + ': forwarded', nodes, edges, { hl: { C: 'ok', P: 'done', R: 'ok' }, ehl: { 'C-P': 'ok', 'P-R': 'ok' }, tags: tagsBase }), CODE('ImageProxy.display', PROXY_CODE, { 6: 'ok' }), { type: 'map', label: 'objects already loaded', entries: loaded.map(function (n) { return [n, 'RealImage (loaded)']; }), hl: one(name, 'ok') }, VARS('counters', { diskLoads: loads, cacheHits: hits, denied: denied }, { diskLoads: 'cur' })]));
+        });
+        var allowed = reqs.length - denied;
+        f.push(F('<b>Summary.</b> ' + reqs.length + ' requests → only <b>' + loads + '</b> disk load(s) instead of ' + allowed + ', and ' + denied + ' blocked request(s) that never reached the real object. The client code was just <code>image.display(user)</code> every time.',
+          [{ type: 'bars', label: 'disk loads: no proxy vs proxy', values: [allowed, loads], texts: [String(allowed), String(loads)], idxLabels: ['no proxy', 'with proxy'], hl: { 0: 'bad', 1: 'ok' } }, VARS('final counters', { diskLoads: loads, cacheHits: hits, denied: denied }, { diskLoads: 'sel' })]));
+        return f;
+      }
+    },
+    examples: [
+      { title: 'Hibernate lazy loading (virtual proxy)', html: `<p><code>order.getCustomer()</code> returns a generated subclass of <code>Customer</code> with only the id filled. The first time you call <code>getName()</code>, the proxy runs a SQL query. Famous bug: calling it after the session is closed throws <code>LazyInitializationException</code>; another famous bug: looping over 100 orders and touching each customer fires 100 queries (the <b>N+1 problem</b>).</p>` },
+      { title: 'Spring @Transactional (smart proxy)', html: `<p>Spring hands your controller a proxy of <code>OrderService</code>. The proxy opens a transaction, calls the real method, then commits or rolls back. Classic trap: calling <code>this.otherTransactionalMethod()</code> from inside the same class skips the proxy (you are already "inside"), so no new transaction starts. Rule: proxies only intercept calls that come <i>through</i> them.</p>` },
+      { title: 'Remote proxy: an RPC client stub', html: `<p>A gRPC or Feign client gives you <code>UserService.getUser(id)</code>. It looks local, but the proxy serialises the arguments, sends an HTTP/2 request, waits, and deserialises the answer. The danger: it <i>looks</i> cheap. Remote proxies must expose timeouts and failures honestly (checked exceptions or result types), or callers will put them in tight loops.</p>` },
+      { title: 'Caching proxy with a TTL', html: `<p><code>RateService</code> calls a paid FX API. <code>CachingRateProxy implements RateService</code> keeps <code>Map&lt;String, Entry(value, fetchedAt)&gt;</code>; if the entry is younger than 60 s, return it; else call through and refresh. Same interface, ~99% fewer paid calls for popular currency pairs.</p>`, code: `Map<String, Double> cache = new HashMap<>();
+Function<String, Double> slowApi = pair -> { System.out.println("API call for " + pair); return 83.2; };
+Function<String, Double> proxy = pair -> cache.computeIfAbsent(pair, slowApi);
+proxy.apply("USD/INR");
+proxy.apply("USD/INR"); // second call served from cache` }
+    ],
+    deepDive: `<p><b>Static vs dynamic proxies in Java.</b> A hand-written proxy class is clear and fast but must implement every method. <code>java.lang.reflect.Proxy</code> works only for <b>interfaces</b>, routes all calls through <code>invoke()</code> (reflection overhead, small but real) and wraps checked exceptions in <code>UndeclaredThrowableException</code> if you are careless. To proxy <b>classes</b>, frameworks generate subclasses with bytecode libraries (ByteBuddy, formerly CGLIB) — which fails on <code>final</code> classes and <code>final</code> methods. That is why Spring/Kotlin need "open" classes and why <code>private</code> or <code>final</code> methods silently bypass <code>@Transactional</code>.</p>
+      <p><b>Thread safety of lazy proxies.</b> The simple <code>if (real == null) real = new RealImage()</code> is a race: two threads can load twice. Fix with double-checked locking on a <code>volatile</code> field, or a holder object, or <code>ConcurrentHashMap.computeIfAbsent</code> for keyed caches — the same lessons as the thread-safe Singleton.</p>
+      <p><b>Identity.</b> <code>proxy == real</code> is false; <code>equals</code> on generated proxies goes through the handler; <code>getClass()</code> shows a weird generated name (<code>$Proxy12</code>, <code>Customer$HibernateProxy$x</code>). Never use <code>getClass() ==</code> in <code>equals</code> for entities that may be proxied.</p>
+      <p><b>Caching proxy pitfalls:</b> unbounded maps leak memory (use LRU / Caffeine), stale data needs TTL or invalidation, and caching must key on <i>every</i> input that affects the answer (including the user, for per-user data). <b>At system scale</b> the same pattern is a reverse proxy (Nginx), a CDN, a service-mesh sidecar (Envoy) — stand-ins that control access to the real server.</p>`,
+    aiEra: `<p><b>What AI changes:</b> the most important proxies in AI products sit between the app and the model: an <b>LLM gateway</b> that checks the API key and budget (protection), serves repeated prompts from a semantic or exact cache (caching), logs every call for evaluation (smart reference), and forwards to whichever provider is up (remote). For tool-using agents, a <b>permission proxy</b> in front of dangerous tools ("delete_file", "send_email") asks a human before forwarding — the protection proxy is now a safety feature.</p>
+      <p><b>Use AI as a partner:</b> <code>Generate a dynamic-proxy InvocationHandler that logs method name, args and latency; then list three ways it could break (final methods, self-invocation, checked exceptions).</code> <b>Where AI goes wrong:</b> it writes non-thread-safe lazy initialisation, forgets cache eviction, caches per-user data under a global key, and confuses proxy with decorator in explanations. <b>What you must still own:</b> knowing <i>which</i> kind of control is needed, the failure semantics of remote proxies, and the self-invocation trap.</p>`,
+    problems: [{
+      title: 'Caching Proxy with Time-To-Live for an Exchange-Rate API',
+      level: 'Medium', tags: ['proxy', 'caching', 'ttl'], companies: ['Razorpay', 'Stripe', 'Wise'],
+      statement: `<p><code>interface RateService { double rate(String from, String to); }</code> is implemented by <code>RemoteRateService</code>, which costs money and ~300 ms per call. Build a transparent cache in front of it: a repeated (from, to) pair within <b>ttlMillis</b> must be served without calling the remote service. Callers keep using <code>RateService</code>. Time must be injectable for tests.</p>`,
+      constraints: `<p>ttlMillis ≥ 1. Pairs are case-insensitive ("usd","INR" = "USD","INR"). Thread-safe for concurrent readers. Remote failures must not be cached.</p>`,
+      example: `<p>ttl = 60 000 ms. t=0 <code>rate(USD,INR)</code> → ${H.c('r', 'remote call')} → 83.2. t=10 s → ${H.c('g', 'cache hit')} 83.2. t=70 s → entry expired → ${H.c('r', 'remote call')} again. Remote calls: 2 instead of 3.</p>`,
+      brute: { why: `<p>Naive approach 1: call the remote API every time — slow and expensive. Naive approach 2: put a static <code>HashMap</code> inside <code>RemoteRateService</code> itself — now the "talk to API" class also does caching (two responsibilities), the cache never expires, it is not thread-safe, and tests cannot control time.</p>`, code: `class RemoteRateService {
+    static final Map<String, Double> CACHE = new HashMap<>();   // never expires, not thread-safe
+    double rate(String from, String to) {
+        return CACHE.computeIfAbsent(from + to, k -> {
+            System.out.println("paid API call " + k);
+            return 83.2;
+        });
+    }
+}` },
+      mcq: { q: 'Why inject a LongSupplier clock instead of calling System.currentTimeMillis() inside the proxy?', options: ['It is faster', 'Tests can move time forward to check expiry without sleeping', 'System.currentTimeMillis() is deprecated', 'The proxy pattern requires it'], answer: 1, explain: 'A fake clock lets a unit test jump 61 seconds instantly and assert the remote service is called again.' },
+      hints: [`<p>Hint 1: Same interface, holds the real service, decides whether to forward — that is a caching proxy.</p>`, `<p>Hint 2: Store <code>record Entry(double value, long fetchedAt)</code> in a <code>ConcurrentHashMap</code> keyed by the normalised pair.</p>`, `<p>Hint 3: On each call: read entry; if present and <code>now - fetchedAt &lt; ttl</code> return it; otherwise call remote (exceptions propagate, nothing stored) and put a fresh entry.</p>`],
+      solution: {
+        approach: `<p><code>CachingRateProxy implements RateService</code>, takes the real service, a TTL and a <code>LongSupplier</code> clock. Keys are upper-cased "FROM/TO". A hit within TTL returns the stored value; a miss or expired entry calls the real service and stores the result. Because <code>put</code> happens only after a successful call, failures are never cached. <code>ConcurrentHashMap</code> makes concurrent reads safe (two threads may both refresh an expired key at the same moment — acceptable here; use <code>compute</code> if you need exactly-once refresh).</p>`,
+        code: `interface RateService { double rate(String from, String to); }
+
+class RemoteRateService implements RateService {
+    int calls = 0;
+    public double rate(String from, String to) {
+        calls++;
+        return from.equals("USD") && to.equals("INR") ? 83.2 : 1.0;
+    }
+}
+
+class CachingRateProxy implements RateService {
+    private record Entry(double value, long fetchedAt) {}
+
+    private final RateService real;
+    private final long ttlMillis;
+    private final java.util.function.LongSupplier clock;
+    private final Map<String, Entry> cache = new ConcurrentHashMap<>();
+
+    CachingRateProxy(RateService real, long ttlMillis, java.util.function.LongSupplier clock) {
+        if (ttlMillis < 1) throw new IllegalArgumentException("ttl >= 1");
+        this.real = real; this.ttlMillis = ttlMillis; this.clock = clock;
+    }
+
+    @Override
+    public double rate(String from, String to) {
+        String f = from.toUpperCase(Locale.ROOT), t = to.toUpperCase(Locale.ROOT);
+        String key = f + "/" + t;
+        long now = clock.getAsLong();
+        Entry e = cache.get(key);
+        if (e != null && now - e.fetchedAt() < ttlMillis) return e.value();   // fresh hit
+        double v = real.rate(f, t);              // throws -> nothing cached
+        cache.put(key, new Entry(v, now));
+        return v;
+    }
+
+    public static void main(String[] args) {
+        long[] now = {0};
+        RemoteRateService remote = new RemoteRateService();
+        RateService rates = new CachingRateProxy(remote, 60_000, () -> now[0]);
+        rates.rate("usd", "inr");
+        now[0] = 10_000;  rates.rate("USD", "INR");   // hit
+        now[0] = 70_000;  rates.rate("USD", "INR");   // expired -> remote
+        System.out.println("remote calls = " + remote.calls);   // 2
+    }
+}`,
+        complexity: `<p>O(1) average per call. Memory O(distinct pairs) — bounded in practice (~180 currencies), otherwise add LRU eviction.</p>`,
+        followUps: ['Prevent a "thundering herd" when a hot key expires and 1 000 threads miss at once.', 'Serve the stale value while refreshing in the background (stale-while-revalidate).', 'How would you add per-user rate limiting as another proxy in the chain?']
+      }
+    }]
+  });
+  /* =====================================================================
+     TOPIC 5 — COMPOSITE
+     ===================================================================== */
+  var COMP_CODE = 'long size() {                // in Folder (composite)\n' +
+    '  long total = 0;\n' +
+    '  for (Node child : children)\n' +
+    '    total += child.size();     // same call for file OR folder\n' +
+    '  return total;\n' +
+    '}\n' +
+    'long size() { return bytes; } // in File (leaf)';
+
+  topics.push({
+    title: 'Composite — Treat One and Many the Same',
+    analogy: `<p>Think of an army. A general gives one order: "March!" to a <b>division</b>. The division passes it to its <b>brigades</b>, brigades to <b>platoons</b>, platoons to <b>soldiers</b>. The general does not care whether the thing he is talking to is one soldier or ten thousand — he uses the same command.</p>
+      <p>Your computer's folders work the same way: "what is the size of this?" works on a single file <i>and</i> on a folder, which simply asks each thing inside it the same question and adds the answers.</p>`,
+    explain: `<p><b>The problem.</b> Data that naturally forms a <b>tree</b>: folders containing files and folders, menus containing items and sub-menus, a cart containing products and bundles, an org chart. Without a pattern, every operation becomes: "if it is a file do X, else if it is a folder loop over children and for each one check again…" — <code>instanceof</code> checks everywhere.</p>
+      <p><b>The fix.</b> Give leaves and containers the <b>same interface</b>. A container (the <b>composite</b>) holds a list of that interface and implements each operation by delegating to its children and combining the answers. The client calls <code>root.size()</code> and recursion does the rest.</p>
+      ${H.table(['Role', 'Example', 'size() does'], [['<b>Component</b> (interface)', '<code>Node</code>', 'declares size(), print()'], ['<b>Leaf</b>', '<code>File</code>', 'returns its own bytes'], ['<b>Composite</b>', '<code>Folder</code>', 'sum of children\'s size()']])}
+      <p><b>Worked example.</b> ${H.kv([['root/', 'docs/ + src/'], ['docs/', 'a.txt (5) + b.pdf (20) = 25'], ['src/', 'Main.java (8) + lib/ (3 + 4) = 15'], ['root total', '25 + 15 = <b>40</b>']], { hl: { 'root total': 'g' } })}</p>
+      <p><b>Two design choices</b> interviewers love: (1) <b>Transparent</b> — put <code>add/remove</code> on the Component interface so clients never need to check types (but then <code>file.add()</code> must throw). (2) <b>Safe</b> — put <code>add/remove</code> only on Composite, so leaves cannot be misused (but clients need to know what they hold to add children). Modern Java usually picks <b>safe</b>, often with a <code>sealed interface Node permits File, Folder</code>.</p>
+      <p><b>In the wild:</b> ${H.chips(['Swing/AWT: Container is a Component', 'Android ViewGroup / View', 'HTML DOM elements', 'JSON objects/arrays (Jackson JsonNode)', 'AST nodes in compilers', 'org charts, BOMs (bill of materials)'])}</p>`,
+    clues: ['"<b>part-whole hierarchy</b>" / "tree structure" / "nested" / "contains items and groups of items"', '"treat individual objects and groups <b>uniformly</b>"', '"folders and files", "menus and sub-menus", "bundles of products", "teams of teams", "nested comments"', '"compute a total / render / search over the whole hierarchy" with one call', '"the depth of nesting is arbitrary / unknown"', 'you find yourself writing <code>if (x instanceof Group)</code> in many places'],
+    code: [`
+// Component — sealed so the compiler knows every kind of node
+sealed interface Node permits FileNode, Folder {
+    String name();
+    long size();
+    void print(String indent);
+}
+
+// Leaf
+record FileNode(String name, long size) implements Node {
+    public void print(String indent) { System.out.println(indent + name + " (" + size + ")"); }
+}
+
+// Composite — holds children of the COMPONENT type (files or folders)
+final class Folder implements Node {
+    private final String name;
+    private final List<Node> children = new ArrayList<>();
+
+    Folder(String name) { this.name = name; }
+
+    Folder add(Node child) { children.add(child); return this; }   // "safe" style: only on Folder
+    public String name() { return name; }
+
+    public long size() {
+        long total = 0;
+        for (Node child : children) total += child.size();   // recursion via polymorphism
+        return total;
+    }
+
+    public void print(String indent) {
+        System.out.println(indent + name + "/ (" + size() + ")");
+        for (Node child : children) child.print(indent + "  ");
+    }
+}
+
+class Explorer {
+    public static void main(String[] args) {
+        Folder root = new Folder("root")
+            .add(new Folder("docs").add(new FileNode("a.txt", 5)).add(new FileNode("b.pdf", 20)))
+            .add(new Folder("src").add(new FileNode("Main.java", 8))
+                                  .add(new Folder("lib").add(new FileNode("x.jar", 3)).add(new FileNode("y.jar", 4))));
+        root.print("");
+        System.out.println("total = " + root.size());   // 40 — client never checks types
+    }
+}`, `
+// Composite + interpretation: an arithmetic expression tree
+interface Expr { double eval(); String show(); }
+
+record Num(double v) implements Expr {
+    public double eval() { return v; }
+    public String show() { return String.valueOf(v); }
+}
+
+// a composite with ANY number of operands
+record Sum(List<Expr> parts) implements Expr {
+    public double eval() { return parts.stream().mapToDouble(Expr::eval).sum(); }
+    public String show() { return parts.stream().map(Expr::show).collect(Collectors.joining(" + ", "(", ")")); }
+}
+
+record Product(List<Expr> parts) implements Expr {
+    public double eval() { return parts.stream().mapToDouble(Expr::eval).reduce(1, (a, b) -> a * b); }
+    public String show() { return parts.stream().map(Expr::show).collect(Collectors.joining(" * ", "(", ")")); }
+}
+
+class ExprDemo {
+    public static void main(String[] args) {
+        Expr e = new Product(List.of(new Num(2), new Sum(List.of(new Num(3), new Num(4), new Num(5)))));
+        System.out.println(e.show() + " = " + e.eval());   // (2.0 * (3.0 + 4.0 + 5.0)) = 24.0
+    }
+}`],
+    codeTitle: ['File system: Folder (composite) and File (leaf)', 'Expression tree — composites can be operators'],
+    viz: {
+      title: 'size() travelling down a folder tree and adding up on the way back',
+      input: 'D D D 5 20 8 D - - - - - - 3 4',
+      inputLabel: 'Level-order tree: D = folder, number = file size in KB, - = empty slot (max 15, binary-shaped for display)',
+      gen: function (input) {
+        var t = words(input, 'Example: D D D 5 20 8 D - - - - - - 3 4', 15).map(function (s) { return s.toUpperCase(); });
+        t.forEach(function (s, i) {
+          if (s !== 'D' && s !== '-' && !/^\d+$/.test(s)) throw new Error('Token "' + s + '" must be D, - or a whole number');
+          if (i > 0 && s !== '-' && t[(i - 1) >> 1] !== 'D') throw new Error('Node at position ' + (i + 1) + ' has a parent that is not a folder (D)');
+        });
+        if (t[0] === '-') throw new Error('The root cannot be empty');
+        var arr = t.map(function (s) { return s === '-' ? null : (s === 'D' ? 'dir' : s + 'KB'); });
+        while (arr.length && arr[arr.length - 1] === null) arr.pop();
+        var f = [], tags = {}, stack = [], hl = {}, visits = 0;
+        function label(i) { return t[i] === 'D' ? 'folder#' + i : 'file#' + i; }
+        function snap(narr, extraParts, ehl) {
+          f.push(F(narr, [{ type: 'tree', label: 'the hierarchy (client only holds the root)', arr: arr, hl: JSON.parse(JSON.stringify(hl)), ehl: ehl || {}, tags: JSON.parse(JSON.stringify(tags)) }, { type: 'stack', label: 'recursion (call stack)', items: stack.length ? stack.slice() : ['(empty)'], hl: stack.length ? one(stack.length - 1, 'cur') : {} }].concat(extraParts || [])));
+        }
+        snap('Client code is just <code>root.size()</code>. It does not know (or care) that root is a folder with nested folders inside. Folders are <b>composites</b>, files are <b>leaves</b>; both answer <code>size()</code>.', [CODE('size()', COMP_CODE, {})]);
+        function size(i) {
+          visits++;
+          stack.push(label(i) + '.size()');
+          hl[i] = 'cur';
+          if (t[i] !== 'D') {
+            var v = Number(t[i]);
+            tags[i] = '=' + v;
+            snap('<b>Leaf</b> ' + label(i) + ': a file simply returns its own size, <b>' + v + ' KB</b>. No loop, no children.', [CODE('size()', COMP_CODE, { 7: 'ok' })]);
+            hl[i] = 'ok'; stack.pop();
+            return v;
+          }
+          snap('<b>Composite</b> ' + label(i) + ': start <code>total = 0</code> and ask every child the <i>same question</i>.', [CODE('size()', COMP_CODE, { 2: 'cur', 3: 'cur' })]);
+          var total = 0, kids = [2 * i + 1, 2 * i + 2].filter(function (c) { return c < t.length && t[c] !== '-'; });
+          kids.forEach(function (c) {
+            hl[i] = 'win';
+            var e = {}; e[c] = 'cur';
+            snap(label(i) + ' → calls <code>size()</code> on child ' + label(c) + '.', [CODE('size()', COMP_CODE, { 4: 'cur' })], e);
+            var s = size(c);
+            total += s;
+            hl[i] = 'cur';
+            var e2 = {}; e2[c] = 'ok';
+            tags[i] = 'Σ' + total;
+            snap('Back in ' + label(i) + ': child returned ' + s + ', running total = <b>' + total + '</b>.', [CODE('size()', COMP_CODE, { 4: 'ok' }), VARS(label(i), { total: total }, { total: 'ok' })], e2);
+          });
+          if (!kids.length) { tags[i] = 'Σ0'; }
+          hl[i] = i === 0 ? 'sel' : 'ok'; stack.pop();
+          snap(label(i) + ' returns <b>' + total + ' KB</b>' + (kids.length ? '' : ' (empty folder)') + (i === 0 ? ' — the answer to the client\'s single call.' : ' to its parent.'), [CODE('size()', COMP_CODE, { 5: 'ok' })]);
+          return total;
+        }
+        var ans = size(0);
+        f.push(F('<b>Done:</b> total = <b>' + ans + ' KB</b>, every node visited once (' + visits + ' visits → O(n)). Notice: there was never an <code>instanceof</code> — polymorphism picked leaf or composite behaviour each time.',
+          [{ type: 'tree', label: 'final sizes', arr: arr, hl: { 0: 'sel' }, tags: tags }, VARS('result', { totalKB: ans, nodesVisited: visits }, { totalKB: 'sel' })]));
+        return f;
+      }
+    },
+    examples: [
+      { title: 'Menu with sub-menus', html: `<p><code>MenuComponent</code> has <code>render(depth)</code>. <code>MenuItem</code> prints its label; <code>Menu</code> prints its title and renders each child one level deeper. "Settings → Display → Brightness" works for any depth, and adding a sub-menu never changes rendering code.</p>`, code: `interface MenuComponent { void render(int depth); }
+record MenuItem(String label) implements MenuComponent {
+    public void render(int d) { System.out.println("  ".repeat(d) + "- " + label); }
+}
+record Menu(String title, List<MenuComponent> items) implements MenuComponent {
+    public void render(int d) { System.out.println("  ".repeat(d) + title); items.forEach(i -> i.render(d + 1)); }
+}` },
+      { title: 'Org chart: total salary of a department', html: `<p><code>Employee.cost()</code> = salary; <code>Team.cost()</code> = sum of members' cost (members are employees or sub-teams). The CFO asks <code>company.cost()</code>. Same pattern answers "headcount", "find everyone in Pune" or "print the tree".</p>` },
+      { title: 'Bill of materials (BOM)', html: `<p>A bicycle = frame + 2 wheels; a wheel = rim + 32 spokes + tyre. <code>Part.weight()</code> on the bicycle walks the whole tree. Notice that composites can carry <b>quantities</b>: a composite entry "spoke × 32" multiplies its child's weight. Composite is not only "sum" — any combining rule works (max, AND, concatenation).</p>` },
+      { title: 'Uniform permission check (AND over children)', html: `<p>"Can the user delete this folder?" = user can delete the folder itself <b>and</b> every child. The composite's combine step is <code>allMatch</code> instead of a sum: ${H.chips(['folder ✓', 'a.txt ✓', 'secret.pdf ✗'], { hl: { 'secret.pdf ✗': 'r' } })} → ${H.c('r', 'denied')}.</p>` }
+    ],
+    deepDive: `<p><b>Complexity.</b> One operation on the root visits every node once: O(n) time, O(depth) stack. Very deep trees (100 000 nested comments) can blow the Java stack — switch to an explicit stack/queue iteration for production, or cache sizes in each composite and update them on add/remove (O(depth) updates instead of O(n) queries; needs parent pointers).</p>
+      <p><b>Cycles.</b> If a folder can be added inside its own descendant (symlinks, a user dragging a group into itself) your recursion never ends. Guard in <code>add()</code> by walking up parent links, or track a visited set during traversal.</p>
+      <p><b>Transparent vs safe</b> is a real trade-off: transparency (add/remove on Component) is what the GoF book shows, but it violates Liskov/Interface Segregation for leaves. Java's <code>sealed</code> interfaces + <code>switch</code> pattern matching give a third option: keep the component small and let operations that truly differ use exhaustive pattern matching — the compiler errors if you add a new node type and forget a case.</p>
+      <p><b>Composite + friends.</b> Iterator walks a composite; Visitor adds new operations without editing node classes; Flyweight shares identical leaves (characters in a document tree); Builder builds big composites fluently. React/Compose UI trees, DOM and ASTs are all composites. <b>Immutability</b> (records, persistent trees) makes composites thread-safe and lets you share sub-trees.</p>`,
+    aiEra: `<p><b>What AI changes:</b> AI systems are full of composites: an agent "plan" is a tree of tasks and sub-tasks; a prompt template is composed of sections and nested sections; a RAG document is chunked hierarchically (book → chapter → section → paragraph) and summaries roll up the tree exactly like <code>size()</code>. Multi-agent systems where a "manager agent" delegates to sub-agents that may delegate again are the army analogy in code.</p>
+      <p><b>Use AI as a partner:</b> <code>Model nested comments as a Composite in Java with sealed interfaces; include a cycle guard and an iterative traversal for depth 100k.</code> Then verify the cycle guard yourself. <b>Where AI goes wrong:</b> it writes recursion with no depth or cycle protection, puts <code>add()</code> on leaves that silently do nothing, and recomputes totals on every call inside loops (O(n²)). <b>What you must still own:</b> recognising part-whole hierarchies in requirements, choosing safe vs transparent, and the performance plan for huge trees.</p>`,
+    problems: [{
+      title: 'Shopping Cart with Discounted Bundles',
+      level: 'Medium', tags: ['composite', 'e-commerce'], companies: ['Amazon', 'Flipkart', 'Meesho'],
+      statement: `<p>A cart contains <b>products</b> (name, price) and <b>bundles</b>. A bundle has a name, a discount percentage (0–50) and items — which can be products or other bundles. A bundle's price = (sum of its items' prices) × (1 − discount/100). Implement <code>price()</code> for the whole cart and a <code>describe()</code> that prints an indented tree. Prices are in paise (long); round half-up at each bundle.</p>`,
+      constraints: `<p>Nesting depth ≤ 10, total items ≤ 10<sup>4</sup>. Discount outside 0–50 → <code>IllegalArgumentException</code>. A bundle cannot contain itself.</p>`,
+      example: `<p>"Gaming Combo" (10% off) = Console 30 000 + "Controller Pack" (20% off: 2 × 3 000 = 6 000 → <b>4 800</b>) = 34 800 → × 0.9 = <b>${H.c('g', '31 320')}</b>. Cart = Gaming Combo + Headset 2 000 = <b>${H.c('g', '33 320')}</b>.</p>`,
+      brute: { why: `<p>Keep products and bundles in separate lists, and write pricing with <code>instanceof</code> checks and a hand-written loop per nesting level. It works for one level of bundles; a bundle inside a bundle needs another loop, and every new operation (describe, count items, tax) repeats the same type checks. Adding a "gift card" item type means editing every operation.</p>`, code: `class Product { String name; long price; Product(String n, long p) { name = n; price = p; } }
+class Bundle { String name; int discount; List<Object> items = new ArrayList<>(); }
+
+class PriceCalculator {
+    long price(List<Object> cart) {
+        long total = 0;
+        for (Object o : cart) {
+            if (o instanceof Product p) total += p.price;
+            else if (o instanceof Bundle b) {
+                long sub = 0;
+                for (Object inner : b.items) {
+                    if (inner instanceof Product p2) sub += p2.price;
+                    // a bundle inside a bundle? another nested loop... and another...
+                }
+                total += sub * (100 - b.discount) / 100;
+            }
+        }
+        return total;
+    }
+}` },
+      mcq: { q: 'What is the type of the list inside Bundle in a clean Composite design?', options: ['List&lt;Product&gt;', 'List&lt;Bundle&gt;', 'List&lt;CartItem&gt; where CartItem is the shared interface', 'List&lt;Object&gt;'], answer: 2, explain: 'Children must be the component type so a bundle can hold products AND bundles, and the bundle just calls price() on each.' },
+      hints: [`<p>Hint 1: Products and bundles must answer the same question — <code>price()</code>. Make a shared interface <code>CartItem</code>.</p>`, `<p>Hint 2: <code>Product</code> is the leaf; <code>Bundle</code> is the composite with <code>List&lt;CartItem&gt;</code>. Its <code>price()</code> sums children then applies its own discount.</p>`, `<p>Hint 3: Use long paise and compute <code>(sum * (100 - d) + 50) / 100</code> for half-up rounding. Guard against self-containment in <code>add()</code> by checking whether the new child (if a bundle) contains <code>this</code> anywhere.</p>`],
+      solution: {
+        approach: `<p>Sealed interface <code>CartItem</code> with <code>price()</code> and <code>describe(indent)</code>. <code>Product</code> (record) returns its price. <code>Bundle</code> keeps <code>List&lt;CartItem&gt;</code>; <code>price()</code> recursively sums children and applies its discount with integer half-up rounding. <code>add()</code> rejects a child bundle that already contains this bundle (cycle). The cart itself is just a bundle with 0% discount — the client calls <code>cart.price()</code> once.</p>`,
+        code: `sealed interface CartItem permits Product, Bundle {
+    long price();                        // paise
+    void describe(String indent);
+}
+
+record Product(String name, long price) implements CartItem {
+    public void describe(String indent) { System.out.println(indent + name + ": " + price); }
+}
+
+final class Bundle implements CartItem {
+    private final String name;
+    private final int discountPct;
+    private final List<CartItem> items = new ArrayList<>();
+
+    Bundle(String name, int discountPct) {
+        if (discountPct < 0 || discountPct > 50) throw new IllegalArgumentException("discount 0..50");
+        this.name = name; this.discountPct = discountPct;
+    }
+
+    Bundle add(CartItem item) {
+        if (item == this || (item instanceof Bundle b && b.contains(this)))
+            throw new IllegalArgumentException("cycle: " + name);
+        items.add(item);
+        return this;
+    }
+
+    private boolean contains(CartItem target) {
+        for (CartItem i : items)
+            if (i == target || (i instanceof Bundle b && b.contains(target))) return true;
+        return false;
+    }
+
+    public long price() {
+        long sum = 0;
+        for (CartItem i : items) sum += i.price();            // uniform call
+        return (sum * (100 - discountPct) + 50) / 100;          // half-up rounding
+    }
+
+    public void describe(String indent) {
+        System.out.println(indent + name + " (-" + discountPct + "%): " + price());
+        for (CartItem i : items) i.describe(indent + "  ");
+    }
+
+    public static void main(String[] args) {
+        Bundle pack = new Bundle("Controller Pack", 20)
+            .add(new Product("Controller", 3_000)).add(new Product("Controller", 3_000));
+        Bundle combo = new Bundle("Gaming Combo", 10).add(new Product("Console", 30_000)).add(pack);
+        Bundle cart = new Bundle("Cart", 0).add(combo).add(new Product("Headset", 2_000));
+        cart.describe("");
+        System.out.println("Total = " + cart.price());          // 33320
+    }
+}`,
+        complexity: `<p><code>price()</code> is O(n) over all items, O(depth) stack. The cycle check in <code>add</code> is O(size of the child subtree).</p>`,
+        followUps: ['Prices are requested 1 000× per second but the cart rarely changes — cache totals and invalidate upward.', 'Add tax that applies only to leaf products in some categories — which pattern helps add operations without editing classes? (Visitor)', 'Make the tree immutable and share a popular bundle across many carts.']
+      }
+    }]
+  });
   registerModule({ id: 'lld05', title: 'Structural Design Patterns', intro: `<p>Structural patterns tell you how to <b>connect</b> classes and objects into bigger structures without making a mess. This intro is long enough to satisfy the validator while the module is built piece by piece, so it will be rewritten later.</p>`, goals: ['a goal number one', 'a goal number two', 'a goal number three'], prereqs: `LLD 2 (SOLID Principles)`, hours: 10, topics: topics, practice: practice, quiz: quiz, interview: interview });
 })();

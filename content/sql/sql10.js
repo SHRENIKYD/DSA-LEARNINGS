@@ -1209,6 +1209,366 @@ CREATE INDEX idx_orders_dash ON orders (created_at) INCLUDE (status, total_cents
       }
     }]
   });
+
+  /* =====================================================================
+     TOPIC 7 - Selectivity, cardinality and statistics
+     ===================================================================== */
+  topics.push({
+    title: 'Selectivity, Cardinality & When the Planner Ignores Your Index',
+    analogy: `<p>You are in a library with a perfect card catalogue. Question 1: "find the book <i>Zen and the Art of Motorcycle Maintenance</i>" — use the catalogue, walk to one shelf, done. Question 2: "bring me <b>every</b> book written in English" — that is 90% of the library. Looking each one up in the catalogue and walking to its shelf one by one would be absurd; you would just <b>walk every aisle once</b> with a trolley. A database planner makes exactly this call: an index is a great way to find <b>a few</b> things and a terrible way to fetch <b>most</b> things.</p>`,
+    explain: `<p>Two words you must use precisely:</p>
+<ul>
+<li><b>Cardinality</b> of a column = number of <b>distinct values</b>. <code>email</code>: 2,000 distinct (high). <code>country</code>: 5 (low). <code>is_vip</code>: 2 (very low).</li>
+<li><b>Selectivity</b> of a predicate = <b>fraction of rows it matches</b>. <code>email = ?</code> → 1/2,000 = 0.05% (highly selective = good for an index). <code>status = 'delivered'</code> → 68% (not selective).</li>
+</ul>
+<p>Why it matters: a secondary index seek costs roughly <b>one random page read per matching row</b> (the key lookup), while a full scan costs <b>one sequential read per table page</b>, and each page holds many rows. So:</p>
+${H.table(['Rows matched', 'Index path', 'Full scan', 'Winner'], [
+  ['10 of 20,000 (0.05%)', '~3 + 10 random reads', '~1,000 sequential pages', '<span class="c-g">index</span>'],
+  ['200 of 20,000 (1%)', '~200 random reads', '~1,000 sequential pages', '<span class="c-y">close — depends on storage &amp; caching</span>'],
+  ['13,600 of 20,000 (68%)', '~13,600 random reads', '~1,000 sequential pages', '<span class="c-r">scan</span>']
+])}
+<p>The break-even point is typically somewhere around <b>1–10% of rows</b> (lower on spinning disks, higher on SSDs, much higher if the index is covering or the table is physically ordered by that column). Above it, a good planner <b>ignores your index on purpose</b> — that is correct behaviour, not a bug.</p>
+<p><b>How does the planner know how many rows will match?</b> From <b>statistics</b> it collects with <code>ANALYZE</code>: row counts, distinct counts, most-common values, histograms (Postgres <code>pg_stats</code>, MySQL 8 histograms, SQL Server statistics objects). SQLite's <code>ANALYZE</code> stores <code>sqlite_stat1</code>: "rows in table, average rows per distinct key". Stale or missing statistics → bad estimates → bad plans.</p>
+<p><b>Skew</b> is the classic trap. <code>status</code> has 5 values but they are not equal: <i>pending</i> is 1% and <i>delivered</i> 68%. The same index is perfect for <code>status = 'pending'</code> and useless for <code>status = 'delivered'</code>. Planners with histograms/MCV lists handle this; planners using only averages (SQLite by default) do not. The pro move for a hot, rare value: a <b>partial index</b> (<code>… WHERE status = 'pending'</code>) that contains only those rows.</p>`,
+    clues: [
+      '"I created an index but the planner still does a Seq Scan" → low selectivity, stale stats, or a non-sargable predicate',
+      '"Should I index a boolean / gender / status column?" → only if you query the RARE value (partial index), or as a later column in a composite',
+      '"Queue table: WHERE status = \'pending\' ORDER BY created_at" → partial index on the rare state',
+      '"Query was fast yesterday, slow today, same SQL" → plan flip after stats changed or data skew + parameter sniffing',
+      '"Estimate vs actual rows differ 100×" in EXPLAIN ANALYZE → statistics problem (ANALYZE, extended stats, histograms)'
+    ],
+    code: [shop(`-- Cardinality and selectivity of candidate columns
+SELECT COUNT(*)                       AS total_rows,
+       COUNT(DISTINCT email)          AS email_cardinality,
+       COUNT(DISTINCT country)        AS country_cardinality,
+       COUNT(DISTINCT is_vip)         AS vip_cardinality,
+       ROUND(100.0 * SUM(is_vip) / COUNT(*), 1) AS pct_vip
+FROM customers;
+
+-- Skew: selectivity of each status value
+SELECT status, COUNT(*) AS n, ROUND(100.0 * COUNT(*) / (SELECT COUNT(*) FROM orders), 2) AS selectivity_pct
+FROM orders GROUP BY status ORDER BY n;
+
+-- What SQLite's statistics say: "rows  avg-rows-per-key" (an AVERAGE hides the skew)
+CREATE INDEX idx_vip ON customers(is_vip);
+ANALYZE;
+SELECT tbl, idx, stat FROM sqlite_stat1 WHERE idx = 'idx_vip';   -- '2000 1000' although is_vip=1 is only 40 rows`, 'Measure selectivity before you index'),
+    shop(`-- Partial index: only the rare, hot rows are indexed.
+CREATE INDEX idx_orders_pending ON orders(created_at) WHERE status = 'pending';
+
+EXPLAIN QUERY PLAN
+SELECT id, created_at FROM orders WHERE status = 'pending' ORDER BY created_at LIMIT 20;
+-- SCAN orders USING COVERING INDEX idx_orders_pending   (200 entries instead of 20,000)
+
+EXPLAIN QUERY PLAN
+SELECT id FROM orders WHERE status = 'paid' ORDER BY created_at LIMIT 20;   -- not covered by the partial index
+
+-- Forcing plans for experiments (SQLite): NOT INDEXED, INDEXED BY, or unary + on the column
+EXPLAIN QUERY PLAN SELECT * FROM orders NOT INDEXED WHERE status = 'pending';
+EXPLAIN QUERY PLAN SELECT * FROM orders WHERE +status = 'pending';`, 'Partial indexes for skewed data')],
+    codeTitle: ['Cardinality, selectivity, statistics', 'Partial index + forcing plans'],
+    viz: [{
+      title: 'Index or scan? Cost per value of a skewed column',
+      input: 'delivered:13600 shipped:4000 paid:1600 cancelled:600 pending:200',
+      inputLabel: 'value:count pairs (table = their sum)',
+      gen: function (input) {
+        var pairs = String(input).trim().split(/\s+/).map(function (p) { var m = p.split(':'); return [m[0], Number(m[1])]; });
+        if (!pairs.length || pairs.length > 8 || pairs.some(function (p) { return !p[0] || isNaN(p[1]) || p[1] < 0 || p[1] > 1e8; })) throw new Error('Use up to 8 value:count pairs, e.g. paid:1600 pending:200');
+        var N = pairs.reduce(function (s, p) { return s + p[1]; }, 0);
+        if (N < 1) throw new Error('Counts must add up to at least 1');
+        var RPP = 20, RAND = 4, HEIGHT = 3, frames = [];
+        var scan = Math.ceil(N / RPP);
+        frames.push({ narr: 'Table has <b>' + N.toLocaleString('en-US') + '</b> rows, ' + RPP + ' rows per page → a full scan reads <b>' + scan + '</b> pages sequentially (cost 1 each). An index seek reads ' + HEIGHT + ' index pages + <b>one random page per matching row</b>, and a random read costs <b>' + RAND + '×</b> a sequential one (Postgres default <code>random_page_cost = 4</code>).', parts: [
+          { type: 'bars', label: 'rows per value (the skew)', values: pairs.map(function (p) { return p[1]; }), idxLabels: pairs.map(function (p) { return p[0]; }) },
+          { type: 'vars', vals: { rows: N, rows_per_page: RPP, scan_cost: scan, random_cost_factor: RAND } }
+        ] });
+        var sel = [], dec = {};
+        pairs.forEach(function (p, i) {
+          var m = p[1], idx = (HEIGHT + m) * RAND, useIdx = idx < scan, pct = 100 * m / N;
+          sel.push(Math.round(pct * 100) / 100);
+          dec[i] = useIdx ? 'ok' : 'bad';
+          frames.push({ narr: '<code>WHERE col = \'' + p[0] + '\'</code> matches <b>' + m + '</b> rows → selectivity <b>' + pct.toFixed(2) + '%</b>. Index cost ≈ (' + HEIGHT + ' + ' + m + ') × ' + RAND + ' = <b>' + idx + '</b>; scan cost = <b>' + scan + '</b>. ' + (useIdx ? '<span class="c-g">Index wins</span> — few rows, few random reads.' : '<span class="c-r">Scan wins</span> — fetching ' + m + ' rows one random read at a time costs more than reading every page in order.'), parts: [
+            { type: 'bars', label: 'estimated cost', values: [idx, scan], idxLabels: ['index seek', 'full scan'], hl: useIdx ? { 0: 'ok' } : { 1: 'ok', 0: 'bad' } },
+            { type: 'vars', vals: { value: p[0], matches: m, selectivity_pct: pct.toFixed(2), decision: useIdx ? 'INDEX' : 'SCAN' }, hl: { decision: useIdx ? 'ok' : 'bad' } }
+          ] });
+        });
+        var breakEven = Math.max(0, Math.floor(scan / RAND - HEIGHT));
+        frames.push({ narr: 'Break-even: the index wins while matches &lt; scan_cost / ' + RAND + ' − ' + HEIGHT + ' ≈ <b>' + breakEven + '</b> rows (' + (100 * breakEven / N).toFixed(2) + '% of the table). Same column, same index — the right plan depends on the <b>value</b>. A planner that only knows the <b>average</b> rows per value (' + Math.round(N / pairs.length) + ' here) guesses the same plan for all of them.', parts: [
+          { type: 'bars', label: 'selectivity % per value (green = index, red = scan)', values: sel, idxLabels: pairs.map(function (p) { return p[0]; }), hl: dec },
+          { type: 'text', html: 'Real systems shift the break-even: SSD (<code>random_page_cost ≈ 1.1</code>) → higher; covering index → much higher (no random lookups); table physically ordered by the column (high correlation) → much higher.' }
+        ] });
+        frames.push({ narr: 'Takeaways: (1) index the <b>selective</b> predicates; (2) for skewed columns, a <b>partial index</b> on the rare hot value is tiny and perfect; (3) keep statistics fresh (<code>ANALYZE</code>) so the planner knows which values are rare.', parts: [
+          { type: 'table', label: 'what to do', columns: ['situation', 'move'], rows: [['unique-ish column (email, order id)', 'plain B-tree index'], ['rare hot value (pending, is_vip=1)', 'partial index WHERE value'], ['common value (delivered)', 'no index; scan or pre-aggregate'], ['low-cardinality column used with others', 'later column in a composite index']] }
+        ] });
+        return frames;
+      }
+    }],
+    examples: [
+      { title: 'Boolean flag: index the rare side only', html: `<p><code>is_vip</code> is 1 for 2% of customers. A full index on is_vip stores 2,000 entries, 98% of which (<code>is_vip = 0</code>) are never useful. <code>CREATE INDEX … ON customers(signup_date) WHERE is_vip = 1</code> stores only the 40 VIPs, already sorted by signup date for the VIP dashboard. SQLite's stat1 for a full is_vip index says "1000 rows per value" — the average hides the 40 vs 1,960 skew.</p>`, code: shop(`SELECT is_vip, COUNT(*) FROM customers GROUP BY is_vip;
+CREATE INDEX idx_vip_signup ON customers(signup_date) WHERE is_vip = 1;
+EXPLAIN QUERY PLAN SELECT id, signup_date FROM customers WHERE is_vip = 1 ORDER BY signup_date DESC LIMIT 10;`) },
+      { title: 'Low cardinality is fine as a LATER column', html: `<p><code>country</code> (5 values) alone is a poor index: each value matches 20%. But <code>WHERE country = 'IN' AND signup_date &gt;= '2026-01-01'</code> on <code>(country, signup_date)</code> is excellent: the equality on the low-cardinality column picks one fifth, the range then narrows to a slice of it. Cardinality of a <i>single</i> column is not the whole story; the selectivity of the <b>whole seek prefix</b> is.</p>`, code: shop(`CREATE INDEX idx_cust_country_signup ON customers(country, signup_date);
+EXPLAIN QUERY PLAN SELECT id FROM customers WHERE country = 'IN' AND signup_date >= '2026-08-01';
+SELECT COUNT(*) AS in_country, SUM(signup_date >= '2026-08-01') AS in_country_recent FROM customers WHERE country = 'IN';`) },
+      { title: 'Parameter sniffing / generic plans with skew', html: `<p>A prepared statement <code>WHERE status = $1</code> is planned once. If the first call used <code>'pending'</code> (1%) the cached plan is an index seek — reused for <code>'delivered'</code> (68%), it does 13,600 random lookups. SQL Server calls this <b>parameter sniffing</b>; Postgres switches to a generic plan after 5 executions if it looks no worse (<code>plan_cache_mode</code> controls it). Fixes: partial index for the rare value, separate queries per value class, <code>OPTION (RECOMPILE)</code> / <code>plan_cache_mode = force_custom_plan</code> for that statement.</p>` }
+    ],
+    deepDive: `<p><b>Postgres cost model in one line:</b> total ≈ <code>seq_page_cost × pages + cpu_tuple_cost × rows</code> for a scan, vs <code>random_page_cost × (index pages + heap pages fetched) + cpu costs</code> for an index scan. Defaults: seq 1.0, random 4.0; on SSDs many set random to 1.1–1.5, which makes indexes win more often. Between the two sits the <b>Bitmap Heap Scan</b>: collect all matching TIDs from the index, sort them by page, then read each needed heap page <b>once, in physical order</b> — great for "medium" selectivity (≈1–20%) and for combining indexes (BitmapAnd/BitmapOr).</p>
+<p><b>Correlation.</b> <code>pg_stats.correlation</code> near ±1 means index order ≈ physical order (e.g. created_at on an append-only table), so an index range scan touches pages sequentially and stays cheap even for large fractions. Near 0 means every match is a different random page.</p>
+<p><b>Statistics machinery.</b> Postgres samples 300 × <code>default_statistics_target</code> (default 100) rows: null fraction, n_distinct, most-common values + frequencies, equi-depth histogram. Multi-column correlations (city ↔ zip) fool independence assumptions → <code>CREATE STATISTICS (dependencies, ndistinct, mcv)</code>. MySQL 8: <code>ANALYZE TABLE … UPDATE HISTOGRAM ON col</code>; InnoDB index stats from sampled pages (<code>innodb_stats_persistent_sample_pages</code>). SQLite: <code>sqlite_stat1</code> averages; <code>sqlite_stat4</code> samples only if compiled with STAT4; run <code>PRAGMA optimize</code> periodically.</p>
+<p><b>Estimation errors compound.</b> A 10× misestimate at a filter becomes 100× after a join, flipping join algorithms. Reading <code>EXPLAIN ANALYZE</code> "rows=estimate vs actual" is the single most useful tuning habit. Partial and expression indexes also carry their own statistics in Postgres (expression stats), which fixes many estimates.</p>`,
+    aiEra: `<p><b>What AI changes:</b> assistants can read an <code>EXPLAIN ANALYZE</code> dump and point at the node where estimated and actual rows diverge — a huge time saver on 200-line plans. Some managed databases now adjust statistics targets or create extended statistics automatically.</p>
+<p><b>Use AI as a partner:</b> paste the plan + <code>pg_stats</code> rows for the filtered columns and ask "is this a selectivity problem, a statistics problem, or a missing-index problem?" Then test the hypothesis yourself (ANALYZE, partial index, rewrite).</p>
+<p><b>Where AI goes wrong:</b> it insists "always index columns used in WHERE" — including 50/50 booleans — and suggests index hints to force a seek that is actually slower. It cannot see your value distribution unless you show it. <b>What you must still own:</b> computing selectivity from real data, recognising skew, and knowing that "the planner ignored my index" is often the planner being right.</p>`,
+    problems: [{
+      title: 'Index a Job Queue Without Bloating It',
+      level: 'Hard', tags: ['partial index', 'selectivity', 'skew'], companies: ['Stripe', 'GitHub', 'Shopify'],
+      statement: `<p>A background worker polls every second: <code>SELECT id, created_at FROM orders WHERE status = 'pending' ORDER BY created_at LIMIT 20</code>. Only 1% of orders are pending at any time; 68% are delivered and stay forever. A teammate proposes <code>CREATE INDEX ON orders(status, created_at)</code>. Propose something smaller that is at least as fast, and explain the selectivity reasoning.</p>`,
+      constraints: `<p>SQLite shop database: 20,000 orders, 200 pending. The index must make the query covering and avoid any sort.</p>`,
+      example: `<p>Teammate's index: ${H.c('y', '20,000 entries')}, works. Better: partial index ${H.c('g', '200 entries')}: <code>(created_at) WHERE status = 'pending'</code> → plan ${H.c('g', 'SCAN orders USING COVERING INDEX idx_orders_pending')} — "scan" of a 200-entry index that stops after 20.</p>`,
+      brute: { why: `<p>No index: every poll scans 20,000 rows and sorts the 200 pending ones — 86,400 polls/day × full scans. The full composite index fixes speed but stores 19,800 entries (delivered/shipped/…) that the worker will never ask for, and pays index maintenance for every order insert and status change of those rows.</p>`, code: shop(`EXPLAIN QUERY PLAN
+SELECT id, created_at FROM orders WHERE status = 'pending' ORDER BY created_at LIMIT 20;   -- SCAN + TEMP B-TREE
+CREATE INDEX idx_orders_status_created ON orders(status, created_at);
+EXPLAIN QUERY PLAN
+SELECT id, created_at FROM orders WHERE status = 'pending' ORDER BY created_at LIMIT 20;   -- works, but indexes ALL 20,000 rows`) },
+      mcq: { q: 'Why is a partial index a good fit here?', options: ['The query always asks for the same rare value, so only those 1% of rows need index entries', 'Partial indexes are faster for every query', 'SQLite cannot index status', 'Because pending rows have NULL created_at'], answer: 0, explain: 'The predicate is constant (status = \'pending\') and highly selective. A partial index stores just those rows: ~100× smaller, cheaper to maintain, always cached.' },
+      hints: [`<p>Hint 1: the WHERE value never changes — the worker always wants <code>'pending'</code>. What fraction of rows is that?</p>`, `<p>Hint 2: a partial index has its own WHERE clause; the query's WHERE must imply it. Index the ORDER BY column so no sort is needed; id is the rowid, so it is covered for free.</p>`, `<p>Hint 3: <code>CREATE INDEX idx_orders_pending ON orders(created_at) WHERE status = 'pending';</code> — check the plan says COVERING and has no TEMP B-TREE. Rows leave the index automatically when their status changes.</p>`],
+      solution: {
+        approach: `<p>Selectivity of <code>status = 'pending'</code> is 1% and the value is fixed, so index <b>only those rows</b>, ordered by the sort column. The worker's query matches the partial index predicate, reads the first 20 entries in created_at order, and gets <code>id</code> from the rowid — covering, no sort, no table access. When an order moves to 'paid', its entry is deleted from the partial index, so the index stays at "current queue size", not "all history".</p>`,
+        code: shop(`CREATE INDEX idx_orders_pending ON orders(created_at) WHERE status = 'pending';
+
+EXPLAIN QUERY PLAN
+SELECT id, created_at FROM orders WHERE status = 'pending' ORDER BY created_at LIMIT 20;
+-- SCAN orders USING COVERING INDEX idx_orders_pending
+
+SELECT id, created_at FROM orders WHERE status = 'pending' ORDER BY created_at LIMIT 20;
+
+-- Size comparison: entries in the partial index vs a full index
+SELECT SUM(status = 'pending') AS partial_index_entries, COUNT(*) AS full_index_entries FROM orders;`),
+        alt: [pg(`-- PostgreSQL: same idea; workers usually also lock rows they take
+CREATE INDEX CONCURRENTLY idx_orders_pending ON orders (created_at) WHERE status = 'pending';
+SELECT id FROM orders WHERE status = 'pending' ORDER BY created_at LIMIT 20 FOR UPDATE SKIP LOCKED;`, 'PostgreSQL queue pattern')],
+        complexity: `<p>Each poll: O(log P + 20) for P pending rows (P ≈ 200) instead of O(N) scan + O(P log P) sort. Index size O(P) instead of O(N). Write cost only for rows entering/leaving 'pending'.</p>`,
+        followUps: ['What if workers sometimes query <code>status IN (\'pending\', \'retry\')</code>? (partial index WHERE status IN (…), and check the planner can prove implication)', 'Why does Postgres need <code>FOR UPDATE SKIP LOCKED</code> for multiple workers?']
+      }
+    }]
+  });
+
+  /* =====================================================================
+     TOPIC 8 - When indexes hurt
+     ===================================================================== */
+  var REDUNDANT_SQL = `-- Find redundant indexes: same columns, or a left prefix of another index on the same table.
+WITH idx AS (
+  SELECT m.name AS tbl, il.name AS idx,
+         (SELECT group_concat(name, ',')
+          FROM (SELECT name FROM pragma_index_info(il.name) ORDER BY seqno)) AS cols
+  FROM sqlite_master AS m, pragma_index_list(m.name) AS il
+  WHERE m.type = 'table'
+)
+SELECT a.tbl, a.idx AS redundant_index, a.cols, b.idx AS made_redundant_by, b.cols AS by_cols
+FROM idx AS a
+JOIN idx AS b ON a.tbl = b.tbl AND a.idx <> b.idx
+WHERE substr(b.cols, 1, length(a.cols) + 1) = a.cols || ','     -- a is a strict left prefix of b
+   OR (b.cols = a.cols AND a.idx > b.idx)                        -- exact duplicate (report one of the pair)
+ORDER BY a.tbl, a.idx;`;
+
+  topics.push({
+    title: 'When Indexes Hurt: Write Cost, Bloat & Non-Sargable Queries',
+    analogy: `<p>Picture a textbook with <b>15 different indexes</b> at the back — by topic, by author, by year, by colour of the diagram… Reading is great. But every time the author adds or edits a single page, someone must update <b>all 15 indexes</b>, the book gets thicker, and most of those indexes are never opened. Worse, if a reader asks "which topics have names that <i>end</i> in -osis?", even the alphabetical topic index cannot help — it is sorted by the <i>start</i> of the word. Indexes are a <b>trade</b>: faster specific reads, paid for by every write and by space — and only for questions phrased the way the index is sorted.</p>`,
+    explain: `<p><b>1. Every write pays for every index.</b> An <code>INSERT</code> into a table with 6 indexes performs 7 B+tree insertions (table + 6), each touching a leaf page (sometimes splitting it) and writing to the WAL. <code>DELETE</code> likewise. An <code>UPDATE</code> touches every index that contains a changed column (in Postgres, unless the update is HOT, <b>all</b> indexes get a new entry). Write-heavy tables (events, logs, queues) can lose most of their throughput to over-indexing.</p>
+<p><b>2. Space and memory.</b> Indexes often add up to more bytes than the table itself. They compete for the same buffer pool / page cache; an index nobody uses still pushes useful pages out of RAM, and makes backups, replication and restores slower.</p>
+<p><b>3. Non-sargable predicates make the index useless.</b> "Sargable" (Search-ARGument-able) means the predicate can be turned into a seek on the sorted key. These cannot:</p>
+${H.table(['Non-sargable (scan)', 'Why', 'Sargable rewrite'], [
+  ['<code>WHERE date(created_at) = \'2026-03-05\'</code>', 'function wraps the column; index is sorted by created_at, not by date(created_at)', '<code>created_at &gt;= \'2026-03-05\' AND created_at &lt; \'2026-03-06\'</code>'],
+  ['<code>WHERE lower(email) = ?</code>', 'same: function on column', 'store normalised email, or an <b>expression index</b> on lower(email)'],
+  ['<code>WHERE price * 1.18 &gt; 1000</code>', 'arithmetic on the column', '<code>price &gt; 1000 / 1.18</code>'],
+  ['<code>WHERE name LIKE \'%son\'</code>', 'leading wildcard: no start point in sort order', 'full-text search (FTS5, GIN trigram), or reversed-string index'],
+  ['<code>WHERE phone = 5551234</code> (phone is TEXT)', 'implicit cast on the column (MySQL/SQL Server)', 'compare with the right type: <code>\'5551234\'</code>'],
+  ['<code>WHERE status &lt;&gt; \'delivered\'</code>', 'negation usually matches most rows', '<code>status IN (…the rare values…)</code>']
+])}
+<p><b>4. Low-selectivity indexes</b> (previous topic) cost writes but are never chosen. <b>5. Redundant indexes</b>: <code>(a)</code> when <code>(a, b)</code> exists, or exact duplicates created by different people/ORM migrations. <b>6. Bulk loads</b>: inserting 100M rows into a table with 8 indexes is far slower than loading first and building indexes after (each build is one efficient sorted pass).</p>
+<p><b>The discipline:</b> every index must name the query it serves. Periodically find unused ones (Postgres <code>pg_stat_user_indexes.idx_scan = 0</code>, MySQL <code>sys.schema_unused_indexes</code>) and redundant ones, and drop them (MySQL 8 lets you make an index <b>INVISIBLE</b> first to test safely).</p>`,
+    clues: [
+      '"Inserts got slower after we added indexes" / "write-heavy table" → write amplification; count and justify every index',
+      '"WHERE YEAR(created_at) = 2026" / "WHERE LOWER(email) = ?" → non-sargable; rewrite as a range or use an expression index',
+      '"Search for names containing / ending with a string" → leading wildcard defeats B-trees; use full-text / trigram indexes',
+      '"We have 14 indexes on this table" → look for unused, duplicate and left-prefix-redundant indexes',
+      '"Bulk import of 50M rows is slow" → drop or defer secondary indexes, load, then create them'
+    ],
+    code: [shop(`CREATE INDEX idx_orders_created ON orders(created_at);
+CREATE INDEX idx_cust_email ON customers(email);
+
+-- Non-sargable: functions/arithmetic on the column → SCAN
+EXPLAIN QUERY PLAN SELECT id FROM orders WHERE date(created_at) = '2026-03-05';
+EXPLAIN QUERY PLAN SELECT id FROM orders WHERE substr(created_at, 1, 7) = '2026-03';
+EXPLAIN QUERY PLAN SELECT id FROM customers WHERE lower(email) = 'user7@mail.com';
+EXPLAIN QUERY PLAN SELECT id FROM customers WHERE email LIKE '%7@mail.com';
+
+-- Sargable rewrites → SEARCH
+EXPLAIN QUERY PLAN SELECT id FROM orders WHERE created_at >= '2026-03-05' AND created_at < '2026-03-06';
+EXPLAIN QUERY PLAN SELECT id FROM orders WHERE created_at >= '2026-03-01' AND created_at < '2026-04-01';
+
+-- Or index the expression itself (must match the query's expression exactly)
+CREATE INDEX idx_cust_email_lower ON customers(lower(email));
+EXPLAIN QUERY PLAN SELECT id FROM customers WHERE lower(email) = 'user7@mail.com';
+
+-- Same answers, so the rewrite is safe:
+SELECT (SELECT COUNT(*) FROM orders WHERE date(created_at) = '2026-03-05') AS with_function,
+       (SELECT COUNT(*) FROM orders WHERE created_at >= '2026-03-05' AND created_at < '2026-03-06') AS with_range;`, 'Non-sargable vs sargable, live'),
+    shop(`CREATE INDEX idx_c ON orders(customer_id);
+CREATE INDEX idx_cc ON orders(customer_id, created_at);   -- makes idx_c redundant
+CREATE INDEX idx_s ON orders(status);
+CREATE INDEX idx_s_dup ON orders(status);                 -- exact duplicate
+CREATE INDEX idx_total ON orders(total_cents);
+
+` + REDUNDANT_SQL, 'Find redundant and duplicate indexes with SQL'),
+    pg(`-- PostgreSQL: indexes never scanned since stats reset, biggest first
+SELECT s.relname AS table_name, s.indexrelname AS index_name, s.idx_scan,
+       pg_size_pretty(pg_relation_size(s.indexrelid)) AS size
+FROM pg_stat_user_indexes s
+JOIN pg_index i ON i.indexrelid = s.indexrelid
+WHERE s.idx_scan = 0 AND NOT i.indisunique          -- keep indexes that enforce constraints
+ORDER BY pg_relation_size(s.indexrelid) DESC;
+
+-- MySQL 8: test a drop safely by hiding the index from the optimizer first
+ALTER TABLE orders ALTER INDEX idx_total INVISIBLE;
+SELECT * FROM sys.schema_unused_indexes;
+SELECT * FROM sys.schema_redundant_indexes;`, 'Unused-index audits in Postgres / MySQL')],
+    codeTitle: ['Sargable rewrites and expression indexes', 'Redundant index finder (SQLite)', 'Production audits'],
+    viz: [{
+      title: 'Write amplification: what each extra index costs an INSERT',
+      input: '6 2000',
+      inputLabel: 'number of secondary indexes (0-10), inserts per second',
+      gen: function (input) {
+        var a = String(input).trim().split(/[\s,]+/).map(Number);
+        if (a.length !== 2 || a.some(isNaN) || a[0] < 0 || a[0] > 10 || a[1] < 1 || a[1] > 1e6) throw new Error('Enter: indexes (0-10) and inserts/sec (1-1000000), e.g. 6 2000');
+        var K = Math.floor(a[0]), ips = a[1], frames = [], vals = [], lbl = [];
+        var names = ['customer_id', 'status', 'created_at', 'email', 'total_cents', '(cust, created)', 'product_id', 'country', 'coupon', 'updated_at'];
+        frames.push({ narr: 'One <code>INSERT</code> into <b>orders</b> with no secondary indexes: one B+tree insertion into the table itself (find the leaf, write the row, log it to the WAL). Call that <b>1 unit</b> of write work.', parts: [
+          { type: 'bars', label: 'B+tree insertions per INSERT', values: [1], idxLabels: ['table'], hl: { 0: 'cur' } },
+          { type: 'vars', vals: { indexes: 0, btree_writes_per_insert: 1, btree_writes_per_sec: ips } }
+        ] });
+        vals.push(1); lbl.push('table');
+        for (var k = 1; k <= K; k++) {
+          vals.push(1); lbl.push(names[k - 1]);
+          var hl = {}; hl[k] = 'bad';
+          frames.push({ narr: 'Add index #' + k + ' on <b>' + names[k - 1] + '</b>. Every insert now also descends this index, inserts an entry into a leaf (in a <i>different</i> place than the table row, often a random page), and logs it. ' + (k === 1 ? 'Reads by ' + names[0] + ' got much faster; writes got ~2× the tree work.' : 'Total: <b>' + (k + 1) + '</b> B+tree insertions per INSERT.'), parts: [
+            { type: 'bars', label: 'B+tree insertions per INSERT', values: vals.slice(), idxLabels: lbl.slice(), hl: hl },
+            { type: 'vars', vals: { indexes: k, btree_writes_per_insert: k + 1, btree_writes_per_sec: (k + 1) * ips }, hl: { btree_writes_per_sec: 'bad' } }
+          ] });
+        }
+        var tot = [], tl = [];
+        for (k = 0; k <= 10; k++) { tot.push(k + 1); tl.push(k + ' idx'); }
+        var hk = {}; hk[K] = 'sel';
+        frames.push({ narr: 'At <b>' + ips + '</b> inserts/sec with ' + K + ' indexes the engine performs <b>' + ((K + 1) * ips).toLocaleString('en-US') + '</b> B+tree insertions/sec, plus extra WAL, page splits and dirty pages to flush. Random-key indexes (email, UUID) hurt most: their inserts land on random leaves that are often not in memory.', parts: [
+          { type: 'bars', label: 'write work per INSERT vs number of indexes', values: tot, idxLabels: tl, hl: hk }
+        ] });
+        frames.push({ narr: 'Space too: each index stores (key + row pointer) for <b>every</b> row. With ' + K + ' indexes the indexes alone can exceed the table size — and they all compete for the same RAM cache.', parts: [
+          { type: 'bars', label: 'relative disk size (table = 10)', values: [10].concat(names.slice(0, K).map(function (n, i) { return [3, 3, 4, 6, 3, 6, 3, 3, 3, 4][i]; })), idxLabels: ['table'].concat(names.slice(0, K)), hl: { 0: 'cur' } }
+        ] });
+        frames.push({ narr: 'Rule: keep an index only if it serves an important query (check its usage stats). Merge overlapping ones into composites, drop redundant left-prefixes and duplicates, and for bulk loads create secondary indexes <b>after</b> the load.', parts: [
+          { type: 'table', label: 'index review checklist', columns: ['question', 'if "no" →'], rows: [['Which query uses it? (usage stats > 0)', 'drop / make INVISIBLE first'], ['Is it a left prefix of another index?', 'drop it'], ['Is the leading column selective for its queries?', 'make partial or reorder'], ['Does the table take heavy writes?', 'fewer, wider composite indexes']] }
+        ] });
+        return frames;
+      }
+    }, {
+      title: 'Sargable or not? Why a function on the column forces a scan',
+      gen: function () {
+        var idx = [['2026-03-04 22:10', 11], ['2026-03-05 01:30', 4], ['2026-03-05 09:15', 9], ['2026-03-05 17:40', 2], ['2026-03-05 23:59', 7], ['2026-03-06 00:20', 5], ['2026-03-06 08:05', 1], ['2026-03-07 12:00', 3]];
+        var cols = ['created_at (index key, sorted)', '→ rowid'];
+        var frames = [];
+        frames.push({ narr: 'An index on <b>created_at</b>: entries sorted by the full timestamp. Goal: all orders placed on <b>2026-03-05</b>.', parts: [
+          { type: 'table', label: 'idx_orders_created', columns: cols, rows: idx }
+        ] });
+        var dateOf = function (s) { return s.slice(0, 10); };
+        var hl = {}, n = 0;
+        idx.forEach(function (e, i) {
+          var ok = dateOf(e[0]) === '2026-03-05'; if (ok) n++;
+          hl[i] = ok ? 'ok' : 'bad';
+          var view = Object.assign({}, hl); view[i] = ok ? 'ok' : 'cur';
+          frames.push({ narr: '<code>WHERE date(created_at) = \'2026-03-05\'</code>: the index is sorted by created_at, not by date(created_at), so the planner cannot "jump" — it must compute date() on <b>every</b> entry (or every row). Entry ' + (i + 1) + ': date(' + e[0] + ') = ' + dateOf(e[0]) + ' → ' + (ok ? 'match' : 'no') + '.', parts: [
+            { type: 'table', label: 'non-sargable: evaluate the function everywhere', columns: cols, rows: idx, hl: view },
+            { type: 'vars', vals: { entries_examined: i + 1, matches: n }, hl: { entries_examined: 'bad' } }
+          ] });
+        });
+        var hs = {};
+        idx.forEach(function (e, i) { if (e[0] >= '2026-03-05' && e[0] < '2026-03-06') hs[i] = 'ok'; });
+        hs[0] = 'done'; hs[5] = 'bad';
+        frames.push({ narr: 'Rewrite as a <b>range on the raw column</b>: <code>created_at &gt;= \'2026-03-05\' AND created_at &lt; \'2026-03-06\'</code>. Now the planner seeks to the first entry ≥ 2026-03-05, walks right, and stops at the first entry ≥ 2026-03-06 (red). Same rows, ' + (n + 1) + ' entries examined instead of ' + idx.length + ' — and on a real table, a handful instead of millions.', parts: [
+          { type: 'table', label: 'sargable: seek + short walk', columns: cols, rows: idx, hl: hs },
+          { type: 'vars', vals: { entries_examined: n + 1, matches: n }, hl: { entries_examined: 'ok' } }
+        ] });
+        frames.push({ narr: 'General rule: <b>leave the indexed column bare</b> on one side of the comparison and move all computation to the constant side. If you truly need the function, index the expression (<code>CREATE INDEX … ON t(lower(email))</code>) — but then the query must use the identical expression.', parts: [
+          { type: 'bars', label: 'entries examined', values: [idx.length, n + 1], idxLabels: ['date(col) = …', 'col range'], hl: { 0: 'bad', 1: 'ok' } }
+        ] });
+        return frames;
+      }
+    }],
+    examples: [
+      { title: 'Case-insensitive email login', html: `<p><code>WHERE lower(email) = lower(?)</code> scans. Options: (1) normalise on write (store emails lower-cased) and index the column — best; (2) expression index <code>ON users(lower(email))</code>; (3) Postgres <code>citext</code> type or a case-insensitive collation; (4) SQLite <code>COLLATE NOCASE</code> on the column/index. All make the predicate sargable again.</p>`, code: shop(`CREATE INDEX idx_email_nocase ON customers(email COLLATE NOCASE);
+EXPLAIN QUERY PLAN SELECT id FROM customers WHERE email = 'USER7@MAIL.COM' COLLATE NOCASE;
+SELECT id, email FROM customers WHERE email = 'USER7@MAIL.COM' COLLATE NOCASE;`) },
+      { title: 'OR across different columns', html: `<p><code>WHERE customer_id = 42 OR status = 'pending'</code>: a single composite index cannot serve both branches. With separate indexes on each column SQLite does a <b>MULTI-INDEX OR</b> (Postgres: BitmapOr, MySQL: index_merge union); without them, a scan. Equivalent manual rewrite: <code>UNION</code> of two sargable queries. Index both columns only if this query matters.</p>`, code: shop(`EXPLAIN QUERY PLAN SELECT id FROM orders WHERE customer_id = 42 OR status = 'pending';   -- SCAN
+CREATE INDEX idx_c ON orders(customer_id);
+CREATE INDEX idx_s ON orders(status);
+EXPLAIN QUERY PLAN SELECT id FROM orders WHERE customer_id = 42 OR status = 'pending';   -- MULTI-INDEX OR`) },
+      { title: 'Bulk load: index after, not before', html: `<p>Loading 50M rows into a table with 5 secondary indexes means 250M random leaf insertions with page splits. Loading into a bare table and then running <code>CREATE INDEX</code> lets each index be built by <b>sorting</b> the keys once and writing packed leaves bottom-up — often 5–10× faster and producing smaller, unfragmented indexes. Postgres: <code>maintenance_work_mem</code> for the sort; MySQL: <code>ALTER TABLE … ADD INDEX</code> uses sorted index build too.</p>`, code: lab(`CREATE TABLE events (id INTEGER PRIMARY KEY, user_id INTEGER, kind TEXT, at TEXT);
+-- 1) load with no secondary indexes
+INSERT INTO events (user_id, kind, at)
+WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 20000)
+SELECT (i * 7) % 1000, CASE i % 3 WHEN 0 THEN 'view' WHEN 1 THEN 'click' ELSE 'buy' END,
+       datetime('2026-10-01', '+' || i || ' seconds') FROM n;
+-- 2) then build the indexes in one sorted pass each
+CREATE INDEX idx_events_user_at ON events(user_id, at);
+EXPLAIN QUERY PLAN SELECT kind, at FROM events WHERE user_id = 7 ORDER BY at DESC LIMIT 10;`) }
+    ],
+    deepDive: `<p><b>How much do indexes slow writes?</b> Rough rule from benchmarks: each additional secondary B-tree index costs on the order of 10–30% of single-row insert throughput when the index fits in memory, and much more when it does not (random leaf reads before each write). Sequential keys (timestamps, increasing ids) stay cheap because inserts hit the hot right-most leaf; random keys (UUIDv4, emails, hashes) are the expensive ones.</p>
+<p><b>Postgres specifics.</b> MVCC writes a new tuple version for every UPDATE; if any indexed column changes, or the page lacks free space, every index gets a new entry (non-HOT). Adding an index on a frequently updated column (e.g. <code>last_seen_at</code>) can therefore multiply write I/O and bloat <i>all</i> indexes. <code>pg_stat_user_tables.n_tup_hot_upd</code> shows your HOT ratio. Build indexes with <code>CREATE INDEX CONCURRENTLY</code> (no write lock; can leave an INVALID index on failure — check and drop).</p>
+<p><b>MySQL/InnoDB.</b> The <b>change buffer</b> defers secondary-index leaf updates for non-unique indexes whose pages are not in memory, merging them later — softening (not removing) the cost. Unique indexes cannot be buffered (must check uniqueness immediately). Online DDL: <code>ALGORITHM=INPLACE, LOCK=NONE</code>; large tables often use gh-ost / pt-online-schema-change.</p>
+<p><b>LSM-tree engines</b> (RocksDB/MyRocks, Cassandra, ScyllaDB) turn random index writes into sequential appends, making writes cheap and pushing cost to reads and compaction — the reason write-heavy systems choose them (Storage Engines module).</p>
+<p><b>Bloat and maintenance.</b> Deleted/updated entries leave half-empty pages; indexes on monotonically deleted ranges (queues, TTL tables) bloat badly. Monitor with <code>pgstattuple</code> / <code>pg_stat_all_indexes</code>, rebuild with <code>REINDEX CONCURRENTLY</code> (PG 12+), <code>OPTIMIZE TABLE</code>, or SQLite <code>REINDEX</code>/<code>VACUUM</code>.</p>
+<p><b>Planner overhead.</b> Each extra index is one more access path to cost; with dozens of indexes and many-table joins, planning time grows, and the chance of a bad plan choice rises. Fewer, well-designed composites beat many single-column indexes.</p>`,
+    aiEra: `<p><b>What AI changes:</b> it is now trivial to <i>add</i> indexes — an assistant or auto-tuner suggests one per slow query. The scarce skill is <b>subtraction</b>: proving which indexes are unused, redundant or harmful, and saying no to an index that would speed up a weekly report while slowing every checkout insert.</p>
+<p><b>Use AI as a partner:</b> feed it <code>pg_stat_user_indexes</code> + index definitions + write rates and ask for a ranked "drop / merge / keep" list with justification; ask it to rewrite non-sargable predicates in a codebase (it is good at turning <code>DATE(col) = ?</code> into ranges). Review each change and verify plans.</p>
+<p><b>Where AI goes wrong:</b> it drops indexes that back UNIQUE or foreign-key constraints, misses that stats reset recently (idx_scan = 0 after a restart means nothing), and produces "sargable" rewrites with off-by-one boundaries (<code>&lt;=</code> '2026-03-05 23:59:59' misses fractional seconds — use a half-open range). <b>What you must still own:</b> the read/write trade-off decision and correctness of every rewrite.</p>`,
+    problems: [{
+      title: 'Audit the Indexes of a Write-Heavy Orders Table',
+      level: 'Hard', tags: ['redundant index', 'write amplification', 'index audit'], companies: ['Amazon', 'Uber', 'Booking.com'],
+      statement: `<p>Over two years, five engineers added indexes to <code>orders</code>: <code>idx_c(customer_id)</code>, <code>idx_cc(customer_id, created_at)</code>, <code>idx_s(status)</code>, <code>idx_s_dup(status)</code>, <code>idx_total(total_cents)</code>. Inserts are now the bottleneck (5,000/s at peak). The hot read queries are: (1) <code>WHERE customer_id = ? ORDER BY created_at DESC LIMIT 20</code> and (2) <code>WHERE status = 'pending'</code>. Find what to drop — using SQL — and prove the hot queries keep their plans.</p>`,
+      constraints: `<p>SQLite shop database. Do not slow down queries (1) and (2). Usage stats for idx_total show zero scans in 30 days.</p>`,
+      example: `<p>Redundant: ${H.c('r', 'idx_c')} (left prefix of idx_cc), ${H.c('r', 'idx_s_dup')} (duplicate of idx_s). Unused: ${H.c('r', 'idx_total')}. Keep ${H.c('g', 'idx_cc')} and ${H.c('g', 'idx_s')} (or replace idx_s with a partial index on pending). Writes go from 6 to 3 B-tree insertions per INSERT.</p>`,
+      brute: { why: `<p>Keeping everything: each insert does 6 B+tree insertions (table + 5), two of which are pure duplicates of work another index already does, and one serves no query at all. Dropping indexes blindly by guess is the opposite brute force — it risks slowing a hot query. Do it by evidence.</p>`, code: shop(`CREATE INDEX idx_c ON orders(customer_id);
+CREATE INDEX idx_cc ON orders(customer_id, created_at);
+CREATE INDEX idx_s ON orders(status);
+CREATE INDEX idx_s_dup ON orders(status);
+CREATE INDEX idx_total ON orders(total_cents);
+-- 5 secondary indexes = 6 B-tree insertions for every new order:
+SELECT COUNT(*) + 1 AS btree_insertions_per_insert FROM pragma_index_list('orders');`) },
+      mcq: { q: 'Why is <code>idx_c(customer_id)</code> safe to drop when <code>idx_cc(customer_id, created_at)</code> exists?', options: ['Any seek on customer_id can use the left prefix of idx_cc', 'Because customer_id is a foreign key', 'Because idx_c is older', 'It is not safe; single-column indexes are always faster'], answer: 0, explain: 'Left-prefix rule: idx_cc is sorted by customer_id first, so it serves every query idx_c could. It is slightly wider, but the saved write cost dominates.' },
+      hints: [`<p>Hint 1: list every index with its ordered columns (<code>pragma_index_list</code> + <code>pragma_index_info</code>).</p>`, `<p>Hint 2: an index whose column list is a left prefix of another index on the same table (or identical to it) is redundant. Unused indexes are found from usage statistics (given here).</p>`, `<p>Hint 3: drop, then re-run EXPLAIN QUERY PLAN for both hot queries to prove they still seek (and check no UNIQUE/constraint index is dropped).</p>`],
+      solution: {
+        approach: `<p>Evidence-based cleanup: (1) query the catalog for duplicate and left-prefix-redundant indexes → idx_c and idx_s_dup; (2) usage stats say idx_total is never used → drop; (3) re-check the two hot plans: query 1 uses idx_cc (seek + ordered walk, no sort), query 2 uses idx_s. Result: 3 B-tree insertions per INSERT instead of 6, same read plans. Optional upgrade: replace idx_s with a partial index <code>WHERE status = 'pending'</code> to shrink it ~100×.</p>`,
+        code: shop(`CREATE INDEX idx_c ON orders(customer_id);
+CREATE INDEX idx_cc ON orders(customer_id, created_at);
+CREATE INDEX idx_s ON orders(status);
+CREATE INDEX idx_s_dup ON orders(status);
+CREATE INDEX idx_total ON orders(total_cents);
+
+` + REDUNDANT_SQL + `
+
+-- Drop the redundant + unused ones
+DROP INDEX idx_c;
+DROP INDEX idx_s_dup;
+DROP INDEX idx_total;
+
+-- Hot queries keep good plans
+EXPLAIN QUERY PLAN SELECT id, created_at FROM orders WHERE customer_id = 42 ORDER BY created_at DESC LIMIT 20;
+EXPLAIN QUERY PLAN SELECT id FROM orders WHERE status = 'pending';
+SELECT COUNT(*) + 1 AS btree_insertions_per_insert FROM pragma_index_list('orders');`),
+        complexity: `<p>Write work per INSERT: 6 → 3 B-tree insertions (~2× insert throughput headroom, less WAL, less RAM). Reads unchanged: query 1 O(log N + 20), query 2 O(log N + k). The audit query is O(#indexes²) over the catalog — trivial.</p>`,
+        followUps: ['How would you drop an index on a live MySQL table with less risk? (make it INVISIBLE first, watch latency, then drop)', 'Why might you keep a "redundant" single-column index in InnoDB if it is much narrower than the composite?']
+      }
+    }]
+  });
   registerModule({
     id: 'sql10', title: 'Index Internals', lang: 'sql',
     intro: `<p>tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro</p>`,

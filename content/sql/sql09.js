@@ -911,5 +911,1232 @@ SELECT id, email, deleted_at IS NOT NULL AS deleted FROM accounts ORDER BY id;`)
       }
     }]
   });
-  registerModule({ id: 'sql09', title: 'DML', intro: 'x', goals: [], prereqs: 'x', hours: 1, databases: { shop: DB_SHOP, lab: DB_LAB }, topics: topics, practice: practice, quiz: quiz, interview: interview });
+
+  /* ======================= TOPIC 5: Views (abstraction + security) ======================= */
+  var EMP_COLS = ['id', 'name', 'dept', 'title', 'salary', 'ssn', 'email'];
+  var EMP_ROWS = [[1, 'Asha', 'Eng', 'Eng Manager', 250000, '111-11-1111', 'asha@corp.com'], [2, 'Ben', 'Eng', 'Engineer', 180000, '222-22-2222', 'ben@corp.com'], [3, 'Chen', 'Sales', 'Account Exec', 90000, '333-33-3333', 'chen@corp.com'], [4, 'Dara', 'HR', 'HR Partner', 110000, '444-44-4444', 'dara@corp.com'], [5, 'Eli', 'Eng', 'Engineer', 170000, '555-55-5555', 'eli@corp.com']];
+
+  topics.push({
+    title: 'Views: Saved Queries for Simplicity and Security',
+    analogy: `<p>A view is a <b>shop window</b>. The storeroom (base table) has everything, including the safe with salaries and ID numbers. The window shows only what the passer-by is allowed to see — some items, some angles — and it always reflects what is in the store <i>right now</i>. Customers get the key to the window, never to the storeroom.</p>`,
+    explain: `<p>A <b>view</b> is a named SELECT stored in the database. You query it like a table: <code>SELECT * FROM employee_directory</code>. It stores <b>no data</b> — every time you read it, the database runs (more precisely, <i>inlines</i>) its query against the base tables, so it is always up to date.</p>
+<pre>CREATE VIEW employee_directory AS
+SELECT id, name, dept, title, email,
+       '***-**-' || substr(ssn, -4) AS ssn_masked   -- column masking
+FROM employees;                                     -- salary is simply not selected</pre>
+<p><b>Four jobs views do:</b></p>
+${H.table(['Job', 'Example'], [
+  ['<b>Security: hide columns</b>', 'directory without salary / SSN; masked card numbers'],
+  ['<b>Security: hide rows</b>', '<code>WHERE dept = \'Eng\'</code> for the Eng manager; only live rows (soft deletes)'],
+  ['<b>Simplify</b>', 'hide a 5-table join behind <code>order_summary</code>; analysts write 1-line queries'],
+  ['<b>Stable interface</b>', 'rename / split tables underneath while old code keeps reading the view']
+])}
+<p><b>How security works (Postgres / MySQL / SQL Server):</b> <code>REVOKE</code> every privilege on the base table from the analyst role, then <code>GRANT SELECT ON employee_directory TO analyst</code>. The view runs with its <i>owner's</i> rights, so analysts can read through the window but cannot open the storeroom. (SQLite has no users or GRANT — in SQLite, views are about simplification; access control lives in the app.)</p>
+<p><b>Can you write through a view?</b> Simple single-table views without GROUP BY / DISTINCT are <b>automatically updatable</b> in Postgres and MySQL. Add <code>WITH CHECK OPTION</code> so nobody can insert or update a row the view itself would not show. SQLite views are read-only — you make them writable with <code>INSTEAD OF</code> triggers (see the Triggers topic).</p>`,
+    clues: ['"analysts must not see salaries / PII" → column-restricted view + GRANT on the view only', '"each manager sees only their team" → row-filtering view (or row-level security)', '"hide this 5-table join from report writers" → view as an abstraction layer', '"we are renaming a table but old code must keep working" → compatibility view', '"inserts through the view must stay inside the view" → <code>WITH CHECK OPTION</code>', '"the view is slow" → it is just a query: index the base tables or materialize it'],
+    code: [shop(`-- 1) Column security: no salary, SSN masked to last 4 digits.
+CREATE VIEW employee_directory AS
+SELECT id, name, dept, title, email,
+       '***-**-' || substr(ssn, -4) AS ssn_masked
+FROM employees;
+
+-- 2) Row security: the Eng manager's view of their own team.
+CREATE VIEW eng_team AS
+SELECT id, name, title, salary
+FROM employees
+WHERE dept = 'Eng';
+
+-- 3) Aggregate-only view: pay stats without exposing any one person
+--    (groups of 1 would reveal an individual's salary, so hide them).
+CREATE VIEW dept_pay_stats AS
+SELECT dept, COUNT(*) AS headcount, CAST(AVG(salary) AS INTEGER) AS avg_salary
+FROM employees
+GROUP BY dept
+HAVING COUNT(*) >= 2;
+
+SELECT * FROM employee_directory;
+SELECT * FROM eng_team;
+SELECT * FROM dept_pay_stats;`, 'Three security views (▶ Run)'),
+      pg(`-- PostgreSQL: the access-control half that SQLite does not have.
+CREATE ROLE analyst NOLOGIN;
+REVOKE ALL ON employees FROM PUBLIC;                       -- nobody reads the base table directly
+
+CREATE VIEW employee_directory WITH (security_barrier = true) AS
+SELECT id, name, dept, title, email, '***-**-' || right(ssn, 4) AS ssn_masked
+FROM employees;
+GRANT SELECT ON employee_directory TO analyst;             -- the only door analysts get
+
+-- Updatable view that refuses rows it cannot see:
+CREATE VIEW eng_team AS
+SELECT id, name, dept, title FROM employees WHERE dept = 'Eng'
+WITH CHECK OPTION;
+-- UPDATE eng_team SET dept = 'Sales' WHERE id = 2;  -> ERROR: new row violates check option
+
+-- Alternative to many per-team views: row-level security on the table itself.
+ALTER TABLE employees ENABLE ROW LEVEL SECURITY;
+CREATE POLICY same_dept ON employees FOR SELECT
+  USING (dept = current_setting('app.dept'));`, 'GRANT, security_barrier, WITH CHECK OPTION, RLS (PostgreSQL reference)'),
+      shop(`-- A view is just a stored query: it always reflects the CURRENT base data.
+CREATE VIEW order_summary AS
+SELECT o.id AS order_id, c.name AS customer, p.name AS product,
+       o.qty, o.qty * p.price_cents AS total_cents, o.status
+FROM orders o
+JOIN customers c ON c.id = o.customer_id
+JOIN products  p ON p.id = o.product_id;
+
+SELECT * FROM order_summary WHERE status = 'paid';
+UPDATE products SET price_cents = 1099 WHERE id = 2;      -- change the base table...
+SELECT order_id, product, total_cents FROM order_summary WHERE product = 'USB-C Cable';  -- ...view sees it instantly
+-- Where is the view stored? Only its SQL text:
+SELECT name, sql FROM sqlite_master WHERE type = 'view';`, 'Views are always fresh: only the query is stored (▶ Run)')],
+    viz: {
+      title: 'Reading through a security view: who asks, what the view hides',
+      input: 'analyst',
+      inputLabel: 'Role: analyst · eng_manager · hr',
+      gen: function (input) {
+        var role = strIn(input).trim().toLowerCase();
+        var defs = {
+          analyst: { view: 'employee_directory', cols: ['id', 'name', 'dept', 'title', 'email', 'ssn_masked'], where: null, sql: "CREATE VIEW employee_directory AS\nSELECT id, name, dept, title, email,\n  '***-**-' || substr(ssn, -4) AS ssn_masked\nFROM employees;" },
+          eng_manager: { view: 'eng_team', cols: ['id', 'name', 'title', 'salary'], where: 'Eng', sql: "CREATE VIEW eng_team AS\nSELECT id, name, title, salary\nFROM employees\nWHERE dept = 'Eng';" },
+          hr: { view: 'employees (base table)', cols: EMP_COLS, where: null, sql: '-- HR owns the data:\nGRANT SELECT ON employees TO hr;' }
+        };
+        var d = defs[role];
+        if (!d) throw new Error('Role must be one of: analyst, eng_manager, hr');
+        var g = function (hl, ehl, tags) {
+          return { type: 'graph', directed: true, height: 46, label: 'Who can reach what',
+            nodes: [{ id: 'U', label: role, x: 10, y: 23, shape: 'box' }, { id: 'V', label: d.view === 'employees (base table)' ? 'GRANT' : d.view, x: 45, y: 10, shape: 'box' }, { id: 'T', label: 'employees table', x: 84, y: 23, shape: 'box' }],
+            edges: [['U', 'V', 'SELECT'], ['V', 'T', 'reads'], ['U', 'T', 'direct?']], hl: hl || {}, ehl: ehl || {}, tags: tags || {} };
+        };
+        var f = [];
+        f.push({ narr: 'A <b>' + esc(role) + '</b> wants employee data. ' + (role === 'hr' ? 'HR is the data owner and is granted the base table itself.' : 'They hold <code>SELECT</code> only on the view <b>' + d.view + '</b>; every privilege on <code>employees</code> was revoked.'),
+          parts: [g({ U: 'cur' }), sqlPart(d.sql)] });
+        f.push({ narr: 'The query <code>SELECT * FROM ' + esc(d.view.split(' ')[0]) + '</code> is expanded: the database substitutes the view\'s SELECT and reads the base table with the <b>view owner\'s</b> rights.',
+          parts: [g({ U: 'done', V: 'cur', T: 'cur' }, { 'U-V': 'ok', 'V-T': 'ok' }), tbl('employees (base table, all columns)', EMP_COLS, EMP_ROWS)] });
+        var keep = [], drop = [];
+        EMP_ROWS.forEach(function (r, i) { if (!d.where || r[2] === d.where) keep.push(i); else drop.push(i); });
+        f.push({ narr: d.where ? 'Row filter: <code>WHERE dept = \'' + d.where + '\'</code>. Rows from other departments are dropped (red) — the manager cannot even learn they exist.' : 'No row filter in this view: every row passes (blue). Security here comes from the column list.',
+          parts: [tbl('employees: row filter', EMP_COLS, EMP_ROWS, (function () { var h = many(keep, 'win'); drop.forEach(function (k) { h[k] = 'bad'; }); return h; })())] });
+        var out = keep.map(function (k) {
+          var r = EMP_ROWS[k];
+          return d.cols.map(function (c) { return c === 'ssn_masked' ? '***-**-' + r[5].slice(-4) : r[EMP_COLS.indexOf(c)]; });
+        });
+        var hidden = EMP_COLS.filter(function (c) { return d.cols.indexOf(c) < 0 && !(c === 'ssn' && d.cols.indexOf('ssn_masked') >= 0); });
+        var masked = d.cols.indexOf('ssn_masked') >= 0;
+        f.push({ narr: 'Column projection: ' + (hidden.length ? 'the columns <b>' + hidden.join(', ') + '</b> are simply not selected, so they cannot leak. ' : 'HR sees every column. ') + (masked ? 'The SSN is replaced by a <b>masked expression</b> — only the last 4 digits survive.' : ''),
+          parts: [tbl('result of ' + d.view.split(' ')[0] + ' (' + out.length + ' rows)', d.cols, out, many(out.map(function (_, i) { return i; }), 'ok'))] });
+        if (role !== 'hr') {
+          f.push({ narr: '<span class="c-r">Direct attempt:</span> <code>SELECT salary, ssn FROM employees</code> → <b>permission denied for table employees</b>. The only door is the view.',
+            parts: [g({ U: 'cur', T: 'bad' }, { 'U-T': 'bad' }, { T: 'no GRANT' }), sqlPart('SELECT salary, ssn FROM employees;\n-- ERROR: permission denied for table employees', { 1: 'bad', 2: 'bad' })] });
+          f.push({ narr: 'Bonus: an <b>aggregate view</b> can share insight without exposing individuals — departments with fewer than 2 people are hidden so nobody can infer a single salary.',
+            parts: [tbl('dept_pay_stats (HAVING COUNT(*) >= 2)', ['dept', 'headcount', 'avg_salary'], [['Eng', 3, 200000]], { 0: 'sel' }), txt('Sales (1 person) and HR (1 person) are suppressed.')] });
+        } else {
+          f.push({ narr: 'HR has full access because it owns the data. Good practice still applies: <b>least privilege</b> — even HR tools often read a view without SSNs unless a task really needs them.', parts: [g({ U: 'ok', T: 'ok' }, { 'U-V': 'ok', 'V-T': 'ok' })] });
+        }
+        return f;
+      }
+    },
+    examples: [
+      { title: 'View as a compatibility layer during a rename', html: `<p>You rename <code>customers</code> to <code>clients</code>, but 40 old reports still say <code>FROM customers</code>. Create a view with the old name pointing at the new table; migrate the reports gradually, then drop the view.</p>`, code: shop(`ALTER TABLE customers RENAME TO clients;
+CREATE VIEW customers_v AS SELECT id, email, name, city, tier FROM clients;   -- old shape, new home
+SELECT * FROM customers_v WHERE tier = 'gold';`) },
+      { title: 'SELECT * in a view is frozen at creation (Postgres/MySQL)', html: `<p>Postgres and MySQL expand <code>SELECT *</code> into an explicit column list when the view is created. A column added to the base table later does <b>not</b> appear in the view — and a sensitive column added later will not suddenly leak either. List columns explicitly so the intent is visible.</p>`, code: pg(`CREATE VIEW v AS SELECT * FROM employees;    -- stored as SELECT id, name, ... (expanded now)
+ALTER TABLE employees ADD COLUMN bonus int;
+SELECT bonus FROM v;                          -- ERROR: column "bonus" does not exist`) },
+      { title: 'Writing through a SQLite view with INSTEAD OF', html: `<p>SQLite views are read-only. An <code>INSTEAD OF UPDATE</code> trigger tells SQLite what to do instead — and lets you enforce rules like "managers may change titles, never salaries, and only for their own team" (a hand-made WITH CHECK OPTION).</p>`, code: shop(`CREATE VIEW eng_team AS SELECT id, name, title, salary FROM employees WHERE dept = 'Eng';
+CREATE TRIGGER eng_team_title INSTEAD OF UPDATE OF title ON eng_team
+BEGIN
+  UPDATE employees SET title = NEW.title WHERE id = OLD.id AND dept = 'Eng';
+END;
+UPDATE eng_team SET title = 'Senior Engineer' WHERE name = 'Ben';
+SELECT * FROM eng_team;`) },
+      { title: 'Views do not make queries faster', html: `<p>A view is inlined into your query, so <code>SELECT … FROM order_summary WHERE customer = 'Asha'</code> runs the same joins as writing them by hand; the planner can push the filter inside. Stacking views on views on views hides cost — read <code>EXPLAIN</code> on the final query. If the view is an expensive aggregate read thousands of times, materialize it (next topic).</p>`, code: shop(`CREATE VIEW order_summary AS
+SELECT o.id, c.name AS customer, o.qty FROM orders o JOIN customers c ON c.id = o.customer_id;
+EXPLAIN QUERY PLAN SELECT * FROM order_summary WHERE customer = 'Asha';`) }
+    ],
+    deepDive: `<p><b>Leaky views.</b> In Postgres, a user can pass a cheap custom function in their WHERE clause (<code>WHERE leak(ssn)</code>); if the planner evaluates it <i>before</i> the view's own filter, it can print rows the view should hide. <code>security_barrier = true</code> forces the view's conditions to run first (only <code>LEAKPROOF</code> functions are pushed down). Row-level security policies have the same protection built in.</p>
+<p><b>Whose rights?</b> Classic views run with the <b>owner's</b> privileges (MySQL: <code>SQL SECURITY DEFINER</code>, default). Postgres 15 added <code>security_invoker = true</code> so the caller's privileges and RLS policies apply — safer when the owner is a superuser. Supabase-style setups rely on this.</p>
+<p><b>Updatable view rules</b> (Postgres): exactly one table in FROM, no GROUP BY/HAVING/DISTINCT/LIMIT/window/set operations; computed columns are read-only. <code>WITH LOCAL CHECK OPTION</code> checks only this view's WHERE; <code>CASCADED</code> (default) also checks underlying views.</p>
+<p><b>Dependency management.</b> You cannot drop or change the type of a column a view depends on without dropping the view (Postgres), so migrations must recreate dependent views — tools like <code>CREATE OR REPLACE VIEW</code> allow adding columns at the end only. Document view ownership; orphaned views are a common source of "why can't I drop this column".</p>
+<p><b>Views vs RLS vs column privileges.</b> Postgres also supports column-level GRANTs (<code>GRANT SELECT (id, name) ON employees TO analyst</code>). Views win when you need masking, derived columns or a stable API; RLS wins when the same table must show different rows per user without N views.</p>`,
+    aiEra: `<p><b>What AI changes:</b> text-to-SQL and AI analytics agents are now common. Pointing them at curated <b>views</b> (clean names, no PII, pre-joined) instead of raw tables is the single best guardrail: smaller schema to reason about, fewer wrong joins, nothing secret to leak. Ask an assistant: <code>Propose an analyst-safe view over these tables: no PII, masked identifiers, documented columns</code>.</p>
+<p><b>Where AI goes wrong:</b> it suggests <code>SELECT *</code> views, believes a view alone is access control (it is not without GRANT/REVOKE), forgets small-group inference in aggregates, and may write <code>CREATE MATERIALIZED VIEW</code> for SQLite.</p>
+<p><b>What you still own:</b> the access model (roles, grants, RLS), deciding which columns are sensitive, and testing as the restricted role — <code>SET ROLE analyst; SELECT salary FROM employees;</code> must fail.</p>`,
+    problems: [{
+      title: 'Build an Analyst-Safe Employee Directory', level: 'Easy', tags: ['view', 'security', 'masking'], companies: ['Google', 'Workday', 'Infosys'],
+      statement: `<p>Analysts need an employee directory and pay statistics, but must never see an individual salary or a full SSN. Create (1) <code>employee_directory</code>: id, name, dept, title, email and the SSN masked to <code>***-**-NNNN</code>; (2) <code>dept_pay_stats</code>: dept, headcount, average salary — hiding any department with fewer than 2 employees.</p>`,
+      constraints: `<p>Data must stay live (no copies). Use only views. (In Postgres you would also REVOKE on the table and GRANT on the views.)</p>`,
+      example: `${H.table(['dept', 'headcount', 'avg_salary'], [['Eng', '3', '200000']])}<p>Sales and HR have one person each, so they are ${H.c('r', 'suppressed')}: an "average" of one person is that person's salary.</p>`,
+      brute: { why: `<p>Naive fix: copy the safe columns into a separate <code>directory</code> table with <code>CREATE TABLE … AS SELECT</code>. It is <b>stale</b> the moment someone changes title, it duplicates PII to a second place to secure, and it needs a sync job. Even worse naive fix: give analysts the base table and "trust the dashboard to hide salary".</p>`, code: shop(`CREATE TABLE directory AS SELECT id, name, dept, title, email FROM employees;   -- a COPY
+UPDATE employees SET title = 'Staff Engineer' WHERE id = 2;                      -- base changes...
+SELECT title FROM directory WHERE id = 2;                                        -- ...copy still says Engineer`) },
+      mcq: { q: 'Why add HAVING COUNT(*) >= 2 to the stats view?', options: ['A group of one reveals that person\'s exact salary', 'AVG fails on one row', 'It makes the view updatable', 'SQLite requires it'], answer: 0, explain: 'Aggregates over tiny groups leak individual values (inference attack). Suppressing small groups is a basic privacy rule.' },
+      hints: [`<p>Hint 1: A view stores the query, not the data, so it is always up to date — no sync job.</p>`, `<p>Hint 2: Masking is just an expression in the SELECT list: <code>'***-**-' || substr(ssn, -4)</code>. Hiding salary = not selecting it.</p>`, `<p>Hint 3: For the stats view use GROUP BY dept with <code>HAVING COUNT(*) &gt;= 2</code>. Recipe: CREATE VIEW directory → CREATE VIEW stats → (Postgres) REVOKE ALL ON employees, GRANT SELECT ON both views.</p>`],
+      solution: {
+        approach: `<p>Two views: a projection with a masking expression, and an aggregate with small-group suppression. Access control is completed by granting only the views.</p>`,
+        code: shop(`CREATE VIEW employee_directory AS
+SELECT id, name, dept, title, email,
+       '***-**-' || substr(ssn, -4) AS ssn_masked
+FROM employees;
+
+CREATE VIEW dept_pay_stats AS
+SELECT dept, COUNT(*) AS headcount, CAST(AVG(salary) AS INTEGER) AS avg_salary
+FROM employees
+GROUP BY dept
+HAVING COUNT(*) >= 2;
+
+UPDATE employees SET title = 'Staff Engineer' WHERE id = 2;   -- views reflect it instantly
+SELECT * FROM employee_directory ORDER BY id;
+SELECT * FROM dept_pay_stats;`),
+        alt: [pg(`REVOKE ALL ON employees FROM PUBLIC;
+CREATE ROLE analyst NOLOGIN;
+GRANT SELECT ON employee_directory, dept_pay_stats TO analyst;
+-- test it:
+SET ROLE analyst;
+SELECT salary FROM employees;   -- ERROR: permission denied`)],
+        dry: { head: ['dept', 'rows', 'COUNT ≥ 2?', 'shown'], rows: [['Eng', '3', 'yes', H.c('g', 'avg 200000')], ['Sales', '1', 'no', H.c('r', 'hidden')], ['HR', '1', 'no', H.c('r', 'hidden')]] },
+        complexity: `<p>No storage cost. Each read costs one scan (or index scan) of employees plus a small GROUP BY.</p>`,
+        followUps: ['Let each manager see salaries of only their direct reports', 'Add a column that shows salary band (A/B/C) instead of exact salary', 'How would you test that no view leaks salary?']
+      }
+    }]
+  });
+
+  /* ======================= TOPIC 6: Materialized views ======================= */
+  topics.push({
+    title: 'Materialized Views & Summary Tables (and How to Fake Them in SQLite)',
+    analogy: `<p>A normal view is <b>asking the cashier to count today's sales every time you ask</b> — always correct, but slow when you ask often. A materialized view is the <b>printed sales report pinned on the wall</b>: instant to read, but only as fresh as the last time someone reprinted it. "Refresh" = reprint.</p>`,
+    explain: `<p>A <b>materialized view (MV)</b> runs its query once and <b>stores the result as real rows</b>. Reads are as fast as reading a small table (you can even index it). The price: the stored result goes <b>stale</b> when base tables change, until you refresh it.</p>
+${H.table(['', 'View', 'Materialized view'], [
+  ['Stores data?', 'no — only the query', H.c('y', 'yes — the result rows')],
+  ['Freshness', H.c('g', 'always current'), H.c('r', 'stale until REFRESH')],
+  ['Read cost', 'runs the query every time', H.c('g', 'cheap table read')],
+  ['Write cost', 'none', 'refresh cost (full recompute or incremental)'],
+  ['Indexable?', 'no (index base tables)', 'yes'],
+  ['Best for', 'security, simplification', 'expensive aggregates read often: dashboards, leaderboards']
+])}
+<p><b>By engine:</b> Postgres has <code>CREATE MATERIALIZED VIEW</code> + <code>REFRESH MATERIALIZED VIEW [CONCURRENTLY]</code> (full recompute). Oracle supports fast (incremental) refresh. SQL Server "indexed views" are maintained automatically on every write. MySQL and <b>SQLite have no materialized views</b> — you build a <b>summary table</b> yourself and refresh it with a scheduled job or keep it current with triggers.</p>
+<p><b>Two refresh strategies:</b></p>
+<ul><li><b>Full refresh</b> — in one transaction: <code>DELETE FROM mv; INSERT INTO mv SELECT …;</code>. Simple, always correct, cost grows with data size.</li>
+<li><b>Incremental</b> — triggers on the base table apply each change (+qty on insert, −qty on delete). Always fresh, but adds work to every write and is easy to get subtly wrong.</li></ul>`,
+    clues: ['"the dashboard query takes 30 s and runs every minute" → materialize it', '"data may be up to 15 minutes old" → MV / summary table with scheduled refresh', '"must be exact in real time" → plain view, or incremental maintenance via triggers', '"refresh blocks readers" → <code>REFRESH … CONCURRENTLY</code> (needs a unique index)', '"MySQL / SQLite has no materialized views" → summary table + job or triggers', '"leaderboard / top sellers / daily totals" → classic summary-table candidates'],
+    code: [pg(`-- PostgreSQL materialized view
+CREATE MATERIALIZED VIEW product_sales AS
+SELECT o.product_id, SUM(o.qty) AS units, SUM(o.qty * p.price_cents) AS revenue_cents
+FROM orders o JOIN products p ON p.id = o.product_id
+WHERE o.status <> 'cancelled'
+GROUP BY o.product_id
+WITH DATA;
+
+CREATE UNIQUE INDEX ON product_sales (product_id);      -- required for CONCURRENTLY
+
+REFRESH MATERIALIZED VIEW CONCURRENTLY product_sales;   -- readers keep reading the old copy
+-- Schedule it (e.g. pg_cron):  SELECT cron.schedule('*/15 * * * *', 'REFRESH MATERIALIZED VIEW CONCURRENTLY product_sales');`, 'PostgreSQL MATERIALIZED VIEW (reference)'),
+      shop(`-- SQLite: emulate a materialized view with a summary table + a refresh "job".
+CREATE TABLE mv_product_sales (
+  product_id    INTEGER PRIMARY KEY,
+  units         INTEGER NOT NULL,
+  revenue_cents INTEGER NOT NULL,
+  refreshed_at  TEXT    NOT NULL
+);
+
+-- The refresh: one transaction, so readers never see a half-empty table.
+BEGIN;
+DELETE FROM mv_product_sales;
+INSERT INTO mv_product_sales (product_id, units, revenue_cents, refreshed_at)
+SELECT o.product_id, SUM(o.qty), SUM(o.qty * p.price_cents), CURRENT_TIMESTAMP
+FROM orders o JOIN products p ON p.id = o.product_id
+WHERE o.status <> 'cancelled'
+GROUP BY o.product_id;
+COMMIT;
+
+INSERT INTO orders (customer_id, product_id, qty, status) VALUES (1, 2, 10, 'paid');  -- new sale
+SELECT * FROM mv_product_sales ORDER BY revenue_cents DESC;   -- STALE: cable still shows 3 units`, 'Summary table + full refresh in SQLite (▶ Run)'),
+      shop(`-- Incremental maintenance: triggers keep the summary exact on every write.
+CREATE TABLE mv_units (product_id INTEGER PRIMARY KEY, units INTEGER NOT NULL);
+INSERT INTO mv_units SELECT product_id, SUM(qty) FROM orders WHERE status <> 'cancelled' GROUP BY product_id;
+
+CREATE TRIGGER mv_units_ins AFTER INSERT ON orders WHEN NEW.status <> 'cancelled'
+BEGIN
+  INSERT INTO mv_units (product_id, units) VALUES (NEW.product_id, NEW.qty)
+  ON CONFLICT (product_id) DO UPDATE SET units = units + excluded.units;
+END;
+CREATE TRIGGER mv_units_cancel AFTER UPDATE OF status ON orders
+WHEN NEW.status = 'cancelled' AND OLD.status <> 'cancelled'
+BEGIN
+  UPDATE mv_units SET units = units - OLD.qty WHERE product_id = OLD.product_id;
+END;
+
+INSERT INTO orders (customer_id, product_id, qty, status) VALUES (1, 2, 10, 'paid');   -- +10 cables
+UPDATE orders SET status = 'cancelled' WHERE id = 3;                                   -- -3 cables
+SELECT * FROM mv_units ORDER BY product_id;     -- cable = 10, always exact`, 'Incremental summary with triggers (▶ Run)')],
+    viz: {
+      title: 'View vs materialized view: freshness over time',
+      input: '09-03:500, 09-04:1200, refresh, 09-04:300, 09-05:700, refresh',
+      inputLabel: 'Events separated by commas: day:amount (new sale) or refresh',
+      gen: function (input) {
+        var evs = strIn(input).split(',').map(function (s) { return s.trim(); }).filter(function (s) { return s.length; });
+        if (!evs.length) throw new Error('Type events like: 09-04:1200, refresh');
+        if (evs.length > 10) throw new Error('Use at most 10 events');
+        var base = [[1, '09-01', 400], [2, '09-02', 250], [3, '09-02', 150]], nextId = 4;
+        function agg() { var m = {}, order = []; base.forEach(function (r) { if (!(r[1] in m)) { m[r[1]] = 0; order.push(r[1]); } m[r[1]] += r[2]; }); order.sort(); return order.map(function (d) { return [d, m[d]]; }); }
+        var mv = agg(), f = [];
+        function staleHl(view) {
+          var h = {};
+          view.forEach(function (r) { var k = -1; mv.forEach(function (x, i) { if (x[0] === r[0]) k = i; }); if (k >= 0 && mv[k][1] !== r[1]) h[k] = 'bad'; });
+          return h;
+        }
+        function missing(view) { return view.filter(function (r) { return !mv.some(function (x) { return x[0] === r[0]; }); }).map(function (r) { return r[0]; }); }
+        f.push({ narr: 'Start: the materialized view was just refreshed, so it matches the live view exactly.', parts: [tbl('sales (base table)', ['id', 'day', 'amount'], base), tbl('daily_sales VIEW (computed on read)', ['day', 'total'], agg()), tbl('daily_sales_mv (stored rows)', ['day', 'total'], mv)] });
+        evs.forEach(function (e) {
+          if (/^refresh$/i.test(e)) {
+            var fresh = agg(), hl = {};
+            fresh.forEach(function (r, i) { var old = null; mv.forEach(function (x) { if (x[0] === r[0]) old = x; }); if (!old) hl[i] = 'ok'; else if (old[1] !== r[1]) hl[i] = 'cur'; });
+            mv = fresh;
+            f.push({ narr: '<b>REFRESH</b>: the MV query re-runs and its stored rows are replaced inside one transaction. Changed totals are amber, new days green. It is fresh again — until the next write.', parts: [sqlPart('BEGIN;\nDELETE FROM daily_sales_mv;\nINSERT INTO daily_sales_mv SELECT day, SUM(amount) FROM sales GROUP BY day;\nCOMMIT;', { 2: 'cur', 3: 'cur' }), tbl('daily_sales VIEW', ['day', 'total'], fresh), tbl('daily_sales_mv (refreshed)', ['day', 'total'], mv, hl)] });
+            return;
+          }
+          var m = e.match(/^(\d\d-\d\d):(\d+)$/);
+          if (!m) throw new Error('Bad event "' + e + '". Use MM-DD:amount or refresh');
+          base.push([nextId++, m[1], Number(m[2])]);
+          var view = agg(), miss = missing(view);
+          f.push({ narr: 'New sale on ' + m[1] + ' for ' + m[2] + ' (green). The <b>view</b> already shows it — it recomputes on every read. The <b>MV</b> does not: ' + (Object.keys(staleHl(view)).length || miss.length ? '<span class="c-r">stale</span> ' + (miss.length ? '(day ' + miss.join(', ') + ' missing entirely)' : '(wrong total in red)') + '.' : 'still matches by luck.'),
+            parts: [tbl('sales (base table)', ['id', 'day', 'amount'], base, one(base.length - 1, 'ok')), tbl('daily_sales VIEW (always fresh)', ['day', 'total'], view), tbl('daily_sales_mv (stale until refresh)', ['day', 'total'], mv, staleHl(view))] });
+        });
+        f.push({ narr: 'Trade-off summary: the view costs a GROUP BY on every read but is never wrong; the MV costs a refresh now and then and may lag. Choose by how fresh the reader needs the data and how often it is read.', parts: [tbl('daily_sales VIEW', ['day', 'total'], agg()), tbl('daily_sales_mv', ['day', 'total'], mv, staleHl(agg()))] });
+        return f;
+      }
+    },
+    examples: [
+      { title: 'Leaderboard refreshed every 5 minutes', html: `<p>A game shows the top 100 players out of 50M score rows. Computing <code>ORDER BY score DESC LIMIT 100</code> over a big aggregate on every page view is wasteful; a summary table refreshed every 5 minutes is read thousands of times per refresh. Users accept "updated 2 min ago".</p>`, code: lab(`CREATE TABLE scores (player TEXT, pts INTEGER);
+INSERT INTO scores VALUES ('ana', 50), ('bo', 70), ('ana', 40), ('cy', 30), ('bo', 5);
+CREATE TABLE leaderboard (rank INTEGER PRIMARY KEY, player TEXT NOT NULL, total INTEGER NOT NULL);
+BEGIN;
+DELETE FROM leaderboard;
+INSERT INTO leaderboard (rank, player, total)
+SELECT ROW_NUMBER() OVER (ORDER BY SUM(pts) DESC), player, SUM(pts) FROM scores GROUP BY player;
+COMMIT;
+SELECT * FROM leaderboard;`) },
+      { title: 'Swap-in refresh to avoid long locks', html: `<p>For big summary tables, build the new copy under a temporary name, then swap names in a short transaction. Readers are never blocked by the long rebuild. (Postgres' <code>REFRESH … CONCURRENTLY</code> does a diff-and-apply instead.)</p>`, code: shop(`CREATE TABLE mv_city_customers AS SELECT city, COUNT(*) AS n FROM customers GROUP BY city;
+-- Rebuild under a new name (slow part, nobody waits)...
+CREATE TABLE mv_city_customers_new AS SELECT city, COUNT(*) AS n FROM customers GROUP BY city;
+-- ...then swap (fast part).
+BEGIN;
+DROP TABLE mv_city_customers;
+ALTER TABLE mv_city_customers_new RENAME TO mv_city_customers;
+COMMIT;
+SELECT * FROM mv_city_customers;`) },
+      { title: 'Track staleness explicitly', html: `<p>Store <code>refreshed_at</code> in the summary (or a metadata table) and show it in the UI ("as of 10:15"). Alert if it is older than the SLA — a silently failing refresh job is worse than a slow query.</p>`, code: shop(`CREATE TABLE mv_meta (name TEXT PRIMARY KEY, refreshed_at TEXT NOT NULL);
+INSERT INTO mv_meta VALUES ('mv_product_sales', '2026-10-14 10:15:00')
+ON CONFLICT (name) DO UPDATE SET refreshed_at = excluded.refreshed_at;
+SELECT name, refreshed_at,
+       CAST((julianday('2026-10-14 10:40:00') - julianday(refreshed_at)) * 24 * 60 AS INTEGER) AS minutes_old
+FROM mv_meta;`) }
+    ],
+    deepDive: `<p><b>Postgres REFRESH internals.</b> Plain <code>REFRESH MATERIALIZED VIEW</code> rebuilds into a new heap and swaps it, holding an <code>ACCESS EXCLUSIVE</code> lock — readers wait. <code>CONCURRENTLY</code> computes the new result, diffs it against the old using the required unique index and applies INSERT/UPDATE/DELETE, allowing reads throughout, but is slower and writes more WAL. Neither is incremental: both re-run the full query. Extensions (pg_ivm) and streaming systems (Materialize, RisingWave, Snowflake dynamic tables, BigQuery MVs) provide incremental view maintenance.</p>
+<p><b>Incremental maintenance math.</b> SUM and COUNT are easy (add on insert, subtract on delete, both on update). AVG = keep SUM and COUNT. MIN/MAX are hard: deleting the current max requires a rescan of that group. DISTINCT counts need per-value reference counts. That is why most engines restrict which MVs can fast-refresh.</p>
+<p><b>Consistency.</b> A full refresh in one transaction gives a consistent snapshot. Trigger-maintained summaries are transactionally exact but add lock contention: every order insert updates the same summary row — a hot spot under heavy concurrency (mitigate with sharded counters, or periodic batch roll-ups from an append-only log).</p>
+<p><b>Indexed views (SQL Server)</b> are maintained synchronously by the engine with strict rules (SCHEMABINDING, COUNT_BIG(*), deterministic functions). <b>Query rewrite</b> (Oracle, BigQuery) can even route a query against base tables to a matching MV automatically.</p>`,
+    aiEra: `<p><b>What AI changes:</b> AI dashboards fire many similar aggregate queries; materialized summaries (or a semantic layer on top of them) keep latency and cost predictable. Ask: <code>Given this slow dashboard query and a 15-minute freshness SLA, design a summary table, its refresh SQL, and a staleness alert</code>.</p>
+<p><b>Where AI goes wrong:</b> it writes <code>CREATE MATERIALIZED VIEW</code> for MySQL/SQLite, forgets the unique index needed for CONCURRENTLY, refreshes with DELETE + INSERT <i>outside</i> a transaction (readers see an empty table), or writes incremental triggers that ignore UPDATE and DELETE.</p>
+<p><b>What you still own:</b> the freshness requirement, choosing full vs incremental refresh, monitoring the job, and proving the summary equals the source (a periodic reconciliation query comparing totals).</p>`
+  });
+
+  /* ======================= TOPIC 7: Stored procedures & functions ======================= */
+  topics.push({
+    title: 'Stored Procedures & Functions (and SQLite Alternatives)',
+    analogy: `<p>Ordering at a restaurant. Without a procedure you walk into the kitchen five times: "start a ticket", "is there chicken?", "take one chicken", "add it to my plate", "close the ticket". With a procedure you hand the waiter one slip — <b>"Combo #3"</b> — and the kitchen runs the whole recipe internally. Fewer trips, same recipe for everyone, but the recipe now lives in the kitchen, where fewer people can read or change it.</p>`,
+    explain: `<p>A <b>stored procedure</b> is a named program saved <i>inside</i> the database and run with one call: <code>CALL transfer(1, 2, 300);</code>. It can use variables, IF/LOOP, several SQL statements, and error handling. A <b>stored function</b> returns a value (or a table) and can be used inside queries: <code>SELECT net_price(price_cents) FROM products</code>.</p>
+${H.table(['', 'Procedure', 'Function'], [
+  ['Called with', '<code>CALL p(…)</code> / <code>EXEC p</code>', 'inside SQL: <code>SELECT f(x)</code>'],
+  ['Returns', 'nothing / OUT parameters / result sets', 'a value or a table'],
+  ['Transaction control', 'Postgres 11+, MySQL, SQL Server: can COMMIT inside', 'no (runs inside the caller\'s statement)'],
+  ['Typical use', 'multi-step business operations, batch jobs', 'reusable calculations, computed filters']
+])}
+<p>Languages: <b>PL/pgSQL</b> (Postgres), <b>T-SQL</b> (SQL Server), <b>PL/SQL</b> (Oracle), MySQL's SQL/PSM. <b>SQLite has no stored procedures</b> — it is an embedded library inside your app, so "the app" and "the database" share one process anyway. In SQLite you use:</p>
+<ul><li><b>One set-based statement</b> (CASE, CTEs, UPDATE … FROM) — it is atomic on its own.</li>
+<li><b>A transaction in application code</b> — <code>BEGIN; …; COMMIT;</code> with logic in Python/Java/JS.</li>
+<li><b>Triggers</b> as "procedures that run on an event" (e.g. insert a row into <code>transfers</code>, a trigger moves the money).</li>
+<li><b>User-defined functions</b> registered from the host language (<code>sqlite3_create_function</code>, Python <code>con.create_function</code>).</li></ul>
+<p><b>Pros:</b> fewer network round trips; logic runs next to the data; one consistent implementation for every client; can grant <code>EXECUTE</code> on a procedure without granting table access. <b>Cons:</b> harder to version, test, review and debug; vendor lock-in; scaling the database CPU is harder than scaling app servers; business logic split across two codebases.</p>`,
+    clues: ['"minimize round trips for a multi-step operation" → stored procedure (or one set-based statement)', '"many apps in different languages must apply the same rule" → logic in the database (procedure, constraint, trigger)', '"let a service do X without giving it table access" → GRANT EXECUTE on a SECURITY DEFINER procedure', '"we use SQLite" → no procedures: transaction in app code, set-based SQL, triggers or UDFs', '"business logic must be unit-tested and deployed often" → keep it in the application', '"reuse a calculation inside SELECT / WHERE" → stored function (mark IMMUTABLE/DETERMINISTIC)'],
+    code: [pg(`-- PostgreSQL stored procedure: an atomic money transfer with validation.
+CREATE OR REPLACE PROCEDURE transfer(p_from int, p_to int, p_amount int)
+LANGUAGE plpgsql AS $$
+DECLARE
+  v_balance int;
+BEGIN
+  IF p_amount <= 0 THEN
+    RAISE EXCEPTION 'amount must be positive';
+  END IF;
+  -- Lock the source row so two transfers cannot both spend the same money.
+  SELECT balance INTO v_balance FROM accounts WHERE id = p_from FOR UPDATE;
+  IF v_balance IS NULL THEN
+    RAISE EXCEPTION 'account % not found', p_from;
+  ELSIF v_balance < p_amount THEN
+    RAISE EXCEPTION 'insufficient funds: % < %', v_balance, p_amount;
+  END IF;
+  UPDATE accounts SET balance = balance - p_amount WHERE id = p_from;
+  UPDATE accounts SET balance = balance + p_amount WHERE id = p_to;
+  INSERT INTO transfers (from_id, to_id, amount) VALUES (p_from, p_to, p_amount);
+END $$;
+
+CALL transfer(1, 2, 300);          -- one round trip; any exception rolls everything back
+
+-- A stored FUNCTION, usable inside queries:
+CREATE FUNCTION price_with_tax(cents int) RETURNS int
+LANGUAGE sql IMMUTABLE AS $$ SELECT (cents * 118 + 50) / 100 $$;
+SELECT name, price_with_tax(price_cents) FROM products;`, 'PostgreSQL procedure + function (reference)'),
+      my(`-- MySQL: DELIMITER lets the client accept semicolons inside the body.
+DELIMITER //
+CREATE PROCEDURE transfer(IN p_from INT, IN p_to INT, IN p_amount INT)
+BEGIN
+  DECLARE v_balance INT;
+  DECLARE EXIT HANDLER FOR SQLEXCEPTION BEGIN ROLLBACK; RESIGNAL; END;
+  START TRANSACTION;
+  SELECT balance INTO v_balance FROM accounts WHERE id = p_from FOR UPDATE;
+  IF v_balance < p_amount THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'insufficient funds';
+  END IF;
+  UPDATE accounts SET balance = balance - p_amount WHERE id = p_from;
+  UPDATE accounts SET balance = balance + p_amount WHERE id = p_to;
+  COMMIT;
+END //
+DELIMITER ;
+CALL transfer(1, 2, 300);`, 'MySQL procedure (reference)'),
+      shop(`-- SQLite alternative 1: ONE set-based statement is already atomic.
+-- Move 300 from account 1 to account 2 — both rows change, or neither does.
+UPDATE accounts
+SET balance = balance + CASE id WHEN 1 THEN -300 WHEN 2 THEN 300 END
+WHERE id IN (1, 2)
+  AND (SELECT balance FROM accounts WHERE id = 1) >= 300;    -- guard: enough money?
+SELECT changes() AS rows_changed;                            -- 2 = done, 0 = refused
+
+-- SQLite alternative 2: a "procedure" triggered by inserting a request row.
+CREATE TABLE transfers (
+  id INTEGER PRIMARY KEY, from_id INTEGER NOT NULL, to_id INTEGER NOT NULL,
+  amount INTEGER NOT NULL CHECK (amount > 0), created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TRIGGER transfers_apply AFTER INSERT ON transfers
+BEGIN
+  SELECT RAISE(ABORT, 'insufficient funds')
+  WHERE (SELECT balance FROM accounts WHERE id = NEW.from_id) < NEW.amount;
+  UPDATE accounts SET balance = balance - NEW.amount WHERE id = NEW.from_id;
+  UPDATE accounts SET balance = balance + NEW.amount WHERE id = NEW.to_id;
+END;
+INSERT INTO transfers (from_id, to_id, amount) VALUES (2, 3, 100);   -- Ben pays Chen 100
+-- INSERT INTO transfers (from_id, to_id, amount) VALUES (3, 1, 999); -- uncomment: ABORT, nothing changes
+SELECT * FROM accounts;
+SELECT * FROM transfers;`, 'SQLite: set-based statement and trigger-as-procedure (▶ Run)'),
+      { lang: 'python', run: true, title: 'SQLite alternative 3: logic in app code + a user-defined function (▶ Run)', code: `import sqlite3
+
+con = sqlite3.connect(":memory:")
+con.executescript("""
+CREATE TABLE accounts (id INTEGER PRIMARY KEY, owner TEXT, balance INTEGER CHECK (balance >= 0));
+INSERT INTO accounts VALUES (1, 'Asha', 1000), (2, 'Ben', 250);
+""")
+
+# A user-defined SQL function written in Python, callable from any query.
+def with_tax(cents):
+    return (cents * 118 + 50) // 100
+con.create_function("with_tax", 1, with_tax, deterministic=True)
+
+def transfer(con, src, dst, amount):
+    """The 'stored procedure' lives in the app, wrapped in one transaction."""
+    with con:  # BEGIN ... COMMIT, or ROLLBACK on any exception
+        cur = con.execute(
+            "UPDATE accounts SET balance = balance - ? WHERE id = ? AND balance >= ?",
+            (amount, src, amount))
+        if cur.rowcount != 1:
+            raise ValueError("insufficient funds or unknown account")
+        con.execute("UPDATE accounts SET balance = balance + ? WHERE id = ?", (amount, dst))
+
+transfer(con, 1, 2, 300)
+try:
+    transfer(con, 2, 1, 10_000)
+except ValueError as e:
+    print("refused:", e)
+print(con.execute("SELECT id, owner, balance, with_tax(balance) FROM accounts").fetchall())` }],
+    viz: {
+      title: 'Round trips: client-side transaction vs one CALL to a procedure',
+      input: '1 2 300',
+      inputLabel: 'from_account to_account amount (accounts 1=Asha 1000, 2=Ben 250, 3=Chen 0)',
+      gen: function (input) {
+        var a = strIn(input).trim().split(/[\s,]+/).map(Number);
+        if (a.length !== 3 || a.some(isNaN)) throw new Error('Enter: from to amount, e.g. 1 2 300');
+        var from = a[0], to = a[1], amt = a[2];
+        var acc = [[1, 'Asha', 1000], [2, 'Ben', 250], [3, 'Chen', 0]];
+        function ix(id) { for (var i = 0; i < acc.length; i++) if (acc[i][0] === id) return i; return -1; }
+        var fi = ix(from), ti = ix(to);
+        if (fi < 0 || ti < 0) throw new Error('Accounts are 1, 2 and 3');
+        if (from === to) throw new Error('Pick two different accounts');
+        if (amt <= 0 || amt > 100000) throw new Error('Amount must be between 1 and 100000');
+        var ok = acc[fi][2] >= amt, cols = ['id', 'owner', 'balance'];
+        function g(edgeLabel, hl, ehl, tags) {
+          return { type: 'graph', directed: true, height: 40, label: 'App server ↔ database (each arrow = one network round trip, ~1 ms)',
+            nodes: [{ id: 'A', label: 'App server', x: 14, y: 20, shape: 'box' }, { id: 'D', label: 'Database', x: 84, y: 20, shape: 'box' }],
+            edges: [['A', 'D', edgeLabel]], hl: hl || {}, ehl: ehl || {}, tags: tags || {} };
+        }
+        var f = [], steps = ['BEGIN', 'SELECT balance … FOR UPDATE', 'UPDATE accounts (debit)', 'UPDATE accounts (credit)', 'COMMIT'];
+        f.push({ narr: 'Goal: move <b>' + amt + '</b> from ' + acc[fi][1] + ' to ' + acc[ti][1] + ' atomically. First the classic way: the app sends each statement separately.', parts: [g('', { A: 'cur' }), tbl('accounts (before)', cols, acc, (function () { var h = one(fi, 'win'); h[ti] = 'win'; return h; })())] });
+        var trips = 0;
+        for (var s = 0; s < steps.length; s++) {
+          if (!ok && s === 2) {
+            trips++;
+            f.push({ narr: 'Round trip ' + trips + ': the app sees balance ' + acc[fi][2] + ' &lt; ' + amt + ' and sends <b>ROLLBACK</b>. ' + trips + ' trips spent; the source row was locked the whole time.', parts: [g('ROLLBACK', { D: 'bad' }, { 'A-D': 'bad' }, { A: 'trip ' + trips }), tbl('accounts (unchanged)', cols, acc, one(fi, 'bad'))] });
+            break;
+          }
+          trips++;
+          f.push({ narr: 'Round trip ' + trips + ': <code>' + esc(steps[s]) + '</code>. ' + (s === 1 ? 'The source row is now <b>locked</b> until COMMIT — and the lock is held while packets travel back and forth.' : s === 4 ? 'Locks released. Total: <b>' + trips + '</b> round trips.' : 'The app waits for the reply before sending the next statement.'),
+            parts: [g(steps[s], { A: 'cur', D: 'cur' }, { 'A-D': 'ok' }, { A: 'trip ' + trips, D: s >= 1 && s < 4 ? 'row locked' : '' }), tbl('accounts', cols, s >= 2 ? (function () { var c = cp(acc); c[fi][2] -= amt; if (s >= 3) c[ti][2] += amt; return c; })() : acc, s === 2 ? one(fi, 'cur') : s >= 3 ? (function () { var h = one(fi, 'cur'); h[ti] = 'cur'; return h; })() : one(fi, s === 1 ? 'win' : ''))] });
+        }
+        f.push({ narr: 'Now the procedure way: one message, <code>CALL transfer(' + from + ', ' + to + ', ' + amt + ')</code>. The whole recipe runs inside the database next to the data.', parts: [g('CALL transfer(' + from + ', ' + to + ', ' + amt + ')', { A: 'cur', D: 'cur' }, { 'A-D': 'ok' }, { A: '1 trip' }), sqlPart('CALL transfer(' + from + ', ' + to + ', ' + amt + ');', { 1: 'cur' })] });
+        var code = 'SELECT balance INTO v FROM accounts\n  WHERE id = p_from FOR UPDATE;\nIF v < p_amount THEN RAISE EXCEPTION ...;\nUPDATE accounts SET balance = balance - p_amount WHERE id = p_from;\nUPDATE accounts SET balance = balance + p_amount WHERE id = p_to;';
+        f.push({ narr: 'Inside the database the procedure locks the source row and checks the balance (' + acc[fi][2] + ' vs ' + amt + ').', parts: [sqlPart(code, { 1: 'cur', 2: 'cur', 3: ok ? 'ok' : 'bad' }, 'transfer() body'), tbl('accounts', cols, acc, one(fi, 'win'))] });
+        if (ok) {
+          var after = cp(acc); after[fi][2] -= amt; after[ti][2] += amt;
+          f.push({ narr: '<span class="c-g">Success.</span> Debit and credit both applied (amber) in one transaction, after a single round trip. Lock time ≈ local work only.', parts: [sqlPart(code, { 4: 'ok', 5: 'ok' }, 'transfer() body'), tbl('accounts (after)', cols, after, (function () { var h = one(fi, 'cur'); h[ti] = 'cur'; return h; })()), { type: 'vars', label: 'Cost comparison', vals: { 'client-side trips': 5, 'procedure trips': 1 }, hl: { 'procedure trips': 'ok' } }] });
+        } else {
+          f.push({ narr: '<span class="c-r">Refused.</span> The procedure raises an exception, the transaction rolls back, and the caller gets an error. Balances are untouched.', parts: [tbl('accounts (unchanged)', cols, acc, one(fi, 'bad')), { type: 'vars', label: 'Cost comparison', vals: { 'client-side trips': trips, 'procedure trips': 1 }, hl: { 'procedure trips': 'ok' } }] });
+        }
+        f.push({ narr: 'In <b>SQLite</b> there is no CALL — but SQLite runs inside your app process, so "round trips" are function calls. Use one set-based UPDATE with a guard, or a transaction in app code.', parts: [sqlPart('UPDATE accounts\nSET balance = balance + CASE id WHEN ' + from + ' THEN -' + amt + ' WHEN ' + to + ' THEN ' + amt + ' END\nWHERE id IN (' + from + ', ' + to + ')\n  AND (SELECT balance FROM accounts WHERE id = ' + from + ') >= ' + amt + ';', { 4: 'cur' }, 'SQLite equivalent')] });
+        return f;
+      }
+    },
+    examples: [
+      { title: 'Set-based beats a row-by-row procedure loop', html: `<p>A procedure that loops over 1M customers with a cursor and updates each row runs 1M statements. One <code>UPDATE … WHERE …</code> does the same in one pass and lets the engine optimize. Procedures are not an excuse for row-by-row ("RBAR") code.</p>`, code: shop(`-- Set-based: upgrade every customer with 2+ non-cancelled orders in ONE statement.
+UPDATE customers SET tier = 'gold'
+WHERE id IN (SELECT customer_id FROM orders WHERE status <> 'cancelled'
+             GROUP BY customer_id HAVING COUNT(*) >= 2);
+SELECT id, name, tier FROM customers;`) },
+      { title: 'Table-valued function vs view (Postgres)', html: `<p>A view cannot take parameters; a <b>set-returning function</b> can. <code>orders_since(date)</code> behaves like a parameterized view. In SQLite, the equivalent is a CTE or a query with bound parameters from the app.</p>`, code: pg(`CREATE FUNCTION orders_since(p_day date)
+RETURNS TABLE (id int, customer_id int, qty int)
+LANGUAGE sql STABLE AS $$
+  SELECT id, customer_id, qty FROM orders WHERE created_at >= p_day
+$$;
+SELECT * FROM orders_since('2026-09-02');`) },
+      { title: 'SECURITY DEFINER: a narrow door', html: `<p>Grant a reporting service <code>EXECUTE</code> on one procedure that runs with the owner's rights, instead of SELECT/UPDATE on whole tables. Always pin <code>search_path</code> in SECURITY DEFINER functions, or a caller can hijack name resolution.</p>`, code: pg(`CREATE FUNCTION close_stale_orders() RETURNS int
+LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$
+  WITH x AS (UPDATE orders SET status = 'cancelled'
+             WHERE status = 'pending' AND created_at < now() - interval '30 days' RETURNING 1)
+  SELECT count(*)::int FROM x
+$$;
+REVOKE ALL ON FUNCTION close_stale_orders() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION close_stale_orders() TO ops_bot;`) }
+    ],
+    deepDive: `<p><b>Where the time goes.</b> In a client/server database each statement costs a network round trip (0.2–2 ms in one data center, 50+ ms across regions) — and while a transaction is open its row locks are held for all of those trips. A 5-statement transfer across regions can hold a hot row lock for 250 ms, capping throughput at ~4 transfers/s on that row. A procedure (or a single statement, or Postgres pipelining) reduces that to one trip.</p>
+<p><b>Plan caching.</b> Procedures and prepared statements cache plans; in Postgres, PL/pgSQL switches to a "generic plan" after 5 executions, which can be bad for skewed parameters (<code>plan_cache_mode</code>). SQL Server has "parameter sniffing" for the same reason.</p>
+<p><b>Function volatility</b> (Postgres <code>IMMUTABLE / STABLE / VOLATILE</code>, MySQL <code>DETERMINISTIC</code>) tells the planner whether it may cache or inline calls and whether the function can be used in an index expression. Lying about it causes wrong results.</p>
+<p><b>Engineering costs.</b> Put procedures in migrations (Flyway/Liquibase), test them (pgTAP, tSQLt), and keep them small. Many modern teams keep business logic in the app and use the database for constraints, set-based operations, and the occasional hot-path procedure. Banks, ERPs and Oracle shops often do the opposite — know both cultures. SQLite's embedded model makes app-side logic the natural choice: there is no network to save.</p>`,
+    aiEra: `<p><b>What AI changes:</b> AI translates procedures between dialects (T-SQL → PL/pgSQL during cloud migrations), explains 2,000-line legacy procedures, and generates pgTAP tests. Ask: <code>Explain this stored procedure step by step, list every table it writes, and every way it can fail</code>.</p>
+<p><b>Where AI goes wrong:</b> it mixes dialects (<code>DECLARE @x</code> in Postgres), forgets <code>FOR UPDATE</code> and so introduces race conditions, writes cursor loops instead of set-based SQL, and invents <code>CREATE PROCEDURE</code> for SQLite.</p>
+<p><b>What you still own:</b> deciding where logic lives, concurrency correctness (locks, isolation), security (SECURITY DEFINER, search_path), and code review — procedures that an agent writes still need tests and a migration file, not a manual paste into production.</p>`
+  });
+
+  /* ======================= TOPIC 8: Triggers ======================= */
+  topics.push({
+    title: 'Triggers: Audit Trails, Validation, Derived Data — and Their Dangers',
+    analogy: `<p>A <b>motion-sensor light</b>. Nobody presses a switch: when something moves (an INSERT, UPDATE or DELETE), the light turns on by itself. Handy — but if you forget the sensors are there, you will be puzzled why lights keep turning on, and a sensor that triggers another sensor that triggers another can light up the whole street.</p>`,
+    explain: `<p>A <b>trigger</b> is SQL that the database runs <b>automatically</b> when a table changes. You choose:</p>
+${H.table(['Choice', 'Options', 'Meaning'], [
+  ['Event', 'INSERT · UPDATE [OF cols] · DELETE', 'what change wakes it up'],
+  ['Timing', 'BEFORE · AFTER · INSTEAD OF (views)', 'run before the row is written (can block it), after, or instead of the change'],
+  ['Granularity', 'FOR EACH ROW · FOR EACH STATEMENT', 'once per changed row or once per statement (SQLite: rows only)'],
+  ['Condition', '<code>WHEN (…)</code>', 'only fire if this is true'],
+  ['Row images', '<code>OLD.col</code>, <code>NEW.col</code>', 'the row before / after the change (INSERT has only NEW, DELETE only OLD)']
+])}
+<pre>CREATE TRIGGER products_audit AFTER UPDATE ON products
+WHEN OLD.price_cents IS NOT NEW.price_cents
+BEGIN
+  INSERT INTO audit_log (table_name, row_id, action, old_data, new_data)
+  VALUES ('products', NEW.id, 'UPDATE',
+          json_object('price_cents', OLD.price_cents),
+          json_object('price_cents', NEW.price_cents));
+END;</pre>
+<p><b>Good uses:</b> <b>audit trails</b> (who changed what, old → new), <b>validation</b> that CHECK cannot express (cross-table rules: "qty must not exceed stock"), <b>derived data</b> (counters, <code>updated_at</code>, summary tables), <b>soft deletes</b> and writable views (INSTEAD OF).</p>
+<p><b>Dangers:</b> invisible logic ("why did stock change?"), slower writes (every row pays), <b>trigger chains</b> (trigger A updates table B whose trigger updates C…), surprises during bulk loads and migrations, and logic split between app and database. In SQLite, raise errors with <code>SELECT RAISE(ABORT, 'message')</code> — the statement is undone.</p>
+<p>The rule of thumb: triggers for <b>data integrity and audit</b> that must hold no matter which client writes; application code for <b>business workflows</b> (emails, payments, API calls — never call the outside world from a trigger).</p>`,
+    clues: ['"keep an audit/history of every change, even from manual SQL" → AFTER UPDATE/DELETE trigger writing to an audit table', '"reject the change if a cross-table rule is violated" → BEFORE trigger with RAISE / exception', '"maintain updated_at / counters / denormalized totals automatically" → AFTER trigger', '"make this view writable" → INSTEAD OF trigger', '"a mysterious value keeps changing" → look for triggers (and trigger chains)', '"bulk load is slow" → triggers fire per row: disable, or use statement-level triggers'],
+    code: [shop(`-- AUDIT TRAIL: every price/stock change and every delete on products is recorded.
+CREATE TRIGGER products_audit_upd AFTER UPDATE ON products
+WHEN OLD.price_cents IS NOT NEW.price_cents OR OLD.stock IS NOT NEW.stock
+BEGIN
+  INSERT INTO audit_log (table_name, row_id, action, old_data, new_data)
+  VALUES ('products', NEW.id, 'UPDATE',
+          json_object('price_cents', OLD.price_cents, 'stock', OLD.stock),
+          json_object('price_cents', NEW.price_cents, 'stock', NEW.stock));
+END;
+
+CREATE TRIGGER products_audit_del AFTER DELETE ON products
+BEGIN
+  INSERT INTO audit_log (table_name, row_id, action, old_data, new_data)
+  VALUES ('products', OLD.id, 'DELETE',
+          json_object('sku', OLD.sku, 'name', OLD.name, 'price_cents', OLD.price_cents), NULL);
+END;
+
+UPDATE products SET price_cents = 899 WHERE id = 2;      -- audited
+UPDATE products SET name = 'SQL Book 2e' WHERE id = 3;   -- NOT audited (WHEN is false)
+UPDATE products SET stock = stock - 1 WHERE id = 3;      -- audited
+DELETE FROM products WHERE id = 4;                       -- audited
+
+SELECT id, row_id, action, old_data, new_data FROM audit_log ORDER BY id;`, 'Audit triggers with JSON old/new images (▶ Run)'),
+      shop(`-- VALIDATION (BEFORE) + DERIVED DATA (AFTER): orders take stock automatically.
+CREATE TRIGGER orders_check_stock BEFORE INSERT ON orders
+BEGIN
+  SELECT RAISE(ABORT, 'not enough stock')
+  WHERE NEW.qty > (SELECT stock FROM products WHERE id = NEW.product_id);
+END;
+
+CREATE TRIGGER orders_take_stock AFTER INSERT ON orders
+WHEN NEW.status <> 'cancelled'
+BEGIN
+  UPDATE products SET stock = stock - NEW.qty, updated_at = CURRENT_TIMESTAMP
+  WHERE id = NEW.product_id;
+END;
+
+INSERT INTO orders (customer_id, product_id, qty) VALUES (2, 5, 2);   -- DB Internals: 3 -> 1
+-- INSERT INTO orders (customer_id, product_id, qty) VALUES (2, 5, 5); -- uncomment: ABORT 'not enough stock'
+SELECT id, name, stock, updated_at FROM products WHERE id = 5;
+SELECT name, type, tbl_name FROM sqlite_master WHERE type = 'trigger';   -- list triggers`, 'Validation + automatic stock decrement (▶ Run)'),
+      pg(`-- PostgreSQL: one generic audit function reused by many tables.
+CREATE TABLE audit_log (
+  id bigserial PRIMARY KEY, table_name text, action text,
+  old_data jsonb, new_data jsonb, changed_by text DEFAULT current_user, changed_at timestamptz DEFAULT now()
+);
+CREATE FUNCTION audit_row() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  INSERT INTO audit_log (table_name, action, old_data, new_data)
+  VALUES (TG_TABLE_NAME, TG_OP,
+          CASE WHEN TG_OP <> 'INSERT' THEN to_jsonb(OLD) END,
+          CASE WHEN TG_OP <> 'DELETE' THEN to_jsonb(NEW) END);
+  RETURN NULL;                       -- AFTER trigger: return value ignored
+END $$;
+CREATE TRIGGER products_audit AFTER INSERT OR UPDATE OR DELETE ON products
+FOR EACH ROW EXECUTE FUNCTION audit_row();
+
+-- BEFORE trigger that MODIFIES the row being written (Postgres can change NEW):
+CREATE FUNCTION touch() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN NEW.updated_at := now(); RETURN NEW; END $$;
+CREATE TRIGGER products_touch BEFORE UPDATE ON products FOR EACH ROW EXECUTE FUNCTION touch();`, 'PostgreSQL trigger functions (reference)'),
+      my(`-- MySQL: body inline, BEFORE triggers may SET NEW.col; no INSTEAD OF triggers.
+DELIMITER //
+CREATE TRIGGER products_touch BEFORE UPDATE ON products
+FOR EACH ROW
+BEGIN
+  SET NEW.updated_at = NOW();
+  IF NEW.stock < 0 THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'stock cannot be negative';
+  END IF;
+END //
+DELIMITER ;`, 'MySQL trigger (reference)')],
+    viz: {
+      title: 'Trigger firing chain: one INSERT wakes up four triggers',
+      input: '2:3, 5:4, 5:2',
+      inputLabel: 'Orders to insert, comma separated: product_id:qty (products 1, 2, 3, 5)',
+      gen: function (input) {
+        var evs = strIn(input).split(',').map(function (s) { return s.trim(); }).filter(function (s) { return s.length; });
+        if (!evs.length) throw new Error('Type orders like: 2:3, 5:4');
+        if (evs.length > 5) throw new Error('Use at most 5 orders');
+        var prod = [[1, 'Pixel Phone', 10], [2, 'USB-C Cable', 6], [3, 'SQL Book', 15], [5, 'DB Internals', 3]];
+        var orders = [], audit = [], alerts = [], oid = 7, aid = 1, f = [];
+        var pc = ['id', 'name', 'stock'], oc = ['id', 'product_id', 'qty'], ac = ['id', 'row_id', 'old → new stock'], lc = ['product_id', 'stock', 'message'];
+        function g(hl, ehl, tags) {
+          return { type: 'graph', directed: true, height: 72, label: 'Trigger chain',
+            nodes: [{ id: 'I', label: 'INSERT order', x: 12, y: 10, shape: 'box' }, { id: 'B', label: 'BEFORE check', x: 46, y: 10, shape: 'box' }, { id: 'O', label: 'orders', x: 82, y: 10, shape: 'box' },
+              { id: 'T', label: 'AFTER take_stock', x: 80, y: 36, shape: 'box' }, { id: 'P', label: 'UPDATE products', x: 44, y: 36, shape: 'box' }, { id: 'U', label: 'AFTER audit', x: 13, y: 36, shape: 'box' },
+              { id: 'L', label: 'audit_log', x: 13, y: 62, shape: 'box' }, { id: 'W', label: 'WHEN stock < 5', x: 50, y: 62, shape: 'box' }, { id: 'A', label: 'alerts', x: 84, y: 62, shape: 'box' }],
+            edges: [['I', 'B'], ['B', 'O', 'write'], ['O', 'T'], ['T', 'P'], ['P', 'U'], ['U', 'L'], ['P', 'W'], ['W', 'A']], hl: hl || {}, ehl: ehl || {}, tags: tags || {} };
+        }
+        function state(hp, ho, ha, hal) { return [tbl('products', pc, prod, hp || {}), tbl('orders (new rows)', oc, orders, ho || {}), tbl('audit_log', ac, audit, ha || {}), tbl('low_stock_alerts', lc, alerts, hal || {})]; }
+        f.push({ narr: 'Four triggers are installed: <b>BEFORE INSERT</b> on orders (reject if qty &gt; stock), <b>AFTER INSERT</b> on orders (decrement stock), <b>AFTER UPDATE</b> on products (audit), and <b>AFTER UPDATE … WHEN stock &lt; 5</b> (low-stock alert). The app only ever runs a plain INSERT.', parts: [g()].concat(state()) });
+        evs.forEach(function (e) {
+          var m = e.match(/^(\d+)\s*:\s*(\d+)$/);
+          if (!m) throw new Error('Bad order "' + e + '". Use product_id:qty, e.g. 2:3');
+          var pid = Number(m[1]), qty = Number(m[2]), pi = -1;
+          prod.forEach(function (r, i) { if (r[0] === pid) pi = i; });
+          if (pi < 0) throw new Error('Unknown product ' + pid + '. Use 1, 2, 3 or 5');
+          if (qty <= 0) throw new Error('qty must be positive');
+          f.push({ narr: '<code>INSERT INTO orders (product_id, qty) VALUES (' + pid + ', ' + qty + ')</code>. Before the row is written, the <b>BEFORE</b> trigger compares qty ' + qty + ' with stock ' + prod[pi][2] + '.', parts: [g({ I: 'cur', B: 'cur' }, { 'I-B': 'ok' })].concat(state(one(pi, 'win'))) });
+          if (qty > prod[pi][2]) {
+            f.push({ narr: '<span class="c-r">RAISE(ABORT, \'not enough stock\')</span>. The INSERT is cancelled, so no AFTER trigger ever fires — the chain stops here and every table is unchanged.', parts: [g({ I: 'bad', B: 'bad' }, { 'I-B': 'bad', 'B-O': 'bad' }, { B: 'ABORT' })].concat(state(one(pi, 'bad'))) });
+            return;
+          }
+          orders.push([oid++, pid, qty]);
+          f.push({ narr: 'Check passed: the order row is written (green). Now the AFTER INSERT trigger <b>orders_take_stock</b> wakes up.', parts: [g({ B: 'ok', O: 'ok', T: 'cur' }, { 'B-O': 'ok', 'O-T': 'ok' })].concat(state({}, one(orders.length - 1, 'ok'))) });
+          var old = prod[pi][2]; prod[pi][2] = old - qty;
+          f.push({ narr: 'The trigger runs <code>UPDATE products SET stock = stock - ' + qty + '</code>: ' + old + ' → <b>' + prod[pi][2] + '</b> (amber). This UPDATE is itself an event, so the products triggers fire next — a <b>chain</b>.', parts: [g({ T: 'ok', P: 'cur' }, { 'T-P': 'ok' })].concat(state(one(pi, 'cur'), one(orders.length - 1, 'ok'))) });
+          audit.push([aid++, pid, old + ' → ' + prod[pi][2]]);
+          f.push({ narr: 'AFTER UPDATE trigger <b>products_audit</b> records old and new stock in audit_log (green). Nobody had to remember to write this in the app.', parts: [g({ P: 'ok', U: 'cur', L: 'ok' }, { 'P-U': 'ok', 'U-L': 'ok' })].concat(state(one(pi, 'cur'), {}, one(audit.length - 1, 'ok'))) });
+          if (prod[pi][2] < 5) {
+            alerts.push([pid, prod[pi][2], 'reorder ' + prod[pi][1]]);
+            f.push({ narr: 'The <b>WHEN stock &lt; 5</b> condition is true (' + prod[pi][2] + '), so the low-stock trigger fires and inserts an alert. One INSERT caused 4 writes in 4 tables.', parts: [g({ W: 'ok', A: 'ok' }, { 'P-W': 'ok', 'W-A': 'ok' }, { W: 'true' })].concat(state(one(pi, 'cur'), {}, {}, one(alerts.length - 1, 'ok'))) });
+          } else {
+            f.push({ narr: 'The WHEN condition is false (stock ' + prod[pi][2] + ' ≥ 5), so the alert trigger is skipped. Chain finished.', parts: [g({ W: 'done' }, { 'P-W': 'bad' }, { W: 'false' })].concat(state()) });
+          }
+        });
+        f.push({ narr: 'Final state. Every change is traceable in audit_log — but notice how much happened that the INSERT statement never mentioned. That hidden power is both the value and the danger of triggers.', parts: state() });
+        return f;
+      }
+    },
+    examples: [
+      { title: 'Maintain updated_at automatically', html: `<p>SQLite cannot modify NEW in a BEFORE trigger (Postgres and MySQL can), so use an AFTER UPDATE trigger that updates the row. It does not loop forever because recursive triggers are off by default — and the <code>UPDATE OF</code> column list excludes <code>updated_at</code> anyway.</p>`, code: shop(`CREATE TRIGGER products_touch AFTER UPDATE OF price_cents, stock, name ON products
+BEGIN
+  UPDATE products SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+END;
+UPDATE products SET price_cents = 3199 WHERE id = 3;
+SELECT id, price_cents, updated_at FROM products WHERE id = 3;   -- updated_at refreshed`) },
+      { title: 'INSTEAD OF trigger: insert into a join view', html: `<p>A view joining orders and customers cannot be inserted into directly. An INSTEAD OF INSERT trigger translates "insert an order for asha@mail.com" into a lookup + insert on the base table.</p>`, code: shop(`CREATE VIEW order_entry AS
+SELECT o.id, c.email, o.product_id, o.qty FROM orders o JOIN customers c ON c.id = o.customer_id;
+CREATE TRIGGER order_entry_ins INSTEAD OF INSERT ON order_entry
+BEGIN
+  INSERT INTO orders (customer_id, product_id, qty)
+  VALUES ((SELECT id FROM customers WHERE email = NEW.email), NEW.product_id, NEW.qty);
+END;
+INSERT INTO order_entry (email, product_id, qty) VALUES ('dara@mail.com', 3, 2);
+SELECT * FROM order_entry WHERE email = 'dara@mail.com';`) },
+      { title: 'Runaway chains and recursion', html: `<p>With <code>PRAGMA recursive_triggers = ON</code>, a trigger that updates its own table fires itself again. SQLite stops at a depth limit (1000 by default via SQLITE_MAX_TRIGGER_DEPTH); Postgres has no limit except the stack. Guard with WHEN conditions so the chain ends. Here a counter trigger stops at 5.</p>`, code: lab(`PRAGMA recursive_triggers = ON;
+CREATE TABLE t (id INTEGER PRIMARY KEY, n INTEGER);
+CREATE TRIGGER bump AFTER UPDATE ON t WHEN NEW.n < 5
+BEGIN
+  UPDATE t SET n = n + 1 WHERE id = NEW.id;   -- fires bump again (recursion)
+END;
+INSERT INTO t VALUES (1, 0);
+UPDATE t SET n = 1 WHERE id = 1;
+SELECT * FROM t;   -- n = 5: the WHEN guard ended the chain`) },
+      { title: 'Audit "who", not just "what"', html: `<p>SQLite has no database users, so the app must pass the actor: write it in a column the trigger copies (e.g. <code>last_modified_by</code>) or a one-row "session context" table. Postgres triggers can read <code>current_user</code> or <code>current_setting('app.user_id')</code> set per transaction.</p>`, code: shop(`CREATE TEMP TABLE session_ctx (k TEXT PRIMARY KEY, v TEXT);
+INSERT INTO session_ctx VALUES ('user', 'ops:dara');
+CREATE TEMP TRIGGER acct_audit AFTER UPDATE OF balance ON accounts
+BEGIN
+  INSERT INTO audit_log (table_name, row_id, action, old_data, new_data)
+  VALUES ('accounts', NEW.id, 'UPDATE by ' || (SELECT v FROM session_ctx WHERE k = 'user'),
+          OLD.balance, NEW.balance);
+END;
+UPDATE accounts SET balance = balance + 50 WHERE id = 3;
+SELECT action, old_data, new_data FROM audit_log;`) }
+    ],
+    deepDive: `<p><b>Same transaction.</b> Triggers run inside the statement's transaction: if the trigger fails, the triggering statement fails; if the transaction rolls back, the trigger's writes vanish too. That is exactly why audit triggers are trustworthy — and why sending an email or HTTP call from a trigger is wrong (it cannot be rolled back). Use an <b>outbox table</b> written by the trigger and a separate worker that delivers messages.</p>
+<p><b>Row vs statement level.</b> Updating 1M rows fires a row trigger 1M times. Postgres statement-level triggers with <b>transition tables</b> (<code>REFERENCING NEW TABLE AS new_rows</code>) process the whole set in one set-based INSERT — far faster for audit of bulk changes. SQLite only has row triggers; MySQL too.</p>
+<p><b>Ordering.</b> Postgres fires same-event triggers in alphabetical name order; MySQL supports <code>FOLLOWS/PRECEDES</code>; SQLite's order is not something to rely on. Constraint checks happen around BEFORE triggers, and deferred FKs at commit.</p>
+<p><b>Operational traps.</b> Logical replication / CDC tools may or may not replay trigger effects on replicas (Postgres replicas apply changes without firing ordinary triggers unless set to <code>ENABLE REPLICA/ALWAYS</code>). Bulk loads often disable triggers (<code>ALTER TABLE … DISABLE TRIGGER</code>, <code>session_replication_role = replica</code>) — and then forget to backfill audit data. ORMs that cache rows will not see values a trigger changed unless they re-read (<code>RETURNING</code> helps).</p>
+<p><b>Alternatives:</b> CDC streams (Debezium reading the WAL/binlog) give an audit/event feed without trigger overhead; temporal tables keep history natively; application domain events keep workflows visible in code.</p>`,
+    aiEra: `<p><b>What AI changes:</b> AI is excellent at producing boilerplate triggers (audit for 30 tables), and at the opposite job — <code>List every trigger in this schema, what fires it, and draw the chain of side effects</code> — which is how you debug "mystery writes".</p>
+<p><b>Where AI goes wrong:</b> it writes Postgres trigger functions for SQLite (no <code>RETURNS trigger</code> there), tries to assign <code>NEW.col</code> in SQLite, puts network calls or long logic in triggers, forgets the WHEN guard (audit rows for no-op updates), or creates recursive chains.</p>
+<p><b>What you still own:</b> deciding what belongs in a trigger (integrity, audit) vs the app (workflows), documenting triggers next to the schema, measuring write overhead, and making sure agents that bulk-edit data cannot silently disable the audit trail.</p>`,
+    problems: [{
+      title: 'Audit Trail for Salary Changes', level: 'Medium', tags: ['trigger', 'audit', 'json'], companies: ['Oracle', 'SAP', 'Goldman Sachs'],
+      statement: `<p>Compliance requires that every change to an employee's <b>salary</b> and every <b>deletion</b> of an employee is recorded in <code>audit_log</code> with the old and new values, regardless of which app, script or person ran the SQL. Updates that do not change salary must <b>not</b> create audit rows.</p>`,
+      constraints: `<p>SQLite dialect. Use <code>audit_log(table_name, row_id, action, old_data, new_data, changed_at)</code>. Must work for multi-row UPDATEs.</p>`,
+      example: `<p><code>UPDATE employees SET salary = salary * 1.1 WHERE dept = 'Eng'</code> → ${H.c('g', '3 audit rows')} (Asha, Ben, Eli). <code>UPDATE employees SET title = 'Staff' WHERE id = 2</code> → ${H.c('m', 'no audit row')}. <code>DELETE FROM employees WHERE id = 3</code> → ${H.c('g', '1 DELETE audit row')} with Chen's old data.</p>`,
+      brute: { why: `<p>Naive approach: the application writes the audit row right after each UPDATE. It works only for code paths that remember to do it: a support engineer's manual SQL, a batch script, or a new microservice skip it; and if the app crashes between the two statements (or they are not in one transaction) you get changes without audit. Compliance needs a guarantee, not a convention.</p>`, code: shop(`-- App-side "audit": two separate statements that every caller must remember.
+UPDATE employees SET salary = 190000 WHERE id = 2;
+INSERT INTO audit_log (table_name, row_id, action, old_data, new_data)
+VALUES ('employees', 2, 'UPDATE', '180000', '190000');      -- old value hard-coded by the app!
+UPDATE employees SET salary = 95000 WHERE id = 3;           -- someone forgot -> no audit row
+SELECT * FROM audit_log;`) },
+      mcq: { q: 'Which trigger setup meets "only when salary changes"?', options: ['AFTER UPDATE OF salary … WHEN OLD.salary IS NOT NEW.salary', 'BEFORE INSERT ON employees', 'AFTER UPDATE ON employees with no WHEN', 'A view over employees'], answer: 0, explain: '<code>UPDATE OF salary</code> limits the event to statements that set salary; the WHEN filters out no-op assignments (same value). IS NOT is NULL-safe.' },
+      hints: [`<p>Hint 1: Put the rule where every write passes — inside the database — with an AFTER trigger. It runs in the same transaction as the change.</p>`, `<p>Hint 2: Use <code>OLD.salary</code> and <code>NEW.salary</code>; store rows as JSON with <code>json_object(…)</code> so the audit format survives schema changes.</p>`, `<p>Hint 3: Two triggers: <code>AFTER UPDATE OF salary … WHEN OLD.salary IS NOT NEW.salary</code> and <code>AFTER DELETE</code>. Row-level triggers fire once per row, so a 3-row UPDATE writes 3 audit rows.</p>`],
+      solution: {
+        approach: `<p>Two AFTER row triggers writing JSON images into <code>audit_log</code>. Because they live in the database and run in the same transaction, no client can bypass them and audit rows exist exactly when the change commits.</p>`,
+        code: shop(`CREATE TRIGGER employees_salary_audit
+AFTER UPDATE OF salary ON employees
+WHEN OLD.salary IS NOT NEW.salary
+BEGIN
+  INSERT INTO audit_log (table_name, row_id, action, old_data, new_data)
+  VALUES ('employees', NEW.id, 'UPDATE',
+          json_object('salary', OLD.salary),
+          json_object('salary', NEW.salary));
+END;
+
+CREATE TRIGGER employees_delete_audit
+AFTER DELETE ON employees
+BEGIN
+  INSERT INTO audit_log (table_name, row_id, action, old_data, new_data)
+  VALUES ('employees', OLD.id, 'DELETE',
+          json_object('name', OLD.name, 'dept', OLD.dept, 'salary', OLD.salary), NULL);
+END;
+
+UPDATE employees SET salary = CAST(salary * 1.1 AS INTEGER) WHERE dept = 'Eng';  -- 3 audit rows
+UPDATE employees SET title = 'Staff Engineer' WHERE id = 2;                      -- 0 audit rows
+UPDATE employees SET salary = salary WHERE id = 4;                               -- 0 (no real change)
+DELETE FROM employees WHERE id = 3;                                              -- 1 audit row
+SELECT row_id, action, old_data, new_data FROM audit_log ORDER BY id;`),
+        alt: [pg(`-- PostgreSQL: statement-level trigger with transition tables (fast for bulk updates)
+CREATE FUNCTION audit_salary() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  INSERT INTO audit_log (table_name, row_id, action, old_data, new_data)
+  SELECT 'employees', n.id, 'UPDATE', jsonb_build_object('salary', o.salary), jsonb_build_object('salary', n.salary)
+  FROM old_rows o JOIN new_rows n ON n.id = o.id
+  WHERE o.salary IS DISTINCT FROM n.salary;
+  RETURN NULL;
+END $$;
+CREATE TRIGGER employees_salary_audit AFTER UPDATE ON employees
+REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows
+FOR EACH STATEMENT EXECUTE FUNCTION audit_salary();`)],
+        dry: { head: ['statement', 'rows hit', 'trigger fired?', 'audit rows'], rows: [['raise Eng 10%', '3', 'salary trigger ×3', H.c('g', '+3')], ['set title on id 2', '1', 'no (UPDATE OF salary)', '0'], ['salary = salary on id 4', '1', 'event yes, WHEN false', '0'], ['delete id 3', '1', 'delete trigger', H.c('g', '+1')]] },
+        complexity: `<p>One extra INSERT per changed row (O(1) each), inside the same transaction. For millions of rows per statement, prefer statement-level triggers or CDC.</p>`,
+        followUps: ['Record who made the change (SQLite has no current_user)', 'Prevent anyone from UPDATE/DELETE on audit_log itself', 'Rebuild an employee\'s salary history at a point in time from the log']
+      }
+    }]
+  });
+
+  /* ======================= PRACTICE ARENA ======================= */
+  // ---------- Easy ----------
+  practice.push({
+    title: 'Create a Product and Get Its New ID', level: 'Easy', tags: ['insert', 'returning'], companies: ['Shopify', 'Amazon'],
+    statement: `<p>Add the product <b>MS-007 "Wireless Mouse"</b> (category accessories, ₹19.99 = 1999 cents, stock 40) and return its generated <code>id</code> and <code>updated_at</code> in the same statement.</p>`,
+    constraints: `<p>Many app servers insert products concurrently. Do not rely on column order.</p>`,
+    example: `<p>Output: one row ${H.c('g', 'id = 6, updated_at = (now)')} — 6 because ids 1–5 exist. The id comes back from the INSERT itself, so no other session can interfere.</p>`,
+    brute: { why: `<p>INSERT, then <code>SELECT MAX(id)</code>. Between the two statements another server may insert its own product, and you read <i>its</i> id. It also costs a second round trip.</p>`, code: shop(`INSERT INTO products (sku, name, category, price_cents, stock)
+VALUES ('MS-007', 'Wireless Mouse', 'accessories', 1999, 40);
+SELECT MAX(id) AS maybe_my_id FROM products;   -- racy under concurrency`) },
+    mcq: { q: 'Safest way to learn the generated id?', options: ['INSERT … RETURNING id', 'SELECT MAX(id) right after', 'SELECT COUNT(*)', 'Guess id = previous + 1'], answer: 0, explain: 'RETURNING reads the id of exactly the row this statement inserted.' },
+    hints: [`<p>Hint 1: Leave <code>id</code> out of the column list — <code>INTEGER PRIMARY KEY</code> is filled automatically.</p>`, `<p>Hint 2: Append <code>RETURNING id, updated_at</code> to the INSERT (SQLite 3.35+, Postgres; JDBC getGeneratedKeys elsewhere).</p>`, `<p>Hint 3: Name every column you supply so the statement survives schema changes; let DEFAULT fill updated_at.</p>`],
+    solution: { approach: `<p>Single INSERT with an explicit column list and RETURNING.</p>`, code: shop(`INSERT INTO products (sku, name, category, price_cents, stock)
+VALUES ('MS-007', 'Wireless Mouse', 'accessories', 1999, 40)
+RETURNING id, sku, updated_at;`), complexity: `<p>O(log N) for the PK and the UNIQUE(sku) index inserts; one round trip.</p>`, followUps: ['How do you get ids for a 500-row multi-row INSERT?', 'What is the MySQL equivalent?'] }
+  });
+
+  practice.push({
+    title: 'Cancel Stale Pending Orders', level: 'Easy', tags: ['update', 'where'], companies: ['Swiggy', 'DoorDash'],
+    statement: `<p>Cancel every order that is still <code>pending</code> and was created before <b>2026-09-01</b>. Report which orders were cancelled.</p>`,
+    constraints: `<p>Never touch paid, shipped or already-cancelled orders.</p>`,
+    example: `${H.table(['id', 'status', 'created_at', 'action'], [['3', 'pending', '2026-09-02', 'keep (too new)'], ['6', 'pending', '2026-08-15', H.c('y', 'cancel')], ['1', 'paid', '2026-09-01', 'keep']])}`,
+    brute: { why: `<p>Hard-coding ids found by eye (<code>WHERE id = 6</code>) is stale the moment data changes and needs one statement per order. Forgetting <code>status = 'pending'</code> would cancel old <i>shipped</i> orders too.</p>`, code: shop(`-- Fragile: ids picked by hand, one round trip each
+UPDATE orders SET status = 'cancelled' WHERE id = 6;
+SELECT id, status FROM orders ORDER BY id;`) },
+    mcq: { q: 'Which WHERE is correct?', options: ["status = 'pending' AND created_at < '2026-09-01'", "created_at < '2026-09-01'", "status = 'pending' OR created_at < '2026-09-01'", 'no WHERE needed'], answer: 0, explain: 'Both conditions must hold; OR would cancel every pending order and every old order.' },
+    hints: [`<p>Hint 1: Preview with <code>SELECT id FROM orders WHERE …</code> before updating.</p>`, `<p>Hint 2: Combine both conditions with AND; ISO date strings compare correctly as text.</p>`, `<p>Hint 3: Add <code>RETURNING id</code> to report the cancelled orders in the same statement.</p>`],
+    solution: { approach: `<p>One set-based UPDATE with both filters and RETURNING.</p>`, code: shop(`UPDATE orders
+SET status = 'cancelled'
+WHERE status = 'pending' AND created_at < '2026-09-01'
+RETURNING id, customer_id, created_at;`), complexity: `<p>One scan of orders (or index range scan on (status, created_at)).</p>`, followUps: ['Run it nightly in batches of 1,000', 'Also restore stock for the cancelled orders'] }
+  });
+
+  practice.push({
+    title: 'Daily Page-View Counter', level: 'Easy', tags: ['upsert', 'counter'], companies: ['Google', 'Medium'],
+    statement: `<p>Record one hit for page <b>about</b> on <b>2026-10-01</b> in <code>page_views(page, day, hits)</code> (PK = page + day). The first hit creates the row; later hits add 1.</p>`,
+    constraints: `<p>Thousands of concurrent requests; no hit may be lost.</p>`,
+    example: `<p>Run twice → ${H.c('g', "('about', '2026-10-01', 2)")}. Run once for <code>home</code> → 120 becomes ${H.c('y', '121')}.</p>`,
+    brute: { why: `<p>UPDATE, and if 0 rows changed, INSERT. Two concurrent first hits both see 0 rows, both INSERT; one fails or is ignored → a hit is lost. Two statements, two round trips.</p>`, code: shop(`UPDATE page_views SET hits = hits + 1 WHERE page = 'about' AND day = '2026-10-01';
+INSERT OR IGNORE INTO page_views (page, day, hits) VALUES ('about', '2026-10-01', 1);   -- race between these
+SELECT * FROM page_views WHERE page = 'about';`) },
+    mcq: { q: 'In <code>DO UPDATE SET hits = hits + excluded.hits</code>, what is <code>excluded.hits</code>?', options: ['The value from the row you tried to insert (1)', 'The existing value', 'A deleted row', 'Always NULL'], answer: 0, explain: '<code>excluded</code> is the proposed row; the bare column refers to the stored row.' },
+    hints: [`<p>Hint 1: The PRIMARY KEY (page, day) is the natural conflict target.</p>`, `<p>Hint 2: <code>INSERT … VALUES (…, 1) ON CONFLICT (page, day) DO UPDATE SET hits = hits + excluded.hits</code>.</p>`, `<p>Hint 3: Atomic in one statement — the unique index decides insert vs update, so no lost hits.</p>`],
+    solution: { approach: `<p>Single upsert keyed on (page, day).</p>`, code: shop(`INSERT INTO page_views (page, day, hits) VALUES ('about', '2026-10-01', 1)
+ON CONFLICT (page, day) DO UPDATE SET hits = hits + excluded.hits;
+INSERT INTO page_views (page, day, hits) VALUES ('about', '2026-10-01', 1)
+ON CONFLICT (page, day) DO UPDATE SET hits = hits + excluded.hits;
+SELECT * FROM page_views ORDER BY day, page;`), complexity: `<p>One index probe per hit. At very high rates one hot row becomes a lock hotspot — batch counts in memory or shard the counter.</p>`, followUps: ['Buffer hits in Redis and flush every minute with a bulk upsert', 'MySQL version?'] }
+  });
+
+  practice.push({
+    title: 'View of Products Customers Can Buy', level: 'Easy', tags: ['view'], companies: ['Flipkart', 'Etsy'],
+    statement: `<p>The storefront must list only products with stock &gt; 0, showing sku, name, category and price in rupees (price_cents / 100.0). Create <code>available_products</code> so it is always current.</p>`,
+    constraints: `<p>No duplicate data; stock changes all day.</p>`,
+    example: `<p>Headphones (stock 0) are hidden. After <code>UPDATE products SET stock = 0 WHERE id = 5</code>, DB Internals ${H.c('r', 'disappears')} too — instantly.</p>`,
+    brute: { why: `<p>Copying in-stock rows into a separate table (<code>CREATE TABLE … AS SELECT</code>) is out of date after the first sale and needs a sync job.</p>`, code: shop(`CREATE TABLE available_copy AS SELECT sku, name FROM products WHERE stock > 0;
+UPDATE products SET stock = 0 WHERE id = 5;
+SELECT * FROM available_copy;   -- still lists DB Internals (stale)`) },
+    mcq: { q: 'What does a view store?', options: ['Only its SELECT statement', 'A copy of the rows', 'An index', 'A trigger'], answer: 0, explain: 'Views are inlined at query time, so they always reflect the base table.' },
+    hints: [`<p>Hint 1: A view = a saved SELECT that re-runs on each read.</p>`, `<p>Hint 2: Compute rupees with <code>price_cents / 100.0</code> (the .0 forces real division).</p>`, `<p>Hint 3: <code>CREATE VIEW available_products AS SELECT … FROM products WHERE stock &gt; 0;</code></p>`],
+    solution: { approach: `<p>A filtering, projecting view.</p>`, code: shop(`CREATE VIEW available_products AS
+SELECT sku, name, category, price_cents / 100.0 AS price_rupees
+FROM products
+WHERE stock > 0;
+UPDATE products SET stock = 0 WHERE id = 5;
+SELECT * FROM available_products;`), complexity: `<p>Costs one scan of products per read; add an index on stock if the table is large.</p>`, followUps: ['Hide soft-deleted products too', 'When would you materialize this?'] }
+  });
+
+  // ---------- Medium ----------
+  practice.push({
+    title: 'Restock From Deliveries (No Fan-Out)', level: 'Medium', tags: ['update from', 'aggregation'], companies: ['Walmart', 'Instacart'],
+    statement: `<p>Apply all rows of <code>deliveries(sku, qty)</code> to <code>products.stock</code>. A SKU can appear several times. Also list deliveries whose SKU does not exist so someone can investigate.</p>`,
+    constraints: `<p>Exact totals required. One UPDATE statement for the stock change.</p>`,
+    example: `${H.table(['sku', 'deliveries', 'stock before', 'after'], [['CB-002', '50 + 30', '200', H.c('y', '280')], ['HP-004', '20', '0', H.c('y', '20')], ['ZZ-999', '5', '—', H.c('r', 'unknown sku')]])}`,
+    brute: { why: `<p>Joining <code>deliveries</code> directly in UPDATE … FROM makes CB-002 match two source rows; the engine applies only one (arbitrary) → +50 or +30, never +80. A per-delivery loop in the app is correct but N statements.</p>`, code: shop(`UPDATE products SET stock = products.stock + d.qty
+FROM deliveries d WHERE products.sku = d.sku;      -- fan-out: wrong total for CB-002
+SELECT sku, stock FROM products ORDER BY id;`) },
+    mcq: { q: 'How do you make each product match exactly one source row?', options: ['Aggregate deliveries by sku in a subquery first', 'Add DISTINCT to the UPDATE', 'Use LIMIT 1', 'Use INSERT OR REPLACE'], answer: 0, explain: 'GROUP BY sku collapses duplicates into one row per sku with SUM(qty).' },
+    hints: [`<p>Hint 1: The problem is many source rows per target row.</p>`, `<p>Hint 2: <code>FROM (SELECT sku, SUM(qty) AS total FROM deliveries GROUP BY sku) d</code>.</p>`, `<p>Hint 3: Use an anti-join (<code>NOT EXISTS</code>) to list unknown SKUs; RETURNING shows updated rows.</p>`],
+    solution: { approach: `<p>Pre-aggregate, then UPDATE … FROM; report orphans with NOT EXISTS.</p>`, code: shop(`UPDATE products
+SET stock = products.stock + d.total_qty, updated_at = CURRENT_TIMESTAMP
+FROM (SELECT sku, SUM(qty) AS total_qty FROM deliveries GROUP BY sku) AS d
+WHERE products.sku = d.sku
+RETURNING sku, stock;
+
+SELECT d.id, d.sku, d.qty AS unknown_sku_delivery
+FROM deliveries d
+WHERE NOT EXISTS (SELECT 1 FROM products p WHERE p.sku = d.sku);`), alt: [my(`UPDATE products p
+JOIN (SELECT sku, SUM(qty) AS total_qty FROM deliveries GROUP BY sku) d ON d.sku = p.sku
+SET p.stock = p.stock + d.total_qty;`)], complexity: `<p>One GROUP BY over deliveries + one index probe per SKU.</p>`, followUps: ['Mark deliveries as applied so re-running does not double-count', 'Do it in Postgres with UPDATE … FROM … RETURNING'] }
+  });
+
+  practice.push({
+    title: 'Archive Then Delete Old Orders Atomically', level: 'Medium', tags: ['insert select', 'delete', 'transaction'], companies: ['Uber', 'Booking.com'],
+    statement: `<p>Move every order created before <b>2026-09-04</b> whose status is <code>shipped</code> or <code>cancelled</code> into <code>orders_archive</code> (plus <code>archived_at</code>), and remove them from <code>orders</code>. Every deleted row must exist in the archive.</p>`,
+    constraints: `<p>No row may be lost or duplicated even if statuses change while the job runs.</p>`,
+    example: `<p>Orders ${H.c('y', '2 (shipped)')} and ${H.c('y', '5 (cancelled)')} move; paid and pending orders stay.</p>`,
+    brute: { why: `<p>Two autocommit statements with predicates typed separately: the INSERT archives 2 rows, the DELETE uses a slightly different condition and removes 4 — two paid orders vanish without an archive copy. Even with identical predicates, a row whose status changes between the two statements is deleted unarchived (or archived but not deleted).</p>`, code: shop(`CREATE TABLE orders_archive (id INTEGER PRIMARY KEY, customer_id INTEGER, product_id INTEGER, qty INTEGER, status TEXT, created_at TEXT, archived_at TEXT);
+INSERT INTO orders_archive SELECT *, CURRENT_TIMESTAMP FROM orders
+WHERE created_at < '2026-09-04' AND status IN ('shipped', 'cancelled');
+DELETE FROM orders WHERE created_at < '2026-09-04' AND status <> 'pending';   -- different predicate!
+SELECT (SELECT COUNT(*) FROM orders_archive) AS archived, (SELECT COUNT(*) FROM orders) AS left_in_orders;`) },
+    mcq: { q: 'What guarantees "archived exactly the rows deleted"?', options: ['Freeze the id list once, use it for both statements, inside one transaction', 'Run DELETE first', 'Use two different connections', 'INSERT OR REPLACE'], answer: 0, explain: 'A fixed id set + a transaction makes both statements operate on the same rows atomically.' },
+    hints: [`<p>Hint 1: Decide the rows once — store their ids in a temp table.</p>`, `<p>Hint 2: INSERT … SELECT … WHERE id IN (temp) then DELETE … WHERE id IN (temp).</p>`, `<p>Hint 3: Wrap in BEGIN/COMMIT. Postgres can do it in one statement: <code>WITH moved AS (DELETE … RETURNING *) INSERT INTO archive SELECT … FROM moved</code>.</p>`],
+    solution: { approach: `<p>Snapshot the ids, copy, delete — all in one transaction.</p>`, code: shop(`CREATE TABLE orders_archive (id INTEGER PRIMARY KEY, customer_id INTEGER, product_id INTEGER, qty INTEGER, status TEXT, created_at TEXT, archived_at TEXT);
+BEGIN;
+CREATE TEMP TABLE to_move AS
+  SELECT id FROM orders WHERE created_at < '2026-09-04' AND status IN ('shipped', 'cancelled');
+INSERT INTO orders_archive
+  SELECT o.*, CURRENT_TIMESTAMP FROM orders o WHERE o.id IN (SELECT id FROM to_move);
+DELETE FROM orders WHERE id IN (SELECT id FROM to_move);
+COMMIT;
+SELECT id, status FROM orders_archive;
+SELECT id, status FROM orders ORDER BY id;`), alt: [pg(`WITH moved AS (
+  DELETE FROM orders
+  WHERE created_at < '2026-09-04' AND status IN ('shipped', 'cancelled')
+  RETURNING *
+)
+INSERT INTO orders_archive SELECT moved.*, now() FROM moved;`)], complexity: `<p>Linear in moved rows; batch by id ranges for millions of rows.</p>`, followUps: ['Run it in batches of 5,000 with a loop', 'How would partitioning make this instant?'] }
+  });
+
+  practice.push({
+    title: 'Last-Write-Wins Sync With Versions', level: 'Medium', tags: ['upsert', 'conditional update', 'idempotency'], companies: ['Dropbox', 'Notion'],
+    statement: `<p>Devices send inventory snapshots <code>(sku, qty, version)</code> that may arrive late or twice. Apply each snapshot only if its <code>version</code> is newer than the stored one; unknown SKUs are inserted.</p>`,
+    constraints: `<p>Out-of-order and duplicate delivery; must be idempotent.</p>`,
+    example: `<p>Stored A: qty 10 v3. Incoming A v5 qty 7 → ${H.c('y', 'applied')}; then A v4 qty 9 (late) → ${H.c('m', 'ignored')}; B v1 → ${H.c('g', 'inserted')}.</p>`,
+    brute: { why: `<p><code>INSERT OR REPLACE</code> (or an unconditional DO UPDATE) applies whatever arrives last on the wire: the late v4 overwrites v5 and the device shows stale stock forever.</p>`, code: lab(`CREATE TABLE inventory (sku TEXT PRIMARY KEY, qty INTEGER NOT NULL, version INTEGER NOT NULL);
+INSERT INTO inventory VALUES ('A', 10, 3);
+INSERT OR REPLACE INTO inventory VALUES ('A', 7, 5);
+INSERT OR REPLACE INTO inventory VALUES ('A', 9, 4);   -- late message wins: wrong
+SELECT * FROM inventory;`) },
+    mcq: { q: 'Where does the "only if newer" rule go?', options: ['A WHERE clause on DO UPDATE', 'In the VALUES list', 'In a CHECK constraint', 'In ON CONFLICT (version)'], answer: 0, explain: 'DO UPDATE … WHERE excluded.version &gt; inventory.version skips stale updates atomically.' },
+    hints: [`<p>Hint 1: The decision depends on both the stored and the incoming version — exactly what DO UPDATE … WHERE sees.</p>`, `<p>Hint 2: <code>WHERE excluded.version &gt; inventory.version</code>.</p>`, `<p>Hint 3: Duplicates (same version) are skipped automatically → idempotent.</p>`],
+    solution: { approach: `<p>Upsert with a version guard on the update branch.</p>`, code: lab(`CREATE TABLE inventory (sku TEXT PRIMARY KEY, qty INTEGER NOT NULL, version INTEGER NOT NULL);
+INSERT INTO inventory VALUES ('A', 10, 3);
+INSERT INTO inventory (sku, qty, version) VALUES ('A', 7, 5), ('B', 4, 1)
+ON CONFLICT (sku) DO UPDATE SET qty = excluded.qty, version = excluded.version
+WHERE excluded.version > inventory.version;
+INSERT INTO inventory (sku, qty, version) VALUES ('A', 9, 4)
+ON CONFLICT (sku) DO UPDATE SET qty = excluded.qty, version = excluded.version
+WHERE excluded.version > inventory.version;      -- ignored (older)
+SELECT * FROM inventory ORDER BY sku;              -- A: 7 v5, B: 4 v1`), complexity: `<p>One index probe per snapshot.</p>`, followUps: ['Use a hybrid logical clock instead of an integer version', 'Report how many snapshots were ignored'] }
+  });
+
+  practice.push({
+    title: 'Optimistic Locking: Detect Lost Updates', level: 'Medium', tags: ['update', 'concurrency', 'version'], companies: ['Atlassian', 'Microsoft'],
+    statement: `<p>Two editors open document 1 (version 1) at the same time. Editor A saves first; Editor B saves second. B's save must be <b>rejected</b> (so B can merge), not silently overwrite A.</p>`,
+    constraints: `<p>No long-held locks while users are editing.</p>`,
+    example: `<p>A: <code>… WHERE id = 1 AND version = 1</code> → ${H.c('g', '1 row')} (version becomes 2). B: same condition → ${H.c('r', '0 rows')} → show "document changed, please reload".</p>`,
+    brute: { why: `<p>Plain <code>UPDATE docs SET body = ? WHERE id = 1</code>: B overwrites A's text with no warning — the classic lost update. Locking the row with SELECT … FOR UPDATE while a human types holds a lock for minutes.</p>`, code: lab(`CREATE TABLE docs (id INTEGER PRIMARY KEY, body TEXT, version INTEGER NOT NULL);
+INSERT INTO docs VALUES (1, 'draft', 1);
+UPDATE docs SET body = 'A edits' WHERE id = 1;
+UPDATE docs SET body = 'B edits' WHERE id = 1;   -- A's work silently lost
+SELECT * FROM docs;`) },
+    mcq: { q: 'How does B learn its save failed?', options: ['The UPDATE reports 0 affected rows', 'The database throws a deadlock', 'B reads MAX(version)', 'A trigger emails B'], answer: 0, explain: 'The version guard no longer matches, so 0 rows change; the app checks the affected-row count.' },
+    hints: [`<p>Hint 1: Store a version number that every successful write increments.</p>`, `<p>Hint 2: Save with <code>WHERE id = ? AND version = :version_i_read</code> and <code>SET version = version + 1</code>.</p>`, `<p>Hint 3: Check <code>changes()</code> / rowcount: 1 = saved, 0 = conflict.</p>`],
+    solution: { approach: `<p>Compare-and-set via a version column in the WHERE clause.</p>`, code: lab(`CREATE TABLE docs (id INTEGER PRIMARY KEY, body TEXT, version INTEGER NOT NULL);
+INSERT INTO docs VALUES (1, 'draft', 1);
+-- Editor A (read version 1)
+UPDATE docs SET body = 'A edits', version = version + 1 WHERE id = 1 AND version = 1;
+SELECT changes() AS a_saved;            -- 1
+-- Editor B (also read version 1)
+UPDATE docs SET body = 'B edits', version = version + 1 WHERE id = 1 AND version = 1;
+SELECT changes() AS b_saved;            -- 0 -> conflict, ask B to reload/merge
+SELECT * FROM docs;`), complexity: `<p>O(1) per save; no locks held between read and write.</p>`, followUps: ['Use updated_at instead of version — what can go wrong?', 'How do ORMs (JPA @Version) implement this?'] }
+  });
+
+  practice.push({
+    title: 'Writable Active-Users View', level: 'Medium', tags: ['view', 'instead of trigger', 'soft delete'], companies: ['Salesforce', 'Zoho'],
+    statement: `<p>Legacy code runs plain INSERT, UPDATE and DELETE against <code>active_users</code>. Make the view writable: INSERT adds a live user, UPDATE changes name/email, DELETE becomes a <b>soft delete</b> on <code>users</code>.</p>`,
+    constraints: `<p>SQLite (views are read-only without triggers).</p>`,
+    example: `<p><code>DELETE FROM active_users WHERE id = 3</code> → users row 3 gets ${H.c('y', 'deleted_at')}; the view no longer shows Chen.</p>`,
+    brute: { why: `<p>Rewriting every legacy query to target <code>users</code> with the right filters is a large, risky change. Writing to the view without triggers fails: "cannot modify active_users because it is a view".</p>`, code: shop(`CREATE VIEW active_users AS SELECT id, email, name FROM users WHERE deleted_at IS NULL;
+-- DELETE FROM active_users WHERE id = 3;   -- error: cannot modify a view
+UPDATE users SET deleted_at = CURRENT_TIMESTAMP WHERE id = 3;   -- every caller must remember this
+SELECT * FROM active_users;`) },
+    mcq: { q: 'Which trigger type makes a SQLite view writable?', options: ['INSTEAD OF', 'BEFORE', 'AFTER', 'FOR EACH STATEMENT'], answer: 0, explain: 'INSTEAD OF triggers on views replace the impossible write with your own statements.' },
+    hints: [`<p>Hint 1: One INSTEAD OF trigger per event: INSERT, UPDATE, DELETE.</p>`, `<p>Hint 2: Inside, write to <code>users</code> using NEW.* (insert/update) and OLD.id (update/delete).</p>`, `<p>Hint 3: DELETE trigger body = <code>UPDATE users SET deleted_at = CURRENT_TIMESTAMP WHERE id = OLD.id</code>.</p>`],
+    solution: { approach: `<p>Three INSTEAD OF triggers translating view writes into base-table writes.</p>`, code: shop(`CREATE VIEW active_users AS SELECT id, email, name FROM users WHERE deleted_at IS NULL;
+CREATE TRIGGER au_ins INSTEAD OF INSERT ON active_users
+BEGIN INSERT INTO users (email, name) VALUES (NEW.email, NEW.name); END;
+CREATE TRIGGER au_upd INSTEAD OF UPDATE ON active_users
+BEGIN UPDATE users SET email = NEW.email, name = NEW.name WHERE id = OLD.id AND deleted_at IS NULL; END;
+CREATE TRIGGER au_del INSTEAD OF DELETE ON active_users
+BEGIN UPDATE users SET deleted_at = CURRENT_TIMESTAMP WHERE id = OLD.id; END;
+
+INSERT INTO active_users (email, name) VALUES ('dev@mail.com', 'Dev');
+UPDATE active_users SET name = 'Asha R' WHERE id = 1;
+DELETE FROM active_users WHERE id = 3;
+SELECT * FROM active_users ORDER BY id;
+SELECT id, deleted_at IS NOT NULL AS deleted FROM users ORDER BY id;`), complexity: `<p>Each view write = one base write plus trigger overhead.</p>`, followUps: ['Postgres would auto-update this simple view — what about DELETE semantics?', 'Add WITH CHECK OPTION behaviour'] }
+  });
+
+  practice.push({
+    title: 'Refreshable Sales Summary With Reconciliation', level: 'Medium', tags: ['materialized view', 'summary table', 'transaction'], companies: ['Snowflake', 'Meesho'],
+    statement: `<p>Build <code>mv_category_sales(category, units, revenue_cents, refreshed_at)</code> from non-cancelled orders. Write the refresh so readers never see a half-built table, and a reconciliation query that returns rows only if the summary disagrees with live data.</p>`,
+    constraints: `<p>SQLite has no CREATE MATERIALIZED VIEW. Refresh runs every 10 minutes.</p>`,
+    example: `<p>After refresh, reconciliation returns ${H.c('g', '0 rows')}. After a new order (before the next refresh) it returns the ${H.c('r', 'stale category')}.</p>`,
+    brute: { why: `<p>Running the 3-table aggregate on every dashboard load works but repeats the expensive work thousands of times. Refreshing with DELETE then INSERT <i>without</i> a transaction exposes an empty table to readers between the two statements.</p>`, code: shop(`-- Every page load re-aggregates everything:
+SELECT p.category, SUM(o.qty) AS units, SUM(o.qty * p.price_cents) AS revenue_cents
+FROM orders o JOIN products p ON p.id = o.product_id
+WHERE o.status <> 'cancelled'
+GROUP BY p.category;`) },
+    mcq: { q: 'Which query detects drift between summary and live data?', options: ['(live aggregate EXCEPT summary) UNION ALL (summary EXCEPT live aggregate)', 'SELECT COUNT(*) FROM summary', 'A LEFT JOIN on refreshed_at', 'PRAGMA integrity_check'], answer: 0, explain: 'A symmetric difference via EXCEPT returns any row present on only one side.' },
+    hints: [`<p>Hint 1: Summary table + refresh = DELETE + INSERT … SELECT inside BEGIN/COMMIT.</p>`, `<p>Hint 2: Put the aggregate in a normal view (<code>v_category_sales</code>) so refresh and reconciliation share one definition.</p>`, `<p>Hint 3: Reconcile with a symmetric EXCEPT on (category, units, revenue_cents).</p>`],
+    solution: { approach: `<p>One view = the definition; a table = the materialization; a transactional refresh; a symmetric-difference check.</p>`, code: shop(`CREATE VIEW v_category_sales AS
+SELECT p.category, SUM(o.qty) AS units, SUM(o.qty * p.price_cents) AS revenue_cents
+FROM orders o JOIN products p ON p.id = o.product_id
+WHERE o.status <> 'cancelled'
+GROUP BY p.category;
+
+CREATE TABLE mv_category_sales (category TEXT PRIMARY KEY, units INTEGER, revenue_cents INTEGER, refreshed_at TEXT);
+
+BEGIN;                                   -- refresh job
+DELETE FROM mv_category_sales;
+INSERT INTO mv_category_sales SELECT category, units, revenue_cents, CURRENT_TIMESTAMP FROM v_category_sales;
+COMMIT;
+
+INSERT INTO orders (customer_id, product_id, qty, status) VALUES (3, 1, 1, 'paid');   -- new sale
+
+-- Reconciliation: rows here = summary is stale
+SELECT 'live_only' AS side, * FROM (SELECT category, units, revenue_cents FROM v_category_sales
+                                     EXCEPT SELECT category, units, revenue_cents FROM mv_category_sales)
+UNION ALL
+SELECT 'summary_only', * FROM (SELECT category, units, revenue_cents FROM mv_category_sales
+                                EXCEPT SELECT category, units, revenue_cents FROM v_category_sales);`), complexity: `<p>Refresh = one full aggregate; reads = tiny table scans.</p>`, followUps: ['Make it incremental with triggers', 'Postgres: REFRESH MATERIALIZED VIEW CONCURRENTLY requirements'] }
+  });
+
+  // ---------- Hard ----------
+  practice.push({
+    title: 'Keep Customer Stats in Sync With Triggers', level: 'Hard', tags: ['triggers', 'incremental', 'denormalization'], companies: ['Amazon', 'Stripe'],
+    statement: `<p>Maintain <code>customer_stats(customer_id, orders_count, units)</code> counting only non-cancelled orders, kept exact under INSERT, DELETE and UPDATE of <code>orders</code> (including changes to qty, status and customer_id). Prove it with a reconciliation query.</p>`,
+    constraints: `<p>Every write path must be handled; reconciliation must return 0 rows.</p>`,
+    example: `<p>Insert an order for Chen (qty 2) → Chen ${H.c('y', '+1 order, +2 units')}. Cancel order 1 → Asha ${H.c('y', '−1 order, −1 unit')}. Move order 3 from Ben to Dara → Ben −1, Dara +1.</p>`,
+    brute: { why: `<p>Recomputing the whole stats table after every write is O(N) per write. Handling only INSERT (the most common mistake) drifts as soon as an order is cancelled, edited, deleted or re-assigned.</p>`, code: shop(`CREATE TABLE customer_stats (customer_id INTEGER PRIMARY KEY, orders_count INTEGER, units INTEGER);
+-- Full rebuild after EVERY write (correct but O(N) each time):
+DELETE FROM customer_stats;
+INSERT INTO customer_stats
+SELECT customer_id, COUNT(*), SUM(qty) FROM orders WHERE status <> 'cancelled' GROUP BY customer_id;
+SELECT * FROM customer_stats;`) },
+    mcq: { q: 'An UPDATE can change customer_id, qty and status at once. Simplest correct trigger logic?', options: ['Subtract OLD\'s contribution (if it counted), then add NEW\'s (if it counts)', 'Add NEW.qty - OLD.qty only', 'Ignore UPDATEs', 'Recount the whole table'], answer: 0, explain: 'Remove-old-then-add-new handles every combination of changes uniformly.' },
+    hints: [`<p>Hint 1: Think of each order as a "contribution" (1 order, qty units) to one customer, present only when status is not cancelled.</p>`, `<p>Hint 2: INSERT adds NEW's contribution, DELETE removes OLD's, UPDATE does both — guarded by the status condition.</p>`, `<p>Hint 3: Use an upsert to add (the customer may have no stats row yet). Reconcile with a symmetric EXCEPT against a fresh GROUP BY (treat 0-count rows carefully).</p>`],
+    solution: { approach: `<p>Seed the table, then three triggers implementing "remove old contribution / add new contribution", and a reconciliation query.</p>`, code: shop(`CREATE TABLE customer_stats (customer_id INTEGER PRIMARY KEY, orders_count INTEGER NOT NULL, units INTEGER NOT NULL);
+INSERT INTO customer_stats
+SELECT customer_id, COUNT(*), SUM(qty) FROM orders WHERE status <> 'cancelled' GROUP BY customer_id;
+
+CREATE TRIGGER cs_ins AFTER INSERT ON orders WHEN NEW.status <> 'cancelled'
+BEGIN
+  INSERT INTO customer_stats VALUES (NEW.customer_id, 1, NEW.qty)
+  ON CONFLICT (customer_id) DO UPDATE SET orders_count = orders_count + 1, units = units + excluded.units;
+END;
+CREATE TRIGGER cs_del AFTER DELETE ON orders WHEN OLD.status <> 'cancelled'
+BEGIN
+  UPDATE customer_stats SET orders_count = orders_count - 1, units = units - OLD.qty
+  WHERE customer_id = OLD.customer_id;
+END;
+CREATE TRIGGER cs_upd AFTER UPDATE OF customer_id, qty, status ON orders
+BEGIN
+  UPDATE customer_stats SET orders_count = orders_count - 1, units = units - OLD.qty
+  WHERE customer_id = OLD.customer_id AND OLD.status <> 'cancelled';
+  INSERT INTO customer_stats (customer_id, orders_count, units)
+  SELECT NEW.customer_id, 1, NEW.qty WHERE NEW.status <> 'cancelled'
+  ON CONFLICT (customer_id) DO UPDATE SET orders_count = orders_count + 1, units = units + excluded.units;
+END;
+
+INSERT INTO orders (customer_id, product_id, qty, status) VALUES (3, 3, 2, 'paid');
+UPDATE orders SET status = 'cancelled' WHERE id = 1;
+UPDATE orders SET customer_id = 4 WHERE id = 3;
+DELETE FROM orders WHERE id = 4;
+
+-- Reconciliation (ignoring customers whose count dropped to 0): expect no rows.
+SELECT customer_id, orders_count, units FROM customer_stats WHERE orders_count > 0
+EXCEPT
+SELECT customer_id, COUNT(*), SUM(qty) FROM orders WHERE status <> 'cancelled' GROUP BY customer_id;
+SELECT * FROM customer_stats ORDER BY customer_id;`), complexity: `<p>O(1) extra work per changed order (1–2 index probes) instead of O(N) rebuilds.</p>`, followUps: ['Hot-row contention for a celebrity customer — how to shard the counter?', 'Delete stats rows that drop to zero'] }
+  });
+
+  practice.push({
+    title: 'Point-in-Time Price From the Audit Log', level: 'Hard', tags: ['triggers', 'audit', 'json', 'window'], companies: ['Bloomberg', 'Razorpay'],
+    statement: `<p>Audit every price change on <code>products</code> using the row's own <code>updated_at</code> as the change time. Then answer: <b>what was product 2's price on 2026-10-05?</b> and list its full price history with the change amount.</p>`,
+    constraints: `<p>The answer must also work for dates before the first change (use the first audit row's old value) and when no change exists (current price).</p>`,
+    example: `${H.table(['changed_at', 'old', 'new'], [['2026-10-02', '999', '899'], ['2026-10-07', '899', '1099']])}<p>On 2026-10-05 the price was ${H.c('g', '899')}; on 2026-10-01 it was 999 (old value of the first change).</p>`,
+    brute: { why: `<p>Without an audit trail the only option is restoring old backups. Storing "price history" from the app is skipped by manual fixes. And querying the audit table naively (latest row before the date) returns nothing for dates before the first change.</p>`, code: shop(`-- Only the current value exists: history is gone.
+UPDATE products SET price_cents = 899 WHERE id = 2;
+UPDATE products SET price_cents = 1099 WHERE id = 2;
+SELECT price_cents FROM products WHERE id = 2;   -- 1099; what was it on 10-05? unknown`) },
+    mcq: { q: 'Price at time T = ?', options: ['new value of the last change at or before T; if none, old value of the first change; if no changes, current price', 'average of all values', 'the latest new value overall', 'old value of the last change'], answer: 0, explain: 'That three-step COALESCE covers after-changes, before-first-change and never-changed cases.' },
+    hints: [`<p>Hint 1: AFTER UPDATE trigger with WHEN price changed; store old/new as JSON and changed_at = NEW.updated_at.</p>`, `<p>Hint 2: Extract with <code>json_extract(new_data, '$.price_cents')</code>; pick the latest row with changed_at ≤ T.</p>`, `<p>Hint 3: Wrap three scalar subqueries in COALESCE. For history, LAG/arithmetic on the JSON values ordered by changed_at.</p>`],
+    solution: { approach: `<p>Audit trigger feeding a time-ordered log; point-in-time lookup via COALESCE of three subqueries; history via ordering.</p>`, code: shop(`CREATE TRIGGER products_price_audit AFTER UPDATE OF price_cents ON products
+WHEN OLD.price_cents IS NOT NEW.price_cents
+BEGIN
+  INSERT INTO audit_log (table_name, row_id, action, old_data, new_data, changed_at)
+  VALUES ('products', NEW.id, 'UPDATE',
+          json_object('price_cents', OLD.price_cents),
+          json_object('price_cents', NEW.price_cents), NEW.updated_at);
+END;
+UPDATE products SET price_cents = 899,  updated_at = '2026-10-02 09:00:00' WHERE id = 2;
+UPDATE products SET price_cents = 1099, updated_at = '2026-10-07 09:00:00' WHERE id = 2;
+
+-- Price of product 2 as of 2026-10-05
+SELECT COALESCE(
+  (SELECT json_extract(new_data, '$.price_cents') FROM audit_log
+   WHERE table_name = 'products' AND row_id = 2 AND changed_at <= '2026-10-05'
+   ORDER BY changed_at DESC, id DESC LIMIT 1),
+  (SELECT json_extract(old_data, '$.price_cents') FROM audit_log
+   WHERE table_name = 'products' AND row_id = 2 ORDER BY changed_at, id LIMIT 1),
+  (SELECT price_cents FROM products WHERE id = 2)) AS price_on_2026_10_05;
+
+-- Full history with the size of each change
+SELECT changed_at,
+       json_extract(old_data, '$.price_cents') AS old_price,
+       json_extract(new_data, '$.price_cents') AS new_price,
+       json_extract(new_data, '$.price_cents') - json_extract(old_data, '$.price_cents') AS delta
+FROM audit_log WHERE table_name = 'products' AND row_id = 2
+ORDER BY changed_at;`), complexity: `<p>Index audit_log(table_name, row_id, changed_at) → O(log N) point lookups.</p>`, followUps: ['Rebuild the whole products table as of a date', 'Compare with SQL:2011 system-versioned tables'] }
+  });
+
+  practice.push({
+    title: 'Idempotent Money Transfer Without Stored Procedures', level: 'Hard', tags: ['transaction', 'trigger', 'idempotency', 'upsert'], companies: ['PayPal', 'PhonePe', 'Revolut'],
+    statement: `<p>Implement transfers in SQLite (no procedures): a request <code>(request_id, from_id, to_id, amount)</code> must move money atomically, refuse overdrafts, and be <b>idempotent</b> — the client may retry the same request_id after a timeout, and money must move only once.</p>`,
+    constraints: `<p>Balances can never go negative. Retries are common.</p>`,
+    example: `<p>Request r1: Asha → Ben 300 ${H.c('g', 'applied')}; retry r1 ${H.c('m', 'no-op')}; r2: Chen → Asha 50 ${H.c('r', 'refused (balance 0)')}. Final: Asha 700, Ben 550, Chen 0.</p>`,
+    brute: { why: `<p>Two autocommit UPDATEs from the app: a crash between them destroys money; a retry after a timeout runs the transfer twice; a concurrent transfer can overdraw because the balance was checked in app code.</p>`, code: shop(`UPDATE accounts SET balance = balance - 300 WHERE id = 1;
+UPDATE accounts SET balance = balance + 300 WHERE id = 2;
+-- client times out and retries...
+UPDATE accounts SET balance = balance - 300 WHERE id = 1;
+UPDATE accounts SET balance = balance + 300 WHERE id = 2;   -- moved twice!
+SELECT * FROM accounts;`) },
+    mcq: { q: 'What makes a retried request harmless?', options: ['A UNIQUE request_id with INSERT … ON CONFLICT DO NOTHING; work happens only when a row is really inserted', 'Retrying faster', 'Checking balance twice', 'INSERT OR REPLACE on transfers'], answer: 0, explain: 'The unique key turns the retry into a no-op; the AFTER INSERT trigger does not fire for DO NOTHING.' },
+    hints: [`<p>Hint 1: Model the request as a row in <code>transfers</code> with <code>request_id UNIQUE</code>.</p>`, `<p>Hint 2: An AFTER INSERT trigger checks funds with RAISE(ABORT) and performs both UPDATEs — same transaction as the INSERT.</p>`, `<p>Hint 3: Insert with <code>ON CONFLICT (request_id) DO NOTHING</code>; a duplicate inserts nothing, so the trigger never fires. CHECK (balance &gt;= 0) is the last line of defence.</p>`],
+    solution: { approach: `<p>Request table with a unique idempotency key + trigger-as-procedure. The INSERT, the guard and both balance updates commit or fail together.</p>`, code: shop(`CREATE TABLE transfers (
+  id INTEGER PRIMARY KEY, request_id TEXT NOT NULL UNIQUE,
+  from_id INTEGER NOT NULL REFERENCES accounts(id), to_id INTEGER NOT NULL REFERENCES accounts(id),
+  amount INTEGER NOT NULL CHECK (amount > 0), CHECK (from_id <> to_id)
+);
+CREATE TRIGGER transfers_apply AFTER INSERT ON transfers
+BEGIN
+  SELECT RAISE(ABORT, 'insufficient funds')
+  WHERE (SELECT balance FROM accounts WHERE id = NEW.from_id) < NEW.amount;
+  UPDATE accounts SET balance = balance - NEW.amount WHERE id = NEW.from_id;
+  UPDATE accounts SET balance = balance + NEW.amount WHERE id = NEW.to_id;
+END;
+
+INSERT INTO transfers (request_id, from_id, to_id, amount) VALUES ('r1', 1, 2, 300)
+ON CONFLICT (request_id) DO NOTHING;
+INSERT INTO transfers (request_id, from_id, to_id, amount) VALUES ('r1', 1, 2, 300)
+ON CONFLICT (request_id) DO NOTHING;                    -- retry: no-op
+-- INSERT INTO transfers (request_id, from_id, to_id, amount) VALUES ('r2', 3, 1, 50);  -- would ABORT
+SELECT * FROM accounts;          -- Asha 700, Ben 550, Chen 0
+SELECT * FROM transfers;`), alt: [pg(`CREATE PROCEDURE transfer(p_req text, p_from int, p_to int, p_amount int)
+LANGUAGE plpgsql AS $$
+BEGIN
+  INSERT INTO transfers (request_id, from_id, to_id, amount)
+  VALUES (p_req, p_from, p_to, p_amount) ON CONFLICT (request_id) DO NOTHING;
+  IF NOT FOUND THEN RETURN; END IF;                         -- duplicate request
+  UPDATE accounts SET balance = balance - p_amount WHERE id = p_from AND balance >= p_amount;
+  IF NOT FOUND THEN RAISE EXCEPTION 'insufficient funds'; END IF;
+  UPDATE accounts SET balance = balance + p_amount WHERE id = p_to;
+END $$;`)], complexity: `<p>O(log N) per request: one unique-index probe plus two PK updates.</p>`, followUps: ['Use a double-entry ledger table instead of mutating balances', 'Avoid deadlocks when two transfers go in opposite directions (lock in id order)'] }
+  });
+
+  practice.push({
+    title: 'Slowly Changing Dimension Type 2 Upsert', level: 'Hard', tags: ['scd2', 'update', 'insert select', 'partial index', 'warehouse'], companies: ['Databricks', 'Airbnb', 'Netflix'],
+    statement: `<p>A warehouse keeps customer city history in <code>customer_dim(sk, customer_id, city, valid_from, valid_to, is_current)</code>. Given today's snapshot in <code>staging(customer_id, city)</code>: close the current row of customers whose city changed, insert a new current row for them, insert brand-new customers, and leave unchanged customers alone.</p>`,
+    constraints: `<p>At most one current row per customer (enforce it). Atomic. Re-running the same snapshot changes nothing.</p>`,
+    example: `${H.table(['customer', 'current city', 'staging', 'action'], [['1', 'Bengaluru', 'Bengaluru', 'none'], ['2', 'London', 'Paris', H.c('y', 'close London row') + ' + ' + H.c('g', 'insert Paris')], ['3', 'Shanghai', '(absent)', 'none'], ['4', '—', 'Austin', H.c('g', 'insert')]])}`,
+    brute: { why: `<p>A plain upsert (<code>ON CONFLICT (customer_id) DO UPDATE SET city = …</code>) is SCD type 1: it overwrites London with Paris and history is lost — sales reports for last year now show Paris. Doing it row by row in a cursor loop is slow and not atomic.</p>`, code: lab(`CREATE TABLE customer_dim1 (customer_id INTEGER PRIMARY KEY, city TEXT);
+INSERT INTO customer_dim1 VALUES (1, 'Bengaluru'), (2, 'London');
+INSERT INTO customer_dim1 VALUES (2, 'Paris')
+ON CONFLICT (customer_id) DO UPDATE SET city = excluded.city;   -- London is gone forever
+SELECT * FROM customer_dim1;`) },
+    mcq: { q: 'Why run the UPDATE (close) before the INSERT (open)?', options: ['So the INSERT can use "no current row exists" to find changed and new customers, and the partial unique index is never violated', 'INSERT is slower', 'SQLite requires it', 'It does not matter'], answer: 0, explain: 'After closing changed rows, every customer needing a new version has no current row — one NOT EXISTS covers changed and brand-new customers.' },
+    hints: [`<p>Hint 1: Enforce one current row per customer with <code>CREATE UNIQUE INDEX … (customer_id) WHERE is_current = 1</code>.</p>`, `<p>Hint 2: Step 1 UPDATE: close current rows where staging has a different city (<code>IS NOT</code> for NULL safety).</p>`, `<p>Hint 3: Step 2 INSERT … SELECT from staging WHERE NOT EXISTS a current row for that customer. Wrap both in one transaction; a second run finds nothing to do.</p>`],
+    solution: { approach: `<p>Close-then-open in one transaction, guarded by a partial unique index.</p>`, code: lab(`CREATE TABLE customer_dim (
+  sk INTEGER PRIMARY KEY, customer_id INTEGER NOT NULL, city TEXT NOT NULL,
+  valid_from TEXT NOT NULL, valid_to TEXT, is_current INTEGER NOT NULL DEFAULT 1
+);
+CREATE UNIQUE INDEX ux_dim_current ON customer_dim(customer_id) WHERE is_current = 1;
+INSERT INTO customer_dim (customer_id, city, valid_from) VALUES
+  (1, 'Bengaluru', '2026-01-01'), (2, 'London', '2026-01-01'), (3, 'Shanghai', '2026-01-01');
+CREATE TABLE staging (customer_id INTEGER PRIMARY KEY, city TEXT NOT NULL);
+INSERT INTO staging VALUES (1, 'Bengaluru'), (2, 'Paris'), (4, 'Austin');
+
+BEGIN;
+UPDATE customer_dim
+SET valid_to = '2026-10-14', is_current = 0
+WHERE is_current = 1
+  AND EXISTS (SELECT 1 FROM staging s
+              WHERE s.customer_id = customer_dim.customer_id AND s.city IS NOT customer_dim.city);
+INSERT INTO customer_dim (customer_id, city, valid_from)
+SELECT s.customer_id, s.city, '2026-10-14'
+FROM staging s
+WHERE NOT EXISTS (SELECT 1 FROM customer_dim d WHERE d.customer_id = s.customer_id AND d.is_current = 1);
+COMMIT;
+
+SELECT * FROM customer_dim ORDER BY customer_id, sk;`), alt: [pg(`-- Postgres 15+: MERGE handles the close; a second INSERT opens new versions
+MERGE INTO customer_dim d
+USING staging s ON d.customer_id = s.customer_id AND d.is_current
+WHEN MATCHED AND d.city IS DISTINCT FROM s.city THEN
+  UPDATE SET valid_to = current_date, is_current = false;
+INSERT INTO customer_dim (customer_id, city, valid_from)
+SELECT s.customer_id, s.city, current_date FROM staging s
+WHERE NOT EXISTS (SELECT 1 FROM customer_dim d WHERE d.customer_id = s.customer_id AND d.is_current);`)], complexity: `<p>Two passes over staging with index probes on (customer_id, is_current): O(S log N).</p>`, followUps: ['Handle deletes (customer missing from snapshot) by closing the row', 'Track several attributes with a hash of the tracked columns'] }
+  });
+
+  /* ======================= QUIZ ======================= */
+  quiz.push(
+    { q: 'A multi-row INSERT of 500 rows has one row that violates a UNIQUE constraint. With a plain INSERT, how many rows are stored?', options: ['0', '499', '500', 'Depends on row order'], answer: 0, explain: 'Statement-level atomicity: a failing statement is undone completely.' },
+    { q: 'In <code>UPDATE t SET a = b, b = a</code> (SQLite/Postgres), what happens?', options: ['a and b are swapped', 'both become b', 'both become a', 'syntax error'], answer: 0, explain: 'Every SET expression reads the old row values. (MySQL evaluates left to right and differs.)' },
+    { q: 'What does <code>excluded.price</code> refer to in an upsert?', options: ['The price in the row you tried to insert', 'The price currently stored', 'The price of a deleted row', 'A default value'], answer: 0, explain: '<code>excluded</code> is the proposed row that hit the conflict.' },
+    { q: 'Why is <code>INSERT OR REPLACE</code> dangerous as an "upsert"?', options: ['It deletes the old row and inserts a new one, resetting unspecified columns and possibly firing cascades', 'It is slower than SELECT', 'It cannot insert new rows', 'It only works on views'], answer: 0, explain: 'REPLACE = DELETE + INSERT: new rowid, lost columns, ON DELETE CASCADE children can vanish.' },
+    { q: '<code>ON CONFLICT (name) DO NOTHING</code> fails with "does not match any PRIMARY KEY or UNIQUE constraint". Fix?', options: ['Add a UNIQUE index on name', 'Use DO UPDATE instead', 'Add WHERE true', 'Wrap in a transaction'], answer: 0, explain: 'The conflict target must correspond to a unique index; it is the referee for the upsert.' },
+    { q: 'Users can delete accounts and later sign up again with the same email. Which constraint fits a soft-delete table?', options: ['CREATE UNIQUE INDEX … ON users(email) WHERE deleted_at IS NULL', 'UNIQUE(email)', 'UNIQUE(email, deleted_at)', 'CHECK (deleted_at IS NULL)'], answer: 0, explain: 'A partial unique index only covers live rows. UNIQUE(email, deleted_at) allows duplicate live rows because NULLs never collide.' },
+    { q: 'What does a regular (non-materialized) view store?', options: ['Only the query definition', 'A copy of the result rows', 'An index on the base table', 'A snapshot from creation time'], answer: 0, explain: 'Views are inlined into queries at read time, so they are always current.' },
+    { q: 'Which statement about materialized views is TRUE?', options: ['They store results and can be stale until refreshed', 'They are always perfectly fresh', 'SQLite supports CREATE MATERIALIZED VIEW', 'They cannot be indexed'], answer: 0, explain: 'MVs trade freshness for read speed; SQLite and MySQL need summary tables instead.' },
+    { q: 'In SQLite, how do you make an INSERT into a view work?', options: ['Create an INSTEAD OF INSERT trigger on the view', 'Use WITH CHECK OPTION', 'Use INSERT OR REPLACE', 'It works automatically for simple views'], answer: 0, explain: 'SQLite views are read-only; INSTEAD OF triggers define what the write should do.' },
+    { q: 'Inside an AFTER DELETE trigger, which row image is available?', options: ['OLD only', 'NEW only', 'Both OLD and NEW', 'Neither'], answer: 0, explain: 'INSERT has NEW, DELETE has OLD, UPDATE has both.' },
+    { q: 'Why should a trigger never call an external HTTP API or send an email?', options: ['The transaction can roll back, but the external side effect cannot be undone', 'Triggers cannot contain strings', 'It is not allowed in SQL', 'It makes the trigger recursive'], answer: 0, explain: 'Write to an outbox table inside the transaction and let a worker deliver after commit.' },
+    { q: 'Main benefit of a stored procedure for a 5-statement transfer in a client/server database?', options: ['One network round trip and shorter lock hold time', 'It disables constraints', 'It avoids transactions', 'It makes the database schema-less'], answer: 0, explain: 'All statements run next to the data; locks are held only for local work, not network latency.' },
+    { q: '<code>DELETE FROM a WHERE id NOT IN (SELECT id FROM b)</code> deletes nothing although many ids are missing from b. Most likely cause?', options: ['b.id contains a NULL', 'a has an index', 'NOT IN is unsupported', 'a is empty'], answer: 0, explain: 'x NOT IN (…, NULL) is UNKNOWN, never TRUE. Use NOT EXISTS.' }
+  );
+
+  /* ======================= INTERVIEW Q&A ======================= */
+  interview.push(
+    { q: 'What is the difference between DELETE, TRUNCATE and DROP?', level: 'B', a: `<p><b>DELETE</b> is DML: removes the rows matched by WHERE (or all rows), one by one, fully logged, fires row triggers, can be rolled back, keeps the table. <b>TRUNCATE</b> (Postgres/MySQL/SQL Server) empties the whole table by deallocating its storage — much faster, minimal logging, usually no row triggers, resets identity in many engines; transactional in Postgres, implicit commit in MySQL. <b>DROP TABLE</b> is DDL: removes the table definition, data, indexes and triggers. SQLite has no TRUNCATE; a WHERE-less DELETE is optimized into a fast truncate.</p>`, followUps: ['Can TRUNCATE be used when foreign keys reference the table?', 'How would you delete 100M old rows without locking the table?'] },
+    { q: 'What is an UPSERT and how do you write it in Postgres, MySQL and SQLite?', level: 'I', a: `<p>Insert a row, or update the existing one if a unique key already exists — atomically. Postgres and SQLite: <code>INSERT … ON CONFLICT (key) DO UPDATE SET col = excluded.col</code> (or <code>DO NOTHING</code>), optionally with a WHERE on the update. MySQL: <code>INSERT … ON DUPLICATE KEY UPDATE col = new.col</code> (row alias in 8.0.19+). Standard SQL / SQL Server / Oracle / Postgres 15+: <code>MERGE</code>. It needs a unique index as the referee and avoids the race of SELECT-then-INSERT.</p>`, followUps: ['Why is INSERT OR REPLACE not an upsert?', 'What happens if the source batch contains the same key twice in Postgres?'] },
+    { q: 'Why is "SELECT to check, then INSERT if missing" wrong under concurrency?', level: 'I', a: `<p>Two transactions can both run the SELECT before either inserts; both see "missing" and both insert. Without a unique constraint you get duplicates; with one, the second fails with a unique violation the app must handle. Even SERIALIZABLE only turns it into a retryable error. The fix is to make the database decide atomically: a UNIQUE index plus <code>ON CONFLICT DO NOTHING/DO UPDATE</code>, or catching the unique violation and retrying.</p>`, followUps: ['Would SELECT … FOR UPDATE help when the row does not exist yet?', 'What is an idempotency key?'] },
+    { q: 'Explain soft deletes. What problems do they introduce and how do you solve them?', level: 'I', a: `<p>A soft delete marks a row as deleted (<code>deleted_at</code> timestamp) instead of removing it — enabling undo, audit and keeping FK references valid. Problems: every query must filter (solve with a view, ORM default scope or row-level security); UNIQUE constraints still count deleted rows (use a partial unique index <code>WHERE deleted_at IS NULL</code>); cascades do not fire (cascade with triggers/app logic); tables grow (purge/archive jobs, partitions); privacy laws require real erasure (anonymize or hard delete after a retention window).</p>`, followUps: ['Soft delete vs archive table — when would you pick each?', 'How do you restore a row whose email has been re-used?'] },
+    { q: 'What is a view and how can it be used for security?', level: 'B', a: `<p>A view is a stored SELECT that behaves like a virtual table and stores no data. For security you expose only the needed columns (omit salary, mask SSN with an expression) and rows (<code>WHERE dept = 'Eng'</code>), REVOKE privileges on the base table and GRANT SELECT on the view. Because the view runs with the owner's rights, users read through it without base-table access. In Postgres use <code>security_barrier</code> to prevent leaky functions from seeing filtered rows, or <code>security_invoker</code> to apply the caller's rights and RLS.</p>`, followUps: ['How can aggregates still leak individual data?', 'Views vs row-level security?'] },
+    { q: 'View vs materialized view — when do you use each?', level: 'I', a: `<p>A view stores only the query, is always fresh, and costs the full query on every read — ideal for security and simplification. A materialized view stores the result, is fast to read and indexable, but is stale until refreshed (full recompute in Postgres; incremental in Oracle/SQL Server indexed views). Use MVs for expensive aggregates read far more often than the data changes and where some lag is acceptable (dashboards, leaderboards). Postgres <code>REFRESH … CONCURRENTLY</code> needs a unique index and avoids blocking readers. In MySQL/SQLite emulate with a summary table refreshed in a transaction or kept current by triggers.</p>`, followUps: ['How do you monitor staleness?', 'Which aggregates are hard to maintain incrementally?'] },
+    { q: 'What is an updatable view and what does WITH CHECK OPTION do?', level: 'I', a: `<p>In Postgres/MySQL a simple view (one base table, no GROUP BY, DISTINCT, LIMIT, aggregates or set operations) can receive INSERT/UPDATE/DELETE, which are translated to the base table. <code>WITH CHECK OPTION</code> rejects writes that would produce rows the view cannot see — e.g. updating <code>dept</code> to 'Sales' through an Eng-only view. LOCAL checks only this view, CASCADED also underlying views. Complex views (joins) need INSTEAD OF triggers; in SQLite every writable view needs them.</p>`, followUps: ['Write an INSTEAD OF trigger that inserts into a join view', 'What happens to computed columns in an updatable view?'] },
+    { q: 'Stored procedures: pros and cons. Would you put business logic in them?', level: 'A', a: `<p>Pros: one round trip for multi-statement work (shorter lock times), logic next to the data, one implementation shared by all clients/languages, fine-grained security (GRANT EXECUTE, SECURITY DEFINER), plan caching. Cons: harder versioning, testing, debugging and code review; vendor lock-in (PL/pgSQL vs T-SQL); the database CPU is the hardest tier to scale; logic split across two codebases. My default: integrity in the database (constraints, simple triggers), business workflows in the application, procedures for hot paths needing atomic multi-step work or for data-heavy batch jobs — always in migrations with tests.</p>`, followUps: ['Procedure vs function in Postgres?', 'What replaces procedures in SQLite?'] },
+    { q: 'SQLite has no stored procedures. How do you implement multi-step atomic logic?', level: 'I', a: `<p>(1) Prefer one set-based statement — it is atomic by itself (CASE in SET, UPDATE … FROM, CTEs, upserts). (2) Wrap several statements in <code>BEGIN … COMMIT</code> in application code; since SQLite is embedded, there is no network round-trip cost. (3) Use triggers as event-driven procedures — e.g. insert a row into <code>transfers</code> and an AFTER INSERT trigger validates with <code>RAISE(ABORT)</code> and updates balances. (4) Register user-defined functions from the host language (<code>create_function</code>) for reusable calculations.</p>`, followUps: ['How do you raise an error from a SQLite trigger?', 'How do you get the affected-row count in SQLite?'] },
+    { q: 'How would you implement an audit trail for a table?', level: 'I', a: `<p>An AFTER INSERT/UPDATE/DELETE row trigger writes to an audit table: table name, primary key, action, old and new images (JSON via <code>json_object</code> / <code>to_jsonb</code>), timestamp, and actor (Postgres <code>current_user</code> or <code>current_setting('app.user_id')</code>; in SQLite the app must supply it). Add a WHEN clause to skip no-op updates. Because the trigger runs in the same transaction, the audit cannot be bypassed by any client and exists iff the change commits. Protect the audit table (no UPDATE/DELETE grants). For very high volume consider statement-level triggers with transition tables or CDC from the WAL (Debezium).</p>`, followUps: ['How do you reconstruct a row as of a past timestamp?', 'What do bulk loads with disabled triggers do to your audit?'] },
+    { q: 'What are the dangers of triggers?', level: 'A', a: `<p>Hidden logic (writes nobody sees in app code), per-row overhead on bulk operations, cascading chains and recursion that are hard to reason about, unclear firing order (Postgres alphabetical, MySQL FOLLOWS/PRECEDES, SQLite unspecified), surprises in migrations and replication (replicas may not fire them), ORM caches missing trigger-changed values, and side effects that cannot be rolled back if you call external systems. Mitigate: keep triggers small and limited to integrity/audit/derived data, document them with the schema, use WHEN guards, never do I/O (use an outbox table), and test them.</p>`, followUps: ['BEFORE vs AFTER triggers — what can each do?', 'Row-level vs statement-level triggers?'] },
+    { q: 'An UPDATE … FROM with a join gives inconsistent results. Why?', level: 'A', a: `<p>If a target row matches several source rows (fan-out), most engines (Postgres, SQLite) update it only once using an arbitrary matching row — so the result depends on join order. For example, two delivery rows of 50 and 30 add either 50 or 30, never 80. Fix: aggregate the source to one row per key first (<code>GROUP BY sku</code>, <code>SUM(qty)</code>) or deduplicate with a window function. SQL Server raises no error either; MERGE in Postgres and SQL Server raises an error when a target row matches twice.</p>`, followUps: ['How would you detect fan-out before running the update?', 'Rewrite it as a correlated subquery'] },
+    { q: 'How do you safely run a mass UPDATE or DELETE on a large production table?', level: 'E', a: `<p>Preview with a SELECT (count and sample), take a backup or confirm point-in-time recovery, run in batches by primary-key range (1k–10k rows per transaction) to bound lock time, WAL/binlog growth and replication lag, sleep between batches, monitor replica lag and locks, make each batch idempotent and resumable (record progress), use RETURNING or an archive table to keep what was changed, and prefer partition drops for time-based purges. In Postgres, plan for VACUUM after large updates/deletes; in MySQL, beware gap locks with non-indexed predicates.</p>`, followUps: ['Why can one giant DELETE make replicas fall behind?', 'How does partitioning turn a purge into a metadata operation?'] }
+  );
+
+  /* ======================= MODULE ======================= */
+  registerModule({
+    id: 'sql09',
+    title: 'DML, UPSERT, Views, Procedures & Triggers',
+    lang: 'sql',
+    intro: `<p>So far you have mostly <i>read</i> data. This module is about <b>changing it safely</b> and about the database objects that wrap and react to those changes. You will master <code>INSERT</code>, <code>UPDATE</code> and <code>DELETE</code> patterns (multi-row inserts, <code>RETURNING</code>, <code>UPDATE … FROM</code>, dedupes, batch deletes), the <b>UPSERT</b> (<code>INSERT … ON CONFLICT DO UPDATE</code>) and why <code>INSERT OR REPLACE</code> is a trap, <b>soft deletes</b> with partial unique indexes, <b>views</b> as a security and abstraction layer, <b>materialized views</b> and summary tables, <b>stored procedures and functions</b>, and <b>triggers</b> for audit trails and validation — with honest pros and cons for each.</p>
+<p>Every SQLite snippet runs live in your browser (▶ Run) against a fresh copy of a small online-store database, and every topic has a visualizer that shows the table <b>before and after</b> each statement (inserted rows green, updated amber, deleted red) or the chain of triggers firing. SQLite has no stored procedures or materialized views, so you will see the Postgres/MySQL syntax for reference and the SQLite alternatives you can actually run.</p>`,
+    goals: [
+      'Write INSERT, UPDATE and DELETE statements that are safe under concurrency: explicit column lists, RETURNING, relative updates with guards, set-based dedupes and batched deletes',
+      'Use <code>INSERT … ON CONFLICT DO UPDATE / DO NOTHING</code> (and know MERGE / ON DUPLICATE KEY) for counters, syncs and idempotent writes — and explain why REPLACE loses data',
+      'Design soft deletes correctly: <code>deleted_at</code>, a live-rows view, a partial unique index, restore and purge policies',
+      'Build views that hide columns and rows for security, make views writable with INSTEAD OF triggers, and decide when to materialize',
+      'Explain stored procedures/functions with their trade-offs, and implement the same logic in SQLite with set-based SQL, transactions, triggers or UDFs',
+      'Write audit, validation and derived-data triggers, trace a trigger chain, and argue when NOT to use triggers'
+    ],
+    prereqs: `SQL 2–6 (SELECT, aggregates, JOINs, subqueries/CTEs, window functions) and SQL 7 (DDL & constraints: PRIMARY KEY, UNIQUE, CHECK, FOREIGN KEY). Basic idea of a transaction (BEGIN/COMMIT).`,
+    hours: 12,
+    databases: { shop: DB_SHOP, lab: DB_LAB },
+    topics: topics,
+    practice: practice,
+    quiz: quiz,
+    interview: interview
+  });
 })();

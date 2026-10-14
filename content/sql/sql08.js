@@ -100,7 +100,7 @@ INSERT INTO fact_sales VALUES
   function inter(a, b) { return a.filter(function (x) { return b.indexOf(x) >= 0; }); }
   function sameSet(a, b) { return a.length === b.length && subset(a, b); }
   function rnd(x) { return Math.round(x * 10) / 10; }
-  function fmt(a, L) { return a.length ? (L ? a.join('') : a.join(', ')) : '∅'; }
+  function fmt(a, L) { return a.length ? (L ? a.join('') : (a.length > 1 ? '{' + a.join(', ') + '}' : a[0])) : '∅'; }
   function fdStr(f, L) { return fmt(f.l, L) + ' → ' + fmt(f.r, L); }
   function isLetters(txt) { return !/[a-z0-9_]/.test(txt.replace(/->|→/g, '')); }
   function toks(side, L) {
@@ -1523,6 +1523,433 @@ FROM bookings b JOIN rate_types r ON r.court = b.court AND r.is_member = b.is_me
 SELECT * FROM bookings_original ORDER BY court, start_time;`,
         complexity: `<p>All rules are enforced by unique indexes: O(log N) per insert. The view costs one indexed join per booking. No triggers, no lost dependencies.</p>`,
         followUps: ['How would you prevent overlapping bookings (09:30–10:30 vs 10:00–11:00), not just equal start times?', 'If a third court gets a "junior" rate, does the design still work?']
+      }
+    }]
+  });
+
+  /* =====================================================================
+     TOPIC 7 — Lossless join & dependency preservation
+     ===================================================================== */
+  topics.push({
+    title: 'Lossless-Join & Dependency-Preserving Decompositions',
+    analogy: `<p>Tearing a class photo into strips to post it in two envelopes. If you tear along a line that every piece can be matched on — say, each strip carries the <b>student's roll number</b> — the receiver tapes the photo back together exactly. Tear along "everyone wearing blue", and when the pieces are matched up, every blue shirt gets glued to every blue-shirted face: the rebuilt photo shows <b>people who were never there</b>. A good decomposition is a tear along a <b>key</b>.</p>`,
+    explain: `<p><b>🟢 The plain idea.</b> When you split table R into R1 and R2 (each a projection — a subset of the columns, duplicates removed), you must be able to rebuild R by a <b>natural join</b> on the shared columns. Two properties matter:</p>
+<ul>
+<li><b>Lossless join</b> (non-additive): R1 ⋈ R2 gives back <b>exactly</b> R. A "lossy" split never loses rows — it <b>adds fake rows</b> (spurious tuples). You lose the <b>information</b> of which combinations were real.</li>
+<li><b>Dependency preservation:</b> every FD of R can still be checked inside <b>one</b> of the new tables (with a PK/UNIQUE), without joining.</li>
+</ul>
+<p><b>🔵 The binary lossless test (memorize it):</b> a split of R into R1 and R2 is lossless <b>iff</b> the common columns R1 ∩ R2 determine all of R1 <b>or</b> all of R2 — i.e. the shared columns are a <b>superkey of at least one side</b>.</p>
+<p>Example: employees(emp, dept, loc) with emp → dept and dept → loc.</p>
+${H.table(['split', 'common columns', 'common → one side?', 'verdict'], [
+  ['(emp, dept) + (dept, loc)', 'dept', 'dept → loc, so dept is a key of (dept, loc)', H.c('g', 'lossless ✔')],
+  ['(emp, loc) + (dept, loc)', 'loc', 'loc determines nothing', H.c('r', 'lossy ✘ — spurious rows')],
+  ['(emp, dept) + (emp, loc)', 'emp', 'emp → dept and emp → loc', H.c('g', 'lossless ✔')]])}
+<p>Why the second split fails: Asha (Sales) and Chen (Eng) are both in Pune. Joining on <code>loc = 'Pune'</code> pairs Asha with Eng and Chen with Sales — rows that never existed.</p>
+<p><b>Dependency preservation test:</b> take the FDs that hold <b>inside</b> each new table (projections of F). If their union implies every original FD, the decomposition preserves dependencies. Quick version: if each original FD's columns all sit in one table, it is preserved. In the third split above, dept → loc spans two tables (dept in one, loc in the other — linked only through emp) so it is <b>lost</b>: the database would accept two Sales employees in different cities. The first split is lossless <b>and</b> preserving — the ideal.</p>
+${H.table(['algorithm', 'lossless?', 'preserves FDs?', 'result'], [['3NF synthesis', H.c('g', 'always'), H.c('g', 'always'), '3NF'], ['BCNF decomposition', H.c('g', 'always'), H.c('y', 'not always'), 'BCNF'], ['"split by intuition"', H.c('r', 'maybe'), H.c('r', 'maybe'), '???']])}
+<p>In SQL terms, you verify losslessness on real data by rejoining and comparing with <code>EXCEPT</code> in both directions — both counts must be zero.</p>`,
+    clues: [
+      '"Is this decomposition lossless?" → check whether R1 ∩ R2 is a superkey of R1 or of R2 (closure of the common columns)',
+      '"The join returned more rows than the original table" → spurious tuples from a lossy split (joined on a non-key column)',
+      '"Dependency preserving?" → can every FD be checked with one table\'s keys, without joins?',
+      '"Why must the common attribute be a key?" — so each row finds exactly one partner on that side',
+      'Multi-way splits (3+ tables) → use the chase / tableau test or rejoin-and-compare',
+      '"Joined on a column that is not unique" in a data bug report — same phenomenon in day-to-day SQL (row explosion)'
+    ],
+    code: [{ lang: 'sql', title: 'Lossy vs lossless split: count the spurious rows', code: `CREATE TABLE emp (emp TEXT PRIMARY KEY, dept TEXT NOT NULL, loc TEXT NOT NULL);
+INSERT INTO emp VALUES ('Asha', 'Sales', 'Pune'), ('Ben', 'Sales', 'Pune'),
+                       ('Chen', 'Eng', 'Pune'),   ('Dara', 'HR', 'Delhi');
+
+-- Good split: common column dept is a key of (dept, loc)
+CREATE TABLE good_r1 AS SELECT DISTINCT emp, dept FROM emp;
+CREATE TABLE good_r2 AS SELECT DISTINCT dept, loc FROM emp;
+-- Bad split: common column loc is a key of neither side
+CREATE TABLE bad_r1 AS SELECT DISTINCT emp, loc FROM emp;
+CREATE TABLE bad_r2 AS SELECT DISTINCT dept, loc FROM emp;
+
+SELECT 'good split' AS decomposition,
+       (SELECT COUNT(*) FROM good_r1 NATURAL JOIN good_r2) AS rows_after_join,
+       (SELECT COUNT(*) FROM (SELECT emp, dept, loc FROM good_r1 NATURAL JOIN good_r2
+                              EXCEPT SELECT emp, dept, loc FROM emp)) AS spurious_rows
+UNION ALL
+SELECT 'bad split',
+       (SELECT COUNT(*) FROM bad_r1 NATURAL JOIN bad_r2),
+       (SELECT COUNT(*) FROM (SELECT emp, dept, loc FROM bad_r1 NATURAL JOIN bad_r2
+                              EXCEPT SELECT emp, dept, loc FROM emp));
+
+-- Show the invented rows
+SELECT emp, dept, loc, 'SPURIOUS' AS note FROM bad_r1 NATURAL JOIN bad_r2
+EXCEPT SELECT emp, dept, loc, 'SPURIOUS' FROM emp
+ORDER BY emp;` },
+    { lang: 'sql', title: 'A lost dependency in action (lossless but not preserving)', code: `PRAGMA foreign_keys = ON;
+-- Split emp(emp, dept, loc) into (emp, dept) + (emp, loc): lossless (emp is a key of both)
+CREATE TABLE emp_dept (emp TEXT PRIMARY KEY, dept TEXT NOT NULL);
+CREATE TABLE emp_loc  (emp TEXT PRIMARY KEY REFERENCES emp_dept(emp), loc TEXT NOT NULL);
+INSERT INTO emp_dept VALUES ('Asha', 'Sales'), ('Ben', 'Sales');
+INSERT INTO emp_loc  VALUES ('Asha', 'Pune'),  ('Ben', 'Mumbai');   -- accepted!
+-- dept -> loc is no longer checkable in one table, so Sales now sits in two cities:
+SELECT d.dept, COUNT(DISTINCT l.loc) AS cities, GROUP_CONCAT(DISTINCT l.loc) AS which
+FROM emp_dept d JOIN emp_loc l USING (emp) GROUP BY d.dept;
+-- The preserving design is (emp, dept) + (dept, loc), where departments(dept PK, loc) enforces it.` }],
+    codeTitle: ['Spurious rows from a lossy split', 'Lossless but dependency lost'],
+    viz: {
+      title: 'Split, rejoin, and hunt for spurious rows',
+      input: 'emp loc | dept loc',
+      inputLabel: 'Pick 2–3 column groups from emp, dept, loc (| separated)',
+      gen: function (input) {
+        var cols = ['emp', 'dept', 'loc'];
+        var data = [['Asha', 'Sales', 'Pune'], ['Ben', 'Sales', 'Pune'], ['Chen', 'Eng', 'Pune'], ['Dara', 'HR', 'Delhi']];
+        var fds = [{ l: ['emp'], r: ['dept'] }, { l: ['dept'], r: ['loc'] }];
+        var groups = String(input || '').split('|').map(function (g) { return uniq(g.trim().split(/[\s,]+/).filter(Boolean)); }).filter(function (g) { return g.length; });
+        if (groups.length < 2 || groups.length > 3) throw new Error('Give 2 or 3 groups, e.g.  emp dept | dept loc');
+        groups.forEach(function (g) { g.forEach(function (a) { if (!has(cols, a)) throw new Error('Unknown column "' + a + '" — use emp, dept, loc'); }); });
+        groups = groups.map(function (g) { return cols.filter(function (c) { return has(g, c); }); });
+        var covered = uniq([].concat.apply([], groups));
+        if (covered.length !== 3) throw new Error('Together the groups must cover emp, dept and loc');
+        var key = function (r) { return r.join('|'); };
+        var proj = function (g) { var seen = {}, out = []; data.forEach(function (r) { var p = g.map(function (c) { return r[cols.indexOf(c)]; }); if (!seen[key(p)]) { seen[key(p)] = 1; out.push(p); } }); return out; };
+        var frames = [];
+        frames.push({ narr: 'Original table with FDs emp → dept and dept → loc. Note Asha, Ben (Sales) and Chen (Eng) all share loc = Pune.', parts: [{ type: 'table', label: 'emp (original, 4 rows)', columns: cols, rows: data }, fdGraph(cols, fds, false)] });
+        var projs = groups.map(proj);
+        groups.forEach(function (g, i) {
+          var h = {}; projs[i].forEach(function (_, k) { h[k] = 'ok'; });
+          frames.push({ narr: 'Projection R' + (i + 1) + ' = SELECT DISTINCT ' + g.join(', ') + ' FROM emp → ' + projs[i].length + ' row(s).', parts: [{ type: 'table', label: 'R' + (i + 1) + '(' + g.join(', ') + ')', columns: g, rows: projs[i], hl: h }] });
+        });
+        if (groups.length === 2) {
+          var common = inter(groups[0], groups[1]);
+          var cl = closure(common, fds).res;
+          var k1 = subset(groups[0], cl), k2 = subset(groups[1], cl);
+          frames.push({ narr: 'Binary test: common columns = <b>' + (common.length ? common.join(', ') : 'none') + '</b>; closure = {' + cl.join(', ') + '}. ' + (common.length && (k1 || k2) ? '<span class="c-g">It covers R' + (k1 ? 1 : 2) + ' → the common columns are a key of that side → LOSSLESS.</span>' : '<span class="c-r">It covers neither side → LOSSY: expect spurious rows.</span>'), parts: [{ type: 'vars', label: 'lossless test', vals: { 'R1 ∩ R2': common.join(', ') || '∅', 'closure': cl.join(', ') || '∅', '→ R1?': k1 ? 'yes' : 'no', '→ R2?': k2 ? 'yes' : 'no' }, hl: { '→ R1?': k1 ? 'ok' : 'bad', '→ R2?': k2 ? 'ok' : 'bad' } }] });
+        }
+        var res = projs[0].map(function (r) { var o = {}; groups[0].forEach(function (c, i) { o[c] = r[i]; }); return o; });
+        var attrsSoFar = groups[0].slice();
+        for (var gi = 1; gi < groups.length; gi++) {
+          var g = groups[gi], sh = inter(attrsSoFar, g), next = [];
+          res.forEach(function (o) {
+            projs[gi].forEach(function (r) {
+              var ok = sh.every(function (c) { return o[c] === r[g.indexOf(c)]; });
+              if (ok) { var n = {}; Object.keys(o).forEach(function (k) { n[k] = o[k]; }); g.forEach(function (c, i) { n[c] = r[i]; }); next.push(n); }
+            });
+          });
+          res = next; attrsSoFar = uniq(attrsSoFar.concat(g));
+          if (gi === groups.length - 1) break;
+          frames.push({ narr: 'Intermediate join with R' + (gi + 1) + ' on ' + (sh.join(', ') || 'nothing (cross join!)') + ' → ' + res.length + ' rows.', parts: [{ type: 'table', label: 'partial join', columns: attrsSoFar, rows: res.map(function (o) { return attrsSoFar.map(function (c) { return o[c]; }); }) }] });
+        }
+        var orig = {}; data.forEach(function (r) { orig[key(r)] = 1; });
+        var outRows = res.map(function (o) { return cols.map(function (c) { return o[c]; }); });
+        var shown = [], hl = {}, spur = 0;
+        outRows.forEach(function (r) {
+          shown.push(r); var isO = !!orig[key(r)]; if (!isO) spur++;
+          hl[shown.length - 1] = isO ? 'ok' : 'bad';
+          if (frames.length < 30) frames.push({ narr: 'Join produces (' + r.join(', ') + ') — ' + (isO ? '<span class="c-g">a real row</span>.' : '<span class="c-r">never existed: SPURIOUS</span>.'), parts: [{ type: 'table', label: 'R1 ⋈ … (rebuilt)', columns: cols, rows: shown.map(function (x) { return x.slice(); }), hl: JSON.parse(JSON.stringify(hl)) }] });
+        });
+        frames.push({ narr: 'Rebuilt ' + outRows.length + ' rows vs 4 original. ' + (spur ? '<span class="c-r">' + spur + ' spurious row(s): the split is LOSSY.</span> We can no longer tell which department each employee is really in.' : '<span class="c-g">Exactly the original rows: LOSSLESS.</span>'), parts: [{ type: 'table', label: 'rebuilt vs original', columns: cols, rows: outRows, hl: hl }, { type: 'table', label: 'original', columns: cols, rows: data }] });
+        var pr = preserved(fds, groups);
+        frames.push({ narr: 'Dependency preservation: ' + fds.map(function (f, i) { return f.l[0] + ' → ' + f.r[0] + (pr[i] ? ' preserved' : ' LOST'); }).join('; ') + '. Try "emp dept | dept loc" for the ideal split (lossless + preserving), or "emp dept | emp loc" (lossless, but dept → loc is lost).', parts: [{ type: 'table', label: 'FD check', columns: ['FD', 'enforceable inside one table?'], rows: fds.map(function (f, i) { return [f.l[0] + ' → ' + f.r[0], pr[i] ? 'yes' : 'no (lost)']; }), hl: { 0: pr[0] ? 'ok' : 'bad', 1: pr[1] ? 'ok' : 'bad' } }] });
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'The binary test on paper', html: `<p>R(A, B, C, D), F = {A → B, C → D}. Split into (A, B) and (A, C, D): common = {A}, A⁺ = {A, B} ⊇ (A, B) ✔ lossless. Split (A, B, C) and (C, D): common = {C}, C⁺ = {C, D} ⊇ (C, D) ✔ lossless. Split (A, B) and (C, D): common = ∅ → a cross product → lossy (unless one table has a single row).</p>` },
+      { title: 'Three-way split with the chase', html: `<p>R(A, B, C, D), F = {A → B, B → C}, split into R1(A, B), R2(B, C), R3(A, D). Chase tableau (one row per table, plain letters = columns that table has): (a, b, c₁, d₁) / (a₂, b, c, d₂) / (a, b₃, c₃, d). Apply A → B: rows 1 and 3 share a ⇒ make b₃ = b (row 1 has b distinguished). Apply B → C: rows 1, 2, 3 now share b ⇒ c₁ = c₃ = c. Row 3 becomes (a, b, c, d) — all distinguished ⇒ <b>lossless</b>. Equivalent shortcut: join R1 ⋈ R3 on A (A key of R1) then ⋈ R2 on B (B key of R2).</p>` },
+      { title: 'Row explosion in everyday SQL is the same bug', html: `<p><code>orders JOIN payments ON orders.customer_id = payments.customer_id</code> joins on a column that is a key of neither table, so a customer with 3 orders and 2 payments yields 6 rows and SUM(amount) is inflated. That is a lossy "rejoin" in disguise. Always join on a column that is a key of at least one side (here: <code>payments.order_id = orders.id</code>).</p>`, code: { lang: 'sql', code: `CREATE TABLE orders   (id INTEGER PRIMARY KEY, customer_id INT, total INT);
+CREATE TABLE payments (id INTEGER PRIMARY KEY, order_id INT, customer_id INT, amount INT);
+INSERT INTO orders VALUES (1, 7, 100), (2, 7, 50), (3, 7, 30);
+INSERT INTO payments VALUES (1, 1, 7, 100), (2, 2, 7, 50);
+SELECT 'join on customer_id (non-key both sides)' AS how, COUNT(*) AS rows, SUM(p.amount) AS paid
+FROM orders o JOIN payments p ON p.customer_id = o.customer_id
+UNION ALL
+SELECT 'join on order_id (key of orders)', COUNT(*), SUM(p.amount)
+FROM orders o JOIN payments p ON p.order_id = o.id;` } },
+      { title: 'Preservation check by "does it fit in one table?"', html: `<p>R(A, B, C), F = {A → B, B → C, A → C}. Split (A, B) + (B, C): A → B fits in R1, B → C fits in R2, and A → C is implied by those two ⇒ <b>preserved</b>. Split (A, B) + (A, C): A → B and A → C fit, but B → C needs both B and C together, which only happens through a join ⇒ <b>lost</b>. Both splits are lossless — the two properties are independent.</p>` }
+    ],
+    deepDive: `<h4>🟣 Proof of the binary test</h4>
+<p>Let t be a row of R1 ⋈ R2 built from u ∈ R1 and v ∈ R2 that agree on X = R1 ∩ R2. If X → R2, then every row of R with X = u[X] has the same R2-part, namely v. Since u came from some real row r of R, r[R2] = v, so t = r ∈ R. Hence no spurious rows. Conversely, if X determines neither side, you can construct an instance with two rows agreeing on X but differing on both sides; the join creates the two "crossed" rows. That's why the condition is <b>iff</b> (for decompositions into two, under FDs only).</p>
+<h4>The chase, generally</h4>
+<p>For k tables, build a tableau with one row per table: distinguished symbols (a) for its columns, unique subscripted symbols elsewhere. Repeatedly apply FDs (equate symbols, preferring distinguished). Lossless iff some row becomes all-distinguished. The chase also handles MVDs and join dependencies, which is how 4NF/5NF losslessness is proven.</p>
+<h4>Projection of FDs is expensive</h4>
+<p>Computing the FDs that hold in a projection can require exponentially many FDs (consider all subsets). The polynomial preservation test avoids materializing them: for each X → Y in F, set Z = X and repeat Z := Z ∪ ((Z ∩ Ri)⁺ ∩ Ri) for every table Ri until stable; X → Y is preserved iff Y ⊆ Z. The visualizers in this module use exactly this test.</p>
+<h4>Practical verification</h4>
+<p>In migrations, the rejoin-and-<code>EXCEPT</code> check is cheap insurance: run it on a production snapshot before the cut-over. A non-zero "rows_invented" count means one of your "keys" is not unique in real data — exactly the dirty-data bugs that design reviews miss. Also compare row counts: rows_lost &gt; 0 typically means an INNER JOIN dropped rows whose FK was NULL or dangling.</p>`,
+    aiEra: `<p><b>What AI changes:</b> AI-generated migrations split tables quickly, and AI-generated analytics SQL joins tables quickly — both can be lossy without anyone noticing, because the query still "returns results". The skill of asking "is the join column a key on at least one side?" is more valuable than ever.</p>
+<p><b>Use AI as a partner:</b> ask it to write the verification, not just the migration: <code>Generate EXCEPT-based checks in both directions plus row counts per table, and a query listing any join key that is duplicated on both sides.</code> For analytics, ask <code>which joins in this query can multiply rows?</code> — LLMs are decent at spotting fan-out once explicitly asked.</p>
+<p><b>Where AI goes wrong:</b> it claims every decomposition is lossless "because both tables share a column", forgets that a shared non-key column causes fan-out, and confuses lossless with dependency preservation. <b>What you must still own:</b> the one-line binary test and the habit of verifying with data.</p>`,
+    problems: [{
+      title: 'Which Split Is Safe?',
+      level: 'Medium', tags: ['lossless join', 'spurious tuples', 'dependency preservation'], companies: ['Amazon', 'SAP', 'Atlassian'],
+      statement: `<p>R(student, course, room) with FD course → room (each course meets in one room); a student can take many courses and a room hosts many courses. Two proposals: <b>A</b> = (student, room) + (course, room); <b>B</b> = (student, course) + (course, room). For each, decide lossless or lossy and dependency-preserving or not; then prove it on data with SQL.</p>`,
+      constraints: `<p>SQLite. Use the data: (Asha, DB, R1), (Asha, OS, R2), (Ben, AI, R1). Report rows after the join and the number of spurious rows for each split.</p>`,
+      example: `<p>Split A joins on room: Asha-R1 matches courses DB and AI (both in R1) → ${H.c('r', '(Asha, AI, R1)')} appears although Asha never took AI. Split B joins on course: each course has one room → exactly the 3 original rows.</p>`,
+      brute: {
+        why: `<p>"Split by gut feeling" — just pick columns that look related and hope. Split A looks plausible (rooms are shared) but its common column room is a key of neither side, so the join invents enrolments. You only discover it when a report shows students in courses they never took.</p>`,
+        code: `CREATE TABLE r (student TEXT, course TEXT, room TEXT, PRIMARY KEY (student, course));
+INSERT INTO r VALUES ('Asha', 'DB', 'R1'), ('Asha', 'OS', 'R2'), ('Ben', 'AI', 'R1');
+CREATE TABLE a1 AS SELECT DISTINCT student, room FROM r;
+CREATE TABLE a2 AS SELECT DISTINCT course, room FROM r;
+SELECT student, course, room FROM a1 NATURAL JOIN a2 ORDER BY student, course;   -- 5 rows, 2 fake`
+      },
+      mcq: { q: 'Why is split B lossless?', options: ['The common column course is a key of (course, room)', 'Both tables have two columns', 'student is a key of the original table', 'Because room appears only once'], answer: 0, explain: 'course → room, so course determines all of R2; each row of R1 finds exactly one partner.' },
+      hints: [`<p>Hint 1: For each split, write the common columns and compute their closure under F.</p>`, `<p>Hint 2: A: common = {room}, room⁺ = {room} → covers neither side. B: common = {course}, course⁺ = {course, room} → covers R2.</p>`, `<p>Hint 3: Preservation: course → room must fit inside one table. In both A and B, (course, room) is a table. Then confirm with NATURAL JOIN + EXCEPT counts.</p>`],
+      solution: {
+        approach: `<p><b>A:</b> common {room}; room⁺ = {room} ⇒ neither side ⇒ <b>lossy</b>. course → room is inside (course, room) ⇒ preserved, but useless because the data can't be rebuilt. <b>B:</b> common {course}; course⁺ = {course, room} ⊇ R2 ⇒ <b>lossless</b>; course → room lives in R2 ⇒ <b>preserved</b>. B is also BCNF: R2's key is course, R1's key is (student, course). The SQL counts rows after each join and the spurious rows via EXCEPT.</p>`,
+        code: `CREATE TABLE r (student TEXT NOT NULL, course TEXT NOT NULL, room TEXT NOT NULL, PRIMARY KEY (student, course));
+INSERT INTO r VALUES ('Asha', 'DB', 'R1'), ('Asha', 'OS', 'R2'), ('Ben', 'AI', 'R1');
+
+CREATE TABLE a1 AS SELECT DISTINCT student, room   FROM r;   -- split A
+CREATE TABLE a2 AS SELECT DISTINCT course,  room   FROM r;
+CREATE TABLE b1 AS SELECT DISTINCT student, course FROM r;   -- split B
+CREATE TABLE b2 AS SELECT DISTINCT course,  room   FROM r;
+
+SELECT 'A: (student,room)+(course,room)' AS split,
+       (SELECT COUNT(*) FROM a1 NATURAL JOIN a2) AS rows_after_join,
+       (SELECT COUNT(*) FROM (SELECT student, course, room FROM a1 NATURAL JOIN a2
+                              EXCEPT SELECT student, course, room FROM r)) AS spurious
+UNION ALL
+SELECT 'B: (student,course)+(course,room)',
+       (SELECT COUNT(*) FROM b1 NATURAL JOIN b2),
+       (SELECT COUNT(*) FROM (SELECT student, course, room FROM b1 NATURAL JOIN b2
+                              EXCEPT SELECT student, course, room FROM r));`,
+        complexity: `<p>The paper test is one closure per split: O(|F|·|R|). The data check is a join plus EXCEPT: O(N log N) with sorting/hashing.</p>`,
+        followUps: ['Add FD room → building. Which split is still preserving?', 'Prove split A is lossy with a 2-row instance only.']
+      }
+    }]
+  });
+
+  /* =====================================================================
+     TOPIC 8 — When to denormalize + star schema basics
+     ===================================================================== */
+  topics.push({
+    title: 'Denormalization on Purpose & Star Schema Basics',
+    analogy: `<p>A restaurant pantry is <b>normalized</b>: every ingredient in one labelled jar, nothing duplicated. During the Friday dinner rush the chef keeps a <b>prep tray</b> — chopped onions, sauce, garnish — right next to the stove. The tray <b>duplicates</b> what is in the pantry, and someone must refill it and throw out stale bits, but it makes every plate faster. Denormalization is the prep tray: a <b>deliberate, managed copy</b> for speed, with the pantry still the source of truth.</p>`,
+    explain: `<p><b>🟢 The plain idea.</b> Normalization optimizes for <b>correct writes</b> (each fact once). Some workloads are dominated by <b>reads</b> — dashboards, feeds, search pages, analytics — where joining six tables on every request is the bottleneck. Denormalization = <b>storing a redundant copy or a precomputed answer</b> so reads get cheaper, and accepting the cost of keeping the copy in sync.</p>
+<p><b>Common, legitimate forms:</b></p>
+${H.table(['technique', 'example', 'kept in sync by'], [
+  ['counter / aggregate column', 'posts.like_count', 'trigger, same transaction, or async job + periodic reconcile'],
+  ['duplicated lookup column', 'order_items.product_name for invoices', 'often never — it is a snapshot'],
+  ['summary / rollup table', 'daily_sales(day, store, revenue)', 'scheduled refresh, materialized view'],
+  ['embedded document', 'order JSON with its line items (MongoDB)', 'written together as one aggregate'],
+  ['star schema dimension', 'dim_product with category and brand inline', 'ETL/ELT loads']])}
+<p><b>When to denormalize — a checklist:</b></p>
+<ol>
+<li>You <b>measured</b> a real read bottleneck (EXPLAIN, p95 latency) and indexes / query rewrites did not fix it.</li>
+<li>Reads vastly outnumber writes to the copied data (e.g. 1000 : 1).</li>
+<li>Slight staleness is acceptable, or you can update the copy in the <b>same transaction</b>.</li>
+<li>You can name the <b>single source of truth</b> and the <b>refresh mechanism</b>, and you have a reconciliation query.</li>
+<li>Or the data lives in an <b>analytics</b> store (OLAP), where denormalized star schemas are the norm.</li>
+</ol>
+<p>Slogan: <i>"Normalize until it hurts, denormalize until it works."</i> Default to 3NF/BCNF in OLTP; denormalize specific hot paths with a written reason.</p>
+<p><b>🔵 Star schema basics (OLAP).</b> Data warehouses (Snowflake, BigQuery, Redshift, Databricks, DuckDB) model analytics data as a <b>star</b>:</p>
+<ul>
+<li><b>Fact table</b> — one row per business event at a declared <b>grain</b> ("one row per product per store per day"). Holds foreign keys to dimensions plus numeric <b>measures</b> (qty, revenue). Huge and narrow.</li>
+<li><b>Dimension tables</b> — the "who / what / where / when" context: dim_date, dim_product, dim_store, dim_customer. Small and wide, deliberately <b>denormalized</b> (category and brand inline in dim_product, region inline in dim_store) so queries need one join per dimension.</li>
+<li><b>Surrogate keys</b> (integers) on dimensions decouple the warehouse from source-system IDs and enable history tracking (<b>SCD Type 2</b>: a new dimension row per change, with valid_from/valid_to).</li>
+<li><b>Snowflake schema</b> = dimensions normalized into sub-tables (product → category → department). Less redundancy, more joins; most teams prefer stars.</li>
+</ul>
+<p>Typical query: <code>SELECT d.month_name, s.region, SUM(f.revenue) FROM fact_sales f JOIN dim_date d … JOIN dim_store s … GROUP BY …</code> — filter and group on dimension columns, aggregate fact measures.</p>`,
+    clues: [
+      '"The dashboard / feed is slow because it joins many tables on every request" → consider a counter, summary table or materialized view (after measuring)',
+      '"Read-heavy, rarely updated" or "1000× more reads than writes" → denormalization candidate',
+      '"Design a data warehouse / analytics schema / reporting model" → star schema: fact at a declared grain + dimensions',
+      '"Fact vs dimension table" / "what is the grain?" / "slowly changing dimension" → star-schema vocabulary',
+      '"Store the price/address as it was at order time" → snapshot column, not a normalization violation',
+      '"NoSQL / sharded DB with no joins" → embed or duplicate data per access pattern'
+    ],
+    code: [{ lang: 'sql', db: 'star', title: 'Star-schema query: revenue by month and region', code: `-- Filter/group on dimensions, aggregate measures from the fact table.
+SELECT d.month_name,
+       s.region,
+       SUM(f.qty)     AS units,
+       SUM(f.revenue) AS revenue
+FROM   fact_sales f
+JOIN   dim_date  d ON d.date_key  = f.date_key
+JOIN   dim_store s ON s.store_key = f.store_key
+GROUP  BY d.year, d.date_key / 100, d.month_name, s.region
+ORDER  BY d.date_key / 100, revenue DESC;
+
+-- Weekend vs weekday revenue per product category (one join per dimension, no snowflaking)
+SELECT p.category,
+       SUM(CASE WHEN d.is_weekend = 1 THEN f.revenue ELSE 0 END) AS weekend_revenue,
+       SUM(CASE WHEN d.is_weekend = 0 THEN f.revenue ELSE 0 END) AS weekday_revenue
+FROM fact_sales f
+JOIN dim_date d    ON d.date_key = f.date_key
+JOIN dim_product p ON p.product_key = f.product_key
+GROUP BY p.category ORDER BY p.category;` },
+    { lang: 'sql', title: 'Denormalized counter kept exact by triggers + a reconcile query', code: `PRAGMA foreign_keys = ON;
+CREATE TABLE posts (
+  id         INTEGER PRIMARY KEY,
+  title      TEXT NOT NULL,
+  like_count INTEGER NOT NULL DEFAULT 0 CHECK (like_count >= 0)   -- denormalized copy of COUNT(likes)
+);
+CREATE TABLE likes (
+  post_id INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL,
+  PRIMARY KEY (post_id, user_id)                                  -- source of truth
+);
+-- Same-transaction maintenance: the copy can never drift
+CREATE TRIGGER likes_ai AFTER INSERT ON likes BEGIN
+  UPDATE posts SET like_count = like_count + 1 WHERE id = NEW.post_id;
+END;
+CREATE TRIGGER likes_ad AFTER DELETE ON likes BEGIN
+  UPDATE posts SET like_count = like_count - 1 WHERE id = OLD.post_id;
+END;
+
+INSERT INTO posts (id, title) VALUES (1, 'Normalization 101'), (2, 'Star schemas');
+INSERT INTO likes VALUES (1, 10), (1, 11), (1, 12), (2, 10);
+DELETE FROM likes WHERE post_id = 1 AND user_id = 11;
+
+-- Feed query reads one column instead of COUNT(*) over likes
+SELECT id, title, like_count FROM posts ORDER BY like_count DESC;
+
+-- Reconcile: any post whose copy disagrees with the truth? (should be empty)
+SELECT p.id, p.like_count, COUNT(l.user_id) AS true_count
+FROM posts p LEFT JOIN likes l ON l.post_id = p.id
+GROUP BY p.id HAVING p.like_count <> COUNT(l.user_id);` },
+    { lang: 'sql', db: 'star', title: 'A summary table as a "materialized view" (SQLite has none built in)', code: `-- Rollup at a coarser grain: one row per month per region
+CREATE TABLE agg_sales_month_region (
+  yyyymm  INTEGER NOT NULL,
+  region  TEXT    NOT NULL,
+  revenue INTEGER NOT NULL,
+  PRIMARY KEY (yyyymm, region)
+);
+-- Full refresh (PostgreSQL would be: REFRESH MATERIALIZED VIEW CONCURRENTLY ...)
+DELETE FROM agg_sales_month_region;
+INSERT INTO agg_sales_month_region
+SELECT f.date_key / 100, s.region, SUM(f.revenue)
+FROM fact_sales f JOIN dim_store s ON s.store_key = f.store_key
+GROUP BY f.date_key / 100, s.region;
+
+-- Dashboards now read a handful of rows instead of scanning the fact table
+SELECT * FROM agg_sales_month_region ORDER BY yyyymm, revenue DESC;` }],
+    codeTitle: ['Star schema query', 'Trigger-maintained counter', 'Summary table refresh'],
+    viz: [{
+      title: 'Star schema: one fact, many dimensions',
+      gen: function () {
+        var nodes = [
+          { id: 'F', label: 'fact_sales (grain: product × store × day)', x: 50, y: 32, shape: 'box' },
+          { id: 'D', label: 'dim_date', x: 16, y: 8, shape: 'box' },
+          { id: 'P', label: 'dim_product', x: 84, y: 8, shape: 'box' },
+          { id: 'S', label: 'dim_store', x: 16, y: 56, shape: 'box' },
+          { id: 'C', label: 'dim_customer', x: 84, y: 56, shape: 'box' }
+        ];
+        var edges = [['F', 'D', 'date_key'], ['F', 'P', 'product_key'], ['F', 'S', 'store_key'], ['F', 'C', 'customer_key']];
+        var G = function (hl, ehl, tags) { return { type: 'graph', label: 'star schema', directed: true, height: 64, nodes: nodes, edges: edges, hl: hl || {}, ehl: ehl || {}, tags: tags || {} }; };
+        var f = [];
+        f.push({ narr: 'OLTP schemas are normalized for safe writes. Analytics asks different questions: "revenue by month and region", scanning millions of rows. The warehouse uses a <b>star</b>: one central fact table and a ring of dimension tables.', parts: [{ type: 'graph', label: 'normalized (snowflake) chain — 4 joins to reach department', directed: true, height: 30, nodes: [{ id: 's', label: 'sales', x: 10, y: 15, shape: 'box' }, { id: 'p', label: 'products', x: 35, y: 15, shape: 'box' }, { id: 'c', label: 'categories', x: 62, y: 15, shape: 'box' }, { id: 'd', label: 'departments', x: 88, y: 15, shape: 'box' }], edges: [['s', 'p'], ['p', 'c'], ['c', 'd']], hl: { d: 'cur' } }] });
+        f.push({ narr: 'The <b>fact table</b> sits in the middle. First decision: the <b>grain</b> — one row per product per store per day. Each row holds dimension keys plus <b>measures</b> (qty, revenue).', parts: [G({ F: 'sel' }), { type: 'table', label: 'fact_sales (sample)', columns: ['date_key', 'product_key', 'store_key', 'qty', 'revenue'], rows: [[20260105, 1, 1, 2, 2400], [20260105, 2, 2, 5, 1500], [20260110, 3, 1, 1, 9000], [20260214, 3, 3, 2, 18000]], hl: { 0: 'cur' } }] });
+        f.push({ narr: '<b>Dimensions</b> are deliberately denormalized: dim_product carries category and brand inline; dim_store carries city <b>and</b> region (city → region is a transitive dependency we keep on purpose). One join per dimension, ever.', parts: [G({ P: 'ok', S: 'ok' }), { type: 'table', label: 'dim_store', columns: ['store_key', 'name', 'city', 'region'], rows: [[1, 'MG Road', 'Bengaluru', 'South'], [2, 'Koregaon', 'Pune', 'West'], [3, 'Connaught', 'Delhi', 'North']], hl: { 0: 'ok', 1: 'ok', 2: 'ok' } }] });
+        f.push({ narr: 'dim_date is precomputed: one row per day with month, quarter, weekend flag, holiday flag… Analysts filter on "is_weekend = 1" instead of writing date math.', parts: [G({ D: 'ok' }), { type: 'table', label: 'dim_date', columns: ['date_key', 'month', 'quarter', 'is_weekend'], rows: [[20260105, 'Jan', 'Q1', 0], [20260110, 'Jan', 'Q1', 1], [20260214, 'Feb', 'Q1', 1], [20260403, 'Apr', 'Q2', 0]], hl: { 1: 'sel', 2: 'sel' } }] });
+        f.push({ narr: 'Query "revenue by month and region": scan the fact table, hop along two edges (date_key, store_key), group by dimension attributes.', parts: [G({ F: 'cur', D: 'ok', S: 'ok' }, { 'F-D': 'ok', 'F-S': 'ok' }), { type: 'code', label: 'query', lang: 'sql', code: 'SELECT d.month_name, s.region, SUM(f.revenue)\nFROM fact_sales f\nJOIN dim_date d  ON d.date_key  = f.date_key\nJOIN dim_store s ON s.store_key = f.store_key\nGROUP BY d.month_name, s.region;', hl: { 3: 'ok', 4: 'ok', 5: 'cur' } }] });
+        f.push({ narr: 'Result (from the sample <code>star</code> database). Columnar warehouses read only the columns touched (date_key, store_key, revenue), which is why wide denormalized dimensions are cheap there.', parts: [{ type: 'table', label: 'revenue by month × region', columns: ['month', 'region', 'revenue'], rows: [['Jan', 'South', 11400], ['Jan', 'West', 1500], ['Jan', 'North', 900], ['Feb', 'North', 20000], ['Feb', 'West', 1200], ['Apr', 'North', 3600], ['Apr', 'South', 1800], ['Apr', 'West', 1250]], hl: { 3: 'sel' } }] });
+        f.push({ narr: 'History: if store 2 moves from region West to South, <b>SCD Type 1</b> overwrites the row (history rewritten). <b>SCD Type 2</b> adds a new row with a new surrogate key and valid_from/valid_to, so old facts still report under West.', parts: [{ type: 'table', label: 'dim_store with SCD Type 2', columns: ['store_key', 'store_id', 'region', 'valid_from', 'valid_to', 'is_current'], rows: [[2, 'S-KOR', 'West', '2024-01-01', '2026-06-30', 0], [7, 'S-KOR', 'South', '2026-07-01', '9999-12-31', 1]], hl: { 0: 'done', 1: 'ok' } }] });
+        f.push({ narr: 'Star vs snowflake: star = fewer joins, simpler SQL, some redundancy in small dimension tables (cheap). Snowflake = normalized dimensions, more joins. Most modern warehouses and BI tools favour the star.', parts: [{ type: 'table', label: 'comparison', columns: ['', 'star', 'snowflake', 'OLTP 3NF'], rows: [['joins per query', '1 per dimension', 'more', 'many'], ['redundancy', 'in dimensions', 'low', 'none'], ['optimized for', 'reads/aggregates', 'storage', 'writes/integrity']], hl: { 0: 'sel' } }] });
+        return f;
+      }
+    }, {
+      title: 'Denormalized counter: fast reads, and how copies drift',
+      gen: function () {
+        var f = [];
+        var P = function (rows, hl, label) { return { type: 'table', label: label || 'posts (like_count = denormalized copy)', columns: ['id', 'title', 'like_count'], rows: rows, hl: hl || {} }; };
+        var Lk = function (rows, hl) { return { type: 'table', label: 'likes (source of truth)', columns: ['post_id', 'user_id'], rows: rows, hl: hl || {} }; };
+        f.push({ narr: 'Normalized: the feed computes <code>COUNT(*) FROM likes GROUP BY post_id</code> for every post shown. With millions of likes and a hot feed, that is a lot of repeated counting.', parts: [Lk([[1, 10], [1, 12], [2, 10]]), { type: 'table', label: 'computed on every request', columns: ['post_id', 'COUNT(*)'], rows: [[1, 2], [2, 1]], hl: { 0: 'cur', 1: 'cur' } }] });
+        f.push({ narr: 'Denormalize: store <b>like_count</b> on posts. The feed now reads one integer per post — no aggregation. likes stays the <b>source of truth</b>.', parts: [P([[1, 'Normalization 101', 2], [2, 'Star schemas', 1]], { 0: 'ok', 1: 'ok' }), Lk([[1, 10], [1, 12], [2, 10]])] });
+        f.push({ narr: 'User 15 likes post 1. A trigger (or the same transaction) inserts into likes <b>and</b> increments the counter atomically. Both change together (green).', parts: [Lk([[1, 10], [1, 12], [2, 10], [1, 15]], { 3: 'ok' }), P([[1, 'Normalization 101', 3], [2, 'Star schemas', 1]], { 0: 'ok' })] });
+        f.push({ narr: '<b>The danger:</b> a cleanup script deletes spam likes with a bulk DELETE that bypasses the app\'s counter logic (no trigger installed). likes loses a row; like_count does not move. The copy has <b>drifted</b> (red).', parts: [Lk([[1, 10], [1, 12], [2, 10]], {}), P([[1, 'Normalization 101', 3], [2, 'Star schemas', 1]], { 0: 'bad' })] });
+        f.push({ narr: 'Write amplification: every like is now two writes, and a viral post concentrates them on <b>one hot row</b> (lock contention). At scale teams shard the counter or buffer increments and flush them asynchronously.', parts: [{ type: 'table', label: 'cost of the copy', columns: ['concern', 'normalized', 'denormalized counter'], rows: [['feed read', 'COUNT per post', '1 column read'], ['like write', '1 insert', '1 insert + 1 update (hot row)'], ['risk', 'none', 'drift if any path forgets to update']], hl: { 1: 'cur', 2: 'bad' } }] });
+        f.push({ narr: 'Safety net: a scheduled <b>reconcile query</b> compares the copy with the truth and repairs it. Every deliberate copy needs one.', parts: [{ type: 'code', label: 'reconcile', lang: 'sql', code: 'UPDATE posts SET like_count =\n  (SELECT COUNT(*) FROM likes l WHERE l.post_id = posts.id)\nWHERE like_count <>\n  (SELECT COUNT(*) FROM likes l WHERE l.post_id = posts.id);', hl: { 1: 'ok', 3: 'cur' } }, P([[1, 'Normalization 101', 2], [2, 'Star schemas', 1]], { 0: 'ok' })] });
+        f.push({ narr: 'Another copy that is <b>not</b> a bug: order_items.unit_price_at_sale. When the catalogue price changes, old orders must keep the old price. It is a separate fact (a snapshot), so there is nothing to reconcile.', parts: [{ type: 'table', label: 'products (current price)', columns: ['sku', 'price'], rows: [['P-LAMP', 1350]], hl: { 0: 'cur' } }, { type: 'table', label: 'order_items (price at sale — must NOT change)', columns: ['order_id', 'sku', 'unit_price_at_sale'], rows: [[101, 'P-LAMP', 1200], [105, 'P-LAMP', 1200]], hl: { 0: 'sel', 1: 'sel' } }] });
+        return f;
+      }
+    }],
+    examples: [
+      { title: 'Snapshot columns (address and price at order time)', html: `<p>An invoice must show the shipping address and price <b>as they were</b>. Copying <code>ship_to_address</code> and <code>unit_price_at_sale</code> into the order is required for correctness (and often by tax law). Name them clearly so nobody "normalizes" them away and nobody tries to keep them in sync with the live customer row.</p>` },
+      { title: 'Materialized view for a heavy dashboard', html: `<p>A sales dashboard runs a 6-table join over 200 M rows every 30 s. A PostgreSQL <code>MATERIALIZED VIEW daily_sales</code> refreshed every 5 minutes with <code>REFRESH MATERIALIZED VIEW CONCURRENTLY</code> (needs a unique index) turns that into reading ~10 K rows. Staleness ≤ 5 min was acceptable to the business — get that in writing.</p>` },
+      { title: 'NoSQL: duplicate per access pattern', html: `<p>In DynamoDB/Cassandra there are no joins, so you design tables per query: <code>orders_by_customer</code> and <code>orders_by_status</code> both hold the order data. That is denormalization by design; the writer (or a stream processor via CDC) updates both. The trade-off is identical: faster reads, multiple writes, possible temporary inconsistency.</p>` },
+      { title: 'Star query on the sample warehouse', html: `<p>Which brand sold the most units on weekends? One join to dim_date (filter), one to dim_product (group) — no category or brand tables needed, because the dimension is denormalized.</p>`, code: { lang: 'sql', db: 'star', code: `SELECT p.brand, SUM(f.qty) AS weekend_units
+FROM fact_sales f
+JOIN dim_date d    ON d.date_key = f.date_key AND d.is_weekend = 1
+JOIN dim_product p ON p.product_key = f.product_key
+GROUP BY p.brand
+ORDER BY weekend_units DESC;` } }
+    ],
+    deepDive: `<h4>🟣 Ways to keep a copy correct, from strongest to weakest</h4>
+<ol>
+<li><b>Same transaction</b> (trigger or app code in one transaction): never visibly inconsistent; costs write latency and can create hot-row contention.</li>
+<li><b>Synchronous materialized view</b> (incrementally maintained: SQL Server indexed views, Oracle fast-refresh MVs, Materialize/RisingWave streaming views): engine-guaranteed; restrictions on allowed SQL.</li>
+<li><b>Scheduled refresh</b> (PostgreSQL <code>REFRESH MATERIALIZED VIEW</code>, dbt models, warehouse tasks): simple; bounded staleness.</li>
+<li><b>Change Data Capture</b> (Debezium → Kafka → consumer updating a search index/cache): decoupled and scalable; eventual consistency, ordering and replay concerns.</li>
+<li><b>Application-level "remember to update both"</b>: weakest; drifts the first time someone writes via another path (scripts, admin tools, another service).</li>
+</ol>
+<p>Whatever you choose, keep a <b>reconcile job</b> that compares copy vs source and alerts on drift.</p>
+<h4>Hot counters at scale</h4>
+<p>A single <code>like_count</code> row on a viral post becomes a lock hotspot. Mitigations: sharded counters (N sub-rows summed on read), buffered increments in Redis flushed periodically, approximate counts (HyperLogLog for unique viewers), or CRDT counters in multi-leader systems.</p>
+<h4>Why star schemas fit columnar engines</h4>
+<p>Column stores compress repeated dimension values (dictionary + run-length encoding), so "redundant" text costs little. Fact tables are scanned with vectorized execution and joined to small dimensions with broadcast hash joins. The <b>grain</b> is the most important design decision: mixing grains (daily and monthly rows in one fact table) causes double counting. Kimball's rules: declare the grain first, use conformed dimensions shared across facts, prefer additive measures, and model history with SCD Type 2 where analysts need "as-was" reporting.</p>
+<h4>Modern twists</h4>
+<p>"One Big Table" (OBT) — fully pre-joined wide tables — is popular in lakehouses for BI speed; it is a star schema joined in advance, with the same redundancy trade-offs. Data vault and 6NF-style models sit at the other extreme for auditable raw layers, and are later projected into stars for consumption.</p>`,
+    aiEra: `<p><b>What AI changes:</b> text-to-SQL agents and BI copilots work dramatically better on <b>star schemas</b> with clear names (<code>fact_sales</code>, <code>dim_customer.region</code>) than on 40-table normalized OLTP schemas — fewer joins means fewer ways for the model to fan out rows or pick the wrong path. Many teams now build a "semantic layer" or OBT specifically so AI assistants can answer business questions reliably.</p>
+<p><b>Use AI as a partner:</b> ask an LLM to propose the fact grain, measures and dimensions from a list of business questions, and to generate the dbt/SQL transformations. Then demand the reconcile tests: <code>generate a query that proves SUM(revenue) in the star equals SUM(revenue) in the source for every day</code>.</p>
+<p><b>Where AI goes wrong:</b> it denormalizes without a refresh strategy, mixes grains in one fact table, adds non-additive measures (ratios, distinct counts) as if they can be summed, and recommends caching counters without any drift detection. <b>What you must still own:</b> the decision to denormalize (with measurements), the source of truth, the consistency model the business accepts, and the grain.</p>`,
+    problems: [{
+      title: 'Product Page Rating Summary',
+      level: 'Medium', tags: ['denormalization', 'triggers', 'aggregates'], companies: ['Amazon', 'Flipkart', 'Etsy'],
+      statement: `<p>A product page shows "★ 4.3 (1,284 reviews)". Computing <code>AVG(rating), COUNT(*)</code> over the reviews table on every page view is the top query in your database. Design a denormalized summary that keeps the page to a single-row read, stays exactly correct on insert, update and delete of reviews, and can be verified.</p>`,
+      constraints: `<p>SQLite. Reviews: (product_id, user_id) is unique; rating 1–5; a user can edit or delete a review. Average must be exact (no drift).</p>`,
+      example: `<p>Ratings 5, 4, 4 → count 3, sum 13, average ${H.c('g', '4.33')}. Edit the 5 into a 2 → sum 10, average ${H.c('g', '3.33')}. Delete one 4 → count 2, sum 6, average 3.0.</p>`,
+      brute: {
+        why: `<p>Normalized only: every page view runs an aggregate over that product's reviews. With an index on product_id it is O(k) for k reviews — fine for small k, but best-sellers have hundreds of thousands of reviews and millions of views. Storing <code>avg_rating</code> alone is also wrong: you cannot update an average correctly without the count and sum.</p>`,
+        code: `CREATE TABLE reviews (product_id INTEGER NOT NULL, user_id INTEGER NOT NULL,
+                      rating INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
+                      PRIMARY KEY (product_id, user_id));
+INSERT INTO reviews VALUES (1, 10, 5), (1, 11, 4), (1, 12, 4), (2, 10, 3);
+-- Runs on EVERY product page view:
+SELECT product_id, ROUND(AVG(rating), 2) AS avg_rating, COUNT(*) AS review_count
+FROM reviews WHERE product_id = 1 GROUP BY product_id;`
+      },
+      mcq: { q: 'Which columns should the summary store to stay exact under inserts, edits and deletes?', options: ['review_count and rating_sum (average computed on read)', 'avg_rating only', 'avg_rating and last_rating', 'Nothing — use a cache with a 1-hour TTL'], answer: 0, explain: 'Count and sum can be adjusted incrementally by +/- deltas; an average alone cannot.' },
+      hints: [`<p>Hint 1: Store additive quantities. Count and sum can be adjusted by deltas; the average is sum / count at read time.</p>`, `<p>Hint 2: Three triggers: AFTER INSERT (+1, +rating), AFTER DELETE (−1, −rating), AFTER UPDATE OF rating (sum += new − old).</p>`, `<p>Hint 3: Use an UPSERT in the insert trigger so a product's first review creates its summary row. Finish with a reconcile query comparing to the source.</p>`],
+      solution: {
+        approach: `<p>Keep <code>reviews</code> as the source of truth and add <code>product_rating_summary(product_id PK, review_count, rating_sum)</code>. Triggers apply deltas inside the same transaction as the review change, so the summary is never visibly wrong. The page reads one row and computes <code>rating_sum * 1.0 / review_count</code>. A reconcile query (and a scheduled job running it) detects drift from any path that bypasses triggers (bulk loads with triggers disabled, restores).</p>`,
+        code: `PRAGMA foreign_keys = ON;
+CREATE TABLE reviews (
+  product_id INTEGER NOT NULL, user_id INTEGER NOT NULL,
+  rating INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
+  PRIMARY KEY (product_id, user_id));
+CREATE TABLE product_rating_summary (
+  product_id   INTEGER PRIMARY KEY,
+  review_count INTEGER NOT NULL CHECK (review_count >= 0),
+  rating_sum   INTEGER NOT NULL CHECK (rating_sum >= 0));
+
+CREATE TRIGGER rev_ai AFTER INSERT ON reviews BEGIN
+  INSERT INTO product_rating_summary (product_id, review_count, rating_sum)
+  VALUES (NEW.product_id, 1, NEW.rating)
+  ON CONFLICT (product_id) DO UPDATE
+    SET review_count = review_count + 1, rating_sum = rating_sum + excluded.rating_sum;
+END;
+CREATE TRIGGER rev_ad AFTER DELETE ON reviews BEGIN
+  UPDATE product_rating_summary
+  SET review_count = review_count - 1, rating_sum = rating_sum - OLD.rating
+  WHERE product_id = OLD.product_id;
+END;
+CREATE TRIGGER rev_au AFTER UPDATE OF rating ON reviews BEGIN
+  UPDATE product_rating_summary
+  SET rating_sum = rating_sum + NEW.rating - OLD.rating
+  WHERE product_id = NEW.product_id;
+END;
+
+INSERT INTO reviews VALUES (1, 10, 5), (1, 11, 4), (1, 12, 4), (2, 10, 3);
+UPDATE reviews SET rating = 2 WHERE product_id = 1 AND user_id = 10;
+DELETE FROM reviews WHERE product_id = 1 AND user_id = 11;
+
+-- Product page: one primary-key lookup
+SELECT product_id, review_count, ROUND(rating_sum * 1.0 / NULLIF(review_count, 0), 2) AS avg_rating
+FROM product_rating_summary ORDER BY product_id;
+
+-- Reconcile (should return no rows)
+SELECT s.product_id, s.review_count, COUNT(r.rating) AS true_count, s.rating_sum, SUM(r.rating) AS true_sum
+FROM product_rating_summary s LEFT JOIN reviews r ON r.product_id = s.product_id
+GROUP BY s.product_id
+HAVING s.review_count <> COUNT(r.rating) OR s.rating_sum <> COALESCE(SUM(r.rating), 0);`,
+        complexity: `<p>Page read: O(log P) primary-key lookup instead of O(k) aggregation. Each review write adds one indexed UPDATE/UPSERT (O(log P)) — and makes the product's summary row a potential hot spot for very popular items.</p>`,
+        followUps: ['A product gets 5,000 reviews per minute during a sale — how do you avoid the hot row?', 'Show a histogram (how many 1★…5★). What extra columns or table?']
       }
     }]
   });

@@ -32,7 +32,7 @@
     nodes.forEach(function (n) { names[n.id] = n.label; });
     seen[start] = true; hl[start] = 'cur';
     frames.push(F('A change request lands on <b>' + names[start] + '</b>: ' + why + ' Now watch who else has to be opened, rebuilt or re-tested because they <i>depend on</i> it.',
-      [G(label, nodes, edges, { hl: clone(hl), ehl: clone(ehl), tags: { } , h: h }), { type: 'vars', label: 'damage so far', vals: { classesTouched: 1 }, hl: { classesTouched: 'cur' } }]));
+      [G(label, nodes, edges, { hl: clone(hl), ehl: clone(ehl), tags: { } , h: h }), { type: 'vars', label: 'damage so far', vals: { boxesTouched: 1 }, hl: { boxesTouched: 'cur' } }]));
     while (q.length) {
       var cur = q.shift();
       edges.forEach(function (e) {
@@ -41,17 +41,17 @@
           var h2 = clone(hl); h2[e[0]] = 'cur'; h2[cur] = cls;
           var eh = clone(ehl); eh[e[0] + '-' + e[1]] = cls;
           frames.push(F('<b>' + names[e[0]] + '</b> depends on <b>' + names[cur] + '</b> (arrow ' + names[e[0]] + ' → ' + names[cur] + '), so the change ripples into it. ' +
-            (cls === 'bad' ? '<span class="c-r">One more file to edit and re-test.</span>' : 'It only uses a stable abstraction, so a quick re-test is enough.'),
-            [G(label, nodes, edges, { hl: h2, ehl: eh, h: h }), { type: 'vars', label: 'damage so far', vals: { classesTouched: order.length }, hl: { classesTouched: cls === 'bad' ? 'bad' : 'ok' } }]));
+            (cls === 'bad' ? '<span class="c-r">One more box to edit or re-check.</span>' : '<span class="c-g">Expected, local impact — the direct user re-checks, and the ripple stops here.</span>'),
+            [G(label, nodes, edges, { hl: h2, ehl: eh, h: h }), { type: 'vars', label: 'damage so far', vals: { boxesTouched: order.length }, hl: { boxesTouched: cls === 'bad' ? 'bad' : 'ok' } }]));
           hl[e[0]] = cls; ehl[e[0] + '-' + e[1]] = cls;
         }
       });
       hl[cur] = cls;
     }
     var fin = clone(hl);
-    frames.push(F('Ripple finished: <b>' + order.length + ' of ' + nodes.length + '</b> classes touched (' + order.map(function (id) { return names[id]; }).join(', ') + '). ' +
+    frames.push(F('Ripple finished: <b>' + order.length + ' of ' + nodes.length + '</b> boxes touched (' + order.map(function (id) { return names[id]; }).join(', ') + '). ' +
       (cls === 'bad' ? '<span class="c-r">Big blast radius = rigid, fragile design.</span>' : '<span class="c-g">Small blast radius = the design absorbed the change.</span>'),
-      [G(label, nodes, edges, { hl: fin, ehl: clone(ehl), h: h }), { type: 'vars', label: 'final damage', vals: { classesTouched: order.length, totalClasses: nodes.length }, hl: { classesTouched: cls === 'bad' ? 'bad' : 'ok' } }]));
+      [G(label, nodes, edges, { hl: fin, ehl: clone(ehl), h: h }), { type: 'vars', label: 'final damage', vals: { boxesTouched: order.length, totalBoxes: nodes.length }, hl: { boxesTouched: cls === 'bad' ? 'bad' : 'ok' } }]));
     return frames;
   }
 
@@ -533,6 +533,584 @@ class RegistrationService {                             // orchestration only
 }`,
         complexity: `<p>Runtime is the same as before: O(1) map operations plus O(P) hashing for password length P. The win is in <b>change cost</b>: each requirement change touches 1 class instead of 1 file shared by 4 teams, and each class is testable in isolation.</p>`,
         followUps: ['How would you send the email asynchronously so a slow mail server does not slow registration?', 'Where would you put rate limiting for registrations — and which actor owns it?', 'Swap SHA-256 for BCrypt: how many classes change?']
+      }
+    }]
+  });
+
+  /* ======================= TOPIC 3: OCP ======================= */
+  var T3_BAD = `class DiscountCalculator {
+  double discount(String type, double amt) {
+    switch (type) {
+      case "REGULAR":  return 0;
+      case "PREMIUM":  return amt * 0.10;
+      case "EMPLOYEE": return amt * 0.30;
+      default: throw new IllegalArgumentException(type);
+    }
+  }
+}`;
+  var T3_GOOD = `interface DiscountPolicy {
+  double discount(double amt);
+}
+class Premium implements DiscountPolicy {
+  public double discount(double a) { return a * 0.10; }
+}
+class Employee implements DiscountPolicy {
+  public double discount(double a) { return a * 0.30; }
+}
+class Checkout {
+  private final Map<String, DiscountPolicy> rules;
+  Checkout(Map<String, DiscountPolicy> rules) {
+    this.rules = Map.copyOf(rules);
+  }
+  double pay(String type, double amt) {
+    DiscountPolicy p = rules.getOrDefault(type, a -> 0);
+    return amt - p.discount(amt);
+  }
+}
+// adding FESTIVE = one NEW class + one map entry:
+class Festive implements DiscountPolicy {
+  public double discount(double a) { return a * 0.20; }
+}`;
+
+  topics.push({
+    title: 'O — Open/Closed Principle (OCP)',
+    analogy: `<p>Think of a <b>power strip</b>. When you buy a new phone charger you do not open the strip with a screwdriver and solder new wires — you just <b>plug it in</b>. The strip is <b>closed</b> (nobody rewires it) yet <b>open</b> (any new device with a standard plug works). Your code should have "sockets" (interfaces) so new features plug in, instead of every feature cutting open old, tested wiring.</p>`,
+    explain: `<p><b>Official wording</b> (Bertrand Meyer, 1988): "Software entities should be <b>open for extension, but closed for modification</b>." In plain English: <b>when a new requirement of an expected kind arrives, you should be able to add new code instead of editing old, working code.</b></p>
+<p><b>Why editing old code hurts:</b> old code is tested, deployed and trusted. Every edit risks breaking existing behaviour, forces re-testing of all cases, and creates merge conflicts when two developers add two features to the same <code>switch</code>.</p>
+<p><b>The classic smell:</b> a <code>switch</code> or <code>if/else-if</code> chain on a "type" that keeps growing:</p>
+${H.table(['Month', 'Business request', 'What the developer does in the bad design'], [
+  ['Jan', 'Premium customers get 10%', 'adds <code>case "PREMIUM"</code>'],
+  ['Mar', 'Employees get 30%', 'edits the same method again'],
+  ['Oct', 'Festive sale 20%', H.c('r', 'edits again, re-tests all cases')],
+  ['Nov', 'Students 15%', H.c('r', 'conflicts with a colleague\'s festive edit')]
+])}
+<p>And usually the <b>same switch is copy-pasted</b> in other places (discount, label on the invoice, loyalty points) — "shotgun surgery": one new type means hunting down every switch.</p>
+<p><b>The refactor — "replace conditional with polymorphism":</b></p>
+<ol>
+<li>Create an interface for the thing that varies: <code>DiscountPolicy { double discount(double amt); }</code></li>
+<li>Move each <code>case</code> body into its own class implementing that interface.</li>
+<li>The caller holds a <code>DiscountPolicy</code> (or a <code>Map</code> from type to policy) and just calls it.</li>
+<li>New type = <b>new class</b> + one line where objects are wired up (the "composition root"). Existing classes are untouched.</li>
+</ol>
+<p><b>Important honesty:</b> no code is closed against <i>every</i> change. OCP means you <b>choose the likely axis of change</b> (new discount kinds, new payment methods, new file formats) and make <i>that</i> pluggable. Patterns that deliver OCP: Strategy, Template Method, Decorator, Observer, plugins.</p>`,
+    clues: [
+      '"We will add more <b>types / providers / formats</b> later" → put an interface on that axis (Strategy).',
+      'A growing <code>switch (type)</code> or <code>if (x instanceof A) … else if (x instanceof B)</code> chain → OCP smell.',
+      '"Add a new payment method <b>without touching existing code</b>" — the interviewer literally quotes OCP.',
+      '"Support plugins / third-party extensions" → open/closed via interfaces + registry/ServiceLoader.',
+      'The same switch appears in 3+ places (price, label, icon) → shotgun surgery; move behaviour into polymorphic classes.',
+      'Machine coding: "new vehicle type in parking lot", "new split type in Splitwise", "new piece in chess" → OCP checkpoints.'
+    ],
+    code: [{ lang: 'java', title: 'Before: a switch that every new discount must edit', code: `class DiscountCalculator {
+    double discount(String customerType, double amount) {
+        switch (customerType) {
+            case "REGULAR":  return 0;
+            case "PREMIUM":  return amount * 0.10;
+            case "EMPLOYEE": return amount * 0.30;
+            // Festive sale? Students? Bulk orders? -> edit this method again and again
+            default: throw new IllegalArgumentException("Unknown type " + customerType);
+        }
+    }
+}` }, { lang: 'java', title: 'After: Strategy + registry — new discounts plug in', code: `interface DiscountPolicy {
+    double discount(double amount);
+}
+
+class NoDiscount implements DiscountPolicy { public double discount(double a) { return 0; } }
+class PremiumDiscount implements DiscountPolicy { public double discount(double a) { return a * 0.10; } }
+class EmployeeDiscount implements DiscountPolicy { public double discount(double a) { return a * 0.30; } }
+
+// Closed: this class never changes when a new discount appears.
+class Checkout {
+    private final Map<String, DiscountPolicy> policies;
+
+    Checkout(Map<String, DiscountPolicy> policies) { this.policies = Map.copyOf(policies); }
+
+    double payable(String customerType, double amount) {
+        DiscountPolicy p = policies.getOrDefault(customerType, new NoDiscount());
+        return amount - p.discount(amount);
+    }
+}
+
+// Open: a brand-new class, written months later, no old file edited.
+class FestiveDiscount implements DiscountPolicy {
+    public double discount(double a) { return Math.min(a * 0.20, 500); }   // 20%, capped at 500
+}
+
+class Main {
+    public static void main(String[] args) {
+        Map<String, DiscountPolicy> wiring = new HashMap<>();      // composition root
+        wiring.put("PREMIUM", new PremiumDiscount());
+        wiring.put("EMPLOYEE", new EmployeeDiscount());
+        wiring.put("FESTIVE", new FestiveDiscount());              // the only "edit": one line of wiring
+        Checkout c = new Checkout(wiring);
+        System.out.println(c.payable("FESTIVE", 1000));   // 800.0
+        System.out.println(c.payable("REGULAR", 1000));   // 1000.0
+    }
+}` }],
+    codeTitle: ['Bad: growing switch', 'Good: plug-in strategies'],
+    viz: [{
+      title: 'Add new discount types: edit-the-switch vs plug-in classes',
+      input: 'FESTIVE STUDENT BULK',
+      inputLabel: 'New discount types to add (1-4 words, letters only)',
+      gen: function (input) {
+        var names = String(input || '').trim().split(/[\s,]+/).filter(Boolean).map(function (s) { return s.toUpperCase(); });
+        if (!names.length || names.length > 4 || names.some(function (n) { return !/^[A-Z]{2,10}$/.test(n); })) throw new Error('Enter 1-4 type names (2-10 letters each), e.g. FESTIVE STUDENT');
+        var cases = ['REGULAR', 'PREMIUM', 'EMPLOYEE'], pct = { REGULAR: '0', PREMIUM: 'amt * 0.10', EMPLOYEE: 'amt * 0.30' };
+        function sw(list, newIdx) {
+          var lines = ['class DiscountCalculator {', '  double discount(String type, double amt) {', '    switch (type) {'];
+          list.forEach(function (c) { lines.push('      case "' + c + '": return ' + (pct[c] || 'amt * 0.15') + ';'); });
+          lines.push('      default: throw new IllegalArgumentException(type);', '    }', '  }', '}');
+          var hl = {}; if (newIdx >= 0) hl[4 + newIdx] = 'bad';
+          for (var i = 0; i < list.length; i++) if (i !== newIdx) hl[4 + i] = newIdx >= 0 ? 'cur' : '';
+          return CODE('DiscountCalculator.java', lines.join('\n'), hl);
+        }
+        var frames = [], edits = 0, retests = 0;
+        frames.push(F('<b>Before (violates OCP):</b> one class with a switch over 3 types. It is tested and in production. Now the business sends ' + names.length + ' new discount type(s): <b>' + names.join(', ') + '</b>.',
+          [sw(cases, -1), G('Dependencies', [B('CO', 'Checkout', 25, 10), B('DC', 'DiscountCalculator', 70, 10)], [['CO', 'DC']], { h: 22, ehl: { 'CO-DC': 'bad' } })]));
+        var list = cases.slice();
+        names.forEach(function (n) {
+          list.push(n); edits++; retests += list.length;
+          frames.push(F('Add <b>' + n + '</b>: open the <i>existing</i> DiscountCalculator and insert a new case (red line). Because the method changed, every existing case (amber) must be re-tested: <b>' + list.length + '</b> cases this time. <span class="c-r">Old code modified.</span>',
+            [sw(list, list.length - 1), { type: 'vars', label: 'cost so far (bad design)', vals: { oldFilesEdited: edits, caseRetests: retests }, hl: { oldFilesEdited: 'bad', caseRetests: 'bad' } }]));
+        });
+        var badEdits = edits, badRetests = retests;
+        var nodes = [B('CO', 'Checkout', 50, 8), B('DP', '«DiscountPolicy»', 50, 26), B('R', 'Regular', 20, 44), B('P', 'Premium', 50, 44), B('E', 'Employee', 80, 44)];
+        var edges = [['CO', 'DP'], ['R', 'DP'], ['P', 'DP'], ['E', 'DP']];
+        frames.push(F('<b>After (follows OCP):</b> Checkout depends only on the <b>«DiscountPolicy»</b> interface. Each existing discount is its own small class. Let us add the same new types again.',
+          [G('Plug-in design', nodes.slice(), edges.slice(), { h: 70, ehl: paint(edges, 'ok'), hl: { DP: 'sel' } })]));
+        var newTests = 0;
+        names.forEach(function (n, i) {
+          var id = 'N' + i; nodes.push(B(id, n, 14 + i * 24, 62)); edges.push([id, 'DP']); newTests++;
+          var hl = { DP: 'sel' }; hl[id] = 'ok'; var eh = paint(edges, 'ok'); eh[id + '-DP'] = 'cur';
+          frames.push(F('Add <b>' + n + '</b>: write a <span class="c-g">new class</span> <code>' + n.charAt(0) + n.slice(1).toLowerCase() + 'Discount implements DiscountPolicy</code> and register it with one line of wiring. Checkout, Regular, Premium and Employee are <b>not opened</b>. Only the new class needs new tests.',
+            [G('Plug-in design', nodes.slice(), edges.slice(), { h: 70, ehl: eh, hl: hl, tags: (function () { var t = {}; t[id] = 'new'; return t; })() }),
+              { type: 'vars', label: 'cost so far (OCP design)', vals: { oldFilesEdited: 0, newClasses: i + 1, newTestsOnly: newTests }, hl: { oldFilesEdited: 'ok' } }]));
+        });
+        frames.push(F('Scoreboard. Same features, very different risk. The OCP design never re-opened tested code; each feature was isolated in its own file (easy code review, no merge conflicts, easy to switch off).',
+          [{ type: 'table', label: 'Bad vs good', columns: ['Metric', 'Switch design', 'Plug-in design'], rows: [['Existing files edited', badEdits, 0], ['Existing cases re-tested', badRetests, 0], ['New classes', 0, names.length], ['Merge-conflict risk', 'high (same method)', 'low (separate files)']], hl: { 0: 'sel' } }]));
+        return frames;
+      }
+    }, {
+      title: 'Refactor: replace conditional with polymorphism',
+      gen: function () {
+        return refactorFrames('Refactor', [
+          { narr: 'The switch on a type string. Each <code>case</code> is a little piece of behaviour hiding inside one method.', code: T3_BAD, hl: { 3: 'cur', 4: 'bad', 5: 'bad', 6: 'bad' } },
+          { narr: 'Also note the <code>default</code>: an unknown type crashes at runtime. The compiler cannot help us when types are just strings.', code: T3_BAD, hl: { 7: 'bad' } },
+          { narr: 'Step 1: name the thing that varies — <b>DiscountPolicy</b>, a one-method interface.', code: T3_GOOD, hl: { 1: 'ok', 2: 'ok', 3: 'ok' } },
+          { narr: 'Step 2: each case body becomes a class. Premium\'s rule lives only in Premium.', code: T3_GOOD, hl: { 4: 'ok', 5: 'ok', 6: 'ok', 7: 'ok', 8: 'ok', 9: 'ok' } },
+          { narr: 'Step 3: Checkout looks up a policy and calls it. It has no idea how many discounts exist. <code>getOrDefault</code> with a lambda gives "no discount" for unknown types — no crash.', code: T3_GOOD, hl: { 11: 'cur', 15: 'ok', 16: 'ok', 17: 'ok' } },
+          { narr: 'Step 4 — the payoff. A festive sale arrives: one <b>new</b> class. Nothing above was edited. <span class="c-g">Open for extension, closed for modification.</span>', code: T3_GOOD, hl: { 20: 'ok', 21: 'ok', 22: 'ok', 23: 'ok' } }
+        ]);
+      }
+    }],
+    examples: [
+      { title: 'Shapes and the instanceof chain', html: `<p>${H.c('r', 'Bad:')} <code>AreaCalculator.area(Object s)</code> with <code>if (s instanceof Circle) … else if (s instanceof Rect) …</code>. Adding Triangle edits the calculator <i>and</i> every other method with a similar chain (perimeter, draw). ${H.c('g', 'Good:')} <code>interface Shape { double area(); }</code> — each shape knows its own area; the calculator just sums <code>s.area()</code>.</p>`, code: `interface Shape { double area(); }
+record Circle(double r) implements Shape { public double area() { return Math.PI * r * r; } }
+record Rect(double w, double h) implements Shape { public double area() { return w * h; } }
+record Triangle(double b, double h) implements Shape { public double area() { return 0.5 * b * h; } } // added later, nothing edited
+
+class AreaCalculator {
+    static double total(List<Shape> shapes) {
+        double sum = 0;
+        for (Shape s : shapes) sum += s.area();
+        return sum;
+    }
+}` },
+      { title: 'The JDK already follows OCP: Comparator', html: `<p><code>List.sort(Comparator)</code> was written once and never changes, yet you can sort by price, by name, by date, descending, with ties broken… by passing a new <code>Comparator</code>. The sort algorithm is <b>closed</b>; the ordering is <b>open</b>. That is the Strategy pattern, and lambdas make "a new class" as small as one line.</p>`, code: `record Product(String name, double price) {}
+class SortDemo {
+    public static void main(String[] args) {
+        List<Product> ps = new ArrayList<>(List.of(new Product("pen", 10), new Product("bag", 50), new Product("ink", 10)));
+        ps.sort(Comparator.comparingDouble(Product::price).thenComparing(Product::name)); // new behaviour, no edits to sort()
+        System.out.println(ps);
+    }
+}` },
+      { title: 'When a switch is actually fine: sealed types (Java 21)', html: `<p>If the set of <b>types is fixed</b> but you keep adding <b>operations</b> (e.g. a compiler's AST, or <code>PaymentResult = Success | Failure | Pending</code>), a <code>sealed</code> interface with an exhaustive pattern-matching <code>switch</code> is the better trade-off: the compiler errors if a case is missing. OCP is about the <b>axis of change</b>: new types → polymorphism; new operations over fixed types → sealed + switch (or Visitor).</p>`, code: `sealed interface PaymentResult permits Success, Failure, Pending {}
+record Success(String txnId) implements PaymentResult {}
+record Failure(String reason) implements PaymentResult {}
+record Pending(int retryInSec) implements PaymentResult {}
+
+class ResultText {
+    static String describe(PaymentResult r) {
+        return switch (r) {             // exhaustive: no default needed, compiler checks every case
+            case Success s -> "Paid, id " + s.txnId();
+            case Failure f -> "Failed: " + f.reason();
+            case Pending p -> "Retry in " + p.retryInSec() + "s";
+        };
+    }
+}` }
+    ],
+    deepDive: `<p><b>Meyer vs Martin.</b> Meyer's 1988 OCP used <i>implementation inheritance</i>: once a class is released, you extend it by subclassing. Martin's 1996 "polymorphic OCP" uses <i>interfaces</i>: depend on an abstraction, add implementations. Modern Java favours the latter (plus composition), because deep inheritance trees create their own fragility.</p>
+<p><b>Strategic closure.</b> You cannot be closed against everything. If discounts start needing the customer's order history, the <code>discount(double amt)</code> signature itself must change — every implementation is touched. Good designers pick abstractions around <b>stable concepts</b> (pass a rich <code>Order</code> object, not five primitive parameters) and accept that a truly new kind of requirement may need modification. "Fool me once" rule: do not pre-build sockets for imagined changes; when the second or third variation shows up, refactor to make that axis open.</p>
+<p><b>The expression problem.</b> Polymorphism makes adding <i>types</i> cheap and adding <i>operations</i> expensive (every class needs the new method). Switch/pattern-matching makes adding <i>operations</i> cheap and adding <i>types</i> expensive. Java 21's sealed interfaces + exhaustive switches give compiler safety to the second style. Visitor pattern is the classic OO bridge. Naming this trade-off in an interview signals senior-level thinking.</p>
+<p><b>OCP at system level.</b> Plugin architectures (IDE plugins, <code>java.util.ServiceLoader</code>, Spring injecting <code>List&lt;DiscountPolicy&gt;</code>), feature flags, and event-driven systems (new consumer of an existing Kafka topic needs zero producer changes) are OCP at scale. Configuration-driven rules (a discount table in a DB) push it further — new discount without a deploy — at the cost of testability and type safety.</p>
+<p><b>Performance note:</b> an interface call is a virtual dispatch; the JIT inlines monomorphic and bimorphic call sites, so in hot loops with 1–2 implementations the cost is nearly zero. With many implementations (megamorphic) it is a few nanoseconds — irrelevant for business logic.</p>`,
+    aiEra: `<p><b>What AI changes:</b> asked to "add a student discount", an assistant will most likely add another <code>case</code> to the existing switch — the smallest diff. It optimises for <i>this</i> change, not the next ten. Reviewing AI diffs for "did this edit tested code that could have been extended instead?" is now a core skill.</p>
+<p><b>Use AI as a partner:</b> <code>This switch on customerType appears in 4 files. Refactor to the Strategy pattern so a new type needs only a new class. Show the before/after file list.</code> Or ask it to find all switches on the same enum across the codebase — great at that search. You can also ask <code>Is a sealed interface with pattern matching better than Strategy here? Which axis changes more?</code></p>
+<p><b>Where AI goes wrong:</b> it may build a full plugin framework with reflection and annotations for three discount types (over-engineering), or put the registry inside Checkout (so Checkout still changes per type). <b>What you must still own:</b> predicting the real axis of change from the business conversation, deciding where wiring lives (composition root), and choosing between polymorphism and sealed switches.</p>`,
+    problems: [{
+      title: 'Payment methods without the if-else ladder',
+      level: 'Medium', tags: ['OCP', 'strategy', 'registry'], companies: ['Razorpay', 'PayPal', 'Paytm', 'Amazon'],
+      statement: `<p><code>PaymentProcessor.pay(method, amount)</code> uses an if/else ladder for <code>"CARD"</code> (2% fee), <code>"UPI"</code> (no fee) and <code>"WALLET"</code> (1% fee, fails if amount &gt; 10,000). The team must add <b>NETBANKING</b> (flat fee 15) next sprint and more methods later. Redesign so that adding a method <b>never edits</b> <code>PaymentProcessor</code> or any existing method class. Unknown methods must fail with a clear error.</p>`,
+      constraints: `<p>Java 21, no frameworks. Amounts are positive doubles (use <code>BigDecimal</code> in real money code). Return the total charged (amount + fee).</p>`,
+      example: `<p><code>pay("CARD", 1000)</code> → ${H.c('g', '1020.0')} (2% fee). <code>pay("WALLET", 20000)</code> → ${H.c('r', 'IllegalStateException: wallet limit')}. <code>pay("NETBANKING", 1000)</code> → ${H.c('g', '1015.0')} after adding one new class.</p>`,
+      brute: {
+        why: `<p>The if/else ladder mixes all payment rules in one method. Adding NETBANKING edits this tested method, re-tests all branches and risks breaking CARD. The same ladder is often duplicated for refunds and receipts — every new method becomes shotgun surgery.</p>`,
+        code: `class PaymentProcessor {
+    double pay(String method, double amount) {
+        if (method.equals("CARD")) {
+            return amount + amount * 0.02;
+        } else if (method.equals("UPI")) {
+            return amount;
+        } else if (method.equals("WALLET")) {
+            if (amount > 10_000) throw new IllegalStateException("wallet limit");
+            return amount + amount * 0.01;
+        } else {
+            throw new IllegalArgumentException("unknown method " + method);
+        }
+    }
+}`
+      },
+      mcq: { q: 'Where should the knowledge "WALLET fails above 10,000" live after the refactor?', options: ['Inside the WalletPayment class', 'Inside PaymentProcessor, before calling the strategy', 'In a global constants class', 'In the caller (UI)'], answer: 0, explain: 'Each strategy owns all of its rules. If the processor checked wallet limits, it would still change whenever wallet rules change — OCP and SRP both broken.' },
+      hints: [
+        `<p>The thing that varies is "how a method charges". Make it an interface: <code>PaymentMethod { String code(); double charge(double amount); }</code>.</p>`,
+        `<p>The processor keeps a <code>Map&lt;String, PaymentMethod&gt;</code> built from a list passed into its constructor. Lookup → delegate.</p>`,
+        `<p>Edge cases: duplicate codes in the list (fail fast), unknown code (clear exception), negative amounts (validate once in the processor — that rule is common to all). Recipe: interface → 3 classes → map registry → add NetBanking as a 4th class + one wiring line.</p>`
+      ],
+      solution: {
+        approach: `<p><b>Strategy + self-registering registry.</b> Each payment method class owns its fee and limits. <code>PaymentProcessor</code> receives a list of methods, indexes them by <code>code()</code>, and only does the common work (validate amount, look up, delegate). NetBanking is a new class added to the wiring list; no existing class changes. With Spring, the list would be injected automatically (<code>List&lt;PaymentMethod&gt;</code>), making it zero-edit.</p>`,
+        code: `interface PaymentMethod {
+    String code();
+    double charge(double amount);   // returns total charged
+}
+
+class CardPayment implements PaymentMethod {
+    public String code() { return "CARD"; }
+    public double charge(double amount) { return amount + amount * 0.02; }
+}
+class UpiPayment implements PaymentMethod {
+    public String code() { return "UPI"; }
+    public double charge(double amount) { return amount; }
+}
+class WalletPayment implements PaymentMethod {
+    private static final double LIMIT = 10_000;
+    public String code() { return "WALLET"; }
+    public double charge(double amount) {
+        if (amount > LIMIT) throw new IllegalStateException("wallet limit");
+        return amount + amount * 0.01;
+    }
+}
+// Added next sprint: a NEW file, nothing else edited.
+class NetBankingPayment implements PaymentMethod {
+    public String code() { return "NETBANKING"; }
+    public double charge(double amount) { return amount + 15; }
+}
+
+class PaymentProcessor {
+    private final Map<String, PaymentMethod> methods = new HashMap<>();
+
+    PaymentProcessor(List<PaymentMethod> available) {
+        for (PaymentMethod m : available)
+            if (methods.putIfAbsent(m.code(), m) != null)
+                throw new IllegalArgumentException("duplicate method " + m.code());
+    }
+
+    double pay(String code, double amount) {
+        if (amount <= 0) throw new IllegalArgumentException("amount must be positive");
+        PaymentMethod m = methods.get(code);
+        if (m == null) throw new IllegalArgumentException("unknown method " + code);
+        return m.charge(amount);
+    }
+
+    public static void main(String[] args) {
+        PaymentProcessor p = new PaymentProcessor(List.of(
+                new CardPayment(), new UpiPayment(), new WalletPayment(), new NetBankingPayment()));
+        System.out.println(p.pay("CARD", 1000));        // 1020.0
+        System.out.println(p.pay("NETBANKING", 1000));  // 1015.0
+        try { p.pay("WALLET", 20000); } catch (IllegalStateException e) { System.out.println(e.getMessage()); }
+    }
+}`,
+        complexity: `<p>O(1) lookup per payment (HashMap), O(k) construction for k methods. Adding a method: 1 new class + 1 wiring entry; 0 existing classes edited, 0 existing tests re-run.</p>`,
+        followUps: ['Refunds also differ per method — add <code>refund()</code> to the interface or a separate <code>Refundable</code> interface? (hint: ISP)', 'How would you load methods as plugins from jars using <code>ServiceLoader</code>?', 'Fees change per region — what new abstraction appears?']
+      }
+    }]
+  });
+
+  /* ======================= TOPIC 4: LSP ======================= */
+  var T4_CLIENT = `class Rectangle {
+  protected int w, h;
+  void setWidth(int w)  { this.w = w; }
+  void setHeight(int h) { this.h = h; }
+  int area() { return w * h; }
+}
+class Square extends Rectangle {
+  void setWidth(int s)  { w = s; h = s; }
+  void setHeight(int s) { w = s; h = s; }
+}
+// client written against Rectangle's promise
+void stretch(Rectangle r) {
+  r.setWidth(5);
+  r.setHeight(4);
+  check(r.area() == 20);
+}`;
+
+  topics.push({
+    title: 'L — Liskov Substitution Principle (LSP)',
+    analogy: `<p>You rent a car and the agency says "any car in this category". You get a different model than you expected — fine, the steering wheel, pedals and gear stick work the same. But imagine a "car" where the <b>brake pedal plays music</b> and the horn applies the brakes. It <i>is</i> technically a car, yet it breaks every driver's expectations — someone will crash. LSP says: <b>a subclass may be a different model, but it must keep the same promises</b> as the parent, so any code written for the parent keeps working.</p>`,
+    explain: `<p><b>Barbara Liskov (1987), in plain English:</b> if <code>S</code> is a subtype of <code>T</code>, you should be able to <b>replace a T with an S anywhere</b> without the program behaving incorrectly. "Is-a" in real life is <b>not enough</b>; the subclass must be <b>behaviourally</b> substitutable.</p>
+<p><b>The famous trap — Square extends Rectangle.</b> Mathematically a square <i>is a</i> rectangle. In code, <code>Rectangle</code> promises "setWidth changes only the width". <code>Square</code> must keep sides equal, so its <code>setWidth</code> also changes the height. A client that does <code>setWidth(5); setHeight(4);</code> expects area 20 but gets 16 with a Square. Compiles fine — fails at runtime.</p>
+<p><b>The contract rules</b> (Design by Contract, Meyer + Liskov/Wing):</p>
+${H.table(['Rule', 'Plain English', 'Violation example'], [
+  ['Preconditions cannot be <b>stronger</b>', 'A child cannot demand more from callers', 'Parent accepts any amount; child rejects amounts &gt; 1000'],
+  ['Postconditions cannot be <b>weaker</b>', 'A child must deliver at least what the parent promised', 'Parent never returns null; child returns null'],
+  ['Invariants must be <b>preserved</b>', 'Facts that are always true for the parent stay true', 'Balance ≥ 0 broken by an "overdraft" child'],
+  ['No new <b>surprise exceptions</b>', 'Do not throw where the parent never would', '<code>Penguin.fly()</code> throws <code>UnsupportedOperationException</code>'],
+  ['History constraint', 'Do not allow state changes the parent forbids', 'Mutable subclass of an immutable class']
+])}
+<p><b>Smells that shout "LSP broken":</b></p>
+<ul>
+<li>${H.c('r', '<code>if (x instanceof Square)</code>')} in client code — the client had to learn about the subclass to stay correct.</li>
+<li>Overrides that <b>throw</b> <code>UnsupportedOperationException</code> or do nothing (empty body).</li>
+<li>Subclass documentation says "<i>unlike the parent, this one…</i>".</li>
+<li>Tests written for the parent fail when run against the child.</li>
+</ul>
+<p><b>Fixes:</b> (1) do not inherit — make both implement a smaller shared interface (<code>Shape { area(); }</code>); (2) split the capability out (<code>FlyingBird</code> vs <code>Bird</code>); (3) make objects immutable so "setWidth" never exists; (4) prefer <b>composition</b> over inheritance when you only wanted code reuse.</p>`,
+    clues: [
+      '"Penguin is a Bird but cannot fly" / "Square is a Rectangle" → the interviewer is fishing for LSP.',
+      'Code contains <code>instanceof</code> checks or <code>getClass() ==</code> before calling an overridden method → substitutability is broken.',
+      'An override that throws <code>UnsupportedOperationException</code> or has an empty body → refused bequest smell.',
+      '"Should X extend Y?" questions → ask "can every Y-client safely receive an X?" not "is X a Y in real life?"',
+      '"Read-only version of a mutable collection/account" → do not subclass the mutable one; split interfaces.',
+      'Parent\'s unit tests fail when run on the subclass → behavioural contract violated.'
+    ],
+    code: [{ lang: 'java', title: 'Before: Square extends Rectangle breaks client expectations', code: `class Rectangle {
+    protected int width, height;
+    void setWidth(int w)  { width = w; }
+    void setHeight(int h) { height = h; }
+    int area() { return width * height; }
+}
+
+class Square extends Rectangle {
+    // keeps sides equal -> silently changes the OTHER side too
+    @Override void setWidth(int s)  { width = s; height = s; }
+    @Override void setHeight(int s) { width = s; height = s; }
+}
+
+class Client {
+    static void stretch(Rectangle r) {
+        r.setWidth(5);
+        r.setHeight(4);
+        System.out.println("expected 20, got " + r.area());   // Square prints 16!
+    }
+    public static void main(String[] args) {
+        stretch(new Rectangle());
+        stretch(new Square());
+    }
+}` }, { lang: 'java', title: 'After: siblings under a shared, honest abstraction (immutable)', code: `interface Shape { double area(); }
+
+// Immutable value objects: no setters, so no broken "setWidth" promise exists.
+record Rectangle(double width, double height) implements Shape {
+    Rectangle {
+        if (width <= 0 || height <= 0) throw new IllegalArgumentException("sides must be positive");
+    }
+    public double area() { return width * height; }
+    Rectangle withWidth(double w) { return new Rectangle(w, height); }   // "change" = new object
+}
+
+record Square(double side) implements Shape {
+    Square { if (side <= 0) throw new IllegalArgumentException("side must be positive"); }
+    public double area() { return side * side; }
+    Rectangle toRectangle() { return new Rectangle(side, side); }
+}
+
+class Client {
+    static double totalArea(List<Shape> shapes) {         // works for ANY Shape, no instanceof
+        return shapes.stream().mapToDouble(Shape::area).sum();
+    }
+    public static void main(String[] args) {
+        System.out.println(totalArea(List.of(new Rectangle(5, 4), new Square(4))));  // 36.0
+    }
+}` }],
+    codeTitle: ['Bad: Square extends Rectangle', 'Good: Shape siblings'],
+    viz: [{
+      title: 'Substitute the subclass: does the client\'s promise still hold?',
+      input: 'square',
+      inputLabel: 'Object passed to stretch(): rectangle | square',
+      gen: function (input) {
+        var kind = pick(input, { rectangle: 1, square: 1 }, 'Type rectangle or square');
+        var sq = kind === 'square', w = 0, h = 0, frames = [];
+        var diag = function (cls) {
+          return G('Class diagram', [B('CL', 'stretch(Rectangle)', 50, 6), B('R', 'Rectangle', 50, 24), B('S', 'Square', 50, 42)],
+            [['CL', 'R', 'uses'], ['S', 'R', 'extends']], { h: 50, hl: { S: cls || '' }, ehl: { 'S-R': cls || 'cur' } });
+        };
+        frames.push(F('The client <code>stretch</code> was written against <b>Rectangle</b> and relies on its promise: "setWidth changes only the width, setHeight only the height". We now pass a <b>' + kind + '</b>. LSP says this must be safe.',
+          [CODE('Rectangle, Square and a client', T4_CLIENT, { 12: 'cur' }), diag(sq ? 'cur' : ''), { type: 'vars', label: 'object state', vals: { type: sq ? 'Square' : 'Rectangle', w: w, h: h } }]));
+        w = 5; if (sq) h = 5;
+        frames.push(F('<code>r.setWidth(5)</code>. ' + (sq ? 'Square\'s override runs (line 8): it sets <b>both</b> w and h to 5. Already a surprise: the client only asked for the width.' : 'Rectangle sets only w = 5, as promised.'),
+          [CODE('Rectangle, Square and a client', T4_CLIENT, sq ? { 13: 'cur', 8: 'bad' } : { 13: 'cur', 3: 'ok' }), { type: 'vars', label: 'object state', vals: { type: sq ? 'Square' : 'Rectangle', w: w, h: h }, hl: sq ? { w: 'cur', h: 'bad' } : { w: 'ok' } }]));
+        h = 4; if (sq) w = 4;
+        frames.push(F('<code>r.setHeight(4)</code>. ' + (sq ? 'Square sets <b>both</b> to 4 again (line 9). The width the client set a moment ago is gone.' : 'Rectangle sets only h = 4. Width is still 5.'),
+          [CODE('Rectangle, Square and a client', T4_CLIENT, sq ? { 14: 'cur', 9: 'bad' } : { 14: 'cur', 4: 'ok' }), { type: 'vars', label: 'object state', vals: { type: sq ? 'Square' : 'Rectangle', w: w, h: h }, hl: sq ? { w: 'bad', h: 'cur' } : { h: 'ok' } }]));
+        var area = w * h, okay = area === 20;
+        frames.push(F('<code>check(r.area() == 20)</code> → area = ' + w + ' × ' + h + ' = <b>' + area + '</b>. ' + (okay ? '<span class="c-g">Promise kept.</span>' : '<span class="c-r">Promise broken! The compiler was happy, the type system said Square IS-A Rectangle, but behaviour changed. That is an LSP violation.</span>'),
+          [CODE('Rectangle, Square and a client', T4_CLIENT, { 15: okay ? 'ok' : 'bad' }), diag(okay ? 'ok' : 'bad'), { type: 'vars', label: 'object state', vals: { type: sq ? 'Square' : 'Rectangle', w: w, h: h, area: area, expected: 20 }, hl: { area: okay ? 'ok' : 'bad' } }]));
+        frames.push(F('A tempting "fix": add <code>if (r instanceof Square) …</code> to the client. <span class="c-r">Worse!</span> Now every client must know every subclass — that breaks OCP too. The real fix is in the hierarchy.',
+          [CODE('Anti-fix', 'void stretch(Rectangle r) {\n  if (r instanceof Square) return; // hack\n  r.setWidth(5);\n  r.setHeight(4);\n}', { 2: 'bad' })]));
+        frames.push(F('<b>Refactored:</b> Rectangle and Square become <b>siblings</b> implementing a small <b>«Shape»</b> interface with only <code>area()</code> — a promise both can keep. Clients that need independent width/height ask for a <code>Rectangle</code> specifically.',
+          [G('After: honest abstraction', [B('CL', 'totalArea(shapes)', 50, 6), B('SH', '«Shape»', 50, 24), B('R', 'Rectangle', 25, 44), B('S', 'Square', 75, 44)],
+            [['CL', 'SH', 'uses'], ['R', 'SH'], ['S', 'SH']], { h: 52, ehl: { 'CL-SH': 'ok', 'R-SH': 'ok', 'S-SH': 'ok' }, hl: { SH: 'sel' } }),
+          TXT('Bonus: make them <b>immutable records</b>. With no setters, there is no "setWidth" promise to break, and a Square can still produce a Rectangle view via <code>toRectangle()</code>.')]));
+        return frames;
+      }
+    }, {
+      title: 'Loop over birds: who breaks the loop?',
+      input: 'sparrow penguin eagle ostrich',
+      inputLabel: 'Birds (sparrow, eagle, parrot, penguin, ostrich, kiwi), max 6',
+      gen: function (input) {
+        var canFly = { sparrow: true, eagle: true, parrot: true, penguin: false, ostrich: false, kiwi: false };
+        var birds = String(input || '').trim().toLowerCase().split(/[\s,]+/).filter(Boolean);
+        if (!birds.length || birds.length > 6 || birds.some(function (b) { return !(b in canFly); })) throw new Error('Use 1-6 of: sparrow, eagle, parrot, penguin, ostrich, kiwi');
+        var code = 'abstract class Bird { abstract void fly(); }\nclass Penguin extends Bird {\n  void fly() { throw new UnsupportedOperationException(); }\n}\n// client\nfor (Bird b : birds) b.fly();';
+        var frames = [F('<b>Before:</b> <code>Bird</code> declares <code>fly()</code>, so every bird must implement it. Flightless birds "implement" it by throwing. The client trusts the parent type and calls <code>fly()</code> on everyone.',
+          [CODE('Bird hierarchy', code, { 1: 'cur', 3: 'bad' }), { type: 'array', label: 'birds', values: birds }])];
+        var hl = {}, crashed = false;
+        for (var i = 0; i < birds.length && !crashed; i++) {
+          var ok = canFly[birds[i]], h2 = clone(hl), ptr = {};
+          h2[i] = ok ? 'ok' : 'bad'; ptr[i] = 'b';
+          frames.push(F('<code>' + birds[i] + '.fly()</code> → ' + (ok ? '<span class="c-g">flies, fine.</span>' : '<span class="c-r">throws UnsupportedOperationException! The loop crashes; birds after it never get processed.</span> The subclass broke the parent\'s promise.'),
+            [CODE('Bird hierarchy', code, { 6: ok ? 'ok' : 'bad' }), { type: 'array', label: 'birds', values: birds, hl: h2, ptr: ptr }]));
+          hl[i] = ok ? 'ok' : 'bad'; if (!ok) crashed = true;
+        }
+        if (!crashed) frames.push(F('No flightless bird this time, so it "works" — which is exactly why LSP bugs hide until production data contains the unexpected subclass.', [{ type: 'array', label: 'birds', values: birds, hl: hl }]));
+        var fixed = 'interface Bird { void eat(); }\ninterface FlyingBird extends Bird { void fly(); }\nclass Sparrow implements FlyingBird { ... }\nclass Penguin implements Bird { ... }\n// client asks for exactly what it needs\nfor (FlyingBird b : flyers) b.fly();';
+        frames.push(F('<b>Fix:</b> move <code>fly()</code> out of the base type. Only <b>FlyingBird</b> promises flight; Penguin is just a <b>Bird</b>. The compiler now prevents putting a penguin into the list of flyers.',
+          [CODE('Refactored hierarchy', fixed, { 2: 'ok', 4: 'ok', 6: 'ok' }),
+            G('After', [B('BI', '«Bird»', 50, 6), B('FB', '«FlyingBird»', 25, 24), B('SP', 'Sparrow', 15, 44), B('EA', 'Eagle', 40, 44), B('PE', 'Penguin', 75, 24)],
+              [['FB', 'BI'], ['SP', 'FB'], ['EA', 'FB'], ['PE', 'BI']], { h: 52, ehl: { 'FB-BI': 'ok', 'SP-FB': 'ok', 'EA-FB': 'ok', 'PE-BI': 'ok' } })]));
+        var flyers = birds.filter(function (b) { return canFly[b]; });
+        frames.push(F('Re-run with the new types: the flyers list contains only <b>' + (flyers.join(', ') || 'nobody') + '</b>. Every element keeps the promise, so the loop can never crash for this reason. <span class="c-g">Substitutable.</span>',
+          [{ type: 'array', label: 'List&lt;FlyingBird&gt;', values: flyers.length ? flyers : ['(empty)'], hl: (function () { var r = {}; flyers.forEach(function (_, i) { r[i] = 'ok'; }); return r; })() },
+            { type: 'array', label: 'other birds (eat, walk, swim)', values: birds.filter(function (b) { return !canFly[b]; }).concat(birds.every(function (b) { return canFly[b]; }) ? ['(none)'] : []) }]));
+        return frames;
+      }
+    }],
+    examples: [
+      { title: 'The JDK\'s own compromise: unmodifiable lists', html: `<p><code>List.of(1, 2, 3).add(4)</code> compiles but throws <code>UnsupportedOperationException</code>. The <code>List</code> interface documents <code>add</code> as an "optional operation", so technically the contract allows it — but it is the same smell: callers cannot trust the type. That is why modern APIs prefer separate read-only types (Kotlin's <code>List</code> vs <code>MutableList</code>, Guava's <code>ImmutableList</code> documenting intent). ${H.c('y', 'Lesson:')} if your method only reads, accept a read-only view; if it mutates, document it.</p>`, code: `class ListDemo {
+    public static void main(String[] args) {
+        List<Integer> fixed = List.of(1, 2, 3);
+        try { fixed.add(4); }
+        catch (UnsupportedOperationException e) { System.out.println("List.of is immutable: " + e); }
+    }
+}` },
+      { title: 'java.sql.Timestamp extends java.util.Date (equals is not symmetric)', html: `<p>The Javadoc itself warns: <code>date.equals(timestamp)</code> can be true while <code>timestamp.equals(date)</code> is false, because Timestamp adds nanoseconds. Any code that puts Dates and Timestamps in the same <code>HashSet</code> can misbehave. The JDK authors note this "inheritance is implementation inheritance, not type inheritance" — a textbook LSP violation kept for backward compatibility.</p>` },
+      { title: 'Strengthened precondition in a payment subclass', html: `<p>${H.c('r', 'Bad:')} <code>PaymentGateway.charge(amount)</code> accepts any positive amount. <code>PrepaidCardGateway</code> overrides it and throws if amount &gt; card balance. Checkout code written for the parent never expected that exception → crashes for prepaid users. ${H.c('g', 'Fix:')} put the possibility of decline <b>in the parent contract</b>: return a <code>ChargeResult</code> (approved / declined with reason). Now every gateway, including prepaid, honours the same promise.</p>`, code: `sealed interface ChargeResult permits Approved, Declined {}
+record Approved(String txnId) implements ChargeResult {}
+record Declined(String reason) implements ChargeResult {}
+
+interface PaymentGateway { ChargeResult charge(double amount); }
+
+class PrepaidCardGateway implements PaymentGateway {
+    private double balance = 300;
+    public ChargeResult charge(double amount) {
+        if (amount > balance) return new Declined("insufficient prepaid balance");   // allowed by contract
+        balance -= amount;
+        return new Approved("PP-" + System.nanoTime());
+    }
+}` }
+    ],
+    deepDive: `<p><b>Formal version (Liskov & Wing, 1994):</b> "Let φ(x) be a property provable about objects x of type T. Then φ(y) should be true for objects y of type S where S is a subtype of T." The provable property for Rectangle is "after setWidth(a), setHeight(b), area = a·b". Square cannot satisfy it, so Square is not a behavioural subtype — even though Java accepts <code>extends</code>.</p>
+<p><b>What the compiler checks vs what it cannot.</b> Java enforces the <i>signature</i> part: overriding methods cannot reduce visibility, cannot throw broader <b>checked</b> exceptions, may use covariant return types (return a subtype). Java does <b>not</b> check unchecked exceptions, nulls, value ranges, side effects or invariants. That is why LSP is a design discipline and why <b>contract tests</b> exist: write an abstract JUnit test class for the interface (e.g. <code>abstract class AccountContractTest { abstract Account create(); … }</code>) and run it against every implementation.</p>
+<p><b>Variance connection.</b> LSP is why method parameters should be <i>contravariant</i> and return types <i>covariant</i> (a child may accept more and return less). Java generics show the same idea with PECS: <code>List&lt;? extends Number&gt;</code> for producers, <code>List&lt;? super Integer&gt;</code> for consumers.</p>
+<p><b>Inheritance vs composition.</b> Most LSP violations come from inheriting to <b>reuse code</b> rather than to express a true subtype (<code>Stack extends Vector</code>, <code>Properties extends Hashtable</code> — both JDK regrets: Properties allows non-String values through Hashtable's <code>put</code>). Effective Java Item 18: "favor composition over inheritance". Java 17+ <code>sealed</code> classes help by limiting who can extend you, and <code>final</code> by default (as in Kotlin) prevents accidental subtyping.</p>
+<p><b>Real-world bites:</b> a <code>CachedRepository</code> subclass that returns stale data where the parent promised fresh; a "test double" that silently ignores writes so tests pass but behaviour differs; an <code>equals</code> override in a subclass that adds a field and breaks symmetry/transitivity (Effective Java Item 10). Microservices have LSP too: a new API version that rejects requests the old one accepted is a strengthened precondition — it breaks clients.</p>`,
+    aiEra: `<p><b>What AI changes:</b> when an assistant hits "this subclass cannot do X", its favourite quick fix is <code>throw new UnsupportedOperationException()</code> or an <code>instanceof</code> check in the caller — both are LSP violations that compile and pass the happy-path test. As AI writes more hierarchies, spotting these "refused bequests" in review becomes your job.</p>
+<p><b>Use AI as a partner:</b> ask <code>For this interface, list the implicit contract: preconditions, postconditions, invariants, exceptions. Then check each implementation against it.</code> Ask it to <b>generate contract tests</b>: <code>Write an abstract JUnit 5 test for the Account interface that every implementation must pass.</code> AI is good at enumerating edge cases like nulls, zero, negative values and ordering.</p>
+<p><b>Where AI goes wrong:</b> it reasons from real-world "is-a" ("a penguin is a bird, so extend Bird") instead of behavioural contracts, and it rarely notices weakened postconditions (returning null, returning stale data). <b>What you must still own:</b> defining the promises of your abstractions, deciding when to split a capability into its own interface, and choosing composition when inheritance would only reuse code.</p>`,
+    problems: [{
+      title: 'Fixed deposits that cannot withdraw',
+      level: 'Medium', tags: ['LSP', 'interfaces', 'banking'], companies: ['Goldman Sachs', 'JPMorgan', 'Paytm'],
+      statement: `<p>A bank models <code>Account</code> with <code>deposit</code>, <code>withdraw</code> and <code>balance</code>. <code>SavingsAccount</code> and <code>FixedDepositAccount</code> extend it, but a fixed deposit cannot be withdrawn before maturity, so its <code>withdraw</code> throws. A monthly job calls <code>withdraw(fee)</code> on every account and crashes on the first FD. Redesign the hierarchy so that the monthly job <b>cannot even compile</b> with an FD in its list, and FDs still support deposits (top-ups) and balance checks.</p>`,
+      constraints: `<p>Java 21. Balance must never go negative. Fees apply only to withdrawable accounts; FDs earn interest instead.</p>`,
+      example: `<p>Accounts: Savings(1000), FD(5000), Savings(50). Monthly fee 100. ${H.c('r', 'Before:')} job crashes at FD → third account never charged. ${H.c('g', 'After:')} the job takes <code>List&lt;Withdrawable&gt;</code>, charges both savings accounts (the 50 one is skipped with "insufficient funds"), and the FD is not in that list by construction.</p>`,
+      brute: {
+        why: `<p>FixedDepositAccount <b>strengthens the precondition</b> of <code>withdraw</code> (parent: "any amount ≤ balance"; child: "never"). Every client of <code>Account</code> must now guard with <code>instanceof</code> or try/catch, and the bug only appears when production data contains an FD — classic LSP violation.</p>`,
+        code: `class Account {
+    protected double balance;
+    Account(double opening) { balance = opening; }
+    void deposit(double amt) { balance += amt; }
+    void withdraw(double amt) {
+        if (amt > balance) throw new IllegalStateException("insufficient funds");
+        balance -= amt;
+    }
+    double balance() { return balance; }
+}
+class SavingsAccount extends Account { SavingsAccount(double o) { super(o); } }
+class FixedDepositAccount extends Account {
+    FixedDepositAccount(double o) { super(o); }
+    @Override void withdraw(double amt) { throw new UnsupportedOperationException("FD locked"); }
+}
+class MonthlyFeeJob {
+    static void run(List<Account> accounts, double fee) {
+        for (Account a : accounts) a.withdraw(fee);   // crashes on the first FD
+    }
+}`
+      },
+      mcq: { q: 'Which LSP rule does <code>FixedDepositAccount.withdraw</code> break?', options: ['It strengthens the precondition (and adds a surprise exception)', 'It weakens the postcondition of deposit', 'It changes the return type', 'None — throwing is always allowed'], answer: 0, explain: 'The parent accepts any amount up to the balance; the child accepts nothing. Callers relying on the parent contract break.' },
+      hints: [
+        `<p>Not every account can do everything. Which capability is shared by all (deposit, balance) and which only by some (withdraw)?</p>`,
+        `<p>Make <code>Account</code> an interface with <code>deposit</code> + <code>balance</code>; create <code>Withdrawable extends Account</code> with <code>withdraw</code>. Savings implements Withdrawable; FD implements only Account (plus <code>mature()</code>).</p>`,
+        `<p>The job's parameter type becomes <code>List&lt;Withdrawable&gt;</code> — the compiler now enforces the rule. Handle insufficient funds as a normal result (return boolean / skip), not by crashing the whole batch.</p>`
+      ],
+      solution: {
+        approach: `<p><b>Split the capability, let the type system enforce it.</b> The shared contract (<code>Account</code>) contains only what every account can honour. <code>Withdrawable</code> adds withdrawal with a promise that savings accounts keep. FDs implement <code>Account</code> and add a maturity method. The monthly job declares exactly what it needs, so passing an FD is a compile error rather than a 3 AM incident. Insufficient funds is modelled as a <code>boolean</code> result so one poor account does not abort the batch.</p>`,
+        code: `interface Account {
+    void deposit(double amt);
+    double balance();
+}
+interface Withdrawable extends Account {
+    boolean withdraw(double amt);          // promise: true and balance reduced, or false and unchanged
+}
+
+class SavingsAccount implements Withdrawable {
+    private double balance;
+    SavingsAccount(double opening) { balance = opening; }
+    public void deposit(double amt) { if (amt <= 0) throw new IllegalArgumentException(); balance += amt; }
+    public double balance() { return balance; }
+    public boolean withdraw(double amt) {
+        if (amt <= 0 || amt > balance) return false;
+        balance -= amt;
+        return true;
+    }
+}
+
+class FixedDepositAccount implements Account {
+    private double balance;
+    private boolean matured;
+    FixedDepositAccount(double opening) { balance = opening; }
+    public void deposit(double amt) { if (amt <= 0) throw new IllegalArgumentException(); balance += amt; }
+    public double balance() { return balance; }
+    void addInterest(double rate) { balance += balance * rate; }
+    double mature() { matured = true; double out = balance; balance = 0; return out; }
+    boolean isMatured() { return matured; }
+}
+
+class MonthlyFeeJob {
+    static int run(List<? extends Withdrawable> accounts, double fee) {
+        int charged = 0;
+        for (Withdrawable a : accounts) if (a.withdraw(fee)) charged++;
+        return charged;
+    }
+
+    public static void main(String[] args) {
+        SavingsAccount s1 = new SavingsAccount(1000), s2 = new SavingsAccount(50);
+        FixedDepositAccount fd = new FixedDepositAccount(5000);
+        System.out.println("charged " + run(List.of(s1, s2), 100));   // charged 1
+        // run(List.of(s1, fd), 100);  // does not compile: FD is not Withdrawable
+        fd.addInterest(0.07);
+        System.out.println(s1.balance() + " " + s2.balance() + " " + fd.balance());
+    }
+}`,
+        complexity: `<p>O(n) for the job over n accounts, O(1) per operation. The real gain: a whole class of runtime crashes became compile-time errors.</p>`,
+        followUps: ['An overdraft account allows balance down to −5000. Does it still satisfy <code>Withdrawable</code>\'s promise? What invariant must the interface state?', 'Write an abstract contract test that every <code>Withdrawable</code> must pass.', 'Should <code>mature()</code> return an amount or transfer to a linked savings account?']
       }
     }]
   });
