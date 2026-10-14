@@ -2244,6 +2244,1129 @@ try { myInstanceof({}, {}); } catch (e) { console.log(e.name); }   // TypeError`
     }]
   });
 
+  /* =========================== PRACTICE: EASY =========================== */
+  practice.push({
+    title: 'Split Own vs Inherited Keys',
+    level: 'Easy', tags: ['for...in', 'Object.hasOwn', 'prototype chain'], companies: ['Amazon', 'Zoho', 'Swiggy'],
+    statement: `<p>Write <code>splitKeys(obj)</code> that returns <code>{ own, inherited }</code>: two arrays with the <b>enumerable string keys</b> that <code>for...in</code> would visit, split by whether the key lives on the object itself or somewhere up its prototype chain. It must not crash on objects made with <code>Object.create(null)</code>.</p>`,
+    constraints: `Keep the order in which <code>for...in</code> visits keys. Chain length ≤ 50. Shadowed keys must appear only once (as own).`,
+    example: `<p><code>base = { kind: 'animal', describe() {} }</code>, <code>dog = Object.create(base)</code>, <code>dog.name = 'Rex'</code>, <code>dog.kind = 'dog'</code></p>
+<p>Output: own = ${H.c('g', "['name', 'kind']")}, inherited = ${H.c('b', "['describe']")}. <code>kind</code> exists on both, but the own one <b>shadows</b> the inherited one, so <code>for...in</code> lists it once — as own.</p>`,
+    brute: {
+      why: `<p>The textbook loop uses <code>obj.hasOwnProperty(key)</code>. That method is <b>inherited from Object.prototype</b>, so on a null-prototype object it does not exist and the loop crashes. It can also be shadowed by an own property called <code>hasOwnProperty</code> (a classic trick in pentests and JSON payloads).</p>`,
+      code: { lang: 'js', run: true, code: `function splitKeysBrute(obj) {
+  const own = [], inherited = [];
+  for (const key in obj) {
+    if (obj.hasOwnProperty(key)) own.push(key);   // relies on an INHERITED method
+    else inherited.push(key);
+  }
+  return { own, inherited };
+}
+console.log(splitKeysBrute({ a: 1 }));                 // works on a normal object
+const dict = Object.create(null);
+dict.word = 3;
+try { splitKeysBrute(dict); } catch (e) { console.log('crash:', e.message); }
+console.log(splitKeysBrute({ hasOwnProperty: () => false, x: 1 })); // lies: x is reported as inherited` }
+    },
+    mcq: { q: 'An object has an own key <code>kind</code> and its prototype also has <code>kind</code>. How many times does <code>for...in</code> visit <code>kind</code>?', options: ['0', '1', '2', 'It depends on the engine'], answer: 1, explain: 'The spec de-duplicates: a key already seen (or shadowed by a non-enumerable own key) is skipped further up the chain. So it is visited once, and it is the own one.' },
+    hints: [
+      `<p>Hint 1: <code>for...in</code> already walks the whole chain for you and handles shadowing. You only need to classify each key.</p>`,
+      `<p>Hint 2: use the static <code>Object.hasOwn(obj, key)</code> — it does not depend on anything inherited, so null-prototype objects and fake <code>hasOwnProperty</code> keys cannot fool it.</p>`,
+      `<p>Hint 3: recipe — two arrays; <code>for (const key in obj)</code>: push into <code>own</code> if <code>Object.hasOwn</code>, else into <code>inherited</code>. Return both. Remember class methods are non-enumerable, so they never show up — that is correct behaviour.</p>`
+    ],
+    solution: {
+      approach: `<p>Let <code>for...in</code> do the chain walking (it visits enumerable string keys of the object, then its prototype, and so on, skipping duplicates) and classify each key with <code>Object.hasOwn</code>, the only own-check that is safe on every object. Symbols and non-enumerable properties are intentionally excluded, matching <code>for...in</code>.</p>`,
+      code: { lang: 'js', run: true, code: `function splitKeys(obj) {
+  const own = [], inherited = [];
+  for (const key in obj) {                      // own + inherited ENUMERABLE string keys
+    (Object.hasOwn(obj, key) ? own : inherited).push(key);
+  }
+  return { own, inherited };
+}
+
+const base = { kind: 'animal', describe() { return 'I am ' + this.name; } };
+const dog = Object.create(base);
+dog.name = 'Rex';
+dog.kind = 'dog';                               // shadows base.kind
+console.log(splitKeys(dog));                    // { own: ['name','kind'], inherited: ['describe'] }
+
+const dict = Object.create(null);               // no prototype at all
+dict.apple = 2;
+console.log(splitKeys(dict));                   // { own: ['apple'], inherited: [] }
+
+class Cat { constructor() { this.lives = 9; } meow() {} }
+console.log(splitKeys(new Cat()));              // meow is non-enumerable: { own: ['lives'], inherited: [] }
+console.log(splitKeys({ hasOwnProperty: () => false, x: 1 })); // not fooled` },
+      dry: { head: ['for...in visits', 'Object.hasOwn(dog, key)?', 'goes to'], rows: [['name', 'true', H.c('g', 'own')], ['kind', 'true', H.c('g', 'own')], ['kind (on base)', '—', H.c('m', 'skipped: already seen')], ['describe', 'false', H.c('b', 'inherited')]] },
+      complexity: `<p>Time O(total enumerable keys along the chain), space O(keys) for the result.</p>`,
+      followUps: ['Also include symbol keys and non-enumerable keys (use <code>Reflect.ownKeys</code> per level).', 'Return the depth at which each inherited key was found.', 'Why do linters flag <code>for...in</code> without an own-check (eslint <code>guard-for-in</code>)?']
+    }
+  });
+
+  practice.push({
+    title: 'Move Methods onto the Prototype',
+    level: 'Easy', tags: ['constructor functions', 'prototype', 'memory'], companies: ['Microsoft', 'Paytm', 'Razorpay'],
+    statement: `<p>A game creates 10,000 <code>Player</code> objects with a constructor function that assigns <code>this.addPoints = function () {...}</code> inside the constructor. Refactor it so all players <b>share one copy</b> of each method, then write the same thing as a <code>class</code>. Prove the sharing with <code>===</code>.</p>`,
+    constraints: `Behaviour must not change: <code>addPoints(n)</code> adds to <code>score</code> and returns <code>this</code> (for chaining); <code>toString()</code> prints <code>"name: score"</code>. Own keys of each player must be only <code>name</code> and <code>score</code>.`,
+    example: `<p>Before: ${H.c('r', 'a.addPoints === b.addPoints → false')} (10,000 function objects). After: ${H.c('g', 'a.addPoints === b.addPoints → true')} (1 function on <code>Player.prototype</code>, found by every player through the chain). <code>String(p.addPoints(5).addPoints(2))</code> → <code>"P1: 7"</code>.</p>`,
+    brute: {
+      why: `<p>Each <code>new Player()</code> runs the constructor body again, so a <b>brand-new function object</b> (plus its closure) is created per instance. 10,000 players = 10,000 identical functions: more memory, more GC work, and patching the method later means touching every object.</p>`,
+      code: { lang: 'js', run: true, code: `function Player(name) {
+  this.name = name;
+  this.score = 0;
+  this.addPoints = function (n) { this.score += n; return this; };  // new copy EVERY time
+}
+const a = new Player('A'), b = new Player('B');
+console.log(a.addPoints === b.addPoints);   // false: two different functions
+console.log(Object.keys(a));                // ['name', 'score', 'addPoints']` }
+    },
+    mcq: { q: 'After the refactor, where does the engine find <code>p.addPoints</code>?', options: ['On <code>p</code> itself', 'On <code>Player.prototype</code>, one hop up the chain', 'On <code>Player</code> (the function)', 'On <code>Object.prototype</code>'], answer: 1, explain: '<code>new Player()</code> links <code>p.[[Prototype]]</code> to <code>Player.prototype</code>. The lookup misses on <code>p</code>, climbs one hop and finds the shared method there.' },
+    hints: [
+      `<p>Hint 1: data that differs per player (name, score) stays in the constructor; behaviour that is identical moves out.</p>`,
+      `<p>Hint 2: <code>Player.prototype.addPoints = function (n) {...}</code>. Inside it, <code>this</code> is still the player because it is called as <code>p.addPoints()</code>.</p>`,
+      `<p>Hint 3: in a <code>class</code>, every method written in the body is automatically put on <code>Player.prototype</code> (and made non-enumerable). Do not use arrow functions for these methods — an arrow class field would be a per-instance copy again.</p>`
+    ],
+    solution: {
+      approach: `<p>Keep per-instance state in the constructor and put shared behaviour on <code>Constructor.prototype</code>. All instances delegate to the same function via the prototype chain. The <code>class</code> syntax does exactly this for you — methods in the class body land on the prototype as non-enumerable properties.</p>`,
+      code: { lang: 'js', run: true, code: `// ES5 style: methods on the prototype
+function Player(name) {
+  this.name = name;      // per-instance data
+  this.score = 0;
+}
+Player.prototype.addPoints = function (n) { this.score += n; return this; };
+Player.prototype.toString = function () { return this.name + ': ' + this.score; };
+
+const players = Array.from({ length: 10000 }, (_, i) => new Player('P' + i));
+console.log(players[0].addPoints === players[9999].addPoints); // true: ONE shared function
+console.log(String(players[1].addPoints(5).addPoints(2)));     // P1: 7
+console.log(Object.keys(players[0]));                          // ['name', 'score']
+
+// Modern equivalent: class methods live on PlayerC.prototype automatically
+class PlayerC {
+  constructor(name) { this.name = name; this.score = 0; }
+  addPoints(n) { this.score += n; return this; }
+  toString() { return this.name + ': ' + this.score; }
+}
+const x = new PlayerC('X'), y = new PlayerC('Y');
+console.log(x.addPoints === y.addPoints);                       // true
+console.log(Object.getOwnPropertyNames(PlayerC.prototype));     // ['constructor','addPoints','toString']
+
+// Trap: an arrow-function class FIELD is per-instance again
+class PlayerArrow { score = 0; addPoints = (n) => { this.score += n; return this; }; }
+console.log(new PlayerArrow().addPoints === new PlayerArrow().addPoints); // false` },
+      dry: { head: ['step', 'what exists', 'function objects for addPoints'], rows: [['brute: new Player x 10,000', 'own addPoints on every object', H.c('r', '10,000')], ['refactor: define on prototype once', 'Player.prototype.addPoints', H.c('g', '1')], ['p.addPoints(5)', 'miss on p → hit on Player.prototype', H.c('g', '1 (shared)')]] },
+      complexity: `<p>Memory for methods drops from O(N) to O(1); each call costs one extra chain hop, which V8 inline caches make practically free.</p>`,
+      followUps: ['When is a per-instance arrow function actually the right choice (hint: passing <code>this.handleClick</code> as a callback)?', 'Measure the difference with <code>process.memoryUsage()</code> for 1M objects.', 'What happens to existing players if you later replace <code>Player.prototype.addPoints</code>?']
+    }
+  });
+
+  practice.push({
+    title: 'Fix the Shared-Array-on-the-Prototype Bug',
+    level: 'Easy', tags: ['prototype', 'shared state', 'class fields'], companies: ['Uber', 'Meesho', 'Walmart'],
+    statement: `<p>A teammate wrote a shopping <code>Basket</code> with the item list on the prototype "to save memory". Adding an apple to one basket makes it appear in <b>every</b> basket. Explain why reads and <code>push</code> hit the shared array while <code>this.count++</code> on a prototype number does <b>not</b> leak, then fix the class.</p>`,
+    constraints: `Each basket must have its own independent <code>items</code> array. <code>add(x)</code> returns <code>this</code>. <code>total()</code> returns the item count.`,
+    example: `<p><code>a.add('apple')</code>; then <code>b.items</code> → before the fix ${H.c('r', "['apple']")} (leak!); after the fix ${H.c('g', '[]')}.</p>`,
+    brute: {
+      why: `<p><code>this.items.push(x)</code> is a <b>read</b> of <code>this.items</code> (which climbs to the one shared array on the prototype) followed by a mutation of that array. No write to <code>this.items</code> ever happens, so no own property is created — every basket mutates the same object. By contrast <code>this.count++</code> is a <b>write</b> to <code>this.count</code>, which creates an own property and shadows the prototype's number.</p>`,
+      code: { lang: 'js', run: true, code: `function Basket() {}
+Basket.prototype.items = [];          // ONE array shared by all baskets
+Basket.prototype.count = 0;           // a primitive on the prototype
+Basket.prototype.add = function (x) {
+  this.items.push(x);                 // read + mutate the shared array
+  this.count++;                       // write: creates an OWN count on this basket
+  return this;
+};
+const a = new Basket(), b = new Basket();
+a.add('apple');
+console.log(b.items);                          // ['apple']  <- the bug
+console.log(a.count, b.count);                 // 1 0       <- primitives did not leak
+console.log(Object.hasOwn(a, 'items'), Object.hasOwn(a, 'count')); // false true` }
+    },
+    mcq: { q: 'Which line creates an OWN property on the basket?', options: ['<code>this.items.push(x)</code>', '<code>this.items.length</code>', '<code>this.count++</code>', 'None of them'], answer: 2, explain: '<code>this.count++</code> is <code>this.count = this.count + 1</code> — an assignment to <code>this.count</code>, so <code>[[Set]]</code> defines an own property. <code>push</code> only reads <code>this.items</code> and mutates the array it got.' },
+    hints: [
+      `<p>Hint 1: ask of every line: "is this a write to a property of <code>this</code>, or a read followed by mutating whatever came back?"</p>`,
+      `<p>Hint 2: mutable state (arrays, objects, Maps) must be created per instance — in the constructor or as a class field (<code>items = [];</code>), because field initialisers run once per <code>new</code>.</p>`,
+      `<p>Hint 3: keep only shared, read-only things on the prototype: methods and true constants.</p>`
+    ],
+    solution: {
+      approach: `<p>Create the array per instance. With a class, a field initialiser <code>items = []</code> is evaluated on every construction, so each basket gets its own array as an own property. Methods stay on the prototype.</p>`,
+      code: { lang: 'js', run: true, code: `class Basket {
+  items = [];                 // class field: a NEW array for every instance
+  add(x) { this.items.push(x); return this; }
+  total() { return this.items.length; }
+}
+const a = new Basket(), b = new Basket();
+a.add('apple').add('pear');
+console.log(a.items, b.items);                 // ['apple','pear'] []
+console.log(a.total(), b.total());             // 2 0
+console.log(Object.hasOwn(a, 'items'));        // true: own property now
+console.log(a.add === b.add);                  // true: methods still shared
+
+// ES5 fix, for comparison
+function Basket5() { this.items = []; }       // per instance
+Basket5.prototype.add = function (x) { this.items.push(x); return this; };
+const c = new Basket5(), d = new Basket5();
+c.add(1);
+console.log(c.items, d.items);                 // [1] []` },
+      dry: { head: ['line', 'kind of access', 'touches'], rows: [['this.items.push(x) (bug)', 'read, then mutate', H.c('r', 'shared prototype array')], ['this.count++', 'write', H.c('g', 'new own property')], ['items = [] (fix)', 'field defined per new', H.c('g', 'own array per basket')]] },
+      complexity: `<p>O(1) per add; memory is O(items) per basket, which is what you want.</p>`,
+      followUps: ['Is <code>static DEFAULT_ITEMS = []</code> safe? When would it leak?', 'Write a lint-style check that flags arrays/objects assigned to <code>X.prototype</code>.', 'How does Vue 2\'s "data must be a function" rule solve the same problem?']
+    }
+  });
+
+  practice.push({
+    title: 'Temperature: Static Factories and an Instance Counter',
+    level: 'Easy', tags: ['static', 'private fields', 'factory'], companies: ['Google', 'Adobe', 'PhonePe'],
+    statement: `<p>Build a <code>Temperature</code> class that stores degrees Celsius in a private field, exposes <code>celsius</code> and <code>fahrenheit</code> getters, and has static factories <code>fromFahrenheit(f)</code> and <code>fromKelvin(k)</code>. Also keep a <b>class-wide</b> counter of how many temperatures were ever created, readable through a static getter <code>Temperature.created</code> but not writable from outside.</p>`,
+    constraints: `Constructor throws <code>TypeError</code> for non-numbers or <code>NaN</code>. Factories must also work on subclasses (a subclass factory returns a subclass instance).`,
+    example: `<p><code>Temperature.fromFahrenheit(212).celsius</code> → ${H.c('g', '100')}; <code>Temperature.fromKelvin(0).toString()</code> → ${H.c('g', "'-273.1°C'")}; after creating 3 objects <code>Temperature.created</code> → ${H.c('g', '3')}; <code>Temperature.created = 99</code> has ${H.c('r', 'no effect')}.</p>`,
+    brute: {
+      why: `<p>Putting the counter on the instance (<code>this.count++</code>) gives every object its own counter that is always 1. A global variable works but anyone can overwrite it, and it is not tied to the class.</p>`,
+      code: { lang: 'js', run: true, code: `class TemperatureBrute {
+  count = 0;
+  constructor(c) { this.c = c; this.count++; }     // per-instance: always 1
+}
+const t1 = new TemperatureBrute(10), t2 = new TemperatureBrute(20);
+console.log(t1.count, t2.count);                  // 1 1 — not a class-wide count
+console.log(t2.c = 'oops', t2.c);                 // public data, no validation` }
+    },
+    mcq: { q: 'Inside <code>static fromFahrenheit(f)</code>, why write <code>new this(...)</code> rather than <code>new Temperature(...)</code>?', options: ['It is faster', 'In a static method called as <code>Sub.fromFahrenheit()</code>, <code>this</code> is <code>Sub</code>, so the factory builds the right subclass', 'Because <code>Temperature</code> is not defined inside the class', 'There is no difference'], answer: 1, explain: 'Static methods are called on the class, so <code>this</code> is whatever class was used in the call — <code>Temperature</code> or a subclass. <code>new this()</code> respects that.' },
+    hints: [
+      `<p>Hint 1: anything shared by the whole class (counters, caches, factories) belongs to the class object itself: <code>static</code>.</p>`,
+      `<p>Hint 2: <code>static #created = 0</code> + <code>static get created()</code> gives read-only access from outside.</p>`,
+      `<p>Hint 3: access the private static as <code>Temperature.#created</code>, not <code>this.#created</code>: when a subclass calls the static method, <code>this</code> is the subclass, which does <b>not</b> have the private static slot → TypeError.</p>`
+    ],
+    solution: {
+      approach: `<p>Instance state (<code>#celsius</code>) is a private instance field; class-wide state (<code>#created</code>) is a private static field exposed through a static getter. Factories are static methods that convert units and call <code>new this(...)</code> so subclasses inherit working factories through the constructor chain (<code>Object.getPrototypeOf(Sub) === Temperature</code>).</p>`,
+      code: { lang: 'js', run: true, code: `class Temperature {
+  static #created = 0;                       // class-wide, private
+  static get created() { return Temperature.#created; }   // read-only view
+
+  static fromFahrenheit(f) { return new this((f - 32) * 5 / 9); }
+  static fromKelvin(k) { return new this(k - 273.15); }
+
+  #celsius;                                  // per instance, private
+  constructor(celsius) {
+    if (typeof celsius !== 'number' || Number.isNaN(celsius)) {
+      throw new TypeError('celsius must be a number, got ' + celsius);
+    }
+    this.#celsius = celsius;
+    Temperature.#created++;                  // NOT this.#created (subclass-safe)
+  }
+  get celsius() { return this.#celsius; }
+  get fahrenheit() { return this.#celsius * 9 / 5 + 32; }
+  toString() { return this.#celsius.toFixed(1) + '°C'; }
+}
+
+class LabTemperature extends Temperature {
+  toString() { return '[lab] ' + super.toString(); }
+}
+
+console.log(Temperature.fromFahrenheit(212).celsius);   // 100
+console.log(Temperature.fromKelvin(0).toString());      // -273.1°C
+const lab = LabTemperature.fromFahrenheit(32);          // static inherited, builds a LabTemperature
+console.log(lab instanceof LabTemperature, String(lab)); // true [lab] 0.0°C
+console.log(new Temperature(25).fahrenheit);            // 77
+try { Temperature.created = 99; }                       // getter only: ignored (sloppy) or TypeError (strict)
+catch (e) { console.log('cannot write created:', e.name); }
+console.log(Temperature.created);                       // 4
+try { new Temperature('hot'); } catch (e) { console.log(e.name + ': ' + e.message); }` },
+      dry: { head: ['call', 'this inside static', 'object built', 'created'], rows: [['Temperature.fromFahrenheit(212)', 'Temperature', 'Temperature(100)', '1'], ['Temperature.fromKelvin(0)', 'Temperature', 'Temperature(-273.15)', '2'], ['LabTemperature.fromFahrenheit(32)', 'LabTemperature', 'LabTemperature(0)', '3'], ['new Temperature(25)', '—', 'Temperature(25)', H.c('g', '4')]] },
+      complexity: `<p>All operations O(1).</p>`,
+      followUps: ['Add a static cache so <code>Temperature.of(0)</code> returns the same frozen object every time.', 'Make <code>Temperature</code> sortable: implement <code>static compare(a, b)</code>.', 'Why would <code>this.#created++</code> inside the constructor be a bug?']
+    }
+  });
+
+  /* =========================== PRACTICE: MEDIUM =========================== */
+  practice.push({
+    title: 'Method Resolution Table for a Class Hierarchy',
+    level: 'Medium', tags: ['Reflect.ownKeys', 'descriptors', 'inheritance', 'tooling'], companies: ['Atlassian', 'Microsoft', 'Postman'],
+    statement: `<p>Write <code>methodTable(Cls)</code> that lists every member reachable from instances of <code>Cls</code> through the prototype chain (stop before <code>Object.prototype</code>). For each name return <code>{ name, kind, definedIn, overrides }</code> where <code>kind</code> is <code>'method'</code>, <code>'getter/setter'</code> or <code>'data'</code>, <code>definedIn</code> is the class whose prototype provides the member <b>that will actually run</b>, and <code>overrides</code> lists the ancestor classes whose same-named member is shadowed. Skip <code>constructor</code>.</p>`,
+    constraints: `Must see class methods (they are non-enumerable) and symbol-keyed methods such as <code>[Symbol.iterator]</code>. Hierarchy depth ≤ 20.`,
+    example: `<p><code>class Animal { speak(){} get legs(){} }</code>, <code>class Dog extends Animal { speak(){} fetch(){} }</code></p>
+<p>Output for Dog: ${H.c('g', "speak → Dog (overrides Animal)")}, ${H.c('g', 'fetch → Dog')}, ${H.c('b', 'legs → Animal, getter/setter')}. Exactly what a property read would find: the <b>first</b> owner on the chain wins.</p>`,
+    brute: {
+      why: `<p><code>Object.keys(Cls.prototype)</code> and <code>for...in</code> both return <b>nothing</b>, because class methods are defined as non-enumerable. They also skip symbol keys and ignore everything above the first level.</p>`,
+      code: { lang: 'js', run: true, code: `class Animal { speak() { return '...'; } }
+class Dog extends Animal { speak() { return 'Woof'; } fetch() {} }
+console.log(Object.keys(Dog.prototype));          // []  class methods are non-enumerable
+const seen = [];
+for (const k in new Dog()) seen.push(k);
+console.log(seen);                                 // []  for...in sees nothing either` }
+    },
+    mcq: { q: 'Which call lists ALL own keys of a prototype object, including non-enumerable and symbol keys?', options: ['<code>Object.keys(p)</code>', '<code>Object.getOwnPropertyNames(p)</code>', '<code>Reflect.ownKeys(p)</code>', '<code>Object.entries(p)</code>'], answer: 2, explain: '<code>Object.keys</code>/<code>entries</code> are enumerable strings only; <code>getOwnPropertyNames</code> includes non-enumerables but not symbols; <code>Reflect.ownKeys</code> returns both strings and symbols, enumerable or not.' },
+    hints: [
+      `<p>Hint 1: walk <code>p = Cls.prototype</code>, then <code>Object.getPrototypeOf(p)</code>, until you reach <code>Object.prototype</code> or <code>null</code>.</p>`,
+      `<p>Hint 2: at each level, <code>Reflect.ownKeys(p)</code> + <code>Object.getOwnPropertyDescriptor(p, key)</code> tells you the kind: <code>typeof d.value === 'function'</code> → method; <code>d.get || d.set</code> → accessor; else data.</p>`,
+      `<p>Hint 3: use a <code>Map</code> keyed by property key. The first time you see a key, that level is the winner (<code>definedIn</code>); every later sighting is an ancestor it overrides. Name the level by <code>p.constructor.name</code> when <code>p</code> owns a <code>constructor</code>.</p>`
+    ],
+    solution: {
+      approach: `<p>Walk the prototype chain from most-derived to least-derived, enumerating <b>all</b> own keys at each level with <code>Reflect.ownKeys</code>. The first level that owns a key is the one a lookup would use, so record it as <code>definedIn</code>; later levels with the same key are pushed into <code>overrides</code>. Descriptors reveal the member kind without calling getters.</p>`,
+      code: { lang: 'js', run: true, code: `function methodTable(Cls) {
+  const rows = new Map();                                   // key -> row (insertion order kept)
+  let p = Cls.prototype;
+  while (p !== null && p !== Object.prototype) {
+    const owner = Object.hasOwn(p, 'constructor') ? p.constructor.name : '(anonymous)';
+    for (const key of Reflect.ownKeys(p)) {                 // strings + symbols, enumerable or not
+      if (key === 'constructor') continue;
+      const d = Object.getOwnPropertyDescriptor(p, key);    // read descriptor: never runs a getter
+      const kind = typeof d.value === 'function' ? 'method' : (d.get || d.set) ? 'getter/setter' : 'data';
+      const name = typeof key === 'symbol' ? key.toString() : key;
+      if (!rows.has(key)) rows.set(key, { name, kind, definedIn: owner, overrides: [] });
+      else rows.get(key).overrides.push(owner);             // shadowed ancestor
+    }
+    p = Object.getPrototypeOf(p);
+  }
+  return [...rows.values()];
+}
+
+class Animal {
+  speak() { return '...'; }
+  get legs() { return 4; }
+  toString() { return 'Animal'; }
+}
+class Dog extends Animal {
+  speak() { return 'Woof'; }
+  fetch() { return 'ball'; }
+  *[Symbol.iterator]() { yield 'tail'; }
+}
+class Puppy extends Dog {
+  speak() { return 'Yip'; }
+}
+for (const r of methodTable(Puppy)) {
+  console.log(r.name.padEnd(22), r.kind.padEnd(14), 'from ' + r.definedIn,
+              r.overrides.length ? '(overrides ' + r.overrides.join(', ') + ')' : '');
+}
+console.log(new Puppy().speak());   // Yip: matches the table's definedIn` },
+      dry: { head: ['level (p)', 'keys found', 'table change'], rows: [['Puppy.prototype', 'speak', 'speak → Puppy'], ['Dog.prototype', 'speak, fetch, Symbol.iterator', 'speak.overrides += Dog; add fetch, Symbol.iterator'], ['Animal.prototype', 'speak, legs, toString', 'speak.overrides += Animal; add legs, toString'], ['Object.prototype', '—', H.c('m', 'stop')]] },
+      complexity: `<p>Time O(total own keys along the chain), space O(distinct keys).</p>`,
+      followUps: ['Also list static members by walking the constructor chain (<code>Object.getPrototypeOf(Dog) === Animal</code>).', 'Flag "accidental overrides": a subclass method that shadows a parent getter.', 'Why can you never list <code>#private</code> members this way?']
+    }
+  });
+
+  practice.push({
+    title: 'Abstract Base Class with new.target',
+    level: 'Medium', tags: ['new.target', 'abstract class', 'template method', 'polymorphism'], companies: ['Amazon', 'Salesforce', 'Intuit'],
+    statement: `<p>JavaScript has no <code>abstract</code> keyword. Build a <code>Shape</code> base class that (1) cannot be instantiated directly, (2) refuses to construct any subclass that did not implement <code>area()</code> — failing <b>at construction time</b>, not later, and (3) provides a template method <code>describe()</code> that calls the subclass's <code>area()</code>. Then implement <code>Circle</code> (private radius) and <code>Square</code> and sort a mixed list by area.</p>`,
+    constraints: `A grandchild class that inherits <code>area()</code> from its parent is valid. Do not call <code>area()</code> inside the constructor (subclass fields are not initialised yet).`,
+    example: `<p><code>new Shape()</code> → ${H.c('r', 'TypeError: Shape is abstract')}; <code>class Blob extends Shape {}; new Blob()</code> → ${H.c('r', 'TypeError: Blob must implement area()')}; <code>new Circle(1).describe()</code> → ${H.c('g', "'circle with area 3.14'")}.</p>`,
+    brute: {
+      why: `<p>The naive base class only throws inside <code>area()</code>. A broken subclass constructs fine and explodes much later, far from the bug (maybe in production, maybe only on one code path). It also allows <code>new Shape()</code>.</p>`,
+      code: { lang: 'js', run: true, code: `class Shape {
+  area() { throw new Error('not implemented'); }
+  describe() { return 'area ' + this.area(); }
+}
+class Blob extends Shape {}                 // forgot area()
+const b = new Blob();                       // no error here...
+const s = new Shape();                      // ...or here
+try { b.describe(); } catch (e) { console.log('late failure:', e.message); }` }
+    },
+    mcq: { q: 'Inside <code>Shape</code>\'s constructor during <code>new Square(2)</code>, what is <code>new.target</code>?', options: ['<code>Shape</code>', '<code>Square</code>', '<code>undefined</code>', 'The new object'], answer: 1, explain: '<code>new.target</code> is the constructor that <code>new</code> was applied to, and it is passed along through <code>super()</code> calls. So the base sees the most-derived class — that is also how the new object gets <code>Square.prototype</code> as its prototype.' },
+    hints: [
+      `<p>Hint 1: <code>if (new.target === Shape) throw ...</code> blocks direct instantiation while allowing subclasses.</p>`,
+      `<p>Hint 2: to check "did someone override <code>area</code>?", compare <b>references</b>: <code>this.area === Shape.prototype.area</code>. The lookup on <code>this</code> climbs from the most-derived prototype, so an inherited override from a middle class also counts.</p>`,
+      `<p>Hint 3: comparing references never runs subclass code, so it is safe even though subclass fields (like <code>#r</code>) do not exist yet.</p>`
+    ],
+    solution: {
+      approach: `<p>Use <code>new.target</code> to reject the base class itself, and a reference comparison on the prototype chain to reject subclasses that did not override <code>area</code>. Because <code>this</code> already has the subclass prototype at the start of the base constructor, <code>this.area</code> resolves to the most-derived implementation without executing it. <code>describe()</code> is a template method: the base defines the algorithm, subclasses fill in the step.</p>`,
+      code: { lang: 'js', run: true, code: `class Shape {
+  constructor(name) {
+    if (new.target === Shape) throw new TypeError('Shape is abstract: instantiate a subclass');
+    if (this.area === Shape.prototype.area) {          // reference check, does not call area()
+      throw new TypeError(new.target.name + ' must implement area()');
+    }
+    this.name = name;
+  }
+  area() { throw new Error('abstract'); }
+  describe() { return this.name + ' with area ' + this.area().toFixed(2); }   // template method
+}
+
+class Circle extends Shape {
+  #r;
+  constructor(r) { super('circle'); this.#r = r; }     // #r exists only AFTER super() returns
+  area() { return Math.PI * this.#r ** 2; }
+}
+class Square extends Shape {
+  constructor(side) { super('square'); this.side = side; }
+  area() { return this.side ** 2; }
+}
+class Cube extends Square {                            // inherits area() from Square: valid
+  constructor(side) { super(side); this.name = 'cube face'; }
+}
+
+for (const make of [() => new Shape('x'), () => { class Blob extends Shape {} return new Blob('blob'); }]) {
+  try { make(); } catch (e) { console.log(e.name + ': ' + e.message); }
+}
+const shapes = [new Square(3), new Circle(1), new Cube(2), new Circle(2)];
+shapes.sort((a, b) => a.area() - b.area());
+for (const s of shapes) console.log(s.describe());` },
+      dry: { head: ['call', 'new.target', 'this.area resolves to', 'result'], rows: [['new Shape()', 'Shape', '—', H.c('r', 'TypeError: abstract')], ['new Blob()', 'Blob', 'Shape.prototype.area', H.c('r', 'TypeError: must implement')], ['new Circle(1)', 'Circle', 'Circle.prototype.area', H.c('g', 'ok')], ['new Cube(2)', 'Cube', 'Square.prototype.area (inherited)', H.c('g', 'ok')]] },
+      complexity: `<p>Construction check O(chain depth); sorting O(n log n) area calls.</p>`,
+      followUps: ['Generalise: <code>static abstract = [\'area\', \'perimeter\']</code> checked in the base constructor.', 'How does TypeScript\'s <code>abstract</code> keyword differ (compile-time only, erased at runtime)?', 'Why is calling <code>this.area()</code> from the base constructor dangerous for <code>Circle</code>?']
+    }
+  });
+
+  practice.push({
+    title: 'Mixins with Class Factories',
+    level: 'Medium', tags: ['mixins', 'extends expression', 'super', 'composition'], companies: ['Microsoft', 'Shopify', 'LinkedIn'],
+    statement: `<p>JavaScript classes have single inheritance, but <code>extends</code> accepts <b>any expression</b>. Write two mixins as class factories — <code>Serializable(Base)</code> (adds <code>serialize()</code> returning JSON with a <code>type</code> tag) and <code>Eventful(Base)</code> (adds <code>on(event, fn)</code>/<code>emit(event, ...args)</code> with <b>private</b> listener storage) — and compose them into <code>class User extends Serializable(Eventful(Model))</code>. Print the resulting prototype chain.</p>`,
+    constraints: `Mixins must cooperate through <code>super</code> (each may override and call the next). Private listener state must not appear in the JSON.`,
+    example: `<p><code>u.rename('Bo')</code> fires <code>'rename'</code> listeners; <code>u.serialize()</code> → ${H.c('g', '{"type":"User","name":"Bo","age":30}')}. Chain: ${H.c('b', 'User → Serializable → Eventful → Model → Object')}.</p>`,
+    brute: {
+      why: `<p>The classic "object mixin" copies methods with <code>Object.assign(User.prototype, mixin)</code>. It is a one-time <b>snapshot</b>: <code>Object.assign</code> <i>invokes getters</i> and stores their current value, the last mixin silently overwrites name clashes, <code>super</code> cannot reach the "previous" implementation, and there is nowhere to keep truly private state.</p>`,
+      code: { lang: 'js', run: true, code: `const TimestampMixin = {
+  get createdAt() { return Date.now(); },              // meant to be live
+  describe() { return 'mixin describe'; }
+};
+const LoggerMixin = { describe() { return 'logger describe'; } };
+class User { describe() { return 'user describe'; } }
+Object.assign(User.prototype, TimestampMixin, LoggerMixin);
+const d = Object.getOwnPropertyDescriptor(User.prototype, 'createdAt');
+console.log('getter kept?', typeof d.get === 'function');   // false: flattened to a number
+console.log(new User().describe());                        // logger describe: user's own was overwritten` }
+    },
+    mcq: { q: 'In <code>class User extends Serializable(Eventful(Model))</code>, how many objects sit between <code>User.prototype</code> and <code>Model.prototype</code> in the chain?', options: ['0 — methods are copied', '1', '2 — one prototype per mixin class', 'It depends on how many methods the mixins have'], answer: 2, explain: 'Each factory call creates a real class whose prototype is a link in the chain: User.prototype → Serializable-class.prototype → Eventful-class.prototype → Model.prototype.' },
+    hints: [
+      `<p>Hint 1: a mixin is just <code>const M = (Base) =&gt; class extends Base { ... }</code>. Calling it creates a new subclass of whatever base you pass in.</p>`,
+      `<p>Hint 2: give the inner class a name (<code>class Serializable extends Base</code>) so stack traces and <code>constructor.name</code> are readable.</p>`,
+      `<p>Hint 3: private fields declared in the mixin (<code>#handlers = new Map()</code>) are installed when <code>super()</code> chains through that class — and <code>JSON.stringify</code>/spread never see them.</p>`
+    ],
+    solution: {
+      approach: `<p>Each mixin is a function that takes a base class and returns a subclass of it. Composing calls nests real classes, so you get a genuine prototype chain: methods are shared (not copied), <code>super</code> works across mixins, getters stay live, and each mixin can own private fields. The order of composition is the method resolution order.</p>`,
+      code: { lang: 'js', run: true, code: `const Eventful = (Base) => class Eventful extends Base {
+  #handlers = new Map();                                  // truly private per instance
+  on(event, fn) {
+    if (!this.#handlers.has(event)) this.#handlers.set(event, []);
+    this.#handlers.get(event).push(fn);
+    return this;
+  }
+  emit(event, ...args) {
+    for (const fn of this.#handlers.get(event) || []) fn.apply(this, args);
+    return this;
+  }
+};
+
+const Serializable = (Base) => class Serializable extends Base {
+  toJSON() { return { type: this.constructor.name, ...this }; }  // own enumerable props only
+  serialize() { return JSON.stringify(this); }
+  describe() { return 'serializable ' + super.describe(); }      // cooperates via super
+};
+
+class Model {
+  constructor(props) { Object.assign(this, props); }
+  describe() { return 'model'; }
+}
+
+class User extends Serializable(Eventful(Model)) {
+  rename(name) {
+    const old = this.name;
+    this.name = name;
+    return this.emit('rename', old, name);
+  }
+}
+
+const u = new User({ name: 'Al', age: 30 });
+u.on('rename', (from, to) => console.log('renamed', from, '->', to));
+u.rename('Bo');
+console.log(u.serialize());             // {"type":"User","name":"Bo","age":30}
+console.log(u.describe());              // serializable model
+console.log(u instanceof Model);        // true
+
+const names = [];
+for (let p = Object.getPrototypeOf(u); p; p = Object.getPrototypeOf(p)) names.push(p.constructor.name);
+console.log(names.join(' -> '));        // User -> Serializable -> Eventful -> Model -> Object` },
+      dry: { head: ['step', 'what happens'], rows: [['Eventful(Model)', 'creates class Eventful extends Model'], ['Serializable(…)', 'creates class Serializable extends that Eventful'], ['new User(props)', 'super() chain: Serializable → Eventful (installs #handlers) → Model (assigns props)'], ['u.describe()', 'miss on User.prototype → Serializable.describe → super → Model.describe'], ['u.serialize()', H.c('g', 'toJSON spreads own props only; #handlers invisible')]] },
+      complexity: `<p>Each mixin adds one prototype hop per lookup (cached by inline caches). Applying a mixin creates a new class each call — memoise it if the same combination is built often.</p>`,
+      followUps: ['Make <code>u instanceof Eventful</code> work by adding a <code>Symbol.hasInstance</code> brand to the factory.', 'Memoise mixin applications with a <code>WeakMap&lt;Base, Mixed&gt;</code>.', 'How do TypeScript mixins type the <code>Base</code> parameter (<code>new (...args: any[]) =&gt; {}</code>)?']
+    }
+  });
+
+  practice.push({
+    title: 'Deep Clone That Keeps Prototypes and Accessors',
+    level: 'Medium', tags: ['Object.create', 'descriptors', 'WeakMap', 'cycles'], companies: ['Google', 'Flipkart', 'Atlassian'],
+    statement: `<p>Write <code>cloneDeep(value)</code> that copies objects <b>without losing their identity as class instances</b>: the clone must have the same prototype (so methods and <code>instanceof</code> still work), keep getters/setters as accessors, keep non-enumerable and read-only properties, deep-copy nested data, handle <code>Date</code>, <code>Map</code>, <code>Set</code>, arrays and <b>cycles</b>.</p>`,
+    constraints: `Functions are shared, not copied. Objects with <code>#private</code> fields cannot be truly cloned this way — detect nothing, but document the limitation. Depth ≤ 1000.`,
+    example: `<p><code>p = new Point(1, 2)</code> with a getter <code>len</code> and a non-enumerable <code>id</code>. <code>{...p}</code> → ${H.c('r', 'plain object, no methods, len frozen to a number, id lost')}. <code>cloneDeep(p)</code> → ${H.c('g', 'Point instance, getter still live, id kept')}.</p>`,
+    brute: {
+      why: `<p>Spread, <code>Object.assign</code> and <code>JSON.parse(JSON.stringify(x))</code> all produce <b>plain objects</b>: the prototype is gone, getters are evaluated once and replaced by values, non-enumerable properties vanish, and JSON also breaks Dates, Maps, <code>undefined</code> and cycles. <code>structuredClone</code> handles cycles and Dates but also drops the prototype.</p>`,
+      code: { lang: 'js', run: true, code: `class Point {
+  constructor(x, y) { this.x = x; this.y = y; Object.defineProperty(this, 'id', { value: 7, enumerable: false }); }
+  get len() { return Math.hypot(this.x, this.y); }
+  norm() { return this.len; }
+}
+const p = new Point(3, 4);
+const s = { ...p };
+console.log(s instanceof Point, typeof s.norm, s.id);       // false undefined undefined
+const sc = structuredClone(p);
+console.log(sc instanceof Point, Object.keys(sc));          // false ['x','y']` }
+    },
+    mcq: { q: 'Which expression makes a SHALLOW clone with the same prototype and exact property descriptors?', options: ['<code>{ ...obj }</code>', '<code>Object.assign(Object.create(Object.getPrototypeOf(obj)), obj)</code>', '<code>Object.create(Object.getPrototypeOf(obj), Object.getOwnPropertyDescriptors(obj))</code>', '<code>structuredClone(obj)</code>'], answer: 2, explain: '<code>Object.create(proto, descriptors)</code> sets the prototype and defines each property exactly as described: accessors stay accessors, non-enumerable stays non-enumerable. The <code>Object.assign</code> version keeps the prototype but still flattens getters and skips non-enumerables.' },
+    hints: [
+      `<p>Hint 1: the one-liner shallow version is <code>Object.create(Object.getPrototypeOf(o), Object.getOwnPropertyDescriptors(o))</code>. Go deep by cloning each descriptor's <code>value</code> recursively.</p>`,
+      `<p>Hint 2: a <code>WeakMap</code> from original → clone, filled <b>before</b> recursing, makes cycles (and shared references) work.</p>`,
+      `<p>Hint 3: built-ins with internal slots (<code>Date</code>, <code>Map</code>, <code>Set</code>) cannot be rebuilt from properties — handle them explicitly before the generic object branch. Arrays: start from <code>[]</code> so the clone is a real array.</p>`
+    ],
+    solution: {
+      approach: `<p>Recursive clone with a <code>WeakMap</code> memo. Primitives and functions return as-is. Special-case <code>Date</code>, <code>Map</code>, <code>Set</code> and arrays. For everything else create an empty object with the <b>same prototype</b>, register it in the memo, then copy each own descriptor (strings and symbols): data descriptors get their <code>value</code> cloned deeply, accessor descriptors are copied as-is so getters stay live. Finally mirror frozen/sealed state.</p>`,
+      code: { lang: 'js', run: true, code: `function cloneDeep(value, seen = new WeakMap()) {
+  if (value === null || typeof value !== 'object') return value;   // primitives, functions
+  if (seen.has(value)) return seen.get(value);                       // cycle / shared ref
+
+  if (value instanceof Date) return new Date(value.getTime());
+  if (value instanceof Map) {
+    const m = new Map(); seen.set(value, m);
+    for (const [k, v] of value) m.set(cloneDeep(k, seen), cloneDeep(v, seen));
+    return m;
+  }
+  if (value instanceof Set) {
+    const s = new Set(); seen.set(value, s);
+    for (const v of value) s.add(cloneDeep(v, seen));
+    return s;
+  }
+  const out = Array.isArray(value) ? [] : Object.create(Object.getPrototypeOf(value));
+  seen.set(value, out);                                              // register BEFORE recursing
+  const descs = Object.getOwnPropertyDescriptors(value);
+  for (const key of Reflect.ownKeys(descs)) {
+    const d = descs[key];
+    if ('value' in d) d.value = cloneDeep(d.value, seen);            // deep-copy data
+    Object.defineProperty(out, key, d);                              // accessors stay accessors
+  }
+  if (Object.isFrozen(value)) Object.freeze(out);
+  else if (Object.isSealed(value)) Object.seal(out);
+  return out;
+}
+
+class Point {
+  constructor(x, y) { this.x = x; this.y = y; Object.defineProperty(this, 'id', { value: 7, enumerable: false }); }
+  get len() { return Math.hypot(this.x, this.y); }
+}
+const p = new Point(3, 4);
+const c = cloneDeep(p);
+console.log(c instanceof Point, c.len, c.id, c !== p);             // true 5 7 true
+c.x = 6; c.y = 8;
+console.log(c.len, p.len);                                          // 10 5 (independent, getter live)
+
+const graph = { name: 'root', when: new Date(0), tags: new Set(['a']), kids: [] };
+graph.kids.push({ parent: graph });                                // cycle
+const g2 = cloneDeep(graph);
+console.log(g2.kids[0].parent === g2, g2.when.getTime(), g2.tags.has('a'), g2.tags !== graph.tags);
+
+class Secret { #v = 1; get v() { return this.#v; } }
+try { cloneDeep(new Secret()).v; } catch (e) { console.log('private fields are not cloneable:', e.name); }` },
+      dry: { head: ['visit', 'branch', 'memo after'], rows: [['graph', 'generic object (proto Object.prototype)', 'graph→g2'], ['graph.when', 'Date', '—'], ['graph.tags', 'Set', 'tags→tags2'], ['graph.kids', 'array', 'kids→kids2'], ['kids[0]', 'generic object', '…'], ['kids[0].parent', H.c('g', 'memo hit → g2'), 'cycle closed']] },
+      complexity: `<p>Time O(n) over all reachable properties; space O(n) for the memo and the copy.</p>`,
+      followUps: ['Let classes customise cloning with a <code>[Symbol.for(\'clone\')]()</code> method (how Immer/structuredClone-like libraries do it).', 'Why does cloning a <code>#private</code>-based object always fail, and what is the idiomatic alternative (a <code>clone()</code> method inside the class)?', 'Add support for typed arrays and <code>RegExp</code>.']
+    }
+  });
+
+  practice.push({
+    title: 'Private-State Stack with MinStack Subclass',
+    level: 'Medium', tags: ['#private', 'brand check', 'Symbol.iterator', 'super'], companies: ['Amazon', 'Bloomberg', 'Goldman Sachs'],
+    statement: `<p>Implement a <code>Stack</code> whose storage is a <b>private</b> field, with <code>push</code> (chainable), <code>pop</code> (throws <code>RangeError</code> when empty), <code>peek</code>, a <code>size</code> getter, iteration from top to bottom, <code>static from(iterable)</code> and <code>static isStack(x)</code> using an ergonomic brand check. Then write <code>MinStack extends Stack</code> with O(1) <code>min()</code>. Show why the underscore convention (<code>_items</code>) is not enough.</p>`,
+    constraints: `<code>MinStack.from([5, 2, 8])</code> must return a <code>MinStack</code>. Outside code must not be able to break the min invariant.`,
+    example: `<p><code>MinStack.from([5, 2, 8]).min()</code> → ${H.c('g', '2')}; after one <code>pop()</code> and another <code>pop()</code>, <code>min()</code> → ${H.c('g', '5')}. <code>[...Stack.from([1,2,3])]</code> → ${H.c('g', '[3, 2, 1]')}. <code>Stack.isStack({})</code> → ${H.c('r', 'false')}.</p>`,
+    brute: {
+      why: `<p>With <code>this._items</code> anyone can reach in and mutate the array (<code>s._items.length = 0</code>), silently breaking <code>MinStack</code>'s parallel min-array invariant. "Private by convention" is a promise, not a guarantee.</p>`,
+      code: { lang: 'js', run: true, code: `class StackU { constructor() { this._items = []; } push(x) { this._items.push(x); return this; } pop() { return this._items.pop(); } }
+class MinStackU extends StackU {
+  constructor() { super(); this._mins = []; }
+  push(x) { super.push(x); this._mins.push(Math.min(x, this._mins.length ? this._mins[this._mins.length - 1] : x)); return this; }
+  min() { return this._mins[this._mins.length - 1]; }
+}
+const s = new MinStackU().push(5).push(1);
+s._items.length = 0;                       // outside code "helps"
+console.log(s.pop(), s.min());             // undefined 1  <- invariant broken` }
+    },
+    mcq: { q: 'What does <code>#items in obj</code> do?', options: ['Checks for a public property named "#items"', 'Returns true only if <code>obj</code> was constructed by this class (it has the private slot), without throwing', 'Throws if <code>obj</code> is not a Stack', 'Reads the private field'], answer: 1, explain: 'The ergonomic brand check (ES2022) tests for the private name. It never throws for objects lacking it (it does throw if the right side is not an object), and it cannot be faked with <code>Object.create(Stack.prototype)</code>.' },
+    hints: [
+      `<p>Hint 1: <code>#items = []</code> as a field; all methods use <code>this.#items</code>. Accessing it on a non-Stack throws <code>TypeError</code> — a free brand check.</p>`,
+      `<p>Hint 2: <code>static from(it) { const s = new this(); ... }</code> — <code>this</code> is the class the method was called on, so subclasses work. The subclass keeps its own <code>#mins</code>; it cannot see the parent's <code>#items</code> and does not need to.</p>`,
+      `<p>Hint 3: <code>MinStack.push(x)</code>: <code>super.push(x)</code>, then push <code>min(x, current min)</code>. <code>pop()</code>: call <code>super.pop()</code> first (it throws on empty), then pop <code>#mins</code>.</p>`
+    ],
+    solution: {
+      approach: `<p>Hard-private fields enforce encapsulation at the language level: only code lexically inside the class body can read <code>#items</code>, and the subclass maintains its own private <code>#mins</code>, coordinating only through the public/protected-by-convention API (<code>super.push</code>/<code>super.pop</code>). <code>static from</code> uses <code>new this()</code> so it is inherited correctly, and <code>#items in x</code> is an unforgeable brand check.</p>`,
+      code: { lang: 'js', run: true, code: `class Stack {
+  #items = [];
+  static from(iterable) {
+    const s = new this();                    // subclass-aware
+    for (const x of iterable) s.push(x);     // virtual call: MinStack.push for MinStack
+    return s;
+  }
+  static isStack(x) { return typeof x === 'object' && x !== null && #items in x; }
+  push(x) { this.#items.push(x); return this; }
+  pop() {
+    if (this.#items.length === 0) throw new RangeError('pop from empty stack');
+    return this.#items.pop();
+  }
+  peek() { return this.#items[this.#items.length - 1]; }
+  get size() { return this.#items.length; }
+  *[Symbol.iterator]() { for (let i = this.#items.length - 1; i >= 0; i--) yield this.#items[i]; }
+  toString() { return 'Stack(' + [...this].join(', ') + ')'; }
+}
+
+class MinStack extends Stack {
+  #mins = [];                                  // its own private slot
+  push(x) {
+    super.push(x);
+    const m = this.#mins.length ? Math.min(x, this.#mins[this.#mins.length - 1]) : x;
+    this.#mins.push(m);
+    return this;
+  }
+  pop() {
+    const v = super.pop();                     // throws first if empty, keeping arrays in sync
+    this.#mins.pop();
+    return v;
+  }
+  min() {
+    if (this.size === 0) throw new RangeError('min of empty stack');
+    return this.#mins[this.#mins.length - 1];
+  }
+}
+
+const ms = MinStack.from([5, 2, 8]);
+console.log(ms instanceof MinStack, ms.min(), String(ms));   // true 2 Stack(8, 2, 5)
+ms.pop(); ms.pop();
+console.log(ms.min(), ms.size);                              // 5 1
+console.log([...Stack.from([1, 2, 3])]);                     // [3, 2, 1]
+console.log(Stack.isStack(ms), Stack.isStack({}), Stack.isStack(Object.create(Stack.prototype))); // true false false
+console.log(ms._items, Object.keys(ms));                     // undefined []  nothing to tamper with
+try { new Stack().pop(); } catch (e) { console.log(e.name + ': ' + e.message); }` },
+      dry: { head: ['op', '#items (Stack)', '#mins (MinStack)', 'min()'], rows: [['push 5', '[5]', '[5]', '5'], ['push 2', '[5,2]', '[5,2]', '2'], ['push 8', '[5,2,8]', '[5,2,2]', '2'], ['pop → 8', '[5,2]', '[5,2]', '2'], ['pop → 2', '[5]', '[5]', H.c('g', '5')]] },
+      complexity: `<p>All operations O(1) (amortised for push); iteration O(n). Extra O(n) space for the min array.</p>`,
+      followUps: ['Reduce MinStack memory by storing <code>[value, count]</code> runs in <code>#mins</code>.', 'Why can\'t <code>MinStack</code> read <code>this.#items</code> even though it extends <code>Stack</code>?', 'How would you expose a "protected" hook to subclasses without making it public?']
+    }
+  });
+
+  practice.push({
+    title: 'Fix the Overridden-Method-in-Parent-Constructor Bug',
+    level: 'Medium', tags: ['class fields', 'initialisation order', 'super', 'factory'], companies: ['Meta', 'Atlassian', 'Swiggy'],
+    statement: `<p>A UI base class calls <code>this.render()</code> from its constructor. A subclass <code>Label</code> declares a field <code>text = 'Hello'</code> and overrides <code>render()</code> to print it — but it prints <code>undefined</code>. Explain the exact construction order that causes this, then redesign so subclasses can rely on their fields during the first render.</p>`,
+    constraints: `Keep the "render once on creation" behaviour for callers. Do not use timers or microtasks to defer rendering.`,
+    example: `<p><code>new Label()</code> today prints ${H.c('r', "'Label: undefined'")}. After the fix, <code>Label.create()</code> prints ${H.c('g', "'Label: Hello'")} and <code>Label.create({ text: 'Hi' })</code> prints ${H.c('g', "'Label: Hi'")}.</p>`,
+    brute: {
+      why: `<p>For a derived class, <code>new Label()</code> runs <code>Widget</code>'s constructor first (via the implicit <code>super()</code>). Subclass field initialisers run only <b>after</b> <code>super()</code> returns. But <code>this.render</code> already resolves to <code>Label.prototype.render</code> because the object was created with the subclass prototype. So the override runs before its fields exist.</p>`,
+      code: { lang: 'js', run: true, code: `class Widget {
+  constructor() { this.render(); }          // calls an overridable method too early
+  render() { console.log('Widget'); }
+}
+class Label extends Widget {
+  text = 'Hello';                            // initialised AFTER Widget's constructor returns
+  render() { console.log('Label: ' + this.text); }
+}
+const l = new Label();                       // Label: undefined
+console.log(l.text);                         // Hello (too late)` }
+    },
+    mcq: { q: 'During <code>new Label()</code>, which runs first?', options: ['Label\'s field initialisers', 'Widget\'s constructor body', 'Label\'s constructor body after super()', 'They run in parallel'], answer: 1, explain: 'Order: Label\'s (implicit) constructor calls super() → Widget creates the object with Label.prototype and runs its body → super() returns → Label\'s fields are initialised → rest of Label\'s constructor. The overridden render() runs in step 2, before step 4.' },
+    hints: [
+      `<p>Hint 1: rule of thumb from Java/C# too: never call overridable methods from a constructor.</p>`,
+      `<p>Hint 2: split creation into two phases: construct (fields ready) → initialise/mount. A static factory can run both: <code>static create(...a) { const w = new this(...a); w.mount(); return w; }</code>.</p>`,
+      `<p>Hint 3: alternative: pass the data up through <code>super(props)</code> and let the base store it before rendering — but then subclass <i>fields</i> still are not ready, so the factory is the cleaner fix.</p>`
+    ],
+    solution: {
+      approach: `<p>Make the constructor do only cheap, non-virtual setup, and move the first render into a separate <code>mount()</code> phase. A static factory <code>create()</code> (inherited by every subclass, using <code>new this</code>) guarantees callers still get a rendered widget, and by the time <code>mount()</code> runs, every class in the hierarchy has finished initialising its fields.</p>`,
+      code: { lang: 'js', run: true, code: `class Widget {
+  #mounted = false;
+  constructor(props = {}) { this.props = props; }      // no virtual calls here
+  static create(props) {
+    const w = new this(props);                          // phase 1: all fields initialised
+    w.mount();                                          // phase 2: safe to call overrides
+    return w;
+  }
+  mount() {
+    if (this.#mounted) return this;
+    this.#mounted = true;
+    this.render();
+    return this;
+  }
+  render() { console.log('Widget'); }
+}
+
+class Label extends Widget {
+  text = 'Hello';
+  constructor(props) {
+    super(props);
+    if (props && props.text) this.text = props.text;   // fields exist now
+  }
+  render() { console.log('Label: ' + this.text); }
+}
+
+class BoldLabel extends Label {
+  weight = 700;
+  render() { console.log('<b weight=' + this.weight + '> ' + this.text); }
+}
+
+Label.create();                      // Label: Hello
+Label.create({ text: 'Hi' });        // Label: Hi
+BoldLabel.create({ text: 'Big' });   // <b weight=700> Big
+const raw = new Label();             // constructing alone renders nothing
+console.log('raw text ready:', raw.text);` },
+      dry: { head: ['step (Label.create())', 'this.text', 'output'], rows: [['new Label() → super() → Widget body', 'undefined', '—'], ['super returns, field text = "Hello"', 'Hello', '—'], ['Label body (props.text?)', 'Hello', '—'], ['w.mount() → this.render()', 'Hello', H.c('g', 'Label: Hello')]] },
+      complexity: `<p>No asymptotic change; one extra method call per creation.</p>`,
+      followUps: ['How do React class components and Web Components (<code>connectedCallback</code>) solve the same two-phase problem?', 'With TypeScript <code>useDefineForClassFields</code>, how can a redeclared field overwrite a value set by the base constructor?', 'Write a test that would have caught this bug.']
+    }
+  });
+
+  /* =========================== PRACTICE: HARD =========================== */
+  practice.push({
+    title: 'Implement [[Get]] and [[Set]] by Hand',
+    level: 'Hard', tags: ['spec', 'descriptors', 'receiver', 'getters/setters'], companies: ['Google', 'Meta', 'Bloomberg'],
+    statement: `<p>Implement <code>getProp(obj, key, receiver = obj)</code> and <code>setProp(obj, key, value, receiver = obj)</code> that behave exactly like <code>Reflect.get</code> and <code>Reflect.set</code> on ordinary objects — <b>without</b> using <code>obj[key]</code>, <code>Reflect.get/set</code> or <code>in</code>. Use only <code>Object.getOwnPropertyDescriptor</code>, <code>Object.getPrototypeOf</code>, <code>Object.defineProperty</code> and <code>Object.isExtensible</code>. Verify against the real thing on a test suite.</p>`,
+    constraints: `Must handle: own/inherited data, inherited getters (run with <code>this = receiver</code>), inherited setters (no own property created), read-only inherited data (write fails, returns <code>false</code>), getter-only accessors, non-extensible receivers, null-prototype objects, symbol keys.`,
+    example: `<p><code>base = Object.freeze({ id: 1 })</code>, <code>kid = Object.create(base)</code>: <code>setProp(kid, 'id', 2)</code> → ${H.c('r', 'false')} and <code>kid</code> gets ${H.c('r', 'no')} own <code>id</code>. With <code>base = { set t(v) { this._t = v * 2; } }</code>: <code>setProp(kid, 't', 5)</code> → ${H.c('g', 'true')}, <code>kid._t === 10</code>, and <code>t</code> is still ${H.c('g', 'not own')} on kid.</p>`,
+    brute: {
+      why: `<p>The "obvious" mental model — "reads walk up, writes always create an own property" — is wrong in two cases: an inherited <b>setter</b> intercepts the write (nothing is created on the object), and an inherited <b>read-only</b> property blocks the write entirely. A naive implementation that always defines an own property silently diverges from the engine in exactly the cases interviewers ask about.</p>`,
+      code: { lang: 'js', run: true, code: `function naiveSet(obj, key, value) {
+  Object.defineProperty(obj, key, { value, writable: true, enumerable: true, configurable: true });
+  return true;
+}
+const base = { set t(v) { this._t = v * 2; } };
+const a = Object.create(base), b = Object.create(base);
+naiveSet(a, 't', 5);
+console.log(Object.hasOwn(a, 't'), a._t);        // true undefined   (setter skipped!)
+console.log(Reflect.set(b, 't', 5), Object.hasOwn(b, 't'), b._t); // true false 10   (real engine)` }
+    },
+    mcq: { q: '<code>kid</code> inherits a <b>non-writable</b> <code>id</code> from its prototype. What does <code>Reflect.set(kid, \'id\', 2)</code> do?', options: ['Creates an own <code>id = 2</code> on kid, shadowing the parent', 'Changes the parent\'s <code>id</code>', 'Returns <code>false</code> and changes nothing (strict-mode assignment would throw)', 'Throws in all modes'], answer: 2, explain: 'OrdinarySet finds the inherited data descriptor with writable: false and returns false. That is the "override mistake" — frozen prototypes block same-named own properties on children. <code>Object.defineProperty(kid, \'id\', ...)</code> bypasses this.' },
+    hints: [
+      `<p>Hint 1: both algorithms start with the same loop — walk from <code>obj</code> up with <code>getPrototypeOf</code> until you find an own descriptor for <code>key</code> (or reach null).</p>`,
+      `<p>Hint 2: get: data descriptor → its <code>value</code>; accessor → <code>get.call(receiver)</code> or <code>undefined</code>. Set: accessor → <code>set.call(receiver, value)</code> (no setter → false); data with <code>writable: false</code> → false; writable data or not found → define/update on the <b>receiver</b>.</p>`,
+      `<p>Hint 3: "define/update on the receiver" has its own rules: if the receiver already owns <code>key</code> as a data property, it must be writable and you only change <code>value</code>; if it owns an accessor → false; if it does not own it, it must be extensible, then define <code>{ value, writable, enumerable, configurable: true }</code>.</p>`
+    ],
+    solution: {
+      approach: `<p>Translate <code>OrdinaryGet</code> and <code>OrdinarySet</code> from the spec. Both find the first own descriptor along the chain. Get returns the value or calls the getter with the <b>receiver</b> (the original object, not the prototype that owns the getter). Set delegates to an accessor's setter with the receiver, refuses on a read-only data property, and otherwise performs the write on the receiver — which is the only way a write ever creates a property.</p>`,
+      code: { lang: 'js', run: true, code: `function findDesc(obj, key) {
+  for (let o = obj; o !== null; o = Object.getPrototypeOf(o)) {
+    const d = Object.getOwnPropertyDescriptor(o, key);
+    if (d) return d;
+  }
+  return undefined;
+}
+
+function getProp(obj, key, receiver = obj) {
+  const d = findDesc(obj, key);
+  if (!d) return undefined;
+  if ('value' in d) return d.value;
+  return d.get ? d.get.call(receiver) : undefined;        // receiver, not the owner
+}
+
+function setProp(obj, key, value, receiver = obj) {
+  const d = findDesc(obj, key);
+  if (d && !('value' in d)) {                              // accessor somewhere on the chain
+    if (!d.set) return false;                              // getter-only
+    d.set.call(receiver, value);
+    return true;
+  }
+  if (d && !d.writable) return false;                      // read-only blocks the write
+  if (receiver === null || typeof receiver !== 'object' && typeof receiver !== 'function') return false;
+  const own = Object.getOwnPropertyDescriptor(receiver, key);
+  if (own) {
+    if (!('value' in own) || !own.writable) return false;
+    Object.defineProperty(receiver, key, { value });       // update value only, keep attributes
+    return true;
+  }
+  if (!Object.isExtensible(receiver)) return false;
+  Object.defineProperty(receiver, key, { value, writable: true, enumerable: true, configurable: true });
+  return true;
+}
+
+// ---- compare with the engine on twin objects ----
+const sym = Symbol('s');
+const makers = {
+  ownData: () => ({ x: 1 }),
+  inheritedData: () => Object.create({ x: 1 }),
+  inheritedReadOnly: () => Object.create(Object.freeze({ x: 1 })),
+  inheritedSetter: () => Object.create({ get x() { return this._x; }, set x(v) { this._x = v * 2; } }),
+  getterOnly: () => Object.create({ get x() { return 42; } }),
+  nonExtensible: () => Object.preventExtensions(Object.create({ y: 1 })),
+  nullProto: () => Object.create(null),
+  symbolKey: () => Object.create({ [sym]: 'inherited' })
+};
+const snapshot = (o) => JSON.stringify(Reflect.ownKeys(o).map((k) => [String(k), Object.getOwnPropertyDescriptor(o, k).value]));
+let allOk = true;
+for (const [name, make] of Object.entries(makers)) {
+  const key = name === 'symbolKey' ? sym : 'x';
+  const mine = make(), real = make();
+  const r1 = [getProp(mine, key), setProp(mine, key, 5), getProp(mine, key), snapshot(mine)];
+  const r2 = [Reflect.get(real, key), Reflect.set(real, key, 5), Reflect.get(real, key), snapshot(real)];
+  const ok = JSON.stringify(r1) === JSON.stringify(r2);
+  allOk = allOk && ok;
+  console.log(name.padEnd(18), ok ? 'MATCH' : 'DIFF', 'set ->', r1[1], ' after get ->', r1[2]);
+}
+console.log('all match:', allOk);` },
+      dry: { head: ['case', 'descriptor found', 'set result', 'own prop created?'], rows: [['ownData', 'own data, writable', 'true', 'updated in place'], ['inheritedData', 'proto data, writable', 'true', H.c('g', 'yes (shadow)')], ['inheritedReadOnly', 'proto data, writable: false', H.c('r', 'false'), 'no'], ['inheritedSetter', 'proto accessor with set', 'true', 'no (setter wrote _x)'], ['getterOnly', 'proto accessor, no set', H.c('r', 'false'), 'no'], ['nonExtensible', 'none', H.c('r', 'false'), 'no']] },
+      complexity: `<p>O(d) per get/set where d is chain depth; O(1) extra space.</p>`,
+      followUps: ['Extend <code>setProp</code> for a Proxy in the chain (call its <code>set</code> trap with the receiver).', 'Explain the "override mistake" and why SES/hardened JS fixes it for frozen intrinsics.', 'How do <code>super.x = v</code> assignments use a receiver different from the starting object?']
+    }
+  });
+
+  practice.push({
+    title: 'Multiple Inheritance with a Proxy Prototype',
+    level: 'Hard', tags: ['Proxy', 'Reflect', 'receiver', 'MRO'], companies: ['Microsoft', 'Adobe', 'Stripe'],
+    statement: `<p>A prototype chain is a single linked list, so an object can inherit from only one parent. Write <code>multiProto(...parents)</code> that returns a <b>Proxy</b> you can use as a prototype so that lookups try each parent <b>in order</b> (first match wins, like a simplified Python MRO). Reads must keep <code>this</code> = the original object for inherited getters, <code>in</code> must work, and writes must still create own properties on the object (or run an inherited setter). Also write <code>conflicts(...parents)</code> listing names defined by more than one parent.</p>`,
+    constraints: `Parents may change later and the change must be visible (live delegation, not a copy). ≤ 10 parents.`,
+    example: `<p><code>class Duck { constructor(n) { this.name = n; } }</code>, <code>Object.setPrototypeOf(Duck.prototype, multiProto(Swimmer, Flyer))</code></p>
+<p><code>d.swim()</code> → ${H.c('g', "'Donald swims'")}, <code>d.fly()</code> → ${H.c('g', "'Donald flies'")}, <code>'fly' in d</code> → ${H.c('g', 'true')}. Both parents define <code>move</code>: ${H.c('y', 'Swimmer wins (listed first)')}.</p>`,
+    brute: {
+      why: `<p><code>Object.assign(Duck.prototype, Swimmer, Flyer)</code> copies once: later changes to a parent are invisible, getters are flattened into values, and clashes are resolved by "last one wins" silently.</p>`,
+      code: { lang: 'js', run: true, code: `const Swimmer = { swim() { return this.name + ' swims'; }, move() { return 'paddle'; } };
+const Flyer = { fly() { return this.name + ' flies'; }, move() { return 'flap'; } };
+class Duck { constructor(n) { this.name = n; } }
+Object.assign(Duck.prototype, Swimmer, Flyer);
+const d = new Duck('Donald');
+console.log(d.move());                  // flap: last copy silently won
+Flyer.dive = function () { return 'dive'; };
+console.log(typeof d.dive);             // undefined: the copy is a stale snapshot` }
+    },
+    mcq: { q: 'When <code>d.swim</code> is read and <code>d</code> lacks it, the engine calls the prototype proxy\'s <code>get(target, key, receiver)</code> trap. What is <code>receiver</code>?', options: ['The proxy itself', 'The target object', '<code>d</code> — the object the lookup started from', '<code>Duck.prototype</code>'], answer: 2, explain: 'The receiver is threaded through every [[Get]] up the chain unchanged. Passing it on via <code>Reflect.get(parent, key, receiver)</code> makes inherited getters run with <code>this = d</code>.' },
+    hints: [
+      `<p>Hint 1: a Proxy can sit anywhere in a prototype chain. The engine calls its <code>get</code>, <code>set</code> and <code>has</code> traps when the lookup reaches it.</p>`,
+      `<p>Hint 2: <code>get(target, key, receiver)</code>: for each parent, <code>if (key in parent) return Reflect.get(parent, key, receiver)</code>. <code>has</code>: <code>parents.some(p =&gt; key in p)</code>.</p>`,
+      `<p>Hint 3: <code>set(target, key, value, receiver)</code>: if a parent has the key, <code>Reflect.set(parent, key, value, receiver)</code> — OrdinarySet then runs a setter with the receiver or defines an own property on the receiver. Otherwise <code>Reflect.set(target, key, value, receiver)</code> does the same against an empty target.</p>`
+    ],
+    solution: {
+      approach: `<p>Put a Proxy over an empty null-prototype target into the chain. Its traps fan out to the parents in priority order, always forwarding the original <b>receiver</b> through <code>Reflect</code>, which preserves normal semantics: inherited getters/methods see the right <code>this</code>, writes land on the object or hit an inherited setter, and delegation is live because nothing is copied. A separate helper reports name clashes so the order is a conscious decision.</p>`,
+      code: { lang: 'js', run: true, code: `function multiProto(...parents) {
+  return new Proxy(Object.create(null), {
+    get(target, key, receiver) {
+      for (const p of parents) if (key in p) return Reflect.get(p, key, receiver);
+      return undefined;
+    },
+    has(target, key) {
+      return parents.some((p) => key in p);
+    },
+    set(target, key, value, receiver) {
+      for (const p of parents) if (key in p) return Reflect.set(p, key, value, receiver);
+      return Reflect.set(target, key, value, receiver);   // defines own prop on receiver
+    }
+  });
+}
+
+function conflicts(...parents) {
+  const seen = new Map();
+  for (const p of parents) {
+    for (const k of Reflect.ownKeys(p)) seen.set(k, (seen.get(k) || 0) + 1);
+  }
+  return [...seen].filter(([, n]) => n > 1).map(([k]) => String(k));
+}
+
+const Swimmer = { swim() { return this.name + ' swims'; }, move() { return 'paddle'; } };
+const Flyer = {
+  fly() { return this.name + ' flies'; },
+  move() { return 'flap'; },
+  get altitude() { return this._alt || 0; },
+  set altitude(v) { this._alt = Math.max(0, v); }
+};
+
+class Duck {
+  constructor(name) { this.name = name; }
+  quack() { return this.name + ' quacks'; }
+}
+Object.setPrototypeOf(Duck.prototype, multiProto(Swimmer, Flyer));
+
+const d = new Duck('Donald');
+console.log(d.quack(), '|', d.swim(), '|', d.fly());     // own class, parent 1, parent 2
+console.log('fly' in d, 'dive' in d, d.move());          // true false paddle (Swimmer first)
+d.altitude = -50;                                        // inherited setter runs with this = d
+console.log(d.altitude, Object.hasOwn(d, 'altitude'), d._alt);  // 0 false 0
+d.color = 'white';                                       // ordinary write: own property
+console.log(Object.keys(d));                             // ['name', '_alt', 'color']
+Flyer.dive = function () { return this.name + ' dives'; };
+console.log(d.dive());                                   // live delegation: Donald dives
+console.log('conflicts:', conflicts(Swimmer, Flyer));    // ['move']: Swimmer wins by order` },
+      dry: { head: ['access', 'own on d?', 'Duck.prototype?', 'proxy trap', 'result'], rows: [['d.quack', 'no', 'yes', '—', 'Donald quacks'], ['d.swim', 'no', 'no', 'get → Swimmer has it', 'Donald swims'], ['d.move', 'no', 'no', 'get → Swimmer first', H.c('y', 'paddle')], ['d.altitude = -50', 'no', 'no', 'set → Flyer setter, receiver d', '_alt = 0 on d'], ['d.color = …', 'no', 'no', 'set → target, receiver d', H.c('g', 'own color on d')]] },
+      complexity: `<p>Each missed lookup costs O(parents × depth) and Proxy traps defeat inline caching, so this is far slower than a normal chain — fine for tooling or config objects, not for hot paths.</p>`,
+      followUps: ['Implement C3 linearisation (Python\'s real MRO) for diamond hierarchies.', 'Make <code>d instanceof Flyer</code>-style checks work with a <code>Symbol.hasInstance</code> helper.', 'Why is composition (has-a) usually better than any multiple-inheritance trick?']
+    }
+  });
+
+  practice.push({
+    title: 'A Closed, Type-Safe Enum Class',
+    level: 'Hard', tags: ['static blocks', '#private', 'brand check', 'freeze'], companies: ['Amazon', 'Uber', 'Atlassian'],
+    statement: `<p>Implement <code>Color</code> as a <b>closed enum</b>: exactly the instances <code>Color.RED</code>, <code>Color.GREEN</code>, <code>Color.BLUE</code> exist; <code>new Color(...)</code> from outside throws; subclassing is rejected; instances are frozen and carry private <code>name</code>/<code>hex</code>; <code>Color.values()</code>, <code>Color.from('GREEN')</code>, <code>Color.isColor(x)</code> (unforgeable), <code>toString()</code> and <code>toJSON()</code> work; <code>Color.RED = ...</code> cannot replace a member.</p>`,
+    constraints: `No module-level variables outside the class. Identity comparison (<code>===</code>) must be the way to compare colours.`,
+    example: `<p><code>Color.from('GREEN') === Color.GREEN</code> → ${H.c('g', 'true')}; <code>new Color('PINK', '#f0f')</code> → ${H.c('r', 'TypeError')}; <code>Color.isColor(Object.create(Color.prototype))</code> → ${H.c('r', 'false')}; <code>JSON.stringify({ c: Color.RED })</code> → ${H.c('g', '{"c":"RED"}')}.</p>`,
+    brute: {
+      why: `<p>A frozen object of strings (<code>{ RED: 'RED' }</code>) is not type-safe: any string <code>'RED'</code> is equally valid, typos pass silently, and you cannot attach behaviour. A plain class with public static instances can be constructed again, mutated and faked with <code>Object.create</code>.</p>`,
+      code: { lang: 'js', run: true, code: `class ColorLoose {
+  static RED = new ColorLoose('RED');
+  constructor(name) { this.name = name; }
+}
+const fake = new ColorLoose('RED');
+console.log(fake === ColorLoose.RED);            // false: two "REDs"
+ColorLoose.RED.name = 'PURPLE';                  // mutable
+ColorLoose.RED = null;                           // replaceable
+console.log(ColorLoose.RED);                     // null` }
+    },
+    mcq: { q: 'Why can <code>static RED = new Color(...)</code> run while a later static block sets a private <code>#locked</code> flag that makes the constructor throw?', options: ['Static fields and static blocks run once, top to bottom, during class definition — RED is created before the block locks the door', 'Static fields are lazy', 'The constructor is not called for static fields', 'Private statics are ignored during definition'], answer: 0, explain: 'Static elements (fields and <code>static { }</code> blocks) are evaluated in source order when the class is defined. So member creation happens first, then the static block flips the lock and freezes the class.' },
+    hints: [
+      `<p>Hint 1: a private static flag (<code>static #locked = false</code>) checked in the constructor; flip it in a <code>static { }</code> block after the members are declared.</p>`,
+      `<p>Hint 2: <code>new.target !== Color</code> → throw, to forbid subclasses. <code>Object.freeze(this)</code> in the constructor and <code>Object.freeze(Color)</code> in the static block make members and statics read-only.</p>`,
+      `<p>Hint 3: keep a private static <code>Map</code> name → instance for <code>from()</code>/<code>values()</code>; brand-check with <code>#name in x</code>.</p>`
+    ],
+    solution: {
+      approach: `<p>Use static initialisation order as a one-time construction window: static fields create the members, a static block then locks construction and freezes the class object, so <code>Color.RED</code> becomes a non-writable, non-configurable property. Instance data is private and instances are frozen, so they are immutable singletons compared by identity. <code>#name in x</code> gives an unforgeable type check that prototype tricks cannot fake.</p>`,
+      code: { lang: 'js', run: true, code: `class Color {
+  static #locked = false;
+  static #byName = new Map();
+
+  static RED = new Color('RED', '#ff0000');
+  static GREEN = new Color('GREEN', '#00ff00');
+  static BLUE = new Color('BLUE', '#0000ff');
+
+  static {
+    Color.#locked = true;          // no more instances after this point
+    Object.freeze(Color);          // RED/GREEN/BLUE become read-only, no new statics
+  }
+
+  #name; #hex;
+  constructor(name, hex) {
+    if (new.target !== Color) throw new TypeError('Color cannot be subclassed');
+    if (Color.#locked) throw new TypeError('Color is a closed enum: use Color.RED, Color.GREEN or Color.BLUE');
+    this.#name = name;
+    this.#hex = hex;
+    Color.#byName.set(name, this);
+    Object.freeze(this);           // no public props can ever be added
+  }
+
+  static values() { return [...Color.#byName.values()]; }
+  static from(name) {
+    const c = Color.#byName.get(name);
+    if (!c) throw new RangeError('Unknown Color: ' + name);
+    return c;
+  }
+  static isColor(x) { return typeof x === 'object' && x !== null && #name in x; }
+
+  get name() { return this.#name; }
+  get hex() { return this.#hex; }
+  toString() { return 'Color.' + this.#name; }
+  toJSON() { return this.#name; }
+}
+
+console.log(Color.values().map(String));                 // ['Color.RED','Color.GREEN','Color.BLUE']
+console.log(Color.from('GREEN') === Color.GREEN, Color.BLUE.hex);
+console.log(JSON.stringify({ c: Color.RED }));           // {"c":"RED"}
+for (const attempt of [
+  () => new Color('PINK', '#f0f'),
+  () => { class Neon extends Color {} return new Neon('NEON', '#0ff'); },
+  () => { 'use strict'; Color.RED = null; },
+  () => Color.from('PURPLE'),
+  () => Object.create(Color.prototype).name
+]) {
+  try { attempt(); console.log('allowed?!'); } catch (e) { console.log(e.name + ': ' + e.message); }
+}
+console.log(Color.isColor(Color.RED), Color.isColor(Object.create(Color.prototype)), Color.isColor('RED'));
+const describe = (c) => {
+  switch (c) {                                           // identity switch
+    case Color.RED: return 'stop';
+    case Color.GREEN: return 'go';
+    default: return 'wait';
+  }
+};
+console.log(describe(Color.GREEN), describe(Color.BLUE));` },
+      dry: { head: ['class definition step', '#locked', 'effect'], rows: [['static #locked, #byName', 'false', 'private statics created'], ['static RED = new Color(…)', 'false', H.c('g', 'RED created, registered, frozen')], ['GREEN, BLUE', 'false', H.c('g', 'created')], ['static { … }', H.c('y', 'true'), 'class frozen'], ['later: new Color(\'PINK\')', 'true', H.c('r', 'TypeError')]] },
+      complexity: `<p><code>from</code> O(1) via the Map; <code>values</code> O(k); <code>isColor</code> O(1).</p>`,
+      followUps: ['Add <code>ordinal</code> and <code>static compare(a, b)</code> for sorting.', 'Compare with TypeScript <code>enum</code> / <code>as const</code> unions — what exists at runtime?', 'Why does the subclass check have to come before the lock check?']
+    }
+  });
+
+  practice.push({
+    title: 'Schema-Driven Model Base Class (Accessors on Prototypes)',
+    level: 'Hard', tags: ['static inheritance', 'defineProperty', '#private', 'metaprogramming'], companies: ['Salesforce', 'Shopify', 'Stripe'],
+    statement: `<p>Build an ORM-style <code>Model</code> base class. Subclasses declare <code>static fields = { name: 'string', age: 'number' }</code>; a subclass of a subclass adds its own fields and <b>inherits</b> the parent's. Instances validate types on every assignment, track which fields are dirty, and serialise to JSON. Requirements: field accessors are installed <b>once per class on that class's prototype</b> (not per instance), data lives in a private field, and <code>Model</code> itself is abstract.</p>`,
+    constraints: `Missing or unknown props in the constructor throw <code>TypeError</code>. Accessor installation must be lazy (first construction) and idempotent. Up to 10 levels of subclassing.`,
+    example: `<p><code>class Person extends Model { static fields = { name: 'string', age: 'number' } }</code>, <code>class Employee extends Person { static fields = { salary: 'number' } }</code></p>
+<p><code>Employee.schema()</code> → ${H.c('g', '{ name, age, salary }')}; <code>e.age = 'old'</code> → ${H.c('r', 'TypeError')}; after <code>e.salary = 99</code>, <code>e.dirty</code> → ${H.c('g', "['salary']")}; <code>Object.hasOwn(Person.prototype, 'name')</code> → ${H.c('g', 'true')} (shared accessor).</p>`,
+    brute: {
+      why: `<p>Defining accessors inside the constructor with <code>Object.defineProperty(this, ...)</code> creates <b>new getter/setter closures for every instance</b> (memory grows with N × fields), and keeping data in a public <code>_data</code> object lets anyone bypass validation.</p>`,
+      code: { lang: 'js', run: true, code: `class PersonBrute {
+  constructor(props) {
+    this._data = {};
+    for (const k of ['name', 'age']) {
+      Object.defineProperty(this, k, {                    // per-instance closures
+        get() { return this._data[k]; },
+        set(v) { this._data[k] = v; }, enumerable: true
+      });
+      this[k] = props[k];
+    }
+  }
+}
+const a = new PersonBrute({ name: 'A', age: 1 }), b = new PersonBrute({ name: 'B', age: 2 });
+const ga = Object.getOwnPropertyDescriptor(a, 'name').get, gb = Object.getOwnPropertyDescriptor(b, 'name').get;
+console.log(ga === gb);            // false: duplicated per instance
+a._data.age = 'not a number';      // validation bypassed
+console.log(a.age);` }
+    },
+    mcq: { q: 'An accessor for <code>name</code> is defined on <code>Person.prototype</code>. An <code>Employee</code> instance <code>e</code> reads <code>e.name</code>. Which <code>this</code> does the getter see?', options: ['<code>Person.prototype</code>', '<code>Employee.prototype</code>', '<code>e</code>', '<code>undefined</code>'], answer: 2, explain: 'The lookup climbs e → Employee.prototype → Person.prototype, finds the accessor, and calls the getter with the receiver, which is still <code>e</code>. That is why one shared accessor can serve every instance.' },
+    hints: [
+      `<p>Hint 1: the constructor chain is a prototype chain too: <code>Object.getPrototypeOf(Employee) === Person</code>. Walk it from <code>new.target</code> up to <code>Model</code>, and read each class's <b>own</b> <code>fields</code> (<code>Object.hasOwn(C, 'fields')</code>) — an inherited static would be counted twice.</p>`,
+      `<p>Hint 2: install accessors for class C's own fields on <code>C.prototype</code> once; remember which classes are prepared in a private static <code>WeakSet</code>.</p>`,
+      `<p>Hint 3: the getter/setter functions are written lexically inside <code>Model</code>'s body, so they may use <code>this.#data</code> even though they are installed on subclass prototypes — private names are lexically scoped, and every instance got <code>#data</code> from <code>Model</code>'s constructor.</p>`
+    ],
+    solution: {
+      approach: `<p>The schema is assembled by walking the <b>constructor chain</b> (statics are inherited through <code>[[Prototype]]</code> of the class functions). On first construction of each class, accessors for that class's own fields are defined on its prototype, so every instance shares them and lookups find them by climbing the instance chain. Values live in a private <code>#data</code> object installed by <code>Model</code>'s constructor; setters validate and record dirtiness; <code>new.target</code> makes <code>Model</code> abstract.</p>`,
+      code: { lang: 'js', run: true, code: `class Model {
+  static #prepared = new WeakSet();             // classes whose accessors exist
+  #data = Object.create(null);
+  #dirty = new Set();
+
+  static schema() {                             // merged fields along the constructor chain
+    const chain = [];
+    for (let C = this; C && C !== Model; C = Object.getPrototypeOf(C)) chain.unshift(C);
+    return Object.assign({}, ...chain.map((C) => (Object.hasOwn(C, 'fields') ? C.fields : {})));
+  }
+
+  static #prepare(Leaf) {
+    for (let C = Leaf; C && C !== Model; C = Object.getPrototypeOf(C)) {
+      if (Model.#prepared.has(C)) break;        // parents above are prepared too
+      const own = Object.hasOwn(C, 'fields') ? C.fields : {};
+      for (const [key, type] of Object.entries(own)) {
+        Object.defineProperty(C.prototype, key, {
+          get() { return this.#data[key]; },
+          set(v) {
+            if (typeof v !== type) throw new TypeError(this.constructor.name + '.' + key + ' must be a ' + type + ', got ' + typeof v);
+            this.#data[key] = v;
+            this.#dirty.add(key);
+          },
+          enumerable: false, configurable: true
+        });
+      }
+      Model.#prepared.add(C);
+    }
+  }
+
+  constructor(props = {}) {
+    if (new.target === Model) throw new TypeError('Model is abstract');
+    Model.#prepare(new.target);
+    const schema = new.target.schema();
+    for (const k of Object.keys(props)) {
+      if (!(k in schema)) throw new TypeError(new.target.name + ': unknown field ' + k);
+    }
+    for (const k of Object.keys(schema)) {
+      if (!(k in props)) throw new TypeError(new.target.name + ': missing field ' + k);
+      this[k] = props[k];                       // goes through the shared setter (validates)
+    }
+    this.#dirty.clear();
+  }
+  get dirty() { return [...this.#dirty]; }
+  toJSON() { return { type: this.constructor.name, ...this.#data }; }
+}
+
+class Person extends Model { static fields = { name: 'string', age: 'number' }; }
+class Employee extends Person {
+  static fields = { salary: 'number' };
+  raise(pct) { this.salary = Math.round(this.salary * (1 + pct / 100)); return this; }
+}
+
+const e = new Employee({ name: 'Asha', age: 31, salary: 100 });
+console.log(Employee.schema());                               // { name, age, salary }
+console.log(e.name, e.age, e.salary, e.dirty);                // Asha 31 100 []
+e.raise(10);
+console.log(e.salary, e.dirty);                               // 110 ['salary']
+console.log(JSON.stringify(e));                               // {"type":"Employee","name":"Asha","age":31,"salary":110}
+console.log(Object.hasOwn(Person.prototype, 'name'), Object.hasOwn(Employee.prototype, 'salary'), Object.keys(e));
+const p2 = new Person({ name: 'Ben', age: 40 });
+const g1 = Object.getOwnPropertyDescriptor(Person.prototype, 'name').get;
+console.log('shared accessor used by both:', g1.call(e), g1.call(p2));
+for (const bad of [() => { e.age = 'old'; }, () => new Model({}), () => new Person({ name: 'X' }), () => new Person({ name: 'X', age: 1, role: 'dev' })]) {
+  try { bad(); } catch (err) { console.log(err.name + ': ' + err.message); }
+}` },
+      dry: { head: ['step', 'what happens'], rows: [['new Employee({…})', 'new.target = Employee; Model constructor runs first (installs #data, #dirty)'], ['#prepare(Employee)', 'Employee not prepared → salary accessor on Employee.prototype; Person not prepared → name, age on Person.prototype'], ['schema()', 'chain [Person, Employee] → { name, age, salary }'], ['this.name = …', 'climbs e → Employee.prototype → Person.prototype: setter with this = e'], ['e.raise(10)', H.c('g', 'salary setter validates, marks dirty')], ['new Person(…) later', H.c('m', 'Person already prepared → skip')]] },
+      complexity: `<p>Preparation O(fields) once per class; each get/set O(chain depth) (inline-cached) + O(1) work; memory O(fields) per class instead of per instance.</p>`,
+      followUps: ['What breaks if a subclass declares a public class field with the same name as a schema field (own data property shadows the accessor)?', 'Replace <code>typeof</code> strings with validator functions and support optional fields.', 'How do decorators (TC39 Stage 3, TypeScript 5) let you write <code>@field(\'string\') name;</code> instead of a static schema?']
+    }
+  });
+
+  /* =========================== QUIZ =========================== */
+  quiz.push(
+    { q: `<code>const a = { x: 1 }; const b = Object.create(a); b.x = 2;</code> What is <code>a.x</code>?`, options: ['1', '2', 'undefined', 'TypeError'], answer: 0, explain: 'Writing <code>b.x</code> creates an OWN property on <code>b</code> that shadows <code>a.x</code>. Writes never travel up the chain (unless an inherited setter or a read-only property intercepts them), so <code>a.x</code> stays 1.' },
+    { q: `Which statement about <code>prototype</code> and <code>__proto__</code> is correct?`, options: ['Every object has a <code>prototype</code> property', '<code>fn.prototype</code> is the object that instances created by <code>new fn()</code> will be linked to; <code>obj.__proto__</code> is (an accessor for) the link itself', 'They are two names for the same property', '<code>__proto__</code> exists only on functions'], answer: 1, explain: 'Only (most) functions have <code>.prototype</code>, used by <code>new</code>. Every object has an internal <code>[[Prototype]]</code> slot, exposed by the legacy <code>Object.prototype.__proto__</code> accessor and properly by <code>Object.getPrototypeOf</code>.' },
+    { q: `What does <code>Object.getPrototypeOf(Object.create(null))</code> return, and what does <code>String(Object.create(null))</code> do?`, options: ['<code>Object.prototype</code>; returns "[object Object]"', '<code>null</code>; throws TypeError (no toString/valueOf to convert with)', '<code>undefined</code>; returns ""', '<code>null</code>; returns "null"'], answer: 1, explain: 'A null-prototype object inherits nothing — no <code>toString</code>, no <code>valueOf</code> — so converting it to a primitive throws "Cannot convert object to primitive value". That is why such objects are safe dictionaries.' },
+    { q: `<code>function F() { this.a = 1; return { b: 2 }; }</code> What is <code>new F()</code>?`, options: ['<code>{ a: 1 }</code>', '<code>{ b: 2 }</code>', '<code>{ a: 1, b: 2 }</code>', 'TypeError'], answer: 1, explain: 'Step 4 of <code>new</code>: if the constructor returns an object, that object is the result and the freshly built <code>this</code> is discarded. Returning a primitive would be ignored.' },
+    { q: `<code>function Dog() {} Dog.prototype = { bark() {} }; const d = new Dog();</code> What is <code>d.constructor === Dog</code>?`, options: ['true', 'false — it is <code>Object</code>', 'TypeError', 'undefined'], answer: 1, explain: 'Replacing <code>Dog.prototype</code> with a literal throws away the default <code>constructor</code> property, so the lookup continues to <code>Object.prototype.constructor</code>, which is <code>Object</code>. Fix: add <code>constructor: Dog</code> (ideally non-enumerable).' },
+    { q: `What is <code>typeof class A {}</code>?`, options: ['"class"', '"object"', '"function"', '"constructor"'], answer: 2, explain: 'A class is a special kind of function (with a <code>[[IsClassConstructor]]</code> flag that makes calling it without <code>new</code> throw). Its methods live on <code>A.prototype</code>, exactly like a constructor function.' },
+    { q: `Which is NOT true of ES6 classes compared with ES5 constructor functions?`, options: ['Class bodies are always strict mode', 'Class methods are non-enumerable', 'Class declarations are hoisted and usable before the line that declares them', 'Calling a class without <code>new</code> throws'], answer: 2, explain: 'Class declarations are hoisted like <code>let</code>: the binding exists but is in the Temporal Dead Zone, so using the class before its declaration throws a ReferenceError. Function declarations, by contrast, are fully hoisted.' },
+    { q: `In a derived class constructor, what happens if you access <code>this</code> before calling <code>super()</code>?`, options: ['<code>this</code> is <code>undefined</code>', 'ReferenceError — <code>this</code> is uninitialised until the parent constructor creates the object', 'It works but fields are missing', 'TypeError only in strict mode'], answer: 1, explain: 'For derived classes, the object is allocated by the BASE constructor. Until <code>super()</code> returns, the <code>this</code> binding is uninitialised, so any access throws a ReferenceError.' },
+    { q: `<code>class A { static hi() { return 'hi'; } } class B extends A {}</code> Why does <code>B.hi()</code> work?`, options: ['Statics are copied to B at definition time', '<code>extends</code> sets <code>Object.getPrototypeOf(B) === A</code>, so the lookup on the function B climbs to A', 'Because B.prototype inherits from A.prototype', 'It does not work'], answer: 1, explain: '<code>extends</code> builds two chains: <code>B.prototype → A.prototype</code> (instance methods) and <code>B → A</code> (statics). Nothing is copied — <code>B.hi</code> is found by delegation.' },
+    { q: `What does <code>super.greet()</code> inside a class method use to find <code>greet</code>?`, options: ['<code>this.__proto__.__proto__</code>', 'The method\'s <code>[[HomeObject]]</code>\'s prototype — fixed when the method is defined, independent of <code>this</code>', 'The parent constructor function', 'Whatever <code>Object.getPrototypeOf(this)</code> is at call time'], answer: 1, explain: 'Methods remember the object they were defined on (<code>[[HomeObject]]</code>). <code>super.greet</code> looks up <code>Object.getPrototypeOf(HomeObject).greet</code> and calls it with the current <code>this</code>. Using <code>this.__proto__.__proto__</code> instead causes infinite recursion in 3-level hierarchies.' },
+    { q: `<code>class C { #x = 1; static has(o) { return #x in o; } }</code> What is <code>C.has(Object.create(C.prototype))</code>?`, options: ['true', 'false', 'TypeError', 'undefined'], answer: 1, explain: 'Private fields are installed on objects by the constructor, not inherited through prototypes. An object merely linked to <code>C.prototype</code> never ran the constructor, so it has no <code>#x</code> slot: the brand check is false.' },
+    { q: `How does <code>obj instanceof C</code> decide its answer (with no custom <code>Symbol.hasInstance</code>)?`, options: ['Checks <code>obj.constructor === C</code>', 'Walks <code>obj</code>\'s prototype chain looking for <code>C.prototype</code> by identity', 'Compares the shapes of the objects', 'Checks whether C\'s constructor ran on obj'], answer: 1, explain: 'OrdinaryHasInstance walks <code>Object.getPrototypeOf(obj)</code> repeatedly and returns true if it ever equals <code>C.prototype</code>. So reassigning <code>C.prototype</code> later, or <code>Object.setPrototypeOf</code>, changes the answer.' },
+    { q: `An array created inside an iframe is passed to the parent page. What is <code>arr instanceof Array</code> in the parent, and what should you use?`, options: ['true; nothing needed', 'false (different realm, different Array.prototype); use <code>Array.isArray(arr)</code>', 'TypeError; use <code>typeof</code>', 'false; use <code>arr.constructor === Array</code>'], answer: 1, explain: 'Each realm (iframe, worker, vm context) has its own built-ins. The array\'s chain contains the iframe\'s <code>Array.prototype</code>, not the parent\'s. <code>Array.isArray</code> checks the internal array-exotic-ness and is realm-safe; the <code>constructor</code> check fails for the same reason.' },
+    { q: `<code>class P { constructor() { this.init(); } init() {} } class K extends P { v = 5; init() { console.log(this.v); } }</code> What does <code>new K()</code> print?`, options: ['5', 'undefined', 'ReferenceError', 'Nothing'], answer: 1, explain: 'P\'s constructor runs first (inside the implicit <code>super()</code>) and calls the overridden <code>K.prototype.init</code>, but K\'s field <code>v</code> is only initialised after <code>super()</code> returns. So <code>this.v</code> is still undefined.' }
+  );
+
+  /* =========================== INTERVIEW =========================== */
+  interview.push(
+    {
+      q: 'What is the prototype chain, and what happens when you read <code>obj.foo</code>?', level: 'B',
+      a: `<p>Every object has a hidden link, <code>[[Prototype]]</code>, to another object (or <code>null</code>). Reading <code>obj.foo</code> first checks <code>obj</code>'s own properties; if <code>foo</code> is not there, the engine follows the link and checks that object, and so on, until it finds the property or hits <code>null</code> (then the result is <code>undefined</code>). That linked list is the prototype chain. It is how <code>[1,2].map</code> works: <code>map</code> is not on your array, it lives on <code>Array.prototype</code>, one hop up. If the property found is a getter, it runs with <code>this</code> = the original object. Writes are different: <code>obj.foo = 1</code> normally creates an <b>own</b> property on <code>obj</code> (shadowing), unless an inherited setter or a read-only inherited property intercepts it.</p>`,
+      followUps: ['What ends every chain?', 'Why is <code>for...in</code> affected by the chain but <code>Object.keys</code> is not?', 'How do engines make chain lookups fast (inline caches, hidden classes)?']
+    },
+    {
+      q: 'Explain the difference between <code>prototype</code>, <code>__proto__</code> and <code>constructor</code>.', level: 'B',
+      a: `<p><code>F.prototype</code> is an ordinary property that exists on (normal) functions and classes; it is the object that <b>future instances</b> created by <code>new F()</code> get linked to. <code>obj.__proto__</code> is a legacy accessor on <code>Object.prototype</code> that reads/writes an object's <b>actual</b> <code>[[Prototype]]</code> link; the modern API is <code>Object.getPrototypeOf</code>/<code>setPrototypeOf</code>. <code>constructor</code> is a property that lives on <code>F.prototype</code> pointing back to <code>F</code>, so instances inherit it. The triangle: <code>new F().__proto__ === F.prototype</code> and <code>F.prototype.constructor === F</code>. Functions themselves are objects whose own <code>__proto__</code> is <code>Function.prototype</code>.</p>`,
+      followUps: ['Why don\'t arrow functions have a <code>prototype</code>?', 'What breaks when you overwrite <code>F.prototype = {...}</code>?', 'What is <code>Function.__proto__ === Function.prototype</code> and why?']
+    },
+    {
+      q: 'What exactly does the <code>new</code> keyword do? Implement it.', level: 'I',
+      a: `<p>Four steps: (1) create a fresh empty object; (2) link its <code>[[Prototype]]</code> to <code>Ctor.prototype</code> (falling back to <code>Object.prototype</code> if that is not an object); (3) call <code>Ctor</code> with <code>this</code> bound to the new object and the given arguments; (4) if the call returned an object (or function), use that; otherwise return the new object. A polyfill: <code>function myNew(C, ...args) { const proto = (typeof C.prototype === 'object' &amp;&amp; C.prototype) || Object.prototype; const obj = Object.create(proto); const r = C.apply(obj, args); return (r !== null &amp;&amp; (typeof r === 'object' || typeof r === 'function')) ? r : obj; }</code>. It cannot fully emulate classes (they throw when called without <code>new</code>, and derived classes let the base allocate the object) — <code>Reflect.construct</code> is the exact primitive.</p>`,
+      followUps: ['Why does returning a primitive from a constructor get ignored?', 'What is <code>new.target</code> and how would you emulate it?', 'How does <code>Reflect.construct(Base, args, Derived)</code> differ?']
+    },
+    {
+      q: 'Are ES6 classes "just syntactic sugar"?', level: 'I',
+      a: `<p>Mostly, but not entirely. The core model is identical: a class is a function, methods live on <code>Class.prototype</code>, instances are linked to it, <code>extends</code> wires two prototype chains. But classes add things ES5 cannot express exactly: they throw when called without <code>new</code>; bodies are strict; methods are non-enumerable and are not constructors; declarations are in the TDZ until evaluated; derived constructors let the <b>base</b> allocate <code>this</code> (which is what makes subclassing built-ins like <code>Array</code>, <code>Error</code> and <code>Map</code> work properly); <code>super</code> uses the method's <code>[[HomeObject]]</code>; and <code>#private</code> fields/methods, static blocks and the <code>#x in obj</code> brand check have no ES5 equivalent (WeakMaps approximate privacy). So: sugar for the shape, real semantics for construction and privacy.</p>`,
+      followUps: ['Why couldn\'t ES5 properly subclass <code>Array</code>?', 'How did Babel emulate private fields?', 'What does TypeScript\'s <code>private</code> keyword compile to?']
+    },
+    {
+      q: 'How does <code>extends</code> work under the hood, and how does <code>super</code> find methods?', level: 'I',
+      a: `<p><code>class B extends A</code> sets up <b>two</b> links: <code>Object.getPrototypeOf(B.prototype) === A.prototype</code> so instances inherit A's methods, and <code>Object.getPrototypeOf(B) === A</code> so B inherits A's statics. In the constructor, <code>super(...)</code> calls A as a constructor with <code>new.target = B</code>; A allocates the object with <code>B.prototype</code> as its prototype, then B's fields are initialised and the rest of B's constructor runs. <code>super.method()</code> in a method looks up <code>method</code> on <code>Object.getPrototypeOf(HomeObject)</code>, where HomeObject is the object the method was defined on (e.g. <code>B.prototype</code>), and calls it with the current <code>this</code>. Because HomeObject is fixed, <code>super</code> is static: copying a method to another object does not change what <code>super</code> refers to.</p>`,
+      followUps: ['Why must you call <code>super()</code> before using <code>this</code>?', 'Can you <code>extends null</code>? What happens?', 'What does <code>extends</code> accept on the right side (any expression → mixins)?']
+    },
+    {
+      q: 'Write ES5-style inheritance between two constructor functions. What are the classic mistakes?', level: 'I',
+      a: `<p>Correct version: <code>function Dog(name) { Animal.call(this, name); }</code> (run parent's per-instance setup), <code>Dog.prototype = Object.create(Animal.prototype)</code> (link the chains without running Animal), <code>Object.defineProperty(Dog.prototype, 'constructor', { value: Dog, writable: true, configurable: true })</code> (restore the lost constructor), and optionally <code>Object.setPrototypeOf(Dog, Animal)</code> for static inheritance. Mistakes: <code>Dog.prototype = Animal.prototype</code> (shared object — adding a Dog method adds it to every Animal); <code>Dog.prototype = new Animal()</code> (runs the constructor with no args and puts instance data on the shared prototype); forgetting <code>Animal.call(this)</code> (missing own fields); forgetting <code>constructor</code>; and adding methods <b>before</b> replacing the prototype, which throws them away.</p>`,
+      followUps: ['How does Babel\'s <code>_inherits</code> helper do it?', 'How would you call the parent\'s version of an overridden method in ES5?', 'Why is <code>Object.create</code> better than <code>new Animal()</code> here?']
+    },
+    {
+      q: 'What does <code>Object.create</code> do, and when would you use <code>Object.create(null)</code>?', level: 'B',
+      a: `<p><code>Object.create(proto, descriptors?)</code> makes a new empty object whose <code>[[Prototype]]</code> is <code>proto</code>, optionally defining properties with full descriptors. It is pure delegation with no constructor involved — the most direct way to say "this object should fall back to that one". <code>Object.create(null)</code> makes an object with <b>no</b> prototype: it inherits nothing, so keys like <code>toString</code>, <code>constructor</code> or <code>__proto__</code> are just ordinary keys. That makes it a safe dictionary for untrusted keys (no prototype pollution through <code>__proto__</code> writes, no false positives from <code>'toString' in dict</code>). Today a <code>Map</code> is often better still, but null-prototype objects remain common for JSON-like lookups and in libraries.</p>`,
+      followUps: ['Write a polyfill for <code>Object.create</code> using a temporary constructor.', 'Why does <code>dict.hasOwnProperty(k)</code> throw on a null-prototype object?', 'Map vs null-prototype object: trade-offs?']
+    },
+    {
+      q: 'How do <code>#private</code> fields differ from the underscore convention, closures and TypeScript <code>private</code>?', level: 'I',
+      a: `<p><code>_name</code> is only a naming hint — fully public. TypeScript <code>private</code> is checked at compile time and erased, so at runtime the property is public and visible to <code>Object.keys</code>/<code>JSON.stringify</code>. Closure privacy (variables in the constructor) is real but costs per-instance function copies and cannot be shared across instances of the same class. <code>#name</code> is enforced by the engine: the name is lexically scoped to the class body, the value lives in a hidden per-object slot (not a property), it is invisible to reflection, Proxies, <code>Object.keys</code> and JSON, and accessing it on an object without the slot throws a <code>TypeError</code> — a built-in brand check. Other instances of the same class <b>can</b> read it (class-private, not object-private), and subclasses cannot (they are not in the lexical scope).</p>`,
+      followUps: ['Why do Proxies around objects with private fields often break?', 'What does <code>#x in obj</code> add over try/catch?', 'How can a subclass get "protected" access?']
+    },
+    {
+      q: 'What are static members and static blocks? How are they inherited?', level: 'I',
+      a: `<p><code>static</code> members belong to the class (the constructor function object), not to instances: factories (<code>Temperature.fromFahrenheit</code>), caches, constants, counters, <code>Array.from</code>-style helpers. Static fields are initialised once when the class is defined, in source order; a <code>static { ... }</code> block runs arbitrary initialisation code at that point with access to private statics — e.g. computing a lookup table or exposing a private accessor to a friend function. Statics are inherited because <code>extends</code> links the constructors: <code>Object.getPrototypeOf(Sub) === Base</code>, so <code>Sub.create()</code> finds <code>Base.create</code> and runs it with <code>this = Sub</code> — which is why factories should use <code>new this()</code>. Private statics are the exception: <code>this.#count</code> inside a static method fails when called on a subclass; use <code>Base.#count</code>.</p>`,
+      followUps: ['When is the class binding available inside a static field initialiser?', 'Static method vs a plain module-level function: which and why?', 'How would you implement a singleton with a static field?']
+    },
+    {
+      q: 'How does <code>instanceof</code> work, when does it give surprising results, and what are the alternatives?', level: 'I',
+      a: `<p><code>x instanceof C</code> first checks <code>C[Symbol.hasInstance]</code>; by default (<code>Function.prototype[Symbol.hasInstance]</code>) it walks <code>x</code>'s prototype chain and returns true if any link is <code>C.prototype</code> (by identity). Primitives return false. Surprises: it is <b>realm-specific</b> (arrays from iframes, objects from <code>vm</code> contexts or duplicated npm packages fail); changing <code>C.prototype</code> after creating instances makes old instances fail; <code>Object.create(C.prototype)</code> passes without ever running the constructor; and a custom <code>Symbol.hasInstance</code> can make it return anything. Alternatives: <code>Array.isArray</code> and other built-in checks, private-field brand checks (<code>#x in obj</code>) for your own classes, <code>Object.prototype.toString.call(x)</code> tags, or duck typing / schema validation at boundaries.</p>`,
+      followUps: ['Implement <code>instanceof</code> without using it.', 'Why might two copies of the same library in node_modules break <code>instanceof</code>?', 'What does <code>Object.prototype.isPrototypeOf</code> do differently?']
+    },
+    {
+      q: 'Why is it dangerous to call an overridable method from a constructor in JavaScript?', level: 'A',
+      a: `<p>Because of construction order in derived classes. <code>new Child()</code> calls <code>super()</code> first; the base constructor runs while <code>this</code> already has <code>Child.prototype</code> as its prototype, so <code>this.method()</code> dispatches to <b>Child</b>'s override — but Child's class fields are only initialised <b>after</b> <code>super()</code> returns, and Child's constructor body has not run yet. The override therefore sees <code>undefined</code> fields (or reads private fields that do not exist yet and throws a TypeError). Fixes: keep constructors free of virtual calls; use a two-phase pattern (<code>static create()</code> that constructs then calls <code>init()</code>/<code>mount()</code>); pass needed data up via <code>super(props)</code>; or use lifecycle hooks (like <code>connectedCallback</code> in Web Components).</p>`,
+      followUps: ['How do Java and C# behave in the same situation?', 'How does TypeScript\'s <code>useDefineForClassFields</code> change field semantics?', 'Which frameworks use two-phase initialisation and why?']
+    },
+    {
+      q: 'What is prototype pollution and how do you defend against it?', level: 'A',
+      a: `<p>Prototype pollution happens when attacker-controlled keys reach code like <code>target[key] = value</code> or a recursive merge. With <code>key = '__proto__'</code> (or <code>constructor.prototype</code>), the write goes through the inherited <code>__proto__</code> accessor and modifies <code>Object.prototype</code>, so <b>every</b> object in the process suddenly inherits properties like <code>isAdmin: true</code>. This has hit lodash <code>merge</code>, jQuery <code>extend</code>, minimist and many config/query parsers, leading to auth bypasses, DoS and even RCE through template engines. Defences: reject <code>__proto__</code>, <code>constructor</code> and <code>prototype</code> keys in merges; use <code>Map</code> or <code>Object.create(null)</code> for untrusted dictionaries; check <code>Object.hasOwn</code> before reading options; validate input with schemas; freeze <code>Object.prototype</code> in hardened environments; run Node with <code>--disable-proto=delete</code> or <code>throw</code>.</p>`,
+      followUps: ['Why is <code>JSON.parse(\'{"__proto__":{}}\')</code> alone harmless?', 'Write a safe <code>deepMerge</code>.', 'How can pollution turn into RCE (gadgets)?']
+    },
+    {
+      q: 'Inheritance vs composition in JavaScript: when would you use mixins, and what are their pitfalls?', level: 'A',
+      a: `<p>Class inheritance is fine for genuine is-a relationships with a shallow hierarchy (e.g. <code>ValidationError extends Error</code>, framework base classes). For sharing behaviour across unrelated classes, prefer composition: hold a helper object (<code>this.emitter = new EventEmitter()</code>) or use functions. Mixins via class factories (<code>const Eventful = B =&gt; class extends B {...}</code>) give multiple-behaviour reuse while keeping a real prototype chain, live delegation, <code>super</code> cooperation and private fields. Pitfalls: name collisions resolved by composition order, deep chains that are hard to debug, <code>instanceof</code> not working for the mixin itself (each application creates a new class), and constructor-argument plumbing. Object-copy mixins (<code>Object.assign(proto, mixin)</code>) are worse: they snapshot, flatten getters and silently overwrite.</p>`,
+      followUps: ['How do React hooks replace mixins (the "mixins considered harmful" story)?', 'How do you type mixins in TypeScript?', 'When does a deep hierarchy become a smell?']
+    },
+    {
+      q: 'How do engines like V8 optimise prototype-based property access, and what code patterns hurt performance?', level: 'E',
+      a: `<p>V8 gives objects <b>hidden classes</b> (maps/shapes) describing their layout, and each property access site has an <b>inline cache</b> that remembers "for objects of shape S, the property is at offset k (or on prototype P)". For inherited lookups, prototypes are put in a special dictionary-to-fast mode and protected by <i>prototype validity cells</i>: as long as no prototype on the chain changes, the cached result stays valid and the lookup costs about as much as an own property read. Patterns that hurt: <code>Object.setPrototypeOf</code>/<code>__proto__</code> on live objects (invalidates caches and deoptimises), adding methods to prototypes after hot code ran, creating objects with properties added in different orders or conditionally (many shapes → polymorphic/megamorphic sites), <code>delete</code> on hot objects (falls back to dictionary mode), and huge numbers of classes flowing through one call site. Advice: define prototypes once, initialise all fields in the constructor/class fields in the same order, prefer <code>Object.create</code> at creation time over mutating prototypes later.</p>`,
+      followUps: ['What is the difference between monomorphic, polymorphic and megamorphic inline caches?', 'Why do class fields help shape stability?', 'How would you measure this (<code>--trace-ic</code>, benchmarks)?']
+    }
+  );
+
   registerModule({
     id: 'js06',
     title: 'Prototypes, Classes & Inheritance',

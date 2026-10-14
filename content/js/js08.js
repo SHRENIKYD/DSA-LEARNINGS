@@ -100,7 +100,11 @@
         case 'log': return { k: 'log', msg: word('a message after log') };
         case 'throw': return { k: 'throw', msg: word('an error name after throw') };
         case 'sync': { var ms = num(-1); if (ms < 0) err('sync needs a number of milliseconds, e.g. sync 30'); return { k: 'sync', ms: ms }; }
-        case 'timeout': { var d = num(0); return { k: 'timeout', ms: d, body: block(false) }; }
+        case 'timeout': {
+          /* "timeout 7" alone means: 0 ms timer that logs 7 */
+          if (t[i] !== undefined && /^\d+$/.test(t[i]) && (t[i + 1] === undefined || t[i + 1] === ';' || t[i + 1] === '}')) return { k: 'timeout', ms: 0, body: block(false) };
+          var d = num(0); return { k: 'timeout', ms: d, body: block(false) };
+        }
         case 'micro': return { k: 'micro', body: block(false) };
         case 'then': { i--; var c1 = chain(false); return { k: 'promise', start: 'resolve', chain: c1 }; }
         case 'resolve': { var c2 = chain(false); if (!c2.length) err('resolve must be followed by then/catch'); return { k: 'promise', start: 'resolve', chain: c2 }; }
@@ -1708,7 +1712,7 @@ console.log(readingOrder.join(' '));   // 1 2 3 4 5 6 7 8  <- incorrect`
         },
         mcq: { q: 'Why does 7 print before 4?', options: ['7 has a smaller number', '7 is a microtask created by task 6; microtasks drain right after that task, before the next task (4)', 'Timers created in promises are ignored', 'Promise.then is synchronous'], answer: 1, explain: 'After task 6 ends the event loop drains the microtask queue (7) before picking the next task (4).' },
         hints: [
-          `<p>Hint 1: Sync lines first: 1 and 8.</p>`,
+          `<p>Hint 1: Sync lines first: 1 and 8 print before any callback can run.</p>`,
           `<p>Hint 2: Microtasks after the script: the then-callback (3) and queueMicrotask (5), in that order. 3 creates timer 4 — <i>after</i> timers 2 and 6 already exist.</p>`,
           `<p>Hint 3: Then tasks in order 2, 6, 4 — and after each task drain microtasks (7 after 6). Recipe: sync → micro → [task → micro]*.</p>`
         ],
@@ -1813,7 +1817,7 @@ promise.then((drink) => console.log('5: then received ' + drink));
     viz: [
       {
         title: 'await pauses, the caller continues, the rest resumes as a microtask (editable)',
-        input: 'log 1\nasync { log 2; await; log 3; await sleep 10; log 4 }\nthen 5\nlog 6\ntimeout 7',
+        input: 'log 1\nasync { log 2; await; log 3; await sleep 10; log 4 }\nthen 5\nlog 6\ntimeout 0 7',
         inputLabel: 'Mini-program (async { ... } with await or await sleep MS inside; log · then · timeout · micro)',
         gen: function (input) { return elSim(input, { endNote: 'Plain await = 1 microtask. await sleep = a timer task first, then a microtask to resume.' }); }
       },
@@ -2078,6 +2082,733 @@ console.log('script end');
           ] },
           complexity: `<p>O(statements). Tick rule used: await on a fulfilled native promise = 1 microtask.</p>`,
           followUps: ['Make two() return Promise.resolve() explicitly. Does the order change? (Yes: +2 ticks → then first.)', 'What if one() is awaited by another async function?']
+        }
+      }
+    ]
+  });
+
+  /* ======================================================================
+     TOPIC 7 — Error handling in async code
+     ====================================================================== */
+  var ERR_CODE = "function risky() {\n  setTimeout(() => {\n    throw new Error('late');\n  }, 0);\n}\ntry {\n  risky();\n  console.log('A: try finished');\n} catch (e) {\n  console.log('never printed: ' + e.message);\n}\nasync function safe() {\n  try {\n    await Promise.reject(new Error('nope'));\n  } catch (e) {\n    console.log('C: caught ' + e.message);\n  }\n}\nsafe();\nconsole.log('B: script end');";
+
+  topics.push({
+    title: 'Async Error Handling: try/catch, .catch, await & Unhandled Rejections',
+    analogy: `<p>Our waiter takes your order and walks away. Ten minutes later the kitchen discovers the fish is burnt. Who hears the bad news?</p><ul><li>If you only told the waiter <i>"shout if anything goes wrong <b>while you are standing here</b>"</i> (that is <code>try/catch</code> around <code>setTimeout</code>), nobody hears it: the waiter left long ago. The kitchen yells into an empty room — an <b>uncaught error</b>.</li><li>A <b>promise</b> is a written ticket. Bad news is written <i>on the ticket</i> ("rejected: fish burnt") and the ticket travels down the line until someone signs for it (<code>.catch</code>). Everyone in between who only handles good news (<code>.then</code>) just passes it along.</li><li><code>await</code> is the waiter coming <b>back to your table</b> with the ticket. If it says "rejected", he tells you right there — so your <code>try/catch</code> at the table works again.</li><li>If a bad-news ticket reaches the end of the shift unsigned, the manager notices: an <b>unhandled rejection</b>. A browser writes it in the log book; Node.js closes the restaurant (crashes the process).</li></ul>`,
+    explain: `<p>Async errors confuse people because the code that <i>schedules</i> work and the code that <i>runs</i> it live on different call stacks. Six rules cover everything:</p>
+<ol>
+<li><b>try/catch only catches what is thrown while its frame is on the stack.</b> A callback that runs later (timer, event, I/O) starts on a fresh, almost empty stack. A <code>try</code> around <code>setTimeout(…)</code> finished long before the callback runs, so it catches nothing.</li>
+<li><b>Inside promise land, a throw becomes a rejection.</b> If a <code>new Promise</code> executor or a <code>.then</code> callback throws, the error is captured and the promise is <span class="c-r">rejected</span> — it does not crash anything right away.</li>
+<li><b>A rejection skips every <code>.then(onFulfilled)</code> until it meets a <code>.catch</code></b> (or a <code>.then(_, onRejected)</code>). Each skipped link still costs one microtask turn.</li>
+<li><b><code>.catch</code> recovers.</b> Whatever it returns becomes a <b>fulfilled</b> value, so the chain continues with <code>.then</code>s after it. Re-throw inside <code>.catch</code> if you only want to log and pass the error on.</li>
+<li><b><code>await</code> turns a rejection back into a <code>throw</code></b> at the await line — in the resumed function, as a microtask. So a plain <code>try/catch</code> around <code>await</code> works, because the try block was saved together with the paused function.</li>
+<li><b>Nobody handled it?</b> After the microtask queue is empty, the host reports rejected promises without a handler. Browsers: console says <code>Uncaught (in promise)</code> and an <code>unhandledrejection</code> event fires. <b>Node.js 15+</b>: the process <b>crashes</b> (default <code>--unhandled-rejections=throw</code>) unless you listen to <code>process.on('unhandledRejection')</code>.</li>
+</ol>
+${H.table(['Where the error is thrown', 'What happens', 'How to catch it'], [
+  ['Synchronous code', 'normal exception, bubbles up the stack', '<code>try/catch</code> around the call'],
+  ['Timer / event / I/O callback', '<span class="c-r">uncaught</span> — browser logs it, Node crashes', 'try/catch <b>inside</b> the callback, or <code>window.onerror</code> / <code>process.on(\'uncaughtException\')</code> as a last resort'],
+  ['<code>queueMicrotask</code> callback', 'reported like an uncaught exception (not a rejection)', 'try/catch inside the callback'],
+  ['<code>new Promise</code> executor or <code>.then</code> callback', 'the promise is rejected', '<code>.catch</code> later in the chain, or <code>await</code> + try/catch'],
+  ['<code>async</code> function body', 'its returned promise is rejected', '<code>await</code> it in try/catch, or <code>.catch</code> on the call']
+])}
+<p>The rejection's journey down a chain, one microtask per link:</p>
+${H.arr(['reject(E)', '.then(A) skipped', '.then(B) skipped', '.catch(fix)', '.then(C) runs'], { label: 'Promise.reject(E).then(A).then(B).catch(fix).then(C)', hl: { 0: 'r', 1: 'm', 2: 'm', 3: 'g', 4: 'g' } })}
+<p><b>Two traps:</b> (1) <code>.then(ok, onRejected)</code> does <b>not</b> catch errors thrown by <code>ok</code> itself — only a later <code>.catch</code> does. (2) <code>return promise</code> inside <code>try</code> of an async function skips that function's <code>catch</code>; write <code>return await promise</code> there.</p>`,
+    clues: [
+      '"Why doesn’t my try/catch catch this error?" → the error is thrown in a later callback, on a different stack',
+      '"What happens to an error thrown inside .then?" → the returned promise rejects; the next .catch gets it',
+      '"Node process crashed with UnhandledPromiseRejection" → a rejected promise nobody awaited or caught (Node 15+ throws)',
+      '"Output-order question with reject/catch/finally" → each skipped .then still costs one microtask tick',
+      '"return vs return await inside try" → only return await lets the local catch see the rejection',
+      '"Promise.all rejects but other requests still run" → fail-fast settles early; it does not cancel the others',
+      '"Global error handler for async code" → window unhandledrejection / process.on(\'unhandledRejection\') for logging, not for control flow'
+    ],
+    code: [
+      { lang: 'js', title: 'Where does each error go? (runnable)', run: true, code: `// 1) An error thrown inside .then becomes a rejection, skips the next .then, lands in .catch
+Promise.resolve('order')
+  .then((x) => {
+    throw new Error('fish burnt while cooking ' + x);
+  })
+  .then(() => console.log('never: this .then is skipped'))
+  .catch((err) => {
+    console.log('1. catch got: ' + err.message);
+    return 'free dessert';                       // recovering: the chain is fulfilled again
+  })
+  .then((v) => console.log('2. chain continues with: ' + v));
+
+// 2) await turns the rejection back into a throw, so try/catch works
+async function serveTable() {
+  try {
+    await Promise.reject(new Error('out of soup'));
+    console.log('never: skipped because await threw');
+  } catch (err) {
+    console.log('3. try/catch around await got: ' + err.message);
+  } finally {
+    console.log('4. finally always runs (clear the table)');
+  }
+}
+serveTable();
+
+// 3) Errors thrown in a timer must be caught INSIDE the callback
+setTimeout(() => {
+  try {
+    JSON.parse('{ broken json');
+  } catch (err) {
+    console.log('5. caught inside the timer callback: ' + err.name);
+  }
+}, 0);
+
+// Expected output:
+// 3. try/catch around await got: out of soup
+// 4. finally always runs (clear the table)
+// 1. catch got: fish burnt while cooking order
+// 2. chain continues with: free dessert
+// 5. caught inside the timer callback: SyntaxError` }
+    ],
+    codeTitle: ['Errors in promise land vs timer land'],
+    viz: [
+      {
+        title: 'A rejection travels down the chain; a timer error is uncaught (editable)',
+        input: 'log s\nreject E1 then skip catch fix then next\nthen { throw E2 } catch got2\ntimeout { log t; throw Boom }\nlog e',
+        inputLabel: 'Mini-program (reject E then A catch B · then { throw E } catch F · timeout { throw E } · async { await; throw E })',
+        gen: function (input) { return elSim(input, { endNote: 'Promise errors flow to the next catch (one microtask per link); the timer error had no catch around it.' }); }
+      },
+      {
+        title: 'Unhandled rejections: who forgot to catch? (editable)',
+        input: 'async { log a1; await; throw Oops }\nreject Lost then never\nreject E catch fixed\nlog end',
+        inputLabel: 'Mini-program',
+        gen: function (input) { return elSim(input, { endNote: 'Every rejection needs a catch (or an await inside try/catch). Browsers log the rest; Node.js 15+ crashes.' }); }
+      },
+      {
+        title: 'try/catch around setTimeout vs try/catch around await',
+        gen: function () {
+          var o1 = ['A: try finished'], o2 = o1.concat(['B: script end']), o3 = o2.concat(['C: caught nope']), o4 = o3.concat(['Uncaught Error: late']);
+          return elScript(ERR_CODE, [
+            { l: 6, stack: ['main script'], narr: 'The script enters a <code>try</code> block. Important: a try/catch only guards code that runs <b>while this frame is on the call stack</b>.' },
+            { l: 7, stack: ['main script', 'risky()'], narr: '<code>risky()</code> is called, so a frame for it is pushed on top of the stack.' },
+            { l: 2, stack: ['main script', 'risky()', 'setTimeout'], web: ['⏱ throwing cb · 0 ms'], wn: '⏱ throwing cb · 0 ms', narr: '<b>setTimeout</b> hands the callback to the Web APIs and returns at once. Nothing has been thrown yet — the callback has not even started.' },
+            { l: 5, stack: ['main script'], narr: '<code>risky()</code> returns normally. Its frame is popped.' },
+            { l: 8, out: o1, outNew: true, narr: 'Prints <b>A</b>. As far as the try block knows, everything went fine.' },
+            { l: 9, cls: 'done', web: [], macro: ['timeout throwing cb'], ma: { 0: 'ok' }, narr: 'The try block ends without an error, so the <code>catch</code> is skipped — and this try/catch is now <b>gone forever</b>. Meanwhile the 0 ms timer is done; its callback moves to the <b>task queue</b>.' },
+            { l: 19, stack: ['main script', 'safe()'], narr: 'Calling the async function <code>safe()</code>: it runs synchronously until its first await.' },
+            { l: 14, stack: ['main script', 'safe()', 'Promise.reject'], narr: '<code>Promise.reject(…)</code> creates an already <span class="c-r">rejected</span> promise. Creating it does not throw anything.' },
+            { l: 14, stack: ['main script'], micro: ['resume safe (throw)'], mi: { 0: 'ok' }, narr: '<code>await</code> subscribes to that promise. It is already rejected, so a job "resume safe by <b>throwing</b> the reason" is queued as a <b>microtask</b>. safe pauses — and its paused state includes the <b>try block it is in</b>.' },
+            { l: 20, out: o2, outNew: true, narr: 'Prints <b>B</b>. The script is over.' },
+            { l: null, stack: [], phase: '② drain ALL microtasks', ph: 'cur', narr: 'The stack is empty, so the event loop drains the microtask queue first.' },
+            { l: 14, cls: 'bad', stack: ['resume safe (throw)'], micro: [], narr: 'safe <b>resumes</b>: the <code>await</code> expression <b>throws</b> the error "nope" right at line 14 — and we are inside safe\'s try block, which is on the stack again.' },
+            { l: 16, out: o3, outNew: true, narr: 'The catch block runs and prints <b>C: caught nope</b>. This is why <code>await</code> + try/catch feels like normal synchronous error handling.' },
+            { l: 18, stack: [], narr: 'safe finishes; its promise is fulfilled with <code>undefined</code>. Microtask queue is empty.' },
+            { l: null, phase: '③ run ONE task', ph: 'cur', ma: { 0: 'cur' }, narr: 'Now the event loop takes the oldest task: the timer callback.' },
+            { l: 3, cls: 'bad', stack: ['timeout throwing cb'], macro: [], narr: 'The callback throws "late". Look at the stack: <b>only the callback</b> is on it. The try/catch from line 6 finished long ago, so nobody is there to catch it.' },
+            { l: 3, cls: 'bad', stack: [], out: o4, outNew: true, narr: 'The browser reports <span class="c-r">Uncaught Error: late</span> and the event loop carries on with the next task. In Node.js an uncaught exception <b>crashes</b> the process (unless <code>process.on(\'uncaughtException\')</code> is set).' },
+            { l: null, phase: '✓ done', ph: 'ok', narr: 'Lesson: put try/catch <b>inside</b> callbacks, or use promises + <code>await</code> so errors come back to the code that is waiting for them.' }
+          ]);
+        }
+      }
+    ],
+    examples: [
+      {
+        title: 'try/catch around setTimeout catches nothing',
+        html: `<p>The callback runs on a new stack, after the try block is over. This demo installs a <b>global last-resort handler</b> so the snippet keeps running in both Node and the browser; in real code you would put the try/catch inside the callback.</p>`,
+        code: { lang: 'js', run: true, code: `// Last-resort global handlers (Node or browser), only so this demo does not crash.
+if (typeof process !== 'undefined' && process.on) {
+  process.on('uncaughtException', (err) => console.log('global handler got: ' + err.message));
+} else if (typeof window !== 'undefined') {
+  window.addEventListener('error', (ev) => {
+    console.log('global handler got: ' + (ev.error ? ev.error.message : ev.message));
+    ev.preventDefault();
+  });
+}
+
+try {
+  setTimeout(() => {
+    throw new Error('thrown later, on a fresh stack');
+  }, 0);
+  console.log('try block finished without error');
+} catch (err) {
+  console.log('never printed');
+}
+
+// Expected output:
+// try block finished without error
+// global handler got: thrown later, on a fresh stack` }
+      },
+      {
+        title: 'Rejection skips .then links — and each skip costs a tick',
+        html: `<p>Two chains start together. Chain A is rejected and has two <code>.then</code>s before its <code>.catch</code>; chain B is fulfilled. Every link of A — even the skipped ones — takes one microtask turn, so B overtakes it.</p>${H.table(['tick', 'chain A (rejected)', 'chain B (fulfilled)'], [['1', '.then skipped', 'prints B1'], ['2', '.then skipped', 'prints B2'], ['3', '<span class="c-g">.catch prints A-caught</span>', 'prints B3']])}`,
+        code: { lang: 'js', run: true, code: `Promise.reject(new Error('A'))
+  .then(() => console.log('A1 (skipped)'))
+  .then(() => console.log('A2 (skipped)'))
+  .catch((e) => console.log(e.message + '-caught'));
+
+Promise.resolve()
+  .then(() => console.log('B1'))
+  .then(() => console.log('B2'))
+  .then(() => console.log('B3'));
+
+// Expected output:
+// B1
+// B2
+// A-caught
+// B3` }
+      },
+      {
+        title: '.then(ok, onRejected) does not catch errors thrown by ok',
+        html: `<p>The second argument of <code>.then</code> only handles a rejection of the promise <b>before</b> it. If <code>ok</code> itself throws, that error rejects the <i>next</i> promise and needs a later <code>.catch</code>. That is why <code>.then(ok).catch(handle)</code> is usually what you want.</p>`,
+        code: { lang: 'js', run: true, code: `Promise.resolve('data')
+  .then(
+    (v) => { throw new Error('bug inside ok handler for ' + v); },
+    (err) => console.log('onRejected: never sees the bug')
+  )
+  .catch((err) => console.log('later .catch got: ' + err.message));
+
+// Expected output:
+// later .catch got: bug inside ok handler for data` }
+      },
+      {
+        title: 'return vs return await inside try',
+        html: `<p>With plain <code>return promise</code>, the function leaves its try block <b>before</b> the promise rejects, so its catch never runs and the caller gets the rejection. <code>return await</code> waits inside the try, so the local catch can handle it.</p>`,
+        code: { lang: 'js', run: true, code: `const failSoon = () => new Promise((_, reject) => setTimeout(() => reject(new Error('db down')), 10));
+
+async function withoutAwait() {
+  try {
+    return failSoon();            // leaves the try immediately
+  } catch (e) {
+    return 'fallback (never used)';
+  }
+}
+
+async function withAwait() {
+  try {
+    return await failSoon();      // waits INSIDE the try
+  } catch (e) {
+    return 'fallback because ' + e.message;
+  }
+}
+
+withoutAwait()
+  .then((v) => console.log('withoutAwait: ' + v))
+  .catch((e) => console.log('withoutAwait rejected to caller: ' + e.message))
+  .then(() => withAwait())
+  .then((v) => console.log('withAwait: ' + v));
+
+// Expected output:
+// withoutAwait rejected to caller: db down
+// withAwait: fallback because db down` }
+      },
+      {
+        title: 'finally passes values through — unless it throws',
+        html: `<p><code>.finally(cb)</code> gets no argument and does not change the result: a fulfilled value or a rejection flows through it. But if <code>cb</code> throws (or returns a rejected promise), that new error <b>replaces</b> the old outcome.</p><p><b>Tick detail:</b> to pass a value through, <code>finally</code> internally returns <code>Promise.resolve(cb()).then(() =&gt; value)</code> — a promise returned from a handler, which costs <b>extra microtask ticks</b>. A throwing <code>cb</code> rejects at once, so the third chain prints <i>first</i> below.</p>`,
+        code: { lang: 'js', run: true, code: `Promise.resolve(42)
+  .finally(() => console.log('cleanup 1 (no argument received)'))
+  .then((v) => console.log('value survived finally: ' + v));
+
+Promise.reject(new Error('original'))
+  .finally(() => console.log('cleanup 2'))
+  .catch((e) => console.log('rejection survived finally: ' + e.message));
+
+Promise.resolve('ok')
+  .finally(() => { throw new Error('cleanup failed'); })
+  .catch((e) => console.log('finally error replaced the value: ' + e.message));
+
+// Expected output:
+// cleanup 1 (no argument received)
+// cleanup 2
+// finally error replaced the value: cleanup failed
+// value survived finally: 42
+// rejection survived finally: original` }
+      },
+      {
+        title: 'Throw after resolve is ignored; executor throw rejects',
+        html: `<p>A promise settles <b>once</b>. A throw in the executor before settling rejects it; a throw <i>after</i> <code>resolve()</code> is silently swallowed (the promise already settled). A throw inside an <b>async callback</b> in the executor (e.g. a timer) is not captured at all — it is a normal uncaught error.</p>`,
+        code: { lang: 'js', run: true, code: `const p1 = new Promise(() => {
+  throw new Error('executor threw');
+});
+p1.catch((e) => console.log('p1 rejected: ' + e.message));
+
+const p2 = new Promise((resolve) => {
+  resolve('first answer wins');
+  throw new Error('ignored, already settled');
+});
+p2.then((v) => console.log('p2 fulfilled: ' + v));
+
+const p3 = new Promise((resolve, reject) => {
+  resolve('A');
+  reject(new Error('too late'));   // ignored too
+  resolve('B');                    // ignored
+});
+p3.then((v) => console.log('p3 fulfilled: ' + v));
+
+// Expected output:
+// p1 rejected: executor threw
+// p2 fulfilled: first answer wins
+// p3 fulfilled: A` }
+      },
+      {
+        title: 'Promise.all fails fast, allSettled never rejects, any needs one success',
+        html: `<p>When failures are expected (e.g. 3 widgets on a dashboard), choose the combinator that matches what you want to happen. <code>Promise.all</code> rejects on the first failure but does <b>not cancel</b> the other operations — they keep running.</p>${H.table(['combinator', 'one fails', 'result'], [['Promise.all', 'rejects immediately', 'array of values, or first error'], ['Promise.allSettled', 'keeps waiting', 'array of {status, value | reason}'], ['Promise.any', 'keeps waiting for a success', 'first value, or AggregateError if all fail'], ['Promise.race', 'whichever settles first', 'first value or first error']])}`,
+        code: { lang: 'js', run: true, code: `const ok = (ms, v) => new Promise((r) => setTimeout(() => r(v), ms));
+const fail = (ms, m) => new Promise((_, j) => setTimeout(() => j(new Error(m)), ms));
+
+async function demo() {
+  try {
+    await Promise.all([ok(30, 'profile'), fail(10, 'ads down'), ok(20, 'feed')]);
+  } catch (e) {
+    console.log('all: rejected fast with "' + e.message + '"');
+  }
+
+  const settled = await Promise.allSettled([ok(10, 'profile'), fail(5, 'ads down')]);
+  console.log('allSettled: ' + settled.map((r) => r.status + ':' + (r.value || r.reason.message)).join(', '));
+
+  const first = await Promise.any([fail(5, 'mirror1'), ok(15, 'mirror2'), ok(25, 'mirror3')]);
+  console.log('any: first success = ' + first);
+
+  try {
+    await Promise.any([fail(5, 'x'), fail(10, 'y')]);
+  } catch (e) {
+    console.log('any: ' + e.constructor.name + ' with ' + e.errors.length + ' errors');
+  }
+}
+demo();
+
+// Expected output:
+// all: rejected fast with "ads down"
+// allSettled: fulfilled:profile, rejected:ads down
+// any: first success = mirror2
+// any: AggregateError with 2 errors` }
+      },
+      {
+        title: 'Catching unhandled rejections globally (and "handled later")',
+        html: `<p>Global hooks are for <b>logging and alerting</b>, not normal control flow. In Node, registering <code>process.on('unhandledRejection')</code> also stops the default crash. Browsers fire <code>unhandledrejection</code> on <code>window</code>, and <code>rejectionhandled</code> if a <code>.catch</code> is attached later.</p>`,
+        code: { lang: 'js', run: true, code: `if (typeof process !== 'undefined' && process.on) {
+  process.on('unhandledRejection', (reason) => console.log('[monitor] unhandled: ' + reason.message));
+} else if (typeof window !== 'undefined') {
+  window.addEventListener('unhandledrejection', (ev) => {
+    console.log('[monitor] unhandled: ' + ev.reason.message);
+    ev.preventDefault();
+  });
+}
+
+async function saveDraft() {
+  throw new Error('quota exceeded');
+}
+
+saveDraft();              // floating promise: no await, no .catch
+console.log('script continues, nobody is listening to saveDraft()');
+
+// Expected output:
+// script continues, nobody is listening to saveDraft()
+// [monitor] unhandled: quota exceeded` }
+      }
+    ],
+    deepDive: `<p><b>Spec view of a throw in a reaction.</b> A promise reaction job calls your handler inside an abrupt-completion check: if the handler throws, the job calls <code>reject</code> of the derived promise instead of letting the exception escape. That is why a throw inside <code>.then</code> never reaches <code>window.onerror</code>. <code>queueMicrotask</code> callbacks have no derived promise, so their exceptions are "reported" like a script error.</p>
+<p><b>How "unhandled" is decided.</b> The engine calls <code>HostPromiseRejectionTracker(promise, "reject")</code> when a promise is rejected with no handlers, and <code>"handle"</code> when a handler is attached later. HTML collects these in an "about-to-be-notified" list and fires <code>unhandledrejection</code> after the microtask checkpoint; if a handler appears later, <code>rejectionhandled</code> fires. Node follows the same idea (process <code>'unhandledRejection'</code> / <code>'rejectionHandled'</code>), and since <b>Node 15</b> the default mode is <code>throw</code>: an unhandled rejection becomes an uncaught exception and kills the process. Modes: <code>--unhandled-rejections=strict|throw|warn|none|warn-with-error-code</code>.</p>
+<p><b>Attach handlers early.</b> Because detection runs after microtasks, a rejection with a <code>.catch</code> attached <i>in the same synchronous run</i> or even a microtask later is fine. Attaching one after an <code>await</code> on <i>something else</i> is not: <code>const a = fetchA(); const b = fetchB(); await a; await b;</code> — if b rejects while you wait on a, b is briefly unhandled and Node may crash. Use <code>await Promise.all([a, b])</code>.</p>
+<p><b>Async stack traces.</b> A rejection's <code>err.stack</code> shows the frames at the throw point. V8's "zero-cost async stack traces" add <code>at async fn</code> frames by following the awaiting chain — they only work across <code>await</code>, not across <code>.then</code> or <code>return promise</code>. Another reason for <code>return await</code> in try blocks and for awaiting rather than chaining in hot debugging paths.</p>
+<p><b>Error-first callbacks</b> (Node's old style: <code>fs.readFile(p, (err, data) =&gt; …)</code>) never throw; errors arrive as the first argument and must be checked manually. <code>util.promisify</code> converts them into promise-returning functions so rejections flow into try/await. Event emitters are a third model: an <code>'error'</code> event with no listener throws.</p>
+<p><b>Cancellation is not an error model in promises.</b> Promises cannot be cancelled; use an <code>AbortController</code> signal and treat <code>AbortError</code> as a special, expected rejection. Timeouts: <code>AbortSignal.timeout(ms)</code> (fetch) or <code>Promise.race</code> with a timer — and clear that timer.</p>
+<p><b>Production reality.</b> Always send global unhandled errors and rejections to monitoring (Sentry, Datadog). Custom error classes (<code>class HttpError extends Error</code>) and <code>new Error(msg, { cause })</code> (ES2022) keep the original reason when you wrap and re-throw.</p>`,
+    aiEra: `<p><b>What AI changes:</b> generated code often wraps everything in <code>try/catch</code> that only logs (<code>catch (e) { console.log(e) }</code>), swallowing failures and returning <code>undefined</code> to callers. It also produces floating promises — calling an async function without await or catch — which in Node 15+ can crash a server at 3 a.m.</p>
+<p><b>Use AI as a partner:</b> <code>"List every promise in this module that can reject without a handler, every catch that swallows the error, and every try block that contains return somePromise without await."</code> Enable <code>@typescript-eslint/no-floating-promises</code>, <code>no-misused-promises</code> and <code>prefer-promise-reject-errors</code>, then ask the assistant to fix each report and explain why.</p>
+<p><b>Where AI goes wrong:</b> suggesting a try/catch around <code>setTimeout</code> or around a non-awaited call; claiming <code>.then(ok, onRejected)</code> catches errors in <code>ok</code>; adding <code>process.on('unhandledRejection', () =&gt; {})</code> to "fix" a crash (hiding the bug); or saying unhandled rejections are "just warnings" — true only before Node 15.</p>
+<p><b>What you must still own:</b> knowing which stack an error is thrown on, and a clear policy per layer: where errors are handled, where they are converted (wrap with <code>cause</code>), and where they are reported.</p>`,
+    problems: [
+      {
+        title: 'Rejections, catch and await in one program',
+        level: 'Medium', tags: ['error handling', 'microtask', 'catch', 'await'], companies: ['Microsoft', 'Flipkart', 'Shopify'],
+        statement: `<p>Predict the exact output:</p><pre>setTimeout(() =&gt; console.log('T'), 0);
+Promise.reject(new Error('E1'))
+  .then(() =&gt; console.log('skip'))
+  .catch((e) =&gt; { console.log('caught ' + e.message); return 'ok'; })
+  .then((v) =&gt; console.log('then ' + v));
+(async () =&gt; {
+  try {
+    await Promise.reject(new Error('E2'));
+  } catch (e) {
+    console.log('async caught ' + e.message);
+  }
+  console.log('async after');
+})();
+console.log('S');</pre>`,
+        constraints: `Any modern browser or Node.js 12+.`,
+        example: `<p>Output: ${H.c('g', 'S')} → ${H.c('p', 'async caught E2')} → ${H.c('p', 'async after')} → ${H.c('p', 'caught E1')} → ${H.c('p', 'then ok')} → ${H.c('b', 'T')}. The skipped <code>.then</code> costs chain 1 a whole tick, so the async function's catch (1 tick) wins.</p>`,
+        brute: {
+          why: `<p>The "errors are handled immediately" model assumes a rejected promise jumps straight to its <code>.catch</code>. It predicts <b>caught E1</b> first, because that chain was written first. It forgets that the skipped <code>.then</code> is still a microtask turn.</p>`,
+          code: `// Naive model: a rejection jumps straight to .catch (wrong)
+const naive = ['S', 'caught E1', 'async caught E2', 'async after', 'then ok', 'T'];
+console.log(naive.join(' | '));`
+        },
+        mcq: { q: 'How many microtask turns does it take for "caught E1" to print after the script ends?', options: ['0 — it prints synchronously', '1', '2 — one for the skipped .then, one for .catch', '3'], answer: 2, explain: 'The rejected promise first reaches the .then link (it passes the rejection on: tick 1), then the .catch runs (tick 2).' },
+        hints: [
+          `<p>Hint 1: Only S is synchronous. After the script the microtask queue holds two jobs: the skipped .then link and the async function's resume-with-throw.</p>`,
+          `<p>Hint 2: Tick 1: the .then passes the rejection on (queues .catch); the async function resumes, throws at await, its catch prints and it continues to "async after".</p>`,
+          `<p>Hint 3: Tick 2: .catch prints and returns 'ok' (queues the last .then). Tick 3: "then ok". Only then the timer task T.</p>`
+        ],
+        solution: {
+          approach: `<p>Track each chain one microtask at a time. Chain 1 needs 3 ticks (skip, catch, then). The async function needs 1 tick (resume into catch), and it runs the rest of its body synchronously in that same tick. Timer last.</p>`,
+          code: { lang: 'js', run: true, code: `setTimeout(() => console.log('T'), 0);
+Promise.reject(new Error('E1'))
+  .then(() => console.log('skip'))
+  .catch((e) => { console.log('caught ' + e.message); return 'ok'; })
+  .then((v) => console.log('then ' + v));
+(async () => {
+  try {
+    await Promise.reject(new Error('E2'));
+  } catch (e) {
+    console.log('async caught ' + e.message);
+  }
+  console.log('async after');
+})();
+console.log('S');
+
+// Expected output:
+// S
+// async caught E2
+// async after
+// caught E1
+// then ok
+// T` },
+          dry: { head: ['tick', 'job running', 'microtask queue after', 'printed'], rows: [
+            ['script', 'main script', '[skip-link, resume async]', 'S'],
+            ['1', 'skip-link passes E1 on', '[resume async, catch]', '—'],
+            ['1', 'resume async → throws at await → catch', '[catch]', 'async caught E2, async after'],
+            ['2', 'catch(E1) returns ok', '[then]', 'caught E1'],
+            ['3', 'then', '[]', 'then ok'],
+            ['task', 'timer', '[]', '<span class="c-g">T</span>']
+          ] },
+          complexity: `<p>O(number of chain links): each link is exactly one microtask, skipped or not.</p>`,
+          followUps: ['Remove the .then("skip") link. What is the new order? (caught E1 and async caught E2 swap.)', 'Replace the async try/catch with no try at all. What does Node print, and does the process survive?']
+        }
+      }
+    ]
+  });
+
+  /* ======================================================================
+     TOPIC 8 — Output-order puzzles: a repeatable method + the famous ones
+     ====================================================================== */
+  var FAMOUS_CODE = "async function async1() {\n  console.log('async1 start');\n  await async2();\n  console.log('async1 end');\n}\nasync function async2() {\n  console.log('async2');\n}\nconsole.log('script start');\nsetTimeout(() => console.log('setTimeout'), 0);\nasync1();\nnew Promise((resolve) => {\n  console.log('promise1');\n  resolve();\n}).then(() => console.log('promise2'));\nconsole.log('script end');";
+  var FOUR_CODE = "Promise.resolve().then(() => {\n  console.log(0);\n  return Promise.resolve(4);\n}).then((res) => console.log(res));\nPromise.resolve().then(() => console.log(1))\n  .then(() => console.log(2))\n  .then(() => console.log(3))\n  .then(() => console.log(5))\n  .then(() => console.log(6));";
+
+  topics.push({
+    title: 'Output-Order Puzzles: The 4-Column Method & the Famous Interview Questions',
+    analogy: `<p>Imagine the waiter's notebook has <b>four columns</b>: <i>Doing now</i> (the call stack), <i>Waiting in the kitchen</i> (Web APIs: timers, network), <i>Pass counter</i> (task queue) and <i>Urgent clipboard</i> (microtask queue). Before you guess anything, you fill in the notebook line by line, exactly like the waiter would. Puzzles stop being "tricky" and become <b>bookkeeping</b>: you are not guessing the order, you are <i>replaying</i> the waiter's night.</p>`,
+    explain: `<p>Every "predict the output" question is solved with the same five steps. Draw four columns on paper: <b>Output · Microtasks · Tasks · Waiting (timers / pending promises)</b>.</p>
+<ol>
+<li><b>Run the script top to bottom.</b> Every <code>console.log</code> that is executed now goes straight to <i>Output</i>. Remember what also runs <b>now</b>: a <code>new Promise</code> executor, the body of an async function up to its first <code>await</code>, and the expression being awaited (<code>await f()</code> calls <code>f</code> now).</li>
+<li><b>Put each callback in the right column</b> the moment it is scheduled:
+<ul><li><code>.then/.catch/.finally</code> on an <b>already settled</b> promise, <code>queueMicrotask</code>, the rest of an async function after <code>await</code> → <b>Microtasks</b> (at the back).</li>
+<li><code>.then</code> on a <b>pending</b> promise → <b>Waiting</b>: it is parked <i>on the promise</i>, not in any queue. It moves to Microtasks only when that promise is resolved.</li>
+<li><code>setTimeout/setInterval</code> → <b>Waiting</b> until the delay passes, then <b>Tasks</b> (ordered by due time, ties by creation order). <code>setImmediate</code>, I/O, clicks, messages → <b>Tasks</b>.</li></ul></li>
+<li><b>Script done → drain Microtasks</b> front to back. Anything a microtask schedules goes into the columns too (new microtasks at the <b>back</b> of the same drain).</li>
+<li><b>Take ONE task</b>, run it, then <b>drain Microtasks again</b>. Repeat.</li>
+<li><b>Count ticks</b> when two promise chains race. Use the cost table:</li>
+</ol>
+${H.table(['Situation', 'Microtask ticks until the next step runs'], [
+  ['<code>.then(cb)</code> on a fulfilled promise', '1'],
+  ['next <code>.then</code> in a chain', '+1 per link (skipped links too)'],
+  ['<code>await</code> a value or a native promise that is fulfilled', '1'],
+  ['<code>return value</code> from an async function / then-callback', '0 extra (settles at once)'],
+  ['<code>return somePromise</code> from an async function or a then-callback, <code>resolve(somePromise)</code>', '<b>+2</b> (resolve-thenable job + then job)'],
+  ['<code>await</code> a non-native thenable <code>{ then(r) { r(x) } }</code>', '2 (its then is called in a job)'],
+  ['Node: <code>process.nextTick</code>', 'runs before all promise jobs (CommonJS)']
+])}
+<p>Applied to the most famous interview puzzle (code in the visualizer below):</p>
+${H.table(['Step', 'Output', 'Microtasks', 'Tasks'], [
+  ['sync', 'script start, async1 start, async2, promise1, script end', 'async1 resume, promise2', 'setTimeout'],
+  ['drain', '… async1 end, promise2', '—', 'setTimeout'],
+  ['task', '… setTimeout', '—', '—']
+])}
+<p>Answer: <b>script start → async1 start → async2 → promise1 → script end → async1 end → promise2 → setTimeout</b>.</p>`,
+    clues: [
+      '"What is the output of the following code?" with setTimeout + Promise + async → use the 4-column method',
+      '"script start / async1 start / async2 / promise1" → the classic ByteDance/Toutiao puzzle; answer has async1 end before promise2 (modern engines)',
+      '"return Promise.resolve(4) inside then" → +2 ticks; answer 0 1 2 3 4 5 6',
+      '"for (var i…) setTimeout(() =&gt; console.log(i))" → closures + task queue: prints the final i each time',
+      '"In Node.js" + nextTick / setImmediate in the question → add the nextTick lane and the libuv phases',
+      '"Explain why X prints before Y" → name the queue each callback is in and the tick it runs on'
+    ],
+    code: [
+      { lang: 'js', title: 'The famous puzzle (runnable)', run: true, code: FAMOUS_CODE + `
+
+// Expected output:
+// script start
+// async1 start
+// async2
+// promise1
+// script end
+// async1 end
+// promise2
+// setTimeout` }
+    ],
+    codeTitle: ['Interview classic'],
+    viz: [
+      {
+        title: 'The famous async1/async2 puzzle, line by line',
+        gen: function () {
+          var o = ['script start'], s = [];
+          function add(x) { o = o.concat([x]); return o; }
+          s.push({ l: 1, stack: ['main script'], narr: 'Lines 1–8 only <b>define</b> two functions (declarations are hoisted). Nothing is printed yet.' });
+          s.push({ l: 9, out: o, outNew: true, narr: 'First executed line: <b>script start</b> (sync).' });
+          s.push({ l: 10, stack: ['main script', 'setTimeout'], web: ['⏱ setTimeout cb · 0 ms'], wn: '⏱ setTimeout cb · 0 ms', narr: '<b>setTimeout</b>: the callback goes to the Web APIs with a 0 ms timer. JavaScript does not wait.' });
+          s.push({ l: 11, stack: ['main script', 'async1()'], web: [], macro: ['timeout setTimeout'], ma: { 0: 'ok' }, narr: 'The 0 ms timer is already due, so its callback sits in the <b>task queue</b> — but tasks only run when the stack is empty <i>and</i> the microtasks are done. Now <code>async1()</code> is called: its body runs <b>synchronously</b>.' });
+          s.push({ l: 2, stack: ['main script', 'async1()', 'console.log'], out: add('async1 start'), outNew: true, narr: 'Prints <b>async1 start</b>.' });
+          s.push({ l: 3, stack: ['main script', 'async1()', 'async2()'], narr: '<code>await async2()</code>: the expression after await is evaluated <b>first, right now</b>, so async2 is called.' });
+          s.push({ l: 7, stack: ['main script', 'async1()', 'async2()', 'console.log'], out: add('async2'), outNew: true, narr: 'Prints <b>async2</b> — still synchronous.' });
+          s.push({ l: 8, stack: ['main script', 'async1()'], narr: 'async2 ends and returns an <b>already-fulfilled</b> promise (async functions always return promises).' });
+          s.push({ l: 3, stack: ['main script'], micro: ['async1 resume'], mi: { 0: 'ok' }, narr: 'Now the <b>await</b> itself: the promise is fulfilled, so "resume async1" is queued as a <b>microtask</b> (1 tick in modern engines). async1 pauses and returns control to the script.' });
+          s.push({ l: 12, stack: ['main script', 'executor'], narr: '<code>new Promise(executor)</code>: the executor runs <b>immediately</b>.' });
+          s.push({ l: 13, stack: ['main script', 'executor', 'console.log'], out: add('promise1'), outNew: true, narr: 'Prints <b>promise1</b> (sync, inside the executor).' });
+          s.push({ l: 14, stack: ['main script', 'executor'], narr: '<code>resolve()</code>: the promise is fulfilled. No callback is registered yet, so nothing is queued.' });
+          s.push({ l: 15, stack: ['main script', '.then(cb)'], micro: ['async1 resume', 'then promise2'], mi: { 1: 'ok' }, narr: '<code>.then</code> on a fulfilled promise → its callback joins the microtask queue <b>behind</b> "async1 resume".' });
+          s.push({ l: 16, stack: ['main script', 'console.log'], out: add('script end'), outNew: true, narr: 'Prints <b>script end</b>. That was the last line.' });
+          s.push({ l: null, stack: [], phase: '② drain ALL microtasks', ph: 'cur', narr: 'Stack empty → drain the microtask queue, front first.' });
+          s.push({ l: 4, stack: ['async1 resume'], micro: ['then promise2'], out: add('async1 end'), outNew: true, mi: { 0: 'cur' }, narr: 'async1 resumes after its await → <b>async1 end</b>. (Old Node 10-era engines used 3 ticks for await and printed promise2 first — a classic trap in outdated blog posts.)' });
+          s.push({ l: 15, stack: ['then promise2'], micro: [], out: add('promise2'), outNew: true, narr: 'The then-callback prints <b>promise2</b>. Microtask queue is empty.' });
+          s.push({ l: null, stack: [], phase: '③ run ONE task', ph: 'cur', ma: { 0: 'cur' }, narr: 'Only now does the event loop pick the oldest task: the timer callback.' });
+          s.push({ l: 10, stack: ['timeout setTimeout'], macro: [], out: add('setTimeout'), outNew: true, narr: 'Prints <b>setTimeout</b>.' });
+          s.push({ l: null, stack: [], phase: '✓ done', ph: 'ok', narr: 'Final: script start → async1 start → async2 → promise1 → script end → async1 end → promise2 → setTimeout.' });
+          return elScript(FAMOUS_CODE, s);
+        }
+      },
+      {
+        title: 'Why "return Promise.resolve(4)" prints 4 after 3 (tick counting)',
+        gen: function () {
+          var o = [], s = [], tick = 0;
+          function add(x) { o = o.concat([String(x)]); return o; }
+          function T(n) { return [{ type: 'vars', label: 'Tick counter (microtasks run so far)', vals: { tick: n, 'chain A waits for': n < 5 ? 'p4 to be adopted' : 'nothing' }, hl: { tick: 'cur' } }]; }
+          s.push({ l: 1, stack: ['main script'], micro: ['A: log 0'], mi: { 0: 'ok' }, extra: T(0), narr: 'Chain A: <code>Promise.resolve().then(cb)</code> → cb queued (the promise is already fulfilled).' });
+          s.push({ l: 5, micro: ['A: log 0', 'B: log 1'], mi: { 1: 'ok' }, extra: T(0), narr: 'Chain B: its first callback is queued too. The later <code>.then</code>s of both chains are parked on <b>pending</b> promises — not queued yet.' });
+          s.push({ l: null, stack: [], phase: '② drain ALL microtasks', ph: 'cur', extra: T(0), narr: 'Script over. Drain microtasks.' });
+          s.push({ l: 2, stack: ['A: log 0'], micro: ['B: log 1'], out: add(0), outNew: true, extra: T(1), narr: 'Tick 1: prints <b>0</b>.' });
+          s.push({ l: 3, stack: ['A: log 0'], micro: ['B: log 1', 'resolve-thenable job'], mi: { 1: 'ok' }, extra: T(1), narr: 'The callback <b>returns a promise</b> (p4). The promise from <code>.then</code> must <i>adopt</i> p4, which cannot happen synchronously: a <b>NewPromiseResolveThenableJob</b> is queued. Extra tick #1.' });
+          s.push({ l: 5, stack: ['B: log 1'], micro: ['resolve-thenable job', 'B: log 2'], out: add(1), outNew: true, mi: { 1: 'ok' }, extra: T(2), narr: 'Tick 2: chain B prints <b>1</b> and queues its next link.' });
+          s.push({ l: 3, stack: ['resolve-thenable job'], micro: ['B: log 2', 'p4.then → adopt'], mi: { 1: 'ok' }, extra: T(3), narr: 'Tick 3: the job calls <code>p4.then(resolveA, rejectA)</code>. p4 is fulfilled, so that reaction is queued. Extra tick #2.' });
+          s.push({ l: 6, stack: ['B: log 2'], micro: ['p4.then → adopt', 'B: log 3'], out: add(2), outNew: true, mi: { 1: 'ok' }, extra: T(4), narr: 'Tick 4: prints <b>2</b>.' });
+          s.push({ l: 4, stack: ['p4.then → adopt'], micro: ['B: log 3', 'A: log res'], mi: { 1: 'ok' }, extra: T(5), narr: 'Tick 5: chain A\'s promise is finally fulfilled with 4 → its <code>.then((res) =&gt; …)</code> is queued — behind B\'s "log 3".' });
+          s.push({ l: 7, stack: ['B: log 3'], micro: ['A: log res', 'B: log 5'], out: add(3), outNew: true, mi: { 1: 'ok' }, extra: T(6), narr: 'Tick 6: prints <b>3</b>.' });
+          s.push({ l: 4, stack: ['A: log res'], micro: ['B: log 5'], out: add(4), outNew: true, extra: T(7), narr: 'Tick 7: prints <b>4</b> — two ticks later than a plain <code>return 4</code> would have.' });
+          s.push({ l: 8, stack: ['B: log 5'], micro: ['B: log 6'], out: add(5), outNew: true, extra: T(8), narr: 'Tick 8: prints <b>5</b>.' });
+          s.push({ l: 9, stack: ['B: log 6'], micro: [], out: add(6), outNew: true, extra: T(9), narr: 'Tick 9: prints <b>6</b>.' });
+          s.push({ l: null, stack: [], phase: '✓ done', ph: 'ok', extra: T(9), narr: 'Output 0 1 2 3 4 5 6. Rule: returning a <b>promise</b> from a then-callback or async function costs <b>2 extra ticks</b>.' });
+          return elScript(FOUR_CODE, s);
+        }
+      },
+      {
+        title: 'Puzzle playground: write your own and watch every queue (editable)',
+        input: 'log A\ntimeout { log B; then C }\nnew { log D } then E then F\nasync { log G; await; log H; await sleep 0; log I }\nmicro { log J; timeout K }\nlog L',
+        inputLabel: 'Mini-program (try your own interview puzzle)',
+        gen: function (input) { return elSim(input, { endNote: 'Write your guess first, then step through to check it.' }); }
+      }
+    ],
+    examples: [
+      {
+        title: 'The "0 1 2 3 4 5 6" puzzle',
+        html: `<p>A classic from big-tech interviews. Chain A returns <code>Promise.resolve(4)</code> from a then-callback. Adopting a returned promise costs 2 extra ticks, so chain B (one tick per link) gets two steps ahead: the 4 lands exactly between 3 and 5.</p>`,
+        code: { lang: 'js', run: true, code: FOUR_CODE + `
+
+// Expected output:
+// 0
+// 1
+// 2
+// 3
+// 4
+// 5
+// 6` }
+      },
+      {
+        title: 'Closures meet the task queue: var vs let in a loop',
+        html: `<p>The loop finishes completely (sync) before any timer callback runs. With <code>var</code> there is <b>one</b> shared <code>i</code>, which is 3 by then. With <code>let</code> each iteration gets its own binding.</p>${H.table(['loop', 'bindings', 'prints'], [['var i', 'one shared i (= 3 at the end)', '3 3 3'], ['let i', 'a new i per iteration', '0 1 2']])}`,
+        code: { lang: 'js', run: true, code: `const varOut = [];
+const letOut = [];
+
+for (var i = 0; i < 3; i++) {
+  setTimeout(() => varOut.push(i), 0);       // all three read the SAME i later
+}
+for (let j = 0; j < 3; j++) {
+  setTimeout(() => letOut.push(j), 0);       // each callback has its own j
+}
+console.log('loops done, i is now ' + i);
+
+setTimeout(() => {
+  console.log('var: ' + varOut.join(' '));
+  console.log('let: ' + letOut.join(' '));
+}, 0);
+
+// Expected output:
+// loops done, i is now 3
+// var: 3 3 3
+// let: 0 1 2` }
+      },
+      {
+        title: 'Awaiting a thenable costs an extra tick',
+        html: `<p>Any object with a <code>then</code> method can be awaited. Its <code>then</code> is not called synchronously: a job calls it on the next tick, and the resume needs one more tick. So the async function finishes after <b>p1</b>.</p>`,
+        code: { lang: 'js', run: true, code: `const thenable = {
+  then(resolve) {
+    console.log('thenable.then called');
+    resolve('T');
+  }
+};
+
+(async () => {
+  console.log('A');
+  const v = await thenable;
+  console.log('got ' + v);
+})();
+
+Promise.resolve()
+  .then(() => console.log('p1'))
+  .then(() => console.log('p2'))
+  .then(() => console.log('p3'));
+console.log('S');
+
+// Expected output:
+// A
+// S
+// thenable.then called
+// p1
+// got T
+// p2
+// p3` }
+      },
+      {
+        title: 'Node.js edition: nextTick, promise, setImmediate, setTimeout',
+        html: `<p>Inside a timer callback (or an I/O callback) the order is fully deterministic: sync → <code>nextTick</code> → promise microtasks → <code>setImmediate</code> (check phase comes next) → <code>setTimeout 0</code> (needs the <i>next</i> loop's timers phase). At the top level of the main script, setTimeout-0 vs setImmediate is <b>not</b> deterministic — never write an interview answer that depends on it.</p>`,
+        code: { lang: 'js', run: true, code: `if (typeof process === 'undefined' || typeof setImmediate === 'undefined') {
+  console.log('This demo needs Node.js (process.nextTick and setImmediate).');
+} else {
+  setTimeout(() => {
+    console.log('timer start');
+    setTimeout(() => console.log('timeout 0'), 0);
+    setImmediate(() => console.log('immediate'));
+    Promise.resolve().then(() => console.log('promise'));
+    process.nextTick(() => console.log('nextTick'));
+    console.log('timer end');
+  }, 0);
+}
+
+// Expected output:
+// timer start
+// timer end
+// nextTick
+// promise
+// immediate
+// timeout 0` }
+      },
+      {
+        title: 'A then on a pending promise waits for resolve()',
+        html: `<p><code>.then</code> does not queue anything while the promise is pending. Here the promise is resolved inside a <b>timer</b>, so its then-callback runs right after that timer task — before the second timer, which was created later.</p>${H.table(['phase', 'what runs', 'printed'], [['sync', 'script', 'start, end'], ['task 1', 'timer resolves p', 'resolving'], ['micro', 'p.then', 'then got done'], ['task 2', 'second timer', 'timer 2']])}`,
+        code: { lang: 'js', run: true, code: `console.log('start');
+const p = new Promise((resolve) => {
+  setTimeout(() => {
+    console.log('resolving');
+    resolve('done');
+  }, 0);
+});
+p.then((v) => console.log('then got ' + v));
+setTimeout(() => console.log('timer 2'), 0);
+console.log('end');
+
+// Expected output:
+// start
+// end
+// resolving
+// then got done
+// timer 2` }
+      },
+      {
+        title: 'The same file, two answers: CommonJS vs ES module in Node',
+        html: `<p>In an <b>ES module</b> (<code>.mjs</code> or <code>"type": "module"</code>) the top-level code is evaluated as part of a promise job, so the promise microtask queue is drained <i>before</i> Node gets to the nextTick queue. In CommonJS, nextTick wins. Always ask "browser, Node CJS or Node ESM?" when a puzzle uses <code>process.nextTick</code>.</p>${H.table(['file type', 'output'], [['script.cjs', 'sync, nextTick, promise'], ['script.mjs', 'sync, promise, nextTick']])}`,
+        code: { lang: 'js', code: `// save as order.cjs and as order.mjs, run both with node
+Promise.resolve().then(() => console.log('promise'));
+process.nextTick(() => console.log('nextTick'));
+console.log('sync');` }
+      }
+    ],
+    deepDive: `<p><b>Why ticks matter.</b> Two promise chains interleave tick by tick: each tick runs the job at the front of one FIFO queue. Any operation that costs extra jobs (returning a promise, awaiting a thenable, <code>new Promise(r =&gt; r(p))</code>) makes its chain fall behind by that many places. <code>Promise.resolve(p)</code> with a native <code>p</code> returns <code>p</code> itself (0 cost), but <code>new Promise((r) =&gt; r(p))</code> goes through <code>NewPromiseResolveThenableJob</code> (+2).</p>
+<p><b>Engine history you will meet in old answers.</b> (1) Before V8 7.2 / Node 12, <code>await p</code> took 3 ticks — the famous puzzle printed <i>promise2</i> before <i>async1 end</i>. (2) Before Node 11, all expired timers ran in one batch and microtasks only ran after the whole batch, so <code>setTimeout(() =&gt; { log(1); Promise.resolve().then(() =&gt; log(2)) }); setTimeout(() =&gt; log(3))</code> printed 1 3 2; today it is 1 2 3 like browsers.</p>
+<p><b>Host differences.</b> Browsers clamp timers nested more than 5 levels deep to ≥ 4 ms and throttle timers in background tabs (≥ 1 s, more for long-hidden tabs). Node has no 4 ms clamp but turns a delay of 0 into 1 ms. <code>setTimeout</code>'s delay is a <b>minimum</b>; ties between equal delays keep creation order.</p>
+<p><b>Rendering in browser puzzles.</b> <code>requestAnimationFrame</code> callbacks run before the next paint, which is <i>usually</i> after a <code>setTimeout(…, 0)</code> but not guaranteed — the frame might be due right after the current task. Good interview answers say "rAF timing depends on the frame; tasks and microtasks are deterministic."</p>
+<p><b>Puzzle-solving checklist</b> (catches 95% of mistakes): executor is sync · async body is sync until the first await · <code>await f()</code> calls f now · then on a pending promise is parked · skipped then/catch links still cost a tick · return-a-promise costs +2 · microtasks drain fully between tasks · timers ordered by due time then creation · Node: nextTick first in CJS.</p>`,
+    aiEra: `<p><b>What AI changes:</b> output-order puzzles are a favourite way to test whether you truly understand the runtime, precisely because AI assistants often get the subtle ones wrong — especially tick-counting (return a promise, thenables), Node CJS vs ESM, and old 3-tick await answers copied from 2018 blog posts.</p>
+<p><b>Use AI as a partner:</b> <code>"Generate 5 event-loop puzzles of increasing difficulty mixing setTimeout, queueMicrotask, then-chains and async/await. Don't show answers."</code> Solve each with the 4-column method, then <b>run</b> them (node or the browser console) — the runtime is the judge, not the model. Then ask: <code>"Here is my tick-by-tick table; find the first row where I'm wrong."</code></p>
+<p><b>Where AI goes wrong:</b> stating that a resolved promise's then runs synchronously; ignoring that <code>await f()</code> calls f immediately; treating setTimeout-0 vs setImmediate at the top level as deterministic; mixing browser and Node rules.</p>
+<p><b>What you must still own:</b> narrating the queues out loud in an interview. The interviewer is grading the explanation ("this goes in the microtask queue because the promise is already fulfilled") far more than the final list.</p>`,
+    problems: [
+      {
+        title: 'The boss puzzle: a promise resolved inside a timer',
+        level: 'Hard', tags: ['event loop', 'puzzle', 'promise', 'async/await', 'timers'], companies: ['Google', 'Meta', 'ByteDance', 'Atlassian'],
+        statement: `<p>Predict the exact output:</p><pre>console.log('A');
+setTimeout(() =&gt; {
+  console.log('B');
+  Promise.resolve().then(() =&gt; console.log('C'));
+}, 0);
+const p = new Promise((resolve) =&gt; {
+  console.log('D');
+  setTimeout(() =&gt; { console.log('E'); resolve('F'); }, 0);
+});
+p.then((v) =&gt; console.log(v));
+(async () =&gt; {
+  console.log('G');
+  await p;
+  console.log('H');
+})();
+queueMicrotask(() =&gt; console.log('I'));
+console.log('J');</pre>`,
+        constraints: `Any modern browser or Node.js 12+ (CommonJS).`,
+        example: `<p>Output: ${H.c('g', 'A D G J')} → ${H.c('p', 'I')} → ${H.c('b', 'B')} ${H.c('p', 'C')} → ${H.c('b', 'E')} ${H.c('p', 'F H')}. p stays <b>pending</b> until the second timer, so both <code>p.then</code> and the <code>await p</code> continuation are parked on it, in registration order.</p>`,
+        brute: {
+          why: `<p>A common wrong answer puts F and H right after I, treating <code>p.then</code> and <code>await p</code> like callbacks on a resolved promise. Another wrong answer runs both timers back to back (B E C F H), forgetting that microtasks drain after <b>each</b> task.</p>`,
+          code: `// Wrong model: "all timers first, then all promise callbacks"
+const wrong = ['A', 'D', 'G', 'J', 'I', 'B', 'E', 'C', 'F', 'H'];
+console.log(wrong.join(' '));`
+        },
+        mcq: { q: 'Right after the script finishes, which callbacks are in the microtask queue?', options: ['I, F and H', 'Only I — p is still pending, so p.then and await p are parked on p', 'C and I', 'None'], answer: 1, explain: 'p is resolved only inside the second timer. Callbacks on a pending promise wait on the promise itself, not in a queue.' },
+        hints: [
+          `<p>Hint 1: Sync pass: A, the executor's D, the async function's G (up to <code>await p</code>), J. Two timers exist: timer1 (B…) created before timer2 (E…).</p>`,
+          `<p>Hint 2: p is pending after the script. <code>p.then(v)</code> and the await continuation are both parked on p — in that order. The only microtask is I.</p>`,
+          `<p>Hint 3: Task timer1 → B, microtask C. Task timer2 → E, resolve('F') queues the parked reactions in registration order → F, H. Recipe: sync → micro → [task → micro]*.</p>`
+        ],
+        solution: {
+          approach: `<p>Use the four columns. After the script: Output A D G J; Microtasks [I]; Tasks [timer1, timer2]; Waiting on p: [then(v), resume async]. Drain: I. Task timer1: B, queues C → drain: C. Task timer2: E, resolve('F') moves both parked reactions into the microtask queue → drain: F, H.</p>`,
+          code: { lang: 'js', run: true, code: `console.log('A');
+setTimeout(() => {
+  console.log('B');
+  Promise.resolve().then(() => console.log('C'));
+}, 0);
+const p = new Promise((resolve) => {
+  console.log('D');
+  setTimeout(() => { console.log('E'); resolve('F'); }, 0);
+});
+p.then((v) => console.log(v));
+(async () => {
+  console.log('G');
+  await p;
+  console.log('H');
+})();
+queueMicrotask(() => console.log('I'));
+console.log('J');
+
+// Expected output:
+// A
+// D
+// G
+// J
+// I
+// B
+// C
+// E
+// F
+// H` },
+          dry: { head: ['phase', 'running', 'microtasks', 'tasks', 'parked on p', 'printed'], rows: [
+            ['sync', 'script', 'I', 'timer1, timer2', 'then(v), resume', 'A D G J'],
+            ['micro', 'I', '—', 'timer1, timer2', 'then(v), resume', 'I'],
+            ['task', 'timer1', 'C', 'timer2', 'then(v), resume', 'B'],
+            ['micro', 'C', '—', 'timer2', 'then(v), resume', 'C'],
+            ['task', 'timer2 → resolve(F)', 'then(v), resume', '—', '—', 'E'],
+            ['micro', 'then(v), resume', '—', '—', '—', '<span class="c-g">F H</span>']
+          ] },
+          complexity: `<p>Linear in the number of callbacks; the skill is placing each callback in the right column at the right moment.</p>`,
+          followUps: ['Move <code>p.then(v)</code> below the async function. What changes? (H before F.)', 'Change the first timer to 10 ms. What is the new order?', 'What if the executor called resolve(\'F\') synchronously instead?']
         }
       }
     ]

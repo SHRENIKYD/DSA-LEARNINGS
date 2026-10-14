@@ -1,0 +1,901 @@
+(function () {
+  var topics = [], practice = [], quiz = [], interview = [];
+
+  /* ----------------------------------------------------------------------
+     Shared visualizer helpers for this module (C++ Pointers & References).
+     Memory is drawn as a row of boxes ("array" part):
+       - the value inside each box  = what is stored there
+       - the label under each box   = its (pretend, short) address, e.g. 0x104
+       - the labels above each box  = variable names and pointers aimed at it
+     A "step" describes one moment of a running C++ program:
+       l  : line number(s) to highlight in the code panel (1-based), c: class
+       n  : narration (HTML)
+       m  : memory spec {cells:[[addr, value, name]], hl:{i:cls}, p:{i:[labels]}, label}
+       m2 : optional second memory row (e.g. heap)
+       v  : variables {name: value}, vh: highlight map, vl: label
+       o  : console output so far (plain text)
+       g  : extra graph part, tb: extra table part, t: extra free HTML
+     ---------------------------------------------------------------------- */
+  function esc(s) {
+    return String(s === undefined || s === null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+  function mem(spec) {
+    var cells = spec.cells, ptr = {};
+    cells.forEach(function (c, i) {
+      var l = [];
+      if (c[2]) l.push(c[2]);
+      if (spec.p && spec.p[i]) l = l.concat(spec.p[i]);
+      if (l.length) ptr[i] = l;
+    });
+    return {
+      type: 'array', label: spec.label || 'Memory (address under each box, names/pointers above)',
+      values: cells.map(function (c) { return String(c[1]); }),
+      idxLabels: cells.map(function (c) { return c[0]; }),
+      ptr: ptr, hl: spec.hl || {}
+    };
+  }
+  function steps(code, list, opt) {
+    opt = opt || {};
+    return list.map(function (s) {
+      var parts = [], hl = {};
+      if (s.l) (Array.isArray(s.l) ? s.l : [s.l]).forEach(function (x) { hl[x] = s.c || 'cur'; });
+      if (code) parts.push({ type: 'code', label: opt.codeLabel || 'Program (highlighted = running now)', lang: 'cpp', code: code, hl: hl });
+      if (s.m) parts.push(mem(s.m));
+      if (s.m2) parts.push(mem(s.m2));
+      if (s.v) parts.push({ type: 'vars', label: s.vl || 'Expressions evaluated right now', vals: s.v, hl: s.vh || {} });
+      if (s.g) parts.push(s.g);
+      if (s.tb) parts.push(s.tb);
+      if (s.o !== undefined) parts.push({ type: 'text', label: 'Console output so far', html: '<pre>' + (s.o === '' ? '(nothing printed yet)' : esc(s.o)) + '</pre>' });
+      if (s.t) parts.push({ type: 'text', html: s.t });
+      return { narr: s.n, parts: parts };
+    });
+  }
+  function hex(n) { return '0x' + n.toString(16); }
+  function parseInts(input, def, maxLen, hint) {
+    var raw = String(input === undefined || input === null ? def : input).trim();
+    if (raw === '') raw = def;
+    var a = raw.split(/[\s,]+/).map(function (x) { return x; });
+    if (!a.length || a.some(function (x) { return !/^-?\d{1,6}$/.test(x); })) throw new Error(hint);
+    if (a.length > maxLen) throw new Error(hint);
+    return a.map(Number);
+  }
+  function one(k, cls) { var o = {}; o[k] = cls; return o; }
+
+  /* ======================================================================
+     TOPIC 1: Memory, addresses and the & operator
+     ====================================================================== */
+  var T1_CODE = [
+    'char   c = \'A\';     // 1 byte',
+    'int    x = 258;     // 4 bytes (on mainstream platforms)',
+    'double d = 1.5;     // 8 bytes',
+    'cout << &x;         // prints the ADDRESS of x',
+    'cout << sizeof(x);  // prints 4'
+  ].join('\n');
+
+  topics.push({
+    title: 'Memory, Addresses & the &amp; Operator',
+    analogy: `<p>Picture a <b>very long street</b> of tiny houses, each exactly one byte big, numbered 0, 1, 2, 3... all the way to billions. The <b>house number</b> is the <b>address</b>. What lives inside the house is the <b>value</b>. When you write <code>int x = 7;</code> the computer rents <b>four houses in a row</b> for <code>x</code> and puts the number 7 inside them. The name <code>x</code> is just a friendly <b>nickname</b> for "the 4 houses starting at number 0x104". The <code>&amp;</code> operator simply asks: <i>"what is the house number of x?"</i></p>`,
+    explain: `<p>Every pointer question in an interview stands on one simple idea: <b>memory is a giant numbered row of bytes</b>. Once you can picture that row, pointers stop being scary.</p>
+<h4>1. Bytes and addresses</h4>
+<p>A <b>byte</b> is 8 bits, enough to store a number from 0 to 255. Your RAM is a huge list of bytes, and every byte has a number called its <b>address</b>. Addresses are usually written in <b>hexadecimal</b> (base 16) like <code>0x7ffd5c3a1a14</code> just because it is shorter than decimal. In this module we use tiny pretend addresses like <code>0x100</code> so the pictures stay readable.</p>
+${H.arr(['41', 'pad', 'pad', 'pad', '02', '01', '00', '00'], { label: 'memory', hl: { 0: 'y', 4: 'g', 5: 'g', 6: 'g', 7: 'g' }, ptr: { 0: 'c', 4: 'x' } })}
+<p>Above: <code>c</code> uses 1 byte, then 3 unused "padding" bytes, then <code>x</code> uses 4 bytes. (The real order the compiler picks can differ; the idea is what matters.)</p>
+<h4>2. A variable = name + type + address + value</h4>
+${H.table(['Piece', 'Plain meaning', 'For <code>int x = 258;</code>'], [
+  ['<b>name</b>', 'the nickname you type in code', '<code>x</code>'],
+  ['<b>type</b>', 'how many bytes, and how to read them', '<code>int</code> → 4 bytes, read as a whole number'],
+  ['<b>address</b>', 'house number of the <b>first</b> byte', '<code>&amp;x</code> → e.g. <code>0x104</code>'],
+  ['<b>value</b>', 'what is stored there right now', '<code>258</code>']
+])}
+<h4>3. The <code>&amp;</code> operator: "address of"</h4>
+<p>Put <code>&amp;</code> in front of a variable and you get its address: <code>cout &lt;&lt; &amp;x;</code> prints something like <code>0x7ffd5c3a1a14</code>. The exact number changes every time you run the program (the operating system shuffles memory on purpose for security), so <b>never hard-code an address</b>.</p>
+<p>Careful: the same symbol <code>&amp;</code> means different things in different places. In an <b>expression</b> (<code>&amp;x</code>) it means "address of". In a <b>declaration</b> (<code>int&amp; r = x;</code>) it means "reference" (topic 5). Between two values (<code>a &amp; b</code>) it is bitwise AND.</p>
+<h4>4. <code>sizeof</code>: how many bytes</h4>
+${H.table(['Type', 'Typical sizeof on 64-bit Linux/Windows/macOS', 'Guaranteed by the standard?'], [
+  ['<code>char</code>', '1', '<span class="c-g">Yes, always exactly 1</span>'],
+  ['<code>int</code>', '4', 'only "at least 16 bits"'],
+  ['<code>long long</code>', '8', 'at least 64 bits'],
+  ['<code>double</code>', '8', 'not fixed, but 8 everywhere you will meet'],
+  ['<code>int*</code> (any data pointer)', '8 on 64-bit, 4 on 32-bit', 'no; depends on the platform']
+])}
+<h4>5. Neighbours in an array</h4>
+<p>Array elements sit <b>right next to each other</b> with no gaps. In <code>int a[4]</code>, if <code>&amp;a[0]</code> is <code>0x200</code> then <code>&amp;a[1]</code> is <code>0x204</code>, <code>&amp;a[2]</code> is <code>0x208</code>: each step is <code>sizeof(int)</code> = 4 bytes. This one fact powers pointer arithmetic (topic 3) and arrays decaying (topic 7).</p>
+${H.arr(['10', '20', '30', '40'], { label: 'int a[4]', ptr: { 0: '0x200', 1: '0x204', 2: '0x208', 3: '0x20c' } })}
+<h4>6. One gotcha when printing</h4>
+<p><code>cout &lt;&lt; &amp;c</code> where <code>c</code> is a <code>char</code> does <b>not</b> print an address. <code>cout</code> thinks a <code>char*</code> is a C-string and prints characters until it hits a zero byte (garbage!). Cast it: <code>cout &lt;&lt; static_cast&lt;void*&gt;(&amp;c);</code></p>`,
+    clues: [
+      '"What does <code>&amp;x</code> print?" / "where does this variable live?" → address-of operator, hex output, changes every run',
+      '"How many bytes does an <code>int</code> / pointer take?" → <code>sizeof</code>; pointer size depends on 32-bit vs 64-bit, not on the pointed-to type',
+      '"Are array elements contiguous?" → yes, <code>&amp;a[i] == base + i·sizeof(T)</code> bytes',
+      '"Why does printing <code>&amp;ch</code> show garbage?" → <code>operator&lt;&lt;</code> overload for <code>char*</code> treats it as a C-string',
+      '"Little-endian / byte order" or "inspect the bytes of an int" → view the object through <code>unsigned char*</code>',
+      '"sizeof(struct) is bigger than the sum of its fields" → alignment padding'
+    ],
+    code: [{ lang: 'cpp', title: 'Print addresses and sizes', code: `#include <iostream>
+using namespace std;
+
+int main() {
+    char   c = 'A';     // 1 byte
+    int    x = 258;     // usually 4 bytes
+    double d = 1.5;     // usually 8 bytes
+
+    // & in front of a variable means "address of"
+    cout << "x lives at " << &x << '\\n';               // e.g. 0x7ffd5c3a1a14 (changes every run)
+    cout << "d lives at " << &d << '\\n';
+    // cout treats char* as a C-string, so cast to void* to print the address itself
+    cout << "c lives at " << static_cast<void*>(&c) << '\\n';
+
+    cout << "sizeof(c)=" << sizeof(c)                   // always 1
+         << " sizeof(x)=" << sizeof(x)                  // 4 on mainstream platforms
+         << " sizeof(d)=" << sizeof(d)                  // 8
+         << " sizeof(&x)=" << sizeof(&x) << '\\n';       // 8 on a 64-bit build: size of an address
+
+    int a[4] = {10, 20, 30, 40};
+    for (int i = 0; i < 4; ++i)                          // neighbours are exactly sizeof(int) apart
+        cout << "&a[" << i << "] = " << &a[i] << '\\n';
+}` }, { lang: 'cpp', title: 'Peek at the raw bytes of an int (little-endian check)', code: `#include <cstdio>
+
+int main() {
+    int x = 258;                                        // 258 = 0x00000102
+    // unsigned char* is the one pointer type allowed to look at ANY object's bytes
+    const unsigned char* bytes = reinterpret_cast<const unsigned char*>(&x);
+    for (unsigned i = 0; i < sizeof x; ++i)
+        std::printf("byte %u at %p = %02x\\n", i, (const void*)(bytes + i), bytes[i]);
+    // On x86-64 and ARM64 (little-endian) this prints 02 01 00 00:
+    // the LEAST significant byte sits at the LOWEST address.
+}` }],
+    codeTitle: ['Addresses, sizeof and array neighbours', 'Byte-level view'],
+    viz: {
+      title: 'Where do my variables live? (byte-by-byte)',
+      input: '258',
+      inputLabel: 'Value stored in int x (any 32-bit int)',
+      gen: function (input) {
+        var raw = String(input === undefined ? '258' : input).trim() || '258';
+        if (!/^-?\d{1,10}$/.test(raw)) throw new Error('Type one whole number, e.g. 258 or -1');
+        var v = Number(raw);
+        if (v < -2147483648 || v > 2147483647) throw new Error('Use a value that fits in a 32-bit int (-2147483648 .. 2147483647)');
+        var u = v >>> 0, xb = [], i;
+        for (i = 0; i < 4; i++) xb.push(((u >>> (8 * i)) & 255).toString(16).padStart(2, '0'));
+        var db = ['00', '00', '00', '00', '00', '00', 'f8', '3f'];
+        var cells = [];
+        for (i = 0; i < 16; i++) cells.push([hex(0x100 + i), '??', '']);
+        function snap() { return cells.map(function (c) { return c.slice(); }); }
+        var f = [];
+        f.push({ l: 0, n: 'Memory before anything runs: 16 bytes, each with its own address (0x100 ... 0x10f). <b>??</b> means "whatever garbage was there before".', m: { cells: snap() } });
+        cells[0][1] = '41'; cells[0][2] = 'c';
+        f.push({ l: 1, n: '<code>char c = \'A\';</code> needs <b>1 byte</b>. The letter A is stored as its code 65 = hex <b>41</b> at address 0x100.', m: { cells: snap(), hl: { 0: 'ok' } }, v: { '&c': '0x100', 'sizeof(c)': 1 } });
+        for (i = 1; i < 4; i++) cells[i][1] = 'pad';
+        f.push({ l: 2, n: 'Before placing an <code>int</code>, the compiler likes an address divisible by 4 (<b>alignment</b>), so bytes 0x101-0x103 become unused <b>padding</b>.', m: { cells: snap(), hl: { 1: 'done', 2: 'done', 3: 'done' } } });
+        for (i = 0; i < 4; i++) cells[4 + i][1] = xb[i];
+        cells[4][2] = 'x';
+        f.push({ l: 2, n: '<code>int x = ' + v + ';</code> takes <b>4 bytes</b>: 0x104-0x107. In hex the value is <b>0x' + u.toString(16).padStart(8, '0') + '</b>. On little-endian CPUs (x86, ARM) the <b>lowest</b> byte goes first: ' + xb.join(' ') + '.', m: { cells: snap(), hl: { 4: 'ok', 5: 'ok', 6: 'ok', 7: 'ok' } }, v: { 'x': v, 'hex': '0x' + u.toString(16).padStart(8, '0') } });
+        for (i = 0; i < 8; i++) cells[8 + i][1] = db[i];
+        cells[8][2] = 'd';
+        f.push({ l: 3, n: '<code>double d = 1.5;</code> takes <b>8 bytes</b>: 0x108-0x10f. The bit pattern of 1.5 (IEEE-754) is 0x3ff8000000000000, again stored lowest byte first.', m: { cells: snap(), hl: { 8: 'ok', 9: 'ok', 10: 'ok', 11: 'ok', 12: 'ok', 13: 'ok', 14: 'ok', 15: 'ok' } } });
+        f.push({ l: 4, n: '<code>&amp;x</code> asks for the address of the <b>first</b> byte of x: <b>0x104</b>. That one number plus the type <code>int</code> tells the CPU everything: "start at 0x104, read 4 bytes".', m: { cells: snap(), hl: { 4: 'sel', 5: 'win', 6: 'win', 7: 'win' }, p: { 4: ['&x → here'] } }, v: { '&x': '0x104', 'x': v }, vh: { '&x': 'sel' }, o: '0x104' });
+        f.push({ l: 5, n: '<code>sizeof(x)</code> is decided at <b>compile time</b>: 4. It never looks at the value, only the type.', m: { cells: snap(), hl: { 4: 'win', 5: 'win', 6: 'win', 7: 'win' } }, v: { 'sizeof(c)': 1, 'sizeof(x)': 4, 'sizeof(d)': 8, 'sizeof(&x)': '8 (64-bit)' }, o: '0x104\n4' });
+        f.push({ l: 0, n: 'Summary: each variable = a <b>start address</b> + a <b>size</b> from its type. The 3 padding bytes are why <code>sizeof</code> of a struct {char; int; double;} is 16, not 13.', m: { cells: snap(), hl: { 0: 'ok', 1: 'done', 2: 'done', 3: 'done', 4: 'ok', 8: 'ok' } }, tb: { type: 'table', label: 'Who lives where', columns: ['variable', 'type', 'address', 'bytes'], rows: [['c', 'char', '0x100', '1'], ['(padding)', '-', '0x101', '3'], ['x', 'int', '0x104', '4'], ['d', 'double', '0x108', '8']], hl: { 2: 'sel' } } });
+        return steps(T1_CODE, f);
+      }
+    },
+    examples: [
+      { title: 'Array neighbours are exactly sizeof(T) apart', html: `<p>For <code>double b[3]</code> starting at 0x300, the addresses are 0x300, 0x308, 0x310 (8 bytes each). For <code>char s[3]</code> at 0x400 they are 0x400, 0x401, 0x402. The gap is always <code>sizeof</code> the element type.</p>${H.table(['element', 'int a[] (4B)', 'double b[] (8B)', 'char s[] (1B)'], [['[0]', '0x200', '0x300', '0x400'], ['[1]', '0x204', '0x308', '0x401'], ['[2]', '0x208', '0x310', '0x402']])}`, code: { lang: 'cpp', code: `#include <iostream>
+int main() {
+    double b[3] = {1.0, 2.0, 3.0};
+    // Subtract addresses as raw bytes to see the gap (always 8 for double)
+    auto gap = reinterpret_cast<const char*>(&b[1]) - reinterpret_cast<const char*>(&b[0]);
+    std::cout << "gap = " << gap << " bytes\\n";   // gap = 8 bytes
+}` } },
+      { title: 'The char* printing trap', html: `<p>Predict the output: <code>char c = 'Z'; cout &lt;&lt; &amp;c;</code>. Many people expect an address. Instead you get <code>Z</code> followed by random symbols, because <code>cout</code> treats <code>char*</code> as "start of a text string" and keeps printing until it finds a 0 byte. Fix: <code>cout &lt;&lt; (void*)&amp;c</code> or <code>static_cast&lt;const void*&gt;(&amp;c)</code>.</p>`, code: { lang: 'cpp', code: `#include <iostream>
+int main() {
+    char c = 'Z';
+    // std::cout << &c;                            // BUG: prints "Z" + garbage (reads past c!)
+    std::cout << static_cast<void*>(&c) << '\\n';    // prints the real address, e.g. 0x7ffe...
+}` } },
+      { title: 'sizeof a pointer never depends on what it points at', html: `<p><code>sizeof(char*)</code>, <code>sizeof(int*)</code> and <code>sizeof(std::string*)</code> are <b>all 8</b> on a 64-bit build. A pointer is just an address, and every address on the machine is the same width. Interviewers love "sizeof(p) vs sizeof(*p)": ${H.table(['expression', 'meaning', 'value for <code>double* p</code>'], [['<code>sizeof(p)</code>', 'size of the address', '8'], ['<code>sizeof(*p)</code>', 'size of the thing pointed at', '8 (a double)'], ['<code>sizeof(p) for char* p</code>', 'still the address', '8 (not 1!)']])}</p>` },
+      { title: 'Struct padding you can measure', html: `<p><code>struct A { char c; int x; char d; };</code> → 1 + 3 pad + 4 + 1 + 3 pad = <b>12</b>. Reorder as <code>struct B { int x; char c; char d; };</code> → 4 + 1 + 1 + 2 pad = <b>8</b>. Same fields, 33% less memory, just by ordering big-to-small.</p>`, code: { lang: 'cpp', code: `#include <iostream>
+struct A { char c; int x; char d; };   // padded to 12 bytes
+struct B { int x; char c; char d; };   // padded to 8 bytes
+int main() {
+    std::cout << sizeof(A) << ' ' << sizeof(B) << '\\n';   // 12 8 on mainstream ABIs
+    std::cout << alignof(int) << '\\n';                     // 4: int wants addresses divisible by 4
+}` } }
+    ],
+    deepDive: `<p><b>Virtual addresses.</b> The numbers you print are <b>virtual</b> addresses. Each process gets its own private map; the CPU's MMU translates virtual pages (usually 4 KiB) to physical RAM. Two programs can both have something at <code>0x7ffd...</code> and never collide. On x86-64 only 48 (or 57) bits of an address are actually used, which is why user-space addresses look like <code>0x7ff...</code> (stack) and <code>0x55...</code>/<code>0x5...</code> (program image/heap with PIE).</p>
+<p><b>ASLR</b> (Address Space Layout Randomization) moves the stack, heap and libraries every run so attackers cannot guess where things live. That is why your printed addresses change. Any program logic that depends on a specific address value is broken by design.</p>
+<p><b>Alignment.</b> <code>alignof(T)</code> says which addresses a type may start at. Misaligned access is merely slower on x86 but can trap on some ARM/RISC-V configurations, and it is undefined behaviour in C++ regardless. That is why the compiler inserts padding, and why <code>sizeof(struct)</code> is always a multiple of its alignment (so arrays of it stay aligned).</p>
+<p><b>Endianness.</b> x86-64 and practically all ARM64 systems are little-endian. Network protocols traditionally use big-endian ("network byte order"), hence <code>htonl</code>/<code>ntohl</code>. C++20 gives <code>std::endian::native</code> to test at compile time and C++23 adds <code>std::byteswap</code>.</p>
+<p><b>Expert corner cases.</b> (1) A class can overload unary <code>operator&amp;</code>; generic code uses <code>std::addressof(obj)</code> to get the true address. (2) A <code>register</code>-like local or a constant may never live in memory at all until you take its address; taking <code>&amp;x</code> forces the compiler to give it a real home. (3) Converting a pointer to an integer uses <code>std::uintptr_t</code> via <code>reinterpret_cast</code>; doing math on it and converting back is implementation-defined. (4) Only <code>char</code>, <code>unsigned char</code> and <code>std::byte</code> pointers may legally inspect another object's bytes (the strict aliasing exception).</p>`,
+    aiEra: `<p><b>What AI changes:</b> an assistant can instantly explain a hex dump, tell you that <code>sizeof(long)</code> is 4 on Windows but 8 on Linux, or produce a struct-reordering suggestion to remove padding. Tools like Compiler Explorer plus an AI chat let you ask "why is this struct 24 bytes?" and get a byte-by-byte answer in seconds.</p>
+<p><b>Use AI as a partner:</b> ask <code>Draw the memory layout of struct S {char a; double b; int c;} on x86-64 with offsets, then tell me the best field order</code>, and then <b>verify</b> with <code>offsetof</code> and <code>static_assert(sizeof(S) == 16)</code>. Let the compiler be the judge, not the chat.</p>
+<p><b>Where AI goes wrong:</b> it often states sizes as if they were guaranteed ("int is always 4 bytes"), forgets the <code>char*</code> printing trap, or invents fixed addresses in "expected output" that can never match a real run because of ASLR.</p>
+<p><b>What you must still own:</b> the mental picture of memory as a numbered byte row. Every later topic (pointer arithmetic, decay, dangling) is that picture plus one rule. In interviews you will be asked to draw it on a whiteboard with no assistant.</p>`,
+    problems: [{
+      title: 'Byte Offset Between Two Array Elements',
+      level: 'Easy', tags: ['addresses', 'sizeof', 'reinterpret_cast'], companies: ['Qualcomm', 'NVIDIA', 'Intel'],
+      statement: `<p>You are given two pointers <code>base</code> and <code>elem</code> into the <b>same</b> <code>int</code> array (<code>elem</code> at or after <code>base</code>). Return how many <b>bytes</b> apart they are. Then return the <b>element</b> distance too. Do not use the array itself, only the two addresses.</p>`,
+      constraints: `<p>Both pointers point into the same array of size ≤ 10<sup>6</sup>. <code>elem ≥ base</code>.</p>`,
+      example: `<p><code>int a[5]</code> starts at 0x100, <code>base = &amp;a[0]</code>, <code>elem = &amp;a[3]</code>.</p>${H.arr(['a[0]', 'a[1]', 'a[2]', 'a[3]', 'a[4]'], { ptr: { 0: 'base', 3: 'elem' }, hl: { 3: 'g' } })}<p>Output: bytes = ${H.c('g', '12')}, elements = ${H.c('b', '3')}, because each int is 4 bytes: 3 × 4 = 12.</p>`,
+      brute: { why: `<p>Walk a pointer from <code>base</code> one element at a time until it reaches <code>elem</code>, counting steps, then multiply by <code>sizeof(int)</code>. Correct, but O(distance) when the answer is a single subtraction.</p>`, code: { lang: 'cpp', code: `#include <cstddef>
+// O(k): step one element at a time
+std::size_t byteOffsetBrute(const int* base, const int* elem) {
+    std::size_t steps = 0;
+    for (const int* p = base; p != elem; ++p) ++steps;   // count elements between them
+    return steps * sizeof(int);                           // convert elements -> bytes
+}` } },
+      mcq: { q: 'If <code>elem - base</code> (as <code>int*</code>) is 3, what is the byte distance on a platform where <code>sizeof(int)</code> is 4?', options: ['3', '12', '4', 'depends on the values stored'], answer: 1, explain: 'Pointer subtraction counts elements; bytes = elements × sizeof(int) = 3 × 4 = 12. Values stored never matter.' },
+      hints: [`<p>Subtracting two <code>int*</code> gives a count of <b>ints</b>, not bytes. Subtracting two <code>char*</code> gives bytes, because a char is 1 byte.</p>`, `<p>Convert both addresses to <code>const char*</code> with <code>reinterpret_cast</code> (allowed for inspecting bytes) and subtract.</p>`, `<p>Recipe: <code>elems = elem - base;</code> <code>bytes = (const char*)elem - (const char*)base;</code> Check: <code>bytes == elems * sizeof(int)</code>. The result type of pointer subtraction is <code>std::ptrdiff_t</code> (signed).</p>`],
+      solution: {
+        approach: `<p>Two subtractions, O(1). Pointer subtraction in C++ is scaled by the element size, so view the addresses as <code>char*</code> when you want raw bytes.</p>`,
+        code: { lang: 'cpp', code: `#include <cstddef>
+#include <iostream>
+
+// Distance in ELEMENTS: pointer subtraction is automatically divided by sizeof(int)
+std::ptrdiff_t elemOffset(const int* base, const int* elem) {
+    return elem - base;
+}
+
+// Distance in BYTES: look at both addresses as char* (1-byte steps)
+std::ptrdiff_t byteOffset(const int* base, const int* elem) {
+    return reinterpret_cast<const char*>(elem) - reinterpret_cast<const char*>(base);
+}
+
+int main() {
+    int a[5] = {7, 7, 7, 7, 7};
+    std::cout << byteOffset(&a[0], &a[3]) << ' '      // 12
+              << elemOffset(&a[0], &a[3]) << '\\n';    // 3
+}` },
+        dry: { head: ['expression', 'raw addresses', 'result', 'why'], rows: [['<code>elem - base</code> (int*)', '0x10c − 0x100', '3', '12 bytes ÷ 4 bytes per int'], ['<code>(char*)elem − (char*)base</code>', '0x10c − 0x100', '12', 'char is 1 byte, so no scaling'], ['check', '3 × sizeof(int)', '12', '<span class="c-g">matches</span>']] },
+        complexity: `<p>Time O(1), space O(1).</p>`,
+        followUps: ['What type should hold the result, and why is it signed?', 'Is subtracting pointers into two different arrays allowed?', 'How would you compute the offset of a struct field? (<code>offsetof</code>)']
+      }
+    }]
+  });
+
+  /* ======================================================================
+     TOPIC 2: Pointers: declare, dereference, pointer-to-pointer, ->
+     ====================================================================== */
+  var T2_CODE = [
+    'int x = 5;',
+    'int* p = &x;      // p stores the ADDRESS of x',
+    '*p = 9;           // go to that address, write 9',
+    'int y = 3;',
+    'p = &y;           // re-aim p at y',
+    'int** pp = &p;    // pp stores the address of p',
+    '**pp = 4;         // pp -> p -> y, write 4',
+    'cout << x << " " << y;'
+  ].join('\n');
+
+  function t2graph(pTo, ppOn, hlE) {
+    var nodes = [
+      { id: 'x', label: 'x @0x100', x: 15, y: 15, shape: 'box' },
+      { id: 'y', label: 'y @0x104', x: 15, y: 45, shape: 'box' },
+      { id: 'p', label: 'p @0x108', x: 55, y: 30, shape: 'box' },
+      { id: 'pp', label: 'pp @0x110', x: 88, y: 30, shape: 'box' }
+    ];
+    var edges = [], ehl = {};
+    if (pTo) { edges.push(['p', pTo, 'points to']); if (hlE) ehl['p-' + pTo] = 'cur'; }
+    if (ppOn) { edges.push(['pp', 'p', 'points to']); if (hlE) ehl['pp-p'] = 'cur'; }
+    return { type: 'graph', label: 'Arrow view (who points at whom)', directed: true, height: 60, nodes: nodes, edges: edges, ehl: ehl };
+  }
+
+  topics.push({
+    title: 'Pointers: Declare, Dereference, -&gt; and Pointer-to-Pointer',
+    analogy: `<p>A <b>pointer</b> is a <b>sticky note with a house number written on it</b>. The note itself is a small thing you keep in your pocket (it has its own spot in memory), but what it is <i>about</i> is some other house. <b>Dereferencing</b> (<code>*p</code>) means "walk to the house written on the note and open the door". Rewriting the note (<code>p = &amp;y</code>) does not move any houses; it just makes the note talk about a different house. A <b>pointer to a pointer</b> is a sticky note telling you where you left <i>another</i> sticky note.</p>`,
+    explain: `<p>A <b>pointer</b> is a variable whose value is an <b>address</b>. That is the whole idea. Everything else is syntax.</p>
+<h4>1. Declaring and filling a pointer</h4>
+<pre>int x = 5;
+int* p = &amp;x;   // "p is a pointer to int, holding the address of x"</pre>
+${H.table(['Piece', 'Read it as'], [['<code>int*</code>', '"pointer to int" (the type)'], ['<code>p</code>', 'the pointer variable (8 bytes on 64-bit)'], ['<code>&amp;x</code>', '"the address of x"']])}
+<p>The pointer's type says <b>what kind of thing lives at that address</b>. An <code>int*</code> may only hold the address of an <code>int</code>; <code>int* q = &amp;someDouble;</code> is a compile error. That type is what lets the compiler know "read 4 bytes and treat them as an int" when you follow the pointer.</p>
+<h4>2. Dereferencing with <code>*</code></h4>
+<p><code>*p</code> means "the thing p points at". You can read it (<code>int v = *p;</code>) or write it (<code>*p = 9;</code> changes <code>x</code>!). So after <code>int* p = &amp;x;</code>, the expressions <code>*p</code> and <code>x</code> are two names for the <b>same box</b>.</p>
+${H.arr(['9', '?', '0x100'], { label: 'memory', ptr: { 0: 'x  (= *p)', 2: 'p' }, hl: { 0: 'g', 2: 'b' } })}
+<h4>3. Two meanings of <code>*</code></h4>
+${H.table(['Where', 'Meaning', 'Example'], [['in a <b>declaration</b>', 'this variable is a pointer', '<code>int* p;</code>'], ['in an <b>expression</b>', 'follow the pointer (dereference)', '<code>*p = 9;</code>'], ['between two numbers', 'multiply', '<code>a * b</code>']])}
+<h4>4. The classic declaration trap</h4>
+<p><code>int* a, b;</code> makes <code>a</code> a pointer but <b><code>b</code> a plain int</b>. The <code>*</code> sticks to the name, not the type. Declare one pointer per line, or write <code>int *a, *b;</code>.</p>
+<h4>5. Pointers to structs and the arrow <code>-&gt;</code></h4>
+<p>For <code>Point* pt</code>, writing <code>(*pt).x</code> is clumsy (the parentheses are required because <code>.</code> binds tighter than <code>*</code>). C++ gives a shortcut: <code>pt-&gt;x</code> means exactly <code>(*pt).x</code>.</p>
+<h4>6. Pointer to pointer</h4>
+<p>A pointer is a variable, so it has its own address too. <code>int** pp = &amp;p;</code> stores the address of <code>p</code>. Then <code>*pp</code> is <code>p</code>, and <code>**pp</code> is whatever <code>p</code> points at. You need this when a function must <b>change the caller's pointer</b> (for example, "allocate a buffer and hand it back", or delete the head of a linked list).</p>
+<h4>7. Always initialize</h4>
+<p>A local <code>int* p;</code> with no initializer holds <b>garbage</b>: some random address. Using it is undefined behaviour (topic 4 calls this a <b>wild pointer</b>). Rule: give every pointer a real address or <code>nullptr</code> on the line where you declare it.</p>`,
+    clues: [
+      '"Write a function that modifies the caller\'s variable" (C-style API) → pass a pointer, write through <code>*p</code>',
+      '"Function must return two results" (min and max, quotient and remainder) → out-parameters as pointers (or a struct/pair in modern C++)',
+      '"Change which node the head points to" / "allocate inside a function" → pointer to pointer (<code>T**</code>) or reference to pointer (<code>T*&amp;</code>)',
+      '"What is the type of <code>b</code> in <code>int* a, b;</code>?" → plain <code>int</code>',
+      '"<code>p-&gt;x</code> vs <code>(*p).x</code> vs <code>*p.x</code>" → first two are identical; the third parses as <code>*(p.x)</code>',
+      '"Predict the output" with <code>*p = ...</code> lines → track which box each pointer is aimed at, line by line'
+    ],
+    code: [{ lang: 'cpp', title: 'Pointer basics in one program', code: `#include <iostream>
+using namespace std;
+
+struct Point { int x, y; };
+
+int main() {
+    int x = 5;
+    int* p = &x;            // p holds the address of x
+    cout << *p << '\\n';     // 5   : read through the pointer
+    *p = 9;                 // write through the pointer: x is now 9
+    cout << x << '\\n';      // 9
+
+    int y = 3;
+    p = &y;                 // re-aim p; x is untouched
+    int** pp = &p;          // pointer to the pointer p
+    **pp = 4;               // pp -> p -> y : y becomes 4
+    cout << x << ' ' << y << '\\n';   // 9 4
+
+    Point pt{1, 2};
+    Point* q = &pt;
+    q->x = 10;              // same as (*q).x = 10
+    cout << pt.x << ',' << (*q).y << '\\n';   // 10,2
+
+    cout << sizeof(p) << ' ' << sizeof(*p) << '\\n';   // 8 4 on a 64-bit build
+}` }],
+    codeTitle: ['Declare, dereference, -> and **'],
+    viz: {
+      title: 'Follow the sticky notes: x, y, p and pp',
+      gen: function () {
+        function M(vx, vy, vp, vpp, hl, extra) {
+          var p = {};
+          if (vp === '0x100') p[0] = ['*p'];
+          if (vp === '0x104') p[1] = ['*p'];
+          if (vpp === '0x108') p[2] = (p[2] || []).concat(['*pp']);
+          if (extra) Object.keys(extra).forEach(function (k) { p[k] = (p[k] || []).concat(extra[k]); });
+          return { cells: [['0x100', vx, 'x'], ['0x104', vy, 'y'], ['0x108', vp, 'p'], ['0x110', vpp, 'pp']], hl: hl || {}, p: p };
+        }
+        var f = [
+          { l: 0, n: 'Four boxes are reserved: <b>x</b> and <b>y</b> (ints) and <b>p</b> and <b>pp</b> (pointers, 8 bytes each). Nothing is filled yet.', m: M('??', '??', '??', '??'), g: t2graph(null, false) },
+          { l: 1, n: '<code>int x = 5;</code> writes 5 into the box at 0x100.', m: M('5', '??', '??', '??', { 0: 'ok' }), g: t2graph(null, false) },
+          { l: 2, n: '<code>int* p = &amp;x;</code>: the <b>value</b> stored in p is the number <b>0x100</b>, the address of x. Now <code>*p</code> is another name for x.', m: M('5', '??', '0x100', '??', { 2: 'ok', 0: 'win' }), g: t2graph('x', false, true), v: { 'p': '0x100', '*p': 5, '&p': '0x108' }, vh: { 'p': 'ok' } },
+          { l: 3, n: '<code>*p = 9;</code>: read the address in p (0x100), go there, write 9. We changed <b>x</b> without ever typing its name.', m: M('9', '??', '0x100', '??', { 0: 'ok' }), g: t2graph('x', false), v: { 'x': 9, '*p': 9 }, vh: { 'x': 'ok' } },
+          { l: 4, n: '<code>int y = 3;</code> fills the box at 0x104.', m: M('9', '3', '0x100', '??', { 1: 'ok' }), g: t2graph('x', false) },
+          { l: 5, n: '<code>p = &amp;y;</code>: overwrite the <b>note</b>, not the house. p now holds 0x104. x keeps its 9.', m: M('9', '3', '0x104', '??', { 2: 'cur', 1: 'win' }), g: t2graph('y', false, true), v: { 'p': '0x104', '*p': 3, 'x': 9 }, vh: { 'p': 'cur' } },
+          { l: 6, n: '<code>int** pp = &amp;p;</code>: pp stores the address of the <b>pointer</b> p (0x108). Its type is "pointer to pointer to int".', m: M('9', '3', '0x104', '0x108', { 3: 'ok', 2: 'win' }), g: t2graph('y', true, true), v: { 'pp': '0x108', '*pp': '0x104 (= p)', '**pp': 3 }, vh: { 'pp': 'ok' } },
+          { l: 7, n: '<code>**pp = 4;</code>: first <code>*pp</code> → go to 0x108, find 0x104. Second <code>*</code> → go to 0x104 and write 4. <b>y</b> becomes 4.', m: M('9', '4', '0x104', '0x108', { 3: 'cur', 2: 'cur', 1: 'ok' }), g: t2graph('y', true, true), v: { 'step 1: *pp': '0x104', 'step 2: **pp': '4' }, vh: { 'step 2: **pp': 'ok' } },
+          { l: 8, n: 'Output <b>9 4</b>. Lesson: <code>*p = ...</code> changes the target; <code>p = ...</code> changes the pointer itself.', m: M('9', '4', '0x104', '0x108', { 0: 'sel', 1: 'sel' }), g: t2graph('y', true), o: '9 4' }
+        ];
+        return steps(T2_CODE, f);
+      }
+    },
+    examples: [
+      { title: 'Swap two ints through pointers (C style)', html: `<p>Pass the <b>addresses</b> so the function can reach back into the caller's variables. Inside, <code>*a</code> and <code>*b</code> are the caller's boxes.</p>${H.table(['line', 'a (addr)', 'b (addr)', '*a', '*b', 't'], [['start', '0x100', '0x104', '1', '2', '-'], ['t = *a', '0x100', '0x104', '1', '2', '1'], ['*a = *b', '0x100', '0x104', '<span class="c-g">2</span>', '2', '1'], ['*b = t', '0x100', '0x104', '2', '<span class="c-g">1</span>', '1']])}`, code: { lang: 'cpp', code: `#include <iostream>
+void swapPtr(int* a, int* b) {
+    int t = *a;   // copy the value a points at
+    *a = *b;      // write b's target into a's target
+    *b = t;       // finish the swap
+}
+int main() {
+    int i = 1, j = 2;
+    swapPtr(&i, &j);                       // pass addresses
+    std::cout << i << ' ' << j << '\\n';    // 2 1
+}` } },
+      { title: 'Predict: the int* a, b trap', html: `<p>What are the types? <code>int* a, b;</code> → <code>a</code> is <code>int*</code>, <code>b</code> is <code>int</code>. So <code>b = &amp;x;</code> fails to compile ("invalid conversion from int* to int"). That compile error is the good outcome; the bad outcome is people reading the code wrongly. Style fix: one declaration per line.</p>`, code: { lang: 'cpp', code: `#include <type_traits>
+int main() {
+    int* a, b;                                       // a: int*, b: int  (!)
+    static_assert(std::is_same_v<decltype(a), int*>);
+    static_assert(std::is_same_v<decltype(b), int>);  // the * did not apply to b
+    int *c, *d;                                      // both pointers: * on each name
+    static_assert(std::is_same_v<decltype(d), int*>);
+}` } },
+      { title: 'Pointer to pointer: let a function re-aim the caller\'s pointer', html: `<p>A function receives copies of its arguments. If you pass <code>int* p</code>, the function gets a copy of the address and cannot change the caller's <code>p</code>. Pass <code>int** pp</code> (or <code>int*&amp;</code>) instead.</p>${H.table(['signature', 'can change *p (the target)?', 'can change p itself?'], [['<code>f(int* p)</code>', '<span class="c-g">yes</span>', '<span class="c-r">no, copy</span>'], ['<code>f(int** pp)</code>', 'yes, via <code>**pp</code>', '<span class="c-g">yes, via <code>*pp = ...</code></span>'], ['<code>f(int*&amp; rp)</code>', 'yes', '<span class="c-g">yes</span>']])}`, code: { lang: 'cpp', code: `#include <iostream>
+int g_value = 42;
+
+void pointAtGlobal(int** out) {
+    *out = &g_value;          // change the CALLER's pointer
+}
+int main() {
+    int* p = nullptr;
+    pointAtGlobal(&p);        // pass the address of p
+    std::cout << *p << '\\n';  // 42
+}` } },
+      { title: 'Arrow operator on a struct pointer', html: `<p><code>q-&gt;x</code> ≡ <code>(*q).x</code>. The tempting <code>*q.x</code> is wrong: <code>.</code> binds tighter, so it means <code>*(q.x)</code>, which does not compile because a pointer has no member <code>x</code>.</p>`, code: { lang: 'cpp', code: `#include <iostream>
+struct Account { int id; double balance; };
+void deposit(Account* acc, double amount) {
+    acc->balance += amount;              // same as (*acc).balance += amount
+}
+int main() {
+    Account a{7, 100.0};
+    deposit(&a, 50.0);
+    std::cout << a.id << ' ' << a.balance << '\\n';   // 7 150
+}` } }
+    ],
+    deepDive: `<p><b>What a pointer really is at runtime.</b> On x86-64 a pointer is a 64-bit integer held in a register or a stack slot. <code>*p</code> compiles to one load instruction like <code>mov eax, DWORD PTR [rdi]</code>: "read 4 bytes at the address in rdi". The type <code>int*</code> exists only at compile time; it decides the load width and the arithmetic scale.</p>
+<p><b>Pointer types are a safety net.</b> You can bypass them with <code>reinterpret_cast</code>, but reading an object through a pointer of an unrelated type (say a <code>float</code> through an <code>int*</code>) breaks the <b>strict aliasing rule</b>: the optimizer is allowed to assume an <code>int*</code> and a <code>float*</code> never refer to the same memory, so your read may see a stale value. The legal ways to reinterpret bits are <code>std::memcpy</code> and C++20 <code>std::bit_cast</code>.</p>
+<p><b><code>void*</code></b> is "address of something, type unknown". Any object pointer converts to <code>void*</code> implicitly; going back needs a <code>static_cast</code>. You cannot dereference a <code>void*</code> or do arithmetic on it in standard C++ (GCC allows arithmetic as an extension). It is the type of <code>malloc</code>'s result and of C-style callback context parameters.</p>
+<p><b>Precedence table to memorize:</b> postfix (<code>p++</code>, <code>p[i]</code>, <code>p-&gt;m</code>, <code>s.m</code>, calls) bind tighter than prefix (<code>*p</code>, <code>&amp;x</code>, <code>++p</code>). So <code>*p.m</code> = <code>*(p.m)</code>, <code>*p++</code> = <code>*(p++)</code>, <code>&amp;a[3]</code> = <code>&amp;(a[3])</code>.</p>
+<p><b>Out-parameters in modern C++.</b> Pointer out-params are still common in C APIs, POSIX and game engines, but modern C++ style prefers returning a <code>struct</code>, <code>std::pair</code>/<code>std::tuple</code> with structured bindings, or <code>std::optional</code>. Use a pointer parameter when "nothing" (<code>nullptr</code>) is a meaningful input; use a reference when the argument is mandatory. The C++ Core Guidelines (F.20, F.60) spell this out.</p>
+<p><b>Raw pointers today.</b> In 2026 codebases, a raw <code>T*</code> conventionally means <b>non-owning</b>: "I can look at it, I am not responsible for deleting it". Owning pointers are <code>std::unique_ptr</code>/<code>std::shared_ptr</code> (module cpp06).</p>`,
+    aiEra: `<p><b>What AI changes:</b> coding assistants autocomplete pointer plumbing well and can translate a C API with <code>T**</code> out-parameters into a clean C++ wrapper returning <code>std::optional</code> or <code>std::unique_ptr</code>. Ask for that translation; it is a high-value refactor.</p>
+<p><b>Use AI as a partner:</b> paste a predict-the-output puzzle and ask the assistant to <i>draw the memory table line by line</i> instead of just giving the answer. Compare its table with yours; disagreements are where you learn. Then compile it with <code>-Wall -Wextra</code> to settle the argument.</p>
+<p><b>Where AI goes wrong:</b> it frequently writes <code>int* a, b;</code> expecting two pointers, mixes up <code>*p++</code> and <code>(*p)++</code>, and in multi-level pointer code (<code>Node**</code>) silently changes a copy instead of the caller's pointer. It also tends to sprinkle raw owning pointers where <code>unique_ptr</code> belongs.</p>
+<p><b>What you must still own:</b> the two-question habit for any line with a pointer: <i>"Am I changing the pointer, or the thing it points at?"</i> and <i>"Is this a copy of the pointer, or the caller's original?"</i> Interviewers test exactly that, and reviewers of AI-generated code need exactly that.</p>`,
+    problems: [{
+      title: 'Min and Max Through Out-Pointers',
+      level: 'Easy', tags: ['pointers', 'out-parameters'], companies: ['Microsoft', 'Cisco', 'Bloomberg'],
+      statement: `<p>Write <code>bool minMax(const int* a, int n, int* outMin, int* outMax)</code>. It scans the <code>n</code> ints starting at <code>a</code>, writes the smallest into <code>*outMin</code> and the largest into <code>*outMax</code>, and returns <code>true</code>. If <code>n == 0</code> or any pointer is null, return <code>false</code> and write nothing.</p>`,
+      constraints: `<p>0 ≤ n ≤ 10<sup>6</sup>, values fit in <code>int</code>. One pass, O(1) extra space.</p>`,
+      example: `<p>a = ${H.arr([4, -2, 9, 0], { hl: { 1: 'b', 2: 'g' } })} → returns true, <code>*outMin = ${H.c('b', '-2')}</code>, <code>*outMax = ${H.c('g', '9')}</code>. The caller's two variables change because the function writes <b>through</b> their addresses.</p>`,
+      brute: { why: `<p>Copy into a vector and sort it, then read front and back. O(N log N) time and O(N) extra memory just to find two numbers, and it hides the real lesson (writing through pointers).</p>`, code: { lang: 'cpp', code: `#include <vector>
+#include <algorithm>
+bool minMaxBrute(const int* a, int n, int* outMin, int* outMax) {
+    if (n == 0 || !a || !outMin || !outMax) return false;
+    std::vector<int> v(a, a + n);            // copy: O(N) memory
+    std::sort(v.begin(), v.end());           // O(N log N) time
+    *outMin = v.front();
+    *outMax = v.back();
+    return true;
+}` } },
+      mcq: { q: 'Inside <code>minMax</code>, which line correctly stores the minimum for the caller?', options: ['<code>outMin = &amp;best;</code>', '<code>*outMin = best;</code>', '<code>&amp;outMin = best;</code>', '<code>outMin = best;</code>'], answer: 1, explain: '<code>*outMin = best</code> writes into the caller\'s variable. <code>outMin = &amp;best</code> only re-aims the local copy of the pointer (and at a local that dies on return!).' },
+      hints: [`<p>The caller passes <code>&amp;lo</code> and <code>&amp;hi</code>. Writing to <code>*outMin</code> writes into <code>lo</code>.</p>`, `<p>Start <code>mn = mx = a[0]</code>, then walk the rest once. Only write through the out-pointers at the very end (so a failure never leaves half-written results).</p>`, `<p>Guard first: <code>if (n &lt;= 0 || !a || !outMin || !outMax) return false;</code>. Then loop <code>for (const int* p = a + 1; p != a + n; ++p)</code> updating mn/mx, then <code>*outMin = mn; *outMax = mx; return true;</code></p>`],
+      solution: {
+        approach: `<p>Validate pointers, single linear scan with two running values, publish results through the out-pointers at the end.</p>`,
+        code: { lang: 'cpp', code: `#include <iostream>
+
+bool minMax(const int* a, int n, int* outMin, int* outMax) {
+    if (n <= 0 || a == nullptr || outMin == nullptr || outMax == nullptr)
+        return false;                         // nothing written on failure
+    int mn = a[0], mx = a[0];
+    for (const int* p = a + 1; p != a + n; ++p) {   // walk with a pointer
+        if (*p < mn) mn = *p;
+        if (*p > mx) mx = *p;
+    }
+    *outMin = mn;                             // write into the caller's variables
+    *outMax = mx;
+    return true;
+}
+
+int main() {
+    int data[] = {4, -2, 9, 0};
+    int lo = 0, hi = 0;
+    if (minMax(data, 4, &lo, &hi))
+        std::cout << lo << ' ' << hi << '\\n';   // -2 9
+}` },
+        alt: [{ lang: 'cpp', title: 'Modern C++ alternative: return a pair', code: `#include <optional>
+#include <utility>
+#include <span>
+#include <algorithm>
+// No out-pointers at all: return the answer, empty optional means "no elements"
+std::optional<std::pair<int, int>> minMaxModern(std::span<const int> a) {
+    if (a.empty()) return std::nullopt;
+    auto [mn, mx] = std::minmax_element(a.begin(), a.end());
+    return std::pair{*mn, *mx};
+}` }],
+        dry: { head: ['p points at', '*p', 'mn', 'mx'], rows: [['a[0] (init)', '4', '4', '4'], ['a[1]', '-2', '<span class="c-b">-2</span>', '4'], ['a[2]', '9', '-2', '<span class="c-g">9</span>'], ['a[3]', '0', '-2', '9'], ['end', '-', '*outMin = -2', '*outMax = 9']] },
+        complexity: `<p>Time O(N), extra space O(1).</p>`,
+        followUps: ['Can you do it in about 1.5N comparisons instead of 2N (compare in pairs)?', 'Why is returning <code>std::optional&lt;pair&gt;</code> often nicer than out-pointers?', 'What happens if the caller passes the same address for outMin and outMax?']
+      }
+    }]
+  });
+
+  /* ======================================================================
+     TOPIC 3: Pointer arithmetic
+     ====================================================================== */
+  topics.push({
+    title: 'Pointer Arithmetic: Stepping Through Memory',
+    analogy: `<p>Think of a row of <b>identical lockers</b> in a school corridor. Each locker is 4 tiles wide. If you are standing at locker 0 and someone says "move 3 lockers", you do not move 3 tiles, you move <b>3 lockers = 12 tiles</b>. Pointer arithmetic works the same way: <code>p + 3</code> means "3 <b>elements</b> further", and the compiler converts that into bytes for you using the element size. And just like the corridor, walking past the last locker into the wall is your problem, not the school's.</p>`,
+    explain: `<p>Because array elements sit side by side (topic 1), a pointer to one element can reach its neighbours with simple <b>+ and −</b>.</p>
+<h4>1. <code>p + k</code> moves k elements, not k bytes</h4>
+<p>If <code>int* p</code> holds 0x200 and <code>sizeof(int)</code> is 4, then <code>p + 1</code> is 0x204 and <code>p + 3</code> is 0x20c. For a <code>double*</code> each step is 8 bytes; for a <code>char*</code> it is 1 byte. The formula is <b>address + k × sizeof(T)</b>.</p>
+${H.arr(['10', '20', '30', '40', '50'], { label: 'int a[5] @0x200', ptr: { 0: 'p', 1: 'p+1', 3: 'p+3' }, hl: { 0: 'b', 3: 'g' } })}
+${H.table(['expression', 'address', 'value of *(...)'], [['<code>p</code>', '0x200', '10'], ['<code>p + 1</code>', '0x204', '20'], ['<code>p + 3</code>', '0x20c', '40']])}
+<h4>2. Indexing is arithmetic in disguise</h4>
+<p><code>p[i]</code> is <b>defined</b> as <code>*(p + i)</code>. That is all square brackets do. (Fun consequence: since addition is commutative, <code>i[p]</code> also compiles and means the same thing. Never write it in real code.)</p>
+<h4>3. Moving a pointer: <code>++p</code>, <code>p += 2</code>, <code>--p</code></h4>
+<p>These change the pointer variable itself, again in whole elements. Classic loop:</p>
+<pre>for (int* p = a; p != a + 5; ++p) sum += *p;</pre>
+<h4>4. Subtracting two pointers = distance in elements</h4>
+<p>If <code>p</code> and <code>q</code> point into the <b>same array</b>, <code>q - p</code> is the number of elements between them (type <code>std::ptrdiff_t</code>, a signed integer). 0x20c − 0x200 = 12 bytes → 12 / 4 = <b>3</b>. Adding two pointers is meaningless and does not compile.</p>
+<h4>5. Comparing pointers</h4>
+<p><code>p == q</code> and <code>p != q</code> always work. <code>&lt;</code>, <code>&gt;</code> are meaningful for pointers into the same array (use <code>std::less&lt;&gt;</code> if you need an order on unrelated pointers).</p>
+<h4>6. The "one past the end" rule</h4>
+<p>For an array of N elements you may <b>form</b> the pointer <code>a + N</code> (one past the last element) and compare against it, which is exactly what <code>end()</code> iterators are. You may <b>not</b> dereference it, and you may not even form <code>a + N + 1</code> or <code>a - 1</code>: that is undefined behaviour, even if you never read through it.</p>
+${H.arr(['10', '20', '30', '40', '50', '—'], { label: 'valid positions', ptr: { 0: 'a', 5: 'a+5 (end)' }, hl: { 5: 'y' } })}
+<h4>7. The precedence puzzle every interviewer loves</h4>
+${H.table(['expression', 'parsed as', 'what changes', 'value'], [
+  ['<code>*p++</code>', '<code>*(p++)</code>', 'pointer moves forward', 'old <code>*p</code>'],
+  ['<code>(*p)++</code>', 'increment the target', 'the element grows by 1', 'old element value'],
+  ['<code>++*p</code>', '<code>++(*p)</code>', 'the element grows by 1', 'new element value'],
+  ['<code>*++p</code>', '<code>*(++p)</code>', 'pointer moves first', 'the next element']
+])}
+<p>Rule of thumb: postfix <code>++</code> binds tighter than <code>*</code>, but postfix returns the <b>old</b> value. So <code>*p++</code> reads the current element, then moves on. That one idiom powers <code>while (*dst++ = *src++);</code>, the classic string copy.</p>`,
+    clues: [
+      '"Without using the [] operator" / "using only pointers" → walk with <code>p + i</code>, <code>++p</code>, compare to an end pointer',
+      '"Predict the output of <code>*p++</code> / <code>++*p</code> / <code>*++p</code>" → postfix binds tighter, returns old value',
+      '"How many elements between two pointers?" → <code>q - p</code> gives <code>ptrdiff_t</code> elements, not bytes',
+      '"Two pointers from both ends" (reverse, palindrome, partition) → <code>lo</code>/<code>hi</code> pointers moving toward each other',
+      '"Is <code>a + N</code> valid? <code>a + N + 1</code>?" → one-past-end may be formed and compared, never dereferenced; beyond that is UB',
+      '"Why does <code>arr[i]</code> equal <code>i[arr]</code>?" → subscript is defined as <code>*(arr + i)</code>'
+    ],
+    code: [{ lang: 'cpp', title: 'Pointer arithmetic tour', code: `#include <iostream>
+#include <cstddef>
+using namespace std;
+
+int main() {
+    int a[5] = {10, 20, 30, 40, 50};
+    int* p = a;                  // array name decays to &a[0]
+    int* end = a + 5;            // one past the last element: OK to form, NOT to dereference
+
+    cout << *(p + 3) << ' ' << p[3] << '\\n';   // 40 40   (p[i] is *(p + i))
+
+    int sum = 0;
+    for (int* q = p; q != end; ++q)            // each ++q moves sizeof(int) bytes
+        sum += *q;
+    cout << "sum = " << sum << '\\n';            // sum = 150
+
+    ptrdiff_t n = end - p;                      // distance in ELEMENTS
+    cout << "elements = " << n << '\\n';         // elements = 5
+
+    // The precedence quartet
+    int b[3] = {1, 5, 9};
+    int* r = b;
+    cout << *r++ << ' ';     // 1  : read b[0], then r -> b[1]
+    cout << (*r)++ << ' ';   // 5  : read b[1], then b[1] becomes 6
+    cout << ++*r << ' ';     // 7  : b[1] becomes 7, read it
+    cout << *++r << '\\n';    // 9  : r -> b[2], read it
+}` }, { lang: 'cpp', title: 'Same address, different steps', code: `#include <iostream>
+int main() {
+    int a[2] = {0, 0};
+    int*  ip = a;
+    char* cp = reinterpret_cast<char*>(a);   // view the same bytes as chars
+    // ip + 1 jumps 4 bytes, cp + 1 jumps 1 byte
+    std::cout << (reinterpret_cast<char*>(ip + 1) - cp) << ' '   // 4
+              << ((cp + 1) - cp) << '\\n';                         // 1
+}` }],
+    codeTitle: ['Arithmetic, indexing, subtraction, precedence', 'Step size depends on the pointer type'],
+    viz: {
+      title: 'Walk a pointer through an array (begin/end loop)',
+      input: '10 20 30 40 50',
+      inputLabel: 'int array (1 to 8 numbers)',
+      gen: function (input) {
+        var a = parseInts(input, '10 20 30 40 50', 8, 'Enter 1 to 8 integers separated by spaces, e.g. 3 1 4 1 5');
+        var N = a.length, code = [
+          'int a[] = {' + a.join(', ') + '};',
+          'int* p = a;          // &a[0]',
+          'int* end = a + ' + N + ';    // one past the last',
+          'int sum = 0;',
+          'while (p != end) {',
+          '    sum += *p;       // read the element',
+          '    ++p;             // move sizeof(int) = 4 bytes',
+          '}',
+          'cout << sum << " " << (p - a);'
+        ].join('\n');
+        function cells() {
+          var c = a.map(function (v, i) { return [hex(0x200 + 4 * i), v, 'a[' + i + ']']; });
+          c.push([hex(0x200 + 4 * N), '—', '(end)']);
+          return c;
+        }
+        function P(pi, extra) {
+          var p = {};
+          if (pi !== null) p[pi] = ['p'];
+          p[N] = (p[N] || []).concat(['end']);
+          if (extra) Object.keys(extra).forEach(function (k) { p[k] = (p[k] || []).concat(extra[k]); });
+          return p;
+        }
+        var f = [], sum = 0, i;
+        f.push({ l: 1, n: 'The array occupies ' + N + ' boxes of 4 bytes each, starting at 0x200. The extra box after it is the <b>one-past-the-end</b> position: you may point there, never read there.', m: { cells: cells(), hl: one(N, 'done'), p: {} } });
+        f.push({ l: 2, n: '<code>int* p = a;</code> The array name turns into the address of its first element, so p = <b>0x200</b>.', m: { cells: cells(), hl: { 0: 'cur' }, p: P(0) }, v: { 'p': '0x200', '*p': a[0] }, vh: { 'p': 'cur' } });
+        f.push({ l: 3, n: '<code>int* end = a + ' + N + ';</code> → 0x200 + ' + N + ' × 4 = <b>' + hex(0x200 + 4 * N) + '</b>. It marks the stopping line. Dereferencing it would be undefined behaviour.', m: { cells: cells(), hl: one(N, 'bad'), p: P(0) }, v: { 'p': '0x200', 'end': hex(0x200 + 4 * N), 'end - p': N } });
+        for (i = 0; i < N; i++) {
+          sum += a[i];
+          var hl = {}; hl[i] = 'ok';
+          for (var k = 0; k < i; k++) hl[k] = 'done';
+          f.push({ l: 6, n: 'p = ' + hex(0x200 + 4 * i) + ' ≠ end, so enter the loop. <code>sum += *p</code> reads ' + a[i] + ' → sum = <b>' + sum + '</b>.', m: { cells: cells(), hl: hl, p: P(i) }, v: { 'p': hex(0x200 + 4 * i), '*p': a[i], 'sum': sum }, vh: { 'sum': 'ok' } });
+          var hl2 = {}; for (k = 0; k <= i; k++) hl2[k] = 'done';
+          hl2[i + 1] = i + 1 === N ? 'bad' : 'cur';
+          f.push({ l: 7, n: '<code>++p</code>: the pointer moves <b>one element = 4 bytes</b>: ' + hex(0x200 + 4 * i) + ' → ' + hex(0x200 + 4 * (i + 1)) + (i + 1 === N ? '. Now p == end, the loop condition fails next time.' : '.'), m: { cells: cells(), hl: hl2, p: P(i + 1) }, v: { 'p': hex(0x200 + 4 * (i + 1)), 'p - a': i + 1, 'sum': sum }, vh: { 'p': 'cur' } });
+        }
+        f.push({ l: 9, n: 'Loop ends because <code>p == end</code>. <code>p - a</code> is (' + hex(0x200 + 4 * N) + ' − 0x200) / 4 = <b>' + N + '</b> elements. Output: <b>' + sum + ' ' + N + '</b>.', m: { cells: cells(), hl: one(N, 'sel'), p: P(N) }, v: { 'sum': sum, 'p - a': N }, o: sum + ' ' + N });
+        var mid = Math.min(2, N - 1);
+        f.push({ l: 0, n: 'Bonus: <code>a[' + mid + ']</code>, <code>*(a + ' + mid + ')</code> and <code>' + mid + '[a]</code> are the <b>same</b> expression: address 0x200 + ' + mid + ' × 4 = ' + hex(0x200 + 4 * mid) + ', value ' + a[mid] + '.', m: { cells: cells(), hl: (function () { var h = {}; h[mid] = 'sel'; return h; })(), p: (function () { var h = {}; h[mid] = ['a+' + mid]; return h; })() }, v: { 'a[i]': a[mid], '*(a+i)': a[mid], 'i[a]': a[mid] } });
+        return steps(code, f);
+      }
+    },
+    examples: [
+      { title: 'Predict the output: the precedence quartet', html: `<p>Start with <code>int b[] = {1, 5, 9}; int* r = b;</code> and run the four lines in the code above in order.</p>${H.table(['line', 'prints', 'r points at', 'b after'], [['<code>*r++</code>', '1', 'b[1]', '{1, 5, 9}'], ['<code>(*r)++</code>', '5', 'b[1]', '{1, <span class="c-g">6</span>, 9}'], ['<code>++*r</code>', '7', 'b[1]', '{1, <span class="c-g">7</span>, 9}'], ['<code>*++r</code>', '9', 'b[2]', '{1, 7, 9}']])}<p>Output: <b>1 5 7 9</b>.</p>` },
+      { title: 'Count characters with pointer subtraction (strlen)', html: `<p>Walk a pointer until the terminating <code>'\\0'</code>, then subtract the start. For <code>"cat"</code> at 0x400: the pointer stops at 0x403, and 0x403 − 0x400 = 3.</p>${H.arr(['c', 'a', 't', '\\0'], { label: '"cat"', ptr: { 0: 's', 3: 'p (stop)' }, hl: { 3: 'y' } })}`, code: { lang: 'cpp', code: `#include <cstddef>
+#include <iostream>
+std::size_t myStrlen(const char* s) {
+    const char* p = s;
+    while (*p != '\\0') ++p;      // stop on the terminator
+    return static_cast<std::size_t>(p - s);   // distance in chars = length
+}
+int main() { std::cout << myStrlen("cat") << '\\n'; }   // 3` } },
+      { title: 'Two pointers meeting in the middle: palindrome check', html: `<p><code>lo</code> starts at the first char, <code>hi</code> at the last. Compare, then move both inward. Stop when they meet or cross. "level": l=l, e=e, v meets itself → palindrome.</p>${H.arr(['l', 'e', 'v', 'e', 'l'], { ptr: { 1: 'lo', 3: 'hi' }, hl: { 0: 'm', 4: 'm', 1: 'g', 3: 'g' } })}`, code: { lang: 'cpp', code: `#include <cstring>
+bool isPalindrome(const char* s) {
+    const char* lo = s;
+    const char* hi = s + std::strlen(s);   // one past the end
+    if (lo == hi) return true;             // empty string
+    --hi;                                  // now the last real char
+    while (lo < hi) {                      // same array, so < is meaningful
+        if (*lo != *hi) return false;
+        ++lo; --hi;
+    }
+    return true;
+}` } },
+      { title: 'Bug hunt: reading one past the end', html: `<p>This loop uses <code>&lt;=</code> and reads <code>a[5]</code>, which does not exist. It may print a garbage number, may crash, and AddressSanitizer reports <i>stack-buffer-overflow</i>. Fix: use <code>p != a + 5</code> (or <code>&lt;</code>).</p>`, code: { lang: 'cpp', code: `#include <iostream>
+int main() {
+    int a[5] = {1, 2, 3, 4, 5};
+    int sum = 0;
+    // BUG: for (int* p = a; p <= a + 5; ++p) sum += *p;   // reads a[5]: undefined behaviour
+    for (int* p = a; p != a + 5; ++p) sum += *p;            // FIX: stop AT one-past-end
+    std::cout << sum << '\\n';   // 15
+}` } }
+    ],
+    deepDive: `<p><b>What the compiler emits.</b> <code>p + k</code> for <code>int*</code> becomes <code>p + 4*k</code>, usually folded into an x86 addressing mode like <code>[rdi + rsi*4]</code> for free. Optimizers turn index loops and pointer loops into the same machine code, so pick whichever reads better; "pointers are faster than indices" is a 1990s myth.</p>
+<p><b>Why going out of range is UB, not just "wrong".</b> The standard only defines arithmetic within an array object plus the one-past-end position. Compilers rely on that: given <code>if (p + n &lt; p)</code> as an overflow check, GCC/Clang may delete the check entirely because valid pointer arithmetic cannot wrap. That is why "it works in debug, breaks in -O2" bugs exist.</p>
+<p><b>Pointer provenance.</b> Modern compilers track which allocation a pointer came from. Two pointers can hold the same numeric address (one-past-end of array A equals the start of array B) yet compare in surprising ways or be treated as non-aliasing. Papers like P2434 and the C provenance TS are formalising this; the practical rule is simple: only do arithmetic within the object you started from.</p>
+<p><b>Iterators are generalised pointers.</b> The STL was designed around pointer arithmetic: random-access iterators (vector, array, deque) support <code>it + k</code>, <code>it2 - it1</code>, <code>it[k]</code>; bidirectional ones (list, set) only <code>++</code>/<code>--</code>. A raw pointer <i>is</i> a contiguous random-access iterator, so <code>std::sort(a, a + n)</code> works on C arrays.</p>
+<p><b>Signedness.</b> <code>ptrdiff_t</code> is signed (q − p can be negative) while sizes are <code>size_t</code> (unsigned). Mixing them in comparisons triggers <code>-Wsign-compare</code>. C++20 added <code>std::ssize()</code> to get a signed size and avoid that mismatch.</p>
+<p><b>Strength reduction and SIMD.</b> Simple contiguous loops like the sum above get auto-vectorized (4 to 16 ints per instruction) because the compiler can prove the pointer steps linearly. Aliasing doubts (could <code>dst</code> overlap <code>src</code>?) block vectorization; <code>__restrict</code> or using distinct local copies helps.</p>`,
+    aiEra: `<p><b>What AI changes:</b> assistants are very good at mechanical pointer-loop rewrites (index loop to pointer loop, C string functions to <code>std::string_view</code>), and at explaining the precedence quartet. They also generate edge cases fast: empty array, one element, even/odd lengths.</p>
+<p><b>Use AI as a partner:</b> ask <code>List every expression in this function that could form a pointer outside [begin, end]</code>. That focused question gets far better answers than "is this correct?". Then run the tests under <code>-fsanitize=address,undefined</code> to confirm.</p>
+<p><b>Where AI goes wrong:</b> off-by-one in end pointers (<code>&lt;=</code> instead of <code>!=</code>), forming <code>begin - 1</code> in reverse loops (UB even if never dereferenced), subtracting pointers from different arrays, and confusing byte offsets with element offsets when <code>reinterpret_cast</code> is involved.</p>
+<p><b>What you must still own:</b> the one-past-end rule, the element-not-byte scaling, and the ability to trace <code>*p++</code> on paper. Output-prediction rounds in interviews are explicitly designed to be answered without a computer.</p>`,
+    problems: [{
+      title: 'Reverse an Array Using Only Pointers',
+      level: 'Easy', tags: ['pointer arithmetic', 'two pointers'], companies: ['Amazon', 'Adobe', 'Samsung'],
+      statement: `<p>Write <code>void reverseRange(int* first, int* last)</code> that reverses the elements in the half-open range <code>[first, last)</code> <b>in place</b>, using pointer arithmetic only (no <code>[]</code>, no indices, no extra array).</p>`,
+      constraints: `<p>0 ≤ last − first ≤ 10<sup>6</sup>. Must handle empty and single-element ranges. O(1) extra space.</p>`,
+      example: `<p>Input ${H.arr([1, 2, 3, 4, 5], { ptr: { 0: 'first', 4: 'last-1' } })} → output ${H.arr([5, 4, 3, 2, 1], { hl: { 0: 'g', 1: 'g', 3: 'g', 4: 'g', 2: 'y' } })}<p>The middle element (3) stays because the two pointers meet on it.</p>`,
+      brute: { why: `<p>Copy into a temporary vector backwards and copy back. Correct, but uses O(N) extra memory and two passes, while swapping from both ends needs none.</p>`, code: { lang: 'cpp', code: `#include <vector>
+void reverseBrute(int* first, int* last) {
+    std::vector<int> tmp(first, last);         // O(N) extra memory
+    for (int* p = first; p != last; ++p) {
+        *p = tmp.back();                        // take from the back
+        tmp.pop_back();
+    }
+}` } },
+      mcq: { q: 'Given the half-open range <code>[first, last)</code>, where should the right-hand pointer start?', options: ['<code>last</code>', '<code>last - 1</code>, after checking the range is not empty', '<code>last + 1</code>', '<code>first + 1</code>'], answer: 1, explain: '<code>last</code> is one past the end and must not be dereferenced; <code>last - 1</code> is the final real element. Check emptiness first, because <code>first - 1</code> (if first == last) would be UB.' },
+      hints: [`<p>Swap the outermost pair, then move both pointers one step inward. Repeat.</p>`, `<p>Use <code>lo = first</code> and <code>hi = last</code>, and pre-decrement <code>hi</code> only inside the loop condition when it is safe: <code>while (lo != hi &amp;&amp; lo != --hi)</code>.</p>`, `<p>Recipe: loop while <code>lo &lt; hi</code> after setting <code>hi = last - 1</code> (only if not empty); <code>std::swap(*lo, *hi); ++lo; --hi;</code>. The loop stops when they meet (odd length) or cross (even length).</p>`],
+      solution: {
+        approach: `<p>Classic two-pointer swap from both ends. The <code>lo != hi &amp;&amp; lo != --hi</code> form is the same trick <code>std::reverse</code> implementations use: it never forms a pointer before <code>first</code>.</p>`,
+        code: { lang: 'cpp', code: `#include <iostream>
+#include <utility>
+
+void reverseRange(int* first, int* last) {
+    int* lo = first;
+    int* hi = last;
+    // Stop when the pointers meet (odd count) or are adjacent-then-crossed (even count)
+    while (lo != hi && lo != --hi) {   // --hi happens only when lo != hi, so never before first
+        std::swap(*lo, *hi);           // swap the outer pair
+        ++lo;                          // move inward
+    }
+}
+
+int main() {
+    int a[] = {1, 2, 3, 4, 5};
+    reverseRange(a, a + 5);
+    for (int* p = a; p != a + 5; ++p) std::cout << *p << ' ';   // 5 4 3 2 1
+    std::cout << '\\n';
+}` },
+        dry: { head: ['step', 'lo → value', 'hi → value', 'array after swap'], rows: [['1', 'a[0] = 1', 'a[4] = 5', '5 2 3 4 1'], ['2', 'a[1] = 2', 'a[3] = 4', '5 4 3 2 1'], ['3', 'a[2]', '--hi makes hi == lo (a[2])', 'stop: middle stays']] },
+        complexity: `<p>Time O(N) (N/2 swaps), extra space O(1).</p>`,
+        followUps: ['Rotate an array by k using three reversals', 'Why is <code>while (lo &lt; hi)</code> with <code>hi = last - 1</code> unsafe for an empty range?', 'Make it a template that works for any bidirectional iterator']
+      }
+    }]
+  });
+
+  /* ======================================================================
+     TOPIC 4: nullptr, null checks and wild pointers
+     ====================================================================== */
+  var T4_CODE = [
+    'int x = 7;',
+    'int* p = nullptr;     // points nowhere, on purpose',
+    'if (p != nullptr)     // check before use',
+    '    *p = 1;           // skipped',
+    'int* w;               // NOT initialized: garbage address',
+    '*w = 1;               // UB: writes wherever w happens to point',
+    '*p = 1;               // UB: null dereference, usually a crash'
+  ].join('\n');
+
+  topics.push({
+    title: 'nullptr, Null Checks &amp; Wild Pointers',
+    analogy: `<p>A <b>null pointer</b> is a sticky note that clearly says <b>"NOWHERE"</b>. It is honest: anyone reading it knows not to go anywhere. A <b>wild pointer</b> (uninitialized) is a sticky note with a <b>random smudge</b> that looks like a house number. Follow it and you might walk into a stranger's house and rearrange their furniture (silent memory corruption), or into a wall (crash). <code>nullptr</code> exists so you can always write "NOWHERE" instead of leaving a smudge.</p>`,
+    explain: `<p>Sometimes a pointer has nothing to point at yet: "the next node after the last one", "the search found nothing", "no parent". We need a special value meaning <b>"points nowhere"</b>. In modern C++ that value is <code>nullptr</code>.</p>
+<h4>1. Three ways to say null (only one is good)</h4>
+${H.table(['spelling', 'what it really is', 'verdict'], [
+  ['<code>0</code>', 'the integer zero (converts to a null pointer)', 'legal but unclear'],
+  ['<code>NULL</code>', 'a macro, usually <code>0</code> or <code>0L</code> or <code>__null</code>', 'old C style, overload surprises'],
+  ['<code>nullptr</code> (C++11)', 'a keyword of its own type <code>std::nullptr_t</code>', '<span class="c-g">always use this</span>']
+])}
+<h4>2. Why <code>nullptr</code> beats <code>NULL</code>: overloads</h4>
+<pre>void f(int);    // #1
+void f(char*);  // #2
+f(0);        // #1 : 0 is an int
+f(NULL);     // #1, or "ambiguous" error, depending on the compiler!
+f(nullptr);  // #2 : nullptr is never an int</pre>
+<p><code>nullptr</code> converts to <b>any</b> pointer type but <b>never</b> to an integer, so it always picks the pointer overload. It also makes templates and <code>auto</code> behave: <code>auto q = nullptr;</code> gives a <code>std::nullptr_t</code>, while <code>auto q = NULL;</code> may silently give a <code>long</code>.</p>
+<h4>3. Dereferencing null is undefined behaviour</h4>
+<p><code>*p</code> when <code>p == nullptr</code> is <b>undefined behaviour</b> (UB): the C++ standard makes no promise at all. In practice on Linux/Windows/macOS the lowest memory page is deliberately unmapped, so the CPU traps and you get <b>Segmentation fault (SIGSEGV)</b> or an access violation. That crash is the <i>lucky</i> outcome. Compilers may also assume "this pointer was dereferenced, so it cannot be null" and delete your later null checks.</p>
+<h4>4. Null checks</h4>
+<p>Check before you dereference whenever null is a legal value: <code>if (p) use(*p);</code> or <code>if (p != nullptr)</code>. Both are the same; a pointer converts to <code>bool</code> as "not null". Use <code>&amp;&amp;</code> short-circuiting for chains: <code>if (node &amp;&amp; node-&gt;next) ...</code>.</p>
+<h4>5. Wild pointers: worse than null</h4>
+<p>A local <code>int* w;</code> holds whatever bits were on the stack: a <b>wild</b> pointer. It is not null, so <code>if (w)</code> passes, and writing through it can silently overwrite another variable. Global and <code>static</code> pointers are zero-initialized to null automatically, but locals are not. <b>Rule: initialize every pointer when you declare it</b>, to a real address or to <code>nullptr</code>.</p>
+<h4>6. Common uses of null</h4>
+${H.table(['situation', 'null means'], [['linked list <code>next</code>', 'end of the list'], ['tree <code>left</code>/<code>right</code>', 'no child'], ['search function result', 'not found'], ['optional parameter <code>const Options* opt</code>', '"use the defaults"'], ['after <code>delete p;</code> then <code>p = nullptr;</code>', 'this pointer no longer owns anything']])}
+<p>Also handy: <code>delete nullptr;</code> and <code>free(NULL)</code> are guaranteed to do nothing, so you never need to null-check before deleting.</p>`,
+    clues: [
+      '"What is the difference between NULL, 0 and nullptr?" → type <code>std::nullptr_t</code>, overload resolution, templates',
+      '"Return the node / element, or indicate not found" → return <code>nullptr</code> (or <code>std::optional</code> for values)',
+      '"Segmentation fault" in a stack trace near a <code>-&gt;</code> → null or wild pointer dereference',
+      '"Is it safe to delete a null pointer?" → yes, it is a no-op',
+      '"Why does <code>if (p)</code> pass but the program still crashes?" → uninitialized (wild) or dangling pointer, not null',
+      '"Linked list / tree traversal" → loop <code>while (cur != nullptr)</code>, null terminates the structure'
+    ],
+    code: [{ lang: 'cpp', title: 'nullptr in practice', code: `#include <iostream>
+#include <cstddef>
+using namespace std;
+
+void f(int)   { cout << "f(int)\\n"; }
+void f(char*) { cout << "f(char*)\\n"; }
+
+struct Node { int val; Node* next; };
+
+// Return the first node holding 'target', or nullptr when it is not there
+Node* find(Node* head, int target) {
+    for (Node* cur = head; cur != nullptr; cur = cur->next)   // null ends the list
+        if (cur->val == target) return cur;
+    return nullptr;                                            // "not found"
+}
+
+int main() {
+    f(0);          // f(int)
+    f(nullptr);    // f(char*)   : nullptr never converts to int
+    // f(NULL);    // f(int) on some compilers, ambiguous on others: avoid NULL
+
+    Node c{3, nullptr}, b{2, &c}, a{1, &b};   // list 1 -> 2 -> 3 -> null
+    if (Node* n = find(&a, 2))                 // test the result before using it
+        cout << "found " << n->val << '\\n';    // found 2
+    if (find(&a, 9) == nullptr)
+        cout << "9 not found\\n";
+
+    int* q = nullptr;
+    delete q;                                  // deleting nullptr is a guaranteed no-op
+    static_assert(sizeof(nullptr) == sizeof(void*));
+}` }],
+    codeTitle: ['nullptr: overloads, sentinel, not-found'],
+    viz: [{
+      title: 'Null vs wild: one crashes loudly, one corrupts silently',
+      gen: function () {
+        function M(vx, vp, vw, hl, p) {
+          return { cells: [['0x0', '✖ unmapped', 'page 0'], ['0x100', vx, 'x'], ['0x108', vp, 'p'], ['0x110', vw, 'w']], hl: hl || {}, p: p || {} };
+        }
+        var f = [
+          { l: 1, n: '<code>int x = 7;</code> The box at address 0x0 is shown on purpose: the operating system leaves the lowest page of memory <b>unmapped</b>, so any access there traps.', m: M('7', '??', '??', { 0: 'done', 1: 'ok' }) },
+          { l: 2, n: '<code>int* p = nullptr;</code> p holds the null value (all-zero bits on every mainstream platform). It honestly says "points nowhere".', m: M('7', 'nullptr', '??', { 2: 'ok', 0: 'done' }, { 0: ['p → ✖'] }), v: { 'p': 'nullptr', 'p == nullptr': 'true', 'bool(p)': 'false' } },
+          { l: 3, n: '<code>if (p != nullptr)</code> is <b>false</b>, so the write on the next line is skipped. This check is exactly what null is for.', m: M('7', 'nullptr', '??', { 2: 'cur' }, { 0: ['p → ✖'] }), v: { 'p != nullptr': 'false' }, vh: { 'p != nullptr': 'bad' } },
+          { l: 5, n: '<code>int* w;</code> is a local with <b>no initializer</b>. It contains leftover garbage, which here happens to be <b>0x100</b>, the address of x. It is not null, so <code>if (w)</code> would happily pass.', m: M('7', 'nullptr', '0x100 (garbage)', { 3: 'bad' }, { 0: ['p → ✖'], 1: ['*w ?!'] }), v: { 'w': '0x100 (random)', 'w == nullptr': 'false' }, vh: { 'w': 'bad' } },
+          { l: 6, n: '<code>*w = 1;</code> writes 1 into address 0x100: <b>x silently changes from 7 to 1</b>. No crash, no error. The bug will surface far away, later. This is why wild pointers are worse than null ones.', m: M('1', 'nullptr', '0x100 (garbage)', { 1: 'bad', 3: 'bad' }, { 0: ['p → ✖'], 1: ['*w'] }), v: { 'x': '1 (was 7!)' }, vh: { 'x': 'bad' } },
+          { l: 7, n: '<code>*p = 1;</code> with p == nullptr: the CPU tries to write to address 0x0, which is unmapped. The OS kills the program: <b>Segmentation fault</b>. Loud, immediate, easy to find in a debugger.', m: M('1', 'nullptr', '0x100 (garbage)', { 0: 'bad', 2: 'bad' }, { 0: ['*p 💥'] }), o: 'Segmentation fault (core dumped)' },
+          { l: 0, n: 'Fix both bugs: <b>initialize every pointer</b> (<code>int* w = nullptr;</code> or a real address) and <b>check before dereferencing</b> when null is possible. Compile with <code>-Wall -Wuninitialized</code> and run with <code>-fsanitize=address,undefined</code> to catch the rest.', m: M('7', 'nullptr', 'nullptr', { 1: 'ok', 2: 'ok', 3: 'ok' }), tb: { type: 'table', label: 'Null vs wild', columns: ['', 'null pointer', 'wild pointer'], rows: [['value', 'nullptr (known)', 'random garbage'], ['if (p) test', 'false: you can detect it', 'true: you cannot'], ['dereference', 'UB, usually instant crash', 'UB, often silent corruption'], ['prevention', 'check before use', 'always initialize']] } }
+        ];
+        return steps(T4_CODE, f);
+      }
+    }, {
+      title: 'Overload resolution: 0 vs NULL vs nullptr',
+      gen: function () {
+        var code = 'void f(int);     // #1\nvoid f(char*);   // #2\nf(0);\nf(NULL);\nf(nullptr);';
+        var rows = [['f(0)', 'int', '#1 f(int)'], ['f(NULL)', 'int / long / __null', '#1 or ambiguous error'], ['f(nullptr)', 'std::nullptr_t', '#2 f(char*)']];
+        function T(h) { return { type: 'table', label: 'Which overload is called?', columns: ['call', 'argument type', 'result'], rows: rows.slice(0, h + 1), hl: one(h, h === 1 ? 'bad' : 'ok') }; }
+        return [
+          { narr: 'Two overloads: one takes an <code>int</code>, one takes a <code>char*</code>. Which one does each call pick?', parts: [{ type: 'code', lang: 'cpp', code: code, hl: { 1: 'cur', 2: 'cur' } }] },
+          { narr: '<code>f(0)</code>: the literal 0 is an <code>int</code>. Exact match with #1. Even though 0 <i>could</i> become a null pointer, an exact match wins.', parts: [{ type: 'code', lang: 'cpp', code: code, hl: { 3: 'cur' } }, T(0)] },
+          { narr: '<code>f(NULL)</code>: NULL is a macro. With GCC it is <code>__null</code> (an integer-ish constant) and you get #1 or an "ambiguous" error; elsewhere it may be <code>0L</code>, also ambiguous. You wanted a pointer and did not get one.', parts: [{ type: 'code', lang: 'cpp', code: code, hl: { 4: 'bad' } }, T(1)] },
+          { narr: '<code>f(nullptr)</code>: nullptr has its own type <code>std::nullptr_t</code>, which converts to every pointer type and <b>to no integer type</b>. Only #2 is viable.', parts: [{ type: 'code', lang: 'cpp', code: code, hl: { 5: 'ok' } }, T(2)] },
+          { narr: 'Takeaway: write <code>nullptr</code> everywhere. Tools like <code>clang-tidy modernize-use-nullptr</code> rewrite old <code>NULL</code>/<code>0</code> automatically.', parts: [{ type: 'code', lang: 'cpp', code: code, hl: { 5: 'ok' } }, { type: 'table', label: 'Which overload is called?', columns: ['call', 'argument type', 'result'], rows: rows, hl: { 2: 'sel' } }] }
+        ];
+      }
+    }],
+    examples: [
+      { title: 'Short-circuit null checks in a chain', html: `<p><code>if (node &amp;&amp; node-&gt;next &amp;&amp; node-&gt;next-&gt;val == 5)</code> is safe: <code>&amp;&amp;</code> stops at the first false part, so <code>node-&gt;next</code> is only read when <code>node</code> is not null. Reversing the order (<code>node-&gt;next &amp;&amp; node</code>) dereferences first and checks too late.</p>`, code: { lang: 'cpp', code: `struct Node { int val; Node* next; };
+bool secondIsFive(const Node* node) {
+    // each test runs only if everything to its left was true
+    return node && node->next && node->next->val == 5;
+}` } },
+      { title: 'Predict: what does auto deduce?', html: `${H.table(['declaration', 'deduced type'], [['<code>auto a = nullptr;</code>', '<code>std::nullptr_t</code>'], ['<code>auto b = NULL;</code>', '<code>long</code> (GCC/Clang on Linux), not a pointer!'], ['<code>auto c = 0;</code>', '<code>int</code>'], ['<code>int* d = nullptr; auto e = d;</code>', '<code>int*</code>']])}<p>This matters in templates: passing <code>NULL</code> to a forwarding function loses its "pointer-ness", while <code>nullptr</code> keeps it.</p>`, code: { lang: 'cpp', code: `#include <cstddef>
+#include <type_traits>
+int main() {
+    auto a = nullptr;
+    static_assert(std::is_same_v<decltype(a), std::nullptr_t>);
+    int* d = nullptr;
+    auto e = d;
+    static_assert(std::is_same_v<decltype(e), int*>);
+}` } },
+      { title: 'Null-out after delete (and its limits)', html: `<p>After <code>delete p;</code> the pointer still holds the old address (now dangling). Setting <code>p = nullptr;</code> makes later checks meaningful and a second <code>delete p;</code> harmless. But it only fixes <b>that</b> copy: any other pointer to the same object is still dangling. Real fix: let one owner (<code>std::unique_ptr</code>) manage it.</p>`, code: { lang: 'cpp', code: `#include <iostream>
+int main() {
+    int* p = new int(42);
+    int* alias = p;          // second pointer to the same int
+    delete p;
+    p = nullptr;             // p is now safely "nowhere"
+    delete p;                // no-op: safe
+    // std::cout << *alias;  // still UB: alias dangles, nulling p did not help it
+    (void)alias;
+    std::cout << (p == nullptr) << '\\n';   // 1
+}` } }
+    ],
+    deepDive: `<p><b>Is null really address zero?</b> The standard says a null pointer constant converts to a null pointer value that compares unequal to every real object's address. On every platform you will meet, that value is all-zero bits, but the standard does not require it, which is why <code>memset</code>-ing a struct of pointers to zero is technically not portable (it is in practice).</p>
+<p><b>The deleted null check.</b> In this code the compiler may remove the check:</p>
+<pre>int len = s-&gt;size;      // dereference first
+if (s == nullptr) return 0;   // optimizer: "s was dereferenced, so it cannot be null" → deletes this</pre>
+<p>A Linux kernel bug (2009, the TUN driver) worked exactly like this and became an exploit, which is why the kernel builds with <code>-fno-delete-null-pointer-checks</code>. Lesson: UB does not just crash, it changes the meaning of nearby code.</p>
+<p><b>Large offsets.</b> <code>p-&gt;field</code> on a null <code>p</code> reads address <code>0 + offsetof(field)</code>. With a big struct or array, that address can land past the unmapped guard page into real memory, turning a "harmless crash" into an exploitable read/write.</p>
+<p><b>Expressing "maybe absent" better:</b> for values, <code>std::optional&lt;T&gt;</code>; for non-null pointers, <code>gsl::not_null&lt;T*&gt;</code> or simply a reference; for owning resources, <code>std::unique_ptr</code> (whose default state is null). Many style guides now say: a raw pointer parameter means "optional, non-owning"; a reference means "required".</p>
+<p><b>Tooling in 2026:</b> GCC/Clang <code>-Wnull-dereference</code>, Clang's <code>_Nonnull</code>/<code>_Nullable</code> annotations and nullability analysis, the Clang Static Analyzer, and UBSan's <code>-fsanitize=null</code> catch most of these. Hardened standard library modes (<code>_GLIBCXX_ASSERTIONS</code>, libc++ hardening) also trap null dereferences inside containers and smart pointers.</p>`,
+    aiEra: `<p><b>What AI changes:</b> assistants reliably modernize <code>NULL</code> to <code>nullptr</code>, add missing null checks, and can explain a SIGSEGV backtrace ("frame #0 in Node::size, this=0x0") in plain English. Pair them with <code>clang-tidy</code> for bulk modernization across a repository.</p>
+<p><b>Use AI as a partner:</b> paste a crash report and ask <code>Which pointer in this function could be null or uninitialized on this path? Show the path.</code> Then reproduce under AddressSanitizer to confirm the diagnosis before you accept a fix.</p>
+<p><b>Where AI goes wrong:</b> it "fixes" crashes by sprinkling <code>if (p)</code> checks everywhere, hiding the real bug (why was it null?) and making the contract unclear. It also sometimes checks for null <i>after</i> the dereference, which the optimizer is allowed to delete.</p>
+<p><b>What you must still own:</b> the contract. For every pointer you should be able to say "may this be null, and who guarantees it?". Decide it once, encode it in the type (reference, <code>not_null</code>, <code>optional</code>), and check at the boundary, not on every line.</p>`,
+    problems: [{
+      title: 'K-th Node From the End (or nullptr)',
+      level: 'Medium', tags: ['nullptr', 'linked list', 'two pointers'], companies: ['Amazon', 'Meta', 'Oracle'],
+      statement: `<p>Given the head of a singly linked list (<code>struct Node { int val; Node* next; };</code>) and an integer <code>k ≥ 1</code>, return a pointer to the k-th node from the end. If the list has fewer than k nodes (including an empty list, <code>head == nullptr</code>), return <code>nullptr</code>. One pass, O(1) extra memory.</p>`,
+      constraints: `<p>0 ≤ length ≤ 10<sup>5</sup>, 1 ≤ k ≤ 10<sup>5</sup>.</p>`,
+      example: `<p>List ${H.arr([1, 2, 3, 4, 5], { label: 'list', ptr: { 0: 'head', 3: 'answer' }, hl: { 3: 'g' } })} k = 2 → returns the node holding ${H.c('g', '4')}. With k = 9 → returns ${H.c('r', 'nullptr')} because the list only has 5 nodes.</p>`,
+      brute: { why: `<p>Count the length in a first pass, then walk <code>length − k</code> steps in a second pass. Correct and O(N), but two passes over the list; and if you forget that <code>length &lt; k</code> case, you step past the null end.</p>`, code: { lang: 'cpp', code: `struct Node { int val; Node* next; };
+Node* kthFromEndBrute(Node* head, int k) {
+    int len = 0;
+    for (Node* p = head; p != nullptr; p = p->next) ++len;   // pass 1: length
+    if (k > len) return nullptr;                              // not enough nodes
+    Node* p = head;
+    for (int i = 0; i < len - k; ++i) p = p->next;            // pass 2: walk len-k steps
+    return p;
+}` } },
+      mcq: { q: 'You move a <code>fast</code> pointer k steps ahead first. During those k steps it becomes <code>nullptr</code> early. What does that mean?', options: ['The list has fewer than k nodes, so return nullptr', 'k is exactly the length', 'The list has a cycle', 'Continue moving slow anyway'], answer: 0, explain: 'If fast hits null before completing k moves, there are fewer than k nodes; the safe, defined answer is nullptr. (If it becomes null exactly after the k-th move, the answer is head.)' },
+      hints: [`<p>Keep two pointers k nodes apart. When the front one falls off the end (becomes <code>nullptr</code>), the back one is k from the end.</p>`, `<p>Phase 1: advance <code>fast</code> k times, checking for <code>nullptr</code> <b>before</b> each move. Phase 2: move both until <code>fast == nullptr</code>.</p>`, `<p>Recipe: <code>for (i=0;i&lt;k;++i){ if(!fast) return nullptr; fast = fast-&gt;next; }</code> then <code>while(fast){ fast = fast-&gt;next; slow = slow-&gt;next; }</code> and return <code>slow</code>. Empty list: the first check returns nullptr immediately.</p>`],
+      solution: {
+        approach: `<p>Gap of k between two pointers; null marks the end of the list and doubles as the "not enough nodes" signal.</p>`,
+        code: { lang: 'cpp', code: `#include <iostream>
+
+struct Node { int val; Node* next; };
+
+Node* kthFromEnd(Node* head, int k) {
+    Node* fast = head;
+    for (int i = 0; i < k; ++i) {         // open a gap of k nodes
+        if (fast == nullptr) return nullptr;   // fewer than k nodes: never dereference null
+        fast = fast->next;
+    }
+    Node* slow = head;
+    while (fast != nullptr) {             // when fast falls off the end...
+        fast = fast->next;
+        slow = slow->next;
+    }
+    return slow;                          // ...slow is k from the end
+}
+
+int main() {
+    Node n5{5, nullptr}, n4{4, &n5}, n3{3, &n4}, n2{2, &n3}, n1{1, &n2};
+    if (Node* r = kthFromEnd(&n1, 2)) std::cout << r->val << '\\n';   // 4
+    std::cout << (kthFromEnd(&n1, 9) == nullptr) << '\\n';             // 1
+    std::cout << (kthFromEnd(nullptr, 1) == nullptr) << '\\n';         // 1
+}` },
+        dry: { head: ['phase', 'fast at', 'slow at', 'note'], rows: [['gap move 1', '2', '-', 'fast was 1'], ['gap move 2', '3', '1 (start)', 'gap = 2'], ['walk', '4', '2', ''], ['walk', '5', '3', ''], ['walk', 'nullptr', '<span class="c-g">4</span>', 'fast fell off: return slow']] },
+        complexity: `<p>Time O(N), one pass. Extra space O(1).</p>`,
+        followUps: ['Remove the k-th node from the end (you need the node <i>before</i> it; try a <code>Node**</code>)', 'What if k ≤ 0 is passed?', 'Return the value via <code>std::optional&lt;int&gt;</code> instead of a pointer: pros and cons?']
+      }
+    }]
+  });
+
+  registerModule({
+    id: 'cpp03',
+    title: 'Pointers & References',
+    lang: 'cpp',
+    intro: `<p>Pointers are the topic that separates "I have written some C++" from "I understand C++". They are also the number one source of crashes and security bugs in the language, which is exactly why interviewers at systems, embedded, game, trading and browser companies keep asking about them.</p>
+<p>This module turns pointers into a picture you can draw: <b>memory is a long row of numbered boxes</b>, an <b>address</b> is a box number, a <b>pointer</b> is a variable holding a box number, and a <b>reference</b> is a second name for an existing box. From that one picture you will work out pointer arithmetic, <code>nullptr</code>, the difference between references and pointers, where to put <code>const</code>, why arrays "forget" their size when passed to functions, and how dangling pointers happen and how to hunt them down with sanitizers.</p>
+<p>Every topic has a step-by-step memory visualizer, worked examples, "predict the output" puzzles and bug hunts, plus an honest look at how AI assistants help (and mislead) with pointer code in 2026.</p>`,
+    goals: [
+      'Draw memory as numbered byte boxes and explain what <code>&amp;x</code>, <code>*p</code>, <code>p-&gt;m</code> and <code>**pp</code> do on that picture',
+      'Predict the output of pointer-arithmetic code (<code>*p++</code>, <code>p[i]</code>, <code>p2 - p1</code>, one-past-the-end) without running it',
+      'Choose between a pointer, a reference and a value for any function parameter, and explain the trade-offs in an interview',
+      'Read any <code>const</code>/pointer declaration right-to-left and say exactly what may and may not be modified',
+      'Explain array-to-pointer decay, its exceptions, and replace raw array parameters with <code>std::span</code>/<code>std::array</code>',
+      'Find and fix dangling pointers (returned locals, use-after-free, iterator invalidation, dangling views) using reasoning plus AddressSanitizer'
+    ],
+    prereqs: `<p>C++ module 1 (Compilation Model, Types &amp; I/O) and C++ module 2 (Control Flow, Functions, Arrays &amp; Strings), especially pass-by-value vs pass-by-reference and C arrays vs <code>std::vector</code>.</p>`,
+    hours: 12,
+    topics: topics, practice: practice, quiz: quiz, interview: interview
+  });
+})();
