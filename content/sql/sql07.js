@@ -617,6 +617,223 @@ SELECT sql FROM sqlite_master WHERE name = 'customers';`),
       }
     }]
   });
+  /* ======================= TOPIC 3: CONSTRAINTS ======================= */
+  topics.push({
+    title: 'Constraints: PRIMARY KEY, UNIQUE, NOT NULL, CHECK & DEFAULT',
+    analogy: `<p>Picture a <b>nightclub bouncer</b> with a checklist. "Do you have ID?" (<b>NOT NULL</b>). "Are you over 18?" (<b>CHECK</b>). "Is your name already on the inside list?" (<b>UNIQUE</b> / <b>PRIMARY KEY</b>). "No jacket? Here, take a free wristband" (<b>DEFAULT</b>). The bouncer checks <i>every</i> person at the door, every night, no matter which entrance they use. Validation in your app is a polite sign on the door; constraints are the bouncer.</p>`,
+    explain: `<p>A <b>constraint</b> is a rule the database enforces on every INSERT and UPDATE. If a write breaks a rule, the <b>whole statement fails</b> and nothing is stored. Because the database checks it, the rule holds no matter who writes — your API, a cron job, an admin with a SQL console, or next year's microservice.</p>
+${H.table(['Constraint', 'Plain meaning', 'Example', 'Rejects'], [
+  ['<code>NOT NULL</code>', 'this box can never be empty', '<code>email TEXT NOT NULL</code>', 'a row with no email'],
+  ['<code>UNIQUE</code>', 'no two rows may share this value', '<code>UNIQUE (email)</code>', 'a second asha@mail.com'],
+  ['<code>PRIMARY KEY</code>', 'the row\'s identity: UNIQUE + NOT NULL, one per table', '<code>id INTEGER PRIMARY KEY</code>', 'two rows with id 7'],
+  ['<code>CHECK (expr)</code>', 'a yes/no rule about this row', '<code>CHECK (age &gt;= 13)</code>', 'age 9'],
+  ['<code>DEFAULT v</code>', 'value used when the column is left out', '<code>plan TEXT DEFAULT \'free\'</code>', 'nothing — it fills, not rejects'],
+  ['<code>FOREIGN KEY</code>', 'value must exist in another table (next topic)', '<code>REFERENCES customers(id)</code>', 'order for customer 999']
+])}
+<h4>Keys vocabulary (interviewers love this)</h4>
+<ul>
+<li><b>Super key</b>: any set of columns that uniquely identifies a row (e.g. {id, email}).</li>
+<li><b>Candidate key</b>: a <i>minimal</i> super key — remove any column and it stops being unique (id alone; email alone).</li>
+<li><b>Primary key</b>: the one candidate key you choose as the official identity. The others become <b>alternate keys</b> — declare them <code>UNIQUE NOT NULL</code>.</li>
+<li><b>Composite key</b>: a key made of several columns, e.g. <code>PRIMARY KEY (order_id, product_id)</code>.</li>
+<li><b>Natural key</b> (from the real world: ISBN, email) vs <b>surrogate key</b> (made-up: auto-increment id, UUID). Most schemas use a surrogate PK plus UNIQUE on the natural key.</li>
+</ul>
+<h4>Three gotchas that catch everyone</h4>
+${H.table(['Gotcha', 'Why', 'Fix'], [
+  ['<code>CHECK (age &gt;= 13)</code> accepts age = NULL', 'NULL &gt;= 13 is UNKNOWN, and CHECK only rejects FALSE', 'add <code>NOT NULL</code> if the value is required'],
+  ['<code>INSERT ... VALUES (NULL)</code> does not use the DEFAULT', 'DEFAULT applies only when the column is <b>omitted</b>', 'omit the column, or <code>COALESCE</code> in the app'],
+  ['UNIQUE allows many NULLs', 'NULL is "unknown", and unknown ≠ unknown', 'add NOT NULL, or PG 15 <code>NULLS NOT DISTINCT</code>']
+])}`,
+    clues: [
+      '"must be unique" / "no duplicate emails or usernames" → <code>UNIQUE</code> (often case-insensitive)',
+      '"every X must have a Y" / "mandatory field" → <code>NOT NULL</code>',
+      '"price must be positive" / "rating between 1 and 5" / "end after start" → <code>CHECK</code>',
+      '"only one active / default / primary per user" → partial UNIQUE index (<code>WHERE is_active = 1</code>)',
+      '"identify a row by two columns together" → composite PRIMARY KEY or UNIQUE (a, b)',
+      '"natural vs surrogate key" / "should email be the primary key?" → surrogate PK + UNIQUE natural key',
+      '"which of these INSERTs fail?" → walk NOT NULL → CHECK → PK → UNIQUE; remember NULL passes CHECK'
+    ],
+    code: [
+      lab(`CREATE TABLE users (
+  id    INTEGER PRIMARY KEY,                                   -- identity (auto-assigned if omitted)
+  email TEXT    NOT NULL COLLATE NOCASE,                       -- required, case-insensitive compare
+  age   INTEGER CONSTRAINT chk_users_age CHECK (age >= 13),    -- named CHECK -> readable errors
+  plan  TEXT    NOT NULL DEFAULT 'free'
+        CONSTRAINT chk_users_plan CHECK (plan IN ('free', 'pro', 'team')),
+  CONSTRAINT uq_users_email UNIQUE (email)                     -- table-level constraint
+);
+
+-- INSERT OR IGNORE = "skip the row instead of failing the script", so we can watch each rule.
+INSERT OR IGNORE INTO users (email, age)       VALUES ('asha@mail.com', 29);   SELECT 'asha'         AS attempt, changes() AS stored;
+INSERT OR IGNORE INTO users (email, age)       VALUES ('ASHA@mail.com', 40);   SELECT 'ASHA (dup)'   AS attempt, changes() AS stored;
+INSERT OR IGNORE INTO users (email, age)       VALUES ('kid@mail.com', 9);     SELECT 'kid age 9'    AS attempt, changes() AS stored;
+INSERT OR IGNORE INTO users (email, age)       VALUES (NULL, 30);              SELECT 'no email'     AS attempt, changes() AS stored;
+INSERT OR IGNORE INTO users (email, age, plan) VALUES ('ben@mail.com', 33, 'gold'); SELECT 'plan gold' AS attempt, changes() AS stored;
+INSERT OR IGNORE INTO users (email, age)       VALUES ('cy@mail.com', NULL);   SELECT 'age NULL'     AS attempt, changes() AS stored;  -- CHECK passes on NULL!
+
+SELECT * FROM users;`, 'Every constraint, one rejected INSERT each')
+    ],
+    codeTitle: ['The bouncer at work'],
+    viz: {
+      title: 'Constraint gate: watch each INSERT get checked (and the bad ones rejected)',
+      input: '1,asha@mail.com,29,pro; 2,ben@mail.com,17; ,cy@mail.com,40; 2,dev@mail.com,25; 5,asha@mail.com,31; 6,,50; 7,kid@mail.com,9; 8,eve@mail.com,,gold; 9,fay@mail.com,,NULL; 10,gus@mail.com,',
+      inputLabel: 'Rows "id,email,age[,plan]" separated by ; (leave a field empty = NULL/omitted; 4th field missing = DEFAULT; NULL = explicit NULL)',
+      gen: function (input) {
+        var specs = String(input === undefined || input === null ? '' : input).split(';').map(function (s) { return s.trim(); }).filter(function (s) { return s.length; });
+        if (!specs.length) throw new Error('Type rows like: 1,asha@mail.com,29; 2,ben@mail.com,17,pro');
+        if (specs.length > 12) throw new Error('Use at most 12 rows');
+        var table = [], frames = [], ok = 0, bad = 0;
+        var ddl = 'CREATE TABLE users (\n  id    INTEGER PRIMARY KEY,\n  email TEXT NOT NULL UNIQUE,\n  age   INTEGER CHECK (age >= 13),\n  plan  TEXT NOT NULL DEFAULT \'free\'\n        CHECK (plan IN (\'free\',\'pro\',\'team\'))\n);';
+        frames.push({ narr: 'The table and its rules. Every INSERT walks past the bouncer: <b>DEFAULT</b> fills omitted columns first, then <b>NOT NULL</b>, <b>CHECK</b>, <b>PRIMARY KEY</b> and <b>UNIQUE</b>. The first broken rule rejects the whole row.', parts: [
+          { type: 'code', label: 'DDL', lang: 'sql', code: ddl, hl: { 2: 'cur', 3: 'cur', 4: 'cur', 5: 'cur', 6: 'cur' } },
+          { type: 'table', label: 'users', columns: ['id', 'email', 'age', 'plan'], rows: [] }
+        ] });
+        function show(v) { return v === null ? 'NULL' : v; }
+        specs.forEach(function (sp) {
+          var f = sp.split(',').map(function (x) { return x.trim(); });
+          if (f.length < 3 || f.length > 4) throw new Error('Each row needs 3 or 4 comma-separated fields: id,email,age[,plan] (got "' + sp + '")');
+          var idRaw = f[0], email = f[1] === '' || /^null$/i.test(f[1]) ? null : f[1];
+          var age = f[2] === '' || /^null$/i.test(f[2]) ? null : Number(f[2]);
+          if (age !== null && (!isFinite(age) || Math.floor(age) !== age)) throw new Error('age must be a whole number or empty (row "' + sp + '")');
+          if (idRaw !== '' && !/^\d+$/.test(idRaw)) throw new Error('id must be a positive whole number or empty (row "' + sp + '")');
+          var planOmitted = f.length === 3, plan = planOmitted ? 'free' : (/^null$/i.test(f[3]) || f[3] === '' ? null : f[3]);
+          var id = idRaw === '' ? (table.reduce(function (m, r) { return Math.max(m, r[0]); }, 0) + 1) : Number(idRaw);
+          var checks = [], fail = null;
+          checks.push(['DEFAULT', planOmitted ? 'plan omitted → \'free\'' : 'plan given: ' + show(plan), 'filled', '']);
+          if (idRaw === '') checks.push(['auto id', 'id omitted → max(id)+1 = ' + id, 'filled', '']);
+          function rule(name, val, pass, why) { if (fail) { checks.push([name, val, 'not reached', 'done']); return; } checks.push([name, val, pass ? '✔ pass' : '✗ ' + why, pass ? 'ok' : 'bad']); if (!pass) fail = name + ': ' + why; }
+          rule('NOT NULL email', show(email), email !== null, 'email is NULL');
+          rule('NOT NULL plan', show(plan), plan !== null, 'explicit NULL beats DEFAULT');
+          rule('CHECK age >= 13', show(age), age === null || age >= 13, age + ' < 13');
+          rule('CHECK plan IN (...)', show(plan), plan === null || ['free', 'pro', 'team'].indexOf(plan) >= 0, '\'' + plan + '\' not allowed');
+          rule('PRIMARY KEY id', id, !table.some(function (r) { return r[0] === id; }), 'id ' + id + ' already exists');
+          rule('UNIQUE email', show(email), !table.some(function (r) { return r[1] === email; }), email + ' already used');
+          var row = [id, show(email), show(age), show(plan)];
+          var chkHl = {}; checks.forEach(function (c, k) { if (c[3]) chkHl[k] = c[3]; });
+          var stmt = 'INSERT INTO users (' + (idRaw === '' ? '' : 'id, ') + 'email, age' + (planOmitted ? '' : ', plan') + ')\nVALUES (' + (idRaw === '' ? '' : id + ', ') + (email === null ? 'NULL' : "'" + email + "'") + ', ' + show(age) + (planOmitted ? '' : ', ' + (plan === null ? 'NULL' : "'" + plan + "'")) + ');';
+          var shown = copyRows(table), thl = {};
+          if (fail) { shown.push(row); thl[shown.length - 1] = 'bad'; bad++; }
+          else { table.push(row); shown = copyRows(table); thl[shown.length - 1] = 'ok'; ok++; }
+          var note = fail ? '<span class="c-r">REJECTED — ' + H.esc(fail) + '.</span> The red row is shown only for comparison; it was never stored.' : '<span class="c-g">ACCEPTED</span> — every rule passed' + (age === null ? ' (note: age NULL passes the CHECK because NULL &gt;= 13 is UNKNOWN, not FALSE)' : '') + (planOmitted ? '; plan came from the DEFAULT' : '') + '.';
+          frames.push({ narr: 'Row <code>' + H.esc(sp) + '</code>: ' + note, parts: [
+            { type: 'code', label: 'statement', lang: 'sql', code: stmt, hl: { 1: fail ? 'bad' : 'ok', 2: fail ? 'bad' : 'ok' } },
+            { type: 'table', label: 'bouncer checklist', columns: ['rule', 'value', 'result'], rows: checks.map(function (c) { return [c[0], c[1], c[2]]; }), hl: chkHl },
+            { type: 'table', label: fail ? 'users (red = rejected attempt)' : 'users', columns: ['id', 'email', 'age', 'plan'], rows: shown, hl: thl },
+            { type: 'vars', vals: { accepted: ok, rejected: bad }, hl: fail ? { rejected: 'bad' } : { accepted: 'ok' } }
+          ] });
+        });
+        frames.push({ narr: 'Final table: ' + ok + ' row(s) stored, ' + bad + ' rejected. Every stored row is guaranteed to obey every rule — forever, no matter which program writes next.', parts: [
+          { type: 'table', label: 'users (final)', columns: ['id', 'email', 'age', 'plan'], rows: copyRows(table) },
+          { type: 'text', html: 'Remember: <b>NULL passes CHECK</b>, <b>explicit NULL ignores DEFAULT</b>, and <b>the whole statement fails</b> on the first broken rule (unless you use INSERT OR IGNORE / ON CONFLICT).' }
+        ] });
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'Gotcha: CHECK lets NULL through', html: `<p>A CHECK rejects a row only when the expression is <b>FALSE</b>. With age = NULL, <code>age &gt;= 13</code> is <b>UNKNOWN</b> (three-valued logic), so the row passes. If age is required, you need <code>NOT NULL</code> as well.</p>${H.table(['age', 'age >= 13', 'CHECK result'], [['20', 'TRUE', H.c('g', 'pass')], ['9', 'FALSE', H.c('r', 'reject')], ['NULL', 'UNKNOWN', H.c('y', 'pass!')]])}`,
+        code: lab(`CREATE TABLE members (name TEXT, age INTEGER CHECK (age >= 13));
+INSERT INTO members VALUES ('Asha', 20), ('Mystery', NULL);   -- both accepted
+INSERT OR IGNORE INTO members VALUES ('Kid', 9);               -- skipped
+SELECT name, quote(age) AS age FROM members;`) },
+      { title: 'Gotcha: explicit NULL does not trigger DEFAULT', html: `<p>DEFAULT is used only when the column is left out of the INSERT. Writing <code>NULL</code> explicitly means "I want NULL" — so a nullable column stores NULL, and a NOT NULL column rejects the row. ORMs that send every column (including NULLs) bump into this all the time.</p>`,
+        code: lab(`CREATE TABLE tickets (id INTEGER PRIMARY KEY, priority TEXT DEFAULT 'normal', status TEXT NOT NULL DEFAULT 'open');
+INSERT INTO tickets (id) VALUES (1);                          -- both defaults used
+INSERT INTO tickets (id, priority) VALUES (2, NULL);          -- priority NULL, NOT 'normal'
+INSERT OR IGNORE INTO tickets (id, status) VALUES (3, NULL);  -- NOT NULL rejects explicit NULL
+SELECT id, quote(priority) AS priority, status FROM tickets;`) },
+      { title: 'Case-insensitive uniqueness for emails', html: `<p><code>'Asha@Mail.com'</code> and <code>'asha@mail.com'</code> are the same mailbox but different strings. Two good fixes: declare the column <code>COLLATE NOCASE</code> (SQLite), or a <b>unique expression index</b> on <code>lower(email)</code> (works in Postgres too).</p>`,
+        code: lab(`CREATE TABLE accounts (id INTEGER PRIMARY KEY, email TEXT NOT NULL);
+CREATE UNIQUE INDEX uq_accounts_email_ci ON accounts (lower(email));
+INSERT INTO accounts (email) VALUES ('asha@mail.com');
+INSERT OR IGNORE INTO accounts (email) VALUES ('ASHA@Mail.com');   -- blocked by the expression index
+SELECT * FROM accounts;`) },
+      { title: 'SQLite quirk: a TEXT PRIMARY KEY can be NULL', html: `<p>Because of an old bug kept for compatibility, a non-INTEGER PRIMARY KEY in a normal SQLite table accepts NULLs — even several. Postgres/MySQL would reject them. Fix: add <code>NOT NULL</code>, or use <code>STRICT</code> / <code>WITHOUT ROWID</code> tables, which enforce it.</p>`,
+        code: lab(`CREATE TABLE sku_loose  (sku TEXT PRIMARY KEY, name TEXT);
+CREATE TABLE sku_strict (sku TEXT NOT NULL PRIMARY KEY, name TEXT);
+INSERT INTO sku_loose VALUES (NULL, 'mystery 1'), (NULL, 'mystery 2');   -- accepted (!)
+INSERT OR IGNORE INTO sku_strict VALUES (NULL, 'mystery');               -- rejected
+SELECT 'loose' AS t, COUNT(*) AS n FROM sku_loose UNION ALL SELECT 'strict', COUNT(*) FROM sku_strict;`) },
+      { title: 'Partial unique index: "only one default address per customer"', html: `<p>A plain UNIQUE(customer_id, is_default) would also forbid two <i>non-default</i> addresses. A <b>partial</b> unique index only covers rows matching its WHERE clause, so it says exactly "at most one row with is_default = 1 per customer".</p>`,
+        code: lab(`CREATE TABLE addresses (id INTEGER PRIMARY KEY, customer_id INTEGER NOT NULL, city TEXT NOT NULL,
+                        is_default INTEGER NOT NULL DEFAULT 0 CHECK (is_default IN (0, 1)));
+CREATE UNIQUE INDEX uq_one_default_address ON addresses (customer_id) WHERE is_default = 1;
+INSERT INTO addresses (customer_id, city, is_default) VALUES (1, 'Pune', 1), (1, 'Goa', 0), (1, 'Delhi', 0);
+INSERT OR IGNORE INTO addresses (customer_id, city, is_default) VALUES (1, 'Agra', 1);  -- 2nd default: blocked
+SELECT * FROM addresses;`) }
+    ],
+    deepDive: `<h4>How the database enforces them (and what it costs)</h4>
+<p><b>NOT NULL</b> and <b>CHECK</b> are evaluated on the single row being written — O(1), essentially free. <b>UNIQUE</b> and <b>PRIMARY KEY</b> are enforced with a <b>unique B-tree index</b>: inserting means one index lookup, O(log N). So every UNIQUE constraint is also an index you pay for in storage and write speed — and get for free when reading by that column.</p>
+<h4>Statement-level vs deferred checking</h4>
+<p>By default constraints are checked as each row/statement executes. Postgres lets UNIQUE and FK constraints be <code>DEFERRABLE INITIALLY DEFERRED</code>, checked only at COMMIT — useful for swapping two values (<code>UPDATE ... SET pos = CASE ...</code>) or circular references. SQLite defers FKs (<code>DEFERRABLE INITIALLY DEFERRED</code> or <code>PRAGMA defer_foreign_keys</code>) but not UNIQUE.</p>
+<h4>Conflict resolution</h4>
+<p>SQLite has per-statement resolution: <code>INSERT OR IGNORE</code> (skip row), <code>OR REPLACE</code> (delete the old conflicting row, insert new — careful: deletes fire cascades!), <code>OR ABORT</code> (default), <code>OR FAIL</code>, <code>OR ROLLBACK</code>. The portable modern form is <code>INSERT ... ON CONFLICT (email) DO NOTHING</code> / <code>DO UPDATE SET ...</code> (upsert), supported by SQLite and Postgres (MySQL: <code>ON DUPLICATE KEY UPDATE</code>). Foreign keys are not covered by these clauses.</p>
+<h4>CHECK limits</h4>
+<p>A CHECK can only look at the current row. It cannot run a subquery ("no more than 5 addresses per customer") — that needs a trigger, a counter column with a CHECK, or app logic in a transaction. Keep CHECK expressions deterministic (no <code>now()</code>): "birth_date &lt; today" becomes false-positive tomorrow for data that was valid when written.</p>
+<h4>Surrogate vs natural keys in production</h4>
+<p>Natural keys change (people change emails, ISBNs get reissued, countries split) and changing a PK means updating every FK. Surrogates never change. Auto-increment BIGINT is compact and index-friendly but leaks business volume and is hard to merge across shards; random UUIDv4 fragments B-tree inserts; <b>UUIDv7</b> (time-ordered, RFC 9562, 2024) is the modern compromise — globally unique and mostly append-only.</p>
+<h4>Naming convention</h4>
+<p><code>pk_table</code>, <code>uq_table_cols</code>, <code>chk_table_rule</code>, <code>fk_child_parent</code>, <code>idx_table_cols</code>. When a constraint fails at 3 a.m., <code>violates check constraint "chk_orders_qty_positive"</code> tells the on-call engineer everything.</p>`,
+    aiEra: `<p><b>What AI changes:</b> LLM agents now write to databases directly (tool calls, text-to-SQL, autonomous back-office agents). An agent will occasionally generate a plausible but wrong value — a negative quantity, a status string with a typo, a duplicate signup. Constraints are the <b>guardrail that does not depend on the agent being right</b>. The more non-human writers you have, the more valuable database-level rules become.</p>
+<p><b>Use AI as a partner:</b> paste a table and ask <code>"List every business rule this table should enforce that it currently doesn't, and give me the CHECK/UNIQUE/partial-index DDL for each, for SQLite and Postgres."</code> Also ask it to write a constraint-violation test suite: one INSERT per rule that must fail.</p>
+<p><b>Where AI goes wrong:</b> it forgets that CHECK passes on NULL, assumes UNIQUE blocks duplicate NULLs, writes CHECKs with subqueries (not allowed), and uses <code>INSERT OR REPLACE</code> as an "upsert" without realising it deletes the old row (and cascades). <b>What you must still own:</b> deciding which rules are invariants (belong in the DB) versus policies that change weekly (belong in code), and reading the error messages your users will see.</p>`,
+    problems: [{
+      title: 'Constraint Puzzle: Which INSERTs Survive?',
+      level: 'Medium', tags: ['constraints', 'NULL logic', 'puzzle'], companies: ['Oracle', 'Microsoft', 'Flipkart'],
+      statement: `<p>Given this table:</p><pre>CREATE TABLE products (
+  id INTEGER PRIMARY KEY,
+  sku TEXT NOT NULL UNIQUE,
+  price_cents INTEGER CHECK (price_cents &gt; 0),
+  stock INTEGER NOT NULL DEFAULT 0 CHECK (stock &gt;= 0)
+);</pre><p>Predict which of these 8 inserts succeed, then prove it in SQL:</p>
+<ol><li><code>(1, 'A1', 500, 10)</code></li><li><code>(2, 'A1', 700, 5)</code></li><li><code>(3, 'B2', -100, 1)</code></li><li><code>(4, 'C3', NULL, 2)</code></li><li><code>(1, 'D4', 900, 1)</code></li><li><code>(5, NULL, 100, 1)</code></li><li><code>(6, 'E5', 250)</code> with stock omitted</li><li><code>(7, 'F6', 300, NULL)</code></li></ol>`,
+      constraints: `<ul><li>Run all 8 attempts in one script without it stopping at the first error.</li><li>Explain each rejection by naming the exact constraint.</li></ul>`,
+      example: `${H.table(['#', 'result', 'why'], [
+        ['1', H.c('g', 'stored'), 'all rules pass'], ['2', H.c('r', 'rejected'), 'UNIQUE sku A1'], ['3', H.c('r', 'rejected'), 'CHECK price &gt; 0'],
+        ['4', H.c('g', 'stored'), 'NULL passes CHECK; price is nullable'], ['5', H.c('r', 'rejected'), 'PRIMARY KEY id 1'], ['6', H.c('r', 'rejected'), 'NOT NULL sku'],
+        ['7', H.c('g', 'stored'), 'stock omitted → DEFAULT 0'], ['8', H.c('r', 'rejected'), 'explicit NULL stock → NOT NULL']])}<p>Answer: rows 1, 4, 7 survive (3 rows).</p>`,
+      brute: {
+        why: `<p>The "validate in the app" approach: a table with no constraints and a hope that every code path checks. All 8 rows go in — a duplicate SKU, a negative price, a duplicate id and a NULL SKU. Every report built on this table is now wrong, and you only find out when a customer is charged −₹1.</p>`,
+        code: lab(`CREATE TABLE products_nocheck (id INTEGER, sku TEXT, price_cents INTEGER, stock INTEGER);
+INSERT INTO products_nocheck VALUES (1,'A1',500,10),(2,'A1',700,5),(3,'B2',-100,1),(4,'C3',NULL,2),
+                                    (1,'D4',900,1),(5,NULL,100,1),(6,'E5',250,NULL),(7,'F6',300,NULL);
+SELECT COUNT(*) AS rows_stored,
+       SUM(price_cents < 0) AS negative_prices,
+       COUNT(*) - COUNT(DISTINCT id) AS duplicate_ids
+FROM products_nocheck;`)
+      },
+      mcq: { q: 'Insert #4 has price_cents = NULL with CHECK (price_cents > 0). What happens?', options: ['Rejected: NULL is not > 0', 'Stored: the CHECK evaluates to UNKNOWN, which is not FALSE', 'Stored with price 0', 'Error: CHECK cannot reference nullable columns'], answer: 1, explain: 'CHECK rejects only FALSE. NULL > 0 is UNKNOWN, so the row passes.' },
+      hints: [
+        '<p>Hint 1: For each row walk the list: DEFAULT fill → NOT NULL → CHECK → PRIMARY KEY → UNIQUE. Stop at the first failure.</p>',
+        '<p>Hint 2: Watch for the two NULL traps: NULL passes CHECK; an explicit NULL does not trigger DEFAULT.</p>',
+        '<p>Hint 3: To run all attempts without the script stopping, use <code>INSERT OR IGNORE</code> per row and <code>SELECT changes()</code> after each to see 1 (stored) or 0 (rejected).</p>'
+      ],
+      solution: {
+        approach: `<p>Create the real table, then run each attempt with <code>INSERT OR IGNORE</code> so a rejection just skips the row. <code>changes()</code> reports 1 or 0 after each attempt — a mechanical proof of your prediction. Final SELECT shows the 3 survivors.</p>`,
+        code: lab(`CREATE TABLE products (
+  id INTEGER PRIMARY KEY,
+  sku TEXT NOT NULL UNIQUE,
+  price_cents INTEGER CHECK (price_cents > 0),
+  stock INTEGER NOT NULL DEFAULT 0 CHECK (stock >= 0)
+);
+CREATE TABLE attempts (n INTEGER, stored INTEGER);
+
+INSERT OR IGNORE INTO products VALUES (1, 'A1', 500, 10);   INSERT INTO attempts VALUES (1, changes());
+INSERT OR IGNORE INTO products VALUES (2, 'A1', 700, 5);    INSERT INTO attempts SELECT 2, 0 WHERE NOT EXISTS (SELECT 1 FROM products WHERE id = 2);
+INSERT OR IGNORE INTO products VALUES (3, 'B2', -100, 1);   INSERT INTO attempts SELECT 3, EXISTS (SELECT 1 FROM products WHERE id = 3);
+INSERT OR IGNORE INTO products VALUES (4, 'C3', NULL, 2);   INSERT INTO attempts SELECT 4, EXISTS (SELECT 1 FROM products WHERE id = 4);
+INSERT OR IGNORE INTO products VALUES (1, 'D4', 900, 1);    INSERT INTO attempts SELECT 5, EXISTS (SELECT 1 FROM products WHERE sku = 'D4');
+INSERT OR IGNORE INTO products VALUES (5, NULL, 100, 1);    INSERT INTO attempts SELECT 6, EXISTS (SELECT 1 FROM products WHERE id = 5);
+INSERT OR IGNORE INTO products (id, sku, price_cents) VALUES (6, 'E5', 250);
+                                                            INSERT INTO attempts SELECT 7, EXISTS (SELECT 1 FROM products WHERE id = 6);
+INSERT OR IGNORE INTO products VALUES (7, 'F6', 300, NULL); INSERT INTO attempts SELECT 8, EXISTS (SELECT 1 FROM products WHERE id = 7);
+
+SELECT n AS attempt, CASE stored WHEN 1 THEN 'stored' ELSE 'rejected' END AS result FROM attempts ORDER BY n;
+SELECT * FROM products ORDER BY id;`),
+        complexity: `<p>Each insert costs O(1) for NOT NULL/CHECK plus O(log N) per unique index (id and sku). Verification is O(1) per attempt via the PK/UNIQUE indexes.</p>`,
+        followUps: ['Which attempts would change if the table were STRICT? (none here — all values are already integers/text)', 'Rewrite attempt #2 as an upsert that updates the price instead of failing.']
+      }
+    }]
+  });
   registerModule({
     id: 'sql07',
     title: 'DDL, Constraints & ER Modelling',

@@ -1081,7 +1081,7 @@ FROM split
 WHERE tag IS NOT NULL
 GROUP BY tag
 ORDER BY products DESC, tag;` } },
-      { title: 'Monthly calendar for sign-ups (months with zero still shown)', html: `<p><code>date(month, '+1 month')</code> steps a month at a time. A correlated COUNT then counts sign-ups per month — June 2024 has 1 (Fatima), July–September have 0, and they still appear because the calendar drives the query.</p>`, code: { lang: 'sql', db: 'shop', code: `WITH RECURSIVE months(m) AS (
+      { title: 'Monthly calendar for sign-ups (months with zero still shown)', html: `<p><code>date(month, '+1 month')</code> steps a month at a time. A correlated COUNT then counts sign-ups per month — January to June 2024 have one each (Asha … Fatima), while July–September have 0 and <b>still appear</b>, because the calendar drives the query.</p>`, code: { lang: 'sql', db: 'shop', code: `WITH RECURSIVE months(m) AS (
     SELECT '2024-01-01'
     UNION ALL
     SELECT date(m, '+1 month') FROM months WHERE m < '2024-09-01'
@@ -1102,7 +1102,7 @@ SELECT x FROM c;` } }
 <p><b>Restrictions on the recursive member</b> (vary by engine): it must reference the CTE exactly once; no aggregates (<code>SUM</code>, <code>COUNT</code>) or window functions over the recursive reference; no <code>DISTINCT</code> / <code>GROUP BY</code> in it (PostgreSQL); the CTE cannot be on the inner side of a LEFT JOIN or inside NOT EXISTS. Do aggregation <b>after</b> the recursion in the outer query.</p>
 <p><b>Types are fixed by the anchor.</b> In PostgreSQL and SQL Server the column types come from the anchor. Building a path string with <code>'a'</code> as anchor gives a short type and the recursive part errors or truncates ("types don't match between the anchor and the recursive part"). Cast in the anchor: <code>CAST(name AS VARCHAR(1000))</code> / <code>name::text</code>. SQLite is dynamically typed and does not care.</p>
 <p><b>Limits.</b> SQL Server: <code>OPTION (MAXRECURSION n)</code>, default 100, 0 = unlimited. MySQL: <code>cte_max_recursion_depth</code> (1000) and <code>max_execution_time</code>. PostgreSQL and SQLite: no limit — protect yourself with a depth counter (<code>WHERE depth &lt; 50</code>).</p>
-<p><b>Built-ins.</b> PostgreSQL has <code>generate_series(start, stop, step)</code> for numbers and timestamps; SQLite ships it as a table-valued function in the CLI and many builds (since 3.42 bundled in the amalgamation as an extension), DuckDB has <code>range</code>/<code>generate_series</code>. Prefer them when available — they are faster and clearer — but recursive CTEs are the portable fallback every interviewer accepts.</p>
+<p><b>Built-ins.</b> PostgreSQL has <code>generate_series(start, stop, step)</code> for numbers and timestamps; SQLite offers it as the <code>series</code> extension (a table-valued function compiled into the sqlite3 command-line shell and some builds, but not guaranteed in every app), DuckDB has <code>range</code>/<code>generate_series</code>. Prefer them when available — they are faster and clearer — but recursive CTEs are the portable fallback every interviewer accepts.</p>
 <p><b>Performance.</b> A series of N rows costs O(N) rounds. For a million-row calendar, a recursive CTE is fine (milliseconds); a permanent <i>calendar / numbers table</i> is the production pattern for data warehouses (with holiday flags, fiscal weeks, etc.).</p>`,
     aiEra: `<p><b>What AI changes:</b> "generate every date between X and Y" is a one-line prompt today, and AI usually gets the anchor/step right. The bugs are at the edges: off-by-one end dates, time zones, and infinite loops.</p>
 <p><b>Use AI as a partner:</b> <code>Write a recursive CTE for all Mondays in 2024 in SQLite, then tell me the first and last rows and the row count so I can verify</code>. <code>Port this recursive CTE from SQLite to SQL Server: fix types, MAXRECURSION and date functions</code>. Ask it to trace the first three rounds of the working table so you can check its mental model against yours.</p>
@@ -1146,6 +1146,299 @@ ORDER BY day;` },
         dry: { head: ['round', 'working table', 'new day', 'revenue after LEFT JOIN'], rows: [['anchor', '—', '2024-07-01', '1500'], ['1', '07-01', '2024-07-02', '0'], ['2', '07-02', '2024-07-03', '880'], ['6', '07-06', '2024-07-07', '0'], ['7', '07-07', '<span class="c-r">none — stop</span>', '7 rows total']] },
         complexity: `<p>O(D) rounds for D days + O(N) to aggregate orders + a hash join: O(D + N). For multi-year dashboards, keep a permanent calendar table.</p>`,
         followUps: ['Make the range dynamic: from the first to the last order date.', 'Add a 3-day moving average (window functions, next module).', 'Count orders per day per status, still showing zero days.']
+      }
+    }]
+  });
+
+  /* =====================================================================
+     TOPIC 6 — Recursive CTEs II: hierarchies, paths, graphs
+     ===================================================================== */
+  topics.push({
+    title: 'Recursive CTEs for Hierarchies: Org Charts, Trees, BOMs & Graphs',
+    analogy: `<p>You want to invite <b>everyone under Ravi</b> to a team lunch. You ask Ravi: <i>"Who reports to you?"</i> — Karan and Divya. Then you ask Karan and Divya the same question — Arjun, Neha, Vikram, Priya. You ask those four — nobody. Done. You never needed to know in advance how deep the team went; you just kept asking <b>the people you found last time</b>.</p>
+<p>That is exactly a recursive CTE over a table with a <code>manager_id</code> column: the anchor is Ravi, each round asks "who reports to the people found in the previous round?", and it stops when a round finds no one.</p>`,
+    explain: `<p>Hierarchies are usually stored as an <b>adjacency list</b>: each row points to its parent (<code>employees.manager_id → employees.id</code>, <code>categories.parent_id → categories.id</code>). A self join walks <b>one</b> level; a recursive CTE walks <b>all</b> levels.</p>
+<pre>WITH RECURSIVE org(id, name, depth, path) AS (
+    SELECT id, name, 0, name                       -- anchor: the root(s)
+    FROM employees WHERE manager_id IS NULL
+    UNION ALL
+    SELECT e.id, e.name, o.depth + 1,               -- children of last round's rows
+           o.path || ' &gt; ' || e.name
+    FROM employees e
+    JOIN org o ON e.manager_id = o.id              -- the "walk one level" join
+)
+SELECT * FROM org ORDER BY path;</pre>
+${H.table(['Direction', 'Anchor', 'Recursive join', 'Answers'], [
+  ['<b>Top-down</b> (descendants)', 'the manager / root category', '<code>child.parent_id = cte.id</code>', 'whole team, subtree, all sub-categories'],
+  ['<b>Bottom-up</b> (ancestors)', 'one employee / leaf category', '<code>parent.id = cte.parent_id</code>', 'chain of command, breadcrumb, "all my bosses"']
+])}
+<p><b>Columns you carry along</b> make the magic:</p>
+<ul>
+<li><code>depth</code> (level) — start at 0, add 1 each round. Lets you indent, count per level, or cap the depth.</li>
+<li><code>path</code> — concatenate names/ids. Gives a readable breadcrumb, a sort key that prints the tree in order (<code>ORDER BY path</code>), and a <b>visited list</b> for cycle detection.</li>
+<li><b>Accumulated values</b> — multiply quantities down a bill of materials, add costs along a route.</li>
+</ul>
+<p><b>Graphs and cycles.</b> Org charts are trees (no cycles). Flight routes, friendships and dependency graphs can loop (DEL → BOM → BLR → MAA → DEL…). Then you must stop revisiting: keep the path and add <code>WHERE instr(path, ',' || next || ',') = 0</code>, or cap hops with <code>depth &lt; k</code>. PostgreSQL 14+ also has a built-in <code>CYCLE</code> clause.</p>
+<p><b>Ancestor–descendant pairs ("closure").</b> Anchor with every node paired with itself; each round extends each pair one level down. Grouping the result by ancestor answers "team size / total team salary for <i>every</i> manager" in one query.</p>`,
+    clues: [
+      'Table has a <b>self-referencing</b> column: <code>manager_id</code>, <code>parent_id</code>, <code>reports_to</code>, <code>replied_to</code> → hierarchy → recursive CTE',
+      '"all direct <b>and indirect</b> reports", "at any level", "the entire subtree" → top-down recursion',
+      '"chain of command", "breadcrumb", "all ancestors", "root of each node" → bottom-up recursion',
+      '"how many levels deep", "depth of the tree", "people per level" → carry a depth column',
+      '"total quantity of raw parts", "bill of materials", "explode" → multiply along the path',
+      '"all routes / reachable cities / dependency order" on data that can loop → recursion + path-based cycle check or depth cap'
+    ],
+    code: [
+      { lang: 'sql', db: 'company', title: 'Top-down: full org chart with depth, indentation and path', code: `WITH RECURSIVE org(id, name, title, depth, path) AS (
+    SELECT id, name, title, 0, name                      -- anchor: the CEO
+    FROM employees
+    WHERE manager_id IS NULL
+    UNION ALL
+    SELECT e.id, e.name, e.title, o.depth + 1,           -- one level deeper
+           o.path || ' > ' || e.name
+    FROM employees e
+    JOIN org o ON e.manager_id = o.id
+)
+SELECT depth,
+       substr('            ', 1, depth * 2) || name AS org_chart,   -- indent 2 spaces per level
+       title,
+       path
+FROM org
+ORDER BY path;                                            -- path sorts parents before children` },
+      { lang: 'sql', db: 'company', title: 'Bottom-up: chain of command for one employee', code: `WITH RECURSIVE chain(id, name, manager_id, steps) AS (
+    SELECT id, name, manager_id, 0
+    FROM employees WHERE name = 'Imran'                   -- anchor: the starting employee
+    UNION ALL
+    SELECT m.id, m.name, m.manager_id, c.steps + 1        -- walk UP to the manager
+    FROM employees m
+    JOIN chain c ON m.id = c.manager_id
+)
+SELECT steps, name FROM chain ORDER BY steps;            -- Imran, Sneha, Meera, Asha` },
+      { lang: 'sql', db: 'company', title: 'Closure pairs: team size and team cost for every manager', code: `WITH RECURSIVE closure(ancestor, descendant) AS (
+    SELECT id, id FROM employees                           -- everyone is in their own subtree
+    UNION ALL
+    SELECT c.ancestor, e.id                                -- extend each pair one level down
+    FROM closure c
+    JOIN employees e ON e.manager_id = c.descendant
+)
+SELECT m.name                    AS manager,
+       COUNT(*) - 1              AS team_size,             -- minus the manager themself
+       SUM(e.salary) - m.salary  AS team_salary_cost
+FROM closure c
+JOIN employees m ON m.id = c.ancestor
+JOIN employees e ON e.id = c.descendant
+GROUP BY m.id, m.name, m.salary
+HAVING COUNT(*) > 1
+ORDER BY team_salary_cost DESC;` }
+    ],
+    codeTitle: ['Top-down org chart', 'Bottom-up chain', 'Subtree totals (closure)'],
+    viz: [{
+      title: 'Org chart recursion: each round adds the next level of the tree',
+      input: 'down Asha',
+      inputLabel: '"down NAME" (everyone under NAME) or "up NAME" (chain of command)',
+      gen: function (input) {
+        var m = String(input || '').trim().match(/^(down|up)\s+(\w+)$/i);
+        if (!m) throw new Error('Type "down Asha", "down Ravi" or "up Imran"');
+        var dir = m[1].toLowerCase(), who = m[2].toLowerCase();
+        var start = null;
+        EMP.forEach(function (e) { if (e[1].toLowerCase() === who || String(e[0]) === who) start = e; });
+        if (!start) throw new Error('Unknown employee. Try Asha, Ravi, Meera, Karan, Sneha, Imran, Tom…');
+        var sql = dir === 'down'
+          ? "WITH RECURSIVE team(id, name, depth, path) AS (\n  SELECT id, name, 0, name FROM employees\n  WHERE name = '" + start[1] + "'\n  UNION ALL\n  SELECT e.id, e.name, t.depth + 1, t.path || '>' || e.name\n  FROM employees e JOIN team t ON e.manager_id = t.id\n)\nSELECT * FROM team;"
+          : "WITH RECURSIVE chain(id, name, manager_id, steps) AS (\n  SELECT id, name, manager_id, 0 FROM employees\n  WHERE name = '" + start[1] + "'\n  UNION ALL\n  SELECT m.id, m.name, m.manager_id, c.steps + 1\n  FROM employees m JOIN chain c ON m.id = c.manager_id\n)\nSELECT * FROM chain;";
+        var cols = dir === 'down' ? ['id', 'name', 'depth', 'path'] : ['id', 'name', 'manager_id', 'steps'];
+        var frames = [], result = [], gh = {}, eh = {};
+        var work = dir === 'down' ? [[start[0], start[1], 0, start[1]]] : [[start[0], start[1], nm(start[3]), 0]];
+        result = work.slice();
+        frames.push({ narr: 'Every row of <b>employees</b> stores its boss in <code>manager_id</code> — an <b>adjacency list</b>. One self-join walks one level; we want ' + (dir === 'down' ? 'every level <b>below</b> ' : 'every level <b>above</b> ') + start[1] + ', however many there are.', parts: [
+          { type: 'code', label: 'Query', lang: 'sql', code: sql, hl: {} },
+          orgGraph({}, 'Org chart (arrows: manager → report)'),
+          { type: 'table', label: 'employees (id, name, manager_id)', columns: ['id', 'name', 'manager_id'], rows: empRows([0, 1, 3]) }
+        ] });
+        gh[start[0]] = 'ok';
+        frames.push({ narr: (dir === 'down' ? 'Top-down walk. ' : 'Bottom-up walk. ') + 'The <b>anchor</b> selects <b>' + start[1] + '</b>. It becomes round 0 of the result and the first <b>working table</b>.', parts: [
+          { type: 'code', label: 'Query', lang: 'sql', code: sql, hl: { 2: 'ok', 3: 'ok' } },
+          orgGraph(JSON.parse(JSON.stringify(gh)), 'Org chart — green = found this round'),
+          { type: 'table', label: 'Working table (round 0)', columns: cols, rows: work.map(function (r) { return r.slice(); }), hl: { 0: 'ok' } },
+          { type: 'table', label: 'Result', columns: cols, rows: result.map(function (r) { return r.slice(); }), hl: { 0: 'ok' } }
+        ] });
+        var round = 0;
+        while (work.length && round < 6) {
+          round++;
+          var next = [];
+          Object.keys(gh).forEach(function (k) { gh[k] = 'done'; });
+          Object.keys(eh).forEach(function (k) { eh[k] = 'done'; });
+          work.forEach(function (w) {
+            if (dir === 'down') {
+              EMP.forEach(function (e) { if (e[3] === w[0]) { next.push([e[0], e[1], w[2] + 1, w[3] + '>' + e[1]]); gh[e[0]] = 'ok'; eh[w[0] + '-' + e[0]] = 'ok'; } });
+            } else {
+              var mgr = w[2] === 'NULL' ? null : empById(w[2]);
+              if (mgr) { next.push([mgr[0], mgr[1], nm(mgr[3]), w[3] + 1]); gh[mgr[0]] = 'ok'; eh[mgr[0] + '-' + w[0]] = 'ok'; }
+            }
+          });
+          var wl = work.map(function (r) { return r[1]; }).join(', ');
+          if (!next.length) {
+            frames.push({ narr: 'Round ' + round + ': the working table is {' + wl + '}. ' + (dir === 'down' ? 'Nobody has <code>manager_id</code> equal to any of them' : start[1] === wl ? 'No manager above' : wl + ' has <code>manager_id = NULL</code>, so the join finds no row') + ' → the recursive member returns <b>0 rows</b> → recursion stops.', parts: [
+              { type: 'code', label: 'Query', lang: 'sql', code: sql, hl: { 6: 'bad' } },
+              orgGraph(JSON.parse(JSON.stringify(gh)), 'Org chart'),
+              { type: 'table', label: 'New rows this round', columns: cols, rows: [] },
+              { type: 'vars', label: 'Progress', vals: { round: round, new_rows: 0, total_rows: result.length }, hl: { new_rows: 'bad' } }
+            ] });
+            break;
+          }
+          var rh = {};
+          next.forEach(function (r) { rh[result.length] = 'ok'; result.push(r); });
+          frames.push({ narr: 'Round ' + round + ': join <code>' + (dir === 'down' ? 'e.manager_id = t.id' : 'm.id = c.manager_id') + '</code> against the working table {' + wl + '} only. Found <b>' + next.map(function (r) { return r[1]; }).join(', ') + '</b> ' + (dir === 'down' ? '(depth ' + next[0][2] + ')' : '(one step up)') + '. These rows become the next working table.', parts: [
+            { type: 'code', label: 'Query', lang: 'sql', code: sql, hl: { 5: 'ok', 6: 'ok' } },
+            orgGraph(JSON.parse(JSON.stringify(gh)), 'Org chart — green = found this round, faded = earlier rounds', JSON.parse(JSON.stringify(eh))),
+            { type: 'table', label: 'Working table (round ' + round + ')', columns: cols, rows: next.map(function (r) { return r.slice(); }) },
+            { type: 'table', label: 'Result (accumulated)', columns: cols, rows: result.map(function (r) { return r.slice(); }), hl: rh }
+          ] });
+          work = next;
+        }
+        var fh = {}; result.forEach(function (r, k) { fh[k] = 'sel'; });
+        frames.push({ narr: 'Final result: <b>' + result.length + '</b> row(s) in ' + round + ' round(s). ' + (dir === 'down' ? 'Rounds = levels: the CTE did a <b>breadth-first</b> walk. <code>ORDER BY path</code> would print it as an indented tree instead.' : 'Read top to bottom, this is the chain of command from ' + start[1] + ' to the CEO.'), parts: [
+          { type: 'table', label: 'Query result', columns: cols, rows: result, hl: fh },
+          { type: 'text', label: 'Why recursion?', html: 'A fixed self-join chain (e JOIN m1 JOIN m2) only reaches as many levels as you wrote joins. The recursive CTE keeps going until a round is empty — it adapts to any depth.' }
+        ] });
+        return frames;
+      }
+    }, {
+      title: 'Graph with a cycle: path list stops revisits (routes from a city)',
+      input: 'DEL MAA',
+      inputLabel: 'Start city and target city (DEL, BOM, GOA, BLR, MAA)',
+      gen: function (input) {
+        var R = [['DEL', 'BOM', 100], ['DEL', 'BLR', 250], ['BOM', 'BLR', 80], ['BOM', 'GOA', 60], ['GOA', 'BLR', 50], ['BLR', 'MAA', 40], ['MAA', 'DEL', 200], ['GOA', 'MAA', 120]];
+        var POS = { DEL: [10, 10], BOM: [32, 34], GOA: [55, 50], BLR: [66, 14], MAA: [90, 36] };
+        var m = String(input || '').trim().toUpperCase().split(/\s+/);
+        if (m.length !== 2 || !POS[m[0]] || !POS[m[1]]) throw new Error('Type two cities, e.g. "DEL MAA" (choose from DEL BOM GOA BLR MAA)');
+        var src = m[0], dst = m[1];
+        function g(hl, ehl) { return { type: 'graph', label: 'routes (directed, cost on edge)', directed: true, height: 56, nodes: Object.keys(POS).map(function (c) { return { id: c, label: c, x: POS[c][0], y: POS[c][1] }; }), edges: R.map(function (r) { return [r[0], r[1], r[2]]; }), hl: hl, ehl: ehl }; }
+        var sql = "WITH RECURSIVE trip(city, path, cost) AS (\n  SELECT '" + src + "', '," + src + ",', 0\n  UNION ALL\n  SELECT r.dst, t.path || r.dst || ',', t.cost + r.cost\n  FROM trip t JOIN routes r ON r.src = t.city\n  WHERE instr(t.path, ',' || r.dst || ',') = 0  -- not visited\n)\nSELECT * FROM trip WHERE city = '" + dst + "' ORDER BY cost;";
+        var frames = [], work = [[src, ',' + src + ',', 0]], all = work.slice(), round = 0;
+        var h0 = {}; h0[src] = 'cur'; h0[dst] = 'sel';
+        frames.push({ narr: 'Routes can loop (MAA → DEL). Each row carries its <b>path</b> as a visited list like <code>,DEL,BOM,</code>. The recursive member refuses to step to a city already in the path, so every branch must end.', parts: [
+          { type: 'code', label: 'Query', lang: 'sql', code: sql, hl: { 2: 'ok', 6: 'cur' } }, g(h0, {}),
+          { type: 'table', label: 'Working table (anchor)', columns: ['city', 'path', 'cost'], rows: work.map(function (r) { return r.slice(); }), hl: { 0: 'ok' } }
+        ] });
+        while (work.length && round < 8) {
+          round++;
+          var next = [], tried = [], th = {}, ghl = {}, ehl = {};
+          work.forEach(function (w) {
+            R.forEach(function (r) {
+              if (r[0] !== w[0]) return;
+              var visited = w[1].indexOf(',' + r[1] + ',') >= 0;
+              tried.push([w[0] + ' → ' + r[1], w[1], visited ? 'cycle: skip' : 'cost ' + (w[2] + r[2])]);
+              th[tried.length - 1] = visited ? 'bad' : 'ok';
+              ehl[r[0] + '-' + r[1]] = visited ? 'bad' : 'ok';
+              if (!visited) { next.push([r[1], w[1] + r[1] + ',', w[2] + r[2]]); ghl[r[1]] = 'ok'; }
+            });
+            ghl[w[0]] = ghl[w[0]] || 'cur';
+          });
+          if (!tried.length && !next.length) {
+            frames.push({ narr: 'Round ' + round + ': no outgoing routes from the working table → 0 new rows → stop.', parts: [g({}, {}), { type: 'table', label: 'New rows', columns: ['city', 'path', 'cost'], rows: [] }] });
+            break;
+          }
+          next.forEach(function (r) { all.push(r); });
+          frames.push({ narr: 'Round ' + round + ': expand every row of the working table along each outgoing route. ' + (tried.some(function (t) { return t[2] === 'cycle: skip'; }) ? '<span class="c-r">Red = would revisit a city already in the path → filtered by the instr() check.</span> ' : '') + (next.length ? next.length + ' new partial trip(s).' : '<b>No new rows → recursion ends.</b>'), parts: [
+            { type: 'code', label: 'Query', lang: 'sql', code: sql, hl: { 4: 'ok', 5: 'ok', 6: next.length ? 'ok' : 'bad' } }, g(ghl, ehl),
+            { type: 'table', label: 'Expansions tried this round', columns: ['step', 'path so far', 'outcome'], rows: tried, hl: th },
+            { type: 'table', label: 'Working table for next round', columns: ['city', 'path', 'cost'], rows: next.map(function (r) { return r.slice(); }) }
+          ] });
+          if (!next.length) break;
+          work = next;
+        }
+        var ans = all.filter(function (r) { return r[0] === dst && r[1] !== ',' + src + ','; }).sort(function (a, b) { return a[2] - b[2]; });
+        var ah = {}; if (ans.length) ah[0] = 'sel';
+        frames.push({ narr: ans.length ? 'All simple paths to <b>' + dst + '</b>, cheapest first. The best is <b>' + ans[0][1] + '</b> for <b>' + ans[0][2] + '</b>.' + (function () { var hop = function (r) { return r[1].split(',').length - 3; }; var fewest = Math.min.apply(null, ans.map(hop)); return hop(ans[0]) > fewest ? ' It uses <b>more hops</b> (' + hop(ans[0]) + ') than the shortest-hop route (' + fewest + '), which is why a fixed "max ' + fewest + ' hops" query would miss it.' : ''; })() : 'No route reaches ' + dst + ' from ' + src + '.', parts: [
+          { type: 'table', label: 'SELECT … WHERE city = \'' + dst + '\' ORDER BY cost', columns: ['city', 'path', 'cost'], rows: ans, hl: ah },
+          { type: 'text', label: 'Cost of enumerating paths', html: 'This lists <b>every</b> simple path — exponential on big dense graphs. Fine for small route maps and interviews; for real shortest paths use a graph engine or Dijkstra in application code.' }
+        ] });
+        return frames;
+      }
+    }],
+    examples: [
+      { title: 'Indented org chart (top-down, ordered by path)', html: `<p>The output looks like a folder tree. <code>ORDER BY path</code> places every manager right before their reports because "Asha &gt; Ravi" sorts before "Asha &gt; Ravi &gt; Divya".</p>${H.table(['depth', 'org_chart'], [['0', 'Asha'], ['1', '··Lata'], ['2', '····Tom'], ['1', '··Meera'], ['2', '····Sneha'], ['3', '······Imran']])}<p>(Siblings sort alphabetically by name; for "hire order" build the path from zero-padded ids instead.)</p>`, code: { lang: 'sql', db: 'company', code: `WITH RECURSIVE org(id, name, depth, path) AS (
+    SELECT id, name, 0, name FROM employees WHERE manager_id IS NULL
+    UNION ALL
+    SELECT e.id, e.name, o.depth + 1, o.path || ' > ' || e.name
+    FROM employees e JOIN org o ON e.manager_id = o.id)
+SELECT depth, substr('            ', 1, depth * 2) || name AS org_chart
+FROM org ORDER BY path;` } },
+      { title: 'Headcount per level and tree depth', html: `<p>Aggregate <b>after</b> the recursion: 1 person at level 0, 4 at level 1, 6 at level 2 and 5 at level 3, so the tree is 3 levels deep below the CEO.</p>`, code: { lang: 'sql', db: 'company', code: `WITH RECURSIVE org(id, depth) AS (
+    SELECT id, 0 FROM employees WHERE manager_id IS NULL
+    UNION ALL
+    SELECT e.id, o.depth + 1 FROM employees e JOIN org o ON e.manager_id = o.id)
+SELECT depth, COUNT(*) AS people FROM org GROUP BY depth ORDER BY depth;` } },
+      { title: 'All sub-categories of Electronics (category tree)', html: `<p>Same pattern on a different table: anchor = Electronics (id 2), recurse on <code>parent_id</code>. Result ids 2, 4, 5, 6, 7, 8 — useful for "show products in Electronics <b>and all its sub-categories</b>".</p>`, code: { lang: 'sql', db: 'network', code: `WITH RECURSIVE sub(id, name, depth) AS (
+    SELECT id, name, 0 FROM categories WHERE name = 'Electronics'
+    UNION ALL
+    SELECT c.id, c.name, s.depth + 1
+    FROM categories c JOIN sub s ON c.parent_id = s.id)
+SELECT id, substr('        ', 1, depth * 2) || name AS category FROM sub;` } },
+      { title: 'Bill of materials: multiply quantities down the tree', html: `<p>A bike needs 2 wheels; each wheel needs 32 spokes → <b>64 spokes</b>. Carry <code>qty</code> and multiply by the child quantity each level, then SUM per part (Bolt appears under both Frame and Seat: 6 + 2 = 8).</p>`, code: { lang: 'sql', db: 'network', code: `WITH RECURSIVE explode(part, qty, depth) AS (
+    SELECT 'Bike', 1, 0
+    UNION ALL
+    SELECT b.child, x.qty * b.qty, x.depth + 1
+    FROM bom b JOIN explode x ON b.parent = x.part)
+SELECT part, SUM(qty) AS total_needed, MAX(depth) AS deepest_level
+FROM explode
+GROUP BY part
+ORDER BY deepest_level, part;` } },
+      { title: 'Cycle protection on a route graph', html: `<p>Without the <code>instr(path, …) = 0</code> check, DEL → BOM → BLR → MAA → DEL → … loops forever. With it, every branch ends and we get four simple routes to MAA; the cheapest is <b>DEL → BOM → BLR → MAA = 220</b> (3 hops), cheaper than the 2-hop DEL → BLR → MAA = 290.</p>`, code: { lang: 'sql', db: 'network', code: `WITH RECURSIVE trip(city, path, cost, hops) AS (
+    SELECT 'DEL', ',DEL,', 0, 0
+    UNION ALL
+    SELECT r.dst, t.path || r.dst || ',', t.cost + r.cost, t.hops + 1
+    FROM trip t JOIN routes r ON r.src = t.city
+    WHERE instr(t.path, ',' || r.dst || ',') = 0)        -- never revisit a city
+SELECT path, cost, hops FROM trip WHERE city = 'MAA' ORDER BY cost;` } }
+    ],
+    deepDive: `<p><b>BFS vs DFS order.</b> The working-table algorithm naturally produces rows level by level (breadth-first). To get depth-first output, sort by a path key (<code>ORDER BY path</code>), use PostgreSQL 14+'s <code>SEARCH DEPTH FIRST BY id SET ord</code>, or in SQLite put <code>ORDER BY depth DESC</code> inside the recursive member (SQLite processes its queue as a priority queue).</p>
+<p><b>Cycle handling options.</b> (1) Path string + <code>instr</code>/<code>LIKE</code> check — portable but O(path length) per step and fooled by ids that are substrings of others unless you wrap them in delimiters (<code>,12,</code> vs <code>,2,</code>). (2) PostgreSQL arrays: <code>WHERE NOT r.dst = ANY(t.path)</code>. (3) PostgreSQL 14+/SQL standard <code>CYCLE id SET is_cycle USING path</code>. (4) Oracle <code>CONNECT BY NOCYCLE</code>. (5) A hard depth cap as a last line of defence. <code>UNION</code> (distinct) only helps if rows are identical, which they never are once you carry depth or path.</p>
+<p><b>Indexing.</b> Top-down recursion joins <code>employees.manager_id = cte.id</code> every round — index <code>manager_id</code> (foreign keys are not auto-indexed in PostgreSQL or SQLite!). Bottom-up joins on the primary key, which is already indexed. Without the index each round is a full scan: O(depth × N).</p>
+<p><b>Alternative tree encodings</b> (system-design follow-up): <i>adjacency list</i> (parent_id; cheap writes, recursive reads), <i>materialized path</i> (store '/1/2/5/'; subtree = <code>LIKE '/1/2/%'</code> with an index; moving a subtree rewrites paths), <i>nested sets</i> (lft/rgt numbers; superb reads, painful writes), <i>closure table</i> (all ancestor–descendant pairs stored; fast reads both ways, O(depth) extra rows per node), PostgreSQL <code>ltree</code>, SQL Server <code>hierarchyid</code>. Recursive CTEs made the plain adjacency list the default choice in most OLTP schemas.</p>
+<p><b>Enumerating paths is exponential.</b> The route example lists every simple path — fine for 5 cities, hopeless for a road network. SQL can do level-limited BFS reachability cheaply (with <code>UNION</code> on just the node column), but weighted shortest paths belong in a graph database or application code.</p>`,
+    aiEra: `<p><b>What AI changes:</b> recursive CTEs used to be the query only the "SQL person" could write. Now an assistant produces one in seconds. What it cannot see is your data: whether the hierarchy has cycles, orphan rows (manager_id pointing to a deleted employee), multiple roots, or millions of nodes.</p>
+<p><b>Use AI as a partner:</b> <code>Given employees(id, manager_id), write a query that detects cycles and orphan manager_ids before I run the org-chart CTE</code>. <code>Trace the first three rounds of this recursive CTE on these 6 rows</code>. <code>Convert this adjacency-list query to use a closure table and compare read/write costs</code>.</p>
+<p><b>Where AI goes wrong:</b> swapping the join direction (walking up when you wanted down), relying on <code>UNION</code> for cycle safety while also carrying a depth column, path checks without delimiters (<code>'1,12'</code> contains <code>'2'</code>), missing the <code>manager_id IS NULL</code> root condition, and forgetting that PostgreSQL needs <code>::text</code> casts for the path.</p>
+<p><b>What you must still own:</b> drawing the tree on paper, choosing the anchor and direction, proving termination on cyclic data, and indexing the parent column.</p>`,
+    problems: [{
+      title: 'Everyone Under a Manager, at Every Level',
+      level: 'Medium', tags: ['recursive CTE', 'hierarchy', 'org chart'], companies: ['Google', 'Microsoft', 'LinkedIn', 'Atlassian'],
+      statement: `<p>HR wants the full reporting tree under <b>Asha</b> (the CEO): every direct and indirect report with their <b>level</b> (1 = reports directly to Asha) and the <b>path</b> from Asha down to them. The company may add levels at any time, so the query must work for any depth.</p>`,
+      constraints: `<p><code>employees(id, name, manager_id …)</code>, <code>manager_id</code> NULL for the CEO. Current depth is 3 levels below the CEO (15 people), but do not assume it.</p>`,
+      example: `${H.table(['name', 'level', 'path'], [['Ravi', '1', 'Asha > Ravi'], ['Karan', '2', 'Asha > Ravi > Karan'], ['<span class="c-g">Neha</span>', '<span class="c-g">3</span>', 'Asha > Ravi > Karan > Neha'], ['Imran', '3', 'Asha > Meera > Sneha > Imran']])}<p>15 rows in total: 4 at level 1, 6 at level 2, 5 at level 3.</p>`,
+      brute: { why: `<p>Chaining self-joins hard-codes the depth. Two joins reach levels 1 and 2 only, so the five level-3 people (Arjun, Neha, Vikram, Priya, Imran) silently vanish. Adding a third join fixes today's data and breaks again when a fourth level is hired.</p>`, code: { lang: 'sql', db: 'company', code: `-- Fixed depth: only levels 1 and 2 → 10 rows instead of 15
+SELECT e1.name, 1 AS level, 'Asha > ' || e1.name AS path
+FROM employees ceo JOIN employees e1 ON e1.manager_id = ceo.id
+WHERE ceo.name = 'Asha'
+UNION ALL
+SELECT e2.name, 2, 'Asha > ' || e1.name || ' > ' || e2.name
+FROM employees ceo
+JOIN employees e1 ON e1.manager_id = ceo.id
+JOIN employees e2 ON e2.manager_id = e1.id
+WHERE ceo.name = 'Asha';` } },
+      mcq: { q: 'In the recursive member, which join condition walks DOWN from managers to their reports?', options: ['<code>e.manager_id = t.id</code> (employee row points to a row already found)', '<code>e.id = t.manager_id</code>', '<code>e.id = t.id</code>', '<code>e.manager_id = t.manager_id</code>'], answer: 0, explain: 'Rows already in the CTE are managers; their reports are employees whose manager_id equals one of those ids. The other direction (e.id = t.manager_id) walks up to the boss.' },
+      hints: [`<p>Hint 1: Anchor on Asha with level 0 and path 'Asha'. Every round should find people whose manager was found in the previous round.</p>`, `<p>Hint 2: Recursive member: <code>SELECT e.id, e.name, t.level + 1, t.path || ' &gt; ' || e.name FROM employees e JOIN team t ON e.manager_id = t.id</code>.</p>`, `<p>Hint 3: Exclude Asha herself in the final SELECT (<code>WHERE level &gt; 0</code>), order by path for a tree-like listing. It stops automatically when a round finds no reports.</p>`],
+      solution: {
+        approach: `<p>Top-down recursive CTE: anchor = Asha, recursive member = employees whose manager is in the previous round, carrying level and path. It adapts to any depth and terminates because a tree has no cycles.</p>`,
+        code: { lang: 'sql', db: 'company', code: `WITH RECURSIVE team(id, name, level, path) AS (
+    SELECT id, name, 0, name                    -- anchor: the manager we start from
+    FROM employees
+    WHERE name = 'Asha'
+    UNION ALL
+    SELECT e.id, e.name, t.level + 1,           -- reports of last round's people
+           t.path || ' > ' || e.name
+    FROM employees e
+    JOIN team t ON e.manager_id = t.id
+)
+SELECT name, level, path
+FROM team
+WHERE level > 0                                 -- everyone UNDER Asha, not Asha
+ORDER BY path;` },
+        dry: { head: ['round', 'working table', 'new rows (level)'], rows: [['anchor', '—', 'Asha (0)'], ['1', 'Asha', 'Ravi, Meera, Lata, Zoya (1)'], ['2', 'Ravi, Meera, Lata, Zoya', 'Karan, Divya, Rohan, Sneha, Tom, Dev (2)'], ['3', '6 managers', 'Arjun, Neha, Vikram, Priya, Imran (3)'], ['4', '5 people', '<span class="c-r">none → stop</span>']] },
+        complexity: `<p>Each employee is produced once; each round is a join of the working table with employees. With an index on <code>manager_id</code>: O(N log N) total. Without it: O(depth × N).</p>`,
+        followUps: ['Return only the leaves (people with no reports).', 'Return the size of each level-1 manager\'s whole team.', 'Protect the query against a corrupted row where someone is their own manager.']
       }
     }]
   });

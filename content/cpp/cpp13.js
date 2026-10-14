@@ -1684,5 +1684,271 @@ for (int x : range(1, 1))      → ${H.c('m', '(nothing)')}</pre>`,
       }
     }]
   });
+
+  /* ======================================================================
+     TOPIC 7 — ABI CONCERNS
+     ====================================================================== */
+  function abiViz(input) {
+    var mode = oneOf(input, 'add-member', ['add-member', 'reorder', 'add-virtual', 'inline', 'pimpl']);
+    var S = {
+      'add-member': { v1: 'struct Shape {\n  int    id;\n  double w;\n};', v2: 'struct Shape {\n  int    id;\n  double scale;   // NEW\n  double w;\n};',
+        g1: [['id', '0', '4'], ['(padding)', '4', '4'], ['w', '8', '8'], ['sizeof', '—', '16']], g2: [['id', '0', '4'], ['(padding)', '4', '4'], ['scale', '8', '8'], ['w', '16', '8'], ['sizeof', '—', '24']],
+        bad: { 2: 'bad' }, safe: false,
+        what: 'The app was compiled with the v1 header, so it <b>baked in</b> "w is at offset 8, Shape is 16 bytes". It reads <code>s.w</code> from offset 8 — which in v2 is <code>scale</code>. Worse, the app reserves only 16 bytes on its stack for a Shape, but v2\'s constructor (inside the library) writes 24 bytes → <b>stack corruption</b>.' },
+      'reorder': { v1: 'struct Shape {\n  int    id;\n  double w;\n};', v2: 'struct Shape {\n  double w;     // moved up\n  int    id;\n};',
+        g1: [['id', '0', '4'], ['(padding)', '4', '4'], ['w', '8', '8'], ['sizeof', '—', '16']], g2: [['w', '0', '8'], ['id', '8', '4'], ['(padding)', '12', '4'], ['sizeof', '—', '16']],
+        bad: { 0: 'bad', 1: 'bad' }, safe: false,
+        what: 'Same size (16), so nothing obviously crashes — but the app reads <code>id</code> from offset 0, which is now the first 4 bytes of the double <code>w</code>. <b>Silent garbage</b>: the worst kind of bug, because tests on a freshly rebuilt machine pass.' },
+      'add-virtual': { v1: 'class Shape {\npublic:\n  virtual void draw();   // slot 0\n  virtual double area(); // slot 1\n};', v2: 'class Shape {\npublic:\n  virtual void draw();   // slot 0\n  virtual void scale(double); // slot 1 NEW\n  virtual double area(); // slot 2\n};',
+        g1: [['slot 0', 'draw', ''], ['slot 1', 'area', ''], ['', '', '']], g2: [['slot 0', 'draw', ''], ['slot 1', 'scale', ''], ['slot 2', 'area', '']],
+        bad: { 1: 'bad' }, safe: false,
+        what: 'Virtual calls are compiled to "call the function in <b>vtable slot N</b>". The app\'s <code>s.area()</code> was compiled as "call slot 1". In v2 slot 1 is <code>scale(double)</code> → the app calls the <b>wrong function</b> with the wrong arguments. Adding virtuals (except at the very end of a leaf class, and even that is risky) breaks ABI.' },
+      'inline': { v1: 'inline int maxUsers() { return 100; }   // in the header', v2: 'inline int maxUsers() { return 500; }   // in the header',
+        g1: [['app\'s copy', 'returns 100', 'inlined at compile time'], ['lib v1 copy', 'returns 100', '']], g2: [['app\'s copy', 'returns 100', 'still the old inlined code!'], ['lib v2 copy', 'returns 500', '']],
+        bad: { 0: 'bad' }, safe: false,
+        what: 'Inline functions and templates in headers are <b>compiled into the app</b>. Changing them in the library does not change the app\'s copy: app code says 100, library code says 500 — two definitions of one function in one process (an <b>ODR violation</b>). Header-only code is part of your ABI surface.' },
+      'pimpl': { v1: 'class Shape {\n  struct Impl;\n  std::unique_ptr<Impl> p_;\npublic:\n  double w() const;    // exported function\n};', v2: 'class Shape {\n  struct Impl;          // Impl gained 3 fields in shape.cpp\n  std::unique_ptr<Impl> p_;\npublic:\n  double w() const;\n};',
+        g1: [['p_', '0', '8'], ['sizeof', '—', '8']], g2: [['p_', '0', '8'], ['sizeof', '—', '8']],
+        bad: {}, safe: true,
+        what: 'The public class is still exactly one pointer; all field access happens <b>inside the library</b> through exported, non-inline functions like <code>w()</code>. The app\'s baked-in knowledge (size 8, call symbol <code>_ZNK5Shape1wEv</code>) is still true. <b>ABI preserved</b> — this is why SDKs use pimpl.' }
+    }[mode];
+    var frames = [];
+    function graph(stage) {
+      var hl = { app: 'sel' }, ehl = {}, tags = { app: 'built against v1 header' };
+      if (stage === 0) { hl.l1 = 'ok'; ehl['app-l1'] = 'ok'; tags.l1 = 'matches'; }
+      if (stage >= 1) { hl.l1 = 'done'; hl.l2 = S.safe ? 'ok' : 'bad'; ehl['app-l2'] = S.safe ? 'ok' : 'bad'; tags.l2 = S.safe ? 'compatible' : 'MISMATCH'; }
+      return { type: 'graph', label: 'dynamic linking at run time', directed: true, height: 44, nodes: [
+        { id: 'app', label: 'app (not recompiled)', x: 20, y: 22, shape: 'box' }, { id: 'l1', label: 'libshape.so v1', x: 72, y: 9, shape: 'box' }, { id: 'l2', label: 'libshape.so v2', x: 72, y: 34, shape: 'box' }],
+        edges: stage === 0 ? [['app', 'l1', 'loads']] : [['app', 'l2', 'loads (upgrade)']], hl: hl, ehl: ehl, tags: tags };
+    }
+    var cols = mode === 'add-virtual' ? ['vtable slot', 'function', ''] : mode === 'inline' ? ['copy', 'behaviour', 'note'] : ['member', 'offset', 'size'];
+    frames.push({ narr: 'An app is compiled and linked against <b>libshape v1</b>. The compiler turned every use of <code>Shape</code> into hard numbers: sizes, field offsets, vtable slot indices, mangled symbol names, inlined bodies. Those numbers are the <b>ABI</b> (Application <b>Binary</b> Interface).',
+      parts: [graph(0), codePart('shape.h v1', S.v1, {}), { type: 'grid', label: 'what the app baked in (v1)', colHead: cols, rows: S.g1 }] });
+    frames.push({ narr: 'The library team ships <b>v2</b> with this change. The source code (the <b>API</b>) still compiles fine for everyone — but the app is <b>not recompiled</b>; it just loads the new .so/.dll at start-up.',
+      parts: [graph(1), codePart('shape.h v2', S.v2, {}), { type: 'grid', label: 'reality inside v2', colHead: cols, rows: S.g2, hl: Object.keys(S.bad).reduce(function (o, r) { o[r + ',0'] = 'bad'; o[r + ',1'] = 'bad'; o[r + ',2'] = 'bad'; return o; }, {}) }] });
+    frames.push({ narr: (S.safe ? '<span class="c-g">Compatible.</span> ' : '<span class="c-r">Mismatch.</span> ') + S.what,
+      parts: [{ type: 'grid', label: 'app assumes (v1)', colHead: cols, rows: S.g1 }, { type: 'grid', label: 'library does (v2)', colHead: cols, rows: S.g2, hl: Object.keys(S.bad).reduce(function (o, r) { o[r + ',0'] = 'bad'; o[r + ',1'] = 'bad'; return o; }, {}) },
+        { type: 'vars', label: 'verdict', vals: { 'API compatible (recompiles)?': 'yes', 'ABI compatible (old binary works)?': S.safe ? 'yes' : 'NO' }, hl: { 'ABI compatible (old binary works)?': S.safe ? 'ok' : 'bad' } }] });
+    frames.push({ narr: S.safe ? 'Rule of thumb: if the public class layout, exported symbols and inline code are unchanged, old binaries keep working. Pimpl + non-inline exported functions is the standard recipe; Qt and many SDKs promise "binary compatibility within a major version" this way.' : 'Fixes: (1) recompile everything and bump the library\'s <b>SONAME</b>/major version so old apps keep loading v1; (2) design for ABI stability up front: <b>pimpl</b>, no public data members, no new virtuals, no inline logic in headers, or a plain <b>extern "C"</b> interface with opaque handles.',
+      parts: [{ type: 'table', label: 'ABI-safe vs ABI-breaking changes (for a shared library)', columns: ['change', 'ABI'], rows: [
+        ['add a new non-virtual, non-inline function', 'safe'], ['add a new class / free function', 'safe'], ['change Impl behind a pimpl', 'safe'],
+        ['add / remove / reorder data members of a public class', 'BREAKS'], ['add / reorder virtual functions', 'BREAKS'], ['change a function signature (even default args are ok, types are not)', 'BREAKS (different mangled name)'],
+        ['change inline function / template bodies', 'BREAKS (silently, ODR)'], ['change base classes', 'BREAKS'], ['switch compiler flags (e.g. _GLIBCXX_USE_CXX11_ABI, -fpack-struct)', 'BREAKS']], hl: { 2: 'sel' } }] });
+    var mangle = [['int add(int, int)', '_Z3addii'], ['double add(double, double)', '_Z3adddd'], ['void ns::Widget::click()', '_ZN2ns6Widget5clickEv'], ['void greet(const std::string&)', '_Z5greetRKNSt7__cxx1112basic_string...'], ['extern "C" int add_c(int, int)', 'add_c (no mangling)']];
+    frames.push({ narr: 'One more ABI ingredient: <b>name mangling</b>. The linker only sees symbol strings; C++ encodes namespace, class, name and parameter types into them (Itanium ABI shown, used by GCC/Clang on Linux/macOS). Change a parameter type → different symbol → old binaries fail to load with "undefined symbol". <code>extern "C"</code> turns mangling off — the basis of stable plugin interfaces. Note <code>__cxx11</code> inside the std::string symbol: that is libstdc++\'s <b>dual ABI</b> tag.',
+      parts: [{ type: 'table', label: 'C++ declaration → linker symbol (g++)', columns: ['declaration', 'symbol'], rows: mangle, hl: { 4: 'sel', 3: 'cur' } }] });
+    return frames;
+  }
+
+  topics.push({
+    title: 'ABI Concerns: Binary Compatibility, Name Mangling & Stable Interfaces',
+    analogy: `<p>The <b>API</b> is the <i>shape of the plug</i> described in the manual; the <b>ABI</b> is the <i>exact wiring inside the socket</i>. Two plugs can look identical in the manual (same function names, same parameters), but if the new socket swapped the live and neutral wires, appliances built for the old socket will short-circuit — even though "nothing changed" on paper. Recompiling is like rewiring every appliance; ABI stability is promising never to swap the wires.</p>`,
+    explain: `<p>🟢 <b>API vs ABI.</b> The <b>API</b> (Application Programming Interface) is what your <i>source code</i> sees: names, types, signatures. The <b>ABI</b> (Application Binary Interface) is what the <i>compiled machine code</i> relies on. If a library changes its API, your code may stop <b>compiling</b>. If it changes its ABI, already-built programs may <b>crash or silently compute garbage</b> when they load the new library — no compiler is there to warn you.</p>
+      ${H.table(['part of the ABI', 'what gets baked into the caller\'s binary'], [['object layout', 'sizeof, alignment, offset of every field, padding'], ['vtable layout', 'slot index of each virtual function, position of the vptr'], ['name mangling', 'symbol strings encoding namespace/class/params (<code>_Z3addii</code>)'], ['calling convention', 'which registers hold args/return values, who cleans up the stack'], ['inline code', 'bodies of inline functions and templates compiled into the caller'], ['exceptions & RTTI', 'unwinding tables, <code>type_info</code> names, how <code>dynamic_cast</code> compares types'], ['standard library types', 'the layout of <code>std::string</code>, <code>std::vector</code>, … from <b>that</b> library version']])}
+      <p><b>Why C++ is hard here:</b> C has a simple, stable ABI per platform. C++ adds classes, templates, overloading, exceptions and a big header-only standard library — much more gets compiled <i>into the user's binary</i>. On Linux/macOS, GCC and Clang share the <b>Itanium C++ ABI</b>, so they interoperate; on Windows, MSVC has its own ABI. Mixing binaries built with different standard library versions or flags (e.g. libstdc++'s <code>_GLIBCXX_USE_CXX11_ABI</code>, which switched <code>std::string</code> from copy-on-write to small-string-optimized in GCC 5) causes link errors at best, crashes at worst.</p>
+      <p><b>How library authors stay ABI-stable:</b></p>
+      <ul>
+        <li><b>pimpl</b> — public class is one pointer; layout changes happen behind it.</li>
+        <li><b>No public data members, no new virtuals, nothing important inline</b> in public headers.</li>
+        <li><b><code>extern "C"</code> interfaces with opaque handles</b> (<code>typedef struct db db_t; db_t* db_open(const char*);</code>) — the most stable boundary there is; every language can call it.</li>
+        <li><b>Versioning</b>: bump the shared-library <b>SONAME</b> on breaking changes; use <code>inline namespace v2</code> so incompatible versions get different mangled names (libc++ does this with <code>std::__1</code>).</li>
+        <li><b>Symbol visibility</b>: compile with <code>-fvisibility=hidden</code> and export only the intended API, so internals are not accidentally part of the ABI.</li>
+      </ul>`,
+    clues: [
+      '"Upgraded the shared library and the app crashes / reads garbage, without recompiling" → ABI break',
+      '"Ship a binary-only SDK / plugin system that must work across versions or compilers" → extern "C" + opaque handles, or pimpl',
+      '"undefined symbol: _ZN…" after an upgrade → mangled name changed (signature/namespace/ABI tag)',
+      '"Why can\'t I pass <code>std::string</code> across a DLL boundary?" → different standard library / allocator / CRT on each side',
+      '"What is name mangling?", "what does <code>extern \"C\"</code> do?" → encoding of C++ signatures into linker symbols; C linkage turns it off',
+      '"Why didn\'t the committee fix X in std::unordered_map / std::regex?" → changing it would break the ABI of every existing binary'
+    ],
+    code: [R`
+      // ======== counter_api.h : a stable C interface around a C++ class ========
+      #include <cstddef>
+      extern "C" {
+          typedef struct counter counter_t;                  // opaque: callers never see the layout
+          counter_t* counter_create(const char* name);       // returns nullptr on failure
+          int        counter_add(counter_t* c, int delta);   // returns 0 on success, -1 on error
+          int        counter_value(const counter_t* c);
+          void       counter_destroy(counter_t* c);
+      }
+
+      // ======== counter.cpp : the C++ implementation, free to change ========
+      #include <string>
+      #include <new>
+      #include <stdexcept>
+      #include <iostream>
+
+      struct counter {                                       // the real C++ object behind the handle
+          std::string name;
+          long        value = 0;
+      };
+
+      extern "C" counter_t* counter_create(const char* name) {
+          try {
+              return new counter{name ? name : "", 0};
+          } catch (...) {                                    // exceptions must NEVER cross a C boundary
+              return nullptr;
+          }
+      }
+      extern "C" int counter_add(counter_t* c, int delta) {
+          if (!c) return -1;
+          try {
+              if (delta < 0 && c->value + delta < 0) throw std::range_error("negative");
+              c->value += delta;
+              return 0;
+          } catch (...) { return -1; }                       // translate to an error code
+      }
+      extern "C" int counter_value(const counter_t* c) { return c ? static_cast<int>(c->value) : 0; }
+      extern "C" void counter_destroy(counter_t* c) { delete c; }   // allocated AND freed inside the library
+
+      // ======== app.cpp : a client (could be C, Python ctypes, Rust FFI, ...) ========
+      int main() {
+          counter_t* c = counter_create("hits");
+          counter_add(c, 5);
+          int rc = counter_add(c, -10);                      // rejected, no exception leaks out
+          std::cout << counter_value(c) << " rc=" << rc << "\n";   // 5 rc=-1
+          counter_destroy(c);
+      }
+    `],
+    codeTitle: ['An ABI-stable C facade (opaque handle + error codes) over C++'],
+    viz: { title: 'What breaks when a library changes under a compiled app', input: 'add-member', inputLabel: 'Library change: add-member | reorder | add-virtual | inline | pimpl', gen: abiViz },
+    examples: [
+      { title: 'Name mangling and extern "C"', html: `<p>C++ allows overloads (<code>add(int,int)</code> and <code>add(double,double)</code>), so the linker symbol must encode the parameter types. Run <code>nm</code> on an object file (g++ on Linux):</p>
+        ${H.table(['declaration', 'symbol'], [['<code>int add(int, int)</code>', '<code>_Z3addii</code>'], ['<code>double add(double, double)</code>', '<code>_Z3adddd</code>'], ['<code>void ns::Widget::click()</code>', '<code>_ZN2ns6Widget5clickEv</code>'], ['<code>extern "C" int add_c(int, int)</code>', '<code>add_c</code>']])}
+        <p><code>c++filt _ZN2ns6Widget5clickEv</code> demangles it back. <code>extern "C"</code> gives a function C linkage: no mangling, so it can't be overloaded, but C, Python (ctypes), Rust and Go can all find it by its plain name.</p>`,
+        code: R`
+          #include <cstdio>
+          int add(int a, int b) { return a + b; }                  // symbol _Z3addii
+          double add(double a, double b) { return a + b; }         // symbol _Z3adddd
+          extern "C" int add_c(int a, int b) { return a + b; }     // symbol add_c
+          // extern "C" double add_c(double, double);              // ERROR: C linkage cannot be overloaded
+          int main() { std::printf("%d %.1f %d\n", add(1, 2), add(1.5, 2.0), add_c(3, 4)); }   // 3 3.5 7` },
+      { title: 'libstdc++ dual ABI: the std::string story', html: `<p>C++11 banned copy-on-write <code>std::string</code>. GCC 5 introduced a new SSO string <b>alongside</b> the old one, putting it in <code>namespace std::__cxx11</code> so its mangled names differ (<code>_Z5greetRKNSt7__cxx1112basic_string…</code>). Linking a library built with <code>-D_GLIBCXX_USE_CXX11_ABI=0</code> against code built with the default gives "undefined reference to <code>greet(std::__cxx11::basic_string…)</code>". Lesson: changing a std type's layout is an ABI break so painful that the committee now rejects many improvements (faster <code>unordered_map</code>, <code>std::regex</code> fixes, 128-bit <code>intmax_t</code>) purely for ABI reasons.</p>` },
+      { title: 'Allocate and free on the same side of a DLL boundary', html: `<p>On Windows, each DLL may link its own C runtime with its own heap. Memory <code>new</code>-ed in <code>plugin.dll</code> and <code>delete</code>-d in <code>app.exe</code> goes to the wrong heap → heap corruption. Same for <code>std::string</code>/<code>std::vector</code> passed by value across the boundary (they free in the destructor on the other side). Rules: the library that allocates also frees (<code>counter_destroy</code>), pass plain C types / spans across, or make sure both sides use the same dynamic CRT and compiler version.</p>
+        ${H.table(['pattern', 'safe?'], [['<code>Foo* p = lib_create(); lib_destroy(p);</code>', '<span class="c-g">yes</span>'], ['<code>Foo* p = lib_create(); delete p;</code> (in the app)', '<span class="c-r">no — wrong heap/allocator</span>'], ['returning <code>std::string</code> by value from a DLL built with another compiler', '<span class="c-r">no — layout and allocator may differ</span>'], ['<code>int lib_name(char* buf, size_t len)</code>', '<span class="c-g">yes</span>']])}` },
+      { title: 'inline namespaces for versioning', html: `<p>An <code>inline namespace</code> is transparent for <b>source</b> code (<code>lib::version()</code> still works) but appears in the <b>mangled name</b> (<code>_ZN3lib2v27versionEv</code>). Ship v3 with <code>inline namespace v3</code> and old binaries asking for <code>…v2…</code> either find the old symbols (if you keep them) or fail loudly at load time — instead of silently calling incompatible code. libc++ uses <code>std::__1</code> this way.</p>`,
+        code: R`
+          #include <iostream>
+          namespace lib {
+              inline namespace v2 {                         // current version: transparent to callers
+                  struct Config { int retries; int timeoutMs; };
+                  int version() { return 2; }                 // mangled as lib::v2::version
+              }
+              namespace v1 {                                // old version kept for old binaries
+                  struct Config { int retries; };
+                  int version() { return 1; }
+              }
+          }
+          int main() {
+              lib::Config c{3, 500};                          // means lib::v2::Config
+              std::cout << lib::version() << " " << lib::v1::version() << " " << c.timeoutMs << "\n";   // 2 1 500
+          }` }
+    ],
+    deepDive: `<p>🟣 <b>Production reality.</b></p>
+      <ul>
+        <li><b>Who cares:</b> anyone shipping <b>shared libraries</b> or <b>binary SDKs</b> (OS vendors, Qt, game engines, database drivers, plugin hosts), and anyone whose app loads plugins compiled separately. Monorepos that rebuild everything from source (Google-style) care far less — they routinely make ABI-breaking changes because every binary is rebuilt.</li>
+        <li><b>Tooling:</b> <code>abi-compliance-checker</code>/<code>abidiff</code> (libabigail) compare two builds of a library and report layout, vtable and symbol changes; run them in CI for every public library. <code>nm -C</code>, <code>objdump -T</code>, <code>readelf --dyn-syms</code> and <code>c++filt</code> inspect symbols.</li>
+        <li><b>Linux mechanics:</b> a shared library has a <b>SONAME</b> (<code>libshape.so.1</code>); apps record it at link time. Bump the major number on ABI breaks so old apps keep loading <code>.so.1</code> while new apps use <code>.so.2</code>. glibc goes further with <b>symbol versioning</b> (<code>memcpy@GLIBC_2.14</code>), keeping old behaviour available forever.</li>
+        <li><b>Subtle breaks:</b> changing a function from non-inline to inline (or back); adding a member with a default value (still a layout change); making a function <code>noexcept</code> (part of the type since C++17, changes mangling of function pointers); changing an enum's underlying type; changing the alignment of a member; adding a <code>[[no_unique_address]]</code> member; changing default template arguments; changing the order of base classes.</li>
+        <li><b>Safe-ish changes:</b> adding new non-virtual member functions, new free functions, new classes, new enumerators at the end (if no one depends on the max value), new overloads (but beware of changing overload resolution for callers that recompile — an API change).</li>
+        <li><b>Exceptions across boundaries:</b> throwing a C++ exception through a C interface or across modules built with different runtimes is undefined; always catch at the boundary and translate to error codes (as the facade above does).</li>
+        <li><b>The C++ committee and ABI:</b> the 2020 "ABI: now or never" debate (P1863) ended with the committee choosing de-facto stability. That's why <code>std::unordered_map</code> keeps its node-based design and why faster designs live outside the standard (Abseil's <code>flat_hash_map</code>, Boost.Unordered).</li>
+      </ul>`,
+    aiEra: `<p>🤖 <b>What AI changes:</b> assistants can generate <code>extern "C"</code> facades, ctypes/Rust FFI bindings and pimpl conversions in minutes, and they're good at decoding mangled names and linker errors you paste in.</p>
+      <p><b>Use AI as a partner:</b> "List every ABI-breaking change in this header diff", "Generate a C facade with opaque handles and error codes for this class, and a Python ctypes wrapper", "Explain this undefined-symbol error (paste the mangled name)". Then confirm with <code>abidiff</code> — tools, not vibes, decide ABI compatibility.</p>
+      <p><b>Where AI goes wrong:</b> it treats "it compiles" as "it's compatible", adds a virtual function in the middle of a public class, lets exceptions escape <code>extern "C"</code> functions, passes <code>std::string</code> across DLL boundaries, and frees library-allocated memory in the app.</p>
+      <p><b>What you must own:</b> the API-vs-ABI distinction, the list of what's baked into a binary, and a stable-boundary design (C facade, pimpl, versioning) you can defend in a design review.</p>`,
+    problems: [{
+      title: 'Design an ABI-Stable C Facade for a C++ Class', level: 'Medium', tags: ['abi', 'extern C', 'opaque handle', 'exceptions'], companies: ['Apple', 'Qualcomm', 'Unity', 'Adobe'],
+      statement: `<p>You maintain a C++ <code>RateLimiter</code> class (token bucket with <code>std::string name</code>, <code>double tokens</code>, <code>double ratePerSec</code>). Plugins written in C, Python (ctypes) and Rust must use it, and new library versions must not break already-compiled plugins. Design and implement a C interface: create, try-acquire, query, destroy. No C++ type or exception may cross the boundary.</p>`,
+      constraints: `<p>Opaque handle; functions return error codes; the library allocates and frees its own objects; <code>extern "C"</code> linkage.</p>`,
+      example: `<pre>rl_t* r = rl_create("api", /*capacity*/ 2, /*rate*/ 1.0);
+rl_try_acquire(r) → ${H.c('g', '1')}   rl_try_acquire(r) → ${H.c('g', '1')}   rl_try_acquire(r) → ${H.c('r', '0')} (bucket empty)
+rl_create(nullptr, -1, 0) → ${H.c('r', 'NULL')} (invalid args, no exception escapes)</pre>`,
+      brute: { why: `<p>Exporting the C++ class directly bakes its layout, its <code>std::string</code> member (standard-library ABI), its mangled names and possible exceptions into every plugin. Adding one field or switching compilers breaks every plugin, and C/Python/Rust can't call it at all.</p>`,
+        code: R`
+          #include <string>
+          #include <stdexcept>
+          // Exported as-is from the shared library: layout, std::string and exceptions all leak into clients.
+          class RateLimiter {
+          public:
+              RateLimiter(std::string name, double cap, double rate)
+                  : name_(std::move(name)), cap_(cap), tokens_(cap), rate_(rate) {
+                  if (cap <= 0) throw std::invalid_argument("cap");     // exception crosses the boundary!
+              }
+              bool tryAcquire() { if (tokens_ >= 1) { tokens_ -= 1; return true; } return false; }
+          private:
+              std::string name_;          // layout + std::string ABI are now part of the library's ABI
+              double cap_, tokens_, rate_;
+          };
+          int main() { RateLimiter r("api", 2, 1); return r.tryAcquire() ? 0 : 1; }` },
+      mcq: { q: 'Why must every exported function wrap its body in <code>try { ... } catch (...)</code>?', options: ['Letting a C++ exception propagate through a C interface is undefined behavior (the caller may be C, Rust, Python…)', 'To make the code faster', 'Because extern "C" functions cannot contain try blocks otherwise', 'It is only needed on Windows'], answer: 0, explain: 'C callers have no unwinding support for C++ exceptions; the boundary must translate every failure into an error code or NULL.' },
+      hints: [`<p>Header: <code>typedef struct rl rl_t;</code> (incomplete type) plus four <code>extern "C"</code> functions using only C types (<code>const char*</code>, <code>double</code>, <code>int</code>).</p>`, `<p>In the .cpp, define <code>struct rl { RateLimiter impl; };</code> or put the members directly; <code>rl_create</code> does <code>new</code> inside a try/catch and returns <code>nullptr</code> on any failure.</p>`, `<p><code>rl_destroy</code> must be the only way to free (same allocator). Validate every pointer argument. Return 1/0 for acquire and −1 for errors so the C caller can distinguish.</p>`],
+      solution: {
+        approach: `<p>Hide the C++ class behind an incomplete C struct. Every entry point is <code>extern "C"</code>, takes and returns only C types, validates arguments, catches all exceptions and converts them to <code>NULL</code>/<code>-1</code>. Allocation and deallocation both live in the library. The C++ class can now change freely: clients only know a pointer and four symbol names that never change.</p>`,
+        code: R`
+          // ===== ratelimit.h (C header, stable forever) =====
+          extern "C" {
+              typedef struct rl rl_t;
+              rl_t* rl_create(const char* name, double capacity, double ratePerSec);   // NULL on error
+              int   rl_try_acquire(rl_t* r);                                         // 1 = ok, 0 = limited, -1 = error
+              double rl_tokens(const rl_t* r);                                       // -1.0 on error
+              void  rl_destroy(rl_t* r);
+          }
+
+          // ===== ratelimit.cpp (C++ inside, free to evolve) =====
+          #include <string>
+          #include <stdexcept>
+          #include <chrono>
+          #include <iostream>
+
+          class RateLimiter {
+              std::string name_;
+              double cap_, tokens_, rate_;
+              std::chrono::steady_clock::time_point last_ = std::chrono::steady_clock::now();
+          public:
+              RateLimiter(std::string n, double cap, double rate) : name_(std::move(n)), cap_(cap), tokens_(cap), rate_(rate) {
+                  if (cap <= 0 || rate < 0) throw std::invalid_argument("bad limiter parameters");
+              }
+              bool tryAcquire() {
+                  auto now = std::chrono::steady_clock::now();
+                  double secs = std::chrono::duration<double>(now - last_).count();
+                  last_ = now;
+                  tokens_ = std::min(cap_, tokens_ + secs * rate_);          // refill
+                  if (tokens_ >= 1.0) { tokens_ -= 1.0; return true; }
+                  return false;
+              }
+              double tokens() const { return tokens_; }
+          };
+
+          struct rl { RateLimiter impl; };                                   // the opaque type's real definition
+
+          extern "C" rl_t* rl_create(const char* name, double capacity, double ratePerSec) {
+              if (!name) return nullptr;
+              try { return new rl{RateLimiter(name, capacity, ratePerSec)}; }
+              catch (...) { return nullptr; }                                // no exception crosses the boundary
+          }
+          extern "C" int rl_try_acquire(rl_t* r) {
+              if (!r) return -1;
+              try { return r->impl.tryAcquire() ? 1 : 0; } catch (...) { return -1; }
+          }
+          extern "C" double rl_tokens(const rl_t* r) { return r ? r->impl.tokens() : -1.0; }
+          extern "C" void rl_destroy(rl_t* r) { delete r; }                  // freed by the allocating side
+
+          // ===== a client =====
+          int main() {
+              rl_t* r = rl_create("api", 2, 1.0);
+              int a = rl_try_acquire(r), b = rl_try_acquire(r), c = rl_try_acquire(r);
+              std::cout << a << b << c << " " << (rl_create(nullptr, -1, 0) == nullptr) << "\n";   // 110 1
+              rl_destroy(r);
+          }`,
+        dry: { head: ['call', 'inside the library', 'returns', 'crosses boundary'], rows: [
+          ['rl_create("api", 2, 1.0)', 'new rl{RateLimiter}', 'handle', 'pointer only'], ['rl_try_acquire ×2', 'tokens 2 → 1 → 0', '1, 1', 'int'], ['rl_try_acquire', 'tokens ≈ 0 &lt; 1', '0', 'int'], ['rl_create(NULL, -1, 0)', 'name check fails', 'NULL', 'pointer only'], ['rl_destroy(r)', 'delete inside library', '—', 'nothing']] },
+        complexity: `<p>O(1) per call; one allocation per limiter. The ABI surface is 4 unmangled symbols and one pointer type.</p>`,
+        followUps: ['How would you add a new option later without breaking the ABI? (New function <code>rl_create2</code> or a versioned options struct with a <code>size</code> field.)', 'Write the Python ctypes binding.', 'How do you make <code>rl_try_acquire</code> thread-safe without changing the ABI?']
+      }
+    }]
+  });
   registerModule({ id: 'cpp13', title: 'Expert Idioms + Question Bank', intro: '<p>stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub</p>', goals: ['aaaaaaaaaaaa','bbbbbbbbbbbbbb','cccccccccccc'], prereqs: 'xxxxxxxxxxxxxxxxxxxx', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview });
 })();

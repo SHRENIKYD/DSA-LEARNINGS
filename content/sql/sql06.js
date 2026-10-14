@@ -312,6 +312,673 @@ ORDER BY dept, salary DESC;` } }
 <p><b>What you must still own:</b> the GROUP BY vs window decision, the logical processing order, and being able to explain the plan (sort + stream) when the interviewer asks "why is this faster than a self-join?".</p>`
   });
 
+  /* =====================================================================
+     TOPIC 2 — ROW_NUMBER vs RANK vs DENSE_RANK
+     ===================================================================== */
+  topics.push({
+    title: 'ROW_NUMBER vs RANK vs DENSE_RANK (Ties Decide Everything)',
+    analogy: `<p>Picture a race where two runners cross the line at exactly the same time.</p>
+<ul><li><b>ROW_NUMBER</b> is the <b>ticket queue</b> at a bakery: everyone gets a unique number 1, 2, 3, 4… even if two people arrived together — someone just gets the lower ticket.</li>
+<li><b>RANK</b> is the <b>Olympic podium</b>: two golds, then the next runner gets <b>bronze</b> (rank 3). Silver is skipped — a gap.</li>
+<li><b>DENSE_RANK</b> is <b>"how many different times are faster than mine, plus one"</b>: two golds, then silver. No gaps.</li></ul>`,
+    explain: `<p>All three number the rows of each partition in the order given by <code>ORDER BY</code> inside OVER. They only differ when two rows <b>tie</b> on the ORDER BY value (SQL calls tied rows <b>peers</b>).</p>
+${H.table(['name', 'salary', 'ROW_NUMBER', 'RANK', 'DENSE_RANK'], [
+  ['Asha', '120000', '1', '<span class="c-y">1</span>', '<span class="c-y">1</span>'],
+  ['Ben', '120000', '2', '<span class="c-y">1</span>', '<span class="c-y">1</span>'],
+  ['Chen', '110000', '3', '<span class="c-r">3</span> (2 skipped)', '<span class="c-g">2</span>'],
+  ['Dev', '95000', '4', '<span class="c-y">4</span>', '<span class="c-y">3</span>'],
+  ['Eli', '95000', '5', '<span class="c-y">4</span>', '<span class="c-y">3</span>'],
+  ['Fay', '80000', '6', '<span class="c-r">6</span> (5 skipped)', '<span class="c-g">4</span>']
+])}
+<p><b>Plain-English formulas</b> (for a row with value v, ordering high → low):</p>
+<ul>
+<li><b>ROW_NUMBER</b> = its position in the line. Always 1, 2, 3… with no repeats. Among ties the order is <b>not guaranteed</b> — add a tiebreaker column.</li>
+<li><b>RANK</b> = 1 + (number of rows with a strictly better value). Ties share a rank; the next rank jumps ahead → <b>gaps</b>.</li>
+<li><b>DENSE_RANK</b> = 1 + (number of <b>distinct</b> better values). Ties share; next value gets the next integer → <b>no gaps</b>.</li>
+</ul>
+<p><b>Which one does the question want?</b></p>
+${H.table(['Wording', 'Use', 'Why'], [
+  ['"exactly one row per group", "latest order", "dedupe"', 'ROW_NUMBER', 'must never return 2 rows for position 1'],
+  ['"competition ranking", "position on a leaderboard with ties"', 'RANK', 'ties share, later places skip'],
+  ['"Nth highest salary", "top 3 distinct salaries", "rank scores without gaps"', 'DENSE_RANK', 'counts distinct values'],
+])}
+<p>Add <code>PARTITION BY dept</code> and the numbering <b>restarts at 1</b> for each department — that is "rank within department", the #1 window-function interview question.</p>`,
+    clues: [
+      '"rank ... within each department / category / region" → RANK or DENSE_RANK with PARTITION BY',
+      '"Nth highest", "second highest", "distinct salaries" → DENSE_RANK() = N',
+      '"no gaps between ranks" / "consecutive integers" → DENSE_RANK; "Olympic / competition style" → RANK',
+      '"exactly one row per ..." / "pick one if tied" / "latest record" → ROW_NUMBER with a tiebreaker',
+      'Sample output shows 1, 1, 3 → RANK; shows 1, 1, 2 → DENSE_RANK; shows 1, 2, 3 on equal values → ROW_NUMBER',
+      '"if there is no Nth value, return NULL" → wrap the DENSE_RANK lookup in a scalar subquery'
+    ],
+    code: { lang: 'sql', db: 'hr', title: 'All three side by side, within each department', code: `SELECT dept, name, salary,
+       ROW_NUMBER() OVER w AS row_num,     -- 1,2,3,... unique (ties broken arbitrarily)
+       RANK()       OVER w AS rnk,         -- ties share, then a gap
+       DENSE_RANK() OVER w AS dense_rnk    -- ties share, no gap
+FROM employees
+WINDOW w AS (PARTITION BY dept ORDER BY salary DESC)
+ORDER BY dept, salary DESC, name;` },
+    viz: {
+      title: 'Three ranking columns filling in on ties',
+      input: '120 120 110 95 95 95 80',
+      inputLabel: 'Salaries (any order, space separated, max 12) — they get sorted high → low',
+      gen: function (input) {
+        var v = String(input).trim().split(/[\s,]+/).filter(Boolean).map(function (x) { return num(x, 'Enter numbers separated by spaces, e.g. 120 120 110 95'); });
+        if (v.length < 3) throw new Error('Give at least 3 numbers');
+        if (v.length > 12) throw new Error('Use at most 12 numbers');
+        v.sort(function (a, b) { return b - a; });
+        var rows = v.map(function (x) { return [x, '·', '·', '·']; });
+        var cols = ['salary', 'ROW_NUMBER', 'RANK', 'DENSE_RANK'];
+        var frames = [{ narr: 'Rows are lined up by <code>ORDER BY salary DESC</code>. Three empty columns are waiting. Watch what happens whenever a salary <b>equals</b> the one above it (a tie = "peers").', parts: [{ type: 'table', label: 'ORDER BY salary DESC', columns: cols, rows: copyRows(rows) }, { type: 'vars', label: 'counters', vals: { position: 0, rank: '-', dense: 0 } }] }];
+        var rank = 0, dense = 0;
+        for (var i = 0; i < v.length; i++) {
+          var tie = i > 0 && v[i] === v[i - 1];
+          if (!tie) { rank = i + 1; dense++; }
+          rows[i][1] = i + 1; rows[i][2] = rank; rows[i][3] = dense;
+          var hl = span(0, i - 1, 'done');
+          if (tie) { var s = i; while (s > 0 && v[s - 1] === v[i]) s--; span(s, i - 1, 'win', hl); }
+          hl[i] = tie ? 'cur' : 'ok';
+          var narr = 'Row ' + (i + 1) + ', salary <b>' + v[i] + '</b>: ';
+          if (i === 0) narr += 'first row → all three start at <b>1</b>.';
+          else if (tie) narr += '<span class="c-y">TIE</span> with the row above (blue peers). ROW_NUMBER still moves on to <b>' + (i + 1) + '</b>; RANK repeats <b>' + rank + '</b>; DENSE_RANK repeats <b>' + dense + '</b>.';
+          else narr += 'new, lower value. ROW_NUMBER = position <b>' + (i + 1) + '</b>. RANK jumps to the position too (<b>' + rank + '</b>' + (rank - rows[i - 1][2] > 1 ? ', <span class="c-r">skipping ' + (rank - rows[i - 1][2] - 1) + ' number(s)</span>' : '') + '). DENSE_RANK only steps by one → <b>' + dense + '</b>.';
+          frames.push({ narr: narr, parts: [{ type: 'table', label: 'computed columns', columns: cols, rows: copyRows(rows), hl: hl }, { type: 'vars', label: 'counters', vals: { position: i + 1, rank: rank, dense: dense, tie: tie ? 'yes' : 'no' }, hl: tie ? { tie: 'bad' } : { rank: 'ok', dense: 'ok' } }] });
+        }
+        var gaps = {};
+        for (var k = 1; k < v.length; k++) if (rows[k][2] - rows[k - 1][2] > 1) gaps[k] = 'bad';
+        frames.push({ narr: 'Done. Red rows are where <b>RANK left a gap</b> (because ties used up positions). DENSE_RANK ends at <b>' + dense + '</b> = number of distinct salaries. ROW_NUMBER ends at <b>' + v.length + '</b> = number of rows.', parts: [{ type: 'table', label: 'final', columns: cols, rows: copyRows(rows), hl: gaps }, { type: 'vars', label: 'summary', vals: { rows: v.length, distinct_values: dense, max_rank: rank }, hl: { distinct_values: 'sel' } }] });
+        var target = Math.min(2, dense), pick = [];
+        rows.forEach(function (r, i) { if (r[3] === target) pick.push(i); });
+        var hl3 = {}; pick.forEach(function (i) { hl3[i] = 'sel'; });
+        frames.push({ narr: '"Find the <b>' + target + (target === 2 ? 'nd' : 'st') + ' highest salary</b>" → filter <code>DENSE_RANK = ' + target + '</code> (purple). RANK = 2 might match <b>nothing</b> when there is a tie at the top, and ROW_NUMBER = 2 might return a duplicate of the top salary. That is why "Nth highest" means DENSE_RANK.', parts: [{ type: 'table', label: 'WHERE dense_rank = ' + target, columns: cols, rows: copyRows(rows), hl: hl3 }] });
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'Company-wide ranking with ties', html: `<p>No PARTITION BY → one window. Asha and Ben tie at 120000: ROW_NUMBER gives 1 and 2, RANK gives ${H.c('y', '1, 1, then 3')}, DENSE_RANK gives ${H.c('g', '1, 1, then 2')}. At the bottom, Leo and Mia tie: RANK 12, 12; DENSE_RANK 9, 9 (there are 9 distinct salaries).</p>`,
+        code: { lang: 'sql', db: 'hr', code: `SELECT name, salary,
+       ROW_NUMBER() OVER (ORDER BY salary DESC) AS rn,
+       RANK()       OVER (ORDER BY salary DESC) AS rnk,
+       DENSE_RANK() OVER (ORDER BY salary DESC) AS drnk
+FROM employees
+ORDER BY salary DESC, rn;` } },
+      { title: 'ROW_NUMBER is non-deterministic on ties — add a tiebreaker', html: `<p>Asha and Ben both earn 120000. Who is row 1? The SQL standard says "implementation-dependent" — it can change after an index is added or data is reloaded. Make it deterministic: <code>ORDER BY salary DESC, hire_date</code> (seniority wins) or <code>, id</code>. Also notice ${H.c('r', 'RANK() OVER ()')} with no ORDER BY gives everyone rank 1: without ordering, every row is a peer of every other row.</p>`,
+        code: { lang: 'sql', db: 'hr', code: `SELECT name, salary, hire_date,
+       ROW_NUMBER() OVER (ORDER BY salary DESC, hire_date) AS rn_deterministic,
+       RANK()       OVER ()                                 AS rank_no_order
+FROM employees
+WHERE dept = 'Engineering';` } },
+      { title: 'Second highest salary, NULL if it does not exist', html: `<p>Classic: "Return the second highest <b>distinct</b> salary, or NULL." DENSE_RANK = 2 gives ${H.c('g', '110000')}. Wrapping it as a scalar subquery means "no row" turns into NULL (the twentieth highest is ${H.c('m', 'NULL')}). <code>DISTINCT</code> is needed because two people could share the second salary.</p>`,
+        code: { lang: 'sql', db: 'hr', code: `WITH ranked AS (
+  SELECT salary, DENSE_RANK() OVER (ORDER BY salary DESC) AS dr
+  FROM employees
+)
+SELECT (SELECT DISTINCT salary FROM ranked WHERE dr = 2)  AS second_highest,
+       (SELECT DISTINCT salary FROM ranked WHERE dr = 20) AS twentieth_highest;` } },
+      { title: 'Ascending rank: "newest hire = 1" per department', html: `<p>Ranking direction is just the ORDER BY direction. Here the most recent hire in each department gets 1: Fay in Engineering, Mia in HR, Jay in Sales. Since hire dates are unique, all three functions agree — they only differ on ties.</p>`,
+        code: { lang: 'sql', db: 'hr', code: `SELECT dept, name, hire_date,
+       ROW_NUMBER() OVER (PARTITION BY dept ORDER BY hire_date DESC) AS newest_first
+FROM employees
+ORDER BY dept, newest_first;` } }
+    ],
+    deepDive: `<p><b>Exact definitions.</b> Within a partition sorted by the window ORDER BY: <code>ROW_NUMBER</code> = ordinal position; <code>RANK</code> = 1 + count of rows that sort strictly before the current row's peer group; <code>DENSE_RANK</code> = 1 + count of distinct peer groups before it. Ranking functions <b>ignore the frame clause</b> entirely — they depend only on partition and order. Without ORDER BY all rows are peers: RANK and DENSE_RANK return 1 everywhere.</p>
+<p><b>Determinism.</b> Only ROW_NUMBER is sensitive to tie order. A query that uses <code>ROW_NUMBER() ... = 1</code> without a unique tiebreaker can return different rows on different runs, replicas or engine versions — a real production bug source (flaky dashboards, failing reconciliation). Always end the ORDER BY with a unique key.</p>
+<p><b>NULLs.</b> NULLs are peers of each other. SQLite and MySQL sort NULLs first in ASC and last in DESC; PostgreSQL and Oracle do the opposite (NULLs are "largest"). Use <code>NULLS LAST</code> (SQLite ≥ 3.30, PostgreSQL, Oracle) to be explicit; MySQL needs <code>ORDER BY col IS NULL, col</code>.</p>
+<p><b>Cost.</b> All three are O(1) per row after the sort: the operator just keeps a counter, the previous row's ORDER BY values and (for RANK) the current position. The correlated-subquery equivalents — <code>1 + (SELECT COUNT(DISTINCT s2) ... WHERE s2 &gt; s1)</code> — are O(N²) per partition without an index and still O(N log N) per row lookups with one. On 10<sup>6</sup> rows that is the difference between seconds and hours.</p>`,
+    aiEra: `<p><b>What AI changes:</b> Ask an assistant for "rank within department" and it will write a correct-looking query in a second. The thing it most often gets wrong is the <b>choice of function</b>: it defaults to ROW_NUMBER or RANK even when the wording ("Nth highest distinct") needs DENSE_RANK.</p>
+<p><b>Use AI as a partner:</b> before trusting a ranking query, ask: <code>"Give me 6 rows with two ties at the top and one tie in the middle, and the exact expected output"</code>. Run it. If the ranks look like 1, 2, 3 on equal values, the wrong function was used.</p>
+<p><b>Where AI goes wrong:</b> missing tiebreakers on ROW_NUMBER; forgetting DISTINCT when returning "the Nth salary"; returning an empty set instead of NULL; using LIMIT/OFFSET (which ignores ties) for "Nth highest".</p>
+<p><b>What you must still own:</b> reading the sample output in a question and recognising 1-1-3 vs 1-1-2 instantly, and explaining determinism to a reviewer. That judgment is what interviewers test.</p>`,
+    problems: [{
+      title: 'Rank Salaries Within Each Department (No Gaps)',
+      level: 'Easy', tags: ['window', 'dense_rank', 'partition by'], companies: ['Amazon', 'Meta', 'Deloitte'],
+      statement: `<p>Table <code>employees(id, name, dept, salary, hire_date)</code>. For every employee, return <code>dept, name, salary, salary_rank</code> where <code>salary_rank</code> is 1 for the highest salary in their department, equal salaries share a rank, and the ranks have <b>no gaps</b> (1, 1, 2, 3…). Order by dept, then salary_rank, then name.</p>`,
+      constraints: `Up to 10<sup>6</sup> employees, up to 10<sup>3</sup> departments. Salaries may tie.`,
+      example: `${H.table(['dept', 'name', 'salary', 'salary_rank'], [['Engineering', 'Asha', '120000', '<span class="c-g">1</span>'], ['Engineering', 'Ben', '120000', '<span class="c-g">1</span>'], ['Engineering', 'Chen', '110000', '<span class="c-g">2</span>'], ['HR', 'Kim', '75000', '<span class="c-b">1</span> (restarts)'], ['HR', 'Leo', '60000', '2']])}<p>Asha and Ben tie → both 1. Chen is next → <b>2</b>, not 3, because the question says "no gaps". The rank restarts at 1 in HR because of PARTITION BY dept.</p>`,
+      brute: {
+        why: `<p>Old-school: for each employee, count how many <b>distinct</b> salaries in the same department are higher, plus one. That correlated subquery re-scans the department for every row: O(N × department size) — about N²/D comparisons. With 10<sup>6</sup> rows in 10 departments that is ~10<sup>11</sup> comparisons. It is correct, and worth knowing because some interviewers ask for a "no window function" version.</p>`,
+        code: { lang: 'sql', db: 'hr', code: `-- Correlated subquery: re-counts the department for every single row (O(N^2) per partition)
+SELECT e.dept, e.name, e.salary,
+       1 + (SELECT COUNT(DISTINCT e2.salary)
+            FROM employees e2
+            WHERE e2.dept = e.dept
+              AND e2.salary > e.salary) AS salary_rank
+FROM employees e
+ORDER BY e.dept, salary_rank, e.name;` }
+      },
+      mcq: { q: 'The expected output shows ranks 1, 1, 2 for salaries 120, 120, 110. Which function produces exactly this?', options: ['ROW_NUMBER()', 'RANK()', 'DENSE_RANK()', 'NTILE(3)'], answer: 2, explain: 'ROW_NUMBER gives 1, 2, 3 and RANK gives 1, 1, 3. Only DENSE_RANK gives the tied rows the same rank and moves on to the next whole number.' },
+      hints: [
+        `<p>"Within each department" means the numbering must <b>restart</b> per department → that is PARTITION BY dept.</p>`,
+        `<p>"Equal salaries share a rank" rules out ROW_NUMBER. "No gaps" rules out RANK. Use DENSE_RANK with ORDER BY salary DESC.</p>`,
+        `<p>Recipe: SELECT the columns, add <code>DENSE_RANK() OVER (PARTITION BY dept ORDER BY salary DESC)</code>, then an outer ORDER BY dept, salary_rank, name (the window's ORDER BY does not sort the output).</p>`
+      ],
+      solution: {
+        approach: `<p>One window: partition by department so ranks restart, order by salary descending so the highest is 1, and use DENSE_RANK so ties share and no numbers are skipped. The engine sorts once by (dept, salary DESC) and streams through, incrementing a counter only when the salary changes.</p>`,
+        code: { lang: 'sql', db: 'hr', code: `SELECT dept, name, salary,
+       DENSE_RANK() OVER (PARTITION BY dept ORDER BY salary DESC) AS salary_rank
+FROM employees
+ORDER BY dept, salary_rank, name;` },
+        dry: { head: ['row (sorted)', 'salary', 'same as previous?', 'salary_rank'], rows: [['Engineering / Asha', '120000', 'first in partition', '1'], ['Engineering / Ben', '120000', 'yes (tie)', '1'], ['Engineering / Chen', '110000', 'no', '2'], ['Engineering / Dev', '95000', 'no', '3'], ['HR / Kim', '75000', 'new partition', '1 (reset)']] },
+        complexity: `<p>One sort O(N log N) (or O(N) if an index on (dept, salary) supplies the order) + O(N) streaming. Memory O(1) per row beyond the sort. The correlated subquery is O(N²/D).</p>`,
+        followUps: ['Return only each department\'s second-highest distinct salary.', 'Make the ranking ascending (lowest paid = 1) and explain how NULL salaries would sort in SQLite vs PostgreSQL.', 'Rewrite it without window functions using a self-join + GROUP BY.']
+      }
+    }]
+  });
+
+  /* =====================================================================
+     TOPIC 3 — Top-N per group (greatest-n-per-group)
+     ===================================================================== */
+  topics.push({
+    title: 'Top-N per Group: The Rank-Then-Filter Pattern',
+    analogy: `<p>A school wants the <b>top 2 students from every class</b> for a quiz team. The principal does not compare all 1,000 students against each other. Each class teacher <b>sorts their own class</b>, writes 1, 2, 3… on the papers, and sends up everything numbered 1 or 2. That is exactly the window pattern: <b>number inside each group, then keep the small numbers</b>.</p>`,
+    explain: `<p>"Top N per group" (also called <b>greatest-n-per-group</b>) shows up as: <i>top 3 salaries per department</i>, <i>latest order per customer</i>, <i>best-selling product per category</i>, <i>most recent status per ticket</i>. The modern answer is always the same two-step recipe:</p>
+<ol>
+<li><b>Number</b> the rows inside each group with a ranking function in a CTE.</li>
+<li><b>Filter</b> on that number in the outer query (window functions cannot go in WHERE).</li>
+</ol>
+<pre>WITH ranked AS (
+  SELECT *, ROW_NUMBER() OVER (PARTITION BY dept ORDER BY salary DESC, hire_date) AS rn
+  FROM employees
+)
+SELECT * FROM ranked WHERE rn &lt;= 2;</pre>
+<p><b>The ranking function decides what "top N" means when there are ties</b> — this is the question you should ask the interviewer out loud:</p>
+${H.table(['Filter', 'Meaning', 'Engineering result (120, 120, 110, 95, 95, 80), N = 2'], [
+  ['ROW_NUMBER() &lt;= 2', 'exactly N rows per group, ties broken by tiebreaker', 'Asha, Ben'],
+  ['RANK() &lt;= 2', 'N "places"; ties at the cut-off are all included', 'Asha, Ben (both rank 1; Chen is rank 3)'],
+  ['DENSE_RANK() &lt;= 2', 'everyone holding one of the top N <b>distinct</b> values', 'Asha, Ben, <span class="c-g">Chen</span>']
+])}
+<p><b>N = 1 is the most common case</b>: "the latest row per key". <code>ROW_NUMBER() OVER (PARTITION BY customer ORDER BY order_date DESC, id DESC) = 1</code> picks exactly one latest order per customer — the backbone of deduplication, slowly-changing-dimension lookups and "current status" views.</p>
+<p><b>Why not GROUP BY + MAX?</b> <code>SELECT dept, MAX(salary) ... GROUP BY dept</code> gives the top <i>value</i> but not the rest of the row (who earns it?). You would have to join back on (dept, salary) — which returns duplicates on ties and needs a second pass. The window version returns whole rows in one pass and generalises to any N.</p>`,
+    clues: [
+      '"top N ... per / for each / in every" (department, category, user) → rank in CTE, filter rn &lt;= N',
+      '"latest / most recent / first / last record for each ..." → ROW_NUMBER() ... = 1 with DESC/ASC order',
+      '"top three unique salaries" / "salaries that are among the top 3 distinct" → DENSE_RANK &lt;= 3',
+      '"exactly N rows per group even with ties" → ROW_NUMBER + deterministic tiebreaker',
+      '"remove duplicates, keep the newest" → ROW_NUMBER &gt; 1 identifies the rows to delete',
+      'Brute force hint in the prompt: "for each row, count how many in the same group are bigger" → that count IS a rank'
+    ],
+    code: [
+      { lang: 'sql', db: 'hr', title: 'Top 2 earners per department (exactly 2 rows each)', code: `WITH ranked AS (
+  SELECT dept, name, salary,
+         ROW_NUMBER() OVER (
+           PARTITION BY dept
+           ORDER BY salary DESC, hire_date   -- tiebreaker: more senior wins a tie
+         ) AS rn
+  FROM employees
+)
+SELECT dept, name, salary, rn
+FROM ranked
+WHERE rn <= 2            -- filter happens OUTSIDE, after the window is computed
+ORDER BY dept, rn;` },
+      { lang: 'sql', db: 'hr', title: 'Latest salary per employee (N = 1, greatest-n-per-group)', code: `WITH latest AS (
+  SELECT emp_id, effective_date, salary,
+         ROW_NUMBER() OVER (PARTITION BY emp_id ORDER BY effective_date DESC) AS rn
+  FROM salary_history
+)
+SELECT e.name, l.effective_date, l.salary
+FROM latest l
+JOIN employees e ON e.id = l.emp_id
+WHERE l.rn = 1
+ORDER BY e.name;` }
+    ],
+    codeTitle: ['Top-N with ROW_NUMBER', 'Latest row per key'],
+    viz: {
+      title: 'Number inside each partition, then keep rn ≤ N',
+      input: '2 | Engineering Asha 120, Engineering Ben 120, Engineering Chen 110, Engineering Dev 95, HR Kim 75, HR Leo 60, HR Mia 60, Sales Gia 90, Sales Hal 85, Sales Ivy 85, Sales Jay 70',
+      inputLabel: 'N | rows as "Dept Name Salary" (comma separated, max 14)',
+      gen: function (input) {
+        var parts = String(input).split('|');
+        if (parts.length !== 2) throw new Error('Format: "N | Dept Name Salary, Dept Name Salary, ..."');
+        var N = num(parts[0].trim(), 'N must be a number, e.g. "2 | Sales Gia 90, ..."');
+        if (N < 1 || N > 5 || Math.floor(N) !== N) throw new Error('N must be a whole number from 1 to 5');
+        var s = byDeptSalary(deptRows(parts[1], 14));
+        var ps = partitions(s, function (r) { return r.dept; });
+        var cols = ['dept', 'name', 'salary', 'ROW_NUMBER', 'DENSE_RANK'];
+        var rows = s.map(function (r) { return [r.dept, r.name, r.salary, '·', '·']; });
+        var frames = [];
+        var hl0 = {}; ps.forEach(function (p, k) { span(p[0], p[1], k % 2 ? 'sel' : 'win', hl0); });
+        frames.push({ narr: 'Step 1: <code>PARTITION BY dept ORDER BY salary DESC</code> — the engine sorts so each department is a block (alternating colours), highest salary first. Goal: top <b>' + N + '</b> per department.', parts: [{ type: 'table', label: 'sorted into partitions', columns: cols, rows: copyRows(rows), hl: hl0 }] });
+        ps.forEach(function (p) {
+          var dense = 0;
+          for (var i = p[0]; i <= p[1]; i++) {
+            var rn = i - p[0] + 1, tie = i > p[0] && s[i].salary === s[i - 1].salary;
+            if (!tie) dense++;
+            rows[i][3] = rn; rows[i][4] = dense;
+            var hl = span(0, s.length - 1, 'done'); span(p[0], p[1], 'win', hl); hl[i] = 'cur';
+            var narr = rn === 1 ? '<b>New partition ' + s[i].dept + '</b> → counters <b>reset to 1</b>. ' : '';
+            narr += s[i].name + ' (' + s[i].salary + '): ROW_NUMBER = ' + rn + ', DENSE_RANK = ' + dense + (tie ? ' <span class="c-y">(tie: DENSE_RANK repeats, ROW_NUMBER does not)</span>' : '') + '.';
+            frames.push({ narr: narr, parts: [{ type: 'table', label: 'numbering partition ' + s[i].dept, columns: cols, rows: copyRows(rows), hl: hl }] });
+          }
+        });
+        var hlA = {}, resA = [];
+        rows.forEach(function (r, i) { if (r[3] <= N) { hlA[i] = 'ok'; resA.push([r[0], r[1], r[2], r[3]]); } else hlA[i] = 'bad'; });
+        frames.push({ narr: 'Step 2a: outer query <code>WHERE rn &lt;= ' + N + '</code>. Green rows survive, red rows are dropped. Exactly <b>' + N + '</b> (or fewer) rows per department — ties are cut arbitrarily unless you add a tiebreaker.', parts: [{ type: 'table', label: 'filter ROW_NUMBER ≤ ' + N, columns: cols, rows: copyRows(rows), hl: hlA }] });
+        var hlB = {}, resB = [];
+        rows.forEach(function (r, i) { if (r[4] <= N) { hlB[i] = 'ok'; resB.push([r[0], r[1], r[2], r[4]]); } else hlB[i] = 'bad'; });
+        frames.push({ narr: 'Step 2b: the alternative <code>WHERE dense_rank &lt;= ' + N + '</code> keeps everyone holding one of the top ' + N + ' <b>distinct</b> salaries — it can return MORE than ' + N + ' rows per department when there are ties.', parts: [{ type: 'table', label: 'filter DENSE_RANK ≤ ' + N, columns: cols, rows: copyRows(rows), hl: hlB }] });
+        frames.push({ narr: 'Results compared: ROW_NUMBER returned <b>' + resA.length + '</b> rows, DENSE_RANK returned <b>' + resB.length + '</b>. Neither is "right" — the question\'s wording about ties decides. Say this out loud in an interview.', parts: [
+          { type: 'table', label: 'top ' + N + ' via ROW_NUMBER', columns: ['dept', 'name', 'salary', 'rn'], rows: resA, hl: span(0, resA.length - 1, 'sel') },
+          { type: 'table', label: 'top ' + N + ' distinct via DENSE_RANK', columns: ['dept', 'name', 'salary', 'dr'], rows: resB, hl: span(0, resB.length - 1, 'sel') }
+        ] });
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'Top 2 orders per customer', html: `<p>Partition by customer, order by amount. Asha's two biggest are ${H.c('g', '50 and 35')}; dan has only one order, so he simply returns one row — <code>rn &lt;= 2</code> never invents rows. The <code>id</code> tiebreaker keeps the result stable if two orders have the same amount.</p>`,
+        code: { lang: 'sql', db: 'shop', code: `WITH r AS (
+  SELECT customer, id, order_date, amount,
+         ROW_NUMBER() OVER (PARTITION BY customer ORDER BY amount DESC, id) AS rn
+  FROM orders
+)
+SELECT customer, id, order_date, amount
+FROM r
+WHERE rn <= 2
+ORDER BY customer, amount DESC;` } },
+      { title: 'All top earners per department, ties included (RANK = 1)', html: `<p>"Who is the highest paid in each department?" Engineering has a tie, so the honest answer has ${H.c('y', 'two people')}: Asha and Ben. RANK = 1 (or DENSE_RANK = 1) keeps both; ROW_NUMBER = 1 would silently hide one.</p>`,
+        code: { lang: 'sql', db: 'hr', code: `WITH r AS (
+  SELECT dept, name, salary,
+         RANK() OVER (PARTITION BY dept ORDER BY salary DESC) AS rk
+  FROM employees
+)
+SELECT dept, name, salary
+FROM r
+WHERE rk = 1
+ORDER BY dept, name;` } },
+      { title: 'Old school: self-join + HAVING (no window functions)', html: `<p>Before window functions (MySQL 5.7 still lacks them), top-N was a self-join: join each employee to colleagues who earn <b>more</b>, count them, keep rows where that count is less than N. It works, but it builds up to N²/D joined pairs. Note the LEFT JOIN so the top earner (zero people above) survives. This version counts <i>people</i> above (RANK semantics).</p>`,
+        code: { lang: 'sql', db: 'hr', code: `SELECT e.dept, e.name, e.salary, COUNT(h.id) AS people_above
+FROM employees e
+LEFT JOIN employees h
+       ON h.dept = e.dept AND h.salary > e.salary
+GROUP BY e.id, e.dept, e.name, e.salary
+HAVING COUNT(h.id) < 2          -- fewer than 2 people above me = I am in the top 2 places
+ORDER BY e.dept, e.salary DESC;` } },
+      { title: 'Biggest order per day (N = 1 on a date partition)', html: `<p>Same recipe, different partition key. On 2024-01-01 asha's 50 beats ben's 30; on 2024-01-08 dan's ${H.c('g', '90')} wins. Swap the partition key and you answer "best product per category" or "top song per country".</p>`,
+        code: { lang: 'sql', db: 'shop', code: `WITH r AS (
+  SELECT order_date, customer, amount,
+         ROW_NUMBER() OVER (PARTITION BY order_date ORDER BY amount DESC, id) AS rn
+  FROM orders
+)
+SELECT order_date, customer, amount
+FROM r
+WHERE rn = 1
+ORDER BY order_date;` } }
+    ],
+    deepDive: `<p><b>Performance in real engines.</b> The rank-then-filter plan sorts the <i>whole</i> table by (group, order) and numbers every row, then throws most away. For small N and many groups, two faster shapes exist: (1) PostgreSQL <code>LATERAL</code> join — for each department, <code>SELECT ... ORDER BY salary DESC LIMIT 2</code> using an index on (dept, salary DESC): O(groups × N × log N) instead of O(rows log rows); (2) PostgreSQL 15+ can push a <code>rn &lt;= N</code> filter into the WindowAgg ("run condition") and stop numbering a partition early. SQL Server and Oracle also optimise "top-N per partition" into a segment-top operator.</p>
+<p><b>Correctness traps:</b> (1) ROW_NUMBER without a unique tiebreaker → nondeterministic picks; (2) <code>JOIN back on MAX(salary)</code> returns duplicates on ties; (3) filtering by rank <b>before</b> a join that multiplies rows (e.g. joining orders to items) ranks the wrong grain — rank at the grain the question asks about; (4) the brute-force self-join with <code>&gt;</code> gives RANK semantics while <code>COUNT(DISTINCT h.salary)</code> gives DENSE_RANK semantics — know which one you wrote.</p>
+<p><b>SQLite-only shortcut:</b> <code>SELECT dept, name, MAX(salary) FROM employees GROUP BY dept</code> returns the name from the max row (a documented SQLite "bare column" feature), but it is non-standard, picks one row on ties and errors in PostgreSQL — mention it only to show you know why not to rely on it.</p>`,
+    aiEra: `<p><b>What AI changes:</b> "Top N per group" is the most common window query AI tools generate, and they usually get the CTE + filter shape right. What they skip is the <b>tie conversation</b>: they choose ROW_NUMBER silently, which can drop a tied employee from a bonus list — a real business bug.</p>
+<p><b>Use AI as a partner:</b> ask <code>"List the three tie semantics for top-N per group and which one my requirement implies: ..."</code>. Ask it to produce the LATERAL version too and compare EXPLAIN plans on a large synthetic table.</p>
+<p><b>Where AI goes wrong:</b> missing tiebreaker; putting the filter in WHERE of the same SELECT; using LIMIT N globally instead of per group; MySQL 5.7 targets where window functions do not exist (needs the self-join or variables).</p>
+<p><b>What you must still own:</b> clarifying tie rules with the stakeholder, choosing the right grain, and knowing when an index + LATERAL beats a full sort on a 100M-row table.</p>`,
+    problems: [{
+      title: 'Department Top Three Salaries',
+      level: 'Hard', tags: ['window', 'dense_rank', 'top-n per group', 'join'], companies: ['Amazon', 'Meta', 'Microsoft', 'Bloomberg'],
+      statement: `<p>Table <code>employees(id, name, dept, salary, hire_date)</code>. A <b>high earner</b> is an employee whose salary is among the <b>top three unique salaries</b> of their department. Return <code>dept, name, salary</code> of all high earners, ordered by dept, salary DESC, name.</p>`,
+      constraints: `Up to 10<sup>6</sup> rows. A department may have fewer than three distinct salaries. Many people may share a salary.`,
+      example: `${H.table(['dept', 'distinct salaries (desc)', 'high earners'], [['Engineering', '120000, 110000, 95000, <span class="c-r">80000</span>', 'Asha, Ben, Chen, Dev, Eli (<span class="c-r">not Fay</span>)'], ['HR', '75000, 60000', 'Kim, Leo, Mia (only 2 distinct → all qualify)'], ['Sales', '90000, 85000, 70000', 'Gia, Hal, Ivy, Jay']])}<p>"Top three <b>unique</b> salaries" means ties do not use up slots: Engineering returns <b>5</b> people. 12 rows total.</p>`,
+      brute: {
+        why: `<p>The classic pre-window answer: keep an employee if fewer than 3 distinct salaries in the same department are greater than theirs. The correlated subquery runs once per employee and scans the department each time → O(N²/D). With an index on (dept, salary) each probe is faster, but it is still a per-row nested query instead of one sort + stream.</p>`,
+        code: { lang: 'sql', db: 'hr', code: `SELECT e.dept, e.name, e.salary
+FROM employees e
+WHERE (SELECT COUNT(DISTINCT e2.salary)
+       FROM employees e2
+       WHERE e2.dept = e.dept
+         AND e2.salary > e.salary) < 3      -- fewer than 3 distinct salaries above me
+ORDER BY e.dept, e.salary DESC, e.name;` }
+      },
+      mcq: { q: 'Engineering salaries are 120, 120, 110, 95, 95, 80. Which filter returns exactly Asha, Ben, Chen, Dev and Eli?', options: ['ROW_NUMBER() &lt;= 3', 'RANK() &lt;= 3', 'DENSE_RANK() &lt;= 3', 'NTILE(3) = 1'], answer: 2, explain: 'DENSE_RANK gives 1,1,2,3,3,4 so &lt;= 3 keeps five people. ROW_NUMBER keeps three rows; RANK gives 1,1,3,4,4,6 and keeps only Asha, Ben and Chen.' },
+      hints: [
+        `<p>"Top three <b>unique</b> salaries" — ties should not use up a slot. Which ranking function counts distinct values?</p>`,
+        `<p>DENSE_RANK() OVER (PARTITION BY dept ORDER BY salary DESC) inside a CTE. Then filter in the outer query.</p>`,
+        `<p>Recipe: CTE ranked = all columns + dr; SELECT dept, name, salary FROM ranked WHERE dr &lt;= 3 ORDER BY dept, salary DESC, name. Departments with fewer than 3 distinct salaries return everyone — no special case needed.</p>`
+      ],
+      solution: {
+        approach: `<p>Rank within each department using DENSE_RANK (ties share a number, no gaps), so "rank ≤ 3" means "salary is one of the three highest distinct values". Compute it in a CTE because window results cannot be filtered in the same SELECT's WHERE. In a real schema with a separate <code>departments</code> table you would join to get the department name after filtering.</p>`,
+        code: { lang: 'sql', db: 'hr', code: `WITH ranked AS (
+  SELECT dept, name, salary,
+         DENSE_RANK() OVER (PARTITION BY dept ORDER BY salary DESC) AS dr
+  FROM employees
+)
+SELECT dept, name, salary
+FROM ranked
+WHERE dr <= 3
+ORDER BY dept, salary DESC, name;` },
+        dry: { head: ['dept', 'name', 'salary', 'dr', 'keep?'], rows: [['Engineering', 'Asha / Ben', '120000', '1', '<span class="c-g">yes</span>'], ['Engineering', 'Chen', '110000', '2', '<span class="c-g">yes</span>'], ['Engineering', 'Dev / Eli', '95000', '3', '<span class="c-g">yes</span>'], ['Engineering', 'Fay', '80000', '4', '<span class="c-r">no</span>'], ['HR', 'Kim', '75000', '1', '<span class="c-g">yes</span>']] },
+        complexity: `<p>O(N log N) for the sort (O(N) with an index on (dept, salary DESC)), O(N) to rank and filter. The correlated version is O(N²/D) without an index.</p>`,
+        followUps: ['Return exactly 3 people per department, preferring the longest-serving on ties.', 'Show each high earner\'s gap to the department\'s top salary.', 'How would you do this on MySQL 5.7, which has no window functions?']
+      }
+    }]
+  });
+
+  /* =====================================================================
+     TOPIC 4 — LAG / LEAD: comparing a row with its neighbours
+     ===================================================================== */
+  topics.push({
+    title: 'LAG & LEAD: Deltas, Growth and "Previous Row" Questions',
+    analogy: `<p>Standing in a queue, you can turn around and see the person <b>behind</b> you, or look over the shoulder of the person <b>in front</b>. <b>LAG</b> = "what did the row before me have?" (look back). <b>LEAD</b> = "what does the row after me have?" (look ahead). Your fitness app does this every morning: <i>"You walked 1,200 more steps than yesterday"</i> is just <code>today - LAG(today)</code>.</p>`,
+    explain: `<p><code>LAG(expr, offset, default)</code> returns <code>expr</code> from the row <b>offset</b> rows <b>before</b> the current row in the window's order. <code>LEAD</code> is the same but <b>after</b>. Offset defaults to 1, default value to NULL.</p>
+${H.table(['day', 'revenue', 'LAG(revenue)', 'revenue − LAG', '% change', 'LEAD(revenue)'], [
+  ['03-01', '100', '<span class="c-m">NULL</span> (no row before)', 'NULL', 'NULL', '120'],
+  ['03-02', '120', '100', '<span class="c-g">+20</span>', '<span class="c-g">+20.0%</span>', '90'],
+  ['03-03', '90', '120', '<span class="c-r">−30</span>', '<span class="c-r">−25.0%</span>', '150'],
+  ['03-05', '150', '90', '<span class="c-g">+60</span>', '+66.7%', '130']
+])}
+<p><b>Recipe for "change since previous":</b></p>
+<pre>value - LAG(value) OVER (PARTITION BY entity ORDER BY time)                 -- absolute delta
+ROUND(100.0 * (value - LAG(value) OVER w) / LAG(value) OVER w, 1)          -- % growth</pre>
+<ul>
+<li><b>PARTITION BY</b> stops the first row of one region/customer from looking at the last row of the previous one. Forgetting it is the #1 LAG bug.</li>
+<li><b>First row</b> of each partition has no previous row → NULL. Use the 3rd argument (<code>LAG(revenue, 1, 0)</code>) or <code>COALESCE</code> if the question wants 0.</li>
+<li><b>Offset &gt; 1</b>: <code>LAG(revenue, 7)</code> = same weekday last week (if there is exactly one row per day).</li>
+<li><b>Divide by zero</b>: if the previous value can be 0, wrap the divisor in <code>NULLIF(LAG(...), 0)</code>.</li>
+</ul>
+<p><b>Big gotcha: LAG means previous <i>row</i>, not previous <i>day</i>.</b> North has no row for 03-04, so on 03-05 LAG returns 03-03's value. If the question says "compared to <b>yesterday</b>", either check the date gap (<code>julianday(day) - julianday(LAG(day) OVER w) = 1</code>) or fill missing dates first with a calendar table / recursive CTE.</p>
+<p><b>LEAD</b> is perfect for "time until next event", "next status", and "session end = next session start". LAG and LEAD ignore the frame clause — only partition and order matter.</p>`,
+    clues: [
+      '"compared to the previous day / month / order", "day-over-day", "month-over-month", "YoY" → LAG',
+      '"time between consecutive events", "days since last purchase", "next appointment" → LAG or LEAD on a date',
+      '"three consecutive rows with the same value" → compare LAG and LEAD (or LAG 1 and LAG 2)',
+      '"when did the status change" / "detect a flip" → value &lt;&gt; LAG(value)',
+      '"higher than yesterday" (temperature) → LAG plus a date-gap check (previous row may not be yesterday)',
+      'Brute-force smell: "self-join on id = id - 1" or "date = date - 1 day" → LAG is the one-pass version'
+    ],
+    code: { lang: 'sql', db: 'shop', title: 'Day-over-day change per region (runnable)', code: `SELECT region, day, revenue,
+       LAG(revenue) OVER w                         AS prev_revenue,
+       revenue - LAG(revenue) OVER w               AS change,
+       ROUND(100.0 * (revenue - LAG(revenue) OVER w)
+             / NULLIF(LAG(revenue) OVER w, 0), 1)  AS pct_change,   -- NULLIF avoids divide-by-zero
+       LEAD(revenue) OVER w                        AS next_revenue
+FROM daily_revenue
+WINDOW w AS (PARTITION BY region ORDER BY day)     -- PARTITION BY: never compare North with South
+ORDER BY region, day;` },
+    viz: {
+      title: 'LAG looks back, LEAD looks ahead — the delta column fills in',
+      input: '100 120 90 150 130 130 170',
+      inputLabel: 'Daily values in time order (space separated, 3–12 numbers)',
+      gen: function (input) {
+        var v = String(input).trim().split(/[\s,]+/).filter(Boolean).map(function (x) { return num(x, 'Enter numbers separated by spaces, e.g. 100 120 90'); });
+        if (v.length < 3) throw new Error('Give at least 3 numbers');
+        if (v.length > 12) throw new Error('Use at most 12 numbers');
+        var cols = ['day', 'value', 'LAG(value)', 'delta', '% change', 'LEAD(value)'];
+        var rows = v.map(function (x, i) { return ['d' + (i + 1), x, '·', '·', '·', '·']; });
+        var frames = [{ narr: 'Rows are ordered by day (<code>OVER (ORDER BY day)</code>). For each row we will peek at the <b>row before</b> (LAG, blue) and the <b>row after</b> (LEAD, purple).', parts: [{ type: 'table', label: 'ordered by day', columns: cols, rows: copyRows(rows) }, { type: 'bars', label: 'value per day', values: v.slice(), idxLabels: v.map(function (x, i) { return 'd' + (i + 1); }) }] }];
+        for (var i = 0; i < v.length; i++) {
+          var prev = i > 0 ? v[i - 1] : null, next = i < v.length - 1 ? v[i + 1] : null;
+          rows[i][2] = prev === null ? 'NULL' : prev;
+          rows[i][3] = prev === null ? 'NULL' : (v[i] - prev > 0 ? '+' : '') + (v[i] - prev);
+          rows[i][4] = prev === null ? 'NULL' : (prev === 0 ? 'NULL (÷0)' : f1(Math.round(1000 * (v[i] - prev) / prev) / 10) + '%');
+          rows[i][5] = next === null ? 'NULL' : next;
+          var hl = {}; hl[i] = 'cur'; if (i > 0) hl[i - 1] = 'win'; if (i < v.length - 1) hl[i + 1] = 'sel';
+          var bh = {}; bh[i] = 'cur'; if (i > 0) bh[i - 1] = 'win';
+          var narr = '<b>d' + (i + 1) + '</b> (value ' + v[i] + '): ';
+          if (prev === null) narr += 'first row — there is <b>no row before</b>, so LAG = <b>NULL</b> and the delta is NULL too. (Use <code>LAG(value, 1, 0)</code> if you want 0.) LEAD peeks ahead: ' + next + '.';
+          else {
+            narr += 'LAG = ' + prev + ' (blue). delta = ' + v[i] + ' − ' + prev + ' = <b>' + (v[i] - prev) + '</b>' + (v[i] > prev ? ' <span class="c-g">up</span>' : v[i] < prev ? ' <span class="c-r">down</span>' : ' (flat)') + '. ';
+            narr += next === null ? 'Last row — LEAD = <b>NULL</b>.' : 'LEAD = ' + next + ' (purple).';
+          }
+          frames.push({ narr: narr, parts: [{ type: 'table', label: 'computed columns', columns: cols, rows: copyRows(rows), hl: hl }, { type: 'bars', label: 'value per day', values: v.slice(), hl: bh, idxLabels: v.map(function (x, k) { return 'd' + (k + 1); }) }] });
+        }
+        var best = -Infinity, bi = -1;
+        for (var k = 1; k < v.length; k++) if (v[k] - v[k - 1] > best) { best = v[k] - v[k - 1]; bi = k; }
+        var hlF = {}; hlF[bi] = 'sel';
+        frames.push({ narr: 'All rows done in <b>one pass</b>. Biggest jump: <b>d' + (bi + 1) + '</b> (+' + best + '). A self-join version would need to match every row with its predecessor — extra work and easy to get wrong when days are missing.', parts: [{ type: 'table', label: 'final', columns: cols, rows: copyRows(rows), hl: hlF }] });
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'Days since the previous order (per customer)', html: `<p>Subtract dates with <code>julianday()</code> in SQLite (<code>order_date - LAG(order_date)</code> in PostgreSQL gives an integer of days directly). asha ordered on 01-01, 01-02, 01-05, 01-08 → gaps ${H.c('b', 'NULL, 1, 3, 3')}. LEAD gives the next order date; the last order of each customer gets NULL.</p>`,
+        code: { lang: 'sql', db: 'shop', code: `SELECT customer, order_date, amount,
+       LAG(order_date) OVER w AS prev_order,
+       CAST(julianday(order_date) - julianday(LAG(order_date) OVER w) AS INTEGER) AS days_since_prev,
+       LEAD(order_date) OVER w AS next_order
+FROM orders
+WINDOW w AS (PARTITION BY customer ORDER BY order_date, id)
+ORDER BY customer, order_date;` } },
+      { title: 'Salary raise percentage per employee', html: `<p>Each salary_history row compared to the same employee's previous row. Asha: 90000 → 100000 (${H.c('g', '+11.1%')}) → 120000 (${H.c('g', '+20.0%')}). The first row of each employee is NULL because PARTITION BY emp_id isolates employees.</p>`,
+        code: { lang: 'sql', db: 'hr', code: `SELECT e.name, s.effective_date, s.salary,
+       LAG(s.salary) OVER w AS prev_salary,
+       ROUND(100.0 * (s.salary - LAG(s.salary) OVER w) / LAG(s.salary) OVER w, 1) AS raise_pct
+FROM salary_history s
+JOIN employees e ON e.id = s.emp_id
+WINDOW w AS (PARTITION BY s.emp_id ORDER BY s.effective_date)
+ORDER BY e.name, s.effective_date;` } },
+      { title: 'Default value and larger offsets', html: `<p><code>LAG(revenue, 1, 0)</code> turns the first NULL into ${H.c('g', '0')}. <code>LAG(revenue, 2)</code> looks two rows back — on South 03-03 it returns 80 (03-01). With daily data, <code>LAG(x, 7)</code> is "same day last week", <code>LAG(x, 12)</code> on monthly data is "same month last year".</p>`,
+        code: { lang: 'sql', db: 'shop', code: `SELECT region, day, revenue,
+       LAG(revenue, 1, 0) OVER w AS prev_or_zero,
+       LAG(revenue, 2)    OVER w AS two_rows_back
+FROM daily_revenue
+WHERE day <= '2024-03-04'
+WINDOW w AS (PARTITION BY region ORDER BY day)
+ORDER BY region, day;` } },
+      { title: 'Previous row is not always "yesterday"', html: `<p>North skips 03-04. A naive LAG on 03-05 compares with 03-03. This query flags rows whose previous row is ${H.c('r', 'not exactly one day earlier')} so you can decide: treat as gap (NULL) or compare anyway.</p>`,
+        code: { lang: 'sql', db: 'shop', code: `SELECT day, revenue,
+       LAG(day) OVER w AS prev_day,
+       CASE WHEN julianday(day) - julianday(LAG(day) OVER w) = 1
+            THEN revenue - LAG(revenue) OVER w END AS change_vs_yesterday   -- NULL when a day is missing
+FROM daily_revenue
+WHERE region = 'North'
+WINDOW w AS (ORDER BY day)
+ORDER BY day;` } }
+    ],
+    deepDive: `<p><b>Semantics.</b> LAG/LEAD are "navigation" (offset) functions: they read another row of the <b>partition</b> by position, ignoring any frame clause. Offsets that fall outside the partition return the default (NULL unless given). The offset must be a non-negative integer. Some engines (Oracle, BigQuery, Snowflake, SQL Server 2022) support <code>IGNORE NULLS</code> — "previous non-null value", the classic way to <b>forward-fill</b> gaps; SQLite and PostgreSQL do not, so you emulate it with a running COUNT of non-nulls as a group id, then <code>MAX() OVER (PARTITION BY grp)</code>.</p>
+<p><b>Execution.</b> After the partition sort, the operator keeps a small ring buffer of the last <i>offset</i> rows (LAG) or reads ahead <i>offset</i> rows (LEAD), so it is O(N) after sorting and O(offset) memory. The self-join alternative <code>JOIN t prev ON prev.id = t.id - 1</code> is only correct if ids are dense with no gaps — deletions break it silently. The correlated version <code>(SELECT x FROM t t2 WHERE t2.day &lt; t.day ORDER BY day DESC LIMIT 1)</code> is O(N log N) with an index and O(N²) without.</p>
+<p><b>Edge cases interviewers probe:</b> ties in the ORDER BY (two rows on the same date → LAG between them is arbitrary; add a tiebreaker or aggregate per day first); division by zero (NULLIF); integer division (multiply by 100.0); and deltas across partitions when PARTITION BY is forgotten. In time-series pipelines, LAG-based change detection ("emit a row only when status changed") is how CDC-style compaction and SCD Type 2 tables are built.</p>`,
+    aiEra: `<p><b>What AI changes:</b> "month-over-month growth" prompts produce LAG queries instantly. Review them for the three classic slips: no PARTITION BY, integer division, and previous-row-vs-previous-day.</p>
+<p><b>Use AI as a partner:</b> <code>"Here is my LAG query. Construct a dataset where it gives a wrong answer for 'compared to yesterday'"</code> — a good assistant will remove a date. Ask it to rewrite using a recursive-CTE calendar to fill gaps, then compare outputs.</p>
+<p><b>Where AI goes wrong:</b> suggesting <code>IGNORE NULLS</code> on SQLite/PostgreSQL where it does not exist; self-joining on <code>id - 1</code>; computing growth as <code>(prev - cur) / cur</code> (wrong base).</p>
+<p><b>What you must still own:</b> defining the business meaning ("previous recorded day" vs "calendar yesterday"), and explaining why LAG is O(N) after one sort while the self-join is fragile and slower.</p>`,
+    problems: [{
+      title: 'Day-over-Day Revenue Change per Region',
+      level: 'Medium', tags: ['window', 'lag', 'partition by', 'growth'], companies: ['Uber', 'DoorDash', 'Shopify'],
+      statement: `<p>Table <code>daily_revenue(day, region, revenue)</code> has at most one row per (day, region); some days may be missing. For every row return <code>region, day, revenue, prev_revenue, change, pct_change</code> where the comparison is with the <b>previous recorded day of the same region</b>. <code>pct_change</code> is rounded to 1 decimal; the first day of each region has NULLs. Order by region, day.</p>`,
+      constraints: `Up to 10<sup>6</sup> rows, up to 10<sup>3</sup> regions. Revenue ≥ 0 (could be 0 → avoid division by zero).`,
+      example: `${H.table(['region', 'day', 'revenue', 'prev', 'change', 'pct'], [['North', '03-01', '100', 'NULL', 'NULL', 'NULL'], ['North', '03-02', '120', '100', '<span class="c-g">20</span>', '<span class="c-g">20.0</span>'], ['North', '03-03', '90', '120', '<span class="c-r">-30</span>', '<span class="c-r">-25.0</span>'], ['North', '03-05', '150', '90', '60', '66.7'], ['South', '03-01', '80', '<span class="c-b">NULL</span>', 'NULL', 'NULL']])}<p>03-05 compares with 03-03 because 03-04 is missing and the question says "previous recorded day". South's first row is NULL — it must <b>not</b> look at North's last row.</p>`,
+      brute: {
+        why: `<p>Old school: for every row, run a correlated subquery that finds the latest earlier day in the same region (ORDER BY day DESC LIMIT 1), and repeat it for every column that needs the previous value. That is one index probe per row per use (or a full region scan per row without an index → O(N²/R)). It also repeats the subquery three times unless you nest it.</p>`,
+        code: { lang: 'sql', db: 'shop', code: `SELECT region, day, revenue, prev_revenue,
+       revenue - prev_revenue AS change,
+       ROUND(100.0 * (revenue - prev_revenue) / NULLIF(prev_revenue, 0), 1) AS pct_change
+FROM (
+  SELECT d.region, d.day, d.revenue,
+         (SELECT d2.revenue
+          FROM daily_revenue d2
+          WHERE d2.region = d.region AND d2.day < d.day
+          ORDER BY d2.day DESC
+          LIMIT 1) AS prev_revenue          -- re-searched for every single row
+  FROM daily_revenue d
+) t
+ORDER BY region, day;` }
+      },
+      mcq: { q: 'You forget PARTITION BY region in LAG(revenue) OVER (ORDER BY region, day). What breaks?', options: ['Nothing, ORDER BY region is enough', 'South\'s first row takes North\'s last revenue as its previous value', 'Every LAG becomes NULL', 'SQLite throws an error'], answer: 1, explain: 'Without PARTITION BY the whole table is one window. Ordering by region keeps regions together, but the row right after North 03-10 is South 03-01, so South 03-01 reads 200 as its "previous" value instead of NULL.' },
+      hints: [
+        `<p>"Previous recorded day of the same region" = previous <b>row</b> within a region ordered by day. That is exactly LAG with PARTITION BY region.</p>`,
+        `<p>Use a named window <code>WINDOW w AS (PARTITION BY region ORDER BY day)</code> so the three LAG calls share one spec.</p>`,
+        `<p>Edge cases: first row → NULL automatically; revenue 0 → <code>NULLIF(LAG(...), 0)</code>; integer division → use 100.0. Recipe: prev = LAG; change = revenue − prev; pct = ROUND(100.0 * change / NULLIF(prev, 0), 1).</p>`
+      ],
+      solution: {
+        approach: `<p>One window partitioned by region and ordered by day. LAG(revenue) fetches the previous row's revenue inside the same region. Change and percentage are simple arithmetic on it. NULLIF protects the division; the first row in each region naturally yields NULL.</p>`,
+        code: { lang: 'sql', db: 'shop', code: `SELECT region, day, revenue,
+       LAG(revenue) OVER w                    AS prev_revenue,
+       revenue - LAG(revenue) OVER w          AS change,
+       ROUND(100.0 * (revenue - LAG(revenue) OVER w)
+             / NULLIF(LAG(revenue) OVER w, 0), 1) AS pct_change
+FROM daily_revenue
+WINDOW w AS (PARTITION BY region ORDER BY day)
+ORDER BY region, day;` },
+        dry: { head: ['region', 'day', 'revenue', 'LAG', 'pct_change'], rows: [['North', '03-03', '90', '120', '100·(90−120)/120 = −25.0'], ['North', '03-05', '150', '90', '66.7'], ['North', '03-10', '200', '160', '25.0'], ['South', '03-01', '80', 'NULL (new partition)', 'NULL'], ['South', '03-04', '60', '95', '−36.8']] },
+        complexity: `<p>One sort by (region, day) — free if the primary key/index is (region, day) — then O(N) streaming with O(1) memory. The correlated subquery does an index probe per row (O(N log N)) or a scan per row (O(N²/R)).</p>`,
+        followUps: ['Compare with the same weekday last week instead (LAG 7 — what if days are missing?).', 'Return only days where revenue dropped more than 20% vs the previous day.', 'Fill missing days with 0 revenue first using a recursive CTE calendar, then compute the change.']
+      }
+    }]
+  });
+
+  /* =====================================================================
+     TOPIC 5 — Running totals and the ROWS vs RANGE default-frame trap
+     ===================================================================== */
+  topics.push({
+    title: 'Running Totals & the ROWS vs RANGE Trap',
+    analogy: `<p>Your bank statement has a <b>balance</b> column: every line shows "everything up to and including this transaction". Nobody re-adds the whole history for each line — the bank keeps a running counter and adds one transaction at a time. That is <code>SUM(amount) OVER (ORDER BY time)</code>.</p>
+<p>The trap: if two transactions have the <b>same timestamp</b>, should the first one's balance already include the second? A <b>ROWS</b> frame says "no — count physical lines one by one". A <b>RANGE</b> frame says "yes — everything with the same time arrived together". SQL's default is RANGE.</p>`,
+    explain: `<p>Once you put <code>ORDER BY</code> inside OVER, an aggregate like SUM stops meaning "whole partition" and starts meaning "from the start <b>up to the current row</b>" — a <b>running</b> (cumulative) aggregate.</p>
+<pre>SUM(amount) OVER (PARTITION BY customer ORDER BY order_date)   -- running total per customer</pre>
+<p><b>The frame.</b> Which rows feed the SUM for the current row is called the <b>window frame</b>. When you write ORDER BY but no frame, SQL silently uses:</p>
+<pre>RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW</pre>
+<p><b>RANGE</b> works on <b>values</b>: "CURRENT ROW" means "the current row <b>and all its peers</b>" (rows with the same ORDER BY value). <b>ROWS</b> works on <b>physical positions</b>: "CURRENT ROW" means exactly this one row.</p>
+${H.table(['id', 'order_date', 'amount', 'default (RANGE)', 'ROWS ... CURRENT ROW'], [
+  ['1', '2024-01-01', '50', '<span class="c-r">80</span>', '<span class="c-g">50</span>'],
+  ['2', '2024-01-01', '30', '80', '80'],
+  ['3', '2024-01-02', '20', '100', '100'],
+  ['4', '2024-01-03', '70', '<span class="c-r">210</span>', '<span class="c-g">170</span>'],
+  ['5', '2024-01-03', '40', '210', '210']
+])}
+<p>With RANGE, both 01-01 orders show 80 — the running total "jumps" a whole day at once. If the question expects a value that grows on <b>every row</b>, that is a bug. Two fixes:</p>
+<ol>
+<li>Make the order unique: <code>ORDER BY order_date, id</code> (no peers → RANGE and ROWS agree).</li>
+<li>Say ROWS explicitly: <code>ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW</code> (short form <code>ROWS UNBOUNDED PRECEDING</code>).</li>
+</ol>
+<p>Best practice: do <b>both</b> — a deterministic order and an explicit frame. Sometimes RANGE is what you want: "total revenue as of the end of each day" should give same-day rows the same value.</p>
+<p><b>Other running aggregates</b> work the same way: running COUNT (n-th order), running MAX ("best so far", all-time high), running AVG (average so far), running MIN. Add <code>PARTITION BY</code> to reset the counter per customer/account/month.</p>`,
+    clues: [
+      '"running total", "cumulative sum", "balance after each transaction", "year-to-date (YTD)" → SUM() OVER (ORDER BY ...)',
+      '"resets every month / for each customer" → add PARTITION BY month / customer',
+      '"cumulative percentage", "Pareto / 80-20", "how many items make up 80% of revenue" → running SUM / SUM() OVER ()',
+      '"the first moment the total exceeds X" → running total in CTE, then MIN(time) WHERE running &gt;= X',
+      'Duplicate timestamps in the data + "on every row" → beware the default RANGE frame; use ROWS + tiebreaker',
+      '"best so far", "all-time high", "max drawdown" → MAX() OVER (ORDER BY ... ROWS UNBOUNDED PRECEDING)'
+    ],
+    code: [
+      { lang: 'sql', db: 'shop', title: 'Default RANGE vs explicit ROWS on same-date orders', code: `SELECT id, order_date, amount,
+       SUM(amount) OVER (ORDER BY order_date)                    AS range_default,  -- peers share a value
+       SUM(amount) OVER (ORDER BY order_date
+                         ROWS BETWEEN UNBOUNDED PRECEDING
+                                  AND CURRENT ROW)               AS rows_frame,     -- grows every row
+       SUM(amount) OVER (ORDER BY order_date, id)                AS unique_order    -- no peers: same as ROWS
+FROM orders
+ORDER BY order_date, id;` },
+      { lang: 'sql', db: 'shop', title: 'Running total that resets per customer', code: `SELECT customer, order_date, amount,
+       SUM(amount) OVER (PARTITION BY customer
+                         ORDER BY order_date, id
+                         ROWS UNBOUNDED PRECEDING) AS customer_running_total,
+       ROW_NUMBER() OVER (PARTITION BY customer ORDER BY order_date, id) AS nth_order
+FROM orders
+ORDER BY customer, order_date, id;` }
+    ],
+    codeTitle: ['ROWS vs RANGE', 'Per-customer running total'],
+    viz: {
+      title: 'Frame grows row by row: ROWS vs RANGE on ties',
+      input: '01-05 10, 01-05 20, 01-06 5, 01-07 15, 01-07 5, 01-08 30',
+      inputLabel: 'Rows as "date amount", comma separated, in date order (max 12)',
+      gen: function (input) {
+        var r = items(input).map(function (it) {
+          var p = it.split(/\s+/);
+          if (p.length !== 2) throw new Error('Each item must be "date amount", e.g. "01-05 10"');
+          return { d: p[0], a: num(p[1], 'Amount must be a number, e.g. "01-05 10"') };
+        });
+        if (r.length < 3) throw new Error('Give at least 3 rows');
+        if (r.length > 12) throw new Error('Use at most 12 rows');
+        r = r.map(function (x, i) { return { d: x.d, a: x.a, i: i }; }).sort(function (x, y) { return x.d < y.d ? -1 : x.d > y.d ? 1 : x.i - y.i; });
+        var n = r.length, cols = ['date', 'amount', 'ROWS total', 'RANGE total'];
+        var rows = r.map(function (x) { return [x.d, x.a, '·', '·']; });
+        var frames = [{ narr: 'Rows sorted by date. Same-date rows are <b>peers</b>. We will compute <code>SUM(amount)</code> twice: with a <b>ROWS</b> frame (physical rows) and with the default <b>RANGE</b> frame (values, includes peers).', parts: [{ type: 'table', label: 'ORDER BY date', columns: cols, rows: copyRows(rows) }] }];
+        var run = 0;
+        for (var i = 0; i < n; i++) {
+          run += r[i].a; rows[i][2] = run;
+          var hl = span(0, i, 'win'); hl[i] = 'cur';
+          frames.push({ narr: '<b>ROWS</b> frame for row ' + (i + 1) + ': from the first row up to <b>exactly this row</b> (blue + amber). Sum = <b>' + run + '</b>.' + (i > 0 && r[i].d === r[i - 1].d ? ' Same date as the row above, but ROWS does not care — it still adds one row at a time.' : ''), parts: [{ type: 'table', label: 'ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW', columns: cols, rows: copyRows(rows), hl: hl }, { type: 'array', label: 'amounts (frame = blue range)', values: r.map(function (x) { return x.a; }), range: [0, i], ptr: (function () { var p = {}; p[i] = 'cur'; return p; })() }] });
+        }
+        for (var j = 0; j < n; j++) {
+          var last = j; while (last + 1 < n && r[last + 1].d === r[j].d) last++;
+          var tot = 0; for (var k = 0; k <= last; k++) tot += r[k].a;
+          rows[j][3] = tot;
+          var hl2 = span(0, last, 'win'); hl2[j] = 'cur';
+          var peers = last > j || (j > 0 && r[j - 1].d === r[j].d);
+          frames.push({ narr: '<b>RANGE</b> frame for row ' + (j + 1) + ' (date ' + r[j].d + '): from the start up to the <b>last row with the same date</b> (row ' + (last + 1) + '). Sum = <b>' + tot + '</b>.' + (peers ? ' <span class="c-y">Peers present</span> — the frame reaches past the current row, so RANGE ' + (tot !== rows[j][2] ? '<span class="c-r">differs from ROWS (' + rows[j][2] + ')</span>' : 'happens to equal ROWS here (last peer)') + '.' : ' No peers → same as ROWS.'), parts: [{ type: 'table', label: 'RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW (default)', columns: cols, rows: copyRows(rows), hl: hl2 }, { type: 'array', label: 'amounts (frame = blue range)', values: r.map(function (x) { return x.a; }), range: [0, last], ptr: (function () { var p = {}; p[j] = 'cur'; return p; })() }] });
+        }
+        var hlD = {}, diff = 0;
+        rows.forEach(function (row, q) { if (row[2] !== row[3]) { hlD[q] = 'bad'; diff++; } else hlD[q] = 'ok'; });
+        frames.push({ narr: 'Final comparison: <b>' + diff + '</b> row(s) (red) disagree. They are the earlier rows of a same-date group. If each row must have its own running value, use ROWS (or add a unique tiebreaker like <code>id</code> to ORDER BY).', parts: [{ type: 'table', label: 'ROWS vs RANGE', columns: cols, rows: copyRows(rows), hl: hlD }, { type: 'bars', label: 'ROWS running total', values: rows.map(function (x) { return x[2]; }) }] });
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'Cumulative % of revenue (Pareto analysis)', html: `<p>"Which customers make up 80% of revenue?" Aggregate per customer first, then a running SUM ordered by total DESC divided by the grand total. cara + asha already cover ${H.c('g', '57.0%')}; adding ben reaches 79.1%. Notice the window runs <b>on the grouped rows</b>.</p>`,
+        code: { lang: 'sql', db: 'shop', code: `SELECT customer, total,
+       SUM(total) OVER (ORDER BY total DESC, customer ROWS UNBOUNDED PRECEDING) AS running,
+       ROUND(100.0 * SUM(total) OVER (ORDER BY total DESC, customer ROWS UNBOUNDED PRECEDING)
+             / SUM(total) OVER (), 1) AS cum_pct
+FROM (SELECT customer, SUM(amount) AS total FROM orders GROUP BY customer)
+ORDER BY total DESC;` } },
+      { title: 'Running MAX, COUNT and AVG', html: `<p>Any aggregate can run. "Best order so far" stays at 50 until order 4 (${H.c('g', '70')}) and then 9 (${H.c('g', '90')}). Running COUNT is the order number, running AVG is the average order value so far — a classic product-analytics column.</p>`,
+        code: { lang: 'sql', db: 'shop', code: `SELECT id, order_date, amount,
+       MAX(amount)          OVER w AS best_so_far,
+       COUNT(*)             OVER w AS orders_so_far,
+       ROUND(AVG(amount)    OVER w, 1) AS avg_so_far
+FROM orders
+WINDOW w AS (ORDER BY order_date, id ROWS UNBOUNDED PRECEDING)
+ORDER BY order_date, id;` } },
+      { title: 'ORDER BY changes the meaning of SUM', html: `<p>Same function, same partition. Without ORDER BY the frame is the ${H.c('b', 'whole partition')} (asha's total 115 on every row). With ORDER BY it becomes ${H.c('g', 'running')}: 50, 70, 80, 115. Many people are surprised that adding ORDER BY changes the numbers — now you know why: it changes the default frame.</p>`,
+        code: { lang: 'sql', db: 'shop', code: `SELECT customer, order_date, amount,
+       SUM(amount) OVER (PARTITION BY customer)                       AS whole_partition,
+       SUM(amount) OVER (PARTITION BY customer ORDER BY order_date)   AS running
+FROM orders
+WHERE customer IN ('asha', 'ben')
+ORDER BY customer, order_date;` } },
+      { title: 'Old school: running total with a correlated subquery', html: `<p>Every row re-adds all earlier rows: row 10 sums 10 rows, row 1,000,000 sums a million. Total work ≈ N²/2 → ${H.c('r', '5 × 10¹¹ additions')} for a million rows, versus ${H.c('g', 'N additions')} for the window version. The tiebreaker condition <code>(same date AND id &lt;=)</code> is what ROWS + id does for free.</p>`,
+        code: { lang: 'sql', db: 'shop', code: `SELECT o.id, o.order_date, o.amount,
+       (SELECT SUM(o2.amount)
+        FROM orders o2
+        WHERE o2.order_date < o.order_date
+           OR (o2.order_date = o.order_date AND o2.id <= o.id)) AS running_total
+FROM orders o
+ORDER BY o.order_date, o.id;` } }
+    ],
+    deepDive: `<p><b>The default-frame rule, precisely.</b> (1) No ORDER BY in OVER → frame = entire partition. (2) ORDER BY but no frame → <code>RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW</code>, where CURRENT ROW extends to the last peer. This is the SQL standard and SQLite, PostgreSQL, MySQL 8, SQL Server and Oracle all follow it. SQL Server additionally implements RANGE with an on-disk spool, so <code>ROWS</code> can be dramatically faster there — another reason to write ROWS explicitly.</p>
+<p><b>How engines compute running aggregates.</b> For a frame starting at UNBOUNDED PRECEDING the operator never removes rows from the frame, so it keeps one accumulator and adds each new row: O(1) per row. For sliding frames (next topic) SUM/COUNT/AVG use an "inverse transition" (subtract the row leaving the frame) while MIN/MAX need a different structure (SQLite and PostgreSQL may recompute or use a segment-tree-like approach). Either way, after the O(N log N) sort the pass is near-linear.</p>
+<p><b>Numeric pitfalls.</b> SUM of INTEGER in SQLite overflows to an error beyond 2<sup>63</sup>; AVG returns REAL. Running totals of floating-point money drift — store cents as integers or DECIMAL in PostgreSQL. In PostgreSQL <code>SUM(int)</code> returns bigint and <code>SUM(bigint)</code> returns numeric, so overflow is rare there.</p>
+<p><b>Ties are a data-quality smell.</b> If two events can share a timestamp, the "correct" running order is undefined until the business tells you a tiebreaker (event id, ingestion sequence). Surfacing this question in an interview earns points.</p>`,
+    aiEra: `<p><b>What AI changes:</b> AI writes <code>SUM(x) OVER (ORDER BY t)</code> instantly — and almost always leaves the frame implicit. On data with duplicate timestamps this produces the RANGE "jump", which is hard to spot in a dashboard because the final total is still correct.</p>
+<p><b>Use AI as a partner:</b> ask <code>"Does this running total behave differently with ROWS vs RANGE on my data? Show a 5-row example with a duplicate timestamp."</code> Ask it to add an assertion query: <code>SELECT COUNT(*) FROM (...) WHERE running &lt;&gt; expected</code>.</p>
+<p><b>Where AI goes wrong:</b> omitting PARTITION BY so totals bleed across accounts; ordering by a non-unique column; proposing a correlated subquery "for clarity" on large tables; in SQL Server, using RANGE and causing tempdb spills.</p>
+<p><b>What you must still own:</b> knowing the default frame by heart, deciding ROWS vs RANGE from the business meaning, and adding a deterministic tiebreaker.</p>`,
+    problems: [{
+      title: 'Order-by-Order Cumulative Revenue (Same-Day Orders)',
+      level: 'Medium', tags: ['window', 'running total', 'frames', 'rows vs range'], companies: ['Stripe', 'Amazon', 'Square'],
+      statement: `<p>Table <code>orders(id, customer, order_date, amount)</code>. Finance wants a column <code>cumulative_revenue</code> that shows the total revenue of all orders processed <b>up to and including this order</b>, where orders are processed by <code>order_date</code> and, within the same date, by <code>id</code>. Every row must show its own value (it must change on every order with a positive amount). Return <code>id, order_date, amount, cumulative_revenue</code> ordered by order_date, id.</p>`,
+      constraints: `Up to 10<sup>7</sup> orders; many orders share a date; ids are unique.`,
+      example: `${H.table(['id', 'order_date', 'amount', 'wrong (default RANGE)', 'cumulative_revenue'], [['1', '2024-01-01', '50', '<span class="c-r">80</span>', '<span class="c-g">50</span>'], ['2', '2024-01-01', '30', '80', '80'], ['3', '2024-01-02', '20', '100', '100'], ['4', '2024-01-03', '70', '<span class="c-r">210</span>', '<span class="c-g">170</span>']])}<p>Order 1's cumulative value must not include order 2 yet, even though they share a date: order 2 is processed after it (higher id).</p>`,
+      brute: {
+        why: `<p>Brute force: a self-join pairing each order with every order processed before or at it, then GROUP BY and SUM. Row k joins with k rows → N(N+1)/2 joined pairs. For 10<sup>7</sup> orders that is 5 × 10<sup>13</sup> rows to build — it will never finish. The window version adds one number per row.</p>`,
+        code: { lang: 'sql', db: 'shop', code: `SELECT o.id, o.order_date, o.amount,
+       SUM(p.amount) AS cumulative_revenue
+FROM orders o
+JOIN orders p                                  -- p = every order processed up to o
+  ON p.order_date < o.order_date
+  OR (p.order_date = o.order_date AND p.id <= o.id)
+GROUP BY o.id, o.order_date, o.amount
+ORDER BY o.order_date, o.id;` }
+      },
+      mcq: { q: 'You write SUM(amount) OVER (ORDER BY order_date). Orders 1 and 2 share a date. What does order 1 show?', options: ['Only its own amount', 'Its amount plus order 2\'s amount (default RANGE includes peers)', 'NULL', 'An error: ambiguous order'], answer: 1, explain: 'With ORDER BY and no frame, the default is RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW, and CURRENT ROW includes all peers (same order_date). So order 1 already includes order 2.' },
+      hints: [
+        `<p>"Processed by date, then by id" — the ORDER BY inside OVER must contain <b>both</b> columns so there are no ties.</p>`,
+        `<p>Even with a unique order, write the frame explicitly: <code>ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW</code>. It documents intent and is faster on some engines.</p>`,
+        `<p>Recipe: SELECT id, order_date, amount, SUM(amount) OVER (ORDER BY order_date, id ROWS UNBOUNDED PRECEDING) ... ORDER BY order_date, id. No PARTITION BY — it is one company-wide total.</p>`
+      ],
+      solution: {
+        approach: `<p>A running SUM over the whole table ordered by the processing order (order_date, id). The unique tiebreaker removes peers, and the explicit ROWS frame guarantees "up to this physical row" even if someone later removes the tiebreaker.</p>`,
+        code: { lang: 'sql', db: 'shop', code: `SELECT id, order_date, amount,
+       SUM(amount) OVER (
+         ORDER BY order_date, id
+         ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+       ) AS cumulative_revenue
+FROM orders
+ORDER BY order_date, id;` },
+        dry: { head: ['id', 'order_date', 'amount', 'accumulator'], rows: [['1', '2024-01-01', '50', '0 + 50 = 50'], ['2', '2024-01-01', '30', '50 + 30 = 80'], ['3', '2024-01-02', '20', '100'], ['4', '2024-01-03', '70', '170'], ['10', '2024-01-08', '35', '430']] },
+        complexity: `<p>O(N log N) sort (O(N) with an index on (order_date, id)) + O(N) single accumulator pass. The self-join is O(N²) rows.</p>`,
+        followUps: ['Reset the cumulative revenue at the start of every month.', 'Find the first order at which cumulative revenue reached 300.', 'What changes if you actually want "revenue as of end of day" for each row?']
+      }
+    }]
+  });
+
   registerModule({
     id: 'sql06',
     title: 'Window Functions',
