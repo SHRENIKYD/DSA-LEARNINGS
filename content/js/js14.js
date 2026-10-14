@@ -2355,7 +2355,7 @@ function memoizeLRU(fn, capacity = 100) {
 let computeCount = 0;
 const slowSquare = memoizeLRU((n) => { computeCount++; return n * n; }, 2);
 [2, 3, 2, 4, 3, 2].forEach((n) => slowSquare(n));
-console.log('computed', computeCount, 'times for 6 calls'); // computed 4 times
+console.log('computed', computeCount, 'times for 6 calls'); // computed 5 times (only the 3rd call, a repeat of 2, was a hit)
 ` } },
       { title: 'LRU + TTL: entries also expire', html: `<p>Real caches (API responses, auth tokens) also have a <b>time-to-live</b>. Store <code>expiresAt</code> with the value and delete lazily on <code>get</code> — no background timer needed.</p>`, code: { lang: 'js', run: true, code: `
 class TTLLRU {
@@ -2399,7 +2399,7 @@ function hitRate(capacity, accesses) {
 let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647; // deterministic PRNG
 const skewed = Array.from({ length: 5000 }, () => Math.floor(100 * rnd() ** 4));  // few hot keys
 const uniform = Array.from({ length: 5000 }, () => Math.floor(100 * rnd()));
-console.log('skewed :', hitRate(10, skewed));   // high
+console.log('skewed :', hitRate(10, skewed));   // ~44% (hot keys stay cached)
 console.log('uniform:', hitRate(10, uniform));  // ~10%
 ` } }
     ],
@@ -2467,6 +2467,348 @@ console.log(out); // [1, -1, -1, 3, 4]
         dry: { head: ['op', 'list HEAD → TAIL', 'evicted', 'returns'], rows: [['put(1,1)', '1', '—', '—'], ['put(2,2)', '2, 1', '—', '—'], ['get(1)', '1, 2', '—', '1'], ['put(3,3)', '3, 1', '2', '—'], ['get(2)', '3, 1', '—', '-1'], ['put(4,4)', '4, 3', '1', '—']] },
         complexity: `<p>get and put: O(1) average (one Map op + constant pointer updates). Space: O(capacity).</p>`,
         followUps: ['Add TTL expiry.', 'Implement LFU cache (LeetCode 460).', 'Make capacity count bytes instead of entries.']
+      }
+    }]
+  });
+
+  /* ================= TOPIC 10: tricky output question bank ================= */
+  function elParse(input) {
+    var list = cmds(input);
+    if (!list.length) throw new Error('Give commands like: log A; timeout B; then C; await D>E');
+    if (list.length > 9) throw new Error('Use at most 9 commands');
+    return list.map(function (c) {
+      var m = /^(log|timeout|then|micro|await)\s+([A-Za-z0-9]{1,6})(?:>([A-Za-z0-9]{1,6}))?$/.exec(c);
+      if (!m) throw new Error('Bad command "' + c + '". Use log X | timeout X | timeout X>Y | then X | then X>Y | micro X | await X>Y');
+      if (m[1] === 'await' && !m[3]) throw new Error('await needs two labels: await X>Y (X before the await, Y after)');
+      if ((m[1] === 'log' || m[1] === 'micro') && m[3]) throw new Error(m[1] + ' takes one label');
+      return { k: m[1], a: m[2], b: m[3] };
+    });
+  }
+  function elLine(c) {
+    var L = function (x) { return "console.log('" + x + "')"; };
+    if (c.k === 'log') return L(c.a) + ';';
+    if (c.k === 'micro') return 'queueMicrotask(() => ' + L(c.a) + ');';
+    if (c.k === 'then') return 'Promise.resolve().then(() => ' + L(c.a) + ')' + (c.b ? '.then(() => ' + L(c.b) + ')' : '') + ';';
+    if (c.k === 'timeout') return c.b ? 'setTimeout(() => { ' + L(c.a) + '; Promise.resolve().then(() => ' + L(c.b) + '); });' : 'setTimeout(() => ' + L(c.a) + ');';
+    return '(async () => { ' + L(c.a) + '; await null; ' + L(c.b) + '; })();';
+  }
+
+  topics.push({
+    title: 'Tricky Output Questions: The Big Bank',
+    analogy: `<p>Output questions are like <b>reading a recipe and predicting the dish</b> without cooking it. Most people read top to bottom and guess. A chef knows the hidden rules: the oven (timers) only gets attention after the stove (current code) is free; the sauce (microtasks) is always finished before the next dish goes in the oven; "a pinch" (<code>==</code>) means something odd in this kitchen.</p>
+<p>The trick is not memorising 500 puzzles — it is knowing the <b>~10 rules</b> that generate all of them: event loop order, hoisting/TDZ, closures, <code>this</code>, coercion, reference vs value, and a few famous quirks.</p>`,
+    explain: `<p>🟢 <b>How to solve any output question</b> — a calm 4-step method:</p>
+<ol><li><b>Classify</b> the puzzle: async order? scope/hoisting? <code>this</code>? coercion? reference? Each has its own rule set.</li>
+<li><b>Run the synchronous code first</b>, line by line, writing the output and the state of variables.</li>
+<li><b>Track two queues</b>: microtasks (promise callbacks, <code>await</code> continuations, <code>queueMicrotask</code>) and macrotasks (<code>setTimeout</code>, <code>setInterval</code>, I/O, UI events).</li>
+<li><b>Event loop:</b> when the stack is empty, drain <b>all</b> microtasks (including ones added while draining), then take <b>one</b> macrotask, then drain microtasks again… repeat.</li></ol>
+${H.table(['Rule family', 'The rule in one line', 'Classic trap'], [['Event loop', 'sync → all microtasks → one macrotask → all microtasks …', '<code>setTimeout(f, 0)</code> runs <b>after</b> <code>Promise.then</code>'], ['async/await', 'code before the first <code>await</code> runs synchronously; the rest is a microtask', '"a1 start" prints before "script end"'], ['Hoisting', '<code>var</code> → undefined; function declarations → full function; <code>let/const/class</code> → TDZ', '<code>typeof x</code> throws for a let in its TDZ'], ['Closures in loops', '<code>var</code>: one shared binding; <code>let</code>: a new binding per iteration', '3 3 3 vs 0 1 2'], ['this', 'decided by the call site; arrows inherit', 'detached method → undefined (strict)'], ['Coercion', '<code>+</code> with a string concatenates; other math converts to number; objects → primitive via valueOf/toString', '<code>[] + {}</code> → "[object Object]"'], ['Equality', '<code>==</code> converts; <code>===</code> does not; NaN ≠ NaN', '<code>[] == ![]</code> → true'], ['References', 'objects are shared by reference; object keys are strings/symbols', '<code>a[obj1]</code> and <code>a[obj2]</code> are the same key'], ['Quirks', '<code>typeof null</code>, sort() is lexicographic, <code>map(parseInt)</code>, floats', '<code>[10,1,2].sort()</code> → [1,10,2]']])}
+<p>🔵 <b>The event loop in one picture:</b></p>
+${H.table(['Phase', 'Runs', 'Example'], [['1. Script (a macrotask itself)', 'all synchronous lines', '<code>console.log</code>, the executor of <code>new Promise</code>, code before <code>await</code>'], ['2. Microtask checkpoint', 'every queued microtask, until the queue is empty', '<code>.then</code>, <code>await</code> continuation, <code>queueMicrotask</code>, (Node: <code>process.nextTick</code> even earlier)'], ['3. Next macrotask', 'ONE task', 'a <code>setTimeout</code> callback'], ['4. Microtasks again', 'drain', 'promises created inside that timeout'], ['(browser) render', 'maybe paint between tasks', '<code>requestAnimationFrame</code> before paint']])}
+<p>Use the visualizer below with your own mini-programs, then work through the bank in the examples — <b>predict first, then press Run</b>.</p>`,
+    clues: ['"What will be logged / in which order?" with setTimeout + Promise + async → event-loop rule: sync, microtasks, one macrotask', '"Explain why this prints 3 3 3" → var shared binding + closures', '"What is the output of typeof / == / + with mixed types?" → coercion rules (ToPrimitive, ToNumber)', '"Why is this undefined / TypeError: Cannot read properties of undefined?" → this binding lost', '"Accessing a variable before declaration" → hoisting vs TDZ', '"Object used as a key" / "array length after delete" → reference and property-key rules'],
+    code: [{ lang: 'js', run: true, title: 'The 8 most-asked output puzzles in one file (predict, then run)', code: `
+// 1. Event loop: sync -> microtasks -> macrotasks
+console.log('A');
+setTimeout(() => console.log('B'), 0);
+Promise.resolve().then(() => console.log('C'));
+(async () => { console.log('D'); await null; console.log('E'); })();
+console.log('F');
+// Answer: A D F C E B
+
+setTimeout(() => {
+  console.log('---');
+  // 2. Closures in loops
+  for (var i = 0; i < 3; i++) setTimeout(() => console.log('var', i));   // var 3 x3
+  for (let j = 0; j < 3; j++) setTimeout(() => console.log('let', j));   // let 0 1 2
+
+  // 3. Coercion
+  console.log([] + [], '|', [] + {}, '|', 1 + '2', '|', '3' - 1, '|', true + true); // '' | [object Object] | 12 | 2 | 2
+  console.log([] == ![], null == 0, null >= 0, NaN === NaN);                       // true false true false
+
+  // 4. Quirks
+  console.log(['1', '2', '3'].map(parseInt), [10, 1, 2].sort(), typeof null);    // [1,NaN,NaN] [1,10,2] object
+
+  // 5. Object keys are strings
+  const a = {}, k1 = { id: 1 }, k2 = { id: 2 };
+  a[k1] = 'first'; a[k2] = 'second';
+  console.log(a[k1]);                                                             // second
+
+  // 6. finally overrides return
+  const f = () => { try { return 'try'; } finally { return 'finally'; } };
+  console.log(f());                                                               // finally
+
+  // 7. Hoisting
+  console.log(typeof hoisted, typeof notYet);                                     // function undefined
+  function hoisted() {}
+  var notYet = () => {};
+
+  // 8. this in a detached method (strict mode inside class bodies)
+  class Counter { constructor() { this.n = 0; } inc() { return this ? ++this.n : 'this is undefined'; } }
+  const c = new Counter(), inc = c.inc;
+  console.log(c.inc(), inc());                                                    // 1 'this is undefined'
+}, 5);
+` }],
+    codeTitle: ['Output puzzle sampler'],
+    viz: [{
+      title: 'Event loop simulator: write a mini program, watch the queues',
+      input: 'log A; timeout B>C; then D>E; await F>G; micro H; log I',
+      inputLabel: 'log X | timeout X | timeout X>Y | then X | then X>Y | micro X | await X>Y  (separate with ;)',
+      gen: function (input) {
+        var prog = elParse(input);
+        var code = prog.map(elLine).join('\n');
+        var micro = [], macro = [], out = [], f = [];
+        function parts(lineHl, stack, mhl, Mhl) {
+          var h = {}; if (lineHl) h[lineHl] = 'cur';
+          return [cp(code, h, 'Program'), { type: 'stack', label: 'Call stack', items: stack }, { type: 'queue', label: 'Microtask queue (drained completely)', items: micro.map(function (m) { return m.label; }), hl: mhl || {} }, { type: 'queue', label: 'Macrotask queue (one per turn)', items: macro.map(function (m) { return m.label; }), hl: Mhl || {} }, outBox(out)];
+        }
+        f.push(fr('The whole script is the first macrotask. We run it <b>top to bottom</b> first; callbacks only get queued.', parts(0, ['script'])));
+        prog.forEach(function (c, i) {
+          var ln = i + 1, msg;
+          if (c.k === 'log') { out.push(c.a); msg = 'Synchronous <code>console.log</code> → prints <b>' + c.a + '</b> right now.'; }
+          else if (c.k === 'timeout') { macro.push({ label: 'timer→' + c.a + (c.b ? '+then ' + c.b : ''), a: c.a, b: c.b }); msg = '<code>setTimeout</code> hands the callback to the timer system; when 0 ms has passed it goes into the <b>macrotask</b> queue. It cannot run before the stack is empty <i>and</i> all microtasks are done.'; }
+          else if (c.k === 'then') { micro.push({ label: 'then→' + c.a, a: c.a, b: c.b }); msg = '<code>Promise.resolve()</code> is already fulfilled, so its <code>.then</code> callback is queued as a <b>microtask</b> immediately.' + (c.b ? ' The second <code>.then</code> waits — it is queued only after the first one runs.' : ''); }
+          else if (c.k === 'micro') { micro.push({ label: 'micro→' + c.a, a: c.a }); msg = '<code>queueMicrotask</code> puts the callback straight into the <b>microtask</b> queue.'; }
+          else { out.push(c.a); micro.push({ label: 'resume→' + c.b, a: c.b }); msg = 'The async function runs <b>synchronously</b> until <code>await</code>: prints <b>' + c.a + '</b>. <code>await null</code> pauses it; the rest of the function (print ' + c.b + ') is queued as a <b>microtask</b>.'; }
+          f.push(fr('Line ' + ln + ': ' + msg, parts(ln, ['script', 'line ' + ln], c.k === 'then' || c.k === 'micro' || c.k === 'await' ? (function () { var h = {}; h[micro.length - 1] = 'ok'; return h; })() : {}, c.k === 'timeout' ? (function () { var h = {}; h[macro.length - 1] = 'ok'; return h; })() : {})));
+        });
+        f.push(fr('Script finished → the call stack is empty. Now the event loop runs the <b>microtask checkpoint</b>: every microtask, oldest first, including ones added during draining.', parts(0, [])));
+        var guard = 0;
+        while ((micro.length || macro.length) && guard++ < 40) {
+          while (micro.length && guard++ < 40) {
+            var m = micro.shift();
+            out.push(m.a);
+            var extra = '';
+            if (m.b) { micro.push({ label: 'then→' + m.b, a: m.b }); extra = ' Its promise now fulfills, so the chained <code>.then</code> (print ' + m.b + ') is queued at the <b>back</b> of the microtask queue.'; }
+            f.push(fr('Microtask: run <b>' + esc(m.label) + '</b> → prints <b>' + m.a + '</b>.' + extra, parts(0, ['microtask: ' + m.label], m.b ? (function () { var h = {}; h[micro.length - 1] = 'ok'; return h; })() : {})));
+          }
+          if (macro.length) {
+            var t = macro.shift();
+            out.push(t.a);
+            var ex2 = '';
+            if (t.b) { micro.push({ label: 'then→' + t.b, a: t.b }); ex2 = ' Inside it, a promise callback (print ' + t.b + ') is queued — it will run <b>before</b> the next timer, because microtasks drain after every macrotask.'; }
+            f.push(fr('Microtask queue empty → take <b>one</b> macrotask: <b>' + esc(t.label) + '</b> → prints <b>' + t.a + '</b>.' + ex2, parts(0, ['timer callback'], t.b ? { 0: 'ok' } : {})));
+          }
+        }
+        f.push(fr('Both queues are empty. Final output: <b>' + out.join(' ') + '</b>. Try moving lines around or adding <code>then X&gt;Y</code> chains to see how far a chain "jumps the queue".', [cp(code, {}, 'Program'), outBox(out)]));
+        return f;
+      }
+    }, {
+      title: 'Closure in a loop: var (one box) vs let (a box per turn)',
+      input: 'var 3',
+      inputLabel: 'var or let, and the loop count (1..5)',
+      gen: function (input) {
+        var m = /^\s*(var|let)\s+(\d)\s*$/.exec(String(input));
+        if (!m) throw new Error('Format: var 3  or  let 3');
+        var kind = m[1], n = Number(m[2]);
+        if (n < 1 || n > 5) throw new Error('Loop count must be 1..5');
+        var src = 'for (' + kind + ' i = 0; i < ' + n + '; i++) {\n  setTimeout(() => console.log(i));\n}\n// loop is done, timers run later';
+        var f = [], env = [], q = [];
+        f.push(fr('<code>' + kind + '</code> loop. ' + (kind === 'var' ? '<code>var</code> is function-scoped: there is <b>one</b> variable <code>i</code> for the whole loop.' : '<code>let</code> in a for-loop header creates a <b>fresh binding of i for every iteration</b>, copied from the previous one.'), [cp(src, { 1: 'cur' }), { type: 'map', label: 'Variable boxes (environments)', entries: kind === 'var' ? [['i (shared)', 0]] : [['i (iter 0)', 0]] }]));
+        for (var i = 0; i < n; i++) {
+          if (kind === 'var') env = [['i (shared)', i]]; else env.push(['i (iter ' + i + ')', i]);
+          q.push('() => log(' + (kind === 'var' ? 'shared i' : 'i of iter ' + i) + ')');
+          f.push(fr('Iteration ' + i + ': schedule a timer whose arrow function <b>closes over</b> ' + (kind === 'var' ? 'the <b>shared</b> i (it remembers the box, not the value!).' : 'this iteration\'s own i = ' + i + '.'), [cp(src, { 2: 'cur' }), { type: 'map', label: 'Variable boxes (environments)', entries: env.map(function (e) { return e.slice(); }), hl: (function () { var h = {}; h[env[env.length - 1][0]] = 'ok'; return h; })() }, { type: 'queue', label: 'Macrotask queue', items: q.slice() }]));
+        }
+        if (kind === 'var') env = [['i (shared)', n]];
+        f.push(fr('The loop ends when i becomes ' + n + '. ' + (kind === 'var' ? 'The shared box now holds <b>' + n + '</b>.' : 'Each iteration box still holds its own value.'), [cp(src, { 4: 'cur' }), { type: 'map', label: 'Variable boxes (environments)', entries: env.map(function (e) { return e.slice(); }), hl: kind === 'var' ? { 'i (shared)': 'bad' } : {} }, { type: 'queue', label: 'Macrotask queue', items: q.slice() }]));
+        var outs = [];
+        for (var k = 0; k < n; k++) {
+          outs.push(kind === 'var' ? n : k);
+          f.push(fr('Timer ' + k + ' runs and reads ' + (kind === 'var' ? 'the shared i → <b>' + n + '</b>' : 'its own i → <b>' + k + '</b>') + '.', [{ type: 'queue', label: 'Macrotask queue', items: q.slice(k + 1) }, outBox(outs.map(String))]));
+        }
+        f.push(fr(kind === 'var' ? 'Output: <b>' + outs.join(' ') + '</b>. Fixes: use <code>let</code>, or an IIFE <code>(function (j) { setTimeout(() =&gt; log(j)); })(i)</code>, or <code>setTimeout(log, 0, i)</code> (extra args).' : 'Output: <b>' + outs.join(' ') + '</b>. Each closure captured a different box. Try "var ' + n + '" to compare.', [outBox(outs.map(String))]));
+        return f;
+      }
+    }],
+    examples: [
+      { title: 'Q1 — async/await vs then vs setTimeout (the most asked one)', html: `<p><b>Predict:</b> the order of 8 lines. <b>Rules used:</b> async function body runs synchronously until <code>await</code>; the executor of <code>new Promise</code> is synchronous; the <code>await</code> continuation and <code>.then</code> are microtasks queued in order; timers last.<br><b>Answer:</b> script start, a1 start, a2, p1, script end, a1 end, p2, timeout.</p>`, code: { lang: 'js', run: true, code: `
+async function a1() { console.log('a1 start'); await a2(); console.log('a1 end'); }
+async function a2() { console.log('a2'); }
+console.log('script start');
+setTimeout(() => console.log('timeout'), 0);
+a1();
+new Promise((resolve) => { console.log('p1'); resolve(); }).then(() => console.log('p2'));
+console.log('script end');
+` } },
+      { title: 'Q2 — microtasks scheduled inside a timer', html: `<p><b>Predict.</b> After each macrotask the microtask queue is drained, so <b>T1-then</b> runs before <b>T2</b> even though T2 was queued earlier.<br><b>Answer:</b> sync, P, T1, T1-then, T2.</p>`, code: { lang: 'js', run: true, code: `
+setTimeout(() => {
+  console.log('T1');
+  Promise.resolve().then(() => console.log('T1-then'));
+}, 0);
+setTimeout(() => console.log('T2'), 0);
+Promise.resolve().then(() => console.log('P'));
+console.log('sync');
+` } },
+      { title: 'Q3 — then chains interleave', html: `<p><b>Predict.</b> Two chains started together alternate, because each <code>.then</code> only queues the next step when it runs. <b>Answer:</b> a1 b1 a2 b2 a3.</p>`, code: { lang: 'js', run: true, code: `
+Promise.resolve().then(() => console.log('a1')).then(() => console.log('a2')).then(() => console.log('a3'));
+Promise.resolve().then(() => console.log('b1')).then(() => console.log('b2'));
+` } },
+      { title: 'Q4 — hoisting and the TDZ', html: `<p><b>Predict.</b> <code>var</code> is hoisted as <code>undefined</code>; a function declaration is hoisted completely; <code>let</code> exists but is in the <b>temporal dead zone</b> until its line, so even <code>typeof</code> throws.<br><b>Answer:</b> undefined, hi, ReferenceError.</p>`, code: { lang: 'js', run: true, code: `
+console.log(v);            // undefined
+console.log(sayHi());      // hi
+try { console.log(typeof t); } catch (e) { console.log(e.name); } // ReferenceError (TDZ)
+var v = 1;
+function sayHi() { return 'hi'; }
+let t = 2;
+` } },
+      { title: 'Q5 — shadowing + TDZ in a block', html: `<p><b>Predict.</b> Inside the block, <code>let x</code> is hoisted to the top of the <b>block</b> and shadows the outer x, so the first log hits the TDZ. Many people answer "1".<br><b>Answer:</b> ReferenceError.</p>`, code: { lang: 'js', run: true, code: `
+let x = 1;
+{
+  try { console.log(x); } catch (e) { console.log(e.name + ': ' + e.message); }
+  let x = 2;
+}
+` } },
+      { title: 'Q6 — this: method, detached, arrow, nested function', html: `<p><b>Predict.</b> <code>obj.regular()</code> → this = obj. Detached call in strict code → undefined. Arrow inside a method inherits the method's this. A regular nested function gets its own (undefined) this.<br><b>Answer:</b> obj, undefined, obj, undefined.</p>`, code: { lang: 'js', run: true, code: `
+'use strict';
+const obj = {
+  name: 'obj',
+  regular() { return this && this.name; },
+  viaArrow() { return [1].map(() => this.name)[0]; },
+  viaFunction() { return [1].map(function () { return this && this.name; })[0]; }
+};
+const detached = obj.regular;
+console.log(obj.regular(), detached(), obj.viaArrow(), obj.viaFunction());
+` } },
+      { title: 'Q7 — coercion with + and ==', html: `<p><b>Rules:</b> <code>+</code> converts both sides to primitives; if either is a string → concatenate, else add numbers. <code>[]</code> → "" ; <code>{}</code> → "[object Object]". For <code>[] == ![]</code>: <code>![]</code> is false → compare <code>[] == false</code> → "" == 0 → 0 == 0 → true. <code>null == 0</code> is false (null only == undefined) but <code>null &gt;= 0</code> converts null to 0 → true.</p>`, code: { lang: 'js', run: true, code: `
+console.log([] + []);          // ''
+console.log([] + {});          // '[object Object]'
+console.log(1 + '2', '3' - 1); // '12' 2
+console.log('5' * '2', '5' + 2 - 1); // 10 51
+console.log(true + 1, [2] * [3]);    // 2 6
+console.log([] == ![], null == 0, null >= 0, undefined == null, NaN == NaN); // true false true true false
+` } },
+      { title: 'Q8 — map(parseInt), sort() and other built-in quirks', html: `<p><code>map</code> passes (value, index); <code>parseInt('2', 1)</code> → NaN (radix 1 invalid), <code>parseInt('3', 2)</code> → NaN (3 is not a binary digit). <code>sort()</code> without a comparator sorts <b>as strings</b>. <code>typeof null</code> is "object" (a 1995 bug kept for compatibility).</p>`, code: { lang: 'js', run: true, code: `
+console.log(['1', '2', '3'].map(parseInt));           // [1, NaN, NaN]
+console.log(['1', '2', '3'].map(Number));             // [1, 2, 3]
+console.log([10, 1, 2, 25].sort());                   // [1, 10, 2, 25]
+console.log([10, 1, 2, 25].sort((a, b) => a - b));    // [1, 2, 10, 25]
+console.log(typeof null, typeof NaN, typeof typeof 1); // object number string
+console.log(0.1 + 0.2 === 0.3, Math.abs(0.1 + 0.2 - 0.3) < Number.EPSILON); // false true
+console.log([NaN].includes(NaN), [NaN].indexOf(NaN)); // true -1
+` } },
+      { title: 'Q9 — objects as keys and shared references', html: `<p>Plain-object keys are converted to <b>strings</b>: both objects become "[object Object]", so the second write overwrites the first. Also, assigning an object copies the <b>reference</b>; reassigning a parameter does not affect the caller, but mutating it does.</p>`, code: { lang: 'js', run: true, code: `
+const a = {}, b = { key: 'b' }, c = { key: 'c' };
+a[b] = 123; a[c] = 456;
+console.log(a[b], Object.keys(a));   // 456 ['[object Object]']
+
+function mutate(o) { o.x = 1; }
+function reassign(o) { o = { x: 2 }; }
+const obj = {};
+mutate(obj); reassign(obj);
+console.log(obj);                     // { x: 1 }
+` } },
+      { title: 'Q10 — closures sharing state', html: `<p>Each call to <code>makeCounter</code> creates a <b>new</b> scope; functions created in the same call share it. <b>Answer:</b> 1 2 1 3.</p>`, code: { lang: 'js', run: true, code: `
+function makeCounter() {
+  let n = 0;
+  return { inc: () => ++n, get: () => n };
+}
+const c1 = makeCounter(), c2 = makeCounter();
+console.log(c1.inc(), c1.inc(), c2.inc(), c1.inc()); // 1 2 1 3
+` } },
+      { title: 'Q11 — promise error flow and finally', html: `<p><code>throw</code> inside <code>then</code> rejects the next promise; <code>catch</code> returns a value → the chain is fulfilled again; <code>finally</code>'s return value is <b>ignored</b> (it passes the previous value through) unless it throws.<br><b>Answer:</b> 20.</p>`, code: { lang: 'js', run: true, code: `
+Promise.resolve(1)
+  .then((x) => { throw x + 1; })      // rejects with 2
+  .then(() => console.log('skipped'))  // skipped: chain is rejected
+  .catch((x) => x * 10)                // recovers with 20
+  .finally(() => 99)                   // ignored
+  .then((v) => console.log(v));        // 20
+` } },
+      { title: 'Q12 — try/finally, generators and array length', html: `<p><code>finally</code>'s return overrides the try's return. Spreading a generator ignores its <code>return</code> value. Writing index 10 sets length to 11; <code>delete</code> leaves a hole and does not change length.</p>`, code: { lang: 'js', run: true, code: `
+function f() { try { return 'try'; } finally { return 'finally'; } }
+function* g() { yield 1; yield 2; return 3; }
+const arr = [1, 2, 3];
+arr[10] = 4;
+console.log(f(), [...g()], arr.length); // finally [1, 2] 11
+delete arr[0];
+console.log(arr.length, arr[0], 0 in arr); // 11 undefined false
+arr.length = 2;
+console.log(arr);                          // [ <1 empty item>, 2 ]
+` } },
+      { title: 'Q13 — prototype shadowing and class fields', html: `<p>Reading looks up the prototype chain; <b>writing</b> creates an own property that shadows the prototype one. Arrow-function class fields are per-instance (so they keep <code>this</code> when detached); methods live on the prototype.</p>`, code: { lang: 'js', run: true, code: `
+function Animal() {}
+Animal.prototype.sound = 'generic';
+const dog = new Animal(), cat = new Animal();
+dog.sound = 'woof';                       // own property shadows the prototype
+console.log(dog.sound, cat.sound);        // woof generic
+delete dog.sound;
+console.log(dog.sound);                   // generic
+
+class Btn {
+  label = 'ok';
+  arrow = () => this.label;               // instance field, lexical this
+  method() { return this && this.label; } // prototype method
+}
+const b = new Btn();
+const { arrow, method } = b;
+console.log(arrow(), method(), Btn.prototype.hasOwnProperty('arrow')); // ok undefined false
+` } },
+      { title: 'Q14 — var in function scope, IIFE and the arguments object', html: `<p>An IIFE gets its own scope. Inside <code>test</code>, <code>var a</code> is hoisted, so the condition sees <code>undefined</code> (the global a is shadowed). Sloppy-mode <code>arguments</code> is linked to simple parameters.</p>`, code: { lang: 'js', run: true, code: `
+var a = 'global';
+function test() {
+  if (!a) { var a = 'local'; }   // hoisted 'var a' shadows the global -> undefined -> falsy
+  return a;
+}
+console.log(test());              // local
+
+function linked(x) { arguments[0] = 99; return x; }
+function unlinked(x = 0) { arguments[0] = 99; return x; } // default params break the link
+console.log(linked(1), unlinked(1)); // 99 1
+` } }
+    ],
+    deepDive: `<p>🟣 <b>Why async/await ordering changed in 2019.</b> Originally <code>await p</code> (for a native promise p) wrapped p in an extra promise and took <b>3</b> microtask ticks; V8 7.2 / ES2019 spec change ("await optimization") made it take <b>1</b> tick. That is why old blog posts give a different order for Q1 ("p2" before "a1 end"). Today, all modern engines print "a1 end" first. However, <b>returning</b> a promise from an async function (<code>return p</code>) still costs extra ticks — <code>return await p</code> in try/catch has different timing.</p>
+<p><b>Node specifics:</b> <code>process.nextTick</code> callbacks run <b>before</b> promise microtasks. Between macrotask phases Node runs timers → pending callbacks → poll (I/O) → check (<code>setImmediate</code>) → close callbacks. <code>setTimeout(f, 0)</code> vs <code>setImmediate(g)</code> order is <b>non-deterministic</b> in the main module but deterministic inside an I/O callback (immediate first). Browsers clamp nested timers (depth ≥ 5) to ≥ 4 ms.</p>
+<p><b>Coercion algorithm (ToPrimitive):</b> for <code>+</code> and <code>==</code> the hint is "default" → call <code>valueOf()</code>, and if it does not return a primitive, call <code>toString()</code>. Dates prefer toString. <code>Symbol.toPrimitive</code> overrides everything. That is how <code>sum(1)(2) == 3</code> tricks work.</p>
+<p><b>Strict vs sloppy matters:</b> many output answers flip in strict mode: detached <code>this</code> (undefined vs globalThis), assigning to undeclared variables (ReferenceError vs creating a global), <code>arguments</code> linkage, writing to read-only properties (TypeError vs silent). ES modules and class bodies are <b>always strict</b>. When an interviewer shows a snippet, ask "module or script? browser or Node?" — that question alone shows seniority.</p>
+<p><b>Engine-dependent output:</b> <code>console.log</code> of objects may show the object's <b>current</b> state (live reference) in DevTools rather than the state at log time; key order rules (integer keys first); and error messages differ across V8/SpiderMonkey/JavaScriptCore.</p>`,
+    aiEra: `<p>🤖 <b>What AI changes:</b> you can paste any snippet into a REPL or an AI and get the output — so interviewers now ask you to <b>explain the mechanism</b>, predict <b>after a small change</b> ("what if this await moved up one line?"), or debug a production bug caused by the same rule (stale closure in React, lost <code>this</code>, an unawaited promise).</p>
+<p><b>Use AI as a partner:</b> <code>Generate 10 new event-loop output puzzles of increasing difficulty with answers hidden at the end; include process.nextTick and setImmediate for Node.</code> Then solve them with the 4-step method and verify with the visualizer or Node.</p>
+<p><b>Where AI goes wrong:</b> LLMs frequently give the <b>pre-2019</b> async ordering, mix up browser and Node timer phases, claim <code>typeof</code> is always safe (not in the TDZ), or forget strict mode in modules/classes. Always run it.</p>
+<p><b>What you must still own:</b> the mental model. Reading code reviews — including AI-written code — requires you to see "this callback runs after that one" without running it.</p>`,
+    problems: [{
+      title: 'Predict and explain: nested promises, timers and await', level: 'Medium', tags: ['event loop', 'output', 'async'], companies: ['Google', 'Microsoft', 'Atlassian', 'Groww'],
+      statement: `<p>Predict the exact console output of the program below and justify each line using the event-loop rules. Then rewrite it so that the output is in alphabetical order A, B, C, D, E, F <b>without</b> removing any <code>console.log</code>.</p><pre>console.log('A');
+setTimeout(() =&gt; console.log('F'), 0);
+Promise.resolve().then(() =&gt; {
+  console.log('C');
+  setTimeout(() =&gt; console.log('E'), 0);
+});
+(async () =&gt; { console.log('B'); await null; console.log('D'); })();</pre>`,
+      constraints: `Assume a modern engine (ES2019+ await semantics). No changes to the logged letters.`,
+      example: `<p>Output: ${H.c('g', 'A B C D F E')}. Not alphabetical: F's timer was queued during the script, E's only later inside a microtask, so F runs first.</p>`,
+      brute: { why: `<p>Reading top to bottom gives "A F C E B D" — wrong, because it ignores that timers wait for the stack and microtasks, that the async function body runs synchronously until <code>await</code>, and that timers queued later run later.</p>`, code: `
+// Naive mental model: "every line runs in order, timers with 0 ms run immediately"
+const naiveGuess = ['A', 'F', 'C', 'E', 'B', 'D'];
+console.log(naiveGuess.join(' ')); // wrong answer
+` },
+      mcq: { q: 'Why does F print before E even though both use <code>setTimeout(..., 0)</code>?', options: ['F\'s timer was registered during the script; E\'s was registered later inside a microtask, so it is queued behind F', 'E has a lower priority', 'Timers inside promises are slower by 4 ms', 'Random order'], answer: 0, explain: 'Timers with equal delay fire in registration order; E was registered after F.' },
+      hints: [`<p>Hint 1: first list only the synchronous output (script phase). Remember the async arrow runs until its first <code>await</code>.</p>`, `<p>Hint 2: write the microtask queue after the script: [then-callback (C), resume (D)]. Write the macrotask queue: [F]. Which new tasks does running C add?</p>`, `<p>Hint 3: to get alphabetical order, E must be scheduled before F, or F must be scheduled after E — e.g. register F inside E's timer, or nest the timers.</p>`],
+      solution: {
+        approach: `<p>Script: A, then B (async body before await). Microtasks: C (also registers timer E), then D. Macrotasks: F (registered first), then E. To get A–F in order, schedule F from inside E's timer so it is guaranteed to run after E.</p>`,
+        code: { lang: 'js', run: true, code: `
+// Original program: prints A B C D F E
+const out = [];
+const log = (x) => out.push(x);
+log('A');
+setTimeout(() => log('F'), 0);
+Promise.resolve().then(() => { log('C'); setTimeout(() => log('E'), 0); });
+(async () => { log('B'); await null; log('D'); })();
+setTimeout(() => console.log('original :', out.join(' ')), 20);
+
+// Rewritten: alphabetical A B C D E F
+const out2 = [];
+const log2 = (x) => out2.push(x);
+log2('A');
+Promise.resolve().then(() => {
+  log2('C');
+  setTimeout(() => { log2('E'); setTimeout(() => log2('F'), 0); }, 0); // F scheduled after E runs
+});
+(async () => { log2('B'); await null; log2('D'); })();
+setTimeout(() => console.log('rewritten:', out2.join(' ')), 40);
+` },
+        dry: { head: ['step', 'runs', 'output so far', 'microtasks', 'macrotasks'], rows: [['script', "log A; register F; queue then(C); async: log B, queue resume(D)", 'A B', '[C, D]', '[F]'], ['micro 1', 'C → registers timer E', 'A B C', '[D]', '[F, E]'], ['micro 2', 'D', 'A B C D', '[]', '[F, E]'], ['macro 1', 'F', 'A B C D F', '[]', '[E]'], ['macro 2', 'E', 'A B C D F E', '[]', '[]']] },
+        complexity: `<p>Not an algorithmic problem: the "cost" is the number of event-loop turns — here 2 macrotasks after the script.</p>`,
+        followUps: ['What changes if <code>await null</code> becomes <code>await new Promise(r =&gt; setTimeout(r, 0))</code>?', 'Add <code>process.nextTick</code> (Node) — where does it go?', 'Where would a <code>requestAnimationFrame</code> callback appear in a browser?']
       }
     }]
   });
