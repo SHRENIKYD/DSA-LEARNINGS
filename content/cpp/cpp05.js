@@ -1643,4 +1643,247 @@ dtor a</pre>
     ]
   });
 
-registerModule({ id: 'cpp05', title: 'Advanced OOP', intro: '<p>x</p>', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();
+  /* ======================================================================
+     TOPIC 6 — Virtual destructors, construction/destruction order, virtual calls in ctors
+     ====================================================================== */
+  topics.push({
+    title: 'Virtual Destructors & Construction Order: Deleting Through a Base Pointer',
+    analogy: `<p>A building is built <b>foundation first, then floors, then the roof</b>. It is demolished <b>roof first, then floors, then the foundation</b>. Now imagine a demolition crew that only reads the sign at the front door saying "Foundation Co." — they knock down the foundation and walk away, leaving floors and roof floating in the air (and the electricity on).</p>
+      <p>Deleting a <code>Derived</code> object through a <code>Base*</code> without a <b>virtual destructor</b> is that crew: only the base part is cleaned up. A virtual destructor makes the crew check the <b>real</b> building (via the vptr) and demolish it properly from the top down.</p>`,
+    explain: `<p><b>Construction order</b> (bottom-up): base classes first (in declaration order), then members (in declaration order), then the derived constructor body. <b>Destruction order</b> is the exact reverse: derived destructor body, then members (reverse order), then base destructors.</p>
+      ${H.table(['Phase', 'Order for <code>struct D : B { M m; }</code>'], [
+        ['Construction', '<code>B()</code> → <code>M()</code> → <code>D()</code> body'],
+        ['Destruction', '<code>~D()</code> body → <code>~M()</code> → <code>~B()</code>']
+      ])}
+      <p><b>The virtual destructor rule.</b> If you will ever <code>delete</code> a derived object through a pointer to its base (directly or via <code>std::unique_ptr&lt;Base&gt;</code>), the base destructor <b>must be virtual</b>. Otherwise <code>delete basePtr;</code> is bound statically to <code>~Base()</code>: the derived destructor and the derived members' destructors <b>never run</b>. The C++ standard calls this <b>undefined behaviour</b>; in practice you get leaks (files left open, memory never freed, locks never released) and sometimes heap corruption.</p>
+      ${H.table(['Base destructor', '<code>Base* p = new Derived; delete p;</code> runs'], [
+        ['<code>~Base()</code> (non-virtual)', H.c('r', '~Base() only — UB, Derived\'s resources leak')],
+        ['<code>virtual ~Base()</code>', H.c('g', '~Derived() → ~members → ~Base()')]
+      ])}
+      <p><b>Simple rule (C++ Core Guidelines C.35):</b> a base class destructor should be either <b>public and virtual</b> (you may delete through the base) or <b>protected and non-virtual</b> (you may not — the compiler stops you). If your class has any virtual function, give it a virtual destructor: <code>virtual ~Base() = default;</code>. Classes not meant to be bases (like <code>std::string</code>, <code>std::vector</code>) have non-virtual destructors on purpose — <b>do not inherit from them</b> to add behaviour you will delete polymorphically.</p>
+      <p><b>Virtual calls inside constructors and destructors do not reach the derived class.</b> While <code>Base()</code> runs, the <code>Derived</code> part does not exist yet (its members are not constructed), so the object's vptr points to <b>Base</b>'s vtable and <code>hello()</code> calls <code>Base::hello</code>. During <code>~Base()</code>, the derived part is already destroyed, so again the base version runs. This is a deliberate safety rule, unlike Java and C#, where the derived override runs on a half-built object.</p>`,
+    clues: [
+      '"Why should a base class destructor be virtual?" → deleting through a base pointer must run the derived destructor',
+      '"Memory leak only when deleting through the interface pointer" → missing virtual destructor',
+      '"<code>-Wdelete-non-virtual-dtor</code> / <code>-Wnon-virtual-dtor</code> warning" → exactly this bug',
+      '"Calling a virtual function from a constructor — which version runs?" → the version of the class currently being constructed',
+      '"In what order are constructors of base, members and derived called?" → bases, members (declaration order), body; destruction reversed',
+      '"Should I inherit from std::vector / std::string?" → no polymorphic deletion: their destructors are not virtual'
+    ],
+    code: [R`
+      #include <iostream>
+      #include <memory>
+      #include <vector>
+
+      struct Base {
+          Base() { std::cout << "Base()\n"; hello(); }            // virtual call during construction
+          virtual void hello() const { std::cout << "  Base::hello\n"; }
+          virtual ~Base() { std::cout << "~Base()\n"; }           // VIRTUAL: delete through Base* is safe
+      };
+
+      struct Member {
+          Member()  { std::cout << "Member()\n"; }
+          ~Member() { std::cout << "~Member()\n"; }
+      };
+
+      struct Derived : Base {
+          Member m;                                               // constructed after Base, before Derived body
+          std::vector<int> buf = std::vector<int>(1000);          // owns 4 KB of heap
+          Derived() { std::cout << "Derived()\n"; hello(); }
+          void hello() const override { std::cout << "  Derived::hello\n"; }
+          ~Derived() override { std::cout << "~Derived()\n"; }
+      };
+
+      int main() {
+          std::unique_ptr<Base> p = std::make_unique<Derived>();
+          // Base() / Base::hello / Member() / Derived() / Derived::hello
+          p.reset();
+          // ~Derived() / ~Member() / ~Base()     (buf's 4 KB freed between ~Derived and ~Base)
+      }
+    `],
+    codeTitle: ['Full construction and destruction chain with a virtual destructor'],
+    viz: {
+      title: 'Build up, tear down: with and without a virtual destructor',
+      input: 'virtual',
+      inputLabel: '"virtual" (virtual ~Base) or "plain" (non-virtual ~Base)',
+      gen: function (input) {
+        var mode = String(input || '').trim().toLowerCase();
+        if (mode !== 'virtual' && mode !== 'plain') throw new Error('Type "virtual" or "plain"');
+        var V = mode === 'virtual';
+        var code = ['struct Base {', '    Base() { cout << "Base()"; hello(); }', '    virtual void hello() { cout << "Base::hello"; }', '    ' + (V ? 'virtual ~Base()' : '~Base()        ') + ' { cout << "~Base()"; }', '};', 'struct Derived : Base {', '    std::vector<int> buf = std::vector<int>(1000);  // 4 KB', '    Derived() { cout << "Derived()"; hello(); }', '    void hello() override { cout << "Derived::hello"; }', '    ~Derived() { cout << "~Derived()"; }', '};', 'Base* p = new Derived;', 'delete p;'].join('\n');
+        var log = [], frames = [];
+        function F(line, cls, narr, stack, sh, vals, vh) {
+          frames.push({ narr: narr, parts: [
+            { type: 'code', label: 'Program', lang: 'cpp', code: code, hl: (function () { var h = {}; [].concat(line).forEach(function (l) { h[l] = cls; }); return h; })() },
+            { type: 'stack', label: 'Constructor / destructor call stack', items: stack, hl: sh || {} },
+            { type: 'vars', label: 'Object state', vals: vals, hl: vh || {} },
+            out(log.join('\n'))
+          ] });
+        }
+        F(12, 'cur', '<code>new Derived</code>: first <code>operator new</code> grabs raw memory for the whole Derived object (vptr + buf). Nothing is constructed yet.', ['new Derived'], {}, { vptr: '(garbage)', buf: '(raw bytes)', heap4KB: 'not allocated' });
+        log.push('Base()');
+        F([12, 2], 'cur', 'Construction is <b>bottom-up</b>: the <b>Base</b> constructor runs first. Its first hidden action is <b>vptr = &amp;vtable for Base</b>. Then it prints "Base()".', ['new Derived', 'Derived()', 'Base()'], { 2: 'cur' }, { vptr: 'Base vtable', buf: '(not constructed)', heap4KB: 'not allocated' }, { vptr: 'cur' });
+        log.push('Base::hello');
+        F([2, 3], 'sel', '<code>hello()</code> is virtual, but the vptr currently points to <b>Base</b>\'s table, so <b>Base::hello</b> runs. The Derived part (buf) does not exist yet — calling Derived::hello now would read garbage, so C++ forbids reaching it.', ['new Derived', 'Derived()', 'Base()', 'hello() → Base::hello'], { 3: 'sel' }, { vptr: 'Base vtable', buf: '(not constructed)', heap4KB: 'not allocated' }, { vptr: 'sel' });
+        F(7, 'ok', 'Base is done. Next, members in declaration order: <code>buf</code> is constructed and allocates <b>4 KB</b> on the heap.', ['new Derived', 'Derived()', 'buf: vector(1000)'], { 2: 'ok' }, { vptr: 'Base vtable', buf: 'size 1000', heap4KB: 'ALLOCATED' }, { heap4KB: 'ok' });
+        log.push('Derived()'); log.push('Derived::hello');
+        F([8, 9], 'ok', 'Finally the Derived constructor: its hidden first step sets <b>vptr = &amp;vtable for Derived</b>. Now <code>hello()</code> dispatches to <b>Derived::hello</b>.', ['new Derived', 'Derived()'], { 1: 'ok' }, { vptr: 'Derived vtable', buf: 'size 1000', heap4KB: 'ALLOCATED' }, { vptr: 'ok' });
+        F(12, 'ok', 'Construction complete. <code>p</code> holds a <code>Base*</code> to a fully-built Derived. The object knows its real type only through its vptr.', [], {}, { vptr: 'Derived vtable', buf: 'size 1000', heap4KB: 'ALLOCATED', p: 'Base* → Derived' });
+        if (V) {
+          F(13, 'cur', '<code>delete p</code>: the destructor is <b>virtual</b>, so delete looks it up through the vptr (deleting-destructor slot) and finds <b>~Derived</b>.', ['delete p', '~Derived() [via vtable]'], { 1: 'cur' }, { vptr: 'Derived vtable', buf: 'size 1000', heap4KB: 'ALLOCATED' }, { vptr: 'cur' });
+          log.push('~Derived()');
+          F(10, 'bad', 'Destruction is <b>top-down</b>: the ~Derived body runs first.', ['delete p', '~Derived()'], { 1: 'bad' }, { vptr: 'Derived vtable', buf: 'size 1000', heap4KB: 'ALLOCATED' });
+          F(7, 'bad', 'Then members in reverse declaration order: <code>~vector</code> frees the 4 KB.', ['delete p', '~Derived()', '~buf'], { 2: 'bad' }, { vptr: 'Derived vtable', buf: 'destroyed', heap4KB: 'freed' }, { heap4KB: 'ok' });
+          log.push('~Base()');
+          F(4, 'bad', 'Then <b>~Base</b>. Its hidden first step resets <b>vptr = &amp;vtable for Base</b> (the Derived part is gone, so virtual calls from here would reach Base versions). Prints "~Base()".', ['delete p', '~Base()'], { 1: 'bad' }, { vptr: 'Base vtable', buf: 'destroyed', heap4KB: 'freed' }, { vptr: 'cur' });
+          F(13, 'ok', 'Finally <code>operator delete</code> returns the object\'s memory with the <b>correct size</b>. <span class="c-g">Everything was cleaned up exactly once.</span>', [], {}, { vptr: '—', buf: '—', heap4KB: 'freed', leaks: '0 bytes' }, { leaks: 'ok' });
+        } else {
+          F(13, 'bad', '<code>delete p</code>: the destructor is <b>not virtual</b>, so the compiler uses the <b>static type</b> of p (<code>Base*</code>) and calls <b>~Base</b> directly. The vptr is never consulted.', ['delete p', '~Base() [static call]'], { 1: 'bad' }, { vptr: 'Derived vtable', buf: 'size 1000', heap4KB: 'ALLOCATED' }, { vptr: 'bad' });
+          log.push('~Base()');
+          F(4, 'bad', '<b>~Base</b> runs and prints "~Base()". <span class="c-r">~Derived never runs. buf\'s destructor never runs.</span>', ['delete p', '~Base()'], { 1: 'bad' }, { vptr: 'Base vtable', buf: 'NEVER destroyed', heap4KB: 'still ALLOCATED' }, { buf: 'bad', heap4KB: 'bad' });
+          F(13, 'bad', '<code>operator delete</code> frees the object with size <code>sizeof(Base)</code> — the wrong size (sized deallocation). This is <b>undefined behaviour</b>; ASan reports <code>new-delete-type-mismatch</code>.', [], {}, { vptr: '—', buf: 'leaked', heap4KB: 'LEAKED', leaks: '4000 bytes per delete' }, { heap4KB: 'bad', leaks: 'bad' });
+          F(4, 'cur', '<b>Fix:</b> <code>virtual ~Base() = default;</code>. g++ warns about this with <code>-Wdelete-non-virtual-dtor</code> (enabled by -Wall) when Base has other virtual functions. Try input <code>virtual</code>.', [], {}, { fix: 'virtual ~Base() = default;' }, { fix: 'ok' });
+        }
+        return frames;
+      }
+    },
+    examples: [
+      {
+        title: 'Predict the output: construction and destruction order',
+        html: `<p>Bases first, members in <b>declaration</b> order (not initializer-list order), body last — and the mirror image on destruction.</p>
+          ${H.table(['Step', 'Output'], [['1', 'A'], ['2', 'm1'], ['3', 'm2'], ['4', 'B'], ['5', '~B'], ['6', '~m2'], ['7', '~m1'], ['8', '~A']])}`,
+        code: R`
+          struct P { const char* n; P(const char* s) : n(s) { std::cout << n << ' '; } ~P() { std::cout << '~' << n << ' '; } };
+          struct A { A() { std::cout << "A "; } virtual ~A() { std::cout << "~A "; } };
+          struct B : A {
+              P m1;                                   // declared FIRST
+              P m2;                                   // declared SECOND
+              B() : m2("m2"), m1("m1") { std::cout << "B "; }   // list order is ignored (-Wreorder warns)
+              ~B() override { std::cout << "~B "; }
+          };
+          int main() { B b; }   // A m1 m2 B ~B ~m2 ~m1 ~A   (declaration order wins)
+        `
+      },
+      {
+        title: 'unique_ptr&lt;Base&gt; needs the virtual destructor too',
+        html: `<p><code>std::unique_ptr&lt;Base&gt;</code>'s default deleter does <code>delete ptr;</code> with <code>ptr</code> of type <code>Base*</code> — exactly the dangerous expression. Smart pointers do <b>not</b> fix a missing virtual destructor. (<code>std::shared_ptr&lt;Base&gt;(new Derived)</code> happens to work, because shared_ptr captures a deleter for the <i>original</i> pointer type in its control block — but do not design around that accident.)</p>`,
+        code: R`
+          struct Base { virtual ~Base() = default; virtual int id() const { return 0; } };
+          struct Derived : Base { std::string big = std::string(1000, 'x'); int id() const override { return 1; } };
+          int main() {
+              std::unique_ptr<Base> p = std::make_unique<Derived>();   // safe ONLY because ~Base is virtual
+              std::cout << p->id() << '\n';
+          }
+        `
+      },
+      {
+        title: 'Protected non-virtual destructor: "you may not delete me through the base"',
+        html: `<p>Mixin / CRTP bases and policy classes are not meant for polymorphic deletion. Making their destructor <b>protected</b> turns <code>delete basePtr;</code> into a <b>compile error</b> while costing no vptr. This is the other half of Core Guideline C.35.</p>`,
+        code: R`
+          template <class D>
+          struct Comparable {                         // CRTP mixin: never deleted through Comparable*
+              bool operator!=(const D& o) const { return !(static_cast<const D&>(*this) == o); }
+          protected:
+              ~Comparable() = default;                // protected + non-virtual: no vptr, no misuse
+          };
+          struct Money : Comparable<Money> {
+              long cents = 0;
+              bool operator==(const Money& o) const { return cents == o.cents; }
+          };
+          int main() { Money a, b; std::cout << (a != b) << '\n'; }
+        `
+      },
+      {
+        title: 'Predict the output: virtual call in a destructor',
+        html: `<p>During <code>~Base()</code> the Derived part is already gone and the vptr has been reset to Base's table, so <code>name()</code> prints <b>"Base"</b>. Output of <code>delete p;</code>: <b>~Derived ~Base(Base)</b>.</p>`,
+        code: R`
+          struct Base {
+              virtual std::string name() const { return "Base"; }
+              virtual ~Base() { std::cout << "~Base(" << name() << ")\n"; }
+          };
+          struct Derived : Base {
+              std::string name() const override { return "Derived"; }
+              ~Derived() override { std::cout << "~Derived\n"; }
+          };
+          int main() { Base* p = new Derived; delete p; }   // ~Derived  then  ~Base(Base)
+        `
+      }
+    ],
+    deepDive: `<p><b>Why UB and not just "a leak"?</b> [expr.delete]/3: if the static type differs from the dynamic type, the static type shall be a base class with a virtual destructor, otherwise the behaviour is undefined. Concretely: with sized deallocation (C++14) <code>operator delete(p, sizeof(Base))</code> receives the wrong size; with multiple inheritance <code>p</code> may not even point to the start of the allocation, so <code>free</code> gets an interior pointer and the allocator corrupts itself.</p>
+      <p><b>The deleting destructor.</b> With a virtual destructor, <code>delete p</code> calls vtable slot D0 (deleting destructor) of the dynamic class. D0 runs the full destructor chain and then calls <code>operator delete</code> with the most-derived size and the correct starting address (and the class-specific <code>operator delete</code> if one exists). That is why the deletion — not just the destruction — must be dispatched virtually.</p>
+      <p><b>The vptr dance.</b> Each constructor in the chain sets the vptr to <i>its own</i> class's vtable before running member initializers of its class, and each destructor resets it to its own class's table on entry. The object's dynamic type literally changes over its lifetime: Base → Derived during construction, Derived → Base during destruction. <code>typeid(*this)</code> and <code>dynamic_cast</code> in a constructor observe this too.</p>
+      <p><b>Exceptions during construction.</b> If <code>Derived()</code> throws, the already-constructed parts (members, then base) are destroyed in reverse order, but <code>~Derived()</code> itself is <b>not</b> called — the object never finished being born. That is why every resource should be held by its own RAII member rather than acquired raw in the constructor body.</p>
+      <p><b>Cost.</b> Making the destructor virtual adds a vptr only if the class had no virtual functions before; if it already has any, the cost is one more vtable slot (nothing per object). Classes with no virtual functions that are never deleted polymorphically (value types, <code>final</code> classes) should <b>not</b> pay for one. Destructors are implicitly <code>noexcept</code>; throwing from one during stack unwinding calls <code>std::terminate</code>.</p>`,
+    aiEra: `<p><b>What AI changes:</b> code generators reliably add <code>virtual ~Base() = default;</code> to obvious interfaces, but routinely miss it in "utility" bases that grow virtual functions later, and they sometimes inherit from <code>std::vector</code> or <code>std::map</code> "to add a helper method". Static analysis (<code>-Wnon-virtual-dtor</code>, clang-tidy <code>cppcoreguidelines-virtual-class-destructor</code>) catches what review misses — turn it on in CI.</p>
+      <p><b>Use AI as a partner:</b> <code>List every class in this diff that has a virtual function but no public virtual or protected non-virtual destructor.</code> Or ask it to write a test that deletes through a base pointer under ASan and LeakSanitizer.</p>
+      <p><b>Where AI goes wrong:</b> claiming virtual calls in constructors reach the derived override (true in Java/C#, false in C++), saying <code>unique_ptr</code> fixes non-virtual destructors, or making <i>every</i> destructor virtual "to be safe" (wasting a vptr on value types and preventing triviality).</p>
+      <p><b>What you must still own:</b> the exact construction/destruction order, the vptr changes during the chain, and the C.35 rule. "Why should destructors be virtual?" is one of the five most-asked C++ interview questions.</p>`,
+    problems: [
+      {
+        title: 'Leak Hunt: The Plugin That Never Releases Its Buffer',
+        level: 'Easy', tags: ['virtual destructor', 'memory leak', 'polymorphism'], companies: ['Adobe', 'Autodesk', 'Samsung'],
+        statement: `<p>A plugin system stores <code>std::unique_ptr&lt;Plugin&gt;</code>. Each <code>ImageFilter</code> plugin allocates a large buffer. Valgrind reports that every unloaded plugin leaks its buffer and AddressSanitizer reports <code>new-delete-type-mismatch</code>. Find the bug, fix it with a one-line change, and explain what was (and was not) being destroyed.</p>`,
+        constraints: `<p>Do not change how plugins are stored or created. Plugin has a virtual <code>run()</code>.</p>`,
+        example: `<p>Before: unloading prints only ${H.c('r', '"~Plugin"')}. After the fix: ${H.c('g', '"~ImageFilter" then "~Plugin"')}, and the buffer's destructor frees its memory.</p>`,
+        brute: {
+          why: `<p>The base destructor is <b>non-virtual</b>. <code>unique_ptr&lt;Plugin&gt;</code> calls <code>delete</code> on a <code>Plugin*</code>, which statically binds to <code>~Plugin()</code>. <code>~ImageFilter()</code> and the buffer member's destructor never run → leak + undefined behaviour. Adding manual <code>cleanup()</code> calls everywhere would be the "brute" workaround — fragile and easy to forget.</p>`,
+          code: R`
+            #include <iostream>
+            #include <memory>
+            #include <vector>
+            struct Plugin {
+                virtual void run() = 0;
+                ~Plugin() { std::cout << "~Plugin\n"; }          // BUG: non-virtual
+            };
+            struct ImageFilter : Plugin {
+                std::vector<unsigned char> buffer = std::vector<unsigned char>(1 << 20);   // 1 MB
+                void run() override {}
+                ~ImageFilter() { std::cout << "~ImageFilter\n"; }
+            };
+            int main() {
+                std::unique_ptr<Plugin> p = std::make_unique<ImageFilter>();
+                p.reset();                                        // prints only ~Plugin: 1 MB leaked
+            }
+          `
+        },
+        mcq: { q: 'Which single change fixes the leak?', options: ['Declare <code>virtual ~Plugin()</code> (e.g. <code>virtual ~Plugin() = default;</code>)', 'Make <code>~ImageFilter</code> virtual', 'Switch to <code>std::shared_ptr&lt;Plugin&gt;</code> created with make_unique', 'Call <code>buffer.clear()</code> in run()'], answer: 0, explain: 'Virtual-ness must be declared in the base, because delete is performed through the base type. Making only the derived destructor virtual does nothing for a call made through Plugin*.' },
+        hints: [
+          `<p>Hint 1: look at the type of the pointer that <code>delete</code> is applied to. It is <code>Plugin*</code>, not <code>ImageFilter*</code>.</p>`,
+          `<p>Hint 2: a non-virtual destructor is chosen at compile time from the static type. Which destructor does that select?</p>`,
+          `<p>Hint 3: make the base destructor virtual. Then the deletion dispatches through the vptr to ImageFilter's deleting destructor, which runs ~ImageFilter, ~vector, ~Plugin in that order. Add <code>override</code> on the derived destructor for clarity.</p>`
+        ],
+        solution: {
+          approach: `<p>One-line fix: <code>virtual ~Plugin()</code>. Since <code>Plugin</code> already has a virtual function, this adds no per-object cost. Then turn on <code>-Wall -Wnon-virtual-dtor</code> so the compiler catches the next one.</p>`,
+          code: R`
+            #include <iostream>
+            #include <memory>
+            #include <vector>
+            struct Plugin {
+                virtual void run() = 0;
+                virtual ~Plugin() { std::cout << "~Plugin\n"; }  // FIX: virtual
+            };
+            struct ImageFilter : Plugin {
+                std::vector<unsigned char> buffer = std::vector<unsigned char>(1 << 20);
+                void run() override {}
+                ~ImageFilter() override { std::cout << "~ImageFilter\n"; }
+            };
+            int main() {
+                std::unique_ptr<Plugin> p = std::make_unique<ImageFilter>();
+                p.reset();     // ~ImageFilter, (buffer freed), ~Plugin
+            }
+          `,
+          dry: { head: ['Event', 'Without virtual', 'With virtual'], rows: [
+            ['<code>delete</code> binds to', '~Plugin (static)', '~ImageFilter via vptr'],
+            ['~ImageFilter body', H.c('r', 'skipped'), H.c('g', 'runs')],
+            ['~vector (1 MB)', H.c('r', 'skipped → leak'), H.c('g', 'runs → freed')],
+            ['~Plugin body', 'runs', 'runs'],
+            ['operator delete size', H.c('r', 'sizeof(Plugin) — wrong'), H.c('g', 'sizeof(ImageFilter)')]
+          ] },
+          complexity: `<p>No asymptotic change; the fix adds one vtable slot (no per-object cost since Plugin already had a vptr).</p>`,
+          followUps: ['When would you instead make <code>~Plugin</code> protected and non-virtual?', 'Does <code>std::shared_ptr&lt;Plugin&gt; sp = std::make_shared&lt;ImageFilter&gt;()</code> leak without the fix? Why?', 'What does <code>-Wdelete-non-virtual-dtor</code> check exactly?']
+        }
+      }
+    ]
+  });
+
+registerModule({ id: 'cpp09', title: 'Templates, SFINAE & Concepts', intro: '<p>x</p>', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();

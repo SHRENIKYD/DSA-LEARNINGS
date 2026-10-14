@@ -476,6 +476,8 @@ console.log(c);
   function uniqStr(a) { var o = []; a.forEach(function (x) { if (o.indexOf(x) < 0) o.push(x); }); return o; }
   function joinUnion(parts) {
     var p = uniqStr(parts.filter(function (x) { return x !== 'never'; }));
+    // subtype reduction: a literal disappears when its primitive is also in the union ('a' | string → string)
+    p = p.filter(function (x) { var k = litKind(x); return !(k && k !== 'boolean' && p.indexOf(k) >= 0); });
     if (p.indexOf('true') >= 0 && p.indexOf('false') >= 0) {
       p = p.filter(function (x) { return x !== 'true' && x !== 'false'; });
       p.push('boolean');
@@ -595,7 +597,7 @@ const p2 = convert(42);     // string
             [{ type: 'array', label: 'members of T', values: members.slice(), hl: hlArr, ptr: (function () { var p = {}; p[i] = 'T'; return p; })() },
               tb(['member', 'extends U?', 'Extract → ', 'Exclude → '], rows, hlRow, 'per-member results so far')]));
         });
-        frames.push(fr('Union the answers back together. Every <code>never</code> vanishes (a union with "nothing" in it is just the rest).' + (hadBool ? ' <code>true | false</code> collapses back into <code>boolean</code> when both survive.' : ''), [tb(['member', 'extends U?', 'Extract → ', 'Exclude → '], rows, {}, 'all members judged'), vp({ Kept: joinUnion(kept), Dropped: joinUnion(dropped) }, { Kept: 'ok', Dropped: 'bad' })]));
+        frames.push(fr('Union the answers back together. Every <code>never</code> vanishes (a union with "nothing" in it is just the rest), and a literal like <code>\'a\'</code> is absorbed if its primitive <code>string</code> is also present.' + (hadBool ? ' <code>true | false</code> collapses back into <code>boolean</code> when both survive.' : ''), [tb(['member', 'extends U?', 'Extract → ', 'Exclude → '], rows, {}, 'all members judged'), vp({ Kept: joinUnion(kept), Dropped: joinUnion(dropped) }, { Kept: 'ok', Dropped: 'bad' })]));
         var whole = assignableToUnion(T, uParts) || members.every(function (m) { return assignableToUnion(m, uParts); });
         frames.push(fr('Compare with the <b>non-distributive</b> form <code>[T] extends [U] ? T : never</code>: the union is judged <b>as one block</b>. ' + (whole ? 'Every member fits, so the whole union is kept.' : 'At least one member does not fit, so the <b>whole</b> union fails and the result is <code>never</code>.'), [cp('type ExtractWhole<T, U> = [T] extends [U] ? T : never;\ntype All = ExtractWhole<' + T + ', ' + U + '>;', { 1: whole ? 'ok' : 'bad' }), vp({ All: whole ? T : 'never' }, { All: whole ? 'ok' : 'bad' })]));
         frames.push(fr('Take-away: <b>naked T + union ⇒ map over members</b>. That single rule is how <code>Exclude</code>, <code>Extract</code> and <code>NonNullable</code> are built, and why <code>[T]</code> wrapping exists.', [tx('<b>Distributive:</b> <code>T extends U ? X : Y</code> &nbsp; | &nbsp; <b>Whole union:</b> <code>[T] extends [U] ? X : Y</code>')]));
@@ -849,6 +851,7 @@ type Bad = ToNumber<'abc'>;     // never
           Acc = [H0].concat(Acc); T = R;
         }
         frames.push(fr('<code>[]</code> does not match <code>[infer H, ...infer R]</code> (no head) → false branch returns <b>Acc</b>.', [cp(code, { 2: 'bad', 4: 'sel' }), { type: 'array', label: 'T', values: ['(empty)'] }, { type: 'array', label: 'result', values: Acc.slice(), hl: (function () { var h = {}; Acc.forEach(function (_, i) { h[i] = 'sel'; }); return h; })() }]));
+        frames.push(fr('Take-away: <b>head + rest + accumulator</b> is the type-level for-loop. Because the recursive call is the whole branch (tail position), TS can run it about 1000 levels deep.', [vp({ 'Reverse<input>': '[' + Acc.join(', ') + ']', steps: els.length }, { 'Reverse<input>': 'sel' })]));
         return frames;
       }
     }],
@@ -1099,6 +1102,7 @@ type MaybeTuple = Partial<[number, string]>;   // [number?, string?]
         });
         var kept = props.filter(function (p) { return !isFn(p.t); });
         frames.push(fr('Result: only data fields survive, each with a typed setter. Keys mapped to <code>never</code> never appear — that is the official way to filter keys in a mapped type.', [vp({ 'DataOnly<T>': '{ ' + kept.map(function (p) { return p.k + ': ' + p.t; }).join('; ') + ' }', 'Setters<T>': '{ ' + kept.map(function (p) { return 'set' + cap(p.k) + ': (v: ' + p.t + ') => void'; }).join('; ') + ' }' }, { 'Setters<T>': 'sel' })]));
+        frames.push(fr('Take-away: inside <code>as</code>, return <code>never</code> to <b>drop</b> a key, or a template literal to <b>rename</b> it. The value side (<code>T[K]</code>) still uses the original key.', [tx('<code>[K in keyof T as Cond&lt;K&gt; extends true ? NewName&lt;K&gt; : never]: T[K]</code>', 'pattern')]));
         return frames;
       }
     }],
@@ -1306,6 +1310,7 @@ function getSetting<P extends Paths<Settings>>(s: Settings, path: P): PathValue<
           }
         }
         frames.push(fr('Result: a union of <b>' + all.length + '</b> string literals (' + A.length + ' × ' + B.length + '). Size multiplies with every hole — keep the inputs small, the compiler caps unions at 100,000 members.', [cp(code, { 3: 'sel' }), vp({ Combo: all.join(' | ') }, { Combo: 'sel' })]));
+        frames.push(fr('Rule of thumb: members = product of the hole sizes. Two holes of 20 → 400; three holes of 50 → 125,000, which is over the 100,000 limit and fails to compile.', [tb(['holes', 'sizes', 'members'], [['2', A.length + ' × ' + B.length, String(all.length)], ['2', '20 × 20', '400'], ['3', '50 × 50 × 50', '125,000 (error)']], { 0: 'sel', 2: 'bad' }, 'how fast it grows')]));
         return frames;
       }
     }, {
@@ -1338,6 +1343,7 @@ function getSetting<P extends Paths<Settings>>(s: Settings, path: P): PathValue<
           }
         }
         frames.push(fr('The stack unwinds and the pieces are unioned. A function can now demand exactly these keys: <code>Record&lt;RouteParams&lt;S&gt;, string&gt;</code>.', [vp({ 'RouteParams<S>': found.length ? found.map(function (f) { return '"' + f + '"'; }).join(' | ') : 'never' }, { 'RouteParams<S>': 'sel' }), { type: 'set', label: 'required params object keys', items: found.slice() }]));
+        frames.push(fr('Take-away: <b>one pattern match finds one param; recursion on the rest finds the others.</b> No params at all gives <code>never</code>, and <code>Record&lt;never, string&gt;</code> is just <code>{}</code>.', [tx('<code>link("' + esc(s) + '", { ' + found.map(function (f) { return esc(f) + ": '…'"; }).join(', ') + ' })</code>', 'what the caller must pass')]));
         return frames;
       }
     }],
@@ -1506,12 +1512,12 @@ type MyParameters<F extends (...args: any) => any> = F extends (...args: infer P
 type MyAwaited<T> = T extends PromiseLike<infer U> ? MyAwaited<U> : T;
 
 // ---------- usage ----------
-interface Todo { id: number; title: string; done: boolean; createdAt: Date }
-type TodoPreview = MyPick<Todo, 'title' | 'done'>;          // { title: string; done: boolean }
-type NewTodo = MyOmit<Todo, 'id' | 'createdAt'>;            // { title: string; done: boolean }
-type ByStatus = MyRecord<'open' | 'closed', Todo[]>;        // { open: Todo[]; closed: Todo[] }
+interface Task { id: number; title: string; done: boolean; createdAt: Date }
+type TaskPreview = MyPick<Task, 'title' | 'done'>;          // { title: string; done: boolean }
+type NewTask = MyOmit<Task, 'id' | 'createdAt'>;            // { title: string; done: boolean }
+type ByStatus = MyRecord<'open' | 'closed', Task[]>;        // { open: Task[]; closed: Task[] }
 // @ts-expect-error  StrictOmit rejects keys that do not exist
-type Oops = StrictOmit<Todo, 'titel'>;
+type Oops = StrictOmit<Task, 'titel'>;
 `, `
 // ---------- DeepReadonly and DeepPartial ----------
 type DeepReadonly<T> =
@@ -1572,7 +1578,7 @@ const p: PostInput = { title: 'Hi', body: '...' };
           if (!drop) kept.push(k);
           rows.push(['"' + k + '"', drop ? 'yes' : 'no', drop ? 'never' : '"' + k + '"']);
           var hl = {}; hl[i] = drop ? 'bad' : 'ok';
-          frames.push(fr('Step 2 — <code>Exclude</code> distributes: is <code>"' + esc(k) + '"</code> in K? ' + (drop ? '<span class="c-r">Yes → never (dropped)</span>' : '<span class="c-g">No → kept</span>'), [cp(code, { 1: 'cur' }), { type: 'array', label: 'keyof T', values: keys.slice(), hl: hl }, tb(['member', 'extends K?', 'Exclude gives'], rows, (function () { var h = {}; h[rows.length - 1] = drop ? 'bad' : 'ok'; return h; })(), 'Exclude<keyof T, K>')]));
+          frames.push(fr('Step 2 — <code>Exclude</code> distributes: is <code>"' + esc(k) + '"</code> in K? ' + (drop ? '<span class="c-r">Yes → never (dropped)</span>' : '<span class="c-g">No → kept</span>'), [cp(code, { 1: 'cur' }), { type: 'array', label: 'keyof T', values: keys.slice(), hl: hl }, tb(['member', 'extends K?', 'Exclude gives'], rows, (function () { var h = {}; h[rows.length - 1] = drop ? 'bad' : 'ok'; return h; })(), 'Exclude&lt;keyof T, K&gt;')]));
         });
         var unknown = om.filter(function (k) { return keys.indexOf(k) < 0; });
         if (unknown.length) frames.push(fr('Notice: <code>' + esc(unknown.join(', ')) + '</code> is not a key of T, yet there is <b>no error</b> — built-in Omit only requires <code>K extends keyof any</code>. A <code>StrictOmit&lt;T, K extends keyof T&gt;</code> would catch this typo.', [vp({ 'unused keys': unknown.join(', ') }, { 'unused keys': 'bad' })]));
@@ -1683,13 +1689,13 @@ type DeepReadonly<T> =
   T extends object ? { readonly [K in keyof T]: DeepReadonly<T[K]> } :
   T;
 
-interface Todo { title: string; done?: boolean; meta: { tags: string[]; at: { day: number } }; run: () => void }
+interface Task { title: string; done?: boolean; meta: { tags: string[]; at: { day: number } }; run: () => void }
 
 type cases = [
-  Expect<Equal<MyPick<Todo, 'title' | 'done'>, { title: string; done?: boolean }>>,
+  Expect<Equal<MyPick<Task, 'title' | 'done'>, { title: string; done?: boolean }>>,
   Expect<Equal<MyOmit<{ a: 1; b: 2; c: 3 }, 'b'>, { a: 1; c: 3 }>>,
   Expect<Equal<
-    DeepReadonly<Todo>,
+    DeepReadonly<Task>,
     {
       readonly title: string;
       readonly done?: boolean;
@@ -1698,11 +1704,11 @@ type cases = [
     }
   >>
 ];
-// @ts-expect-error  'nope' is not a key of Todo
-type Bad = MyPick<Todo, 'nope'>;
+// @ts-expect-error  'nope' is not a key of Task
+type Bad = MyPick<Task, 'nope'>;
 `,
         dry: { head: ['type visited', 'function?', 'object?', 'result'], rows: [
-          ['Todo', 'no', 'yes', 'readonly mapping, recurse'],
+          ['Task', 'no', 'yes', 'readonly mapping, recurse'],
           ['string (title)', 'no', 'no', 'string'],
           ['{ tags; at }', 'no', 'yes', 'readonly mapping, recurse'],
           ['string[]', 'no', 'yes (array)', 'readonly string[]'],
@@ -1910,7 +1916,7 @@ declare module 'tiny-analytics';   // everything imported from it is now 'any'
       mcq: { q: 'Your <code>globals.d.ts</code> has a top-level <code>import</code> and <code>interface Window { tinyAnalytics: X }</code>, but <code>window.tinyAnalytics</code> is still an error. Why?', options: ['Window cannot be extended', 'The import makes the file a module, so the interface is local; wrap it in <code>declare global { }</code>', 'You must use <code>type Window</code>', 'skipLibCheck hides it'], answer: 1, explain: 'Any top-level import/export makes a file a module. Global augmentation from a module requires declare global.' },
       hints: [`<p>Hint 1: an <b>ambient module</b> <code>declare module 'tiny-analytics' { … }</code> describes the package's exports.</p>`, `<p>Hint 2: make <code>track</code> generic over the event name: <code>track&lt;E extends keyof EventMap&gt;(event: E, props: EventMap[E])</code> — the props follow the name via indexed access.</p>`, `<p>Hint 3: for the global, use <code>declare global { interface Window { tinyAnalytics?: … } }</code> in a module file (<code>export {}</code>). Interfaces merge with lib.dom's Window.</p>`],
       solution: {
-        approach: `<p>One project .d.ts: an ambient module for the package's exports (generic, event-map driven <code>track</code>) and a global augmentation for <code>window</code>. The event map is an interface so other files can extend it via declaration merging.</p>`,
+        approach: `<p>Two small project .d.ts files: an ambient module (a script file, no top-level export) for the package's exports (generic, event-map driven <code>track</code>) and, in a separate module file, a global augmentation for <code>window</code>. The event map is an interface so other files can extend it via declaration merging.</p>`,
         code: `
 // types/tiny-analytics.d.ts
 declare module 'tiny-analytics' {
@@ -1928,8 +1934,9 @@ declare module 'tiny-analytics' {
   export function track<E extends keyof EventMap>(event: E, props: EventMap[E]): void;
   export function flush(): Promise<void>;
 }
-
-// types/tiny-analytics-global.d.ts
+`,
+        alt: [{ lang: 'ts', title: 'types/tiny-analytics-global.d.ts', code: `
+// a separate MODULE file (export {}) that augments the global Window
 export {};
 declare global {
   interface Window {
@@ -1939,8 +1946,7 @@ declare global {
     };
   }
 }
-`,
-        alt: [{ lang: 'ts', title: 'Usage (app.ts)', code: `
+` }, { lang: 'ts', title: 'Usage (app.ts)', code: `
 import { init, track } from 'tiny-analytics';
 
 init('pk_live_123', { debug: true });
@@ -2068,7 +2074,7 @@ type cases = [
 for (const s of STATUSES) console.log(s, badge[s]);
 `,
       dry: { head: ['K member', 'property produced'], rows: [['pending', 'pending: string'], ['paid', 'paid: string'], ['shipped', 'shipped: string'], ['cancelled', 'cancelled: string']] },
-      complexity: `<p>O(|K|) properties.</p>`,
+      complexity: `<p>O(|K|) properties: one per member of the key union.</p>`,
       followUps: ['Why does <code>as const satisfies …</code> keep <code>"green"</code> instead of widening to string?', 'What does <code>MyRecord&lt;string, number&gt;</code> become?']
     }
   });
@@ -2142,8 +2148,8 @@ type cases = [
 ];
 const draft: PartialBy<User, 'id'> = { name: 'Asha', age: 31 };
 `,
-      dry: { head: ['part', 'type'], rows: [['Omit<User, "id"|"age">', '{ name; nick? }'], ['Partial<Pick<User, "id"|"age">>', '{ id?; age? }'], ['Prettify(both)', '{ name; nick?; id?; age? }']] },
-      complexity: `<p>O(keys of T).</p>`,
+      dry: { head: ['part', 'type'], rows: [['Omit&lt;User, "id"|"age"&gt;', '{ name; nick? }'], ['Partial&lt;Pick&lt;User, "id"|"age"&gt;&gt;', '{ id?; age? }'], ['Prettify(both)', '{ name; nick?; id?; age? }']] },
+      complexity: `<p>O(keys of T) for the split, intersect and flatten steps.</p>`,
       followUps: ['Make a version that works on discriminated unions (distributive).', 'Write <code>ReadonlyBy&lt;T, K&gt;</code>.']
     }
   });
@@ -2541,9 +2547,9 @@ type cases = [
   interview.push(
     { q: 'What is the difference between <code>T extends U</code> in a generic constraint and in a conditional type?', level: 'I', a: `<p>Both mean <b>"T is assignable to U"</b>, but they are used differently. In a <b>constraint</b> (<code>&lt;T extends U&gt;</code>) it is a <b>requirement</b> checked at the call site: if the inferred T does not fit, the call is a compile error, and inside the body you may use U's members on T. In a <b>conditional type</b> (<code>T extends U ? X : Y</code>) it is a <b>question</b>: no error is raised, the checker just picks a branch. Conditionals also have special behaviour constraints do not: they <b>distribute</b> over unions when T is naked, they can bind variables with <code>infer</code>, and they stay <b>deferred</b> while T is still generic.</p>`, followUps: ['Why can\'t you assign a value of type U to a variable of type T inside the function?', 'What does "deferred conditional type" mean in practice?'] },
     { q: 'Implement <code>Omit</code> two different ways and explain the trade-offs.', level: 'I', a: `<p>Way 1 (lib.d.ts): <code>type MyOmit&lt;T, K extends keyof any&gt; = Pick&lt;T, Exclude&lt;keyof T, K&gt;&gt;</code> — list keys, drop K via distributive Exclude, rebuild with Pick (homomorphic through its constraint, so modifiers survive). Way 2: <code>{ [P in keyof T as P extends K ? never : P]: T[P] }</code> — one mapped type with key remapping. Both give the same result for objects. Trade-offs: the built-in accepts unknown keys (typo-unsafe, but works when T is generic); a <code>StrictOmit&lt;T, K extends keyof T&gt;</code> catches typos. Neither distributes over unions — for discriminated unions use <code>T extends any ? Omit&lt;T, K&gt; : never</code>, otherwise variant-specific fields are lost because <code>keyof (A | B)</code> is only the common keys.</p>`, followUps: ['Why is Omit\'s constraint keyof any?', 'Show what Omit does to a discriminated union.'] },
-    { q: 'Explain distributive conditional types with an example where distribution is a bug.', level: 'A', a: `<p>When a conditional checks a <b>naked type parameter</b> and receives a union, TS evaluates it per member and unions the results. That is how <code>Exclude</code> works. It becomes a bug when you want to judge the union <b>as a whole</b>: e.g. <code>type IsString&lt;T&gt; = T extends string ? true : false</code> returns <code>boolean</code> for <code>string | number</code> (true | false) instead of <code>false</code>, and returns <code>never</code> for <code>never</code>. Another: <code>ToArray&lt;string | number&gt;</code> gives <code>string[] | number[]</code>, which rejects the mixed array <code>['a', 1]</code>. Fix: wrap both sides — <code>[T] extends [string]</code> — so T is no longer naked and distribution is switched off.</p>`, followUps: ['Why does boolean distribute?', 'Write IsUnion<T>.'] },
+    { q: 'Explain distributive conditional types with an example where distribution is a bug.', level: 'A', a: `<p>When a conditional checks a <b>naked type parameter</b> and receives a union, TS evaluates it per member and unions the results. That is how <code>Exclude</code> works. It becomes a bug when you want to judge the union <b>as a whole</b>: e.g. <code>type IsString&lt;T&gt; = T extends string ? true : false</code> returns <code>boolean</code> for <code>string | number</code> (true | false) instead of <code>false</code>, and returns <code>never</code> for <code>never</code>. Another: <code>ToArray&lt;string | number&gt;</code> gives <code>string[] | number[]</code>, which rejects the mixed array <code>['a', 1]</code>. Fix: wrap both sides — <code>[T] extends [string]</code> — so T is no longer naked and distribution is switched off.</p>`, followUps: ['Why does boolean distribute?', 'Write IsUnion&lt;T&gt;.'] },
     { q: 'How does <code>infer</code> work, and how do you implement <code>ReturnType</code> and <code>Awaited</code>?', level: 'I', a: `<p><code>infer X</code> declares a placeholder inside the <code>extends</code> pattern of a conditional type; the checker structurally matches T against the pattern and infers X like it infers a generic function argument. If the match succeeds, the true branch can use X. <code>ReturnType&lt;F extends (...a: any) =&gt; any&gt; = F extends (...a: any) =&gt; infer R ? R : any</code>. <code>Awaited</code> peels thenables recursively: <code>T extends PromiseLike&lt;infer U&gt; ? Awaited&lt;U&gt; : T</code> (the real one also special-cases null/undefined and non-thenable objects). Gotchas: overloaded functions infer from the last signature; generic functions have their type parameters replaced by constraints (use instantiation expressions <code>typeof f&lt;string&gt;</code>).</p>`, followUps: ['What happens when the same infer name appears twice in contravariant positions?', 'How would you get the type of the first parameter only?'] },
-    { q: 'What is a homomorphic mapped type and why does it matter?', level: 'A', a: `<p>A mapped type of the form <code>{ [K in keyof T]: … }</code> (or over <code>K extends keyof T</code>) is <b>homomorphic</b>: it preserves the structure of T. Practically: (1) it <b>copies</b> <code>readonly</code> and <code>?</code> from T unless you change them, (2) mapping an <b>array or tuple</b> produces an array/tuple (<code>Partial&lt;[a, b]&gt;</code> → <code>[a?, b?]</code>), (3) it <b>distributes over unions</b> of T, and (4) applied to a primitive it returns the primitive. Mapping over something else (e.g. <code>[K in string]</code> or a literal union) does not preserve modifiers. Adding an <code>as</code> clause keeps modifier copying but breaks array preservation — mapping a tuple with <code>as</code> exposes keys like <code>length</code> and <code>push</code>.</p>`, followUps: ['Why is Partial<string> equal to string?', 'How does Pick stay homomorphic?'] },
+    { q: 'What is a homomorphic mapped type and why does it matter?', level: 'A', a: `<p>A mapped type of the form <code>{ [K in keyof T]: … }</code> (or over <code>K extends keyof T</code>) is <b>homomorphic</b>: it preserves the structure of T. Practically: (1) it <b>copies</b> <code>readonly</code> and <code>?</code> from T unless you change them, (2) mapping an <b>array or tuple</b> produces an array/tuple (<code>Partial&lt;[a, b]&gt;</code> → <code>[a?, b?]</code>), (3) it <b>distributes over unions</b> of T, and (4) applied to a primitive it returns the primitive. Mapping over something else (e.g. <code>[K in string]</code> or a literal union) does not preserve modifiers. Adding an <code>as</code> clause keeps modifier copying but breaks array preservation — mapping a tuple with <code>as</code> exposes keys like <code>length</code> and <code>push</code>.</p>`, followUps: ['Why is Partial&lt;string&gt; equal to string?', 'How does Pick stay homomorphic?'] },
     { q: 'Write a type-safe <code>get(obj, key)</code> and then extend it to dotted paths. What are the costs?', level: 'A', a: `<p>Single level: <code>function get&lt;T, K extends keyof T&gt;(obj: T, key: K): T[K]</code>. For paths, generate all valid paths with a recursive mapped type (<code>K | \`&#36;{K}.&#36;{Paths&lt;T[K]&gt;}\`</code> for object-valued keys, indexed by <code>[keyof T &amp; string]</code>) and consume a path with a template literal split (<code>P extends \`&#36;{infer H}.&#36;{infer R}\` ? PathValue&lt;T[H], R&gt; : T[P]</code>). Costs: Paths is O(total properties) and can explode on wide or recursive models (needs a depth counter), errors become hard to read, and editor latency grows. In production I cap depth, cache the alias, and measure with <code>--extendedDiagnostics</code>; sometimes a typed selector function (<code>get(o, x =&gt; x.a.b)</code>) is simpler.</p>`, followUps: ['How would you add a depth limit?', 'How do you type the matching set()?'] },
     { q: 'How do template literal types work and what are their limits?', level: 'I', a: `<p>They are string types built like JS template strings but with <b>types</b> in the holes: <code>\`&#36;{number}px\`</code> is a pattern accepting "10px"; unions in holes produce the <b>cross product</b> (<code>\`&#36;{"sm" | "lg"}-&#36;{"red" | "blue"}\`</code> → 4 literals). With <code>infer</code> in a conditional they parse strings (route params, dotted paths). Intrinsics <code>Uppercase</code>, <code>Lowercase</code>, <code>Capitalize</code>, <code>Uncapitalize</code> transform them. Limits: unions over 100,000 members error, recursive parsing is bounded by instantiation depth (~1000 for tail recursion, ~50–100 otherwise), adjacent <code>infer</code>s take one character at a time, and symbol keys need <code>&amp; string</code> filtering.</p>`, followUps: ['How do you match the last occurrence of a separator?', 'Give a production use where you would NOT use them.'] },
     { q: 'What is the difference between <code>satisfies</code>, a type annotation and <code>as</code>?', level: 'I', a: `<p>An <b>annotation</b> (<code>const x: T = …</code>) checks the value against T and then the variable <b>is</b> T — literal information is lost (keys widen to <code>string</code> for a Record). <code>as T</code> is an <b>assertion</b>: it overrides the checker (only rejecting obviously unrelated types), so it can hide bugs. <code>satisfies T</code> (TS 4.9) <b>checks</b> the value against T but keeps the value's own, narrower inferred type — so <code>const ROUTES = {…} satisfies Record&lt;string, string&gt;</code> validates every value while <code>keyof typeof ROUTES</code> stays the literal key union. Combined with <code>as const</code> it gives both readonly literal types and validation.</p>`, followUps: ['When is as unavoidable?', 'What does as const satisfies X give you?'] },

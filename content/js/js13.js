@@ -2254,5 +2254,796 @@ console.log('10k cards -> forced layouts:', big.layouts, 'in', Date.now() - t0, 
       }
     }]
   });
-  registerModule({ id: 'js13', title: 'Functional Programming, Patterns & Performance in JS', intro: '<p>x</p>', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview });
+
+  /* ================= PRACTICE: Easy ================= */
+  practice.push({
+    title: 'Immutable Todo List Operations',
+    level: 'Easy', tags: ['immutability', 'pure functions', 'arrays'], companies: ['Atlassian', 'Freshworks', 'Zoho'],
+    statement: `<p>Write four <b>pure</b> functions over an array of todos <code>{ id, text, done }</code>: <code>addTodo(list, text, id)</code>, <code>toggleTodo(list, id)</code>, <code>renameTodo(list, id, text)</code>, <code>removeTodo(list, id)</code>. Each returns a new array, never mutates the input, and keeps <b>unchanged todo objects by reference</b> (structural sharing). If the id does not exist, return the <i>same</i> list reference.</p>`,
+    constraints: `<p>0 ≤ list.length ≤ 10<sup>5</sup>; ids are unique.</p>`,
+    example: `<p>list = [{id:1, done:false}, {id:2, done:false}] → <code>toggleTodo(list, 2)</code> gives a new array where ${H.c('g', 'item 2 is a new object with done: true')} and ${H.c('b', 'item 1 is the very same object')}. <code>toggleTodo(list, 99) === list</code>.</p>`,
+    brute: { why: `<p>Mutating in place (<code>list.find(...).done = !done</code>) is short but breaks every <code>===</code> change check: React/Redux see the same array and skip re-rendering. Deep cloning first is correct but copies every todo.</p>`, code: { lang: 'js', run: true, code: `
+function toggleMutating(list, id) {
+  const t = list.find((x) => x.id === id);
+  if (t) t.done = !t.done;          // mutates the caller's object
+  return list;                       // same reference: UI cannot detect the change
+}
+const l = [{ id: 1, done: false }];
+console.log(toggleMutating(l, 1) === l, l[0].done);
+` } },
+    mcq: { q: 'Which array method is the natural fit for "replace one item, keep the rest"?', options: ['<code>map</code>, returning a new object only for the matching id', '<code>forEach</code> with assignment', '<code>sort</code>', '<code>splice</code>'], answer: 0, explain: 'map builds a new array; returning the old element for non-matches keeps them shared by reference.' },
+    hints: [`<p>Hint 1: <code>map</code> and <code>filter</code> already return new arrays — you only need to create a new object for the one todo that changes.</p>`, `<p>Hint 2: to return the same reference when nothing changes, first check <code>list.some(t =&gt; t.id === id)</code> (or compare lengths after filter).</p>`, `<p>Hint 3: add = <code>[...list, { id, text, done: false }]</code>; toggle/rename = map with spread for the match; remove = filter. Freeze inputs in your tests to catch accidental mutation.</p>`],
+    solution: {
+      approach: `<p>Use copying array methods; create a new object only on the changed path; early-return the input when the id is missing to preserve identity.</p>`,
+      code: { lang: 'js', run: true, code: `
+const has = (list, id) => list.some((t) => t.id === id);
+const addTodo = (list, text, id) => [...list, { id, text, done: false }];
+const toggleTodo = (list, id) =>
+  has(list, id) ? list.map((t) => (t.id === id ? { ...t, done: !t.done } : t)) : list;
+const renameTodo = (list, id, text) =>
+  has(list, id) ? list.map((t) => (t.id === id ? { ...t, text } : t)) : list;
+const removeTodo = (list, id) => (has(list, id) ? list.filter((t) => t.id !== id) : list);
+
+const l0 = Object.freeze([Object.freeze({ id: 1, text: 'milk', done: false })]);
+const l1 = addTodo(l0, 'eggs', 2);
+const l2 = toggleTodo(l1, 2);
+const l3 = renameTodo(l2, 1, 'oat milk');
+const l4 = removeTodo(l3, 2);
+console.log(JSON.stringify(l4), '| l0 untouched:', JSON.stringify(l0));
+console.log('item 1 shared after toggle(2):', l1[0] === l2[0]);
+console.log('missing id keeps identity:', toggleTodo(l2, 99) === l2);
+` },
+      complexity: `<p>Each operation O(n) time (one scan, plus one for <code>has</code>), O(n) new array; only one new todo object.</p>`,
+      followUps: ['Store todos normalized as <code>{ byId, ids }</code> — what does each operation cost now?', 'Add <code>moveTodo(list, from, to)</code> immutably with <code>toSpliced</code>.']
+    }
+  });
+
+  practice.push({
+    title: 'Implement once(fn)',
+    level: 'Easy', tags: ['closures', 'higher-order functions', 'memoization'], companies: ['Amazon', 'Paytm', 'Walmart'],
+    statement: `<p>Implement <code>once(fn)</code>: the returned function calls <code>fn</code> the first time (with the caller's <code>this</code> and arguments) and returns its result; every later call returns that <b>same first result</b> without calling <code>fn</code>. If the first call throws, the error propagates and the next call should try again.</p>`,
+    constraints: `<p>fn may return <code>undefined</code>; that is still a valid cached result.</p>`,
+    example: `<p><code>const init = once(() =&gt; { console.log('init!'); return 42; })</code>; <code>init(); init(); init()</code> prints ${H.c('g', 'init! once')} and returns 42 each time.</p>`,
+    brute: { why: `<p>A boolean flag without storing the result returns <code>undefined</code> on later calls; checking <code>if (result)</code> instead of a separate flag re-runs fn whenever the first result was falsy (0, '', undefined).</p>`, code: { lang: 'js', run: true, code: `
+function onceBuggy(fn) {
+  let result;
+  return (...args) => {
+    if (!result) result = fn(...args);   // re-runs when result is 0 / '' / undefined
+    return result;
+  };
+}
+let n = 0;
+const zero = onceBuggy(() => { n++; return 0; });
+zero(); zero(); zero();
+console.log('fn ran', n, 'times (expected 1)');
+` } },
+    mcq: { q: 'Why keep a separate <code>called</code> flag instead of checking <code>result !== undefined</code>?', options: ['fn might legitimately return undefined (or any falsy value)', 'Flags are faster than comparisons', 'undefined cannot be stored in a closure', 'It is required by the spec'], answer: 0, explain: 'The cached value itself cannot double as the "has run" marker when every value is a valid result.' },
+    hints: [`<p>Hint 1: two closure variables: <code>called</code> (boolean) and <code>result</code>.</p>`, `<p>Hint 2: use a <code>function</code> expression and <code>fn.apply(this, args)</code> to keep <code>this</code>.</p>`, `<p>Hint 3: set <code>called = true</code> only <i>after</i> fn returns successfully, so a throwing first call can be retried. Optionally drop the reference to fn afterwards so it can be garbage-collected.</p>`],
+    solution: {
+      approach: `<p>Closure with a flag and a cached result; set the flag after a successful call; release fn to free memory.</p>`,
+      code: { lang: 'js', run: true, code: `
+function once(fn) {
+  let called = false, result;
+  return function (...args) {
+    if (called) return result;
+    result = fn.apply(this, args);     // if this throws, called stays false -> retry later
+    called = true;
+    fn = null;                          // let GC reclaim fn and its closure
+    return result;
+  };
+}
+let runs = 0;
+const init = once(function (x) { runs++; return x * 2 + (this ? this.bonus : 0); });
+const obj = { bonus: 1, init };
+console.log(obj.init(20), obj.init(99), init(5), 'runs:', runs);   // 41 41 41 runs: 1
+
+let attempts = 0;
+const flaky = once(() => { attempts++; if (attempts < 2) throw new Error('fail'); return 'ok'; });
+try { flaky(); } catch (e) { console.log('first call threw'); }
+console.log(flaky(), flaky(), 'attempts:', attempts);            // ok ok attempts: 2
+` },
+      complexity: `<p>O(1) per call; O(1) memory (plus the cached result).</p>`,
+      followUps: ['Write <code>before(n, fn)</code> that allows at most n − 1 calls.', 'Make an async once that shares the in-flight promise.']
+    }
+  });
+
+  practice.push({
+    title: 'Which Events Does a Throttle Let Through?',
+    level: 'Easy', tags: ['throttle', 'simulation', 'timestamps'], companies: ['Swiggy', 'Meesho', 'Google'],
+    statement: `<p>Given sorted event timestamps (ms) and <code>wait</code>, return the timestamps at which a <b>leading-edge throttle</b> runs the handler: an event runs if at least <code>wait</code> ms have passed since the last <i>run</i> (the first event always runs). Also return how many events were dropped.</p>`,
+    constraints: `<p>1 ≤ n ≤ 10<sup>5</sup>, 0 ≤ t ≤ 10<sup>9</sup>, 1 ≤ wait ≤ 10<sup>6</sup>.</p>`,
+    example: `<p>times = [0, 30, 60, 100, 130, 250], wait = 100 → runs ${H.c('g', '[0, 100, 250]')}, dropped ${H.c('r', '3')}. 30 and 60 are within 100 ms of 0; 130 is within 100 of 100.</p>`,
+    brute: { why: `<p>Comparing each event with <i>all</i> previous runs is O(n · runs); and comparing with the previous <i>event</i> (instead of the previous <i>run</i>) is a classic bug that turns throttle into something else.</p>`, code: { lang: 'js', run: true, code: `
+function throttleWrong(times, wait) {
+  const runs = [];
+  times.forEach((t, i) => { if (i === 0 || t - times[i - 1] >= wait) runs.push(t); }); // compares with previous EVENT
+  return runs;
+}
+console.log(throttleWrong([0, 30, 60, 100, 130, 250], 100)); // [0, 250]: wrong, 100 should run
+` } },
+    mcq: { q: 'The throttle decision compares the current time with…', options: ['the time of the last RUN', 'the time of the previous event', 'the first event', 'the next event'], answer: 0, explain: 'Throttle guarantees spacing between executions, so it measures from the last execution.' },
+    hints: [`<p>Hint 1: one variable <code>last</code> = time of the last run, starting at <code>-Infinity</code>.</p>`, `<p>Hint 2: for each t: if <code>t - last &gt;= wait</code>, push t and set <code>last = t</code>; else count a drop.</p>`, `<p>Hint 3: edge cases — equal timestamps (second is dropped), wait larger than the whole span (only the first runs). This is exactly what the real throttle does with <code>Date.now()</code>.</p>`],
+    solution: {
+      approach: `<p>Single pass tracking the last run time.</p>`,
+      code: { lang: 'js', run: true, code: `
+function throttleRuns(times, wait) {
+  let last = -Infinity, dropped = 0;
+  const runs = [];
+  for (const t of times) {
+    if (t - last >= wait) { runs.push(t); last = t; }
+    else dropped++;
+  }
+  return { runs, dropped };
+}
+console.log(throttleRuns([0, 30, 60, 100, 130, 250], 100)); // { runs: [0, 100, 250], dropped: 3 }
+console.log(throttleRuns([5, 5, 5], 1));                    // { runs: [5], dropped: 2 }
+console.log(throttleRuns([0, 10, 20], 1000));               // { runs: [0], dropped: 2 }
+` },
+      complexity: `<p>O(n) time, O(runs) space.</p>`,
+      followUps: ['Add a trailing edge: also run once at <code>last + wait</code> if an event was dropped in that window.', 'Return the trailing-debounce run times for the same input.']
+    }
+  });
+
+  practice.push({
+    title: 'deepFreeze (with cycles)',
+    level: 'Easy', tags: ['immutability', 'recursion', 'Object.freeze'], companies: ['Microsoft', 'Adobe', 'Intuit'],
+    statement: `<p>Implement <code>deepFreeze(obj)</code> that freezes an object and every nested object/array reachable from it, then returns it. It must handle <b>circular references</b> without infinite recursion and skip primitives.</p>`,
+    constraints: `<p>Depth ≤ 10<sup>3</sup>; up to 10<sup>5</sup> nested objects.</p>`,
+    example: `<p><code>const c = deepFreeze({ a: { b: [1, 2] } })</code>; in strict mode ${H.c('r', 'c.a.b.push(3) throws TypeError')}. <code>const o = {}; o.self = o; deepFreeze(o)</code> ${H.c('g', 'terminates')}.</p>`,
+    brute: { why: `<p><code>Object.freeze</code> alone is shallow: nested objects stay mutable. A naive recursion without a visited check loops forever on cycles (stack overflow).</p>`, code: { lang: 'js', run: true, code: `
+'use strict';
+const shallow = Object.freeze({ a: { b: [1, 2] } });
+shallow.a.b.push(3);                       // allowed: freeze is shallow
+console.log('shallow freeze let nested push through:', shallow.a.b);
+` } },
+    mcq: { q: 'How does checking <code>Object.isFrozen(v)</code> before recursing help with cycles?', options: ['Freeze the parent before recursing, so a cycle back to it sees a frozen object and stops', 'It does not help; you need JSON.stringify', 'Frozen objects cannot have cycles', 'It makes freezing faster only'], answer: 0, explain: 'If you freeze first and skip already-frozen values, revisiting a node ends the recursion. A WeakSet of visited nodes is the more explicit alternative.' },
+    hints: [`<p>Hint 1: recurse over <code>Reflect.ownKeys(obj)</code> (includes symbol keys) and look at each value.</p>`, `<p>Hint 2: only recurse into values that are objects or functions and not yet visited — track visits in a <code>WeakSet</code>.</p>`, `<p>Hint 3: freeze the current object, then recurse. Note: an object that was frozen elsewhere may still have unfrozen children, so a visited set is more correct than relying on <code>isFrozen</code>.</p>`],
+    solution: {
+      approach: `<p>DFS with a WeakSet of visited objects; freeze each node and recurse into object-typed property values (including symbol keys).</p>`,
+      code: { lang: 'js', run: true, code: `
+'use strict';
+function deepFreeze(obj, seen = new WeakSet()) {
+  if ((typeof obj !== 'object' && typeof obj !== 'function') || obj === null || seen.has(obj)) return obj;
+  seen.add(obj);
+  Object.freeze(obj);
+  for (const key of Reflect.ownKeys(obj)) {
+    const desc = Object.getOwnPropertyDescriptor(obj, key);
+    if (desc && 'value' in desc) deepFreeze(desc.value, seen);   // skip getters: do not run them
+  }
+  return obj;
+}
+const cfg = deepFreeze({ db: { hosts: ['a', 'b'] }, [Symbol('meta')]: { v: 1 } });
+try { cfg.db.hosts.push('c'); } catch (e) { console.log('nested push blocked:', e.constructor.name); }
+const o = { name: 'loop' }; o.self = o;
+console.log('cycle ok, frozen:', Object.isFrozen(deepFreeze(o).self));
+const sym = Object.getOwnPropertySymbols(cfg)[0];
+console.log('symbol-keyed child frozen:', Object.isFrozen(cfg[sym]));
+` },
+      complexity: `<p>O(V + E) over reachable objects and properties; O(V) for the visited set and recursion depth.</p>`,
+      followUps: ['Why might you only deep-freeze in development builds?', 'How would you freeze a Map or Set (freeze does not stop <code>map.set</code>)?']
+    }
+  });
+
+  /* ================= PRACTICE: Medium ================= */
+  practice.push({
+    title: 'Infinite Currying: sum(1)(2)(3)()',
+    level: 'Medium', tags: ['currying', 'closures', 'recursion'], companies: ['Flipkart', 'Amazon', 'Ola'],
+    statement: `<p>Implement <code>sum</code> so that <code>sum(a)(b)(c)…()</code> returns the total of all numbers; an empty call ends the chain. Each call may pass several numbers: <code>sum(1, 2)(3)()</code> = 6. Partial chains must be <b>reusable</b>: <code>const s = sum(10); s(1)(); s(2)()</code> → 11 then 12.</p>`,
+    constraints: `<p>Up to 10<sup>4</sup> chained calls; numbers are finite.</p>`,
+    example: `<p><code>sum(1)(2)(3)()</code> → ${H.c('g', '6')}; <code>sum()</code> → ${H.c('g', '0')}; reuse example gives ${H.c('g', '11, 12')} — not 11, 13.</p>`,
+    brute: { why: `<p>Keeping one running total in an outer variable shared by all chains breaks reuse: the second chain starts from the first chain's total.</p>`, code: { lang: 'js', run: true, code: `
+let total = 0;                               // shared across all chains: bug
+function sumShared(...xs) {
+  if (xs.length === 0) { const t = total; return t; }
+  total += xs.reduce((a, b) => a + b, 0);
+  return sumShared;
+}
+const s = sumShared(10);
+console.log(s(1)(), s(2)());                 // 11 13: the second chain saw the first
+` } },
+    mcq: { q: 'What makes each partial chain independent?', options: ['Each call returns a NEW closure holding its own running total', 'Using a global counter', 'Calling Object.freeze', 'Using var instead of let'], answer: 0, explain: 'Immutable accumulation: every step creates a new function with total + new numbers, leaving the old closure unchanged.' },
+    hints: [`<p>Hint 1: write a helper <code>make(total)</code> that returns a function remembering <code>total</code>.</p>`, `<p>Hint 2: inside, if called with no args return <code>total</code>; otherwise return <code>make(total + sum of args)</code> — a fresh closure.</p>`, `<p>Hint 3: <code>sum(...xs)</code> is just <code>make(0)(...xs)</code>, which also makes <code>sum()</code> return 0.</p>`],
+    solution: {
+      approach: `<p>Persistent (immutable) accumulator: each call creates a new closure with the updated total; empty call returns the total.</p>`,
+      code: { lang: 'js', run: true, code: `
+function make(total) {
+  return function next(...xs) {
+    if (xs.length === 0) return total;
+    return make(xs.reduce((a, b) => a + b, total));   // new closure, old one untouched
+  };
+}
+const sum = (...xs) => make(0)(...xs);
+
+console.log(sum(1)(2)(3)(), sum(1, 2)(3)(), sum());
+const s = sum(10);
+console.log(s(1)(), s(2)());   // 11 12
+let chain = sum(0);
+for (let i = 1; i <= 100; i++) chain = chain(i);
+console.log('1..100 =', chain());
+` },
+      complexity: `<p>O(k) per call with k arguments; O(1) memory per live closure.</p>`,
+      followUps: ['Make <code>+sum(1)(2)</code> work without the empty call using <code>Symbol.toPrimitive</code>.', 'Generalise to <code>chain(reducer, init)</code>.']
+    }
+  });
+
+  practice.push({
+    title: 'createSelector: memoized derived data',
+    level: 'Medium', tags: ['memoization', 'reference equality', 'composition'], companies: ['Meta', 'Atlassian', 'Postman'],
+    statement: `<p>Implement Reselect-style <code>createSelector(inputSelectors, combiner)</code>. The returned <code>selector(state)</code> runs every input selector on <code>state</code>; if all their results are <b>identical</b> (<code>Object.is</code>) to the previous call's, it returns the previous output without calling <code>combiner</code>. Expose <code>selector.recomputations()</code>.</p>`,
+    constraints: `<p>1 ≤ inputSelectors.length ≤ 10; cache size 1 (memoize-one).</p>`,
+    example: `<p><code>selectVisible = createSelector([s =&gt; s.todos, s =&gt; s.filter], (todos, f) =&gt; todos.filter(...))</code>. Calling it twice with states that share the same <code>todos</code> array and filter → ${H.c('g', '1 recomputation, same output reference')}. Changing only <code>s.user</code> → still cached.</p>`,
+    brute: { why: `<p>Recomputing on every call returns a <b>new array</b> each time, so every <code>React.memo</code> child re-renders even when nothing relevant changed. Caching on the whole <code>state</code> object misses whenever any unrelated slice changes.</p>`, code: { lang: 'js', run: true, code: `
+const selectDoneNaive = (s) => s.todos.filter((t) => t.done);
+const s1 = { todos: [{ done: true }], user: 'a' };
+const s2 = { ...s1, user: 'b' };                   // unrelated change
+console.log('same output ref?', selectDoneNaive(s1) === selectDoneNaive(s2)); // false -> needless re-render
+` } },
+    mcq: { q: 'Why compare the <i>input selector results</i> rather than the whole state?', options: ['Unrelated state changes create a new root object but leave the relevant slices identical', 'Comparing state is impossible in JS', 'It is faster to compare functions', 'To support deep equality'], answer: 0, explain: 'With immutable updates, untouched slices keep their references, so comparing slices gives precise cache hits.' },
+    hints: [`<p>Hint 1: store <code>lastInputs</code> (array) and <code>lastResult</code> in the closure.</p>`, `<p>Hint 2: compute <code>inputs = inputSelectors.map(f =&gt; f(state))</code>; compare element-wise with <code>Object.is</code>.</p>`, `<p>Hint 3: on miss, call <code>combiner(...inputs)</code>, count a recomputation, store both. First call is always a miss (lastInputs null).</p>`],
+    solution: {
+      approach: `<p>Two-level memoization: input selectors are cheap reads; the combiner is guarded by a memoize-one cache over their results.</p>`,
+      code: { lang: 'js', run: true, code: `
+function createSelector(inputSelectors, combiner) {
+  let lastInputs = null, lastResult, count = 0;
+  function selector(state) {
+    const inputs = inputSelectors.map((f) => f(state));
+    const hit = lastInputs !== null && inputs.every((v, i) => Object.is(v, lastInputs[i]));
+    if (!hit) { lastResult = combiner(...inputs); lastInputs = inputs; count++; }
+    return lastResult;
+  }
+  selector.recomputations = () => count;
+  return selector;
+}
+
+const selectVisible = createSelector(
+  [(s) => s.todos, (s) => s.filter],
+  (todos, filter) => todos.filter((t) => (filter === 'done' ? t.done : true))
+);
+const s1 = { todos: [{ id: 1, done: true }, { id: 2, done: false }], filter: 'done', user: 'a' };
+const s2 = { ...s1, user: 'b' };                          // unrelated change
+const s3 = { ...s2, todos: [...s2.todos, { id: 3, done: true }] };
+const r1 = selectVisible(s1), r2 = selectVisible(s2), r3 = selectVisible(s3);
+console.log('r1 === r2:', r1 === r2, '| r3 length:', r3.length, '| recomputations:', selectVisible.recomputations());
+` },
+      complexity: `<p>Hit: O(k) for k input selectors. Miss: O(k) + combiner cost. O(k) memory.</p>`,
+      followUps: ['Why does a selector shared by many list rows with different props thrash this cache? (Use a factory per row or a larger cache.)', 'Allow selectors to compose: an input selector may itself be a memoized selector.']
+    }
+  });
+
+  practice.push({
+    title: 'Mini Redux: createStore with subscribe',
+    level: 'Medium', tags: ['observer', 'pure functions', 'immutability'], companies: ['Microsoft', 'Uber', 'Groww'],
+    statement: `<p>Implement <code>createStore(reducer, initialState)</code> returning <code>{ getState, dispatch, subscribe }</code>. <code>dispatch(action)</code> computes <code>reducer(state, action)</code>, stores it, and notifies subscribers <b>only if the state reference changed</b>. <code>subscribe(fn)</code> returns an unsubscribe function. Dispatching from inside the reducer must throw. Unsubscribing during a notification must not skip other listeners in that round.</p>`,
+    constraints: `<p>Reducers are pure; up to 10<sup>3</sup> listeners.</p>`,
+    example: `<p>reducer handles <code>inc</code>; <code>dispatch({type:'inc'})</code> → state ${H.c('g', '{count: 1}')} and listeners run; <code>dispatch({type:'unknown'})</code> → reducer returns same state → ${H.c('b', 'no notification')}.</p>`,
+    brute: { why: `<p>Notifying on every dispatch (even no-ops) causes wasted renders; iterating the live listener array while one unsubscribes skips the next; letting reducers dispatch causes re-entrant, inconsistent state.</p>`, code: { lang: 'js', run: true, code: `
+function createStoreNaive(reducer, state) {
+  const ls = [];
+  return {
+    getState: () => state,
+    dispatch(a) { state = reducer(state, a); for (let i = 0; i < ls.length; i++) ls[i](); }, // always notifies
+    subscribe(fn) { ls.push(fn); return () => ls.splice(ls.indexOf(fn), 1); }
+  };
+}
+const st = createStoreNaive((s) => s, { n: 0 });
+st.subscribe(() => console.log('render (wasted)'));
+st.dispatch({ type: 'noop' });
+` } },
+    mcq: { q: 'How does the store know the state "changed" cheaply?', options: ['Reference comparison: the pure reducer returns a new object only when something changed', 'Deep equality on every dispatch', 'JSON.stringify comparison', 'A version counter set by listeners'], answer: 0, explain: 'Immutability turns change detection into a single === check.' },
+    hints: [`<p>Hint 1: closure variables: <code>state</code>, <code>listeners</code> array, <code>isDispatching</code> flag.</p>`, `<p>Hint 2: in dispatch: guard re-entrancy, compute next with try/finally to reset the flag, compare <code>next !== state</code> before notifying.</p>`, `<p>Hint 3: notify over a <b>snapshot</b> (<code>listeners.slice()</code>); unsubscribe should be idempotent (calling it twice must not remove someone else).</p>`],
+    solution: {
+      approach: `<p>Pure reducer for transitions, observer list for notifications, reference equality for change detection, a snapshot for safe iteration.</p>`,
+      code: { lang: 'js', run: true, code: `
+function createStore(reducer, initialState) {
+  let state = initialState, isDispatching = false;
+  let listeners = [];
+  return {
+    getState: () => state,
+    subscribe(fn) {
+      listeners.push(fn);
+      let active = true;
+      return () => {
+        if (!active) return;                    // idempotent
+        active = false;
+        listeners = listeners.filter((l) => l !== fn);
+      };
+    },
+    dispatch(action) {
+      if (isDispatching) throw new Error('Reducers may not dispatch actions.');
+      let next;
+      try { isDispatching = true; next = reducer(state, action); } finally { isDispatching = false; }
+      if (next !== state) {
+        state = next;
+        listeners.slice().forEach((l) => l());  // snapshot
+      }
+      return action;
+    }
+  };
+}
+
+const reducer = (s, a) => (a.type === 'inc' ? { ...s, count: s.count + 1 } : s);
+const store = createStore(reducer, { count: 0 });
+const unsubA = store.subscribe(() => { console.log('A sees', store.getState().count); unsubA(); });
+store.subscribe(() => console.log('B sees', store.getState().count));
+store.dispatch({ type: 'inc' });    // A 1, B 1 (A unsubscribes itself, B not skipped)
+store.dispatch({ type: 'noop' });   // nothing printed
+store.dispatch({ type: 'inc' });    // B 2
+const bad = createStore((s, a) => { if (a.type === 'x') bad.dispatch({ type: 'y' }); return s; }, {});
+try { bad.dispatch({ type: 'x' }); } catch (e) { console.log('blocked:', e.message); }
+` },
+      complexity: `<p>dispatch: O(reducer) + O(L) for L listeners; subscribe O(1); unsubscribe O(L).</p>`,
+      followUps: ['Add middleware support: <code>applyMiddleware(...mws)</code> using compose.', 'Add <code>select(selector, onChange)</code> that fires only when the selected slice changes.']
+    }
+  });
+
+  practice.push({
+    title: 'Lazy Async Singleton (one connection, even under concurrency)',
+    level: 'Medium', tags: ['singleton', 'promises', 'memoization'], companies: ['Amazon', 'Zerodha', 'Stripe'],
+    statement: `<p>Write <code>lazySingleton(factory)</code> returning <code>get()</code>. The async <code>factory()</code> creates an expensive resource (e.g. a DB pool). Requirements: the factory runs <b>at most once</b> even if 100 callers call <code>get()</code> at the same moment; all of them receive the same instance; if the factory <b>rejects</b>, the failure is passed to those callers but the <i>next</i> <code>get()</code> retries. Also provide <code>reset()</code> for tests.</p>`,
+    constraints: `<p>Up to 10<sup>4</sup> concurrent callers.</p>`,
+    example: `<p>Three concurrent <code>get()</code> calls → ${H.c('g', 'factory runs once')}, all three get the same object. First factory call rejects → callers see the error, ${H.c('b', 'next get() calls factory again')}.</p>`,
+    brute: { why: `<p>Caching the <i>resolved instance</i> (<code>if (!instance) instance = await factory()</code>) has a race: every caller that arrives before the first await finishes sees <code>instance</code> still empty and starts its own factory call — 100 pools instead of 1.</p>`, code: { lang: 'js', run: true, code: `
+let created = 0, instance = null;
+const factory = () => new Promise((r) => setTimeout(() => r({ id: ++created }), 10));
+async function getRacy() {
+  if (!instance) instance = await factory();   // everyone passes this check before the first await resolves
+  return instance;
+}
+Promise.all([getRacy(), getRacy(), getRacy()]).then(() => console.log('factory ran', created, 'times'));
+` } },
+    mcq: { q: 'What should be cached to fix the race?', options: ['The pending Promise, stored synchronously before any await', 'The resolved value only', 'A boolean "creating" flag and busy-waiting', 'Nothing; use setTimeout'], answer: 0, explain: 'Storing the promise synchronously means every later caller in the same tick finds it and awaits the same work.' },
+    hints: [`<p>Hint 1: the critical section is the gap between "check" and "store" — make it synchronous by storing the promise immediately.</p>`, `<p>Hint 2: <code>promise ??= factory().catch(err =&gt; { promise = null; throw err; })</code>.</p>`, `<p>Hint 3: <code>reset()</code> just sets the cached promise to null. Be careful that a late rejection from an <i>old</i> promise does not clear a newer one — compare before clearing.</p>`],
+    solution: {
+      approach: `<p>Memoize the promise (not the value). On rejection, clear the cache only if it still holds that same promise, so retries work and newer attempts are not clobbered.</p>`,
+      code: { lang: 'js', run: true, code: `
+function lazySingleton(factory) {
+  let promise = null;
+  function get() {
+    if (!promise) {
+      const p = Promise.resolve().then(factory).catch((err) => {
+        if (promise === p) promise = null;      // allow retry, but only for this attempt
+        throw err;
+      });
+      promise = p;
+    }
+    return promise;
+  }
+  get.reset = () => { promise = null; };
+  return get;
+}
+
+let created = 0, failNext = true;
+const getPool = lazySingleton(() => new Promise((res, rej) => setTimeout(() => {
+  if (failNext) { failNext = false; rej(new Error('db down')); } else res({ id: ++created });
+}, 10)));
+
+Promise.allSettled([getPool(), getPool(), getPool()])
+  .then((rs) => console.log('first round:', rs.map((r) => r.status).join(',')))
+  .then(() => Promise.all([getPool(), getPool(), getPool()]))
+  .then((pools) => console.log('same instance:', pools[0] === pools[2], '| factory successes:', created));
+` },
+      complexity: `<p>O(1) per <code>get()</code>; one factory call per success (plus one per failed attempt).</p>`,
+      followUps: ['Add a timeout so a hung factory does not block callers forever.', 'Why is a module-level singleton dangerous in a multi-tenant server?']
+    }
+  });
+
+  practice.push({
+    title: 'Simulate Debounce and Throttle Schedules',
+    level: 'Medium', tags: ['debounce', 'throttle', 'simulation', 'event timeline'], companies: ['Google', 'Microsoft', 'Swiggy'],
+    statement: `<p>Write a <b>pure</b> function <code>schedule(times, wait)</code> that, for sorted event timestamps, returns when each strategy runs the handler: <code>debounce</code> (trailing: <code>wait</code> ms after the last event of each burst) and <code>throttle</code> (leading + trailing, lodash-style: run on an event if the window is free; if events arrive during the window, run once more at the window's end with the latest one, and that trailing run opens a new window). Return <code>{ debounce: [[runAt, eventTime], …], throttle: [[runAt, eventTime], …] }</code>.</p>`,
+    constraints: `<p>1 ≤ n ≤ 10<sup>5</sup>; ties: a timer due at time T fires before an event at T.</p>`,
+    example: `<p>times = [0, 40, 80, 300], wait = 100 → debounce ${H.c('g', '[[180, 80], [400, 300]]')}; throttle ${H.c('b', '[[0, 0], [100, 80], [300, 300]]')} — 40 and 80 fell in the window [0, 100), so 80 (latest) runs at 100.</p>`,
+    brute: { why: `<p>Simulating every millisecond (a loop from 0 to the last time) is O(T) — for timestamps up to 10<sup>9</sup> that is far too slow. You only need to visit event times and timer-due times.</p>`, code: { lang: 'js', run: true, code: `
+function debounceTick(times, wait) {             // simulate every ms: O(maxTime)
+  const runs = []; let due = null, lastEv = null, k = 0;
+  for (let t = 0; t <= times[times.length - 1] + wait; t++) {
+    if (due === t) { runs.push([t, lastEv]); due = null; }
+    while (k < times.length && times[k] === t) { lastEv = t; due = t + wait; k++; }
+  }
+  return runs;
+}
+console.log(debounceTick([0, 40, 80, 300], 100));
+` } },
+    mcq: { q: 'For trailing debounce, event i produces a run if and only if…', options: ['the next event is at least wait ms later (or there is no next event)', 'it is the first event', 'the previous event was wait ms earlier', 'its index is even'], answer: 0, explain: 'A run happens wait ms after an event only when no new event resets the timer before then.' },
+    hints: [`<p>Hint 1: debounce needs no simulation: event i runs at <code>t[i] + wait</code> exactly when <code>t[i+1] - t[i] &gt;= wait</code> or i is last.</p>`, `<p>Hint 2: throttle: keep <code>windowEnd</code> (−∞ when free) and <code>pending</code> (latest event during the window). Before handling an event at t, flush any trailing run whose <code>windowEnd &lt;= t</code>.</p>`, `<p>Hint 3: flushing a trailing run at <code>windowEnd</code> opens a new window ending at <code>windowEnd + wait</code>; with no pending event, the window simply closes. After the last event, keep flushing once.</p>`],
+    solution: {
+      approach: `<p>Debounce by a gap rule in one pass. Throttle by an event-driven simulation that only visits event times and window ends.</p>`,
+      code: { lang: 'js', run: true, code: `
+function schedule(times, wait) {
+  const debounce = [];
+  times.forEach((t, i) => {
+    if (i === times.length - 1 || times[i + 1] - t >= wait) debounce.push([t + wait, t]);
+  });
+
+  const throttle = [];
+  let windowEnd = -Infinity, pending = null;
+  function flushUntil(t) {                         // fire trailing runs due at or before t
+    while (windowEnd <= t && windowEnd !== -Infinity) {
+      if (pending === null) { windowEnd = -Infinity; break; }
+      throttle.push([windowEnd, pending]);
+      pending = null;
+      windowEnd += wait;                            // trailing run opens a new window
+    }
+  }
+  for (const t of times) {
+    flushUntil(t);
+    if (windowEnd === -Infinity) { throttle.push([t, t]); windowEnd = t + wait; }  // leading
+    else pending = t;                                                                // remember latest
+  }
+  flushUntil(Infinity);
+  return { debounce, throttle };
+}
+const r = schedule([0, 40, 80, 300], 100);
+console.log('debounce:', JSON.stringify(r.debounce));   // [[180,80],[400,300]]
+console.log('throttle:', JSON.stringify(r.throttle));   // [[0,0],[100,80],[300,300]]
+console.log(JSON.stringify(schedule([0, 10, 20, 30, 40, 50, 60, 70], 25).throttle));
+` },
+      complexity: `<p>O(n) time (each event and each trailing run handled once), O(runs) space.</p>`,
+      followUps: ['Add <code>maxWait</code> to the debounce simulation.', 'Use this pure function to unit-test your real debounce/throttle with fake timers.']
+    }
+  });
+
+  practice.push({
+    title: 'Measure/Mutate Scheduler (fastdom-style)',
+    level: 'Medium', tags: ['layout thrashing', 'batching', 'requestAnimationFrame'], companies: ['Pinterest', 'LinkedIn', 'Canva'],
+    statement: `<p>Build <code>createScheduler(raf)</code> with <code>measure(fn)</code> and <code>mutate(fn)</code>. Jobs are queued; one <code>raf</code> callback per frame runs <b>all queued measures first, then all mutates</b>. Jobs added during a flush (e.g. a measure that queues a mutate) run in the same frame if they are mutates queued during the measure phase; anything else waits for the next frame. Test with a fake <code>raf</code>.</p>`,
+    constraints: `<p>Up to 10<sup>4</sup> jobs per frame; at most one raf request outstanding.</p>`,
+    example: `<p>Calls: mutate(W1), measure(R1 → queues mutate W2), measure(R2). One frame runs ${H.c('g', 'R1, R2, W1, W2')} — reads never interleave with writes.</p>`,
+    brute: { why: `<p>Running each job immediately in call order produces W R W R… — the exact thrashing pattern. Calling <code>raf</code> per job schedules many callbacks per frame and still interleaves.</p>`, code: { lang: 'js', run: true, code: `
+const order = [];
+const measureNow = (fn) => fn(), mutateNow = (fn) => fn();
+mutateNow(() => order.push('W1'));
+measureNow(() => { order.push('R1'); mutateNow(() => order.push('W2')); });
+measureNow(() => order.push('R2'));
+console.log(order.join(' '));   // W1 R1 W2 R2 -> interleaved (thrash)
+` } },
+    mcq: { q: 'Why must the scheduler request at most ONE frame callback at a time?', options: ['So all jobs of a frame are flushed together in one read phase and one write phase', 'Because raf can only be called once per page', 'To save memory on closures', 'Because mutates must run before measures'], answer: 0, explain: 'Batching is the whole point; multiple callbacks per frame would bring back interleaving.' },
+    hints: [`<p>Hint 1: two arrays (<code>reads</code>, <code>writes</code>) and a <code>scheduled</code> flag.</p>`, `<p>Hint 2: in the frame: drain reads (<code>splice(0)</code>) and run them; then drain writes in a loop, because measures may have queued new writes.</p>`, `<p>Hint 3: measures queued during the write phase must wait for the next frame (reading after writing would force layout) — schedule another frame if <code>reads</code> is non-empty at the end.</p>`],
+    solution: {
+      approach: `<p>Queue + single frame flush with two phases; re-schedule if new reads arrived during writes.</p>`,
+      code: { lang: 'js', run: true, code: `
+function createScheduler(raf) {
+  const reads = [], writes = [];
+  let scheduled = false;
+  function flush() {
+    for (const fn of reads.splice(0)) fn();                 // phase 1: all measures
+    while (writes.length) for (const fn of writes.splice(0)) fn(); // phase 2: all mutates
+    scheduled = false;                                       // jobs queued during flush did not request a frame
+    if (reads.length) request();                             // reads queued by writes -> next frame
+  }
+  function request() { if (!scheduled) { scheduled = true; raf(flush); } }
+  return {
+    measure(fn) { reads.push(fn); request(); },
+    mutate(fn) { writes.push(fn); request(); }
+  };
+}
+
+// Fake requestAnimationFrame: we decide when a frame happens
+const frameQueue = [];
+const fakeRaf = (cb) => frameQueue.push(cb);
+const nextFrame = (label) => { const cbs = frameQueue.splice(0); console.log(label, '-> callbacks:', cbs.length); cbs.forEach((cb) => cb()); };
+
+const order = [];
+const s = createScheduler(fakeRaf);
+s.mutate(() => order.push('W1'));
+s.measure(() => { order.push('R1'); s.mutate(() => order.push('W2')); });
+s.measure(() => order.push('R2'));
+s.mutate(() => { order.push('W3'); s.measure(() => order.push('R3 (next frame)')); });
+nextFrame('frame 1');
+nextFrame('frame 2');
+console.log(order.join(' '));   // R1 R2 W1 W3 W2 R3 (next frame): W2 was queued during the read phase
+` },
+      complexity: `<p>O(1) to queue; O(jobs) per frame; at most one raf callback outstanding.</p>`,
+      followUps: ['Add <code>clear(job)</code> to cancel a queued job.', 'Return a Promise from measure so callers can <code>await</code> a value.']
+    }
+  });
+
+  /* ================= PRACTICE: Hard ================= */
+  practice.push({
+    title: 'Curry with Placeholders',
+    level: 'Hard', tags: ['currying', 'closures', 'lodash'], companies: ['Google', 'Uber', 'Flipkart'],
+    statement: `<p>Implement <code>curry(fn)</code> supporting a placeholder <code>curry.placeholder</code> (call it <code>_</code>). A placeholder reserves a position to be filled by later calls. The function runs once the first <code>fn.length</code> slots are all filled with non-placeholders. Example: <code>c(_, 2)(1, 3)</code> ≡ <code>fn(1, 2, 3)</code>; <code>c(_, _, 3)(1)(2)</code> ≡ <code>fn(1, 2, 3)</code>.</p>`,
+    constraints: `<p>fn.length ≤ 10; each partial must be reusable (no shared mutable state).</p>`,
+    example: `<p>fn = (a, b, c) =&gt; [a, b, c]. <code>c(_, 'b')('a')('c')</code> → ${H.c('g', "['a','b','c']")}. <code>c(_, _, 'c')(_, 'b')('a')</code> → ${H.c('g', "['a','b','c']")} — the new placeholder in the second call keeps slot 0 open.</p>`,
+    brute: { why: `<p>Plain curry concatenates arguments, so a placeholder is treated as a real value and <code>fn</code> runs too early with <code>_</code> inside. Counting only non-placeholder args is also wrong — order matters.</p>`, code: { lang: 'js', run: true, code: `
+const _ = Symbol('placeholder');
+function curryPlain(fn) {
+  return function c(...args) {
+    return args.length >= fn.length ? fn(...args) : (...m) => c(...args, ...m);
+  };
+}
+const show = curryPlain((a, b, cc) => [a, b, cc]);
+console.log(show(_, 'b')('a')); // runs with the placeholder inside: wrong
+` } },
+    mcq: { q: 'When a new call arrives, which slots do its arguments fill first?', options: ['Existing placeholder slots, left to right; leftovers are appended', 'Always appended to the end', 'Always the first slots, overwriting', 'Random slots'], answer: 0, explain: 'That is lodash semantics: holes are filled in order, then extra arguments extend the list.' },
+    hints: [`<p>Hint 1: keep an array <code>slots</code> that may contain placeholders. A merge step takes the old slots and the new args and returns a NEW array.</p>`, `<p>Hint 2: merge — walk old slots; each placeholder slot takes the next new arg (which may itself be a placeholder); then append remaining new args.</p>`, `<p>Hint 3: ready when <code>slots.length &gt;= arity</code> and none of the first <code>arity</code> slots is the placeholder. Then call <code>fn.apply(this, slots)</code>.</p>`],
+    solution: {
+      approach: `<p>Immutable slot merging: each call produces a new slots array (holes filled left-to-right, rest appended) and a new closure; run when the first n slots are real values.</p>`,
+      code: { lang: 'js', run: true, code: `
+function curry(fn, arity = fn.length) {
+  const PH = curry.placeholder;
+  function merge(slots, args) {
+    const out = slots.slice();
+    let j = 0;
+    for (let i = 0; i < out.length && j < args.length; i++) {
+      if (out[i] === PH) out[i] = args[j++];      // fill holes in order
+    }
+    while (j < args.length) out.push(args[j++]); // append the rest
+    return out;
+  }
+  const ready = (slots) => slots.length >= arity && slots.slice(0, arity).every((v) => v !== PH);
+  function make(slots) {
+    return function (...args) {
+      const next = merge(slots, args);
+      return ready(next) ? fn.apply(this, next) : make(next);
+    };
+  }
+  return make([]);
+}
+curry.placeholder = Symbol('_');
+const _ = curry.placeholder;
+
+const c = curry((a, b, cc) => [a, b, cc].join('-'));
+console.log(c(_, 'b')('a', 'c'));           // a-b-c
+console.log(c(_, _, 'c')(_, 'b')('a'));     // a-b-c
+console.log(c('a')(_, 'c')('b'));           // a-b-c
+const p = c(_, 'x');
+console.log(p('1', '2'), p('3', '4'));      // 1-x-2 3-x-4 (reusable)
+` },
+      complexity: `<p>Each call O(k) for k collected slots; overall O(n<sup>2</sup>) worst case for arity n — trivial for n ≤ 10.</p>`,
+      followUps: ['Support <code>curryRight</code> with placeholders.', 'How would you type this in TypeScript? (Hint: it gets very hard — discuss trade-offs.)']
+    }
+  });
+
+  practice.push({
+    title: 'memoizeAsync with TTL, Dedupe and Max Size',
+    level: 'Hard', tags: ['memoization', 'promises', 'LRU', 'TTL'], companies: ['Netflix', 'Razorpay', 'Cloudflare'],
+    statement: `<p>Implement <code>memoizeAsync(fn, { ttl, max, now })</code> for an async function of one primitive key. Rules: concurrent calls with the same key share one in-flight promise; successful results are cached for <code>ttl</code> ms (measured with the injected <code>now()</code>); rejected promises are <b>not</b> cached; at most <code>max</code> entries are kept with LRU eviction; expired entries are recomputed. Expose <code>size()</code>.</p>`,
+    constraints: `<p>1 ≤ max ≤ 10<sup>4</sup>; O(1) average per call.</p>`,
+    example: `<p>ttl 1000. t=0: get(1) ×3 concurrently → ${H.c('g', '1 call to fn')}. t=500: get(1) → cached. t=1500: get(1) → ${H.c('y', 'expired, recompute')}. get(9) rejects → next get(9) ${H.c('b', 'retries')}.</p>`,
+    brute: { why: `<p>Caching resolved values only (after await) loses dedupe — concurrent calls all miss. Caching promises forever keeps failures and stale data, and the map grows without bound.</p>`, code: { lang: 'js', run: true, code: `
+function memoAsyncNaive(fn) {
+  const cache = new Map();
+  return async (k) => {
+    if (cache.has(k)) return cache.get(k);
+    const v = await fn(k);            // concurrent callers all reach here before set
+    cache.set(k, v);                  // never expires, never evicts
+    return v;
+  };
+}
+let calls = 0;
+const m = memoAsyncNaive(async (k) => { calls++; return k * 2; });
+Promise.all([m(1), m(1), m(1)]).then(() => console.log('fn calls:', calls)); // 3
+` } },
+    mcq: { q: 'When should the TTL clock start for an entry?', options: ['When the promise resolves successfully', 'When the request starts', 'When the entry is evicted', 'It does not matter'], answer: 0, explain: 'Starting at resolution gives every successful value a full ttl of freshness; starting at request time would shorten it by the latency. (Both are defensible; state your choice in an interview.)' },
+    hints: [`<p>Hint 1: one <code>Map</code> key → <code>{ promise, expires }</code>; <code>expires = Infinity</code> while in flight.</p>`, `<p>Hint 2: on lookup: if present and <code>now() &lt; expires</code>, move to newest (delete + set) and return the promise; else delete it and start a new call.</p>`, `<p>Hint 3: on resolve set <code>expires = now() + ttl</code> (only if the entry is still the same object); on reject delete it (again only if it is the same entry). Evict <code>map.keys().next().value</code> while size &gt; max.</p>`],
+    solution: {
+      approach: `<p>Map-based LRU of entries holding the shared promise and an expiry. Identity checks ensure late settlements of old attempts never corrupt newer entries.</p>`,
+      code: { lang: 'js', run: true, code: `
+function memoizeAsync(fn, { ttl = 1000, max = 100, now = Date.now } = {}) {
+  const cache = new Map();
+  function get(key) {
+    const hit = cache.get(key);
+    if (hit && now() < hit.expires) {
+      cache.delete(key); cache.set(key, hit);          // LRU touch
+      return hit.promise;
+    }
+    if (hit) cache.delete(key);                          // expired
+    const entry = { expires: Infinity, promise: null };
+    entry.promise = Promise.resolve().then(() => fn(key)).then(
+      (v) => { if (cache.get(key) === entry) entry.expires = now() + ttl; return v; },
+      (e) => { if (cache.get(key) === entry) cache.delete(key); throw e; }
+    );
+    cache.set(key, entry);
+    while (cache.size > max) cache.delete(cache.keys().next().value);
+    return entry.promise;
+  }
+  get.size = () => cache.size;
+  return get;
+}
+
+let t = 0, calls = 0;
+const get = memoizeAsync(async (k) => { calls++; if (k === 9) throw new Error('boom'); return k * 10; }, { ttl: 1000, max: 2, now: () => t });
+
+(async () => {
+  await Promise.all([get(1), get(1), get(1)]);
+  console.log('after 3 concurrent:', calls);           // 1
+  t = 500; await get(1); console.log('t=500 cached:', calls);   // 1
+  t = 1500; await get(1); console.log('t=1500 expired:', calls); // 2
+  await get(9).catch(() => {}); await get(9).catch(() => {});
+  console.log('failures not cached:', calls);          // 4
+  await get(2); await get(3);                           // max 2 -> evicts LRU
+  console.log('size:', get.size());                     // 2
+})();
+` },
+      complexity: `<p>O(1) average per call; O(max) memory.</p>`,
+      followUps: ['Add stale-while-revalidate: return the stale value instantly and refresh in the background.', 'Support an AbortSignal so a caller can stop waiting without cancelling the shared request.']
+    }
+  });
+
+  practice.push({
+    title: 'Undo/Redo History with Structural Sharing',
+    level: 'Hard', tags: ['immutability', 'structural sharing', 'design'], companies: ['Figma', 'Canva', 'Notion'],
+    statement: `<p>Implement <code>createHistory(initial, limit)</code> with <code>state()</code>, <code>apply(updater)</code> (updater is a pure function <code>state =&gt; newState</code>), <code>undo()</code>, <code>redo()</code>, <code>canUndo()</code>, <code>canRedo()</code>. Applying after an undo discards the redo stack. If the updater returns the <i>same</i> reference, record nothing. Keep at most <code>limit</code> past states. Because states are immutable and share structure, storing many versions must be cheap.</p>`,
+    constraints: `<p>1 ≤ limit ≤ 10<sup>3</sup>; O(1) per operation (excluding the updater).</p>`,
+    example: `<p>apply(add 'a') → apply(add 'b') → undo → state ${H.c('b', "['a']")} → redo → ${H.c('g', "['a','b']")} → undo, apply(add 'c') → ${H.c('g', "['a','c']")}, canRedo() = ${H.c('r', 'false')}.</p>`,
+    brute: { why: `<p>Storing deep clones of the whole document for every step multiplies memory by the number of steps, and mutating the current state in place makes the stored "past" states change too (they are the same objects).</p>`, code: { lang: 'js', run: true, code: `
+const past = [];
+let doc = { items: ['a'] };
+past.push(doc);
+doc.items.push('b');                    // mutation: the stored past changes too
+console.log('past[0] after mutation:', past[0].items); // ['a','b'] -> undo impossible
+` } },
+    mcq: { q: 'Why is storing every past state cheap here?', options: ['Immutable updates copy only the changed path; unchanged subtrees are shared between versions', 'JavaScript compresses objects automatically', 'Old states are garbage collected immediately', 'Because we store diffs as strings'], answer: 0, explain: 'Structural sharing means each version costs only the size of the changed path, not the whole document.' },
+    hints: [`<p>Hint 1: three parts — <code>past</code> stack, <code>present</code>, <code>future</code> stack (the classic Redux-undo shape).</p>`, `<p>Hint 2: apply: next = updater(present); if next === present return; push present to past (trim to limit), present = next, future = [].</p>`, `<p>Hint 3: undo moves present to the front of future and pops past; redo is the mirror. Use arrays with push/pop for O(1) (trimming with shift is O(limit) — acceptable, or use a ring buffer).</p>`],
+    solution: {
+      approach: `<p>past/present/future stacks of immutable snapshots. Updaters are pure, so snapshots never change after being stored, and structural sharing keeps memory proportional to the edits.</p>`,
+      code: { lang: 'js', run: true, code: `
+function createHistory(initial, limit = 100) {
+  let past = [], present = initial, future = [];
+  return {
+    state: () => present,
+    apply(updater) {
+      const next = updater(present);
+      if (next === present) return false;          // no-op: record nothing
+      past.push(present);
+      if (past.length > limit) past.shift();
+      present = next;
+      future = [];                                 // new branch: redo history is gone
+      return true;
+    },
+    undo() { if (!past.length) return false; future.push(present); present = past.pop(); return true; },
+    redo() { if (!future.length) return false; past.push(present); present = future.pop(); return true; },
+    canUndo: () => past.length > 0,
+    canRedo: () => future.length > 0
+  };
+}
+
+const add = (x) => (s) => ({ ...s, items: [...s.items, x] });
+const h = createHistory({ title: 'doc', meta: { big: new Array(1000).fill(0) }, items: [] }, 50);
+h.apply(add('a')); h.apply(add('b'));
+const v2 = h.state();
+h.undo(); console.log(h.state().items);           // ['a']
+h.redo(); console.log(h.state().items, h.state() === v2);
+h.undo(); h.apply(add('c'));
+console.log(h.state().items, 'canRedo:', h.canRedo());
+console.log('big meta shared across versions:', h.state().meta === v2.meta);
+console.log('no-op recorded?', h.apply((s) => s));
+` },
+      complexity: `<p>apply/undo/redo O(1) (shift is O(limit) when trimming). Memory O(limit × size of changed path) thanks to sharing.</p>`,
+      followUps: ['Coalesce rapid edits (typing) into one undo step using a debounce window.', 'How do collaborative editors (CRDTs/OT) change the undo story?']
+    }
+  });
+
+  practice.push({
+    title: 'debouncePromise: every caller gets the final result',
+    level: 'Hard', tags: ['debounce', 'promises', 'closures'], companies: ['Airbnb', 'Atlassian', 'Microsoft'],
+    statement: `<p>Implement <code>debouncePromise(fn, wait, clock)</code> where <code>fn</code> may be async. Every call returns a Promise. All calls in the same burst resolve (or reject) with the result of the <b>single</b> trailing <code>fn</code> call made with the latest arguments. A later burst gets a fresh promise. Use the injected <code>clock.setTimeout/clearTimeout</code> so it can be tested with simulated time.</p>`,
+    constraints: `<p>Up to 10<sup>5</sup> calls per burst; O(1) per call.</p>`,
+    example: `<p>validate('a'), validate('ab'), validate('abc') within the wait window → ${H.c('g', 'fn called once with "abc"')}; all three promises resolve to its result. A call after the burst settles starts a new burst.</p>`,
+    brute: { why: `<p>A plain debounce returns <code>undefined</code> to callers, so form code cannot <code>await</code> validation. Returning a new promise per call that is never settled when superseded leaks pending promises and hangs awaiting callers.</p>`, code: { lang: 'js', run: true, code: `
+function debounce(fn, wait) {
+  let t;
+  return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), wait); };
+}
+const v = debounce(async (s) => s.length > 2, 10);
+console.log('caller receives:', v('abc'));   // undefined: nothing to await
+` } },
+    mcq: { q: 'What do all callers in one burst share?', options: ['One deferred promise (resolve/reject captured once per burst)', 'One setTimeout per caller', 'Their own fn calls', 'Nothing — only the last caller is resolved'], answer: 0, explain: 'Create a deferred on the first call of a burst; every call in that burst returns it; the trailing run settles it.' },
+    hints: [`<p>Hint 1: state: <code>timer</code>, <code>latestArgs</code>, and a <code>deferred</code> = { promise, resolve, reject } created lazily at the start of each burst.</p>`, `<p>Hint 2: each call stores its args, resets the timer, and returns <code>deferred.promise</code>.</p>`, `<p>Hint 3: when the timer fires, detach the deferred (set the variable to null so the next call starts a new burst), then <code>Promise.resolve().then(() =&gt; fn(...args))</code> and pipe the outcome to resolve/reject. <code>Promise.withResolvers()</code> (ES2024) builds the deferred in one line.</p>`],
+    solution: {
+      approach: `<p>One deferred per burst; the trailing run settles it; detaching before running ensures calls made while fn is in flight start a new burst.</p>`,
+      code: { lang: 'js', run: true, code: `
+function debouncePromise(fn, wait, clock) {
+  let timer = null, latestArgs = null, deferred = null;
+  return function (...args) {
+    latestArgs = args;
+    if (!deferred) {
+      let resolve, reject;
+      const promise = new Promise((res, rej) => { resolve = res; reject = rej; });
+      deferred = { promise, resolve, reject };
+    }
+    if (timer !== null) clock.clearTimeout(timer);
+    timer = clock.setTimeout(() => {
+      const d = deferred, a = latestArgs;
+      timer = null; deferred = null; latestArgs = null;      // next call = new burst
+      Promise.resolve().then(() => fn(...a)).then(d.resolve, d.reject);
+    }, wait);
+    return deferred.promise;
+  };
+}
+
+function createClock() {
+  let now = 0, id = 0; const timers = new Map();
+  return {
+    setTimeout(f, ms) { timers.set(++id, { at: now + ms, f }); return id; },
+    clearTimeout(i) { timers.delete(i); },
+    advance(ms) {
+      const end = now + ms;
+      for (;;) {
+        let best = null;
+        for (const [k, v] of timers) if (v.at <= end && (!best || v.at < best[1].at)) best = [k, v];
+        if (!best) break;
+        timers.delete(best[0]); now = best[1].at; best[1].f();
+      }
+      now = end;
+    }
+  };
+}
+
+const clock = createClock();
+let calls = 0;
+const validate = debouncePromise(async (s) => { calls++; return s + ' is ' + (s.length >= 3 ? 'valid' : 'too short'); }, 100, clock);
+const ps = [validate('a'), validate('ab'), validate('abc')];
+clock.advance(150);
+Promise.all(ps).then((rs) => {
+  console.log(rs, '| fn calls:', calls, '| same promise:', ps[0] === ps[2]);
+  const p2 = validate('x');
+  clock.advance(100);
+  return p2;
+}).then((r) => console.log('second burst:', r, '| fn calls:', calls));
+` },
+      complexity: `<p>O(1) per call; one promise per burst; one fn call per burst.</p>`,
+      followUps: ['Reject superseded bursts with an AbortError instead of sharing (which semantics fits search vs validation?).', 'Add <code>cancel()</code> that rejects the pending promise.']
+    }
+  });
+
+  /* ================= QUIZ ================= */
+  quiz.push(
+    { q: 'Which function is pure?', options: ['<code>(a) =&gt; a.toSorted()</code>', '<code>(a) =&gt; a.sort()</code>', '<code>() =&gt; Date.now()</code>', '<code>(x) =&gt; { cache.push(x); return x; }</code>'], answer: 0, explain: '<code>toSorted</code> returns a new array. <code>sort</code> mutates its argument, <code>Date.now</code> is a hidden input, and pushing to an outer array is a side effect.' },
+    { q: '<code>const o = Object.freeze({ list: [1] }); o.list.push(2);</code> — what happens?', options: ['It works; freeze is shallow so the nested array is still mutable', 'TypeError in all modes', 'The push is silently ignored', 'o.list becomes undefined'], answer: 0, explain: 'Object.freeze only freezes own properties of o. The array it points to is a separate, unfrozen object.' },
+    { q: 'After <code>const next = { ...state, user: { ...state.user, name: \'X\' } }</code>, which is true?', options: ['<code>next.settings === state.settings</code>', '<code>next.user === state.user</code>', '<code>next === state</code>', 'state.user.name is now X'], answer: 0, explain: 'Only the path root → user was copied; untouched branches like settings are shared by reference (structural sharing).' },
+    { q: 'What does <code>compose(x =&gt; x + 1, x =&gt; x * 2)(5)</code> return?', options: ['11', '12', '7', '10'], answer: 0, explain: 'compose runs right to left: 5 * 2 = 10, then 10 + 1 = 11. pipe would give (5 + 1) * 2 = 12.' },
+    { q: 'Why does <code>pipe()</code> (no functions) need <code>reduce</code> seeded with <code>x</code>?', options: ['So that an empty pipeline returns its input (identity) instead of throwing', 'To make it faster', 'Because reduce cannot be called without a seed on functions', 'To support async functions'], answer: 0, explain: 'reduce on an empty array without an initial value throws a TypeError; seeding with x makes pipe() the identity function.' },
+    { q: 'With a generic <code>curry(fn)</code> that relies on <code>fn.length</code>, what goes wrong for <code>(a, b = 2) =&gt; a + b</code>?', options: ['fn.length is 1, so it runs after the first argument', 'It never runs', 'It throws a SyntaxError', 'Nothing; defaults are counted'], answer: 0, explain: 'length counts parameters before the first default or rest parameter. Pass an explicit arity to fix it.' },
+    { q: '<code>[\'1\', \'2\', \'3\'].map(parseInt)</code> returns…', options: ['[1, NaN, NaN]', '[1, 2, 3]', '[NaN, NaN, NaN]', 'TypeError'], answer: 0, explain: 'map passes (value, index): parseInt(\'2\', 1) and parseInt(\'3\', 2) are NaN. A classic point-free pitfall; use <code>map(Number)</code> or <code>map(s =&gt; parseInt(s, 10))</code>.' },
+    { q: 'Which function is UNSAFE to memoize?', options: ['<code>(id) =&gt; fetchLivePrice(id)</code>', '<code>(n) =&gt; fib(n)</code>', '<code>(s) =&gt; s.toUpperCase()</code> on long strings', '<code>(a, b) =&gt; gcd(a, b)</code>'], answer: 0, explain: 'A live price changes over time (hidden input); memoizing returns stale data. The others are pure.' },
+    { q: 'A memoized async function should handle a rejected promise by…', options: ['removing it from the cache so the next call retries', 'caching it forever', 'converting it to undefined', 'retrying in an infinite loop'], answer: 0, explain: 'Cache the in-flight promise for dedupe, but evict it on rejection or every later call gets the same error.' },
+    { q: 'User types continuously for 3 seconds with debounce(300) and throttle(300). How many times does each handler run during the typing (before it stops)?', options: ['debounce: 0, throttle: about 10', 'debounce: 10, throttle: 0', 'both about 10', 'both 0'], answer: 0, explain: 'Debounce waits for 300 ms of silence, which never happens while typing. Throttle runs at most once per 300 ms → ~10 times in 3 s.' },
+    { q: 'Which loop causes layout thrashing?', options: ['for each el: <code>el.style.width = w; total += el.offsetWidth;</code>', 'read all <code>offsetWidth</code> values, then set all widths', 'set all <code>transform</code> values', 'build nodes in a DocumentFragment then append once'], answer: 0, explain: 'Writing a style then reading geometry in the same iteration forces a synchronous layout each time.' },
+    { q: 'Animating which property usually avoids layout AND paint?', options: ['<code>transform</code>', '<code>width</code>', '<code>top</code>', '<code>margin-left</code>'], answer: 0, explain: 'transform (and opacity) can be handled by the compositor; geometry properties trigger layout every frame.' },
+    { q: 'In an EventEmitter, why iterate over a copy of the listener array in <code>emit</code>?', options: ['A listener that unsubscribes during emit would otherwise make the loop skip the next listener', 'Copies are faster to iterate', 'To deep-clone the event arguments', 'It is required for once() to work in Node'], answer: 0, explain: 'Splicing the live array during iteration shifts indexes; a snapshot keeps this round stable.' },
+    { q: 'Why is <code>export const logger = createLogger()</code> effectively a singleton?', options: ['An ES module is evaluated once and cached; every importer gets the same binding', 'export makes objects frozen', 'const prevents a second instance', 'Node forbids multiple instances of objects'], answer: 0, explain: 'Module evaluation happens once per module record (resolved specifier). Caveat: duplicate package copies or dual ESM/CJS builds can create two.' }
+  );
+
+  /* ================= INTERVIEW ================= */
+  interview.push(
+    { q: 'What is a pure function, and why do React and Redux care about purity?', level: 'I', a: `<p>A pure function returns the same output for the same input and has no side effects: it reads nothing but its arguments and changes nothing outside itself. React assumes components render as pure functions of props/state, so it can render them twice (StrictMode does this deliberately), pause and resume rendering, or skip rendering. Redux reducers must be pure so time-travel debugging, replay and reference-based change detection work: a reducer that mutates <code>state</code> returns the same reference and the UI never updates. Practical rule: keep decisions in a pure core, and push I/O, clock and randomness to the edges.</p>`, followUps: ['Is a function that throws on invalid input pure?', 'Is local mutation inside a function allowed?', 'How do you make <code>Date.now()</code>-dependent logic testable?'] },
+    { q: 'Explain shallow vs deep copy and structural sharing in JavaScript.', level: 'I', a: `<p>A shallow copy (<code>{...o}</code>, <code>[...a]</code>, <code>Object.assign</code>) creates a new top-level container whose properties still point at the same nested objects. A deep copy (<code>structuredClone</code>) recursively copies everything, so nothing is shared, but it costs O(size), breaks every <code>===</code> check and cannot clone functions or class prototypes. Structural sharing is the middle ground used by immutable updates: copy only the objects on the path to the change and reuse every untouched branch. The update costs O(depth × width of each level), old versions remain valid (cheap undo), and unchanged slices keep their identity, so memoized components and selectors can skip work.</p>`, followUps: ['When would <code>JSON.parse(JSON.stringify(x))</code> give wrong results?', 'How does Immer produce structurally shared updates from mutable-looking code?'] },
+    { q: 'Implement compose and pipe, and explain the difference.', level: 'B', a: `<p><code>const pipe = (...fns) =&gt; x =&gt; fns.reduce((acc, f) =&gt; f(acc), x)</code> and <code>const compose = (...fns) =&gt; x =&gt; fns.reduceRight((acc, f) =&gt; f(acc), x)</code>. Both build one function out of many unary functions. pipe runs left to right (reads like a recipe or a Unix pipe), compose runs right to left (mirrors math notation f(g(x))). Seeding with <code>x</code> makes the empty case the identity. For async steps, fold over a promise: <code>fns.reduce((p, f) =&gt; p.then(f), Promise.resolve(x))</code>. Composition is associative, so steps can be grouped into named sub-pipelines.</p>`, followUps: ['How would you let the first function take multiple arguments?', 'How do you debug a long pipeline?', 'How is Koa/Express middleware a form of composition?'] },
+    { q: 'What is currying? How is it different from partial application? Implement curry.', level: 'I', a: `<p>Currying transforms an n-argument function into a chain of functions each taking one argument (auto-curry accepts any grouping). Partial application fixes some arguments now and returns a function expecting the rest — <code>fn.bind(null, a)</code> is built-in partial application. Implementation: <code>function curry(fn) { return function curried(...args) { return args.length &gt;= fn.length ? fn.apply(this, args) : function (...more) { return curried.apply(this, args.concat(more)); }; }; }</code>. Key details: create a new args array each time (so partials are reusable), forward <code>this</code>, and beware that <code>fn.length</code> ignores default and rest parameters.</p>`, followUps: ['Add placeholder support.', 'Implement infinite currying <code>sum(1)(2)(3)()</code>.', 'When does currying hurt readability or performance?'] },
+    { q: 'Design a memoize function for production use. What decisions matter?', level: 'A', a: `<p>Decisions: (1) <b>purity</b> — only memoize deterministic functions; (2) <b>key</b> — single primitive arg uses the value directly; multiple args need a resolver, JSON for primitives only, or a nested Map/WeakMap trie keyed by identity for objects; (3) <b>bounds</b> — unbounded Maps leak in long-running servers, so add LRU (Map insertion order: delete + set on hit, evict the first key) and/or TTL; WeakMap for object keys lets GC clean up; (4) <b>async</b> — cache the in-flight promise for dedupe, evict on rejection; (5) <b>scope</b> — per request vs global, include tenant/user in keys to avoid data leaks; (6) <b>observability</b> — hit-rate metrics, because a 0% hit-rate cache is pure overhead.</p>`, followUps: ['Why is lodash.memoize keyed only by the first argument by default?', 'How do you prevent a thundering herd on a cache miss?'] },
+    { q: 'Debounce vs throttle: explain, give use cases, and implement both.', level: 'B', a: `<p>Debounce delays execution until <code>wait</code> ms pass with no new calls — it runs once after a burst ends (search-as-you-type, autosave, resize end). Throttle guarantees at most one execution per <code>wait</code> ms — it runs steadily during a burst (scroll tracking, drag, infinite scroll checks). Debounce: <code>clearTimeout(t); t = setTimeout(() =&gt; fn.apply(this, args), wait)</code>. Throttle (timestamp, leading): <code>if (now - last &gt;= wait) { last = now; fn.apply(this, args); }</code>. Leading-only throttle can drop the final event, so production throttles add a trailing call. Lodash throttle is debounce with <code>leading: true, trailing: true, maxWait: wait</code>.</p>`, followUps: ['What does <code>maxWait</code> solve?', 'How do you use a debounced function correctly inside a React component?', 'How would you unit-test them without real waiting?'] },
+    { q: 'How would you test debounce and throttle deterministically?', level: 'A', a: `<p>Remove the hidden inputs: inject the clock and timer functions (or use fake timers such as <code>vi.useFakeTimers()</code>/<code>jest.useFakeTimers()</code>, which replace <code>setTimeout</code> and <code>Date.now</code>). Then drive simulated time: call the function at chosen timestamps (<code>advanceTimersByTime</code> between calls) and assert exactly when and with which arguments the spy ran. Test cases: single call, burst, two bursts, leading/trailing combos (single call with both should run once), <code>cancel</code>, <code>flush</code>, <code>maxWait</code> under continuous calls, <code>this</code> forwarding, and ties at exactly <code>wait</code>. A pure <code>schedule(times, wait)</code> model function can serve as an oracle for property-based tests.</p>`, followUps: ['Why are real-time sleeps in tests flaky?', 'How do fake timers interact with promises and microtasks?'] },
+    { q: 'What is layout thrashing and how do you fix it?', level: 'I', a: `<p>Browsers defer layout: a style/DOM write only marks layout dirty. Reading geometry (<code>offsetHeight</code>, <code>getBoundingClientRect</code>, <code>scrollTop</code>, <code>getComputedStyle</code>) while it is dirty forces a synchronous layout. Interleaving writes and reads in a loop forces one layout per iteration — thrashing — which can take hundreds of milliseconds on large DOMs and hurts INP. Fixes: batch all reads then all writes; schedule writes in <code>requestAnimationFrame</code> or use a measure/mutate scheduler (fastdom); animate <code>transform</code>/<code>opacity</code>; use <code>ResizeObserver</code>/<code>IntersectionObserver</code> instead of polling; reduce scope with CSS containment or <code>content-visibility</code>; virtualize long lists. Find it in DevTools Performance as "Forced reflow" warnings.</p>`, followUps: ['Which properties are compositor-only?', 'What is INP and what is a good value?', 'How does React batching interact with useLayoutEffect measurements?'] },
+    { q: 'Implement an EventEmitter. What edge cases do you handle?', level: 'I', a: `<p>Store <code>Map&lt;event, listener[]&gt;</code>. <code>on</code> pushes and returns an unsubscribe function; <code>off</code> removes by identity (most recent match) and deletes empty keys; <code>once</code> registers a wrapper that removes itself before calling the original, and stores <code>wrapper.listener = fn</code> so <code>off(event, fn)</code> works; <code>emit</code> iterates over a snapshot so self-removal does not skip listeners and returns whether anyone listened. Edge cases: duplicate listeners (Node allows them), errors thrown by one listener (isolate or rethrow), re-entrant emits, max-listener warnings for leaks, and the special <code>'error'</code> event in Node.</p>`, followUps: ['How would you add wildcard events?', 'How do you prevent memory leaks with listeners in SPA components?'] },
+    { q: 'Singleton in JavaScript: how do you implement it, and why is it often considered an anti-pattern?', level: 'I', a: `<p>Simplest: export an instance from a module — ES modules evaluate once and are cached. Class version: a static private field holding the instance, returned from the constructor or a static <code>getInstance()</code>; for async resources, cache the creation <i>promise</i> so concurrent callers share one initialisation. Criticism: it is global mutable state, hides dependencies (functions reach out instead of receiving what they need), makes tests share state, and can silently become several instances with duplicate package versions, dual ESM/CJS builds, HMR or per-container serverless. Better: create the instance at the composition root and inject it.</p>`, followUps: ['How do you reset a singleton between tests?', 'Why can a module-level cache leak data between users on a server?'] },
+    { q: 'Factory functions vs classes in JavaScript — when do you choose which?', level: 'I', a: `<p>Factory functions return objects built from closures: private state is truly private, methods never lose <code>this</code> when passed as callbacks, they can return different concrete types (registry-based factories), and they avoid <code>new</code>. Downsides: each object gets its own method closures (more memory with many instances) and no <code>instanceof</code>. Classes put methods on the prototype (shared, memory-efficient, well-optimised by engines with hidden classes), support <code>#private</code> fields, inheritance and <code>instanceof</code>, but methods need binding when detached. Choose classes for many instances or framework requirements; factories for small numbers of objects, polymorphic creation, or dependency injection-style APIs.</p>`, followUps: ['How does a factory help with testing?', 'What is the abstract factory pattern and do you need it in JS?'] },
+    { q: 'How would you make a search box fast and correct (performance + race conditions)?', level: 'A', a: `<p>Debounce the input handler (~250–400 ms trailing) so only pauses trigger requests; optionally require a minimum length. Handle races: abort the previous request with <code>AbortController</code> or tag requests with an increasing id and ignore stale responses, so an old slow response cannot overwrite newer results. Cache results per query (memoized promise with TTL and LRU bound) so backspacing is instant and concurrent duplicates are deduped. Render efficiently: virtualize long result lists, keep the input responsive (avoid heavy synchronous work in the handler; use <code>useDeferredValue</code>/<code>startTransition</code> in React for filtering). Measure with INP in the field.</p>`, followUps: ['Debounce vs AbortController — are both needed?', 'How would you add keyboard navigation without re-rendering the whole list?'] },
+    { q: 'What changes when you apply functional programming ideas in a large JavaScript codebase? Trade-offs?', level: 'E', a: `<p>Gains: pure, small functions are easy to test and reuse; immutability enables cheap change detection, undo, safe concurrency (workers, React concurrent rendering) and debugging (time travel); composition makes data flow explicit. Costs: allocation and copying (GC pressure in hot paths), deep spread chains that are hard to read (Immer helps), point-free code that obscures intent and stack traces, and TypeScript complexity for generic pipe/curry. Pragmatic approach: functional core, imperative shell; local mutation inside pure functions is fine; normalize state to keep updates shallow; profile before optimising; prefer readable named steps over clever combinators.</p>`, followUps: ['Where would you deliberately allow mutation?', 'How do you introduce these practices to a team incrementally?'] },
+    { q: 'How do you use AI assistants effectively for this kind of code (patterns, performance utilities) without shipping subtle bugs?', level: 'E', a: `<p>Use AI to draft utilities (debounce, memoize, emitters) and, more importantly, to generate adversarial tests: fake-timer suites for timing code, concurrency tests for memoized promises, mutation-detection tests with deep-frozen inputs. Then review against a checklist the model often misses: <code>this</code> forwarding, shared mutable state across partials, caching rejections, unbounded caches, live-array iteration during emit, recreating debounced functions on every render, read/write interleaving in DOM code. Verify performance claims with a profiler and real metrics (INP, long tasks) rather than trusting "this is faster". Own the architecture decisions — effect boundaries, cache scope, and lifecycles — yourself.</p>`, followUps: ['Which of these bugs would type checking catch, and which need tests?', 'How would you prompt an agent to profile and fix jank on a page?'] }
+  );
+
+  registerModule({
+    id: 'js13',
+    title: 'Functional Programming, Patterns & Performance in JS',
+    intro: `<p>This expert module turns everyday JavaScript into <b>clean, fast, interview-ready code</b>. You will learn to write <b>pure functions</b> and <b>immutable updates</b> (and why React/Redux depend on them), build bigger functions out of small ones with <b>compose/pipe</b>, specialise functions with <b>currying</b>, and speed things up safely with <b>memoization</b>.</p>
+<p>Then we cover the classic <b>JS design patterns</b> — module, singleton, factory and observer — the way they are really written in modern JavaScript (closures and ES modules, not Java-style ceremony), and two performance topics that appear in nearly every frontend interview: <b>debounce vs throttle</b> (studied with simulated timestamps, so you can see every timer) and <b>avoiding layout thrashing</b> in the browser rendering pipeline.</p>
+<p>Every topic has an analogy first, a visualizer you can play with, runnable code, worked examples, expert deep dives and an "AI era" section on how to use assistants without shipping their typical bugs. The practice set mirrors real machine-coding rounds: implement <code>pipe</code>, <code>curry</code> (with placeholders), <code>memoize</code> (LRU, TTL, async), <code>EventEmitter</code>, a mini Redux store, lodash-style <code>debounce</code>, and a fastdom-style scheduler.</p>`,
+    goals: [
+      'Spot side effects and hidden inputs, and refactor code into a pure core with an imperative shell',
+      'Update deeply nested state immutably with structural sharing, and explain why <code>===</code> change detection depends on it',
+      'Implement <code>compose</code>, <code>pipe</code>, <code>pipeAsync</code>, <code>curry</code> (including placeholders and infinite currying) from scratch',
+      'Design a production memoize: keys, purity, LRU/TTL bounds, async dedupe without caching failures',
+      'Implement module, singleton (incl. lazy async), factory and observer/EventEmitter patterns idiomatically and discuss their trade-offs',
+      'Choose and implement debounce vs throttle (leading/trailing, maxWait, cancel/flush) and test them with a fake clock',
+      'Explain the rendering pipeline, diagnose forced synchronous layouts, and fix layout thrashing by batching reads and writes'
+    ],
+    prereqs: `JS 4 (Scope, Hoisting, TDZ &amp; Closures), JS 5 (this, call/apply/bind), JS 7–8 (Promises, Event Loop &amp; async/await) and JS 2 (array methods: map, filter, reduce). Basic DOM knowledge helps for the layout-thrashing topic.`,
+    hours: 14,
+    topics: topics,
+    practice: practice,
+    quiz: quiz,
+    interview: interview
+  });
 })();

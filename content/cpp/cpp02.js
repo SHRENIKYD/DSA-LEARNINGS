@@ -1258,6 +1258,287 @@ void describe(double value, const string& unit) {         // no default repeated
     }]
   });
 
+  /* ======================================================================
+     TOPIC 6 — C arrays vs std::array vs std::vector
+     ====================================================================== */
+  topics.push({
+    title: 'C Arrays vs std::array vs std::vector (Size, Capacity & Growth)',
+    analogy: `<p>A <b>C array</b> is an <b>egg carton glued to the shelf</b>: a fixed number of slots, side by side, and nothing written on it says how many slots it has — you must remember. Hand it to someone and they only get told "the carton starts here" (it <b>decays</b> to a pointer). A <b><code>std::array</code></b> is the same carton with the size <b>printed on the lid</b>: still fixed, but it knows its size and can be copied like a normal value. A <b><code>std::vector</code></b> is a <b>family that moves house</b>: it rents a flat with some spare rooms (<b>capacity</b>). When every room is full and a new baby arrives, it rents a flat about <b>twice as big</b>, moves everyone over, and gives the old flat back. Moving is expensive, but because the new flat is twice as big it happens rarely — so on average each new arrival is cheap.</p>`,
+    explain: `<p>All three store elements <b>contiguously</b> — one right after another in memory — which is why <code>a[i]</code> is O(1): address of element i = start + i × size-of-one-element. They differ in <b>who knows the size</b> and <b>whether it can change</b>.</p>
+${H.table(['', 'C array <code>int a[5]</code>', '<code>std::array&lt;int,5&gt;</code>', '<code>std::vector&lt;int&gt;</code>'], [['size fixed at', 'compile time', 'compile time', H.c('g', 'run time, can grow/shrink')], ['knows its size?', H.c('r', 'no (decays to pointer)'), H.c('g', '<code>.size()</code>'), H.c('g', '<code>.size()</code>')], ['copy with <code>=</code>', H.c('r', 'not allowed'), H.c('g', 'yes'), H.c('g', 'yes (deep copy)')], ['bounds-checked access', 'no', '<code>.at(i)</code>', '<code>.at(i)</code>'], ['lives', 'stack (if local)', 'stack (if local)', 'small header on stack, elements on the <b>heap</b>'], ['use it for', 'legacy / C APIs', 'small fixed sizes (e.g. 26 letters, 4 directions)', H.c('g', 'almost everything else')]])}
+<h4>1. C arrays</h4>
+<pre><code>int a[5] = {1, 2, 3};               // {1, 2, 3, 0, 0}: the rest become 0
+int n = sizeof(a) / sizeof(a[0]);   // 20 / 4 = 5 — works ONLY where a is declared
+int m = std::size(a);               // C++17: clearer, same result</code></pre>
+<p>When you pass a C array to a function, it <b>decays</b> to a pointer to its first element. Inside the function <code>sizeof(arr)</code> gives the size of a <b>pointer</b> (8), not the array — so you must also pass the length. There is <b>no bounds check</b>: <code>a[10]</code> compiles and is undefined behaviour.</p>
+<h4>2. std::array — a C array that behaves like a value</h4>
+<pre><code>array&lt;int, 3&gt; b = {7, 8, 9};
+array&lt;int, 3&gt; c = b;          // real copy
+cout &lt;&lt; b.size() &lt;&lt; (b == c); // 3 1  — it knows its size and can be compared</code></pre>
+<h4>3. std::vector — the default container</h4>
+<pre><code>vector&lt;int&gt; v;              // empty
+vector&lt;int&gt; w(5);           // five zeros
+vector&lt;int&gt; z(5, -1);       // five -1s
+vector&lt;int&gt; u = {3, 1, 4};  // from a list
+v.push_back(10);            // add at the end: amortised O(1)
+v.pop_back();               // remove the last: O(1)
+v.size(); v.empty(); v.back(); v.front(); v.clear();</code></pre>
+<p><b>Size vs capacity.</b> <code>size()</code> is how many elements you have. <code>capacity()</code> is how many fit before the vector must move to a bigger buffer. When <code>push_back</code> finds size == capacity, the vector allocates a bigger block (GCC/Clang: <b>×2</b>; MSVC: ×1.5), copies or moves every element across, and frees the old block. Because the size doubles, the total copying over n pushes is less than 2n → <b>amortised O(1)</b> per push.</p>
+<p><b><code>reserve(n)</code></b> grabs capacity up front (no reallocations up to n) without changing the size. <b><code>resize(n)</code></b> changes the <b>size</b>, creating zero-valued elements. Mixing them up is a classic bug: after <code>v.reserve(5)</code>, <code>v[0] = 1</code> is still out of bounds because size is 0.</p>
+<p><b>Invalidation.</b> When a vector reallocates, every pointer, reference and iterator into its old buffer becomes <b>dangling</b>. Never keep <code>int&amp; first = v[0];</code> across a <code>push_back</code>.</p>
+<h4>4. 2D grids</h4>
+<pre><code>int R = 3, C = 4;
+vector&lt;vector&lt;int&gt;&gt; g(R, vector&lt;int&gt;(C, 0));   // 3 rows × 4 columns of 0
+g[1][2] = 7;                                      // row 1, column 2</code></pre>`,
+    clues: [
+      '"array of size N" with N known only at run time → <b><code>vector</code></b> (C arrays need a compile-time size; VLAs are not standard C++)',
+      '"fixed small table" (26 letters, 10 digits, 4 directions) → <b><code>std::array</code></b> or a C array',
+      '"grid / matrix / board of R × C" → <code>vector&lt;vector&lt;int&gt;&gt; g(R, vector&lt;int&gt;(C))</code>; row-major loops',
+      '"append n items" efficiently → <code>reserve(n)</code> then <code>push_back</code>; explain amortised O(1)',
+      'Output question with <code>sizeof(arr)</code> inside a function → <b>array-to-pointer decay</b> (prints 8)',
+      'N ≤ 10<sup>7</sup> ints locally → stack overflow risk; use a global or a <code>vector</code> (heap)'
+    ],
+    code: [R`#include <bits/stdc++.h>
+using namespace std;
+
+// C array parameter: really 'int* a' — the size must be passed separately.
+long long sumC(const int a[], int n) {
+    long long s = 0;
+    for (int i = 0; i < n; ++i) s += a[i];
+    return s;
+}
+
+// std::array keeps its size in the type.
+int sumArr(const array<int, 4>& a) {
+    int s = 0;
+    for (int x : a) s += x;
+    return s;
+}
+
+int main() {
+    // ---- C array ----
+    int c[5] = {1, 2, 3};                       // 1 2 3 0 0
+    cout << sizeof(c) / sizeof(c[0]) << " " << size(c) << "\n";   // 5 5
+    cout << sumC(c, 5) << "\n";                 // 6
+
+    // ---- std::array ----
+    array<int, 4> dirs = {1, 0, -1, 0};
+    array<int, 4> copyDirs = dirs;              // real copy (a C array can't do this)
+    cout << dirs.size() << " " << (dirs == copyDirs) << " " << sumArr(dirs) << "\n";  // 4 1 0
+
+    // ---- std::vector: size vs capacity ----
+    vector<int> v;
+    for (int i = 1; i <= 9; ++i) {
+        v.push_back(i * 10);
+        cout << "size=" << v.size() << " cap=" << v.capacity() << "\n";  // cap: 1 2 4 4 8 8 8 8 16 (GCC)
+    }
+
+    vector<int> r;
+    r.reserve(100);                             // capacity 100, size still 0
+    cout << r.size() << " " << r.capacity() << "\n";   // 0 100
+
+    vector<int> z;
+    z.resize(3);                                // size 3: {0, 0, 0}
+    z[2] = 5;                                   // OK: index 2 exists
+    cout << z.size() << " " << z[2] << "\n";    // 3 5
+
+    try {
+        cout << z.at(10) << "\n";               // at() checks the index...
+    } catch (const out_of_range& e) {
+        cout << "caught out_of_range\n";        // ...and throws instead of UB
+    }
+
+    // ---- 2D grid ----
+    int R = 3, C = 4;
+    vector<vector<int>> g(R, vector<int>(C, 0));
+    for (int i = 0; i < R; ++i)
+        for (int j = 0; j < C; ++j)
+            g[i][j] = i * C + j;                // row-major numbering 0..11
+    cout << g[2][3] << "\n";                    // 11
+}`],
+    codeTitle: ['The three array types side by side, plus size/capacity and 2D grids'],
+    viz: [{
+      title: 'vector growth: push_back, reallocate, copy',
+      input: '9',
+      inputLabel: 'number of push_back calls (1-17)',
+      gen: function (input) {
+        var n = intOf(input, 1, 17, 'Enter a number of pushes from 1 to 17');
+        var data = [], cap = 0, copies = 0, frames = [];
+        function buf(vals, capacity, hl, label) {
+          var cells = []; for (var i = 0; i < capacity; i++) cells.push(i < vals.length ? vals[i] : '·');
+          return { type: 'array', label: label, values: cells.length ? cells : ['(no buffer)'], hl: hl || {} };
+        }
+        frames.push({ narr: 'An empty <code>vector&lt;int&gt;</code>: size 0, capacity 0, no heap buffer yet. The vector object itself is just 3 pointers (begin, end, end-of-capacity) = 24 bytes.', parts: [buf([], 0, {}, 'heap buffer'), { type: 'vars', vals: { size: 0, capacity: 0, 'elements copied so far': 0 } }] });
+        for (var k = 1; k <= n; k++) {
+          var val = k * 10;
+          if (data.length === cap) {
+            var oldCap = cap, newCap = cap === 0 ? 1 : cap * 2;
+            if (oldCap > 0) {
+              var bh = {}; for (var q = 0; q < oldCap; q++) bh[q] = 'bad';
+              frames.push({ narr: '<code>push_back(' + val + ')</code>: size ' + data.length + ' == capacity ' + oldCap + ' → <span class="c-r">no room!</span> The vector must reallocate.', parts: [buf(data, oldCap, bh, 'old buffer (full)'), { type: 'vars', vals: { size: data.length, capacity: oldCap, 'elements copied so far': copies }, hl: { capacity: 'bad' } }] });
+            }
+            var ch = {}; for (var q2 = 0; q2 < data.length; q2++) ch[q2] = 'done';
+            copies += data.length;
+            frames.push({ narr: 'Allocate a new buffer of capacity <b>' + newCap + '</b>' + (oldCap ? ' (double)' : '') + ', copy/move the ' + data.length + ' old element(s) across, free the old buffer. Any pointer or reference into the old buffer is now <b>dangling</b>.', parts: [buf(data, newCap, ch, 'new buffer'), { type: 'vars', vals: { size: data.length, capacity: newCap, 'elements copied so far': copies }, hl: { capacity: 'ok', 'elements copied so far': data.length ? 'cur' : '' } }] });
+            cap = newCap;
+          }
+          data.push(val);
+          var nh = {}; nh[data.length - 1] = 'ok';
+          frames.push({ narr: 'Write <b>' + val + '</b> into slot ' + (data.length - 1) + '. size = ' + data.length + ', capacity = ' + cap + '.' + (data.length < cap ? ' ' + (cap - data.length) + ' spare slot(s): the next push is O(1) with no copying.' : ''), parts: [buf(data, cap, nh, 'heap buffer'), { type: 'vars', vals: { size: data.length, capacity: cap, 'elements copied so far': copies }, hl: { size: 'ok' } }, { type: 'bars', label: 'total copies vs pushes', values: [copies, data.length], texts: [String(copies), String(data.length)], idxLabels: ['copies', 'pushes'] }] });
+        }
+        frames.push({ narr: 'After ' + n + ' pushes: ' + copies + ' element copies in total — always fewer than 2 × pushes = ' + (2 * n) + '. That is why <code>push_back</code> is <b>amortised O(1)</b>. Calling <code>v.reserve(' + n + ')</code> first would make it 0 copies.', parts: [buf(data, cap, {}, 'final buffer'), { type: 'vars', vals: { size: data.length, capacity: cap, copies: copies, '2n': 2 * n }, hl: { copies: 'sel' } }] });
+        return frames;
+      }
+    }, {
+      title: 'Array decay: why sizeof changes inside a function',
+      gen: function () {
+        var code = 'void f(int arr[]) {               // really: int* arr\n    cout << sizeof(arr);           // size of a POINTER\n}\nint main() {\n    int a[5] = {1, 2, 3, 4, 5};\n    cout << sizeof(a) << " ";      // whole array\n    f(a);\n}';
+        function G(hl, ehl, edges) {
+          return { type: 'graph', label: 'What each function can see', directed: true, height: 55,
+            nodes: [{ id: 'A', label: 'main: a = [1 2 3 4 5] (20 bytes)', x: 30, y: 15, shape: 'box', w: 52 }, { id: 'P', label: 'f: arr = address of a[0] (8 bytes)', x: 70, y: 42, shape: 'box', w: 52 }],
+            edges: edges || [], hl: hl || {}, ehl: ehl || {} };
+        }
+        return [
+          { narr: 'main declares <code>int a[5]</code>: five ints side by side = 5 × 4 = <b>20 bytes</b>. The compiler knows the full type <code>int[5]</code> here.', parts: [{ type: 'code', lang: 'cpp', code: code, hl: { 5: 'cur' } }, G({ A: 'ok' }), out('')] },
+          { narr: '<code>sizeof(a)</code> in main = <b>20</b>. Dividing by <code>sizeof(a[0])</code> (4) gives the length 5.', parts: [{ type: 'code', lang: 'cpp', code: code, hl: { 6: 'cur' } }, G({ A: 'sel' }), out('20 ')] },
+          { narr: 'Calling <code>f(a)</code>: the array <b>decays</b> — only the address of a[0] is passed. The parameter <code>int arr[]</code> is secretly <code>int* arr</code>; the length is lost.', parts: [{ type: 'code', lang: 'cpp', code: code, hl: { 7: 'cur', 1: 'cur' } }, G({ P: 'cur' }, { 'P-A': 'ok' }, [['P', 'A', 'points to a[0]']]), out('20 ')] },
+          { narr: 'Inside f, <code>sizeof(arr)</code> = size of a pointer = <b>8</b> on a 64-bit machine. Output: <b>20 8</b>. GCC even warns: "sizeof on array function parameter will return size of int*". Fix: pass the length, use <code>std::array</code>/<code>vector</code>, or <code>std::span</code> (C++20).', parts: [{ type: 'code', lang: 'cpp', code: code, hl: { 2: 'bad' } }, G({ P: 'bad' }, { 'P-A': 'ok' }, [['P', 'A', 'points to a[0]']]), out('20 8')] }
+        ];
+      }
+    }, {
+      title: '2D vector: row-major traversal of a grid',
+      input: '3 4',
+      inputLabel: 'rows cols (each 1-6)',
+      gen: function (input) {
+        var rc = intsOf(input, 2, 2, 1, 6, 'Enter rows and cols from 1 to 6, e.g. 3 4');
+        var R0 = rc[0], C0 = rc[1], g = [], frames = [];
+        for (var i = 0; i < R0; i++) { var row = []; for (var j = 0; j < C0; j++) row.push(0); g.push(row); }
+        function snap() { return g.map(function (r) { return r.slice(); }); }
+        var colHead = [], rowHead = [];
+        for (var j2 = 0; j2 < C0; j2++) colHead.push('j=' + j2);
+        for (var i2 = 0; i2 < R0; i2++) rowHead.push('i=' + i2);
+        var code = 'vector<vector<int>> g(R, vector<int>(C, 0));\nfor (int i = 0; i < R; ++i)\n    for (int j = 0; j < C; ++j)\n        g[i][j] = i * C + j;';
+        frames.push({ narr: '<code>vector&lt;vector&lt;int&gt;&gt; g(' + R0 + ', vector&lt;int&gt;(' + C0 + ', 0))</code>: ' + R0 + ' rows, each its own vector of ' + C0 + ' zeros.', parts: [{ type: 'code', lang: 'cpp', code: code, hl: { 1: 'cur' } }, { type: 'grid', label: 'g', rows: snap(), rowHead: rowHead, colHead: colHead }] });
+        var cnt = 0;
+        for (var a = 0; a < R0; a++) for (var b = 0; b < C0; b++) {
+          g[a][b] = a * C0 + b; cnt++;
+          if (cnt > 14 && !(a === R0 - 1 && b === C0 - 1)) continue;
+          var h = {}; h[a + ',' + b] = 'cur';
+          frames.push({ narr: 'i = ' + a + ', j = ' + b + ': <code>g[' + a + '][' + b + '] = ' + a + '×' + C0 + ' + ' + b + ' = ' + (a * C0 + b) + '</code>. The inner loop walks across a row; this "row-major" order matches memory layout, so it is cache-friendly.', parts: [{ type: 'code', lang: 'cpp', code: code, hl: { 4: 'cur' } }, { type: 'vars', vals: { i: a, j: b }, hl: { j: 'cur' } }, { type: 'grid', label: 'g', rows: snap(), rowHead: rowHead, colHead: colHead, hl: h }] });
+        }
+        frames.push({ narr: 'Done: ' + (R0 * C0) + ' cells filled (O(R × C)). Each row is a separate heap block; for speed-critical code a single <code>vector&lt;int&gt;(R*C)</code> indexed by <code>i*C + j</code> keeps everything in one block.', parts: [{ type: 'grid', label: 'g', rows: snap(), rowHead: rowHead, colHead: colHead }] });
+        return frames;
+      }
+    }],
+    examples: [
+      { title: 'Predict the output: reserve vs resize', html: `<p><code>reserve</code> changes only the capacity; the size stays 0, so <code>a.size()</code> prints <b>0</b>. <code>resize</code> creates real elements (zeros), so <code>b.size()</code> prints <b>4</b> and <code>b[3]</code> is valid. Writing <code>a[0] = 1</code> after only a reserve is undefined behaviour — use <code>push_back</code>.</p>`, code: R`vector<int> a, b;
+a.reserve(4);
+b.resize(4);
+cout << a.size() << " " << a.capacity() << "\n";   // 0 4  (capacity at least 4)
+cout << b.size() << " " << b[3] << "\n";           // 4 0` },
+      { title: 'Reference invalidated by push_back', html: `<p><code>first</code> refers to the element inside the current buffer. When the next <code>push_back</code> finds no room, the vector moves to a new buffer and frees the old one, so <code>first</code> now refers to freed memory: <b>undefined behaviour</b>. AddressSanitizer reports it as "heap-use-after-free". Fix: store an <b>index</b> (<code>size_t idx = 0;</code>) or <code>reserve</code> enough first.</p>`, code: R`vector<int> v = {1, 2};          // size 2, capacity 2
+int& first = v[0];
+v.push_back(3);                   // reallocates: old buffer freed
+// cout << first;                 // UB: dangling reference
+size_t idx = 0;                   // safe alternative: indices survive reallocation
+cout << v[idx] << "\n";           // 1` },
+      { title: 'C arrays cannot be assigned or compared by value', html: `<p><code>b = a</code> does not compile for C arrays, and <code>a == b</code> compares <b>addresses</b> (after decay), which is false even when contents match. <code>std::array</code> fixes both: assignment copies, <code>==</code> compares element by element. Output: <b>0 1</b>.</p>`, code: R`int a[3] = {1, 2, 3}, b[3] = {1, 2, 3};
+// b = a;                                // ERROR: arrays are not assignable
+cout << (a == b) << " ";                 // 0: compares addresses (deprecated in C++20)
+array<int, 3> x = {1, 2, 3}, y = {1, 2, 3};
+cout << (x == y) << "\n";                // 1: compares contents` },
+      { title: 'Counting with a fixed-size array', html: `<p>When the "keys" are small integers — letters, digits, ages 0–150 — a fixed array is the fastest map. Here <code>cnt[c - 'a']</code> turns a letter into an index 0–25. For "banana" the output is <b>a=3 b=1 n=2</b>. This pattern appears in anagram, frequency and "first unique character" questions.</p>`, code: R`string s = "banana";
+array<int, 26> cnt{};                 // {} zero-initialises all 26 counters
+for (char c : s) cnt[c - 'a']++;
+for (int i = 0; i < 26; ++i)
+    if (cnt[i]) cout << char('a' + i) << "=" << cnt[i] << " ";
+cout << "\n";` },
+      { title: 'Big arrays: stack vs heap', html: `<p>A local <code>int big[10000000];</code> needs 40 MB of <b>stack</b>, but the default stack is about 8 MB → crash before main does anything useful. A <b>global</b> array lives in static memory, and a <code>vector</code> keeps its elements on the <b>heap</b>, so both are fine. This is why competitive programmers declare big arrays globally or use vectors.</p>`, code: R`const int N = 10000000;
+int globalBig[N];                       // OK: static storage, zero-initialised
+
+int main() {
+    // int localBig[N];                 // likely stack overflow (40 MB on the stack)
+    vector<int> heapBig(N);             // OK: 40 MB on the heap
+    globalBig[0] = heapBig[0] = 1;
+    cout << globalBig[0] + heapBig[0] << "\n";   // 2
+}` }
+    ],
+    deepDive: `<p><b>Why doubling gives amortised O(1).</b> Suppose we push n = 2<sup>k</sup> elements. Reallocations copy 1 + 2 + 4 + … + 2<sup>k−1</sup> = 2<sup>k</sup> − 1 &lt; n elements in total, plus n writes for the pushes themselves: fewer than 2n operations, so O(1) per push on average. If the vector grew by a <b>constant</b> (+10 each time) instead, the copies would be 10 + 20 + 30 + … ≈ n²/20 → O(n) per push. Any growth <b>factor</b> &gt; 1 works; 1.5 (MSVC, folly) lets freed blocks be reused by later growth, 2 (libstdc++, libc++) does fewer reallocations. Individual pushes are still occasionally O(n) — a latency spike that matters in real-time code, where you <code>reserve</code> up front.</p>
+<p><b>Copy or move during reallocation?</b> For elements like <code>std::string</code>, the vector <b>moves</b> them to the new buffer (just pointer swaps) — but only if the type's move constructor is <code>noexcept</code>; otherwise it copies, to keep the strong exception guarantee. This is a real reason to mark your own move constructors <code>noexcept</code> (module A).</p>
+<p><b>Memory layout.</b> A vector object is three pointers (begin, end, end-of-storage) — 24 bytes — no matter how many elements it holds; the elements sit in one heap block. <code>vector&lt;vector&lt;int&gt;&gt;</code> is a vector of such headers, each pointing at its own block, so rows are <b>not</b> contiguous with each other. Iterating <code>g[i][j]</code> with j in the inner loop is cache-friendly; with i in the inner loop it jumps between blocks and can be several times slower on big grids. <code>shrink_to_fit()</code> asks (non-bindingly) to drop spare capacity; <code>clear()</code> keeps the capacity.</p>
+<p><b><code>vector&lt;bool&gt;</code> is special:</b> it packs bits, so <code>v[i]</code> returns a proxy object, not a <code>bool&amp;</code>, and <code>auto&amp; b = v[0]</code> does not compile. Use <code>vector&lt;char&gt;</code> or <code>bitset</code> when that matters. <b>Bounds:</b> <code>operator[]</code> is unchecked for speed; build debug runs with <code>-D_GLIBCXX_ASSERTIONS</code> or <code>-fsanitize=address</code> to catch out-of-range access, and C++26 adds standardised "hardened" checks.</p>`,
+    aiEra: `<p><b>What AI changes:</b> AI tools default to <code>vector</code> for everything, which is usually the right call, and they write the 2D-vector boilerplate instantly. They are also good at explaining a sanitizer report like "heap-use-after-free" and pointing at the <code>push_back</code> that caused it.</p>
+<p><b>Use AI as a partner:</b> ask <i>"Where in this function could a vector reallocation invalidate an iterator or reference?"</i>, or <i>"Should this be a C array, std::array, vector or span? Explain."</i>. Ask it to add <code>reserve</code> calls where the final size is known and to measure the difference with a quick benchmark.</p>
+<p><b>Where AI goes wrong:</b> it writes <code>for (size_t i = v.size() - 1; i &gt;= 0; --i)</code>, uses <code>sizeof(arr)</code> on decayed parameters, confuses <code>reserve</code> with <code>resize</code>, and sometimes holds an iterator across <code>push_back</code> inside a loop — code that passes small tests and crashes on big ones. <b>What you must still own:</b> the size/capacity model, the amortised-O(1) argument (a favourite interview question), the invalidation rules, and the stack-vs-heap judgement for big arrays.</p>`,
+    problems: [{
+      title: 'Rotate an Array Right by k (In Place)',
+      level: 'Medium', tags: ['vector', 'reverse', 'in-place', 'modulo'], companies: ['Microsoft', 'Amazon', 'Meta', 'Oracle'],
+      statement: `<p>Given a <code>vector&lt;int&gt;&amp; nums</code>, rotate it to the <b>right</b> by <code>k</code> steps, in place, using O(1) extra memory. Each step moves the last element to the front. <code>k</code> may be larger than the length.</p>`,
+      constraints: `1 ≤ n ≤ 10<sup>5</sup>, 0 ≤ k ≤ 10<sup>9</sup>, |nums[i]| ≤ 2<sup>31</sup> − 1`,
+      example: `<p>${H.arr([1, 2, 3, 4, 5, 6, 7])} with k = 3 → ${H.arr([5, 6, 7, 1, 2, 3, 4], { hl: { 0: 'g', 1: 'g', 2: 'g' } })}</p><p><b>Why:</b> the last 3 elements (5, 6, 7) wrap around to the front; everything else shifts right by 3. With k = 10 the answer is the same as k = 10 % 7 = 3.</p>`,
+      brute: {
+        why: `<p>Rotate by one step, k times: save the last element, shift everything right by one, put it at the front. Each step is O(n), so the total is O(n·k) — with n = 10<sup>5</sup> and k = 10<sup>9</sup> that is hopeless. Even after reducing k to k % n it can be 10<sup>10</sup>. The waste: each element moves one slot at a time instead of jumping straight to its final position.</p>`,
+        code: R`void rotateBrute(vector<int>& nums, long long k) {
+    int n = nums.size();
+    k %= n;                                   // at least avoid full cycles
+    for (long long step = 0; step < k; ++step) {
+        int last = nums[n - 1];
+        for (int i = n - 1; i > 0; --i)       // shift right by one: O(n)
+            nums[i] = nums[i - 1];
+        nums[0] = last;
+    }
+}`
+      },
+      mcq: { q: 'Reversing the whole array, then the first k, then the rest, gives a right rotation by k. What is the first reversal of [1,2,3,4,5,6,7]?', options: ['[7,6,5,4,3,2,1]', '[3,2,1,7,6,5,4]', '[5,6,7,1,2,3,4]', '[4,3,2,1,7,6,5]'], answer: 0, explain: 'Step 1 reverses everything → [7,6,5,4,3,2,1]. Then reverse the first k = 3 → [5,6,7,4,3,2,1], then the remaining 4 → [5,6,7,1,2,3,4].' },
+      hints: [`<p>Hint 1: First replace k by <code>k % n</code> — rotating by n changes nothing. Then notice the answer is "the last k elements" followed by "the first n − k elements", each in its original order.</p>`, `<p>Hint 2: Reversing the whole array puts the last k elements at the front — but backwards. Reverse those k again to fix their order, and reverse the remaining n − k to fix theirs.</p>`, `<p>Hint 3: Write a helper <code>reverseRange(nums, lo, hi)</code> with two indices swapping toward the middle (pass <code>nums</code> by <b>reference</b>!). Call it three times: (0, n−1), (0, k−1), (k, n−1). Handle k = 0.</p>`],
+      solution: {
+        approach: `<p>The <b>three-reversal trick</b>. Reverse all n elements, then the first k, then the last n − k. Every element is swapped a constant number of times → O(n) time, O(1) extra space. The helper takes the vector by <b>reference</b> so it modifies the caller's data; passing by value would rotate a copy and leave <code>nums</code> unchanged.</p>`,
+        code: R`#include <bits/stdc++.h>
+using namespace std;
+
+// Reverse nums[lo..hi] in place with two indices moving toward each other.
+void reverseRange(vector<int>& nums, int lo, int hi) {
+    while (lo < hi) {
+        swap(nums[lo], nums[hi]);
+        ++lo;
+        --hi;
+    }
+}
+
+void rotateRight(vector<int>& nums, long long k) {
+    int n = nums.size();
+    k %= n;                          // k may exceed n
+    if (k == 0) return;
+    reverseRange(nums, 0, n - 1);    // [7 6 5 4 3 2 1]
+    reverseRange(nums, 0, k - 1);    // [5 6 7 | 4 3 2 1]
+    reverseRange(nums, k, n - 1);    // [5 6 7 | 1 2 3 4]
+}
+
+int main() {
+    vector<int> a = {1, 2, 3, 4, 5, 6, 7};
+    rotateRight(a, 3);
+    for (int x : a) cout << x << ' ';     // 5 6 7 1 2 3 4
+    cout << "\n";
+}`,
+        alt: [R`// Extra-memory version (O(n) space): each element jumps straight to its final slot.
+void rotateCopy(vector<int>& nums, long long k) {
+    int n = nums.size();
+    vector<int> res(n);
+    for (int i = 0; i < n; ++i) res[(i + k) % n] = nums[i];
+    nums = res;                      // copy back into the caller's vector
+}`, R`// Standard library one-liner: std::rotate makes nums[n-k] the new first element.
+void rotateStd(vector<int>& nums, long long k) {
+    int n = nums.size();
+    k %= n;
+    rotate(nums.begin(), nums.begin() + (n - k), nums.end());
+}`],
+        dry: { head: ['step', 'range reversed', 'array after'], rows: [['start', '—', '1 2 3 4 5 6 7'], ['1', '0..6 (all)', '7 6 5 4 3 2 1'], ['2', '0..2 (first k=3)', H.c('g', '5 6 7') + ' 4 3 2 1'], ['3', '3..6 (rest)', H.c('g', '5 6 7 1 2 3 4')]] },
+        complexity: `<p>Time O(n): about n swaps in total. Extra space O(1). The brute force was O(n·k).</p>`,
+        followUps: ['Rotate left by k instead — which reversal order changes?', 'Rotate a string in place by k characters using the same helper on a <code>string&amp;</code>.']
+      }
+    }]
+  });
+
   registerModule({
     id: 'cpp02',
     title: 'Control Flow, Functions, Arrays & Strings',

@@ -1484,5 +1484,325 @@ delete[] buf;</pre>
       }
     }]
   });
+
+  /* ======================================================================
+     TOPIC 6 — weak_ptr and breaking reference cycles
+     ====================================================================== */
+  function cycleSim(input) {
+    var DEF = 'Parent=>Child Child=>Parent';
+    var s = String(input === undefined ? DEF : input).trim();
+    if (!s) throw new Error('Type edges like: A=>B B->A   (=> shared_ptr, -> weak_ptr)');
+    var toks = s.split(/[\s,;]+/).filter(Boolean), edges = [], names = [];
+    toks.forEach(function (t) {
+      var m = /^([A-Za-z_][A-Za-z0-9_]{0,9})(=>|->)([A-Za-z_][A-Za-z0-9_]{0,9})$/.exec(t);
+      if (!m) throw new Error('Bad edge "' + t + '". Write A=>B (owning shared_ptr) or A->B (weak_ptr), separated by spaces');
+      if (m[1] === m[3] && m[2] === '=>') { /* self-cycle allowed */ }
+      [m[1], m[3]].forEach(function (n) { if (names.indexOf(n) < 0) names.push(n); });
+      edges.push({ from: m[1], to: m[3], strong: m[2] === '=>' });
+    });
+    if (names.length > 6) throw new Error('Use at most 6 different objects');
+    if (edges.length > 10) throw new Error('Use at most 10 edges');
+    var st = {}, wk = {}, alive = {}, local = {}, linked = [];
+    names.forEach(function (n) { st[n] = 1; wk[n] = 0; alive[n] = true; local[n] = true; });
+    var pos = {};
+    names.forEach(function (n, i) {
+      var ang = -Math.PI / 2 + i * 2 * Math.PI / names.length;
+      pos[n] = { x: Math.round(66 + 24 * Math.cos(ang)), y: Math.round(38 + 26 * Math.sin(ang)) };
+    });
+    var frames = [];
+    function picture(hl, ehl) {
+      var nodes = [], es = [], h = {}, tags = {}, eh = {};
+      names.forEach(function (n, i) {
+        nodes.push({ id: 'L_' + n, label: 'local sp_' + n, x: 10, y: 8 + i * 12, shape: 'box', w: 18 });
+        if (local[n]) es.push(['L_' + n, n, 'owns']); else { h['L_' + n] = 'done'; tags['L_' + n] = 'out of scope'; }
+        nodes.push({ id: n, label: n, x: pos[n].x, y: pos[n].y, shape: 'box', w: 16 });
+        tags[n] = alive[n] ? 'use=' + st[n] + ' weak=' + wk[n] : 'destroyed';
+        if (!alive[n]) h[n] = 'done';
+      });
+      linked.forEach(function (e) {
+        if (!alive[e.from]) return;
+        es.push([e.from, e.to, e.strong ? 'shared_ptr' : 'weak_ptr']);
+        eh[e.from + '-' + e.to] = e.strong ? 'cur' : 'ok';
+      });
+      Object.keys(hl || {}).forEach(function (k) { h[k] = hl[k]; });
+      Object.keys(ehl || {}).forEach(function (k) { eh[k] = ehl[k]; });
+      var rows = names.map(function (n) { return [n, alive[n] ? st[n] : 0, wk[n], alive[n] ? (local[n] ? 'alive (held by a local)' : (st[n] > 0 ? '<span class="c-r">alive but unreachable</span>' : 'alive')) : '<span class="c-g">destroyed</span>']; });
+      return [{ type: 'graph', label: 'Amber arrows = owning shared_ptr (counts toward use_count) · green arrows = weak_ptr (does not)', directed: true, height: 72, nodes: nodes, edges: es, hl: h, ehl: eh, tags: tags },
+        { type: 'table', label: 'Reference counts', columns: ['object', 'use_count', 'weak count', 'state'], rows: rows }];
+    }
+    frames.push({ narr: 'Each object is created with <code>make_shared</code> and held by a local variable (use_count = 1). Next we wire up the member pointers from your input: <code>' + H.esc(s) + '</code>.', parts: picture() });
+    edges.forEach(function (e) {
+      linked.push(e);
+      if (e.strong) st[e.to]++; else wk[e.to]++;
+      var hl = {}; hl[e.to] = 'cur';
+      frames.push({ narr: '<code>' + H.esc(e.from) + '-&gt;' + (e.strong ? 'ref' : 'weakRef') + ' = sp_' + H.esc(e.to) + ';</code> — ' + (e.strong ? 'a <b>shared_ptr</b> member: ' + H.esc(e.to) + '\'s use_count goes up to <b>' + st[e.to] + '</b>. ' + H.esc(e.from) + ' now co-owns ' + H.esc(e.to) + '.' : 'a <b>weak_ptr</b> member: only ' + H.esc(e.to) + '\'s weak count goes up (' + wk[e.to] + '). use_count stays ' + st[e.to] + ' — ' + H.esc(e.from) + ' can <i>reach</i> ' + H.esc(e.to) + ' with <code>lock()</code> but does not keep it alive.'), parts: picture(hl, one(e.from + '-' + e.to, e.strong ? 'cur' : 'ok')) });
+    });
+    function destroy(n, log) {
+      alive[n] = false; log.push(n);
+      linked.forEach(function (e) {
+        if (e.from !== n) return;
+        if (e.strong) { if (alive[e.to]) { st[e.to]--; if (st[e.to] === 0) destroy(e.to, log); } }
+        else wk[e.to]--;
+      });
+    }
+    for (var i = names.length - 1; i >= 0; i--) {
+      var n = names[i];
+      local[n] = false;
+      var log = [], hl = {};
+      if (alive[n]) { st[n]--; if (st[n] === 0) destroy(n, log); }
+      log.forEach(function (x) { hl[x] = 'bad'; });
+      var narr = 'The function ends; local <code>sp_' + H.esc(n) + '</code> is destroyed → ' + H.esc(n) + '\'s use_count drops' + (alive[n] ? ' to <b>' + st[n] + '</b>. Still &gt; 0 because another object owns it, so ' + H.esc(n) + ' stays alive.' : '.');
+      if (log.length) narr += ' <span class="c-g">Reached 0 → destroyed: ' + log.join(', ') + '</span> (destroying an object also releases the shared_ptrs it holds, which can cascade).';
+      frames.push({ narr: narr, parts: picture(hl) });
+    }
+    var leaked = names.filter(function (n) { return alive[n]; });
+    if (leaked.length) {
+      var hl2 = {}; leaked.forEach(function (n) { hl2[n] = 'bad'; });
+      frames.push({ narr: '<span class="c-r"><b>LEAK: ' + leaked.join(', ') + '</b> — no local variable can reach them, but they keep each other\'s use_count above 0 through owning shared_ptrs. Reference counting cannot see that the whole group is garbage; their destructors will <b>never</b> run.</span> <b>Fix:</b> make the "back" edge a weak_ptr, e.g. change <code>=&gt;</code> to <code>-&gt;</code> on the child→parent (or observer) edge and run again.', parts: picture(hl2) });
+    } else {
+      frames.push({ narr: '<span class="c-g"><b>No leak.</b></span> Every object was destroyed. Ownership forms a tree/DAG with owning edges pointing "down"; back-references are weak_ptrs, which never keep anything alive. Try <code>A=&gt;B B=&gt;C C=&gt;A</code> to see a 3-object cycle leak.', parts: picture() });
+    }
+    return frames;
+  }
+
+  topics.push({
+    title: 'std::weak_ptr and Breaking shared_ptr Cycles',
+    analogy: `<p><b>Two friends each holding the other's balloon string.</b> Each balloon floats as long as someone holds its string. When everyone else lets go, Alice still holds Bob's string and Bob still holds Alice's — so both balloons float forever, even though nobody on the ground cares about them any more. That is a <b>shared_ptr cycle</b>.</p>
+      <p>A <b>weak_ptr</b> is like <b>knowing where the balloon is without holding its string</b>: you can go and grab it (<code>lock()</code>) if it is still there, but you are not the reason it stays up.</p>`,
+    explain: `<p><code>std::weak_ptr&lt;T&gt;</code> is a <b>non-owning observer</b> of an object managed by <code>shared_ptr</code>. It points at the control block and bumps the <b>weak count</b>, never the use_count.</p>
+      ${H.table(['weak_ptr API', 'What it does'], [
+        ['<code>std::weak_ptr&lt;T&gt; w = sp;</code>', 'start observing (weak count +1)'],
+        ['<code>if (auto sp = w.lock()) { ... }</code>', '<b>the</b> way to use it: atomically get a shared_ptr if the object is alive, else an empty one'],
+        ['<code>w.expired()</code>', 'true if the object is gone — only a hint; it may expire right after you check'],
+        ['<code>w.use_count()</code>', 'how many shared_ptrs currently own it'],
+        ['<code>w.reset()</code>', 'stop observing'],
+        ['<code>*w</code>, <code>w-&gt;x</code>', '<span class="c-r">do not exist</span> — you must <code>lock()</code> first']
+      ])}
+      <p><b>Why cycles leak:</b> reference counting frees an object when its count reaches 0. In a cycle (A owns B, B owns A), each count includes the other's pointer, so after all outside owners leave, both counts are still 1. Nothing outside can reach them, nothing inside will let go → leak. A tracing garbage collector (Java, Go) would notice; C++ reference counting cannot.</p>
+      <p><b>How to break a cycle:</b> identify the <b>ownership direction</b>. The owner holds a <code>shared_ptr</code> (or <code>unique_ptr</code>) to what it owns; any pointer going "back up" or "sideways" becomes a <code>weak_ptr</code> (or a raw pointer if the lifetime is guaranteed).</p>
+      ${H.table(['Structure', 'Owning edge', 'Back / side edge'], [
+        ['Tree with parent links', 'parent → children (<code>shared_ptr</code>/<code>unique_ptr</code>)', 'child → parent: <code>weak_ptr</code> (or raw <code>Node*</code>)'],
+        ['Doubly linked list', '<code>next</code>: shared_ptr', '<code>prev</code>: weak_ptr'],
+        ['Observer / event bus', 'whoever created the listener', 'subject → listeners: <code>weak_ptr</code> (auto-skips dead ones)'],
+        ['Cache of shared resources', 'users of the resource', 'cache map → resource: <code>weak_ptr</code> (entry expires when unused)'],
+        ['Object + its callbacks', 'the object', 'callback captures <code>weak_from_this()</code>, locks when fired']
+      ])}
+      <p><b>Memory detail:</b> while weak_ptrs exist, the <b>control block</b> stays allocated (the object itself is destroyed when use_count hits 0). With <code>make_shared</code>, object and control block share one allocation, so the object's <i>bytes</i> stay reserved until the last weak_ptr is gone too — usually fine, but matters for big objects with long-lived weak observers.</p>`,
+    clues: [
+      '"Parent and child point to each other" / "doubly linked list with shared_ptr" → cycle; make the back pointer weak',
+      '"Destructor never called" / "memory grows although everything uses shared_ptr" → shared_ptr cycle leak',
+      '"Observer must not keep the subject alive" / "listeners may die before the event fires" → <code>weak_ptr</code> + <code>lock()</code>',
+      '"Cache that should not keep unused objects alive" → <code>unordered_map&lt;Key, weak_ptr&lt;T&gt;&gt;</code>',
+      '"Check whether an object still exists before using it" → <code>if (auto sp = w.lock())</code>, never <code>expired()</code> then use',
+      '"Callback captures <code>this</code> / shared_from_this and the object never dies" → capture <code>weak_from_this()</code> instead'
+    ],
+    code: [R`
+      #include <iostream>
+      #include <memory>
+      #include <string>
+      #include <vector>
+
+      struct Node {
+          std::string name;
+          std::vector<std::shared_ptr<Node>> children;   // parent OWNS children
+          std::weak_ptr<Node> parent;                    // child only OBSERVES parent
+          explicit Node(std::string n) : name(std::move(n)) {}
+          ~Node() { std::cout << "~" << name << "\n"; }
+      };
+
+      std::shared_ptr<Node> addChild(const std::shared_ptr<Node>& p, std::string name) {
+          auto c = std::make_shared<Node>(std::move(name));
+          c->parent = p;                                 // weak: p's use_count unchanged
+          p->children.push_back(c);
+          return c;
+      }
+
+      int main() {
+          std::shared_ptr<Node> leaf;
+          {
+              auto root = std::make_shared<Node>("root");
+              auto mid = addChild(root, "mid");
+              leaf = addChild(mid, "leaf");
+              if (auto p = leaf->parent.lock())          // safe access to the parent
+                  std::cout << leaf->name << "'s parent is " << p->name << "\n";
+          }   // root dies -> "~root", "~mid" (leaf is still held outside)
+          std::cout << "parent expired? " << leaf->parent.expired() << "\n";   // 1
+      }       // "~leaf"
+    `, R`
+      #include <iostream>
+      #include <memory>
+      // The leak, side by side with the fix.
+      struct BadA; struct BadB;
+      struct BadA { std::shared_ptr<BadB> b; ~BadA() { std::cout << "~BadA\n"; } };
+      struct BadB { std::shared_ptr<BadA> a; ~BadB() { std::cout << "~BadB\n"; } };   // owning back-edge
+
+      struct GoodB;
+      struct GoodA { std::shared_ptr<GoodB> b; ~GoodA() { std::cout << "~GoodA\n"; } };
+      struct GoodB { std::weak_ptr<GoodA> a;  ~GoodB() { std::cout << "~GoodB\n"; } };  // observing back-edge
+
+      int main() {
+          {
+              auto a = std::make_shared<BadA>(); auto b = std::make_shared<BadB>();
+              a->b = b; b->a = a;                   // use_count: a=2, b=2
+          }                                         // both drop to 1 -> nothing printed: LEAK
+          {
+              auto a = std::make_shared<GoodA>(); auto b = std::make_shared<GoodB>();
+              a->b = b; b->a = a;                   // use_count: a=1, b=2
+          }                                         // a -> 0: "~GoodA", which releases b -> "~GoodB"
+      }
+    `],
+    codeTitle: ['Tree: owning children, weak parent', 'Cycle leak vs weak_ptr fix'],
+    viz: {
+      title: 'Reference cycle leak and the weak_ptr fix (=> owning, -> weak)',
+      input: 'Parent=>Child Child=>Parent',
+      inputLabel: 'Edges: A=>B (shared_ptr member) or A->B (weak_ptr member). Try Parent=>Child Child->Parent',
+      gen: cycleSim
+    },
+    examples: [
+      { title: 'Count it by hand: the 2-node cycle', html: `${H.table(['Step', 'A.use_count', 'B.use_count'], [['<code>auto a = make_shared&lt;A&gt;(); auto b = make_shared&lt;B&gt;();</code>', '1', '1'], ['<code>a-&gt;b = b;</code>', '1', '2'], ['<code>b-&gt;a = a;</code> (shared)', '2', '2'], ['scope ends: <code>b</code> local dies', '2', '1'], ['<code>a</code> local dies', '1', '1'], ['<span class="c-r">result</span>', '<span class="c-r">1 — leaked</span>', '<span class="c-r">1 — leaked</span>']])}
+        <p>With <code>b-&gt;a</code> as a <code>weak_ptr</code>: A's count is 1 after linking; when local <code>a</code> dies it hits 0 → A destroyed → A's member <code>b</code> released → B hits 0 → destroyed. ${H.c('g', 'No leak.')}</p>` },
+      { title: 'Observer pattern that skips dead listeners', html: `<p>The subject keeps <code>weak_ptr</code>s to listeners, so a listener that has been destroyed simply fails to <code>lock()</code> and is pruned. The subject never keeps a listener (say, a closed UI window) alive by accident.</p>`, code: R`
+        #include <algorithm>
+        #include <iostream>
+        #include <memory>
+        #include <string>
+        #include <vector>
+        struct Listener { std::string id; void onEvent(const std::string& e) { std::cout << id << " got " << e << "\n"; } };
+        class Subject {
+            std::vector<std::weak_ptr<Listener>> subs_;
+        public:
+            void subscribe(const std::shared_ptr<Listener>& l) { subs_.push_back(l); }
+            void publish(const std::string& e) {
+                std::erase_if(subs_, [&](const std::weak_ptr<Listener>& w) {
+                    if (auto l = w.lock()) { l->onEvent(e); return false; }
+                    return true;                                  // expired: remove it
+                });
+            }
+            std::size_t size() const { return subs_.size(); }
+        };
+        int main() {
+            Subject s;
+            auto a = std::make_shared<Listener>(Listener{"A"});
+            {
+                auto b = std::make_shared<Listener>(Listener{"B"});
+                s.subscribe(a); s.subscribe(b);
+                s.publish("start");                               // A and B
+            }                                                     // B destroyed
+            s.publish("tick");                                    // only A; B pruned
+            std::cout << s.size() << "\n";                        // 1
+        }` },
+      { title: 'The expired()-then-use race', html: `<p>In multi-threaded code this is a bug:</p>
+        <pre>if (!w.expired()) {        // (1) alive right now…
+    use(*w.lock());         // (2) …but may have died in between → null deref
+}</pre>
+        <p>Between (1) and (2) another thread can drop the last owner. <code>lock()</code> is atomic: it either returns an owner that keeps the object alive for as long as you hold it, or empty. ${H.c('g', 'Correct: <code>if (auto sp = w.lock()) use(*sp);</code>')}</p>` },
+      { title: 'Callbacks: capture weak, not strong', html: `<p>A timer callback that captures <code>shared_from_this()</code> keeps the object alive until the timer fires — and if the object owns the timer, you have a cycle (object → timer → callback → object). Capture <code>weak_from_this()</code> (C++17) and lock inside the callback:</p>`, code: R`
+        #include <functional>
+        #include <iostream>
+        #include <memory>
+        class Downloader : public std::enable_shared_from_this<Downloader> {
+            std::function<void()> onDone_;                   // object owns its callback
+        public:
+            void start() {
+                onDone_ = [weak = weak_from_this()] {        // no cycle
+                    if (auto self = weak.lock()) std::cout << "done, still alive\n";
+                    else std::cout << "object gone, ignore\n";
+                };
+            }
+            void finish() { if (onDone_) onDone_(); }
+        };
+        int main() {
+            auto d = std::make_shared<Downloader>();
+            d->start();
+            d->finish();                                      // "done, still alive"
+        }                                                     // d is freed: no cycle` }
+    ],
+    deepDive: `<p><b>How lock() works:</b> it loads use_count and tries a compare-and-swap from n to n+1, looping while n &gt; 0 ("increment if not zero"). If it sees 0, the object is dead or dying and it returns empty. This is why <code>lock()</code> is race-free but a bit more expensive than copying a shared_ptr.</p>
+      <p><b>Choosing the weak edge:</b> ask "if X disappears, should Y disappear too?" If yes, X owns Y (strong edge X→Y). Back-edges, sibling links and registries are weak. When a cycle is <i>inherent</i> (general graphs where any node may be referenced by many and cycles are data, e.g. a social graph), weak_ptr is the wrong tool: use an <b>arena</b> — a <code>std::vector&lt;std::unique_ptr&lt;Node&gt;&gt;</code> (or a vector of nodes with integer indices) owned by the graph object, with edges as raw pointers/indices. The whole graph dies together. Some libraries implement deferred cycle collection on top of ref counting (Python does this with its cyclic GC; C++ has proposals like Herb Sutter's <code>gcpp</code>), but the standard library does not.</p>
+      <p><b>Raw pointer vs weak_ptr for back-edges:</b> a raw <code>Node* parent</code> is faster (no control block traffic, 8 bytes instead of 16) and correct if the parent provably outlives the child — true for a tree whose children are only reachable through the parent. If children can escape (handed to other code, stored elsewhere as shared_ptrs, as in the code example above), use <code>weak_ptr</code> so a stale parent is detected instead of dereferenced.</p>
+      <p><b>Detecting cycle leaks in practice:</b> LeakSanitizer reports them as "indirect leaks" (memory only reachable from other leaked blocks); a destructor log or instance counters show objects that never die; heap snapshots show growing counts of one type. Code review smell: two classes holding <code>shared_ptr</code>s to each other.</p>`,
+    aiEra: `<p><b>What AI changes:</b> assistants know the parent/child weak_ptr rule well and will usually suggest it when asked about cycles. They are also handy for drawing the ownership graph of an unfamiliar codebase: <code>List every shared_ptr member in these classes as edges From → To and find cycles.</code></p>
+      <p><b>Use AI as a partner:</b> generate the edge list, then run a quick cycle check yourself (or have the AI write a tiny script that parses member declarations). Ask for a unit test with instance counters that proves all destructors ran.</p>
+      <p><b>Where AI goes wrong:</b> it makes the <i>wrong</i> edge weak (the owning one), so objects die immediately; it uses <code>expired()</code> then <code>lock()</code> (race); it captures <code>shared_from_this()</code> in long-lived callbacks; or it "fixes" a leak by calling <code>reset()</code> manually in a <code>close()</code> method that someone forgets to call. <b>What you must own:</b> deciding the ownership direction — that is a design decision about your domain, not a syntax choice.</p>`,
+    problems: [{
+      title: 'Fix the Leaking Department ↔ Employee Graph', level: 'Medium', tags: ['weak_ptr', 'reference cycle', 'shared_ptr'], companies: ['Amazon', 'Uber', 'Bloomberg'],
+      statement: `<p>A <code>Department</code> holds <code>std::vector&lt;std::shared_ptr&lt;Employee&gt;&gt; staff</code>, and each <code>Employee</code> holds <code>std::shared_ptr&lt;Department&gt; dept</code> so it can print its department name. After a department is closed (all outside references dropped), memory is never released and destructors never run. Fix the design so everything is freed, and make <code>Employee::deptName()</code> return <code>"(none)"</code> if the department is gone.</p>`,
+      constraints: `Employees may outlive their department (they can be transferred elsewhere). No manual "break the cycle" calls allowed — destruction must be automatic.`,
+      example: `${H.table(['Design', 'Dept use_count after outside refs drop', 'Result'], [['Employee holds shared_ptr&lt;Department&gt;', '= number of employees (&gt; 0)', '<span class="c-r">leak</span>'], ['Employee holds weak_ptr&lt;Department&gt;', '0', '<span class="c-g">Department destroyed; employees still usable</span>']])}`,
+      brute: { why: `<p>The original design is a cycle: Department owns Employees, each Employee owns the Department. Department's use_count can never reach 0 while any Employee exists, and Employees are owned by the Department. A manual <code>close()</code> that clears <code>staff</code> works only if every caller remembers it — the exact fragility RAII is meant to remove.</p>`, code: R`
+        #include <memory>
+        #include <string>
+        #include <vector>
+        struct Department;
+        struct Employee {
+            std::string name;
+            std::shared_ptr<Department> dept;          // owning back-edge -> cycle
+        };
+        struct Department {
+            std::string name;
+            std::vector<std::shared_ptr<Employee>> staff;
+        };
+        int main() {
+            auto d = std::make_shared<Department>(Department{"R&D", {}});
+            auto e = std::make_shared<Employee>(Employee{"Ana", d});
+            d->staff.push_back(e);
+        }   // d: use 2 -> 1, e: use 2 -> 1  => both leaked` },
+      mcq: { q: 'Which edge should become a weak_ptr?', options: ['Employee → Department (the back-reference)', 'Department → Employee (the staff list)', 'Both', 'Neither — use raw pointers for both'], answer: 0, explain: 'The department is the natural owner of its staff list; an employee only needs to look up its department. Making the back-edge weak breaks the cycle and lets the employee detect a closed department.' },
+      hints: [`<p>Hint 1: Draw the arrows and count: Department → Employee (owning), Employee → Department (owning). A loop of owning arrows = leak.</p>`, `<p>Hint 2: Keep <code>staff</code> as shared_ptrs (employees can be shared/transferred), make <code>Employee::dept</code> a <code>std::weak_ptr&lt;Department&gt;</code>.</p>`, `<p>Hint 3: <code>deptName()</code>: <code>if (auto d = dept.lock()) return d-&gt;name; return "(none)";</code>. Verify with destructor prints or static counters.</p>`],
+      solution: {
+        approach: `<p>Ownership flows Department → Employee; the back-reference becomes a <code>weak_ptr</code>. When outside references to the department vanish, its use_count reaches 0, it is destroyed, its <code>staff</code> vector releases the employees (each freed if nobody else holds it), and surviving employees see an expired weak_ptr.</p>`,
+        code: R`
+          #include <iostream>
+          #include <memory>
+          #include <string>
+          #include <vector>
+          struct Department;
+          struct Employee {
+              std::string name;
+              std::weak_ptr<Department> dept;           // observe, don't own
+              explicit Employee(std::string n) : name(std::move(n)) {}
+              ~Employee() { std::cout << "~Employee " << name << "\n"; }
+              std::string deptName() const;
+          };
+          struct Department {
+              std::string name;
+              std::vector<std::shared_ptr<Employee>> staff;   // owns its staff
+              explicit Department(std::string n) : name(std::move(n)) {}
+              ~Department() { std::cout << "~Department " << name << "\n"; }
+              void hire(const std::shared_ptr<Department>& self, std::shared_ptr<Employee> e) {
+                  e->dept = self;
+                  staff.push_back(std::move(e));
+              }
+          };
+          std::string Employee::deptName() const {
+              if (auto d = dept.lock()) return d->name;
+              return "(none)";
+          }
+          int main() {
+              std::shared_ptr<Employee> keep;
+              {
+                  auto rnd = std::make_shared<Department>("R&D");
+                  auto ana = std::make_shared<Employee>("Ana");
+                  rnd->hire(rnd, ana);
+                  rnd->hire(rnd, std::make_shared<Employee>("Bo"));
+                  keep = ana;                                     // Ana is also held outside
+                  std::cout << keep->deptName() << "\n";          // R&D
+              }   // "~Department R&D", then "~Employee Bo" (Ana survives via keep)
+              std::cout << keep->deptName() << "\n";              // (none)
+          }       // "~Employee Ana"
+        `,
+        dry: { head: ['moment', 'R&amp;D use', 'Ana use', 'Bo use', 'event'], rows: [
+          ['after both hires', '1 (local rnd)', '2 (ana, staff)', '1 (staff)', 'weak dept links add 0 to R&amp;D'],
+          ['keep = ana', '1', '3', '1', '—'],
+          ['scope ends: ana local dies', '1', '2', '1', '—'],
+          ['rnd local dies', '0', '2 → 1', '1 → 0', '<span class="c-g">~Department, ~Employee Bo</span>'],
+          ['keep-&gt;deptName()', '—', '1', '—', 'lock() empty → "(none)"'],
+          ['end of main', '—', '0', '—', '<span class="c-g">~Employee Ana</span>']
+        ] },
+        complexity: `<p>Same memory layout cost as before (weak_ptr is 16 bytes like shared_ptr). <code>lock()</code> is a CAS loop on the control block — fine for lookups, avoid in the tightest loops.</p>`,
+        followUps: ['When is a raw <code>Department*</code> back-pointer acceptable instead?', 'How would you test for this leak automatically in CI?', 'How do you remove an employee from the department when the employee transfers?']
+      }
+    }]
+  });
   registerModule({ id: 'cpp06', title: 'Memory Management, RAII & Smart Pointers', intro: '<p>x</p>', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview });
 })();

@@ -1347,6 +1347,232 @@ int main() {
     }]
   });
 
+  /* ======================================================================
+     TOPIC 7: Arrays decaying to pointers
+     ====================================================================== */
+  var T7_CODE = [
+    'void f(int arr[]) {        // really: int* arr',
+    '    cout << sizeof(arr);   // 8: size of a POINTER',
+    '}',
+    'int main() {',
+    '    int a[5] = {1, 2, 3, 4, 5};',
+    '    cout << sizeof(a);     // 20: the whole array',
+    '    f(a);                  // a decays to &a[0]',
+    '    int* p = a;            // decays again',
+    '    auto q = &a;           // NO decay: int(*)[5]',
+    '    // p + 1 -> 0x204,  q + 1 -> 0x214',
+    '}'
+  ].join('\n');
+
+  topics.push({
+    title: 'Arrays Decaying to Pointers',
+    analogy: `<p>You own a <b>train with 5 carriages</b>. When you hand it to a friend (pass it to a function), C++ does not ship the whole train. It hands over a <b>note with the address of the first carriage</b>. Your friend can walk from carriage to carriage, but the note does not say <b>how many carriages</b> there are. Ask them "how long is the train?" and they can only tell you how big the note is. That shrinking from "a train" to "a note about the first carriage" is called <b>array decay</b>.</p>`,
+    explain: `<p>A C-style array like <code>int a[5]</code> is a real object: 5 ints side by side, 20 bytes, with the size baked into its type <code>int[5]</code>. But in almost every expression, the array <b>automatically converts</b> into a pointer to its first element: <code>int*</code> holding <code>&amp;a[0]</code>. This is <b>array-to-pointer decay</b>, inherited from C.</p>
+<h4>1. Where decay happens</h4>
+${H.table(['code', 'what you get'], [
+  ['<code>int* p = a;</code>', 'p = <code>&amp;a[0]</code>'],
+  ['<code>f(a)</code>', 'f receives an <code>int*</code>'],
+  ['<code>a + 2</code>', '<code>&amp;a[2]</code> (pointer arithmetic)'],
+  ['<code>a[2]</code>', '<code>*(a + 2)</code>: decay, then arithmetic'],
+  ['<code>auto b = a;</code>', '<code>b</code> is <code>int*</code>, not a copy of the array']
+])}
+<h4>2. Where decay does NOT happen (the exceptions)</h4>
+${H.table(['code', 'result', 'type'], [
+  ['<code>sizeof(a)</code>', '20 (whole array)', '-'],
+  ['<code>&amp;a</code>', 'address of the whole array', '<code>int (*)[5]</code>'],
+  ['<code>int (&amp;r)[5] = a;</code>', 'reference to the whole array', '<code>int (&amp;)[5]</code>'],
+  ['<code>decltype(a)</code>', 'the array type', '<code>int[5]</code>'],
+  ['<code>auto&amp; r = a;</code>', 'reference to array, size kept', '<code>int (&amp;)[5]</code>']
+])}
+<h4>3. The function parameter lie</h4>
+<p>These three signatures are <b>identical</b>; the compiler rewrites the first two into the third:</p>
+<pre>void f(int arr[5]);   // the 5 is ignored!
+void f(int arr[]);
+void f(int* arr);</pre>
+<p>So inside <code>f</code>, <code>sizeof(arr)</code> is 8 (a pointer), not 20. The classic bug: <code>int n = sizeof(arr) / sizeof(arr[0]);</code> inside a function gives <b>2</b> on a 64-bit machine, no matter how big the array is. GCC even warns: <i>"sizeof on array function parameter will return size of 'int*'"</i>.</p>
+<h4>4. <code>a</code> vs <code>&amp;a</code>: same address, different types</h4>
+${H.arr(['1', '2', '3', '4', '5', '...'], { label: 'int a[5] @0x200', ptr: { 0: 'a, &a', 1: 'a+1', 5: '&a+1' }, hl: { 1: 'b', 5: 'y' } })}
+<p>Both print 0x200. But <code>a + 1</code> steps one <code>int</code> (0x204), while <code>&amp;a + 1</code> steps one <b>whole array</b> of 5 ints (0x214). The type decides the step.</p>
+<h4>5. How to pass arrays properly</h4>
+${H.table(['approach', 'size known?', 'notes'], [
+  ['<code>f(int* a, size_t n)</code>', 'you pass it', 'classic C, easy to get n wrong'],
+  ['<code>template&lt;size_t N&gt; f(int (&amp;a)[N])</code>', '<span class="c-g">yes, N deduced</span>', 'no decay; one instantiation per size'],
+  ['<code>f(std::span&lt;const int&gt; s)</code> (C++20)', '<span class="c-g">yes, s.size()</span>', 'accepts C arrays, std::array, vector'],
+  ['<code>std::array&lt;int, 5&gt;</code>', '<span class="c-g">yes</span>', 'never decays, copyable, has .size()'],
+  ['<code>std::vector&lt;int&gt;</code>', '<span class="c-g">yes</span>', 'dynamic size']
+])}
+<p>For the size of an array <b>in the scope where it is declared</b>, use <code>std::size(a)</code> (C++17): it refuses to compile on a pointer, so the decay bug cannot happen silently.</p>
+<h4>6. Multi-dimensional arrays</h4>
+<p><code>int m[3][4]</code> is an array of 3 arrays of 4 ints. It decays to a pointer to its first row: <code>int (*)[4]</code>, "pointer to array of 4 ints". So a function taking it must spell the inner size: <code>void g(int (*m)[4], int rows)</code> or <code>void g(int m[][4], int rows)</code>. Only the outermost dimension decays.</p>`,
+    clues: [
+      '"Why does <code>sizeof(arr)/sizeof(arr[0])</code> give 2 inside my function?" → the parameter decayed to a pointer',
+      '"What is the difference between <code>a</code> and <code>&amp;a</code>?" → same address, types <code>int*</code> vs <code>int(*)[N]</code>, different arithmetic step',
+      '"Pass a 2D array to a function" → <code>int (*m)[COLS]</code> / <code>int m[][COLS]</code>, or a flat vector with row*cols+col',
+      '"Function must know the array length" → pass size, template <code>T(&amp;)[N]</code>, <code>std::span</code>, or <code>std::array</code>',
+      '"Can you assign or return a C array?" → no; arrays are not copyable by <code>=</code>, use <code>std::array</code>',
+      '"<code>char s[] = \"hi\"</code> vs <code>const char* s = \"hi\"</code>" → writable array copy vs pointer to read-only literal'
+    ],
+    code: [{ lang: 'cpp', title: 'Decay, its exceptions and the safe alternatives', code: `#include <iostream>
+#include <span>
+#include <array>
+#include <iterator>
+using namespace std;
+
+void byPointer(int arr[], size_t n) {           // 'int arr[]' is really 'int* arr'
+    cout << "sizeof(arr) = " << sizeof(arr) << '\\n';   // 8 on 64-bit: a pointer
+    for (size_t i = 0; i < n; ++i) cout << arr[i] << ' ';
+    cout << '\\n';
+}
+
+template <size_t N>
+void byArrayRef(const int (&arr)[N]) {           // reference to array: NO decay, N deduced
+    cout << "N = " << N << ", sizeof = " << sizeof(arr) << '\\n';   // N = 5, sizeof = 20
+}
+
+void bySpan(span<const int> s) {                 // C++20: pointer + size in one object
+    cout << "span size = " << s.size() << '\\n';
+}
+
+int main() {
+    int a[5] = {1, 2, 3, 4, 5};
+    cout << sizeof(a) << ' ' << size(a) << '\\n';   // 20 5   (no decay with sizeof / std::size)
+    byPointer(a, size(a));                          // decays to &a[0]
+    byArrayRef(a);
+    bySpan(a);                                      // span built from the array, size kept
+
+    int* p = a;                  // decay
+    int (*q)[5] = &a;            // pointer to the WHOLE array
+    cout << (p + 1) << ' ' << (q + 1) << '\\n';     // differ by 4 bytes vs 20 bytes from a
+
+    array<int, 5> sa{1, 2, 3, 4, 5};                // std::array never decays
+    auto copy = sa;                                 // and it can be copied
+    cout << copy.size() << '\\n';                    // 5
+}` }],
+    codeTitle: ['Decay vs no decay'],
+    viz: {
+      title: 'What actually crosses into the function?',
+      gen: function () {
+        function A(hl, p) { var c = []; for (var i = 0; i < 5; i++) c.push([hex(0x200 + 4 * i), i + 1, 'a[' + i + ']']); c.push(['0x214', '…', '(after a)']); return { label: 'main() stack frame: int a[5] (20 bytes)', cells: c, hl: hl || {}, p: p || {} }; }
+        function F(v, hl) { return { label: 'f() stack frame: parameter arr (8 bytes)', cells: [['0x1f0', v, 'arr']], hl: hl || {} }; }
+        var f = [
+          { l: 5, n: '<code>int a[5]</code> is one object: 5 ints, 20 bytes, starting at 0x200. Its type <code>int[5]</code> carries the length.', m: A({ 0: 'ok', 1: 'ok', 2: 'ok', 3: 'ok', 4: 'ok' }) },
+          { l: 6, n: '<code>sizeof(a)</code> is one of the <b>exceptions</b>: no decay happens, so it reports the whole array: <b>20</b>.', m: A({ 0: 'win', 1: 'win', 2: 'win', 3: 'win', 4: 'win' }), v: { 'sizeof(a)': 20, 'std::size(a)': 5 }, o: '20' },
+          { l: 7, n: '<code>f(a)</code>: the array <b>decays</b> to <code>&amp;a[0]</code>. Only that <b>8-byte address</b> is copied into f\'s parameter. The 20 bytes of data stay in main.', m: A({ 0: 'cur' }, { 0: ['arr points here'] }), m2: F('0x200', { 0: 'ok' }), v: { 'arr': '0x200', 'length info': 'LOST' }, vh: { 'length info': 'bad' } },
+          { l: 2, n: 'Inside f, <code>sizeof(arr)</code> is the size of <code>int*</code>: <b>8</b>. f has no idea there are 5 elements. <code>sizeof(arr)/sizeof(arr[0])</code> would give 8/4 = <b>2</b>. Wrong!', m: A({ 0: 'cur' }, { 0: ['arr'] }), m2: F('0x200', { 0: 'bad' }), v: { 'sizeof(arr)': 8, 'sizeof(arr)/sizeof(arr[0])': '2 (bug!)' }, vh: { 'sizeof(arr)/sizeof(arr[0])': 'bad' }, o: '20\n8' },
+          { l: 8, n: 'Back in main: <code>int* p = a;</code> decays again. p holds 0x200 and steps <b>one int</b> at a time: <code>p + 1</code> = 0x204.', m: A({ 0: 'cur', 1: 'win' }, { 0: ['p'], 1: ['p+1'] }), v: { 'p': '0x200', 'p + 1': '0x204' } },
+          { l: 9, n: '<code>auto q = &amp;a;</code> is an <b>exception</b>: no decay. q has type <code>int (*)[5]</code>, "pointer to an array of 5 ints". Same address 0x200, but <code>q + 1</code> jumps a <b>whole array</b>: 0x200 + 20 = <b>0x214</b>.', m: A({ 0: 'sel', 5: 'bad' }, { 0: ['q'], 5: ['q+1'] }), v: { 'q': '0x200', 'q + 1': '0x214', '*q': 'the array a (int[5])' }, vh: { 'q + 1': 'bad' } },
+          { l: 1, n: 'Fixes for f: take <code>std::span&lt;const int&gt;</code> (pointer + size travel together), a template <code>int (&amp;arr)[N]</code>, or use <code>std::array</code>/<code>std::vector</code>, which never decay.', m: A({}), m2: { label: 'f(std::span<const int> s) frame: 16 bytes', cells: [['0x1f0', '0x200', 's.data()'], ['0x1f8', '5', 's.size()']], hl: { 0: 'ok', 1: 'ok' } }, tb: { type: 'table', label: 'How each parameter style sees a', columns: ['parameter', 'what is copied', 'size known?'], rows: [['int arr[] / int* arr', '8-byte address', 'no'], ['int (&arr)[N] (template)', 'nothing (alias)', 'yes, N'], ['std::span<const int>', 'address + length', 'yes'], ['std::array<int,5> (by value)', 'all 20 bytes', 'yes']], hl: { 0: 'bad', 1: 'ok', 2: 'ok' } } }
+        ];
+        return steps(T7_CODE, f);
+      }
+    },
+    examples: [
+      { title: 'Bug hunt: average of an array inside a function', html: `<p>The function below computes the length with <code>sizeof</code> on a decayed parameter, so it only averages the first 2 elements (on 64-bit). For {10, 20, 30, 40} it returns 15 instead of 25. Fix: pass the size, or take a <code>std::span</code>.</p>${H.table(['version', 'n computed', 'result'], [['buggy', '8 / 4 = 2', '<span class="c-r">15</span>'], ['span', 's.size() = 4', '<span class="c-g">25</span>']])}`, code: { lang: 'cpp', code: `#include <span>
+#include <numeric>
+double averageBuggy(int arr[]) {
+    int n = sizeof(arr) / sizeof(arr[0]);   // BUG: sizeof(int*) / sizeof(int) == 2
+    double s = 0;
+    for (int i = 0; i < n; ++i) s += arr[i];
+    return s / n;
+}
+double averageFixed(std::span<const int> s) {
+    if (s.empty()) return 0.0;
+    return std::accumulate(s.begin(), s.end(), 0.0) / s.size();   // size travels with the data
+}` } },
+      { title: 'Predict: a, &amp;a, *a, &amp;a[0]', html: `<p>For <code>int a[3]</code> at 0x500:</p>${H.table(['expression', 'type', 'value'], [['<code>a</code> (decayed)', '<code>int*</code>', '0x500'], ['<code>&amp;a[0]</code>', '<code>int*</code>', '0x500'], ['<code>&amp;a</code>', '<code>int (*)[3]</code>', '0x500'], ['<code>*a</code>', '<code>int</code>', 'a[0]'], ['<code>a + 1</code>', '<code>int*</code>', '0x504'], ['<code>&amp;a + 1</code>', '<code>int (*)[3]</code>', '0x50c']])}<p>Cute trick: <code>*(&amp;a + 1) - a</code> equals 3, the length, because <code>*(&amp;a+1)</code> is "the array right after a" decayed to an <code>int*</code> at 0x50c.</p>`, code: { lang: 'cpp', code: `#include <iostream>
+int main() {
+    int a[3] = {4, 5, 6};
+    std::cout << (*(&a + 1) - a) << '\\n';                       // 3: element count via whole-array step
+    std::cout << ((char*)(&a + 1) - (char*)(a + 1)) << '\\n';    // 8: 12-byte jump vs 4-byte jump
+}` } },
+      { title: 'Arrays cannot be assigned or returned, std::array can', html: `<p><code>int b[3] = a;</code> and <code>b = a;</code> do not compile, and a function cannot return <code>int[3]</code>. These rules exist because the array would decay first. <code>std::array</code> wraps the C array in a struct, so it copies, compares and returns like any value.</p>`, code: { lang: 'cpp', code: `#include <array>
+#include <iostream>
+std::array<int, 3> makeTriple(int x) { return {x, x * 2, x * 3}; }   // returning an array: fine
+int main() {
+    int a[3] = {1, 2, 3};
+    // int b[3] = a;            // error: array must be initialized with a brace-enclosed initializer
+    auto t = makeTriple(5);
+    auto u = t;                 // full copy
+    std::cout << (t == u) << ' ' << u[2] << '\\n';   // 1 15
+    (void)a;
+}` } },
+      { title: 'String literals and char arrays', html: `<p><code>char s[] = "hi";</code> creates a <b>3-byte writable array</b> (h, i, \\0) and <code>sizeof(s)</code> is 3. <code>const char* t = "hi";</code> creates a <b>pointer</b> to a read-only literal and <code>sizeof(t)</code> is 8. Passing <code>s</code> to <code>strlen</code> decays it to <code>char*</code>, which is why C strings need the terminating <code>\\0</code>: the length is not carried along.</p>`, code: { lang: 'cpp', code: `#include <iostream>
+#include <cstring>
+int main() {
+    char s[] = "hi";            // array copy: {'h','i','\\0'}
+    const char* t = "hi";       // pointer to a read-only literal
+    std::cout << sizeof(s) << ' ' << sizeof(t) << ' ' << std::strlen(s) << '\\n';   // 3 8 2
+}` } }
+    ],
+    deepDive: `<p><b>Why decay exists.</b> C inherited it from B and BCPL, where an array variable literally was a pointer. Dennis Ritchie kept the syntax but made arrays real objects that convert to pointers on use, so old code kept working. C++ kept it for C compatibility. The cost is the most common family of C/C++ bugs: buffer overflows, because the length is separated from the data.</p>
+<p><b>Arrays are not pointers.</b> The classic proof: declare <code>extern int* a;</code> in one file while another file defines <code>int a[10];</code>. It links (names match) but the first file reads the array's first 8 bytes <i>as an address</i> and crashes. Also <code>sizeof</code>, <code>&amp;</code>, and assignment behave differently, as shown above.</p>
+<p><b>Spelling array types.</b> <code>int* a[5]</code> = array of 5 pointers. <code>int (*a)[5]</code> = pointer to an array of 5 ints. <code>int (&amp;r)[5]</code> = reference to an array of 5 ints. Use aliases to stay sane: <code>using Row = int[4]; Row* m;</code>.</p>
+<p><b>Variable-length arrays</b> (<code>int a[n]</code> with runtime n) are C99, not standard C++. GCC/Clang accept them as an extension; MSVC does not. Use <code>std::vector</code>. They are also a stack-overflow risk for large n.</p>
+<p><b>std::span internals.</b> A <code>std::span&lt;T&gt;</code> is just a pointer plus a size (16 bytes), or only a pointer for fixed extent <code>std::span&lt;T, 5&gt;</code>. It is a non-owning view: if the underlying array dies, the span dangles just like a pointer. <code>operator[]</code> is unchecked by default; C++26 adds <code>.at()</code>, and hardened standard library modes (libstdc++ <code>_GLIBCXX_ASSERTIONS</code>, libc++ hardening, the C++26 "hardened implementation" feature) turn out-of-bounds indexing into a trap instead of UB.</p>
+<p><b>Industry context.</b> Decay-driven buffer overflows motivated Microsoft's SAL annotations, the <code>-Warray-bounds</code>/<code>-Wsizeof-array-argument</code> warnings, and the C++ Core Guidelines rule "never pass an array as a single pointer" (I.13). In 2026, memory-safety pressure from government guidance (CISA/NSA roadmaps) is pushing teams toward <code>std::span</code>, bounds-checked access and hardened builds by default.</p>`,
+    aiEra: `<p><b>What AI changes:</b> migrating <code>(T* ptr, size_t n)</code> pairs to <code>std::span</code> across a codebase used to be weeks of grunt work; AI assistants plus <code>clang-tidy</code> now draft it quickly, and the compiler verifies most call sites automatically.</p>
+<p><b>Use AI as a partner:</b> ask <code>Find every place in this file where an array's size is computed with sizeof on something that may be a pointer</code>, or <code>Convert this API to std::span and list call sites that need changes</code>. Review each change: spans are non-owning, so check lifetimes.</p>
+<p><b>Where AI goes wrong:</b> it happily writes <code>sizeof(arr)/sizeof(arr[0])</code> inside functions, declares 2D parameters as <code>int**</code> (which is <b>not</b> compatible with <code>int[3][4]</code>), and sometimes returns a <code>std::span</code> into a local vector (dangling).</p>
+<p><b>What you must still own:</b> the decay rule and its exceptions (sizeof, &amp;, reference binding, decltype), the <code>a</code> vs <code>&amp;a</code> distinction, and the habit of keeping size and data together. These come up in both C++ trivia rounds and real code reviews.</p>`,
+    problems: [{
+      title: 'Row Sums of a 2D Array',
+      level: 'Medium', tags: ['arrays', 'decay', '2D arrays'], companies: ['Qualcomm', 'Arista', 'Nvidia'],
+      statement: `<p>Write <code>void rowSums(const int (*m)[4], int rows, long long* out)</code> that writes the sum of each row of a <code>rows × 4</code> C array into <code>out[0..rows-1]</code>. Then explain why the parameter cannot simply be <code>const int** m</code>, and give a template version that deduces both dimensions.</p>`,
+      constraints: `<p>1 ≤ rows ≤ 10<sup>4</sup>, column count fixed at 4 for the non-template version. Values fit in <code>int</code>; sums use <code>long long</code>.</p>`,
+      example: `<p><code>int m[3][4] = {{1,2,3,4},{5,6,7,8},{9,10,11,12}};</code></p>${H.table(['row', 'values', 'sum'], [['0', '1 2 3 4', '<span class="c-g">10</span>'], ['1', '5 6 7 8', '<span class="c-g">26</span>'], ['2', '9 10 11 12', '<span class="c-g">42</span>']])}<p><code>m</code> decays to <code>int (*)[4]</code>: a pointer to the first row. <code>m + 1</code> jumps 16 bytes to the next row.</p>`,
+      brute: { why: `<p>Flatten into a <code>std::vector&lt;int&gt;</code> first and index with <code>r*4 + c</code>. Works, but copies the whole matrix (O(R·C) extra memory) and dodges the real question of how 2D arrays are passed.</p>`, code: { lang: 'cpp', code: `#include <vector>
+void rowSumsBrute(const int (*m)[4], int rows, long long* out) {
+    std::vector<int> flat;
+    for (int r = 0; r < rows; ++r)
+        for (int c = 0; c < 4; ++c) flat.push_back(m[r][c]);   // full copy
+    for (int r = 0; r < rows; ++r) {
+        long long s = 0;
+        for (int c = 0; c < 4; ++c) s += flat[r * 4 + c];
+        out[r] = s;
+    }
+}` } },
+      mcq: { q: 'What does <code>int m[3][4]</code> decay to when passed to a function?', options: ['<code>int**</code>', '<code>int (*)[4]</code>: pointer to an array of 4 ints', '<code>int*</code>', '<code>int (*)[3][4]</code>'], answer: 1, explain: 'Only the outer dimension decays: m becomes a pointer to its first element, and its first element is a row of type int[4]. An int** would expect an array of pointers, which this is not.' },
+      hints: [`<p><code>m[r]</code> is row r (an <code>int[4]</code>), and <code>m[r][c]</code> is <code>*(*(m + r) + c)</code>. Pointer arithmetic on <code>m</code> moves by whole rows.</p>`, `<p><code>int**</code> means "pointer to a pointer"; following it would read the first 8 bytes of the matrix as an address. The real layout is 12 contiguous ints, no pointers stored anywhere.</p>`, `<p>Recipe: for each <code>r</code>, accumulate <code>m[r][c]</code> for c in 0..3 into a <code>long long</code> and store <code>out[r]</code>. Template version: <code>template&lt;size_t R, size_t C&gt; array&lt;long long, R&gt; rowSums(const int (&amp;m)[R][C])</code>.</p>`],
+      solution: {
+        approach: `<p>Iterate rows through the decayed row pointer and sum each row. The template version takes the matrix by reference, so no decay happens and both dimensions are known at compile time.</p>`,
+        code: { lang: 'cpp', code: `#include <array>
+#include <cstddef>
+#include <iostream>
+
+void rowSums(const int (*m)[4], int rows, long long* out) {
+    for (int r = 0; r < rows; ++r) {
+        const int* row = m[r];               // row r: an int[4] that decays to const int*
+        long long s = 0;
+        for (const int* p = row; p != row + 4; ++p) s += *p;
+        out[r] = s;
+    }
+}
+
+// No decay at all: both dimensions deduced from the type
+template <std::size_t R, std::size_t C>
+std::array<long long, R> rowSumsT(const int (&m)[R][C]) {
+    std::array<long long, R> out{};
+    for (std::size_t r = 0; r < R; ++r)
+        for (std::size_t c = 0; c < C; ++c) out[r] += m[r][c];
+    return out;
+}
+
+int main() {
+    int m[3][4] = {{1, 2, 3, 4}, {5, 6, 7, 8}, {9, 10, 11, 12}};
+    long long out[3];
+    rowSums(m, 3, out);                       // m decays to int(*)[4]
+    for (long long s : out) std::cout << s << ' ';   // 10 26 42
+    std::cout << '\\n';
+    for (long long s : rowSumsT(m)) std::cout << s << ' ';   // 10 26 42
+    std::cout << '\\n';
+}` },
+        dry: { head: ['r', 'm + r (address)', 'row values', 'out[r]'], rows: [['0', '0x300', '1 2 3 4', '10'], ['1', '0x310 (+16 bytes)', '5 6 7 8', '26'], ['2', '0x320 (+16 bytes)', '9 10 11 12', '42']] },
+        complexity: `<p>Time O(R·C), extra space O(1) beyond the output.</p>`,
+        followUps: ['How would you accept any column count at runtime? (flat buffer + width, or <code>std::mdspan</code> in C++23)', 'Column sums: why is iterating column-first slower on big matrices? (cache lines, module cpp12)', 'Why does <code>int** </code> work for <code>new int*[R]</code> jagged arrays but not for <code>int[R][C]</code>?']
+      }
+    }]
+  });
+
   registerModule({
     id: 'cpp03',
     title: 'Pointers & References',
