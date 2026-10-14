@@ -1557,4 +1557,170 @@ print(dnc([1, 3, 2, 4, 1, 5, 2], 3))       # 110`, run: true, title: 'Stress tes
       }
     }]
   });
+
+  // =====================================================================
+  // TOPIC 7 — Knuth optimization
+  // =====================================================================
+  topics.push({
+    title: 'Knuth Optimization: Interval DP from O(N³) to O(N²)',
+    analogy: `<p>You're merging a row of <b>sand piles</b>, two neighbours at a time, paying the weight you carry each time. For any stretch of piles, the big question is: <b>where is the last merge?</b> — the "split point" between the left part and the right part.</p>
+      <p>Now a common-sense observation: if you take a stretch and add <b>one more pile on the right</b>, the best split shouldn't jump <i>left</i>; and if you remove a pile from the <b>left</b>, it shouldn't jump left either. So the best split for a stretch is sandwiched between the best splits of its two slightly shorter neighbours. Instead of trying every split, you only try the few positions inside that sandwich — and across a whole diagonal those sandwiches add up to only O(N).</p>`,
+    explain: `<p><b>The shape.</b> Interval DP:</p>
+      <p style="text-align:center"><code>dp[i][j] = min over i ≤ k &lt; j of ( dp[i][k] + dp[k+1][j] ) + w(i, j)</code></p>
+      <p>Fill by increasing length; each cell scans up to j − i split points → <b>O(N<sup>3</sup>)</b>. For N = 5 000 that's 2·10<sup>10</sup> — hopeless.</p>
+      <p><b>Knuth's observation.</b> Let <code>opt[i][j]</code> be the best k. If the extra cost <code>w</code> satisfies</p>
+      <ul>
+        <li><b>quadrangle inequality</b>: w(a, c) + w(b, d) ≤ w(a, d) + w(b, c) for a ≤ b ≤ c ≤ d, and</li>
+        <li><b>monotone on intervals</b>: w(b, c) ≤ w(a, d) when [b, c] ⊆ [a, d],</li>
+      </ul>
+      <p>then</p>
+      <p style="text-align:center"><b><code>opt[i][j−1] ≤ opt[i][j] ≤ opt[i+1][j]</code></b></p>
+      <p>So for cell (i, j) we only scan k from <code>opt[i][j−1]</code> to <code>opt[i+1][j]</code> — both already computed (they are shorter intervals).</p>
+      <h4>Why it's O(N<sup>2</sup>) — the telescoping sum</h4>
+      <p>On one diagonal (fixed length), the scan for (i, j) costs <code>opt[i+1][j] − opt[i][j−1] + 1</code>. Adding over i, the terms cancel like a chain: <code>opt[i+1][j]</code> of one cell is subtracted as <code>opt[(i+1)][(j+1)−1]</code> by the next. What remains is ≤ N + (#cells). N diagonals × O(N) = <b>O(N<sup>2</sup>)</b>.</p>
+      ${H.table(['N', 'plain interval DP ~N³/6', 'Knuth ~N²'], [['500', '2·10<sup>7</sup>', '2.5·10<sup>5</sup>'], ['5 000', '2·10<sup>10</sup> ✗', '2.5·10<sup>7</sup> ✓']])}
+      <p><b>Typical costs that qualify:</b> w(i, j) = sum of a[i..j] (merging piles, optimal BST with frequencies, Huffman-like merges of <i>adjacent</i> items), w(i, j) = pos[j] − pos[i] (cutting a stick, breaking a string). <b>Costs that don't:</b> anything that depends on k itself, like matrix-chain p<sub>i−1</sub>·p<sub>k</sub>·p<sub>j</sub> or burst balloons.</p>`,
+    clues: [
+      'interval DP "dp[i][j] = min over split k of dp[i][k] + dp[k+1][j] + cost(i, j)" with <b>N up to 5 000</b> → O(N²) needed → Knuth',
+      '"merge adjacent piles / files / stones, cost = total size of the merged pile"',
+      '"cut a rod/stick/string at given points, each cut costs the current length"',
+      '"optimal binary search tree" with access frequencies',
+      'the extra cost w(i, j) does <b>not</b> depend on the split k (if it does — matrix chain, burst balloons — Knuth does not apply)',
+      'layered partition DP with K close to N → Knuth on (k, i): opt[k−1][i] ≤ opt[k][i] ≤ opt[k][i+1]'
+    ],
+    code: [`
+      // Minimum Cost to Cut a Stick (LC 1547) with Knuth: O(m^2) where m = cuts + 2.
+      // dp[i][j] = min cost to perform all cuts strictly between pos[i] and pos[j].
+      long minCostCuts(int n, int[] cuts) {
+          int m = cuts.length + 2;
+          int[] sorted = cuts.clone();
+          Arrays.sort(sorted);
+          int[] pos = new int[m];
+          pos[0] = 0; pos[m - 1] = n;
+          for (int i = 0; i < sorted.length; i++) pos[i + 1] = sorted[i];
+          long[][] dp = new long[m][m];                  // dp[i][i+1] = 0: no cut inside
+          int[][] opt = new int[m][m];
+          for (int i = 0; i + 1 < m; i++) opt[i][i + 1] = i;   // sentinel, clamped below
+          for (int len = 2; len < m; len++)
+              for (int i = 0; i + len < m; i++) {
+                  int j = i + len;
+                  dp[i][j] = Long.MAX_VALUE;
+                  int lo = Math.max(i + 1, opt[i][j - 1]);       // Knuth window
+                  int hi = Math.min(j - 1, opt[i + 1][j]);
+                  for (int k = lo; k <= hi; k++) {               // first cut at pos[k]
+                      long v = dp[i][k] + dp[k][j];
+                      if (v < dp[i][j]) { dp[i][j] = v; opt[i][j] = k; }
+                  }
+                  dp[i][j] += pos[j] - pos[i];                  // the first cut costs the whole stick
+              }
+          return dp[0][m - 1];
+      }`],
+    codeTitle: ['Cutting a stick with Knuth (Java)'],
+    viz: {
+      title: 'Merging piles: each cell only scans the Knuth window',
+      input: '4 1 3 2 5',
+      inputLabel: 'pile sizes (2..7 piles)',
+      gen: function (input) {
+        var a = parseNums(input, 'pile sizes', 2, 7, 1, 50), n = a.length, i, j, k;
+        var P = [0]; for (i = 0; i < n; i++) P.push(P[i] + a[i]);
+        var dp = [], opt = [];
+        for (i = 0; i < n; i++) { var r1 = [], r2 = []; for (j = 0; j < n; j++) { r1.push(i === j ? 0 : '·'); r2.push(i === j ? i : '·'); } dp.push(r1); opt.push(r2); }
+        var head = []; for (i = 0; i < n; i++) head.push(String(i));
+        var frames = [], scanned = 0, naive = 0;
+        function g(lbl, M, hl) { return { type: 'grid', label: lbl, rows: M.map(function (r) { return r.slice(); }), rowHead: head, colHead: head, hl: hl || {} }; }
+        frames.push({ narr: 'dp[i][j] = cheapest way to merge piles i..j into one; opt[i][j] = the best last split k (left part i..k, right part k+1..j). Diagonal: single piles cost 0 and opt[i][i] = i.', parts: [{ type: 'array', label: 'piles', values: a }, g('dp', dp), g('opt', opt)] });
+        for (var len = 2; len <= n; len++) {
+          for (i = 0; i + len - 1 < n; i++) {
+            j = i + len - 1;
+            var lo = opt[i][j - 1], hi = Math.min(opt[i + 1][j], j - 1), best = Infinity, bk = lo, tried = [];
+            for (k = lo; k <= hi; k++) { var v = dp[i][k] + dp[k + 1][j]; tried.push('k=' + k + ':' + v); if (v < best) { best = v; bk = k; } }
+            scanned += hi - lo + 1; naive += j - i;
+            dp[i][j] = best + P[j + 1] - P[i]; opt[i][j] = bk;
+            var hd = {}; hd[i + ',' + j] = 'ok'; hd[i + ',' + (j - 1)] = 'win'; hd[(i + 1) + ',' + j] = 'win';
+            var ho = {}; ho[i + ',' + j] = 'ok'; ho[i + ',' + (j - 1)] = 'cur'; ho[(i + 1) + ',' + j] = 'cur';
+            var hp = {}; for (var q = i; q <= j; q++) hp[q] = q <= bk ? 'win' : 'sel';
+            frames.push({ narr: 'Cell (' + i + ', ' + j + '): Knuth window k ∈ [opt[' + i + '][' + (j - 1) + '] = ' + lo + ', opt[' + (i + 1) + '][' + j + '] = ' + opt[i + 1][j] + '] (clamped to ≤ ' + (j - 1) + '). Tried ' + tried.join(', ') + ' — <b>' + (hi - lo + 1) + '</b> candidate(s) instead of ' + (j - i) + '. Best k = ' + bk + ', plus merge cost sum(' + i + '..' + j + ') = ' + (P[j + 1] - P[i]) + ' → dp = <b>' + dp[i][j] + '</b>.',
+              parts: [{ type: 'array', label: 'piles (blue = left part, purple = right part)', values: a, hl: hp }, g('dp', dp, hd), g('opt (amber = the two bounds)', opt, ho), { type: 'vars', vals: { candidatesKnuth: scanned, candidatesNaive: naive }, hl: { candidatesKnuth: 'ok' } }] });
+          }
+        }
+        frames.push({ narr: '<b>Answer dp[0][' + (n - 1) + '] = ' + dp[0][n - 1] + '</b>. Candidates scanned: ' + scanned + ' with Knuth vs ' + naive + ' naively. The gap grows from O(N³) vs O(N²): at N = 5 000 it is ~2·10<sup>10</sup> vs ~2.5·10<sup>7</sup>.', parts: [g('dp', dp, one('0,' + (n - 1), 'sel')), { type: 'vars', vals: { answer: dp[0][n - 1], candidatesKnuth: scanned, candidatesNaive: naive }, hl: { answer: 'sel' } }] });
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'Merging 4 1 3 2 5 by hand', html: `<p>Length 2: (0,1) = 5, (1,2) = 4, (2,3) = 5, (3,4) = 7. Length 3: (0,2): k ∈ [0, 1] → k=0: 0 + 4 = 4, k=1: 5 + 0 = 5 → 4 + 8 = <b>12</b>. (1,3) → 10, (2,4) → 15. Length 4: (0,3) window [0, 2] → 20; (1,4) window [opt[1][3] = 2, opt[2][4] = 3] → only k = 2, 3 (naive would try 1, 2, 3) → 21. Full (0,4): window [0, 3] → best k = 2: dp[0][2] + dp[3][4] = 12 + 7 = 19, +15 = <b>34</b>.</p>` },
+      { title: 'Cutting a stick (LC 1547)', html: `<p>Stick of length 7, cuts at 1, 3, 4, 5 → positions [0, 1, 3, 4, 5, 7]. Every cut costs the length of the piece being cut. Best order costs <b>16</b> (cut at 3: 7, then 1 on [0,3]: 3, then 5 on [3,7]: 4, then 4 on [3,5]: 2 → 16). Here the extra cost is <code>pos[j] − pos[i]</code> — it satisfies both Knuth conditions, so the code above runs in O(m²). With 10<sup>4</sup> cuts that's 10<sup>8</sup> vs 10<sup>12</sup>/6.</p>` },
+      { title: 'Optimal binary search tree (Knuth, 1971)', html: `<p>Keys k<sub>1</sub>…k<sub>n</sub> with search frequencies f. Cost of a tree = Σ f · depth. dp[i][j] = min over root r of dp[i][r−1] + dp[r+1][j] + (f<sub>i</sub> + … + f<sub>j</sub>) — every key in the range sinks one level below the root. Same structure, so root[i][j−1] ≤ root[i][j] ≤ root[i+1][j]. This is the problem where Knuth discovered the trick; it's used in compilers (switch-case trees) and static dictionaries.</p>` },
+      { title: 'When Knuth does NOT apply: matrix chain & burst balloons', html: `<p>Matrix chain: dp[i][j] = min<sub>k</sub> dp[i][k] + dp[k+1][j] + p<sub>i−1</sub>·p<sub>k</sub>·p<sub>j</sub>. The extra cost depends on <b>k</b>, so it is not a w(i, j) — the monotone-opt guarantee is gone, and counterexamples exist. Burst balloons is similar. For matrix chain an O(N log N) algorithm (Hu–Shing) exists but is rarely asked; in interviews say "O(N³) interval DP; Knuth doesn't apply because the merge cost depends on the split".</p>` }
+    ],
+    deepDive: `<p><b>The theorem (Knuth 1971, generalised by F. Yao 1980).</b> If w satisfies the quadrangle inequality (QI) and is monotone on the inclusion lattice, then dp itself satisfies QI, and from that opt[i][j−1] ≤ opt[i][j] ≤ opt[i+1][j]. Yao's "speed-up" paper made this a general tool, which is why it's sometimes called the <b>Knuth–Yao</b> optimization.</p>
+      <p><b>Ties.</b> The proof talks about the <i>largest</i> (or consistently the smallest) optimal k. In practice, pick one tie-break rule and keep it; mixing &lt; and ≤ across cells can break the window bounds on adversarial inputs. Stress-test against the O(N³) version.</p>
+      <p><b>Memory.</b> Two N × N tables: N = 5 000 → 25·10<sup>6</sup> longs (200 MB) + ints (100 MB) — too much! Tricks: use <code>int</code> for dp when values fit, store only the upper triangle in a 1D array, or note that each diagonal only needs the previous diagonal of opt and earlier dp values (dp needs all shorter intervals, so dp stays O(N²); opt can be rolled).</p>
+      <p><b>Knuth on layered DP.</b> For dp[k][i] = min<sub>j</sub> dp[k−1][j] + cost(j, i) with QI cost: opt[k−1][i] ≤ opt[k][i] ≤ opt[k][i+1]. Iterate k ascending and i <b>descending</b> so both bounds are known. Total O(N²) independent of K — compare D&amp;C's O(K·N log N).</p>
+      <p><b>Relatives.</b> Garsia–Wachs solves "merge adjacent piles" (optimal alphabetic tree) in O(N log N). Hu–Tucker likewise. The <b>Huffman</b> greedy works only when merges need not be adjacent. Knowing these names is an expert-level signal; implementing them is rarely required.</p>`,
+    aiEra: `<p><b>What AI changes:</b> AI will write the O(N³) interval DP immediately and, if asked, the Knuth version. Two things it routinely gets wrong: applying Knuth to costs that depend on k (matrix chain, burst balloons — wrong answers), and the boundary initialisation of opt (e.g. opt[i][i] for "merge" vs opt[i][i+1] for "cut" formulations), which causes empty windows or index errors.</p>
+      <p><b>Use AI as a partner:</b> "Here is my interval DP. Does the extra cost depend only on (i, j)? Check QI and interval monotonicity for it, with a small numeric counterexample search." Then have it produce the random brute-force comparison — the same workflow used to verify every solution in this module.</p>
+      <p><b>Where AI goes wrong:</b> memory blow-ups (two 5000 × 5000 long tables in Java), wrong loop order (must fill by increasing length so both bounds exist), and claiming O(N²) without the telescoping argument. <b>You own:</b> the eligibility check, the opt initialisation, and the memory plan.</p>`,
+    problems: [{
+      title: 'Merge Adjacent Piles (Minimum Total Merge Cost)',
+      level: 'Hard', tags: ['interval dp', 'knuth optimization', 'prefix sums'], companies: ['Google', 'Bloomberg', 'Codeforces'],
+      statement: `<p>There are <code>N</code> piles in a row, pile <code>i</code> has <code>a[i]</code> stones. In one move you merge <b>two adjacent</b> piles into one; the cost equals the total stones in the new pile. Merge until one pile remains. Return the minimum total cost.</p>`,
+      constraints: `1 ≤ N ≤ 5 000, 1 ≤ a[i] ≤ 10<sup>4</sup> (answer fits in long)`,
+      example: `${H.arr([4, 1, 3, 2, 5], { label: 'a' })}<p>Output <b>34</b>: merge (1,3) → 4 [cost 4], then (4,4) → 8 [cost 8], then (2,5) → 7 [cost 7], finally (8,7) → 15 [cost 15]. Total 4 + 8 + 7 + 15 = ${H.c('g', '34')}. A tempting order like (4,1) first gives 5 + 8 + 7 + 15 = 35. The last merge always costs the total (15); the DP decides how to build the two halves cheaply.</p>`,
+      brute: { why: `<p>The standard O(N³) interval DP: every cell tries every split. N = 5 000 → ~2·10<sup>10</sup> steps. The waste: the best split of [i, j] is always between the best splits of [i, j−1] and [i+1, j], but we ignore that and scan all of them.</p>`, code: `
+        long bruteMerge(int[] a) {
+            int n = a.length;
+            long[] P = new long[n + 1];
+            for (int i = 0; i < n; i++) P[i + 1] = P[i] + a[i];
+            long[][] dp = new long[n][n];
+            for (int len = 2; len <= n; len++)
+                for (int i = 0; i + len - 1 < n; i++) {
+                    int j = i + len - 1;
+                    dp[i][j] = Long.MAX_VALUE;
+                    for (int k = i; k < j; k++)                   // every split point
+                        dp[i][j] = Math.min(dp[i][j], dp[i][k] + dp[k + 1][j]);
+                    dp[i][j] += P[j + 1] - P[i];                  // final merge of [i..j]
+                }
+            return dp[0][n - 1];
+        }` },
+      mcq: { q: 'opt[2][6] = 4 and opt[3][7] = 5. Which split points must be tried for the interval [2, 7]?', options: ['k = 4 and 5 only', 'k = 2..6', 'k = 5 only', 'k = 3..6'], answer: 0, explain: 'Knuth: opt[i][j−1] ≤ opt[i][j] ≤ opt[i+1][j], i.e. opt[2][6] = 4 ≤ opt[2][7] ≤ opt[3][7] = 5. Only k ∈ {4, 5}.' },
+      hints: [`<p><b>Aha:</b> the last merge joins [i..k] and [k+1..j] and always costs sum(i..j). So dp[i][j] = min<sub>k</sub>(dp[i][k] + dp[k+1][j]) + sum(i..j).</p>`, `<p>w(i, j) = sum(i..j) satisfies the quadrangle inequality (with equality!) and is monotone on intervals → Knuth: scan k only in [opt[i][j−1], opt[i+1][j]].</p>`, `<p>Recipe: prefix sums; opt[i][i] = i; for len = 2..N, for i: j = i+len−1; lo = opt[i][j−1]; hi = min(opt[i+1][j], j−1); scan; add sum. N = 1 → 0. Memory: two N×N tables — consider int opt and long dp.</p>`],
+      solution: {
+        approach: `<p>Interval DP by increasing length with the Knuth window. The scan lengths telescope along each diagonal, giving O(N²) total.</p>`,
+        code: `
+          class Solution {
+              public long mergePiles(int[] a) {
+                  int n = a.length;
+                  long[] P = new long[n + 1];
+                  for (int i = 0; i < n; i++) P[i + 1] = P[i] + a[i];
+                  long[][] dp = new long[n][n];
+                  int[][] opt = new int[n][n];
+                  for (int i = 0; i < n; i++) opt[i][i] = i;        // a single pile "splits" at itself
+                  for (int len = 2; len <= n; len++) {
+                      for (int i = 0; i + len - 1 < n; i++) {
+                          int j = i + len - 1;
+                          dp[i][j] = Long.MAX_VALUE;
+                          int lo = opt[i][j - 1];                     // Knuth lower bound
+                          int hi = Math.min(opt[i + 1][j], j - 1);    // Knuth upper bound
+                          for (int k = lo; k <= hi; k++) {
+                              long v = dp[i][k] + dp[k + 1][j];
+                              if (v < dp[i][j]) { dp[i][j] = v; opt[i][j] = k; }
+                          }
+                          dp[i][j] += P[j + 1] - P[i];                // cost of the final merge
+                      }
+                  }
+                  return dp[0][n - 1];
+              }
+          }`,
+        dry: { head: ['cell (i, j)', 'window [lo, hi]', 'naive range', 'best k', 'dp'], rows: [
+          ['(0,1)…(3,4)', '[i, i]', '[i, i]', 'i', '5, 4, 5, 7'],
+          ['(0,2)', '[0, 1]', '[0, 1]', '0', '12'], ['(1,3)', '[1, 2]', '[1, 2]', '2', '10'], ['(2,4)', '[2, 3]', '[2, 3]', '3', '15'],
+          ['(0,3)', '[0, 2]', '[0, 2]', '0', '20'], ['(1,4)', '<span class="c-g">[2, 3]</span>', '[1, 3]', '3', '21'],
+          ['(0,4)', '[0, 3]', '[0, 3]', '2', '<span class="c-g">34</span>']
+        ] },
+        complexity: `<p>Time O(N²) (telescoping windows), space O(N²).</p>`,
+        followUps: ['Circular piles (LC-style "stone merge on a circle"): double the array and take the best window of length N.', 'Merge exactly K consecutive piles at a time (LC 1000) — interval DP with an extra "number of piles" dimension; Knuth no longer applies directly.', 'Merges need not be adjacent → Huffman greedy with a min-heap, O(N log N).']
+      }
+    }]
+  });
 registerModule({ id: 'dsa23', title: 'Advanced Dynamic Programming', intro: `<p>temp</p>`, goals: [], prereqs: `x`, hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();
