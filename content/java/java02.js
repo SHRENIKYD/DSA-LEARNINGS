@@ -1610,7 +1610,7 @@ public class ArraysToolbox {
         var code = 'String[] arr = {"a", "b", "c"};\nList<String> view = Arrays.asList(arr);\nview.set(0, "z");\narr[2] = "q";\nview.add("d");            // throws!\nList<String> real = new ArrayList<>(view);\nreal.add("d");';
         function P(listItems, arrHl, listHl, real) {
           var p = [{ type: 'array', label: 'String[] arr (the real storage)', values: arr.slice(), hl: arrHl || {}, showIdx: true }, { type: 'array', label: 'view = Arrays.asList(arr) (same boxes!)', values: listItems || arr.slice(), hl: listHl || {}, showIdx: true }];
-          if (real) p.push({ type: 'array', label: 'real = new ArrayList<>(view) (own copy, can grow)', values: real, hl: one(real.length - 1, 'ok'), showIdx: true });
+          if (real) p.push({ type: 'array', label: 'real = new ArrayList&lt;&gt;(view) (own copy, can grow)', values: real, hl: one(real.length - 1, 'ok'), showIdx: true });
           return p;
         }
         var steps = [];

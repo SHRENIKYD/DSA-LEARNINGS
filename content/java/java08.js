@@ -836,5 +836,279 @@ class Clamp {
     }]
   });
 
+  /* ======================================================================
+     TOPIC 4 — Wildcards, invariance and PECS
+     ====================================================================== */
+  topics.push({
+    title: 'Wildcards: ?, ? extends, ? super and PECS',
+    analogy: `<p>Picture three kinds of <b>boxes at a recycling centre</b>. A box labelled "<b>some kind of fruit</b>" (${C('? extends Fruit')}): you can safely <b>take</b> things out and call them fruit, but you may <b>not put</b> an apple in — it might be the banana box. A box labelled "<b>apples, or anything more general</b>" (${C('? super Apple')}) — it could be the apple box, the fruit box or the everything box: you can always <b>put</b> an apple in, but when you pull something out you only know it is "a thing". A box labelled just "<b>?</b>" — you know nothing: look, count, empty it, but do not add. That is the whole of <b>PECS</b>: the box you <b>take from</b> (a Producer) uses <b>Extends</b>; the box you <b>put into</b> (a Consumer) uses <b>Super</b>.</p>`,
+    explain: `<h4>1. The surprise: List&lt;Integer&gt; is NOT a List&lt;Number&gt;</h4>
+<p>Integer is a Number, so beginners expect ${C('List<Number> nums = new ArrayList<Integer>();')} to compile. It does not — generics are <b>invariant</b>. If it were allowed, this would happen:</p>
+${P(`
+List<Integer> ints = new ArrayList<>();
+List<Number> nums = ints;      // ❌ pretend this compiled…
+nums.add(3.14);                // …a Double inside a list of Integers!
+Integer i = ints.get(0);       // ClassCastException`)}
+<p>Arrays <b>are</b> covariant (${C('Object[] o = new String[1];')} compiles) and pay for it at runtime with ${C('ArrayStoreException')}. Generics chose compile-time safety instead.</p>
+<h4>2. Wildcards give back flexibility, safely</h4>
+${H.table(['Declaration', 'Accepts', 'Read gives', 'Can add'], [[C('List<Number>'), 'only List&lt;Number&gt;', 'Number', 'Number, Integer, Double…'], [C('List<? extends Number>'), 'List&lt;Number&gt;, List&lt;Integer&gt;, List&lt;Double&gt;', H.c('g', 'Number'), H.c('r', 'nothing (only null)')], [C('List<? super Integer>'), 'List&lt;Integer&gt;, List&lt;Number&gt;, List&lt;Object&gt;', H.c('y', 'Object only'), H.c('g', 'Integer')], [C('List<?>'), 'any List', 'Object', H.c('r', 'only null')]])}
+<h4>3. PECS — Producer Extends, Consumer Super</h4>
+<p>Ask of each parameter: "does my method <b>take values out</b> of it (it <b>produces</b> for me) or <b>put values in</b> (it <b>consumes</b> from me)?"</p>
+${P(`
+// src PRODUCES Ts → extends;  dest CONSUMES Ts → super
+static <T> void copy(List<? super T> dest, List<? extends T> src) {
+    for (T t : src) dest.add(t);
+}
+List<Integer> ints = List.of(1, 2);
+List<Object> sink = new ArrayList<>();
+copy(sink, ints);           // ✅ T = Integer; Object is "super", Integer is "extends"`)}
+<p>The JDK is full of it: ${C('Collection.addAll(Collection<? extends E>)')}, ${C('Iterable.forEach(Consumer<? super T>)')}, ${C('List.sort(Comparator<? super E>)')}, ${C('Stream.map(Function<? super T, ? extends R>)')}. Note the Function: its <b>input</b> is consumed (super), its <b>output</b> produced (extends).</p>
+<h4>4. Unbounded ? — "I do not care about the type"</h4>
+<p>${C('static int countNulls(Collection<?> c)')} works for every collection. You can read (as Object), ${C('size()')}, ${C('clear()')}, ${C('remove(Object)')} — but not ${C('add(x)')}, because nobody knows the element type.</p>
+<h4>5. Rules of thumb</h4>
+<ul><li>Use wildcards on <b>parameters</b> of APIs; avoid them in <b>return types</b> (they force callers to deal with them).</li>
+<li>If a parameter is both read from and written to, use an exact type (${C('List<T>')}).</li>
+<li>If the type appears once, a wildcard is cleaner than a type parameter.</li></ul>`,
+    clues: ['"why can\'t I pass a List&lt;Integer&gt; to a method taking List&lt;Number&gt;?" → invariance → <code>? extends</code>', '"write sum() that works for List&lt;Integer&gt; and List&lt;Double&gt;" → producer → <code>? extends Number</code>', '"add elements into a list that could be List&lt;Number&gt; or List&lt;Object&gt;" → consumer → <code>? super</code>', '"explain PECS" / "explain the signature of Collections.copy or Stream.map"', 'compile error mentioning <code>capture#1 of ?</code> → wildcard capture; use a private generic helper', '"difference between List, List&lt;Object&gt; and List&lt;?&gt;"'],
+    code: [`
+import java.util.*;
+import java.util.function.*;
+
+class Pecs {
+    // PRODUCER: we only read Numbers out → ? extends
+    static double sum(Collection<? extends Number> nums) {
+        double s = 0;
+        for (Number n : nums) s += n.doubleValue();
+        return s;
+    }
+
+    // CONSUMER: we only put Integers in → ? super
+    static void fillSquares(List<? super Integer> out, int n) {
+        for (int i = 1; i <= n; i++) out.add(i * i);
+    }
+
+    // Both: src produces, dst consumes, the predicate consumes Ts (it takes them as input)
+    static <T> void copyIf(Collection<? extends T> src, Predicate<? super T> keep, Collection<? super T> dst) {
+        for (T t : src) if (keep.test(t)) dst.add(t);
+    }
+
+    // Unbounded: type does not matter at all
+    static int countNulls(Collection<?> c) {
+        int k = 0;
+        for (Object o : c) if (o == null) k++;
+        return k;
+    }
+
+    public static void main(String[] args) {
+        List<Integer> ints = List.of(1, 2, 3);
+        List<Double> doubles = List.of(1.5, 2.5);
+        System.out.println(sum(ints) + " " + sum(doubles));   // 6.0 4.0
+
+        List<Number> numbers = new ArrayList<>();
+        List<Object> objects = new ArrayList<>();
+        fillSquares(numbers, 3);                               // List<Number> is a List<? super Integer>
+        fillSquares(objects, 2);                               // so is List<Object>
+        System.out.println(numbers + " " + objects);           // [1, 4, 9] [1, 4]
+
+        Predicate<Number> big = n -> n.doubleValue() > 1;      // a Predicate<Number> can judge Integers
+        copyIf(ints, big, objects);                            // T = Integer
+        System.out.println(objects);                           // [1, 4, 2, 3]
+        System.out.println(countNulls(Arrays.asList("a", null, "b"))); // 1
+    }
+}`],
+    codeTitle: ['Producer extends, consumer super, unbounded ?'],
+    viz: [{
+      title: 'PECS playground: what can you do with this list?',
+      input: '? extends Number',
+      inputLabel: 'Element type of list x: try ? extends Number, ? super Integer, ?, Number, Integer, ? extends Integer, ? super Number',
+      gen: function (input) {
+        var s = String(input || '').trim().replace(/\s+/g, ' ');
+        var T = ['Object', 'Number', 'Integer', 'Double', 'String'];
+        var m = s.match(/^\?(?: (extends|super) (Object|Number|Integer|Double|String))?$/);
+        var kind, B;
+        if (m) { kind = m[1] || 'any'; B = m[2] || 'Object'; }
+        else if (T.indexOf(s) >= 0) { kind = 'exact'; B = s; }
+        else throw new Error('Use one of: Number, Integer, ? extends Number, ? super Integer, ? (types allowed: Object, Number, Integer, Double, String)');
+        function sub(a, b) { return a === b || b === 'Object' || (b === 'Number' && (a === 'Integer' || a === 'Double')); }
+        var decl = 'List<' + s + '> x';
+        var rows = [], frames = [];
+        function canAssign(X) { return kind === 'exact' ? X === B : kind === 'extends' ? sub(X, B) : kind === 'super' ? sub(B, X) : true; }
+        var readT = (kind === 'exact' || kind === 'extends') ? B : 'Object';
+        function canWrite(W) { if (W === 'null') return true; return (kind === 'exact' || kind === 'super') ? sub(W, B) : false; }
+        function hierHl() {
+          var h = {};
+          T.forEach(function (X) { h[X] = canAssign(X) ? 'ok' : 'done'; });
+          return h;
+        }
+        var graph = { type: 'graph', label: 'Which List<X> can be assigned to x? (green = allowed)', directed: true, height: 48, nodes: [
+          { id: 'Object', label: 'Object', x: 50, y: 6, shape: 'box' }, { id: 'Number', label: 'Number', x: 30, y: 24, shape: 'box' }, { id: 'String', label: 'String', x: 75, y: 24, shape: 'box' },
+          { id: 'Integer', label: 'Integer', x: 15, y: 42, shape: 'box' }, { id: 'Double', label: 'Double', x: 45, y: 42, shape: 'box' }],
+          edges: [['Number', 'Object'], ['String', 'Object'], ['Integer', 'Number'], ['Double', 'Number']], hl: hierHl() };
+        var meaning = kind === 'exact' ? 'exactly <code>List&lt;' + B + '&gt;</code> — nothing else (invariance)' : kind === 'extends' ? 'a list of <b>some</b> type that is ' + B + ' or a subtype of it — we do not know which' : kind === 'super' ? 'a list of <b>some</b> type that is ' + B + ' or a supertype of it — we do not know which' : 'a list of <b>some</b> unknown type';
+        frames.push({ narr: '<code>' + esc(decl) + '</code> means: x points to ' + meaning + '. Let\'s test assignments, reads and writes one by one.', parts: [{ type: 'code', label: 'Declaration', lang: 'java', code: decl + ';', hl: { 1: 'cur' } }, graph] });
+        T.forEach(function (X) {
+          var ok = canAssign(X);
+          rows.push(['x = new ArrayList<' + X + '>()', ok ? '✓ compiles' : '✗ error']);
+          var why = kind === 'exact' ? (ok ? 'Exact match.' : 'Generics are <b>invariant</b>: List&lt;' + X + '&gt; is not a List&lt;' + B + '&gt; even if ' + X + ' and ' + B + ' are related.') : kind === 'extends' ? (ok ? X + ' is ' + B + ' or a subtype → fits "? extends ' + B + '".' : X + ' is not a subtype of ' + B + '.') : kind === 'super' ? (ok ? X + ' is ' + B + ' or a supertype → fits "? super ' + B + '".' : X + ' is not a supertype of ' + B + '.') : 'An unbounded ? accepts a list of anything.';
+          frames.push({ narr: '<b>Assign</b> a <code>List&lt;' + X + '&gt;</code>: ' + why, parts: [{ type: 'table', label: 'Operations on ' + esc(decl), columns: ['operation', 'result'], rows: rows.slice(), hl: one(rows.length - 1, ok ? 'ok' : 'bad') }, graph] });
+        });
+        ['Number', 'Object', 'Integer'].forEach(function (V) {
+          var ok = sub(readT, V);
+          rows.push([V + ' v = x.get(0)', ok ? '✓ compiles' : '✗ error']);
+          var why = kind === 'super' || kind === 'any' ? 'Reading gives only <b>Object</b>: the real list could be a List&lt;Object&gt; holding anything. ' : 'Reading gives <b>' + readT + '</b>: whatever list x really is, every element IS-A ' + readT + '. ';
+          frames.push({ narr: '<b>Read</b> into a ' + V + ': ' + why + (ok ? 'Assigning ' + readT + ' to ' + V + ' is fine.' : readT + ' is not a ' + V + ' → compile error (you would need a cast).'), parts: [{ type: 'table', label: 'Operations on ' + esc(decl), columns: ['operation', 'result'], rows: rows.slice(), hl: one(rows.length - 1, ok ? 'ok' : 'bad') }] });
+        });
+        [['Integer', 'x.add(1)'], ['Double', 'x.add(2.5)'], ['Object', 'x.add(new Object())'], ['null', 'x.add(null)']].forEach(function (w) {
+          var ok = canWrite(w[0]);
+          rows.push([w[1], ok ? '✓ compiles' : '✗ error']);
+          var why = w[0] === 'null' ? '<code>null</code> belongs to every reference type, so it is always allowed.' : kind === 'extends' || kind === 'any' ? 'The real list might be a List&lt;' + (B === 'Integer' ? 'Integer' : 'Double') + '&gt; or anything else that fits — the compiler cannot prove the ' + w[0] + ' belongs, so <b>every add is rejected</b>. This is the "producer" side: read-only.' : ok ? 'Whatever the real list is (List&lt;' + B + '&gt; or a supertype), it can hold a ' + B + ', and ' + w[0] + ' is a ' + B + '. This is the "consumer" side.' : w[0] + ' is not a ' + B + ', so it might not fit the real list.';
+          frames.push({ narr: '<b>Write</b> <code>' + esc(w[1]) + '</code>: ' + why, parts: [{ type: 'table', label: 'Operations on ' + esc(decl), columns: ['operation', 'result'], rows: rows.slice(), hl: one(rows.length - 1, ok ? 'ok' : 'bad') }] });
+        });
+        var verdict = kind === 'extends' ? 'a <b>Producer</b>: great to read from, useless to write to → use <code>extends</code> for inputs you read.' : kind === 'super' ? 'a <b>Consumer</b>: great to write ' + B + 's into, reads give Object → use <code>super</code> for outputs you fill.' : kind === 'any' ? 'read-only as Object; use it when the type truly does not matter (size, print, clear).' : 'both readable and writable, but only for exactly one type — the least flexible for callers.';
+        frames.push({ narr: 'Verdict for <code>' + esc(decl) + '</code>: ' + verdict + ' Try another declaration in the input box to compare.', parts: [{ type: 'table', label: 'Summary for ' + esc(decl), columns: ['operation', 'result'], rows: rows, hl: (function () { var h = {}; rows.forEach(function (r, i) { h[i] = r[1].charAt(0) === '✓' ? 'ok' : 'bad'; }); return h; })() }, graph] });
+        return frames;
+      }
+    }, {
+      title: 'Arrays are covariant, generics are invariant',
+      gen: function () {
+        var code = 'Object[] objs = new String[2];      // compiles: arrays are covariant\nobjs[0] = "hi";                       // fine\nobjs[1] = 42;                         // compiles… ArrayStoreException at runtime\n\nList<Object> list = new ArrayList<String>(); // compile error: invariant\nList<? extends Object> ok = new ArrayList<String>(); // fine, but read-only';
+        return codeFrames(code, [
+          { l: 1, v: { 'objs (static type)': 'Object[]', 'real array': 'String[2]' }, hv: { 'real array': 'cur' }, narr: 'Arrays are <b>covariant</b>: a <code>String[]</code> IS-A <code>Object[]</code>. The array object remembers its real element type at runtime (arrays are <b>reified</b>).' },
+          { l: 2, cls: 'ok', v: { 'objs[0]': '"hi"', 'real array': 'String[2]' }, narr: 'Storing a String: the JVM checks the real element type (String) — OK.' },
+          { l: 3, cls: 'bad', v: { 'objs[1]': '42 ✗', 'real array': 'String[2]' }, hv: { 'objs[1]': 'bad' }, out: 'Exception in thread "main" java.lang.ArrayStoreException: java.lang.Integer', narr: 'The compiler allows it (static type is Object[]). At runtime the JVM checks every store and throws <span class="c-r">ArrayStoreException</span>. Safety, but <b>late</b>.' },
+          { l: 5, cls: 'bad', v: { list: 'not created' }, out: 'error: incompatible types: ArrayList<String> cannot be converted to List<Object>', narr: 'Generics refuse the same trick at <b>compile time</b>. They have to: after erasure the list does not know it holds Strings, so there would be no runtime check to save you.' },
+          { l: 6, cls: 'ok', v: { ok: 'ArrayList<String>' }, hv: { ok: 'ok' }, out: '', narr: 'If you need "a list of something that is an Object" use a wildcard. You get covariance for <b>reading</b>, and the compiler blocks <b>writing</b> — the safe half of what arrays give you.' }
+        ], 'Arrays vs generics');
+      }
+    }],
+    examples: [
+      { title: 'Predict: which of these four calls compile?', html: `<p>Method: ${C('static double sum(List<Number> nums)')} (no wildcard).</p>
+${H.table(['Call', 'Compiles?', 'Why'], [[C('sum(new ArrayList<Number>())'), H.c('g', 'yes'), 'exact match'], [C('sum(List.of(1, 2))'), H.c('g', 'yes'), 'target typing: List.of infers T = Number'], [C('List<Integer> li = List.of(1, 2); sum(li)'), H.c('r', 'no'), 'List&lt;Integer&gt; is not a List&lt;Number&gt;'], [C('sum(li) with sum(List<? extends Number>)'), H.c('g', 'yes'), 'wildcard fixes it']])}
+<p>Note the sneaky second row: a <b>freshly created</b> list can adapt to the target; a variable that already has type ${C('List<Integer>')} cannot.</p>`, code: `
+class SumDemo {
+    static double sumExact(List<Number> nums) { double s = 0; for (Number n : nums) s += n.doubleValue(); return s; }
+    static double sumAny(List<? extends Number> nums) { double s = 0; for (Number n : nums) s += n.doubleValue(); return s; }
+    public static void main(String[] args) {
+        System.out.println(sumExact(List.of(1, 2)));   // 3.0 — List.of inferred List<Number>
+        List<Integer> li = List.of(1, 2);
+        // sumExact(li);                              // does not compile
+        System.out.println(sumAny(li));                // 3.0
+    }
+}` },
+      { title: 'Does this compile? Adding to ? extends', html: `${P(`
+List<? extends Number> nums = new ArrayList<Integer>();
+nums.add(1);        // ❌ capture#1 of ? extends Number cannot accept int
+nums.add(null);     // ✅ the only thing you can add
+Number n = nums.get(0);   // ✅ reading is fine`)}
+<p>The error message talks about <b>capture#1 of ? extends Number</b>: javac gives the unknown type a temporary name ("capture") and refuses any value it cannot prove belongs to it. Even ${C('add(1)')} is rejected, because the real list could be a ${C('List<Double>')}.</p>`, code: `
+List<? extends Number> nums = new ArrayList<>(List.of(1, 2));
+nums.add(null);                       // allowed
+Number first = nums.get(0);           // reading as Number is allowed
+nums.remove(0);                       // removing is allowed (remove takes an index/Object)
+System.out.println(first + " " + nums); // 1 [2, null]` },
+      { title: 'Wildcard capture: swap on a List<?>', html: `<p>${C('void swap(List<?> l, int i, int j) { l.set(i, l.get(j)); }')} fails — ${C('l.get(j)')} returns "capture of ?", and ${C('set')} will not accept it because javac cannot prove the two captures are the same type. The standard fix (used by ${C('Collections.swap')}) is a <b>private generic helper</b> that gives the unknown type a name:</p>`, code: `
+class Swapper {
+    public static void swap(List<?> list, int i, int j) {   // nice public API: any list
+        swapHelper(list, i, j);                             // javac "captures" ? as T
+    }
+    private static <T> void swapHelper(List<T> list, int i, int j) {
+        T tmp = list.get(i);
+        list.set(i, list.get(j));
+        list.set(j, tmp);
+    }
+    public static void main(String[] args) {
+        List<String> s = new ArrayList<>(List.of("a", "b", "c"));
+        swap(s, 0, 2);
+        System.out.println(s);   // [c, b, a]
+    }
+}` },
+      { title: 'Reading a JDK signature with PECS glasses', html: `${P(`
+<R> Stream<R> map(Function<? super T, ? extends R> mapper)          // Stream<T>
+static <T> void sort(List<T> list, Comparator<? super T> c)          // Collections
+static <T> boolean addAll(Collection<? super T> c, T... elements)    // Collections
+<U> CompletableFuture<U> thenApply(Function<? super T, ? extends U> fn)`)}
+${H.table(['Parameter', 'Role', 'Lets you pass'], [['Function&lt;? super T, …&gt;', 'consumes T (input)', 'a Function&lt;Object, …&gt; on a Stream&lt;String&gt;'], ['Function&lt;…, ? extends R&gt;', 'produces R (output)', 'a function returning Integer when R = Number'], ['Comparator&lt;? super T&gt;', 'consumes T', 'one Comparator&lt;Number&gt; for List&lt;Integer&gt; and List&lt;Double&gt;'], ['Collection&lt;? super T&gt;', 'consumes T', 'add Strings into a Collection&lt;Object&gt;']])}`, code: `
+Comparator<Number> byValue = Comparator.comparingDouble(Number::doubleValue);
+List<Integer> ints = new ArrayList<>(List.of(3, 1, 2));
+List<Double> dbls = new ArrayList<>(List.of(2.5, 0.5));
+ints.sort(byValue);                 // Comparator<? super Integer> accepts Comparator<Number>
+dbls.sort(byValue);                 // and the same comparator works for Doubles
+Collection<Object> bag = new ArrayList<>();
+Collections.addAll(bag, "a", "b");  // Collection<? super String>
+System.out.println(ints + " " + dbls + " " + bag); // [1, 2, 3] [0.5, 2.5] [a, b]` }
+    ],
+    deepDive: `<p><b>Subtyping lattice.</b> For a fixed generic class: ${C('List<Integer>')} &lt;: ${C('List<? extends Integer>')} &lt;: ${C('List<? extends Number>')} &lt;: ${C('List<?>')}, and ${C('List<Number>')} &lt;: ${C('List<? super Integer>')} &lt;: ${C('List<?>')}. Also ${C('ArrayList<? extends Number>')} &lt;: ${C('List<? extends Number>')}. Wildcard types are <b>use-site variance</b> — the caller decides per variable. Kotlin and C# put variance on the declaration instead (${C('out T')} / ${C('in T')}); Scala uses ${C('+T')}/${C('-T')}.</p>
+<p><b>Capture conversion</b> (JLS 5.1.10). Every time an expression of wildcard type is used, javac replaces each ${C('?')} with a fresh type variable ${C('CAP#1')} whose bounds come from the wildcard and the declared parameter bound. Two reads of the same variable get <b>different</b> captures, which is why ${C('l.set(i, l.get(j))')} fails and a helper method fixes it.</p>
+<p><b>Why ? super lets you write.</b> For ${C('List<? super Integer>')}, ${C('CAP#1')} has lower bound Integer, so ${C('add(CAP#1)')} accepts any Integer (Integer &lt;: CAP#1). Reads return CAP#1 whose only known upper bound is Object.</p>
+<p><b>Wildcards in return types</b> (${C('List<? extends Animal> getAnimals()')}) leak capture into every caller; Effective Java advises against it except when the return is intentionally read-only. ${C('Collections.unmodifiableList(List<? extends T>)')} returns ${C('List<T>')} for exactly this reason.</p>
+<p><b>Nested wildcards.</b> ${C('List<List<? extends Number>>')} is <b>not</b> a supertype of ${C('List<List<Integer>>')} — wildcard flexibility applies only at the top level. You would need ${C('List<? extends List<? extends Number>>')}.</p>
+<p><b>Unsoundness footnote.</b> Java's type system has known unsound corners (Amin &amp; Tate, 2016 — null + wildcard bounds), but they need contrived code; in practice, if code compiles without unchecked warnings it is heap-safe.</p>`,
+    aiEra: `<p><b>What AI changes:</b> assistants can generate PECS-correct signatures, and many will even explain them — but they often produce the <i>exact-type</i> version first, because most training code does.</p>
+<p><b>Use AI as a partner:</b> ask <code>"For each parameter of this method, is it a producer, consumer or both? Rewrite the signature with PECS and give me one call that only compiles after the change"</code>. Paste "capture#1 of ?" errors and ask for the helper-method fix.</p>
+<p><b>Where AI goes wrong:</b> it puts ${C('? extends')} on a list it then tries to ${C('add')} to, returns wildcard types from public APIs, confuses ${C('List<?>')} with raw ${C('List')}, or "fixes" capture errors with unchecked casts.</p>
+<p><b>What you must still own:</b> the PECS decision for every public API you design (it affects every caller for years), reading JDK signatures fluently in interviews, and recognising when flexibility is not worth the complexity — internal code can often just use ${C('List<T>')}.</p>`,
+    problems: [{
+      title: 'PECS-Correct copyIf(src, filter, dst)',
+      level: 'Medium', tags: ['wildcards', 'PECS', 'generic method'], companies: ['Amazon', 'Goldman Sachs', 'Atlassian'],
+      statement: `<p>Write ${C('copyIf(src, keep, dst)')} that copies every element of ${C('src')} for which ${C('keep.test(e)')} is true into ${C('dst')}, and returns how many were copied. The signature must be <b>maximally flexible</b>: this call must compile —</p>
+${P(`
+List<Integer> ints = List.of(1, 5, 8, 2);
+Predicate<Number> big = n -> n.doubleValue() > 4;   // judges any Number
+List<Object> out = new ArrayList<>();
+int k = copyIf(ints, big, out);                       // must compile, k = 2, out = [5, 8]`)}`,
+      constraints: `0 ≤ |src| ≤ 10<sup>6</sup>; dst is mutable; no casts and no unchecked warnings allowed.`,
+      example: `<p>src = [1, 5, 8, 2], keep = "&gt; 4" → ${H.c('g', 'dst = [5, 8], returns 2')}. Order of src is preserved.</p>`,
+      brute: { why: `<p>The "obvious" signature ${C('<T> int copyIf(List<T> src, Predicate<T> keep, List<T> dst)')} forces all three types to be <b>identical</b>. With src ${C('List<Integer>')}, keep ${C('Predicate<Number>')} and dst ${C('List<Object>')} there is no single T, so the call does not compile and the user has to copy lists or write adapters.</p>`, code: `
+class CopyStrict {
+    static <T> int copyIf(List<T> src, java.util.function.Predicate<T> keep, List<T> dst) {
+        int k = 0;
+        for (T t : src) if (keep.test(t)) { dst.add(t); k++; }
+        return k;
+    }
+    public static void main(String[] args) {
+        List<Integer> ints = List.of(1, 5, 8, 2);
+        List<Integer> out = new ArrayList<>();
+        System.out.println(copyIf(ints, n -> n > 4, out) + " " + out); // 2 [5, 8] — works only when all types match
+    }
+}` },
+      mcq: { q: 'The filter <code>keep</code> receives elements of type T as input. Which wildcard should its type use?', options: ['<code>Predicate&lt;? extends T&gt;</code>', '<code>Predicate&lt;? super T&gt;</code>', '<code>Predicate&lt;?&gt;</code>', '<code>Predicate&lt;T&gt;</code> — wildcards do not apply to functional interfaces'], answer: 1, explain: 'The predicate CONSUMES Ts (they are its input), so it is a consumer → super. A Predicate&lt;Number&gt; or Predicate&lt;Object&gt; can safely judge Integers.' },
+      hints: [`<p>Hint 1: classify each parameter. ${C('src')} — you only read from it (producer). ${C('dst')} — you only add to it (consumer). ${C('keep')} — it takes Ts as input (consumer).</p>`, `<p>Hint 2: Producer Extends, Consumer Super: ${C('Collection<? extends T> src')}, ${C('Predicate<? super T> keep')}, ${C('Collection<? super T> dst')}. Using ${C('Collection')} instead of ${C('List')} also lets callers pass a Set.</p>`, `<p>Hint 3: inside the loop the element type is T, so ${C('keep.test(t)')} and ${C('dst.add(t)')} both type-check. Edge cases: empty src → return 0; dst same object as src → ConcurrentModificationException risk (document or forbid).</p>`],
+      solution: {
+        approach: `<p>Apply PECS to all three parameters. T is inferred as Integer (from src); ${C('Predicate<Number>')} fits ${C('Predicate<? super Integer>')} and ${C('List<Object>')} fits ${C('Collection<? super Integer>')}.</p>`,
+        code: `
+import java.util.*;
+import java.util.function.*;
+
+class CopyIf {
+    static <T> int copyIf(Collection<? extends T> src, Predicate<? super T> keep, Collection<? super T> dst) {
+        int copied = 0;
+        for (T t : src) {                 // reading from a producer: each element is a T
+            if (keep.test(t)) {           // the predicate accepts T (or something more general)
+                dst.add(t);               // writing T into a consumer: always safe
+                copied++;
+            }
+        }
+        return copied;
+    }
+
+    public static void main(String[] args) {
+        List<Integer> ints = List.of(1, 5, 8, 2);
+        Predicate<Number> big = n -> n.doubleValue() > 4;
+        List<Object> out = new ArrayList<>();
+        int k = copyIf(ints, big, out);
+        System.out.println(k + " " + out);                     // 2 [5, 8]
+
+        Set<CharSequence> words = new TreeSet<>(Comparator.comparing(CharSequence::toString));
+        copyIf(List.of("a", "bb", "ccc"), s -> s.length() > 1, words); // T = String
+        System.out.println(words);                             // [bb, ccc]
+    }
+}`,
+        dry: { head: ['t (T = Integer)', 'keep.test(t) — Predicate&lt;Number&gt;', 'dst (List&lt;Object&gt;)', 'copied'], rows: [['1', '1 &gt; 4 → false', '[]', '0'], ['5', '5 &gt; 4 → true', '[5]', '1'], ['8', '8 &gt; 4 → true', '[5, 8]', '2'], ['2', '2 &gt; 4 → false', '[5, 8]', H.c('g', '2 → return')]] },
+        complexity: `<p>O(n) predicate calls and adds; O(1) extra space. Wildcards are compile-time only — the bytecode is identical to the strict version.</p>`,
+        followUps: ['Return the destination itself so calls can be chained — what should the return type be? (a type parameter <code>&lt;C extends Collection&lt;? super T&gt;&gt; C</code>)', 'Write the same with streams: <code>src.stream().filter(keep).forEach(dst::add)</code> — which wildcards does Stream.filter use?', 'Why would <code>List&lt;? extends T&gt; dst</code> be useless here?']
+      }
+    }]
+  });
+
   registerModule({ id: 'java08', title: 'Generics', lang: 'java', intro: `<p>stub</p>`, goals: [], prereqs: `x`, hours: 12, topics: topics, practice: practice, quiz: quiz, interview: interview });
 })();
