@@ -580,6 +580,9 @@ ORDER BY s.start;                                     -- AB, BC, BD` }],
         }
         var all = subset(S.attrs, cur);
         frames.push({ narr: 'A full pass added nothing → stop. <b>' + fmt(S.set, L) + '⁺ = ' + fmt(cur, L) + '</b>. ' + (all ? '<span class="c-p">It contains every attribute, so ' + fmt(S.set, L) + ' is a superkey.</span>' : 'Missing ' + fmt(minus(S.attrs, cur), L) + ' → ' + fmt(S.set, L) + ' is <b>not</b> a superkey.'), parts: [fdGraph(S.attrs, S.fds, L, { attrHl: (function () { var h = aHl(); if (all) S.attrs.forEach(function (a) { h[a] = 'sel'; }); return h; })() }), { type: 'set', label: 'final X⁺', items: cur.slice(), hl: (function () { var h = {}; cur.forEach(function (a) { h[a] = all ? 'sel' : 'ok'; }); return h; })() }] });
+        var useRows = S.attrs.map(function (a) { return [fmt(S.set, L) + ' → ' + a, has(cur, a) ? 'implied ✔' : 'NOT implied']; }), useHl = {};
+        S.attrs.forEach(function (a, i) { useHl[i] = has(cur, a) ? 'ok' : 'bad'; });
+        frames.push({ narr: 'Using the result: an FD ' + fmt(S.set, L) + ' → Y follows from the given FDs exactly when Y ⊆ X⁺. So one closure answers every "is this FD implied?" question for this left side — no axiom juggling needed.', parts: [{ type: 'table', label: 'which FDs with this left side are implied?', columns: ['FD', 'verdict'], rows: useRows, hl: useHl }] });
         return frames;
       }
     }, {

@@ -1190,7 +1190,7 @@ ANALYZE addresses;` }
         gen: function (input) {
           var m = String(input || '').trim().match(/^(<=|>=|<|>|=)\s*(-?\d+(\.\d+)?)$/);
           if (!m) throw new Error('Type an operator and a number, e.g.  < 37   or   = 5');
-          var op = m[1], v = Number(m[2]), data = HIST_DATA.slice(), N = data.length, frames = [];
+          var op = m[1], opH = H.esc(m[1]), v = Number(m[2]), data = HIST_DATA.slice(), N = data.length, frames = [];
           var test = function (x) { return op === '<' ? x < v : op === '<=' ? x <= v : op === '>' ? x > v : op === '>=' ? x >= v : x === v; };
           frames.push({ narr: 'Column <b>x</b> has ' + N + ' rows. ANALYZE reads them (or a sample) once and keeps a <b>tiny summary</b> — the planner never looks at the real rows when estimating.', parts: [{ type: 'array', label: 'x (sorted, all ' + N + ' rows)', values: data }] });
           var mcvHl = {}; data.forEach(function (x, i) { if (x === 5) mcvHl[i] = 'sel'; });
@@ -1205,7 +1205,7 @@ ANALYZE addresses;` }
             if (v === 5) { mcvPart = 0.25; why.push('5 is in the MCV list → use its stored frequency 0.25'); }
             else { histPart = 0.75 / 18; why.push(v + ' is not an MCV → (1 − 0.25) ÷ 18 distinct non-MCV values = ' + histPart.toFixed(4)); }
           } else {
-            why.push('MCV part: does 5 satisfy "x ' + op + ' ' + v + '"? ' + (test(5) ? 'yes → +0.25' : 'no → +0'));
+            why.push('MCV part: does 5 satisfy "x ' + opH + ' ' + v + '"? ' + (test(5) ? 'yes → +0.25' : 'no → +0'));
             b.forEach(function (bk, i) {
               var lo = bk[0], hi = bk[5], f;
               var less = op === '<' || op === '<=';
@@ -1217,7 +1217,7 @@ ANALYZE addresses;` }
             });
           }
           var sel = mcvPart + histPart, est = sel * N;
-          frames.push({ narr: 'Step 3 — <b>estimate</b> <code>x ' + op + ' ' + v + '</code> using only the summary: MCV part + histogram part.', parts: [{ type: 'text', label: 'selectivity math', html: '<ul><li>' + why.join('</li><li>') + '</li></ul>' }, { type: 'vars', vals: { selectivity: sel.toFixed(3), 'estimated rows': est.toFixed(1) }, hl: { 'estimated rows': 'cur' } }] });
+          frames.push({ narr: 'Step 3 — <b>estimate</b> <code>x ' + opH + ' ' + v + '</code> using only the summary: MCV part + histogram part.', parts: [{ type: 'text', label: 'selectivity math', html: '<ul><li>' + why.join('</li><li>') + '</li></ul>' }, { type: 'vars', vals: { selectivity: sel.toFixed(3), 'estimated rows': est.toFixed(1) }, hl: { 'estimated rows': 'cur' } }] });
           var act = data.filter(test).length, ah = {}; data.forEach(function (x, i) { if (test(x)) ah[i] = 'ok'; });
           var err = act === 0 && est < 1 ? 'both ≈ 0' : (Math.max(act, est) / Math.max(0.1, Math.min(act, est))).toFixed(2) + '×';
           frames.push({ narr: 'Step 4 — <b>reality check</b> (EXPLAIN ANALYZE does this): actually ' + act + ' row(s) match; estimate ' + est.toFixed(1) + ' (error ' + err + '). Histograms are usually within a small factor for single-column predicates. The big errors come from <b>stale</b> stats, <b>correlated</b> predicates (AND multiplies) and <b>functions</b> on columns (no stats at all).', parts: [{ type: 'array', label: 'rows that really match', values: data, hl: ah }, { type: 'bars', label: 'estimate vs actual', values: [Math.round(est * 10) / 10, act], idxLabels: ['estimated', 'actual'], hl: { 0: 'cur', 1: 'ok' } }] });
@@ -1324,6 +1324,215 @@ WHERE c.city = 'Delhi' AND o.status = 'pending'
 ORDER BY o.id;` },
           complexity: `<p>Customers-first: 38 index entries + ~380 order rows read and filtered. Pending-first: 60 index entries + 60 PK lookups ≈ 120 row touches → ~3.5× less work here, and the gap grows with table size (0.1% pending of 3M orders → ~6,000 vs ~38,000+ touches per city).</p>`,
           followUps: ['How would PostgreSQL estimate <code>status = \'pending\'</code> on the same data?', 'What breaks if "pending" suddenly becomes 50% of rows during an outage, for each fix?']
+        }
+      }
+    ]
+  });
+
+  /* =====================================================================
+     TOPIC 6 — Sargable predicates
+     ===================================================================== */
+  var IDX_DATES = ['2025-01-14 09:10', '2025-02-02 18:45', '2025-02-27 07:30', '2025-03-01 00:05', '2025-03-05 10:00', '2025-03-05 22:40', '2025-03-19 13:15', '2025-03-31 23:59', '2025-04-01 00:00', '2025-04-12 16:20', '2025-05-09 11:11', '2025-06-30 20:00'];
+  function sargRules(p) {
+    var rules = [], q = String(p);
+    var fn = q.match(/\b([a-z_]\w*)\s*\(\s*(?:'[^']*'\s*,\s*)?([a-z_]\w*(?:\.\w+)?)\s*(?:,[^)]*)?\)\s*(=|<=|>=|<>|!=|<|>|\blike\b|\bbetween\b|\bin\b)/i);
+    rules.push({ name: 'No function wraps the column', bad: !!(fn && !/^(count|sum|avg|min|max)$/i.test(fn[1])), why: fn ? '<code>' + H.esc(fn[1]) + '(' + H.esc(fn[2]) + ')</code> must be computed for every row before comparing — the index stores <code>' + H.esc(fn[2]) + '</code>, not <code>' + H.esc(fn[1]) + '(…)</code>.' : '' });
+    var ar = q.match(/\b([a-z_]\w*(?:\.\w+)?)\s*([-+*\/])\s*(\d+(?:\.\d+)?)\s*(=|<=|>=|<|>)\s*(\d+(?:\.\d+)?)/i);
+    rules.push({ name: 'No arithmetic on the column', bad: !!ar, why: ar ? 'The column is inside <code>' + H.esc(ar[1] + ' ' + ar[2] + ' ' + ar[3]) + '</code>; move the arithmetic to the constant side.' : '' });
+    var lk = /\blike\s*'%/i.test(q);
+    rules.push({ name: 'No leading wildcard in LIKE', bad: lk, why: lk ? 'A pattern starting with <code>%</code> can match anywhere, so there is no "first key" to seek to in a sorted index.' : '' });
+    var ng = /(<>|!=|\bnot\s+(in|like|between)\b)/i.test(q);
+    rules.push({ name: 'Not a negation (&lt;&gt;, NOT IN, NOT LIKE)', bad: ng, why: ng ? 'Negations match "everything except", usually most rows — even if technically seekable as two ranges, a scan is normally cheaper.' : '' });
+    var orx = /\bor\b/i.test(q);
+    rules.push({ name: 'No OR across different columns', bad: orx, why: orx ? 'One B-tree is sorted by one column; an OR over two columns needs two index lookups merged (MULTI-INDEX OR / BitmapOr / UNION ALL) or a scan.' : '' });
+    return { rules: rules, fn: fn, ar: ar };
+  }
+  function sargFix(p, r) {
+    var q = String(p), m;
+    if ((m = q.match(/strftime\(\s*'%Y-%m'\s*,\s*(\w+)\s*\)\s*=\s*'(\d{4})-(\d{2})'/i))) { var y = +m[2], mo = +m[3], ny = mo === 12 ? y + 1 : y, nm = mo === 12 ? 1 : mo + 1; return m[1] + " >= '" + m[2] + '-' + m[3] + "-01' AND " + m[1] + " < '" + ny + '-' + (nm < 10 ? '0' : '') + nm + "-01'"; }
+    if ((m = q.match(/strftime\(\s*'%Y'\s*,\s*(\w+)\s*\)\s*=\s*'(\d{4})'/i))) return m[1] + " >= '" + m[2] + "-01-01' AND " + m[1] + " < '" + (+m[2] + 1) + "-01-01'";
+    if ((m = q.match(/date\(\s*(\w+)\s*\)\s*=\s*'(\d{4}-\d{2}-\d{2})'/i))) return m[1] + " >= '" + m[2] + "' AND " + m[1] + " < date('" + m[2] + "', '+1 day')";
+    if ((m = q.match(/julianday\(\s*'now'\s*\)\s*-\s*julianday\(\s*(\w+)\s*\)\s*(<|<=)\s*(\d+)/i))) return m[1] + " >= datetime('now', '-" + m[3] + " days')";
+    if ((m = q.match(/(lower|upper)\(\s*(\w+)\s*\)\s*=\s*('[^']*')/i))) return 'keep the predicate and add an expression index: CREATE INDEX … ON t(' + m[1].toLowerCase() + '(' + m[2] + ')) — or store the value normalised';
+    if (r.ar) { var c = Number(r.ar[5]), k = Number(r.ar[3]), o = r.ar[2], v = o === '+' ? c - k : o === '-' ? c + k : o === '*' ? c / k : c * k; return r.ar[1] + ' ' + r.ar[4] + ' ' + v + (o === '/' ? '   (careful: with INTEGER division, x/' + k + ' > ' + c + ' means x >= ' + (c + 1) * k + ')' : ''); }
+    if (/\blike\s*'%/i.test(q)) return 'needs a different index type: reversed-string column, trigram index (pg_trgm GIN), or full-text search';
+    if (/\bor\b/i.test(q)) return 'split into UNION ALL branches (each seekable), or rely on MULTI-INDEX OR / BitmapOr';
+    if (/coalesce|ifnull/i.test(q)) return 'expand: (col = v OR col IS NULL) — or make the column NOT NULL with a default';
+    return 'move every function/arithmetic to the constant side so the bare column is compared with a value';
+  }
+
+  topics.push({
+    title: 'Sargable Predicates: Let the Index Do Its Job',
+    analogy: `<p>A phone book is sorted by <b>last name</b>. "Find everyone named <i>Sharma</i>" — open the middle, jump, done. Now: "find everyone whose last name <b>reversed</b> is <i>amrahs</i>", or "whose last name has 6 letters", or "whose name <b>ends</b> in -rma". The book is still sorted by last name, but your question isn't <i>about</i> the last name any more — it's about something computed from it. You have to read every entry. That's a <b>non-sargable</b> predicate: the index exists, but the question is phrased so it can't be used.</p>`,
+    explain: `<p><b>SARGable</b> = "<b>S</b>earch <b>ARG</b>ument-able": a WHERE condition the engine can turn into an index <b>seek range</b>. The shape that works everywhere is:</p>
+<p style="text-align:center"><code>bare_column  operator  value-or-expression-without-that-column</code></p>
+<p>with operator one of <code>= &lt; &gt; &lt;= &gt;= BETWEEN IN</code>, <code>IS NULL</code> (in most engines), or <code>LIKE 'prefix%'</code>. The moment you wrap the column in a function, do math on it, or start a LIKE with <code>%</code>, the index's sort order no longer helps.</p>
+${H.table(['Non-sargable (scan)', 'Sargable rewrite (seek)', 'Note'], [
+  ["<code>strftime('%Y-%m', created_at) = '2025-03'</code>", "<code>created_at &gt;= '2025-03-01' AND created_at &lt; '2025-04-01'</code>", 'half-open range: never miss 23:59:59.999'],
+  ["<code>date(created_at) = '2026-09-01'</code>", "<code>created_at &gt;= '2026-09-01' AND created_at &lt; '2026-09-02'</code>", 'same idea for one day'],
+  ["<code>julianday('now') - julianday(created_at) &lt; 30</code>", "<code>created_at &gt;= date('now', '-30 days')</code>", 'compute the boundary once'],
+  ['<code>customer_id + 0 = 42</code>, <code>customer_id - 2 = 40</code>', '<code>customer_id = 42</code>', 'move math to the constant side'],
+  ['<code>total_cents / 100 &gt; 150</code> (integer division!)', '<code>total_cents &gt;= 15100</code>', H.c('r', 'NOT ') + '<code>&gt; 15000</code> — check the semantics'],
+  ["<code>lower(email) = 'a@x.com'</code>", 'expression index on <code>lower(email)</code>, or store emails lower-cased', 'or a case-insensitive collation'],
+  ["<code>email LIKE '%@gmail.com'</code>", "reversed column + <code>LIKE 'moc.liamg@%'</code>, or trigram / full-text index", 'leading % kills B-tree seeks'],
+  ["<code>COALESCE(status, 'new') = 'new'</code>", "<code>(status = 'new' OR status IS NULL)</code>", 'or make the column NOT NULL'],
+  ["<code>phone = 9876543210</code> (phone is VARCHAR, MySQL)", "<code>phone = '9876543210'</code>", 'implicit cast of every row']
+])}
+<p><b>In SQLite on our <code>shop</code> data</b>: <code>strftime('%Y-%m', created_at) = '2025-03'</code> → ${H.c('r', 'SCAN orders')} (3,000 rows tested); the range rewrite → ${H.c('g', 'SEARCH orders USING INDEX idx_orders_created (created_at&gt;? AND created_at&lt;?)')} (145 rows touched). Same 145 rows returned.</p>
+<p><b>Two traps:</b> (1) A rewrite must return <b>exactly</b> the same rows — integer division, time zones, NULLs and collations bite. Always compare counts. (2) <code>LIKE 'prefix%'</code> is sargable only when the index's collation matches the LIKE's case rules. SQLite's LIKE is case-insensitive by default, so on a normal (BINARY) index it scans; use <code>GLOB '2025-03*'</code>, <code>PRAGMA case_sensitive_like = ON</code>, or an index with <code>COLLATE NOCASE</code>. PostgreSQL needs a <code>text_pattern_ops</code> index (or C collation) for LIKE-prefix seeks.</p>`,
+    clues: [
+      '"There is an index on created_at but the monthly report still does a full scan" → function on the column (YEAR(), DATE(), strftime) — rewrite as a range',
+      '"Search is case-insensitive" → lower()/upper() on the column; expression index or citext/NOCASE collation',
+      '"Find emails ending with @gmail.com" / "contains" search → leading wildcard; reversed column, trigram, full-text',
+      '"Works in dev (small table), times out in prod" + WHERE with functions → non-sargable predicate',
+      'MySQL: VARCHAR column compared with a number / different charset or collation in a join → implicit conversion, index ignored',
+      '"Last 30 days" written as now() - created_at &lt; interval → put the column alone on one side'
+    ],
+    code: [
+      { lang: 'sql', db: 'shop', title: 'Non-sargable vs sargable, same answer (▶ Run)', code: `-- NON-sargable: function on the indexed column → SCAN orders
+EXPLAIN QUERY PLAN
+SELECT count(*) FROM orders WHERE strftime('%Y-%m', created_at) = '2025-03';
+
+-- Sargable: bare column vs constant range → SEARCH ... idx_orders_created
+EXPLAIN QUERY PLAN
+SELECT count(*) FROM orders
+WHERE created_at >= '2025-03-01' AND created_at < '2025-04-01';
+
+-- Prove they return the same rows (always do this after a rewrite!)
+SELECT
+  (SELECT count(*) FROM orders WHERE strftime('%Y-%m', created_at) = '2025-03') AS old_count,
+  (SELECT count(*) FROM orders WHERE created_at >= '2025-03-01' AND created_at < '2025-04-01') AS new_count;` },
+      { lang: 'sql', db: 'shop', title: 'Expression index: when you cannot change the query', code: `EXPLAIN QUERY PLAN
+SELECT * FROM customers WHERE lower(email) = 'user7@mail.com';   -- SCAN customers
+
+CREATE INDEX idx_customers_email_lower ON customers(lower(email));
+
+EXPLAIN QUERY PLAN
+SELECT * FROM customers WHERE lower(email) = 'user7@mail.com';   -- SEARCH ... (<expr>=?)
+SELECT id, email FROM customers WHERE lower(email) = 'user7@mail.com';` }
+    ],
+    codeTitle: ['Rewrite to a range', 'Index the expression instead'],
+    viz: [
+      {
+        title: 'Same question, two phrasings: who touches fewer index entries?',
+        input: "strftime('%Y-%m', created_at) = '2025-03'",
+        inputLabel: "Predicate on created_at: strftime('%Y-%m', created_at) = '2025-03' | date(created_at) = '2025-03-05' | created_at >= '2025-03-01' AND created_at < '2025-04-01'",
+        gen: function (input) {
+          var q = String(input || '').trim(), frames = [], m, test, rangeLo = null, rangeHi = null, label;
+          if ((m = q.match(/^strftime\(\s*'%Y-%m'\s*,\s*created_at\s*\)\s*=\s*'(\d{4}-\d{2})'$/i))) { var mv = m[1]; test = function (d) { return d.slice(0, 7) === mv; }; label = "strftime('%Y-%m', x)"; var yy = +mv.slice(0, 4), mm = +mv.slice(5, 7); rangeLo = mv + '-01'; rangeHi = (mm === 12 ? yy + 1 : yy) + '-' + ((mm === 12 ? 1 : mm + 1) < 10 ? '0' : '') + (mm === 12 ? 1 : mm + 1) + '-01'; }
+          else if ((m = q.match(/^date\(\s*created_at\s*\)\s*=\s*'(\d{4}-\d{2}-\d{2})'$/i))) { var dv = m[1]; test = function (d) { return d.slice(0, 10) === dv; }; label = 'date(x)'; rangeLo = dv; var dt = new Date(dv + 'T00:00:00Z'); dt.setUTCDate(dt.getUTCDate() + 1); rangeHi = dt.toISOString().slice(0, 10); }
+          else if ((m = q.match(/^created_at\s*(>=|>)\s*'([^']+)'\s+and\s+created_at\s*(<|<=)\s*'([^']+)'$/i))) { rangeLo = m[2]; rangeHi = m[4]; label = null; }
+          else throw new Error("Use one of: strftime('%Y-%m', created_at) = '2025-03'  |  date(created_at) = '2025-03-05'  |  created_at >= '2025-03-01' AND created_at < '2025-04-01'");
+          var idx = IDX_DATES.slice();
+          frames.push({ narr: 'The index <code>idx_orders_created</code> is a <b>sorted</b> list of created_at values (12 shown). Sorted by the <b>raw</b> value — not by month, not by date(), not by anything computed.', parts: [{ type: 'array', label: 'idx_orders_created (sorted leaf entries)', values: idx }] });
+          if (label) {
+            var touched = 0, hits = [];
+            for (var i = 0; i < idx.length; i++) {
+              touched++;
+              var ok = test(idx[i]); if (ok) hits.push(i);
+              var hl = {}; for (var j = 0; j < i; j++) hl[j] = hits.indexOf(j) >= 0 ? 'ok' : 'done'; hl[i] = ok ? 'ok' : 'cur';
+              if (i % 3 === 2 || ok || i === idx.length - 1) frames.push({ narr: '<b>Non-sargable:</b> the engine must compute <code>' + H.esc(label) + '</code> for <b>every</b> entry and compare: entry ' + (i + 1) + ' → ' + (ok ? H.c('g', 'match') : 'no') + '. It cannot jump, because it does not know where matching values start in the sorted order (well — <i>you</i> do; the engine does not reason about strftime).', parts: [{ type: 'array', label: 'evaluating ' + H.esc(label) + ' on each entry', values: idx, hl: hl, ptr: (function () { var p = {}; p[i] = 'f(x)?'; return p; })() }, { type: 'vars', vals: { entriesTouched: touched, matches: hits.length } }] });
+            }
+            frames.push({ narr: 'Result: ' + hits.length + ' matches after touching <b>all ' + idx.length + '</b> entries (in a real table: a full scan of every row). Now rewrite it as a <b>range on the bare column</b>: <code>created_at &gt;= \'' + rangeLo + '\' AND created_at &lt; \'' + rangeHi + '\'</code>.', parts: [{ type: 'text', label: 'rewrite', html: '<code>' + H.esc(q) + '</code><br>⟶ <code>created_at &gt;= \'' + rangeLo + '\' AND created_at &lt; \'' + rangeHi + '\'</code>' }] });
+          }
+          // sargable seek
+          var lo = 0; while (lo < idx.length && idx[lo] < rangeLo) lo++;
+          frames.push({ narr: '<b>Sargable:</b> binary-search / B-tree descent to the first entry ≥ <code>' + H.esc(rangeLo) + '</code>. Entries before it are <b>never touched</b>.', parts: [{ type: 'array', label: 'seek', values: idx, hl: (function () { var h = {}; for (var z = 0; z < lo; z++) h[z] = 'done'; if (lo < idx.length) h[lo] = 'cur'; return h; })(), ptr: (function () { var p = {}; if (lo < idx.length) p[lo] = 'start'; return p; })() }] });
+          var hi = lo, t2 = 1, h2 = {};
+          while (hi < idx.length && idx[hi] < rangeHi) { h2[hi] = 'ok'; hi++; t2++; }
+          frames.push({ narr: 'Walk right while values are &lt; <code>' + H.esc(rangeHi) + '</code>, stop at the first one that isn\'t. Touched: ' + (hi - lo) + ' matching entries + 1 to detect the end (+ ~3 B-tree pages for the descent).', parts: [{ type: 'array', label: 'range scan', values: idx, hl: h2, range: hi > lo ? [lo, hi - 1] : undefined, ptr: (function () { var p = {}; if (lo < idx.length) p[lo] = 'start'; if (hi < idx.length) p[hi] = 'stop'; return p; })() }] });
+          var full = idx.length, seek = (hi - lo) + 1 + 3;
+          frames.push({ narr: 'With 12 entries the gap is small. At 30M orders and 1 month of data (~1.4%): non-sargable ≈ <b>30,000,000</b> evaluations; sargable ≈ <b>420,000</b> entries + 4 pages. Same rows, ~70× less work — and it gets better the narrower the range.', parts: [{ type: 'bars', label: 'entries touched here', values: label ? [full, seek] : [seek], idxLabels: label ? ['function on column', 'range on column'] : ['range on column'], hl: label ? { 0: 'bad', 1: 'ok' } : { 0: 'ok' } }] });
+          return frames;
+        }
+      },
+      {
+        title: 'Sargability checker: paste a WHERE condition',
+        input: "julianday('now') - julianday(created_at) < 30",
+        inputLabel: 'A WHERE condition',
+        gen: function (input) {
+          var q = String(input || '').trim();
+          if (q.length < 3) throw new Error('Type a WHERE condition, e.g.  date(created_at) = \'2026-09-01\'');
+          if (q.length > 200) throw new Error('Keep it under 200 characters');
+          var r = sargRules(q), frames = [], items = [];
+          frames.push({ narr: 'Checking <code>' + H.esc(q) + '</code> against the five classic sargability rules. Each rule asks: "can the engine still find a <b>starting point</b> in a sorted index on the column?"', parts: [{ type: 'code', label: 'predicate', lang: 'sql', code: q }] });
+          r.rules.forEach(function (rule, i) {
+            items.push((rule.bad ? '✗ ' : '✓ ') + rule.name);
+            var hl = {}; hl[(rule.bad ? '✗ ' : '✓ ') + rule.name] = rule.bad ? 'bad' : 'ok';
+            frames.push({ narr: '<b>Rule ' + (i + 1) + ': ' + rule.name + '</b> — ' + (rule.bad ? H.c('r', 'violated. ') + rule.why : H.c('g', 'OK.')), parts: [{ type: 'set', label: 'checks so far', items: items.slice(), hl: hl }] });
+          });
+          var bad = r.rules.filter(function (x) { return x.bad; }).length;
+          frames.push({ narr: bad ? H.c('r', '<b>Not sargable</b> (' + bad + ' rule' + (bad > 1 ? 's' : '') + ' violated).') + ' Suggested direction: <code>' + H.esc(sargFix(q, r)) + '</code>. Then confirm with EXPLAIN that the plan says SEARCH / Index Scan, and compare row counts old vs new.' : H.c('g', '<b>Looks sargable.</b>') + ' If there is an index whose <i>leading</i> column appears here, the engine can seek. Still check EXPLAIN — selectivity decides whether it <i>will</i>.', parts: [{ type: 'set', label: 'verdict', items: items, hl: (function () { var h = {}; items.forEach(function (x) { h[x] = x.charAt(0) === '✗' ? 'bad' : 'ok'; }); return h; })() }] });
+          return frames;
+        }
+      }
+    ],
+    examples: [
+      { title: 'One day of orders: date() vs a half-open range', html: `<p><code>date(created_at) = '2026-09-01'</code> → ${H.c('r', 'SCAN orders')}. The rewrite <code>created_at &gt;= '2026-09-01' AND created_at &lt; '2026-09-02'</code> → ${H.c('g', 'SEARCH … idx_orders_created (created_at&gt;? AND created_at&lt;?)')}. Both return 5 rows. Use a <b>half-open</b> range (<code>&gt;=</code> start, <code>&lt;</code> next day) rather than <code>BETWEEN '…00:00:00' AND '…23:59:59'</code>, which silently drops <code>23:59:59.5</code> and breaks when precision changes.</p>`, code: { lang: 'sql', db: 'shop', code: `EXPLAIN QUERY PLAN SELECT * FROM orders WHERE date(created_at) = '2026-09-01';
+EXPLAIN QUERY PLAN SELECT * FROM orders WHERE created_at >= '2026-09-01' AND created_at < '2026-09-02';
+SELECT id, created_at FROM orders
+WHERE created_at >= '2026-09-01' AND created_at < '2026-09-02'
+ORDER BY created_at;` } },
+      { title: 'Compute the boundary, not the column ("last 30 days")', html: `<p><code>julianday('now') - julianday(created_at) &lt; 30</code> evaluates two functions per row → ${H.c('r', 'SCAN')}. Turning it around so the column stands alone, <code>created_at &gt;= date('2026-10-14', '-30 days')</code>, computes the boundary <b>once</b> → ${H.c('g', 'SEARCH (created_at&gt;?)')}. In application code, compute the timestamp in the app and pass it as a parameter. (Careful: the two forms can differ by a few hours at the boundary because one compares times and the other dates — decide which one the business means.)</p>`, code: { lang: 'sql', db: 'shop', code: `EXPLAIN QUERY PLAN
+SELECT count(*) FROM orders WHERE julianday('2026-10-14') - julianday(created_at) < 30;
+EXPLAIN QUERY PLAN
+SELECT count(*) FROM orders WHERE created_at >= date('2026-10-14', '-30 days');
+SELECT count(*) AS last_30_days FROM orders WHERE created_at >= date('2026-10-14', '-30 days');` } },
+      { title: 'LIKE prefix: sargable only with matching case rules', html: `<p>SQLite's <code>LIKE</code> is case-insensitive, but <code>idx_orders_created</code> is case-sensitive (BINARY), so <code>created_at LIKE '2025-03%'</code> ${H.c('r', 'scans')}. <code>GLOB</code> is case-sensitive, so <code>created_at GLOB '2025-03*'</code> ${H.c('g', 'seeks')} the range <code>['2025-03', '2025-04')</code>. Same for <code>PRAGMA case_sensitive_like = ON</code>. PostgreSQL: use <code>text_pattern_ops</code> (or <code>COLLATE "C"</code>) on the index; MySQL: LIKE 'abc%' uses the index when collations match.</p>`, code: { lang: 'sql', db: 'shop', code: `EXPLAIN QUERY PLAN SELECT * FROM orders WHERE created_at LIKE '2025-03%';
+EXPLAIN QUERY PLAN SELECT * FROM orders WHERE created_at GLOB '2025-03*';
+SELECT count(*) AS march_orders FROM orders WHERE created_at GLOB '2025-03*';` } },
+      { title: 'Suffix search: index the reversed string', html: `<p><code>email LIKE '%7@mail.com'</code> can never seek a normal index. Store <code>reverse(email)</code> (or compute it in an expression index where the engine has <code>reverse()</code>), and search the <b>prefix</b> <code>'moc.liam@7%'</code> instead. For "contains" searches use a trigram index (PostgreSQL <code>pg_trgm</code> + GIN supports <code>LIKE '%abc%'</code> and <code>ILIKE</code>) or full-text search (SQLite FTS5, PostgreSQL tsvector, Elasticsearch).</p>`, code: { lang: 'sql', check: false, code: `-- PostgreSQL
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CREATE INDEX idx_customers_email_trgm ON customers USING gin (email gin_trgm_ops);
+EXPLAIN SELECT * FROM customers WHERE email LIKE '%7@mail.com';   -- Bitmap Index Scan on idx_customers_email_trgm
+
+-- Or a suffix-friendly expression index + prefix search
+CREATE INDEX idx_customers_email_rev ON customers (reverse(email) text_pattern_ops);
+SELECT * FROM customers WHERE reverse(email) LIKE reverse('7@mail.com') || '%';` } }
+    ],
+    deepDive: `<h4>What the engine can and cannot "see through"</h4>
+<ul>
+<li><b>Constant folding</b> works on the <i>value</i> side: <code>customer_id = 40 + 2</code> and <code>created_at &gt;= date('2026-10-14', '-30 days')</code> are sargable, because the expression doesn't depend on the row.</li>
+<li><b>Engines rarely invert functions</b> on the column side. Exceptions exist: SQL Server makes <code>CAST(datetime_col AS date) = @d</code> sargable via a special rewrite; PostgreSQL turns <code>LIKE 'abc%'</code> into a range under C/pattern collations; Oracle can use function-based indexes. Never rely on it across engines.</li>
+<li><b>Type coercion</b>: when two sides have different types, the engine converts one. If it converts the <i>column</i> (MySQL VARCHAR vs number; SQL Server NVARCHAR parameter vs VARCHAR column; joining columns with different collations/charsets), every row is converted and the index is lost. SQLite's <i>type affinity</i> converts the constant <code>'42'</code> to an integer for an INTEGER column, so <code>customer_id = '42'</code> still seeks.</li>
+<li><b>Expression / function-based indexes</b> make a specific expression sargable: PostgreSQL <code>CREATE INDEX ON t ((lower(email)))</code>, MySQL 8.0.13+ functional key parts <code>((lower(email)))</code> or an indexed generated column, SQLite <code>CREATE INDEX … ON t(lower(email))</code>, SQL Server computed column + index. The query must use the <b>identical</b> expression.</li>
+<li><b>IN lists</b> are sargable (one seek per value, "IN-operator" in SQLite, <code>= ANY(array)</code> in PG). Huge IN lists (10k+ values) are better as a join against a temp table / VALUES / array parameter.</li>
+<li><b>IS NULL</b> is sargable in PostgreSQL, MySQL, SQLite B-trees; in Oracle single-column B-tree indexes don't store all-NULL keys, so <code>IS NULL</code> can't use them (classic Oracle interview gotcha).</li>
+<li><b>Partial indexes</b> can make a "non-sargable-looking" filter cheap: <code>CREATE INDEX … WHERE deleted_at IS NULL</code> serves every query that includes the same condition.</li>
+</ul>
+<h4>Composite indexes and sargability</h4><p>For an index on <code>(a, b, c)</code>: equality on a and b plus a range on c is a single seek. A range on <code>a</code> stops the seek at a — conditions on b and c become filters inside the range (MySQL calls it the "range stops key use" rule; PG shows them as Index Cond but still scans the whole a-range). Order composite columns as: equality columns → one range or ORDER BY column → covering passengers.</p>`,
+    aiEra: `<p><b>What AI changes:</b> LLM-generated SQL is often <i>readable but non-sargable</i>: <code>WHERE YEAR(created_at) = 2025</code>, <code>DATE(ts) = CURRENT_DATE</code>, <code>LOWER(email) = LOWER(?)</code>, <code>CONCAT(first, ' ', last) LIKE '%…%'</code>. It looks clean, passes tests on tiny data, and dies on production tables. Linters (SQLFluff rules, sqlcheck, IDE inspections) and AI reviewers can flag these patterns automatically.</p>
+<p><b>Use AI as a partner:</b> "Rewrite every predicate in this query so the column stands alone on one side, keep the semantics identical, and list any edge cases (NULLs, time zones, integer division) where the rewrite could change results." Then run both versions and compare counts.</p>
+<p><b>Where AI goes wrong:</b> the classic <code>total/100 &gt; 150</code> → <code>total &gt; 15000</code> (wrong with integer division), <code>BETWEEN '2025-03-01' AND '2025-03-31'</code> (drops March 31 after midnight), or suggesting an expression index whose expression doesn't exactly match the query's.</p>
+<p><b>What you must still own:</b> spotting the pattern on sight, proving the rewrite is equivalent, and confirming the new plan seeks.</p>`,
+    problems: [
+      {
+        title: 'Monthly revenue without a full scan', level: 'Easy', tags: ['sargable', 'date range', 'rewrite'], companies: ['Amazon', 'Paytm', 'PhonePe'],
+        statement: `<p>The finance dashboard computes March 2025 revenue with:</p><pre>SELECT sum(total_cents) FROM orders
+WHERE strftime('%Y-%m', created_at) = '2025-03';</pre><p>There is an index on <code>created_at</code>, yet the plan is a full scan. Rewrite the query so it seeks the index, and prove the result is identical.</p>`,
+        constraints: `SQLite <code>shop</code>; <code>created_at</code> is TEXT <code>'YYYY-MM-DD HH:MM:SS'</code>; no schema changes.`,
+        example: `<p>Both versions return the same sum over ${H.c('g', '145 orders')}. Plan must change from ${H.c('r', 'SCAN orders')} to ${H.c('g', 'SEARCH orders USING INDEX idx_orders_created (created_at&gt;? AND created_at&lt;?)')}.</p>`,
+        brute: { why: `<p><code>strftime()</code> is applied to the column, so SQLite must read all 3,000 rows, format each date, and compare strings. The index is sorted by raw <code>created_at</code>, not by <code>strftime('%Y-%m', …)</code>, so it can't be used. Work grows with the whole table, even though March is only 145 rows.</p>`, code: { lang: 'sql', db: 'shop', code: `EXPLAIN QUERY PLAN
+SELECT sum(total_cents) FROM orders
+WHERE strftime('%Y-%m', created_at) = '2025-03';
+SELECT sum(total_cents) AS march_revenue FROM orders
+WHERE strftime('%Y-%m', created_at) = '2025-03';` } },
+        mcq: { q: 'Which rewrite is both sargable and exactly equivalent?', options: [`<code>created_at BETWEEN '2025-03-01' AND '2025-03-31'</code>`, `<code>created_at &gt;= '2025-03-01' AND created_at &lt; '2025-04-01'</code>`, `<code>created_at LIKE '2025-03%'</code> (SQLite default settings)`, `<code>substr(created_at, 1, 7) = '2025-03'</code>`], answer: 1, explain: "BETWEEN … '2025-03-31' misses everything after midnight on the 31st (the string '2025-03-31 10:00' > '2025-03-31'). LIKE is case-insensitive in SQLite so it can't seek a BINARY index; substr is still a function on the column. The half-open range is exact and seekable." },
+        hints: [`<p>Hint 1: Ask "which raw <code>created_at</code> values have month 2025-03?" — they form one contiguous block in sorted order.</p>`, `<p>Hint 2: Describe that block as <code>&gt;= start AND &lt; start of next month</code> (half-open), so you never worry about the last second of the month.</p>`, `<p>Hint 3: Recipe: EXPLAIN old, EXPLAIN new, then SELECT both sums side by side to prove they match.</p>`],
+        solution: {
+          approach: `<p>Translate "month = 2025-03" into a range on the raw column: <code>created_at &gt;= '2025-03-01' AND created_at &lt; '2025-04-01'</code>. Because ISO-8601 strings sort chronologically, every March timestamp is inside that half-open range and nothing else is. The planner can now seek <code>idx_orders_created</code> to the first March entry and stop at the first April one — 145 entries instead of 3,000 rows.</p>`,
+          code: { lang: 'sql', db: 'shop', code: `EXPLAIN QUERY PLAN
+SELECT sum(total_cents) FROM orders
+WHERE created_at >= '2025-03-01' AND created_at < '2025-04-01';
+-- SEARCH orders USING INDEX idx_orders_created (created_at>? AND created_at<?)
+
+SELECT
+  (SELECT sum(total_cents) FROM orders
+    WHERE strftime('%Y-%m', created_at) = '2025-03')                     AS old_sum,
+  (SELECT sum(total_cents) FROM orders
+    WHERE created_at >= '2025-03-01' AND created_at < '2025-04-01')      AS new_sum;` },
+          complexity: `<p>Before: O(N) rows + N strftime calls. After: O(log N + k) with k = 145 matching rows (each still fetched from the table for total_cents — add total_cents to the index to make it covering).</p>`,
+          followUps: ['Make it covering so the table is never read.', 'How would you write "this calendar month" for a parameterized dashboard?']
         }
       }
     ]
