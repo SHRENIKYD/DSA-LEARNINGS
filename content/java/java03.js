@@ -481,6 +481,7 @@ ${H.table(['Inside the method you...', 'Does the caller see it?', 'Why'], [
             snapshot(i, narr, lhs, null);
           });
           var garbage = objs.filter(function (id) { return !Object.keys(vars).some(function (k) { return vars[k] === id; }); });
+          if (ops.length < 2) snapshot(ops.length - 1, 'Tip: add more operations (for example <code>b=a; a=null</code>) to watch arrows move and objects become garbage. Rule: an object is collectable only when <b>no</b> variable can reach it.', null, null);
           snapshot(ops.length - 1, 'Final count: <b>' + objs.length + '</b> object(s) created, <b>' + garbage.length + '</b> eligible for GC' + (garbage.length ? ' (' + garbage.map(function (g) { return '#' + g; }).join(', ') + ')' : '') + '. This is exactly how you answer "how many objects are eligible for GC?" questions.', null, null);
           return frames;
         }
@@ -1030,6 +1031,7 @@ ${H.table(['Expression inside the constructor', 'Refers to'], [['<code>name</cod
             v = o.op === 'add' ? v + o.n : o.op === 'minus' ? v - o.n : v * o.n;
             list.push({ l: line[o.op], n: '<code>.' + o.op + '(' + o.n + ')</code> runs with <code>this</code> = #401. value: ' + before + ' &rarr; <b>' + v + '</b>. Then <code>return this</code> hands back the <b>same</b> reference #401, so the next call in the chain targets the same object.', fr: o.op + '()', v: { 'this': '→ #401', n: o.n, 'returns': '#401 (this)' }, vh: { 'returns': 'sel' }, h: [['#401 Calc', 'value=' + v]], hh: { '#401 Calc': 'cur' }, o: '' });
           });
+          if (ops.length < 2) list.push({ l: 8, n: 'Only one call so far. Add more operations to see the chain grow: every call still targets the same object #401, because each method returns <code>this</code>.', v: { 'current reference': '#401' }, h: [['#401 Calc', 'value=' + v]], o: '' });
           list.push({ l: [6, 8], n: '<code>.result()</code> reads the field. No copies were made along the way: ' + ops.length + ' method calls, <b>1</b> object. r = <b>' + v + '</b>.', v: { r: v }, vh: { r: 'ok' }, h: [['#401 Calc', 'value=' + v]], hh: { '#401 Calc': 'sel' }, o: 'r = ' + v });
           return steps(code, list);
         }
@@ -2928,7 +2930,7 @@ System.out.println(Elvis.INSTANCE.age);</pre>`,
     m.answer = (m.answer - s + n) % n;
   }
   quiz.forEach(function (q, i) { rotate(q, i * 3 + 1); });
-  practice.forEach(function (p, i) { rotate(p.mcq, i * 2 + 1); });
+  practice.forEach(function (p, i) { rotate(p.mcq, i * 3 + 2); });
   topics.forEach(function (t, i) { (t.problems || []).forEach(function (p, j) { rotate(p.mcq, i + j + 2); }); });
 
   registerModule({

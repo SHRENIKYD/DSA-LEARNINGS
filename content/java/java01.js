@@ -1862,7 +1862,7 @@ public class Temperature {
     }
 }`,
       dry: { head: ['c', 'c * 9.0', '/ 5', '+ 32'], rows: [['37', '333.0', '66.6', '98.6'], ['-40', '-360.0', '-72.0', '-40.0']] },
-      complexity: R`<p>O(1).</p>`,
+      complexity: R`<p>O(1) time and O(1) space — a fixed number of operations.</p>`,
       followUps: ['Round to one decimal place for display: <code>String.format("%.1f", f)</code>.', 'Why might <code>toF(x) == 98.6</code> be risky in general?']
     }
   });
@@ -1897,7 +1897,7 @@ public class Seats {
     }
 }`,
       dry: { head: ['expression', 'step 1', 'step 2', 'result'], rows: [["row + seat + \"\"", '67 + 7 = 74', '74 + ""', '"74"'], ['String.valueOf(row) + seat', '"C"', '"C" + 7', '"C7"']] },
-      complexity: R`<p>O(1) (tiny string).</p>`,
+      complexity: R`<p>O(1) time and space (the label is a tiny string).</p>`,
       followUps: ['Generate all labels A1..E10 with nested loops over <code>char</code> and <code>int</code>.', 'What prints for <code>System.out.println(\'C\' + "" + 7);</code>?']
     }
   });
@@ -2020,7 +2020,7 @@ public class SafeAverage {
     }
 }`,
       dry: { head: ['a, b', 'a &amp; b', 'a ^ b', '(a^b) &gt;&gt; 1', 'result'], rows: [['4, 7', '4', '3', '1', '5'], ['-3, 0', '0', '-3', '-2', '-2'], ['MAX, MAX', 'MAX', '0', '0', 'MAX']] },
-      complexity: R`<p>O(1).</p>`,
+      complexity: R`<p>O(1) time and O(1) space — a fixed number of operations.</p>`,
       followUps: ['Ceiling average: <code>(a | b) - ((a ^ b) &gt;&gt; 1)</code>. Why?', 'For non-negative ints, why is <code>(a + b) &gt;&gt;&gt; 1</code> enough?']
     }
   });
@@ -2113,7 +2113,7 @@ public class OverflowCheck {
     }
 }`,
       dry: { head: ['a, b', 'r = a + b', 'a ^ r &lt; 0', 'b ^ r &lt; 0', 'overflow'], rows: [['MAX, 1', 'MIN', 'yes', 'yes', 'true'], ['MAX, MIN', '-1', 'yes', 'no', 'false'], ['5, -3', '2', 'no', 'yes', 'false']] },
-      complexity: R`<p>O(1).</p>`,
+      complexity: R`<p>O(1) time and O(1) space — a fixed number of operations.</p>`,
       followUps: ['Write <code>mulOverflows(long, long)</code> using <code>Math.multiplyHigh</code>.', 'Write <code>subOverflows</code> — which operands do you XOR?']
     }
   });
@@ -2201,7 +2201,7 @@ public class Untangled {
     }
 }`,
       dry: { head: ['line', 'x', 'new value'], rows: [['old = x', '3', 'old = 3'], ['x = x + 1', '4', '—'], ['x = x − 1', '3', '—'], ['y', '3', '9'], ['z', '3', '6'], ['b', '3', 'true (if skipped)']] },
-      complexity: R`<p>O(1).</p>`,
+      complexity: R`<p>O(1) time and O(1) space — a fixed number of operations.</p>`,
       followUps: ['What if x starts at 1? (Now the right side of || runs.)', 'Replace <code>||</code> with <code>|</code> — what changes?']
     }
   });
