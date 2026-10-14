@@ -633,7 +633,7 @@ Logger c = std::move(a);  c.size() → ${H.c('g', '2')}   (a is now empty/moved-
     }
     function vecPart(hlIdx) {
       var hl = {}; if (hlIdx !== undefined) hl[String(hlIdx)] = 'ok';
-      return { type: 'map', label: 'std::vector<AnyShape> shapes (each slot = one pointer)', entries: vec.map(function (t, i) { return [String(i), 'AnyShape → heap Model<' + t + '>']; }), hl: hl };
+      return { type: 'map', label: 'std::vector&lt;AnyShape&gt; shapes (each slot = one pointer)', entries: vec.map(function (t, i) { return [String(i), 'AnyShape → heap Model<' + t + '>']; }), hl: hl };
     }
     frames.push({ narr: 'We have <b>unrelated</b> types (' + kinds.join(', ') + '): no common base class, no <code>virtual</code>. Each just happens to have a <code>double area() const</code>. Goal: store them all in one <code>std::vector&lt;AnyShape&gt;</code> <b>by value</b>.',
       parts: [codePart('the wrapper (simplified)', 'class AnyShape {\n  struct Concept { virtual double area() const = 0; ... };\n  template <class T> struct Model : Concept {\n    T obj;\n    double area() const override { return obj.area(); }\n  };\n  std::unique_ptr<Concept> self_;\npublic:\n  template <class T> AnyShape(T t) : self_(make_unique<Model<T>>(move(t))) {}\n  double area() const { return self_->area(); }\n};', { 2: 'sel', 3: 'sel', 7: 'sel', 9: 'cur' }), vecPart()] });
@@ -812,7 +812,7 @@ f(3) → ${H.c('g', '9')}     g(3) → ${H.c('g', '13')}     Function&lt;int(int
           int sq(int x) { return x * x; }
           int main() {
               FnPtr<int(int)> f = sq;                   // ok
-              FnPtr<int(int)> g = [](int x) { return x + 1; };   // ok: capture-less lambda converts
+              FnPtr<int(int)> g = +[](int x) { return x + 1; };  // ok: unary + converts a capture-less lambda to a pointer
               // int k = 10; FnPtr<int(int)> h = [k](int x) { return x + k; };   // ERROR: cannot convert
               std::cout << f(3) << " " << g(3) << "\n";
           }` },
