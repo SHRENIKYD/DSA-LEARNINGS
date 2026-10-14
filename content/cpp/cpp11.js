@@ -1937,4 +1937,998 @@ cv.wait(lk, [&amp;] { return !q.empty(); });   // sleeps until the predicate is 
       }
     }]
   });
-registerModule({ id: 'cpp11', title: 'Concurrency in C++', intro: 'x', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();
+
+  /* ======================================================================
+     PRACTICE — Easy
+     ====================================================================== */
+  practice.push({
+    title: 'Launch N Workers, Print Results in Order',
+    level: 'Easy', tags: ['std::thread', 'join', 'vector of threads'], companies: ['Microsoft', 'Bloomberg'],
+    statement: `<p>Start <code>n</code> worker threads. Worker <code>i</code> computes <code>score(i) = (i + 1) * 100 + i</code> (pretend it's slow). Main must print all scores <b>in index order 0..n-1</b>, no matter which worker finishes first, and must exit cleanly.</p>`,
+    constraints: `1 ≤ n ≤ 64`,
+    example: `<p>n = 3 → workers may finish in order 2, 0, 1, but the output is always:</p><pre>0: 100
+1: 201
+2: 302</pre><p>${H.c('g', 'Each worker writes only its own slot; main reads after join().')}</p>`,
+    brute: { why: `<p>Printing from inside the workers gives a random order (and interleaved characters). Forgetting <code>join</code> destroys joinable threads → <code>std::terminate</code>. Detaching means main might exit before workers finish.</p>`, code: R`
+      int main() {
+          int n = 3;
+          for (int i = 0; i < n; ++i) {
+              std::thread t([i] { std::cout << i << ": " << (i + 1) * 100 + i << "\n"; });
+              t.detach();                       // BUG: random order, may not print at all before exit
+          }
+      }` },
+    mcq: { q: 'Why is it safe for main to read <code>results[i]</code> after the loop of <code>join()</code> calls without any mutex?', options: ['vector is thread-safe', 'join() makes everything the thread did happen-before the code after join()', 'Because ints are atomic', 'It is not safe'], answer: 1, explain: 'Thread completion synchronizes-with the return of join(). After joining, all writes of that thread are visible. Different slots also mean no two workers race with each other.' },
+    hints: [`<p>Separate <b>computing</b> (parallel) from <b>printing</b> (in order, on main). Each worker writes its answer to its own slot.</p>`, `<p>Use <code>vector&lt;long long&gt; results(n)</code> and <code>vector&lt;thread&gt; pool</code>; capture <code>i</code> by value and <code>results</code> by reference.</p>`, `<p>Recipe: start all → join all → print results[0..n-1]. Never call join inside the start loop (that would run them one by one).</p>`],
+    solution: {
+      approach: `<p>Start all workers first, so they truly overlap, with each writing <code>results[i]</code>. Then join every thread; join gives the happens-before edge that makes the results visible. Finally print in order from main. Joining inside the creation loop would serialize the work.</p>`,
+      code: R`
+        #include <bits/stdc++.h>
+        using namespace std;
+
+        long long score(int i) { return (i + 1) * 100LL + i; }   // pretend this is slow
+
+        int main() {
+            int n = 5;
+            vector<long long> results(n);
+            vector<thread> pool;
+            pool.reserve(n);
+            for (int i = 0; i < n; ++i)
+                pool.emplace_back([i, &results] { results[i] = score(i); });   // own slot only
+            for (auto& t : pool) t.join();                                     // wait for ALL
+            for (int i = 0; i < n; ++i) cout << i << ": " << results[i] << "\n";
+        }`,
+      dry: { head: ['phase', 'what happens', 'results'], rows: [['start', '5 threads running at once', '[?, ?, ?, ?, ?]'], ['finish (any order)', 'worker 3, 0, 4, 1, 2 write their slots', '[100, 201, 302, 403, 504]'], ['join all', 'main waits; writes become visible', 'same'], ['print', 'main prints 0..4 in order', '0: 100 ... 4: 504']] },
+      complexity: `<p>O(n) thread starts and joins; wall time ≈ the slowest worker. O(n) memory.</p>`,
+      followUps: ['Rewrite with <code>std::async</code> and a <code>vector&lt;future&lt;long long&gt;&gt;</code>', 'Rewrite with <code>std::jthread</code> so no explicit join loop is needed']
+    }
+  });
+
+  practice.push({
+    title: 'Bug Hunt: The Thread That Changed a Copy',
+    level: 'Easy', tags: ['std::ref', 'argument passing', 'lambda capture'], companies: ['Amazon', 'Qualcomm'],
+    statement: `<p>A teammate wrote <code>void loadInto(vector&lt;int&gt; out)</code> because <code>std::thread t(loadInto, data)</code> with a reference parameter "didn't compile". Now <code>data</code> is always empty after the thread finishes. Explain both problems and fix the code so the thread fills the caller's vector.</p>`,
+    constraints: `The vector must be filled in place (no global variables).`,
+    example: `<p>Expected: <code>data.size() == 3</code> after <code>join()</code>. Actual: ${H.c('r', '0')}. The thread filled its <b>own copy</b>, which was destroyed when the thread ended.</p>`,
+    brute: { why: `<p><code>std::thread</code> always <b>copies</b> (decay-copies) its arguments into the new thread. A non-const reference parameter cannot bind to that internal copy, so the compiler refused. Changing the parameter to by-value "fixes" compilation but now the thread works on a copy.</p>`, code: R`
+      void loadInto(std::vector<int> out) {     // takes a COPY
+          out = {1, 2, 3};
+      }
+      int main() {
+          std::vector<int> data;
+          std::thread t(loadInto, data);         // copies data into the thread
+          t.join();
+          std::cout << data.size() << "\n";      // 0
+      }` },
+    mcq: { q: 'Which call makes the thread write into <code>data</code> itself?', options: ['<code>std::thread t(loadInto, data)</code>', '<code>std::thread t(loadInto, &amp;data)</code> with a by-value vector parameter', '<code>std::thread t(loadInto, std::ref(data))</code> with a <code>vector&lt;int&gt;&amp;</code> parameter', '<code>std::thread t(loadInto, std::move(data))</code>'], answer: 2, explain: 'std::ref wraps a reference in a copyable reference_wrapper, which converts back to vector&lt;int&gt;&amp; inside the thread. You then must keep data alive until join().' },
+    hints: [`<p>Remember the rule: <b>std::thread copies every argument</b>, just like std::bind.</p>`, `<p>Make the parameter <code>vector&lt;int&gt;&amp;</code> again and pass <code>std::ref(data)</code>, or use a lambda capturing <code>[&amp;data]</code>.</p>`, `<p>Lifetime check: the referenced object must outlive the thread, so join before <code>data</code> goes out of scope. Never combine a reference with <code>detach()</code>.</p>`],
+    solution: {
+      approach: `<p>Restore the reference parameter and pass <code>std::ref(data)</code> (or capture by reference in a lambda). Then reason about lifetime: <code>data</code> lives in main and we join before main's scope ends, so the reference never dangles. Reading <code>data</code> after join is race-free.</p>`,
+      code: R`
+        #include <bits/stdc++.h>
+        using namespace std;
+
+        void loadInto(vector<int>& out) {          // real reference again
+            out = {1, 2, 3};
+        }
+
+        int main() {
+            vector<int> data;
+            thread t(loadInto, ref(data));          // pass a reference_wrapper
+            t.join();                               // data outlives the thread
+            cout << data.size() << "\n";            // 3
+
+            vector<int> other;
+            thread t2([&other] { other.assign(5, 7); });   // lambda alternative
+            t2.join();
+            cout << other.size() << "\n";           // 5
+        }`,
+      dry: { head: ['version', 'what the thread touches', 'data.size() after join'], rows: [['by-value param', 'private copy', '<span class="c-r">0</span>'], ['std::ref + T&amp;', 'main\'s data', '<span class="c-g">3</span>']] },
+      complexity: `<p>O(1) extra; no copy of the vector at all with std::ref.</p>`,
+      followUps: ['What if you call <code>t.detach()</code> instead of join here?', 'How do you move a large vector INTO a thread efficiently (std::move)?']
+    }
+  });
+
+  practice.push({
+    title: 'Bug Hunt: The Stop Flag That Never Stops',
+    level: 'Easy', tags: ['data race', 'atomic<bool>', 'optimizer'], companies: ['Nvidia', 'Tesla', 'Arm'],
+    statement: `<p>A background sampler loops <code>while (!stopRequested) { sample(); }</code> where <code>stopRequested</code> is a plain <code>bool</code>. Main sets it to true and joins. In Debug builds it works; in Release (<code>-O2</code>) the program hangs forever. Explain why and fix it. Someone suggests <code>volatile</code>; is that right?</p>`,
+    constraints: `Must be correct by the C++ standard on every compiler and CPU.`,
+    example: `<p>${H.table(['build', 'behaviour'], [['-O0', 'stops after ~50 ms'], ['-O2', '<span class="c-r">hangs: the loop became while (true)</span>']])}</p>`,
+    brute: { why: `<p>Writing a plain bool in one thread while another reads it is a <b>data race</b> (UB). The optimizer may assume no other thread changes it, so it reads the flag once, keeps it in a register, and turns the loop into an infinite loop. <code>volatile</code> forces a memory read, but it is still a data race by the standard and gives no ordering.</p>`, code: R`
+      bool stopRequested = false;               // plain bool: data race
+      long long samples = 0;
+      void sampler() {
+          while (!stopRequested) ++samples;     // may compile to: if (!stopRequested) for (;;) ++samples;
+      }
+      int main() {
+          std::thread t(sampler);
+          std::this_thread::sleep_for(std::chrono::milliseconds(50));
+          stopRequested = true;
+          t.join();                             // may hang forever at -O2
+      }` },
+    mcq: { q: 'Which is the correct, portable fix?', options: ['<code>volatile bool stopRequested</code>', '<code>std::atomic&lt;bool&gt; stopRequested</code>', 'Add <code>sleep_for(1ms)</code> in the loop', 'Compile with -O0'], answer: 1, explain: 'std::atomic makes the access race-free and guarantees the store becomes visible to the loading thread. volatile is not a synchronization primitive in C++; sleeps and -O0 just hide the bug.' },
+    hints: [`<p>Ask: is a non-atomic variable written by one thread while another reads it, with no lock? Then it's a data race and the compiler may assume it never changes.</p>`, `<p><code>std::atomic&lt;bool&gt;</code> fixes it: every <code>load()</code> really reads the shared value. In C++20, <code>std::jthread</code> + <code>std::stop_token</code> is a ready-made version.</p>`, `<p>Default seq_cst is fine; if the flag publishes other data (e.g. "results are ready") use release/acquire. For a pure stop signal even relaxed works, but default is simplest.</p>`],
+    solution: {
+      approach: `<p>Make the flag <code>std::atomic&lt;bool&gt;</code>. The compiler must then perform a real atomic load each iteration, and the store from main is guaranteed to become visible. Better still in C++20: <code>std::jthread</code> whose lambda takes a <code>std::stop_token</code>; its destructor requests stop and joins.</p>`,
+      code: R`
+        #include <bits/stdc++.h>
+        using namespace std;
+        using namespace std::chrono_literals;
+
+        atomic<bool> stopRequested{false};
+        atomic<long long> samples{0};
+
+        void sampler() {
+            while (!stopRequested.load())                 // real load every iteration
+                samples.fetch_add(1, memory_order_relaxed);
+        }
+
+        int main() {
+            thread t(sampler);
+            this_thread::sleep_for(50ms);
+            stopRequested.store(true);                    // visible to the sampler
+            t.join();
+            cout << "stopped after " << samples.load() << " samples\n";
+
+            // C++20 version: cooperative cancellation built in
+            jthread j([](stop_token st) { while (!st.stop_requested()) this_thread::yield(); });
+            this_thread::sleep_for(10ms);
+        }                                                 // ~jthread: request_stop() + join()`,
+      dry: { head: ['step', 'sampler', 'main'], rows: [['1', 'load → false, sample', 'sleeping'], ['2', 'load → false, sample', 'store(true)'], ['3', 'load → true, exit loop', 'join() waits'], ['4', 'returns', 'join() returns']] },
+      complexity: `<p>One atomic load per iteration: on x86 a plain <code>mov</code>, essentially free.</p>`,
+      followUps: ['Why is volatile still wrong even though it "works" here?', 'How would you wait for the flag without spinning (atomic::wait / condition_variable)?']
+    }
+  });
+
+  practice.push({
+    title: 'Print in Order (Three Threads)',
+    level: 'Easy', tags: ['promise/future', 'synchronization', 'LeetCode 1114'], companies: ['Microsoft', 'Apple', 'Amazon'],
+    statement: `<p>Class <code>Foo</code> has <code>first()</code>, <code>second()</code>, <code>third()</code>. Three different threads call them, in <b>any</b> order and at any time. Guarantee the output is always <code>firstsecondthird</code>. Each method is called exactly once.</p>`,
+    constraints: `Exactly 3 threads, each calls one method once; no busy-waiting.`,
+    example: `<p>Threads start in order C, A, B (third, first, second). Output: ${H.c('g', 'firstsecondthird')}: third() must sleep until second() is done, and second() until first() is done.</p>`,
+    brute: { why: `<p>Spinning on a plain <code>int stage</code> is a data race (UB), burns CPU, and can hang at -O2 for the same reason as the stop-flag bug. Sleeping "long enough" is not a guarantee.</p>`, code: R`
+      class FooBAD {
+          int stage = 0;                            // plain int: data race
+      public:
+          void first(std::function<void()> pf)  { pf(); stage = 1; }
+          void second(std::function<void()> ps) { while (stage != 1) {} ps(); stage = 2; }   // spin + UB
+          void third(std::function<void()> pt)  { while (stage != 2) {} pt(); }
+      };` },
+    mcq: { q: 'Why is <code>std::promise&lt;void&gt;</code> a natural fit here?', options: ['It is faster than a mutex in every case', 'Each "X is done" event happens exactly once, and future::wait() sleeps until it happens, with a happens-before edge', 'promise can be set many times', 'It avoids creating threads'], answer: 1, explain: 'A one-shot event = promise/future. set_value() makes the future ready; wait() blocks without spinning; the handoff orders the prints.' },
+    hints: [`<p>You need two one-time signals: "first is done" and "second is done".</p>`, `<p>Use two <code>promise&lt;void&gt;</code> members and keep their futures (get_future can be called only once). <code>second()</code> waits on the first future, <code>third()</code> on the second.</p>`, `<p>Alternatives: a mutex + cv + <code>stage</code> counter with predicates; two C++20 <code>std::binary_semaphore</code>s starting at 0; or <code>std::atomic&lt;int&gt;</code> + <code>wait()/notify_all()</code>.</p>`],
+    solution: {
+      approach: `<p>Model each "done" event as a promise. <code>first()</code> prints and fulfils p1; <code>second()</code> waits for f1, prints, fulfils p2; <code>third()</code> waits for f2 and prints. The futures are created in the constructor (member initializers run in declaration order, so promises come first). Waiting is blocking, not spinning, and set_value → wait gives the needed ordering.</p>`,
+      code: R`
+        #include <bits/stdc++.h>
+        using namespace std;
+
+        class Foo {
+            promise<void> p1, p2;                         // declared first ...
+            future<void> f1 = p1.get_future();            // ... so these initializers can use them
+            future<void> f2 = p2.get_future();
+        public:
+            void first(function<void()> printFirst)   { printFirst();  p1.set_value(); }
+            void second(function<void()> printSecond) { f1.wait(); printSecond(); p2.set_value(); }
+            void third(function<void()> printThird)   { f2.wait(); printThird(); }
+        };
+
+        int main() {
+            Foo foo;
+            thread c([&] { foo.third([] { cout << "third"; }); });
+            thread a([&] { foo.first([] { cout << "first"; }); });
+            thread b([&] { foo.second([] { cout << "second"; }); });
+            a.join(); b.join(); c.join();
+            cout << "\n";                                 // firstsecondthird
+        }`,
+      dry: { head: ['time', 'thread C (third)', 'thread A (first)', 'thread B (second)'], rows: [['1', 'f2.wait() sleeps', '', ''], ['2', '', 'prints first, p1.set_value()', ''], ['3', '', '', 'f1 ready → prints second, p2.set_value()'], ['4', 'wakes → prints third', '', '']] },
+      complexity: `<p>O(1) work; each thread blocks at most once; no CPU spinning.</p>`,
+      followUps: ['Solve it with C++20 <code>std::binary_semaphore</code>', 'What if each method may be called many times in rounds (FooBar alternately)?']
+    }
+  });
+
+  /* ======================================================================
+     PRACTICE — Medium
+     ====================================================================== */
+  practice.push({
+    title: 'Rate Limiter Counter: incrementIfBelow(limit)',
+    level: 'Medium', tags: ['mutex', 'atomic', 'CAS', 'check-then-act'], companies: ['Stripe', 'Cloudflare', 'Uber'],
+    statement: `<p>Build a counter shared by request-handler threads with <code>bool tryAcquire()</code>: if the current count is below <code>limit</code>, increment it and return true, otherwise return false (request rejected). Also <code>void release()</code> (decrement) and <code>int inUse()</code>. The count must never exceed <code>limit</code>, under any interleaving. Give a mutex version and a lock-free version.</p>`,
+    constraints: `limit ≤ 10<sup>6</sup>, up to 64 threads, millions of calls per second`,
+    example: `<p>limit = 2, three threads call tryAcquire() at once → exactly ${H.c('g', 'two get true')}, ${H.c('r', 'one gets false')}; inUse() = 2.</p>`,
+    brute: { why: `<p>"if (count.load() &lt; limit) count++" is check-then-act: two threads both see 1 &lt; 2 and both increment to 3. Each operation is atomic, the pair is not.</p>`, code: R`
+      class LimiterBAD {
+          std::atomic<int> count{0};
+          const int limit;
+      public:
+          explicit LimiterBAD(int l) : limit(l) {}
+          bool tryAcquire() {
+              if (count.load() < limit) { ++count; return true; }   // two threads can both pass the check
+              return false;
+          }
+      };` },
+    mcq: { q: 'In the lock-free version, what does the CAS loop guarantee?', options: ['That no thread ever retries', 'That we only increment if count is STILL the value we compared against the limit', 'That the counter is always even', 'That threads acquire in FIFO order'], answer: 1, explain: 'compare_exchange(cur, cur+1) succeeds only if nobody changed count since we read cur and checked cur &lt; limit, closing the check-then-act gap.' },
+    hints: [`<p>The check and the increment must be one indivisible unit: either a lock around both, or a compare-and-swap that only succeeds if the value is unchanged.</p>`, `<p>CAS loop: <code>int cur = count.load(); while (cur &lt; limit) { if (count.compare_exchange_weak(cur, cur + 1)) return true; } return false;</code></p>`, `<p>release() can be a plain <code>fetch_sub(1)</code>. Think about which memory order the acquire path needs (acquire/release if the counter guards other resources; relaxed if it's only a number).</p>`],
+    solution: {
+      approach: `<p>Two correct designs. <b>Mutex:</b> lock, check, increment, unlock: simple and obviously right. <b>Lock-free:</b> CAS loop: read cur, give up if cur ≥ limit, otherwise CAS cur → cur+1; on failure cur is refreshed and we re-check. The count can never pass the limit because every successful increment was based on an up-to-date value below the limit.</p>`,
+      code: R`
+        #include <bits/stdc++.h>
+        using namespace std;
+
+        class LimiterMutex {
+            mutable mutex m;
+            int count = 0;
+            const int limit;
+        public:
+            explicit LimiterMutex(int l) : limit(l) {}
+            bool tryAcquire() {
+                lock_guard<mutex> g(m);                     // check + act under ONE lock
+                if (count >= limit) return false;
+                ++count;
+                return true;
+            }
+            void release() { lock_guard<mutex> g(m); --count; }
+            int inUse() const { lock_guard<mutex> g(m); return count; }
+        };
+
+        class LimiterAtomic {
+            atomic<int> count{0};
+            const int limit;
+        public:
+            explicit LimiterAtomic(int l) : limit(l) {}
+            bool tryAcquire() {
+                int cur = count.load(memory_order_relaxed);
+                while (cur < limit) {
+                    // succeeds only if count is still cur; acquire: we may use the guarded resource next
+                    if (count.compare_exchange_weak(cur, cur + 1, memory_order_acquire, memory_order_relaxed))
+                        return true;
+                }                                            // failure refreshed cur; loop re-checks the limit
+                return false;
+            }
+            void release() { count.fetch_sub(1, memory_order_release); }
+            int inUse() const { return count.load(memory_order_relaxed); }
+        };
+
+        int main() {
+            LimiterAtomic lim(2);
+            atomic<int> granted{0};
+            {
+                vector<jthread> ts;
+                for (int i = 0; i < 3; ++i) ts.emplace_back([&] { if (lim.tryAcquire()) ++granted; });
+            }
+            cout << granted << " " << lim.inUse() << "\n";  // 2 2
+        }`,
+      dry: { head: ['step', 'T1', 'T2', 'count'], rows: [['1', 'cur = 1', 'cur = 1', '1'], ['2', 'CAS 1→2 ok, true', '', '2'], ['3', '', 'CAS 1→2 fails, cur = 2', '2'], ['4', '', '2 &lt; 2 false → return false', '2']] },
+      complexity: `<p>O(1) expected per call. Mutex: ~20 ns uncontended, much more when contended. CAS: lock-free, retries only when another thread just succeeded.</p>`,
+      followUps: ['Make tryAcquire block until a slot frees up (std::counting_semaphore)', 'Turn this into a token bucket that refills over time']
+    }
+  });
+
+  practice.push({
+    title: 'Print Odd and Even Numbers Alternately',
+    level: 'Medium', tags: ['condition_variable', 'turn-taking'], companies: ['Amazon', 'Oracle', 'Infosys', 'Flipkart'],
+    statement: `<p>Thread <b>Odd</b> prints only odd numbers, thread <b>Even</b> prints only even numbers. Together they must print <code>1 2 3 ... N</code> in order. No busy-waiting.</p>`,
+    constraints: `1 ≤ N ≤ 10<sup>6</sup>; exactly 2 threads`,
+    example: `<p>N = 5 → ${H.c('g', '1 2 3 4 5')}. Odd prints 1, then sleeps until Even has printed 2, and so on. Both threads must exit when the counter passes N.</p>`,
+    brute: { why: `<p>Spin-checking a shared counter with an atomic works but wastes 100% of two cores. Using a plain int is a data race. Using <code>sleep_for</code> to take turns is guessing, not synchronization.</p>`, code: R`
+      std::atomic<int> nextNum{1};
+      void spinPrinter(int parity, int n) {
+          while (true) {
+              int v = nextNum.load();
+              if (v > n) return;
+              if (v % 2 == parity) { std::cout << v << ' '; nextNum.store(v + 1); }   // correct but spins at 100% CPU
+          }
+      }` },
+    mcq: { q: 'What must the predicate passed to <code>cv.wait</code> include so both threads exit at the end?', options: ['Only "it is my turn"', '"it is my turn" OR "counter &gt; N"', 'Only "counter &gt; N"', 'Nothing; wait without predicate'], answer: 1, explain: 'When the last number is printed, the other thread is asleep waiting for its turn, which will never come. It must also wake when the work is finished, otherwise it waits forever and join() hangs.' },
+    hints: [`<p>Shared state: one integer <code>cur</code> (next number to print), protected by a mutex.</p>`, `<p>Each thread loops: lock → <code>wait(lk, [&amp;]{ return cur &gt; n || cur % 2 == parity; })</code> → if done, return → print → ++cur → notify.</p>`, `<p>Notify after changing <code>cur</code>. With exactly two threads, notify_one works; notify_all is the safe default. Don't forget the exit condition in the predicate.</p>`],
+    solution: {
+      approach: `<p>One mutex, one condition_variable, one shared counter. A thread may print only when <code>cur</code> has its parity; otherwise it sleeps. After printing it increments and notifies, which hands the turn to the other thread. The predicate also checks <code>cur &gt; n</code> so the waiting thread wakes and exits at the end.</p>`,
+      code: R`
+        #include <bits/stdc++.h>
+        using namespace std;
+
+        int main() {
+            const int n = 10;
+            mutex m;
+            condition_variable cv;
+            int cur = 1;                                        // next number to print (guarded by m)
+
+            auto printer = [&](int parity) {
+                while (true) {
+                    unique_lock<mutex> lk(m);
+                    cv.wait(lk, [&] { return cur > n || cur % 2 == parity; });
+                    if (cur > n) return;                        // finished: leave (the lock unlocks itself)
+                    cout << cur << ' ';
+                    ++cur;                                      // hand the turn over ...
+                    lk.unlock();
+                    cv.notify_all();                            // ... and wake the other thread
+                }
+            };
+
+            thread odd(printer, 1), even(printer, 0);
+            odd.join(); even.join();
+            cout << "\n";                                       // 1 2 3 4 5 6 7 8 9 10
+        }`,
+      dry: { head: ['cur', 'Odd', 'Even'], rows: [['1', 'prints 1 → cur=2, notify', 'waiting (1 is odd)'], ['2', 'waiting', 'prints 2 → cur=3, notify'], ['3', 'prints 3 → cur=4', 'waiting'], ['11', 'cur &gt; n → exit', 'cur &gt; n → exit']] },
+      complexity: `<p>O(N) prints; each number costs one handoff (~2–10 µs with kernel wakeups). Turn-taking is inherently sequential, so it's no faster than one thread.</p>`,
+      followUps: ['Generalize to K threads printing in round-robin', 'Solve with two C++20 binary_semaphores (ping-pong)']
+    }
+  });
+
+  practice.push({
+    title: 'Bug Hunt: The Logger Deadlock',
+    level: 'Medium', tags: ['deadlock', 'lock ordering', 'scoped_lock'], companies: ['Google', 'VMware', 'Oracle'],
+    statement: `<p>A service freezes about once a week with 0% CPU. Two code paths exist: <code>saveUser()</code> locks <code>dbMutex</code> and then (to log) <code>logMutex</code>; <code>rotateLogs()</code> locks <code>logMutex</code> and then (to record the rotation in the DB) <code>dbMutex</code>. Explain the freeze and give two different fixes.</p>`,
+    constraints: `Both functions are called frequently from many threads.`,
+    example: `${H.table(['time', 'thread 1: saveUser', 'thread 2: rotateLogs'], [['1', 'locks dbMutex', ''], ['2', '', 'locks logMutex'], ['3', 'waits for logMutex', ''], ['4', '', 'waits for dbMutex → <span class="c-r">DEADLOCK</span>']])}`,
+    brute: { why: `<p>Opposite lock order creates a cycle in the wait-for graph: T1 holds db, wants log; T2 holds log, wants db. It only happens when the timing lines up, which is why it shows up weekly and never in tests.</p>`, code: R`
+      std::mutex dbMutex, logMutex;
+      void saveUser() {
+          std::lock_guard a(dbMutex);
+          /* write user row */
+          std::lock_guard b(logMutex);      // db -> log
+          /* append "user saved" */
+      }
+      void rotateLogs() {
+          std::lock_guard a(logMutex);
+          /* rotate file */
+          std::lock_guard b(dbMutex);       // log -> db  (opposite order!)
+          /* record rotation */
+      }` },
+    mcq: { q: 'Which change does NOT reliably fix this deadlock?', options: ['Lock both with std::scoped_lock(dbMutex, logMutex) in both functions', 'Always lock dbMutex before logMutex everywhere', 'Release the first lock before taking the second (no nesting)', 'Add a 1 ms sleep before the second lock'], answer: 3, explain: 'Sleeping changes the timing but the cycle is still possible. The other three remove hold-and-wait or the circular order.' },
+    hints: [`<p>Draw who holds what and who waits for what. A cycle = deadlock.</p>`, `<p>Fix A: one global order (db before log) or <code>std::scoped_lock</code>. Fix B: don't hold one lock while taking the other: finish the DB work, unlock, then log.</p>`, `<p>Fix B is often best in practice: logging under a DB lock also makes the critical section slow. Copy what you need to log while locked, log after unlocking.</p>`],
+    solution: {
+      approach: `<p><b>Fix 1 (ordering):</b> acquire both with <code>std::scoped_lock</code> (or one documented global order). <b>Fix 2 (narrow critical sections):</b> never nest: do the DB work under dbMutex, release it, then log under logMutex. Fix 2 also shortens lock hold times. Prevent recurrence with a lock-hierarchy convention or Clang thread-safety annotations.</p>`,
+      code: R`
+        #include <bits/stdc++.h>
+        using namespace std;
+
+        mutex dbMutex, logMutex;
+        vector<string> dbRows, logLines;
+
+        // Fix 2: no nesting — finish with one lock before taking the other
+        void saveUser(const string& name) {
+            {
+                lock_guard<mutex> a(dbMutex);
+                dbRows.push_back(name);
+            }                                           // dbMutex released here
+            lock_guard<mutex> b(logMutex);
+            logLines.push_back("saved " + name);
+        }
+
+        // Fix 1: when both are truly needed together, take them as one unit
+        void rotateLogs() {
+            scoped_lock both(logMutex, dbMutex);        // deadlock-free in any argument order
+            logLines.clear();
+            dbRows.push_back("log rotated");
+        }
+
+        int main() {
+            {
+                vector<jthread> ts;
+                for (int i = 0; i < 4; ++i) {
+                    ts.emplace_back([i] { for (int k = 0; k < 1000; ++k) saveUser("u" + to_string(i)); });
+                    ts.emplace_back([] { for (int k = 0; k < 100; ++k) rotateLogs(); });
+                }
+            }                                           // never hangs
+            cout << dbRows.size() << "\n";              // 4000 + 400 = 4400
+        }`,
+      dry: { head: ['time', 'saveUser', 'rotateLogs'], rows: [['1', 'lock db, insert, unlock db', ''], ['2', '', 'scoped_lock(log, db) → gets both'], ['3', 'lock log → waits (holds nothing else)', 'clear logs, insert, unlock both'], ['4', 'gets log, appends', '']] },
+      complexity: `<p>No extra cost for Fix 2 (shorter hold times usually make it faster). scoped_lock adds a try-lock/back-off only under contention.</p>`,
+      followUps: ['How would you detect potential deadlocks automatically (lock-order graphs, TSan deadlock detector)?', 'What is a lock hierarchy and how would you enforce it at runtime?']
+    }
+  });
+
+  practice.push({
+    title: 'Bug Hunt: The Job Queue That Sometimes Crashes and Sometimes Hangs',
+    level: 'Medium', tags: ['condition_variable', 'lost wakeup', 'spurious wakeup'], companies: ['Meta', 'Bloomberg', 'Snowflake'],
+    statement: `<p>This job queue crashes rarely (pop from an empty queue) and hangs rarely (a worker sleeps although jobs are queued). Find <b>both</b> bugs in the code below and fix them.</p><pre>void push(int j) { jobs.push(j); cv.notify_one(); }
+int pop() {
+    std::unique_lock lk(m);
+    if (jobs.empty()) cv.wait(lk);
+    int j = jobs.front(); jobs.pop(); return j;
+}</pre>`,
+    constraints: `Several producers and several consumers.`,
+    example: `${H.table(['bug', 'symptom', 'cause'], [['push without the mutex', 'hang / corruption', 'data race on the queue, and the lost wakeup window'], ['if instead of while', 'crash: front() on empty', 'spurious or stolen wakeup']])}`,
+    brute: { why: `<p>(1) <code>push</code> modifies <code>jobs</code> without the mutex: a data race with <code>pop</code>, and a notify can land between a consumer's empty-check and its wait (lost wakeup → sleeps forever). (2) <code>if</code> doesn't re-check after waking: a spurious wakeup or another consumer stealing the job leaves the queue empty.</p>`, code: R`
+      std::mutex m;
+      std::condition_variable cv;
+      std::queue<int> jobs;
+      void pushBAD(int j) { jobs.push(j); cv.notify_one(); }        // no lock
+      int popBAD() {
+          std::unique_lock lk(m);
+          if (jobs.empty()) cv.wait(lk);                            // if, not while
+          int j = jobs.front(); jobs.pop();
+          return j;
+      }` },
+    mcq: { q: 'A consumer checked <code>jobs.empty()</code> (true) and is about to call wait(). The producer pushes and notifies WITHOUT the lock right now. What happens?', options: ['The consumer gets the notification later', 'The notify is lost; the consumer then sleeps although a job is queued', 'wait() returns immediately because it remembers the notify', 'The program throws'], answer: 1, explain: 'condition_variable has no memory. If the notify happens before the consumer is registered as a waiter, it is lost. Taking the mutex in push makes this window impossible, because push cannot run between check and wait.' },
+    hints: [`<p>Two independent rules are broken: "modify shared state under the mutex" and "always re-check the condition after waking".</p>`, `<p>push: <code>{ lock_guard g(m); jobs.push(j); } cv.notify_one();</code>. pop: <code>cv.wait(lk, [&amp;]{ return !jobs.empty(); });</code></p>`, `<p>Bonus: add a <code>closed</code> flag for shutdown and include it in the predicate, with <code>notify_all</code> in close().</p>`],
+    solution: {
+      approach: `<p>Push under the mutex (removes the data race and the lost-wakeup window), and wait with a predicate (handles spurious and stolen wakeups). Add a shutdown flag so consumers can exit. The notify can happen after unlocking.</p>`,
+      code: R`
+        #include <bits/stdc++.h>
+        using namespace std;
+
+        class JobQueue {
+            mutex m;
+            condition_variable cv;
+            queue<int> jobs;
+            bool closed = false;
+        public:
+            void push(int j) {
+                { lock_guard<mutex> g(m); jobs.push(j); }       // FIX 1: modify under the mutex
+                cv.notify_one();
+            }
+            optional<int> pop() {
+                unique_lock<mutex> lk(m);
+                cv.wait(lk, [&] { return !jobs.empty() || closed; });   // FIX 2: predicate = while loop
+                if (jobs.empty()) return nullopt;               // closed and drained
+                int j = jobs.front(); jobs.pop();
+                return j;
+            }
+            void close() { { lock_guard<mutex> g(m); closed = true; } cv.notify_all(); }
+        };
+
+        int main() {
+            JobQueue q;
+            atomic<int> done{0};
+            vector<thread> workers;
+            for (int i = 0; i < 3; ++i) workers.emplace_back([&] { while (q.pop()) ++done; });
+            for (int j = 0; j < 1000; ++j) q.push(j);
+            q.close();
+            for (auto& w : workers) w.join();
+            cout << done << "\n";                               // 1000
+        }`,
+      dry: { head: ['time', 'consumer', 'producer (fixed)'], rows: [['1', 'lock, sees empty, wait() → unlock + sleep', ''], ['2', '', 'lock (now possible), push, unlock'], ['3', '', 'notify_one → consumer woken'], ['4', 're-lock, predicate true → pop', '']] },
+      complexity: `<p>O(1) per operation; the fix adds one uncontended lock to push (~20 ns).</p>`,
+      followUps: ['Is it OK to call notify_one() while still holding the lock?', 'Why does an atomic<bool> flag alone not fix the lost wakeup?']
+    }
+  });
+
+  practice.push({
+    title: 'Many Producers, Many Consumers, Clean Shutdown',
+    level: 'Medium', tags: ['producer-consumer', 'shutdown', 'condition_variable'], companies: ['Amazon', 'Databricks', 'Confluent'],
+    statement: `<p>P producer threads each produce the numbers 1..K. C consumer threads must process (sum) <b>every</b> number exactly once and then <b>all</b> exit. Implement it without busy-waiting, and make sure no consumer hangs at shutdown and no item is lost.</p>`,
+    constraints: `1 ≤ P, C ≤ 16; 1 ≤ K ≤ 10<sup>6</sup>; expected total = P · K(K+1)/2`,
+    example: `<p>P = 2, C = 3, K = 1000 → total must be ${H.c('g', '2 × 500500 = 1001000')}, and the program must terminate.</p>`,
+    brute: { why: `<p>Common broken shutdowns: (a) consumers loop <code>while (!q.empty())</code>, so they quit early when the queue is momentarily empty; (b) one "poison pill" for C consumers, so only one exits and the others hang; (c) close() uses notify_one, waking only one sleeper.</p>`, code: R`
+      std::mutex m; std::queue<int> q; long long total = 0;
+      void consumerBAD() {
+          while (true) {
+              std::lock_guard g(m);
+              if (q.empty()) return;            // BUG: queue may be empty only for a moment
+              total += q.front(); q.pop();
+          }
+      }` },
+    mcq: { q: 'When is it safe to call <code>close()</code> on the queue?', options: ['Right after starting the producers', 'After ALL producer threads have been joined', 'When the queue becomes empty', 'From any consumer'], answer: 1, explain: 'Close means "no more items will ever come". That is only true after every producer has finished, which you know by joining them. Consumers then drain the rest and exit.' },
+    hints: [`<p>The exit condition is "queue empty <b>and</b> no more items will come", not just "queue empty".</p>`, `<p>Use a blocking queue whose pop returns <code>optional&lt;T&gt;</code>: empty optional only when closed and drained. Join producers, then close, then join consumers.</p>`, `<p>close() must <code>notify_all</code>. Accumulate per consumer locally and merge once at the end to avoid a shared hot counter.</p>`],
+    solution: {
+      approach: `<p>Blocking queue with a <code>closed</code> flag. Consumers loop on <code>pop()</code>, which sleeps while the queue is empty and open, and returns nullopt only when closed <b>and</b> empty. The orchestration order: start consumers, start producers, join producers, close (notify_all), join consumers. Each consumer keeps a local sum and adds it to an atomic once.</p>`,
+      code: R`
+        #include <bits/stdc++.h>
+        using namespace std;
+
+        template <class T>
+        class ClosableQueue {
+            mutex m; condition_variable cv; deque<T> q; bool closed = false;
+        public:
+            void push(T v) { { lock_guard<mutex> g(m); q.push_back(std::move(v)); } cv.notify_one(); }
+            optional<T> pop() {
+                unique_lock<mutex> lk(m);
+                cv.wait(lk, [&] { return !q.empty() || closed; });
+                if (q.empty()) return nullopt;                    // closed AND drained
+                T v = std::move(q.front()); q.pop_front();
+                return v;
+            }
+            void close() { { lock_guard<mutex> g(m); closed = true; } cv.notify_all(); }
+        };
+
+        int main() {
+            const int P = 2, C = 3, K = 1000;
+            ClosableQueue<int> q;
+            atomic<long long> total{0};
+
+            vector<thread> consumers, producers;
+            for (int c = 0; c < C; ++c)
+                consumers.emplace_back([&] {
+                    long long mine = 0;
+                    while (auto v = q.pop()) mine += *v;          // ends only after close + drain
+                    total += mine;                                // one shared update per consumer
+                });
+            for (int p = 0; p < P; ++p)
+                producers.emplace_back([&] { for (int i = 1; i <= K; ++i) q.push(i); });
+
+            for (auto& t : producers) t.join();                   // 1) no more items will come
+            q.close();                                            // 2) tell everyone
+            for (auto& t : consumers) t.join();                   // 3) they drain and exit
+            cout << total << "\n";                                // 1001000
+        }`,
+      dry: { head: ['phase', 'producers', 'consumers', 'queue'], rows: [['run', 'pushing 1..K', 'popping, summing locally', 'varies'], ['producers joined', 'done', 'still draining', 'maybe non-empty'], ['close()', '-', 'all woken; keep popping', 'draining'], ['drained', '-', 'pop → nullopt → exit', 'empty']] },
+      complexity: `<p>O(P·K) total pushes/pops, each O(1) plus lock cost. Throughput is limited by the single mutex (~10<sup>6</sup>–10<sup>7</sup> ops/s); shard queues if you need more.</p>`,
+      followUps: ['Make the queue bounded so producers get back-pressure', 'How would you cancel immediately (drop remaining items) instead of draining?']
+    }
+  });
+
+  practice.push({
+    title: 'Parallel Word Count with std::async',
+    level: 'Medium', tags: ['std::async', 'map-reduce', 'no shared state'], companies: ['Google', 'Microsoft', 'Databricks'],
+    statement: `<p>Given a large <code>vector&lt;string&gt; words</code>, return an <code>unordered_map&lt;string,int&gt;</code> with the frequency of each word, using up to T tasks. Design it so that <b>no locks</b> are needed during counting.</p>`,
+    constraints: `n ≤ 10<sup>7</sup> words, T ≤ hardware_concurrency()`,
+    example: `<p>words = [a, b, a, c, b, a], T = 2 → task 0 counts [a, b, a] = {a:2, b:1}; task 1 counts [c, b, a] = {c:1, b:1, a:1}; merge → ${H.c('g', '{a:3, b:2, c:1}')}.</p>`,
+    brute: { why: `<p>One shared map protected by a mutex: every single word locks the same mutex, so the threads mostly wait for each other and it's often <i>slower</i> than one thread. Without the mutex it's a data race that corrupts the map.</p>`, code: R`
+      std::unordered_map<std::string, int> countShared(const std::vector<std::string>& w, int T) {
+          std::unordered_map<std::string, int> freq; std::mutex m;
+          std::vector<std::thread> ts;
+          for (int t = 0; t < T; ++t)
+              ts.emplace_back([&, t] {
+                  for (size_t i = t; i < w.size(); i += T) { std::lock_guard g(m); ++freq[w[i]]; }   // contention on every word
+              });
+          for (auto& th : ts) th.join();
+          return freq;
+      }` },
+    mcq: { q: 'Why does the map-reduce design need no mutex at all?', options: ['unordered_map is thread-safe for different keys', 'Each task owns a private map; maps are only combined on one thread after get() returns them', 'std::async adds a lock automatically', 'Strings are immutable'], answer: 1, explain: 'Nothing is shared and mutable during the parallel phase. The future hands each partial map back with a happens-before edge, and the merge runs on a single thread.' },
+    hints: [`<p><b>Map</b> phase: each task counts its own chunk into its own local map. <b>Reduce</b> phase: merge the partial maps.</p>`, `<p>Launch tasks with <code>async(launch::async, countChunk, cref(words), lo, hi)</code> returning a map; collect futures in a vector.</p>`, `<p>Merge into the largest map to reduce work; reserve buckets; pass the words by const reference (std::cref) to avoid copying 10<sup>7</sup> strings.</p>`],
+    solution: {
+      approach: `<p>Split the vector into T contiguous chunks; each async task builds a <b>private</b> frequency map for its chunk (no sharing, so no locks); the main thread then merges the T partial maps. This is map-reduce in miniature, and the same idea behind per-thread counters and parallel reductions.</p>`,
+      code: R`
+        #include <bits/stdc++.h>
+        using namespace std;
+
+        using Freq = unordered_map<string, int>;
+
+        Freq countChunk(const vector<string>& w, size_t lo, size_t hi) {
+            Freq local;                                        // private to this task
+            for (size_t i = lo; i < hi; ++i) ++local[w[i]];
+            return local;
+        }
+
+        Freq parallelCount(const vector<string>& w, int T) {
+            vector<future<Freq>> parts;
+            size_t chunk = (w.size() + T - 1) / T;
+            for (int t = 0; t < T; ++t) {
+                size_t lo = t * chunk, hi = min(w.size(), lo + chunk);
+                if (lo >= hi) break;
+                parts.push_back(async(launch::async, countChunk, cref(w), lo, hi));
+            }
+            Freq total;
+            for (auto& f : parts)                              // reduce on one thread
+                for (auto& [word, c] : f.get()) total[word] += c;
+            return total;
+        }
+
+        int main() {
+            vector<string> w = {"a", "b", "a", "c", "b", "a"};
+            Freq f = parallelCount(w, 2);
+            cout << f["a"] << f["b"] << f["c"] << "\n";        // 321
+        }`,
+      dry: { head: ['task', 'chunk', 'partial map'], rows: [['0', '[a, b, a]', '{a:2, b:1}'], ['1', '[c, b, a]', '{c:1, b:1, a:1}'], ['merge', '-', '{a:3, b:2, c:1}']] },
+      complexity: `<p>Work O(n + T·U) where U = distinct words per chunk (the merge); span O(n/T + T·U). Memory O(T·U) for partial maps.</p>`,
+      followUps: ['How would you merge the T maps in parallel too (tree reduction)?', 'Which is better for skewed data: static chunks or a shared atomic work index?']
+    }
+  });
+
+  /* ======================================================================
+     PRACTICE — Hard
+     ====================================================================== */
+  practice.push({
+    title: 'Implement a Thread Pool Whose submit() Returns a Future',
+    level: 'Hard', tags: ['thread pool', 'packaged_task', 'condition_variable', 'templates'], companies: ['Bloomberg', 'Microsoft', 'Nvidia', 'Two Sigma'],
+    statement: `<p>Implement <code>ThreadPool(size_t n)</code> with <code>submit(f, args...)</code> that queues any callable and returns a <code>std::future</code> of its result. Exceptions thrown by tasks must reach the caller through the future. The destructor must finish all queued tasks and join every worker. Submitting after shutdown should throw.</p>`,
+    constraints: `n ≤ 256 workers, millions of tasks; tasks may return any type including void.`,
+    example: `<p><code>ThreadPool pool(4); auto f = pool.submit([](int a, int b){ return a + b; }, 2, 3);</code> → <code>f.get() == 5</code>. A task that throws <code>runtime_error("x")</code> makes its <code>get()</code> rethrow ${H.c('r', 'runtime_error')} in the caller.</p>`,
+    brute: { why: `<p>One <code>std::async</code> (one OS thread) per task: ~20–50 µs of thread creation each, unbounded thread count under load, and terrible cache behaviour. A pool reuses a fixed set of threads.</p>`, code: R`
+      template <class F>
+      auto submitNaive(F f) {
+          return std::async(std::launch::async, std::move(f));   // a brand-new thread per task
+      }` },
+    mcq: { q: 'Why is the packaged_task wrapped in a <code>shared_ptr</code> before being put in a <code>std::queue&lt;std::function&lt;void()&gt;&gt;</code>?', options: ['To make it faster', 'std::function requires a copyable callable, and packaged_task is move-only', 'To share it between several workers that all run it', 'shared_ptr makes it thread-safe'], answer: 1, explain: 'std::function needs CopyConstructible targets. Capturing a shared_ptr makes the lambda copyable. (C++23 std::move_only_function removes the need.)' },
+    hints: [`<p>Parts: a vector of worker threads, a queue of type-erased jobs <code>function&lt;void()&gt;</code>, a mutex + condition_variable, and a <code>stopping</code> flag.</p>`, `<p>submit: build <code>packaged_task&lt;R()&gt;</code> from <code>bind(f, args...)</code>, take its future, push a lambda that runs it, then notify_one. Workers: wait(pred: stopping or !empty), pop, unlock, run.</p>`, `<p>Destructor: set stopping under the lock, notify_all, join all. Workers exit only when <code>stopping &amp;&amp; queue empty</code> so queued tasks still finish. Run the job <b>outside</b> the lock.</p>`],
+    solution: {
+      approach: `<p>Classic design: N workers loop on a condition variable, pulling type-erased jobs from a shared queue. <code>submit</code> wraps the call in a <code>packaged_task</code>, which captures the return value <i>or</i> the exception into its shared state, so the caller gets results and errors through the future. Shutdown sets a flag, wakes everyone, and joins; workers drain remaining jobs first. Jobs run outside the lock, so the lock is held only for the push/pop.</p>`,
+      code: R`
+        #include <bits/stdc++.h>
+        using namespace std;
+
+        class ThreadPool {
+            vector<thread> workers;
+            queue<function<void()>> jobs;
+            mutex m;
+            condition_variable cv;
+            bool stopping = false;
+
+            void workerLoop() {
+                while (true) {
+                    function<void()> job;
+                    {
+                        unique_lock<mutex> lk(m);
+                        cv.wait(lk, [&] { return stopping || !jobs.empty(); });
+                        if (stopping && jobs.empty()) return;        // drained: exit
+                        job = std::move(jobs.front());
+                        jobs.pop();
+                    }                                                // unlock BEFORE running the job
+                    job();                                           // packaged_task stores result/exception
+                }
+            }
+        public:
+            explicit ThreadPool(size_t n) {
+                for (size_t i = 0; i < n; ++i) workers.emplace_back([this] { workerLoop(); });
+            }
+
+            template <class F, class... Args>
+            auto submit(F&& f, Args&&... args) -> future<invoke_result_t<F, Args...>> {
+                using R = invoke_result_t<F, Args...>;
+                auto task = make_shared<packaged_task<R()>>(
+                    bind(std::forward<F>(f), std::forward<Args>(args)...));
+                future<R> fut = task->get_future();
+                {
+                    lock_guard<mutex> g(m);
+                    if (stopping) throw runtime_error("submit on a stopped ThreadPool");
+                    jobs.emplace([task] { (*task)(); });             // shared_ptr keeps the lambda copyable
+                }
+                cv.notify_one();
+                return fut;
+            }
+
+            ~ThreadPool() {
+                { lock_guard<mutex> g(m); stopping = true; }
+                cv.notify_all();                                     // wake every worker
+                for (auto& w : workers) w.join();                    // they finish queued jobs first
+            }
+        };
+
+        int main() {
+            ThreadPool pool(4);
+            auto sum = pool.submit([](int a, int b) { return a + b; }, 2, 3);
+            auto bad = pool.submit([]() -> int { throw runtime_error("task failed"); });
+            vector<future<int>> squares;
+            for (int i = 0; i < 8; ++i) squares.push_back(pool.submit([i] { return i * i; }));
+
+            cout << sum.get() << "\n";                               // 5
+            try { bad.get(); } catch (const exception& e) { cout << e.what() << "\n"; }
+            int total = 0;
+            for (auto& f : squares) total += f.get();
+            cout << total << "\n";                                   // 140
+        }`,
+      dry: { head: ['event', 'queue', 'workers', 'futures'], rows: [['submit(sum)', '[sum]', 'one woken', 'sum: not ready'], ['worker runs sum', '[]', 'job() outside lock', 'sum: ready 5'], ['submit(bad)', '[bad]', 'one woken', 'bad: not ready'], ['bad throws', '[]', 'packaged_task stores exception', 'bad: ready (exception)'], ['~ThreadPool', '[]', 'stopping=true, notify_all, join', 'all done']] },
+      complexity: `<p>submit/pop: O(1) + one lock. Per-task overhead ≈ 1–5 µs (allocation + handoff) vs ~20–50 µs for a new thread. The single queue becomes the bottleneck above ~10<sup>6</sup> tasks/s; then use per-worker queues with work stealing.</p>`,
+      followUps: ['Add work stealing with per-worker deques', 'What happens if a task submits another task and waits on its future while all workers are busy (pool deadlock)?', 'Replace the shared_ptr trick with C++23 std::move_only_function']
+    }
+  });
+
+  practice.push({
+    title: 'What Can This Print? The Two-Flag Mutual Exclusion Puzzle',
+    level: 'Hard', tags: ['memory order', 'seq_cst', 'store buffering', 'Dekker'], companies: ['Jane Street', 'Optiver', 'Citadel Securities', 'Apple'],
+    statement: `<p>Two threads try to build mutual exclusion from two flags:</p><pre>Thread A: flagA.store(true, release); if (!flagB.load(acquire)) print("A");
+Thread B: flagB.store(true, release); if (!flagA.load(acquire)) print("B");</pre><p>Flags start false. List every possible output. Then change the code (still without a mutex) so that <b>at most one</b> letter can ever be printed, and explain why acquire/release was not enough.</p>`,
+    constraints: `Any conforming compiler and CPU, including x86 (TSO) and ARM.`,
+    example: `<p>Possible outputs with release/acquire: ${H.c('g', '"A"')}, ${H.c('g', '"B"')}, ${H.c('y', '"" (neither)')}, and ${H.c('r', '"AB" / "BA" (both!)')}. The last one breaks mutual exclusion.</p>`,
+    brute: { why: `<p>Release only keeps <b>earlier</b> operations before the store; acquire only keeps <b>later</b> operations after the load. Nothing stops "my store" and "my later load of the other flag" from being reordered (StoreLoad). Each core's store can sit in its store buffer while it reads the other flag as false from memory. Even x86 does this.</p>`, code: R`
+      std::atomic<bool> flagA{false}, flagB{false};
+      void threadA() {
+          flagA.store(true, std::memory_order_release);
+          if (!flagB.load(std::memory_order_acquire)) std::cout << "A";   // both A and B may print
+      }
+      void threadB() {
+          flagB.store(true, std::memory_order_release);
+          if (!flagA.load(std::memory_order_acquire)) std::cout << "B";
+      }` },
+    mcq: { q: 'Which change guarantees that "AB" can never be printed?', options: ['Use memory_order_relaxed everywhere', 'Use memory_order_seq_cst for the stores and the loads', 'Make the flags volatile', 'Swap the order of store and load'], answer: 1, explain: 'seq_cst puts all four operations into one total order. Whichever store comes first in that order, the other thread\'s later load must see it, so at least one load reads true. Swapping store and load breaks the protocol completely.' },
+    hints: [`<p>First enumerate all 6 interleavings: in every one, at least one thread sees the other's flag as true. So "AB" can only come from <b>reordering</b>.</p>`, `<p>The pattern "store X; load Y" in one thread and "store Y; load X" in the other is the <b>store-buffering</b> litmus test. Only seq_cst (or seq_cst fences between store and load) forbids both loads returning false.</p>`, `<p>Fix: default seq_cst on all four operations, or keep the orders and put <code>atomic_thread_fence(memory_order_seq_cst)</code> between each store and load. Real code should just use std::mutex.</p>`],
+    solution: {
+      approach: `<p>With seq_cst, all seq_cst operations appear in a single total order S consistent with each thread's program order. Suppose flagA.store comes before flagB.store in S. Then B's load of flagA comes after flagA.store in S, so it reads true and B does not print. Symmetrically for the other case. Therefore at most one thread prints. This is why Dekker's and Peterson's algorithms need sequential consistency. On x86 the compiler emits <code>xchg</code> (or <code>mov</code> + <code>mfence</code>) for the seq_cst stores, which drains the store buffer before the load.</p>`,
+      code: R`
+        #include <bits/stdc++.h>
+        using namespace std;
+
+        atomic<bool> flagA{false}, flagB{false};
+        atomic<int> entered{0};
+
+        void threadA() {
+            flagA.store(true);                         // seq_cst (the default)
+            if (!flagB.load()) entered.fetch_add(1);   // "A enters"
+        }
+        void threadB() {
+            flagB.store(true);
+            if (!flagA.load()) entered.fetch_add(1);   // "B enters"
+        }
+
+        // Equivalent with explicit fences, keeping weaker operations:
+        void threadAFenced() {
+            flagA.store(true, memory_order_relaxed);
+            atomic_thread_fence(memory_order_seq_cst);  // StoreLoad barrier
+            if (!flagB.load(memory_order_relaxed)) entered.fetch_add(1);
+        }
+
+        int main() {
+            int violations = 0;
+            for (int i = 0; i < 20000; ++i) {
+                flagA = false; flagB = false; entered = 0;
+                thread a(threadA), b(threadB);
+                a.join(); b.join();
+                if (entered.load() == 2) ++violations;
+            }
+            cout << "both entered: " << violations << " times\n";   // always 0 with seq_cst
+        }`,
+      dry: { head: ['orders used', '"" possible?', '"A" or "B"?', '"AB" possible?'], rows: [['relaxed', 'yes (both stores first)', 'yes', '<span class="c-r">yes</span>'], ['release / acquire', 'yes', 'yes', '<span class="c-r">yes</span>'], ['seq_cst', 'yes', 'yes', '<span class="c-g">no</span>']] },
+      complexity: `<p>Each seq_cst store costs a full fence on x86 (~20–30 cycles more than a plain store). That's exactly why hardware vendors made StoreLoad reordering the one reordering x86 allows.</p>`,
+      followUps: ['Nothing printed ("") is possible even with seq_cst: give the interleaving. Why is that acceptable for mutual exclusion but bad for progress?', 'Why is a mutex-based solution still preferred in production?', 'What does the IRIW litmus test show that store-buffering does not?']
+    }
+  });
+
+  practice.push({
+    title: 'Build a Correct Spinlock (and Explain Each Memory Order)',
+    level: 'Hard', tags: ['atomic', 'spinlock', 'acquire/release', 'TTAS'], companies: ['Nvidia', 'Intel', 'Hudson River Trading'],
+    statement: `<p>Implement <code>SpinLock</code> with <code>lock()</code>, <code>try_lock()</code> and <code>unlock()</code> using <code>std::atomic&lt;bool&gt;</code>, usable with <code>std::lock_guard</code>. Use the weakest correct memory orders and avoid hammering the cache line while waiting. Explain what breaks if <code>unlock()</code> used <code>memory_order_relaxed</code>.</p>`,
+    constraints: `Critical sections are tiny (&lt; 100 ns); up to 8 threads on 8 cores.`,
+    example: `<p>Two threads each do 10<sup>6</sup> increments of a plain <code>long long</code> under the spinlock → ${H.c('g', '2,000,000')} every time, with no data race reported by TSan.</p>`,
+    brute: { why: `<p>"if (!locked.load()) locked.store(true)" is check-then-act: both threads can see false and both enter. Also, using relaxed for lock/unlock gives no happens-before between critical sections: writes inside one critical section may not be visible to the next owner, a data race on the protected data.</p>`, code: R`
+      class SpinLockBAD {
+          std::atomic<bool> locked{false};
+      public:
+          void lock() {
+              while (true) {
+                  if (!locked.load()) { locked.store(true); return; }   // two threads can both get here
+              }
+          }
+          void unlock() { locked.store(false, std::memory_order_relaxed); }   // no release: publishes nothing
+      };` },
+    mcq: { q: 'Why must <code>unlock()</code> use (at least) <code>memory_order_release</code>?', options: ['Otherwise the store might never happen', 'So writes made inside the critical section happen-before the next thread that acquires the lock reads them', 'Release makes the store faster', 'It is required by lock_guard'], answer: 1, explain: 'The next lock() does an acquire RMW that reads the value written by unlock\'s release store, creating synchronizes-with. Without it, the protected data is accessed by two threads without happens-before: a data race.' },
+    hints: [`<p>Acquiring must be one atomic read-modify-write: <code>locked.exchange(true)</code> returns the old value; false means you got it.</p>`, `<p>lock: <code>exchange(true, acquire)</code>; unlock: <code>store(false, release)</code>. While waiting, only <b>read</b> (<code>load(relaxed)</code>) until it looks free, then retry the exchange: test-and-test-and-set.</p>`, `<p>Add a CPU pause / <code>this_thread::yield()</code> in the read loop. try_lock = one exchange attempt, but check with a cheap load first to avoid a write when it's obviously taken.</p>`],
+    solution: {
+      approach: `<p><b>Acquire</b> with an atomic exchange (one RMW, so no check-then-act gap) using <code>memory_order_acquire</code>, so nothing in the critical section can move above it. <b>Release</b> with a store of false using <code>memory_order_release</code>, so nothing in the critical section can move below it, and the next acquirer sees all writes. While contended, spin on a relaxed <b>load</b>: readers can share the cache line in "shared" state; only the final exchange needs exclusive ownership (TTAS).</p>`,
+      code: R`
+        #include <bits/stdc++.h>
+        using namespace std;
+
+        class SpinLock {
+            atomic<bool> locked{false};
+        public:
+            void lock() {
+                while (true) {
+                    if (!locked.exchange(true, memory_order_acquire)) return;   // got it
+                    while (locked.load(memory_order_relaxed))                   // wait by READING only
+                        this_thread::yield();                                   // (or a CPU pause instruction)
+                }
+            }
+            bool try_lock() {
+                return !locked.load(memory_order_relaxed)                       // cheap check first
+                    && !locked.exchange(true, memory_order_acquire);
+            }
+            void unlock() { locked.store(false, memory_order_release); }        // publish the critical section
+        };
+
+        int main() {
+            SpinLock sl;
+            long long counter = 0;                       // plain data protected by the spinlock
+            {
+                jthread a([&] { for (int i = 0; i < 1000000; ++i) { lock_guard<SpinLock> g(sl); ++counter; } });
+                jthread b([&] { for (int i = 0; i < 1000000; ++i) { lock_guard<SpinLock> g(sl); ++counter; } });
+            }
+            cout << counter << "\n";                     // 2000000
+        }`,
+      dry: { head: ['step', 'T1', 'T2', 'locked'], rows: [['1', 'exchange(true, acq) → old false: enters', '', 'true'], ['2', '++counter', 'exchange → old true: spin on load', 'true'], ['3', 'store(false, release)', 'load sees false', 'false'], ['4', '', 'exchange(true, acq) → old false: enters, sees T1\'s write', 'true']] },
+      complexity: `<p>Uncontended lock+unlock ≈ 2 atomic ops (~10–20 ns). Under contention TTAS avoids cache-line ping-pong while waiting. Spinlocks are bad if the holder can be preempted, or with more threads than cores; then std::mutex (spin briefly, then sleep) wins.</p>`,
+      followUps: ['Make it fair with a ticket lock (two counters: next ticket and now serving)', 'Why do spinlocks perform terribly on an oversubscribed machine?', 'How does C++20 atomic::wait() let you build a lock that sleeps instead of spinning?']
+    }
+  });
+
+  practice.push({
+    title: 'Lock-Free Stack (Treiber) with Safe Memory Handling',
+    level: 'Hard', tags: ['lock-free', 'CAS', 'ABA', 'memory reclamation'], companies: ['Jane Street', 'Meta', 'Microsoft', 'Nvidia'],
+    statement: `<p>Implement a lock-free LIFO stack with <code>push(T)</code> and <code>optional&lt;T&gt; pop()</code> using a CAS loop on an <code>std::atomic&lt;Node*&gt;</code> head. Popped nodes must not be deleted while another thread might still be reading them, and the design must not suffer from the ABA problem. (Memory may be reclaimed in the destructor.)</p>`,
+    constraints: `Up to 32 threads pushing and popping concurrently; correctness over memory efficiency.`,
+    example: `<p>${H.table(['ABA scenario if nodes were freed and reused', ''], [['T1: reads head = A, next = B, then pauses', ''], ['T2: pops A, pops B (frees B), pushes A again (same address)', ''], ['T1: CAS(head A → B) <span class="c-r">succeeds</span>, head now points at freed B', 'use-after-free']])}</p>`,
+    brute: { why: `<p>The textbook stack that calls <code>delete old</code> right after a successful pop is broken: another thread that read <code>old</code> as head may still dereference <code>old-&gt;next</code> (use-after-free), and if the allocator reuses the address, a stale CAS can succeed (ABA). A mutex-based stack is correct but blocking.</p>`, code: R`
+      template <class T>
+      class StackBAD {
+          struct Node { T v; Node* next; };
+          std::atomic<Node*> head{nullptr};
+      public:
+          void push(T v) { Node* n = new Node{std::move(v), head.load()}; while (!head.compare_exchange_weak(n->next, n)) {} }
+          std::optional<T> pop() {
+              Node* old = head.load();
+              while (old && !head.compare_exchange_weak(old, old->next)) {}   // old->next may read freed memory
+              if (!old) return std::nullopt;
+              T v = std::move(old->v);
+              delete old;                                                    // BUG: others may still use it (and ABA)
+              return v;
+          }
+      };` },
+    mcq: { q: 'Why does "never free popped nodes until the destructor" prevent ABA here?', options: ['Because CAS becomes wait-free', 'Because a node address can never be reused while the stack is alive, so head == old really means the same node is still on top', 'Because the stack becomes FIFO', 'It does not prevent ABA'], answer: 1, explain: 'ABA needs the same address to come back with different meaning. If memory is never recycled during operation, an address uniquely identifies a node, and dereferencing old-&gt;next is always safe. Production code uses hazard pointers / epochs (C++26 has std::hazard_pointer and RCU) to reclaim earlier.' },
+    hints: [`<p>push: build the node privately, set <code>n-&gt;next = head</code>, CAS head from n-&gt;next to n (on failure, CAS refreshes n-&gt;next for you).</p>`, `<p>pop: <code>old = head.load(acquire)</code>; loop CAS(old → old-&gt;next). Use release on push's CAS and acquire on pop's load/CAS so the popper sees the node's contents.</p>`, `<p>Reclamation: push popped nodes onto a separate lock-free "retired" list (using a different link field) and delete everything in the destructor. Note the trade-off: memory grows with the number of pops.</p>`],
+    solution: {
+      approach: `<p>Treiber stack: a CAS loop swaps the head pointer. Push publishes a fully built node with a <b>release</b> CAS; pop reads head with <b>acquire</b> so it can safely read <code>old-&gt;next</code> and the value. Safety comes from <b>deferred reclamation</b>: popped nodes go to a retired list (linked through a separate field, so concurrent readers of <code>next</code> are unaffected) and are freed only in the destructor. Since addresses are never reused while the stack is live, ABA can't happen and no thread ever touches freed memory. Production versions reclaim earlier with hazard pointers or epoch-based schemes.</p>`,
+      code: R`
+        #include <bits/stdc++.h>
+        using namespace std;
+
+        template <class T>
+        class TreiberStack {
+            struct Node {
+                T value;
+                Node* next;                    // stack link: written only before publication
+                Node* retiredNext = nullptr;   // separate link for the retired list
+            };
+            atomic<Node*> head{nullptr};
+            atomic<Node*> retired{nullptr};
+
+            void retire(Node* n) {            // lock-free push onto the retired list
+                n->retiredNext = retired.load(memory_order_relaxed);
+                while (!retired.compare_exchange_weak(n->retiredNext, n, memory_order_release, memory_order_relaxed)) {}
+            }
+        public:
+            void push(T v) {
+                Node* n = new Node{std::move(v), head.load(memory_order_relaxed)};
+                // on failure, CAS writes the current head into n->next and we retry
+                while (!head.compare_exchange_weak(n->next, n, memory_order_release, memory_order_relaxed)) {}
+            }
+
+            optional<T> pop() {
+                Node* old = head.load(memory_order_acquire);
+                // old is never freed while the stack lives, so reading old->next is always safe
+                while (old && !head.compare_exchange_weak(old, old->next, memory_order_acquire, memory_order_acquire)) {}
+                if (!old) return nullopt;
+                optional<T> out(std::move(old->value));   // we own old exclusively now
+                retire(old);                              // defer deletion: no use-after-free, no ABA
+                return out;
+            }
+
+            ~TreiberStack() {                             // no other threads may be running now
+                for (Node* n = head.load(); n;) { Node* nx = n->next; delete n; n = nx; }
+                for (Node* n = retired.load(); n;) { Node* nx = n->retiredNext; delete n; n = nx; }
+            }
+        };
+
+        int main() {
+            TreiberStack<int> st;
+            atomic<long long> popped{0};
+            {
+                vector<jthread> ts;
+                for (int t = 0; t < 4; ++t)
+                    ts.emplace_back([&, t] {
+                        for (int i = 1; i <= 1000; ++i) st.push(i);
+                        for (int i = 0; i < 1000; ++i) if (auto v = st.pop()) popped += *v;
+                    });
+            }
+            while (auto v = st.pop()) popped += *v;               // drain leftovers
+            cout << popped << "\n";                               // 4 * 500500 = 2002000
+        }`,
+      dry: { head: ['step', 'T1 (pop)', 'T2 (push 9)', 'head'], rows: [['1', 'old = A (acquire), old-&gt;next = B', '', 'A'], ['2', '', 'n = {9, next = A}; CAS(A → n) ok (release)', 'n'], ['3', 'CAS(A → B) fails, old = n', '', 'n'], ['4', 'CAS(n → A) ok, returns 9, retires n', '', 'A']] },
+      complexity: `<p>push/pop O(1) expected, lock-free (a failed CAS means someone else succeeded). Memory O(total pushes) until destruction: that's the price of the simple reclamation scheme. Under heavy contention a single head is a hotspot; elimination-backoff stacks help.</p>`,
+      followUps: ['Replace deferred reclamation with hazard pointers (C++26 &lt;hazard_pointer&gt;)', 'How do tagged pointers (pointer + counter in one 64/128-bit CAS) prevent ABA?', 'Is this stack linearizable? Where is the linearization point of pop?']
+    }
+  });
+
+  practice.push({
+    title: 'Implement a Reusable (Cyclic) Barrier',
+    level: 'Hard', tags: ['condition_variable', 'barrier', 'generation counter'], companies: ['Google', 'Nvidia', 'Bloomberg'],
+    statement: `<p>Implement <code>Barrier(int n)</code> with <code>arriveAndWait()</code>: each of n threads calls it at the end of a phase; nobody continues until all n have arrived; then all are released together. The <b>same</b> barrier must work for many phases in a row (threads loop: work → arriveAndWait → work → ...). Use only a mutex and a condition_variable. (C++20 has <code>std::barrier</code>; build your own.)</p>`,
+    constraints: `2 ≤ n ≤ 64 threads, up to 10<sup>6</sup> phases`,
+    example: `<p>n = 3, 2 phases. Output must show all three "phase 0" lines before any "phase 1" line:</p><pre>t0 phase 0
+t2 phase 0
+t1 phase 0
+t1 phase 1
+t0 phase 1
+t2 phase 1</pre>`,
+    brute: { why: `<p>A single counter with predicate "count == n" breaks on reuse: the last thread resets count to 0 for the next phase, so threads that wake up late see count == 0 and go back to sleep forever, or a fast thread starts the next phase and increments the counter before slow ones left. A one-shot latch cannot be reused at all.</p>`, code: R`
+      class BarrierBAD {
+          std::mutex m; std::condition_variable cv; int count = 0; const int n;
+      public:
+          explicit BarrierBAD(int total) : n(total) {}
+          void arriveAndWait() {
+              std::unique_lock lk(m);
+              if (++count == n) { count = 0; cv.notify_all(); return; }   // reset for the next phase ...
+              cv.wait(lk, [&] { return count == n; });                     // ... so sleepers never see n: hang
+          }
+      };` },
+    mcq: { q: 'What does the generation counter solve?', options: ['It makes the barrier faster', 'Each waiter remembers which phase it waits for and wakes when the phase number changes, which is immune to the count being reset or reused', 'It counts the number of threads', 'It replaces the mutex'], answer: 1, explain: 'The predicate "generation != myGeneration" stays true forever once the phase has advanced, so late wakers can never miss it, and a fast thread entering the next phase cannot confuse it.' },
+    hints: [`<p>Keep three fields under the mutex: <code>waiting</code> (arrived in this phase), <code>generation</code> (phase number), and the constant <code>n</code>.</p>`, `<p>On arrival: remember <code>gen = generation</code>. If you're the last (<code>++waiting == n</code>): reset waiting to 0, <code>++generation</code>, notify_all. Otherwise wait until <code>generation != gen</code>.</p>`, `<p>The predicate must refer to the phase you joined, not to the count. Spurious wakeups are harmless. Notify can happen after unlocking.</p>`],
+    solution: {
+      approach: `<p>Use a <b>generation number</b>. Each arriving thread notes the current generation. The last arrival opens the barrier by resetting the count and incrementing the generation, then wakes all. Waiters sleep until the generation differs from the one they joined, a condition that stays true no matter how quickly the next phase starts. This is exactly how <code>std::barrier</code> and Java's <code>CyclicBarrier</code> work internally.</p>`,
+      code: R`
+        #include <bits/stdc++.h>
+        using namespace std;
+
+        class Barrier {
+            mutex m;
+            condition_variable cv;
+            const int n;
+            int waiting = 0;
+            unsigned long long generation = 0;
+        public:
+            explicit Barrier(int total) : n(total) {}
+            void arriveAndWait() {
+                unique_lock<mutex> lk(m);
+                auto gen = generation;                      // the phase I am part of
+                if (++waiting == n) {                       // last one in: open the gate
+                    waiting = 0;
+                    ++generation;
+                    lk.unlock();
+                    cv.notify_all();
+                    return;
+                }
+                cv.wait(lk, [&] { return generation != gen; });   // stays true even if the next phase began
+            }
+        };
+
+        int main() {
+            const int N = 3, PHASES = 3;
+            Barrier bar(N);
+            mutex outM;
+            vector<thread> ts;
+            for (int id = 0; id < N; ++id)
+                ts.emplace_back([&, id] {
+                    for (int p = 0; p < PHASES; ++p) {
+                        { lock_guard<mutex> g(outM); cout << "t" << id << " phase " << p << "\n"; }
+                        bar.arriveAndWait();                // nobody starts phase p+1 early
+                    }
+                });
+            for (auto& t : ts) t.join();
+        }`,
+      dry: { head: ['event', 'waiting', 'generation', 'effect'], rows: [['t0 arrives (gen 0)', '1', '0', 't0 sleeps'], ['t2 arrives (gen 0)', '2', '0', 't2 sleeps'], ['t1 arrives (gen 0)', '3 → 0', '0 → 1', 'notify_all: all released'], ['t1 races ahead, arrives (gen 1)', '1', '1', 'sleeps; t0/t2 still see 1 ≠ 0 and wake fine']] },
+      complexity: `<p>O(1) per arrival; one notify_all per phase (n wakeups). For huge n, tree/dissemination barriers avoid the single hot mutex. C++20 <code>std::barrier</code> also supports a completion function run once per phase.</p>`,
+      followUps: ['Add a completion callback executed once per phase by the last thread', 'Compare with std::latch: when is a one-shot latch enough?', 'How would a spinning (sense-reversing) barrier work for very short phases?']
+    }
+  });
+
+  /* ======================================================================
+     QUIZ
+     ====================================================================== */
+  quiz.push(
+    { q: 'What happens when a <code>std::thread</code> object that is still joinable is destroyed?', options: ['The thread is joined automatically', 'The thread is detached automatically', '<code>std::terminate()</code> is called', 'Nothing, the OS cleans up'], answer: 2, explain: 'The destructor of a joinable std::thread calls std::terminate. Call join() or detach() first, or use C++20 std::jthread, which joins in its destructor.' },
+    { q: '<code>void f(int&amp; x);</code> Which line starts a thread that modifies the caller\'s <code>n</code>?', options: ['<code>std::thread t(f, n);</code>', '<code>std::thread t(f, &amp;n);</code>', '<code>std::thread t(f, std::ref(n));</code>', '<code>std::thread t(f, std::move(n));</code>'], answer: 2, explain: 'std::thread copies its arguments. std::ref passes a reference_wrapper that converts back to int&amp;. The first line does not even compile with an int&amp; parameter.' },
+    { q: 'Two threads each run <code>++c</code> 1000 times on a plain shared <code>int c = 0</code>. What does the C++ standard say about the result?', options: ['It is always 2000', 'It is between 1000 and 2000', 'The behaviour is undefined (data race)', 'It is always 1000'], answer: 2, explain: 'Unsynchronized conflicting accesses where at least one is a write are a data race, which is undefined behaviour. In practice you usually see lost updates, but the standard promises nothing.' },
+    { q: 'Which statement about <code>std::atomic&lt;int&gt; x</code> is FALSE?', options: ['<code>x++</code> is a single atomic read-modify-write', '<code>x = x + 1</code> is a single atomic read-modify-write', '<code>x.fetch_add(1)</code> returns the old value', 'Concurrent <code>x.load()</code> and <code>x.store()</code> are not a data race'], answer: 1, explain: 'x = x + 1 is an atomic load followed by a separate atomic store, so another thread can sneak in between and the update can be lost.' },
+    { q: 'Why does <code>condition_variable::wait</code> need a <code>std::unique_lock</code> rather than a <code>std::lock_guard</code>?', options: ['lock_guard is slower', 'wait must unlock the mutex while sleeping and re-lock it before returning, and only unique_lock supports unlock/lock', 'lock_guard cannot be used with std::mutex', 'unique_lock is the only RAII lock'], answer: 1, explain: 'wait atomically releases the mutex and sleeps, then re-acquires it on wakeup. lock_guard has no unlock/lock operations, so it cannot be used there.' },
+    { q: 'Why should you call <code>cv.wait(lk, predicate)</code> instead of plain <code>cv.wait(lk)</code> inside an <code>if</code>?', options: ['It is shorter to write', 'wait can return spuriously, or another thread may have consumed the state first; the predicate overload re-checks in a loop', 'The predicate makes notify unnecessary', 'Plain wait never returns'], answer: 1, explain: 'Spurious wakeups are allowed, and stolen wakeups happen with several consumers. wait(lk, pred) is exactly while (!pred()) wait(lk);' },
+    { q: 'Thread 1: <code>lock(a); lock(b);</code>. Thread 2: <code>lock(b); lock(a);</code>. What is the risk and the simplest standard fix?', options: ['Livelock; use recursive_mutex', 'Deadlock; use <code>std::scoped_lock lk(a, b);</code> in both', 'Data race; use atomics', 'Starvation; use notify_all'], answer: 1, explain: 'Opposite lock order can form a circular wait. std::scoped_lock acquires several mutexes with a deadlock-avoidance algorithm; a consistent global order also works.' },
+    { q: 'Producer: <code>payload = 42; ready.store(true, X);</code> Consumer: <code>if (ready.load(Y)) use(payload);</code> (payload is a plain int). Which (X, Y) is the weakest correct choice?', options: ['(relaxed, relaxed)', '(release, acquire)', '(seq_cst, relaxed)', '(relaxed, acquire)'], answer: 1, explain: 'A release store read by an acquire load synchronizes-with it, so payload = 42 happens-before use(payload). Any relaxed side breaks the edge and makes the access to payload a data race.' },
+    { q: 'Store buffering: A: <code>x=1; r1=y;</code> B: <code>y=1; r2=x;</code> (atomics, start at 0). With release stores and acquire loads, is <code>r1 == 0 &amp;&amp; r2 == 0</code> possible?', options: ['No, never', 'Yes; only seq_cst forbids it', 'Only on x86', 'Only if the threads run on the same core'], answer: 1, explain: 'Release/acquire do not order a store followed by a load of a different variable (StoreLoad). Store buffers let both loads read 0. seq_cst (a single total order) forbids it, which is why Dekker/Peterson need seq_cst.' },
+    { q: 'What is wrong with: <code>std::async(std::launch::async, sendEmail); std::async(std::launch::async, sendEmail);</code> if the goal is to send two emails in parallel?', options: ['Nothing, they run in parallel', 'The discarded futures block in their destructors, so the calls run one after another', 'std::async cannot take void functions', 'The second call throws'], answer: 1, explain: 'A future returned by std::async waits for the task in its destructor. Each temporary is destroyed at the end of its statement, making the code sequential. Keep the futures alive.' },
+    { q: 'A task launched with <code>std::async</code> throws <code>std::runtime_error</code>. What happens?', options: ['std::terminate is called immediately', 'The exception is stored and rethrown by <code>future::get()</code> in the caller', 'The exception is silently ignored', 'get() returns a default value'], answer: 1, explain: 'std::async (like packaged_task and promise::set_exception) stores the exception in the shared state; get() rethrows it in the calling thread.' },
+    { q: 'Which is the best tool for "8 workers must wait until all of them finished phase 1 before any starts phase 2, repeated 100 times"?', options: ['std::latch', 'std::barrier (or a cv-based cyclic barrier)', 'A single std::promise', 'std::recursive_mutex'], answer: 1, explain: 'A barrier is reusable across phases. A latch is single-use; a promise can only be set once.' }
+  );
+
+  /* ======================================================================
+     INTERVIEW
+     ====================================================================== */
+  interview.push(
+    { q: 'What is the difference between a data race and a race condition?', level: 'B', a: `<p>A <b>data race</b> is a language-level rule violation: two threads access the same memory location, at least one writes, at least one access is non-atomic, and there is no happens-before ordering between them. In C++ it's <b>undefined behaviour</b>. A <b>race condition</b> is a logic bug where the result depends on timing, for example check-then-act ("if balance ≥ 80 then withdraw") even when every single operation is atomic or locked. You can have either without the other: atomics remove data races but not race conditions; a lock around the whole compound action removes both.</p>`, followUps: ['Give a race condition that has no data race.', 'How does ThreadSanitizer detect data races?'] },
+    { q: 'Explain join() vs detach(), and what happens if you do neither.', level: 'B', a: `<p><code>join()</code> blocks the caller until the thread finishes and makes everything the thread did visible afterwards (happens-before). <code>detach()</code> lets the thread run independently; you can never wait for it, and it's killed if the process exits. Its captured references can dangle. If a <code>std::thread</code> is still joinable when destroyed (neither called), the destructor calls <code>std::terminate</code>. This also happens when an exception skips your join. C++20's <code>std::jthread</code> fixes it: the destructor calls <code>request_stop()</code> then <code>join()</code>.</p>`, followUps: ['Why did the committee choose terminate instead of auto-join for std::thread?', 'When is detach acceptable?'] },
+    { q: 'lock_guard vs unique_lock vs scoped_lock: when do you use each?', level: 'I', a: `<p><b>lock_guard</b>: the simplest RAII lock: locks in the constructor, unlocks in the destructor, no other operations. The default for a scoped critical section. <b>unique_lock</b>: movable, can be created unlocked (<code>defer_lock</code>), try-locked (<code>try_to_lock</code>), timed, unlocked early and re-locked. Required by <code>condition_variable::wait</code>. Slightly bigger (stores an "owns" flag). <b>scoped_lock</b> (C++17): locks one or more mutexes at once using a deadlock-avoidance algorithm, so use it whenever you need several mutexes. For reader-writer locks use <code>shared_lock</code> on a <code>shared_mutex</code>.</p>`, followUps: ['How does std::lock avoid deadlock internally?', 'Why is returning a reference to guarded data from a locked method a bug?'] },
+    { q: 'What are the conditions for deadlock and how do you prevent it in a large codebase?', level: 'I', a: `<p>Coffman's four conditions: <b>mutual exclusion</b>, <b>hold-and-wait</b>, <b>no preemption</b>, and <b>circular wait</b>. Remove one and deadlock can't occur. Practical prevention: (1) a global <b>lock ordering</b>/hierarchy (always lock lower-level before higher-level, enforced in debug builds); (2) acquire multiple locks atomically with <code>std::scoped_lock</code>; (3) never call unknown code (callbacks, virtuals, logging) while holding a lock; (4) keep critical sections small and don't nest locks if you can avoid it; (5) use try_lock with timeouts plus back-off for recovery. Detection: lock-order graphs (TSan's deadlock detector, Abseil's debug mutex), and thread dumps of hung processes.</p>`, followUps: ['Deadlock vs livelock vs starvation?', 'What is priority inversion?'] },
+    { q: 'Walk me through how condition_variable::wait works and why spurious wakeups matter.', level: 'I', a: `<p>You hold a <code>unique_lock</code> on the mutex that guards some state. <code>wait(lk)</code> <b>atomically</b> releases the mutex and blocks the thread (registered as a waiter before unlocking, so a notify right after can't be lost). When notified (or spuriously), it re-acquires the mutex before returning. Because returns can be spurious, or another consumer may have taken the item first (stolen wakeup), you must re-check the condition: <code>cv.wait(lk, [&amp;]{ return !q.empty(); })</code>. On the other side, modify the state under the same mutex, then notify, or you risk a lost wakeup. A cv has no memory: the predicate on shared state is the source of truth.</p>`, followUps: ['notify_one vs notify_all: when is notify_all required?', 'Should you notify while holding the lock?'] },
+    { q: 'Design a bounded blocking queue. What are the pitfalls?', level: 'I', a: `<p>One mutex guarding a <code>deque</code>, plus two condition variables: <b>notFull</b> (producers wait while size == cap) and <b>notEmpty</b> (consumers wait while empty). push: lock → wait(notFull, pred) → push → unlock → notEmpty.notify_one(). pop mirrors it. Pitfalls: <code>if</code> instead of a predicate/while; modifying the deque without the lock; a single cv with notify_one waking the wrong kind of thread; holding the lock while processing items; forgetting shutdown, so add a <code>closed</code> flag in both predicates and <code>notify_all</code> on both cvs in close(); and unbounded queues that hide back-pressure problems.</p>`, followUps: ['How would you make it lock-free for a single producer and single consumer?', 'How do you implement try_pop_for(timeout)?'] },
+    { q: 'When would you use std::atomic instead of a mutex, and when not?', level: 'I', a: `<p>Atomics fit <b>single-variable</b> state with simple updates: counters, flags, IDs, a pointer swap, statistics, reference counts. They never block and are cheap when uncontended (~5–20 ns). Use a mutex when an <b>invariant spans several variables</b> (e.g. a map plus its size, a balance plus a history log), when operations are compound, or when the code must be easy to review. Making each field atomic doesn't make the object thread-safe. Also note heavily contended atomics bounce a cache line between cores and can be slower than sharded counters or even a mutex.</p>`, followUps: ['What is false sharing and how do you avoid it?', 'Is lock-free always faster?'] },
+    { q: 'Explain compare_exchange_weak vs compare_exchange_strong and the CAS loop pattern.', level: 'A', a: `<p><code>x.compare_exchange_*(expected, desired)</code>: if <code>x == expected</code>, atomically set <code>x = desired</code> and return true; otherwise copy the current value into <code>expected</code> and return false. <b>weak</b> may fail spuriously even when equal (it maps to one load-linked/store-conditional attempt on ARM/POWER), so use it inside loops; <b>strong</b> never fails spuriously (it hides a retry loop), so use it for one-shot attempts like "claim this flag". CAS loop: read the value, compute the new one privately, CAS; on failure <code>expected</code> is refreshed, so recompute and retry. Any read-modify-write (max, multiply, push onto a list) becomes lock-free this way.</p>`, followUps: ['What is the ABA problem and how do tagged pointers or hazard pointers solve it?', 'Is a CAS loop lock-free or wait-free?'] },
+    { q: 'Explain memory_order_relaxed, acquire/release and seq_cst with a concrete example of each.', level: 'A', a: `<p><b>relaxed</b>: atomicity plus a per-variable modification order; no ordering with other memory. Example: a hit counter read after join. <b>release/acquire</b>: a release store "publishes" all earlier writes; an acquire load that reads that value "receives" them (synchronizes-with → happens-before). Example: <code>data = 42; ready.store(true, release);</code> / <code>if (ready.load(acquire)) use(data);</code>. Mutex unlock/lock use exactly this. <b>seq_cst</b>: acquire/release plus a single total order over all seq_cst operations that every thread agrees on. Needed for store-buffering protocols like Dekker/Peterson (store my flag, then read yours), where acquire/release still allow both threads to read 0. Default to seq_cst; weaken only with a happens-before argument and evidence.</p>`, followUps: ['Why does code with relaxed flags often "work" on x86 but fail on ARM?', 'What does a seq_cst store compile to on x86?'] },
+    { q: 'What is "happens-before" and how do you establish it between threads?', level: 'A', a: `<p>Happens-before is the partial order that decides what a thread is guaranteed to see. If write W happens-before read R, R sees W (or something later); if two conflicting accesses are not ordered by happens-before, it's a data race. It's built from <b>sequenced-before</b> (program order in one thread) plus <b>synchronizes-with</b> edges between threads: thread creation (constructor → thread body), thread completion → <code>join()</code>, mutex unlock → later lock of the same mutex, atomic release store → acquire load that reads it (or a later value in its release sequence), <code>promise::set_value</code> → <code>future::get</code>, and C++20 latch/barrier/semaphore operations. Correct concurrent code is a chain of such edges between every write and every read of shared data.</p>`, followUps: ['What is a release sequence?', 'How do fences create synchronizes-with?'] },
+    { q: 'std::async: what launch policies exist, and what are its gotchas?', level: 'I', a: `<p><code>launch::async</code> runs the task on a new thread immediately; <code>launch::deferred</code> runs it lazily on the thread that calls <code>get()</code>/<code>wait()</code> (never, if nobody does); the default allows either, so specify <code>launch::async</code> when you need parallelism. Gotchas: (1) the returned future <b>blocks in its destructor</b>, so discarding it makes the call synchronous; (2) <code>get()</code> is one-shot (use <code>shared_future</code> for many readers); (3) wait_for on a deferred future returns <code>deferred</code>, not timeout, so polling loops can spin forever; (4) libstdc++/libc++ create one OS thread per call, which is too heavy for tiny tasks; (5) arguments are copied, so pass <code>std::cref</code> for big data. Upside: exceptions are captured and rethrown by get().</p>`, followUps: ['How do promise and packaged_task differ from async?', 'How would you implement a thread pool with futures?'] },
+    { q: 'How would you design a thread pool in C++? What happens on shutdown?', level: 'A', a: `<p>Fixed N workers (≈ cores for CPU-bound work) loop on a shared queue of type-erased jobs (<code>function&lt;void()&gt;</code> or C++23 <code>move_only_function</code>) protected by a mutex + condition_variable. <code>submit(f, args...)</code> wraps the call into a <code>packaged_task&lt;R()&gt;</code>, returns its future (so results and exceptions flow back), pushes, and notifies one worker. Workers pop under the lock and run jobs <b>outside</b> it. Shutdown: set <code>stopping</code> under the lock, <code>notify_all</code>, join; decide whether to drain or drop queued jobs, and reject new submissions. Advanced: per-worker deques with work stealing, bounded queue for back-pressure, and beware tasks that block waiting on other tasks in the same pool (pool deadlock).</p>`, followUps: ['How does work stealing improve locality and contention?', 'How do you avoid a task waiting on a future of another queued task deadlocking the pool?'] },
+    { q: 'Is the reference count of shared_ptr thread-safe? Is shared_ptr itself thread-safe?', level: 'A', a: `<p>The <b>control block</b> is thread-safe: copying and destroying <i>different</i> <code>shared_ptr</code> instances that share ownership, from different threads, is fine. Increments use relaxed atomics; decrements use acq_rel so the thread that frees the object sees all prior writes. But (1) the <b>pointee</b> is not protected, so mutating the object from several threads needs your own synchronization; and (2) reading and writing the <b>same</b> <code>shared_ptr</code> variable concurrently (one thread assigns, another copies) is a data race. Use <code>std::atomic&lt;std::shared_ptr&lt;T&gt;&gt;</code> (C++20) or a mutex for that, which is the classic way to publish an immutable config snapshot.</p>`, followUps: ['Why can the increment be relaxed but not the decrement?', 'How would you implement read-copy-update of a config with atomic shared_ptr?'] },
+    { q: 'How do you debug and test concurrent C++ code?', level: 'E', a: `<p><b>Prevent:</b> minimize shared mutable state, encapsulate locks with data, use Clang thread-safety annotations (<code>GUARDED_BY</code>), prefer high-level primitives (queues, futures, latches). <b>Detect:</b> build with ThreadSanitizer (<code>-fsanitize=thread</code>) for data races and lock-order inversions; Helgrind/DRD as alternatives; stress tests with more threads than cores, randomized sleeps/yields, thousands of iterations; run on ARM as well as x86 to expose weak-memory bugs. <b>Verify</b> lock-free algorithms with model checkers (Relacy, CDSChecker, herd7/CppMem litmus tests). <b>Diagnose hangs:</b> take thread dumps (<code>gdb -p</code>, <code>thread apply all bt</code>) and look for cycles of threads waiting on locks. Log with thread ids and monotonic timestamps; remember that logging itself changes timing (Heisenbugs).</p>`, followUps: ['Why can adding a printf make a race disappear?', 'What can TSan not detect?'] }
+  );
+
+  /* ======================================================================
+     MODULE
+     ====================================================================== */
+  registerModule({
+    id: 'cpp11',
+    title: 'Concurrency in C++',
+    intro: `<p>Your laptop has 8 or more cores, and almost every serious C++ system (trading engines, game engines, databases, browsers, ML runtimes) uses many threads. This module teaches you to write C++ that runs on several cores <b>correctly</b>: starting and joining threads, protecting shared data with mutexes, sleeping efficiently with condition variables, lock-free updates with atomics, the famous <b>memory orders</b> (relaxed, acquire/release, seq_cst), and handing results around with futures and <code>std::async</code>.</p>
+      <p>Every topic has a <b>visualizer where you play the OS scheduler</b>: pick which thread runs next and watch updates get lost, mutexes block, deadlocks form, condition variables wake and re-check, CAS loops retry, and CPUs reorder memory. You'll do data-race bug hunts, build a thread-safe counter, a blocking queue, a thread pool and a lock-free stack, and solve the "what can this print?" puzzles that C++ interviewers love.</p>`,
+    goals: [
+      'Start, join and manage threads safely (<code>std::thread</code>, <code>std::jthread</code>, <code>std::ref</code>, lifetimes) and explain why a joinable thread\'s destructor terminates',
+      'Spot data races and race conditions by reading code, explain why a data race is undefined behaviour, and fix them with ownership, mutexes or atomics',
+      'Use <code>lock_guard</code>, <code>unique_lock</code>, <code>scoped_lock</code> and <code>shared_mutex</code> correctly, and prevent deadlock with lock ordering',
+      'Implement producer-consumer with <code>condition_variable</code> using predicates, avoiding spurious and lost wakeups, with clean shutdown',
+      'Write CAS loops with <code>std::atomic</code>, and solve memory-order litmus tests (message passing, store buffering) for relaxed, acquire/release and seq_cst',
+      'Use <code>std::async</code>, <code>promise</code>, <code>packaged_task</code> and futures (including exception transport and the discarded-future trap), and design a thread pool'
+    ],
+    prereqs: `<p>C++ 6 (Memory Management, RAII &amp; Smart Pointers) for RAII and ownership, C++ 7 (STL Containers), and C++ 10 (Modern C++: Move Semantics, Lambdas) for lambdas, captures and <code>std::move</code>. Basic idea of what a CPU core and cache are helps but is explained here.</p>`,
+    hours: 16,
+    topics: topics,
+    practice: practice,
+    quiz: quiz,
+    interview: interview
+  });
+})();

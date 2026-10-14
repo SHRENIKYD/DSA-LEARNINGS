@@ -1108,6 +1108,719 @@ ORDER BY name;` }],
       }
     }]
   });
+
+  // Build the three-valued-logic truth tables step by step
+  function truthFrames() {
+    var V = [true, false, null], N = ['TRUE', 'FALSE', 'UNKNOWN'], F = [];
+    function and3(a, b) { return a === false || b === false ? false : a === null || b === null ? null : true; }
+    function or3(a, b) { return a === true || b === true ? true : a === null || b === null ? null : false; }
+    function nm(v) { return v === null ? 'UNKNOWN' : v ? 'TRUE' : 'FALSE'; }
+    var cmpRows = [
+      ['NULL = NULL', 'UNKNOWN', 'two unknowns might or might not be equal'],
+      ['NULL <> 5', 'UNKNOWN', 'we cannot say it differs from 5'],
+      ['salary > NULL', 'UNKNOWN', 'any comparison with NULL'],
+      ['NULL IS NULL', 'TRUE', 'IS NULL is the only reliable test'],
+      ['5 IS NOT NULL', 'TRUE', ''],
+      ['NULL + 100', 'NULL', 'arithmetic with NULL is NULL'],
+      ["'Hi ' || NULL", 'NULL', 'so is concatenation'],
+      ['NULL IS 5  /  NULL IS NOT DISTINCT FROM 5', 'FALSE', 'null-safe equality never returns UNKNOWN']
+    ];
+    F.push({ narr: 'SQL logic has <b>three</b> answers, not two: <span class="c-g">TRUE</span>, <span class="c-r">FALSE</span> and <span class="c-y">UNKNOWN</span>. UNKNOWN appears whenever a <b>NULL</b> ("value missing / not known") takes part in a comparison. Think of NULL as a sealed envelope: "is the envelope equal to 5?" — <i>I don\'t know</i>.', parts: [{ type: 'table', label: 'Comparisons involving NULL', columns: ['expression', 'result', 'why'], rows: cmpRows.slice(0, 3), hl: { 0: 'cur', 1: 'cur', 2: 'cur' } }] });
+    F.push({ narr: 'The escape hatches: <code>IS NULL</code> / <code>IS NOT NULL</code> always give TRUE or FALSE. Arithmetic and string glue with NULL produce NULL ("unknown + 100 is still unknown"). Null-safe equality (<code>IS</code> in SQLite, <code>IS NOT DISTINCT FROM</code> in standard SQL, <code>&lt;=&gt;</code> in MySQL) treats two NULLs as equal and never returns UNKNOWN.', parts: [{ type: 'table', label: 'Comparisons involving NULL', columns: ['expression', 'result', 'why'], rows: cmpRows, hl: { 3: 'ok', 4: 'ok', 5: 'bad', 6: 'bad', 7: 'sel' } }] });
+    var rows = [], hl = {};
+    var reasons = {
+      'TRUE,TRUE': 'everything is TRUE → AND and OR are TRUE',
+      'TRUE,FALSE': 'one FALSE kills AND; one TRUE is enough for OR',
+      'TRUE,UNKNOWN': 'AND: depends on the unknown → UNKNOWN. OR: already TRUE no matter what → TRUE',
+      'FALSE,TRUE': 'AND is FALSE (one FALSE), OR is TRUE (one TRUE)',
+      'FALSE,FALSE': 'both FALSE → AND FALSE, OR FALSE',
+      'FALSE,UNKNOWN': 'AND: FALSE wins no matter what the unknown is → FALSE. OR: depends on the unknown → UNKNOWN',
+      'UNKNOWN,TRUE': 'AND depends on the unknown → UNKNOWN; OR already TRUE → TRUE',
+      'UNKNOWN,FALSE': 'AND already FALSE → FALSE; OR depends on the unknown → UNKNOWN',
+      'UNKNOWN,UNKNOWN': 'nothing is known → UNKNOWN for both; NOT UNKNOWN is still UNKNOWN'
+    };
+    for (var i = 0; i < 3; i++) for (var j = 0; j < 3; j++) {
+      var p = V[i], q = V[j];
+      rows.push([N[i], N[j], nm(and3(p, q)), nm(or3(p, q)), nm(p === null ? null : !p)]);
+      hl = {}; for (var k = 0; k < rows.length - 1; k++) hl[k] = 'done';
+      hl[rows.length - 1] = 'cur';
+      F.push({ narr: 'p = <b>' + N[i] + '</b>, q = <b>' + N[j] + '</b>: ' + reasons[N[i] + ',' + N[j]] + '. Trick: treat UNKNOWN as "could be TRUE or FALSE" — if both choices give the same answer, that is the answer; otherwise it stays UNKNOWN.', parts: [{ type: 'table', label: 'Three-valued truth table', columns: ['p', 'q', 'p AND q', 'p OR q', 'NOT p'], rows: rows.slice(), hl: hl }] });
+    }
+    var g = function (fn) { return V.map(function (a) { return V.map(function (b) { return nm(fn(a, b)); }); }); };
+    var ghl = function (fn) { var o = {}; V.forEach(function (a, r) { V.forEach(function (b, c) { var x = fn(a, b); o[r + ',' + c] = x === true ? 'ok' : x === false ? 'bad' : 'cur'; }); }); return o; };
+    F.push({ narr: 'The same facts as two 3×3 grids. Notice: <b>FALSE AND anything = FALSE</b> and <b>TRUE OR anything = TRUE</b> — those are the only ways UNKNOWN gets "rescued".', parts: [
+      { type: 'grid', label: 'p AND q', rowHead: ['p=TRUE', 'p=FALSE', 'p=UNKNOWN'], colHead: ['q=TRUE', 'q=FALSE', 'q=UNKNOWN'], rows: g(and3), hl: ghl(and3) },
+      { type: 'grid', label: 'p OR q', rowHead: ['p=TRUE', 'p=FALSE', 'p=UNKNOWN'], colHead: ['q=TRUE', 'q=FALSE', 'q=UNKNOWN'], rows: g(or3), hl: ghl(or3) }
+    ] });
+    var w = rows.map(function (r) { return r.slice(0, 3).concat([r[2] === 'TRUE' ? 'KEEP' : 'DROP']); }), wh = {};
+    w.forEach(function (r, k) { wh[k] = r[3] === 'KEEP' ? 'ok' : 'bad'; });
+    F.push({ narr: '<b>The rule that matters:</b> WHERE (and HAVING, and JOIN … ON) keep a row <b>only when the condition is TRUE</b>. FALSE and UNKNOWN are both thrown away. CHECK constraints are the opposite: they <i>reject</i> only FALSE, so UNKNOWN passes.', parts: [{ type: 'table', label: 'WHERE p AND q — which rows survive?', columns: ['p', 'q', 'p AND q', 'WHERE verdict'], rows: w, hl: wh }] });
+    return F;
+  }
+
+  /* =====================================================================
+     TOPIC 4 — NULL, IS NULL and three-valued logic
+     ===================================================================== */
+  topics.push({
+    title: 'NULL & Three-Valued Logic: IS NULL, UNKNOWN and the NOT IN Trap',
+    analogy: `<p>A form asks for your phone number and you leave it blank. Is your phone number equal to your friend's blank phone number? Nobody can say — <b>both are unknown</b>. That blank is <b>NULL</b>: not zero, not an empty string, but "<i>we don't know / it doesn't exist</i>". Like a <b>sealed envelope</b>: asking "is the envelope's amount bigger than 100?" can only be answered "I don't know". SQL calls that third answer <b>UNKNOWN</b>, and a WHERE clause only lets in rows whose answer is a confident YES.</p>`,
+    explain: `<p><b>NULL is a marker for a missing value.</b> It is not 0 and not <code>''</code>. Rahul has no department (NULL), Marco has no email (NULL), Arjun's bonus is unknown (NULL), but Aisha's bonus is <b>0</b> — a real, known value.</p>
+<p><b>Rule 1 — any comparison with NULL is UNKNOWN.</b> <code>dept = NULL</code>, <code>dept &lt;&gt; 'Sales'</code> (when dept is NULL), <code>bonus &gt; 0</code> (when bonus is NULL) — all UNKNOWN. Even <code>NULL = NULL</code> is UNKNOWN.</p>
+<p><b>Rule 2 — WHERE keeps only TRUE.</b> UNKNOWN rows are silently dropped, exactly like FALSE rows. That is why <code>WHERE email = NULL</code> returns <b>nothing</b>, ever.</p>
+<p><b>Rule 3 — test for NULL with <code>IS NULL</code> / <code>IS NOT NULL</code>.</b></p>
+<pre>SELECT name FROM employees WHERE email IS NULL;       -- Marco, Rahul
+SELECT name FROM employees WHERE email IS NOT NULL;   -- the other 10</pre>
+<p><b>Rule 4 — three-valued truth tables</b> (see the visualizer):</p>
+${H.table(['', 'AND', 'OR'], [['TRUE ⊕ UNKNOWN', H.c('y', 'UNKNOWN'), H.c('g', 'TRUE')], ['FALSE ⊕ UNKNOWN', H.c('r', 'FALSE'), H.c('y', 'UNKNOWN')], ['UNKNOWN ⊕ UNKNOWN', H.c('y', 'UNKNOWN'), H.c('y', 'UNKNOWN')], ['NOT UNKNOWN', H.c('y', 'UNKNOWN'), '']])}
+<p><b>Rule 5 — NULL spreads through calculations:</b> <code>salary + bonus</code>, <code>'Hi ' || email</code>, <code>UPPER(NULL)</code> are all NULL. Replace NULL with a default using <code>COALESCE(bonus, 0)</code> (first non-NULL argument) or <code>IFNULL(bonus, 0)</code>.</p>
+<p><b>Rule 6 — "not equal" quietly hides NULL rows.</b> "Everyone not in Engineering" written as <code>dept &lt;&gt; 'Engineering'</code> loses Rahul, whose department is unknown. If you want him, say so: <code>dept &lt;&gt; 'Engineering' OR dept IS NULL</code>, or null-safe <code>dept IS NOT 'Engineering'</code> (SQLite) / <code>dept IS DISTINCT FROM 'Engineering'</code> (standard; SQLite 3.39+, PostgreSQL).</p>
+<p><b>Rule 7 — the NOT IN trap.</b> <code>x NOT IN (1, 2, NULL)</code> means <code>x &lt;&gt; 1 AND x &lt;&gt; 2 AND x &lt;&gt; NULL</code>. The last part is always UNKNOWN, so the whole thing is never TRUE → <b>zero rows</b>. It bites hardest with subqueries: <code>WHERE id NOT IN (SELECT manager_id FROM employees)</code> returns nothing because some manager_id values are NULL.</p>`,
+    clues: [
+      '"customers <b>without</b> an email / with <b>no</b> manager / <b>missing</b> phone" → <code>IS NULL</code>, never <code>= NULL</code>',
+      '"everyone <b>except</b> X" on a nullable column → decide whether NULL rows belong; add <code>OR col IS NULL</code> or use <code>IS NOT</code> / <code>IS DISTINCT FROM</code>',
+      '"<b>NOT IN</b> (subquery)" → check whether the subquery can return NULL; prefer <code>NOT EXISTS</code>',
+      '"treat missing bonus as 0", "show \'N/A\' when unknown" → <code>COALESCE</code> / <code>IFNULL</code>',
+      'A query "returns fewer rows than expected" or "returns nothing" → suspect NULLs in a comparison',
+      '"total = salary + bonus" with nullable bonus → NULL propagation, wrap with COALESCE'
+    ],
+    code: [{ lang: 'sql', db: 'hr', title: 'NULL handling cheat sheet (runnable)', code: `-- 1) = NULL never matches; IS NULL does
+SELECT 'eq'  AS how, COUNT(*) AS n FROM employees WHERE email = NULL     -- 0
+UNION ALL
+SELECT 'is', COUNT(*) FROM employees WHERE email IS NULL;                 -- 2
+
+-- 2) <> silently drops NULL rows
+SELECT name, dept FROM employees WHERE dept <> 'Engineering';             -- no Rahul
+SELECT name, dept FROM employees WHERE dept IS NOT 'Engineering';         -- Rahul included (null-safe)
+
+-- 3) NULL spreads; COALESCE gives a default
+SELECT name, salary + bonus AS raw_total,
+       salary + COALESCE(bonus, 0) AS safe_total
+FROM employees;
+
+-- 4) Direct look at three-valued logic (1 = TRUE, 0 = FALSE, NULL = UNKNOWN)
+SELECT NULL = NULL      AS null_eq_null,
+       NULL IS NULL     AS null_is_null,
+       (1 = 1) OR NULL  AS true_or_unknown,
+       (1 = 0) AND NULL AS false_and_unknown,
+       NOT NULL         AS not_unknown;` }],
+    codeTitle: ['Runnable reference queries'],
+    viz: [
+      { title: 'Three-valued logic: building the truth table', gen: function () { return truthFrames(); } },
+      queryViz('<> quietly drops the NULL row', "SELECT name, dept FROM employees WHERE dept <> 'Engineering'", { stepWhere: true }),
+      queryViz('The NOT IN trap: one NULL in the list empties the result', "SELECT name, dept FROM employees WHERE dept NOT IN ('Sales', NULL)", { stepWhere: true, intro: '<b>Trap ahead:</b> the list contains a NULL. ' })
+    ],
+    examples: [
+      {
+        title: '= NULL returns nothing; IS NULL works',
+        html: `<p><code>WHERE email = NULL</code> asks "is the email equal to an unknown value?" → UNKNOWN for every row → <b>0 rows</b>. Some linters flag <code>= NULL</code> as an error for exactly this reason. <code>IS NULL</code> is a real test that returns TRUE/FALSE.</p>`,
+        code: { lang: 'sql', db: 'shop', code: `SELECT name FROM customers WHERE email = NULL;     -- 0 rows, always
+SELECT name FROM customers WHERE email IS NULL;    -- Chen Wei, Gabriel Silva` }
+      },
+      {
+        title: '<> and NOT LIKE drop the unknowns too',
+        html: `<p>"Orders that are not cancelled": <code>status &lt;&gt; 'cancelled'</code> returns 11 rows, but there are 12 non-cancelled orders — order 113 has a NULL status. Same story for <code>NOT LIKE</code>, <code>NOT BETWEEN</code> and <code>NOT IN</code>: negating UNKNOWN keeps it UNKNOWN.</p>`,
+        code: { lang: 'sql', db: 'shop', code: `SELECT COUNT(*) FROM orders WHERE status <> 'cancelled';                       -- 11
+SELECT COUNT(*) FROM orders WHERE status <> 'cancelled' OR status IS NULL;     -- 12
+SELECT COUNT(*) FROM orders WHERE status IS NOT 'cancelled';                   -- 12 (SQLite null-safe)
+SELECT COUNT(*) FROM orders WHERE status IS DISTINCT FROM 'cancelled';         -- 12 (standard SQL)` }
+      },
+      {
+        title: 'The NOT IN + NULL disaster (and the fix)',
+        html: `<p>"Employees who manage nobody": the subquery returns manager ids <code>{NULL, 1, 2, 5, 8}</code>. Because of that NULL, <code>id NOT IN (…)</code> is never TRUE and the result is <b>empty</b>. Filter NULLs out of the subquery — or better, use <code>NOT EXISTS</code> (JOINs module), which is immune.</p>`,
+        code: { lang: 'sql', db: 'hr', code: `-- Broken: 0 rows
+SELECT name FROM employees
+WHERE id NOT IN (SELECT manager_id FROM employees);
+
+-- Fixed: 8 rows
+SELECT name FROM employees
+WHERE id NOT IN (SELECT manager_id FROM employees WHERE manager_id IS NOT NULL);` }
+      },
+      {
+        title: 'COALESCE for defaults and display',
+        html: `<p><code>COALESCE(a, b, c)</code> returns the first argument that is not NULL. Use it for calculations (<code>COALESCE(bonus, 0)</code>) and for friendly output (<code>COALESCE(city, 'unknown')</code>). Be honest in reports: replacing NULL with 0 changes averages, so only do it when "missing" truly means "zero".</p>`,
+        code: { lang: 'sql', db: 'shop', code: `SELECT name,
+       COALESCE(city, country, 'location unknown') AS where_from,
+       COALESCE(email, '-')                        AS email
+FROM customers;` }
+      }
+    ],
+    deepDive: `<p><b>Where three-valued logic comes from.</b> Codd's relational model added NULL for missing information, and SQL adopted Kleene's strong three-valued logic. Its key property: if replacing UNKNOWN by TRUE and by FALSE gives the same answer, that answer is returned; otherwise UNKNOWN. De Morgan's laws still hold, but the <b>law of excluded middle</b> does not: <code>WHERE x = 5 OR x &lt;&gt; 5</code> does <i>not</i> return every row — rows with NULL x vanish.</p>
+<p><b>Where NULLs are treated as equal (inconsistency to memorise).</b> In <code>WHERE</code>/<code>ON</code>, NULL never equals NULL. But <code>DISTINCT</code>, <code>GROUP BY</code>, <code>UNION</code>, <code>INTERSECT</code>/<code>EXCEPT</code> and <code>PARTITION BY</code> put all NULLs in one group ("not distinct"). <code>UNIQUE</code> constraints allow many NULLs in SQLite, PostgreSQL, MySQL and Oracle (single-column), while SQL Server allows only one; PostgreSQL 15+ offers <code>UNIQUE NULLS NOT DISTINCT</code>. <code>ORDER BY</code> needs a position for NULL: smallest in SQLite/MySQL/SQL Server, largest in PostgreSQL/Oracle. Aggregates (<code>SUM/AVG/COUNT(col)</code>) skip NULLs; <code>COUNT(*)</code> counts rows.</p>
+<p><b>CHECK constraints flip the rule:</b> a row is rejected only if the check is FALSE, so <code>CHECK (price &gt; 0)</code> happily accepts NULL price. Add <code>NOT NULL</code> when a value is required.</p>
+<p><b>Oracle quirk:</b> Oracle treats the empty string <code>''</code> as NULL, so <code>WHERE name = ''</code> never matches there. Most other engines keep them distinct.</p>
+<p><b>Performance.</b> B-tree indexes in SQLite, PostgreSQL and MySQL store NULLs, so <code>IS NULL</code> can use an index (Oracle single-column B-trees do not index all-NULL keys). <code>COALESCE(col, 0) = 0</code> is not sargable; rewrite as <code>(col = 0 OR col IS NULL)</code>. <code>NOT IN</code> also blocks the efficient anti-join plan in many engines precisely because of NULL semantics — another reason <code>NOT EXISTS</code> is preferred.</p>
+<p><b>Design advice.</b> Use NULL only for truly unknown/not-applicable data, declare <code>NOT NULL</code> everywhere else, and never use magic values (<code>-1</code>, <code>'1900-01-01'</code>) to mean "missing" — they silently corrupt averages and sorts.</p>`,
+    aiEra: `<p><b>What AI changes:</b> AI assistants are great at explaining a truth table, but NULL bugs are <b>silent</b> — the query runs, returns plausible rows, and nobody notices the missing ones. That makes your NULL instinct a key review skill when an assistant or a text-to-SQL agent writes queries for you. <b>Use AI as a partner:</b> paste the schema and ask <code>Which columns in this query are nullable, and how does each WHERE condition treat NULL?</code> or <code>Rewrite every NOT IN in this file as NOT EXISTS</code>. Ask it to generate a test row with NULL in every nullable column and compare results. <b>Where AI goes wrong:</b> writes <code>col != 'x'</code> for "not x" without thinking about NULL, uses <code>NOT IN (subquery)</code>, applies <code>COALESCE(x, 0)</code> inside averages (changing the meaning), and assumes PostgreSQL NULL ordering in SQLite. <b>What you must still own:</b> deciding what "missing" means in the business question and proving the row counts add up (rows with X + rows without X + rows with unknown = total).</p>`,
+    problems: [{
+      title: 'Everyone Outside Engineering — Including the Unknowns', level: 'Medium', tags: ['null', 'three-valued logic', 'where'], companies: ['Google', 'Microsoft', 'Atlassian'],
+      statement: `<p>An all-hands invite must reach every employee who is <b>not known to be in Engineering</b> — that includes people whose department is not recorded yet. Return <code>name, dept</code> ordered by name.</p>`,
+      constraints: `<p><code>employees.dept</code> is nullable. 12 rows, 1 has a NULL dept.</p>`,
+      example: `${H.table(['name', 'dept'], [['Aisha Bello', 'Sales'], ['Kenji Tanaka', 'Marketing'], ['Olivia Brown', 'Marketing'], [H.c('g', 'Rahul Verma'), H.c('m', 'NULL')], ['Sara Johnson', 'Sales'], ['Tom Becker', 'Sales'], ['Zoe Martin', 'HR']])}<p>7 rows. Rahul's department is unknown, so <code>dept &lt;&gt; 'Engineering'</code> is UNKNOWN for him — the naive query drops him, but the business rule says he must be invited.</p>`,
+      brute: { why: `<p><code>dept &lt;&gt; 'Engineering'</code> evaluates to UNKNOWN for Rahul (NULL dept) and WHERE keeps only TRUE, so he silently disappears — 6 rows instead of 7. No error, no warning.</p>`, code: { lang: 'sql', db: 'hr', code: `SELECT name, dept
+FROM employees
+WHERE dept <> 'Engineering'      -- NULL dept → UNKNOWN → dropped
+ORDER BY name;` } },
+      mcq: { q: 'For Rahul (dept NULL), what is <code>dept &lt;&gt; \'Engineering\'</code>?', options: ['TRUE', 'FALSE', 'UNKNOWN', 'An error'], answer: 2, explain: 'Any ordinary comparison with NULL yields UNKNOWN, and WHERE discards UNKNOWN rows.' },
+      hints: [
+        `<p>Hint 1: list the three possible situations for a row: dept is Engineering, dept is something else, dept is unknown. Which ones does the invite want?</p>`,
+        `<p>Hint 2: add the missing case explicitly with <code>OR dept IS NULL</code>.</p>`,
+        `<p>Hint 3: or use a null-safe comparison: <code>dept IS NOT 'Engineering'</code> (SQLite) / <code>dept IS DISTINCT FROM 'Engineering'</code> (standard).</p>`
+      ],
+      solution: {
+        approach: `<p>Spell out the NULL case. <code>dept &lt;&gt; 'Engineering' OR dept IS NULL</code> turns Rahul's UNKNOWN into TRUE (UNKNOWN OR TRUE = TRUE). The null-safe operator does the same in one test.</p>`,
+        code: { lang: 'sql', db: 'hr', code: `SELECT name, dept
+FROM employees
+WHERE dept <> 'Engineering' OR dept IS NULL
+ORDER BY name;` },
+        alt: [{ lang: 'sql', db: 'hr', title: 'Null-safe comparison (SQLite 3.39+ / PostgreSQL)', code: `SELECT name, dept
+FROM employees
+WHERE dept IS DISTINCT FROM 'Engineering'
+ORDER BY name;` }],
+        complexity: `<p>O(N) scan (or O(N log N) with the sort). OR across "value" and "IS NULL" on the same column can still use an index in most engines (two ranges).</p>`,
+        followUps: ['Count how many rows fall in each of the three cases and check they add up to 12.', 'Rewrite using <code>COALESCE(dept, \'\') &lt;&gt; \'Engineering\'</code> — why is that worse for indexes?', 'What does <code>WHERE dept = dept</code> return?']
+      }
+    }]
+  });
+
+  /* =====================================================================
+     TOPIC 5 — ORDER BY
+     ===================================================================== */
+  topics.push({
+    title: 'ORDER BY: Sorting by Many Keys, Directions, Expressions and NULL Placement',
+    analogy: `<p>A teacher sorting a pile of exam papers: first into stacks <b>by class</b> (A, B, C), then inside each class stack <b>by marks, highest first</b>. The second rule only matters when two papers are in the same class — it is a <b>tie-breaker</b>. And the papers with no name written on them? The teacher must decide: put them on top or at the bottom. That is <code>ORDER BY class ASC, marks DESC</code>, with <code>NULLS FIRST/LAST</code> for the nameless papers.</p>`,
+    explain: `<p>A table is a <b>set of rows with no built-in order</b>. If you do not write <code>ORDER BY</code>, the database may return rows in any order it likes — and that order can change tomorrow (new index, parallel scan, data rewrite). <b>If order matters, you must say ORDER BY.</b></p>
+<pre>SELECT name, dept, salary
+FROM employees
+ORDER BY dept ASC, salary DESC;</pre>
+<ul>
+<li><b>ASC</b> (ascending, the default): small → big, A → Z, old → new dates. <b>DESC</b>: the reverse.</li>
+<li><b>Several keys</b>: sort by the first; only rows that <b>tie</b> on it are compared by the second, and so on. Each key has its own direction: <code>ORDER BY dept ASC, salary DESC</code>.</li>
+<li><b>Expressions and aliases</b>: <code>ORDER BY salary + COALESCE(bonus,0) DESC</code> or, if you named it in SELECT, <code>ORDER BY total_comp DESC</code>. ORDER BY is one of the few places an alias is allowed (it runs after SELECT).</li>
+<li><b>Column positions</b>: <code>ORDER BY 2</code> means "the 2nd output column". Legal, but fragile — avoid in real code.</li>
+<li><b>Columns you did not select</b>: <code>SELECT name FROM employees ORDER BY salary</code> is fine (except together with DISTINCT in strict databases).</li>
+</ul>
+<p><b>Where do NULLs go?</b> Different databases disagree:</p>
+${H.table(['Database', 'ASC puts NULL…', 'DESC puts NULL…', 'NULLS FIRST/LAST?'], [['SQLite, MySQL, SQL Server', 'first (NULL = smallest)', 'last', 'SQLite 3.30+ yes; MySQL/SQL Server no'], ['PostgreSQL, Oracle', 'last (NULL = largest)', 'first', 'yes']])}
+<p>Portable trick when NULLS LAST is not available: <code>ORDER BY rating IS NULL, rating</code> — <code>rating IS NULL</code> is 0 for real values and 1 for NULLs, so NULLs sink to the bottom.</p>
+<p><b>Text sorts by characters, not meaning:</b> <code>'10' &lt; '9'</code> as text (compares '1' vs '9' first), and with binary collation upper-case comes before lower-case (<code>'Zoe' &lt; 'adam'</code>). Store numbers as numbers, and use <code>COLLATE NOCASE</code> (SQLite) or <code>LOWER()</code> for case-insensitive sorting.</p>`,
+    clues: [
+      '"sorted by / ordered by / ranked", "highest first", "most recent first" → <code>ORDER BY … DESC</code>',
+      '"ties broken by name" / "if equal, by id" → a <b>second sort key</b>; always add a unique last key for deterministic output',
+      '"unrated / unknown values at the end" → <code>NULLS LAST</code> or the portable <code>col IS NULL, col</code> trick',
+      '"case-insensitive alphabetical" → <code>COLLATE NOCASE</code> / <code>LOWER(col)</code>',
+      '"pending orders first, then the rest by date" → sort by a boolean or CASE expression',
+      'The grader says "order matters" → the output must be fully deterministic — check for ties'
+    ],
+    code: [{ lang: 'sql', db: 'hr', title: 'Multi-key sorting with explicit NULL placement (runnable)', code: `-- Department A→Z (unknown department last), then highest salary first,
+-- then id as a final tie-breaker so the order is 100% deterministic.
+SELECT name, dept, salary
+FROM employees
+ORDER BY dept ASC NULLS LAST,
+         salary DESC,
+         id;` }],
+    codeTitle: ['Runnable reference query'],
+    viz: [
+      queryViz('ORDER BY dept ASC, salary DESC — key by key', 'SELECT name, dept, salary FROM employees ORDER BY dept ASC, salary DESC', { sortSteps: true }),
+      queryViz('Ratings high→low, unrated last, ties by votes', 'SELECT title, rating, votes FROM movies ORDER BY rating DESC NULLS LAST, votes DESC', { sortSteps: true })
+    ],
+    examples: [
+      {
+        title: 'Two keys, two directions',
+        html: `<p>Engineering's three engineers on 120000/120000/135000 are ordered by salary DESC <i>inside</i> the Engineering group. Lena and Marco tie on both dept and salary — without a third key their relative order is not guaranteed. Adding <code>, name</code> or <code>, id</code> fixes that.</p>`,
+        code: { lang: 'sql', db: 'hr', code: `SELECT name, dept, salary
+FROM employees
+WHERE dept = 'Engineering'
+ORDER BY salary DESC, name;   -- name breaks the Lena/Marco tie` }
+      },
+      {
+        title: 'Moving NULLs to where you want them',
+        html: `<p>In SQLite, <code>ORDER BY rating</code> puts the two unrated movies <b>first</b> (NULL is the smallest). <code>NULLS LAST</code> moves them to the end. The <code>rating IS NULL</code> trick works in every database, including MySQL, which has no NULLS LAST.</p>`,
+        code: { lang: 'sql', db: 'movies', code: `SELECT title, rating FROM movies ORDER BY rating;                    -- NULLs first (SQLite)
+SELECT title, rating FROM movies ORDER BY rating NULLS LAST;         -- NULLs last
+SELECT title, rating FROM movies ORDER BY rating IS NULL, rating;    -- portable NULLs last` }
+      },
+      {
+        title: 'Text vs number sorting, and case',
+        html: `<p>Numbers stored as text sort "alphabetically": <code>'10' &lt; '100' &lt; '9'</code>. Cast them to sort numerically. With the default BINARY collation, every upper-case letter sorts before every lower-case one; <code>COLLATE NOCASE</code> sorts as humans expect.</p>`,
+        code: { lang: 'sql', db: 'movies', code: `SELECT column1 AS v FROM (VALUES ('10'), ('9'), ('100')) ORDER BY v;                        -- 10, 100, 9
+SELECT column1 AS v FROM (VALUES ('10'), ('9'), ('100')) ORDER BY CAST(v AS INTEGER);       -- 9, 10, 100
+SELECT column1 AS w FROM (VALUES ('banana'), ('Apple'), ('cherry'), ('Blueberry')) ORDER BY w;               -- Apple, Blueberry, banana, cherry
+SELECT column1 AS w FROM (VALUES ('banana'), ('Apple'), ('cherry'), ('Blueberry')) ORDER BY w COLLATE NOCASE; -- Apple, banana, Blueberry, cherry` }
+      },
+      {
+        title: 'Custom priority with an expression',
+        html: `<p>"Show pending orders first, then everything else, newest first." A comparison like <code>status = 'pending'</code> is 1 (TRUE), 0 (FALSE) or NULL in SQLite, so sorting it DESC puts pending orders on top. For more than two priority levels you would use a <code>CASE</code> expression (SQL 3).</p>`,
+        code: { lang: 'sql', db: 'shop', code: `SELECT id, status, order_date
+FROM orders
+ORDER BY status = 'pending' DESC,   -- 1 (pending) before 0 / NULL
+         order_date DESC;` }
+      },
+      {
+        title: 'Sorting by alias, by position, and by a hidden column',
+        html: `<p>All three are legal. Aliases are the most readable; positions break silently when someone reorders the select list; hidden-column sorting is fine but confuses readers who cannot see the sort key in the output.</p>`,
+        code: { lang: 'sql', db: 'hr', code: `SELECT name, salary + COALESCE(bonus, 0) AS total_comp FROM employees ORDER BY total_comp DESC;
+SELECT name, salary FROM employees ORDER BY 2 DESC;          -- 2 = second output column
+SELECT name FROM employees ORDER BY hire_date;               -- sort key not displayed` }
+      }
+    ],
+    deepDive: `<p><b>Why there is no "natural order".</b> Relations are sets; physical order depends on the storage engine (heap tables in PostgreSQL append rows anywhere free space exists; InnoDB/SQLite rowid tables happen to be clustered by primary key) and on the plan (an index scan, a hash aggregate or a parallel scan returns rows in different orders). Code that relies on "it always came back sorted" breaks on upgrades. Only the outermost ORDER BY is guaranteed — an ORDER BY inside a subquery or view may be ignored.</p>
+<p><b>Cost of sorting.</b> Sorting N rows is O(N log N). Engines sort in memory up to a limit (<code>work_mem</code> in PostgreSQL, <code>sort_buffer_size</code> in MySQL) and spill to disk with an external merge sort beyond it. Two big savings: (1) an <b>index</b> on the sort key returns rows already ordered, so no sort is needed (watch for "USE TEMP B-TREE FOR ORDER BY" in SQLite's EXPLAIN QUERY PLAN, "Sort" nodes in PostgreSQL); (2) with <code>LIMIT k</code> the engine uses a <b>top-k heap</b> — O(N log k) and tiny memory.</p>
+<p><b>Stability and determinism.</b> SQL sorting is not guaranteed stable. When the sort keys are not unique, equal rows may come back in any order, which makes pagination skip or repeat rows and makes tests flaky. Rule: the final ORDER BY key list should contain a unique column (often the primary key).</p>
+<p><b>Collations.</b> Text order is defined by collation: BINARY (byte/code point), NOCASE (ASCII case folding in SQLite), or locale-aware ICU/CLDR collations (in German "ä" sorts with "a", in Swedish after "z"). An index only helps ORDER BY if it was built with the same collation as the query uses.</p>
+<p><b>Mixed types in SQLite.</b> Because of dynamic typing, SQLite defines a total order across types: NULL &lt; INTEGER/REAL &lt; TEXT &lt; BLOB. A column that accidentally contains both <code>5</code> and <code>'5'</code> will sort the text one after all numbers.</p>`,
+    aiEra: `<p><b>What AI changes:</b> dashboards and AI agents increasingly generate "top" and "ranked" lists for you, and LLM-written SQL almost always includes an ORDER BY — but rarely a <b>tie-breaker</b> or explicit NULL placement. <b>Use AI as a partner:</b> ask <code>Is the ORDER BY in this query deterministic? Which rows could tie?</code>, <code>Make NULL placement explicit and portable to MySQL and PostgreSQL</code>, or <code>Will this ORDER BY use the index on (dept, salary)?</code>. <b>Where AI goes wrong:</b> assumes PostgreSQL's NULLS-largest rule in SQLite/MySQL (or vice versa), writes <code>NULLS LAST</code> for MySQL where it is a syntax error, relies on ORDER BY inside subqueries/views, and sorts numeric text as text. <b>What you must still own:</b> knowing that row order is undefined without ORDER BY, designing deterministic sort keys for pagination and tests, and recognising when an index can remove the sort entirely.</p>`,
+    problems: [{
+      title: 'Worst-Rated Movies First, Unrated Last', level: 'Medium', tags: ['order by', 'nulls last', 'tie-breakers'], companies: ['Netflix', 'Amazon Prime Video', 'Spotify'],
+      statement: `<p>The content team wants to review weak titles. List <code>title, rating, votes</code> for <b>all</b> movies, <b>lowest rating first</b>. Movies with the same rating: the one with <b>more votes</b> first (a more reliable low score). Movies without a rating go at the <b>very end</b>, ordered by title.</p>`,
+      constraints: `<p>14 movies; <code>rating</code> and <code>votes</code> are nullable. The output order is graded exactly.</p>`,
+      example: `${H.table(['title', 'rating', 'votes'], [['The Room', '3.6', '95000'], ['Groundhog Day', '8.0', '680000'], ['…', '…', '…'], ['Toy Story', H.c('y', '8.3'), '1050000'], ['Amelie', H.c('y', '8.3'), '780000'], ['Dangal', H.c('y', '8.3'), '200000'], ['…', '…', '…'], ['Dune: Part Three', H.c('m', 'NULL'), H.c('m', 'NULL')], ['Untitled Indie Film', H.c('m', 'NULL'), H.c('m', 'NULL')]])}<p>Three movies tie at 8.3 → most votes first. The two NULL ratings must come last — but SQLite's default puts NULL <b>first</b> in ascending order.</p>`,
+      brute: { why: `<p><code>ORDER BY rating</code> alone puts the two unrated movies at the <b>top</b> in SQLite (NULL sorts as the smallest value), and the three 8.3 ties come back in an arbitrary order — the grader compares exact order, so both issues fail.</p>`, code: { lang: 'sql', db: 'movies', code: `SELECT title, rating, votes
+FROM movies
+ORDER BY rating;      -- NULLs first, ties unordered` } },
+      mcq: { q: 'In SQLite, where do NULLs appear with <code>ORDER BY rating ASC</code>?', options: ['First', 'Last', 'Randomly', 'They are excluded'], answer: 0, explain: 'SQLite (like MySQL and SQL Server) treats NULL as smaller than any value, so ASC puts NULLs first. PostgreSQL and Oracle do the opposite.' },
+      hints: [
+        `<p>Hint 1: there are three sort rules — rating up, votes down, and title for the unrated ones. That is three ORDER BY keys.</p>`,
+        `<p>Hint 2: control NULLs explicitly with <code>NULLS LAST</code> (SQLite 3.30+, PostgreSQL) or the portable <code>rating IS NULL</code> first key.</p>`,
+        `<p>Hint 3: recipe: <code>ORDER BY rating ASC NULLS LAST, votes DESC, title</code>. Title is the final tie-breaker (titles are unique here).</p>`
+      ],
+      solution: {
+        approach: `<p>Three keys: rating ascending with NULLs forced last, votes descending to break rating ties, and title as a final deterministic key (it also orders the unrated films, whose rating and votes are both NULL).</p>`,
+        code: { lang: 'sql', db: 'movies', code: `SELECT title, rating, votes
+FROM movies
+ORDER BY rating ASC NULLS LAST,   -- unrated at the end
+         votes DESC,              -- among equal ratings, more votes first
+         title;                   -- final deterministic tie-breaker` },
+        alt: [{ lang: 'sql', db: 'movies', title: 'Portable (MySQL has no NULLS LAST)', code: `SELECT title, rating, votes
+FROM movies
+ORDER BY rating IS NULL,   -- 0 for rated, 1 for unrated
+         rating,
+         votes DESC,
+         title;` }],
+        complexity: `<p>O(N log N) sort. An index on <code>(rating, votes DESC, title)</code> would let the engine read rows already in order.</p>`,
+        followUps: ['Return only the 3 weakest rated movies.', 'How would this behave in PostgreSQL if you dropped NULLS LAST?', 'Why is <code>ORDER BY 2</code> risky here?']
+      }
+    }]
+  });
+
+  // OFFSET pagination vs keyset pagination: how many rows does each page cost?
+  function pagingFrames(input) {
+    var m = /(\d+)/.exec(String(input || '4'));
+    var size = m ? Number(m[1]) : 4;
+    if (size < 2 || size > 7) throw new Error('Enter a page size between 2 and 7');
+    var R = runQuery('SELECT id, order_date, amount FROM orders ORDER BY order_date DESC, id DESC');
+    var rows = R.sorted, pages = Math.ceil(rows.length / size), F = [], offCost = [], keyCost = [], totOff = 0, totKey = 0;
+    F.push({ narr: 'Orders sorted newest first (<code>ORDER BY order_date DESC, id DESC</code>), page size <b>' + size + '</b> → ' + pages + ' pages. We compare two ways to fetch each page: <b>OFFSET</b> ("skip the first k rows") and <b>keyset</b> ("continue after the last row I saw").', parts: [outTable(R, rows, {}, 'All ' + rows.length + ' orders in display order', [{ name: '#', get: function (r) { return rows.indexOf(r) + 1; } }])] });
+    for (var p = 1; p <= pages; p++) {
+      var off = (p - 1) * size, hl = {}, last = rows[Math.min(off + size, rows.length) - 1], prev = off ? rows[off - 1] : null;
+      rows.forEach(function (r, i) { hl[i] = i < off ? 'bad' : i < off + size ? 'sel' : 'done'; });
+      var readOff = Math.min(off + size, rows.length), readKey = Math.min(size, rows.length - off);
+      totOff += readOff; totKey += readKey; offCost.push(readOff); keyCost.push(readKey);
+      F.push({
+        narr: '<b>Page ' + p + '</b> with <code>LIMIT ' + size + ' OFFSET ' + off + '</code>: the engine still walks the first ' + off + ' rows (red) only to throw them away, then returns ' + readKey + ' (purple) → reads <b>' + readOff + '</b> rows. ' +
+          (prev ? 'Keyset version: <code>WHERE (order_date, id) &lt; (\'' + prev.src[2] + '\', ' + prev.src[0] + ')</code> jumps straight past the last row of page ' + (p - 1) + ' using the index → reads only <b>' + readKey + '</b>.' : 'Page 1 is identical for both methods.'),
+        parts: [outTable(R, rows, hl, 'OFFSET ' + off + ': red = read and discarded, purple = returned', [{ name: '#', get: function (r) { return rows.indexOf(r) + 1; } }]), { type: 'vars', label: 'Rows read for this page', vals: { page: p, offset_method: readOff, keyset_method: readKey, next_cursor: last ? "('" + last.src[2] + "', " + last.src[0] + ')' : '-' }, hl: { offset_method: off ? 'bad' : '', keyset_method: 'ok' } }]
+      });
+    }
+    F.push({ narr: 'Total rows read to show every page: OFFSET = <b>' + totOff + '</b>, keyset = <b>' + totKey + '</b>. OFFSET cost grows with the page number (page k costs ≈ k × size), so deep pages on a 10-million-row table get slower and slower. Keyset stays flat — and it does not skip or repeat rows when new orders arrive between page loads.', parts: [{ type: 'bars', label: 'Rows read per page — OFFSET', values: offCost, idxLabels: offCost.map(function (x, i) { return 'p' + (i + 1); }) }, { type: 'bars', label: 'Rows read per page — keyset', values: keyCost, idxLabels: keyCost.map(function (x, i) { return 'p' + (i + 1); }) }] });
+    return F;
+  }
+
+  /* =====================================================================
+     TOPIC 6 — LIMIT / OFFSET
+     ===================================================================== */
+  topics.push({
+    title: 'LIMIT & OFFSET: Top-N Queries and Pagination',
+    analogy: `<p>Search results on a website: you see <b>10 results per page</b>. Page 1 shows results 1–10, page 2 shows 11–20. <code>LIMIT</code> is "how many per page" and <code>OFFSET</code> is "how many to skip first". And just like a "Top 10 songs" chart only makes sense after the songs are <b>ranked</b>, LIMIT only means something after <code>ORDER BY</code> — otherwise you get "any 10 songs".</p>`,
+    explain: `<p><code>LIMIT n</code> returns at most <b>n</b> rows. <code>OFFSET k</code> skips the first <b>k</b> rows before counting. Both are applied <b>last</b>, after WHERE, SELECT, DISTINCT and ORDER BY.</p>
+<pre>-- Top 3 earners
+SELECT name, salary FROM employees ORDER BY salary DESC, id LIMIT 3;
+
+-- Page 2 with 3 rows per page = rows 4..6
+SELECT name, salary FROM employees ORDER BY salary DESC, id LIMIT 3 OFFSET 3;</pre>
+<p><b>Pagination formula:</b> <code>OFFSET = (page − 1) × page_size</code>, <code>LIMIT = page_size</code>.</p>
+<p><b>Same idea, different spellings:</b></p>
+${H.table(['Database', 'Top 5', 'Skip 10, take 5'], [['SQLite, PostgreSQL, MySQL', '<code>LIMIT 5</code>', '<code>LIMIT 5 OFFSET 10</code>'], ['SQLite, MySQL (short form)', '', '<code>LIMIT 10, 5</code> ← offset comes FIRST'], ['SQL standard, PostgreSQL, Oracle 12c+', '<code>FETCH FIRST 5 ROWS ONLY</code>', '<code>OFFSET 10 ROWS FETCH NEXT 5 ROWS ONLY</code>'], ['SQL Server', '<code>SELECT TOP 5 …</code>', '<code>OFFSET 10 ROWS FETCH NEXT 5 ROWS ONLY</code> (needs ORDER BY)']])}
+<p><b>Golden rules:</b></p>
+<ul>
+<li><b>Always pair LIMIT with ORDER BY</b>, otherwise "first 3 rows" is whatever the engine happens to read first.</li>
+<li>Make the ORDER BY <b>unique</b> (add <code>id</code>), or rows that tie can jump between pages — page 2 might repeat a row from page 1 and skip another.</li>
+<li>"N-th highest <i>value</i>" needs <code>DISTINCT</code> so duplicates do not occupy several positions.</li>
+<li><b>Deep OFFSETs are slow</b>: <code>OFFSET 1000000</code> makes the engine read and discard a million rows. For infinite scroll / APIs use <b>keyset (seek) pagination</b>: remember the last row's sort key and ask for rows "after" it.</li>
+</ul>`,
+    clues: [
+      '"top 5 / first 10 / the highest / the latest" → <code>ORDER BY … LIMIT n</code>',
+      '"<b>second</b> highest / N-th highest salary" → <code>DISTINCT … ORDER BY … DESC LIMIT 1 OFFSET N-1</code> (+ return NULL if missing)',
+      '"page 3 of results, 20 per page" → <code>LIMIT 20 OFFSET 40</code>',
+      '"infinite scroll", "API cursor", "millions of rows, deep pages are slow" → keyset pagination',
+      '"include everyone tied for 3rd place" → LIMIT cuts ties arbitrarily; use <code>FETCH … WITH TIES</code> or a ranking window function',
+      '"top 2 per department" → not LIMIT alone; that is a window-function (ROW_NUMBER) job'
+    ],
+    code: [{ lang: 'sql', db: 'hr', title: 'Top-N, pagination and keyset (runnable)', code: `-- Top 3 earners (id breaks ties so the result is deterministic)
+SELECT id, name, salary FROM employees ORDER BY salary DESC, id DESC LIMIT 3;
+
+-- Page 2 (3 rows per page): OFFSET = (2 - 1) * 3
+SELECT id, name, salary FROM employees ORDER BY salary DESC, id DESC LIMIT 3 OFFSET 3;
+
+-- Keyset pagination: continue after the last row of page 1, which was (salary 160000, id 2)
+SELECT id, name, salary
+FROM employees
+WHERE (salary, id) < (160000, 2)      -- row-value comparison (SQLite 3.15+, PostgreSQL, MySQL)
+ORDER BY salary DESC, id DESC
+LIMIT 3;` }],
+    codeTitle: ['Runnable reference queries'],
+    viz: [
+      queryViz('LIMIT 3 OFFSET 3 = page 2 of 3-row pages', 'SELECT name, salary FROM employees ORDER BY salary DESC, id LIMIT 3 OFFSET 3'),
+      { title: 'OFFSET vs keyset pagination: rows read per page', input: '4', inputLabel: 'Page size (2–7)', gen: function (input) { return pagingFrames(input); } }
+    ],
+    examples: [
+      {
+        title: 'Top 3 — and the tie you did not see',
+        html: `<p>Priya and Sara both earn 250000. "Top 1 earner" with <code>LIMIT 1</code> returns one of them <b>arbitrarily</b> unless a tie-breaker is given. Decide what the business wants: one row (add <code>id</code>), or everyone tied (PostgreSQL 13+/Oracle: <code>FETCH FIRST 1 ROWS WITH TIES</code>; anywhere: <code>WHERE salary = (SELECT MAX(salary) …)</code>).</p>`,
+        code: { lang: 'sql', db: 'hr', code: `SELECT name, salary FROM employees ORDER BY salary DESC LIMIT 1;           -- Priya OR Sara?
+SELECT name, salary FROM employees ORDER BY salary DESC, id LIMIT 1;       -- deterministic: Priya
+SELECT name, salary FROM employees
+WHERE salary = (SELECT MAX(salary) FROM employees);                        -- both tied rows` }
+      },
+      {
+        title: 'The page formula, and LIMIT a, b gotcha',
+        html: `<p>Page 3 with 4 orders per page → <code>OFFSET (3−1)×4 = 8</code>. SQLite/MySQL also accept <code>LIMIT 8, 4</code> — the <b>offset comes first</b> in that short form, the opposite of <code>LIMIT 4 OFFSET 8</code>. Mixing them up is a classic off-by-a-page bug.</p>`,
+        code: { lang: 'sql', db: 'shop', code: `SELECT id, order_date FROM orders ORDER BY order_date DESC, id DESC LIMIT 4 OFFSET 8;   -- page 3
+SELECT id, order_date FROM orders ORDER BY order_date DESC, id DESC LIMIT 8, 4;         -- same rows!` }
+      },
+      {
+        title: 'N-th highest distinct value (and NULL when it does not exist)',
+        html: `<p>Second-highest salary: without DISTINCT, rows 1 and 2 are both 250000, so <code>OFFSET 1</code> returns 250000 — wrong. With DISTINCT the values are 250000, 160000, … and the answer is ${H.c('g', '160000')}. Wrapping in a scalar subquery returns a row with NULL instead of <i>no row</i> when there is no such salary — exactly what LeetCode 176 expects.</p>`,
+        code: { lang: 'sql', db: 'hr', code: `SELECT salary FROM employees ORDER BY salary DESC LIMIT 1 OFFSET 1;            -- 250000 (wrong)
+SELECT DISTINCT salary FROM employees ORDER BY salary DESC LIMIT 1 OFFSET 1;   -- 160000
+
+SELECT (SELECT DISTINCT salary FROM employees
+        ORDER BY salary DESC LIMIT 1 OFFSET 20) AS twenty_first_highest;      -- NULL, not empty` }
+      },
+      {
+        title: 'Random sample — and why it is expensive',
+        html: `<p><code>ORDER BY RANDOM() LIMIT 2</code> picks 2 random rows, but the engine must assign a random number to <b>every</b> row and sort them all. Fine for 14 rows, painful for 100 million (use <code>TABLESAMPLE</code> in PostgreSQL/SQL Server, or pick random ids).</p>`,
+        code: { lang: 'sql', db: 'movies', code: `SELECT title FROM movies ORDER BY RANDOM() LIMIT 2;   -- different every run` }
+      }
+    ],
+    deepDive: `<p><b>How LIMIT executes.</b> LIMIT is a pipeline <i>stop signal</i>: once n rows have been produced, upstream operators stop. With an index that already provides the ORDER BY, <code>ORDER BY created_at DESC LIMIT 10</code> reads just 10 index entries — O(log N + 10). Without such an index the engine must see every row, but uses a <b>bounded top-k heap</b> (O(N log k) time, O(k) memory) rather than a full sort; PostgreSQL shows this as "top-N heapsort".</p>
+<p><b>Why OFFSET is O(offset).</b> Rows have no stored "position number", so OFFSET 100000 must produce and discard 100000 rows (through the index or the table). Latency grows linearly with page depth. <b>Keyset (seek) pagination</b> replaces "skip k" with a predicate on the last seen sort key: <code>WHERE (created_at, id) &lt; (:last_ts, :last_id) ORDER BY created_at DESC, id DESC LIMIT 20</code>. With a composite index on <code>(created_at, id)</code> each page is an O(log N) seek. Trade-offs: you cannot jump to "page 37" directly, and mixed sort directions (ASC on one key, DESC on another) cannot use a single row-value comparison — you expand it to <code>a &lt; :a OR (a = :a AND b &gt; :b)</code>.</p>
+<p><b>Consistency under writes.</b> OFFSET pagination over live data skips or duplicates rows when inserts/deletes happen between page requests (a new order arrives → everything shifts by one). Keyset pagination is stable because it anchors on values, not positions. APIs typically encode the last key into an opaque <i>cursor</i> token (base64 JSON) — the pattern behind GraphQL Relay connections and most public REST APIs.</p>
+<p><b>Dialect notes.</b> The SQL:2008 standard form is <code>OFFSET k ROWS FETCH FIRST n ROWS ONLY</code>; <code>WITH TIES</code> returns extra rows equal to the last one (requires ORDER BY). SQL Server's <code>TOP (n) WITH TIES</code> and <code>TOP n PERCENT</code> exist too. SQLite treats a negative LIMIT as "no limit" (<code>LIMIT -1 OFFSET 5</code> means "skip 5, return the rest"). Oracle before 12c used <code>ROWNUM</code>, which is assigned <i>before</i> ORDER BY — the classic bug <code>WHERE ROWNUM &lt;= 3 ORDER BY sal DESC</code> returns 3 arbitrary rows, sorted.</p>`,
+    aiEra: `<p><b>What AI changes:</b> AI coding assistants generate REST endpoints with <code>LIMIT ? OFFSET ?</code> pagination by default — fine for admin screens, a scaling problem for feeds and public APIs. AI agents that browse databases also use LIMIT constantly to keep results small enough for their context window, which can make them silently miss rows. <b>Use AI as a partner:</b> ask <code>Convert this OFFSET pagination to keyset pagination with an opaque cursor</code>, <code>What index makes this ORDER BY … LIMIT query avoid a sort?</code>, or <code>Is this top-N deterministic when values tie?</code>. <b>Where AI goes wrong:</b> LIMIT without ORDER BY, forgets DISTINCT in "N-th highest", swaps the arguments of <code>LIMIT a, b</code>, writes <code>TOP</code> for SQLite or <code>LIMIT</code> for SQL Server, and builds keyset predicates that break with mixed sort directions or NULL keys. <b>What you must still own:</b> choosing the pagination strategy for the product, guaranteeing unique sort keys, and reasoning about cost at page 10,000.</p>`,
+    problems: [{
+      title: 'Second Highest Salary', level: 'Medium', tags: ['limit', 'offset', 'distinct', 'classic'], companies: ['Amazon', 'Meta', 'Adobe', 'Uber'],
+      statement: `<p>Return the <b>second highest distinct salary</b> from <code>employees</code> as a single column named <code>second_highest_salary</code>. If there is no second highest salary, return <b>NULL</b> (one row containing NULL, not an empty result).</p>`,
+      constraints: `<p>Salaries may repeat (two people earn 250000). Classic LeetCode 176 shape.</p>`,
+      example: `${H.table(['distinct salaries (desc)', 'position'], [['250000 ' + H.c('m', '(Priya, Sara)'), '1st'], [H.c('g', '160000'), H.c('g', '2nd ← answer')], ['135000', '3rd']])}<p>Output: <code>second_highest_salary = 160000</code>. Without DISTINCT the 2nd <i>row</i> is Sara's 250000 — the same value as the 1st.</p>`,
+      brute: { why: `<p>Sorting rows and skipping one returns the 2nd <b>row</b>, not the 2nd <b>value</b>. Priya and Sara both earn 250000, so the query answers ${H.c('r', '250000')}. It also returns an empty result (no row) when fewer than two salaries exist, instead of NULL.</p>`, code: { lang: 'sql', db: 'hr', code: `SELECT salary AS second_highest_salary
+FROM employees
+ORDER BY salary DESC
+LIMIT 1 OFFSET 1;     -- 250000: duplicates occupy positions` } },
+      mcq: { q: 'Why does the naive <code>ORDER BY salary DESC LIMIT 1 OFFSET 1</code> fail here?', options: ['Duplicate salaries take up more than one position', 'OFFSET is not supported in SQLite', 'DESC sorts NULLs first', 'LIMIT runs before ORDER BY'], answer: 0, explain: 'Two rows share the top salary, so the second row still holds the top value. DISTINCT collapses duplicates before ORDER BY/LIMIT.' },
+      hints: [
+        `<p>Hint 1: you need the 2nd <i>value</i>, so remove duplicate values before counting positions.</p>`,
+        `<p>Hint 2: logical order is DISTINCT → ORDER BY → LIMIT/OFFSET, so <code>SELECT DISTINCT salary … ORDER BY salary DESC LIMIT 1 OFFSET 1</code> works.</p>`,
+        `<p>Hint 3: to get NULL instead of no row, wrap it as a scalar subquery: <code>SELECT ( … ) AS second_highest_salary;</code> — a scalar subquery with no row evaluates to NULL.</p>`
+      ],
+      solution: {
+        approach: `<p>De-duplicate salaries with DISTINCT, sort descending, skip the first value and take one. Wrapping the whole thing in a scalar subquery guarantees exactly one output row: the value, or NULL when there is no second salary.</p>`,
+        code: { lang: 'sql', db: 'hr', code: `SELECT (
+    SELECT DISTINCT salary
+    FROM employees
+    WHERE salary IS NOT NULL
+    ORDER BY salary DESC
+    LIMIT 1 OFFSET 1
+) AS second_highest_salary;` },
+        alt: [{ lang: 'sql', db: 'hr', title: 'Alternative with MAX (no LIMIT)', code: `-- Highest salary that is below the overall maximum
+SELECT MAX(salary) AS second_highest_salary
+FROM employees
+WHERE salary < (SELECT MAX(salary) FROM employees);` }],
+        complexity: `<p>O(N log N) for the distinct sort, or O(N) with the MAX version (two scans). With an index on salary both become O(log N) seeks.</p>`,
+        followUps: ['Generalise to the N-th highest salary (LeetCode 177).', 'Return the names of everyone earning the second highest salary.', 'Solve it with DENSE_RANK() (Window Functions module).']
+      }
+    }]
+  });
+
+  // How an engine removes duplicates: hash-set walk, then sort-and-compare-neighbours
+  function distinctFrames(input) {
+    var m = /^\s*(\w+)\s*\.\s*(\w+)\s*$/.exec(String(input || ''));
+    if (!m || !DATA[m[1].toLowerCase()]) throw new Error('Enter table.column, e.g. orders.status or customers.country');
+    var tbl = DATA[m[1].toLowerCase()], ci = tbl.cols.indexOf(m[2].toLowerCase());
+    if (ci < 0) throw new Error('Column must be one of: ' + tbl.cols.join(', '));
+    var vals = tbl.rows.map(function (r) { return r[ci]; }), F = [], seen = [], hl = {};
+    var label = function (v) { return v === null ? 'NULL' : String(v); };
+    F.push({ narr: '<code>SELECT DISTINCT ' + m[2] + ' FROM ' + m[1] + '</code>. Strategy 1 — <b>hashing</b>: walk the rows once, keep a set of values already emitted. New value → output it; already in the set → it is a duplicate, skip it.', parts: [{ type: 'array', label: m[2] + ' (in storage order)', values: vals.map(label) }, { type: 'set', label: 'seen set (= output so far)', items: [] }] });
+    vals.forEach(function (v, i) {
+      var key = label(v), dup = seen.indexOf(key) >= 0, sh = {};
+      hl = {}; for (var k = 0; k < i; k++) hl[k] = 'done'; hl[i] = dup ? 'bad' : 'ok';
+      if (!dup) seen.push(key);
+      sh[key] = dup ? 'bad' : 'ok';
+      F.push({ narr: 'Row ' + (i + 1) + ': <b>' + H.esc(key) + '</b> ' + (dup ? '<span class="c-r">is already in the set → duplicate, skipped</span>.' : '<span class="c-g">is new → emitted and remembered</span>.') + (v === null ? ' Note: DISTINCT treats all NULLs as one value (unlike WHERE, where NULL = NULL is UNKNOWN).' : ''), parts: [{ type: 'array', label: m[2], values: vals.map(label), hl: hl, ptr: (function () { var o = {}; o[i] = 'row'; return o; })() }, { type: 'set', label: 'seen set (= output so far)', items: seen.slice(), hl: sh }] });
+    });
+    var sorted = vals.slice().sort(function (a, b) { if (a === null) return b === null ? 0 : -1; if (b === null) return 1; var c = compare(a, b); return c; }).map(label);
+    var sh2 = {}; sorted.forEach(function (v, i) { sh2[i] = i > 0 && sorted[i - 1] === v ? 'bad' : 'ok'; });
+    F.push({ narr: 'Strategy 2 — <b>sorting</b>: sort the values, then duplicates sit next to each other; keep a value only if it differs from its left neighbour (red = equal to neighbour → dropped). Engines pick hashing or sorting based on size and memory; if an index already gives sorted order, the sort is free. Both give <b>' + seen.length + '</b> distinct values from ' + vals.length + ' rows.', parts: [{ type: 'array', label: 'sorted ' + m[2], values: sorted, hl: sh2 }, { type: 'set', label: 'DISTINCT result', items: seen.slice() }] });
+    return F;
+  }
+
+  /* =====================================================================
+     TOPIC 7 — DISTINCT
+     ===================================================================== */
+  topics.push({
+    title: 'DISTINCT: Removing Duplicate Rows (and What It Really Compares)',
+    analogy: `<p>A guest sign-in sheet at a party: some people signed three times because they went out and came back. To know <b>who</b> came, you read the sheet and write each name once on a clean list. That clean list is <code>SELECT DISTINCT name</code>. Now suppose the sheet has "name + time" and you copy both — "Asha 7pm" and "Asha 9pm" are <b>different lines</b>, so both stay. DISTINCT compares the <b>whole line you copy</b>, not just the first word.</p>`,
+    explain: `<p><code>SELECT DISTINCT</code> removes duplicate <b>rows from the result</b>. Two rows are duplicates when <b>every selected column</b> is equal.</p>
+<pre>SELECT DISTINCT dept FROM employees;          -- each department once (plus one NULL)
+SELECT DISTINCT dept, title FROM employees;   -- each (dept, title) PAIR once</pre>
+<ul>
+<li><b>One DISTINCT per SELECT</b>, written right after <code>SELECT</code>. It applies to the <i>whole</i> select list. <code>SELECT DISTINCT(dept), title</code> is <b>not</b> "distinct on dept only" — the parentheses are just grouping the expression <code>dept</code>; pairs are still compared.</li>
+<li><b>NULLs count as equal</b> for DISTINCT: three NULL cities become one NULL row. (In WHERE, NULL = NULL is UNKNOWN — DISTINCT uses a different rule, "is not distinct from".)</li>
+<li><b>Logical position</b>: DISTINCT runs <b>after SELECT</b> (it needs the final columns) and <b>before ORDER BY and LIMIT</b>. So <code>SELECT DISTINCT salary … ORDER BY salary DESC LIMIT 1 OFFSET 1</code> really is "second highest distinct salary".</li>
+<li><b>Counting unique values</b>: <code>COUNT(DISTINCT customer_id)</code> (aggregates are next module) — not <code>DISTINCT COUNT(customer_id)</code>.</li>
+<li><code>SELECT DISTINCT x</code> gives the same rows as <code>SELECT x … GROUP BY x</code>. Use DISTINCT to de-duplicate, GROUP BY when you also compute per-group numbers.</li>
+</ul>
+<p><b>Smell warning:</b> if you "need" DISTINCT to fix duplicate rows coming out of a JOIN, the real bug is usually the join (a 1-to-many relationship you did not expect). DISTINCT hides the symptom and costs a sort or hash.</p>`,
+    clues: [
+      '"list the <b>unique</b> / <b>different</b> / <b>distinct</b> cities / statuses / categories" → <code>SELECT DISTINCT</code>',
+      '"which customers <b>have placed</b> an order" (asked about people, data is per order) → DISTINCT customer_id',
+      '"N-th highest <b>value</b>" → DISTINCT before ORDER BY/LIMIT',
+      '"how many unique visitors" → <code>COUNT(DISTINCT visitor_id)</code> (aggregates module)',
+      'Duplicate rows appeared after adding a JOIN → fix the join; DISTINCT is a band-aid',
+      '"one row per X with the latest Y" → not DISTINCT (that is <code>DISTINCT ON</code> in PostgreSQL or ROW_NUMBER)'
+    ],
+    code: [{ lang: 'sql', db: 'shop', title: 'DISTINCT on one column and on several (runnable)', code: `-- Unique countries (NULL appears once)
+SELECT DISTINCT country FROM customers ORDER BY country;
+
+-- Unique (country, city) pairs: London/UK appears once, Mumbai/India once
+SELECT DISTINCT country, city FROM customers ORDER BY country, city;
+
+-- Which customers ordered at least once? (orders has one row per order)
+SELECT DISTINCT customer_id FROM orders ORDER BY customer_id;` }],
+    codeTitle: ['Runnable reference queries'],
+    viz: [
+      queryViz('DISTINCT compares whole rows: (dept, title) pairs', 'SELECT DISTINCT dept, title FROM employees ORDER BY dept, title'),
+      { title: 'How the engine finds duplicates: hash set vs sort', input: 'customers.country', inputLabel: 'table.column (e.g. orders.status, products.category, employees.dept)', gen: function (input) { return distinctFrames(input || 'customers.country'); } },
+      queryViz('Unique countries — NULL kept once', 'SELECT DISTINCT country FROM customers ORDER BY country')
+    ],
+    examples: [
+      {
+        title: 'One column vs two columns',
+        html: `<p><code>SELECT DISTINCT dept</code> gives 5 rows (Engineering, Sales, Marketing, HR and NULL). <code>SELECT DISTINCT dept, title</code> gives 9 rows because Engineering appears with three different titles. Adding a column can only keep or <i>increase</i> the number of distinct rows.</p>`,
+        code: { lang: 'sql', db: 'hr', code: `SELECT DISTINCT dept FROM employees;          -- 5 rows
+SELECT DISTINCT dept, title FROM employees;   -- 9 rows` }
+      },
+      {
+        title: 'The DISTINCT(...) myth',
+        html: `<p>Many people believe <code>SELECT DISTINCT(dept), name</code> makes only <i>dept</i> unique. It does not — it returns all 12 (dept, name) pairs because names are unique. If you want "one row per department with some name", you need aggregation (<code>GROUP BY dept</code> + <code>MIN(name)</code>) or a window function.</p>`,
+        code: { lang: 'sql', db: 'hr', code: `SELECT DISTINCT(dept), name FROM employees;   -- still 12 rows!
+SELECT dept, MIN(name) AS first_name_alphabetically
+FROM employees GROUP BY dept;                 -- one row per dept (next module)` }
+      },
+      {
+        title: 'DISTINCT and NULL: one NULL survives',
+        html: `<p>Diya and Ivan have NULL cities. <code>SELECT DISTINCT city</code> shows a single NULL row. If you want only real cities, filter first: <code>WHERE city IS NOT NULL</code> — WHERE runs before DISTINCT, so the NULL never reaches it.</p>`,
+        code: { lang: 'sql', db: 'shop', code: `SELECT DISTINCT city FROM customers;                          -- 9 rows incl. one NULL
+SELECT DISTINCT city FROM customers WHERE city IS NOT NULL;   -- 8 rows` }
+      },
+      {
+        title: 'Counting unique values vs de-duplicating rows',
+        html: `<p>14 orders were placed by 10 different customers. <code>COUNT(DISTINCT customer_id)</code> counts unique values; <code>SELECT DISTINCT</code> lists them. (COUNT is covered properly in SQL 3 — shown here because interviewers mix the two.)</p>`,
+        code: { lang: 'sql', db: 'shop', code: `SELECT COUNT(*)                    AS orders,
+       COUNT(DISTINCT customer_id) AS unique_customers
+FROM orders;` }
+      }
+    ],
+    deepDive: `<p><b>Implementation.</b> DISTINCT is a de-duplication operator, implemented exactly like GROUP BY without aggregates: either <b>hash aggregation</b> (one pass, a hash table of seen rows, O(N) expected time, memory proportional to the number of distinct rows, spills to disk in partitions when large) or <b>sort-based</b> (sort O(N log N), then drop rows equal to their predecessor; output comes out sorted). If an index already supplies rows ordered by the DISTINCT columns, the sort is free and the engine streams ("Unique" node in PostgreSQL). SQLite's EXPLAIN QUERY PLAN shows "USE TEMP B-TREE FOR DISTINCT" when it builds a temporary structure.</p>
+<p><b>Equality rules.</b> DISTINCT uses "not distinct" comparison: NULL matches NULL. Text equality follows the column's collation, so under a case-insensitive collation 'Mumbai' and 'MUMBAI' collapse into one (MySQL default), while SQLite/PostgreSQL keep both. Floating-point values that print the same may still differ in the last bit and stay separate.</p>
+<p><b>ORDER BY with DISTINCT.</b> Standard SQL (and PostgreSQL) requires ORDER BY expressions to appear in the select list when DISTINCT is used — otherwise which of the collapsed rows' values would you sort by? SQLite and older MySQL allow it and pick an arbitrary row's value, which is non-deterministic.</p>
+<p><b>Variants.</b> PostgreSQL's <code>DISTINCT ON (dept) … ORDER BY dept, salary DESC</code> keeps the first row per dept — a concise "top-1 per group". <code>UNION</code> (without ALL) applies DISTINCT across the combined result; <code>UNION ALL</code> skips that cost. <code>COUNT(DISTINCT x)</code> on huge data is expensive; analytics engines offer approximate versions (<code>APPROX_COUNT_DISTINCT</code>, HyperLogLog) with ~1–2% error and tiny memory.</p>
+<p><b>Performance smell.</b> A DISTINCT over many wide columns forces the engine to hash or sort every column of every row. When duplicates come from a join, rewrite with <code>EXISTS</code> (semi-join) so duplicates are never produced.</p>`,
+    aiEra: `<p><b>What AI changes:</b> LLM-generated SQL often sprinkles <code>DISTINCT</code> "just in case" after joins — the query looks right, the counts look plausible, and a fan-out bug is hidden underneath. Spotting an unjustified DISTINCT is now a core code-review skill. <b>Use AI as a partner:</b> ask <code>Why would this query return duplicates without DISTINCT? Show the join that fans out</code>, or <code>Rewrite this SELECT DISTINCT … JOIN as an EXISTS semi-join</code>. For huge analytics tables ask whether an approximate distinct count is acceptable. <b>Where AI goes wrong:</b> believes <code>DISTINCT(col)</code> applies to one column, uses DISTINCT where GROUP BY with an aggregate was needed, and adds ORDER BY columns that are not in a DISTINCT select list (fails in PostgreSQL). <b>What you must still own:</b> understanding the grain of each table ("one row per order") and therefore when duplicates are legitimate, impossible, or a symptom.</p>`,
+    problems: [{
+      title: 'Customers Who Ordered in August 2024', level: 'Easy', tags: ['distinct', 'between', 'dates'], companies: ['Swiggy', 'Zomato', 'DoorDash'],
+      statement: `<p>Finance wants the list of <b>customer ids</b> who placed at least one order in <b>August 2024</b>, each id <b>once</b>, in ascending order. Table: <code>orders(id, customer_id, order_date, status, amount, coupon)</code> — one row per order, dates stored as <code>'YYYY-MM-DD'</code> text.</p>`,
+      constraints: `<p>14 orders; some customers ordered several times. Cancelled orders still count as "placed".</p>`,
+      example: `${H.table(['customer_id'], [['1'], ['2'], ['3'], ['4'], ['5'], ['6'], ['8'], ['10']])}<p>Customer 1 placed three August orders (101, 103, 111) but appears once. Customers 9, 12 and the September order of customer 2 are outside August.</p>`,
+      brute: { why: `<p>Without DISTINCT you get one row <b>per order</b>: customer 1 three times and customer 2 twice — 11 rows instead of 8. The table's grain is "order", but the question's grain is "customer".</p>`, code: { lang: 'sql', db: 'shop', code: `SELECT customer_id
+FROM orders
+WHERE order_date BETWEEN '2024-08-01' AND '2024-08-31'
+ORDER BY customer_id;     -- duplicates: 1,1,1,2,2,...` } },
+      mcq: { q: 'In which logical step are the duplicate customer ids removed?', options: ['After SELECT, before ORDER BY', 'Before WHERE', 'After LIMIT', 'During FROM'], answer: 0, explain: 'DISTINCT needs the final select-list values, so it runs after SELECT and before ORDER BY/LIMIT.' },
+      hints: [
+        `<p>Hint 1: the table has one row per <i>order</i>; the answer needs one row per <i>customer</i>.</p>`,
+        `<p>Hint 2: filter August with a date range on the ISO text column, then put DISTINCT right after SELECT.</p>`,
+        `<p>Hint 3: prefer the half-open range <code>order_date &gt;= '2024-08-01' AND order_date &lt; '2024-09-01'</code>; sort with ORDER BY customer_id.</p>`
+      ],
+      solution: {
+        approach: `<p>Filter rows to August (WHERE), project customer_id (SELECT), collapse duplicates (DISTINCT), then sort. The half-open range is correct whether the column holds dates or full timestamps.</p>`,
+        code: { lang: 'sql', db: 'shop', code: `SELECT DISTINCT customer_id
+FROM orders
+WHERE order_date >= '2024-08-01'
+  AND order_date <  '2024-09-01'
+ORDER BY customer_id;` },
+        alt: [{ lang: 'sql', db: 'shop', title: 'Same result with GROUP BY', code: `SELECT customer_id
+FROM orders
+WHERE order_date >= '2024-08-01' AND order_date < '2024-09-01'
+GROUP BY customer_id
+ORDER BY customer_id;` }],
+        complexity: `<p>O(N) scan + O(K log K) to sort the K distinct ids (or hash-dedupe). An index on <code>(order_date, customer_id)</code> makes the range read cheap and covering.</p>`,
+        followUps: ['Return the customer names instead of ids (needs a JOIN — SQL 4).', 'Count the unique customers in one number.', 'Which customers ordered in August but not in September?']
+      }
+    }]
+  });
+
+  // Written order vs logical order, stepping through a full query template
+  function orderFrames() {
+    var code = "SELECT DISTINCT dept, COUNT(*) AS n\nFROM employees\nWHERE salary > 50000\nGROUP BY dept\nHAVING COUNT(*) >= 2\nORDER BY n DESC\nLIMIT 3;";
+    var steps = [
+      { line: 2, name: 'FROM', sees: 'all rows and columns of the table(s); JOINs happen here', alias: 'no', why: 'You cannot filter or pick columns before you know where the rows come from.' },
+      { line: 3, name: 'WHERE', sees: 'one raw row at a time, every column', alias: 'no (aliases do not exist yet)', why: 'Filters individual rows early so less data flows to later steps. No aggregates allowed — groups do not exist yet.' },
+      { line: 4, name: 'GROUP BY', sees: 'surviving rows; buckets them by dept', alias: 'no (standard) — MySQL/SQLite lenient', why: 'Collapses many rows into one row per group (next module).' },
+      { line: 5, name: 'HAVING', sees: 'one group at a time; aggregates allowed', alias: 'no (standard)', why: 'Filters whole groups, e.g. keep departments with at least 2 people.' },
+      { line: 1, name: 'SELECT', sees: 'each row/group; computes expressions and creates aliases (and window functions)', alias: 'aliases are BORN here', why: 'Now the output columns exist, with their names.' },
+      { line: 1, name: 'DISTINCT', sees: 'complete output rows', alias: 'n/a', why: 'Needs final column values to compare rows, so it must come after SELECT.' },
+      { line: 6, name: 'ORDER BY', sees: 'output rows (aliases!) plus source columns', alias: 'YES', why: 'Sorting happens after SELECT, so it can use aliases like n.' },
+      { line: 7, name: 'LIMIT / OFFSET', sees: 'the sorted list', alias: 'n/a', why: 'Cuts the final list. Must be last, otherwise "top 3" would be 3 random rows.' }
+    ];
+    var F = [], done = [];
+    F.push({ narr: 'You <b>write</b> a query starting with SELECT, but SELECT is evaluated almost <b>last</b>. Here is a full query (GROUP BY/HAVING come in the next module — included so you see the whole picture). Watch the highlighted line jump around in <b>logical</b> order.', parts: [{ type: 'code', label: 'Written order', lang: 'sql', code: code }, { type: 'array', label: 'written position of each step (logical order →)', values: ['FROM:2', 'WHERE:3', 'GROUP:4', 'HAVING:5', 'SELECT:1', 'DISTINCT:1', 'ORDER:6', 'LIMIT:7'] }] });
+    steps.forEach(function (s, i) {
+      var hl = {}; hl[s.line] = 'cur';
+      done.forEach(function (d) { if (!hl[d]) hl[d] = 'done'; });
+      done.push(s.line);
+      var rows = steps.slice(0, i + 1).map(function (x, k) { return [String(k + 1), x.name, x.sees, x.alias]; }), th = {};
+      th[i] = 'cur';
+      F.push({ narr: '<b>Step ' + (i + 1) + ': ' + s.name + '</b> (written on line ' + s.line + '). ' + s.why, parts: [{ type: 'code', label: 'Written order (current logical step highlighted)', lang: 'sql', code: code, hl: hl }, { type: 'table', label: 'Logical steps so far', columns: ['#', 'clause', 'what it can see', 'can use SELECT aliases?'], rows: rows, hl: th }] });
+    });
+    F.push({ narr: '<b>Memory trick:</b> "<b>F</b>rogs <b>W</b>ear <b>G</b>reen <b>H</b>ats, <b>S</b>o <b>D</b>ucks <b>O</b>bviously <b>L</b>augh" → FROM, WHERE, GROUP BY, HAVING, SELECT, DISTINCT, ORDER BY, LIMIT. This is the <i>logical</i> order that defines the meaning; the optimizer may execute things differently (use an index, push filters down, stop early for LIMIT) as long as the answer is identical.', parts: [{ type: 'array', label: 'logical order', values: ['FROM', 'WHERE', 'GROUP BY', 'HAVING', 'SELECT', 'DISTINCT', 'ORDER BY', 'LIMIT'], hl: { 0: 'ok', 1: 'ok', 2: 'ok', 3: 'ok', 4: 'sel', 5: 'ok', 6: 'ok', 7: 'ok' } }] });
+    return F;
+  }
+
+  /* =====================================================================
+     TOPIC 8 — Logical query processing order
+     ===================================================================== */
+  topics.push({
+    title: 'Logical Query Processing Order: How SQL Really Reads Your Query',
+    analogy: `<p>A restaurant order slip says "<i>Serve 3 plates, sorted by size, of grilled fish, using only today's catch.</i>" You <b>wrote</b> "serve" first, but the kitchen <b>works</b> in a different order: fetch the fish from the fridge (FROM), throw out anything not from today (WHERE), grill and plate it (SELECT), remove identical plates (DISTINCT), line them up by size (ORDER BY), and send out the first 3 (LIMIT). SQL is the same: the <b>written</b> order is for humans, the <b>logical</b> order is how the meaning is defined.</p>`,
+    explain: `<p>Every SELECT query is <i>defined</i> as if it ran these steps in this order, each step feeding a table into the next:</p>
+${H.table(['#', 'Clause', 'What happens', 'Written position'], [['1', '<b>FROM</b> (+ JOIN)', 'get the source rows', '2nd'], ['2', '<b>WHERE</b>', 'keep rows where the condition is TRUE', '3rd'], ['3', 'GROUP BY', 'form groups (SQL 3)', '4th'], ['4', 'HAVING', 'keep groups (SQL 3)', '5th'], ['5', '<b>SELECT</b>', 'compute output columns, create aliases', H.c('y', '1st!')], ['6', '<b>DISTINCT</b>', 'remove duplicate output rows', '1st (inside SELECT)'], ['7', '<b>ORDER BY</b>', 'sort', '6th'], ['8', '<b>LIMIT / OFFSET</b>', 'cut the sorted list', 'last']])}
+<p>Knowing this order explains almost every "why does SQL do that?" question:</p>
+<ul>
+<li><b>Why can't I use my alias in WHERE?</b> WHERE (step 2) runs before SELECT (step 5) creates the alias. Repeat the expression, or wrap the query in a subquery/CTE. (SQLite quietly allows it — PostgreSQL, SQL Server, Oracle and MySQL reject it, so don't rely on it.)</li>
+<li><b>Why CAN I use my alias in ORDER BY?</b> ORDER BY (step 7) runs after SELECT.</li>
+<li><b>Why can WHERE filter on a column I did not select?</b> WHERE sees the full source row; SELECT only trims columns later.</li>
+<li><b>Why does "second highest" need DISTINCT before LIMIT?</b> DISTINCT (6) runs before ORDER BY (7) and LIMIT (8), so duplicates are already gone when positions are counted.</li>
+<li><b>Why is LIMIT without ORDER BY random-ish?</b> LIMIT just cuts whatever order step 7 produced — with no ORDER BY, there is no defined order.</li>
+<li><b>Why can't I write <code>WHERE COUNT(*) &gt; 2</code>?</b> Groups do not exist at step 2 — that is what HAVING (step 4) is for.</li>
+</ul>
+<p><b>Logical ≠ physical.</b> The optimizer may run things in a different physical order — read an index that is already sorted (no sort step), push a filter into a join, stop scanning as soon as LIMIT is satisfied — but only if the result is <i>identical</i> to the logical order. The logical order is the contract; the plan is the implementation.</p>`,
+    clues: [
+      '"Error: column total does not exist" when filtering on an alias → WHERE runs before SELECT; repeat the expression or use a subquery/CTE',
+      '"Why does my LIMIT return different rows each time?" → no ORDER BY; LIMIT is last and just cuts',
+      '"Filter on the count / sum" → aggregates belong in HAVING (after GROUP BY), not WHERE',
+      '"Rank rows and keep the top 2" → window functions are computed at SELECT, so filtering them needs an outer query',
+      '"Explain how the database executes this query" in an interview → recite the logical order, then distinguish it from the physical plan (EXPLAIN)',
+      '"Take the 5 newest orders, then show them oldest first" → two ORDER BYs need a subquery (LIMIT happens after the only ORDER BY)'
+    ],
+    code: [{ lang: 'sql', db: 'hr', title: 'Every clause of this module in one query (runnable)', code: `-- Written order:  SELECT … FROM … WHERE … ORDER BY … LIMIT
+-- Logical order:  FROM → WHERE → SELECT → DISTINCT → ORDER BY → LIMIT
+SELECT DISTINCT dept,
+       salary / 1000 AS salary_k          -- 5) alias born here (integer division → thousands)
+FROM employees                            -- 1) source rows
+WHERE hire_date >= '2018-01-01'           -- 2) row filter (sees every column)
+ORDER BY salary_k DESC                    -- 7) alias allowed here
+LIMIT 4;                                  -- 8) cut last` }],
+    codeTitle: ['Runnable reference query'],
+    viz: [
+      queryViz('The whole pipeline: FROM → WHERE → SELECT → DISTINCT → ORDER BY → LIMIT', "SELECT DISTINCT dept, salary / 1000 AS salary_k FROM employees WHERE hire_date >= '2018-01-01' ORDER BY salary_k DESC LIMIT 4", { stepWhere: true }),
+      { title: 'Written order vs logical order (full 8-step version)', gen: function () { return orderFrames(); } }
+    ],
+    examples: [
+      {
+        title: 'Alias in WHERE: works in SQLite, fails almost everywhere else',
+        html: `<p>SQLite resolves <code>total_comp</code> in WHERE to the SELECT alias as a convenience. PostgreSQL says <code>column "total_comp" does not exist</code>; SQL Server says <code>Invalid column name</code>. Portable fixes: repeat the expression, or compute it in a subquery/CTE and filter outside.</p>`,
+        code: { lang: 'sql', db: 'hr', code: `-- Non-portable (SQLite-only convenience)
+SELECT name, salary + COALESCE(bonus, 0) AS total_comp
+FROM employees WHERE total_comp > 150000;
+
+-- Portable 1: repeat the expression
+SELECT name, salary + COALESCE(bonus, 0) AS total_comp
+FROM employees WHERE salary + COALESCE(bonus, 0) > 150000;
+
+-- Portable 2: derived table (subquery in FROM)
+SELECT name, total_comp
+FROM (SELECT name, salary + COALESCE(bonus, 0) AS total_comp FROM employees) AS t
+WHERE total_comp > 150000;` }
+      },
+      {
+        title: 'WHERE can see columns that SELECT throws away',
+        html: `<p>The output only shows names, yet the filter uses <code>hire_date</code> and the sort uses <code>salary</code>. WHERE and ORDER BY can reach source columns; SELECT just decides what you see.</p>`,
+        code: { lang: 'sql', db: 'hr', code: `SELECT name
+FROM employees
+WHERE hire_date < '2018-01-01'
+ORDER BY salary DESC;` }
+      },
+      {
+        title: 'Two different orderings need two query levels',
+        html: `<p>"Take the 5 most recent orders, then display them oldest-first." One query has one ORDER BY and LIMIT always happens after it, so you sort-and-cut in an inner query, then re-sort outside.</p>`,
+        code: { lang: 'sql', db: 'shop', code: `SELECT id, order_date
+FROM (SELECT id, order_date
+      FROM orders
+      ORDER BY order_date DESC, id DESC
+      LIMIT 5) AS latest
+ORDER BY order_date, id;` }
+      },
+      {
+        title: 'Aggregates are not allowed in WHERE',
+        html: `<p><code>WHERE COUNT(*) &gt; 1</code> is an error ("misuse of aggregate") because at step 2 there are only single rows. HAVING runs after GROUP BY and can filter on counts — the whole story is next module, but the reason is the processing order.</p>`,
+        code: { lang: 'sql', db: 'hr', code: `-- WHERE COUNT(*) > 1  → error: misuse of aggregate
+SELECT dept, COUNT(*) AS headcount
+FROM employees
+WHERE dept IS NOT NULL            -- row filter (step 2)
+GROUP BY dept                     -- step 3
+HAVING COUNT(*) > 1               -- group filter (step 4)
+ORDER BY headcount DESC;          -- alias OK (step 7)` }
+      }
+    ],
+    deepDive: `<p><b>The formal model.</b> The SQL standard defines a query's result by the <i>logical</i> evaluation: FROM builds a (possibly joined) virtual table; WHERE restricts it; GROUP BY partitions it; HAVING restricts groups; SELECT projects (window functions are evaluated here, after HAVING, which is why <code>WHERE ROW_NUMBER() OVER (…) = 1</code> is illegal); DISTINCT removes duplicates; set operators (UNION/INTERSECT/EXCEPT) combine query blocks; ORDER BY sorts the final result; OFFSET/FETCH cuts it. Itzik Ben-Gan's well-known diagram and most textbooks use exactly this sequence.</p>
+<p><b>What the optimizer actually does.</b> The planner rewrites the logical tree into a cheaper equivalent physical plan: <i>predicate pushdown</i> (evaluate WHERE inside the scan or below a join), <i>projection pushdown</i> (read only needed columns — huge in column stores), <i>index-provided order</i> (skip the sort), <i>top-N</i> (combine ORDER BY + LIMIT into a heap), <i>early termination</i> (stop reading once LIMIT is satisfied), and <i>constant folding</i>. You see the physical plan with <code>EXPLAIN QUERY PLAN</code> (SQLite), <code>EXPLAIN ANALYZE</code> (PostgreSQL/MySQL 8). Any transformation must preserve the logical result, including NULL semantics — which is why some rewrites (e.g. NOT IN → anti-join) are only allowed when columns are NOT NULL.</p>
+<p><b>Dialect leniency.</b> SQLite resolves unknown identifiers in WHERE/GROUP BY/HAVING against result-column aliases; MySQL allows aliases in GROUP BY/HAVING (not WHERE); PostgreSQL allows output-column names and positions in GROUP BY and ORDER BY but not WHERE or HAVING. Writing to the strict standard keeps queries portable — important when SQLite prototypes move to PostgreSQL in production.</p>
+<p><b>Short-circuit is not promised.</b> Because the optimizer reorders, the logical order says nothing about which <i>part</i> of a WHERE condition is evaluated first, nor that SELECT expressions are evaluated only for rows that pass WHERE in every situation (some engines evaluate expressions speculatively). Guard risky expressions (division, casts) with CASE/NULLIF rather than relying on WHERE order.</p>`,
+    aiEra: `<p><b>What AI changes:</b> AI writes SQL fluently, but when its query fails or returns odd rows, the root cause is very often a processing-order misunderstanding — an alias used in WHERE, an aggregate in WHERE, a window function filtered in the same level, or LIMIT expected to apply before a sort. The logical order is your <b>debugging map</b>. <b>Use AI as a partner:</b> ask <code>Annotate each clause of this query with its logical step number and what it can see</code>, <code>Rewrite this to be portable to PostgreSQL (no aliases in WHERE)</code>, or <code>Explain how the EXPLAIN plan differs from the logical order</code>. <b>Where AI goes wrong:</b> it learns from SQLite/MySQL-flavoured snippets online and happily emits alias-in-WHERE or alias-in-HAVING that breaks on PostgreSQL, and it sometimes claims WHERE "runs after SELECT". <b>What you must still own:</b> reciting and applying the order under interview pressure, distinguishing logical meaning from the physical plan, and choosing subqueries/CTEs to get a second "pass".</p>`,
+    problems: [{
+      title: 'Total Compensation Above 150k', level: 'Medium', tags: ['logical order', 'alias', 'null', 'coalesce'], companies: ['Goldman Sachs', 'Microsoft', 'Stripe'],
+      statement: `<p>Total compensation = salary + bonus, where a missing bonus counts as <b>0</b>. Return <code>name</code> and <code>total_comp</code> for employees whose total compensation is <b>greater than 150,000</b>, highest first. The query must also run on PostgreSQL (so no alias in WHERE).</p>`,
+      constraints: `<p><code>bonus</code> is nullable (4 employees have NULL). Must be portable standard SQL.</p>`,
+      example: `${H.table(['name', 'total_comp'], [['Priya Sharma', '300000'], ['Sara Johnson', '290000'], [H.c('g', 'Arjun Mehta'), H.c('g', '160000')]])}<p>Arjun's bonus is NULL → counts as 0 → 160000 &gt; 150000, so he qualifies. A naive <code>salary + bonus</code> makes his total NULL and he disappears.</p>`,
+      brute: { why: `<p>Two bugs. (1) <code>salary + bonus</code> is NULL whenever bonus is NULL, so Arjun's total is NULL and <code>NULL &gt; 150000</code> is UNKNOWN → dropped. (2) <code>WHERE total_comp …</code> uses a SELECT alias in WHERE: SQLite tolerates it, but PostgreSQL and SQL Server reject it because WHERE runs before SELECT.</p>`, code: { lang: 'sql', db: 'hr', code: `SELECT name, salary + bonus AS total_comp
+FROM employees
+WHERE total_comp > 150000          -- alias in WHERE: SQLite-only
+ORDER BY total_comp DESC;          -- and Arjun (NULL bonus) is lost` } },
+      mcq: { q: 'Why is <code>WHERE total_comp &gt; 150000</code> rejected by PostgreSQL?', options: ['WHERE is evaluated before SELECT creates the alias', 'Aliases must be quoted', 'total_comp is a reserved word', 'WHERE cannot compare numbers'], answer: 0, explain: 'Logical order: FROM → WHERE → … → SELECT. When WHERE runs, the alias does not exist yet.' },
+      hints: [
+        `<p>Hint 1: handle the missing bonus first — <code>COALESCE(bonus, 0)</code>.</p>`,
+        `<p>Hint 2: since WHERE cannot see aliases, repeat the expression in WHERE (or compute it in a subquery and filter outside).</p>`,
+        `<p>Hint 3: ORDER BY <i>can</i> use the alias. Recipe: SELECT name, salary + COALESCE(bonus,0) AS total_comp … WHERE salary + COALESCE(bonus,0) &gt; 150000 ORDER BY total_comp DESC.</p>`
+      ],
+      solution: {
+        approach: `<p>Use COALESCE to turn unknown bonuses into 0, repeat the expression in WHERE (step 2 cannot see the alias), and sort by the alias in ORDER BY (step 7 can). The derived-table version computes once and filters outside — identical plan in most engines.</p>`,
+        code: { lang: 'sql', db: 'hr', code: `SELECT name,
+       salary + COALESCE(bonus, 0) AS total_comp
+FROM employees
+WHERE salary + COALESCE(bonus, 0) > 150000
+ORDER BY total_comp DESC;` },
+        alt: [{ lang: 'sql', db: 'hr', title: 'Compute once in a derived table', code: `SELECT name, total_comp
+FROM (
+    SELECT name, salary + COALESCE(bonus, 0) AS total_comp
+    FROM employees
+) AS t
+WHERE total_comp > 150000
+ORDER BY total_comp DESC;` }],
+        complexity: `<p>O(N) scan + O(K log K) sort of the K qualifying rows. The expression in WHERE is not sargable; for large tables a generated/computed column with an index can help.</p>`,
+        followUps: ['Show the top 2 only.', 'Add a column showing what percentage of total comp is bonus (watch integer division).', 'Write it with a CTE (WITH …) — SQL 5.']
+      }
+    }]
+  });
 registerModule({ id: 'sql02', title: 'SELECT, WHERE, ORDER BY, LIMIT & NULLs', intro: '<p>x</p>', goals: [], prereqs: 'x', hours: 8,
   databases: { hr: buildDb(['employees']), shop: buildDb(['customers', 'products', 'orders']), movies: buildDb(['movies']) },
   topics: topics, practice: practice, quiz: quiz, interview: interview }); })();
