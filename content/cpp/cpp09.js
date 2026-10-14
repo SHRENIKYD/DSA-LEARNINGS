@@ -142,7 +142,7 @@
     }
     var w = tier[0]; st[w].stage = '✓ CHOSEN';
     var hw = {}; hw[w] = 'sel';
-    frames.push({ narr: '<b>Winner: #' + (w + 1) + ' <code>' + E(cands[w].sig) + '</code></b>' + (st[w].T ? ' with T = <b>' + E(st[w].T) + '</b>' : '') + '. Only now is that one function template <i>instantiated</i> (its body compiled for this T).', parts: [tbl(hw), note('Call <code>' + E(title) + '(x)</code> with <code>x</code> of type <b>' + E(arg) + '</b> → runs <b>#' + (w + 1) + '</b>.', 'Result')] });
+    frames.push({ narr: '<b>Winner: #' + (w + 1) + ' <code>' + E(cands[w].sig) + '</code></b>' + (st[w].T ? ' with T = <b>' + E(st[w].T) + '</b>' : '') + '. ' + (cands[w].kind === 'template' ? 'Only now is that one function template <i>instantiated</i> (its body compiled for this T); the losers were never instantiated.' : 'It is an ordinary function, so there is nothing to instantiate — the losing templates were never instantiated either.'), parts: [tbl(hw), note('Call <code>' + E(title) + '(x)</code> with <code>x</code> of type <b>' + E(arg) + '</b> → runs <b>#' + (w + 1) + '</b>.', 'Result')] });
     return frames;
   }
 
@@ -1465,6 +1465,295 @@ template &lt;class T, class = std::enable_if_t&lt;!std::is_integral_v&lt;T&gt;&g
         ] },
         complexity: `<p>O(1) at run time; each call resolves at compile time.</p>`,
         followUps: ['Rewrite it with C++20 concepts — how many lines disappear?', 'Return <code>std::size(x)</code> instead — what does the standard already provide?', 'Add support for types with only <code>begin()/end()</code> (like <code>std::forward_list</code>).']
+      }
+    }]
+  });
+
+  /* ======================================================================
+     TOPIC 6 — C++20 concepts & requires clauses
+     ====================================================================== */
+  function conceptCheckViz(input) {
+    var T = normType(input === undefined ? 'std::vector<int>' : input), P = TYPES[T];
+    var frames = [], rows = [];
+    var code = 'template <class T>\nconcept Container = requires(T c, const T cc) {\n    typename T::value_type;                              // (1) type requirement\n    { cc.size() } -> std::convertible_to<std::size_t>;   // (2) compound requirement\n    c.begin();  c.end();                                 // (3) simple requirements\n    requires std::equality_comparable<T>;                // (4) nested requirement\n};\n\ntemplate <class T>\nconcept Number = std::integral<T> || std::floating_point<T>;   // (5) disjunction\n\ntemplate <class T>\nconcept SignedNumber = Number<T> && std::is_signed_v<T>;       // (6) conjunction';
+    var reqs = [
+      { line: 3, label: '(1) typename T::value_type', ok: !!P.valueType, yes: T + ' has a nested type value_type', no: T + ' has no member type value_type' },
+      { line: 4, label: '(2) { cc.size() } -> convertible_to<size_t>', ok: !!P.size, yes: 'cc.size() compiles and returns size_t', no: 'cc.size() is not a valid expression' },
+      { line: 5, label: '(3) c.begin(); c.end();', ok: !!P.range, yes: 'both expressions compile (only checked, never run)', no: 'c.begin() is not valid' },
+      { line: 6, label: '(4) requires equality_comparable<T>', ok: T !== 'Widget', yes: 'a == b and a != b compile', no: 'no operator== for ' + T }
+    ];
+    frames.push({ narr: 'A <b>concept</b> is a named, compile-time yes/no predicate on types. A <code>requires</code> expression lists things that must <b>compile</b> for T (they are never executed). Checking <code>Container&lt;' + E(T) + '&gt;</code> requirement by requirement.', parts: [{ type: 'code', label: 'Concepts under test', lang: 'cpp', code: code }, { type: 'table', label: 'Requirement checks for T = ' + E(T), columns: ['requirement', 'satisfied?', 'why'], rows: [] }] });
+    var all = true;
+    reqs.forEach(function (r, i) {
+      rows.push([r.label, r.ok ? 'yes' : 'NO', r.ok ? r.yes : r.no]);
+      if (!r.ok) all = false;
+      var h = {}; h[i] = r.ok ? 'ok' : 'bad';
+      var hlc = {}; hlc[r.line] = r.ok ? 'ok' : 'bad';
+      frames.push({ narr: 'Requirement ' + r.label.slice(0, 3) + ': ' + (r.ok ? '<span class="c-g">' + E(r.yes) + '</span>.' : '<span class="c-r">' + E(r.no) + '</span> → the requires-expression is <b>false</b>. (A failing requirement is not an error; it just makes the concept false.)'), parts: [{ type: 'code', label: 'Concepts under test', lang: 'cpp', code: code, hl: hlc }, { type: 'table', label: 'Requirement checks for T = ' + E(T), columns: ['requirement', 'satisfied?', 'why'], rows: rows.map(function (x) { return x.slice(); }), hl: h }] });
+    });
+    rows.push(['Container<' + T + '>', all ? 'TRUE' : 'FALSE', all ? 'every requirement holds' : 'at least one requirement failed']);
+    var num = !!(P.integral || P.floating);
+    rows.push(['Number<' + T + '> = integral || floating_point', num ? 'TRUE' : 'FALSE', P.integral ? 'integral<' + T + '> is true (|| short-circuits)' : P.floating ? 'integral is false, floating_point is true' : 'neither alternative holds']);
+    var hs = {}; hs[rows.length - 2] = all ? 'sel' : 'bad'; hs[rows.length - 1] = num ? 'sel' : 'bad';
+    frames.push({ narr: '<code>Container&lt;' + E(T) + '&gt;</code> = <b>' + all + '</b>. <code>Number&lt;' + E(T) + '&gt;</code> is a <b>disjunction</b>: it is true if either side is true, checked left to right with short-circuiting.', parts: [{ type: 'code', label: 'Concepts under test', lang: 'cpp', code: code, hl: { 10: num ? 'ok' : 'bad' } }, { type: 'table', label: 'Requirement checks for T = ' + E(T), columns: ['requirement', 'satisfied?', 'why'], rows: rows.map(function (x) { return x.slice(); }), hl: hs }] });
+    var sn = num && !!P.signedInt;
+    rows.push(['SignedNumber<' + T + '> = Number && is_signed_v', sn ? 'TRUE' : 'FALSE', !num ? 'Number is false, so && short-circuits (is_signed_v is not even checked)' : sn ? 'Number holds and ' + T + ' is signed' + (T === 'char' ? ' (char signedness is implementation-defined; signed on x86 GCC/Clang)' : '') : T + ' is not signed']);
+    var hs2 = {}; hs2[rows.length - 1] = sn ? 'sel' : 'bad';
+    frames.push({ narr: '<code>SignedNumber</code> is a <b>conjunction</b> built on top of <code>Number</code>. Because it is defined as <code>Number&lt;T&gt; &amp;&amp; …</code>, the compiler knows <code>SignedNumber</code> <b>subsumes</b> <code>Number</code> (it is strictly more demanding). That fact decides overloads — see the next visualizer.', parts: [{ type: 'code', label: 'Concepts under test', lang: 'cpp', code: code, hl: { 13: sn ? 'ok' : 'bad' } }, { type: 'table', label: 'Requirement checks for T = ' + E(T), columns: ['requirement', 'satisfied?', 'why'], rows: rows, hl: hs2 }] });
+    frames.push({ narr: 'If you call <code>template&lt;Container C&gt; void f(C)</code> with <b>' + E(T) + '</b>, the compiler ' + (all ? 'accepts it.' : 'rejects it with a <b>short, readable error</b> that names the failed requirement — instead of a 200-line SFINAE or body-instantiation error.'), parts: [note(all ? '<span class="c-g">Container&lt;' + E(T) + '&gt; satisfied — call compiles.</span>' : '<span class="c-r">error: no matching function for call to f(' + E(T) + ')<br>note: constraints not satisfied<br>note: the required ' + E(reqs.filter(function (r) { return !r.ok; })[0].label) + ' is invalid</span>', 'Compiler output (simplified)')] });
+    return frames;
+  }
+
+  var OVL_CONCEPT = R`
+template <class T>              void describe(T)  // #1 unconstrained
+template <std::integral T>      void describe(T)  // #2
+template <std::signed_integral T> void describe(T) // #3 subsumes #2
+template <Container T>          void describe(T)  // #4`;
+  function conceptOverloadViz(input) {
+    var arg = normType(input === undefined ? 'int' : input);
+    var any = function (a) { return { ok: true, T: a, why: 'T = argument type' }; };
+    var cands = [
+      { sig: 'template<class T> describe(T)', kind: 'template', family: 'concept', spec: 0, deduce: any, check: function () { return { ok: true, why: 'no constraints at all' }; } },
+      { sig: 'template<std::integral T> describe(T)', kind: 'template', family: 'concept', spec: 1, deduce: any, check: function (T) { return TYPES[T].integral ? { ok: true, why: 'std::integral<' + T + '> is satisfied' } : { ok: false, why: 'std::integral<' + T + '> is not satisfied' }; } },
+      { sig: 'template<std::signed_integral T> describe(T)', kind: 'template', family: 'concept', spec: 2, deduce: any, check: function (T) { return TYPES[T].signedInt ? { ok: true, why: 'integral<' + T + '> && is_signed_v<' + T + '> both hold' } : { ok: false, why: TYPES[T].integral ? T + ' is integral but not signed' : 'std::integral<' + T + '> already fails' }; } },
+      { sig: 'template<Container T> describe(T)', kind: 'template', family: 'concept', spec: 1, deduce: any, check: function (T) { var p = TYPES[T]; return p.range && p.size && p.valueType ? { ok: true, why: 'value_type, size(), begin()/end(), == all valid' } : { ok: false, why: 'Container<' + T + '> fails (e.g. no ' + (p.valueType ? (p.size ? 'begin()' : 'size()') : 'value_type') + ')' }; } }
+    ];
+    return resolve(cands, arg, 'describe', OVL_CONCEPT);
+  }
+
+  topics.push({
+    title: 'C++20 Concepts & requires Clauses',
+    analogy: `<p>A job posting that says <b>"Requirements: driving licence, can lift 20 kg, speaks English"</b>. Applicants who do not meet them are turned away <i>at the door</i> with a clear reason, instead of being hired and failing on day three. A <b>concept</b> is that requirements list for a type, and the compiler is the receptionist: it checks the list <b>before</b> touching the template body, and if your type is missing something it tells you exactly which line of the list failed.</p>`,
+    explain: `<p>🟢 A <b>concept</b> is a named compile-time predicate on types:</p>
+      <pre>template &lt;class T&gt;
+concept Number = std::integral&lt;T&gt; || std::floating_point&lt;T&gt;;</pre>
+      <p>You use it to <b>constrain</b> a template. Four equivalent spellings:</p>
+      ${H.table(['style', 'code'], [['type-constraint', '<code>template &lt;Number T&gt; T twice(T x);</code>'], ['requires clause', '<code>template &lt;class T&gt; requires Number&lt;T&gt; T twice(T x);</code>'], ['trailing requires', '<code>template &lt;class T&gt; T twice(T x) requires Number&lt;T&gt;;</code>'], ['abbreviated', '<code>auto twice(Number auto x);</code>']])}
+      <p>A <b>requires-expression</b> describes what must compile, without running anything:</p>
+      <pre>template &lt;class T&gt;
+concept Container = requires(T c, const T cc) {
+    typename T::value_type;                              // type requirement
+    { cc.size() } -&gt; std::convertible_to&lt;std::size_t&gt;;   // compound: valid + result type
+    c.begin(); c.end();                                  // simple: just must compile
+    requires std::equality_comparable&lt;T&gt;;                // nested: a bool must be true
+};</pre>
+      <p><b>Why concepts beat SFINAE:</b></p>
+      <ul>
+        <li><b>Readable</b>: the requirement is in the declaration with a name, not hidden in <code>enable_if_t&lt;…, int&gt; = 0</code>.</li>
+        <li><b>Better errors</b>: "constraints not satisfied: <code>c.begin()</code> is invalid" instead of pages of template backtrace.</li>
+        <li><b>Ordering for free</b>: when two constrained overloads both match, the <b>more constrained</b> one wins (<b>subsumption</b>). <code>std::signed_integral</code> is defined as <code>std::integral&lt;T&gt; &amp;&amp; std::is_signed_v&lt;T&gt;</code>, so it beats a plain <code>std::integral</code> overload for <code>int</code> — no priority tags needed.</li>
+        <li><b>Works everywhere</b>: function templates, class templates, member functions (<code>void sort() requires std::totally_ordered&lt;T&gt;;</code>), variables (<code>std::integral auto n = f();</code>), lambdas (<code>[]&lt;std::integral T&gt;(T x) {}</code>).</li>
+      </ul>
+      <p>The standard library ships ready-made concepts in <code>&lt;concepts&gt;</code>, <code>&lt;iterator&gt;</code> and <code>&lt;ranges&gt;</code>: <code>same_as, derived_from, convertible_to, integral, floating_point, totally_ordered, equality_comparable, copyable, movable, regular, invocable, predicate, ranges::range, random_access_iterator, sortable</code>… Prefer them over writing your own.</p>`,
+    clues: [
+      '"Constrain a template", "give a clean error when T is wrong", "C++20" → concepts',
+      '"Faster algorithm for random-access iterators, fallback for others" → overloads on <code>std::random_access_iterator</code> vs <code>std::input_iterator</code> (subsumption)',
+      '"T must have <code>.size()</code> returning an integer" → requires-expression with compound requirement',
+      '"Member function only available for some T" → trailing <code>requires</code> on the member',
+      '"Replace this enable_if mess" → concept + <code>requires</code> clause',
+      '"Why is my more-specific overload ambiguous?" → raw <code>requires</code> expressions do not subsume; use named concepts'
+    ],
+    code: [R`
+      #include <concepts>
+      #include <cstddef>
+      #include <iostream>
+      #include <string>
+      #include <vector>
+
+      template <class T>
+      concept Container = requires(T c, const T cc) {
+          typename T::value_type;
+          { cc.size() } -> std::convertible_to<std::size_t>;
+          c.begin();
+          c.end();
+          requires std::equality_comparable<T>;
+      };
+
+      template <class T>                 void describe(T)   { std::cout << "something\n"; }
+      template <std::integral T>         void describe(T)   { std::cout << "integral\n"; }
+      template <std::signed_integral T>  void describe(T)   { std::cout << "signed integral\n"; }  // subsumes integral
+      template <Container T>             void describe(T c) { std::cout << "container of " << c.size() << "\n"; }
+
+      // Abbreviated syntax + a compound requirement with an ad-hoc requires-requires.
+      auto half(std::floating_point auto x) { return x / 2; }
+      template <class T>
+          requires requires(T a) { { a.area() } -> std::convertible_to<double>; }
+      double areaOf(const T& s) { return s.area(); }
+
+      struct Sq { double s; double area() const { return s * s; } };
+
+      int main() {
+          describe(5);                          // signed integral   (#3 beats #2 beats #1)
+          describe(5u);                         // integral
+          describe(2.5);                        // something
+          describe(std::string("abc"));         // container of 3
+          describe(std::vector<int>{1, 2});     // container of 2
+          std::cout << half(3.0) << " " << areaOf(Sq{3}) << "\n";   // 1.5 9
+          // half(3);  // error: constraints not satisfied: std::floating_point<int> is false
+      }
+    `, R`
+      #include <concepts>
+      #include <iterator>
+      #include <list>
+      #include <vector>
+      #include <iostream>
+
+      // Concept-based dispatch: O(1) for random access, O(n) otherwise.
+      template <std::input_iterator It>
+      void myAdvance(It& it, std::iter_difference_t<It> n) {
+          std::cout << "step by step\n";
+          while (n-- > 0) ++it;
+      }
+      template <std::random_access_iterator It>   // random_access_iterator subsumes input_iterator
+      void myAdvance(It& it, std::iter_difference_t<It> n) {
+          std::cout << "jump\n";
+          it += n;
+      }
+
+      // A class template with a constrained member function.
+      template <class T>
+      struct Box {
+          T value;
+          T twice() const requires std::integral<T> || std::floating_point<T> { return value * 2; }
+      };
+
+      int main() {
+          std::vector<int> v{1, 2, 3, 4};
+          std::list<int> l{1, 2, 3, 4};
+          auto vi = v.begin(); myAdvance(vi, 2);   // jump
+          auto li = l.begin(); myAdvance(li, 2);   // step by step
+          Box<int> b{21};
+          std::cout << b.twice() << "\n";          // 42
+          Box<std::vector<int>> bv{{1}};            // fine: twice() simply is not available
+          (void)bv;
+      }
+    `],
+    codeTitle: ['Concepts, requires-expressions and subsumption-based overloads', 'Iterator-concept dispatch and a constrained member function'],
+    viz: [{
+      title: 'Checking a concept requirement by requirement',
+      input: 'std::vector<int>',
+      inputLabel: 'Type: int, unsigned, long, short, char, bool, float, double, int*, const char*, string, vector<int>, Widget',
+      gen: conceptCheckViz
+    }, {
+      title: 'Which constrained overload is chosen? (subsumption)',
+      input: 'int',
+      inputLabel: 'Argument type: int, unsigned, long, short, char, bool, float, double, int*, const char*, string, vector<int>, Widget',
+      gen: conceptOverloadViz
+    }],
+    examples: [
+      { title: 'Subsumption works only through named concepts', html: `<p>These two overloads are <b>ambiguous</b> for <code>int</code>, even though the second "obviously" says more:</p>
+        <pre>template &lt;class T&gt; requires std::is_integral_v&lt;T&gt; void g(T);
+template &lt;class T&gt; requires std::is_integral_v&lt;T&gt; &amp;&amp; std::is_signed_v&lt;T&gt; void g(T);</pre>
+        <p>Atomic constraints are only considered identical if they come from the <b>same expression in the same concept definition</b>. Two separately written <code>std::is_integral_v&lt;T&gt;</code> are different atoms, so neither subsumes the other. Wrap them in concepts and it works:</p>`, code: R`
+        #include <type_traits>
+        template <class T> concept Integral = std::is_integral_v<T>;
+        template <class T> concept SignedIntegral = Integral<T> && std::is_signed_v<T>;
+        template <class T> requires Integral<T>       int g(T) { return 1; }
+        template <class T> requires SignedIntegral<T> int g(T) { return 2; }   // subsumes the first
+        int main() { return g(5) == 2 && g(5u) == 1 ? 0 : 1; }
+      ` },
+      { title: 'Constraining a forwarding constructor', html: `<p>A variadic or forwarding constructor can steal calls meant for the copy constructor (a non-const lvalue <code>Wrapper w2(w1)</code> binds better to <code>T&amp;&amp;</code> than to <code>const Wrapper&amp;</code>). Constrain it so it never accepts a <code>Wrapper</code> itself.</p>`, code: R`
+        #include <concepts>
+        #include <string>
+        #include <type_traits>
+        #include <utility>
+        struct Wrapper {
+            std::string s;
+            template <class T>
+                requires (!std::same_as<std::remove_cvref_t<T>, Wrapper>) && std::constructible_from<std::string, T>
+            explicit Wrapper(T&& x) : s(std::forward<T>(x)) {}
+            Wrapper(const Wrapper&) = default;
+        };
+        int main() { Wrapper a("hi"); Wrapper b(a); return b.s == "hi" ? 0 : 1; }   // b(a) uses the copy ctor
+      ` },
+      { title: 'Readable errors (the real selling point)', html: `<p>Calling <code>std::sort</code> on a <code>std::list</code> gives a long error deep inside the library because it needs random-access iterators. <code>std::ranges::sort(myList)</code> stops at the door:</p>
+        ${H.table(['call', 'diagnostic (simplified)'], [['<code>std::sort(l.begin(), l.end())</code>', '<span class="c-r">error: no match for operator- … inside __introsort_loop … (40+ lines)</span>'], ['<code>std::ranges::sort(l)</code>', '<span class="c-g">error: constraints not satisfied: random_access_range&lt;list&lt;int&gt;&gt; is false</span>']])}
+        <p>Fix: <code>l.sort()</code> (member function for lists) or copy into a vector.</p>` },
+      { title: 'Concepts in class templates and auto variables', html: `<p>Constrain class template parameters so misuse fails at the declaration, and use constrained <code>auto</code> to document intent in local variables.</p>`, code: R`
+        #include <concepts>
+        #include <vector>
+        template <std::totally_ordered T>
+        class SortedVec {
+            std::vector<T> v_;
+        public:
+            void insert(const T& x) {
+                auto it = v_.begin();
+                while (it != v_.end() && *it < x) ++it;
+                v_.insert(it, x);
+            }
+            const T& front() const { return v_.front(); }
+        };
+        int main() {
+            SortedVec<int> s; s.insert(3); s.insert(1);
+            std::integral auto first = s.front();      // documents "this must be an integer"
+            return first == 1 ? 0 : 1;
+            // struct P {}; SortedVec<P> bad;   // error: P does not satisfy totally_ordered
+        }
+      ` }
+    ],
+    deepDive: `<p>🟣 <b>Normal form and subsumption.</b> The compiler normalizes a constraint into a logical formula of <b>atomic constraints</b> joined by ∧ and ∨ (expanding named concepts). <code>P</code> subsumes <code>Q</code> if every disjunctive clause of P's disjunctive normal form implies (contains an atom identical to) some clause of Q's conjunctive normal form — in practice "P = Q ∧ more". Atoms are compared by <b>identity of the expression and the template-parameter mapping</b>, not by meaning; that is why named concepts matter. Normalization is exponential in the worst case, so keep constraint expressions shallow.</p>
+      <p><b>Order of checks.</b> Constraints on a function template are checked after deduction but <i>before</i> substitution into the rest of the signature in many cases (associated constraints are checked during overload resolution; template-head constraints run first). Conjunctions and disjunctions short-circuit, so <code>std::integral&lt;T&gt; &amp;&amp; (sizeof(T) &gt; 4)</code> never evaluates the second part for non-integral T. Satisfaction results are cached per argument list — a concept is assumed to give the same answer every time (changing the answer, e.g. by completing a type later, is ill-formed NDR).</p>
+      <p><b>Syntax only, semantics on paper.</b> <code>std::totally_ordered</code> checks that the six comparison operators compile; it cannot check that they actually form a total order. Standard concepts carry <b>semantic requirements</b> in their documentation, and violating them is undefined behavior. Library designers therefore prefer a few coarse-grained, meaningful concepts (<code>regular</code>, <code>sortable</code>) over hundreds of tiny syntactic ones like <code>HasPlus</code> ("concepts should model domain ideas, not syntax").</p>
+      <p><b>Conditionally trivial special members (C++20):</b> you can now write two destructors, <code>~Opt() requires std::is_trivially_destructible_v&lt;T&gt; = default;</code> and a non-trivial one, letting <code>std::optional&lt;int&gt;</code> stay trivially copyable — something previously requiring layers of base classes. C++26 continues the direction with pack indexing and reflection, but concepts remain the main tool for constraining generic code.</p>`,
+    aiEra: `<p>🤖 <b>What AI changes:</b> concepts make template code <b>self-documenting</b>, which also makes it easier for AI tools (and humans) to understand and generate correctly: the constraint tells the model exactly what operations T must support. Ask an assistant to "convert these enable_if overloads to concepts and keep behavior identical", then verify with a table of <code>static_assert(requires { f(x); })</code> checks for each type.</p>
+      <p><b>Where AI goes wrong:</b> it writes raw <code>requires</code> expressions in two overloads and expects subsumption (ambiguity), invents non-existent standard concepts (<code>std::number</code>, <code>std::container</code>), puts <code>-&gt; int</code> instead of <code>-&gt; std::same_as&lt;int&gt;</code> in compound requirements (the arrow takes a <i>concept</i>), over-constrains with syntax-level concepts, and forgets that a requires-expression only checks validity, not values. <b>What you must still own:</b> designing meaningful concepts, the subsumption rules, the four constraint syntaxes, and reading constraint-failure diagnostics.</p>`,
+    problems: [{
+      title: 'Constrained average over any numeric range',
+      level: 'Medium', tags: ['concepts', 'ranges', 'requires'], companies: ['Microsoft', 'Nvidia'],
+      statement: `<p>Write <code>average(r)</code> that works for any range (vector, list, array, C array…) whose elements are integers or floating point, returns a <code>double</code>, and returns 0.0 for an empty range. Passing a range of strings or a non-range must fail with a <b>constraint</b> error, not an error inside the body.</p>`,
+      constraints: `Range size up to 10<sup>7</sup>; element sum fits in a double.`,
+      example: `<p><code>average(std::vector{1, 2, 3, 4})</code> → ${H.c('g', '2.5')}; <code>average(std::list{2.0, 4.0})</code> → ${H.c('g', '3')}; <code>average(std::vector&lt;std::string&gt;{"a"})</code> → ${H.c('r', 'constraints not satisfied: Number&lt;std::string&gt;')}.</p>`,
+      brute: { why: `<p>An unconstrained template. It "works" for good inputs, but for strings the error appears deep inside the body (<code>sum += x</code> on a double and a string), and an int-only range silently does integer division if you are not careful.</p>`, code: R`
+        #include <cstddef>
+        template <class R>
+        double averageBrute(const R& r) {
+            double sum = 0; std::size_t n = 0;
+            for (const auto& x : r) { sum += x; ++n; }   // error lands HERE for bad element types
+            return n ? sum / n : 0.0;
+        }
+      ` },
+      mcq: { q: 'Which constraint best expresses "a range of numbers"?', options: ['<code>std::ranges::input_range&lt;R&gt; &amp;&amp; Number&lt;std::ranges::range_value_t&lt;R&gt;&gt;</code>', '<code>requires(R r) { r.size(); }</code>', '<code>std::integral&lt;R&gt;</code>', '<code>std::same_as&lt;R, std::vector&lt;double&gt;&gt;</code>'], answer: 0, explain: 'It accepts every iterable type and checks the element type, so it covers lists, arrays and views while rejecting strings or non-ranges at the call site.' },
+      hints: [`<p>Hint 1: Build a <code>Number</code> concept from <code>std::integral || std::floating_point</code>.</p>`, `<p>Hint 2: <code>std::ranges::range_value_t&lt;R&gt;</code> gives the element type of any range; combine with <code>std::ranges::input_range&lt;R&gt;</code> into a <code>NumberRange</code> concept.</p>`, `<p>Hint 3: Accumulate in a <code>double</code>, count elements as you go (works even without <code>size()</code>), and return 0.0 when the count is 0. Signature: <code>double average(const NumberRange auto&amp; r)</code>.</p>`],
+      solution: {
+        approach: `<p>Two small named concepts: <code>Number</code> and <code>NumberRange</code>. The abbreviated parameter <code>const NumberRange auto&amp;</code> checks the constraint before the body is ever instantiated, so misuse produces a one-line diagnostic.</p>`,
+        code: R`
+          #include <concepts>
+          #include <cstddef>
+          #include <iostream>
+          #include <list>
+          #include <ranges>
+          #include <vector>
+
+          template <class T>
+          concept Number = std::integral<T> || std::floating_point<T>;
+
+          template <class R>
+          concept NumberRange = std::ranges::input_range<R> && Number<std::ranges::range_value_t<R>>;
+
+          double average(const NumberRange auto& r) {
+              double sum = 0.0;
+              std::size_t n = 0;
+              for (const auto& x : r) { sum += static_cast<double>(x); ++n; }
+              return n ? sum / static_cast<double>(n) : 0.0;
+          }
+
+          int main() {
+              std::cout << average(std::vector{1, 2, 3, 4}) << "\n";   // 2.5
+              std::cout << average(std::list{2.0, 4.0}) << "\n";       // 3
+              int raw[] = {5, 7};
+              std::cout << average(raw) << "\n";                        // 6
+              std::cout << average(std::vector<int>{}) << "\n";         // 0
+              // average(std::vector<std::string>{"a"});  // error: Number<std::string> not satisfied
+          }
+        `,
+        dry: { head: ['call', 'R', 'input_range?', 'range_value_t', 'Number?', 'result'], rows: [
+          ['average(vector{1,2,3,4})', 'vector&lt;int&gt;', 'yes', 'int', 'yes', '10 / 4 = 2.5'],
+          ['average(list{2.0,4.0})', 'list&lt;double&gt;', 'yes', 'double', 'yes', '6 / 2 = 3'],
+          ['average(raw)', 'int[2]', 'yes', 'int', 'yes', '12 / 2 = 6'],
+          ['average(vector&lt;string&gt;)', 'vector&lt;string&gt;', 'yes', 'std::string', '<span class="c-r">no</span>', '<span class="c-r">constraint error</span>']
+        ] },
+        complexity: `<p>O(n) time, O(1) extra space; one instantiation per range type.</p>`,
+        followUps: ['Use Kahan summation for floating point accuracy.', 'Accept a projection like <code>std::ranges</code> algorithms do.', 'Add an overload for <code>std::ranges::sized_range</code> that skips counting — does subsumption pick it?']
       }
     }]
   });
