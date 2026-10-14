@@ -1954,6 +1954,761 @@ HAVING s.review_count <> COUNT(r.rating) OR s.rating_sum <> COALESCE(SUM(r.ratin
     }]
   });
 
+  /* =====================================================================
+     PRACTICE — Easy
+     ===================================================================== */
+  practice.push({
+    title: 'Library Loans: Spot and Fix the Anomalies',
+    level: 'Easy', tags: ['anomalies', '3NF', 'decomposition'], companies: ['Infosys', 'Wipro', 'Oracle'],
+    statement: `<p>A library tracks loans in <code>loans(loan_id, isbn, book_title, author, member_id, member_name, member_phone, loan_date)</code>. Rules: an ISBN has one title and author; a member has one name and phone. Name the update, insert and delete anomaly with a concrete example and write the normalized schema with sample data.</p>`,
+    constraints: `<p>SQLite. Key of the original table: loan_id. Enforce rules with primary/foreign keys.</p>`,
+    example: `<p>Member 7 (Asha, 98450) borrows 3 books → her phone appears ${H.c('r', '3 times')}. A new book can't be catalogued until it is borrowed. Deleting the only loan of "Dune" forgets the book exists.</p>`,
+    brute: {
+      why: `<p>The flat table copies book facts per loan and member facts per loan. Asha changing her phone needs N updates; a typo in one of them gives two phones; returning-and-purging old loans wipes book and member records.</p>`,
+      code: `CREATE TABLE loans (loan_id INTEGER PRIMARY KEY, isbn TEXT, book_title TEXT, author TEXT,
+                    member_id INTEGER, member_name TEXT, member_phone TEXT, loan_date TEXT);
+INSERT INTO loans VALUES
+  (1, '978-0441', 'Dune', 'Herbert', 7, 'Asha', '98450', '2026-01-02'),
+  (2, '978-0547', 'The Hobbit', 'Tolkien', 7, 'Asha', '98450', '2026-01-09'),
+  (3, '978-0547', 'The Hobbit', 'Tolkien', 8, 'Ben', '99000', '2026-02-01');
+UPDATE loans SET member_phone = '90000' WHERE loan_id = 1;     -- Asha now has 2 phones on file
+SELECT member_id, GROUP_CONCAT(DISTINCT member_phone) AS phones FROM loans GROUP BY member_id;`
+    },
+    mcq: { q: 'Deleting loan 1 also erases the fact that "Dune" is in the catalogue. Which anomaly?', options: ['Delete anomaly', 'Insert anomaly', 'Update anomaly', 'Lost update'], answer: 0, explain: 'Removing one fact (a loan) unintentionally removed another (the book).' },
+    hints: [`<p>Hint 1: Columns describe three things: a book (by ISBN), a member (by member_id), and the loan event itself.</p>`, `<p>Hint 2: isbn → title, author and member_id → name, phone are transitive through the loan key — 3NF violations.</p>`, `<p>Hint 3: books(isbn PK), members(member_id PK), loans(loan_id PK, isbn FK, member_id FK, loan_date). Rejoin with a view for reports.</p>`],
+    solution: {
+      approach: `<p>Key loan_id is single-column, so the table is 2NF; isbn and member_id are non-key determinants of non-prime columns → not 3NF. Move each into its own table keyed by the determinant. Update: one row in members. Insert: books can exist with zero loans. Delete: removing a loan touches only loans.</p>`,
+      code: `PRAGMA foreign_keys = ON;
+CREATE TABLE books   (isbn TEXT PRIMARY KEY, title TEXT NOT NULL, author TEXT NOT NULL);
+CREATE TABLE members (member_id INTEGER PRIMARY KEY, name TEXT NOT NULL, phone TEXT NOT NULL);
+CREATE TABLE loans (
+  loan_id   INTEGER PRIMARY KEY,
+  isbn      TEXT    NOT NULL REFERENCES books(isbn),
+  member_id INTEGER NOT NULL REFERENCES members(member_id),
+  loan_date TEXT    NOT NULL);
+INSERT INTO books   VALUES ('978-0441', 'Dune', 'Herbert'), ('978-0547', 'The Hobbit', 'Tolkien'),
+                           ('978-0062', 'Neuromancer', 'Gibson');          -- never borrowed: fine
+INSERT INTO members VALUES (7, 'Asha', '98450'), (8, 'Ben', '99000');
+INSERT INTO loans   VALUES (1, '978-0441', 7, '2026-01-02'), (2, '978-0547', 7, '2026-01-09'), (3, '978-0547', 8, '2026-02-01');
+UPDATE members SET phone = '90000' WHERE member_id = 7;                     -- one row
+DELETE FROM loans WHERE loan_id = 1;                                       -- Dune survives
+SELECT b.title, (SELECT COUNT(*) FROM loans l WHERE l.isbn = b.isbn) AS times_borrowed
+FROM books b ORDER BY b.title;`,
+      complexity: `<p>Updates touch one row via PK; reports need two indexed joins (index loans.isbn and loans.member_id).</p>`,
+      followUps: ['A book has several copies with different shelf locations — add the right table.', 'Several authors per book?']
+    }
+  });
+
+  practice.push({
+    title: 'Survey Answers in Repeating Columns → 1NF',
+    level: 'Easy', tags: ['1NF', 'repeating group', 'unpivot'], companies: ['SurveyMonkey', 'Typeform', 'Google'],
+    statement: `<p><code>responses(respondent_id, name, answer1, answer2, answer3)</code> stores answers to questions 1–3 in separate columns. The team wants a 4th question and a report "how many people answered 'yes' to each question". Explain why this is 0NF and migrate to a 1NF design.</p>`,
+    constraints: `<p>SQLite. Unanswered questions are NULL and must not create rows. A respondent answers each question at most once.</p>`,
+    example: `<p>(1, Asha, yes, no, NULL), (2, Ben, yes, yes, yes). Report: question 1 → ${H.c('g', '2 yes')}, question 2 → 1 yes, question 3 → 1 yes.</p>`,
+    brute: {
+      why: `<p>A repeating group (answer1..answer3) hard-codes the number of questions. Adding question 4 needs ALTER TABLE and changes to every query; the per-question report needs one CASE per column; NULL padding wastes space.</p>`,
+      code: `CREATE TABLE responses (respondent_id INTEGER PRIMARY KEY, name TEXT, answer1 TEXT, answer2 TEXT, answer3 TEXT);
+INSERT INTO responses VALUES (1, 'Asha', 'yes', 'no', NULL), (2, 'Ben', 'yes', 'yes', 'yes');
+SELECT SUM(answer1 = 'yes') AS q1_yes, SUM(answer2 = 'yes') AS q2_yes, SUM(answer3 = 'yes') AS q3_yes FROM responses;`
+    },
+    mcq: { q: 'What is the 1NF fix for answer1..answer3?', options: ['A child table answers(respondent_id, question_no, answer)', 'Add answer4 and answer5 columns', 'Store all answers as one comma-separated string', 'Make answer1 the primary key'], answer: 0, explain: 'Each answer becomes its own row keyed by (respondent, question).' },
+    hints: [`<p>Hint 1: Each answer is a separate fact: "respondent 1 answered question 2 with no". Facts become rows.</p>`, `<p>Hint 2: Unpivot with UNION ALL: SELECT id, 1, answer1 … UNION ALL SELECT id, 2, answer2 …, skipping NULLs.</p>`, `<p>Hint 3: Key the new table by (respondent_id, question_no). The report becomes GROUP BY question_no.</p>`],
+    solution: {
+      approach: `<p>Keep respondents(respondent_id, name); create answers(respondent_id, question_no, answer) with PK (respondent_id, question_no). Unpivot the three columns with UNION ALL and a NOT NULL filter. New questions are new rows — no schema change — and the report is one GROUP BY.</p>`,
+      code: `PRAGMA foreign_keys = ON;
+CREATE TABLE responses_old (respondent_id INTEGER PRIMARY KEY, name TEXT, answer1 TEXT, answer2 TEXT, answer3 TEXT);
+INSERT INTO responses_old VALUES (1, 'Asha', 'yes', 'no', NULL), (2, 'Ben', 'yes', 'yes', 'yes');
+
+CREATE TABLE respondents (respondent_id INTEGER PRIMARY KEY, name TEXT NOT NULL);
+CREATE TABLE answers (
+  respondent_id INTEGER NOT NULL REFERENCES respondents(respondent_id),
+  question_no   INTEGER NOT NULL CHECK (question_no > 0),
+  answer        TEXT    NOT NULL,
+  PRIMARY KEY (respondent_id, question_no));
+
+INSERT INTO respondents SELECT respondent_id, name FROM responses_old;
+INSERT INTO answers
+SELECT respondent_id, 1, answer1 FROM responses_old WHERE answer1 IS NOT NULL
+UNION ALL SELECT respondent_id, 2, answer2 FROM responses_old WHERE answer2 IS NOT NULL
+UNION ALL SELECT respondent_id, 3, answer3 FROM responses_old WHERE answer3 IS NOT NULL;
+
+INSERT INTO answers VALUES (1, 4, 'yes');          -- question 4: just a row
+SELECT question_no, SUM(answer = 'yes') AS yes_count, COUNT(*) AS answered
+FROM answers GROUP BY question_no ORDER BY question_no;`,
+      complexity: `<p>Migration O(N × Q). The report is a single scan / GROUP BY; adding questions costs no DDL.</p>`,
+      followUps: ['Questions have text and a type (yes/no, rating). Where do those live?', 'How would you pivot back for a CSV export?']
+    }
+  });
+
+  practice.push({
+    title: 'Identify the Normal Form: R(A, B, C)',
+    level: 'Easy', tags: ['identify normal form', '3NF', 'transitive dependency'], companies: ['TCS', 'Accenture', 'Cognizant'],
+    statement: `<p>R(A, B, C) with F = {A → B, B → C}. What is the candidate key, what is the highest normal form, and why? Decompose to BCNF and show the tables in SQL with sample data (A = employee, B = department, C = department head).</p>`,
+    constraints: `<p>Answer must name the violating FD. SQL must run in SQLite.</p>`,
+    example: `<p>A⁺ = {A, B, C} → key ${H.c('p', 'A')}. Single-column key → no partial dependency → 2NF. B → C: B is not a superkey and C is not prime → ${H.c('r', 'not 3NF')}. Highest: <b>2NF</b>.</p>`,
+    brute: {
+      why: `<p>Leaving R as one table stores each department head once per employee; changing a head is an N-row update and a department without employees can't record its head.</p>`,
+      code: `CREATE TABLE r (emp TEXT PRIMARY KEY, dept TEXT NOT NULL, dept_head TEXT NOT NULL);
+INSERT INTO r VALUES ('Asha', 'Sales', 'Meera'), ('Ben', 'Sales', 'Meera'), ('Chen', 'Eng', 'Ravi');
+UPDATE r SET dept_head = 'Kiran' WHERE emp = 'Asha';        -- Sales now has two heads
+SELECT dept, COUNT(DISTINCT dept_head) AS heads FROM r GROUP BY dept;`
+    },
+    mcq: { q: 'R(A,B,C), F = {A → B, B → C}. Highest normal form?', options: ['2NF', '1NF', '3NF', 'BCNF'], answer: 0, explain: 'Key is A (single attribute) so 2NF holds; B → C is transitive so 3NF fails.' },
+    hints: [`<p>Hint 1: Compute A⁺. If it is everything, A is the key; B and C are not in any key (non-prime).</p>`, `<p>Hint 2: A single-attribute key can't have partial dependencies. Check every FD for 3NF: is the left side a superkey or the right side prime?</p>`, `<p>Hint 3: Split on B → C: (B, C) with key B, and (A, B) with key A. Shared column B is a key of (B, C) → lossless.</p>`],
+    solution: {
+      approach: `<p>Key: A. 2NF ✔ (single-column key). B → C violates 3NF (B not a superkey, C non-prime) → highest NF is 2NF. Decompose: R1(B, C), R2(A, B). Each table's only determinant is its key → BCNF; both FDs live in one table each → dependency-preserving; B is R1's key → lossless.</p>`,
+      code: `PRAGMA foreign_keys = ON;
+CREATE TABLE departments (dept TEXT PRIMARY KEY, dept_head TEXT NOT NULL);      -- R1(B, C)
+CREATE TABLE employees   (emp TEXT PRIMARY KEY, dept TEXT NOT NULL REFERENCES departments(dept));  -- R2(A, B)
+INSERT INTO departments VALUES ('Sales', 'Meera'), ('Eng', 'Ravi'), ('Legal', 'Iqbal');
+INSERT INTO employees   VALUES ('Asha', 'Sales'), ('Ben', 'Sales'), ('Chen', 'Eng');
+UPDATE departments SET dept_head = 'Kiran' WHERE dept = 'Sales';               -- one row
+SELECT e.emp, e.dept, d.dept_head FROM employees e JOIN departments d USING (dept) ORDER BY e.emp;`,
+      complexity: `<p>Closure O(|F|·|R|); decomposition is a single split.</p>`,
+      followUps: ['Add C → B (a head runs exactly one department). Does anything change?', 'What if A → C were also given explicitly?']
+    }
+  });
+
+  practice.push({
+    title: 'Two Candidate Keys in a Users Table',
+    level: 'Easy', tags: ['candidate keys', 'UNIQUE', 'BCNF'], companies: ['Meta', 'Stripe', 'Razorpay'],
+    statement: `<p><code>users(user_id, email, phone, name)</code>: user_id, email and phone are each unique per person. List the candidate keys and prime attributes, state the normal form, and write DDL that enforces <b>all</b> keys — not just the primary key.</p>`,
+    constraints: `<p>SQLite. Email comparisons should be case-insensitive (Asha@X.com = asha@x.com).</p>`,
+    example: `<p>Candidate keys: ${H.c('p', '{user_id}, {email}, {phone}')}. Prime: user_id, email, phone. Non-prime: name. Every determinant is a key → BCNF — <b>if</b> all three keys are declared.</p>`,
+    brute: {
+      why: `<p>Declaring only <code>user_id</code> as PRIMARY KEY leaves the other two candidate keys unenforced: duplicate emails slip in (two accounts, password-reset confusion), and the FD email → user_id is silently violated.</p>`,
+      code: `CREATE TABLE users (user_id INTEGER PRIMARY KEY, email TEXT, phone TEXT, name TEXT);
+INSERT INTO users VALUES (1, 'asha@x.com', '98450', 'Asha');
+INSERT INTO users VALUES (2, 'Asha@X.com', '98450', 'Asha again');   -- accepted: duplicate person
+SELECT LOWER(email) AS email, COUNT(*) AS accounts FROM users GROUP BY LOWER(email) HAVING COUNT(*) > 1;`
+    },
+    mcq: { q: 'Which statement is true about this table?', options: ['email and phone are prime attributes', 'Only user_id is a candidate key because it is the PK', 'name is prime because it is NOT NULL', 'A table can have only one candidate key'], answer: 0, explain: 'Each of email and phone is a minimal superkey on its own, so both are candidate keys and therefore prime.' },
+    hints: [`<p>Hint 1: Each of user_id, email, phone determines the whole row on its own → three single-column candidate keys.</p>`, `<p>Hint 2: Pick one as PRIMARY KEY (short, stable, never changes: user_id) and declare the others UNIQUE NOT NULL.</p>`, `<p>Hint 3: For case-insensitive email uniqueness use COLLATE NOCASE on the column (or a unique index on LOWER(email)).</p>`],
+    solution: {
+      approach: `<p>Keys: {user_id}, {email}, {phone}; prime: those three; name is non-prime. All FDs have a key on the left → BCNF. Enforce every candidate key: PK on user_id, UNIQUE NOT NULL on email (COLLATE NOCASE) and phone. The demo shows the duplicate being rejected.</p>`,
+      code: `CREATE TABLE users (
+  user_id INTEGER PRIMARY KEY,                    -- chosen key: stable surrogate
+  email   TEXT NOT NULL UNIQUE COLLATE NOCASE,    -- candidate key #2
+  phone   TEXT NOT NULL UNIQUE,                   -- candidate key #3
+  name    TEXT NOT NULL);
+INSERT INTO users VALUES (1, 'asha@x.com', '98450', 'Asha'), (2, 'ben@x.com', '99000', 'Ben');
+INSERT OR IGNORE INTO users VALUES (3, 'Asha@X.com', '91111', 'Asha again');   -- rejected (email)
+INSERT OR IGNORE INTO users VALUES (4, 'new@x.com', '98450', 'Phone clash');    -- rejected (phone)
+SELECT user_id, email, phone FROM users ORDER BY user_id;`,
+      complexity: `<p>Each UNIQUE adds a B-tree index: inserts cost O(log N) per index; lookups by email/phone become O(log N).</p>`,
+      followUps: ['Users may change email. Why is email still a poor primary key?', 'Phone is optional for some users — how do NULLs interact with UNIQUE?']
+    }
+  });
+
+  /* =====================================================================
+     PRACTICE — Medium
+     ===================================================================== */
+  practice.push({
+    title: 'Invoice Lines from 1NF to 3NF',
+    level: 'Medium', tags: ['2NF', '3NF', 'migration'], companies: ['SAP', 'Zoho', 'Intuit'],
+    statement: `<p><code>invoice_lines(invoice_no, line_no, invoice_date, customer_id, customer_name, product_code, description, list_price, qty, price_charged)</code>, key (invoice_no, line_no). Rules: invoice_no → invoice_date, customer_id; customer_id → customer_name; product_code → description, list_price (current catalogue). price_charged is what this line actually cost. Decompose to 3NF in SQL and verify losslessly.</p>`,
+    constraints: `<p>SQLite. price_charged must stay on the line (a snapshot). Include an EXCEPT-based lossless check.</p>`,
+    example: `<p>Invoice 9001 with 2 lines repeats ${H.c('r', '(2026-04-01, C1, Asha)')} twice; product P1's description is repeated on every invoice that sells it.</p>`,
+    brute: {
+      why: `<p>One table: invoice header copied per line (partial dependency on invoice_no), customer name copied per invoice line (transitive through customer_id), product description copied per sale (partial on product_code-via-line). Every copy is an anomaly waiting to happen.</p>`,
+      code: `CREATE TABLE invoice_lines (invoice_no INT, line_no INT, invoice_date TEXT, customer_id TEXT, customer_name TEXT,
+  product_code TEXT, description TEXT, list_price INT, qty INT, price_charged INT, PRIMARY KEY (invoice_no, line_no));
+INSERT INTO invoice_lines VALUES
+  (9001, 1, '2026-04-01', 'C1', 'Asha', 'P1', 'USB cable', 300, 2, 280),
+  (9001, 2, '2026-04-01', 'C1', 'Asha', 'P2', 'Charger', 900, 1, 900),
+  (9002, 1, '2026-04-02', 'C2', 'Ben',  'P1', 'USB cable', 300, 5, 300);
+SELECT COUNT(*) AS header_copies FROM invoice_lines WHERE invoice_no = 9001;   -- 2 copies of one header`
+    },
+    mcq: { q: 'Why does price_charged stay in invoice_lines while list_price moves to products?', options: ['price_charged depends on the specific line (a snapshot); list_price depends only on the product', 'price_charged is numeric', 'list_price is optional', 'Both should move to products'], answer: 0, explain: 'Different facts with different determinants — one per line, one per product.' },
+    hints: [`<p>Hint 1: Group columns by determinant: invoice_no; customer_id; product_code; (invoice_no, line_no).</p>`, `<p>Hint 2: Tables: customers, products, invoices(invoice_no, invoice_date, customer_id), invoice_lines(invoice_no, line_no, product_code, qty, price_charged).</p>`, `<p>Hint 3: Migrate with SELECT DISTINCT per table; rebuild with joins and compare to the original using EXCEPT both ways.</p>`],
+    solution: {
+      approach: `<p>Partial dependency: invoice_no → date, customer_id (2NF fix: invoices table). Transitive: customer_id → name (3NF fix: customers) and product_code → description, list_price (products). The line keeps the full key, product_code (FK), qty and price_charged. Every split shares a column that is a key of the new table → lossless; every FD sits in one table → preserving.</p>`,
+      code: `PRAGMA foreign_keys = ON;
+CREATE TABLE old_lines (invoice_no INT, line_no INT, invoice_date TEXT, customer_id TEXT, customer_name TEXT,
+  product_code TEXT, description TEXT, list_price INT, qty INT, price_charged INT, PRIMARY KEY (invoice_no, line_no));
+INSERT INTO old_lines VALUES
+  (9001, 1, '2026-04-01', 'C1', 'Asha', 'P1', 'USB cable', 300, 2, 280),
+  (9001, 2, '2026-04-01', 'C1', 'Asha', 'P2', 'Charger', 900, 1, 900),
+  (9002, 1, '2026-04-02', 'C2', 'Ben',  'P1', 'USB cable', 300, 5, 300);
+
+CREATE TABLE customers (customer_id TEXT PRIMARY KEY, customer_name TEXT NOT NULL);
+CREATE TABLE products  (product_code TEXT PRIMARY KEY, description TEXT NOT NULL, list_price INT NOT NULL);
+CREATE TABLE invoices  (invoice_no INT PRIMARY KEY, invoice_date TEXT NOT NULL,
+                        customer_id TEXT NOT NULL REFERENCES customers(customer_id));
+CREATE TABLE invoice_lines (
+  invoice_no INT NOT NULL REFERENCES invoices(invoice_no), line_no INT NOT NULL,
+  product_code TEXT NOT NULL REFERENCES products(product_code),
+  qty INT NOT NULL CHECK (qty > 0), price_charged INT NOT NULL,
+  PRIMARY KEY (invoice_no, line_no));
+
+INSERT INTO customers SELECT DISTINCT customer_id, customer_name FROM old_lines;
+INSERT INTO products  SELECT DISTINCT product_code, description, list_price FROM old_lines;
+INSERT INTO invoices  SELECT DISTINCT invoice_no, invoice_date, customer_id FROM old_lines;
+INSERT INTO invoice_lines SELECT invoice_no, line_no, product_code, qty, price_charged FROM old_lines;
+
+WITH rebuilt AS (
+  SELECT l.invoice_no, l.line_no, i.invoice_date, i.customer_id, c.customer_name,
+         l.product_code, p.description, p.list_price, l.qty, l.price_charged
+  FROM invoice_lines l JOIN invoices i USING (invoice_no)
+  JOIN customers c USING (customer_id) JOIN products p USING (product_code))
+SELECT (SELECT COUNT(*) FROM (SELECT * FROM old_lines EXCEPT SELECT * FROM rebuilt)) AS rows_lost,
+       (SELECT COUNT(*) FROM (SELECT * FROM rebuilt EXCEPT SELECT * FROM old_lines)) AS rows_invented;`,
+      complexity: `<p>Migration O(N log N) for DISTINCT; rebuild = 3 indexed joins.</p>`,
+      followUps: ['Customer name on an invoice must be legally frozen — what changes?', 'Should line_no or product_code be part of the line key? Discuss.']
+    }
+  });
+
+  practice.push({
+    title: 'Employee Project Hours to 3NF',
+    level: 'Medium', tags: ['2NF', '3NF', 'partial + transitive'], companies: ['Deloitte', 'Capgemini', 'Microsoft'],
+    statement: `<p><code>emp_projects(emp_id, project_id, hours, emp_name, dept_id, dept_name, project_name, budget)</code>, key (emp_id, project_id). Rules: emp_id → emp_name, dept_id; dept_id → dept_name; project_id → project_name, budget. Classify each FD (full / partial / transitive) and decompose to 3NF with SQL.</p>`,
+    constraints: `<p>SQLite. Four tables expected. Show the hours report per department after the split.</p>`,
+    example: `<p>(E1, P1, 10, Asha, D1, Sales, Apollo, 50000), (E1, P2, 5, Asha, D1, Sales, Zeus, 20000): ${H.c('r', 'Asha, D1, Sales')} repeated (partial + transitive); Apollo's budget repeated for every employee on it.</p>`,
+    brute: {
+      why: `<p>Partial dependencies copy employee and project facts per assignment; the transitive dept_id → dept_name copies department names per assignment. A budget change on a 40-person project = 40 updates.</p>`,
+      code: `CREATE TABLE emp_projects (emp_id TEXT, project_id TEXT, hours INT, emp_name TEXT, dept_id TEXT, dept_name TEXT,
+  project_name TEXT, budget INT, PRIMARY KEY (emp_id, project_id));
+INSERT INTO emp_projects VALUES
+  ('E1', 'P1', 10, 'Asha', 'D1', 'Sales', 'Apollo', 50000), ('E1', 'P2', 5, 'Asha', 'D1', 'Sales', 'Zeus', 20000),
+  ('E2', 'P1', 8, 'Ben', 'D2', 'Eng', 'Apollo', 50000);
+UPDATE emp_projects SET budget = 60000 WHERE emp_id = 'E1' AND project_id = 'P1';
+SELECT project_id, GROUP_CONCAT(DISTINCT budget) AS budgets FROM emp_projects GROUP BY project_id;`
+    },
+    mcq: { q: 'dept_id → dept_name in this table is…', options: ['transitive (via emp_id → dept_id)', 'partial', 'full', 'trivial'], answer: 0, explain: 'dept_name depends on dept_id, which depends on emp_id (part of the key): a transitive chain.' },
+    hints: [`<p>Hint 1: hours needs both keys (full). emp_* needs only emp_id, project_* only project_id (partial).</p>`, `<p>Hint 2: After the 2NF split, employees(emp_id, emp_name, dept_id, dept_name) still has dept_id → dept_name (transitive).</p>`, `<p>Hint 3: Final: departments, employees, projects, assignments(emp_id, project_id, hours).</p>`],
+    solution: {
+      approach: `<p>Full: (emp_id, project_id) → hours. Partial: emp_id → emp_name, dept_id; project_id → project_name, budget. Transitive: dept_id → dept_name. 2NF split gives employees, projects, assignments; 3NF split pulls departments out of employees. All four tables are BCNF; all FDs preserved; all splits along keys → lossless.</p>`,
+      code: `PRAGMA foreign_keys = ON;
+CREATE TABLE departments (dept_id TEXT PRIMARY KEY, dept_name TEXT NOT NULL);
+CREATE TABLE employees   (emp_id TEXT PRIMARY KEY, emp_name TEXT NOT NULL, dept_id TEXT NOT NULL REFERENCES departments(dept_id));
+CREATE TABLE projects    (project_id TEXT PRIMARY KEY, project_name TEXT NOT NULL, budget INT NOT NULL CHECK (budget >= 0));
+CREATE TABLE assignments (
+  emp_id TEXT NOT NULL REFERENCES employees(emp_id),
+  project_id TEXT NOT NULL REFERENCES projects(project_id),
+  hours INT NOT NULL CHECK (hours >= 0),
+  PRIMARY KEY (emp_id, project_id));
+INSERT INTO departments VALUES ('D1', 'Sales'), ('D2', 'Eng');
+INSERT INTO employees   VALUES ('E1', 'Asha', 'D1'), ('E2', 'Ben', 'D2');
+INSERT INTO projects    VALUES ('P1', 'Apollo', 50000), ('P2', 'Zeus', 20000);
+INSERT INTO assignments VALUES ('E1', 'P1', 10), ('E1', 'P2', 5), ('E2', 'P1', 8);
+UPDATE projects SET budget = 60000 WHERE project_id = 'P1';           -- one row
+SELECT d.dept_name, SUM(a.hours) AS total_hours
+FROM assignments a JOIN employees e USING (emp_id) JOIN departments d USING (dept_id)
+GROUP BY d.dept_name ORDER BY total_hours DESC;`,
+      complexity: `<p>Updates O(1) rows; report = 2 indexed joins + aggregation.</p>`,
+      followUps: ['An employee can move departments; hours must be reported by the department at the time. Model it.', 'Add a project manager (one per project).']
+    }
+  });
+
+  practice.push({
+    title: 'Clinic Visit Sheet: 0NF All the Way to 3NF',
+    level: 'Medium', tags: ['0NF', '1NF', '3NF', 'unpivot'], companies: ['Practo', 'Epic', 'Cerner'],
+    statement: `<p>A clinic spreadsheet has one row per patient: <code>patient_id, patient_name, phone, visit1_date, visit1_doctor, visit2_date, visit2_doctor</code>, plus a doctor sheet merged in as <code>visit1_specialty, visit2_specialty</code>. Rules: a doctor has one specialty; a patient has one name and phone; a patient sees at most one doctor per date. Normalize to 3NF in SQL.</p>`,
+    constraints: `<p>SQLite. Empty visit slots are NULL. Doctors are identified by name for this exercise.</p>`,
+    example: `<p>(P1, Asha, 98450, 2026-01-03, Dr. Mehta, Cardio, 2026-02-10, Dr. Rao, Ortho) → visits ${H.c('g', '(P1, 2026-01-03, Dr. Mehta)')} and (P1, 2026-02-10, Dr. Rao); doctors (Dr. Mehta, Cardio), (Dr. Rao, Ortho).</p>`,
+    brute: {
+      why: `<p>Repeating groups cap visits at two and copy each doctor's specialty into every patient row that mentions them. A third visit needs new columns; a specialty correction must be applied in two column families across all rows.</p>`,
+      code: `CREATE TABLE sheet (patient_id TEXT PRIMARY KEY, patient_name TEXT, phone TEXT,
+  visit1_date TEXT, visit1_doctor TEXT, visit1_specialty TEXT, visit2_date TEXT, visit2_doctor TEXT, visit2_specialty TEXT);
+INSERT INTO sheet VALUES
+  ('P1', 'Asha', '98450', '2026-01-03', 'Dr. Mehta', 'Cardio', '2026-02-10', 'Dr. Rao', 'Ortho'),
+  ('P2', 'Ben',  '99000', '2026-01-05', 'Dr. Rao',   'Ortho',  NULL, NULL, NULL);
+-- "Which patients saw Dr. Rao?" needs to search both column families:
+SELECT patient_id FROM sheet WHERE visit1_doctor = 'Dr. Rao' OR visit2_doctor = 'Dr. Rao';`
+    },
+    mcq: { q: 'After unpivoting visits into rows, which dependency still blocks 3NF if specialty stays in the visits table?', options: ['doctor → specialty', 'patient_id → patient_name', '(patient_id, visit_date) → doctor', 'visit_date → patient_id'], answer: 0, explain: 'doctor is not a key of visits, and specialty is non-prime — a transitive dependency.' },
+    hints: [`<p>Hint 1: 0NF → 1NF: unpivot the visit slots into rows with UNION ALL, skipping NULL slots.</p>`, `<p>Hint 2: The 1NF visit table has key (patient_id, visit_date); patient columns depend on patient_id only (2NF issue); specialty depends on doctor (3NF issue).</p>`, `<p>Hint 3: Final tables: patients, doctors(doctor PK, specialty), visits(patient_id, visit_date, doctor) with PK (patient_id, visit_date).</p>`],
+    solution: {
+      approach: `<p>Step 1 (1NF): unpivot two visit slots into rows. Step 2 (2NF): patient_name, phone depend only on patient_id → patients table. Step 3 (3NF): specialty depends on doctor → doctors table. visits keeps (patient_id, visit_date) as key and doctor as FK. Use SELECT DISTINCT for doctors from both column families.</p>`,
+      code: `PRAGMA foreign_keys = ON;
+CREATE TABLE sheet (patient_id TEXT PRIMARY KEY, patient_name TEXT, phone TEXT,
+  visit1_date TEXT, visit1_doctor TEXT, visit1_specialty TEXT, visit2_date TEXT, visit2_doctor TEXT, visit2_specialty TEXT);
+INSERT INTO sheet VALUES
+  ('P1', 'Asha', '98450', '2026-01-03', 'Dr. Mehta', 'Cardio', '2026-02-10', 'Dr. Rao', 'Ortho'),
+  ('P2', 'Ben',  '99000', '2026-01-05', 'Dr. Rao',   'Ortho',  NULL, NULL, NULL);
+
+CREATE TABLE patients (patient_id TEXT PRIMARY KEY, patient_name TEXT NOT NULL, phone TEXT NOT NULL);
+CREATE TABLE doctors  (doctor TEXT PRIMARY KEY, specialty TEXT NOT NULL);
+CREATE TABLE visits (
+  patient_id TEXT NOT NULL REFERENCES patients(patient_id),
+  visit_date TEXT NOT NULL,
+  doctor     TEXT NOT NULL REFERENCES doctors(doctor),
+  PRIMARY KEY (patient_id, visit_date));
+
+INSERT INTO patients SELECT patient_id, patient_name, phone FROM sheet;
+INSERT INTO doctors
+SELECT visit1_doctor, visit1_specialty FROM sheet WHERE visit1_doctor IS NOT NULL
+UNION                                         -- UNION (not ALL) removes duplicate doctors
+SELECT visit2_doctor, visit2_specialty FROM sheet WHERE visit2_doctor IS NOT NULL;
+INSERT INTO visits
+SELECT patient_id, visit1_date, visit1_doctor FROM sheet WHERE visit1_date IS NOT NULL
+UNION ALL
+SELECT patient_id, visit2_date, visit2_doctor FROM sheet WHERE visit2_date IS NOT NULL;
+
+INSERT INTO visits VALUES ('P2', '2026-03-01', 'Dr. Mehta');   -- a 3rd visit is just a row
+SELECT p.patient_name, v.visit_date, v.doctor, d.specialty
+FROM visits v JOIN patients p USING (patient_id) JOIN doctors d USING (doctor)
+ORDER BY p.patient_name, v.visit_date;`,
+      complexity: `<p>Migration O(N × slots). Queries by doctor or date are simple indexed lookups.</p>`,
+      followUps: ['A doctor can have two specialties — what changes?', 'Two visits on the same day with different doctors are now allowed. Change the key.']
+    }
+  });
+
+  practice.push({
+    title: 'Closure, Keys and Normal Form of R(A, B, C, D, E)',
+    level: 'Medium', tags: ['closure', 'candidate keys', '3NF vs BCNF'], companies: ['Oracle', 'Amazon', 'IBM'],
+    statement: `<p>R(A, B, C, D, E), F = {A → B, BC → E, ED → A}. (1) Find all candidate keys. (2) Is R in 3NF? BCNF? (3) Give a BCNF decomposition and list which FDs are lost. Provide a runnable SQL check that lists the candidate keys.</p>`,
+    constraints: `<p>Bits: A=1, B=2, C=4, D=8, E=16 (31 = all).</p>`,
+    example: `<p>C and D never appear on a right side → every key contains CD. CD⁺ = CD. ACD⁺ = ${H.c('g', 'ABCDE')} → key.</p>`,
+    brute: {
+      why: `<p>Brute force computes the closure of all 31 subsets and keeps superkeys — it finds the answer but also lists every superset (ABCD, ACDE, …) which are not minimal. Minimality must be checked separately.</p>`,
+      code: `CREATE TABLE fd (lhs INT NOT NULL, rhs INT NOT NULL);
+INSERT INTO fd VALUES (1, 2), (2 | 4, 16), (16 | 8, 1);     -- A->B, BC->E, ED->A
+WITH RECURSIVE s(m) AS (SELECT 1 UNION ALL SELECT m + 1 FROM s WHERE m < 31),
+clo(start, mask, step) AS (
+  SELECT m, m, 0 FROM s
+  UNION ALL
+  SELECT start, mask | COALESCE((SELECT SUM(DISTINCT rhs) FROM fd WHERE (lhs & clo.mask) = lhs AND (rhs & clo.mask) = 0), 0), step + 1
+  FROM clo WHERE step < 5)
+SELECT COUNT(*) AS superkeys_found FROM (SELECT start FROM clo GROUP BY start HAVING MAX(mask) = 31);`
+    },
+    mcq: { q: 'Why is R in 3NF?', options: ['Every attribute is prime, so every FD has a prime right side', 'All left sides are superkeys', 'There are no composite keys', 'R has only three FDs'], answer: 0, explain: 'Keys ACD, BCD, CDE cover all five attributes, so all are prime and the 3NF escape clause always applies.' },
+    hints: [`<p>Hint 1: Must-set = {C, D}. Try adding one of A, B, E and compute each closure.</p>`, `<p>Hint 2: Keys: ACD, BCD, CDE → all attributes prime → 3NF. BCNF fails for A → B (A is not a superkey).</p>`, `<p>Hint 3: BCNF: split on A → B → (A, B) + (A, C, D, E); then AC → E holds inside ACDE → (A, C, E) + (A, C, D). Check which original FDs fit in one table.</p>`],
+    solution: {
+      approach: `<p><b>Keys:</b> ACD, BCD, CDE. <b>3NF:</b> yes (all prime). <b>BCNF:</b> no — A → B, BC → E, ED → A all have non-superkey left sides. <b>Decomposition:</b> R1(A, B) on A → B; remaining (A, C, D, E) has implied AC → E (A → B, BC → E) → R2(A, C, E), R3(A, C, D). All BCNF and lossless. <b>Lost:</b> BC → E and ED → A — that is the textbook reason to stay in 3NF here. The SQL lists the candidate keys.</p>`,
+      code: `CREATE TABLE attr (name TEXT PRIMARY KEY, bit INT NOT NULL UNIQUE);
+INSERT INTO attr VALUES ('A', 1), ('B', 2), ('C', 4), ('D', 8), ('E', 16);
+CREATE TABLE fd (lhs INT NOT NULL, rhs INT NOT NULL);
+INSERT INTO fd VALUES (1, 2), (2 | 4, 16), (16 | 8, 1);
+WITH RECURSIVE s(m) AS (SELECT 1 UNION ALL SELECT m + 1 FROM s WHERE m < 31),
+clo(start, mask, step) AS (
+  SELECT m, m, 0 FROM s
+  UNION ALL
+  SELECT start, mask | COALESCE((SELECT SUM(DISTINCT rhs) FROM fd WHERE (lhs & clo.mask) = lhs AND (rhs & clo.mask) = 0), 0), step + 1
+  FROM clo WHERE step < 5),
+sk AS (SELECT start FROM clo GROUP BY start HAVING MAX(mask) = 31)
+SELECT (SELECT GROUP_CONCAT(name, '') FROM (SELECT name FROM attr WHERE bit & k.start ORDER BY bit)) AS candidate_key
+FROM sk k
+WHERE NOT EXISTS (SELECT 1 FROM sk t WHERE t.start <> k.start AND (t.start & k.start) = t.start)
+ORDER BY k.start;     -- ACD, BCD, CDE`,
+      complexity: `<p>2<sup>5</sup> closures, each ≤ 5 rounds × 3 FDs — trivial. By hand: 1 + 3 closures thanks to the must-set shortcut.</p>`,
+      followUps: ['Give a 3NF synthesis for the same R and F.', 'Add C → D. Recompute the keys.']
+    }
+  });
+
+  practice.push({
+    title: 'Is the Supplier Split Lossless?',
+    level: 'Medium', tags: ['lossless join', 'spurious tuples'], companies: ['Walmart', 'Target', 'Oracle'],
+    statement: `<p>R(supplier, city, part) with supplier → city (each supplier is in one city). A junior engineer splits it into S1(supplier, city) and S2(city, part). Is it lossless? If not, propose a lossless, dependency-preserving split and prove both claims on data with SQL.</p>`,
+    constraints: `<p>SQLite. Use at least two suppliers in the same city so the problem is visible.</p>`,
+    example: `<p>(Acme, Pune, bolt), (Zenith, Pune, nut). S2 = (Pune, bolt), (Pune, nut). Rejoin → ${H.c('r', '(Acme, Pune, nut)')} and ${H.c('r', '(Zenith, Pune, bolt)')} — spurious.</p>`,
+    brute: {
+      why: `<p>The junior split joins on city, which is a key of neither S1 nor S2: every supplier in Pune gets paired with every part supplied by anyone in Pune. The lost information is "who supplies what".</p>`,
+      code: `CREATE TABLE r (supplier TEXT, city TEXT, part TEXT, PRIMARY KEY (supplier, part));
+INSERT INTO r VALUES ('Acme', 'Pune', 'bolt'), ('Zenith', 'Pune', 'nut'), ('Orbit', 'Delhi', 'gear');
+CREATE TABLE s1 AS SELECT DISTINCT supplier, city FROM r;
+CREATE TABLE s2 AS SELECT DISTINCT city, part FROM r;
+SELECT supplier, city, part FROM s1 NATURAL JOIN s2 ORDER BY supplier, part;   -- 5 rows instead of 3`
+    },
+    mcq: { q: 'Which split of R(supplier, city, part) is lossless?', options: ['(supplier, city) + (supplier, part)', '(supplier, city) + (city, part)', '(city, part) + (supplier, part) is always lossy', '(supplier) + (city, part)'], answer: 0, explain: 'Common column supplier is a key of (supplier, city).' },
+    hints: [`<p>Hint 1: Binary test: compute the closure of the common columns. {city}⁺ = {city}.</p>`, `<p>Hint 2: Choose a split whose common column is supplier: supplier⁺ = {supplier, city} covers (supplier, city).</p>`, `<p>Hint 3: Verify both splits with NATURAL JOIN row counts and EXCEPT against the original.</p>`],
+    solution: {
+      approach: `<p>Junior split: common {city}, city⁺ = {city} → neither side → lossy. Correct split: (supplier, city) + (supplier, part). Common {supplier}, supplier⁺ ⊇ (supplier, city) → lossless; supplier → city sits inside the first table → preserving. It is also BCNF (keys: supplier; (supplier, part)).</p>`,
+      code: `CREATE TABLE r (supplier TEXT NOT NULL, city TEXT NOT NULL, part TEXT NOT NULL, PRIMARY KEY (supplier, part));
+INSERT INTO r VALUES ('Acme', 'Pune', 'bolt'), ('Zenith', 'Pune', 'nut'), ('Orbit', 'Delhi', 'gear'), ('Acme', 'Pune', 'nut');
+CREATE TABLE bad1  AS SELECT DISTINCT supplier, city FROM r;
+CREATE TABLE bad2  AS SELECT DISTINCT city, part FROM r;
+CREATE TABLE good1 AS SELECT DISTINCT supplier, city FROM r;
+CREATE TABLE good2 AS SELECT DISTINCT supplier, part FROM r;
+SELECT 'junior: join on city' AS split, (SELECT COUNT(*) FROM bad1 NATURAL JOIN bad2) AS rows_after,
+       (SELECT COUNT(*) FROM (SELECT supplier, city, part FROM bad1 NATURAL JOIN bad2 EXCEPT SELECT supplier, city, part FROM r)) AS spurious
+UNION ALL
+SELECT 'fixed: join on supplier', (SELECT COUNT(*) FROM good1 NATURAL JOIN good2),
+       (SELECT COUNT(*) FROM (SELECT supplier, city, part FROM good1 NATURAL JOIN good2 EXCEPT SELECT supplier, city, part FROM r));`,
+      complexity: `<p>One closure on paper; the SQL check is a join + EXCEPT, O(N log N).</p>`,
+      followUps: ['Add part → weight. Where does it go?', 'Prove lossiness of the junior split with a 2-row instance.']
+    }
+  });
+
+  practice.push({
+    title: 'Should We Store the Order Total?',
+    level: 'Medium', tags: ['denormalization', 'snapshot', 'decision'], companies: ['Shopify', 'Amazon', 'Uber'],
+    statement: `<p>The "My Orders" page lists 50 orders with their totals and runs <code>SUM(qty * unit_price)</code> over order_items for each. Product wants it faster. Options: (A) compute on every read; (B) store <code>orders.total_cents</code>, set once at checkout and frozen after payment; (C) store it and keep it updated by triggers forever. Decide, justify, and implement your choice with a verification query.</p>`,
+    constraints: `<p>SQLite. Line items cannot change after an order is paid. Totals must equal the lines exactly.</p>`,
+    example: `<p>Order 1: 2 × 1200 + 3 × 300 = ${H.c('g', '3300')}. After payment, a catalogue price change must <b>not</b> change 3300.</p>`,
+    brute: {
+      why: `<p>Option A is the normalized baseline: correct but re-aggregates the same immutable lines on every page view. Fine at small scale; wasteful when the history page is the most visited page and lines never change after payment.</p>`,
+      code: `CREATE TABLE orders (id INTEGER PRIMARY KEY, status TEXT NOT NULL);
+CREATE TABLE order_items (order_id INT NOT NULL, sku TEXT NOT NULL, qty INT NOT NULL, unit_price INT NOT NULL, PRIMARY KEY (order_id, sku));
+INSERT INTO orders VALUES (1, 'paid'), (2, 'paid');
+INSERT INTO order_items VALUES (1, 'LAMP', 2, 1200), (1, 'MUG', 3, 300), (2, 'PEN', 10, 50);
+SELECT o.id, SUM(i.qty * i.unit_price) AS total
+FROM orders o JOIN order_items i ON i.order_id = o.id GROUP BY o.id;      -- recomputed every view`
+    },
+    mcq: { q: 'Why is option B (freeze at checkout) a safe denormalization here?', options: ['The source lines are immutable after payment, so the copy can never go stale', 'Totals are small numbers', 'Triggers are always slow', 'SQLite cannot SUM'], answer: 0, explain: 'A copy of immutable data needs no ongoing sync — only a one-time computation and a verification.' },
+    hints: [`<p>Hint 1: Ask "can the source change after the copy is made?" If no, a copy is just a precomputed snapshot.</p>`, `<p>Hint 2: Compute the total in the same transaction that marks the order paid: UPDATE orders SET total = (SELECT SUM …).</p>`, `<p>Hint 3: Guard with a trigger that blocks edits to items of paid orders, and keep a reconcile query.</p>`],
+    solution: {
+      approach: `<p>Choose <b>B</b>. Lines are immutable after payment, so the stored total is a <b>snapshot</b> that never needs syncing. Set it in the checkout transaction; protect immutability with a trigger that rejects item changes on paid orders (RAISE(IGNORE) in this demo, ABORT in production); keep a reconcile query. C would add write cost and complexity for data that never changes; A wastes reads.</p>`,
+      code: `CREATE TABLE orders (id INTEGER PRIMARY KEY, status TEXT NOT NULL CHECK (status IN ('cart', 'paid')),
+                     total_cents INTEGER);                       -- NULL while in cart
+CREATE TABLE order_items (order_id INT NOT NULL REFERENCES orders(id), sku TEXT NOT NULL,
+                          qty INT NOT NULL CHECK (qty > 0), unit_price INT NOT NULL, PRIMARY KEY (order_id, sku));
+-- Freeze lines of paid orders (production: RAISE(ABORT, 'order is paid'))
+CREATE TRIGGER items_frozen BEFORE UPDATE ON order_items
+WHEN (SELECT status FROM orders WHERE id = OLD.order_id) = 'paid'
+BEGIN SELECT RAISE(IGNORE); END;
+
+INSERT INTO orders (id, status) VALUES (1, 'cart'), (2, 'cart');
+INSERT INTO order_items VALUES (1, 'LAMP', 2, 1200), (1, 'MUG', 3, 300), (2, 'PEN', 10, 50);
+
+-- Checkout: compute and freeze in one transaction
+BEGIN;
+UPDATE orders SET status = 'paid',
+       total_cents = (SELECT SUM(qty * unit_price) FROM order_items WHERE order_id = orders.id)
+WHERE id IN (1, 2);
+COMMIT;
+
+UPDATE order_items SET unit_price = 1350 WHERE order_id = 1 AND sku = 'LAMP';   -- ignored: order is paid
+
+SELECT id, total_cents FROM orders ORDER BY id;                                  -- My Orders: no aggregation
+SELECT o.id FROM orders o                                                        -- reconcile: expect no rows
+WHERE o.status = 'paid' AND o.total_cents <> (SELECT SUM(qty * unit_price) FROM order_items WHERE order_id = o.id);`,
+      complexity: `<p>Read: O(orders shown), no aggregation. Write: one extra UPDATE at checkout. No ongoing sync cost.</p>`,
+      followUps: ['Refunds and partial returns happen after payment — how do you model them without unfreezing lines?', 'When would option C be the right call?']
+    }
+  });
+
+  /* =====================================================================
+     PRACTICE — Hard
+     ===================================================================== */
+  practice.push({
+    title: 'Street, City, ZIP: Choose 3NF or BCNF',
+    level: 'Hard', tags: ['BCNF', '3NF', 'dependency preservation', 'trigger'], companies: ['Google', 'Uber', 'Oracle'],
+    statement: `<p>R(street, city, zip) with F = {(street, city) → zip, zip → city}. Find the keys, show R is 3NF but not BCNF, give the BCNF decomposition, name the lost dependency, and implement the BCNF design in SQL with the lost rule enforced. Then argue which design you would ship.</p>`,
+    constraints: `<p>SQLite. The lost-rule check must run inside the database (trigger). Show that a violating insert is blocked.</p>`,
+    example: `<p>Keys: ${H.c('p', '{street, city}')} and ${H.c('p', '{street, zip}')}. zip → city: zip is not a superkey, city is prime → 3NF ✔, BCNF ✘.</p>`,
+    brute: {
+      why: `<p>One table in 3NF: PK (street, city) enforces (street, city) → zip, but zip → city is <b>not</b> enforced by any key — two rows can map zip 411001 to Pune and Mumbai. Every pair (street, zip) also repeats the zip's city.</p>`,
+      code: `CREATE TABLE addresses (street TEXT NOT NULL, city TEXT NOT NULL, zip TEXT NOT NULL, PRIMARY KEY (street, city));
+INSERT INTO addresses VALUES ('MG Road', 'Pune', '411001'), ('FC Road', 'Pune', '411004');
+INSERT INTO addresses VALUES ('Link Road', 'Mumbai', '411001');      -- zip -> city broken, accepted
+SELECT zip, GROUP_CONCAT(DISTINCT city) AS cities FROM addresses GROUP BY zip HAVING COUNT(DISTINCT city) > 1;`
+    },
+    mcq: { q: 'In the BCNF design zips(zip, city) + street_zips(street, zip), which FD is lost?', options: ['(street, city) → zip', 'zip → city', 'street → zip', 'None'], answer: 0, explain: 'street and city never appear in the same table any more, so no key can enforce it.' },
+    hints: [`<p>Hint 1: street never appears on a right side → in every key. {street}⁺ = {street}; add city or zip.</p>`, `<p>Hint 2: Split on zip → city: (zip, city) with key zip, and (street, zip) with key (street, zip). Lossless because zip is a key of the first.</p>`, `<p>Hint 3: The lost rule says: for one street, at most one zip per city. A BEFORE INSERT trigger joins street_zips to zips to find another zip of the same city on that street.</p>`],
+    solution: {
+      approach: `<p>Keys: {street, city}, {street, zip}; all attributes prime → 3NF. zip → city violates BCNF. BCNF split: <code>zips(zip PK, city)</code> + <code>street_zips(street, zip, PK both)</code>; (street, city) → zip is lost and enforced by a trigger (RAISE(IGNORE) here, ABORT in production). <b>Which to ship?</b> Both designs leave one rule to a trigger (3NF can't key-enforce zip → city either), so BCNF wins: less redundancy, and zips doubles as a reference table for address validation.</p>`,
+      code: `PRAGMA foreign_keys = ON;
+CREATE TABLE zips (zip TEXT PRIMARY KEY, city TEXT NOT NULL);                 -- zip -> city by PK
+CREATE TABLE street_zips (
+  street TEXT NOT NULL,
+  zip    TEXT NOT NULL REFERENCES zips(zip),
+  PRIMARY KEY (street, zip));
+-- Lost FD (street, city) -> zip: one street may not have two zips in the same city
+CREATE TRIGGER one_zip_per_street_city BEFORE INSERT ON street_zips
+WHEN EXISTS (SELECT 1 FROM street_zips s JOIN zips z ON z.zip = s.zip
+             WHERE s.street = NEW.street AND s.zip <> NEW.zip
+               AND z.city = (SELECT city FROM zips WHERE zip = NEW.zip))
+BEGIN SELECT RAISE(IGNORE); END;
+
+INSERT INTO zips VALUES ('411001', 'Pune'), ('411004', 'Pune'), ('400050', 'Mumbai');
+INSERT INTO street_zips VALUES ('MG Road', '411001'), ('FC Road', '411004'), ('Link Road', '400050');
+INSERT INTO street_zips VALUES ('MG Road', '411004');      -- 2nd Pune zip for MG Road: blocked
+INSERT INTO street_zips VALUES ('MG Road', '400050');      -- MG Road in Mumbai too: allowed (different city)
+
+SELECT s.street, z.city, s.zip FROM street_zips s JOIN zips z USING (zip) ORDER BY s.street, z.city;`,
+      complexity: `<p>Key checks O(log N); the trigger adds one indexed join per insert (index street_zips(street) is the PK prefix).</p>`,
+      followUps: ['Real ZIPs can span two cities. Which FD disappears, and what normal form is R then?', 'How would you enforce the lost rule under concurrent inserts?']
+    }
+  });
+
+  practice.push({
+    title: 'University Spreadsheet: 0NF → BCNF in One Script',
+    level: 'Hard', tags: ['0NF', 'BCNF', 'parsing', 'migration'], companies: ['Coursera', 'Byju\'s', 'Microsoft'],
+    statement: `<p>A registrar exports one row per student: <code>student_id, student_name, advisor_id, advisor_name, advisor_office, enrolments</code>, where enrolments looks like <code>'DB1:Databases:A; OS1:Operating Systems:B'</code> (course id : title : grade). Rules: student → name, advisor; advisor → name, office; course → title; (student, course) → grade. Write one SQL script that parses, normalizes to BCNF and verifies.</p>`,
+    constraints: `<p>SQLite. Items separated by ';', fields by ':'; extra spaces possible; a student may have no enrolments.</p>`,
+    example: `<p>Row (S1, Asha, A7, Dr. Rao, R-101, 'DB1:Databases:A; OS1:Operating Systems:B') → enrollments ${H.c('g', '(S1, DB1, A), (S1, OS1, B)')}, courses (DB1, Databases), (OS1, Operating Systems), advisor (A7, Dr. Rao, R-101).</p>`,
+    brute: {
+      why: `<p>Querying the export directly means string-parsing on every query, advisor details repeated per student, course titles repeated per student, and "average grade in DB1" requires LIKE '%DB1%' plus substring hacks.</p>`,
+      code: `CREATE TABLE export (student_id TEXT PRIMARY KEY, student_name TEXT, advisor_id TEXT, advisor_name TEXT, advisor_office TEXT, enrolments TEXT);
+INSERT INTO export VALUES
+  ('S1', 'Asha', 'A7', 'Dr. Rao', 'R-101', 'DB1:Databases:A; OS1:Operating Systems:B'),
+  ('S2', 'Ben',  'A7', 'Dr. Rao', 'R-101', 'DB1:Databases:B');
+SELECT COUNT(*) AS students_in_db1 FROM export WHERE enrolments LIKE '%DB1:%';   -- fragile string matching`
+    },
+    mcq: { q: 'After parsing, which table holds the grade?', options: ['enrollments(student_id, course_id, grade)', 'courses(course_id, title, grade)', 'students(student_id, grade)', 'advisors(advisor_id, grade)'], answer: 0, explain: 'Grade depends on the full (student, course) key.' },
+    hints: [`<p>Hint 1: First split enrolments on ';' with a recursive CTE (1NF), then split each item on ':' using INSTR twice.</p>`, `<p>Hint 2: Determinants → tables: advisors(advisor_id), students(student_id), courses(course_id), enrollments(student_id, course_id).</p>`, `<p>Hint 3: Load parsed items into a TEMP table first, then INSERT … SELECT DISTINCT into each target. Verify by counting enrolments per student against the original.</p>`],
+    solution: {
+      approach: `<p>0NF → 1NF: recursive CTE peels items off the list; each item is split into course_id, title, grade with INSTR/SUBSTR and TRIM. 2NF/3NF/BCNF: student facts (name, advisor_id) → students; advisor facts → advisors (removes the transitive student → advisor → office); course title → courses (removes the partial dependency on course_id); grade stays with the full key in enrollments. Every determinant is a key → BCNF. Verification compares item counts.</p>`,
+      code: `PRAGMA foreign_keys = ON;
+CREATE TABLE export (student_id TEXT PRIMARY KEY, student_name TEXT, advisor_id TEXT, advisor_name TEXT, advisor_office TEXT, enrolments TEXT);
+INSERT INTO export VALUES
+  ('S1', 'Asha', 'A7', 'Dr. Rao', 'R-101', 'DB1:Databases:A; OS1:Operating Systems:B'),
+  ('S2', 'Ben',  'A7', 'Dr. Rao', 'R-101', 'DB1:Databases:B'),
+  ('S3', 'Chen', 'A9', 'Dr. Sen', 'R-205', '');
+
+CREATE TABLE advisors (advisor_id TEXT PRIMARY KEY, advisor_name TEXT NOT NULL, office TEXT NOT NULL);
+CREATE TABLE students (student_id TEXT PRIMARY KEY, student_name TEXT NOT NULL,
+                       advisor_id TEXT NOT NULL REFERENCES advisors(advisor_id));
+CREATE TABLE courses  (course_id TEXT PRIMARY KEY, title TEXT NOT NULL);
+CREATE TABLE enrollments (
+  student_id TEXT NOT NULL REFERENCES students(student_id),
+  course_id  TEXT NOT NULL REFERENCES courses(course_id),
+  grade      TEXT NOT NULL,
+  PRIMARY KEY (student_id, course_id));
+
+CREATE TEMP TABLE items AS
+WITH RECURSIVE split(student_id, item, rest) AS (
+  SELECT student_id, '', COALESCE(enrolments, '') || ';' FROM export
+  UNION ALL
+  SELECT student_id, TRIM(SUBSTR(rest, 1, INSTR(rest, ';') - 1)), SUBSTR(rest, INSTR(rest, ';') + 1)
+  FROM split WHERE rest <> ''),
+parts AS (
+  SELECT student_id,
+         TRIM(SUBSTR(item, 1, INSTR(item, ':') - 1))                AS course_id,
+         SUBSTR(item, INSTR(item, ':') + 1)                         AS tail
+  FROM split WHERE item <> '')
+SELECT student_id, course_id,
+       TRIM(SUBSTR(tail, 1, INSTR(tail, ':') - 1)) AS title,
+       TRIM(SUBSTR(tail, INSTR(tail, ':') + 1))    AS grade
+FROM parts;
+
+INSERT INTO advisors SELECT DISTINCT advisor_id, advisor_name, advisor_office FROM export;
+INSERT INTO students SELECT student_id, student_name, advisor_id FROM export;
+INSERT INTO courses  SELECT DISTINCT course_id, title FROM items;
+INSERT INTO enrollments SELECT student_id, course_id, grade FROM items;
+
+-- Verify: enrolments per student match the number of items in the original string
+SELECT s.student_id, s.student_name, a.advisor_name, COUNT(e.course_id) AS courses,
+       GROUP_CONCAT(c.title || '=' || e.grade, ', ') AS grades
+FROM students s JOIN advisors a USING (advisor_id)
+LEFT JOIN enrollments e ON e.student_id = s.student_id
+LEFT JOIN courses c ON c.course_id = e.course_id
+GROUP BY s.student_id ORDER BY s.student_id;`,
+      complexity: `<p>Parsing is O(total characters); each INSERT … SELECT DISTINCT is O(N log N). Afterwards, "average grade in DB1" is an indexed lookup.</p>`,
+      followUps: ['Two exports disagree on a course title — how does the migration fail, and how do you handle it?', 'Advisors change each year; keep history.']
+    }
+  });
+
+  practice.push({
+    title: 'Build a Star Schema from a Normalized Shop',
+    level: 'Hard', tags: ['star schema', 'denormalization', 'ETL'], companies: ['Snowflake', 'Databricks', 'Amazon'],
+    statement: `<p>You have a 3NF shop: customers(city_id), cities(region), products(category_id), categories, orders, order_items. Analysts want "revenue by region × category × month". Design a star schema at the grain <b>one row per order line</b>, write the ETL in SQL (INSERT … SELECT), and answer the question from the star.</p>`,
+    constraints: `<p>SQLite. Dimensions get surrogate keys; dim_date uses yyyymmdd keys; revenue is stored on the fact row (qty × price at sale).</p>`,
+    example: `<p>An order line (order 1, Desk Lamp ×2 at 1200, customer in Pune, 2026-01-05) becomes a fact row ${H.c('g', '(20260105, product_key, customer_key, qty 2, revenue 2400)')}; region West and category Home sit inline in the dimensions.</p>`,
+    brute: {
+      why: `<p>Querying the OLTP schema directly needs 6 joins (order_items → orders → customers → cities, order_items → products → categories) for every dashboard tile, competes with live transactions for locks and cache, and every analyst re-implements the same joins (and the same mistakes).</p>`,
+      code: `CREATE TABLE cities (id INTEGER PRIMARY KEY, name TEXT, region TEXT);
+CREATE TABLE customers (id INTEGER PRIMARY KEY, name TEXT, city_id INT);
+CREATE TABLE categories (id INTEGER PRIMARY KEY, name TEXT);
+CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT, category_id INT);
+CREATE TABLE orders (id INTEGER PRIMARY KEY, customer_id INT, order_date TEXT);
+CREATE TABLE order_items (order_id INT, product_id INT, qty INT, unit_price INT);
+INSERT INTO cities VALUES (1, 'Pune', 'West'), (2, 'Delhi', 'North');
+INSERT INTO customers VALUES (1, 'Asha', 1), (2, 'Ben', 2);
+INSERT INTO categories VALUES (1, 'Home'), (2, 'Kitchen');
+INSERT INTO products VALUES (1, 'Desk Lamp', 1), (2, 'Coffee Mug', 2);
+INSERT INTO orders VALUES (1, 1, '2026-01-05'), (2, 2, '2026-02-14');
+INSERT INTO order_items VALUES (1, 1, 2, 1200), (1, 2, 3, 300), (2, 2, 5, 300);
+SELECT ci.region, ca.name AS category, SUBSTR(o.order_date, 1, 7) AS month, SUM(oi.qty * oi.unit_price) AS revenue
+FROM order_items oi JOIN orders o ON o.id = oi.order_id JOIN customers cu ON cu.id = o.customer_id
+JOIN cities ci ON ci.id = cu.city_id JOIN products p ON p.id = oi.product_id JOIN categories ca ON ca.id = p.category_id
+GROUP BY 1, 2, 3 ORDER BY 3, 1, 2;      -- 6-table join on every dashboard refresh`
+    },
+    mcq: { q: 'Why does dim_customer store region directly instead of referencing a cities table?', options: ['Star dimensions are denormalized so each dimension needs one join', 'Region never changes', 'Foreign keys are not allowed in warehouses', 'It saves storage'], answer: 0, explain: 'Flattening city → region into the dimension trades a little redundancy for simpler, faster queries (a snowflake would keep it separate).' },
+    hints: [`<p>Hint 1: Declare the grain first: one fact row per order line. Measures: qty, revenue.</p>`, `<p>Hint 2: Dimensions: dim_date (from distinct order dates), dim_product (product + category inline), dim_customer (customer + city + region inline).</p>`, `<p>Hint 3: Load dimensions first (INSERT … SELECT with joins), then facts by looking up surrogate keys via natural keys.</p>`],
+    solution: {
+      approach: `<p>Grain: order line. <b>dim_date</b>(date_key yyyymmdd, month, year), <b>dim_product</b>(product_key, product_id natural key, name, category), <b>dim_customer</b>(customer_key, customer_id, name, city, region) — city → region kept inline on purpose. <b>fact_order_lines</b>(date_key, product_key, customer_key, qty, revenue). ETL flattens joins once at load time; analysts then join each dimension once. Reconcile: SUM(revenue) in the fact equals SUM(qty × unit_price) in the source.</p>`,
+      code: `-- Source OLTP (3NF)
+CREATE TABLE cities (id INTEGER PRIMARY KEY, name TEXT NOT NULL, region TEXT NOT NULL);
+CREATE TABLE customers (id INTEGER PRIMARY KEY, name TEXT NOT NULL, city_id INT NOT NULL REFERENCES cities(id));
+CREATE TABLE categories (id INTEGER PRIMARY KEY, name TEXT NOT NULL);
+CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT NOT NULL, category_id INT NOT NULL REFERENCES categories(id));
+CREATE TABLE orders (id INTEGER PRIMARY KEY, customer_id INT NOT NULL REFERENCES customers(id), order_date TEXT NOT NULL);
+CREATE TABLE order_items (order_id INT NOT NULL, product_id INT NOT NULL, qty INT NOT NULL, unit_price INT NOT NULL,
+                          PRIMARY KEY (order_id, product_id));
+INSERT INTO cities VALUES (1, 'Pune', 'West'), (2, 'Delhi', 'North');
+INSERT INTO customers VALUES (1, 'Asha', 1), (2, 'Ben', 2);
+INSERT INTO categories VALUES (1, 'Home'), (2, 'Kitchen');
+INSERT INTO products VALUES (1, 'Desk Lamp', 1), (2, 'Coffee Mug', 2);
+INSERT INTO orders VALUES (1, 1, '2026-01-05'), (2, 2, '2026-02-14'), (3, 1, '2026-02-20');
+INSERT INTO order_items VALUES (1, 1, 2, 1200), (1, 2, 3, 300), (2, 2, 5, 300), (3, 1, 1, 1150);
+
+-- Star schema
+CREATE TABLE dim_date (date_key INTEGER PRIMARY KEY, full_date TEXT NOT NULL, yyyymm TEXT NOT NULL, year INT NOT NULL);
+CREATE TABLE dim_product (product_key INTEGER PRIMARY KEY, product_id INT NOT NULL UNIQUE, name TEXT NOT NULL, category TEXT NOT NULL);
+CREATE TABLE dim_customer (customer_key INTEGER PRIMARY KEY, customer_id INT NOT NULL UNIQUE, name TEXT NOT NULL,
+                           city TEXT NOT NULL, region TEXT NOT NULL);
+CREATE TABLE fact_order_lines (
+  date_key INT NOT NULL REFERENCES dim_date(date_key),
+  product_key INT NOT NULL REFERENCES dim_product(product_key),
+  customer_key INT NOT NULL REFERENCES dim_customer(customer_key),
+  order_id INT NOT NULL,                          -- degenerate dimension
+  qty INT NOT NULL, revenue INT NOT NULL);
+
+-- ETL: dimensions first (joins flattened once), then facts via natural-key lookups
+INSERT INTO dim_date
+SELECT DISTINCT CAST(REPLACE(order_date, '-', '') AS INTEGER), order_date, SUBSTR(order_date, 1, 7), CAST(SUBSTR(order_date, 1, 4) AS INTEGER)
+FROM orders;
+INSERT INTO dim_product (product_id, name, category)
+SELECT p.id, p.name, c.name FROM products p JOIN categories c ON c.id = p.category_id;
+INSERT INTO dim_customer (customer_id, name, city, region)
+SELECT cu.id, cu.name, ci.name, ci.region FROM customers cu JOIN cities ci ON ci.id = cu.city_id;
+INSERT INTO fact_order_lines
+SELECT CAST(REPLACE(o.order_date, '-', '') AS INTEGER), dp.product_key, dc.customer_key, o.id,
+       oi.qty, oi.qty * oi.unit_price
+FROM order_items oi
+JOIN orders o        ON o.id = oi.order_id
+JOIN dim_product dp  ON dp.product_id = oi.product_id
+JOIN dim_customer dc ON dc.customer_id = o.customer_id;
+
+-- The analyst question: one join per dimension
+SELECT c.region, p.category, d.yyyymm, SUM(f.revenue) AS revenue
+FROM fact_order_lines f
+JOIN dim_date d ON d.date_key = f.date_key
+JOIN dim_product p ON p.product_key = f.product_key
+JOIN dim_customer c ON c.customer_key = f.customer_key
+GROUP BY c.region, p.category, d.yyyymm
+ORDER BY d.yyyymm, c.region, p.category;
+
+-- Reconcile with the source
+SELECT (SELECT SUM(revenue) FROM fact_order_lines) AS star_total,
+       (SELECT SUM(qty * unit_price) FROM order_items) AS source_total;`,
+      complexity: `<p>ETL is O(N) with indexed natural-key lookups; queries scan the fact table once and hash-join small dimensions.</p>`,
+      followUps: ['Asha moves from Pune to Delhi. Implement SCD Type 2 for dim_customer.', 'Add a monthly snapshot fact for inventory levels — what is its grain?']
+    }
+  });
+
+  practice.push({
+    title: 'Minimal Cover and 3NF Synthesis',
+    level: 'Hard', tags: ['minimal cover', '3NF synthesis', 'dependency preservation'], companies: ['Oracle', 'Microsoft', 'Goldman Sachs'],
+    statement: `<p>R(A, B, C, D, E, G), F = {A → BC, B → C, AB → D, D → E, CE → G, A → G}. (1) Compute a minimal cover. (2) Synthesize a 3NF schema. (3) Implement it in SQL with sample data and show the rejoin reproduces a row consistent with every FD.</p>`,
+    constraints: `<p>Show every reduction step. SQLite DDL with primary keys matching the FD left sides.</p>`,
+    example: `<p>AB → D: A⁺ = ABCDEG already contains D → ${H.c('y', 'B is extraneous')} → A → D. A → C is implied by A → B, B → C → ${H.c('r', 'redundant')}.</p>`,
+    brute: {
+      why: `<p>Without a minimal cover, "one table per FD" produces overlapping, redundant tables: (A, B, C), (B, C), (A, B, D), (D, E), (C, E, G), (A, G) — six tables, two of which only restate implied facts and must be kept consistent with the others.</p>`,
+      code: `-- Naive: one table per given FD (redundant: A->C and A->G are implied by others)
+CREATE TABLE t_abc (a TEXT PRIMARY KEY, b TEXT, c TEXT);
+CREATE TABLE t_bc  (b TEXT PRIMARY KEY, c TEXT);
+CREATE TABLE t_abd (a TEXT, b TEXT, d TEXT, PRIMARY KEY (a, b));
+CREATE TABLE t_de  (d TEXT PRIMARY KEY, e TEXT);
+CREATE TABLE t_ceg (c TEXT, e TEXT, g TEXT, PRIMARY KEY (c, e));
+CREATE TABLE t_ag  (a TEXT PRIMARY KEY, g TEXT);
+INSERT INTO t_abc VALUES ('a1', 'b1', 'c1');
+INSERT INTO t_bc  VALUES ('b1', 'c2');               -- contradiction is possible: a1 -> c1 vs b1 -> c2
+SELECT COUNT(*) AS contradictions FROM t_abc x JOIN t_bc y ON y.b = x.b WHERE y.c <> x.c;`
+    },
+    mcq: { q: 'In the minimal cover, why does AB → D become A → D?', options: ['A alone already determines D (A⁺ contains D), so B is extraneous', 'B never appears on a right side', 'D is a key', 'Left sides must be single attributes'], answer: 0, explain: 'An attribute in a left side is extraneous if the closure of the remaining left side still contains the right side.' },
+    hints: [`<p>Hint 1: Split right sides: A→B, A→C, B→C, AB→D, D→E, CE→G, A→G.</p>`, `<p>Hint 2: Remove extraneous B from AB→D. Then drop A→G (A→B→C, A→D→E, CE→G) and A→C (A→B→C).</p>`, `<p>Hint 3: Minimal cover {A→B, B→C, A→D, D→E, CE→G} → tables (A,B,D), (B,C), (D,E), (C,E,G). Key A is inside (A,B,D) → no key table needed.</p>`],
+    solution: {
+      approach: `<p><b>Minimal cover:</b> {A → B, B → C, A → D, D → E, CE → G}. <b>Synthesis:</b> group by left side → R1(A, B, D) key A; R2(B, C) key B; R3(D, E) key D; R4(C, E, G) key (C, E). Candidate key of R is A (A⁺ = everything); R1 contains it → lossless. No table is a subset of another. Every FD of the cover lives in one table → dependency-preserving; each table's only FDs have key left sides → 3NF (here also BCNF). Try it in the 3NF synthesis visualizer.</p>`,
+      code: `PRAGMA foreign_keys = ON;
+CREATE TABLE r2_bc  (b TEXT PRIMARY KEY, c TEXT NOT NULL);                       -- B -> C
+CREATE TABLE r3_de  (d TEXT PRIMARY KEY, e TEXT NOT NULL);                       -- D -> E
+CREATE TABLE r4_ceg (c TEXT NOT NULL, e TEXT NOT NULL, g TEXT NOT NULL, PRIMARY KEY (c, e));  -- CE -> G
+CREATE TABLE r1_abd (a TEXT PRIMARY KEY,                                          -- A -> B, A -> D
+                     b TEXT NOT NULL REFERENCES r2_bc(b),
+                     d TEXT NOT NULL REFERENCES r3_de(d));
+INSERT INTO r2_bc  VALUES ('b1', 'c1'), ('b2', 'c2');
+INSERT INTO r3_de  VALUES ('d1', 'e1'), ('d2', 'e1');
+INSERT INTO r4_ceg VALUES ('c1', 'e1', 'g1'), ('c2', 'e1', 'g2');
+INSERT INTO r1_abd VALUES ('a1', 'b1', 'd1'), ('a2', 'b2', 'd2'), ('a3', 'b1', 'd2');
+
+-- Rejoin: every A gets exactly one (B, C, D, E, G) — the universal relation is reconstructed
+SELECT r1.a, r1.b, r2.c, r1.d, r3.e, r4.g
+FROM r1_abd r1
+JOIN r2_bc  r2 ON r2.b = r1.b
+JOIN r3_de  r3 ON r3.d = r1.d
+LEFT JOIN r4_ceg r4 ON r4.c = r2.c AND r4.e = r3.e
+ORDER BY r1.a;`,
+      complexity: `<p>Minimal cover: O(|F|² · |R|) closures; synthesis is linear in the cover. Four narrow tables, each FD enforced by a primary key.</p>`,
+      followUps: ['Is the result also in BCNF? Prove it.', 'Remove D → E from F. Does the key table step change anything?']
+    }
+  });
+
+  practice.push({
+    title: 'Course Teachers and Textbooks (4NF)',
+    level: 'Hard', tags: ['4NF', 'multi-valued dependency', 'BCNF'], companies: ['Pearson', 'Google', 'Chegg'],
+    statement: `<p><code>course_offer(course, teacher, textbook)</code> lists every combination: any teacher of a course may use any of its textbooks. There are no FDs at all, so the table is BCNF. Show the insert anomaly anyway, explain the multi-valued dependency, decompose to 4NF and prove the decomposition is lossless.</p>`,
+    constraints: `<p>SQLite. Teachers and textbooks of a course are independent of each other.</p>`,
+    example: `<p>DB has teachers {Rao, Sen} and books {Ramakrishnan, Silberschatz} → ${H.c('r', '4 rows')}. Adding a 3rd book needs ${H.c('r', '2 more rows')} (one per teacher); forgetting one makes it look like Sen doesn't use that book.</p>`,
+    brute: {
+      why: `<p>Keeping the 3-column table stores the cross product teachers × books per course. Every new teacher costs |books| rows and every new book costs |teachers| rows; a partial insert creates a false fact ("Sen doesn't use Kleppmann").</p>`,
+      code: `CREATE TABLE course_offer (course TEXT, teacher TEXT, textbook TEXT, PRIMARY KEY (course, teacher, textbook));
+INSERT INTO course_offer VALUES ('DB', 'Rao', 'Ramakrishnan'), ('DB', 'Rao', 'Silberschatz'),
+                                ('DB', 'Sen', 'Ramakrishnan'), ('DB', 'Sen', 'Silberschatz');
+INSERT INTO course_offer VALUES ('DB', 'Rao', 'Kleppmann');             -- forgot Sen's row
+SELECT teacher, COUNT(*) AS books FROM course_offer GROUP BY teacher;   -- Rao 3, Sen 2: inconsistent`
+    },
+    mcq: { q: 'Which dependency does the table violate 4NF on?', options: ['course ↠ teacher (independent of textbook)', 'teacher → course', 'textbook → teacher', 'It has no 4NF violation'], answer: 0, explain: 'For each course, the set of teachers is independent of the set of textbooks: a non-trivial MVD whose left side is not a superkey.' },
+    hints: [`<p>Hint 1: No column determines another, so BCNF can't help. Look for two independent lists hanging off one column.</p>`, `<p>Hint 2: course ↠ teacher | textbook. Split into (course, teacher) and (course, textbook).</p>`, `<p>Hint 3: Lossless for MVDs: R1 ∩ R2 = course, and course ↠ R1 − R2 holds. Verify: the join of the two tables equals the original cross product.</p>`],
+    solution: {
+      approach: `<p>MVD course ↠ teacher (equivalently course ↠ textbook): the teacher set and the book set for a course are independent. course is not a superkey of the 3-column table → 4NF violation. Decompose into course_teachers(course, teacher) and course_books(course, textbook). The decomposition is lossless because R1 ∩ R2 = {course} and course ↠ teacher holds (Fagin's theorem). A new book is one row; the "all combinations" view is rebuilt by a join.</p>`,
+      code: `CREATE TABLE course_offer (course TEXT, teacher TEXT, textbook TEXT, PRIMARY KEY (course, teacher, textbook));
+INSERT INTO course_offer VALUES ('DB', 'Rao', 'Ramakrishnan'), ('DB', 'Rao', 'Silberschatz'),
+                                ('DB', 'Sen', 'Ramakrishnan'), ('DB', 'Sen', 'Silberschatz'),
+                                ('OS', 'Iyer', 'Tanenbaum');
+
+CREATE TABLE course_teachers (course TEXT NOT NULL, teacher  TEXT NOT NULL, PRIMARY KEY (course, teacher));
+CREATE TABLE course_books    (course TEXT NOT NULL, textbook TEXT NOT NULL, PRIMARY KEY (course, textbook));
+INSERT INTO course_teachers SELECT DISTINCT course, teacher  FROM course_offer;
+INSERT INTO course_books    SELECT DISTINCT course, textbook FROM course_offer;
+
+-- Lossless check BEFORE any new data: rejoin equals original
+SELECT (SELECT COUNT(*) FROM (SELECT course, teacher, textbook FROM course_teachers JOIN course_books USING (course)
+                              EXCEPT SELECT * FROM course_offer)) AS invented,
+       (SELECT COUNT(*) FROM (SELECT * FROM course_offer
+                              EXCEPT SELECT course, teacher, textbook FROM course_teachers JOIN course_books USING (course))) AS lost;
+
+INSERT INTO course_books VALUES ('DB', 'Kleppmann');      -- one row; both teachers get it automatically
+CREATE VIEW course_offer_all AS
+SELECT course, teacher, textbook FROM course_teachers JOIN course_books USING (course);
+SELECT teacher, COUNT(*) AS books FROM course_offer_all GROUP BY teacher ORDER BY teacher;`,
+      complexity: `<p>Storage drops from Σ |teachers| × |books| to Σ (|teachers| + |books|) per course; inserts are O(1) rows.</p>`,
+      followUps: ['If each teacher chooses their own books, is there still an MVD? What is the right design?', 'Explain the difference between an FD and an MVD with one example each.']
+    }
+  });
+
+  /* =====================================================================
+     QUIZ
+     ===================================================================== */
+  quiz.push(
+    { q: 'A product cannot be added to the catalogue until someone orders it. Which anomaly is this?', options: ['Insert anomaly', 'Update anomaly', 'Delete anomaly', 'Phantom read'], answer: 0, explain: 'You cannot record one fact (the product) without an unrelated fact (an order) because the table key needs both.' },
+    { q: 'Which query best checks whether the FD <code>email → city</code> is violated in table t?', options: ['<code>SELECT email FROM t GROUP BY email HAVING COUNT(DISTINCT city) &gt; 1</code>', '<code>SELECT DISTINCT email, city FROM t</code>', '<code>SELECT city FROM t GROUP BY city HAVING COUNT(*) &gt; 1</code>', '<code>SELECT COUNT(*) FROM t WHERE city IS NULL</code>'], answer: 0, explain: 'An FD is violated exactly when one left-side value maps to more than one right-side value.' },
+    { q: 'R(A, B, C, D), F = {A → B, B → C, C → D}. What is A⁺?', options: ['{A, B, C, D}', '{A, B}', '{A, B, C}', '{A}'], answer: 0, explain: 'A gives B, B gives C, C gives D — transitivity all the way.' },
+    { q: 'A table has a single-column primary key and is in 1NF. Which is guaranteed?', options: ['It is in 2NF (if it has no other composite candidate key)', 'It is in 3NF', 'It is in BCNF', 'It has no redundancy'], answer: 0, explain: 'Partial dependencies need a composite key; transitive dependencies are still possible, so 3NF is not guaranteed.' },
+    { q: 'employees(emp_id PK, dept_id, dept_name). Highest normal form?', options: ['2NF', '1NF', '3NF', 'BCNF'], answer: 0, explain: 'Single-column key → 2NF. dept_id → dept_name is transitive (non-key determinant, non-prime target) → not 3NF.' },
+    { q: 'What is the exact difference between 3NF and BCNF?', options: ['3NF also allows X → A when A is a prime attribute; BCNF requires X to be a superkey always', 'BCNF allows partial dependencies', '3NF forbids composite keys', 'There is no difference'], answer: 0, explain: 'The prime-attribute escape clause is the only difference; it matters with overlapping candidate keys.' },
+    { q: 'Splitting R into R1 and R2 is lossless if…', options: ['R1 ∩ R2 is a superkey of R1 or of R2', 'R1 and R2 have the same number of columns', 'R1 ∪ R2 has fewer rows than R', 'R1 ∩ R2 is empty'], answer: 0, explain: 'The common columns must determine one side so each row finds exactly one partner.' },
+    { q: 'A lossy decomposition, when re-joined, typically…', options: ['returns extra (spurious) rows', 'returns fewer rows', 'returns NULLs', 'fails with an error'], answer: 0, explain: 'Joins of projections always contain the original rows; lossy ones add fake combinations, losing the information of which ones were real.' },
+    { q: 'Which statement about decomposition algorithms is correct?', options: ['3NF synthesis is always lossless and dependency-preserving; BCNF decomposition is always lossless but may lose dependencies', 'Both always preserve dependencies', 'BCNF decomposition may be lossy', '3NF synthesis may be lossy'], answer: 0, explain: 'Classic theorem pair; example: R(J, K, L) with JK → L, L → K has no dependency-preserving BCNF decomposition.' },
+    { q: 'In a minimal cover, AB → C is reduced to A → C when…', options: ['C ∈ A⁺ computed with the full FD set', 'B never appears anywhere', 'A is a candidate key', 'C is prime'], answer: 0, explain: 'B is extraneous if A alone already determines C.' },
+    { q: 'Storing <code>unit_price_at_sale</code> in order_items while products holds the current price is…', options: ['correct: it is a different fact (a snapshot), not redundancy', 'a 2NF violation', 'a 3NF violation that must be removed', 'only allowed in NoSQL'], answer: 0, explain: 'It depends on the specific order line and must not change when the catalogue changes.' },
+    { q: 'In a star schema, the fact table typically contains…', options: ['foreign keys to dimensions plus numeric measures at a declared grain', 'descriptive text attributes like brand and region', 'only surrogate keys and no measures', 'one row per dimension member'], answer: 0, explain: 'Facts are narrow and long (events + measures); dimensions are wide and descriptive.' },
+    { q: 'A table (course, teacher, textbook) stores every teacher × textbook combination per course and has no FDs. What normal form fixes it?', options: ['4NF (remove the multi-valued dependency)', 'BCNF', '3NF', '2NF'], answer: 0, explain: 'It is already BCNF; the redundancy comes from the MVD course ↠ teacher | textbook.' },
+    { q: 'You keep <code>posts.like_count</code> as a denormalized counter. Which is the most important companion?', options: ['A same-transaction update path and a reconcile query against the likes table', 'A bigger integer type', 'Removing the likes table', 'A UNIQUE index on like_count'], answer: 0, explain: 'Every deliberate copy needs a sync mechanism and drift detection against the source of truth.' }
+  );
+
+  /* =====================================================================
+     INTERVIEW Q&A
+     ===================================================================== */
+  interview.push(
+    { q: 'What is normalization and why do we do it?', level: 'B', a: `<p>Normalization is organizing tables so that <b>each fact is stored once</b>, guided by functional dependencies. It removes redundancy and therefore the three anomalies: <b>update</b> (a fact stored in many rows can become inconsistent), <b>insert</b> (you can't record one fact without another), and <b>delete</b> (removing one fact removes another). Concretely, a flat orders table repeats each customer's city per order line; moving city into a customers table makes a move a one-row update. Benefits: integrity enforced by keys, smaller rows, simpler writes. Cost: more joins on read.</p>`, followUps: ['Give a delete anomaly from a real system you know.', 'Is all repetition redundancy?'] },
+    { q: 'Explain 1NF, 2NF and 3NF in one sentence each, with an example.', level: 'B', a: `<p><b>1NF:</b> atomic values and no repeating groups — no <code>tags = 'a,b,c'</code>, no phone1/phone2/phone3. <b>2NF:</b> 1NF and no non-prime column depends on <b>part</b> of a composite key — in order_items(order_id, sku, qty, product_name), product_name depends only on sku. <b>3NF:</b> 2NF and no non-prime column depends on another non-key column — in employees(emp_id, dept_id, dept_name), dept_name depends on dept_id. Slogan: "the key, the whole key, and nothing but the key".</p>`, followUps: ['Why does a single-column key guarantee 2NF?', 'Can a table be 3NF but not 2NF?'] },
+    { q: 'What is a functional dependency? How do you find candidate keys?', level: 'I', a: `<p>X → Y means any two rows equal on X are equal on Y — "X determines Y". It comes from business rules, not from data (data can only disprove it). To find keys: (1) attributes never on a right side must be in every key; (2) attributes only on right sides are in none; (3) start from the must-set, compute its <b>closure</b>; if it covers all attributes it is the only key; otherwise add "maybe" attributes one at a time, then two, skipping supersets of keys already found. Example: R(A,B,C,D), AB → C, C → D, D → A → keys AB, BC, BD.</p>`, followUps: ['How do you compute attribute closure?', 'What is a prime attribute and why does it matter?'] },
+    { q: 'Explain BCNF and how it differs from 3NF. Give an example of 3NF but not BCNF.', level: 'I', a: `<p><b>BCNF:</b> for every non-trivial X → Y, X is a superkey. <b>3NF</b> additionally allows X → Y when Y is prime. The gap appears only with overlapping candidate keys. Example: register(student, subject, tutor) with (student, subject) → tutor and tutor → subject. Keys: (student, subject), (student, tutor); subject is prime so tutor → subject passes 3NF, but tutor is not a superkey so BCNF fails. Fix: tutors(tutor, subject) + student_tutors(student, tutor) — but then "one tutor per subject per student" spans two tables and is lost.</p>`, followUps: ['How would you enforce the lost dependency?', 'Which would you ship and why?'] },
+    { q: 'What does "lossless join decomposition" mean and how do you test it?', level: 'I', a: `<p>A decomposition is lossless if natural-joining the projections returns exactly the original relation. A lossy one returns <b>extra spurious rows</b>, so the information of which combinations were real is lost. Binary test: R1 ∩ R2 must be a superkey of R1 or R2 (closure of the common attributes covers one side). Example: emp(emp, dept, loc) with dept → loc: (emp, dept) + (dept, loc) is lossless; (emp, loc) + (dept, loc) is lossy because loc determines nothing. For three or more tables use the chase, or verify on data with <code>EXCEPT</code> in both directions.</p>`, followUps: ['Why can a projection-join never lose rows?', 'How does this relate to fan-out in everyday JOINs?'] },
+    { q: 'What is dependency preservation and why can BCNF lose it?', level: 'A', a: `<p>A decomposition preserves dependencies if every original FD can be checked inside individual tables (the union of the projected FDs implies F), so keys/UNIQUE enforce all rules without joins. BCNF splitting on X → Y separates attributes; if another FD needs attributes that end up in different tables, it is lost. Classic proof: R(J,K,L), JK → L, L → K; any BCNF decomposition separates J, K, L, so JK → L can't be enforced. 3NF synthesis from a minimal cover always preserves dependencies (each cover FD becomes a table) and stays lossless (by adding a key table if needed).</p>`, followUps: ['Describe the polynomial preservation test.', 'Would you accept a trigger to enforce a lost FD?'] },
+    { q: 'Walk me through normalizing a messy order spreadsheet.', level: 'I', a: `<p>1) <b>1NF:</b> split list cells ("lamp, mug") into rows / child tables; ensure a key — here (order_id, sku). 2) Write FDs: order_id → date, customer; customer → city; sku → name, price; (order_id, sku) → qty. 3) <b>2NF:</b> move partial dependencies out: orders(order_id …), products(sku …). 4) <b>3NF:</b> customer → city is transitive inside orders → customers table. 5) Keep order_items(order_id, sku, qty, price_at_sale). 6) Migrate with <code>INSERT … SELECT DISTINCT</code> (the PK rejects rows that contradict an FD — a free data-quality check), then rejoin and compare with <code>EXCEPT</code> both ways.</p>`, followUps: ['What happens if SELECT DISTINCT yields two names for one sku?', 'How would you do this migration with zero downtime?'] },
+    { q: 'When would you denormalize? Give concrete examples.', level: 'A', a: `<p>Only after measuring a read bottleneck that indexes and query rewrites can't fix, when reads dwarf writes, and when you can name the source of truth and the sync mechanism. Examples: a <b>like_count</b> counter maintained in the same transaction; an <b>order total</b> frozen at checkout (source is immutable, so no sync needed); a <b>summary table / materialized view</b> refreshed every 5 minutes for a dashboard; <b>duplicated data per access pattern</b> in Cassandra/DynamoDB; a <b>star schema</b> in the warehouse. Always add a reconcile query and alerting for drift. "Normalize until it hurts, denormalize until it works."</p>`, followUps: ['How do you keep a denormalized copy consistent at scale?', 'What breaks if two services update the copy?'] },
+    { q: 'Explain star schema vs snowflake schema. What is the grain?', level: 'I', a: `<p>A <b>star</b> has one fact table (events with foreign keys and numeric measures) surrounded by denormalized dimension tables (date, product with category inline, store with region inline). A <b>snowflake</b> normalizes dimensions into sub-tables (product → category → department) — less redundancy, more joins. The <b>grain</b> is what one fact row means ("one row per order line" or "per product per store per day"); declaring it first prevents double counting. Stars dominate in practice because columnar engines compress repeated dimension values cheaply and BI/AI tools generate simpler SQL with fewer joins.</p>`, followUps: ['What is a degenerate dimension?', 'Explain SCD Type 1 vs Type 2.'] },
+    { q: 'Is a JSON or array column a violation of 1NF? Would you use one?', level: 'A', a: `<p>Strictly, yes — it holds a non-atomic value. Practically, it depends on usage. I'd use <code>jsonb</code>/arrays for data read as a whole with its parent and filtered at most by containment with a GIN index (tags for display, flexible attributes, raw payloads). I'd normalize when elements need referential integrity, uniqueness across rows, per-element updates by concurrent writers, aggregation by element, or their own attributes. Rule: once an element has relationships or rules, it deserves a row. Also note JSON hides schema drift, so validate with CHECK constraints or JSON schema at the edge.</p>`, followUps: ['How would you migrate a JSON array column to a child table?', 'What indexing does PostgreSQL offer for jsonb?'] },
+    { q: 'What are 4NF and 5NF? Have you seen them matter?', level: 'E', a: `<p><b>4NF</b> removes non-trivial <b>multi-valued dependencies</b> X ↠ Y whose left side isn't a superkey — typically two independent many-to-many facts stored in one table, forcing a cross product (course × teachers × textbooks). Split into (course, teacher) and (course, textbook); losslessness follows from the MVD (Fagin). <b>5NF/PJNF</b> removes join dependencies not implied by keys — e.g. a cyclic rule "if supplier S supplies part P and P is used in project J and S works on J, then S supplies P to J"; then three binary tables replace the ternary one. They matter in junction-table design: if a 3-column junction table has no FDs but suspicious duplication, check for an MVD.</p>`, followUps: ['Is every 4NF relation in BCNF?', 'How do you detect an MVD from data?'] },
+    { q: 'How do surrogate keys interact with normalization?', level: 'A', a: `<p>A surrogate (auto-increment/UUID) is a convenient identifier but it doesn't remove dependencies. If order_items gets <code>id PK</code>, (order_id, sku) is still a candidate key, and sku → price is still a partial dependency on it. Normal forms consider <b>all</b> candidate keys, so you must still declare natural keys as UNIQUE and still split out dependent facts. Benefits of surrogates: stable references when natural keys change (emails), compact FKs, SCD Type 2 history in warehouses. Danger: teams forget the natural UNIQUE constraint and get duplicate "same" rows with different ids.</p>`, followUps: ['UUIDv4 vs UUIDv7 vs bigint for primary keys?', 'When is a natural key the right primary key?'] },
+    { q: 'An LLM generated a schema from a CSV with one wide table. How do you review it?', level: 'E', a: `<p>I'd (1) ask what each column describes and write the business FDs with a domain expert; (2) verify them on full data with <code>GROUP BY x HAVING COUNT(DISTINCT y) &gt; 1</code>; (3) find candidate keys via closure; (4) decompose to 3NF/BCNF, preferring synthesis when preserving rules matters; (5) identify snapshot columns that must not be normalized (price at sale, ship-to address); (6) migrate with SELECT DISTINCT so PKs catch contradictions; (7) prove losslessness with EXCEPT; (8) only then consider deliberate denormalization for measured hot paths. AI accelerates steps 1–2 and the migration SQL, but the FD judgements and snapshot decisions are mine.</p>`, followUps: ['Which mistakes do AI tools typically make here?', 'How would you test the migration before cut-over?'] },
+    { q: 'Normalized OLTP vs denormalized analytics: how do they coexist in one company?', level: 'E', a: `<p>The OLTP database (3NF/BCNF) is the <b>system of record</b> optimized for correct concurrent writes. Change Data Capture (e.g. Debezium from the WAL) or batch ELT copies changes into a warehouse/lakehouse, where transformation jobs (dbt) build staging → conformed dimensions and facts (star) → aggregates/OBTs for BI and AI agents. Consistency is <b>eventual</b> with a known lag; reconciliation tests check totals per day between source and warehouse. Caches and search indexes are further denormalized read models fed by the same change stream (CQRS). The rule everywhere: one source of truth per fact, every copy has an owner, a refresh path and a drift check.</p>`, followUps: ['How do you handle deletes in CDC pipelines?', 'What is a conformed dimension?'] }
+  );
+
   registerModule({
     id: 'sql08',
     title: 'Normalization & Denormalization',

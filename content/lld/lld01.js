@@ -1179,7 +1179,7 @@ class Receipt {
         frames.push({ narr: 'The loop only knows the type <b>Shape</b>. It has <b>no if/else</b> on the kind of shape. Let us watch the JVM pick the right <code>area()</code> for each object.', parts: [
           { type: 'graph', label: 'Class hierarchy', directed: true, height: 44, nodes: cp(nodes), edges: edges, hl: { Shape: 'sel' }, tags: { Shape: '«abstract» area()' } },
           { type: 'code', label: 'Caller code (top) and the three overrides (bottom)', lang: 'java', code: code, hl: { 3: 'cur' } },
-          { type: 'array', label: 'List<Shape> shapes', values: shapes.map(function (s) { return s.d; }) }
+          { type: 'array', label: 'List&lt;Shape&gt; shapes', values: shapes.map(function (s) { return s.d; }) }
         ] });
         shapes.forEach(function (s, i) {
           total += s.area; done.push(s.area.toFixed(2));
@@ -1190,7 +1190,7 @@ class Receipt {
           frames.push({ narr: 'Element ' + i + ' is really a <b>' + s.k + '</b>. The call <code>s.area()</code> is the same text every time, but the JVM looks at the <b>actual object</b> (dynamic dispatch) and runs <code>' + s.k + '.area()</code> = <b>' + s.area.toFixed(2) + '</b>.', parts: [
             { type: 'graph', label: 'Class hierarchy', directed: true, height: 44, nodes: cp(nodes), edges: edges, hl: hl, ehl: ehl },
             { type: 'code', label: 'Caller code (top) and the three overrides (bottom)', lang: 'java', code: code, hl: ch },
-            { type: 'array', label: 'List<Shape> shapes', values: shapes.map(function (x) { return x.d; }), hl: ah, ptr: (function () { var p = {}; p[i] = 's'; return p; })() },
+            { type: 'array', label: 'List&lt;Shape&gt; shapes', values: shapes.map(function (x) { return x.d; }), hl: ah, ptr: (function () { var p = {}; p[i] = 's'; return p; })() },
             { type: 'vars', label: 'Loop state', vals: { 'runtime type': s.k, 'area()': s.area.toFixed(2), total: total.toFixed(2) }, hl: { total: 'ok' } }
           ] });
         });
@@ -1361,6 +1361,838 @@ class Checkout {
 }`,
         complexity: `<p>Each payment is O(1). Adding a method = 1 new class, 0 edits (vs N edited switches in the god class). Dispatch cost is a virtual call, negligible.</p>`,
         followUps: ['Add Wallet with a balance: which relationships appear (Wallet → Customer)?', 'How would you pick the method from a user\'s string input? (a factory: next modules)', 'Convert this to a sealed interface. What do you gain and what do you lose?']
+      }
+    }]
+  });
+
+  /* =========================== TOPIC 5 =========================== */
+  topics.push({
+    title: 'UML Class Diagrams: Notation, Reading & Drawing One Step by Step',
+    analogy: `<p>A UML class diagram is an <b>architect's floor plan</b>. The plan does not show every brick or paint colour; it shows rooms, doors and which room connects to which, using a small <b>legend</b> of symbols everyone agrees on. A builder in Pune and one in Berlin read the same plan the same way. UML gives programmers that shared legend, so you can sketch a design on a whiteboard in 10 minutes and everyone understands it.</p>`,
+    explain: `<p>A <b>class diagram</b> shows the <i>static structure</i>: which classes exist, what they hold, what they can do, and how they relate. In interviews you draw it on a whiteboard or in text; keep it readable, not exhaustive.</p>
+<h4>1. The class box (three compartments)</h4>
+${H.table(['Compartment', 'Syntax', 'Example'], [
+  ['Name', 'bold; <i>italic</i> if abstract; «stereotype» above', '<b>BankAccount</b>, «interface» <b>PaymentMethod</b>, «enum» <b>Status</b>'],
+  ['Attributes', 'visibility name : Type [= default]', '<code>- balance : long = 0</code>'],
+  ['Operations', 'visibility name(param : Type) : ReturnType', '<code>+ withdraw(amount : long) : boolean</code>']
+])}
+<h4>2. Visibility symbols</h4>
+${H.table(['Symbol', 'Java', 'Meaning'], [['<code>+</code>', 'public', 'anyone'], ['<code>-</code>', 'private', 'only this class'], ['<code>#</code>', 'protected', 'subclasses (and package)'], ['<code>~</code>', 'package-private (no keyword)', 'same package'], ['<u>underlined</u>', 'static', 'belongs to the class, not objects']])}
+<h4>3. The six arrows (memorise this legend)</h4>
+${H.table(['Relationship', 'Line', 'Arrow head / end', 'Read it as'], [
+  ['Association', 'solid', 'plain open arrow (or none)', '"knows / is linked to"'],
+  ['Aggregation', 'solid', 'hollow diamond ◇ at the whole', '"has (shared parts)"'],
+  ['Composition', 'solid', 'filled diamond ◆ at the whole', '"owns (part dies with whole)"'],
+  ['Dependency', 'dashed', 'open arrow', '"uses for a moment"'],
+  ['Inheritance', 'solid', 'hollow triangle ▷ at the parent', '"is a kind of"'],
+  ['Realisation', 'dashed', 'hollow triangle ▷ at the interface', '"implements"']
+])}
+<p><b>Multiplicity</b> numbers go at the ends of a line: <code>Customer 1 —— 0..* Order</code> reads "one customer places zero or more orders; each order belongs to exactly one customer". Read each end from the <i>other</i> class's point of view.</p>
+<h4>4. Drawing order that works in an interview</h4>
+<ol><li>Core entities as boxes with names only.</li><li>Relationship lines + multiplicities.</li><li>Key attributes (ids, status, money) and key operations (the use-case verbs).</li><li>Interfaces/abstract classes where variation exists.</li><li>Enums for fixed sets.</li></ol>
+<p>Stop when the main use cases can be traced through the diagram. In 45 minutes, 6–10 classes is the sweet spot.</p>`,
+    clues: [
+      '"Draw the class diagram" / "show me the classes and how they relate" → boxes, then lines with multiplicities, then key members.',
+      '"What does the filled diamond mean?" → composition; hollow → aggregation; triangle → inheritance/realisation.',
+      '"Which class owns X?" → look for the diamond end and the navigability arrow.',
+      '"How many Ys can an X have?" → multiplicity on the Y end (0..1, 1, 0..*, 1..*).',
+      '"Write the code from this diagram" → each line becomes a field, collection, parameter, extends or implements.',
+      '"Document the design in the repo" → text-based UML (PlantUML/Mermaid) that lives next to the code.'
+    ],
+    code: [`
+// Java that a class box translates into (and back):
+//   «abstract» Account
+//   - id : String
+//   # balance : long
+//   - nextId : int   (underlined = static)
+//   + deposit(amount : long) : void
+//   + monthlyFee() : long   (italic = abstract)
+abstract class Account {
+    private static int nextId = 1;            // underlined in UML
+    private final String id;                  // -
+    protected long balance;                   // #
+    Account() { this.id = "AC" + (nextId++); }
+    public void deposit(long amount) { balance += amount; }   // +
+    public abstract long monthlyFee();        // italic
+    String id() { return id; }                // ~ package-private
+}
+class Current extends Account {               // solid line + hollow triangle to Account
+    public long monthlyFee() { return 50_00; }
+}`, { lang: 'text', title: 'Same diagram as PlantUML text (paste into any PlantUML renderer)', code: `@startuml
+abstract class Account {
+  - id : String
+  # balance : long
+  - {static} nextId : int
+  + deposit(amount : long) : void
+  + {abstract} monthlyFee() : long
+}
+class Current
+Account <|-- Current
+class Customer
+Customer "1" -- "0..*" Account : holds >
+@enduml` }],
+    codeTitle: ['Class box to Java', 'Text-based UML (PlantUML)'],
+    viz: [{
+      title: 'Draw an online shop class diagram, one decision at a time',
+      gen: function () {
+        return uml('Online shop: class diagram', 72, [
+          { narr: 'Start with the <b>core entities</b> from the requirement "customers add products to a cart and place orders": just names, no details yet.', nodes: [bx('Customer', 'Customer', 15, 8), bx('Cart', 'Cart', 50, 8), bx('Product', 'Product', 85, 27), bx('Order', 'Order', 15, 46)],
+            rows: [['Customer', '', ''], ['Cart', '', ''], ['Product', '', ''], ['Order', '', '']] },
+          { narr: 'Each customer has exactly <b>one cart</b> that exists only for them: <b>composition</b>, multiplicity 1. Arrow from the whole (Customer) to the part (Cart).', edges: [['Customer', 'Cart', '◆ 1']], hl: { Customer: 'cur', Cart: 'ok' },
+            rows: [['Customer', '- id: String, - name: String', ''], ['Cart', '', '']] },
+          { narr: 'A cart holds <b>CartItems</b> (product + quantity). Items exist only inside the cart: composition, <b>0..*</b>. A CartItem merely <b>points to</b> a Product: association, 1. Deleting the cart must never delete the product!', nodes: [bx('CartItem', 'CartItem', 50, 27)], edges: [['Cart', 'CartItem', '◆ 0..*'], ['CartItem', 'Product', '→ 1']],
+            rows: [['Cart', '', '+ add(p: Product, qty: int), + remove(sku: String), + total(): long'], ['CartItem', '- quantity: int', '+ subtotal(): long'], ['Product', '- sku: String, - name: String, - pricePaise: long', '']] },
+          { narr: 'A customer <b>places</b> many orders over time. Orders outlive any single session and the link is long-lived: <b>association</b> 1 → 0..*. (Customer does not own them in the composition sense: we keep orders for accounting even if the account closes.)', edges: [['Customer', 'Order', 'places 0..*']], hl: { Order: 'cur' },
+            rows: [['Customer', '- id: String, - name: String', '+ checkout(pm: PaymentMethod): Order']] },
+          { narr: 'An order is made of <b>OrderLines</b>: composition, <b>1..*</b> (an empty order is invalid). Each line references a Product but <b>copies the price</b> at purchase time.', nodes: [bx('OrderLine', 'OrderLine', 50, 46)], edges: [['Order', 'OrderLine', '◆ 1..*'], ['OrderLine', 'Product', '→ 1']],
+            rows: [['Order', '- id: String, - placedAt: Instant', '+ total(): long'], ['OrderLine', '- quantity: int, - unitPricePaise: long', '+ subtotal(): long']] },
+          { narr: 'Fixed set of order states → an <b>enum</b>, shown with the «enum» stereotype. Order holds exactly one current status.', nodes: [bx('OrderStatus', 'OrderStatus', 15, 65)], edges: [['Order', 'OrderStatus', '1']], tags: { OrderStatus: '«enum» PLACED PAID SHIPPED' },
+            rows: [['OrderStatus «enum»', 'PLACED, PAID, SHIPPED, CANCELLED', ''], ['Order', '- id: String, - placedAt: Instant, - status: OrderStatus', '+ total(): long, + pay(pm), + cancel()']] },
+          { narr: 'Payment varies (card, UPI, wallet) → an <b>interface</b>. Order only <b>uses</b> it during <code>pay()</code>: <b>dependency</b> (dashed arrow). Implementations hang below it with the realisation triangle.', nodes: [bx('PM', 'PaymentMethod', 85, 46), bx('Upi', 'Upi', 70, 65), bx('Card', 'Card', 94, 65)], edges: [['Order', 'PM', 'uses'], ['Upi', 'PM', 'implements'], ['Card', 'PM', 'implements']], tags: { PM: '«interface»' },
+            rows: [['PaymentMethod «interface»', '', '+ pay(amountPaise: long): boolean'], ['Upi', '- vpa: String', '+ pay(amountPaise: long): boolean'], ['Card', '- last4: String', '+ pay(amountPaise: long): boolean']] },
+          { narr: 'Sanity check with a use case: <i>checkout</i> = Customer reads Cart → creates Order with one OrderLine per CartItem (price copied) → Order.pay(PaymentMethod) → status PAID → cart cleared. Every step has a home. The diagram is done.', hl: { Customer: 'cur', Cart: 'win', Order: 'ok', PM: 'sel' },
+            code: 'class Customer { private final Cart cart = new Cart(); Order checkout(PaymentMethod pm) { /* cart items become order lines */ } }\nclass Cart { private final List<CartItem> items = new ArrayList<>(); }\nclass CartItem { private final Product product; private int quantity; }\nrecord Product(String sku, String name, long pricePaise) { }\nclass Order { private final List<OrderLine> lines; private OrderStatus status; boolean pay(PaymentMethod pm) { /* charge total, set PAID */ } }\nrecord OrderLine(Product product, int quantity, long unitPricePaise) { }\nenum OrderStatus { PLACED, PAID, SHIPPED, CANCELLED }\ninterface PaymentMethod { boolean pay(long amountPaise); }', codeLabel: 'Skeleton read straight off the diagram' }
+        ]);
+      }
+    }, {
+      title: 'Translate Java into a UML class box, line by line',
+      gen: function () {
+        var code = 'abstract class Vehicle {\n    private static int count = 0;\n    private final String plate;\n    protected int wheels;\n    Vehicle(String plate) { this.plate = plate; count++; }\n    public String getPlate() { return plate; }\n    public abstract long tollPaise();\n    static int count() { return count; }\n}';
+        var steps = [
+          [1, 'Vehicle', 'Name compartment: the class is <code>abstract</code>, so the name is written in <i>italics</i> (or with «abstract»).', ['«abstract» Vehicle (italic)', '', '']],
+          [2, 'count', '<code>private static</code> → <code>-</code> and <b>underlined</b> (static belongs to the class).', ['«abstract» Vehicle (italic)', '- count: int = 0 (underlined)', '']],
+          [3, 'plate', '<code>private final String plate</code> → <code>- plate: String</code> ({readOnly} if you want to show final).', ['«abstract» Vehicle (italic)', '- count: int = 0 (underlined), - plate: String {readOnly}', '']],
+          [4, 'wheels', '<code>protected</code> → <code>#</code>. Subclasses (Car, Bike) can see it.', ['«abstract» Vehicle (italic)', '- count: int = 0 (underlined), - plate: String {readOnly}, # wheels: int', '']],
+          [5, 'ctor', 'Constructors are often omitted in interview diagrams, or written as <code>~ Vehicle(plate: String)</code> (package-private here, no keyword).', ['«abstract» Vehicle (italic)', '- count: int = 0 (underlined), - plate: String {readOnly}, # wheels: int', '~ Vehicle(plate: String)']],
+          [6, 'getPlate', '<code>public</code> method → <code>+ getPlate(): String</code>. Return type goes <b>after</b> the colon.', ['«abstract» Vehicle (italic)', '- count: int = 0 (underlined), - plate: String {readOnly}, # wheels: int', '~ Vehicle(plate: String), + getPlate(): String']],
+          [7, 'toll', '<code>abstract</code> method → written in <i>italics</i>: <code>+ tollPaise(): long</code>. Every concrete subclass must implement it.', ['«abstract» Vehicle (italic)', '- count: int = 0 (underlined), - plate: String {readOnly}, # wheels: int', '~ Vehicle(plate: String), + getPlate(): String, + tollPaise(): long (italic)']],
+          [8, 'countm', 'Package-private static method → <code>~ count(): int</code>, underlined. Done: the box now carries everything a reader needs.', ['«abstract» Vehicle (italic)', '- count: int = 0 (underlined), - plate: String {readOnly}, # wheels: int', '~ Vehicle(plate: String), + getPlate(): String, + tollPaise(): long (italic), ~ count(): int (underlined)']]
+        ];
+        var frames = [{ narr: 'Here is a Java class. We will turn each line into UML notation. Watch the three compartments fill: <b>name</b>, <b>attributes</b>, <b>operations</b>.', parts: [{ type: 'code', label: 'Java source', lang: 'java', code: code, hl: {} }, { type: 'table', label: 'UML class box', columns: ['Name', 'Attributes', 'Operations'], rows: [['', '', '']] }] }];
+        steps.forEach(function (s) {
+          var h = {}; h[s[0]] = 'cur';
+          frames.push({ narr: s[2], parts: [{ type: 'code', label: 'Java source', lang: 'java', code: code, hl: h }, { type: 'table', label: 'UML class box', columns: ['Name', 'Attributes', 'Operations'], rows: [s[3]], hl: { 0: 'ok' } }] });
+        });
+        frames.push({ narr: 'Add a subclass <code>Car extends Vehicle</code> and the diagram gets its first <b>is-a</b> arrow (hollow triangle at Vehicle).', parts: [
+          { type: 'graph', label: 'Generalisation', directed: true, height: 40, nodes: [bx('Vehicle', 'Vehicle (abstract)', 50, 8), bx('Car', 'Car', 25, 30), bx('Bike', 'Bike', 75, 30)], edges: [['Car', 'Vehicle', 'is-a'], ['Bike', 'Vehicle', 'is-a']], hl: { Vehicle: 'sel', Car: 'ok', Bike: 'ok' } },
+          { type: 'table', label: 'Subclass boxes list only what they add or override', columns: ['Name', 'Attributes', 'Operations'], rows: [['Car', '- seats: int', '+ tollPaise(): long'], ['Bike', '', '+ tollPaise(): long']] }
+        ] });
+        return frames;
+      }
+    }],
+    examples: [
+      { title: 'Reading a diagram aloud', html: `<p>Diagram fragment: <code>Library 1 ◆—— 0..* BookCopy</code>, <code>BookCopy 0..* ——&gt; 1 Book</code>, <code>Member 1 —— 0..3 Loan</code>.</p><p>Say it in English: "A library owns zero or more copies, and a copy belongs to exactly one library and is destroyed with it. Each copy is of exactly one book; a book can have many copies, and a copy knows its book but the book does not keep a list of copies (arrow direction). A member has at most three loans; each loan belongs to one member." If you can read a diagram like this, you can also <b>check</b> one: does "at most three" match the requirement?</p>` },
+      { title: 'Diagram to code: every line has a Java shape', html: `${H.table(['UML', 'Java'], [['<code>Order 1 ◆— 1..* OrderLine</code>', '<code>private final List&lt;OrderLine&gt; lines</code> created inside Order, constructor rejects empty'], ['<code>Order → 1 Customer</code>', '<code>private final Customer customer;</code> (no list of orders in Customer)'], ['<code>Order ..&gt; PaymentMethod</code>', '<code>boolean pay(PaymentMethod pm)</code> (parameter only)'], ['<code>Upi ..▷ PaymentMethod</code>', '<code>class Upi implements PaymentMethod</code>'], ['<code>«enum» OrderStatus</code>', '<code>enum OrderStatus { PLACED, PAID }</code>']])}`, code: `
+enum OrderStatus { PLACED, PAID }
+interface PaymentMethod { boolean pay(long amountPaise); }
+record Customer(String id) { }
+record OrderLine(String sku, int qty, long unitPaise) { }
+class Order {
+    private final Customer customer;                    // association, navigable one way
+    private final List<OrderLine> lines;                // composition 1..*
+    private OrderStatus status = OrderStatus.PLACED;
+    Order(Customer customer, List<OrderLine> lines) {
+        if (lines.isEmpty()) throw new IllegalArgumentException("1..* means at least one line");
+        this.customer = customer;
+        this.lines = new ArrayList<>(lines);            // defensive copy: nobody else holds our parts
+    }
+    boolean pay(PaymentMethod pm) {                     // dependency: used, not stored
+        long total = lines.stream().mapToLong(l -> l.qty() * l.unitPaise()).sum();
+        if (pm.pay(total)) { status = OrderStatus.PAID; return true; }
+        return false;
+    }
+}` },
+      { title: 'Five notation mistakes interviewers notice', html: `${H.table(['Mistake', 'Fix'], [['Diamond drawn at the <b>part</b> end', 'The diamond always sits at the <b>whole</b> (Car ◆— Engine)'], ['Inheritance triangle pointing at the child', 'Triangle points at the <b>parent</b>/interface'], ['Same link drawn twice: a line to Engine <i>and</i> an attribute <code>engine: Engine</code>', 'Show it once, as a line (attributes are for simple values)'], ['No multiplicities', 'Always write them: they encode business rules (max 3 loans)'], ['30 boxes with every getter', 'Key classes, key fields, use-case methods only']])}` }
+    ],
+    deepDive: `<p><b>Three levels of class diagram.</b> A <i>conceptual/domain model</i> shows real-world concepts and associations, no types or methods (good for the first 5 minutes with an interviewer). A <i>design model</i> adds types, visibility, interfaces and navigability. An <i>implementation model</i> mirrors the code 1:1 and is usually generated by tools. Know which level you are drawing and say so.</p>
+<p><b>Extra notation worth knowing:</b> derived attributes start with a slash (<code>/total : long</code>, computed not stored); constraints in braces (<code>{ordered}</code>, <code>{unique}</code>, <code>{readOnly}</code>); role names at line ends (<code>Employee —manager— Employee</code> for a self-association); qualifiers (a small box with <code>barcode</code> on the Library end = a map lookup); association classes (dashed line from the association to a class like <code>Enrollment</code>); notes (dog-eared box) for rules that do not fit the notation.</p>
+<p><b>Navigability is a coupling decision.</b> An arrowhead means "this side can reach that side". Each two-way link adds a dependency in both directions and a consistency obligation. A mature diagram has mostly one-way arrows pointing from use-case coordinators down to entities and from entities to values.</p>
+<p><b>Diagrams rot; text survives.</b> In production, hand-drawn diagrams go stale within months. Teams keep PlantUML or Mermaid text in the repo (reviewed in pull requests) or generate diagrams from code (IntelliJ, ArchUnit-based tooling). For system-level views, many teams use the C4 model and keep UML class diagrams only for tricky domain cores.</p>
+<p><b>Interview timing.</b> In a 45–60 minute LLD round, spend roughly 5 min requirements, 10 min diagram, 25 min code, 5 min extensions. If the diagram takes 20 minutes you will not finish the code. Draw names and lines first; add members only for the classes you are about to code.</p>
+<p><b>Other UML diagrams you may be asked about:</b> object diagram (a snapshot of instances with values), state machine diagram (status transitions of one class; perfect for orders, elevators, vending machines), activity diagram (a flowchart of a process), component and deployment diagrams (closer to HLD). Class + sequence + state cover 95% of LLD interviews.</p>`,
+    aiEra: `<p><b>What AI changes:</b> diagrams are now cheap. You can ask an assistant to turn a Java package into Mermaid or PlantUML in seconds, and ask it the other way round: diagram text to skeleton code. Many interview platforms and design docs accept text diagrams, so <b>fluency in Mermaid/PlantUML syntax</b> is a practical 2026 skill.</p>
+<p><b>Use AI as a partner:</b> <code>Generate a Mermaid classDiagram from this code; mark composition vs association by checking who creates each object.</code> Then review the arrows yourself. Or: <code>Here is my diagram text. List every multiplicity and the business rule it implies; flag any that look wrong.</code></p>
+<p><b>Where AI goes wrong:</b> it routinely reverses arrow directions, uses composition for every field, omits multiplicities, and lists every getter and setter, burying the design. Generated diagrams from code also cannot know <i>intent</i> (should orders survive account deletion?), only structure.</p>
+<p><b>What you must still own:</b> choosing the level of detail for your audience, encoding the business rules in multiplicities and diamonds, and keeping the diagram small enough to reason about. A crisp 8-box diagram you can explain beats a 40-box generated one.</p>`,
+    problems: [{
+      title: 'Draw the Class Diagram for an Online Shopping Cart',
+      level: 'Medium', tags: ['class diagram', 'multiplicity', 'composition', 'interface'], companies: ['Amazon', 'Flipkart', 'Walmart', 'Shopify'],
+      statement: `<p>Customers browse <b>products</b> (sku, name, price, stock), add them to a <b>cart</b> with quantities, apply at most one <b>coupon</b> (flat or percentage), and <b>checkout</b> to create an <b>order</b> paid by a payment method. The order must keep the price paid even if the product price changes later. Draw the class diagram (describe boxes, members, arrows and multiplicities) and write a compilable Java skeleton with working <code>Cart.add</code>, <code>Cart.total</code> and <code>Customer.checkout</code>.</p>`,
+      constraints: `<ul><li>Quantity ≥ 1; cannot add more than stock.</li><li>Coupon types: FLAT (paise off) or PERCENT (0–100). Total never below 0.</li><li>Order has 1..* lines; cart is emptied after checkout.</li></ul>`,
+      example: `<p>Cart: 2 × Pen (₹50) + 1 × Notebook (₹120) = ₹220. Coupon PERCENT 10 → ${H.c('g', '₹198')}. After checkout: Order with 2 lines at the frozen prices, cart empty. If Pen's price changes to ₹60 later, the order total stays ₹198.</p>
+${H.table(['Box', 'Key members', 'Links'], [['Customer', 'id, name; checkout(pm)', '◆ 1 Cart; 1 → 0..* Order'], ['Cart', 'add, remove, total', '◆ 0..* CartItem; 0..1 → Coupon'], ['Order', 'lines, total, status', '◆ 1..* OrderLine'], ['«interface» Coupon', 'apply(total)', 'FlatCoupon, PercentCoupon ..▷']])}`,
+      brute: {
+        why: `<p>The god-class version is one <code>ShopService</code> with <code>Map&lt;String, Integer&gt; cart</code> (sku → qty), <code>Map&lt;String, Long&gt; prices</code> and a <code>String couponType</code>. Checkout re-reads <i>current</i> prices, so old orders change when prices change (an accounting bug). Coupon logic is an if-else on strings. There is no Order object at all, just a list of maps. You cannot draw a class diagram of it because there are no classes to draw, which is exactly the problem.</p>`,
+        code: `
+class ShopService {
+    Map<String, Integer> cart = new HashMap<>();
+    Map<String, Long> prices = new HashMap<>();
+    String couponType; long couponValue;
+    List<Map<String, Integer>> orders = new ArrayList<>();
+    long total() {
+        long t = 0;
+        for (var e : cart.entrySet()) t += prices.get(e.getKey()) * e.getValue();
+        if ("FLAT".equals(couponType)) t -= couponValue;
+        else if ("PERCENT".equals(couponType)) t -= t * couponValue / 100;
+        return t;                         // may go negative
+    }
+    void checkout() { orders.add(new HashMap<>(cart)); cart.clear(); }  // prices not frozen
+}`
+      },
+      mcq: { q: 'Why does OrderLine store unitPricePaise instead of just referencing Product?', options: ['To save memory', 'Because the order must remember the price actually paid even if the product price changes later', 'Because Product is immutable', 'UML requires it'], answer: 1, explain: 'An order is a historical record. Referencing the live product price would rewrite history. Copy the price (a snapshot) into the line; keep the reference to Product for everything else.' },
+      hints: [
+        `<p>Hint 1: nouns → Customer, Product, Cart, CartItem, Coupon, Order, OrderLine, PaymentMethod. Which are parts that die with a whole? (CartItem in Cart, OrderLine in Order.)</p>`,
+        `<p>Hint 2: Coupon varies → interface with FlatCoupon and PercentCoupon records. Cart holds 0..1 coupon (nullable or Optional). Payment → interface used by Customer.checkout (dependency).</p>`,
+        `<p>Hint 3: checkout = build OrderLines from CartItems copying the current price → new Order(lines, discountedTotal) → pm.pay(total) → cart.clear(). Validate stock in Cart.add.</p>`
+      ],
+      solution: {
+        approach: `<p><b>Diagram (text form):</b> <code>Customer 1 ◆— 1 Cart</code>; <code>Cart 1 ◆— 0..* CartItem</code>; <code>CartItem 0..* —&gt; 1 Product</code>; <code>Cart 0..* —&gt; 0..1 Coupon</code>; <code>Customer 1 —&gt; 0..* Order</code>; <code>Order 1 ◆— 1..* OrderLine</code>; <code>OrderLine —&gt; 1 Product</code> (plus frozen price); <code>FlatCoupon ..▷ «interface» Coupon</code>, <code>PercentCoupon ..▷ Coupon</code>; <code>Customer ..&gt; «interface» PaymentMethod</code>. Rules sit with their data: stock check in Cart.add (asks Product), discount in Coupon.apply, price freeze in OrderLine, total in Order. Records model immutable values (Product snapshot fields, OrderLine, coupons).</p>`,
+        code: `
+interface Coupon { long apply(long totalPaise); }
+record FlatCoupon(long offPaise) implements Coupon {
+    public long apply(long total) { return Math.max(0, total - offPaise); }
+}
+record PercentCoupon(int percent) implements Coupon {
+    PercentCoupon { if (percent < 0 || percent > 100) throw new IllegalArgumentException("0..100"); }
+    public long apply(long total) { return total - total * percent / 100; }
+}
+interface PaymentMethod { boolean pay(long amountPaise); }
+
+class Product {
+    private final String sku, name;
+    private long pricePaise;
+    private int stock;
+    Product(String sku, String name, long pricePaise, int stock) { this.sku = sku; this.name = name; this.pricePaise = pricePaise; this.stock = stock; }
+    long price() { return pricePaise; }
+    void changePrice(long p) { pricePaise = p; }
+    boolean hasStock(int qty) { return qty <= stock; }
+    String sku() { return sku; }
+}
+
+class CartItem {
+    private final Product product;
+    private int quantity;
+    CartItem(Product p, int q) { product = p; quantity = q; }
+    long subtotal() { return product.price() * quantity; }
+    Product product() { return product; }
+    int quantity() { return quantity; }
+    void increase(int q) { quantity += q; }
+}
+
+class Cart {
+    private final Map<String, CartItem> items = new LinkedHashMap<>();   // composition
+    private Coupon coupon;                                                // 0..1
+    void add(Product p, int qty) {
+        if (qty < 1) throw new IllegalArgumentException("qty >= 1");
+        int already = items.containsKey(p.sku()) ? items.get(p.sku()).quantity() : 0;
+        if (!p.hasStock(already + qty)) throw new IllegalStateException("not enough stock");
+        items.computeIfAbsent(p.sku(), k -> new CartItem(p, 0)).increase(qty);
+    }
+    void applyCoupon(Coupon c) { coupon = c; }
+    long total() {
+        long raw = items.values().stream().mapToLong(CartItem::subtotal).sum();
+        return coupon == null ? raw : coupon.apply(raw);
+    }
+    List<CartItem> items() { return List.copyOf(items.values()); }
+    void clear() { items.clear(); coupon = null; }
+}
+
+record OrderLine(Product product, int quantity, long unitPricePaise) { }   // price frozen
+
+class Order {
+    enum Status { PLACED, PAID }
+    private final List<OrderLine> lines;
+    private final long totalPaise;
+    private Status status = Status.PLACED;
+    Order(List<OrderLine> lines, long totalPaise) {
+        if (lines.isEmpty()) throw new IllegalArgumentException("order needs 1..* lines");
+        this.lines = List.copyOf(lines); this.totalPaise = totalPaise;
+    }
+    void markPaid() { status = Status.PAID; }
+    long total() { return totalPaise; }
+    Status status() { return status; }
+}
+
+class Customer {
+    private final String id;
+    private final Cart cart = new Cart();                 // composition: born with the customer
+    private final List<Order> orders = new ArrayList<>(); // association 0..*
+    Customer(String id) { this.id = id; }
+    Cart cart() { return cart; }
+    Order checkout(PaymentMethod pm) {                    // dependency on PaymentMethod
+        List<OrderLine> lines = new ArrayList<>();
+        for (CartItem ci : cart.items()) lines.add(new OrderLine(ci.product(), ci.quantity(), ci.product().price()));
+        Order order = new Order(lines, cart.total());
+        if (!pm.pay(order.total())) throw new IllegalStateException("payment failed");
+        order.markPaid();
+        orders.add(order);
+        cart.clear();
+        return order;
+    }
+
+    public static void main(String[] args) {
+        Product pen = new Product("P1", "Pen", 5000, 10), book = new Product("N1", "Notebook", 12000, 5);
+        Customer asha = new Customer("C1");
+        asha.cart().add(pen, 2); asha.cart().add(book, 1);
+        asha.cart().applyCoupon(new PercentCoupon(10));
+        Order o = asha.checkout(amount -> true);          // lambda as a fake payment method
+        pen.changePrice(6000);
+        System.out.println(o.total() + " " + o.status());  // 19800 PAID, unaffected by the price change
+    }
+}`,
+        complexity: `<p>add/remove O(1) (LinkedHashMap by sku); total O(items); checkout O(items). Memory O(items + orders). Extending with a new coupon type = one new record, no edits.</p>`,
+        followUps: ['Reserve stock at checkout so two customers cannot buy the last unit (concurrency module).', 'Support multiple coupons with a priority order. Which pattern helps?', 'Add order states SHIPPED/DELIVERED/RETURNED: draw the state machine diagram.']
+      }
+    }]
+  });
+
+  /* =========================== TOPIC 6 =========================== */
+  topics.push({
+    title: 'UML Sequence Diagrams: Who Calls Whom, In What Order',
+    analogy: `<p>Picture ordering food in a restaurant. You tell the <b>waiter</b> your order, the waiter tells the <b>kitchen</b>, the kitchen says "ready", the waiter brings the plate, you pay at the <b>counter</b>. Write each person as a column and each sentence as an arrow from one column to another, top to bottom in time order. That picture is a <b>sequence diagram</b>. A class diagram is the restaurant's <i>staff list</i>; a sequence diagram is <i>one evening's story</i>.</p>`,
+    explain: `<p>A class diagram shows structure. A <b>sequence diagram</b> shows <b>behaviour over time</b> for one use case: which object sends which message to which other object, in order. It is the best tool to check that your classes can actually <i>do</i> the job.</p>
+${H.table(['Element', 'Drawing', 'Java meaning'], [
+  ['<b>Lifeline</b>', 'box at the top + dashed line going down', 'an object taking part (<code>atm : ATM</code>)'],
+  ['<b>Synchronous message</b>', 'solid line, filled arrow head', 'a normal method call; caller waits'],
+  ['<b>Return</b>', 'dashed line back', 'the return value (often omitted if obvious)'],
+  ['<b>Asynchronous message</b>', 'solid line, open arrow head', 'fire-and-forget: publish an event, submit to an executor'],
+  ['<b>Activation bar</b>', 'thin rectangle on a lifeline', 'the method is on the call stack'],
+  ['<b>Self-call</b>', 'arrow looping back to the same lifeline', '<code>this.validate()</code>'],
+  ['<b>Create</b>', 'arrow to a box placed lower down, «create»', '<code>new Order(...)</code>'],
+  ['<b>Fragments</b>', 'labelled frame: <code>alt</code>, <code>opt</code>, <code>loop</code>, <code>par</code>', '<code>if/else</code>, <code>if</code>, <code>for</code>, parallel tasks']
+])}
+<h4>How to draw one in an interview (2–4 minutes)</h4>
+<ol>
+<li>Pick <b>one</b> important use case: "withdraw cash", "book a seat", "place an order".</li>
+<li>Put the <b>actor</b> or entry point (Controller, Customer) on the far left; then objects in the order they get involved, left to right.</li>
+<li>Draw the first message (the public API call). Then ask, at each step, "<i>who knows how to do this?</i>" and send the next message there.</li>
+<li>Add the most important <b>failure branch</b> as an <code>alt</code> (insufficient funds, seat taken).</li>
+<li>Read it back: every arrow must be a method that exists on the receiving class in your class diagram. Missing method? Add it. Arrow to a class with no data for it? Wrong owner.</li>
+</ol>
+<p><b>Why bother?</b> Sequence diagrams expose bad designs fast: a controller with arrows to 8 objects is a god class; a long chain <code>a → b → c → d</code> just to read a value is a "train wreck" violating the Law of Demeter; two arrows going back and forth repeatedly signal a chatty interface.</p>`,
+    clues: [
+      '"Walk me through what happens when a user clicks Book / Pay / Withdraw" → draw a sequence diagram for that use case.',
+      '"Which class calls which?" / "show the interaction" / "flow of control" → sequence diagram.',
+      '"What if payment fails / the seat is already taken?" → an <code>alt</code> fragment with the failure branch.',
+      '"Send an email after the order is placed, don\'t block the user" → asynchronous message (open arrow head).',
+      '"For each item in the cart…" → a <code>loop</code> fragment.',
+      '"How would you trace this in production?" → distributed tracing spans are runtime sequence diagrams.'
+    ],
+    code: `
+// The code behind an "ATM withdraw" sequence diagram.
+// Customer -> ATM: withdraw(500) ; ATM -> Bank: debit(card, 500) ; alt approved: ATM -> ATM: dispense ; else: show error
+class Bank {
+    private final Map<String, Long> balances = new HashMap<>();
+    Bank() { balances.put("CARD-1", 1_000L); }
+    boolean debit(String card, long amount) {                 // message 2 arrives here
+        long bal = balances.getOrDefault(card, 0L);
+        if (amount > bal) return false;                        // return message: false
+        balances.put(card, bal - amount);
+        return true;                                           // return message: true
+    }
+}
+class Atm {
+    private final Bank bank;                                   // association: ATM knows its bank
+    private long cash = 10_000;
+    Atm(Bank bank) { this.bank = bank; }
+    String withdraw(String card, long amount) {                // message 1 (from Customer)
+        if (amount > cash) return "ATM out of cash";           // alt branch 1
+        boolean ok = bank.debit(card, amount);                 // message 2: synchronous call
+        if (!ok) return "Insufficient funds";                  // alt branch 2
+        dispense(amount);                                      // message 3: self-call
+        return "Please take " + amount;                        // return to Customer
+    }
+    private void dispense(long amount) { cash -= amount; }
+    public static void main(String[] args) {
+        Atm atm = new Atm(new Bank());
+        System.out.println(atm.withdraw("CARD-1", 500));
+        System.out.println(atm.withdraw("CARD-1", 800));       // only 500 left in the account
+    }
+}`,
+    codeTitle: 'Sequence diagram → Java (ATM withdraw)',
+    viz: [{
+      title: 'Sequence diagram builder (editable): ATM cash withdrawal',
+      input: 'Customer -> ATM: insertCard; ATM -> Bank: verifyPin(pin); Bank --> ATM: valid; Customer -> ATM: withdraw(500); ATM -> Bank: debit(500); Bank --> ATM: approved; ATM -> ATM: dispense(500); ATM --> Customer: cash',
+      inputLabel: 'Messages "From -> To: call" (use --> for a return), separated by ;',
+      gen: function (input) {
+        var p = parseSeq(input);
+        return seq('Sequence diagram (numbers = time order, top to bottom)', p.who, p.msgs, {
+          intro: 'Lifelines: <b>' + p.who.map(hesc).join(', ') + '</b>. Each will get dots where it sends or receives a message. Time flows <b>downwards</b>; solid arrows are calls, the ones labelled "return" are replies.',
+          outro: 'Read it back as a story. Every arrow into a box must be a <b>method on that class</b>: here that means ' + p.msgs.filter(function (m) { return !m.ret; }).map(function (m) { return hesc(m.t + '.' + m.m.replace(/\(.*$/, '') + '()'); }).filter(function (v, i, a) { return a.indexOf(v) === i; }).join(', ') + '.'
+        });
+      }
+    }, {
+      title: 'From sequence diagram to code: placing an order',
+      gen: function () {
+        var code = 'OrderId placeOrder(Cart cart, PaymentMethod pm) {   // called by Controller\n    if (!inventory.reserve(cart.items()))            // ask Inventory\n        throw new OutOfStockException();             // alt: failure branch\n    Receipt r = payments.charge(pm, cart.total());   // ask Payments\n    Order order = new Order(cart, r);                // create\n    repository.save(order);                          // persist\n    notifier.sendAsync(order.id());                  // async, no waiting\n    return order.id();                               // reply to Controller\n}';;
+        return seq('placeOrder: OrderService coordinates, others do one job each', ['Controller', 'OrderService', 'Inventory', 'Payments', 'Notifier'], [
+          { f: 'Controller', t: 'OrderService', m: 'placeOrder(cart, pm)', line: 1, narr: 'The HTTP controller calls the <b>OrderService</b> (the use-case coordinator). Synchronous: the controller waits for an answer.' },
+          { f: 'OrderService', t: 'Inventory', m: 'reserve(items)', line: 2, narr: 'First, ask the object that knows stock: <b>Inventory.reserve</b>. Inventory, not the service, decides whether items are available (information expert).' },
+          { f: 'Inventory', t: 'OrderService', m: 'true', ret: true, line: 2, narr: 'Inventory replies <b>true</b>. (If false, the <code>alt</code> branch throws OutOfStock and the diagram would end here: line 3.)' },
+          { f: 'OrderService', t: 'Payments', m: 'charge(pm, total)', line: 4, narr: 'Next, charge the customer. The service does not know <i>how</i> to charge a card or UPI; it delegates to <b>Payments</b>.' },
+          { f: 'Payments', t: 'OrderService', m: 'receipt', ret: true, line: 4, narr: 'Payments returns a <b>Receipt</b> value object.' },
+          { f: 'OrderService', t: 'OrderService', m: 'new Order + save', line: 5, narr: '<b>Self-call</b> area: the service creates the Order («create» message) and saves it through the repository. Shown as a self-arrow to keep the picture small.' },
+          { f: 'OrderService', t: 'Notifier', m: 'sendAsync(orderId)', line: 7, narr: '<b>Asynchronous</b> message (open arrow head in real UML): queue a confirmation email. The service does <b>not</b> wait for it; the user should not wait for SMTP.' },
+          { f: 'OrderService', t: 'Controller', m: 'orderId', ret: true, line: 8, narr: 'Return the new order id to the controller, which turns it into an HTTP 201 response.' }
+        ], { code: code, codeLabel: 'OrderService.placeOrder (each message = one highlighted line)', intro: 'Five lifelines for the "place order" use case. Watch each arrow light up the line of Java that sends it.', outro: 'Notice the <b>shape</b>: one coordinator in the middle with short arrows to helpers that each own one job. If Controller had arrows straight to Inventory, Payments and Notifier, the controller would be a god class.' });
+      }
+    }],
+    examples: [
+      { title: 'alt fragment = if/else (login)', html: `<p>Diagram: <code>User → AuthService: login(email, pw)</code>; <code>AuthService → UserRepo: findByEmail</code>; then an <b>alt</b> frame with two compartments: <code>[password matches] AuthService → SessionStore: create → return token</code> and <code>[else] AuthService → AuditLog: recordFailure → return error</code>. Each compartment of <code>alt</code> becomes one branch of an if/else. <b>opt</b> is an if with no else; <b>loop</b> is a for/while; <b>par</b> is work done in parallel (e.g. <code>CompletableFuture.allOf</code>).</p>`, code: `
+record User(String email, String passwordHash) { }
+class AuthService {
+    private final Map<String, User> users = new HashMap<>();
+    private final List<String> audit = new ArrayList<>();
+    AuthService() { users.put("a@x.com", new User("a@x.com", "h:secret")); }
+    String login(String email, String pw) {
+        User u = users.get(email);                          // AuthService -> UserRepo: findByEmail
+        if (u != null && u.passwordHash().equals("h:" + pw)) {   // alt [password matches]
+            return "token-" + UUID.randomUUID();            // SessionStore: create
+        } else {                                            // alt [else]
+            audit.add("failed login " + email);             // AuditLog: recordFailure
+            return "error";
+        }
+    }
+}` },
+      { title: 'loop fragment = a for loop (cart total)', html: `<p><code>Cart → CartItem: subtotal()</code> inside a <b>loop [for each item]</b> frame, and inside that, <code>CartItem → Product: price()</code>. The diagram makes it obvious that Cart talks to items, items talk to products, and Cart never reaches into Product directly. That is the <b>Law of Demeter</b> ("talk only to your immediate friends") made visible.</p>
+${H.table(['#', 'from', 'to', 'message', 'fragment'], [['1', 'Client', 'Cart', 'total()', ''], ['2', 'Cart', 'CartItem', 'subtotal()', 'loop [each item]'], ['3', 'CartItem', 'Product', 'price()', 'loop [each item]'], ['4', 'Cart', 'Client', 'return sum', '']])}` },
+      { title: 'Spotting a train wreck from the diagram', html: `<p>Bad: <code>Controller → Order: getCustomer()</code>, <code>Controller → Customer: getWallet()</code>, <code>Controller → Wallet: getBalance()</code>, <code>Controller → Wallet: setBalance(b - x)</code>. Four arrows fan out from the controller, which now knows the inner structure of three classes and holds the balance rule itself. Better: <code>Controller → Order: payWithWallet()</code>, <code>Order → Customer: charge(x)</code>, <code>Customer → Wallet: debit(x)</code>. Each object talks only to its neighbour and owns its rule. Same behaviour, far less coupling.</p>`, code: `
+class Wallet {
+    private long balance = 1_000;
+    boolean debit(long x) { if (x > balance) return false; balance -= x; return true; }
+}
+class Customer2 {
+    private final Wallet wallet = new Wallet();
+    boolean charge(long x) { return wallet.debit(x); }      // talks only to its own wallet
+}
+class Order2 {
+    private final Customer2 customer;
+    private final long total;
+    Order2(Customer2 c, long total) { this.customer = c; this.total = total; }
+    boolean payWithWallet() { return customer.charge(total); }   // controller calls only this
+}` }
+    ],
+    deepDive: `<p><b>Sequence diagrams assign responsibilities.</b> The GRASP patterns become visible: the <i>Controller</i> is the first object receiving the system event; the <i>Creator</i> of an object (who sends «create») should be the one that contains or closely uses it (Order creates OrderLines); the <i>Information Expert</i> receives the message that needs its data. If you cannot decide where an arrow should land, your class diagram is missing a class.</p>
+<p><b>Sync vs async semantics matter.</b> A synchronous arrow means the caller's thread blocks and the callee's failure is the caller's failure (same transaction, same latency budget). An async arrow (message queue, event bus, executor) decouples latency and failure but introduces ordering, retries and idempotency questions. Drawing the arrow type correctly in an interview opens a deeper discussion: "the email is async, so if it fails we retry from an outbox table; the order is already committed".</p>
+<p><b>Transaction boundaries and failures.</b> Draw a note or frame around the messages that must be atomic (reserve + charge + save). Ask: what if <code>charge</code> succeeds and <code>save</code> fails? You need a compensation (refund) or a different order (save PENDING first). Sequence diagrams are where these bugs are cheapest to find.</p>
+<p><b>Advanced notation:</b> <code>ref</code> (reuse another diagram), <code>break</code> (exit the enclosing fragment), <code>critical</code> (mutual exclusion region), <code>neg</code> (invalid trace), destruction (an X at the end of a lifeline), found/lost messages (from/to unknown senders), guards in square brackets <code>[amount &lt;= balance]</code>, and timing constraints <code>{&lt; 200ms}</code>.</p>
+<p><b>Production reality:</b> distributed tracing (OpenTelemetry, Jaeger, Zipkin, Datadog APM) records real request flows as spans; a trace waterfall <i>is</i> a sequence diagram generated from runtime. Senior engineers use traces to verify that the drawn design matches reality (e.g. finding an N+1 loop of calls that the diagram did not show).</p>
+<p><b>Keep it small.</b> One diagram per use case, 4–7 lifelines, 6–15 messages. Omit obvious returns and getters. If it gets bigger, split with <code>ref</code> frames.</p>`,
+    aiEra: `<p><b>What AI changes:</b> assistants generate Mermaid <code>sequenceDiagram</code> text from a description or from code in seconds, and many design docs now embed those directly. AI is also good at listing failure branches you forgot ("what if the payment times out after charging?").</p>
+<p><b>Use AI as a partner:</b> <code>Here is my placeOrder sequence. List every failure that can occur between messages and what state the system is left in.</code> or <code>Generate a Mermaid sequenceDiagram from this method; mark async calls with -) arrows.</code> Then compare the generated picture to your mental model: mismatches are bugs or misunderstandings.</p>
+<p><b>Where AI goes wrong:</b> it draws everything as synchronous, invents participants that do not exist in your class diagram, puts business rules in the controller lifeline, and generates diagrams of 30+ messages that nobody can read. When generating from code, it shows what the code <i>does</i>, which may not be what it <i>should</i> do.</p>
+<p><b>What you must still own:</b> choosing which use case deserves a diagram, the sync/async decision, the transaction boundary, and the failure handling story. Interviewers in 2026 often ask "what happens if step 4 fails?"; that answer comes from your understanding of the flow, not from the drawing tool.</p>`,
+    problems: [{
+      title: 'Turn a Sequence Diagram into Code: Cab Booking Request',
+      level: 'Medium', tags: ['sequence diagram', 'responsibility assignment', 'alt fragment'], companies: ['Uber', 'Ola', 'Swiggy', 'Grab'],
+      statement: `<p>Implement the classes behind this sequence diagram:</p>
+<ol><li><code>Rider → RideService: requestRide(pickup, drop)</code></li><li><code>RideService → FareCalculator: estimate(pickup, drop)</code> → returns fare</li><li><code>RideService → DriverPool: nearestAvailable(pickup)</code> → returns driver or none</li><li><b>alt</b> [driver found]: <code>RideService → Driver: assign(ride)</code>; «create» <code>Ride</code> with status ASSIGNED; <code>RideService → Notifier: notifyAsync(rider, ride)</code>; return ride</li><li><b>alt</b> [else]: return "no drivers nearby"</li></ol>
+<p>Write compilable Java where each arrow is a method on the receiving class, and the alt fragment is the if/else.</p>`,
+      constraints: `<ul><li>Locations as (x, y) grid points; distance = Manhattan distance.</li><li>Fare = ₹50 base + ₹12 per unit distance.</li><li>A driver is available only if not already assigned. Notifier must not block (async).</li></ul>`,
+      example: `<p>Drivers: D1 at (0,0) free, D2 at (5,5) free. Rider requests (1,1) → (4,5): distance 3 + 4 = 7 → fare = 50 + 84 = ${H.c('g', '₹134')}. Nearest free driver to (1,1) is D1 (distance 2) → ride ASSIGNED to D1. A second request from (1,1) gets ${H.c('y', 'D2')}. A third gets ${H.c('r', '"no drivers nearby"')} (alt else branch).</p>`,
+      brute: {
+        why: `<p>The naive version puts the whole diagram inside one <code>RideController.request</code> method: it computes the fare inline, loops over a raw list of driver maps, flips a <code>"busy"</code> string, and sends the notification synchronously with a <code>Thread.sleep</code>-like call. Drawn as a sequence diagram it has <b>one lifeline</b> with 20 self-calls: no object owns anything, the fare formula cannot be reused or tested, and the user waits for the SMS gateway.</p>`,
+        code: `
+class RideController {
+    List<Map<String, Object>> drivers = new ArrayList<>();
+    String request(int px, int py, int dx, int dy) {
+        long fare = 50 + 12L * (Math.abs(px - dx) + Math.abs(py - dy));    // formula buried here
+        Map<String, Object> best = null; int bestD = Integer.MAX_VALUE;
+        for (Map<String, Object> d : drivers) {
+            if ("busy".equals(d.get("status"))) continue;
+            int dist = Math.abs((int) d.get("x") - px) + Math.abs((int) d.get("y") - py);
+            if (dist < bestD) { bestD = dist; best = d; }
+        }
+        if (best == null) return "no drivers nearby";
+        best.put("status", "busy");
+        System.out.println("SMS sent");           // synchronous: user waits for this
+        return "assigned " + best.get("id") + " fare " + fare;
+    }
+}`
+      },
+      mcq: { q: 'In the diagram, which class should own "find the nearest available driver"?', options: ['RideService, by looping over all drivers itself', 'DriverPool, because it holds the drivers and their availability', 'Rider', 'Notifier'], answer: 1, explain: 'Information Expert: DriverPool has the data (drivers, positions, availability). RideService just asks it, which is exactly the arrow RideService → DriverPool: nearestAvailable(pickup).' },
+      hints: [
+        `<p>Hint 1: each lifeline is a class; each solid arrow into it is a method you must write on it: <code>FareCalculator.estimate</code>, <code>DriverPool.nearestAvailable</code>, <code>Driver.assign</code>, <code>Notifier.notifyAsync</code>.</p>`,
+        `<p>Hint 2: <code>nearestAvailable</code> returns <code>Optional&lt;Driver&gt;</code>; the alt fragment becomes <code>if (driver.isPresent()) ... else ...</code>. Location is a record with <code>distanceTo</code>.</p>`,
+        `<p>Hint 3: async = hand work to an <code>Executor</code> (or record it in a queue) and return immediately. RideService receives all collaborators via its constructor (association), so tests can pass fakes.</p>`
+      ],
+      solution: {
+        approach: `<p>Map the diagram 1:1. <b>Lifelines → classes</b>: RideService (coordinator), FareCalculator, DriverPool, Driver, Notifier, plus the created Ride. <b>Messages → methods</b> on the receiver. <b>alt → if/else</b> on the Optional. <b>«create» → constructor</b> call inside RideService. <b>Async → Executor</b> so the caller never waits. RideService holds references to its collaborators (association via constructor injection), while Location and Fare are small value objects. Each class has one job, matching the short arrows in the diagram.</p>`,
+        code: `
+record Location(int x, int y) {
+    int distanceTo(Location o) { return Math.abs(x - o.x) + Math.abs(y - o.y); }
+}
+
+enum RideStatus { ASSIGNED, STARTED, COMPLETED }
+
+class Driver {
+    private final String id;
+    private final Location location;
+    private Ride current;
+    Driver(String id, Location location) { this.id = id; this.location = location; }
+    boolean isAvailable() { return current == null; }
+    void assign(Ride ride) {                                    // arrow: RideService -> Driver: assign(ride)
+        if (!isAvailable()) throw new IllegalStateException("driver busy");
+        current = ride;
+    }
+    Location location() { return location; }
+    String id() { return id; }
+}
+
+class Ride {
+    private final String rider;
+    private final Driver driver;
+    private final long farePaise;
+    private RideStatus status = RideStatus.ASSIGNED;
+    Ride(String rider, Driver driver, long farePaise) { this.rider = rider; this.driver = driver; this.farePaise = farePaise; }
+    String summary() { return rider + " with " + driver.id() + " fare " + farePaise / 100 + " " + status; }
+}
+
+class FareCalculator {
+    long estimate(Location from, Location to) { return 5000 + 1200L * from.distanceTo(to); }  // paise
+}
+
+class DriverPool {
+    private final List<Driver> drivers = new ArrayList<>();
+    void add(Driver d) { drivers.add(d); }
+    Optional<Driver> nearestAvailable(Location p) {            // the information expert
+        return drivers.stream().filter(Driver::isAvailable)
+                .min(Comparator.comparingInt(d -> d.location().distanceTo(p)));
+    }
+}
+
+class Notifier {
+    private final Executor executor;
+    final List<String> sent = Collections.synchronizedList(new ArrayList<>());
+    Notifier(Executor executor) { this.executor = executor; }
+    void notifyAsync(String rider, Ride ride) {                // async: returns immediately
+        executor.execute(() -> sent.add("SMS to " + rider + ": " + ride.summary()));
+    }
+}
+
+class RideService {
+    private final FareCalculator fares;
+    private final DriverPool pool;
+    private final Notifier notifier;
+    RideService(FareCalculator f, DriverPool p, Notifier n) { fares = f; pool = p; notifier = n; }
+
+    String requestRide(String rider, Location pickup, Location drop) {
+        long fare = fares.estimate(pickup, drop);                       // message 2
+        Optional<Driver> driver = pool.nearestAvailable(pickup);        // message 3
+        if (driver.isPresent()) {                                       // alt [driver found]
+            Ride ride = new Ride(rider, driver.get(), fare);            // «create»
+            driver.get().assign(ride);                                  // message 4
+            notifier.notifyAsync(rider, ride);                          // async message
+            return ride.summary();
+        } else {                                                        // alt [else]
+            return "no drivers nearby";
+        }
+    }
+
+    public static void main(String[] args) {
+        DriverPool pool = new DriverPool();
+        pool.add(new Driver("D1", new Location(0, 0)));
+        pool.add(new Driver("D2", new Location(5, 5)));
+        Executor direct = Runnable::run;                                // run inline for the demo
+        RideService svc = new RideService(new FareCalculator(), pool, new Notifier(direct));
+        Location a = new Location(1, 1), b = new Location(4, 5);
+        System.out.println(svc.requestRide("Asha", a, b));   // Asha with D1 fare 134 ASSIGNED
+        System.out.println(svc.requestRide("Ravi", a, b));   // Ravi with D2 ...
+        System.out.println(svc.requestRide("Mia", a, b));    // no drivers nearby
+    }
+}`,
+        complexity: `<p>estimate O(1); nearestAvailable O(D) over D drivers (a spatial index like a geohash grid or k-d tree makes it ~O(log D) at scale); assign O(1). The design keeps each arrow a single, testable method.</p>`,
+        followUps: ['Two riders request at the same instant and both get D1. Where do you add synchronisation?', 'Add surge pricing without editing FareCalculator callers. Which relationship/pattern?', 'Draw the alt branch for "driver rejects the ride": what new messages appear?']
+      }
+    }]
+  });
+
+  /* =========================== TOPIC 7 =========================== */
+  topics.push({
+    title: 'End to End: Requirement → Class Diagram → Sequence → Java Skeleton',
+    analogy: `<p>Assembling <b>flat-pack furniture</b>: first you read the instruction sheet and check the box has what you need (requirements). Then you lay every part on the floor and label them (classes). You check which screw joins which panel (relationships). Only then do you assemble (code), and finally you push the wardrobe to see if it wobbles (walk a use case). People who start screwing panels together before laying out the parts end up with a wardrobe whose door opens into the wall.</p>`,
+    explain: `<p>This topic ties everything together into the <b>repeatable workflow</b> used in LLD / machine-coding interviews.</p>
+${H.table(['Step', 'Time (60-min round)', 'Output', 'Key question'], [
+  ['1. Clarify', '5 min', 'feature list, in/out of scope', '"What must it do? What can we skip?"'],
+  ['2. Entities', '5 min', 'filtered noun list, enums, value objects', '"What does the system have to remember?"'],
+  ['3. Relationships', '5 min', 'lines + diamonds + multiplicities', '"Who owns whom? How many?"'],
+  ['4. Class diagram', '5 min', 'boxes with key members, interfaces', '"Where will things vary?"'],
+  ['5. Sequence (main use case)', '5 min', 'one flow + one failure branch', '"Who does each step?"'],
+  ['6. Java skeleton + core logic', '25–30 min', 'compiling code + a tiny demo', '"Does it run? Is it easy to extend?"'],
+  ['7. Extensions', '5 min', 'how new requirements fit', '"What changes if…?"']
+])}
+<h4>Writing the skeleton: an order that never gets stuck</h4>
+<ol>
+<li><b>Enums</b> for fixed sets (RoomType, BookingStatus).</li>
+<li><b>Value objects</b> as <code>record</code>s (DateRange, Money): validate in the compact constructor.</li>
+<li><b>Entities</b> (Room, Guest, Booking): private final fields, constructor validation, intention-revealing methods, no public setters.</li>
+<li><b>Interfaces</b> at variation points (PricingPolicy, PaymentMethod).</li>
+<li><b>Coordinator/service</b> (Hotel, BookingService) holding in-memory maps as repositories, implementing the use cases.</li>
+<li><b>main()</b> that runs the happy path and one failure. Interviewers love seeing it run.</li>
+</ol>
+<h4>Skeleton quality checklist</h4>
+${H.table(['Check', 'Good', 'Smell'], [
+  ['Fields', '<code>private final</code> where possible', 'public / mutable everything'],
+  ['Money', '<code>long</code> paise or <code>BigDecimal</code>', '<code>double</code>'],
+  ['Status', '<code>enum</code> + transition methods', '<code>String status</code> + setter'],
+  ['Collections out', '<code>List.copyOf</code> / unmodifiable view', 'returning the internal list'],
+  ['0..1 links', '<code>Optional</code> return or explicit null contract', 'surprise NullPointerException'],
+  ['Variation', 'interface + implementations', 'switch on a type string'],
+  ['Collaborators', 'constructor parameters (injectable)', '<code>new</code> of concrete services inside methods']
+])}`,
+    clues: [
+      '"Design X. You have 60–90 minutes and the code must run" (machine coding) → follow the 7-step workflow, keep 6–10 classes.',
+      '"Make sure it is extensible" → name the variation points out loud and put interfaces there.',
+      '"Two users try to book the same room" → note the concurrency hook (the check-then-book must be atomic) even if you code it simply.',
+      '"Show me how a booking flows" → draw the sequence for the main use case before coding it.',
+      '"Can you add X now?" (late twist) → a good skeleton absorbs it by adding a class, not editing ten.',
+      '"Explain your design decisions" → be ready with one reason for each relationship and each interface.'
+    ],
+    code: `
+// A compact, runnable skeleton for "book a hotel room for a date range".
+enum RoomType { SINGLE, DOUBLE, SUITE }
+enum BookingStatus { CONFIRMED, CANCELLED }
+
+record DateRange(LocalDate checkIn, LocalDate checkOut) {             // value object
+    DateRange {
+        if (!checkOut.isAfter(checkIn)) throw new IllegalArgumentException("checkOut must be after checkIn");
+    }
+    boolean overlaps(DateRange o) { return checkIn.isBefore(o.checkOut) && o.checkIn.isBefore(checkOut); }
+    long nights() { return java.time.temporal.ChronoUnit.DAYS.between(checkIn, checkOut); }
+}
+
+class Room {                                                         // entity
+    private final String number;
+    private final RoomType type;
+    private final long nightlyPaise;
+    Room(String number, RoomType type, long nightlyPaise) { this.number = number; this.type = type; this.nightlyPaise = nightlyPaise; }
+    String number() { return number; }
+    RoomType type() { return type; }
+    long nightlyPaise() { return nightlyPaise; }
+}
+
+class Booking {                                                      // entity linking Guest + Room
+    private final String id, guest;
+    private final Room room;
+    private final DateRange stay;
+    private BookingStatus status = BookingStatus.CONFIRMED;
+    Booking(String id, String guest, Room room, DateRange stay) { this.id = id; this.guest = guest; this.room = room; this.stay = stay; }
+    boolean blocks(Room r, DateRange d) { return status == BookingStatus.CONFIRMED && room == r && stay.overlaps(d); }
+    void cancel() { status = BookingStatus.CANCELLED; }
+    long totalPaise() { return stay.nights() * room.nightlyPaise(); }
+    String id() { return id; }
+}
+
+class Hotel {                                                        // coordinator + in-memory repository
+    private final List<Room> rooms = new ArrayList<>();
+    private final List<Booking> bookings = new ArrayList<>();
+    private int seq = 1;
+    void addRoom(Room r) { rooms.add(r); }
+    synchronized Optional<Booking> book(String guest, RoomType type, DateRange stay) {   // atomic check-then-book
+        for (Room r : rooms) {
+            if (r.type() != type) continue;
+            boolean free = bookings.stream().noneMatch(b -> b.blocks(r, stay));
+            if (free) {
+                Booking b = new Booking("B" + (seq++), guest, r, stay);
+                bookings.add(b);
+                return Optional.of(b);
+            }
+        }
+        return Optional.empty();
+    }
+    public static void main(String[] args) {
+        Hotel h = new Hotel();
+        h.addRoom(new Room("101", RoomType.DOUBLE, 4000_00));
+        DateRange may = new DateRange(LocalDate.of(2026, 5, 1), LocalDate.of(2026, 5, 4));
+        System.out.println(h.book("Asha", RoomType.DOUBLE, may).map(Booking::totalPaise).orElse(-1L)); // 1200000
+        System.out.println(h.book("Ravi", RoomType.DOUBLE, may).isPresent());                          // false
+    }
+}`,
+    codeTitle: 'End-to-end skeleton: hotel booking (runs)',
+    viz: [{
+      title: 'Hotel booking: the whole workflow in one animation',
+      gen: function () {
+        var req = '"Guests search for a room type for a date range and book it. A room cannot be double-booked. Bookings can be cancelled. Price = nights × nightly rate. Later we may add seasonal pricing."';
+        var f = [];
+        f.push({ narr: '<b>Step 1, clarify.</b> Agree the scope out loud: search + book + cancel; single hotel; no payments for now; pricing must be pluggable later. Write it down.', parts: [{ type: 'text', label: 'Requirement', html: '<i>' + req + '</i>' }, { type: 'table', label: 'Scope agreed with interviewer', columns: ['In scope', 'Out of scope'], rows: [['search by type + dates', 'payments, refunds'], ['book (no double booking)', 'multiple hotels'], ['cancel', 'loyalty points'], ['price = nights × rate (pluggable)', 'UI / database']], hl: { 3: 'sel' } }] });
+        f.push({ narr: '<b>Step 2, entities.</b> Noun pass: guest, room, room type, date range, booking, price, hotel. Filter: room type → enum; date range → value object (record); price → derived; guest → just a name for now (attribute).', parts: [{ type: 'set', label: 'Nouns → verdicts', items: ['Hotel: class', 'Room: class', 'RoomType: enum', 'DateRange: record', 'Booking: class', 'BookingStatus: enum', 'price: derived', 'guest: attribute (for now)'], hl: { 'Hotel: class': 'ok', 'Room: class': 'ok', 'Booking: class': 'ok', 'RoomType: enum': 'sel', 'BookingStatus: enum': 'sel', 'DateRange: record': 'win', 'price: derived': 'cur', 'guest: attribute (for now)': 'cur' } }] });
+        f = f.concat(uml('Step 3–4: relationships and class diagram', 60, [
+          { narr: '<b>Step 3, relationships.</b> Hotel <b>owns</b> its rooms (composition 1..*) and its bookings (composition 0..*).', nodes: [bx('Hotel', 'Hotel', 50, 8), bx('Room', 'Room', 20, 30), bx('Booking', 'Booking', 80, 30)], edges: [['Hotel', 'Room', '◆ 1..*'], ['Hotel', 'Booking', '◆ 0..*']], rows: [['Hotel', '- rooms, - bookings', '+ search(type, range), + book(guest, type, range), + cancel(id)']] },
+          { narr: 'A booking <b>refers to</b> exactly one room (association, 1). A room can have many bookings over time, but Room does not need to know them (one-way arrow keeps Room simple).', edges: [['Booking', 'Room', '→ 1']], rows: [['Booking', '- id, - guest, - status: BookingStatus', '+ blocks(room, range): boolean, + cancel(), + total(): long'], ['Room', '- number, - type: RoomType, - nightlyRate', '']] },
+          { narr: 'Booking <b>has a</b> DateRange value (composition of a value, 1) and a status enum. DateRange owns the overlap rule: the information expert for dates.', nodes: [bx('DateRange', 'DateRange', 80, 52), bx('Status', 'BookingStatus', 50, 52)], edges: [['Booking', 'DateRange', '◆ 1'], ['Booking', 'Status', '1']], tags: { DateRange: '«record»', Status: '«enum»' }, rows: [['DateRange «record»', '- checkIn, - checkOut', '+ overlaps(other), + nights()']] },
+          { narr: '<b>Step 4, variation point.</b> "Later we may add seasonal pricing" → put pricing behind an <b>interface</b> now. Hotel <b>uses</b> it to price a booking.', nodes: [bx('Pricing', 'PricingPolicy', 20, 52)], edges: [['Hotel', 'Pricing', 'uses']], tags: { Pricing: '«interface»' }, rows: [['PricingPolicy «interface»', '', '+ price(room, range): long']] }
+        ]));
+        f = f.concat(seq('Step 5: sequence for book()', ['Guest', 'Hotel', 'Booking', 'DateRange'], [
+          { f: 'Guest', t: 'Hotel', m: 'book(type, range)', narr: '<b>Step 5, sequence.</b> The guest calls <code>Hotel.book</code>. Hotel coordinates.' },
+          { f: 'Hotel', t: 'Booking', m: 'blocks(room, range)', narr: 'For each candidate room, Hotel asks every existing booking "do you block this room for these dates?" Booking knows its own room and status.' },
+          { f: 'Booking', t: 'DateRange', m: 'overlaps(range)', narr: 'Booking delegates the date maths to DateRange.overlaps: the classic rule <code>a.start &lt; b.end AND b.start &lt; a.end</code> (check-out day is free for the next guest).' },
+          { f: 'Booking', t: 'Hotel', m: 'false', ret: true, narr: 'No overlap → the room is free.' },
+          { f: 'Hotel', t: 'Hotel', m: 'new Booking', narr: 'Hotel creates the Booking (Creator rule: Hotel contains bookings) and stores it. This check-then-create must be <b>atomic</b> (synchronized) or two guests could grab the same room.' },
+          { f: 'Hotel', t: 'Guest', m: 'booking id', ret: true, narr: 'Return the booking. The failure branch (alt: no free room) returns <code>Optional.empty()</code>.' }
+        ], { intro: 'Now prove the diagram works by walking the main use case. Four lifelines are enough.', outro: 'Every arrow landed on a method that exists in the class diagram. Only now do we write the code (step 6, see the code tab above).' }));
+        f.push({ narr: '<b>Step 7, extensions.</b> Each future requirement should land in <b>one</b> new class. That is the proof of a good model.', parts: [{ type: 'table', label: 'Late twists and where they land', columns: ['New requirement', 'Change'], rows: [['seasonal pricing', 'new SeasonalPricing implements PricingPolicy'], ['multiple hotels', 'new Chain ◆ Hotel; nothing inside Hotel changes'], ['payments', 'Booking ..> PaymentMethod interface'], ['guest profiles', 'promote guest from String to Guest class']], hl: { 0: 'ok', 1: 'ok', 2: 'ok', 3: 'ok' } }] });
+        return f;
+      }
+    }],
+    examples: [
+      { title: 'Enum or class hierarchy for "room types"?', html: `<p>If room types differ only in <b>data</b> (name, capacity, base rate), an <code>enum</code> with fields is perfect and adding a type is one line. If types differ in <b>behaviour</b> (a Suite includes breakfast and has a custom cancellation rule), move to an interface/abstract class with subclasses, or keep the enum and inject behaviour via a policy. Decide by asking: "does the new type need new <i>code</i> or just new <i>numbers</i>?"</p>`, code: `
+enum RoomKind {
+    SINGLE(1, 2500_00), DOUBLE(2, 4000_00), SUITE(4, 9000_00);
+    final int capacity;
+    final long baseRatePaise;
+    RoomKind(int capacity, long baseRatePaise) { this.capacity = capacity; this.baseRatePaise = baseRatePaise; }
+    boolean fits(int guests) { return guests <= capacity; }      // behaviour on the enum is fine too
+}` },
+      { title: 'Making the late twist cheap: pricing as an interface', html: `<p>The interviewer adds: "weekends cost 25% more". With <code>PricingPolicy</code> already in the diagram, you add one class and pass it to the Hotel constructor. Nothing else changes, and the old flat pricing still works for tests.</p>
+${H.table(['Stay', 'Flat', 'Weekend +25%'], [['Fri→Sun (2 nights)', '8000', '10000'], ['Mon→Wed (2 nights)', '8000', '8000']])}`, code: `
+interface PricingPolicy { long price(long nightlyPaise, LocalDate checkIn, LocalDate checkOut); }
+
+class FlatPricing implements PricingPolicy {
+    public long price(long nightly, LocalDate in, LocalDate out) {
+        return nightly * java.time.temporal.ChronoUnit.DAYS.between(in, out);
+    }
+}
+
+class WeekendPricing implements PricingPolicy {
+    public long price(long nightly, LocalDate in, LocalDate out) {
+        long total = 0;
+        for (LocalDate d = in; d.isBefore(out); d = d.plusDays(1)) {
+            boolean weekend = d.getDayOfWeek() == DayOfWeek.FRIDAY || d.getDayOfWeek() == DayOfWeek.SATURDAY;
+            total += weekend ? nightly * 125 / 100 : nightly;
+        }
+        return total;
+    }
+}` },
+      { title: 'What interviewers actually grade', html: `${H.table(['Signal', 'Weak', 'Strong'], [['Requirements', 'starts coding immediately', 'asks 3–5 scoping questions, writes them down'], ['Entities', 'one class per noun, or one god class', 'filters nouns with reasons; enums and values'], ['Relationships', 'fields everywhere, no reasoning', 'explains ownership and multiplicity'], ['Code', 'does not compile / no demo', 'compiles, small methods, a main() that runs'], ['Extensibility', '"we can add an if"', 'points to the interface where change lands'], ['Communication', 'silent typing', 'narrates trade-offs and time budget']])}` }
+    ],
+    deepDive: `<p><b>Design for the change you were told about, not every change imaginable.</b> The requirement said "seasonal pricing later", so pricing gets an interface. It did not mention multiple currencies, so Money stays simple. Over-engineering (interfaces for everything, factories of factories) is penalised as much as under-engineering. Name this trade-off explicitly: <i>YAGNI with a hook where change was announced</i>.</p>
+<p><b>Entities need identity rules.</b> Decide how two Booking objects are compared: by id (entity) not by fields. Generate ids in one place (a counter in the coordinator, or <code>UUID</code>). Value objects (DateRange) compare by value and are immutable, so they can be shared freely and used as map keys.</p>
+<p><b>Where do "repositories" go?</b> In interviews keep them as in-memory <code>Map</code>s inside the coordinator or as tiny <code>XRepository</code> classes with <code>save/findById</code>. Mention that a real system would put an interface in front so a database implementation can be swapped in (Dependency Inversion, next module).</p>
+<p><b>Error handling contract.</b> Pick one style per layer: exceptions for programmer errors and broken invariants (<code>IllegalArgumentException</code>, <code>IllegalStateException</code>), <code>Optional</code> or result objects for expected business outcomes ("no room available"). Mixing both randomly is a smell interviewers notice.</p>
+<p><b>Concurrency hook.</b> Check-then-act on shared state (is the room free? then book) is a race. Even in a single-threaded interview solution, mark the method <code>synchronized</code> or say where a lock/DB constraint would go (unique index on room+night, optimistic version column). The Concurrency in LLD module goes deep.</p>
+<p><b>Testability falls out of good modelling.</b> If every collaborator comes in through a constructor and every rule lives in a small class, you can unit-test <code>DateRange.overlaps</code> with 6 cases in a minute. The overlap boundary (check-out day equals next check-in day is <i>not</i> an overlap) is exactly the kind of edge case to state aloud.</p>
+<p><b>Package structure</b> once it grows: <code>domain</code> (entities, values, enums, interfaces), <code>service</code> (use cases), <code>infra</code> (repositories, gateways). Dependencies point inwards to the domain.</p>`,
+    aiEra: `<p><b>What AI changes:</b> in 2026 many machine-coding rounds allow an AI assistant, and real teams scaffold features with agents. The bottleneck moved from typing to <b>specifying and reviewing</b>: a crisp class diagram and sequence is now the best prompt you can give, and the best yardstick for judging what comes back.</p>
+<p><b>Use AI as a partner:</b> write your scope list, entity verdicts and diagram first, then prompt <code>Generate Java 21 classes exactly matching this diagram: records for values, enums for statuses, no public setters, constructor validation, a main() demo. Do not add classes I did not list.</code> Then ask <code>Write JUnit tests for DateRange.overlaps including the boundary where checkOut equals the next checkIn.</code></p>
+<p><b>Where AI goes wrong:</b> it adds speculative layers (DTOs, mappers, factories), silently changes multiplicities, uses <code>double</code> for money, ignores the double-booking race, and produces code that compiles but places rules in a fat service. It may also "helpfully" implement features you scoped out.</p>
+<p><b>What you must still own:</b> the scope negotiation, the model (entities, ownership, multiplicities, variation points), the race condition call-out, and the review of generated code against your diagram. Interviewers increasingly ask you to critique a generated design, so practise reading code back into a diagram and spotting where it drifted.</p>`,
+    problems: [{
+      title: 'End-to-End Design: Meeting Room Booking System',
+      level: 'Hard', tags: ['end-to-end', 'class diagram', 'sequence diagram', 'value object', 'interface'], companies: ['Microsoft', 'Google', 'Atlassian', 'Salesforce'],
+      statement: `<p>An office has meeting rooms with a <b>capacity</b> and <b>equipment</b> (projector, whiteboard, video-conf). Employees book a room for a <b>time slot</b> on a day for N attendees, optionally requiring equipment. No two bookings may overlap in the same room. The system should <b>suggest the smallest room</b> that fits and is free. Bookings can be cancelled by their organiser only. Later the company wants different <b>room-selection strategies</b> (closest floor, least used). Produce: scope list, entities with verdicts, class diagram (as text), the sequence for <code>book()</code>, and compilable Java.</p>`,
+      constraints: `<ul><li>Slots are [start, end) with minute precision on one day; end &gt; start.</li><li>Capacity ≥ attendees; required equipment ⊆ room equipment.</li><li>Only the organiser can cancel. Selection strategy must be pluggable.</li></ul>`,
+      example: `<p>Rooms: <b>Ganga</b> (4 seats, whiteboard), <b>Yamuna</b> (8 seats, projector + whiteboard), <b>Kaveri</b> (12 seats, all equipment).</p>
+${H.table(['request', 'result', 'why'], [['Asha, 10:00–11:00, 3 people', H.c('g', 'Ganga'), 'smallest that fits'], ['Ravi, 10:30–11:30, 3 people', H.c('g', 'Yamuna'), 'Ganga overlaps 10:30–11:00'], ['Mia, 11:00–12:00, 3 people, projector', H.c('y', 'Kaveri'), 'Ganga has no projector; Yamuna busy until 11:30'], ['Ravi cancels Asha\'s booking', H.c('r', 'rejected'), 'not the organiser']])}
+<p>Note row 3: Ganga is <i>free</i> at 11:00 (Asha's [10:00, 11:00) ends exactly then, half-open intervals) but lacks a projector, and Yamuna's [10:30, 11:30) overlaps, so the smallest fitting free room is ${H.c('y', 'Kaveri')}. Getting these boundaries right is part of the problem.</p>`,
+      brute: {
+        why: `<p>The god-class approach: <code>OfficeManager</code> with <code>Map&lt;String, List&lt;int[]&gt;&gt; roomSlots</code>, capacities in another map, equipment as comma-separated strings, and a <code>book</code> method with nested loops and string <code>contains</code> checks. "Smallest room" is a hard-coded sort inside book(). Switching to "closest floor" means editing the core method; cancellation has no idea who the organiser was because bookings are just int arrays. It has no seams to test or extend.</p>`,
+        code: `
+class OfficeManager {
+    Map<String, Integer> capacity = new HashMap<>();
+    Map<String, String> equipment = new HashMap<>();       // "projector,whiteboard"
+    Map<String, List<int[]>> slots = new HashMap<>();      // room -> [start, end] minutes
+    String book(int start, int end, int people, String needs) {
+        List<String> rooms = new ArrayList<>(capacity.keySet());
+        rooms.sort(Comparator.comparing(capacity::get));     // strategy hard-coded
+        for (String r : rooms) {
+            if (capacity.get(r) < people) continue;
+            if (!needs.isEmpty() && !equipment.get(r).contains(needs)) continue;
+            boolean free = true;
+            for (int[] s : slots.getOrDefault(r, List.of())) if (start < s[1] && s[0] < end) free = false;
+            if (free) { slots.computeIfAbsent(r, k -> new ArrayList<>()).add(new int[]{start, end}); return r; }
+        }
+        return null;                                         // who booked it? unknown, so no safe cancel
+    }
+}`
+      },
+      mcq: { q: 'The company will later want "closest floor" or "least used" room selection. What should the design include now?', options: ['A big if/else on a strategy name inside book()', 'A RoomSelectionStrategy interface injected into the booking service, with SmallestFitStrategy as the first implementation', 'A subclass of the service for each strategy', 'Nothing; YAGNI'], answer: 1, explain: 'The change was announced, so add a seam exactly there. An interface with one implementation today costs almost nothing and turns the future change into one new class.' },
+      hints: [
+        `<p>Hint 1: entities: Room (name, capacity, Set&lt;Equipment&gt;, floor), Booking (id, organiser, room, TimeSlot, attendees), Employee or just organiser id; value object <code>TimeSlot</code> with <code>overlaps</code>; enum <code>Equipment</code>.</p>`,
+        `<p>Hint 2: the service filters <b>candidate rooms</b> (capacity, equipment, free in that slot) and hands the candidates to <code>RoomSelectionStrategy.choose(candidates)</code>. SmallestFit = min by capacity.</p>`,
+        `<p>Hint 3: TimeSlot overlap for half-open intervals: <code>a.start &lt; b.end &amp;&amp; b.start &lt; a.end</code>. Cancel checks <code>booking.organiser().equals(requester)</code>. Make book() synchronized (check-then-act). Return Optional for "no room".</p>`
+      ],
+      solution: {
+        approach: `<p><b>Scope:</b> one office, one day granularity, book/cancel/suggest, pluggable selection. <b>Entities:</b> Room, Booking (entities), TimeSlot (record), Equipment (enum), organiser as an employee id string. <b>Diagram:</b> <code>BookingService ◆— 0..* Booking</code>, <code>BookingService o— 1..* Room</code> (rooms exist independently of the service), <code>Booking → 1 Room</code>, <code>Booking ◆ 1 TimeSlot</code>, <code>Room → 0..* Equipment</code>, <code>BookingService → 1 «interface» RoomSelectionStrategy</code> ◁·· SmallestFitStrategy, LeastUsedStrategy. <b>Sequence book():</b> Employee → BookingService.book → for each Room: room.fits(people, needs) → isFree(room, slot) asks each Booking.conflicts(room, slot) → TimeSlot.overlaps → strategy.choose(candidates) → «create» Booking → return. Overlap uses half-open intervals so back-to-back meetings are allowed.</p>`,
+        code: `
+enum Equipment { PROJECTOR, WHITEBOARD, VIDEO_CONF }
+
+record TimeSlot(LocalTime start, LocalTime end) {
+    TimeSlot { if (!end.isAfter(start)) throw new IllegalArgumentException("end must be after start"); }
+    boolean overlaps(TimeSlot o) { return start.isBefore(o.end) && o.start.isBefore(end); }   // [start, end)
+}
+
+class Room {
+    private final String name;
+    private final int capacity, floor;
+    private final Set<Equipment> equipment;
+    Room(String name, int capacity, int floor, Set<Equipment> equipment) {
+        this.name = name; this.capacity = capacity; this.floor = floor; this.equipment = Set.copyOf(equipment);
+    }
+    boolean fits(int people, Set<Equipment> needs) { return capacity >= people && equipment.containsAll(needs); }
+    int capacity() { return capacity; }
+    String name() { return name; }
+}
+
+class Booking {
+    private final String id, organiser;
+    private final Room room;
+    private final TimeSlot slot;
+    private boolean cancelled;
+    Booking(String id, String organiser, Room room, TimeSlot slot) { this.id = id; this.organiser = organiser; this.room = room; this.slot = slot; }
+    boolean conflicts(Room r, TimeSlot s) { return !cancelled && room == r && slot.overlaps(s); }
+    boolean cancelBy(String who) { if (!organiser.equals(who)) return false; cancelled = true; return true; }
+    Room room() { return room; }
+    String id() { return id; }
+}
+
+interface RoomSelectionStrategy { Optional<Room> choose(List<Room> candidates); }
+
+class SmallestFitStrategy implements RoomSelectionStrategy {
+    public Optional<Room> choose(List<Room> c) { return c.stream().min(Comparator.comparingInt(Room::capacity)); }
+}
+
+class BookingService {
+    private final List<Room> rooms;                                   // aggregation: rooms passed in
+    private final Map<String, Booking> bookings = new LinkedHashMap<>();   // composition
+    private final RoomSelectionStrategy strategy;                     // the variation point
+    private int seq = 1;
+    BookingService(List<Room> rooms, RoomSelectionStrategy strategy) { this.rooms = List.copyOf(rooms); this.strategy = strategy; }
+
+    private boolean isFree(Room r, TimeSlot s) { return bookings.values().stream().noneMatch(b -> b.conflicts(r, s)); }
+
+    synchronized Optional<Booking> book(String organiser, TimeSlot slot, int people, Set<Equipment> needs) {
+        List<Room> candidates = new ArrayList<>();
+        for (Room r : rooms) if (r.fits(people, needs) && isFree(r, slot)) candidates.add(r);
+        Optional<Room> chosen = strategy.choose(candidates);
+        if (chosen.isEmpty()) return Optional.empty();                   // alt: no room
+        Booking b = new Booking("MB" + (seq++), organiser, chosen.get(), slot);
+        bookings.put(b.id(), b);
+        return Optional.of(b);
+    }
+
+    boolean cancel(String bookingId, String requester) {
+        Booking b = bookings.get(bookingId);
+        return b != null && b.cancelBy(requester);
+    }
+
+    public static void main(String[] args) {
+        List<Room> rooms = List.of(
+            new Room("Ganga", 4, 1, Set.of(Equipment.WHITEBOARD)),
+            new Room("Yamuna", 8, 2, Set.of(Equipment.PROJECTOR, Equipment.WHITEBOARD)),
+            new Room("Kaveri", 12, 3, EnumSet.allOf(Equipment.class)));
+        BookingService svc = new BookingService(rooms, new SmallestFitStrategy());
+        TimeSlot t1 = new TimeSlot(LocalTime.of(10, 0), LocalTime.of(11, 0));
+        TimeSlot t2 = new TimeSlot(LocalTime.of(10, 30), LocalTime.of(11, 30));
+        TimeSlot t3 = new TimeSlot(LocalTime.of(11, 0), LocalTime.of(12, 0));
+        Booking a = svc.book("asha", t1, 3, Set.of()).orElseThrow();
+        System.out.println(a.room().name());                                              // Ganga
+        System.out.println(svc.book("ravi", t2, 3, Set.of()).orElseThrow().room().name()); // Yamuna
+        System.out.println(svc.book("mia", t3, 3, Set.of(Equipment.PROJECTOR)).orElseThrow().room().name()); // Kaveri
+        System.out.println(svc.cancel(a.id(), "ravi"));                                   // false
+    }
+}`,
+        complexity: `<p>book() is O(R × B) for R rooms and B bookings (fine for an office). At scale, index bookings per room in a <code>TreeMap&lt;LocalTime, Booking&gt;</code> and check only the floor/ceiling neighbours: O(R log B). Cancel is O(1) by id.</p>`,
+        followUps: ['Add recurring meetings (every Monday 10:00). Which new class appears and how does overlap checking change?', 'Implement LeastUsedStrategy. What data does it need and who should own it?', 'Two people book the last room concurrently across two servers: what replaces synchronized?']
       }
     }]
   });

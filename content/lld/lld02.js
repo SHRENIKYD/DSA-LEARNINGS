@@ -1115,4 +1115,958 @@ class MonthlyFeeJob {
     }]
   });
 
+  /* ======================= TOPIC 5: ISP ======================= */
+  var T5_BAD = `interface Machine {
+  void print(String doc);
+  void scan(String doc);
+  void fax(String doc, String number);
+}
+class BasicPrinter implements Machine {
+  public void print(String d) { System.out.println(d); }
+  public void scan(String d) {
+    throw new UnsupportedOperationException();
+  }
+  public void fax(String d, String n) {
+    throw new UnsupportedOperationException();
+  }
+}`;
+  var T5_GOOD = `interface Printer { void print(String doc); }
+interface Scanner { String scan(String doc); }
+interface Fax { void fax(String doc, String number); }
+
+class BasicPrinter implements Printer {
+  public void print(String d) { System.out.println(d); }
+}
+class OfficeMachine implements Printer, Scanner, Fax {
+  public void print(String d) { System.out.println(d); }
+  public String scan(String d) { return "scan:" + d; }
+  public void fax(String d, String n) { System.out.println(n); }
+}
+class PrintQueue {               // needs printing only
+  private final Printer printer;
+  PrintQueue(Printer p) { printer = p; }
+}`;
+
+  topics.push({
+    title: 'I — Interface Segregation Principle (ISP)',
+    analogy: `<p>At a restaurant, imagine the menu were a <b>200-page binder</b> containing the kitchen's supplier contracts, staff rosters and tax filings — just because they are all "restaurant stuff". You only wanted dessert. Worse, every time the supplier contract changes, the waiter brings you a reprinted binder. A good restaurant gives <b>each person the small card they need</b>: a dessert menu for you, a recipe card for the chef, an invoice for the accountant. ISP says: <b>give each client a small interface with only the methods it uses</b>.</p>`,
+    explain: `<p><b>Official wording:</b> "Clients should not be forced to depend upon interfaces that they do not use." A <b>client</b> here is any code that calls or implements an interface.</p>
+<p><b>Two kinds of pain from a fat interface:</b></p>
+<ol>
+<li><b>Implementers suffer:</b> a simple <code>BasicPrinter</code> must implement <code>scan()</code> and <code>fax()</code> it cannot do, so it throws or does nothing — which also breaks <b>LSP</b>.</li>
+<li><b>Callers suffer:</b> <code>PrintQueue</code> only prints, yet depends on the whole <code>Machine</code>. When someone changes <code>fax()</code>'s signature, PrintQueue must be recompiled, re-tested and redeployed — a ripple through code that never faxes. Its tests must also mock methods it never calls.</li>
+</ol>
+${H.table(['Implementer', 'print', 'scan', 'fax'], [
+  ['BasicPrinter', H.c('g', 'real'), H.c('r', 'throws'), H.c('r', 'throws')],
+  ['OfficeMachine', H.c('g', 'real'), H.c('g', 'real'), H.c('g', 'real')],
+  ['PhoneScannerApp', H.c('r', 'throws'), H.c('g', 'real'), H.c('r', 'throws')]
+])}
+<p>Count the red cells: 4 forced, fake implementations. Each is a lie the type system tells: "this object can fax" — it cannot.</p>
+<p><b>The refactor:</b> split by <b>client role</b>, not by random size: <code>Printer</code>, <code>Scanner</code>, <code>Fax</code>. A multi-function machine implements all three (Java allows many interfaces). Each client asks for exactly the role it needs: <code>PrintQueue(Printer p)</code>. If some client really needs two roles together, define a small combined interface (<code>interface Copier extends Printer, Scanner {}</code>).</p>
+<p><b>Smell checklist:</b> methods that throw <code>UnsupportedOperationException</code>; empty "do nothing" implementations; mocks in tests that stub 10 methods to test 1; interfaces named after a <i>thing</i> (<code>Machine</code>, <code>UserService</code> with 40 methods) rather than a <i>role</i> (<code>Printable</code>, <code>UserReader</code>); a change to one method forcing unrelated modules to rebuild.</p>
+<p><b>ISP vs SRP:</b> SRP is about why a <i>class</i> changes; ISP is about what a <i>client sees</i>. A class can stay one cohesive thing (OfficeMachine) while exposing several narrow interfaces to different clients.</p>`,
+    clues: [
+      'An implementation full of <code>throw new UnsupportedOperationException()</code> or empty methods → fat interface (ISP) and usually LSP too.',
+      '"Some devices support X but not Y" / "not all users can do Z" → split capabilities into role interfaces.',
+      '"Read-only client" / "reporting service only reads" → separate <code>Reader</code> and <code>Writer</code> interfaces (CQRS at class level).',
+      'Tests need to mock 15 methods to test a class that calls 2 → the class depends on too much.',
+      'A <code>XxxService</code> interface with 30+ methods used by many teams → split per client.',
+      '"Changing one method forces unrelated modules to recompile/redeploy" → interface coupling.'
+    ],
+    code: [{ lang: 'java', title: 'Before: one fat Machine interface', code: `interface Machine {
+    void print(String doc);
+    String scan(String doc);
+    void fax(String doc, String number);
+}
+
+class BasicPrinter implements Machine {
+    public void print(String doc) { System.out.println("Printing " + doc); }
+    public String scan(String doc) { throw new UnsupportedOperationException("cannot scan"); }  // forced lie
+    public void fax(String doc, String n) { throw new UnsupportedOperationException("cannot fax"); }  // forced lie
+}
+
+class PrintQueue {                // only prints, but sees (and is coupled to) scan + fax
+    private final Machine machine;
+    PrintQueue(Machine machine) { this.machine = machine; }
+    void flush(List<String> docs) { docs.forEach(machine::print); }
+}` }, { lang: 'java', title: 'After: role interfaces, each client depends on what it uses', code: `interface Printer { void print(String doc); }
+interface Scanner { String scan(String doc); }
+interface Fax     { void fax(String doc, String number); }
+interface Copier extends Printer, Scanner {      // composed role for clients that need both
+    default void copy(String doc) { print(scan(doc)); }
+}
+
+class BasicPrinter implements Printer {
+    public void print(String doc) { System.out.println("Printing " + doc); }
+}
+
+class OfficeMachine implements Copier, Fax {
+    public void print(String doc) { System.out.println("Office printing " + doc); }
+    public String scan(String doc) { return "[scanned " + doc + "]"; }
+    public void fax(String doc, String number) { System.out.println("Fax " + doc + " to " + number); }
+}
+
+class PrintQueue {
+    private final Printer printer;                 // narrow dependency
+    PrintQueue(Printer printer) { this.printer = printer; }
+    void flush(List<String> docs) { docs.forEach(printer::print); }
+}
+
+class Main {
+    public static void main(String[] args) {
+        new PrintQueue(new BasicPrinter()).flush(List.of("a.pdf", "b.pdf"));
+        new PrintQueue(new OfficeMachine()).flush(List.of("c.pdf"));   // office machine is also a Printer
+        new OfficeMachine().copy("id-card");
+    }
+}` }],
+    codeTitle: ['Bad: fat interface', 'Good: segregated roles'],
+    viz: [{
+      title: 'Change one method: who must rebuild? (fat vs segregated)',
+      input: 'fax',
+      inputLabel: 'Which method signature changes? print | scan | fax',
+      gen: function (input) {
+        var m = pick(input, { print: 1, scan: 1, fax: 1 }, 'Type one of: print, scan, fax');
+        var bn = [B('PQ', 'PrintQueue', 15, 6), B('SA', 'ScanApp', 50, 6), B('FS', 'FaxService', 85, 6),
+          B('MA', '«Machine»', 50, 28), B('BP', 'BasicPrinter', 25, 50), B('OM', 'OfficeMachine', 75, 50)];
+        var be = [['PQ', 'MA'], ['SA', 'MA'], ['FS', 'MA'], ['BP', 'MA'], ['OM', 'MA']];
+        var an = [B('PQ', 'PrintQueue', 15, 6), B('SA', 'ScanApp', 50, 6), B('FS', 'FaxService', 85, 6),
+          B('IP', '«Printer»', 15, 28), B('IS', '«Scanner»', 50, 28), B('IF', '«Fax»', 85, 28),
+          B('BP', 'BasicPrinter', 22, 50), B('OM', 'OfficeMachine', 70, 50)];
+        var ae = [['PQ', 'IP'], ['SA', 'IS'], ['FS', 'IF'], ['BP', 'IP'], ['OM', 'IP'], ['OM', 'IS'], ['OM', 'IF']];
+        var why = 'the <code>' + m + '()</code> method gets a new parameter (e.g. a <code>Options</code> object).';
+        var frames = [F('<b>Before:</b> three clients and two implementers all hang off one fat <b>«Machine»</b> interface. BasicPrinter is forced to fake <code>scan</code> and <code>fax</code> (tags show the lies).',
+          [G('Fat interface', bn, be, { ehl: paint(be, 'bad'), hl: { MA: 'bad', BP: 'bad' }, tags: { BP: '2 fake methods', MA: '3 methods' } })])];
+        frames = frames.concat(ripple('Fat interface', bn, be, 'MA', why + ' The change is in «Machine», so everything attached to it is affected —', 'bad'));
+        frames.push(F('<b>After ISP:</b> three role interfaces. Each client points at exactly one role. BasicPrinter implements only «Printer» — no fake methods. OfficeMachine implements all three roles.',
+          [G('Segregated roles', an, ae, { ehl: paint(ae, 'ok'), hl: { IP: 'sel', IS: 'sel', IF: 'sel' }, tags: { BP: '0 fake methods' } })]));
+        var start = { print: 'IP', scan: 'IS', fax: 'IF' }[m];
+        frames = frames.concat(ripple('Segregated roles', an, ae, start, why + ' Only the role that owns this method changes —', 'ok'));
+        frames.push(F('Compare the blast radius: with the fat interface a change to <code>' + m + '()</code> touched all 6 boxes, including clients that never call it. With role interfaces it touched only the role, its one client and its real implementers.',
+          [{ type: 'table', label: 'Who had to rebuild?', columns: ['Box', 'Fat interface', 'Role interfaces'], rows: [
+            ['PrintQueue', 'yes', m === 'print' ? 'yes (uses print)' : 'no'], ['ScanApp', 'yes', m === 'scan' ? 'yes (uses scan)' : 'no'], ['FaxService', 'yes', m === 'fax' ? 'yes (uses fax)' : 'no'],
+            ['BasicPrinter', 'yes', m === 'print' ? 'yes' : 'no'], ['OfficeMachine', 'yes', 'yes']] }]));
+        return frames;
+      }
+    }, {
+      title: 'Refactor: from fake methods to role interfaces',
+      gen: function () {
+        var grid = function (rows, hl) { return { type: 'grid', label: 'Implementer × method (✔ real, ✘ forced fake)', colHead: ['print', 'scan', 'fax'], rowHead: ['BasicPrinter', 'OfficeMachine'], rows: rows, hl: hl || {} }; };
+        return [
+          F('The fat interface: three methods, every implementer must provide all three.', [CODE('Before', T5_BAD, { 1: 'cur', 2: 'cur', 3: 'cur', 4: 'cur' }), grid([['✔', '✘', '✘'], ['✔', '✔', '✔']], { '0,1': 'bad', '0,2': 'bad' })]),
+          F('<span class="c-r">Forced lies:</span> BasicPrinter cannot scan or fax, so it throws. Any client that receives a <code>Machine</code> and calls <code>scan()</code> will crash if it got a BasicPrinter — ISP violation causing an LSP violation.', [CODE('Before', T5_BAD, { 8: 'bad', 9: 'bad', 11: 'bad', 12: 'bad' }), grid([['✔', '✘', '✘'], ['✔', '✔', '✔']], { '0,1': 'bad', '0,2': 'bad' })]),
+          F('Step 1: split by <b>role</b> — one interface per capability a client needs.', [CODE('After', T5_GOOD, { 1: 'ok', 2: 'ok', 3: 'ok' })]),
+          F('Step 2: BasicPrinter implements only what it can really do. No throwing stubs left.', [CODE('After', T5_GOOD, { 5: 'ok', 6: 'ok', 7: 'ok' }), grid([['✔', '—', '—'], ['✔', '✔', '✔']], { '0,0': 'ok', '1,0': 'ok', '1,1': 'ok', '1,2': 'ok' })]),
+          F('Step 3: a capable class implements several roles. Java allows any number of interfaces, so nothing is lost.', [CODE('After', T5_GOOD, { 8: 'ok', 9: 'ok', 10: 'ok', 11: 'ok' })]),
+          F('Step 4: clients ask for the narrowest role. PrintQueue takes a <code>Printer</code>: it can be given a BasicPrinter <i>or</i> an OfficeMachine, its tests mock one method, and fax changes never reach it.', [CODE('After', T5_GOOD, { 13: 'ok', 14: 'ok', 15: 'ok' })])
+        ];
+      }
+    }],
+    examples: [
+      { title: 'The JDK loves tiny role interfaces', html: `<p><code>Runnable</code> (1 method), <code>Comparable</code> (1), <code>AutoCloseable</code> (1), <code>Iterable</code> (1 abstract), <code>Supplier</code>/<code>Consumer</code>/<code>Function</code>. Because they are tiny, <i>anything</i> can implement them and try-with-resources works with any <code>AutoCloseable</code> — a database connection, a file, your own lock wrapper. Small interfaces are the most reusable abstractions ever written.</p>`, code: `class Lease implements AutoCloseable {
+    Lease() { System.out.println("lease taken"); }
+    @Override public void close() { System.out.println("lease released"); }   // the ONLY method required
+}
+class Use {
+    public static void main(String[] args) {
+        try (Lease l = new Lease()) { System.out.println("working"); }       // works with any AutoCloseable
+    }
+}` },
+      { title: 'Reader vs Writer: a repository split', html: `<p>A <code>ProductRepository</code> with 25 methods (find, search, save, delete, bulkImport, exportCsv, stats…) is used by the product page (reads), the admin panel (writes) and the nightly import (bulk). ${H.c('g', 'ISP split:')} <code>ProductReader</code>, <code>ProductWriter</code>, <code>ProductBulkImporter</code>. The product page now cannot accidentally delete; its tests fake 2 methods instead of 25; read side can later be served from a cache or replica without touching writers. This is CQRS in miniature.</p>`, code: `record Product(String sku, String name, double price) {}
+interface ProductReader { Optional<Product> bySku(String sku); List<Product> search(String text); }
+interface ProductWriter { void save(Product p); void delete(String sku); }
+
+class InMemoryProducts implements ProductReader, ProductWriter {     // one class, two roles
+    private final Map<String, Product> data = new HashMap<>();
+    public Optional<Product> bySku(String sku) { return Optional.ofNullable(data.get(sku)); }
+    public List<Product> search(String t) { return data.values().stream().filter(p -> p.name().contains(t)).toList(); }
+    public void save(Product p) { data.put(p.sku(), p); }
+    public void delete(String sku) { data.remove(sku); }
+}
+
+class ProductPage {                       // can only read: deleting is impossible by type
+    private final ProductReader reader;
+    ProductPage(ProductReader reader) { this.reader = reader; }
+    String render(String sku) { return reader.bySku(sku).map(Product::name).orElse("Not found"); }
+}` },
+      { title: 'Worker and Robot: "eat()" does not belong to everyone', html: `<p>${H.c('r', 'Bad:')} <code>interface Worker { void work(); void eat(); void sleep(); }</code>. A <code>Robot</code> worker must implement <code>eat()</code> and <code>sleep()</code> as empty methods. A canteen scheduler that calls <code>eat()</code> on all workers "feeds" robots. ${H.c('g', 'Fix:')} <code>Workable</code>, <code>Feedable</code>, <code>Restable</code>; <code>HumanWorker implements all three</code>, <code>Robot implements Workable</code> (plus maybe <code>Chargeable</code>). The canteen takes <code>List&lt;Feedable&gt;</code>.</p>` },
+      { title: 'Do not "fix" fat interfaces with default methods', html: `<p>Java 8 default methods tempt people to write <code>default void fax(String d, String n) { throw new UnsupportedOperationException(); }</code> in the fat interface so implementers need not override. The compile error disappears, but the lie remains: every <code>Machine</code> still <i>claims</i> to fax. Defaults are great for adding <b>genuinely shared</b> behaviour built from other methods (like <code>copy()</code> above), not for hiding missing capabilities.</p>` }
+    ],
+    deepDive: `<p><b>Origin story.</b> Uncle Bob described ISP after consulting at Xerox: one huge <code>Job</code> class served all printer tasks; a tiny change to stapling forced a full hour-long rebuild of everything, because every module depended on the giant interface. Splitting into role interfaces cut the rebuild and deploy ripple. In Java today, compile times are smaller, but the same ripple exists in <b>deployments</b> (shared library versions), <b>test mocks</b> and <b>team coordination</b>.</p>
+<p><b>Header interfaces vs role interfaces</b> (Martin Fowler). A header interface mirrors all public methods of one class (<code>IUserService</code> for <code>UserService</code>) — usually pointless. A role interface is defined from the <b>client's point of view</b> ("what do I need?"). In ports-and-adapters architecture, the client (the domain) owns these small interfaces — that links ISP directly to DIP.</p>
+<p><b>How small is too small?</b> One method per interface everywhere leads to "interface soup" where a constructor takes eight one-method interfaces that always come together. Group methods that are <b>always used together by the same clients</b> (cohesion again). Composite interfaces (<code>Copier extends Printer, Scanner</code>) or records of lambdas can bundle them.</p>
+<p><b>ISP beyond classes:</b> REST APIs that return enormous payloads to every client (mobile, web, partners) are fat interfaces; GraphQL and Backend-for-Frontend (BFF) patterns let each client ask for exactly what it needs. Shared "common" libraries with 300 utilities force every service to upgrade together — split them. Kafka topics carrying a "god event" with 80 fields couple all consumers to every schema change — publish focused events.</p>
+<p><b>Java details:</b> <code>sealed</code> interfaces can restrict implementers; generics plus intersection types let a method demand several roles without a new interface: <code>&lt;T extends Printer &amp; Scanner&gt; void copyAll(T device)</code>.</p>`,
+    aiEra: `<p><b>What AI changes:</b> ask an assistant to "create an interface for this service" and it will usually extract <b>every</b> public method into one header interface — instant fat interface. It also fills unsupported methods with <code>throw new UnsupportedOperationException("Not implemented")</code> to make the build green.</p>
+<p><b>Use AI as a partner:</b> <code>Here are the 6 classes that use UserService. For each, list which methods it calls. Propose role interfaces grouped by caller.</code> This usage analysis is tedious for humans and easy for AI (or IDE "find usages"). Then: <code>Generate the new interfaces and update constructor parameter types to the narrowest role.</code></p>
+<p><b>Where AI goes wrong:</b> splitting by method count or alphabet rather than by client role, or producing one-method interfaces for everything. It may also add default methods that throw. <b>What you must still own:</b> naming roles in the domain's language (<code>PaymentAuthorizer</code>, not <code>IService2</code>), deciding which methods are always used together, and keeping the number of interfaces proportional to real variation.</p>`,
+    problems: [{
+      title: 'Smart-home devices with a fat SmartDevice interface',
+      level: 'Easy', tags: ['ISP', 'role interfaces'], companies: ['Google', 'Amazon', 'Samsung'],
+      statement: `<p>A smart-home app defines <code>SmartDevice</code> with <code>turnOn</code>, <code>turnOff</code>, <code>setBrightness(int)</code>, <code>setTemperature(int)</code> and <code>playMusic(String)</code>. A bulb, a thermostat and a speaker all implement it, filling unsupported methods with exceptions. A "Good night" scene must turn off <b>every</b> device and dim lights to 10%. Redesign with ISP so no class has fake methods and the scene works for all devices.</p>`,
+      constraints: `<p>Java 21. Brightness 0–100, temperature 16–30 °C. A device can have several capabilities (a smart lamp-speaker exists).</p>`,
+      example: `<p>Devices: Bulb, Thermostat, Speaker, LampSpeaker. "Good night" → all four turned off; Bulb and LampSpeaker dimmed to 10. ${H.c('r', 'Before:')} calling <code>setBrightness</code> on the thermostat throws. ${H.c('g', 'After:')} the scene dims only <code>Dimmable</code> devices — chosen by type, not by try/catch.</p>`,
+      brute: {
+        why: `<p>Every device is forced to implement five methods; three of the four classes contain fake implementations. The scene has to wrap calls in try/catch or <code>instanceof</code> checks, and any change to <code>playMusic</code>'s signature forces the bulb and thermostat to change too.</p>`,
+        code: `interface SmartDevice {
+    void turnOn(); void turnOff();
+    void setBrightness(int pct);
+    void setTemperature(int celsius);
+    void playMusic(String song);
+}
+class Bulb implements SmartDevice {
+    public void turnOn() { System.out.println("bulb on"); }
+    public void turnOff() { System.out.println("bulb off"); }
+    public void setBrightness(int p) { System.out.println("bulb " + p + "%"); }
+    public void setTemperature(int c) { throw new UnsupportedOperationException(); }
+    public void playMusic(String s) { throw new UnsupportedOperationException(); }
+}
+class Scene {
+    static void goodNight(List<SmartDevice> all) {
+        for (SmartDevice d : all) {
+            d.turnOff();
+            try { d.setBrightness(10); } catch (UnsupportedOperationException ignored) { }  // smell
+        }
+    }
+}`
+      },
+      mcq: { q: 'What should the "Good night" scene depend on to turn everything off?', options: ['A small <code>Switchable</code> interface implemented by all devices', 'The fat <code>SmartDevice</code> interface', 'Each concrete class (Bulb, Speaker…)', 'A static utility with instanceof checks'], answer: 0, explain: 'The scene needs only on/off for everyone and brightness for some. Each need is a role: Switchable for all, Dimmable for lights.' },
+      hints: [
+        `<p>Group methods by capability: on/off (all), brightness (lights), temperature (thermostat), music (speakers).</p>`,
+        `<p>Create <code>Switchable</code>, <code>Dimmable extends Switchable</code>, <code>Thermostatic</code>, <code>MusicPlayer</code>. LampSpeaker implements Dimmable and MusicPlayer.</p>`,
+        `<p>Scene takes <code>List&lt;Switchable&gt;</code> to turn off and <code>List&lt;Dimmable&gt;</code> to dim — or filters with pattern matching once at the boundary. Validate ranges inside each device.</p>`
+      ],
+      solution: {
+        approach: `<p><b>Role interfaces per capability.</b> Every device is <code>Switchable</code>; lights add <code>Dimmable</code>; the thermostat adds <code>Thermostatic</code>; speakers add <code>MusicPlayer</code>. No class implements a method it cannot honour. The scene asks for exactly the roles it uses. Adding a "smart blind" later means implementing <code>Switchable</code> (and maybe a new <code>Positionable</code>) — no fat interface to edit.</p>`,
+        code: `interface Switchable { void turnOn(); void turnOff(); String name(); }
+interface Dimmable extends Switchable { void setBrightness(int pct); }
+interface Thermostatic extends Switchable { void setTemperature(int celsius); }
+interface MusicPlayer extends Switchable { void play(String song); }
+
+class Bulb implements Dimmable {
+    public String name() { return "Bulb"; }
+    public void turnOn() { System.out.println("Bulb on"); }
+    public void turnOff() { System.out.println("Bulb off"); }
+    public void setBrightness(int pct) {
+        if (pct < 0 || pct > 100) throw new IllegalArgumentException("0-100");
+        System.out.println("Bulb at " + pct + "%");
+    }
+}
+class Thermostat implements Thermostatic {
+    public String name() { return "Thermostat"; }
+    public void turnOn() { System.out.println("Thermostat on"); }
+    public void turnOff() { System.out.println("Thermostat off"); }
+    public void setTemperature(int c) {
+        if (c < 16 || c > 30) throw new IllegalArgumentException("16-30");
+        System.out.println("Thermostat set to " + c);
+    }
+}
+class Speaker implements MusicPlayer {
+    public String name() { return "Speaker"; }
+    public void turnOn() { System.out.println("Speaker on"); }
+    public void turnOff() { System.out.println("Speaker off"); }
+    public void play(String song) { System.out.println("Playing " + song); }
+}
+class LampSpeaker implements Dimmable, MusicPlayer {      // two roles, zero fakes
+    public String name() { return "LampSpeaker"; }
+    public void turnOn() { System.out.println("LampSpeaker on"); }
+    public void turnOff() { System.out.println("LampSpeaker off"); }
+    public void setBrightness(int pct) { System.out.println("LampSpeaker light " + pct + "%"); }
+    public void play(String song) { System.out.println("LampSpeaker plays " + song); }
+}
+
+class GoodNightScene {
+    void run(List<? extends Switchable> devices) {
+        for (Switchable d : devices) {
+            if (d instanceof Dimmable light) light.setBrightness(10);   // capability check at ONE boundary
+            d.turnOff();
+        }
+    }
+    public static void main(String[] args) {
+        new GoodNightScene().run(List.of(new Bulb(), new Thermostat(), new Speaker(), new LampSpeaker()));
+    }
+}`,
+        complexity: `<p>O(n) over devices. Fake methods: 7 before → 0 after. A change to <code>play()</code> now affects only music players.</p>`,
+        followUps: ['The scene uses one <code>instanceof Dimmable</code>. Is that an OCP/LSP smell or acceptable capability discovery? How else could you do it (separate lists, visitor)?', 'How would you model a device whose capabilities are discovered at runtime (e.g. Matter/Zigbee devices)?', 'Where would you put scheduling ("turn off at 23:00")?']
+      }
+    }]
+  });
+
+  /* ======================= TOPIC 6: DIP ======================= */
+  var T6_BAD = `class OrderService {
+  private final MySqlOrderRepository repo =
+      new MySqlOrderRepository("jdbc:mysql://prod");
+  private final SmtpMailer mailer =
+      new SmtpMailer("smtp.company.com");
+
+  void place(Order o) {
+    repo.insert(o);
+    mailer.send(o.email(), "Order placed");
+  }
+}`;
+  var T6_GOOD = `// owned by the DOMAIN (high-level) package
+interface OrderRepository { void save(Order o); }
+interface Notifier { void notify(String to, String msg); }
+
+class OrderService {
+  private final OrderRepository repo;
+  private final Notifier notifier;
+  OrderService(OrderRepository r, Notifier n) {
+    repo = r; notifier = n;          // injected
+  }
+  void place(Order o) {
+    repo.save(o);
+    notifier.notify(o.email(), "Order placed");
+  }
+}
+// infrastructure (low-level) implements domain's interface
+class MySqlOrderRepository implements OrderRepository {
+  public void save(Order o) { /* JDBC insert */ }
+}`;
+
+  topics.push({
+    title: 'D — Dependency Inversion Principle (DIP)',
+    analogy: `<p>Your <b>laptop does not have a hair-dryer wired into it</b>. It has a <b>USB-C port</b> — a standard the laptop maker defined. Any charger, monitor or drive from any company plugs in, because <i>they</i> follow the laptop's standard. The laptop (the important, high-level thing) does not depend on a specific gadget; the gadgets depend on the laptop's port. DIP says your <b>business logic should own the "port" (an interface)</b>, and databases, email providers and payment APIs should plug into it.</p>`,
+    explain: `<p><b>Official wording (two parts):</b></p>
+<ol>
+<li>High-level modules should not depend on low-level modules. <b>Both should depend on abstractions.</b></li>
+<li>Abstractions should not depend on details. <b>Details should depend on abstractions.</b></li>
+</ol>
+<p><b>High-level</b> = the code that expresses business policy ("placing an order saves it and notifies the customer"). <b>Low-level</b> = the details of how ("JDBC insert into MySQL", "SMTP on port 587"). Policies change slowly and are valuable; details change often (new database, new email vendor).</p>
+<p><b>The bad design:</b> <code>OrderService</code> does <code>new MySqlOrderRepository(...)</code> and <code>new SmtpMailer(...)</code> inside itself. Consequences:</p>
+<ul>
+<li>${H.c('r', 'Cannot unit test')} without a real MySQL and SMTP server (or ugly static mocking).</li>
+<li>${H.c('r', 'Cannot swap')} MySQL → PostgreSQL or SMTP → SendGrid without editing business code.</li>
+<li>${H.c('r', 'Compile-time coupling')}: the business package imports JDBC and mail libraries.</li>
+</ul>
+<p><b>Why "inversion"?</b> In the naive design, arrows point <b>down</b>: OrderService → MySqlRepo. After DIP, the domain defines <code>interface OrderRepository</code>, and <code>MySqlOrderRepository implements OrderRepository</code> — the arrow from the low-level class now points <b>up</b> into the domain. The <b>source-code dependency is inverted</b> against the flow of control (at runtime the service still calls MySQL).</p>
+${H.table(['Term', 'What it is', 'Relation'], [
+  ['<b>DIP</b> (principle)', 'Depend on abstractions; details plug in', 'The goal'],
+  ['<b>DI</b> (dependency injection)', 'Pass collaborators in (constructor/setter) instead of <code>new</code>-ing them', 'A technique to achieve DIP'],
+  ['<b>IoC</b> (inversion of control)', 'A framework calls your code and manages object creation (Spring, Guice)', 'A tool that automates DI'],
+  ['<b>Composition root</b>', 'The one place (e.g. <code>main</code> or config) where concrete classes are chosen and wired', 'Where all the <code>new</code>s live']
+])}
+<p><b>Key detail people miss:</b> the interface belongs to the <b>high-level</b> module and is shaped by its needs (<code>save(Order)</code>), not by the database's API (<code>executeUpdate(String sql)</code>). If the interface just mirrors the MySQL class, you have an abstraction in name only.</p>`,
+    clues: [
+      '"How would you <b>unit test</b> this?" when the class does <code>new</code> on a DB/HTTP client → inject an interface.',
+      '"We might switch from MySQL to Postgres / from Stripe to Razorpay" → domain-owned port + adapters.',
+      'Business class imports <code>java.sql</code>, an HTTP client, an AWS SDK or uses <code>LocalDateTime.now()</code> / <code>new Random()</code> directly → hidden dependencies.',
+      '"Explain DI vs DIP vs IoC" — classic interview question; know all three and how they relate.',
+      'Static calls to singletons (<code>Database.getInstance()</code>) inside business logic → hard-wired dependency.',
+      'Hexagonal / clean / onion architecture questions → DIP at architecture scale.'
+    ],
+    code: [{ lang: 'java', title: 'Before: business logic creates its own concrete tools', code: `record Order(String id, String email, double amount) {}
+
+class MySqlOrderRepository {
+    MySqlOrderRepository(String url) { System.out.println("connecting to " + url); }   // real I/O in constructor
+    void insert(Order o) { System.out.println("INSERT order " + o.id()); }
+}
+class SmtpMailer {
+    SmtpMailer(String host) { System.out.println("opening SMTP to " + host); }
+    void send(String to, String body) { System.out.println("mail " + to + ": " + body); }
+}
+
+class OrderService {
+    // hard-wired: tests hit production-like servers; swapping vendors means editing this class
+    private final MySqlOrderRepository repo = new MySqlOrderRepository("jdbc:mysql://prod-db:3306/shop");
+    private final SmtpMailer mailer = new SmtpMailer("smtp.company.com");
+
+    void place(Order o) {
+        if (o.amount() <= 0) throw new IllegalArgumentException("bad amount");
+        repo.insert(o);
+        mailer.send(o.email(), "Order " + o.id() + " placed");
+    }
+}` }, { lang: 'java', title: 'After: domain owns the ports, infrastructure plugs in, tests use fakes', code: `record Order(String id, String email, double amount) {}
+
+// ---- domain (high-level): policy + the interfaces it NEEDS ----
+interface OrderRepository { void save(Order o); Optional<Order> find(String id); }
+interface Notifier { void notify(String to, String message); }
+
+class OrderService {
+    private final OrderRepository repo;
+    private final Notifier notifier;
+
+    OrderService(OrderRepository repo, Notifier notifier) {       // constructor injection
+        this.repo = Objects.requireNonNull(repo);
+        this.notifier = Objects.requireNonNull(notifier);
+    }
+
+    void place(Order o) {
+        if (o.amount() <= 0) throw new IllegalArgumentException("bad amount");
+        repo.save(o);
+        notifier.notify(o.email(), "Order " + o.id() + " placed");
+    }
+}
+
+// ---- infrastructure (low-level): details depend on the domain's abstractions ----
+class JdbcOrderRepository implements OrderRepository {
+    private final Map<String, Order> fakeTable = new HashMap<>();   // stands in for JDBC here
+    public void save(Order o) { System.out.println("SQL INSERT " + o.id()); fakeTable.put(o.id(), o); }
+    public Optional<Order> find(String id) { return Optional.ofNullable(fakeTable.get(id)); }
+}
+class EmailNotifier implements Notifier {
+    public void notify(String to, String m) { System.out.println("email " + to + ": " + m); }
+}
+
+// ---- test doubles: no DB, no network, runs in microseconds ----
+class InMemoryOrderRepository implements OrderRepository {
+    final Map<String, Order> saved = new HashMap<>();
+    public void save(Order o) { saved.put(o.id(), o); }
+    public Optional<Order> find(String id) { return Optional.ofNullable(saved.get(id)); }
+}
+class RecordingNotifier implements Notifier {
+    final List<String> sent = new ArrayList<>();
+    public void notify(String to, String m) { sent.add(to + "|" + m); }
+}
+
+// ---- composition root: the ONLY place that knows concrete classes ----
+class App {
+    public static void main(String[] args) {
+        new OrderService(new JdbcOrderRepository(), new EmailNotifier()).place(new Order("o1", "a@b.com", 499));
+
+        // "unit test" style check with fakes
+        InMemoryOrderRepository repo = new InMemoryOrderRepository();
+        RecordingNotifier notifier = new RecordingNotifier();
+        new OrderService(repo, notifier).place(new Order("o2", "c@d.com", 99));
+        System.out.println(repo.find("o2").isPresent() + " " + notifier.sent);   // true [c@d.com|Order o2 placed]
+    }
+}` }],
+    codeTitle: ['Bad: hard-wired details', 'Good: inverted dependencies + DI'],
+    viz: [{
+      title: 'Arrows flip: dependency direction before and after DIP',
+      input: 'postgres',
+      inputLabel: 'Change to make: postgres | sms | test',
+      gen: function (input) {
+        var c = pick(input, { postgres: 1, sms: 1, test: 1 }, 'Type one of: postgres, sms, test');
+        var bn = [B('CT', 'OrderController', 50, 6), B('OS', 'OrderService', 50, 24), B('TS', 'OrderServiceTest', 15, 24),
+          B('MY', 'MySqlRepo', 30, 46), B('SM', 'SmtpMailer', 72, 46)];
+        var be = [['CT', 'OS'], ['TS', 'OS'], ['OS', 'MY'], ['OS', 'SM']];
+        var frames = [F('<b>Before DIP:</b> the high-level <b>OrderService</b> points <b>down</b> at concrete low-level classes (red). Even its test depends — through it — on MySQL and SMTP. Tags show packages.',
+          [G('Before: policy depends on details', bn, be, { ehl: paint(be, 'bad'), hl: { OS: 'cur' }, tags: { OS: 'domain', MY: 'infra', SM: 'infra' } })])];
+        if (c === 'test') {
+          frames.push(F('Run <b>OrderServiceTest</b>. Constructing OrderService runs <code>new MySqlRepo("jdbc:mysql://prod…")</code> inside it. <span class="c-r">The test needs a live database and mail server</span>, is slow and flaky, and might send real emails.',
+            [G('Before: policy depends on details', bn, be, { ehl: { 'TS-OS': 'cur', 'OS-MY': 'bad', 'OS-SM': 'bad' }, hl: { TS: 'cur', MY: 'bad', SM: 'bad' }, tags: { MY: 'needs DB!', SM: 'needs SMTP!' } }),
+              { type: 'vars', label: 'test run', vals: { needsDatabase: 'yes', needsMailServer: 'yes', duration: '~4 s', flaky: 'yes' }, hl: { needsDatabase: 'bad', needsMailServer: 'bad' } }]));
+        } else {
+          var tgt = c === 'postgres' ? 'MY' : 'SM';
+          frames = frames.concat(ripple('Before: policy depends on details', bn, be, tgt, c === 'postgres' ? 'we migrate to PostgreSQL. OrderService literally contains <code>new MySqlRepo(...)</code>, so it must be edited.' : 'notifications move from email to SMS. OrderService contains <code>new SmtpMailer(...)</code>, so it must be edited.', 'bad'));
+        }
+        var an = [B('CT', 'OrderController', 50, 6), B('OS', 'OrderService', 50, 22), B('TS', 'OrderServiceTest', 15, 22),
+          B('IR', '«OrderRepository»', 30, 40), B('IN', '«Notifier»', 72, 40),
+          B('MY', 'MySqlRepo', 14, 60), B('PG', 'PostgresRepo', 42, 60), B('EM', 'EmailNotifier', 66, 60), B('SMS', 'SmsNotifier', 90, 60), B('ROOT', 'AppConfig', 88, 22)];
+        var ae = [['CT', 'OS'], ['TS', 'OS'], ['OS', 'IR'], ['OS', 'IN'], ['MY', 'IR'], ['PG', 'IR'], ['EM', 'IN'], ['SMS', 'IN'], ['ROOT', c === 'sms' ? 'SMS' : 'PG'], ['ROOT', 'OS']];
+        frames.push(F('<b>Step 1 — introduce ports owned by the domain:</b> <b>«OrderRepository»</b> and <b>«Notifier»</b> live in the <i>domain</i> package and speak business language (<code>save(Order)</code>, <code>notify(to, msg)</code>).',
+          [G('After: details depend on policy', an, ae, { ehl: { 'OS-IR': 'ok', 'OS-IN': 'ok' }, hl: { IR: 'sel', IN: 'sel' }, tags: { IR: 'domain', IN: 'domain', OS: 'domain' }, h: 68 })]));
+        frames.push(F('<b>Step 2 — the inversion:</b> concrete classes now <b>implement</b> the domain interfaces, so their arrows point <b>up</b> (green). The domain package imports nothing from infrastructure.',
+          [G('After: details depend on policy', an, ae, { ehl: paint(ae, 'ok'), hl: { MY: 'ok', PG: 'ok', EM: 'ok', SMS: 'ok' }, tags: { MY: 'infra', PG: 'infra', EM: 'infra', SMS: 'infra' }, h: 68 })]));
+        frames.push(F('<b>Step 3 — composition root:</b> <b>AppConfig</b> (or Spring) is the only box that names concrete classes. It builds the adapters and injects them into OrderService\'s constructor.',
+          [G('After: details depend on policy', an, ae, { ehl: paint(ae, 'ok'), hl: { ROOT: 'cur' }, tags: { ROOT: 'all the new()s', OS: 'no new()' }, h: 68 })]));
+        if (c === 'test') {
+          frames.push(F('Run <b>OrderServiceTest</b> again: it passes an <code>InMemoryOrderRepository</code> and a <code>RecordingNotifier</code>. <span class="c-g">No database, no network, milliseconds, deterministic.</span>',
+            [G('After: details depend on policy', an, ae, { ehl: { 'TS-OS': 'ok', 'OS-IR': 'ok', 'OS-IN': 'ok' }, hl: { TS: 'ok', OS: 'ok', IR: 'sel', IN: 'sel' }, tags: { IR: 'fake in test', IN: 'fake in test' }, h: 68 }),
+              { type: 'vars', label: 'test run', vals: { needsDatabase: 'no', needsMailServer: 'no', duration: '~2 ms', flaky: 'no' }, hl: { needsDatabase: 'ok', needsMailServer: 'ok', duration: 'ok' } }]));
+        } else {
+          frames = frames.concat(ripple('After: details depend on policy', an, ae, c === 'postgres' ? 'PG' : 'SMS', c === 'postgres' ? 'we migrate to PostgreSQL by writing a new PostgresRepo adapter.' : 'we add an SmsNotifier adapter.', 'ok', 68));
+          frames.push(F('Result: OrderService, its controller and its tests were <b>not edited</b>. Only the new adapter and one wiring line in AppConfig changed. <span class="c-g">That is DIP paying off.</span>',
+            [TXT('Before: the change rippled through OrderService into the controller and tests. After: it stopped at the composition root. Try the input <code>test</code> to see the testing benefit.')]));
+        }
+        return frames;
+      }
+    }, {
+      title: 'Refactor step by step: from new() inside to constructor injection',
+      gen: function () {
+        return refactorFrames('OrderService', [
+          { narr: 'The service builds its own tools with <code>new</code>, including a production URL. "new is glue": it glues this class to those exact classes forever.', code: T6_BAD, hl: { 2: 'bad', 3: 'bad', 4: 'bad', 5: 'bad' } },
+          { narr: 'The business method itself is fine — it says <b>what</b> should happen. The problem is only the <b>how</b> it is wired to.', code: T6_BAD, hl: { 7: 'cur', 8: 'cur', 9: 'cur' } },
+          { narr: 'Step 1: write interfaces from the <b>service\'s point of view</b>. Names come from the domain (<code>save</code>, <code>notify</code>), not from JDBC or SMTP.', code: T6_GOOD, hl: { 1: 'ok', 2: 'ok', 3: 'ok' } },
+          { narr: 'Step 2: fields become interface types, and the constructor <b>receives</b> them. This is constructor injection — dependencies are explicit, final, and visible in the signature.', code: T6_GOOD, hl: { 6: 'ok', 7: 'ok', 8: 'ok', 9: 'ok' } },
+          { narr: 'Step 3: business method unchanged except it now calls abstractions.', code: T6_GOOD, hl: { 11: 'cur', 12: 'ok', 13: 'ok' } },
+          { narr: 'Step 4: the MySQL class <b>implements the domain\'s interface</b> — the arrow now points from infrastructure to domain. Dependency inverted.', code: T6_GOOD, hl: { 16: 'ok', 17: 'ok', 18: 'ok' } }
+        ]);
+      }
+    }],
+    examples: [
+      { title: 'Time is a dependency too: inject a Clock', html: `<p>${H.c('r', 'Bad:')} <code>coupon.isExpired()</code> calls <code>LocalDate.now()</code> inside. Testing "expires at midnight" means waiting until midnight or hacking the system clock. ${H.c('g', 'Good:')} pass <code>java.time.Clock</code> (a JDK abstraction made for exactly this). Production uses <code>Clock.systemDefaultZone()</code>; tests use <code>Clock.fixed(...)</code>.</p>`, code: `class Coupon {
+    private final LocalDate expiry;
+    private final Clock clock;
+    Coupon(LocalDate expiry, Clock clock) { this.expiry = expiry; this.clock = clock; }
+    boolean isExpired() { return LocalDate.now(clock).isAfter(expiry); }
+
+    public static void main(String[] args) {
+        Clock fixed = Clock.fixed(Instant.parse("2026-01-02T10:00:00Z"), ZoneOffset.UTC);
+        System.out.println(new Coupon(LocalDate.of(2026, 1, 1), fixed).isExpired());   // true, deterministic
+    }
+}` },
+      { title: 'Payment gateway port: swapping Stripe for Razorpay', html: `<p>The checkout domain defines <code>interface PaymentGateway { PaymentResult charge(Money amount, String token); }</code>. <code>StripeGateway</code> and <code>RazorpayGateway</code> are adapters translating to each vendor's SDK. Expanding to India means writing one adapter and changing one wiring line, and a <code>FakeGateway</code> lets you test declines, timeouts and retries without a sandbox account. This is <b>hexagonal architecture</b> (ports and adapters) — DIP applied to a whole application.</p>` },
+      { title: 'Spring does the wiring, DIP is still your job', html: `<p>With Spring, <code>@Service class OrderService { OrderService(OrderRepository repo, Notifier n) {…} }</code> gets its dependencies injected automatically (constructor injection is the recommended style; field <code>@Autowired</code> hides dependencies and blocks <code>final</code> fields). But if <code>OrderRepository</code> is a JPA interface full of database-specific methods, or the service injects <code>JdbcTemplate</code> directly, you are using DI <b>without</b> DIP — the policy still depends on details.</p>` },
+      { title: 'Service Locator: DI\'s evil twin', html: `<p><code>Notifier n = ServiceLocator.get(Notifier.class);</code> inside a method <i>looks</i> decoupled, but dependencies are now hidden (not in the constructor), failures happen at runtime, and tests must configure a global registry. Prefer explicit constructor parameters: if a constructor has 9 parameters, that is useful feedback that the class has too many responsibilities (SRP!).</p>` }
+    ],
+    deepDive: `<p><b>Ownership of the abstraction is the heart of DIP.</b> If <code>OrderRepository</code> sits in the infrastructure package next to <code>MySqlOrderRepository</code>, the domain still depends on the infrastructure <i>package</i>. Put the interface in the domain package (or module), and make infrastructure depend on domain. In a Java multi-module build (Maven/Gradle), the <code>domain</code> module has <b>no dependency</b> on <code>infra</code>; <code>infra</code> depends on <code>domain</code>; <code>app</code> depends on both and wires them. ArchUnit tests can enforce "classes in ..domain.. must not depend on ..infra..".</p>
+<p><b>Injection styles:</b> constructor (preferred: immutable, required deps obvious, no partially built objects), setter (optional deps, but allows invalid state), method parameter (for per-call collaborators like a <code>Clock</code> in a pure function), and field injection (framework magic — avoid in new code). Too many constructor parameters is a design signal, not a reason to switch to field injection.</p>
+<p><b>Don\'t invert everything.</b> Depending on stable, concrete JDK types (<code>String</code>, <code>List</code>, <code>BigDecimal</code>, <code>Duration</code>) is fine — they almost never change in breaking ways. Invert dependencies on things that are <b>volatile</b> (vendors, I/O, frameworks), <b>slow</b> (network, disk) or <b>non-deterministic</b> (time, randomness, UUIDs). A <code>Money</code> value object needs no interface.</p>
+<p><b>Runtime vs compile time.</b> Flow of control still goes service → MySQL at runtime; only the <i>source code</i> dependency is inverted. This is what lets plugins work: an IDE core defines extension-point interfaces; plugins compiled years later implement them and are loaded via <code>ServiceLoader</code> (<code>META-INF/services</code>) or the module system's <code>uses</code>/<code>provides</code>.</p>
+<p><b>Testing payoff numbers:</b> a typical service test through a real DB + container takes 1–5 s; with in-memory fakes, 1–5 ms. A suite of 2,000 such tests drops from ~1 hour to ~10 seconds, which changes how often developers run tests. Keep a smaller set of integration tests (Testcontainers) to verify each adapter against the real thing — fakes must honour the same contract (LSP!).</p>`,
+    aiEra: `<p><b>What AI changes:</b> generated code frequently instantiates clients inline (<code>new OpenAIClient(apiKey)</code>, <code>HttpClient.newHttpClient()</code>, <code>new S3Client()</code>) inside business methods, reads env vars deep in the logic and calls <code>Instant.now()</code> directly. It runs — and is untestable. Tools that let AI agents run your tests reward designs with fast, deterministic tests, which is exactly what DIP gives you.</p>
+<p><b>Use AI as a partner:</b> <code>Find every place this class touches I/O, time, randomness or a vendor SDK. Propose a domain-owned interface for each, then generate in-memory fakes and JUnit tests using them.</code> AI is very good at producing the adapter boilerplate and fakes once the port is defined.</p>
+<p><b>DIP for AI features themselves:</b> wrap LLM calls behind a domain port such as <code>interface Summarizer { Summary summarize(Document d); }</code>. You can swap models or vendors, add caching or guardrails as decorators, and test business flows with a deterministic fake summarizer instead of a slow, costly, non-deterministic model call. <b>Where AI goes wrong:</b> it writes interfaces that mirror the vendor SDK (leaky abstraction) or puts the interface in the vendor package. <b>What you must still own:</b> where the ports live, what language they speak, and which dependencies are volatile enough to invert.</p>`,
+    problems: [{
+      title: 'Make the WeatherAlert service testable',
+      level: 'Medium', tags: ['DIP', 'dependency injection', 'testing'], companies: ['Uber', 'Microsoft', 'Atlassian'],
+      statement: `<p><code>WeatherAlertService.checkAndAlert(city)</code> creates an HTTP weather client with <code>new</code>, reads the current hour with <code>LocalTime.now()</code>, and sends alerts with <code>System.out</code> (standing in for an SMS SDK). Rules: send an alert if the temperature is above 40 °C, but <b>not between 22:00 and 07:00</b> (quiet hours) unless it is above 45 °C. Refactor using DIP so the rules can be tested for any temperature and any time in milliseconds, and the SMS vendor can be swapped.</p>`,
+      constraints: `<p>Java 21, no frameworks or mocking libraries. Write the "tests" as plain assertions in <code>main</code> using hand-written fakes.</p>`,
+      example: `<p>42 °C at 14:00 → ${H.c('g', 'alert')}. 42 °C at 23:30 → ${H.c('y', 'no alert (quiet hours)')}. 46 °C at 23:30 → ${H.c('r', 'alert (emergency overrides quiet hours)')}. 30 °C anytime → no alert.</p>`,
+      brute: {
+        why: `<p>All three dependencies are hard-wired: the network (slow, flaky, rate-limited), the system clock (you cannot test 23:30 at 14:00) and the alert channel (tests would send real SMS). The only way to test the quiet-hours rule is to run it at night against a live API. Swapping vendors means editing the business rule class.</p>`,
+        code: `class HttpWeatherClient {
+    double currentTemp(String city) {
+        System.out.println("GET https://api.weather.example/" + city);   // pretend network call
+        return 41.5;
+    }
+}
+class WeatherAlertService {
+    void checkAndAlert(String city) {
+        double t = new HttpWeatherClient().currentTemp(city);   // hidden dependency 1
+        int hour = LocalTime.now().getHour();                   // hidden dependency 2
+        boolean quiet = hour >= 22 || hour < 7;
+        if (t > 45 || (t > 40 && !quiet))
+            System.out.println("SMS: heat alert in " + city + " " + t);   // hidden dependency 3
+    }
+}`
+      },
+      mcq: { q: 'Which of these should become injected dependencies?', options: ['Weather source, clock and alert sender', 'Only the weather source', 'Only the alert sender', 'None — use static mocking instead'], answer: 0, explain: 'All three are volatile or non-deterministic: network, time and an external vendor. Each gets a domain-owned interface (or the JDK\'s <code>Clock</code>).' },
+      hints: [
+        `<p>Find the hidden inputs: anything from the network, the clock or an external system. Each one is a dependency to invert.</p>`,
+        `<p>Define <code>WeatherProvider</code> and <code>AlertSender</code> interfaces in the domain; use <code>java.time.Clock</code> for time. Inject all three via the constructor.</p>`,
+        `<p>Fakes: <code>FixedWeather(temp)</code>, <code>RecordingSender</code> (stores messages), <code>Clock.fixed(...)</code>. Test boundaries: 40 vs 40.1, 45 vs 45.1, 21:59 vs 22:00, 06:59 vs 07:00.</p>`
+      ],
+      solution: {
+        approach: `<p><b>Invert every volatile dependency.</b> The service keeps only the rule. <code>WeatherProvider</code> and <code>AlertSender</code> are domain ports; time comes from an injected <code>Clock</code> (zone-aware). Production wiring passes the HTTP client and SMS adapter; tests pass a fixed weather fake, a recording sender and <code>Clock.fixed</code>. The quiet-hours logic is now covered at exact boundaries in milliseconds, and switching SMS vendors is a new adapter only.</p>`,
+        code: `interface WeatherProvider { double currentTempC(String city); }
+interface AlertSender { void send(String message); }
+
+class WeatherAlertService {
+    private final WeatherProvider weather;
+    private final AlertSender sender;
+    private final Clock clock;
+
+    WeatherAlertService(WeatherProvider weather, AlertSender sender, Clock clock) {
+        this.weather = weather; this.sender = sender; this.clock = clock;
+    }
+
+    boolean checkAndAlert(String city) {
+        double t = weather.currentTempC(city);
+        int hour = LocalTime.now(clock).getHour();
+        boolean quiet = hour >= 22 || hour < 7;
+        boolean alert = t > 45 || (t > 40 && !quiet);
+        if (alert) sender.send("Heat alert in " + city + ": " + t + "C");
+        return alert;
+    }
+}
+
+// production adapters (would wrap real HTTP / SMS SDKs)
+class HttpWeatherProvider implements WeatherProvider {
+    public double currentTempC(String city) { System.out.println("GET weather for " + city); return 41.5; }
+}
+class SmsAlertSender implements AlertSender {
+    public void send(String m) { System.out.println("SMS: " + m); }
+}
+
+// test fakes
+class FixedWeather implements WeatherProvider {
+    private final double t; FixedWeather(double t) { this.t = t; }
+    public double currentTempC(String city) { return t; }
+}
+class RecordingSender implements AlertSender {
+    final List<String> sent = new ArrayList<>();
+    public void send(String m) { sent.add(m); }
+}
+
+class WeatherAlertTest {
+    static Clock at(String hhmm) {
+        return Clock.fixed(Instant.parse("2026-05-01T" + hhmm + ":00Z"), ZoneOffset.UTC);
+    }
+    static void check(double temp, String time, boolean expected) {
+        RecordingSender s = new RecordingSender();
+        boolean got = new WeatherAlertService(new FixedWeather(temp), s, at(time)).checkAndAlert("Delhi");
+        if (got != expected || s.sent.size() != (expected ? 1 : 0))
+            throw new AssertionError(temp + "C at " + time + " expected " + expected);
+        System.out.println("ok: " + temp + "C at " + time + " -> " + got);
+    }
+    public static void main(String[] args) {
+        check(42, "14:00", true);
+        check(42, "23:30", false);
+        check(46, "23:30", true);
+        check(30, "12:00", false);
+        check(40.1, "21:59", true);
+        check(40.1, "22:00", false);
+        check(45.0, "06:59", false);
+        check(42, "07:00", true);
+        // production wiring
+        new WeatherAlertService(new HttpWeatherProvider(), new SmsAlertSender(), Clock.systemDefaultZone()).checkAndAlert("Delhi");
+    }
+}`,
+        complexity: `<p>O(1) per check. Test suite: 8 boundary cases in a few milliseconds with zero network or SMS cost — impossible before the refactor.</p>`,
+        followUps: ['Quiet hours depend on the user\'s time zone — what changes?', 'Add retry with backoff for the weather API without touching the rule: which pattern (decorator around <code>WeatherProvider</code>)?', 'How would you avoid alerting the same city every 5 minutes (dedup / cooldown) — new dependency?']
+      }
+    }]
+  });
+
+  /* ======================= TOPIC 7: SOLID TOGETHER ======================= */
+  var T7_BAD = `class ReportService {
+  private final MySqlSales db = new MySqlSales();
+  String run(String format, String email) {
+    List<Sale> sales = db.query("SELECT * FROM sales");
+    double total = 0;
+    for (Sale s : sales) total += s.amount();
+    String out;
+    if (format.equals("CSV")) out = toCsv(sales, total);
+    else if (format.equals("PDF")) out = toPdf(sales, total);
+    else throw new IllegalArgumentException(format);
+    new SmtpClient().send(email, out);
+    return out;
+  }
+}
+class ScreenReportService extends ReportService {
+  @Override String run(String format, String email) {
+    throw new UnsupportedOperationException("no email");
+  }
+}
+interface Exporter {
+  String csv(List<Sale> s); String pdf(List<Sale> s);
+  String xlsx(List<Sale> s); String html(List<Sale> s);
+}`;
+
+  topics.push({
+    title: 'SOLID Together: Code Reviews, Trade-offs and When Not to Apply It',
+    analogy: `<p>A good doctor does not prescribe every medicine in the cabinet. They <b>diagnose first</b> (which symptom? which cause?), then give the smallest effective treatment, and they know side effects. SOLID principles are medicines: <b>SRP, OCP, LSP, ISP, DIP each cure a specific symptom</b>. Taking all of them for a tiny script causes side effects — dozens of interfaces, indirection everywhere ("over-engineering"). The skill is diagnosis plus dosage.</p>`,
+    explain: `<p><b>Real code rarely breaks just one principle.</b> Violations travel together: a God class (SRP) usually contains a type switch (OCP), creates its own database client (DIP), and its subclasses throw "not supported" (LSP) because the base interface is too fat (ISP). In interviews you will often get one messy class and be asked to "review and improve" it.</p>
+<p><b>A 5-question review checklist</b> (run it on any class):</p>
+${H.table(['Ask', 'If yes…', 'Principle'], [
+  ['Who would ask to change this class? More than one actor?', 'Split by actor', '<b>S</b>'],
+  ['Will a new type/format/provider force me to edit this code?', 'Extract interface + polymorphism', '<b>O</b>'],
+  ['Does any subclass throw "unsupported", ignore a call, or need <code>instanceof</code> checks?', 'Fix the hierarchy / use composition', '<b>L</b>'],
+  ['Does any implementer or client carry methods it never uses?', 'Split into role interfaces', '<b>I</b>'],
+  ['Does business logic <code>new</code> up I/O, vendors, time or randomness?', 'Inject a domain-owned abstraction', '<b>D</b>']
+])}
+<p><b>How the principles support each other:</b> SRP produces small classes → ISP keeps their interfaces small → DIP lets high-level classes depend on those interfaces → OCP becomes possible because new implementations can be plugged in → LSP makes sure those plug-ins behave. Remove one and the others weaken.</p>
+<p><b>When NOT to apply (just as important):</b></p>
+<ul>
+<li><b>YAGNI</b> ("You Aren't Gonna Need It"): one implementation, no expected variation → no interface yet. Extract it when the second real variation appears (it takes 2 minutes with an IDE).</li>
+<li><b>Rule of three:</b> first time just write it, second time notice the duplication, third time refactor to an abstraction.</li>
+<li><b>Scripts, prototypes, throw-away code:</b> optimise for speed of learning.</li>
+<li><b>Stable things:</b> do not wrap <code>String</code>, <code>List</code> or <code>BigDecimal</code> in interfaces.</li>
+</ul>
+<p><b>Interview framing:</b> say the smell, name the principle, show the minimal refactor, and mention the trade-off ("this adds two interfaces; worth it because payment providers change every quarter").</p>`,
+    clues: [
+      '"Review this code" / "what would you improve?" → run the S-O-L-I-D checklist out loud, one finding at a time.',
+      '"Is this over-engineered?" → discuss YAGNI, rule of three, number of real implementations.',
+      '"How would you make this extensible <b>and</b> testable?" → OCP + DIP together (Strategy behind a domain interface, injected).',
+      'Machine-coding with "the interviewer will add a requirement in 20 minutes" → design the likely axis of change with interfaces from the start.',
+      '"Explain SOLID with one example" → pick a single class (e.g. a report or notification service) and show all five violations and fixes.',
+      '"Which principle matters most?" → senior answer: they are connected; DIP + SRP usually give the biggest testability win.'
+    ],
+    code: [{ lang: 'java', title: 'Before: one report class violating all five principles', code: `record Sale(String region, double amount) {}
+
+class MySqlSales { List<Sale> query(String sql) { return List.of(new Sale("N", 100), new Sale("S", 250)); } }
+class SmtpClient { void send(String to, String body) { System.out.println("SMTP " + to + ":\\n" + body); } }
+
+class ReportService {
+    private final MySqlSales db = new MySqlSales();                   // D: concrete DB inside policy
+    String run(String format, String email) {                         // S: query + math + format + email
+        List<Sale> sales = db.query("SELECT * FROM sales");
+        double total = 0;
+        for (Sale s : sales) total += s.amount();
+        String out;
+        if (format.equals("CSV")) out = "region,amount\\n" + total;     // O: every format edits this
+        else if (format.equals("PDF")) out = "%PDF total=" + total;
+        else throw new IllegalArgumentException(format);
+        new SmtpClient().send(email, out);                            // D: concrete mailer
+        return out;
+    }
+}
+
+class ScreenReportService extends ReportService {                     // L: refuses the parent's job
+    @Override String run(String format, String email) { throw new UnsupportedOperationException("no email"); }
+}
+
+interface Exporter {                                                  // I: every exporter must do 4 formats
+    String csv(List<Sale> s); String pdf(List<Sale> s);
+    String xlsx(List<Sale> s); String html(List<Sale> s);
+}` }, { lang: 'java', title: 'After: small roles, plug-in formats, injected I/O', code: `record Sale(String region, double amount) {}
+record SalesSummary(List<Sale> sales, double total) {
+    static SalesSummary of(List<Sale> sales) {                                        // S: the maths, nothing else
+        return new SalesSummary(sales, sales.stream().mapToDouble(Sale::amount).sum());
+    }
+}
+
+interface SalesSource { List<Sale> load(); }                                           // D: domain-owned ports
+interface ReportDelivery { void deliver(String content); }
+interface ReportFormat { String code(); String render(SalesSummary s); }               // I: one role, O: plug-in
+
+class CsvFormat implements ReportFormat {
+    public String code() { return "CSV"; }
+    public String render(SalesSummary s) {
+        StringBuilder sb = new StringBuilder("region,amount\\n");
+        s.sales().forEach(x -> sb.append(x.region()).append(',').append(x.amount()).append('\\n'));
+        return sb.append("TOTAL,").append(s.total()).toString();
+    }
+}
+class TextFormat implements ReportFormat {
+    public String code() { return "TEXT"; }
+    public String render(SalesSummary s) { return "Total sales: " + s.total(); }
+}
+
+class EmailDelivery implements ReportDelivery {
+    private final String to;
+    EmailDelivery(String to) { this.to = to; }
+    public void deliver(String c) { System.out.println("email to " + to + ":\\n" + c); }
+}
+class ScreenDelivery implements ReportDelivery {                                        // L: an honest sibling
+    public void deliver(String c) { System.out.println("[screen]\\n" + c); }
+}
+
+class ReportJob {                                                                       // orchestration only
+    private final SalesSource source;
+    private final Map<String, ReportFormat> formats = new HashMap<>();
+
+    ReportJob(SalesSource source, List<ReportFormat> available) {
+        this.source = source;
+        available.forEach(f -> formats.put(f.code(), f));
+    }
+
+    String run(String formatCode, ReportDelivery delivery) {
+        ReportFormat f = formats.get(formatCode);
+        if (f == null) throw new IllegalArgumentException("unknown format " + formatCode);
+        String out = f.render(SalesSummary.of(source.load()));
+        delivery.deliver(out);
+        return out;
+    }
+
+    public static void main(String[] args) {
+        SalesSource fake = () -> List.of(new Sale("N", 100), new Sale("S", 250));      // lambda = tiny adapter
+        ReportJob job = new ReportJob(fake, List.of(new CsvFormat(), new TextFormat()));
+        job.run("CSV", new EmailDelivery("boss@shop.com"));
+        job.run("TEXT", new ScreenDelivery());
+    }
+}` }],
+    codeTitle: ['Bad: all five violations', 'Good: SOLID refactor'],
+    viz: [{
+      title: 'Code review: find the violations one principle at a time',
+      input: 'SOLID',
+      inputLabel: 'Principles to review (letters from S O L I D, e.g. SD)',
+      gen: function (input) {
+        var letters = String(input || '').toUpperCase().replace(/[^A-Z]/g, '').split('');
+        var uniq = [];
+        letters.forEach(function (l) { if (uniq.indexOf(l) < 0) uniq.push(l); });
+        if (!uniq.length || uniq.some(function (l) { return 'SOLID'.indexOf(l) < 0; })) throw new Error('Use only the letters S, O, L, I, D (e.g. SOLID or SD)');
+        uniq.sort(function (a, b) { return 'SOLID'.indexOf(a) - 'SOLID'.indexOf(b); });
+        var F2 = {
+          S: { lines: [3, 4, 5, 6, 8, 9, 11], name: 'Single Responsibility', msg: '<code>run()</code> queries the DB, does the maths, formats AND emails — four actors (DBA, finance, report users, IT) in one method.', fix: 'SalesSource + SalesSummary + ReportFormat + ReportDelivery, ReportJob orchestrates' },
+          O: { lines: [8, 9, 10], name: 'Open/Closed', msg: 'The if/else on <code>format</code>: adding XLSX means editing this tested method.', fix: 'ReportFormat interface + registry map; new format = new class' },
+          L: { lines: [15, 16, 17, 18, 19], name: 'Liskov Substitution', msg: '<code>ScreenReportService</code> throws where the parent works. Code holding a <code>ReportService</code> crashes if given this subclass.', fix: 'Delivery is a separate role: EmailDelivery and ScreenDelivery are siblings' },
+          I: { lines: [20, 21, 22, 23], name: 'Interface Segregation', msg: 'Fat <code>Exporter</code>: an exporter that only does CSV must still implement pdf, xlsx and html.', fix: 'One small ReportFormat role per format class' },
+          D: { lines: [2, 11], name: 'Dependency Inversion', msg: 'Business logic builds <code>new MySqlSales()</code> and <code>new SmtpClient()</code> — untestable, unswappable.', fix: 'Inject SalesSource and ReportDelivery (domain-owned interfaces)' }
+        };
+        var frames = [F('A teammate asks you to review this <b>ReportService</b>. It works in production. We will check it against: <b>' + uniq.join(', ') + '</b>.', [CODE('ReportService.java (under review)', T7_BAD, {}), { type: 'table', label: 'Review findings', columns: ['Principle', 'Lines', 'Fix'], rows: [] }])];
+        var rows = [], all = {};
+        uniq.forEach(function (l) {
+          var f = F2[l], hl = {};
+          Object.keys(all).forEach(function (k) { hl[k] = 'done'; });
+          f.lines.forEach(function (n) { hl[n] = 'bad'; all[n] = 1; });
+          rows.push([l + ' — ' + f.name, f.lines.join(', '), f.fix]);
+          frames.push(F('<b>' + l + ' — ' + f.name + ':</b> ' + f.msg, [CODE('ReportService.java (under review)', T7_BAD, hl), { type: 'table', label: 'Review findings', columns: ['Principle', 'Lines', 'Fix'], rows: rows.slice(), hl: (function () { var r = {}; r[rows.length - 1] = 'sel'; return r; })() }]));
+        });
+        var nodes = [B('JOB', 'ReportJob', 50, 6), B('SRC', '«SalesSource»', 15, 24), B('SUM', 'SalesSummary', 50, 24), B('FMT', '«ReportFormat»', 85, 24),
+          B('DEL', '«ReportDelivery»', 30, 44), B('CSV', 'CsvFormat', 72, 44), B('TXT', 'TextFormat', 94, 44), B('EM', 'EmailDelivery', 18, 62), B('SC', 'ScreenDelivery', 48, 62), B('MY', 'MySqlSource', 80, 62)];
+        var edges = [['JOB', 'SRC'], ['JOB', 'SUM'], ['JOB', 'FMT'], ['JOB', 'DEL'], ['CSV', 'FMT'], ['TXT', 'FMT'], ['EM', 'DEL'], ['SC', 'DEL'], ['MY', 'SRC']];
+        frames.push(F('<b>Refactored design.</b> Each finding maps to a box: small roles (purple), plug-in implementations (green arrows point up into abstractions), and a thin <b>ReportJob</b> that only orchestrates.',
+          [G('After the review', nodes, edges, { ehl: paint(edges, 'ok'), h: 70, hl: { SRC: 'sel', FMT: 'sel', DEL: 'sel', JOB: 'cur' } }), { type: 'table', label: 'Review findings', columns: ['Principle', 'Lines', 'Fix'], rows: rows.slice() }]));
+        frames.push(F('Sanity check on cost: we went from 1 class + 1 subclass to ~9 small types. Worth it here because formats and delivery channels <b>do</b> change often. For a one-off script, the original would be fine — say this trade-off out loud in interviews.',
+          [{ type: 'vars', label: 'trade-off', vals: { typesBefore: 3, typesAfter: 9, filesEditedToAddXlsx_before: 1 + ' (core method)', filesEditedToAddXlsx_after: '0 (+1 new class)' }, hl: { filesEditedToAddXlsx_after: 'ok', typesAfter: 'cur' } }]));
+        return frames;
+      }
+    }, {
+      title: 'Dosage: rule of three vs over-engineering',
+      gen: function () {
+        return [
+          F('<b>Variation 1:</b> the shop sells only in India. Just write <code>GstTax</code> as a plain class. No interface yet — YAGNI. Any extra abstraction now is a guess.',
+            [G('Design', [B('CO', 'Checkout', 30, 10), B('G', 'GstTax', 70, 10)], [['CO', 'G']], { h: 22, hl: { G: 'ok' } }), { type: 'vars', label: 'state', vals: { realVariations: 1, interfaces: 0, verdict: 'keep simple' }, hl: { verdict: 'ok' } }]),
+          F('<b>Variation 2:</b> UAE launch needs VAT. You notice the duplication / branching. Many teams add one <code>if</code> here and note it. Some extract the interface now if a third region is already on the roadmap.',
+            [G('Design', [B('CO', 'Checkout', 30, 10), B('G', 'GstTax', 70, 6), B('V', 'VatTax', 70, 18)], [['CO', 'G'], ['CO', 'V']], { h: 26, ehl: { 'CO-V': 'cur' } }), { type: 'vars', label: 'state', vals: { realVariations: 2, interfaces: 0, verdict: 'watch it' }, hl: { verdict: 'cur' } }]),
+          F('<b>Variation 3:</b> Singapore GST. Now the axis of change is <i>proven</i>. Extract <b>«TaxPolicy»</b>, inject it, and every future country is a new class (OCP + DIP), each tested alone (SRP).',
+            [G('Design', [B('CO', 'Checkout', 50, 6), B('TP', '«TaxPolicy»', 50, 22), B('G', 'GstTax', 18, 40), B('V', 'VatTax', 50, 40), B('SG', 'SgGstTax', 82, 40)], [['CO', 'TP'], ['G', 'TP'], ['V', 'TP'], ['SG', 'TP']], { h: 48, ehl: { 'CO-TP': 'ok', 'G-TP': 'ok', 'V-TP': 'ok', 'SG-TP': 'ok' }, hl: { TP: 'sel' } }),
+              { type: 'vars', label: 'state', vals: { realVariations: 3, interfaces: 1, verdict: 'refactor now' }, hl: { verdict: 'ok' } }]),
+          F('<span class="c-r">Over-engineering:</span> the same feature built "enterprise style" on day one — factory for a factory, an interface per class, one implementation each. Every arrow is indirection a reader must follow, and none of it protects against a real change.',
+            [G('Needless complexity', [B('CO', 'Checkout', 12, 8), B('F1', '«TaxFactoryProvider»', 50, 8), B('F2', 'TaxFactoryProviderImpl', 50, 26), B('F3', '«TaxFactory»', 12, 26), B('F4', 'TaxFactoryImpl', 12, 44), B('TI', '«ITax»', 50, 44), B('T', 'TaxImpl', 88, 44)],
+              [['CO', 'F1'], ['F2', 'F1'], ['F2', 'F3'], ['F4', 'F3'], ['F4', 'TI'], ['T', 'TI']], { h: 52, ehl: { 'CO-F1': 'bad', 'F2-F1': 'bad', 'F2-F3': 'bad', 'F4-F3': 'bad', 'F4-TI': 'bad', 'T-TI': 'bad' }, hl: { F1: 'bad', F2: 'bad', F3: 'bad', F4: 'bad' }, tags: { T: 'only 1 impl ever' } }),
+              { type: 'vars', label: 'state', vals: { realVariations: 1, interfaces: 3, verdict: 'needless complexity' }, hl: { verdict: 'bad' } }]),
+          F('<b>Takeaway:</b> SOLID is a response to <b>real or clearly expected change</b>. Good designers can explain <i>why</i> each abstraction exists ("tax varies by country — 3 already, 2 more planned"). If you cannot name the change an interface protects against, you probably do not need it yet.',
+            [{ type: 'table', label: 'When to abstract', columns: ['Signal', 'Action'], rows: [['1 implementation, no roadmap', 'Concrete class'], ['Needed for testing (I/O, time, vendor)', 'Interface now (DIP)'], ['2 variations', 'Consider; note it'], ['3+ variations / plugin requirement', 'Interface + strategy (OCP)'], ['Interface with 1 impl and no test need', 'Remove it']], hl: { 1: 'sel', 3: 'ok' } }])
+        ];
+      }
+    }],
+    examples: [
+      { title: 'Parking Lot interview: where SOLID shows up', html: `<p>${H.table(['Requirement', 'Principle', 'Design move'], [['New vehicle types (EV, truck)', 'O, L', '<code>Vehicle</code> hierarchy where every subtype is substitutable; spot fitting via <code>SpotType</code> rules'], ['Pricing changes per city/hour', 'O, D', '<code>PricingStrategy</code> interface injected into <code>TicketService</code>'], ['Payment by card/UPI/cash', 'O, I', '<code>PaymentMethod</code> role; only cash needs <code>ChangeDispenser</code>'], ['Display boards vs admin panel', 'I', '<code>SpotAvailabilityReader</code> vs <code>SpotAdmin</code> interfaces'], ['Entry gate logic vs billing', 'S', '<code>EntryGate</code>, <code>BillingService</code>, <code>SpotAllocator</code> separate']])}</p>` },
+      { title: 'SOLID in a functional style', html: `<p>A one-method interface is just a function. Java lambdas let you apply OCP and DIP with almost no ceremony: inject a <code>Function&lt;Order, Double&gt;</code> discount, a <code>Supplier&lt;Instant&gt;</code> clock or a <code>Predicate&lt;User&gt;</code> rule. Prefer a <b>named</b> interface when the role deserves a domain name or needs several methods; use built-in functional types for tiny, local strategies.</p>`, code: `record Order(String id, double amount) {}
+class Pricing {
+    private final Function<Order, Double> discount;      // strategy as a function (OCP)
+    private final Supplier<Instant> now;                  // time as a dependency (DIP)
+    Pricing(Function<Order, Double> discount, Supplier<Instant> now) { this.discount = discount; this.now = now; }
+    String quote(Order o) { return o.id() + " pays " + (o.amount() - discount.apply(o)) + " at " + now.get(); }
+
+    public static void main(String[] args) {
+        Pricing p = new Pricing(o -> o.amount() > 1000 ? 100.0 : 0.0, () -> Instant.parse("2026-01-01T00:00:00Z"));
+        System.out.println(p.quote(new Order("A1", 1500)));
+    }
+}` },
+      { title: 'Refactoring safely: the order of moves', html: `<p>Never "big-bang" rewrite. A safe sequence on legacy code: (1) write <b>characterization tests</b> that pin current behaviour; (2) apply DIP first — inject the DB/mail clients so the class becomes testable; (3) extract classes by actor (SRP) with IDE refactorings; (4) replace conditionals with polymorphism (OCP); (5) split interfaces as clients emerge (ISP); (6) run contract tests on all implementations (LSP). Each step is a small commit with green tests.</p>` }
+    ],
+    deepDive: `<p><b>Principles behind the principles.</b> All five reduce to managing <b>dependencies</b> so that change stays local. Related package-level principles (also from Martin): Common Closure (things that change together live together — SRP for packages), Common Reuse (do not force users of a package to depend on things they do not use — ISP for packages), Acyclic Dependencies (no cycles between packages), Stable Abstractions (stable packages should be abstract). Clean/Hexagonal architecture is DIP + SRP applied to whole layers.</p>
+<p><b>Criticisms worth knowing.</b> Dan North and others argue SOLID is vague ("one reason to change" is subjective) and propose CUPID (Composable, Unix philosophy, Predictable, Idiomatic, Domain-based). Casey Muratori-style performance critiques note that deep virtual-dispatch hierarchies can hurt cache locality in hot loops (games, HFT). Both critiques are fair in their contexts: SOLID targets <b>business software that changes often</b>, not tight numeric kernels. Mentioning that you know the limits is a strong senior signal.</p>
+<p><b>Metrics and tooling in production:</b> SonarQube flags cognitive complexity, God classes and long switch statements; ArchUnit enforces layer and package rules in tests; IntelliJ's "Extract Interface", "Replace Conditional with Polymorphism", "Pull Members Up/Push Down" automate most SOLID refactors safely. Mutation testing (PIT) measures whether tests actually protect behaviour before a refactor.</p>
+<p><b>Designing for testability = designing for change.</b> Tests are the first "second client" of your code. If a class is hard to test, it is usually violating SRP (too much setup) or DIP (hidden dependencies). TDD tends to push designs toward SOLID naturally.</p>`,
+    aiEra: `<p><b>What AI changes:</b> AI makes producing code cheap, so the bottleneck moves to <b>review and design judgement</b>. A SOLID checklist is an excellent review lens for AI-generated pull requests: AI diffs often add a new <code>case</code> (OCP), new up an SDK client inline (DIP), or add an "unsupported" override (LSP). Teams increasingly encode such rules as lint/ArchUnit checks that both humans and agents must pass.</p>
+<p><b>Use AI as a partner:</b> <code>Review this class against each SOLID principle. For each finding give line numbers, severity, and the smallest refactor. Also tell me which findings are NOT worth fixing and why.</code> The second sentence matters — it forces trade-off thinking and avoids over-engineering. Then ask for a step-by-step refactor plan with tests kept green after each step.</p>
+<p><b>Where AI goes wrong:</b> it treats SOLID as a checklist to maximise, generating factories, interfaces and layers for a 50-line feature. It also cannot know your organisation's real axes of change. <b>What you must still own:</b> the diagnosis (which smell is actually hurting), the dosage (YAGNI vs extensibility), and the explanation to your team or interviewer of <i>why</i> this design fits these requirements.</p>`,
+    problems: [{
+      title: 'Review and fix a NotificationManager (all five principles)',
+      level: 'Hard', tags: ['SOLID', 'code review', 'refactoring', 'notifications'], companies: ['Swiggy', 'Zomato', 'Uber', 'Meta'],
+      statement: `<p>The class below sends order notifications. It picks a channel with a switch on the user's preference, builds the message text, logs to a file and calls vendor clients created inline. A <code>PushChannel</code> subclass of <code>EmailChannel</code> throws for attachments, and the <code>Channel</code> interface forces every channel to support scheduling and attachments. Product plans WhatsApp next month and wants quiet tests. <b>List every SOLID violation with the line/area, then deliver a refactored design</b> where: adding WhatsApp touches no existing class, templates change without touching delivery, and the service is testable with fakes.</p>`,
+      constraints: `<p>Java 21, no frameworks. Keep the public behaviour: <code>notifyOrderShipped(user, orderId)</code> sends one message via the user's preferred channel and records success/failure.</p>`,
+      example: `<p>User prefers SMS → "Your order #42 has shipped" via SMS, log "u1 SMS ok". User prefers WHATSAPP (after adding one class) → same text via WhatsApp. Unknown preference → falls back to EMAIL instead of crashing.</p>`,
+      brute: {
+        why: `<p>${H.c('r', 'S:')} one class builds text, picks channels, logs and talks to vendors. ${H.c('r', 'O:')} the switch must be edited for WhatsApp. ${H.c('r', 'L:')} PushChannel extends EmailChannel and throws on attachments. ${H.c('r', 'I:')} <code>Channel</code> forces <code>schedule</code> and <code>attach</code> on everyone. ${H.c('r', 'D:')} <code>new TwilioClient()</code>, <code>new FileWriter</code> inside business code — tests send real SMS and write files.</p>`,
+        code: `interface Channel {
+    void send(String to, String text);
+    void schedule(String to, String text, long epochMillis);
+    void attach(String fileName);
+}
+class TwilioClient { void sms(String to, String t) { System.out.println("twilio " + to + " " + t); } }
+
+class EmailChannel implements Channel {
+    public void send(String to, String text) { System.out.println("email " + to + " " + text); }
+    public void schedule(String to, String text, long at) { System.out.println("scheduled email"); }
+    public void attach(String f) { System.out.println("attached " + f); }
+}
+class PushChannel extends EmailChannel {
+    @Override public void send(String to, String text) { System.out.println("push " + to + " " + text); }
+    @Override public void attach(String f) { throw new UnsupportedOperationException("push has no attachments"); }
+}
+
+class NotificationManager {
+    void notifyOrderShipped(String userId, String pref, String contact, String orderId) throws IOException {
+        String text = "Your order #" + orderId + " has shipped";
+        boolean ok = true;
+        switch (pref) {
+            case "SMS" -> new TwilioClient().sms(contact, text);
+            case "EMAIL" -> new EmailChannel().send(contact, text);
+            case "PUSH" -> new PushChannel().send(contact, text);
+            default -> ok = false;
+        }
+        try (FileWriter w = new FileWriter("notify.log", true)) { w.write(userId + " " + pref + " " + ok + "\\n"); }
+    }
+}`
+      },
+      mcq: { q: 'Product adds WhatsApp. In the refactored design, what is the minimal change?', options: ['Add a WhatsAppChannel class and register it in the composition root', 'Add a case to NotificationService and a WhatsAppChannel class', 'Make WhatsAppChannel extend SmsChannel', 'Add whatsapp() to the Channel interface'], answer: 0, explain: 'With a registry of <code>Channel</code> implementations keyed by name (OCP) and injected into the service (DIP), the new class plus one wiring line is all that changes.' },
+      hints: [
+        `<p>Write the findings table first: for each principle, which lines and what pain. Then group responsibilities: text building, channel choice, sending per vendor, logging.</p>`,
+        `<p>Ports: <code>Channel { String name(); void send(Contact c, Message m); }</code>, optional roles <code>SupportsAttachments</code> and <code>Schedulable</code>, <code>MessageTemplates</code>, <code>DeliveryLog</code>. Service receives a list of channels and builds a map.</p>`,
+        `<p>Fallback channel for unknown preferences; catch per-send failures and log them; Push no longer extends Email (siblings). Test in <code>main</code> with a <code>RecordingChannel</code> and <code>InMemoryLog</code>.</p>`
+      ],
+      solution: {
+        approach: `<p><b>Findings → fixes.</b> S: split into <code>MessageTemplates</code> (wording), <code>Channel</code> adapters (delivery), <code>DeliveryLog</code> (audit) and a thin <code>NotificationService</code>. O: channels live in a registry keyed by name; WhatsApp is a new class. L: Push and Email become siblings; no override refuses work. I: <code>Channel</code> has only <code>send</code>; attachments and scheduling are optional role interfaces implemented only by channels that support them. D: vendor clients and the log are behind domain-owned interfaces and injected, so tests use fakes. Unknown preferences fall back to email, and a failing channel is logged rather than crashing the caller.</p>`,
+        code: `record Contact(String userId, String preferredChannel, String address) {}
+record Message(String title, String body) {}
+
+interface Channel { String name(); void send(Contact to, Message m); }
+interface SupportsAttachments { void sendWithAttachment(Contact to, Message m, String fileName); }   // optional role (ISP)
+interface MessageTemplates { Message orderShipped(String orderId); }
+interface DeliveryLog { void record(String userId, String channel, boolean ok); }
+
+class DefaultTemplates implements MessageTemplates {
+    public Message orderShipped(String orderId) { return new Message("Shipped", "Your order #" + orderId + " has shipped"); }
+}
+
+// adapters (would wrap vendor SDKs)
+class SmsChannel implements Channel {
+    public String name() { return "SMS"; }
+    public void send(Contact to, Message m) { System.out.println("SMS to " + to.address() + ": " + m.body()); }
+}
+class EmailChannel implements Channel, SupportsAttachments {
+    public String name() { return "EMAIL"; }
+    public void send(Contact to, Message m) { System.out.println("Email to " + to.address() + ": " + m.title() + " - " + m.body()); }
+    public void sendWithAttachment(Contact to, Message m, String f) { send(to, m); System.out.println("  + " + f); }
+}
+class PushChannel implements Channel {                       // sibling, not a broken subclass
+    public String name() { return "PUSH"; }
+    public void send(Contact to, Message m) { System.out.println("Push to " + to.address() + ": " + m.body()); }
+}
+class WhatsAppChannel implements Channel {                   // added later: new class only
+    public String name() { return "WHATSAPP"; }
+    public void send(Contact to, Message m) { System.out.println("WhatsApp to " + to.address() + ": " + m.body()); }
+}
+
+class NotificationService {
+    private final Map<String, Channel> channels = new HashMap<>();
+    private final Channel fallback;
+    private final MessageTemplates templates;
+    private final DeliveryLog log;
+
+    NotificationService(List<Channel> available, String fallbackName, MessageTemplates templates, DeliveryLog log) {
+        available.forEach(c -> channels.put(c.name(), c));
+        this.fallback = Objects.requireNonNull(channels.get(fallbackName), "fallback channel missing");
+        this.templates = templates; this.log = log;
+    }
+
+    boolean notifyOrderShipped(Contact to, String orderId) {
+        Channel ch = channels.getOrDefault(to.preferredChannel(), fallback);
+        try {
+            ch.send(to, templates.orderShipped(orderId));
+            log.record(to.userId(), ch.name(), true);
+            return true;
+        } catch (RuntimeException e) {
+            log.record(to.userId(), ch.name(), false);
+            return false;
+        }
+    }
+}
+
+// fakes for tests
+class InMemoryLog implements DeliveryLog {
+    final List<String> lines = new ArrayList<>();
+    public void record(String u, String c, boolean ok) { lines.add(u + " " + c + " " + (ok ? "ok" : "failed")); }
+}
+class RecordingChannel implements Channel {
+    private final String name; final List<String> sent = new ArrayList<>();
+    RecordingChannel(String name) { this.name = name; }
+    public String name() { return name; }
+    public void send(Contact to, Message m) { sent.add(to.address() + "|" + m.body()); }
+}
+
+class NotificationDemo {
+    public static void main(String[] args) {
+        // production-style wiring
+        InMemoryLog log = new InMemoryLog();
+        NotificationService prod = new NotificationService(
+                List.of(new SmsChannel(), new EmailChannel(), new PushChannel(), new WhatsAppChannel()),
+                "EMAIL", new DefaultTemplates(), log);
+        prod.notifyOrderShipped(new Contact("u1", "SMS", "+91-90000"), "42");
+        prod.notifyOrderShipped(new Contact("u2", "WHATSAPP", "+91-80000"), "43");
+        prod.notifyOrderShipped(new Contact("u3", "PIGEON", "u3@x.com"), "44");   // falls back to EMAIL
+        System.out.println(log.lines);
+
+        // test-style wiring: fakes only
+        RecordingChannel email = new RecordingChannel("EMAIL");
+        InMemoryLog testLog = new InMemoryLog();
+        new NotificationService(List.of(email), "EMAIL", new DefaultTemplates(), testLog)
+                .notifyOrderShipped(new Contact("t1", "SMS", "t@x.com"), "7");
+        if (!email.sent.equals(List.of("t@x.com|Your order #7 has shipped"))) throw new AssertionError(email.sent);
+        System.out.println("test passed: " + testLog.lines);
+    }
+}`,
+        complexity: `<p>O(1) channel lookup per notification. Adding a channel: 1 new class + 1 wiring entry, 0 edits. Tests run without vendors, files or network.</p>`,
+        followUps: ['Users want multiple channels (SMS + push) with priority and retry on failure — which pattern (chain of responsibility / decorator)?', 'Make sending asynchronous through a queue: which interface changes, which does not?', 'Per-country templates and languages: how does <code>MessageTemplates</code> evolve without touching channels?']
+      }
+    }]
+  });
+
 registerModule({ id: 'lld02', title: 'SOLID Principles', intro: 'x', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();

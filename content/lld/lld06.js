@@ -1072,6 +1072,237 @@ class Document {
     }]
   });
 
+  /* ======================= TOPIC 5: TEMPLATE METHOD ======================= */
+  topics.push({
+    title: 'Template Method: Fixed Recipe, Customisable Steps',
+    analogy: `<p>Every <b>tea and coffee</b> follows the same recipe: <i>boil water → brew → pour into cup → add extras</i>. Only "brew" (steep a tea bag vs filter coffee grounds) and "extras" (lemon vs milk and sugar) differ. A café writes the recipe <b>once</b> on the wall and each drink fills in its own blanks. Or think of a <b>job application form</b>: the company fixes the order of sections; you only fill in your own answers.</p>`,
+    explain: `<p><b>Template Method in one line:</b> a base class defines the <b>skeleton of an algorithm</b> in one method (the <i>template method</i>, usually <code>final</code>) and leaves some steps for subclasses to fill in. The order of steps can never be changed by subclasses — only the steps themselves.</p>
+${H.table(['Kind of step', 'Declared as', 'Meaning'], [
+  ['<b>Fixed step</b>', 'normal (often <code>private</code>/<code>final</code>) method in base', 'Same for everyone, e.g. open file, close file'],
+  ['<b>Abstract step</b>', '<code>protected abstract</code>', 'Every subclass <i>must</i> provide it, e.g. <code>parse()</code>'],
+  ['<b>Hook</b>', '<code>protected</code> method with a default (often empty or <code>true</code>)', 'Subclass <i>may</i> override to customise, e.g. <code>shouldValidate()</code>, <code>afterImport()</code>'],
+  ['<b>Template method</b>', '<code>public final</code>', 'Calls the steps in a fixed order']
+])}
+<p><b>The naive way:</b> <code>CsvImporter</code> and <code>JsonImporter</code> are two separate classes that each open the file, parse, validate, save and log. 80% of the code is copy-pasted. A bug fix in "save" (say, batching inserts) must be done in every copy; someone forgets one, and the JSON importer still inserts row by row. ${H.c('r', 'Duplicated skeleton = duplicated bugs.')}</p>
+<p><b>With Template Method:</b> the skeleton lives once in <code>DataImporter.importFile()</code>. Subclasses write only <code>parse()</code>. This is the <b>Hollywood Principle</b>: "Don't call us, we'll call you" — the base class calls the subclass's steps, not the other way round.</p>
+<p>You see it in the JDK and frameworks: <code>AbstractList</code> (implement <code>get</code> and <code>size</code>, get the whole List API), <code>InputStream.read(byte[])</code> built on the abstract <code>read()</code>, <code>HttpServlet.service()</code> dispatching to <code>doGet</code>/<code>doPost</code>, JUnit's <code>@BeforeEach</code> → test → <code>@AfterEach</code> lifecycle, Spring's <code>JdbcTemplate</code> (a callback-based cousin).</p>`,
+    clues: [
+      '"Several classes do <b>the same steps in the same order</b> but differ in one or two steps" → Template Method.',
+      '"Avoid duplicated code between CsvExporter and PdfExporter" / "common workflow, different formats".',
+      '"The order of steps must be <b>enforced</b>" (e.g. always authenticate before processing, always close resources) → <code>final</code> template method.',
+      '"Provide extension points / hooks for subclasses" → hook methods.',
+      'Machine-coding: data import/export pipelines, report generation, payment flow (validate → debit → notify), game turn loop, test framework lifecycle, build pipelines.',
+      'If they then say "but we need to switch the step <b>at runtime</b>" → prefer Strategy (composition) over Template Method (inheritance).'
+    ],
+    code: [{ lang: 'java', title: 'Data importer skeleton with abstract steps and hooks', code: `record Row(String name, int age) {}
+
+abstract class DataImporter {
+    // The TEMPLATE METHOD: final, so subclasses cannot change the order of steps.
+    public final int importFile(String fileName, String content) {
+        System.out.println("open " + fileName);              // fixed step
+        List<Row> rows = parse(content);                     // abstract step: must override
+        if (shouldValidate()) rows = validate(rows);         // hook decides whether to validate
+        save(rows);                                          // fixed step
+        afterImport(rows.size());                            // hook: empty by default
+        return rows.size();
+    }
+
+    protected abstract List<Row> parse(String content);      // every format is different
+
+    protected boolean shouldValidate() { return true; }      // hook with a sensible default
+    protected void afterImport(int count) { }                // hook: do nothing by default
+
+    private List<Row> validate(List<Row> rows) {             // shared rule, written once
+        List<Row> ok = new ArrayList<>();
+        for (Row r : rows) if (r.age() >= 0 && r.age() < 150 && !r.name().isBlank()) ok.add(r);
+        return ok;
+    }
+    private void save(List<Row> rows) {                      // shared, e.g. batched DB insert
+        System.out.println("saving " + rows.size() + " rows in one batch");
+    }
+}
+
+class CsvImporter extends DataImporter {
+    protected List<Row> parse(String content) {
+        List<Row> out = new ArrayList<>();
+        for (String line : content.split("\\n")) {
+            String[] p = line.split(",");
+            out.add(new Row(p[0].trim(), Integer.parseInt(p[1].trim())));
+        }
+        return out;
+    }
+}
+
+class TrustedFeedImporter extends DataImporter {             // already-clean partner feed
+    protected List<Row> parse(String content) {
+        List<Row> out = new ArrayList<>();
+        for (String part : content.split(";")) {
+            String[] kv = part.split("=");
+            out.add(new Row(kv[0], Integer.parseInt(kv[1])));
+        }
+        return out;
+    }
+    @Override protected boolean shouldValidate() { return false; }               // override hook
+    @Override protected void afterImport(int n) { System.out.println("ping partner: got " + n); }
+}
+
+class ImportDemo {
+    public static void main(String[] args) {
+        System.out.println(new CsvImporter().importFile("users.csv", "asha, 31\\nben, -4\\ncy, 22"));
+        System.out.println(new TrustedFeedImporter().importFile("feed.txt", "dee=40;eli=29"));
+    }
+}` }],
+    codeTitle: ['Template Method with hooks'],
+    viz: {
+      title: 'Template Method: who runs each step (base vs subclass)',
+      input: 'csv',
+      inputLabel: 'Importer: csv | json | trusted',
+      gen: function (input) {
+        var kind = pick(input, { csv: 'csv', json: 'json', trusted: 'trusted' }, 'Type csv, json or trusted');
+        var SUB = { csv: { id: 'CSV', cls: 'CsvImporter' }, json: { id: 'JSON', cls: 'JsonImporter' }, trusted: { id: 'TR', cls: 'TrustedFeedImporter' } }[kind];
+        var nodes = [B('BASE', 'DataImporter (abstract)', 50, 8), B('CSV', 'CsvImporter', 15, 40), B('JSON', 'JsonImporter', 50, 40), B('TR', 'TrustedFeedImporter', 85, 40), B('DB', 'Database', 50, 64)];
+        var edges = [['CSV', 'BASE', 'extends'], ['JSON', 'BASE', 'extends'], ['TR', 'BASE', 'extends'], ['BASE', 'DB', 'save()']];
+        var code = 'public final int importFile(String f, String c) {\n  open(f);                        // fixed\n  List<Row> rows = parse(c);      // abstract\n  if (shouldValidate())           // hook\n    rows = validate(rows);        // fixed\n  save(rows);                     // fixed\n  afterImport(rows.size());       // hook\n  return rows.size();\n}';
+        var rowsIn = { csv: ['asha,31', 'ben,-4', 'cy,22'], json: ['{"n":"dee","a":40}', '{"n":"","a":5}'], trusted: ['dee=40', 'eli=29'] }[kind];
+        var parsed = { csv: ['asha 31', 'ben -4', 'cy 22'], json: ['dee 40', '(blank) 5'], trusted: ['dee 40', 'eli 29'] }[kind];
+        var valid = { csv: ['asha 31', 'cy 22'], json: ['dee 40'], trusted: ['dee 40', 'eli 29'] }[kind];
+        var frames = [];
+        var sh = {}; sh[SUB.id] = 'sel';
+        frames.push(F('<b>Structure.</b> The abstract base owns the <b>skeleton</b> (<code>importFile</code>, marked <code>final</code>). Subclasses only fill blanks. We will run <b>' + SUB.cls + '</b>: watch which box runs each line.',
+          [G('Inheritance: subclasses extend the skeleton', nodes, edges, { h: 70, hl: (function () { var h = clone(sh); h.BASE = 'cur'; return h; })() }), CODE('Template method in DataImporter', code, { 1: 'sel' })]));
+        var step = function (line, who, narr, extra, cls) {
+          var h = {}; h[who] = cls || 'cur';
+          var c = {}; c[line] = cls || 'cur';
+          var e = {}; if (who === SUB.id) e[SUB.id + '-BASE'] = 'cur';
+          frames.push(F(narr, [G('Who runs this step?', nodes, edges, { h: 70, hl: h, ehl: e, tags: (function () { var t = {}; t[who] = 'running'; return t; })() }), CODE('Template method in DataImporter', code, c)].concat(extra || [])));
+        };
+        step(2, 'BASE', '<b>Fixed step</b> <code>open(f)</code> runs in the <b>base class</b>. No subclass can skip it or move it — the method is <code>final</code>.', [{ type: 'array', label: 'raw input lines', values: rowsIn }]);
+        step(3, SUB.id, '<b>Abstract step</b> <code>parse(c)</code>: the base calls it, but Java dispatches to <b>' + SUB.cls + '.parse()</b>. "Don\'t call us, we\'ll call you" — the parent calls the child.', [{ type: 'array', label: 'parsed rows', values: parsed }], 'ok');
+        var validates = kind !== 'trusted';
+        step(4, validates ? 'BASE' : SUB.id, '<b>Hook</b> <code>shouldValidate()</code>: ' + (validates ? 'not overridden, so the base default <code>true</code> is used.' : H.c('p', 'TrustedFeedImporter overrides it to return false') + ' — a hook lets a subclass switch a step off without touching the skeleton.'), [VARS('hook result', { shouldValidate: validates }, { shouldValidate: validates ? 'ok' : 'bad' })], validates ? 'cur' : 'sel');
+        if (validates) {
+          var hlv = {}; parsed.forEach(function (p, i) { hlv[i] = valid.indexOf(p) >= 0 ? 'g' : 'r'; });
+          step(5, 'BASE', '<b>Shared rule</b> <code>validate(rows)</code> runs in the base: bad rows (negative age, blank name) are dropped. Written <b>once</b> for every importer — fix it here and all formats get the fix.', [{ type: 'array', label: 'after validation (red = dropped)', values: parsed, hl: (function () { var h = {}; parsed.forEach(function (p, i) { h[i] = valid.indexOf(p) >= 0 ? 'ok' : 'bad'; }); return h; })() }]);
+        } else {
+          step(5, 'BASE', 'Validation is <b>skipped</b> because the hook returned false. Line 5 never runs for this subclass.', [{ type: 'array', label: 'rows (unvalidated)', values: parsed }], 'done');
+        }
+        var hs = { BASE: 'cur', DB: 'ok' };
+        frames.push(F('<b>Fixed step</b> <code>save(rows)</code>: the base does one batched insert of ' + valid.length + ' rows. If tomorrow we switch to bulk COPY, we change one method and every importer benefits.',
+          [G('Who runs this step?', nodes, edges, { h: 70, hl: hs, ehl: { 'BASE-DB': 'ok' } }), CODE('Template method in DataImporter', code, { 6: 'cur' }), { type: 'array', label: 'saved', values: valid }]));
+        step(7, kind === 'trusted' ? SUB.id : 'BASE', '<b>Hook</b> <code>afterImport(n)</code>: ' + (kind === 'trusted' ? 'overridden — TrustedFeedImporter pings the partner with the count.' : 'not overridden, so the empty default does nothing.'), [VARS('result', { imported: valid.length })], kind === 'trusted' ? 'sel' : 'done');
+        frames.push(F('Done: <b>' + valid.length + '</b> rows imported. The subclass wrote only <code>parse()</code>' + (kind === 'trusted' ? ' and two tiny hook overrides' : '') + '. The order open → parse → validate → save → afterImport was guaranteed by the base. ' + H.c('g', 'No duplicated skeleton.'),
+          [G('Summary', nodes, edges, { h: 70, hl: (function () { var h = { BASE: 'sel' }; h[SUB.id] = 'ok'; return h; })() }), { type: 'table', label: 'Step ownership', columns: ['Step', 'Kind', 'Runs in'], rows: [['open', 'fixed', 'base'], ['parse', 'abstract', SUB.cls], ['shouldValidate', 'hook', validates ? 'base default' : SUB.cls], ['validate', 'fixed', validates ? 'base' : 'skipped'], ['save', 'fixed', 'base'], ['afterImport', 'hook', kind === 'trusted' ? SUB.cls : 'base (empty)']], hl: { 1: 'sel' } }]));
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'Tea vs Coffee (the classic)', html: `<p><code>prepareRecipe()</code> = boilWater → <b>brew()</b> → pourInCup → <b>addCondiments()</b> if <code>customerWantsCondiments()</code>. Tea brews by steeping, coffee by dripping; a "black coffee" subclass overrides the hook to return false. Two abstract steps, one hook, one fixed order.</p>`, code: `abstract class Beverage {
+    final void prepare() { boil(); brew(); pour(); if (wantsExtras()) addExtras(); }
+    private void boil() { System.out.println("boil water"); }
+    private void pour() { System.out.println("pour into cup"); }
+    protected abstract void brew();
+    protected abstract void addExtras();
+    protected boolean wantsExtras() { return true; }      // hook
+}
+class Tea extends Beverage {
+    protected void brew() { System.out.println("steep tea bag"); }
+    protected void addExtras() { System.out.println("add lemon"); }
+}
+class BlackCoffee extends Beverage {
+    protected void brew() { System.out.println("drip coffee"); }
+    protected void addExtras() { System.out.println("add milk"); }
+    @Override protected boolean wantsExtras() { return false; }
+}` },
+      { title: 'AbstractList: write 2 methods, get 30', html: `<p>Extend <code>AbstractList&lt;E&gt;</code> and implement only <code>get(int)</code> and <code>size()</code>. You instantly get <code>iterator()</code>, <code>contains()</code>, <code>indexOf()</code>, <code>equals()</code>, <code>hashCode()</code>, <code>subList()</code>, streams… all template methods in the base calling your two primitives.</p>`, code: `List<Integer> squares = new AbstractList<Integer>() {
+    public Integer get(int i) { return i * i; }
+    public int size() { return 5; }
+};
+System.out.println(squares + " contains 9? " + squares.contains(9));` },
+      { title: 'HttpServlet.service()', html: `<p>The servlet container calls <code>service(req, res)</code> (template method). It reads the HTTP method and calls <code>doGet</code>, <code>doPost</code>, <code>doPut</code>… which you override. Default implementations return 405 Method Not Allowed — they are hooks with a safe default.</p>` },
+      { title: 'Template Method vs Strategy for the same problem', html: `<p>The importer could instead be <code>Importer(Parser parser)</code> with a <code>Parser</code> strategy. Pick <b>Template Method</b> when the steps share lots of protected state with the skeleton and the variation is fixed per class. Pick <b>Strategy</b> when you need to mix and match at runtime (CSV parser + no validation + S3 saver), when steps are reusable elsewhere, or when you want to avoid deep inheritance. Many teams start with Template Method and refactor to strategies as combinations multiply.</p>` }
+    ],
+    deepDive: `<p><b>Make the template method <code>final</code></b>, otherwise a subclass can override it and silently skip validation or resource cleanup — the whole guarantee disappears. Make fixed steps <code>private</code> (or <code>final</code>), primitives <code>protected abstract</code>, and hooks <code>protected</code> with safe defaults.</p>
+<p><b>Fragile base class problem:</b> subclasses depend on <i>when</i> and <i>how often</i> the base calls their steps. Changing the skeleton (e.g. calling <code>parse()</code> twice, or calling a hook before fields are initialised) can break subclasses you never saw. Never call overridable methods from a constructor: the subclass's fields are not initialised yet.</p>
+<p><b>Inheritance limits:</b> Java has single inheritance; a class that already extends something cannot also extend your template. Combinatorial variation (3 formats × 2 validation modes × 2 destinations) explodes into 12 subclasses — the signal to switch to Strategy/composition. A functional middle ground: a template method that accepts lambdas for steps (<code>importFile(content, parser, afterHook)</code>), like Spring's <code>JdbcTemplate</code> + <code>RowMapper</code> callback.</p>
+<p><b>Liskov:</b> a subclass must respect the contract of each step (e.g. <code>parse</code> returns a non-null list). Document step contracts on the abstract methods. <b>Testing:</b> test the skeleton once with a tiny test subclass that records which steps were called in which order; test each subclass's steps directly.</p>`,
+    aiEra: `<p><b>What AI changes:</b> AI often generates near-duplicate classes ("write a JSON importer like this CSV importer") — fast, but you end up with copy-pasted skeletons. Ask instead: "Extract the shared workflow into an abstract base with a final template method; keep only parse() in subclasses." AI is good at this mechanical refactor and at finding duplicated sequences across files.</p>
+<p><b>In LLM pipelines</b> the template is everywhere: <i>build prompt → call model → parse output → validate → retry on failure → log</i>. Base "chain" classes in agent frameworks fix this skeleton and let you override <code>buildPrompt</code> and <code>parse</code>. Validation and retry policy must stay in the fixed part so nobody skips them.</p>
+<p><b>Where AI goes wrong:</b> forgets <code>final</code>, calls abstract methods from constructors, or creates a template for two classes that share one line. <b>What you own:</b> deciding inheritance vs composition and protecting invariants in the skeleton.</p>`,
+    problems: [{
+      title: 'Report Exporter: CSV, HTML and Markdown', level: 'Easy', tags: ['template method', 'dry'], companies: ['Microsoft', 'Salesforce', 'Zoho'],
+      statement: `<p>Export a list of <code>Sale(region, amount)</code> as text in three formats. Every export must: (1) write a header, (2) write one line per sale <b>sorted by amount descending</b>, (3) write a footer with the total, and (4) <b>escape</b> special characters in region names. CSV, HTML table and Markdown table differ only in how header, row and footer look. Make the shared workflow impossible to skip.</p>`,
+      constraints: `Up to 10<sup>5</sup> sales. Amounts are non-negative longs. Region names may contain commas, &lt; or |.`,
+      example: `<p>Sales: (North, 300), (South, 500). CSV output:<br><code>region,amount</code><br><code>South,500</code><br><code>North,300</code><br><code>TOTAL,800</code><br>Sorted descending, total in the footer — the same <b>order of steps</b> for every format; only the formatting differs.</p>`,
+      brute: { why: `<p>Three independent classes each copy the sort, the loop, the total computation and the escaping. A bug in sorting (e.g. ascending) is fixed in CSV but forgotten in HTML; the Markdown version forgets escaping entirely. The skeleton exists three times.</p>`, code: `class NaiveCsvExport {
+    String export(List<long[]> rows, List<String> regions) {
+        StringBuilder sb = new StringBuilder("region,amount\\n");
+        long total = 0;
+        for (int i = 0; i < rows.size(); i++) {       // forgot to sort!
+            sb.append(regions.get(i)).append(',').append(rows.get(i)[0]).append('\\n');
+            total += rows.get(i)[0];
+        }
+        return sb.append("TOTAL,").append(total).toString();
+    }
+}
+// NaiveHtmlExport and NaiveMarkdownExport: the same loop pasted twice more, with different bugs.` },
+      mcq: { q: 'Which method of the base exporter should be declared final?', options: ['export() — the template method that fixes the order of steps', 'row() — the formatting of a line', 'escape() — every format escapes differently', 'None; final is bad practice'], answer: 0, explain: 'The template method must be final so subclasses cannot reorder or skip sorting, totals or escaping. Format-specific pieces are the overridable steps.' },
+      hints: [`<p>Hint 1: Write down the steps every format performs. What differs? Only header text, row text, footer text and the escape rule.</p>`, `<p>Hint 2: Abstract class <code>ReportExporter</code> with <code>public final String export(List&lt;Sale&gt;)</code> and protected abstract <code>header()</code>, <code>row(region, amount)</code>, <code>footer(total)</code>, plus a hook <code>escape(String)</code>.</p>`, `<p>Hint 3: Sort a <b>copy</b> (don't mutate the caller's list). Recipe: copy+sort → header → for each: row(escape(region), amount) → footer(total). CSV escape quotes fields containing commas; HTML escapes &amp;lt;; Markdown escapes |.</p>`],
+      solution: {
+        approach: `<p>Put the workflow (copy, sort descending, header, escaped rows, total footer) in a <code>final export()</code> method of an abstract base. Subclasses implement three tiny formatting steps and override the <code>escape</code> hook. Every format now gets sorting, totals and escaping for free and cannot skip them. Adding JSON export = one class with three short methods.</p>`,
+        code: `record Sale(String region, long amount) {}
+
+abstract class ReportExporter {
+    public final String export(List<Sale> sales) {
+        List<Sale> sorted = new ArrayList<>(sales);                       // never mutate input
+        sorted.sort(Comparator.comparingLong(Sale::amount).reversed());   // shared rule
+        StringBuilder sb = new StringBuilder(header());
+        long total = 0;
+        for (Sale s : sorted) {
+            sb.append(row(escape(s.region()), s.amount()));
+            total += s.amount();
+        }
+        return sb.append(footer(total)).toString();
+    }
+    protected abstract String header();
+    protected abstract String row(String region, long amount);
+    protected abstract String footer(long total);
+    protected String escape(String s) { return s; }                      // hook
+}
+
+class CsvExporter extends ReportExporter {
+    protected String header() { return "region,amount\\n"; }
+    protected String row(String r, long a) { return r + "," + a + "\\n"; }
+    protected String footer(long t) { return "TOTAL," + t + "\\n"; }
+    @Override protected String escape(String s) {
+        return s.contains(",") || s.contains("\\"") ? "\\"" + s.replace("\\"", "\\"\\"") + "\\"" : s;
+    }
+}
+class HtmlExporter extends ReportExporter {
+    protected String header() { return "<table><tr><th>region</th><th>amount</th></tr>\\n"; }
+    protected String row(String r, long a) { return "<tr><td>" + r + "</td><td>" + a + "</td></tr>\\n"; }
+    protected String footer(long t) { return "<tr><td>TOTAL</td><td>" + t + "</td></tr></table>\\n"; }
+    @Override protected String escape(String s) { return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"); }
+}
+class MarkdownExporter extends ReportExporter {
+    protected String header() { return "| region | amount |\\n|---|---|\\n"; }
+    protected String row(String r, long a) { return "| " + r + " | " + a + " |\\n"; }
+    protected String footer(long t) { return "| **TOTAL** | " + t + " |\\n"; }
+    @Override protected String escape(String s) { return s.replace("|", "\\\\|"); }
+}
+
+class ExportDemo {
+    public static void main(String[] args) {
+        List<Sale> sales = List.of(new Sale("North", 300), new Sale("South, East", 500), new Sale("A<B|C", 50));
+        for (ReportExporter e : List.of(new CsvExporter(), new HtmlExporter(), new MarkdownExporter()))
+            System.out.println(e.export(sales));
+    }
+}`,
+        complexity: `<p>O(N log N) for the sort, O(N) for writing. The skeleton exists once; each format is ~4 short methods.</p>`,
+        followUps: ['Stream 10<sup>8</sup> rows without holding them in memory — what changes in the template? (write to a Writer, require pre-sorted input or external sort)', 'Allow mixing any format with any sort order at runtime — would you keep Template Method?', 'How would you test that every subclass gets sorting for free?']
+      }
+    }]
+  });
+
   registerModule({
     id: 'lld06',
     title: 'Behavioral Design Patterns',

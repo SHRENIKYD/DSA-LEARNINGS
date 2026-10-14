@@ -1313,6 +1313,456 @@ ORDER BY rows_in_partition DESC;   -- the partition-size report you would monito
       }
     }]
   });
+
+  /* =====================================================================
+     TOPIC 5 — CAP, PACELC & consistency models in practice
+     ===================================================================== */
+  topics.push({
+    title: 'CAP and PACELC in Practice (plus the Consistency Models Ladder)',
+    analogy: `<p>Two bank branches share one ledger by phone. A storm cuts the phone line (a <b>partition</b>). A customer at the small branch wants to withdraw. The branch can <b>refuse</b> ("sorry, systems down" — consistent but not available) or <b>pay out</b> and hope the other branch did not also pay the same money ("available" but possibly inconsistent). That is <b>CAP</b>. Even on sunny days, phoning the other branch before every answer makes customers wait — <b>PACELC</b> adds that everyday trade-off: <b>latency vs consistency</b>.</p>`,
+    explain: `<p><b>CAP theorem</b> (Brewer, proved by Gilbert &amp; Lynch): in a system replicated over a network, when a <b>network partition</b> (P) happens — some nodes cannot talk to others — every operation must choose between:</p>
+<ul><li><b>C — Consistency</b> (specifically <i>linearizability</i>): every read sees the latest completed write, as if there were one copy.</li>
+<li><b>A — Availability</b>: every request to a non-failed node gets a non-error answer.</li></ul>
+<p>Partitions are not optional in real networks, so "CA systems" do not exist once you have more than one machine. The real meaning: <b>during a partition, do you refuse some requests (CP) or answer with possibly stale/conflicting data (AP)?</b> Outside partitions you can have both.</p>
+${H.table(['Behaviour in a partition', 'Examples (typical config)', 'User sees'], [
+  ['<b>CP</b>: minority side refuses', 'etcd, ZooKeeper, Consul, Spanner, CockroachDB, MongoDB w/ majority, HBase', 'errors/timeouts on the cut-off side, never wrong data'],
+  ['<b>AP</b>: every side keeps answering', 'Cassandra/Scylla at ONE, DynamoDB eventually-consistent reads, CouchDB, Riak, DNS', 'always an answer, maybe stale; conflicts merged later']
+])}
+<p><b>PACELC</b> (Daniel Abadi) completes the picture: <b>if P</b>artition → choose <b>A</b> or <b>C</b>; <b>E</b>lse (normal operation) → choose <b>L</b>atency or <b>C</b>onsistency. Waiting for remote replicas before answering costs round trips even when nothing is broken.</p>
+${H.table(['System (default-ish)', 'PACELC', 'Why'], [
+  ['Cassandra, ScyllaDB, Riak, Dynamo', 'PA / EL', 'answers from any replica, low latency; consistency tunable per query'],
+  ['DynamoDB', 'PA / EL (EC with strongly consistent reads)', 'default reads are eventually consistent; strong reads cost 2× and go to the leader'],
+  ['MongoDB', 'PA / EC (configurable)', 'reads from primary by default; with majority concerns it behaves CP'],
+  ['Spanner, CockroachDB, etcd, ZooKeeper', 'PC / EC', 'consensus on every write; reads served by leaders/leaseholders'],
+  ['Async-replicated Postgres/MySQL', 'PA-ish / EL for replica reads', 'replicas answer stale; leader failover may lose writes']
+])}
+<p><b>Consistency is a ladder, not a switch.</b> From strongest to weakest:</p>
+${H.table(['Model', 'Plain meaning', 'Example promise'], [
+  ['<b>Linearizable</b> (strong)', 'behaves like one copy; once a write finishes, everyone sees it', 'a username is either taken or not, for everyone'],
+  ['<b>Sequential</b>', 'everyone sees the same order of operations, maybe lagging', 'all replicas apply the same log'],
+  ['<b>Causal</b>', 'if B depends on A, everyone sees A before B; unrelated writes may differ', 'never see a reply before its question'],
+  ['<b>Session guarantees</b>', 'read-your-writes, monotonic reads, writes-follow-reads for one user', 'my edits never vanish for me'],
+  ['<b>Eventual</b>', 'if writes stop, replicas converge… eventually', 'like counts, view counts, DNS']
+])}
+<p>Strong consistency costs <b>latency</b> (coordination) and <b>availability</b> (during partitions). The skill is choosing <b>per feature</b>: payments and inventory decrements need linearizable operations; a "likes" counter is fine eventually; profile edits need read-your-writes.</p>`,
+    clues: [
+      '"must stay up even if a datacenter is cut off" → AP; ask what anomalies are acceptable',
+      '"never sell the same seat twice" / "no double spend" → CP (consensus or single leader) for that operation',
+      '"what happens during a network partition?" → explain CAP choice per operation, not per product',
+      '"low latency globally AND strong consistency" → PACELC: you pay latency (Spanner) or relax consistency',
+      '"likes / views / counters" → eventual consistency + CRDT counters',
+      '"after I post, I must see my post" → session guarantee (read-your-writes), not full linearizability'
+    ],
+    code: [
+      { lang: 'sql', title: 'PACELC cheat sheet as a queryable table (runnable)', code: `CREATE TABLE systems (
+  name        TEXT PRIMARY KEY,
+  on_partition TEXT CHECK (on_partition IN ('A', 'C')),   -- P → A or C
+  else_choice  TEXT CHECK (else_choice  IN ('L', 'C')),   -- E → L or C
+  note        TEXT
+);
+INSERT INTO systems VALUES
+  ('Cassandra (CL=ONE)',        'A', 'L', 'tunable: QUORUM reads+writes give strong reads'),
+  ('DynamoDB (default reads)',  'A', 'L', 'ConsistentRead=true → leader read, 2x cost'),
+  ('MongoDB (majority)',        'C', 'C', 'primary reads, writeConcern majority'),
+  ('Spanner',                   'C', 'C', 'Paxos + TrueTime commit wait'),
+  ('CockroachDB',               'C', 'C', 'Raft per range, serializable'),
+  ('etcd / ZooKeeper',          'C', 'C', 'consensus for metadata, leader election'),
+  ('Postgres async replica reads', 'A', 'L', 'stale reads possible, lag-dependent');
+
+-- Which systems keep answering on the cut-off side of a partition?
+SELECT name, 'P' || on_partition || '/E' || else_choice AS pacelc, note
+FROM systems
+WHERE on_partition = 'A'
+ORDER BY name;` },
+      { lang: 'python', run: true, title: 'Partition simulator: CP majority rule vs AP accept-everything (runnable)', code: `# 3 replicas: n1, n2 in East, n3 in West. The link East <-> West is cut.
+# CP rule: a write/read succeeds only if the contacted node can reach a MAJORITY (2 of 3).
+# AP rule: any live node answers with whatever it has.
+
+sides = {"n1": "east", "n2": "east", "n3": "west"}
+store = {n: 1 for n in sides}          # x = 1 everywhere before the partition
+accepted = []                          # (side, value) of every write that succeeded
+
+
+def reachable(node):
+    return [m for m in sides if sides[m] == sides[node]]   # partition: only same side
+
+
+def write(mode, node, value):
+    peers = reachable(node)
+    if mode == "CP" and len(peers) < 2:
+        return f"{node}: write x={value} REJECTED (no majority, {len(peers)}/3)"
+    for p in peers:
+        store[p] = value
+    accepted.append((sides[node], value))
+    return f"{node}: write x={value} OK on {peers}"
+
+
+def read(mode, node):
+    if mode == "CP" and len(reachable(node)) < 2:
+        return f"{node}: read REJECTED (cannot prove it is up to date)"
+    return f"{node}: read x={store[node]}"
+
+
+for mode in ("CP", "AP"):
+    for n in sides:
+        store[n] = 1
+    accepted.clear()
+    print(f"--- {mode} ---")
+    print(write(mode, "n3", 2))        # West client, minority side
+    print(write(mode, "n1", 3))        # East client, majority side
+    print(read(mode, "n3"))
+    print(read(mode, "n1"))
+    conflict = len({side for side, _ in accepted}) > 1
+    print("replicas:", dict(store))
+    print("conflict after healing:", conflict, "" if conflict else "(n3 is only behind; it just catches up)")
+` }
+    ],
+    codeTitle: ['PACELC table', 'CP vs AP simulation'],
+    viz: {
+      title: 'A network partition: CP refuses, AP diverges',
+      input: 'AP',
+      inputLabel: 'CP or AP',
+      gen: function (input) {
+        var mode = String(input || '').trim().toUpperCase();
+        if (mode !== 'CP' && mode !== 'AP') throw new Error('Type CP or AP');
+        var nodes = [
+          { id: 'C1', label: 'Client East', x: 8, y: 14, shape: 'box' }, { id: 'N1', label: 'n1 (East)', x: 36, y: 8, shape: 'box' }, { id: 'N2', label: 'n2 (East)', x: 36, y: 34, shape: 'box' },
+          { id: 'N3', label: 'n3 (West)', x: 76, y: 20, shape: 'box' }, { id: 'C2', label: 'Client West', x: 94, y: 48, shape: 'box' }
+        ];
+        var edges = [['C1', 'N1'], ['N1', 'N2', 'repl'], ['N1', 'N3', 'repl'], ['N2', 'N3', 'repl'], ['C2', 'N3']];
+        var cut = { 'N1-N3': 'bad', 'N2-N3': 'bad' };
+        var x = { N1: 1, N2: 1, N3: 1 }, frames = [];
+        function tg() { return { N1: 'x=' + x.N1, N2: 'x=' + x.N2, N3: 'x=' + x.N3 }; }
+        function g(hl, eh) { return { type: 'graph', directed: false, height: 56, nodes: nodes, edges: edges, hl: hl || {}, ehl: eh || {}, tags: tg() }; }
+        frames.push({ narr: 'Three replicas of x across two datacenters, all holding <b>x = 1</b>. Mode: <b>' + mode + '</b>. Writes normally replicate to everyone.', parts: [g({}, { 'N1-N2': 'ok', 'N1-N3': 'ok', 'N2-N3': 'ok' })] });
+        frames.push({ narr: '<span class="c-r">Partition!</span> The East↔West link is cut. n1 and n2 (2 of 3 = a majority) can still talk. n3 is alone. Nothing has crashed — the nodes simply cannot hear each other.', parts: [g({ N3: 'cur' }, cut)] });
+        if (mode === 'CP') {
+          frames.push({ narr: 'West client writes <b>x = 2</b> to n3. n3 cannot reach a majority, so it <span class="c-r">rejects the write</span> (error or timeout). Unavailable for this client — but nothing inconsistent was accepted.', parts: [g({ N3: 'bad', C2: 'bad' }, Object.assign({ 'C2-N3': 'bad' }, cut)), { type: 'vars', label: 'West client', vals: { request: 'write x=2', result: 'ERROR: no quorum' }, hl: { result: 'bad' } }] });
+          x.N1 = 3; x.N2 = 3;
+          frames.push({ narr: 'East client writes <b>x = 3</b>. n1 reaches n2: majority (2/3) → <span class="c-g">committed</span>. The majority side keeps working normally.', parts: [g({ N1: 'ok', N2: 'ok' }, Object.assign({ 'C1-N1': 'ok', 'N1-N2': 'ok' }, cut))] });
+          frames.push({ narr: 'West client reads x from n3. n3 holds x = 1 but cannot confirm it is current, so a linearizable read is <span class="c-r">refused</span> too. (Some systems allow an explicitly "stale OK" read here — that is choosing A for that one query.)', parts: [g({ N3: 'bad' }, Object.assign({ 'C2-N3': 'bad' }, cut)), { type: 'vars', label: 'West client', vals: { request: 'read x', result: 'ERROR (would be stale: 1 vs 3)' }, hl: { result: 'bad' } }] });
+          x.N3 = 3;
+          frames.push({ narr: 'Partition heals. n3 catches up from the log to <b>x = 3</b>. No conflicts to resolve, ever — the price was downtime for West during the partition.', parts: [g({ N3: 'ok' }, { 'N1-N3': 'ok', 'N2-N3': 'ok' })] });
+        } else {
+          x.N3 = 2;
+          frames.push({ narr: 'West client writes <b>x = 2</b> to n3. AP: n3 <span class="c-g">accepts</span> it locally and promises to sync later. Available — but East does not know.', parts: [g({ N3: 'ok' }, Object.assign({ 'C2-N3': 'ok' }, cut))] });
+          x.N1 = 3; x.N2 = 3;
+          frames.push({ narr: 'East client writes <b>x = 3</b> to n1 → accepted on n1 and n2. Now the replicas <span class="c-r">disagree</span>: East says 3, West says 2.', parts: [g({ N1: 'ok', N2: 'ok', N3: 'bad' }, Object.assign({ 'C1-N1': 'ok', 'N1-N2': 'ok' }, cut))] });
+          frames.push({ narr: 'West client reads x → gets <b>2</b>. An East client reading at the same moment gets <b>3</b>. Two users see different "truths": not linearizable.', parts: [g({ N3: 'bad', N1: 'cur' }, Object.assign({ 'C2-N3': 'cur', 'C1-N1': 'cur' }, cut)), { type: 'table', label: 'Concurrent reads', columns: ['client', 'node', 'x'], rows: [['East', 'n1', 3], ['West', 'n3', 2]], hl: { 1: 'bad' } }] });
+          x.N3 = 3;
+          frames.push({ narr: 'Partition heals. Replicas exchange data and find a <b>conflict</b> (2 vs 3). With last-write-wins (by timestamp) x = 3 survives and the West write is <span class="c-r">silently lost</span>; with version vectors both are kept as siblings for the app to merge; with a CRDT they merge automatically.', parts: [g({ N3: 'sel' }, { 'N1-N3': 'ok', 'N2-N3': 'ok' }), { type: 'table', label: 'Conflict resolution', columns: ['strategy', 'result'], rows: [['LWW', 'x = 3, West write lost'], ['siblings', 'x = {2, 3} → app decides'], ['CRDT (e.g. max-register / counter)', 'deterministic merge']], hl: { 0: 'bad', 1: 'sel', 2: 'ok' } }] });
+        }
+        frames.push({ narr: '<b>PACELC — the "Else" part.</b> No partition now. To give strong reads, every write must reach a majority, including across the ocean: ~80 ms. Accepting a local write and replicating asynchronously: ~2 ms. That everyday latency cost is why many systems choose <b>EL</b> by default.', parts: [
+          { type: 'bars', label: 'write latency (ms)', values: [80, 2], idxLabels: ['EC: wait for remote majority', 'EL: local ack, async replicate'], hl: { 0: 'cur', 1: 'ok' } },
+          { type: 'table', label: 'PACELC', columns: ['system', 'if Partition', 'Else'], rows: [['Cassandra / Dynamo', 'A', 'L'], ['Spanner / CockroachDB', 'C', 'C'], ['MongoDB (majority)', 'C', 'C'], ['DynamoDB default reads', 'A', 'L']], hl: mode === 'CP' ? { 1: 'sel' } : { 0: 'sel' } }
+        ] });
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'Same database, CP or AP per query', html: `<p>Cassandra with replication factor 3 in one DC, partition splits nodes 2 | 1. A client on the 1-node side using <code>CONSISTENCY QUORUM</code> gets <span class="c-r">Unavailable</span> errors (CP behaviour); the same client using <code>CONSISTENCY ONE</code> succeeds with possibly stale data (AP behaviour). CAP describes <b>operations</b>, not product logos.</p>` },
+      { title: 'DynamoDB read cost of consistency', html: `<p>An eventually consistent read of an item up to 4 KB costs <b>0.5</b> read capacity units; a strongly consistent read costs <b>1</b>, must go to the partition's leader, and is not offered on global secondary indexes. PACELC in a price list: consistency costs latency and money.</p>`, code: { lang: 'json', code: `{
+  "TableName": "Carts",
+  "Key": { "PK": { "S": "USER#9" }, "SK": { "S": "CART" } },
+  "ConsistentRead": true
+}` } },
+      { title: 'Which consistency model does a feature need?', html: `${H.table(['Feature', 'Minimum model', 'Why'], [['username uniqueness', 'linearizable', 'two people must never both get "asha"'], ['bank transfer', 'serializable transaction', 'invariants across rows'], ['comment threads', 'causal', 'reply must not appear before the comment'], ['my profile edit', 'read-your-writes', 'only the author must see it immediately'], ['view counter', 'eventual', 'off by a few for a second is fine']])}<p>Strong where it matters, cheap everywhere else.</p>` },
+      { title: 'Query the PACELC cheat sheet', html: `<p>Using the reference table, list systems that stay consistent during partitions <i>and</i> pay latency normally (PC/EC). This makes a handy revision tool before interviews.</p>`, code: { lang: 'sql', code: `CREATE TABLE s (name TEXT, p TEXT, e TEXT);
+INSERT INTO s VALUES ('Cassandra','A','L'), ('Spanner','C','C'), ('CockroachDB','C','C'), ('DynamoDB','A','L'), ('etcd','C','C');
+SELECT name FROM s WHERE p = 'C' AND e = 'C' ORDER BY name;` } }
+    ],
+    deepDive: `<p><b>Precise CAP.</b> Gilbert &amp; Lynch's proof is short: split nodes into G1 and G2 with all messages between them lost. Write v1 in G1; if the system is available, G1 must acknowledge. Read from G2; if available, G2 must answer, but it never heard of v1, so it returns the old value — not linearizable. Note how narrow the definitions are: "A" means <i>every</i> non-failed node answers, which even Spanner does not promise; "C" is linearizability, not the C of ACID (which means invariants/constraints hold). Kleppmann's critique: CAP is too coarse to classify real systems; talk about which consistency model and which failure scenarios instead.</p>
+<p><b>Is Spanner CA?</b> Google described Spanner as "effectively CA": technically CP, but partitions are so rare on Google's private network (and handled by failing over the minority) that availability exceeds five nines. That is engineering, not a loophole.</p>
+<p><b>Latency is the everyday cost.</b> Linearizable writes need at least one round trip to a majority; linearizable reads need either a leader lease (the leader knows nobody else can be leader until the lease expires — needs bounded clock drift) or a quorum round (Raft "ReadIndex"). Cross-region majority writes add 50-200 ms. Systems therefore offer escape hatches: follower reads at a slightly old timestamp (CockroachDB <code>AS OF SYSTEM TIME follower_read_timestamp()</code>, Spanner stale reads), bounded staleness (Cosmos DB), session tokens.</p>
+<p><b>Cosmos DB's five levels</b> are a great real-world ladder: strong, bounded staleness, session (default), consistent prefix, eventual. Jepsen tests (Kyle Kingsbury) have repeatedly shown databases violating their own claimed level under partitions — read the reports for the systems you use, and remember that a "CP" configuration can lose acknowledged writes if fsync or election logic is buggy.</p>
+<p><b>Harvest and yield</b> (Fox &amp; Brewer) is a practical alternative view: under failure, answer with partial data (lower harvest, e.g. search results from 9 of 10 shards) rather than failing the request (lower yield).</p>`,
+    aiEra: `<p><b>What AI changes:</b> AI features mostly tolerate eventual consistency (a recommendation computed from data 30 s old is fine), which pushes more data paths toward AP/EL stores and CDC pipelines. But <b>agents that take actions</b> (book, pay, cancel) need CP-style guarantees: an agent retrying a "transfer" call during a partition must hit idempotency keys and linearizable checks, or it double-executes.</p>
+<p><b>Use AI as a partner:</b> describe your features and ask <code>"For each feature, state the weakest consistency model that is still correct and the failure scenario that breaks a weaker one."</code> It is excellent at generating counter-example interleavings you can verify.</p>
+<p><b>Where AI goes wrong:</b> "pick two of three", "MongoDB is CA", "Cassandra is always AP" and confusing CAP-consistency with ACID-consistency are common in generated answers. <b>What you must own:</b> precise definitions, per-operation reasoning, and the latency budget that PACELC implies for your geography.</p>`,
+    problems: [{
+      title: 'Pick a Consistency Level per Feature',
+      level: 'Medium', tags: ['CAP', 'PACELC', 'consistency'], companies: ['Amazon', 'Booking.com', 'Flipkart'],
+      statement: `<p>An e-commerce site runs on a multi-region store whose operations can be tuned per request (strong/leader, quorum, local quorum, eventual, session). For each feature choose the <b>weakest</b> level that is still correct, and say what goes wrong one level lower: (a) product page view counter, (b) stock decrement at checkout, (c) "my cart" after adding an item, (d) product reviews list, (e) coupon "one use per customer". Express the answer as a JSON config.</p>`,
+      constraints: `3 regions. Cross-region round trip ≈ 80-150 ms; in-region ≈ 1-2 ms. Checkout must never oversell; browsing must stay up during a region partition.`,
+      example: `<p>(a) view counter → ${H.c('g', 'eventual')} — a few lost or late increments are invisible. (b) stock decrement → ${H.c('r', 'strong (linearizable, conditional write)')} — with eventual, two regions could both sell the last unit.</p>`,
+      brute: { why: `<p>Make everything <b>strong</b> with global quorum. Correct, but every page view pays ~100 ms of cross-region latency and browsing goes down whenever a region is partitioned — violating the "browsing must stay up" requirement.</p>`, code: { lang: 'json', code: `{
+  "default": { "consistency": "STRONG_GLOBAL_QUORUM" },
+  "note": "safe but slow; any region partition blocks reads and writes everywhere"
+}` } },
+      mcq: { q: 'Which feature MOST needs a linearizable (CP) operation?', options: ['Counting product page views', 'Showing reviews sorted by date', 'Redeeming a one-time coupon code', 'Showing the user their recently viewed items'], answer: 2, explain: 'One-time redemption is a uniqueness invariant: two concurrent redemptions in different regions must not both succeed, which requires a linearizable conditional write (or a single owner region).' },
+      hints: [
+        `<p>Hint 1: Ask for each feature: "what is the worst thing a stale or conflicting value causes?" Money/inventory/uniqueness → strong. Cosmetic → eventual.</p>`,
+        `<p>Hint 2: Many user-facing features only need <b>session</b> guarantees (read-your-writes): only the author must see their change immediately.</p>`,
+        `<p>Hint 3: For strong writes, prefer a <b>conditional</b> write (<code>stock &gt;= 1</code>, <code>IF NOT EXISTS</code>) executed at the record's home region/leader, so you pay cross-region latency only on checkout, not browsing.</p>`
+      ],
+      solution: {
+        approach: `<p>(a) <b>eventual</b> + CRDT/aggregated counters — staleness harmless. (b) <b>strong</b> conditional decrement at the item's home leader (or Paxos/LWT) — eventual oversells. (c) <b>session</b> (read-your-writes) — eventual would make the just-added item vanish on refresh. (d) <b>eventual / consistent prefix</b> — a new review appearing a second late is fine, but causal order of replies is nice-to-have. (e) <b>strong</b> with <code>INSERT ... IF NOT EXISTS</code> on (coupon, customer) — anything weaker allows double redemption in two regions. Result: only 2 of 5 features pay cross-region latency, and only at checkout time; browsing stays available (AP) during partitions.</p>`,
+        code: { lang: 'json', code: `{
+  "view_counter":       { "consistency": "EVENTUAL",       "write": "local async, CRDT G-Counter",            "if_weaker": "n/a (already weakest)" },
+  "stock_decrement":    { "consistency": "STRONG",         "write": "conditional: stock >= qty at home leader", "if_weaker": "two regions sell the last unit (oversell)" },
+  "my_cart":            { "consistency": "SESSION",        "read": "read-your-writes via session token",       "if_weaker": "item vanishes after refresh" },
+  "reviews_list":       { "consistency": "CONSISTENT_PREFIX", "read": "local replica",                          "if_weaker": "reply shown before the review it answers" },
+  "coupon_one_use":     { "consistency": "STRONG",         "write": "INSERT IF NOT EXISTS (coupon_id, customer_id)", "if_weaker": "same coupon redeemed twice concurrently" }
+}` },
+        complexity: `<p>Latency: strong ops ≈ 1 cross-region RTT (80-150 ms) on checkout only; everything else ≈ 1-2 ms local. Availability: browsing and carts survive a partition; checkout in the cut-off region fails safely.</p>`,
+        followUps: ['How would you show "only 3 left!" without a strong read on every page view?', 'What changes if the business accepts rare oversells and compensates with apology coupons?', 'How do session tokens work across a user\'s phone and laptop?']
+      }
+    }]
+  });
+
+  /* =====================================================================
+     TOPIC 6 — NewSQL: Spanner, CockroachDB, consensus & distributed transactions
+     ===================================================================== */
+  topics.push({
+    title: 'NewSQL: Spanner, CockroachDB, Raft and Distributed Transactions',
+    analogy: `<p>Imagine a bank with branches on every continent that still behaves like <b>one single ledger</b>. Each page of the ledger is kept by a small committee of 3 clerks in different cities who vote on every change (<b>consensus</b>). A transfer between pages owned by two committees uses a "both say ready, then both commit" handshake (<b>two-phase commit</b>). And every branch has an atomic clock; before announcing "done", a clerk waits a few milliseconds until no clock anywhere could still think it is earlier (<b>Spanner's commit wait</b>).</p>`,
+    explain: `<p><b>NewSQL</b> = the SQL + ACID transactions of a relational database, with the horizontal scale and fault tolerance of NoSQL. Examples: <b>Google Spanner</b>, <b>CockroachDB</b>, <b>TiDB</b>, <b>YugabyteDB</b>, and newer serverless ones such as Aurora DSQL. They share a recipe:</p>
+<ol>
+<li><b>Range sharding with automatic splits.</b> The key space (table primary keys, index keys) is cut into ranges/tablets/regions (CockroachDB: ~512 MiB). Ranges split when big or hot and move between nodes automatically.</li>
+<li><b>Each range is a consensus group.</b> Every range has 3 (or 5) replicas running <b>Raft</b> (CockroachDB, TiKV, YugabyteDB) or <b>Paxos</b> (Spanner). A write commits when a <b>majority</b> has it in their log: 2 of 3 or 3 of 5, so a group survives f failures with 2f + 1 replicas, with no data loss and automatic leader election.</li>
+<li><b>Distributed transactions</b> across ranges use <b>two-phase commit (2PC)</b>: phase 1 "prepare" (write provisional intents, everyone votes yes), phase 2 "commit". Classic 2PC blocks if the coordinator dies; here every participant and the coordinator's transaction record are themselves Raft groups, so they do not disappear.</li>
+<li><b>MVCC with timestamps</b> so reads do not block writes, and a clock scheme to order transactions globally.</li>
+</ol>
+${H.table(['', 'Spanner', 'CockroachDB'], [
+  ['Replication', 'Paxos groups per split', 'Raft per range (default 3 replicas)'],
+  ['Clock', '<b>TrueTime</b>: GPS + atomic clocks; <code>TT.now()</code> returns an interval [earliest, latest] with error ε (a few ms or less)', '<b>Hybrid Logical Clocks</b> (physical time + logical counter) on ordinary NTP clocks; max offset default 500 ms'],
+  ['How it orders transactions', '<b>Commit wait</b>: pick commit ts = TT.now().latest, wait until TT.now().earliest &gt; ts (~2ε) → <b>external consistency</b> (strict serializability)', 'read <b>uncertainty interval</b>: a read that sees a value with a timestamp slightly in its future restarts at a higher timestamp; serializable isolation'],
+  ['Default isolation', 'strict serializable (external consistency)', 'SERIALIZABLE (READ COMMITTED also available)'],
+  ['Geo features', 'multi-region instances, leader placement', 'REGIONAL BY ROW / GLOBAL tables, follower reads']
+])}
+<p><b>Raft in one breath:</b> nodes are followers until they stop hearing heartbeats, then one becomes a candidate and asks for votes for a new <b>term</b>; whoever wins a majority is leader for that term. The leader appends client commands to its log, sends them to followers, and once a majority has stored an entry it is <b>committed</b> and applied. A node only votes for candidates whose log is at least as up to date, so committed entries are never lost.</p>
+<p><b>The trade-offs</b> (be ready to say these out loud): every write costs a consensus round trip (a few ms in one region; 50-200 ms if replicas span continents); serializable isolation means <b>retry errors</b> under contention (SQLSTATE <code>40001</code>) that clients must handle; sequential keys (timestamps, SERIAL) create a hot last range, so use UUIDs or hash-sharded indexes; and cross-region transactions are slow, so you design <b>locality</b> (keep a user's rows in the user's region).</p>`,
+    clues: [
+      '"need SQL and transactions but data outgrows one Postgres" → NewSQL (CockroachDB, Spanner, TiDB, YugabyteDB) or Citus/Vitess',
+      '"global users, strongly consistent, survive a region outage" → Spanner / CockroachDB multi-region',
+      '"external consistency", "TrueTime", "commit wait" → Spanner',
+      '"transfer money between accounts on different shards atomically" → 2PC over consensus groups (or sagas)',
+      '"leader election", "majority", "term", "log replication" → Raft/Paxos',
+      '"error 40001 / restart transaction" → serializable contention, add client retry loops'
+    ],
+    code: [
+      { lang: 'sql', db: 'bank', title: 'Which consensus groups does a transfer touch? (runnable)', code: `-- Each account key lives in exactly one range; each range is a 3-replica Raft group.
+-- A transaction touching keys in 2 ranges needs a distributed (2PC-style) commit.
+SELECT a.acct,
+       r.range_id,
+       r.leaseholder        AS serves_reads_and_coordinates,
+       r.replicas           AS raft_members,
+       'majority = 2 of 3'  AS commit_rule
+FROM accounts AS a
+JOIN ranges   AS r
+  ON a.acct >= r.start_key AND a.acct < r.end_key
+WHERE a.acct IN ('acct/asha', 'acct/zoe')
+ORDER BY r.range_id;` },
+      { lang: 'python', run: true, title: 'Hybrid Logical Clock (HLC) — how CockroachDB orders events without atomic clocks (runnable)', code: `# HLC timestamp = (wall, logical). It never goes backwards, stays close to real time,
+# and if event A could have caused B (A sent a message B received), then hlc(A) < hlc(B).
+
+class HLC:
+    def __init__(self, name, clock_offset_ms):
+        self.name = name
+        self.offset = clock_offset_ms      # this node's clock error vs true time
+        self.wall, self.logical = 0, 0
+
+    def physical(self, true_ms):
+        return true_ms + self.offset
+
+    def now(self, true_ms):
+        """Local event or send."""
+        pt = self.physical(true_ms)
+        if pt > self.wall:
+            self.wall, self.logical = pt, 0
+        else:
+            self.logical += 1                # clock did not advance: bump the counter
+        return (self.wall, self.logical)
+
+    def receive(self, true_ms, remote):
+        """Merge a timestamp that arrived on a message."""
+        pt = self.physical(true_ms)
+        rw, rl = remote
+        if pt > self.wall and pt > rw:
+            self.wall, self.logical = pt, 0
+        elif rw > self.wall:
+            self.wall, self.logical = rw, rl + 1
+        elif self.wall > rw:
+            self.logical += 1
+        else:                                # equal walls
+            self.logical = max(self.logical, rl) + 1
+        return (self.wall, self.logical)
+
+
+fast = HLC("n1", +7)    # clock 7 ms ahead
+slow = HLC("n2", -5)    # clock 5 ms behind
+
+a = fast.now(100)               # write on n1 at true time 100
+b = slow.receive(101, a)        # n2 reads it 1 ms later (its own clock says 96!)
+c = slow.now(102)               # next event on n2
+print("A on n1:", a)
+print("B on n2 after receiving A:", b, "-> still after A:", b > a)
+print("C on n2:", c, "-> ordered after B:", c > b)
+` }
+    ],
+    codeTitle: ['Transaction participants', 'Hybrid logical clock'],
+    viz: {
+      title: 'One distributed transaction: Raft majorities, 2PC, and Spanner commit wait',
+      input: 'eps=4',
+      inputLabel: 'TrueTime clock uncertainty ε in ms (1-20)',
+      gen: function (input) {
+        var m = /eps\s*=\s*(\d+)/i.exec(String(input || ''));
+        if (!m) throw new Error('Format: eps=4');
+        var eps = parseInt(m[1], 10);
+        if (eps < 1 || eps > 20) throw new Error('ε must be 1..20 ms');
+        var nodes = [
+          { id: 'C', label: 'Client', x: 6, y: 34, shape: 'box' },
+          { id: 'G', label: 'SQL gateway', x: 26, y: 34, shape: 'box' },
+          { id: 'A1', label: 'Range A leader (n1)', x: 58, y: 6, shape: 'box' }, { id: 'A2', label: 'A follower (n2)', x: 88, y: 2, shape: 'box' }, { id: 'A3', label: 'A follower (n3)', x: 88, y: 18, shape: 'box' },
+          { id: 'B1', label: 'Range B leader (n5)', x: 58, y: 54, shape: 'box' }, { id: 'B2', label: 'B follower (n1)', x: 88, y: 48, shape: 'box' }, { id: 'B3', label: 'B follower (n2)', x: 88, y: 64, shape: 'box' }
+        ];
+        var edges = [['C', 'G', 'SQL'], ['G', 'A1'], ['G', 'B1'], ['A1', 'A2', 'raft'], ['A1', 'A3', 'raft'], ['B1', 'B2', 'raft'], ['B1', 'B3', 'raft']];
+        function g(hl, eh, tags) { return { type: 'graph', directed: true, height: 70, nodes: nodes, edges: edges, hl: hl, ehl: eh, tags: tags || {} }; }
+        var sql = 'BEGIN;\nUPDATE accounts SET balance = balance - 300 WHERE acct = \'acct/asha\';  -- range A\nUPDATE accounts SET balance = balance + 300 WHERE acct = \'acct/zoe\';   -- range B\nCOMMIT;';
+        var T = 1000; // true time in ms when commit timestamp is chosen
+        return [
+          { narr: 'A transfer touches two keys that live in <b>different ranges</b>. Each range is a 3-replica Raft group with its own leader (leaseholder). The SQL gateway node acts as the transaction coordinator.', parts: [
+            g({}, {}, { A1: 'acct/asha', B1: 'acct/zoe' }),
+            { type: 'code', label: 'transaction', lang: 'sql', code: sql, hl: { 1: 'cur' } }
+          ] },
+          { narr: 'Step 1: write a <b>provisional intent</b> for acct/asha (−300) to range A\'s leader. The leader appends it to its Raft log and sends it to followers.', parts: [
+            g({ G: 'cur', A1: 'cur' }, { 'G-A1': 'cur', 'A1-A2': 'cur', 'A1-A3': 'cur' }),
+            { type: 'code', label: 'transaction', lang: 'sql', code: sql, hl: { 2: 'cur' } }
+          ] },
+          { narr: 'n2 acknowledges. Leader + n2 = <b>2 of 3 = majority</b> → the intent is durably replicated. n3 is slow, and that is fine: majority is enough and the group would survive losing any one node.', parts: [
+            g({ A1: 'ok', A2: 'ok', A3: 'cur' }, { 'G-A1': 'ok', 'A1-A2': 'ok', 'A1-A3': 'cur' }, { A3: 'still sending' }),
+            { type: 'vars', label: 'Range A Raft', vals: { term: 7, log_index: 4182, acks: '2 / 3', committed: 'yes' }, hl: { committed: 'ok' } }
+          ] },
+          { narr: 'Step 2: intent for acct/zoe (+300) goes to range B\'s leader on n5, which also reaches a majority (n5 + n1). Both intents exist but are invisible to other transactions until the commit decision.', parts: [
+            g({ A1: 'ok', A2: 'ok', B1: 'ok', B2: 'ok' }, { 'G-B1': 'ok', 'B1-B2': 'ok', 'B1-B3': 'cur' }),
+            { type: 'code', label: 'transaction', lang: 'sql', code: sql, hl: { 3: 'cur' } }
+          ] },
+          { narr: 'Step 3: <b>commit</b> = flip one <b>transaction record</b> (stored in range A, itself Raft-replicated) from PENDING to COMMITTED. That single replicated write is the atomic commit point of 2PC — if the gateway crashes now, anyone can read the record and finish or abort the transaction. (CockroachDB "parallel commits" even overlaps this with the intent writes.)', parts: [
+            g({ A1: 'sel', G: 'cur' }, { 'G-A1': 'ok' }, { A1: 'txn record: COMMITTED' }),
+            { type: 'table', label: '2PC over Raft', columns: ['phase', 'what', 'durable because'], rows: [['prepare', 'intents in A and B', 'each is in a Raft majority'], ['commit point', 'txn record = COMMITTED', 'Raft majority of range A'], ['cleanup', 'resolve intents async', 'can be redone by anyone']], hl: { 1: 'sel' } }
+          ] },
+          { narr: '<b>Spanner variant — commit wait.</b> TrueTime says now is somewhere in [' + (T - eps) + ', ' + (T + eps) + '] ms (ε = ' + eps + '). Spanner picks commit timestamp <b>s = ' + (T + eps) + '</b> (the latest possible "now").', parts: [
+            { type: 'bars', label: 'TrueTime interval at commit (ms)', values: [T - eps, T, T + eps], idxLabels: ['earliest', 'true now (unknown)', 'latest → s'], hl: { 2: 'sel' } },
+            { type: 'vars', label: 'TrueTime', vals: { epsilon_ms: eps, commit_ts_s: T + eps }, hl: { commit_ts_s: 'sel' } }
+          ] },
+          { narr: 'Spanner then <b>waits</b> until TT.now().earliest &gt; s, i.e. until true time is certainly past ' + (T + eps) + '. That takes about <b>2ε = ' + (2 * eps) + ' ms</b>. Only then does it release locks and tell the client "committed". Result: if transaction T2 starts after T1 finished (in real time), T2 gets a bigger timestamp — <b>external consistency</b>.', parts: [
+            { type: 'bars', label: 'commit latency breakdown (ms)', values: [5, 2 * eps], idxLabels: ['Paxos majority write (in-region)', 'commit wait ≈ 2ε'], hl: { 1: 'cur' } },
+            { type: 'text', html: 'Smaller ε = shorter waits. That is why Google invests in GPS receivers and atomic clocks in every datacenter. With NTP-level error (~100+ ms) commit wait would be unusable — so CockroachDB uses HLC + uncertainty restarts instead.' }
+          ] },
+          { narr: 'Step 4: intents are resolved into normal committed values in the background, and the client gets success. Any later read, on any replica that has caught up to the commit timestamp, sees both the debit and the credit — never just one.', parts: [
+            g({ C: 'ok', A1: 'ok', A2: 'ok', A3: 'ok', B1: 'ok', B2: 'ok', B3: 'ok' }, { 'C-G': 'ok' }, { A1: 'asha = 4700', B1: 'zoe = 9400' }),
+            { type: 'table', label: 'accounts after commit', columns: ['acct', 'balance'], rows: [['acct/asha', 4700], ['acct/zoe', 9400]], hl: { 0: 'ok', 1: 'ok' } }
+          ] },
+          { narr: 'Failure check: if range B\'s leader n5 dies mid-transaction, B\'s followers elect a new leader within seconds (higher Raft term) and still hold the intent (it was on a majority). Nothing is lost; the transaction may just take longer or be retried with a 40001 error.', parts: [
+            g({ B1: 'bad', B2: 'sel' }, { 'B1-B2': 'bad', 'B1-B3': 'bad' }, { B1: 'crashed', B2: 'new leader (term 8)' })
+          ] }
+        ];
+      }
+    },
+    examples: [
+      { title: 'Find ranges that should split', html: `<p>CockroachDB splits a range above ~512 MiB (size-based) and also splits hot ranges by load (QPS/CPU). Range 2 is small but hot (7 400 QPS) → <b>load-based split</b>; range 3 is 640 MB → <b>size split</b>. After splitting, the rebalancer moves leaseholders so no single node owns all the hot ones.</p>`, code: { lang: 'sql', db: 'bank', code: `SELECT range_id, start_key, end_key, size_mb, qps,
+       CASE WHEN size_mb > 512 THEN 'split (size)'
+            WHEN qps > 5000    THEN 'split (load)'
+            ELSE 'ok' END AS action
+FROM ranges
+ORDER BY range_id;` } },
+      { title: 'Atomic transfer (single-node analogue)', html: `<p>On one machine, BEGIN/COMMIT gives atomicity. The guard <code>balance &gt;= 300</code> plus <code>changes() = 1</code> make the credit happen only if the debit did. NewSQL gives you this same SQL even when the two rows live in different ranges on different continents — the 2PC + Raft machinery is hidden behind COMMIT.</p>`, code: { lang: 'sql', db: 'bank', code: `BEGIN;
+UPDATE accounts SET balance = balance - 300 WHERE acct = 'acct/asha' AND balance >= 300;
+UPDATE accounts SET balance = balance + 300 WHERE acct = 'acct/zoe'  AND changes() = 1;
+COMMIT;
+SELECT acct, balance FROM accounts WHERE acct IN ('acct/asha', 'acct/zoe');` } },
+      { title: 'Avoid the sequential-key hotspot', html: `<p>Inserting rows with an increasing primary key (timestamp, SERIAL) always writes to the last range → one hot leaseholder. CockroachDB offers <b>hash-sharded indexes</b> that prefix a hidden bucket column; Spanner recommends UUIDv4 or bit-reversed sequences. Multi-region tables can pin rows to the user's region.</p>`, code: { lang: 'text', check: false, code: `-- CockroachDB
+CREATE TABLE events (
+    ts      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    id      UUID NOT NULL DEFAULT gen_random_uuid(),
+    payload JSONB,
+    PRIMARY KEY (ts, id) USING HASH WITH (bucket_count = 16)   -- spreads inserts over 16 ranges
+);
+
+ALTER DATABASE bank SET PRIMARY REGION "ap-south1";
+ALTER DATABASE bank ADD REGION "us-east1";
+ALTER TABLE accounts SET LOCALITY REGIONAL BY ROW;   -- each row lives (leaseholder) in its crdb_region` } },
+      { title: 'Client retry loop for serializable conflicts', html: `<p>Under SERIALIZABLE, conflicting transactions may get SQLSTATE <b>40001</b> ("restart transaction"). The client must retry the <i>whole</i> transaction with backoff — never just the failed statement. Keep transactions short and idempotent.</p>`, code: { lang: 'python', code: `import random
+import time
+
+import psycopg  # PostgreSQL wire protocol works with CockroachDB / YugabyteDB
+
+
+def transfer(conn, src, dst, amount, max_retries=5):
+    for attempt in range(max_retries):
+        try:
+            with conn.transaction():
+                with conn.cursor() as cur:
+                    cur.execute("UPDATE accounts SET balance = balance - %s "
+                                "WHERE acct = %s AND balance >= %s", (amount, src, amount))
+                    if cur.rowcount != 1:
+                        raise ValueError("insufficient funds")
+                    cur.execute("UPDATE accounts SET balance = balance + %s WHERE acct = %s",
+                                (amount, dst))
+            return True
+        except psycopg.errors.SerializationFailure:      # SQLSTATE 40001
+            time.sleep((2 ** attempt) * 0.01 + random.random() * 0.01)   # backoff + jitter
+    raise RuntimeError("gave up after retries")` } }
+    ],
+    deepDive: `<p><b>Why 2PC over consensus is not "classic 2PC".</b> Classic 2PC has a blocking flaw: a participant that voted yes must hold locks until it hears the decision; if the coordinator dies forever, it is stuck. In Spanner and CockroachDB every participant is a Paxos/Raft group and the decision is a replicated record, so "the coordinator died" just means another node picks up the record. CockroachDB's <b>parallel commits</b> writes the transaction record as STAGING together with the intents; the transaction is implicitly committed once all of them are replicated, saving a round trip. TiDB follows Google's <b>Percolator</b> model: a timestamp oracle (PD) hands out start/commit timestamps, the first key is the primary lock, secondaries point to it.</p>
+<p><b>Reads.</b> Leaseholders (CockroachDB) / Paxos leaders with leases (Spanner) serve consistent reads without a consensus round, because the lease guarantees no one else can accept writes. <b>Follower reads</b> serve slightly stale data (e.g. 4.8 s old) from the nearest replica without contacting the leader — perfect for dashboards. Spanner's read-only transactions pick a timestamp and read lock-free from any sufficiently up-to-date replica (using "safe time").</p>
+<p><b>Clocks.</b> Spanner's commit wait makes timestamps match real-time order. CockroachDB cannot wait out 500 ms on every commit, so it accepts that reads may encounter values with timestamps inside the reader's <b>uncertainty window</b> (its timestamp + max offset) and restarts them; nodes whose clocks drift beyond the max offset shut themselves down to protect correctness. The guarantee is serializability plus "no stale reads" for single keys, slightly weaker than Spanner's strict serializability in pathological cases. YugabyteDB uses hybrid time similarly; AWS Aurora DSQL and Amazon Time Sync use precise clocks to shrink uncertainty.</p>
+<p><b>Raft details worth knowing:</b> randomized election timeouts avoid split votes; a leader must commit an entry from its own term before trusting older entries ("leader completeness"); membership changes use joint consensus or one-at-a-time changes; snapshots truncate the log. Raft groups per range mean thousands of groups per node, so implementations coalesce heartbeats (CockroachDB "quiesced" ranges) to keep overhead low.</p>
+<p><b>Alternatives to NewSQL:</b> sharded Postgres/MySQL with Citus or Vitess (keep single-shard transactions fast, cross-shard limited), or <b>sagas</b> (a chain of local transactions with compensating actions) when services own separate databases. Choose NewSQL when you need cross-shard ACID transactions and SQL at a scale or availability level one primary cannot provide.</p>`,
+    aiEra: `<p><b>What AI changes:</b> agent backends increasingly need globally consistent state (agent memory, tool-call ledgers, billing for tokens) across regions — a natural fit for NewSQL. Spanner and CockroachDB ship vector search too, so an AI app can keep embeddings, relational data and transactions in one consistent store. AI assistants also help with the hardest NewSQL operational task: reading contention/hot-range dashboards and suggesting key redesigns (hash-sharding, splitting a counter row).</p>
+<p><b>Use AI as a partner:</b> <code>"Here is my schema and my top transactions. Which ones cross ranges or regions? Estimate latency for a 3-region (us-east, eu-west, ap-south) CockroachDB cluster with REGIONAL BY ROW and suggest locality settings."</code></p>
+<p><b>Where AI goes wrong:</b> it claims Spanner "beats CAP", forgets retry loops for 40001, suggests SERIAL primary keys, or thinks 2PC alone gives fault tolerance. <b>What you must own:</b> the Raft majority math, the 2PC commit point, why commit wait works, and a latency estimate from region RTTs.</p>`,
+    problems: [{
+      title: 'Atomic Cross-Range Money Transfer',
+      level: 'Medium', tags: ['transactions', '2PC', 'NewSQL'], companies: ['Stripe', 'PayPal', 'Coinbase', 'Razorpay'],
+      statement: `<p>Move 300 from <code>acct/asha</code> to <code>acct/zoe</code> (db <code>bank</code>). The accounts live in <b>different ranges</b> (different Raft groups). Write SQL that (1) lists the ranges/leaseholders the transaction touches, and (2) performs the transfer so that money is never created or destroyed: the credit happens <b>only if</b> the debit succeeded (sufficient funds), atomically. Then explain what the database does under the hood at COMMIT.</p>`,
+      constraints: `Balances must never go negative (CHECK constraint). Any crash between the two updates must leave both accounts unchanged.`,
+      example: `<p>Participants: ${H.c('b', 'range 1 (leaseholder n1)')} and ${H.c('b', 'range 4 (leaseholder n5)')} → a distributed commit. After the transfer: asha ${H.c('g', '5000 → 4700')}, zoe ${H.c('g', '9100 → 9400')}. Total money unchanged (14 100).</p>`,
+      brute: { why: `<p>Two independent auto-committed statements. If the process crashes after the debit, Asha loses 300 and Zoe never receives it; if the debit fails (insufficient funds), the credit still runs and money is created from nothing.</p>`, code: { lang: 'sql', db: 'bank', code: `-- each statement commits on its own: NOT atomic
+UPDATE accounts SET balance = balance - 300 WHERE acct = 'acct/asha';
+-- (crash here = money destroyed)
+UPDATE accounts SET balance = balance + 300 WHERE acct = 'acct/zoe';
+SELECT SUM(balance) AS total_money FROM accounts;` } },
+      mcq: { q: 'In CockroachDB/Spanner, what is the single atomic "commit point" of a multi-range transaction?', options: ['When the gateway sends COMMIT', 'When the last intent is written', 'When the replicated transaction record becomes COMMITTED (or all STAGING writes are replicated)', 'When every replica of every range has applied the change'], answer: 2, explain: 'The decision lives in one Raft-replicated record. Once it is durable, the transaction is committed even if the coordinator crashes; intents are cleaned up later.' },
+      hints: [
+        `<p>Hint 1: Participants = join accounts to ranges with <code>acct &gt;= start_key AND acct &lt; end_key</code>.</p>`,
+        `<p>Hint 2: Wrap both updates in one <code>BEGIN ... COMMIT</code>. Guard the debit with <code>balance &gt;= 300</code>.</p>`,
+        `<p>Hint 3: Make the credit conditional on the debit: in SQLite <code>changes() = 1</code>; in Postgres-compatible NewSQL use a CTE <code>WITH d AS (UPDATE ... RETURNING acct) UPDATE ... WHERE EXISTS (SELECT 1 FROM d)</code>, plus a client retry loop for 40001.</p>`
+      ],
+      solution: {
+        approach: `<p>Find participants, then run one transaction whose credit depends on the debit. Under the hood (CockroachDB): the gateway assigns an HLC timestamp, writes an intent for asha into range 1 (Raft majority), an intent for zoe into range 4 (Raft majority), and a transaction record in range 1. Commit = record becomes COMMITTED (with parallel commits: STAGING + all intents replicated). Readers that hit an intent check the record. If any leaseholder dies, its Raft group elects a new leader that still holds the intent. Contention → 40001 → the client retries the whole transaction.</p>`,
+        code: { lang: 'sql', db: 'bank', code: `-- 1) who participates in the distributed commit?
+SELECT a.acct, r.range_id, r.leaseholder, r.replicas
+FROM accounts AS a
+JOIN ranges   AS r ON a.acct >= r.start_key AND a.acct < r.end_key
+WHERE a.acct IN ('acct/asha', 'acct/zoe');
+
+-- 2) atomic, guarded transfer
+BEGIN;
+UPDATE accounts
+   SET balance = balance - 300
+ WHERE acct = 'acct/asha' AND balance >= 300;      -- debit only with sufficient funds
+UPDATE accounts
+   SET balance = balance + 300
+ WHERE acct = 'acct/zoe' AND changes() = 1;        -- credit only if the debit happened
+COMMIT;
+
+SELECT acct, balance FROM accounts WHERE acct IN ('acct/asha', 'acct/zoe');
+SELECT SUM(balance) AS total_money FROM accounts;  -- still 19350 (invariant holds)` },
+        alt: [{ lang: 'text', check: false, title: 'CockroachDB / Postgres-compatible version', code: `BEGIN;
+WITH debit AS (
+  UPDATE accounts SET balance = balance - 300
+   WHERE acct = 'acct/asha' AND balance >= 300
+  RETURNING acct
+)
+UPDATE accounts SET balance = balance + 300
+ WHERE acct = 'acct/zoe' AND EXISTS (SELECT 1 FROM debit);
+COMMIT;   -- client retries the whole block on SQLSTATE 40001` }],
+        complexity: `<p>Latency ≈ one Raft round per participant (parallel) + the commit record write; in one region a few ms, across regions roughly the RTT to a majority of each range's replicas. With Spanner add commit wait ≈ 2ε.</p>`,
+        followUps: ['How would you do the same across two microservices that own separate databases (saga + idempotency keys)?', 'Where should the leaseholders live if Asha is in Mumbai and Zoe in California?', 'Why must the retry loop wrap the whole transaction, not just the failed statement?']
+      }
+    }]
+  });
   registerModule({ id: 'sql14', title: 'Distributed Databases & NoSQL', intro: `<p>tmp</p>`, goals: [], prereqs: `tmp`, hours: 12,
     databases: { repl: DB_REPL, shard: DB_SHARD, nosql: DB_NOSQL, bank: DB_BANK },
     topics: topics, practice: practice, quiz: quiz, interview: interview });

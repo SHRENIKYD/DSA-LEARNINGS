@@ -1116,6 +1116,219 @@ ORDER BY o.id;` },
     ]
   });
 
+  /* =====================================================================
+     TOPIC 5 — Statistics & cardinality estimation
+     ===================================================================== */
+  var HIST_DATA = [5, 5, 5, 5, 5, 5, 8, 12, 15, 18, 22, 25, 31, 36, 40, 44, 52, 60, 66, 71, 80, 88, 95, 99];
+
+  topics.push({
+    title: 'Statistics & Cardinality Estimation: How the Planner Guesses Row Counts',
+    analogy: `<p>A wedding caterer must decide how much food to cook <b>before</b> the guests arrive. They use <b>statistics</b>: "250 invitations sent, usually 80% come, about 1 in 10 is vegetarian". Good numbers → right amount of food. Stale numbers (the guest list doubled last week) or misleading averages ("10% vegetarian" — but this is a yoga retreat where 90% are) → disaster.</p>
+<p>The planner is that caterer. Before running anything it must <b>guess how many rows</b> each step will produce — the <b>cardinality</b>. Every cost, every join order and every join algorithm choice is built on these guesses.</p>`,
+    explain: `<p><b>Statistics</b> are a small summary of each table and column, collected by <code>ANALYZE</code> (PostgreSQL, SQLite), <code>ANALYZE TABLE</code> (MySQL) or <code>UPDATE STATISTICS</code> / auto-stats (SQL Server). They usually come from a <b>sample</b>, not a full read.</p>
+${H.table(['Statistic', 'Plain meaning', 'Used to estimate'], [
+  ['row count, page count', 'How big is the table?', 'scan cost, everything'],
+  ['<b>n_distinct</b> (NDV)', 'How many different values in the column?', '<code>col = ?</code> ≈ rows / NDV; GROUP BY output size; join size'],
+  ['<b>MCV list</b> (most common values + frequencies)', '"delivered" = 59%, "pending" = 2% …', 'equality on frequent values — handles <b>skew</b>'],
+  ['<b>histogram</b> (equi-depth bucket bounds)', 'Sorted values split into buckets with equal row counts', 'ranges: <code>&lt;</code>, <code>&gt;</code>, BETWEEN'],
+  ['null fraction', '% of NULLs', '<code>IS NULL</code>, outer joins'],
+  ['<b>correlation</b>', 'Is the table physically sorted by this column?', 'cost of index range scans (random vs sequential)']
+])}
+<p><b>The selectivity formulas</b> (selectivity = fraction of rows that pass):</p>
+<ul>
+<li><code>col = v</code>: if v is in the MCV list → its frequency; else (1 − sum of MCV freqs) ÷ (NDV − #MCVs).</li>
+<li><code>col &lt; v</code>: fraction of histogram buckets below v (with linear interpolation inside the bucket).</li>
+<li><code>A AND B</code>: sel(A) × sel(B) — the <b>independence assumption</b>.</li>
+<li><code>A OR B</code>: sel(A) + sel(B) − sel(A)·sel(B).</li>
+<li>Join <code>R.k = S.k</code>: |R| × |S| ÷ max(NDV(R.k), NDV(S.k)).</li>
+<li>Something it can't analyse (a function on a column, a complex expression): a <b>default guess</b> — PostgreSQL uses 0.5% for <code>=</code> and 33% for ranges.</li>
+</ul>
+<p><b>Worked example on <code>orders</code> (3,000 rows):</b> NDV(status) = 4, so without an MCV list <code>status = 'pending'</code> is estimated at 3000 / 4 = <b>750</b> rows. Reality: <b>60</b>. That 12× error is exactly what SQLite's default <code>sqlite_stat1</code> gives you (it stores only averages), and it changes the join order of a query in the next viz. PostgreSQL's MCV list would know pending = 2% → 60.</p>
+<p><b>Errors multiply.</b> If step 1 is 10× off and the join above it is 10× off, the top of the plan is 100× off. That's why estimate-vs-actual at the <i>lowest</i> wrong node is where you start fixing.</p>`,
+    clues: [
+      '"Fast on staging, slow on prod" or "slow right after the nightly bulk load" → stale / missing statistics; run ANALYZE',
+      '"Estimated rows=1, actual rows=200,000" → misestimate; check stats age, skew, correlated columns, functions on columns',
+      '"WHERE city = \'Mumbai\' AND state = \'MH\'" much more rows than estimated → correlated columns break independence; extended statistics',
+      '"Query for today\'s rows is slow, yesterday\'s is fine" → ascending key / out-of-histogram-range problem',
+      '"Same query, fast for one customer, terrible for the big customer" → skew + parameter sniffing / generic plans',
+      '"How does the optimizer know how many rows a filter returns?" → statistics: NDV, MCV, histograms, selectivity math'
+    ],
+    code: [
+      { lang: 'sql', db: 'shop', title: 'Collect statistics in SQLite and read them (▶ Run)', code: `-- No statistics yet: sqlite_stat1 doesn't even exist. Collect them:
+ANALYZE;
+
+-- One row per index: "rows  avg-rows-per-value-of-col1  avg-rows-per-(col1,col2) ..."
+SELECT tbl, idx, stat FROM sqlite_stat1 ORDER BY tbl, idx;
+-- orders | idx_orders_customer       | 3000 10     -> 3000 rows, ~10 per customer_id
+-- orders | idx_orders_status_created | 3000 750 1  -> ~750 rows per status (an AVERAGE!), ~1 per (status, created_at)
+-- customers | idx_customers_city     | 320 40      -> ~40 customers per city
+
+-- The truth the average hides:
+SELECT status, count(*) AS actual_rows FROM orders GROUP BY status ORDER BY actual_rows;` },
+      { lang: 'sql', check: false, title: 'PostgreSQL: inspect and improve statistics', code: `-- What the planner knows about a column
+SELECT null_frac, n_distinct, most_common_vals, most_common_freqs, histogram_bounds, correlation
+FROM pg_stats
+WHERE tablename = 'orders' AND attname = 'status';
+
+-- When were stats last gathered?
+SELECT relname, last_analyze, last_autoanalyze, n_mod_since_analyze
+FROM pg_stat_user_tables WHERE relname = 'orders';
+
+ANALYZE orders;                                              -- refresh now (e.g. after a bulk load)
+ALTER TABLE orders ALTER COLUMN customer_id SET STATISTICS 1000;  -- bigger sample, more MCVs/buckets (default 100)
+
+-- Correlated columns: teach the planner that city determines state
+CREATE STATISTICS addr_dep (dependencies, ndistinct, mcv) ON city, state FROM addresses;
+ANALYZE addresses;` }
+    ],
+    codeTitle: ['SQLite: ANALYZE + sqlite_stat1', 'PostgreSQL: pg_stats, targets, extended stats'],
+    viz: [
+      {
+        title: 'Estimate a predicate from an MCV list + equi-depth histogram',
+        input: '< 37',
+        inputLabel: 'predicate on x: "< 37", "> 80", "= 5", "= 44"',
+        gen: function (input) {
+          var m = String(input || '').trim().match(/^(<=|>=|<|>|=)\s*(-?\d+(\.\d+)?)$/);
+          if (!m) throw new Error('Type an operator and a number, e.g.  < 37   or   = 5');
+          var op = m[1], v = Number(m[2]), data = HIST_DATA.slice(), N = data.length, frames = [];
+          var test = function (x) { return op === '<' ? x < v : op === '<=' ? x <= v : op === '>' ? x > v : op === '>=' ? x >= v : x === v; };
+          frames.push({ narr: 'Column <b>x</b> has ' + N + ' rows. ANALYZE reads them (or a sample) once and keeps a <b>tiny summary</b> — the planner never looks at the real rows when estimating.', parts: [{ type: 'array', label: 'x (sorted, all ' + N + ' rows)', values: data }] });
+          var mcvHl = {}; data.forEach(function (x, i) { if (x === 5) mcvHl[i] = 'sel'; });
+          frames.push({ narr: 'Step 1 — <b>MCV list</b>: values that are much more common than average are stored with their exact frequency. Here <b>5</b> appears 6/24 = <b>25%</b> of rows. (A plain "rows ÷ distinct values" average would say every value appears ~1.3 times — badly wrong for 5.)', parts: [{ type: 'array', label: 'x', values: data, hl: mcvHl }, { type: 'map', label: 'MCV list', entries: [['5', '0.25']] , hl: { '5': 'sel' } }] });
+          var rest = data.filter(function (x) { return x !== 5; });
+          var b = [rest.slice(0, 6), rest.slice(6, 12), rest.slice(12, 18)];
+          var bounds = [b[0][0], b[1][0], b[2][0], b[2][5]];
+          var bh = {}; rest.forEach(function (x, i) { bh[i] = ['win', 'ok', 'cur'][Math.floor(i / 6)]; });
+          frames.push({ narr: 'Step 2 — <b>equi-depth histogram</b> on the remaining 18 rows (75% of the table): 3 buckets with the <b>same number of rows</b> (6) each. Only the bucket <b>bounds</b> are stored: ' + bounds.join(' | ') + '. Narrow buckets = dense values; wide buckets = sparse values.', parts: [{ type: 'array', label: 'non-MCV values, colored by bucket', values: rest, hl: bh }, { type: 'bars', label: 'rows per bucket (equal by design)', values: [6, 6, 6], idxLabels: [b[0][0] + '–' + b[0][5], b[1][0] + '–' + b[1][5], b[2][0] + '–' + b[2][5]] }] });
+          var mcvPart = test(5) ? 0.25 : 0, histPart = 0, why = [];
+          if (op === '=') {
+            if (v === 5) { mcvPart = 0.25; why.push('5 is in the MCV list → use its stored frequency 0.25'); }
+            else { histPart = 0.75 / 18; why.push(v + ' is not an MCV → (1 − 0.25) ÷ 18 distinct non-MCV values = ' + histPart.toFixed(4)); }
+          } else {
+            why.push('MCV part: does 5 satisfy "x ' + op + ' ' + v + '"? ' + (test(5) ? 'yes → +0.25' : 'no → +0'));
+            b.forEach(function (bk, i) {
+              var lo = bk[0], hi = bk[5], f;
+              var less = op === '<' || op === '<=';
+              if (less) f = v <= lo ? 0 : v > hi ? 1 : (v - lo) / (hi - lo);
+              else f = v >= hi ? 0 : v < lo ? 1 : (hi - v) / (hi - lo);
+              f = Math.max(0, Math.min(1, f));
+              histPart += 0.75 * f / 3;
+              why.push('bucket ' + lo + '–' + hi + ': ' + (f === 0 ? 'none qualifies' : f === 1 ? 'fully qualifies' : 'partly — interpolate (' + (less ? v + ' − ' + lo : hi + ' − ' + v) + ') ÷ (' + hi + ' − ' + lo + ') = ' + f.toFixed(2)) + ' → +' + (0.75 * f / 3).toFixed(3));
+            });
+          }
+          var sel = mcvPart + histPart, est = sel * N;
+          frames.push({ narr: 'Step 3 — <b>estimate</b> <code>x ' + op + ' ' + v + '</code> using only the summary: MCV part + histogram part.', parts: [{ type: 'text', label: 'selectivity math', html: '<ul><li>' + why.join('</li><li>') + '</li></ul>' }, { type: 'vars', vals: { selectivity: sel.toFixed(3), 'estimated rows': est.toFixed(1) }, hl: { 'estimated rows': 'cur' } }] });
+          var act = data.filter(test).length, ah = {}; data.forEach(function (x, i) { if (test(x)) ah[i] = 'ok'; });
+          var err = act === 0 && est < 1 ? 'both ≈ 0' : (Math.max(act, est) / Math.max(0.1, Math.min(act, est))).toFixed(2) + '×';
+          frames.push({ narr: 'Step 4 — <b>reality check</b> (EXPLAIN ANALYZE does this): actually ' + act + ' row(s) match; estimate ' + est.toFixed(1) + ' (error ' + err + '). Histograms are usually within a small factor for single-column predicates. The big errors come from <b>stale</b> stats, <b>correlated</b> predicates (AND multiplies) and <b>functions</b> on columns (no stats at all).', parts: [{ type: 'array', label: 'rows that really match', values: data, hl: ah }, { type: 'bars', label: 'estimate vs actual', values: [Math.round(est * 10) / 10, act], idxLabels: ['estimated', 'actual'], hl: { 0: 'cur', 1: 'ok' } }] });
+          frames.push({ narr: 'Try <code>= 44</code> (non-MCV, estimate ≈ 1), <code>= 5</code> (MCV, exact), <code>&gt; 99</code> (past the last bound → estimate ≈ 0: that is the <b>ascending-key problem</b> when new rows arrive after the last ANALYZE).', parts: [{ type: 'set', label: 'stats stored for column x', items: ['n_distinct = 19', 'MCV: {5: 0.25}', 'bounds: ' + bounds.join(', '), 'null_frac = 0'] }] });
+          return frames;
+        }
+      },
+      {
+        title: 'Averages lie: how a skewed column flips the join order',
+        input: '60',
+        inputLabel: 'real number of pending orders (stats assume 750)',
+        gen: function (input) {
+          var P = parseInt(String(input).trim(), 10);
+          if (isNaN(P) || P < 1 || P > 3000) throw new Error('Enter the real pending count, 1–3000');
+          var frames = [], delhi = 38, perCust = 10;
+          var costA = delhi + delhi * perCust;      // city index entries + orders of those customers, checked for status
+          var costB = P + P;                        // pending index entries + one PK lookup each
+          var estB = 750 + 750;
+          var qg = function (hl, ehl, tags) { return { type: 'graph', label: 'two candidate plans', directed: true, height: 50, nodes: [{ id: 'C', label: 'customers via city', x: 14, y: 12, shape: 'box' }, { id: 'O', label: 'orders via customer_id', x: 50, y: 12, shape: 'box' }, { id: 'O2', label: 'orders via status', x: 14, y: 38, shape: 'box' }, { id: 'C2', label: 'customers via PK', x: 50, y: 38, shape: 'box' }, { id: 'R', label: 'result', x: 86, y: 25, shape: 'box' }], edges: [['C', 'O', 'A'], ['O', 'R'], ['O2', 'C2', 'B'], ['C2', 'R']], hl: hl || {}, ehl: ehl || {}, tags: tags || {} }; };
+          frames.push({ narr: 'Query: Delhi customers\' <b>pending</b> orders. Two sensible plans: <b>A</b> start from the 38 Delhi customers, then read their orders and keep pending ones; <b>B</b> start from pending orders, then look up each customer and keep Delhi ones.', parts: [qg(), { type: 'code', label: 'query', lang: 'sql', code: "SELECT c.name, o.id\nFROM customers c JOIN orders o ON o.customer_id = c.id\nWHERE c.city = 'Delhi' AND o.status = 'pending';" }] });
+          frames.push({ narr: 'After <code>ANALYZE</code>, SQLite\'s <code>sqlite_stat1</code> says status has ~<b>750 rows per value</b> (3000 ÷ 4). It has no idea that "pending" is rare — it only stores averages.', parts: [{ type: 'table', label: 'sqlite_stat1 (excerpt)', columns: ['idx', 'stat', 'meaning'], rows: [['idx_orders_status_created', '3000 750 1', '~750 rows per status'], ['idx_orders_customer', '3000 10', '~10 orders per customer'], ['idx_customers_city', '320 40', '~40 customers per city']], hl: { 0: 'bad' } }] });
+          frames.push({ narr: 'Planner\'s <b>estimate</b>: plan A ≈ 40 + 40×10 = ' + (40 + 400) + ' row touches; plan B ≈ 750 + 750 = ' + estB + '. It picks <b>A</b>.', parts: [qg({ C: 'ok', O: 'ok', O2: 'bad', C2: 'bad' }, { 'C-O': 'ok' }, { C: 'chosen' }), { type: 'bars', label: 'ESTIMATED work', values: [440, estB], idxLabels: ['plan A', 'plan B'], hl: { 0: 'ok' } }] });
+          var winner = costA <= costB ? 'A' : 'B';
+          frames.push({ narr: '<b>Reality</b> with ' + P + ' pending orders: plan A really costs ' + delhi + ' + ' + (delhi * perCust) + ' = ' + costA + '; plan B would cost ' + P + ' + ' + P + ' = ' + costB + '. ' + (winner === 'B' ? H.c('r', 'The planner chose the slower plan — ' + (costA / costB).toFixed(1) + '× more work — because the average (750) hid the skew.') : H.c('g', 'Here the average was close enough; plan A really is best.')), parts: [qg({ C: winner === 'A' ? 'ok' : 'bad', O2: winner === 'B' ? 'ok' : 'cur' }), { type: 'bars', label: 'ACTUAL work', values: [costA, costB], idxLabels: ['plan A (chosen)', 'plan B'], hl: winner === 'B' ? { 1: 'ok', 0: 'bad' } : { 0: 'ok' } }] });
+          frames.push({ narr: 'Crossover: plan B wins whenever pending &lt; ' + Math.floor(costA / 2) + ' rows. At 3,000,000 orders with 0.1% pending, the gap becomes thousands of times. Fixes, from best to last resort: (1) stats that see skew — PostgreSQL MCV lists, SQLite <code>sqlite_stat4</code> builds, MySQL histograms; (2) a <b>partial index</b> <code>ON orders(…) WHERE status = \'pending\'</code> (its own stats say "60 rows"); (3) SQLite <code>likelihood(o.status = \'pending\', 0.02)</code>; (4) hints / plan forcing.', parts: [{ type: 'bars', label: 'actual work as pending count grows', values: [costA, 2 * 60, 2 * 209, 2 * 750], idxLabels: ['plan A (any)', 'B @60', 'B @209', 'B @750'], hl: { 1: 'ok', 3: 'bad' } }] });
+          return frames;
+        }
+      }
+    ],
+    examples: [
+      { title: 'Watch statistics change the join order (SQLite)', html: `<p>Before <code>ANALYZE</code>, SQLite's built-in guesses make it start from <code>orders</code> via the status index (which happens to be the better plan here). After <code>ANALYZE</code> it believes "750 pending orders" and starts from customers instead. Hand-editing <code>sqlite_stat1</code> to say "60 rows per status" (then <code>ANALYZE sqlite_schema</code> to reload) flips it back — proof that the plan is driven by the numbers, not the SQL text.</p>`, code: { lang: 'sql', db: 'shop', code: `EXPLAIN QUERY PLAN
+SELECT c.name, o.id FROM customers c JOIN orders o ON o.customer_id = c.id
+WHERE c.city = 'Delhi' AND o.status = 'pending';          -- no stats: starts from orders
+
+ANALYZE;
+EXPLAIN QUERY PLAN
+SELECT c.name, o.id FROM customers c JOIN orders o ON o.customer_id = c.id
+WHERE c.city = 'Delhi' AND o.status = 'pending';          -- avg stats: starts from customers
+
+UPDATE sqlite_stat1 SET stat = '3000 60 1' WHERE idx = 'idx_orders_status_created';
+ANALYZE sqlite_schema;                                    -- reload the edited stats
+EXPLAIN QUERY PLAN
+SELECT c.name, o.id FROM customers c JOIN orders o ON o.customer_id = c.id
+WHERE c.city = 'Delhi' AND o.status = 'pending';          -- "rare status": starts from orders again` } },
+      { title: 'Correlated columns: the independence assumption breaks', html: `<p>Table <code>addresses</code> with 1,000,000 rows, 100 cities, 30 states. <code>WHERE city = 'Pune' AND state = 'MH'</code>:</p>${H.table(['', 'value'], [['sel(city = Pune)', '1/100 = 0.01'], ['sel(state = MH)', '1/30 ≈ 0.033'], ['estimate (independent)', '1,000,000 × 0.01 × 0.033 = <b>333</b>'], ['actual (Pune is always in MH)', H.c('r', '<b>10,000</b> — 30× more')]])}<p>The planner may now choose a nested loop expecting 333 outer rows and get 10,000. PostgreSQL fix: <code>CREATE STATISTICS … (dependencies) ON city, state</code>; Oracle: column groups; SQL Server: multi-column statistics.</p>` },
+      { title: 'Functions on columns have no statistics', html: `<p><code>WHERE date(created_at) = '2026-09-01'</code>: the planner has stats for <code>created_at</code>, not for <code>date(created_at)</code>. PostgreSQL falls back to a fixed guess (0.5% for equality) — on 3,000 rows it estimates 15; on a table where 30% of rows share that day it is badly wrong. Fixes: write the predicate as a range on the raw column (topic 6), or create an <b>expression index</b> <code>ON orders ((created_at::date))</code> — PostgreSQL collects statistics for indexed expressions after ANALYZE (and PG 14+ allows <code>CREATE STATISTICS</code> on expressions without an index).</p>` },
+      { title: 'The ascending-key problem', html: `<p>Stats were gathered at midnight; the histogram's top bound is <code>created_at = 2026-10-13 23:59</code>. At 11 am a dashboard asks for <code>created_at &gt;= '2026-10-14'</code>. According to the histogram, <b>zero</b> rows are that new, so the estimate is ~1 — and the planner picks a nested loop that runs 50,000 times. PostgreSQL mitigates this by probing the real index min/max for out-of-range values; SQL Server 2014+ uses a newer cardinality estimator model; elsewhere the fix is more frequent ANALYZE on hot, append-only tables (lower <code>autovacuum_analyze_scale_factor</code> for that table).</p>`, code: { lang: 'sql', check: false, code: `-- PostgreSQL: analyze this hot table after every ~1% change instead of 10%
+ALTER TABLE orders SET (autovacuum_analyze_scale_factor = 0.01,
+                        autovacuum_analyze_threshold = 1000);` } }
+    ],
+    deepDive: `<h4>How each engine stores and refreshes stats</h4>
+<ul>
+<li><b>PostgreSQL</b>: <code>ANALYZE</code> samples 300 × <code>default_statistics_target</code> (100) = 30,000 rows; keeps up to 100 MCVs and 100 histogram buckets per column in <code>pg_statistic</code> (view: <code>pg_stats</code>). Autovacuum's auto-analyze fires after 50 rows + 10% of the table change. Extended statistics (PG 10+): <i>ndistinct</i> and <i>dependencies</i> for column groups, <i>mcv</i> lists across columns (PG 12+), expressions (PG 14+). PG 18 keeps planner statistics across <code>pg_upgrade</code>.</li>
+<li><b>MySQL InnoDB</b>: persistent index stats sampled from 20 random leaf pages per index (<code>innodb_stats_persistent_sample_pages</code>), auto-recalculated after ~10% of rows change. Column <b>histograms</b> (singleton or equi-height) only when you run <code>ANALYZE TABLE t UPDATE HISTOGRAM ON col WITH 64 BUCKETS</code> — not automatic. Equality on indexed columns may use <i>index dives</i> (actually probing the index) instead of stats, up to <code>eq_range_index_dive_limit</code>.</li>
+<li><b>SQL Server</b>: per-statistics object a 200-step histogram + density vector; auto-create and auto-update (threshold ~√(1000·n) for big tables since 2016). Cardinality Estimator 120+ assumes partial correlation ("exponential backoff") instead of full independence.</li>
+<li><b>SQLite</b>: <code>sqlite_stat1</code> stores only averages per index prefix; <code>sqlite_stat4</code> (compile-time option) stores sample rows for skew; <code>PRAGMA optimize</code> (recommended on connection close or periodically) runs ANALYZE only where it seems needed; <code>likelihood()</code>, <code>unlikely()</code>, <code>likely()</code> are per-query hints.</li>
+</ul>
+<h4>Why estimation is fundamentally hard</h4>
+<p>Join estimation compounds errors: studies of real optimizers (e.g. the 2015 "How Good Are Query Optimizers, Really?" paper on the Join Order Benchmark) showed estimates off by 10<sup>3</sup>–10<sup>6</sup> for multi-join queries, almost always <b>under</b>-estimates, because independence and uniformity assumptions fail on real, correlated data. The practical defences: keep stats fresh, add extended stats where columns are correlated, prefer plans robust to misestimates (hash joins degrade more gracefully than nested loops), and use adaptive execution where available.</p>
+<h4>Parameters and plan caching</h4><p>A prepared statement planned for <code>status = $1</code> must work for both "pending" (2%) and "delivered" (59%). SQL Server's parameter sniffing reuses the first value's plan; PostgreSQL's generic plan uses average selectivity. Fixes: recompile hints, <code>plan_cache_mode</code>, separate queries for known-skewed values, or Query Store / <code>pg_hint_plan</code> plan pinning.</p>`,
+    aiEra: `<p><b>What AI changes:</b> Learned cardinality estimation is an active research area (MSCN, NeuroCard, DeepDB, and learned "steering" like Bao); cloud vendors add ML-based auto-tuning that watches estimate errors and creates statistics or indexes automatically (Azure SQL automatic tuning, Oracle Autonomous Database). Day-to-day, an assistant can scan an EXPLAIN ANALYZE and list every node whose estimate is off by more than 10×.</p>
+<p><b>Use AI as a partner:</b> "Here are pg_stats rows for orders.status and orders.customer_id and this plan. Which estimates are wrong, and would an MCV list, a higher statistics target, or CREATE STATISTICS fix it?" Then run ANALYZE and compare.</p>
+<p><b>Where AI goes wrong:</b> it confidently guesses data distributions it has never seen, suggests "just add an index" when the real fix is fresher statistics, or proposes hints that freeze a plan that is only right for today's data.</p>
+<p><b>What you must still own:</b> the selectivity math (MCV / histogram / independence), the habit of checking estimate vs actual at the lowest wrong node, and knowing when stats were last gathered.</p>`,
+    problems: [
+      {
+        title: 'ANALYZE made it slower — fix the skew', level: 'Hard', tags: ['statistics', 'skew', 'partial index', 'likelihood'], companies: ['Google', 'Atlassian', 'Razorpay'],
+        statement: `<p>After someone ran <code>ANALYZE</code>, the "Delhi pending orders" query starts from the 38 Delhi customers and reads ~380 of their orders to find the 20 pending ones, instead of starting from the 60 pending orders. Explain <b>why</b> the statistics misled the planner, and give a fix that makes the planner choose the "pending first" plan <b>while statistics stay enabled</b>.</p><pre>SELECT c.name, o.id, o.total_cents
+FROM customers c JOIN orders o ON o.customer_id = c.id
+WHERE c.city = 'Delhi' AND o.status = 'pending';</pre>`,
+        constraints: `SQLite <code>shop</code>; keep ANALYZE statistics; don't delete indexes; the result (20 rows) must not change.`,
+        example: `<p>After ANALYZE: ${H.c('r', 'SEARCH c USING INDEX idx_customers_city (city=?)')} → ${H.c('r', 'SEARCH o USING INDEX idx_orders_customer (customer_id=?)')}. Target: ${H.c('g', 'SEARCH o USING INDEX idx_orders_status_created (status=?)')} → ${H.c('g', 'SEARCH c USING INTEGER PRIMARY KEY (rowid=?)')}.</p>`,
+        brute: { why: `<p>The tempting "fix" is to delete the statistics (<code>DROP TABLE sqlite_stat1</code>) or force the plan with <code>INDEXED BY</code> / <code>CROSS JOIN</code>. Both freeze behaviour forever: when "pending" stops being rare (a payment outage queues 50% of orders), the forced plan becomes the slow one. The root cause — the stats only know the <i>average</i> rows per status (750), not that pending is 60 — remains.</p>`, code: { lang: 'sql', db: 'shop', code: `ANALYZE;
+SELECT idx, stat FROM sqlite_stat1 WHERE idx = 'idx_orders_status_created';  -- 3000 750 1
+EXPLAIN QUERY PLAN
+SELECT c.name, o.id, o.total_cents
+FROM customers c JOIN orders o ON o.customer_id = c.id
+WHERE c.city = 'Delhi' AND o.status = 'pending';
+-- starts from customers: the "750 pending" average made orders-first look expensive` } },
+        mcq: { q: 'Why does sqlite_stat1 lead the planner astray for status = \'pending\'?', options: ['It stores only the average rows per distinct status (3000/4 = 750), hiding the skew', 'It is out of date', 'It does not cover the status column', 'SQLite ignores statistics for TEXT columns'], answer: 0, explain: 'stat1 keeps averages per index prefix. With 4 statuses it assumes 750 rows each, but pending has 60 and delivered 1,760. PostgreSQL would use an MCV list; SQLite needs stat4, a partial index, or a likelihood() hint.' },
+        hints: [`<p>Hint 1: Compare <code>sqlite_stat1</code>'s 750 with <code>SELECT status, count(*) … GROUP BY status</code>. The stats aren't stale — they're <i>averages</i>.</p>`, `<p>Hint 2: Give the planner a structure whose own statistics describe only pending rows: a <b>partial index</b> <code>… WHERE status = 'pending'</code>. After ANALYZE its stat row says "60".</p>`, `<p>Hint 3: Query-level alternative: wrap the predicate in <code>likelihood(o.status = 'pending', 0.02)</code>. Recipe: ANALYZE → show bad plan → add partial index → ANALYZE → show good plan → run query.</p>`],
+        solution: {
+          approach: `<p>SQLite's default statistics are <b>averages</b>, so every status looks like 750 rows. Creating a <b>partial index</b> that contains only pending orders gives the planner a second, precise statistic: after <code>ANALYZE</code>, <code>sqlite_stat1</code> has a row <code>idx_orders_pending | 60 1</code>. Knowing pending is rare, the planner now starts from pending orders and does 60 primary-key lookups into customers. Bonus: the partial index is tiny (60 entries) and is also the fastest way to drive "pending orders" queue screens. Query-level alternative: <code>likelihood(o.status = 'pending', 0.02)</code>. In PostgreSQL neither is needed — its MCV list already records that pending ≈ 2%.</p>`,
+          code: { lang: 'sql', db: 'shop', code: `CREATE INDEX idx_orders_pending ON orders(customer_id) WHERE status = 'pending';
+ANALYZE;
+SELECT idx, stat FROM sqlite_stat1 WHERE tbl = 'orders' ORDER BY idx;   -- idx_orders_pending | 60 1
+
+EXPLAIN QUERY PLAN
+SELECT c.name, o.id, o.total_cents
+FROM customers c JOIN orders o ON o.customer_id = c.id
+WHERE c.city = 'Delhi' AND o.status = 'pending';
+-- SEARCH o USING INDEX idx_orders_status_created (status=?)
+-- SEARCH c USING INTEGER PRIMARY KEY (rowid=?)
+
+-- Query-level alternative (no schema change):
+EXPLAIN QUERY PLAN
+SELECT c.name, o.id, o.total_cents
+FROM customers c JOIN orders o ON o.customer_id = c.id
+WHERE c.city = 'Delhi' AND likelihood(o.status = 'pending', 0.02);
+
+SELECT c.name, o.id, o.total_cents
+FROM customers c JOIN orders o ON o.customer_id = c.id
+WHERE c.city = 'Delhi' AND o.status = 'pending'
+ORDER BY o.id;` },
+          complexity: `<p>Customers-first: 38 index entries + ~380 order rows read and filtered. Pending-first: 60 index entries + 60 PK lookups ≈ 120 row touches → ~3.5× less work here, and the gap grows with table size (0.1% pending of 3M orders → ~6,000 vs ~38,000+ touches per city).</p>`,
+          followUps: ['How would PostgreSQL estimate <code>status = \'pending\'</code> on the same data?', 'What breaks if "pending" suddenly becomes 50% of rows during an outage, for each fix?']
+        }
+      }
+    ]
+  });
+
   registerModule({
     id: 'sql11',
     title: 'Query Execution & Optimization',

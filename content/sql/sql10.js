@@ -216,7 +216,7 @@ SELECT id, first_name, last_name FROM customers WHERE email = 'user1234@mail.com
       { title: 'A query that needs most of the table — the index does not help', html: `<p><code>SELECT SUM(total_cents) FROM orders WHERE status &lt;&gt; 'cancelled'</code> keeps <b>97%</b> of rows. Even with an index on status, the database still needs almost every row, and jumping row-by-row through an index is <i>slower</i> than reading the pages in order. Indexes win when the result is a <b>small slice</b> (we quantify this in the Selectivity topic).</p>`, code: shop(`SELECT status, COUNT(*) AS n, ROUND(100.0 * COUNT(*) / 20000, 1) AS pct
 FROM orders GROUP BY status ORDER BY n DESC;
 EXPLAIN QUERY PLAN SELECT SUM(total_cents) FROM orders WHERE status <> 'cancelled';`) },
-      { title: 'Joins need an index on the join column', html: `<p><code>customers JOIN orders ON orders.customer_id = customers.id WHERE customers.city = 'Pune'</code>: for each of the 200 Pune customers the database must find their orders. Without an index on <code>orders.customer_id</code> it would re-scan orders (or build a temporary index — SQLite literally reports <code>AUTOMATIC COVERING INDEX</code> when it does this on the fly). With the index each lookup is a seek. Rule of thumb: <b>index your foreign-key columns</b>.</p>`, code: shop(`EXPLAIN QUERY PLAN
+      { title: 'Joins need an index on the join column', html: `<p><code>customers JOIN orders ON orders.customer_id = customers.id WHERE customers.city = 'Pune'</code>: for each of the 200 Pune customers the database must find their orders. Without an index on <code>orders.customer_id</code> the planner has no quick way to find them, so SQLite flips the join: it reads <b>all 20,000 orders</b> (<code>SCAN o</code>) and looks up each order's customer by primary key, only to throw away the non-Pune ones (in other shapes of query it builds a throwaway <code>AUTOMATIC</code> index every execution). With the index it scans customers and <b>seeks</b> each Pune customer's orders. Rule of thumb: <b>index your foreign-key columns</b>.</p>`, code: shop(`EXPLAIN QUERY PLAN
 SELECT c.first_name, o.id FROM customers c JOIN orders o ON o.customer_id = c.id WHERE c.city = 'Pune';
 CREATE INDEX idx_orders_customer ON orders(customer_id);
 EXPLAIN QUERY PLAN
@@ -423,7 +423,7 @@ for rows in [1_000, 1_000_000, 100_000_000, 10_000_000_000]:
       { title: 'Height of a real index (InnoDB-style numbers)', html: `<p>16 KB pages. Internal entry = 8-byte BIGINT key + 6-byte child pointer ≈ 14 bytes → ~1,170 children per internal page. Leaf rows ≈ 1 KB each → ~16 rows per leaf (clustered index). Height 3 holds 1,170 × 1,170 × 16 ≈ <b>21.9 million rows</b>; height 4 holds ~<b>25.6 billion</b>. So a PK lookup on a 20M-row InnoDB table is 3 page reads, and the first two are almost certainly in the buffer pool.</p>` },
       { title: 'ORDER BY … LIMIT without sorting', html: `<p><code>SELECT … ORDER BY created_at DESC LIMIT 5</code>: without an index the database reads all 20,000 rows and sorts them (SQLite plan: <code>USE TEMP B-TREE FOR ORDER BY</code>). With an index on <code>created_at</code> it jumps to the <b>right end</b> of the leaf chain and walks backwards 5 entries — leaves are doubly linked, so DESC works too.</p>`, code: shop(`EXPLAIN QUERY PLAN SELECT id FROM orders ORDER BY created_at DESC LIMIT 5;   -- SCAN + TEMP B-TREE
 CREATE INDEX idx_orders_created ON orders(created_at);
-EXPLAIN QUERY PLAN SELECT id FROM orders ORDER BY created_at DESC LIMIT 5;   -- SCAN orders USING INDEX (reads 5 entries then stops)`) },
+EXPLAIN QUERY PLAN SELECT id FROM orders ORDER BY created_at DESC LIMIT 5;   -- SCAN orders USING COVERING INDEX (walks from the right end, stops after 5)`) },
       { title: 'Prefix search is a range scan', html: `<p><code>WHERE last_name LIKE 'Ra%'</code> means "keys from 'Ra' up to (but not including) 'Rb'" — a range on the sorted leaves. SQLite only does this rewrite when the index collation matches LIKE's case-insensitive rule (index with <code>COLLATE NOCASE</code>) or when you use the case-sensitive <code>GLOB 'Ra*'</code>. A leading wildcard <code>'%ra'</code> has no starting point in the sort order → full scan.</p>`, code: shop(`CREATE INDEX idx_cust_last ON customers(last_name);
 EXPLAIN QUERY PLAN SELECT id FROM customers WHERE last_name GLOB 'Ra*';   -- SEARCH (last_name>? AND last_name<?)
 EXPLAIN QUERY PLAN SELECT id FROM customers WHERE last_name LIKE '%ao';   -- leading wildcard: no seek possible
@@ -799,7 +799,7 @@ SELECT sku, name FROM products WHERE sku BETWEEN 'SKU-00100' AND 'SKU-00103';`, 
     examples: [
       { title: 'Session tokens: equality only', html: `<p><code>SELECT user_id FROM sessions WHERE token = ?</code> — 64-char random tokens, never ranged, never sorted. A Postgres hash index stores 4-byte hash codes instead of 64-byte keys, so it can be noticeably smaller than a B-tree. But expiry cleanup (<code>WHERE expires_at &lt; now()</code>) is a range → that column needs a B-tree. One table, two index types, each for its job.</p>` },
       { title: 'Short-URL service', html: `<p>Lookup <code>WHERE code = 'aZ3k9Q'</code> is pure equality, and the code is the primary key. In a relational DB a B-tree PK is already O(log N) ≈ 3 pages with the top levels cached — fine. In a key-value store (DynamoDB, Redis) the code is a <b>hash partition key</b>: O(1) routing to a partition and a hash lookup inside it. Analytics like "codes created this week" then need a separate sorted index (e.g. a DynamoDB GSI with a sort key on created_at).</p>` },
-      { title: 'Hash join: the hash table the planner builds for you', html: `<p>Joining two large tables on equality with no helpful index, Postgres/MySQL 8.0.18+/SQL Server build a temporary <b>hash table</b> on the smaller input's join key and probe it with each row of the bigger input: O(N + M) instead of O(N × M). It is a per-query hash index, thrown away afterwards. SQLite instead builds a temporary B-tree "automatic index" for nested-loop joins.</p>`, code: shop(`-- No index on orders.product_id: SQLite builds a temporary (automatic) index for the join.
+      { title: 'Hash join: the hash table the planner builds for you', html: `<p>Joining two large tables on equality with no helpful index, Postgres/MySQL 8.0.18+/SQL Server build a temporary <b>hash table</b> on the smaller input's join key and probe it with each row of the bigger input: O(N + M) instead of O(N × M). It is a per-query hash index, thrown away afterwards. SQLite has no hash join: it always uses nested loops, probing an existing index (below: it scans orders and probes the products primary key) or, when neither side has a usable index, building a temporary <code>AUTOMATIC</code> B-tree index for that one query.</p>`, code: shop(`-- No index on orders.product_id: SQLite scans orders and probes products by its rowid PK (nested loop).
 EXPLAIN QUERY PLAN
 SELECT p.category, COUNT(*) FROM products p JOIN orders o ON o.product_id = p.id
 WHERE p.price_cents > 90000 GROUP BY p.category;`) }
@@ -1569,11 +1569,428 @@ SELECT COUNT(*) + 1 AS btree_insertions_per_insert FROM pragma_index_list('order
       }
     }]
   });
+
+  /* =====================================================================
+     PRACTICE - Easy
+     ===================================================================== */
+  practice.push({
+    title: 'Look Up a Product by SKU',
+    level: 'Easy', tags: ['unique index', 'equality'], companies: ['Amazon', 'Flipkart'],
+    statement: `<p>The warehouse scanner calls <code>SELECT id, name, price_cents FROM products WHERE sku = ?</code> on every barcode scan. SKUs are unique. Which index would you create, and what extra benefit does it give besides speed?</p>`,
+    constraints: `<p>products has 500 rows in the demo, 5 million in production. SKU values look like <code>SKU-00042</code>.</p>`,
+    example: `<p><code>sku = 'SKU-00042'</code> → one row. Before: ${H.c('r', 'SCAN products')}. After: ${H.c('g', 'SEARCH products USING INDEX ux_products_sku (sku=?)')}.</p>`,
+    brute: { why: `<p>Without an index every scan reads all products (5M rows in production) to return one — work proportional to the catalogue size per barcode beep, and nothing stops two products from accidentally sharing a SKU.</p>`, code: shop(`EXPLAIN QUERY PLAN SELECT id, name, price_cents FROM products WHERE sku = 'SKU-00042';
+SELECT id, name, price_cents FROM products WHERE sku = 'SKU-00042';`) },
+    mcq: { q: 'Best index?', options: ['<code>CREATE UNIQUE INDEX ux_products_sku ON products(sku)</code>', '<code>CREATE INDEX ON products(name)</code>', '<code>CREATE INDEX ON products(id, sku)</code>', 'No index — SKUs are short strings'], answer: 0, explain: 'Equality on sku → index sku. UNIQUE adds a data-integrity guarantee for free.' },
+    hints: [`<p>Hint 1: the WHERE clause is a single equality on <code>sku</code> — that is the column to index.</p>`, `<p>Hint 2: since SKUs must be unique, make the index UNIQUE: it both speeds the lookup and rejects duplicates.</p>`, `<p>Hint 3: verify with EXPLAIN QUERY PLAN that SCAN became SEARCH … (sku=?).</p>`],
+    solution: {
+      approach: `<p>Create a UNIQUE B-tree index on sku. The lookup becomes a seek of ~3–4 pages regardless of catalogue size, and the database now refuses a second product with the same SKU.</p>`,
+      code: shop(`CREATE UNIQUE INDEX ux_products_sku ON products(sku);
+EXPLAIN QUERY PLAN SELECT id, name, price_cents FROM products WHERE sku = 'SKU-00042';
+SELECT id, name, price_cents FROM products WHERE sku = 'SKU-00042';
+-- Bonus: the UNIQUE index rejects duplicates (uncomment to see the error)
+-- INSERT INTO products (sku, name, category, price_cents) VALUES ('SKU-00042', 'Dup', 'books', 100);`),
+      complexity: `<p>O(log N) per lookup instead of O(N). One extra B-tree maintained on product inserts (rare).</p>`,
+      followUps: ['Would a hash index be fine here? (equality only — yes in Postgres, but it cannot be UNIQUE)']
+    }
+  });
+
+  practice.push({
+    title: 'Read the Plan: SCAN or SEARCH?',
+    level: 'Easy', tags: ['explain query plan', 'left-prefix'], companies: ['Microsoft', 'Oracle'],
+    statement: `<p>With only <code>CREATE INDEX idx_country ON customers(country)</code>, predict SCAN or SEARCH for: (a) <code>WHERE country = 'IN'</code>, (b) <code>WHERE city = 'Pune'</code>, (c) <code>WHERE country = 'IN' AND city = 'Pune'</code>, (d) <code>WHERE country &lt;&gt; 'IN'</code>, (e) <code>WHERE upper(country) = 'IN'</code>. Then run the plans.</p>`,
+    constraints: `<p>customers has 2,000 rows, 5 countries.</p>`,
+    example: `<p>(a) ${H.c('g', 'SEARCH (country=?)')} · (b) ${H.c('r', 'SCAN')} · (c) ${H.c('g', 'SEARCH (country=?)')} + city filtered · (d) ${H.c('r', 'SCAN')} · (e) ${H.c('r', 'SCAN')}.</p>`,
+    brute: { why: `<p>Guessing without reading plans is the "brute force" of tuning: you add indexes and hope. Each wrong guess costs write overhead and still leaves the query scanning.</p>`, code: shop(`-- No index at all: every one of these is a full scan.
+EXPLAIN QUERY PLAN SELECT id FROM customers WHERE country = 'IN';
+EXPLAIN QUERY PLAN SELECT id FROM customers WHERE city = 'Pune';`) },
+    mcq: { q: 'Why is (e) a scan?', options: ['A function wraps the indexed column, so the sorted order cannot be used', 'upper() is not supported in SQLite', 'Country has low cardinality', 'Because of the string literal'], answer: 0, explain: 'Non-sargable: the index is sorted by country, not by upper(country).' },
+    hints: [`<p>Hint 1: an index can only be seeked when its leading column is compared directly (=, &lt;, &gt;, BETWEEN, IN) to a constant.</p>`, `<p>Hint 2: an unindexed column in an AND can still be filtered after the seek on the indexed one; on its own it forces a scan.</p>`, `<p>Hint 3: negation (&lt;&gt;) and functions on the column are non-sargable.</p>`],
+    solution: {
+      approach: `<p>Check each predicate against the index's leading column: direct comparison → SEARCH; other column only → SCAN; AND with the indexed column → SEARCH + filter; negation or function → SCAN.</p>`,
+      code: shop(`CREATE INDEX idx_country ON customers(country);
+EXPLAIN QUERY PLAN SELECT id FROM customers WHERE country = 'IN';                      -- (a) SEARCH
+EXPLAIN QUERY PLAN SELECT id FROM customers WHERE city = 'Pune';                       -- (b) SCAN
+EXPLAIN QUERY PLAN SELECT id FROM customers WHERE country = 'IN' AND city = 'Pune';    -- (c) SEARCH (country=?)
+EXPLAIN QUERY PLAN SELECT id FROM customers WHERE country <> 'IN';                     -- (d) SCAN
+EXPLAIN QUERY PLAN SELECT id FROM customers WHERE upper(country) = 'IN';               -- (e) SCAN`),
+      complexity: `<p>SEARCH: O(log N + k). SCAN: O(N). (Note: (a) uses the COVERING form because id is the rowid.)</p>`,
+      followUps: ['Rewrite (d) to be sargable if only 2 countries are wanted (<code>country IN (…)</code>).']
+    }
+  });
+
+  practice.push({
+    title: 'Index the Foreign Key Behind a Join',
+    level: 'Easy', tags: ['join', 'foreign key index'], companies: ['Shopify', 'Etsy'],
+    statement: `<p>"Show all orders for books": <code>SELECT o.id, o.total_cents FROM products p JOIN orders o ON o.product_id = p.id WHERE p.category = 'books' AND p.price_cents &gt; 90000</code>. Only a few products match, but the query scans all 20,000 orders. Which index fixes it?</p>`,
+    constraints: `<p>products 500 rows, orders 20,000 rows. One index.</p>`,
+    example: `<p>Before: ${H.c('r', 'SCAN o')} — all 20,000 orders read, each probing products by PK. After: ${H.c('g', 'SCAN p')} (500 rows) then ${H.c('g', 'SEARCH o USING INDEX idx_orders_product (product_id=?)')} per product.</p>`,
+    brute: { why: `<p>Without an index on <code>orders.product_id</code>, the planner cannot go from the few matching products to their orders, so it scans all 20,000 orders and probes products by primary key for each one, discarding almost everything. Foreign-key columns are not indexed automatically in SQLite or Postgres (InnoDB does create one).</p>`, code: shop(`EXPLAIN QUERY PLAN
+SELECT o.id, o.total_cents FROM products p JOIN orders o ON o.product_id = p.id
+WHERE p.category = 'books' AND p.price_cents > 90000;`) },
+    mcq: { q: 'Which column needs the index?', options: ['<code>orders.product_id</code>', '<code>products.id</code>', '<code>orders.id</code>', '<code>products.name</code>'], answer: 0, explain: 'products.id is already the rowid PK. The inner side of the join probes orders by product_id.' },
+    hints: [`<p>Hint 1: the join probes one table by the other's key. Which side is probed, and by which column?</p>`, `<p>Hint 2: <code>products.id</code> is the INTEGER PRIMARY KEY — already indexed. The missing one is the foreign-key side.</p>`, `<p>Hint 3: <code>CREATE INDEX idx_orders_product ON orders(product_id)</code>; plan shows SEARCH o … (product_id=?).</p>`],
+    solution: {
+      approach: `<p>Filter the small products side first (500 rows), then for each surviving product seek orders by product_id. Index the foreign key column.</p>`,
+      code: shop(`CREATE INDEX idx_orders_product ON orders(product_id);
+EXPLAIN QUERY PLAN
+SELECT o.id, o.total_cents FROM products p JOIN orders o ON o.product_id = p.id
+WHERE p.category = 'books' AND p.price_cents > 90000;
+SELECT p.id, p.price_cents, COUNT(o.id) AS orders
+FROM products p JOIN orders o ON o.product_id = p.id
+WHERE p.category = 'books' AND p.price_cents > 90000 GROUP BY p.id;`),
+      complexity: `<p>O(P + m·log N) for P products scanned, m matching products, instead of O(P + N) or O(P·N).</p>`,
+      followUps: ['Should you also index products(category, price_cents)? (500 rows — not worth it; at 5M products, yes)']
+    }
+  });
+
+  practice.push({
+    title: 'Fix the Month Filter That Scans',
+    level: 'Easy', tags: ['sargable', 'range rewrite'], companies: ['Google', 'Zomato'],
+    statement: `<p>A report runs <code>SELECT COUNT(*) FROM orders WHERE strftime('%Y-%m', created_at) = '2026-03'</code>. There is an index on <code>created_at</code>, yet the plan says SCAN. Rewrite it to use the index and prove the answer is unchanged.</p>`,
+    constraints: `<p>created_at is TEXT in ISO-8601 <code>YYYY-MM-DD HH:MM:SS</code> (sorts correctly as text).</p>`,
+    example: `<p>Non-sargable: ${H.c('r', "strftime('%Y-%m', created_at) = '2026-03'")}. Sargable: ${H.c('g', "created_at >= '2026-03-01' AND created_at < '2026-04-01'")} → SEARCH (created_at&gt;? AND created_at&lt;?).</p>`,
+    brute: { why: `<p>Wrapping the column in strftime() hides it from the index: the engine must compute strftime for all 20,000 rows. The index is sorted by created_at, and March is one contiguous block in that order — we just have to ask for it as a range.</p>`, code: shop(`CREATE INDEX idx_orders_created ON orders(created_at);
+EXPLAIN QUERY PLAN SELECT COUNT(*) FROM orders WHERE strftime('%Y-%m', created_at) = '2026-03';
+SELECT COUNT(*) FROM orders WHERE strftime('%Y-%m', created_at) = '2026-03';`) },
+    mcq: { q: 'Which upper bound is correct?', options: ["<code>created_at &lt; '2026-04-01'</code> (half-open)", "<code>created_at &lt;= '2026-03-31'</code>", "<code>created_at &lt;= '2026-03-31 23:59'</code>", "<code>created_at BETWEEN '2026-03-01' AND '2026-03-31'</code>"], answer: 0, explain: "'2026-03-31 10:00:00' &gt; '2026-03-31' as text, so the other bounds drop most of March 31. A half-open range [start, next month) is always exact." },
+    hints: [`<p>Hint 1: "all of March" is a contiguous range of created_at values.</p>`, `<p>Hint 2: use a half-open interval: <code>&gt;= first day</code> and <code>&lt; first day of next month</code>.</p>`, `<p>Hint 3: run both versions and compare the counts to prove equivalence; compare the plans to prove the speed-up.</p>`],
+    solution: {
+      approach: `<p>Leave the column bare and move the computation to the constants: a half-open range on created_at. The index can seek to 2026-03-01 and walk to 2026-04-01.</p>`,
+      code: shop(`CREATE INDEX idx_orders_created ON orders(created_at);
+EXPLAIN QUERY PLAN SELECT COUNT(*) FROM orders WHERE created_at >= '2026-03-01' AND created_at < '2026-04-01';
+SELECT (SELECT COUNT(*) FROM orders WHERE strftime('%Y-%m', created_at) = '2026-03')            AS old_way,
+       (SELECT COUNT(*) FROM orders WHERE created_at >= '2026-03-01' AND created_at < '2026-04-01') AS new_way;`),
+      complexity: `<p>O(log N + k) entries (covering: COUNT needs no table access) instead of O(N) function evaluations.</p>`,
+      followUps: ['In Postgres with a timestamptz column, what about time zones in the bounds?']
+    }
+  });
+
+  /* =====================================================================
+     PRACTICE - Medium
+     ===================================================================== */
+  practice.push({
+    title: 'Country + Signup Window: Pick the Column Order',
+    level: 'Medium', tags: ['composite index', 'equality before range'], companies: ['Meta', 'LinkedIn'],
+    statement: `<p>Marketing runs <code>SELECT id FROM customers WHERE country = ? AND signup_date BETWEEN ? AND ?</code> constantly. Choose between <code>(signup_date, country)</code> and <code>(country, signup_date)</code>, justify with the left-prefix rule, and show the plan.</p>`,
+    constraints: `<p>5 countries, 600 distinct signup dates, 2,000 customers.</p>`,
+    example: `<p>${H.c('g', '(country, signup_date)')} → SEARCH (country=? AND signup_date&gt;? AND signup_date&lt;?) — a single tight block. ${H.c('r', '(signup_date, country)')} → seek only on the date range, then check country on every entry in it.</p>`,
+    brute: { why: `<p>No index: scan 2,000 rows. Wrong order <code>(signup_date, country)</code>: seeks the date range across <b>all</b> countries and filters country entry by entry — ~5× more entries examined than necessary, because the range on the first column ends the usable prefix.</p>`, code: shop(`CREATE INDEX idx_wrong ON customers(signup_date, country);
+EXPLAIN QUERY PLAN SELECT id FROM customers WHERE country = 'IN' AND signup_date BETWEEN '2025-03-01' AND '2025-03-31';`) },
+    mcq: { q: 'Why does the equality column go first?', options: ['After an equality, the next column is still sorted, so the range can narrow the same block', 'Because country has fewer distinct values', 'Alphabetical order of column names', 'It does not matter'], answer: 0, explain: 'Equality fixes a block in which signup_date is ordered — the range then seeks inside it. A range first leaves country unordered across the range.' },
+    hints: [`<p>Hint 1: classify predicates: country is equality, signup_date is a range.</p>`, `<p>Hint 2: ESR — equality columns first, range last.</p>`, `<p>Hint 3: the plan should show all three conditions in the SEARCH: (country=? AND signup_date&gt;? AND signup_date&lt;?).</p>`],
+    solution: {
+      approach: `<p>Equality before range: <code>(country, signup_date)</code>. The seek jumps to (IN, 2025-03-01) and walks to (IN, 2025-03-31) — exactly the answer rows. It is even covering (id is the rowid).</p>`,
+      code: shop(`CREATE INDEX idx_cust_country_signup ON customers(country, signup_date);
+EXPLAIN QUERY PLAN SELECT id FROM customers WHERE country = 'IN' AND signup_date BETWEEN '2025-03-01' AND '2025-03-31';
+SELECT COUNT(*) AS matches FROM customers WHERE country = 'IN' AND signup_date BETWEEN '2025-03-01' AND '2025-03-31';`),
+      complexity: `<p>O(log N + k) with k = exact matches; wrong order is O(log N + k·5).</p>`,
+      followUps: ['Does the same index help <code>WHERE signup_date &gt; ?</code> alone? (no — needs its own index or skip scan)']
+    }
+  });
+
+  practice.push({
+    title: 'Which Queries Can Use (last_name, first_name, city)?',
+    level: 'Medium', tags: ['left-prefix rule'], companies: ['Amazon', 'Salesforce'],
+    statement: `<p>Given <code>CREATE INDEX idx_name ON customers(last_name, first_name, city)</code>, state for each query which index columns the seek uses: (1) <code>last_name = 'Rao'</code>; (2) <code>first_name = 'Eve' AND last_name = 'Rao'</code>; (3) <code>city = 'Rio'</code>; (4) <code>last_name = 'Rao' AND city = 'Rio'</code>; (5) <code>last_name IN ('Rao','Kim') AND first_name = 'Eve'</code>; (6) <code>last_name &gt;= 'R' AND first_name = 'Eve'</code>.</p>`,
+    constraints: `<p>Answer first, then verify each with EXPLAIN QUERY PLAN.</p>`,
+    example: `<p>(1) last_name · (2) last_name, first_name · (3) ${H.c('r', 'none (scan)')} · (4) last_name only · (5) last_name, first_name (two seeks) · (6) last_name range only.</p>`,
+    brute: { why: `<p>Creating one index per query (6 indexes) would "work" but multiplies write cost. Understanding which prefixes one composite serves lets one index replace several.</p>`, code: shop(`-- Brute force: one index per column, hoping the planner combines them
+CREATE INDEX i_last ON customers(last_name);
+CREATE INDEX i_first ON customers(first_name);
+CREATE INDEX i_city ON customers(city);
+EXPLAIN QUERY PLAN SELECT id FROM customers WHERE last_name = 'Rao' AND first_name = 'Eve';   -- picks just one of them`) },
+    mcq: { q: 'In (4), why is city not part of the seek?', options: ['first_name sits between last_name and city and has no condition — a gap breaks the prefix', 'city has low cardinality', 'Because city is the last column', 'SQLite ignores 3-column indexes'], answer: 0, explain: 'Within one last_name, entries are ordered by first_name first, so Rio entries are scattered across the first names.' },
+    hints: [`<p>Hint 1: walk the index columns left to right; stop at the first column with no equality condition.</p>`, `<p>Hint 2: a range condition is used but ends the prefix; IN behaves like several equalities.</p>`, `<p>Hint 3: WHERE-clause order is irrelevant; the planner matches by column.</p>`],
+    solution: {
+      approach: `<p>Apply the left-prefix rule: usable seek = longest run of leading index columns with equality (IN) conditions, optionally ending with one range column. Everything else is a filter or impossible.</p>`,
+      code: shop(`CREATE INDEX idx_name ON customers(last_name, first_name, city);
+EXPLAIN QUERY PLAN SELECT * FROM customers WHERE last_name = 'Rao';                                  -- (1)
+EXPLAIN QUERY PLAN SELECT * FROM customers WHERE first_name = 'Eve' AND last_name = 'Rao';           -- (2)
+EXPLAIN QUERY PLAN SELECT * FROM customers WHERE city = 'Rio';                                       -- (3)
+EXPLAIN QUERY PLAN SELECT * FROM customers WHERE last_name = 'Rao' AND city = 'Rio';                 -- (4)
+EXPLAIN QUERY PLAN SELECT * FROM customers WHERE last_name IN ('Rao', 'Kim') AND first_name = 'Eve'; -- (5)
+EXPLAIN QUERY PLAN SELECT * FROM customers WHERE last_name >= 'R' AND first_name = 'Eve';            -- (6)`),
+      complexity: `<p>Seeks: O(log N + block). (3) is O(N). (4)/(6) examine the whole last_name block/range, filtering the rest.</p>`,
+      followUps: ['Which single extra index would make (3) and (4) both fast? (one starting with city: (city, last_name))']
+    }
+  });
+
+  practice.push({
+    title: 'Covering Index for the Customer Search Dropdown',
+    level: 'Medium', tags: ['covering index', 'order by'], companies: ['Atlassian', 'HubSpot'],
+    statement: `<p>The CRM dropdown runs <code>SELECT id, first_name, last_name FROM customers WHERE last_name = ? ORDER BY first_name</code> on every keystroke. Make it an index-only query with no sort step.</p>`,
+    constraints: `<p>SQLite (no INCLUDE). id is the INTEGER PRIMARY KEY.</p>`,
+    example: `<p>Target plan: ${H.c('g', 'SEARCH customers USING COVERING INDEX idx_last_first (last_name=?)')} and no TEMP B-TREE line.</p>`,
+    brute: { why: `<p>Index on last_name only: seek, then 200 table lookups to read first_name, then sort 200 rows. Per keystroke, for every CRM user.</p>`, code: shop(`CREATE INDEX idx_last ON customers(last_name);
+EXPLAIN QUERY PLAN SELECT id, first_name, last_name FROM customers WHERE last_name = 'Rao' ORDER BY first_name;`) },
+    mcq: { q: 'Why is <code>id</code> not needed as an index column?', options: ['It is the rowid, which every SQLite index entry already stores', 'Because id is never selected', 'Because ORDER BY ignores it', 'It must be added, otherwise the query fails'], answer: 0, explain: 'Secondary index entries end with the rowid pointer — it is covered for free (InnoDB: the PK).' },
+    hints: [`<p>Hint 1: list the columns touched: last_name (WHERE), first_name (ORDER BY + SELECT), id (SELECT).</p>`, `<p>Hint 2: (last_name, first_name) gives equality then sort order; id rides along as the rowid.</p>`, `<p>Hint 3: check for COVERING and the absence of USE TEMP B-TREE.</p>`],
+    solution: {
+      approach: `<p><code>(last_name, first_name)</code>: the seek finds the last_name block, already sorted by first_name, and every selected column (including the implicit rowid) is in the entries — index-only, sort-free.</p>`,
+      code: shop(`CREATE INDEX idx_last_first ON customers(last_name, first_name);
+EXPLAIN QUERY PLAN SELECT id, first_name, last_name FROM customers WHERE last_name = 'Rao' ORDER BY first_name;
+SELECT id, first_name, last_name FROM customers WHERE last_name = 'Rao' ORDER BY first_name LIMIT 5;`),
+      complexity: `<p>O(log N + k) index entries, zero table pages, zero sorting.</p>`,
+      followUps: ['Autocomplete uses <code>last_name LIKE ? || \'%\'</code> — what changes? (NOCASE collation or GLOB to get a range seek)']
+    }
+  });
+
+  practice.push({
+    title: 'Case-Insensitive Email Lookup',
+    level: 'Medium', tags: ['expression index', 'collation', 'sargable'], companies: ['Okta', 'Auth0'],
+    statement: `<p>Login runs <code>SELECT id FROM customers WHERE lower(email) = lower(?)</code>. It scans even though <code>email</code> is indexed. Give two different fixes and show both plans.</p>`,
+    constraints: `<p>Do not change the stored data in this exercise.</p>`,
+    example: `<p>Fix 1: ${H.c('g', 'CREATE INDEX … ON customers(lower(email))')} → SEARCH (&lt;expr&gt;=?). Fix 2: ${H.c('g', 'index email COLLATE NOCASE')} and query with <code>= ? COLLATE NOCASE</code>.</p>`,
+    brute: { why: `<p>The plain email index is sorted by the raw string; <code>lower(email)</code> is a different value, so the engine computes lower() on all 2,000 rows per login.</p>`, code: shop(`CREATE INDEX idx_email ON customers(email);
+EXPLAIN QUERY PLAN SELECT id FROM customers WHERE lower(email) = lower('User7@Mail.com');`) },
+    mcq: { q: 'An expression index on <code>lower(email)</code> is used when the query says…', options: ['<code>WHERE lower(email) = ?</code> (identical expression)', '<code>WHERE email = ?</code>', '<code>WHERE upper(email) = ?</code>', '<code>WHERE email LIKE ?</code>'], answer: 0, explain: 'The planner matches the indexed expression textually/structurally; a different expression cannot use it.' },
+    hints: [`<p>Hint 1: the index must be sorted by the same value the WHERE compares.</p>`, `<p>Hint 2: SQLite supports indexes on expressions (deterministic functions) and per-column collations.</p>`, `<p>Hint 3: long-term best fix: normalise emails to lower case on write and use a plain UNIQUE index.</p>`],
+    solution: {
+      approach: `<p>Either index the expression <code>lower(email)</code> (query must use the same expression) or build the index with <code>COLLATE NOCASE</code> so a case-insensitive equality is a seek. In production, store normalised emails and keep one UNIQUE index.</p>`,
+      code: shop(`-- Fix 1: expression index
+CREATE INDEX idx_email_lower ON customers(lower(email));
+EXPLAIN QUERY PLAN SELECT id FROM customers WHERE lower(email) = lower('User7@Mail.com');
+
+-- Fix 2: case-insensitive collation
+CREATE INDEX idx_email_nocase ON customers(email COLLATE NOCASE);
+EXPLAIN QUERY PLAN SELECT id FROM customers WHERE email = 'User7@Mail.com' COLLATE NOCASE;
+SELECT id, email FROM customers WHERE email = 'User7@Mail.com' COLLATE NOCASE;`),
+      alt: [pg(`-- PostgreSQL
+CREATE UNIQUE INDEX ux_users_email_lower ON users (lower(email));
+-- or: ALTER TABLE users ALTER COLUMN email TYPE citext;`, 'PostgreSQL versions')],
+      complexity: `<p>O(log N) per login instead of O(N). Each index adds write cost — pick one fix, not both.</p>`,
+      followUps: ['Unicode: is lower() enough for internationalised emails? (ICU collations, normalisation)']
+    }
+  });
+
+  practice.push({
+    title: 'Most Expensive Products in a Category',
+    level: 'Medium', tags: ['composite index', 'top-n', 'order by limit'], companies: ['Walmart', 'Target'],
+    statement: `<p>The category page shows <code>SELECT id, name, price_cents FROM products WHERE category = ? ORDER BY price_cents DESC LIMIT 10</code>. Design an index so the database reads about 10 entries instead of sorting the whole category.</p>`,
+    constraints: `<p>4 categories × 125 products in the demo; 50,000 per category in production.</p>`,
+    example: `<p>${H.c('g', '(category, price_cents)')} → SEARCH products USING INDEX … (category=?) with no TEMP B-TREE; walk the block backwards, stop after 10.</p>`,
+    brute: { why: `<p>Without the index: scan all products, keep the category, sort 50,000 rows by price, return 10. Sorting work grows with the category size even though we only want 10.</p>`, code: shop(`EXPLAIN QUERY PLAN SELECT id, name, price_cents FROM products WHERE category = 'books' ORDER BY price_cents DESC LIMIT 10;`) },
+    mcq: { q: 'Why does LIMIT 10 make the composite index so effective?', options: ['Entries in the category block are already price-ordered, so the walk can stop after 10', 'LIMIT always uses an index', 'LIMIT turns off sorting', 'It is not effective; it still reads the whole block'], answer: 0, explain: 'No sort is needed, so no reason to look past the 10th entry.' },
+    hints: [`<p>Hint 1: equality column + sort column → ESR.</p>`, `<p>Hint 2: DESC is fine: walk the leaves backwards.</p>`, `<p>Hint 3: to make it covering, append name (as key column here; INCLUDE in Postgres).</p>`],
+    solution: {
+      approach: `<p>Index <code>(category, price_cents)</code>: seek the category block, read it from the high-price end, stop after 10 entries, fetch those 10 rows (or append <code>name</code> to make it covering).</p>`,
+      code: shop(`CREATE INDEX idx_products_cat_price ON products(category, price_cents);
+EXPLAIN QUERY PLAN SELECT id, name, price_cents FROM products WHERE category = 'books' ORDER BY price_cents DESC LIMIT 10;
+SELECT id, name, price_cents FROM products WHERE category = 'books' ORDER BY price_cents DESC LIMIT 10;`),
+      complexity: `<p>O(log N + 10) instead of O(N + C log C) for category size C.</p>`,
+      followUps: ['Page 2 of results — OFFSET 10 or keyset pagination? (see the Hard problem)']
+    }
+  });
+
+  practice.push({
+    title: 'Order Counts per Status for One Customer, Index-Only',
+    level: 'Medium', tags: ['covering index', 'group by'], companies: ['Swiggy', 'Instacart'],
+    statement: `<p>The account page shows "Delivered: 7, Cancelled: 1, …" via <code>SELECT status, COUNT(*) FROM orders WHERE customer_id = ? GROUP BY status</code>. Create one index that answers it without touching the table and without a GROUP BY sort.</p>`,
+    constraints: `<p>One index. Shop database.</p>`,
+    example: `<p>Target: ${H.c('g', 'SEARCH orders USING COVERING INDEX idx_orders_cust_status (customer_id=?)')} and no TEMP B-TREE FOR GROUP BY.</p>`,
+    brute: { why: `<p>Index on customer_id alone: seek, then a table lookup per order to read status, then hash/sort to group. Without any index: full scan of 20,000 orders per page view.</p>`, code: shop(`CREATE INDEX idx_orders_customer ON orders(customer_id);
+EXPLAIN QUERY PLAN SELECT status, COUNT(*) FROM orders WHERE customer_id = 42 GROUP BY status;`) },
+    mcq: { q: 'Why does <code>(customer_id, status)</code> also remove the GROUP BY sort?', options: ['Within one customer the entries are already ordered by status, so groups arrive consecutively', 'COUNT(*) never needs sorting', 'GROUP BY is always free in SQLite', 'Because status has 5 values'], answer: 0, explain: 'Streaming aggregation over an index that is sorted by the grouping column.' },
+    hints: [`<p>Hint 1: columns touched: customer_id (WHERE), status (GROUP BY/SELECT).</p>`, `<p>Hint 2: equality column first, grouping column second.</p>`, `<p>Hint 3: verify COVERING and no TEMP B-TREE.</p>`],
+    solution: {
+      approach: `<p><code>(customer_id, status)</code>: equality seek, entries grouped by status in order, all needed columns present → index-only streaming aggregation.</p>`,
+      code: shop(`CREATE INDEX idx_orders_cust_status ON orders(customer_id, status);
+EXPLAIN QUERY PLAN SELECT status, COUNT(*) FROM orders WHERE customer_id = 42 GROUP BY status;
+SELECT status, COUNT(*) AS n FROM orders WHERE customer_id = 42 GROUP BY status;`),
+      complexity: `<p>O(log N + k) index entries for the customer's k orders; no table I/O; no sort.</p>`,
+      followUps: ['Would this index also serve "orders of customer X" (left prefix)? Could it replace idx_orders_customer?']
+    }
+  });
+
+  /* =====================================================================
+     PRACTICE - Hard
+     ===================================================================== */
+  practice.push({
+    title: 'Design the Minimal Index Set for Five Queries',
+    level: 'Hard', tags: ['index portfolio', 'composite', 'covering', 'redundancy'], companies: ['Amazon', 'Uber', 'Stripe'],
+    statement: `<p>The orders service runs these queries (all hot):</p>
+<ol><li><code>WHERE customer_id = ?</code></li><li><code>WHERE customer_id = ? ORDER BY created_at DESC LIMIT 20</code></li><li><code>WHERE customer_id = ? AND created_at &gt;= ?</code></li><li><code>WHERE status = 'pending' ORDER BY created_at LIMIT 50</code> (pending ≈ 1%)</li><li><code>SELECT COUNT(*) WHERE customer_id = ? AND status = 'cancelled'</code></li></ol>
+<p>Orders take 3,000 inserts/s, so every index must earn its place. Propose the <b>smallest</b> set of indexes and show each query's plan.</p>`,
+    constraints: `<p>At most 3 secondary indexes. SQLite shop database.</p>`,
+    example: `<p>Answer: ${H.c('g', 'idx_cc(customer_id, created_at)')} serves Q1–Q3; ${H.c('g', 'partial idx(created_at) WHERE status = \'pending\'')} serves Q4; Q5 → either ${H.c('y', 'idx(customer_id, status)')} (covering) or accept filtering status over the customer's ~10 orders via idx_cc.</p>`,
+    brute: { why: `<p>One index per query (5 indexes: customer_id; (customer_id, created_at); …) means 6 B-tree insertions per order and several indexes that are left prefixes of each other. The opposite brute force — no indexes — makes all five queries full scans at thousands of calls per second.</p>`, code: shop(`CREATE INDEX q1 ON orders(customer_id);
+CREATE INDEX q2 ON orders(customer_id, created_at);
+CREATE INDEX q3 ON orders(customer_id, created_at);
+CREATE INDEX q4 ON orders(status, created_at);
+CREATE INDEX q5 ON orders(customer_id, status);
+SELECT COUNT(*) AS secondary_indexes, COUNT(*) + 1 AS btree_writes_per_insert FROM pragma_index_list('orders');`) },
+    mcq: { q: 'Why can one index on <code>(customer_id, created_at)</code> serve Q1, Q2 and Q3?', options: ['Q1 uses its left prefix, Q2 its prefix + order, Q3 its prefix + range on the next column', 'Because the planner merges indexes', 'Because created_at is a date', 'It can only serve Q2'], answer: 0, explain: 'Left-prefix rule + ESR: equality on customer_id, then created_at for sort or range.' },
+    hints: [`<p>Hint 1: group queries by their leading equality column — three of them start with customer_id.</p>`, `<p>Hint 2: one composite can serve equality-only, equality+sort and equality+range on the same column pair. The rare-value queue query wants a partial index.</p>`, `<p>Hint 3: for Q5, compare cost: customer has ~10 orders, so filtering status after the idx_cc seek costs ~10 lookups; a covering (customer_id, status) index saves them at the price of one more index. Decide by frequency.</p>`],
+    solution: {
+      approach: `<p>Two indexes cover everything well: <b>(customer_id, created_at)</b> — Q1 (prefix), Q2 (prefix + ordered backward walk + LIMIT), Q3 (prefix + range), Q5 (prefix, then status filtered over ~10 rows); and a <b>partial index on created_at WHERE status = 'pending'</b> — Q4 covering and sort-free, holding only ~1% of rows. Add <code>(customer_id, status)</code> only if Q5 is extremely hot or customers have thousands of orders. Writes: 3 B-tree insertions per order (2 when the order is not pending).</p>`,
+      code: shop(`CREATE INDEX idx_orders_cust_created ON orders(customer_id, created_at);
+CREATE INDEX idx_orders_pending ON orders(created_at) WHERE status = 'pending';
+
+EXPLAIN QUERY PLAN SELECT * FROM orders WHERE customer_id = 42;                                            -- Q1
+EXPLAIN QUERY PLAN SELECT * FROM orders WHERE customer_id = 42 ORDER BY created_at DESC LIMIT 20;          -- Q2
+EXPLAIN QUERY PLAN SELECT * FROM orders WHERE customer_id = 42 AND created_at >= '2026-06-01';             -- Q3
+EXPLAIN QUERY PLAN SELECT id, created_at FROM orders WHERE status = 'pending' ORDER BY created_at LIMIT 50; -- Q4
+EXPLAIN QUERY PLAN SELECT COUNT(*) FROM orders WHERE customer_id = 42 AND status = 'cancelled';            -- Q5
+SELECT COUNT(*) AS secondary_indexes FROM pragma_index_list('orders');`),
+      complexity: `<p>Q1–Q3, Q5: O(log N + k) with k ≈ 10. Q4: O(log P + 50) over a P-entry partial index. Writes: table + 1 (+1 for pending rows) B-tree insertions.</p>`,
+      followUps: ['Q6 arrives: <code>WHERE created_at &gt;= ? </code> across all customers for analytics. Index it, or send it to a replica / warehouse?', 'How would you validate in production that no other query relied on the dropped indexes?']
+    }
+  });
+
+  practice.push({
+    title: 'Keyset Pagination Instead of OFFSET',
+    level: 'Hard', tags: ['pagination', 'composite index', 'row values'], companies: ['Twitter/X', 'Slack', 'GitHub'],
+    statement: `<p>An admin feed pages through all orders newest first with <code>ORDER BY created_at DESC, id DESC LIMIT 20 OFFSET ?</code>. Page 500 is very slow. Explain why, then design an index and a <b>keyset</b> (seek) query that fetches the page after <code>(created_at, id) = ('2026-05-01 10:00:00', 5000)</code> in constant time.</p>`,
+    constraints: `<p>created_at is not unique, so the cursor must include id as a tie-breaker. SQLite supports row-value comparisons.</p>`,
+    example: `<p>${H.c('r', 'OFFSET 10000')}: reads and throws away 10,000 entries. ${H.c('g', 'WHERE (created_at, id) &lt; (?, ?) ORDER BY created_at DESC, id DESC LIMIT 20')} on index (created_at, id): SEARCH … COVERING INDEX (created_at&lt;?) — seek to the cursor, read 20.</p>`,
+    brute: { why: `<p>OFFSET pagination cannot jump: the engine must produce and discard the first OFFSET rows of the ordered result on every request. Page p costs O(p × 20) — deep pages get linearly slower, and rows inserted meanwhile shift pages (duplicates/missed rows).</p>`, code: shop(`CREATE INDEX idx_orders_created_id ON orders(created_at, id);
+EXPLAIN QUERY PLAN
+SELECT id, created_at FROM orders ORDER BY created_at DESC, id DESC LIMIT 20 OFFSET 10000;   -- walks 10,020 entries
+SELECT id, created_at FROM orders ORDER BY created_at DESC, id DESC LIMIT 20 OFFSET 10000;`) },
+    mcq: { q: 'Why must the cursor include <code>id</code>?', options: ['created_at can repeat; (created_at, id) is unique, so the cursor position is unambiguous', 'id is required by SQL syntax', 'To make the index covering', 'It is not needed'], answer: 0, explain: 'With ties on created_at, a cursor on created_at alone would skip or repeat rows at page boundaries.' },
+    hints: [`<p>Hint 1: remember the last row of the previous page; the next page is "everything strictly before it in sort order".</p>`, `<p>Hint 2: a row-value comparison <code>(created_at, id) &lt; (?, ?)</code> expresses that exactly, and an index on (created_at, id) makes it a seek.</p>`, `<p>Hint 3: the index order matches ORDER BY (both DESC → walk backwards), so no sort; LIMIT stops after 20.</p>`],
+    solution: {
+      approach: `<p>Keyset pagination: index <code>(created_at, id)</code>, and for the next page ask for rows strictly less than the last cursor in the same order. The engine seeks to the cursor and reads 20 entries — the cost is the same for page 1 and page 50,000, and concurrent inserts do not shift pages.</p>`,
+      code: shop(`CREATE INDEX idx_orders_created_id ON orders(created_at, id);
+
+EXPLAIN QUERY PLAN
+SELECT id, created_at FROM orders
+WHERE (created_at, id) < ('2026-05-01 10:00:00', 5000)
+ORDER BY created_at DESC, id DESC
+LIMIT 20;
+-- SEARCH orders USING COVERING INDEX idx_orders_created_id (created_at<?)
+
+SELECT id, created_at FROM orders
+WHERE (created_at, id) < ('2026-05-01 10:00:00', 5000)
+ORDER BY created_at DESC, id DESC
+LIMIT 20;`),
+      alt: [pg(`-- Engines without good row-value support: expand the comparison
+SELECT id, created_at FROM orders
+WHERE created_at < $1 OR (created_at = $1 AND id < $2)
+ORDER BY created_at DESC, id DESC
+LIMIT 20;`, 'Expanded form')],
+      complexity: `<p>Keyset: O(log N + 20) per page. OFFSET: O(OFFSET + 20) per page.</p>`,
+      followUps: ['How do you support "jump to page 37"? (you mostly don\'t — offer date filters instead)', 'What about filtering by status in the feed? (index (status, created_at, id))']
+    }
+  });
+
+  practice.push({
+    title: 'Speed Up a Low-Selectivity Aggregate',
+    level: 'Hard', tags: ['selectivity', 'covering index', 'index-only scan'], companies: ['Snowflake', 'Databricks', 'Stripe'],
+    statement: `<p><code>SELECT SUM(total_cents) FROM orders WHERE status = 'delivered'</code> matches 68% of rows. A teammate says "an index can't help a 68% query — the planner would scan anyway". Show when that is true and how a <b>covering</b> index changes the answer.</p>`,
+    constraints: `<p>SQLite shop database. Explain with selectivity and page counts, then prove with plans.</p>`,
+    example: `<p>Index ${H.c('r', '(status)')} only: 13,600 key lookups — worse than a scan in most engines. Index ${H.c('g', '(status, total_cents)')}: SEARCH … COVERING INDEX (status=?) — reads a narrow contiguous slice of the index, never the wide table rows.</p>`,
+    brute: { why: `<p>Full scan: reads every table page (all columns of all 20,000 rows) to sum one column of 68% of them. A plain index on status is even worse in theory: 13,600 random row fetches. The teammate is right about <b>non-covering</b> indexes at low selectivity.</p>`, code: shop(`EXPLAIN QUERY PLAN SELECT SUM(total_cents) FROM orders WHERE status = 'delivered';     -- SCAN
+SELECT SUM(total_cents) AS delivered_revenue FROM orders WHERE status = 'delivered';`) },
+    mcq: { q: 'Why does the covering index win even at 68% selectivity?', options: ['No table lookups: it reads only narrow index entries, which are contiguous and far fewer pages than the table', 'Because SUM is cached', 'Because status is the primary key', 'It does not; scans always win above 10%'], answer: 0, explain: 'The 1–10% rule of thumb is about random row lookups. An index-only scan has no random lookups — it behaves like scanning a smaller, pre-filtered table.' },
+    hints: [`<p>Hint 1: what makes a low-selectivity index seek expensive? (the per-row table lookup)</p>`, `<p>Hint 2: remove the lookup: put every needed column (status, total_cents) in the index.</p>`, `<p>Hint 3: compare bytes read: index entries (status + total_cents + rowid ≈ 20 bytes) vs full rows (~80+ bytes) — and only the 'delivered' slice.</p>`],
+    solution: {
+      approach: `<p>Selectivity rules apply to <i>lookups</i>. A covering index <code>(status, total_cents)</code> turns the query into an index-only range read of the 'delivered' block: sequential, narrow entries, no table access. In Postgres this is an Index Only Scan (if the visibility map is current); planners will choose it over a Seq Scan because it reads fewer pages. For truly huge tables, a pre-aggregated summary table beats both.</p>`,
+      code: shop(`CREATE INDEX idx_orders_status_total ON orders(status, total_cents);
+EXPLAIN QUERY PLAN SELECT SUM(total_cents) FROM orders WHERE status = 'delivered';
+-- SEARCH orders USING COVERING INDEX idx_orders_status_total (status=?)
+SELECT status, SUM(total_cents) AS revenue FROM orders GROUP BY status ORDER BY revenue DESC;`),
+      complexity: `<p>O(log N + k/B) index leaf pages (k = 13,600 entries, B ≈ entries per page) vs O(N/R) table pages (R = rows per page, R ≪ B). No random I/O.</p>`,
+      followUps: ['Same query also grouped by month — which index? (status, created_at, total_cents)', 'When would you stop and build a rollup table instead?']
+    }
+  });
+
+  practice.push({
+    title: 'Cluster a Time-Series Table by Device',
+    level: 'Hard', tags: ['clustered index', 'without rowid', 'time series'], companies: ['Tesla', 'Datadog', 'Samsara'],
+    statement: `<p><code>readings(device_id, ts, temp)</code> receives readings from 1,000 devices in time order. The dashboard asks <code>SELECT ts, temp FROM readings WHERE device_id = ? AND ts &gt;= ? ORDER BY ts</code> (last hour of one device). With a rowid table, one device's readings are spread across the whole table (interleaved with 999 other devices). Redesign the storage so the dashboard query is one contiguous read, and discuss the insert-side trade-off.</p>`,
+    constraints: `<p>SQLite. (device_id, ts) is unique. 20,000 readings in the demo.</p>`,
+    example: `<p>Rowid table + index (device_id, ts): ${H.c('y', 'SEARCH … USING INDEX')} then 1 table lookup per reading, each on a different page. WITHOUT ROWID PK (device_id, ts): ${H.c('g', 'SEARCH readings USING PRIMARY KEY (device_id=? AND ts&gt;?)')} — rows themselves are adjacent.</p>`,
+    brute: { why: `<p>Rowid table, no index: scan all readings. With a secondary index: seek is fast, but every matching reading lives on a different table page (arrival order interleaves devices), so 60 readings = ~60 random page reads. The physical order is wrong for the query.</p>`, code: lab(`CREATE TABLE readings (id INTEGER PRIMARY KEY, device_id INTEGER NOT NULL, ts TEXT NOT NULL, temp REAL NOT NULL);
+INSERT INTO readings (device_id, ts, temp)
+WITH RECURSIVE n(i) AS (SELECT 0 UNION ALL SELECT i + 1 FROM n WHERE i < 19999)
+SELECT i % 1000, datetime('2026-10-14 00:00:00', '+' || (i / 1000) || ' minutes'), 20 + (i % 70) / 10.0 FROM n;
+CREATE INDEX idx_readings_dev_ts ON readings(device_id, ts);
+EXPLAIN QUERY PLAN SELECT ts, temp FROM readings WHERE device_id = 7 AND ts >= '2026-10-14 00:10:00' ORDER BY ts;`) },
+    mcq: { q: 'What is the main cost of clustering by (device_id, ts)?', options: ['Inserts arrive in time order across devices, so they land in 1,000 different places in the tree instead of appending at the end', 'Reads become slower', 'You can no longer have secondary indexes', 'Timestamps cannot be primary keys'], answer: 0, explain: 'Clustered order ≠ arrival order → inserts are spread over many leaves (each device has its own hot leaf). Usually fine: 1,000 hot leaves fit in RAM. This is the classic read-vs-write layout trade-off.' },
+    hints: [`<p>Hint 1: which order do reads want? (device first, then time)</p>`, `<p>Hint 2: make that the clustering key: <code>PRIMARY KEY (device_id, ts) WITHOUT ROWID</code>.</p>`, `<p>Hint 3: think about inserts: each device appends at the end of its own key range — 1,000 "hot" leaves instead of one.</p>`],
+    solution: {
+      approach: `<p>Cluster by the read pattern: <code>PRIMARY KEY (device_id, ts) WITHOUT ROWID</code>. A device's readings become physically contiguous and time-ordered, so the dashboard query is one seek plus a sequential leaf walk, no lookups, no sort. Inserts go to the right edge of each device's range — 1,000 hot leaf pages that stay cached. (Time-series databases like TimescaleDB add time-partitioning on top; LSM stores handle this write pattern natively.)</p>`,
+      code: lab(`CREATE TABLE readings (
+  device_id INTEGER NOT NULL,
+  ts        TEXT    NOT NULL,
+  temp      REAL    NOT NULL,
+  PRIMARY KEY (device_id, ts)          -- clustered: one device's readings are neighbours, in time order
+) WITHOUT ROWID;
+INSERT INTO readings
+WITH RECURSIVE n(i) AS (SELECT 0 UNION ALL SELECT i + 1 FROM n WHERE i < 19999)
+SELECT i % 1000, datetime('2026-10-14 00:00:00', '+' || (i / 1000) || ' minutes'), 20 + (i % 70) / 10.0 FROM n;
+
+EXPLAIN QUERY PLAN
+SELECT ts, temp FROM readings WHERE device_id = 7 AND ts >= '2026-10-14 00:10:00' ORDER BY ts;
+-- SEARCH readings USING PRIMARY KEY (device_id=? AND ts>?)
+SELECT ts, temp FROM readings WHERE device_id = 7 AND ts >= '2026-10-14 00:10:00' ORDER BY ts;`),
+      complexity: `<p>Read: O(log N + k/B) contiguous pages for k readings. Insert: O(log N) into one of D hot leaves (D = devices). Range across all devices for one minute becomes the expensive query — add a secondary index on ts only if needed.</p>`,
+      followUps: ['How would you expire data older than 30 days efficiently? (time partitions dropped whole vs DELETE + bloat)', 'Postgres has no clustered tables — what would you do there? (BRIN on ts + composite B-tree, or TimescaleDB)']
+    }
+  });
+
+  /* =====================================================================
+     QUIZ
+     ===================================================================== */
+  quiz.push(
+    { q: 'In a B+tree index, where are ALL the keys (with their row pointers) stored?', options: ['In the leaf pages, which are linked to each other', 'In the root page', 'Spread across internal and leaf pages, each key once', 'In a separate hash table'], answer: 0, explain: 'Internal pages hold only separators for navigation; every key lives in the leaves, and leaves are chained for range scans.' },
+    { q: 'Roughly how many page reads does a point lookup need in a B+tree over 1 billion rows with fanout ~1000?', options: ['3–4', 'about 30', 'about 1,000', 'about 1,000,000'], answer: 0, explain: 'log<sub>1000</sub>(10<sup>9</sup>) = 3; plus maybe one more level. A binary tree would need ~30.' },
+    { q: 'Index on <code>(a, b, c)</code>. Which WHERE clause can seek on <b>a and b</b>?', options: ['<code>b = 2 AND a = 1</code>', '<code>b = 2 AND c = 3</code>', '<code>a &gt; 1 AND b = 2</code>', '<code>a = 1 AND c = 3</code>'], answer: 0, explain: 'WHERE order is irrelevant; (a=, b=) is a left prefix. A range on a ends the prefix; a gap at b ends it too.' },
+    { q: 'SQLite prints <code>SEARCH orders USING COVERING INDEX idx (customer_id=?)</code>. What does COVERING mean?', options: ['The query is answered from the index alone, with no table lookups', 'The index covers every row of the table', 'The index is unique', 'The index is clustered'], answer: 0, explain: 'All needed columns (plus the rowid) are in the index entries.' },
+    { q: 'How many clustered indexes can a table have?', options: ['One — rows can be physically ordered only one way', 'Up to 16', 'As many as you like', 'Zero in every engine'], answer: 0, explain: 'The clustered index is the table storage itself. (Postgres tables are heaps with no clustered index at all.)' },
+    { q: 'In MySQL InnoDB, what does a secondary index leaf entry point to?', options: ['The primary key value of the row', 'A physical (page, slot) address', 'A hash of the row', 'Nothing; it stores the whole row'], answer: 0, explain: 'InnoDB secondary lookups descend the clustered PK index a second time — which is why a small PK matters.' },
+    { q: 'Which query can a hash index NOT help?', options: ['<code>WHERE created_at BETWEEN ? AND ?</code>', '<code>WHERE token = ?</code>', '<code>WHERE id IN (1, 2, 3)</code>', '<code>WHERE email = ?</code>'], answer: 0, explain: 'Hashing destroys order, so ranges (and ORDER BY, prefix LIKE) need a B-tree.' },
+    { q: 'A predicate matches 70% of a large table and the index is not covering. What will a good planner usually do?', options: ['Full table scan — 70% of rows via random lookups costs more than reading all pages sequentially', 'Index seek, because an index exists', 'Refuse to run the query', 'Build a hash index on the fly'], answer: 0, explain: 'Low selectivity → scan. Ignoring the index here is correct.' },
+    { q: 'Which predicate is sargable on an index over <code>created_at</code>?', options: ["<code>created_at &gt;= '2026-03-01' AND created_at &lt; '2026-04-01'</code>", "<code>date(created_at) = '2026-03-01'</code>", "<code>strftime('%m', created_at) = '03'</code>", "<code>created_at || '' = '2026-03-01'</code>"], answer: 0, explain: 'Only the bare-column range can be turned into a seek; the others compute a new value per row.' },
+    { q: 'You have indexes <code>(customer_id)</code> and <code>(customer_id, created_at)</code>. Which is redundant?', options: ['<code>(customer_id)</code> — it is a left prefix of the other', '<code>(customer_id, created_at)</code>', 'Neither', 'Both'], answer: 0, explain: 'Any seek on customer_id can use the composite; dropping the single-column one saves a B-tree insertion per write.' },
+    { q: 'Why do random UUIDv4 primary keys hurt InnoDB insert performance?', options: ['Each insert lands on a random leaf of the clustered index, causing page splits and cache misses', 'UUIDs cannot be indexed', 'UUIDs are always NULL', 'They make SELECT * illegal'], answer: 0, explain: 'Sequential keys append at the right edge; random keys spread writes over the whole tree. UUIDv7/ULID fix this.' },
+    { q: 'What is a partial index?', options: ['An index containing only rows that satisfy a WHERE condition', 'An index on part of a string column', 'An index that is still being built', 'A clustered index without a primary key'], answer: 0, explain: 'E.g. <code>CREATE INDEX … ON orders(created_at) WHERE status = \'pending\'</code> — tiny, perfect for a rare hot value.' },
+    { q: 'Postgres <code>Index Only Scan … Heap Fetches: 9500</code>. What is happening?', options: ['Many heap pages are not marked all-visible, so rows are fetched to check visibility', 'The index is corrupt', 'The query is using a hash index', 'The planner ignored the index'], answer: 0, explain: 'Index-only scans depend on the visibility map; VACUUM keeps it current.' }
+  );
+
+  /* =====================================================================
+     INTERVIEW Q&A
+     ===================================================================== */
+  interview.push(
+    { q: 'What is a database index and why does it speed up queries?', level: 'B', a: `<p>An index is a separate data structure, usually a <b>B+tree</b>, that stores the values of one or more columns in <b>sorted order</b> together with a pointer to each row. Without it, a query filtering on that column must read every row (full table scan, O(N)). With it, the database navigates the tree in O(log N) page reads — about 3–4 for billions of rows — to the matching entries, then fetches only those rows. Analogy: the index at the back of a book. The cost: extra storage and extra work on every INSERT/UPDATE/DELETE.</p>`, followUps: ['How do you check whether a query uses an index? (EXPLAIN / EXPLAIN QUERY PLAN)', 'Is a primary key automatically indexed?'] },
+    { q: 'Explain how a B+tree lookup and a range scan work.', level: 'I', a: `<p>The root and internal pages hold only separator keys and child pointers; leaves hold all keys in sorted order with row pointers and are linked left-right. <b>Lookup:</b> at each level compare the key with the separators and follow one child pointer, reaching a leaf after <i>height</i> page reads, then binary-search within the leaf. <b>Range scan:</b> look up the lower bound once, then walk the leaf chain sideways until passing the upper bound — no returning to the root. High fanout (hundreds per page) keeps the height at 3–4, and the tree stays balanced because splits propagate upward and the tree grows at the root.</p>`, followUps: ['Why not a binary search tree?', 'What happens when a leaf is full?', 'Difference between B-tree and B+tree?'] },
+    { q: 'Clustered vs non-clustered index — explain with examples from real engines.', level: 'I', a: `<p>A <b>clustered</b> index stores the table rows themselves in index order (leaves contain the rows): InnoDB's primary key, SQL Server's clustered index, SQLite rowid tables / WITHOUT ROWID tables. Only one per table. A <b>non-clustered/secondary</b> index is a separate tree whose leaves hold the key plus a pointer: the PK in InnoDB (so a second descent), an RID or clustering key in SQL Server, a TID in Postgres (where all indexes are secondary and the table is a heap). Clustered gives the fastest PK lookups and range scans; secondary lookups pay an extra hop per row unless the index covers the query.</p>`, followUps: ['Why should the InnoDB PK be small and monotonically increasing?', 'What does Postgres CLUSTER do, and why is it not maintained?'] },
+    { q: 'What is the left-prefix rule for composite indexes?', level: 'I', a: `<p>A composite index on (a, b, c) is sorted by a, then b, then c. It can be seeked only by a leading run of columns: (a), (a, b), (a, b, c). A query on b or c alone cannot seek because those values are scattered across all a-values (except via a skip scan in some engines when a has few distinct values). A gap — a and c without b — seeks on a only and filters c. A range on a column ends the prefix: (a &gt; 5, b = 2) seeks on a and filters b. Order of predicates in the WHERE clause does not matter.</p>`, followUps: ['How do you choose column order? (ESR)', 'Does (a, b) make an index on (a) redundant? On (b)?'] },
+    { q: 'How do you decide the column order of a composite index?', level: 'A', a: `<p>Use <b>ESR</b>: Equality columns first, then the Sort (ORDER BY) column, then Range columns. Among equality columns, put first those shared by the most queries so one index serves many through its prefixes. A range ends the seekable prefix, so it goes last. "Most selective first" is mostly a myth for equalities — the combined block is the same size either way; it matters only for which other queries can reuse the prefix. Finally check with EXPLAIN that the seek uses all intended columns and no sort step appears.</p>`, followUps: ['Index for WHERE tenant_id = ? AND status = ? AND created_at &gt; ? ORDER BY created_at?', 'What about ORDER BY a ASC, b DESC?'] },
+    { q: 'What is a covering index? When would you use INCLUDE?', level: 'I', a: `<p>An index covers a query when every column it references (SELECT, WHERE, JOIN, GROUP BY, ORDER BY) is in the index, so the engine never reads the table: SQLite "USING COVERING INDEX", Postgres "Index Only Scan", MySQL "Using index". It removes one random lookup per matching row — huge for queries returning many rows. <b>INCLUDE</b> (Postgres 11+, SQL Server) adds payload columns only to leaves: they don't affect ordering or uniqueness and keep internal pages small, e.g. <code>UNIQUE (email) INCLUDE (name)</code>. Cost: wider index, more writes when covered columns change. Avoid SELECT * in hot paths.</p>`, followUps: ['Why might a Postgres index-only scan still read the heap?', 'Does InnoDB need INCLUDE for the primary key?'] },
+    { q: 'Hash index vs B-tree index — when would you use each?', level: 'I', a: `<p>A hash index maps hash(key) to a bucket: O(1) average equality lookups, but no order — so no ranges, ORDER BY, MIN/MAX, prefix LIKE, or partial (left-prefix) use of multi-column keys. B-trees do equality in O(log N) (3–4 pages, mostly cached) and all of those ordered operations. Use hash only for pure equality on large keys where size matters (Postgres <code>USING hash</code>, WAL-logged since PG 10, single column, no UNIQUE). In MySQL, InnoDB ignores USING HASH; MEMORY tables support it, and InnoDB has an automatic adaptive hash index. Default: B-tree.</p>`, followUps: ['Where do you meet hashing implicitly in query execution? (hash joins, hash aggregation)', 'Which index for JSONB containment or vector similarity?'] },
+    { q: 'What are selectivity and cardinality, and how do they affect index usage?', level: 'I', a: `<p><b>Cardinality</b> is the number of distinct values in a column; <b>selectivity</b> is the fraction of rows a predicate matches. A secondary index seek costs ~one random page per matching row, while a scan reads pages sequentially, so indexes win for small fractions (typically below ~1–10%, depending on storage, caching, covering and correlation) and lose for large ones. The planner estimates selectivity from statistics (ANALYZE: MCVs, histograms). Skewed columns need special care: a partial index for the rare hot value, and fresh statistics so the planner knows which values are rare.</p>`, followUps: ['Should you index a boolean column?', 'What is parameter sniffing and how does skew cause it?'] },
+    { q: 'I created an index but the query still does a full table scan. What could be wrong?', level: 'A', a: `<p>Checklist: (1) the predicate is <b>non-sargable</b> — function or arithmetic on the column, leading-wildcard LIKE, implicit type conversion, collation mismatch; (2) the index's <b>leading column</b> isn't in the WHERE (left-prefix rule); (3) the predicate is <b>not selective</b> enough, so a scan really is cheaper; (4) <b>stale/missing statistics</b> mislead the planner — run ANALYZE; (5) <b>OR</b> across different columns, or <code>!=</code>/NOT IN; (6) the table is tiny, so scanning is cheapest; (7) parameter type mismatch in a prepared statement. Verify each with EXPLAIN / EXPLAIN ANALYZE comparing estimated vs actual rows.</p>`, followUps: ['How do you force an index to test a hypothesis? (INDEXED BY, hints, enable_seqscan=off in a session)', 'Why is forcing usually a bad permanent fix?'] },
+    { q: 'When do indexes hurt performance?', level: 'I', a: `<p>Every index must be updated on INSERT/DELETE and on UPDATE of its columns: more WAL, page splits, dirty pages — write throughput drops roughly with each extra index, especially for random-key indexes that don't fit in memory. Indexes consume disk and buffer-pool memory, crowding out hot data, and slow backups/replication. Postgres non-HOT updates touch every index. Redundant (left-prefix, duplicate) and unused indexes pay all these costs for no benefit. Bulk loads are much faster with secondary indexes built afterwards. Also, more indexes = more plan choices = more planning time and plan-flip risk.</p>`, followUps: ['How do you find unused indexes in Postgres/MySQL?', 'How would you drop an index safely on a live system?'] },
+    { q: 'Why do UUIDv4 primary keys cause problems in InnoDB, and what are the alternatives?', level: 'A', a: `<p>InnoDB clusters rows by PK. Random UUIDv4 values insert into random leaves across the whole tree: frequent page splits, ~50–70% page fill, a working set equal to the whole index (cache misses), and fragmentation. The 16–36 byte PK is also copied into every secondary index, lowering fanout. Alternatives: BIGINT auto-increment / sequence (append-only, 8 bytes), time-ordered IDs — <b>UUIDv7</b> (RFC 9562), ULID, Snowflake IDs — stored as BINARY(16), which keep global uniqueness while inserting near the right edge. Postgres suffers less (heap table) but its PK index still sees random inserts.</p>`, followUps: ['What problem do sequential keys create at very high insert rates? (right-edge hot spot / latch contention)', 'How does Spanner avoid hot spots from sequential keys?'] },
+    { q: 'What is a partial index and an expression index? Give a use case for each.', level: 'A', a: `<p>A <b>partial index</b> includes only rows matching a predicate: <code>CREATE INDEX ON orders(created_at) WHERE status = 'pending'</code> — for a job queue where pending is 1% of rows; it is tiny, cheap to maintain, and the query's WHERE must imply the index predicate. Also good for "unique among active rows" constraints (<code>UNIQUE (email) WHERE deleted_at IS NULL</code>). An <b>expression index</b> indexes a computed value: <code>CREATE INDEX ON users(lower(email))</code> makes <code>WHERE lower(email) = ?</code> sargable; the query must use the same expression. Both exist in Postgres and SQLite; MySQL 8 has functional key parts but no partial indexes.</p>`, followUps: ['Why might the planner not use a partial index with a parameterised query?', 'Alternative to an expression index on lower(email)?'] },
+    { q: 'How would you approach "this API endpoint got slow" if you suspect indexing?', level: 'E', a: `<p>(1) Identify the actual queries and their frequency/latency (pg_stat_statements, slow query log, APM traces). (2) Run EXPLAIN ANALYZE (with BUFFERS) on realistic parameters; look for Seq Scans on big tables, key lookups on many rows, sorts, and estimate-vs-actual row mismatches. (3) Form a hypothesis: missing index, wrong column order, non-sargable predicate, stale stats, plan flip from skew. (4) Fix minimally — rewrite predicate, adjust/compose an existing index, make it covering or partial — preferring changes that replace indexes rather than add. (5) Build online (CONCURRENTLY / online DDL), verify the plan and latency, watch write latency and index size. (6) Add a regression guard (query-plan checks in CI or monitoring).</p>`, followUps: ['How do you test index changes without production data?', 'What if the slow query comes from an ORM you cannot easily change?'] },
+    { q: 'Explain how indexes interact with ORDER BY ... LIMIT and with GROUP BY.', level: 'A', a: `<p>B+tree leaves are sorted, so if the index order matches the ORDER BY after equality columns are fixed, the engine reads entries in order and stops after LIMIT rows — no sort, no reading the rest (SQLite plans then lack "USE TEMP B-TREE FOR ORDER BY"). Backward scans handle DESC; mixed directions need an index declared with matching ASC/DESC. For GROUP BY, an index sorted by the grouping columns lets the engine aggregate groups as a stream without hashing/sorting; if it is also covering, the whole aggregate is index-only. IN lists or ranges before the sort column break the free ordering.</p>`, followUps: ['Why is OFFSET pagination slow even with an index? (keyset pagination)', 'Can a hash index ever help ORDER BY?'] }
+  );
+
   registerModule({
-    id: 'sql10', title: 'Index Internals', lang: 'sql',
-    intro: `<p>tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro</p>`,
-    goals: ['aaaaaaaaaaaa', 'bbbbbbbbbbbbbb', 'cccccccccccccc'], prereqs: `<p>SQL modules 1-9 basics</p>`, hours: 10,
+    id: 'sql10',
+    title: 'Index Internals',
+    lang: 'sql',
+    intro: `<p>Every "why is this query slow?" conversation ends up here. An index is the database's version of the index at the back of a book: a separate, <b>sorted</b> structure that lets it jump to the rows you want instead of reading the whole table. In this module you will open the box and see how it really works — the <b>B+tree</b> searched level by level, leaves chained for range scans, <b>clustered vs secondary</b> storage, <b>hash</b> indexes, <b>composite</b> indexes and the <b>left-prefix rule</b>, <b>covering</b> indexes that never touch the table, <b>selectivity</b> and statistics, and the many ways an index can <b>hurt</b> (write cost, bloat, non-sargable predicates).</p>
+<p>Interviewers love this topic because it separates people who "add an index and hope" from people who can say <i>which</i> index, <i>which column order</i>, and <i>why the planner ignored it</i>. Every snippet runs live in SQLite in your browser against a 20,000-order shop database: you will watch <code>EXPLAIN QUERY PLAN</code> turn ${H.c('r', 'SCAN')} into ${H.c('g', 'SEARCH … USING INDEX')} and then into ${H.c('g', 'USING COVERING INDEX')}.</p>`,
+    goals: [
+      'Explain how a B+tree point lookup and range scan work, and estimate tree height and page reads from row count and fanout',
+      'Read SQLite <code>EXPLAIN QUERY PLAN</code> (SCAN vs SEARCH, COVERING, TEMP B-TREE) and map it to Postgres/MySQL plan terms',
+      'Contrast clustered and secondary indexes in InnoDB, SQL Server, PostgreSQL and SQLite, including key lookups and primary-key design',
+      'Choose between hash and B+tree indexes from the predicates a workload uses',
+      'Design composite indexes with the left-prefix rule and ESR ordering, and make hot queries covering (key columns or INCLUDE)',
+      'Reason about selectivity, cardinality, skew and statistics; use partial and expression indexes',
+      'Spot when indexes hurt — write amplification, redundant/unused indexes, non-sargable predicates — and fix them'
+    ],
+    prereqs: `<p>SQL 2–4 (SELECT/WHERE/ORDER BY, GROUP BY, JOINs) and SQL 7 (DDL &amp; constraints). Helpful: DSA basics of binary search and balanced trees (O(log N)), and hashing (HashMap).</p>`,
+    hours: 12,
     databases: { shop: DB_SHOP, lab: DB_LAB },
-    topics: topics, practice: practice, quiz: quiz, interview: interview
+    topics: topics,
+    practice: practice,
+    quiz: quiz,
+    interview: interview
   });
 })();

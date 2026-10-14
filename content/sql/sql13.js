@@ -924,6 +924,7 @@ ORDER BY l.lsn;`, 'Redo decisions by comparing LSN with pageLSN (▶ Run)')
         var lost = log.filter(function (r) { return r.lsn > flushed; });
         var lh = {}; log.forEach(function (r, i) { if (r.lsn > flushed) lh[i] = 'bad'; });
         crashed = false;
+        buf = {};
         push('<span class="c-r"><b>CRASH!</b></span> RAM is gone: the whole buffer pool and the unflushed log tail' + (lost.length ? ' (' + lost.map(recStr).join(', ') + ')' : '') + '. Only the disk columns and the fsynced log survive.', { logHl: lh, varHl: { flushedLSN: 'bad' } });
         crashed = true;
         log = log.filter(function (r) { return r.lsn <= flushed; });
@@ -1058,6 +1059,1016 @@ ORDER BY d.page;`),
           dry: { head: ['page', 'last winner after', 'first before', 'result'], rows: [['A', '8 (T3, LSN 8)', '0', H.c('g', '8')], ['B', '—', '0', H.c('r', '0')], ['C', '—', '0', H.c('r', '0')], ['D', '—', '0', H.c('r', '0')]] },
           complexity: `<p>One pass plus two window sorts: O(L log L) for L log records. The procedural ARIES version is O(L) with a hash map of pages.</p>`,
           followUps: ['Produce the list of CLRs the undo pass would write, in order (hint: losers\' UPDATEs by descending LSN).', 'How does the answer change if a loser and a winner both updated the same page (no strict 2PL)? Why do real systems forbid that?']
+        }
+      }
+    ]
+  });
+
+  /* =====================================================================
+     TOPIC 4 — B-tree vs LSM-tree
+     ===================================================================== */
+  topics.push({
+    title: 'B-Tree vs LSM-Tree: Memtable, SSTables & the Read/Write Trade-off',
+    analogy: `<p><b>B-tree = a perfectly sorted filing cabinet.</b> To change a document you walk to the exact drawer and edit it in place. Finding things is quick, but every small edit means opening a heavy drawer. <b>LSM-tree = an inbox tray.</b> New papers go on top of a tray on your desk (instant). When the tray is full you sort it and file the whole bundle as one new folder. Every evening an assistant merges folders together and throws away outdated copies. Writing is super fast; finding something means checking the tray first, then the newest folders, then older ones.</p>`,
+    explain: `<p><b>🟢 Two families of storage engines.</b></p>
+<p><b>B-tree engines</b> (InnoDB, PostgreSQL indexes, SQL Server, Oracle, SQLite, WiredTiger) keep data in fixed-size pages organised as a B+tree and <b>update pages in place</b> (via the buffer pool + WAL). Point read: walk root → leaf, typically 3–4 levels, and the upper levels are always cached, so ≈ <b>1 disk read</b>. Write: find the leaf, modify it in RAM, log it; later the whole page (16 KB) is written even if only 100 bytes changed.</p>
+<p><b>LSM-tree engines</b> (Log-Structured Merge tree: RocksDB, LevelDB, Cassandra, ScyllaDB, HBase, Bigtable, CockroachDB's Pebble, TiKV) never update in place:</p>
+<ol>
+<li><b>Write path</b>: append the change to a <b>WAL</b> (durability), insert into the <b>memtable</b> — a sorted in-memory structure, usually a skip list. Done. No disk reads at all.</li>
+<li><b>Flush</b>: when the memtable reaches its size (RocksDB default 64 MB) it becomes <b>immutable</b>, a new memtable takes writes, and the old one is written sequentially as an <b>SSTable</b> (Sorted String Table) into level 0. The WAL segment can then be deleted.</li>
+<li><b>SSTables are immutable</b>: sorted key/value blocks (4–64 KB, compressed), a block index, a <b>Bloom filter</b>, and a footer.</li>
+<li><b>Deletes</b> write a <b>tombstone</b> (a marker "key k is deleted as of seq n"); updates just write a newer version.</li>
+<li><b>Compaction</b> (next topic) merges SSTables in the background, keeping the newest version of each key and dropping overwritten values and tombstones.</li>
+<li><b>Read path</b>: memtable → immutable memtable → L0 files (newest first, they overlap) → one file per deeper level. A Bloom filter answers "definitely not here" for most files, so a point read usually costs ≈ 1 disk read.</li>
+</ol>
+${H.table(['', 'B-tree', 'LSM-tree (leveled)'], [['write cost', 'random page writes; WA ≈ page / row (can be 10–100×)', H.c('g', 'sequential; WA ≈ 10–30× but all big sequential I/O')], ['point read', H.c('g', '≈ 1 I/O, predictable'), '≈ 1 I/O with Bloom filters; more on misses of the filter'], ['range scan', H.c('g', 'walk adjacent leaves'), 'merge iterators across memtable + every level'], ['space', 'pages 50–70% full after random inserts; fragmentation', H.c('g', 'dense, compressed blocks; but old versions until compaction')], ['latency', H.c('g', 'steady'), 'compaction/flush stalls can cause spikes']])}
+<p><b>Rule of thumb:</b> ${H.c('g', 'write-heavy, append-heavy, huge data, SSD cost matters')} → LSM. ${H.c('b', 'read-heavy OLTP, range scans, strict latency, lots of secondary indexes')} → B-tree. This is the <b>RUM conjecture</b>: you can optimise two of Read, Update, Memory (space) overhead, never all three.</p>`,
+    clues: [
+      '"Design a storage engine for a write-heavy workload (logs, metrics, IoT, events)" → LSM: WAL + memtable + SSTables + compaction',
+      '"Millions of writes per second, mostly appends, rare reads of old data" → LSM / time-series engine',
+      '"Read-mostly, lots of range queries, strict p99 latency" → B-tree',
+      '"How does Cassandra / RocksDB / LevelDB / Bigtable store data?" → memtable + SSTables + Bloom filters',
+      '"Deleted data still takes space / deleted rows reappear" → tombstones and compaction (and Cassandra gc_grace_seconds)',
+      '"write amplification / read amplification / space amplification" → B-tree vs LSM trade-off (RUM conjecture)'
+    ],
+    code: [
+      py(`import bisect
+import hashlib
+
+TOMBSTONE = None   # a delete is just a write of this marker
+
+
+class Bloom:
+    """Tiny Bloom filter: k hash functions over m bits. 'No' is certain, 'yes' is maybe."""
+    def __init__(self, m=64, k=3):
+        self.m, self.k, self.bits = m, k, 0
+
+    def _hashes(self, key):
+        h = hashlib.sha256(key.encode()).digest()
+        return [int.from_bytes(h[4 * i:4 * i + 4], "big") % self.m for i in range(self.k)]
+
+    def add(self, key):
+        for b in self._hashes(key):
+            self.bits |= 1 << b
+
+    def might_contain(self, key):
+        return all(self.bits >> b & 1 for b in self._hashes(key))
+
+
+class SSTable:
+    """Immutable sorted run with a Bloom filter (a real one is a file of compressed blocks)."""
+    def __init__(self, items):
+        self.keys = [k for k, _ in items]
+        self.vals = [v for _, v in items]
+        self.bloom = Bloom()
+        for k in self.keys:
+            self.bloom.add(k)
+
+    def get(self, key):
+        if not self.bloom.might_contain(key):
+            return False, None                     # skipped without touching "disk"
+        i = bisect.bisect_left(self.keys, key)     # binary search inside the run
+        if i < len(self.keys) and self.keys[i] == key:
+            return True, self.vals[i]
+        return False, None
+
+
+class ToyLSM:
+    def __init__(self, memtable_limit=3):
+        self.wal, self.memtable, self.sstables = [], {}, []   # sstables[0] = newest
+        self.limit = memtable_limit
+
+    def put(self, key, value):
+        self.wal.append((key, value))      # 1) durability first (fsync in real life)
+        self.memtable[key] = value         # 2) in-memory sorted structure (skip list in RocksDB)
+        if len(self.memtable) >= self.limit:
+            self.flush()
+
+    def delete(self, key):
+        self.put(key, TOMBSTONE)
+
+    def flush(self):
+        run = SSTable(sorted(self.memtable.items()))
+        self.sstables.insert(0, run)       # newest first
+        self.memtable, self.wal = {}, []   # WAL segment no longer needed
+
+    def get(self, key):
+        if key in self.memtable:
+            return self.memtable[key]
+        for run in self.sstables:          # newest to oldest: first hit wins
+            found, val = run.get(key)
+            if found:
+                return val                 # may be TOMBSTONE -> deleted
+        return None
+
+    def compact(self):
+        merged = {}
+        for run in reversed(self.sstables):            # oldest first, newer overwrite
+            merged.update(zip(run.keys, run.vals))
+        live = sorted((k, v) for k, v in merged.items() if v is not TOMBSTONE)
+        self.sstables = [SSTable(live)]                # tombstones dropped at the bottom level
+
+
+db = ToyLSM()
+for k, v in [("k5", "a"), ("k1", "b"), ("k9", "c"), ("k3", "d"), ("k7", "e"), ("k1", "B2")]:
+    db.put(k, v)
+db.delete("k3")
+db.put("k8", "f")
+print("SSTables (newest first):", [r.keys for r in db.sstables], "memtable:", db.memtable)
+print("get k1 ->", db.get("k1"), "| get k3 ->", db.get("k3"), "(deleted) | get k4 ->", db.get("k4"))
+db.flush()
+db.compact()
+print("after full compaction:", list(zip(db.sstables[0].keys, db.sstables[0].vals)))`, 'Toy LSM: WAL, memtable, SSTables, Bloom filter, tombstones, compaction (▶ Run)'),
+      eng(`-- What would one full compaction of this write stream keep? Newest version per key, tombstones gone.
+WITH ranked AS (
+  SELECT k, v, op, seq, ROW_NUMBER() OVER (PARTITION BY k ORDER BY seq DESC) AS rn
+  FROM kv_log
+)
+SELECT k, v AS live_value, seq AS winning_seq
+FROM ranked
+WHERE rn = 1 AND op = 'P'
+ORDER BY k;`, 'Compaction result = latest version per key (▶ Run)'),
+      eng(`-- Which SSTables must a point lookup for key 'k' consult? (L0 files overlap; L1+ have disjoint ranges)
+SELECT id, level, min_key, max_key, created_seq,
+       CASE WHEN level = 0 THEN 'check (L0 overlaps; newest first)'
+            ELSE 'the only candidate on this level' END AS why
+FROM sstables
+WHERE 'k' BETWEEN min_key AND max_key
+ORDER BY level, created_seq DESC;`, 'Read path: candidate SSTables for one key (▶ Run)')
+    ],
+    codeTitle: ['Toy LSM engine', 'Compaction outcome in SQL', 'Lookup candidates'],
+    viz: {
+      title: 'LSM write path: WAL + memtable → flush to L0 → compaction → reads',
+      input: 'mem=3 | 5 1 9 3 7 -3 2 8 4 6 | get 3 | get 7',
+      inputLabel: 'mem=N | keys to put (-k = delete) | get k ...',
+      gen: function (input) {
+        var s = String(input || '').trim(), mem = 3;
+        var mm = /mem\s*=\s*(\d+)/i.exec(s);
+        if (mm) { mem = +mm[1]; s = s.replace(mm[0], ''); }
+        if (mem < 2 || mem > 5) throw new Error('mem must be 2..5');
+        var gets = [], rx = /get\s+(\d{1,3})/gi, g;
+        while ((g = rx.exec(s))) gets.push(g[1]);
+        s = s.replace(/get\s+\d{1,3}/gi, ' ');
+        var toks = s.replace(/\|/g, ' ').split(/[\s,]+/).filter(Boolean);
+        if (!toks.length) throw new Error('Enter keys like: mem=3 | 5 1 9 -1 | get 5');
+        if (toks.length > 18 || gets.length > 4) throw new Error('At most 18 writes and 4 gets');
+        var seq = 0, wal = [], mt = {}, l0 = [], l1 = [], frames = [];
+        function ent(k, e) { return k + (e.del ? '✝' : '@' + e.seq); }
+        function sortedEntries(obj) { return Object.keys(obj).sort(function (a, b) { return a - b; }).map(function (k) { return [k, obj[k]]; }); }
+        function push(narr, hl) {
+          hl = hl || {};
+          var rows = [], rowHead = [], ghl = {};
+          var mrow = sortedEntries(mt).map(function (e) { return ent(e[0], e[1]); });
+          rows.push(mrow); rowHead.push('memtable (RAM)');
+          l0.forEach(function (t, i) { rows.push(t.map(function (e) { return ent(e[0], e[1]); })); rowHead.push('L0 sst #' + (l0.length - i) + (i === 0 ? ' (newest)' : '')); });
+          rows.push(l1.map(function (e) { return ent(e[0], e[1]); })); rowHead.push('L1 (sorted, one run)');
+          var w = 1; rows.forEach(function (r) { w = Math.max(w, r.length); });
+          rows = rows.map(function (r) { var c = r.slice(); while (c.length < w) c.push(''); return c; });
+          var colHead = []; for (var i = 0; i < w; i++) colHead.push(String(i));
+          for (var key in hl) ghl[key] = hl[key];
+          frames.push({ narr: narr, parts: [
+            { type: 'array', label: 'WAL (sequential appends; truncated after each flush)', values: wal.length ? wal.slice() : ['(empty)'], hl: wal.length ? (hl.wal || {}) : {} },
+            { type: 'grid', label: 'LSM levels: key@seq, ✝ = tombstone', rows: rows, rowHead: rowHead, colHead: colHead, hl: ghl },
+            { type: 'vars', label: 'Counters', vals: { seq: seq, memtable_entries: Object.keys(mt).length + '/' + mem, l0_files: l0.length, l1_entries: l1.length } }
+          ] });
+        }
+        function rowOf(level, idx) { return level === 'mem' ? 0 : level === 'l0' ? 1 + idx : 1 + l0.length; }
+        push('Empty LSM tree. Every write will touch only the <b>WAL</b> (sequential append) and the <b>memtable</b> (RAM). Disk files are created only by flushes and compactions, always written sequentially and never modified afterwards.');
+        toks.forEach(function (t) {
+          var m = /^(-?)(\d{1,3})$/.exec(t);
+          if (!m) throw new Error('Bad token "' + t + '"');
+          var del = m[1] === '-', k = m[2];
+          seq++;
+          wal.push((del ? 'DEL ' : 'PUT ') + k + ' #' + seq);
+          mt[k] = { seq: seq, del: del };
+          var col = sortedEntries(mt).map(function (e) { return e[0]; }).indexOf(k);
+          var h = { wal: {} }; h.wal[wal.length - 1] = 'ok'; h['0,' + col] = del ? 'bad' : 'ok';
+          push((del ? '<b>Delete ' + k + '</b>: deletes are writes too — we insert a <span class="c-r">tombstone</span> ' + k + '✝' : '<b>Put ' + k + '</b>') + ' with sequence number ' + seq + '. Append to WAL, insert into the sorted memtable. ' + (Object.keys(mt).length < mem ? 'No disk read, no page split: this is why LSM writes are cheap.' : 'Memtable is now <b>full</b>.'), h);
+          if (Object.keys(mt).length >= mem) {
+            l0.unshift(sortedEntries(mt)); mt = {}; wal = [];
+            var fh = {}; for (var c = 0; c < l0[0].length; c++) fh['1,' + c] = 'cur';
+            push('<b>Flush</b>: the memtable is frozen and written <b>sequentially</b> as a new immutable SSTable at the top of <b>L0</b>. Its WAL entries are no longer needed, so the WAL is truncated. L0 files may overlap each other in key range.', fh);
+            if (l0.length >= 3) {
+              var merged = {};
+              l1.forEach(function (e) { merged[e[0]] = e[1]; });
+              for (var i = l0.length - 1; i >= 0; i--) l0[i].forEach(function (e) { merged[e[0]] = e[1]; });
+              var dropped = 0, out = [];
+              sortedEntries(merged).forEach(function (e) { if (e[1].del) dropped++; else out.push(e); });
+              var before = l1.length; l0.forEach(function (tt) { before += tt.length; });
+              l0 = []; l1 = out;
+              var ch = {}; for (var c2 = 0; c2 < l1.length; c2++) ch[rowOf('l1') + ',' + c2] = 'sel';
+              push('<b>Compaction L0 → L1</b> (L0 reached 3 files): merge-sort all L0 files with L1, keep only the <b>newest version</b> of each key, and drop ' + dropped + ' tombstone(s) because L1 is the bottom level (nothing older can hide below). ' + before + ' entries in, ' + l1.length + ' out. This rewrite is the <b>write amplification</b> LSMs pay later instead of at write time.', ch);
+            }
+          }
+        });
+        gets.forEach(function (k) {
+          var where = null, steps = [];
+          if (mt[k]) { where = { lvl: 'mem', e: mt[k] }; steps.push('memtable: <b>found</b>'); }
+          else {
+            steps.push('memtable: no');
+            for (var i = 0; i < l0.length && !where; i++) {
+              var e = null; l0[i].forEach(function (x) { if (x[0] === k) e = x[1]; });
+              if (e) { where = { lvl: 'l0', i: i, e: e }; steps.push('L0 #' + (l0.length - i) + ': Bloom says maybe → <b>found</b>'); }
+              else steps.push('L0 #' + (l0.length - i) + ': Bloom filter says <i>definitely not</i> (skip, no I/O)');
+            }
+            if (!where) {
+              var e1 = null; l1.forEach(function (x) { if (x[0] === k) e1 = x[1]; });
+              if (e1) { where = { lvl: 'l1', e: e1 }; steps.push('L1: Bloom maybe → binary search → <b>found</b>'); }
+              else steps.push('L1: not found');
+            }
+          }
+          var hh = {};
+          if (where) {
+            var row = rowOf(where.lvl, where.i), rr = where.lvl === 'mem' ? sortedEntries(mt) : where.lvl === 'l0' ? l0[where.i] : l1;
+            var ci = rr.map(function (x) { return x[0]; }).indexOf(k);
+            hh[row + ',' + ci] = where.e.del ? 'bad' : 'sel';
+          }
+          push('<b>get ' + k + '</b>: search newest → oldest and stop at the first hit. ' + steps.join(' → ') + '. Result: ' + (!where ? 'not found.' : where.e.del ? '<span class="c-r">tombstone → key is deleted</span> (older versions below are ignored).' : '<b>value @seq ' + where.e.seq + '</b>.'), hh);
+        });
+        push('Summary: writes were all sequential (WAL appends, flushes, compaction output). Reads had to look in several places, which Bloom filters make cheap for point lookups. A <b>B-tree</b> would instead have updated one leaf page in place per write — fewer places to read, more random writes.');
+        return frames;
+      }
+    },
+    examples: [
+      {
+        title: 'Write amplification of a B-tree on random updates',
+        html: `<p>10,000 random updates per second, 200-byte rows, 100 GB table, 16 KB InnoDB pages, buffer pool far smaller than the table. Each update usually lands on a different page, so eventually each one causes a 16 KB page write (plus 16 KB again via the doublewrite buffer) and ~250 B of redo:</p>
+${H.table(['', 'bytes per update', 'MiB/s at 10k updates/s'], [['redo log', '≈ 250', '2.4'], ['page write', '16,384', '156'], ['doublewrite copy', '16,384', '156'], ['total', H.c('r', '≈ 33,000 (WA ≈ 165×)'), H.c('r', '≈ 315 MiB/s')]])}
+<p>The same workload on a leveled LSM with WA ≈ 20 writes ≈ 40 MB/s, all sequential. This is the Facebook/MyRocks story: moving user DB tiers from InnoDB to RocksDB cut storage and write volume dramatically on flash.</p>`
+      },
+      {
+        title: 'Point lookup cost with Bloom filters',
+        html: `<p>An LSM with a memtable, 4 L0 files and levels L1–L4 (one candidate file each): up to 8 places to look. With 10 bits/key Bloom filters (≈ 1% false positives), a lookup for a key that lives in L4 costs: 7 filter checks in RAM, expected 7 × 0.01 = 0.07 wasted reads, plus 1 real read ≈ <b>1.07 I/Os</b>. A lookup for a key that does not exist costs ≈ 0.08 I/Os. Without Bloom filters it would be up to 8 I/Os — that is why every serious LSM uses them (RocksDB adds prefix and ribbon filters).</p>`,
+        code: py(`# Expected disk reads for an LSM point lookup with Bloom filters
+places, fpr = 8, 0.01
+hit_in_last = (places - 1) * fpr + 1          # key exists in the deepest level
+miss = places * fpr                            # key does not exist anywhere
+print("existing key: %.2f I/Os, missing key: %.2f I/Os, without filters: %d" % (hit_in_last, miss, places))`)
+      },
+      {
+        title: 'Choosing per workload',
+        html: `${H.table(['workload', 'pick', 'why'], [['Metrics/IoT ingest 1M points/s, queries on recent data', H.c('g', 'LSM / time-series engine'), 'sequential writes, great compression, TTL drops whole files'], ['Banking ledger: OLTP, many secondary indexes, strict p99', H.c('b', 'B-tree (InnoDB/Postgres)'), 'predictable reads, cheap index lookups, no compaction stalls'], ['Chat messages, append-heavy, read latest per conversation', H.c('g', 'LSM (Cassandra/Scylla/HBase)'), 'writes dominate; reads hit memtable/recent files'], ['Product catalogue, read 100:1, rich range filters', H.c('b', 'B-tree'), 'range scans walk adjacent leaves'], ['Embedded KV in a distributed SQL DB', H.c('g', 'LSM (Pebble/RocksDB)'), 'CockroachDB, TiDB, YugabyteDB all chose LSM for write throughput and SSD efficiency']])}`
+      },
+      {
+        title: 'Tombstone trouble',
+        html: `<p>A queue-like table in Cassandra: insert a job, delete it when done. Deletes create tombstones that live until compaction <i>and</i> <code>gc_grace_seconds</code> (default 10 days) pass. A query "give me the first 10 pending jobs" may scan 100,000 tombstones before finding 10 live rows → timeouts (Cassandra warns at 1,000 and fails at 100,000 tombstones per query by default). Lesson: <b>LSMs hate delete-heavy queue patterns</b>; use a real queue or partition by time bucket and drop whole partitions.</p>`
+      }
+    ],
+    deepDive: `<p><b>🟣 Memtable data structure.</b> RocksDB's default memtable is a concurrent <b>skip list</b> (lock-free reads, ordered iteration for flush). Alternatives: hash-skiplist for prefix workloads, vector memtable for bulk load. Sequence numbers make every entry a version, which gives LSMs cheap <b>snapshots</b>: a snapshot is just "ignore entries with seq &gt; S".</p>
+<p><b>Inside an SSTable.</b> Data blocks with <b>prefix (delta) key compression</b> and restart points every 16 keys, compressed with LZ4/Zstd; an index block (last key of each data block → offset), optionally partitioned; a filter block (Bloom/Ribbon); a properties block; a footer with offsets and a magic number. Since files are immutable, caching, checksumming, backups (hard-link the files) and replication of files are all simple.</p>
+<p><b>Range scans</b> need a <b>merging iterator</b>: a heap over iterators of the memtable and every overlapping SSTable, skipping shadowed versions and tombstones. Prefix Bloom filters and per-file min/max keys prune files. Range-delete tombstones avoid writing millions of point tombstones.</p>
+<p><b>Write stalls.</b> If flushes or compactions fall behind, L0 file count grows and reads slow down; RocksDB then <b>slows</b> writes (<code>level0_slowdown_writes_trigger</code>, default 20 files) and finally <b>stops</b> them (<code>level0_stop_writes_trigger</code>, 36). Capacity planning for an LSM means planning compaction bandwidth, not just ingest bandwidth.</p>
+<p><b>Middle ground designs.</b> <b>Bε-trees / fractal trees</b> (TokuDB) buffer messages in internal nodes; <b>Bw-tree</b> (Hekaton, Azure Cosmos DB) uses delta chains and a mapping table for latch-free updates; <b>WiscKey</b> separates keys from values (RocksDB BlobDB) to cut compaction cost for big values; copy-on-write B-trees (LMDB, Btrfs) never overwrite pages and need no WAL.</p>`,
+    aiEra: `<p><b>What AI changes:</b> vector databases and AI feature stores are new, write-heavy workloads; many of them (Milvus segments, LanceDB, Turbopuffer on object storage) borrow LSM ideas: immutable segments, background merging, tombstones. Knowing LSM internals helps you reason about why a freshly inserted embedding is not yet indexed, or why deletes are slow.</p>
+<p><b>Use AI as a partner:</b> give an assistant your workload profile (write/read ratio, row size, data size, latency SLO) and ask for a B-tree vs LSM comparison with explicit amplification arithmetic; then sanity check every number yourself and run a <code>db_bench</code> / sysbench test.</p>
+<p><b>Where AI goes wrong:</b> it repeats "LSM is for writes, B-tree is for reads" without numbers, forgets that LSM point reads are nearly as cheap thanks to Bloom filters, ignores compaction debt and write stalls, or claims Postgres uses an LSM.</p>
+<p><b>What you must still own:</b> drawing both write and read paths from memory, quantifying the three amplifications for a given workload, and defending the choice with numbers in a design interview.</p>`,
+    problems: [
+      {
+        title: 'Pick an Engine with an Amplification Budget',
+        level: 'Medium', tags: ['B-tree', 'LSM', 'capacity planning'], companies: ['Meta', 'Datadog', 'Uber', 'Netflix'],
+        statement: `<p>A metrics service ingests <b>W = 200,000</b> random-key writes/s of <b>200-byte</b> rows and serves <b>R = 2,000</b> point reads/s. The SSD sustains <b>1,000 MB/s</b> of writes but you must keep total write traffic under 50% of that. Estimate disk write bandwidth for (a) a B-tree with 16 KB pages where nearly every write dirties a distinct page (doublewrite on) and (b) a leveled LSM with fanout 10 and 5 levels (WA ≈ 2 + 10 × (5 − 1) / 2). Print both and recommend one.</p>`,
+        constraints: `Use the simple models given. 1 MB = 10<sup>6</sup> bytes for this estimate.`,
+        example: `<p>B-tree: 200,000 × (16,384 × 2 + 200) ≈ ${H.c('r', '6,594 MB/s')} → impossible. LSM: WA = 2 + 20 = 22 → 200,000 × 200 × 22 = ${H.c('g', '880 MB/s')}... still above the 500 MB/s budget, so you would also need compression (≈ 3× on metrics) → ≈ ${H.c('g', '293 MB/s')}. Recommendation: <b>LSM with compression</b> (or a time-series engine).</p>`,
+        brute: {
+          why: `<p>The "brute force" is to deploy both engines and load-test them. That is the final answer in practice, but it costs days. A back-of-envelope model eliminates the hopeless option (the B-tree here is 13× over the device limit) in seconds, so you only benchmark the plausible designs.</p>`,
+          code: { lang: 'python', run: true, code: `# Brute force: "simulate" bytes written for one second of traffic, write by write
+W, ROW, PAGE = 200_000, 200, 16_384
+btree_bytes = 0
+for _ in range(W):
+    btree_bytes += 2 * PAGE + ROW     # page write + doublewrite copy + redo record
+print("B-tree MB/s:", btree_bytes // 1_000_000)` }
+        },
+        mcq: { q: 'Why does the B-tree model charge a whole 16 KB page per 200-byte write?', options: ['Random keys rarely share a dirty page before it is flushed, and pages are written whole', 'B-trees store each row in its own page', 'Because of the WAL', 'Because of Bloom filters'], answer: 0, explain: 'With a data set far larger than RAM and random keys, almost every write dirties a different page, and the engine always writes full pages.' },
+        hints: [
+          `<p>Hint 1: bandwidth = writes/s × bytes physically written per logical write. Find "bytes per write" for each engine.</p>`,
+          `<p>Hint 2: B-tree ≈ 2 × page (page + doublewrite) + the redo record. LSM ≈ row × WA, where WA covers WAL + flush + compaction rewrites.</p>`,
+          `<p>Hint 3: compare with the 500 MB/s budget; if both fail, ask which knob (compression, batching keys by time, fewer levels) brings one under budget.</p>`
+        ],
+        solution: {
+          approach: `<p>Compute bytes/write for each design, multiply by the write rate, compare with the budget, then apply the realistic mitigation (block compression on the LSM, whose immutable sorted blocks compress very well). Reads (2,000/s at ≈ 1 I/O each) are trivial for either engine, so writes decide.</p>`,
+          code: { lang: 'python', run: true, code: `def engine_choice(writes, row, page=16_384, fanout=10, levels=5, budget_mb=500, compression=3.0):
+    btree = writes * (2 * page + row) / 1e6                  # MB/s
+    wa_lsm = 2 + fanout * (levels - 1) / 2                     # WAL + flush + average compaction rewrites
+    lsm = writes * row * wa_lsm / 1e6
+    lsm_c = lsm / compression                                  # SSTable blocks are compressed
+    print("B-tree       : %8.0f MB/s" % btree)
+    print("LSM (WA=%.0f)  : %8.0f MB/s" % (wa_lsm, lsm))
+    print("LSM + %.0fx zstd: %8.0f MB/s  (budget %d MB/s)" % (compression, lsm_c, budget_mb))
+    if btree <= budget_mb:
+        return "B-tree fits the budget: prefer it for simpler, steadier reads"
+    if lsm_c <= budget_mb:
+        return "LSM with compression"
+    return "Neither fits: shard the writes across more disks/nodes"
+
+print("recommendation:", engine_choice(200_000, 200))` },
+          complexity: `<p>O(1) arithmetic. The real work is choosing honest parameters (row size, WA, compression ratio) and validating them with a benchmark.</p>`,
+          followUps: ['How would sorting writes by (metric, timestamp) change the B-tree estimate? (Hint: sequential keys fill pages before flushing.)', 'Estimate the space amplification of both designs for 10 TB of logical data.']
+        }
+      }
+    ]
+  });
+
+  /* =====================================================================
+     TOPIC 5 — Compaction strategies and the math
+     ===================================================================== */
+  topics.push({
+    title: 'Compaction: Leveled vs Tiered and the Amplification Math',
+    analogy: `<p>Think of <b>sorting exam papers</b>. Strategy 1 (<b>leveled</b>): keep one perfectly sorted master pile per shelf; every time a small batch arrives you merge it into the master pile right away. Finding a paper is quick (one pile per shelf), but you re-handle the master pile again and again. Strategy 2 (<b>tiered</b>): let several small sorted piles accumulate; only when you have, say, 4 piles of the same size do you merge them into one bigger pile and move it up a shelf. Much less re-handling, but finding a paper means flipping through several piles, and during a big merge you temporarily need space for both the old piles and the new one.</p>`,
+    explain: `<p><b>🟢 Why compaction exists.</b> An LSM tree keeps adding immutable SSTables. Without cleanup you would get (1) <b>more files to search</b> on every read, (2) <b>wasted space</b> for overwritten values and tombstones, and (3) slower range scans. Compaction is a background <b>k-way merge sort</b>: read several sorted runs, output one sorted run that keeps only the newest version of each key.</p>
+<p><b>The three amplifications</b> (always ask "per byte of user data"):</p>
+${H.table(['amplification', 'definition', 'hurts'], [['Write (WA)', 'bytes written to disk ÷ bytes the user wrote', 'SSD lifetime, disk bandwidth, ingest ceiling'], ['Read (RA)', 'disk reads (or runs checked) per logical read', 'latency, IOPS'], ['Space (SA)', 'disk bytes used ÷ live data bytes', 'storage cost']])}
+<p><b>Leveled compaction</b> (LevelDB, RocksDB default, Cassandra LCS): L0 holds freshly flushed, overlapping files. From L1 down, each level is <b>one sorted run</b> split into many ~64 MB files with non-overlapping key ranges. Each level is <b>T times bigger</b> than the one above (RocksDB <code>max_bytes_for_level_multiplier = 10</code>). When a level exceeds its target, one file is merged with the ~T overlapping files below it.</p>
+<ul><li>WA ≈ ${H.c('r', 'T per level')}, so worst case ≈ T × L (in practice ~10–30 total). RA ≈ ${H.c('g', '1 run per level')}. SA ≈ ${H.c('g', '1 + 1/T ≈ 1.1')}.</li></ul>
+<p><b>Size-tiered compaction</b> (Cassandra STCS, RocksDB "universal", ScyllaDB): runs of similar size accumulate; when there are T of them, they are merged into one run on the next tier.</p>
+<ul><li>WA ≈ ${H.c('g', '1 per tier')} → ≈ L total. RA ≈ ${H.c('r', 'up to T runs per tier')}. SA can reach ${H.c('r', '2×')} (a full merge needs the old and new copies at once, and duplicates live longer).</li></ul>
+<p><b>How many levels?</b> With L1 target size B, fanout T and data size N: L ≈ ⌈log<sub>T</sub>(N / B)⌉ + 1. Example: N = 1 TB, B = 256 MB, T = 10 → log<sub>10</sub>(4096) ≈ 3.6 → 4 levels below L1 → <b>5 levels</b> (L1 256 MB, L2 2.56 GB, L3 25.6 GB, L4 256 GB, L5 2.56 TB target).</p>
+<p><b>Specialised strategies:</b> <b>time-window</b> (Cassandra TWCS) compacts only within a time bucket and expires whole files when the TTL passes — perfect for metrics; <b>FIFO</b> (RocksDB) just deletes the oldest file, for caches and logs.</p>`,
+    clues: [
+      '"Disk write bandwidth is 10× the ingest rate" → write amplification from compaction',
+      '"Reads get slower over the day, then recover at night" → compaction debt / too many L0 files or tiers',
+      '"Disk usage spikes to 2× during compaction" → size-tiered space amplification',
+      '"Time-series data with a 30-day TTL" → time-window or FIFO compaction, drop whole files',
+      '"How many levels does RocksDB need for N TB?" → log_T(N / L1 size) arithmetic',
+      '"leveled vs tiered" / "RocksDB universal compaction" / "Cassandra LCS vs STCS" → WA vs RA vs SA trade-off'
+    ],
+    code: [
+      py(`import math
+
+def leveled(n_gb, l1_gb=0.256, fanout=10):
+    levels = max(1, math.ceil(math.log(n_gb / l1_gb, fanout))) + 1   # L1..Ln
+    wa = 2 + fanout * (levels - 1) / 2          # WAL + flush + average merge cost per level move
+    wa_worst = 2 + fanout * (levels - 1)
+    sa = 1 + 1 / fanout                          # only the last level holds most data
+    ra = levels                                  # one run per level (plus L0 files)
+    return levels, wa, wa_worst, sa, ra
+
+def tiered(n_gb, run_gb=0.064, fanout=4):
+    tiers = max(1, math.ceil(math.log(n_gb / run_gb, fanout)))
+    wa = 2 + tiers                               # every byte rewritten once per tier
+    sa = 2.0                                     # worst case during a full merge
+    ra = tiers * (fanout - 1) + 1                # up to T-1 runs waiting on each tier
+    return tiers, wa, sa, ra
+
+for n in (100, 1_000, 10_000):                    # GB of live data
+    L, wa, waw, sa, ra = leveled(n)
+    t, twa, tsa, tra = tiered(n)
+    print("%6d GB | leveled: %d levels, WA ~%.0f (worst %.0f), SA %.2f, RA %d runs"
+          "  | tiered: %d tiers, WA ~%.0f, SA up to %.1f, RA up to %d runs"
+          % (n, L, wa, waw, sa, ra, t, twa, tsa, tra))
+
+ingest_mb_s = 50
+L, wa, *_ = leveled(1_000)
+print("1 TB leveled at %d MB/s ingest -> ~%d MB/s of compaction writes (plus as many reads)"
+      % (ingest_mb_s, ingest_mb_s * wa))`, 'Compaction calculator: levels and amplifications (▶ Run)'),
+      lab(`-- Target size of each level for leveled compaction (L1 = 256 MB, fanout 10) until we can hold 1 TB
+WITH RECURSIVE lv(level, target_mb, cumulative_mb) AS (
+  SELECT 1, 256.0, 256.0
+  UNION ALL
+  SELECT level + 1, target_mb * 10, cumulative_mb + target_mb * 10
+  FROM lv WHERE cumulative_mb < 1024 * 1024
+)
+SELECT level, ROUND(target_mb / 1024, 2) AS target_gb, ROUND(cumulative_mb / 1024, 1) AS cumulative_gb
+FROM lv;`, 'Level sizes with a recursive CTE (▶ Run)'),
+      eng(`-- Compaction picking (RocksDB-style "score"): L0 by file count, L1+ by size / target.
+-- Here L1 target = 128 MB and each deeper level is 10x bigger. Highest score >= 1 compacts first.
+WITH lvl AS (
+  SELECT level, COUNT(*) AS files, SUM(size_mb) AS size_mb FROM sstables GROUP BY level
+), scored AS (
+  SELECT level, files, size_mb,
+         CASE level WHEN 0 THEN NULL WHEN 1 THEN 128 WHEN 2 THEN 1280 ELSE 12800 END AS target_mb,
+         CASE WHEN level = 0 THEN ROUND(files / 4.0, 2)
+              ELSE ROUND(size_mb * 1.0 / (CASE level WHEN 1 THEN 128 WHEN 2 THEN 1280 ELSE 12800 END), 2) END AS score
+  FROM lvl
+)
+SELECT level, files, size_mb, target_mb, score,
+       CASE WHEN score >= 1 THEN 'needs compaction' ELSE 'ok' END AS verdict
+FROM scored ORDER BY score DESC;
+
+-- Files in L1 that an L0 -> L1 compaction must rewrite (their range overlaps the L0 files' range)
+SELECT l1.id, l1.min_key, l1.max_key
+FROM sstables l1,
+     (SELECT MIN(min_key) AS lo, MAX(max_key) AS hi FROM sstables WHERE level = 0) l0
+WHERE l1.level = 1 AND l1.max_key >= l0.lo AND l1.min_key <= l0.hi;`, 'Compaction score and overlapping files (▶ Run)')
+    ],
+    codeTitle: ['Amplification calculator', 'Level sizes', 'Picking a compaction'],
+    viz: {
+      title: 'Compaction simulator: leveled vs size-tiered write amplification',
+      input: 'mode=leveled fanout=3 flushes=12',
+      inputLabel: 'mode=leveled|tiered fanout=2..5 flushes=1..24 (each flush = 1 unit)',
+      gen: function (input) {
+        var s = String(input || '');
+        var mode = (/mode\s*=\s*(\w+)/i.exec(s) || [0, 'leveled'])[1].toLowerCase();
+        var T = +((/fanout\s*=\s*(\d+)/i.exec(s) || [0, 3])[1]);
+        var N = +((/flushes\s*=\s*(\d+)/i.exec(s) || [0, 12])[1]);
+        if (mode !== 'leveled' && mode !== 'tiered') throw new Error('mode must be leveled or tiered');
+        if (!(T >= 2 && T <= 5)) throw new Error('fanout must be 2..5');
+        if (!(N >= 1 && N <= 24)) throw new Error('flushes must be 1..24');
+        var LV = 5, lev = [], written = [], user = 0, frames = [];
+        for (var i = 0; i < LV; i++) { lev.push([]); written.push(0); }
+        function size(i) { var t = 0; lev[i].forEach(function (x) { t += x; }); return t; }
+        function cap(i) { return i === 0 ? null : Math.pow(T, i); }
+        function total() { var t = 0; written.forEach(function (x) { t += x; }); return t; }
+        function runs() {
+          if (mode === 'tiered') { var r = 0; lev.forEach(function (l) { r += l.length; }); return r; }
+          var r2 = lev[0].length; for (var i = 1; i < LV; i++) if (lev[i].length) r2++; return r2;
+        }
+        function push(narr, hlRows, hlBars) {
+          var w = 1; lev.forEach(function (l) { w = Math.max(w, l.length); });
+          var rows = [], ghl = {}, rowHead = [];
+          lev.forEach(function (l, i) {
+            var r = l.map(String); while (r.length < w) r.push('');
+            rows.push(r);
+            rowHead.push((mode === 'tiered' ? 'Tier ' : 'L') + i + (mode === 'leveled' && i > 0 ? ' (target ' + cap(i) + ')' : '') + ' = ' + size(i));
+            if (hlRows && hlRows[i]) for (var c = 0; c < l.length; c++) ghl[i + ',' + c] = hlRows[i];
+          });
+          var colHead = []; for (var c2 = 0; c2 < w; c2++) colHead.push(mode === 'tiered' ? 'run ' + c2 : 'file ' + c2);
+          frames.push({ narr: narr, parts: [
+            { type: 'grid', label: (mode === 'tiered' ? 'Tiers: each cell is a sorted run (its size in units)' : 'Levels: each cell is an SST file (size in units); L1+ files never overlap'), rows: rows, rowHead: rowHead, colHead: colHead, hl: ghl },
+            { type: 'bars', label: 'Units written into each level so far (flushes + compactions)', values: written.slice(), idxLabels: lev.map(function (_, i) { return (mode === 'tiered' ? 'T' : 'L') + i; }), hl: hlBars || {} },
+            { type: 'vars', label: 'Amplification', vals: { user_units: user, disk_units_written: total(), write_amp: user ? (total() / user).toFixed(2) : '—', sorted_runs_to_check: runs(), live_units: user } }
+          ] });
+        }
+        push('Start: ' + mode + ' compaction, fanout <b>' + T + '</b>. Each flush writes 1 unit of user data into ' + (mode === 'tiered' ? 'tier 0' : 'L0') + '. We count every unit the engine physically writes to find the <b>write amplification</b>. (Assume no overwrites, so live data = user data.)');
+        for (var f = 1; f <= N; f++) {
+          user++; lev[0].push(1); written[0]++;
+          var h0 = {}; h0[0] = 'cur'; var b0 = {}; b0[0] = 'cur';
+          push('<b>Flush #' + f + '</b>: the memtable becomes a 1-unit sorted run in ' + (mode === 'tiered' ? 'tier 0' : 'L0') + '. Disk writes so far: ' + total() + ' for ' + user + ' units of user data.', h0, b0);
+          if (mode === 'tiered') {
+            for (var t = 0; t < LV - 1; t++) {
+              if (lev[t].length >= T) {
+                var sum = 0; lev[t].forEach(function (x) { sum += x; });
+                lev[t] = []; lev[t + 1].push(sum); written[t + 1] += sum;
+                var ht = {}; ht[t + 1] = 'ok'; var bt = {}; bt[t + 1] = 'ok';
+                push('<b>Tier ' + t + ' has ' + T + ' runs</b> of similar size → merge them into <b>one run of ' + sum + '</b> on tier ' + (t + 1) + '. Each byte is rewritten <b>once per tier</b>, so tiered WA grows slowly. During the merge the old and new copies both exist (space amplification up to 2×).', ht, bt);
+              }
+            }
+          } else {
+            if (lev[0].length >= 2) {
+              var s0 = size(0), s1 = size(1);
+              lev[0] = []; var n1 = s0 + s1; lev[1] = []; for (var k = 0; k < n1; k++) lev[1].push(1); written[1] += n1;
+              var hl1 = {}; hl1[1] = 'ok'; var bl1 = {}; bl1[1] = 'ok';
+              push('<b>L0 → L1</b>: L0 files overlap each other, so all ' + s0 + ' L0 units are merged with the whole of L1 (' + s1 + ' units) and rewritten as ' + n1 + ' non-overlapping L1 files. Cost: <b>' + n1 + ' units written</b> to move ' + s0 + ' units down.', hl1, bl1);
+            }
+            for (var L = 1; L < LV - 1; L++) {
+              while (size(L) > cap(L)) {
+                var below = size(L + 1), overlap = Math.min(T, below);
+                lev[L].pop(); lev[L + 1].push(1); written[L + 1] += 1 + overlap;
+                var hl2 = {}; hl2[L] = 'bad'; hl2[L + 1] = 'ok'; var bl2 = {}; bl2[L + 1] = 'ok';
+                push('<b>L' + L + ' is over its target</b> (' + (size(L) + 1) + ' &gt; ' + cap(L) + '). Pick one file and merge it with the ~' + overlap + ' overlapping file(s) in L' + (L + 1) + ': write <b>' + (1 + overlap) + ' units</b> to move 1 unit down. With a full level below this is ≈ T + 1 per move — the source of leveled WA ≈ T per level.', hl2, bl2);
+              }
+            }
+          }
+        }
+        var wa = (total() / user).toFixed(2);
+        push('<b>Result (' + mode + ', fanout ' + T + '):</b> ' + user + ' units of user data caused ' + total() + ' units of disk writes → <b>WA = ' + wa + '</b>; a read may need to check <b>' + runs() + '</b> sorted run(s). Try the other mode with the same inputs: tiered usually gives lower WA but more runs to check (read amplification) and higher temporary space use.', null, null);
+        return frames;
+      }
+    },
+    examples: [
+      {
+        title: 'Compaction math: 1 TB on RocksDB defaults',
+        html: `<p>L1 = 256 MB, T = 10. Level targets: 0.25 GB, 2.5 GB, 25 GB, 250 GB, 2.5 TB → data lands in <b>5 levels</b>. A key written once travels L0 → L1 → … → L5. Each level move rewrites it about T/2 to T times (merging into a fuller or emptier next level):</p>
+${H.table(['component', 'writes per user byte'], [['WAL', '1'], ['flush to L0', '1'], ['L0 → L1', '≈ 1–2'], ['L1 → L2 … L4 → L5 (4 moves × ~5–10)', '≈ 20–40'], ['total', H.c('r', '≈ 23–44 worst case; typically 10–30 observed')]])}
+<p>At 50 MB/s ingest that is roughly <b>1–1.5 GB/s</b> of background writes, plus as much read I/O. On a single NVMe that is most of its bandwidth: the ingest ceiling comes from compaction, not from the WAL.</p>`
+      },
+      {
+        title: 'Dynamic level sizing fixes space amplification',
+        html: `<p>With static targets and only 300 GB of data, L5 (target 2.5 TB) is nearly empty while L4 (target 250 GB) is full — the "last level" is not the biggest, and stale versions in L4 are not cleaned by bottom-level compaction → space amplification can exceed 2×. RocksDB's <code>level_compaction_dynamic_level_bytes = true</code> (default since RocksDB 8.4) sizes levels <b>from the bottom up</b>: last level = actual data (300 GB), L4 = 30 GB, L3 = 3 GB, L2 = 300 MB, and empty upper levels are skipped. Space amplification stays ≈ 1.11.</p>`
+      },
+      {
+        title: 'Tiered compaction space spike',
+        html: `<p>Cassandra STCS, a table of 600 GB currently in four ~150 GB SSTables. When those four get merged, the new 600 GB SSTable is written <i>before</i> the old ones are deleted → the node needs <b>1.2 TB</b> free during the compaction. Rule of thumb for STCS: keep ~50% disk free. LCS needs only ~10% headroom but costs more write I/O; UCS (Cassandra 5's unified compaction) lets you pick a point between them with one parameter.</p>`
+      },
+      {
+        title: 'Tombstones and the bottom level',
+        html: `<p>A tombstone for key k can be dropped only when compaction reaches a level where <b>no older version of k can exist below</b> — usually the last level (or when all lower files' ranges exclude k). Until then it must be carried down, consuming space and slowing scans. Cassandra additionally waits <code>gc_grace_seconds</code> so a replica that missed the delete cannot resurrect the value via repair ("zombie data").</p>`,
+        code: eng(`-- Tombstones in the write stream and whether a newer write overrides them
+SELECT k, seq, op,
+       CASE WHEN op = 'D' AND seq = (SELECT MAX(seq) FROM kv_log x WHERE x.k = kv_log.k)
+            THEN 'live tombstone: must reach the bottom level before it can be dropped'
+            WHEN op = 'D' THEN 'tombstone shadowed by a newer put'
+            ELSE 'put' END AS note
+FROM kv_log ORDER BY k, seq;`)
+      }
+    ],
+    deepDive: `<p><b>🟣 Where the "T per level" comes from.</b> Moving one file of size S from Li to Li+1 merges it with the files in Li+1 covering the same key range. Because Li+1 is T times larger and keys are spread evenly, that is ≈ T × S of overlapping data, so we write ≈ (T + 1) × S to move S bytes down. Every byte does this once per level → WA<sub>leveled</sub> ≈ T × L in the worst case. Tiered: merging T runs of size S into one of size T × S writes each byte once per tier → WA<sub>tiered</sub> ≈ L. Choosing T is the dial: bigger T → fewer levels (better RA, SA) but more WA per level in leveled; in tiered, bigger T → fewer merges but more runs to read.</p>
+<p><b>Monkey and Dostoevsky</b> (Harvard DASlab research): allocate Bloom filter bits non-uniformly (more bits for smaller, upper levels) to cut lookup cost, and use "lazy leveling" — tiering on upper levels, leveling only at the last level — to get near-tiered WA with near-leveled space. RocksDB's hybrid options and Cassandra 5's UCS follow these ideas.</p>
+<p><b>Operational knobs.</b> RocksDB: <code>max_background_jobs</code>, subcompactions (parallelise one big compaction by key range), a rate limiter to cap compaction I/O, <code>compaction_pri = kMinOverlappingRatio</code> (pick files whose overlap below is smallest, reducing WA), compaction filters (drop expired keys during merge — TTL for free), and per-level compression (no compression on L0/L1 for speed, Zstd on the bottom for space).</p>
+<p><b>Disaggregated compaction.</b> Cloud designs (e.g. RocksDB remote compaction, Neon and various serverless databases on object storage) offload compaction to separate workers so foreground nodes keep CPU and I/O for queries — the math stays the same, only the bill moves.</p>`,
+    aiEra: `<p><b>What AI changes:</b> auto-tuners (RocksDB tuning advisors, ML-based configuration tools from academic work like OtterTune's lineage) explore compaction knobs far faster than a human. They are useful — but the search space is only meaningful if you know which amplification your workload is actually paying.</p>
+<p><b>Use AI as a partner:</b> paste RocksDB <code>LOG</code> compaction stats ("Cumulative compaction: X GB write, Y MB/s") and ask it to compute observed WA per level and to explain stalls. Then cross-check with the formula: does WA ≈ T per level match?</p>
+<p><b>Where AI goes wrong:</b> mixing up leveled and tiered trade-offs (claiming tiered has lower read amplification), using decimal and binary units inconsistently, ignoring L0 → L1 cost, or suggesting a huge fanout without noting the WA penalty.</p>
+<p><b>What you must still own:</b> deriving WA, RA and SA for both strategies on a whiteboard, sizing levels for a given data volume, and telling an interviewer which strategy fits a write-heavy time-series vs. an update-heavy key-value workload.</p>`,
+    problems: [
+      {
+        title: 'Size the Levels and the Compaction Bandwidth',
+        level: 'Medium', tags: ['LSM', 'compaction', 'recursive CTE'], companies: ['Meta', 'ByteDance', 'Confluent', 'Cockroach Labs'],
+        statement: `<p>A leveled LSM has L1 target <b>256 MB</b> and fanout <b>T = 10</b>. It must hold <b>2 TB</b> (2,097,152 MB) of live data and ingest <b>40 MB/s</b>. Write a query that lists each level's target size until the cumulative capacity reaches 2 TB, then estimate total WA as 2 + T × (levels − 1) / 2 and the background write bandwidth.</p>`,
+        constraints: `Use a recursive CTE; stop as soon as cumulative capacity ≥ 2,097,152 MB.`,
+        example: `<p>Levels: 256 MB, 2,560 MB, 25,600 MB, 256,000 MB, 2,560,000 MB → ${H.c('b', '5 levels')}. WA ≈ 2 + 10 × 4 / 2 = ${H.c('y', '22')}. Bandwidth ≈ 40 × 22 = ${H.c('r', '880 MB/s')} of writes.</p>`,
+        brute: {
+          why: `<p>A loop in application code works, but the point of the exercise is to keep the planning model next to the data: a recursive CTE expresses "keep multiplying by T until it fits" directly in SQL, and you can join the result with live catalogue tables like <code>sstables</code>.</p>`,
+          code: { lang: 'python', run: true, code: `target, cum, level = 256, 0, 0
+while cum < 2_097_152:
+    level += 1
+    cum += target
+    print("L%d target %d MB (cumulative %d MB)" % (level, target, cum))
+    target *= 10
+wa = 2 + 10 * (level - 1) / 2
+print("levels", level, "WA", wa, "bandwidth MB/s", 40 * wa)` }
+        },
+        mcq: { q: 'Doubling the fanout T from 10 to 20 in leveled compaction mainly…', options: ['Reduces the number of levels but increases write amplification per level', 'Reduces write amplification everywhere', 'Increases space amplification to 2×', 'Has no effect on reads'], answer: 0, explain: 'Fewer levels (log base T grows) but each level move now merges ~T files, so WA per level goes up; total WA ≈ T × L usually rises.' },
+        hints: [
+          `<p>Hint 1: start the recursion at level 1 with target 256 and cumulative 256.</p>`,
+          `<p>Hint 2: the recursive step multiplies the target by 10 and adds it to the cumulative total; stop when the <i>previous</i> cumulative already reached 2 TB.</p>`,
+          `<p>Hint 3: compute WA from <code>MAX(level)</code> in a second CTE, then bandwidth = 40 × WA.</p>`
+        ],
+        solution: {
+          approach: `<p>Recursive CTE generates level targets; aggregate the level count; derive WA and bandwidth. Five levels, WA ≈ 22, ≈ 880 MB/s of compaction writes: this workload needs several disks or nodes (or tiered/hybrid compaction) — a conclusion you can defend with numbers.</p>`,
+          code: lab(`WITH RECURSIVE lv(level, target_mb, cum_mb) AS (
+  SELECT 1, 256, 256
+  UNION ALL
+  SELECT level + 1, target_mb * 10, cum_mb + target_mb * 10 FROM lv WHERE cum_mb < 2097152
+),
+summary AS (SELECT MAX(level) AS levels FROM lv)
+SELECT lv.level, lv.target_mb, lv.cum_mb,
+       s.levels, 2 + 10 * (s.levels - 1) / 2.0 AS est_write_amp,
+       40 * (2 + 10 * (s.levels - 1) / 2.0) AS compaction_write_mb_s
+FROM lv CROSS JOIN summary s
+ORDER BY lv.level;`),
+          dry: { head: ['level', 'target MB', 'cumulative MB', 'enough?'], rows: [['1', '256', '256', 'no'], ['2', '2,560', '2,816', 'no'], ['3', '25,600', '28,416', 'no'], ['4', '256,000', '284,416', 'no'], ['5', '2,560,000', '2,844,416', H.c('g', 'yes → stop')]] },
+          complexity: `<p>O(L) rows where L = ⌈log<sub>T</sub>(N/B)⌉ + 1 — tiny.</p>`,
+          followUps: ['Recompute with dynamic level sizing (last level = 2 TB, each level above = previous / 10).', 'What is the WA for tiered compaction with T = 4 on the same data?']
+        }
+      }
+    ]
+  });
+
+  /* =====================================================================
+     TOPIC 6 — InnoDB vs RocksDB (and where Postgres fits)
+     ===================================================================== */
+  topics.push({
+    title: 'InnoDB vs RocksDB: Two Real Engines Side by Side',
+    analogy: `<p><b>InnoDB is a well-organised library</b>: every book has one fixed shelf position (ordered by primary key). To fix a typo, the librarian goes to that shelf and corrects the page — but first writes the old text in a "previous editions" notebook (undo) so readers who started earlier still see it. <b>RocksDB is a newsroom archive</b>: every correction is a new clipping dropped in today's box with a timestamp. Nobody edits old clippings; at night, staff merge boxes and shred clippings that newer ones replaced.</p>`,
+    explain: `<p><b>🟢 InnoDB (MySQL's default engine) in one breath.</b> The table <b>is</b> a B+tree ordered by the primary key — a <b>clustered index</b>: leaf pages (16 KB) hold the full rows. Each row carries hidden columns <code>DB_TRX_ID</code> (6 B, last writer) and <code>DB_ROLL_PTR</code> (7 B, pointer to the previous version in the <b>undo log</b>). Secondary indexes store the <b>primary key value</b>, not a physical address, so a secondary lookup walks two B-trees.</p>
+${H.table(['InnoDB part', 'job'], [['Buffer pool', 'caches pages; midpoint LRU; adaptive hash index for hot lookups'], ['Redo log', 'WAL for page changes (<code>innodb_redo_log_capacity</code>); fsync at commit'], ['Undo logs', 'old row versions for rollback and MVCC snapshots; purged later'], ['Doublewrite buffer', 'protects 16 KB pages from torn writes'], ['Change buffer', 'delays secondary-index updates for pages not in memory (MySQL 8.4 defaults it off)'], ['Locks', 'row locks on index records, gap and next-key locks for REPEATABLE READ']])}
+<p><b>RocksDB (Meta's embeddable LSM library, fork of Google's LevelDB)</b> is a key-value engine: <code>Put / Get / Delete / Merge / Iterator</code> on byte strings, ordered by key.</p>
+${H.table(['RocksDB part', 'job'], [['WAL', 'durability for memtable contents (shared by column families)'], ['MemTable', 'skip list of recent writes; immutable when full'], ['SST files', 'immutable sorted files on L0..Ln with Bloom filters and block index'], ['Compaction', 'leveled (default), universal (tiered) or FIFO'], ['Block cache', 'caches uncompressed data/index/filter blocks'], ['Column families', 'separate LSM trees sharing a WAL (e.g. one per index)'], ['Sequence numbers', 'every write is versioned → cheap snapshots, MVCC for MyRocks/TiKV']])}
+<p><b>Who uses RocksDB?</b> MyRocks (MySQL on RocksDB, built for Meta's user database), TiKV (TiDB), YugabyteDB's DocDB, Kafka Streams and Apache Flink state stores, Ceph BlueStore metadata; CockroachDB started on RocksDB and moved to <b>Pebble</b>, a Go re-implementation of the same design.</p>
+<p><b>And PostgreSQL?</b> A third design: an unordered <b>heap</b> of pages plus separate B-tree indexes pointing to (page, slot). Updates write a whole new tuple version into the heap (MVCC in the table itself), and <b>VACUUM</b> cleans dead versions. No clustered index, no undo log, redo-only WAL.</p>
+${H.table(['', 'InnoDB', 'RocksDB / MyRocks', 'PostgreSQL'], [['structure', 'clustered B+tree', 'LSM-tree', 'heap + B-tree indexes'], ['update', 'in place + undo', 'new version appended', 'new tuple in heap'], ['old versions', 'undo log, purge', 'older SST entries, compaction', 'dead tuples, VACUUM'], ['space efficiency', 'pages ~50–90% full; weak compression', H.c('g', 'best (dense, Zstd per level)'), 'fill factor + bloat'], ['write amp', 'high on random writes', H.c('g', 'lower, sequential'), 'high (+ index updates unless HOT)'], ['read latency', H.c('g', 'low, steady'), 'good, compaction-sensitive', H.c('g', 'low, steady')]])}`,
+    clues: [
+      '"MySQL InnoDB vs MyRocks" / "why did Facebook move to RocksDB?" → space and write amplification on flash',
+      '"Should I use UUID as primary key in MySQL?" → clustered index, random inserts cause page splits and poor locality; prefer auto-increment or time-ordered UUIDv7',
+      '"Secondary index lookup is slower in InnoDB" → secondary index stores the PK, so two B-tree walks',
+      '"Embedded key-value store for a stream processor / distributed DB" → RocksDB (or Pebble, LMDB, BadgerDB)',
+      '"History list length is growing" / "undo tablespace is huge" → long-running transaction blocking InnoDB purge',
+      '"Postgres vs MySQL storage" → heap + VACUUM vs clustered index + undo'
+    ],
+    code: [
+      lab(`-- SQLite can show both layouts. A normal table is a B-tree keyed by a hidden rowid (heap-like),
+-- while WITHOUT ROWID stores rows inside the primary-key B-tree: a clustered index, like InnoDB.
+CREATE TABLE users_rowid (email TEXT PRIMARY KEY, name TEXT, country TEXT);
+CREATE TABLE users_clustered (email TEXT PRIMARY KEY, name TEXT, country TEXT) WITHOUT ROWID;
+CREATE INDEX idx_rowid_country ON users_rowid(country);
+CREATE INDEX idx_clu_country   ON users_clustered(country);
+INSERT INTO users_rowid VALUES ('asha@x.io','Asha','IN'), ('ben@x.io','Ben','UK'), ('chen@x.io','Chen','CN');
+INSERT INTO users_clustered SELECT * FROM users_rowid;
+-- rowid table: PK lookup = search the PK index, then fetch the row by rowid (two B-trees)
+EXPLAIN QUERY PLAN SELECT name FROM users_rowid WHERE email = 'ben@x.io';
+-- clustered table: PK lookup lands directly on the row (one B-tree)
+EXPLAIN QUERY PLAN SELECT name FROM users_clustered WHERE email = 'ben@x.io';
+-- secondary index on a clustered table stores the PRIMARY KEY, like InnoDB secondary indexes
+EXPLAIN QUERY PLAN SELECT name FROM users_clustered WHERE country = 'UK';
+SELECT name FROM users_clustered WHERE country = 'UK';`, 'Rowid (heap-like) vs WITHOUT ROWID (clustered) tables (▶ Run)'),
+      { lang: 'java', check: false, title: 'RocksDB Java API sketch (needs the rocksdbjni library)', code: `import org.rocksdb.*;
+
+public class RocksDemo {
+    public static void main(String[] args) throws RocksDBException {
+        RocksDB.loadLibrary();
+        try (Options opt = new Options()
+                .setCreateIfMissing(true)
+                .setWriteBufferSize(64L << 20)                  // 64 MB memtable
+                .setMaxBytesForLevelBase(256L << 20)            // L1 target 256 MB
+                .setMaxBytesForLevelMultiplier(10)              // fanout T = 10
+                .setLevelCompactionDynamicLevelBytes(true)
+                .setCompressionType(CompressionType.LZ4_COMPRESSION)
+                .setBottommostCompressionType(CompressionType.ZSTD_COMPRESSION);
+             RocksDB db = RocksDB.open(opt, "/tmp/rocks-demo");
+             WriteOptions durable = new WriteOptions().setSync(true)) {   // fsync WAL per write
+            db.put(durable, "user:1".getBytes(), "asha".getBytes());
+            db.delete(durable, "user:2".getBytes());                       // writes a tombstone
+            byte[] v = db.get("user:1".getBytes());                        // memtable -> L0 -> Ln
+            System.out.println(new String(v));
+            try (RocksIterator it = db.newIterator()) {                    // merging iterator
+                for (it.seek("user:".getBytes()); it.isValid(); it.next())
+                    System.out.println(new String(it.key()) + " = " + new String(it.value()));
+            }
+        }
+    }
+}` },
+      py(`import bisect
+import random
+
+def build_clustered_index(keys, cap=16):
+    """Insert keys into B+tree leaf pages the way InnoDB does: split in half, except for
+    an append at the far right end, where the old page stays full and a new page starts."""
+    leaves, firsts, splits = [[]], [], 0          # firsts[i] = first key of leaves[i + 1]
+    for k in keys:
+        i = bisect.bisect_right(firsts, k)
+        leaf = leaves[i]
+        bisect.insort(leaf, k)
+        if len(leaf) > cap:
+            splits += 1
+            if i == len(leaves) - 1 and leaf[-1] == k:     # sequential pattern detected
+                new = [leaf.pop()]
+            else:                                          # 50/50 split in the middle
+                half = len(leaf) // 2
+                new = leaf[half:]
+                del leaf[half:]
+            leaves.insert(i + 1, new)
+            firsts.insert(i, new[0])
+    rows = sum(len(l) for l in leaves)
+    return len(leaves), rows / (len(leaves) * cap), splits
+
+random.seed(42)
+N = 4000
+auto_inc = list(range(N))
+uuid_v4 = random.sample(range(10**12), N)                       # random, like UUIDv4
+uuid_v7 = [(i << 20) | random.getrandbits(20) for i in range(N)] # time prefix + random bits
+
+for name, keys in (("auto-increment", auto_inc), ("UUIDv4 (random)", uuid_v4), ("UUIDv7 (time-ordered)", uuid_v7)):
+    pages, fill, splits = build_clustered_index(keys)
+    print("%-22s pages=%4d  avg fill=%3.0f%%  splits=%d" % (name, pages, 100 * fill, splits))`, 'Why random UUID primary keys hurt a clustered index (▶ Run)')
+    ],
+    codeTitle: ['Clustered vs rowid tables', 'RocksDB API', 'PK choice and page fill'],
+    viz: {
+      title: 'One UPDATE through InnoDB, then one Put through RocksDB',
+      input: 'both',
+      inputLabel: 'both | innodb | rocksdb',
+      gen: function (input) {
+        var which = String(input || 'both').trim().toLowerCase();
+        if (['both', 'innodb', 'rocksdb'].indexOf(which) < 0) throw new Error('Type both, innodb or rocksdb');
+        var nodes = [
+          { id: 'IC', label: 'Client (InnoDB)', x: 7, y: 14, shape: 'box' },
+          { id: 'BP', label: 'Buffer pool', x: 30, y: 14, shape: 'box' },
+          { id: 'UN', label: 'Undo log', x: 53, y: 4, shape: 'box' },
+          { id: 'RL', label: 'Redo log', x: 53, y: 24, shape: 'box' },
+          { id: 'DW', label: 'Doublewrite', x: 74, y: 4, shape: 'box' },
+          { id: 'IB', label: '.ibd B+tree', x: 93, y: 14, shape: 'box' },
+          { id: 'RC', label: 'Client (RocksDB)', x: 7, y: 56, shape: 'box' },
+          { id: 'WL', label: 'WAL', x: 30, y: 46, shape: 'box' },
+          { id: 'MT', label: 'MemTable', x: 30, y: 66, shape: 'box' },
+          { id: 'IM', label: 'Immutable memtable', x: 53, y: 66, shape: 'box' },
+          { id: 'L0', label: 'L0 SSTs', x: 74, y: 66, shape: 'box' },
+          { id: 'LN', label: 'L1..Ln SSTs', x: 93, y: 56, shape: 'box' },
+          { id: 'BC', label: 'Block cache', x: 74, y: 46, shape: 'box' }
+        ];
+        var edges = [['IC', 'BP', '1 locate row'], ['BP', 'UN', '2 old version'], ['BP', 'RL', '3 redo rec'], ['BP', 'DW', '5 flush'], ['DW', 'IB', 'in place'],
+          ['RC', 'WL', '1 append'], ['RC', 'MT', '2 insert'], ['MT', 'IM', '3 freeze'], ['IM', 'L0', '4 flush'], ['L0', 'LN', '5 compact'], ['LN', 'BC', 'read'], ['BC', 'RC', '6 get']];
+        var frames = [];
+        function f(narr, hl, ehl, tags) { frames.push({ narr: narr, parts: [{ type: 'graph', label: 'Write paths (top: InnoDB, bottom: RocksDB)', directed: true, height: 72, nodes: nodes, edges: edges, hl: hl || {}, ehl: ehl || {}, tags: tags || {} }] }); }
+        if (which !== 'rocksdb') {
+          f('<b>InnoDB: UPDATE accounts SET bal = 70 WHERE id = 7.</b> Walk the clustered B+tree from the root to the leaf holding id 7. If the leaf page is not cached, read it from the .ibd file into the buffer pool. Take an exclusive row lock on that index record.', { IC: 'cur', BP: 'cur' }, { 'IC-BP': 'cur' }, { BP: 'page 812 pinned' });
+          f('Before touching the row, copy its <b>old version</b> (bal = 100) into the <b>undo log</b> and point the row\'s hidden <code>DB_ROLL_PTR</code> at it. Rollback uses it; MVCC readers with older snapshots follow the pointer to see 100.', { BP: 'cur', UN: 'ok' }, { 'BP-UN': 'ok' }, { UN: 'bal=100' });
+          f('Modify the row <b>in place</b> in the 16 KB page (now dirty) and append a <b>redo record</b> to the log buffer. The undo write itself is also redo-logged, so undo survives a crash.', { BP: 'sel', RL: 'ok' }, { 'BP-RL': 'ok' }, { BP: 'dirty', RL: 'LSN 9001' });
+          f('<b>COMMIT</b>: fsync the redo log (group commit) — the client gets OK now. The data page is still only in memory: <b>no-force</b>.', { RL: 'ok', IC: 'ok' }, { 'BP-RL': 'done' }, { RL: 'fsynced' });
+          f('Later a <b>page cleaner</b> thread flushes the dirty page: first into the <b>doublewrite</b> area (sequential, fsync), then <b>in place</b> into the .ibd file. If power fails mid-write, recovery copies the intact page from the doublewrite area.', { DW: 'cur', IB: 'ok' }, { 'BP-DW': 'cur', 'DW-IB': 'ok' }, { IB: 'page 812 = bal 70' });
+          f('Finally the <b>purge</b> thread removes the undo record once no active snapshot needs bal = 100, and checkpoints advance so old redo can be reused. Watch "History list length" — a long-running transaction stops purge and undo grows.', { UN: 'done' }, {}, { UN: 'purged' });
+        }
+        if (which !== 'innodb') {
+          f('<b>RocksDB: Put("acct:7", "70").</b> Append the write (inside a WriteBatch with a sequence number) to the <b>WAL</b>; with <code>sync=true</code> it is fsynced. No page is read first — RocksDB does not need the old value.', { RC: 'cur', WL: 'ok' }, { 'RC-WL': 'ok' }, { WL: 'seq 501' });
+          f('Insert into the <b>memtable</b> (a skip list) as acct:7@501. The old value 100 still sits untouched in some SST file. Write done: one sequential append + one memory insert.', { RC: 'cur', MT: 'ok' }, { 'RC-MT': 'ok' }, { MT: 'acct:7@501' });
+          f('When the memtable reaches 64 MB it becomes <b>immutable</b>; a fresh memtable takes new writes so ingestion never pauses.', { MT: 'done', IM: 'cur' }, { 'MT-IM': 'cur' }, { IM: 'frozen' });
+          f('A background thread <b>flushes</b> the immutable memtable as a new sorted SST file in L0, then the WAL segment covering it is deleted.', { IM: 'done', L0: 'ok' }, { 'IM-L0': 'ok' }, { L0: 'new SST' });
+          f('<b>Compaction</b> later merges that L0 file into L1..Ln; acct:7@501 survives, the older acct:7 = 100 version is dropped (unless a snapshot still needs it). Write amplification is paid here, in big sequential I/O.', { L0: 'cur', LN: 'ok' }, { 'L0-LN': 'ok' }, { LN: 'acct:7=70' });
+          f('<b>Get("acct:7")</b>: memtable → immutable memtable → L0 files (Bloom filters) → one file per level, data blocks served from the <b>block cache</b> when hot. The first match by newest sequence number wins.', { BC: 'sel', RC: 'sel' }, { 'LN-BC': 'sel', 'BC-RC': 'sel' }, { RC: '70' });
+        }
+        f('<b>Compare:</b> InnoDB pays at write time (find the page, undo copy, later a 16 KB in-place write + doublewrite) but reads are one B-tree walk. RocksDB pays later (flush + compaction rewrites) but each write is just a log append and a memory insert. Same durability guarantee: both are only "committed" once their log is fsynced.', { BP: 'win', MT: 'win' }, {}, {});
+        if (frames.length < 4) f('Pick "both" to compare the two paths in one run.', {}, {}, {});
+        return frames;
+      }
+    },
+    examples: [
+      {
+        title: 'UUIDv4 primary key in InnoDB',
+        html: `<p>Inserting random UUIDs into a clustered index scatters writes across every leaf page: pages split 50/50 and settle near <b>~69% full</b>, the working set is the <i>whole</i> table (no hot right edge), and every secondary index stores the 16-byte PK. Auto-increment keys append at the right edge: pages fill to ~94% (InnoDB leaves 1/16 free), and only the last page is hot. Time-ordered <b>UUIDv7</b> (RFC 9562, 2024) or ULIDs give you global uniqueness <i>and</i> right-edge inserts. Run the Python sketch above to see ~100% vs ~69% fill.</p>`
+      },
+      {
+        title: 'Secondary index lookup cost',
+        html: `<p><code>SELECT * FROM orders WHERE customer_id = 42</code> in InnoDB: walk <code>idx_customer</code> (3 levels) to find PK values, then walk the clustered index (3–4 levels) for each match. 100 matches → up to 100 extra B-tree descents (mostly cached upper levels, but leaf reads are random). A <b>covering index</b> <code>(customer_id, status, total)</code> answers <code>SELECT status, total</code> without touching the clustered index at all. In MyRocks the same two-step lookup happens across two column families.</p>`
+      },
+      {
+        title: 'MyRocks at Meta in numbers',
+        html: `<p>Meta's user database (UDB) moved from compressed InnoDB to MyRocks around 2016–2017. Publicly reported results: roughly <b>half the storage</b> of compressed InnoDB and much lower bytes written to flash, at similar CPU. The reasons map directly onto this module: no half-empty pages (space), no 16 KB rewrite per small change (write amplification), better compression of immutable sorted blocks, and per-level compression (light on top, Zstd at the bottom).</p>`
+      },
+      {
+        title: 'The "history list length" incident',
+        html: `<p>A BI tool opens a <code>REPEATABLE READ</code> transaction at 9:00 and leaves it idle. InnoDB cannot purge any undo newer than that snapshot. By 17:00 <b>history list length</b> is 40 million, undo tablespaces have grown by 80 GB, and simple reads slow down because they walk long version chains. Fix: kill the idle transaction, set <code>wait_timeout</code>/<code>max_execution_time</code>, and alert on history list length. (The Postgres equivalent is an old <code>xmin</code> horizon blocking VACUUM; in RocksDB a long-lived snapshot blocks compaction from dropping old versions.)</p>`,
+        code: eng(`-- Toy "version chain" view: how many old versions a long snapshot keeps alive per key
+SELECT k, COUNT(*) AS versions_written,
+       COUNT(*) - 1 AS old_versions_kept_if_a_snapshot_predates_all
+FROM kv_log GROUP BY k ORDER BY versions_written DESC, k;`)
+      }
+    ],
+    deepDive: `<p><b>🟣 InnoDB file layout.</b> Each table lives in its own <code>.ibd</code> tablespace (<code>innodb_file_per_table</code>). Space is managed in <b>extents</b> of 64 pages (1 MB) grouped into <b>segments</b> (one for leaf pages, one for non-leaf pages per index), so a B-tree's leaves stay roughly contiguous and range scans can use read-ahead. Pages merge when they drop below <code>MERGE_THRESHOLD</code> (50%).</p>
+<p><b>InnoDB locking interacts with storage.</b> Locks are attached to <b>index records</b>; REPEATABLE READ uses <b>next-key locks</b> (record + gap before it) to prevent phantoms, which is why a range UPDATE without a good index can lock huge parts of a table.</p>
+<p><b>RocksDB internals worth naming.</b> <b>Merge operator</b> (blind read-modify-write: counters, list appends) avoids reads at write time; <b>TransactionDB</b> provides pessimistic or optimistic transactions on top; <b>BlobDB</b> stores large values separately (WiscKey) to cut compaction cost; <b>HyperClockCache</b> is a lock-free block cache; <b>user-defined timestamps</b> support MVCC in systems like TiKV and CockroachDB-style designs.</p>
+<p><b>MyRocks trade-offs.</b> Gains: space, write amplification, replication-friendly. Costs: range scans across many levels can be slower, unique secondary keys need reads during writes, <code>SELECT ... FOR UPDATE</code> gap-lock semantics differ (MyRocks has no gap locks, so it effectively requires READ COMMITTED or RR without gap locks), and tuning compaction is a skill of its own.</p>
+<p><b>Other engines to know.</b> <b>WiredTiger</b> (MongoDB): B-tree with in-memory page images, copy-on-write checkpoints every 60 s plus a journal; supports compression well. <b>LMDB</b>: copy-on-write B+tree via mmap, single writer, no WAL needed. <b>Aurora / Neon / AlloyDB</b>: keep the engine's page format but move WAL processing and page materialisation into a distributed storage layer.</p>`,
+    aiEra: `<p><b>What AI changes:</b> assistants generate schemas fast — and they love <code>id CHAR(36) DEFAULT (UUID())</code> as a primary key. In InnoDB that is the random-UUID clustered-index anti-pattern. Knowing the storage engine lets you catch it in review and ask for BIGINT auto-increment or UUIDv7 instead.</p>
+<p><b>Use AI as a partner:</b> give it <code>SHOW ENGINE INNODB STATUS</code> or RocksDB <code>LOG</code> statistics and ask for a summary of buffer pool hit rate, history list length, pending flushes or stall counters. Ask it to write the db_bench/sysbench command lines for a fair InnoDB vs MyRocks comparison.</p>
+<p><b>Where AI goes wrong:</b> saying "Postgres has a clustered index" (CLUSTER is a one-time reorder, not maintained), claiming RocksDB is a full SQL database, recommending the deprecated query cache or change buffer settings from old MySQL versions, or presenting MyRocks savings without the trade-offs.</p>
+<p><b>What you must still own:</b> explaining why InnoDB secondary indexes store the PK, why UUIDv4 PKs hurt, what undo/purge and compaction each clean up, and when you would accept LSM read costs for space and write savings.</p>`,
+    problems: [
+      {
+        title: 'Primary Key Choice and Page Fill in a Clustered Index',
+        level: 'Medium', tags: ['InnoDB', 'clustered index', 'page split', 'simulation'], companies: ['Shopify', 'GitHub', 'Booking.com', 'PlanetScale'],
+        statement: `<p>Simulate inserting <b>N</b> keys into B+tree leaf pages of capacity <b>C</b> using InnoDB's split rule: when a page overflows, split it 50/50 — <b>unless</b> the insert is at the far right end of the last page (sequential pattern), in which case keep the old page full and start a new page. Report pages, average fill and splits for auto-increment keys, random keys (UUIDv4) and time-ordered keys (UUIDv7).</p>`,
+        constraints: `N ≤ 10<sup>5</sup>, 4 ≤ C ≤ 256. Inserts in the given order.`,
+        example: `<p>N = 4000, C = 16 → auto-increment: ${H.c('g', '250 pages, ~100% full')}; UUIDv4: ${H.c('r', '~360 pages, ~69% full')}; UUIDv7: ${H.c('g', '~250 pages')}. Random keys need ~45% more pages, so more I/O and a bigger working set.</p>`,
+        brute: {
+          why: `<p>The naive estimate is pages = ⌈N / C⌉, assuming every page is full. It is exact for sequential keys and wrong by ~45% for random keys, because a 50/50 split leaves two half-full pages that only slowly fill up again. You must simulate (or know the ln 2 ≈ 69% result for random B-tree inserts).</p>`,
+          code: { lang: 'python', run: true, code: `import math
+N, C = 4000, 16
+print("naive pages =", math.ceil(N / C), "(assumes 100% fill for every key pattern)")` }
+        },
+        mcq: { q: 'Why does InnoDB avoid a 50/50 split when inserting at the far right of the last page?', options: ['With sequential keys the left half would never receive more rows, leaving pages half empty forever', 'To save CPU on sorting', 'Because the right page is locked', 'It is required by the WAL protocol'], answer: 0, explain: 'Auto-increment inserts only ever go to the right edge; a 50/50 split would leave every page permanently ~50% full.' },
+        hints: [
+          `<p>Hint 1: keep leaves as a list of sorted lists, plus an array of each leaf's first key for <code>bisect</code> to find the target leaf.</p>`,
+          `<p>Hint 2: after inserting, if the leaf exceeds C, detect "last leaf and the new key is its maximum" for the sequential split; otherwise split at len/2.</p>`,
+          `<p>Hint 3: keep the first-key array in sync when you insert a new leaf. Fill = total rows / (pages × C).</p>`
+        ],
+        solution: {
+          approach: `<p>Simulate leaf pages directly (upper B-tree levels do not affect fill). The sequential-split heuristic is the reason auto-increment and UUIDv7 keys keep pages full, while random keys converge to ~69% average fill (the classic ln 2 result for random B-tree insertion).</p>`,
+          code: { lang: 'python', run: true, code: `import bisect
+import random
+
+def simulate(keys, cap=16):
+    leaves, firsts, splits = [[]], [], 0
+    for k in keys:
+        i = bisect.bisect_right(firsts, k)
+        leaf = leaves[i]
+        bisect.insort(leaf, k)
+        if len(leaf) > cap:
+            splits += 1
+            if i == len(leaves) - 1 and leaf[-1] == k:
+                new = [leaf.pop()]                      # sequential: keep old page full
+            else:
+                half = len(leaf) // 2
+                new = leaf[half:]
+                del leaf[half:]
+            leaves.insert(i + 1, new)
+            firsts.insert(i, new[0])
+    rows = sum(map(len, leaves))
+    return len(leaves), round(100 * rows / (len(leaves) * cap)), splits
+
+random.seed(1)
+N = 4000
+print("auto-inc :", simulate(range(N)))
+print("UUIDv4   :", simulate(random.sample(range(10**12), N)))
+print("UUIDv7   :", simulate([(i << 20) | random.getrandbits(20) for i in range(N)]))` },
+          complexity: `<p>O(N · (log P + C)) with bisect and list inserts (P = pages); fine for 10<sup>5</sup> keys. A real B+tree does the same per insert in O(log N) page visits.</p>`,
+          followUps: ['How does fill change if you periodically rebuild (OPTIMIZE TABLE) the random-key table?', 'Why is the secondary-index cost of a 16-byte UUID PK worse than its clustered-index cost?']
+        }
+      }
+    ]
+  });
+
+  /* =====================================================================
+     TOPIC 7 — Column stores
+     ===================================================================== */
+  topics.push({
+    title: 'Column Stores: Columnar Layout, Compression, Zone Maps & Vectorized Scans',
+    analogy: `<p>A class register can be kept two ways. <b>Row style</b>: one card per student with name, age, marks and address — perfect when you need everything about <i>one</i> student. <b>Column style</b>: one long strip with only the marks of all students, another strip with only the ages, and so on. To compute "average mark of the class" you grab just the marks strip — no need to flip through every card. And a strip like "IN IN IN IN US US" can be written as "IN×4, US×2" — that is compression for free.</p>`,
+    explain: `<p><b>🟢 Row store vs column store.</b> Everything so far stored a row's columns <b>together</b> inside a page (the "N-ary storage model"). That is ideal for OLTP: <code>SELECT * FROM orders WHERE id = 42</code> touches one page. Analytics is the opposite: <code>SELECT region, SUM(amount) FROM sales GROUP BY region</code> touches <b>2 columns</b> out of maybe 50, but <b>all</b> rows. A <b>column store</b> keeps each column in its own contiguous storage, so the query reads only the columns it needs.</p>
+${H.table(['', 'row store (InnoDB, Postgres)', 'column store (ClickHouse, DuckDB, Snowflake, BigQuery, Redshift, Parquet files)'], [['layout', 'all columns of a row together', 'all values of one column together'], ['great at', 'point lookups, single-row insert/update', 'scans and aggregates over few columns'], ['compression', '2–3× typical', H.c('g', '5–20× typical (similar values sit together)')], ['single-row update', H.c('g', 'cheap'), H.c('r', 'expensive → batch inserts, delta stores, merges')]])}
+<p><b>Why columns compress so well</b> — neighbours have the same type and often the same value:</p>
+<ul>
+<li><b>Dictionary encoding</b>: replace strings with small integer codes: {EU:0, IN:1, US:2}. 3 distinct values need only <b>2 bits</b> each.</li>
+<li><b>Run-length encoding (RLE)</b>: "IN IN IN IN" → (IN, 4). Works best on <b>sorted</b> data, so tables are sorted by low-cardinality columns first.</li>
+<li><b>Bit-packing / frame-of-reference</b>: store numbers as small offsets from a block minimum using just enough bits.</li>
+<li><b>Delta / delta-of-delta</b>: timestamps 1000, 1010, 1020 → 1000, +10, +10 → tiny.</li>
+<li>Then a general codec (LZ4, Zstd) on top.</li>
+</ul>
+<p><b>Skipping data: zone maps.</b> Each block (Parquet row group/page, ClickHouse granule of 8192 rows, Snowflake micro-partition) stores <b>min/max</b> per column. <code>WHERE day = '2026-10-03'</code> skips every block whose min/max range excludes that day — often 99% of the table — without any B-tree.</p>
+<p><b>Vectorized execution.</b> Instead of pulling one row at a time through the operator tree (the classic "Volcano" iterator), the engine processes <b>vectors</b> of ~1,000–2,000 values per call with tight loops the CPU can SIMD-ize, and may operate <b>directly on compressed data</b> (sum an RLE run as value × count). <b>Late materialization</b>: filter on a few columns first, stitch full rows together only for survivors.</p>
+<p><b>Writes</b> are handled LSM-style: new rows land in a row-oriented <b>delta store</b> or small "parts", which background merges convert into big compressed column segments (ClickHouse MergeTree, Vertica WOS→ROS, SQL Server columnstore delta rowgroups, C-Store's WS→RS).</p>`,
+    clues: [
+      '"Dashboards over billions of rows, few columns per query" → column store / OLAP engine',
+      '"Why is Parquet smaller than CSV?" → columnar layout + dictionary/RLE/bit-packing + Zstd',
+      '"SUM / AVG / GROUP BY over a huge fact table is slow on Postgres/MySQL" → move analytics to a columnar engine or replica',
+      '"Skip files that cannot match" / "partition pruning" / "min-max index" → zone maps',
+      '"Real-time analytics on fresh OLTP data" → HTAP: delta store + column replica (TiFlash, SingleStore, HeatWave, Oracle In-Memory)',
+      '"Why is updating one row in ClickHouse/BigQuery so slow?" → immutable compressed column segments, mutations rewrite parts'
+    ],
+    code: [
+      eng(`-- Run-length encoding of the region column with gaps-and-islands (table is sorted by region)
+WITH marked AS (
+  SELECT row_id, region,
+         row_id - ROW_NUMBER() OVER (PARTITION BY region ORDER BY row_id) AS grp
+  FROM sales
+)
+SELECT region AS value, COUNT(*) AS run_length, MIN(row_id) AS first_row
+FROM marked GROUP BY region, grp ORDER BY first_row;
+
+-- Dictionary encoding: each distinct value gets a small integer code
+SELECT DISTINCT region, DENSE_RANK() OVER (ORDER BY region) - 1 AS code FROM sales ORDER BY code;`, 'RLE and dictionary encoding in SQL (▶ Run)'),
+      eng(`-- Zone maps: min/max per block of 4 rows, then prune blocks for amount >= 290
+WITH blocks AS (
+  SELECT (row_id - 1) / 4 AS block, MIN(amount) AS min_amt, MAX(amount) AS max_amt, COUNT(*) AS n
+  FROM sales GROUP BY (row_id - 1) / 4
+)
+SELECT block, min_amt, max_amt, n,
+       CASE WHEN max_amt < 290 THEN 'SKIP (cannot contain amount >= 290)' ELSE 'scan' END AS decision
+FROM blocks ORDER BY block;`, 'Zone-map pruning (▶ Run)'),
+      py(`import math
+from itertools import groupby
+
+region = ["EU"] * 4 + ["IN"] * 5 + ["US"] * 3
+amount = [120, 40, 95, 60, 300, 280, 75, 55, 310, 90, 150, 160]
+
+# --- dictionary + bit-packing ---
+dictionary = {v: i for i, v in enumerate(sorted(set(region)))}
+codes = [dictionary[v] for v in region]
+bits = max(1, math.ceil(math.log2(len(dictionary))))
+raw_bytes = sum(len(v) for v in region)
+packed_bytes = math.ceil(len(codes) * bits / 8) + sum(len(k) for k in dictionary)
+print("dictionary:", dictionary, "| codes:", codes, "|", bits, "bits each")
+print("raw %d bytes -> dict+bitpacked %d bytes" % (raw_bytes, packed_bytes))
+
+# --- run-length encoding on the (sorted) column ---
+runs = [(v, len(list(g))) for v, g in groupby(region)]
+print("RLE runs:", runs)
+
+# --- frame-of-reference for a numeric column: store value - min with fewer bits ---
+lo = min(amount)
+offsets = [a - lo for a in amount]
+for_bits = max(offsets).bit_length()
+print("amount: min=%d, offsets need %d bits instead of 32" % (lo, for_bits))
+
+# --- vectorized-style aggregate directly on encoded data ---
+target = dictionary["IN"]
+total = sum(a for c, a in zip(codes, amount) if c == target)   # compare small ints, not strings
+print("SUM(amount) WHERE region='IN' =", total)
+
+# --- bytes read: row store vs column store for that query ---
+n_rows, n_cols, bytes_per_col = 1_000_000_000, 50, 8
+row_store = n_rows * n_cols * bytes_per_col
+col_store = n_rows * (bits / 8 + 4)            # 2-bit region codes + ~4 B compressed amount
+print("1B rows x 50 cols: row store reads %.0f GB, column store reads ~%.1f GB" % (row_store / 1e9, col_store / 1e9))`, 'Encodings and bytes-read arithmetic (▶ Run)')
+    ],
+    codeTitle: ['RLE and dictionary in SQL', 'Zone maps', 'Encodings in Python'],
+    viz: {
+      title: 'Column encoding: dictionary → bit-packing → RLE → zone-map pruning',
+      input: 'IN IN IN US US IN UK UK UK UK EU EU | find UK',
+      inputLabel: 'Column values (space separated) | find VALUE',
+      gen: function (input) {
+        var parts = String(input || '').split('|');
+        var vals = parts[0].trim().split(/[\s,]+/).filter(Boolean);
+        var fm = /find\s+(\S+)/i.exec(parts.slice(1).join(' ')), find = fm ? fm[1] : null;
+        if (vals.length < 4) throw new Error('Enter at least 4 values');
+        if (vals.length > 20) throw new Error('Use at most 20 values');
+        vals.forEach(function (v) { if (v.length > 6) throw new Error('Keep values short (≤ 6 chars)'); });
+        if (!find) find = vals[vals.length - 1];
+        var amounts = vals.map(function (_, i) { return 10 + (i * 37) % 90; });
+        var frames = [];
+        var rowGrid = vals.map(function (v, i) { return [i, v, amounts[i], 'p' + (i % 3)]; }).slice(0, 6);
+        frames.push({ narr: 'A tiny table (row_id, region, amount, product). A <b>row store</b> packs each row\'s fields together in a page — reading only <i>region</i> still drags amount and product along.', parts: [
+          { type: 'grid', label: 'Row store page (first 6 rows): one record per line', rows: rowGrid, rowHead: rowGrid.map(function (r) { return 'row ' + r[0]; }), colHead: ['row_id', 'region', 'amount', 'product'], hl: { '0,1': 'cur', '1,1': 'cur', '2,1': 'cur' } },
+          { type: 'array', label: 'Column store: the region column alone, contiguous', values: vals.slice(), hl: {} }
+        ] });
+        var dict = {}, keys = [], codes = [];
+        vals.forEach(function (v, i) {
+          var isNew = !(v in dict);
+          if (isNew) { dict[v] = keys.length; keys.push(v); }
+          codes.push(dict[v]);
+          var hl = {}; hl[i] = 'cur'; var ch = {}; ch[i] = isNew ? 'ok' : 'cur'; var mh = {}; mh[v] = isNew ? 'ok' : 'cur';
+          frames.push({ narr: '<b>Dictionary encoding</b>, value ' + (i + 1) + ': "' + v + '" ' + (isNew ? 'is new → gets code <b>' + dict[v] + '</b>.' : 'already has code ' + dict[v] + ' — reuse it.') + ' Comparisons and GROUP BY can now work on small integers.', parts: [
+            { type: 'array', label: 'region (raw strings)', values: vals.slice(), hl: hl },
+            { type: 'map', label: 'Dictionary', entries: keys.map(function (k) { return [k, dict[k]]; }), hl: mh },
+            { type: 'array', label: 'Encoded codes', values: codes.slice(), hl: ch }
+          ] });
+        });
+        var bits = Math.max(1, Math.ceil(Math.log(keys.length) / Math.log(2)));
+        var raw = 0; vals.forEach(function (v) { raw += v.length; });
+        var dictBytes = 0; keys.forEach(function (k) { dictBytes += k.length; });
+        var packed = Math.ceil(vals.length * bits / 8);
+        frames.push({ narr: '<b>Bit-packing</b>: ' + keys.length + ' distinct values need only <b>' + bits + ' bit(s)</b> per code (⌈log₂ ' + keys.length + '⌉). The code ' + codes[0] + ' of the first row is shown in binary. ' + vals.length + ' codes fit in ' + packed + ' byte(s) plus a ' + dictBytes + '-byte dictionary, versus ' + raw + ' bytes of raw text.', parts: [
+          { type: 'bits', label: 'first code in ' + bits + ' bit(s)', value: codes[0], width: bits, showDec: true },
+          { type: 'array', label: 'Encoded codes', values: codes.slice(), hl: {} },
+          { type: 'vars', label: 'Bytes', vals: { raw_text_bytes: raw, dictionary_bytes: dictBytes, packed_code_bytes: packed, total_encoded: dictBytes + packed }, hl: { total_encoded: 'ok' } }
+        ] });
+        function rle(arr) { var out = []; arr.forEach(function (v) { if (out.length && out[out.length - 1][0] === v) out[out.length - 1][1]++; else out.push([v, 1]); }); return out; }
+        var runs = rle(vals), built = [], pos = 0;
+        runs.forEach(function (r) {
+          built.push(r[0] + '×' + r[1]);
+          var hl = {}; for (var k = pos; k < pos + r[1]; k++) hl[k] = 'win';
+          frames.push({ narr: '<b>Run-length encoding</b>: values ' + pos + '..' + (pos + r[1] - 1) + ' are all "' + r[0] + '" → one run <b>' + r[0] + '×' + r[1] + '</b>. A SUM over a run is just value × count.', parts: [
+            { type: 'array', label: 'region column', values: vals.slice(), hl: hl },
+            { type: 'array', label: 'RLE runs so far', values: built.slice(), hl: (function () { var h = {}; h[built.length - 1] = 'ok'; return h; })() }
+          ] });
+          pos += r[1];
+        });
+        var sorted = vals.slice().sort(), sruns = rle(sorted);
+        frames.push({ narr: '<b>Sorting helps</b>: unsorted, the column needs <b>' + runs.length + '</b> runs; sorted by region it needs only <b>' + sruns.length + '</b> (one per distinct value). That is why column stores pick a sort key (ClickHouse ORDER BY, Redshift sort keys) starting with low-cardinality columns.', parts: [
+          { type: 'array', label: 'unsorted runs (' + runs.length + ')', values: runs.map(function (r) { return r[0] + '×' + r[1]; }), hl: {} },
+          { type: 'array', label: 'sorted runs (' + sruns.length + ')', values: sruns.map(function (r) { return r[0] + '×' + r[1]; }), hl: (function () { var h = {}; sruns.forEach(function (_, i) { h[i] = 'ok'; }); return h; })() }
+        ] });
+        var B = 4, blocks = [];
+        for (var b = 0; b * B < sorted.length; b++) { var sl = sorted.slice(b * B, b * B + B); blocks.push([b, sl[0], sl[sl.length - 1], sl.length]); }
+        var keep = 0, bhl = {};
+        blocks.forEach(function (bl, i) { var hit = find >= bl[1] && find <= bl[2]; if (hit) keep++; bhl[i] = hit ? 'ok' : 'done'; });
+        frames.push({ narr: '<b>Zone maps</b> on the sorted column: blocks of ' + B + ' values store their <b>min</b> and <b>max</b>. A query <code>WHERE region = \'' + H.esc(find) + '\'</code> scans only blocks whose [min, max] range can contain it: <b>' + keep + ' of ' + blocks.length + '</b> blocks. The rest are skipped without reading them.', parts: [
+          { type: 'table', label: 'Zone map (block, min, max, rows)', columns: ['block', 'min', 'max', 'rows'], rows: blocks, hl: bhl },
+          { type: 'array', label: 'sorted column', values: sorted, hl: (function () { var h = {}; sorted.forEach(function (v, i) { if (v === find) h[i] = 'sel'; }); return h; })() }
+        ] });
+        var sum = 0; vals.forEach(function (v, i) { if (v === find) sum += amounts[i]; });
+        frames.push({ narr: '<b>Vectorized, late-materialized query</b>: compare the code column with code(' + H.esc(find) + ') = ' + (find in dict ? dict[find] : 'none') + ' in one tight loop → a selection vector of matching positions → only then read the <i>amount</i> column at those positions. SUM(amount) = <b>' + sum + '</b>. Other columns were never touched.', parts: [
+          { type: 'array', label: 'codes', values: codes.slice(), hl: (function () { var h = {}; codes.forEach(function (c, i) { if (vals[i] === find) h[i] = 'sel'; }); return h; })() },
+          { type: 'array', label: 'amount column (read only at selected positions)', values: amounts, hl: (function () { var h = {}; vals.forEach(function (v, i) { h[i] = v === find ? 'ok' : 'done'; }); return h; })() },
+          { type: 'vars', label: 'Result', vals: { find: find, matches: vals.filter(function (v) { return v === find; }).length, sum_amount: sum } }
+        ] });
+        return frames;
+      }
+    },
+    examples: [
+      {
+        title: 'Bytes read for one dashboard query',
+        html: `<p><code>SELECT region, SUM(amount) FROM sales GROUP BY region</code> on 1 billion rows with 50 columns of ~8 bytes:</p>
+${H.table(['engine', 'what is read', 'bytes'], [['row store', 'every page, all 50 columns', H.c('r', '≈ 400 GB')], ['column store, raw', '2 columns × 8 B', '≈ 16 GB'], ['column store, encoded', '2-bit region codes + ~4 B compressed amounts', H.c('g', '≈ 4.3 GB')], ['+ zone maps on a 1-month filter of 3 years', '~1/36 of blocks', H.c('g', '≈ 0.12 GB')]])}
+<p>That is a ~3000× difference before any CPU tricks — the whole reason data warehouses are columnar.</p>`
+      },
+      {
+        title: 'Delta encoding timestamps',
+        html: `<p>Sensor timestamps every 10 s: 1760000000, 1760000010, 1760000020, … Raw: 8 bytes each. Delta: first value + deltas of 10 → fits in 1 byte each. Delta-of-delta (Gorilla, used by Prometheus-style TSDBs): the deltas are all 10, so delta-of-delta is 0 → about <b>1 bit</b> per timestamp. Regular data compresses to almost nothing.</p>
+${H.arr([1760000000, 1760000010, 1760000020, 1760000030], { label: 'raw' })}${H.arr([1760000000, 10, 10, 10], { label: 'delta', hl: { 1: 'g', 2: 'g', 3: 'g' } })}${H.arr([1760000000, 10, 0, 0], { label: 'delta-of-delta', hl: { 2: 'g', 3: 'g' } })}`
+      },
+      {
+        title: 'Parquet file anatomy',
+        html: `<p>A Parquet file = <b>row groups</b> (e.g. 128 MB of rows) → inside each, one <b>column chunk</b> per column → split into <b>pages</b> (~1 MB) with dictionary/RLE/bit-packed encodings plus Snappy/Zstd. The <b>footer</b> holds the schema and min/max/null-count statistics per row group and column — a zone map. Query engines (DuckDB, Spark, Trino) read the footer first, skip row groups, and fetch only needed column chunks via ranged reads from object storage. Table formats like <b>Apache Iceberg</b> and <b>Delta Lake</b> add a metadata layer that tracks which Parquet files belong to each table snapshot.</p>`,
+        code: eng(`-- Per-"row group" statistics like a Parquet footer (row groups of 6 rows here)
+SELECT (row_id - 1) / 6 AS row_group,
+       MIN(region) AS region_min, MAX(region) AS region_max,
+       MIN(day) AS day_min, MAX(day) AS day_max,
+       SUM(amount) AS sum_amount, COUNT(*) AS rows_in_group
+FROM sales GROUP BY (row_id - 1) / 6;`)
+      },
+      {
+        title: 'HTAP: one database, two layouts',
+        html: `<p>TiDB writes rows to TiKV (row-oriented, RocksDB-based) and asynchronously replicates them via Raft learners to <b>TiFlash</b> (columnar). The optimizer sends <code>WHERE id = ?</code> to TiKV and <code>GROUP BY</code> scans to TiFlash. SingleStore keeps a rowstore buffer in front of a columnstore; Oracle Database In-Memory keeps a columnar copy in RAM next to the row-format buffer cache; MySQL HeatWave offloads scans to an in-memory columnar cluster. Same idea every time: <b>rows for writes and point reads, columns for scans</b>.</p>`
+      }
+    ],
+    deepDive: `<p><b>🟣 C-Store to today.</b> The 2005 C-Store paper (Stonebraker et al.) became Vertica; MonetDB/X100 (Boncz) introduced vectorized execution and became VectorWise. Modern engines — DuckDB (embedded, in-process OLAP), ClickHouse, Snowflake, BigQuery (Capacitor format), Redshift, Velox (Meta's execution library), DataFusion (Arrow) — combine columnar storage, vectorized or JIT-compiled execution, and aggressive pruning.</p>
+<p><b>ClickHouse MergeTree is an LSM in disguise.</b> Each INSERT creates an immutable <b>part</b> (sorted by the table's ORDER BY, columns in separate files, a sparse primary index with one entry per 8192-row granule). Background merges combine parts — the same write-amplification trade-off as LSM compaction. Inserting one row at a time creates thousands of tiny parts ("Too many parts" error); batch inserts or async inserts fix it. Updates/deletes are <b>mutations</b> that rewrite parts, or lightweight deletes that mark rows in a mask.</p>
+<p><b>PAX and hybrid layouts.</b> PAX stores each page's rows column-by-column inside the page — row-store locality with column-store cache efficiency. Parquet's row groups are PAX at file scale.</p>
+<p><b>Arrow</b> is the in-memory columnar standard (validity bitmap + values buffer + offsets for strings), enabling zero-copy hand-off between engines (DuckDB ↔ Pandas/Polars ↔ Spark). <b>Execution on compressed data</b>: predicate evaluation on dictionary codes, SUM on RLE runs, SIMD bit-unpacking — CPU stays busy on useful work instead of decompressing.</p>
+<p><b>Costs.</b> Wide single-row reads reconstruct a tuple from many column files (one seek per column); small transactions and updates are expensive; high-cardinality unsorted columns compress poorly; join-heavy normalized schemas often get denormalized into wide fact tables.</p>`,
+    aiEra: `<p><b>What AI changes:</b> AI workloads are columnar to the core. Training data pipelines read Parquet/Arrow; feature stores and evaluation logs live in lakehouses (Iceberg/Delta); embeddings are stored in columnar formats like <b>Lance</b> designed for fast random access plus vector search. LLM-driven "chat with your data" tools generate SQL against DuckDB, Snowflake or BigQuery — and their cost is mostly bytes scanned.</p>
+<p><b>Use AI as a partner:</b> ask it to propose a sort key, partitioning and codec per column given sample data and query patterns, and to estimate bytes scanned per query; then verify with <code>EXPLAIN</code>, query profiles and the warehouse's "bytes scanned" metric.</p>
+<p><b>Where AI goes wrong:</b> generated queries with <code>SELECT *</code> on a columnar warehouse (scanning every column, sometimes costing real money), filters on non-sort-key columns that defeat pruning, or advice to "add an index" in engines where zone maps and sort keys are the indexing mechanism.</p>
+<p><b>What you must still own:</b> knowing why columnar wins for scans and loses for point updates, how encodings and zone maps cut bytes read, and when an HTAP or replica design beats running analytics on the OLTP primary.</p>`,
+    problems: [
+      {
+        title: 'Run-Length Encode a Sorted Column in SQL',
+        level: 'Medium', tags: ['column store', 'RLE', 'gaps and islands'], companies: ['Snowflake', 'Databricks', 'ClickHouse', 'Google'],
+        statement: `<p>Table <code>sales(row_id, region, …)</code> is stored in <code>row_id</code> order. Produce the <b>run-length encoding</b> of the <code>region</code> column: one row per maximal run of equal consecutive values with <code>value</code>, <code>run_length</code>, <code>start_row</code>, ordered by position. Also report the compression ratio (rows ÷ runs).</p>`,
+        constraints: `row_id values are consecutive integers starting at 1. Runs must be maximal (two runs of the same value separated by another value stay separate).`,
+        example: `<p>EU EU EU EU IN IN IN IN IN US US US → ${H.c('g', '(EU,4,1) (IN,5,5) (US,3,10)')}; 12 rows / 3 runs = ${H.c('b', '4×')}.</p>`,
+        brute: {
+          why: `<p>Pulling every row into the application and looping works, but moves the whole column over the network. A correlated subquery per row ("find where this run ends") is O(N²). Gaps-and-islands does it in one pass with window functions.</p>`,
+          code: eng(`-- O(N^2): for each run start, find the next row with a different value
+SELECT s.region AS value,
+       COALESCE((SELECT MIN(row_id) FROM sales x WHERE x.row_id > s.row_id AND x.region <> s.region),
+                (SELECT MAX(row_id) + 1 FROM sales)) - s.row_id AS run_length,
+       s.row_id AS start_row
+FROM sales s
+WHERE s.row_id = 1 OR s.region <> (SELECT region FROM sales p WHERE p.row_id = s.row_id - 1)
+ORDER BY s.row_id;`)
+        },
+        mcq: { q: 'In the gaps-and-islands trick, what stays constant inside one run?', options: ['row_id − ROW_NUMBER() OVER (PARTITION BY value ORDER BY row_id)', 'ROW_NUMBER() OVER (ORDER BY row_id)', 'COUNT(*) OVER ()', 'row_id itself'], answer: 0, explain: 'Inside a run both row_id and the per-value row number increase by 1 each step, so their difference is constant; a new run of the same value has a larger difference.' },
+        hints: [
+          `<p>Hint 1: number rows within each value: <code>ROW_NUMBER() OVER (PARTITION BY region ORDER BY row_id)</code>.</p>`,
+          `<p>Hint 2: <code>row_id − that number</code> is the same for all rows of one run and different between separate runs of the same value.</p>`,
+          `<p>Hint 3: GROUP BY (region, grp), take COUNT(*) and MIN(row_id); order by MIN(row_id). Ratio = total rows ÷ number of runs.</p>`
+        ],
+        solution: {
+          approach: `<p>Classic gaps-and-islands: the difference between a global position and a per-value counter identifies each island. One window pass plus a group-by: O(N log N) with sorting, O(N) if already ordered.</p>`,
+          code: eng(`WITH marked AS (
+  SELECT row_id, region,
+         row_id - ROW_NUMBER() OVER (PARTITION BY region ORDER BY row_id) AS grp
+  FROM sales
+), runs AS (
+  SELECT region AS value, COUNT(*) AS run_length, MIN(row_id) AS start_row
+  FROM marked GROUP BY region, grp
+)
+SELECT value, run_length, start_row,
+       ROUND((SELECT COUNT(*) FROM sales) * 1.0 / (SELECT COUNT(*) FROM runs), 2) AS compression_ratio
+FROM runs ORDER BY start_row;`),
+          dry: { head: ['row_id', 'region', 'rn in region', 'grp'], rows: [['1', 'EU', '1', '0'], ['4', 'EU', '4', '0'], ['5', 'IN', '1', '4'], ['9', 'IN', '5', '4'], ['10', 'US', '1', '9'], ['12', 'US', '3', '9']] },
+          complexity: `<p>O(N log N) for the window sort (O(N) when the engine knows the order). Output size = number of runs.</p>`,
+          followUps: ['RLE the <code>day</code> column inside each region (two-level runs).', 'Decode: expand (value, run_length) back to rows with a recursive CTE.']
         }
       }
     ]

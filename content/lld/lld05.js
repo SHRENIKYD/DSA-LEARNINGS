@@ -1352,7 +1352,7 @@ class RemoteDemo {
           [{ type: 'grid', label: 'adding one channel', rowHead: A, colHead: I.concat(['WhatsApp']), rows: rows2, hl: h2 }, VARS('count', { classes: M * (N + 1), newClassesForOneChannel: M }, { newClassesForOneChannel: 'bad' })]));
         var nodes = [B('NT', 'Notification', 22, 6), B('CH', 'Channel', 78, 6)], edges = [['NT', 'CH', 'has-a (the bridge)']];
         A.forEach(function (a, k) { nodes.push(B('A' + k, a, 6 + k * (36 / Math.max(1, M - 1 || 1)), 50)); edges.push(['A' + k, 'NT', 'extends']); });
-        I.forEach(function (c, k) { nodes.push(B('I' + k, c, 62 + k * (36 / Math.max(1, N - 1 || 1)), 50)); edges.push(['I' + k, 'CH', 'implements']); });
+        I.forEach(function (c, k) { nodes.push(B('I' + k, c, 60 + k * (34 / Math.max(1, N - 1 || 1)), 50)); edges.push(['I' + k, 'CH', 'implements']); });
         if (M === 1) nodes[2].x = 22;
         if (N === 1) nodes[2 + M].x = 78;
         f.push(F('<b>Bridge:</b> split into two hierarchies. Left = <i>what</i> (abstraction), right = <i>how</i> (implementor). The only link is one field, <code>Notification.channel</code>. Classes = ' + M + ' + ' + N + ' = <b>' + (M + N) + '</b> (+2 small base types).',
@@ -1483,6 +1483,205 @@ class InventoryReport extends Report {
 }`,
         complexity: `<p>Export is O(cells). Class count M + N instead of M × N; each change touches one class.</p>`,
         followUps: ['Add HtmlFormat — which existing classes change? (None.)', 'A PDF format needs page breaks every 50 rows — does the implementor interface still fit?', 'Let the user pick the format at runtime from a dropdown — where does the wiring happen?']
+      }
+    }]
+  });
+  /* =====================================================================
+     TOPIC 7 — FLYWEIGHT
+     ===================================================================== */
+  var FLY_CODE = 'static TreeType of(String name) {\n' +
+    '  return CACHE.computeIfAbsent(name,     // look in the pool\n' +
+    '      n -> new TreeType(n, loadTexture(n))); // create ONLY if missing\n' +
+    '}\n' +
+    'void plant(int x, int y, String kind) {\n' +
+    '  trees.add(new Tree(x, y, TreeType.of(kind))); // tiny context object\n' +
+    '}';
+
+  topics.push({
+    title: 'Flyweight — Share What Is Identical',
+    analogy: `<p>A library owns <b>one</b> copy of each dictionary on the reference shelf. Two hundred students "use the dictionary" — they do not each get a personal printed copy. What is different for each student (which page they are on, where they sit) they keep in their own head; what is identical (the book) is <b>shared</b>.</p>
+      <p>Or think of a printed newspaper: the letter "e" appears 40 000 times, but the printer has <b>one</b> "e" stamp design. Each occurrence only records <i>where</i> it is printed.</p>`,
+    explain: `<p><b>The problem.</b> A game draws a forest of <b>1 000 000 trees</b>. If every tree object stores its own mesh and 2 MB texture, memory is 2 TB — impossible. But there are only <b>3 kinds</b> of tree: oak, pine, birch. Most of the data is <i>repeated</i>.</p>
+      <p><b>The fix.</b> Split each object's state in two:</p>
+      ${H.table(['', 'Intrinsic state', 'Extrinsic state'], [['What', 'identical for many objects', 'unique to each object'], ['Tree example', 'species name, colour, texture, mesh', 'x, y position, age'], ['Stored in', '<b>shared flyweight</b> (one per species)', 'small context object or passed in as a parameter'], ['Must be', H.c('g', 'immutable'), 'anything']])}
+      <p>A <b>flyweight factory</b> (a map) hands out the shared objects: ask for "oak" → if the pool has it, return it; else create, store, return. Each tree now holds two ints and one <i>reference</i>.</p>
+      ${H.kv([['Naive', '1 000 000 × ~2 MB ≈ <b>2 TB</b>'], ['Flyweight', '3 × 2 MB + 1 000 000 × ~24 B ≈ <b>30 MB</b>']], { label: 'memory', hl: { Flyweight: 'g', Naive: 'r' } })}
+      <p><b>Rules that make it safe:</b> (1) flyweights are <b>immutable</b> — if one tree could change "oak"'s colour, every oak would change; (2) clients never call <code>new TreeType</code> directly, only the factory; (3) the extrinsic state is passed in when needed (<code>type.draw(canvas, x, y)</code>).</p>
+      <p><b>Already in Java:</b> ${H.chips(['Integer.valueOf(-128..127) cache', 'String literal pool / intern()', 'Boolean.TRUE / FALSE', 'Enum constants', 'java.time.ZoneId / Charset lookups'], { label: 'JDK flyweights' })} — that is why <code>Integer.valueOf(100) == Integer.valueOf(100)</code> is <code>true</code> but <code>Integer.valueOf(1000) == Integer.valueOf(1000)</code> is usually <code>false</code>.</p>`,
+    clues: ['"<b>millions</b> of small objects" / "out of memory" / "memory footprint" in the constraints', '"many objects share the same data": characters with same font, trees of same species, bullets of same type, map tiles', '"the duplicated part never changes" (immutable textures, styles, configurations)', '"cache and reuse objects by key" / "interning"', '"particle system", "text editor glyphs", "chess pieces across 10 000 concurrent games"', 'a field-by-field estimate shows most bytes are repeated data'],
+    code: [`
+// Flyweight: INTRINSIC, shared, immutable
+record TreeType(String name, String color, byte[] texture) {
+    void draw(int x, int y) {          // extrinsic state passed in
+        System.out.println("draw " + name + " (" + color + ") at " + x + "," + y);
+    }
+}
+
+// Flyweight factory: guarantees one TreeType per key
+final class TreeTypes {
+    private static final Map<String, TreeType> CACHE = new ConcurrentHashMap<>();
+    private TreeTypes() {}
+
+    static TreeType of(String name, String color) {
+        return CACHE.computeIfAbsent(name + "|" + color,
+            k -> new TreeType(name, color, new byte[2 * 1024 * 1024]));   // "2 MB texture" loaded once
+    }
+    static int poolSize() { return CACHE.size(); }
+}
+
+// Context: EXTRINSIC, one per tree, tiny
+record Tree(int x, int y, TreeType type) {
+    void draw() { type.draw(x, y); }
+}
+
+class Forest {
+    private final List<Tree> trees = new ArrayList<>();
+
+    void plant(int x, int y, String name, String color) {
+        trees.add(new Tree(x, y, TreeTypes.of(name, color)));
+    }
+
+    public static void main(String[] args) {
+        Forest f = new Forest();
+        Random rnd = new Random(42);
+        String[] kinds = {"oak", "pine", "birch"};
+        for (int i = 0; i < 100_000; i++) f.plant(rnd.nextInt(1000), rnd.nextInt(1000), kinds[i % 3], "green");
+        System.out.println(f.trees.size() + " trees share " + TreeTypes.poolSize() + " TreeType objects");
+        // 100000 trees share 3 TreeType objects (≈6 MB textures instead of ≈200 GB)
+    }
+}`, `
+// The JDK's own flyweights
+class JdkFlyweights {
+    public static void main(String[] args) {
+        Integer a = Integer.valueOf(127), b = Integer.valueOf(127);
+        Integer c = Integer.valueOf(128), d = Integer.valueOf(128);
+        System.out.println(a == b);            // true  — cached flyweight (-128..127)
+        System.out.println(c == d);            // false (by default) — two separate objects
+        System.out.println(c.equals(d));       // true  — always compare values with equals
+
+        String s1 = "hello";
+        String s2 = new String("hello");
+        System.out.println(s1 == s2);          // false — s2 is a fresh object
+        System.out.println(s1 == s2.intern()); // true  — intern() returns the pooled flyweight
+    }
+}`],
+    codeTitle: ['Forest of trees sharing TreeType flyweights', 'Integer cache and String pool'],
+    viz: {
+      title: 'Flyweight factory: reuse from the pool or create once',
+      input: 'oak pine oak oak birch pine oak birch',
+      inputLabel: 'Trees to plant, in order (any species names, max 14)',
+      gen: function (input) {
+        var kinds = words(input, 'Example: oak pine oak birch', 14).map(function (s) { return s.toLowerCase(); });
+        var pool = [], planted = [], f = [], created = 0, reused = 0;
+        f.push(F('<b>Setup.</b> Each species has heavy, identical data (≈2 MB texture). Positions are unique per tree. The factory keeps a <b>pool</b>: species → the one shared <code>TreeType</code>.',
+          [{ type: 'map', label: 'flyweight pool (intrinsic, shared)', entries: [['(empty)', '-']] }, CODE('TreeTypes / Forest', FLY_CODE, {}), VARS('counters', { treesPlanted: 0, flyweightsCreated: 0, reused: 0 })]));
+        kinds.forEach(function (k, i) {
+          var x = (i * 37) % 100, y = (i * 53) % 100;
+          var hit = pool.indexOf(k) >= 0;
+          if (!hit) { pool.push(k); created++; } else reused++;
+          planted.push(k);
+          var entries = pool.map(function (p) { return [p, 'TreeType(' + p + ', 2 MB)']; });
+          var phl = {}; for (var j = 0; j < planted.length - 1; j++) phl[j] = 'done'; phl[planted.length - 1] = hit ? 'ok' : 'cur';
+          f.push(F('Plant tree #' + (i + 1) + ': <b>' + k + '</b> at (' + x + ', ' + y + '). Factory looks up "' + k + '" → ' + (hit ? H.c('g', 'found in pool — reuse the same object, zero new MB.') : H.c('y', 'not in pool — create it once (load the 2 MB texture) and store it.')) + ' The tree itself stores only x, y and a reference.',
+            [{ type: 'map', label: 'flyweight pool (intrinsic, shared)', entries: entries, hl: one(k, hit ? 'ok' : 'cur') },
+             { type: 'array', label: 'Tree contexts (extrinsic: x, y + pointer)', values: planted.slice(), hl: phl, showIdx: true },
+             CODE('TreeTypes / Forest', FLY_CODE, hit ? { 2: 'ok', 6: 'cur' } : { 2: 'cur', 3: 'cur', 6: 'cur' }),
+             VARS('counters', { treesPlanted: planted.length, flyweightsCreated: created, reused: reused }, hit ? { reused: 'ok' } : { flyweightsCreated: 'cur' })]));
+        });
+        var naiveMB = planted.length * 2, flyMB = created * 2;
+        f.push(F('<b>Memory.</b> Naive design: every tree owns its texture = ' + planted.length + ' × 2 MB = <b>' + naiveMB + ' MB</b>. Flyweight: ' + created + ' shared textures = <b>' + flyMB + ' MB</b> + a few bytes per tree. At 1 000 000 trees and 3 species: ~2 TB vs ~30 MB.',
+          [{ type: 'bars', label: 'MB of texture data', values: [naiveMB, flyMB], texts: [naiveMB + ' MB', flyMB + ' MB'], idxLabels: ['one copy per tree', 'flyweights'], hl: { 0: 'bad', 1: 'ok' } }, VARS('result', { trees: planted.length, distinctSpecies: created, savedMB: naiveMB - flyMB }, { savedMB: 'sel' })]));
+        f.push(F('<b>Why immutability matters.</b> All ' + planted.filter(function (p) { return p === planted[0]; }).length + ' "' + planted[0] + '" trees point at the <i>same</i> object. If one tree could call <code>type.setColor("red")</code>, every ' + planted[0] + ' in the forest would turn red. So flyweights are records / final fields only; per-tree variety (age, health) belongs in the context object.',
+          [{ type: 'array', label: 'trees pointing at the "' + planted[0] + '" flyweight', values: planted.slice(), hl: (function () { var h = {}; planted.forEach(function (p, q) { if (p === planted[0]) h[q] = 'sel'; }); return h; })() }, TXT('One shared object, many references → change it once, it changes everywhere.')]));
+        return f;
+      }
+    },
+    examples: [
+      { title: 'Text editor glyphs', html: `<p>A 1 MB document has ~1 000 000 characters but maybe 6 styles (font, size, bold, colour). Store a <code>Style</code> flyweight from a factory and keep per-character only the char and a style reference — or better, run-length "style runs" (chars 0–999 use style #2). Word processors and browsers' text layout engines do exactly this.</p>` },
+      { title: 'Chess server with 50 000 games', html: `<p>There are only 12 piece kinds (6 types × 2 colours). Each <code>Piece</code> flyweight holds type, colour, move rules and icon; the board stores references in an 8×8 array. Position is extrinsic — the square index. 50 000 games × 32 pieces need 12 piece objects, not 1.6 million.</p>`, code: `enum PieceKind { KING, QUEEN, ROOK, BISHOP, KNIGHT, PAWN }
+record Piece(PieceKind kind, boolean white) {}
+Map<String, Piece> pool = new HashMap<>();
+Piece wk1 = pool.computeIfAbsent("KING-w", k -> new Piece(PieceKind.KING, true));
+Piece wk2 = pool.computeIfAbsent("KING-w", k -> new Piece(PieceKind.KING, true));
+System.out.println(wk1 == wk2); // true: one shared flyweight` },
+      { title: 'Integer cache bug in the wild', html: `<p>A test compares two <code>Integer</code> user ids with <code>==</code> and passes (ids 1–100 come from the flyweight cache). In production ids exceed 127, two different objects are created, and <code>==</code> returns false — "random" bugs. Lesson: flyweight sharing is an optimisation, never a contract; compare values with <code>equals</code>.</p>` },
+      { title: 'Map tiles and sprites', html: `<p>An open-world game map of 10 000 × 10 000 tiles uses maybe 200 tile types (grass, water, road…). The map is a 2D array of <b>short</b> indices into a tile-type table: 200 MB → 200 MB/… well, 10<sup>8</sup> × 2 bytes = 200 MB for indices vs 10<sup>8</sup> full objects (tens of GB). Indices into a table are the most compact flyweight of all.</p>` }
+    ],
+    deepDive: `<p><b>When it is worth it.</b> Flyweight trades simplicity for memory. Do it only when (1) there are <i>very many</i> objects, (2) memory is actually a problem (measure with a heap profiler), (3) most state can be made extrinsic, and (4) object identity does not matter to the program. For a few thousand objects, it is premature optimisation.</p>
+      <p><b>Java object overhead</b> makes the win bigger than it looks: every object has a 12–16 byte header plus alignment to 8 bytes; a <code>Tree</code> record with two ints and a reference is ~24 bytes. Arrays of primitives (struct-of-arrays: <code>int[] xs, ys; short[] typeIdx</code>) can cut even that, and Project Valhalla's value classes aim to remove headers entirely.</p>
+      <p><b>Factory concurrency and lifetime.</b> Use <code>ConcurrentHashMap.computeIfAbsent</code> so two threads cannot create two "oak" objects. An unbounded pool for user-supplied keys is a memory leak (and a DoS vector) — bound it or use weak references (<code>WeakHashMap</code>-style interning, like Guava's <code>Interners.newWeakInterner()</code>). Note that <code>String.intern()</code> moved to the regular heap in Java 7+ and the JVM can deduplicate strings automatically (G1 <code>-XX:+UseStringDeduplication</code>).</p>
+      <p><b>Flyweight vs Singleton vs Object Pool.</b> Singleton = exactly one instance of a class. Flyweight = one instance <i>per distinct intrinsic value</i>, shared simultaneously and immutable. Object Pool = mutable objects <i>borrowed</i> exclusively and returned (connections, threads). Flyweights are never "returned" — everybody holds them at once.</p>`,
+    aiEra: `<p><b>What AI changes:</b> memory is the bottleneck in LLM serving, and the winning tricks are flyweights. <b>Prefix / prompt caching</b> shares the KV-cache of an identical system prompt across thousands of requests instead of recomputing and storing it per request; vLLM's <b>PagedAttention</b> lets requests share identical KV blocks copy-on-write. Embedding stores deduplicate identical chunks; tokenisers intern token strings. "Intrinsic = shared prefix, extrinsic = the user's own tokens" is the same split as trees and positions.</p>
+      <p><b>Use AI as a partner:</b> <code>Here is my class with 9 fields and 5 million instances. Which fields are intrinsic vs extrinsic? Estimate bytes before and after.</code> Verify with a heap dump. <b>Where AI goes wrong:</b> it suggests flyweights for small object counts, leaves setters on the shared object, uses an unsynchronised HashMap as the pool, and forgets that user-controlled keys can grow the pool forever. <b>What you must still own:</b> the memory estimate, the intrinsic/extrinsic split, and the immutability guarantee.</p>`,
+    problems: [{
+      title: 'Text Editor with a Million Styled Characters',
+      level: 'Medium', tags: ['flyweight', 'memory'], companies: ['Google', 'Microsoft', 'Adobe'],
+      statement: `<p>Design the in-memory model for an editor document: each character has a <b>style</b> (font family, size, bold, italic, colour). Documents reach 10<sup>6</sup> characters but usually use fewer than 20 distinct styles. Support <code>append(char, font, size, bold, italic, color)</code>, <code>styleAt(i)</code>, and <code>distinctStyles()</code>. Two equal styles must be the <b>same object</b>.</p>`,
+      constraints: `<p>N ≤ 10<sup>6</sup> chars. Styles are immutable. The style factory must be thread-safe. Memory per character should be a few bytes, not a full style object.</p>`,
+      example: `<p>Append "Hi" in (Arial, 12, bold) and "!" in (Arial, 12, bold) → <code>styleAt(0) == styleAt(2)</code> is ${H.c('g', 'true')} and <code>distinctStyles()</code> = <b>1</b>. Naive: 3 style objects.</p>`,
+      brute: { why: `<p>Each <code>Character</code> object carries its own copy of font name, size, flags and colour: ~16-byte header + fields + a <code>String</code> reference ≈ 40+ bytes per char, plus the boxed char and list overhead — around 60 MB for 1 M characters, and comparing styles requires field-by-field equals. Most of those bytes are the same few styles repeated a million times.</p>`, code: `class StyledChar {
+    final char ch; final String font; final int size; final boolean bold, italic; final int rgb;
+    StyledChar(char ch, String font, int size, boolean bold, boolean italic, int rgb) {
+        this.ch = ch; this.font = font; this.size = size; this.bold = bold; this.italic = italic; this.rgb = rgb;
+    }
+}
+class NaiveDocument {
+    final List<StyledChar> chars = new ArrayList<>();   // one fat object per character
+    void append(char c, String font, int size, boolean b, boolean i, int rgb) {
+        chars.add(new StyledChar(c, font, size, b, i, rgb));
+    }
+}` },
+      mcq: { q: 'Which of these belongs in the shared (intrinsic) Style flyweight?', options: ['The character itself', 'Its index in the document', 'Font, size, bold, italic, colour', 'The cursor position'], answer: 2, explain: 'Formatting is identical across many characters; the character and its position are unique per occurrence (extrinsic).' },
+      hints: [`<p>Hint 1: Separate "what is repeated" (style) from "what is unique" (the char, its position).</p>`, `<p>Hint 2: <code>record Style(...)</code> gives value-based equals/hashCode for free; a <code>ConcurrentHashMap&lt;Style, Style&gt;</code> interns them.</p>`, `<p>Hint 3: Store chars in a <code>StringBuilder</code> and a parallel list of style references (or a <code>short[]</code> of style ids). <code>append</code> = intern style → push char + reference.</p>`],
+      solution: {
+        approach: `<p><code>Style</code> is an immutable record (intrinsic). <code>StyleFactory.of(...)</code> interns styles with <code>ConcurrentHashMap.putIfAbsent</code>, so equal styles are the identical object. The <code>Document</code> keeps characters in a <code>StringBuilder</code> (2 bytes each) and a list of style ids (indices into the factory's table) — a few bytes per character. <code>styleAt(i)</code> looks up the id; <code>distinctStyles()</code> is the table size.</p>`,
+        code: `record Style(String font, int size, boolean bold, boolean italic, int rgb) {}
+
+final class StyleFactory {
+    private final ConcurrentHashMap<Style, Integer> ids = new ConcurrentHashMap<>();
+    private final List<Style> table = new CopyOnWriteArrayList<>();
+
+    synchronized int idOf(Style s) {               // intern: one id + one object per distinct style
+        Integer id = ids.get(s);
+        if (id != null) return id;
+        table.add(s);
+        ids.put(s, table.size() - 1);
+        return table.size() - 1;
+    }
+    Style byId(int id) { return table.get(id); }
+    int size() { return table.size(); }
+}
+
+class Document {
+    private final StyleFactory styles = new StyleFactory();
+    private final StringBuilder text = new StringBuilder();
+    private short[] styleIds = new short[16];        // extrinsic: 2 bytes per char
+
+    void append(char c, String font, int size, boolean bold, boolean italic, int rgb) {
+        int id = styles.idOf(new Style(font, size, bold, italic, rgb));
+        if (id > Short.MAX_VALUE) throw new IllegalStateException("too many styles");
+        if (text.length() == styleIds.length) styleIds = Arrays.copyOf(styleIds, styleIds.length * 2);
+        styleIds[text.length()] = (short) id;
+        text.append(c);
+    }
+
+    Style styleAt(int i) {
+        Objects.checkIndex(i, text.length());
+        return styles.byId(styleIds[i]);              // the SAME shared object for equal styles
+    }
+
+    int distinctStyles() { return styles.size(); }
+
+    public static void main(String[] args) {
+        Document d = new Document();
+        for (char c : "Hi".toCharArray()) d.append(c, "Arial", 12, true, false, 0x000000);
+        d.append('!', "Arial", 12, true, false, 0x000000);
+        System.out.println(d.styleAt(0) == d.styleAt(2));   // true
+        System.out.println(d.distinctStyles());              // 1
+    }
+}`,
+        complexity: `<p><code>append</code> amortised O(1); <code>styleAt</code> O(1). Memory ≈ 4 bytes/char (2 for the char, 2 for the style id) + O(distinct styles), versus ~60 bytes/char naively.</p>`,
+        followUps: ['Store style runs (start index, style id) instead of one id per char — when is that better?', 'Support insert in the middle efficiently (rope / piece table) while keeping flyweight styles.', 'How would you garbage-collect styles no character uses anymore?']
       }
     }]
   });
