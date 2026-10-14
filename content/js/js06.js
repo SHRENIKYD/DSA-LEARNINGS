@@ -1718,6 +1718,298 @@ console.log(f instanceof Dog, f.eat());                    // true Fido eats` },
     }]
   });
 
+  /* ======================================================================
+     TOPIC 7 — #private fields/methods and static members
+     ====================================================================== */
+  topics.push({
+    title: 'Private #fields, Private Methods and static Members (incl. static blocks)',
+    analogy: `<p>Think of a <b>bank branch</b>:</p>
+<ul>
+<li>The <b>counter</b> is public — anyone can walk up and call <code>deposit()</code>.</li>
+<li>The <b>vault</b> (<code>#balance</code>) can only be opened by staff trained <b>by this exact bank</b>. Customers cannot, other banks cannot, and even a <i>franchise</i> of this bank (a subclass) cannot use the vault key by name — it has to ask through the counter.</li>
+<li>The <b>head-office notice board</b> (<code>static</code>) belongs to the bank as a whole, not to any customer: "total accounts opened: 1,204", "bank name: JS Bank".</li>
+</ul>`,
+    explain: `<h4>1. Private fields: <code>#name</code></h4>
+<p>A name starting with <code>#</code> declared in a class body creates a <b>private slot</b> on every instance. It can only be written as <code>this.#name</code> (or <code>other.#name</code>) <b>inside that class body</b>. Anywhere else, <code>obj.#name</code> is a <b>SyntaxError</b> — the file will not even parse. It is real, engine-enforced privacy, not a naming convention.</p>
+${H.table(['Question', '#private', '_underscore', 'TypeScript private', 'closure / WeakMap'], [
+  ['Hidden from outside code?', H.c('g', 'yes, enforced'), H.c('r', 'no, convention'), H.c('y', 'compile-time only'), H.c('g', 'yes')],
+  ['Shows in Object.keys / JSON / spread?', H.c('g', 'never'), H.c('r', 'yes'), H.c('r', 'yes (it is a normal property at runtime)'), H.c('g', 'no')],
+  ['Methods shared on prototype?', H.c('g', 'yes'), H.c('g', 'yes'), H.c('g', 'yes'), 'closure: no / WeakMap: yes'],
+  ['Subclass can use it by name?', H.c('r', 'no'), 'yes', 'no (protected: yes)', 'depends']
+])}
+<h4>2. Private methods and accessors</h4>
+<p><code>#validate(x) { … }</code>, <code>get #secret()</code> — helpers that are not part of the public API. Unlike fields they are not copied per instance; the engine just marks each instance as allowed to call them.</p>
+<h4>3. Rules that come up in interviews</h4>
+<ul>
+<li>Privacy is per <b>class</b>, not per object: a method can read <code>other.#balance</code> of another instance of the same class (great for <code>equals</code>/<code>compareTo</code>).</li>
+<li>Reading <code>obj.#x</code> when <code>obj</code> was not constructed by this class throws <code>TypeError</code>. The safe test is the <b>brand check</b> <code>#x in obj</code> (ES2022) → true/false.</li>
+<li>Private names are not properties: no <code>obj['#x']</code>, no <code>Reflect.ownKeys</code>, invisible to <code>Proxy</code> traps (and a Proxy around an instance breaks <code>this.#x</code>).</li>
+<li>A subclass instance <b>does</b> carry the parent's private slots (the parent's constructor adds them), but subclass <b>code</b> cannot name them.</li>
+</ul>
+<h4>4. static members</h4>
+<p><code>static</code> puts a field or method on the <b>class itself</b> (the constructor function), not on instances. Typical uses: factories (<code>User.fromJSON</code>), counters/registries, constants, caches, utilities. Inside a static method, <code>this</code> is the class the method was <b>called on</b> — which might be a subclass. Statics are inherited through the constructor chain.</p>
+<p><b>Static blocks</b> (<code>static { … }</code>, ES2022) run once when the class is defined — useful for multi-step setup, try/catch around initialisation, or sharing private access with a helper declared outside.</p>
+<p><b>Static private</b> (<code>static #count</code>) is a private slot on the class object only. Gotcha: inside a static method called as <code>Child.method()</code>, <code>this.#count</code> throws (Child does not have the slot) — write <code>Parent.#count</code> instead.</p>`,
+    clues: [
+      '"Make the balance impossible to change from outside" / "truly private state" → <code>#field</code> (or closure/WeakMap in older code).',
+      '"What is the difference between TypeScript <code>private</code> and <code>#private</code>?" → compile-time check vs runtime-enforced slot.',
+      '"Check if an object is a genuine instance (cannot be faked by setting the prototype)" → brand check <code>#x in obj</code>.',
+      '"Count how many instances were created", "factory method", "singleton", "registry" → <code>static</code> fields/methods.',
+      '"Run complex initialisation once when the class is defined" → <code>static { }</code> block.',
+      '"Why does my subclass get <code>TypeError: Cannot read private member</code>?" → static private via <code>this</code>, or Proxy-wrapped instance.'
+    ],
+    code: [{ lang: 'js', run: true, title: 'Private state, private helper, brand check and statics (runnable)', code: `class Account {
+  static #count = 0;                // private, on the class
+  static bank = 'JS Bank';          // public static field
+  #balance = 0;                     // private, one slot per instance
+  #history = [];
+
+  static {                          // static block: runs once at class definition
+    Account.createdAt = 'class ready';
+  }
+
+  constructor(owner) {
+    this.owner = owner;             // public
+    Account.#count++;
+  }
+  deposit(amount) {
+    this.#check(amount);
+    this.#balance += amount;
+    this.#history.push('+' + amount);
+    return this;
+  }
+  get balance() { return this.#balance; }        // read-only view
+  #check(amount) {                                // private method
+    if (!(amount > 0)) throw new RangeError('amount must be positive');
+  }
+  hasMoreThan(other) { return this.#balance > other.#balance; } // same class -> allowed
+  static isAccount(obj) { return #balance in obj; }            // brand check
+  static get count() { return Account.#count; }
+}
+
+const a = new Account('Asha').deposit(50);
+const b = new Account('Ben').deposit(20);
+console.log(a.balance, a.hasMoreThan(b));        // 50 true
+console.log(Object.keys(a), JSON.stringify(a));  // [ 'owner' ] {"owner":"Asha"}
+a.balance = 1e9;                                 // no setter: ignored (sloppy script)
+console.log(a.balance);                          // 50
+try { a.deposit(-5); } catch (e) { console.log(e.name); }   // RangeError
+const fake = Object.create(Account.prototype);   // right prototype, no private slots
+console.log(fake instanceof Account, Account.isAccount(fake), Account.isAccount(a)); // true false true
+try { fake.balance; } catch (e) { console.log(e.constructor.name); }   // TypeError
+console.log(Account.count, Account.bank, Account.createdAt, a.count);  // 2 JS Bank class ready undefined
+` }],
+    codeTitle: ['Account with #private and static'],
+    viz: {
+      title: 'Where each member lives: instance, private slots, prototype, class',
+      gen: function () {
+        var code = [
+          'class Account {',
+          '  static #count = 0;',
+          "  static bank = 'JS Bank';",
+          '  #balance = 0;',
+          '  static { Account.ready = true; }',
+          '  constructor(owner) { this.owner = owner; Account.#count++; }',
+          '  deposit(x) { this.#check(x); this.#balance += x; return this; }',
+          "  #check(x) { if (x <= 0) throw new RangeError('positive only'); }",
+          '  static isAccount(o) { return #balance in o; }',
+          '}',
+          "const a = new Account('Asha');",
+          'a.deposit(50);',
+          '// a.#balance   -> SyntaxError: the file would not even parse',
+          'Account.isAccount(Object.create(Account.prototype)); // false'
+        ].join('\n');
+        function cls(c, hl) { return { type: 'map', label: 'Account (the class / constructor function)', entries: [['bank', "'JS Bank'"], ['ready', c.ready ? 'true' : '—'], ['isAccount', 'ƒ static'], ['prototype', 'Account.prototype']], hl: hl || {} }; }
+        function cpriv(n, hl) { return { type: 'map', label: 'Private slots of Account (hidden)', entries: [['#count', String(n)]], hl: hl || {} }; }
+        function proto(hl) { return { type: 'map', label: 'Account.prototype (shared, public)', entries: [['constructor', 'Account'], ['deposit', 'ƒ']], hl: hl || {} }; }
+        function inst(own, priv, hlo, hlp) {
+          return [{ type: 'map', label: 'a — public own properties', entries: own, hl: hlo || {} }, { type: 'map', label: 'a — private slots (invisible to keys, JSON, Proxy)', entries: priv, hl: hlp || {} }];
+        }
+        return codeFrames(code, [
+          { l: 1, narr: 'When the engine reaches <code>class Account</code>, it builds the function and its prototype. <b>Instance</b> members wait; <b>static</b> members run <b>now</b>, top to bottom.', extra: [cls({}), proto()] },
+          { l: 2, narr: '<code>static #count = 0</code> → a private slot on the <b>class object</b> itself. Only code inside the class body can write <code>Account.#count</code>.', extra: [cls({}), cpriv(0, { '#count': 'ok' })] },
+          { l: 3, narr: '<code>static bank</code> → an ordinary own property of the function: <code>Account.bank</code>. Not visible on instances (<code>a.bank</code> is undefined).', extra: [cls({}, { bank: 'ok' }), cpriv(0)] },
+          { l: 5, narr: 'The <b>static block</b> runs once, right now, in order with the other static fields. Use it for setup that needs statements (loops, try/catch).', extra: [cls({ ready: true }, { ready: 'ok' }), cpriv(0)] },
+          { l: [4, 6, 11], narr: "<code>new Account('Asha')</code>: the instance gets its private slot <code>#balance = 0</code> first (fields), then the constructor body adds <code>owner</code> and bumps <code>#count</code>.", extra: inst([['owner', "'Asha'"]], [['#balance', '0']], { owner: 'ok' }, { '#balance': 'ok' }).concat([cpriv(1, { '#count': 'ok' })]) },
+          { l: [7, 8, 12], narr: '<code>a.deposit(50)</code> is found on <b>Account.prototype</b> (public). Inside, it calls the private method <code>#check</code> and updates <code>#balance</code> — allowed because this code is <b>inside the class body</b>.', extra: inst([['owner', "'Asha'"]], [['#balance', '50']], {}, { '#balance': 'ok' }).concat([proto({ deposit: 'cur' })]) },
+          { l: 13, cls: 'bad', narr: 'Outside the class, <code>a.#balance</code> is not a runtime error — it is a <b>SyntaxError</b>. The parser rejects the whole file before any code runs. <code>a[\'#balance\']</code> is just a different, normal (missing) property → undefined.', extra: inst([['owner', "'Asha'"]], [['#balance', '50 (locked)']], {}, { '#balance': 'bad' }).concat([{ type: 'set', label: 'Object.keys(a) / JSON.stringify(a) see only', items: ['owner'] }]) },
+          { l: [9, 14], narr: 'An object made with <code>Object.create(Account.prototype)</code> passes <code>instanceof</code> (right prototype) but was never constructed, so it has <b>no private slots</b>. <code>#balance in o</code> → <b>false</b>. That is a brand check nobody can fake.', extra: [{ type: 'table', label: 'instanceof vs brand check', columns: ['object', 'instanceof Account', '#balance in o'], rows: [['a (real)', 'true', 'true'], ['Object.create(Account.prototype)', 'true', 'false'], ['{ owner: \'x\' }', 'false', 'false']], hl: { 1: 'sel' } }] },
+          { l: 1, narr: 'Summary of homes: <b>instance</b> = public own props + private slots; <b>prototype</b> = shared public methods/accessors (private methods are attached per instance as a "permission", not a property); <b>class</b> = statics + static private slots.', extra: [cls({ ready: true }), cpriv(1), proto()].concat(inst([['owner', "'Asha'"]], [['#balance', '50']])) }
+        ]);
+      }
+    },
+    examples: [
+      { title: 'Predict: private fields are invisible to every reflection API', html: `<p>Keys, entries, JSON, spread, <code>Object.getOwnPropertyNames</code>, <code>Reflect.ownKeys</code>, <code>structuredClone</code> (which also drops the prototype) — none of them see <code>#</code> slots. <code>u['#pin']</code> is an unrelated normal property name.</p>
+${H.table(['API', 'Result for new User()'], [['Object.keys', "[ 'name' ]"], ['Reflect.ownKeys', "[ 'name' ]"], ["u['#pin']", 'undefined'], ['{ ...u }', "{ name: 'asha' }"]])}`, code: { lang: 'js', run: true, code: `class User {
+  #pin = 1234;
+  name = 'asha';
+  checkPin(p) { return p === this.#pin; }
+}
+const u = new User();
+console.log(Object.keys(u), Reflect.ownKeys(u));   // [ 'name' ] [ 'name' ]
+console.log(u['#pin'], JSON.stringify(u));         // undefined {"name":"asha"}
+console.log({ ...u }, u.checkPin(1234));           // { name: 'asha' } true
+const copy = structuredClone(u);
+console.log(copy instanceof User, Object.keys(copy)); // false [ 'name' ]` } },
+      { title: 'Predict: subclasses cannot name the parent\'s private field', html: `<p>Child instances <b>have</b> the parent's slot (the parent constructor added it), but code in the child class cannot write <code>this.#secret</code> — that would be a SyntaxError unless the child declares its <b>own</b> <code>#secret</code>, which is a completely separate slot. Expose what children need via a (possibly protected-by-convention) method.</p>`, code: { lang: 'js', run: true, code: `class Parent {
+  #secret = 'parent-secret';
+  reveal() { return this.#secret; }        // children can call this
+}
+class Child extends Parent {
+  #secret = 'child-secret';                // a DIFFERENT slot with the same spelling
+  childReveal() { return this.#secret; }
+}
+const c = new Child();
+console.log(c.reveal());       // parent-secret  (Parent's code sees Parent's slot)
+console.log(c.childReveal());  // child-secret   (Child's code sees Child's slot)` } },
+      { title: 'Predict: static private + subclass + this = TypeError', html: `<p>In a static method, <code>this</code> is whatever class you called it on. When called as <code>Sub.next()</code>, <code>this.#id</code> asks <b>Sub</b> for a private slot that only <b>Base</b> has → <code>TypeError</code>. Write <code>Base.#id</code> explicitly.</p>`, code: { lang: 'js', run: true, code: `class Base {
+  static #id = 0;
+  static nextBad() { return ++this.#id; }    // depends on 'this'
+  static nextGood() { return ++Base.#id; }   // always the Base slot
+}
+class Sub extends Base {}
+console.log(Base.nextBad());                 // 1
+try { Sub.nextBad(); } catch (e) { console.log(e.constructor.name); }  // TypeError
+console.log(Sub.nextGood(), Sub.nextGood()); // 2 3` } },
+      { title: 'Before #: closures, WeakMaps and TypeScript private', html: `<p>Older code achieves privacy with a <b>WeakMap</b> keyed by the instance (methods stay on the prototype; entries are garbage-collected with the instance) or with <b>closures</b> (simple, but every instance gets its own method copies). TypeScript's <code>private</code> keyword disappears at runtime — the data is a normal, enumerable property.</p>`, code: { lang: 'js', run: true, code: `const _balance = new WeakMap();           // module-private
+class OldAccount {
+  constructor() { _balance.set(this, 0); }
+  deposit(x) { _balance.set(this, _balance.get(this) + x); return this; }
+  get balance() { return _balance.get(this); }
+}
+const o = new OldAccount().deposit(30);
+console.log(o.balance, Object.keys(o));   // 30 []
+
+// What TS 'private balance = 0' compiles to: a normal public property
+class TsCompiled { constructor() { this.balance = 0; } }
+console.log(Object.keys(new TsCompiled())); // [ 'balance' ] — visible at runtime` } },
+      { title: 'Expert: Proxy + private fields do not mix', html: `<p>Private slots are attached to the <b>target</b> object. When a method runs with <code>this</code> = the <b>proxy</b>, <code>this.#x</code> looks for the slot on the proxy and throws. Fixes: bind methods to the target in the <code>get</code> trap, or avoid wrapping instances that use <code>#</code>. This bites reactive frameworks (Vue 3 docs warn about it) and mocking libraries.</p>`, code: { lang: 'js', run: true, code: `class Box {
+  #v = 42;
+  get value() { return this.#v; }
+}
+const p = new Proxy(new Box(), {});
+try { console.log(p.value); } catch (e) { console.log(e.constructor.name); } // TypeError
+
+const fixed = new Proxy(new Box(), {
+  get(target, key) {
+    const v = Reflect.get(target, key, target);   // receiver = target, not proxy
+    return typeof v === 'function' ? v.bind(target) : v;
+  }
+});
+console.log(fixed.value);    // 42` } },
+      { title: 'Static factory, cache and a singleton', html: `<p>Statics shine for <b>named constructors</b> (<code>Color.fromHex</code>), <b>caches/registries</b> shared by all instances, and <b>singletons</b>. A private constructor does not exist in JS, but a private static token can stop outside code from calling <code>new</code> directly.</p>`, code: { lang: 'js', run: true, code: `class Config {
+  static #instance = null;
+  static #token = Symbol('internal');
+  constructor(token) {
+    if (token !== Config.#token) throw new TypeError('Use Config.get()');
+    this.loadedAt = 'boot';
+  }
+  static get() {
+    return Config.#instance ??= new Config(Config.#token);   // lazy singleton
+  }
+}
+console.log(Config.get() === Config.get());   // true
+try { new Config(); } catch (e) { console.log(e.message); }  // Use Config.get()
+
+class Color {
+  static #cache = new Map();
+  constructor(r, g, b) { Object.assign(this, { r, g, b }); Object.freeze(this); }
+  static fromHex(hex) {
+    if (!Color.#cache.has(hex)) {
+      const n = parseInt(hex.slice(1), 16);
+      Color.#cache.set(hex, new Color(n >> 16, (n >> 8) & 255, n & 255));
+    }
+    return Color.#cache.get(hex);
+  }
+}
+console.log(Color.fromHex('#ff8000'), Color.fromHex('#ff8000') === Color.fromHex('#ff8000'));
+// Color { r: 255, g: 128, b: 0 } true` } }
+    ],
+    deepDive: `<p><b>How private names work.</b> Each <code>#x</code> declaration creates a unique <b>Private Name</b> value when the class is evaluated (evaluate the same class expression twice → two different private names). Instances carry a <code>[[PrivateElements]]</code> list. <code>this.#x</code> does <code>PrivateFieldFind(obj, name)</code>: if the object has no element for that exact Private Name → <code>TypeError</code>. Private methods are not stored per instance as functions; <code>PrivateMethodOrAccessorAdd</code> records a "brand" on the instance during construction, and the method itself lives once on the class. That is why <code>#m in obj</code> works for methods too.</p>
+<p><b>Lexical scoping.</b> Private names are resolved <b>lexically</b> like variables: any code physically inside the class body (including nested functions, arrow functions, nested classes, and static blocks) can use them. The static-block "friend" pattern exploits this: <code>let getX; class A { #x; static { getX = (a) =&gt; a.#x; } }</code> exports a controlled accessor to the rest of the module. <code>eval</code> inside the class body can also see them.</p>
+<p><b>The "return override" trick.</b> Because a base constructor may return any object, a subclass whose parent returns an arbitrary object will <b>stamp its private fields onto that object</b> — this can attach private state to frozen objects or even to objects created elsewhere (used in polyfills for "private symbols"). It is also why proposals like "nonextensible applies to privates" are discussed in TC39.</p>
+<p><b>Performance.</b> V8 implements private fields with special private symbols on the object, so access speed matches normal properties and they participate in hidden classes and inline caches. Brand checks and private methods are cheap. Older Babel transpilation used <code>WeakMap</code>s (one per field) — noticeably slower and memory-hungry, a reason to target ES2022+ today (all evergreen browsers and Node ≥ 14.6/16 support them; static blocks and <code>#x in obj</code> need Node 16.4+/Chrome 91+/Safari 15+).</p>
+<p><b>Statics and inheritance.</b> Public static fields are defined <b>on each class separately</b> (define semantics), while static methods are inherited through <code>Object.getPrototypeOf(Child) === Parent</code>. A static field mutated via <code>this.counter++</code> in a method called on a subclass creates an own <code>counter</code> on the subclass (a write → shadowing!) — a subtle bug when you wanted one shared counter.</p>`,
+    aiEra: `<p><b>What AI changes:</b> AI often produces TypeScript with <code>private</code> keywords and assumes the data is hidden at runtime; or produces <code>_underscore</code> fields because of older training data. Knowing when you need <b>runtime</b> privacy (library boundaries, security-sensitive tokens, multi-tenant objects) is a human judgement.</p>
+<p><b>Use AI as a partner:</b> "<i>convert these underscore fields to #private and list everything that will break</i>" (expect: JSON serialisation, tests reading internals, Proxies, subclasses touching fields, <code>structuredClone</code>); "<i>add a brand-checked static isX to this class</i>"; "<i>find static methods that use this.#x and could be called on a subclass</i>".</p>
+<p><b>Where AI goes wrong:</b> writing <code>obj['#x']</code> as if it accessed the private field; putting <code>#x</code> on instances and expecting subclasses to read it; wrapping <code>#</code>-using instances in Proxies (reactive stores) without the bind fix; static counters incremented via <code>this</code> from subclasses.</p>
+<p><b>What you must still own:</b> choosing the right level of privacy (convention vs compile-time vs runtime), designing a small public surface, and the rules for statics with inheritance.</p>`,
+    problems: [{
+      title: 'Bank Account with True Privacy and a Brand Check',
+      level: 'Medium', tags: ['private fields', 'static', 'encapsulation', 'brand check'], companies: ['Stripe', 'Razorpay', 'Goldman Sachs'],
+      statement: `<p>Build <code>class Account</code> with:</p>
+<ul><li>a private balance (cannot be read or changed except through methods), and a private transaction log,</li><li><code>deposit(x)</code> and <code>withdraw(x)</code> (chainable; reject non-positive amounts with <code>RangeError</code>; reject overdrafts with <code>Error('insufficient funds')</code>),</li><li>a read-only <code>balance</code> getter and a <code>history()</code> method that returns a <b>copy</b> of the log,</li><li>auto-incrementing ids from a private static counter (<code>acc-1</code>, <code>acc-2</code>, …),</li><li><code>static transfer(from, to, amount)</code> that works only on genuine accounts (brand check) and is atomic (no money lost if the withdrawal fails).</li></ul>`,
+      constraints: `No public field may expose the balance. <code>Object.keys(account)</code> must be <code>['id']</code>. Use <code>#</code> syntax, not WeakMap.`,
+      example: `<p><code>const a = new Account(); a.deposit(100); const b = new Account();</code><br><code>Account.transfer(a, b, 30)</code> → ${H.c('g', 'a.balance 70, b.balance 30')}.<br><code>Account.transfer(a, b, 500)</code> → ${H.c('r', 'Error: insufficient funds')} and both balances unchanged. <code>Account.transfer({ balance: 1e9 }, b, 5)</code> → ${H.c('r', 'TypeError')}.</p>`,
+      brute: {
+        why: `<p>The underscore version "works" until someone writes <code>acc._balance = 1e9</code> — nothing stops it. A fake object <code>{ _balance: 1e9, withdraw(){…} }</code> passes duck-typing checks in <code>transfer</code>, and <code>history()</code> returning the internal array lets callers rewrite the log.</p>`,
+        code: { lang: 'js', run: true, code: `class AccountBrute {
+  constructor() { this._balance = 0; this._log = []; }
+  deposit(x) { this._balance += x; this._log.push(x); return this; }
+  get balance() { return this._balance; }
+  history() { return this._log; }          // leaks the real array
+}
+const acc = new AccountBrute().deposit(10);
+acc._balance = 1e9;                        // anyone can do this
+acc.history().push('forged');
+console.log(acc.balance, acc.history());   // 1000000000 [ 10, 'forged' ]` }
+      },
+      mcq: { q: 'In <code>static transfer(from, to, amt)</code>, what is the most reliable way to reject objects that merely look like accounts?', options: ['<code>from instanceof Account</code>', '<code>typeof from.withdraw === "function"</code>', '<code>#balance in from &amp;&amp; #balance in to</code>', '<code>from.constructor === Account</code>'], answer: 2, explain: '<code>instanceof</code> and <code>constructor</code> can be faked with <code>Object.create(Account.prototype)</code> or by assigning properties. Only objects actually constructed by Account have the <code>#balance</code> slot, so the brand check cannot be forged.' },
+      hints: [
+        `<p>Hint 1: fields: <code>static #nextId = 1; #balance = 0; #log = [];</code> and a public <code>id</code> assigned in the constructor from <code>Account.#nextId++</code> (use the class name, not <code>this</code>, in statics).</p>`,
+        `<p>Hint 2: put validation in a private method <code>#amount(x)</code>; <code>withdraw</code> checks funds <b>before</b> mutating. <code>history()</code> returns <code>[...this.#log]</code>.</p>`,
+        `<p>Hint 3: <code>transfer</code>: brand-check both with <code>#balance in obj</code> (throw <code>TypeError</code>), then <code>from.withdraw(amt)</code> first — if it throws, nothing was deposited — then <code>to.deposit(amt)</code>. Because <code>transfer</code> is inside the class it may also read <code>from.#balance</code> directly.</p>`
+      ],
+      solution: {
+        approach: `<p>All state is in private slots; the public surface is <code>id</code>, <code>balance</code> (getter only), <code>deposit</code>, <code>withdraw</code>, <code>history</code> and the static <code>transfer</code>. Withdrawal validates before mutating, so <code>transfer</code> can rely on "withdraw first, deposit second" for atomicity. The brand check rejects forged objects.</p>`,
+        code: { lang: 'js', run: true, code: `class Account {
+  static #nextId = 1;
+  #balance = 0;
+  #log = [];
+
+  constructor() {
+    this.id = 'acc-' + Account.#nextId++;          // class name, not this (subclass-safe)
+  }
+  #amount(x) {
+    if (typeof x !== 'number' || !(x > 0) || !Number.isFinite(x)) throw new RangeError('amount must be a positive number');
+    return x;
+  }
+  deposit(x) {
+    this.#balance += this.#amount(x);
+    this.#log.push({ type: 'deposit', amount: x });
+    return this;
+  }
+  withdraw(x) {
+    this.#amount(x);
+    if (x > this.#balance) throw new Error('insufficient funds');   // check BEFORE mutating
+    this.#balance -= x;
+    this.#log.push({ type: 'withdraw', amount: x });
+    return this;
+  }
+  get balance() { return this.#balance; }
+  history() { return this.#log.map((e) => ({ ...e })); }          // defensive copy
+  static transfer(from, to, amount) {
+    if (!(#balance in from) || !(#balance in to)) throw new TypeError('transfer needs two genuine accounts');
+    from.withdraw(amount);       // throws -> nothing changed anywhere
+    to.deposit(amount);
+  }
+}
+
+const a = new Account().deposit(100), b = new Account();
+Account.transfer(a, b, 30);
+console.log(a.id, a.balance, b.id, b.balance);                 // acc-1 70 acc-2 30
+try { Account.transfer(a, b, 500); } catch (e) { console.log(e.message, a.balance, b.balance); } // insufficient funds 70 30
+try { Account.transfer({ balance: 1e9 }, b, 5); } catch (e) { console.log(e.name); }         // TypeError
+console.log(Object.keys(a), JSON.stringify(a));                // [ 'id' ] {"id":"acc-1"}
+a.history().push('forged');
+console.log(a.history().length);                               // 2 — internal log untouched` },
+        dry: { head: ['call', 'check', 'a.#balance', 'b.#balance'], rows: [['a.deposit(100)', '100 > 0 ✓', '100', '0'], ['transfer(a, b, 30)', 'brands ✓, 30 ≤ 100 ✓', '70', '30'], ['transfer(a, b, 500)', H.c('r', '500 > 70 → throw before mutating'), '70', '30'], ['transfer(fake, b, 5)', H.c('r', '#balance in fake → false'), '70', '30']] },
+        complexity: `<p>All operations O(1) except <code>history()</code>, which is O(n) for the defensive copy.</p>`,
+        followUps: ['Make it safe for subclasses (<code>class Savings extends Account</code>) — which parts already are?', 'Add an <code>#frozen</code> flag and a static <code>freeze(account)</code> only the class can call.', 'How would you serialise and restore an account (toJSON / static fromJSON) without exposing a public setter?']
+      }
+    }]
+  });
+
   registerModule({
     id: 'js06',
     title: 'Prototypes, Classes & Inheritance',

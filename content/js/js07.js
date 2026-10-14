@@ -734,7 +734,7 @@ Promise.resolve('ok')
     codeTitle: ['All chaining rules (runnable)', 'then(f, g) vs then(f).catch(g) (runnable)'],
     viz: {
       title: 'Watch a value travel down a promise chain',
-      input: 'start 5, *2, log, +3, throw boom, *10, catch 0, +1, finally',
+      input: 'start 5, *2, wait 100, log, +3, throw boom, *10, catch 0, +1, finally',
       inputLabel: 'start N | fail msg first, then: *N +N -N, wait N, log, throw msg, catch V, finally, finally throw msg (max 12)',
       gen: function (input) {
         var ops = items(input);
@@ -1353,4 +1353,793 @@ retry(flaky(2), { retries: 3, baseDelay: 20 })
       }
     }]
   });
-registerModule({ id: 'js07', title: 'Async I', intro: 'x', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();
+
+  /* ================= PRACTICE: Easy ================= */
+  practice.push({
+    title: 'Predict the Output: Sync, setTimeout and Promises',
+    level: 'Easy', tags: ['predict output', 'event order'], companies: ['Amazon', 'Paytm', 'Infosys'],
+    statement: `<p>Without running it, write down the exact console output of this program, then explain each position.</p><pre>console.log(1);
+setTimeout(() =&gt; console.log(2), 0);
+Promise.resolve().then(() =&gt; console.log(3));
+new Promise((res) =&gt; { console.log(4); res(); }).then(() =&gt; console.log(5));
+console.log(6);</pre>`,
+    constraints: `Standard browser or Node.js. No other code runs.`,
+    example: `<p>Answer: <b>1 4 6 3 5 2</b>. ${H.c('b', '1, 4, 6')} are synchronous (the executor runs immediately). ${H.c('g', '3, 5')} are promise handlers (microtasks) run right after the script. ${H.c('y', '2')} is a timer callback (task), which waits for the next turn.</p>`,
+    brute: { why: `<p>The naive reading "top to bottom" gives 1 2 3 4 5 6. It ignores that setTimeout and then only <b>schedule</b> callbacks, and wrongly assumes the executor is async.</p>`, code: { lang: 'js', run: true, code: `
+// Naive guess written as a comment: 1 2 3 4 5 6  (WRONG)
+// Run the real thing and compare:
+console.log(1);
+setTimeout(() => console.log(2), 0);
+Promise.resolve().then(() => console.log(3));
+new Promise((res) => { console.log(4); res(); }).then(() => console.log(5));
+console.log(6);
+` } },
+    mcq: { q: 'Why does 4 print before 6?', options: ['The Promise executor runs synchronously during new Promise', 'Promises are faster than console.log', 'Because 4 < 6', 'Microtasks run first'], answer: 0, explain: 'The executor function is called immediately by the constructor; only .then handlers are deferred.' },
+    hints: [`<p>Hint 1: first list only the lines that run <b>immediately</b>: plain console.log calls and the code inside the <code>new Promise</code> executor.</p>`, `<p>Hint 2: after the script finishes, all queued <b>promise handlers</b> run (in the order they were queued) before any timer.</p>`, `<p>Hint 3: the timer callback runs last, even with 0 ms. Recipe: sync lines → promise handlers → timers.</p>`],
+    solution: {
+      approach: `<p>Sort every callback into three buckets: <b>synchronous</b> (1, 4, 6), <b>promise reactions / microtasks</b> (3 then 5, in queue order), <b>timers / tasks</b> (2). Print bucket by bucket. Module JS 8 explains exactly why microtasks beat timers.</p>`,
+      code: { lang: 'js', run: true, code: `
+const out = [];
+console.log(1); out.push(1);                                   // sync
+setTimeout(() => { out.push(2); console.log('final order:', out.join(' ')); }, 0); // task
+Promise.resolve().then(() => out.push(3));                     // microtask #1
+new Promise((res) => { out.push(4); res(); })                  // executor: sync!
+  .then(() => out.push(5));                                    // microtask #2
+out.push(6);                                                   // sync
+// final order: 1 4 6 3 5 2
+` },
+      dry: { head: ['phase', 'runs', 'output so far'], rows: [['sync', 'log 1, executor logs 4, log 6', '1 4 6'], ['microtasks', 'then → 3, then → 5', '1 4 6 3 5'], ['timers', 'setTimeout → 2', '1 4 6 3 5 2']] },
+      complexity: `<p>Not an algorithm question: the skill is classifying each callback by when it is scheduled.</p>`,
+      followUps: ['Add queueMicrotask(() => log(7)) after line 3 — where does 7 go?', 'What if the executor called res() inside a setTimeout?']
+    }
+  });
+
+  practice.push({
+    title: 'Predict the Output: First Settle Wins',
+    level: 'Easy', tags: ['predict output', 'promise states'], companies: ['Microsoft', 'Zoho'],
+    statement: `<p>What does this print, and why is <code>'D'</code> never shown?</p><pre>const p = new Promise((resolve, reject) =&gt; {
+  console.log('A');
+  resolve('B');
+  console.log('C');
+  reject('D');
+});
+p.then((v) =&gt; console.log(v)).catch((e) =&gt; console.log('caught', e));
+console.log('E');</pre>`,
+    constraints: `No other code runs.`,
+    example: `<p>Output: <b>A C E B</b>. ${H.c('g', "resolve('B') settles the promise")}; ${H.c('m', "reject('D') is ignored")}; resolve does not stop the executor, so C prints; B prints later as a handler.</p>`,
+    brute: { why: `<p>Common wrong answers: "A B C E caught D" (thinks resolve is synchronous delivery and reject still counts) or "A E B" (thinks resolve returns from the executor).</p>`, code: { lang: 'js', run: true, code: `
+// Wrong mental model: "the LAST call wins" → would expect 'caught D'
+const p = new Promise((resolve, reject) => { resolve('B'); reject('D'); });
+p.then((v) => console.log('actually got', v), (e) => console.log('caught', e));
+` } },
+    mcq: { q: 'What happens to reject(\'D\')?', options: ['It overrides the value', 'It throws an error', 'It is silently ignored because the promise is already settled', 'It causes an unhandled rejection'], answer: 2, explain: 'A promise settles only once; later resolve/reject calls are no-ops.' },
+    hints: [`<p>Hint 1: the executor runs synchronously — so A and C print during construction, before E.</p>`, `<p>Hint 2: only the first of resolve/reject counts; it does not exit the function either.</p>`, `<p>Hint 3: the then handler runs as a microtask after the script ends, printing B. The catch is never triggered.</p>`],
+    solution: {
+      approach: `<p>Executor runs immediately: <b>A</b>, settle with 'B', <b>C</b>, ignored reject. Script continues: <b>E</b>. Then the microtask: <b>B</b>. <code>.catch</code> receives a fulfilled promise and passes it through.</p>`,
+      code: { lang: 'js', run: true, code: `
+const p = new Promise((resolve, reject) => {
+  console.log('A');
+  resolve('B');      // settles: fulfilled with 'B'
+  console.log('C');  // still runs
+  reject('D');       // ignored
+});
+p.then((v) => console.log(v)).catch((e) => console.log('caught', e));
+console.log('E');
+// A C E B
+` },
+      dry: { head: ['step', 'action', 'state', 'printed'], rows: [['1', "log 'A'", 'pending', 'A'], ['2', "resolve('B')", 'fulfilled B', 'A'], ['3', "log 'C'; reject ignored", 'fulfilled B', 'A C'], ['4', "log 'E'", 'fulfilled B', 'A C E'], ['5', 'then handler (microtask)', 'fulfilled B', 'A C E B']] },
+      complexity: `<p>Constant: the point is the settle-once rule and executor timing.</p>`,
+      followUps: ['What prints if the executor throws after resolve?', 'What if you swap resolve and reject?']
+    }
+  });
+
+  practice.push({
+    title: 'Fix the Floating Promise',
+    level: 'Easy', tags: ['chaining', 'bugs', 'return'], companies: ['Atlassian', 'Freshworks'],
+    statement: `<p>This code should print the user's name and then <code>'saved'</code>, and any failure should reach the final <code>.catch</code>. Instead the second step logs <code>undefined</code> and save errors become unhandled. Find and fix both bugs.</p><pre>getUser(1)
+  .then((u) =&gt; { getName(u); })
+  .then((name) =&gt; { console.log(name); save(name); })
+  .then(() =&gt; console.log('saved'))
+  .catch((e) =&gt; console.log('error', e.message));</pre>`,
+    constraints: `getUser, getName and save all return promises.`,
+    example: `<p>Buggy output: ${H.c('r', 'undefined, saved')} (and save runs detached). Fixed output: ${H.c('g', 'asha, saved')}, or <code>error ...</code> if save rejects.</p>`,
+    brute: { why: `<p>Braces <code>{ }</code> in an arrow function need an explicit <code>return</code>. Without it each handler returns <code>undefined</code>, so the next step gets <code>undefined</code> and does not wait for the inner promise. Errors inside those inner promises are "floating": no one handles them.</p>`, code: { lang: 'js', run: true, code: `
+const getUser = (id) => Promise.resolve({ id, name: 'asha' });
+const getName = (u) => new Promise((r) => setTimeout(() => r(u.name), 10));
+const save = (name) => new Promise((r) => setTimeout(() => r(), 10));
+getUser(1)
+  .then((u) => { getName(u); })                       // BUG 1: no return
+  .then((name) => { console.log(name); save(name); }) // BUG 2: no return
+  .then(() => console.log('saved (but not really waited for)'))
+  .catch((e) => console.log('error', e.message));
+` } },
+    mcq: { q: 'What does the arrow `(u) => { getName(u); }` return?', options: ['getName(u)', 'undefined', 'A pending promise', 'u'], answer: 1, explain: 'With a block body, an arrow function returns undefined unless you write return.' },
+    hints: [`<p>Hint 1: check every <code>.then</code> handler: does it <b>return</b> the promise it creates?</p>`, `<p>Hint 2: use the concise arrow body <code>(u) =&gt; getName(u)</code> or add <code>return</code> inside the braces.</p>`, `<p>Hint 3: once every inner promise is returned, the chain waits for it, gets its value, and its rejections flow to the final catch.</p>`],
+    solution: {
+      approach: `<p>Return every inner promise. Then the chain waits for <code>getName</code> (so the next step receives the name) and for <code>save</code> (so 'saved' is truthful), and any rejection reaches the single <code>.catch</code>.</p>`,
+      code: { lang: 'js', run: true, code: `
+const getUser = (id) => Promise.resolve({ id, name: 'asha' });
+const getName = (u) => new Promise((r) => setTimeout(() => r(u.name), 10));
+const save = (name, fail) => new Promise((r, j) => setTimeout(() => (fail ? j(new Error('db down')) : r()), 10));
+
+function run(fail) {
+  return getUser(1)
+    .then((u) => getName(u))                               // returned
+    .then((name) => { console.log(name); return save(name, fail); }) // returned
+    .then(() => console.log('saved'))
+    .catch((e) => console.log('error', e.message));
+}
+run(false).then(() => run(true));   // asha, saved, then asha, error db down
+` },
+      complexity: `<p>Same work as before; the fix only connects the promises so timing and errors are correct.</p>`,
+      followUps: ['Which lint rule catches floating promises in TypeScript?', 'Rewrite with async/await.']
+    }
+  });
+
+  practice.push({
+    title: 'sleep(ms) and a Countdown',
+    level: 'Easy', tags: ['new Promise', 'setTimeout', 'chaining'], companies: ['TCS', 'Swiggy'],
+    statement: `<p>Write <code>sleep(ms)</code> that returns a promise fulfilled after <code>ms</code> milliseconds. Use it to print a countdown <code>3, 2, 1, go!</code> with 100 ms between lines, using only <code>.then</code> (no async/await, no nested setTimeout).</p>`,
+    constraints: `0 ≤ ms ≤ 10<sup>4</sup>. Lines must be about 100 ms apart.`,
+    example: `<pre>0 ms   3
+100 ms 2
+200 ms 1
+300 ms go!</pre><p>Each ${H.c('b', '.then(() =&gt; sleep(100))')} returns a promise, so the chain pauses there.</p>`,
+    brute: { why: `<p>Scheduling all lines with separate setTimeouts (100, 200, 300) works but hard-codes absolute times, and nested timers bring back the pyramid. A chain of sleeps reads top-to-bottom.</p>`, code: { lang: 'js', run: true, code: `
+// Works, but each line needs its own absolute delay
+setTimeout(() => console.log(3), 0);
+setTimeout(() => console.log(2), 100);
+setTimeout(() => console.log(1), 200);
+setTimeout(() => console.log('go!'), 300);
+` } },
+    mcq: { q: 'In `.then(() => sleep(100))`, why does the chain wait?', options: ['then always waits 100 ms', 'Returning a promise from a handler makes the next promise follow it', 'sleep blocks the thread', 'It does not wait'], answer: 1, explain: 'Returned promises are adopted: the next link settles only when sleep\'s promise does.' },
+    hints: [`<p>Hint 1: <code>new Promise(resolve =&gt; setTimeout(resolve, ms))</code> is the whole sleep.</p>`, `<p>Hint 2: build the chain with a loop or reduce over [3, 2, 1]: log, then return sleep(100).</p>`, `<p>Hint 3: don't call sleep without returning it — that would not pause anything. Finish with a final then that logs 'go!'.</p>`],
+    solution: {
+      approach: `<p>Wrap setTimeout in a promise. Reduce over the numbers, each step logging and returning <code>sleep(100)</code>, so every log waits for the previous sleep.</p>`,
+      code: { lang: 'js', run: true, code: `
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+const t0 = Date.now();
+[3, 2, 1]
+  .reduce((chain, n) => chain.then(() => {
+    console.log(n, '@', Date.now() - t0, 'ms');
+    return sleep(100);                         // pause before the next number
+  }), Promise.resolve())
+  .then(() => console.log('go! @', Date.now() - t0, 'ms'));
+` },
+      dry: { head: ['time', 'link', 'prints'], rows: [['0', 'n = 3', '3'], ['100', 'n = 2', '2'], ['200', 'n = 1', '1'], ['300', 'final then', 'go!']] },
+      complexity: `<p>O(n) promises; total time n × 100 ms.</p>`,
+      followUps: ['Make sleep cancellable with an AbortSignal.', 'Node has timers/promises setTimeout — how is it used?']
+    }
+  });
+
+  /* ================= PRACTICE: Medium ================= */
+  practice.push({
+    title: 'Implement callbackify',
+    level: 'Medium', tags: ['callbacks', 'promises', 'polyfill'], companies: ['Uber', 'Twilio'],
+    statement: `<p>The reverse of promisify. Write <code>callbackify(fn)</code>: <code>fn</code> returns a promise. Return a function that takes the same arguments plus an error-first callback as the <b>last</b> argument, and calls <code>callback(err)</code> or <code>callback(null, value)</code>. A rejection with a falsy reason (like <code>null</code>) must still be reported as an Error.</p>`,
+    constraints: `The callback must be called exactly once, asynchronously. An exception thrown <i>by the callback</i> must not cause the callback to be called a second time.`,
+    example: `<pre>const addLater = (a, b) =&gt; Promise.resolve(a + b);
+callbackify(addLater)(2, 3, (err, v) =&gt; console.log(err, v)); // null 5</pre><p>${H.c('r', 'Rejected with null')} → callback receives an Error with <code>.reason = null</code>.</p>`,
+    brute: { why: `<p>The naive <code>fn(...args).then(v =&gt; cb(null, v)).catch(cb)</code> has a bug: if <code>cb</code> itself throws inside the then, the catch calls <code>cb</code> <b>again</b> with that error — callback called twice.</p>`, code: { lang: 'js', run: true, code: `
+function callbackifyBad(fn) {
+  return (...args) => {
+    const cb = args.pop();
+    fn(...args).then((v) => cb(null, v)).catch((e) => cb(e)); // cb may run twice!
+  };
+}
+let count = 0;
+callbackifyBad(() => Promise.resolve(1))(function (err, v) {
+  count++;
+  console.log('callback call #' + count, err ? 'err: ' + err.message : 'value: ' + v);
+  if (count === 1) throw new Error('bug inside my callback');
+});
+` } },
+    mcq: { q: 'Which form avoids calling the callback twice?', options: ['.then(ok).catch(fail)', '.then(ok, fail) — two-argument then', '.finally(cb)', 'try/catch around fn'], answer: 1, explain: 'With then(ok, fail), fail only watches fn\'s promise, not errors thrown inside ok.' },
+    hints: [`<p>Hint 1: pop the last argument as the callback; call <code>fn.apply(this, args)</code>.</p>`, `<p>Hint 2: use <code>.then(onOk, onErr)</code> so a throw inside the callback is not routed back into it. Rethrow that throw outside the promise (e.g. via <code>queueMicrotask</code> / <code>setTimeout</code>) so it is not silently swallowed.</p>`, `<p>Hint 3: for a falsy reason, create <code>new Error('Promise was rejected with a falsy value')</code> and attach <code>.reason</code>. Also wrap the fn call so a sync throw becomes a callback error.</p>`],
+    solution: {
+      approach: `<p>Use the two-argument <code>then</code> so the error branch only handles fn's rejection. Invoke the callback outside the promise machinery (via <code>setTimeout</code> 0, like Node does with <code>process.nextTick</code>) so its own exceptions surface as normal uncaught errors instead of re-entering our handlers.</p>`,
+      code: { lang: 'js', run: true, code: `
+function callbackify(fn) {
+  return function (...args) {
+    const cb = args.pop();
+    if (typeof cb !== 'function') throw new TypeError('last argument must be a callback');
+    let p;
+    try { p = Promise.resolve(fn.apply(this, args)); } catch (e) { p = Promise.reject(e); }
+    p.then(
+      (value) => setTimeout(() => cb(null, value), 0),
+      (reason) => {
+        let err = reason;
+        if (!reason) { err = new Error('Promise was rejected with a falsy value'); err.reason = reason; }
+        setTimeout(() => cb(err), 0);
+      });
+  };
+}
+
+const addLater = (a, b) => new Promise((r) => setTimeout(() => r(a + b), 10));
+callbackify(addLater)(2, 3, (err, v) => console.log('ok path:', err, v));
+callbackify(() => Promise.reject(null))((err) => console.log('falsy reject ->', err.message, '| reason:', err.reason));
+callbackify(() => { throw new Error('sync throw'); })((err) => console.log('sync throw ->', err.message));
+` },
+      complexity: `<p>O(1) per call: one promise subscription and one timer.</p>`,
+      followUps: ['How does Node\'s util.callbackify schedule the callback?', 'Why is calling a callback from inside a try block dangerous?']
+    }
+  });
+
+  practice.push({
+    title: 'Implement Promise.allSettled',
+    level: 'Medium', tags: ['polyfill', 'combinators'], companies: ['Google', 'Flipkart'],
+    statement: `<p>Write <code>allSettled(iterable)</code>: return a promise that <b>always fulfils</b>, once every item has settled, with an array (input order) of <code>{ status: 'fulfilled', value }</code> or <code>{ status: 'rejected', reason }</code>.</p>`,
+    constraints: `No Promise.all/allSettled. Items may be plain values. Empty input → [].`,
+    example: `<pre>allSettled([Promise.resolve(1), Promise.reject(new Error('x')), 3])
+// [{status:'fulfilled',value:1}, {status:'rejected',reason:Error x}, {status:'fulfilled',value:3}]</pre><p>${H.c('g', 'Never rejects')} — failures become data.</p>`,
+    brute: { why: `<p>Calling <code>Promise.all</code> fails fast on the first rejection and loses the rest. Awaiting items one by one works but is slow and still needs try/catch around each.</p>`, code: { lang: 'js', run: true, code: `
+Promise.all([Promise.resolve(1), Promise.reject(new Error('x')), 3])
+  .then((r) => console.log(r))
+  .catch((e) => console.log('Promise.all lost everything else:', e.message));
+` } },
+    mcq: { q: 'What turns a rejection into a fulfilled entry?', options: ['A .then with a second (onRejected) handler that RETURNS an object', 'Throwing inside catch', 'Using finally', 'Promise.race'], answer: 0, explain: 'Returning from an error handler recovers the chain, so the per-item promise fulfils with the status object.' },
+    hints: [`<p>Hint 1: map each item to <code>Promise.resolve(item).then(v =&gt; ({status:'fulfilled', value: v}), r =&gt; ({status:'rejected', reason: r}))</code>.</p>`, `<p>Hint 2: now every mapped promise fulfils. Combine them with your own counter (like promiseAll) storing by index.</p>`, `<p>Hint 3: handle the empty iterable (resolve [] immediately). There is no reject path at all.</p>`],
+    solution: {
+      approach: `<p>Convert each item into a promise that cannot reject (its error handler returns a status object), then wait for all of them with an index-based counter.</p>`,
+      code: { lang: 'js', run: true, code: `
+function allSettled(iterable) {
+  const items = Array.from(iterable);
+  return new Promise((resolve) => {
+    const out = new Array(items.length);
+    let left = items.length;
+    if (left === 0) return resolve([]);
+    items.forEach((item, i) => {
+      Promise.resolve(item)
+        .then((value) => ({ status: 'fulfilled', value }),
+              (reason) => ({ status: 'rejected', reason }))
+        .then((entry) => {
+          out[i] = entry;                // input order
+          if (--left === 0) resolve(out);
+        });
+    });
+  });
+}
+
+const later = (ms, v, fail) => new Promise((r, j) => setTimeout(() => (fail ? j(new Error(v)) : r(v)), ms));
+allSettled([later(30, 'a'), later(10, 'b failed', true), 3]).then((r) =>
+  r.forEach((x, i) => console.log(i, x.status, x.status === 'fulfilled' ? x.value : x.reason.message)));
+allSettled([]).then((r) => console.log('empty ->', r));
+` },
+      complexity: `<p>O(n) time and space; wall time = the slowest item.</p>`,
+      followUps: ['Add a per-item timeout that records status "timeout".', 'Return { fulfilled: [...], rejected: [...] } groups instead.']
+    }
+  });
+
+  practice.push({
+    title: 'Implement Promise.race and withTimeout',
+    level: 'Medium', tags: ['polyfill', 'race', 'timeout'], companies: ['Amazon', 'Meesho'],
+    statement: `<p>(1) Write <code>race(iterable)</code> like <code>Promise.race</code>: settle the same way as the first item that settles. (2) Use it to write <code>withTimeout(promise, ms)</code> that rejects with <code>Error('Timeout')</code> if <code>promise</code> takes longer than <code>ms</code>, and always clears its timer.</p>`,
+    constraints: `No Promise.race. An empty iterable must stay pending forever (same as the spec).`,
+    example: `<pre>withTimeout(delay(200, 'slow'), 50)  // rejects: Timeout (after ~50 ms)
+withTimeout(delay(20, 'fast'), 50)   // fulfils: 'fast'</pre><p>The ${H.c('y', 'slow job keeps running')} — race doesn't cancel it.</p>`,
+    brute: { why: `<p>Polling a "done" flag with setInterval works but wastes CPU, adds latency equal to the poll interval, and doesn't propagate rejections cleanly.</p>`, code: { lang: 'js', run: true, code: `
+let done = false, result;
+setTimeout(() => { done = true; result = 'slow'; }, 80);
+const started = Date.now();
+const poll = setInterval(() => {
+  if (done) { clearInterval(poll); console.log('got', result); }
+  else if (Date.now() - started > 50) { clearInterval(poll); console.log('timeout (polled)'); }
+}, 10);
+` } },
+    mcq: { q: 'Why can race just pass resolve and reject to every item?', options: ['Because only the first settle of the outer promise counts; later calls are ignored', 'Because items settle in order', 'Because race cancels the others', 'It cannot — it needs a flag'], answer: 0, explain: 'Promise settle-once semantics give "first wins" for free.' },
+    hints: [`<p>Hint 1: <code>new Promise((resolve, reject) =&gt; { for (const x of iterable) Promise.resolve(x).then(resolve, reject); })</code> — that's the whole race.</p>`, `<p>Hint 2: withTimeout = race between the promise and a timer promise that rejects. Keep the timer id outside.</p>`, `<p>Hint 3: use <code>.finally(() =&gt; clearTimeout(id))</code> so the timer is cleared on both outcomes and the process can exit early.</p>`],
+    solution: {
+      approach: `<p>race subscribes resolve/reject of one outer promise to every item — first settle wins by the settle-once rule. withTimeout races the real promise against a rejecting timer and clears the timer in finally.</p>`,
+      code: { lang: 'js', run: true, code: `
+function race(iterable) {
+  return new Promise((resolve, reject) => {
+    for (const item of iterable) Promise.resolve(item).then(resolve, reject);
+    // empty iterable → loop never runs → stays pending (spec behaviour)
+  });
+}
+
+function withTimeout(promise, ms) {
+  let id;
+  const timer = new Promise((_, reject) => {
+    id = setTimeout(() => reject(new Error('Timeout')), ms);
+  });
+  return race([promise, timer]).finally(() => clearTimeout(id));
+}
+
+const delay = (ms, v) => new Promise((r) => setTimeout(() => r(v), ms));
+const t0 = Date.now();
+withTimeout(delay(200, 'slow'), 50).catch((e) => console.log(e.message, '~' + (Date.now() - t0) + 'ms'));
+withTimeout(delay(20, 'fast'), 50).then((v) => console.log('fulfilled', v));
+race([delay(30, 'thirty'), delay(10, 'ten')]).then((v) => console.log('race winner:', v));
+` },
+      complexity: `<p>O(n) subscriptions; settles at the time of the fastest item.</p>`,
+      followUps: ['Cancel the slow work using AbortController when the timeout wins.', 'What does AbortSignal.timeout(ms) give you for fetch?']
+    }
+  });
+
+  practice.push({
+    title: 'Implement Promise.any with AggregateError',
+    level: 'Medium', tags: ['polyfill', 'any', 'AggregateError'], companies: ['Microsoft', 'Adobe'],
+    statement: `<p>Write <code>any(iterable)</code>: fulfil with the <b>first fulfilled</b> value; if <b>all</b> items reject, reject with an <code>AggregateError</code> whose <code>errors</code> array holds every reason <b>in input order</b>. Empty input → reject with AggregateError immediately.</p>`,
+    constraints: `No Promise.any. AggregateError is available in all modern runtimes.`,
+    example: `<pre>any([reject('a'), delay(30, 'b'), delay(10, 'c')]) // 'c'
+any([reject('x'), reject('y')])                     // AggregateError, errors = ['x', 'y']</pre><p>It is the ${H.c('b', 'mirror image of Promise.all')}: swap the roles of fulfil and reject.</p>`,
+    brute: { why: `<p>Using race picks the first <b>settled</b> item, which may be a failure — wrong. Trying items one by one until one works (sequential fallback) is correct but slow.</p>`, code: { lang: 'js', run: true, code: `
+const delay = (ms, v, fail) => new Promise((r, j) => setTimeout(() => (fail ? j(new Error(v)) : r(v)), ms));
+Promise.race([delay(5, 'eu down', true), delay(20, 'us ok')])
+  .then((v) => console.log('race gave', v))
+  .catch((e) => console.log('race picked the failure:', e.message));
+` } },
+    mcq: { q: 'When must any() reject?', options: ['On the first rejection', 'When every item has rejected', 'After a timeout', 'Never'], answer: 1, explain: 'any only fails if there is no success at all — then you need all reasons, hence AggregateError.' },
+    hints: [`<p>Hint 1: copy your promiseAll, but count <b>rejections</b> and store reasons by index.</p>`, `<p>Hint 2: pass <code>resolve</code> directly as the success handler: first fulfilment wins.</p>`, `<p>Hint 3: when the rejection counter reaches n → <code>reject(new AggregateError(errors, 'All promises were rejected'))</code>. Handle n = 0 up front.</p>`],
+    solution: {
+      approach: `<p>Inverse of all: success short-circuits, failures are collected by index; when all have failed, reject once with an AggregateError.</p>`,
+      code: { lang: 'js', run: true, code: `
+function any(iterable) {
+  const items = Array.from(iterable);
+  return new Promise((resolve, reject) => {
+    const errors = new Array(items.length);
+    let failed = 0;
+    if (items.length === 0) return reject(new AggregateError([], 'All promises were rejected'));
+    items.forEach((item, i) => {
+      Promise.resolve(item).then(resolve, (reason) => {   // first success wins
+        errors[i] = reason;
+        if (++failed === items.length) reject(new AggregateError(errors, 'All promises were rejected'));
+      });
+    });
+  });
+}
+
+const delay = (ms, v, fail) => new Promise((r, j) => setTimeout(() => (fail ? j(new Error(v)) : r(v)), ms));
+any([delay(5, 'a', true), delay(30, 'b'), delay(10, 'c')]).then((v) => console.log('first success:', v));
+any([delay(20, 'x', true), delay(5, 'y', true)]).catch((e) =>
+  console.log(e.name, e.errors.map((er) => er.message)));   // input order: x, y
+any([]).catch((e) => console.log('empty ->', e.name));
+` },
+      complexity: `<p>O(n) time/space; fulfils at the time of the first success.</p>`,
+      followUps: ['Where is Promise.any useful in real systems?', 'How would you also cancel the remaining requests on success?']
+    }
+  });
+
+  practice.push({
+    title: 'Predict the Output: Two Chains Interleaving',
+    level: 'Medium', tags: ['predict output', 'microtasks', 'chaining'], companies: ['Meta', 'Uber', 'PhonePe'],
+    statement: `<p>Predict the exact output order.</p><pre>Promise.resolve()
+  .then(() =&gt; console.log('a1'))
+  .then(() =&gt; console.log('a2'))
+  .then(() =&gt; console.log('a3'));
+Promise.reject(new Error('x'))
+  .catch(() =&gt; console.log('b1'))
+  .then(() =&gt; console.log('b2'))
+  .finally(() =&gt; console.log('b3'));
+Promise.resolve()
+  .then(() =&gt; { throw new Error('y'); })
+  .then(() =&gt; console.log('c-skip'))
+  .catch(() =&gt; console.log('c1'));</pre>`,
+    constraints: `Each .then/.catch/.finally handler takes one microtask "tick" after its input promise settles.`,
+    example: `<p>Answer: <b>a1 b1 a2 b2 a3 b3 c1</b>. Chains advance <b>one link per tick</b>, taking turns. ${H.c('m', 'c-skip')} never prints; the skipped link still costs a tick, so c1 arrives on tick 3.</p>`,
+    brute: { why: `<p>The naive guess runs each chain to completion: a1 a2 a3 b1 b2 b3 c1. But a chain's next link can only run after the previous link's promise settles, which queues a <b>new</b> microtask behind the other chains' pending ones.</p>`, code: { lang: 'js', run: true, code: `
+// Naive guess: a1 a2 a3 b1 b2 b3 c1 (each chain finishes before the next). Run to compare:
+Promise.resolve().then(() => console.log('a1')).then(() => console.log('a2')).then(() => console.log('a3'));
+Promise.reject(new Error('x')).catch(() => console.log('b1')).then(() => console.log('b2')).finally(() => console.log('b3'));
+Promise.resolve().then(() => { throw new Error('y'); }).then(() => console.log('c-skip')).catch(() => console.log('c1'));
+` } },
+    mcq: { q: 'Why does the skipped .then in chain c still delay c1?', options: ['It doesn\'t', 'A skipped link still creates a promise that settles in its own microtask (pass-through)', 'Errors are slower than values', 'catch waits for a timer'], answer: 1, explain: 'A missing handler is replaced by a pass-through function, which still runs as a reaction job one tick later.' },
+    hints: [`<p>Hint 1: number the ticks. Tick 1 runs the first link of every chain in creation order: a1, b1, (c throws).</p>`, `<p>Hint 2: tick 2 runs the second link of each chain: a2, b2, c's skipped then (passes error on).</p>`, `<p>Hint 3: tick 3: a3, b3 (finally), c1 (catch). Within a tick, order = order in which the reactions were queued.</p>`],
+    solution: {
+      approach: `<p>Model each chain as a list of links and advance all chains one link per microtask tick, in the order their reactions were queued. Skipped links still occupy a tick.</p>`,
+      code: { lang: 'js', run: true, code: `
+const out = [];
+const log = (s) => out.push(s);
+Promise.resolve().then(() => log('a1')).then(() => log('a2')).then(() => log('a3'));
+Promise.reject(new Error('x')).catch(() => log('b1')).then(() => log('b2')).finally(() => log('b3'));
+Promise.resolve().then(() => { throw new Error('y'); }).then(() => log('c-skip')).catch(() => log('c1'));
+setTimeout(() => console.log(out.join(' ')), 0);   // a1 b1 a2 b2 a3 b3 c1
+` },
+      dry: { head: ['tick', 'chain a', 'chain b', 'chain c'], rows: [['1', 'a1', 'b1 (catch)', 'throws'], ['2', 'a2', 'b2', 'skip (pass error)'], ['3', 'a3', 'b3 (finally)', 'c1 (catch)']] },
+      complexity: `<p>Output prediction: count links per tick, not lines.</p>`,
+      followUps: ['What changes if a2 returns Promise.resolve()? (2 extra ticks)', 'Where would a setTimeout log appear?']
+    }
+  });
+
+  practice.push({
+    title: 'Fetch in Batches: Sequential vs Parallel vs Batched',
+    level: 'Medium', tags: ['sequential vs parallel', 'Promise.all', 'batching'], companies: ['Zomato', 'Booking.com', 'Ola'],
+    statement: `<p>You must fetch 6 URLs from an API that allows at most <b>2 requests at a time</b>. Write <code>fetchInBatches(urls, size, fetcher)</code> that runs <code>size</code> requests in parallel, waits for the whole batch, then starts the next batch. Return all results in input order. Compare total time with fully sequential and fully parallel versions.</p>`,
+    constraints: `1 ≤ size. fetcher(url) returns a promise. Use promises only.`,
+    example: `<p>6 requests of 100 ms, size 2 → 3 batches → ${H.c('y', '~300 ms')}. Sequential: ${H.c('r', '~600 ms')}. Fully parallel: ${H.c('g', '~100 ms')} (but breaks the 2-at-a-time limit).</p>`,
+    brute: { why: `<p>Fully sequential respects the limit but wastes the allowed parallelism (600 ms). Fully parallel is fastest but violates the rate limit — the server returns 429s.</p>`, code: { lang: 'js', run: true, code: `
+const fetcher = (u) => new Promise((r) => setTimeout(() => r('data' + u), 100));
+const urls = [1, 2, 3, 4, 5, 6];
+const t0 = Date.now();
+urls.reduce((p, u) => p.then((acc) => fetcher(u).then((d) => acc.concat([d]))), Promise.resolve([]))
+  .then((r) => console.log('sequential', r.length, 'results ~', Date.now() - t0, 'ms'));
+` } },
+    mcq: { q: 'What is the weakness of fixed batches compared to a sliding pool?', options: ['Results come out of order', 'One slow request holds up the whole next batch', 'It uses more memory', 'It cannot handle errors'], answer: 1, explain: 'A batch finishes only when its slowest member finishes; a pool starts a new request as soon as any slot frees up.' },
+    hints: [`<p>Hint 1: split urls into chunks of <code>size</code> (slice in a loop).</p>`, `<p>Hint 2: each batch = <code>Promise.all(chunk.map(fetcher))</code>; chain batches sequentially with reduce, concatenating results.</p>`, `<p>Hint 3: time = (number of batches) × (slowest in each batch). Mention that a sliding-window pool (Hard problem) is better when durations vary.</p>`],
+    solution: {
+      approach: `<p>Chunk the list; run each chunk in parallel with Promise.all; run chunks one after another by chaining. Results concatenate in input order.</p>`,
+      code: { lang: 'js', run: true, code: `
+function fetchInBatches(urls, size, fetcher) {
+  const batches = [];
+  for (let i = 0; i < urls.length; i += size) batches.push(urls.slice(i, i + size));
+  return batches.reduce(
+    (chain, batch) => chain.then((acc) =>
+      Promise.all(batch.map(fetcher)).then((res) => acc.concat(res))),  // parallel inside batch
+    Promise.resolve([]));                                               // sequential across batches
+}
+
+let active = 0, peak = 0;
+const fetcher = (u) => new Promise((r) => { active++; peak = Math.max(peak, active); setTimeout(() => { active--; r('data' + u); }, 100); });
+const urls = [1, 2, 3, 4, 5, 6];
+const t0 = Date.now();
+fetchInBatches(urls, 2, fetcher).then((r) => {
+  console.log('batched', r, '~' + (Date.now() - t0) + 'ms, peak concurrency', peak);
+  const t1 = Date.now(); peak = 0;
+  return Promise.all(urls.map(fetcher)).then(() => console.log('parallel ~' + (Date.now() - t1) + 'ms, peak', peak));
+});
+` },
+      dry: { head: ['batch', 'urls', 'starts', 'ends'], rows: [['1', '1, 2', '0 ms', '100 ms'], ['2', '3, 4', '100 ms', '200 ms'], ['3', '5, 6', '200 ms', '300 ms']] },
+      complexity: `<p>O(n) work; time ≈ ⌈n / size⌉ × batch duration; peak concurrency = size.</p>`,
+      followUps: ['Replace batches with a sliding pool (see the Hard problem).', 'Use allSettled per batch so one failure does not stop the rest.']
+    }
+  });
+
+  /* ================= PRACTICE: Hard ================= */
+  practice.push({
+    title: 'Concurrency-Limited Promise Pool (mapLimit)',
+    level: 'Hard', tags: ['concurrency', 'pool', 'promises'], companies: ['Google', 'Amazon', 'Rippling', 'Stripe'],
+    statement: `<p>Write <code>mapLimit(items, limit, worker)</code>. <code>worker(item, index)</code> returns a promise. Run at most <code>limit</code> workers at the same time; as soon as one finishes, start the next item (a <b>sliding window</b>, not fixed batches). Resolve with results in <b>input order</b>; reject on the first failure and start no new work after it.</p>`,
+    constraints: `0 ≤ items.length ≤ 10<sup>5</sup>, 1 ≤ limit. Never more than <code>limit</code> workers in flight. A worker that throws synchronously counts as a rejection.`,
+    example: `<p>durations [100, 50, 80, 30, 60], limit 2:</p>${H.table(['time', 'event', 'running'], [['0', 'start 100, start 50', '2'], ['50', '50 done → start 80', '2'], ['100', '100 done → start 30', '2'], ['130', '80 and 30 done → start 60', '1'], ['190', '60 done → resolve', '0']])}<p>Total ${H.c('g', '~190 ms')}; fixed batches of 2 would take 100 + 80 + 60 = ${H.c('r', '240 ms')}.</p>`,
+    brute: { why: `<p>Fixed batches (Promise.all per chunk) respect the limit but idle while waiting for the slowest member of each batch. Plain Promise.all on everything ignores the limit.</p>`, code: { lang: 'js', run: true, code: `
+const job = (ms) => new Promise((r) => setTimeout(() => r(ms), ms));
+const items = [100, 50, 80, 30, 60];
+const t0 = Date.now();
+const chunks = [[100, 50], [80, 30], [60]];
+chunks.reduce((p, c) => p.then((acc) => Promise.all(c.map(job)).then((r) => acc.concat(r))), Promise.resolve([]))
+  .then((r) => console.log('batched', r, '~' + (Date.now() - t0) + 'ms'));
+` } },
+    mcq: { q: 'What should happen when one worker finishes?', options: ['Wait for the rest of its batch', 'Immediately start the next unstarted item if under the limit', 'Restart all workers', 'Resolve the pool'], answer: 1, explain: 'A sliding window keeps exactly limit tasks busy, so no slot sits idle.' },
+    hints: [`<p>Hint 1: keep <code>next</code> (index of the next item to start), <code>active</code> (in flight) and <code>done</code> (finished).</p>`, `<p>Hint 2: a <code>launch()</code> function starts items while <code>active &lt; limit</code> and items remain. Each completion stores <code>results[i]</code>, decrements active, and calls launch again.</p>`, `<p>Hint 3: wrap the worker call in <code>Promise.resolve().then(() =&gt; worker(...))</code> so sync throws become rejections. Set a <code>failed</code> flag on error so no new work starts. Empty input → resolve([]).</p>`],
+    solution: {
+      approach: `<p>A self-refilling pool: launch up to <code>limit</code> tasks; every completion records its result by index and refills the pool. When <code>done === n</code>, resolve. First error → reject and stop launching.</p>`,
+      code: { lang: 'js', run: true, code: `
+function mapLimit(items, limit, worker) {
+  return new Promise((resolve, reject) => {
+    const results = new Array(items.length);
+    let next = 0, active = 0, done = 0, failed = false;
+    if (items.length === 0) return resolve([]);
+
+    function launch() {
+      while (active < limit && next < items.length && !failed) {
+        const i = next++;
+        active++;
+        Promise.resolve()
+          .then(() => worker(items[i], i))          // sync throw → rejection
+          .then((value) => {
+            results[i] = value;                      // input order
+            active--; done++;
+            if (done === items.length) resolve(results);
+            else launch();                           // refill the free slot
+          }, (err) => { failed = true; reject(err); });
+      }
+    }
+    launch();
+  });
+}
+
+let running = 0, peak = 0;
+const job = (ms) => new Promise((r) => {
+  running++; peak = Math.max(peak, running);
+  setTimeout(() => { running--; r(ms); }, ms);
+});
+const t0 = Date.now();
+mapLimit([100, 50, 80, 30, 60], 2, job)
+  .then((r) => console.log('results', r, 'peak', peak, '~' + (Date.now() - t0) + 'ms'))
+  .then(() => mapLimit([10, 20, 30], 2, (ms, i) => (i === 1 ? Promise.reject(new Error('item 1 failed')) : job(ms))))
+  .catch((e) => console.log('pool stopped:', e.message));
+` },
+      dry: { head: ['time', 'event', 'active', 'next'], rows: [['0', 'launch 0 (100), 1 (50)', '2', '2'], ['50', '1 done → launch 2 (80)', '2', '3'], ['100', '0 done → launch 3 (30)', '2', '4'], ['130', '2 done → launch 4 (60); 3 done', '1', '5'], ['190', '4 done → done = 5 → resolve', '0', '5']] },
+      complexity: `<p>O(n) time and space; peak concurrency = limit; wall time ≈ total work / limit (better than batches when durations vary).</p>`,
+      followUps: ['Return an async iterator that yields results as they complete.', 'Add per-task timeout and retry.', 'Support cancelling all in-flight work with an AbortSignal.']
+    }
+  });
+
+  practice.push({
+    title: 'Build Your Own Promise (MyPromise)',
+    level: 'Hard', tags: ['promises', 'polyfill', 'state machine', 'microtasks'], companies: ['Google', 'Meta', 'Atlassian'],
+    statement: `<p>Implement a class <code>MyPromise</code> with: the executor (sync, try/catch → reject), the three states with settle-once, <code>then(onFulfilled, onRejected)</code> returning a new MyPromise, handlers run <b>asynchronously</b> (microtasks), returned values / thenables adopted by the next promise, pass-through when a handler is missing, plus <code>catch</code>, <code>finally</code>, <code>MyPromise.resolve</code> and <code>MyPromise.reject</code>.</p>`,
+    constraints: `Use queueMicrotask for scheduling. Must interoperate with native promises (thenables). Resolving a promise with itself must reject with a TypeError.`,
+    example: `<pre>new MyPromise((r) =&gt; setTimeout(() =&gt; r(1), 20))
+  .then((v) =&gt; v + 1)
+  .then((v) =&gt; new MyPromise((r) =&gt; setTimeout(() =&gt; r(v * 10), 20)))
+  .then((v) =&gt; { throw new Error('boom'); })
+  .catch((e) =&gt; 'recovered')
+  .finally(() =&gt; console.log('finally ran'))
+  .then(console.log);   // finally ran, recovered</pre>`,
+    brute: { why: `<p>A first attempt usually stores one callback and calls it synchronously on resolve. It breaks: multiple <code>.then</code> calls, handlers attached after settling, chaining (then returns nothing), adoption of returned promises, and the async guarantee.</p>`, code: { lang: 'js', run: true, code: `
+class NaivePromise {
+  constructor(executor) { this.cb = null; executor((v) => { this.value = v; if (this.cb) this.cb(v); }); }
+  then(cb) { this.cb = cb; }      // no chaining, one handler only, nothing if already resolved
+}
+new NaivePromise((r) => r('sync value')).then((v) => console.log('never printed:', v));
+new NaivePromise((r) => setTimeout(() => r('late value'), 10)).then((v) => console.log('only works when late:', v));
+` } },
+    mcq: { q: 'What must then() do if the promise is ALREADY fulfilled?', options: ['Call the handler synchronously right now', 'Ignore the handler', 'Schedule the handler as a microtask with the stored value', 'Throw'], answer: 2, explain: 'Handlers are always async, whether attached before or after settling — consistent ordering, no Zalgo.' },
+    hints: [`<p>Hint 1: store <code>state</code>, <code>value</code> and a list of <b>reactions</b> <code>{onFulfilled, onRejected, resolve, reject}</code>, where resolve/reject belong to the promise that <code>then</code> returns.</p>`, `<p>Hint 2: when settling, schedule every reaction with <code>queueMicrotask</code>. A reaction calls the right handler and passes its return value to the child's <b>resolve</b> (or the thrown error to reject). Missing handler → forward value/error unchanged.</p>`, `<p>Hint 3: resolve(x): if x === this → TypeError; if x has a callable <code>then</code> → call it (once-guarded) to adopt the state; else fulfil. Use one shared "called" flag so only the first resolve/reject counts.</p>`],
+    solution: {
+      approach: `<p>The promise is a tiny state machine plus a reaction queue. <code>then</code> creates a child promise and registers a reaction; settling (or attaching to an already-settled promise) schedules reactions as microtasks. The resolve procedure adopts thenables, which is what makes chaining flat. <code>finally</code> is built on <code>then</code> so it waits for async cleanup and passes the original result through.</p>`,
+      code: { lang: 'js', run: true, code: `
+class MyPromise {
+  constructor(executor) {
+    this.state = 'pending';
+    this.value = undefined;
+    this.reactions = [];
+    let called = false;                                      // first settle wins
+    const resolve = (x) => { if (called) return; called = true; this._resolve(x); };
+    const reject = (e) => { if (called) return; called = true; this._settle('rejected', e); };
+    try { executor(resolve, reject); } catch (e) { reject(e); } // sync executor
+  }
+  _resolve(x) {
+    if (x === this) return this._settle('rejected', new TypeError('Chaining cycle detected'));
+    if (x !== null && (typeof x === 'object' || typeof x === 'function')) {
+      let then;
+      try { then = x.then; } catch (e) { return this._settle('rejected', e); }
+      if (typeof then === 'function') {                      // thenable → adopt
+        let done = false;
+        queueMicrotask(() => {
+          try {
+            then.call(x,
+              (y) => { if (!done) { done = true; this._resolve(y); } },
+              (r) => { if (!done) { done = true; this._settle('rejected', r); } });
+          } catch (e) { if (!done) { done = true; this._settle('rejected', e); } }
+        });
+        return;
+      }
+    }
+    this._settle('fulfilled', x);
+  }
+  _settle(state, value) {
+    if (this.state !== 'pending') return;
+    this.state = state;
+    this.value = value;
+    this.reactions.forEach((r) => this._schedule(r));
+    this.reactions = null;
+  }
+  _schedule(r) {
+    queueMicrotask(() => {                                   // handlers are always async
+      const handler = this.state === 'fulfilled' ? r.onFulfilled : r.onRejected;
+      if (typeof handler !== 'function') {                   // pass-through
+        return this.state === 'fulfilled' ? r.resolve(this.value) : r.reject(this.value);
+      }
+      try { r.resolve(handler(this.value)); } catch (e) { r.reject(e); }
+    });
+  }
+  then(onFulfilled, onRejected) {
+    return new MyPromise((resolve, reject) => {
+      const r = { onFulfilled, onRejected, resolve, reject };
+      if (this.state === 'pending') this.reactions.push(r);
+      else this._schedule(r);
+    });
+  }
+  catch(onRejected) { return this.then(undefined, onRejected); }
+  finally(onFinally) {
+    return this.then(
+      (v) => MyPromise.resolve(onFinally()).then(() => v),
+      (e) => MyPromise.resolve(onFinally()).then(() => { throw e; }));
+  }
+  static resolve(v) { return v instanceof MyPromise ? v : new MyPromise((res) => res(v)); }
+  static reject(e) { return new MyPromise((_, rej) => rej(e)); }
+}
+
+console.log('sync start');
+new MyPromise((resolve) => setTimeout(() => resolve(1), 20))
+  .then((v) => { console.log('got', v); return v + 1; })
+  .then((v) => new MyPromise((res) => setTimeout(() => res(v * 10), 20)))
+  .then((v) => { console.log('adopted inner promise:', v); throw new Error('boom'); })
+  .then(() => console.log('skipped'))
+  .catch((e) => { console.log('caught', e.message); return 'recovered'; })
+  .finally(() => console.log('finally ran'))
+  .then((v) => console.log('final value', v));
+MyPromise.resolve(Promise.resolve('native thenable')).then((v) => console.log('interop:', v));
+new MyPromise((res, rej) => { res('first'); rej('second'); }).then((v) => console.log('first settle wins:', v));
+console.log('sync end');
+` },
+      dry: { head: ['time', 'event', 'state of chain'], rows: [['0 ms', 'sync start / sync end printed; handlers registered', 'all pending'], ['0 ms (microtasks)', "'first settle wins', 'interop' handlers run", '—'], ['20 ms', 'resolve(1) → got 1 → returns 2', 'link 2 fulfilled'], ['40 ms', 'inner MyPromise adopted → 20 → throw', 'rejected boom'], ['40 ms', "skipped → caught → finally → 'recovered'", 'fulfilled recovered']] },
+      complexity: `<p>O(1) per then/settle; each reaction runs once. Memory: reactions are released after settling.</p>`,
+      followUps: ['Add MyPromise.all / race as statics.', 'Track unhandled rejections (warn if a rejected promise has no handler after a tick).', 'Which Promises/A+ test cases does this pass?']
+    }
+  });
+
+  practice.push({
+    title: 'Predict the Output: Returning a Promise Costs Two Extra Ticks',
+    level: 'Hard', tags: ['predict output', 'microtasks', 'thenable adoption'], companies: ['ByteDance', 'Meta', 'Google'],
+    statement: `<p>A famous puzzle. Predict the output, and explain why <code>4</code> appears where it does.</p><pre>Promise.resolve()
+  .then(() =&gt; { console.log(0); return Promise.resolve(4); })
+  .then((x) =&gt; console.log(x));
+
+Promise.resolve()
+  .then(() =&gt; console.log(1))
+  .then(() =&gt; console.log(2))
+  .then(() =&gt; console.log(3))
+  .then(() =&gt; console.log(5))
+  .then(() =&gt; console.log(6));</pre>`,
+    constraints: `Modern V8 / spec-compliant engine.`,
+    example: `<p>Output: <b>0 1 2 3 4 5 6</b>. Returning a <b>promise</b> from a handler is not like returning a value: adopting it costs ${H.c('y', 'two extra microtask ticks')} (NewPromiseResolveThenableJob, then the inner then's reaction).</p>`,
+    brute: { why: `<p>The naive guess treats <code>return Promise.resolve(4)</code> like <code>return 4</code>, giving <b>0 1 4 2 3 5 6</b>. That would be true for a plain value — but promise adoption takes extra jobs.</p>`, code: { lang: 'js', run: true, code: `
+// With a plain value the guess IS right: 0 1 4 2 3 5 6
+const out = [];
+Promise.resolve().then(() => { out.push(0); return 4; }).then((x) => out.push(x));
+Promise.resolve().then(() => out.push(1)).then(() => out.push(2)).then(() => out.push(3)).then(() => out.push(5)).then(() => out.push(6));
+setTimeout(() => console.log('plain value version:', out.join(' ')), 0);
+` } },
+    mcq: { q: 'How many microtask ticks does `return Promise.resolve(4)` add compared to `return 4`?', options: ['0', '1', '2', 'It waits for a macrotask'], answer: 2, explain: 'Tick A: NewPromiseResolveThenableJob calls inner.then(resolveOuter). Tick B: that then-reaction runs and resolves the outer promise. Then the next handler is queued.' },
+    hints: [`<p>Hint 1: write ticks as columns. Tick 1: log 0 (returns a promise), log 1.</p>`, `<p>Hint 2: resolving with a thenable queues a <b>job</b> (tick 2) that calls <code>p.then(resolve)</code>; that reaction runs on tick 3 and finally fulfils the outer promise.</p>`, `<p>Hint 3: the handler that logs 4 is then queued for tick 4 — the same tick as 3's successor... count carefully: 2 on tick 2, 3 on tick 3, 4 and 5 on tick 4 (4 was queued first), 6 on tick 5.</p>`],
+    solution: {
+      approach: `<p>Simulate ticks. Chain B advances one link per tick (1, 2, 3, 5, 6 on ticks 1–5). Chain A: tick 1 logs 0 and returns a native promise → tick 2: ResolveThenableJob → tick 3: inner reaction resolves outer → tick 4: <code>x =&gt; log(x)</code> runs. On tick 3 the adoption reaction runs <b>before</b> the handler that logs 3, so the 4-handler is queued ahead of the 5-handler; on tick 4, 4 prints before 5.</p>`,
+      code: { lang: 'js', run: true, code: `
+const out = [];
+Promise.resolve()
+  .then(() => { out.push(0); return Promise.resolve(4); })   // adoption: +2 ticks
+  .then((x) => out.push(x));
+Promise.resolve()
+  .then(() => out.push(1))
+  .then(() => out.push(2))
+  .then(() => out.push(3))
+  .then(() => out.push(5))
+  .then(() => out.push(6));
+setTimeout(() => console.log(out.join(' ')), 0);   // 0 1 2 3 4 5 6
+` },
+      dry: { head: ['tick', 'chain A', 'chain B'], rows: [['1', 'log 0, return promise', 'log 1'], ['2', 'ResolveThenableJob: inner.then(...)', 'log 2'], ['3', 'inner reaction resolves outer', 'log 3'], ['4', 'log 4', 'log 5'], ['5', '—', 'log 6']] },
+      complexity: `<p>Puzzle; the lesson: returning a native promise from a handler costs 2 ticks; async functions that <code>return await p</code> vs <code>return p</code> differ similarly (Module JS 8).</p>`,
+      followUps: ['What if chain A returned a non-native thenable { then(r) { r(4); } }?', 'What if A used .then(() => 4) — where does 4 go?']
+    }
+  });
+
+  practice.push({
+    title: 'Async Memoize with In-Flight Dedupe',
+    level: 'Hard', tags: ['caching', 'promises', 'dedupe'], companies: ['Netflix', 'Airbnb', 'Shopify'],
+    statement: `<p>Write <code>memoizeAsync(fn)</code> for a promise-returning <code>fn(key)</code>. Requirements: (1) concurrent calls with the same key share <b>one</b> in-flight request; (2) successful results are cached; (3) a <b>failed</b> call must be evicted so the next call retries; (4) sync throws from fn become rejections.</p>`,
+    constraints: `Keys are strings/numbers. Calls with different keys are independent.`,
+    example: `<p>Three components call <code>getUser(1)</code> at the same moment → ${H.c('g', 'one network call')}, all three get the same object. <code>getUser(-1)</code> fails → evicted → next <code>getUser(-1)</code> calls fn again.</p>`,
+    brute: { why: `<p>Caching the <b>value</b> (after it arrives) does not dedupe concurrent calls: all three see an empty cache and each fires a request. Caching the promise without eviction caches failures forever.</p>`, code: { lang: 'js', run: true, code: `
+let calls = 0;
+const fetchUser = (id) => new Promise((r) => { calls++; setTimeout(() => r({ id }), 20); });
+const cache = new Map();
+function getUserBad(id) {
+  if (cache.has(id)) return Promise.resolve(cache.get(id));
+  return fetchUser(id).then((u) => { cache.set(id, u); return u; });  // caches VALUE, too late
+}
+Promise.all([getUserBad(1), getUserBad(1), getUserBad(1)]).then(() => console.log('value cache made', calls, 'calls'));
+` } },
+    mcq: { q: 'What should the cache store to dedupe concurrent calls?', options: ['The resolved value', 'The promise itself, stored immediately', 'A boolean "loading" flag', 'Nothing'], answer: 1, explain: 'Storing the promise synchronously means every later caller gets the same in-flight promise.' },
+    hints: [`<p>Hint 1: <code>cache.set(key, promise)</code> <b>before</b> the promise settles; return <code>cache.get(key)</code> on hits.</p>`, `<p>Hint 2: attach <code>p.catch(() =&gt; cache.delete(key))</code> — but only delete if the cache still holds <b>this</b> promise (a newer one may have replaced it).</p>`, `<p>Hint 3: build p as <code>Promise.resolve().then(() =&gt; fn(key))</code> so sync throws reject. The eviction catch also prevents an unhandled-rejection warning for that internal branch; callers still see the rejection.</p>`],
+    solution: {
+      approach: `<p>Cache promises, not values. Insert synchronously for dedupe, evict on rejection (guarded by identity), and let callers handle errors on their own branch.</p>`,
+      code: { lang: 'js', run: true, code: `
+function memoizeAsync(fn) {
+  const cache = new Map();
+  return function (key) {
+    if (cache.has(key)) return cache.get(key);          // hit: same promise (maybe in flight)
+    const p = Promise.resolve().then(() => fn(key));    // sync throw → rejection
+    cache.set(key, p);                                  // store BEFORE it settles → dedupe
+    p.catch(() => { if (cache.get(key) === p) cache.delete(key); }); // evict failures
+    return p;
+  };
+}
+
+let calls = 0;
+const fetchUser = (id) => new Promise((res, rej) => {
+  calls++;
+  setTimeout(() => (id < 0 ? rej(new Error('bad id')) : res({ id })), 30);
+});
+const getUser = memoizeAsync(fetchUser);
+
+Promise.all([getUser(1), getUser(1), getUser(1)])
+  .then((u) => console.log('3 callers, calls =', calls, '| same object?', u[0] === u[2]))
+  .then(() => getUser(-1).catch((e) => console.log('failed:', e.message)))
+  .then(() => getUser(-1).catch(() => console.log('retried after eviction, calls =', calls)));
+` },
+      complexity: `<p>O(1) per call; memory grows with distinct keys — add TTL or an LRU bound in production.</p>`,
+      followUps: ['Add a TTL so cached results expire.', 'Bound the cache with LRU eviction.', 'How do SWR / React Query build on this idea (stale-while-revalidate)?']
+    }
+  });
+
+  practice.push({
+    title: 'Latest-Only Requests (Ignore Stale Responses)',
+    level: 'Hard', tags: ['race conditions', 'search-as-you-type', 'promises'], companies: ['Google', 'LinkedIn', 'Swiggy'],
+    statement: `<p>A search box fires a request on every keystroke. Responses can arrive <b>out of order</b> (the request for "r" may return after "rea"), showing stale results. Write <code>latestOnly(asyncFn)</code> that returns a wrapped function: only the promise from the <b>most recent</b> call ever settles; older calls' results are ignored.</p>`,
+    constraints: `asyncFn returns a promise. Do not delay requests (that is debounce, a different tool). Explain the trade-off of never-settling promises.`,
+    example: `<p>Calls at 0, 10, 20 ms for "r" (120 ms), "re" (40 ms), "rea" (40 ms). Without protection the UI shows "rea" at 60 ms and then ${H.c('r', 'overwrites it with "r" at 120 ms')}. With latestOnly: only ${H.c('g', 'results for rea')} renders.</p>`,
+    brute: { why: `<p>Rendering every response as it arrives shows whatever finished last, not what the user typed last — a classic race condition.</p>`, code: { lang: 'js', run: true, code: `
+const search = (q) => new Promise((r) => setTimeout(() => r('results for ' + q), q.length === 1 ? 120 : 40));
+['r', 're', 'rea'].forEach((q, i) => setTimeout(() => search(q).then((v) => console.log('render:', v)), i * 10));
+// render: results for re, render: results for rea, render: results for r   <- stale last!
+` } },
+    mcq: { q: 'How do you know a response is stale?', options: ['Compare its timestamp to Date.now()', 'Give each call an increasing id; on arrival, check it is still the latest id', 'Check if the string is shorter', 'Use Promise.race on all calls'], answer: 1, explain: 'A monotonically increasing request id captured in a closure tells each response whether a newer call has started since.' },
+    hints: [`<p>Hint 1: keep a counter <code>lastId</code> in the closure; each call captures <code>const id = ++lastId</code>.</p>`, `<p>Hint 2: return a new promise that forwards the inner result only if <code>id === lastId</code> when it arrives.</p>`, `<p>Hint 3: stale promises never settle — fine for UI, but mention the alternative: reject them with an <code>AbortError</code> and also <b>abort</b> the old request with AbortController to save bandwidth.</p>`],
+    solution: {
+      approach: `<p>Tag every call with an increasing id. When its response (or error) arrives, compare with the current latest id; forward it only if it still is the latest. In production, also abort the previous request (AbortController) so the network work stops, not just the rendering.</p>`,
+      code: { lang: 'js', run: true, code: `
+function latestOnly(asyncFn) {
+  let lastId = 0;
+  return function (...args) {
+    const id = ++lastId;                                  // this call's ticket
+    return new Promise((resolve, reject) => {
+      asyncFn.apply(this, args).then(
+        (v) => { if (id === lastId) resolve(v); },        // stale → ignored
+        (e) => { if (id === lastId) reject(e); });
+    });
+  };
+}
+
+const search = (q) => new Promise((r) => setTimeout(() => r('results for ' + q), q.length === 1 ? 120 : 40));
+const safeSearch = latestOnly(search);
+['r', 're', 'rea'].forEach((q, i) =>
+  setTimeout(() => safeSearch(q).then((v) => console.log('render:', v)), i * 10));
+// only: render: results for rea
+` },
+      dry: { head: ['time', 'event', 'lastId', 'action'], rows: [['0', "call 'r' (id 1)", '1', 'request'], ['10', "call 're' (id 2)", '2', 'request'], ['20', "call 'rea' (id 3)", '3', 'request'], ['50', "'re' arrives (id 2)", '3', H.c('m', 'ignored')], ['60', "'rea' arrives (id 3)", '3', H.c('g', 'render')], ['120', "'r' arrives (id 1)", '3', H.c('m', 'ignored')]] },
+      complexity: `<p>O(1) per call. Ignored promises stay pending (their closures are freed once the inner request finishes).</p>`,
+      followUps: ['Combine with debounce so fewer requests are sent at all.', 'Use AbortController to cancel stale fetches.', 'How does RxJS switchMap solve the same problem?']
+    }
+  });
+
+  /* ================= QUIZ ================= */
+  quiz.push({ q: 'What does this print? <code>console.log(\'A\'); setTimeout(() =&gt; console.log(\'B\'), 0); console.log(\'C\');</code>', options: ['A B C', 'A C B', 'B A C', 'C A B'], answer: 1, explain: 'The timer callback is queued and can only run after the current script (A, C) has finished: run-to-completion.' });
+  quiz.push({ q: 'Three independent 200 ms requests are started together and awaited with Promise.all. Roughly how long until all are done?', options: ['600 ms', '200 ms', '400 ms', '0 ms'], answer: 1, explain: 'Parallel waiting takes about as long as the slowest one (max), not the sum.' });
+  quiz.push({ q: 'In Node\'s error-first convention, how is a successful result delivered?', options: ['callback(result)', 'callback(null, result)', 'callback(result, null)', 'return result'], answer: 1, explain: 'The first argument is reserved for an error; null (or undefined) means success, and the result comes second.' });
+  quiz.push({ q: 'When does the executor passed to <code>new Promise(executor)</code> run?', options: ['On the next tick', 'Immediately and synchronously inside the constructor', 'When .then is called', 'After all timers'], answer: 1, explain: 'The executor runs right away; only the reactions (.then/.catch/.finally handlers) are asynchronous.' });
+  quiz.push({ q: 'A promise calls <code>resolve(1)</code>, then <code>reject(new Error())</code>, then <code>resolve(2)</code>. Its final state?', options: ['fulfilled with 2', 'rejected', 'fulfilled with 1', 'it throws'], answer: 2, explain: 'Only the first settling call counts; later resolve/reject calls are ignored.' });
+  quiz.push({ q: 'What does <code>Promise.resolve(1).then(v =&gt; { v + 1; }).then(v =&gt; console.log(v))</code> print?', options: ['2', '1', 'undefined', 'NaN'], answer: 2, explain: 'The block-bodied arrow has no return statement, so the next promise fulfils with undefined.' });
+  quiz.push({ q: 'What value reaches the last then? <code>Promise.reject(new Error(\'x\')).catch(() =&gt; 5).finally(() =&gt; 9).then(v =&gt; console.log(v))</code>', options: ['9', '5', 'Error x', 'undefined'], answer: 1, explain: 'catch recovers with 5; finally ignores its own return value and passes 5 through.' });
+  quiz.push({ q: 'Which combinator never rejects?', options: ['Promise.all', 'Promise.race', 'Promise.any', 'Promise.allSettled'], answer: 3, explain: 'allSettled always fulfils with an array of {status, value|reason} objects.' });
+  quiz.push({ q: 'Jobs: A fulfils at 300 ms, B rejects at 100 ms, C fulfils at 200 ms. What does <code>Promise.any([A, B, C])</code> give?', options: ['Rejects with B at 100 ms', 'Fulfils with C at 200 ms', 'Fulfils with A at 300 ms', 'AggregateError'], answer: 1, explain: 'any ignores rejections and fulfils with the first success, which is C.' });
+  quiz.push({ q: 'Same jobs. What does <code>Promise.race([A, B, C])</code> give?', options: ['Fulfils with C', 'Rejects with B at 100 ms', 'Fulfils with A', 'Stays pending'], answer: 1, explain: 'race settles like the first job to settle at all, success or failure — B at 100 ms.' });
+  quiz.push({ q: 'What is <code>Promise.race([])</code>?', options: ['Fulfilled with undefined', 'Rejected with AggregateError', 'Pending forever', 'A TypeError'], answer: 2, explain: 'There is nothing to settle it, so it never settles — guard empty inputs in timeout helpers.' });
+  quiz.push({ q: 'Why does <code>try { Promise.reject(new Error(\'x\')); } catch (e) { ... }</code> not catch the error?', options: ['try/catch does not work in JS', 'The rejection is a value delivered asynchronously to handlers, not a synchronous throw', 'Errors in promises are ignored', 'Because Error is not thrown with new'], answer: 1, explain: 'Rejections travel to .catch handlers (or await). The try block finished synchronously without any throw.' });
+  quiz.push({ q: 'Which order is right for <code>then(f, g)</code> vs <code>then(f).catch(g)</code> if <code>f</code> throws?', options: ['Both call g', 'Only then(f).catch(g) calls g; then(f, g) lets the error escape to the next handler', 'Only then(f, g) calls g', 'Neither calls g'], answer: 1, explain: 'In then(f, g), g only watches the previous promise; errors thrown by f go to the promise returned by then.' });
+
+  /* ================= INTERVIEW ================= */
+  interview.push({ level: 'B', q: 'What is the difference between synchronous and asynchronous code in JavaScript?', a: `<p><b>Synchronous</b> code runs line by line on the single JS thread; each line finishes before the next starts, and a slow line blocks everything (clicks, timers, rendering). <b>Asynchronous</b> code starts an operation (timer, network, file) that the <b>runtime</b> waits for in the background; JS continues immediately, and when the result is ready a callback is queued and runs after the current code finishes (run-to-completion). Async is about <i>waiting</i> without blocking — it does not make CPU work faster or run JS in parallel.</p>`, followUps: ['Why does setTimeout(fn, 0) not run immediately?', 'How would you keep the UI responsive during heavy computation?'] });
+  interview.push({ level: 'B', q: 'What is a callback, and what is callback hell?', a: `<p>A <b>callback</b> is a function passed to another function to be called later — synchronously (<code>arr.map(fn)</code>) or asynchronously (<code>setTimeout(fn)</code>, <code>fs.readFile(path, cb)</code>). <b>Callback hell</b> is deep nesting when each async step depends on the previous one: code drifts right, every level repeats <code>if (err)</code>, parallel work needs manual counters, and control is inverted — the library decides whether your callback runs once, twice, never, or synchronously. Fixes: named functions, Promises (flat chains, one catch), and async/await.</p>`, followUps: ['What is inversion of control?', 'What is "releasing Zalgo"?'] });
+  interview.push({ level: 'B', q: 'What are the states of a Promise?', a: `<p><b>pending</b> (not finished), <b>fulfilled</b> (succeeded, has a value) and <b>rejected</b> (failed, has a reason). "Settled" means fulfilled or rejected. A promise settles at most once and then never changes; extra resolve/reject calls are ignored. "Resolved" is subtly different: a promise resolved with another promise is <i>locked in</i> to follow it, but may still be pending. You observe the result only through <code>.then/.catch/.finally</code> (or <code>await</code>), and handlers always run asynchronously, even if attached after settling.</p>`, followUps: ['Can you read a promise\'s state synchronously?', 'What happens if resolve is called with the promise itself?'] });
+  interview.push({ level: 'I', q: 'Implement promisify. What pitfalls do you watch for?', a: `<p><code>const promisify = (fn) =&gt; function (...args) { return new Promise((res, rej) =&gt; fn.call(this, ...args, (err, v) =&gt; err ? rej(err) : res(v))); };</code></p><p>Pitfalls: preserve <code>this</code> (use a regular function wrapper, arrow executor); append the callback <b>last</b>; callbacks with several success values (resolve an array, or use <code>util.promisify.custom</code>); APIs that are not error-first; one-shot only — do not promisify event emitters that fire many times. A buggy double callback is harmless because the promise settles once.</p>`, followUps: ['Implement callbackify.', 'Why not promisify an EventEmitter "data" event?'] });
+  interview.push({ level: 'I', q: 'What does .then return, and how does the returned promise get its value?', a: `<p><code>.then</code> always returns a <b>new</b> promise. When the handler runs: a returned plain value fulfils it; a returned promise/thenable is <b>adopted</b> (the new promise follows it — this is why chains are flat); a <code>throw</code> rejects it; no return means fulfilled with <code>undefined</code>. If the matching handler is missing (e.g. success handler on a rejected promise) the value or error passes through unchanged. <code>catch(g)</code> is <code>then(undefined, g)</code>; <code>finally(f)</code> runs on both outcomes, gets no argument and passes the result through unless f throws.</p>`, followUps: ['Why is returning a promise slower (in ticks) than returning a value?', 'Chain vs branch: p.then(a).then(b) vs p.then(a); p.then(b)?'] });
+  interview.push({ level: 'I', q: 'Compare Promise.all, allSettled, race and any.', a: `<p><b>all</b>: fulfils with all values in input order, rejects fast on the first rejection; [] → []. <b>allSettled</b>: waits for all, never rejects, returns <code>{status, value|reason}</code> objects. <b>race</b>: settles like the first item to settle (success or failure); [] → pending forever. <b>any</b>: fulfils with the first success, rejects only if all reject, with an <code>AggregateError</code> (<code>.errors</code> in input order); [] → rejects. None of them start or cancel work — the promises are already running; losers keep running unless you abort them. Use all for all-or-nothing, allSettled for partial results, race for timeouts, any for the fastest healthy mirror.</p>`, followUps: ['Implement Promise.all.', 'How would you cancel the losers?'] });
+  interview.push({ level: 'I', q: 'How do errors propagate in a promise chain?', a: `<p>A throw or rejection makes the current promise rejected. The rejection flows down the chain, <b>skipping</b> success handlers, until the first rejection handler (<code>.catch</code> or <code>then</code>'s 2nd arg). If that handler returns normally, the chain is <b>recovered</b> (fulfilled with its return value); if it rethrows, the chain stays rejected. Errors escape the chain when promises are not returned (floating), when you throw inside a plain callback like setTimeout, or when the chain has no final catch — an unhandled rejection that crashes Node 15+ by default.</p>`, followUps: ['Where should catch go: middle or end?', 'How do you keep the original error when wrapping it?'] });
+  interview.push({ level: 'I', q: 'How do you run async tasks sequentially vs in parallel, and when would you choose each?', a: `<p><b>Parallel</b>: create all promises at once (<code>items.map(fetchItem)</code>) and combine with <code>Promise.all</code> — total time ≈ the slowest. <b>Sequential</b>: create each only after the previous finishes, e.g. <code>tasks.reduce((p, t) =&gt; p.then(t), Promise.resolve())</code> or a for...of loop with await — total time = the sum. Choose sequential when steps depend on each other (login → profile) or the API requires one at a time; parallel when they are independent. For many items, use a <b>concurrency limit</b> (pool) to avoid rate limits and resource exhaustion.</p>`, followUps: ['Why must the input be functions rather than promises for sequential execution?', 'Implement mapLimit.'] });
+  interview.push({ level: 'I', q: 'What is an unhandled promise rejection and how do you deal with it?', a: `<p>A promise that rejects with no rejection handler attached by the time the microtask queue drains. Browsers log it and fire <code>unhandledrejection</code>; Node 15+ treats it as an uncaught exception and <b>exits</b> (default <code>--unhandled-rejections=throw</code>). Prevent it by returning promises up to a caller that handles them, ending chains with <code>.catch</code>, avoiding floating promises (lint: <code>no-floating-promises</code>), and using allSettled when several may fail. Global handlers (<code>process.on('unhandledRejection')</code>) are for logging/crash reporting, not normal control flow.</p>`, followUps: ['Why is attaching .catch inside a setTimeout too late?', 'What happens to the second rejection inside Promise.all?'] });
+  interview.push({ level: 'A', q: 'Explain the Promise resolution procedure and thenable adoption.', a: `<p>When a promise is resolved with <code>x</code>: if <code>x</code> is the same promise → reject with TypeError (cycle). If <code>x</code> is an object or function, read <code>x.then</code> once (a throwing getter rejects). If it is callable, schedule a <b>PromiseResolveThenableJob</b> that calls <code>then.call(x, resolve, reject)</code> with once-guarded functions, so the outer promise adopts x's eventual state. Otherwise fulfil with x. This makes promises interoperable with any thenable (old libraries) and flattens nested promises; the extra job is why returning a promise from a handler costs two extra microtask ticks.</p>`, followUps: ['What does Promise.resolve(p) return when p is a native promise?', 'Why read x.then only once?'] });
+  interview.push({ level: 'A', q: 'How would you add a timeout to any promise, correctly?', a: `<p>Race it against a timer promise that rejects: <code>Promise.race([p, new Promise((_, rej) =&gt; { id = setTimeout(() =&gt; rej(new TimeoutError()), ms); })]).finally(() =&gt; clearTimeout(id))</code>. Details that matter: clear the timer on both outcomes (otherwise it keeps Node alive and wastes resources); use a distinguishable error type; remember race does <b>not</b> cancel the underlying work — pass an <code>AbortSignal</code> (<code>AbortSignal.timeout(ms)</code> for fetch) so the request is really aborted; and guard against an empty race.</p>`, followUps: ['How would you combine a user cancel signal with a timeout signal?', 'What is a deadline vs a per-attempt timeout in retries?'] });
+  interview.push({ level: 'A', q: 'Design a retry helper for flaky network calls.', a: `<p><code>retry(fn, {retries, baseDelay, maxDelay, signal})</code>: call fn; on rejection decide if it is <b>retryable</b> (timeouts, 429, 5xx — not 4xx validation errors) and the operation is <b>idempotent</b>; wait <code>min(maxDelay, base × 2^n)</code> with <b>jitter</b> (randomised to avoid thundering herds), honour <code>Retry-After</code>, stop on abort or overall deadline, and reject with the last error (optionally an AggregateError of all). Implement by returning the next attempt from inside <code>.catch</code> so it is one chain. Add metrics/logging per attempt and a circuit breaker for persistent failure.</p>`, followUps: ['Why is jitter important?', 'How do you make POST requests safe to retry (idempotency keys)?'] });
+  interview.push({ level: 'E', q: 'In production, what async/promise mistakes cause the most incidents, and how do you prevent them?', a: `<p>(1) <b>Floating promises</b> — errors vanish or crash later; prevent with typescript-eslint <code>no-floating-promises</code> / <code>no-misused-promises</code>. (2) <b>Unbounded parallelism</b> — <code>Promise.all</code> over 50k items exhausts sockets/memory or hits rate limits; use pools. (3) <b>Swallowing catches</b> — <code>.catch(() =&gt; null)</code> turns outages into silent bad data; catch narrowly and rethrow. (4) <b>No timeouts/cancellation</b> — hanging promises leak memory and hold resources; use AbortSignal everywhere. (5) <b>Stale responses</b> overwriting newer state; use request ids or abort. (6) <b>Accidental sequential awaits</b> slowing endpoints. Pair code review checklists with tracing so slow/failed async spans are visible.</p>`, followUps: ['How do you trace async work across services?', 'What metrics would you add around a promise pool?'] });
+  interview.push({ level: 'E', q: 'Promises cannot be cancelled. How do real systems handle cancellation and why was it left out of the spec?', a: `<p>A promise represents a <b>result</b>, which may have many consumers; letting one consumer cancel it would affect the others, and cancellation semantics (does finally run? is it a rejection?) were contentious, so TC39 dropped cancelable promises (2016). The platform standardised <b>AbortController / AbortSignal</b> instead: the <i>operation</i> takes a signal (<code>fetch</code>, streams, Node fs/timers, addEventListener) and rejects with an <code>AbortError</code> when aborted. Compose with <code>AbortSignal.timeout(ms)</code> and <code>AbortSignal.any([...])</code>. For your own APIs, accept a <code>signal</code>, check <code>signal.aborted</code>, listen for 'abort', clean up, and reject with <code>signal.reason</code>.</p>`, followUps: ['How would you make mapLimit cancellable?', 'What should finally do when an operation is aborted?'] });
+
+  /* ================= REGISTER ================= */
+  registerModule({
+    id: 'js07',
+    title: 'Async I: Callbacks & Promises',
+    intro: `<p>JavaScript has <b>one thread</b>, yet it handles timers, network calls, files and clicks all at once without freezing. This module shows how: the difference between <b>synchronous</b> and <b>asynchronous</b> code, the old way (<b>callbacks</b>, error-first style and callback hell) and the modern way (<b>Promises</b>).</p>
+<p>You will learn the Promise <b>state machine</b> (pending → fulfilled / rejected, settled once), how <b>then / catch / finally</b> chains pass values and errors along, the four combinators <b>Promise.all / allSettled / race / any</b>, and exactly how <b>errors propagate</b> — and escape. Every topic has a step-by-step visualizer and runnable code. Practice includes classic machine-coding tasks (<b>promisify</b>, Promise.all/any/race polyfills, <b>sequential vs parallel fetch simulations</b>, a concurrency pool, your own Promise class) and <b>predict-the-output</b> puzzles that interviewers love.</p>
+<p>Module JS 8 builds on this with the event loop, microtasks and async/await.</p>`,
+    goals: [
+      'Explain sync vs async with the one-thread + queue model, and predict when callbacks run',
+      'Recognise callback hell and inversion of control, and convert error-first callbacks to promises (promisify)',
+      'Describe the three Promise states, executor timing and settle-once rules',
+      'Predict exactly what each link of a then/catch/finally chain receives and returns',
+      'Choose between Promise.all, allSettled, race and any from the failure semantics, and implement them from scratch',
+      'Trace error propagation, recover vs rethrow correctly, and prevent unhandled rejections and floating promises',
+      'Write sequential, parallel, batched and concurrency-limited async flows and reason about their timing'
+    ],
+    prereqs: `JS 2 (Functions, Arrays &amp; Objects — arrow functions, reduce), JS 4 (Scope &amp; Closures — closures are used everywhere here) and JS 5 (<code>this</code> and call/apply, for promisify).`,
+    hours: 12,
+    topics: topics,
+    practice: practice,
+    quiz: quiz,
+    interview: interview
+  });
+})();

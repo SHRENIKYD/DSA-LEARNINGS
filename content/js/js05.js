@@ -1447,5 +1447,979 @@
       }
     }]
   });
-  registerModule({ id: 'js05', title: 'this, call/apply/bind & Arrow Functions', intro: '<p>x</p>', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview });
+
+  /* =====================================================================
+     TOPIC 7: strict mode and this in every context
+     ===================================================================== */
+  function parseThisArg(input) {
+    var s = String(input === undefined ? '5' : input).trim();
+    if (s === 'undefined') return { label: 'undefined', kind: 'undefined', prim: true };
+    if (s === 'null') return { label: 'null', kind: 'null', prim: true };
+    if (s === 'true' || s === 'false') return { label: s, kind: 'boolean', prim: true, wrap: 'Boolean' };
+    if (s === '{}' || s === 'obj') return { label: '{}', kind: 'object', prim: false };
+    if (/^-?\d+(\.\d+)?$/.test(s)) return { label: s, kind: 'number', prim: true, wrap: 'Number' };
+    if (/^(["']).{0,12}\1$/.test(s)) return { label: s, kind: 'string', prim: true, wrap: 'String' };
+    throw new Error('Enter a thisArg: a number (5), a quoted string ("hi"), true, null, undefined or {}');
+  }
+  topics.push({
+    title: 'Strict Mode and this in Every Context',
+    analogy: `<p>Picture two assistants. The <b>sloppy</b> assistant is "helpful": if you forget to say whose desk a parcel goes to, they drop it at head office (the global object); if you hand them a plain number, they put it in a box first (boxing). Nothing ever fails, but things end up in strange places.</p>
+      <p>The <b>strict</b> assistant does <b>exactly</b> what you say. No address? It stays "nobody" (<code>undefined</code>), and the next step fails loudly. A plain number stays a plain number. Strict mode is that assistant, and since ES modules and classes turn it on automatically, it is the assistant you work with in almost all modern code.</p>`,
+    explain: `<p><b>🟢 Turning strict mode on.</b> Write the string <code>"use strict";</code> as the <b>first statement</b> of a script file or of a function body. You get it <b>automatically</b>, with no directive, inside: ES modules (<code>import</code>/<code>export</code>, <code>type="module"</code>, .mjs), <b>class</b> bodies, and code compiled by most TypeScript/bundler setups. It cannot be turned off once on.</p>
+      <p><b>🔵 Three things strict mode changes about <code>this</code>:</b></p>
+      ${H.table(['Situation', 'Sloppy mode', 'Strict mode'], [
+        ['Bare call <code>fn()</code>', 'globalThis', H.c('g', 'undefined')],
+        ['<code>fn.call(null)</code> / <code>fn.call(undefined)</code>', 'globalThis', H.c('g', 'null / undefined (as given)')],
+        ['<code>fn.call(5)</code> / <code>fn.call("hi")</code>', 'boxed: <code>Number {5}</code>, typeof "object"', H.c('g', 'the raw primitive, typeof "number"')]
+      ])}
+      <p>Other strict changes you will meet: assigning to an undeclared variable throws <code>ReferenceError</code> (no accidental globals), writing to read-only properties throws, <code>with</code> is banned, duplicate parameter names are errors, and <code>arguments</code> no longer mirrors parameters.</p>
+      <p><b>🔵 <code>this</code> in every context, one table:</b></p>
+      ${H.table(['Where', 'this is'], [
+        ['Top level of a classic browser script', '<code>window</code>'],
+        ['Top level of an ES module (browser or Node)', '<code>undefined</code>'],
+        ['Top level of a Node CommonJS file', '<code>module.exports</code> (starts as {})'],
+        ['Class constructor', 'the new instance (derived classes: only after <code>super()</code>)'],
+        ['Class instance method', 'the receiver (instance), undefined if detached'],
+        ['<b>static</b> method <code>Cls.make()</code>', 'the class itself (<code>Cls</code>, or a subclass that called it)'],
+        ['Getter / setter <code>obj.prop</code>', 'the object the property was read through'],
+        ['Class field initializer', 'the instance being built'],
+        ['Inline HTML <code>onclick="..."</code>', 'the element'],
+        ['<code>new Function("return this")()</code>', 'always globalThis (Function-constructor code is sloppy and global)']
+      ])}`,
+    clues: [
+      '<code>typeof this</code> printed after <code>fn.call(5)</code> or <code>fn.call("x")</code> → boxing: "object" in sloppy, "number"/"string" in strict',
+      '"Same code works in a script but not in a module" → modules are strict; default this became undefined',
+      '"What is this inside a static method?" → the class (or the subclass it was called through)',
+      '"What is this at the top level in Node?" → <code>module.exports</code> in CommonJS, <code>undefined</code> in ESM',
+      '"How did people get the global object before globalThis?" → <code>Function("return this")()</code> or environment checks',
+      '"Why use strict mode?" → turns silent this/global bugs into thrown errors'
+    ],
+    code: [{ lang: 'js', run: true, title: 'Sloppy vs strict with odd thisArgs (runnable)', code: `
+      function sloppyType() { return typeof this + (this === globalThis ? ' (globalThis)' : ''); }
+      function strictType() { 'use strict'; return typeof this + (this === null ? ' (null)' : ''); }
+
+      const inputs = [5, 'hi', true, null, undefined, {}];
+      for (const v of inputs) {
+        const shown = typeof v === 'string' ? '"' + v + '"' : String(v === undefined ? 'undefined' : JSON.stringify(v));
+        console.log(
+          ('call(' + shown + ')').padEnd(16),
+          '| sloppy:', sloppyType.call(v).padEnd(21),
+          '| strict:', strictType.call(v)
+        );
+      }
+    ` }],
+    codeTitle: ['Runnable: boxing and null handling'],
+    viz: [{
+      title: 'What happens to thisArg on the way in (OrdinaryCallBindThis)',
+      input: '5',
+      inputLabel: 'thisArg passed to fn.call(...): 5 | "hi" | true | null | undefined | {}',
+      gen: function (input) {
+        var a = parseThisArg(input);
+        var sloppy, strict;
+        if (a.kind === 'null' || a.kind === 'undefined') { sloppy = 'globalThis (replaced)'; strict = a.label + ' (kept)'; }
+        else if (a.prim) { sloppy = a.wrap + ' {' + a.label + '} (boxed, typeof "object")'; strict = a.label + ' (raw, typeof "' + a.kind + '")'; }
+        else { sloppy = '{} (same object)'; strict = '{} (same object)'; }
+        var code = [
+          'function sloppyFn() { return this; }',
+          'function strictFn() { "use strict"; return this; }',
+          'sloppyFn.call(' + a.label + ');',
+          'strictFn.call(' + a.label + ');'
+        ].join('\n');
+        var steps = { type: 'table', label: 'Engine steps when a normal function is called', columns: ['#', 'check', 'action'], rows: [
+          ['1', 'arrow function?', 'skip: arrows have no own this'],
+          ['2', 'function is strict?', 'use thisArg exactly as given'],
+          ['3', 'thisArg is null/undefined?', 'use globalThis'],
+          ['4', 'otherwise', 'ToObject(thisArg): box primitives']] };
+        function stepsHl(i, cls) { var s = JSON.parse(JSON.stringify(steps)); s.hl = {}; s.hl[i] = cls; return s; }
+        return [
+          F('We pass <code>' + H.esc(a.label) + '</code> as thisArg to two functions that differ only in strictness. The engine runs the same short checklist for every normal call.', [C('thisArg.js', code, { 3: 'cur', 4: 'cur' }), steps]),
+          F('<b>sloppyFn.call(' + H.esc(a.label) + ')</b>: is it an arrow? No. Is it strict? <b>No</b>, so it must "fix up" the value.', [C('thisArg.js', code, { 1: 'win', 3: 'cur' }), stepsHl(1, 'bad'), V('thisArg', { value: a.label, type: a.kind })]),
+          F(a.kind === 'null' || a.kind === 'undefined' ? 'thisArg is ' + a.label + ', so sloppy mode replaces it with the <b>global object</b>.' : (a.prim ? 'thisArg is a primitive, so sloppy mode wraps it with <b>ToObject</b>: a new ' + a.wrap + ' wrapper object is allocated on every call.' : 'thisArg is already an object, so it is used as is.'),
+            [C('thisArg.js', code, { 3: 'cur' }), stepsHl(a.kind === 'null' || a.kind === 'undefined' ? 2 : 3, 'cur'), V('sloppyFn sees', { 'this': sloppy }, { 'this': a.prim ? 'bad' : 'ok' })]),
+          F('<b>strictFn.call(' + H.esc(a.label) + ')</b>: not an arrow; strict? <b>Yes</b>. Use the value exactly as given. No replacing, no boxing.', [C('thisArg.js', code, { 2: 'win', 4: 'cur' }), stepsHl(1, 'ok'), V('strictFn sees', { 'this': strict }, { 'this': 'ok' })]),
+          F('Side by side. Strict mode is predictable: what you pass is what you get. That matters for polyfills (myCall should not box for strict targets) and for type checks like <code>typeof this === "number"</code> in methods added to <code>Number.prototype</code>.', [{ type: 'table', label: 'Result for thisArg = ' + H.esc(a.label), columns: ['function', 'this inside', 'this === thisArg?'], rows: [['sloppyFn', sloppy, a.prim ? 'false' : 'true'], ['strictFn', strict, 'true']], hl: { 0: a.prim ? 'bad' : '', 1: 'ok' } }]),
+          F('Try other inputs: <code>null</code> shows the global-object swap, <code>"hi"</code> shows String boxing, <code>{}</code> shows that objects are never touched.', [T('Remember: <b>modules and classes are strict automatically</b>, so in modern code the right-hand column is what you will usually see.', 'Tip')])
+        ];
+      }
+    }],
+    examples: [
+      { title: 'Static methods, getters and class fields', html: `<p>Three places where <code>this</code> is still "the receiver", just a less obvious one. In a static method called as <code>Sub.create()</code>, this is <code>Sub</code>, which makes inheritable factories possible.</p>${H.kv([['Animal.create()', 'this = Animal'], ['Dog.create()', 'this = Dog'], ['dog.description (getter)', 'this = dog']])}`,
+        code: { lang: 'js', run: true, code: `
+          class Animal {
+            kind = 'animal ' + this.constructor.name;  // field initializer: this = new instance
+            static create() { return new this(); }      // static: this = the class it was called on
+            get description() { return 'I am ' + this.kind; } // getter: this = receiver
+          }
+          class Dog extends Animal {}
+          console.log(Animal.create().description);   // I am animal Animal
+          console.log(Dog.create().description);      // I am animal Dog
+          const { create } = Dog;
+          try { create(); } catch (e) { console.log('detached static:', e.constructor.name); } // TypeError
+        ` } },
+      { title: 'Classes are strict even inside a sloppy file', html: `<p>This file has no <code>"use strict"</code>. A plain function detached and called bare gets <code>globalThis</code>; a class method detached the same way gets <code>undefined</code>, because class bodies are always strict.</p>${H.table(['Detached call', 'this'], [['plain sloppy function', 'globalThis'], ['class method', H.c('g', 'undefined')]])}`,
+        code: { lang: 'js', run: true, code: `
+          // (no "use strict" anywhere in this file)
+          const plain = { who() { return this === globalThis ? 'globalThis' : String(this); } };
+          class K { who() { return this === undefined ? 'undefined' : 'instance'; } }
+
+          const w1 = plain.who;
+          const w2 = new K().who;
+          console.log('plain method detached:', w1());   // globalThis
+          console.log('class method detached:', w2());   // undefined
+        ` } },
+      { title: 'Getting the global object anywhere', html: `<p>Before <code>globalThis</code> (ES2020), libraries needed a portable way to get the global object across browsers, workers and Node. The trick: code made by the <code>Function</code> constructor is always sloppy and runs in global scope, so a bare call returns the global object. Today just use <code>globalThis</code> (note: the trick fails under strict Content-Security-Policy, which blocks <code>Function</code>).</p>`,
+        code: { lang: 'js', run: true, code: `
+          'use strict';
+          function strictBare() { return this; }
+          console.log(strictBare());                                // undefined (we are strict)
+          const viaFunctionCtor = Function('return this')();         // sloppy code, global scope
+          console.log(viaFunctionCtor === globalThis);               // true
+          console.log(typeof globalThis, globalThis === globalThis.globalThis); // object true
+        ` } },
+      { title: 'Strict mode catches accidental globals too', html: `<p>Not about <code>this</code> directly, but it is the same family of silent bugs: a typo in a variable name creates a global in sloppy mode and throws in strict mode.</p>${H.kv([['sloppy: totl = 5', 'creates globalThis.totl'], ['strict: totl = 5', 'ReferenceError']], { hl: { 'strict: totl = 5': 'g' } })}`,
+        code: { lang: 'js', run: true, code: `
+          function sloppyTypo() { let total = 0; totl = 5; return total; }   // typo!
+          function strictTypo() { 'use strict'; let total = 0; totl2 = 5; return total; }
+          sloppyTypo();
+          console.log('leaked global:', globalThis.totl);           // 5
+          try { strictTypo(); } catch (e) { console.log(e.constructor.name + ': ' + e.message); }
+          delete globalThis.totl;
+        ` } },
+      { title: 'Adding a method to Number.prototype: boxing in action', html: `<p>Methods called on primitives (<code>(5).double()</code>) receive the primitive as <code>this</code>. In sloppy mode it is boxed into a <code>Number</code> object, so strict equality with a number fails. (Extending built-in prototypes is a bad idea in real code; this is only to see boxing.)</p>`,
+        code: { lang: 'js', run: true, code: `
+          Object.defineProperty(Number.prototype, 'sloppyInfo', {
+            value: function () { return typeof this + ', === 5? ' + (this === 5); }, configurable: true
+          });
+          Object.defineProperty(Number.prototype, 'strictInfo', {
+            value: function () { 'use strict'; return typeof this + ', === 5? ' + (this === 5); }, configurable: true
+          });
+          console.log((5).sloppyInfo());   // object, === 5? false
+          console.log((5).strictInfo());   // number, === 5? true
+          delete Number.prototype.sloppyInfo; delete Number.prototype.strictInfo;
+        ` } }
+    ],
+    deepDive: `<p><b>🟣 Strictness is a property of code, decided at parse time.</b> A function is strict if its own body starts with the directive, if it is nested in strict code, or if it is part of a class or module. That is why you can mix: a sloppy legacy library and strict application modules on the same page. The directive must be the first statement (only other directives or comments before it), and since ES2016 a function with non-simple parameters (defaults, rest, destructuring) cannot contain it: <code>function f(a = 1) { "use strict"; }</code> is a SyntaxError.</p>
+      <p><b>Boxing cost:</b> in sloppy functions every call with a primitive receiver allocates a wrapper object (<code>ToObject</code>). Engines optimise many of these away, but strict-mode code avoids the question entirely. That is one reason built-in-like libraries were written in strict mode long before modules existed.</p>
+      <p><b>Host details:</b> in browsers, <code>globalThis</code> is actually a <b>WindowProxy</b>, a stable wrapper whose target changes when the frame navigates. In Node, CommonJS wraps each file in a function called with this = <code>module.exports</code>, which is why top-level <code>this</code> there is <code>{}</code> and why <code>var</code> at the top of a Node file does not create a global. Web Workers use <code>self</code>; Deno and Bun follow ESM rules (undefined at top level).</p>
+      <p><b>Static this and inheritance:</b> static methods use the class as receiver, so <code>return new this()</code> builds the subclass when called as <code>Sub.create()</code>. Static methods are inherited because <code>Object.getPrototypeOf(Sub) === Base</code>. Detaching a static method (<code>const { create } = Dog</code>) loses this like any method.</p>
+      <p><b>TypeScript angle:</b> <code>"strict": true</code> in tsconfig enables <code>noImplicitThis</code> (error when <code>this</code> has an implicit any type) and <code>alwaysStrict</code> (emit "use strict" and parse in strict mode). You can declare <code>function handler(this: HTMLButtonElement, e: Event)</code> so the compiler checks every call-site.</p>`,
+    aiEra: `<p><b>🤖 What AI changes:</b> nearly all code an assistant writes for you is module-based and therefore strict, so the sloppy rules mostly appear in legacy code you are asked to migrate. AI is useful for that migration: <code>Convert this IIFE-based script to ES modules and list every behaviour change caused by strict mode</code>. It will usually catch implicit globals; check this-related changes yourself.</p>
+      <p><b>Use AI as a partner:</b> generate a matrix of contexts (script, module, CJS, class, static, getter, inline handler) and ask it to predict <code>this</code>; then run each in the right host and compare. You will catch the assistant assuming a browser.</p>
+      <p><b>Where AI goes wrong:</b> it often says top-level <code>this</code> in Node is <code>globalThis</code> or <code>undefined</code> without asking CJS vs ESM, and it may forget that primitives are not boxed in strict functions. <b>What you must still own:</b> knowing which mode a given piece of code is in, the three this-related differences, and how to explain them crisply with a one-line example each.</p>`
+  });
+
+  /* =====================================================================
+     PRACTICE: Easy
+     ===================================================================== */
+  practice.push({
+    title: 'Sum Any Number of Arguments by Borrowing reduce',
+    level: 'Easy', tags: ['call', 'method borrowing', 'arguments'], companies: ['TCS', 'Infosys', 'Paytm'],
+    statement: `<p>Write a classic (non-arrow) function <code>sumArgs()</code> that accepts any number of numeric arguments and returns their sum, <b>without</b> using rest parameters and <b>without</b> copying <code>arguments</code> into a new array first. Borrow an array method instead.</p>`,
+    constraints: `0 ≤ number of arguments ≤ 10<sup>4</sup>; every argument is a finite number; return 0 for no arguments.`,
+    example: `<p><code>sumArgs(1, 2, 3)</code> → ${H.c('g', '6')}; <code>sumArgs()</code> → ${H.c('g', '0')}. <code>arguments.reduce</code> does not exist (${H.c('r', 'TypeError')}) because <code>arguments</code> is only array-<i>like</i>: it has <code>length</code> and indexes but not Array's methods.</p>`,
+    brute: { why: `<p>A manual index loop works but re-implements what <code>reduce</code> already does, and calling <code>arguments.reduce(...)</code> directly crashes. The point of the exercise is that <code>Array.prototype.reduce</code> only needs a <code>this</code> with <code>length</code> and indexes.</p>`,
+      code: `
+        function sumArgsLoop() {
+          let total = 0;
+          for (let i = 0; i < arguments.length; i++) total += arguments[i]; // works, but manual
+          return total;
+        }
+      ` },
+    mcq: { q: 'Which call lends Array\'s reduce to <code>arguments</code>?', options: ['<code>arguments.reduce(fn, 0)</code>', '<code>Array.prototype.reduce.call(arguments, fn, 0)</code>', '<code>Array.reduce(arguments)</code>', '<code>reduce.bind(arguments)</code>'], answer: 1, explain: '<code>call</code> runs reduce with <code>this = arguments</code>; reduce only needs length + indexes.' },
+    hints: [
+      `<p>Hint 1: Built-in array methods are generic: they read <code>this.length</code> and <code>this[i]</code>, nothing more.</p>`,
+      `<p>Hint 2: Use explicit binding to choose reduce's this: <code>Array.prototype.reduce.call(arguments, callback, initial)</code>.</p>`,
+      `<p>Hint 3: Always pass the initial value <code>0</code>, otherwise reduce throws on zero arguments ("Reduce of empty array with no initial value").</p>`
+    ],
+    solution: {
+      approach: `<p>Borrow <code>Array.prototype.reduce</code> with <code>call</code>, setting <code>this</code> to the array-like <code>arguments</code> object, and give an initial value of 0 for the empty case.</p>`,
+      code: { lang: 'js', run: true, code: `
+        function sumArgs() {
+          // reduce reads this.length and this[i]; arguments has both
+          return Array.prototype.reduce.call(arguments, (acc, x) => acc + x, 0);
+        }
+        console.log(sumArgs(1, 2, 3));   // 6
+        console.log(sumArgs());          // 0
+        console.log(sumArgs(10, -4));    // 6
+      ` },
+      dry: { head: ['call', 'this inside reduce', 'acc steps', 'result'], rows: [['sumArgs(1,2,3)', 'arguments {0:1,1:2,2:3,length:3}', '0 → 1 → 3 → 6', '6'], ['sumArgs()', 'arguments {length:0}', '0', '0']] },
+      complexity: `<p>O(n) time, O(1) extra space.</p>`,
+      followUps: ['Rewrite with rest parameters; why is that preferred today?', 'Borrow <code>Array.prototype.join</code> to join a NodeList-like object.']
+    }
+  });
+
+  practice.push({
+    title: 'Max of an Array via apply (and Its Limits)',
+    level: 'Easy', tags: ['apply', 'spread', 'edge cases'], companies: ['Amazon', 'Zoho'],
+    statement: `<p>Write <code>maxOf(nums)</code> returning the largest number of an array using <code>Math.max</code> with <code>apply</code>. Return <code>undefined</code> for an empty array (not <code>-Infinity</code>). Because engines cap how many arguments one call may receive, process very large arrays in <b>chunks</b> of at most 10,000 elements.</p>`,
+    constraints: `0 ≤ nums.length ≤ 10<sup>6</sup>; values are finite numbers.`,
+    example: `<p><code>maxOf([3, 9, 2])</code> → ${H.c('g', '9')}. <code>maxOf([])</code> → ${H.c('g', 'undefined')} (plain <code>Math.max.apply(null, [])</code> gives ${H.c('r', '-Infinity')}). A 1,000,000-element array passed in one apply call may throw ${H.c('r', 'RangeError')}.</p>`,
+    brute: { why: `<p>One <code>Math.max.apply(null, nums)</code> call is short but has two bugs: <code>-Infinity</code> for an empty array, and a possible <code>RangeError: Maximum call stack size exceeded</code> for huge arrays, because every element becomes a separate argument on the stack.</p>`,
+      code: `
+        function maxOfNaive(nums) {
+          return Math.max.apply(null, nums);   // -Infinity for [], may throw for huge arrays
+        }
+      ` },
+    mcq: { q: 'Why is <code>null</code> a fine thisArg for <code>Math.max.apply</code>?', options: ['Math.max does not use this at all', 'null becomes Math automatically', 'apply ignores its first argument', 'It makes max faster'], answer: 0, explain: '<code>Math.max</code> never reads <code>this</code>, so any thisArg works; <code>null</code> documents that.' },
+    hints: [
+      `<p>Hint 1: <code>apply</code>'s second argument is the array of arguments; the first (this) does not matter for Math.max.</p>`,
+      `<p>Hint 2: Handle the empty case first. Then loop over the array in slices of 10,000 and keep the running max.</p>`,
+      `<p>Hint 3: Recipe: if empty → undefined; best = -Infinity; for i in steps of CHUNK: best = Math.max(best, Math.max.apply(null, nums.slice(i, i + CHUNK))); return best.</p>`
+    ],
+    solution: {
+      approach: `<p>Guard the empty array, then apply <code>Math.max</code> to bounded chunks so no single call receives too many arguments.</p>`,
+      code: { lang: 'js', run: true, code: `
+        function maxOf(nums, CHUNK = 10000) {
+          if (nums.length === 0) return undefined;
+          let best = -Infinity;
+          for (let i = 0; i < nums.length; i += CHUNK) {
+            // apply spreads at most CHUNK values as arguments
+            best = Math.max(best, Math.max.apply(null, nums.slice(i, i + CHUNK)));
+          }
+          return best;
+        }
+        console.log(maxOf([3, 9, 2]));                    // 9
+        console.log(maxOf([]));                           // undefined
+        const big = Array.from({ length: 1000000 }, (_, i) => (i * 7919) % 1000003);
+        console.log(maxOf(big));                          // 1000002
+      ` },
+      dry: { head: ['chunk', 'slice', 'apply result', 'best'], rows: [['-', '-', '-', '-Infinity'], ['0', '[3, 9, 2]', '9', '9']] },
+      complexity: `<p>O(n) time; O(CHUNK) extra space per slice.</p>`,
+      followUps: ['Compare with <code>Math.max(...nums)</code> and with a plain loop.', 'Return the index of the max as well.']
+    }
+  });
+
+  practice.push({
+    title: 'Reliable Type Detector with toString.call',
+    level: 'Easy', tags: ['call', 'method borrowing', 'types'], companies: ['Flipkart', 'Oracle'],
+    statement: `<p>Write <code>typeOf(value)</code> that returns a lowercase type name that is more precise than <code>typeof</code>: <code>"array"</code>, <code>"null"</code>, <code>"date"</code>, <code>"regexp"</code>, <code>"map"</code>, <code>"set"</code>, <code>"number"</code>, <code>"string"</code>, <code>"undefined"</code>, <code>"function"</code>, <code>"object"</code> and so on. Use <code>Object.prototype.toString</code> with explicit binding.</p>`,
+    constraints: `Any JavaScript value; no instanceof chains.`,
+    example: `<p><code>typeof []</code> is ${H.c('r', '"object"')} and <code>typeof null</code> is ${H.c('r', '"object"')}. <code>Object.prototype.toString.call([])</code> is ${H.c('g', '"[object Array]"')}, so <code>typeOf([])</code> → <code>"array"</code>, <code>typeOf(null)</code> → <code>"null"</code>.</p>`,
+    brute: { why: `<p>Chaining <code>typeof</code>, <code>Array.isArray</code>, <code>instanceof Date</code>, <code>=== null</code>... grows forever and <code>instanceof</code> fails across iframes/realms. Calling <code>value.toString()</code> directly is worse: arrays print their items and <code>null.toString()</code> throws.</p>`,
+      code: `
+        function typeOfNaive(v) {
+          if (v === null) return 'null';
+          if (Array.isArray(v)) return 'array';
+          if (v instanceof Date) return 'date';     // breaks across realms
+          return typeof v;                           // regexp, map, set all become "object"
+        }
+      ` },
+    mcq: { q: 'Why not just call <code>value.toString()</code>?', options: ['It is slower', 'Many types override toString (arrays join items) and null/undefined have no methods', 'toString is deprecated', 'It returns a number'], answer: 1, explain: 'Borrowing <code>Object.prototype.toString</code> with <code>call</code> avoids every override and works on null/undefined.' },
+    hints: [
+      `<p>Hint 1: <code>Object.prototype.toString</code> reads an internal tag of its <code>this</code> value and returns <code>"[object Tag]"</code>.</p>`,
+      `<p>Hint 2: Lend it to any value with <code>Object.prototype.toString.call(value)</code>, even <code>null</code> and <code>undefined</code>.</p>`,
+      `<p>Hint 3: Slice off <code>"[object "</code> (8 chars) and the final <code>"]"</code>, then lowercase.</p>`
+    ],
+    solution: {
+      approach: `<p>Borrow the base <code>toString</code> through <code>call</code> so overrides are bypassed, then extract and lowercase the tag.</p>`,
+      code: { lang: 'js', run: true, code: `
+        const typeOf = (value) =>
+          Object.prototype.toString.call(value).slice(8, -1).toLowerCase();
+
+        const samples = [[], null, undefined, new Date(0), /re/, new Map(), new Set(), 42, 'hi', () => 1, {}, Promise.resolve()];
+        console.log(samples.map(typeOf).join(' '));
+        // array null undefined date regexp map set number string function object promise
+      ` },
+      dry: { head: ['value', 'toString.call', 'typeOf'], rows: [['[]', '[object Array]', 'array'], ['null', '[object Null]', 'null'], ['/re/', '[object RegExp]', 'regexp']] },
+      complexity: `<p>O(1) per call: one internal tag lookup plus a short string slice.</p>`,
+      followUps: ['How can <code>Symbol.toStringTag</code> change the result for your own classes?', 'Why does this work across iframes when instanceof does not?']
+    }
+  });
+
+  practice.push({
+    title: 'bindMethod: a Late-Binding Method Getter',
+    level: 'Easy', tags: ['this', 'callbacks', 'closures'], companies: ['Swiggy', 'Twilio'],
+    statement: `<p>Write <code>bindMethod(obj, name)</code> that returns a function you can pass anywhere as a callback. When called, it must invoke <code>obj[name]</code> with <code>this = obj</code>, forward all arguments and return the result. It must look the method up <b>at call time</b> (so replacing <code>obj[name]</code> later, as tests and hot-reload do, is respected).</p>`,
+    constraints: `obj is an object; obj[name] is a function at call time; any number of arguments.`,
+    example: `<p><code>const inc = bindMethod(counter, 'add'); [1,2,3].forEach(inc)</code> → counter.total = ${H.c('g', '6')}. If afterwards <code>counter.add = function (x) { this.total += 10 * x; }</code>, then <code>inc(1)</code> adds ${H.c('g', '10')}, because the lookup is late. Passing <code>counter.add</code> directly would ${H.c('r', 'lose this')}.</p>`,
+    brute: { why: `<p>Returning <code>obj[name]</code> itself hands out a detached function: whoever calls it decides <code>this</code>. Returning <code>obj[name].bind(obj)</code> fixes this but freezes the method chosen <b>now</b>; later replacements are ignored.</p>`,
+      code: `
+        function bindMethodNaive(obj, name) {
+          return obj[name];          // detached: this is lost when called as a callback
+        }
+      ` },
+    mcq: { q: 'What is the difference between <code>obj[name].bind(obj)</code> and <code>(...a) =&gt; obj[name](...a)</code>?', options: ['None', 'bind captures the current function; the arrow looks it up every call', 'The arrow loses this', 'bind forwards no arguments'], answer: 1, explain: 'bind wraps the function object that exists right now. The arrow re-reads <code>obj[name]</code> on every call and calls it with a dot, so this = obj.' },
+    hints: [
+      `<p>Hint 1: Implicit binding needs the call to be written as <code>obj[name](...)</code> at call time.</p>`,
+      `<p>Hint 2: Return a wrapper that does exactly that: <code>(...args) =&gt; obj[name](...args)</code>.</p>`,
+      `<p>Hint 3: An arrow is fine as the wrapper because the wrapper itself never uses <code>this</code>; the inner call has the dot.</p>`
+    ],
+    solution: {
+      approach: `<p>Return a tiny arrow wrapper that performs a real method call through <code>obj</code> each time. Implicit binding gives the right this; the late lookup respects replacements.</p>`,
+      code: { lang: 'js', run: true, code: `
+        function bindMethod(obj, name) {
+          return (...args) => obj[name](...args);   // dot-call at call time: this = obj
+        }
+        const counter = { total: 0, add(x) { this.total += x; return this.total; } };
+        const inc = bindMethod(counter, 'add');
+        [1, 2, 3].forEach((x) => inc(x));
+        console.log(counter.total);                 // 6
+        counter.add = function (x) { this.total += 10 * x; return this.total; }; // replaced later
+        console.log(inc(1));                        // 16 (late lookup used the new method)
+      ` },
+      dry: { head: ['call', 'lookup', 'this', 'total'], rows: [['inc(1)', 'old add', 'counter', '1'], ['inc(2)', 'old add', 'counter', '3'], ['inc(3)', 'old add', 'counter', '6'], ['inc(1) after replace', 'new add', 'counter', '16']] },
+      complexity: `<p>O(1) per call plus the method's own work.</p>`,
+      followUps: ['When would you prefer early binding (bind) instead?', 'Make the wrapper throw a clear error if obj[name] is not a function.']
+    }
+  });
+
+  /* =====================================================================
+     PRACTICE: Medium
+     ===================================================================== */
+  practice.push({
+    title: 'Implement Function.prototype.myApply',
+    level: 'Medium', tags: ['apply', 'polyfill', 'Symbol'], companies: ['Google', 'Uber', 'Meesho'],
+    statement: `<p>Implement <code>Function.prototype.myApply(thisArg, argsArray)</code> without using native call/apply/bind/Reflect. It calls the function immediately with <code>this = thisArg</code> (sloppy rules: null/undefined → globalThis, primitives boxed) and spreads <code>argsArray</code>, which may be <code>undefined</code>/<code>null</code> (no arguments) or any <b>array-like</b> object. Throw a <code>TypeError</code> if argsArray is a non-null primitive.</p>`,
+    constraints: `argsArray length ≤ 10<sup>4</sup>; the context may already have arbitrary keys.`,
+    example: `<p><code>function f(a, b) { return this.x + a + b; }</code> <code>f.myApply({ x: 1 }, [2, 3])</code> → ${H.c('g', '6')}. <code>f.myApply({ x: 1 }, { length: 2, 0: 2, 1: 3 })</code> → ${H.c('g', '6')} (array-like). <code>f.myApply(o, 5)</code> → ${H.c('r', 'TypeError')}.</p>`,
+    brute: { why: `<p>Using a fixed key like <code>ctx.fn</code> clobbers user data, and spreading <code>...argsArray</code> directly crashes on <code>undefined</code> and on plain array-like objects (they are not iterable).</p>`,
+      code: `
+        Function.prototype.myApplyNaive = function (ctx, arr) {
+          ctx.fn = this;
+          const r = ctx.fn(...arr);    // crashes when arr is undefined or array-like
+          delete ctx.fn;
+          return r;
+        };
+      ` },
+    mcq: { q: 'How do you safely turn an array-like <code>{ length: 2, 0: "a", 1: "b" }</code> into arguments?', options: ['<code>...obj</code>', '<code>Array.from(obj)</code> then spread', '<code>obj.toArray()</code>', '<code>JSON.parse(obj)</code>'], answer: 1, explain: 'Plain array-likes are not iterable, so spread fails; <code>Array.from</code> reads length and indexes.' },
+    hints: [
+      `<p>Hint 1: Reuse the temporary Symbol-key trick from myCall.</p>`,
+      `<p>Hint 2: Normalise the args: <code>argsArray == null ? [] : Array.from(argsArray)</code>, but first reject non-object primitives.</p>`,
+      `<p>Hint 3: Clean up the key in <code>finally</code>. Recipe: validate → ctx normalise → args normalise → attach → call → delete.</p>`
+    ],
+    solution: {
+      approach: `<p>Same shape as myCall: normalise context and arguments, attach under a unique Symbol, call through the context (implicit binding), and always clean up.</p>`,
+      code: { lang: 'js', run: true, code: `
+        Function.prototype.myApply = function (ctx, argsArray) {
+          if (typeof this !== 'function') throw new TypeError('myApply must be called on a function');
+          if (argsArray != null && typeof argsArray !== 'object' && typeof argsArray !== 'function') {
+            throw new TypeError('CreateListFromArrayLike called on non-object');
+          }
+          const args = argsArray == null ? [] : Array.from(argsArray);   // supports array-likes
+          ctx = ctx == null ? globalThis : Object(ctx);
+          const key = Symbol('myApply');
+          ctx[key] = this;
+          try { return ctx[key](...args); } finally { delete ctx[key]; }
+        };
+
+        function f(a, b) { return this.x + a + b; }
+        console.log(f.myApply({ x: 1 }, [2, 3]));                         // 6
+        console.log(f.myApply({ x: 1 }, { length: 2, 0: 2, 1: 3 }));      // 6
+        console.log(Math.max.myApply(null, [4, 8, 1]));                   // 8
+        try { f.myApply({}, 5); } catch (e) { console.log(e.constructor.name); } // TypeError
+      ` },
+      dry: { head: ['step', 'value'], rows: [['args', '[2, 3]'], ['ctx', '{ x: 1 }'], ['call', 'ctx[sym](2, 3) → this.x + 2 + 3 = 6'], ['cleanup', 'ctx keys: x']] },
+      complexity: `<p>O(n) for copying n arguments.</p>`,
+      followUps: ['Write myApply in one line on top of a working myCall.', 'Why does native apply accept array-likes but spread does not?']
+    }
+  });
+
+  practice.push({
+    title: 'once(fn) That Keeps this and Arguments',
+    level: 'Medium', tags: ['higher-order functions', 'apply', 'closures'], companies: ['Microsoft', 'Atlassian', 'Cred'],
+    statement: `<p>Write <code>once(fn)</code> returning a function that runs <code>fn</code> only on its <b>first</b> call and returns that first result on every later call. Crucially, the first run must receive the wrapper's <code>this</code> and arguments, so <code>once</code> can wrap <b>methods</b>: <code>obj.init = once(obj.init); obj.init()</code>.</p>`,
+    constraints: `fn may use this; later calls must not re-run fn even if the first result was undefined.`,
+    example: `<p><code>const db = { conns: 0, connect: once(function () { this.conns++; return 'connected#' + this.conns; }) };</code> <code>db.connect(); db.connect()</code> → both ${H.c('g', '"connected#1"')}, <code>db.conns === 1</code>. A version that calls <code>fn()</code> bare would crash with ${H.c('r', 'this undefined')}.</p>`,
+    brute: { why: `<p>An arrow wrapper calling <code>fn(...args)</code> forwards arguments but calls fn <b>bare</b>, so methods lose <code>this</code>. Also, using <code>result === undefined</code> as the "already ran" check re-runs functions whose result is undefined.</p>`,
+      code: `
+        function onceNaive(fn) {
+          let result;
+          return (...args) => {
+            if (result === undefined) result = fn(...args); // bare call loses this; re-runs on undefined
+            return result;
+          };
+        }
+      ` },
+    mcq: { q: 'Why must the wrapper returned by <code>once</code> be a normal <code>function</code>, not an arrow?', options: ['Arrows cannot return values', 'The wrapper needs its own dynamic this (the receiver of obj.method()) to pass on to fn', 'Arrows are slower', 'Arrows cannot use closures'], answer: 1, explain: 'When used as <code>obj.init()</code>, the wrapper\'s this is obj only if the wrapper is a normal function; then <code>fn.apply(this, args)</code> forwards it.' },
+    hints: [
+      `<p>Hint 1: The wrapper is what gets called as <code>obj.method()</code>, so the wrapper receives the receiver as its own <code>this</code>.</p>`,
+      `<p>Hint 2: Forward it with explicit binding: <code>fn.apply(this, args)</code>.</p>`,
+      `<p>Hint 3: Track a separate boolean <code>called</code>; optionally drop the fn reference after the first call so it can be garbage-collected.</p>`
+    ],
+    solution: {
+      approach: `<p>Return a normal function so it picks up the call-site's this, use a boolean flag, and forward this + args with <code>apply</code>. Release <code>fn</code> afterwards to free memory.</p>`,
+      code: { lang: 'js', run: true, code: `
+        function once(fn) {
+          let called = false, result;
+          return function (...args) {          // normal function: gets the receiver as this
+            if (!called) {
+              called = true;
+              result = fn.apply(this, args);   // forward this + args
+              fn = null;                       // let fn be garbage-collected
+            }
+            return result;
+          };
+        }
+        const db = {
+          conns: 0,
+          connect: once(function (url) { this.conns++; return 'connected#' + this.conns + ' to ' + url; })
+        };
+        console.log(db.connect('pg://a'));   // connected#1 to pg://a
+        console.log(db.connect('pg://b'));   // connected#1 to pg://a (cached)
+        console.log(db.conns);               // 1
+        const sayOnce = once(() => undefined);
+        let runs = 0; const counted = once(() => { runs++; });
+        counted(); counted();
+        console.log('runs =', runs, sayOnce());   // runs = 1 undefined
+      ` },
+      dry: { head: ['call', 'called before?', 'this', 'returns'], rows: [['db.connect("pg://a")', 'no', 'db', 'connected#1 to pg://a'], ['db.connect("pg://b")', 'yes', 'db (unused)', 'cached result']] },
+      complexity: `<p>O(1) per call after the first.</p>`,
+      followUps: ['Make the wrapper reset-able (<code>wrapped.reset()</code>).', 'Should once be per instance when placed on a prototype? Use a WeakMap keyed by this.']
+    }
+  });
+
+  practice.push({
+    title: 'debounce That Preserves this and the Latest Arguments',
+    level: 'Medium', tags: ['debounce', 'timers', 'apply'], companies: ['Google', 'Flipkart', 'Atlassian', 'Uber'],
+    statement: `<p>Implement <code>debounce(fn, wait)</code>. The returned function delays calling <code>fn</code> until <code>wait</code> ms have passed since the <b>last</b> call. When <code>fn</code> finally runs it must receive the <code>this</code> and arguments of that <b>last</b> call, so it works as a method: <code>search.onType = debounce(search.onType, 300)</code>. Add <code>.cancel()</code>.</p>`,
+    constraints: `0 ≤ wait ≤ 10<sup>4</sup> ms; calls may come from different receivers (use the last one).`,
+    example: `<p>Calls at t = 0, 5, 10 ms with "a", "ab", "abc" and wait = 20 → one run at ≈ t = 30 with ${H.c('g', '"abc"')} and <code>this</code> = the search box. Passing <code>fn</code> straight to <code>setTimeout</code> would run it with ${H.c('r', 'the timer\'s this and no arguments')}.</p>`,
+    brute: { why: `<p>The common broken version does <code>setTimeout(fn, wait)</code>: no arguments are passed and fn is called by the timer, so <code>this</code> is window / a Timeout object. Using an arrow as the returned wrapper is also wrong: the wrapper itself would not see the call-site receiver.</p>`,
+      code: `
+        function debounceNaive(fn, wait) {
+          let t;
+          return () => {
+            clearTimeout(t);
+            t = setTimeout(fn, wait);   // no args, and fn's this is chosen by the timer
+          };
+        }
+      ` },
+    mcq: { q: 'Inside the debounced wrapper, why save <code>const ctx = this</code> (or use an arrow for the timer callback)?', options: ['Timers run faster with it', 'The timer callback runs later with its own this; we need the wrapper\'s this from the original call', 'clearTimeout requires it', 'It prevents memory leaks'], answer: 1, explain: 'The wrapper captures the receiver; the inner arrow (lexical this) or a saved variable carries it into the delayed call.' },
+    hints: [
+      `<p>Hint 1: The returned wrapper must be a normal function so <code>obj.method()</code> gives it this = obj.</p>`,
+      `<p>Hint 2: On each call: clear the old timer, remember the latest <code>this</code> and <code>args</code>, start a new timer.</p>`,
+      `<p>Hint 3: In the timer use an arrow: <code>setTimeout(() =&gt; fn.apply(lastThis, lastArgs), wait)</code>. cancel() = clearTimeout + forget saved values.</p>`
+    ],
+    solution: {
+      approach: `<p>Normal-function wrapper to capture the receiver, closure variables for the latest this/args, and an arrow inside setTimeout so the delayed call can use them with <code>apply</code>.</p>`,
+      code: { lang: 'js', run: true, code: `
+        function debounce(fn, wait) {
+          let timer = null, lastThis, lastArgs;
+          function debounced(...args) {
+            lastThis = this;                     // receiver of THIS call
+            lastArgs = args;
+            clearTimeout(timer);
+            timer = setTimeout(() => {           // arrow: no own this needed
+              timer = null;
+              fn.apply(lastThis, lastArgs);      // run with the latest this + args
+            }, wait);
+          }
+          debounced.cancel = () => { clearTimeout(timer); timer = null; lastThis = lastArgs = undefined; };
+          return debounced;
+        }
+
+        const searchBox = {
+          name: 'searchBox',
+          onType: debounce(function (q) { console.log(this.name, 'searches for', q); }, 20)
+        };
+        searchBox.onType('a');
+        setTimeout(() => searchBox.onType('ab'), 5);
+        setTimeout(() => searchBox.onType('abc'), 10);   // -> searchBox searches for abc (once)
+        const noisy = debounce(() => console.log('should not print'), 10);
+        noisy(); noisy.cancel();
+      ` },
+      dry: { head: ['t (ms)', 'event', 'pending timer', 'lastArgs'], rows: [['0', 'onType("a")', 'fires at 20', '["a"]'], ['5', 'onType("ab")', 'reset → 25', '["ab"]'], ['10', 'onType("abc")', 'reset → 30', '["abc"]'], ['30', 'timer fires', 'none', '<span class="c-g">fn.apply(searchBox, ["abc"])</span>']] },
+      complexity: `<p>O(1) per call; one timer at a time.</p>`,
+      followUps: ['Add a <code>leading</code> option (fire on the first call).', 'Write throttle with the same this-preservation.', 'Add <code>flush()</code> to run the pending call immediately.']
+    }
+  });
+
+  practice.push({
+    title: 'Chainable Calculator with return this',
+    level: 'Medium', tags: ['method chaining', 'implicit binding', 'fluent API'], companies: ['Adobe', 'Intuit'],
+    statement: `<p>Build <code>calc(start)</code> returning an object with chainable methods <code>add(n)</code>, <code>sub(n)</code>, <code>mul(n)</code>, <code>div(n)</code> and <code>undo()</code>, plus a terminal <code>value()</code>. Example: <code>calc(5).add(3).mul(2).undo().sub(1).value()</code>. Division by zero must throw a <code>RangeError</code>.</p>`,
+    constraints: `Up to 10<sup>4</sup> chained operations; undo with no history leaves the value unchanged.`,
+    example: `<p>5 → add 3 = 8 → mul 2 = 16 → undo = 8 → sub 1 = ${H.c('g', '7')}. Each method must <b>return this</b> so the next <code>.method()</code> is called on the same object (implicit binding again). Returning the number would end the chain with ${H.c('r', 'TypeError: ... .mul is not a function')}.</p>`,
+    brute: { why: `<p>Methods that return the new number make the next call <code>(8).mul(2)</code>, which fails. Rebuilding a brand-new object per step works but allocates a lot and loses the shared undo history.</p>`,
+      code: `
+        function calcNaive(start) {
+          return {
+            v: start,
+            add(n) { this.v += n; return this.v; },   // returns a number: chain breaks here
+            mul(n) { this.v *= n; return this.v; }
+          };
+        }
+      ` },
+    mcq: { q: 'In <code>calc(5).add(3).mul(2)</code>, what is <code>this</code> inside <code>mul</code>?', options: ['The number 8', 'globalThis', 'The same calculator object returned by add', 'A copy of the calculator'], answer: 2, explain: 'add returns <code>this</code>; <code>.mul</code> is then called on that object, so implicit binding makes this the same calculator.' },
+    hints: [
+      `<p>Hint 1: Every non-terminal method ends with <code>return this</code>.</p>`,
+      `<p>Hint 2: Keep a <code>history</code> stack of previous values; push before each change, pop on undo.</p>`,
+      `<p>Hint 3: Use a class so methods live on the prototype (one copy shared by all calculators); check <code>n === 0</code> in div before changing state.</p>`
+    ],
+    solution: {
+      approach: `<p>A small class whose mutating methods record history and return <code>this</code>. Chaining is just repeated implicit binding on the same receiver.</p>`,
+      code: { lang: 'js', run: true, code: `
+        class Calc {
+          #v; #history = [];
+          constructor(start = 0) { this.#v = start; }
+          #apply(next) { this.#history.push(this.#v); this.#v = next; return this; } // returns the receiver
+          add(n) { return this.#apply(this.#v + n); }
+          sub(n) { return this.#apply(this.#v - n); }
+          mul(n) { return this.#apply(this.#v * n); }
+          div(n) {
+            if (n === 0) throw new RangeError('Division by zero');
+            return this.#apply(this.#v / n);
+          }
+          undo() { if (this.#history.length) this.#v = this.#history.pop(); return this; }
+          value() { return this.#v; }
+        }
+        const calc = (start) => new Calc(start);
+
+        console.log(calc(5).add(3).mul(2).undo().sub(1).value());   // 7
+        console.log(calc(10).div(4).value());                       // 2.5
+        try { calc(1).div(0); } catch (e) { console.log(e.name + ': ' + e.message); }
+      ` },
+      dry: { head: ['call', 'returns', 'value', 'history'], rows: [['calc(5)', 'calc obj', '5', '[]'], ['.add(3)', 'this', '8', '[5]'], ['.mul(2)', 'this', '16', '[5, 8]'], ['.undo()', 'this', '8', '[5]'], ['.sub(1)', 'this', '7', '[5, 8]'], ['.value()', '7', '7', '-']] },
+      complexity: `<p>O(1) per operation; O(k) memory for k recorded steps.</p>`,
+      followUps: ['Make it immutable: each method returns a NEW calculator (like many query builders).', 'What happens if someone detaches <code>const { add } = calc(1)</code>?']
+    }
+  });
+
+  practice.push({
+    title: 'myBind Lite: Partial Application Without new',
+    level: 'Medium', tags: ['bind', 'polyfill', 'partial application'], companies: ['Amazon', 'Walmart', 'PhonePe'],
+    statement: `<p>Implement <code>Function.prototype.myBindLite(thisArg, ...preset)</code> returning a function that, when called, invokes the original with <code>this = thisArg</code> and arguments <code>preset</code> followed by the new ones. The returned function must <b>ignore</b> any other this it is called with (like native bind). You may use <code>apply</code>. (Support for <code>new</code> is the Hard version.)</p>`,
+    constraints: `Any number of preset and later arguments.`,
+    example: `<p><code>function vol(l, w, h) { return this.unit + (l * w * h); }</code> <code>const f = vol.myBindLite({ unit: 'cm3:' }, 2, 3)</code>; <code>f(4)</code> → ${H.c('g', '"cm3:24"')}; <code>f.call({ unit: 'm3:' }, 1)</code> → ${H.c('g', '"cm3:6"')} (thisArg ignored).</p>`,
+    brute: { why: `<p>Returning <code>() =&gt; fn(...preset)</code> drops the later arguments and calls <code>fn</code> bare, so <code>this</code> is lost; returning <code>() =&gt; fn.apply(thisArg, preset)</code> keeps this but still forgets new arguments.</p>`,
+      code: `
+        Function.prototype.myBindNaive = function (ctx, ...preset) {
+          const fn = this;
+          return () => fn(...preset);   // this lost, later args ignored
+        };
+      ` },
+    mcq: { q: 'Why save <code>const fn = this</code> before returning the new function?', options: ['Style only', 'Inside the returned function, this will be something else (or nothing), so we must capture the original function now', 'apply needs a const', 'To make it faster'], answer: 1, explain: 'In <code>myBindLite</code>, this is the function being bound. The returned function runs later with a different this, so capture it in a closure.' },
+    hints: [
+      `<p>Hint 1: In <code>fn.myBindLite(...)</code>, <code>this</code> is fn. Save it.</p>`,
+      `<p>Hint 2: Return a function that concatenates <code>preset</code> and its own arguments.</p>`,
+      `<p>Hint 3: Call with <code>fn.apply(thisArg, preset.concat(later))</code>; never use the returned function's own this.</p>`
+    ],
+    solution: {
+      approach: `<p>Capture the target function and the bound values in a closure; the returned function concatenates arguments and calls the target with the captured thisArg via <code>apply</code>.</p>`,
+      code: { lang: 'js', run: true, code: `
+        Function.prototype.myBindLite = function (thisArg, ...preset) {
+          const fn = this;                                   // the function being bound
+          if (typeof fn !== 'function') throw new TypeError('Bind must be called on a function');
+          return function (...later) {
+            return fn.apply(thisArg, preset.concat(later));  // ignore this wrapper's own this
+          };
+        };
+        function vol(l, w, h) { return this.unit + (l * w * h); }
+        const f = vol.myBindLite({ unit: 'cm3:' }, 2, 3);
+        console.log(f(4));                          // cm3:24
+        console.log(f.call({ unit: 'm3:' }, 1));    // cm3:6
+        const g = f.myBindLite(null, 5);            // binding a bound fn: inner this still wins
+        console.log(g());                           // cm3:30
+      ` },
+      dry: { head: ['call', 'preset', 'later', 'this used', 'result'], rows: [['f(4)', '[2, 3]', '[4]', '{unit:"cm3:"}', 'cm3:24'], ['f.call(m3, 1)', '[2, 3]', '[1]', '{unit:"cm3:"}', 'cm3:6'], ['g()', '[2,3] + [5]', '[]', '{unit:"cm3:"}', 'cm3:30']] },
+      complexity: `<p>O(p + q) per call for p preset and q later arguments.</p>`,
+      followUps: ['Set <code>name</code> to <code>"bound " + fn.name</code> and the correct <code>length</code>.', 'What goes wrong with <code>new f()</code> here?']
+    }
+  });
+
+  practice.push({
+    title: 'uncurryThis: Turn Methods into Plain Functions',
+    level: 'Medium', tags: ['call', 'bind', 'functional', 'security'], companies: ['Google', 'Vercel', 'Cloudflare'],
+    statement: `<p>Write <code>uncurryThis(method)</code> that converts a method (which reads <code>this</code>) into a plain function taking the receiver as its <b>first argument</b>: <code>const slice = uncurryThis(Array.prototype.slice); slice(arrayLike, 1)</code>. Then show the one-line version built only from <code>Function.prototype.call</code> and <code>bind</code>, the idiom Node.js core uses to protect itself from monkey-patched prototypes.</p>`,
+    constraints: `method is a function; works for any receiver type the method accepts.`,
+    example: `<p><code>const toUpper = uncurryThis(String.prototype.toUpperCase); toUpper('hi')</code> → ${H.c('g', '"HI"')}. <code>const hasOwn = uncurryThis(Object.prototype.hasOwnProperty); hasOwn({ a: 1 }, 'a')</code> → ${H.c('g', 'true')}.</p>`,
+    brute: { why: `<p>Calling <code>arrayLike.slice(1)</code> directly fails because array-likes do not have the method, and writing <code>Array.prototype.slice.call(x, 1)</code> everywhere is noisy and still breaks if someone overwrites <code>Function.prototype.call</code> later.</p>`,
+      code: `
+        // works but noisy, and depends on .call not being patched at call time
+        function sliceEach(arrayLikes) {
+          return arrayLikes.map((x) => Array.prototype.slice.call(x, 1));
+        }
+      ` },
+    mcq: { q: 'What does <code>Function.prototype.call.bind(fn)</code> produce?', options: ['A copy of fn', 'A function g where g(self, ...args) runs fn.call(self, ...args)', 'An error: you cannot bind call', 'A bound fn with this = call'], answer: 1, explain: 'Binding <code>call</code>\'s own this to fn means calling the result runs <code>fn.call(firstArg, ...rest)</code>.' },
+    hints: [
+      `<p>Hint 1: You need a function whose first parameter becomes the method's this: <code>(self, ...args) =&gt; method.apply(self, args)</code>.</p>`,
+      `<p>Hint 2: <code>call</code> is itself a function that uses <i>its</i> this as the function to run. So <code>call.bind(method)</code> fixes "which function", and the first argument becomes the receiver.</p>`,
+      `<p>Hint 3: Capture <code>call</code> once at module load (<code>const { call } = Function.prototype</code>) so later patches cannot affect you.</p>`
+    ],
+    solution: {
+      approach: `<p>Two equivalent forms: an explicit wrapper with <code>Reflect.apply</code>, and the classic <code>call.bind(method)</code>. Both move the receiver from the left of the dot into the first argument.</p>`,
+      code: { lang: 'js', run: true, code: `
+        const { call } = Function.prototype;          // captured early, safe from later patches
+        const uncurryThis = (method) => call.bind(method);   // g(self, ...a) === method.call(self, ...a)
+        const uncurryThisExplicit = (method) => (self, ...args) => Reflect.apply(method, self, args);
+
+        const slice = uncurryThis(Array.prototype.slice);
+        const toUpper = uncurryThis(String.prototype.toUpperCase);
+        const hasOwn = uncurryThisExplicit(Object.prototype.hasOwnProperty);
+
+        console.log(slice({ length: 3, 0: 'a', 1: 'b', 2: 'c' }, 1).join(','));  // b,c
+        console.log(toUpper('hi'));                                            // HI
+        console.log(hasOwn({ a: 1 }, 'a'), hasOwn(Object.create({ a: 1 }), 'a')); // true false
+      ` },
+      dry: { head: ['expression', 'becomes', 'result'], rows: [['slice(obj, 1)', 'Array.prototype.slice.call(obj, 1)', '["b","c"]'], ['toUpper("hi")', 'String.prototype.toUpperCase.call("hi")', '"HI"']] },
+      complexity: `<p>O(1) wrapper overhead per call.</p>`,
+      followUps: ['Why is <code>Object.hasOwn</code> now preferred over the hasOwn wrapper?', 'Write the inverse: <code>curryThis(fn)</code> turning <code>fn(self, x)</code> into a method.']
+    }
+  });
+
+  /* =====================================================================
+     PRACTICE: Hard
+     ===================================================================== */
+  practice.push({
+    title: 'Full Function.prototype.myBind (with new Support)',
+    level: 'Hard', tags: ['bind', 'new', 'polyfill', 'Reflect'], companies: ['Google', 'Meta', 'Amazon', 'Microsoft'],
+    statement: `<p>Implement <code>Function.prototype.myBind(thisArg, ...preset)</code> matching native <code>bind</code> as closely as practical:</p><ul><li>normal calls use <code>thisArg</code> and <code>preset ++ later</code> arguments; other this values are ignored;</li><li><code>new bound(...)</code> <b>ignores thisArg</b>, constructs the target with all arguments, and the result is <code>instanceof</code> both the target and the bound function; it must also work when the target is an ES <code>class</code>;</li><li><code>bound.name === "bound " + target.name</code> and <code>bound.length === max(0, target.length - preset.length)</code>.</li></ul>`,
+    constraints: `Do not use native bind. You may use apply, Reflect.construct and Object.defineProperty.`,
+    example: `<p><code>function Point(x, y) { this.x = x; this.y = y; }</code> <code>const P = Point.myBind({ ignored: true }, 1)</code>; <code>new P(2)</code> → ${H.c('g', 'Point { x: 1, y: 2 }')}, <code>instanceof Point</code> ${H.c('g', 'true')}, the object <code>{ ignored: true }</code> is ${H.c('g', 'untouched')}. A polyfill that always uses <code>apply(thisArg)</code> would write x, y onto ${H.c('r', '{ ignored: true }')} and return undefined.</p>`,
+    brute: { why: `<p>The lite version handles normal calls but breaks every <code>new</code> rule: <code>new bound()</code> writes onto thisArg (bind would win over new, which is wrong), the result is not <code>instanceof</code> the target, and class targets throw because class constructors cannot be applied.</p>`,
+      code: `
+        Function.prototype.myBindBroken = function (ctx, ...preset) {
+          const fn = this;
+          return function (...later) {
+            return fn.apply(ctx, preset.concat(later));   // also used for "new": wrong!
+          };
+        };
+      ` },
+    mcq: { q: 'Inside the bound wrapper, how can you tell that it was invoked with <code>new</code>?', options: ['<code>this === undefined</code>', '<code>new.target</code> is defined', '<code>arguments.length === 0</code>', 'You cannot'], answer: 1, explain: '<code>new.target</code> is undefined for normal calls and refers to the constructor for <code>new</code> calls. (The legacy check is <code>this instanceof bound</code>.)' },
+    hints: [
+      `<p>Hint 1: Split the wrapper into two paths using <code>new.target</code>: normal call → <code>target.apply(thisArg, args)</code>; construct call → ignore thisArg.</p>`,
+      `<p>Hint 2: For the construct path use <code>Reflect.construct(target, args, newTarget)</code>; native bind replaces a newTarget equal to the bound function with the target itself, so the prototype is <code>target.prototype</code>. This also makes class targets work.</p>`,
+      `<p>Hint 3: For <code>instanceof bound</code>, define <code>bound[Symbol.hasInstance] = (x) =&gt; x instanceof target</code>. Fix <code>name</code> and <code>length</code> with <code>Object.defineProperty</code> (they are non-writable but configurable).</p>`
+    ],
+    solution: {
+      approach: `<p>Use <code>new.target</code> to branch. Normal calls apply the stored thisArg; construct calls delegate to <code>Reflect.construct</code> with the target (or a subclass newTarget), which honours the "new beats bind" rule and supports classes. Then patch <code>name</code>, <code>length</code> and <code>Symbol.hasInstance</code> to mirror native bound functions.</p>`,
+      code: { lang: 'js', run: true, code: `
+        Function.prototype.myBind = function (thisArg, ...preset) {
+          const target = this;
+          if (typeof target !== 'function') throw new TypeError('Bind must be called on a function');
+          function bound(...later) {
+            const args = preset.concat(later);
+            if (new.target) {
+              // new beats bind: ignore thisArg; native uses target when newTarget is the bound fn itself
+              const nt = new.target === bound ? target : new.target;
+              return Reflect.construct(target, args, nt);
+            }
+            return target.apply(thisArg, args);       // normal call: locked this
+          }
+          Object.defineProperty(bound, 'name', { value: 'bound ' + target.name });
+          Object.defineProperty(bound, 'length', { value: Math.max(0, target.length - preset.length) });
+          Object.defineProperty(bound, Symbol.hasInstance, { value: (obj) => obj instanceof target });
+          return bound;
+        };
+
+        function Point(x, y) { this.x = x; this.y = y; }
+        const ignored = { ignored: true };
+        const P = Point.myBind(ignored, 1);
+        const p = new P(2);
+        console.log(JSON.stringify(p), p instanceof Point, p instanceof P);  // {"x":1,"y":2} true true
+        console.log(JSON.stringify(ignored));                                // {"ignored":true}
+        console.log(P.name, P.length);                                       // bound Point 1
+
+        function who(greet) { return greet + ' ' + this.n; }
+        const w = who.myBind({ n: 'Ana' }, 'Hi');
+        console.log(w(), w.call({ n: 'Ben' }));                              // Hi Ana Hi Ana
+
+        class Animal { constructor(kind, name) { this.kind = kind; this.name = name; } }
+        const Dog = Animal.myBind(null, 'dog');
+        const d = new Dog('Rex');
+        console.log(d.kind, d.name, d instanceof Animal);                    // dog Rex true
+      ` },
+      dry: { head: ['call', 'new.target', 'path', 'this used', 'result'], rows: [['w()', 'undefined', 'apply', '{n:"Ana"}', 'Hi Ana'], ['w.call(ben)', 'undefined', 'apply', '{n:"Ana"} (ben ignored)', 'Hi Ana'], ['new P(2)', 'P', 'Reflect.construct(Point, [1,2], Point)', 'fresh object', '{x:1, y:2}'], ['new Dog("Rex")', 'Dog', 'Reflect.construct(Animal, ["dog","Rex"], Animal)', 'fresh instance', 'Animal {dog, Rex}']] },
+      complexity: `<p>O(p + q) per call to concatenate arguments; O(1) setup.</p>`,
+      followUps: ['Native bound functions are not constructible when the target is an arrow. How would you mirror that exactly?', 'Write the ES5 version (no new.target, no Reflect) using <code>this instanceof bound</code> and a prototype bridge.', 'Why does native bound have no <code>prototype</code> property, and does yours?']
+    }
+  });
+
+  practice.push({
+    title: 'softBind: a Default this That Can Still Be Overridden',
+    level: 'Hard', tags: ['this', 'bind', 'call-site', 'design'], companies: ['Atlassian', 'Salesforce'],
+    statement: `<p>Hard binding (<code>bind</code>) is too strict for some libraries: they want a <b>fallback</b> this when a function is called bare, but still allow implicit (<code>obj.fn()</code>) and explicit (<code>fn.call(x)</code>) binding to win. Implement <code>Function.prototype.softBind(fallback, ...preset)</code>: if the incoming this is <code>undefined</code>, <code>null</code> or the global object, use <code>fallback</code>; otherwise use the incoming this. Preset arguments work like bind.</p>`,
+    constraints: `Works in strict and sloppy callers; the wrapper must be a normal function.`,
+    example: `<p><code>function who() { return this.id; }</code> <code>const f = who.softBind({ id: 'fallback' })</code>:</p>${H.table(['Call', 'bind would give', 'softBind gives'], [['f()', 'fallback', H.c('g', 'fallback')], ['({ id: "obj", f }).f()', H.c('r', 'fallback')], ['f.call({ id: "x" })', H.c('r', 'fallback')]])}<p>The last two rows: softBind gives <b>obj</b> and <b>x</b>.</p>`,
+    brute: { why: `<p>Plain <code>bind</code> solves the bare-call case but blocks every override, so the same function cannot be reused as a method on other objects. Wrapping with <code>() =&gt; fn.call(fallback)</code> has the same problem: an arrow throws away the incoming this.</p>`,
+      code: `
+        Function.prototype.softBindNaive = function (fallback) {
+          const fn = this;
+          return fn.bind(fallback);   // too strong: obj.f() and f.call(x) can never override it
+        };
+      ` },
+    mcq: { q: 'Why must the softBind wrapper be a normal function rather than an arrow?', options: ['Arrows cannot call apply', 'It needs to read the incoming dynamic this to decide whether to use the fallback', 'Arrows are not allowed on prototypes', 'Arrows cannot take rest parameters'], answer: 1, explain: 'The decision depends on the call-site\'s this; only a normal function receives it.' },
+    hints: [
+      `<p>Hint 1: Inside a normal-function wrapper, <code>this</code> tells you how the wrapper was called: bare (undefined / globalThis) or through an object / call.</p>`,
+      `<p>Hint 2: <code>const useFallback = this == null || this === globalThis</code>.</p>`,
+      `<p>Hint 3: Then <code>return fn.apply(useFallback ? fallback : this, preset.concat(later))</code>. Keep the prototype chain for instanceof by setting <code>wrapper.prototype = Object.create(fn.prototype)</code> if fn has one.</p>`
+    ],
+    solution: {
+      approach: `<p>Make a normal-function wrapper that inspects its own this at call time. Bare calls (undefined/null in strict callers, globalThis in sloppy ones) get the fallback; anything else wins. This keeps the precedence of implicit and explicit binding while fixing default binding.</p>`,
+      code: { lang: 'js', run: true, code: `
+        Function.prototype.softBind = function (fallback, ...preset) {
+          const fn = this;
+          if (typeof fn !== 'function') throw new TypeError('softBind must be called on a function');
+          function softBound(...later) {
+            const bare = this == null || this === globalThis;   // default binding happened
+            return fn.apply(bare ? fallback : this, preset.concat(later));
+          }
+          if (fn.prototype) softBound.prototype = Object.create(fn.prototype);
+          return softBound;
+        };
+
+        function who(tag) { return this.id + (tag ? '#' + tag : ''); }
+        const f = who.softBind({ id: 'fallback' });
+        const obj = { id: 'obj', f };
+        console.log(f());                     // fallback
+        console.log(obj.f());                 // obj   (implicit wins)
+        console.log(f.call({ id: 'x' }, 1));  // x#1   (explicit wins)
+        setTimeout(obj.f, 0);                 // detached again: in Node this = Timeout -> treated as an object!
+        const g = who.softBind({ id: 'fb' }, 'pre');
+        console.log([0].map(g)[0]);           // fb#pre (map calls with this undefined)
+      ` },
+      dry: { head: ['call', 'incoming this', 'bare?', 'used this', 'result'], rows: [['f()', 'undefined / globalThis', 'yes', 'fallback', 'fallback'], ['obj.f()', 'obj', 'no', 'obj', 'obj'], ['f.call(x, 1)', 'x', 'no', 'x', 'x#1'], ['[0].map(g)', 'undefined', 'yes', 'fb', 'fb#pre']] },
+      complexity: `<p>O(p + q) per call for argument concatenation.</p>`,
+      followUps: ['In Node, <code>setTimeout(f)</code> passes a Timeout object as this. Should softBind treat that as bare? How would you detect it?', 'Compare softBind with simply using closures (no this at all).']
+    }
+  });
+
+  practice.push({
+    title: 'memoizeMethod: Per-Instance Caching That Respects this',
+    level: 'Hard', tags: ['memoization', 'WeakMap', 'this', 'decorators'], companies: ['Stripe', 'Bloomberg', 'Uber'],
+    statement: `<p>Write <code>memoizeMethod(fn, keyFn?)</code> to wrap a <b>prototype method</b>: <code>Pricing.prototype.price = memoizeMethod(Pricing.prototype.price)</code>. Results must be cached <b>per receiver</b> (two instances with different rates must not share answers), keyed by <code>keyFn(...args)</code> (default <code>JSON.stringify(args)</code>). The cache must not keep instances alive after they are garbage, so use a <code>WeakMap</code>. Calls with a primitive or missing this just call through without caching.</p>`,
+    constraints: `Up to 10<sup>5</sup> instances; arguments are JSON-serialisable by default.`,
+    example: `<p><code>a = new Pricing(2)</code>, <code>b = new Pricing(3)</code>: <code>a.price(10)</code> → ${H.c('g', '20')}, <code>b.price(10)</code> → ${H.c('g', '30')}, <code>a.price(10)</code> again → 20 from cache. A naive single Map keyed only by args returns ${H.c('r', '20 for b')}.</p>`,
+    brute: { why: `<p>A memoizer that ignores <code>this</code> shares one cache across every instance, so the first receiver's answer leaks to all others. Keying a normal <code>Map</code> by instance fixes correctness but keeps every instance alive forever (memory leak). And an arrow wrapper loses the receiver entirely.</p>`,
+      code: `
+        function memoizeNaive(fn) {
+          const cache = new Map();                    // ONE cache for all instances
+          return function (...args) {
+            const key = JSON.stringify(args);
+            if (!cache.has(key)) cache.set(key, fn.apply(this, args));
+            return cache.get(key);                    // b.price(10) returns a's answer
+          };
+        }
+      ` },
+    mcq: { q: 'Why a <code>WeakMap</code> from receiver to cache, instead of a <code>Map</code>?', options: ['WeakMap is faster for strings', 'WeakMap keys are held weakly, so an instance no one references can be garbage-collected together with its cache', 'Map cannot use objects as keys', 'WeakMap is iterable'], answer: 1, explain: 'A Map would strongly reference every instance ever seen. WeakMap entries vanish when the key object is collected.' },
+    hints: [
+      `<p>Hint 1: The wrapper is a normal function, so when called as <code>a.price(10)</code> its this is <code>a</code>.</p>`,
+      `<p>Hint 2: Two-level cache: <code>WeakMap&lt;receiver, Map&lt;key, result&gt;&gt;</code>.</p>`,
+      `<p>Hint 3: WeakMap keys must be objects; if this is a primitive or null, skip caching and just <code>fn.apply(this, args)</code>. Use <code>cache.has(key)</code> (not truthiness) so cached <code>0</code> or <code>undefined</code> results count.</p>`
+    ],
+    solution: {
+      approach: `<p>Keep a WeakMap from receiver to its own Map of results. The wrapper reads the receiver from its dynamic this, finds or creates that receiver's Map, and calls the original with <code>apply(this, args)</code> on a miss.</p>`,
+      code: { lang: 'js', run: true, code: `
+        function memoizeMethod(fn, keyFn = (...args) => JSON.stringify(args)) {
+          const caches = new WeakMap();                  // receiver -> Map(key -> result)
+          return function memoized(...args) {
+            const canKey = this !== null && (typeof this === 'object' || typeof this === 'function');
+            if (!canKey) return fn.apply(this, args);    // primitives / undefined: no caching
+            let cache = caches.get(this);
+            if (!cache) { cache = new Map(); caches.set(this, cache); }
+            const key = keyFn(...args);
+            if (!cache.has(key)) cache.set(key, fn.apply(this, args));
+            return cache.get(key);
+          };
+        }
+
+        class Pricing {
+          constructor(rate) { this.rate = rate; this.calls = 0; }
+          price(qty) { this.calls++; return qty * this.rate; }
+        }
+        Pricing.prototype.price = memoizeMethod(Pricing.prototype.price);
+
+        const a = new Pricing(2), b = new Pricing(3);
+        console.log(a.price(10), b.price(10), a.price(10), b.price(10)); // 20 30 20 30
+        console.log('calls:', a.calls, b.calls);                         // calls: 1 1
+        console.log(a.price(5), a.calls);                                // 10 2
+      ` },
+      dry: { head: ['call', 'receiver', 'key', 'hit?', 'result'], rows: [['a.price(10)', 'a', '[10]', 'miss → compute', '20'], ['b.price(10)', 'b', '[10]', 'miss (own cache)', '30'], ['a.price(10)', 'a', '[10]', '<span class="c-g">hit</span>', '20'], ['b.price(10)', 'b', '[10]', '<span class="c-g">hit</span>', '30']] },
+      complexity: `<p>O(cost of keyFn) per call plus the method on misses; memory O(distinct keys per live instance).</p>`,
+      followUps: ['Add <code>invalidate(instance)</code> to clear one receiver\'s cache.', 'Turn this into a TC39 decorator (<code>@memoize</code>) for class methods.', 'How would you bound the cache size per instance (LRU)?']
+    }
+  });
+
+  practice.push({
+    title: 'Event Emitter with Listener Context and once',
+    level: 'Hard', tags: ['event emitter', 'call', 'machine coding'], companies: ['Microsoft', 'Netflix', 'Uber', 'Rippling'],
+    statement: `<p>Build <code>class Emitter</code> with <code>on(event, fn, ctx?)</code>, <code>once(event, fn, ctx?)</code>, <code>off(event, fn, ctx?)</code> and <code>emit(event, ...args)</code>. Listeners run with <code>this = ctx</code> when a context was given, otherwise <code>this = the emitter</code> (like Node). <code>off</code> removes only the listener matching <b>both</b> fn and ctx. Listeners added or removed during an <code>emit</code> must not affect that emit. <code>emit</code> returns whether any listener ran.</p>`,
+    constraints: `Up to 10<sup>4</sup> listeners per event; the same fn may be registered with different contexts.`,
+    example: `<p><code>const ui = { name: 'ui' }; bus.on('save', report, ui); bus.on('save', report)</code>; <code>bus.emit('save', 1)</code> runs <code>report</code> twice: with ${H.c('g', 'this = ui')} and with ${H.c('g', 'this = bus')}. <code>bus.off('save', report, ui)</code> removes only the first.</p>`,
+    brute: { why: `<p>A simple version stores bare functions and calls <code>fn(...args)</code>: listeners lose their this, the same function cannot be registered for two contexts, and <code>off</code> cannot tell them apart. Iterating the live array while a <code>once</code> listener removes itself also skips the next listener.</p>`,
+      code: `
+        class EmitterNaive {
+          constructor() { this.map = {}; }
+          on(e, fn) { (this.map[e] = this.map[e] || []).push(fn); }
+          emit(e, ...args) {
+            (this.map[e] || []).forEach((fn) => fn(...args));   // bare call: this lost
+          }
+        }
+      ` },
+    mcq: { q: 'Why iterate over a <b>copy</b> of the listener list inside <code>emit</code>?', options: ['Copies are faster', 'A once-listener removing itself (or any listener calling off/on) would otherwise shift indexes and skip or add listeners mid-emit', 'Arrays cannot be iterated twice', 'To change this'], answer: 1, explain: 'Snapshotting makes each emit see the listener set as it was when emit started.' },
+    hints: [
+      `<p>Hint 1: Store records <code>{ fn, ctx, once }</code>, not bare functions, so the context travels with the listener.</p>`,
+      `<p>Hint 2: In emit: snapshot <code>list.slice()</code>; for each record, if once → remove it first; then <code>rec.fn.apply(rec.ctx ?? this, args)</code>.</p>`,
+      `<p>Hint 3: <code>off(event, fn, ctx)</code> finds the record with <code>rec.fn === fn &amp;&amp; rec.ctx === ctx</code> and splices it. Return <code>this</code> from on/once/off for chaining.</p>`
+    ],
+    solution: {
+      approach: `<p>Use a Map from event name to an array of listener records. Explicit binding (<code>apply</code>) gives each listener its stored context or the emitter. emit works on a snapshot and removes once-listeners before calling them, so re-entrant emits cannot fire them twice.</p>`,
+      code: { lang: 'js', run: true, code: `
+        class Emitter {
+          #events = new Map();                                // event -> [{ fn, ctx, once }]
+          on(event, fn, ctx, once = false) {
+            if (typeof fn !== 'function') throw new TypeError('listener must be a function');
+            if (!this.#events.has(event)) this.#events.set(event, []);
+            this.#events.get(event).push({ fn, ctx, once });
+            return this;                                      // chainable
+          }
+          once(event, fn, ctx) { return this.on(event, fn, ctx, true); }
+          off(event, fn, ctx) {
+            const list = this.#events.get(event);
+            if (!list) return this;
+            const i = list.findIndex((r) => r.fn === fn && r.ctx === ctx);
+            if (i !== -1) list.splice(i, 1);
+            if (!list.length) this.#events.delete(event);
+            return this;
+          }
+          emit(event, ...args) {
+            const list = this.#events.get(event);
+            if (!list || !list.length) return false;
+            for (const rec of list.slice()) {                 // snapshot
+              if (rec.once) this.off(event, rec.fn, rec.ctx); // remove before running
+              rec.fn.apply(rec.ctx === undefined ? this : rec.ctx, args);   // this = ctx or emitter
+            }
+            return true;
+          }
+        }
+
+        const bus = new Emitter();
+        bus.label = 'bus';
+        const ui = { label: 'ui' };
+        function report(n) { console.log('report', n, 'this =', this.label); }
+        bus.on('save', report, ui).on('save', report).once('save', function () { console.log('once, this =', this.label); });
+        console.log(bus.emit('save', 1));     // report 1 ui / report 1 bus / once bus / true
+        bus.off('save', report, ui);
+        console.log(bus.emit('save', 2));     // report 2 bus / true
+        console.log(bus.emit('nothing'));     // false
+      ` },
+      dry: { head: ['action', 'save listeners after', 'output'], rows: [['on(report, ui)', '[report@ui]', '-'], ['on(report)', '[report@ui, report@bus]', '-'], ['once(anon)', '[report@ui, report@bus, anon@bus once]', '-'], ['emit(1)', '[report@ui, report@bus]', 'report 1 ui · report 1 bus · once bus'], ['off(report, ui)', '[report@bus]', '-'], ['emit(2)', '[report@bus]', 'report 2 bus']] },
+      complexity: `<p>on O(1); off O(k); emit O(k) for k listeners of that event (snapshot included).</p>`,
+      followUps: ['Support <code>off(event)</code> to remove all, and <code>listenerCount</code>.', 'How should errors thrown by one listener affect the rest? (Node: an <code>error</code> event.)', 'Return an unsubscribe function from <code>on</code>; why is that friendlier than off(fn, ctx)?']
+    }
+  });
+
+  /* =====================================================================
+     QUIZ: mostly "what is this?" output puzzles
+     ===================================================================== */
+  quiz.push(
+    { q: `<p>Strict code. What is logged?</p><pre>'use strict';
+function f() { return this; }
+console.log(f());</pre>`, options: ['<code>window</code> / <code>global</code>', '<code>undefined</code>', '<code>{}</code>', 'TypeError'], answer: 1, explain: 'A bare call uses default binding. In strict mode the default is <code>undefined</code>, and simply returning it does not throw.' },
+    { q: `<p>Browser, classic (non-module) script. What is logged?</p><pre>var n = 2;
+const o = { n: 1, get() { return this.n; } };
+const g = o.get;
+console.log(o.get(), g());</pre>`, options: ['1 1', '1 2', '1 undefined', '1, then TypeError'], answer: 1, explain: '<code>o.get()</code> is implicit binding (1). <code>g()</code> is a bare sloppy call, so this = window, and a top-level <code>var</code> in a classic script becomes <code>window.n</code> (2).' },
+    { q: `<p>ES module. What is logged?</p><pre>const counter = { count: 5, read: () =&gt; this?.count };
+console.log(counter.read());</pre>`, options: ['5', 'undefined', 'TypeError', 'NaN'], answer: 1, explain: 'Arrows take this from the surrounding scope. The object literal is not a scope; the module\'s top-level this is <code>undefined</code>, and <code>?.</code> avoids the throw.' },
+    { q: `<p>What is logged?</p><pre>function f() { return this.x; }
+const b = f.bind({ x: 1 });
+console.log(b.call({ x: 2 }), b.bind({ x: 3 })());</pre>`, options: ['2 3', '1 3', '1 1', '2 1'], answer: 2, explain: 'A bound function\'s this is locked forever; neither call nor a second bind can change it.' },
+    { q: `<p>What is logged?</p><pre>function P() { this.v = 1; }
+const o = {};
+const B = P.bind(o);
+const r = new B();
+console.log(o.v, r.v);</pre>`, options: ['1 1', 'undefined 1', '1 undefined', 'TypeError'], answer: 1, explain: '<code>new</code> beats <code>bind</code>: the bound this (o) is ignored and a fresh object is created, so o stays empty.' },
+    { q: `<p>What is logged?</p><pre>function F() { this.a = 1; return []; }
+function G() { this.a = 1; return 42; }
+console.log(new F().a, new G().a);</pre>`, options: ['1 1', 'undefined 1', '1 undefined', 'undefined undefined'], answer: 1, explain: 'Returning an object (an array is an object) from a constructor replaces the new object; returning a primitive is ignored.' },
+    { q: `<p>Strict code. What is logged?</p><pre>'use strict';
+const o = { f() { return this === o; } };
+console.log((o.f)(), (o.f = o.f)());</pre>`, options: ['true true', 'true false', 'false false', 'TypeError'], answer: 1, explain: 'Grouping parentheses keep the reference (this = o). An assignment expression returns a plain value, so the second call is bare: this = undefined, and the comparison is false.' },
+    { q: `<p>What is logged (any environment)?</p><pre>const t = {
+  start() {
+    setTimeout(function () { console.log(this === t); }, 0);
+  }
+};
+t.start();</pre>`, options: ['true', 'false', 'TypeError', 'undefined'], answer: 1, explain: 'The inner normal function is called by the timer system, which picks its own this (window in browsers, a Timeout object in Node). It is never t. An arrow would print true.' },
+    { q: `<p>What is logged?</p><pre>function s() { 'use strict'; return typeof this; }
+function l() { return typeof this; }
+console.log(s.call(7), l.call(7));</pre>`, options: ['number number', 'object object', 'number object', 'object number'], answer: 2, explain: 'Strict functions receive primitives as-is; sloppy functions box them into wrapper objects.' },
+    { q: `<p>What does <code>o.run()</code> return?</p><pre>const o = {
+  m: 3,
+  run() { return [1, 2].map(function (x) { return x * this.m; }, this); }
+};</pre>`, options: ['[NaN, NaN]', '[3, 6]', 'TypeError', '[1, 2]'], answer: 1, explain: 'map\'s second argument is the thisArg for the callback. It passes run\'s this (o), so this.m is 3.' },
+    { q: `<p>What is logged?</p><pre>class A { static who() { return this.name; } }
+class B extends A {}
+console.log(B.who());</pre>`, options: ['"A"', '"B"', 'undefined', 'TypeError'], answer: 1, explain: 'In a static method, this is the class it was called on. <code>B.who()</code> → this = B, and <code>B.name</code> is "B".' },
+    { q: `<p>Which of these does <b>NOT</b> correctly keep this when scheduling <code>obj.save</code>?</p>`, options: ['<code>setTimeout(() =&gt; obj.save(), 0)</code>', '<code>setTimeout(obj.save.bind(obj), 0)</code>', '<code>setTimeout(obj.save.call(obj), 0)</code>', '<code>const s = obj.save.bind(obj); setTimeout(s, 0)</code>'], answer: 2, explain: '<code>call</code> runs save <b>immediately</b> and passes its return value (probably undefined) to setTimeout. call/apply are "now"; bind is "later".' },
+    { q: `<p>What is logged?</p><pre>const o = { name: 'o', f() { return () =&gt; this.name; } };
+const arrow = o.f();
+const p = { name: 'p', arrow };
+console.log(p.arrow());</pre>`, options: ['"p"', '"o"', 'undefined', 'TypeError'], answer: 1, explain: 'The arrow was created inside <code>o.f()</code>, where this was o. Calling it as <code>p.arrow()</code> cannot change an arrow\'s this.' },
+    { q: `<p>What is logged?</p><pre>const base = { get tag() { return this.id; } };
+const child = Object.create(base);
+child.id = 'c';
+console.log(child.tag);</pre>`, options: ['undefined', '"c"', 'TypeError', '"base"'], answer: 1, explain: 'The getter is found on the prototype, but it runs with the receiver (child) as this.' },
+    { q: `<p>Which order lists the rules from <b>strongest</b> to weakest?</p>`, options: ['implicit, explicit, new, default', 'new, explicit (call/apply/bind), implicit, default', 'explicit, new, implicit, default', 'default, implicit, explicit, new'], answer: 1, explain: 'new beats bind; explicit beats the dot; the dot beats the fallback. Arrows ignore all four.' }
+  );
+
+  /* =====================================================================
+     INTERVIEW Q&A
+     ===================================================================== */
+  interview.push(
+    { level: 'B', q: 'Explain <code>this</code> in JavaScript in under a minute.',
+      a: `<p><code>this</code> is a hidden parameter that a normal function receives <b>at call time</b>. Its value depends on <b>how the function is called</b>, not where it was written: <code>obj.fn()</code> gives obj, <code>fn.call(x)</code> gives x, <code>new Fn()</code> gives a new object, and a bare <code>fn()</code> gives <code>undefined</code> in strict mode or the global object in sloppy mode. Arrow functions are the exception: they have no own this and use the this of the surrounding code. My habit is: "find the call-site, then ask the five questions in order".</p>`,
+      followUps: ['Is this decided at definition time or call time?', 'What is the one exception to "look at the call-site"?'] },
+    { level: 'I', q: 'What are the four binding rules and their precedence?',
+      a: `<p>From strongest to weakest: <b>new</b> binding (fresh object), <b>explicit</b> binding (<code>call</code>, <code>apply</code>, <code>bind</code>), <b>implicit</b> binding (the object left of the dot at the call), and <b>default</b> binding (undefined in strict code, globalThis in sloppy code). Proofs: <code>obj.fn.call(x)</code> gives x (explicit beats implicit); <code>obj.bound()</code> gives the bound value (bind beats implicit); <code>new bound()</code> creates a fresh object and ignores the bound this (new beats bind). Arrow functions sit outside the ladder: they use lexical this and ignore all four.</p>`,
+      followUps: ['Show the code proving new beats bind.', 'Where do arrows fit into the ladder?', 'What happens with obj.fn.bind(x).call(y)?'] },
+    { level: 'B', q: 'Difference between <code>call</code>, <code>apply</code> and <code>bind</code>?',
+      a: `<p>All three set <code>this</code> explicitly. <code>call(thisArg, a, b)</code> and <code>apply(thisArg, [a, b])</code> invoke the function <b>immediately</b>, differing only in how arguments are passed (list vs array; "C for comma, A for array"). <code>bind(thisArg, a)</code> does <b>not</b> call; it returns a new bound function with this locked and optional pre-filled arguments (partial application). Bound functions cannot be re-bound by call/apply/bind; only <code>new</code> overrides them. In modern code spread replaces most apply uses, and <code>Reflect.apply</code> is the safest form.</p>`,
+      followUps: ['When would you still use apply today?', 'What are bound.name and bound.length?', 'Why is calling bind inside a render function a problem?'] },
+    { level: 'I', q: 'How do arrow functions handle <code>this</code>, and when should you NOT use them?',
+      a: `<p>Arrows have no own <code>this</code>, <code>arguments</code>, <code>super</code> or <code>new.target</code>; <code>this</code> inside an arrow is looked up in the enclosing scope, like a normal variable (lexical this). call/apply/bind cannot change it and arrows cannot be used with <code>new</code>. They are ideal for callbacks inside methods (timers, promise handlers, array methods). Avoid them as object-literal or prototype methods (an object literal is not a scope, so this is the outer scope's), as constructors, and as DOM or library callbacks where you need the dynamic this the caller provides (element, test context, emitter).</p>`,
+      followUps: ['What is this in <code>{ f: () =&gt; this }</code> at module top level?', 'Does an arrow capture this at creation or look it up at call time?'] },
+    { level: 'I', q: 'Why does <code>this</code> become undefined when you pass a method as a callback, and how do you fix it?',
+      a: `<p>Writing <code>obj.method</code> as an argument evaluates to the <b>function value only</b>; the object is not passed along. Whoever calls it later decides this: Promise handlers and array callbacks call it with undefined, timers use window or a Timeout object, DOM listeners use the element. Fixes: wrap it (<code>() =&gt; obj.method()</code>), bind once and store it (<code>this.m = this.m.bind(this)</code>, needed for removeEventListener), use an arrow class field, pass a <code>thisArg</code> where the API supports it, or avoid this entirely with closures. I pick based on identity needs, memory and testability.</p>`,
+      followUps: ['Why does removeEventListener sometimes "not work"?', 'Which fix is best for a list of 10,000 row components?'] },
+    { level: 'I', q: 'What exactly does the <code>new</code> keyword do?',
+      a: `<p>Four steps: (1) create a fresh object; (2) set its [[Prototype]] to <code>Constructor.prototype</code> (falling back to Object.prototype if that is not an object); (3) call the constructor with <code>this</code> = the new object and the given arguments; (4) return the new object, unless the constructor explicitly returned an object or function, which replaces it (returned primitives are ignored). For derived classes, step 1 is delegated to the parent through <code>super()</code>, so this is unusable before super. Arrows, methods, async functions and generators cannot be used with new.</p>`,
+      followUps: ['Implement myNew.', 'What does new.target give you?', 'What happens if a derived constructor returns 5?'] },
+    { level: 'A', q: 'Walk me through a production-quality <code>bind</code> polyfill.',
+      a: `<p>Capture the target (<code>const target = this</code>) and the preset arguments, validate that target is callable, then return a normal function <code>bound(...later)</code>. Inside it, branch on <code>new.target</code>: for a normal call, <code>target.apply(thisArg, preset.concat(later))</code>; for a construct call, ignore thisArg and use <code>Reflect.construct(target, args, newTarget)</code>, replacing a newTarget equal to bound with target (that is what the spec does), which also makes class targets work. Finally mirror metadata: <code>name = "bound " + target.name</code>, <code>length = max(0, target.length - preset.length)</code>, and <code>Symbol.hasInstance</code> delegating to the target so <code>instanceof bound</code> works.</p>`,
+      followUps: ['How was this done in ES5 without new.target?', 'Which native behaviour can your polyfill still not match?'] },
+    { level: 'I', q: 'How does strict mode change <code>this</code>?',
+      a: `<p>Three ways. Bare calls get <code>undefined</code> instead of the global object, so <code>this.x = ...</code> throws instead of leaking a global. A thisArg of <code>null</code>/<code>undefined</code> passed to call/apply/bind is kept as-is instead of becoming globalThis. Primitive thisArgs are not boxed: <code>typeof this</code> is "number", not "object". Strictness belongs to the function being called (decided by its source text), and ES modules and class bodies are strict automatically, so modern code mostly follows the strict rules.</p>`,
+      followUps: ['A strict function calls a sloppy one bare: what is this inside the sloppy one?', 'Why can\'t a function with default parameters contain "use strict"?'] },
+    { level: 'A', q: 'Arrow class fields vs prototype methods for event handlers: trade-offs?',
+      a: `<p>An arrow field (<code>onClick = () =&gt; {...}</code>) is created per instance with this captured, so it can be passed anywhere without losing this, and its identity is stable for that instance. Costs: one function object per instance per handler (memory with many instances), not on the prototype (cannot call <code>super.onClick()</code>, prototype spies in tests do not see it), and slightly slower construction. Prototype methods are shared and inheritable but need binding at the use site or in the constructor. For a handful of components either is fine; for thousands of instances, or for heavily inherited classes, prefer prototype methods plus targeted binding.</p>`,
+      followUps: ['How does jest.spyOn interact with each option?', 'What do function components with hooks do instead?'] },
+    { level: 'I', q: 'What is <code>this</code> inside a DOM event listener?',
+      a: `<p>For a normal-function listener added with <code>addEventListener</code>, <code>this</code> is the element the listener is attached to, the same as <code>event.currentTarget</code> (which can differ from <code>event.target</code> when events bubble). For an arrow listener, this is whatever this was where the arrow was written. If you need your component as this, bind once in the constructor and keep the reference, because <code>removeEventListener</code> requires the identical function object; binding again at removal creates a new function and removes nothing. Inline <code>onclick="..."</code> attributes also run with this = the element.</p>`,
+      followUps: ['target vs currentTarget?', 'How does the AbortController signal option simplify removal?'] },
+    { level: 'A', q: 'What is <code>this</code> at the top level of a file?',
+      a: `<p>It depends on the host and module system. A classic browser script: <code>window</code>. Any ES module (browser <code>type="module"</code>, Node .mjs or "type": "module", Deno, Bun): <code>undefined</code>. A Node CommonJS file: <code>module.exports</code>, because Node wraps the file in a function and calls it with that receiver. A Web Worker: <code>self</code>. This is why "what does this print" answers must start with "in which environment?", and why <code>globalThis</code> (ES2020) is the portable way to reach the global object.</p>`,
+      followUps: ['Why does a top-level var not create a global in Node?', 'How did libraries find the global object before globalThis?'] },
+    { level: 'E', q: 'How does the engine actually determine <code>this</code> for <code>obj.fn()</code> vs <code>(0, obj.fn)()</code>?',
+      a: `<p>Evaluating <code>obj.fn</code> produces a <b>Reference Record</b> (base: obj, name: "fn"). For a call, if the callee is a property reference, the engine uses its base as thisArgument; otherwise thisArgument is undefined. The comma operator (like assignment, logical operators and passing as an argument) applies <code>GetValue</code>, turning the reference into a plain function value, so the base is lost. Grouping parentheses are special: they return the reference unchanged, so <code>(obj.fn)()</code> keeps obj. Then <code>OrdinaryCallBindThis</code> applies the mode: lexical (arrow) does nothing, strict uses thisArgument as-is, sloppy replaces null/undefined with globalThis and boxes primitives.</p>`,
+      followUps: ['Why do bundlers emit (0, module.fn)() calls?', 'How does super.method() pick its this?'] },
+    { level: 'A', q: 'Can you change the <code>this</code> of an arrow or of a bound function?',
+      a: `<p>An arrow: no, never. call/apply/bind silently ignore the thisArg (arguments still pass), the dot is ignored, and <code>new</code> throws because arrows are not constructors. A bound function: not through call, apply, bind or the dot, since its [[BoundThis]] always wins. The single exception is <code>new</code>: constructing a bound function ignores [[BoundThis]], creates a fresh object from the target's prototype, and still applies the bound partial arguments. To "re-target" either, you must create a new function from the original source function.</p>`,
+      followUps: ['What does f.bind(a).bind(b) give?', 'Is a bound arrow constructible?'] },
+    { level: 'A', q: 'How does TypeScript help with <code>this</code> bugs?',
+      a: `<p>With <code>"strict": true</code>, <code>noImplicitThis</code> errors when this would have an implicit any type (for example inside a plain function), and <code>alwaysStrict</code> makes emitted code strict. You can declare a fake first parameter <code>this</code>: <code>function onClick(this: HTMLButtonElement, e: MouseEvent)</code>; it is erased at compile time but the compiler checks every call-site and rejects detached calls. Method signatures in interfaces can also use <code>this</code> types for fluent APIs (<code>add(n: number): this</code>), so subclasses keep chaining. Linters add <code>no-invalid-this</code> and unbound-method rules (<code>@typescript-eslint/unbound-method</code>).</p>`,
+      followUps: ['What does the unbound-method lint rule catch?', 'What is the polymorphic this type?'] }
+  );
+
+  registerModule({
+    id: 'js05',
+    title: 'this, call/apply/bind & Arrow Functions',
+    intro: `<p><code>this</code> is the most asked-about word in JavaScript interviews, and the most misunderstood. The good news: it follows a tiny set of rules. In this module you will learn to look at any line like <code>obj.fn()</code>, <code>setTimeout(obj.fn)</code>, <code>fn.call(x)</code>, <code>new Fn()</code> or <code>() =&gt; this</code> and say in one sentence what <code>this</code> is and <b>why</b>.</p>
+      <p>We start from the single big idea (<b>the call-site decides</b>), build the four binding rules one by one (default, implicit, explicit, new), add the arrow-function exception (lexical this), then attack the real-world bug: <b>losing this in callbacks</b>. Strict mode and the "this in every context" table tie it together. Every topic has a step-through visualizer, including a decision-flow you can feed any call-site, and runnable "what does this print?" puzzles.</p>
+      <p>The practice set is the machine-coding round in miniature: <code>myCall</code>, <code>myApply</code>, <code>myBind</code> with <code>new</code> support, <code>myNew</code>, <code>softBind</code>, <code>once</code>/<code>debounce</code> that preserve this, autoBind and a context-aware event emitter.</p>`,
+    goals: [
+      'Name the <code>this</code> value of any call-site in one sentence using the five-question flow (arrow → new → explicit → implicit → default)',
+      'Predict output puzzles involving detached methods, <code>(0, obj.fn)()</code>, bound functions, <code>new</code> on bound functions and arrow methods',
+      'Choose correctly between <code>call</code>, <code>apply</code>, <code>bind</code>, arrow wrappers, arrow class fields and <code>thisArg</code> to fix lost this in callbacks',
+      'Implement <code>myCall</code>, <code>myApply</code>, <code>myBind</code> (with <code>new</code>), <code>myNew</code> and this-preserving <code>once</code>/<code>debounce</code> from scratch',
+      'Explain how strict mode, modules, classes and the host (browser, Node CJS/ESM) change the default and top-level <code>this</code>'
+    ],
+    prereqs: `JS 2 (Functions, Arrays & Objects) for methods and destructuring, JS 3 (Browser vs Node runtimes) for the global object, and JS 4 (Scope, Hoisting & Closures), since lexical this works like any closed-over variable.`,
+    hours: 9,
+    topics: topics,
+    practice: practice,
+    quiz: quiz,
+    interview: interview
+  });
 })();

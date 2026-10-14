@@ -2246,7 +2246,7 @@ print(Ok().run())
         var path = ['S', 'C', 'B'];
         if (info.via !== 'B') path.push('F');
         if (/^p/.test(info.via)) { path.push('P'); path.push(info.via); }
-        var where = { B: 'BuiltinImporter', F: 'FrozenImporter', p0: 'PathFinder → project dir (sys.path[0])', p1: 'PathFinder → stdlib directory', p2: 'PathFinder → lib-dynload', p3: 'PathFinder → site-packages' }[info.via];
+        var where = { B: 'BuiltinImporter (which modules are built in varies by build: see sys.builtin_module_names)', F: 'FrozenImporter', p0: 'PathFinder → project dir (sys.path[0])', p1: 'PathFinder → stdlib directory', p2: 'PathFinder → lib-dynload', p3: 'PathFinder → site-packages' }[info.via];
         var tg = {}; tg[info.via] = 'found';
         push('<code>' + esc(full) + '</code> is not cached, so each finder on <code>sys.meta_path</code> is asked <code>find_spec("' + full + '")</code> in order. <b>' + where + '</b> returns a <b>ModuleSpec</b>' + (i ? ' (searching only inside the parent package\'s <code>__path__</code>)' : '') + ': origin = <code>' + esc(info.origin) + '</code>.', path, 'sel', tg);
         mods.push(full); known[full] = info;
@@ -2468,5 +2468,560 @@ finally:
         followUps: ['Make it reload-safe: what happens with <code>importlib.reload(plugins.hello)</code>?', 'Add <code>get_source</code> so tracebacks and <code>inspect.getsource</code> show the in-memory code (hint: <code>linecache</code>).']
       }
     }]
+  });
+
+  /* ======================================================================
+     PRACTICE — Easy
+     ====================================================================== */
+  practice.push({
+    title: 'Same Object or Just Equal?',
+    level: 'Easy', tags: ['identity', 'is vs ==', 'interning'], companies: ['Amazon', 'Infosys', 'Accenture'],
+    statement: R`<p>Write <code>relation(a, b)</code> returning <code>"same object"</code> if <code>a is b</code>, <code>"equal, different objects"</code> if <code>a == b</code> but not identical, else <code>"different"</code>. Then <b>predict</b> the result for runtime-built pairs: <code>int("256")</code> twice, <code>int("257")</code> twice, <code>"".join(["ab","c"])</code> twice, and <code>[1]</code> vs <code>[1]</code>.</p>`,
+    constraints: R`<p>Any Python objects. Must check identity <b>first</b> (an object can be identical but not equal to itself, e.g. <code>float("nan")</code>).</p>`,
+    example: R`<p>${H.table(['pair', 'result'], [['int("256") ×2', H.c('g', 'same object') + ' (small-int cache)'], ['int("257") ×2', H.c('y', 'equal, different objects')], ['"".join ×2', H.c('y', 'equal, different objects') + ' (runtime strings)'], ['[1], [1]', H.c('y', 'equal, different objects')], ['nan, same variable', H.c('g', 'same object') + ' (though nan != nan)']])}</p>`,
+    brute: { why: R`<p>Comparing <code>str(a) == str(b)</code> or <code>id(a) == id(b)</code> computed at different times looks similar but is wrong: string forms can collide across types (<code>1</code> vs <code>"1"</code>), and ids of objects that are not alive at the same time can be reused.</p>`, code: R`def relation_brute(a, b):
+    if str(a) == str(b):              # 1 and "1" look "equal" here: wrong
+        return "equal"
+    return "different"
+
+print(relation_brute(1, "1"))
+` },
+    mcq: { q: 'For <code>x = float("nan")</code>, what is <code>relation(x, x)</code> with identity checked first?', options: ['"same object"', '"equal, different objects"', '"different"', 'It raises'], answer: 0, explain: 'Identity holds even though <code>nan == nan</code> is False. Checking <code>==</code> first would wrongly report "different".' },
+    hints: [R`<p>Hint 1: order matters: test <code>a is b</code> first, then <code>a == b</code>, then fall through to "different".</p>`, R`<p>Hint 2: build values at runtime (<code>int(text)</code>, <code>"".join</code>) so the compiler cannot merge constants and fool your experiment.</p>`, R`<p>Hint 3: remember the cache range −5…256 for ints and that only empty / one-char Latin-1 strings are cached at runtime.</p>`],
+    solution: {
+      approach: R`<p>Three ordered checks. The experiment builds every value at runtime so that results reflect real program data rather than merged literals.</p>`,
+      code: { lang: 'python', run: true, code: R`def relation(a, b):
+    if a is b:
+        return "same object"
+    if a == b:
+        return "equal, different objects"
+    return "different"
+
+pairs = {
+    'int("256") x2': (int("256"), int("256")),
+    'int("257") x2': (int("257"), int("257")),
+    'join x2': ("".join(["ab", "c"]), "".join(["ab", "c"])),
+    '[1] vs [1]': ([1], [1]),
+    '1 vs "1"': (1, "1"),
+}
+for label, (a, b) in pairs.items():
+    print(f"{label:<14} -> {relation(a, b)}")
+nan = float("nan")
+print("nan vs itself  ->", relation(nan, nan))
+` },
+      complexity: R`<p>O(1) for identity; <code>==</code> costs whatever the type's <code>__eq__</code> costs (O(n) for long strings or lists).</p>`,
+      followUps: ['Why does <code>[nan] == [nan]</code> return True when <code>nan == nan</code> is False?']
+    }
+  });
+
+  practice.push({
+    title: 'Did the Compiler Fold It?',
+    level: 'Easy', tags: ['bytecode', 'constant folding', 'co_consts'], companies: ['Google', 'Meta'],
+    statement: R`<p>Write <code>is_precomputed(func, value)</code> returning <code>True</code> if <code>value</code> appears among the constants of <code>func</code> or of any code object nested inside it (inner functions, lambdas, generator expressions). Use it to check whether expressions like <code>24 * 60 * 60</code>, <code>2 ** 10</code> and <code>"ab" * 3</code> are folded.</p>`,
+    constraints: R`<p>Do not use <code>dis</code> text output. Nested code objects live in <code>co_consts</code>. Compare with <code>==</code> but also require the same type (so <code>1 == True</code> does not count).</p>`,
+    example: R`<p><code>def f(): return 24 * 60 * 60</code> → <code>is_precomputed(f, 86400)</code> = ${H.c('g', 'True')}. <code>def g(x): return x * 60</code> → <code>is_precomputed(g, 60)</code> = ${H.c('g', 'True')} (the literal) but <code>3600</code> ${H.c('r', 'False')}, because <code>x</code> is not constant.</p>`,
+    brute: { why: R`<p>Calling the function and timing it cannot tell folded from unfolded code (both are fast), and looking only at the top-level <code>co_consts</code> misses constants inside nested functions.</p>`, code: R`def is_precomputed_shallow(func, value):
+    return value in func.__code__.co_consts      # misses nested code objects
+
+def outer():
+    def inner():
+        return 2 ** 10
+    return inner
+
+print(is_precomputed_shallow(outer, 1024))       # False: wrong
+` },
+    mcq: { q: 'Where does the bytecode of an inner function defined inside <code>outer</code> live?', options: ['As a code object inside <code>outer.__code__.co_consts</code>', 'In <code>outer.__dict__</code>', 'In the module globals only', 'It is created from source text at call time'], answer: 0, explain: 'The compiler stores nested code objects as constants; <code>MAKE_FUNCTION</code> wraps them in a new function object each time <code>outer</code> runs.' },
+    hints: [R`<p>Hint 1: <code>types.CodeType</code> instances inside <code>co_consts</code> are nested code objects; recurse into them.</p>`, R`<p>Hint 2: compare with <code>type(c) is type(value) and c == value</code> to avoid <code>True == 1</code> surprises.</p>`, R`<p>Hint 3: use an explicit stack of code objects to avoid recursion limits; start with <code>func.__code__</code>.</p>`],
+    solution: {
+      approach: R`<p>Depth-first walk over code objects via <code>co_consts</code>, checking each constant with a type-strict comparison.</p>`,
+      code: { lang: 'python', run: true, code: R`import types
+
+def is_precomputed(func, value):
+    stack = [func.__code__]
+    while stack:
+        code = stack.pop()
+        for c in code.co_consts:
+            if isinstance(c, types.CodeType):
+                stack.append(c)                  # nested function / lambda / genexpr
+            elif type(c) is type(value) and c == value:
+                return True
+    return False
+
+def seconds():
+    return 24 * 60 * 60
+
+def outer():
+    def inner():
+        return 2 ** 10
+    return inner
+
+def scaled(x):
+    return x * 60
+
+print(is_precomputed(seconds, 86400))
+print(is_precomputed(outer, 1024))
+print(is_precomputed(scaled, 3600), is_precomputed(scaled, 60))
+print(is_precomputed(lambda: "ab" * 3, "ababab"))
+` },
+      complexity: R`<p>O(total number of constants across all nested code objects).</p>`,
+      followUps: ['Why does CPython refuse to fold <code>"a" * 10_000_000</code>? (Size limits keep .pyc files small.)']
+    }
+  });
+
+  practice.push({
+    title: 'List the Global Lookups in a Function',
+    level: 'Easy', tags: ['dis', 'LOAD_GLOBAL', 'performance'], companies: ['Bloomberg', 'Jane Street'],
+    statement: R`<p>Write <code>global_lookups(func)</code> that returns a dict mapping each name read with <code>LOAD_GLOBAL</code> to how many times it appears in <code>func</code>'s bytecode. These are dict lookups (globals, then builtins) on every execution; names inside loops are candidates for hoisting into locals in very hot pure-Python code.</p>`,
+    constraints: R`<p>Use <code>dis.get_instructions</code>. On 3.11+ <code>argval</code> is the plain name; <code>argrepr</code> may say <code>"len + NULL"</code>, so use <code>argval</code>.</p>`,
+    example: R`<p>For a loop calling <code>len(x)</code> and <code>math.sqrt</code> per item, the result contains ${H.c('y', "{'len': 1, 'math': 1}")}: one instruction each, but executed once <b>per iteration</b>.</p>`,
+    brute: { why: R`<p>Scanning the <b>source text</b> with a regex for names finds locals, attributes and comments too, and cannot tell a global from a local. The compiler already classified every name; the bytecode tells you exactly.</p>`, code: R`import inspect
+import re
+
+def global_lookups_regex(func):
+    src = inspect.getsource(func)
+    return sorted(set(re.findall(r"[A-Za-z_]\w*", src)))   # everything, useless
+` },
+    mcq: { q: 'Inside a function, which instruction reads a builtin like <code>len</code>?', options: ['LOAD_GLOBAL', 'LOAD_FAST', 'LOAD_NAME', 'LOAD_DEREF'], answer: 0, explain: 'Function code uses LOAD_GLOBAL for names that are neither local nor closure variables; it checks module globals and then builtins. LOAD_NAME is for module/class bodies.' },
+    hints: [R`<p>Hint 1: filter instructions with <code>ins.opname == "LOAD_GLOBAL"</code> and collect <code>ins.argval</code>.</p>`, R`<p>Hint 2: <code>collections.Counter</code> does the counting.</p>`, R`<p>Hint 3: compare two versions of the same loop: one calling <code>math.sqrt</code>, one with <code>sqrt = math.sqrt</code> hoisted before the loop (or passed as a default argument).</p>`],
+    solution: {
+      approach: R`<p>Count <code>LOAD_GLOBAL</code> instructions by name. Then show that hoisting moves the lookup out of the loop body (the count stays similar, but the loop's instructions now use <code>LOAD_FAST</code>).</p>`,
+      code: { lang: 'python', run: true, code: R`import dis
+import math
+from collections import Counter
+
+def global_lookups(func):
+    return dict(Counter(ins.argval for ins in dis.get_instructions(func)
+                        if ins.opname == "LOAD_GLOBAL"))
+
+def norms(rows):
+    out = []
+    for r in rows:
+        out.append(math.sqrt(sum(v * v for v in r)) / len(r))
+    return out
+
+def norms_hoisted(rows, sqrt=math.sqrt, _sum=sum, _len=len):
+    out = []
+    append = out.append
+    for r in rows:
+        append(sqrt(_sum(v * v for v in r)) / _len(r))
+    return out
+
+print("plain  :", global_lookups(norms))
+print("hoisted:", global_lookups(norms_hoisted))
+print(norms([[3, 4]]) == norms_hoisted([[3, 4]]))
+` },
+      complexity: R`<p>O(number of instructions). Note: since 3.11, <code>LOAD_GLOBAL_BUILTIN</code>/<code>LOAD_GLOBAL_MODULE</code> specializations make global lookups much cheaper, so hoisting gains are smaller than in older blog posts. Measure before uglifying code.</p>`,
+      followUps: ['Use <code>timeit</code> to measure the real difference on your Python version.']
+    }
+  });
+
+  practice.push({
+    title: 'Code Object Report Card',
+    level: 'Easy', tags: ['code objects', 'closures', 'inspect'], companies: ['Microsoft', 'Adobe'],
+    statement: R`<p>Write <code>report(func)</code> returning a dict with: <code>args</code> (positional parameter names), <code>locals</code> (other local names), <code>cellvars</code> (locals captured by inner functions), <code>freevars</code> (variables this function captures from outside), and <code>kind</code>: <code>"generator"</code>, <code>"coroutine"</code> or <code>"function"</code>.</p>`,
+    constraints: R`<p>Use only <code>func.__code__</code> attributes and <code>inspect</code> flag constants (<code>inspect.CO_GENERATOR</code>, <code>inspect.CO_COROUTINE</code>).</p>`,
+    example: R`<p>For <code>def counter(start): count = start; def inc(): nonlocal count; ...</code>: <code>counter</code> has ${H.c('b', "cellvars ('count',)")}, while <code>inc</code> has ${H.c('p', "freevars ('count',)")}. That pair is how closures share one "cell" box.</p>`,
+    brute: { why: R`<p>Parsing the function's source with string operations (looking for <code>yield</code>, <code>nonlocal</code>) breaks on comments, strings and nested functions. The compiler stored all of this precisely in the code object.</p>`, code: R`import inspect
+
+def report_brute(func):
+    src = inspect.getsource(func)
+    return {"generator": "yield" in src}      # fooled by a comment saying yield
+` },
+    mcq: { q: 'A variable defined in <code>outer</code> and used by a nested <code>inner</code> appears in…', options: ['outer.co_cellvars and inner.co_freevars', 'outer.co_freevars and inner.co_cellvars', 'only co_names of both', 'co_consts'], answer: 0, explain: 'The owner stores it in a cell (cellvar); the nested function receives that cell in its closure (freevar) and accesses it with LOAD_DEREF.' },
+    hints: [R`<p>Hint 1: positional parameters are <code>co_varnames[:co_argcount]</code>; the remaining <code>co_varnames</code> are other locals.</p>`, R`<p>Hint 2: <code>co_cellvars</code> and <code>co_freevars</code> are tuples of names. <code>func.__closure__</code> holds the actual cell objects.</p>`, R`<p>Hint 3: test flags with <code>co_flags &amp; inspect.CO_GENERATOR</code> and <code>CO_COROUTINE</code>.</p>`],
+    solution: {
+      approach: R`<p>Read the compiler's bookkeeping straight from the code object; flags tell the function kind.</p>`,
+      code: { lang: 'python', run: true, code: R`import inspect
+
+def report(func):
+    co = func.__code__
+    kind = ("generator" if co.co_flags & inspect.CO_GENERATOR else
+            "coroutine" if co.co_flags & inspect.CO_COROUTINE else "function")
+    return {
+        "args": co.co_varnames[:co.co_argcount],
+        "locals": co.co_varnames[co.co_argcount:],
+        "cellvars": co.co_cellvars,
+        "freevars": co.co_freevars,
+        "kind": kind,
+    }
+
+def counter(start):
+    count = start
+    def inc(step=1):
+        nonlocal count
+        count += step
+        return count
+    return inc
+
+inc = counter(10)
+print(report(counter))
+print(report(inc), "cell value:", inc.__closure__[0].cell_contents)
+
+def gen(n):
+    yield from range(n)
+
+async def fetch():
+    return 1
+
+print(report(gen)["kind"], report(fetch)["kind"])
+` },
+      complexity: R`<p>O(number of names). No execution of the function needed.</p>`,
+      followUps: ['Where do keyword-only parameters appear? (<code>co_kwonlyargcount</code>, right after the positional ones in <code>co_varnames</code>.)']
+    }
+  });
+
+  /* ======================================================================
+     PRACTICE — Medium
+     ====================================================================== */
+  practice.push({
+    title: 'Which Attribute Wins?',
+    level: 'Medium', tags: ['descriptors', 'attribute lookup', 'MRO'], companies: ['Stripe', 'Palantir', 'Google'],
+    statement: R`<p>Write <code>lookup_source(obj, name)</code> that re-implements the decision logic of <code>object.__getattribute__</code> and returns one of: <code>"data descriptor"</code>, <code>"instance dict"</code>, <code>"non-data descriptor"</code>, <code>"class attribute"</code>, <code>"__getattr__"</code> or <code>"missing"</code>. It must agree with what Python actually does.</p>`,
+    constraints: R`<p>Search <code>type(obj).__mro__</code> by reading each class's <code>__dict__</code> (do not call <code>getattr</code>, which would trigger descriptors). A data descriptor's type defines <code>__set__</code> or <code>__delete__</code>. Ignore metaclass subtleties.</p>`,
+    example: R`<p>For a class with <code>@property kelvin</code>, method <code>show</code>, class attribute <code>unit</code>, and an instance dict containing <code>kelvin</code>, <code>show</code>, <code>c</code>: ${H.table(['name', 'answer'], [['kelvin', 'data descriptor'], ['show', 'instance dict'], ['c', 'instance dict'], ['unit', 'class attribute'], ['nope', '__getattr__ (if defined) else missing']])}</p>`,
+    brute: { why: R`<p>Calling <code>getattr(obj, name)</code> and comparing the result with <code>obj.__dict__</code> or the class dict cannot distinguish cases where values coincide, and it executes property getters (side effects, exceptions). You need to inspect the raw dictionaries in the right order.</p>`, code: R`def lookup_source_brute(obj, name):
+    value = getattr(obj, name, None)                # runs descriptors!
+    if name in vars(obj) and vars(obj)[name] is value:
+        return "instance dict"
+    return "class something"
+` },
+    mcq: { q: 'An instance dict has key <code>"x"</code> and the class has a property <code>x</code>. What does <code>obj.x</code> return?', options: ['The property getter result', 'The instance dict value', 'Whichever was set last', 'AttributeError'], answer: 0, explain: 'property is a data descriptor (it defines __set__), and data descriptors take precedence over the instance dict.' },
+    hints: [R`<p>Hint 1: find the class attribute first: <code>for k in type(obj).__mro__: if name in k.__dict__: attr = k.__dict__[name]; break</code>.</p>`, R`<p>Hint 2: check descriptor-ness on the attribute's <b>type</b>: <code>hasattr(type(attr), "__set__")</code>, <code>hasattr(type(attr), "__get__")</code>.</p>`, R`<p>Hint 3: follow the order data descriptor → instance dict → non-data descriptor → class attribute → <code>__getattr__</code> on the type → missing. Use <code>getattr(obj, "__dict__", {})</code> for slotted objects.</p>`],
+    solution: {
+      approach: R`<p>Replicate CPython's <code>_PyObject_GenericGetAttrWithDict</code> decision order using raw <code>__dict__</code> reads, never triggering descriptors. Verify the answers against actual attribute access.</p>`,
+      code: { lang: 'python', run: true, code: R`_MISSING = object()
+
+def lookup_source(obj, name):
+    tp = type(obj)
+    attr = _MISSING
+    for klass in tp.__mro__:                         # step 1: class-level search
+        if name in klass.__dict__:
+            attr = klass.__dict__[name]
+            break
+    attr_type = type(attr)
+    if attr is not _MISSING and (hasattr(attr_type, "__set__") or hasattr(attr_type, "__delete__")):
+        return "data descriptor"                     # step 2
+    inst = getattr(obj, "__dict__", {})
+    if name in inst:
+        return "instance dict"                       # step 3
+    if attr is not _MISSING and hasattr(attr_type, "__get__"):
+        return "non-data descriptor"                 # step 4
+    if attr is not _MISSING:
+        return "class attribute"                     # step 5
+    if any("__getattr__" in k.__dict__ for k in tp.__mro__):
+        return "__getattr__"                         # step 6
+    return "missing"
+
+class Temp:
+    unit = "C"
+    def __init__(self, c):
+        self.c = c
+    @property
+    def kelvin(self):
+        return self.c + 273.15
+    def show(self):
+        return "method"
+    def __getattr__(self, name):
+        return f"<no {name}>"
+
+t = Temp(21)
+t.__dict__.update(kelvin=0, show="shadowed")
+for n in ["kelvin", "show", "c", "unit", "nope", "__init__"]:
+    print(f"{n:<9} {lookup_source(t, n):<20} actual={getattr(t, n)!r}"[:70])
+` },
+      dry: { head: ['name', 'class attr found', 'data desc?', 'in inst dict?', 'answer'], rows: [['kelvin', 'property', 'yes', '(yes, ignored)', 'data descriptor'], ['show', 'function', 'no', 'yes', 'instance dict'], ['unit', '"C"', 'no', 'no', 'class attribute'], ['__init__', 'function', 'no', 'no', 'non-data descriptor'], ['nope', '—', '—', 'no', '__getattr__']] },
+      complexity: R`<p>O(length of the MRO) per lookup. CPython makes step 1 O(1) on average with its per-type attribute cache.</p>`,
+      followUps: ['Extend it for lookups on classes (<code>Temp.kelvin</code>), which involve the metaclass.']
+    }
+  });
+
+  practice.push({
+    title: 'Re-implement cached_property',
+    level: 'Medium', tags: ['descriptors', 'caching', 'non-data descriptor'], companies: ['Dropbox', 'Instagram'],
+    statement: R`<p>Implement a decorator class <code>cached</code> that behaves like <code>functools.cached_property</code>: the first access computes the value and stores it in the instance's <code>__dict__</code>; later accesses never call the function again; <code>del obj.attr</code> forces recomputation; accessing on the class returns the descriptor.</p>`,
+    constraints: R`<p>Must be a <b>non-data</b> descriptor (only <code>__get__</code>, plus <code>__set_name__</code>). Raise <code>TypeError</code> with a clear message if the instance has no <code>__dict__</code> (slots).</p>`,
+    example: R`<p><code>r.total</code> twice prints "computing" ${H.c('g', 'once')}; after <code>del r.total</code>, the next access computes again.</p>`,
+    brute: { why: R`<p>A property with a manual <code>if self._cache is None</code> check works per attribute but needs boilerplate everywhere, and since property is a <b>data</b> descriptor every access still goes through a Python-level getter call. The non-data trick lets the instance dict serve cached values at full attribute speed.</p>`, code: R`class ReportSlow:
+    def __init__(self):
+        self._total = None
+    @property
+    def total(self):                       # getter runs on every access
+        if self._total is None:
+            self._total = sum(range(1000))
+        return self._total
+` },
+    mcq: { q: 'Why does a cached value stored in <code>obj.__dict__["total"]</code> bypass the descriptor next time?', options: ['Non-data descriptors lose to the instance dict in lookup order', 'Python deletes the descriptor after first use', '__dict__ is checked before the class for all descriptors', 'Because __set_name__ renamed it'], answer: 0, explain: 'Step 3 (instance dict) comes before step 4 (non-data descriptor). Data descriptors would still win, which is why cached must NOT define __set__.' },
+    hints: [R`<p>Hint 1: store the function in <code>__init__</code>, learn the attribute name in <code>__set_name__</code>.</p>`, R`<p>Hint 2: in <code>__get__</code>: if <code>obj is None</code> return self; compute <code>value = self.func(obj)</code>; write <code>obj.__dict__[self.name] = value</code>; return value.</p>`, R`<p>Hint 3: <code>getattr(obj, "__dict__", None)</code> is None for slotted classes, so raise TypeError there. Do not define <code>__set__</code> or <code>__delete__</code>: <code>del obj.total</code> then just deletes the dict key.</p>`],
+    solution: {
+      approach: R`<p>A non-data descriptor that writes its result into the instance dict under its own name, so the normal lookup order turns later accesses into a plain dict hit.</p>`,
+      code: { lang: 'python', run: true, code: R`class cached:
+    def __init__(self, func):
+        self.func = func
+        self.__doc__ = func.__doc__
+
+    def __set_name__(self, owner, name):
+        self.name = name
+
+    def __get__(self, obj, objtype=None):
+        if obj is None:
+            return self
+        d = getattr(obj, "__dict__", None)
+        if d is None:
+            raise TypeError(f"cannot cache {self.name!r}: instance has no __dict__")
+        value = self.func(obj)
+        d[self.name] = value              # next lookup hits the instance dict
+        return value
+
+class Report:
+    calls = 0
+    @cached
+    def total(self):
+        Report.calls += 1
+        return sum(range(1_000))
+
+r = Report()
+print(r.total, r.total, "computations:", Report.calls)
+del r.total                               # just removes the dict entry
+print(r.total, "computations:", Report.calls)
+print(type(Report.total).__name__)
+` },
+      complexity: R`<p>First access: cost of the function. Later accesses: an ordinary attribute lookup (dict hit), no Python-level call.</p>`,
+      followUps: ['Make it thread-safe for expensive computations without a global lock (per-instance lock, or accept double computation like the stdlib does since 3.12).']
+    }
+  });
+
+  practice.push({
+    title: 'Count Live Instances per Class',
+    level: 'Medium', tags: ['metaclass', 'weakref', '__call__'], companies: ['Microsoft', 'Unity'],
+    statement: R`<p>Create a metaclass <code>Tracked</code> so that every class using it records <b>live</b> instances: <code>Cls.live()</code> returns how many instances currently exist, and <code>Cls.created</code> how many were ever created. Instances must not be kept alive by the tracking.</p>`,
+    constraints: R`<p>Each class (including subclasses) has its own counters. Use <code>weakref.WeakSet</code>. Do not require any code in the user classes' <code>__init__</code>.</p>`,
+    example: R`<p>Create 3 <code>Bullet</code>s, delete 2 → ${H.c('g', 'Bullet.live() = 1, Bullet.created = 3')}.</p>`,
+    brute: { why: R`<p>Appending instances to a plain list in <code>__init__</code> keeps every object alive forever (a memory leak) and must be repeated in each class. Counting in <code>__del__</code> is unreliable with cycles and resurrection.</p>`, code: R`class BulletLeaky:
+    all = []
+    def __init__(self):
+        BulletLeaky.all.append(self)       # strong refs: nothing is ever freed
+` },
+    mcq: { q: 'Which hook sees every instance creation of every class using the metaclass?', options: ['<code>Tracked.__call__</code>', '<code>Tracked.__init__</code>', '<code>Tracked.__prepare__</code>', '<code>object.__init_subclass__</code>'], answer: 0, explain: 'Calling a class runs type(cls).__call__. Meta.__init__ runs once per class creation, __prepare__ before the class body.' },
+    hints: [R`<p>Hint 1: in <code>Tracked.__init__</code> (once per class) give the class its own <code>_instances = weakref.WeakSet()</code> and <code>created = 0</code>.</p>`, R`<p>Hint 2: override <code>__call__</code>: <code>obj = super().__call__(*a, **kw)</code>, add to <code>cls._instances</code>, increment <code>cls.created</code>.</p>`, R`<p>Hint 3: define <code>live</code> as a method on the <b>metaclass</b>, so <code>Bullet.live()</code> works but instances do not get it.</p>`],
+    solution: {
+      approach: R`<p>Per-class state is created in the metaclass's <code>__init__</code>, every instantiation passes through the metaclass's <code>__call__</code>, and a <code>WeakSet</code> tracks liveness without owning objects. <code>live</code> is a metaclass method, visible on classes only.</p>`,
+      code: { lang: 'python', run: true, code: R`import weakref
+
+class Tracked(type):
+    def __init__(cls, name, bases, ns, **kw):
+        super().__init__(name, bases, ns, **kw)
+        cls._instances = weakref.WeakSet()    # each class gets its own
+        cls.created = 0
+
+    def __call__(cls, *args, **kwargs):
+        obj = super().__call__(*args, **kwargs)
+        cls._instances.add(obj)
+        cls.created += 1
+        return obj
+
+    def live(cls):                            # metaclass method: class-only
+        return len(cls._instances)
+
+class Bullet(metaclass=Tracked):
+    def __init__(self, speed):
+        self.speed = speed
+
+class Rocket(Bullet):
+    pass
+
+shots = [Bullet(i) for i in range(3)]
+r = Rocket(9)
+del shots[:2]
+print("Bullet live/created:", Bullet.live(), Bullet.created)
+print("Rocket live/created:", Rocket.live(), Rocket.created)
+print("instances see live()?", hasattr(r, "live"))
+` },
+      complexity: R`<p>O(1) per instantiation. Memory: one weak reference per live instance; entries vanish automatically when instances die.</p>`,
+      followUps: ['Implement the same with <code>__init_subclass__</code> plus overriding <code>__new__</code> on a base class. What changes?']
+    }
+  });
+
+  practice.push({
+    title: 'Leak-Free Event Bus with Weak Methods',
+    level: 'Medium', tags: ['weakref', 'refcount', 'observer'], companies: ['Spotify', 'Discord', 'Uber'],
+    statement: R`<p>Build <code>EventBus</code> with <code>subscribe(callback)</code> and <code>publish(event)</code>. Subscribers are usually bound methods of UI or service objects; the bus must <b>not</b> keep those objects alive. When a subscriber object is garbage collected, its callback silently disappears.</p>`,
+    constraints: R`<p>Support both plain functions (kept strongly) and bound methods (kept weakly). Publishing must skip and clean up dead entries.</p>`,
+    example: R`<p>Two widgets subscribe; one is deleted; publishing <code>"tick"</code> reaches ${H.c('g', 'only the live widget')} and the bus reports 1 subscriber.</p>`,
+    brute: { why: R`<p>Storing callbacks in a plain list holds a strong reference to each bound method, and a bound method holds <code>__self__</code>. Every subscriber therefore lives as long as the bus: the classic observer-pattern leak. <code>weakref.ref(obj.method)</code> does not work either: the bound method object is temporary and dies immediately.</p>`, code: R`class LeakyBus:
+    def __init__(self):
+        self.subs = []
+    def subscribe(self, cb):
+        self.subs.append(cb)              # bound method -> keeps its object alive
+    def publish(self, event):
+        for cb in self.subs:
+            cb(event)
+` },
+    mcq: { q: 'Why does <code>weakref.ref(widget.on_event)</code> die immediately?', options: ['The bound method is a temporary object created on attribute access', 'Widgets cannot be weakly referenced', 'Methods are immortal', 'weakref only works on functions'], answer: 0, explain: 'Each widget.on_event creates a new bound-method object; nothing else references it, so the weakref dies at once. WeakMethod stores weak refs to the object and the function separately.' },
+    hints: [R`<p>Hint 1: <code>weakref.WeakMethod(bound)</code> recreates the bound method on call and returns None once <code>__self__</code> is dead.</p>`, R`<p>Hint 2: detect bound methods with <code>hasattr(cb, "__self__") and hasattr(cb, "__func__")</code>; wrap plain functions in a lambda that returns them, so both kinds look like "call me to get the callback".</p>`, R`<p>Hint 3: in <code>publish</code>, build a new list of live entries while dispatching; replace the old list at the end.</p>`],
+    solution: {
+      approach: R`<p>Store "resolvers": for bound methods a <code>WeakMethod</code>, for functions a strong closure. Publishing resolves each; dead ones are dropped. No subscriber's lifetime is extended by the bus.</p>`,
+      code: { lang: 'python', run: true, code: R`import weakref
+
+class EventBus:
+    def __init__(self):
+        self._subs = []
+
+    def subscribe(self, cb):
+        if hasattr(cb, "__self__") and hasattr(cb, "__func__"):
+            self._subs.append(weakref.WeakMethod(cb))     # weak to the object
+        else:
+            self._subs.append(lambda cb=cb: cb)           # plain function: strong
+        return cb
+
+    def publish(self, event):
+        alive = []
+        for resolve in self._subs:
+            cb = resolve()
+            if cb is None:
+                continue                                  # subscriber was collected
+            alive.append(resolve)
+            cb(event)
+        self._subs = alive
+
+    def __len__(self):
+        return len(self._subs)
+
+class Widget:
+    def __init__(self, name):
+        self.name = name
+    def on_event(self, event):
+        print(f"  {self.name} got {event}")
+
+bus = EventBus()
+a, b = Widget("A"), Widget("B")
+bus.subscribe(a.on_event)
+bus.subscribe(b.on_event)
+bus.subscribe(lambda e: print("  logger got", e))
+bus.publish("tick-1")
+del b                                    # B's only strong reference is gone
+bus.publish("tick-2")
+print("subscribers left:", len(bus))
+` },
+      complexity: R`<p>O(S) per publish for S subscribers, including cleanup. Memory O(live subscribers).</p>`,
+      followUps: ['Add <code>weakref.WeakMethod(cb, callback)</code> to remove dead entries eagerly instead of at the next publish.']
+    }
+  });
+
+  practice.push({
+    title: 'Lazy Attributes for a Module (PEP 562)',
+    level: 'Medium', tags: ['import system', 'module __getattr__', 'startup time'], companies: ['Netflix', 'Databricks'],
+    statement: R`<p>Write <code>make_lazy_module(name, mapping)</code> returning a module object where accessing <code>mod.attr</code> imports <code>mapping[attr]</code> (a <code>"module:attribute"</code> string) on first use only, caches it in the module's namespace, and raises <code>AttributeError</code> for unknown names. <code>dir(mod)</code> should list the lazy names.</p>`,
+    constraints: R`<p>Use <code>types.ModuleType</code> and a module-level <code>__getattr__</code>/<code>__dir__</code> (PEP 562). Register it in <code>sys.modules</code> so <code>import name</code> works.</p>`,
+    example: R`<p><code>tools = make_lazy_module("tools", {"dumps": "json:dumps"})</code>; <code>"dumps" in vars(tools)</code> is ${H.c('r', 'False')} until the first <code>tools.dumps(...)</code> call, then ${H.c('g', 'True')}.</p>`,
+    brute: { why: R`<p>Importing everything eagerly at the top of a package's <code>__init__.py</code> makes <code>import mypkg</code> pay for heavy dependencies (pandas, torch) even when the user only needs one small helper. CLIs feel slow; <code>python -X importtime</code> shows the culprit.</p>`, code: R`import types
+import importlib
+
+def make_eager_module(name, mapping):
+    mod = types.ModuleType(name)
+    for attr, target in mapping.items():
+        modname, _, obj = target.partition(":")
+        setattr(mod, attr, getattr(importlib.import_module(modname), obj))  # all upfront
+    return mod
+` },
+    mcq: { q: 'When does a module-level <code>__getattr__</code> run?', options: ['Only when normal lookup in the module dict fails', 'On every attribute access', 'Only at import time', 'Only for names starting with an underscore'], answer: 0, explain: 'PEP 562: module attribute access first checks the module __dict__; only if the name is missing is __getattr__ called. Caching the result in the dict makes later accesses normal.' },
+    hints: [R`<p>Hint 1: create <code>mod = types.ModuleType(name)</code>, then define <code>def __getattr__(attr): ...</code> and store it as <code>mod.__getattr__</code> (it lives in the module dict).</p>`, R`<p>Hint 2: inside, look up <code>mapping[attr]</code>, <code>importlib.import_module</code> the module part, <code>getattr</code> the object part, then <code>setattr(mod, attr, value)</code> to cache.</p>`, R`<p>Hint 3: unknown attr → <code>raise AttributeError(f"module {name!r} has no attribute {attr!r}")</code>. <code>__dir__</code> returns sorted module dict keys plus mapping keys.</p>`],
+    solution: {
+      approach: R`<p>PEP 562 gives modules a fallback <code>__getattr__</code>. We resolve on first access and cache into the module dict so subsequent accesses are ordinary dict lookups.</p>`,
+      code: { lang: 'python', run: true, code: R`import importlib
+import sys
+import types
+
+def make_lazy_module(name, mapping):
+    mod = types.ModuleType(name)
+
+    def __getattr__(attr):
+        try:
+            target = mapping[attr]
+        except KeyError:
+            raise AttributeError(f"module {name!r} has no attribute {attr!r}") from None
+        modname, _, objname = target.partition(":")
+        value = getattr(importlib.import_module(modname), objname)
+        setattr(mod, attr, value)               # cache: next access is a dict hit
+        return value
+
+    def __dir__():
+        return sorted(set(vars(mod)) | set(mapping))
+
+    mod.__getattr__ = __getattr__
+    mod.__dir__ = __dir__
+    sys.modules[name] = mod
+    return mod
+
+tools = make_lazy_module("tools", {"dumps": "json:dumps", "sqrt": "math:sqrt"})
+print("loaded before use?", "dumps" in vars(tools))
+import tools as t2                              # sys.modules hit
+print(t2.dumps({"a": 1}), t2.sqrt(16.0))
+print("loaded after use? ", "dumps" in vars(tools))
+print([n for n in dir(tools) if not n.startswith("__")])
+try:
+    tools.nope
+except AttributeError as e:
+    print("AttributeError:", e)
+del sys.modules["tools"]
+` },
+      complexity: R`<p>First access: one import (possibly already cached in <code>sys.modules</code>). Later: O(1) dict lookup. Start-up cost moves to first use.</p>`,
+      followUps: ['Compare with <code>importlib.util.LazyLoader</code> and with the <code>lazy import</code> syntax from PEP 810.']
+    }
+  });
+
+  practice.push({
+    title: '__slots__ vs __dict__: Measure the Memory',
+    level: 'Medium', tags: ['object model', 'tracemalloc', '__slots__'], companies: ['Amazon', 'Two Sigma', 'Citadel'],
+    statement: R`<p>Write <code>bytes_per_instance(cls, n=10_000)</code> that measures, with <code>tracemalloc</code>, the average memory allocated per instance when creating <code>n</code> instances of <code>cls</code> (each with three int attributes set in <code>__init__</code>). Compare a regular class, a <code>__slots__</code> class and a <code>@dataclass(slots=True)</code>.</p>`,
+    constraints: R`<p>Exclude allocations that existed before the measurement. Keep the instances alive until measured. Results vary by version (3.11+ inline values shrank regular instances), so report numbers, do not hard-code them.</p>`,
+    example: R`<p>Typical 3.13 numbers: regular ≈ 90–100 bytes, slots ≈ 55–60 bytes (attribute values are small cached ints, so they add nothing). Older versions (≤ 3.10) showed regular instances at 150+ bytes because each had a real dict.</p>`,
+    brute: { why: R`<p><code>sys.getsizeof(obj)</code> is shallow: for a regular class it ignores the attribute storage (and the result changed across versions), so it can even suggest slots save nothing. Measuring real allocations is the reliable approach.</p>`, code: R`import sys
+
+class P:
+    def __init__(self):
+        self.x, self.y, self.z = 1, 2, 3
+
+print(sys.getsizeof(P()))          # shallow: misses attribute storage
+` },
+    mcq: { q: 'What does <code>__slots__ = ("x", "y")</code> remove from each instance?', options: ['The per-instance __dict__ (and __weakref__ unless listed)', 'The type pointer', 'The reference count', 'Nothing, it only speeds up access'], answer: 0, explain: 'Slots store attributes at fixed offsets via member descriptors, so no per-instance dict is needed. Every object still has a refcount and type pointer.' },
+    hints: [R`<p>Hint 1: <code>tracemalloc.start()</code>, take <code>get_traced_memory()[0]</code> before and after creating the list of instances.</p>`, R`<p>Hint 2: subtract the list's own size (about <code>8 * n</code> bytes of pointers plus a header) by pre-building <code>[None] * n</code> and filling it.</p>`, R`<p>Hint 3: call <code>gc.collect()</code> before measuring and <code>tracemalloc.stop()</code> afterwards; divide by n.</p>`],
+    solution: {
+      approach: R`<p>Pre-allocate the holder list so it does not count, then measure the allocation delta while creating n instances. Divide by n. Compare three class styles.</p>`,
+      code: { lang: 'python', run: true, code: R`import gc
+import tracemalloc
+from dataclasses import dataclass
+
+class Regular:
+    def __init__(self, x, y, z):
+        self.x, self.y, self.z = x, y, z
+
+class Slotted:
+    __slots__ = ("x", "y", "z")
+    def __init__(self, x, y, z):
+        self.x, self.y, self.z = x, y, z
+
+@dataclass(slots=True)
+class DataSlotted:
+    x: int
+    y: int
+    z: int
+
+def bytes_per_instance(cls, n=10_000):
+    holder = [None] * n                   # allocate the container first
+    gc.collect()
+    tracemalloc.start()
+    before = tracemalloc.get_traced_memory()[0]
+    for i in range(n):
+        holder[i] = cls(1, 2, 3)          # small ints: cached, add no memory
+    after = tracemalloc.get_traced_memory()[0]
+    tracemalloc.stop()
+    return (after - before) / n
+
+for cls in (Regular, Slotted, DataSlotted):
+    print(f"{cls.__name__:<12} ~{bytes_per_instance(cls):6.1f} bytes/instance")
+` },
+      complexity: R`<p>O(n) time; memory for n instances during the measurement.</p>`,
+      followUps: ['Why can slotted instances not be weakly referenced by default, and how do you allow it? (add <code>"__weakref__"</code> to slots)']
+    }
   });
 registerModule({ id: 'py12', title: 'CPython Internals', intro: 'x', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();
