@@ -1783,6 +1783,606 @@ int main() {
     }]
   });
 
+  /* ======================================================================
+     PRACTICE — Easy
+     ====================================================================== */
+  practice.push({
+    title: 'Swap Two Numbers via References (Fix the Broken swap)',
+    level: 'Easy', tags: ['pass by reference', 'functions', 'predict the output'], companies: ['TCS', 'Accenture', 'Capgemini'],
+    statement: `<p>A teammate wrote <code>void swapNums(int a, int b)</code> and is confused that <code>main</code> still prints the original values. Explain the bug, fix the function so it really swaps the caller's variables, and then write <code>void swapEnds(vector&lt;int&gt;&amp; v)</code> that swaps the first and last elements of a vector (do nothing if it has fewer than 2 elements). Read two integers and a vector, apply both functions, print the results.</p>`,
+    constraints: `|a|, |b| ≤ 10<sup>9</sup>; 0 ≤ vector size ≤ 10<sup>5</sup>.`,
+    example: `<p>Input: <code>3 8</code> and vector ${H.arr([1, 2, 3, 4])}</p><p>Output: <code>8 3</code> and ${H.arr([4, 2, 3, 1], { hl: { 0: 'g', 3: 'g' } })}</p><p><b>Why:</b> with reference parameters the function's <code>a</code> and <code>b</code> are other names for main's variables, so the swap is visible after the call.</p>`,
+    brute: {
+      why: `<p>The original code takes <code>a</code> and <code>b</code> <b>by value</b>: it swaps two private copies that are destroyed when the function returns. The program prints <b>3 8</b> — nothing happened. All the work inside the function is wasted because it never touches the caller's data.</p>`,
+      code: R`void swapNums(int a, int b) {    // BUG: a and b are copies
+    int t = a;
+    a = b;
+    b = t;                        // swaps the copies only
+}
+
+int main() {
+    int x = 3, y = 8;
+    swapNums(x, y);
+    cout << x << " " << y << "\n";   // 3 8  (unchanged!)
+}`
+    },
+    mcq: { q: 'What is the smallest change that makes <code>swapNums</code> work?', options: ['Add <code>return a, b;</code>', 'Change the parameters to <code>int&amp; a, int&amp; b</code>', 'Make <code>t</code> a global variable', 'Call it as <code>swapNums(&amp;x, &amp;y)</code> without other changes'], answer: 1, explain: 'Reference parameters make a and b aliases of x and y. Option 4 would need pointer parameters (int*) and dereferencing inside.' },
+    hints: [`<p>Hint 1: Draw the two stack frames. In the broken version main's x, y and the function's a, b are four different boxes. You need a and b to <i>be</i> x and y.</p>`, `<p>Hint 2: Add <code>&amp;</code> to the parameter types: <code>void swapNums(int&amp; a, int&amp; b)</code>. No change is needed at the call site. The vector version also needs <code>vector&lt;int&gt;&amp;</code>.</p>`, `<p>Hint 3: For <code>swapEnds</code>, guard <code>if (v.size() &lt; 2) return;</code> first, then swap <code>v[0]</code> and <code>v.back()</code> (or <code>v[v.size() - 1]</code>). In real code, <code>std::swap</code> already does this.</p>`],
+    solution: {
+      approach: `<p>Pass by <b>reference</b> so the function works on the caller's variables. The vector must also be passed by non-const reference — by value it would swap the ends of a copy. Guard against vectors with fewer than two elements before touching <code>v.back()</code>.</p>`,
+      code: R`#include <bits/stdc++.h>
+using namespace std;
+
+void swapNums(int& a, int& b) {      // references: a IS x, b IS y
+    int t = a;
+    a = b;
+    b = t;
+}
+
+void swapEnds(vector<int>& v) {      // must be a reference to change the caller's vector
+    if (v.size() < 2) return;        // nothing to swap (and v.back() would be UB on empty)
+    swapNums(v[0], v.back());        // v[0] and v.back() are ints we can bind to int&
+}
+
+int main() {
+    int x, y;
+    cin >> x >> y;
+    swapNums(x, y);
+    cout << x << " " << y << "\n";
+
+    int n;
+    cin >> n;
+    vector<int> v(n);
+    for (int& e : v) cin >> e;       // read straight into the elements
+    swapEnds(v);
+    for (int e : v) cout << e << ' ';
+    cout << "\n";
+}`,
+      dry: { head: ['step', 'x', 'y', 'a (alias)', 'b (alias)', 't'], rows: [['call', '3', '8', '→ x', '→ y', '—'], ['t = a', '3', '8', '→ x', '→ y', '3'], ['a = b', '8', '8', '→ x', '→ y', '3'], ['b = t', '8', '3', '→ x', '→ y', '3']] },
+      complexity: `<p>O(1) time and space for each swap; reading the vector is O(n).</p>`,
+      followUps: ['Swap without a temporary using <code>a ^= b; b ^= a; a ^= b;</code> — why does it fail when a and b refer to the same variable?', 'Write the pointer version <code>void swapPtr(int* a, int* b)</code> and compare the call syntax.']
+    }
+  });
+
+  practice.push({
+    title: 'Count Vowels, Consonants, Digits and Spaces in a Line',
+    level: 'Easy', tags: ['string', 'getline', 'switch', 'cctype'], companies: ['Infosys', 'Cognizant', 'Zoho'],
+    statement: `<p>Read <b>one full line</b> of text (it may contain spaces and punctuation). Print four counts: vowels (a, e, i, o, u in either case), consonants (other letters), digits, and spaces. Use a <code>switch</code> to recognise the vowels.</p>`,
+    constraints: `1 ≤ line length ≤ 10<sup>6</sup>; ASCII text.`,
+    example: `<p>Input: <code>Hello World 2026!</code></p><p>Output: ${H.c('g', 'vowels=3 consonants=7 digits=4 spaces=2')}</p><p><b>Why:</b> vowels e, o, o; consonants H, l, l, W, r, l, d; digits 2, 0, 2, 6; two spaces; '!' is none of these.</p>`,
+    brute: {
+      why: `<p>A naive version reads with <code>cin &gt;&gt; s</code>, which stops at the first space — so it only ever sees "Hello" and the counts are wrong. Another common naive check tests vowels with 10 separate <code>||</code> comparisons, or calls <code>s.find(c)</code> on a "aeiouAEIOU" string for every char — correct but noisy. The real fixes are <code>getline</code> and a clean classification.</p>`,
+      code: R`int main() {
+    string s;
+    cin >> s;                    // BUG: reads only up to the first space
+    int v = 0, c = 0, d = 0, sp = 0;
+    for (char ch : s) {
+        if (ch == 'a' || ch == 'e' || ch == 'i' || ch == 'o' || ch == 'u' ||
+            ch == 'A' || ch == 'E' || ch == 'I' || ch == 'O' || ch == 'U') v++;
+        else if (isalpha((unsigned char)ch)) c++;
+        else if (isdigit((unsigned char)ch)) d++;
+        else if (ch == ' ') sp++;          // never true: cin >> never stores spaces
+    }
+    cout << v << " " << c << " " << d << " " << sp << "\n";
+}`
+    },
+    mcq: { q: 'Why does <code>cin &gt;&gt; s</code> never count any spaces?', options: ['Spaces are not chars', '<code>&gt;&gt;</code> stops reading at whitespace, so spaces never enter s', 'Strings cannot hold spaces', 'Because of the switch'], answer: 1, explain: 'The >> operator skips leading whitespace and stops at the next whitespace. getline reads up to the newline and keeps spaces.' },
+    hints: [`<p>Hint 1: Use <code>getline(cin, line)</code> so the whole line (with spaces) is in the string.</p>`, `<p>Hint 2: Lower-case the char once (<code>tolower</code>), then <code>switch</code> on it with <code>case 'a': case 'e': case 'i': case 'o': case 'u':</code> sharing one body (intentional fall-through between empty cases).</p>`, `<p>Hint 3: In the <code>default:</code> branch decide between consonant (<code>isalpha</code>), digit (<code>isdigit</code>) and space (<code>== ' '</code>). Cast to <code>unsigned char</code> before calling the &lt;cctype&gt; functions.</p>`],
+    solution: {
+      approach: `<p>Read the whole line with <code>getline</code>. For each character, normalise to lowercase and use a <code>switch</code>: stacked empty <code>case</code> labels for the five vowels share one counter increment, and <code>default</code> classifies the rest with &lt;cctype&gt; tests.</p>`,
+      code: R`#include <bits/stdc++.h>
+using namespace std;
+
+int main() {
+    string line;
+    getline(cin, line);                       // keeps spaces
+    int vowels = 0, consonants = 0, digits = 0, spaces = 0;
+    for (char raw : line) {
+        unsigned char ch = (unsigned char)raw;
+        switch (tolower(ch)) {
+            case 'a': case 'e': case 'i': case 'o': case 'u':
+                ++vowels;                     // all five labels share this line
+                break;
+            default:
+                if (isalpha(ch))      ++consonants;
+                else if (isdigit(ch)) ++digits;
+                else if (ch == ' ')   ++spaces;
+        }
+    }
+    cout << "vowels=" << vowels << " consonants=" << consonants
+         << " digits=" << digits << " spaces=" << spaces << "\n";
+}`,
+      complexity: `<p>O(n) time for a line of n characters, O(1) extra space besides the line itself.</p>`,
+      followUps: ['Also print the most frequent letter using an <code>array&lt;int, 26&gt;</code>.', 'Count words: a word starts where a non-space follows a space (or the line start).']
+    }
+  });
+
+  practice.push({
+    title: 'Second Largest Distinct Element',
+    level: 'Easy', tags: ['array', 'single pass', 'edge cases'], companies: ['Amazon', 'Flipkart', 'Paytm'],
+    statement: `<p>Given a vector of integers, return the second largest <b>distinct</b> value, or −1 if it does not exist (fewer than two distinct values). Do it in a <b>single pass</b> without sorting.</p>`,
+    constraints: `1 ≤ n ≤ 10<sup>6</sup>; 0 ≤ a[i] ≤ 10<sup>9</sup>.`,
+    example: `<p>${H.arr([12, 35, 1, 10, 35, 34], { hl: { 1: 'g', 4: 'g', 5: 'y' } })} → ${H.c('g', '34')} (35 is the largest, appearing twice; the next distinct value is 34). ${H.arr([7, 7, 7])} → ${H.c('r', '-1')} (only one distinct value).</p>`,
+    brute: {
+      why: `<p>Sort descending, then walk until a value differs from the first. Correct, but O(n log n) and it modifies (or copies) the input. Taking the vector <b>by value</b> to sort a copy also costs O(n) extra memory. One pass with two variables is enough.</p>`,
+      code: R`int secondLargestBrute(vector<int> a) {          // copy, so we can sort it
+    sort(a.begin(), a.end(), greater<int>());    // O(n log n)
+    for (size_t i = 1; i < a.size(); ++i)
+        if (a[i] != a[0]) return a[i];
+    return -1;
+}`
+    },
+    mcq: { q: 'Scanning left to right with <code>first</code> and <code>second</code>, what happens when x == first?', options: ['second = first', 'first = x', 'Nothing — a duplicate of the max must not become the second largest', 'Return -1'], answer: 2, explain: 'We want distinct values, so a repeat of the maximum is ignored. Only x > first (shift first down into second) or first > x > second (new second) change anything.' },
+    hints: [`<p>Hint 1: Keep two variables: <code>first</code> (largest so far) and <code>second</code> (largest value strictly smaller than first). Start both at −1 (all inputs are ≥ 0).</p>`, `<p>Hint 2: For each x: if <code>x &gt; first</code> → second = first, first = x. Else if <code>x &lt; first &amp;&amp; x &gt; second</code> → second = x. Equal to first → ignore.</p>`, `<p>Hint 3: Pass the vector by <code>const vector&lt;int&gt;&amp;</code> so nothing is copied. Test with [7,7,7], [5], [1,2] and [2,1].</p>`],
+    solution: {
+      approach: `<p>One pass, two trackers. The <code>x &lt; first</code> condition is what enforces "distinct": a second copy of the max never becomes the runner-up. Because values are non-negative, −1 works as the "not found" sentinel.</p>`,
+      code: R`#include <bits/stdc++.h>
+using namespace std;
+
+int secondLargest(const vector<int>& a) {
+    int first = -1, second = -1;
+    for (int x : a) {
+        if (x > first) {               // new maximum: old max becomes runner-up
+            second = first;
+            first = x;
+        } else if (x < first && x > second) {
+            second = x;                // new runner-up (strictly below the max)
+        }                              // x == first: duplicate max, ignore
+    }
+    return second;
+}
+
+int main() {
+    cout << secondLargest({12, 35, 1, 10, 35, 34}) << "\n";   // 34
+    cout << secondLargest({7, 7, 7}) << "\n";                 // -1
+    cout << secondLargest({2, 1}) << "\n";                    // 1
+}`,
+      dry: { head: ['x', 'first', 'second', 'why'], rows: [['12', '12', '-1', 'x &gt; first'], ['35', '35', '12', 'x &gt; first: shift'], ['1', '35', '12', 'no change'], ['10', '35', '12', 'no change'], ['35', '35', '12', 'equal to first: ignore'], ['34', '35', H.c('g', '34'), 'first &gt; x &gt; second']] },
+      complexity: `<p>O(n) time, O(1) extra space, no copy of the input.</p>`,
+      followUps: ['Return the k-th largest distinct value for small k.', 'What changes if values can be negative? (Use <code>LLONG_MIN</code> or an <code>optional</code> as the sentinel.)']
+    }
+  });
+
+  practice.push({
+    title: 'Move Zeroes to the End (Stable, In Place)',
+    level: 'Easy', tags: ['vector', 'two pointers', 'in-place'], companies: ['Meta', 'Bloomberg', 'Apple'],
+    statement: `<p>Given a <code>vector&lt;int&gt;&amp; nums</code>, move all zeros to the end while keeping the relative order of the non-zero elements. Do it <b>in place</b> (modify the caller's vector, no second vector).</p>`,
+    constraints: `1 ≤ n ≤ 10<sup>4</sup>; −2<sup>31</sup> ≤ nums[i] ≤ 2<sup>31</sup> − 1`,
+    example: `<p>${H.arr([0, 1, 0, 3, 12], { hl: { 0: 'r', 2: 'r' } })} → ${H.arr([1, 3, 12, 0, 0], { hl: { 3: 'r', 4: 'r' } })}. The non-zeros 1, 3, 12 keep their order.</p>`,
+    brute: {
+      why: `<p>Every time you see a zero, <code>erase</code> it and <code>push_back</code> a zero. Each <code>erase</code> shifts the whole tail left (O(n)), so with many zeros it is O(n²). It is also easy to skip an element when two zeros are adjacent, because the index must not advance after an erase.</p>`,
+      code: R`void moveZeroesBrute(vector<int>& nums) {
+    int n = nums.size();
+    int i = 0, checked = 0;
+    while (checked < n) {
+        if (nums[i] == 0) {
+            nums.erase(nums.begin() + i);   // O(n) shift
+            nums.push_back(0);
+        } else {
+            ++i;                             // only advance when nothing was erased
+        }
+        ++checked;
+    }
+}`
+    },
+    mcq: { q: 'With a write index <code>w</code>, what do we do for each non-zero x?', options: ['nums[w++] = x', 'nums.push_back(x)', 'swap(x, nums.back())', 'erase x'], answer: 0, explain: 'Non-zeros are packed to the front in their original order with a write pointer; afterwards positions w..n-1 are filled with zeros.' },
+    hints: [`<p>Hint 1: Think of a "write" index <code>w</code> that marks where the next non-zero belongs. A "read" index scans every element.</p>`, `<p>Hint 2: For every non-zero value, copy it to <code>nums[w]</code> and increment w. Since w ≤ read index, you never overwrite something you have not read yet.</p>`, `<p>Hint 3: After the scan, fill <code>nums[w..n-1]</code> with 0. Or use <code>swap(nums[w++], nums[r])</code> to do it in one pass. Remember the parameter must be <code>vector&lt;int&gt;&amp;</code>.</p>`],
+    solution: {
+      approach: `<p>Two indices on the same vector: <code>r</code> reads every element, <code>w</code> writes the next non-zero. Swapping instead of copying moves zeros backward automatically, so one pass is enough. Stability holds because non-zeros are written in the order they are read.</p>`,
+      code: R`#include <bits/stdc++.h>
+using namespace std;
+
+void moveZeroes(vector<int>& nums) {
+    int w = 0;                                  // next slot for a non-zero
+    for (int r = 0; r < (int)nums.size(); ++r)
+        if (nums[r] != 0) swap(nums[w++], nums[r]);
+}
+
+int main() {
+    vector<int> a = {0, 1, 0, 3, 12};
+    moveZeroes(a);
+    for (int x : a) cout << x << ' ';           // 1 3 12 0 0
+    cout << "\n";
+}`,
+      dry: { head: ['r', 'nums[r]', 'action', 'w after', 'array'], rows: [['0', '0', 'skip', '0', '0 1 0 3 12'], ['1', '1', 'swap(0,1)', '1', '1 0 0 3 12'], ['2', '0', 'skip', '1', '1 0 0 3 12'], ['3', '3', 'swap(1,3)', '2', '1 3 0 0 12'], ['4', '12', 'swap(2,4)', '3', H.c('g', '1 3 12 0 0')]] },
+      complexity: `<p>O(n) time, O(1) extra space, each element read once.</p>`,
+      followUps: ['Remove all occurrences of a value and return the new length (LeetCode 27).', 'Do the same with <code>std::stable_partition</code> or <code>remove</code> + <code>fill</code>.']
+    }
+  });
+
+  practice.push({
+    title: 'Armstrong Numbers in a Range',
+    level: 'Easy', tags: ['loops', 'functions', 'digits', 'integer power'], companies: ['TCS', 'Wipro', 'HCL'],
+    statement: `<p>An <b>Armstrong</b> (narcissistic) number with k digits equals the sum of its digits each raised to the power k. Example: 153 = 1³ + 5³ + 3³. Write helper functions <code>countDigits(n)</code>, <code>ipow(base, exp)</code> and <code>isArmstrong(n)</code>, then print all Armstrong numbers in [L, R].</p>`,
+    constraints: `1 ≤ L ≤ R ≤ 10<sup>6</sup>`,
+    example: `<p>Input: <code>100 1000</code> → Output: ${H.c('g', '153 370 371 407')}. Why 370: 3³ + 7³ + 0³ = 27 + 343 + 0 = 370.</p>`,
+    brute: {
+      why: `<p>The usual first attempt uses <code>pow()</code> from &lt;cmath&gt;, which works in <b>double</b>. <code>pow(5, 3)</code> may come back as 124.99999…, and converting to <code>int</code> truncates it to 124 — on some compilers/platforms the program then misses 153. It also recounts digits with a <code>to_string</code> call per number. The fix is an exact integer power helper.</p>`,
+      code: R`bool isArmstrongBrute(int n) {
+    int k = to_string(n).size();             // allocates a string per number
+    int sum = 0, t = n;
+    while (t > 0) {
+        sum += (int)pow(t % 10, k);          // double maths: 124.9999 -> 124 risk
+        t /= 10;
+    }
+    return sum == n;
+}`
+    },
+    mcq: { q: 'Why is <code>(int)pow(5, 3)</code> risky?', options: ['pow only accepts doubles and might return 124.999… which truncates to 124', 'pow is not in C++', 'It overflows', 'It is always exact'], answer: 0, explain: 'pow works in floating point. Exact results are not guaranteed for every library, and the int cast truncates instead of rounding. Integer loops are exact.' },
+    hints: [`<p>Hint 1: Split the job into small functions: count digits with a <code>while (n &gt; 0) { n /= 10; ++k; }</code> loop; raise to a power with a <code>for</code> loop multiplying k times.</p>`, `<p>Hint 2: In <code>isArmstrong</code>, compute k once, then peel digits with <code>% 10</code> and <code>/ 10</code>, summing <code>ipow(d, k)</code> into a <code>long long</code>.</p>`, `<p>Hint 3: Loop n from L to R and print the ones that pass. Each check is O(digits²) — at most 7 × 7 multiplications — so 10<sup>6</sup> numbers is quick.</p>`],
+    solution: {
+      approach: `<p>Three tiny functions, each with one job, make the main loop read like the definition. The integer power is exact, and the sum is a <code>long long</code> for safety. Functions take <code>int</code> by value — cheap and safe.</p>`,
+      code: R`#include <bits/stdc++.h>
+using namespace std;
+
+int countDigits(int n) {
+    int k = 0;
+    do { ++k; n /= 10; } while (n > 0);   // do-while: 0 still has 1 digit
+    return k;
+}
+
+long long ipow(long long base, int exp) {  // exact integer power
+    long long r = 1;
+    for (int i = 0; i < exp; ++i) r *= base;
+    return r;
+}
+
+bool isArmstrong(int n) {
+    int k = countDigits(n);
+    long long sum = 0;
+    for (int t = n; t > 0; t /= 10) sum += ipow(t % 10, k);
+    return sum == n;
+}
+
+int main() {
+    int L, R;
+    cin >> L >> R;
+    for (int n = L; n <= R; ++n)
+        if (isArmstrong(n)) cout << n << ' ';
+    cout << "\n";
+}`,
+      dry: { head: ['n', 'k', 'digit terms', 'sum', 'Armstrong?'], rows: [['153', '3', '1 + 125 + 27', '153', H.c('g', 'yes')], ['154', '3', '1 + 125 + 64', '190', H.c('r', 'no')], ['370', '3', '27 + 343 + 0', '370', H.c('g', 'yes')]] },
+      complexity: `<p>O((R − L + 1) · d²) with d ≤ 7 digits: effectively O(R − L). O(1) extra space.</p>`,
+      followUps: ['Precompute d<sup>k</sup> for d = 0..9 once per k to make each check O(d).', 'Why does <code>countDigits</code> use do-while instead of while?']
+    }
+  });
+
+  /* ======================================================================
+     PRACTICE — Medium
+     ====================================================================== */
+  practice.push({
+    title: 'Reverse the Words in a String',
+    level: 'Medium', tags: ['string', 'two pointers', 'in-place'], companies: ['Microsoft', 'Amazon', 'Goldman Sachs'],
+    statement: `<p>Given a string <code>s</code>, return the words in reverse order, separated by a <b>single</b> space. The input may have leading, trailing or multiple spaces between words; the output must not. Follow-up: do it in place with O(1) extra space.</p>`,
+    constraints: `1 ≤ |s| ≤ 10<sup>4</sup>; s contains English letters, digits and spaces; at least one word.`,
+    example: `<p><code>"  the sky   is blue "</code> → ${H.c('g', '"blue is sky the"')}. The extra spaces vanish and the word order flips; letters inside each word keep their order.</p>`,
+    brute: {
+      why: `<p>Split into a <code>vector&lt;string&gt;</code> with <code>stringstream</code>, then join in reverse. Clean and O(n) — but it allocates a string per word plus the vector. Interviewers then ask for the in-place version. A worse brute force builds the answer with <code>ans = word + " " + ans</code>, which copies the whole answer for every word: O(n²).</p>`,
+      code: R`string reverseWordsBrute(const string& s) {
+    stringstream ss(s);
+    string w, ans;
+    while (ss >> w)
+        ans = ans.empty() ? w : w + " " + ans;   // copies ans every time: O(n^2)
+    return ans;
+}`
+    },
+    mcq: { q: 'Reversing the whole string and then reversing each word gives…', options: ['the original string', 'the words in reverse order, each spelled correctly', 'every word spelled backwards', 'a palindrome'], answer: 1, explain: '"the sky" → reverse all → "yks eht" → reverse each word → "sky the". Two reversals of each word cancel out its letter order, the outer reversal flips the word order.' },
+    hints: [`<p>Hint 1: Reverse the entire string. The words are now in the right order but each word is spelled backwards.</p>`, `<p>Hint 2: Walk through the string with a read index and a write index: skip spaces, copy one word to the write position (adding one space before it if it is not the first word), then reverse that just-written word in place.</p>`, `<p>Hint 3: At the end <code>resize</code> the string to the write index to cut off leftover characters. Take <code>s</code> by value (you need a modifiable copy anyway) or by reference if in-place modification of the caller's string is allowed.</p>`],
+    solution: {
+      approach: `<p>Reverse everything, then compact words to the front one by one while reversing each word back. The write index never passes the read index, so we can overwrite safely. Finally shrink the string to the written length. All work is on one string — O(1) extra space.</p>`,
+      code: R`#include <bits/stdc++.h>
+using namespace std;
+
+string reverseWords(string s) {            // by value: we return the modified copy
+    reverse(s.begin(), s.end());           // words in order, letters backwards
+    int n = s.size(), w = 0;
+    for (int r = 0; r < n; ) {
+        if (s[r] == ' ') { ++r; continue; }        // skip spaces
+        if (w > 0) s[w++] = ' ';                   // single separator
+        int start = w;
+        while (r < n && s[r] != ' ') s[w++] = s[r++];   // copy one word
+        reverse(s.begin() + start, s.begin() + w);      // fix its spelling
+    }
+    s.resize(w);                           // cut leftover characters
+    return s;
+}
+
+int main() {
+    cout << "[" << reverseWords("  the sky   is blue ") << "]\n";   // [blue is sky the]
+}`,
+      complexity: `<p>O(n) time: each character is copied and reversed a constant number of times. O(1) extra space beyond the string being returned.</p>`,
+      followUps: ['Reverse the letters of each word but keep word order.', 'Rotate a sentence left by k words using the same reversal trick.']
+    }
+  });
+
+  practice.push({
+    title: 'Spiral Order of a Matrix',
+    level: 'Medium', tags: ['2D vector', 'loops', 'boundaries'], companies: ['Microsoft', 'Amazon', 'Apple', 'Uber'],
+    statement: `<p>Given an <code>m × n</code> matrix as <code>vector&lt;vector&lt;int&gt;&gt;</code>, return all elements in <b>spiral order</b>: across the top row left to right, down the right column, back along the bottom row right to left, up the left column, then repeat on the inner rectangle.</p>`,
+    constraints: `1 ≤ m, n ≤ 100; |matrix[i][j]| ≤ 100`,
+    example: `<p>Matrix <code>[[1,2,3],[4,5,6],[7,8,9]]</code> → ${H.c('g', '1 2 3 6 9 8 7 4 5')}. Top row 1 2 3, right column 6 9, bottom row backwards 8 7, left column upward 4, then the centre 5.</p>`,
+    brute: {
+      why: `<p>Simulate a walker that turns right whenever the next cell is outside the grid or already visited, using a separate <code>visited</code> grid. It works, but needs O(m·n) extra memory and careful direction arithmetic. Shrinking four boundaries needs no extra grid.</p>`,
+      code: R`vector<int> spiralBrute(const vector<vector<int>>& g) {
+    int m = g.size(), n = g[0].size();
+    vector<vector<bool>> seen(m, vector<bool>(n, false));    // extra O(m*n)
+    int dr[4] = {0, 1, 0, -1}, dc[4] = {1, 0, -1, 0};
+    vector<int> out;
+    int r = 0, c = 0, d = 0;
+    for (int k = 0; k < m * n; ++k) {
+        out.push_back(g[r][c]);
+        seen[r][c] = true;
+        int nr = r + dr[d], nc = c + dc[d];
+        if (nr < 0 || nr >= m || nc < 0 || nc >= n || seen[nr][nc]) {
+            d = (d + 1) % 4;                                  // turn right
+            nr = r + dr[d]; nc = c + dc[d];
+        }
+        r = nr; c = nc;
+    }
+    return out;
+}`
+    },
+    mcq: { q: 'Why check <code>top &lt;= bottom</code> again before walking the bottom row?', options: ['For speed', 'Because the top row walk may have used up the last remaining row, and we must not print it twice', 'It is never needed', 'To handle negative numbers'], answer: 1, explain: 'In a single remaining row (e.g. a 1×n matrix), after the top row is printed top > bottom; walking the "bottom" row would print the same elements again in reverse.' },
+    hints: [`<p>Hint 1: Keep four boundaries: <code>top</code>, <code>bottom</code>, <code>left</code>, <code>right</code>. Each side you walk shrinks one boundary by 1.</p>`, `<p>Hint 2: Order: top row (left→right), then <code>++top</code>; right column (top→bottom), then <code>--right</code>; bottom row (right→left), then <code>--bottom</code>; left column (bottom→top), then <code>++left</code>.</p>`, `<p>Hint 3: Before the bottom-row and left-column walks, re-check <code>top &lt;= bottom</code> and <code>left &lt;= right</code> — otherwise single-row or single-column leftovers are printed twice. Take the matrix by <code>const&amp;</code>.</p>`],
+    solution: {
+      approach: `<p>Peel the matrix layer by layer with four shrinking boundaries. Each cell is visited exactly once. The two extra checks handle the moment the remaining area becomes a single row or column.</p>`,
+      code: R`#include <bits/stdc++.h>
+using namespace std;
+
+vector<int> spiralOrder(const vector<vector<int>>& g) {
+    vector<int> out;
+    int top = 0, bottom = (int)g.size() - 1;
+    int left = 0, right = (int)g[0].size() - 1;
+    while (top <= bottom && left <= right) {
+        for (int c = left; c <= right; ++c) out.push_back(g[top][c]);       // top row
+        ++top;
+        for (int r = top; r <= bottom; ++r) out.push_back(g[r][right]);     // right col
+        --right;
+        if (top <= bottom) {
+            for (int c = right; c >= left; --c) out.push_back(g[bottom][c]); // bottom row
+            --bottom;
+        }
+        if (left <= right) {
+            for (int r = bottom; r >= top; --r) out.push_back(g[r][left]);   // left col
+            ++left;
+        }
+    }
+    return out;
+}
+
+int main() {
+    vector<vector<int>> g = {{1, 2, 3}, {4, 5, 6}, {7, 8, 9}};
+    for (int x : spiralOrder(g)) cout << x << ' ';   // 1 2 3 6 9 8 7 4 5
+    cout << "\n";
+}`,
+      dry: { head: ['walk', 'cells', 'boundaries after'], rows: [['top row', '1 2 3', 'top=1'], ['right col', '6 9', 'right=1'], ['bottom row', '8 7', 'bottom=1'], ['left col', '4', 'left=1'], ['top row (inner)', '5', 'top=2 → loop ends']] },
+      complexity: `<p>O(m·n) time (each cell once), O(1) extra space besides the output.</p>`,
+      followUps: ['Generate an n×n matrix filled 1..n² in spiral order (Spiral Matrix II).', 'Print the matrix diagonally (zig-zag) instead.']
+    }
+  });
+
+  practice.push({
+    title: 'Rotate a Square Matrix 90° Clockwise In Place',
+    level: 'Medium', tags: ['2D vector', 'in-place', 'transpose'], companies: ['Amazon', 'Microsoft', 'Apple', 'Nvidia'],
+    statement: `<p>Rotate an <code>n × n</code> matrix (<code>vector&lt;vector&lt;int&gt;&gt;&amp;</code>) by 90 degrees clockwise, <b>in place</b> — do not allocate another matrix.</p>`,
+    constraints: `1 ≤ n ≤ 20; |matrix[i][j]| ≤ 1000`,
+    example: `<p><code>[[1,2,3],[4,5,6],[7,8,9]]</code> → ${H.c('g', '[[7,4,1],[8,5,2],[9,6,3]]')}. The first column read bottom-to-top (7, 4, 1) becomes the first row.</p>`,
+    brute: {
+      why: `<p>Allocate a second n × n matrix and place each element with <code>res[j][n-1-i] = g[i][j]</code>, then copy back. Simple and O(n²), but uses O(n²) extra memory — exactly what "in place" forbids.</p>`,
+      code: R`void rotateBrute(vector<vector<int>>& g) {
+    int n = g.size();
+    vector<vector<int>> res(n, vector<int>(n));    // O(n^2) extra
+    for (int i = 0; i < n; ++i)
+        for (int j = 0; j < n; ++j)
+            res[j][n - 1 - i] = g[i][j];
+    g = res;
+}`
+    },
+    mcq: { q: 'Which two in-place steps rotate a matrix 90° clockwise?', options: ['Reverse each row, then reverse the row order', 'Transpose, then reverse each row', 'Transpose twice', 'Reverse each column, then transpose the anti-diagonal twice'], answer: 1, explain: 'Transpose turns row i into column i; reversing each row then mirrors left-right, which together equals a clockwise rotation. (Reverse rows first then transpose also works.)' },
+    hints: [`<p>Hint 1: Where does element (i, j) go? To (j, n−1−i). That is a transpose (i, j) → (j, i) followed by a horizontal mirror (j, i) → (j, n−1−i).</p>`, `<p>Hint 2: Transpose in place by swapping <code>g[i][j]</code> with <code>g[j][i]</code> only for <code>j &gt; i</code> — swapping every pair would swap twice and undo it.</p>`, `<p>Hint 3: Then <code>reverse(g[i].begin(), g[i].end())</code> for each row. Make sure the function takes the matrix by reference.</p>`],
+    solution: {
+      approach: `<p>Transpose (swap across the main diagonal, upper triangle only) and then reverse every row. Both steps are in place and touch each element a constant number of times.</p>`,
+      code: R`#include <bits/stdc++.h>
+using namespace std;
+
+void rotate90(vector<vector<int>>& g) {
+    int n = g.size();
+    for (int i = 0; i < n; ++i)
+        for (int j = i + 1; j < n; ++j)          // upper triangle only
+            swap(g[i][j], g[j][i]);              // transpose
+    for (auto& row : g)                          // auto&: modify the real rows
+        reverse(row.begin(), row.end());         // mirror left-right
+}
+
+int main() {
+    vector<vector<int>> g = {{1, 2, 3}, {4, 5, 6}, {7, 8, 9}};
+    rotate90(g);
+    for (const auto& row : g) {
+        for (int x : row) cout << x << ' ';
+        cout << "\n";
+    }
+    // 7 4 1 / 8 5 2 / 9 6 3
+}`,
+      dry: { head: ['stage', 'row 0', 'row 1', 'row 2'], rows: [['start', '1 2 3', '4 5 6', '7 8 9'], ['after transpose', '1 4 7', '2 5 8', '3 6 9'], ['after reversing rows', H.c('g', '7 4 1'), H.c('g', '8 5 2'), H.c('g', '9 6 3')]] },
+      complexity: `<p>O(n²) time, O(1) extra space.</p>`,
+      followUps: ['Rotate counter-clockwise (reverse rows first? or transpose then reverse columns?).', 'Rotate by layers with 4-way swaps instead of transpose + reverse.']
+    }
+  });
+
+  practice.push({
+    title: 'String Compression (Run-Length, In Place)',
+    level: 'Medium', tags: ['string', 'two pointers', 'to_string'], companies: ['Amazon', 'Microsoft', 'Lyft'],
+    statement: `<p>Given a <code>vector&lt;char&gt;&amp; chars</code>, compress it in place: each group of consecutive repeating characters becomes the character followed by the group length (only if the length is greater than 1). Lengths of 10 or more take several characters (e.g. "12" → '1','2'). Return the new length; the first that many characters of <code>chars</code> must hold the result.</p>`,
+    constraints: `1 ≤ chars.size() ≤ 2000; chars[i] is a letter, digit or symbol.`,
+    example: `<p><code>a a b b c c c</code> → length ${H.c('g', '6')}, chars start with <code>a 2 b 2 c 3</code>. <code>a b b b b b b b b b b b b</code> (one a, twelve b) → length ${H.c('g', '4')}: <code>a b 1 2</code>.</p>`,
+    brute: {
+      why: `<p>Build a separate <code>string</code> answer and copy it back. Correct, but it uses O(n) extra memory, and a common mistake in this version is appending the count with <code>ans += count</code> (an int!) — which appends the <b>char with that code</b>, not the digits. Use <code>to_string</code>.</p>`,
+      code: R`int compressBrute(vector<char>& chars) {
+    string ans;                                     // O(n) extra memory
+    int n = chars.size();
+    for (int i = 0; i < n; ) {
+        int j = i;
+        while (j < n && chars[j] == chars[i]) ++j;
+        ans += chars[i];
+        if (j - i > 1) ans += to_string(j - i);     // NOT ans += (j - i)
+        i = j;
+    }
+    for (size_t k = 0; k < ans.size(); ++k) chars[k] = ans[k];
+    return ans.size();
+}`
+    },
+    mcq: { q: 'What does <code>s += 12;</code> append when s is a <code>std::string</code>?', options: ['"12"', 'the character with code 12 (a form-feed control char)', 'nothing — compile error', 'a space'], answer: 1, explain: 'The int converts to char, so s gets one char with code 12. To append digits use s += to_string(12).' },
+    hints: [`<p>Hint 1: Use a read index <code>i</code> that jumps over a whole group (find <code>j</code>, the first index with a different char) and a write index <code>w</code>.</p>`, `<p>Hint 2: Write <code>chars[w++] = chars[i]</code>. If the group length <code>j − i</code> is greater than 1, write each character of <code>to_string(j − i)</code>.</p>`, `<p>Hint 3: The compressed form is never longer than the original, so <code>w</code> never overtakes <code>i</code> — writing in place is safe. Return <code>w</code>.</p>`],
+    solution: {
+      approach: `<p>Read-group / write pointer. Each group of length L is replaced by 1 + digits(L) ≤ L characters (for L ≥ 2), so the write pointer stays behind the read pointer and we can overwrite in place.</p>`,
+      code: R`#include <bits/stdc++.h>
+using namespace std;
+
+int compress(vector<char>& chars) {
+    int n = chars.size(), w = 0;
+    for (int i = 0; i < n; ) {
+        int j = i;
+        while (j < n && chars[j] == chars[i]) ++j;   // end of this group
+        chars[w++] = chars[i];                      // the character
+        if (j - i > 1)
+            for (char d : to_string(j - i)) chars[w++] = d;   // its count, digit by digit
+        i = j;
+    }
+    return w;
+}
+
+int main() {
+    vector<char> c = {'a', 'b', 'b', 'b', 'b', 'b', 'b', 'b', 'b', 'b', 'b', 'b', 'b'};
+    int len = compress(c);
+    cout << len << ": ";
+    for (int k = 0; k < len; ++k) cout << c[k];      // 4: ab12
+    cout << "\n";
+}`,
+      dry: { head: ['group', 'length', 'written', 'w after'], rows: [['a', '1', 'a', '1'], ['b', '12', 'b, 1, 2', H.c('g', '4')]] },
+      complexity: `<p>O(n) time, O(1) extra space (the <code>to_string</code> temp has at most 4 digits).</p>`,
+      followUps: ['Decompress "a2b12" back into the original string.', 'Only compress if it actually saves space; otherwise return the original.']
+    }
+  });
+
+  practice.push({
+    title: 'Thousands Separators with Overloads and a Default Separator',
+    level: 'Medium', tags: ['overloading', 'default arguments', 'string building', 'edge cases'], companies: ['Stripe', 'Bloomberg', 'Morgan Stanley'],
+    statement: `<p>Write two overloads: <code>string withSep(long long n, char sep = ',')</code> and <code>string withSep(const string&amp; digits, char sep = ',')</code>. The first formats an integer (including negatives and <code>LLONG_MIN</code>) with a separator every 3 digits from the right. The second does the same for a string of digits of any length (an optional leading '-' allowed). Example uses: <code>withSep(1234567)</code> → "1,234,567"; <code>withSep(1234567, '.')</code> → "1.234.567".</p>`,
+    constraints: `LLONG_MIN ≤ n ≤ LLONG_MAX; the digit string has length 1 to 10<sup>5</sup>.`,
+    example: `<p><code>withSep(1234567)</code> → ${H.c('g', '"1,234,567"')}; <code>withSep(-1000, \'.\')</code> → ${H.c('g', '"-1.000"')}; <code>withSep(999)</code> → ${H.c('g', '"999"')}; <code>withSep(string("12345678901234567890"))</code> → ${H.c('g', '"12,345,678,901,234,567,890"')}.</p>`,
+    brute: {
+      why: `<p>Insert separators into the digit string from the right with <code>s.insert(pos, 1, sep)</code>. Every insert shifts the tail, so with 10<sup>5</sup> digits it is O(n²/3). Negating a negative <code>n</code> to handle the sign also overflows for <code>LLONG_MIN</code> (its positive value does not fit). Building the answer once with <code>+=</code> fixes speed; converting to a string <b>before</b> removing the sign fixes the overflow.</p>`,
+      code: R`string withSepBrute(long long n) {
+    bool neg = n < 0;
+    if (neg) n = -n;                       // UB for LLONG_MIN!
+    string s = to_string(n);
+    for (int pos = (int)s.size() - 3; pos > 0; pos -= 3)
+        s.insert(pos, 1, ',');             // O(n) shift per insert
+    return neg ? "-" + s : s;
+}`
+    },
+    mcq: { q: 'Given both overloads, which one does <code>withSep("12345")</code> call?', options: ['withSep(long long, char)', 'withSep(const string&amp;, char)', 'Ambiguous: compile error', 'Neither: compile error'], answer: 1, explain: 'A const char* cannot convert to long long at all, but it can convert to std::string through a user-defined conversion, so only the string overload is viable.' },
+    hints: [`<p>Hint 1: Let the <code>long long</code> overload just call <code>to_string(n)</code> and forward to the string overload — one place to get the logic right, and <code>to_string(LLONG_MIN)</code> is safe because no negation happens.</p>`, `<p>Hint 2: In the string overload, peel off a leading '-'. Let L = number of digits. Walk the digits left to right; before digit i (i &gt; 0) add the separator when <code>(L − i) % 3 == 0</code>.</p>`, `<p>Hint 3: Write the default <code>char sep = ','</code> in each declaration exactly once. <code>reserve(L + L/3 + 1)</code> then <code>+=</code> builds the result in O(n).</p>`],
+    solution: {
+      approach: `<p>The string overload holds the logic; the integer overload converts and forwards. The separator goes before digit i whenever the number of digits remaining (L − i) is a multiple of 3. Building with <code>+=</code> into a reserved string is O(n). No arithmetic negation happens, so <code>LLONG_MIN</code> is safe.</p>`,
+      code: R`#include <bits/stdc++.h>
+using namespace std;
+
+string withSep(const string& digits, char sep = ',') {
+    string out;
+    size_t start = 0;
+    if (!digits.empty() && digits[0] == '-') { out += '-'; start = 1; }
+    size_t L = digits.size() - start;
+    out.reserve(digits.size() + L / 3);
+    for (size_t i = 0; i < L; ++i) {
+        if (i > 0 && (L - i) % 3 == 0) out += sep;   // group boundary from the right
+        out += digits[start + i];
+    }
+    return out;
+}
+
+string withSep(long long n, char sep = ',') {
+    return withSep(to_string(n), sep);    // to_string handles LLONG_MIN safely
+}
+
+int main() {
+    cout << withSep(1234567) << "\n";                       // 1,234,567
+    cout << withSep(-1000, '.') << "\n";                    // -1.000
+    cout << withSep(999) << "\n";                           // 999
+    cout << withSep(LLONG_MIN) << "\n";                     // -9,223,372,036,854,775,808
+    cout << withSep(string("12345678901234567890")) << "\n";
+}`,
+      dry: { head: ['i', 'digit', 'L − i', 'separator before?', 'out'], rows: [['0', '1', '7', 'no (i = 0)', '1'], ['1', '2', '6', H.c('g', 'yes'), '1,2'], ['2', '3', '5', 'no', '1,23'], ['3', '4', '4', 'no', '1,234'], ['4', '5', '3', H.c('g', 'yes'), '1,234,5'], ['6', '7', '1', 'no', '1,234,567']] },
+      complexity: `<p>O(L) time and O(L) output space. No O(n²) inserts and no overflow.</p>`,
+      followUps: ['Add an overload for <code>double</code> that keeps 2 decimals: <code>withSep(1234.5)</code> → "1,234.50".', 'Support the Indian grouping style (1,23,45,678) with a <code>bool indian = false</code> default parameter.']
+    }
+  });
+
+  /* ======================================================================
+     PRACTICE — Hard
+     ====================================================================== */
+  practice.push({
+    title: 'Multiply Two Big Numbers Given as Strings',
+    level: 'Hard', tags: ['string', 'char arithmetic', 'vector', 'simulation'], companies: ['Meta', 'Twitter', 'Google', 'Amazon'],
+    statement: `<p>Given two non-negative integers <code>a</code> and <code>b</code> as strings (possibly hundreds of digits), return their product as a string. You may not convert the inputs to built-in integer types (they would overflow) or use a big-integer library.</p>`,
+    constraints: `1 ≤ |a|, |b| ≤ 200; digits only; no leading zeros except the number 0 itself.`,
+    example: `<p><code>"123" × "456"</code> → ${H.c('g', '"56088"')}. <code>"0" × "52"</code> → ${H.c('g', '"0"')}. <code>"999" × "999"</code> → ${H.c('g', '"998001"')}.</p>`,
+    brute: {
+      why: `<p>Repeated addition: add <code>a</code> to a running total <code>b</code> times using string addition. With b up to 10<sup>200</sup> this never finishes. A slightly better brute force does grade-school multiplication but builds a full intermediate string for every digit of b and adds them — O(n·m) digits but with many temporary strings and an O(n) addition per row.</p>`,
+      code: R`string addStrings(const string& x, const string& y) {
+    string r;
+    int i = (int)x.size() - 1, j = (int)y.size() - 1, carry = 0;
+    while (i >= 0 || j >= 0 || carry) {
+        int s = carry + (i >= 0 ? x[i--] - '0' : 0) + (j >= 0 ? y[j--] - '0' : 0);
+        r += char('0' + s % 10);
+        carry = s / 10;
+    }
+    reverse(r.begin(), r.end());
+    return r;
+}
+
+string multiplyBrute(const string& a, const string& b) {
+    string total = "0";
+    for (int k = 0; k < stoi(b); ++k)     // only works for tiny b; hopeless otherwise
+        total = addStrings(total, a);
+    return total;
+}`
+    },
+    mcq: { q: 'In grade-school multiplication with 0-based digits from the left, the product of a[i] and b[j] contributes to which result positions (length n + m)?', options: ['i * j', 'i + j and i + j + 1', 'n − i', 'only i + j + 2'], answer: 1, explain: 'The units part of a[i]·b[j] lands at i + j + 1 and the carry at i + j. A result of n + m digits is always enough.' },
+    hints: [`<p>Hint 1: The product of an n-digit and an m-digit number has at most n + m digits. Use a <code>vector&lt;int&gt; res(n + m, 0)</code>.</p>`, `<p>Hint 2: For i from n−1 down to 0 and j from m−1 down to 0: <code>int mul = (a[i]-'0') * (b[j]-'0'); int sum = mul + res[i+j+1]; res[i+j+1] = sum % 10; res[i+j] += sum / 10;</code></p>`, `<p>Hint 3: Skip leading zeros when building the answer string with <code>+=</code>, and return "0" if everything was zero. Take inputs by <code>const string&amp;</code>.</p>`],
+    solution: {
+      approach: `<p>Grade-school multiplication into a fixed array of n + m digits. Each digit pair adds into position i + j + 1 and carries into i + j. Processing from the right means each carry is pushed left immediately. Characters become numbers with <code>c - '0'</code> and back with <code>'0' + d</code>.</p>`,
+      code: R`#include <bits/stdc++.h>
+using namespace std;
+
+string multiply(const string& a, const string& b) {
+    int n = a.size(), m = b.size();
+    vector<int> res(n + m, 0);                       // enough digits for any product
+    for (int i = n - 1; i >= 0; --i) {
+        for (int j = m - 1; j >= 0; --j) {
+            int mul = (a[i] - '0') * (b[j] - '0');
+            int sum = mul + res[i + j + 1];
+            res[i + j + 1] = sum % 10;               // units digit stays here
+            res[i + j] += sum / 10;                  // carry moves one place left
+        }
+    }
+    string out;
+    for (int d : res)
+        if (!(out.empty() && d == 0)) out += char('0' + d);   // skip leading zeros
+    return out.empty() ? "0" : out;
+}
+
+int main() {
+    cout << multiply("123", "456") << "\n";   // 56088
+    cout << multiply("0", "52") << "\n";      // 0
+    cout << multiply("999", "999") << "\n";   // 998001
+}`,
+      dry: { head: ['i, j (for "23" × "56")', 'a[i]·b[j]', 'sum = mul + res[i+j+1]', 'res (4 digits)'], rows: [['1, 1 (3·6)', '18', '18 + 0 = 18', '0 0 1 8'], ['1, 0 (3·5)', '15', '15 + 1 = 16', '0 1 6 8'], ['0, 1 (2·6)', '12', '12 + 6 = 18', '0 2 8 8'], ['0, 0 (2·5)', '10', '10 + 2 = 12', H.c('g', '1 2 8 8') + ' → "1288"']] },
+        complexity: `<p>O(n·m) digit operations (40,000 for 200-digit inputs), O(n + m) extra space.</p>`,
+      followUps: ['Add, subtract and compare big numbers stored as strings.', 'Karatsuba multiplication brings this to about O(n<sup>1.585</sup>) — when is it worth it?']
+    }
+  });
+
   registerModule({
     id: 'cpp02',
     title: 'Control Flow, Functions, Arrays & Strings',

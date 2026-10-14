@@ -2187,4 +2187,336 @@ dtor a</pre>
     ]
   });
 
+  /* ======================================================================
+     TOPIC 8 — Operator overloading
+     ====================================================================== */
+  topics.push({
+    title: 'Operator Overloading: Making Your Types Feel Built-In (and C++20 <=>)',
+    analogy: `<p>The <b>+</b> key on a calculator means "add numbers". On a music app, a <b>+</b> button means "add song to playlist". Same symbol, different meaning depending on <b>what you press it on</b> — and it feels natural because the meaning matches what people expect.</p>
+      <p>Operator overloading lets you teach C++ what <code>+</code>, <code>==</code>, <code>&lt;&lt;</code> or <code>[]</code> mean for <b>your</b> types. The golden rule is the same as for the button: <b>only give an operator a meaning that people would guess anyway</b>. A <code>+</code> that secretly deletes a file is legal and evil.</p>`,
+    explain: `<p>An overloaded operator is just a function with a special name: <code>a + b</code> becomes either <code>a.operator+(b)</code> (member) or <code>operator+(a, b)</code> (free function). The compiler tries both.</p>
+      ${H.table(['Expression', 'Becomes', 'Usually written as'], [
+        ['<code>a + b</code>', '<code>operator+(a, b)</code>', 'free function (symmetric), built on <code>+=</code>'],
+        ['<code>a += b</code>', '<code>a.operator+=(b)</code>', 'member, returns <code>*this</code> by reference'],
+        ['<code>-a</code>', '<code>a.operator-()</code>', 'member, const, returns a new value'],
+        ['<code>a == b</code>', '<code>a.operator==(b)</code>', 'member or friend; C++20: <code>= default</code>'],
+        ['<code>a &lt; b</code>', '<code>(a &lt;=&gt; b) &lt; 0</code> (C++20)', 'one <code>operator&lt;=&gt;</code> gives all four orderings'],
+        ['<code>std::cout &lt;&lt; a</code>', '<code>operator&lt;&lt;(std::cout, a)</code>', 'free (left side is ostream, not yours)'],
+        ['<code>a[i]</code>', '<code>a.operator[](i)</code>', 'member; const and non-const versions'],
+        ['<code>++a</code> / <code>a++</code>', '<code>a.operator++()</code> / <code>a.operator++(0)</code>', 'prefix returns <code>T&amp;</code>; postfix takes dummy <code>int</code>, returns old value'],
+        ['<code>f(x)</code>', '<code>f.operator()(x)</code>', 'function objects / lambdas'],
+        ['<code>if (a)</code>', '<code>a.operator bool()</code>', '<code>explicit</code> to block accidental conversions']
+      ])}
+      <p><b>Member or free function?</b></p>
+      <ul>
+        <li><b>Must be members:</b> <code>=</code>, <code>[]</code>, <code>()</code>, <code>-&gt;</code>, and conversion operators.</li>
+        <li><b>Should be members:</b> compound assignment (<code>+=</code>, <code>-=</code>…) and <code>++</code>/<code>--</code>: they modify <code>*this</code>.</li>
+        <li><b>Should be free (often <code>friend</code>):</b> symmetric binary operators (<code>+</code>, <code>-</code>, <code>*</code>, <code>==</code>) so that <b>implicit conversions work on both sides</b> (<code>2 * v</code> and <code>v * 2</code>), and stream operators <code>&lt;&lt;</code>/<code>&gt;&gt;</code> because the left operand is a stream you do not own.</li>
+      </ul>
+      <p><b>C++20 comparisons.</b> Write <code>bool operator==(const T&amp;) const = default;</code> and <code>auto operator&lt;=&gt;(const T&amp;) const = default;</code> and you get <code>==</code>, <code>!=</code>, <code>&lt;</code>, <code>&lt;=</code>, <code>&gt;</code>, <code>&gt;=</code>, compared member by member in declaration order. The compiler <b>rewrites</b> <code>a != b</code> as <code>!(a == b)</code> and <code>a &lt; b</code> as <code>(a &lt;=&gt; b) &lt; 0</code>, and even tries reversed arguments (<code>b == a</code>), so you no longer write six boilerplate functions.</p>
+      <p><b>What you cannot do:</b> invent new operators (<code>**</code>), change precedence or arity, or overload <code>::</code>, <code>.</code>, <code>.*</code>, <code>?:</code>, <code>sizeof</code>. Overloading <code>&amp;&amp;</code>, <code>||</code> and <code>,</code> is legal but loses short-circuit evaluation (before C++17 also sequencing) — avoid it.</p>`,
+    clues: [
+      '"Implement a Fraction / Complex / Money / BigInt / Matrix class" → arithmetic operators, <code>==</code>, <code>&lt;=&gt;</code>, <code>&lt;&lt;</code>',
+      '"Why is <code>operator&lt;&lt;</code> a free function?" → left operand is <code>std::ostream</code>, which you cannot add members to',
+      '"<code>2 * v</code> does not compile but <code>v * 2</code> does" → the operator is a member; make it a free function',
+      '"Difference between prefix and postfix ++" → postfix takes a dummy <code>int</code>, returns the old value (a copy)',
+      '"Make a type usable as a <code>std::map</code> key / in <code>std::sort</code>" → strict weak ordering via <code>&lt;</code> or <code>&lt;=&gt;</code>',
+      '"Use objects like functions" / custom comparator / hash → <code>operator()</code>',
+      '"Smart pointer or iterator implementation" → <code>*</code>, <code>-&gt;</code>, <code>++</code>, <code>==</code>'
+    ],
+    code: [R`
+      #include <compare>
+      #include <iostream>
+
+      struct Vec2 {
+          int x = 0, y = 0;
+
+          // Compound assignment: member, modifies *this, returns a reference (allows chaining).
+          Vec2& operator+=(const Vec2& o) { x += o.x; y += o.y; return *this; }
+          Vec2& operator*=(int k) { x *= k; y *= k; return *this; }
+
+          Vec2 operator-() const { return {-x, -y}; }                 // unary minus: new value
+
+          int& operator[](int i) { return i == 0 ? x : y; }           // write access: v[0] = 5
+          int  operator[](int i) const { return i == 0 ? x : y; }     // read access on const Vec2
+
+          explicit operator bool() const { return x != 0 || y != 0; } // if (v) ... but not int n = v;
+
+          bool operator==(const Vec2&) const = default;               // C++20: memberwise ==, gives != too
+          auto operator<=>(const Vec2&) const = default;              // C++20: lexicographic <, <=, >, >=
+      };
+
+      // Symmetric binary operators as FREE functions, implemented with the compound versions.
+      Vec2 operator+(Vec2 a, const Vec2& b) { a += b; return a; }    // a is a copy we can modify
+      Vec2 operator*(Vec2 v, int k) { v *= k; return v; }
+      Vec2 operator*(int k, Vec2 v) { v *= k; return v; }            // lets 2 * v compile
+
+      std::ostream& operator<<(std::ostream& os, const Vec2& v) {     // free: left side is ostream
+          return os << '(' << v.x << ", " << v.y << ')';
+      }
+
+      int main() {
+          Vec2 a{1, 2}, b{3, 4};
+          std::cout << a + b << ' ' << 2 * a << ' ' << -b << '\n';   // (4, 6) (2, 4) (-3, -4)
+          a += b;                                                     // a = (4, 6)
+          std::cout << (a == b) << (a != b) << (b < a) << '\n';      // 0 1 1
+          a[0] = 0; a[1] = 0;
+          if (!a) std::cout << "a is the zero vector\n";
+      }
+    `, R`
+      // Increment operators and a function object.
+      #include <iostream>
+      class Counter {
+          int n_ = 0;
+      public:
+          Counter& operator++() { ++n_; return *this; }               // prefix: increment, return self
+          Counter operator++(int) { Counter old = *this; ++n_; return old; }   // postfix: dummy int, return OLD copy
+          int value() const { return n_; }
+      };
+
+      struct IsMultipleOf {                                           // a "functor": object with operator()
+          int k;
+          bool operator()(int x) const { return x % k == 0; }
+      };
+
+      int main() {
+          Counter c;
+          Counter before = c++;                                       // before = 0, c = 1
+          ++c;                                                        // c = 2 (no copy made)
+          std::cout << before.value() << ' ' << c.value() << '\n';    // 0 2
+          IsMultipleOf by3{3};
+          std::cout << by3(9) << by3(10) << '\n';                     // 1 0
+      }
+    `],
+    codeTitle: ['A value type with the canonical operator set', 'Prefix/postfix ++ and operator()'],
+    viz: {
+      title: 'Which operator function does each expression call?',
+      input: 'a = (1,2); b = (3,4); a + b; 2 * a; a += b; -a; a == b; a != b; b < a; a[0]; if (a); cout << a',
+      inputLabel: 'Statements separated by ; using vectors a, b (e.g. a = (1,2); a + b; k * a; a * k; -a; a += b; a == b; a != b; a < b; a[0]; if (a); cout << a; a = b)',
+      gen: function (input) {
+        var st = words(input, 'Type statements like: a = (1,2); b = (3,4); a + b').split(';').map(function (s) { return s.trim(); }).filter(Boolean);
+        if (!st.length) throw new Error('Type statements like: a = (1,2); b = (3,4); a + b');
+        if (st.length > 14) throw new Error('Use at most 14 statements');
+        var code = ['struct Vec2 {', '    int x = 0, y = 0;', '    Vec2& operator+=(const Vec2& o) { x += o.x; y += o.y; return *this; }', '    Vec2 operator-() const { return {-x, -y}; }', '    int& operator[](int i) { return i == 0 ? x : y; }', '    explicit operator bool() const { return x != 0 || y != 0; }', '    bool operator==(const Vec2&) const = default;', '    auto operator<=>(const Vec2&) const = default;', '};', 'Vec2 operator+(Vec2 a, const Vec2& b) { a += b; return a; }', 'Vec2 operator*(Vec2 v, int k) { return {v.x * k, v.y * k}; }', 'Vec2 operator*(int k, Vec2 v) { return v * k; }', 'std::ostream& operator<<(std::ostream& os, const Vec2& v);'].join('\n');
+        var V = { a: [1, 2], b: [3, 4] }, rows = [], outp = [], frames = [];
+        function s(v) { return '(' + v[0] + ',' + v[1] + ')'; }
+        function cmp(p, q) { return p[0] !== q[0] ? (p[0] < q[0] ? -1 : 1) : p[1] !== q[1] ? (p[1] < q[1] ? -1 : 1) : 0; }
+        function vn(n) { if (!V[n]) throw new Error('Only vectors a and b exist'); return V[n]; }
+        function push(expr, call, result, lines, narr, cls) {
+          rows.push([expr, call, result]);
+          var hl = {}; [].concat(lines).forEach(function (l) { hl[l] = cls || 'cur'; });
+          var th = {}; th[rows.length - 1] = cls === 'bad' ? 'bad' : 'cur';
+          frames.push({ narr: narr, parts: [
+            { type: 'code', label: 'Vec2 and its operators', lang: 'cpp', code: code, hl: hl },
+            { type: 'table', label: 'Expression → function the compiler actually calls', columns: ['expression', 'becomes', 'result'], rows: rows.map(function (r) { return r.slice(); }), hl: th },
+            { type: 'vars', label: 'Values', vals: { a: s(V.a), b: s(V.b) } },
+            out(outp.join('\n'))
+          ] });
+        }
+        frames.push({ narr: 'Every operator expression on a class type is turned into a <b>function call</b>. For each line we will show the exact function the compiler picks, and why it is a member or a free function.', parts: [{ type: 'code', label: 'Vec2 and its operators', lang: 'cpp', code: code }, { type: 'vars', label: 'Values', vals: { a: s(V.a), b: s(V.b) } }] });
+        st.forEach(function (x) {
+          var m, k;
+          if ((m = x.match(/^(a|b)\s*=\s*\(\s*(-?\d{1,4})\s*,\s*(-?\d{1,4})\s*\)$/))) {
+            V[m[1]] = [+m[2], +m[3]];
+            push(x, m[1] + ' = Vec2{' + m[2] + ', ' + m[3] + '}', s(V[m[1]]), 1, 'Set <code>' + m[1] + '</code> to ' + s(V[m[1]]) + ' (aggregate initialization + the compiler-generated copy assignment).', 'ok');
+          } else if ((m = x.match(/^(a|b)\s*=\s*(a|b)$/))) {
+            V[m[1]] = vn(m[2]).slice();
+            push(x, m[1] + '.operator=(' + m[2] + ')', s(V[m[1]]), 1, '<code>' + esc(x) + '</code>: we never wrote <code>operator=</code>, so the <b>compiler-generated copy assignment</b> copies x and y (Rule of Zero).', 'ok');
+          } else if ((m = x.match(/^(a|b)\s*\+=\s*(a|b)$/))) {
+            var t = vn(m[1]), o = vn(m[2]); t[0] += o[0]; t[1] += o[1];
+            push(x, m[1] + '.operator+=(' + m[2] + ')', s(t), 3, '<code>' + esc(x) + '</code> → <b>member</b> <code>operator+=</code>: it modifies the left operand in place and returns <code>*this</code> by reference (so <code>(a += b) += b</code> works like for ints).');
+          } else if ((m = x.match(/^(a|b)\s*\+\s*(a|b)$/))) {
+            var r = [vn(m[1])[0] + vn(m[2])[0], vn(m[1])[1] + vn(m[2])[1]];
+            push(x, 'operator+(' + m[1] + ', ' + m[2] + ')', s(r), [10, 3], '<code>' + esc(x) + '</code> → <b>free</b> <code>operator+</code>. It takes the left side <b>by value</b> (a copy it may change), reuses <code>+=</code> and returns the copy. One source of truth for the addition logic.');
+          } else if ((m = x.match(/^(-?\d{1,4})\s*\*\s*(a|b)$/))) {
+            k = +m[1]; var v1 = vn(m[2]);
+            push(x, 'operator*(' + k + ', ' + m[2] + ')', s([v1[0] * k, v1[1] * k]), [12, 11], '<code>' + esc(x) + '</code>: the <b>left operand is an int</b>. A member function needs the left operand to be a Vec2, so only a <b>free</b> <code>operator*(int, Vec2)</code> can handle this. It forwards to the other overload.');
+          } else if ((m = x.match(/^(a|b)\s*\*\s*(-?\d{1,4})$/))) {
+            k = +m[2]; var v2 = vn(m[1]);
+            push(x, 'operator*(' + m[1] + ', ' + k + ')', s([v2[0] * k, v2[1] * k]), 11, '<code>' + esc(x) + '</code> → free <code>operator*(Vec2, int)</code>.');
+          } else if ((m = x.match(/^-\s*(a|b)$/))) {
+            var v3 = vn(m[1]);
+            push(x, m[1] + '.operator-()', s([-v3[0], -v3[1]]), 4, '<code>' + esc(x) + '</code> → unary member <code>operator-()</code>. It is <code>const</code> and returns a <b>new</b> value; the original is untouched.');
+          } else if ((m = x.match(/^(a|b)\s*==\s*(a|b)$/))) {
+            var eq = cmp(vn(m[1]), vn(m[2])) === 0;
+            push(x, m[1] + '.operator==(' + m[2] + ')', String(eq), 7, '<code>' + esc(x) + '</code> → the <b>defaulted</b> <code>operator==</code>: compares x, then y, memberwise. Result <b>' + eq + '</b>.');
+          } else if ((m = x.match(/^(a|b)\s*!=\s*(a|b)$/))) {
+            var ne = cmp(vn(m[1]), vn(m[2])) !== 0;
+            push(x, '!(' + m[1] + ' == ' + m[2] + ')   [rewritten]', String(ne), 7, '<code>' + esc(x) + '</code>: we never wrote <code>!=</code>. C++20 <b>rewrites</b> it as <code>!(a == b)</code>. Result <b>' + ne + '</b>.');
+          } else if ((m = x.match(/^(a|b)\s*(<=|>=|<|>)\s*(a|b)$/))) {
+            var c = cmp(vn(m[1]), vn(m[3])), op = m[2];
+            var res = op === '<' ? c < 0 : op === '<=' ? c <= 0 : op === '>' ? c > 0 : c >= 0;
+            push(x, '(' + m[1] + ' <=> ' + m[3] + ') ' + op + ' 0   [rewritten]', String(res), 8, '<code>' + esc(x) + '</code> → C++20 rewrites it to <code>(' + m[1] + ' &lt;=&gt; ' + m[3] + ') ' + esc(op) + ' 0</code>. The defaulted <code>&lt;=&gt;</code> compares <b>x first, then y</b> (declaration order): ' + s(vn(m[1])) + ' vs ' + s(vn(m[3])) + ' gives ' + (c < 0 ? 'less' : c > 0 ? 'greater' : 'equal') + '. Result <b>' + res + '</b>.');
+          } else if ((m = x.match(/^(a|b)\s*<=>\s*(a|b)$/))) {
+            var c2 = cmp(vn(m[1]), vn(m[2]));
+            push(x, m[1] + '.operator<=>(' + m[2] + ')', 'strong_ordering::' + (c2 < 0 ? 'less' : c2 > 0 ? 'greater' : 'equal'), 8, '<code>' + esc(x) + '</code> calls the spaceship directly. For int members the result type is <code>std::strong_ordering</code>.');
+          } else if ((m = x.match(/^(a|b)\s*\[\s*([01])\s*\]$/))) {
+            var val = vn(m[1])[+m[2]];
+            push(x, m[1] + '.operator[](' + m[2] + ')', 'int& → ' + val, 5, '<code>' + esc(x) + '</code> → member <code>operator[]</code> (it <b>must</b> be a member). It returns <code>int&amp;</code>, so <code>' + m[1] + '[' + m[2] + '] = 7</code> would write into the vector.');
+          } else if ((m = x.match(/^if\s*\(\s*(!?)\s*(a|b)\s*\)$/))) {
+            var v4 = vn(m[2]), bv = v4[0] !== 0 || v4[1] !== 0; if (m[1]) bv = !bv;
+            push(x, (m[1] ? '!' : '') + m[2] + '.operator bool()', String(bv), 6, '<code>' + esc(x) + '</code>: an <code>if</code> condition is a <b>contextual conversion to bool</b>, which is allowed to use an <code>explicit operator bool</code>. But <code>int n = ' + m[2] + ';</code> or <code>' + m[2] + ' + 1</code> will <b>not</b> compile — that is what <code>explicit</code> buys you.');
+          } else if ((m = x.match(/^(?:std::)?cout\s*<<\s*(a|b)$/))) {
+            outp.push(s(vn(m[1])));
+            push(x, 'operator<<(std::cout, ' + m[1] + ')', 'ostream& (prints ' + s(vn(m[1])) + ')', 13, '<code>' + esc(x) + '</code>: the left operand is <code>std::ostream</code>, a class we cannot add members to. So <code>operator&lt;&lt;</code> is a <b>free function</b> returning the stream by reference to allow chaining <code>cout &lt;&lt; a &lt;&lt; b</code>.');
+          } else throw new Error('Did not understand "' + x + '". Try: a + b; 2 * a; a * 3; -a; a += b; a == b; a != b; a < b; a <=> b; a[0]; if (a); cout << a; a = b; a = (1,2)');
+        });
+        frames.push({ narr: 'Summary: <b>members</b> for operators that modify or must be members (<code>+=</code>, <code>[]</code>, unary, conversion); <b>free functions</b> for symmetric ones and streams; <b>defaulted</b> <code>==</code> and <code>&lt;=&gt;</code> for comparisons, with C++20 rewriting the rest.', parts: [{ type: 'table', label: 'All calls', columns: ['expression', 'becomes', 'result'], rows: rows.map(function (r) { return r.slice(); }) }, out(outp.join('\n'))] });
+        return frames;
+      }
+    },
+    examples: [
+      {
+        title: 'Why 2 * v fails with a member operator',
+        html: `<p>A member <code>Vec2 operator*(int k) const</code> handles <code>v * 2</code> (<code>v.operator*(2)</code>). For <code>2 * v</code> the compiler would need <code>2.operator*(v)</code> — ints have no members. Only a free function <code>operator*(int, Vec2)</code> can match. The same reasoning explains <code>operator&lt;&lt;</code>: <code>cout &lt;&lt; v</code> would need a member of <code>std::ostream</code>.</p>
+          ${H.table(['Expression', 'Member only', 'Free functions'], [['<code>v * 2</code>', H.c('g', 'OK'), H.c('g', 'OK')], ['<code>2 * v</code>', H.c('r', 'error'), H.c('g', 'OK')]])}`,
+        code: R`
+          struct V { int x; V operator*(int k) const { return {x * k}; } };
+          V operator*(int k, const V& v) { return v * k; }      // add this free overload for 2 * v
+          int main() { V v{3}; V a = v * 2; V b = 2 * v; std::cout << a.x << b.x << '\n'; }   // 66
+        `
+      },
+      {
+        title: 'Predict the output: prefix vs postfix',
+        html: `<p><code>c++</code> calls <code>operator++(int)</code>, which copies the old value, increments, and returns the <b>copy</b>. <code>++c</code> increments and returns a reference — no copy. For iterators of complex containers that copy is real work, which is why idiomatic C++ loops write <code>++it</code>.</p>
+          ${H.table(['Line', 'printed', 'c afterwards'], [['<code>cout &lt;&lt; (c++).value()</code>', '0', '1'], ['<code>cout &lt;&lt; (++c).value()</code>', '2', '2']])}`,
+        code: R`
+          struct C {
+              int n = 0;
+              C& operator++() { ++n; return *this; }
+              C operator++(int) { C old = *this; ++n; return old; }
+              int value() const { return n; }
+          };
+          int main() { C c; std::cout << (c++).value() << ' ' << (++c).value() << '\n'; }   // 0 2
+        `
+      },
+      {
+        title: 'Spaceship with a custom order: case-insensitive names',
+        html: `<p>When the default memberwise order is wrong, write <code>operator&lt;=&gt;</code> yourself and return the right category. Here two names that differ only by case are <b>equivalent</b> but not identical, so the honest category is <code>std::weak_ordering</code>. Remember to also define <code>operator==</code> consistently — a user-written <code>&lt;=&gt;</code> does not generate <code>==</code> (only a <i>defaulted</i> one does).</p>`,
+        code: R`
+          struct Name {
+              std::string s;
+              std::weak_ordering operator<=>(const Name& o) const {
+                  for (std::size_t i = 0; i < s.size() && i < o.s.size(); ++i) {
+                      int a = std::tolower(static_cast<unsigned char>(s[i]));
+                      int b = std::tolower(static_cast<unsigned char>(o.s[i]));
+                      if (a != b) return a < b ? std::weak_ordering::less : std::weak_ordering::greater;
+                  }
+                  return s.size() <=> o.s.size();             // strong_ordering converts to weak_ordering
+              }
+              bool operator==(const Name& o) const { return (*this <=> o) == 0; }
+          };
+          int main() { std::cout << (Name{"alice"} == Name{"ALICE"}) << (Name{"bob"} < Name{"Carl"}) << '\n'; }   // 11
+        `
+      },
+      {
+        title: 'Self-assignment, return types and the canonical forms',
+        html: `${H.table(['Operator', 'Canonical signature', 'Returns'], [
+            ['copy assignment', '<code>T&amp; operator=(const T&amp;)</code>', '<code>*this</code> by reference'],
+            ['compound <code>+=</code>', '<code>T&amp; operator+=(const T&amp;)</code>', '<code>*this</code> by reference'],
+            ['binary <code>+</code>', '<code>T operator+(T lhs, const T&amp; rhs)</code>', 'new value'],
+            ['prefix <code>++</code>', '<code>T&amp; operator++()</code>', 'reference'],
+            ['postfix <code>++</code>', '<code>T operator++(int)</code>', 'old value (copy)'],
+            ['stream out', '<code>std::ostream&amp; operator&lt;&lt;(std::ostream&amp;, const T&amp;)</code>', 'the stream'],
+            ['subscript', '<code>T&amp; operator[](size_t)</code> + const overload', 'reference'],
+            ['comparison (C++20)', '<code>auto operator&lt;=&gt;(const T&amp;) const = default;</code>', 'ordering category']
+          ])}<p>Returning <code>const T</code> by value (an old Scott Meyers tip to block <code>(a + b) = c</code>) is now discouraged because it disables move semantics on the result.</p>`
+      }
+    ],
+    deepDive: `<p><b>Overload resolution and ADL.</b> For <code>a + b</code> the compiler collects member candidates (<code>a.operator+</code>), non-member candidates found by normal lookup <i>and</i> by argument-dependent lookup (namespaces of the argument types), plus built-in candidates, then picks the best match. ADL is why <code>operator&lt;&lt;</code> declared in your type's namespace is found from anywhere. <b>Hidden friends</b> (a <code>friend</code> function <i>defined</i> inside the class) are visible <i>only</i> via ADL: this keeps overload sets small, speeds up compilation, and prevents surprising implicit conversions — the recommended modern style for symmetric operators.</p>
+      <p><b>C++20 rewritten candidates.</b> For <code>a == b</code> the compiler also considers <code>b == a</code> (reversed); for <code>a != b</code>, <code>!(a == b)</code> and <code>!(b == a)</code>; for <code>a &lt; b</code>, <code>(a &lt;=&gt; b) &lt; 0</code> and <code>0 &lt; (b &lt;=&gt; a)</code>. A defaulted <code>&lt;=&gt;</code> also implicitly declares a defaulted <code>==</code>. Why is <code>==</code> separate from <code>&lt;=&gt;</code>? Performance: equality of strings can short-circuit on different lengths, while ordering cannot.</p>
+      <p><b>Comparison categories.</b> <code>std::strong_ordering</code> (equal means substitutable, e.g. ints), <code>std::weak_ordering</code> (equivalent but distinguishable, e.g. case-insensitive strings), <code>std::partial_ordering</code> (some values incomparable — <code>double</code> with NaN). Defaulted <code>&lt;=&gt;</code> picks the weakest category among members. Ordered containers and <code>std::sort</code> require a <b>strict weak ordering</b>; violating it (e.g. using <code>&lt;=</code> as a comparator) is undefined behaviour and can crash <code>std::sort</code>.</p>
+      <p><b>Conversion operators and the "safe bool" history.</b> Before C++11, <code>operator bool()</code> made <code>obj + 1</code> and <code>obj1 == obj2</code> compile by accident, so libraries used the convoluted "safe bool idiom". C++11 <code>explicit operator bool</code> allows only contextual conversions (<code>if</code>, <code>while</code>, <code>!</code>, <code>&amp;&amp;</code>, <code>?:</code>). Single-argument constructors should usually be <code>explicit</code> too, for the same reason.</p>
+      <p><b>Other notable overloads.</b> <code>operator-&gt;</code> chains until it reaches a raw pointer (how smart pointers and proxies work). <code>operator()</code> powers functors and lambdas (a lambda is a compiler-generated class with <code>operator()</code>); C++23 allows <code>static operator()</code> and multidimensional <code>operator[](i, j)</code>. <code>operator new/delete</code> can be overloaded per class for pooling. User-defined literals (<code>operator""_km</code>) let you write <code>5_km</code>. Overloading <code>&amp;</code> (address-of) breaks generic code — use <code>std::addressof</code> in templates.</p>`,
+    aiEra: `<p><b>What AI changes:</b> boilerplate like six comparison operators, stream operators and arithmetic sets is exactly what assistants produce instantly — and exactly what C++20's <code>= default</code> comparisons made unnecessary. Generated code from older training data often still hand-writes all six, inconsistently.</p>
+      <p><b>Use AI as a partner:</b> <code>Modernize this class to C++20: replace hand-written comparisons with defaulted == and <=>, make binary operators hidden friends, and keep behaviour identical. Then write property tests: a < b implies !(b < a); a == b implies !(a < b) && !(b < a).</code></p>
+      <p><b>Where AI goes wrong:</b> postfix <code>++</code> returning a reference to a local (dangling), <code>operator=</code> returning by value, comparators that are not strict weak orderings, implicit <code>operator bool</code> without <code>explicit</code>, and overloads with surprising semantics (<code>+</code> mutating the left operand).</p>
+      <p><b>What you must still own:</b> choosing member vs free, the canonical signatures and return types, the C++20 rewrite rules, and the principle of least surprise. Interviewers ask you to implement <code>Fraction</code>, <code>Complex</code> or <code>BigInt</code> exactly to see these decisions.</p>`,
+    problems: [
+      {
+        title: 'Fraction Class with Arithmetic, Equality, Ordering and Printing',
+        level: 'Medium', tags: ['operator overloading', 'spaceship', 'gcd', 'value type'], companies: ['Google', 'Jane Street', 'Microsoft'],
+        statement: `<p>Implement <code>Fraction</code> (numerator/denominator, <code>long long</code>) that is always stored in <b>lowest terms</b> with a <b>positive denominator</b>. Support <code>+ - * /</code> (and their compound forms), <code>==</code>, all orderings, unary <code>-</code>, and <code>std::cout &lt;&lt; f</code> printing <code>"n/d"</code> (or just <code>"n"</code> when d = 1). Mixed expressions like <code>f + 1</code> and <code>1 + f</code> must work.</p>`,
+        constraints: `<p>|numerator|, |denominator| ≤ 10<sup>9</sup> for inputs; denominator ≠ 0 (throw <code>std::invalid_argument</code>). Intermediate products fit in <code>long long</code> for the tests.</p>`,
+        example: `<p><code>Fraction(1,2) + Fraction(1,3)</code> = ${H.c('g', '5/6')}. <code>Fraction(2,-4)</code> is stored as ${H.c('b', '-1/2')}. <code>Fraction(1,2) == Fraction(2,4)</code> → ${H.c('g', 'true')} because both normalize to 1/2. <code>1 + Fraction(1,2)</code> → ${H.c('g', '3/2')}.</p>`,
+        brute: {
+          why: `<p>The naive version stores fractions un-normalized and compares fields directly, so <code>1/2 == 2/4</code> is false; it compares with floating point (<code>double(n)/d</code>) for ordering, which is inexact for large values; and it writes members only, so <code>1 + f</code> does not compile.</p>`,
+          code: R`
+            struct Fraction {
+                long long n, d;
+                Fraction operator+(const Fraction& o) const { return {n * o.d + o.n * d, d * o.d}; }   // never reduced
+                bool operator==(const Fraction& o) const { return n == o.n && d == o.d; }             // 1/2 != 2/4 !
+                bool operator<(const Fraction& o) const { return double(n) / d < double(o.n) / o.d; } // inexact
+            };
+          `
+        },
+        mcq: { q: 'How should <code>operator&lt;</code> compare a/b and c/d (b, d &gt; 0) exactly?', options: ['Compare a·d with c·b using integers', 'Compare a/b and c/d as doubles', 'Compare numerators, then denominators', 'Compare a + d with c + b'], answer: 0, explain: 'With positive denominators, a/b &lt; c/d ⇔ a·d &lt; c·b. Integer cross-multiplication is exact; doubles lose precision beyond 2^53 and make near-equal values compare wrongly.' },
+        hints: [
+          `<p>Hint 1: normalize in <b>one</b> private function called by the constructor: divide by <code>std::gcd</code>, and flip signs so the denominator is positive. Then equality can be the defaulted memberwise <code>==</code>.</p>`,
+          `<p>Hint 2: implement <code>+=</code>, <code>-=</code>, <code>*=</code>, <code>/=</code> as members; implement <code>+ - * /</code> as <b>hidden friends</b> taking the left operand by value. A non-explicit constructor <code>Fraction(long long n, long long d = 1)</code> lets <code>1 + f</code> convert the 1.</p>`,
+          `<p>Hint 3: ordering: write <code>std::strong_ordering operator&lt;=&gt;</code> using cross-multiplication <code>n * o.d &lt;=&gt; o.n * d</code>. Printing: <code>n</code> alone when <code>d == 1</code>.</p>`
+        ],
+        solution: {
+          approach: `<p>Class invariant: gcd(|n|, d) = 1 and d &gt; 0, established in the constructor and preserved because every operation constructs its result through the constructor. Thanks to the invariant, equal fractions have identical fields, so <code>operator==</code> can be defaulted. Ordering uses exact integer cross-multiplication. Binary operators are hidden friends so implicit conversion from integers works on both sides.</p>`,
+          code: R`
+            #include <compare>
+            #include <iostream>
+            #include <numeric>
+            #include <stdexcept>
+
+            class Fraction {
+                long long n_, d_;
+                void normalize() {
+                    if (d_ == 0) throw std::invalid_argument("zero denominator");
+                    if (d_ < 0) { n_ = -n_; d_ = -d_; }              // keep the sign in the numerator
+                    long long g = std::gcd(n_, d_);                  // gcd works on absolute values
+                    if (g > 1) { n_ /= g; d_ /= g; }
+                }
+            public:
+                Fraction(long long n = 0, long long d = 1) : n_(n), d_(d) { normalize(); }   // implicit from int: on purpose
+                long long num() const { return n_; }
+                long long den() const { return d_; }
+
+                Fraction& operator+=(const Fraction& o) { *this = Fraction(n_ * o.d_ + o.n_ * d_, d_ * o.d_); return *this; }
+                Fraction& operator-=(const Fraction& o) { *this = Fraction(n_ * o.d_ - o.n_ * d_, d_ * o.d_); return *this; }
+                Fraction& operator*=(const Fraction& o) { *this = Fraction(n_ * o.n_, d_ * o.d_); return *this; }
+                Fraction& operator/=(const Fraction& o) { *this = Fraction(n_ * o.d_, d_ * o.n_); return *this; }
+                Fraction operator-() const { return Fraction(-n_, d_); }
+
+                // Hidden friends: symmetric, found by ADL, allow 1 + f and f + 1.
+                friend Fraction operator+(Fraction a, const Fraction& b) { return a += b; }
+                friend Fraction operator-(Fraction a, const Fraction& b) { return a -= b; }
+                friend Fraction operator*(Fraction a, const Fraction& b) { return a *= b; }
+                friend Fraction operator/(Fraction a, const Fraction& b) { return a /= b; }
+
+                bool operator==(const Fraction&) const = default;                    // invariant makes this exact
+                std::strong_ordering operator<=>(const Fraction& o) const { return n_ * o.d_ <=> o.n_ * d_; }
+
+                friend std::ostream& operator<<(std::ostream& os, const Fraction& f) {
+                    os << f.n_;
+                    if (f.d_ != 1) os << '/' << f.d_;
+                    return os;
+                }
+            };
+
+            int main() {
+                Fraction a(1, 2), b(1, 3);
+                std::cout << a + b << ' ' << a - b << ' ' << a * b << ' ' << a / b << '\n';   // 5/6 1/6 1/6 3/2
+                std::cout << Fraction(2, -4) << ' ' << (1 + a) << ' ' << (a == Fraction(2, 4)) << ' ' << (b < a) << '\n';   // -1/2 3/2 1 1
+            }
+          `,
+          dry: { head: ['Expression', 'Raw result', 'gcd', 'Stored', 'Printed'], rows: [
+            ['<code>a + b</code> (1/2 + 1/3)', '(1·3 + 1·2)/(2·3) = 5/6', '1', '5/6', '5/6'],
+            ['<code>a / b</code>', '(1·3)/(2·1) = 3/2', '1', '3/2', '3/2'],
+            ['<code>Fraction(2, -4)</code>', 'flip signs → -2/4', '2', '-1/2', '-1/2'],
+            ['<code>1 + a</code>', 'Fraction(1) + 1/2 = 3/2', '1', '3/2', '3/2'],
+            ['<code>b &lt; a</code>', '1·2 &lt;=&gt; 1·3 → less', '—', '—', H.c('g', 'true')]
+          ] },
+          complexity: `<p>Each operation is O(log min(n, d)) for the gcd. Comparison is O(1). Overflow: products of two 10<sup>9</sup> values fit in 64 bits; for arbitrary inputs reduce before multiplying (cross-cancel gcds) or use <code>__int128</code>.</p>`,
+          followUps: ['Reduce overflow risk by cross-cancelling gcds before multiplying.', 'Should the int constructor be explicit? What breaks if it is?', 'Add <code>operator&gt;&gt;</code> to parse "3/4" from a stream.']
+        }
+      }
+    ]
+  });
+
 registerModule({ id: 'cpp05', title: 'Advanced OOP', intro: '<p>x</p>', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();

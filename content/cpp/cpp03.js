@@ -1809,6 +1809,436 @@ int main() {
     }]
   });
 
+  /* ======================================================================
+     PRACTICE: Easy
+     ====================================================================== */
+  practice.push({
+    title: 'Predict the Output: Two Pointers, One Re-aim',
+    level: 'Easy', tags: ['predict the output', 'pointers'], companies: ['TCS', 'Infosys', 'Qualcomm'],
+    statement: `<p>Without running it, what does this print?</p><pre>int a = 3, b = 7;
+int* p = &amp;a;
+int* q = &amp;b;
+*p += *q;
+p = q;
+*p = *p * 2;
+cout &lt;&lt; a &lt;&lt; ' ' &lt;&lt; b &lt;&lt; ' ' &lt;&lt; (p == q);</pre><p>Then write the program with a comment on every line showing the memory state.</p>`,
+    constraints: `<p>Assume <code>int</code> is 4 bytes; addresses are irrelevant to the answer.</p>`,
+    example: `<p>Answer: ${H.c('g', '10 14 1')}. Line 4 adds b into a (a = 10). Line 5 re-aims p at b (no values change). Line 6 doubles b through p (b = 14). p and q now hold the same address, so <code>p == q</code> prints 1.</p>`,
+    brute: { why: `<p>The common wrong model: reading <code>p = q;</code> as "copy b's value into a" (as if it were <code>*p = *q;</code>). That gives a = 7, then <code>*p = *p * 2</code> doubles a to 14, and the guess becomes "14 7 0". The program below is what that wrong reading would actually mean.</p>`, code: { lang: 'cpp', code: `#include <iostream>
+int main() {
+    int a = 3, b = 7;
+    int* p = &a;
+    int* q = &b;
+    *p += *q;        // a = 10
+    *p = *q;         // WRONG MODEL: treats "p = q" as copying values (a = 7)
+    *p = *p * 2;     // a = 14
+    std::cout << a << ' ' << b << ' ' << (p == q) << '\\n';   // 14 7 0 (not the real answer)
+}` } },
+    mcq: { q: 'After <code>p = q;</code>, which statement is true?', options: ['a now equals b', 'p and q hold the same address; no int changed', 'b now equals a', 'p is now null'], answer: 1, explain: 'Assigning one pointer to another copies the address only. The pointed-at ints are untouched.' },
+    hints: [`<p>Make a 4-row table (a, b, p, q). For each line ask: does it change a <b>pointer</b> (no star on the left) or a <b>target</b> (star on the left)?</p>`, `<p><code>*p += *q</code> changes a. <code>p = q</code> changes p only. <code>*p = *p * 2</code> changes whatever p points at <b>now</b>.</p>`, `<p>Final state: a = 10, b = 14, p == q == &amp;b. Printing a bool with <code>cout</code> shows 1/0 unless you use <code>std::boolalpha</code>.</p>`],
+    solution: {
+      approach: `<p>Trace pointer vs target changes line by line.</p>`,
+      code: { lang: 'cpp', code: `#include <iostream>
+int main() {
+    int a = 3, b = 7;
+    int* p = &a;            // p -> a
+    int* q = &b;            // q -> b
+    *p += *q;               // a = 3 + 7 = 10
+    p = q;                  // p -> b (a stays 10)
+    *p = *p * 2;            // b = 7 * 2 = 14
+    std::cout << a << ' ' << b << ' ' << (p == q) << '\\n';   // 10 14 1
+}` },
+      dry: { head: ['line', 'a', 'b', 'p →', 'q →'], rows: [['int* p = &amp;a', '3', '7', 'a', '-'], ['int* q = &amp;b', '3', '7', 'a', 'b'], ['*p += *q', '<span class="c-g">10</span>', '7', 'a', 'b'], ['p = q', '10', '7', '<span class="c-y">b</span>', 'b'], ['*p = *p * 2', '10', '<span class="c-g">14</span>', 'b', 'b']] },
+      complexity: `<p>Constant: it is a tracing exercise.</p>`,
+      followUps: ['What prints if line 5 is <code>*p = *q;</code> instead?', 'Add <code>int** pp = &amp;p; **pp = 0;</code> at the end: which variable changes?']
+    }
+  });
+
+  practice.push({
+    title: 'Sum an Array Without the [] Operator',
+    level: 'Easy', tags: ['pointer arithmetic'], companies: ['Amazon', 'Cisco'],
+    statement: `<p>Write <code>long long sumRange(const int* first, const int* last)</code> that returns the sum of the ints in <code>[first, last)</code> using only pointer arithmetic and dereference. No <code>[]</code>, no indices.</p>`,
+    constraints: `<p>0 ≤ last − first ≤ 10<sup>7</sup>, |values| ≤ 10<sup>9</sup> (use <code>long long</code> for the sum).</p>`,
+    example: `<p>${H.arr([4, -1, 6], { ptr: { 0: 'first' } })} with <code>last = first + 3</code> → ${H.c('g', '9')}. Empty range (first == last) → 0.</p>`,
+    brute: { why: `<p>An index-based loop works and compiles to the same machine code, but it ignores the constraint and hides the concept the exercise is drilling: walking a pointer to a sentinel end.</p>`, code: { lang: 'cpp', code: `long long sumIndexed(const int* first, const int* last) {
+    long long s = 0;
+    long long n = last - first;              // element count
+    for (long long i = 0; i < n; ++i) s += first[i];   // uses [] (not allowed by the task)
+    return s;
+}` } },
+    mcq: { q: 'Which loop condition is correct for <code>[first, last)</code>?', options: ['<code>p &lt;= last</code>', '<code>p != last</code>', '<code>p != last + 1</code>', '<code>*p != 0</code>'], answer: 1, explain: '<code>last</code> is one past the end: stop when you reach it. <code>&lt;=</code> would dereference <code>last</code>, and a zero sentinel only works for C strings.' },
+    hints: [`<p>Start a pointer <code>p</code> at <code>first</code> and move it with <code>++p</code> until it equals <code>last</code>.</p>`, `<p>Accumulate into <code>long long</code> to avoid <code>int</code> overflow with large inputs.</p>`, `<p>Recipe: <code>long long s = 0; for (const int* p = first; p != last; ++p) s += *p; return s;</code>. Empty range: loop body never runs, returns 0.</p>`],
+    solution: {
+      approach: `<p>Half-open range walk with a moving pointer, the same shape as every STL algorithm.</p>`,
+      code: { lang: 'cpp', code: `#include <iostream>
+long long sumRange(const int* first, const int* last) {
+    long long s = 0;
+    for (const int* p = first; p != last; ++p)   // stop AT one-past-end
+        s += *p;                                  // read the current element
+    return s;
+}
+int main() {
+    int a[] = {4, -1, 6};
+    std::cout << sumRange(a, a + 3) << ' ' << sumRange(a, a) << '\\n';   // 9 0
+}` },
+      dry: { head: ['p', '*p', 's'], rows: [['a+0', '4', '4'], ['a+1', '-1', '3'], ['a+2', '6', '9'], ['a+3 == last', '-', 'return 9']] },
+      complexity: `<p>Time O(N), space O(1).</p>`,
+      followUps: ['Rewrite with <code>std::accumulate(first, last, 0LL)</code>: why must the initial value be <code>0LL</code>?', 'Make it a template working with any iterator type']
+    }
+  });
+
+  practice.push({
+    title: 'Count a Character in a C-String',
+    level: 'Easy', tags: ['c-string', 'pointers', 'nullptr'], companies: ['Microsoft', 'Intel'],
+    statement: `<p>Write <code>int countChar(const char* s, char c)</code> that returns how many times <code>c</code> appears in the null-terminated string <code>s</code>. If <code>s</code> is <code>nullptr</code>, return 0. Walk the string with a pointer.</p>`,
+    constraints: `<p>String length ≤ 10<sup>6</sup>. <code>c</code> is never <code>'\\0'</code>.</p>`,
+    example: `<p><code>countChar("banana", 'a')</code> → ${H.c('g', '3')}.</p>${H.arr(['b', 'a', 'n', 'a', 'n', 'a', '\\0'], { hl: { 1: 'g', 3: 'g', 5: 'g', 6: 'y' } })}<p>The walk stops at the terminating zero byte (amber).</p>`,
+    brute: { why: `<p>Copy into a <code>std::string</code> first, then count. It allocates memory for no reason (O(N) extra space) and still crashes on <code>nullptr</code> if you forget the check, because <code>std::string(nullptr)</code> is UB.</p>`, code: { lang: 'cpp', code: `#include <string>
+#include <algorithm>
+int countCharBrute(const char* s, char c) {
+    if (!s) return 0;
+    std::string copy(s);                                   // O(N) allocation + copy
+    return static_cast<int>(std::count(copy.begin(), copy.end(), c));
+}` } },
+    mcq: { q: 'What stops the loop in a C-string walk?', options: ['A stored length field', 'The terminating <code>\'\\0\'</code> byte', 'The pointer becoming nullptr', 'sizeof(s)'], answer: 1, explain: 'C-strings carry no length (they are decayed arrays); the zero byte is the end marker. The pointer itself never becomes null by incrementing.' },
+    hints: [`<p>Null-check first: <code>if (!s) return 0;</code>. Dereferencing a null pointer to look for <code>'\\0'</code> would crash.</p>`, `<p>Loop <code>for (const char* p = s; *p != '\\0'; ++p)</code>, comparing <code>*p</code> to <code>c</code>.</p>`, `<p>Recipe: counter starts 0; each match increments; return counter. Compactly: <code>while (*s) cnt += (*s++ == c);</code> (uses the <code>*p++</code> idiom).</p>`],
+    solution: {
+      approach: `<p>Guard against null, then a sentinel-terminated pointer walk.</p>`,
+      code: { lang: 'cpp', code: `#include <iostream>
+int countChar(const char* s, char c) {
+    if (s == nullptr) return 0;          // nothing to scan
+    int cnt = 0;
+    for (const char* p = s; *p != '\\0'; ++p)   // until the terminator
+        if (*p == c) ++cnt;
+    return cnt;
+}
+int main() {
+    std::cout << countChar("banana", 'a') << ' ' << countChar(nullptr, 'a') << '\\n';   // 3 0
+}` },
+      dry: { head: ['p at', '*p', 'match?', 'cnt'], rows: [['0', 'b', 'no', '0'], ['1', 'a', 'yes', '1'], ['3', 'a', 'yes', '2'], ['5', 'a', 'yes', '3'], ['6', '\\0', 'stop', 'return 3']] },
+      complexity: `<p>Time O(N), space O(1).</p>`,
+      followUps: ['Accept <code>std::string_view</code> instead: what changes about null handling?', 'Count case-insensitively with <code>std::tolower</code> (beware negative <code>char</code> values)']
+    }
+  });
+
+  practice.push({
+    title: 'Swap Two Pointers (Not the Values)',
+    level: 'Easy', tags: ['pointer to pointer', 'reference to pointer'], companies: ['Adobe', 'Nvidia'],
+    statement: `<p>Write <code>void swapPointers(int*&amp; a, int*&amp; b)</code> that makes <code>a</code> point where <code>b</code> pointed and vice versa, <b>without changing any int</b>. Also write the C-style version <code>void swapPointersC(int** a, int** b)</code>. Show that after the call the original ints still hold their original values.</p>`,
+    constraints: `<p>Either pointer may be <code>nullptr</code>; that must still work (no dereference of the ints is needed).</p>`,
+    example: `<p>x = 1, y = 2, p = &amp;x, q = &amp;y. After <code>swapPointers(p, q)</code>: ${H.c('g', '*p == 2, *q == 1')}, but ${H.c('b', 'x == 1, y == 2')} (unchanged). Only the arrows swapped.</p>`,
+    brute: { why: `<p>Swapping the <b>values</b> (<code>std::swap(*a, *b)</code>) looks the same through the pointers but modifies x and y, which the caller did not ask for, and it crashes if either pointer is null.</p>`, code: { lang: 'cpp', code: `#include <utility>
+// Wrong tool: swaps the ints, not the pointers (and dereferences possibly-null pointers)
+void swapValues(int* a, int* b) {
+    std::swap(*a, *b);
+}` } },
+    mcq: { q: 'Why does <code>void swapP(int* a, int* b) { int* t = a; a = b; b = t; }</code> have no visible effect?', options: ['Pointers cannot be swapped', 'a and b are copies of the caller\'s pointers', 'It needs const', 'It swaps the ints instead'], answer: 1, explain: 'Parameters are copies. To change the caller\'s pointers you need <code>int*&amp;</code> or <code>int**</code>.' },
+    hints: [`<p>You need to modify the caller's pointer variables themselves, so pass them by reference (<code>int*&amp;</code>) or by address (<code>int**</code>).</p>`, `<p>Inside, only copy addresses around; never use <code>*</code> on the int level, so null pointers are fine.</p>`, `<p>Recipe (reference): <code>int* t = a; a = b; b = t;</code>. Recipe (C style): <code>int* t = *a; *a = *b; *b = t;</code> and call it as <code>swapPointersC(&amp;p, &amp;q)</code>.</p>`],
+    solution: {
+      approach: `<p>Operate one level up: swap the pointer variables, which requires access to the caller's pointers.</p>`,
+      code: { lang: 'cpp', code: `#include <iostream>
+void swapPointers(int*& a, int*& b) {   // references to the caller's pointers
+    int* t = a;
+    a = b;
+    b = t;
+}
+void swapPointersC(int** a, int** b) {  // addresses of the caller's pointers
+    int* t = *a;
+    *a = *b;
+    *b = t;
+}
+int main() {
+    int x = 1, y = 2;
+    int* p = &x;
+    int* q = &y;
+    swapPointers(p, q);
+    std::cout << *p << *q << ' ' << x << y << '\\n';   // 21 12
+    swapPointersC(&p, &q);
+    std::cout << *p << *q << '\\n';                    // 12
+    int* n = nullptr;
+    swapPointers(p, n);                                // works with null: no int is touched
+    std::cout << (p == nullptr) << ' ' << *n << '\\n';  // 1 1
+}` },
+      dry: { head: ['step', 'p', 'q', 'x', 'y'], rows: [['start', '&amp;x', '&amp;y', '1', '2'], ['t = a', '&amp;x', '&amp;y', '1', '2'], ['a = b', '<span class="c-g">&amp;y</span>', '&amp;y', '1', '2'], ['b = t', '&amp;y', '<span class="c-g">&amp;x</span>', '1', '2']] },
+      complexity: `<p>O(1).</p>`,
+      followUps: ['Does <code>std::swap(p, q)</code> do the same thing?', 'When would you sort an array of pointers instead of the objects themselves?']
+    }
+  });
+
+  /* ======================================================================
+     PRACTICE: Medium
+     ====================================================================== */
+  practice.push({
+    title: 'Predict the Output: References Meet const Pointers',
+    level: 'Medium', tags: ['predict the output', 'references', 'const'], companies: ['Bloomberg', 'Morgan Stanley', 'Optiver'],
+    statement: `<p>What does this print? Which commented-out line would fail to compile, and with what kind of error?</p><pre>int x = 1, y = 2;
+int&amp; r = x;
+const int* p = &amp;y;
+r = y;          // (1)
+r++;            // (2)
+p = &amp;x;         // (3)
+y = 10;         // (4)
+int* const q = &amp;y;
+*q += *p;       // (5)
+// *p = 0;      // (6)
+// q = &amp;x;      // (7)
+cout &lt;&lt; x &lt;&lt; ' ' &lt;&lt; y &lt;&lt; ' ' &lt;&lt; *p &lt;&lt; ' ' &lt;&lt; r;</pre>`,
+    constraints: `<p>Standard C++20. Assume the commented lines stay commented for the output question.</p>`,
+    example: `<p>Output: ${H.c('g', '3 13 3 3')}. (1) copies y's value into x (x = 2), it does not re-bind r. (2) makes x = 3. (3) re-aims the pointer-to-const p at x (allowed). (4) y = 10. (5) y += x → 13. Line (6) fails: <i>assignment of read-only location</i>. Line (7) fails: <i>assignment of read-only variable q</i>.</p>`,
+    brute: { why: `<p>Reading <code>r = y</code> as re-binding (so r now names y) and <code>const int* p</code> as "p never moves" leads to the wrong answer "1 12 2 12" or to thinking (3) is an error. The program below encodes that wrong mental model explicitly with a pointer, to show the different result.</p>`, code: { lang: 'cpp', code: `#include <iostream>
+int main() {
+    int x = 1, y = 2;
+    int* r = &x;          // WRONG MODEL: treating the reference as a re-seatable pointer
+    r = &y;               // "r = y" misread as re-binding
+    (*r)++;               // y = 3 instead of x = 3
+    std::cout << x << ' ' << y << '\\n';   // 1 3: not what the real program does
+}` } },
+    mcq: { q: 'Is line (3), <code>p = &amp;x;</code>, legal when p is <code>const int*</code>?', options: ['No, p is const', 'Yes: the const applies to the int, not the pointer', 'Only if x is const', 'Only with const_cast'], answer: 1, explain: 'const to the left of * locks the target (read-only view), not the pointer. Re-aiming is allowed; writing through p is not.' },
+    hints: [`<p>Track three things in a table: x, y, and what p points at. Remember r is permanently x.</p>`, `<p>Reference assignment copies values. Pointer-to-const can move. Const-pointer cannot move but can write.</p>`, `<p>After (1) x=2; (2) x=3; (3) p→x; (4) y=10; (5) y = 10 + *p = 10 + 3 = 13. Printing r prints x.</p>`],
+    solution: {
+      approach: `<p>Apply the two rules: references never re-bind; const placement decides what is locked.</p>`,
+      code: { lang: 'cpp', code: `#include <iostream>
+int main() {
+    int x = 1, y = 2;
+    int& r = x;              // r IS x forever
+    const int* p = &y;       // read-only view, movable
+    r = y;                   // (1) x = 2 (value copy)
+    r++;                     // (2) x = 3
+    p = &x;                  // (3) OK: re-aim the view
+    y = 10;                  // (4)
+    int* const q = &y;       // fixed pointer, writable target
+    *q += *p;                // (5) y = 10 + 3 = 13
+    // *p = 0;               // (6) error: assignment of read-only location '*p'
+    // q = &x;               // (7) error: assignment of read-only variable 'q'
+    std::cout << x << ' ' << y << ' ' << *p << ' ' << r << '\\n';   // 3 13 3 3
+}` },
+      dry: { head: ['line', 'x', 'y', 'p →', 'q →'], rows: [['(1) r = y', '2', '2', 'y', '-'], ['(2) r++', '3', '2', 'y', '-'], ['(3) p = &amp;x', '3', '2', '<span class="c-y">x</span>', '-'], ['(4) y = 10', '3', '10', 'x', '-'], ['(5) *q += *p', '3', '<span class="c-g">13</span>', 'x', 'y']] },
+      complexity: `<p>Tracing exercise, O(1).</p>`,
+      followUps: ['Change line (3) to <code>p = &amp;r;</code>: same result? (yes, &amp;r is &amp;x)', 'What if p were declared <code>const int* const p</code>?']
+    }
+  });
+
+  practice.push({
+    title: 'Implement strcpy and strcmp With Pointers',
+    level: 'Medium', tags: ['c-string', 'pointer arithmetic', '*p++ idiom'], companies: ['Apple', 'Qualcomm', 'Samsung'],
+    statement: `<p>Implement <code>char* myStrcpy(char* dst, const char* src)</code> (copies including the terminator, returns <code>dst</code>) and <code>int myStrcmp(const char* a, const char* b)</code> (negative / zero / positive like <code>std::strcmp</code>, comparing as <code>unsigned char</code>). Use pointers only.</p>`,
+    constraints: `<p>Strings are null-terminated, length ≤ 10<sup>6</sup>. <code>dst</code> has room for <code>strlen(src) + 1</code> bytes and does not overlap <code>src</code>.</p>`,
+    example: `<p><code>myStrcmp("apple", "apply")</code>: first difference at index 4, <code>'e'(101) − 'y'(121)</code> → ${H.c('g', 'negative')}. <code>myStrcmp("ab", "abc")</code>: at index 2, <code>'\\0'(0) − 'c'(99)</code> → negative ("ab" sorts first).</p>${H.table(['i', 'a[i]', 'b[i]', 'equal?'], [['0', 'a', 'a', 'yes'], ['3', 'l', 'l', 'yes'], ['4', 'e', 'y', '<span class="c-r">no → return e − y</span>']])}`,
+    brute: { why: `<p>Copying via <code>std::string</code> temporaries (<code>std::string(a) &lt; std::string(b)</code>) allocates twice and still needs care for the 3-way result. For strcpy, computing <code>strlen</code> first and then copying makes two passes over src.</p>`, code: { lang: 'cpp', code: `#include <string>
+#include <cstring>
+char* myStrcpyBrute(char* dst, const char* src) {
+    std::size_t n = std::strlen(src);                 // pass 1: length
+    for (std::size_t i = 0; i <= n; ++i) dst[i] = src[i];   // pass 2: copy incl. '\\0'
+    return dst;
+}
+int myStrcmpBrute(const char* a, const char* b) {
+    std::string x(a), y(b);                           // two allocations
+    return x.compare(y);
+}` } },
+    mcq: { q: 'In <code>while ((*d++ = *s++) != \'\\0\');</code>, when does the loop stop?', options: ['Before copying the terminator', 'Right after copying the terminator', 'When d becomes null', 'Never; it is UB'], answer: 1, explain: 'The assignment copies the char, its value is tested; the terminator is copied first and then the test fails, so the destination is properly terminated.' },
+    hints: [`<p>strcpy: the classic idiom copies and advances both pointers in one expression: <code>*d++ = *s++</code>. Keep the original <code>dst</code> to return it.</p>`, `<p>strcmp: advance both while the chars are equal and not the terminator. Then return the difference of the current chars <b>as unsigned char</b> (so bytes ≥ 128 compare correctly).</p>`, `<p>Recipe: <code>while (*a &amp;&amp; *a == *b) { ++a; ++b; }</code> <code>return (unsigned char)*a - (unsigned char)*b;</code>. If one string is a prefix of the other, the comparison hits <code>'\\0'</code> vs a char, which correctly gives the shorter string a smaller result.</p>`],
+    solution: {
+      approach: `<p>Single-pass pointer walks using the postfix-increment idiom; unsigned comparison for strcmp.</p>`,
+      code: { lang: 'cpp', code: `#include <iostream>
+
+char* myStrcpy(char* dst, const char* src) {
+    char* d = dst;                              // keep dst to return it
+    while ((*d++ = *src++) != '\\0') { }         // copy, then test the copied char
+    return dst;
+}
+
+int myStrcmp(const char* a, const char* b) {
+    while (*a != '\\0' && *a == *b) { ++a; ++b; }   // skip the common prefix
+    return static_cast<unsigned char>(*a) - static_cast<unsigned char>(*b);
+}
+
+int main() {
+    char buf[16];
+    std::cout << myStrcpy(buf, "pointer") << '\\n';           // pointer
+    std::cout << (myStrcmp("apple", "apply") < 0) << ' '     // 1
+              << (myStrcmp("ab", "abc") < 0) << ' '          // 1
+              << myStrcmp("same", "same") << '\\n';           // 0
+}` },
+      dry: { head: ['a points at', 'b points at', 'equal &amp; not end?', 'action'], rows: [['a', 'a', 'yes', '++a, ++b'], ['p (x2), l', 'p (x2), l', 'yes', 'advance'], ['e', 'y', 'no', 'return 101 − 121 = -20']] },
+      complexity: `<p>Both O(N) time, O(1) space.</p>`,
+      followUps: ['Why is <code>strcpy</code> considered dangerous, and what do <code>strncpy</code>/<code>strlcpy</code>/<code>std::string</code> fix?', 'What happens if <code>dst</code> and <code>src</code> overlap?']
+    }
+  });
+
+  practice.push({
+    title: 'Remove Duplicates From a Sorted Array (Read/Write Pointers)',
+    level: 'Medium', tags: ['two pointers', 'pointer arithmetic', 'in-place'], companies: ['Amazon', 'Microsoft', 'Uber'],
+    statement: `<p>Write <code>int* dedupSorted(int* first, int* last)</code> that removes consecutive duplicates <b>in place</b> in the sorted range <code>[first, last)</code> and returns a pointer to the new logical end. Elements after the new end can be anything.</p>`,
+    constraints: `<p>0 ≤ N ≤ 10<sup>6</sup>. O(1) extra space. Like <code>std::unique</code>.</p>`,
+    example: `<p>${H.arr([1, 1, 2, 3, 3, 3, 4])} → ${H.arr([1, 2, 3, 4, '?', '?', '?'], { hl: { 0: 'g', 1: 'g', 2: 'g', 3: 'g' }, ptr: { 4: 'returned end' } })} The returned pointer is <code>first + 4</code>, so the new length is <code>end − first</code> = 4.</p>`,
+    brute: { why: `<p>Copy unique values into a <code>std::vector</code> and copy them back: O(N) extra memory. Alternatively, erase each duplicate by shifting the tail left: O(N²) moves in the worst case (all equal).</p>`, code: { lang: 'cpp', code: `#include <vector>
+int* dedupBrute(int* first, int* last) {
+    if (first == last) return last;
+    std::vector<int> keep{*first};                        // O(N) extra memory
+    for (int* p = first + 1; p != last; ++p)
+        if (*p != keep.back()) keep.push_back(*p);
+    int* w = first;
+    for (int v : keep) *w++ = v;                          // copy back
+    return w;
+}` } },
+    mcq: { q: 'What does the write pointer <code>w</code> always point at?', options: ['The last duplicate seen', 'The last kept unique element', 'One past the end of the input', 'The next element to read'], answer: 1, explain: 'Invariant: [first, w] holds the unique prefix and *w is the last kept value; a new value is written at ++w.' },
+    hints: [`<p>Two pointers: <code>r</code> reads every element, <code>w</code> marks the last unique element written. Since the input is sorted, a duplicate always equals <code>*w</code>.</p>`, `<p>When <code>*r != *w</code>, advance <code>w</code> and copy: <code>*++w = *r;</code>.</p>`, `<p>Recipe: handle empty range; <code>w = first</code>; for <code>r = first + 1</code> to <code>last</code>: if <code>*r != *w</code> then <code>*++w = *r</code>. Return <code>w + 1</code> (one past the last unique).</p>`],
+    solution: {
+      approach: `<p>Read/write two-pointer compaction; the returned pointer is a one-past-end marker, matching STL conventions (pair with <code>v.erase(newEnd, v.end())</code> for vectors).</p>`,
+      code: { lang: 'cpp', code: `#include <iostream>
+
+int* dedupSorted(int* first, int* last) {
+    if (first == last) return last;           // empty range
+    int* w = first;                           // last kept unique element
+    for (int* r = first + 1; r != last; ++r)
+        if (*r != *w) *++w = *r;              // new value: advance w, then write
+    return w + 1;                             // one past the last unique
+}
+
+int main() {
+    int a[] = {1, 1, 2, 3, 3, 3, 4};
+    int* e = dedupSorted(a, a + 7);
+    for (int* p = a; p != e; ++p) std::cout << *p << ' ';   // 1 2 3 4
+    std::cout << "| len " << (e - a) << '\\n';              // | len 4
+}` },
+      dry: { head: ['r at', '*r', '*w', 'action', 'array prefix'], rows: [['1', '1', '1', 'skip', '1'], ['2', '2', '1', '*++w = 2', '1 2'], ['3', '3', '2', '*++w = 3', '1 2 3'], ['4,5', '3', '3', 'skip', '1 2 3'], ['6', '4', '3', '*++w = 4', '1 2 3 4']] },
+      complexity: `<p>Time O(N), space O(1).</p>`,
+      followUps: ['Allow each value at most twice', 'Same with <code>std::unique</code> + <code>erase</code> on a vector: what iterator rules apply after erase?']
+    }
+  });
+
+  practice.push({
+    title: 'Bug Hunt: Fix Three Dangling Returns',
+    level: 'Medium', tags: ['dangling', 'lifetime', 'bug hunt'], companies: ['Google', 'Microsoft', 'Tesla'],
+    statement: `<p>Each function below compiles (some with warnings) but returns something that dangles. Explain why and rewrite each so it is correct.</p><pre>int* makeArray() { int a[3] = {1, 2, 3}; return a; }
+const std::string&amp; greet(const std::string&amp; name) { return "Hi " + name; }
+std::string_view firstWord(std::string s) { return std::string_view(s).substr(0, s.find(' ')); }</pre>`,
+    constraints: `<p>Fixed versions must not leak, must not use static locals as a hack, and must keep a similar signature where reasonable.</p>`,
+    example: `<p>${H.table(['function', 'what dies', 'when'], [['makeArray', 'local array a', 'at return'], ['greet', 'temporary std::string from operator+', 'at end of the return statement'], ['firstWord', 'parameter s (a copy)', 'when the function returns']])}<p>All three return a pointer/reference/view into that dead object. Fix by returning <b>owning values</b>.</p>`,
+    brute: { why: `<p>"Fixing" with <code>static</code> locals (<code>static int a[3]</code>) makes the address valid, but every call shares one buffer, so results overwrite each other and the function is no longer thread-safe. Using <code>new</code> moves the problem to a memory leak the caller must remember to free.</p>`, code: { lang: 'cpp', code: `#include <string>
+// Hack 1: static buffer, shared by every caller (not reentrant, not thread-safe)
+int* makeArrayStatic() { static int a[3] = {1, 2, 3}; return a; }
+// Hack 2: heap allocation that the caller must remember to delete[]
+int* makeArrayHeap() { return new int[3]{1, 2, 3}; }` } },
+    mcq: { q: 'Why does <code>greet</code> dangle even though its parameter is a <code>const&amp;</code>?', options: ['It does not dangle', 'The returned reference binds to a temporary created inside the function, which dies at the end of the return statement', 'Because name is const', 'Because strings are on the heap'], answer: 1, explain: 'Lifetime extension does not apply to return statements: the temporary from "Hi " + name is destroyed before the caller receives the reference. GCC warns "returning reference to temporary".' },
+    hints: [`<p>For each function, name the object the result refers to and the moment it dies.</p>`, `<p>The cure in modern C++ is to return by value: <code>std::array&lt;int, 3&gt;</code>, <code>std::string</code>. Return value optimization makes it cheap.</p>`, `<p>For firstWord: either take a <code>std::string_view</code> parameter (then the view refers to the caller's data, which outlives the call) or return a <code>std::string</code>. Document that the returned view is valid only while the caller's string is.</p>`],
+    solution: {
+      approach: `<p>Return owning values, or make views refer to data the caller owns.</p>`,
+      code: { lang: 'cpp', code: `#include <array>
+#include <iostream>
+#include <string>
+#include <string_view>
+
+std::array<int, 3> makeArray() { return {1, 2, 3}; }            // value: copied/moved out
+
+std::string greet(const std::string& name) { return "Hi " + name; }   // owning string
+
+// View into the CALLER's data: valid as long as the caller's string lives
+std::string_view firstWord(std::string_view s) {
+    return s.substr(0, s.find(' '));          // npos -> whole string
+}
+
+int main() {
+    auto a = makeArray();
+    std::string text = "hello world";
+    std::cout << a[2] << ' ' << greet("Ann") << ' ' << firstWord(text) << '\\n';   // 3 Hi Ann hello
+}` },
+      dry: { head: ['function', 'buggy result refers to', 'fixed result'], rows: [['makeArray', 'dead local array', 'std::array copy'], ['greet', 'dead temporary string', 'std::string value'], ['firstWord', 'dead parameter copy', 'view into caller-owned text']] },
+      complexity: `<p>Same as the originals: O(1), O(len), O(len).</p>`,
+      followUps: ['Show the compiler warnings each original triggers with <code>-Wall</code>', 'Would <code>firstWord(std::string("a b"))</code> be safe with the fixed version? (only within that full expression)']
+    }
+  });
+
+  practice.push({
+    title: 'Rotate an Array by k With Three Reversals',
+    level: 'Medium', tags: ['pointer arithmetic', 'in-place', 'reversal'], companies: ['Microsoft', 'Amazon', 'Walmart'],
+    statement: `<p>Write <code>void rotateRight(int* first, int* last, long long k)</code> that rotates the range right by <code>k</code> positions in place using O(1) extra memory and only pointer arithmetic.</p>`,
+    constraints: `<p>0 ≤ N ≤ 10<sup>6</sup>, 0 ≤ k ≤ 10<sup>18</sup>.</p>`,
+    example: `<p>${H.arr([1, 2, 3, 4, 5, 6, 7])} k = 3 → ${H.arr([5, 6, 7, 1, 2, 3, 4], { hl: { 0: 'g', 1: 'g', 2: 'g' } })}</p>${H.table(['step', 'array'], [['reverse all', '7 6 5 4 3 2 1'], ['reverse first k=3', '<span class="c-g">5 6 7</span> 4 3 2 1'], ['reverse the rest', '5 6 7 <span class="c-g">1 2 3 4</span>']])}`,
+    brute: { why: `<p>Rotate by one, k times: each single rotation moves N elements, so O(N·k), which is hopeless for large k. Even with k reduced mod N it is O(N²).</p>`, code: { lang: 'cpp', code: `void rotateBrute(int* first, int* last, long long k) {
+    long long n = last - first;
+    if (n == 0) return;
+    k %= n;
+    while (k--) {                       // k single-step rotations
+        int tail = *(last - 1);
+        for (int* p = last - 1; p != first; --p) *p = *(p - 1);   // shift right by one
+        *first = tail;
+    }
+}` } },
+    mcq: { q: 'Why reduce k with <code>k %= n</code> first?', options: ['To make it faster only', 'Rotating by n is the identity, and without it <code>first + k</code> would point far outside the array (UB)', 'Because k is signed', 'It is not needed'], answer: 1, explain: 'Pointer arithmetic beyond one-past-end is undefined. k mod n gives the equivalent in-range rotation and is required for correctness, not just speed.' },
+    hints: [`<p>Rotating right by k moves the last k elements to the front, keeping each block's internal order.</p>`, `<p>Reverse everything, then reverse the first k, then reverse the remaining n − k: the block orders and internal orders come out right.</p>`, `<p>Recipe: <code>n = last - first; if (n == 0) return; k %= n; reverse(first, last); reverse(first, first + k); reverse(first + k, last);</code> with your own pointer-based reverse.</p>`],
+    solution: {
+      approach: `<p>Three in-place reversals with pointers; k reduced modulo N so all pointers stay within [first, last].</p>`,
+      code: { lang: 'cpp', code: `#include <iostream>
+#include <utility>
+
+static void rev(int* lo, int* hi) {            // reverse [lo, hi)
+    while (lo != hi && lo != --hi) std::swap(*lo++, *hi);
+}
+
+void rotateRight(int* first, int* last, long long k) {
+    long long n = last - first;
+    if (n == 0) return;
+    k %= n;                                     // keep pointer arithmetic in range
+    rev(first, last);                           // 7 6 5 4 3 2 1
+    rev(first, first + k);                      // 5 6 7 | 4 3 2 1
+    rev(first + k, last);                       // 5 6 7 | 1 2 3 4
+}
+
+int main() {
+    int a[] = {1, 2, 3, 4, 5, 6, 7};
+    rotateRight(a, a + 7, 3);
+    for (int x : a) std::cout << x << ' ';      // 5 6 7 1 2 3 4
+    std::cout << '\\n';
+}` },
+      dry: { head: ['phase', 'range', 'array after'], rows: [['k %= 7', '-', 'k = 3'], ['rev all', '[0,7)', '7 6 5 4 3 2 1'], ['rev first k', '[0,3)', '5 6 7 4 3 2 1'], ['rev rest', '[3,7)', '5 6 7 1 2 3 4']] },
+      complexity: `<p>Time O(N) (each element swapped about twice), space O(1).</p>`,
+      followUps: ['Rotate left instead', 'Compare with <code>std::rotate</code> and its return value']
+    }
+  });
+
+  practice.push({
+    title: 'Merge Two Sorted Arrays In Place From the Back',
+    level: 'Medium', tags: ['two pointers', 'pointer arithmetic', 'merge'], companies: ['Meta', 'LinkedIn', 'Amazon'],
+    statement: `<p><code>a</code> has room for <code>m + n</code> ints: its first <code>m</code> are sorted data, the rest is free space. <code>b</code> holds <code>n</code> sorted ints. Write <code>void mergeInto(int* a, int m, const int* b, int n)</code> that merges b into a so that <code>a[0..m+n)</code> is sorted, using three pointers and no extra array.</p>`,
+    constraints: `<p>0 ≤ m, n ≤ 10<sup>5</sup>. O(1) extra space.</p>`,
+    example: `<p>a = ${H.arr([1, 4, 7, '_', '_'])} (m = 3), b = ${H.arr([2, 5])} → ${H.arr([1, 2, 4, 5, 7], { hl: { 1: 'b', 3: 'b' } })}. Filling from the back means we never overwrite an a-value we still need.</p>`,
+    brute: { why: `<p>Copy the m values out to a temporary vector and merge forward into a: correct, O(m) extra memory. Or append b and call <code>std::sort</code>: O((m+n) log(m+n)) and ignores that both inputs are already sorted.</p>`, code: { lang: 'cpp', code: `#include <algorithm>
+void mergeBrute(int* a, int m, const int* b, int n) {
+    std::copy(b, b + n, a + m);          // append b into the free space
+    std::sort(a, a + m + n);             // O((m+n) log(m+n))
+}` } },
+    mcq: { q: 'Why fill from the back instead of the front?', options: ['It is faster for the CPU cache', 'The back of a is free space, so writing there never overwrites unread a-values', 'Sorting requires it', 'To avoid using pointers'], answer: 1, explain: 'The write pointer starts at a + m + n − 1, always at or after the read pointer into a, so no unmerged value is clobbered.' },
+    hints: [`<p>Three pointers: <code>pa</code> at the last real a-value, <code>pb</code> at the last b-value, <code>w</code> at the last slot of a.</p>`, `<p>Each step writes the larger of <code>*pa</code> and <code>*pb</code> to <code>*w</code> and moves that pointer and <code>w</code> left.</p>`, `<p>Use counts (<code>i</code>, <code>j</code>) to avoid forming pointers before <code>a</code>: <code>while (j &gt; 0)</code> { if <code>i &gt; 0 &amp;&amp; a[i-1] &gt; b[j-1]</code> take from a, else from b }. Leftover a-values are already in place.</p>`],
+    solution: {
+      approach: `<p>Backward merge with read indices expressed as pointers <code>a + i</code>, <code>b + j</code>; loop ends when b is exhausted.</p>`,
+      code: { lang: 'cpp', code: `#include <iostream>
+
+void mergeInto(int* a, int m, const int* b, int n) {
+    int i = m, j = n;                 // counts of unmerged elements (avoid pointers before a/b)
+    int* w = a + m + n;               // one past the last slot
+    while (j > 0) {
+        if (i > 0 && *(a + i - 1) > *(b + j - 1))
+            *--w = *(a + --i);        // take the larger from a
+        else
+            *--w = *(b + --j);        // take from b (ties: b, still stable enough here)
+    }
+    // remaining a-values (i > 0) are already in their final positions
+}
+
+int main() {
+    int a[5] = {1, 4, 7};
+    int b[2] = {2, 5};
+    mergeInto(a, 3, b, 2);
+    for (int x : a) std::cout << x << ' ';   // 1 2 4 5 7
+    std::cout << '\\n';
+}` },
+      dry: { head: ['i', 'j', 'compare', 'write slot ← value'], rows: [['3', '2', '7 vs 5', 'a[4] ← 7'], ['2', '2', '4 vs 5', 'a[3] ← 5'], ['2', '1', '4 vs 2', 'a[2] ← 4'], ['1', '1', '1 vs 2', 'a[1] ← 2'], ['1', '0', 'b done', 'a[0] = 1 already in place']] },
+      complexity: `<p>Time O(m + n), space O(1).</p>`,
+      followUps: ['Why does the loop condition only test <code>j &gt; 0</code>?', 'Make it stable (equal elements from a stay before those from b)']
+    }
+  });
+
   registerModule({
     id: 'cpp03',
     title: 'Pointers & References',

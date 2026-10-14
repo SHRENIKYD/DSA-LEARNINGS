@@ -1607,6 +1607,634 @@ ll minGap(vector<ll> a) {
     }]
   });
 
+  /* ======================================================================
+     PRACTICE — Easy
+     ====================================================================== */
+  practice.push({
+    title: 'Rank the Students (marks high→low, then name A→Z)', level: 'Easy', tags: ['sorting', 'comparator'], companies: ['TCS', 'Accenture', 'HackerRank'],
+    statement: `<p>Read N students, each with a name and marks. Print them sorted by <b>marks descending</b>; students with equal marks must appear in <b>alphabetical order</b> of name.</p>`,
+    constraints: `1 ≤ N ≤ 10<sup>5</sup>, names are 1–20 lowercase letters, 0 ≤ marks ≤ 100`,
+    example: `<p>Input: <code>ben 80, asha 92, cara 80, dev 92</code> → Output: ${H.c('g', 'asha 92, dev 92, ben 80, cara 80')}.</p><p>92s come first; among the 92s "asha" &lt; "dev"; among the 80s "ben" &lt; "cara".</p>`,
+    brute: { why: `<p>Selection sort by hand: repeatedly scan for the "best" remaining student. O(N²) = 10<sup>10</sup> comparisons for N = 10<sup>5</sup> — too slow, and it is easy to get the tie rule wrong in a hand-written loop.</p>`, code: R`void rankBrute(vector<pair<string,int>>& s) {
+    for (size_t i = 0; i < s.size(); i++) {
+        size_t best = i;
+        for (size_t j = i + 1; j < s.size(); j++) {
+            bool better = s[j].second > s[best].second ||
+                          (s[j].second == s[best].second && s[j].first < s[best].first);
+            if (better) best = j;
+        }
+        swap(s[i], s[best]);
+    }
+}` },
+    mcq: { q: 'Which comparator is correct?', options: ['<code>if (a.m != b.m) return a.m &gt; b.m; return a.name &lt; b.name;</code>', '<code>return a.m &gt;= b.m &amp;&amp; a.name &lt;= b.name;</code>', '<code>return a.m &gt; b.m || a.name &lt; b.name;</code>', '<code>return a.m - b.m;</code>'], answer: 0, explain: 'Decide by marks; only on a tie look at names. Option 3 is wrong because a lower-marked student with a smaller name would be put first; option 2 is not irreflexive; option 4 returns an int converted to bool.' },
+    hints: [`<p>Hint 1: This is a two-key sort. The first key decides unless it ties; only then does the second key matter.</p>`, `<p>Hint 2: Store <code>pair&lt;string,int&gt;</code> or a small struct and call <code>sort</code> with a lambda; or sort by the tuple <code>(-marks, name)</code> using the default <code>&lt;</code>.</p>`, `<p>Hint 3: Never use <code>&gt;=</code> or <code>&lt;=</code> in a comparator. Recipe: read, sort with "marks desc, name asc", print.</p>`],
+    solution: {
+      approach: `<p>One comparator with an <code>if</code> on marks and a name tie-break. O(N log N) comparisons, each comparing at most 20 characters.</p>`,
+      code: R`#include <bits/stdc++.h>
+using namespace std;
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+    int n;
+    cin >> n;
+    vector<pair<string, int>> s(n);
+    for (auto& [name, marks] : s) cin >> name >> marks;
+    sort(s.begin(), s.end(), [](const auto& a, const auto& b) {
+        if (a.second != b.second) return a.second > b.second;   // higher marks first
+        return a.first < b.first;                                // tie: alphabetical
+    });
+    for (auto& [name, marks] : s) cout << name << ' ' << marks << '\n';
+}`,
+      alt: [{ lang: 'cpp', title: 'Tuple trick: sort by (-marks, name)', code: R`vector<tuple<int, string>> key;
+vector<pair<string,int>> s = {{"ben", 80}, {"asha", 92}, {"cara", 80}, {"dev", 92}};
+for (auto& [name, m] : s) key.emplace_back(-m, name);
+sort(key.begin(), key.end());            // default < compares -marks first, then name
+for (auto& [negM, name] : key) cout << name << ' ' << -negM << '\n';` }],
+      dry: { head: ['compare', 'marks', 'decided by', 'first'], rows: [['asha vs dev', '92 vs 92', 'name', 'asha'], ['dev vs ben', '92 vs 80', 'marks', 'dev'], ['ben vs cara', '80 vs 80', 'name', 'ben']] },
+      complexity: `<p>Time O(N log N · L) with L ≤ 20; space O(N).</p>`,
+      followUps: ['Keep input order for ties instead of alphabetical → <code>stable_sort</code> by marks only.', 'Print only the top K students → <code>partial_sort</code>.']
+    }
+  });
+
+  practice.push({
+    title: 'Valid Anagram', level: 'Easy', tags: ['sorting', 'string', 'counting'], companies: ['Amazon', 'Bloomberg', 'Uber'],
+    statement: `<p>Given two strings <code>s</code> and <code>t</code>, return true if <code>t</code> is an <b>anagram</b> of <code>s</code> — the same letters with the same counts, in any order.</p>`,
+    constraints: `1 ≤ |s|, |t| ≤ 5·10<sup>4</sup>, lowercase English letters`,
+    example: `<p><code>s = "anagram", t = "nagaram"</code> → ${H.c('g', 'true')}: both sort to "aaagmnr". <code>s = "rat", t = "car"</code> → ${H.c('r', 'false')}: "art" ≠ "acr".</p>`,
+    brute: { why: `<p>For every letter of s, search t for an unused matching letter and mark it: O(N²) = 2.5·10<sup>9</sup> steps for N = 5·10<sup>4</sup>. The waste: searching t again and again instead of putting both strings in a canonical order once.</p>`, code: R`bool isAnagramBrute(string s, string t) {
+    if (s.size() != t.size()) return false;
+    vector<bool> used(t.size(), false);
+    for (char c : s) {
+        bool found = false;
+        for (size_t j = 0; j < t.size(); j++)
+            if (!used[j] && t[j] == c) { used[j] = true; found = true; break; }
+        if (!found) return false;
+    }
+    return true;
+}` },
+    mcq: { q: 'Why does sorting both strings decide the question?', options: ['Sorting gives a canonical form: two strings are anagrams exactly when their sorted forms are equal', 'Sorting removes duplicates', 'Sorting is O(N)', 'It only works for distinct letters'], answer: 0, explain: 'Sorted order depends only on the multiset of letters, not their positions, so equal multisets give equal sorted strings and vice versa.' },
+    hints: [`<p>Hint 1: Anagrams have the same letters with the same counts. What representation ignores order but keeps counts?</p>`, `<p>Hint 2: Sort copies of both strings and compare — <code>O(N log N)</code>. Or count letters in an <code>array&lt;int, 26&gt;</code> — O(N).</p>`, `<p>Hint 3: Different lengths → false immediately. For Unicode input the counting array must become a hash map. Recipe: if sizes differ return false; sort both; return s == t.</p>`],
+    solution: {
+      approach: `<p>Canonical form by sorting: equal multisets of letters ⇔ equal sorted strings. The counting version avoids the log factor.</p>`,
+      code: R`class Solution {
+public:
+    bool isAnagram(string s, string t) {
+        if (s.size() != t.size()) return false;
+        sort(s.begin(), s.end());          // s and t are copies, safe to reorder
+        sort(t.begin(), t.end());
+        return s == t;
+    }
+};`,
+      alt: [{ lang: 'cpp', title: 'Counting O(N)', code: R`bool isAnagramCount(const string& s, const string& t) {
+    if (s.size() != t.size()) return false;
+    array<int, 26> cnt{};
+    for (char c : s) cnt[c - 'a']++;
+    for (char c : t) cnt[c - 'a']--;
+    return all_of(cnt.begin(), cnt.end(), [](int x) { return x == 0; });
+}` }],
+      dry: { head: ['string', 'sorted'], rows: [['anagram', 'aaagmnr'], ['nagaram', 'aaagmnr → ' + H.c('g', 'equal')], ['rat / car', 'art / acr → ' + H.c('r', 'different')]] },
+      complexity: `<p>Sorting: O(N log N) time, O(1) extra (copies aside). Counting: O(N) time, O(26) space.</p>`,
+      followUps: ['Group a list of words into anagram groups (map from sorted word to list).', 'Find all anagram start positions of p inside s (sliding window of counts).']
+    }
+  });
+
+  practice.push({
+    title: 'Very Big Sum and Floor Average', level: 'Easy', tags: ['accumulate', 'overflow'], companies: ['HackerRank', 'CodeChef'],
+    statement: `<p>Read N integers. Print their <b>sum</b> and the <b>average rounded down</b> (towards −∞).</p>`,
+    constraints: `1 ≤ N ≤ 2·10<sup>5</sup>, −10<sup>9</sup> ≤ a[i] ≤ 10<sup>9</sup>`,
+    example: `<p><code>[2000000000, 2000000000, -1]</code> → sum ${H.c('g', '3999999999')}, average ${H.c('g', '1333333333')}.</p><p>With an <code>int</code> total the first addition already overflows. Average of <code>[-3, 0]</code> is −1.5 → floor is ${H.c('g', '−2')} (C++ division truncates to −1, which is wrong here).</p>`,
+    brute: { why: `<p>The "obvious" loop with an <code>int</code> total (or <code>accumulate(…, 0)</code>) is not slow — it is <b>wrong</b>: the sum can reach 2·10<sup>14</sup>, far above 2.1·10<sup>9</sup>. Signed overflow is undefined behaviour. Also plain <code>/</code> truncates towards zero, not down.</p>`, code: R`void bigSumWrong(const vector<int>& a) {
+    int sum = accumulate(a.begin(), a.end(), 0);   // BUG: int running total overflows
+    cout << sum << ' ' << sum / (int)a.size() << '\n';   // BUG: truncates toward zero
+}` },
+    mcq: { q: 'What decides the type of accumulate\'s running total?', options: ['The type of the init argument', 'The element type of the vector', 'Always long long', 'The type of the variable you assign the result to'], answer: 0, explain: 'accumulate is templated on T = type of init. 0 → int, 0LL → long long. Assigning the result to a long long afterwards is too late.' },
+    hints: [`<p>Hint 1: Compute the worst case first: 2·10<sup>5</sup> × 10<sup>9</sup> = 2·10<sup>14</sup>. Which type holds that?</p>`, `<p>Hint 2: <code>accumulate(a.begin(), a.end(), 0LL)</code>. For floor division with negatives: if the remainder is non-zero and the sum is negative, subtract 1 from the truncated quotient.</p>`, `<p>Hint 3: Edge cases: all negative, N = 1, sum exactly divisible. Recipe: ll s = accumulate(…, 0LL); ll q = s / n; if (s % n != 0 &amp;&amp; s &lt; 0) q--; print s and q.</p>`],
+    solution: {
+      approach: `<p>Use a 64-bit running total by passing <code>0LL</code>. For the floor average, C++ integer division truncates toward zero, so fix it for negative non-integer results.</p>`,
+      code: R`#include <bits/stdc++.h>
+using namespace std;
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+    int n;
+    cin >> n;
+    vector<long long> a(n);
+    for (auto& x : a) cin >> x;
+    long long s = accumulate(a.begin(), a.end(), 0LL);   // 64-bit running total
+    long long q = s / n;                                 // truncates toward zero
+    if (s % n != 0 && s < 0) q--;                        // make it a true floor
+    cout << s << ' ' << q << '\n';
+}`,
+      dry: { head: ['input', 'sum', 's / n', 'floor'], rows: [['2e9, 2e9, −1', '3999999999', '1333333333', '1333333333'], ['−3, 0', '−3', '−1 (truncated)', H.c('g', '−2')], ['4, 6', '10', '5', '5']] },
+      complexity: `<p>O(N) time, O(N) space (O(1) if you sum while reading).</p>`,
+      followUps: ['Sum of 10<sup>5</sup> values up to 10<sup>18</sup> → needs <code>__int128</code> or big integers.', 'Print the exact average as a reduced fraction using <code>gcd</code>.']
+    }
+  });
+
+  practice.push({
+    title: 'First and Last Position of X in a Sorted Array', level: 'Easy', tags: ['binary search', 'equal_range'], companies: ['Facebook', 'LinkedIn', 'Amazon'],
+    statement: `<p>Given a sorted array <code>nums</code> and a target, return the first and last index of target, or <code>[-1, -1]</code> if it is absent. Must run in O(log N).</p>`,
+    constraints: `0 ≤ N ≤ 10<sup>5</sup>, −10<sup>9</sup> ≤ nums[i], target ≤ 10<sup>9</sup>, nums sorted ascending`,
+    example: `<p>${H.arr([5, 7, 7, 8, 8, 10], { hl: { 3: 'g', 4: 'g' } })} target 8 → ${H.c('g', '[3, 4]')}. lower_bound(8) = 3, upper_bound(8) = 5, last = 5 − 1 = 4. Target 6 → lower_bound = upper_bound = 1 → ${H.c('r', '[-1, -1]')}.</p>`,
+    brute: { why: `<p>Linear scan for the first and last match: O(N). It works, but the statement demands O(log N), and with many queries O(N) each is too slow.</p>`, code: R`vector<int> searchRangeBrute(const vector<int>& a, int t) {
+    int first = -1, last = -1;
+    for (int i = 0; i < (int)a.size(); i++)
+        if (a[i] == t) { if (first == -1) first = i; last = i; }
+    return {first, last};
+}` },
+    mcq: { q: 'equal_range returns {lo, hi} with lo == hi. What does that mean?', options: ['Target is absent; lo is its insertion position', 'Target appears exactly once', 'The array is not sorted', 'Target is at index lo'], answer: 0, explain: 'The half-open range [lo, hi) of copies is empty, so there are zero copies. lo still tells you where the target would be inserted.' },
+    hints: [`<p>Hint 1: First index = first element ≥ target. Last index = (first element &gt; target) − 1.</p>`, `<p>Hint 2: <code>equal_range</code> gives both iterators in one call; convert with <code>- nums.begin()</code>.</p>`, `<p>Hint 3: If lo == hi the target is missing — return {−1, −1}. Empty array works automatically.</p>`],
+    solution: {
+      approach: `<p><code>equal_range</code> performs the two binary searches. The copies of target occupy [lo, hi); if empty, answer −1s; otherwise {lo, hi − 1}.</p>`,
+      code: R`class Solution {
+public:
+    vector<int> searchRange(vector<int>& nums, int target) {
+        auto [lo, hi] = equal_range(nums.begin(), nums.end(), target);
+        if (lo == hi) return {-1, -1};                     // zero copies
+        return {int(lo - nums.begin()), int(hi - nums.begin()) - 1};
+    }
+};`,
+      dry: { head: ['target', 'lower_bound', 'upper_bound', 'answer'], rows: [['8', '3', '5', '[3, 4]'], ['6', '1', '1', '[-1, -1]'], ['10', '5', '6', '[5, 5]']] },
+      complexity: `<p>O(log N) time, O(1) space.</p>`,
+      followUps: ['Write lower_bound yourself with the [lo, hi) loop (common follow-up).', 'Count occurrences for Q targets in O(Q log N).']
+    }
+  });
+
+  /* ======================================================================
+     PRACTICE — Medium
+     ====================================================================== */
+  practice.push({
+    title: 'Count Pairs With Sum at Most K', level: 'Medium', tags: ['sorting', 'upper_bound', 'two pointers'], companies: ['Google', 'Codeforces'],
+    statement: `<p>Given N integers and K, count pairs of indices (i, j) with i &lt; j and <code>a[i] + a[j] ≤ K</code>.</p>`,
+    constraints: `1 ≤ N ≤ 2·10<sup>5</sup>, −10<sup>9</sup> ≤ a[i], K ≤ 10<sup>9</sup> (answer can be ~2·10<sup>10</sup>: use long long)`,
+    example: `<p><code>a = [4, 1, 3, 2], K = 5</code> → ${H.c('g', '4')}. Sorted: ${H.arr([1, 2, 3, 4])} pairs: (1,2), (1,3), (1,4), (2,3). (2,4) = 6 and (3,4) = 7 are too big.</p>`,
+    brute: { why: `<p>Check all N(N−1)/2 pairs: ≈ 2·10<sup>10</sup> for N = 2·10<sup>5</sup>. The waste: pair order does not matter, so after sorting, for each a[i] the valid partners form a <b>prefix</b> — no need to test them one by one.</p>`, code: R`long long countPairsBrute(const vector<long long>& a, long long K) {
+    long long c = 0;
+    for (size_t i = 0; i < a.size(); i++)
+        for (size_t j = i + 1; j < a.size(); j++)
+            if (a[i] + a[j] <= K) c++;
+    return c;
+}` },
+    mcq: { q: 'After sorting, for index i you need partners j &gt; i with a[j] ≤ K − a[i]. Which call counts them?', options: ['<code>upper_bound(a.begin() + i + 1, a.end(), K - a[i]) - (a.begin() + i + 1)</code>', '<code>lower_bound(a.begin(), a.end(), K - a[i]) - a.begin()</code>', '<code>count(a.begin(), a.end(), K - a[i])</code>', '<code>binary_search(a.begin(), a.end(), K - a[i])</code>'], answer: 0, explain: 'Search only to the right of i (so each pair is counted once) and use upper_bound because a[j] equal to K − a[i] is allowed (≤).' },
+    hints: [`<p>Hint 1: The count of pairs does not depend on order, so sort first. Then for a fixed i the valid j form a contiguous block.</p>`, `<p>Hint 2: Binary-search in the suffix (i+1 … N−1) for the last value ≤ K − a[i] with <code>upper_bound</code>. Or use two pointers from both ends in O(N).</p>`, `<p>Hint 3: Use long long for K − a[i] and for the answer. Recipe: sort; ans = 0; for each i: ans += upper_bound(suffix, K − a[i]) − suffix start.</p>`],
+    solution: {
+      approach: `<p>Sort. For each i, partners are j &gt; i with a[j] ≤ K − a[i]; since the suffix is sorted, they are exactly the elements before <code>upper_bound(K − a[i])</code> within the suffix. Sum the counts. The two-pointer alternative walks l from the left and r from the right: if a[l] + a[r] ≤ K then all of l+1..r pair with l.</p>`,
+      code: R`long long countPairs(vector<long long> a, long long K) {
+    sort(a.begin(), a.end());
+    long long ans = 0;
+    for (size_t i = 0; i < a.size(); i++) {
+        auto from = a.begin() + i + 1;                      // only partners to the right
+        auto to = upper_bound(from, a.end(), K - a[i]);     // first partner that is too big
+        ans += to - from;
+    }
+    return ans;
+}`,
+      alt: [{ lang: 'cpp', title: 'Two pointers O(N) after sorting', code: R`long long countPairs2(vector<long long> a, long long K) {
+    sort(a.begin(), a.end());
+    long long ans = 0;
+    int l = 0, r = (int)a.size() - 1;
+    while (l < r) {
+        if (a[l] + a[r] <= K) { ans += r - l; l++; }   // a[l] pairs with every index l+1..r
+        else r--;                                       // a[r] too big for anyone left of it
+    }
+    return ans;
+}` }],
+      dry: { head: ['i', 'a[i]', 'K − a[i]', 'suffix', 'count'], rows: [['0', '1', '4', '2 3 4', '3'], ['1', '2', '3', '3 4', '1'], ['2', '3', '2', '4', '0'], ['total', '', '', '', H.c('g', '4')]] },
+      complexity: `<p>O(N log N) with binary search (or O(N log N) sort + O(N) two pointers). O(1) extra space.</p>`,
+      followUps: ['Count pairs with L ≤ a[i] + a[j] ≤ R → count(≤ R) − count(≤ L − 1).', 'Count triplets with sum ≤ K in O(N²).']
+    }
+  });
+
+  practice.push({
+    title: 'Merge Overlapping Intervals', level: 'Medium', tags: ['sorting', 'intervals', 'comparator'], companies: ['Google', 'Facebook', 'Microsoft'],
+    statement: `<p>Given intervals [start, end], merge all overlapping ones and return the result sorted by start. Intervals that only touch (end == next start) also merge.</p>`,
+    constraints: `1 ≤ N ≤ 10<sup>4</sup>, 0 ≤ start ≤ end ≤ 10<sup>4</sup>`,
+    example: `<p><code>[[1,3],[8,10],[2,6],[15,18]]</code> → ${H.c('g', '[[1,6],[8,10],[15,18]]')}. After sorting by start: [1,3], [2,6] overlap (2 ≤ 3) → [1,6]; [8,10] starts after 6 → new block.</p>`,
+    brute: { why: `<p>Repeatedly scan all pairs and merge any two that overlap until nothing changes: up to N passes of O(N²) work. The waste: without order, you cannot know when an interval is "finished".</p>`, code: R`vector<vector<int>> mergeBrute(vector<vector<int>> v) {
+    bool changed = true;
+    while (changed) {
+        changed = false;
+        for (size_t i = 0; i < v.size() && !changed; i++)
+            for (size_t j = i + 1; j < v.size() && !changed; j++)
+                if (max(v[i][0], v[j][0]) <= min(v[i][1], v[j][1])) {
+                    v[i] = {min(v[i][0], v[j][0]), max(v[i][1], v[j][1])};
+                    v.erase(v.begin() + j);
+                    changed = true;
+                }
+    }
+    sort(v.begin(), v.end());
+    return v;
+}` },
+    mcq: { q: 'After sorting by start, when does the current interval start a new block?', options: ['When its start is greater than the end of the last merged block', 'When its end is greater than the last end', 'When its start equals the last start', 'Never — always merge'], answer: 0, explain: 'Sorted by start, every later interval starts at or after the current one; if it starts after the running end, nothing later can bridge the gap.' },
+    hints: [`<p>Hint 1: If intervals are sorted by start, overlaps can only happen with the most recently merged block.</p>`, `<p>Hint 2: <code>sort(v.begin(), v.end())</code> sorts vectors lexicographically — by start, then end. Then sweep with a result vector.</p>`, `<p>Hint 3: When merging, take <code>max</code> of ends (a short interval can be inside a long one). Recipe: sort; for each: if res empty or start &gt; res.back()[1] push; else res.back()[1] = max(…).</p>`],
+    solution: {
+      approach: `<p>Sort by start, then sweep, extending the last block while the next interval starts inside it.</p>`,
+      code: R`class Solution {
+public:
+    vector<vector<int>> merge(vector<vector<int>>& v) {
+        sort(v.begin(), v.end());                              // lexicographic: by start
+        vector<vector<int>> res;
+        for (auto& in : v) {
+            if (res.empty() || in[0] > res.back()[1]) res.push_back(in);   // gap -> new block
+            else res.back()[1] = max(res.back()[1], in[1]);                 // overlap -> extend
+        }
+        return res;
+    }
+};`,
+      dry: { head: ['interval', 'last block', 'action', 'result'], rows: [['[1,3]', '-', 'push', '[1,3]'], ['[2,6]', '[1,3]', '2 ≤ 3 → extend', '[1,6]'], ['[8,10]', '[1,6]', '8 &gt; 6 → push', '[1,6] [8,10]'], ['[15,18]', '[8,10]', 'push', H.c('g', '[1,6] [8,10] [15,18]')]] },
+      complexity: `<p>O(N log N) for the sort, O(N) sweep, O(N) output.</p>`,
+      followUps: ['Insert one new interval into an already merged list in O(N).', 'Minimum number of meeting rooms (sort starts and ends separately).']
+    }
+  });
+
+  practice.push({
+    title: 'Next Permutation In Place (no library)', level: 'Medium', tags: ['permutation', 'two pointers', 'reverse'], companies: ['Google', 'Amazon', 'Adobe'],
+    statement: `<p>Rearrange <code>nums</code> into the next lexicographically greater permutation <b>in place</b> with O(1) extra memory. If it is the last permutation, rearrange to the smallest (ascending). You may not call <code>std::next_permutation</code>.</p>`,
+    constraints: `1 ≤ N ≤ 100, 0 ≤ nums[i] ≤ 100 (duplicates allowed)`,
+    example: `<p><code>[1, 2, 3]</code> → <code>[1, 3, 2]</code>; <code>[3, 2, 1]</code> → <code>[1, 2, 3]</code>; <code>[1, 1, 5]</code> → <code>[1, 5, 1]</code>; <code>[1, 3, 5, 4, 2]</code> → ${H.c('g', '[1, 4, 2, 3, 5]')}.</p>`,
+    brute: { why: `<p>Generate all permutations, sort them, find the current one, return the next: O(N! · N) time and memory — impossible beyond N ≈ 10 and violates the O(1) memory rule.</p>`, code: R`void nextPermBrute(vector<int>& nums) {
+    vector<int> s = nums;
+    sort(s.begin(), s.end());
+    vector<vector<int>> all;
+    do { all.push_back(s); } while (next_permutation(s.begin(), s.end()));   // only allowed in the brute
+    auto it = find(all.begin(), all.end(), nums);
+    ++it;
+    nums = (it == all.end()) ? all.front() : *it;
+}` },
+    mcq: { q: 'Why reverse (not sort) the suffix after the swap?', options: ['The suffix is already non-increasing, so reversing makes it non-decreasing in O(N)', 'Reversing is required by the standard', 'Sorting would break duplicates', 'Reversing changes the pivot'], answer: 0, explain: 'Before the swap the suffix is non-increasing; swapping the pivot with its successor keeps it non-increasing. Reversing a non-increasing sequence sorts it ascending in linear time.' },
+    hints: [`<p>Hint 1: From the right, find the first i with nums[i] &lt; nums[i+1]. Everything after i is already at its maximum.</p>`, `<p>Hint 2: From the right, find the first j with nums[j] &gt; nums[i]; swap them; reverse nums[i+1..].</p>`, `<p>Hint 3: Use strict comparisons (<code>&gt;=</code> while scanning for i, <code>&lt;=</code> while scanning for j) so duplicates work. If no i exists, just reverse everything.</p>`],
+    solution: {
+      approach: `<p>The standard 4-step algorithm: pivot, successor, swap, reverse. O(N) time, O(1) memory.</p>`,
+      code: R`class Solution {
+public:
+    void nextPermutation(vector<int>& a) {
+        int n = a.size(), i = n - 2;
+        while (i >= 0 && a[i] >= a[i + 1]) i--;          // pivot
+        if (i >= 0) {
+            int j = n - 1;
+            while (a[j] <= a[i]) j--;                      // successor
+            swap(a[i], a[j]);
+        }
+        reverse(a.begin() + i + 1, a.end());              // smallest tail (whole array if i == -1)
+    }
+};`,
+      dry: { head: ['step', 'array', 'note'], rows: [['start', '1 3 5 4 2', ''], ['pivot', '1 [3] 5 4 2', 'i = 1'], ['successor', '1 3 5 [4] 2', 'j = 3'], ['swap', '1 4 5 3 2', ''], ['reverse', H.c('g', '1 4 2 3 5'), 'tail sorted ascending']] },
+      complexity: `<p>O(N) time, O(1) extra space.</p>`,
+      followUps: ['Implement prev_permutation (flip both comparisons).', 'Prove the average cost per call over all permutations is O(1).']
+    }
+  });
+
+  practice.push({
+    title: 'Coordinate Compression (replace values by their rank)', level: 'Medium', tags: ['sort', 'unique', 'lower_bound'], companies: ['Codeforces', 'Google'],
+    statement: `<p>Replace every element by its <b>rank</b> among the distinct values (0-based): the smallest value becomes 0, the next distinct value 1, and so on. Equal values get equal ranks.</p>`,
+    constraints: `1 ≤ N ≤ 2·10<sup>5</sup>, −10<sup>9</sup> ≤ a[i] ≤ 10<sup>9</sup>`,
+    example: `<p><code>[40, 10, 1000000000, 10, 25]</code> → ${H.c('g', '[2, 0, 3, 0, 1]')}. Distinct sorted values: ${H.arr([10, 25, 40, 1000000000])} — each value's index in this list is its rank.</p>`,
+    brute: { why: `<p>For each element, count how many <b>distinct</b> values are smaller by scanning the array (with a seen-set): O(N²) = 4·10<sup>10</sup>. The waste: the ranking never changes, so build it once.</p>`, code: R`vector<int> compressBrute(const vector<int>& a) {
+    vector<int> r(a.size());
+    for (size_t i = 0; i < a.size(); i++) {
+        set<int> smaller;
+        for (int y : a) if (y < a[i]) smaller.insert(y);
+        r[i] = smaller.size();
+    }
+    return r;
+}` },
+    mcq: { q: 'After <code>vals</code> is sorted and deduplicated, how do you get the rank of x?', options: ['<code>lower_bound(vals.begin(), vals.end(), x) - vals.begin()</code>', '<code>upper_bound(vals.begin(), vals.end(), x) - vals.begin()</code>', '<code>find(a.begin(), a.end(), x) - a.begin()</code>', '<code>count(vals.begin(), vals.end(), x)</code>'], answer: 0, explain: 'x is present in vals, so lower_bound lands exactly on it; its index is the number of distinct values smaller than x. upper_bound would be off by one.' },
+    hints: [`<p>Hint 1: The rank of x = number of distinct values smaller than x.</p>`, `<p>Hint 2: Copy, sort, unique + erase → sorted distinct values. Then each rank is one <code>lower_bound</code>.</p>`, `<p>Hint 3: This is the standard pre-step for Fenwick trees and segment trees over huge values. Recipe: vals = a; sort; erase(unique); for each x: x = lower_bound(vals, x) − begin.</p>`],
+    solution: {
+      approach: `<p>Sort a copy, remove duplicates with the unique–erase idiom, then binary-search every original value. Values up to 10<sup>9</sup> become indices 0..D−1, ready to index an array.</p>`,
+      code: R`vector<int> compress(const vector<int>& a) {
+    vector<int> vals = a;
+    sort(vals.begin(), vals.end());
+    vals.erase(unique(vals.begin(), vals.end()), vals.end());     // sorted distinct values
+    vector<int> r(a.size());
+    for (size_t i = 0; i < a.size(); i++)
+        r[i] = lower_bound(vals.begin(), vals.end(), a[i]) - vals.begin();
+    return r;
+}`,
+      dry: { head: ['x', 'lower_bound in [10, 25, 40, 1e9]', 'rank'], rows: [['40', 'index 2', '2'], ['10', 'index 0', '0'], ['1e9', 'index 3', '3'], ['25', 'index 1', '1']] },
+      complexity: `<p>O(N log N) time, O(N) space.</p>`,
+      followUps: ['Count inversions using compression + Fenwick tree.', 'Online version: values arrive over time — use an order-statistics tree or offline processing.']
+    }
+  });
+
+  practice.push({
+    title: 'Sort by Frequency (rare first, ties by larger value)', level: 'Medium', tags: ['sorting', 'comparator', 'hash map', 'lambda'], companies: ['Amazon', 'eBay'],
+    statement: `<p>Sort the array so values with <b>lower frequency</b> come first. If two values have the same frequency, the <b>larger</b> value comes first.</p>`,
+    constraints: `1 ≤ N ≤ 10<sup>5</sup>, −100 ≤ a[i] ≤ 100`,
+    example: `<p><code>[2, 3, 1, 3, 2]</code> → ${H.c('g', '[1, 3, 3, 2, 2]')}. Frequencies: 1 → 1, 2 → 2, 3 → 2. The single 1 first; 3 and 2 tie on frequency so 3 (larger) goes before 2.</p>`,
+    brute: { why: `<p>Count the frequency <b>inside the comparator</b> by scanning the array each time: O(N) per comparison × O(N log N) comparisons = O(N² log N). The waste: frequencies never change during the sort — precompute them.</p>`, code: R`vector<int> freqSortBrute(vector<int> a) {
+    vector<int> orig = a;
+    sort(a.begin(), a.end(), [&](int x, int y) {
+        long fx = count(orig.begin(), orig.end(), x), fy = count(orig.begin(), orig.end(), y);
+        if (fx != fy) return fx < fy;
+        return x > y;
+    });
+    return a;
+}` },
+    mcq: { q: 'The comparator lambda needs the frequency table. How should it capture it?', options: ['By reference <code>[&amp;freq]</code> — no copy per comparator copy, and it outlives the sort call', 'By value <code>[freq]</code> is required', 'It cannot capture; use a global', 'Pass it as a third parameter'], answer: 0, explain: 'The table lives in the enclosing function for the whole sort; capturing by reference avoids copying a map every time the algorithm copies the comparator.' },
+    hints: [`<p>Hint 1: Two keys: frequency ascending, then value descending.</p>`, `<p>Hint 2: Build <code>unordered_map&lt;int,int&gt; freq</code> (or an array offset by 100) first, then sort with a lambda capturing it by reference.</p>`, `<p>Hint 3: Use <code>freq.at(x)</code> or an array — <code>freq[x]</code> on a map inside the comparator would also work here but can insert keys in general. Recipe: count; sort with if (f[x] != f[y]) return f[x] &lt; f[y]; return x &gt; y.</p>`],
+    solution: {
+      approach: `<p>Precompute frequencies in an array indexed by value + 100, then a two-key comparator lambda. It is a valid strict weak ordering because it compares (freq, −value) tuples.</p>`,
+      code: R`class Solution {
+public:
+    vector<int> frequencySort(vector<int>& a) {
+        array<int, 201> f{};                                 // values -100..100 -> 0..200
+        for (int x : a) f[x + 100]++;
+        sort(a.begin(), a.end(), [&f](int x, int y) {
+            if (f[x + 100] != f[y + 100]) return f[x + 100] < f[y + 100];   // rare first
+            return x > y;                                                   // tie: larger first
+        });
+        return a;
+    }
+};`,
+      dry: { head: ['value', 'freq', 'sort key (freq, −value)'], rows: [['1', '1', '(1, −1)'], ['3', '2', '(2, −3)'], ['2', '2', '(2, −2)'], ['order', '', H.c('g', '1, 3, 3, 2, 2')]] },
+      complexity: `<p>O(N log N) time, O(range) = O(201) extra space.</p>`,
+      followUps: ['Sort characters of a string by decreasing frequency (bucket sort O(N)).', 'Top K frequent elements without sorting everything (nth_element or a heap).']
+    }
+  });
+
+  practice.push({
+    title: 'Longest Increasing Subsequence in O(N log N)', level: 'Medium', tags: ['lower_bound', 'dp', 'patience sorting'], companies: ['Google', 'Microsoft', 'Amazon'],
+    statement: `<p>Return the length of the longest <b>strictly increasing</b> subsequence of the array (not necessarily contiguous).</p>`,
+    constraints: `1 ≤ N ≤ 10<sup>5</sup>, −10<sup>9</sup> ≤ a[i] ≤ 10<sup>9</sup>`,
+    example: `<p><code>[10, 9, 2, 5, 3, 7, 101, 18]</code> → ${H.c('g', '4')} (for example 2, 3, 7, 18).</p><p>Keep <code>tails[k]</code> = smallest possible tail of an increasing subsequence of length k+1. Each new x replaces the first tail ≥ x (lower_bound) or extends the list.</p>`,
+    brute: { why: `<p>Classic DP: dp[i] = 1 + max dp[j] for j &lt; i with a[j] &lt; a[i]. O(N²) = 10<sup>10</sup> for N = 10<sup>5</sup>. The waste: for each length we only need the <b>smallest</b> tail, and those tails are sorted — perfect for binary search.</p>`, code: R`int lisBrute(const vector<int>& a) {
+    int n = a.size(), best = 0;
+    vector<int> dp(n, 1);
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < i; j++) if (a[j] < a[i]) dp[i] = max(dp[i], dp[j] + 1);
+        best = max(best, dp[i]);
+    }
+    return best;
+}` },
+    mcq: { q: 'For <b>non-decreasing</b> (equal allowed) subsequences, what changes?', options: ['Use upper_bound instead of lower_bound', 'Use binary_search', 'Sort the array first', 'Nothing changes'], answer: 0, explain: 'With equal values allowed, x can extend a subsequence ending in x, so replace the first tail strictly greater than x — that is upper_bound.' },
+    hints: [`<p>Hint 1: For each length L, remember only the smallest tail value an increasing subsequence of length L can end with. Smaller tails are always better for the future.</p>`, `<p>Hint 2: The <code>tails</code> array is strictly increasing, so for each x use <code>lower_bound(tails, x)</code>: replace that slot or append if it is end().</p>`, `<p>Hint 3: The answer is <code>tails.size()</code>; <code>tails</code> itself is not necessarily a real subsequence. Recipe: for x: it = lower_bound(all(tails), x); if end push_back else *it = x.</p>`],
+    solution: {
+      approach: `<p>Patience sorting: maintain sorted <code>tails</code>. lower_bound finds the first tail ≥ x; replacing it keeps tails minimal; appending means we found a longer subsequence.</p>`,
+      code: R`int lengthOfLIS(const vector<int>& a) {
+    vector<int> tails;                                   // tails[k] = min tail of length k+1
+    for (int x : a) {
+        auto it = lower_bound(tails.begin(), tails.end(), x);
+        if (it == tails.end()) tails.push_back(x);      // extends the longest
+        else *it = x;                                    // better (smaller) tail for that length
+    }
+    return tails.size();
+}`,
+      dry: { head: ['x', 'lower_bound slot', 'tails after'], rows: [['10', 'end', '10'], ['9', '0', '9'], ['2', '0', '2'], ['5', 'end', '2 5'], ['3', '1', '2 3'], ['7', 'end', '2 3 7'], ['101', 'end', '2 3 7 101'], ['18', '3', H.c('g', '2 3 7 18 → length 4')]] },
+      complexity: `<p>O(N log N) time, O(N) space.</p>`,
+      followUps: ['Reconstruct an actual LIS (store parent indices).', 'Count the number of LIS (needs a Fenwick tree over compressed values).']
+    }
+  });
+
+  /* ======================================================================
+     PRACTICE — Hard
+     ====================================================================== */
+  practice.push({
+    title: 'K-th Permutation for Huge K', level: 'Hard', tags: ['permutation', 'factorial number system', 'math'], companies: ['Google', 'Twitter'],
+    statement: `<p>Given n and k, return the <b>k-th</b> permutation (1-based) of the numbers 1..n in lexicographic order.</p>`,
+    constraints: `1 ≤ n ≤ 20, 1 ≤ k ≤ n! (k can be about 2.4·10<sup>18</sup>, fits in long long)`,
+    example: `<p>n = 4, k = 9 → ${H.c('g', '2 3 1 4')}.</p><p>The 24 permutations come in 4 blocks of 3! = 6 by first number. k = 9 (index 8) is in block ⌊8/6⌋ = 1 → first number 2. Inside the block, index 8 mod 6 = 2 → blocks of 2! = 2 → ⌊2/2⌋ = 1 → second number is the 2nd remaining (3). And so on.</p>`,
+    brute: { why: `<p>Start from 1..n and call <code>next_permutation</code> k − 1 times. That is fine for n ≤ 9 (k ≤ 362,880) but with k ≈ 10<sup>18</sup> it would run for centuries. We need to <b>skip</b> whole blocks of permutations at once.</p>`, code: R`vector<int> kthBrute(int n, long long k) {
+    vector<int> p(n);
+    iota(p.begin(), p.end(), 1);
+    for (long long step = 1; step < k; step++) next_permutation(p.begin(), p.end());
+    return p;
+}` },
+    mcq: { q: 'With n numbers left and a 0-based index k, which remaining number goes first?', options: ['The ⌊k / (n−1)!⌋-th smallest remaining number', 'The (k mod n)-th number', 'The k-th smallest number', 'Always the smallest'], answer: 0, explain: 'Each choice of first number owns a block of (n−1)! consecutive permutations, so dividing by (n−1)! tells you which block — and therefore which first number.' },
+    hints: [`<p>Hint 1: Permutations starting with the same first number form one contiguous block of size (n−1)!.</p>`, `<p>Hint 2: Make k 0-based. Repeatedly: idx = k / (m−1)!, k %= (m−1)!, take the idx-th smallest unused number (keep a sorted <code>vector</code> pool and <code>erase</code> it).</p>`, `<p>Hint 3: Precompute factorials up to 20! in long long (20! ≈ 2.43·10<sup>18</sup> &lt; 9.2·10<sup>18</sup>). The pool erase is O(n), fine for n ≤ 20.</p>`],
+    solution: {
+      approach: `<p>Factorial number system (Lehmer code): the digits of k−1 in base (n−1)!, (n−2)!, …, 0! tell which remaining element to pick at each position. <code>iota</code> builds the pool; erasing from a sorted vector keeps the "idx-th smallest remaining" lookup trivial.</p>`,
+      code: R`vector<int> kthPermutation(int n, long long k) {
+    vector<long long> fact(n + 1, 1);
+    for (int i = 1; i <= n; i++) fact[i] = fact[i - 1] * i;     // 20! still fits in long long
+    vector<int> pool(n);
+    iota(pool.begin(), pool.end(), 1);                           // 1 2 .. n, sorted
+    vector<int> res;
+    k--;                                                         // 0-based index
+    for (int m = n; m >= 1; m--) {
+        long long block = fact[m - 1];                           // permutations per first choice
+        int idx = (int)(k / block);
+        k %= block;
+        res.push_back(pool[idx]);
+        pool.erase(pool.begin() + idx);                          // O(n), n <= 20
+    }
+    return res;
+}`,
+      dry: { head: ['m', 'block = (m−1)!', 'k (0-based)', 'idx', 'pick', 'pool after'], rows: [['4', '6', '8', '1', '2', '1 3 4'], ['3', '2', '2', '1', '3', '1 4'], ['2', '1', '0', '0', '1', '4'], ['1', '1', '0', '0', '4', H.c('g', 'answer 2 3 1 4')]] },
+      complexity: `<p>O(n²) time because of vector erase (O(n log n) with a Fenwick tree for the "idx-th remaining" query), O(n) space.</p>`,
+      followUps: ['The inverse: given a permutation, compute its rank (Fenwick tree over used numbers).', 'K-th permutation of a multiset with duplicates (blocks are multinomial counts).']
+    }
+  });
+
+  practice.push({
+    title: 'Russian Doll Envelopes (sort trick + LIS)', level: 'Hard', tags: ['sorting', 'comparator', 'lower_bound', 'LIS'], companies: ['Google', 'Amazon', 'Microsoft'],
+    statement: `<p>Envelopes are given as [width, height]. One fits inside another only if <b>both</b> width and height are strictly smaller. Return the maximum number of envelopes you can nest (Russian-doll style).</p>`,
+    constraints: `1 ≤ N ≤ 10<sup>5</sup>, 1 ≤ w, h ≤ 10<sup>5</sup>`,
+    example: `<p><code>[[5,4],[6,4],[6,7],[2,3]]</code> → ${H.c('g', '3')}: [2,3] ⊂ [5,4] ⊂ [6,7].</p><p>Sort by width ascending, and for <b>equal widths by height descending</b>: [2,3], [5,4], [6,7], [6,4]. Heights 3, 4, 7, 4 → LIS = 3. The descending tie-break stops [6,4] and [6,7] (same width) from being chained.</p>`,
+    brute: { why: `<p>Sort by width and run the O(N²) DP: dp[i] = 1 + max dp[j] over envelopes j that fit inside i. For N = 10<sup>5</sup> that is 10<sup>10</sup> checks — TLE.</p>`, code: R`int maxEnvelopesBrute(vector<vector<int>> e) {
+    sort(e.begin(), e.end());
+    int n = e.size(), best = 0;
+    vector<int> dp(n, 1);
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < i; j++)
+            if (e[j][0] < e[i][0] && e[j][1] < e[i][1]) dp[i] = max(dp[i], dp[j] + 1);
+        best = max(best, dp[i]);
+    }
+    return best;
+}` },
+    mcq: { q: 'Why sort equal widths by height <b>descending</b>?', options: ['So two envelopes with the same width can never both appear in a strictly increasing height sequence', 'To make the sort stable', 'Because lower_bound needs descending input', 'It does not matter'], answer: 0, explain: 'With heights descending inside a width group, any strictly increasing subsequence of heights picks at most one envelope per width, which enforces "strictly smaller width".' },
+    hints: [`<p>Hint 1: If widths were all different, the answer would be the LIS of heights after sorting by width.</p>`, `<p>Hint 2: Equal widths break that. A comparator that orders equal widths by height descending fixes it.</p>`, `<p>Hint 3: Then run the O(N log N) LIS with <code>lower_bound</code> (strictly increasing). Recipe: sort with (w asc, h desc); tails; for each h: lower_bound replace or push.</p>`],
+    solution: {
+      approach: `<p>2-D nesting reduces to 1-D LIS with one clever comparator: width ascending, height descending on ties. Then patience sorting on heights gives O(N log N).</p>`,
+      code: R`class Solution {
+public:
+    int maxEnvelopes(vector<vector<int>>& e) {
+        sort(e.begin(), e.end(), [](const vector<int>& a, const vector<int>& b) {
+            if (a[0] != b[0]) return a[0] < b[0];      // width ascending
+            return a[1] > b[1];                        // same width: height DESCENDING
+        });
+        vector<int> tails;                             // LIS on heights
+        for (auto& env : e) {
+            auto it = lower_bound(tails.begin(), tails.end(), env[1]);
+            if (it == tails.end()) tails.push_back(env[1]);
+            else *it = env[1];
+        }
+        return tails.size();
+    }
+};`,
+      dry: { head: ['envelope (sorted)', 'height', 'tails after'], rows: [['[2,3]', '3', '3'], ['[5,4]', '4', '3 4'], ['[6,7]', '7', '3 4 7'], ['[6,4]', '4', '3 4 7 (replace 4 with 4)'], ['answer', '', H.c('g', '3')]] },
+      complexity: `<p>O(N log N) for the sort and the LIS; O(N) space.</p>`,
+      followUps: ['Return the actual chain of envelopes.', '3-D boxes (width, height, depth) — why the trick no longer works directly.']
+    }
+  });
+
+  practice.push({
+    title: 'Count Smaller Numbers After Self', level: 'Hard', tags: ['coordinate compression', 'Fenwick tree', 'lower_bound', 'unique'], companies: ['Google', 'Apple', 'Bloomberg'],
+    statement: `<p>For each index i, count how many elements to the <b>right</b> of i are strictly smaller than a[i]. Return the counts array.</p>`,
+    constraints: `1 ≤ N ≤ 10<sup>5</sup>, −10<sup>4</sup> ≤ a[i] ≤ 10<sup>4</sup> (solution must also work for values up to 10<sup>9</sup>)`,
+    example: `<p><code>[5, 2, 6, 1]</code> → ${H.c('g', '[2, 1, 1, 0]')}. Right of 5: {2, 1} are smaller → 2. Right of 2: {1} → 1. Right of 6: {1} → 1. Right of 1: none → 0.</p>`,
+    brute: { why: `<p>For each i scan everything to its right: O(N²) = 10<sup>10</sup>. The waste: when we move from i+1 to i, the set "elements to the right" changes by just one element — a data structure can keep it.</p>`, code: R`vector<int> countSmallerBrute(const vector<int>& a) {
+    int n = a.size();
+    vector<int> res(n, 0);
+    for (int i = 0; i < n; i++)
+        for (int j = i + 1; j < n; j++)
+            if (a[j] < a[i]) res[i]++;
+    return res;
+}` },
+    mcq: { q: 'Why compress coordinates first?', options: ['A Fenwick tree needs small array indices; compression maps values up to 10<sup>9</sup> (and negatives) to 0..D−1', 'To sort the answer', 'To remove the need for the Fenwick tree', 'Because lower_bound needs unique values to compile'], answer: 0, explain: 'The Fenwick tree is an array indexed by value rank. sort + unique + erase + lower_bound gives every value a rank in [0, D).' },
+    hints: [`<p>Hint 1: Walk from right to left, inserting each value into a structure that can answer "how many inserted values are smaller than x?"</p>`, `<p>Hint 2: Compress values with sort + unique + erase, find ranks with lower_bound, and use a Fenwick tree (BIT) over ranks: query prefix sum of ranks &lt; r, then add 1 at r.</p>`, `<p>Hint 3: Query <b>before</b> inserting a[i], so a[i] does not count itself. Equal values have equal ranks and are excluded by the strict prefix. Alternative: merge sort counting.</p>`],
+    solution: {
+      approach: `<p>Coordinate-compress, then sweep right-to-left. The Fenwick tree holds counts of values seen so far (all to the right). For a[i] with rank r, the answer is the prefix sum over ranks 0..r−1. Both operations are O(log D).</p>`,
+      code: R`class Solution {
+public:
+    vector<int> countSmaller(vector<int>& a) {
+        int n = a.size();
+        vector<int> vals = a;
+        sort(vals.begin(), vals.end());
+        vals.erase(unique(vals.begin(), vals.end()), vals.end());   // distinct sorted values
+        int m = vals.size();
+        vector<int> bit(m + 1, 0);                                    // Fenwick tree, 1-based
+        auto add = [&](int pos) { for (pos++; pos <= m; pos += pos & -pos) bit[pos]++; };
+        auto prefix = [&](int cnt) {                                  // how many ranks in [0, cnt)
+            int s = 0;
+            for (; cnt > 0; cnt -= cnt & -cnt) s += bit[cnt];
+            return s;
+        };
+        vector<int> res(n);
+        for (int i = n - 1; i >= 0; i--) {
+            int r = lower_bound(vals.begin(), vals.end(), a[i]) - vals.begin();
+            res[i] = prefix(r);                                       // strictly smaller ranks
+            add(r);                                                   // now a[i] is "to the right"
+        }
+        return res;
+    }
+};`,
+      dry: { head: ['i', 'a[i]', 'rank (vals 1 2 5 6)', 'smaller ranks seen', 'res[i]'], rows: [['3', '1', '0', 'none', '0'], ['2', '6', '3', '{0}', '1'], ['1', '2', '1', '{0}', '1'], ['0', '5', '2', '{0, 1}', H.c('g', '2')]] },
+      complexity: `<p>O(N log N) for compression plus O(N log N) for the sweep; O(N) space.</p>`,
+      followUps: ['Count inversions (sum of the result array) — fits in long long?', 'Count elements to the right that are in [a[i] − d, a[i] + d].']
+    }
+  });
+
+  practice.push({
+    title: 'Aggressive Cows (maximize the minimum distance)', level: 'Hard', tags: ['binary search on answer', 'sorting', 'lower_bound', 'greedy'], companies: ['SPOJ', 'Codeforces', 'Flipkart'],
+    statement: `<p>There are N stalls at positions x[i] on a line and C cows. Place the cows in different stalls to <b>maximize the minimum distance</b> between any two cows. Print that maximum minimum distance.</p>`,
+    constraints: `2 ≤ C ≤ N ≤ 10<sup>5</sup>, 0 ≤ x[i] ≤ 10<sup>9</sup>, positions distinct`,
+    example: `<p>Stalls <code>[1, 2, 8, 4, 9]</code>, C = 3 → ${H.c('g', '3')}. Sorted ${H.arr([1, 2, 4, 8, 9], { hl: { 0: 'g', 2: 'g', 3: 'g' } })}: cows at 1, 4, 8 have gaps 3 and 4 → minimum 3. No placement achieves 4.</p>`,
+    brute: { why: `<p>Try every candidate distance d from 1 up to 10<sup>9</sup> and greedily check it: O(10<sup>9</sup> · N). The waste: feasibility is <b>monotonic</b> — if distance d works, every smaller distance works too — so binary search over d.</p>`, code: R`long long cowsBrute(vector<long long> x, int c) {
+    sort(x.begin(), x.end());
+    long long best = 0;
+    for (long long d = 1; d <= x.back() - x.front(); d++) {
+        int placed = 1;
+        long long last = x[0];
+        for (size_t i = 1; i < x.size(); i++)
+            if (x[i] - last >= d) { placed++; last = x[i]; }
+        if (placed >= c) best = d; else break;          // monotonic: first failure ends it
+    }
+    return best;
+}` },
+    mcq: { q: '"Minimize the maximum" / "maximize the minimum" in a statement most often signals…', options: ['Binary search on the answer with a greedy feasibility check', 'Sorting by a comparator only', 'next_permutation', 'A hash map'], answer: 0, explain: 'These phrases usually mean the feasibility of a candidate answer is monotonic, so you binary-search the answer and verify each candidate greedily.' },
+    hints: [`<p>Hint 1: Fix a distance d. Can you check in one pass whether C cows fit? Greedy: put a cow in the first stall, then always in the first stall at least d further.</p>`, `<p>Hint 2: If d is feasible, so is every smaller d → binary search the largest feasible d in [0, max − min]. In the check, <code>lower_bound(it, end, *it + d)</code> jumps to the next usable stall.</p>`, `<p>Hint 3: Use the upper-middle <code>mid = lo + (hi − lo + 1) / 2</code> with <code>lo = mid</code> on success to avoid an infinite loop. Use long long for positions + d.</p>`],
+    solution: {
+      approach: `<p>Sort the stalls. Binary search the answer d. For each d, greedily place cows; with the sorted vector, each "next stall at least d away" is a single <code>lower_bound</code> so the check costs O(C log N) (or O(N) with a linear scan). Keep the largest feasible d.</p>`,
+      code: R`#include <bits/stdc++.h>
+using namespace std;
+
+bool canPlace(const vector<long long>& x, int c, long long d) {
+    int placed = 1;
+    auto it = x.begin();                                  // first cow in the first stall
+    while (placed < c) {
+        it = lower_bound(it, x.end(), *it + d);           // first stall at distance >= d
+        if (it == x.end()) return false;
+        placed++;
+    }
+    return true;
+}
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+    int n, c;
+    cin >> n >> c;
+    vector<long long> x(n);
+    for (auto& v : x) cin >> v;
+    sort(x.begin(), x.end());
+    long long lo = 0, hi = x.back() - x.front();          // d = 0 is always feasible
+    while (lo < hi) {
+        long long mid = lo + (hi - lo + 1) / 2;           // upper middle (mid >= 1)
+        if (canPlace(x, c, mid)) lo = mid;                // works -> try bigger
+        else hi = mid - 1;                                // fails -> must be smaller
+    }
+    cout << lo << '\n';
+}`,
+      dry: { head: ['lo', 'hi', 'mid', 'greedy placement', 'feasible?'], rows: [['0', '8', '4', '1, 8 (needs a 3rd ≥ 12)', H.c('r', 'no → hi = 3')], ['0', '3', '2', '1, 4, 8', H.c('g', 'yes → lo = 2')], ['2', '3', '3', '1, 4, 8', H.c('g', 'yes → lo = 3')], ['3', '3', '-', 'stop', H.c('g', 'answer 3')]] },
+      complexity: `<p>O(N log N) sort + O(log(range) · C log N) for the search; O(1) extra space.</p>`,
+      followUps: ['Book allocation / split array largest sum (minimize the maximum) — same pattern.', 'Return the actual stall positions used.']
+    }
+  });
+
+  /* ======================================================================
+     QUIZ
+     ====================================================================== */
+  quiz.push({ q: 'What does <code>v.end()</code> point to?', options: ['One position past the last element — not a real element', 'The last element', 'nullptr', 'The first element of the next container'], answer: 0, explain: 'Ranges are half-open [begin, end). end() is a sentinel position; dereferencing it is undefined behaviour.' });
+  quiz.push({ q: 'Why does <code>sort(myList.begin(), myList.end())</code> fail to compile for a <code>std::list</code>?', options: ['std::sort needs random-access iterators; list iterators are only bidirectional', 'Lists cannot hold ints', 'sort needs a comparator for lists', 'Lists are always sorted'], answer: 0, explain: 'sort uses iterator arithmetic (it + k, it2 − it1). Use the member function myList.sort(), a merge sort that relinks nodes.' });
+  quiz.push({ q: 'Which comparator causes undefined behaviour in <code>std::sort</code>?', options: ['<code>[](int a, int b){ return a &lt;= b; }</code>', '<code>[](int a, int b){ return a &gt; b; }</code>', '<code>greater&lt;int&gt;()</code>', '<code>[](int a, int b){ return abs(a) &lt; abs(b); }</code>'], answer: 0, explain: '&lt;= makes comp(a, a) true, violating irreflexivity of a strict weak ordering. libstdc++\'s unguarded insertion sort can then run past the array start.' });
+  quiz.push({ q: 'v = {1, 3, 3, 3, 5}. What is <code>upper_bound(v.begin(), v.end(), 3) - lower_bound(v.begin(), v.end(), 3)</code>?', options: ['3', '1', '4', '2'], answer: 0, explain: 'lower_bound(3) = index 1 (first ≥ 3), upper_bound(3) = index 4 (first &gt; 3); 4 − 1 = 3 copies.' });
+  quiz.push({ q: 'v = {2, 4, 6}. What does <code>lower_bound(v.begin(), v.end(), 7)</code> return?', options: ['v.end()', 'An iterator to 6', 'An iterator to 2', 'It throws an exception'], answer: 0, explain: 'No element is ≥ 7, so the "first such position" is the end. Always check against end() before dereferencing.' });
+  quiz.push({ q: '<code>vector&lt;int&gt; v = {2000000000, 2000000000};</code> What is the type of <code>accumulate(v.begin(), v.end(), 0)</code>?', options: ['int — and the sum overflows', 'long long', 'size_t', 'double'], answer: 0, explain: 'The result type is the type of init. 0 is an int. Write 0LL to get a long long running total.' });
+  quiz.push({ q: 'The array is {3, 2, 1}. What does <code>next_permutation</code> do?', options: ['Rearranges to {1, 2, 3} and returns false', 'Leaves it unchanged and returns false', 'Rearranges to {3, 1, 2} and returns true', 'Undefined behaviour'], answer: 0, explain: '{3, 2, 1} is the last arrangement. The function wraps around to the first (ascending) and returns false, which ends a do-while loop.' });
+  quiz.push({ q: 'How many times does the body run? <code>vector&lt;int&gt; v = {1, 1, 2}; do { c++; } while (next_permutation(v.begin(), v.end()));</code>', options: ['3', '6', '2', '1'], answer: 0, explain: 'next_permutation skips duplicate arrangements: 112, 121, 211. That is 3! / 2! = 3.' });
+  quiz.push({ q: 'v = {1, 2, 3, 2}. After <code>remove(v.begin(), v.end(), 2);</code> (no erase), what is <code>v.size()</code>?', options: ['4', '2', '3', '0'], answer: 0, explain: 'remove only shifts the kept elements to the front and returns the new logical end. The container size changes only when you call erase.' });
+  quiz.push({ q: 'v = {1, 2, 1, 2}. After <code>v.erase(unique(v.begin(), v.end()), v.end());</code> what is v?', options: ['{1, 2, 1, 2}', '{1, 2}', '{1}', '{2, 1}'], answer: 0, explain: 'unique only removes consecutive duplicates; no two equal values are adjacent here. Sort first to remove all duplicates.' });
+  quiz.push({ q: '<code>int k = 3; auto f = [k](int x){ return x &gt; k; }; k = 10;</code> What is <code>f(5)</code>?', options: ['true — the lambda holds a copy of k made at creation (3)', 'false — the lambda sees k = 10', 'Compile error', 'Undefined behaviour'], answer: 0, explain: 'Capture by value copies k when the lambda is created. Later changes to the outer k are invisible. Use [&amp;k] to see live updates.' });
+  quiz.push({ q: 'Why add <code>ios::sync_with_stdio(false); cin.tie(nullptr);</code> in contests?', options: ['They make cin/cout much faster by giving them their own buffer and stopping auto-flushes', 'They enable C++20 features', 'They make output appear immediately', 'They allow mixing scanf and cin safely'], answer: 0, explain: 'Unsyncing lets iostreams buffer independently of C stdio; untying stops cout being flushed before every cin. After this, do not mix scanf/printf with cin/cout.' });
+  quiz.push({ q: 'Which call finds the median of an unsorted vector in O(N) average time?', options: ['<code>nth_element(v.begin(), v.begin() + v.size()/2, v.end())</code>', '<code>sort</code> then index', '<code>partial_sort</code> of the whole range', '<code>lower_bound</code>'], answer: 0, explain: 'nth_element is quickselect: it places the k-th element in its sorted position with smaller elements to the left, in linear average time.' });
+  quiz.push({ q: 'On a <code>std::set&lt;int&gt; s</code>, which is O(log N)?', options: ['<code>s.lower_bound(x)</code>', '<code>std::lower_bound(s.begin(), s.end(), x)</code>', 'Both are O(log N)', 'Neither'], answer: 0, explain: 'The member walks the tree. The free function only has bidirectional iterators, so although it makes O(log N) comparisons it needs O(N) iterator steps.' });
+
+  /* ======================================================================
+     INTERVIEW Q&A
+     ====================================================================== */
+  interview.push({ q: 'What is an iterator, and why does the STL use iterators instead of passing containers to algorithms?', level: 'B',
+    a: `<p>An iterator is a small object that points at one element and knows how to move to the next one — a generalised pointer with <code>*it</code>, <code>++it</code> and sometimes <code>--it</code> or <code>it + k</code>. Algorithms take a pair <code>[first, last)</code> instead of a container, so one implementation of <code>find</code>, <code>sort</code> or <code>copy</code> works for vectors, deques, arrays, raw C arrays, streams and user-defined containers. It separates <b>what to do</b> (algorithm) from <b>where the data lives</b> (container) — M algorithms × N containers needs M + N pieces of code, not M·N.</p>`,
+    followUps: ['What is the half-open range convention and why is it convenient?', 'How do C++20 ranges change this picture?'] });
+  interview.push({ q: 'Explain the iterator categories and give an algorithm that needs each.', level: 'I',
+    a: `<p><b>Input</b> (single pass read: <code>istream_iterator</code>; <code>find</code>, <code>accumulate</code>), <b>output</b> (write once: <code>back_inserter</code>; destination of <code>copy</code>), <b>forward</b> (multi-pass: <code>forward_list</code>; <code>unique</code>, <code>replace</code>), <b>bidirectional</b> (+ <code>--</code>: <code>list</code>, <code>set</code>; <code>reverse</code>, <code>next_permutation</code>), <b>random access</b> (+ O(1) jumps: <code>deque</code>; <code>sort</code>, <code>nth_element</code>, efficient <code>lower_bound</code>), and since C++20 <b>contiguous</b> (<code>vector</code>, <code>array</code>, <code>string</code>). Each category refines the previous. The library picks faster implementations via tag dispatch or concepts — e.g. <code>advance</code> is O(1) or O(k).</p>`,
+    followUps: ['Why is std::lower_bound on a set O(N)?', 'How would you detect the category of an iterator at compile time?'] });
+  interview.push({ q: 'What is a strict weak ordering and what happens if your comparator violates it?', level: 'I',
+    a: `<p>A comparator <code>comp</code> must be <b>irreflexive</b> (comp(a, a) is false), <b>asymmetric</b>, <b>transitive</b>, and its "equivalence" (neither comp(a,b) nor comp(b,a)) must be transitive. That is exactly how <code>&lt;</code> behaves on numbers. If you violate it — classic examples are <code>&lt;=</code>, <code>return a - b;</code>, or comparing doubles containing NaN — the behaviour of <code>sort</code>, <code>set</code>, <code>map</code> and binary searches is <b>undefined</b>: wrong order, elements "lost" in a set, infinite loops, or a crash. In libstdc++, sort's unguarded insertion sort can read before the array start when comp(x, x) is true.</p>`,
+    followUps: ['Is "a + b &gt; b + a" on strings a strict weak ordering?', 'How would you test a comparator automatically?'] });
+  interview.push({ q: 'sort vs stable_sort vs partial_sort vs nth_element — when do you use each?', level: 'I',
+    a: `<p><code>sort</code>: general purpose, O(N log N) introsort, not stable. <code>stable_sort</code>: keeps ties in input order, merge sort, O(N log N) with an O(N) buffer (O(N log² N) without) — use it for multi-pass sorting or when the problem says "keep original order". <code>partial_sort(b, b+k, e)</code>: only the first k in sorted order, O(N log k) — top-k leaderboards. <code>nth_element</code>: puts just the k-th element in place with a partition around it, O(N) average — medians and "k-th smallest" without needing order inside each side.</p>`,
+    followUps: ['How is std::sort guaranteed O(N log N) in the worst case?', 'How do you make sort stable without stable_sort?'] });
+  interview.push({ q: 'Implement lower_bound by hand and explain the invariant.', level: 'I',
+    a: `<p>Keep the answer inside <code>[lo, hi]</code> with <code>lo = 0</code>, <code>hi = n</code> (n means "none"). While <code>lo &lt; hi</code>: <code>mid = lo + (hi - lo) / 2</code>; if <code>a[mid] &lt; x</code> the answer is right of mid, so <code>lo = mid + 1</code>; otherwise mid might be the answer, so <code>hi = mid</code>. When they meet, <code>lo</code> is the first index with <code>a[lo] ≥ x</code>. Invariant: everything left of <code>lo</code> is &lt; x, everything at or right of <code>hi</code> is ≥ x. For upper_bound change the test to <code>a[mid] &lt;= x</code>. The loop always shrinks the range, so it cannot get stuck.</p>`,
+    followUps: ['Why lo + (hi − lo) / 2 instead of (lo + hi) / 2?', 'Adapt it to "binary search on the answer".'] });
+  interview.push({ q: 'Why do remove and unique not actually shrink the container? Show the correct idiom.', level: 'B',
+    a: `<p>Algorithms only receive iterators, and an iterator cannot change the size of the container it points into (a raw array cannot change size at all). So <code>remove</code>/<code>remove_if</code>/<code>unique</code> move the elements to keep to the front, keep their order, and return the new logical end; the tail holds unspecified (possibly moved-from) values. The container must then erase it: <code>v.erase(remove(v.begin(), v.end(), x), v.end());</code>. In C++20 just call <code>std::erase(v, x)</code> or <code>std::erase_if(v, pred)</code>. For <code>list</code> use the member <code>remove</code>/<code>unique</code>.</p>`,
+    followUps: ['Why must you sort before unique to remove all duplicates?', 'What is the complexity of erase-in-a-loop vs erase-remove?'] });
+  interview.push({ q: 'Walk me through how next_permutation works and its complexity.', level: 'I',
+    a: `<p>1) From the right, find the first index i with a[i] &lt; a[i+1] — the suffix after i is non-increasing, i.e. already maximal. 2) If none exists, the sequence is the last permutation: reverse it and return false. 3) From the right, find the first j with a[j] &gt; a[i] — the smallest suffix value larger than the pivot. 4) Swap a[i], a[j] and reverse the suffix to make it minimal. Each call is O(N) worst case but O(1) amortised over a full enumeration; it needs only bidirectional iterators and handles duplicates because the comparisons are strict.</p>`,
+    followUps: ['How do you get the k-th permutation without k calls?', 'How do you enumerate combinations with next_permutation?'] });
+  interview.push({ q: 'What is the accumulate init-type trap? Give two examples.', level: 'B',
+    a: `<p><code>accumulate</code> is <code>template&lt;class It, class T&gt; T accumulate(It, It, T init)</code>: the running total and result have the type of <b>init</b>, not of the elements. Example 1: summing a <code>vector&lt;int&gt;</code> of large values with <code>0</code> overflows int (signed overflow is UB) — use <code>0LL</code>. Example 2: summing a <code>vector&lt;double&gt;</code> with <code>0</code> truncates every partial sum to int — {0.5, 0.5} gives 0. Use <code>0.0</code>. Similar trap: <code>partial_sum</code> uses the input element type for its running value.</p>`,
+    followUps: ['accumulate vs reduce — what does reduce allow?', 'How would you sum a million doubles accurately?'] });
+  interview.push({ q: 'Explain lambda captures. What are the most common capture bugs?', level: 'I',
+    a: `<p><code>[x]</code> copies x when the lambda is created; <code>[&amp;x]</code> stores a reference; <code>[=]</code>/<code>[&amp;]</code> capture everything used by copy/reference; <code>[this]</code> captures the object pointer; <code>[y = expr]</code> creates a new member (init-capture, e.g. moving a unique_ptr in). Under the hood the lambda is a class whose members are the captures and whose <code>operator()</code> is const unless you say <code>mutable</code>. Bugs: (1) <b>dangling</b> — capturing a local by reference in a lambda that outlives it (returned, stored, run on another thread); (2) <b>stale copy</b> — capturing by value and expecting later changes; (3) implicit <code>this</code> capture via <code>[=]</code> in member functions, which dangles if the object dies.</p>`,
+    followUps: ['Why is a lambda usually faster than std::function in sort?', 'How do you write a recursive lambda?'] });
+  interview.push({ q: 'Why is passing a lambda to std::sort often faster than C\'s qsort?', level: 'A',
+    a: `<p><code>std::sort</code> is a template: each distinct comparator type (every lambda has a unique type) produces its own instantiation, and the compiler can <b>inline</b> the comparison into the sorting loops, enabling further optimisation such as keeping values in registers. <code>qsort</code> receives a function pointer and works on <code>void*</code> with a runtime element size, so every comparison is an indirect call that cannot be inlined, plus <code>memcpy</code>-style swaps. Typical speed-ups are 2–3×. Wrapping the comparator in <code>std::function</code> reintroduces the indirect call and loses most of the benefit.</p>`,
+    followUps: ['What does a function pointer comparator cost compared to a functor?', 'When can the compiler still inline a function pointer?'] });
+  interview.push({ q: 'You need many "how many values ≤ x" queries on a dataset. Sorted vector + upper_bound, std::set, or something else?', level: 'A',
+    a: `<p>If the data is <b>static</b>, a sorted <code>vector</code> with <code>upper_bound(x) - begin()</code> is best: O(log N), contiguous memory, cache-friendly, and the index directly gives the count. A <code>std::set</code> can find the position in O(log N) but cannot give the <b>rank</b> without walking (std::distance is O(N)). If values are <b>inserted and deleted</b> between queries, use an order-statistics tree (GNU pb_ds <code>tree</code> with <code>order_of_key</code>) or a Fenwick tree over compressed coordinates when all values are known offline. For huge read-heavy workloads, an Eytzinger layout speeds up binary search further.</p>`,
+    followUps: ['How does coordinate compression work?', 'How would you support deletions with a Fenwick tree?'] });
+  interview.push({ q: 'What is in your competitive programming template and why? Would you use it in production code?', level: 'B',
+    a: `<p>Fast I/O (<code>ios::sync_with_stdio(false)</code>, <code>cin.tie(nullptr)</code>, <code>'\\n'</code> not <code>endl</code>), <code>using ll = long long</code>, an <code>all(x)</code> macro, a <code>solve()</code> function called <code>t</code> times so per-test state is local, constants like <code>MOD</code>, a debug macro enabled only with <code>-DLOCAL</code>, and a chrono-seeded <code>mt19937_64</code>. In production I would not use <code>bits/stdc++.h</code> (non-standard, slow to compile), <code>using namespace std</code> at global scope (name clashes), or short macros (hurt readability and tooling). Production code favours explicit includes, clear names, and tests over speed of typing.</p>`,
+    followUps: ['When is endl actually required?', 'What does #define int long long break?'] });
+  interview.push({ q: 'How would you make sure an STL-heavy solution is correct before submitting?', level: 'E',
+    a: `<p>Compile locally with <code>-Wall -Wextra -fsanitize=address,undefined -D_GLIBCXX_DEBUG</code>: the debug STL catches invalid iterators, out-of-range indexing and some comparator violations; sanitizers catch overflow and memory errors. Then <b>stress test</b>: write a slow brute force (often next_permutation or nested loops), a random generator biased to edge cases (duplicates, negatives, N = 1, all equal), and a script that compares outputs until they differ. Finally reason about constraints: max sums for type choice, N for complexity. This catches the classic bugs — <code>&lt;=</code> comparators, unique without sort, missing erase, <code>accumulate(…, 0)</code> overflow.</p>`,
+    followUps: ['What does _GLIBCXX_DEBUG check that a release build does not?', 'How do you shrink a failing random test to a minimal case?'] });
+
   registerModule({
     id: 'cpp08',
     title: 'STL Algorithms, Iterators & Competitive Setup',

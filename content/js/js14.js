@@ -2812,4 +2812,790 @@ setTimeout(() => console.log('rewritten:', out2.join(' ')), 40);
       }
     }]
   });
-registerModule({ id: 'js14', title: 'Machine Coding & Polyfills + Output Question Bank', intro: '<p>tmp</p>', goals: [], prereqs: 'tmp', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();
+
+  /* ================= PRACTICE (Easy → Medium → Hard) ================= */
+  practice.push({
+    title: 'once(fn): run a function only one time', level: 'Easy', tags: ['closure', 'higher-order'], companies: ['Amazon', 'Flipkart', 'Paytm'],
+    statement: `<p>Implement <code>once(fn)</code> that returns a new function. The first call runs <code>fn</code> (with the caller's <code>this</code> and arguments) and remembers its result; every later call returns that same result without running <code>fn</code> again.</p>`,
+    constraints: `fn may return undefined (still counts as "already called"). Preserve <code>this</code>.`,
+    example: `<p><code>const init = once(() =&gt; { console.log('setup'); return 42; });</code><br><code>init(); init();</code> → prints "setup" ${H.c('g', 'once')}; both calls return ${H.c('g', '42')}.</p>`,
+    brute: { why: `<p>Checking <code>if (result === undefined)</code> to decide whether fn ran fails when fn legitimately returns <code>undefined</code> — it would run again. Use a separate boolean flag.</p>`, code: `
+function onceBuggy(fn) {
+  let result;
+  return function (...args) {
+    if (result === undefined) result = fn.apply(this, args); // re-runs if fn returns undefined
+    return result;
+  };
+}
+` },
+    mcq: { q: 'What is the most reliable way to know fn already ran?', options: ['A separate <code>called</code> boolean in the closure', 'Check whether result is undefined', 'Check fn.length', 'Delete fn from the closure and check typeof'], answer: 0, explain: 'Only a dedicated flag distinguishes "never called" from "called and returned undefined". (Setting fn = null afterwards is a nice bonus to free memory.)' },
+    hints: [`<p>Hint 1: the returned function needs memory that survives between calls — a closure.</p>`, `<p>Hint 2: keep <code>called</code> (boolean) and <code>result</code>. On the first call set called = true before/after running fn.</p>`, `<p>Hint 3: use <code>fn.apply(this, args)</code> inside a regular function; set <code>fn = null</code> after the call so its closure can be garbage-collected.</p>`],
+    solution: {
+      approach: `<p>Closure with a flag and a cached result. Setting the flag <b>before</b> calling fn also protects against re-entrant calls (fn calling the once-wrapper again).</p>`,
+      code: { lang: 'js', run: true, code: `
+function once(fn) {
+  let called = false, result;
+  return function (...args) {
+    if (!called) {
+      called = true;                 // set first: re-entrant calls won't re-run fn
+      result = fn.apply(this, args);
+      fn = null;                     // free memory held by fn's closure
+    }
+    return result;
+  };
+}
+
+let runs = 0;
+const init = once(function (x) { runs++; return this.base + x; });
+const obj = { base: 40, init };
+console.log(obj.init(2), obj.init(100), runs); // 42 42 1
+const noReturn = once(() => { runs++; });
+noReturn(); noReturn();
+console.log(runs);                             // 2 (ran once more, not twice)
+` },
+      complexity: `<p>O(1) per call; O(1) memory (plus the cached result).</p>`,
+      followUps: ['Write <code>before(n, fn)</code> (runs at most n−1 times).', 'Make an async once that shares the same pending promise between concurrent callers.']
+    }
+  });
+
+  practice.push({
+    title: 'Array.prototype.myFlat(depth)', level: 'Easy', tags: ['polyfill', 'recursion', 'array'], companies: ['Swiggy', 'Meesho', 'Zomato'],
+    statement: `<p>Implement <code>Array.prototype.myFlat(depth = 1)</code> matching native <code>flat</code>: nested arrays are opened up to <code>depth</code> levels, order is preserved, and holes are removed. <code>depth = Infinity</code> flattens completely; <code>depth ≤ 0</code> returns a shallow copy (without holes).</p>`,
+    constraints: `Up to 10<sup>5</sup> total elements; nesting depth ≤ 1000.`,
+    example: `<p><code>[1, [2, [3, [4]]], , 5].myFlat()</code> → ${H.c('g', '[1, 2, [3, [4]], 5]')}<br><code>.myFlat(Infinity)</code> → ${H.c('g', '[1, 2, 3, 4, 5]')} (the hole is gone).</p>`,
+    brute: { why: `<p>Repeatedly calling <code>[].concat(...arr)</code> until no element is an array works only for depth Infinity, scans the whole array on every round (O(N × depth)), and cannot stop at a given depth correctly if you lose count.</p>`, code: `
+function flattenAll(arr) {
+  while (arr.some(Array.isArray)) arr = [].concat(...arr); // full rescan every round
+  return arr;
+}
+` },
+    mcq: { q: '<code>[[1], [[2]]].flat()</code> returns…', options: ['<code>[1, [2]]</code>', '<code>[1, 2]</code>', '<code>[[1], [[2]]]</code>', '<code>[1, [[2]]]</code>'], answer: 0, explain: 'Default depth is 1: one level of brackets is removed from each element.' },
+    hints: [`<p>Hint 1: recursion with a depth counter: arrays with depth left are opened, everything else is copied.</p>`, `<p>Hint 2: skip holes with <code>if (!(i in arr)) continue</code>.</p>`, `<p>Hint 3: convert depth with <code>Math.floor(Number(depth))</code>; NaN → 0. Use an inner helper <code>walk(arr, d)</code> pushing into one output array (no repeated concat).</p>`],
+    solution: {
+      approach: `<p>Single output array; recursive walker that decrements depth per level and pushes leaves. Each element is visited once.</p>`,
+      code: { lang: 'js', run: true, code: `
+Array.prototype.myFlat = function (depth = 1) {
+  const d0 = Math.floor(Number(depth));
+  const out = [];
+  const walk = (arr, d) => {
+    for (let i = 0; i < arr.length; i++) {
+      if (!(i in arr)) continue;                  // remove holes
+      const v = arr[i];
+      if (Array.isArray(v) && d > 0) walk(v, d - 1);
+      else out.push(v);
+    }
+  };
+  walk(this, Number.isNaN(d0) ? 0 : d0);
+  return out;
+};
+
+const a = [1, [2, [3, [4]]], , 5];
+console.log(a.myFlat());          // [1, 2, [3, [4]], 5]
+console.log(a.myFlat(2));         // [1, 2, 3, [4], 5]
+console.log(a.myFlat(Infinity));  // [1, 2, 3, 4, 5]
+console.log(a.myFlat(0));         // [1, [2, [3, [4]]], 5]
+` },
+      complexity: `<p>O(N) time for N total elements visited; O(N) output + O(depth) call stack.</p>`,
+      followUps: ['Make it iterative with an explicit stack.', 'Write it as a generator for lazy flattening.']
+    }
+  });
+
+  practice.push({
+    title: 'memoize(fn, resolver)', level: 'Easy', tags: ['closure', 'cache', 'map'], companies: ['Google', 'Adobe', 'Intuit'],
+    statement: `<p>Implement <code>memoize(fn, resolver?)</code>. The returned function caches results by key. By default the key is the <b>first argument</b>; if <code>resolver</code> is given, the key is <code>resolver(...args)</code>. Expose the cache as <code>memoized.cache</code> (a Map) so callers can clear it.</p>`,
+    constraints: `Keys may be objects (use a Map, not a plain object). fn is pure.`,
+    example: `<p><code>const sq = memoize((n) =&gt; n * n);</code> <code>sq(4); sq(4);</code> → fn runs ${H.c('g', 'once')}.<br><code>const add = memoize((a, b) =&gt; a + b, (a, b) =&gt; a + ',' + b);</code> → <code>add(1,2)</code> and <code>add(1,3)</code> are cached separately.</p>`,
+    brute: { why: `<p>Using <code>JSON.stringify(args)</code> as the key for everything is slow for large arguments, breaks for cyclic objects, and makes different objects with equal content collide (sometimes desired, often not). Using a plain object turns object keys into "[object Object]".</p>`, code: `
+function memoizeNaive(fn) {
+  const cache = {};
+  return (...args) => {
+    const key = JSON.stringify(args);            // costly + throws on cycles
+    if (!(key in cache)) cache[key] = fn(...args);
+    return cache[key];
+  };
+}
+` },
+    mcq: { q: 'Why use a <code>Map</code> for the cache?', options: ['Keys can be any value (objects keep identity) and has/get are O(1)', 'Maps are automatically limited in size', 'Maps serialize keys to JSON', 'Plain objects cannot store numbers'], answer: 0, explain: 'Map keys keep their identity and type; plain object keys are coerced to strings.' },
+    hints: [`<p>Hint 1: closure over a Map; check <code>cache.has(key)</code> before computing.</p>`, `<p>Hint 2: key = resolver ? resolver.apply(this, args) : args[0].</p>`, `<p>Hint 3: store even <code>undefined</code> results — use <code>has</code>, not a truthiness check. Attach <code>memoized.cache = cache</code>.</p>`],
+    solution: {
+      approach: `<p>Map-backed cache with a pluggable key function (lodash's design). <code>has</code> avoids recomputing falsy results.</p>`,
+      code: { lang: 'js', run: true, code: `
+function memoize(fn, resolver) {
+  const cache = new Map();
+  function memoized(...args) {
+    const key = resolver ? resolver.apply(this, args) : args[0];
+    if (cache.has(key)) return cache.get(key);
+    const value = fn.apply(this, args);
+    cache.set(key, value);
+    return value;
+  }
+  memoized.cache = cache;
+  return memoized;
+}
+
+let calls = 0;
+const fib = memoize((n) => { calls++; return n < 2 ? n : fib(n - 1) + fib(n - 2); });
+console.log(fib(40), 'computed in', calls, 'calls');   // 102334155 computed in 41 calls
+const add = memoize((a, b) => a + b, (a, b) => a + ',' + b);
+console.log(add(1, 2), add(1, 3), add.cache.size);     // 3 4 2
+` },
+      complexity: `<p>O(1) average per cached call; memory grows with distinct keys (bound it with an LRU in production).</p>`,
+      followUps: ['Bound the cache with LRU eviction.', 'Memoize async functions so concurrent calls share one in-flight promise.']
+    }
+  });
+
+  practice.push({
+    title: 'Promise.race polyfill + timeout helper', level: 'Easy', tags: ['promise', 'polyfill'], companies: ['Microsoft', 'PhonePe', 'Cred'],
+    statement: `<p>Implement <code>promiseRace(iterable)</code> that settles the same way as the first input to settle (fulfill or reject). Then use it to build <code>timeout(promise, ms)</code> that rejects with <code>Error('timeout')</code> if the promise takes longer than <code>ms</code>.</p>`,
+    constraints: `Inputs may be plain values. Empty input stays pending forever (like native).`,
+    example: `<p><code>promiseRace([delay(50,'slow'), delay(10,'fast')])</code> → ${H.c('g', "'fast'")}.<br><code>timeout(delay(50,'x'), 10)</code> → ${H.c('r', 'rejects: timeout')}.</p>`,
+    brute: { why: `<p>Polling every few milliseconds for "is any promise done?" is impossible (promises expose no state) and wasteful. The real trick is that a promise can only settle once — so just let every input try to settle it.</p>`, code: `
+function raceWrong(promises) {
+  // waits for ALL, then returns the first in the array: that's not a race
+  return Promise.all(promises).then((values) => values[0]);
+}
+` },
+    mcq: { q: 'Several inputs call <code>resolve</code> of the outer promise. What happens to later calls?', options: ['They are ignored — a promise settles only once', 'They overwrite the value', 'They throw an error', 'They queue extra then callbacks'], answer: 0, explain: 'Once settled, a promise\'s state is locked; extra resolve/reject calls are no-ops.' },
+    hints: [`<p>Hint 1: return a new Promise and hand its resolve/reject to every input.</p>`, `<p>Hint 2: <code>Promise.resolve(item).then(resolve, reject)</code> for each item.</p>`, `<p>Hint 3: timeout = race the promise against a timer promise that rejects; clear the timer in <code>finally</code>.</p>`],
+    solution: {
+      approach: `<p>Attach the outer settle functions to all inputs; first one wins by the "settles once" rule. The timeout is just a race with a rejecting timer.</p>`,
+      code: { lang: 'js', run: true, code: `
+function promiseRace(iterable) {
+  return new Promise((resolve, reject) => {
+    for (const item of iterable) Promise.resolve(item).then(resolve, reject);
+  });
+}
+function timeout(promise, ms) {
+  let id;
+  const timer = new Promise((_, reject) => { id = setTimeout(() => reject(new Error('timeout')), ms); });
+  return promiseRace([promise, timer]).finally(() => clearTimeout(id));
+}
+const delay = (ms, v) => new Promise((r) => setTimeout(() => r(v), ms));
+promiseRace([delay(50, 'slow'), delay(10, 'fast')]).then((v) => console.log(v)); // fast
+timeout(delay(50, 'x'), 10).catch((e) => console.log(e.message));                // timeout
+timeout(delay(5, 'quick'), 50).then((v) => console.log(v));                      // quick
+` },
+      complexity: `<p>O(N) to attach handlers. The losers keep running (no cancellation) — pair with AbortController for real fetches.</p>`,
+      followUps: ['Implement Promise.any.', 'Use AbortSignal.timeout(ms) with fetch instead.']
+    }
+  });
+
+  practice.push({
+    title: 'throttle(fn, wait) with leading and trailing calls', level: 'Medium', tags: ['timers', 'closure', 'throttle'], companies: ['Uber', 'Atlassian', 'Zomato', 'Booking.com'],
+    statement: `<p>Implement <code>throttle(fn, wait)</code>: the first call runs immediately; calls during the next <code>wait</code> ms are not run immediately, but the <b>latest</b> of them runs once the window ends (trailing call). fn never runs more than once per <code>wait</code> ms. Add <code>cancel()</code>.</p>`,
+    constraints: `Must preserve <code>this</code> and the latest arguments. O(1) work per call.`,
+    example: `<p>wait = 100, calls at 0, 20, 50, 130 ms.<br>runs: 0 (leading, args of call@0), 100 (trailing, args of call@50), and the call at 130 is inside the new window [100, 200) → trailing at 200.<br>${H.c('g', '3 runs at 0, 100, 200')}.</p>`,
+    brute: { why: `<p>The simplest "ignore calls within the window" version drops the last events entirely — the final scroll position or the last drag coordinate is lost, which users notice.</p>`, code: `
+function throttleLeadingOnly(fn, wait) {
+  let last = 0;
+  return function (...args) {
+    const now = Date.now();
+    if (now - last >= wait) { last = now; fn.apply(this, args); } // trailing call lost
+  };
+}
+` },
+    mcq: { q: 'A trailing timer is already scheduled and a new call arrives. What should happen?', options: ['Replace the pending args with the newest ones; keep the existing timer', 'Schedule a second timer', 'Run fn immediately', 'Ignore the call completely'], answer: 0, explain: 'One trailing call per window, always with the freshest arguments.' },
+    hints: [`<p>Hint 1: state: <code>last</code> run time, <code>timer</code>, <code>pendingArgs/pendingThis</code>.</p>`, `<p>Hint 2: remaining = wait − (now − last). If remaining ≤ 0 and no timer → run now. Else store pending and, if no timer, set one for <code>remaining</code> ms.</p>`, `<p>Hint 3: in the timer callback, set last = Date.now(), timer = null, run with pending args. cancel clears all state.</p>`],
+    solution: {
+      approach: `<p>Leading call when the window is open; otherwise remember the latest call and schedule exactly one trailing call at the window boundary.</p>`,
+      code: { lang: 'js', run: true, code: `
+function throttle(fn, wait) {
+  let last = -Infinity, timer = null, pArgs = null, pThis = null;
+  function throttled(...args) {
+    const now = Date.now(), remaining = wait - (now - last);
+    if (remaining <= 0 && timer === null) {
+      last = now;
+      fn.apply(this, args);
+      return;
+    }
+    pArgs = args; pThis = this;
+    if (timer === null) {
+      timer = setTimeout(() => {
+        last = Date.now(); timer = null;
+        const a = pArgs, t = pThis; pArgs = pThis = null;
+        fn.apply(t, a);
+      }, Math.max(0, remaining));
+    }
+  }
+  throttled.cancel = () => { clearTimeout(timer); timer = null; pArgs = pThis = null; last = -Infinity; };
+  return throttled;
+}
+
+const runs = [];
+const t0 = Date.now();
+const th = throttle((v) => runs.push(v + '@' + Math.round((Date.now() - t0) / 50) * 50), 100);
+[0, 20, 50, 130].forEach((ms) => setTimeout(() => th('call' + ms), ms));
+setTimeout(() => console.log(runs), 350); // [ 'call0@0', 'call50@100', 'call130@200' ]
+` },
+      complexity: `<p>O(1) per call, at most one live timer, O(1) memory.</p>`,
+      followUps: ['Add options { leading: false } and { trailing: false }.', 'Implement throttle via debounce with maxWait.']
+    }
+  });
+
+  practice.push({
+    title: 'Promise.allSettled and Promise.any polyfills', level: 'Medium', tags: ['promise', 'polyfill'], companies: ['Meta', 'Razorpay', 'Atlassian'],
+    statement: `<p>Implement <code>allSettled(iterable)</code> → fulfills with <code>[{status:'fulfilled', value} | {status:'rejected', reason}]</code> in input order once all settle. Implement <code>any(iterable)</code> → fulfills with the first fulfillment; if <b>all</b> reject, rejects with an <code>AggregateError</code> whose <code>errors</code> are in input order. Empty input: allSettled → <code>[]</code>, any → AggregateError.</p>`,
+    constraints: `Plain values allowed. No use of the native versions.`,
+    example: `<p><code>allSettled([P.resolve(1), P.reject('x')])</code> → ${H.c('g', "[{fulfilled,1},{rejected,'x'}]")}<br><code>any([P.reject('a'), P.resolve(2)])</code> → ${H.c('g', '2')}; <code>any([P.reject('a')])</code> → ${H.c('r', "AggregateError(['a'])")}.</p>`,
+    brute: { why: `<p>Calling <code>Promise.all(items.map(p =&gt; p.catch(e =&gt; e)))</code> looks like allSettled, but you can no longer tell a rejection from a fulfillment whose value happens to be an Error, and it relies on the native all.</p>`, code: `
+const fakeAllSettled = (items) => Promise.all(items.map((p) => Promise.resolve(p).catch((e) => e)));
+// [1, Error] -> was index 1 a rejection or a resolved Error object? Unknown.
+` },
+    mcq: { q: 'For <code>any</code>, what do you count down?', options: ['The number of rejections still needed before giving up', 'The number of fulfillments', 'Elapsed time', 'Nothing — just use race'], answer: 0, explain: 'any succeeds on the first fulfill; it fails only when every input has rejected, so count rejections.' },
+    hints: [`<p>Hint 1: both are countdown latches like Promise.all, with different "what to store" and "when to finish" rules.</p>`, `<p>Hint 2: allSettled: both handlers write a status object to slot i and decrement; resolve at 0. any: fulfillment → resolve immediately; rejection → errors[i] = e, decrement, reject AggregateError at 0.</p>`, `<p>Hint 3: handle empty input up front; wrap items with Promise.resolve.</p>`],
+    solution: {
+      approach: `<p>Two countdown latches. allSettled never rejects; any mirrors all with fulfill/reject roles swapped.</p>`,
+      code: { lang: 'js', run: true, code: `
+function allSettled(iterable) {
+  const items = Array.from(iterable);
+  return new Promise((resolve) => {
+    const out = new Array(items.length);
+    let left = items.length;
+    if (!left) return resolve(out);
+    items.forEach((it, i) => {
+      Promise.resolve(it).then(
+        (value) => { out[i] = { status: 'fulfilled', value }; },
+        (reason) => { out[i] = { status: 'rejected', reason }; }
+      ).then(() => { if (--left === 0) resolve(out); });
+    });
+  });
+}
+function any(iterable) {
+  const items = Array.from(iterable);
+  return new Promise((resolve, reject) => {
+    const errors = new Array(items.length);
+    let left = items.length;
+    if (!left) return reject(new AggregateError([], 'All promises were rejected'));
+    items.forEach((it, i) => {
+      Promise.resolve(it).then(resolve, (e) => {
+        errors[i] = e;
+        if (--left === 0) reject(new AggregateError(errors, 'All promises were rejected'));
+      });
+    });
+  });
+}
+
+allSettled([1, Promise.reject('x'), new Promise((r) => setTimeout(() => r('late'), 10))])
+  .then((r) => console.log(JSON.stringify(r)));
+any([Promise.reject('a'), new Promise((r) => setTimeout(() => r(2), 5))]).then((v) => console.log('any ->', v)); // 2
+any([Promise.reject('a'), Promise.reject('b')]).catch((e) => console.log(e.name, e.errors));              // AggregateError ['a','b']
+any([]).catch((e) => console.log('empty ->', e.name));
+` },
+      complexity: `<p>O(N) handlers, O(N) result memory.</p>`,
+      followUps: ['Why does allSettled never need a reject parameter?', 'Implement allSettled using only Promise.all + map.']
+    }
+  });
+
+  practice.push({
+    title: 'deepEqual(a, b) with NaN, Dates, arrays and cycles', level: 'Medium', tags: ['recursion', 'objects', 'comparison'], companies: ['Salesforce', 'Microsoft', 'Rippling'],
+    statement: `<p>Implement <code>deepEqual(a, b)</code> that returns true when both values are structurally equal: primitives by <code>Object.is</code> semantics except <code>+0</code> equals <code>-0</code>; arrays by length and elements; plain objects by own enumerable keys (order-independent) and values; Dates by time. Must terminate on circular structures.</p>`,
+    constraints: `Depth ≤ 1000; up to 10<sup>5</sup> nodes.`,
+    example: `<p><code>deepEqual({a:[1,{b:NaN}]}, {a:[1,{b:NaN}]})</code> → ${H.c('g', 'true')}<br><code>deepEqual([1,2], {0:1, 1:2, length:2})</code> → ${H.c('r', 'false')} (array vs object)<br><code>deepEqual({x: undefined}, {})</code> → ${H.c('r', 'false')}</p>`,
+    brute: { why: `<p><code>JSON.stringify(a) === JSON.stringify(b)</code> depends on key order (<code>{a:1,b:2}</code> vs <code>{b:2,a:1}</code> → false), drops undefined (so <code>{x: undefined}</code> equals <code>{}</code>), turns NaN into null and throws on cycles.</p>`, code: `
+const jsonEqual = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+console.log(jsonEqual({ a: 1, b: 2 }, { b: 2, a: 1 })); // false (wrong)
+` },
+    mcq: { q: 'Which check correctly treats NaN as equal to NaN?', options: ['<code>a !== a &amp;&amp; b !== b</code> (or Object.is)', '<code>a === b</code>', '<code>a == b</code>', '<code>isNaN(a) === isNaN(b)</code>'], answer: 0, explain: 'NaN is the only value not equal to itself; isNaN("x") is also true, so the last option is wrong for strings.' },
+    hints: [`<p>Hint 1: fast path: <code>a === b</code> (covers +0/-0) or both NaN → true.</p>`, `<p>Hint 2: then require both non-null objects with the same "kind" (Array.isArray, Date) and the same key count; recurse on each key.</p>`, `<p>Hint 3: cycles: keep a Map from a → Set of b's already being compared; if the pair is seen, return true.</p>`],
+    solution: {
+      approach: `<p>Recursive structural comparison with early exits (kind, key count, missing key) and a pair memo for cycles.</p>`,
+      code: { lang: 'js', run: true, code: `
+function deepEqual(a, b, seen = new Map()) {
+  if (a === b) return true;
+  if (a !== a && b !== b) return true;                       // NaN
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  if (a instanceof Date || b instanceof Date) return a instanceof Date && b instanceof Date && a.getTime() === b.getTime();
+  let partners = seen.get(a);
+  if (partners && partners.has(b)) return true;              // already comparing this pair
+  if (!partners) seen.set(a, (partners = new Set()));
+  partners.add(b);
+  const ka = Object.keys(a), kb = Object.keys(b);
+  if (ka.length !== kb.length) return false;
+  return ka.every((k) => Object.prototype.hasOwnProperty.call(b, k) && deepEqual(a[k], b[k], seen));
+}
+
+console.log(deepEqual({ a: [1, { b: NaN }] }, { a: [1, { b: NaN }] })); // true
+console.log(deepEqual({ a: 1, b: 2 }, { b: 2, a: 1 }));                 // true
+console.log(deepEqual([1, 2], { 0: 1, 1: 2, length: 2 }));              // false
+console.log(deepEqual({ x: undefined }, {}), deepEqual(0, -0));         // false true
+const x = { n: 1 }; x.self = x; const y = { n: 1 }; y.self = y;
+console.log(deepEqual(x, y), deepEqual(new Date(5), new Date(5)));      // true true
+` },
+      complexity: `<p>O(N) for N nodes compared (early exits often faster); O(depth + pairs) memory.</p>`,
+      followUps: ['Support Map and Set.', 'Add an option to ignore certain keys (e.g. updatedAt).']
+    }
+  });
+
+  practice.push({
+    title: 'flattenObject and unflattenObject (dot paths)', level: 'Medium', tags: ['recursion', 'objects'], companies: ['Amazon', 'Freshworks', 'Postman'],
+    statement: `<p>Implement <code>flattenObject(obj)</code> → an object whose keys are dot paths to every leaf (<code>{a:{b:1}}</code> → <code>{'a.b':1}</code>; arrays use indexes: <code>'tags.0'</code>). Empty objects/arrays are kept as leaves. Then implement <code>unflattenObject(flat)</code> that rebuilds the original (numeric segments create arrays).</p>`,
+    constraints: `Keys contain no dots. Depth ≤ 100. Values are JSON-like.`,
+    example: `<p><code>{user:{name:'A', tags:['x','y']}, empty:{}}</code> → ${H.c('g', "{'user.name':'A','user.tags.0':'x','user.tags.1':'y','empty':{}}")} and back.</p>`,
+    brute: { why: `<p>Hand-writing nested loops for a fixed depth (for each key, for each sub-key…) only works for known shapes; real data has arbitrary depth, so recursion (or a stack) is needed.</p>`, code: `
+function flattenTwoLevels(o) {
+  const out = {};
+  for (const k in o) {
+    if (typeof o[k] === 'object') for (const k2 in o[k]) out[k + '.' + k2] = o[k][k2]; // breaks at depth 3
+    else out[k] = o[k];
+  }
+  return out;
+}
+` },
+    mcq: { q: 'While unflattening <code>"tags.0"</code>, how do you know <code>tags</code> should be an array?', options: ['The NEXT path segment ("0") is a non-negative integer', 'The key is plural', 'The value is a string', 'Always use arrays'], answer: 0, explain: 'Look ahead one segment: an integer index means the container being created is an array.' },
+    hints: [`<p>Hint 1: flatten = DFS carrying the path prefix; a leaf is a primitive, null, or an empty container.</p>`, `<p>Hint 2: unflatten = for each key, split('.') and walk/create containers from the root.</p>`, `<p>Hint 3: when creating a missing container for segment i, check if segment i+1 matches <code>/^\\d+$/</code> → [] else {}.</p>`],
+    solution: {
+      approach: `<p>Recursive DFS for flatten; path-walking with lazy container creation for unflatten. Both are linear in the total number of keys × path length.</p>`,
+      code: { lang: 'js', run: true, code: `
+function flattenObject(obj, prefix = '', out = {}) {
+  for (const [k, v] of Object.entries(obj)) {
+    const path = prefix ? prefix + '.' + k : k;
+    const isContainer = v !== null && typeof v === 'object';
+    if (isContainer && Object.keys(v).length) flattenObject(v, path, out);
+    else out[path] = v;                        // primitive, null, or empty {} / []
+  }
+  return out;
+}
+function unflattenObject(flat) {
+  const root = {};
+  for (const [path, value] of Object.entries(flat)) {
+    const parts = path.split('.');
+    let node = root;
+    parts.forEach((p, i) => {
+      if (i === parts.length - 1) { node[p] = value; return; }
+      if (!(p in node)) node[p] = /^\\d+$/.test(parts[i + 1]) ? [] : {};
+      node = node[p];
+    });
+  }
+  return root;
+}
+
+const src = { user: { name: 'A', tags: ['x', 'y'] }, empty: {}, n: null };
+const flat = flattenObject(src);
+console.log(flat);   // { 'user.name': 'A', 'user.tags.0': 'x', 'user.tags.1': 'y', empty: {}, n: null }
+console.log(JSON.stringify(unflattenObject(flat)) === JSON.stringify(src)); // true
+` },
+      complexity: `<p>O(total path characters) for both directions; O(depth) recursion.</p>`,
+      followUps: ['Escape keys that contain dots.', 'Support a custom separator and max depth.']
+    }
+  });
+
+  practice.push({
+    title: 'compose, pipe and async pipe', level: 'Medium', tags: ['functional', 'reduce', 'promises'], companies: ['Walmart', 'Intuit', 'ThoughtWorks'],
+    statement: `<p>Implement <code>compose(...fns)</code> (right to left: <code>compose(f, g)(x) = f(g(x))</code>), <code>pipe(...fns)</code> (left to right) and <code>pipeAsync(...fns)</code> where any function may return a promise and the result is a promise. With zero functions, return the identity.</p>`,
+    constraints: `The first function (in execution order) may take multiple arguments; the rest take one.`,
+    example: `<p><code>pipe((a, b) =&gt; a + b, x =&gt; x * 2, String)(3, 4)</code> → ${H.c('g', "'14'")}.<br><code>compose(String, x =&gt; x * 2)(5)</code> → ${H.c('g', "'10'")}.</p>`,
+    brute: { why: `<p>Nesting calls manually (<code>h(g(f(x)))</code>) works for a fixed list but cannot be built from an array of steps at runtime, and is hard to read when there are many steps.</p>`, code: `
+const manual = (x) => String(double(inc(x)));   // fixed shape, not reusable
+function inc(x) { return x + 1; }
+function double(x) { return x * 2; }
+` },
+    mcq: { q: 'Which array method naturally implements compose?', options: ['<code>reduceRight</code>', '<code>map</code>', '<code>filter</code>', '<code>flat</code>'], answer: 0, explain: 'compose applies functions from right to left: reduceRight walks the list in that order, feeding each result to the next function.' },
+    hints: [`<p>Hint 1: pipe = <code>fns.reduce((acc, f) =&gt; f(acc), initial)</code>.</p>`, `<p>Hint 2: to allow multiple args for the first function, call it separately: <code>first(...args)</code>, then reduce over the rest.</p>`, `<p>Hint 3: async: start with <code>Promise.resolve(first(...args))</code> and chain <code>.then(f)</code> for each remaining f.</p>`],
+    solution: {
+      approach: `<p>Reduce the function list, threading the accumulator; async version threads a promise instead of a value.</p>`,
+      code: { lang: 'js', run: true, code: `
+const pipe = (...fns) => (...args) => {
+  if (!fns.length) return args[0];
+  const [first, ...rest] = fns;
+  return rest.reduce((acc, f) => f(acc), first(...args));
+};
+const compose = (...fns) => pipe(...fns.slice().reverse());
+const pipeAsync = (...fns) => (...args) => {
+  if (!fns.length) return Promise.resolve(args[0]);
+  const [first, ...rest] = fns;
+  return rest.reduce((p, f) => p.then(f), Promise.resolve().then(() => first(...args)));
+};
+
+console.log(pipe((a, b) => a + b, (x) => x * 2, String)(3, 4)); // '14'
+console.log(compose(String, (x) => x * 2)(5));                   // '10'
+console.log(pipe()(7));                                          // 7
+const fetchUser = (id) => new Promise((r) => setTimeout(() => r({ id, name: 'asha' }), 5));
+pipeAsync(fetchUser, (u) => u.name, (s) => s.toUpperCase())(1).then((v) => console.log(v)); // ASHA
+` },
+      complexity: `<p>O(k) calls for k functions. No extra memory beyond the closure.</p>`,
+      followUps: ['Add a <code>tap</code> helper for logging inside a pipe.', 'Short-circuit the async pipe when a step returns null.']
+    }
+  });
+
+  practice.push({
+    title: 'Infinite currying: sum(1)(2)(3)…()', level: 'Medium', tags: ['closure', 'currying', 'coercion'], companies: ['Paytm', 'Ola', 'MakeMyTrip'],
+    statement: `<p>Implement <code>sum</code> so that <code>sum(1)(2)(3)()</code> → 6, <code>sum(5)()</code> → 5, and each call may pass several numbers: <code>sum(1, 2)(3, 4)()</code> → 10. Bonus: make <code>+sum(1)(2)</code> and <code>sum(1)(2) == 3</code> work without the final empty call.</p>`,
+    constraints: `Up to 1000 chained calls. Partial chains must be reusable: <code>const s = sum(1); s(2)(); s(10)()</code> → 3 and 11.`,
+    example: `<p><code>sum(1)(2)(3)()</code> → ${H.c('g', '6')}; <code>sum(1, 2)(3, 4)()</code> → ${H.c('g', '10')}; <code>+sum(10)(5)</code> → ${H.c('g', '15')}.</p>`,
+    brute: { why: `<p>A global running total (<code>let total = 0</code> outside) works once, but the second expression continues from the old total, and reusing a partial chain corrupts the state.</p>`, code: `
+let total = 0;
+function sumGlobal(x) {
+  if (x === undefined) { const t = total; return t; }  // never resets; partials share state
+  total += x;
+  return sumGlobal;
+}
+` },
+    mcq: { q: 'Why does <code>+sum(1)(2)</code> produce a number when sum returns a function?', options: ['Unary + converts the function to a primitive by calling its valueOf (which we override)', 'Functions are numbers in JS', 'The + operator calls the function', 'It throws a TypeError'], answer: 0, explain: 'ToPrimitive calls valueOf/toString; returning the running total from valueOf makes the conversion yield it.' },
+    hints: [`<p>Hint 1: each call returns a NEW function closing over the running total so far (no shared mutable state).</p>`, `<p>Hint 2: inner function: if called with no args → return total; else return sum(total + Σargs).</p>`, `<p>Hint 3: attach <code>valueOf</code>/<code>toString</code> (or <code>Symbol.toPrimitive</code>) returning total for the bonus.</p>`],
+    solution: {
+      approach: `<p>Immutable accumulation: <code>sum(...xs)</code> computes a total and returns a function that either returns it (empty call) or recurses with a bigger total. Conversion hooks expose the total for coercion.</p>`,
+      code: { lang: 'js', run: true, code: `
+function sum(...xs) {
+  const total = xs.reduce((s, x) => s + x, 0);
+  const next = (...more) => (more.length ? sum(total, ...more) : total);
+  next[Symbol.toPrimitive] = () => total;   // used by +, ==, template strings
+  return next;
+}
+
+console.log(sum(1)(2)(3)());        // 6
+console.log(sum(1, 2)(3, 4)());     // 10
+console.log(sum(5)());              // 5
+const s = sum(1);
+console.log(s(2)(), s(10)());       // 3 11 (partials independent)
+console.log(+sum(10)(5), sum(1)(2) == 3, String(sum(4)(4))); // 15 true '8'
+` },
+      complexity: `<p>O(args) per call; each call allocates one small closure.</p>`,
+      followUps: ['Generalise: <code>infiniteCurry(fn, seed)</code> for any reducer.', 'Explain the difference between valueOf and Symbol.toPrimitive.']
+    }
+  });
+
+  practice.push({
+    title: 'promisify(fn) for Node-style callbacks', level: 'Medium', tags: ['promise', 'callbacks', 'polyfill'], companies: ['Google', 'Postman', 'BrowserStack'],
+    statement: `<p>Implement <code>promisify(fn)</code>: <code>fn</code> takes normal arguments followed by a callback <code>(err, value)</code>. The returned function takes the same normal arguments and returns a promise that rejects with <code>err</code> if it is truthy, otherwise fulfills with <code>value</code>. Preserve <code>this</code>.</p>`,
+    constraints: `The callback may be called synchronously or asynchronously; fn may also throw synchronously (reject in that case).`,
+    example: `<p><code>function div(a, b, cb) { b === 0 ? cb(new Error('div by 0')) : cb(null, a / b); }</code><br><code>promisify(div)(6, 3)</code> → ${H.c('g', '2')}; <code>promisify(div)(1, 0)</code> → ${H.c('r', 'rejects: div by 0')}.</p>`,
+    brute: { why: `<p>Wrapping each callback API by hand (writing <code>new Promise</code> around every function) is repetitive and easy to get wrong (forgetting <code>this</code>, forgetting to reject when fn throws).</p>`, code: `
+function divAsync(a, b) {
+  return new Promise((res, rej) => div(a, b, (e, v) => (e ? rej(e) : res(v)))); // repeated for EVERY API
+}
+function div(a, b, cb) { b === 0 ? cb(new Error('div by 0')) : cb(null, a / b); }
+` },
+    mcq: { q: 'fn throws synchronously before calling the callback. What should the promise do?', options: ['Reject with the thrown error', 'Stay pending forever', 'Crash the process', 'Fulfill with undefined'], answer: 0, explain: 'The Promise executor catches synchronous throws and rejects — another reason to do the call inside the executor.' },
+    hints: [`<p>Hint 1: return a regular function that returns <code>new Promise((resolve, reject) =&gt; ...)</code>.</p>`, `<p>Hint 2: call <code>fn.call(this, ...args, (err, value) =&gt; err ? reject(err) : resolve(value))</code> inside the executor.</p>`, `<p>Hint 3: the executor automatically converts a synchronous throw into a rejection.</p>`],
+    solution: {
+      approach: `<p>Append an error-first callback that settles the promise; run fn inside the executor so sync throws become rejections. Node ships this as <code>util.promisify</code>.</p>`,
+      code: { lang: 'js', run: true, code: `
+function promisify(fn) {
+  return function (...args) {
+    return new Promise((resolve, reject) => {
+      fn.call(this, ...args, (err, value) => (err ? reject(err) : resolve(value)));
+    });
+  };
+}
+
+function div(a, b, cb) { setTimeout(() => (b === 0 ? cb(new Error('div by 0')) : cb(null, a / b)), 5); }
+const divP = promisify(div);
+divP(6, 3).then((v) => console.log('6/3 =', v));                     // 2
+divP(1, 0).catch((e) => console.log('error:', e.message));           // div by 0
+const db = { name: 'users', find(id, cb) { cb(null, this.name + '#' + id); } };
+db.findP = promisify(db.find);
+db.findP(7).then((v) => console.log(v));                             // users#7
+promisify(() => { throw new Error('sync boom'); })().catch((e) => console.log(e.message));
+` },
+      complexity: `<p>O(1) overhead per call.</p>`,
+      followUps: ['Write the reverse: callbackify(asyncFn).', 'Support callbacks that pass multiple values.']
+    }
+  });
+
+  practice.push({
+    title: 'Promise pool: run async tasks with a concurrency limit', level: 'Hard', tags: ['promise', 'concurrency', 'queue'], companies: ['Google', 'Netflix', 'Stripe', 'Atlassian'],
+    statement: `<p>Implement <code>promisePool(tasks, limit)</code> where <code>tasks</code> is an array of functions returning promises. Run at most <code>limit</code> tasks at once; as soon as one finishes, start the next. Resolve with results in <b>input order</b>; reject on the first failure (and start no new tasks after that).</p>`,
+    constraints: `1 ≤ limit ≤ 100, up to 10<sup>4</sup> tasks. Tasks must be started lazily (do not call a task function before a slot is free).`,
+    example: `<p>tasks take [300, 100, 200, 50] ms, limit 2.<br>t=0 start #0, #1 · t=100 #1 done → start #2 · t=300 #0 done → start #3 · #2 done at 300 · #3 done at 350.<br>Result ${H.c('g', '[r0, r1, r2, r3]')} after ${H.c('g', '~350 ms')} (vs 650 sequential).</p>`,
+    brute: { why: `<p><code>Promise.all(tasks.map(t =&gt; t()))</code> starts <b>everything</b> at once (10 000 requests → rate limits, socket exhaustion). Batching in fixed chunks of <code>limit</code> is better but wastes time: each batch waits for its slowest task while free slots sit idle.</p>`, code: `
+async function batches(tasks, limit) {
+  const out = [];
+  for (let i = 0; i < tasks.length; i += limit) {
+    out.push(...(await Promise.all(tasks.slice(i, i + limit).map((t) => t())))); // idle slots
+  }
+  return out;
+}
+` },
+    mcq: { q: 'What is the key difference between a pool and fixed batches?', options: ['A pool refills a slot the moment any task finishes; batches wait for the whole batch', 'A pool runs tasks sequentially', 'Batches preserve order and pools do not', 'There is no difference'], answer: 0, explain: 'Pools keep exactly <code>limit</code> tasks in flight, so total time is close to optimal.' },
+    hints: [`<p>Hint 1: think "<code>limit</code> workers pulling from a shared index". Each worker loops: take next index, await the task, store result, repeat.</p>`, `<p>Hint 2: <code>let next = 0</code> shared; a worker does <code>const i = next++</code> — safe because JS is single-threaded between awaits.</p>`, `<p>Hint 3: start <code>Math.min(limit, n)</code> workers and <code>await Promise.all(workers)</code>; set a <code>failed</code> flag so workers stop taking new tasks after an error.</p>`],
+    solution: {
+      approach: `<p>Worker-loop pattern: <code>limit</code> async workers share a cursor into the task list. Each pulls the next index, runs it, writes <code>results[i]</code>. Promise.all over the workers propagates the first error; a flag prevents new starts after failure.</p>`,
+      code: { lang: 'js', run: true, code: `
+async function promisePool(tasks, limit) {
+  const results = new Array(tasks.length);
+  let next = 0, failed = false;
+  async function worker() {
+    while (!failed && next < tasks.length) {
+      const i = next++;                         // claim an index (no race: single thread)
+      try {
+        results[i] = await tasks[i]();
+      } catch (e) {
+        failed = true;
+        throw e;
+      }
+    }
+  }
+  const workers = Array.from({ length: Math.min(limit, tasks.length) }, worker);
+  await Promise.all(workers);
+  return results;
+}
+
+const started = [];
+const t0 = Date.now();
+const task = (ms, v) => () => { started.push(v + '@' + Math.round((Date.now() - t0) / 50) * 50); return new Promise((r) => setTimeout(() => r(v), ms)); };
+promisePool([task(300, 'r0'), task(100, 'r1'), task(200, 'r2'), task(50, 'r3')], 2).then((res) => {
+  console.log(res);                             // [ 'r0', 'r1', 'r2', 'r3' ]
+  console.log(started);                         // r0@0 r1@0 r2@100 r3@300
+  console.log('total ~', Math.round((Date.now() - t0) / 50) * 50, 'ms'); // ~350
+});
+promisePool([() => Promise.reject(new Error('task failed'))], 3).catch((e) => console.log(e.message));
+` },
+      dry: { head: ['time', 'event', 'in flight', 'next index'], rows: [['0', 'workers start #0, #1', '#0, #1', '2'], ['100', '#1 done → start #2', '#0, #2', '3'], ['300', '#0 done → start #3; #2 done', '#3', '4'], ['350', '#3 done; workers exit', '—', '4']] },
+      complexity: `<p>Total time ≈ optimal greedy schedule; O(n) results memory; O(limit) concurrent promises.</p>`,
+      followUps: ['Return allSettled-style results instead of failing fast.', 'Add retries with backoff per task.', 'Make it an async iterator yielding results as they complete.']
+    }
+  });
+
+  practice.push({
+    title: 'Build a minimal Promise (MyPromise) with then-chaining', level: 'Hard', tags: ['promise', 'microtask', 'design'], companies: ['Meta', 'Google', 'Uber', 'Atlassian'],
+    statement: `<p>Implement <code>class MyPromise</code> with <code>constructor(executor)</code>, <code>then(onFulfilled, onRejected)</code>, <code>catch</code>, and static <code>resolve</code>/<code>reject</code>. Requirements: settles once; handlers run <b>asynchronously</b> (as microtasks); <code>then</code> returns a new MyPromise resolved with the handler's return value; if a handler returns a promise/thenable, adopt its state; if it throws, reject; missing handlers pass values/errors through.</p>`,
+    constraints: `Use <code>queueMicrotask</code> for scheduling. Do not use the native Promise inside the class.`,
+    example: `<p><code>new MyPromise(r =&gt; r(1)).then(x =&gt; x + 1).then(x =&gt; { throw x * 10; }).catch(e =&gt; e + 5).then(console.log)</code> → ${H.c('g', '25')}, logged asynchronously (after synchronous code).</p>`,
+    brute: { why: `<p>A naive version calls handlers <b>synchronously</b> when the promise is already resolved and stores a single callback. This breaks ordering guarantees (code after <code>then</code> runs later than the handler), supports only one <code>then</code> per promise, and has no chaining.</p>`, code: `
+class NaivePromise {
+  constructor(ex) { this.cb = null; ex((v) => { this.v = v; if (this.cb) this.cb(v); }); }
+  then(cb) { if ('v' in this) cb(this.v); else this.cb = cb; } // sync call, one handler, no chaining
+}
+` },
+    mcq: { q: 'Why must then-handlers run asynchronously even for an already-resolved promise?', options: ['So behaviour is consistent: code after .then() always runs before the handler (no "sometimes sync, sometimes async" bugs)', 'To make promises faster', 'Because queueMicrotask is required by Node', 'They don\'t have to'], answer: 0, explain: 'The spec guarantees asynchronous handler execution, avoiding the "Zalgo" problem of APIs that are sometimes sync.' },
+    hints: [`<p>Hint 1: state machine: 'pending' | 'fulfilled' | 'rejected', plus value and a list of pending handler records.</p>`, `<p>Hint 2: <code>then</code> returns <code>new MyPromise((res, rej) =&gt; ...)</code> and registers a record that, when run, calls the handler in try/catch and resolves the child with the result (or rejects).</p>`, `<p>Hint 3: in resolve, if the value is a thenable (object/function with a then method), call <code>value.then(resolve, reject)</code> instead of fulfilling; guard with a "called" flag so it settles once.</p>`],
+    solution: {
+      approach: `<p>Small state machine. <code>then</code> creates a child promise and a "reaction" that runs via <code>queueMicrotask</code> when the parent settles. Resolution procedure: rejects self-resolution, adopts thenables, otherwise fulfills.</p>`,
+      code: { lang: 'js', run: true, code: `
+class MyPromise {
+  #state = 'pending'; #value; #reactions = [];
+  constructor(executor) {
+    let called = false;
+    const resolve = (v) => { if (!called) { called = true; this.#resolveWith(v); } };
+    const reject = (e) => { if (!called) { called = true; this.#settle('rejected', e); } };
+    try { executor(resolve, reject); } catch (e) { reject(e); }
+  }
+  #resolveWith(v) {
+    if (v === this) return this.#settle('rejected', new TypeError('cannot resolve with itself'));
+    if (v !== null && (typeof v === 'object' || typeof v === 'function')) {
+      let then;
+      try { then = v.then; } catch (e) { return this.#settle('rejected', e); }
+      if (typeof then === 'function') {            // adopt the thenable's state
+        let done = false;
+        try {
+          then.call(v, (x) => { if (!done) { done = true; this.#resolveWith(x); } },
+                       (e) => { if (!done) { done = true; this.#settle('rejected', e); } });
+        } catch (e) { if (!done) { done = true; this.#settle('rejected', e); } }
+        return;
+      }
+    }
+    this.#settle('fulfilled', v);
+  }
+  #settle(state, value) {
+    if (this.#state !== 'pending') return;
+    this.#state = state; this.#value = value;
+    this.#reactions.forEach((r) => queueMicrotask(r));
+    this.#reactions = [];
+  }
+  then(onFul, onRej) {
+    return new MyPromise((resolve, reject) => {
+      const reaction = () => {
+        const handler = this.#state === 'fulfilled' ? onFul : onRej;
+        if (typeof handler !== 'function') {        // pass-through
+          return this.#state === 'fulfilled' ? resolve(this.#value) : reject(this.#value);
+        }
+        try { resolve(handler(this.#value)); } catch (e) { reject(e); }
+      };
+      if (this.#state === 'pending') this.#reactions.push(reaction);
+      else queueMicrotask(reaction);
+    });
+  }
+  catch(onRej) { return this.then(undefined, onRej); }
+  static resolve(v) { return v instanceof MyPromise ? v : new MyPromise((r) => r(v)); }
+  static reject(e) { return new MyPromise((_, r) => r(e)); }
+}
+
+new MyPromise((r) => r(1))
+  .then((x) => x + 1)
+  .then((x) => { throw x * 10; })
+  .catch((e) => e + 5)
+  .then((v) => console.log('chain ->', v));        // 25
+new MyPromise((r) => setTimeout(() => r('later'), 5))
+  .then((v) => new MyPromise((r) => r(v + '!')))   // adopt a returned promise
+  .then((v) => console.log(v));                    // later!
+MyPromise.reject(new Error('x')).then((v) => v).catch((e) => console.log('caught', e.message));
+console.log('sync first');                         // printed before every handler
+` },
+      complexity: `<p>then: O(1); settle: O(h) for h registered handlers. Memory O(h) until settlement.</p>`,
+      followUps: ['Add finally, all, race.', 'Pass the Promises/A+ test suite (handles thenable edge cases).', 'Add unhandled-rejection tracking.']
+    }
+  });
+
+  practice.push({
+    title: 'curry with placeholders (lodash-style)', level: 'Hard', tags: ['currying', 'closure', 'functional'], companies: ['Flipkart', 'Atlassian', 'Sprinklr'],
+    statement: `<p>Implement <code>curry(fn)</code> with a placeholder <code>curry.placeholder</code> (call it <code>_</code>). Placeholders reserve a position to be filled by later calls. The function runs when the first <code>fn.length</code> positions are filled with real (non-placeholder) values.</p>`,
+    constraints: `fn.length ≤ 10. Later arguments first fill earlier placeholders (left to right), then append.`,
+    example: `<p><code>const f = curry((a, b, c) =&gt; [a, b, c]); const _ = curry.placeholder;</code><br><code>f(_, 2)(1, 3)</code> → ${H.c('g', '[1, 2, 3]')}; <code>f(_, _, 3)(1)(2)</code> → ${H.c('g', '[1, 2, 3]')}; <code>f(1, _, 3)(_)(2)</code> → ${H.c('g', '[1, 2, 3]')}.</p>`,
+    brute: { why: `<p>The plain curry just concatenates arguments; a placeholder object would be counted as a real argument, so <code>f(_, 2)(1)</code> would call fn too early with the placeholder object inside.</p>`, code: `
+function plainCurry(fn) {
+  return function c(...a) { return a.length >= fn.length ? fn(...a) : (...b) => c(...a, ...b); };
+}
+` },
+    mcq: { q: 'Collected args are <code>[_, 2]</code> and the next call is <code>(1, 3)</code>. What is the merged list?', options: ['<code>[1, 2, 3]</code>', '<code>[_, 2, 1, 3]</code>', '<code>[1, 3, 2]</code>', '<code>[2, 1, 3]</code>'], answer: 0, explain: 'The 1 fills the first placeholder; leftover 3 is appended.' },
+    hints: [`<p>Hint 1: keep one args array. A merge step walks it: replace each placeholder with the next new arg if any.</p>`, `<p>Hint 2: after filling placeholders, append the remaining new args.</p>`, `<p>Hint 3: ready when the first fn.length slots exist and none is the placeholder. Otherwise return a function that merges into a <b>copy</b>.</p>`],
+    solution: {
+      approach: `<p>Immutable merge of the stored argument list with each new call (fill holes first, then append), and a readiness check that ignores placeholders.</p>`,
+      code: { lang: 'js', run: true, code: `
+function curry(fn) {
+  const _ = curry.placeholder;
+  const arity = fn.length;
+  function merge(prev, next) {
+    const out = prev.slice();
+    let j = 0;
+    for (let i = 0; i < out.length && j < next.length; i++) if (out[i] === _) out[i] = next[j++];
+    while (j < next.length) out.push(next[j++]);
+    return out;
+  }
+  const ready = (args) => args.length >= arity && args.slice(0, arity).every((x) => x !== _);
+  function make(args) {
+    return function (...more) {
+      const all = merge(args, more);
+      return ready(all) ? fn.apply(this, all.slice(0, arity)) : make(all);
+    };
+  }
+  return make([]);
+}
+curry.placeholder = Symbol('curry placeholder');
+
+const _ = curry.placeholder;
+const f = curry((a, b, c) => [a, b, c]);
+console.log(f(_, 2)(1, 3));          // [1, 2, 3]
+console.log(f(_, _, 3)(1)(2));       // [1, 2, 3]
+console.log(f(1, _, 3)(_)(2));       // [1, 2, 3]
+console.log(f(1)(2)(3), f(1, 2, 3)); // [1, 2, 3] [1, 2, 3]
+` },
+      complexity: `<p>O(k) per call for k collected args (k ≤ 10).</p>`,
+      followUps: ['Support a custom arity parameter.', 'Implement partialRight.']
+    }
+  });
+
+  practice.push({
+    title: 'takeLatest: race-condition-safe async search', level: 'Hard', tags: ['async', 'debounce', 'abort'], companies: ['Airbnb', 'Swiggy', 'Microsoft', 'Notion'],
+    statement: `<p>A search box calls <code>fetchResults(query)</code> on every keystroke. Responses can arrive <b>out of order</b> (a slow response for "re" can arrive after the fast one for "react" and overwrite the UI). Implement <code>takeLatest(asyncFn)</code>: the wrapper passes an <code>AbortSignal</code> to asyncFn, aborts the previous in-flight call when a new one starts, and only the <b>latest</b> call's promise ever fulfills; superseded calls reject with an <code>AbortError</code>.</p>`,
+    constraints: `asyncFn(signal, ...args) returns a promise and may or may not respect the signal — results of superseded calls must be ignored either way.`,
+    example: `<p>Calls: "re" (takes 50 ms), then "react" (takes 10 ms).<br>Without protection the UI ends showing ${H.c('r', '"re" results')}. With takeLatest: "react" resolves at 10 ms → UI shows ${H.c('g', '"react"')}; "re" ${H.c('r', 'rejects AbortError')}.</p>`,
+    brute: { why: `<p>Just debouncing reduces the number of requests but does <b>not</b> fix ordering — two requests can still overlap if the user pauses, types again, and the network is uneven. You need to discard stale responses.</p>`, code: `
+let shown = null;
+async function naiveSearch(q, fetchResults) {
+  shown = await fetchResults(q);   // whichever finishes LAST wins, not the latest query
+}
+` },
+    mcq: { q: 'Besides aborting, what guarantees a stale response is never applied?', options: ['A call id/counter: only apply the result if it belongs to the latest call', 'Sorting the responses by length', 'Using Promise.all', 'Retrying the request'], answer: 0, explain: 'Some APIs ignore abort signals; comparing a monotonically increasing call id is a cheap, reliable guard.' },
+    hints: [`<p>Hint 1: keep <code>controller</code> (current AbortController) and <code>latestId</code> in a closure.</p>`, `<p>Hint 2: on each call: abort the previous controller, create a new one, increment id, call asyncFn(signal, ...args).</p>`, `<p>Hint 3: after await: if id !== latestId, throw a DOMException-like AbortError; else return the result. Combine with debounce for fewer requests.</p>`],
+    solution: {
+      approach: `<p>"Switch to latest" (like RxJS <code>switchMap</code> / redux-saga <code>takeLatest</code>): abort the previous request for efficiency, and use a monotonically increasing id for correctness.</p>`,
+      code: { lang: 'js', run: true, code: `
+function takeLatest(asyncFn) {
+  let controller = null, latestId = 0;
+  return async function (...args) {
+    if (controller) controller.abort();           // cancel previous in-flight work
+    controller = new AbortController();
+    const id = ++latestId;
+    const result = await asyncFn(controller.signal, ...args);
+    if (id !== latestId) {                        // a newer call started meanwhile
+      const err = new Error('superseded'); err.name = 'AbortError';
+      throw err;
+    }
+    return result;
+  };
+}
+
+// fake API that IGNORES the signal and has uneven latency
+const latency = { re: 50, react: 10 };
+const fetchResults = (signal, q) => new Promise((r) => setTimeout(() => r(q + ' results'), latency[q]));
+
+let ui = '(empty)';
+const search = takeLatest(fetchResults);
+search('re').then((r) => { ui = r; }).catch((e) => console.log('re ->', e.name));
+search('react').then((r) => { ui = r; });
+setTimeout(() => console.log('UI shows:', ui), 80); // UI shows: react results
+` },
+      complexity: `<p>O(1) bookkeeping per call; at most one request matters at a time.</p>`,
+      followUps: ['Add debounce in front and a cache of recent queries.', 'Implement takeEvery and takeLeading (ignore new calls while one is running).']
+    }
+  });
+
+  /* ================= QUIZ ================= */
+  quiz.push(
+    { q: 'What does this print? <code>console.log(1); setTimeout(() =&gt; console.log(2)); Promise.resolve().then(() =&gt; console.log(3)); console.log(4);</code>', options: ['1 4 3 2', '1 2 3 4', '1 4 2 3', '1 3 4 2'], answer: 0, explain: 'Synchronous lines first (1, 4), then the microtask (3), then the macrotask timer (2).' },
+    { q: 'In a <code>myCall</code> polyfill, why attach the function under a <code>Symbol</code> key instead of <code>ctx.fn</code>?', options: ['A Symbol can never clash with (and overwrite) an existing property of ctx', 'Symbols make the call faster', 'Strings cannot hold functions', 'Symbols bind this automatically'], answer: 0, explain: 'If ctx already had a property called fn it would be overwritten and then deleted. A fresh Symbol is guaranteed unique.' },
+    { q: '<code>const B = Point.bind({ x: 1 }); const p = new B();</code> — what is <code>this</code> inside Point?', options: ['A brand-new object (new overrides the bound this)', '<code>{ x: 1 }</code>', '<code>undefined</code>', 'globalThis'], answer: 0, explain: 'new binding has the highest priority; a bound function used as a constructor ignores its bound this.' },
+    { q: 'What does <code>[1, 2, 3].reduce((a, x) =&gt; a + x, undefined)</code> return?', options: ['NaN', '6', 'TypeError', 'undefined'], answer: 0, explain: 'undefined is a real initial value: undefined + 1 = NaN, and NaN stays NaN. Only omitting the argument makes reduce start from the first element.' },
+    { q: 'Promise.all receives three promises; the one at index 2 rejects first at 10 ms, the others fulfill at 50 ms. What happens?', options: ['The result rejects at ~10 ms; the other two still run to completion but their results are ignored', 'It waits 50 ms and then rejects', 'It fulfills with two values and one error', 'It cancels the other two promises'], answer: 0, explain: 'all is fail-fast. Promises cannot be cancelled, so the other operations continue (use AbortController to stop real work).' },
+    { q: 'Which combinator should a dashboard use to show every widget that loaded, even if some APIs fail?', options: ['Promise.allSettled', 'Promise.all', 'Promise.race', 'Promise.any'], answer: 0, explain: 'allSettled never rejects and reports status per input, so partial success can be rendered.' },
+    { q: 'A search box should call the API only after the user stops typing for 300 ms. Which tool?', options: ['debounce(fn, 300)', 'throttle(fn, 300)', 'setInterval(fn, 300)', 'requestAnimationFrame'], answer: 0, explain: 'Debounce waits for a quiet period; throttle would fire every 300 ms during typing.' },
+    { q: 'What is the main bug in a debounce whose wrapper is an arrow function: <code>return (...a) =&gt; { clearTimeout(t); t = setTimeout(() =&gt; fn.apply(this, a), w); }</code>?', options: ['<code>this</code> is taken from where debounce was defined, not from the object the debounced method is called on', 'clearTimeout cannot take undefined', 'Rest parameters are not allowed in arrows', 'Nothing — it is correct'], answer: 0, explain: 'Arrow functions have lexical this. Use a regular function wrapper so obj.debounced() passes obj as this.' },
+    { q: '<code>JSON.parse(JSON.stringify({ d: new Date(0), u: undefined, n: NaN }))</code> gives…', options: ['<code>{ d: "1970-01-01T00:00:00.000Z", n: null }</code>', 'An exact copy', '<code>{ d: Date, u: undefined, n: NaN }</code>', 'A TypeError'], answer: 0, explain: 'Dates become ISO strings, undefined-valued keys are dropped, NaN becomes null.' },
+    { q: 'In a deepClone with a WeakMap <code>seen</code>, what happens if you call <code>seen.set(original, copy)</code> AFTER copying the children?', options: ['Cyclic objects recurse forever (stack overflow)', 'Shared references are preserved', 'Nothing changes', 'Dates are lost'], answer: 0, explain: 'A child pointing back to the parent is not found in seen yet, so recursion re-enters the parent endlessly.' },
+    { q: 'With <code>const c = curry((a, b, c) =&gt; a + b + c)</code>, what is <code>c(1)(2)</code>?', options: ['A function waiting for one more argument', '3', 'NaN', 'TypeError'], answer: 0, explain: 'Only 2 of fn.length = 3 arguments have arrived, so curry returns another function.' },
+    { q: 'Inside <code>emit</code>, a listener removes itself with <code>off</code>. Why should emit iterate over <code>[...listeners]</code>?', options: ['Removing during iteration shifts the live array and the next listener would be skipped', 'Spread is faster than a for loop', 'To deduplicate listeners', 'To call listeners in reverse order'], answer: 0, explain: 'A snapshot makes the set of listeners called by one emit fixed at the moment emit started.' },
+    { q: 'Exponential backoff with base 100 ms and cap 1000 ms: what is the cap for the 5th retry (attempt index 4)?', options: ['1000 ms (100 × 2⁴ = 1600, capped)', '1600 ms', '500 ms', '400 ms'], answer: 0, explain: 'min(1000, 100 × 16) = 1000. With full jitter the actual wait is random in [0, 1000].' },
+    { q: 'Which retry policy is correct for an HTTP 404 from a GET request?', options: ['Do not retry; fail immediately', 'Retry with backoff up to 5 times', 'Retry immediately once', 'Retry forever until it succeeds'], answer: 0, explain: '404 is a permanent client-side condition; retrying wastes time and load. Retry 408/429/5xx and network errors.' },
+    { q: 'In a Map-based LRU, how do you find the least recently used key in O(1)?', options: ['<code>map.keys().next().value</code> (first key in insertion order)', 'Sort the keys by a timestamp', '<code>[...map.keys()].pop()</code>', 'Maps have no order, so you cannot'], answer: 0, explain: 'Map iterates in insertion order; touching a key re-inserts it at the end, so the first key is the least recently used.' },
+    { q: 'What does <code>[\'1\', \'2\', \'3\'].map(parseInt)</code> return?', options: ['[1, NaN, NaN]', '[1, 2, 3]', '[NaN, NaN, NaN]', '["1", "2", "3"]'], answer: 0, explain: 'map passes (value, index): parseInt("1", 0) → 1 (radix 0 means auto), parseInt("2", 1) → NaN (invalid radix), parseInt("3", 2) → NaN (3 is not a binary digit).' },
+    { q: 'Output? <code>for (var i = 0; i &lt; 3; i++) setTimeout(() =&gt; console.log(i));</code>', options: ['3 3 3', '0 1 2', '2 2 2', 'undefined ×3'], answer: 0, explain: 'var creates one function-scoped binding; all callbacks read it after the loop finished, when i is 3.' },
+    { q: 'What is <code>[] + {}</code> in JavaScript?', options: ['"[object Object]"', '0', '"{}"', 'NaN'], answer: 0, explain: '[] becomes "" and {} becomes "[object Object]"; with a string involved, + concatenates.' }
+  );
+
+  /* ================= INTERVIEW ================= */
+  interview.push(
+    { q: 'How do you approach a 60–90 minute machine-coding round (e.g. "build a debounced autocomplete" or "implement Promise.all + an event emitter")?', level: 'B', a: `<p><b>1. Clarify (5 min):</b> inputs/outputs, edge cases, which browser APIs are allowed, whether tests are expected. Restate the requirements in your own words. <b>2. Plan (5 min):</b> list the functions/classes and their state; sketch the data structures (Map of listeners, results array + counter, timer id…). <b>3. Build the happy path first</b> and make it run end to end, then <b>4. layer edge cases</b> (empty input, errors, this-binding, cleanup/cancel). <b>5. Test out loud</b> with small cases, including one failure case. Keep code readable: small helpers, good names, comments for non-obvious choices. Finally, <b>6. mention trade-offs and extensions</b> you would add with more time (concurrency limits, cancellation, accessibility, performance). Interviewers grade working code + communication + edge-case awareness more than cleverness.</p>`, followUps: ['How do you recover if you realise your design is wrong halfway?', 'How much time do you spend on tests?'] },
+    { q: 'Explain how your <code>Function.prototype.myCall</code> polyfill works and where it differs from the native call.', level: 'I', a: `<p>It uses the implicit-binding rule: a function called as <code>obj.method()</code> gets <code>this === obj</code>. So we temporarily store the function on the context under a unique <b>Symbol</b> key, call it as a method with the spread arguments, and delete the key in a <code>finally</code> block. <code>null</code>/<code>undefined</code> contexts become <code>globalThis</code>; primitives are boxed with <code>Object(ctx)</code>. Differences from native: strict-mode functions natively receive primitives/null as-is (we box or substitute); frozen or non-extensible objects reject the temporary property; Proxies can observe the set/delete; and the property juggling changes hidden classes (slower). A robust version falls back to <code>Reflect.apply</code>, which is the native mechanism.</p>`, followUps: ['Implement apply in terms of your call.', 'Why use finally?', 'How would you do this in ES5 without Symbol or spread?'] },
+    { q: 'Walk me through a correct Promise.all polyfill and its edge cases.', level: 'I', a: `<p>Return a new promise. Convert the iterable with <code>Array.from</code>, create <code>results = new Array(n)</code> and <code>remaining = n</code>. If n is 0, resolve <code>[]</code> immediately. For each item i, wrap with <code>Promise.resolve(item)</code> (so plain values and thenables work), and on fulfillment write <code>results[i]</code> (input order, not push) and decrement; when remaining hits 0 resolve with results. Pass the outer <code>reject</code> as the rejection handler — the first rejection wins, later settlements are no-ops because a promise settles once. Edge cases: empty input, non-promises, order, not using <code>results.length</code> as the counter, and that "fail-fast" does not cancel other work (use AbortController). The spec additionally guards each element's resolve with an alreadyCalled flag against hostile thenables.</p>`, followUps: ['Now implement allSettled and any.', 'Add a concurrency limit.', 'What happens to unhandled rejections from the other promises?'] },
+    { q: 'Debounce vs throttle: explain the difference with a timeline, and when you would use each.', level: 'B', a: `<p>Both rate-limit a function. <b>Debounce</b> delays the call until events stop for <code>wait</code> ms — each event resets a timer, so a continuous stream never fires until it pauses. Use for search-as-you-type, autosave, resize-end, validation. <b>Throttle</b> guarantees at most one call per <code>wait</code> ms while events continue, typically with a leading call immediately and a trailing call with the latest args. Use for scroll/drag/mousemove handlers, progress reporting, analytics pings. Timeline with wait 100 and events at 0, 30, 60: debounce runs once at 160; throttle runs at 0 and at 100 (trailing, args from 60). For visual updates, a requestAnimationFrame throttle is often better; for "is element visible" checks, IntersectionObserver beats throttled scroll handlers.</p>`, followUps: ['Implement throttle using debounce with maxWait.', 'How do you test these without real waiting?', 'What goes wrong if you create the debounced function inside a React render?'] },
+    { q: 'How do you deep-clone an object in JavaScript today, and when would you write your own?', level: 'I', a: `<p>Default: <code>structuredClone(value)</code> — built into browsers and Node 17+, handles cycles, Date, Map, Set, RegExp, typed arrays, Blobs. Limits: throws on functions and DOM nodes, and class instances come back as plain objects (prototype lost), getters are evaluated into values. <code>JSON.parse(JSON.stringify(x))</code> is only OK for plain JSON data — it turns Dates into strings, drops undefined/functions/symbols, converts NaN/Infinity to null and throws on cycles/BigInt. I write my own (or use lodash <code>cloneDeep</code>) when I need to preserve prototypes/class instances, copy symbol keys or property descriptors, customise behaviour (skip certain keys), or clone huge/deep structures iteratively. The core of my own: primitives returned as-is, a WeakMap of original → clone registered before recursing (cycles + shared refs), and type branches.</p>`, followUps: ['How would you make it iterative?', 'Why can\'t functions be cloned by structuredClone?', 'How do immutable updates avoid deep cloning in React?'] },
+    { q: 'Design a deepEqual. What are the tricky cases?', level: 'A', a: `<p>Start with <code>Object.is(a, b)</code> (handles same reference and NaN; decide whether +0/-0 should be equal — most data libraries say yes). If either is not an object (or is null) → false. Check same "kind": arrays vs plain objects, same prototype, and special types: Date by <code>getTime()</code>, RegExp by source+flags, Map/Set by size and entries (Set with object members is O(n²) unless you canonicalise), typed arrays by bytes. Then compare own key counts and recurse key by key (order-independent, which is why JSON-string comparison is wrong). For cycles, keep a memo of pairs being compared (a → set of b's) and assume true if the pair is already in progress. Also consider sparse arrays (holes vs undefined), symbol keys, and non-enumerable props. For performance, short-circuit on first difference and prefer immutability so most comparisons are reference checks.</p>`, followUps: ['Why does React use shallow comparison?', 'How would you produce a diff instead of a boolean?'] },
+    { q: 'What is currying, how is it different from partial application, and where is it actually useful?', level: 'I', a: `<p><b>Currying</b> transforms f(a, b, c) into f(a)(b)(c): a chain of unary functions. <b>Partial application</b> fixes some arguments now and returns a function of the rest (<code>fn.bind(null, a)</code> does this). The common JS <code>curry</code> helper is really "auto-partial": it collects arguments across calls in any grouping until <code>fn.length</code> are available, then calls fn. Implementation: closure + immutable concatenation <code>[...args, ...more]</code> so partials are reusable. Useful for building specialised functions from general ones (loggers with a fixed level, validators with fixed bounds), for point-free pipelines with pipe/compose, and in FP libraries (Ramda). Pitfalls: <code>fn.length</code> ignores defaults and rest parameters, readability suffers when overused, and each partial allocates closures.</p>`, followUps: ['Implement placeholders.', 'Explain sum(1)(2)(3)() and the valueOf trick.'] },
+    { q: 'Design an EventEmitter. Which edge cases would you test?', level: 'I', a: `<p>State: <code>Map&lt;eventName, listener[]&gt;</code>. <code>on</code> pushes and returns an unsubscribe closure; <code>off</code> finds the index (guarding −1, because <code>splice(-1, 1)</code> removes the last item!) and splices; <code>once</code> wraps the listener in a function that removes itself <b>before</b> calling it, tagging <code>wrapper.original = fn</code> so <code>off(name, fn)</code> works; <code>emit</code> iterates a <b>snapshot</b> copy so listeners added/removed during emit do not affect it, and returns whether anyone listened. Tests: order of calls, same function subscribed twice, off of an unknown function, once + re-entrant emit, removal during emit, errors thrown by a listener (propagate like Node or isolate with try/catch), the special 'error' event, memory (delete empty lists, unsubscribe on teardown), and emit with multiple args.</p>`, followUps: ['Make emit async-aware.', 'Add wildcard listeners.', 'How does the browser EventTarget differ?'] },
+    { q: 'Implement a retry helper. How do you choose what to retry and how long to wait?', level: 'A', a: `<p>An async loop: try <code>await fn()</code>; on failure, if attempts are exhausted or the error is not retryable, rethrow the last error; otherwise wait <code>random(0, min(maxDelay, base × 2^attempt))</code> (exponential backoff with full jitter) and loop. Retryable: network errors, 408, 429, 500/502/503/504; not retryable: other 4xx, auth failures, validation errors, user aborts. Honour <code>Retry-After</code>. Accept an AbortSignal and an overall deadline so the loop stops when the user leaves or time runs out. Safety: only retry idempotent operations, or use idempotency keys for writes like payments. At system level avoid retry amplification (retry at one layer, retry budgets) and add a circuit breaker when the dependency is hard down. Make sleep and random injectable for deterministic tests.</p>`, followUps: ['Why does jitter matter?', 'What is retry amplification?', 'How do LLM SDKs handle 429s?'] },
+    { q: 'Implement an LRU cache in JavaScript. Why does the Map trick work, and why might an interviewer ask for a linked list anyway?', level: 'I', a: `<p>JS <code>Map</code> preserves insertion order by spec. <code>get</code>: if present, delete and re-set the key (moves it to the newest end) and return the value. <code>put</code>: delete if present, set, and if <code>size &gt; capacity</code> delete <code>map.keys().next().value</code> — the oldest key. All O(1) average (V8's ordered hash table makes the first-key lookup cheap, with occasional compaction). Interviewers ask for the <b>HashMap + doubly linked list</b> version to see the real data structure: nodes with prev/next in recency order, sentinel head/tail to avoid null checks, and the map from key to node; eviction removes <code>tail.prev</code> and deletes its key from the map. That design generalises to LFU, TTL, byte-size limits and to languages without ordered maps.</p>`, followUps: ['Add TTL.', 'How would you build LFU in O(1)?', 'How does Redis approximate LRU?'] },
+    { q: 'Explain the event loop and predict: <code>async function f(){ console.log(1); await null; console.log(2); } f(); Promise.resolve().then(() =&gt; console.log(3)); console.log(4);</code>', level: 'I', a: `<p>Output: <b>1 4 2 3</b>. Calling f runs its body synchronously until <code>await</code>: logs 1. <code>await null</code> pauses f and queues its continuation as a microtask. Next line queues the <code>.then</code> callback as a microtask (after f's continuation). Then 4 is logged synchronously. The script (a macrotask) ends; the event loop drains microtasks in FIFO order: f resumes and logs 2, then the then-callback logs 3. General model: run the current macrotask to completion → drain all microtasks (including those added while draining) → (browser) maybe render → next macrotask (timers, I/O, events). In Node, <code>process.nextTick</code> runs before promise microtasks, and timers/I/O/setImmediate run in libuv phases.</p>`, followUps: ['Where would setTimeout(() =&gt; log(5)) appear?', 'Why did this ordering differ in 2018?', 'What does queueMicrotask do?'] },
+    { q: 'Why is <code>[] == ![]</code> true, and how do you avoid coercion bugs?', level: 'B', a: `<p><code>![]</code> is <code>false</code> because every object (including an empty array) is truthy. Now <code>[] == false</code>: when one side is a boolean, it is converted to a number → <code>[] == 0</code>. When one side is an object and the other a number, the object is converted to a primitive (valueOf returns the array itself, so toString → "") → <code>"" == 0</code> → string to number → <code>0 == 0</code> → true. Avoid it by using <code>===</code> everywhere (lint rule <code>eqeqeq</code>), converting explicitly (<code>Number(x)</code>, <code>String(x)</code>), using <code>Number.isNaN</code> instead of <code>isNaN</code>, TypeScript to catch mixed-type comparisons, and the one accepted idiom <code>x == null</code> to test for null or undefined.</p>`, followUps: ['What is ToPrimitive?', 'Why is null &gt;= 0 true but null == 0 false?'] },
+    { q: 'You need to fire 5 000 API calls. How do you do it efficiently and safely in JavaScript?', level: 'A', a: `<p>Never <code>Promise.all(urls.map(fetch))</code> — that opens thousands of requests at once and gets rate-limited or exhausts sockets/memory. Use a <b>promise pool</b> with a concurrency limit (e.g. 10–50, tuned to the API's limits): N async workers share a cursor and each pulls the next task as soon as it finishes, writing results by index. Add per-task retry with exponential backoff + jitter for retryable errors and honour 429 Retry-After; consider a global token-bucket rate limiter if the API enforces requests per second. Decide failure semantics (fail-fast vs allSettled-style report). Support cancellation with an AbortController shared by all tasks. Stream results (async iterator) if the consumer can process incrementally, and log progress. Server side, batch endpoints or bulk APIs beat 5 000 small calls.</p>`, followUps: ['Write the pool.', 'How do you pick the limit?', 'How would you resume after a crash?'] },
+    { q: 'How has AI changed polyfill and machine-coding interviews, and how do you use AI tools responsibly while preparing?', level: 'E', a: `<p>Because assistants can generate standard polyfills instantly, interviews moved from "can you type Promise.all" to <b>reasoning</b>: spec edge cases (holes in map, reduce with undefined, bind with new), live extensions (concurrency limit, cancel/flush, placeholders), timing models (event loop, fake timers), and code review of plausible-but-wrong AI output. Some companies allow AI in the round and grade how you prompt, verify, and fix. I prepare by writing each utility by hand first, then asking AI for adversarial test cases and differential tests against native implementations, and by reviewing AI solutions for classic bugs (results.push in all, live-array iteration in emit, seen.set after recursion, arrow wrappers losing this). The skill that matters is the mental model plus verification — run it, test it, explain it.</p>`, followUps: ['Show a bug you have seen AI produce in a debounce.', 'How would you test an AI-written LRU quickly?'] },
+    { q: 'What are the most common memory leaks in utilities like debounce, event emitters and caches, and how do you prevent them?', level: 'E', a: `<p><b>Event emitters:</b> long-lived emitters (global bus, sockets, window) hold strong references to listeners and everything their closures capture; forgetting <code>off</code> on component unmount leaks whole component trees. Prevent with returned disposers, <code>{ signal }</code> + AbortController for addEventListener, and cleanup in useEffect. <b>Debounce/throttle:</b> pending timers retain args and <code>this</code>; cancel them on teardown and create the debounced function once (useMemo/useRef). <b>Caches/memoize:</b> unbounded Maps grow forever — bound with LRU/TTL, or use WeakMap when keys are objects whose lifetime should control the entry. <b>Promises:</b> never-settling promises keep their reaction closures alive (e.g. race against an empty array). Diagnose with heap snapshots (retainers view), comparing snapshots before/after an action, and Node's <code>--inspect</code>.</p>`, followUps: ['WeakMap vs WeakRef for caches?', 'How do you find a detached DOM node leak?'] }
+  );
+
+  /* every visualizer returns at least 4 frames, even for very short custom inputs */
+  topics.forEach(function (t) {
+    [].concat(t.viz || []).forEach(function (v) {
+      var gen = v.gen;
+      v.gen = function (inp) {
+        var frames = gen(inp);
+        var tips = ['That is the whole run for this input. Try a longer or trickier input to see more steps.', 'Tip: change one value in the input and predict the result before you press play.', 'Interview habit: narrate each step out loud, exactly like these frames do.'];
+        var k = 0;
+        while (frames.length && frames.length < 4) {
+          frames.push({ narr: tips[k++ % tips.length], parts: frames[frames.length - 1].parts });
+        }
+        return frames;
+      };
+    });
+  });
+
+  registerModule({
+    id: 'js14',
+    title: 'Machine Coding & Polyfills + Output Question Bank',
+    intro: `<p>This is the module for the round that decides many frontend and full-stack offers: the <b>machine-coding / JavaScript fundamentals round</b>. You will be asked to rebuild pieces of the language and its ecosystem from scratch — <code>bind</code>, <code>call</code>, <code>apply</code>, <code>map</code>, <code>filter</code>, <code>reduce</code>, <code>Promise.all</code>/<code>race</code>/<code>allSettled</code>/<code>any</code> — and everyday utilities: <b>debounce</b>, <b>throttle</b>, <b>deep clone</b>, <b>deep equal</b>, <b>curry</b>, <b>flatten</b>, an <b>event emitter</b>, <b>retry with backoff</b> and an <b>LRU cache</b>. Then you will face the famous <b>"what does this print?"</b> questions.</p>
+<p>Every topic starts with a real-world analogy, builds the polyfill line by line, shows a step-by-step visualizer (watch <code>this</code> get attached, a reduce accumulator grow, promises settle on a timeline, timers reset, listeners fire, LRU nodes move), and finishes with the spec-level edge cases interviewers love, plus how AI changes the game. All the pure-JS code is runnable — <b>predict first, then press ▶ Run</b>.</p>`,
+    goals: [
+      'Write spec-faithful polyfills for call, apply, bind (including <code>new</code>), map, filter and reduce (holes, thisArg, missing initial value) and explain every edge case',
+      'Implement Promise.all, race, allSettled and any from scratch, plus timeouts and a concurrency-limited promise pool',
+      'Build debounce (leading, cancel, flush) and throttle (leading + trailing) and choose the right one from a product requirement',
+      'Write deepClone (cycles, shared references, Date/Map/Set) and deepEqual (NaN, key order, cycles), and know when structuredClone is enough',
+      'Implement curry (including infinite sum and placeholders), array/object flatten, an EventEmitter, retry with exponential backoff + jitter, and an O(1) LRU cache',
+      'Predict the output of tricky snippets about the event loop, async/await, hoisting/TDZ, closures, this and coercion using a repeatable 4-step method'
+    ],
+    prereqs: `JS 4 (Scope, Hoisting, TDZ &amp; Closures), JS 5 (this, call/apply/bind), JS 7–8 (Promises, Event Loop &amp; async/await) and JS 13 (Functional Programming &amp; Patterns). Comfort with Maps, classes and array methods from JS 2 and JS 9. DSA linked lists and hash maps help for the LRU cache.`,
+    hours: 16,
+    topics: topics,
+    practice: practice,
+    quiz: quiz,
+    interview: interview
+  });
+})();
