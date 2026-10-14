@@ -2155,7 +2155,7 @@ for a, b in [(17, 5), (-17, 5), (17, -5)]:
     q, r = divmod(a, b)
     print(a, b, q, r, q * b + r == a)   # identity always holds` },
       dry: { head: ['expression', 'exact value', 'Python result'], rows: [['17 / 5', '3.4', '3.4 (float)'], ['17 // 5', 'floor(3.4)', '3'], ['-17 // 5', 'floor(−3.4)', '<span class="c-y">-4</span>'], ['-17 % 5', '−17 − (−4·5)', '<span class="c-y">3</span>'], ['17 // -5', 'floor(−3.4)', '-4'], ['2 ** -2', '1/4', '0.25']] },
-      complexity: R`<p>O(1) arithmetic.</p>`,
+      complexity: R`<p>O(1): each operation works on small ints; even for huge ints divmod is linear in their size.</p>`,
       followUps: ['What is <code>17 % -5</code>? (−3)', 'How would you get C-style truncation in Python? (<code>int(a / b)</code> for small values, or <code>math.trunc</code>)']
     }
   });
@@ -2299,7 +2299,7 @@ for a, b, at in cases:
     mine = approx_equal(a, b, abs_tol=at)
     print(a, b, mine, mine == math.isclose(a, b, abs_tol=at))` },
       dry: { head: ['a, b', 'a == b?', 'non-finite?', 'diff vs tol', 'result'], rows: [['0.30000000000000004, 0.3', 'no', 'no', '5.6e-17 ≤ 3e-10', '<span class="c-g">True</span>'], ['1e-12, 0.0', 'no', 'no', '1e-12 &gt; 1e-21', '<span class="c-r">False</span>'], ['inf, inf', '<span class="c-g">yes</span>', '—', '—', 'True'], ['nan, nan', 'no', '<span class="c-r">yes</span>', '—', 'False']] },
-      complexity: R`<p>O(1).</p>`,
+      complexity: R`<p>O(1) time and space: a few comparisons and one subtraction.</p>`,
       followUps: ['Why is the test symmetric (uses both |a| and |b|)?', 'How does NumPy\'s <code>allclose</code> differ? (asymmetric: atol + rtol·|b|, default atol=1e-8)']
     }
   });
