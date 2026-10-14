@@ -3766,6 +3766,18 @@ class DiDemo {
     { level: 'E', q: 'Sealed types + pattern matching vs classic polymorphism vs the Visitor pattern: how do you choose?', a: `<p>This is the <b>expression problem</b>. Classic polymorphism (an abstract method implemented per subclass) makes adding <b>new types</b> cheap (one new class) but adding <b>new operations</b> expensive (touch every class). Sealed hierarchies with exhaustive pattern switches flip it: adding a new <b>operation</b> is one method with a switch, while adding a new <b>type</b> forces updates to every switch — but the compiler lists them all, so it is safe. Visitor achieves compiler-checked operations in older Java at the cost of double-dispatch boilerplate; sealed + switch replaces it.</p><p>Choose sealed + patterns for stable, closed domains where operations multiply (ASTs, protocol messages, events, results, state machines). Choose polymorphism for open extension points (plugins, strategies supplied by users) and when behaviour naturally belongs to the type. Mixed designs are common: sealed data + a few polymorphic methods on the interface.</p>`, followUps: ['How do you evolve a sealed hierarchy in a public library without breaking clients?', 'Where does data-oriented programming fit with records?'] },
     { level: 'I', q: 'What changed with Sequenced Collections in Java 21, and why does it matter?', a: `<p>JEP 431 added interfaces ${C('SequencedCollection')}, ${C('SequencedSet')} and ${C('SequencedMap')} for collections with a defined encounter order: List, Deque, LinkedHashSet, SortedSet, LinkedHashMap, SortedMap. They provide uniform ${C('getFirst/getLast/addFirst/addLast/removeFirst/removeLast')} and ${C('reversed()')} (a live view); maps get ${C('firstEntry/lastEntry/pollFirstEntry/putFirst/putLast/sequencedKeySet')}. Before, "last element" meant ${C('list.get(list.size() - 1)')}, ${C('deque.peekLast()')}, or iterating a whole LinkedHashSet. It makes APIs able to say "I need ordered" in the type system. A caveat: adding default methods to core interfaces caused rare source incompatibilities with existing subclasses that had conflicting ${C('getFirst')}/${C('reversed')} signatures.</p>`, followUps: ['Is reversed() a copy or a view?', 'What happens if you call addFirst on an unmodifiable List.of?'] }
   );
+  /* Spread correct answers across positions (authored with the correct option first). */
+  function rotate(m, k) {
+    var n = m.options.length; k = k % n;
+    if (!k) return;
+    m.options = m.options.slice(k).concat(m.options.slice(0, k));
+    m.answer = (m.answer - k + n) % n;
+  }
+  quiz.forEach(function (q, i) { rotate(q, i * 3 + 1); });
+  var mcqIdx = 0;
+  topics.forEach(function (t) { (t.problems || []).forEach(function (p) { rotate(p.mcq, mcqIdx++ * 2 + 1); }); });
+  practice.forEach(function (p) { rotate(p.mcq, mcqIdx++ * 2 + 1); });
+
   registerModule({
     id: 'java14',
     title: 'Modern & Expert Java + Output Question Bank',
