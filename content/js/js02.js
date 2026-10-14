@@ -3062,4 +3062,207 @@ try { toJSON(cyc); } catch (e) { console.log(e.name + ': ' + e.message); }` },
     }
   });
 
-registerModule({ id: 'js02', title: 'Functions, Arrays & Objects', intro: '<p>stub</p>', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();
+
+  /* ================= QUIZ ================= */
+  quiz.push({
+    q: `What does <code>[10, 1, 2].sort()</code> return?`,
+    options: [`<code>[1, 10, 2]</code>`, `<code>[1, 2, 10]</code>`, `<code>[10, 2, 1]</code>`, `It throws because no comparator was given`],
+    answer: 0,
+    explain: `<p>Without a comparator, <code>sort</code> turns every element into a <b>string</b> and compares them like dictionary words: <code>"1" &lt; "10" &lt; "2"</code>. For numbers always pass <code>(a, b) =&gt; a - b</code>.</p>`
+  });
+  quiz.push({
+    q: `<pre>const a = [1, 2, 3, 4];
+const r = a.splice(1, 2);</pre>What are <code>r</code> and <code>a</code> afterwards?`,
+    options: [`<code>r = [2, 3]</code>, <code>a = [1, 4]</code>`, `<code>r = [2]</code>, <code>a = [1, 2, 3, 4]</code>`, `<code>r = [1, 4]</code>, <code>a = [2, 3]</code>`, `<code>r = [2, 3]</code>, <code>a = [1, 2, 3, 4]</code>`],
+    answer: 0,
+    explain: `<p><code>splice(start, deleteCount)</code> <b>cuts out</b> 2 items starting at index 1 and returns them. It changes the original array. <code>slice(1, 3)</code> would have returned <code>[2, 3]</code> and left <code>a</code> untouched.</p>`
+  });
+  quiz.push({
+    q: `<pre>function f(x = 5) { return x; }
+console.log(f(null), f(undefined), f());</pre>What is printed?`,
+    options: [`<code>null 5 5</code>`, `<code>5 5 5</code>`, `<code>null undefined 5</code>`, `<code>5 undefined 5</code>`],
+    answer: 0,
+    explain: `<p>A default kicks in <b>only</b> when the argument is <code>undefined</code> (passed or missing). <code>null</code> is a real value, so it is kept.</p>`
+  });
+  quiz.push({
+    q: `<pre>const a = { user: { name: 'Asha' } };
+const b = { ...a };
+b.user.name = 'Ravi';
+console.log(a.user.name);</pre>`,
+    options: [`<code>'Ravi'</code>`, `<code>'Asha'</code>`, `<code>undefined</code>`, `TypeError`],
+    answer: 0,
+    explain: `<p>Spread makes a <b>shallow</b> copy: <code>b</code> is a new outer object, but <code>b.user</code> and <code>a.user</code> point to the <b>same</b> inner object. Changing it through one name is visible through the other. Use <code>structuredClone(a)</code> for a deep copy.</p>`
+  });
+  quiz.push({
+    q: `What does <code>JSON.stringify({ a: undefined, b: () =&gt; 1, c: NaN, d: [undefined] })</code> return?`,
+    options: [`<code>'{"c":null,"d":[null]}'</code>`, `<code>'{"a":null,"b":null,"c":null,"d":[null]}'</code>`, `<code>'{"c":NaN,"d":[]}'</code>`, `It throws a TypeError`],
+    answer: 0,
+    explain: `<p>Inside an <b>object</b>, keys whose value is <code>undefined</code>, a function or a symbol are skipped. Inside an <b>array</b>, those become <code>null</code> (to keep positions). <code>NaN</code> and <code>Infinity</code> always become <code>null</code>.</p>`
+  });
+  quiz.push({
+    q: `What does <code>['1', '2', '3'].map(parseInt)</code> return?`,
+    options: [`<code>[1, NaN, NaN]</code>`, `<code>[1, 2, 3]</code>`, `<code>['1', '2', '3']</code>`, `<code>[NaN, NaN, NaN]</code>`],
+    answer: 0,
+    explain: `<p><code>map</code> calls the callback with <code>(element, index, array)</code>, so the calls are <code>parseInt('1', 0)</code> → 1 (radix 0 means "guess", base 10), <code>parseInt('2', 1)</code> → NaN (radix 1 is invalid), <code>parseInt('3', 2)</code> → NaN ('3' is not a binary digit). Fix: <code>.map(Number)</code> or <code>.map(s =&gt; parseInt(s, 10))</code>.</p>`
+  });
+  quiz.push({
+    q: `<pre>const [a, , b = 10, ...rest] = [1, 2];</pre>What are <code>a</code>, <code>b</code> and <code>rest</code>?`,
+    options: [`<code>1</code>, <code>10</code>, <code>[]</code>`, `<code>1</code>, <code>2</code>, <code>[]</code>`, `<code>1</code>, <code>undefined</code>, <code>undefined</code>`, `<code>1</code>, <code>10</code>, <code>undefined</code>`],
+    answer: 0,
+    explain: `<p>The empty slot skips index 1. Index 2 does not exist (<code>undefined</code>), so the default <code>10</code> is used. A rest element always produces an array, possibly empty.</p>`
+  });
+  quiz.push({
+    q: `<pre>console.log(add(2, 3));
+const add = function (a, b) { return a + b; };</pre>What happens?`,
+    options: [`<code>ReferenceError</code>: cannot access 'add' before initialization`, `Prints <code>5</code>`, `<code>TypeError</code>: add is not a function`, `Prints <code>undefined</code>`],
+    answer: 0,
+    explain: `<p>Only function <b>declarations</b> are fully hoisted. Here <code>add</code> is a <code>const</code> holding a function expression, and it is in the temporal dead zone until its line runs. (With <code>var</code> you would get <code>TypeError: add is not a function</code>, because the variable exists but is <code>undefined</code>.)</p>`
+  });
+  quiz.push({
+    q: `Which statement about arrow functions is <b>true</b>?`,
+    options: [`They have no own <code>this</code> or <code>arguments</code> and cannot be called with <code>new</code>`, `They are hoisted like function declarations`, `They always need a <code>return</code> keyword`, `They get a fresh <code>this</code> on every call, set to the caller`],
+    answer: 0,
+    explain: `<p>Arrows borrow <code>this</code> and <code>arguments</code> from the surrounding code, have no <code>prototype</code>, and throw if you use <code>new</code>. A concise body (<code>x =&gt; x * 2</code>) returns automatically.</p>`
+  });
+  quiz.push({
+    q: `What is <code>Object.keys({ b: 1, 2: 1, a: 1, 1: 1 })</code>?`,
+    options: [`<code>['1', '2', 'b', 'a']</code>`, `<code>['b', '2', 'a', '1']</code>`, `<code>['a', 'b', '1', '2']</code>`, `The order is random`],
+    answer: 0,
+    explain: `<p>Own keys are listed in a fixed order: integer-like keys first in ascending numeric order, then string keys in insertion order (then symbols, which <code>Object.keys</code> leaves out). Keys are always strings.</p>`
+  });
+  quiz.push({
+    q: `<pre>function f(a, b = 2, ...c) {}
+console.log(f.length);</pre>`,
+    options: [`<code>1</code>`, `<code>2</code>`, `<code>3</code>`, `<code>0</code>`],
+    answer: 0,
+    explain: `<p><code>length</code> counts the parameters <b>before</b> the first one with a default or the rest parameter. Only <code>a</code> counts.</p>`
+  });
+  quiz.push({
+    q: `What does <code>[].reduce((acc, x) =&gt; acc + x)</code> do?`,
+    options: [`Throws <code>TypeError: Reduce of empty array with no initial value</code>`, `Returns <code>0</code>`, `Returns <code>undefined</code>`, `Returns <code>NaN</code>`],
+    answer: 0,
+    explain: `<p>With no initial value, reduce uses the first element as the starting accumulator. An empty array has none, so it throws. Passing an initial value (<code>reduce(fn, 0)</code>) makes it safe and returns <code>0</code>.</p>`
+  });
+  quiz.push({
+    q: `<pre>const nums = [3, 1, 2];
+const sorted = nums.toSorted((a, b) =&gt; a - b);
+console.log(nums, sorted);</pre>`,
+    options: [`<code>[3, 1, 2] [1, 2, 3]</code>`, `<code>[1, 2, 3] [1, 2, 3]</code>`, `<code>[3, 1, 2] undefined</code>`, `TypeError: toSorted is not a function (in all modern engines)`],
+    answer: 0,
+    explain: `<p><code>toSorted</code> (ES2023, in every current browser and Node 20+) returns a <b>new</b> sorted array and leaves the original alone. Its siblings are <code>toReversed</code>, <code>toSpliced</code> and <code>with(index, value)</code>.</p>`
+  });
+  quiz.push({
+    q: `<pre>const users = [{ id: 1 }, { id: 2 }];
+console.log(users.find(u =&gt; u.id === 3), users.findIndex(u =&gt; u.id === 3));</pre>`,
+    options: [`<code>undefined -1</code>`, `<code>null -1</code>`, `<code>[] -1</code>`, `<code>undefined undefined</code>`],
+    answer: 0,
+    explain: `<p><code>find</code> returns the first matching <b>element</b> or <code>undefined</code>; <code>findIndex</code> returns its <b>index</b> or <code>-1</code>. <code>filter</code> would return an empty array.</p>`
+  });
+
+
+  /* ================= INTERVIEW ================= */
+  interview.push({
+    q: `What is the difference between a function declaration, a function expression and an arrow function?`, level: 'B',
+    a: `<p>A <b>declaration</b> (<code>function add(a, b) {}</code>) is a statement; it is hoisted completely, so you can call it above the line where it is written. A <b>function expression</b> (<code>const add = function (a, b) {}</code>) is a value assigned to a variable; it exists only after that line runs. An <b>arrow function</b> (<code>const add = (a, b) =&gt; a + b</code>) is a shorter expression that has <b>no own</b> <code>this</code>, <code>arguments</code>, <code>super</code> or <code>prototype</code>, and cannot be used with <code>new</code>. Rule of thumb: arrows for short callbacks and when you want the outer <code>this</code>; declarations for named top-level helpers; regular functions for object methods that use <code>this</code>.</p>`,
+    followUps: [`Why might a named function expression help in stack traces?`, `What happens if you call an arrow function with <code>new</code>?`, `Can an arrow function return an object literal in a concise body? How?`]
+  });
+  interview.push({
+    q: `Is JavaScript pass-by-value or pass-by-reference?`, level: 'B',
+    a: `<p>Always <b>pass-by-value</b>, but for objects the value being copied is a <b>reference</b> (an address). This is often called "call by sharing". So inside a function you can <b>mutate</b> the object the caller passed (<code>obj.x = 1</code> is seen outside), but <b>reassigning</b> the parameter (<code>obj = {}</code>) only changes the local copy of the address and the caller never sees it. Primitives (numbers, strings, booleans, null, undefined, symbols, bigints) are copied and immutable, so nothing the function does can change the caller's variable.</p>`,
+    followUps: [`Write a swap function — why can't it swap two caller variables?`, `How do you protect an argument from being mutated?`, `Is a string passed by reference internally? Does it matter?`]
+  });
+  interview.push({
+    q: `Explain <code>slice</code> vs <code>splice</code>.`, level: 'B',
+    a: `<p><code>slice(start, end)</code> <b>copies</b> a piece of the array (end not included) and returns a new array; the original is untouched. Negative indexes count from the end, and <code>slice()</code> with no arguments is a quick shallow copy. <code>splice(start, deleteCount, ...items)</code> <b>edits the array in place</b>: it removes <code>deleteCount</code> items, inserts the new items, and returns an array of what it removed. Memory trick: <i>splice has a "p" for "patch the original"</i>. In React or Redux code prefer <code>slice</code>, spread or the ES2023 non-mutating <code>toSpliced</code>.</p>`,
+    followUps: [`How do you insert an item at index 2 without removing anything?`, `What does <code>arr.splice(-1)</code> do?`, `How would you remove an item immutably?`]
+  });
+  interview.push({
+    q: `When would you use <code>map</code> vs <code>forEach</code> vs a <code>for...of</code> loop?`, level: 'B',
+    a: `<p><code>map</code> <b>returns a new array</b> of the same length, one output per input — use it to <b>transform</b>. <code>forEach</code> returns <code>undefined</code> and is only for side effects (logging, pushing elsewhere); you cannot <code>break</code> out of it and it ignores returned promises, so <code>await</code> inside it does not wait. <code>for...of</code> is a plain loop: you can <code>break</code>, <code>continue</code>, <code>return</code> and <code>await</code> one item at a time. A common smell is using <code>map</code> for side effects and throwing the result away — use <code>forEach</code> or <code>for...of</code> instead.</p>`,
+    followUps: [`How do you run async work for each item in parallel? In sequence?`, `How do you stop early with array methods? (some/every/find)`, `What do map and forEach do with holes in sparse arrays?`]
+  });
+  interview.push({
+    q: `Explain how <code>reduce</code> works and when you should NOT use it.`, level: 'I',
+    a: `<p><code>reduce(callback, initial)</code> walks the array left to right carrying an <b>accumulator</b>. Each call gets <code>(acc, item, index, array)</code> and returns the next accumulator; the final one is the result. Always pass an initial value: without one, the first element becomes the accumulator and an empty array throws a <code>TypeError</code>. Use it to fold a list into one thing (sum, max, a lookup object, a count map). Avoid it when a clearer method exists (<code>map</code>, <code>filter</code>, <code>some</code>, <code>Object.groupBy</code>, a <code>for</code> loop), and avoid the trap <code>reduce((acc, x) =&gt; ({ ...acc, [x.id]: x }), {})</code>: copying the accumulator on every step makes it O(n²). Mutate the accumulator you created yourself, or use a <code>Map</code>.</p>`,
+    followUps: [`Implement <code>map</code> using only <code>reduce</code>.`, `What is <code>reduceRight</code> good for?`, `Why is spreading the accumulator quadratic?`]
+  });
+  interview.push({
+    q: `Why does <code>[10, 1, 2].sort()</code> give <code>[1, 10, 2]</code>? How does sort really work?`, level: 'I',
+    a: `<p>With no comparator, elements are converted to strings and compared by UTF-16 code units, so "10" comes before "2". Pass a comparator that returns a negative number if <code>a</code> goes first, positive if <code>b</code> goes first, zero if equal: <code>(a, b) =&gt; a - b</code>. For strings use <code>a.localeCompare(b)</code> or an <code>Intl.Collator</code>. <code>sort</code> mutates and returns the same array; <code>toSorted</code> returns a copy. Since ES2019 sort must be <b>stable</b> (equal items keep their order), which lets you sort by a secondary key first and then by the primary key. V8 uses TimSort: O(n log n) worst case, close to O(n) on nearly-sorted data. <code>undefined</code> values always go to the end, and the comparator is never called with them.</p>`,
+    followUps: [`Sort users by age, then by name for ties, in one comparator.`, `Why is <code>() =&gt; Math.random() - 0.5</code> a bad shuffle?`, `What happens if your comparator returns a boolean?`]
+  });
+  interview.push({
+    q: `What is the difference between a shallow copy and a deep copy? Which tools give you each?`, level: 'I',
+    a: `<p>A <b>shallow copy</b> creates a new outer object or array, but nested objects are still <b>shared</b>. <code>{ ...obj }</code>, <code>Object.assign({}, obj)</code>, <code>[...arr]</code>, <code>arr.slice()</code> and <code>Array.from(arr)</code> are all shallow. A <b>deep copy</b> also copies every nested level. <code>structuredClone(value)</code> (built in to browsers and Node 17+) is the modern choice: it handles Dates, Maps, Sets, typed arrays and even cycles, but throws on functions and DOM nodes, and drops class prototypes. <code>JSON.parse(JSON.stringify(x))</code> is the old trick and loses <code>undefined</code>, functions, Dates (become strings), Maps/Sets (become <code>{}</code>), NaN/Infinity (become <code>null</code>) and throws on cycles and BigInt.</p>`,
+    followUps: [`Write a small recursive deep clone that handles cycles.`, `Why might you prefer immutable updates over deep cloning in React state?`, `Does <code>Object.freeze</code> make a deep-frozen object?`]
+  });
+  interview.push({
+    q: `Rest vs spread — they use the same <code>...</code> syntax. How do you tell them apart?`, level: 'B',
+    a: `<p>Look at <b>which side</b> it is on. <b>Rest</b> appears where values are being <b>received</b> — in a parameter list (<code>function f(...args)</code>) or on the left of a destructuring (<code>const [first, ...others] = arr</code>) — and it <b>gathers</b> the leftover items into a real array (or object). <b>Spread</b> appears where values are being <b>supplied</b> — in a call (<code>Math.max(...nums)</code>), an array literal (<code>[...a, ...b]</code>) or an object literal (<code>{ ...defaults, ...opts }</code>) — and it <b>expands</b> them. Rest must be the last element. Object spread copies own enumerable properties and later keys win; array spread works on any iterable (strings, Sets, Maps).</p>`,
+    followUps: [`Why is <code>...args</code> better than <code>arguments</code>?`, `Can spreading a huge array into <code>Math.max</code> fail?`, `What does <code>{ ...null }</code> give? <code>[...null]</code>?`]
+  });
+  interview.push({
+    q: `How do default parameters behave? Any surprising details?`, level: 'I',
+    a: `<p>A default is used only when the argument is <code>undefined</code>, not for <code>null</code>, <code>0</code> or <code>''</code>. The default expression is <b>evaluated at call time, every call</b>, so <code>function f(list = [])</code> gets a fresh array each time (unlike Python's shared default). Later parameters can use earlier ones (<code>function f(a, b = a * 2)</code>), but not the other way round — that hits the temporal dead zone. Defaults also work inside destructuring: <code>function f({ retries = 3, timeout = 1000 } = {})</code> is the standard "options object" pattern, and the trailing <code>= {}</code> keeps <code>f()</code> from throwing. Defaults reduce <code>f.length</code>.</p>`,
+    followUps: [`Rewrite a function that uses <code>x = x || 10</code> correctly. What bug did the old version have?`, `Can a default call another function? When does it run?`, `Why add <code>= {}</code> after a destructured parameter?`]
+  });
+  interview.push({
+    q: `What does JSON support, and what gets lost when you <code>JSON.stringify</code> a JavaScript value?`, level: 'I',
+    a: `<p>JSON has only objects, arrays, strings (double quoted), finite numbers, <code>true</code>/<code>false</code> and <code>null</code>; no comments and no trailing commas. <code>JSON.stringify</code> drops <code>undefined</code>, functions and symbols in objects (they become <code>null</code> in arrays), turns <code>NaN</code>/<code>Infinity</code> into <code>null</code>, calls <code>toJSON</code> (that is how a Date becomes an ISO string), turns Maps and Sets into <code>{}</code>, and <b>throws</b> on BigInt and circular references. You can customise it with a <code>replacer</code> (function or allow-list array) and pretty-print with the <code>space</code> argument; <code>JSON.parse</code> accepts a <code>reviver</code> to rebuild Dates and other types. Always wrap <code>JSON.parse</code> of outside data in try/catch and validate the shape (e.g. with Zod).</p>`,
+    followUps: [`How would you serialise and restore a Map?`, `How do you find which key causes "Converting circular structure to JSON"?`, `Why should you validate parsed JSON even when it parses?`]
+  });
+  interview.push({
+    q: `How do you compare two objects or arrays for equality?`, level: 'I',
+    a: `<p><code>===</code> (and <code>==</code>) on objects compares <b>references</b>: two different objects with the same contents are not equal. For a shallow comparison, check that both have the same number of keys and that every key's value is <code>===</code> (or <code>Object.is</code>, which treats <code>NaN</code> as equal to itself). For deep equality, recurse into nested arrays and objects, handle Dates, Maps and Sets specially, and guard against cycles with a <code>WeakMap</code> of pairs already compared. <code>JSON.stringify(a) === JSON.stringify(b)</code> is a quick hack but breaks on key order, <code>undefined</code>, NaN and non-JSON types. In tests use the framework's <code>toEqual</code>/<code>assert.deepStrictEqual</code>.</p>`,
+    followUps: [`Why does React use shallow (reference) comparison for props and state?`, `How does <code>Object.is</code> differ from <code>===</code>?`, `Write <code>shallowEqual(a, b)</code>.`]
+  });
+  interview.push({
+    q: `<code>const arr = []</code> — can you still change <code>arr</code>? What about <code>Object.freeze</code>?`, level: 'B',
+    a: `<p><code>const</code> locks the <b>variable</b>, not the value. You cannot do <code>arr = [1]</code>, but you can <code>push</code>, <code>pop</code>, set <code>arr.length = 0</code> or change elements, because the array object itself is mutable. <code>Object.freeze(obj)</code> makes the object's own properties read-only and stops adding or removing keys (silently in sloppy mode, <code>TypeError</code> in strict mode/modules). But freeze is <b>shallow</b>: nested objects can still change unless you freeze them recursively. TypeScript's <code>readonly</code> and <code>as const</code> give compile-time protection with zero runtime cost.</p>`,
+    followUps: [`Write a deepFreeze helper.`, `What's the difference between seal, freeze and preventExtensions?`, `Does freezing make code faster?`]
+  });
+  interview.push({
+    q: `What are sparse arrays (holes), and how do array methods treat them?`, level: 'A',
+    a: `<p>A hole is an index with <b>no property at all</b>, e.g. <code>[1, , 3]</code>, <code>new Array(3)</code>, or <code>arr[10] = x</code> on a short array. It is different from an element holding <code>undefined</code>: <code>1 in [1, , 3]</code> is false. The ES5-era methods (<code>forEach</code>, <code>map</code>, <code>filter</code>, <code>reduce</code>, <code>some</code>, <code>every</code>) <b>skip</b> holes (<code>map</code> keeps them as holes in the result), while newer ones (<code>find</code>, <code>findIndex</code>, <code>includes</code>, <code>Array.from</code>, spread, <code>for...of</code>, <code>toSorted</code>) treat them as <code>undefined</code>. <code>sort</code> moves holes to the very end, after <code>undefined</code>s. In V8, holes also switch the array to a slower "HOLEY" elements kind, so prefer <code>Array.from({ length: n }, () =&gt; 0)</code> or <code>new Array(n).fill(0)</code>.</p>`,
+    followUps: [`Why does <code>new Array(3).map((_, i) =&gt; i)</code> return <code>[ &lt;3 empty items&gt; ]</code>?`, `How does <code>indexOf</code> vs <code>includes</code> treat <code>NaN</code> and holes?`, `What are V8 elements kinds?`]
+  });
+  interview.push({
+    q: `Explain how arrays and objects are stored in memory, and how references cause "spooky" bugs.`, level: 'I',
+    a: `<p>A variable holding an object or array stores a <b>reference</b> — think of it as a house address — while the object lives on the heap. Assigning (<code>const b = a</code>), passing it to a function, putting it into another array, or a shallow copy all copy the <b>address</b>, so several names can point to one house. Classic bugs: a default state object shared by every component instance, <code>Array(3).fill([])</code> creating three references to <b>one</b> inner array, sorting a prop array in place and changing the parent's data, or caching an object then mutating it. Fixes: create fresh objects (<code>Array.from({ length: 3 }, () =&gt; [])</code>), use non-mutating methods (<code>toSorted</code>, spread, <code>map</code>), and copy at boundaries.</p>`,
+    followUps: [`Draw what happens in memory for <code>const grid = Array(3).fill([]); grid[0].push(1)</code>.`, `When is an object eligible for garbage collection?`, `How do WeakMap keys relate to references and GC?`]
+  });
+  interview.push({
+    q: `Is chaining <code>filter().map().reduce()</code> slow? How would you optimise a hot array pipeline?`, level: 'E',
+    a: `<p>Each step allocates a new intermediate array and makes one more pass, so a three-step chain on n items is about 3n callback calls plus two temporary arrays. For a few thousand items this is negligible and the readability wins. For large data in hot paths: (1) <b>measure first</b> with a profiler; (2) fuse steps into one <code>for</code> loop or a single <code>reduce</code>; (3) stop early with <code>find</code>/<code>some</code> instead of <code>filter()[0]</code>; (4) use ES2025 <b>iterator helpers</b> (<code>arr.values().filter(f).map(g).take(10).toArray()</code>), which are lazy and avoid intermediate arrays; (5) keep arrays monomorphic (same element types, no holes) so V8 stays on its fast paths; (6) for numeric data consider typed arrays. Also avoid O(n²) patterns hidden in pipelines, such as <code>includes</code> inside <code>filter</code> — build a <code>Set</code> first.</p>`,
+    followUps: [`How would you profile this in Chrome DevTools or Node?`, `What are iterator helpers and how are they lazy?`, `When is a Set lookup faster than includes, and why?`]
+  });
+  interview.push({
+    q: `How do you group, index and count items in modern JavaScript?`, level: 'I',
+    a: `<p>Before 2024 the standard tool was <code>reduce</code> into an object or <code>Map</code>: <code>acc[key] ??= []; acc[key].push(item)</code>. Now there is <b><code>Object.groupBy(items, fn)</code></b> (ES2024), which returns a null-prototype object of arrays, and <b><code>Map.groupBy</code></b> when keys are not strings (e.g. objects or numbers you want kept as numbers). For counting, a <code>Map</code> with <code>map.set(k, (map.get(k) ?? 0) + 1)</code> is clean and avoids prototype keys like <code>"constructor"</code>. For indexing by id, <code>new Map(items.map(x =&gt; [x.id, x]))</code> or <code>Object.fromEntries</code> gives O(1) lookups instead of repeated <code>find</code> calls (O(n) each).</p>`,
+    followUps: [`Why does <code>Object.groupBy</code> return a null-prototype object?`, `When is a Map better than a plain object as a dictionary?`, `Convert a Map to JSON and back.`]
+  });
+
+
+  registerModule({
+    id: 'js02',
+    title: 'Functions, Arrays & Objects',
+    intro: `<p>Almost every line of real JavaScript — a React component, an Express handler, a data script, a coding-round answer — is made of three building blocks: <b>functions</b> (little machines that take input and give output), <b>arrays</b> (ordered lists) and <b>objects</b> (labelled boxes of data). This module teaches all three from zero, with an analogy first and an animation for every idea.</p>
+<p>You will write functions three ways and learn when each fits; master default and rest parameters; use the core array methods (<code>push</code>, <code>slice</code>, <code>splice</code>, <code>map</code>, <code>filter</code>, <code>reduce</code>, <code>find</code>, <code>sort</code>) and watch them flow through pipelines step by step; see how objects live behind <b>references</b> (the root of the most common JS bugs); unpack data with <b>destructuring</b>, copy it with <b>spread</b>, and send it over the wire with <b>JSON</b>.</p>
+<p>Interviewers love this material: "predict the output" puzzles, polyfills for <code>map</code>/<code>reduce</code>, deep clone, flatten and <code>get(obj, 'a.b.c')</code> are standard screening questions. Every topic ends with how AI coding tools change the work — and the subtle bugs they still produce here.</p>`,
+    goals: [
+      `Write function declarations, expressions and arrow functions, and explain hoisting, <code>this</code> and <code>arguments</code> differences between them.`,
+      `Use default parameters, rest parameters and the "options object" pattern correctly, and explain why JavaScript passes object references by value.`,
+      `Choose the right array method — <code>push/pop/shift/unshift</code>, <code>slice</code> vs <code>splice</code>, <code>map</code>, <code>filter</code>, <code>find</code>, <code>some/every</code>, <code>reduce</code> — and predict both its return value and whether it mutates.`,
+      `Sort numbers, strings and objects with correct, stable comparators, and use the ES2023 non-mutating methods (<code>toSorted</code>, <code>toSpliced</code>, <code>with</code>).`,
+      `Create, read, update and iterate objects; draw the reference diagram for any snippet; and make shallow vs deep copies with spread, <code>structuredClone</code> and JSON.`,
+      `Destructure arrays and objects with defaults, renames and rest; serialise and parse JSON safely, knowing exactly what it loses.`,
+      `Implement interview classics from scratch: map/filter/reduce polyfills, flatten, chunk, deep clone with cycles, path get/set and a mini <code>JSON.stringify</code>.`
+    ],
+    prereqs: `<p><b>JS 1 (JavaScript Basics: Syntax, Types &amp; Operators)</b> — you should be comfortable with <code>let</code>/<code>const</code>, primitive types, <code>typeof</code>, template literals, truthy/falsy and <code>if</code>/<code>for</code> loops. No prior knowledge of functions-as-values or array methods is assumed.</p>`,
+    hours: 14,
+    topics: topics,
+    practice: practice,
+    quiz: quiz,
+    interview: interview
+  });
+})();
