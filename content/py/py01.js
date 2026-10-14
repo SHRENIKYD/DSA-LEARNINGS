@@ -10,6 +10,13 @@
      binds tighter than a unary minus on its left, and/or return an operand,
      comparisons chain.  It records every step so we can animate it.
      ===================================================================== */
+  function pad4(frames, tip) {
+    while (frames.length < 4) {
+      var last = frames[frames.length - 1];
+      frames.push({ narr: tip || 'Tip: edit the input above with more lines to see more steps.', parts: last.parts });
+    }
+    return frames;
+  }
   function PyErr(kind, msg) { var e = new Error(kind + ': ' + msg); e.py = true; e.kind = kind; e.pmsg = msg; return e; }
 
   function floatRepr(x) {
@@ -518,7 +525,7 @@
       throw new Error('Line ' + L + ' not understood: "' + ln + '"');
     });
     snapshot(0, 'Done. Read the arrows: names that share an arrow target are <b>aliases</b>. Mutating through one is visible through all; re-binding one never affects the others.', null, null);
-    return frames;
+    return pad4(frames, 'Tip: add more lines (e.g. <code>b = a</code> then <code>b.append(1)</code>) to watch arrows move.');
   }
 
   /* ---------- format-spec mini-language (subset, Python rules) ---------- */
@@ -1109,7 +1116,7 @@ print(0xff, 0b1010, 0o17, 1_000_000)  # 255 10 15 1000000` }],
               { type: 'bars', label: 'Bytes per object (getsizeof)', values: sizes.slice(), idxLabels: labels.slice() }] });
         });
         frames.push({ narr: 'Pattern check: every value is a full <b>object</b> with a header (refcount + type pointer), so even a tiny int costs 28 bytes. Big ints grow by 4 bytes per 30-bit "digit". Zero-like and empty values are falsy; everything else is truthy.', parts: [{ type: 'table', label: 'Inspector', columns: ['expression', 'repr', 'type', 'bool(x)', 'getsizeof'], rows: rows }, { type: 'bars', label: 'Bytes per object (getsizeof)', values: sizes, idxLabels: labels }] });
-        return frames;
+        return pad4(frames, 'Tip: add more values separated by ; to compare types and sizes.');
       }
     },
     examples: [
@@ -1560,7 +1567,7 @@ def read_all_lines():
             { type: 'text', label: 'Screen', html: '<pre>' + H.esc(outText) + '▌</pre>' }] });
         });
         frames.push({ narr: 'Final screen. Notice that <code>print()</code> with no arguments just writes <code>end</code> — an empty line — and that every call returned <code>None</code>.', parts: [{ type: 'text', label: 'Screen', html: '<pre>' + H.esc(outText) + '</pre>' }] });
-        return frames;
+        return pad4(frames, 'Tip: add more print calls separated by ; — try end="" or sep=", ".');
       }
     }],
     examples: [
@@ -1937,7 +1944,7 @@ print(round(2.5), round(3.5), round(2.675, 2))   # 2 4 2.67 (half-to-even, binar
         var size = 24 + 4 * Math.max(1, bd.digits.length);
         frames.push({ narr: 'Done: <b>' + bd.digits.length + '</b> chunk(s). <code>sys.getsizeof</code> ≈ 24-byte header + 4 bytes × ' + Math.max(1, bd.digits.length) + ' = <b>' + size + ' bytes</b>. Value check: Σ ob_digit[i] × 2<sup>30·i</sup> = the original number' + (n < 0n ? ' (the sign is stored separately)' : '') + '.', parts: [{ type: 'array', label: 'ob_digit[]', values: digs, showIdx: true, hl: (function () { var h = {}; digs.forEach(function (_, i) { h[i] = 'sel'; }); return h; })() }, { type: 'bars', label: 'Bytes: header vs digits', values: [24, 4 * Math.max(1, bd.digits.length)], idxLabels: ['header', 'digits'] }] });
         frames.push({ narr: 'Why it matters: adding two n-chunk ints costs O(n); multiplying uses Karatsuba (≈ O(n<sup>1.58</sup>)) for big ones; turning them into decimal text is roughly O(n²) — hence the 4300-digit str-conversion limit. Small ints (one chunk) take the fast path.', parts: [{ type: 'table', label: 'Cost of operations on an n-chunk int', columns: ['operation', 'cost'], rows: [['+ , -', 'O(n)'], ['* (small)', 'O(n²) schoolbook'], ['* (large)', 'Karatsuba ≈ O(n^1.58)'], ['str(n) / int(s)', '≈ O(n²) → 4300-digit limit'], ['n.bit_length()', 'O(1)']] }] });
-        return frames;
+        return pad4(frames, 'Tip: try a bigger number such as 2 ** 300 to see more 30-bit chunks.');
       }
     }, {
       title: 'Why 0.1 is not exact: decimal → binary, then rounding to 53 bits',

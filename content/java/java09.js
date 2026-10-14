@@ -234,6 +234,13 @@
     }
     if (S.infinite && i >= limitPull && !cancelFrom(0) && !truncated) {
       log.push(['–', '–', 'source', 'still pulling…']);
+      var firstSorted = -1, firstShort = -1;
+      ops.forEach(function (o, ix) { if (o.k === 'sorted' && firstSorted < 0) firstSorted = ix; if (o.k === 'limit' && firstShort < 0) firstShort = ix; });
+      if (firstShort < 0 && ['findFirst', 'anyMatch', 'allMatch', 'noneMatch'].indexOf(T.name) >= 0) firstShort = ops.length;
+      if (firstShort >= 0 && (firstSorted < 0 || firstSorted > firstShort)) {
+        snap('The animation pauses after ' + limitPull + ' pulls to stay short. This pipeline <b>can</b> short-circuit, so real Java keeps pulling one element at a time until the stop condition is met — on an infinite stream that finishes only if a qualifying element eventually arrives (otherwise it loops forever).', 'src', 'win');
+        return frames;
+      }
       snap('<span class="c-r">Danger:</span> nothing short-circuits this infinite stream before a barrier/terminal that needs all elements. Real Java would run <b>forever</b> (or until OutOfMemoryError). We stopped after ' + limitPull + ' pulls. Put <code>limit</code> / <code>findFirst</code> / <code>anyMatch</code> in the right place.', 'src', 'bad');
       return frames;
     }
