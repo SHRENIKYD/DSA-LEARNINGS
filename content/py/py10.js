@@ -147,7 +147,7 @@ if __name__ == "__main__":          # required for process pools on spawn/forkse
         }
         var cpuWork = th.reduce(function (s, t) { return s + t.script.split('').filter(function (c) { return c === 'R'; }).length; }, 0);
         var ioWork = th.reduce(function (s, t) { return s + t.script.split('').filter(function (c) { return c === 'I'; }).length; }, 0);
-        snap('<b>Finished in ' + tick + ' ms.</b> Total Python work = ' + cpuWork + ' ms and it can never overlap (one GIL), so wall time ≥ ' + cpuWork + ' ms. The ' + ioWork + ' ms of I/O waiting <b>did</b> overlap with other threads\' work. Lesson: threads help I/O-bound code, not CPU-bound Python code.', -1);
+        snap('<b>Finished in ' + tick + ' ms.</b> Total Python work = ' + cpuWork + ' ms and it can never overlap (one GIL), so wall time ≥ ' + cpuWork + ' ms. The ' + ioWork + ' ms of I/O waiting <b>did</b> overlap with other threads\' work. Lesson: threads help I/O-bound code, not CPU-bound Python code.' + (toks.indexOf('cpu') >= 0 && toks.indexOf('io') >= 0 ? ' Also notice the io thread queued behind cpu threads for the GIL even though it only needed 1 ms — the <b>convoy effect</b>, which adds latency to I/O threads in mixed workloads.' : ''), -1);
         return frames;
       }
     },
@@ -546,6 +546,249 @@ if __name__ == "__main__":
         dry: { head: ['time', 'w0', 'w1', 'queue (front→back)', 'results'], rows: [['0 ms', 'get a', 'get b', 'boom, c, None, None', '{}'], ['50 ms', 'store A, get boom', 'store B, get c', 'None, None', 'a, b'], ['100 ms', 'store ERROR, get None → exit', 'store C, get None → exit', '(empty)', 'a, b, boom, c'], ['join', 'done', 'done', '', '4 entries']] },
         complexity: `<p>Wall time ≈ ⌈len(urls) / N⌉ × avg fetch time. Memory O(len(urls)). Thread count fixed at N regardless of input size.</p>`,
         followUps: ['How would you add a per-host limit of 2 concurrent requests?', 'Rewrite it with ThreadPoolExecutor in 6 lines.', 'How would you add retries with exponential backoff?']
+      }
+    }]
+  });
+
+  /* ================= TOPIC 3: multiprocessing ================= */
+  topics.push({
+    title: 'multiprocessing for CPU Work: Processes, Pools, Pickling and Start Methods',
+    analogy: `<p>Your one kitchen has only one knife (GIL). So you <b>rent more kitchens</b> across the street. Each kitchen has its own knife, so cooks really chop at the same time. The catch: kitchens do <b>not share a fridge</b>. To give a cook ingredients you must <b>pack them in a box</b> (pickle), carry the box over (IPC), and carry the finished dish back the same way. Renting a kitchen and carrying boxes takes time, so it only pays off when the cooking is big compared to the carrying.</p>`,
+    explain: `<p>🟢 <b>A process</b> is a separate running program with its <b>own memory and its own Python interpreter (and GIL)</b>. N processes can use N CPU cores at once, which is the standard way to make <b>CPU-bound</b> pure-Python code faster.</p>
+<pre>from multiprocessing import Pool
+
+def square(x):            # must be a top-level function (it is sent by name)
+    return x * x
+
+if __name__ == "__main__":         # REQUIRED with spawn/forkserver start methods
+    with Pool(processes=4) as pool:
+        print(pool.map(square, range(10)))   # [0, 1, 4, 9, ...] in input order</pre>
+<p>🔵 <b>How data travels.</b> Arguments and return values are <b>pickled</b> (turned into bytes), sent through a pipe, and unpickled on the other side. So:</p>
+<ul>
+<li>Functions must be importable by name: top-level <code>def</code>s work; <b>lambdas, nested functions and bound methods of unpicklable objects fail</b>.</li>
+<li>Big arguments are expensive: sending a 500 MB DataFrame to 8 workers copies it 8 times. Send <b>small descriptions</b> (file paths, row ranges) and let workers load the data.</li>
+<li>Changing a global inside a worker does <b>not</b> change it in the parent — separate memory.</li>
+</ul>
+${H.table(['Start method', 'How the child is created', 'Default on', 'Notes'], [['<code>fork</code>', 'copy of the parent process (copy-on-write)', 'Linux up to 3.13', 'fast; unsafe if the parent has threads (locks copied in a held state)'], ['<code>spawn</code>', 'fresh interpreter that re-imports your main module', 'Windows, macOS (3.8+)', 'slowest start; needs the <code>__main__</code> guard'], ['<code>forkserver</code>', 'a clean server process forks children on request', 'Linux/POSIX from 3.14', 'safe with threads, fast enough']])}
+<p><b>Pool methods you should know:</b> <code>map</code> (ordered, waits for all), <code>imap</code> (ordered, lazy — results stream in), <code>imap_unordered</code> (fastest-first), <code>starmap</code> (multiple args), <code>apply_async</code> (one call, returns an AsyncResult). The <code>chunksize</code> argument sends several items per trip to cut pickling/IPC overhead for many tiny tasks.</p>
+<p><b>Talking between processes:</b> <code>multiprocessing.Queue</code> and <code>Pipe</code> (message passing), <code>Value</code>/<code>Array</code> (small shared C values, with a lock), <code>shared_memory.SharedMemory</code> (zero-copy big buffers, great with NumPy), <code>Manager()</code> (proxy dicts/lists — convenient but slow because every access is an IPC call).</p>
+<p>🟣 <b>Today</b> most code uses <code>concurrent.futures.ProcessPoolExecutor</code> (next topic) instead of <code>Pool</code> — same idea, nicer Future-based API. Use raw <code>multiprocessing</code> when you need its extras: <code>maxtasksperchild</code>, <code>imap_unordered</code> with chunksize, explicit Queues or shared memory.</p>`,
+    clues: [
+      '"pure-Python, CPU-heavy, many independent items" (image resize, hashing, simulations) → process pool',
+      '"Can\'t pickle &lt;lambda&gt;" / "AttributeError: Can\'t get attribute" → worker function not top-level or not picklable',
+      '"works on Linux but on macOS/Windows spawns endlessly / RuntimeError about bootstrapping" → missing <code>if __name__ == "__main__":</code>',
+      '"millions of tiny tasks are slower in parallel" → IPC/pickling overhead → use chunksize or batch the work',
+      '"workers need a big read-only dataset" → load once per worker with an initializer, or shared memory, not as an argument per task',
+      '"memory keeps growing in long-running workers" → maxtasksperchild to recycle workers'
+    ],
+    code: [{ lang: 'python', title: 'What can cross a process boundary? (runnable)', run: true, code: `import pickle
+
+def top_level(x):
+    return x + 1
+
+def make_nested():
+    def nested(x):
+        return x * 2
+    return nested
+
+candidates = {
+    "int / str / dict": {"a": 1, "b": "two"},
+    "top-level function": top_level,
+    "lambda": lambda x: x,
+    "nested function": make_nested(),
+    "generator": (i for i in range(3)),
+}
+
+for name, obj in candidates.items():
+    try:
+        data = pickle.dumps(obj)
+        print(f"OK    {name:20s} -> {len(data)} bytes")
+    except Exception as e:
+        print(f"FAIL  {name:20s} -> {type(e).__name__}")
+
+# A function is pickled BY NAME (module + qualified name), not by its code:
+print(pickle.dumps(top_level)[:40])
+` }, { lang: 'python', title: 'Pool with initializer, chunksize and imap_unordered (run locally)', code: `import os
+from multiprocessing import Pool
+
+WORDS = None   # per-worker global, filled once by the initializer
+
+def init_worker(words):
+    global WORDS
+    WORDS = set(words)          # loaded once per process, not once per task
+
+def count_hits(line):
+    return sum(1 for w in line.split() if w in WORDS), os.getpid()
+
+if __name__ == "__main__":
+    lines = ["the cat sat", "a dog ran", "the end"] * 10_000
+    with Pool(processes=4, initializer=init_worker, initargs=(["the", "cat", "end"],)) as pool:
+        total, pids = 0, set()
+        for hits, pid in pool.imap_unordered(count_hits, lines, chunksize=500):
+            total += hits
+            pids.add(pid)
+    print("hits:", total, "worker processes used:", len(pids))
+` }, { lang: 'python', title: 'Sharing a big array with shared_memory (zero copy)', code: `from multiprocessing import Process, shared_memory
+import array
+
+def worker(name, start, stop):
+    shm = shared_memory.SharedMemory(name=name)        # attach, no copy
+    view = shm.buf.cast("q")                           # signed 64-bit ints
+    for i in range(start, stop):
+        view[i] = i * i                                # each worker writes its own slice
+    del view
+    shm.close()
+
+if __name__ == "__main__":
+    n = 1_000
+    shm = shared_memory.SharedMemory(create=True, size=n * 8)
+    try:
+        half = n // 2
+        ps = [Process(target=worker, args=(shm.name, 0, half)),
+              Process(target=worker, args=(shm.name, half, n))]
+        for p in ps:
+            p.start()
+        for p in ps:
+            p.join()
+        result = array.array("q", bytes(shm.buf[: n * 8]))
+        print(result[:5], result[-1])                  # [0, 1, 4, 9, 16] 998001
+    finally:
+        shm.close()
+        shm.unlink()                                   # free the OS segment
+` }],
+    codeTitle: ['Picklability check', 'Pool tricks', 'Shared memory'],
+    viz: {
+      title: 'Process pool: main → task queue → worker processes → results',
+      input: '3: 4 2 7 1 3 5',
+      inputLabel: 'workers (1-4) : task costs (1-9 each, up to 8 tasks)',
+      gen: function (input) {
+        var s = String(input || '3: 4 2 7 1 3 5');
+        var parts = s.split(':');
+        if (parts.length !== 2) throw new Error('Format: workers : costs, e.g. 3: 4 2 7 1 3 5');
+        var W = Number(parts[0].trim());
+        if (!(W >= 1 && W <= 4) || Math.floor(W) !== W) throw new Error('workers must be 1-4');
+        var cost = nums(parts[1], 8, 'Task costs must be whole numbers 1-9, e.g. 3: 4 2 7 1 3 5');
+        var total = cost.reduce(function (a, b) { return a + b; }, 0);
+        var tasks = cost.map(function (c, i) { return 'x' + i; });
+        var pending = tasks.map(function (t, i) { return i; });
+        var workers = range(W, function () { return { task: -1, end: 0 }; });
+        var gantt = range(W, function () { return []; }), finished = [], frames = [], t = 0;
+        function nodes() {
+          var ns = [{ id: 'M', label: 'Main process', x: 8, y: 30, shape: 'box' }, { id: 'Q', label: 'Task queue', x: 32, y: 30, shape: 'box' }, { id: 'R', label: 'Result queue', x: 90, y: 30, shape: 'box' }];
+          for (var i = 0; i < W; i++) ns.push({ id: 'W' + i, label: 'Worker ' + (i + 1) + ' (own GIL)', x: 61, y: W === 1 ? 30 : 6 + i * (48 / (W - 1)), shape: 'box' });
+          return ns;
+        }
+        function edges() {
+          var e = [['M', 'Q', 'pickle args']];
+          for (var i = 0; i < W; i++) { e.push(['Q', 'W' + i]); e.push(['W' + i, 'R']); }
+          return e;
+        }
+        function snap(narr, ehl, hl) {
+          var tags = {}, h = hl || {};
+          workers.forEach(function (w, i) { tags['W' + i] = w.task >= 0 ? 'running ' + tasks[w.task] : 'idle'; if (!h['W' + i]) h['W' + i] = w.task >= 0 ? 'cur' : 'done'; });
+          var ps = [{ type: 'graph', directed: true, height: 60, nodes: nodes(), edges: edges(), hl: h, ehl: ehl || {}, tags: tags },
+            { type: 'queue', label: 'Tasks not started yet (cost in brackets)', items: pending.map(function (i) { return tasks[i] + ' [' + cost[i] + ']'; }), frontLabel: 'next', backLabel: 'last' }];
+          if (gantt[0].length) {
+            var ghl = {};
+            gantt.forEach(function (r, i) { r.forEach(function (c, j) { ghl[i + ',' + j] = c === '' ? 'done' : (j === gantt[0].length - 1 ? 'cur' : 'ok'); }); });
+            ps.push({ type: 'grid', label: 'Gantt chart: which task each worker runs per time unit', rows: gantt.map(function (r) { return r.slice(); }), rowHead: range(W, function (i) { return 'W' + (i + 1); }), colHead: range(gantt[0].length, function (j) { return String(j); }), hl: ghl });
+          }
+          ps.push({ type: 'table', label: 'Results as they arrive (finish order)', columns: ['task', 'cost', 'finished at', 'result'], rows: finished.map(function (i) { return [tasks[i], cost[i], workers.length ? String(fin[i]) : '', 'f(' + tasks[i] + ')']; }) });
+          frames.push(fr(narr, ps));
+        }
+        var fin = {};
+        snap('<b>' + W + ' worker processes</b> start (each is a full Python interpreter with its own GIL). Total work = ' + total + ' units. Serial time would be <b>' + total + '</b>; the best possible with ' + W + ' workers is about <b>' + Math.ceil(total / W) + '</b>.', {}, { M: 'cur' });
+        var guard = 0;
+        while ((pending.length || workers.some(function (w) { return w.task >= 0; })) && guard++ < 100) {
+          var ehl = {}, hl = {}, notes = [];
+          workers.forEach(function (w, i) {
+            if (w.task >= 0 && w.end === t) { finished.push(w.task); fin[w.task] = t; notes.push('Worker ' + (i + 1) + ' finished <b>' + tasks[w.task] + '</b> → result pickled back to the result queue.'); ehl['W' + i + '-R'] = 'ok'; hl.R = 'ok'; w.task = -1; }
+          });
+          workers.forEach(function (w, i) {
+            if (w.task < 0 && pending.length) { var k = pending.shift(); w.task = k; w.end = t + cost[k]; notes.push('Idle worker ' + (i + 1) + ' pulls <b>' + tasks[k] + '</b> (cost ' + cost[k] + ').'); ehl['Q-W' + i] = 'cur'; hl.Q = 'cur'; }
+          });
+          if (notes.length) snap('<b>t = ' + t + '.</b> ' + notes.join(' '), ehl, hl);
+          if (!pending.length && !workers.some(function (w) { return w.task >= 0; })) break;
+          workers.forEach(function (w, i) { gantt[i].push(w.task >= 0 ? tasks[w.task] : ''); });
+          t++;
+        }
+        var ordered = tasks.map(function (x, i) { return x; }).join(', ');
+        snap('<b>All done at t = ' + t + '</b> (serial would be ' + total + ', speed-up ≈ ' + (total / t).toFixed(2) + '×). Results arrived in finish order <b>' + finished.map(function (i) { return tasks[i]; }).join(', ') + '</b>, but <code>pool.map</code> still returns them in <b>input order</b> (' + ordered + '). <code>imap_unordered</code> would hand them over in finish order instead. Idle gaps at the end come from uneven task sizes — split work into more, smaller chunks to balance it.', { 'R': 'ok' }, { M: 'ok' });
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'Forgetting the __main__ guard', html: `<p>With <code>spawn</code> (Windows, macOS) and <code>forkserver</code> (Linux 3.14+) each child <b>re-imports your script</b>. If pool creation sits at module level, every child tries to create its own pool. Python detects this and raises <code>RuntimeError: An attempt has been made to start a new process before the current process has finished its bootstrapping phase</code>.</p>${H.table(['Code at top level', 'Result'], [['<code>pool = Pool(4)</code>', H.c('r', 'RuntimeError on spawn / forkserver')], ['<code>if __name__ == "__main__": pool = Pool(4)</code>', H.c('g', 'works everywhere')]])}` },
+      { title: 'When multiprocessing makes things slower', html: `<p>Squaring 1,000,000 small ints with <code>pool.map(square, data)</code>: each item is pickled, piped, unpickled, computed (~50 ns), pickled back… The overhead (~10–50 µs per item without batching) dwarfs the work. Fixes: <code>chunksize=10_000</code>, or do the whole thing in NumPy (<code>arr * arr</code>) which is faster than any pool. ${H.c('y', 'Rule: per-task work should be at least ~1 ms before a pool pays off.')}</p>` },
+      { title: 'Globals are not shared', html: `<p>Each worker gets its <b>own copy</b>:</p>${H.table(['Step', 'Parent counter', 'Child counter'], [['start', '0', '0 (copied or re-imported)'], ['child does counter += 5', '0', '5'], ['child exits', H.c('r', '0 — unchanged'), 'gone']])}<p>Return the value (or use a Queue / Value / shared_memory) to get data back.</p>`, code: `from multiprocessing import Process, Value
+
+def add_five(shared):
+    with shared.get_lock():          # Value comes with its own lock
+        shared.value += 5
+
+if __name__ == "__main__":
+    total = Value("i", 0)            # a C int living in shared memory
+    ps = [Process(target=add_five, args=(total,)) for _ in range(4)]
+    for p in ps: p.start()
+    for p in ps: p.join()
+    print(total.value)               # 20` },
+      { title: 'fork + threads = surprise deadlock', html: `<p><code>fork</code> copies the whole memory, including locks — but only the forking thread survives in the child. If another thread held the logging lock at that instant, the child inherits a lock <b>nobody will ever release</b>; the first <code>logging.info</code> in the child hangs. Python 3.12 warns (<code>DeprecationWarning</code>) when you fork a multi-threaded process, and 3.14 switched the Linux default to <code>forkserver</code>. Use <code>multiprocessing.get_context("spawn")</code> or <code>"forkserver"</code> when in doubt.</p>` }
+    ],
+    deepDive: `<p><b>Pool internals.</b> A <code>multiprocessing.Pool</code> runs three helper threads in the parent: one feeds tasks from an internal queue into a pipe (in chunks), one reads results back, one maintains workers (replacing those that exit due to <code>maxtasksperchild</code>). <code>map</code> splits the iterable into chunks — default <code>chunksize ≈ len / (4 × workers)</code> — so it must consume the whole iterable up front; <code>imap</code> does not, which matters for huge or infinite inputs.</p>
+<p><b>Costs you can estimate.</b> Spawn start-up: 50–300 ms per worker (imports re-run). Fork: ~1–10 ms. Pickling: roughly 100 MB/s–1 GB/s depending on data; pickle protocol 5 supports out-of-band buffers for zero-copy NumPy. Each worker is a full interpreter: 15–40 MB baseline RSS plus whatever it imports — 32 workers that each import pandas can use several GB. With fork, copy-on-write is partly defeated by reference counting (touching an object writes its refcount, copying the page) — Instagram famously added <code>gc.freeze()</code> to keep pages shared.</p>
+<p><b>Exceptions and crashes.</b> An exception in a worker is pickled and re-raised in the parent when you fetch that result. A worker that <b>dies</b> (segfault, OOM-kill) is different: <code>ProcessPoolExecutor</code> raises <code>BrokenProcessPool</code> for all pending futures; old <code>Pool.map</code> could hang forever. Long-running services prefer executors or task queues (Celery, RQ, Dramatiq, Ray) which handle retries and dead workers.</p>
+<p><b>Alternatives in 2026.</b> For numeric work, vectorise first (NumPy, Polars release the GIL and use SIMD). For true shared-memory parallel Python, try the free-threaded 3.14t build with a <code>ThreadPoolExecutor</code>. Sub-interpreters (<code>InterpreterPoolExecutor</code>, 3.14) sit in between: one process, many interpreters, each with its own GIL, cheaper than processes but still no shared Python objects. For clusters, Ray or Dask scale the same map-style code across machines.</p>`,
+    aiEra: `<p><b>What AI changes:</b> generating a <code>Pool</code> wrapper is trivial; deciding <b>whether</b> to parallelise and how to <b>partition</b> data is not. AI often parallelises the wrong level (per row instead of per file) or ships a giant object to every task.</p>
+<p><b>Use AI as a partner:</b> <code>Estimate per-task compute time vs pickling size for this function and recommend a chunksize</code>; <code>Rewrite this to load the model once per worker using an initializer</code>; <code>Convert this Pool code to ProcessPoolExecutor and make it handle BrokenProcessPool</code>.</p>
+<p><b>Where AI goes wrong:</b> lambdas passed to <code>pool.map</code>, missing <code>__main__</code> guard, assuming a global mutated in a worker is visible in the parent, using <code>Manager().dict()</code> in a hot loop (each access is an IPC round-trip), or forgetting <code>shm.unlink()</code> so shared memory leaks.</p>
+<p><b>What you must still own:</b> Amdahl-style reasoning (serial parts, start-up cost), memory budgeting per worker, and knowing when the right answer is "vectorise" or "use a job queue" instead of a process pool.</p>`,
+    problems: [{
+      title: 'Parallel Word Count (Map-Reduce on One Machine)', level: 'Medium', tags: ['multiprocessing', 'map-reduce', 'Counter'], companies: ['Google', 'Meta', 'Databricks'],
+      statement: `<p>Given a list of text lines, return the <b>k most common words</b> (lower-cased, split on whitespace) as a list of <code>(word, count)</code> pairs sorted by count descending, then word ascending. Use multiple processes: each worker counts a <b>chunk</b> of lines, and the parent merges the partial counts.</p>`,
+      constraints: `<p>Up to 10<sup>7</sup> lines, 1 ≤ k ≤ 100, workers = <code>os.cpu_count()</code>. Must not send one line per task (too much overhead).</p>`,
+      example: `<p>lines = ${H.c('b', '["the cat", "The dog", "a cat"]')}, k = 2, 2 workers.<br>Chunk 1 → {the: 1, cat: 1}; chunk 2 → {the: 1, dog: 1, a: 1, cat: 1}. Merge → {the: 2, cat: 2, dog: 1, a: 1}. Output ${H.c('g', '[("cat", 2), ("the", 2)]')} — tie on 2, so alphabetical order puts "cat" first.</p>`,
+      brute: { why: `<p>Single process: correct but uses one core; at 10<sup>7</sup> lines that is tens of seconds of pure-Python string work. A naive parallel version sends <b>one line per task</b> — pickling overhead then dominates and it is slower than serial.</p>`, code: `from collections import Counter
+
+def top_k_serial(lines, k):
+    c = Counter()
+    for line in lines:
+        c.update(line.lower().split())
+    return sorted(c.items(), key=lambda kv: (-kv[1], kv[0]))[:k]
+
+print(top_k_serial(["the cat", "The dog", "a cat"], 2))` },
+      mcq: { q: 'What is the best unit of work to send to each worker?', options: ['One line', 'One word', 'A chunk of thousands of lines', 'The whole list to every worker'], answer: 2, explain: 'Chunks amortise pickling/IPC overhead while still giving several chunks per worker for load balancing. Sending everything to everyone duplicates work and memory.' },
+      hints: [`<p>Hint 1: Counting is <b>associative</b>: count each chunk separately, then add the Counters. That is map-reduce.</p>`, `<p>Hint 2: <code>ProcessPoolExecutor.map(count_chunk, chunks)</code> where <code>count_chunk</code> is top-level and returns a <code>Counter</code>. Merge with <code>total.update(partial)</code> (or <code>+=</code>).</p>`, `<p>Hint 3: Chunk size ≈ len(lines) / (workers × 4). Final ordering: <code>sorted(items, key=lambda kv: (-kv[1], kv[0]))[:k]</code> or <code>heapq.nsmallest(k, items, key=…)</code>. Edge cases: empty input, k larger than distinct words.</p>`],
+      solution: {
+        approach: `<p><b>Map:</b> split lines into chunks; each worker builds a Counter for its chunk (pure CPU work, its own GIL). <b>Reduce:</b> parent adds the Counters. <b>Select:</b> sort by (−count, word) and take k. Only chunks of strings go out and compact Counters come back, so IPC is small relative to work.</p>`,
+        code: `import os
+from collections import Counter
+from concurrent.futures import ProcessPoolExecutor
+import heapq
+
+def count_chunk(chunk):
+    """Map step: runs inside a worker process."""
+    c = Counter()
+    for line in chunk:
+        c.update(line.lower().split())
+    return c
+
+def top_k_words(lines, k, workers=None):
+    workers = workers or os.cpu_count() or 2
+    if not lines:
+        return []
+    size = max(1, len(lines) // (workers * 4))
+    chunks = [lines[i:i + size] for i in range(0, len(lines), size)]
+    total = Counter()
+    with ProcessPoolExecutor(max_workers=workers) as ex:
+        for partial in ex.map(count_chunk, chunks):   # reduce as results arrive
+            total.update(partial)
+    return heapq.nsmallest(k, total.items(), key=lambda kv: (-kv[1], kv[0]))
+
+if __name__ == "__main__":
+    print(top_k_words(["the cat", "The dog", "a cat"], 2, workers=2))   # [('cat', 2), ('the', 2)]`,
+        dry: { head: ['step', 'chunk / data', 'worker', 'partial result', 'running total'], rows: [['map 1', '["the cat"]', 'P1', '{the:1, cat:1}', '{the:1, cat:1}'], ['map 2', '["The dog"]', 'P2', '{the:1, dog:1}', '{the:2, cat:1, dog:1}'], ['map 3', '["a cat"]', 'P1', '{a:1, cat:1}', '{the:2, cat:2, dog:1, a:1}'], ['select', 'k = 2', 'parent', 'key (−count, word)', '[(cat,2), (the,2)]']] },
+        complexity: `<p>Work O(total words) split across W cores; merge O(W' · distinct words) where W' = number of chunks; selection O(D log k). Memory: one Counter per in-flight chunk plus the total.</p>`,
+        followUps: ['The file is 200 GB — how do you avoid loading it in the parent? (send byte offsets; workers seek and read)', 'How would you do this across 50 machines?', 'Why might threads be fine if you used a C-accelerated tokenizer?']
       }
     }]
   });

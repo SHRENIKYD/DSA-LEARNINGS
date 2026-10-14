@@ -330,8 +330,9 @@
           ['0', '29', 'A', 'a', 'equal (ignoring case) → move both'],
           ['1', '28', '␣ → skip to 2: m', 'm', 'equal → move'],
           ['3', '27', 'a', 'a', 'equal → move'],
-          ['…', '…', '…', '…', 'all pairs match'],
-          ['15', '14', '-', '-', '<span class="c-g">left ≥ right → True</span>']
+          ['…', '…', '…', '…', 'all pairs match, skipping spaces and punctuation'],
+          ['17', '17', 'c', 'c', 'pointers meet on the middle letter → move'],
+          ['18', '16', '—', '—', '<span class="c-g">left ≥ right → True</span>']
         ] },
         complexity: R`<p>Time O(n): each pointer moves at most n steps. Extra space O(1) for two pointers (O(n) for the readable version).</p>`,
         followUps: ['Allow deleting at most one character (Valid Palindrome II)', 'Make it Unicode-correct with casefold() and unicodedata normalisation', 'Find the longest palindromic substring']
@@ -1484,7 +1485,7 @@ else:
       <p><b>Consequences you must know:</b></p>
       <ul>
         <li><b>Runs once:</b> a module's top-level code executes only on the first import in a process. Module-level variables therefore act like a shared singleton.</li>
-        <li><b>Shadowing:</b> naming your file <code>random.py</code>, <code>json.py</code>, <code>email.py</code> or <code>test.py</code> hides the standard module of that name, because your folder comes first in sys.path. Symptom: <code>AttributeError: module 'random' has no attribute 'randint'</code>. Python 3.13 now adds a hint to this error when it detects the shadowing.</li>
+        <li><b>Shadowing:</b> naming your file <code>random.py</code>, <code>json.py</code>, <code>email.py</code> or <code>string.py</code> hides the standard module of that name, because your folder comes first in sys.path. Symptom: <code>AttributeError: module 'random' has no attribute 'randint'</code>. Python 3.13 now adds a hint to this error when it detects the shadowing.</li>
         <li><b>Explore a module:</b> <code>dir(math)</code> lists names, <code>help(math.sqrt)</code> shows docs, <code>math.__file__</code> shows where it was loaded from, <code>sys.path</code> shows the search list.</li>
         <li><b>Batteries included:</b> the standard library already has <code>os</code>, <code>sys</code>, <code>pathlib</code>, <code>json</code>, <code>csv</code>, <code>re</code>, <code>datetime</code>, <code>collections</code>, <code>itertools</code>, <code>random</code>, <code>math</code>, <code>statistics</code>, <code>subprocess</code>, <code>logging</code>, <code>unittest</code>, <code>sqlite3</code>, <code>urllib</code> — check it before installing anything.</li>
       </ul>`,
@@ -1605,7 +1606,7 @@ else:
       level: 'Medium', tags: ['modules', 'sys', 'import system'], companies: ['Google', 'JetBrains', 'Canonical'],
       statement: R`<p>Given a list of file and folder names in a project directory, return the sorted list of names that would <b>shadow</b> a standard-library module when a script in that folder runs. A file <code>X.py</code> or a folder <code>X</code> (package) shadows if <code>X</code> is a top-level stdlib module name. Use <code>sys.stdlib_module_names</code> (Python 3.10+).</p>`,
       constraints: R`0 ≤ number of names ≤ 10<sup>5</sup>; names are plain file/folder names (no paths).`,
-      example: R`<p><code>["main.py", "random.py", "utils.py", "email", "json.txt", "test.py"]</code> → ${H.c('r', "['email', 'random.py', 'test.py']")}. <code>random</code>, <code>email</code> and <code>test</code> are stdlib names; <code>json.txt</code> is not a Python module file so it is harmless.</p>`,
+      example: R`<p><code>["main.py", "random.py", "utils.py", "email", "json.txt", "string.py"]</code> → ${H.c('r', "['email', 'random.py', 'string.py']")}. <code>random</code>, <code>email</code> and <code>string</code> are stdlib names; <code>json.txt</code> is not a Python module file so it is harmless.</p>`,
       brute: {
         why: R`<p>Actually try to <code>import</code> each name and check where it came from. That executes arbitrary project code (side effects!), is slow, and is confused by modules already cached in <code>sys.modules</code>.</p>`,
         code: { lang: 'python', run: true, code: R`
@@ -1649,14 +1650,14 @@ else:
                       hits.append(n)
               return sorted(hits)
 
-          print(find_shadowing(["main.py", "random.py", "utils.py", "email", "json.txt", "test.py"]))
+          print(find_shadowing(["main.py", "random.py", "utils.py", "email", "json.txt", "string.py"]))
         ` },
         dry: { head: ['name', 'candidate module', 'in stdlib?', 'result'], rows: [
           ['main.py', 'main', 'no', '—'],
           ['random.py', 'random', '<span class="c-r">yes</span>', 'add'],
           ['email', 'email', '<span class="c-r">yes</span>', 'add'],
           ['json.txt', '(skipped)', '—', '—'],
-          ['test.py', 'test', '<span class="c-r">yes</span>', 'add → sorted: email, random.py, test.py']
+          ['string.py', 'string', '<span class="c-r">yes</span>', 'add → sorted: email, random.py, string.py']
         ] },
         complexity: R`<p>O(n · L) time for n names of length L; O(k) extra space for the hits.</p>`,
         followUps: ['Also flag names that shadow installed third-party packages (importlib.metadata.packages_distributions())', 'Turn it into a pre-commit hook', 'Why does python -P or -I avoid the problem?']
@@ -1781,6 +1782,7 @@ if __name__ == "__main__":     # True only when run directly
       print(sorted(k for k in sys.modules if k.startswith("shop")))
 
       print("--- now run it like: python -m shop.payments.card ---")
+      sys.modules.pop("shop.payments.card")   # forget the imported copy, like a fresh "python -m"
       runpy.run_module("shop.payments.card", run_name="__main__")
     ` }],
     codeTitle: ['A real package, end to end'],
@@ -2321,7 +2323,7 @@ print(len("café".encode()))       # 10</pre>`,
                     masked = masked.replace(d, "*")    # also hits the last 4!
             return masked
 
-        print(mask_brute("4111-1111-1111-1234"))   # ****-****-****-**34  wrong
+        print(mask_brute("4111-1111-1111-1234"))   # ****-****-****-*23*  last four damaged
       ` }
     },
     mcq: { q: 'Which expression groups <code>"************1234"</code> into blocks of 4?', options: ['<code>" ".join(m[i:i+4] for i in range(0, len(m), 4))</code>', '<code>m.split(4)</code>', '<code>" ".join(m)</code>', '<code>m.center(4)</code>'], answer: 0, explain: 'Slices of width 4 at positions 0, 4, 8, … then join with spaces. Slicing past the end is safe for the last short block.' },

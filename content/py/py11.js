@@ -721,4 +721,296 @@ c.put(1, 1); c.put(2, 2); print(c.get(1)); c.put(3, 3); print(c.get(2))  # 1 -1
       }
     }]
   });
+
+  /* ================= TOPIC 3: heapq ================= */
+  topics.push({
+    title: 'heapq: Priority Queues on a Plain List',
+    analogy: `<p>Think of a <b>hospital emergency room</b>. Patients don't get seen in arrival order — the <b>most urgent</b> one always goes next. The triage nurse doesn't keep the whole waiting room perfectly sorted (too much work); she only makes sure the most urgent person is at the front, and when that person leaves she quickly figures out who is next. That "only the top is guaranteed" idea is a <b>heap</b>.</p>`,
+    explain: `<p>🟢 <b>The plain idea.</b> A heap answers one question fast: <i>"what is the smallest item right now?"</i> — even while you keep adding and removing items. Python's <code>heapq</code> module turns a <b>normal list</b> into a <b>min-heap</b>: <code>heap[0]</code> is always the smallest.</p>
+${H.table(['Function', 'What it does', 'Cost'], [
+  ['<code>heapq.heapify(a)</code>', 'rearrange list a into a heap, in place', 'O(n)'],
+  ['<code>heapq.heappush(h, x)</code>', 'add x', 'O(log n)'],
+  ['<code>heapq.heappop(h)</code>', 'remove and return the smallest', 'O(log n)'],
+  ['<code>h[0]</code>', 'peek at the smallest', 'O(1)'],
+  ['<code>heapq.heappushpop(h, x)</code>', 'push then pop (faster than both)', 'O(log n)'],
+  ['<code>heapq.heapreplace(h, x)</code>', 'pop then push (heap must be non-empty)', 'O(log n)'],
+  ['<code>heapq.nlargest(k, it, key=)</code> / <code>nsmallest</code>', 'top k without sorting everything', 'O(n log k)'],
+  ['<code>heapq.merge(*sorted_iters)</code>', 'lazily merge already-sorted inputs', 'O(N log k)']
+])}
+<p>🔵 <b>How a list can be a tree.</b> The heap is a complete binary tree stored level by level. For index <code>i</code>: children at <code>2i+1</code> and <code>2i+2</code>, parent at <code>(i-1)//2</code>. The rule ("heap property"): every parent ≤ its children. The list is <b>not</b> sorted — only the root is guaranteed smallest.</p>
+${H.arr([1, 3, 2, 5, 9, 8], { label: 'a valid min-heap (list form)', hl: { 0: 'g' } })}
+<p>🔵 <b>Push</b> = put the new item at the end, then <b>sift up</b> (swap with parent while smaller). <b>Pop</b> = take the root, move the last item to the root, then <b>sift down</b> (swap with the smaller child while bigger). Both walk one root-to-leaf path → O(log n).</p>
+<p>🔵 <b>Three Python-specific tricks you must know:</b></p>
+<ol>
+<li><b>Max-heap:</b> push <code>-x</code>, pop and negate. (Python 3.14 added <code>heapq.heappush_max</code>, <code>heappop_max</code>, <code>heapify_max</code> — but many judges still run older versions, so negation is the portable habit.)</li>
+<li><b>Priorities with data:</b> push tuples <code>(priority, item)</code>. Tuples compare element by element.</li>
+<li><b>Tie-breaker:</b> if two priorities are equal Python compares the next element — if that is a dict/object you get <code>TypeError</code>. Insert a counter: <code>(priority, next(counter), item)</code>.</li>
+</ol>
+<p><b>The "top k" pattern:</b> to keep the k <b>largest</b> items of a stream, keep a <b>min</b>-heap of size k. Its root is the smallest of the big ones — the k-th largest — and anything smaller than the root is rejected in O(1).</p>`,
+    clues: [
+      '"k-th largest / k-th smallest", "top k", "k closest", "k most frequent" → heap of size k (O(n log k)) or <code>nlargest</code>',
+      '"merge k sorted lists/arrays/files" → heap of the k current heads, or <code>heapq.merge</code>',
+      '"median of a data stream", "running median" → two heaps (max-heap low half via negation, min-heap high half)',
+      '"shortest path with non-negative weights", "minimum cost to reach" → Dijkstra with <code>heapq</code>',
+      '"always take the smallest/largest next", "schedule by priority", "meeting rooms needed" → greedy + heap',
+      '"repeatedly combine the two smallest" (rope cost, Huffman, last stone weight) → heap',
+      'k ≪ n and n up to 10<sup>6</sup> → heap beats full sort'
+    ],
+    code: [{ lang: 'python', run: true, title: 'heapq tour (runnable)', code: `
+import heapq
+import itertools
+
+h = []
+for x in [5, 3, 8, 1, 9, 2]:
+    heapq.heappush(h, x)
+print(h, "smallest:", h[0])         # list is a heap, NOT sorted
+print([heapq.heappop(h) for _ in range(len(h))])   # pops come out sorted
+
+a = [9, 4, 7, 1, 8]
+heapq.heapify(a)                    # O(n), in place
+print(a)
+
+# max-heap via negation
+mx = []
+for x in [5, 3, 8]:
+    heapq.heappush(mx, -x)
+print("max:", -mx[0])
+
+# top-k without sorting everything
+nums = [7, 2, 9, 4, 1, 8, 6]
+print(heapq.nlargest(3, nums), heapq.nsmallest(2, nums))
+words = ["kiwi", "fig", "banana", "apple"]
+print(heapq.nlargest(2, words, key=len))     # longest two
+
+# tie-breaker: dicts are not comparable, so add a counter
+counter = itertools.count()
+tasks = []
+heapq.heappush(tasks, (2, next(counter), {"name": "email"}))
+heapq.heappush(tasks, (1, next(counter), {"name": "deploy"}))
+heapq.heappush(tasks, (2, next(counter), {"name": "lunch"}))   # same priority, no TypeError
+while tasks:
+    pri, _, task = heapq.heappop(tasks)
+    print(pri, task["name"])
+
+# lazy merge of sorted inputs
+print(list(heapq.merge([1, 4, 9], [2, 3, 10], [0, 5])))
+` }],
+    codeTitle: ['heapq tour (runnable)'],
+    viz: {
+      title: 'heappush (sift up) and heappop (sift down) on the list-backed tree',
+      input: '5 3 8 1 9 2 | 2',
+      inputLabel: 'numbers to push | how many pops   (≤ 12 numbers)',
+      gen: function (input) {
+        var parts = String(input === undefined ? '' : input).split('|');
+        var xs = nums(parts[0], 12, 'Format: 5 3 8 1 | 2');
+        var pops = parts.length > 1 ? parseInt(parts[1], 10) : 2;
+        if (isNaN(pops) || pops < 0 || pops > xs.length) throw new Error('After | give the number of pops (0..count of numbers)');
+        var h = [], frames = [];
+        var PUSH = 'heappush(h, x):\n    h.append(x)                 # new leaf\n    i = len(h) - 1\n    while i > 0 and h[i] < h[(i-1)//2]:\n        swap(h, i, (i-1)//2)    # sift up\n        i = (i-1)//2';
+        var POP = 'heappop(h):\n    last = h.pop()\n    if not h: return last\n    top, h[0] = h[0], last      # last leaf to root\n    sift_down(h, 0)             # swap with smaller child\n    return top';
+        function snap(narr, hl, code, codeHl, extra) {
+          var th = {}, ah = {};
+          Object.keys(hl || {}).forEach(function (k) { th[k] = hl[k]; ah[k] = hl[k]; });
+          var ps = [
+            { type: 'tree', label: 'heap as a tree (parent ≤ children)', arr: h.slice(), hl: th },
+            { type: 'array', label: 'the actual Python list h', values: h.slice(), hl: ah, showIdx: true }
+          ];
+          if (extra) ps.push(extra);
+          ps.push(cp(code, codeHl));
+          frames.push(fr(narr, ps));
+        }
+        snap('Start with an empty list <code>h = []</code>. Index math: children of i are <b>2i+1</b> and <b>2i+2</b>, parent is <b>(i-1)//2</b>.', {}, PUSH, {});
+        xs.forEach(function (x) {
+          h.push(x);
+          var i = h.length - 1;
+          snap('<code>heappush(h, ' + x + ')</code>: append <b>' + x + '</b> as the new last leaf (index ' + i + ').', one(i, 'ok'), PUSH, { 2: 'ok' });
+          while (i > 0) {
+            var p = Math.floor((i - 1) / 2);
+            if (h[i] < h[p]) {
+              var hl = {}; hl[i] = 'cur'; hl[p] = 'cur';
+              snap(h[i] + ' &lt; parent ' + h[p] + ' (index ' + p + ') → heap rule broken → <b>swap</b> (sift up).', hl, PUSH, { 4: 'cur', 5: 'cur' });
+              var t = h[i]; h[i] = h[p]; h[p] = t; i = p;
+            } else {
+              var hl2 = {}; hl2[i] = 'ok'; hl2[p] = 'done';
+              snap(h[i] + ' ≥ parent ' + h[p] + ' → heap rule holds, stop. Only one path was touched → O(log n).', hl2, PUSH, { 4: 'ok' });
+              break;
+            }
+          }
+          if (i === 0 && h.length > 1) snap('<b>' + h[0] + '</b> climbed all the way to the root: it is the new minimum, <code>h[0]</code>.', one(0, 'sel'), PUSH, { 6: 'ok' });
+        });
+        var popped = [];
+        for (var r = 0; r < pops; r++) {
+          var top = h[0], last = h.pop();
+          if (h.length) {
+            h[0] = last;
+            snap('<code>heappop(h)</code> takes the root <b>' + top + '</b>. The last leaf <b>' + last + '</b> is moved to the root so the tree stays complete.', one(0, 'cur'), POP, { 2: 'cur', 4: 'cur' }, { type: 'array', label: 'popped so far', values: popped.concat([top]), hl: one(popped.length, 'sel') });
+            var i2 = 0;
+            while (true) {
+              var l = 2 * i2 + 1, rr = 2 * i2 + 2, m = i2;
+              if (l < h.length && h[l] < h[m]) m = l;
+              if (rr < h.length && h[rr] < h[m]) m = rr;
+              if (m === i2) {
+                snap('No child is smaller than ' + h[i2] + ' → sift down stops. Heap restored.', one(i2, 'ok'), POP, { 5: 'ok', 6: 'ok' }, { type: 'array', label: 'popped so far', values: popped.concat([top]) });
+                break;
+              }
+              var hl3 = {}; hl3[i2] = 'cur'; hl3[m] = 'cur';
+              snap(h[i2] + ' is bigger than its smaller child ' + h[m] + ' → swap them (sift down).', hl3, POP, { 5: 'cur' }, { type: 'array', label: 'popped so far', values: popped.concat([top]) });
+              var t2 = h[i2]; h[i2] = h[m]; h[m] = t2; i2 = m;
+            }
+          } else {
+            snap('<code>heappop(h)</code> returns <b>' + top + '</b>; the heap is now empty.', {}, POP, { 3: 'ok' }, { type: 'array', label: 'popped so far', values: popped.concat([top]) });
+          }
+          popped.push(top);
+        }
+        frames.push(fr('Pops came out in sorted order: <b>[' + popped.join(', ') + ']</b>. Popping everything is heapsort, O(n log n). Notice the list itself was never fully sorted — only <code>h[0]</code> is guaranteed.', [
+          { type: 'tree', label: 'final heap', arr: h.slice(), hl: h.length ? { 0: 'sel' } : {} },
+          { type: 'array', label: 'popped (ascending)', values: popped.slice() }
+        ]));
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'K-th largest element with a size-k min-heap', html: `<p>Keep only the k biggest seen so far in a <b>min</b>-heap. When it grows past k, pop the smallest. At the end the root is the k-th largest. Cost O(n log k) time, O(k) memory — great for streams.</p>${H.arr([3, 2, 1, 5, 6, 4], { label: 'nums, k = 2' })}${H.table(['x', 'heap after', 'note'], [['3', '[3]', ''], ['2', '[2,3]', ''], ['1', '[2,3]', 'pushed 1, popped 1'], ['5', '[3,5]', 'popped 2'], ['6', '[5,6]', 'popped 3'], ['4', '[5,6]', 'popped 4 → answer ' + H.c('g', '5')]])}`, code: { lang: 'python', run: true, code: `
+import heapq
+
+def kth_largest(nums, k):
+    h = []
+    for x in nums:
+        heapq.heappush(h, x)
+        if len(h) > k:
+            heapq.heappop(h)      # throw away the smallest of the k+1
+    return h[0]
+
+def kth_largest_fast(nums, k):
+    h = nums[:k]
+    heapq.heapify(h)
+    for x in nums[k:]:
+        if x > h[0]:
+            heapq.heapreplace(h, x)   # pop + push in one sift
+    return h[0]
+
+print(kth_largest([3, 2, 1, 5, 6, 4], 2), kth_largest_fast([3, 2, 3, 1, 2, 4, 5, 5, 6], 4))  # 5 4
+` } },
+      { title: 'Merge k sorted lists with (value, index) tuples', html: `<p>Push the head of each list as <code>(value, list_id, position)</code>. Pop the smallest, push the next element from the same list. The <code>list_id</code> acts as a tie-breaker so equal values never compare further. O(N log k).</p>`, code: { lang: 'python', run: true, code: `
+import heapq
+
+def merge_k(lists):
+    h = [(lst[0], i, 0) for i, lst in enumerate(lists) if lst]
+    heapq.heapify(h)
+    out = []
+    while h:
+        val, i, j = heapq.heappop(h)
+        out.append(val)
+        if j + 1 < len(lists[i]):
+            heapq.heappush(h, (lists[i][j + 1], i, j + 1))
+    return out
+
+print(merge_k([[1, 4, 5], [1, 3, 4], [2, 6]]))       # [1, 1, 2, 3, 4, 4, 5, 6]
+print(list(heapq.merge([1, 4, 5], [1, 3, 4], [2, 6])))  # built-in lazy version
+` } },
+      { title: 'Last stone weight: max-heap by negation', html: `<p>Repeatedly smash the two heaviest stones; if they differ, the difference goes back. "Two largest, repeatedly" → max-heap. Python's heap is min-only, so store negatives.</p>${H.arr([2, 7, 4, 1, 8, 1], { label: 'stones' })}<p>8 &amp; 7 → 1; 4 &amp; 2 → 2; 2 &amp; 1 → 1; 1 &amp; 1 → 0; left: <b>1</b>.</p>`, code: { lang: 'python', run: true, code: `
+import heapq
+
+def last_stone_weight(stones):
+    h = [-s for s in stones]
+    heapq.heapify(h)
+    while len(h) > 1:
+        a = -heapq.heappop(h)      # heaviest
+        b = -heapq.heappop(h)      # second heaviest
+        if a != b:
+            heapq.heappush(h, -(a - b))
+    return -h[0] if h else 0
+
+print(last_stone_weight([2, 7, 4, 1, 8, 1]))  # 1
+` } },
+      { title: 'Meeting rooms II: heap of end times', html: `<p>Sort meetings by start. Keep a min-heap of end times of rooms in use. If the earliest-ending room is free (end ≤ start), reuse it (<code>heapreplace</code>), else open a new room. The heap size at the end is the answer.</p>${H.table(['meeting', 'heap of ends', 'rooms'], [['[0,30]', '[30]', '1'], ['[5,10]', '[10,30]', '2'], ['[15,20]', '[20,30] (reused room ending 10)', H.c('g', '2')]])}`, code: { lang: 'python', run: true, code: `
+import heapq
+
+def min_meeting_rooms(intervals):
+    ends = []
+    for start, end in sorted(intervals):
+        if ends and ends[0] <= start:
+            heapq.heapreplace(ends, end)   # reuse the room that frees first
+        else:
+            heapq.heappush(ends, end)      # need a new room
+    return len(ends)
+
+print(min_meeting_rooms([[0, 30], [5, 10], [15, 20]]))  # 2
+` } }
+    ],
+    deepDive: `<p>🟣 <b>Why heapify is O(n), not O(n log n).</b> <code>heapify</code> sifts down every non-leaf from the bottom up. Half the nodes are leaves (0 work), a quarter sift at most 1 level, an eighth at most 2… Sum = n·∑ h/2<sup>h+1</sup> ≤ n. So building a heap from 10<sup>6</sup> items is ~10<sup>6</sup> steps, cheaper than pushing them one by one (~2·10<sup>7</sup>).</p>
+<p><b>CPython's pop is "bottom-up".</b> <code>heappop</code> moves the last item to the root, then (in <code>_siftup</code>) pushes the smaller child up all the way to a leaf <i>without comparing against the moving item</i>, and finally sifts the item back up a little. This saves comparisons because the moved leaf usually belongs near the bottom. The C accelerator <code>_heapq</code> replaces the Python code at import time.</p>
+<p><b>Stability &amp; comparisons:</b> heaps are not stable. Equal priorities compare the next tuple field; use <code>(priority, seq, item)</code> with <code>itertools.count()</code> for FIFO among equals (that is what the official docs recommend for a priority queue). <code>dataclass(order=True)</code> with <code>field(compare=False)</code> on the payload is another clean option.</p>
+<p><b>Deleting / updating priorities:</b> heapq has no decrease-key. Production pattern = <b>lazy deletion</b>: push the new entry, mark the old one invalid (dict or "removed" flag), and skip invalid entries when popped. Dijkstra in Python does exactly this: <code>if d &gt; dist[u]: continue</code>.</p>
+<p><b>When not to use heapq:</b> thread-safe producer/consumer → <code>queue.PriorityQueue</code> (locks, blocking get); need sorted iteration + deletes by value → <code>sortedcontainers.SortedList</code> (not in stdlib); k close to n → just <code>sorted()</code>, which runs in C with a smaller constant. <code>nlargest</code> itself switches to <code>sorted</code> when k ≥ n and to <code>max</code> when k == 1.</p>`,
+    aiEra: `<p>🤖 <b>What AI changes:</b> boilerplate like Dijkstra or merge-k is generated instantly. The interview signal moved to <b>choosing</b> the heap (vs sort, vs bucket sort, vs quickselect), the size-k argument, and correctness details.</p>
+<p><b>Use AI as a partner:</b> <code>"Compare heap vs quickselect vs bucket sort for top-k frequent with n = 10^6 distinct values — give the trade-offs, not code"</code>; <code>"Find the bug: my heap tuples sometimes raise TypeError"</code>.</p>
+<p><b>Where AI goes wrong:</b> uses a <b>max</b>-heap of all n items for "k largest" (O(n log n) and O(n) memory) instead of a min-heap of size k; forgets negation when reading back (<code>-h[0]</code>); pushes <code>(dist, node)</code> where node is a custom object without <code>__lt__</code>; assumes the heap list is sorted and indexes <code>h[1]</code> as the second smallest (wrong — it's only one of the two candidates).</p>
+<p><b>What you must still own:</b> the sift-up/sift-down mechanics, the O(n) heapify argument, and the instinct "k-th / top-k / merge / always-the-smallest → heap".</p>`,
+    problems: [{
+      title: 'Top K Frequent Elements', level: 'Medium', tags: ['heap', 'Counter', 'bucket sort'], companies: ['Amazon', 'Meta', 'Google', 'Apple', 'Uber'],
+      statement: `<p>Given an integer array <code>nums</code> and an integer <code>k</code>, return the <code>k</code> most frequent elements, in any order. The answer is guaranteed to be unique. Your algorithm must be better than O(n log n).</p>`,
+      constraints: `1 ≤ n ≤ 10<sup>5</sup>, -10<sup>4</sup> ≤ nums[i] ≤ 10<sup>4</sup>, 1 ≤ k ≤ number of distinct values`,
+      example: `<p>nums = ${H.arr([1, 1, 1, 2, 2, 3])}, k = 2 → ${H.c('g', '[1, 2]')}. Counts are {1: 3, 2: 2, 3: 1}; the two biggest counts belong to 1 and 2.</p>`,
+      brute: { why: `<p>Count, then sort all distinct values by count: O(n + d log d). For each element you could also recount with <code>nums.count(x)</code>, which is O(n²) — 10<sup>10</sup> steps at n = 10<sup>5</sup>. Even the sort version does more than needed: we only care about the top k, not the full order.</p>`, code: `
+def top_k_brute(nums, k):
+    freq = {x: nums.count(x) for x in set(nums)}      # O(n * d) recounting
+    return sorted(freq, key=lambda x: freq[x], reverse=True)[:k]
+
+print(top_k_brute([1, 1, 1, 2, 2, 3], 2))
+` },
+      mcq: { q: 'You keep a heap while scanning (value, count) pairs to find the k most frequent. Which heap and size?', options: ['A <b>min</b>-heap keyed by count, size k', 'A max-heap keyed by count, all d items', 'A min-heap keyed by value, size k', 'A max-heap keyed by value, size k'], answer: 0, explain: 'The min-heap of size k keeps the k biggest counts; its root is the weakest member and is evicted when something more frequent arrives: O(d log k). A max-heap of everything works but costs O(d log d) build-and-pop and O(d) memory.' },
+      hints: [`<p>Hint 1: First turn the array into counts — that is a <code>Counter</code>. Now the problem is "top k of d (value, count) pairs".</p>`, `<p>Hint 2: Top k of something = min-heap of size k, or simply <code>heapq.nlargest(k, counts, key=counts.get)</code>. For strict O(n) use <b>bucket sort</b>: index = count (max n).</p>`, `<p>Hint 3: k may equal the number of distinct values (answer = all of them). Recipe: <code>c = Counter(nums)</code>; return <code>heapq.nlargest(k, c, key=c.get)</code>.</p>`],
+      solution: {
+        approach: `<p>Count with <code>Counter</code> (O(n)), then pick the k keys with the largest counts using <code>heapq.nlargest</code>, which internally maintains a size-k min-heap → O(n + d log k). The bucket-sort alternative places each value in <code>buckets[count]</code> and scans from high counts down → O(n).</p>`,
+        code: { lang: 'python', run: true, code: `
+import heapq
+from collections import Counter
+from typing import List
+
+def top_k_frequent(nums: List[int], k: int) -> List[int]:
+    counts = Counter(nums)                          # value -> frequency
+    return heapq.nlargest(k, counts, key=counts.get)   # size-k heap inside
+
+def top_k_manual_heap(nums, k):
+    counts = Counter(nums)
+    h = []                                          # (count, value), min-heap
+    for val, cnt in counts.items():
+        heapq.heappush(h, (cnt, val))
+        if len(h) > k:
+            heapq.heappop(h)                        # drop the least frequent
+    return [val for cnt, val in h]
+
+print(top_k_frequent([1, 1, 1, 2, 2, 3], 2))        # [1, 2]
+print(sorted(top_k_manual_heap([4, 4, 5, 5, 5, 6], 2)))  # [4, 5]
+` },
+        alt: [{ lang: 'python', title: 'O(n) bucket sort', run: true, code: `
+from collections import Counter
+
+def top_k_bucket(nums, k):
+    counts = Counter(nums)
+    buckets = [[] for _ in range(len(nums) + 1)]   # index = frequency
+    for val, cnt in counts.items():
+        buckets[cnt].append(val)
+    out = []
+    for cnt in range(len(buckets) - 1, 0, -1):     # highest frequency first
+        for val in buckets[cnt]:
+            out.append(val)
+            if len(out) == k:
+                return out
+    return out
+
+print(top_k_bucket([1, 1, 1, 2, 2, 3], 2))   # [1, 2]
+` }],
+        dry: { head: ['(value, count)', 'heap after push', 'size &gt; k?', 'heap after'], rows: [
+          ['(1, 3)', '[(3,1)]', 'no', '[(3,1)]'],
+          ['(2, 2)', '[(2,2), (3,1)]', 'no', '[(2,2), (3,1)]'],
+          ['(3, 1)', '[(1,3), (3,1), (2,2)]', H.c('r', 'yes → pop (1,3)'), '[(2,2), (3,1)]'],
+          ['end', '—', '—', H.c('g', 'answer [2, 1]')]
+        ] },
+        complexity: `<p>Counting O(n). Heap: O(d log k) time, O(d + k) space (d = distinct values). Bucket sort: O(n) time, O(n) space.</p>`,
+        followUps: ['Return them sorted by frequency, ties by value', 'The array is a stream that never ends — keep the top k so far (heap + counts, or Count-Min Sketch for memory)', 'Top K Frequent Words with alphabetical tie-break: key <code>(-count, word)</code>']
+      }
+    }]
+  });
 registerModule({ id: 'py11', title: 'T', intro: `<p>xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx</p>`, goals: ['aaaaaaaaaaaa','bbbbbbbbbbbbb','ccccccccccccc'], prereqs: `ppppppppppppppppppp`, hours: 10, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();
