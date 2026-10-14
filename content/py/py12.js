@@ -516,7 +516,7 @@ for b, a in zip(before, after):
     }],
     examples: [
       { title: 'Walk the frame chain yourself', html: R`<p><code>sys._getframe()</code> returns the current frame; following <code>f_back</code> walks to the callers. This is what tracebacks, loggers (<code>%(funcName)s</code>) and debuggers do.</p>
-        ${H.arr(['inner', 'outer', '&lt;module&gt;'], { label: 'f_back chain', hl: { 0: 'y' } })}`, code: { lang: 'python', run: true, code: R`import sys
+        ${H.arr(['inner', 'outer', '<module>'], { label: 'f_back chain', hl: { 0: 'y' } })}`, code: { lang: 'python', run: true, code: R`import sys
 
 def who_called_me():
     f = sys._getframe(1)          # 1 = skip my own frame
@@ -2584,7 +2584,7 @@ def global_lookups_regex(func):
     mcq: { q: 'Inside a function, which instruction reads a builtin like <code>len</code>?', options: ['LOAD_GLOBAL', 'LOAD_FAST', 'LOAD_NAME', 'LOAD_DEREF'], answer: 0, explain: 'Function code uses LOAD_GLOBAL for names that are neither local nor closure variables; it checks module globals and then builtins. LOAD_NAME is for module/class bodies.' },
     hints: [R`<p>Hint 1: filter instructions with <code>ins.opname == "LOAD_GLOBAL"</code> and collect <code>ins.argval</code>.</p>`, R`<p>Hint 2: <code>collections.Counter</code> does the counting.</p>`, R`<p>Hint 3: compare two versions of the same loop: one calling <code>math.sqrt</code>, one with <code>sqrt = math.sqrt</code> hoisted before the loop (or passed as a default argument).</p>`],
     solution: {
-      approach: R`<p>Count <code>LOAD_GLOBAL</code> instructions by name. Then show that hoisting moves the lookup out of the loop body (the count stays similar, but the loop's instructions now use <code>LOAD_FAST</code>).</p>`,
+      approach: R`<p>Count <code>LOAD_GLOBAL</code> instructions by name. Then show that hoisting (binding globals to default arguments, which are evaluated once at <code>def</code> time) removes every <code>LOAD_GLOBAL</code> from the function: the loop body now reads only <code>LOAD_FAST</code> slots.</p>`,
       code: { lang: 'python', run: true, code: R`import dis
 import math
 from collections import Counter
@@ -2846,7 +2846,7 @@ print("instances see live()?", hasattr(r, "live"))
     level: 'Medium', tags: ['weakref', 'refcount', 'observer'], companies: ['Spotify', 'Discord', 'Uber'],
     statement: R`<p>Build <code>EventBus</code> with <code>subscribe(callback)</code> and <code>publish(event)</code>. Subscribers are usually bound methods of UI or service objects; the bus must <b>not</b> keep those objects alive. When a subscriber object is garbage collected, its callback silently disappears.</p>`,
     constraints: R`<p>Support both plain functions (kept strongly) and bound methods (kept weakly). Publishing must skip and clean up dead entries.</p>`,
-    example: R`<p>Two widgets subscribe; one is deleted; publishing <code>"tick"</code> reaches ${H.c('g', 'only the live widget')} and the bus reports 1 subscriber.</p>`,
+    example: R`<p>Two widgets subscribe; one is deleted; publishing <code>"tick"</code> reaches ${H.c('g', 'only the live widget')} and the dead widget's entry is dropped (plain-function subscribers such as a logger stay).</p>`,
     brute: { why: R`<p>Storing callbacks in a plain list holds a strong reference to each bound method, and a bound method holds <code>__self__</code>. Every subscriber therefore lives as long as the bus: the classic observer-pattern leak. <code>weakref.ref(obj.method)</code> does not work either: the bound method object is temporary and dies immediately.</p>`, code: R`class LeakyBus:
     def __init__(self):
         self.subs = []
@@ -3024,4 +3024,597 @@ for cls in (Regular, Slotted, DataSlotted):
       followUps: ['Why can slotted instances not be weakly referenced by default, and how do you allow it? (add <code>"__weakref__"</code> to slots)']
     }
   });
-registerModule({ id: 'py12', title: 'CPython Internals', intro: 'x', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();
+
+  /* ======================================================================
+     PRACTICE — Hard
+     ====================================================================== */
+  practice.push({
+    title: 'Find Reference Cycles Among Your Objects',
+    level: 'Hard', tags: ['gc', 'graph', 'Tarjan SCC'], companies: ['Meta', 'Dropbox', 'Datadog'],
+    statement: R`<p>Given a dict <code>objs</code> of <code>label → object</code> (your own class instances), return every <b>reference cycle</b> among them as a sorted list of labels. Object A "points to" B if B can be reached from A through <code>gc.get_referents</code>, passing only through plain containers (<code>dict</code>, <code>list</code>, <code>tuple</code>, <code>set</code>) that are not themselves in <code>objs</code>. A self-reference counts as a cycle.</p>`,
+    constraints: R`<p>Up to 10<sup>4</sup> objects. Do not walk into types, modules or functions. Must work whether instances store attributes in a real <code>__dict__</code> (≤ 3.10) or inline values (3.11+), which changes what <code>gc.get_referents</code> returns.</p>`,
+    example: R`<p>a ⇄ b, c → c, d → e, f → [g] (a list) and g → f ⇒ ${H.c('r', "[['a', 'b'], ['c'], ['f', 'g']]")}. d and e are not in a cycle.</p>`,
+    brute: { why: R`<p>For every pair (A, B) run a reachability search A ⇝ B and B ⇝ A: O(N² · (N + E)). Strongly connected components (Tarjan or Kosaraju) find all cycles in one O(N + E) pass once the object graph is built.</p>`, code: R`import gc
+
+def reaches(src, dst, ids):
+    stack, seen = [src], set()
+    while stack:
+        cur = stack.pop()
+        for r in gc.get_referents(cur):
+            if r is dst:
+                return True
+            if id(r) not in seen and isinstance(r, (dict, list, tuple, set)):
+                seen.add(id(r))
+                stack.append(r)
+            elif id(r) in ids and id(r) not in seen:
+                seen.add(id(r))
+                stack.append(r)
+    return False
+
+def cycles_brute(objs):
+    ids = {id(o) for o in objs.values()}
+    labels = list(objs)
+    return [(x, y) for i, x in enumerate(labels) for y in labels[i:]
+            if reaches(objs[x], objs[y], ids) and reaches(objs[y], objs[x], ids)]
+` },
+    mcq: { q: 'Why must the edge builder pass through plain dicts and lists?', options: ['References often go via a container (an attribute dict or a list attribute) rather than directly', 'gc.get_referents only returns dicts', 'To include every object in the program', 'Because tuples are immortal'], answer: 0, explain: 'f.items = [g] means f → list → g. Depending on the version, attributes may also sit in a __dict__ dict. Walking through plain containers recovers the logical edge f → g.' },
+    hints: [R`<p>Hint 1: build the graph: for each object, BFS over <code>gc.get_referents</code>; when you hit an object in your set, add an edge and stop there; when you hit a plain container not in the set, keep walking; ignore everything else.</p>`, R`<p>Hint 2: run Tarjan's SCC (or Kosaraju) on the label graph. An SCC with more than one node, or one node with a self-edge, is a cycle.</p>`, R`<p>Hint 3: key objects by <code>id()</code> while they are alive; keep a <code>seen</code> set of container ids per BFS so you do not loop through container cycles. Sort labels inside each cycle and the list of cycles.</p>`],
+    solution: {
+      approach: R`<p>Two phases. (1) Edge extraction: BFS from each object through referents, crossing plain containers, stopping at tracked objects. (2) Tarjan's algorithm (iterative-friendly recursion is fine at this size) to find strongly connected components; report SCCs that are real cycles.</p>`,
+      code: { lang: 'python', run: true, code: R`import gc
+from collections import deque
+
+PLAIN = (dict, list, tuple, set, frozenset)
+
+def build_edges(objs):
+    by_id = {id(o): label for label, o in objs.items()}
+    edges = {label: set() for label in objs}
+    for label, obj in objs.items():
+        seen, queue = set(), deque(gc.get_referents(obj))
+        while queue:
+            r = queue.popleft()
+            rid = id(r)
+            if rid in by_id:
+                edges[label].add(by_id[rid])          # reached a tracked object
+            elif isinstance(r, PLAIN) and rid not in seen:
+                seen.add(rid)
+                queue.extend(gc.get_referents(r))      # walk through plumbing
+    return edges
+
+def find_cycles(objs):
+    edges = build_edges(objs)
+    index, low, on_stack, stack, out, counter = {}, {}, set(), [], [], [0]
+
+    def strongconnect(v):
+        index[v] = low[v] = counter[0]; counter[0] += 1
+        stack.append(v); on_stack.add(v)
+        for w in edges[v]:
+            if w not in index:
+                strongconnect(w)
+                low[v] = min(low[v], low[w])
+            elif w in on_stack:
+                low[v] = min(low[v], index[w])
+        if low[v] == index[v]:                         # v is an SCC root
+            comp = []
+            while True:
+                w = stack.pop(); on_stack.discard(w); comp.append(w)
+                if w == v:
+                    break
+            if len(comp) > 1 or v in edges[v]:
+                out.append(sorted(comp))
+
+    for v in edges:
+        if v not in index:
+            strongconnect(v)
+    return sorted(out)
+
+class Node:
+    def __init__(self, name):
+        self.name = name
+        self.link = None
+        self.items = []
+
+a, b, c, d, e, f, g = (Node(x) for x in "abcdefg")
+a.link, b.link = b, a                 # a <-> b
+c.link = c                            # self-cycle
+d.link = e                            # chain, no cycle
+f.items = [g]; g.link = f             # cycle through a list
+objs = dict(a=a, b=b, c=c, d=d, e=e, f=f, g=g)
+print(find_cycles(objs))
+` },
+      complexity: R`<p>Edge building O(total referents visited); Tarjan O(N + E). Memory O(N + E).</p>`,
+      followUps: ['Break each cycle automatically by converting one edge to a <code>weakref</code>. Which edge would you pick in a parent/child tree?', 'Why might <code>gc.get_referents</code> miss references held by C extension objects that do not implement <code>tp_traverse</code>?']
+    }
+  });
+
+  practice.push({
+    title: 'Compile Expressions to Stack Bytecode with ast',
+    level: 'Hard', tags: ['ast', 'compiler', 'stack machine'], companies: ['Jane Street', 'Hudson River Trading', 'Google'],
+    statement: R`<p>Write <code>compile_expr(src)</code> that parses a Python arithmetic expression with <code>ast</code> and emits a list of instructions for a stack machine (<code>LOAD_CONST</code>, <code>LOAD_NAME</code>, <code>BINARY_OP op</code>, <code>UNARY_NEG</code>), performing <b>constant folding</b> like CPython. Then write <code>execute(code, env)</code> and check your results against <code>eval</code> on many random expressions.</p>`,
+    constraints: R`<p>Support <code>+ - * / // % **</code>, unary minus/plus, parentheses, int/float constants and variable names. Reject anything else (calls, attributes) with <code>ValueError</code>. Do not fold operations that raise (e.g. <code>1 / 0</code>).</p>`,
+    example: R`<p><code>"x * (2 + 3) - -4"</code> → ${H.c('b', "[LOAD_NAME x, LOAD_CONST 5, BINARY_OP *, LOAD_CONST 4, BINARY_OP +]")}? No! Subtracting −4 folds the unary minus into the constant −4, giving <code>LOAD_CONST -4, BINARY_OP -</code>. With x = 2 the result is ${H.c('g', '14')}.</p>`,
+    brute: { why: R`<p>Calling <code>eval(src)</code> gives the answer but no bytecode and runs arbitrary code. A hand-written string parser with precedence rules is long and buggy. The <code>ast</code> module already gives a correct tree; the remaining work is a post-order walk, exactly what CPython's code generator does.</p>`, code: R`def compile_with_eval(src, env):
+    return eval(src, {"__builtins__": {}}, env)       # no bytecode, unsafe in general
+
+print(compile_with_eval("x * (2 + 3)", {"x": 2}))
+` },
+    mcq: { q: 'In which order must a post-order code generator emit <code>a - b</code>?', options: ['code(a), code(b), BINARY_OP -', 'BINARY_OP -, code(a), code(b)', 'code(b), code(a), BINARY_OP -', 'code(a), BINARY_OP -, code(b)'], answer: 0, explain: 'Operands first (left then right), operator last. The VM pops b (top) then a and computes a − b.' },
+    hints: [R`<p>Hint 1: <code>ast.parse(src, mode="eval").body</code> is the root. Map <code>ast.Add</code>, <code>ast.Sub</code>… to symbols and Python functions from <code>operator</code>.</p>`, R`<p>Hint 2: write <code>fold(node)</code> returning either <code>("const", value)</code> or a list of instructions. For a BinOp whose both sides are constants, try computing; on exception keep the instructions (like CPython).</p>`, R`<p>Hint 3: the VM is the classic loop: push constants/names, pop two for BINARY_OP (right first), negate for UNARY_NEG. Test with a seeded random generator of expressions over a few names, skipping cases where <code>eval</code> raises.</p>`],
+    solution: {
+      approach: R`<p>A recursive emitter over the AST that returns constants when sub-trees are constant (folding), and instruction lists otherwise. The VM executes the list with a value stack. A randomized differential test against <code>eval</code> gives confidence.</p>`,
+      code: { lang: 'python', run: true, code: R`import ast
+import operator
+import random
+
+OPS = {ast.Add: ("+", operator.add), ast.Sub: ("-", operator.sub),
+       ast.Mult: ("*", operator.mul), ast.Div: ("/", operator.truediv),
+       ast.FloorDiv: ("//", operator.floordiv), ast.Mod: ("%", operator.mod),
+       ast.Pow: ("**", operator.pow)}
+FUNCS = {sym: fn for sym, fn in OPS.values()}
+
+def compile_expr(src):
+    def gen(node):
+        """Return ('const', v) for constant subtrees, else ('code', [instructions])."""
+        if isinstance(node, ast.Constant) and type(node.value) in (int, float):
+            return ("const", node.value)
+        if isinstance(node, ast.Name):
+            return ("code", [("LOAD_NAME", node.id)])
+        if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.USub, ast.UAdd)):
+            kind, val = gen(node.operand)
+            if isinstance(node.op, ast.UAdd):
+                return (kind, val)
+            if kind == "const":
+                return ("const", -val)                       # fold -4
+            return ("code", val + [("UNARY_NEG", None)])
+        if isinstance(node, ast.BinOp) and type(node.op) in OPS:
+            sym, fn = OPS[type(node.op)]
+            left, right = gen(node.left), gen(node.right)
+            if left[0] == "const" and right[0] == "const":
+                try:
+                    return ("const", fn(left[1], right[1]))    # fold if it succeeds
+                except (ArithmeticError, ValueError):
+                    pass
+            def code(part):
+                return [("LOAD_CONST", part[1])] if part[0] == "const" else part[1]
+            return ("code", code(left) + code(right) + [("BINARY_OP", sym)])
+        raise ValueError(f"unsupported syntax: {ast.dump(node)[:40]}")
+
+    kind, val = gen(ast.parse(src, mode="eval").body)
+    return [("LOAD_CONST", val)] if kind == "const" else val
+
+def execute(code, env):
+    stack = []
+    for op, arg in code:
+        if op == "LOAD_CONST":
+            stack.append(arg)
+        elif op == "LOAD_NAME":
+            stack.append(env[arg])
+        elif op == "UNARY_NEG":
+            stack.append(-stack.pop())
+        else:
+            right, left = stack.pop(), stack.pop()
+            stack.append(FUNCS[arg](left, right))
+    return stack.pop()
+
+prog = compile_expr("x * (2 + 3) - -4")
+print(prog, "->", execute(prog, {"x": 2}))
+print(compile_expr("24 * 60 * 60"), compile_expr("1 / 0 + x"))
+
+rng = random.Random(7)
+def rand_expr(depth=0):
+    if depth > 3 or rng.random() < 0.3:
+        return rng.choice(["x", "y", str(rng.randint(1, 9))])
+    op = rng.choice(["+", "-", "*", "//", "%"])
+    return f"({rand_expr(depth + 1)} {op} {rand_expr(depth + 1)})"
+
+ok = total = 0
+for _ in range(500):
+    src, env = rand_expr(), {"x": rng.randint(-5, 5), "y": rng.randint(1, 5)}
+    try:
+        expected = eval(src, {}, env)
+    except ZeroDivisionError:
+        continue
+    total += 1
+    ok += execute(compile_expr(src), env) == expected
+print(f"differential test: {ok}/{total} match eval")
+` },
+      complexity: R`<p>Compile O(n) in the AST size; execute O(instructions). Folding can shrink the program dramatically for constant-heavy expressions.</p>`,
+      followUps: ['Add comparisons and short-circuit <code>and</code>/<code>or</code> (needs jump instructions).', 'Why does CPython refuse to fold <code>2 ** 10_000_000</code>? Add a size guard.']
+    }
+  });
+
+  practice.push({
+    title: 'Block Forbidden Imports with a Meta Path Hook',
+    level: 'Hard', tags: ['import system', 'sys.meta_path', 'context manager'], companies: ['Anthropic', 'OpenAI', 'Replit'],
+    statement: R`<p>Implement a context manager <code>block_imports(*names)</code>. Inside the block, importing any blocked module or any submodule of a blocked package raises <code>ImportError("import of 'X' is blocked")</code>, <b>even if the module was already imported earlier</b>. On exit, everything is restored exactly. (Used for tests that assert code paths never touch the network, or for plugin linting.)</p>`,
+    constraints: R`<p>Must be first on <code>sys.meta_path</code> while active. Must temporarily hide already-loaded blocked modules from <code>sys.modules</code> and restore them afterwards. Not a security sandbox: document why.</p>`,
+    example: R`<p>Inside <code>with block_imports("socket", "ctypes"):</code> → <code>import socket</code> and <code>import ctypes.util</code> raise ${H.c('r', 'ImportError')}; <code>import json</code> works. After the block, <code>import socket</code> ${H.c('g', 'works again')}.</p>`,
+    brute: { why: R`<p>Monkey-patching <code>builtins.__import__</code> catches <code>import</code> statements but misses <code>importlib.import_module</code>, interacts badly with other patchers, and is slower for every import. Forgetting the <code>sys.modules</code> cache is the other classic hole: an already-imported module is returned without consulting any finder.</p>`, code: R`import builtins
+
+_real_import = builtins.__import__
+
+def guarded_import(name, *args, **kwargs):
+    if name.split(".")[0] in {"socket"}:
+        raise ImportError(f"blocked {name}")
+    return _real_import(name, *args, **kwargs)
+
+builtins.__import__ = guarded_import          # global patch, misses importlib paths
+builtins.__import__ = _real_import            # (restored immediately in this demo)
+` },
+    mcq: { q: 'Why is hiding blocked entries in <code>sys.modules</code> necessary?', options: ['A cached module is returned before any finder is consulted', 'Finders only run for packages', 'sys.modules is read-only', 'It speeds up the import'], answer: 0, explain: 'Step 1 of import is the sys.modules lookup. If socket is cached, your finder never runs, so the block would be silently bypassed.' },
+    hints: [R`<p>Hint 1: a finder whose <code>find_spec</code> raises <code>ImportError</code> for blocked names (check <code>name == b or name.startswith(b + ".")</code>) and returns <code>None</code> otherwise.</p>`, R`<p>Hint 2: on enter, pop blocked names (and their submodules) out of <code>sys.modules</code> into a stash; insert the finder at index 0 of <code>sys.meta_path</code>.</p>`, R`<p>Hint 3: on exit (in <code>finally</code>), remove the finder, delete any blocked entries that appeared meanwhile, and put the stash back. Use <code>contextlib.contextmanager</code>.</p>`],
+    solution: {
+      approach: R`<p>A meta path finder that vetoes blocked names, plus temporary removal of cached modules so the finder is actually consulted. Everything is undone in <code>finally</code>. It is a guard rail for tests, not a sandbox: code can still reach the stashed module objects through other references (e.g. <code>sys.modules</code> of another module's attributes, <code>gc.get_objects()</code>), and C extensions can do anything.</p>`,
+      code: { lang: 'python', run: true, code: R`import contextlib
+import importlib
+import importlib.abc
+import sys
+
+class _Blocker(importlib.abc.MetaPathFinder):
+    def __init__(self, names):
+        self.names = names
+
+    def blocked(self, fullname):
+        return any(fullname == n or fullname.startswith(n + ".") for n in self.names)
+
+    def find_spec(self, fullname, path=None, target=None):
+        if self.blocked(fullname):
+            raise ImportError(f"import of {fullname!r} is blocked")
+        return None                                   # let other finders work
+
+@contextlib.contextmanager
+def block_imports(*names):
+    finder = _Blocker(names)
+    stash = {k: sys.modules.pop(k) for k in list(sys.modules) if finder.blocked(k)}
+    sys.meta_path.insert(0, finder)
+    try:
+        yield finder
+    finally:
+        sys.meta_path.remove(finder)
+        for k in [k for k in sys.modules if finder.blocked(k)]:
+            del sys.modules[k]                        # anything loaded meanwhile
+        sys.modules.update(stash)
+
+import socket                                         # loaded BEFORE the block
+with block_imports("socket", "ctypes"):
+    for name in ["socket", "ctypes.util", "json"]:
+        try:
+            importlib.import_module(name)
+            print(f"{name:<12} allowed")
+        except ImportError as e:
+            print(f"{name:<12} ImportError: {e}")
+import socket as again
+print("restored, same object as before:", again is socket)
+` },
+      complexity: R`<p>O(M) on enter/exit to scan <code>sys.modules</code> (M modules); O(B) per import check for B blocked names (use a set of top-level names for O(1)).</p>`,
+      followUps: ['Also block <code>from x import y</code> where <code>x</code> is allowed but re-exports a blocked module object. Is that possible with an import hook alone?', 'How would you implement the same guarantee for subprocesses? (environment, network namespaces, seccomp.)']
+    }
+  });
+
+  practice.push({
+    title: 'An auto_slots Class Decorator',
+    level: 'Hard', tags: ['__slots__', 'class creation', 'descriptors'], companies: ['Bloomberg', 'Citadel', 'Microsoft'],
+    statement: R`<p>Write a class decorator <code>auto_slots</code> that turns an annotated class into a slotted one: <code>__slots__</code> = the annotated names, defaults (class attributes with the same names) become constructor defaults, and a generated <code>__init__</code> accepts the fields positionally or by keyword (only if the class does not define its own). The result must have no per-instance <code>__dict__</code>.</p>`,
+    constraints: R`<p><code>__slots__</code> only works if present when the class is <b>created</b>, so the decorator must build a <b>new</b> class. A slot name may not also be a class attribute (Python raises <code>ValueError</code>), so defaults must be removed from the namespace. Use <code>inspect.get_annotations</code> (works with 3.14's lazy annotations).</p>`,
+    example: R`<p><code>@auto_slots class P: x: int; y: int = 0</code> → <code>P(3)</code> has ${H.c('g', 'x=3, y=0')}, <code>hasattr(P(3), "__dict__")</code> is ${H.c('g', 'False')}, and <code>P(3).z = 1</code> raises ${H.c('r', 'AttributeError')}.</p>`,
+    brute: { why: R`<p>Setting <code>cls.__slots__ = (...)</code> after the class exists does nothing: the instance layout (member descriptors at fixed offsets, no dict) is decided inside <code>type.__new__</code>. You must recreate the class with the slots in its namespace.</p>`, code: R`def auto_slots_wrong(cls):
+    cls.__slots__ = tuple(cls.__annotations__)    # too late: layout already fixed
+    return cls
+
+@auto_slots_wrong
+class P:
+    x: int
+
+p = P()
+p.anything = 1                                   # still has a __dict__
+print(hasattr(p, "__dict__"))
+` },
+    mcq: { q: 'Why does <code>class A: __slots__ = ("x",); x = 0</code> raise ValueError?', options: ['The slot creates a member descriptor named x, which would clash with the class attribute x', 'Slots cannot have defaults in any form', 'x is a reserved name', 'Slots require a metaclass'], answer: 0, explain: '__slots__ makes type.__new__ add a member descriptor called x to the class namespace; an existing class attribute x conflicts with it.' },
+    hints: [R`<p>Hint 1: collect <code>names = tuple(inspect.get_annotations(cls))</code> and <code>defaults = {n: cls.__dict__[n] for n in names if n in cls.__dict__}</code>.</p>`, R`<p>Hint 2: build <code>ns</code> from <code>cls.__dict__</code> minus the slot names, <code>__dict__</code>, <code>__weakref__</code> and annotation bookkeeping keys; add <code>__slots__</code>; create <code>type(cls)(cls.__name__, cls.__bases__, ns)</code>.</p>`, R`<p>Hint 3: generate <code>__init__(self, *args, **kwargs)</code> that binds args to names in order, then kwargs, then defaults, raising <code>TypeError</code> for missing or unexpected arguments. Restore <code>__annotations__</code> and <code>__qualname__</code> on the new class.</p>`],
+    solution: {
+      approach: R`<p>Recreate the class (same metaclass, name, bases) with a cleaned namespace that includes <code>__slots__</code>, then attach a generated <code>__init__</code> and copy annotations. This mirrors what <code>@dataclass(slots=True)</code> does internally. Limitation: methods using zero-argument <code>super()</code> keep a <code>__class__</code> cell pointing at the old class (the stdlib patches those cells; we document it as a follow-up).</p>`,
+      code: { lang: 'python', run: true, code: R`import inspect
+
+def auto_slots(cls):
+    ann = dict(inspect.get_annotations(cls))
+    names = tuple(ann)
+    defaults = {n: cls.__dict__[n] for n in names if n in cls.__dict__}
+    skip = set(names) | {"__dict__", "__weakref__"}
+    ns = {k: v for k, v in cls.__dict__.items()
+          if k not in skip and not k.startswith("__annotat")}
+    ns["__slots__"] = names
+
+    if "__init__" not in ns:
+        def __init__(self, *args, **kwargs):
+            if len(args) > len(names):
+                raise TypeError(f"expected at most {len(names)} positional arguments")
+            values = dict(zip(names, args))
+            for k, v in kwargs.items():
+                if k not in names:
+                    raise TypeError(f"unexpected argument {k!r}")
+                if k in values:
+                    raise TypeError(f"argument {k!r} given twice")
+                values[k] = v
+            for n in names:
+                if n not in values:
+                    if n not in defaults:
+                        raise TypeError(f"missing argument {n!r}")
+                    values[n] = defaults[n]
+                setattr(self, n, values[n])
+        ns["__init__"] = __init__
+        ns["__repr__"] = ns.get("__repr__") or (lambda self: f"{type(self).__name__}(" +
+                         ", ".join(f"{n}={getattr(self, n)!r}" for n in names) + ")")
+
+    new = type(cls)(cls.__name__, cls.__bases__, ns)
+    new.__qualname__ = cls.__qualname__
+    new.__annotations__ = ann
+    return new
+
+@auto_slots
+class Point:
+    x: int
+    y: int = 0
+    def norm2(self):
+        return self.x ** 2 + self.y ** 2
+
+p = Point(3, y=4)
+print(p, p.norm2(), "has __dict__:", hasattr(p, "__dict__"))
+print(Point(5), type(Point.__dict__["x"]).__name__)
+try:
+    p.z = 1
+except AttributeError as e:
+    print("AttributeError:", e)
+try:
+    Point()
+except TypeError as e:
+    print("TypeError:", e)
+` },
+      complexity: R`<p>Decoration is O(namespace size), once per class. Each instance saves the dict overhead (see the slots memory practice problem); attribute access goes through fast member descriptors.</p>`,
+      followUps: ['Fix zero-argument <code>super()</code> in methods by rewriting each function\'s <code>__class__</code> closure cell to the new class.', 'Support inheritance: a slotted subclass of a slotted base must only list its <b>new</b> fields.']
+    }
+  });
+
+  /* ============================== QUIZ ============================== */
+  quiz.push({
+    q: `In CPython 3.12+, what does <code>dis.dis(lambda x: x + 1)</code> show for the addition?`,
+    options: [`<code>BINARY_ADD</code>`, `<code>BINARY_OP</code> with the argument <code>+</code>`, `<code>CALL</code> on <code>int.__add__</code>`, `<code>ADD_INT</code> straight away`],
+    answer: 1,
+    explain: `Since 3.11 all binary operators share one generic instruction, <code>BINARY_OP</code>, whose argument says which operator. <code>BINARY_ADD</code> is the pre-3.11 name. After warm-up the specializing interpreter may rewrite it to <code>BINARY_OP_ADD_INT</code> at runtime, but plain <code>dis</code> shows the generic form (use <code>adaptive=True</code> to see the specialized one).`
+  });
+  quiz.push({
+    q: `<code>x = []</code> then <code>print(sys.getrefcount(x))</code> prints 2 on CPython 3.12. Why not 1?`,
+    options: [`The list is stored twice in memory`, `Passing <code>x</code> as an argument creates a temporary extra reference for the duration of the call`, `The garbage collector holds one reference to every list`, `Lists always start with refcount 2`],
+    answer: 1,
+    explain: `The name <code>x</code> holds one reference; the call argument holds a second, temporary one. The docs say the result is "generally one higher than you might expect". (3.14 can report lower numbers because of borrowed references, so never assert exact counts in tests.)`
+  });
+  quiz.push({
+    q: `Which of these objects is <b>tracked</b> by the cyclic garbage collector?`,
+    options: [`An <code>int</code> such as 10**20`, `A <code>str</code>`, `An instance of a user-defined class`, `A <code>float</code>`],
+    answer: 2,
+    explain: `Only <b>containers</b> (objects that can hold references to other objects) can be part of a cycle, so only they are tracked: lists, dicts, sets, instances, functions, frames. Atomic objects like ints, floats and strs can never form a cycle, so the GC skips them. <code>gc.is_tracked(obj)</code> tells you.`
+  });
+  quiz.push({
+    q: `Which integers does CPython pre-allocate in its small-int cache?`,
+    options: [`0 to 255`, `−5 to 256`, `−128 to 127`, `All ints that fit in 64 bits`],
+    answer: 1,
+    explain: `CPython keeps singletons for −5 … 256 (immortal since 3.12). That is why <code>a = 256; b = 256; a is b</code> is always True while 257 depends on whether both values came from the same code object's constants. Never use <code>is</code> to compare numbers.`
+  });
+  quiz.push({
+    q: `A class defines <code>@property def name(self)</code>. You do <code>obj.__dict__['name'] = 'X'</code> and then read <code>obj.name</code>. What do you get?`,
+    options: [`'X', the instance dict always wins`, `The property's return value, because a property is a data descriptor and beats the instance dict`, `AttributeError`, `Whichever was set last`],
+    answer: 1,
+    explain: `Lookup order in <code>object.__getattribute__</code>: <b>data descriptors on the type</b> (those with <code>__set__</code> or <code>__delete__</code>, like property) → instance <code>__dict__</code> → non-data descriptors and plain class attributes → <code>__getattr__</code>. Property has <code>__set__</code> (it raises if no setter), so it always wins.`
+  });
+  quiz.push({
+    q: `How does <code>obj.method</code> turn a plain function stored on the class into a bound method?`,
+    options: [`The compiler rewrites every method call`, `Functions are non-data descriptors: <code>func.__get__(obj, type(obj))</code> returns a bound method`, `The class stores a bound method per instance`, `<code>__getattr__</code> on <code>object</code> wraps it`],
+    answer: 1,
+    explain: `<code>function</code> implements <code>__get__</code> only, so it is a non-data descriptor. Accessed through an instance it returns a <code>method</code> object that remembers <code>self</code>; through the class it returns the function itself. (CPython 3.7+ also has <code>LOAD_ATTR</code> method fast paths that avoid allocating the bound method for <code>obj.m()</code> calls.)`
+  });
+  quiz.push({
+    q: `For <code>class P(Base, metaclass=Meta): ...</code>, what is the correct order of events?`,
+    options: [
+      `Body runs → <code>Meta.__prepare__</code> → <code>Meta.__init__</code> → <code>Meta.__new__</code>`,
+      `<code>Meta.__prepare__</code> → body runs in that namespace → <code>Meta.__new__</code> (inside it <code>type.__new__</code> calls <code>__set_name__</code> then <code>__init_subclass__</code>) → <code>Meta.__init__</code>`,
+      `<code>Base.__init_subclass__</code> → body → <code>Meta.__call__</code>`,
+      `<code>Meta.__call__</code> → <code>Meta.__new__</code> → body`
+    ],
+    answer: 1,
+    explain: `Python resolves the metaclass, asks <code>__prepare__</code> for the namespace mapping, executes the body into it, then calls <code>Meta(name, bases, ns)</code>. <code>type.__new__</code> builds the class, calls each attribute's <code>__set_name__</code>, then the parent's <code>__init_subclass__</code>. <code>Meta.__call__</code> only runs later, when you create an <b>instance</b>.`
+  });
+  quiz.push({
+    q: `<code>a.py</code> runs <code>from b import f</code>, and <code>b.py</code> runs <code>from a import CONFIG</code> (defined near the bottom of <code>a.py</code>). Running <code>import a</code> raises ImportError. Why?`,
+    options: [
+      `Python forbids two modules importing each other`,
+      `<code>a</code> is put in <code>sys.modules</code> <b>before</b> its code finishes, so <code>b</code> gets the half-built module, which does not have <code>CONFIG</code> yet`,
+      `The <code>.pyc</code> files are stale`,
+      `<code>from</code> imports are always lazy`
+    ],
+    answer: 1,
+    explain: `The import system inserts the new module object into <code>sys.modules</code> first and then runs its code. When <code>b</code> asks for <code>a</code>, it gets that partially initialised module. <code>import a</code> plus <code>a.CONFIG</code> at call time, moving shared names to a third module, or a function-level import all fix it.`
+  });
+  quiz.push({
+    q: `<code>x = 10</code> at module level; <code>def f(): print(x); x = 5</code>. Calling <code>f()</code> gives?`,
+    options: [`Prints 10`, `Prints 5`, `<code>UnboundLocalError</code>`, `<code>NameError</code> at definition time`],
+    answer: 2,
+    explain: `Scope is decided at <b>compile</b> time: because <code>x</code> is assigned anywhere in <code>f</code>, it is local for the whole body, so <code>print(x)</code> compiles to <code>LOAD_FAST x</code> on an empty slot. Use <code>global x</code> (or better, a parameter) if you really meant the module variable.`
+  });
+  quiz.push({
+    q: `Why is reading a local variable inside a hot loop faster than reading a module global?`,
+    options: [
+      `Locals are stored in CPU registers`,
+      `<code>LOAD_FAST</code> indexes a fixed slot in the frame's array, while <code>LOAD_GLOBAL</code> must consult the globals dict and then builtins (cached by dict version, but still more work)`,
+      `Globals are re-parsed on every access`,
+      `There is no difference in CPython`
+    ],
+    answer: 1,
+    explain: `The compiler assigns each local a slot number, so access is an array index. Globals live in a dict; 3.11+ specializes <code>LOAD_GLOBAL</code> with cached dict-keys versions, which narrows the gap, but locals remain the cheapest. That is why old code did <code>append = out.append</code> before a loop.`
+  });
+  quiz.push({
+    q: `What does <code>del x</code> actually do?`,
+    options: [
+      `Immediately frees the object's memory`,
+      `Removes the name binding <code>x</code> and decrements the object's refcount; the object is freed only if that count reaches zero`,
+      `Calls the garbage collector`,
+      `Calls <code>x.__del__()</code> directly`
+    ],
+    answer: 1,
+    explain: `<code>del</code> deletes a <b>name</b>, not an object. If other references (another variable, a list, a cache, a traceback) still point to the object, it stays alive. <code>__del__</code> runs only when the object is really deallocated.`
+  });
+  quiz.push({
+    q: `What did PEP 659 (Python 3.11) add to the evaluation loop?`,
+    options: [
+      `A mandatory JIT compiler`,
+      `Removal of the GIL`,
+      `A specializing adaptive interpreter: instructions observe the types they see and rewrite themselves into specialized versions (e.g. <code>LOAD_ATTR_INSTANCE_VALUE</code>) with inline caches`,
+      `Register-based bytecode`
+    ],
+    answer: 2,
+    explain: `After a few executions ("warm-up"), a generic instruction is quickened into a type-specialized variant guarded by cheap checks; if the guard fails often it de-optimizes back. This, plus cheaper frames and zero-cost exceptions, gave 3.11 its roughly 25% average speed-up. The JIT came later (experimental, 3.13+) and free-threading is PEP 703.`
+  });
+  quiz.push({
+    q: `When does <code>sys.intern(s)</code> genuinely help?`,
+    options: [
+      `Whenever you compare any two strings`,
+      `When a program holds millions of copies of a small set of repeated strings built at runtime (e.g. parsed keys/labels), saving memory and making dict lookups compare pointers first`,
+      `It makes strings mutable`,
+      `It is required for using strings as dict keys`
+    ],
+    answer: 1,
+    explain: `Literals that look like identifiers are interned automatically at compile time, but strings created at runtime (from files, JSON, network) are not. Interning repeated runtime strings deduplicates them; equality still works without it, so use <code>==</code> for comparison, never <code>is</code>.`
+  });
+
+  /* ============================ INTERVIEW ============================ */
+  interview.push({
+    q: `Is Python compiled or interpreted?`,
+    level: 'B',
+    a: `<p><b>Both.</b> CPython first <b>compiles</b> your source: tokenizer → parser (a PEG parser since 3.9) → AST → symbol table (decides local/global/free for every name) → compiler → <b>code objects</b> full of bytecode. Then the <b>interpreter</b> (the evaluation loop in <code>Python/ceval.c</code>) executes that bytecode one instruction at a time on a value stack.</p>
+<p>Imported modules have their bytecode cached as <code>.pyc</code> files in <code>__pycache__</code>; the script you run directly is compiled fresh each time. Bytecode is a CPython implementation detail: it changes every minor version and other implementations (PyPy with its tracing JIT, GraalPy) work differently. Since 3.13 CPython also ships an experimental JIT that compiles hot traces to machine code, so the honest answer is "compiled to bytecode, then interpreted, with an optional JIT in recent builds".</p>`,
+    followUps: [`Where does the <code>.pyc</code> live, and how does Python know it is stale?`, `What is a code object and which attributes does it have?`, `Why do bytecode-level tricks not port between Python versions?`]
+  });
+  interview.push({
+    q: `What is the difference between <code>is</code> and <code>==</code>, and why does <code>a is b</code> sometimes return True for equal numbers or strings?`,
+    level: 'B',
+    a: `<p><code>==</code> asks "equal value?" and calls <code>__eq__</code>. <code>is</code> asks "the <b>same object</b>?" and compares identities (in CPython, memory addresses). Equal values can be different objects.</p>
+<p>It sometimes looks like <code>is</code> works because of caching: CPython keeps one shared object for each int from −5 to 256, interns string literals that look like identifiers, and merges equal constants inside one code object (so <code>a = 1000; b = 1000</code> in the same function can share an object, while two separate REPL lines usually do not). These are optimizations, not guarantees, and they change across versions and implementations. Rule: use <code>is</code> only for singletons (<code>None</code>, <code>True</code>, <code>False</code>, sentinels like <code>_MISSING = object()</code>). Since 3.8 the compiler even warns: <code>SyntaxWarning: "is" with a literal</code>.</p>`,
+    followUps: [`Why is <code>x is None</code> preferred over <code>x == None</code>?`, `When would you call <code>sys.intern</code> yourself?`, `Can two different objects ever have the same <code>id()</code>?`]
+  });
+  interview.push({
+    q: `Explain reference counting in CPython. What are its strengths and weaknesses?`,
+    level: 'I',
+    a: `<p>Every object starts with a header: <code>ob_refcnt</code> (how many references point at it) and <code>ob_type</code>. Binding a name, putting the object in a list, or passing it as an argument does <code>Py_INCREF</code>; dropping the reference does <code>Py_DECREF</code>. When the count hits zero the type's <code>tp_dealloc</code> runs <b>immediately</b>, which releases its own references (possibly cascading) and returns the memory to pymalloc.</p>
+<p><b>Strengths:</b> deterministic and prompt cleanup (files closed right away, low peak memory), simple to reason about, work spread evenly so no long pauses. <b>Weaknesses:</b> (1) it cannot reclaim <b>cycles</b> (an object that refers to itself never reaches zero) so a separate cyclic GC is needed; (2) every pointer copy writes to memory, which costs cache traffic and breaks copy-on-write after <code>fork</code>; (3) count updates are not thread-safe, which is the main reason the GIL exists. Modern CPython mitigates these with immortal objects (3.12, PEP 683), borrowed-reference instructions (3.14) and biased reference counting in the free-threaded build.</p>`,
+    followUps: [`Why does <code>sys.getrefcount</code> report one more than you expect?`, `What does "immortal object" mean and why was it needed?`, `How does reference counting interact with <code>fork()</code> and copy-on-write?`]
+  });
+  interview.push({
+    q: `If CPython has reference counting, why does it also need a garbage collector? How does that collector work?`,
+    level: 'A',
+    a: `<p>Reference counting cannot free <b>cycles</b>: a doubly linked list node, a parent ↔ child tree, an object storing a bound method of itself, or an exception holding a traceback that holds the frame that holds the exception. Once unreachable, each member still has count ≥ 1.</p>
+<p>The cyclic GC only tracks <b>container</b> objects. For a set of tracked objects it: (1) copies each refcount into a scratch field <code>gc_refs</code>; (2) for every reference <b>between</b> tracked objects, subtracts 1 from the target; (3) anything still above 0 is referenced from outside (a root), so it and everything reachable from it is alive; (4) the rest is garbage: weakref callbacks are handled, finalizers (<code>__del__</code>, safe since PEP 442 in 3.4) run, then references are cleared to break the cycle and refcounting frees the objects.</p>
+<p>It is <b>generational</b>: most objects die young, so the young generation is scanned often and old objects rarely. Collection is triggered by allocation counts (<code>gc.get_threshold()</code>), not by time. 3.14 made the old-generation work <b>incremental</b> to cut pause times. Production levers: <code>gc.freeze()</code> before forking workers (Instagram's trick to keep copy-on-write pages shared), raising thresholds for allocation-heavy batch jobs, and <code>gc.callbacks</code> to measure pause times.</p>`,
+    followUps: [`What is <code>gc.garbage</code> and when do objects end up there?`, `Why did Instagram disable and later freeze the GC?`, `How would you prove that a cycle, not a leak in C code, is what keeps memory high?`]
+  });
+  interview.push({
+    q: `What is a descriptor? Show how <code>property</code>, methods, <code>staticmethod</code> and <code>classmethod</code> are all built on it.`,
+    level: 'A',
+    a: `<p>A descriptor is any object, stored as a <b>class</b> attribute, whose type defines <code>__get__</code>, <code>__set__</code> or <code>__delete__</code>. When you access the attribute, Python calls those hooks instead of returning the object. With <code>__set__</code>/<code>__delete__</code> it is a <b>data</b> descriptor (beats the instance dict); with only <code>__get__</code> it is a <b>non-data</b> descriptor (the instance dict can shadow it).</p>
+<ul><li><b>Functions</b> are non-data descriptors: <code>f.__get__(obj, cls)</code> returns a bound method carrying <code>self</code>. That is the whole method-binding mechanism.</li>
+<li><b>property</b> is a data descriptor whose <code>__get__</code>/<code>__set__</code> call your getter/setter; without a setter its <code>__set__</code> raises <code>AttributeError</code>, which is how read-only attributes work.</li>
+<li><b>staticmethod</b>'s <code>__get__</code> returns the raw function; <b>classmethod</b>'s returns a method bound to the class.</li>
+<li><b>functools.cached_property</b> is a non-data descriptor that stores the computed value in the instance <code>__dict__</code>, so the next read never reaches the descriptor.</li>
+<li><code>__slots__</code> creates member descriptors that read fixed offsets in the object.</li></ul>
+<p>ORMs (Django fields, SQLAlchemy columns) and validation libraries use descriptors plus <code>__set_name__</code> (3.6+) so each field learns its own attribute name.</p>`,
+    followUps: [`Why does <code>cached_property</code> not work on a class with <code>__slots__</code> and no <code>__dict__</code>?`, `Write a typed descriptor that validates on assignment.`, `What does <code>__set_name__</code> receive and when is it called?`]
+  });
+  interview.push({
+    q: `Walk me through exactly what happens when Python evaluates <code>obj.attr</code>.`,
+    level: 'A',
+    a: `<p><code>obj.attr</code> compiles to <code>LOAD_ATTR</code>, which calls <code>type(obj).__getattribute__(obj, 'attr')</code>. For ordinary objects that is <code>object.__getattribute__</code>:</p>
+<ol><li>Walk <code>type(obj).__mro__</code> to find <code>attr</code> on the class (CPython caches this per type with a version tag).</li>
+<li>If found and it is a <b>data descriptor</b> → return <code>desc.__get__(obj, type(obj))</code>.</li>
+<li>Else if <code>attr</code> is in <code>obj.__dict__</code> → return that.</li>
+<li>Else if the class attribute was found: a non-data descriptor → call its <code>__get__</code>; a plain value → return it.</li>
+<li>Else raise <code>AttributeError</code>; if the class defines <code>__getattr__</code>, Python calls it as a last resort.</li></ol>
+<p>Setting (<code>obj.attr = v</code>) is simpler: a data descriptor's <code>__set__</code> if present on the type, else write into <code>obj.__dict__</code>. On classes, <code>type.__getattribute__</code> also checks the metaclass. In 3.11+ the specializing interpreter turns hot <code>LOAD_ATTR</code>s into variants like <code>LOAD_ATTR_INSTANCE_VALUE</code> or <code>LOAD_ATTR_PROPERTY</code>, guarded by the type version, which is why monkey-patching classes in hot paths de-optimizes them.</p>`,
+    followUps: [`What is the difference between <code>__getattr__</code> and <code>__getattribute__</code>?`, `Why can an instance shadow a method but not a property?`, `How do you avoid infinite recursion inside a custom <code>__getattribute__</code>?`]
+  });
+  interview.push({
+    q: `What is a metaclass? When would you actually write one, and what would you use instead?`,
+    level: 'A',
+    a: `<p>A metaclass is the <b>class of a class</b>. Instances are made by classes; classes are made by metaclasses; the default is <code>type</code>. The <code>class</code> statement ends with <code>Meta(name, bases, namespace)</code>, so a metaclass can inspect or rewrite the class while it is being created (<code>__prepare__</code>, <code>__new__</code>, <code>__init__</code>) and can control instance creation (<code>__call__</code>).</p>
+<p><b>Real uses:</b> ABCMeta (abstract methods), Enum's <code>EnumType</code> (members are created at class creation and the class becomes iterable), ORM declarative bases, registering plugins automatically, and singletons via <code>__call__</code>.</p>
+<p><b>Prefer lighter tools first:</b> a class decorator (runs after creation, composes cleanly), <code>__init_subclass__</code> (parent hook for validation and registration, 3.6+), <code>__set_name__</code> on descriptors, or <code>dataclasses</code>. Metaclasses do not compose: a class whose bases use unrelated metaclasses raises <code>TypeError: metaclass conflict</code>. Tim Peters' line still holds: if you wonder whether you need one, you don't.</p>`,
+    followUps: [`Implement a plugin registry with <code>__init_subclass__</code> instead of a metaclass.`, `What does <code>type(type)</code> return and why?`, `How would you make a class iterable over its own subclasses?`]
+  });
+  interview.push({
+    q: `Explain how <code>import foo</code> works. What is <code>sys.modules</code>, and why do circular imports fail?`,
+    level: 'I',
+    a: `<p><code>import foo</code> calls <code>__import__</code> → <code>importlib._bootstrap._find_and_load</code>:</p>
+<ol><li>Check <code>sys.modules</code>, the cache of already-imported modules. If present, just bind the name: modules execute <b>once</b>.</li>
+<li>Otherwise ask each finder in <code>sys.meta_path</code> (BuiltinImporter, FrozenImporter, PathFinder) for a <b>ModuleSpec</b>. PathFinder walks <code>sys.path</code> (script dir, PYTHONPATH, stdlib, site-packages) using path-entry finders that understand directories, zip files and namespace packages.</li>
+<li>The spec's <b>loader</b> creates the module object, which is <b>inserted into <code>sys.modules</code> before</b> its code runs, then <code>exec_module</code> executes the code (from a cached <code>.pyc</code> if it is fresh).</li></ol>
+<p>Circular imports: <code>a</code> imports <code>b</code>, and <code>b</code> does <code>from a import X</code> while <code>a</code> is still half-way through; <code>b</code> finds the partial module in <code>sys.modules</code> and <code>X</code> is not defined yet → ImportError "partially initialized module". Fixes: restructure (move shared code to a third module), import the module not the name and access attributes at call time, defer the import into a function, or use <code>if TYPE_CHECKING:</code> for imports needed only by type hints.</p>`,
+    followUps: [`How would you write a custom finder that loads modules from a database?`, `What does <code>importlib.reload</code> not update?`, `Why can a file named <code>random.py</code> in your project break other libraries?`]
+  });
+  interview.push({
+    q: `What does a CPython object look like in memory, and why does <code>__slots__</code> save memory?`,
+    level: 'A',
+    a: `<p>Every object begins with <code>PyObject</code>: a reference count and a pointer to its type. Variable-size objects (<code>PyVarObject</code>, e.g. tuples, ints) add <code>ob_size</code>. The type object holds the behaviour: slots like <code>tp_getattro</code>, <code>tp_hash</code>, <code>tp_as_number</code>. In CPython <code>id(obj)</code> is the object's address, and objects never move.</p>
+<p>A normal class instance additionally needs storage for its attributes. Historically that was a separate per-instance <code>__dict__</code>; 3.11+ stores values inline with shared keys and only creates the dict on demand, which already cut memory a lot. Containers also carry a GC header for the cyclic collector. With <code>__slots__ = ('x', 'y')</code> the class instead reserves fixed pointer fields in the object itself and creates member descriptors to read them, so there is <b>no <code>__dict__</code> and no <code>__weakref__</code></b> slot unless you ask. For millions of small records that is often 2–3× less memory and slightly faster attribute access. Costs: no dynamic attributes, every class in a hierarchy must declare slots to get the benefit, and tools that rely on <code>__dict__</code> (some pickling, <code>cached_property</code>) need adjusting. <code>@dataclass(slots=True)</code> (3.10+) is the modern easy way.</p>`,
+    followUps: [`How would you measure the per-instance saving reliably?`, `Why must you add <code>'__weakref__'</code> to slots to allow weak references?`, `What happens if a subclass of a slotted class does not define <code>__slots__</code>?`]
+  });
+  interview.push({
+    q: `How did Python 3.11+ get so much faster, and does Python have a JIT now?`,
+    level: 'E',
+    a: `<p>The Faster CPython project changed the evaluation loop rather than the language. Main pieces in 3.11: (1) the <b>specializing adaptive interpreter</b> (PEP 659): after a short warm-up, generic instructions such as <code>LOAD_ATTR</code>, <code>LOAD_GLOBAL</code>, <code>BINARY_OP</code>, <code>CALL</code> rewrite themselves into type-specialized variants using inline caches in the bytecode, with cheap guards that fall back if types change; (2) <b>cheaper frames</b> allocated in a contiguous per-thread chunk and only turned into full Python frame objects when someone inspects them; (3) Python-to-Python calls that do not recurse in C ("inlined" calls); (4) <b>zero-cost exceptions</b> using an exception table instead of setup instructions. The result was roughly 1.25× on the pyperformance suite.</p>
+<p>3.12 inlined comprehensions (PEP 709) and generated the interpreter from a DSL (<code>bytecodes.c</code>). 3.13 added an <b>experimental</b> tier-2 optimizer and a copy-and-patch <b>JIT</b> that is off by default; gains so far are modest. 3.14 added an optional tail-calling interpreter on new Clang builds. In parallel, the free-threaded (no-GIL) build from PEP 703 became officially supported in 3.14. In an interview: specialization is the big, always-on win; the JIT is real but young; measure with your workload.</p>`,
+    followUps: [`What is an inline cache and where does it live?`, `Why does monkey-patching a class in a hot loop slow it down?`, `How would you check whether your function got specialized?`]
+  });
+  interview.push({
+    q: `How does the GIL relate to reference counting, and how does free-threaded CPython (PEP 703) cope without it?`,
+    level: 'E',
+    a: `<p>Reference counts are updated on almost every operation. Without a lock, two threads doing <code>Py_INCREF</code> on the same object can lose an update and free a live object. The GIL makes all bytecode execution mutually exclusive, so the counts (and dicts, lists, the allocator) stay consistent for free. The eval loop drops and re-acquires it periodically (<code>sys.getswitchinterval()</code>, 5 ms by default) and around blocking I/O, which is why threads still help I/O-bound code but not pure-Python CPU work.</p>
+<p>The free-threaded build (<code>python3.13t</code>, supported in 3.14) removes the GIL and replaces its guarantees piece by piece: <b>biased reference counting</b> (the owning thread updates a local count non-atomically, other threads use an atomic shared count), <b>immortal objects</b> for shared singletons, <b>deferred reference counting</b> for frequently shared objects like functions and modules, per-object locks inside list and dict operations, <b>mimalloc</b> as a thread-safe allocator, and stop-the-world pauses for the cyclic GC. Single-thread speed is a little lower, C extensions must declare themselves safe, and your own code still needs locks for compound operations like <code>counter += 1</code>.</p>`,
+    followUps: [`Is <code>list.append</code> thread-safe? Is <code>x += 1</code>?`, `How do you check at runtime whether the GIL is enabled?`, `Why must C extensions opt in to free-threading?`]
+  });
+  interview.push({
+    q: `A long-running Python service slowly grows to several GB. How do you find out what is holding the memory?`,
+    level: 'E',
+    a: `<p><b>1. Confirm it is Python objects.</b> Watch RSS versus <code>tracemalloc</code> totals; if RSS grows but Python allocations do not, suspect a C extension, memory fragmentation, or arenas that cannot be released.</p>
+<p><b>2. Find where allocations come from.</b> <code>tracemalloc.start(25)</code>, take a snapshot, run traffic, take another, and compare with <code>snapshot.compare_to(old, 'traceback')</code>: you get the file and line that allocated the growth.</p>
+<p><b>3. Find who keeps them alive.</b> Count live objects by type (<code>gc.get_objects()</code> plus a Counter of type names), then follow <code>gc.get_referrers</code> chains (or <code>objgraph.show_backrefs</code>) from a sample object back to a root. Typical culprits: unbounded caches or module-level dicts, <code>functools.lru_cache</code> on methods (it holds every <code>self</code>), listeners never unsubscribed, stored exceptions whose tracebacks pin whole frames, and reference cycles with expensive objects that only die at the next full collection.</p>
+<p><b>4. Fix and guard.</b> Bound caches, use <code>weakref.WeakValueDictionary</code>/<code>WeakMethod</code> for observers, break cycles explicitly, and add a regression test that loops the operation and asserts memory stays flat. Profilers such as memray (native and Python stacks) help when C code is involved.</p>`,
+    followUps: [`Why does <code>lru_cache</code> on an instance method leak?`, `Why might RSS not drop even after the objects are freed?`, `How do weak references avoid keeping objects alive?`]
+  });
+  interview.push({
+    q: `When have you used <code>dis</code> (or would you), and what can bytecode tell you that the source cannot?`,
+    level: 'I',
+    a: `<p><code>dis</code> disassembles code objects into instructions. It answers questions that are invisible in source: whether a name is local (<code>LOAD_FAST</code>), global (<code>LOAD_GLOBAL</code>) or a closure variable (<code>LOAD_DEREF</code>), which explains <code>UnboundLocalError</code> and late-binding closure bugs; whether the compiler folded a constant (<code>24*60*60</code> becomes <code>86400</code>); whether an operation is a single instruction (relevant when reasoning about atomicity under the GIL: <code>x += 1</code> is load, add, store, so it is not atomic); and why one idiom is faster than another (a comprehension versus <code>append</code> in a loop).</p>
+<p>Practical habits: <code>dis.dis(fn, adaptive=True)</code> after warm-up shows specialized instructions; <code>dis.get_instructions</code> lets you analyse code programmatically (linters, coverage tools and debuggers do this); <code>fn.__code__.co_varnames</code>, <code>co_consts</code> and <code>co_freevars</code> describe the code object. Caveat: bytecode differs between minor versions, so never build production logic on specific opcodes, and always confirm performance hypotheses with <code>timeit</code>.</p>`,
+    followUps: [`Disassemble <code>a, b = b, a</code>: is a tuple built?`, `Why is <code>x += 1</code> on a shared global not thread-safe?`, `What is in <code>co_consts</code> for a function containing a nested function?`]
+  });
+
+  registerModule({
+    id: 'py12',
+    title: 'CPython Internals',
+    lang: 'python',
+    intro: `<p>So far you have used Python like a car: turn the key, it drives. This module opens the bonnet. You will watch your source code become <b>bytecode</b>, see the <b>evaluation loop</b> run it one instruction at a time on a little value stack, and learn what every Python value really is underneath: a <code>PyObject</code> with a <b>reference count</b> and a pointer to its type.</p>
+<p>From there we follow an object's whole life: who keeps it alive (reference counting), who rescues memory from cycles (the <b>cyclic garbage collector</b>), why <code>a is b</code> sometimes "works" for numbers and strings (small-int cache and <b>interning</b>), how <code>obj.attr</code> is really resolved (<b>descriptors</b>), what builds a class (<b>metaclasses</b>), and how <code>import</code> finds, loads and caches modules.</p>
+<p>Why it matters: senior Python interviews love "explain what happens when…" questions, and real production problems (memory leaks, mysterious <code>UnboundLocalError</code>, circular imports, slow attribute access, GC pauses after <code>fork</code>) are only solvable once you can picture these mechanisms. Every topic has a step-by-step visualizer, runnable examples you can poke at, and notes on what changed in 3.11–3.14 (specializing interpreter, immortal objects, JIT, free-threading).</p>`,
+    goals: [
+      'Read <code>dis</code> output and explain how a function compiles to bytecode, including why <code>UnboundLocalError</code> and late-binding closures happen',
+      'Describe the evaluation loop, frames and the 3.11+ specializing adaptive interpreter well enough to predict what gets faster and why',
+      'Explain the <code>PyObject</code> layout, reference counting, immortal objects and when the cyclic GC is needed, and use <code>gc</code>, <code>weakref</code> and <code>tracemalloc</code> to hunt leaks',
+      'Predict identity results involving the small-int cache and string interning, and always choose correctly between <code>is</code> and <code>==</code>',
+      'Write data and non-data descriptors, recite the full attribute lookup order, and implement <code>cached_property</code>-style tools',
+      'Trace class creation through <code>__prepare__</code>, <code>__new__</code>, <code>__set_name__</code>, <code>__init_subclass__</code> and choose between metaclasses, class decorators and <code>__init_subclass__</code>',
+      'Explain <code>sys.modules</code>, finders, loaders and specs, fix circular imports, and build a custom meta-path import hook'
+    ],
+    prereqs: `Python track modules 5 (Data Structure Internals), 6 (Closures, Decorators &amp; functools), 7 (Iterators, Generators &amp; Context Managers), 8 (Advanced OOP: Dunder Methods, MRO &amp; Dataclasses) and 10 (Concurrency: GIL, Threads, Processes &amp; asyncio). Comfort with classes, closures and generators is essential; no C knowledge is required (we explain the C structs in plain words).`,
+    hours: 16,
+    topics: topics,
+    practice: practice,
+    quiz: quiz,
+    interview: interview
+  });
+})();
