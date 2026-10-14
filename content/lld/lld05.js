@@ -869,6 +869,8 @@ class TimingHandler implements InvocationHandler {
         var f = [], loaded = [], loads = 0, hits = 0, denied = 0;
         f.push(F('<b>Structure.</b> Proxy and RealImage both implement <code>Image</code>, so the client holds an <code>Image</code> and never knows which one it got. The proxy creates RealImage <i>only when first needed</i> and checks permission <i>before</i> every call.',
           [G('Proxy class structure', nodes, edges, { tags: tagsBase, hl: { P: 'sel' } }), CODE('ImageProxy.display', PROXY_CODE, {})]));
+        f.push(F('<b>Incoming requests</b>, in order. Each one is a plain <code>image.display(user)</code> call from the client. Watch which ones the proxy answers itself, which ones it forwards, and which ones it blocks.',
+          [{ type: 'queue', label: 'requests waiting', items: reqs.slice(), hl: { 0: 'cur' }, frontLabel: 'next', backLabel: 'last' }, TXT('<b>!name</b> = request from a user without permission.')]));
         reqs.forEach(function (raw, i) {
           var deny = raw.charAt(0) === '!', name = deny ? raw.slice(1) : raw;
           if (!name) throw new Error('Empty image name after "!"');

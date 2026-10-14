@@ -802,7 +802,7 @@ SELECT show_id, seat_id, status, held_by, version FROM show_seat;`, title: 'Same
             frames.push(F('t+4 min: Ben picks again (' + alt.join(', ') + ') and ' + (badR ? 'fails again' : 'gets a clean hold') + '. Nobody was double-sold; Ben just had to choose different seats.', [grid(), tbl(4)]));
           }
         } else {
-          frames.push(F('Asha opens the payment page… and gets distracted. The clock passes <b>t+10</b>. Nothing runs at that instant — no thread is needed. Her seats still say HELD in memory, but the <b>holdUntil time is in the past</b>.', [grid(), tbl(11), VARS('Clock', { now: 't+11 min' }, { now: 'cur' })]));
+          frames.push(F(badA ? 'Asha holds nothing (her request failed), so we simply move the clock to <b>t+11</b> to see what expiry does.' : 'Asha opens the payment page… and gets distracted. The clock passes <b>t+10</b>. Nothing runs at that instant — no thread is needed. Her seats still say HELD in memory, but the <b>holdUntil time is in the past</b>.', [grid(), tbl(11), VARS('Clock', { now: 't+11 min' }, { now: 'cur' })]));
           var badR2 = hold('Ben', ben, 11);
           frames.push(F('t+11: Ben tries again. <b>Lazy expiry</b>: an expired hold counts as free, so ' + (badR2 ? 'Ben still fails on ' + badR2 + ' (sold earlier)' : 'Ben now holds ' + ben.join(', ')) + '. A background sweeper would also have turned expired seats green for everyone.', [grid(), tbl(11)]));
           var badLate = badA ? 'no hold' : confirm('Asha', asha, 12);
@@ -970,6 +970,357 @@ SELECT show_id, seat_id, status, held_by, version FROM show_seat;`, title: 'Same
 }`,
         complexity: `<p>hold/confirm: O(k log k) for k requested seats (TreeSet), O(1) map lookups. Lock held only for those few operations. Memory O(total seats). Different shows run fully in parallel.</p>`,
         followUps: ['Add release(show, user, seats) and a sweeper that runs every 30 s.', 'Make it work across 20 servers (Redis Lua script or DB conditional updates).', 'Add a per-user limit: at most 10 seats held per show.']
+      }
+    }]
+  });
+
+  /* ======================= TOPIC 3: SPLITWISE — EXPENSES, SPLITS & BALANCES ======================= */
+  var SW_MODEL = `// ================= Splitwise core (compiles as-is). Money in paise (long). =================
+enum SplitType { EQUAL, EXACT, PERCENT, SHARES }
+
+record Split(String userId, long amountPaise) {}
+
+interface SplitStrategy {
+    /** values: ignored for EQUAL, paise for EXACT, basis points for PERCENT (12.5% = 1250), weights for SHARES */
+    List<Split> split(long totalPaise, List<String> users, List<Long> values);
+}
+
+final class Splits {
+    private Splits() {}
+    /** Split total in proportion to weights. Leftover paise go to the largest rounding remainders,
+     *  so the parts ALWAYS add up to the total exactly (no paisa created or lost). */
+    static List<Split> byWeights(long total, List<String> users, List<Long> weights) {
+        if (users.size() != weights.size()) throw new IllegalArgumentException("one weight per user");
+        long sumW = 0;
+        for (long w : weights) { if (w < 0) throw new IllegalArgumentException("negative weight"); sumW += w; }
+        if (sumW == 0) throw new IllegalArgumentException("weights add up to zero");
+        final long sw = sumW;
+        int n = users.size();
+        long[] amt = new long[n];
+        long given = 0;
+        for (int i = 0; i < n; i++) { amt[i] = total * weights.get(i) / sw; given += amt[i]; }
+        Integer[] order = new Integer[n];
+        for (int i = 0; i < n; i++) order[i] = i;
+        Arrays.sort(order, Comparator.comparingLong((Integer i) -> -(total * weights.get(i) % sw)).thenComparingInt(i -> i));
+        for (long k = 0; k < total - given; k++) amt[order[(int) k]]++;
+        List<Split> out = new ArrayList<>();
+        for (int i = 0; i < n; i++) out.add(new Split(users.get(i), amt[i]));
+        return out;
+    }
+}
+
+final class EqualSplit implements SplitStrategy {
+    public List<Split> split(long total, List<String> users, List<Long> ignored) {
+        return Splits.byWeights(total, users, Collections.nCopies(users.size(), 1L));
+    }
+}
+
+final class ExactSplit implements SplitStrategy {
+    public List<Split> split(long total, List<String> users, List<Long> amounts) {
+        if (amounts.size() != users.size()) throw new IllegalArgumentException("one amount per user");
+        long sum = amounts.stream().mapToLong(Long::longValue).sum();
+        if (sum != total) throw new IllegalArgumentException("exact amounts add to " + sum + ", bill is " + total);
+        List<Split> out = new ArrayList<>();
+        for (int i = 0; i < users.size(); i++) out.add(new Split(users.get(i), amounts.get(i)));
+        return out;
+    }
+}
+
+final class PercentSplit implements SplitStrategy {
+    public List<Split> split(long total, List<String> users, List<Long> basisPoints) {
+        long sum = basisPoints.stream().mapToLong(Long::longValue).sum();
+        if (sum != 10_000) throw new IllegalArgumentException("percentages add to " + sum / 100.0 + "%, need 100%");
+        return Splits.byWeights(total, users, basisPoints);
+    }
+}
+
+final class ShareSplit implements SplitStrategy {
+    public List<Split> split(long total, List<String> users, List<Long> shares) {
+        return Splits.byWeights(total, users, shares);     // "Asha 2 shares, Ben 1 share"
+    }
+}
+
+final class Expense {
+    final String id, description, paidBy;
+    final long totalPaise;
+    final SplitType type;
+    final List<Split> splits;
+    Expense(String id, String description, String paidBy, long totalPaise, SplitType type, List<Split> splits) {
+        this.id = id; this.description = description; this.paidBy = paidBy;
+        this.totalPaise = totalPaise; this.type = type; this.splits = List.copyOf(splits);
+    }
+}
+
+/** owes[a][b] = how much a owes b. Kept antisymmetric: owes[b][a] == -owes[a][b]. */
+final class BalanceSheet {
+    private final Map<String, Map<String, Long>> owes = new TreeMap<>();
+
+    void apply(Expense e) {
+        for (Split s : e.splits)
+            if (!s.userId().equals(e.paidBy)) add(s.userId(), e.paidBy, s.amountPaise());   // you never owe yourself
+    }
+    void settle(String payer, String receiver, long amount) { add(payer, receiver, -amount); }
+
+    private void add(String debtor, String creditor, long amt) {
+        owes.computeIfAbsent(debtor, k -> new TreeMap<>()).merge(creditor, amt, Long::sum);
+        owes.computeIfAbsent(creditor, k -> new TreeMap<>()).merge(debtor, -amt, Long::sum);
+    }
+    long owes(String a, String b) { return owes.getOrDefault(a, Map.of()).getOrDefault(b, 0L); }
+
+    /** + means "gets back", - means "owes overall". Sum over everyone is always 0. */
+    Map<String, Long> net() {
+        Map<String, Long> net = new TreeMap<>();
+        owes.forEach((a, row) -> row.forEach((b, v) -> net.merge(a, -v, Long::sum)));
+        return net;
+    }
+    List<String> describe() {
+        List<String> out = new ArrayList<>();
+        owes.forEach((a, row) -> row.forEach((b, v) -> { if (v > 0) out.add(a + " owes " + b + " " + Money.fmt(v)); }));
+        return out;
+    }
+}
+
+final class Money {
+    static String fmt(long paise) {
+        long a = Math.abs(paise);
+        return (paise < 0 ? "-" : "") + "Rs " + a / 100 + "." + String.format("%02d", a % 100);
+    }
+}
+
+final class Group {
+    final String id, name;
+    final Set<String> members = new TreeSet<>();
+    final List<Expense> expenses = new ArrayList<>();
+    final BalanceSheet sheet = new BalanceSheet();
+    Group(String id, String name, Collection<String> members) { this.id = id; this.name = name; this.members.addAll(members); }
+}
+
+final class ExpenseService {
+    private final Map<SplitType, SplitStrategy> strategies = new EnumMap<>(SplitType.class);
+    private final Map<String, Group> groups = new HashMap<>();
+    private long nextId = 1;
+
+    ExpenseService() {
+        strategies.put(SplitType.EQUAL, new EqualSplit());
+        strategies.put(SplitType.EXACT, new ExactSplit());
+        strategies.put(SplitType.PERCENT, new PercentSplit());
+        strategies.put(SplitType.SHARES, new ShareSplit());
+    }
+
+    Group createGroup(String id, String name, Collection<String> members) {
+        Group g = new Group(id, name, members);
+        groups.put(id, g);
+        return g;
+    }
+
+    synchronized Expense addExpense(String groupId, String desc, String paidBy, long totalPaise,
+                                    SplitType type, List<String> among, List<Long> values) {
+        Group g = groups.get(groupId);
+        if (g == null) throw new IllegalArgumentException("no group " + groupId);
+        if (totalPaise <= 0) throw new IllegalArgumentException("amount must be positive");
+        if (!g.members.contains(paidBy) || !g.members.containsAll(among)) throw new IllegalArgumentException("everyone must be in the group");
+        if (new HashSet<>(among).size() != among.size()) throw new IllegalArgumentException("duplicate participant");
+        List<Split> splits = strategies.get(type).split(totalPaise, among, values);   // validates & computes
+        Expense e = new Expense("E" + nextId++, desc, paidBy, totalPaise, type, splits);
+        g.expenses.add(e);
+        g.sheet.apply(e);
+        return e;
+    }
+
+    synchronized void settleUp(String groupId, String payer, String receiver, long amountPaise) {
+        groups.get(groupId).sheet.settle(payer, receiver, amountPaise);
+    }
+}
+
+public class SplitwiseDemo {
+    public static void main(String[] args) {
+        ExpenseService svc = new ExpenseService();
+        Group goa = svc.createGroup("G1", "Goa trip", List.of("asha", "ben", "chen"));
+        svc.addExpense("G1", "Hotel", "asha", 900_00, SplitType.EQUAL, List.of("asha", "ben", "chen"), List.of());
+        svc.addExpense("G1", "Scooters", "ben", 300_00, SplitType.EXACT, List.of("ben", "chen"), List.of(100_00L, 200_00L));
+        svc.addExpense("G1", "Dinner", "chen", 1000_00, SplitType.PERCENT, List.of("asha", "ben", "chen"), List.of(5000L, 3000L, 2000L));
+        svc.addExpense("G1", "Snacks", "asha", 100_00, SplitType.EQUAL, List.of("asha", "ben", "chen"), List.of());
+        goa.sheet.describe().forEach(System.out::println);
+        System.out.println(goa.sheet.net());               // values sum to 0
+    }
+}`;
+
+  topics.push({
+    title: 'Splitwise I: Expenses, Split Strategies & the Balance Sheet',
+    analogy: `<p>Every neighbourhood shop in India has a <b>khata</b> — a notebook where the shopkeeper writes "Sharma ji: ₹340 due". Nobody settles every single purchase; the notebook keeps a <i>running balance</i> and you pay it off once a month. Splitwise is a shared khata for friends on a trip: every time someone pays for the group, the notebook records who owes whom. And just like the shopkeeper writes amounts in exact rupees and paise (never "about ₹33.33"), our code must never lose a paisa.</p>`,
+    explain: `<p><b>The question:</b> "Design Splitwise" — users, groups, add an expense split in different ways, show who owes whom, settle up. (Debt simplification is the next topic.)</p>
+<h4>Requirements to clarify</h4>
+<ul>
+<li>Split types: <b>EQUAL</b> (₹900 among 3), <b>EXACT</b> (Ben ₹100, Chen ₹200), <b>PERCENT</b> (50/30/20), <b>SHARES</b> (Asha 2 shares, Ben 1).</li>
+<li>The payer may or may not be part of the split ("I paid for your movie tickets, not mine").</li>
+<li>Show: each user's total balance, each pairwise balance ("Ben owes Asha ₹300"), a group's balances.</li>
+<li>Settle up: record a payment from one user to another.</li>
+<li>Rules: amounts must add up exactly; percentages must total 100%.</li>
+</ul>
+<h4>Entities</h4>
+${H.table(['Class', 'Responsibility'], [['<b>User</b>', 'id, name, contact'], ['<b>Group</b>', 'members + its expenses + its balance sheet'], ['<b>Expense</b>', 'who paid, total, type, list of Splits (immutable once created)'], ['<b>Split</b>', '(user, amount in paise) — the computed share'], ['<b>SplitStrategy</b>', 'interface: EqualSplit, ExactSplit, PercentSplit, ShareSplit — validate input and compute splits'], ['<b>BalanceSheet</b>', 'running pairwise balances, updated on every expense / settlement'], ['<b>ExpenseService</b>', 'facade: validates, picks the strategy, records the expense, updates the sheet']])}
+<h4>The core update rule (memorise this)</h4>
+<p>For an expense paid by <b>P</b>, for every split (user U, amount a) with U ≠ P: <b>U owes P a more</b>. Store it both ways: <code>owes[U][P] += a</code> and <code>owes[P][U] -= a</code>. Example: Asha pays ₹900 for Asha, Ben, Chen → Ben owes Asha ₹300, Chen owes Asha ₹300 (Asha's own ₹300 share creates nothing).</p>
+<h4>Two views of the same data</h4>
+<ul>
+<li><b>Pairwise</b> (<code>Map&lt;user, Map&lt;user, long&gt;&gt;</code>): "Ben owes Asha ₹300" — what the app shows on a friend's page.</li>
+<li><b>Net</b> (<code>Map&lt;user, long&gt;</code>): "Asha gets back ₹600 overall" — the input to debt simplification. Sum of all nets is always <b>0</b>: money is only moved, never created.</li>
+</ul>
+<h4>Money: the paisa problem</h4>
+<p>₹100 split 3 ways is 33.33 + 33.33 + 33.33 = 99.99. One paisa vanished. Store money as <code>long</code> paise, compute floor shares (3333 each = 9999), then hand the leftover 1 paisa to someone (largest remainder first). Now the shares are 3334, 3333, 3333 = 10000 exactly.</p>`,
+    clues: [
+      '"Design Splitwise / expense sharing / group bill splitting"',
+      '"Split equally, by exact amount, by percentage, by shares" → SplitStrategy (Strategy pattern) + validation per type',
+      '"Show who owes whom" → pairwise balance map; "show my total balance" → net map',
+      '"Amounts must add up exactly" / "₹100 among 3" → paise in long + remainder distribution',
+      '"Payer not included in the split" → skip only the payer\'s own split, not the payer',
+      '"Add a new split type later" → Open/Closed: new strategy class, no change to ExpenseService'
+    ],
+    code: SW_MODEL,
+    codeTitle: 'Splitwise core: strategies, exact paise, balance sheet (compilable Java 21)',
+    viz: [{
+      title: 'Build the Splitwise class diagram step by step',
+      gen: function () {
+        return buildDiagram('Splitwise class diagram', [
+          { narr: 'Nouns from the requirements: <b>User</b> and <b>Group</b> (a trip, a flat). A group has many members.', add: [B('User', 'User', 10, 10), B('Group', 'Group', 10, 40)], edges: [['Group', 'User', 'members *']] },
+          { narr: 'An <b>Expense</b> belongs to a group: who paid, how much, which split type. It is <b>immutable</b> once created (edits create a new version).', add: [B('Expense', 'Expense', 38, 40)], edges: [['Group', 'Expense', 'has *'], ['Expense', 'User', 'paidBy']] },
+          { narr: '<span class="c-r">Naive design:</span> <code>double amount</code> and compute each share on the fly as <code>amount / n</code>. ₹100 / 3 = 33.333… and the three shares add to ₹99.99. The books never balance, and every screen recomputes from scratch.', hl: { Expense: 'bad' }, tags: { Expense: 'double ✖' }, note: 'Store computed <b>Split</b> objects in paise, once, at creation time. History stays reproducible even if the split rules change later.' },
+          { narr: 'Fix: an Expense <b>composes</b> a list of <b>Split</b>(user, paise). Computed once, guaranteed to add up to the total.', add: [B('Split', 'Split (user, paise)', 66, 40)], edges: [['Expense', 'Split', 'splits 1..*']], hl: { Expense: '' }, tags: { Expense: 'long paise' } },
+          { narr: 'Who computes the splits? A <b>SplitStrategy</b> interface with one class per type. Adding "split by item" later = one new class (Open/Closed).', add: [B('SS', '«interface» SplitStrategy', 66, 12, 20), B('EQ', 'Equal', 52, 0, 10), B('EX', 'Exact', 66, 0, 10), B('PC', 'Percent', 80, 0, 10), B('SH', 'Shares', 93, 0, 9)], edges: [['EQ', 'SS', 'impl'], ['EX', 'SS', 'impl'], ['PC', 'SS', 'impl'], ['SH', 'SS', 'impl'], ['SS', 'Split', 'creates']] },
+          { narr: 'A <b>BalanceSheet</b> per group keeps the running pairwise balances <code>owes[a][b]</code>. Every expense <b>applies</b> its splits; every settle-up subtracts.', add: [B('BS', 'BalanceSheet', 38, 62)], edges: [['Group', 'BS', 'has 1'], ['BS', 'Expense', 'applies']] },
+          { narr: '<b>ExpenseService</b> is the facade: validate members → pick strategy from an EnumMap → create Expense → update sheet. The <b>DebtSimplifier</b> reads net balances (next topic).', add: [B('ES', 'ExpenseService', 10, 62), B('DS', 'DebtSimplifier', 70, 62)], edges: [['ES', 'Group', 'manages'], ['ES', 'SS', 'uses'], ['DS', 'BS', 'reads net']], note: 'Pattern summary: Strategy (split types), Facade (ExpenseService), and later Strategy again for simplification algorithms.' }
+        ], 70);
+      }
+    }, {
+      title: 'Balance sheet: watch balances change expense by expense',
+      input: 'Asha 900 Asha,Ben,Chen; Ben 300 Ben,Chen; Chen 120 Asha,Chen; Asha 100 Asha,Ben,Chen',
+      inputLabel: 'Expenses (equal split): payer amount participants; …',
+      gen: function (input) {
+        var exps = String(input || '').split(';').map(function (s) { return s.trim(); }).filter(function (s) { return s; });
+        if (!exps.length) throw new Error('Format: Asha 900 Asha,Ben,Chen; Ben 300 Ben,Chen');
+        if (exps.length > 6) throw new Error('Use at most 6 expenses');
+        var people = [], parsed = [];
+        exps.forEach(function (e) {
+          var t = e.split(/\s+/);
+          if (t.length !== 3) throw new Error('Each expense: payer amount p1,p2,…  e.g. Ben 300 Ben,Chen');
+          var amt = Number(t[1]);
+          if (!isFinite(amt) || amt <= 0 || Math.floor(amt) !== amt || amt > 100000) throw new Error('Amount must be a whole number of rupees between 1 and 100000');
+          var among = t[2].split(',').map(cap).filter(function (x) { return x; });
+          if (!among.length) throw new Error('Give at least one participant');
+          var payer = cap(t[0]);
+          [payer].concat(among).forEach(function (p) { if (people.indexOf(p) < 0) people.push(p); });
+          parsed.push({ payer: payer, amt: amt, among: among.filter(function (x, i) { return among.indexOf(x) === i; }) });
+        });
+        if (people.length > 6) throw new Error('Use at most 6 people');
+        var paid = {}, share = {}, owes = {};
+        people.forEach(function (p) { paid[p] = 0; share[p] = 0; owes[p] = {}; people.forEach(function (q) { owes[p][q] = 0; }); });
+        var netRows = function (hlSet) {
+          var hl = {};
+          var rows = people.map(function (p, i) { var n = paid[p] - share[p]; if (hlSet && hlSet.indexOf(p) >= 0) hl[i] = 'cur'; return [p, rupees(paid[p]), rupees(share[p]), n > 0 ? 'gets back ' + rupees(n) : n < 0 ? 'owes ' + rupees(-n) : 'settled']; });
+          return TABLE('Net balance per person (paid − share)', ['person', 'paid', 'share', 'net'], rows, hl);
+        };
+        var pairMap = function (newKeys) {
+          var entries = [], hl = {};
+          people.forEach(function (a) { people.forEach(function (b) { if (owes[a][b] > 0) { var k = a + ' owes ' + b; entries.push([k, rupees(owes[a][b])]); if (newKeys && newKeys.indexOf(k) >= 0) hl[k] = 'ok'; } }); });
+          if (!entries.length) entries.push(['nobody owes anybody', '-']);
+          return { type: 'map', label: 'Pairwise ledger owes[a][b] (only positive side shown)', entries: entries, hl: hl };
+        };
+        var frames = [F('Start: everyone has paid ₹0 and owes ₹0. We will apply ' + parsed.length + ' expense(s), each split <b>equally</b>. Rule: for every participant U ≠ payer P, <b>U owes P their share</b>.', [netRows(), pairMap()])];
+        parsed.forEach(function (e, idx) {
+          var n = e.among.length, base = Math.floor(e.amt / n), rem = e.amt % n;
+          var shares = e.among.map(function (p, i) { return [p, base + (i < rem ? 1 : 0)]; });
+          frames.push(F('Expense ' + (idx + 1) + ': <b>' + e.payer + '</b> pays ' + rupees(e.amt) + ' for ' + e.among.join(', ') + '. Equal split: ' + e.amt + ' ÷ ' + n + ' = ' + base + (rem ? ' remainder ' + rem + ' → the first ' + rem + ' person(s) pay ₹1 extra so the shares add up <b>exactly</b>' : ' exactly') + '.', [TABLE('Split computed by EqualSplit', ['participant', 'share', 'creates debt?'], shares.map(function (s) { return [s[0], rupees(s[1]), s[0] === e.payer ? 'no (own share)' : s[0] + ' owes ' + e.payer]; }), {}), VARS('Check', { total: rupees(e.amt), 'sum of shares': rupees(shares.reduce(function (a, s) { return a + s[1]; }, 0)) }, { 'sum of shares': 'ok' })]));
+          paid[e.payer] += e.amt;
+          var touched = [e.payer], newKeys = [];
+          shares.forEach(function (s) {
+            share[s[0]] += s[1];
+            if (touched.indexOf(s[0]) < 0) touched.push(s[0]);
+            if (s[0] !== e.payer) { owes[s[0]][e.payer] += s[1]; owes[e.payer][s[0]] -= s[1]; }
+          });
+          people.forEach(function (a) { people.forEach(function (b) { if (owes[a][b] > 0 && (a === e.payer || b === e.payer)) newKeys.push(a + ' owes ' + b); }); });
+          frames.push(F('Apply it: ' + e.payer + '\'s "paid" grows by ' + rupees(e.amt) + '; each participant\'s "share" grows. Pairwise entries involving ' + e.payer + ' are updated (and <b>netted</b>: if they already owed each other the other way, it cancels).', [netRows(touched), pairMap(newKeys)]));
+        });
+        var tot = people.reduce(function (a, p) { return a + paid[p] - share[p]; }, 0);
+        frames.push(F('Final check: the net column always sums to <b>' + rupees(tot) + '</b>. Positive people are creditors, negative people are debtors. This net map is exactly what the debt simplifier (next topic) consumes.', [netRows(), pairMap(), TXT('Invariant: <b>Σ net = 0</b> and <b>owes[a][b] = −owes[b][a]</b>. If either ever fails, there is a bug.')]));
+        return frames;
+      }
+    }],
+    examples: [
+      { title: '₹100 among 3 people — where does the paisa go?', html: `<p>10000 paise ÷ 3 = 3333 rem 1. Floor shares: 3333, 3333, 3333 (= 9999). Leftover 1 paisa → the person with the largest rounding remainder (all equal → first in list).</p>${H.table(['Person', 'Exact share', 'Floor', 'Final'], [['Asha', '3333.33', '3333', H.c('g', '3334')], ['Ben', '3333.33', '3333', '3333'], ['Chen', '3333.33', '3333', '3333']])}<p>Sum = 10000 ✔. With doubles you get 33.33 × 3 = 99.99 ✖.</p>` },
+      { title: 'Percent split with validation', html: `<p>Dinner ₹1000, split 50% / 30% / 20%. Store percentages as <b>basis points</b> (1% = 100) so 12.5% is the exact integer 1250. Check Σ = 10000. Shares: 50000, 30000, 20000 paise. If the user enters 50/30/30 → ${H.c('r', 'reject: "percentages add to 110%"')}. Validation lives inside the strategy, so each split type owns its own rules.</p>`, code: `class PercentCheck {
+    static long[] split(long totalPaise, long[] basisPoints) {
+        long sum = 0;
+        for (long b : basisPoints) sum += b;
+        if (sum != 10_000) throw new IllegalArgumentException("must add to 100%, got " + sum / 100.0 + "%");
+        long[] out = new long[basisPoints.length];
+        long given = 0;
+        for (int i = 0; i < out.length; i++) { out[i] = totalPaise * basisPoints[i] / 10_000; given += out[i]; }
+        out[0] += totalPaise - given;                 // simple leftover rule: first person absorbs it
+        return out;
+    }
+    public static void main(String[] args) {
+        System.out.println(Arrays.toString(split(1000_00, new long[]{5000, 3000, 2000})));
+        System.out.println(Arrays.toString(split(100_00, new long[]{3333, 3333, 3334})));
+    }
+}` },
+      { title: 'Payer not in the split', html: `<p>Asha buys movie tickets for Ben and Chen only: ₹600, participants {Ben, Chen}. Shares 300/300. Updates: Ben owes Asha 300, Chen owes Asha 300. Asha's "paid" = 600, "share" = 0, net = +600. A common bug is to always add the payer to the participants — then Asha would "owe herself" ₹200 and the others only ₹200 each.</p>` },
+      { title: 'Netting in the pairwise ledger', html: `<p>Ben owes Asha ₹300 (hotel). Later Asha owes Ben ₹100 (scooter). Because we store <code>owes[Asha][Ben] = -owes[Ben][Asha]</code>, the second update does owes[Asha][Ben] += 100 → −300 + 100 = −200, i.e. ${H.c('g', 'Ben owes Asha ₹200')}. One number per pair, always already netted.</p>` }
+    ],
+    deepDive: `<p><b>Event log vs balance cache.</b> The expense list is the <i>source of truth</i> (an append-only event log). The BalanceSheet is a <b>materialised view</b> that can be rebuilt by replaying expenses. Editing an expense = apply the negative of the old one, then the new one (or store an <code>ExpenseVersion</code>). Deleting = apply the reverse. This is event sourcing in miniature and makes audits trivial.</p>
+<p><b>Largest-remainder rounding</b> (Hamilton's method) gives each person floor(exact share) and hands leftover paise to the biggest fractional parts. It guarantees Σ = total and each share differs from the exact value by &lt; 1 paisa. Deterministic tie-breaking (by user order) keeps results reproducible across servers.</p>
+<p><b>Multi-currency.</b> Store each expense in its own currency; keep balances per (pair, currency). Converting at expense time bakes in an exchange rate; converting at display time changes balances when rates move — product must choose. Never mix currencies in one <code>long</code>.</p>
+<p><b>Concurrency.</b> Two people adding expenses to the same group at once both update the sheet: guard per group (a lock per group, or <code>synchronized</code> on the group, or a DB transaction that inserts the expense and updates balance rows atomically). Use optimistic versioning on the group's balance row if contention is low.</p>
+<p><b>Scale of the pairwise map.</b> A group of n people has at most n(n−1)/2 pairs — tiny. Across the app, store balances as rows <code>(group_id, user_a, user_b, amount)</code> with a canonical order (a &lt; b) and a sign, instead of two mirrored rows.</p>
+<p><b>Validation order:</b> members exist → amount &gt; 0 → no duplicate participants → strategy-specific checks (exact sums, 100%) → only then mutate state. Never half-apply an expense.</p>`,
+    aiEra: `<p><b>What AI changes:</b> generating the Expense/Split/strategy classes is instant with an assistant. Interviews now focus on the parts AI gets subtly wrong: exact money arithmetic, the payer-in-split edge case, keeping the ledger antisymmetric, and how edits/deletes keep balances correct.</p>
+<p><b>Use AI as a partner:</b> <code>Write property-based tests for my BalanceSheet: after any random sequence of expenses and settlements, net values sum to 0 and owes[a][b] == -owes[b][a].</code> Invariant tests like these catch rounding bugs no example test finds.</p>
+<p><b>Where AI goes wrong:</b> <code>double</code> or <code>float</code> for money; rounding each share with <code>Math.round</code> (sum can be off by a paisa either way); <code>BigDecimal</code> created from a double (<code>new BigDecimal(0.1)</code>); forgetting to skip the payer's own share; treating percentages as doubles that sum to 99.99999.</p>
+<p><b>What you must still own:</b> the data model choice (event log + derived balances), the rounding policy, and explaining to the interviewer why the books always balance.</p>`,
+    problems: [{
+      title: 'Split a Bill Exactly by Shares (no paisa lost)',
+      level: 'Easy', tags: ['splitwise', 'money', 'rounding'], companies: ['Splitwise', 'PhonePe', 'Razorpay'],
+      statement: `<p>Given a bill in paise and a list of non-negative integer <b>shares</b> (weights), return each person's amount so that amounts are proportional to shares, every amount is a whole number of paise, each differs from its exact value by less than 1 paisa, and the amounts <b>sum exactly to the bill</b>. Leftover paise go to the largest fractional remainders; ties go to the earlier person.</p>`,
+      constraints: `1 ≤ n ≤ 1000, total ≤ 10<sup>10</sup> paise, shares ≤ 10<sup>4</sup>, at least one share &gt; 0`,
+      example: `<p>total = 1000 paise, shares = [1, 1, 1]: exact 333.33 each → floors 333, 333, 333 = 999 → 1 leftover → first person: ${H.c('g', '[334, 333, 333]')}.<br>total = 1000, shares = [2, 1]: exact 666.67, 333.33 → floors 666, 333 (= 999) → leftover goes to the bigger remainder (0.67) → ${H.c('g', '[667, 333]')}.</p>`,
+      brute: { why: `<p>Naive: compute each amount with <code>double</code> and <code>Math.round</code>. With shares [1,1,1] and total 1000 every share rounds to 333 → sum 999 (a paisa lost). With total 1001 and [1,1] both round 500.5 → 501 → sum 1002 (a paisa created). The books silently stop balancing.</p>`, code: `class NaiveSplit {
+    static long[] split(long total, int[] shares) {
+        double sum = 0;
+        for (int s : shares) sum += s;
+        long[] out = new long[shares.length];
+        for (int i = 0; i < shares.length; i++) out[i] = Math.round(total * shares[i] / sum);   // may not add up!
+        return out;
+    }
+}` },
+      mcq: { q: '1000 paise split [2, 1]. Floors are 666 and 333. Who gets the leftover paisa?', options: ['The first person (remainder 0.67)', 'The second person (remainder 0.33)', 'Nobody, keep 999', 'Split it 0.5/0.5'], answer: 0, explain: 'Largest remainder wins: 666.67 has fractional part .67 > .33, so it rounds up to 667.' },
+      hints: [`<p>Hint 1: use integers only. Exact share i = total × s<sub>i</sub> / S. Its floor is <code>total * s[i] / S</code>, and its fractional part is proportional to <code>total * s[i] % S</code>.</p>`, `<p>Hint 2: leftover = total − Σ floors is always less than n. Sort indices by remainder (descending, then index) and add 1 paisa to the first <i>leftover</i> of them.</p>`, `<p>Hint 3: edge cases — shares with 0 get 0 (remainder 0, never chosen unless all others exhausted, which cannot happen); use <code>long</code> for total × share; deterministic tie-break keeps results stable.</p>`],
+      solution: {
+        approach: `<p>Largest-remainder (Hamilton) apportionment entirely in integer arithmetic. The remainder <code>total·s % S</code> compares fractional parts without any floating point.</p>`,
+        code: `class ExactSplitter {
+    static long[] split(long total, int[] shares) {
+        long S = 0;
+        for (int s : shares) S += s;
+        int n = shares.length;
+        long[] out = new long[n];
+        long given = 0;
+        for (int i = 0; i < n; i++) { out[i] = total * shares[i] / S; given += out[i]; }
+        final long sum = S;
+        Integer[] idx = new Integer[n];
+        for (int i = 0; i < n; i++) idx[i] = i;
+        Arrays.sort(idx, (a, b) -> {
+            long ra = total * shares[a] % sum, rb = total * shares[b] % sum;
+            return ra != rb ? Long.compare(rb, ra) : Integer.compare(a, b);   // bigger remainder first, then earlier
+        });
+        for (int k = 0; k < total - given; k++) out[idx[k]]++;
+        return out;
+    }
+    public static void main(String[] args) {
+        System.out.println(Arrays.toString(split(1000, new int[]{1, 1, 1})));   // [334, 333, 333]
+        System.out.println(Arrays.toString(split(1000, new int[]{2, 1})));      // [667, 333]
+        System.out.println(Arrays.toString(split(1001, new int[]{1, 1})));      // [501, 500]
+    }
+}`,
+        complexity: `<p>O(n log n) for the sort, O(n) space. All arithmetic exact in <code>long</code>.</p>`,
+        followUps: ['Make tie-breaking fair over many expenses (rotate who absorbs leftovers).', 'Support percentages with two decimals (basis points).', 'Prove each amount is within 1 paisa of the exact value.']
       }
     }]
   });
