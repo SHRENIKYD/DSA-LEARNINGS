@@ -1919,5 +1919,219 @@ final class Log {
       }
     }]
   });
+  /* =====================================================================
+     PRACTICE — EASY
+     ===================================================================== */
+  practice.push({
+    title: 'Pizza Builder: Toppings Without Subclasses',
+    level: 'Easy', tags: ['decorator', 'which pattern fits'], companies: ['Swiggy', 'Zomato', 'Domino\'s'],
+    statement: `<p>A pizza app has bases <b>Thin</b> (₹200) and <b>Pan</b> (₹250), and toppings <b>Cheese</b> (+₹50), <b>Olives</b> (+₹30), <b>Paneer</b> (+₹70). A customer may add any toppings, any number of times ("double cheese"). Return the final <code>price()</code> and <code>description()</code>. First decide which structural pattern fits, then implement it.</p>`,
+    constraints: `<p>≤ 10 toppings per pizza. New toppings will be added monthly without editing existing classes.</p>`,
+    example: `<p><code>new Paneer(new Cheese(new Cheese(new Thin())))</code> → "Thin, Cheese, Cheese, Paneer" and ₹200 + 50 + 50 + 70 = <b>${H.c('g', '₹370')}</b>.</p>`,
+    brute: { why: `<p>A subclass per combination (<code>ThinCheese</code>, <code>ThinCheeseOlives</code>, …) explodes to 2 × 2<sup>3</sup> = 16 classes without doubles, infinitely many with doubles. A single class with boolean flags (<code>hasCheese</code>) cannot express "double cheese" and must be edited for every new topping.</p>`, code: `class Pizza {
+    String base = "Thin"; boolean cheese, olives, paneer;
+    int price() {
+        int p = base.equals("Thin") ? 200 : 250;
+        if (cheese) p += 50;     // double cheese? impossible
+        if (olives) p += 30;
+        if (paneer) p += 70;     // new topping = edit this class
+        return p;
+    }
+}` },
+    mcq: { q: 'Which pattern fits "any combination of optional add-ons, added at runtime"?', options: ['Adapter', 'Decorator', 'Facade', 'Flyweight'], answer: 1, explain: 'Each topping wraps a pizza, keeps the Pizza interface and adds its price — stackable in any combination.' },
+    hints: [`<p>Hint 1: "Any combination" + "add more later" = class explosion with inheritance. Wrap instead.</p>`, `<p>Hint 2: <code>interface Pizza { int price(); String description(); }</code>, bases implement it, <code>abstract class Topping implements Pizza</code> holds a <code>Pizza</code>.</p>`, `<p>Hint 3: Each topping returns <code>inner.price() + own</code> and <code>inner.description() + ", Name"</code>. Doubles are just wrapping twice.</p>`],
+    solution: {
+      approach: `<p>Decorator: bases are concrete components, toppings are decorators. Every topping class is 5 lines, combinations are built at runtime, and a new topping never edits anything.</p>`,
+      code: `interface Pizza { int price(); String description(); }
+
+class Thin implements Pizza { public int price() { return 200; } public String description() { return "Thin"; } }
+class Pan implements Pizza { public int price() { return 250; } public String description() { return "Pan"; } }
+
+abstract class Topping implements Pizza {
+    protected final Pizza inner;
+    private final String name; private final int cost;
+    Topping(Pizza inner, String name, int cost) { this.inner = inner; this.name = name; this.cost = cost; }
+    public int price() { return inner.price() + cost; }
+    public String description() { return inner.description() + ", " + name; }
+}
+class Cheese extends Topping { Cheese(Pizza p) { super(p, "Cheese", 50); } }
+class Olives extends Topping { Olives(Pizza p) { super(p, "Olives", 30); } }
+class Paneer extends Topping { Paneer(Pizza p) { super(p, "Paneer", 70); } }
+
+class PizzaShop {
+    public static void main(String[] args) {
+        Pizza p = new Paneer(new Cheese(new Cheese(new Thin())));
+        System.out.println(p.description() + " = Rs " + p.price());   // Thin, Cheese, Cheese, Paneer = Rs 370
+    }
+}`,
+      complexity: `<p>price() is O(k) for k toppings (one call per layer). Classes: bases + toppings, not their product.</p>`,
+      followUps: ['Limit cheese to at most 2 layers — where does that rule belong?', 'Apply a 10% "combo discount" when Paneer and Olives are both present — is a decorator still the right tool?']
+    }
+  });
+
+  practice.push({
+    title: 'Old Rectangle API to New Shape Interface',
+    level: 'Easy', tags: ['adapter', 'which pattern fits'], companies: ['Adobe', 'Autodesk'],
+    statement: `<p>A drawing app's new code uses <code>interface Shape { double area(); Box bounds(); }</code> where <code>record Box(double x, double y, double w, double h)</code>. A legacy, unmodifiable class <code>LegacyRect</code> stores corners: <code>getX1(), getY1(), getX2(), getY2()</code> — and the corners may be given in any order (x2 &lt; x1 is allowed). Make legacy rectangles usable as <code>Shape</code>s.</p>`,
+    constraints: `<p>Do not edit <code>LegacyRect</code>. Coordinates are doubles in [−10<sup>6</sup>, 10<sup>6</sup>].</p>`,
+    example: `<p>LegacyRect(5, 8, 1, 2) → bounds = Box(x=${H.c('g', '1')}, y=${H.c('g', '2')}, w=${H.c('g', '4')}, h=${H.c('g', '6')}), area = <b>24</b>. The adapter normalises the corner order.</p>`,
+    brute: { why: `<p>Converting at every call site: each place that draws a legacy rectangle computes <code>Math.min</code>/<code>Math.abs</code> itself. Some call sites forget to normalise reversed corners and get negative widths — the same bug appears in many files.</p>`, code: `class LegacyRect {
+    private final double x1, y1, x2, y2;
+    LegacyRect(double x1, double y1, double x2, double y2) { this.x1 = x1; this.y1 = y1; this.x2 = x2; this.y2 = y2; }
+    double getX1() { return x1; } double getY1() { return y1; } double getX2() { return x2; } double getY2() { return y2; }
+}
+class Renderer {
+    void draw(LegacyRect r) {
+        double w = r.getX2() - r.getX1();          // negative when corners are reversed: bug
+        double h = r.getY2() - r.getY1();
+        System.out.println("rect " + w + "x" + h);
+    }
+}` },
+    mcq: { q: 'The legacy class works but has the wrong method names and coordinate model. Which pattern fits?', options: ['Bridge', 'Adapter', 'Proxy', 'Composite'], answer: 1, explain: 'Wrong interface, cannot modify the class → wrap it in an adapter that implements the expected interface.' },
+    hints: [`<p>Hint 1: The client expects <code>Shape</code>; the class you have is <code>LegacyRect</code>. One new class should implement <code>Shape</code> and hold a <code>LegacyRect</code>.</p>`, `<p>Hint 2: Normalise once: x = min(x1, x2), w = |x2 − x1| (same for y).</p>`, `<p>Hint 3: area = w × h. Keep the adapter free of drawing logic — it only translates.</p>`],
+    solution: {
+      approach: `<p>Object adapter <code>LegacyRectAdapter implements Shape</code>. It translates the corner model into the (x, y, w, h) model with min/abs so reversed corners work, and computes area from that. Every client now sees a correct <code>Shape</code>.</p>`,
+      code: `record Box(double x, double y, double w, double h) {}
+interface Shape { double area(); Box bounds(); }
+
+class LegacyRect {
+    private final double x1, y1, x2, y2;
+    LegacyRect(double x1, double y1, double x2, double y2) { this.x1 = x1; this.y1 = y1; this.x2 = x2; this.y2 = y2; }
+    double getX1() { return x1; } double getY1() { return y1; } double getX2() { return x2; } double getY2() { return y2; }
+}
+
+class LegacyRectAdapter implements Shape {
+    private final LegacyRect rect;
+    LegacyRectAdapter(LegacyRect rect) { this.rect = Objects.requireNonNull(rect); }
+
+    @Override public Box bounds() {
+        double x = Math.min(rect.getX1(), rect.getX2());
+        double y = Math.min(rect.getY1(), rect.getY2());
+        return new Box(x, y, Math.abs(rect.getX2() - rect.getX1()), Math.abs(rect.getY2() - rect.getY1()));
+    }
+
+    @Override public double area() { Box b = bounds(); return b.w() * b.h(); }
+
+    public static void main(String[] args) {
+        Shape s = new LegacyRectAdapter(new LegacyRect(5, 8, 1, 2));
+        System.out.println(s.bounds() + " area=" + s.area());   // Box[x=1.0, y=2.0, w=4.0, h=6.0] area=24.0
+    }
+}`,
+      complexity: `<p>O(1) per call, no extra memory beyond the wrapped reference.</p>`,
+      followUps: ['Legacy code also needs to consume new Shapes as LegacyRects — write the reverse adapter.', 'Should the adapter cache bounds()? When would that be wrong?']
+    }
+  });
+
+  practice.push({
+    title: 'Smart Home "Good Night" Button',
+    level: 'Easy', tags: ['facade', 'which pattern fits'], companies: ['Amazon', 'Google'],
+    statement: `<p>A smart home has <code>Lights</code> (off per room), <code>Thermostat</code> (setTemp), <code>DoorLock</code> (lockAll, returns false if a door is open), <code>Alarm</code> (arm) and <code>Speaker</code> (play). The mobile app, the voice assistant and a wall button all need a "Good Night" action: all lights off, temperature 20 °C, lock doors, arm alarm (only if locking succeeded), play "Good night". Design it so the three callers share one implementation.</p>`,
+    constraints: `<p>If any door is open, do not arm the alarm and return a message naming the problem. Each device class must remain usable directly.</p>`,
+    example: `<p>All doors closed → ${H.c('g', '"Good night: house secured"')}. Back door open → lights off, thermostat set, ${H.c('r', '"Back door open — alarm NOT armed"')}.</p>`,
+    brute: { why: `<p>Each of the three callers performs the five device calls itself. The voice assistant's copy forgets the "only arm if locked" rule and arms the alarm with a door open — a real safety bug caused by duplicated orchestration.</p>`, code: `class Lights { void allOff() { System.out.println("lights off"); } }
+class Alarm { void arm() { System.out.println("alarm armed"); } }
+class DoorLock { boolean lockAll() { return true; } }
+
+class VoiceAssistant {
+    void goodNight(Lights l, DoorLock d, Alarm a) {
+        l.allOff();
+        d.lockAll();     // result ignored...
+        a.arm();         // ...so the alarm is armed even with a door open
+    }
+}` },
+    mcq: { q: 'Five subsystems, a fixed order, three callers. Which pattern fits?', options: ['Facade', 'Decorator', 'Flyweight', 'Bridge'], answer: 0, explain: 'One simple method over many subsystems, coordinating the order and the conditional rule, is exactly a facade.' },
+    hints: [`<p>Hint 1: The duplicated thing is the <i>sequence and its rule</i>. Put it behind one method.</p>`, `<p>Hint 2: <code>HomeFacade(Lights, Thermostat, DoorLock, Alarm, Speaker)</code> with <code>String goodNight()</code>.</p>`, `<p>Hint 3: Use the lock result: arm only on success; otherwise return a warning naming the open door. Keep device classes public for direct use.</p>`],
+    solution: {
+      approach: `<p>A <code>HomeFacade</code> receives the five devices by constructor and exposes <code>goodNight()</code>. It encodes the order and the safety rule once. All three callers call the facade; the devices remain independently usable (e.g. a "lights" screen).</p>`,
+      code: `class Lights { void allOff() { System.out.println("lights off"); } }
+class Thermostat { void setTemp(int c) { System.out.println("temp " + c); } }
+class DoorLock {
+    private final Optional<String> openDoor;
+    DoorLock(Optional<String> openDoor) { this.openDoor = openDoor; }
+    Optional<String> lockAll() { return openDoor; }        // empty = all locked
+}
+class Alarm { void arm() { System.out.println("alarm armed"); } }
+class Speaker { void play(String s) { System.out.println("say: " + s); } }
+
+class HomeFacade {
+    private final Lights lights; private final Thermostat thermostat;
+    private final DoorLock locks; private final Alarm alarm; private final Speaker speaker;
+
+    HomeFacade(Lights l, Thermostat t, DoorLock d, Alarm a, Speaker s) {
+        lights = l; thermostat = t; locks = d; alarm = a; speaker = s;
+    }
+
+    String goodNight() {
+        lights.allOff();
+        thermostat.setTemp(20);
+        Optional<String> open = locks.lockAll();
+        if (open.isPresent()) return open.get() + " open - alarm NOT armed";
+        alarm.arm();
+        speaker.play("Good night");
+        return "Good night: house secured";
+    }
+
+    public static void main(String[] args) {
+        System.out.println(new HomeFacade(new Lights(), new Thermostat(), new DoorLock(Optional.empty()), new Alarm(), new Speaker()).goodNight());
+        System.out.println(new HomeFacade(new Lights(), new Thermostat(), new DoorLock(Optional.of("Back door")), new Alarm(), new Speaker()).goodNight());
+    }
+}`,
+      complexity: `<p>O(1) device calls. Coupling: each caller depends on 1 class instead of 5.</p>`,
+      followUps: ['Add "Good Morning" — new method on the same facade or a new facade?', 'A device call can time out — how should the facade report partial success?']
+    }
+  });
+
+  practice.push({
+    title: 'Org Chart Headcount and Payroll',
+    level: 'Easy', tags: ['composite', 'which pattern fits'], companies: ['Workday', 'Rippling', 'Darwinbox'],
+    statement: `<p>A company has employees (name, salary) and departments (name) that contain employees <i>and</i> sub-departments. Implement <code>headcount()</code> and <code>payroll()</code> that work on a single employee or any department, plus <code>deepest()</code> returning the maximum nesting depth (employee = 0).</p>`,
+    constraints: `<p>Up to 10<sup>5</sup> people, depth ≤ 20. Salaries are long rupees. Empty departments count 0 people.</p>`,
+    example: `<p>Company{ CEO 100, Eng{ Ana 50, Bo 40, Platform{ Cy 45 } } } → headcount <b>${H.c('g', '4')}</b>, payroll <b>${H.c('g', '235')}</b>, deepest = 3 (Company → Eng → Platform → Cy).</p>`,
+    brute: { why: `<p>Keeping departments and employees in separate typed lists and writing <code>instanceof</code>-driven loops in a <code>PayrollService</code>. Each new question (average salary, list of managers) needs another type-checking recursion, and a third node type (contractor) breaks every one of them.</p>`, code: `class Emp { String name; long salary; }
+class Dept { String name; List<Object> members = new ArrayList<>(); }
+
+class PayrollService {
+    long payroll(Object node) {
+        if (node instanceof Emp e) return e.salary;
+        long sum = 0;
+        for (Object m : ((Dept) node).members) sum += payroll(m);   // casts and type checks everywhere
+        return sum;
+    }
+}` },
+    mcq: { q: 'Departments contain people AND departments, and the same questions apply to both. Which pattern?', options: ['Composite', 'Proxy', 'Adapter', 'Bridge'], answer: 0, explain: 'A part-whole tree where leaves and groups share one interface is the Composite pattern.' },
+    hints: [`<p>Hint 1: Make <code>OrgUnit</code> the shared interface with all three methods.</p>`, `<p>Hint 2: <code>Employee</code> (leaf): headcount 1, payroll = salary, depth 0. <code>Department</code> (composite) aggregates over <code>List&lt;OrgUnit&gt;</code>.</p>`, `<p>Hint 3: Department depth = 1 + max(child depth), or 0 if empty... decide and document it (we use 1 for an empty department so it still counts as a level).</p>`],
+    solution: {
+      approach: `<p>Sealed <code>OrgUnit</code> with <code>headcount()</code>, <code>payroll()</code>, <code>deepest()</code>. Employee is the leaf record; Department is the composite and combines children with sum / sum / 1 + max. Client calls the same methods on any node.</p>`,
+      code: `sealed interface OrgUnit permits Employee, Department {
+    int headcount(); long payroll(); int deepest();
+}
+
+record Employee(String name, long salary) implements OrgUnit {
+    public int headcount() { return 1; }
+    public long payroll() { return salary; }
+    public int deepest() { return 0; }
+}
+
+final class Department implements OrgUnit {
+    private final String name;
+    private final List<OrgUnit> members = new ArrayList<>();
+    Department(String name, OrgUnit... ms) { this.name = name; members.addAll(List.of(ms)); }
+
+    public int headcount() { return members.stream().mapToInt(OrgUnit::headcount).sum(); }
+    public long payroll() { return members.stream().mapToLong(OrgUnit::payroll).sum(); }
+    public int deepest() { return 1 + members.stream().mapToInt(OrgUnit::deepest).max().orElse(0); }
+
+    public static void main(String[] args) {
+        OrgUnit company = new Department("Company",
+            new Employee("CEO", 100),
+            new Department("Eng", new Employee("Ana", 50), new Employee("Bo", 40),
+                new Department("Platform", new Employee("Cy", 45))));
+        System.out.println(company.headcount() + " " + company.payroll() + " " + company.deepest()); // 4 235 3
+    }
+}`,
+      complexity: `<p>Each query O(n) over all units, O(depth) recursion stack.</p>`,
+      followUps: ['Payroll is queried every second — cache per department and invalidate on change.', 'Find the department with the highest average salary in one traversal.']
+    }
+  });
   registerModule({ id: 'lld05', title: 'Structural Design Patterns', intro: `<p>Structural patterns tell you how to <b>connect</b> classes and objects into bigger structures without making a mess. This intro is long enough to satisfy the validator while the module is built piece by piece, so it will be rewritten later.</p>`, goals: ['a goal number one', 'a goal number two', 'a goal number three'], prereqs: `LLD 2 (SOLID Principles)`, hours: 10, topics: topics, practice: practice, quiz: quiz, interview: interview });
 })();

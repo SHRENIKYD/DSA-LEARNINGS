@@ -1763,6 +1763,249 @@ COMMIT;   -- client retries the whole block on SQLSTATE 40001` }],
       }
     }]
   });
+
+  /* =====================================================================
+     TOPIC 7 — Choosing a database
+     ===================================================================== */
+  var DB_SCENARIOS = {
+    payments: { title: 'Payments ledger', steps: [
+      ['Data shape', 'accounts, transfers, ledger entries with strict relationships', 'relational fits naturally', ['Redis', 'Neo4j']],
+      ['Key queries', 'balance by account, statement by date, audits with joins', 'needs joins + ad-hoc SQL', ['Cassandra', 'DynamoDB']],
+      ['Consistency', 'never lose or double-apply money; invariants across rows', 'ACID, serializable, RPO = 0', ['MongoDB', 'Elasticsearch', 'ClickHouse', 'pgvector']],
+      ['Scale', '~5 000 TPS, a few TB, growing', 'one strong Postgres primary + replicas fits for years', []],
+      ['Geography', 'single country today; multi-region later', 'start single-region; NewSQL when active-active is required', []],
+      ['Team / ops', 'small team, managed cloud', 'managed Postgres (RDS/Cloud SQL/Aurora)', ['MySQL']]
+    ], pick: ['PostgreSQL', 'CockroachDB'], why: '<b>PostgreSQL</b> (managed, sync standby for RPO 0) now; <b>CockroachDB/Spanner</b> when you need multi-region active-active with the same SQL. Analytics goes to a warehouse via CDC.' },
+    chat: { title: 'Chat messages at Discord scale', steps: [
+      ['Data shape', 'append-only messages per channel', 'time-ordered rows, no joins needed', ['Neo4j', 'pgvector']],
+      ['Key queries', 'latest N messages in a channel; page backwards', 'single partition range scan', ['ClickHouse', 'Elasticsearch']],
+      ['Consistency', 'per-channel order; a message showing up 100 ms late is fine', 'eventual / LOCAL_QUORUM is OK', ['CockroachDB']],
+      ['Scale', 'millions of writes/s, petabytes', 'needs linear write scaling across hundreds of nodes', ['PostgreSQL', 'MySQL', 'MongoDB']],
+      ['Geography', 'global users', 'multi-DC replication, local quorum', []],
+      ['Team / ops', 'dedicated infra team', 'can run a wide-column cluster (or use a managed one)', ['DynamoDB']]
+    ], pick: ['Cassandra', 'Redis'], why: '<b>Cassandra/ScyllaDB</b> with <code>((channel_id, bucket), ts)</code> for messages; <b>Redis</b> for presence/typing indicators; search via a separate Elasticsearch index fed by CDC.' },
+    analytics: { title: 'Product analytics dashboard', steps: [
+      ['Data shape', 'billions of events with ~50 columns', 'wide, append-only facts', ['Redis', 'Neo4j']],
+      ['Key queries', 'GROUP BY day, country, plan over months of data', 'scans + aggregates over few columns → columnar', ['Cassandra', 'DynamoDB', 'MongoDB']],
+      ['Consistency', 'minutes of delay is fine', 'batch / streaming ingestion OK', ['CockroachDB']],
+      ['Scale', '10 TB+, queries over 1B rows in seconds', 'column store with compression + vectorised execution', ['PostgreSQL', 'MySQL', 'pgvector']],
+      ['Geography', 'internal users', 'single region fine', []],
+      ['Team / ops', 'analysts write SQL', 'needs SQL interface', ['Elasticsearch']]
+    ], pick: ['ClickHouse'], why: '<b>ClickHouse</b> (or BigQuery/Snowflake/Redshift as managed warehouses). OLTP data arrives via CDC; never run these scans on the production OLTP primary.' },
+    catalog: { title: 'E-commerce product catalog + search', steps: [
+      ['Data shape', 'products with very different attributes (books vs phones)', 'flexible schema per item', ['Redis', 'Neo4j', 'ClickHouse']],
+      ['Key queries', 'get by id, browse by category, full-text + faceted search', 'document reads + an inverted index for search', ['Cassandra']],
+      ['Consistency', 'price/stock changes visible within seconds', 'read-your-writes for admins; eventual for shoppers', []],
+      ['Scale', '10 M products, read-heavy', 'replicas + cache; no extreme write scale', ['CockroachDB', 'DynamoDB']],
+      ['Geography', 'CDN + regional read replicas', 'caching matters more than the DB', []],
+      ['Team / ops', 'web team knows Postgres', 'JSONB covers flexible attributes', ['MySQL', 'pgvector']]
+    ], pick: ['PostgreSQL', 'MongoDB', 'Elasticsearch'], why: '<b>Postgres JSONB</b> or <b>MongoDB</b> as the source of truth for products, plus <b>Elasticsearch/OpenSearch</b> for search and facets, kept in sync via CDC. Add pgvector or the search engine\'s vector fields for semantic search.' },
+    iot: { title: 'IoT sensor time-series', steps: [
+      ['Data shape', 'device_id, timestamp, a few readings', 'time-series', ['Neo4j', 'Redis']],
+      ['Key queries', 'last hour for a device; hourly averages per site', 'range by device + time; rollups', ['Elasticsearch', 'MongoDB']],
+      ['Consistency', 'losing a reading is tolerable; duplicates must be idempotent', 'eventual OK', ['CockroachDB']],
+      ['Scale', '500 K readings/s, keep raw 30 days, rollups 5 years', 'high ingest + TTL + downsampling', ['MySQL', 'DynamoDB']],
+      ['Geography', 'devices worldwide, ingest via regional gateways', 'regional buffers (Kafka)', []],
+      ['Team / ops', 'SQL-savvy team', 'Postgres extension is attractive', ['pgvector']]
+    ], pick: ['PostgreSQL', 'Cassandra', 'ClickHouse'], why: '<b>TimescaleDB</b> (Postgres extension: hypertables, compression, continuous aggregates) if it fits one cluster; <b>Cassandra/Scylla</b> with <code>((device_id, day), ts)</code> + TTL at extreme ingest; <b>ClickHouse</b> for fleet-wide analytics.' },
+    rag: { title: 'AI assistant over company docs (RAG)', steps: [
+      ['Data shape', 'documents, chunks, embeddings (1 536 floats), permissions', 'relational metadata + vectors', ['Cassandra', 'Neo4j']],
+      ['Key queries', 'top-k similar chunks filtered by tenant + permission', 'ANN index + metadata filter in one query', ['Redis', 'ClickHouse']],
+      ['Consistency', 'deleted docs must disappear from answers quickly', 'transactional delete of doc + chunks + vectors', ['Elasticsearch', 'DynamoDB']],
+      ['Scale', '5 M chunks today', 'HNSW index fits in one Postgres node', ['CockroachDB', 'MongoDB']],
+      ['Geography', 'EU customers need EU data residency', 'per-region deployment', []],
+      ['Team / ops', 'already run Postgres', 'one less system to operate', ['MySQL']]
+    ], pick: ['pgvector', 'PostgreSQL'], why: '<b>Postgres + pgvector</b> (HNSW) keeps vectors, permissions and documents in one transactional store. Move to a dedicated vector DB (Pinecone, Milvus, Weaviate, Turbopuffer) only when hundreds of millions of vectors or strict latency/recall targets demand it.' }
+  };
+  var DB_CANDIDATES = ['PostgreSQL', 'MySQL', 'MongoDB', 'Cassandra', 'DynamoDB', 'Redis', 'Neo4j', 'ClickHouse', 'CockroachDB', 'Elasticsearch', 'pgvector'];
+
+  topics.push({
+    title: 'Choosing a Database: A Decision Framework with Real Scenarios',
+    analogy: `<p>Choosing a database is like choosing a vehicle. A scooter (Redis) is perfect for quick trips across town but carries one bag. A delivery truck (Postgres) carries almost anything reliably. A freight train (Cassandra) moves unbelievable tonnage but only along its tracks. A plane (Spanner) crosses oceans fast but costs a lot and needs an airport. Nobody asks "what is the best vehicle?" — they ask "what am I carrying, how far, how often, and who drives?"</p>`,
+    explain: `<p>Interviewers do not want a favourite database; they want a <b>reasoned choice</b>. Walk through these questions in order and say the answers out loud:</p>
+<ol>
+<li><b>Data shape & relationships.</b> Rows with many relationships (relational)? Self-contained aggregates (document)? Time-ordered appends (wide-column / time-series)? Highly connected (graph)? Vectors (vector index)?</li>
+<li><b>Access patterns.</b> Top queries and their frequency. Point lookups by key? Range scans? Ad-hoc analytics? Full-text search? Multi-hop traversals? Known up front, or will product managers invent new ones weekly (→ SQL)?</li>
+<li><b>Consistency & transactions.</b> Which invariants must never break (money, inventory, uniqueness)? Single-row atomicity enough, or multi-row/multi-entity transactions?</li>
+<li><b>Scale numbers.</b> Data size now and in 3 years, reads/s, writes/s, read:write ratio, peak vs average. One Postgres node handles a lot (tens of thousands of simple TPS, multi-TB) — do the math before reaching for distributed systems.</li>
+<li><b>Latency & geography.</b> p99 targets, users per region, data-residency laws, RPO/RTO for disasters.</li>
+<li><b>Operations & cost.</b> Managed service available? Team expertise? Licensing? Backup/restore, observability, upgrade story. The best database is often the one your team can run at 3 a.m.</li>
+</ol>
+${H.table(['Workload', 'Usually a good first pick', 'Why'], [
+  ['General OLTP, money, orders', 'PostgreSQL / MySQL (managed)', 'ACID, SQL, mature, huge ecosystem'],
+  ['OLTP beyond one primary, global', 'CockroachDB, Spanner, YugabyteDB, TiDB; or Vitess/Citus sharding', 'SQL + scale-out + consensus'],
+  ['Cache, sessions, leaderboards, rate limits', 'Redis / Valkey', 'in-memory, rich data structures, TTL'],
+  ['Serverless KV at any scale, known access patterns', 'DynamoDB', 'predictable single-digit-ms, zero ops'],
+  ['Massive append, time-ordered (messages, events)', 'Cassandra / ScyllaDB', 'linear write scaling, multi-DC'],
+  ['Flexible documents, rapid iteration', 'MongoDB (or Postgres JSONB)', 'schema flexibility, rich queries on documents'],
+  ['Analytics / OLAP', 'ClickHouse, BigQuery, Snowflake, Redshift, DuckDB', 'columnar, compression, vectorised scans'],
+  ['Full-text search, logs', 'Elasticsearch / OpenSearch', 'inverted indexes, relevance, facets'],
+  ['Deep relationships', 'Neo4j, Neptune', 'multi-hop traversals'],
+  ['Embeddings / semantic search', 'pgvector → dedicated vector DB at large scale', 'ANN indexes (HNSW, IVF)']
+])}
+<p><b>Polyglot persistence</b> is normal: one <b>system of record</b> (usually relational) plus derived stores (cache, search index, warehouse, vector index) fed by <b>CDC</b> (Debezium/Kafka) or outbox events. Every extra store adds sync lag and operational cost, so add one only when a requirement justifies it. A good default in 2026: "Start with Postgres; prove you need something else."</p>`,
+    clues: [
+      '"which database would you use and why?" → walk the 6 questions; name trade-offs, not brands',
+      '"strong consistency for payments" → relational/NewSQL; "likes and views" → eventual store or cache',
+      '"we don\'t know future queries" → relational (SQL flexibility)',
+      '"100K writes/s append-only, global" → wide-column (Cassandra/Scylla) or managed KV (DynamoDB)',
+      '"dashboards over billions of rows" → columnar OLAP, fed by CDC — not the OLTP primary',
+      '"search box with typos and facets" → search engine as a derived store',
+      '"tiny team, needs to just work" → managed Postgres; avoid running clusters yourself'
+    ],
+    code: [
+      { lang: 'sql', title: 'A capabilities matrix you can query (runnable)', code: `CREATE TABLE db_catalog (
+  name          TEXT PRIMARY KEY,
+  model         TEXT,      -- relational, document, wide-column, kv, graph, columnar, search
+  acid_multirow INTEGER,   -- 1 = multi-row/multi-entity ACID transactions are first-class
+  scale_out     INTEGER,   -- 1 = writes scale horizontally out of the box
+  adhoc_sql     INTEGER,   -- 1 = arbitrary SQL with joins
+  managed       INTEGER    -- 1 = widely available as a managed service
+);
+INSERT INTO db_catalog VALUES
+  ('PostgreSQL',  'relational',  1, 0, 1, 1),
+  ('CockroachDB', 'relational',  1, 1, 1, 1),
+  ('Spanner',     'relational',  1, 1, 1, 1),
+  ('MongoDB',     'document',    1, 1, 0, 1),
+  ('Cassandra',   'wide-column', 0, 1, 0, 1),
+  ('DynamoDB',    'kv',          1, 1, 0, 1),
+  ('Redis',       'kv',          0, 1, 0, 1),
+  ('Neo4j',       'graph',       1, 0, 0, 1),
+  ('ClickHouse',  'columnar',    0, 1, 1, 1);
+
+-- Requirement: multi-row ACID + horizontal write scaling + ad-hoc SQL
+SELECT name, model
+FROM db_catalog
+WHERE acid_multirow = 1 AND scale_out = 1 AND adhoc_sql = 1
+ORDER BY name;` },
+      { lang: 'python', run: true, title: 'Weighted decision matrix (runnable sketch)', code: `# Score candidate databases against weighted requirements (0-5 per criterion).
+# The numbers are a judgement call; the value is in making trade-offs explicit.
+
+weights = {"acid": 5, "write_scale": 2, "adhoc_queries": 4, "ops_simplicity": 4, "latency": 3}
+
+scores = {
+    "PostgreSQL":  {"acid": 5, "write_scale": 2, "adhoc_queries": 5, "ops_simplicity": 5, "latency": 4},
+    "CockroachDB": {"acid": 5, "write_scale": 5, "adhoc_queries": 4, "ops_simplicity": 3, "latency": 3},
+    "Cassandra":   {"acid": 1, "write_scale": 5, "adhoc_queries": 1, "ops_simplicity": 2, "latency": 5},
+    "MongoDB":     {"acid": 3, "write_scale": 4, "adhoc_queries": 3, "ops_simplicity": 4, "latency": 4},
+}
+
+def total(db):
+    return sum(weights[c] * scores[db][c] for c in weights)
+
+ranking = sorted(scores, key=total, reverse=True)
+best = sum(weights.values()) * 5
+for db in ranking:
+    print(f"{db:12s} {total(db):3d} / {best}")
+
+# Sensitivity check: what if write scaling becomes critical?
+weights["write_scale"] = 5
+print("after write_scale weight -> 5:", {db: total(db) for db in sorted(scores, key=total, reverse=True)})
+# PostgreSQL and CockroachDB now tie at 87: the decision hinges on how sure you are about growth.
+` }
+    ],
+    codeTitle: ['Filter by capability', 'Decision matrix'],
+    viz: {
+      title: 'Pick a database: walk the six questions for a scenario',
+      input: 'chat',
+      inputLabel: 'scenario: payments | chat | analytics | catalog | iot | rag',
+      gen: function (input) {
+        var key = String(input || '').trim().toLowerCase();
+        var sc = DB_SCENARIOS[key];
+        if (!sc) throw new Error('Choose one of: ' + Object.keys(DB_SCENARIOS).join(', '));
+        var alive = DB_CANDIDATES.slice(), rows = [], frames = [];
+        frames.push({ narr: 'Scenario: <b>' + sc.title + '</b>. We start with every candidate and remove the ones that clearly fail each requirement. (The candidates are families\' best-known representatives.)', parts: [
+          { type: 'set', label: 'candidates still in the running', items: alive.slice() },
+          { type: 'table', label: 'requirements so far', columns: ['question', 'answer for this product', 'implication'], rows: [] }
+        ] });
+        sc.steps.forEach(function (st, i) {
+          rows.push([st[0], st[1], st[2]]);
+          var removed = st[3].filter(function (x) { return alive.indexOf(x) >= 0; });
+          var hl = {}; removed.forEach(function (x) { hl[x] = 'bad'; });
+          frames.push({ narr: '<b>' + (i + 1) + '. ' + st[0] + ':</b> ' + st[1] + ' → ' + st[2] + '. ' + (removed.length ? '<span class="c-r">Ruled out: ' + removed.join(', ') + '.</span>' : 'Nobody ruled out by this one.'), parts: [
+            { type: 'set', label: 'candidates', items: alive.slice(), hl: hl },
+            { type: 'table', label: 'requirements so far', columns: ['question', 'answer for this product', 'implication'], rows: rows.slice(), hl: (function () { var o = {}; o[rows.length - 1] = 'cur'; return o; })() }
+          ] });
+          alive = alive.filter(function (x) { return removed.indexOf(x) < 0; });
+        });
+        var hl2 = {}; sc.pick.forEach(function (p) { hl2[p] = 'sel'; });
+        frames.push({ narr: 'Survivors: ' + alive.join(', ') + '. <b>Recommendation:</b> ' + sc.why, parts: [
+          { type: 'set', label: 'final candidates (purple = recommended)', items: alive.slice(), hl: hl2 },
+          { type: 'table', label: 'requirements', columns: ['question', 'answer for this product', 'implication'], rows: rows.slice() }
+        ] });
+        frames.push({ narr: 'Say the trade-off out loud: what the pick gives up and what would make you change your mind (scale ×10, new query patterns, multi-region). That sentence is what interviewers score.', parts: [
+          { type: 'text', html: '<b>Template:</b> "Given <i>[top queries]</i> at <i>[scale]</i> with <i>[consistency need]</i>, I pick <i>[DB]</i> because <i>[fit]</i>. We give up <i>[weakness]</i>, mitigated by <i>[derived store / pattern]</i>. I would revisit if <i>[trigger]</i>."' }
+        ] });
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'URL shortener (100:1 reads, 1 B links)', html: `<p>Access pattern is a single key lookup (<code>code → url</code>), immutable after creation, read-heavy, global. A <b>key-value store</b> (DynamoDB, or Cassandra) plus a CDN/Redis cache in front. Postgres also works up to a few hundred million rows with a cache. Code generation needs uniqueness → use a counter range per app server or conditional put (<code>attribute_not_exists</code>).</p>` },
+      { title: 'Game leaderboard', html: `<p>"Top 100 players" and "my rank" updated thousands of times per second: <b>Redis sorted sets</b> (<code>ZADD</code>, <code>ZREVRANGE</code>, <code>ZREVRANK</code> are O(log N)). Persist scores to a durable store (Postgres/DynamoDB) asynchronously; rebuild the sorted set from it after a cache loss. The same in SQL needs a window function over all players for every rank lookup.</p>`, code: { lang: 'sql', code: `CREATE TABLE scores (player TEXT PRIMARY KEY, score INTEGER);
+INSERT INTO scores VALUES ('asha', 920), ('ben', 870), ('chen', 990), ('dara', 870);
+-- what Redis ZREVRANK gives in O(log N), SQL computes with a window over everyone:
+SELECT player, score, RANK() OVER (ORDER BY score DESC) AS rank FROM scores ORDER BY rank;` } },
+      { title: 'Observability logs', html: `<p>Terabytes per day of semi-structured logs, queried by time range + filters + text, retained 14-30 days. Choices: <b>Elasticsearch/OpenSearch</b> (full-text, expensive at scale), <b>ClickHouse</b> (columnar, cheap aggregates, good text filtering), or object storage + Loki-style index-light designs. Retention via time-partitioned indices/tables dropped whole (never row deletes).</p>` },
+      { title: 'Ride-hailing driver locations', html: `<p>Every driver pings location every 4 s; riders need "drivers within 2 km". Hot, ephemeral, geo-indexed: <b>Redis GEO</b> (<code>GEOADD</code>/<code>GEOSEARCH</code>) or an in-memory geo service sharded by city/geohash. History goes to Cassandra/S3 for analytics; trips and payments stay in Postgres/NewSQL. One product, four stores — each justified by a requirement.</p>`, code: { lang: 'text', check: false, code: `GEOADD drivers:blr 77.5946 12.9716 driver:42
+GEOSEARCH drivers:blr FROMLONLAT 77.60 12.97 BYRADIUS 2 km ASC COUNT 10 WITHDIST` } }
+    ],
+    deepDive: `<p><b>Do the capacity math first.</b> Example: 50 M users, 20 writes/user/day = 1 B writes/day ≈ <b>11 600 writes/s average</b>, maybe 3-5× at peak (~50 K/s). Rows of 500 B → 0.5 TB/day raw, ~180 TB/year before replication. That rules out a single Postgres primary for the raw events and points to a wide-column store or a log + columnar warehouse. The same app's <i>account</i> table (50 M rows × 1 KB = 50 GB) is trivial for Postgres. Different tables of one product can — and often should — live in different stores.</p>
+<p><b>Hidden costs of NoSQL.</b> Denormalised copies must be kept consistent (dual writes are a classic bug source; prefer the transactional outbox or CDC), access patterns must be known in advance (a new query may need a new table and a backfill), and data quality checks the schema used to enforce move into code. <b>Hidden costs of relational at scale.</b> Vertical limits, failover windows, schema migrations on huge tables (use online tools: gh-ost, pg_repack, CockroachDB online schema changes), and eventually sharding.</p>
+<p><b>Benchmarks lie, workloads don't.</b> Vendor benchmarks use their best case. Run your own: replay a day of production queries (or a realistic generator) against candidates at 2-3× expected peak, and measure p99, not average. Check failure behaviour too: kill a node mid-test, partition the network (Jepsen-style tools), restore from backup and time it.</p>
+<p><b>Real examples:</b> Uber built Schemaless on MySQL, later Docstore; Discord moved Cassandra → ScyllaDB; Figma and Notion sharded Postgres horizontally rather than switching databases; Shopify runs sharded MySQL "pods"; Meta's social graph is TAO (a graph-aware cache) over sharded MySQL. The pattern: start relational, add specialised stores for specific hot paths, shard when forced — and the database choice is reversible only at great cost, so document the reasoning (an ADR).</p>`,
+    aiEra: `<p><b>What AI changes:</b> the 2026 default stack often includes a <b>vector index</b>, an <b>LLM-friendly JSON store</b> and an <b>event log</b> for agent memory and evaluation traces. The "do we need a vector DB?" question is the new "do we need NoSQL?" — and the answer is usually "start with pgvector or your existing store's vector feature, measure recall and latency, then decide". AI also changes how you evaluate: assistants can generate realistic synthetic workloads, write benchmark harnesses, and summarise Jepsen reports.</p>
+<p><b>Use AI as a partner:</b> <code>"Here are my access patterns with QPS and data sizes. Produce a decision matrix for Postgres, DynamoDB and Cassandra with a capacity estimate for each, and list the 3 riskiest assumptions."</code> Then challenge every number.</p>
+<p><b>Where AI goes wrong:</b> it recommends trendy databases without capacity math, ignores operational cost and team skills, and proposes five stores for an MVP. <b>What you must own:</b> the requirements, the arithmetic, the trade-off sentence, and the decision record your team will live with for years.</p>`,
+    problems: [{
+      title: 'Choose the Data Stores for a Ride-Hailing App',
+      level: 'Hard', tags: ['database selection', 'polyglot persistence', 'system design'], companies: ['Uber', 'Lyft', 'Grab', 'Ola'],
+      statement: `<p>Pick and justify data stores for: (1) live driver locations (5 M drivers, ping every 4 s) and "nearest drivers" search; (2) trips and fares (must never lose or double-charge); (3) full location history for disputes and ML (keep 2 years); (4) city-level dashboards (trips/hour, surge). Give the schema/key design for the system of record and explain how data flows between stores.</p>`,
+      constraints: `p99 nearest-driver query &lt; 50 ms. Trip writes ~5 000/s peak. 99.99% availability for booking. Operate in 40 countries; some require in-country data storage.`,
+      example: `<p>Location pings: 5 M / 4 s = ${H.c('y', '1.25 M writes/s')} — ephemeral, only the latest matters → ${H.c('g', 'in-memory geo index')}. Trips: ${H.c('y', '5 K writes/s')} with money → ${H.c('g', 'ACID relational, sharded by city/region')}.</p>`,
+      brute: { why: `<p>"Put everything in one MongoDB cluster." Location pings at 1.25 M updates/s with a geo index thrash the primary of every shard; payments need multi-document invariants and careful write concerns; dashboards scanning billions of documents compete with live traffic; data residency forces per-country clusters anyway. One store optimised for nothing.</p>`, code: { lang: 'js', check: false, code: `// everything in one collection family, one cluster
+db.drivers.updateOne({ _id: 42 }, { $set: { loc: { type: "Point", coordinates: [77.59, 12.97] } } });  // 1.25M/s
+db.trips.insertOne({ rider: 7, driver: 42, fare: 230, status: "requested" });
+db.trips.aggregate([{ $group: { _id: { city: "$city", hour: { $hour: "$ts" } }, n: { $sum: 1 } } }]);   // full scans on the OLTP cluster` } },
+      mcq: { q: 'Driver location pings arrive 1.25 M times per second and only the latest position matters. Best primary store for "nearest drivers"?', options: ['A relational table with UPDATE per ping and a spatial index', 'An in-memory geo index (Redis GEO / custom geohash service) sharded by city', 'A columnar warehouse', 'A graph database'], answer: 1, explain: 'The data is ephemeral, write-hot and queried by proximity with tight latency: an in-memory geo structure sharded by region fits; durable history goes elsewhere asynchronously.' },
+      hints: [
+        `<p>Hint 1: Split by <b>data type and lifetime</b>: ephemeral hot state, money-critical records, append-only history, analytics. Each gets its own store.</p>`,
+        `<p>Hint 2: Do the math: pings/s, bytes/day for history (1.25 M/s × 50 B ≈ 5.4 TB/day), trip TPS. The numbers pick the families.</p>`,
+        `<p>Hint 3: Connect stores with Kafka/CDC; shard the system of record by <b>region/city</b> — it matches access (trips are local), data residency, and blast radius.</p>`
+      ],
+      solution: {
+        approach: `<p><b>(1) Live locations:</b> Redis GEO (or an in-house geohash/H3 service) sharded by city; ping = <code>GEOADD</code>, search = <code>GEOSEARCH</code> radius; TTL so stale drivers vanish. Losing it is OK — drivers re-ping within 4 s. <b>(2) Trips & fares:</b> relational ACID store as system of record — Postgres/MySQL sharded by region (Vitess/Citus), or a NewSQL cluster (CockroachDB/Spanner) with REGIONAL BY ROW for residency; idempotency keys on payment calls; a state machine for trip status. <b>(3) History:</b> pings stream to Kafka → Cassandra/Scylla <code>((driver_id, day), ts)</code> with 2-year TTL, or Parquet on object storage (~5 TB/day). <b>(4) Dashboards:</b> CDC from trips + the ping stream → ClickHouse/BigQuery, pre-aggregated by city-hour. Trade-offs: 4 systems to operate (justified by 4 very different workloads), eventual consistency between them (seconds), and per-region deployments for residency.</p>`,
+        code: { lang: 'sql', title: 'System of record: trips (runnable SQLite sketch; production = sharded Postgres/NewSQL by region)', code: `CREATE TABLE trips (
+  trip_id        TEXT PRIMARY KEY,                    -- UUID: no sequential hotspot
+  region         TEXT NOT NULL,                       -- shard / locality key (data residency)
+  rider_id       INTEGER NOT NULL,
+  driver_id      INTEGER,
+  status         TEXT NOT NULL CHECK (status IN ('requested','accepted','ongoing','completed','cancelled')),
+  fare_paise     INTEGER CHECK (fare_paise >= 0),
+  idempotency_key TEXT NOT NULL UNIQUE,               -- retries never create a second trip/charge
+  requested_at   TEXT NOT NULL
+);
+CREATE INDEX trips_by_rider ON trips (region, rider_id, requested_at);
+
+INSERT INTO trips VALUES ('t-1', 'IN-BLR', 7, 42, 'completed', 23000, 'req-7-001', '2026-10-14T09:00');
+-- a client retry with the same key is absorbed instead of double-booking:
+INSERT INTO trips VALUES ('t-2', 'IN-BLR', 7, NULL, 'requested', NULL, 'req-7-001', '2026-10-14T09:00')
+  ON CONFLICT (idempotency_key) DO NOTHING;
+SELECT trip_id, status, fare_paise FROM trips WHERE region = 'IN-BLR' AND rider_id = 7;` },
+        alt: [{ lang: 'text', check: false, title: 'Other stores (Redis GEO + CQL history)', code: `# live locations (Redis, one key per city)
+GEOADD drivers:IN-BLR 77.5946 12.9716 driver:42
+EXPIRE drivers:IN-BLR:driver:42:alive 15
+GEOSEARCH drivers:IN-BLR FROMLONLAT 77.60 12.97 BYRADIUS 2 km ASC COUNT 20 WITHDIST
+
+-- location history (Cassandra)
+CREATE TABLE geo.pings_by_driver (
+  driver_id bigint, day date, ts timestamp, lat double, lon double,
+  PRIMARY KEY ((driver_id, day), ts)
+) WITH default_time_to_live = 63072000;   -- 2 years` }],
+        complexity: `<p>Nearest drivers: O(log N + k) in the geo index, sub-10 ms in memory. Trip writes: single-shard ACID transactions. History: ~5 TB/day ingest spread across a wide-column cluster. Analytics: seconds-to-minutes freshness via CDC.</p>`,
+        followUps: ['How do you handle a city whose driver count overloads one Redis shard?', 'What happens to in-flight trips during a regional failover?', 'How would surge pricing read both live supply (Redis) and demand (trip requests) consistently enough?']
+      }
+    }]
+  });
   registerModule({ id: 'sql14', title: 'Distributed Databases & NoSQL', intro: `<p>tmp</p>`, goals: [], prereqs: `tmp`, hours: 12,
     databases: { repl: DB_REPL, shard: DB_SHARD, nosql: DB_NOSQL, bank: DB_BANK },
     topics: topics, practice: practice, quiz: quiz, interview: interview });
