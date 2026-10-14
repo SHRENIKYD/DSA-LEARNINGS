@@ -1422,6 +1422,302 @@ console.log(Counter.of(5).inc().inc().double, Object.keys(new Counter()));  // 2
     }]
   });
 
+  /* ======================================================================
+     TOPIC 6 — extends and super: two chains, construction order, super lookups
+     ====================================================================== */
+  function twoChains(hl, ehl, tags) {
+    return {
+      type: 'graph', label: 'Two parallel chains created by "class Dog extends Animal"', directed: true, height: 64,
+      nodes: [
+        { id: 'd', label: 'd (instance)', x: 82, y: 56, shape: 'box' },
+        { id: 'DP', label: 'Dog.prototype', x: 70, y: 32, shape: 'box' },
+        { id: 'AP', label: 'Animal.prototype', x: 70, y: 8, shape: 'box' },
+        { id: 'D', label: 'Dog', x: 22, y: 32, shape: 'box' },
+        { id: 'A', label: 'Animal', x: 22, y: 8, shape: 'box' },
+        { id: 'FP', label: 'Function.prototype', x: 22, y: 56, shape: 'box' }
+      ],
+      edges: [['d', 'DP', '__proto__'], ['DP', 'AP', '__proto__'], ['D', 'A', '__proto__'], ['A', 'FP', '__proto__'], ['D', 'DP', 'prototype'], ['A', 'AP', 'prototype']],
+      hl: hl || {}, ehl: ehl || {}, tags: tags || {}
+    };
+  }
+
+  topics.push({
+    title: 'extends and super: Two Chains, Construction Order, super.method()',
+    analogy: `<p>A daughter opens a new branch of her mother's bakery. Two rules apply:</p>
+<ul>
+<li><b>The building must exist before you decorate it.</b> Mom's company registers the shop and builds the basic store (<code>super()</code>). Only <i>then</i> can the daughter put up her own shelves (<code>this.x = …</code>). Trying to hang shelves first is impossible — there is no shop yet.</li>
+<li><b>"Do it Mom's way, plus my twist."</b> For the birthday cake, the daughter follows Mom's recipe (<code>super.bake()</code>) and then adds her own frosting.</li>
+</ul>
+<p>Also, the branch inherits two separate things: Mom's <b>recipes</b> (instance methods via the prototype chain) and Mom's <b>company-level policies</b> (static methods via the constructor chain).</p>`,
+    explain: `<p><code>class Dog extends Animal</code> does two linking jobs at once:</p>
+${H.table(['Chain', 'Link created', 'Gives you'], [
+  ['Instance chain', '<code>Object.getPrototypeOf(Dog.prototype) === Animal.prototype</code>', 'dogs can call Animal\'s <b>instance methods</b>'],
+  ['Constructor chain', '<code>Object.getPrototypeOf(Dog) === Animal</code>', 'Dog inherits Animal\'s <b>static</b> methods (<code>Dog.create()</code>)']
+])}
+<h4>Rule 1: <code>super()</code> before <code>this</code></h4>
+<p>In a <b>derived</b> class (one that <code>extends</code>), the object is created <b>by the parent</b>, inside <code>super()</code>. Until <code>super()</code> returns, <code>this</code> is uninitialised (it is in a TDZ). Touching it throws <code>ReferenceError: Must call super constructor in derived class before accessing 'this'</code>. Leaving a derived constructor without calling <code>super()</code> (and without returning an object) throws too.</p>
+<p>If you do not write a constructor, you get this one for free: <code>constructor(...args) { super(...args); }</code>.</p>
+<h4>Rule 2: the construction order</h4>
+${H.table(['#', 'What runs for new Dog(\'Rex\')'], [
+  ['1', 'Dog\'s constructor starts — <code>this</code> not available yet'],
+  ['2', '<code>super(\'Rex\')</code> → Animal\'s constructor runs; the object is created here, linked to <b>Dog.prototype</b> (via <code>new.target</code>)'],
+  ['3', 'Animal\'s <b>fields</b> are initialised, then Animal\'s constructor body runs'],
+  ['4', 'Back in Dog: <code>super()</code> returns, <code>this</code> is bound, then Dog\'s <b>fields</b> are initialised'],
+  ['5', 'The rest of Dog\'s constructor body runs']
+])}
+<p>Consequence (a favourite trick question): if Animal's constructor calls a method that Dog overrides, the Dog version runs <b>before Dog's fields exist</b>, so it sees them as <code>undefined</code>.</p>
+<h4>Rule 3: <code>super.method()</code></h4>
+<p>Inside a method, <code>super.speak()</code> means: "look up <code>speak</code> starting from the <b>parent's prototype</b>, and call it with the <b>current</b> <code>this</code>". It is how you extend instead of replace. In static methods, <code>super.create()</code> looks on the parent class. The lookup starts from the object where the method was <b>defined</b> (its <code>[[HomeObject]]</code>), not from <code>this</code> — which is what makes multi-level <code>super</code> chains work correctly.</p>
+<h4>What can you extend?</h4>
+<ul>
+<li>Other classes, and old-style constructor functions (<code>class X extends SomeES5Function</code>).</li>
+<li>Built-ins: <code>Array</code>, <code>Error</code>, <code>Map</code>, <code>Promise</code>, <code>HTMLElement</code> (custom elements) — works properly because the parent creates the exotic object.</li>
+<li>Any expression that evaluates to a constructor: <code>class X extends mixin(Base) {}</code>, or <code>extends null</code> (rare).</li>
+</ul>`,
+    clues: [
+      '"<code>ReferenceError: Must call super constructor…</code>" or "can I use <code>this</code> before <code>super()</code>?" → derived constructors get their object from the parent.',
+      '"Parent constructor calls an overridden method; why is the child field undefined?" → fields of the child initialise after <code>super()</code> returns.',
+      '"Call the parent\'s version of a method" / "extend, don\'t replace" → <code>super.method(...)</code>.',
+      '"Are static methods inherited?" → yes, via <code>Object.getPrototypeOf(Child) === Parent</code>; <code>this</code> in a static is the class it was called on.',
+      '"Custom error class", "subclass Array/Map", "custom HTML element" → <code>extends</code> built-ins (+ <code>Symbol.species</code>).',
+      '"Multiple inheritance in JS?" → no; use mixins (<code>Base =&gt; class extends Base {}</code>) or composition.'
+    ],
+    code: [{ lang: 'js', run: true, title: 'extends, super(), super.method() and inherited statics (runnable)', code: `class Animal {
+  constructor(name) {
+    this.name = name;
+  }
+  speak() {
+    return this.name + ' makes a sound';
+  }
+  static create(name) {
+    return new this(name);        // 'this' = the class it was called on
+  }
+}
+
+class Dog extends Animal {
+  constructor(name, breed) {
+    super(name);                  // MUST come before using 'this'
+    this.breed = breed;
+  }
+  speak() {
+    return super.speak() + ' — woof!';   // parent's version + our twist
+  }
+}
+
+const d = new Dog('Rex', 'lab');
+console.log(d.speak());                         // Rex makes a sound — woof!
+console.log(Object.getPrototypeOf(Dog.prototype) === Animal.prototype); // true (instance chain)
+console.log(Object.getPrototypeOf(Dog) === Animal);                     // true (static chain)
+const d2 = Dog.create('Fido');                  // static inherited; new this -> new Dog
+console.log(d2 instanceof Dog, d2.speak());     // true Fido makes a sound — woof!
+console.log(d instanceof Animal, Object.keys(d)); // true [ 'name', 'breed' ]
+` }],
+    codeTitle: ['extends and super'],
+    viz: [{
+      title: 'new Dog(\'Rex\'): who builds the object, and when fields appear',
+      gen: function () {
+        var code = [
+          'class Animal {',
+          '  alive = true;',
+          '  constructor(name) {',
+          '    this.name = name;',
+          '  }',
+          '}',
+          'class Dog extends Animal {',
+          '  legs = 4;',
+          '  constructor(name) {',
+          '    // this.x = 1;  <- here would throw ReferenceError',
+          '    super(name);',
+          "    this.sound = 'woof';",
+          '  }',
+          '}',
+          "const d = new Dog('Rex');"
+        ].join('\n');
+        function own(entries, k) { return { type: 'map', label: 'Own properties of the new object (in creation order)', entries: entries, hl: k ? one(k, 'ok') : {} }; }
+        return codeFrames(code, [
+          { l: 15, narr: "<code>new Dog('Rex')</code>. <code>new.target</code> = <b>Dog</b>. Dog is a <b>derived</b> class, so unlike a base class it does <b>not</b> create the object itself.", st: ['global', 'Dog constructor'], v: { 'new.target': 'Dog', 'this': '<uninitialised>' }, hv: { 'this': 'bad' } },
+          { l: 10, cls: 'bad', narr: 'At this point <code>this</code> is in a <b>temporal dead zone</b>. Any use of <code>this</code> (or returning without calling super) → <span class="c-r">ReferenceError: Must call super constructor in derived class before accessing \'this\'</span>.', st: ['global', 'Dog constructor'], v: { 'this': '<uninitialised>' }, hv: { 'this': 'bad' } },
+          { l: 11, narr: '<code>super(name)</code> calls Animal\'s constructor, passing <code>new.target</code> = Dog along.', st: ['global', 'Dog constructor', 'Animal constructor'], v: { 'new.target': 'Dog', name: "'Rex'" } },
+          { l: 3, narr: 'Animal is a <b>base</b> class, so it creates the object — linked to <b>new.target.prototype</b> = <b>Dog.prototype</b> (not Animal.prototype!). That is why the result is a Dog.', st: ['global', 'Dog constructor', 'Animal constructor'], v: { 'this': '{} → Dog.prototype' }, hv: { 'this': 'ok' }, extra: [own([])] },
+          { l: 2, narr: 'Base-class <b>fields</b> are initialised first thing: <code>alive = true</code>.', st: ['global', 'Dog constructor', 'Animal constructor'], v: { 'this': '{ alive }' }, extra: [own([['alive', 'true']], 'alive')] },
+          { l: 4, narr: 'Then Animal\'s constructor body: <code>this.name = name</code>.', st: ['global', 'Dog constructor', 'Animal constructor'], v: { 'this': '{ alive, name }' }, extra: [own([['alive', 'true'], ['name', "'Rex'"]], 'name')] },
+          { l: 11, narr: '<code>super()</code> returns the object. Now Dog\'s <code>this</code> is <b>bound</b> to it — and <b>immediately</b> Dog\'s own fields are initialised.', st: ['global', 'Dog constructor'], v: { 'this': '{ alive, name } (now usable)' }, hv: { 'this': 'ok' }, extra: [own([['alive', 'true'], ['name', "'Rex'"]])] },
+          { l: 8, narr: 'Dog\'s field <code>legs = 4</code> is added right after super() returned.', st: ['global', 'Dog constructor'], v: { 'this': '{ alive, name, legs }' }, extra: [own([['alive', 'true'], ['name', "'Rex'"], ['legs', '4']], 'legs')] },
+          { l: 12, narr: 'The rest of Dog\'s constructor body runs: <code>this.sound = \'woof\'</code>.', st: ['global', 'Dog constructor'], v: { 'this': '{ alive, name, legs, sound }' }, extra: [own([['alive', 'true'], ['name', "'Rex'"], ['legs', '4'], ['sound', "'woof'"]], 'sound')] },
+          { l: 15, narr: 'Done. Order of own keys: <b>alive, name, legs, sound</b> = parent fields → parent body → child fields → child body. The object sits at the bottom of the instance chain.', st: ['global'], v: { d: "Dog { alive: true, name: 'Rex', legs: 4, sound: 'woof' }" }, hv: { d: 'sel' }, extra: [twoChains({ d: 'sel', DP: 'ok', AP: 'ok' }, { 'd-DP': 'ok', 'DP-AP': 'ok' })] }
+        ]);
+      }
+    }, {
+      title: 'How super.speak() and Dog.create() are looked up',
+      gen: function () {
+        var code = [
+          'class Animal {',
+          "  speak() { return this.name + ' makes a sound'; }",
+          '  static create(n) { return new this(n); }',
+          '}',
+          'class Dog extends Animal {',
+          '  constructor(n) { super(); this.name = n; }',
+          "  speak() { return super.speak() + ' — woof'; }",
+          '}',
+          "const d = new Dog('Rex');",
+          'd.speak();',
+          "Dog.create('Fido');"
+        ].join('\n');
+        return codeFrames(code, [
+          { l: 10, narr: '<code>d.speak()</code>: normal lookup. d has no own <code>speak</code> → climb to <b>Dog.prototype</b> → found. Call it with <code>this = d</code>.', extra: [twoChains({ d: 'cur', DP: 'ok' }, { 'd-DP': 'cur' }, { DP: 'speak found' })] },
+          { l: 7, narr: 'Inside Dog\'s <code>speak</code>, we hit <code>super.speak()</code>. The engine uses the method\'s <b>[[HomeObject]]</b> — the object it was defined on, <b>Dog.prototype</b> — not <code>this</code>.', v: { '[[HomeObject]]': 'Dog.prototype', 'this': 'd' }, hv: { '[[HomeObject]]': 'sel' }, extra: [twoChains({ DP: 'sel' }, {}, { DP: 'HomeObject' })] },
+          { l: 7, narr: '<code>super</code> = <code>Object.getPrototypeOf(HomeObject)</code> = <b>Animal.prototype</b>. Look up <code>speak</code> there → found.', v: { 'super base': 'Animal.prototype' }, hv: { 'super base': 'ok' }, extra: [twoChains({ DP: 'done', AP: 'ok' }, { 'DP-AP': 'ok' }, { AP: 'speak found' })] },
+          { l: 2, narr: 'Animal\'s <code>speak</code> runs with <code>this</code> still = <b>d</b> (super calls keep the current this). It returns <code>\'Rex makes a sound\'</code>.', st: ['global', 'Dog#speak', 'Animal#speak'], v: { 'this': 'd', 'this.name': "'Rex'" }, extra: [twoChains({ d: 'cur', AP: 'ok' })] },
+          { l: 7, narr: 'Back in Dog\'s speak: append the twist → <code>\'Rex makes a sound — woof\'</code>.', st: ['global', 'Dog#speak'], o: ['Rex makes a sound — woof'], extra: [twoChains({ d: 'sel' })] },
+          { l: 11, narr: '<code>Dog.create(\'Fido\')</code>: Dog (the function) has no own <code>create</code>. Its <code>[[Prototype]]</code> is <b>Animal</b> (the constructor chain) → found there. Statics are inherited!', o: ['Rex makes a sound — woof'], extra: [twoChains({ D: 'cur', A: 'ok' }, { 'D-A': 'ok' }, { A: 'create found' })] },
+          { l: 3, narr: '<code>create</code> runs with <code>this = Dog</code> (we called it on Dog), so <code>new this(n)</code> builds a <b>Dog</b>, not an Animal. This is why static factories should use <code>new this()</code>.', st: ['global', 'Animal.create (this = Dog)'], v: { 'this': 'Dog', result: "Dog { name: 'Fido' }" }, hv: { result: 'ok' }, o: ['Rex makes a sound — woof'], extra: [twoChains({ D: 'sel' })] }
+        ]);
+      }
+    }],
+    examples: [
+      { title: 'Predict: this before super, and forgetting super', html: `<p>Both throw a <code>ReferenceError</code> when the constructor runs (not when the class is defined). The only way out of a derived constructor without calling <code>super()</code> is to <b>return an object</b> explicitly.</p>
+${H.table(['Derived constructor', 'Result'], [['<code>this.x = 1; super();</code>', H.c('r', 'ReferenceError')], ['<code>{ /* no super */ }</code>', H.c('r', 'ReferenceError at the end')], ['<code>{ return { custom: true }; }</code>', H.c('y', 'allowed — returns that object (not a Child!)')]])}`, code: { lang: 'js', run: true, code: `class A { constructor() { this.a = 1; } }
+class B1 extends A { constructor() { this.x = 1; super(); } }
+class B2 extends A { constructor() { /* forgot super */ } }
+class B3 extends A { constructor() { return { custom: true }; } }
+for (const C of [B1, B2, B3]) {
+  try { const o = new C(); console.log(C.name, 'ok', JSON.stringify(o), o instanceof C); }
+  catch (e) { console.log(C.name, e.name); }
+}
+// B1 ReferenceError
+// B2 ReferenceError
+// B3 ok {"custom":true} false` } },
+      { title: 'Predict (classic): overridden method called from the parent constructor', html: `<p>Animal's constructor calls <code>this.describe()</code>. Because <code>this</code> is a Dog, Dog's override runs — but Dog's field <code>sound</code> has <b>not been initialised yet</b> (child fields appear only after <code>super()</code> returns). Java has a similar trap. Rule: do not call overridable methods from constructors.</p>
+${H.table(['Moment', 'this.sound'], [['during Animal constructor', H.c('r', 'undefined')], ['after new Dog() returns', H.c('g', "'woof'")]])}`, code: { lang: 'js', run: true, code: `class Animal {
+  constructor() {
+    this.log = 'created: ' + this.describe();   // calls the OVERRIDE
+  }
+  describe() { return 'animal'; }
+}
+class Dog extends Animal {
+  sound = 'woof';                                // initialised AFTER super() returns
+  describe() { return 'dog says ' + this.sound; }
+}
+const d = new Dog();
+console.log(d.log);          // created: dog says undefined
+console.log(d.describe());   // dog says woof` } },
+      { title: 'Extending built-ins: Array and Error', html: `<p>Because the parent creates the object, subclasses of built-ins get the real exotic behaviour (array <code>length</code> magic, error stack traces). Array methods like <code>map</code>/<code>filter</code> even return your subclass, thanks to <code>Symbol.species</code>. For errors, set <code>name</code> and pass <code>cause</code> through.</p>`, code: { lang: 'js', run: true, code: `class Stack extends Array {
+  peek() { return this[this.length - 1]; }
+}
+const s = Stack.from([1, 2, 3]);
+s.push(4);
+console.log(s.peek(), s.length, Array.isArray(s));    // 4 4 true
+const doubled = s.map((x) => x * 2);
+console.log(doubled instanceof Stack, doubled.peek()); // true 8 (Symbol.species)
+
+class HttpError extends Error {
+  constructor(status, message, options) {
+    super(message, options);          // supports { cause }
+    this.name = 'HttpError';
+    this.status = status;
+  }
+}
+try { throw new HttpError(404, 'Not found', { cause: 'missing id' }); }
+catch (e) {
+  console.log(e instanceof HttpError, e instanceof Error, e.name, e.status, e.cause);
+  // true true HttpError 404 missing id
+  console.log(String(e));             // HttpError: Not found
+}` } },
+      { title: 'Mixins with class expressions (pseudo multiple inheritance)', html: `<p>JS classes have exactly one parent. A <b>mixin</b> is a function that takes a base class and returns a new subclass with extra behaviour. Chaining them builds a linear chain — each mixin can still call <code>super</code>.</p>
+${H.chips(['Duck.prototype', '→ Flying(...)', '→ Swimming(...)', '→ Animal.prototype'], { label: 'Resulting instance chain' })}`, code: { lang: 'js', run: true, code: `class Animal { describe() { return 'animal'; } }
+const Swimming = (Base) => class extends Base {
+  swim() { return 'swims'; }
+  describe() { return super.describe() + ' + swimmer'; }
+};
+const Flying = (Base) => class extends Base {
+  fly() { return 'flies'; }
+  describe() { return super.describe() + ' + flyer'; }
+};
+class Duck extends Flying(Swimming(Animal)) {}
+const duck = new Duck();
+console.log(duck.swim(), duck.fly());   // swims flies
+console.log(duck.describe());           // animal + swimmer + flyer
+console.log(duck instanceof Animal);    // true` } },
+      { title: 'Expert: super is bound to where the method was DEFINED', html: `<p><code>super</code> uses the method's <code>[[HomeObject]]</code>, fixed at definition time. If you copy such a method onto another object, <code>super</code> still points at the <b>original</b> parent. It also works in object literals with method shorthand.</p>`, code: { lang: 'js', run: true, code: `const animal = { hello() { return 'animal hello'; } };
+const rabbit = {
+  __proto__: animal,
+  hello() { return super.hello() + ' (via rabbit)'; }   // HomeObject = rabbit
+};
+console.log(rabbit.hello());                              // animal hello (via rabbit)
+
+const plant = { hello() { return 'plant hello'; } };
+const tree = { __proto__: plant, hello: rabbit.hello };   // borrowed method
+console.log(tree.hello());   // animal hello (via rabbit) — super did NOT become plant` } }
+    ],
+    deepDive: `<p><b>Base vs derived [[Construct]].</b> A class with <code>extends</code> has <code>[[ConstructorKind]] = derived</code>. Its <code>[[Construct]]</code> does <b>not</b> allocate; it creates a function environment with an <b>uninitialised</b> this binding. <code>super(...args)</code> evaluates <code>GetSuperConstructor()</code> (= <code>Object.getPrototypeOf(activeFunction)</code>, so it follows the <i>constructor chain</i>, not the name), calls <code>Construct(parent, args, newTarget)</code>, binds the returned object as <code>this</code> (calling <code>super()</code> twice throws — "Super constructor may only be called once"), and then runs <code>InitializeInstanceElements</code> to install the derived class's fields and private methods. The base constructor allocated the object via <code>OrdinaryCreateFromConstructor(newTarget, …)</code>, so the instance is linked to the <b>most-derived</b> prototype even though the base allocated it.</p>
+<p><b>Why ES5 could not subclass Array.</b> <code>Array.call(this)</code> ignores <code>this</code> and returns a brand-new array, so the "instance" never gets array exotic behaviour (<code>length</code> tracking). Since ES2015 the exotic object is allocated by the base built-in with the right prototype — that is why <code>class X extends Array</code> works but transpiling it to ES5 does not (Babel needed <code>Reflect.construct</code> wrappers). <code>Symbol.species</code> lets methods like <code>map</code> decide which constructor to use for derived results; it is being discouraged for new built-ins because it complicates engines and has caused security bugs.</p>
+<p><b>super property access.</b> <code>super.x</code> is <code>HomeObject.[[Prototype]].[[Get]]('x', this)</code>. In static methods the HomeObject is the class constructor, so <code>super.create()</code> reads from the parent class. <code>super.x = v</code> assigns <b>to this</b> (with the parent's setter if any) — rarely useful and often surprising. Arrow functions do not have their own <code>super</code>; they capture the enclosing method's, just like <code>this</code>.</p>
+<p><b>Design reality.</b> Deep inheritance trees are brittle: the "fragile base class" problem (a change in a parent silently breaks children), the constructor-calls-override trap, and tight coupling. Modern JS/TS codebases favour <b>shallow</b> hierarchies (1–2 levels, often only for framework base classes like <code>HTMLElement</code>, <code>Error</code>, or React's legacy <code>Component</code>) and <b>composition</b> (objects that hold collaborators) for everything else. <code>extends null</code> is technically allowed but the default constructor then fails at <code>super()</code>; it is a curiosity, not a tool.</p>`,
+    aiEra: `<p><b>What AI changes:</b> asking an assistant to "add a subclass" is instant; AI-generated hierarchies tend to grow <b>deep</b> and full of overridden methods called from constructors. Code review shifts toward questioning whether inheritance is right at all and catching init-order bugs that tests may miss.</p>
+<p><b>Use AI as a partner:</b> "<i>list every method called from a constructor in this hierarchy and whether a subclass overrides it</i>"; "<i>rewrite this 4-level class tree with composition and show what changes for callers</i>"; "<i>generate predict-the-output puzzles about construction order with parent and child fields</i>".</p>
+<p><b>Where AI goes wrong:</b> touching <code>this</code> before <code>super()</code> in generated constructors, forgetting to forward <code>options</code>/<code>cause</code> in custom errors, using <code>new Animal()</code> instead of <code>new this()</code> in static factories (breaking subclasses), and claiming static methods are not inherited.</p>
+<p><b>What you must still own:</b> the two chains, the exact construction order, how <code>super</code> resolves through [[HomeObject]], and the judgement call between inheritance and composition.</p>`,
+    problems: [{
+      title: 'ES5 inherits(Child, Parent) with Static Inheritance',
+      level: 'Medium', tags: ['inheritance', 'ES5', 'prototype chain', 'statics'], companies: ['Amazon', 'Atlassian', 'Freshworks'],
+      statement: `<p>Implement <code>inherits(Child, Parent)</code> for constructor functions so that after calling it:</p>
+<ol><li>instances of <code>Child</code> inherit <code>Parent.prototype</code> methods (and <code>instanceof Parent</code> is true),</li><li><code>Child.prototype.constructor === Child</code> and it is non-enumerable,</li><li>static methods of <code>Parent</code> are reachable on <code>Child</code> (like <code>class extends</code>),</li><li>methods already added to <code>Child.prototype</code> <b>before</b> the call are preserved.</li></ol>
+<p>Also show how <code>Child</code> calls the parent constructor and a parent method ("super" calls) in ES5 style.</p>`,
+      constraints: `No <code>class</code>. Must not run <code>Parent</code> during setup. Must not share one prototype object between Child and Parent.`,
+      example: `<p>After <code>inherits(Dog, Animal)</code>: ${H.c('g', 'new Dog("Rex").eat() → "Rex eats"')}, ${H.c('g', 'Dog.create("Fido") instanceof Dog → true')} (static inherited, uses <code>new this</code>), ${H.c('g', 'Object.keys(Dog.prototype) → [ "bark" ]')}.</p>`,
+      brute: {
+        why: `<p><code>Child.prototype = new Parent()</code> runs the parent constructor at setup time (side effects, missing arguments) and stores its instance data on the shared prototype; it also wipes out methods already on <code>Child.prototype</code>, loses <code>constructor</code>, and does nothing for statics.</p>`,
+        code: { lang: 'js', run: true, code: `function Animal(name) { this.name = name; this.friends = []; }
+Animal.prototype.eat = function () { return this.name + ' eats'; };
+Animal.create = function (n) { return new this(n); };
+function Dog(name) { Animal.call(this, name); }
+Dog.prototype.bark = function () { return 'woof'; };   // added before inheriting
+Dog.prototype = new Animal();                          // brute: wipes bark, runs Animal
+const d = new Dog('Rex');
+console.log(typeof d.bark, d.constructor === Dog, typeof Dog.create); // undefined false undefined` }
+      },
+      mcq: { q: 'Which line makes <code>Dog.create()</code> work when <code>create</code> is a static on <code>Animal</code>?', options: ['<code>Dog.prototype = Object.create(Animal.prototype)</code>', '<code>Object.setPrototypeOf(Dog, Animal)</code>', '<code>Animal.call(Dog)</code>', '<code>Dog.prototype.constructor = Animal</code>'], answer: 1, explain: 'Statics live on the function object. Linking <code>Dog</code> (the function) to <code>Animal</code> makes the lookup <code>Dog.create</code> climb to <code>Animal.create</code> — the constructor chain that <code>class extends</code> creates.' },
+      hints: [
+        `<p>Hint 1: there are <b>two</b> links to make: <code>Child.prototype → Parent.prototype</code> (instance side) and <code>Child → Parent</code> (static side).</p>`,
+        `<p>Hint 2: to keep methods already on <code>Child.prototype</code>, don't replace the object — re-link it: <code>Object.setPrototypeOf(Child.prototype, Parent.prototype)</code>. That also keeps the original non-enumerable <code>constructor</code>.</p>`,
+        `<p>Hint 3: "super" in ES5: in the constructor <code>Parent.call(this, ...args)</code>; in methods <code>Parent.prototype.method.call(this, ...)</code>. Return <code>Child</code> for chaining; guard that both are functions.</p>`
+      ],
+      solution: {
+        approach: `<p>Re-link instead of replace: <code>setPrototypeOf(Child.prototype, Parent.prototype)</code> keeps existing methods and the original non-enumerable <code>constructor</code>; <code>setPrototypeOf(Child, Parent)</code> wires statics exactly like <code>class extends</code>. (Setting prototypes during one-time setup is fine; avoid it on hot objects.) "super" calls are explicit <code>.call(this)</code>s.</p>`,
+        code: { lang: 'js', run: true, code: `function inherits(Child, Parent) {
+  if (typeof Child !== 'function' || typeof Parent !== 'function') throw new TypeError('inherits expects two functions');
+  Object.setPrototypeOf(Child.prototype, Parent.prototype); // instance chain (keeps Child's methods + constructor)
+  Object.setPrototypeOf(Child, Parent);                     // static chain
+  return Child;
+}
+
+function Animal(name) { this.name = name; }
+Animal.prototype.eat = function () { return this.name + ' eats'; };
+Animal.prototype.describe = function () { return 'animal ' + this.name; };
+Animal.create = function (n) { return new this(n); };       // static using new this
+
+function Dog(name) {
+  Animal.call(this, name);                                  // "super(name)"
+}
+Dog.prototype.bark = function () { return 'woof'; };        // added BEFORE inherits
+inherits(Dog, Animal);
+Dog.prototype.describe = function () {                      // override + "super.describe()"
+  return Animal.prototype.describe.call(this) + ' (a dog)';
+};
+
+const d = new Dog('Rex');
+console.log(d.eat(), '|', d.bark(), '|', d.describe());   // Rex eats | woof | animal Rex (a dog)
+console.log(d instanceof Dog, d instanceof Animal);        // true true
+console.log(d.constructor === Dog, Object.keys(Dog.prototype)); // true [ 'bark', 'describe' ]
+const f = Dog.create('Fido');
+console.log(f instanceof Dog, f.eat());                    // true Fido eats` },
+        dry: { head: ['lookup', 'path', 'result'], rows: [['d.bark', 'd → Dog.prototype ✓', "'woof'"], ['d.eat', 'd → Dog.prototype → Animal.prototype ✓', "'Rex eats'"], ['Dog.create', 'Dog → Animal ✓ (static chain)', 'Animal.create with this = Dog'], ['new this(n)', 'new Dog(n)', H.c('g', 'instance of Dog')]] },
+        complexity: `<p>O(1) setup. Lookups cost one extra hop per inheritance level (cached by inline caches in practice).</p>`,
+        followUps: ['Why is <code>Object.create(Parent.prototype)</code> + restoring <code>constructor</code> the more common textbook version, and when does it lose methods?', 'Write a <code>callSuper(this, "method", ...args)</code> helper — why is it hard to do correctly for multi-level chains without [[HomeObject]]?', 'Compare with Node\'s deprecated <code>util.inherits</code>.']
+      }
+    }]
+  });
+
   registerModule({
     id: 'js06',
     title: 'Prototypes, Classes & Inheritance',

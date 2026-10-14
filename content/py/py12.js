@@ -2167,4 +2167,306 @@ print(Ok().run())
       }
     }]
   });
+
+  /* ======================================================================
+     TOPIC 9: The Import System
+     ====================================================================== */
+  function importSim(input) {
+    var reqs = String(input || '').split(/[\s,;]+/).map(function (s) { return s.replace(/^import\s+/, '').trim(); }).filter(Boolean);
+    if (!reqs.length) throw new Error('Enter module names like: json, os, myapp.utils');
+    if (reqs.length > 6) throw new Error('Use at most 6 imports');
+    reqs.forEach(function (r) { if (!/^[A-Za-z_]\w*(\.[A-Za-z_]\w*)*$/.test(r)) throw new Error('"' + r + '" is not a valid dotted module name'); });
+    var BUILTIN = ['sys', 'builtins', 'marshal', 'posix', '_imp', '_thread', '_io', '_weakref', '_warnings', 'itertools', 'time', 'math'];
+    var FROZEN = ['os', 'io', 'abc', 'codecs', 'site', 'stat', 'posixpath', 'genericpath', '_collections_abc', 'zipimport', 'runpy'];
+    var STDLIB = { json: ['decoder', 'encoder', 'scanner', 'tool'], collections: [], asyncio: ['tasks', 'events', 'queues'], logging: ['handlers', 'config'], unittest: ['mock'], email: ['message', 'utils'], http: ['client', 'server'], xml: ['etree', 'dom'], importlib: ['util', 'metadata', 'resources'], concurrent: ['futures'] };
+    var STDMOD = ['re', 'random', 'datetime', 'typing', 'functools', 'dataclasses', 'pathlib', 'string', 'enum', 'decimal', 'csv', 'heapq', 'bisect', 'statistics', 'copy', 'pickle', 'socket', 'threading', 'subprocess', 'tempfile', 'weakref', 'inspect', 'dis', 'ast', 'operator', 'textwrap', 'uuid', 'hashlib', 'shutil', 'glob', 'argparse', 'pprint', 'timeit', 'traceback', 'contextlib', 'fractions', 'secrets', 'struct', 'array', 'queue', 'sched', 'select', 'signal', 'zlib', 'gc'];
+    var THIRD = ['numpy', 'requests', 'pandas', 'django', 'flask', 'pydantic', 'fastapi', 'httpx', 'torch', 'pytest', 'sqlalchemy', 'attrs'];
+    var PATHS = ['/home/me/project', '/usr/lib/python3.13', '/usr/lib/python3.13/lib-dynload', '/…/site-packages'];
+    var mods = ['sys', 'builtins', '_imp', '_io', 'marshal', 'posix', '_thread', '_warnings', '_weakref', 'zipimport', 'codecs', 'io', 'abc', 'site', 'os', 'stat', 'posixpath', '_collections_abc'];
+    var ns = {}, nsOrder = [], frames = [];
+    var nodes = [
+      { id: 'S', label: 'import X', x: 8, y: 9, shape: 'box' }, { id: 'C', label: 'sys.modules?', x: 32, y: 9, shape: 'box' },
+      { id: 'B', label: 'BuiltinImporter', x: 58, y: 9, shape: 'box' }, { id: 'F', label: 'FrozenImporter', x: 86, y: 9, shape: 'box' },
+      { id: 'P', label: 'PathFinder', x: 86, y: 33, shape: 'box' }, { id: 'L', label: 'loader.exec_module', x: 50, y: 33, shape: 'box' },
+      { id: 'N', label: 'bind name', x: 14, y: 33, shape: 'box' },
+      { id: 'p0', label: 'project dir', x: 12, y: 58, shape: 'box' }, { id: 'p1', label: 'stdlib', x: 37, y: 58, shape: 'box' },
+      { id: 'p2', label: 'lib-dynload', x: 62, y: 58, shape: 'box' }, { id: 'p3', label: 'site-packages', x: 88, y: 58, shape: 'box' }
+    ];
+    var edges = [['S', 'C'], ['C', 'B', 'miss'], ['B', 'F', 'miss'], ['F', 'P', 'miss'], ['P', 'p0'], ['P', 'p1'], ['P', 'p2'], ['P', 'p3'], ['C', 'N', 'hit'], ['B', 'L', 'spec'], ['F', 'L', 'spec'], ['L', 'N']];
+    function graph(path, endCls, tags) {
+      var hl = {}, ehl = {};
+      path.forEach(function (id, i) { hl[id] = i === path.length - 1 ? (endCls || 'cur') : 'done'; if (i) ehl[path[i - 1] + '-' + id] = endCls === 'bad' && i === path.length - 1 ? 'bad' : 'win'; });
+      return { type: 'graph', label: 'Import machinery', directed: true, height: 66, nodes: nodes, edges: edges.concat([['p0', 'L'], ['p1', 'L'], ['p2', 'L'], ['p3', 'L']]), hl: hl, ehl: ehl, tags: tags || {} };
+    }
+    function state(newMods) {
+      var shown = mods.slice(-8), h = {};
+      (newMods || []).forEach(function (m) { h[m] = 'ok'; });
+      var vals = {}; nsOrder.forEach(function (k) { vals[k] = ns[k]; });
+      return [
+        { type: 'set', label: 'sys.modules (' + mods.length + ' entries, last 8 shown)', items: shown, hl: h },
+        { type: 'vars', label: 'Your module\'s namespace', vals: nsOrder.length ? vals : { '(nothing imported yet)': '' } }
+      ];
+    }
+    function push(narr, path, endCls, tags, newMods) { frames.push({ narr: narr, parts: [graph(path, endCls, tags)].concat(state(newMods)) }); }
+    frames.push({ narr: 'Interpreter start-up already imported ~' + mods.length + ' modules (sys, builtins, the frozen import machinery, os, site, …). <code>sys.meta_path</code> = [BuiltinImporter, FrozenImporter, PathFinder]; <code>sys.path</code> = [script dir, stdlib, lib-dynload, site-packages].', parts: [graph(['S'], 'cur')].concat(state([])) });
+    function locate(full, parentKind) {
+      var parts = full.split('.'), leaf = parts[parts.length - 1], top = parts[0];
+      if (parts.length === 1) {
+        if (BUILTIN.indexOf(full) >= 0) return { via: 'B', origin: 'built-in (compiled into the interpreter binary)', pkg: false };
+        if (FROZEN.indexOf(full) >= 0) return { via: 'F', origin: 'frozen (bytecode baked into the binary for fast start-up)', pkg: false };
+        if (STDLIB[full]) return { via: 'p1', origin: PATHS[1] + '/' + full + '/__init__.py', pkg: true, kind: 'std' };
+        if (STDMOD.indexOf(full) >= 0) return { via: 'p1', origin: PATHS[1] + '/' + full + '.py', pkg: false };
+        if (THIRD.indexOf(full) >= 0) return { via: 'p3', origin: PATHS[3] + '/' + full + '/__init__.py', pkg: true, kind: 'third' };
+        if (/^(my|app|proj)/i.test(full)) return { via: 'p0', origin: PATHS[0] + '/' + full + '/__init__.py', pkg: true, kind: 'local' };
+        return null;
+      }
+      if (!parentKind || !parentKind.pkg) return { notpkg: true };
+      if (parentKind.kind === 'std') return (STDLIB[top] || []).indexOf(leaf) >= 0 ? { via: 'p1', origin: parentKind.origin.replace(/__init__\.py$/, '') + leaf + '.py', pkg: false } : null;
+      return { via: parentKind.via, origin: parentKind.origin.replace(/__init__\.py$/, '') + leaf + '.py', pkg: false, kind: parentKind.kind };
+    }
+    var known = {};
+    reqs.forEach(function (req) {
+      var parts = req.split('.'), parentInfo = null, failed = false;
+      for (var i = 0; i < parts.length && !failed; i++) {
+        var full = parts.slice(0, i + 1).join('.');
+        if (mods.indexOf(full) >= 0) {
+          parentInfo = known[full] || { pkg: STDLIB[full] !== undefined || THIRD.indexOf(full) >= 0, kind: 'std', origin: '', via: 'p1' };
+          push('<code>' + (i ? 'import ' + req + '</code> (step for <code>' + full + '</code>)' : 'import ' + esc(req) + '</code>') + ': <b>' + full + '</b> is already in <code>sys.modules</code> → <b>cache hit</b>. No searching, no re-execution: modules run only once per process.', ['S', 'C', 'N'], 'ok', { C: 'hit' }, [full]);
+          continue;
+        }
+        var info = locate(full, parentInfo);
+        if (info && info.notpkg) {
+          push('<code>import ' + esc(req) + '</code>: <span class="c-r">ModuleNotFoundError: No module named \'' + full + '\'; \'' + parts.slice(0, i).join('.') + '\' is not a package</span>. Only packages (with <code>__path__</code>) can contain submodules.', ['S', 'C', 'B', 'F', 'P'], 'bad', { P: 'not a package' });
+          failed = true; break;
+        }
+        if (!info) {
+          push('<code>import ' + esc(req) + '</code>: <b>' + full + '</b> not in <code>sys.modules</code>; BuiltinImporter, FrozenImporter and every <code>sys.path</code> entry say "not mine". <span class="c-r">ModuleNotFoundError: No module named \'' + full + '\'</span>. Typical causes: typo, wrong virtualenv, package not installed.', ['S', 'C', 'B', 'F', 'P'], 'bad', { P: 'not found' });
+          failed = true; break;
+        }
+        var path = ['S', 'C', 'B'];
+        if (info.via !== 'B') path.push('F');
+        if (/^p/.test(info.via)) { path.push('P'); path.push(info.via); }
+        var where = { B: 'BuiltinImporter', F: 'FrozenImporter', p0: 'PathFinder → project dir (sys.path[0])', p1: 'PathFinder → stdlib directory', p2: 'PathFinder → lib-dynload', p3: 'PathFinder → site-packages' }[info.via];
+        var tg = {}; tg[info.via] = 'found';
+        push('<code>' + esc(full) + '</code> is not cached, so each finder on <code>sys.meta_path</code> is asked <code>find_spec("' + full + '")</code> in order. <b>' + where + '</b> returns a <b>ModuleSpec</b>' + (i ? ' (searching only inside the parent package\'s <code>__path__</code>)' : '') + ': origin = <code>' + esc(info.origin) + '</code>.', path, 'sel', tg);
+        mods.push(full); known[full] = info;
+        var execNarr = 'The loader creates an empty module object, <b>puts it in <code>sys.modules</code> first</b> (so circular imports find a partially initialised module instead of looping), then executes its code' + (info.via === 'B' ? ' (C init function).' : info.via === 'F' ? ' (frozen bytecode).' : '. For source files it reuses <code>__pycache__/' + esc(full.split('.').pop()) + '.cpython-313.pyc</code> if it is up to date, otherwise compiles and writes it.');
+        push(execNarr, path.concat(['L']), 'cur', {}, [full]);
+        parentInfo = info;
+      }
+      if (!failed) {
+        var top = parts[0];
+        if (nsOrder.indexOf(top) < 0) nsOrder.push(top);
+        ns[top] = '<module \'' + top + '\'>';
+        push('<code>import ' + esc(req) + '</code> finishes by binding the name <b><code>' + top + '</code></b> in your namespace' + (parts.length > 1 ? ' (the <b>top-level</b> package; you reach the submodule as <code>' + esc(req) + '</code>, an attribute set on the parent when the submodule loaded).' : '.'), ['L', 'N'], 'ok', { N: top });
+      }
+    });
+    return frames;
+  }
+
+  topics.push({
+    title: 'The Import System: sys.modules, Finders, Loaders & Circular Imports',
+    analogy: R`<p>You ask for a book. First you check <b>your desk</b> (books you already borrowed: <code>sys.modules</code>); if it is there, done. Otherwise you ask the librarians in a fixed order: the <b>reference shelf</b> clerk (built-in modules), the <b>display case</b> clerk (frozen modules), and the <b>stacks</b> clerk, who walks the aisles in the order listed on the map (<code>sys.path</code>). Whoever finds it hands you a <b>catalogue card</b> (a <i>spec</i>); a <b>loader</b> then fetches the book and reads it to you once (executes the module). You put it on your desk with a sticky note (the name you imported). Ask again later: it is already on the desk.</p>`,
+    explain: R`<p>🟢 <b>The plain idea.</b> <code>import json</code> means: "give me the module object called <code>json</code>, creating and running it if this process has not done so yet, and bind it to the name <code>json</code>". The machinery is mostly written in Python (<code>importlib._bootstrap</code>, frozen into the interpreter):</p>
+      <pre>def import_module(name):
+    if name in sys.modules:                    # 1. cache
+        return sys.modules[name]
+    parent_path = import_parent_first(name)    # 2. "a.b" imports "a" first
+    for finder in sys.meta_path:               # 3. ask each finder
+        spec = finder.find_spec(name, parent_path)
+        if spec: break
+    else:
+        raise ModuleNotFoundError(name)
+    module = module_from_spec(spec)            # 4. empty module object
+    sys.modules[name] = module                 # 5. cache BEFORE running
+    spec.loader.exec_module(module)            # 6. run its code once
+    return module</pre>
+      ${H.table(['Piece', 'Role', 'Inspect'], [
+        ['<code>sys.modules</code>', 'cache: name → module object', '<code>"json" in sys.modules</code>'],
+        ['<code>sys.meta_path</code>', 'finders, asked in order: BuiltinImporter, FrozenImporter, PathFinder', '<code>print(sys.meta_path)</code>'],
+        ['<code>sys.path</code>', 'directories/zips PathFinder searches: script dir, <code>PYTHONPATH</code>, stdlib, site-packages', '<code>python -m site</code>'],
+        ['ModuleSpec', 'what was found: name, origin, loader, <code>submodule_search_locations</code>', '<code>importlib.util.find_spec("json")</code>'],
+        ['loader', 'creates and executes the module (source, .pyc, extension .so/.pyd, builtin, frozen)', '<code>module.__spec__.loader</code>']
+      ])}
+      <p><b>Statement flavours:</b></p>
+      ${H.table(['You write', 'What is imported', 'Name bound'], [
+        ['<code>import a.b.c</code>', '<code>a</code>, then <code>a.b</code>, then <code>a.b.c</code>', '<code>a</code> only'],
+        ['<code>import a.b as m</code>', 'same chain', '<code>m</code> = the <code>a.b</code> module'],
+        ['<code>from a import b</code>', '<code>a</code>; then attribute <code>b</code>, or submodule <code>a.b</code> if no such attribute', '<code>b</code>'],
+        ['<code>from . import x</code>', 'relative to the current package (<code>__package__</code>)', '<code>x</code>']
+      ])}
+      <p><b>Packages</b> are modules with a <code>__path__</code>: a directory with <code>__init__.py</code> (regular package) or, without it, a <b>namespace package</b> (PEP 420) that can span several directories. <b>Modules execute once</b>: the second <code>import</code> anywhere in the process is just a dict lookup; <code>importlib.reload(m)</code> re-executes the code into the same module object (old references to functions/classes remain stale).</p>
+      <p><b>Circular imports</b> work only partially: because the module is put in <code>sys.modules</code> before its code runs, a cycle gets a <b>partially initialised</b> module. <code>import b</code> inside <code>a</code> succeeds, but <code>from b import thing</code> fails if <code>thing</code> is not defined yet: <code>ImportError: cannot import name 'thing' from partially initialized module 'b' (most likely due to a circular import)</code>.</p>`,
+    clues: [
+      '"What happens when you import a module twice?" → second time is a <code>sys.modules</code> hit; code runs once',
+      '"ImportError: cannot import name X from partially initialized module" → circular import; move the import, import the module not the name, or restructure',
+      '"My file named <code>random.py</code> broke everything" → <code>sys.path[0]</code> (script dir) shadows the stdlib',
+      '"Load plugins from a database / zip / network" → custom finder on <code>sys.meta_path</code> or a path hook',
+      '"Slow start-up of a CLI" → <code>python -X importtime</code>, lazy imports',
+      '"<code>if __name__ == \"__main__\"</code>" → the script runs as module <code>__main__</code>; importing it runs it again under its real name'
+    ],
+    code: [{ lang: 'python', title: 'Inspect the machinery (runnable)', run: true, code: R`import importlib.util
+import sys
+
+print("finders:", [getattr(f, "__name__", type(f).__name__) for f in sys.meta_path])
+print("modules already loaded at start-up:", len(sys.modules))
+
+for name in ["sys", "os", "json", "json.decoder"]:
+    spec = importlib.util.find_spec(name)
+    loader = spec.loader if isinstance(spec.loader, type) else type(spec.loader)
+    print(f"{name:<13} loader={loader.__name__:<17} package={spec.submodule_search_locations is not None}")
+
+import json
+import json as again                    # cache hit: same object
+print("same module object:", json is again is sys.modules["json"])
+print("json file:", json.__spec__.origin.rsplit("/", 2)[-2:])
+` }],
+    codeTitle: ['Finders, specs, cache'],
+    viz: {
+      title: 'Follow import statements through sys.modules, finders and loaders',
+      input: 'json, os, json, myapp.utils, json.decoder, missing_mod',
+      inputLabel: 'Module names, comma separated (max 6). Names starting with my/app are your project; try numpy, math, random.choice',
+      gen: importSim
+    },
+    examples: [
+      { title: 'Module code runs once; reload runs it again', html: R`<p>We create a module file at runtime that prints when executed. Importing it twice prints once. <code>importlib.reload</code> re-executes the file into the <b>same</b> module object, but objects created before the reload (like <code>old_fn</code>) still point at the old code: a classic hot-reload gotcha.</p>
+        ${H.table(['action', 'module code runs?'], [['first import', H.c('g', 'yes')], ['second import', H.c('m', 'no (cache hit)')], ['reload', H.c('y', 'yes, same module object')]])}`, code: { lang: 'python', run: true, code: R`import importlib
+import pathlib
+import sys
+import tempfile
+
+tmp = pathlib.Path(tempfile.mkdtemp())
+(tmp / "greet.py").write_text('print("  executing greet.py")\ndef hello():\n    return "v1"\n')
+sys.path.insert(0, str(tmp))
+
+import greet
+import greet                          # cache hit, prints nothing
+old_fn = greet.hello
+(tmp / "greet.py").write_text('print("  executing greet.py again")\ndef hello():\n    return "v2"\n')
+importlib.invalidate_caches()
+greet2 = importlib.reload(greet)
+print(greet2 is greet, greet.hello(), old_fn())   # True v2 v1
+sys.path.remove(str(tmp))
+` } },
+      { title: 'Reproduce and fix a circular import', html: R`<p><code>a.py</code> does <code>from b import helper</code>; <code>b.py</code> does <code>from a import CONFIG</code>. Importing <code>a</code> starts running <code>a</code>, which imports <code>b</code>, which asks <code>a</code> (partially initialised, <code>CONFIG</code> not defined yet) for <code>CONFIG</code> → ImportError. Fixes: import the <b>module</b> (<code>import a</code>, then use <code>a.CONFIG</code> later at call time), move the shared constant to a third module, or do the import inside the function that needs it.</p>
+        ${H.table(['step', 'sys.modules', 'a.CONFIG defined?'], [['import a starts', 'a (empty)', 'no'], ['a: from b import helper', 'a, b (empty)', 'no'], ['b: from a import CONFIG', '', H.c('r', 'no → ImportError')]])}`, code: { lang: 'python', run: true, code: R`import importlib
+import pathlib
+import sys
+import tempfile
+
+tmp = pathlib.Path(tempfile.mkdtemp())
+(tmp / "cyc_a.py").write_text("from cyc_b import helper\nCONFIG = {'debug': True}\n")
+(tmp / "cyc_b.py").write_text("from cyc_a import CONFIG\ndef helper():\n    return CONFIG\n")
+sys.path.insert(0, str(tmp))
+try:
+    import cyc_a
+except ImportError as e:
+    print("ImportError:", e)
+for name in ("cyc_a", "cyc_b"):
+    sys.modules.pop(name, None)       # forget the half-built modules
+
+# Fix: import the MODULE and look the name up at call time
+(tmp / "cyc_b.py").write_text("import cyc_a\ndef helper():\n    return cyc_a.CONFIG\n")
+importlib.invalidate_caches()
+import cyc_a
+print("fixed:", cyc_a.helper())
+sys.path.remove(str(tmp))
+` } },
+      { title: 'Shadowing the standard library', html: R`<p>The directory of the script you run is <code>sys.path[0]</code>, searched <b>before</b> the stdlib. A file named <code>random.py</code>, <code>json.py</code> or <code>email.py</code> in your project silently replaces the real module for everything that imports it, causing baffling errors like <code>AttributeError: module 'random' has no attribute 'randint'</code>. Python 3.13 detects this and adds a hint ("consider renaming … since it has the same name as the standard library module"). Since 3.11 you can run with <code>-P</code> or <code>PYTHONSAFEPATH=1</code> to not prepend the script directory at all.</p>
+        ${H.arr(['/home/me/project', '/usr/lib/python3.13', '…/site-packages'], { label: 'sys.path order', hl: { 0: 'r' } })}` }
+    ],
+    deepDive: R`<p>🟣 <b>PathFinder internals.</b> For each <code>sys.path</code> entry, PathFinder asks <code>sys.path_hooks</code> for a path-entry finder (FileFinder for directories, <code>zipimporter</code> for zip files) and caches it in <code>sys.path_importer_cache</code>. FileFinder caches directory listings, which is why code that writes a new module at runtime must call <code>importlib.invalidate_caches()</code>. It tries, per directory: a package directory, extension modules (<code>.cpython-313-x86_64-linux-gnu.so</code>, <code>.pyd</code>), source <code>.py</code>, and sourceless <code>.pyc</code>.</p>
+      <p><b>.pyc validation.</b> <code>SourceFileLoader</code> checks <code>__pycache__/name.cpython-313.pyc</code>: the magic number must match and, by default, the stored source mtime and size must match the <code>.py</code> file (or a source hash for "checked/unchecked hash" pycs, PEP 552, used for reproducible builds). Read-only installs ship pre-compiled pycs (<code>python -m compileall</code>).</p>
+      <p><b>Thread safety.</b> Each module being imported has its own import lock, so two threads importing the same module do not run it twice; deadlocks between circular imports in different threads are detected and broken. Avoid starting threads that import things as a side effect of importing a module.</p>
+      <p><b>Start-up and laziness.</b> 3.11 froze the core stdlib modules needed at start-up into the binary ("deep-frozen" code objects), cutting start-up time. <code>python -X importtime -c "import mypkg"</code> prints a tree of cumulative import times; large CLIs (and tools like Mercurial) use lazy imports. Today you can use <code>importlib.util.LazyLoader</code> or a module-level <code>__getattr__</code> (PEP 562) to defer imports; PEP 810 adds explicit <code>lazy import</code> syntax, accepted for Python 3.15.</p>
+      <p><b>Security notes.</b> <code>.pth</code> files in site-packages can execute code at start-up (a known supply-chain persistence trick); typo-squatted packages exploit <code>pip install</code> mistakes; and anything on <code>sys.path</code> that an attacker can write to is code execution. Use virtual environments, pinned and hashed dependencies, and <code>-I</code>/<code>-P</code> for sensitive scripts.</p>`,
+    aiEra: R`<p>🤖 <b>What AI changes:</b> assistants are very good at diagnosing <code>ModuleNotFoundError</code> and circular-import tracebacks if you paste the traceback, <code>sys.path</code> and the project tree. They also generate packaging configs (<code>pyproject.toml</code>) quickly. Many "import errors" in AI-generated code are <b>hallucinated packages or modules</b>, and attackers register those names on PyPI ("slopsquatting").</p>
+      <p><b>Use AI as a partner:</b> <code>Here is my project tree, the traceback and sys.path. Explain which file each import resolves to and propose the smallest restructuring that removes the circular import.</code></p>
+      <p><b>Where AI goes wrong:</b> suggesting <code>sys.path.append(...)</code> hacks instead of a proper package install (<code>pip install -e .</code>), recommending package names that do not exist, mixing up <code>from a import b</code> semantics, or "fixing" a cycle by moving imports to the bottom of a file without understanding why it worked.</p>
+      <p><b>What you must still own:</b> the cache → finders → loader → bind sequence, the "cached before executed" rule that explains circular imports, and verifying that every dependency an assistant suggests actually exists and is the one you meant.</p>`,
+    problems: [{
+      title: 'Serve Modules from a Dict (Custom Meta Path Finder)',
+      level: 'Hard', tags: ['importlib', 'finder', 'loader'], companies: ['Dropbox', 'Bloomberg', 'Anthropic'],
+      statement: R`<p>Implement <code>DictImporter(sources)</code>, where <code>sources</code> maps module names (e.g. <code>"plugins"</code>, <code>"plugins.hello"</code>) to source code strings. Installing it on <code>sys.meta_path</code> must make <code>import plugins.hello</code> work without any files on disk. A name is a package if some other key starts with <code>name + "."</code>. Modules must get a correct <code>__spec__</code>, and normal caching in <code>sys.modules</code> must apply.</p>`,
+      constraints: R`<p>Use the modern protocol (<code>find_spec</code> + <code>exec_module</code>); return <code>None</code> for names you do not own so other finders keep working. Up to 10<sup>3</sup> modules.</p>`,
+      example: R`<p>sources = <code>{"plugins": "", "plugins.hello": "def hi(): return 'hi from memory'"}</code>; after installing, <code>from plugins.hello import hi; hi()</code> → ${H.c('g', "'hi from memory'")}. Why: our finder returns a spec for both names; <code>plugins</code> gets <code>__path__</code> because <code>plugins.hello</code> exists.</p>`,
+      brute: { why: R`<p>Write every source string to a temporary directory and add it to <code>sys.path</code>. It works, but touches the disk, needs cleanup, races with other processes, and leaks a writable directory onto <code>sys.path</code> (a security risk). The import system is designed to be extended in memory instead.</p>`, code: R`import pathlib
+import sys
+import tempfile
+
+def install_via_disk(sources):
+    root = pathlib.Path(tempfile.mkdtemp())
+    for name, src in sources.items():
+        parts = name.split(".")
+        is_pkg = any(k.startswith(name + ".") for k in sources)
+        target = root.joinpath(*parts)
+        if is_pkg:
+            target.mkdir(parents=True, exist_ok=True)
+            (target / "__init__.py").write_text(src)
+        else:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.with_suffix(".py").write_text(src)
+    sys.path.insert(0, str(root))
+    return root
+
+root = install_via_disk({"diskpkg": "", "diskpkg.m": "X = 1"})
+import diskpkg.m
+print(diskpkg.m.X)
+sys.path.remove(str(root))
+` },
+      mcq: { q: 'Why must the finder return <code>None</code> for module names it does not know?', options: ['So the next finder on sys.meta_path gets a chance', 'Because raising would be faster', 'To make the module a namespace package', 'It must raise ImportError instead'], answer: 0, explain: 'The import system tries each finder in order; returning None means "not mine". Raising would abort the whole import, breaking every other module.' },
+      hints: [R`<p>Hint 1: subclass <code>importlib.abc.MetaPathFinder</code> and <code>importlib.abc.Loader</code> (one class can be both). <code>find_spec(name, path, target=None)</code> returns <code>importlib.util.spec_from_loader(name, self, is_package=...)</code>.</p>`, R`<p>Hint 2: <code>exec_module(module)</code> compiles <code>sources[module.__name__]</code> with a fake filename like <code>"&lt;dict:plugins.hello&gt;"</code> and <code>exec</code>s it in <code>module.__dict__</code>. <code>create_module</code> returning None means "use the default module object".</p>`, R`<p>Hint 3: for packages, <code>spec_from_loader(..., is_package=True)</code> sets <code>submodule_search_locations</code> so <code>__path__</code> exists. Insert the finder at the front of <code>sys.meta_path</code>; remove it and the cached modules when done.</p>`],
+      solution: {
+        approach: R`<p>One object acting as both finder and loader. <code>find_spec</code> claims only names in the dict and marks packages; <code>exec_module</code> compiles and runs the stored source in the fresh module's namespace. Everything else (parent-first imports, <code>sys.modules</code> caching, attribute binding of submodules) is handled by importlib.</p>`,
+        code: { lang: 'python', run: true, code: R`import importlib.abc
+import importlib.util
+import sys
+
+class DictImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
+    def __init__(self, sources):
+        self.sources = dict(sources)
+
+    def _is_package(self, name):
+        return any(key.startswith(name + ".") for key in self.sources)
+
+    # ---- finder protocol ----
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname not in self.sources:
+            return None                                  # not ours
+        return importlib.util.spec_from_loader(
+            fullname, self, origin=f"<dict:{fullname}>",
+            is_package=self._is_package(fullname))
+
+    # ---- loader protocol ----
+    def create_module(self, spec):
+        return None                                      # default module object
+
+    def exec_module(self, module):
+        name = module.__name__
+        code = compile(self.sources[name], f"<dict:{name}>", "exec")
+        exec(code, module.__dict__)
+
+sources = {
+    "plugins": "REGISTRY = []",
+    "plugins.hello": "import plugins\nplugins.REGISTRY.append('hello')\n"
+                     "def hi():\n    return 'hi from memory'\n",
+}
+finder = DictImporter(sources)
+sys.meta_path.insert(0, finder)
+try:
+    from plugins.hello import hi
+    import plugins
+    print(hi(), plugins.REGISTRY, plugins.__path__ is not None)
+    print(plugins.hello.__spec__.origin)
+finally:
+    sys.meta_path.remove(finder)
+    for mod in ("plugins.hello", "plugins"):
+        sys.modules.pop(mod, None)
+` },
+        dry: { head: ['import step', 'find_spec result', 'sys.modules after', 'effect'], rows: [['plugins (parent first)', 'spec, is_package=True', 'plugins', 'REGISTRY = []'], ['plugins.hello', 'spec, is_package=False', 'plugins, plugins.hello', "REGISTRY = ['hello'], hi defined"], ['bind', '—', '—', 'plugins.hello attribute set; from-import binds hi'], ['import plugins again', 'not called (cache hit)', 'unchanged', 'same module object']] },
+        complexity: R`<p><code>find_spec</code> is O(1) for the lookup plus O(K) for the package check (K keys; precompute a set of prefixes for O(1)). Executing a module costs its compile time, paid once thanks to <code>sys.modules</code>.</p>`,
+        followUps: ['Make it reload-safe: what happens with <code>importlib.reload(plugins.hello)</code>?', 'Add <code>get_source</code> so tracebacks and <code>inspect.getsource</code> show the in-memory code (hint: <code>linecache</code>).']
+      }
+    }]
+  });
 registerModule({ id: 'py12', title: 'CPython Internals', intro: 'x', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();
