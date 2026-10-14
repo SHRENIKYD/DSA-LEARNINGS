@@ -1539,6 +1539,250 @@ void rotateStd(vector<int>& nums, long long k) {
     }]
   });
 
+  /* ======================================================================
+     TOPIC 7 — std::string basics
+     ====================================================================== */
+  topics.push({
+    title: 'std::string Basics: Indexing, find/substr, getline & Char Arithmetic',
+    analogy: `<p>A <code>std::string</code> is a <b>train of letter carriages</b> with a smart engine at the front that always knows how many carriages there are (<code>size()</code>), can add carriages at the back (<code>+=</code>), cut out a section (<code>erase</code>), or build a copy of a few carriages (<code>substr</code>). The old C-style string (<code>char*</code>) is a train <b>without</b> that engine: to know where it ends you must walk along it until you hit a special empty "stop" carriage, the <code>'\\0'</code> character. Each carriage holds one <b>char</b> — really a small number (a code like 97 for <code>'a'</code>), which is why you can do maths on letters.</p>`,
+    explain: `<h4>1. Creating and inspecting</h4>
+<pre><code>string s = "hello";          // from a literal
+string t(3, 'x');            // "xxx"
+string e;                    // "" (empty)
+s.size();  s.length();       // 5 (same thing)
+s.empty();                   // false
+s[0];      s.at(0);          // 'h' — at() checks bounds and throws
+s.front(); s.back();         // 'h', 'o'</code></pre>
+<p>Indices start at 0 and go to <code>size() - 1</code>, just like a vector — a string <i>is</i> basically a <code>vector&lt;char&gt;</code> with text helpers.</p>
+<h4>2. Building and changing</h4>
+${H.table(['operation', 'example (s = "hello")', 'result'], [['append', '<code>s += " world";</code>', '"hello world"'], ['push one char', '<code>s.push_back(\'!\');</code>', '"hello!"'], ['concatenate', '<code>s + "!" + s</code>', '"hello!hello"'], ['substring', '<code>s.substr(1, 3)</code> (start, <b>length</b>)', '"ell"'], ['find', '<code>s.find("ll")</code>', '2 (or <code>string::npos</code> if absent)'], ['erase', '<code>s.erase(1, 2);</code> (start, length)', '"hlo"'], ['insert', '<code>s.insert(0, "oh ");</code>', '"oh hello"'], ['replace', '<code>s.replace(0, 1, "J");</code>', '"Jello"'], ['compare', '<code>s == "hello"</code>, <code>s &lt; "help"</code>', 'true, true (dictionary order)']])}
+<p><b>Watch out:</b> <code>substr(pos, len)</code> takes a <b>length</b>, not an end index (Java's <code>substring(begin, end)</code> is different!). And <code>find</code> returns <code>string::npos</code> (the biggest <code>size_t</code>) when nothing is found — always compare with <code>npos</code>, never with -1 stored in an <code>int</code>.</p>
+<h4>3. Characters are small numbers</h4>
+<p>A <code>char</code> stores a code: <code>'a'</code> = 97, <code>'b'</code> = 98 … <code>'A'</code> = 65, <code>'0'</code> = 48. Letters and digits are consecutive, so:</p>
+${H.table(['you want', 'write', 'example'], [['digit char → number', '<code>c - \'0\'</code>', '\'7\' − \'0\' = 7'], ['letter → index 0..25', '<code>c - \'a\'</code>', '\'d\' − \'a\' = 3'], ['index → letter', '<code>char(\'a\' + i)</code>', 'i = 2 → \'c\''], ['upper/lower', '<code>toupper(c)</code>, <code>tolower(c)</code>', '\'q\' → \'Q\''], ['tests', '<code>isdigit</code>, <code>isalpha</code>, <code>isalnum</code>, <code>isspace</code>', 'from &lt;cctype&gt;']])}
+<h4>4. Reading text: cin &gt;&gt; vs getline</h4>
+<p><code>cin &gt;&gt; s</code> reads <b>one word</b> — it skips leading spaces and stops at the next whitespace. <code>getline(cin, s)</code> reads a <b>whole line</b> including spaces. Mixing them has a famous trap: after <code>cin &gt;&gt; n</code>, the Enter key's <code>'\\n'</code> is still waiting, so the next <code>getline</code> returns an <b>empty</b> line. Fix: <code>getline(cin &gt;&gt; ws, s)</code> or <code>cin.ignore()</code> first.</p>
+<h4>5. Converting numbers and text</h4>
+<pre><code>int n = stoi("42");            // string → int (throws invalid_argument on "abc")
+long long b = stoll("9000000000");
+double d = stod("3.5");
+string s = to_string(123);     // int → "123"</code></pre>
+<h4>6. Literal pitfalls</h4>
+<p><code>"abc"</code> is <b>not</b> a <code>std::string</code>: it is a C array of 4 chars (<code>'a','b','c','\\0'</code>). So <code>"abc" + "def"</code> does not compile (you cannot add two arrays), and <code>"abc" + 1</code> compiles but means "pointer to the second char" → <code>"bc"</code>! Make one side a real string: <code>string("abc") + "def"</code> or <code>"abc"s + "def"</code> (with <code>using namespace std::string_literals;</code>).</p>`,
+    clues: [
+      '"palindrome", "reverse", "compare from both ends" → two indices on a <code>string</code>, O(1) extra space',
+      '"count characters / anagram / first unique letter" → <code>array&lt;int, 26&gt;</code> indexed by <code>c - \'a\'</code>',
+      '"read a full line / sentence with spaces" → <code>getline</code> (and <code>cin &gt;&gt; ws</code> after a number)',
+      '"digits of a big number given as a string" → <code>c - \'0\'</code>, process right to left',
+      '"build the answer string character by character" → <code>s += c</code> or <code>push_back</code> (amortised O(1)), never <code>s = s + c</code> (O(n) each)',
+      '"find a substring / split on a delimiter" → <code>find</code> + <code>substr</code> (check <code>npos</code>), or <code>stringstream</code> for whitespace splitting'
+    ],
+    code: [R`#include <bits/stdc++.h>
+using namespace std;
+
+int main() {
+    string s = "Hello, World";
+    cout << s.size() << " " << s[0] << " " << s.back() << "\n";   // 12 H d
+
+    // find + substr: split "key=value"
+    string kv = "lang=cpp";
+    size_t eq = kv.find('=');
+    if (eq != string::npos) {                     // always check npos
+        string key = kv.substr(0, eq);            // "lang"   (start, LENGTH)
+        string val = kv.substr(eq + 1);           // "cpp"    (to the end)
+        cout << key << " -> " << val << "\n";
+    }
+
+    // modify in place
+    s.replace(0, 5, "Howdy");                     // "Howdy, World"
+    s.erase(s.find(','), 1);                      // "Howdy World"
+    s += '!';                                     // "Howdy World!"
+    cout << s << "\n";
+
+    // char arithmetic: sum the digits in a string, uppercase the letters
+    string mixed = "a1b2c3";
+    int digitSum = 0;
+    string upper;
+    for (char c : mixed) {
+        if (isdigit((unsigned char)c)) digitSum += c - '0';   // '7' - '0' == 7
+        else upper += (char)toupper((unsigned char)c);
+    }
+    cout << digitSum << " " << upper << "\n";     // 6 ABC
+
+    // conversions
+    int n = stoi("250");
+    string back = to_string(n * 2);               // "500"
+    cout << back << " has " << back.size() << " chars\n";
+
+    // comparison is dictionary (lexicographic) order, char by char
+    cout << boolalpha << (string("apple") < "banana") << " "
+         << (string("10") < "9") << "\n";         // true true ('1' < '9')
+
+    // reading: a number, then a full line
+    int age;
+    string fullName;
+    if (cin >> age) {
+        getline(cin >> ws, fullName);             // ws eats the leftover '\n'
+        cout << fullName << " is " << age << "\n";
+    }
+}`],
+    codeTitle: ['Everyday string operations'],
+    viz: [{
+      title: 'Two pointers on a string: valid palindrome',
+      input: 'A man, a plan, a canal: Panama',
+      inputLabel: 'text (up to 30 characters)',
+      gen: function (input) {
+        var s = String(input === undefined || input === null ? '' : input);
+        if (!s.length || s.length > 30) throw new Error('Enter 1 to 30 characters of text');
+        var chars = s.split('').map(function (c) { return c === ' ' ? '␣' : c; });
+        var code = 'int i = 0, j = (int)s.size() - 1;\nwhile (i < j) {\n    if (!isalnum(s[i])) { ++i; continue; }\n    if (!isalnum(s[j])) { --j; continue; }\n    if (tolower(s[i]) != tolower(s[j])) return false;\n    ++i; --j;\n}\nreturn true;';
+        var frames = [], i = 0, j = s.length - 1, done = {};
+        function isAl(c) { return /[A-Za-z0-9]/.test(c); }
+        function F(line, cls, narr, extraHl) {
+          var hl = {}; Object.keys(done).forEach(function (k) { hl[k] = 'done'; });
+          if (extraHl) Object.keys(extraHl).forEach(function (k) { hl[k] = extraHl[k]; });
+          var ptr = {}; if (i === j && i >= 0 && i < s.length) ptr[i] = ['i', 'j']; else { if (i >= 0 && i < s.length) ptr[i] = 'i'; if (j >= 0 && j < s.length) ptr[j] = 'j'; }
+          var ch = {}; ch[line] = cls || 'cur';
+          frames.push({ narr: narr, parts: [{ type: 'array', label: 's', values: chars.slice(), hl: hl, ptr: ptr }, { type: 'code', lang: 'cpp', code: code, hl: ch }, { type: 'vars', vals: { i: i, j: j, 's[i]': i < s.length ? s[i] : '-', 's[j]': j >= 0 ? s[j] : '-' } }] });
+        }
+        F(1, 'cur', 'Put <b>i</b> at the first character and <b>j</b> at the last. We compare from both ends toward the middle — no reversed copy needed.');
+        var steps = 0, result = true;
+        while (i < j && steps < 60) {
+          steps++;
+          if (!isAl(s[i])) { var h1 = {}; h1[i] = 'bad'; F(3, 'bad', '<code>s[i]</code> = "' + esc(s[i] === ' ' ? 'space' : s[i]) + '" is not a letter or digit → skip it (<code>++i</code>).', h1); done[i] = 1; i++; continue; }
+          if (!isAl(s[j])) { var h2 = {}; h2[j] = 'bad'; F(4, 'bad', '<code>s[j]</code> = "' + esc(s[j] === ' ' ? 'space' : s[j]) + '" is not a letter or digit → skip it (<code>--j</code>).', h2); done[j] = 1; j--; continue; }
+          var a = s[i].toLowerCase(), b = s[j].toLowerCase();
+          var hm = {}; hm[i] = a === b ? 'ok' : 'bad'; hm[j] = a === b ? 'ok' : 'bad';
+          if (a !== b) { F(5, 'bad', 'Compare lowercase: "' + esc(a) + '" vs "' + esc(b) + '" → <span class="c-r">different</span>. Not a palindrome: <b>return false</b>.', hm); result = false; break; }
+          F(5, 'ok', 'Compare lowercase: "' + esc(a) + '" == "' + esc(b) + '" <span class="c-g">match</span>. Move both pointers inward.', hm);
+          done[i] = 1; done[j] = 1; i++; j--;
+        }
+        if (result) F(8, 'ok', 'Pointers met or crossed (i ≥ j) with no mismatch → <b>return true</b>: it is a palindrome. Each character was looked at once: O(n) time, O(1) extra space.');
+        return frames;
+      }
+    }, {
+      title: 'String operations step by step',
+      gen: function () {
+        var code = 'string s = "hello world";\nsize_t p = s.find("world");   // 6\nstring w = s.substr(p, 3);     // "wor"\ns.erase(0, 6);                 // "world"\ns.insert(0, "big ");           // "big world"\ns[0] = toupper(s[0]);          // "Big world"\ns += "!";                      // "Big world!"';
+        function arr(str, hl) { return { type: 'array', label: 's (each box = one char)', values: str.split('').map(function (c) { return c === ' ' ? '␣' : c; }), hl: hl || {} }; }
+        function rng(a, b, c) { var h = {}; for (var k = a; k < b; k++) h[k] = c; return h; }
+        return [
+          { narr: 'A string is a row of chars with indices 0..size−1. "hello world" has 11 chars (the space counts).', parts: [{ type: 'code', lang: 'cpp', code: code, hl: { 1: 'cur' } }, arr('hello world'), { type: 'vars', vals: { 's.size()': 11 } }] },
+          { narr: '<code>find("world")</code> scans for the first position where "world" starts: index <b>6</b>. If absent it would return <code>string::npos</code>.', parts: [{ type: 'code', lang: 'cpp', code: code, hl: { 2: 'cur' } }, arr('hello world', rng(6, 11, 'win')), { type: 'vars', vals: { p: 6 }, hl: { p: 'ok' } }] },
+          { narr: '<code>substr(6, 3)</code> copies <b>3 chars starting at 6</b> into a new string "wor". The second argument is a <b>length</b>, not an end index.', parts: [{ type: 'code', lang: 'cpp', code: code, hl: { 3: 'cur' } }, arr('hello world', rng(6, 9, 'ok')), { type: 'vars', vals: { p: 6, w: '"wor"' }, hl: { w: 'ok' } }] },
+          { narr: '<code>erase(0, 6)</code> removes 6 chars from index 0 ("hello "). Everything after shifts left — O(n) work.', parts: [{ type: 'code', lang: 'cpp', code: code, hl: { 4: 'cur' } }, arr('hello world', rng(0, 6, 'bad')), { type: 'vars', vals: { 's after': '"world"' } }] },
+          { narr: 'Now s = "world".', parts: [{ type: 'code', lang: 'cpp', code: code, hl: { 4: 'ok' } }, arr('world'), { type: 'vars', vals: { 's.size()': 5 } }] },
+          { narr: '<code>insert(0, "big ")</code> puts 4 chars in front; the old chars shift right.', parts: [{ type: 'code', lang: 'cpp', code: code, hl: { 5: 'cur' } }, arr('big world', rng(0, 4, 'ok')), { type: 'vars', vals: { 's.size()': 9 } }] },
+          { narr: '<code>s[0] = toupper(s[0])</code>: a char is a number, \'b\' (98) becomes \'B\' (66).', parts: [{ type: 'code', lang: 'cpp', code: code, hl: { 6: 'cur' } }, arr('Big world', { 0: 'ok' }), { type: 'vars', vals: { "'b'": 98, "'B'": 66 } }] },
+          { narr: '<code>s += "!"</code> appends at the end — amortised O(1) per char, like <code>vector::push_back</code>. Final: "Big world!".', parts: [{ type: 'code', lang: 'cpp', code: code, hl: { 7: 'cur' } }, arr('Big world!', { 9: 'ok' }), { type: 'vars', vals: { s: '"Big world!"', 's.size()': 10 }, hl: { s: 'sel' } }] }
+        ];
+      }
+    }, {
+      title: 'Why s = s + c is slow but s += c is fast',
+      input: '10000',
+      inputLabel: 'number of characters to append (n)',
+      gen: function (input) {
+        var n = intOf(input, 1, 10000000, 'Enter n from 1 to 10000000');
+        var slow = n * (n + 1) / 2, fast = 2 * n;
+        function fmt(x) { return x >= 1e9 ? (x / 1e9).toFixed(1) + 'e9' : x >= 1e6 ? (x / 1e6).toFixed(1) + 'e6' : String(Math.round(x)); }
+        return [
+          { narr: 'Goal: build a string of n = ' + n + ' characters, one char at a time.', parts: [{ type: 'code', lang: 'cpp', code: 'string a, b;\nfor (int i = 0; i < n; ++i) a = a + \'x\';   // version 1\nfor (int i = 0; i < n; ++i) b += \'x\';      // version 2', hl: {} }] },
+          { narr: '<b>Version 1</b>: <code>a + \'x\'</code> builds a <b>brand-new</b> string (copying all i existing chars) and then assigns it to a. Round i copies about i chars → 1 + 2 + … + n = n(n+1)/2 ≈ <b>' + fmt(slow) + '</b> char copies: O(n²).', parts: [{ type: 'code', lang: 'cpp', code: 'string a, b;\nfor (int i = 0; i < n; ++i) a = a + \'x\';   // version 1\nfor (int i = 0; i < n; ++i) b += \'x\';      // version 2', hl: { 2: 'bad' } }, { type: 'bars', label: 'chars copied', values: [slow, 0], texts: [fmt(slow), '?'], idxLabels: ['a = a + c', 's += c'], hl: { 0: 'bad' } }] },
+          { narr: '<b>Version 2</b>: <code>b += \'x\'</code> writes into spare capacity in place. Occasionally the buffer doubles (like a vector), so the total is under 2n ≈ <b>' + fmt(fast) + '</b> char copies: amortised O(1) per append, O(n) total.', parts: [{ type: 'code', lang: 'cpp', code: 'string a, b;\nfor (int i = 0; i < n; ++i) a = a + \'x\';   // version 1\nfor (int i = 0; i < n; ++i) b += \'x\';      // version 2', hl: { 3: 'ok' } }, { type: 'bars', label: 'chars copied', values: [slow, fast], texts: [fmt(slow), fmt(fast)], idxLabels: ['a = a + c', 's += c'], hl: { 0: 'bad', 1: 'ok' } }] },
+          { narr: 'Ratio ≈ <b>' + fmt(slow / fast) + '×</b> more work for version 1. With n = 10<sup>5</sup> that is ~5·10<sup>9</sup> copies — a Time Limit Exceeded. (Optimisers sometimes rescue simple cases, but never rely on it.)', parts: [{ type: 'bars', label: 'chars copied', values: [slow, fast], texts: [fmt(slow), fmt(fast)], idxLabels: ['a = a + c', 's += c'], hl: { 1: 'sel' } }, { type: 'text', html: '<b>Rule:</b> grow strings with <code>+=</code>, <code>push_back</code> or <code>append</code>; call <code>reserve(n)</code> if you know the final size.' }] }
+        ];
+      }
+    }],
+    examples: [
+      { title: 'Predict the output: the getline trap', html: `<p>Input is <code>21</code> on one line and <code>Ada Lovelace</code> on the next. <code>cin &gt;&gt; age</code> reads 21 but leaves the <code>'\\n'</code> in the buffer. The first <code>getline</code> reads up to that newline → an <b>empty</b> string. So the first print is <b>[]</b>. The <code>ws</code> version skips whitespace first and prints <b>[Ada Lovelace]</b>.</p>`, code: R`int age;
+string name;
+cin >> age;                    // input: "21\nAda Lovelace\n"
+getline(cin, name);            // reads "" — the leftover newline!
+cout << "[" << name << "]\n";  // []
+getline(cin >> ws, name);      // skip whitespace, then read the line
+cout << "[" << name << "]\n";  // [Ada Lovelace]` },
+      { title: 'npos and the int trap', html: `<p><code>find</code> returns <code>size_t</code>. Storing it in an <code>int</code> and testing <code>&gt;= 0</code> is wrong: <code>npos</code> converted to <code>int</code> becomes −1 on typical platforms, but the clean, portable test is <code>pos != string::npos</code> with <code>pos</code> kept as <code>size_t</code>. C++23 adds <code>s.contains("x")</code> for a plain yes/no.</p>`, code: R`string s = "banana";
+size_t pos = s.find("nan");
+if (pos != string::npos) cout << "found at " << pos << "\n";   // found at 2
+if (s.find("xyz") == string::npos) cout << "not found\n";
+
+// count all occurrences of "an": restart the search after each hit
+int count = 0;
+for (size_t p = s.find("an"); p != string::npos; p = s.find("an", p + 1)) ++count;
+cout << count << "\n";   // 2` },
+      { title: 'Predict the output: string literal arithmetic', html: `<p><code>"hello" + 1</code> does not append "1": the literal decays to a pointer and <code>+ 1</code> moves it one char forward, so it prints <b>ello</b>. <code>string("hello") + '1'</code> really appends and prints <b>hello1</b>. And <code>to_string(1)</code> is the way to append a number: <b>hello1</b> again.</p>`, code: R`cout << "hello" + 1 << "\n";              // ello   (pointer arithmetic!)
+cout << string("hello") + '1' << "\n";    // hello1
+cout << string("hello") + to_string(1) << "\n";   // hello1
+// cout << "a" + "b";                     // ERROR: cannot add two pointers` },
+      { title: 'Lexicographic comparison surprises', html: `<p>Strings compare <b>character by character</b> using char codes, like a dictionary. <code>"10" &lt; "9"</code> is true because '1' (49) &lt; '9' (57). Uppercase letters (65–90) come <b>before</b> lowercase (97–122), so <code>"Zebra" &lt; "apple"</code> is true. A shorter string that is a prefix comes first: <code>"app" &lt; "apple"</code>. To compare numbers stored as strings, compare lengths first (after removing leading zeros).</p>`, code: R`cout << boolalpha
+     << (string("10") < "9") << " "        // true
+     << (string("Zebra") < "apple") << " " // true
+     << (string("app") < "apple") << "\n"; // true` },
+      { title: 'Reverse each word in a sentence', html: `<p>Combine the tools: <code>stringstream</code> splits on whitespace, <code>reverse</code> works on a string because a string has iterators like a vector, and <code>+=</code> builds the answer. "I love cpp" → <b>I evol ppc</b>.</p>`, code: R`string line = "I love cpp", word, result;
+stringstream ss(line);
+while (ss >> word) {
+    reverse(word.begin(), word.end());
+    if (!result.empty()) result += ' ';
+    result += word;
+}
+cout << result << "\n";   // I evol ppc` }
+    ],
+    deepDive: `<p><b>Small String Optimisation (SSO).</b> A <code>std::string</code> object is 32 bytes in libstdc++ (24 in libc++). Short strings — up to 15 chars in libstdc++, 22 in libc++ — are stored <b>inside the object itself</b>, with no heap allocation at all. Longer strings allocate a heap buffer and grow geometrically like a vector. That is why creating millions of short strings is surprisingly cheap, and why <code>sizeof(string)</code> has nothing to do with the text length. A consequence: moving a short string is a copy of the bytes, and <code>swap</code> of two SSO strings cannot just exchange pointers.</p>
+<p><b>Null terminator and C interop.</b> <code>s.c_str()</code> (and since C++11 <code>s.data()</code>) returns a pointer to a <code>'\\0'</code>-terminated array, so you can pass it to C functions like <code>printf("%s", s.c_str())</code>. A <code>std::string</code> may also contain <code>'\\0'</code> characters in the middle — its length is stored, not discovered by scanning, so <code>size()</code> is O(1) while C's <code>strlen</code> is O(n).</p>
+<p><b>Bytes, not letters.</b> <code>std::string</code> stores <b>bytes</b>. With UTF-8 text, <code>"é"</code> is 2 bytes and an emoji is 4, so <code>size()</code>, <code>s[i]</code> and <code>reverse</code> work on bytes and can split a character in half. Interview problems almost always use ASCII; production code dealing with user text needs a Unicode-aware library (ICU) for case-folding, normalisation and "characters". Also pass <code>(unsigned char)c</code> to <code>isalpha</code>/<code>toupper</code>: calling them with a negative <code>char</code> (non-ASCII byte) is undefined behaviour.</p>
+<p><b>Costs to remember:</b> <code>substr</code> allocates and copies (O(len)); <code>find</code> is O(n·m) in the worst case for a pattern of length m (fine in practice); <code>==</code> and <code>&lt;</code> are O(min length); <code>erase</code>/<code>insert</code> in the middle shift the tail (O(n)). <b><code>std::string_view</code></b> (C++17) is a non-owning (pointer, length) window into existing text: <code>substr</code> on a view is O(1) with no allocation, which makes parsers much faster — but a view into a temporary string dangles as soon as that temporary dies.</p>`,
+    aiEra: `<p><b>What AI changes:</b> string-manipulation boilerplate — splitting, trimming, joining, parsing "key=value" — is exactly what AI completes best. It is also handy for writing regexes and explaining them. That frees you to think about the algorithm (two pointers, counting array, sliding window) rather than API names.</p>
+<p><b>Use AI as a partner:</b> ask <i>"What inputs would break this parser? Give me 10 nasty test strings (empty, only spaces, trailing delimiter, non-ASCII)"</i>. Ask it to rewrite O(n²) <code>s = s + c</code> loops or repeated <code>substr</code> calls into <code>+=</code>/<code>string_view</code> versions and explain the complexity change.</p>
+<p><b>Where AI goes wrong:</b> it mixes up <code>substr(pos, len)</code> with Java's <code>(begin, end)</code>, compares <code>find(...)</code> with <code>-1</code> or <code>&gt;= 0</code>, forgets the <code>getline</code>-after-<code>cin</code> newline, and passes plain <code>char</code> to <code>toupper</code>. It may also suggest <code>string_view</code> parameters that end up pointing at temporaries. <b>What you must still own:</b> character arithmetic, the npos contract, the cost of each operation, and the habit of testing with empty and one-character strings.</p>`,
+    problems: [{
+      title: 'Valid Palindrome (Ignore Case and Non-Alphanumerics)',
+      level: 'Easy', tags: ['string', 'two pointers', 'cctype'], companies: ['Meta', 'Microsoft', 'Amazon', 'Apple'],
+      statement: `<p>Given a string <code>s</code>, return <code>true</code> if it reads the same forwards and backwards after converting all uppercase letters to lowercase and removing every character that is not a letter or a digit.</p>`,
+      constraints: `1 ≤ |s| ≤ 2 · 10<sup>5</sup>; s consists of printable ASCII characters.`,
+      example: `<p><code>"A man, a plan, a canal: Panama"</code> → ${H.c('g', 'true')} (cleaned: "amanaplanacanalpanama"). <code>"race a car"</code> → ${H.c('r', 'false')} (cleaned "raceacar": 'e' vs 'a' at positions 3 and 4 differ). <code>" "</code> → ${H.c('g', 'true')} (cleaned string is empty, which is a palindrome).</p>`,
+      brute: {
+        why: `<p>Build a cleaned lowercase copy, build a reversed copy of that, and compare the two. Correct and O(n) time — but it allocates <b>two</b> extra strings of up to 2·10<sup>5</sup> chars. Interviewers then ask "can you do it with O(1) extra space?" — the waste is the copies.</p>`,
+        code: R`bool isPalBrute(const string& s) {
+    string clean;
+    for (char c : s)
+        if (isalnum((unsigned char)c)) clean += (char)tolower((unsigned char)c);
+    string rev(clean.rbegin(), clean.rend());   // reversed copy
+    return clean == rev;
+}`
+      },
+      mcq: { q: 'In the two-pointer version, what should happen when <code>s[i]</code> is a comma?', options: ['Return false', 'Move i forward and check again, without moving j', 'Move both i and j', 'Replace it with a space'], answer: 1, explain: 'A non-alphanumeric character is ignored: skip it on its own side only. Moving j too would skip a character that still needs to be compared.' },
+      hints: [`<p>Hint 1: You do not need a cleaned copy. Put <code>i</code> at the start and <code>j</code> at the end; compare and move inward, just like checking a palindrome number.</p>`, `<p>Hint 2: Before comparing, advance <code>i</code> while <code>s[i]</code> is not alphanumeric, and retreat <code>j</code> while <code>s[j]</code> is not — always keeping <code>i &lt; j</code>. Compare <code>tolower</code> of both.</p>`, `<p>Hint 3: Use <code>isalnum((unsigned char)c)</code>. Take <code>s</code> by <code>const string&amp;</code> (no copy). An empty or all-punctuation string must return true — the loop simply never finds a mismatch.</p>`],
+      solution: {
+        approach: `<p>Two indices walk toward each other, each skipping characters that do not count. At every step compare the lowercase versions; any mismatch means "not a palindrome". Every character is visited at most once, and no copies are made: the input is read through a <code>const&amp;</code>.</p>`,
+        code: R`#include <bits/stdc++.h>
+using namespace std;
+
+bool isPalindrome(const string& s) {
+    int i = 0, j = (int)s.size() - 1;
+    while (i < j) {
+        if (!isalnum((unsigned char)s[i])) { ++i; continue; }   // skip on the left
+        if (!isalnum((unsigned char)s[j])) { --j; continue; }   // skip on the right
+        if (tolower((unsigned char)s[i]) != tolower((unsigned char)s[j]))
+            return false;                                        // mismatch
+        ++i;
+        --j;
+    }
+    return true;                                                 // met in the middle
+}
+
+int main() {
+    cout << boolalpha
+         << isPalindrome("A man, a plan, a canal: Panama") << " "   // true
+         << isPalindrome("race a car") << " "                       // false
+         << isPalindrome(" ") << "\n";                              // true
+}`,
+        dry: { head: ['i', 'j', 's[i]', 's[j]', 'action'], rows: [['0', '8', 'r', 'r', 'match → i=1, j=7'], ['1', '7', 'a', 'a', 'match → i=2, j=6'], ['2', '6', 'c', 'c', 'match → i=3, j=5'], ['3', '5', 'e', 'a', H.c('r', 'mismatch → return false')]] },
+        complexity: `<p>Time O(n): each index moves at most n times in total. Extra space O(1). (Dry run above is for "race a car".)</p>`,
+        followUps: ['Valid Palindrome II: may you delete at most one character to make it a palindrome?', 'Return the longest palindromic prefix of the cleaned string.']
+      }
+    }]
+  });
+
   registerModule({
     id: 'cpp02',
     title: 'Control Flow, Functions, Arrays & Strings',

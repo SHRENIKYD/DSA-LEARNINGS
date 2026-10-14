@@ -1804,5 +1804,315 @@ delete[] buf;</pre>
       }
     }]
   });
+
+  /* ======================================================================
+     TOPIC 7 — make_unique / make_shared and custom deleters
+     ====================================================================== */
+  function allocCompare(input) {
+    var mode = String(input === undefined ? 'make' : input).trim().toLowerCase();
+    if (mode !== 'make' && mode !== 'new') throw new Error('Type "make" (std::make_shared) or "new" (shared_ptr<T>(new T))');
+    var M = mode === 'make', OBJ = 4096, CB = 32, frames = [];
+    var codeTxt = M ? 'auto a = std::make_shared<Big>();   // Big is 4 KB\nstd::weak_ptr<Big> w = a;\na.reset();\nw.reset();'
+                    : 'std::shared_ptr<Big> a(new Big);    // Big is 4 KB\nstd::weak_ptr<Big> w = a;\na.reset();\nw.reset();';
+    function snap(line, narr, stackB, heapB, edges, hl, tags, allocs, bytes) {
+      frames.push({ narr: narr, parts: [
+        { type: 'code', label: M ? 'make_shared version' : 'new + shared_ptr version', lang: 'cpp', code: codeTxt, hl: line ? one(line, 'cur') : {} },
+        memGraph('Heap blocks (one box = one allocation)', stackB, heapB, edges, hl, {}, tags),
+        { type: 'vars', label: 'Allocator scoreboard', vals: { 'malloc calls so far': allocs, 'bytes still reserved': bytes }, hl: {} }
+      ] });
+    }
+    snap(0, (M ? '<b>make_shared mode.</b>' : '<b>new mode.</b>') + ' We create a 4 KB object, observe it with a weak_ptr, then drop the shared_ptr and the weak_ptr. Watch how many allocations happen and when the 4 KB is really returned. (Switch the input to "' + (M ? 'new' : 'make') + '" to compare.)', [], [], [], {}, {}, 0, 0);
+    if (M) {
+      snap(1, '<code>make_shared</code>: <b>one</b> allocation of ~' + (OBJ + CB) + ' bytes holding the control block <i>and</i> the Big object side by side. Faster (one malloc instead of two), better cache locality, no naked <code>new</code>.', [{ id: 'a', label: 'shared_ptr a' }], [{ id: 'blk', label: '[ctrl use=1 weak=0 | Big 4 KB]' }], [['a', 'blk']], { blk: 'ok' }, {}, 1, OBJ + CB);
+      snap(2, 'weak_ptr <code>w</code> observes: weak count 1. Same single block.', [{ id: 'a', label: 'shared_ptr a' }, { id: 'w', label: 'weak_ptr w' }], [{ id: 'blk', label: '[ctrl use=1 weak=1 | Big 4 KB]' }], [['a', 'blk'], ['w', 'blk']], {}, {}, 1, OBJ + CB);
+      snap(3, '<code>a.reset()</code>: use_count → 0, so <code>~Big()</code> runs. <span class="c-y">But the 4 KB cannot be returned yet</span>: it lives in the same allocation as the control block, and the control block must stay while <code>w</code> exists. A long-lived weak_ptr to a huge make_shared object pins its memory.', [{ id: 'a', label: 'shared_ptr a (empty)' }, { id: 'w', label: 'weak_ptr w' }], [{ id: 'blk', label: '[ctrl use=0 weak=1 | ~Big done, bytes held]' }], [['w', 'blk']], { blk: 'cur' }, { blk: 'zombie bytes' }, 1, OBJ + CB);
+      snap(4, '<code>w.reset()</code>: weak count → 0 → the single block is freed. All ' + (OBJ + CB) + ' bytes go back now.', [{ id: 'a', label: 'shared_ptr a (empty)' }, { id: 'w', label: 'weak_ptr w (empty)' }], [{ id: 'blk', label: 'block freed' }], [], { blk: 'done' }, { blk: 'freed' }, 1, 0);
+    } else {
+      snap(1, '<code>new Big</code> is allocation #1 (4 KB). Then the shared_ptr constructor allocates the control block: allocation #2. Two mallocs; the counts live far from the object in memory.', [{ id: 'a', label: 'shared_ptr a' }], [{ id: 'obj', label: 'Big 4 KB' }, { id: 'cb', label: 'ctrl use=1 weak=0' }], [['a', 'cb'], ['cb', 'obj']], { obj: 'ok', cb: 'ok' }, {}, 2, OBJ + CB);
+      snap(2, 'weak_ptr <code>w</code> points at the control block: weak count 1.', [{ id: 'a', label: 'shared_ptr a' }, { id: 'w', label: 'weak_ptr w' }], [{ id: 'obj', label: 'Big 4 KB' }, { id: 'cb', label: 'ctrl use=1 weak=1' }], [['a', 'cb'], ['w', 'cb'], ['cb', 'obj']], {}, {}, 2, OBJ + CB);
+      snap(3, '<code>a.reset()</code>: use_count → 0 → <code>delete</code> the Big. Its 4 KB is <b>returned immediately</b> because it is its own allocation. Only the small control block remains for <code>w</code>.', [{ id: 'a', label: 'shared_ptr a (empty)' }, { id: 'w', label: 'weak_ptr w' }], [{ id: 'obj', label: 'Big freed' }, { id: 'cb', label: 'ctrl use=0 weak=1' }], [['w', 'cb']], { obj: 'done', cb: 'cur' }, { obj: 'freed' }, 2, CB);
+      snap(4, '<code>w.reset()</code>: weak count → 0 → control block freed. Trade-off: two allocations up front, but no memory pinned by long-lived weak_ptrs.', [{ id: 'a', label: 'shared_ptr a (empty)' }, { id: 'w', label: 'weak_ptr w (empty)' }], [{ id: 'obj', label: 'Big freed' }, { id: 'cb', label: 'ctrl freed' }], [], { obj: 'done', cb: 'done' }, { cb: 'freed' }, 2, 0);
+    }
+    frames.push({ narr: 'Verdict: <b>default to make_shared/make_unique</b>. Prefer <code>shared_ptr(new T)</code> (or allocate_shared with care) only when the object is large <i>and</i> weak_ptrs routinely outlive it — or when you need a custom deleter, which make_shared cannot take.', parts: [
+      { type: 'table', label: 'make_shared vs shared_ptr(new T)', columns: ['', 'make_shared', 'shared_ptr(new T)'], rows: [['allocations', '1', '2'], ['locality', 'counts next to object', 'separate blocks'], ['custom deleter', 'not possible', 'possible'], ['object bytes freed when', 'last weak_ptr gone', 'last shared_ptr gone'], ['private constructor', 'not usable', 'usable (from inside the class)']], hl: { 0: 'sel' } }
+    ] });
+    return frames;
+  }
+
+  function deleterOrder() {
+    var code = [
+      'struct FileCloser { void operator()(FILE* f) const { std::fclose(f); } };',
+      'void work(Pool& pool) {',
+      '    std::unique_ptr<FILE, FileCloser> log(std::fopen("app.log", "a"));',
+      '    std::unique_ptr<char, decltype(&std::free)> buf((char*)std::malloc(64), &std::free);',
+      '    std::shared_ptr<Socket> sock(openSocket(), [](Socket* s) { closeSocket(s); });',
+      '    auto conn = pool.acquire();        // unique_ptr<Conn, ReturnToPool>',
+      '    use(log.get(), buf.get(), *sock, *conn);',
+      '}   // destroyed in reverse: conn, sock, buf, log'
+    ].join('\n');
+    var frames = [], st = [], outl = [];
+    var sizes = { 'sizeof log (stateless functor)': 8, 'sizeof buf (function pointer)': 16, 'sizeof sock (shared_ptr)': 16, 'sizeof conn (deleter holds Pool*)': 16 };
+    function snap(line, narr, hlTop, cls) {
+      var h = {}; if (hlTop !== undefined) h[hlTop] = cls || 'cur';
+      frames.push({ narr: narr, parts: [
+        { type: 'code', label: 'Custom deleters in one function', lang: 'cpp', code: code, hl: one(line, line === 8 ? 'ok' : 'cur') },
+        { type: 'stack', label: 'RAII handles on the stack (top = newest)', items: st.slice(), hl: h },
+        { type: 'vars', label: 'Handle sizes on x86-64', vals: sizes },
+        out(outl.slice())
+      ] });
+    }
+    snap(1, 'A <b>custom deleter</b> tells a smart pointer <i>how</i> to release the resource when it is not "delete". This stateless functor calls <code>fclose</code>. Because it has no data, <code>unique_ptr&lt;FILE, FileCloser&gt;</code> is still just 8 bytes.');
+    st.push('log  → FILE* (FileCloser)'); outl.push('fopen app.log');
+    snap(3, '<code>log</code> owns a C <code>FILE*</code>. The deleter type is part of the unique_ptr\'s <b>type</b>.', 0, 'ok');
+    st.push('buf  → char[64] (free)'); outl.push('malloc 64');
+    snap(4, 'Memory from <code>malloc</code> must be released with <code>free</code>, not <code>delete</code>. A function-pointer deleter works but must be stored: the unique_ptr grows to 16 bytes.', 1, 'ok');
+    st.push('sock → Socket* (lambda)'); outl.push('openSocket');
+    snap(5, '<code>shared_ptr</code> takes the deleter as a constructor argument and stores it <b>in the control block</b> (type-erased), so <code>shared_ptr&lt;Socket&gt;</code> has the same type and size whatever the deleter is.', 2, 'ok');
+    st.push('conn → Conn* (ReturnToPool)'); outl.push('pool.acquire -> conn #7');
+    snap(6, 'A deleter does not have to free anything: <code>ReturnToPool</code> puts the connection back into the pool for reuse. RAII for "borrow and give back".', 3, 'ok');
+    snap(7, 'Use the resources. If <code>use</code> throws, everything below still happens during unwinding.', 3);
+    [['conn', 'ReturnToPool: conn #7 back to pool'], ['sock', 'lambda: closeSocket'], ['buf', 'std::free(buf)'], ['log', 'FileCloser: fclose(app.log)']].forEach(function (d) {
+      snap(8, 'Scope ends → <b>' + d[0] + '</b> is destroyed (newest first) and its deleter runs: <code>' + H.esc(d[1]) + '</code>.', st.length - 1, 'bad');
+      st.pop(); outl.push(d[1]);
+    });
+    snap(8, 'All four resources released in reverse order of acquisition, with zero cleanup code inside <code>work()</code>. Note the deleter is only called for a <b>non-null</b> pointer — if <code>fopen</code> failed, <code>fclose(nullptr)</code> is never called.');
+    return frames;
+  }
+
+  topics.push({
+    title: 'make_unique / make_shared and Custom Deleters',
+    analogy: `<p><b>Flat-pack furniture vs a delivered, assembled sofa.</b> Writing <code>new</code> yourself is buying the parts and assembling them in your hallway — it works, but if you get interrupted halfway (an exception), parts are lying everywhere. <code>make_unique</code>/<code>make_shared</code> is ordering it delivered and assembled in one go, with the "how to dispose of it" card already attached.</p>
+      <p>A <b>custom deleter</b> is that disposal card: "this one is not thrown in the bin (<code>delete</code>) — return it to the rental shop (<code>pool</code>), unplug it first (<code>fclose</code>), recycle it (<code>free</code>)."</p>`,
+    explain: `<p><b>Why prefer the make functions?</b></p>
+      <ol><li><b>No naked new</b>: code with zero <code>new</code>/<code>delete</code> is easy to audit — any <code>new</code> left is a code-review flag.</li>
+      <li><b>Type written once</b>: <code>auto p = std::make_unique&lt;VeryLongTypeName&gt;(args);</code></li>
+      <li><b>Exception safety</b> (historically): before C++17, in <code>f(std::shared_ptr&lt;A&gt;(new A), g())</code> the compiler could run <code>new A</code>, then <code>g()</code>, then the shared_ptr constructor. If <code>g()</code> threw, the A leaked. <code>f(std::make_shared&lt;A&gt;(), g())</code> never had this problem. C++17 tightened evaluation order so each argument is fully evaluated before the next starts, but the habit is still right.</li>
+      <li><b>make_shared performance</b>: one allocation for object + control block instead of two.</li></ol>
+      <p><b>When you cannot (or should not) use them:</b></p>
+      ${H.table(['Situation', 'Why', 'Use instead'], [
+        ['Custom deleter needed', 'make_* take constructor args only', '<code>std::unique_ptr&lt;T, D&gt;(ptr, d)</code>, <code>std::shared_ptr&lt;T&gt;(ptr, d)</code>'],
+        ['Private/protected constructor', 'make_* call it from outside the class', 'a static factory that does <code>std::shared_ptr&lt;T&gt;(new T(...))</code> (or the passkey idiom)'],
+        ['Brace-initialisation wanted', 'make_* use parentheses: <code>make_unique&lt;vector&lt;int&gt;&gt;(3, 1)</code> = {1,1,1}', 'construct explicitly'],
+        ['Huge object + long-lived weak_ptrs', 'make_shared memory freed only when the last weak_ptr goes', '<code>shared_ptr&lt;T&gt;(new T)</code>'],
+        ['Custom allocator', '—', '<code>std::allocate_shared</code>'],
+        ['Big buffer you will overwrite anyway', 'make_unique&lt;T[]&gt;(n) value-initialises (zeroes) n elements', '<code>std::make_unique_for_overwrite&lt;T[]&gt;(n)</code> (C++20)']
+      ])}
+      <p><b>Custom deleters</b> let smart pointers manage anything with a "release" function:</p>
+      ${H.table(['Resource', 'Deleter'], [['<code>FILE*</code> from <code>fopen</code>', '<code>fclose</code>'], ['<code>malloc</code> memory', '<code>free</code>'], ['C library handles (sqlite3*, CURL*, SDL_Window*, OpenSSL objects)', 'their <code>*_close</code>/<code>*_free</code>/<code>*_destroy</code> function'], ['object from a pool', '"return to pool"'], ['memory you do NOT own (e.g. a static)', 'no-op deleter (use with care)']])}
+      <p><b>Key difference:</b> for <code>unique_ptr&lt;T, D&gt;</code> the deleter is <b>part of the type</b> (and may add size); for <code>shared_ptr&lt;T&gt;</code> it is <b>type-erased</b> into the control block (no effect on type or handle size). Prefer a stateless functor struct (or a captureless lambda type via <code>decltype</code>) for unique_ptr so it stays 8 bytes.</p>`,
+    clues: [
+      '"Wrap this C API" / "handle with a close function" (<code>fopen/fclose</code>, <code>sqlite3_open/close</code>, <code>curl_easy_init/cleanup</code>) → unique_ptr + custom deleter',
+      '"Why prefer make_shared over shared_ptr(new T)?" → one allocation, no naked new, exception safety, locality',
+      '"When is make_shared a bad idea?" → custom deleter, private ctor, huge object with long-lived weak_ptrs',
+      '"Object pool: return objects instead of deleting" → custom deleter that pushes back into the pool',
+      '"Memory from malloc / an aligned allocator" → deleter calling <code>free</code> / the matching deallocator, never delete',
+      '"Does the deleter change the size/type of the smart pointer?" → unique_ptr: yes (part of type, maybe size); shared_ptr: no'
+    ],
+    code: [R`
+      #include <cstdio>
+      #include <cstdlib>
+      #include <iostream>
+      #include <memory>
+
+      // 1) Stateless functor: zero-size deleter, unique_ptr stays 8 bytes.
+      struct FileCloser {
+          void operator()(std::FILE* f) const noexcept { if (f) std::fclose(f); }
+      };
+      using FilePtr = std::unique_ptr<std::FILE, FileCloser>;
+
+      FilePtr openFile(const char* path, const char* mode) {
+          return FilePtr(std::fopen(path, mode));             // may hold nullptr if fopen failed
+      }
+
+      // 2) malloc'd memory must go back through free.
+      struct FreeDeleter { void operator()(void* p) const noexcept { std::free(p); } };
+
+      int main() {
+          if (FilePtr f = openFile("/tmp/deleter_demo.txt", "w")) {
+              std::fputs("hello\n", f.get());
+          }                                                    // fclose runs here
+
+          std::unique_ptr<char, FreeDeleter> buf(static_cast<char*>(std::malloc(32)));
+
+          // 3) A captureless lambda as the deleter type (C++20 allows decltype of a lambda expression).
+          auto closer = [](std::FILE* f) { if (f) std::fclose(f); };
+          std::unique_ptr<std::FILE, decltype(closer)> g(std::fopen("/tmp/deleter_demo.txt", "r"), closer);
+
+          // 4) shared_ptr: deleter is type-erased into the control block.
+          std::shared_ptr<std::FILE> shared(std::fopen("/tmp/deleter_demo.txt", "r"),
+                                            [](std::FILE* f) { if (f) std::fclose(f); });
+
+          std::cout << sizeof(FilePtr) << " "                                   // 8
+                    << sizeof(std::unique_ptr<std::FILE, int (*)(std::FILE*)>) << " "   // 16
+                    << sizeof(shared) << "\n";                                    // 16
+      }
+    `, R`
+      #include <memory>
+      #include <string>
+      // Private constructor: make_shared cannot reach it, a static factory can.
+      class Session {
+          std::string user_;
+          explicit Session(std::string u) : user_(std::move(u)) {}
+      public:
+          static std::shared_ptr<Session> create(std::string u) {
+              return std::shared_ptr<Session>(new Session(std::move(u)));   // OK inside the class
+          }
+          const std::string& user() const { return user_; }
+      };
+      int main() {
+          auto s = Session::create("ana");
+          auto big = std::make_unique_for_overwrite<char[]>(1 << 20);       // C++20: no zero-fill
+          big[0] = 'x';
+          return s->user() == "ana" && big[0] == 'x' ? 0 : 1;
+      }
+    `],
+    codeTitle: ['Custom deleters: functor, free, lambda, shared_ptr', 'When make_* is not available: private ctor, for_overwrite'],
+    viz: [{
+      title: 'make_shared vs shared_ptr(new T): allocations and the weak_ptr tail',
+      input: 'make',
+      inputLabel: 'Mode: make or new',
+      gen: allocCompare
+    }, {
+      title: 'Custom deleters at scope exit (destructor order on the stack)',
+      gen: deleterOrder
+    }],
+    examples: [
+      { title: 'Object pool with a "return, don\'t delete" deleter', html: `<p>Creating connections is expensive, so a pool hands out <code>unique_ptr</code>s whose deleter puts the object <b>back</b> into the pool. Callers use normal RAII and cannot forget to return it.</p>`, code: R`
+        #include <iostream>
+        #include <memory>
+        #include <vector>
+        struct Conn { int id; };
+        class Pool {
+            std::vector<std::unique_ptr<Conn>> free_;
+            int next_ = 0;
+        public:
+            struct ReturnToPool {
+                Pool* pool;
+                void operator()(Conn* c) const { pool->free_.emplace_back(c); }   // reuse, don't delete
+            };
+            using Handle = std::unique_ptr<Conn, ReturnToPool>;
+            Handle acquire() {
+                if (free_.empty()) free_.push_back(std::make_unique<Conn>(Conn{next_++}));
+                Conn* c = free_.back().release();
+                free_.pop_back();
+                return Handle(c, ReturnToPool{this});
+            }
+            std::size_t idle() const { return free_.size(); }
+        };
+        int main() {
+            Pool pool;
+            {
+                auto a = pool.acquire();
+                auto b = pool.acquire();
+                std::cout << a->id << b->id << " idle=" << pool.idle() << "\n";   // 01 idle=0
+            }
+            std::cout << "idle=" << pool.idle() << "\n";                          // idle=2
+            auto c = pool.acquire();                                               // reuses a connection
+            std::cout << "reused " << c->id << "\n";
+        }   // note: the pool must outlive its handles (c is destroyed before pool here)` },
+      { title: 'Exception safety puzzle (pre-C++17)', html: `${H.table(['Call', 'Possible order before C++17', 'Leak?'], [['<code>f(std::shared_ptr&lt;A&gt;(new A), g())</code>', '<code>new A</code> → <code>g()</code> throws → shared_ptr never constructed', '<span class="c-r">yes, A leaks</span>'], ['<code>f(std::make_shared&lt;A&gt;(), g())</code>', 'allocation and ownership happen inside one function', '<span class="c-g">no</span>']])}<p>C++17 guarantees each function argument is fully evaluated before another starts (order between arguments still unspecified), which closes this hole — but interviewers still ask, and the make_* habit costs nothing.</p>` },
+      { title: 'Handles that are not pointers (file descriptors)', html: `<p>A POSIX file descriptor is an <code>int</code>, not a pointer. unique_ptr works only if the deleter defines a nested <code>pointer</code> type that behaves like a nullable pointer — doable but awkward. A tiny dedicated RAII class (like the <code>Conn</code> handle in the RAII topic) is usually clearer:</p>`, code: R`
+        #include <utility>
+        class Fd {
+            int fd_ = -1;
+        public:
+            explicit Fd(int fd) noexcept : fd_(fd) {}
+            ~Fd() { if (fd_ >= 0) closeFd(fd_); }
+            Fd(Fd&& o) noexcept : fd_(std::exchange(o.fd_, -1)) {}
+            Fd& operator=(Fd&& o) noexcept { if (this != &o) { if (fd_ >= 0) closeFd(fd_); fd_ = std::exchange(o.fd_, -1); } return *this; }
+            Fd(const Fd&) = delete;
+            Fd& operator=(const Fd&) = delete;
+            int get() const noexcept { return fd_; }
+            static void closeFd(int) noexcept { /* ::close(fd) on POSIX */ }
+        };
+        int main() { Fd a(3); Fd b = std::move(a); return b.get() == 3 && a.get() == -1 ? 0 : 1; }` },
+      { title: 'Deleter size cheat sheet (x86-64, libstdc++)', html: `${H.table(['Declaration', 'sizeof'], [['<code>unique_ptr&lt;T&gt;</code>', '8'], ['<code>unique_ptr&lt;T, EmptyFunctor&gt;</code>', '8'], ['<code>unique_ptr&lt;T, decltype(captureless_lambda)&gt;</code>', '8'], ['<code>unique_ptr&lt;T, void(*)(T*)&gt;</code>', '16'], ['<code>unique_ptr&lt;T, std::function&lt;void(T*)&gt;&gt;</code>', '40 (avoid)'], ['<code>shared_ptr&lt;T&gt;</code> with any deleter', '16 (deleter lives in the control block)']])}` }
+    ],
+    deepDive: `<p><b>How unique_ptr stores the deleter:</b> libstdc++ keeps <code>std::tuple&lt;pointer, D&gt;</code>; tuple uses the empty-base optimisation so an empty <code>D</code> costs 0 bytes (MSVC uses a compressed pair; C++20 code often uses <code>[[no_unique_address]]</code>). The deleter is called only if the pointer is non-null, and <code>get_deleter()</code> gives access to it. If <code>D</code> defines <code>D::pointer</code>, unique_ptr stores that type instead of <code>T*</code> — the hook for "fancy pointers" and non-pointer handles.</p>
+      <p><b>How shared_ptr stores it:</b> the constructor taking a deleter allocates a <code>_Sp_counted_deleter&lt;Ptr, D, Alloc&gt;</code> control block that holds the deleter (and allocator). Disposal goes through a virtual call, so <code>shared_ptr&lt;Socket&gt;</code> objects with different deleters are interchangeable. <code>std::get_deleter&lt;D&gt;(sp)</code> can retrieve it if you know the type. Important guarantee: if allocating the control block throws, the shared_ptr constructor calls the deleter on the pointer you passed — no leak.</p>
+      <p><b>make_shared internals:</b> one allocation of <code>_Sp_counted_ptr_inplace</code> containing aligned storage for T. Destruction is split: <code>_M_dispose</code> runs <code>~T()</code> when use_count hits 0; <code>_M_destroy</code> frees the storage when the weak count hits 0 — exactly the "zombie bytes" in the visualiser. <code>allocate_shared</code> does the same with your allocator, and C++20 adds <code>make_shared&lt;T[]&gt;</code> and <code>make_shared_for_overwrite</code>.</p>
+      <p><b>Deleter pitfalls:</b> a deleter that throws → <code>std::terminate</code> (destructors are noexcept); a pool deleter that outlives its pool → use-after-free (the pool must outlive every handle, or the deleter should hold a <code>weak_ptr</code> to the pool and fall back to <code>delete</code>); a no-op deleter on a stack object handed to code that stores the shared_ptr → dangling. Converting <code>unique_ptr&lt;T, D&gt;</code> to <code>shared_ptr&lt;T&gt;</code> moves the deleter into the control block — that works fine.</p>`,
+    aiEra: `<p><b>What AI changes:</b> wrapping a C library is a perfect AI task: give it the header, ask for <code>using XPtr = std::unique_ptr&lt;X, XDeleter&gt;;</code> for each create/destroy pair, and you get a safe C++ layer in minutes instead of an afternoon.</p>
+      <p><b>Use AI as a partner:</b> <code>Here is the C API header. For every function returning an owned handle, find the matching release function and generate a zero-size unique_ptr deleter. Flag functions whose ownership is unclear from the docs.</code> Then read the library docs for the flagged ones — ownership rules ("caller must free" vs "borrowed reference") are exactly where models hallucinate.</p>
+      <p><b>Where AI goes wrong:</b> it pairs the wrong release function (<code>free</code> vs a library-specific <code>X_free</code>), uses <code>std::function</code> deleters (40 bytes and a heap allocation), calls the deleter on null handles the C API does not accept, or uses make_shared together with a custom deleter (does not compile). <b>What you must own:</b> the allocation/deallocation pairing for every resource, and when the make_* functions are the wrong tool.</p>`,
+    problems: [{
+      title: 'Wrap a C Database Handle With unique_ptr and a Custom Deleter', level: 'Medium', tags: ['custom deleter', 'unique_ptr', 'C interop', 'RAII'], companies: ['Bloomberg', 'Apple', 'Adobe'],
+      statement: `<p>A C library exposes <code>db_t* db_open(const char* path)</code> (returns NULL on failure), <code>void db_close(db_t*)</code>, <code>stmt_t* db_prepare(db_t*, const char* sql)</code> and <code>void stmt_finalize(stmt_t*)</code>. Statements must be finalized <b>before</b> their database is closed. Write a C++ layer with type aliases <code>DbPtr</code>/<code>StmtPtr</code> so that callers can never leak a handle or close in the wrong order, and <code>openDb</code> throws if the open fails.</p>`,
+      constraints: `Smart pointer handles must stay 8 bytes. No manual close calls in user code. Destruction order must be correct even when an exception is thrown between prepare and use.`,
+      example: `<p><code>auto db = openDb("a.db"); auto st = prepare(db, "SELECT 1");</code> → at scope end: ${H.c('g', 'stmt_finalize, then db_close')} (reverse order of declaration).</p>`,
+      brute: { why: `<p>Manual calls in every function: <code>db_close</code> forgotten on the error path, statements finalized after the database was already closed when a refactor reorders lines, and a <code>std::function</code> deleter that bloats each handle to 40 bytes.</p>`, code: R`
+        struct db_t { int open = 1; };
+        struct stmt_t { db_t* db; };
+        db_t* db_open(const char*) { return new db_t; }
+        void db_close(db_t* d) { delete d; }
+        stmt_t* db_prepare(db_t* d, const char*) { return new stmt_t{d}; }
+        void stmt_finalize(stmt_t* s) { delete s; }
+        int runManual(const char* path) {
+            db_t* db = db_open(path);
+            stmt_t* st = db_prepare(db, "SELECT 1");
+            if (!st) return -1;                 // LEAK: db never closed
+            db_close(db);                       // BUG: closed before finalize
+            stmt_finalize(st);
+            return 0;
+        }` },
+      mcq: { q: 'Which deleter keeps <code>std::unique_ptr&lt;db_t, D&gt;</code> at 8 bytes?', options: ['An empty struct with <code>operator()(db_t*)</code>', '<code>void(*)(db_t*)</code> function pointer', '<code>std::function&lt;void(db_t*)&gt;</code>', 'A lambda capturing the path'], answer: 0, explain: 'An empty (stateless) deleter takes no storage thanks to the empty-base optimisation; function pointers and std::function must be stored inside the unique_ptr.' },
+      hints: [`<p>Hint 1: One stateless deleter struct per release function: <code>struct DbCloser { void operator()(db_t* d) const noexcept { db_close(d); } };</code></p>`, `<p>Hint 2: <code>using DbPtr = std::unique_ptr&lt;db_t, DbCloser&gt;;</code> and the same for statements. A factory <code>openDb</code> checks for null and throws.</p>`, `<p>Hint 3: Order: locals die in reverse, so declaring <code>db</code> before <code>st</code> already finalizes first. To make wrong usage impossible, have <code>prepare</code> take <code>const DbPtr&amp;</code> (the database must exist already) and document that statements must not outlive it — or bundle them in a class whose members are declared db first, statements after.</p>`],
+      solution: {
+        approach: `<p>Zero-size functor deleters + type aliases give 8-byte RAII handles. Factories translate C error conventions (NULL) into exceptions. Correct teardown order falls out of C++'s reverse-destruction rule; a <code>Connection</code> class that declares the database member before its statement members makes the order a property of the type rather than of each caller.</p>`,
+        code: R`
+          #include <iostream>
+          #include <memory>
+          #include <stdexcept>
+          #include <string>
+          #include <vector>
+          // --- pretend C library ---
+          struct db_t { std::string path; };
+          struct stmt_t { db_t* db; std::string sql; };
+          db_t* db_open(const char* p) { return p && *p ? new db_t{p} : nullptr; }
+          void db_close(db_t* d) { std::cout << "db_close " << d->path << "\n"; delete d; }
+          stmt_t* db_prepare(db_t* d, const char* sql) { return new stmt_t{d, sql}; }
+          void stmt_finalize(stmt_t* s) { std::cout << "finalize " << s->sql << "\n"; delete s; }
+          // --- C++ layer ---
+          struct DbCloser   { void operator()(db_t* d) const noexcept { db_close(d); } };
+          struct StmtCloser { void operator()(stmt_t* s) const noexcept { stmt_finalize(s); } };
+          using DbPtr   = std::unique_ptr<db_t, DbCloser>;
+          using StmtPtr = std::unique_ptr<stmt_t, StmtCloser>;
+          static_assert(sizeof(DbPtr) == sizeof(db_t*), "deleter must be zero-size");
+
+          DbPtr openDb(const std::string& path) {
+              DbPtr db(db_open(path.c_str()));
+              if (!db) throw std::runtime_error("cannot open " + path);
+              return db;
+          }
+          StmtPtr prepare(const DbPtr& db, const std::string& sql) {
+              StmtPtr st(db_prepare(db.get(), sql.c_str()));
+              if (!st) throw std::runtime_error("prepare failed: " + sql);
+              return st;
+          }
+          class Connection {                     // member order = teardown order guarantee
+              DbPtr db_;                         // declared first -> destroyed last
+              std::vector<StmtPtr> stmts_;       // destroyed first
+          public:
+              explicit Connection(const std::string& path) : db_(openDb(path)) {}
+              stmt_t* add(const std::string& sql) { stmts_.push_back(prepare(db_, sql)); return stmts_.back().get(); }
+          };
+          int main() {
+              Connection c("app.db");
+              c.add("SELECT 1");
+              c.add("SELECT 2");
+          }   // finalize SELECT 1, finalize SELECT 2, db_close app.db
+        `,
+        dry: { head: ['event', 'handles alive', 'output'], rows: [
+          ['Connection c("app.db")', 'db_', '—'],
+          ['add("SELECT 1"), add("SELECT 2")', 'db_, stmts_[0], stmts_[1]', '—'],
+          ['~Connection: stmts_ destroyed first', 'db_', 'finalize SELECT 1, finalize SELECT 2'],
+          ['then db_ destroyed', '—', 'db_close app.db'],
+          ['openDb("") instead', '—', 'throws, nothing to clean']
+        ] },
+        complexity: `<p>O(1) per handle operation; each handle is 8 bytes; no extra allocations beyond the C library's own.</p>`,
+        followUps: ['How would you let a statement safely outlive the Connection object (hint: shared_ptr&lt;db_t&gt; inside the statement\'s deleter)?', 'What if <code>db_close</code> can fail and you need to report the error?', 'How does <code>std::out_ptr</code> (C++23) help with C APIs that return handles through a <code>T**</code> parameter?']
+      }
+    }]
+  });
   registerModule({ id: 'cpp06', title: 'Memory Management, RAII & Smart Pointers', intro: '<p>x</p>', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview });
 })();

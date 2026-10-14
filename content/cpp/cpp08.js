@@ -116,7 +116,7 @@ int main() {
         var k = Math.min(3, n - 1);
         frames.push({ narr: '<b>Random access:</b> a vector iterator can <b>teleport</b>. <code>v.begin() + ' + k + '</code> lands on index ' + k + ' in O(1), and <code>it - v.begin()</code> gives back the index ' + k + '. A <code>list</code> or <code>set</code> iterator cannot do this — it would have to step ' + k + ' times.', parts: [
           { type: 'array', label: 'v', values: cells, ptr: (function () { var q = {}; q[0] = 'begin'; q[k] = 'begin+' + k; q[n] = 'end'; return q; })(), hl: one(k, 'sel'), showIdx: true },
-          { type: 'vars', label: 'Random-access maths', vals: { '*(v.begin()+' + k + ')': a[k], '(it - v.begin())': k }, hl: { '*(v.begin()+' + k + ')': 'ok' } }
+          { type: 'vars', label: 'Random-access maths', vals: (function () { var o = {}; o['*(v.begin()+' + k + ')'] = a[k]; o['it - v.begin()'] = k; return o; })(), hl: (function () { var o = {}; o['*(v.begin()+' + k + ')'] = 'ok'; return o; })() }
         ] });
         frames.push({ narr: '<b>Reverse iterators:</b> <code>rbegin()</code> sits on the <b>last</b> element and <code>rend()</code> is one step <b>before</b> the first. <code>++r</code> moves left. Same loop shape, opposite direction.', parts: [
           { type: 'array', label: 'v', values: a, ptr: (function () { var q = {}; q[n - 1] = 'rbegin'; return q; })(), hl: one(n - 1, 'cur'), showIdx: true },

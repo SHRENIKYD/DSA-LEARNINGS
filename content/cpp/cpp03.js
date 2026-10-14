@@ -1461,7 +1461,7 @@ int main() {
           { l: 2, n: 'Inside f, <code>sizeof(arr)</code> is the size of <code>int*</code>: <b>8</b>. f has no idea there are 5 elements. <code>sizeof(arr)/sizeof(arr[0])</code> would give 8/4 = <b>2</b>. Wrong!', m: A({ 0: 'cur' }, { 0: ['arr'] }), m2: F('0x200', { 0: 'bad' }), v: { 'sizeof(arr)': 8, 'sizeof(arr)/sizeof(arr[0])': '2 (bug!)' }, vh: { 'sizeof(arr)/sizeof(arr[0])': 'bad' }, o: '20\n8' },
           { l: 8, n: 'Back in main: <code>int* p = a;</code> decays again. p holds 0x200 and steps <b>one int</b> at a time: <code>p + 1</code> = 0x204.', m: A({ 0: 'cur', 1: 'win' }, { 0: ['p'], 1: ['p+1'] }), v: { 'p': '0x200', 'p + 1': '0x204' } },
           { l: 9, n: '<code>auto q = &amp;a;</code> is an <b>exception</b>: no decay. q has type <code>int (*)[5]</code>, "pointer to an array of 5 ints". Same address 0x200, but <code>q + 1</code> jumps a <b>whole array</b>: 0x200 + 20 = <b>0x214</b>.', m: A({ 0: 'sel', 5: 'bad' }, { 0: ['q'], 5: ['q+1'] }), v: { 'q': '0x200', 'q + 1': '0x214', '*q': 'the array a (int[5])' }, vh: { 'q + 1': 'bad' } },
-          { l: 1, n: 'Fixes for f: take <code>std::span&lt;const int&gt;</code> (pointer + size travel together), a template <code>int (&amp;arr)[N]</code>, or use <code>std::array</code>/<code>std::vector</code>, which never decay.', m: A({}), m2: { label: 'f(std::span<const int> s) frame: 16 bytes', cells: [['0x1f0', '0x200', 's.data()'], ['0x1f8', '5', 's.size()']], hl: { 0: 'ok', 1: 'ok' } }, tb: { type: 'table', label: 'How each parameter style sees a', columns: ['parameter', 'what is copied', 'size known?'], rows: [['int arr[] / int* arr', '8-byte address', 'no'], ['int (&arr)[N] (template)', 'nothing (alias)', 'yes, N'], ['std::span<const int>', 'address + length', 'yes'], ['std::array<int,5> (by value)', 'all 20 bytes', 'yes']], hl: { 0: 'bad', 1: 'ok', 2: 'ok' } } }
+          { l: 1, n: 'Fixes for f: take <code>std::span&lt;const int&gt;</code> (pointer + size travel together), a template <code>int (&amp;arr)[N]</code>, or use <code>std::array</code>/<code>std::vector</code>, which never decay.', m: A({}), m2: { label: 'f(std::span&lt;const int&gt; s) frame: 16 bytes', cells: [['0x1f0', '0x200', 's.data()'], ['0x1f8', '5', 's.size()']], hl: { 0: 'ok', 1: 'ok' } }, tb: { type: 'table', label: 'How each parameter style sees a', columns: ['parameter', 'what is copied', 'size known?'], rows: [['int arr[] / int* arr', '8-byte address', 'no'], ['int (&arr)[N] (template)', 'nothing (alias)', 'yes, N'], ['std::span<const int>', 'address + length', 'yes'], ['std::array<int,5> (by value)', 'all 20 bytes', 'yes']], hl: { 0: 'bad', 1: 'ok', 2: 'ok' } } }
         ];
         return steps(T7_CODE, f);
       }
@@ -1569,6 +1569,242 @@ int main() {
         dry: { head: ['r', 'm + r (address)', 'row values', 'out[r]'], rows: [['0', '0x300', '1 2 3 4', '10'], ['1', '0x310 (+16 bytes)', '5 6 7 8', '26'], ['2', '0x320 (+16 bytes)', '9 10 11 12', '42']] },
         complexity: `<p>Time O(R·C), extra space O(1) beyond the output.</p>`,
         followUps: ['How would you accept any column count at runtime? (flat buffer + width, or <code>std::mdspan</code> in C++23)', 'Column sums: why is iterating column-first slower on big matrices? (cache lines, module cpp12)', 'Why does <code>int** </code> work for <code>new int*[R]</code> jagged arrays but not for <code>int[R][C]</code>?']
+      }
+    }]
+  });
+
+  /* ======================================================================
+     TOPIC 8: Dangling pointers and references
+     ====================================================================== */
+  var T8A_CODE = [
+    'int* makeNumber() {',
+    '    int local = 42;',
+    '    return &local;        // address of a dying local!',
+    '}',
+    'int other() { int junk = 999; return junk; }',
+    'int main() {',
+    '    int* p = makeNumber(); // p -> dead stack slot',
+    '    other();               // reuses the same slot',
+    '    cout << *p;            // UB: often prints 999',
+    '}'
+  ].join('\n');
+  var T8B_CODE = [
+    'vector<int> v = {1, 2, 3};   // size 3, capacity 3',
+    'int* p = &v[0];              // pointer into the buffer',
+    'int& r = v[1];               // reference into the buffer',
+    'v.push_back(4);              // full! new buffer, copy, free old',
+    'cout << *p << r;             // UB: both dangle',
+    'p = &v[0];                   // fix: re-take after growth',
+    '// or v.reserve(...) first, or keep INDICES'
+  ].join('\n');
+
+  topics.push({
+    title: 'Dangling Pointers &amp; References: Bug Hunts',
+    analogy: `<p>You stay in <b>hotel room 204</b> and keep the room number written down after you check out. The number still looks perfectly valid. Go back later and the door may open... onto <b>someone else's luggage</b>. Maybe the room is empty and everything <i>seems</i> fine; maybe security throws you out (crash). A <b>dangling pointer</b> is that old room number: an address that was valid once, but the object that lived there is gone, and the space may already belong to someone else.</p>`,
+    explain: `<p>A pointer or reference <b>dangles</b> when the object it refers to has <b>ended its lifetime</b>, but the pointer still holds the old address. Using it (reading, writing, calling a method, even deleting again) is <b>undefined behaviour</b>. The scary part: it often appears to work, because the old bytes are still there until something reuses the memory.</p>
+<h4>1. The five classic ways to create one</h4>
+${H.table(['#', 'cause', 'tiny example', 'why it dangles'], [
+  ['1', 'return address/reference of a local', '<code>int* f(){ int x; return &amp;x; }</code>', 'locals die when the function returns'],
+  ['2', 'use after <code>delete</code>/<code>free</code>', '<code>delete p; *p = 1;</code>', 'heap block handed back to the allocator'],
+  ['3', 'container reallocation / erase', '<code>int* p = &amp;v[0]; v.push_back(x);</code>', 'vector moved its elements to a new buffer'],
+  ['4', 'view of a temporary', '<code>string_view s = string("hi") + "!";</code>', 'the temporary string dies at the semicolon'],
+  ['5', 'out-of-scope block / captured reference', '<code>int* p; { int y; p = &amp;y; } *p;</code>', 'y died at the closing brace']
+])}
+<h4>2. Why "it works on my machine"</h4>
+<p>When a function returns, its stack frame is not wiped; the bytes just become "free to reuse". Reading them right away often still shows the old value. The next function call reuses the same stack slots and overwrites them. Similarly, freed heap memory keeps its old contents until the allocator hands it out again. So dangling bugs depend on timing, optimization level and unrelated code changes: the worst kind of bug.</p>
+<h4>3. Vector reallocation, in detail</h4>
+<p>A <code>std::vector</code> keeps its elements in one heap buffer with some spare <b>capacity</b>. When <code>push_back</code> needs more room than the capacity, it allocates a bigger buffer (typically 1.5× or 2×), moves elements over, and <b>frees the old buffer</b>. Every pointer, reference and iterator into the old buffer now dangles. <code>insert</code>, <code>emplace_back</code>, <code>resize</code>, <code>reserve</code> and <code>shrink_to_fit</code> can do the same; <code>erase</code> invalidates everything from the erased point onward.</p>
+<h4>4. How to avoid dangling (habits)</h4>
+<ul>
+<li><b>Return by value</b>, not a pointer/reference to a local. Copy elision makes this free for most types.</li>
+<li><b>Own heap objects with smart pointers</b> (<code>std::unique_ptr</code>, <code>std::shared_ptr</code>; module cpp06) instead of raw <code>new</code>/<code>delete</code>.</li>
+<li><b>Store indices</b> instead of pointers into a growing vector, or <code>reserve()</code> the final size before taking pointers.</li>
+<li><b>Views (<code>string_view</code>, <code>span</code>) must never outlive their owner.</b> Do not store them in members unless lifetime is guaranteed.</li>
+<li><b>Lambdas</b> that run later (threads, callbacks) should capture by value, not <code>[&amp;]</code>.</li>
+<li>After <code>delete p;</code>, set <code>p = nullptr;</code>, knowing it only protects that one copy.</li>
+</ul>
+<h4>5. How to catch them (tools)</h4>
+${H.table(['tool', 'how', 'catches'], [
+  ['compiler warnings', '<code>-Wall -Wextra</code> (<code>-Wreturn-local-addr</code>, <code>-Wdangling-pointer</code>, GCC 13+ <code>-Wdangling-reference</code>)', 'obvious returns of locals, some temporaries'],
+  ['AddressSanitizer', '<code>g++ -g -fsanitize=address</code>', 'heap-use-after-free, stack-use-after-return*, use-after-scope'],
+  ['Valgrind memcheck', '<code>valgrind ./a.out</code>', 'invalid reads/writes on the heap (slower, no recompile)'],
+  ['static analysis / lifetime checks', 'clang-tidy, Clang <code>[[clang::lifetimebound]]</code>, MSVC lifetime profile', 'some dangling views and references at compile time'],
+  ['hardened STL', '<code>-D_GLIBCXX_ASSERTIONS</code>, libc++ hardening modes', 'out-of-bounds and some invalid-iterator use']
+])}
+<p><small>* stack-use-after-return needs <code>ASAN_OPTIONS=detect_stack_use_after_return=1</code> on GCC; Clang enables it by default in recent versions.</small></p>`,
+    clues: [
+      '"Works in debug, crashes in release" / "prints garbage sometimes" → suspect dangling pointer or other UB',
+      '"Return a pointer/reference from a function" → ask: does the object outlive the call?',
+      '"Store pointers to elements, then keep adding elements" → vector reallocation invalidates them; use indices or <code>reserve</code>',
+      '"heap-use-after-free" / "stack-use-after-return" in an ASan report → dangling pointer, read the allocation and free stacks it prints',
+      '"Returning <code>std::string_view</code> or <code>std::span</code>" → check the owner\'s lifetime, especially temporaries',
+      '"Callback / thread captures <code>[&amp;]</code>" → captured locals may be gone when it runs'
+    ],
+    code: [{ lang: 'cpp', title: 'Five dangling bugs and their fixes', code: `#include <iostream>
+#include <string>
+#include <string_view>
+#include <vector>
+#include <memory>
+using namespace std;
+
+// 1. Returning the address of a local
+// int* bad1() { int x = 5; return &x; }            // warning: address of local variable returned
+int good1() { int x = 5; return x; }                 // FIX: return by value
+
+// 4. A view of a temporary
+// string_view bad4() { return string("temp"); }    // the string dies at the end of the return
+string good4() { return string("temp"); }            // FIX: return the owning string
+
+int main() {
+    // 2. Use after delete
+    int* h = new int(7);
+    delete h;
+    // cout << *h;                                   // heap-use-after-free
+    h = nullptr;                                     // at least make it detectable
+    auto owned = make_unique<int>(7);                // FIX: let an owner manage lifetime
+    cout << *owned << '\\n';                          // 7
+
+    // 3. Vector reallocation
+    vector<int> v{1, 2, 3};
+    size_t idx = 0;                                  // FIX: remember the INDEX...
+    // int* p = &v[0];                               // ...not a pointer that push_back may invalidate
+    v.push_back(4);
+    cout << v[idx] << '\\n';                          // 1, always valid
+
+    // 5. Pointer to a variable from an ended scope
+    int* q = nullptr;
+    {
+        int y = 9;
+        q = &y;
+        cout << *q << '\\n';                          // fine here: y is alive
+    }
+    // cout << *q;                                   // y is dead: UB
+    q = nullptr;
+
+    cout << good1() << ' ' << good4() << '\\n';       // 5 temp
+}` }],
+    codeTitle: ['Bug catalogue with fixes'],
+    viz: [{
+      title: 'Returning the address of a local: the stack slot gets reused',
+      gen: function () {
+        function S(slot, owner, pv, hl, p) {
+          return { label: 'Stack memory (slot 0x1f0 is reused by every call)', cells: [['0x1f0', slot, owner], ['0x200', pv, 'main: p']], hl: hl || {}, p: p || {} };
+        }
+        var f = [
+          { l: 7, n: 'main calls <code>makeNumber()</code>. A new <b>stack frame</b> is pushed; its local <code>local</code> gets the slot at 0x1f0.', m: S('??', 'makeNumber: local', '??', { 0: 'cur' }), g: { type: 'stack', label: 'Call stack', items: ['main()', 'makeNumber()'], hl: { 1: 'cur' } } },
+          { l: 2, n: '<code>int local = 42;</code> writes 42 into slot 0x1f0. Perfectly fine so far.', m: S('42', 'makeNumber: local', '??', { 0: 'ok' }), g: { type: 'stack', label: 'Call stack', items: ['main()', 'makeNumber()'], hl: { 1: 'cur' } } },
+          { l: 3, n: '<code>return &amp;local;</code> hands back 0x1f0. GCC warns: <i>"function returns address of local variable"</i>. The moment the function returns, <code>local</code> <b>stops existing</b>.', m: S('42', 'makeNumber: local', '??', { 0: 'cur' }), g: { type: 'stack', label: 'Call stack', items: ['main()', 'makeNumber()'], hl: { 1: 'bad' } }, v: { 'returned': '0x1f0' } },
+          { l: 7, n: 'Back in main, <code>p = 0x1f0</code>. The frame is popped but the bytes are not erased: the slot still shows 42, now <b>owned by nobody</b>. p is dangling, and reading <code>*p</code> right now might "work". That is the trap.', m: S('42 (dead)', '(free)', '0x1f0', { 0: 'done', 1: 'bad' }, { 0: ['*p ?'] }), g: { type: 'stack', label: 'Call stack', items: ['main()'], hl: { 0: 'cur' } }, v: { 'p': '0x1f0', 'object at p': 'none (lifetime ended)' }, vh: { 'object at p': 'bad' } },
+          { l: 8, n: 'main calls <code>other()</code>. Its frame lands in the <b>same place</b>, and <code>junk = 999</code> is written into slot 0x1f0.', m: S('999', 'other: junk', '0x1f0', { 0: 'cur', 1: 'bad' }, { 0: ['*p'] }), g: { type: 'stack', label: 'Call stack', items: ['main()', 'other()'], hl: { 1: 'cur' } } },
+          { l: 9, n: '<code>cout &lt;&lt; *p;</code> reads 0x1f0 and typically prints <b>999</b> (or anything else: it is UB, and optimizers may even replace the read). ASan with use-after-return detection reports <i>stack-use-after-return</i>.', m: S('999', '(free)', '0x1f0', { 0: 'bad', 1: 'bad' }, { 0: ['*p 💥'] }), g: { type: 'stack', label: 'Call stack', items: ['main()'], hl: { 0: 'cur' } }, o: '999   <- not 42!' },
+          { l: 1, n: '<b>Fix:</b> return by value: <code>int makeNumber() { int local = 42; return local; }</code>. The value is copied out before the frame disappears, and nothing points into dead memory.', m: S('-', '(free)', '42 (a copy)', { 1: 'ok' }), g: { type: 'stack', label: 'Call stack', items: ['main()'], hl: { 0: 'ok' } }, o: '42' }
+        ];
+        return steps(T8A_CODE, f, { codeLabel: 'Buggy program' });
+      }
+    }, {
+      title: 'push_back reallocation: pointers into the old buffer dangle',
+      gen: function () {
+        function OLD(vals, hl, p, dead) { return { label: 'Heap: OLD buffer (capacity 3)' + (dead ? ': FREED' : ''), cells: [['0x500', vals[0], 'v[0]'], ['0x504', vals[1], 'v[1]'], ['0x508', vals[2], 'v[2]']], hl: hl || {}, p: p || {} }; }
+        function NEW(vals, hl, p) { var c = []; for (var i = 0; i < 6; i++) c.push([hex(0x700 + 4 * i), vals[i] === undefined ? '-' : vals[i], i < 4 ? 'v[' + i + ']' : '']); return { label: 'Heap: NEW buffer (capacity 6)', cells: c, hl: hl || {}, p: p || {} }; }
+        var f = [
+          { l: 1, n: '<code>vector&lt;int&gt; v = {1, 2, 3};</code> The vector object holds a pointer to a heap buffer at 0x500 with size 3 and capacity 3: <b>no spare room</b>.', m: OLD([1, 2, 3], { 0: 'ok', 1: 'ok', 2: 'ok' }), v: { 'v.data()': '0x500', 'size': 3, 'capacity': 3 } },
+          { l: 2, n: '<code>int* p = &amp;v[0];</code> p holds 0x500.', m: OLD([1, 2, 3], { 0: 'cur' }, { 0: ['p'] }), v: { 'p': '0x500', 'v.data()': '0x500' } },
+          { l: 3, n: '<code>int&amp; r = v[1];</code> r is bound to the element at 0x504.', m: OLD([1, 2, 3], { 1: 'cur' }, { 0: ['p'], 1: ['r'] }), v: { 'p': '0x500', '&r': '0x504' } },
+          { l: 4, n: '<code>v.push_back(4);</code> size would be 4 but capacity is 3, so the vector allocates a <b>new, bigger buffer</b> at 0x700 (libstdc++ doubles: capacity 6) and copies/moves 1, 2, 3 across...', m: OLD([1, 2, 3], { 0: 'win', 1: 'win', 2: 'win' }, { 0: ['p'], 1: ['r'] }), m2: NEW([1, 2, 3], { 0: 'ok', 1: 'ok', 2: 'ok' }), v: { 'v.data()': '0x700 (moved!)' }, vh: { 'v.data()': 'cur' } },
+          { l: 4, n: '...writes 4 into the new buffer, then <b>frees the old buffer</b>. p and r still hold 0x500 and 0x504: memory that no longer belongs to the vector.', m: OLD(['?', '?', '?'], { 0: 'bad', 1: 'bad', 2: 'bad' }, { 0: ['p (dangling)'], 1: ['r (dangling)'] }, true), m2: NEW([1, 2, 3, 4], { 3: 'ok' }), v: { 'p': '0x500', 'v.data()': '0x700', 'size': 4, 'capacity': 6 }, vh: { 'p': 'bad' } },
+          { l: 5, n: '<code>cout &lt;&lt; *p &lt;&lt; r;</code> reads freed memory: <b>heap-use-after-free</b>. It may print 1 and 2 (stale bytes), garbage, or crash. AddressSanitizer stops the program here with the exact line.', m: OLD(['?', '?', '?'], { 0: 'bad', 1: 'bad' }, { 0: ['*p 💥'], 1: ['r 💥'] }, true), m2: NEW([1, 2, 3, 4]), o: 'ERROR: AddressSanitizer: heap-use-after-free on address 0x500' },
+          { l: 6, n: '<b>Fix 1:</b> re-take the pointer after the container changes: <code>p = &amp;v[0];</code> → 0x700.', m2: NEW([1, 2, 3, 4], { 0: 'ok' }, { 0: ['p'] }), v: { 'p': '0x700', '*p': 1 }, vh: { 'p': 'ok' } },
+          { l: 7, n: '<b>Fix 2:</b> <code>v.reserve(n)</code> before taking pointers, if you know the final size (no reallocation until capacity is exceeded). <b>Fix 3 (most robust):</b> store <b>indices</b>; <code>v[i]</code> is valid wherever the buffer moves.', m2: NEW([1, 2, 3, 4], { 0: 'ok', 1: 'ok', 2: 'ok', 3: 'ok' }), tb: { type: 'table', label: 'Does it survive push_back with reallocation?', columns: ['what you saved', 'still valid?'], rows: [['int* p = &v[i]', 'no'], ['int& r = v[i]', 'no'], ['iterator it = v.begin() + i', 'no'], ['size_t i (index)', 'yes'], ['std::list / std::deque element pointer', 'yes (node-based / push at ends)']], hl: { 0: 'bad', 1: 'bad', 2: 'bad', 3: 'ok', 4: 'ok' } } }
+        ];
+        return steps(T8B_CODE, f, { codeLabel: 'Buggy program' });
+      }
+    }],
+    examples: [
+      { title: 'Bug hunt: string_view of a temporary', html: `<p><code>std::string_view sv = getName() + "!";</code> where <code>getName()</code> returns a <code>std::string</code>. The concatenation creates a temporary <code>std::string</code>, <code>sv</code> points into its buffer, and the temporary is destroyed at the <b>end of the statement</b>. Printing <code>sv</code> on the next line reads freed memory. Fix: <code>std::string s = getName() + "!";</code> (own the data).</p>`, code: { lang: 'cpp', code: `#include <iostream>
+#include <string>
+#include <string_view>
+std::string getName() { return "Ada"; }
+int main() {
+    // std::string_view sv = getName() + "!";   // BUG: view of a temporary that dies at ';'
+    std::string s = getName() + "!";            // FIX: own the characters
+    std::string_view sv = s;                    // a view is fine while s is alive
+    std::cout << sv << '\\n';                    // Ada!
+}` } },
+      { title: 'Bug hunt: lambda capturing a local by reference', html: `<p>A callback stored for later captures <code>count</code> by reference. When it runs, <code>setup()</code> has already returned and <code>count</code> is gone. Fix: capture by value <code>[count]</code> or move state into the lambda <code>[c = count]() mutable</code>.</p>`, code: { lang: 'cpp', code: `#include <functional>
+#include <iostream>
+std::function<int()> setup() {
+    int count = 3;
+    // return [&]() { return count; };   // BUG: count dies when setup() returns
+    return [count]() { return count; };   // FIX: the lambda keeps its own copy
+}
+int main() {
+    auto cb = setup();
+    std::cout << cb() << '\\n';           // 3
+}` } },
+      { title: 'Predict: double delete and delete-then-use', html: `${H.table(['code', 'outcome'], [['<code>int* p = new int(1); delete p; delete p;</code>', '<span class="c-r">UB: double free</span>, glibc usually aborts: "free(): double free detected"'], ['<code>delete p; p = nullptr; delete p;</code>', '<span class="c-g">fine</span>: deleting nullptr is a no-op'], ['<code>int* q = p; delete p; p = nullptr; *q = 2;</code>', '<span class="c-r">UB: use-after-free</span> via the alias q']])}<p>The root problem is <b>unclear ownership</b>: two raw pointers, nobody sure who deletes. <code>std::unique_ptr</code> makes exactly one owner and deletes once, automatically.</p>` },
+      { title: 'Bug hunt: erase inside a range-for', html: `<p>Erasing from a vector while range-for iterating invalidates the hidden iterator: UB, often skipped elements or a crash. Fix: the erase-remove idiom (or C++20 <code>std::erase_if</code>).</p>`, code: { lang: 'cpp', code: `#include <vector>
+#include <iostream>
+int main() {
+    std::vector<int> v{1, 2, 3, 4, 6};
+    // for (int x : v) if (x % 2 == 0) v.erase(std::find(v.begin(), v.end(), x));   // BUG: invalidates the loop iterator
+    std::erase_if(v, [](int x) { return x % 2 == 0; });   // FIX (C++20): one safe pass
+    for (int x : v) std::cout << x << ' ';                 // 1 3
+}` } }
+    ],
+    deepDive: `<p><b>Lifetime is the real concept.</b> C++ objects have a lifetime that begins when construction finishes and ends when destruction starts (or storage is released). Pointers do not track lifetime; they just hold numbers. Automatic objects (locals) end at the closing brace, temporaries at the end of the full expression (unless extended by a direct <code>const&amp;</code>/<code>&amp;&amp;</code> binding), heap objects at <code>delete</code>, container elements whenever the container reallocates or erases.</p>
+<p><b>How AddressSanitizer catches them.</b> ASan maps every 8 bytes of memory to 1 "shadow" byte describing whether they are addressable. Freed heap blocks are poisoned and placed in a <b>quarantine</b> so they are not reused immediately, which turns "maybe works" into a guaranteed report showing three stack traces: the bad access, the free, and the original allocation. Cost: roughly 2× slowdown and 2-3× memory, fine for tests and CI. For stack-use-after-return, ASan moves locals to a fake heap-allocated stack.</p>
+<p><b>Security impact.</b> Use-after-free is one of the most exploited bug classes in browsers and kernels: an attacker arranges for their own data to be allocated into the freed slot, so the dangling pointer reads attacker-controlled memory (for example a fake vtable pointer). Google and Microsoft have reported for years that around 70% of their serious security bugs are memory-safety issues. Mitigations include MiraclePtr/BackupRefPtr in Chromium, hardened allocators (Scudo, PartitionAlloc), and ARM Memory Tagging Extension (MTE) shipping on recent Android phones, which tags pointers and memory so a stale pointer's tag no longer matches.</p>
+<p><b>The language is responding.</b> Ongoing work includes compiler lifetime analysis (<code>-Wdangling-reference</code>, <code>[[clang::lifetimebound]]</code>), the C++26 hardened standard library and erroneous-behaviour rules for uninitialized reads, and "profiles" proposals for opt-in safety guarantees. None of these catches everything; ownership discipline (RAII, smart pointers, value semantics) remains the primary defence.</p>
+<p><b>Iterator invalidation cheat sheet (preview of cpp07):</b> vector/string: insert/push_back invalidate all if reallocating, else from the insertion point; erase invalidates from the erased point. deque: inserting at either end invalidates iterators but not references. list/set/map: only the erased element's iterators/pointers are invalidated. unordered_map: rehash invalidates iterators but not references or pointers to elements.</p>`,
+    aiEra: `<p><b>What AI changes:</b> paste an ASan report and an assistant will usually pinpoint the dangling access, the free site and a fix in seconds. AI review bots now flag "pointer into vector across push_back" and "string_view returned from temporary" patterns in pull requests.</p>
+<p><b>Use AI as a partner:</b> ask <code>For every pointer, reference, iterator, string_view and span in this function, state which object it refers to and whether that object is guaranteed alive at each use</code>. That lifetime table is the exact reasoning a reviewer does. Then confirm with tests under <code>-fsanitize=address,undefined</code> in CI.</p>
+<p><b>Where AI goes wrong:</b> generated code frequently returns <code>std::string_view</code>/<code>std::span</code> into locals, captures <code>[&amp;]</code> in callbacks that outlive the scope, keeps pointers across <code>push_back</code>, and "fixes" crashes by adding null checks that do nothing for dangling (non-null!) pointers. Its explanations of UB sometimes claim deterministic outcomes ("this prints 42"), which is false.</p>
+<p><b>What you must still own:</b> lifetime reasoning. For each pointer, know its owner and when that owner dies. Interviewers love dangling-pointer bug hunts precisely because they test this reasoning, and production incidents caused by AI-generated lifetime bugs are reviewed by humans who must understand them.</p>`,
+    problems: [{
+      title: 'Remember the Longest Name (Without Dangling)',
+      level: 'Medium', tags: ['dangling pointer', 'vector reallocation', 'bug hunt'], companies: ['Google', 'Meta', 'Bloomberg'],
+      statement: `<p>Names arrive one by one. Append each to a <code>std::vector&lt;std::string&gt; names</code>, and at the end return the longest name (first one on ties). A colleague wrote it by keeping a <code>const std::string*</code> to the current longest element. It passes small tests but crashes in production. Explain the bug and fix it while still doing the work in one pass.</p>`,
+      constraints: `<p>1 ≤ number of names ≤ 10<sup>5</sup>, each length ≤ 100. One pass, no re-scan of the vector.</p>`,
+      example: `<p>Input: ${H.chips(['ann', 'bartholomew', 'cy', 'dorothea'])} → output ${H.c('g', '"bartholomew"')}. With the buggy version, the pointer to "bartholomew" is taken when the vector has capacity 2; the third <code>push_back</code> reallocates, and the pointer now refers to <span class="c-r">freed memory</span>.</p>`,
+      brute: { why: `<p>The buggy approach: keep a pointer to the longest element while appending. Every <code>push_back</code> that exceeds capacity moves all strings to a new buffer and frees the old one, so the saved pointer dangles. Reading <code>longest-&gt;size()</code> is a heap-use-after-free that small inputs may not reveal.</p>`, code: { lang: 'cpp', code: `#include <string>
+#include <vector>
+// BUGGY: pointer into a vector that keeps growing
+std::string longestBuggy(const std::vector<std::string>& input) {
+    std::vector<std::string> names;
+    const std::string* longest = nullptr;
+    for (const auto& s : input) {
+        names.push_back(s);                                   // may reallocate: 'longest' dangles
+        if (!longest || s.size() > longest->size())           // use-after-free read here
+            longest = &names.back();
+    }
+    return longest ? *longest : std::string{};
+}` } },
+      mcq: { q: 'Which change makes the one-pass version safe <b>regardless of how many names arrive</b>?', options: ['Check <code>longest != nullptr</code> before using it', 'Store the <b>index</b> of the longest name instead of a pointer', 'Use <code>names.shrink_to_fit()</code> after each push', 'Make <code>longest</code> a <code>const</code> pointer'], answer: 1, explain: 'An index stays meaningful after reallocation; <code>names[best]</code> always reaches the element in the current buffer. A dangling pointer is not null, so a null check does nothing. <code>reserve(input.size())</code> would also work here because the final size is known.' },
+      hints: [`<p>Ask "what can invalidate a pointer into a vector?" Any growth past capacity moves every element.</p>`, `<p>Indices survive reallocation. Track <code>size_t best</code>, and compare against <code>names[best].size()</code>.</p>`, `<p>Recipe: <code>names.push_back(s); if (names.size() == 1 || s.size() &gt; names[best].size()) best = names.size() - 1;</code> Return <code>names[best]</code> (empty-input guard). Alternative: <code>names.reserve(input.size())</code> before the loop, but comment why, because a future edit can silently break it.</p>`],
+      solution: {
+        approach: `<p>Replace the pointer with an index. Strict <code>&gt;</code> keeps the first longest on ties. Optionally also <code>reserve</code> for performance, but correctness must not depend on it.</p>`,
+        code: { lang: 'cpp', code: `#include <iostream>
+#include <string>
+#include <vector>
+
+std::string longestName(const std::vector<std::string>& input) {
+    std::vector<std::string> names;
+    names.reserve(input.size());              // performance only; correctness does not rely on it
+    std::size_t best = 0;                     // INDEX survives any reallocation
+    for (const auto& s : input) {
+        names.push_back(s);
+        if (names.size() == 1 || s.size() > names[best].size())
+            best = names.size() - 1;
+    }
+    return names.empty() ? std::string{} : names[best];
+}
+
+int main() {
+    std::cout << longestName({"ann", "bartholomew", "cy", "dorothea"}) << '\\n';   // bartholomew
+}` },
+        dry: { head: ['push', 'size / capacity (no reserve, libstdc++)', 'buggy pointer', 'best index'], rows: [['"ann"', '1 / 1', 'points to names[0] @A', '0'], ['"bartholomew"', '2 / 2 (realloc to B)', 'old @A <span class="c-r">dangles</span> before compare; then set to names[1] @B', '1'], ['"cy"', '3 / 4 (realloc to C)', '<span class="c-r">@B freed: UB on longest-&gt;size()</span>', '1'], ['"dorothea"', '4 / 4', 'still dangling', '1 → answer names[1]']] },
+        complexity: `<p>Time O(total characters), one pass. Extra space O(total characters) for the stored names.</p>`,
+        followUps: ['Would <code>std::deque&lt;std::string&gt;</code> fix the pointer version? (push_back keeps references valid, iterators not)', 'How would AddressSanitizer report the buggy version?', 'If you only need the answer, do you need the vector at all?']
       }
     }]
   });

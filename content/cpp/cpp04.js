@@ -2155,7 +2155,7 @@ int main() {
 }                      // d, b, a die
 // Output: abcCdDBA`,
       dry: { head: ['event', 'stack after', 'output so far'], rows: [['P a', 'a', 'a'], ['P b', 'a b', 'ab'], ['block: c born/dies', 'a b', 'abcC'], ['P d', 'a b d', 'abcCd'], ['end of main', '(empty)', 'abcCdDBA']] },
-      complexity: `<p>O(1).</p>`,
+      complexity: `<p>O(1) to run; reasoning is linear in the number of objects you track.</p>`,
       followUps: ['What if d were declared static?', 'What if b were created with new and never deleted?']
     }
   });
@@ -2323,7 +2323,7 @@ int main() {
 }                                 // -2 -1
 // Output: +0 +1 +2 +3 -3 +4 -0 -4 | -2 -1`,
       dry: { head: ['line', 'printed'], rows: [['new N(0)', '+0'], ['arr', '+1 +2'], ['N(3);', '+3 -3'], ['block', '+4 -0 -4'], ['cout', '|'], ['end of main', '-2 -1']] },
-      complexity: `<p>O(1).</p>`,
+      complexity: `<p>O(1) to run; reasoning is linear in the number of objects you track.</p>`,
       followUps: ['Rewrite with std::unique_ptr so -0 cannot be forgotten.', 'Careful: what does N(x); mean if x is a variable name?']
     }
   });
@@ -2733,7 +2733,7 @@ int main() {
 }
 // G [main] B Base D Derived tmp ~tmp S I ~I [end] ~Derived ~D ~Base ~B ~S ~G`,
       dry: { head: ['zone', 'events', 'printed'], rows: [['before main', 'global', 'G'], ['main', 'Derived x', 'B Base D Derived'], ['main', 'temporary', 'tmp ~tmp'], ['main', 'lazy() #1', 'S'], ['main', 'block', 'I ~I'], ['end of main', 'x destroyed', '~Derived ~D ~Base ~B'], ['after main', 'statics reverse', '~S ~G']] },
-      complexity: `<p>O(1).</p>`,
+      complexity: `<p>O(1) to run; reasoning is linear in the number of objects you track.</p>`,
       followUps: ['What if main ended with std::exit(0)? (x would not be destroyed)', 'What if Derived x were declared static inside main?']
     }
   });
