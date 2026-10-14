@@ -1664,6 +1664,177 @@ GROUP BY o.id ORDER BY o.id;`),
       }
     }]
   });
+  /* ======================= PRACTICE (Easy → Medium → Hard) ======================= */
+  practice.push({
+    title: 'Create a Books Table with Every Basic Constraint',
+    level: 'Easy', tags: ['CREATE TABLE', 'constraints'], companies: ['Infosys', 'TCS', 'Amazon'],
+    statement: `<p>Create a <code>books</code> table: an auto id, a required title, a unique 13-digit ISBN, a price in cents that must be positive, a publication year between 1450 and 2100, and an <code>in_stock</code> flag that defaults to 1. Insert two valid books and show them.</p>`,
+    constraints: `<ul><li>Use SQLite; enforce every rule in the DDL.</li><li>ISBN is exactly 13 characters.</li></ul>`,
+    example: `${H.table(['id', 'title', 'isbn', 'price_cents', 'year', 'in_stock'], [['1', 'SQL Basics', '9780000000001', '2999', '2024', H.c('g', '1 (default)')], ['2', 'Data Models', '9780000000002', '4599', '2019', '0']])}`,
+    brute: { why: `<p>A table with bare columns and no rules accepts a NULL title, a duplicate ISBN, a negative price and the year 20245. Every consumer of the table must then re-validate — and one of them won't.</p>`,
+      code: lab(`CREATE TABLE books_loose (id INTEGER, title TEXT, isbn TEXT, price_cents INTEGER, year INTEGER, in_stock INTEGER);
+INSERT INTO books_loose VALUES (1, NULL, '123', -5, 20245, 7), (1, 'Dup', '123', 0, 1, NULL);
+SELECT * FROM books_loose;   -- garbage accepted`) },
+    mcq: { q: 'Which constraint makes the year rule work?', options: ['NOT NULL', 'UNIQUE', 'CHECK (year BETWEEN 1450 AND 2100)', 'DEFAULT 2024'], answer: 2, explain: 'A range rule about one row is exactly what CHECK is for.' },
+    hints: ['<p>Hint 1: List each sentence of the requirement and write the constraint keyword next to it.</p>', '<p>Hint 2: id → INTEGER PRIMARY KEY; title → NOT NULL; isbn → NOT NULL UNIQUE + CHECK(length = 13); price → CHECK (&gt; 0).</p>', '<p>Hint 3: in_stock → INTEGER NOT NULL DEFAULT 1 CHECK (in_stock IN (0,1)). Omit in_stock in one INSERT to see the default work.</p>'],
+    solution: {
+      approach: `<p>One column per fact, one constraint per rule. Name the CHECKs so error messages are readable.</p>`,
+      code: lab(`CREATE TABLE books (
+  id          INTEGER PRIMARY KEY,
+  title       TEXT    NOT NULL,
+  isbn        TEXT    NOT NULL UNIQUE CONSTRAINT chk_books_isbn CHECK (length(isbn) = 13),
+  price_cents INTEGER NOT NULL CONSTRAINT chk_books_price CHECK (price_cents > 0),
+  year        INTEGER CONSTRAINT chk_books_year CHECK (year BETWEEN 1450 AND 2100),
+  in_stock    INTEGER NOT NULL DEFAULT 1 CHECK (in_stock IN (0, 1))
+);
+INSERT INTO books (title, isbn, price_cents, year) VALUES ('SQL Basics', '9780000000001', 2999, 2024);
+INSERT INTO books (title, isbn, price_cents, year, in_stock) VALUES ('Data Models', '9780000000002', 4599, 2019, 0);
+SELECT * FROM books;`),
+      complexity: `<p>O(1) per row for NOT NULL/CHECK, O(log N) for the UNIQUE ISBN index lookup.</p>`,
+      followUps: ['Make ISBN digits-only: <code>CHECK (isbn NOT GLOB \'*[^0-9]*\')</code>.', 'Add authors (N-M with books).']
+    }
+  });
+
+  practice.push({
+    title: 'Find Duplicates Before Adding a UNIQUE Constraint',
+    level: 'Easy', tags: ['UNIQUE', 'data cleanup', 'GROUP BY'], companies: ['Google', 'Swiggy'],
+    statement: `<p>You want to add a case-insensitive UNIQUE constraint on <code>users_raw.email</code> (messy database). Creating the unique index will fail if duplicates exist. Write a query listing every email (case-insensitively) that appears more than once, with the ids involved.</p>`,
+    constraints: `<ul><li>'BEN@mail.com' and 'ben@mail.com' are the same email.</li><li>NULL emails are not duplicates of each other.</li></ul>`,
+    example: `${H.table(['email_key', 'copies', 'ids'], [['asha@mail.com', '2', '1,6'], ['ben@mail.com', '2', '2,3']])}<p>Exact-match grouping would only find asha — Ben's two rows differ in case.</p>`,
+    brute: { why: `<p>Grouping on the raw email is case-sensitive, so <code>BEN@mail.com</code> and <code>ben@mail.com</code> look different. You "clean" asha, create the NOCASE unique index, and it still fails on Ben — in the middle of a deploy.</p>`,
+      code: messy(`SELECT email, COUNT(*) AS copies FROM users_raw
+WHERE email IS NOT NULL
+GROUP BY email HAVING COUNT(*) > 1;     -- misses BEN/ben`) },
+    mcq: { q: 'Why exclude NULL emails?', options: ['NULLs crash GROUP BY', 'UNIQUE allows many NULLs, so they would not block the index', 'NULL equals NULL', 'COUNT ignores them anyway'], answer: 1, explain: 'UNIQUE treats NULLs as distinct (unknown ≠ unknown), so they never violate it.' },
+    hints: ['<p>Hint 1: Group by the same expression the constraint will compare: <code>lower(email)</code>.</p>', '<p>Hint 2: <code>HAVING COUNT(*) &gt; 1</code> keeps only duplicates; <code>group_concat(id)</code> shows which rows to fix.</p>', '<p>Hint 3: Filter <code>email IS NOT NULL</code> — NULLs can\'t violate UNIQUE (but they will violate a NOT NULL you add later!).</p>'],
+    solution: {
+      approach: `<p>Normalise the key exactly as the future constraint will (lower-case), group, and keep groups with more than one row. Run this before every "add UNIQUE" migration.</p>`,
+      code: messy(`SELECT lower(email)          AS email_key,
+       COUNT(*)              AS copies,
+       group_concat(id, ',') AS ids
+FROM users_raw
+WHERE email IS NOT NULL
+GROUP BY lower(email)
+HAVING COUNT(*) > 1
+ORDER BY email_key;`),
+      complexity: `<p>One scan + grouping: O(N log N) (or O(N) with hashing). Cheap compared with a failed migration.</p>`,
+      followUps: ['Which row do you keep? (oldest, most orders, verified) — write the DELETE that keeps the lowest id per group.', 'Also count NULL emails, since NOT NULL is the next constraint you\'ll add.']
+    }
+  });
+
+  practice.push({
+    title: 'Add a Column with a DEFAULT to a Live Table',
+    level: 'Easy', tags: ['ALTER TABLE', 'DEFAULT'], companies: ['Paytm', 'Stripe'],
+    statement: `<p>In the shop database, add <code>loyalty_points</code> to <code>customers</code>: a whole number, never negative, never NULL, starting at 0 for everyone. Prove the existing 4 customers got 0 and a new customer inserted without the column also gets 0.</p>`,
+    constraints: `<ul><li>One ALTER statement; no UPDATE of existing rows.</li></ul>`,
+    example: `${H.table(['name', 'loyalty_points'], [['Asha', '0'], ['Ben', '0'], ['Chen', '0'], ['Dara', '0'], ['Eve (new)', H.c('g', '0')]])}`,
+    brute: { why: `<p>Add a nullable column, then <code>UPDATE customers SET loyalty_points = 0</code>. It works today, but it rewrites every row (slow + locks on big tables), and any row inserted later by old code still gets NULL — because there is no DEFAULT or NOT NULL.</p>`,
+      code: shop(`ALTER TABLE customers ADD COLUMN loyalty_points INTEGER;
+UPDATE customers SET loyalty_points = 0;                                   -- touches every row
+INSERT INTO customers (email, name) VALUES ('eve@mail.com', 'Eve');        -- old code path
+SELECT name, quote(loyalty_points) AS points FROM customers;               -- Eve: NULL`) },
+    mcq: { q: 'What do existing rows contain right after ADD COLUMN ... NOT NULL DEFAULT 0?', options: ['NULL until updated', '0', 'An error is raised', 'Random values'], answer: 1, explain: 'Existing rows read the DEFAULT; in SQLite (and Postgres 11+) this is metadata-only, no rewrite.' },
+    hints: ['<p>Hint 1: NOT NULL columns can be added in SQLite only if you give a non-NULL DEFAULT.</p>', '<p>Hint 2: Combine everything in the column definition: <code>INTEGER NOT NULL DEFAULT 0 CHECK (loyalty_points &gt;= 0)</code>.</p>', '<p>Hint 3: Verify with SELECT before and after inserting a customer that omits the column.</p>'],
+    solution: {
+      approach: `<p>One ALTER with NOT NULL + DEFAULT + CHECK. Old rows read the default instantly; new rows get it automatically; negative or NULL values are impossible.</p>`,
+      code: shop(`ALTER TABLE customers ADD COLUMN loyalty_points INTEGER NOT NULL DEFAULT 0 CHECK (loyalty_points >= 0);
+INSERT INTO customers (email, name) VALUES ('eve@mail.com', 'Eve');
+SELECT id, name, loyalty_points FROM customers ORDER BY id;`),
+      complexity: `<p>O(1) metadata change in SQLite; the DEFAULT is stored in the schema, not written into old rows.</p>`,
+      followUps: ['Why can\'t SQLite add a CHECK to an existing column later?', 'Postgres: why is <code>DEFAULT now()</code> slower to add than <code>DEFAULT 0</code> on old versions?']
+    }
+  });
+
+  practice.push({
+    title: 'Is My Foreign Key Actually Enforced?',
+    level: 'Easy', tags: ['foreign keys', 'SQLite', 'PRAGMA'], companies: ['Apple', 'Microsoft'],
+    statement: `<p>A teammate says "we have foreign keys, orphans are impossible". Write a SQLite script that (1) shows the current enforcement setting, (2) demonstrates an orphan getting in while enforcement is off, (3) detects it with a built-in check, and (4) turns enforcement on and shows the setting again.</p>`,
+    constraints: `<ul><li>The script must run without errors.</li></ul>`,
+    example: `${H.table(['step', 'result'], [['PRAGMA foreign_keys (off)', '0'], ['insert child → parent 42', H.c('r', 'accepted')], ['PRAGMA foreign_key_check', '1 orphan row'], ['PRAGMA foreign_keys (on)', H.c('g', '1')]])}`,
+    brute: { why: `<p>"Check" by reading the CREATE TABLE and seeing <code>REFERENCES</code>. The declaration is there, so everyone assumes it works — but in SQLite the declaration does nothing unless the connection enabled it. Reading the schema proves nothing.</p>`,
+      code: lab(`PRAGMA foreign_keys = OFF;
+CREATE TABLE teams (id INTEGER PRIMARY KEY);
+CREATE TABLE players (id INTEGER PRIMARY KEY, team_id INTEGER REFERENCES teams(id));
+SELECT sql FROM sqlite_master WHERE name = 'players';   -- "it says REFERENCES, so we're safe" (we're not)`) },
+    mcq: { q: 'Which command lists existing FK violations in SQLite?', options: ['PRAGMA integrity_check', 'PRAGMA foreign_key_check', 'PRAGMA foreign_keys', 'EXPLAIN'], answer: 1, explain: 'foreign_key_check reports every child row whose parent is missing, even when enforcement is off.' },
+    hints: ['<p>Hint 1: <code>PRAGMA foreign_keys;</code> with no value returns 0 or 1.</p>', '<p>Hint 2: Insert a child pointing at a missing parent while it is 0, then run <code>PRAGMA foreign_key_check;</code>.</p>', '<p>Hint 3: Enable with <code>PRAGMA foreign_keys = ON;</code> — outside any transaction — and query the setting again.</p>'],
+    solution: {
+      approach: `<p>Trust behaviour, not declarations: read the setting, provoke an orphan, detect it, then fix the setting. In real apps, enable the pragma in the connection factory and add a startup assertion that it returns 1.</p>`,
+      code: lab(`PRAGMA foreign_keys = OFF;
+SELECT 'setting before' AS step, foreign_keys AS value FROM pragma_foreign_keys;
+CREATE TABLE teams (id INTEGER PRIMARY KEY, name TEXT NOT NULL);
+CREATE TABLE players (id INTEGER PRIMARY KEY, name TEXT NOT NULL, team_id INTEGER REFERENCES teams(id));
+INSERT INTO teams VALUES (1, 'Lions');
+INSERT INTO players VALUES (1, 'Asha', 1), (2, 'Ghost', 42);      -- 42 doesn't exist: accepted while OFF
+PRAGMA foreign_key_check;                                         -- reports players rowid 2
+PRAGMA foreign_keys = ON;
+SELECT 'setting after' AS step, foreign_keys AS value FROM pragma_foreign_keys;
+DELETE FROM players WHERE team_id NOT IN (SELECT id FROM teams);  -- clean up the orphan
+PRAGMA foreign_key_check;                                         -- now empty`),
+      complexity: `<p><code>foreign_key_check</code> scans each child table once: O(N log M) with an index on the parent key.</p>`,
+      followUps: ['Where in a Python/Node app would you put the PRAGMA so every connection gets it?', 'Why is the pragma ignored inside BEGIN ... COMMIT?']
+    }
+  });
+
+  practice.push({
+    title: 'Find Orphans Before Adding a Foreign Key',
+    level: 'Medium', tags: ['foreign keys', 'anti-join', 'migration'], companies: ['Uber', 'LinkedIn'],
+    statement: `<p>In the messy database, <code>orders_raw.user_id</code> should become a foreign key to <code>users_raw.id</code>. List every order that would violate it (user_id points to a non-existent user), and separately count orders with a NULL user_id (they pass the FK but would fail a NOT NULL).</p>`,
+    constraints: `<ul><li>Must stay correct even if the parent table contains a NULL id.</li></ul>`,
+    example: `${H.table(['order id', 'user_id', 'problem'], [['103', '9', H.c('r', 'orphan')], ['106', '8', H.c('r', 'orphan')], ['105', 'NULL', H.c('y', 'missing owner (NOT NULL)')]])}`,
+    brute: { why: `<p><code>WHERE user_id NOT IN (SELECT id FROM users_raw)</code> looks right, but if the subquery returns even one NULL, <code>x NOT IN (..., NULL)</code> is UNKNOWN for every row and the query returns <b>nothing</b> — you conclude "no orphans" and the migration explodes. The snippet simulates one NULL id.</p>`,
+      code: messy(`SELECT id, user_id FROM orders_raw
+WHERE user_id NOT IN (SELECT id FROM users_raw UNION ALL SELECT NULL);   -- 0 rows: a lie`) },
+    mcq: { q: 'Which pattern is NULL-safe for "child rows with no parent"?', options: ['NOT IN (subquery)', 'NOT EXISTS (correlated subquery) or LEFT JOIN ... IS NULL', 'WHERE user_id <> ALL (...)', 'EXCEPT on all columns'], answer: 1, explain: 'NOT EXISTS / LEFT JOIN anti-joins are not poisoned by NULLs in the parent column.' },
+    hints: ['<p>Hint 1: This is an anti-join: "orders for which no matching user exists".</p>', '<p>Hint 2: Use <code>NOT EXISTS (SELECT 1 FROM users_raw u WHERE u.id = o.user_id)</code> and require <code>o.user_id IS NOT NULL</code>.</p>', '<p>Hint 3: Report NULL user_ids separately — an FK allows them, a NOT NULL does not.</p>'],
+    solution: {
+      approach: `<p>NULL-safe anti-join for true orphans, plus a separate count of NULL owners. Fix both (delete, reassign to a placeholder parent, or backfill) before adding the FK and NOT NULL.</p>`,
+      code: messy(`SELECT o.id, o.user_id, 'orphan: user missing' AS problem
+FROM orders_raw o
+WHERE o.user_id IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM users_raw u WHERE u.id = o.user_id)
+UNION ALL
+SELECT o.id, o.user_id, 'no owner: NULL user_id'
+FROM orders_raw o
+WHERE o.user_id IS NULL
+ORDER BY 1;`),
+      complexity: `<p>O(N log M) with an index on users_raw.id (O(N·M) without). Note users_raw.id also has a duplicate (5) — the parent needs a UNIQUE/PK before it can be an FK target at all.</p>`,
+      followUps: ['Write the query that finds duplicate parent ids blocking the PRIMARY KEY.', 'Postgres: how does <code>ADD CONSTRAINT ... NOT VALID</code> let you add the FK before cleaning old rows?']
+    }
+  });
+
+  practice.push({
+    title: 'Full Constraint Audit of a Legacy Table',
+    level: 'Medium', tags: ['constraints', 'data quality', 'CHECK'], companies: ['Databricks', 'Snowflake', 'Atlassian'],
+    statement: `<p>Before moving <code>users_raw</code> (messy DB) into a properly constrained table, produce one report: for each planned rule, how many rows break it. Rules: id unique; email NOT NULL; email unique (case-insensitive); age between 13 and 120; country is 2 upper-case letters.</p>`,
+    constraints: `<ul><li>One query, one row per rule, columns (rule, violations).</li></ul>`,
+    example: `${H.table(['rule', 'violations'], [['duplicate id', '2'], ['email NOT NULL', '1'], ['email unique (ci)', '4'], ['age 13..120', '3'], ['country 2 upper letters', '1']])}<p>Rows counted are all rows involved in a duplicate group (ids 5,5; emails asha×2, ben×2).</p>`,
+    brute: { why: `<p>"Just copy it with INSERT OR IGNORE into the constrained table". It runs — and silently drops every row that breaks any rule. You lose customers without knowing which or why. The snippet shows 8 rows in, fewer out, no explanation.</p>`,
+      code: messy(`CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT NOT NULL COLLATE NOCASE UNIQUE, name TEXT,
+                    age INTEGER CHECK (age BETWEEN 13 AND 120), country TEXT CHECK (length(country) = 2 AND country = upper(country)));
+INSERT OR IGNORE INTO users SELECT * FROM users_raw;
+SELECT (SELECT COUNT(*) FROM users_raw) AS rows_before, (SELECT COUNT(*) FROM users) AS rows_after;   -- where did they go?`) },
+    mcq: { q: 'Ben is 17. Does he break "age between 13 and 120"?', options: ['Yes', 'No', 'Only if NULL'], answer: 1, explain: '17 is inside 13..120. Chen (-3) and Eve (230) break it — and Ben\'s second row is fine too.' },
+    hints: ['<p>Hint 1: Write one SELECT per rule that returns a count, then glue them with <code>UNION ALL</code>.</p>', '<p>Hint 2: Duplicates: count rows whose key appears in a <code>GROUP BY ... HAVING COUNT(*) &gt; 1</code> subquery; compare emails with <code>lower()</code>.</p>', '<p>Hint 3: Write each CHECK as its <b>negation</b>: <code>NOT (age BETWEEN 13 AND 120)</code>. Remember NULLs pass a CHECK, so don\'t count them as violations.</p>'],
+    solution: {
+      approach: `<p>Turn every planned constraint into a "find violators" query and union the counts. Fix data rule by rule, re-run until all zeros, then migrate with plain INSERT (not OR IGNORE) so any surprise fails loudly.</p>`,
+      code: messy(`SELECT 'duplicate id' AS rule, COUNT(*) AS violations
+  FROM users_raw WHERE id IN (SELECT id FROM users_raw GROUP BY id HAVING COUNT(*) > 1)
+UNION ALL
+SELECT 'email NOT NULL', COUNT(*) FROM users_raw WHERE email IS NULL
+UNION ALL
+SELECT 'email unique (ci)', COUNT(*)
+  FROM users_raw WHERE lower(email) IN (SELECT lower(email) FROM users_raw WHERE email IS NOT NULL
+                                        GROUP BY lower(email) HAVING COUNT(*) > 1)
+UNION ALL
+SELECT 'age 13..120', COUNT(*) FROM users_raw WHERE NOT (age BETWEEN 13 AND 120)
+UNION ALL
+SELECT 'country 2 upper letters', COUNT(*) FROM users_raw
+  WHERE NOT (length(country) = 2 AND country = upper(country));`),
+      complexity: `<p>Each rule is one scan (plus a grouping for the uniqueness rules): O(R · N log N) for R rules — fine for a one-off audit; add indexes on lower(email) for very large tables.</p>`,
+      followUps: ['Wait — the expected "age" count says 3 but only Chen and Eve are out of range. Find the third (hint: none — check your own counts and correct the spec!).', 'Turn the audit into a view that a nightly job alerts on.']
+    }
+  });
   registerModule({
     id: 'sql07',
     title: 'DDL, Constraints & ER Modelling',
