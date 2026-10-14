@@ -2435,6 +2435,941 @@ System.out.println(P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1]
     }]
   });
 
+  // =====================================================================
+  // PRACTICE — Easy
+  // =====================================================================
+  practice.push({
+    title: 'Running Sum of 1D Array',
+    level: 'Easy',
+    tags: ['prefix sum', 'array'],
+    companies: ['Amazon', 'Adobe', 'Apple'],
+    statement: `<p>Given an array <code>nums</code>, return an array <code>runningSum</code> where <code>runningSum[i] = nums[0] + nums[1] + … + nums[i]</code>.</p>`,
+    constraints: `1 ≤ N ≤ 1000, −10<sup>6</sup> ≤ nums[i] ≤ 10<sup>6</sup>`,
+    example: `${H.arr([1, 2, 3, 4], { label: 'nums' })}${H.arr([1, 3, 6, 10], { label: 'output', hl: { 3: 'g' } })}<p>Each output value is the previous output plus one new number: 1, 1+2 = 3, 3+3 = 6, 6+4 = ${H.c('g', '10')}.</p>`,
+    brute: {
+      why: `<p>For each i, add nums[0..i] from scratch: 1 + 2 + … + N = O(N<sup>2</sup>) additions. The waste: runningSum[i] already contains everything except nums[i], yet we re-add it.</p>`,
+      code: `
+        int[] bruteRunningSum(int[] nums) {
+            int[] out = new int[nums.length];
+            for (int i = 0; i < nums.length; i++) {
+                int s = 0;
+                for (int j = 0; j <= i; j++) s += nums[j];   // re-adds the whole prefix
+                out[i] = s;
+            }
+            return out;
+        }`
+    },
+    mcq: { q: `<p>runningSum[5] = 40 and nums[6] = −3. What is runningSum[6]?</p>`, options: ['37', '43', '−3', '40'], answer: 0, explain: `<p>runningSum[6] = runningSum[5] + nums[6] = 40 + (−3) = 37. One addition per index.</p>` },
+    hints: [
+      `<p><b>Aha:</b> runningSum[i] = runningSum[i−1] + nums[i]. The previous answer is already the sum of everything before.</p>`,
+      `<p>One loop, one carried total. You can even write the answer back into <code>nums</code> itself for O(1) extra space.</p>`,
+      `<p><b>Traps:</b> start the loop at i = 1 (or carry a total starting at 0). Sum stays within int here (10<sup>3</sup> × 10<sup>6</sup> = 10<sup>9</sup>), but use long in general.<br><b>Recipe:</b> for i in 1..N−1: nums[i] += nums[i−1]; return nums.</p>`
+    ],
+    solution: {
+      approach: `<p>Carry forward the running total; each index adds one number to the previous answer.</p>`,
+      code: `
+        class Solution {
+            public int[] runningSum(int[] nums) {
+                for (int i = 1; i < nums.length; i++) {
+                    nums[i] += nums[i - 1];       // previous running sum + this number
+                }
+                return nums;                      // in place: O(1) extra space
+            }
+
+            public static void main(String[] args) {
+                System.out.println(Arrays.toString(new Solution().runningSum(new int[]{1, 2, 3, 4}))); // [1, 3, 6, 10]
+            }
+        }`,
+      dry: { head: ['i', 'nums[i] before', 'add nums[i−1]', 'nums[i] after'], rows: [['1', '2', '1', '3'], ['2', '3', '3', '6'], ['3', '4', '6', '10']] },
+      complexity: `<p><b>Time O(N)</b>, <b>space O(1)</b> extra (in place).</p>`,
+      followUps: ['Answer range-sum queries using this array.', 'Running XOR instead of running sum.']
+    }
+  });
+
+  practice.push({
+    title: 'Best Time to Buy and Sell Stock',
+    level: 'Easy',
+    tags: ['carry forward', 'array', 'running min'],
+    companies: ['Amazon', 'Meta', 'Microsoft', 'Bloomberg', 'Goldman Sachs'],
+    statement: `<p><code>prices[i]</code> is a stock's price on day i. Choose one day to buy and a <b>later</b> day to sell to maximise profit. Return the maximum profit, or 0 if no profit is possible.</p>`,
+    constraints: `1 ≤ N ≤ 10<sup>5</sup>, 0 ≤ prices[i] ≤ 10<sup>4</sup>`,
+    example: `${H.arr([7, 1, 5, 3, 6, 4], { label: 'prices', hl: { 1: 'g', 4: 'p' } })}<p>Output ${H.c('p', '<b>5</b>')}: buy at ${H.c('g', '1')} (day 1), sell at ${H.c('p', '6')} (day 4). Selling at 7 is not allowed because day 0 comes before the buy. For [7, 6, 4, 3, 1] prices only fall → <b>0</b>.</p>`,
+    brute: {
+      why: `<p>Try every (buy, sell) pair: N(N−1)/2 ≈ 5 × 10<sup>9</sup> pairs → TLE. The waste: for each sell day only the <b>cheapest earlier price</b> matters, yet we compare against all of them.</p>`,
+      code: `
+        int bruteProfit(int[] prices) {
+            int best = 0;
+            for (int i = 0; i < prices.length; i++)
+                for (int j = i + 1; j < prices.length; j++)
+                    best = Math.max(best, prices[j] - prices[i]);   // buy i, sell j
+            return best;
+        }`
+    },
+    mcq: { q: `<p>Walking left to right, what single number should you carry?</p>`, options: ['The minimum price seen so far', 'The maximum price seen so far', 'The sum of prices so far', 'The index of today'], answer: 0, explain: `<p>Selling today, the best buy is the cheapest earlier day. Carry minSoFar; profit today = price − minSoFar.</p>` },
+    hints: [
+      `<p><b>Aha:</b> fix the sell day. The best buy day is the minimum price before it.</p>`,
+      `<p>Carry <code>minSoFar</code> and <code>best</code>. For each price: best = max(best, price − minSoFar); then minSoFar = min(minSoFar, price).</p>`,
+      `<p><b>Traps:</b> update best <b>before</b> updating min (or the same-day buy/sell gives 0 harmlessly). Answer is never negative.<br><b>Recipe:</b> min = prices[0], best = 0; for each later price: best = max(best, p − min); min = min(min, p).</p>`
+    ],
+    solution: {
+      approach: `<p>Carry forward the cheapest price so far; every day evaluate "sell today". This is also Kadane on the daily differences.</p>`,
+      code: `
+        class Solution {
+            public int maxProfit(int[] prices) {
+                int minSoFar = prices[0], best = 0;
+                for (int i = 1; i < prices.length; i++) {
+                    best = Math.max(best, prices[i] - minSoFar);   // sell today?
+                    minSoFar = Math.min(minSoFar, prices[i]);      // cheaper buy for future days?
+                }
+                return best;
+            }
+
+            public static void main(String[] args) {
+                System.out.println(new Solution().maxProfit(new int[]{7, 1, 5, 3, 6, 4})); // 5
+            }
+        }`,
+      dry: { head: ['day', 'price', 'price − min', 'best', 'min after'], rows: [['0', '7', '—', '0', '7'], ['1', '1', '−6', '0', '1'], ['2', '5', '4', '4', '1'], ['3', '3', '2', '4', '1'], ['4', '6', '5', H.c('p', '5'), '1'], ['5', '4', '3', '5', '1']] },
+      complexity: `<p><b>Time O(N)</b>, <b>space O(1)</b>.</p>`,
+      followUps: ['Unlimited transactions (sum of all positive differences).', 'At most two transactions (prefix best + suffix best).', 'With a cooldown or fee (DP module).']
+    }
+  });
+
+  practice.push({
+    title: 'Matrix Diagonal Sum',
+    level: 'Easy',
+    tags: ['matrix', '2D array'],
+    companies: ['Adobe', 'Amazon'],
+    statement: `<p>Given a square matrix <code>mat</code>, return the sum of its primary diagonal (top-left to bottom-right) and secondary diagonal (top-right to bottom-left). The centre cell of an odd-sized matrix belongs to both diagonals but must be counted <b>once</b>.</p>`,
+    constraints: `1 ≤ N ≤ 100, 1 ≤ mat[i][j] ≤ 100`,
+    example: `${H.table(['', 'c0', 'c1', 'c2'], [['r0', H.c('y', '1'), '2', H.c('b', '3')], ['r1', '4', H.c('p', '5'), '6'], ['r2', H.c('b', '7'), '8', H.c('y', '9')]])}<p>Output <b>25</b> = ${H.c('y', '1 + 9')} + ${H.c('b', '3 + 7')} + ${H.c('p', '5')} (the centre counted once).</p>`,
+    brute: {
+      why: `<p>Visit all N<sup>2</sup> cells and add those with r == c or r + c == N − 1: O(N<sup>2</sup>). Correct, but it scans N<sup>2</sup> − 2N cells that can never be on a diagonal.</p>`,
+      code: `
+        int bruteDiagonal(int[][] mat) {
+            int n = mat.length, s = 0;
+            for (int r = 0; r < n; r++)
+                for (int c = 0; c < n; c++)
+                    if (r == c || r + c == n - 1) s += mat[r][c];   // the || counts the centre once
+            return s;
+        }`
+    },
+    mcq: { q: `<p>Which cells are on the secondary diagonal of an N × N matrix?</p>`, options: ['Cells with r + c = N − 1', 'Cells with r = c', 'Cells with r − c = 1', 'Cells with r + c = N'], answer: 0, explain: `<p>The secondary diagonal goes from (0, N−1) to (N−1, 0); along it the row goes up by 1 while the column goes down by 1, so r + c stays N − 1.</p>` },
+    hints: [
+      `<p><b>Aha:</b> row r touches exactly two diagonal cells: (r, r) and (r, N−1−r).</p>`,
+      `<p>One loop over r, add both cells, then fix the double-counted centre if N is odd.</p>`,
+      `<p><b>Traps:</b> when N is odd, r = N/2 gives the same cell twice → subtract mat[N/2][N/2] once.<br><b>Recipe:</b> s = Σ (mat[r][r] + mat[r][N−1−r]); if N odd: s −= mat[N/2][N/2].</p>`
+    ],
+    solution: {
+      approach: `<p>Use the index formulas of the two diagonals; one pass over the rows.</p>`,
+      code: `
+        class Solution {
+            public int diagonalSum(int[][] mat) {
+                int n = mat.length, s = 0;
+                for (int r = 0; r < n; r++) {
+                    s += mat[r][r];               // primary diagonal
+                    s += mat[r][n - 1 - r];       // secondary diagonal
+                }
+                if (n % 2 == 1) s -= mat[n / 2][n / 2];   // centre was added twice
+                return s;
+            }
+
+            public static void main(String[] args) {
+                System.out.println(new Solution().diagonalSum(new int[][]{{1, 2, 3}, {4, 5, 6}, {7, 8, 9}})); // 25
+            }
+        }`,
+      complexity: `<p><b>Time O(N)</b> (only 2N cells read), <b>space O(1)</b>.</p>`,
+      followUps: ['Sum of every anti-diagonal (cells grouped by r + c).', 'Check if a matrix is a Toeplitz matrix (constant diagonals).']
+    }
+  });
+
+  practice.push({
+    title: 'Sum of All Odd-Length Subarrays',
+    level: 'Easy',
+    tags: ['contribution technique', 'math', 'prefix sum'],
+    companies: ['LinkedIn', 'Amazon'],
+    statement: `<p>Given an array of positive integers <code>arr</code>, return the sum of all possible <b>odd-length</b> contiguous subarrays.</p>`,
+    constraints: `1 ≤ N ≤ 100 (try for O(N) anyway), 1 ≤ arr[i] ≤ 1000`,
+    example: `${H.arr([1, 4, 2, 5, 3], { label: 'arr' })}<p>Length 1: 1+4+2+5+3 = 15. Length 3: [1,4,2]=7, [4,2,5]=11, [2,5,3]=10 → 28. Length 5: 15. Total ${H.c('p', '<b>58</b>')}.</p>`,
+    brute: {
+      why: `<p>Enumerate all odd-length subarrays and add their sums with a running sum: O(N<sup>2</sup>). Fine for N = 100, but for N = 10<sup>5</sup> it is 5 × 10<sup>9</sup>. The waste: each arr[i] is added once per subarray instead of being multiplied by its count.</p>`,
+      code: `
+        int bruteOddSum(int[] arr) {
+            int total = 0;
+            for (int i = 0; i < arr.length; i++) {
+                int s = 0;
+                for (int j = i; j < arr.length; j++) {
+                    s += arr[j];                          // sum of arr[i..j]
+                    if ((j - i + 1) % 2 == 1) total += s; // only odd lengths count
+                }
+            }
+            return total;
+        }`
+    },
+    mcq: { q: `<p>Index i has L = i + 1 possible starts and R = N − i possible ends. Roughly what fraction of the L·R subarrays containing i have odd length?</p>`, options: ['About half: ⌈L/2⌉⌈R/2⌉ + ⌊L/2⌋⌊R/2⌋', 'All of them', 'Exactly L', 'None when i is even'], answer: 0, explain: `<p>Length = (left extension) + (right extension) + 1 is odd when both extensions are even or both are odd. Counting those combinations gives ⌈L/2⌉⌈R/2⌉ + ⌊L/2⌋⌊R/2⌋.</p>` },
+    hints: [
+      `<p><b>Aha:</b> contribution technique — total = Σ arr[i] × (number of odd-length subarrays containing i).</p>`,
+      `<p>Left extension a ∈ [0, i], right extension b ∈ [0, N−1−i]; odd length ⇔ a and b have the same parity. Count evens and odds on each side.</p>`,
+      `<p><b>Traps:</b> integer division for ceil: ⌈L/2⌉ = (L + 1) / 2. A simpler known shortcut: oddCount = (L·R + 1) / 2 (integer division).<br><b>Recipe:</b> for each i: L = i+1, R = N−i, total += arr[i] × ((L·R + 1) / 2).</p>`
+    ],
+    solution: {
+      approach: `<p>Each index lies in L·R subarrays, and ⌈L·R / 2⌉ of them have odd length. Multiply and add.</p>`,
+      code: `
+        class Solution {
+            public int sumOddLengthSubarrays(int[] arr) {
+                int n = arr.length, total = 0;
+                for (int i = 0; i < n; i++) {
+                    int all = (i + 1) * (n - i);     // subarrays containing i
+                    int odd = (all + 1) / 2;         // ceil(all / 2) of them have odd length
+                    total += arr[i] * odd;
+                }
+                return total;
+            }
+
+            public static void main(String[] args) {
+                System.out.println(new Solution().sumOddLengthSubarrays(new int[]{1, 4, 2, 5, 3})); // 58
+            }
+        }`,
+      dry: { head: ['i', 'arr[i]', 'all = L·R', 'odd = ⌈all/2⌉', 'contribution'], rows: [['0', '1', '5', '3', '3'], ['1', '4', '8', '4', '16'], ['2', '2', '9', '5', '10'], ['3', '5', '8', '4', '20'], ['4', '3', '5', '3', '9 → total ' + H.c('p', '58')]] },
+      complexity: `<p><b>Time O(N)</b>, <b>space O(1)</b>.</p>`,
+      followUps: ['Even-length subarrays only (all − odd).', 'Sum of all subarray XORs (only parity of the count matters).']
+    }
+  });
+
+  // =====================================================================
+  // PRACTICE — Medium
+  // =====================================================================
+  practice.push({
+    title: 'Product of Array Except Self',
+    level: 'Medium',
+    tags: ['prefix product', 'suffix product', 'carry forward'],
+    companies: ['Amazon', 'Meta', 'Microsoft', 'Apple', 'Asana'],
+    statement: `<p>Given an integer array <code>nums</code>, return an array <code>answer</code> where <code>answer[i]</code> is the product of all elements except <code>nums[i]</code>. You must <b>not use division</b> and should run in O(N).</p>`,
+    constraints: `2 ≤ N ≤ 10<sup>5</sup>, −30 ≤ nums[i] ≤ 30, every prefix/suffix product fits in a 32-bit int`,
+    example: `${H.arr([1, 2, 3, 4], { label: 'nums' })}${H.arr([24, 12, 8, 6], { label: 'answer', hl: { 2: 'p' } })}<p>answer[2] = ${H.c('b', '1 × 2')} (left of 2) × ${H.c('g', '4')} (right of 2) = ${H.c('p', '8')}. With a zero, e.g. [−1, 1, 0, −3, 3], only index 2 gets a non-zero answer: [0, 0, 9, 0, 0].</p>`,
+    brute: {
+      why: `<p>For each i multiply all other elements: O(N<sup>2</sup>) = 10<sup>10</sup>. Division (total / nums[i]) is forbidden and breaks on zeros. The waste: the product of everything left of i+1 is just (left of i) × nums[i] — recomputed from scratch.</p>`,
+      code: `
+        int[] bruteExceptSelf(int[] nums) {
+            int n = nums.length;
+            int[] out = new int[n];
+            for (int i = 0; i < n; i++) {
+                int p = 1;
+                for (int j = 0; j < n; j++) if (j != i) p *= nums[j];
+                out[i] = p;
+            }
+            return out;
+        }`
+    },
+    mcq: { q: `<p>answer[i] equals…</p>`, options: ['(product of nums[0..i−1]) × (product of nums[i+1..N−1])', 'total product / nums[i]', 'prefix product up to i', 'nums[i−1] × nums[i+1]'], answer: 0, explain: `<p>Everything except i = everything on the left times everything on the right. Prefix and suffix products give both without division, so zeros cause no trouble.</p>` },
+    hints: [
+      `<p><b>Aha:</b> same shape as rain water: "something about the left" combined with "something about the right" for every index.</p>`,
+      `<p>First pass left→right: out[i] = product of everything before i. Second pass right→left with a carried <code>right</code> product: out[i] *= right; right *= nums[i].</p>`,
+      `<p><b>Traps:</b> out[0] starts as 1 (nothing on the left); the right product starts at 1. No division, so zeros work.<br><b>Recipe:</b> out[0] = 1; out[i] = out[i−1]·nums[i−1]; right = 1; for i = N−1..0: out[i] *= right; right *= nums[i].</p>`
+    ],
+    solution: {
+      approach: `<p>Prefix products stored in the output, suffix product carried in one variable. O(1) extra space besides the output.</p>`,
+      code: `
+        class Solution {
+            public int[] productExceptSelf(int[] nums) {
+                int n = nums.length;
+                int[] out = new int[n];
+                out[0] = 1;
+                for (int i = 1; i < n; i++) out[i] = out[i - 1] * nums[i - 1];  // product of everything LEFT of i
+                int right = 1;                                                   // product of everything RIGHT of i
+                for (int i = n - 1; i >= 0; i--) {
+                    out[i] *= right;
+                    right *= nums[i];
+                }
+                return out;
+            }
+
+            public static void main(String[] args) {
+                System.out.println(Arrays.toString(new Solution().productExceptSelf(new int[]{1, 2, 3, 4}))); // [24, 12, 8, 6]
+            }
+        }`,
+      dry: { head: ['i', 'left product (pass 1)', 'right before', 'out[i]', 'right after'], rows: [['3', '6', '1', '6', '4'], ['2', '2', '4', '8', '12'], ['1', '1', '12', '12', '24'], ['0', '1', '24', '24', '24']] },
+      complexity: `<p><b>Time O(N)</b>, <b>space O(1)</b> extra (output array not counted).</p>`,
+      followUps: ['What if products can overflow? (use long or mod)', 'Count zeros approach with division allowed.']
+    }
+  });
+
+  practice.push({
+    title: 'Maximum Sum Circular Subarray',
+    level: 'Medium',
+    tags: ['kadane', 'circular array', 'carry forward'],
+    companies: ['Amazon', 'Goldman Sachs', 'Uber'],
+    statement: `<p>Given a <b>circular</b> integer array <code>nums</code> (the end connects back to the start), return the maximum possible sum of a non-empty subarray. Each element may be used at most once in the subarray.</p>`,
+    constraints: `1 ≤ N ≤ 3 × 10<sup>4</sup>, −3 × 10<sup>4</sup> ≤ nums[i] ≤ 3 × 10<sup>4</sup>`,
+    example: `${H.arr([5, -3, 5], { label: 'nums', hl: { 0: 'p', 2: 'p' } })}<p>Output ${H.c('p', '<b>10</b>')}: the wrap-around subarray [5 (last), 5 (first)]. For [1, −2, 3, −2] the answer is 3 (no wrap needed). For [−3, −2, −3] it is −2.</p>`,
+    brute: {
+      why: `<p>Try every start and every length up to N, walking around the circle: O(N<sup>2</sup>) ≈ 9 × 10<sup>8</sup> → too slow. The waste: a wrapping subarray is just "the whole array minus a normal middle subarray", which one extra Kadane pass finds.</p>`,
+      code: `
+        int bruteCircular(int[] nums) {
+            int n = nums.length, best = Integer.MIN_VALUE;
+            for (int i = 0; i < n; i++) {
+                int s = 0;
+                for (int len = 1; len <= n; len++) {
+                    s += nums[(i + len - 1) % n];   // walk around the circle
+                    best = Math.max(best, s);
+                }
+            }
+            return best;
+        }`
+    },
+    mcq: { q: `<p>A wrapping subarray (uses both ends) leaves out a contiguous middle part. To maximise the wrap, the left-out middle should be…</p>`, options: ['The minimum-sum subarray', 'The maximum-sum subarray', 'Empty', 'The first element'], answer: 0, explain: `<p>wrap sum = total − (middle sum). Maximising the wrap means minimising the middle — Kadane with min instead of max.</p>` },
+    hints: [
+      `<p><b>Aha:</b> the best subarray either does not wrap (plain Kadane) or wraps (total − minimum subarray sum).</p>`,
+      `<p>One pass carrying four values: curMax, bestMax, curMin, bestMin, plus the total.</p>`,
+      `<p><b>Traps:</b> if every number is negative, bestMin = total, so total − bestMin = 0 means "empty subarray" — not allowed. Return bestMax in that case (detect with bestMax &lt; 0).<br><b>Recipe:</b> run both Kadanes; return bestMax &lt; 0 ? bestMax : max(bestMax, total − bestMin).</p>`
+    ],
+    solution: {
+      approach: `<p>Max Kadane for the normal case, min Kadane for the wrap case (total − min), with the all-negative guard.</p>`,
+      code: `
+        class Solution {
+            public int maxSubarraySumCircular(int[] nums) {
+                int total = 0;
+                int curMax = 0, bestMax = Integer.MIN_VALUE;
+                int curMin = 0, bestMin = Integer.MAX_VALUE;
+                for (int x : nums) {
+                    curMax = Math.max(x, curMax + x);   // best ending here
+                    bestMax = Math.max(bestMax, curMax);
+                    curMin = Math.min(x, curMin + x);   // worst ending here
+                    bestMin = Math.min(bestMin, curMin);
+                    total += x;
+                }
+                if (bestMax < 0) return bestMax;        // all negative: wrap would be empty
+                return Math.max(bestMax, total - bestMin);
+            }
+
+            public static void main(String[] args) {
+                Solution s = new Solution();
+                System.out.println(s.maxSubarraySumCircular(new int[]{5, -3, 5}) + " " + s.maxSubarraySumCircular(new int[]{-3, -2, -3})); // 10 -2
+            }
+        }`,
+      dry: { head: ['x', 'curMax', 'bestMax', 'curMin', 'bestMin', 'total'], rows: [['5', '5', '5', '5', '5', '5'], ['−3', '2', '5', '−3', '−3', '2'], ['5', '7', '7', '2', '−3', '7 → max(7, 7 − (−3)) = ' + H.c('p', '10')]] },
+      complexity: `<p><b>Time O(N)</b>, <b>space O(1)</b>.</p>`,
+      followUps: ['Return the indices of the best circular subarray.', 'Circular subarray with length at most K (needs a monotonic deque).']
+    }
+  });
+
+  practice.push({
+    title: 'Maximum Product Subarray',
+    level: 'Medium',
+    tags: ['kadane', 'carry forward', 'dp'],
+    companies: ['Amazon', 'LinkedIn', 'Microsoft', 'Google'],
+    statement: `<p>Given an integer array <code>nums</code>, find a non-empty contiguous subarray with the largest <b>product</b> and return that product.</p>`,
+    constraints: `1 ≤ N ≤ 2 × 10<sup>4</sup>, −10 ≤ nums[i] ≤ 10, the answer fits in a 32-bit int`,
+    example: `${H.arr([2, 3, -2, 4], { label: 'nums', hl: { 0: 'p', 1: 'p' } })}<p>Output ${H.c('p', '<b>6</b>')} from [2, 3]. For [−2, 3, −4] the answer is <b>24</b> — two negatives multiply into a big positive, so the smallest (most negative) product so far can suddenly become the largest.</p>`,
+    brute: {
+      why: `<p>All subarrays with a running product: O(N<sup>2</sup>) = 4 × 10<sup>8</sup> — borderline/slow. The waste: the best product ending at i depends only on the best and worst products ending at i − 1.</p>`,
+      code: `
+        int bruteMaxProduct(int[] nums) {
+            int best = Integer.MIN_VALUE;
+            for (int i = 0; i < nums.length; i++) {
+                int p = 1;
+                for (int j = i; j < nums.length; j++) {
+                    p *= nums[j];
+                    best = Math.max(best, p);
+                }
+            }
+            return best;
+        }`
+    },
+    mcq: { q: `<p>Why must you carry the <b>minimum</b> product ending here, not just the maximum?</p>`, options: ['A negative number turns the minimum into the maximum', 'To handle zeros only', 'To save memory', 'It is not needed'], answer: 0, explain: `<p>min × (negative) can be the new max. E.g. ending at −4 in [−2, 3, −4]: previous min −6 × −4 = 24.</p>` },
+    hints: [
+      `<p><b>Aha:</b> Kadane, but a negative number swaps the roles of the biggest and smallest products.</p>`,
+      `<p>Carry <code>hi</code> and <code>lo</code> (max and min product ending here). For x: candidates are x, hi·x, lo·x; new hi = max, new lo = min.</p>`,
+      `<p><b>Traps:</b> compute both from the <b>old</b> hi/lo (use temps). Zero resets both to 0 — the "start fresh" option x handles it. Start best = nums[0].<br><b>Recipe:</b> hi = lo = best = nums[0]; for each next x: a = hi·x, b = lo·x; hi = max(x, a, b); lo = min(x, a, b); best = max(best, hi).</p>`
+    ],
+    solution: {
+      approach: `<p>Kadane with two carried states (max and min product ending here).</p>`,
+      code: `
+        class Solution {
+            public int maxProduct(int[] nums) {
+                int hi = nums[0], lo = nums[0], best = nums[0];
+                for (int i = 1; i < nums.length; i++) {
+                    int x = nums[i];
+                    int a = hi * x, b = lo * x;                 // extend the best and the worst run
+                    hi = Math.max(x, Math.max(a, b));            // or start fresh at x
+                    lo = Math.min(x, Math.min(a, b));
+                    best = Math.max(best, hi);
+                }
+                return best;
+            }
+
+            public static void main(String[] args) {
+                Solution s = new Solution();
+                System.out.println(s.maxProduct(new int[]{2, 3, -2, 4}) + " " + s.maxProduct(new int[]{-2, 3, -4})); // 6 24
+            }
+        }`,
+      dry: { head: ['x', 'hi·x', 'lo·x', 'hi', 'lo', 'best'], rows: [['−2', '—', '—', '−2', '−2', '−2'], ['3', '−6', '−6', '3', '−6', '3'], ['−4', '−12', '24', '24', '−12', H.c('p', '24')]] },
+      complexity: `<p><b>Time O(N)</b>, <b>space O(1)</b>.</p>`,
+      followUps: ['Return the subarray indices.', 'Prefix/suffix product alternative (split at zeros).']
+    }
+  });
+
+  practice.push({
+    title: 'Spiral Matrix II (Generate)',
+    level: 'Medium',
+    tags: ['matrix', 'spiral', 'simulation'],
+    companies: ['Microsoft', 'Amazon', 'Apple'],
+    statement: `<p>Given a positive integer <code>n</code>, generate an <code>n × n</code> matrix filled with the numbers 1 to n<sup>2</sup> in clockwise spiral order.</p>`,
+    constraints: `1 ≤ n ≤ 20`,
+    example: `${H.table(['', 'c0', 'c1', 'c2'], [['r0', H.c('y', '1'), H.c('y', '2'), H.c('y', '3')], ['r1', H.c('p', '8'), H.c('r', '9'), H.c('g', '4')], ['r2', H.c('b', '7'), H.c('b', '6'), H.c('g', '5')]])}<p>n = 3: the counter walks ${H.c('y', '→ 1 2 3')}, ${H.c('g', '↓ 4 5')}, ${H.c('b', '← 6 7')}, ${H.c('p', '↑ 8')}, then the centre ${H.c('r', '9')}.</p>`,
+    brute: {
+      why: `<p>Simulate with direction vectors and check "is the next cell outside or already filled (non-zero)?" before each step. Correct and O(n<sup>2</sup>), but the turning logic is error-prone. The four-wall version states the boundaries explicitly and needs no checks per step.</p>`,
+      code: `
+        int[][] simulate(int n) {
+            int[][] g = new int[n][n];
+            int[] dr = {0, 1, 0, -1}, dc = {1, 0, -1, 0};
+            int r = 0, c = 0, d = 0;
+            for (int v = 1; v <= n * n; v++) {
+                g[r][c] = v;
+                int nr = r + dr[d], nc = c + dc[d];
+                if (nr < 0 || nr >= n || nc < 0 || nc >= n || g[nr][nc] != 0) {
+                    d = (d + 1) % 4;                    // blocked: turn clockwise
+                    nr = r + dr[d];
+                    nc = c + dc[d];
+                }
+                r = nr;
+                c = nc;
+            }
+            return g;
+        }`
+    },
+    mcq: { q: `<p>For n = 4, which number lands at position (1, 1)?</p>`, options: ['13', '12', '16', '6'], answer: 0, explain: `<p>Outer ring uses 1..12 (12 cells). The inner 2 × 2 ring starts at (1, 1) with 13, then 14 at (1, 2), 15 at (2, 2), 16 at (2, 1).</p>` },
+    hints: [
+      `<p><b>Aha:</b> it is the spiral traversal, but you write a counter instead of reading values.</p>`,
+      `<p>Four walls top/bottom/left/right and a counter <code>v</code> starting at 1.</p>`,
+      `<p><b>Traps:</b> for a square matrix the guards rarely trigger, but keep them; odd n ends with a single centre cell.<br><b>Recipe:</b> while top ≤ bottom and left ≤ right: → fill row top, top++; ↓ fill col right, right−−; ← fill row bottom (if top ≤ bottom), bottom−−; ↑ fill col left (if left ≤ right), left++.</p>`
+    ],
+    solution: {
+      approach: `<p>Four shrinking walls; each walk writes the next counter values.</p>`,
+      code: `
+        class Solution {
+            public int[][] generateMatrix(int n) {
+                int[][] g = new int[n][n];
+                int top = 0, bottom = n - 1, left = 0, right = n - 1, v = 1;
+                while (top <= bottom && left <= right) {
+                    for (int c = left; c <= right; c++) g[top][c] = v++;
+                    top++;
+                    for (int r = top; r <= bottom; r++) g[r][right] = v++;
+                    right--;
+                    if (top <= bottom) { for (int c = right; c >= left; c--) g[bottom][c] = v++; bottom--; }
+                    if (left <= right) { for (int r = bottom; r >= top; r--) g[r][left] = v++; left++; }
+                }
+                return g;
+            }
+
+            public static void main(String[] args) {
+                System.out.println(Arrays.deepToString(new Solution().generateMatrix(3))); // [[1, 2, 3], [8, 9, 4], [7, 6, 5]]
+            }
+        }`,
+      complexity: `<p><b>Time O(n<sup>2</sup>)</b>, <b>space O(1)</b> extra besides the output.</p>`,
+      followUps: ['Generate an R × C (non-square) spiral.', 'Fill anti-clockwise starting from the centre.']
+    }
+  });
+
+  practice.push({
+    title: 'Set Matrix Zeroes',
+    level: 'Medium',
+    tags: ['matrix', 'in-place', 'markers'],
+    companies: ['Microsoft', 'Amazon', 'Meta', 'Oracle'],
+    statement: `<p>Given an <code>R × C</code> matrix, if a cell is 0, set its <b>entire row and column</b> to 0. Do it in place. Aim for O(1) extra space.</p>`,
+    constraints: `1 ≤ R, C ≤ 200, −2<sup>31</sup> ≤ matrix[i][j] ≤ 2<sup>31</sup> − 1`,
+    example: `${H.table(['input', 'output'], [['1 1 1<br>1 ' + H.c('r', '0') + ' 1<br>1 1 1', '1 ' + H.c('r', '0') + ' 1<br>' + H.c('r', '0 0 0') + '<br>1 ' + H.c('r', '0') + ' 1']])}<p>The single 0 at (1, 1) wipes row 1 and column 1. Careful: zeros you <b>write</b> must not trigger more wiping — only the original zeros count.</p>`,
+    brute: {
+      why: `<p>Copy the matrix and, for each original zero, wipe its row and column in the copy: O(R·C·(R + C)) time and O(R·C) space. The better version remembers only "which rows" and "which columns" — O(R + C) — and the best stores those flags inside the first row and column.</p>`,
+      code: `
+        void bruteZeroes(int[][] m) {
+            int R = m.length, C = m[0].length;
+            int[][] copy = new int[R][];
+            for (int r = 0; r < R; r++) copy[r] = m[r].clone();
+            for (int r = 0; r < R; r++)
+                for (int c = 0; c < C; c++)
+                    if (copy[r][c] == 0) {                       // look at ORIGINAL values only
+                        for (int k = 0; k < C; k++) m[r][k] = 0;
+                        for (int k = 0; k < R; k++) m[k][c] = 0;
+                    }
+        }`
+    },
+    mcq: { q: `<p>Why do we need a separate flag for the first column (or first row) in the O(1)-space solution?</p>`, options: ['Cell (0, 0) cannot mark both row 0 and column 0 at once', 'Java arrays start at index 1', 'To handle negative numbers', 'It is only for speed'], answer: 0, explain: `<p>We use row 0 as column markers and column 0 as row markers. The cell (0, 0) is shared by both, so one extra boolean (e.g. col0Zero) keeps the two meanings apart.</p>` },
+    hints: [
+      `<p><b>Aha:</b> you only need to know which rows and which columns contain a zero — not where exactly.</p>`,
+      `<p>Store those flags in the matrix itself: m[r][0] = 0 marks row r, m[0][c] = 0 marks column c. Keep one boolean for column 0.</p>`,
+      `<p><b>Traps:</b> process the first row/column <b>last</b>, otherwise the markers get wiped before you read them.<br><b>Recipe:</b> pass 1: mark; pass 2: for r ≥ 1, c ≥ 1 zero the cell if its row or column marker is 0; then zero row 0 if m[0][0] == 0; zero column 0 if col0Zero.</p>`
+    ],
+    solution: {
+      approach: `<p>Use the first row and first column as marker arrays, with one extra flag for column 0. Fill the inner cells from the markers, then fix the marker row/column last.</p>`,
+      code: `
+        class Solution {
+            public void setZeroes(int[][] m) {
+                int R = m.length, C = m[0].length;
+                boolean col0Zero = false;
+                for (int r = 0; r < R; r++) {
+                    if (m[r][0] == 0) col0Zero = true;           // column 0 has its own flag
+                    for (int c = 1; c < C; c++) {
+                        if (m[r][c] == 0) {
+                            m[r][0] = 0;                         // mark row r
+                            m[0][c] = 0;                         // mark column c
+                        }
+                    }
+                }
+                for (int r = 1; r < R; r++)                      // inner cells first
+                    for (int c = 1; c < C; c++)
+                        if (m[r][0] == 0 || m[0][c] == 0) m[r][c] = 0;
+                if (m[0][0] == 0)                                // row 0 marker
+                    for (int c = 0; c < C; c++) m[0][c] = 0;
+                if (col0Zero)                                    // column 0 marker
+                    for (int r = 0; r < R; r++) m[r][0] = 0;
+            }
+
+            public static void main(String[] args) {
+                int[][] m = {{0, 1, 2, 0}, {3, 4, 5, 2}, {1, 3, 1, 5}};
+                new Solution().setZeroes(m);
+                System.out.println(Arrays.deepToString(m)); // [[0, 0, 0, 0], [0, 4, 5, 0], [0, 3, 1, 0]]
+            }
+        }`,
+      complexity: `<p><b>Time O(R·C)</b>, <b>space O(1)</b> extra.</p>`,
+      followUps: ['Do it with O(R + C) boolean arrays first — explain the trade-off.', 'Game of Life: update in place using extra state values.']
+    }
+  });
+
+  practice.push({
+    title: 'Search a Fully Sorted 2D Matrix',
+    level: 'Medium',
+    tags: ['matrix', 'binary search', 'flat index'],
+    companies: ['Amazon', 'Microsoft', 'Bloomberg'],
+    statement: `<p>An <code>R × C</code> matrix has each row sorted ascending, and the first value of each row is greater than the last value of the previous row. Return <code>true</code> if <code>target</code> exists. Required: O(log(R·C)).</p>`,
+    constraints: `1 ≤ R, C ≤ 100, −10<sup>4</sup> ≤ values, target ≤ 10<sup>4</sup>`,
+    example: `${H.table(['', 'c0', 'c1', 'c2', 'c3'], [['r0', '1', H.c('g', '3'), '5', '7'], ['r1', '10', '11', '16', '20'], ['r2', '23', '30', '34', '60']])}<p>target 3 → <b>true</b>; target 13 → <b>false</b>. Read row by row it is one sorted list: 1, 3, 5, 7, 10, 11, …</p>`,
+    brute: {
+      why: `<p>Staircase search works here too (O(R + C) = 200 steps), and scanning is O(R·C). Both ignore the stronger guarantee: the whole matrix is one sorted list, so binary search over R·C positions needs only ~14 steps.</p>`,
+      code: `
+        boolean staircase(int[][] g, int target) {
+            int r = 0, c = g[0].length - 1;
+            while (r < g.length && c >= 0) {
+                if (g[r][c] == target) return true;
+                if (g[r][c] > target) c--; else r++;
+            }
+            return false;
+        }`
+    },
+    mcq: { q: `<p>With C = 4 columns, which cell is flat index 9?</p>`, options: ['(2, 1)', '(1, 2)', '(2, 2)', '(9, 0)'], answer: 0, explain: `<p>row = 9 / 4 = 2, col = 9 % 4 = 1 → (2, 1).</p>` },
+    hints: [
+      `<p><b>Aha:</b> row-major order turns the matrix into a sorted array of length R·C without copying.</p>`,
+      `<p>Binary search lo = 0, hi = R·C − 1; read <code>g[mid / C][mid % C]</code>.</p>`,
+      `<p><b>Traps:</b> divide by the number of <b>columns</b>, not rows; use lo + (hi − lo) / 2.<br><b>Recipe:</b> standard binary search on the virtual flat array.</p>`
+    ],
+    solution: {
+      approach: `<p>Binary search on a virtual flat array using flat → (row, col) conversion.</p>`,
+      code: `
+        class Solution {
+            public boolean searchMatrix(int[][] g, int target) {
+                int R = g.length, C = g[0].length;
+                int lo = 0, hi = R * C - 1;
+                while (lo <= hi) {
+                    int mid = lo + (hi - lo) / 2;
+                    int v = g[mid / C][mid % C];      // flat index -> (row, col)
+                    if (v == target) return true;
+                    if (v < target) lo = mid + 1;
+                    else hi = mid - 1;
+                }
+                return false;
+            }
+
+            public static void main(String[] args) {
+                int[][] g = {{1, 3, 5, 7}, {10, 11, 16, 20}, {23, 30, 34, 60}};
+                System.out.println(new Solution().searchMatrix(g, 3) + " " + new Solution().searchMatrix(g, 13)); // true false
+            }
+        }`,
+      dry: { head: ['lo', 'hi', 'mid', '(r, c)', 'value vs 13'], rows: [['0', '11', '5', '(1, 1)', '11 &lt; 13 → lo = 6'], ['6', '11', '8', '(2, 0)', '23 &gt; 13 → hi = 7'], ['6', '7', '6', '(1, 2)', '16 &gt; 13 → hi = 5'], ['6', '5', '—', '—', H.c('r', 'lo &gt; hi → false')]] },
+      complexity: `<p><b>Time O(log(R·C))</b>, <b>space O(1)</b>.</p>`,
+      followUps: ['What if only rows and columns are sorted? (staircase)', 'Find the first value ≥ target (lower bound).']
+    }
+  });
+
+  practice.push({
+    title: 'Matrix Block Sum',
+    level: 'Medium',
+    tags: ['2D prefix sum', 'matrix'],
+    companies: ['Google', 'Amazon'],
+    statement: `<p>Given an <code>R × C</code> matrix and an integer <code>k</code>, return a matrix <code>answer</code> where <code>answer[i][j]</code> is the sum of all <code>mat[r][c]</code> with <code>i − k ≤ r ≤ i + k</code>, <code>j − k ≤ c ≤ j + k</code>, and (r, c) inside the matrix.</p>`,
+    constraints: `1 ≤ R, C, k ≤ 100, 1 ≤ mat[i][j] ≤ 100`,
+    example: `${H.table(['mat', 'c0', 'c1', 'c2'], [['r0', '1', '2', '3'], ['r1', '4', '5', '6'], ['r2', '7', '8', '9']])}<p>k = 1 → answer = [[12, 21, 16], [27, 45, 33], [24, 39, 28]]. answer[0][0] = 1 + 2 + 4 + 5 = 12 (the block is clipped at the border); the centre sees all 9 cells = 45.</p>`,
+    brute: {
+      why: `<p>For each cell, add up its (2k+1)<sup>2</sup> block: O(R·C·k<sup>2</sup>) = 10<sup>4</sup> × 4 × 10<sup>4</sup> = 4 × 10<sup>8</sup>. The waste: neighbouring blocks overlap almost completely.</p>`,
+      code: `
+        int[][] bruteBlock(int[][] mat, int k) {
+            int R = mat.length, C = mat[0].length;
+            int[][] ans = new int[R][C];
+            for (int i = 0; i < R; i++)
+                for (int j = 0; j < C; j++)
+                    for (int r = Math.max(0, i - k); r <= Math.min(R - 1, i + k); r++)
+                        for (int c = Math.max(0, j - k); c <= Math.min(C - 1, j + k); c++)
+                            ans[i][j] += mat[r][c];
+            return ans;
+        }`
+    },
+    mcq: { q: `<p>For cell (0, 0) with k = 1 in a 3 × 3 matrix, which rectangle do you query?</p>`, options: ['(0, 0)..(1, 1) after clamping', '(−1, −1)..(1, 1)', '(0, 0)..(2, 2)', '(1, 1)..(1, 1)'], answer: 0, explain: `<p>Clamp: r1 = max(0, i − k) = 0, c1 = 0, r2 = min(R − 1, i + k) = 1, c2 = 1. Then one 2D prefix query.</p>` },
+    hints: [
+      `<p><b>Aha:</b> every answer cell is a rectangle sum — build a 2D prefix table once.</p>`,
+      `<p>For each (i, j): clamp the corners to the matrix, then use big − top − left + corner.</p>`,
+      `<p><b>Traps:</b> clamp with max(0, …) and min(R − 1, …) before indexing the padded table.<br><b>Recipe:</b> build P; for each cell: r1, c1, r2, c2 = clamped; ans = P[r2+1][c2+1] − P[r1][c2+1] − P[r2+1][c1] + P[r1][c1].</p>`
+    ],
+    solution: {
+      approach: `<p>One padded 2D prefix table; each output cell is an O(1) clamped rectangle query.</p>`,
+      code: `
+        class Solution {
+            public int[][] matrixBlockSum(int[][] mat, int k) {
+                int R = mat.length, C = mat[0].length;
+                int[][] P = new int[R + 1][C + 1];
+                for (int i = 0; i < R; i++)
+                    for (int j = 0; j < C; j++)
+                        P[i + 1][j + 1] = mat[i][j] + P[i][j + 1] + P[i + 1][j] - P[i][j];
+                int[][] ans = new int[R][C];
+                for (int i = 0; i < R; i++) {
+                    for (int j = 0; j < C; j++) {
+                        int r1 = Math.max(0, i - k), c1 = Math.max(0, j - k);          // clamp to the grid
+                        int r2 = Math.min(R - 1, i + k), c2 = Math.min(C - 1, j + k);
+                        ans[i][j] = P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1];
+                    }
+                }
+                return ans;
+            }
+
+            public static void main(String[] args) {
+                int[][] m = {{1, 2, 3}, {4, 5, 6}, {7, 8, 9}};
+                System.out.println(Arrays.deepToString(new Solution().matrixBlockSum(m, 1))); // [[12, 21, 16], [27, 45, 33], [24, 39, 28]]
+            }
+        }`,
+      complexity: `<p><b>Time O(R·C)</b>, <b>space O(R·C)</b> for the prefix table.</p>`,
+      followUps: ['Largest square with sum ≤ threshold (LeetCode 1292).', 'Image blur / box filter in real image processing.']
+    }
+  });
+
+  // =====================================================================
+  // PRACTICE — Hard
+  // =====================================================================
+  practice.push({
+    title: 'Candy Distribution',
+    level: 'Hard',
+    tags: ['prefix/suffix pass', 'greedy', 'carry forward'],
+    companies: ['Amazon', 'Google', 'Uber'],
+    statement: `<p><code>N</code> children stand in a line with ratings <code>ratings[i]</code>. Each child gets at least one candy, and a child with a <b>higher rating than a neighbour</b> must get <b>more</b> candies than that neighbour. Return the minimum total number of candies.</p>`,
+    constraints: `1 ≤ N ≤ 2 × 10<sup>4</sup>, 0 ≤ ratings[i] ≤ 2 × 10<sup>4</sup>`,
+    example: `${H.arr([1, 0, 2], { label: 'ratings' })}${H.arr([2, 1, 2], { label: 'candies', hl: { 0: 'g', 2: 'g' } })}<p>Total <b>5</b>. For [1, 2, 2] the answer is <b>4</b> (candies [1, 2, 1]) — equal ratings have no rule between them, so the last child can get just 1.</p>`,
+    brute: {
+      why: `<p>Start everyone at 1 and keep sweeping, fixing any violated neighbour pair, until a full sweep changes nothing. A strictly decreasing line needs about N sweeps of N steps: O(N<sup>2</sup>) = 4 × 10<sup>8</sup>. The waste: information flows one step per sweep instead of along the whole line in one pass.</p>`,
+      code: `
+        int bruteCandy(int[] ratings) {
+            int n = ratings.length;
+            int[] c = new int[n];
+            Arrays.fill(c, 1);
+            boolean changed = true;
+            while (changed) {                                   // repeat until stable
+                changed = false;
+                for (int i = 0; i < n; i++) {
+                    if (i > 0 && ratings[i] > ratings[i - 1] && c[i] <= c[i - 1]) { c[i] = c[i - 1] + 1; changed = true; }
+                    if (i < n - 1 && ratings[i] > ratings[i + 1] && c[i] <= c[i + 1]) { c[i] = c[i + 1] + 1; changed = true; }
+                }
+            }
+            int sum = 0;
+            for (int x : c) sum += x;
+            return sum;
+        }`
+    },
+    mcq: { q: `<p>After the left→right pass (only the "left neighbour" rule), how do you enforce the "right neighbour" rule without breaking the first?</p>`, options: ['Right→left pass: c[i] = max(c[i], c[i+1] + 1) when ratings[i] &gt; ratings[i+1]', 'Overwrite c[i] = c[i+1] + 1', 'Sort the ratings', 'Add 1 to every child'], answer: 0, explain: `<p>Taking the max keeps the left rule satisfied (values only grow) while fixing the right rule — exactly like combining prefix max and suffix max.</p>` },
+    hints: [
+      `<p><b>Aha:</b> the two neighbour rules are independent: one only looks left, one only looks right. Solve each with a one-direction carry-forward pass.</p>`,
+      `<p>Pass 1 (→): if ratings[i] &gt; ratings[i−1], c[i] = c[i−1] + 1. Pass 2 (←): if ratings[i] &gt; ratings[i+1], c[i] = max(c[i], c[i+1] + 1).</p>`,
+      `<p><b>Traps:</b> use max in pass 2, not assignment; equal ratings impose nothing.<br><b>Recipe:</b> fill 1s; left pass; right pass with max; sum.</p>`
+    ],
+    solution: {
+      approach: `<p>Two directional passes (like prefix and suffix arrays), combined with max per index. This is the minimum because each child gets exactly the length of the longest increasing run reaching it from either side.</p>`,
+      code: `
+        class Solution {
+            public int candy(int[] ratings) {
+                int n = ratings.length;
+                int[] c = new int[n];
+                Arrays.fill(c, 1);                                   // everyone gets at least one
+                for (int i = 1; i < n; i++)                          // left neighbour rule
+                    if (ratings[i] > ratings[i - 1]) c[i] = c[i - 1] + 1;
+                for (int i = n - 2; i >= 0; i--)                     // right neighbour rule
+                    if (ratings[i] > ratings[i + 1]) c[i] = Math.max(c[i], c[i + 1] + 1);
+                int sum = 0;
+                for (int x : c) sum += x;
+                return sum;
+            }
+
+            public static void main(String[] args) {
+                Solution s = new Solution();
+                System.out.println(s.candy(new int[]{1, 0, 2}) + " " + s.candy(new int[]{1, 2, 2}) + " " + s.candy(new int[]{1, 3, 4, 5, 2})); // 5 4 11
+            }
+        }`,
+      dry: { head: ['i', 'rating', 'after → pass', 'after ← pass'], rows: [['0', '1', '1', '1'], ['1', '3', '2', '2'], ['2', '4', '3', '3'], ['3', '5', '4', '4'], ['4', '2', '1', '1 → total ' + H.c('p', '11')]] },
+      complexity: `<p><b>Time O(N)</b>, <b>space O(N)</b> (an O(1)-space version counts up/down slopes).</p>`,
+      followUps: ['Children in a circle.', 'O(1) extra space with slope counting.']
+    }
+  });
+
+  practice.push({
+    title: 'First Missing Positive',
+    level: 'Hard',
+    tags: ['array', 'in-place', 'index as hash', 'cyclic placement'],
+    companies: ['Amazon', 'Microsoft', 'Google', 'Meta'],
+    statement: `<p>Given an unsorted integer array <code>nums</code>, return the smallest positive integer that is <b>not</b> present. You must run in O(N) time and use O(1) extra space (modifying the array is allowed).</p>`,
+    constraints: `1 ≤ N ≤ 10<sup>5</sup>, −2<sup>31</sup> ≤ nums[i] ≤ 2<sup>31</sup> − 1`,
+    example: `${H.arr([3, 4, -1, 1], { label: 'nums' })}<p>Output <b>2</b>: 1 is present, 2 is not. [1, 2, 0] → <b>3</b>. [7, 8, 9, 11, 12] → <b>1</b>. Key fact: the answer is always in 1..N+1, because N numbers can cover at most 1..N.</p>`,
+    brute: {
+      why: `<p>Try 1, 2, 3, … and scan the array for each: O(N<sup>2</sup>). A HashSet makes it O(N) time but O(N) space; sorting is O(N log N). The waste: we ignore that the array itself has exactly N slots — one for each candidate answer 1..N.</p>`,
+      code: `
+        int bruteMissing(int[] nums) {
+            for (int want = 1; ; want++) {
+                boolean found = false;
+                for (int x : nums) if (x == want) { found = true; break; }
+                if (!found) return want;            // at most N + 1 tries, each O(N)
+            }
+        }`
+    },
+    mcq: { q: `<p>Where should the value 3 live after "cyclic placement" in an array of size 5?</p>`, options: ['Index 2', 'Index 3', 'Index 0', 'Nowhere — ignore it'], answer: 0, explain: `<p>Value v belongs at index v − 1. Values outside 1..N (and duplicates) are ignored. Afterwards, the first index i with nums[i] ≠ i + 1 gives the answer i + 1.</p>` },
+    hints: [
+      `<p><b>Aha:</b> the answer is in 1..N+1, and the array has N slots — use index v − 1 as the "seen" marker for value v.</p>`,
+      `<p>For each i, while nums[i] is in 1..N and not already at its home (nums[nums[i] − 1] ≠ nums[i]), swap it home.</p>`,
+      `<p><b>Traps:</b> the duplicate check <code>nums[v−1] ≠ v</code> prevents infinite loops; negative and huge values are skipped. Each swap places one value permanently → O(N) total.<br><b>Recipe:</b> place; then scan for the first i with nums[i] ≠ i + 1; if none, return N + 1.</p>`
+    ],
+    solution: {
+      approach: `<p>Cyclic placement: put every value v in 1..N at index v − 1 by swapping, then the first mismatch is the answer.</p>`,
+      code: `
+        class Solution {
+            public int firstMissingPositive(int[] nums) {
+                int n = nums.length;
+                for (int i = 0; i < n; i++) {
+                    // keep swapping nums[i] to its home until it is out of range, a duplicate, or already home
+                    while (nums[i] >= 1 && nums[i] <= n && nums[nums[i] - 1] != nums[i]) {
+                        int v = nums[i];
+                        nums[i] = nums[v - 1];
+                        nums[v - 1] = v;
+                    }
+                }
+                for (int i = 0; i < n; i++)
+                    if (nums[i] != i + 1) return i + 1;    // first empty home
+                return n + 1;                              // 1..n all present
+            }
+
+            public static void main(String[] args) {
+                Solution s = new Solution();
+                System.out.println(s.firstMissingPositive(new int[]{3, 4, -1, 1}) + " " + s.firstMissingPositive(new int[]{1, 2, 0}) + " " + s.firstMissingPositive(new int[]{7, 8, 9, 11, 12})); // 2 3 1
+            }
+        }`,
+      dry: { head: ['step', 'action', 'array'], rows: [['i=0', 'swap 3 → index 2', '[−1, 4, 3, 1]'], ['i=0', '−1 out of range, stop', '[−1, 4, 3, 1]'], ['i=1', 'swap 4 → index 3', '[−1, 1, 3, 4]'], ['i=1', 'swap 1 → index 0', '[1, −1, 3, 4]'], ['scan', 'index 1 holds −1 ≠ 2', H.c('p', 'answer 2')]] },
+      complexity: `<p><b>Time O(N)</b> — every swap puts a value home for good, so at most N swaps overall. <b>Space O(1)</b>.</p>`,
+      followUps: ['Find all missing numbers in 1..N.', 'Find the duplicate and the missing number.', 'Sign-marking variant (negate nums[v − 1]).']
+    }
+  });
+
+  practice.push({
+    title: 'Maximum Sum Rectangle in a 2D Matrix',
+    level: 'Hard',
+    tags: ['kadane', '2D', 'prefix sum', 'compression'],
+    companies: ['Google', 'Amazon', 'Flipkart', 'Samsung'],
+    statement: `<p>Given an <code>R × C</code> integer matrix, find the sub-rectangle (any contiguous block of rows and columns, non-empty) with the largest sum, and return that sum.</p>`,
+    constraints: `1 ≤ R, C ≤ 100, −10<sup>4</sup> ≤ A[i][j] ≤ 10<sup>4</sup>`,
+    example: `${H.table(['', 'c0', 'c1', 'c2', 'c3', 'c4'], [['r0', '1', '2', '−1', '−4', '−20'], ['r1', '−8', H.c('p', '−3'), H.c('p', '4'), H.c('p', '2'), '1'], ['r2', '3', H.c('p', '8'), H.c('p', '10'), H.c('p', '1'), '3'], ['r3', '−4', H.c('p', '−1'), H.c('p', '1'), H.c('p', '7'), '−6']])}<p>Output ${H.c('p', '<b>29</b>')} from rows 1..3, columns 1..3: (−3 + 4 + 2) + (8 + 10 + 1) + (−1 + 1 + 7) = 3 + 19 + 7 = 29.</p>`,
+    brute: {
+      why: `<p>Try every rectangle (O(R<sup>2</sup>C<sup>2</sup>) ≈ 2.5 × 10<sup>7</sup> for 100 × 100 using a 2D prefix table for O(1) sums) — acceptable here but O(N<sup>4</sup>) in general. Without the prefix table it is O(N<sup>6</sup>). The waste: for a fixed pair of rows, choosing the best column range is just 1D max subarray, which Kadane does in O(C) instead of O(C<sup>2</sup>).</p>`,
+      code: `
+        long bruteRect(int[][] A) {
+            int R = A.length, C = A[0].length;
+            long[][] P = new long[R + 1][C + 1];
+            for (int i = 0; i < R; i++)
+                for (int j = 0; j < C; j++)
+                    P[i + 1][j + 1] = A[i][j] + P[i][j + 1] + P[i + 1][j] - P[i][j];
+            long best = Long.MIN_VALUE;
+            for (int r1 = 0; r1 < R; r1++)
+                for (int r2 = r1; r2 < R; r2++)
+                    for (int c1 = 0; c1 < C; c1++)
+                        for (int c2 = c1; c2 < C; c2++)
+                            best = Math.max(best, P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1]);
+            return best;
+        }`
+    },
+    mcq: { q: `<p>You fix top row = 1 and bottom row = 3 and add each column's values between them, getting [−9, 4, 15, 10, −2]. What is the best rectangle sum for this row pair?</p>`, options: ['29 (Kadane on the compressed row: 4 + 15 + 10)', '18', '15', '27'], answer: 0, explain: `<p>Each compressed value is a whole column strip. Kadane over [−9, 4, 15, 10, −2] gives 4 + 15 + 10 = 29, i.e. columns 1..3 — the answer above.</p>` },
+    hints: [
+      `<p><b>Aha:</b> fix the top and bottom rows. Then each column contributes one number (its strip sum), and the problem becomes 1D max subarray.</p>`,
+      `<p>For each top, keep a <code>long[] col</code>; extend bottom one row at a time adding that row into col (carry forward), and run Kadane on col.</p>`,
+      `<p><b>Traps:</b> reset col for every new top; Kadane must allow all-negative (start with col[0]); use long.<br><b>Recipe:</b> for top: col = 0s; for bottom ≥ top: col[c] += A[bottom][c]; best = max(best, kadane(col)).</p>`
+    ],
+    solution: {
+      approach: `<p>Row-pair compression + Kadane: O(R<sup>2</sup>·C). Transpose first if R &gt; C so the squared dimension is the smaller one.</p>`,
+      code: `
+        class Solution {
+            public long maxSumRectangle(int[][] A) {
+                int R = A.length, C = A[0].length;
+                long best = Long.MIN_VALUE;
+                for (int top = 0; top < R; top++) {
+                    long[] col = new long[C];                  // column strip sums for rows top..bottom
+                    for (int bottom = top; bottom < R; bottom++) {
+                        for (int c = 0; c < C; c++) col[c] += A[bottom][c];   // grow the strip by one row
+                        long cur = col[0], here = col[0];      // Kadane on the compressed row
+                        for (int c = 1; c < C; c++) {
+                            cur = Math.max(col[c], cur + col[c]);
+                            here = Math.max(here, cur);
+                        }
+                        best = Math.max(best, here);
+                    }
+                }
+                return best;
+            }
+
+            public static void main(String[] args) {
+                int[][] A = {{1, 2, -1, -4, -20}, {-8, -3, 4, 2, 1}, {3, 8, 10, 1, 3}, {-4, -1, 1, 7, -6}};
+                System.out.println(new Solution().maxSumRectangle(A)); // 29
+            }
+        }`,
+      dry: { head: ['top..bottom', 'compressed col', 'Kadane best'], rows: [['2..2', '[3, 8, 10, 1, 3]', '25'], ['1..2', '[−5, 5, 14, 3, 4]', '26'], ['1..3', '[−9, 4, 15, 10, −2]', H.c('p', '29')], ['0..3', '[−8, 6, 14, 6, −22]', '26']] },
+      complexity: `<p><b>Time O(R<sup>2</sup>·C)</b> (10<sup>6</sup> for 100 × 100), <b>space O(C)</b>.</p>`,
+      followUps: ['Return the rectangle corners.', 'Max rectangle sum no larger than K (needs a TreeSet of prefix sums).', 'Count submatrices that sum to a target (needs a HashMap).']
+    }
+  });
+
+  practice.push({
+    title: 'Maximum Sum of 3 Non-Overlapping Subarrays',
+    level: 'Hard',
+    tags: ['prefix sum', 'prefix max', 'suffix max', 'sliding window'],
+    companies: ['Meta', 'Google', 'Amazon'],
+    statement: `<p>Given an integer array <code>nums</code> and an integer <code>k</code>, find three <b>non-overlapping</b> subarrays of length <code>k</code> with the maximum total sum. Return their starting indices as an array; if several answers exist, return the lexicographically smallest one.</p>`,
+    constraints: `1 ≤ N ≤ 2 × 10<sup>4</sup>, 1 ≤ nums[i] &lt; 2<sup>16</sup>, 1 ≤ k ≤ ⌊N / 3⌋`,
+    example: `${H.arr([1, 2, 1, 2, 6, 7, 5, 1], { label: 'nums', hl: { 0: 'b', 1: 'b', 3: 'g', 4: 'g', 5: 'p', 6: 'p' } })}<p>k = 2 → <b>[0, 3, 5]</b>: windows [1, 2] = 3, [2, 6] = 8, [7, 5] = 12, total 23. [2, 1] at index 1 also sums to 3, but [0, 3, 5] is lexicographically smaller.</p>`,
+    brute: {
+      why: `<p>Try every triple of start positions a &lt; b &lt; c with gaps ≥ k: O(N<sup>3</sup>) ≈ 8 × 10<sup>12</sup>. The waste: once the middle window b is fixed, the best left window is just "the best window ending before b" — a prefix max — and the best right window is a suffix max.</p>`,
+      code: `
+        int[] bruteThree(int[] nums, int k) {
+            int n = nums.length, m = n - k + 1;
+            long[] W = new long[m];
+            for (int i = 0; i < m; i++) for (int j = i; j < i + k; j++) W[i] += nums[j];
+            long best = -1;
+            int[] ans = new int[3];
+            for (int a = 0; a < m; a++)
+                for (int b = a + k; b < m; b++)
+                    for (int c = b + k; c < m; c++)
+                        if (W[a] + W[b] + W[c] > best) { best = W[a] + W[b] + W[c]; ans = new int[]{a, b, c}; }
+            return ans;
+        }`
+    },
+    mcq: { q: `<p>With the middle window starting at j, which windows are allowed on the left?</p>`, options: ['Starts 0..j − k', 'Starts 0..j − 1', 'Starts 0..j', 'Any start'], answer: 0, explain: `<p>The left window must end before j: its start a satisfies a + k − 1 &lt; j, i.e. a ≤ j − k. Similarly the right window starts at ≥ j + k.</p>` },
+    hints: [
+      `<p><b>Aha:</b> fix the middle window. Then you need "best window entirely on the left" and "best window entirely on the right" — prefix max and suffix max over window sums.</p>`,
+      `<p>Build window sums W with prefix sums. left[i] = index of best W in 0..i (strict &gt; keeps the earliest). right[i] = index of best W in i..m−1 (≥ while scanning right-to-left keeps the earliest).</p>`,
+      `<p><b>Traps:</b> tie-breaking for the lexicographically smallest answer (strict vs non-strict comparisons); middle j ranges from k to m − 1 − k.<br><b>Recipe:</b> W, left, right; for j in k..m−1−k: total = W[left[j−k]] + W[j] + W[right[j+k]]; keep the strict best.</p>`
+    ],
+    solution: {
+      approach: `<p>Prefix sums → window sums; prefix-argmax and suffix-argmax arrays; one pass over the middle window. Everything is O(N).</p>`,
+      code: `
+        class Solution {
+            public int[] maxSumOfThreeSubarrays(int[] nums, int k) {
+                int n = nums.length, m = n - k + 1;
+                long[] P = new long[n + 1];
+                for (int i = 0; i < n; i++) P[i + 1] = P[i] + nums[i];
+                long[] W = new long[m];                           // W[i] = sum of nums[i..i+k-1]
+                for (int i = 0; i < m; i++) W[i] = P[i + k] - P[i];
+
+                int[] left = new int[m];                          // best window start in 0..i
+                int best = 0;
+                for (int i = 0; i < m; i++) {
+                    if (W[i] > W[best]) best = i;                 // strict: earliest index wins ties
+                    left[i] = best;
+                }
+                int[] right = new int[m];                         // best window start in i..m-1
+                best = m - 1;
+                for (int i = m - 1; i >= 0; i--) {
+                    if (W[i] >= W[best]) best = i;                // >=: earliest index wins ties
+                    right[i] = best;
+                }
+
+                int[] ans = {-1, -1, -1};
+                long bestSum = -1;
+                for (int j = k; j + k < m; j++) {                 // middle window start
+                    int a = left[j - k], c = right[j + k];
+                    long total = W[a] + W[j] + W[c];
+                    if (total > bestSum) {                        // strict: keep lexicographically smallest
+                        bestSum = total;
+                        ans = new int[]{a, j, c};
+                    }
+                }
+                return ans;
+            }
+
+            public static void main(String[] args) {
+                int[] r = new Solution().maxSumOfThreeSubarrays(new int[]{1, 2, 1, 2, 6, 7, 5, 1}, 2);
+                System.out.println(Arrays.toString(r)); // [0, 3, 5]
+            }
+        }`,
+      dry: { head: ['j (middle)', 'left[j−k]', 'right[j+k]', 'W sums', 'total'], rows: [['2', '0', '4', '3 + 3 + 13', '19'], ['3', '0', '5', '3 + 8 + 12', H.c('p', '23')], ['4', '0', '6', '3 + 13 + 6', '22']] },
+      complexity: `<p><b>Time O(N)</b>, <b>space O(N)</b> for W, left and right.</p>`,
+      followUps: ['Two non-overlapping subarrays with different lengths L and M (LeetCode 1031).', 'Generalise to m subarrays (DP over windows).']
+    }
+  });
+
+  // =====================================================================
+  // QUIZ
+  // =====================================================================
+  quiz.push(
+    { q: `<p>In a Java <code>int[][] g = new int[3][5]</code>, what is <code>g[0].length</code>?</p>`, options: ['5 (number of columns)', '3 (number of rows)', '15', 'It depends on the values'], answer: 0, explain: `<p><code>g.length</code> is the number of rows (3). <code>g[0]</code> is the first row array, whose length is the number of columns (5).</p>` },
+    { q: `<p>Using the padded prefix array P (P[0] = 0, P[i+1] = P[i] + A[i]), the sum of A[L..R] inclusive is…</p>`, options: ['P[R+1] − P[L]', 'P[R] − P[L]', 'P[R] − P[L−1]', 'P[R+1] − P[L−1]'], answer: 0, explain: `<p>P[R+1] covers A[0..R] and P[L] covers A[0..L−1]; their difference is exactly A[L..R]. The unpadded formula pf[R] − pf[L−1] is the same thing shifted by one.</p>` },
+    { q: `<p>Which range question can prefix sums NOT answer in O(1)?</p>`, options: ['Maximum value in A[L..R]', 'Sum of A[L..R]', 'XOR of A[L..R]', 'Number of even values in A[L..R]'], answer: 0, explain: `<p>Prefix tricks need an operation you can undo (subtract, XOR again). You cannot "un-max" a prefix. Range max needs a sparse table or segment tree.</p>` },
+    { q: `<p>You delete index i from an array. Elements to the right of i…</p>`, options: ['Change parity (even ↔ odd index)', 'Keep their parity', 'Are deleted too', 'Only the next one changes parity'], answer: 0, explain: `<p>Each right-side element moves from index j to j − 1, which flips parity. That is why the right-side even and odd sums swap in the special-index formula.</p>` },
+    { q: `<p>To count pairs (i &lt; j) with S[i] = 'a' and S[j] = 'g' while scanning left to right, at each 'g' you add…</p>`, options: ['The number of a\'s seen so far', '1', 'The number of g\'s seen so far', 'The index j'], answer: 0, explain: `<p>Every earlier 'a' forms a pair with this 'g'. Carrying the count of a's turns an O(N<sup>2</sup>) double loop into one pass.</p>` },
+    { q: `<p>Kadane's algorithm on [−5, −2, −8] should return…</p>`, options: ['−2', '0', '−15', '−5'], answer: 0, explain: `<p>Subarrays must be non-empty, so the best is the single largest element −2. Initialising best = 0 would wrongly return 0.</p>` },
+    { q: `<p>In Kadane's recurrence <code>cur = max(A[i], cur + A[i])</code>, choosing A[i] ("start fresh") happens exactly when…</p>`, options: ['The previous cur was negative', 'A[i] is negative', 'A[i] is the maximum so far', 'i is even'], answer: 0, explain: `<p>A[i] &gt; cur + A[i] ⇔ cur &lt; 0. A negative running sum is baggage that can only lower every future total.</p>` },
+    { q: `<p>In an array of length N = 6, how many subarrays contain index 1 (0-indexed)?</p>`, options: ['10 = 2 × 5', '6', '12', '5'], answer: 0, explain: `<p>Starts: 0 or 1 (2 choices). Ends: 1..5 (5 choices). 2 × 5 = 10.</p>` },
+    { q: `<p>Trapping Rain Water: a bar of height 2 has max-left 5 and max-right 3. Water above it is…</p>`, options: ['1', '3', '0', '2'], answer: 0, explain: `<p>min(5, 3) − 2 = 1. Water rises only to the shorter wall.</p>` },
+    { q: `<p>In the two-pointer rain-water method, if leftMax ≤ rightMax, you…</p>`, options: ['Add leftMax − h[L] and move L right', 'Add rightMax − h[R] and move R left', 'Move both pointers', 'Swap leftMax and rightMax'], answer: 0, explain: `<p>Bar L's true right wall is at least rightMax ≥ leftMax, so leftMax is its limiting wall — its water is known now.</p>` },
+    { q: `<p>Spiral traversal of a 1 × 4 matrix. Which guard prevents reading the row twice?</p>`, options: ['if (top ≤ bottom) before the ← walk', 'if (left ≤ right) before the → walk', 'while (top &lt; bottom)', 'No guard is needed'], answer: 0, explain: `<p>After → the top wall moves below the bottom wall. Without the check, the ← walk would read row 0 backwards a second time.</p>` },
+    { q: `<p>Which sequence rotates a square matrix 90° <b>clockwise</b> in place?</p>`, options: ['Transpose, then reverse each row', 'Transpose, then reverse the order of rows', 'Reverse each row, then reverse each column', 'Transpose twice'], answer: 0, explain: `<p>Transpose: (r, c) → (c, r). Reverse each row: (c, r) → (c, N−1−r). Combined: the clockwise mapping. Transpose + reversing row order gives anti-clockwise.</p>` },
+    { q: `<p>Staircase search in a row- and column-sorted matrix starts at the top-right. The value is smaller than the target. You…</p>`, options: ['Move down (drop this row)', 'Move left (drop this column)', 'Move up', 'Stop: not found'], answer: 0, explain: `<p>Everything to the left in this row is even smaller, so the whole row is useless — move down.</p>` },
+    { q: `<p>2D prefix query with padded P for rectangle (r1, c1)..(r2, c2):</p>`, options: ['P[r2+1][c2+1] − P[r1][c2+1] − P[r2+1][c1] + P[r1][c1]', 'P[r2][c2] − P[r1][c1]', 'P[r2+1][c2+1] − P[r1][c1]', 'P[r2+1][c2+1] − P[r1][c2+1] − P[r2+1][c1]'], answer: 0, explain: `<p>Big block minus the top strip minus the left strip plus the corner that was subtracted twice (inclusion–exclusion).</p>` },
+    { q: `<p>N = Q = 10<sup>5</sup> range-sum queries on a static array. Which complexity should you aim for?</p>`, options: ['O(N + Q) with prefix sums', 'O(N · Q) with loops', 'O(N<sup>2</sup>)', 'O(Q log Q) by sorting queries'], answer: 0, explain: `<p>N·Q = 10<sup>10</sup> is far above the ~10<sup>8</sup> operations/second budget. One O(N) build plus O(1) per query is about 2 × 10<sup>5</sup> steps.</p>` },
+    { q: `<p>Why store prefix sums of 10<sup>5</sup> values up to 10<sup>9</sup> in a <code>long[]</code>?</p>`, options: ['Totals reach 10<sup>14</sup>, beyond int\'s ~2.1 × 10<sup>9</sup>', 'long is faster than int', 'Java requires it for arrays', 'To allow negative numbers'], answer: 0, explain: `<p>int overflows silently (wraps around) at 2<sup>31</sup> − 1 ≈ 2.1 × 10<sup>9</sup>. long holds up to about 9.2 × 10<sup>18</sup>.</p>` }
+  );
+
+  // =====================================================================
+  // INTERVIEW Q&A
+  // =====================================================================
+  interview.push(
+    { q: `<p>Why is accessing <code>a[i]</code> O(1), and why is inserting at the front of an array O(N)?</p>`, level: 'B', a: `<p>An array is one contiguous block of equal-sized slots, so the address of slot i is <code>base + i × size</code> — one multiply and one add, regardless of i. That is O(1) random access. Inserting at the front means every existing element must shift one slot right to make room, which touches all N elements: O(N). Appending at the end of a dynamic array (ArrayList) is O(1) amortized because capacity doubles when full, so the total copying over N appends is at most about 2N.</p>`, followUps: ['What is amortized analysis?', 'How does a 2D Java array differ from a C 2D array in memory?', 'When would you choose a LinkedList over an ArrayList?'] },
+    { q: `<p>Explain prefix sums to a non-programmer and state the formula for a range sum.</p>`, level: 'B', a: `<p>It is a running scoreboard: after each item, write down the total so far. To get the total of items L through R, take the scoreboard reading at R and subtract the reading just before L — no re-adding. With a padded array P (P[0] = 0, P[i+1] = P[i] + A[i]), <code>sum(L..R) = P[R+1] − P[L]</code>. Building takes O(N) once; every query is O(1). I always mention <code>long</code> for overflow, and that it only works when the array does not change — otherwise I would use a Fenwick tree.</p>`, followUps: ['How would you support point updates?', 'What is a difference array?', 'Does it work with negative numbers?'] },
+    { q: `<p>Walk me through Kadane's algorithm and prove it is correct.</p>`, level: 'I', a: `<p>Let cur be the best sum of a subarray ending exactly at i. Any such subarray is either just A[i] or extends a subarray ending at i − 1, and among those the best one to extend is the one with sum cur(i−1). So <code>cur(i) = max(A[i], cur(i−1) + A[i])</code>, and the answer is the max of cur over all i, because the optimal subarray ends somewhere. It is DP with a one-variable state: O(N) time, O(1) space. Initialise best with A[0], not 0, to handle all-negative arrays. To return indices, remember where the current run started whenever I restart, and record (start, i) whenever best improves.</p>`, followUps: ['How do you handle a circular array?', 'What changes for maximum product?', 'How would you find the max-sum rectangle in a matrix?'] },
+    { q: `<p>How does the contribution technique compute the sum of all subarray sums in O(N)?</p>`, level: 'I', a: `<p>Instead of iterating over the ~N<sup>2</sup>/2 subarrays, I swap the order of summation: each A[i] is added once for every subarray that contains it. A subarray containing i starts at any of the i + 1 positions 0..i and ends at any of the N − i positions i..N−1, so it appears in (i+1)(N−i) subarrays. The answer is Σ A[i]·(i+1)(N−i), one pass. I cast to long before multiplying, since (N/2)<sup>2</sup>·10<sup>9</sup> can approach 10<sup>18</sup>, and apply mod per factor if the problem asks for it.</p>`, followUps: ['Sum over only odd-length subarrays?', 'Sum of subarray minimums?', 'What is the 2D version for submatrices?'] },
+    { q: `<p>Solve Trapping Rain Water and explain the O(1)-space version.</p>`, level: 'I', a: `<p>Water on bar i is <code>min(maxLeft(i), maxRight(i)) − h[i]</code> where both maxes include h[i]. Building a prefix-max array left to right and a suffix-max array right to left gives O(N) time and O(N) space. For O(1) space I use two pointers at the ends with running leftMax and rightMax. If leftMax ≤ rightMax, bar L's real right wall is at least rightMax, so its water is exactly leftMax − h[L]; I add it and move L inward. Otherwise I settle bar R symmetrically. Every step settles one bar, so it is O(N).</p>`, followUps: ['What about the 2D version (Trapping Rain Water II)?', 'Can you solve it with a monotonic stack?', 'Why must LMax include h[i]?'] },
+    { q: `<p>What is "carry forward" and how do you decide which direction to scan?</p>`, level: 'B', a: `<p>Carry forward means keeping a small summary of everything already scanned — a count, a running max/min, a last-seen index — so each new element is processed in O(1) without looking back. The direction follows the question: if each element is compared with things on its right ("greater than everything to its right", "pairs with a later g"), scan right to left so the right side is already summarised; if it is "so far" or "before", scan left to right. When both sides matter, do both passes and store the per-index results (prefix and suffix arrays).</p>`, followUps: ['Give an example where you need to carry two values.', 'How does this relate to streaming systems?', 'Count leaders in O(N) and O(1) space.'] },
+    { q: `<p>How do you rotate an N × N matrix by 90° clockwise in place, and what about a rectangular matrix?</p>`, level: 'I', a: `<p>A clockwise rotation maps (r, c) to (c, N−1−r). I split it into two reflections: transpose (swap g[r][c] with g[c][r] for c &gt; r only, otherwise each pair swaps twice) and then reverse each row. Both are O(N<sup>2</sup>) with O(1) extra space. Anti-clockwise is transpose plus reversing the row order. An alternative is rotating each ring with four-way swaps. A rectangular R × C matrix becomes C × R, so it cannot be done in place; I allocate a new matrix and write res[c][R−1−r] = g[r][c].</p>`, followUps: ['How would you rotate by 270°?', 'How do image libraries avoid moving pixels (EXIF orientation)?', 'Write the four-way swap version.'] },
+    { q: `<p>Explain the spiral traversal and the most common bug.</p>`, level: 'B', a: `<p>I keep four walls — top, bottom, left, right — describing the unvisited rectangle. Each lap walks right along top (then top++), down along right (right−−), left along bottom (bottom−−), and up along left (left++), looping while top ≤ bottom and left ≤ right. The classic bug is when the middle shrinks to a single row or column: the ← walk would re-read the row and the ↑ walk would re-read the column. The fix is to guard the ← walk with <code>if (top ≤ bottom)</code> and the ↑ walk with <code>if (left ≤ right)</code>. I always test 1 × N, N × 1 and 3 × 4.</p>`, followUps: ['Generate the spiral matrix for n.', 'Spiral outward from a given cell.', 'What is the extra space?'] },
+    { q: `<p>A matrix has sorted rows and sorted columns. How do you search it, and how does it differ from LeetCode 74?</p>`, level: 'I', a: `<p>Start at the top-right corner where left is smaller and down is bigger. If the value equals the target, done; if it is bigger, the whole column below is bigger too, so move left; if smaller, the whole row to the left is smaller, so move down. Each step eliminates a row or column, so at most R + C − 1 steps: O(R + C). In LeetCode 74 each row starts after the previous row ends, so the matrix is one sorted list in row-major order; then I binary-search the flat index range 0..R·C−1 mapping mid to (mid / C, mid % C), O(log RC). Flat binary search is wrong for the row-column-sorted version because the flattened order is not sorted.</p>`, followUps: ['Find the k-th smallest element in such a matrix.', 'Count negatives in a sorted matrix.', 'Why not start at the top-left?'] },
+    { q: `<p>Derive the 2D prefix sum build and query formulas.</p>`, level: 'I', a: `<p>Let P be (R+1) × (C+1) with a zero first row and column, P[i][j] = sum of A[0..i−1][0..j−1]. To build P[i+1][j+1], add A[i][j] to the block above (P[i][j+1]) and the block to the left (P[i+1][j]); the top-left block P[i][j] is in both, so subtract it once. For a query (r1, c1)..(r2, c2): take the big block P[r2+1][c2+1], subtract the strip above (P[r1][c2+1]) and the strip to the left (P[r2+1][c1]), and add back the corner P[r1][c1], which was subtracted twice. Build O(R·C), query O(1). It is inclusion–exclusion; in 3D it uses 8 terms.</p>`, followUps: ['How would you support updates? (2D Fenwick tree)', 'Find the max-sum K × K square.', 'What is an integral image?'] },
+    { q: `<p>Find the maximum-sum submatrix of an R × C matrix efficiently.</p>`, level: 'A', a: `<p>Brute force over all rectangles with a 2D prefix table is O(R<sup>2</sup>C<sup>2</sup>). Better: fix a top row, then extend a bottom row one at a time while maintaining an array col[c] = sum of column c between top and bottom (just add the new row). For each (top, bottom) pair, the best rectangle is the max subarray of col, which Kadane finds in O(C). Total O(R<sup>2</sup>·C), space O(C). If R &gt; C, I transpose first so the squared factor is the smaller dimension. With a "sum ≤ K" constraint I would replace Kadane with prefix sums plus a TreeSet ceiling lookup, O(R<sup>2</sup>·C log C).</p>`, followUps: ['Count submatrices with sum equal to target.', 'Return the rectangle coordinates.', 'What if the matrix is 10 × 10<sup>5</sup>?'] },
+    { q: `<p>How would you handle many range updates followed by queries, without a segment tree?</p>`, level: 'A', a: `<p>If all updates come before the reads, I use a difference array. To add v to A[L..R], do D[L] += v and D[R+1] −= v; each update is O(1). After all updates, one prefix-sum pass over D rebuilds the final array in O(N), and then a second prefix pass gives O(1) range-sum queries. In 2D, each rectangle update touches four corners of D and a 2D prefix sum rebuilds the grid. If updates and queries are interleaved, the difference array no longer works and I would move to a Fenwick tree with range-update/range-query (two BITs) or a lazy segment tree.</p>`, followUps: ['Car pooling / corporate flight bookings.', 'Range update + point query with a BIT.', 'What if values must be taken modulo M?'] },
+    { q: `<p>Find the first missing positive integer in O(N) time and O(1) space.</p>`, level: 'A', a: `<p>The answer must lie in 1..N+1 because N numbers can cover at most 1..N. So the array's own N slots can act as a presence table: value v belongs at index v − 1. For each i, while nums[i] is in 1..N and nums[nums[i] − 1] ≠ nums[i], swap it to its home. The duplicate check avoids infinite loops, and since each swap places a value permanently, total swaps ≤ N, giving O(N). Then the first index i with nums[i] ≠ i + 1 gives the answer i + 1; if all match, the answer is N + 1. An alternative marks presence by negating nums[v − 1] after replacing non-positives with N + 1.</p>`, followUps: ['Find all disappeared numbers.', 'Find the duplicate and missing number.', 'Why is the loop O(N) despite the inner while?'] },
+    { q: `<p>An AI assistant gave you a prefix-sum solution that passes the samples. How do you review it before trusting it?</p>`, level: 'E', a: `<p>First I check the constraints-to-complexity fit: build once in O(N), O(1) per query. Then the index convention: padded P[R+1] − P[L] versus unpadded pf[R] − pf[L−1] — generated code often mixes them and silently drops A[L] or crashes at L = 0. I check types (long for totals, + MOD before % MOD), that the array is truly static, and edge cases N = 1, L = R, L = 0, all negatives. Finally I write a tiny brute-force oracle and a randomized stress test comparing both on thousands of small inputs — the fastest way to catch off-by-one bugs that samples miss. I treat AI output as a draft from a fast junior engineer: useful, but I own correctness.</p>`, followUps: ['How would you write the stress test?', 'What would make you switch to a Fenwick tree?', 'Which bugs do LLMs most often introduce in matrix code?'] }
+  );
+
+  // Spread correct answers across option positions (deterministic rotation; explanations never refer to option letters).
+  (function () {
+    var k = 0;
+    function rot(q) {
+      if (!q || !q.options) return;
+      k++;
+      var n = q.options.length, shift = (k * 2 + 1) % n;
+      if (!shift) return;
+      var correct = q.options[q.answer];
+      q.options = q.options.slice(shift).concat(q.options.slice(0, shift));
+      q.answer = q.options.indexOf(correct);
+    }
+    quiz.forEach(rot);
+    topics.forEach(function (t) { (t.problems || []).forEach(function (p) { rot(p.mcq); }); });
+    practice.forEach(function (p) { rot(p.mcq); });
+  })();
+
   registerModule({
     id: 'dsa05',
     title: 'Arrays, Prefix Sums & Carry Forward',

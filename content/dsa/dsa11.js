@@ -2971,6 +2971,1335 @@ print("\\n".join("".join(row) for row in board))` }],
     ]
   });
 
+  // ===================== PRACTICE: EASY =====================
+  practice.push({
+    title: 'Reverse String (recursively, in place)',
+    level: 'Easy',
+    tags: ['recursion', 'two pointers'],
+    companies: ['Microsoft', 'Apple'],
+    statement: `<p>Write a function that reverses a string given as a <code>char[] s</code>. Do it <b>in place</b> (O(1) extra memory apart from recursion) and solve it <b>recursively</b>.</p>`,
+    constraints: `1 ≤ s.length ≤ 10<sup>5</sup>; printable ASCII characters`,
+    example: `${H.arr(['h', 'e', 'l', 'l', 'o'], { label: 's', hl: { 0: 'g', 4: 'g' }, ptr: { 0: 'l', 4: 'r' } })}
+      <p>Output: ${H.arr(['o', 'l', 'l', 'e', 'h'])}</p>
+      <p>Why: swap the ends (h ↔ o), then the problem is the same on the middle "ell" → swap e ↔ l → middle "l" alone is the base case.</p>`,
+    brute: {
+      why: `<p>Build a brand-new string by recursing on <code>substring(1)</code> and appending the first char at the end. Each <code>substring</code> copies the rest of the string, so the total work is n + (n−1) + … = O(n²) and O(n²) temporary memory — for n = 10<sup>5</sup> that is 5·10<sup>9</sup> character copies. It is also not in place.</p>`,
+      code: `
+        String reverseBrute(String s) {
+            if (s.length() <= 1) return s;                 // base case
+            return reverseBrute(s.substring(1)) + s.charAt(0); // copies O(n) every call
+        }`
+    },
+    mcq: {
+      q: `Recursive reverse with (l, r) indices on n = 10<sup>5</sup> characters: how deep does the call stack get?`,
+      options: ['10<sup>5</sup>', '5 × 10<sup>4</sup> (n / 2)', 'log₂n ≈ 17', '1'],
+      answer: 1,
+      explain: `Each call handles two characters (l and r) and moves both inwards, so there are about n / 2 = 50,000 frames — usually fine in Java, but a loop is safer for much larger inputs.`
+    },
+    hints: [
+      `<p><b>Aha:</b> reversing = swap the outermost pair + reverse the inside. The inside is the same problem, two characters shorter.</p>`,
+      `<p>Pass two indices <code>l</code> and <code>r</code> instead of creating substrings — the array itself is the state.</p>`,
+      `<p>Base case: <code>l &gt;= r</code> (0 or 1 characters left). Recipe: if l ≥ r return; swap s[l], s[r]; recurse(l + 1, r − 1).</p>`
+    ],
+    solution: {
+      approach: `<p>Two-pointer recursion: swap ends, recurse on the middle. Same logic as the iterative two-pointer loop, written as recursion.</p>`,
+      code: `
+        class Solution {
+            public void reverseString(char[] s) {
+                helper(s, 0, s.length - 1);
+            }
+
+            private void helper(char[] s, int l, int r) {
+                if (l >= r) return;            // base: nothing or one char in the middle
+                char t = s[l];                 // swap the outer pair
+                s[l] = s[r];
+                s[r] = t;
+                helper(s, l + 1, r - 1);       // the inside is the same problem
+            }
+
+            public static void main(String[] args) {
+                char[] s = "hello".toCharArray();
+                new Solution().reverseString(s);
+                System.out.println(new String(s));   // olleh
+            }
+        }`,
+      dry: { head: ['call', 'l', 'r', 'swap', 's after'], rows: [['1', '0', '4', 'h ↔ o', 'oellh'], ['2', '1', '3', 'e ↔ l', 'olleh'], ['3', '2', '2', H.c('g', 'base case'), 'olleh']] },
+      complexity: `<p><b>Time O(n)</b> — n/2 swaps. <b>Space O(n)</b> stack (n/2 frames); the iterative version is O(1).</p>`,
+      followUps: ['Reverse only the vowels', 'Reverse words in a sentence', 'Reverse a linked list recursively']
+    }
+  });
+
+  practice.push({
+    title: 'Binary Strings Without Consecutive 1s',
+    level: 'Easy',
+    tags: ['backtracking', 'pruning', 'strings'],
+    companies: ['Amazon', 'Flipkart'],
+    statement: `<p>Given <code>n</code>, generate all binary strings of length n that have <b>no two consecutive 1s</b>, in increasing (lexicographic) order.</p>`,
+    constraints: `1 ≤ n ≤ 20 (the answer count is the Fibonacci number F(n + 2), e.g. 17,711 for n = 20)`,
+    example: `<p>Input <b>n = 3</b> → Output: ${H.chips(['000', '001', '010', '100', '101'])}</p>
+      <p>Why: of the 8 binary strings, ${H.c('r', '011, 110, 111')} contain "11", so 5 remain (= F(5)).</p>`,
+    brute: {
+      why: `<p>Generate all 2<sup>n</sup> strings and filter. For n = 20 that is 1,048,576 strings checked in O(n) each, to keep only 17,711 — 98% of the work thrown away. Pruning "never place a 1 right after a 1" means we only ever build valid prefixes.</p>`,
+      code: `
+        List<String> brute(int n) {
+            List<String> res = new ArrayList<>();
+            for (int m = 0; m < (1 << n); m++) {
+                if ((m & (m >> 1)) != 0) continue;        // two adjacent set bits = "11"
+                StringBuilder sb = new StringBuilder(Integer.toBinaryString(m));
+                while (sb.length() < n) sb.insert(0, '0'); // left-pad to length n
+                res.add(sb.toString());
+            }
+            return res;
+        }`
+    },
+    mcq: {
+      q: `Partial string "10". Which characters may come next?`,
+      options: ['Only 0', 'Only 1', 'Both 0 and 1', 'Neither'],
+      answer: 2,
+      explain: `The last character is 0, so either "100" or "101" keeps the rule. Only after a 1 is the next character forced to be 0.`
+    },
+    hints: [
+      `<p><b>Aha:</b> the only forbidden move is placing a 1 immediately after a 1. Decide character by character and check just the previous one.</p>`,
+      `<p>Backtrack with a <code>char[]</code> or StringBuilder of the current prefix. Choices per position: '0' always; '1' only if the previous char is not '1'.</p>`,
+      `<p>Try '0' before '1' to get lexicographic order. Recipe: if len == n save; append '0', recurse, delete; if len == 0 or last != '1': append '1', recurse, delete.</p>`
+    ],
+    solution: {
+      approach: `<p>Backtracking with a one-character look-back prune. Every leaf is valid, so the work is proportional to the output.</p>`,
+      code: `
+        import java.util.*;
+
+        class Solution {
+            public List<String> generate(int n) {
+                List<String> res = new ArrayList<>();
+                bt(n, new StringBuilder(), res);
+                return res;
+            }
+
+            private void bt(int n, StringBuilder sb, List<String> res) {
+                if (sb.length() == n) {
+                    res.add(sb.toString());
+                    return;
+                }
+                sb.append('0');                                   // '0' is always safe
+                bt(n, sb, res);
+                sb.deleteCharAt(sb.length() - 1);
+                if (sb.length() == 0 || sb.charAt(sb.length() - 1) != '1') {
+                    sb.append('1');                               // '1' only after a '0' (or at start)
+                    bt(n, sb, res);
+                    sb.deleteCharAt(sb.length() - 1);
+                }
+            }
+
+            public static void main(String[] args) {
+                System.out.println(new Solution().generate(3));   // [000, 001, 010, 100, 101]
+            }
+        }`,
+      dry: { head: ['prefix', 'last char', 'allowed', 'event'], rows: [['""', '—', '0, 1', 'try 0'], ['"00"', '0', '0, 1', '→ 000, 001 saved'], ['"01"', '1', '0 only', '→ 010 saved'], ['"1"', '1', '0 only', '→ 100, 101 saved']] },
+      complexity: `<p><b>Time O(n · F(n+2))</b> ≈ O(n · 1.618<sup>n</sup>): one O(n) copy per answer. <b>Space O(n)</b> recursion + builder.</p>`,
+      followUps: ['Only count them (it is Fibonacci — DP in O(n))', 'No three consecutive 1s', 'Count integers ≤ N without consecutive 1s (digit DP)']
+    }
+  });
+
+  practice.push({
+    title: 'Sum of All Subset XOR Totals',
+    level: 'Easy',
+    tags: ['subsets', 'pick / not-pick', 'bit manipulation'],
+    companies: ['Google', 'Amazon'],
+    statement: `<p>The XOR total of an array is the XOR of all its elements (0 for the empty array). Given <code>nums</code>, return the <b>sum of XOR totals over every subset</b> of nums.</p>`,
+    constraints: `1 ≤ nums.length ≤ 12, 1 ≤ nums[i] ≤ 20`,
+    example: `${H.arr([1, 3], { label: 'nums' })}
+      ${H.table(['subset', 'XOR'], [['[]', '0'], ['[1]', '1'], ['[3]', '3'], ['[1,3]', '1 ^ 3 = 2']])}
+      <p>Output: 0 + 1 + 3 + 2 = ${H.c('p', '<b>6</b>')}.</p>`,
+    brute: {
+      why: `<p>Build every subset as a list, then XOR its elements: 2<sup>n</sup> lists × O(n) each plus the memory for all lists. Correct (n ≤ 12 → 4,096 subsets) but it stores data you never need — you only need a running XOR value per branch.</p>`,
+      code: `
+        int brute(int[] nums) {
+            int n = nums.length, total = 0;
+            for (int mask = 0; mask < (1 << n); mask++) {
+                int x = 0;
+                for (int j = 0; j < n; j++) if ((mask >> j & 1) == 1) x ^= nums[j];
+                total += x;
+            }
+            return total;
+        }`
+    },
+    mcq: {
+      q: `In pick/not-pick, what should the recursion carry so that no list is ever built?`,
+      options: ['The current subset as a List', 'Only the index i and the running XOR', 'A HashSet of used numbers', 'The total sum so far of all subsets'],
+      answer: 1,
+      explain: `The leaf only needs the XOR of the picked elements. Passing xr ^ nums[i] (pick) or xr (skip) as an int value means no un-choose is needed either.`
+    },
+    hints: [
+      `<p><b>Aha:</b> each element is either in or out — pick/not-pick with an int accumulator instead of a list.</p>`,
+      `<p>f(i, xr) = f(i + 1, xr ^ nums[i]) + f(i + 1, xr); base case i == n returns xr.</p>`,
+      `<p>Expert shortcut: every bit that appears in at least one number is set in exactly half of the 2<sup>n</sup> subsets' XORs, so the answer is (OR of all nums) × 2<sup>n−1</sup>. Recipe for recursion: if i == n return xr; return f(i+1, xr ^ a[i]) + f(i+1, xr).</p>`
+    ],
+    solution: {
+      approach: `<p>Pick/not-pick recursion returning the sum of leaf XORs; plus an O(n) formula as a follow-up.</p>`,
+      code: `
+        class Solution {
+            public int subsetXORSum(int[] nums) {
+                return f(nums, 0, 0);
+            }
+
+            private int f(int[] a, int i, int xr) {
+                if (i == a.length) return xr;          // one complete subset: its XOR total
+                return f(a, i + 1, xr ^ a[i])          // pick a[i]
+                     + f(a, i + 1, xr);                // skip a[i]
+            }
+
+            // O(n) formula: each set bit of OR contributes in exactly half of the subsets
+            public int formula(int[] nums) {
+                int or = 0;
+                for (int x : nums) or |= x;
+                return or << (nums.length - 1);
+            }
+
+            public static void main(String[] args) {
+                Solution s = new Solution();
+                System.out.println(s.subsetXORSum(new int[]{1, 3}));     // 6
+                System.out.println(s.formula(new int[]{5, 1, 6}));        // 28
+            }
+        }`,
+      dry: { head: ['path (1? 3?)', 'xr at leaf', 'running sum'], rows: [['pick, pick', '1^3 = 2', '2'], ['pick, skip', '1', '3'], ['skip, pick', '3', '6'], ['skip, skip', '0', H.c('p', '6')]] },
+      complexity: `<p>Recursion: <b>O(2<sup>n</sup>)</b> time, <b>O(n)</b> stack. Formula: O(n) time, O(1) space.</p>`,
+      followUps: ['Sum of subset sums (each element appears in 2<sup>n−1</sup> subsets)', 'Count subsets with XOR equal to K', 'Maximum subset XOR (linear basis — expert)']
+    }
+  });
+
+  practice.push({
+    title: 'Binary Watch',
+    level: 'Easy',
+    tags: ['backtracking', 'bit manipulation', 'combinations'],
+    companies: ['Google'],
+    statement: `<p>A binary watch has 4 LEDs for the hour (0–11) and 6 LEDs for the minutes (0–59). Given <code>turnedOn</code>, the number of LEDs that are on, return all possible times in any order, formatted "h:mm" (hour without leading zero, minutes with two digits).</p>`,
+    constraints: `0 ≤ turnedOn ≤ 10`,
+    example: `<p>Input <b>turnedOn = 1</b> → Output: ${H.chips(['0:01', '0:02', '0:04', '0:08', '0:16', '0:32', '1:00', '2:00', '4:00', '8:00'])}</p>
+      <p>Why: exactly one LED lit = a single power of two, either in the hour (1, 2, 4, 8) or in the minutes (1, 2, 4, 8, 16, 32). Hour 8 + any extra LEDs could exceed 11 — those combos must be rejected for larger inputs.</p>`,
+    brute: {
+      why: `<p>Here the "brute force" is actually the smart move: there are only 12 × 60 = 720 times. Count the set bits of h and m and keep those with bitCount(h) + bitCount(m) == turnedOn. The backtracking version (choose which of the 10 LEDs are on) explores C(10, k) ≤ 252 LED sets — similar work, but it shows the combinations template.</p>`,
+      code: `
+        List<String> enumerate(int turnedOn) {
+            List<String> res = new ArrayList<>();
+            for (int h = 0; h < 12; h++)
+                for (int m = 0; m < 60; m++)
+                    if (Integer.bitCount(h) + Integer.bitCount(m) == turnedOn)
+                        res.add(h + ":" + (m < 10 ? "0" : "") + m);
+            return res;
+        }`
+    },
+    mcq: {
+      q: `Which LED set must the backtracking solution reject?`,
+      options: ['Hour LEDs 1 + 2 (hour 3)', 'Hour LEDs 4 + 8 (hour 12)', 'Minute LEDs 32 + 16 + 8 (minute 56)', 'No LEDs at all (0:00)'],
+      answer: 1,
+      explain: `4 + 8 = 12 is not a valid hour (0–11). Minute 56 is fine (≤ 59) and 0:00 is the answer for turnedOn = 0.`
+    },
+    hints: [
+      `<p><b>Aha:</b> choosing which k of 10 LEDs are on is a "combinations of size k" problem; each LED adds a fixed value to the hour or the minute.</p>`,
+      `<p>Values: LEDs 0–3 add 1, 2, 4, 8 to hours; LEDs 4–9 add 1, 2, 4, 8, 16, 32 to minutes. Backtrack(start, k, h, m) with a start index so each set is built once.</p>`,
+      `<p>Prune when h &gt; 11 or m &gt; 59 (values only grow). Recipe: if k == 0 save formatted time; for i from start..9: add its value, if still valid recurse(i+1, k−1), (values passed by copy, so no undo).</p>`
+    ],
+    solution: {
+      approach: `<p>Combinations backtracking over the 10 LEDs with a start index, carrying hour and minute as int parameters (immutable state = no un-choose needed) and pruning invalid times.</p>`,
+      code: `
+        import java.util.*;
+
+        class Solution {
+            private static final int[] VAL = {1, 2, 4, 8, 1, 2, 4, 8, 16, 32}; // first 4 = hour LEDs
+
+            public List<String> readBinaryWatch(int turnedOn) {
+                List<String> res = new ArrayList<>();
+                bt(0, turnedOn, 0, 0, res);
+                return res;
+            }
+
+            private void bt(int start, int k, int h, int m, List<String> res) {
+                if (k == 0) {
+                    res.add(h + ":" + (m < 10 ? "0" : "") + m);
+                    return;
+                }
+                for (int i = start; i < 10; i++) {
+                    int nh = h, nm = m;
+                    if (i < 4) nh += VAL[i]; else nm += VAL[i];
+                    if (nh > 11 || nm > 59) continue;    // invalid time -> prune this LED
+                    bt(i + 1, k - 1, nh, nm, res);       // LEDs used at most once
+                }
+            }
+
+            public static void main(String[] args) {
+                System.out.println(new Solution().readBinaryWatch(1));
+            }
+        }`,
+      dry: { head: ['LEDs chosen', 'h', 'm', 'event'], rows: [['{hour-1}', '1', '0', H.c('g', '"1:00"')], ['{hour-8}', '8', '0', H.c('g', '"8:00"')], ['{min-32}', '0', '32', H.c('g', '"0:32"')], ['{hour-4, hour-8} (k=2)', '12', '0', H.c('r', 'pruned')]] },
+      complexity: `<p><b>Time O(C(10, k))</b> ≤ 252 sets — effectively O(1). <b>Space O(k)</b> recursion depth.</p>`,
+      followUps: ['Solve it with a 720-iteration bit-count loop and compare clarity', 'Generalise to a 24-hour watch with 5 hour LEDs']
+    }
+  });
+
+  // ===================== PRACTICE: MEDIUM =====================
+  practice.push({
+    title: 'K-th Symbol in Grammar',
+    level: 'Medium',
+    tags: ['recursion', 'divide and conquer', 'bit manipulation'],
+    companies: ['Amazon', 'Meta'],
+    statement: `<p>Row 1 is "0". Each next row replaces every 0 with "01" and every 1 with "10". Given <code>n</code> and <code>k</code> (1-indexed), return the k-th symbol of row n.</p>`,
+    constraints: `1 ≤ n ≤ 30, 1 ≤ k ≤ 2<sup>n−1</sup>`,
+    example: `${H.table(['row', 'string'], [['1', '0'], ['2', '01'], ['3', '0110'], ['4', '0110' + H.c('p', '1') + '001']])}
+      <p>n = 4, k = 5 → ${H.c('p', '<b>1</b>')}. Why: each row is the previous row followed by its flipped copy (row 4 = 0110 + 1001). Position 5 is the first symbol of the flipped half, i.e. row 3's first symbol (0) flipped → 1.</p>`,
+    brute: {
+      why: `<p>Build the rows as strings. Row n has 2<sup>n−1</sup> characters — for n = 30 that is 536 million chars (over 1 GB in Java). The waste: we build an entire row to read one character.</p>`,
+      code: `
+        int brute(int n, int k) {
+            StringBuilder row = new StringBuilder("0");
+            for (int i = 2; i <= n; i++) {
+                StringBuilder next = new StringBuilder();
+                for (int j = 0; j < row.length(); j++) next.append(row.charAt(j) == '0' ? "01" : "10");
+                row = next;
+            }
+            return row.charAt(k - 1) - '0';
+        }`
+    },
+    mcq: {
+      q: `Symbol k of row n is produced by which symbol of row n − 1?`,
+      options: ['Symbol k', 'Symbol ⌈k / 2⌉ (its parent)', 'Symbol 2k', 'Symbol n − k'],
+      answer: 1,
+      explain: `Each parent produces two children, so positions 2p − 1 and 2p come from position p. Odd k = left child (same as parent), even k = right child (flipped).`
+    },
+    hints: [
+      `<p><b>Aha:</b> the rows form a binary tree: parent symbol p makes children (p, 1 − p). The k-th symbol only depends on its parent ⌈k/2⌉ in row n − 1.</p>`,
+      `<p>Recurse on (n − 1, (k + 1) / 2); if k is odd return the parent, else return 1 − parent. Depth n ≤ 30.</p>`,
+      `<p>Base case n == 1 → 0. Bonus: the answer equals the parity of the number of 1-bits in k − 1, i.e. <code>Integer.bitCount(k - 1) &amp; 1</code>.</p>`
+    ],
+    solution: {
+      approach: `<p>Recurse up the implicit binary tree: one call per row, flipping on right children.</p>`,
+      code: `
+        class Solution {
+            public int kthGrammar(int n, int k) {
+                if (n == 1) return 0;                         // row 1 is "0"
+                int parent = kthGrammar(n - 1, (k + 1) / 2);  // the symbol that produced position k
+                return (k % 2 == 1) ? parent : 1 - parent;    // left child same, right child flipped
+            }
+
+            public static void main(String[] args) {
+                Solution s = new Solution();
+                System.out.println(s.kthGrammar(4, 5));       // 1
+                System.out.println(Integer.bitCount(5 - 1) & 1); // 1 (closed form)
+            }
+        }`,
+      dry: { head: ['call', 'k odd?', 'parent value', 'returns'], rows: [['(1, 1)', '—', '—', H.c('g', '0 (base)')], ['(2, 2)', 'no (right child)', '0', '1 − 0 = 1'], ['(3, 3)', 'yes (left child)', '1', '1'], ['(4, 5)', 'yes (left child)', '1', H.c('p', '1')]] },
+      complexity: `<p><b>Time O(n)</b>, <b>Space O(n)</b> stack (or O(1) with the bit-count formula).</p>`,
+      followUps: ['Prove the bitCount formula', 'Return the count of 1s in the first k symbols of row n']
+    }
+  });
+
+  practice.push({
+    title: 'Combinations (choose k of 1..n)',
+    level: 'Medium',
+    tags: ['backtracking', 'start index', 'pruning'],
+    companies: ['Amazon', 'Google', 'Adobe'],
+    statement: `<p>Given integers <code>n</code> and <code>k</code>, return all combinations of k numbers chosen from 1..n, in any order.</p>`,
+    constraints: `1 ≤ n ≤ 20, 1 ≤ k ≤ n`,
+    example: `<p>n = 4, k = 2 → ${H.chips(['[1,2]', '[1,3]', '[1,4]', '[2,3]', '[2,4]', '[3,4]'])}</p><p>Why: C(4, 2) = 4! / (2!·2!) = 6. [2,1] is the same combination as [1,2], so only increasing lists are produced.</p>`,
+    brute: {
+      why: `<p>Enumerate all 2<sup>n</sup> bitmasks and keep those with exactly k bits. For n = 20, k = 2 that is 1,048,576 masks to find 190 answers. Backtracking with a start index and a "not enough numbers left" prune visits only nodes that can still reach size k.</p>`,
+      code: `
+        List<List<Integer>> brute(int n, int k) {
+            List<List<Integer>> res = new ArrayList<>();
+            for (int m = 0; m < (1 << n); m++) {
+                if (Integer.bitCount(m) != k) continue;
+                List<Integer> c = new ArrayList<>();
+                for (int j = 0; j < n; j++) if ((m >> j & 1) == 1) c.add(j + 1);
+                res.add(c);
+            }
+            return res;
+        }`
+    },
+    mcq: {
+      q: `n = 5, k = 3, cur = [4]. What should happen?`,
+      options: ['Try 5 next', 'Prune: only one number (5) is left but two slots remain', 'Restart from 1', 'Save [4]'],
+      answer: 1,
+      explain: `Slots left = 3 − 1 = 2, numbers available after 4 = just {5}. 1 &lt; 2 → this branch can never complete. The loop bound i ≤ n − (k − size) + 1 encodes this prune.`
+    },
+    hints: [
+      `<p><b>Aha:</b> it is Subsets with a fixed size — the for-loop style with a start index, saving only when size == k.</p>`,
+      `<p>bt(start, cur): for i from start to n: add i, bt(i + 1), remove.</p>`,
+      `<p>Prune: the loop only needs to go up to <code>n − (k − cur.size()) + 1</code>. Recipe: if size == k save copy; for i in start..n−(k−size)+1: add; bt(i+1); remove.</p>`
+    ],
+    solution: {
+      approach: `<p>Start-index backtracking with an upper-bound prune so every visited node can still complete.</p>`,
+      code: `
+        import java.util.*;
+
+        class Solution {
+            public List<List<Integer>> combine(int n, int k) {
+                List<List<Integer>> res = new ArrayList<>();
+                bt(n, k, 1, new ArrayList<>(), res);
+                return res;
+            }
+
+            private void bt(int n, int k, int start, List<Integer> cur, List<List<Integer>> res) {
+                if (cur.size() == k) {
+                    res.add(new ArrayList<>(cur));
+                    return;
+                }
+                int need = k - cur.size();
+                for (int i = start; i <= n - need + 1; i++) {   // leave room for the remaining picks
+                    cur.add(i);
+                    bt(n, k, i + 1, cur, res);
+                    cur.remove(cur.size() - 1);
+                }
+            }
+
+            public static void main(String[] args) {
+                System.out.println(new Solution().combine(4, 2)); // [[1, 2], [1, 3], [1, 4], [2, 3], [2, 4], [3, 4]]
+            }
+        }`,
+      dry: { head: ['cur', 'start', 'loop range', 'event'], rows: [['[]', '1', '1..3', 'pick 1'], ['[1]', '2', '2..4', '[1,2] [1,3] [1,4]'], ['[]', '1', 'i = 2', '[2,3] [2,4]'], ['[]', '1', 'i = 3', '[3,4]; i = 4 excluded by prune']] },
+      complexity: `<p><b>Time O(k · C(n, k))</b>, <b>Space O(k)</b> recursion + cur.</p>`,
+      followUps: ['Iterative lexicographic generation', 'Combination Sum III (k digits summing to n)']
+    }
+  });
+
+  practice.push({
+    title: 'Subsets II (input with duplicates)',
+    level: 'Medium',
+    tags: ['backtracking', 'subsets', 'duplicates'],
+    companies: ['Meta', 'Amazon', 'Bloomberg'],
+    statement: `<p>Given an integer array <code>nums</code> that <b>may contain duplicates</b>, return all possible subsets without duplicate subsets, in any order.</p>`,
+    constraints: `1 ≤ nums.length ≤ 10, −10 ≤ nums[i] ≤ 10`,
+    example: `${H.arr([1, 2, 2], { label: 'nums' })}<p>Output: ${H.chips(['[]', '[1]', '[1,2]', '[1,2,2]', '[2]', '[2,2]'])}</p><p>Why: 2<sup>3</sup> = 8 index-subsets, but {nums[1]} and {nums[2]} are both [2], and {1, nums[1]} and {1, nums[2]} are both [1,2] → 6 distinct.</p>`,
+    brute: {
+      why: `<p>Generate all 2<sup>n</sup> subsets, sort each, and insert into a <code>Set&lt;List&lt;Integer&gt;&gt;</code>. Works for n ≤ 10, but every duplicate costs O(n log n) to sort plus hashing, and with many equal values (e.g. ten 2s) you build 1,024 lists to keep 11.</p>`,
+      code: `
+        List<List<Integer>> brute(int[] nums) {
+            Arrays.sort(nums);                    // sorted input -> each generated subset is sorted
+            Set<List<Integer>> set = new HashSet<>();
+            int n = nums.length;
+            for (int m = 0; m < (1 << n); m++) {
+                List<Integer> s = new ArrayList<>();
+                for (int j = 0; j < n; j++) if ((m >> j & 1) == 1) s.add(nums[j]);
+                set.add(s);
+            }
+            return new ArrayList<>(set);
+        }`
+    },
+    mcq: {
+      q: `In the loop-style recursion the skip condition is <code>j &gt; start &amp;&amp; nums[j] == nums[j − 1]</code>. What breaks if you write <code>j &gt; 0</code> instead?`,
+      options: ['Nothing', '[2,2] is never generated', 'Duplicates appear', 'Infinite recursion'],
+      answer: 1,
+      explain: `Inside the branch [2] (start = 2), j = 2 has nums[2] == nums[1]; with j &gt; 0 it is skipped, so the second 2 can never follow the first. j &gt; start only skips equal values at the same level.`
+    },
+    hints: [
+      `<p><b>Aha:</b> duplicates appear when two branches at the <i>same level</i> start with equal values.</p>`,
+      `<p>Sort, then use the for-loop style (every node is an answer) with a start index.</p>`,
+      `<p>Skip <code>j &gt; start &amp;&amp; nums[j] == nums[j−1]</code>. Recipe: save copy of cur; for j from start: skip rule; add; bt(j+1); remove last.</p>`
+    ],
+    solution: {
+      approach: `<p>Sorted for-loop backtracking with same-level duplicate skipping; each distinct multiset subset is generated exactly once.</p>`,
+      code: `
+        import java.util.*;
+
+        class Solution {
+            public List<List<Integer>> subsetsWithDup(int[] nums) {
+                Arrays.sort(nums);
+                List<List<Integer>> res = new ArrayList<>();
+                bt(nums, 0, new ArrayList<>(), res);
+                return res;
+            }
+
+            private void bt(int[] a, int start, List<Integer> cur, List<List<Integer>> res) {
+                res.add(new ArrayList<>(cur));                     // every node is a subset
+                for (int j = start; j < a.length; j++) {
+                    if (j > start && a[j] == a[j - 1]) continue;   // same value at this level: skip
+                    cur.add(a[j]);
+                    bt(a, j + 1, cur, res);
+                    cur.remove(cur.size() - 1);
+                }
+            }
+
+            public static void main(String[] args) {
+                System.out.println(new Solution().subsetsWithDup(new int[]{1, 2, 2}));
+                // [[], [1], [1, 2], [1, 2, 2], [2], [2, 2]]
+            }
+        }`,
+      dry: { head: ['cur', 'start', 'j', 'event'], rows: [['[]', '0', '—', 'save []'], ['[1]', '1', '1 then 2', 'save [1], [1,2], [1,2,2]; j = 2 at start 1 skipped'], ['[]', '0', '1', 'save [2], [2,2]'], ['[]', '0', '2', H.c('r', 'skip (equal to j = 1 at the same level)')]] },
+      complexity: `<p><b>Time O(n · 2<sup>n</sup>)</b> worst case, <b>Space O(n)</b> recursion (excluding output).</p>`,
+      followUps: ['Count distinct subsets using value frequencies (product of (count + 1))', 'Subsets of size k with duplicates']
+    }
+  });
+
+  practice.push({
+    title: 'Letter Case Permutation',
+    level: 'Medium',
+    tags: ['backtracking', 'strings', 'pick / not-pick'],
+    companies: ['Meta', 'Microsoft'],
+    statement: `<p>Given a string <code>s</code> of letters and digits, you may change any letter to lowercase or uppercase. Return a list of all possible strings, in any order.</p>`,
+    constraints: `1 ≤ s.length ≤ 12; letters and digits only`,
+    example: `<p>s = "a1b2" → ${H.chips(['a1b2', 'a1B2', 'A1b2', 'A1B2'])}</p><p>Why: 2 letters → 2 choices each → 2<sup>2</sup> = 4 strings; digits have only one choice.</p>`,
+    brute: {
+      why: `<p>Try all 2<sup>n</sup> masks over <b>every</b> position (even digits), apply case flips and de-duplicate with a Set. With 12 digits and no letters you would build 4,096 identical strings. Branching only on letters makes the tree exactly as big as the answer.</p>`,
+      code: `
+        List<String> brute(String s) {
+            Set<String> set = new LinkedHashSet<>();
+            int n = s.length();
+            for (int m = 0; m < (1 << n); m++) {
+                char[] c = s.toCharArray();
+                for (int j = 0; j < n; j++)
+                    if ((m >> j & 1) == 1 && Character.isLetter(c[j]))
+                        c[j] = Character.isUpperCase(c[j]) ? Character.toLowerCase(c[j]) : Character.toUpperCase(c[j]);
+                set.add(new String(c));
+            }
+            return new ArrayList<>(set);
+        }`
+    },
+    mcq: {
+      q: `s has L letters and D digits. How many strings are returned?`,
+      options: ['2<sup>L + D</sup>', '2<sup>L</sup>', 'L!', 'L · D'],
+      answer: 1,
+      explain: `Each letter doubles the count; digits do not branch. So the answer size is exactly 2<sup>L</sup>.`
+    },
+    hints: [
+      `<p><b>Aha:</b> walk left to right; at a letter branch into lower/upper, at a digit just move on.</p>`,
+      `<p>Mutate one <code>char[]</code> in place: set lower, recurse, set upper, recurse. Restoring is implicit because both branches overwrite the same slot.</p>`,
+      `<p>Base case i == n → add <code>new String(chars)</code>. Recipe: if digit → f(i+1); else c[i]=lower; f(i+1); c[i]=upper; f(i+1).</p>`
+    ],
+    solution: {
+      approach: `<p>Pick-one-of-two recursion on letters only, mutating a char array.</p>`,
+      code: `
+        import java.util.*;
+
+        class Solution {
+            public List<String> letterCasePermutation(String s) {
+                List<String> res = new ArrayList<>();
+                f(s.toCharArray(), 0, res);
+                return res;
+            }
+
+            private void f(char[] c, int i, List<String> res) {
+                if (i == c.length) {
+                    res.add(new String(c));                 // copy of the current string
+                    return;
+                }
+                if (Character.isDigit(c[i])) {
+                    f(c, i + 1, res);                       // only one choice for digits
+                    return;
+                }
+                c[i] = Character.toLowerCase(c[i]);
+                f(c, i + 1, res);                           // branch 1: lowercase
+                c[i] = Character.toUpperCase(c[i]);
+                f(c, i + 1, res);                           // branch 2: uppercase
+            }
+
+            public static void main(String[] args) {
+                System.out.println(new Solution().letterCasePermutation("a1b2")); // [a1b2, a1B2, A1b2, A1B2]
+            }
+        }`,
+      dry: { head: ['i', 'char', 'branches', 'strings below'], rows: [['0', 'a', 'a / A', '2 subtrees'], ['1', '1', 'digit: 1 branch', '—'], ['2', 'b', 'b / B', '2 leaves each'], ['4', '—', 'base', H.c('g', '4 strings total')]] },
+      complexity: `<p><b>Time O(n · 2<sup>L</sup>)</b>, <b>Space O(n)</b> recursion + char array.</p>`,
+      followUps: ['Letter Combinations of a Phone Number', 'Generalised abbreviations of a word']
+    }
+  });
+
+  practice.push({
+    title: 'Palindrome Partitioning',
+    level: 'Medium',
+    tags: ['backtracking', 'strings', 'partition'],
+    companies: ['Amazon', 'Google', 'Bloomberg'],
+    statement: `<p>Given a string <code>s</code>, partition it so that <b>every substring of the partition is a palindrome</b>. Return all possible palindrome partitionings.</p>`,
+    constraints: `1 ≤ s.length ≤ 16; lowercase letters`,
+    example: `<p>s = "aab" → ${H.chips(['[a, a, b]', '[aa, b]'])}</p><p>Why: cuts after positions give pieces; "ab" and "aab" are not palindromes, so [a, ab] and [aab] are invalid.</p>`,
+    brute: {
+      why: `<p>There are n − 1 gaps, each cut or not → 2<sup>n−1</sup> partitions (32,768 for n = 16). Check every piece of every partition: O(n · 2<sup>n</sup>) — works, but backtracking stops as soon as the <b>first</b> piece of a branch is not a palindrome, skipping all partitions that share that bad prefix.</p>`,
+      code: `
+        List<List<String>> brute(String s) {
+            List<List<String>> res = new ArrayList<>();
+            int n = s.length();
+            for (int m = 0; m < (1 << (n - 1)); m++) {      // bit g = cut after position g
+                List<String> parts = new ArrayList<>();
+                int from = 0;
+                boolean ok = true;
+                for (int g = 0; g < n; g++) {
+                    if (g == n - 1 || (m >> g & 1) == 1) {
+                        String p = s.substring(from, g + 1);
+                        if (!new StringBuilder(p).reverse().toString().equals(p)) { ok = false; break; }
+                        parts.add(p);
+                        from = g + 1;
+                    }
+                }
+                if (ok) res.add(parts);
+            }
+            return res;
+        }`
+    },
+    mcq: {
+      q: `What is a single "choice" at each level of the decision tree?`,
+      options: ['Pick or skip a character', 'Where the next piece ends (end index e ≥ start)', 'Which character to swap', 'Whether to reverse the string'],
+      answer: 1,
+      explain: `At start index i you choose the end e of the next piece s[i..e]; only palindromic pieces are explored, then recurse from e + 1.`
+    },
+    hints: [
+      `<p><b>Aha:</b> a partition is a sequence of "next piece" choices. From position i, try every end e where s[i..e] is a palindrome.</p>`,
+      `<p>Precompute <code>boolean[][] pal</code> with DP: pal[i][j] = s[i]==s[j] &amp;&amp; (j − i &lt; 2 || pal[i+1][j−1]) to make checks O(1).</p>`,
+      `<p>Goal: i == n → save copy. Recipe: for e in i..n−1: if pal[i][e]: add s.substring(i, e+1); bt(e+1); remove last.</p>`
+    ],
+    solution: {
+      approach: `<p>Backtracking over the end of the next piece, with an O(n²) palindrome table for O(1) pruning checks.</p>`,
+      code: `
+        import java.util.*;
+
+        class Solution {
+            public List<List<String>> partition(String s) {
+                int n = s.length();
+                boolean[][] pal = new boolean[n][n];
+                for (int i = n - 1; i >= 0; i--)
+                    for (int j = i; j < n; j++)
+                        pal[i][j] = s.charAt(i) == s.charAt(j) && (j - i < 2 || pal[i + 1][j - 1]);
+                List<List<String>> res = new ArrayList<>();
+                bt(s, 0, pal, new ArrayList<>(), res);
+                return res;
+            }
+
+            private void bt(String s, int i, boolean[][] pal, List<String> cur, List<List<String>> res) {
+                if (i == s.length()) {
+                    res.add(new ArrayList<>(cur));
+                    return;
+                }
+                for (int e = i; e < s.length(); e++) {
+                    if (!pal[i][e]) continue;                // piece s[i..e] must be a palindrome
+                    cur.add(s.substring(i, e + 1));          // choose this piece
+                    bt(s, e + 1, pal, cur, res);             // partition the rest
+                    cur.remove(cur.size() - 1);              // un-choose
+                }
+            }
+
+            public static void main(String[] args) {
+                System.out.println(new Solution().partition("aab"));   // [[a, a, b], [aa, b]]
+            }
+        }`,
+      dry: { head: ['i', 'cur', 'end e tried', 'event'], rows: [['0', '[]', '0 ("a")', 'palindrome → choose'], ['1', '[a]', '1 ("a")', 'choose → [a,a] → e=2 "b" → ' + H.c('g', 'save [a,a,b]')], ['1', '[a]', '2 ("ab")', H.c('r', 'not palindrome')], ['0', '[]', '1 ("aa")', 'choose → "b" → ' + H.c('g', 'save [aa,b]')], ['0', '[]', '2 ("aab")', H.c('r', 'not palindrome')]] },
+      complexity: `<p><b>Time O(n · 2<sup>n</sup>)</b> worst case (e.g. "aaaa…"), table O(n²). <b>Space O(n²)</b> for the table + O(n) recursion.</p>`,
+      followUps: ['Palindrome Partitioning II: minimum cuts (DP, Hard)', 'Count partitions instead of listing (DP)']
+    }
+  });
+
+  practice.push({
+    title: 'Word Search',
+    level: 'Medium',
+    tags: ['backtracking', 'grid DFS', 'matrix'],
+    companies: ['Amazon', 'Microsoft', 'Meta', 'Bloomberg'],
+    statement: `<p>Given an m × n grid of characters <code>board</code> and a string <code>word</code>, return true if the word can be built from letters of sequentially adjacent cells (up, down, left, right). The same cell may not be used more than once.</p>`,
+    constraints: `1 ≤ m, n ≤ 6, 1 ≤ word.length ≤ 15; letters only`,
+    example: `${H.table(['', 'c0', 'c1', 'c2', 'c3'], [['r0', H.c('g', 'A'), H.c('g', 'B'), H.c('g', 'C'), 'E'], ['r1', 'S', 'F', H.c('g', 'C'), 'S'], ['r2', 'A', H.c('g', 'D'), H.c('g', 'E'), 'E']])}
+      <p>word = "ABCCED" → ${H.c('g', '<b>true</b>')} (path shown in green). "ABCB" → false: the B at (0,1) would be reused.</p>`,
+    brute: {
+      why: `<p>Enumerate every simple path of length L from every cell and compare with the word at the end: up to m·n·4·3<sup>L−1</sup> paths, almost all of which went wrong at the very first or second letter. Backtracking compares <b>as it walks</b> and abandons a path at the first mismatch.</p>`,
+      code: `
+        boolean brute(char[][] b, String w) {
+            for (int r = 0; r < b.length; r++)
+                for (int c = 0; c < b[0].length; c++)
+                    if (allPaths(b, r, c, new StringBuilder(), new boolean[b.length][b[0].length], w)) return true;
+            return false;
+        }
+        boolean allPaths(char[][] b, int r, int c, StringBuilder sb, boolean[][] seen, String w) {
+            if (r < 0 || c < 0 || r >= b.length || c >= b[0].length || seen[r][c]) return false;
+            sb.append(b[r][c]);
+            seen[r][c] = true;
+            boolean found = sb.length() == w.length() ? sb.toString().equals(w)   // compare only at full length
+                : allPaths(b, r + 1, c, sb, seen, w) || allPaths(b, r - 1, c, sb, seen, w)
+                  || allPaths(b, r, c + 1, sb, seen, w) || allPaths(b, r, c - 1, sb, seen, w);
+            seen[r][c] = false;
+            sb.deleteCharAt(sb.length() - 1);
+            return found;
+        }`
+    },
+    mcq: {
+      q: `How do you prevent reusing a cell without an extra visited array?`,
+      options: ['You cannot', 'Temporarily overwrite board[r][c] with a marker like \'#\' and restore it after exploring', 'Sort the board', 'Use a global counter'],
+      answer: 1,
+      explain: `'#' never matches a letter, so the cell is effectively blocked while it is on the current path. Restoring it on the way back is the un-choose step.`
+    },
+    hints: [
+      `<p><b>Aha:</b> a DFS from each cell matching word[0], advancing one letter per step — stop the branch on the first mismatch.</p>`,
+      `<p>dfs(r, c, i): out of bounds or board[r][c] != word[i] → false; i == L − 1 → true. Mark the cell, try 4 neighbours with i + 1, restore.</p>`,
+      `<p>Prunes: if the board has fewer copies of some letter than the word needs → false immediately; search from the rarer end (reverse the word if its last letter is rarer). Recipe: mark '#'; found = any neighbour dfs; restore; return found.</p>`
+    ],
+    solution: {
+      approach: `<p>Grid backtracking: mark the cell as visited by overwriting it, explore 4 directions for the next letter, restore on return. Returns boolean and stops at the first success.</p>`,
+      code: `
+        class Solution {
+            private static final int[] DR = {1, -1, 0, 0}, DC = {0, 0, 1, -1};
+
+            public boolean exist(char[][] board, String word) {
+                for (int r = 0; r < board.length; r++)
+                    for (int c = 0; c < board[0].length; c++)
+                        if (dfs(board, word, r, c, 0)) return true;
+                return false;
+            }
+
+            private boolean dfs(char[][] b, String w, int r, int c, int i) {
+                if (r < 0 || c < 0 || r >= b.length || c >= b[0].length) return false;
+                if (b[r][c] != w.charAt(i)) return false;         // mismatch (or '#' = visited)
+                if (i == w.length() - 1) return true;             // matched the last letter
+                char saved = b[r][c];
+                b[r][c] = '#';                                    // choose: mark visited
+                for (int d = 0; d < 4; d++) {
+                    if (dfs(b, w, r + DR[d], c + DC[d], i + 1)) {
+                        b[r][c] = saved;                          // restore even on success
+                        return true;
+                    }
+                }
+                b[r][c] = saved;                                  // un-choose
+                return false;
+            }
+
+            public static void main(String[] args) {
+                char[][] b = {{'A', 'B', 'C', 'E'}, {'S', 'F', 'C', 'S'}, {'A', 'D', 'E', 'E'}};
+                Solution s = new Solution();
+                System.out.println(s.exist(b, "ABCCED"));   // true
+                System.out.println(s.exist(b, "ABCB"));     // false
+            }
+        }`,
+      dry: { head: ['cell', 'letter needed', 'match?', 'event'], rows: [['(0,0)', 'A', 'yes', 'mark, go on'], ['(0,1)', 'B', 'yes', 'mark'], ['(0,2)', 'C', 'yes', 'mark'], ['(1,2)', 'C', 'yes', 'mark'], ['(2,2)', 'E', 'yes', 'mark'], ['(2,1)', 'D', 'yes, last letter', H.c('g', 'true — unwind, restoring cells')]] },
+      complexity: `<p><b>Time O(m · n · 3<sup>L</sup>)</b>: from each start, every step has at most 3 new directions. <b>Space O(L)</b> recursion depth.</p>`,
+      followUps: ['Word Search II: many words (Trie + backtracking, Hard)', 'Count all paths spelling the word']
+    }
+  });
+
+  practice.push({
+    title: 'Partition to K Equal Sum Subsets',
+    level: 'Medium',
+    tags: ['backtracking', 'pruning', 'bucket filling'],
+    companies: ['LinkedIn', 'Amazon', 'Google'],
+    statement: `<p>Given an integer array <code>nums</code> and an integer <code>k</code>, return true if it is possible to divide the array into <code>k</code> non-empty subsets whose sums are all equal.</p>`,
+    constraints: `1 ≤ k ≤ nums.length ≤ 16, 1 ≤ nums[i] ≤ 10<sup>4</sup>`,
+    example: `${H.arr([4, 3, 2, 3, 5, 2, 1], { label: 'nums' })}<p>k = 4 → ${H.c('g', '<b>true</b>')}: total 20, target 5 per bucket: (5), (1,4), (2,3), (2,3).</p>`,
+    brute: {
+      why: `<p>Assign each number to one of k buckets in every possible way: k<sup>n</sup> assignments (4<sup>16</sup> ≈ 4.3 billion) and check sums at the end. The waste: continuing after a bucket already overflows, and trying symmetric assignments (putting the first number into bucket 1 vs bucket 2 is the same thing when both are empty).</p>`,
+      code: `
+        boolean brute(int[] nums, int k) {
+            int[] bucket = new int[k];
+            return assign(nums, 0, bucket);
+        }
+        boolean assign(int[] nums, int i, int[] bucket) {
+            if (i == nums.length) {
+                for (int b : bucket) if (b != bucket[0]) return false;
+                return true;
+            }
+            for (int j = 0; j < bucket.length; j++) {          // no pruning at all
+                bucket[j] += nums[i];
+                if (assign(nums, i + 1, bucket)) return true;
+                bucket[j] -= nums[i];
+            }
+            return false;
+        }`
+    },
+    mcq: {
+      q: `nums sorted descending, number x does not fit into an <b>empty</b> bucket's first attempt (the recursion fails). Should you try x in the next empty bucket?`,
+      options: ['Yes, a different bucket might work', 'No — all empty buckets are identical, so the result would be the same; stop trying empty buckets', 'Only if k is even', 'Restart with a new order'],
+      answer: 1,
+      explain: `Empty buckets are interchangeable (symmetry). If placing x into one empty bucket leads to failure, placing it into another empty bucket fails too — break.`
+    },
+    hints: [
+      `<p><b>Aha:</b> if sum % k != 0 → false. Otherwise each bucket must reach target = sum / k, and any number &gt; target → false.</p>`,
+      `<p>Sort descending (big numbers fail fast) and place each number into a bucket whose sum + x ≤ target.</p>`,
+      `<p>Symmetry prune: skip a bucket with the same current sum as a bucket already tried for this number; in particular, once an empty bucket fails, break. Recipe: bt(i): if i == n return true; for b: if bucket[b]+x ≤ target and not a repeated sum: add; if bt(i+1) return true; remove; if bucket[b] == 0 break.</p>`
+    ],
+    solution: {
+      approach: `<p>Bucket-filling backtracking with three prunes: divisibility, descending order, and skipping equivalent buckets.</p>`,
+      code: `
+        import java.util.*;
+
+        class Solution {
+            public boolean canPartitionKSubsets(int[] nums, int k) {
+                int sum = 0;
+                for (int x : nums) sum += x;
+                if (sum % k != 0) return false;
+                int target = sum / k;
+                Arrays.sort(nums);
+                for (int i = 0, j = nums.length - 1; i < j; i++, j--) { int t = nums[i]; nums[i] = nums[j]; nums[j] = t; } // descending
+                if (nums[0] > target) return false;
+                return bt(nums, 0, new int[k], target);
+            }
+
+            private boolean bt(int[] nums, int i, int[] bucket, int target) {
+                if (i == nums.length) return true;                 // every number placed, sums never exceeded target
+                int x = nums[i];
+                for (int b = 0; b < bucket.length; b++) {
+                    if (bucket[b] + x > target) continue;          // overflow
+                    boolean seenSame = false;
+                    for (int p = 0; p < b; p++) if (bucket[p] == bucket[b]) { seenSame = true; break; }
+                    if (seenSame) continue;                        // equivalent bucket already tried
+                    bucket[b] += x;                                // choose
+                    if (bt(nums, i + 1, bucket, target)) return true; // explore
+                    bucket[b] -= x;                                // un-choose
+                    if (bucket[b] == 0) break;                     // empty buckets are all the same
+                }
+                return false;
+            }
+
+            public static void main(String[] args) {
+                System.out.println(new Solution().canPartitionKSubsets(new int[]{4, 3, 2, 3, 5, 2, 1}, 4)); // true
+                System.out.println(new Solution().canPartitionKSubsets(new int[]{1, 2, 3, 4}, 3));          // false
+            }
+        }`,
+      dry: { head: ['x (desc)', 'buckets before', 'placed in', 'buckets after'], rows: [['5', '[0,0,0,0]', 'b0', '[5,0,0,0]'], ['4', '[5,0,0,0]', 'b1 (b0 full)', '[5,4,0,0]'], ['3', '[5,4,0,0]', 'b2', '[5,4,3,0]'], ['3', '[5,4,3,0]', 'b3 (b2 would be 6)', '[5,4,3,3]'], ['2, 2, 1', '…', 'b2, b3, b1', H.c('g', '[5,5,5,5] → true')]] },
+      complexity: `<p><b>Time O(k<sup>n</sup>)</b> worst case but heavily pruned; the bitmask-DP alternative is O(n · 2<sup>n</sup>). <b>Space O(n)</b> recursion + O(k) buckets.</p>`,
+      followUps: ['Matchsticks to Square (k = 4)', 'Bitmask DP version: dp[mask] = fill of the current bucket', 'Fair distribution of cookies (minimise the max)']
+    }
+  });
+
+  // ===================== PRACTICE: HARD =====================
+  practice.push({
+    title: 'N-Queens II (count solutions fast)',
+    level: 'Hard',
+    tags: ['backtracking', 'bitmask', 'symmetry'],
+    companies: ['Amazon', 'Zenefits', 'Google'],
+    statement: `<p>Return the <b>number</b> of distinct solutions to the n-queens puzzle. Aim for a solution that also handles n up to 14 within a second.</p>`,
+    constraints: `1 ≤ n ≤ 9 (stretch: n ≤ 14 — 365,596 solutions)`,
+    example: `<p>n = 4 → ${H.c('p', '<b>2</b>')}; n = 8 → 92; n = 1 → 1; n = 3 → 0.</p><p>Why: same search as N-Queens, but we never build boards — only count leaves.</p>`,
+    brute: {
+      why: `<p>Reuse the board-building N-Queens solution and return <code>res.size()</code>. It allocates n strings per solution (365,596 × 14 strings for n = 14) purely to count them, and the boolean-array checks cost more than three ints. Fine for n ≤ 9, wasteful beyond.</p>`,
+      code: `
+        int brute(int n) {
+            return place(0, n, new boolean[n], new boolean[2 * n - 1], new boolean[2 * n - 1]);
+        }
+        int place(int r, int n, boolean[] cols, boolean[] d, boolean[] a) {
+            if (r == n) return 1;
+            int total = 0;
+            for (int c = 0; c < n; c++) {
+                if (cols[c] || d[r - c + n - 1] || a[r + c]) continue;
+                cols[c] = d[r - c + n - 1] = a[r + c] = true;
+                total += place(r + 1, n, cols, d, a);
+                cols[c] = d[r - c + n - 1] = a[r + c] = false;
+            }
+            return total;
+        }`
+    },
+    mcq: {
+      q: `Why can you try only the left half of row 0 and double the count?`,
+      options: ['Queens on the right half never work', 'Every solution has a mirror image (reflect left ↔ right), and a solution with row-0 queen in column c mirrors one with column n−1−c', 'Because n is even', 'It is an approximation'],
+      answer: 1,
+      explain: `Reflection is a bijection between solutions with the first queen in column c and column n − 1 − c. For odd n, the middle column maps to itself and must be counted once separately.`
+    },
+    hints: [
+      `<p><b>Aha:</b> counting needs no board — represent attacked columns/diagonals as three bitmasks passed by value.</p>`,
+      `<p>free = full &amp; ~(cols | d | a); iterate bits with <code>bit = free &amp; -free</code>; next row uses (d | bit) &lt;&lt; 1 and (a | bit) &gt;&gt; 1.</p>`,
+      `<p>Symmetry: in row 0 only try columns 0..n/2−1, double; if n is odd add the count for the middle column. Edge: n = 1 → 1.</p>`
+    ],
+    solution: {
+      approach: `<p>Bitmask backtracking (no arrays, no undo) plus left-right mirror symmetry for a 2× speed-up.</p>`,
+      code: `
+        class Solution {
+            private int full;
+
+            public int totalNQueens(int n) {
+                full = (1 << n) - 1;
+                int total = 0;
+                for (int c = 0; c < n / 2; c++) {                  // left half of row 0
+                    int bit = 1 << c;
+                    total += count(1, bit, bit << 1, bit >> 1);
+                }
+                total *= 2;                                        // mirror images
+                if (n % 2 == 1) {                                  // middle column counted once
+                    int bit = 1 << (n / 2);
+                    total += count(1, bit, bit << 1, bit >> 1);
+                }
+                return total;
+            }
+
+            private int count(int row, int cols, int d, int a) {
+                if (cols == full) return 1;                        // all n columns used = n queens placed
+                int free = full & ~(cols | d | a);
+                int total = 0;
+                while (free != 0) {
+                    int bit = free & -free;                        // lowest safe column
+                    free -= bit;
+                    total += count(row + 1, cols | bit, (d | bit) << 1, (a | bit) >> 1);
+                }
+                return total;
+            }
+
+            public static void main(String[] args) {
+                Solution s = new Solution();
+                for (int n = 1; n <= 10; n++) System.out.print(s.totalNQueens(n) + " ");
+                // 1 0 0 2 10 4 40 92 352 724
+            }
+        }`,
+      dry: { head: ['n', 'left-half count', '× 2', 'middle col', 'total'], rows: [['4', '1 (col 1)', '2', '—', H.c('p', '2')], ['5', '4 (cols 0, 1)', '8', '+2', H.c('p', '10')], ['1', '0', '0', '+1', H.c('p', '1')]] },
+      complexity: `<p><b>Time O(n!)</b> upper bound, about half the nodes of plain bitmask search; each node O(1) bit ops. <b>Space O(n)</b> recursion.</p>`,
+      followUps: ['Use all 8 board symmetries (rotations too) — harder bookkeeping', 'Count solutions with some queens pre-placed']
+    }
+  });
+
+  practice.push({
+    title: 'Expression Add Operators',
+    level: 'Hard',
+    tags: ['backtracking', 'strings', 'math'],
+    companies: ['Meta', 'Google', 'Pinterest'],
+    statement: `<p>Given a digit string <code>num</code> and an integer <code>target</code>, return all expressions formed by inserting the binary operators <code>+</code>, <code>-</code>, <code>*</code> between the digits so that the expression evaluates to target. Operands may span several digits but must not have leading zeros (e.g. "05" is invalid; "0" is fine).</p>`,
+    constraints: `1 ≤ num.length ≤ 10, −2<sup>31</sup> ≤ target ≤ 2<sup>31</sup> − 1`,
+    example: `<p>num = "123", target = 6 → ${H.chips(['1*2*3', '1+2+3'])}</p><p>num = "105", target = 5 → ${H.chips(['1*0+5', '10-5'])} ("1*05" is rejected: leading zero).</p>`,
+    brute: {
+      why: `<p>Between each pair of digits put one of 4 things (+, −, *, nothing): 4<sup>n−1</sup> strings (262,144 for n = 10), then parse and evaluate each with an expression evaluator respecting precedence. Evaluation is O(n) per string and re-does the same prefix arithmetic over and over.</p>`,
+      code: `
+        List<String> brute(String num, int target) {
+            List<String> res = new ArrayList<>();
+            int gaps = num.length() - 1;
+            int total = 1;
+            for (int i = 0; i < gaps; i++) total *= 4;
+            String ops = "+-*";
+            for (int code = 0; code < total; code++) {
+                StringBuilder sb = new StringBuilder().append(num.charAt(0));
+                int x = code;
+                for (int g = 0; g < gaps; g++) {
+                    int o = x % 4; x /= 4;
+                    if (o < 3) sb.append(ops.charAt(o));       // o == 3 means "join digits"
+                    sb.append(num.charAt(g + 1));
+                }
+                String e = sb.toString();
+                if (!e.matches(".*\\\\b0\\\\d.*") && eval(e) == target) res.add(e);
+            }
+            return res;
+        }
+        long eval(String e) {                                  // + - * with precedence
+            long sum = 0, term = 0, cur = 0;
+            char op = '+';
+            for (int i = 0; i <= e.length(); i++) {
+                char ch = i < e.length() ? e.charAt(i) : '+';
+                if (Character.isDigit(ch)) { cur = cur * 10 + (ch - '0'); continue; }
+                if (op == '*') term *= cur;
+                else { sum += term; term = op == '+' ? cur : -cur; }
+                op = ch;
+                cur = 0;
+            }
+            return sum + term;
+        }`
+    },
+    mcq: {
+      q: `Current expression "2+3" has value 5 and the last operand was +3. You now append "*4". What is the new value?`,
+      options: ['(5) × 4 = 20', '5 − 3 + 3 × 4 = 14', '5 + 4 = 9', '3 × 4 = 12'],
+      answer: 1,
+      explain: `Multiplication binds tighter, so undo the last operand and re-apply it multiplied: value − last + last × 4 = 5 − 3 + 12 = 14. That is why we carry "last" through the recursion.`
+    },
+    hints: [
+      `<p><b>Aha:</b> at each position choose the next operand (num[i..j]) and the operator in front of it; carry the running <b>value</b> and the <b>last operand</b> so * can be fixed up in O(1).</p>`,
+      `<p>For "*": new value = value − last + last × cur, new last = last × cur. For "+": value + cur, last = cur. For "−": value − cur, last = −cur. Use <code>long</code> to avoid overflow.</p>`,
+      `<p>Leading zeros: if num[i] == '0', only the single-digit operand "0" is allowed (break after j == i). The first operand has no operator in front. Recipe: if i == n: if value == target save; for j in i..n−1: cur = parse(i..j); if i == 0 recurse(first) else recurse with +, −, *.</p>`
+    ],
+    solution: {
+      approach: `<p>Backtracking over operand boundaries and operators, with (value, last) state for O(1) precedence handling and a StringBuilder that is truncated back with <code>setLength</code> for un-choose.</p>`,
+      code: `
+        import java.util.*;
+
+        class Solution {
+            public List<String> addOperators(String num, int target) {
+                List<String> res = new ArrayList<>();
+                bt(num, target, 0, 0, 0, new StringBuilder(), res);
+                return res;
+            }
+
+            private void bt(String num, int target, int i, long value, long last, StringBuilder sb, List<String> res) {
+                if (i == num.length()) {
+                    if (value == target) res.add(sb.toString());
+                    return;
+                }
+                int len = sb.length();                              // remember for un-choose
+                long cur = 0;
+                for (int j = i; j < num.length(); j++) {
+                    if (j > i && num.charAt(i) == '0') break;       // no operands with leading zero
+                    cur = cur * 10 + (num.charAt(j) - '0');
+                    String operand = num.substring(i, j + 1);
+                    if (i == 0) {                                   // first operand: no operator
+                        sb.append(operand);
+                        bt(num, target, j + 1, cur, cur, sb, res);
+                        sb.setLength(len);
+                    } else {
+                        sb.append('+').append(operand);
+                        bt(num, target, j + 1, value + cur, cur, sb, res);
+                        sb.setLength(len);
+                        sb.append('-').append(operand);
+                        bt(num, target, j + 1, value - cur, -cur, sb, res);
+                        sb.setLength(len);
+                        sb.append('*').append(operand);
+                        bt(num, target, j + 1, value - last + last * cur, last * cur, sb, res);
+                        sb.setLength(len);
+                    }
+                }
+            }
+
+            public static void main(String[] args) {
+                Solution s = new Solution();
+                System.out.println(s.addOperators("123", 6));   // [1+2+3, 1*2*3]
+                System.out.println(s.addOperators("105", 5));   // [1*0+5, 10-5]
+            }
+        }`,
+      dry: { head: ['expression so far', 'value', 'last', 'next step'], rows: [['"1"', '1', '1', 'append +2 / −2 / *2'], ['"1*2"', '1 − 1 + 1·2 = 2', '2', 'append *3'], ['"1*2*3"', '2 − 2 + 2·3 = 6', '6', H.c('g', 'i == n, 6 == target → save')], ['"1+2+3"', '6', '3', H.c('g', 'save')], ['"12-3"', '9', '−3', H.c('r', '9 ≠ 6')]] },
+      complexity: `<p><b>Time O(n · 4<sup>n</sup>)</b>: each gap has 4 options and building each string costs O(n). <b>Space O(n)</b> recursion + builder.</p>`,
+      followUps: ['Add division with integer truncation', 'Allow parentheses (Different Ways to Add Parentheses)', 'Return only the count']
+    }
+  });
+
+  practice.push({
+    title: 'Remove Invalid Parentheses',
+    level: 'Hard',
+    tags: ['backtracking', 'pruning', 'strings'],
+    companies: ['Meta', 'Amazon', 'Uber'],
+    statement: `<p>Given a string <code>s</code> containing parentheses and letters, remove the <b>minimum</b> number of invalid parentheses to make it valid. Return all unique valid strings that can be obtained (any order).</p>`,
+    constraints: `1 ≤ s.length ≤ 25; at most 20 parentheses; letters are kept as is`,
+    example: `<p>s = "()())()" → ${H.chips(['(())()', '()()()'])}</p><p>s = ")(" → ${H.chips(['""'])} (remove both). Why: one extra ")" must go; removing different ")" characters gives two distinct valid strings.</p>`,
+    brute: {
+      why: `<p>Try every subset of characters to delete (2<sup>n</sup>), keep valid strings with maximum length. For n = 25 that is 33 million subsets × O(n) validation. Most subsets delete letters or too many brackets — work we can rule out up front by computing exactly how many "(" and ")" must go.</p>`,
+      code: `
+        List<String> brute(String s) {
+            int n = s.length(), best = -1;
+            Set<String> res = new HashSet<>();
+            for (int m = 0; m < (1 << n); m++) {              // m = characters to KEEP
+                StringBuilder sb = new StringBuilder();
+                for (int i = 0; i < n; i++) if ((m >> i & 1) == 1) sb.append(s.charAt(i));
+                String t = sb.toString();
+                if (t.length() < best || !valid(t)) continue;
+                if (t.length() > best) { best = t.length(); res.clear(); }
+                res.add(t);
+            }
+            return new ArrayList<>(res);
+        }
+        boolean valid(String t) {
+            int bal = 0;
+            for (char ch : t.toCharArray()) {
+                if (ch == '(') bal++;
+                else if (ch == ')' && --bal < 0) return false;
+            }
+            return bal == 0;
+        }`
+    },
+    mcq: {
+      q: `For s = "()())()", how many "(" and ")" must be removed at minimum?`,
+      options: ['0 "(" and 1 ")"', '1 "(" and 1 ")"', '0 "(" and 2 ")"', '2 "(" and 0 ")"'],
+      answer: 0,
+      explain: `Scan left to right with a balance: the ")" at index 4 drops the balance below zero → one ")" must go. At the end the balance is 0, so no "(" must go. These counts become hard limits in the backtracking.`
+    },
+    hints: [
+      `<p><b>Aha:</b> one pre-scan tells you exactly how many "(" (rmL) and ")" (rmR) to delete. Then backtrack choosing which ones — never delete more.</p>`,
+      `<p>dfs(i, open, rmL, rmR, sb): for a bracket either delete it (if its quota &gt; 0) or keep it (")" only if open &gt; 0). Letters are always kept.</p>`,
+      `<p>Collect results in a Set (simplest). Optional upgrade — de-duplicate without a Set: when deleting, skip a bracket equal to the previous character if that previous one was kept at the same position (only delete the first of a run). Save at i == n when rmL == rmR == open == 0.</p>`
+    ],
+    solution: {
+      approach: `<p>Compute minimal removal counts, then DFS with keep/delete choices bounded by the quotas and a balance check; a Set collects unique results (simple and safe given ≤ 20 brackets).</p>`,
+      code: `
+        import java.util.*;
+
+        class Solution {
+            public List<String> removeInvalidParentheses(String s) {
+                int rmL = 0, rmR = 0;
+                for (char ch : s.toCharArray()) {               // minimal removals
+                    if (ch == '(') rmL++;
+                    else if (ch == ')') {
+                        if (rmL > 0) rmL--;                     // matched
+                        else rmR++;                             // unmatched ')'
+                    }
+                }
+                Set<String> res = new LinkedHashSet<>();
+                dfs(s, 0, 0, rmL, rmR, new StringBuilder(), res);
+                return new ArrayList<>(res);
+            }
+
+            private void dfs(String s, int i, int open, int rmL, int rmR, StringBuilder sb, Set<String> res) {
+                if (rmL < 0 || rmR < 0 || open < 0) return;      // invalid path
+                if (i == s.length()) {
+                    if (rmL == 0 && rmR == 0 && open == 0) res.add(sb.toString());
+                    return;
+                }
+                char ch = s.charAt(i);
+                int len = sb.length();
+                if (ch == '(') {
+                    dfs(s, i + 1, open, rmL - 1, rmR, sb, res);           // delete it
+                    sb.append(ch);
+                    dfs(s, i + 1, open + 1, rmL, rmR, sb, res);           // keep it
+                } else if (ch == ')') {
+                    dfs(s, i + 1, open, rmL, rmR - 1, sb, res);           // delete it
+                    sb.append(ch);
+                    dfs(s, i + 1, open - 1, rmL, rmR, sb, res);           // keep it (needs open > 0)
+                } else {
+                    sb.append(ch);
+                    dfs(s, i + 1, open, rmL, rmR, sb, res);               // letters always stay
+                }
+                sb.setLength(len);                                        // un-choose
+            }
+
+            public static void main(String[] args) {
+                Solution sol = new Solution();
+                System.out.println(sol.removeInvalidParentheses("()())()")); // [(())(), ()()()] in some order
+                System.out.println(sol.removeInvalidParentheses("(a)())()")); // [(a())(), (a)()()]
+                System.out.println(sol.removeInvalidParentheses(")("));      // []  (one empty string)
+            }
+        }`,
+      dry: { head: ['scan char', 'rmL', 'rmR', 'note'], rows: [['(', '1', '0', ''], [')', '0', '0', 'matched'], ['(', '1', '0', ''], [')', '0', '0', 'matched'], [')', '0', H.c('r', '1'), 'unmatched → must delete one ")"'], ['()', '0', '1', 'final quotas: rmL = 0, rmR = 1']] },
+      complexity: `<p><b>Time O(2<sup>b</sup> · n)</b> worst case for b brackets (≤ 20), heavily cut by quotas and the open ≥ 0 check. <b>Space O(n)</b> recursion + builder (excluding results).</p>`,
+      followUps: ['BFS level-by-level alternative (first level with a valid string)', 'Minimum Remove to Make Valid Parentheses (return one, O(n), Medium)']
+    }
+  });
+
+  practice.push({
+    title: 'Word Break II',
+    level: 'Hard',
+    tags: ['backtracking', 'memoization', 'strings'],
+    companies: ['Google', 'Amazon', 'Uber', 'Dropbox'],
+    statement: `<p>Given a string <code>s</code> and a dictionary <code>wordDict</code>, add spaces in s to construct sentences where every word is in the dictionary. Return <b>all</b> such sentences in any order. Words may be reused.</p>`,
+    constraints: `1 ≤ s.length ≤ 20, 1 ≤ wordDict.length ≤ 1000, 1 ≤ word length ≤ 10, all dictionary words unique; output size ≤ 10<sup>5</sup>`,
+    example: `<p>s = "catsanddog", dict = [cat, cats, and, sand, dog] → ${H.chips(['cats and dog', 'cat sand dog'])}</p><p>Why: "cat|sand|dog" and "cats|and|dog" both split s into dictionary words.</p>`,
+    brute: {
+      why: `<p>Plain backtracking: from position i try every prefix s[i..j] in the dictionary, recurse on the rest. On inputs like "aaaa…ab" with dict [a, aa, aaa, …] every split of the a's is explored and every one fails at the final "b" — exponential work with zero output. The same suffix is solved again and again.</p>`,
+      code: `
+        List<String> brute(String s, List<String> wordDict) {
+            Set<String> dict = new HashSet<>(wordDict);
+            List<String> res = new ArrayList<>();
+            go(s, 0, dict, new ArrayList<>(), res);
+            return res;
+        }
+        void go(String s, int i, Set<String> dict, List<String> cur, List<String> res) {
+            if (i == s.length()) { res.add(String.join(" ", cur)); return; }
+            for (int j = i + 1; j <= s.length(); j++) {
+                String w = s.substring(i, j);
+                if (!dict.contains(w)) continue;
+                cur.add(w);
+                go(s, j, dict, cur, res);
+                cur.remove(cur.size() - 1);
+            }
+        }`
+    },
+    mcq: {
+      q: `Why memoize on the start index i?`,
+      options: ['To sort the answers', 'All sentences for suffix s[i..] are the same no matter how we reached i, so compute them once', 'It reduces the dictionary size', 'Memoization is never useful in backtracking'],
+      answer: 1,
+      explain: `The future depends only on i (the suffix), not on the path taken. Caching the list of sentences per i turns repeated subtrees into lookups — and an empty cached list instantly kills dead suffixes.`
+    },
+    hints: [
+      `<p><b>Aha:</b> the state is just the start index of the remaining suffix; different prefixes reach the same suffix.</p>`,
+      `<p>Return, for each i, the list of sentences of s[i..]; cache in a <code>Map&lt;Integer, List&lt;String&gt;&gt;</code>. Use a HashSet for the dictionary and limit word lengths to the max word length.</p>`,
+      `<p>Base case: i == n → list containing "" (one empty sentence). Combine: for each word w = s[i..j) in dict, for each tail in solve(j): w + (tail empty ? "" : " " + tail).</p>`
+    ],
+    solution: {
+      approach: `<p>Top-down backtracking with memoization on the suffix start; dead suffixes are cached as empty lists, so the exponential failure case disappears. The remaining cost is the size of the output itself.</p>`,
+      code: `
+        import java.util.*;
+
+        class Solution {
+            private Set<String> dict;
+            private int maxLen;
+            private Map<Integer, List<String>> memo = new HashMap<>();
+
+            public List<String> wordBreak(String s, List<String> wordDict) {
+                dict = new HashSet<>(wordDict);
+                for (String w : wordDict) maxLen = Math.max(maxLen, w.length());
+                return solve(s, 0);
+            }
+
+            private List<String> solve(String s, int i) {
+                if (memo.containsKey(i)) return memo.get(i);       // suffix already solved
+                List<String> out = new ArrayList<>();
+                if (i == s.length()) {
+                    out.add("");                                   // one way to split nothing
+                    return out;
+                }
+                for (int j = i + 1; j <= Math.min(s.length(), i + maxLen); j++) {
+                    String w = s.substring(i, j);
+                    if (!dict.contains(w)) continue;               // prune: not a word
+                    for (String tail : solve(s, j))                // all sentences of the rest
+                        out.add(tail.isEmpty() ? w : w + " " + tail);
+                }
+                memo.put(i, out);
+                return out;
+            }
+
+            public static void main(String[] args) {
+                System.out.println(new Solution().wordBreak("catsanddog", List.of("cat", "cats", "and", "sand", "dog")));
+                // [cat sand dog, cats and dog]
+                System.out.println(new Solution().wordBreak("aaaaaaaaaaaaaaaaaaab", List.of("a", "aa", "aaa", "aaaa")));
+                // [] instantly thanks to memoization
+            }
+        }`,
+      dry: { head: ['i (suffix)', 'words tried', 'tails', 'memo[i]'], rows: [['7 ("dog")', 'dog', '[""]', '["dog"]'], ['4 ("anddog")', 'and', 'memo[7] = ["dog"]', '["and dog"]'], ['3 ("sanddog")', 'sand', 'memo[7]', '["sand dog"]'], ['0', 'cat → memo[3], cats → memo[4]', '—', H.c('g', '["cat sand dog", "cats and dog"]')]] },
+      complexity: `<p><b>Time O(n · L + output size)</b> roughly — each suffix computed once (n states × up to L word checks, L = max word length), plus building the sentences, which can be exponential in the worst case but is bounded by the output. <b>Space</b>: memo of all suffix sentences + O(n) recursion.</p>`,
+      followUps: ['Word Break I: just true/false (DP, Medium)', 'Count the sentences without listing them', 'Use a Trie for the dictionary when it is large']
+    }
+  });
+
+  // ===================== QUIZ =====================
+  quiz.push(
+    {
+      q: `What does this print? <code>void f(int n){ if(n==0) return; f(n-1); System.out.print(n); }</code> called as <code>f(3)</code>`,
+      options: ['321', '123', '3', 'Nothing — infinite recursion'],
+      answer: 1,
+      explain: `The print is AFTER the recursive call, so it runs on the way back up: f(1) prints first, then f(2), then f(3) → 123.`
+    },
+    {
+      q: `A recursive function makes one call on n − 1 and does O(1) work. With n = 10<sup>6</sup> in Java (default stack), what is the most likely outcome?`,
+      options: ['Runs in O(n) and finishes', 'StackOverflowError — about 10<sup>6</sup> frames is far beyond the default stack', 'The JVM turns it into a loop automatically', 'OutOfMemoryError on the heap'],
+      answer: 1,
+      explain: `The default thread stack typically holds only tens of thousands of small frames, and the JVM does not perform tail-call elimination. Use a loop or a bigger thread stack.`
+    },
+    {
+      q: `Solve T(n) = 2T(n/2) + O(n).`,
+      options: ['O(n)', 'O(n log n)', 'O(n<sup>2</sup>)', 'O(2<sup>n</sup>)'],
+      answer: 1,
+      explain: `log₂n levels, each level costs n in total (2<sup>k</sup> pieces × n/2<sup>k</sup>). Master Theorem case a = b<sup>d</sup> → O(n log n). This is merge sort.`
+    },
+    {
+      q: `Solve T(n) = 2T(n − 1) + O(1).`,
+      options: ['O(n)', 'O(n log n)', 'O(n<sup>2</sup>)', 'O(2<sup>n</sup>)'],
+      answer: 3,
+      explain: `The number of calls doubles each level for n levels: 1 + 2 + … + 2<sup>n−1</sup> = 2<sup>n</sup> − 1. Tower of Hanoi has exactly this recurrence.`
+    },
+    {
+      q: `Minimum moves for Tower of Hanoi with 10 disks?`,
+      options: ['100', '512', '1023', '1024'],
+      answer: 2,
+      explain: `2<sup>10</sup> − 1 = 1023.`
+    },
+    {
+      q: `A backtracking solution saves answers with <code>res.add(cur)</code> where cur is the shared ArrayList. What goes wrong?`,
+      options: ['Nothing', 'All saved entries point to the same list, which ends up empty (or in its final state)', 'It throws ConcurrentModificationException', 'It only saves the first answer'],
+      answer: 1,
+      explain: `Lists are references. You must store a snapshot: new ArrayList&lt;&gt;(cur).`
+    },
+    {
+      q: `How many subsets does a set of 15 distinct elements have?`,
+      options: ['15', '225', '32,768', '1,307,674,368,000'],
+      answer: 2,
+      explain: `2<sup>15</sup> = 32,768 (each element in or out). 15! = 1.3 × 10<sup>12</sup> would be the number of permutations.`
+    },
+    {
+      q: `Sorted nums [1, 2, 2]. In Subsets II (loop style), which condition correctly skips duplicates?`,
+      options: ['j &gt; 0 &amp;&amp; nums[j] == nums[j−1]', 'j &gt; start &amp;&amp; nums[j] == nums[j−1]', 'nums[j] == nums[start]', 'used[j] == true'],
+      answer: 1,
+      explain: `Only skip equal values at the SAME level (j &gt; start). j &gt; 0 would also forbid [2,2], which is a valid subset.`
+    },
+    {
+      q: `For unique permutations with a used[] array on sorted input, the standard skip rule is:`,
+      options: ['skip if nums[i] == nums[i−1]', 'skip if i &gt; 0 &amp;&amp; nums[i] == nums[i−1] &amp;&amp; !used[i−1]', 'skip if used[i−1]', 'skip if i == start'],
+      answer: 1,
+      explain: `Equal copies must be placed left to right; using copy i before copy i−1 would duplicate a branch. The rule forces a canonical order.`
+    },
+    {
+      q: `In Combination Sum (unlimited reuse), after choosing candidates[i], the recursive call should start from:`,
+      options: ['0', 'i', 'i + 1', 'the end of the array'],
+      answer: 1,
+      explain: `i allows reusing the same number and forbids going back to smaller indices, which would create reordered duplicates.`
+    },
+    {
+      q: `In N-Queens, two queens at (r1, c1) and (r2, c2) are on the same ↙ anti-diagonal when:`,
+      options: ['r1 − c1 == r2 − c2', 'r1 + c1 == r2 + c2', 'r1 == r2', '|r1 − r2| == 1'],
+      answer: 1,
+      explain: `Moving down-left increases r and decreases c, so r + c stays constant. r − c constant is the other (↘) diagonal.`
+    },
+    {
+      q: `Which formula gives the 3×3 box index (0–8) for Sudoku cell (r, c)?`,
+      options: ['r / 3 + c / 3', '(r / 3) * 3 + c / 3', 'r * 3 + c', '(r + c) % 9'],
+      answer: 1,
+      explain: `r / 3 is the band (0–2), c / 3 the stack (0–2); band × 3 + stack numbers the boxes 0..8. r/3 + c/3 collides (box (0,1) and (1,0) both give 1).`
+    },
+    {
+      q: `A problem says "return all valid arrangements" and N ≤ 8. What does the constraint suggest?`,
+      options: ['An O(N) greedy', 'Exhaustive backtracking — N! = 40,320 is affordable', 'Binary search on the answer', 'A segment tree'],
+      answer: 1,
+      explain: `Tiny N plus "all arrangements" is the classic backtracking signal; 8! × 8 ≈ 3 × 10<sup>5</sup> operations.`
+    },
+    {
+      q: `Why should Sudoku's recursive solve return boolean?`,
+      options: ['Java requires it', 'To stop at the first solution and avoid erasing it while unwinding', 'To count solutions', 'To make it tail-recursive'],
+      answer: 1,
+      explain: `When a child reports success, the parent returns immediately without un-choosing, so the filled digits remain on the board.`
+    }
+  );
+
+  // ===================== INTERVIEW Q&A =====================
+  interview.push(
+    {
+      q: `What are the two parts every recursive function needs, and what happens if one is wrong?`,
+      level: 'B',
+      a: `<p>A <b>base case</b> — the smallest input answered directly, which stops the recursion — and a <b>recursive case</b> that moves strictly toward the base case and combines the smaller answer. If the base case is missing or unreachable (e.g. stepping n − 2 toward a base case of n == 1 with even n), calls never stop and Java throws <code>StackOverflowError</code>. If the recursive case does not shrink the input, same result. Correctness is proved by induction: base case right + "if the smaller call is right, my combination is right".</p>`,
+      followUps: ['How would you debug a StackOverflowError?', 'Can a function have several base cases?']
+    },
+    {
+      q: `What is a stack frame and what determines the space complexity of recursion?`,
+      level: 'B',
+      a: `<p>A stack frame is the per-call record: parameters, local variables, operand stack and the return address. Each call pushes one; each return pops it. Extra space is the <b>maximum depth</b> of the call stack times the frame size — not the total number of calls. Naive fib(n) makes ~1.6<sup>n</sup> calls but only n frames are alive at once, so it is O(n) space. Objects created inside calls live on the heap and count separately (e.g. copies of lists in backtracking).</p>`,
+      followUps: ['Why does merge sort use O(n) space if its stack is O(log n)?', 'Where do local objects live in Java?']
+    },
+    {
+      q: `Does Java optimise tail recursion? What do you do when recursion is too deep?`,
+      level: 'I',
+      a: `<p>No. The JVM (including Java 21+) does not perform tail-call elimination, and neither does CPython; Scala's <code>@tailrec</code> and Kotlin's <code>tailrec</code> rewrite to loops at compile time. For deep recursion: (1) convert to an iterative loop, (2) simulate the recursion with an explicit <code>ArrayDeque</code> stack, or (3) run the work in a <code>Thread</code> created with a large stack size. In interviews, mention the limit (~10<sup>4</sup>–10<sup>5</sup> frames by default) when N is large.</p>`,
+      followUps: ['Convert recursive DFS to iterative', 'What is the default -Xss and why does it vary?']
+    },
+    {
+      q: `How do you find the time complexity of a recursive function?`,
+      level: 'I',
+      a: `<p>Write its recurrence: T(n) = (number of calls) × T(smaller size) + (work outside the calls). Then solve it: draw the <b>recursion tree</b> and sum work level by level, unroll it algebraically, or apply the <b>Master Theorem</b> for T(n) = aT(n/b) + n<sup>d</sup>. Examples: T(n/2) + 1 → O(log n); 2T(n/2) + n → O(n log n); 2T(n − 1) + 1 → O(2<sup>n</sup>); n·T(n − 1) → O(n!). For backtracking, multiply the number of nodes by work per node and add the copy cost per answer.</p>`,
+      followUps: ['Solve T(n) = 3T(n/2) + n', 'Why does the Master Theorem not apply to T(n) = T(n−1) + n?']
+    },
+    {
+      q: `Explain the Tower of Hanoi solution and prove it is optimal.`,
+      level: 'I',
+      a: `<p>To move n disks from A to C: move n − 1 disks A → B (using C), move the largest disk A → C, move n − 1 disks B → C (using A). Moves satisfy M(n) = 2M(n − 1) + 1 = 2<sup>n</sup> − 1. Optimality: the largest disk must move at least once, and when it first moves, all other disks must be stacked on the spare peg (≥ M(n − 1) moves); after its last move they must all be moved onto it (≥ M(n − 1) more). So any solution needs ≥ 2M(n − 1) + 1 moves.</p>`,
+      followUps: ['Which disk moves at step k?', 'Iterative solution', 'Four pegs (Frame–Stewart)']
+    },
+    {
+      q: `What is backtracking and how is it different from plain recursion or brute force?`,
+      level: 'I',
+      a: `<p>Backtracking is a depth-first search over a decision tree that builds a candidate one choice at a time, <b>undoes</b> each choice after exploring it (choose → explore → un-choose), and <b>prunes</b> branches that cannot lead to a valid answer. Brute force generates every complete candidate and checks it at the end; backtracking checks constraints on partial candidates, so whole subtrees are skipped. It uses only O(depth) memory because the tree exists only on the call stack.</p>`,
+      followUps: ['Give an example where pruning changes the complexity dramatically', 'When does backtracking become DP?']
+    },
+    {
+      q: `How do you avoid duplicate answers in Subsets II, Permutations II and Combination Sum II?`,
+      level: 'A',
+      a: `<p>Sort first so equal values are adjacent. For loop-style generation (Subsets II, Combination Sum II) skip <code>j &gt; start &amp;&amp; a[j] == a[j−1]</code>: at one level, only the first copy of a value may start a branch. For permutations with used[], skip <code>i &gt; 0 &amp;&amp; a[i] == a[i−1] &amp;&amp; !used[i−1]</code>: copies must be placed left to right. Both pick a canonical representative of each multiset/arrangement, so no Set is needed and no duplicate subtree is explored. With the swap method, use a per-level HashSet of values tried.</p>`,
+      followUps: ['Why is j &gt; 0 wrong in Subsets II?', 'Does used[i−1] (without !) also work?']
+    },
+    {
+      q: `Compare the swap method and the used[] method for permutations.`,
+      level: 'I',
+      a: `<p><b>Swap:</b> the array is the state; swap element j into position i, recurse on i + 1, swap back. No extra list or boolean array, but output is not in lexicographic order and duplicate handling needs a per-level Set. <b>used[]:</b> build a separate list, mark used indices; O(n) extra memory, natural lexicographic order on sorted input, and the simple sorted-skip rule handles duplicates. Both are O(n · n!) time. I default to used[] for clarity unless memory is tight.</p>`,
+      followUps: ['Generate the k-th permutation directly', 'Next permutation in O(n)']
+    },
+    {
+      q: `Walk me through N-Queens. How do you check safety in O(1)?`,
+      level: 'A',
+      a: `<p>One queen per row, so each level of recursion chooses a column for row r. Maintain three boolean arrays: <code>cols[c]</code>, <code>diag[r − c + n − 1]</code> and <code>anti[r + c]</code> (sizes n, 2n − 1, 2n − 1). A cell is safe iff all three are false. Choose: set all three and place the queen; explore row r + 1; un-choose: clear them. For counting only, replace arrays with three int bitmasks, take <code>free = full &amp; ~(cols | d | a)</code>, iterate with <code>bit = free &amp; -free</code> and shift diagonals by one when moving to the next row. Mirror symmetry halves the work.</p>`,
+      followUps: ['How many nodes for n = 8?', 'Find one solution for n = 10<sup>6</sup>']
+    },
+    {
+      q: `How would you write and speed up a Sudoku solver?`,
+      level: 'A',
+      a: `<p>Model each empty cell as a decision with digits 1–9. Keep used-tables (or 9-bit masks) per row, column and box (box = (r/3)*3 + c/3) for O(1) validity. Recursive solve returns boolean: on success return true without erasing, otherwise erase and try the next digit; return false if no digit fits. Speed-ups: <b>MRV</b> (pick the empty cell with the fewest candidates; a 0-candidate cell fails immediately), constraint propagation (naked/hidden singles), and for heavy use, exact cover with Dancing Links or a CP-SAT solver.</p>`,
+      followUps: ['How do you check a puzzle has a unique solution?', 'Why is generalised Sudoku NP-complete?']
+    },
+    {
+      q: `Given only the constraints, how do you decide whether backtracking is acceptable?`,
+      level: 'I',
+      a: `<p>Estimate the size of the search tree and compare with ~10<sup>8</sup> simple operations per second. N ≤ 10–12 → n! is OK; N ≤ 20–25 → 2<sup>n</sup> is OK; board puzzles up to 9×9 with strong pruning are OK. If N is 40, consider meet in the middle (2 × 2<sup>20</sup>). If N is 10<sup>3</sup>+ or the question asks only for a <b>count</b> or <b>optimum</b>, look for overlapping states and use DP, greedy or math instead of listing. Also mind the output size: if the answer itself is exponential, exponential time is unavoidable.</p>`,
+      followUps: ['Subset sum with n = 40', 'When do you memoize a backtracking solution?']
+    },
+    {
+      q: `What are the most common bugs in backtracking code, and how do you test for them?`,
+      level: 'I',
+      a: `<p>(1) Saving a reference instead of a copy; (2) un-choose that does not mirror choose (forgetting to reset used[], or an early <code>continue</code>/<code>return</code> that skips the undo); (3) <code>cur.remove(x)</code> on a <code>List&lt;Integer&gt;</code> with an int, which removes by index; (4) wrong start index (i vs i + 1 vs 0) giving reorderings or missing reuse; (5) duplicate-skip using the wrong condition; (6) using <code>break</code> where only <code>continue</code> is safe. Test with tiny inputs whose answers you can list by hand, inputs with duplicates, empty/size-1 inputs, and compare against a brute-force generator on random small cases.</p>`,
+      followUps: ['Write a property test for Permutations II', 'Why is cur.remove(cur.size() - 1) safe?']
+    },
+    {
+      q: `When does a backtracking problem turn into dynamic programming?`,
+      level: 'A',
+      a: `<p>When the remaining work depends only on a small summary of the past (an index, a remaining sum, a bitmask) rather than the full path, different paths reach the same state — <b>overlapping subproblems</b>. If the question asks for a count, a boolean or an optimum, memoize on that state (top-down DP) or tabulate. Examples: Combination Sum → Coin Change II (count), Word Break II → memoize sentences per suffix, Partition to K Subsets → bitmask DP O(n·2<sup>n</sup>), permutations with cost → bitmask DP (TSP). If the question asks to list all solutions, backtracking remains, possibly with memo to kill dead branches.</p>`,
+      followUps: ['Turn Subset Sum backtracking into DP', 'Why does memoizing lists blow up memory?']
+    },
+    {
+      q: `How would you use an AI coding assistant on a backtracking problem in a real job, and what would you still verify yourself?`,
+      level: 'E',
+      a: `<p>I would describe the state, choices, goal and prunes myself, then let the assistant draft code and a brute-force reference generator. I would verify: copies vs references, symmetric undo, the start index, the duplicate rule, and complexity versus real input sizes. I would run a differential test (pruned vs brute force on random small inputs) and a timing test at the max constraint. For production constraint problems (scheduling, assignment, puzzles at scale) I would also evaluate a solver library such as OR-Tools CP-SAT instead of custom backtracking, because they bring propagation, heuristics and parallelism for free.</p>`,
+      followUps: ['What prompt would you write to get useful edge cases?', 'When is a hand-written solver still the better choice?']
+    }
+  );
+
   registerModule({
     id: 'dsa11',
     title: 'Recursion & Backtracking',
