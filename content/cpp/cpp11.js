@@ -2380,7 +2380,7 @@ int pop() {
         }`,
       dry: { head: ['time', 'consumer', 'producer (fixed)'], rows: [['1', 'lock, sees empty, wait() → unlock + sleep', ''], ['2', '', 'lock (now possible), push, unlock'], ['3', '', 'notify_one → consumer woken'], ['4', 're-lock, predicate true → pop', '']] },
       complexity: `<p>O(1) per operation; the fix adds one uncontended lock to push (~20 ns).</p>`,
-      followUps: ['Is it OK to call notify_one() while still holding the lock?', 'Why does an atomic<bool> flag alone not fix the lost wakeup?']
+      followUps: ['Is it OK to call notify_one() while still holding the lock?', 'Why does an atomic&lt;bool&gt; flag alone not fix the lost wakeup?']
     }
   });
 

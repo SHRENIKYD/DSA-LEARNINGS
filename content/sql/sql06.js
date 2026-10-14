@@ -979,6 +979,457 @@ ORDER BY order_date, id;` },
     }]
   });
 
+  /* =====================================================================
+     TOPIC 6 — Moving averages and explicit frames (ROWS / RANGE / GROUPS)
+     ===================================================================== */
+  topics.push({
+    title: 'Moving Averages & Frames: ROWS, RANGE, GROUPS, EXCLUDE',
+    analogy: `<p>Look at the world through a <b>train window</b>: as the train moves, the same-size window shows a slightly different stretch of countryside — one new tree appears on the right, one old tree disappears on the left. A <b>moving average</b> is exactly that: a fixed-size window that slides one row at a time, and you average whatever is inside it. Your phone's "average daily steps this week" and a stock chart's "50-day moving average" both work this way.</p>`,
+    explain: `<p>A <b>frame</b> says which rows around the current row feed the aggregate. Full syntax:</p>
+<pre>{ ROWS | RANGE | GROUPS } BETWEEN &lt;start&gt; AND &lt;end&gt; [ EXCLUDE ... ]
+
+start / end can be:
+  UNBOUNDED PRECEDING   n PRECEDING   CURRENT ROW   n FOLLOWING   UNBOUNDED FOLLOWING</pre>
+<p><b>3-row moving average</b> (current row + 2 before):</p>
+<pre>AVG(revenue) OVER (PARTITION BY region ORDER BY day
+                   ROWS BETWEEN 2 PRECEDING AND CURRENT ROW)</pre>
+${H.table(['day', 'revenue', 'frame (ROWS 2 PRECEDING)', '3-row avg'], [
+  ['03-01', '80', '[80]', '80.0 <span class="c-y">(warm-up: only 1 row)</span>'],
+  ['03-02', '95', '[80, 95]', '87.5 <span class="c-y">(2 rows)</span>'],
+  ['03-03', '95', '[80, 95, 95]', '90.0'],
+  ['03-04', '60', '[95, 95, 60]', '83.3'],
+  ['03-05', '110', '[95, 60, 110]', '88.3']
+])}
+<p><b>The three frame units</b> — what does "2 PRECEDING" count?</p>
+<ul>
+<li><b>ROWS</b>: physical rows. "2 PRECEDING" = the 2 rows above me. Simple, fast, but blind to gaps: if a day is missing, a "3-row" window silently covers 4 calendar days.</li>
+<li><b>RANGE</b>: the ORDER BY <b>value</b>. "2 PRECEDING" = every row whose value is within 2 of mine (value − 2 ≤ v ≤ value). Calendar-correct when ordering by a day number like <code>julianday(day)</code>. Needs exactly one numeric (or date/interval in PostgreSQL) ORDER BY column.</li>
+<li><b>GROUPS</b>: peer groups. "2 PRECEDING" = the 2 previous distinct ORDER BY values, with all their rows. Useful when several rows share a timestamp.</li>
+</ul>
+<p><b>Warm-up rows:</b> the first rows have smaller frames, so their "average" is over fewer rows. If the question says "only report when a full 7 days exist", add <code>COUNT(*) OVER (same frame) = 7</code> as a filter in an outer query.</p>
+<p><b>EXCLUDE</b> (SQLite ≥ 3.28, PostgreSQL ≥ 11): <code>EXCLUDE CURRENT ROW</code>, <code>EXCLUDE GROUP</code> (me and my peers), <code>EXCLUDE TIES</code> (my peers but not me), <code>EXCLUDE NO OTHERS</code> (default). Example: "average salary of my <b>colleagues</b>, not counting me".</p>
+<p><b>Centered windows</b> like <code>ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING</code> smooth noisy data for charts (each point averaged with its neighbours).</p>`,
+    clues: [
+      '"moving / rolling / trailing average", "last 7 days", "7-day rolling sum" → AVG/SUM OVER (... ROWS/RANGE BETWEEN 6 PRECEDING AND CURRENT ROW)',
+      '"some days have no data" + "last 7 calendar days" → RANGE on a day number (julianday) or fill gaps first',
+      '"only when a full window is available" → also compute COUNT(*) over the same frame and filter',
+      '"smooth the series", "centered average" → ROWS BETWEEN k PRECEDING AND k FOLLOWING',
+      '"compared to the average of everyone else" → EXCLUDE CURRENT ROW (or (SUM − x) / (COUNT − 1))',
+      '"several events at the same timestamp" + window over timestamps → think GROUPS vs ROWS'
+    ],
+    code: [
+      { lang: 'sql', db: 'shop', title: '3-day moving average: row-based vs calendar-based', code: `SELECT region, day, revenue,
+       ROUND(AVG(revenue) OVER (PARTITION BY region ORDER BY day
+                                ROWS BETWEEN 2 PRECEDING AND CURRENT ROW), 1)        AS ma3_rows,
+       ROUND(AVG(revenue) OVER (PARTITION BY region ORDER BY julianday(day)
+                                RANGE BETWEEN 2 PRECEDING AND CURRENT ROW), 1)       AS ma3_calendar,
+       COUNT(*)           OVER (PARTITION BY region ORDER BY julianday(day)
+                                RANGE BETWEEN 2 PRECEDING AND CURRENT ROW)           AS days_in_frame
+FROM daily_revenue
+ORDER BY region, day;` },
+      { lang: 'sql', db: 'shop', title: 'ROWS vs RANGE vs GROUPS side by side (inline data)', code: `WITH t(d, v) AS (VALUES (1,100),(2,120),(3,90),(5,150),(5,20),(6,130))
+SELECT d, v,
+       SUM(v) OVER (ORDER BY d ROWS   BETWEEN 1 PRECEDING AND CURRENT ROW) AS rows_1,
+       SUM(v) OVER (ORDER BY d RANGE  BETWEEN 1 PRECEDING AND CURRENT ROW) AS range_1,
+       SUM(v) OVER (ORDER BY d GROUPS BETWEEN 1 PRECEDING AND CURRENT ROW) AS groups_1
+FROM t
+ORDER BY d;` }
+    ],
+    codeTitle: ['Moving averages', 'Three frame units'],
+    viz: [{
+      title: 'The frame slides: k-row moving average',
+      input: '3 | 80 95 95 60 110 120 100 140',
+      inputLabel: 'k | values in time order (k = window size 1–6, max 14 values)',
+      gen: function (input) {
+        var parts = String(input).split('|');
+        if (parts.length !== 2) throw new Error('Format: "k | v1 v2 v3 ...", e.g. "3 | 80 95 95 60"');
+        var k = num(parts[0].trim(), 'k must be a number');
+        if (k < 1 || k > 6 || Math.floor(k) !== k) throw new Error('k must be a whole number from 1 to 6');
+        var v = parts[1].trim().split(/[\s,]+/).filter(Boolean).map(function (x) { return num(x, 'Values must be numbers separated by spaces'); });
+        if (v.length < 3) throw new Error('Give at least 3 values');
+        if (v.length > 14) throw new Error('Use at most 14 values');
+        var cols = ['row', 'value', 'frame rows', 'SUM', 'AVG'];
+        var rows = v.map(function (x, i) { return ['r' + (i + 1), x, '·', '·', '·']; });
+        var frames = [{ narr: 'Query: <code>AVG(value) OVER (ORDER BY t ROWS BETWEEN ' + (k - 1) + ' PRECEDING AND CURRENT ROW)</code> — a ' + k + '-row window. Watch the blue frame slide down one row at a time.', parts: [{ type: 'table', label: 'input', columns: cols, rows: copyRows(rows) }, { type: 'array', label: 'values', values: v.slice() }] }];
+        var sum = 0;
+        for (var i = 0; i < v.length; i++) {
+          var lo = Math.max(0, i - k + 1), left = i - k >= 0 ? v[i - k] : null;
+          sum += v[i]; if (left !== null) sum -= left;
+          var cnt = i - lo + 1;
+          rows[i][2] = cnt + (cnt < k ? ' (warm-up)' : ''); rows[i][3] = sum; rows[i][4] = f1(Math.round(10 * sum / cnt) / 10);
+          var hl = span(lo, i, 'win'); hl[i] = 'cur'; if (left !== null) hl[i - k] = 'bad';
+          var ptr = {}; ptr[i] = 'cur'; if (left !== null) ptr[i - k] = 'out';
+          var narr = 'Row r' + (i + 1) + ': frame = rows r' + (lo + 1) + '..r' + (i + 1) + ' (blue). ';
+          narr += left !== null ? 'Slide: <span class="c-g">+' + v[i] + '</span> enters, <span class="c-r">−' + left + '</span> leaves (red). Running sum updated in O(1) = <b>' + sum + '</b>. ' : 'Frame still growing (' + cnt + ' of ' + k + ' rows): sum = <b>' + sum + '</b>. ';
+          narr += 'AVG = ' + sum + ' / ' + cnt + ' = <b>' + rows[i][4] + '</b>.';
+          frames.push({ narr: narr, parts: [{ type: 'table', label: 'moving average filling in', columns: cols, rows: copyRows(rows), hl: hl }, { type: 'array', label: 'frame = blue range', values: v.slice(), range: [lo, i], ptr: ptr }, { type: 'vars', label: 'sliding state', vals: { entering: v[i], leaving: left === null ? '-' : left, frame_sum: sum, frame_count: cnt }, hl: { frame_sum: 'ok' } }] });
+        }
+        var hlW = {}; for (var w = 0; w < Math.min(k - 1, v.length); w++) hlW[w] = 'bad';
+        frames.push({ narr: 'Done. The first <b>' + (k - 1) + '</b> row(s) (red) are <b>warm-up</b> rows averaged over fewer than ' + k + ' values. If the question wants only full windows, filter <code>COUNT(*) OVER (same frame) = ' + k + '</code> in an outer query.', parts: [{ type: 'table', label: 'final', columns: cols, rows: copyRows(rows), hl: hlW }, { type: 'bars', label: 'moving average', values: rows.map(function (r) { return Number(r[4]); }) }] });
+        return frames;
+      }
+    }, {
+      title: 'Same "1 PRECEDING", three meanings: ROWS vs RANGE vs GROUPS',
+      input: '1:100, 2:120, 3:90, 5:150, 5:20, 6:130',
+      inputLabel: 'Rows as "day:value" in day order (max 10); repeat a day to create peers',
+      gen: function (input) {
+        var r = items(input).map(function (it) {
+          var p = it.split(':');
+          if (p.length !== 2) throw new Error('Each item must be "day:value", e.g. "5:150"');
+          return { d: num(p[0].trim(), 'Day must be a number'), v: num(p[1].trim(), 'Value must be a number') };
+        });
+        if (r.length < 3) throw new Error('Give at least 3 rows');
+        if (r.length > 10) throw new Error('Use at most 10 rows');
+        r = r.map(function (x, i) { return { d: x.d, v: x.v, i: i }; }).sort(function (a, b) { return a.d - b.d || a.i - b.i; });
+        var n = r.length, cols = ['day', 'value', 'ROWS', 'RANGE', 'GROUPS'];
+        var rows = r.map(function (x) { return [x.d, x.v, '·', '·', '·']; });
+        var gid = [], g = -1;
+        r.forEach(function (x, i) { if (i === 0 || x.d !== r[i - 1].d) g++; gid.push(g); });
+        var frames = [{ narr: 'Three sums, all written as <code>BETWEEN 1 PRECEDING AND CURRENT ROW</code>, ordered by day. Only the <b>unit</b> differs: ROWS counts rows, RANGE measures day values, GROUPS counts distinct-day groups.', parts: [{ type: 'table', label: 'input (ORDER BY day)', columns: cols, rows: copyRows(rows) }] }];
+        for (var i = 0; i < n; i++) {
+          var rLo = Math.max(0, i - 1), rHi = i;
+          var lastPeer = i; while (lastPeer + 1 < n && r[lastPeer + 1].d === r[i].d) lastPeer++;
+          var qLo = 0; while (r[qLo].d < r[i].d - 1) qLo++;
+          var gLo = 0; while (gid[gLo] < gid[i] - 1) gLo++;
+          var sR = 0, sQ = 0, sG = 0, t;
+          for (t = rLo; t <= rHi; t++) sR += r[t].v;
+          for (t = qLo; t <= lastPeer; t++) sQ += r[t].v;
+          for (t = gLo; t <= lastPeer; t++) sG += r[t].v;
+          rows[i][2] = sR; rows[i][3] = sQ; rows[i][4] = sG;
+          var hlOf = function (lo, hi) { var h = span(lo, hi, "win"); h[i] = "cur"; return h; };
+          frames.push({ narr: 'Row ' + (i + 1) + ' (day ' + r[i].d + '): <b>ROWS</b> = this row + the physical row above → ' + sR + '. <b>RANGE</b> = rows with day in [' + (r[i].d - 1) + ', ' + r[i].d + '] incl. peers → ' + sQ + '. <b>GROUPS</b> = previous day-group + my whole group → ' + sG + '.' + (sR !== sQ || sQ !== sG ? ' <span class="c-y">They disagree here.</span>' : ''), parts: [
+            { type: 'table', label: 'ROWS frame', columns: cols, rows: copyRows(rows), hl: hlOf(rLo, rHi) },
+            { type: 'table', label: 'RANGE frame (value distance ≤ 1)', columns: cols, rows: copyRows(rows), hl: hlOf(qLo, lastPeer) },
+            { type: 'table', label: 'GROUPS frame (1 previous peer group)', columns: cols, rows: copyRows(rows), hl: hlOf(gLo, lastPeer) }
+          ] });
+        }
+        frames.push({ narr: 'Summary: ROWS ignores gaps and splits peers; RANGE respects the <b>distance in day values</b> (a missing day shrinks the frame); GROUPS treats each distinct day as one unit (a missing day does not matter). Pick the unit that matches the question\'s words.', parts: [{ type: 'table', label: 'all three results', columns: cols, rows: copyRows(rows), hl: span(0, n - 1, 'ok') }] });
+        return frames;
+      }
+    }],
+    examples: [
+      { title: 'Row-based vs calendar-based 3-day average (missing day)', html: `<p>North has no 03-04. On <b>03-06</b>, the ROWS frame takes the last three <i>rows</i> (03-03, 03-05, 03-06 → ${H.c('r', '123.3')}), spanning 4 calendar days. The RANGE frame over <code>julianday(day)</code> takes days 03-04..03-06 → only two rows exist → ${H.c('g', '140.0')}. Which is "right" depends on the business meaning — say so.</p>`,
+        code: { lang: 'sql', db: 'shop', code: `SELECT day, revenue,
+       ROUND(AVG(revenue) OVER (ORDER BY day ROWS BETWEEN 2 PRECEDING AND CURRENT ROW), 1) AS ma3_rows,
+       ROUND(AVG(revenue) OVER (ORDER BY julianday(day) RANGE BETWEEN 2 PRECEDING AND CURRENT ROW), 1) AS ma3_calendar
+FROM daily_revenue
+WHERE region = 'North'
+ORDER BY day;` } },
+      { title: 'Centered smoothing for a chart', html: `<p><code>ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING</code> averages each day with its neighbours. South 03-04 (a dip to 60) becomes ${H.c('g', '88.3')} — the line chart gets smoother. The first and last rows only have two values in their frame.</p>`,
+        code: { lang: 'sql', db: 'shop', code: `SELECT day, revenue,
+       ROUND(AVG(revenue) OVER (ORDER BY day ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING), 1) AS smoothed
+FROM daily_revenue
+WHERE region = 'South'
+ORDER BY day;` } },
+      { title: 'Average of my colleagues (EXCLUDE CURRENT ROW)', html: `<p>"Compare each employee with the average of the <b>other</b> people in their department." The whole-partition frame plus <code>EXCLUDE CURRENT ROW</code> removes yourself. Kim (HR) sees ${H.c('b', '60000')} — the average of Leo and Mia. Portable alternative: <code>(SUM(salary) OVER w − salary) / (COUNT(*) OVER w − 1)</code>.</p>`,
+        code: { lang: 'sql', db: 'hr', code: `SELECT name, dept, salary,
+       ROUND(AVG(salary) OVER (
+         PARTITION BY dept
+         ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+         EXCLUDE CURRENT ROW)) AS avg_of_others
+FROM employees
+ORDER BY dept, salary DESC;` } },
+      { title: 'Old school: moving average with a self-join', html: `<p>Join each day to the days within the last 2 calendar days and GROUP BY. It is calendar-correct (like RANGE) but builds k joined rows per row and needs an index on (region, day) to avoid an O(N²) join. The window version slides with O(1) work per row.</p>`,
+        code: { lang: 'sql', db: 'shop', code: `SELECT d.region, d.day, d.revenue,
+       ROUND(AVG(p.revenue), 1) AS ma3_calendar,
+       COUNT(*)                 AS days_in_frame
+FROM daily_revenue d
+JOIN daily_revenue p
+  ON p.region = d.region
+ AND julianday(p.day) BETWEEN julianday(d.day) - 2 AND julianday(d.day)
+GROUP BY d.region, d.day, d.revenue
+ORDER BY d.region, d.day;` } }
+    ],
+    deepDive: `<p><b>Frame rules.</b> The start bound cannot be after the end bound (<code>BETWEEN CURRENT ROW AND 1 PRECEDING</code> is an error). <code>ROWS 2 PRECEDING</code> is short for <code>ROWS BETWEEN 2 PRECEDING AND CURRENT ROW</code>. <b>RANGE with an offset</b> requires exactly one ORDER BY expression of a numeric type in SQLite (hence <code>julianday(day)</code>); PostgreSQL also accepts dates/timestamps with an interval offset: <code>RANGE BETWEEN INTERVAL '6 days' PRECEDING AND CURRENT ROW</code>. MySQL 8 supports ROWS and RANGE (with INTERVAL) but <b>not GROUPS</b>; SQL Server supports only ROWS and RANGE with UNBOUNDED/CURRENT ROW (no numeric RANGE offsets).</p>
+<p><b>Ranking and navigation functions ignore frames</b> (ROW_NUMBER, RANK, LAG, LEAD, NTILE…). Frames affect aggregates and FIRST_VALUE / LAST_VALUE / NTH_VALUE only.</p>
+<p><b>Algorithmic cost.</b> A sliding SUM/COUNT/AVG uses add-new/subtract-old ("inverse transition"): O(1) per row → O(N) total, exactly the sliding-window technique from DSA. Sliding MIN/MAX cannot subtract, so engines either rescan the frame (O(N·k)) or use smarter structures; PostgreSQL restarts the aggregate when the frame head moves for non-invertible aggregates, which can become O(N·k). Floating-point AVG via subtract-old can accumulate rounding error over millions of rows — some engines recompute periodically.</p>
+<p><b>Calendar correctness in production.</b> Real time series have gaps (no sales on holidays) and duplicates (late-arriving events). Robust pipelines first build a <b>date spine</b> (recursive CTE or calendar table), LEFT JOIN facts onto it with COALESCE(…, 0), aggregate to one row per day, and only then apply a ROWS frame — making ROWS and RANGE equivalent and the intent obvious.</p>`,
+    aiEra: `<p><b>What AI changes:</b> "7-day rolling average" is a one-line request to any assistant, and BI tools (Looker, dbt metrics, Power BI DAX) generate frames for you. The value you add is noticing when <b>row-based ≠ time-based</b>.</p>
+<p><b>Use AI as a partner:</b> <code>"Rewrite this ROWS-based 7-day average to be calendar-correct in SQLite and in PostgreSQL, and give me a test dataset with a missing day where they differ."</code> Then run both in the playground.</p>
+<p><b>Where AI goes wrong:</b> using <code>ROWS 7 PRECEDING</code> for 7 days (that is 8 rows!); forgetting warm-up rows; using RANGE with an INTERVAL in SQLite; using GROUPS in MySQL; averaging pre-aggregated averages (an average of daily averages is not the weekly average when daily counts differ).</p>
+<p><b>What you must still own:</b> counting frame boundaries exactly (6 PRECEDING + current = 7), choosing the unit (rows, values, groups), and knowing the sliding-window cost model behind it.</p>`,
+    problems: [{
+      title: 'Calendar-Correct 3-Day Moving Average',
+      level: 'Medium', tags: ['window', 'moving average', 'range frame', 'dates'], companies: ['Netflix', 'Airbnb', 'Instacart'],
+      statement: `<p>Table <code>daily_revenue(day, region, revenue)</code>, one row per (day, region), but some days are <b>missing</b> (no row). For every row return <code>region, day, revenue, ma3, days_used</code> where <code>ma3</code> is the average revenue of that region over the <b>3 calendar days</b> ending on <code>day</code> (day−2, day−1, day) using only the rows that exist, rounded to 1 decimal, and <code>days_used</code> is how many rows went into it. Order by region, day.</p>`,
+      constraints: `Up to 10<sup>6</sup> rows. Days are ISO strings 'YYYY-MM-DD'. Missing days must not be treated as 0 and must not pull in older days.`,
+      example: `${H.table(['region', 'day', 'revenue', 'ma3', 'days_used'], [['North', '03-03', '90', '103.3', '3'], ['North', '03-05', '150', '<span class="c-g">120.0</span>', '<span class="c-y">2</span> (03-03, 03-05)'], ['North', '03-06', '130', '<span class="c-g">140.0</span>', '<span class="c-y">2</span> (03-05, 03-06)'], ['North', '03-07', '130', '136.7', '3']])}<p>On 03-06 the window is 03-04..03-06. 03-04 is missing, so only 150 and 130 count → 140.0. A ROWS frame would wrongly include 03-03 (→ 123.3).</p>`,
+      brute: {
+        why: `<p>Self-join each row with all rows of the same region whose day is within the previous 2 calendar days, then GROUP BY. Correct, but it materialises up to 3 joined rows per row and, without an index on (region, day), the join compares every pair in a region: O(N²/R). It also gets slower linearly as the window grows (30-day windows → 30 joined rows per row).</p>`,
+        code: { lang: 'sql', db: 'shop', code: `SELECT d.region, d.day, d.revenue,
+       ROUND(AVG(p.revenue), 1) AS ma3,
+       COUNT(*)                 AS days_used
+FROM daily_revenue d
+JOIN daily_revenue p
+  ON p.region = d.region
+ AND julianday(p.day) BETWEEN julianday(d.day) - 2 AND julianday(d.day)
+GROUP BY d.region, d.day, d.revenue
+ORDER BY d.region, d.day;` }
+      },
+      mcq: { q: 'Why does ROWS BETWEEN 2 PRECEDING AND CURRENT ROW give the wrong answer here?', options: ['ROWS cannot be used with AVG', 'ROWS counts physical rows, so a missing day pulls in an older day', 'ROWS ignores PARTITION BY', 'ROWS includes peers'], answer: 1, explain: 'ROWS takes the previous 2 rows whatever their dates are. When 03-04 is missing, the frame for 03-06 reaches back to 03-03 — four calendar days.' },
+      hints: [
+        `<p>You need a frame measured in <b>days</b>, not rows. That is a RANGE frame over a numeric day value.</p>`,
+        `<p>SQLite's RANGE offset needs a number: order by <code>julianday(day)</code> and use <code>RANGE BETWEEN 2 PRECEDING AND CURRENT ROW</code>. Keep PARTITION BY region.</p>`,
+        `<p>Compute AVG and COUNT(*) over the same named window. Recipe: WINDOW w AS (PARTITION BY region ORDER BY julianday(day) RANGE BETWEEN 2 PRECEDING AND CURRENT ROW); SELECT ..., ROUND(AVG(revenue) OVER w, 1), COUNT(*) OVER w.</p>`
+      ],
+      solution: {
+        approach: `<p>Order each region's rows by the day as a number (julianday) and use a RANGE frame of 2 PRECEDING: the frame contains exactly the rows whose day value is within 2 days before the current one, however many rows that is. COUNT over the same frame reports how many days actually had data.</p>`,
+        code: { lang: 'sql', db: 'shop', code: `SELECT region, day, revenue,
+       ROUND(AVG(revenue) OVER w, 1) AS ma3,
+       COUNT(*)           OVER w     AS days_used
+FROM daily_revenue
+WINDOW w AS (
+  PARTITION BY region
+  ORDER BY julianday(day)
+  RANGE BETWEEN 2 PRECEDING AND CURRENT ROW
+)
+ORDER BY region, day;` },
+        alt: [{ lang: 'sql', check: false, title: 'PostgreSQL: RANGE with an INTERVAL on a DATE column', code: `SELECT region, day, revenue,
+       ROUND(AVG(revenue) OVER w, 1) AS ma3,
+       COUNT(*) OVER w AS days_used
+FROM daily_revenue
+WINDOW w AS (PARTITION BY region ORDER BY day::date
+             RANGE BETWEEN INTERVAL '2 days' PRECEDING AND CURRENT ROW)
+ORDER BY region, day;` }],
+        dry: { head: ['region', 'day', 'frame (day values)', 'rows in frame', 'ma3'], rows: [['North', '03-03', '03-01..03-03', '100, 120, 90', '103.3'], ['North', '03-05', '03-03..03-05', '90, 150', '120.0'], ['North', '03-06', '03-04..03-06', '150, 130', '140.0'], ['South', '03-04', '03-02..03-04', '95, 95, 60', '83.3']] },
+        complexity: `<p>One sort per partition key, then a sliding frame: O(N log N) + O(N). The self-join is O(N·k) with an index and O(N²/R) without.</p>`,
+        followUps: ['Treat missing days as 0 revenue instead (build a date spine with a recursive CTE).', 'Only output rows where all 3 days had data.', 'Make it a 7-day window in PostgreSQL using an INTERVAL.']
+      }
+    }]
+  });
+
+  /* =====================================================================
+     TOPIC 7 — FIRST_VALUE / LAST_VALUE / NTH_VALUE (and the default-frame trap)
+     ===================================================================== */
+  topics.push({
+    title: 'FIRST_VALUE, LAST_VALUE & NTH_VALUE (the Frame Trap)',
+    analogy: `<p>Imagine walking down a line of people sorted from tallest to shortest, carrying a notebook. At each person you write "tallest so far" (the person at the <b>front</b>) and "last person I can see". If you can only see the people you have <b>already walked past</b>, then "the last person I can see" is always <b>yourself</b> — not the shortest person at the end of the line. That is exactly why <code>LAST_VALUE</code> surprises everyone: by default its frame only reaches the current row.</p>`,
+    explain: `<p>These are <b>value</b> functions: they return a column from a specific row of the <b>frame</b>.</p>
+<ul>
+<li><code>FIRST_VALUE(x)</code> — x from the first row of the frame.</li>
+<li><code>LAST_VALUE(x)</code> — x from the last row of the frame.</li>
+<li><code>NTH_VALUE(x, n)</code> — x from the n-th row of the frame (NULL if the frame has fewer than n rows).</li>
+</ul>
+<p>Unlike ROW_NUMBER or LAG, they <b>do</b> use the frame. And remember the default frame with ORDER BY: <code>RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW</code>. So:</p>
+${H.table(['name', 'salary', 'FIRST_VALUE(name)', 'LAST_VALUE(name) default', 'LAST_VALUE(name) full frame'], [
+  ['Asha', '120000', 'Asha', '<span class="c-r">Asha</span>', '<span class="c-g">Fay</span>'],
+  ['Chen', '110000', 'Asha', '<span class="c-r">Chen</span>', '<span class="c-g">Fay</span>'],
+  ['Dev', '95000', 'Asha', '<span class="c-r">Dev</span>', '<span class="c-g">Fay</span>'],
+  ['Fay', '80000', 'Asha', 'Fay', '<span class="c-g">Fay</span>']
+])}
+<p><b>FIRST_VALUE works out of the box</b> (the frame always starts at the first row). <b>LAST_VALUE does not</b> — it just returns the current row (or its last peer). The fix is to widen the frame:</p>
+<pre>LAST_VALUE(name) OVER (PARTITION BY dept ORDER BY salary DESC
+                       ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING)</pre>
+<p>A common, simpler alternative: <code>FIRST_VALUE(name) OVER (... ORDER BY salary ASC)</code> — reverse the order and take the first.</p>
+<p><b>Typical uses:</b> "gap between each employee and the top earner" (<code>salary − FIRST_VALUE(salary)</code>), "first and latest status of each ticket", "starting vs current salary", "first product a customer bought", "value at the start of the month" for month-to-date growth.</p>
+<p><b>Ties:</b> if the ORDER BY has ties, "first" among peers is arbitrary — add a tiebreaker (<code>ORDER BY salary DESC, id</code>).</p>`,
+    clues: [
+      '"compared with the top / best / first in the group" → x − FIRST_VALUE(x) OVER (PARTITION BY g ORDER BY ...)',
+      '"first and last value per group on every row" → FIRST_VALUE + LAST_VALUE with a full frame',
+      '"starting vs current", "opening vs closing price" → FIRST_VALUE / LAST_VALUE over a date order',
+      '"the second best in each group, shown on every row" → NTH_VALUE(x, 2) with a full frame',
+      'Output where LAST_VALUE just equals the current row → someone forgot UNBOUNDED FOLLOWING',
+      '"first product each customer bought" → FIRST_VALUE or ROW_NUMBER = 1'
+    ],
+    code: { lang: 'sql', db: 'hr', title: 'FIRST_VALUE vs LAST_VALUE (default and full frame) vs NTH_VALUE', code: `SELECT dept, name, salary,
+       FIRST_VALUE(name) OVER (PARTITION BY dept ORDER BY salary DESC, id)          AS top_earner,
+       LAST_VALUE(name)  OVER (PARTITION BY dept ORDER BY salary DESC, id)          AS last_default_TRAP,
+       LAST_VALUE(name)  OVER (PARTITION BY dept ORDER BY salary DESC, id
+                               ROWS BETWEEN UNBOUNDED PRECEDING
+                                        AND UNBOUNDED FOLLOWING)                    AS lowest_earner,
+       NTH_VALUE(name, 2) OVER (PARTITION BY dept ORDER BY salary DESC, id
+                               ROWS BETWEEN UNBOUNDED PRECEDING
+                                        AND UNBOUNDED FOLLOWING)                    AS second_in_line
+FROM employees
+ORDER BY dept, salary DESC, id;` },
+    viz: {
+      title: 'Why LAST_VALUE returns the current row: the frame stops at CURRENT ROW',
+      input: 'Asha 120, Ben 120, Chen 110, Dev 95, Eli 95, Fay 80',
+      inputLabel: 'One partition as "Name Salary", comma separated (max 10) — sorted high → low',
+      gen: function (input) {
+        var r = items(input).map(function (it) {
+          var p = it.split(/\s+/);
+          if (p.length !== 2) throw new Error('Each item must be "Name Salary", e.g. "Asha 120"');
+          return { n: p[0], s: num(p[1], 'Salary must be a number') };
+        });
+        if (r.length < 3) throw new Error('Give at least 3 rows');
+        if (r.length > 10) throw new Error('Use at most 10 rows');
+        r = r.map(function (x, i) { return { n: x.n, s: x.s, i: i }; }).sort(function (a, b) { return b.s - a.s || a.i - b.i; });
+        var n = r.length, cols = ['name', 'salary', 'FIRST_VALUE', 'LAST_VALUE (default)', 'LAST_VALUE (full)'];
+        var rows = r.map(function (x) { return [x.n, x.s, '·', '·', '·']; });
+        var frames = [{ narr: 'One partition, <code>ORDER BY salary DESC</code>. We compute three columns. The first two use the <b>default frame</b> RANGE UNBOUNDED PRECEDING → CURRENT ROW (with peers); the last uses the <b>full frame</b> UNBOUNDED PRECEDING → UNBOUNDED FOLLOWING.', parts: [{ type: 'table', label: 'partition', columns: cols, rows: copyRows(rows) }] }];
+        for (var i = 0; i < n; i++) {
+          var last = i; while (last + 1 < n && r[last + 1].s === r[i].s) last++;
+          rows[i][2] = r[0].n; rows[i][3] = r[last].n;
+          var hl = span(0, last, 'win'); hl[i] = 'cur';
+          frames.push({ narr: 'Row ' + r[i].n + ': default frame = rows 1..' + (last + 1) + ' (blue' + (last > i ? ', reaching to the last <b>peer</b> with the same salary' : '') + '). FIRST_VALUE = first row of frame = <b>' + r[0].n + '</b> ✔. LAST_VALUE = last row of frame = <b>' + r[last].n + '</b>' + (last === n - 1 ? '.' : ' <span class="c-r">— not the lowest earner!</span>'), parts: [{ type: 'table', label: 'default frame (RANGE ... CURRENT ROW)', columns: cols, rows: copyRows(rows), hl: hl }, { type: 'array', label: 'frame = blue range', values: r.map(function (x) { return x.n; }), range: [0, last], ptr: (function () { var p = {}; p[i] = 'cur'; return p; })() }] });
+        }
+        for (var j = 0; j < n; j++) rows[j][4] = r[n - 1].n;
+        frames.push({ narr: 'Now widen the frame: <code>ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING</code>. Every row\'s frame is the <b>whole partition</b> (blue), so LAST_VALUE = <b>' + r[n - 1].n + '</b> on every row — the answer people actually wanted.', parts: [{ type: 'table', label: 'full frame', columns: cols, rows: copyRows(rows), hl: span(0, n - 1, 'win') }, { type: 'array', label: 'frame = whole partition', values: r.map(function (x) { return x.n; }), range: [0, n - 1] }] });
+        var hlBad = {}; for (var k = 0; k < n; k++) hlBad[k] = rows[k][3] === rows[k][4] ? 'ok' : 'bad';
+        frames.push({ narr: 'Compare columns 4 and 5: red rows are where the default-frame LAST_VALUE gave a misleading answer. Rule: <b>LAST_VALUE and NTH_VALUE almost always need an explicit frame.</b>', parts: [{ type: 'table', label: 'default vs full frame', columns: cols, rows: copyRows(rows), hl: hlBad }] });
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'Gap to the top earner in each department', html: `<p><code>salary − FIRST_VALUE(salary)</code> shows how far each person is from the top. Chen is ${H.c('r', '−10000')}, Fay ${H.c('r', '−40000')}. FIRST_VALUE is safe with the default frame because the frame always begins at the partition's first row. (MAX(salary) OVER (PARTITION BY dept) would give the same number here.)</p>`,
+        code: { lang: 'sql', db: 'hr', code: `SELECT dept, name, salary,
+       salary - FIRST_VALUE(salary) OVER (PARTITION BY dept ORDER BY salary DESC) AS gap_to_top
+FROM employees
+ORDER BY dept, salary DESC;` } },
+      { title: 'Starting vs current salary and total growth', html: `<p>Per employee, ordered by effective date with a full frame: FIRST_VALUE = starting salary, LAST_VALUE = current salary. Asha grew ${H.c('g', '33.3%')} (90000 → 120000). Without the full frame, "current_salary" would just echo each historical row.</p>`,
+        code: { lang: 'sql', db: 'hr', code: `SELECT e.name, s.effective_date, s.salary,
+       FIRST_VALUE(s.salary) OVER w AS starting_salary,
+       LAST_VALUE(s.salary)  OVER w AS current_salary,
+       ROUND(100.0 * (LAST_VALUE(s.salary) OVER w - FIRST_VALUE(s.salary) OVER w)
+             / FIRST_VALUE(s.salary) OVER w, 1) AS total_growth_pct
+FROM salary_history s
+JOIN employees e ON e.id = s.emp_id
+WINDOW w AS (PARTITION BY s.emp_id ORDER BY s.effective_date
+             ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING)
+ORDER BY e.name, s.effective_date;` } },
+      { title: 'First and last order per customer (one row each)', html: `<p>Value functions repeat the answer on every row, so add <code>DISTINCT</code> (or filter <code>ROW_NUMBER = 1</code>) to get one row per customer. dan has a single order, so first = last = ${H.c('b', '2024-01-08')}.</p>`,
+        code: { lang: 'sql', db: 'shop', code: `SELECT DISTINCT customer,
+       FIRST_VALUE(order_date) OVER w AS first_order,
+       LAST_VALUE(order_date)  OVER w AS last_order,
+       FIRST_VALUE(amount)     OVER w AS first_amount
+FROM orders
+WINDOW w AS (PARTITION BY customer ORDER BY order_date, id
+             ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING)
+ORDER BY customer;` } },
+      { title: 'Old school: correlated subqueries for "first" and "last"', html: `<p>Without value functions you look up the first/last row per group with <code>ORDER BY ... LIMIT 1</code> subqueries — one probe per row per column. Fine for a handful of rows, ${H.c('r', 'slow and verbose')} at scale, and easy to get wrong on ties.</p>`,
+        code: { lang: 'sql', db: 'hr', code: `SELECT e.dept, e.name, e.salary,
+       (SELECT e2.name FROM employees e2 WHERE e2.dept = e.dept
+        ORDER BY e2.salary DESC, e2.id LIMIT 1) AS top_earner,
+       (SELECT e2.name FROM employees e2 WHERE e2.dept = e.dept
+        ORDER BY e2.salary ASC, e2.id DESC LIMIT 1) AS lowest_earner
+FROM employees e
+ORDER BY e.dept, e.salary DESC;` } }
+    ],
+    deepDive: `<p><b>Why the default is what it is.</b> The SQL standard chose <code>RANGE UNBOUNDED PRECEDING</code> as the default frame because it makes running aggregates natural. Value functions inherit it, so LAST_VALUE returns "the last row seen so far", which with peers is the <b>last peer</b> — whose identity is implementation-dependent unless the ORDER BY is unique. NTH_VALUE(x, 3) with the default frame is NULL on the first two rows of every partition (the frame does not yet have 3 rows), another classic surprise.</p>
+<p><b>Dialect notes.</b> Oracle, Snowflake, BigQuery and SQL Server 2022 support <code>IGNORE NULLS</code> on FIRST_VALUE/LAST_VALUE — "last non-null value so far" — the idiomatic forward-fill. NTH_VALUE has a <code>FROM LAST</code> option in Oracle/Snowflake. SQLite and PostgreSQL support neither; emulate forward-fill with a running COUNT(x) as a group id and <code>MAX(x) OVER (PARTITION BY grp)</code>. SQL Server before 2022 has FIRST_VALUE/LAST_VALUE but no NTH_VALUE.</p>
+<p><b>Performance.</b> FIRST_VALUE with an unbounded-preceding frame is O(1) per row. LAST_VALUE over a full frame needs the whole partition buffered (memory ∝ partition size, possibly spilling to disk for huge partitions). If you only need "last per group", <code>ROW_NUMBER() ... DESC = 1</code> or a GROUP BY + MAX is often cheaper than a value function computed on every row followed by DISTINCT.</p>`,
+    aiEra: `<p><b>What AI changes:</b> Assistants know the LAST_VALUE trap in theory but still emit <code>LAST_VALUE(x) OVER (PARTITION BY g ORDER BY t)</code> regularly, because that is what thousands of buggy StackOverflow questions contain.</p>
+<p><b>Use AI as a partner:</b> paste the query and ask <code>"What frame does each window function use here, written out explicitly?"</code> — forcing the frame to be spelled out exposes the bug immediately. Ask for an equivalent using FIRST_VALUE with reversed order.</p>
+<p><b>Where AI goes wrong:</b> default-frame LAST_VALUE; IGNORE NULLS on engines without it; using value functions + DISTINCT on huge tables when a ROW_NUMBER filter would be cheaper.</p>
+<p><b>What you must still own:</b> mentally expanding every OVER clause to its full frame. If you can say "this frame is RANGE UNBOUNDED PRECEDING to CURRENT ROW including peers" out loud, you will never ship this bug.</p>`
+  });
+
+  /* =====================================================================
+     TOPIC 8 — NTILE, PERCENT_RANK, CUME_DIST
+     ===================================================================== */
+  topics.push({
+    title: 'NTILE, PERCENT_RANK & CUME_DIST: Buckets and Percentiles',
+    analogy: `<p>A teacher splits 13 students into <b>4 study groups</b> by test score: best scores in group 1, and so on. 13 does not divide by 4, so the first group gets one extra student (4, 3, 3, 3). That is <b>NTILE(4)</b>. Separately, a report card might say "you scored better than 75% of the class" — that is a <b>percentile</b>, which <b>PERCENT_RANK</b> and <b>CUME_DIST</b> compute.</p>`,
+    explain: `<p><b>NTILE(k)</b> splits each partition's ordered rows into <b>k buckets</b> as evenly as possible and returns the bucket number 1..k. With N rows: every bucket gets ⌊N/k⌋ rows, and the first <code>N mod k</code> buckets get one extra.</p>
+${H.table(['N rows', 'k', 'bucket sizes'], [['13', '4', '<b>4</b>, 3, 3, 3'], ['10', '4', '<b>3, 3</b>, 2, 2'], ['3', '5', '1, 1, 1 (buckets 4 and 5 are empty)']])}
+<p><b>Important:</b> NTILE counts <b>rows</b>, not values, so <b>tied rows can land in different buckets</b>. In our data Dev and Eli both earn 95000 but get quartiles ${H.c('r', '1 and 2')}. If fairness matters, bucket on a percentile instead.</p>
+<p><b>PERCENT_RANK()</b> = (RANK − 1) / (N − 1): the fraction of <i>other</i> rows that sort strictly before me. Top row = 0, bottom = 1 (if no ties). <b>CUME_DIST()</b> = (number of rows sorting before or <b>equal</b> to me) / N: always &gt; 0, the last row = 1. Both give ties the <b>same</b> value.</p>
+${H.table(['name', 'salary', 'RANK', 'NTILE(4)', 'PERCENT_RANK', 'CUME_DIST'], [
+  ['Asha', '120000', '1', '1', '0.0', '2/13 = 0.154'],
+  ['Ben', '120000', '1', '1', '0.0', '0.154'],
+  ['Chen', '110000', '3', '1', '2/12 = 0.167', '3/13 = 0.231'],
+  ['Dev', '95000', '4', '<span class="c-r">1</span>', '0.25', '0.385'],
+  ['Eli', '95000', '4', '<span class="c-r">2</span>', '0.25', '0.385'],
+  ['Mia', '60000', '12', '4', '0.917', '1.0']
+])}
+<p><b>When to use which:</b> NTILE for "split customers into quartiles/deciles", A/B bucket assignment, equal-sized batches. PERCENT_RANK / CUME_DIST for "top 10% of earners", "what percentile is this score" — they respect ties. For an actual <b>median</b> value, PostgreSQL has <code>PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY x)</code>; SQLite does not, so you use ROW_NUMBER + COUNT (see practice).</p>`,
+    clues: [
+      '"quartile", "decile", "split into k equal groups / buckets" → NTILE(k)',
+      '"top 10%", "bottom 25 percent", "percentile of each score" → PERCENT_RANK or CUME_DIST',
+      '"ties must be in the same bucket" → do NOT use NTILE; use CUME_DIST / a CASE on percent',
+      '"median" in SQLite / MySQL → ROW_NUMBER + COUNT(*) OVER; in PostgreSQL → PERCENTILE_CONT',
+      '"assign users to k experiment groups evenly" → NTILE(k) OVER (ORDER BY hash or random)',
+      '"what fraction of employees earn at most X" → CUME_DIST'
+    ],
+    code: { lang: 'sql', db: 'hr', title: 'Quartiles and percentiles company-wide', code: `SELECT name, dept, salary,
+       NTILE(4)       OVER w            AS quartile,        -- 1 = top 25% of ROWS
+       RANK()         OVER w            AS rnk,
+       ROUND(PERCENT_RANK() OVER w, 3)  AS pct_rank,        -- (rank-1)/(N-1)
+       ROUND(CUME_DIST()    OVER w, 3)  AS cume_dist        -- rows <= me / N
+FROM employees
+WINDOW w AS (ORDER BY salary DESC)
+ORDER BY salary DESC, id;` },
+    viz: {
+      title: 'NTILE fills buckets by row count; PERCENT_RANK and CUME_DIST respect ties',
+      input: '4 | 120 120 110 95 95 90 85 85 80 75 70 60 60',
+      inputLabel: 'k | values (sorted high → low automatically; max 16)',
+      gen: function (input) {
+        var parts = String(input).split('|');
+        if (parts.length !== 2) throw new Error('Format: "k | v1 v2 v3 ...", e.g. "4 | 120 110 95"');
+        var k = num(parts[0].trim(), 'k must be a number');
+        if (k < 1 || k > 8 || Math.floor(k) !== k) throw new Error('k must be a whole number from 1 to 8');
+        var v = parts[1].trim().split(/[\s,]+/).filter(Boolean).map(function (x) { return num(x, 'Values must be numbers'); });
+        if (v.length < 3) throw new Error('Give at least 3 values');
+        if (v.length > 16) throw new Error('Use at most 16 values');
+        v.sort(function (a, b) { return b - a; });
+        var n = v.length, base = Math.floor(n / k), extra = n % k, sizes = [];
+        for (var b = 0; b < k; b++) sizes.push(base + (b < extra ? 1 : 0));
+        var cols = ['value', 'NTILE(' + k + ')', 'RANK', 'PERCENT_RANK', 'CUME_DIST'];
+        var rows = v.map(function (x) { return [x, '·', '·', '·', '·']; });
+        var frames = [{ narr: 'N = ' + n + ' rows, k = ' + k + ' buckets. ⌊' + n + '/' + k + '⌋ = ' + base + ' rows each, and the first ' + extra + ' bucket(s) get one extra (' + n + ' mod ' + k + ' = ' + extra + '). Bucket sizes: <b>' + sizes.join(', ') + '</b>.', parts: [{ type: 'table', label: 'ORDER BY value DESC', columns: cols, rows: copyRows(rows) }, { type: 'bars', label: 'bucket sizes', values: sizes.slice(), idxLabels: sizes.map(function (s, q) { return 'b' + (q + 1); }) }] });
+        var pos = 0, bucketOf = [];
+        for (var q = 0; q < k; q++) {
+          if (!sizes[q]) continue;
+          for (var t = pos; t < pos + sizes[q]; t++) { rows[t][1] = q + 1; bucketOf[t] = q + 1; }
+          var hl = span(0, pos - 1, 'done'); span(pos, pos + sizes[q] - 1, 'win', hl);
+          var split = '';
+          if (pos > 0 && v[pos] === v[pos - 1]) { hl[pos - 1] = 'bad'; hl[pos] = 'bad'; split = ' <span class="c-r">Tie split!</span> Value ' + v[pos] + ' appears in bucket ' + q + ' and bucket ' + (q + 1) + ' — NTILE only counts rows.'; }
+          frames.push({ narr: 'Bucket <b>' + (q + 1) + '</b> takes the next ' + sizes[q] + ' row(s) (blue).' + split, parts: [{ type: 'table', label: 'NTILE filling', columns: cols, rows: copyRows(rows), hl: hl }, { type: 'bars', label: 'bucket sizes', values: sizes.slice(), hl: (function () { var h = {}; h[q] = 'cur'; return h; })(), idxLabels: sizes.map(function (s, z) { return 'b' + (z + 1); }) }] });
+          pos += sizes[q];
+        }
+        for (var i = 0; i < n; i++) {
+          var rank = i; while (rank > 0 && v[rank - 1] === v[i]) rank--; rank += 1;
+          var lastPeer = i; while (lastPeer + 1 < n && v[lastPeer + 1] === v[i]) lastPeer++;
+          rows[i][2] = rank;
+          rows[i][3] = n > 1 ? (Math.round(1000 * (rank - 1) / (n - 1)) / 1000).toString() : '0';
+          rows[i][4] = (Math.round(1000 * (lastPeer + 1) / n) / 1000).toString();
+        }
+        frames.push({ narr: '<b>PERCENT_RANK</b> = (RANK − 1) / (N − 1) = share of other rows strictly ahead of me. <b>CUME_DIST</b> = (rows ahead of me + my peers + me) / N. Both are filled for every row; ties get identical values.', parts: [{ type: 'table', label: 'all columns', columns: cols, rows: copyRows(rows), hl: span(0, n - 1, 'ok') }] });
+        var hlT = {}, cnt = 0;
+        rows.forEach(function (r, z) { if (Number(r[4]) <= 0.25) { hlT[z] = 'sel'; cnt++; } });
+        frames.push({ narr: '"Top 25% by value" using <code>CUME_DIST() &lt;= 0.25</code> keeps <b>' + cnt + '</b> row(s) (purple) — whole tie groups only. Compare with <code>NTILE(4) = 1</code>, which keeps exactly ' + sizes[0] + ' rows and may cut a tie in half.', parts: [{ type: 'table', label: 'CUME_DIST ≤ 0.25', columns: cols, rows: copyRows(rows), hl: hlT }] });
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'Salary quartiles per department', html: `<p>Add PARTITION BY to bucket within each department. HR has 3 people and NTILE(4) → buckets 1, 2, 3 — ${H.c('y', 'bucket 4 is empty')} because there are fewer rows than buckets.</p>`,
+        code: { lang: 'sql', db: 'hr', code: `SELECT dept, name, salary,
+       NTILE(4) OVER (PARTITION BY dept ORDER BY salary DESC, id) AS dept_quartile
+FROM employees
+ORDER BY dept, salary DESC, id;` } },
+      { title: 'Top 25% of earners, ties respected', html: `<p><code>CUME_DIST() &lt;= 0.25</code> keeps Asha, Ben and Chen (cume 0.154, 0.154, 0.231). Dev's cume_dist is 0.385, so the tie group 95000 is ${H.c('g', 'kept together')} (excluded as a whole). <code>NTILE(4) = 1</code> instead returns 4 rows including Dev but not Eli — unfair to Eli.</p>`,
+        code: { lang: 'sql', db: 'hr', code: `WITH p AS (
+  SELECT name, salary,
+         CUME_DIST() OVER (ORDER BY salary DESC) AS cd,
+         NTILE(4)    OVER (ORDER BY salary DESC, id) AS q
+  FROM employees
+)
+SELECT name, salary, ROUND(cd, 3) AS cume_dist, q AS ntile_quartile
+FROM p
+WHERE cd <= 0.25 OR q = 1
+ORDER BY salary DESC, name;` } },
+      { title: 'Even batches for parallel processing', html: `<p>Split 10 orders into ${H.c('b', '3 batches')} of sizes 4, 3, 3 to hand to 3 workers. Ordering by id makes the assignment repeatable; in production you might order by a hash of the key to spread hot customers.</p>`,
+        code: { lang: 'sql', db: 'shop', code: `SELECT NTILE(3) OVER (ORDER BY id) AS batch,
+       id, customer, amount
+FROM orders
+ORDER BY batch, id;` } },
+      { title: 'Old school: percentile with a correlated COUNT', html: `<p>CUME_DIST by hand: count rows with salary ≥ mine (ordering DESC) and divide by the total. Two subqueries per row → O(N²) without an index. The window version gets it from one sort.</p>`,
+        code: { lang: 'sql', db: 'hr', code: `SELECT e.name, e.salary,
+       ROUND(1.0 * (SELECT COUNT(*) FROM employees e2 WHERE e2.salary >= e.salary)
+             / (SELECT COUNT(*) FROM employees), 3) AS cume_dist_manual
+FROM employees e
+ORDER BY e.salary DESC, e.id;` } }
+    ],
+    deepDive: `<p><b>Exact definitions (SQL standard, followed by SQLite and PostgreSQL).</b> NTILE(k): rows numbered 1..N in order; the first N mod k buckets have ⌈N/k⌉ rows, the rest ⌊N/k⌋. PERCENT_RANK = (RANK − 1)/(N − 1), defined as 0 when N = 1. CUME_DIST = (number of rows preceding or peer with the current row)/N. All three ignore the frame clause. NTILE's argument must be a positive integer (SQLite errors on 0).</p>
+<p><b>NTILE vs percentile buckets.</b> NTILE guarantees equal <i>counts</i>; percentile cut-offs guarantee equal <i>value semantics</i>. For skewed data (many zeros) NTILE puts identical zeros in several buckets — misleading in a "customer value tier" report. A CASE on CUME_DIST (<code>CASE WHEN cd &lt;= 0.25 THEN 1 ...</code>) keeps ties together but bucket sizes become unequal.</p>
+<p><b>Medians and percentiles in practice.</b> PostgreSQL, Oracle, SQL Server and Snowflake have ordered-set aggregates <code>PERCENTILE_CONT</code> (interpolated) and <code>PERCENTILE_DISC</code> (an actual value). Warehouses add approximate versions (<code>APPROX_PERCENTILE</code>, t-digest / KLL sketches) because exact percentiles need a full sort per group — O(N log N) and not mergeable across shards, whereas sketches are mergeable and use O(1/ε) memory. In SQLite the portable median is: ROW_NUMBER and COUNT over the partition, keep rows where rn is in {(c+1)/2, (c+2)/2}, then AVG.</p>`,
+    aiEra: `<p><b>What AI changes:</b> Ask for "customer deciles" and an assistant will produce NTILE(10) instantly. Your value is asking: are ties allowed to split? Should empty-handed customers (0 spend) be excluded first? Is an approximate percentile acceptable at warehouse scale?</p>
+<p><b>Use AI as a partner:</b> <code>"Show NTILE(4) and a CUME_DIST-based quartile side by side on data with many ties, and explain the difference."</code> Ask it to translate a PostgreSQL PERCENTILE_CONT median into SQLite.</p>
+<p><b>Where AI goes wrong:</b> using PERCENTILE_CONT in SQLite/MySQL; confusing PERCENT_RANK (starts at 0) with CUME_DIST (never 0); calling NTILE(100) a "percentile" on small tables.</p>
+<p><b>What you must still own:</b> the formulas (so you can sanity-check numbers by hand) and the business rule for ties.</p>`
+  });
+
   registerModule({
     id: 'sql06',
     title: 'Window Functions',
