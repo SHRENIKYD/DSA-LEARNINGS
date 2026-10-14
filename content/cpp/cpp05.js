@@ -1886,4 +1886,305 @@ dtor a</pre>
     ]
   });
 
+  /* ======================================================================
+     TOPIC 7 — Object slicing
+     ====================================================================== */
+  topics.push({
+    title: 'Object Slicing: When Copying a Derived Object Cuts Off Its Derived Part',
+    analogy: `<p>You have a long <b>train</b>: an engine plus three special carriages (dining car, sleeper, cargo). The station has a parking slot sized for <b>exactly one engine</b>. If you insist on "copying" the train into that slot, the crew copies the engine and <b>cuts off every carriage</b> — they simply do not fit. The engine in the slot is a perfectly fine engine, but it no longer knows it was ever pulling a dining car.</p>
+      <p>A variable of type <code>Animal</code> is a slot sized for an Animal. Copy a <code>Dog</code> into it and the Dog-only part is <b>sliced off</b> — and the copy even forgets it was a dog when you call virtual functions.</p>`,
+    explain: `<p><b>Object slicing</b> happens when a derived object is <b>copied (or moved) into an object of base type</b>. The base's copy constructor only knows about base members, so it copies those and ignores the rest. The result is a <b>genuine Base object</b>: its vptr points to the Base vtable, so virtual calls on it run the <b>Base</b> versions.</p>
+      ${H.arr(['vptr→Dog', 'name', 'legs', 'breed', 'tricks'], { label: 'Dog d', hl: { 3: 'p', 4: 'p' } })}
+      ${H.arr(['vptr→Animal', 'name', 'legs'], { label: 'Animal a = d;', hl: { 0: 'r' } })}
+      <p><b>Where slicing sneaks in:</b></p>
+      ${H.table(['Code', 'Sliced?', 'Why'], [
+        ['<code>void feed(Animal a)</code>; <code>feed(dog)</code>', H.c('r', 'yes'), 'by-value parameter of base type'],
+        ['<code>Animal pick() { return dog; }</code>', H.c('r', 'yes'), 'by-value return of base type'],
+        ['<code>std::vector&lt;Animal&gt; zoo; zoo.push_back(dog);</code>', H.c('r', 'yes'), 'container stores Animal objects'],
+        ['<code>catch (std::exception e)</code>', H.c('r', 'yes'), 'exception caught by value'],
+        ['<code>Animal&amp; r = dog2; r = dog1;</code>', H.c('r', 'partial'), 'only the Animal part of dog2 is overwritten'],
+        ['<code>void feed(const Animal&amp; a)</code>', H.c('g', 'no'), 'a reference refers to the whole Dog'],
+        ['<code>std::vector&lt;std::unique_ptr&lt;Animal&gt;&gt;</code>', H.c('g', 'no'), 'stores pointers; objects stay whole on the heap']
+      ])}
+      <p><b>Why C++ allows it:</b> a <code>Dog</code> <i>is-an</i> <code>Animal</code>, so it binds to <code>const Animal&amp;</code>, which is exactly the parameter of Animal's copy constructor. The language cannot know you wanted polymorphism instead of a copy.</p>
+      <p><b>How to prevent it:</b></p>
+      <ol>
+        <li>Pass and store polymorphic objects by <b>reference or (smart) pointer</b>, never by base value.</li>
+        <li><b>Catch exceptions by <code>const&amp;</code></b>: <code>catch (const std::exception&amp; e)</code>.</li>
+        <li>Make polymorphic bases <b>abstract</b> — a by-value parameter of abstract type does not compile — or make their copy operations <code>protected</code> / <code>= delete</code> (Core Guidelines C.67: "a polymorphic class should suppress public copy/move").</li>
+        <li>If you truly need a copy of "whatever this really is", add a virtual <b><code>clone()</code></b> that returns <code>std::unique_ptr&lt;Base&gt;</code>.</li>
+      </ol>`,
+    clues: [
+      '"Derived-specific data disappeared after storing in a vector" → <code>vector&lt;Base&gt;</code> slices',
+      '"Virtual function calls the base version even though I passed a derived object" → parameter taken by value',
+      '"<code>e.what()</code> returns std::exception instead of my message" → catch by value',
+      '"What is object slicing and how do you prevent it?" → classic interview question; answer with references/pointers, abstract base, clone',
+      '"Copy a polymorphic object without knowing its type" → virtual clone (virtual constructor idiom)',
+      '"Assigning through a base reference produced a mixed object" → partial assignment slicing'
+    ],
+    code: [R`
+      #include <iostream>
+      #include <memory>
+      #include <string>
+      #include <vector>
+
+      struct Animal {
+          std::string name;
+          explicit Animal(std::string n) : name(std::move(n)) {}
+          virtual ~Animal() = default;
+          virtual std::string speak() const { return name + ": ..."; }
+      };
+      struct Dog : Animal {
+          std::string breed;
+          Dog(std::string n, std::string b) : Animal(std::move(n)), breed(std::move(b)) {}
+          std::string speak() const override { return name + " the " + breed + ": Woof"; }
+      };
+
+      void byValue(Animal a)      { std::cout << "byValue: " << a.speak() << '\n'; }   // SLICES
+      void byRef(const Animal& a) { std::cout << "byRef:   " << a.speak() << '\n'; }   // keeps the Dog
+
+      int main() {
+          Dog rex("Rex", "Labrador");
+          byValue(rex);                               // byValue: Rex: ...           (sliced!)
+          byRef(rex);                                 // byRef:   Rex the Labrador: Woof
+
+          std::vector<Animal> zoo;                    // stores Animal objects
+          zoo.push_back(rex);                         // sliced copy
+          std::cout << zoo[0].speak() << '\n';       // Rex: ...
+
+          std::vector<std::unique_ptr<Animal>> safeZoo;   // stores pointers: no slicing
+          safeZoo.push_back(std::make_unique<Dog>("Rex", "Labrador"));
+          std::cout << safeZoo[0]->speak() << '\n';  // Rex the Labrador: Woof
+      }
+    `],
+    codeTitle: ['Slicing vs no slicing, side by side'],
+    viz: {
+      title: 'Watch the derived part get sliced off',
+      input: 'value',
+      inputLabel: 'Scenario: value | ref | vector | assign | catch',
+      gen: function (input) {
+        var sc = String(input || '').trim().toLowerCase();
+        var ok = ['value', 'ref', 'vector', 'assign', 'catch'];
+        if (ok.indexOf(sc) < 0) throw new Error('Type one of: value, ref, vector, assign, catch');
+        var offs = ['+0', '+8', '+40', '+48', '+80'];
+        var dogCells = ['vptr→Dog', 'name="Rex"', 'legs=4', 'breed="Lab"', 'tricks=3'];
+        var frames = [];
+        function dog(label, cells, hl) { return { type: 'array', label: label, values: cells.slice(), hl: hl || {}, idxLabels: offs }; }
+        function animal(label, cells, hl) { return { type: 'array', label: label, values: cells.slice(), hl: hl || {}, idxLabels: offs.slice(0, 3) }; }
+        var baseHl = { 0: 'win', 1: 'win', 2: 'win' }, derHl = { 3: 'sel', 4: 'sel' };
+        function both(h1, h2) { var h = {}; Object.keys(h1).forEach(function (k) { h[k] = h1[k]; }); Object.keys(h2).forEach(function (k) { h[k] = h2[k]; }); return h; }
+        frames.push({ narr: 'A <code>Dog</code> in memory: the <b>Animal sub-object</b> comes first (vptr, name, legs — blue), then the <b>Dog-only members</b> (breed, tricks — purple). Offsets are for a typical 64-bit layout.', parts: [dog('Dog rex (40 + 48 = 88 bytes)', dogCells, both(baseHl, derHl)), note('Animal part = first 3 cells. A variable of type <code>Animal</code> has room for exactly those 3 cells.', 'Layout')] });
+        if (sc === 'ref') {
+          frames.push({ narr: '<code>void feed(const Animal&amp; a)</code>: a reference is just another name for the <b>whole</b> object. No copy, nothing sliced.', parts: [{ type: 'code', label: 'Code', lang: 'cpp', code: 'void feed(const Animal& a) { cout << a.speak(); }\nfeed(rex);', hl: { 2: 'ok' } }, dog('a refers to rex (same memory)', dogCells, { 0: 'ok', 1: 'ok', 2: 'ok', 3: 'ok', 4: 'ok' })] });
+          frames.push({ narr: '<code>a.speak()</code> reads the vptr at offset +0: it still says <b>Dog</b>, so <b>Dog::speak</b> runs.', parts: [dog('rex', dogCells, { 0: 'cur' }), out('Rex the Lab: Woof')] });
+          frames.push({ narr: 'Same with <code>Animal*</code>, <code>std::unique_ptr&lt;Animal&gt;</code> and <code>std::shared_ptr&lt;Animal&gt;</code>: they point at the full object.', parts: [{ type: 'table', label: 'Safe ways to handle polymorphic objects', columns: ['form', 'sliced?'], rows: [['const Animal&', 'no'], ['Animal*', 'no'], ['std::unique_ptr<Animal>', 'no'], ['std::vector<std::unique_ptr<Animal>>', 'no']], hl: { 0: 'ok', 1: 'ok', 2: 'ok', 3: 'ok' } }] });
+          frames.push({ narr: 'Rule of thumb: <b>polymorphism lives behind references and pointers</b>. The moment you write the base type by value, you get a base object.', parts: [note('Try input <code>value</code> to see the opposite.', 'Next')] });
+          return frames;
+        }
+        if (sc === 'assign') {
+          var d2 = ['vptr→Dog', 'name="Bo"', 'legs=3', 'breed="Pug"', 'tricks=0'];
+          frames.push({ narr: 'Two dogs. <code>Animal&amp; r = bo;</code> then <code>r = rex;</code>. Assignment through a <b>base reference</b> calls <b>Animal::operator=</b> (it is not virtual).', parts: [dog('rex', dogCells, baseHl), dog('bo (r refers here)', d2, both(baseHl, derHl)), { type: 'code', label: 'Code', lang: 'cpp', code: 'Animal& r = bo;\nr = rex;   // Animal::operator=(const Animal&)', hl: { 2: 'cur' } }] });
+          var mixed = d2.slice(); mixed[1] = 'name="Rex"'; mixed[2] = 'legs=4';
+          frames.push({ narr: 'Animal::operator= copies only the Animal members: name and legs. The <b>vptr is never copied</b> by assignment (each object keeps its own type), and breed/tricks are untouched.', parts: [dog('rex', dogCells, { 1: 'ok', 2: 'ok' }), dog('bo after r = rex', mixed, { 1: 'ok', 2: 'ok', 3: 'bad', 4: 'bad' })] });
+          frames.push({ narr: '<span class="c-r">bo is now a Frankenstein dog:</span> Rex\'s name and legs with Bo\'s breed (Pug) and tricks (0). No crash, no warning — just wrong data that can break class invariants.', parts: [dog('bo', mixed, { 1: 'cur', 2: 'cur', 3: 'bad', 4: 'bad' }), out('bo.speak() → Rex the Pug: Woof')] });
+          frames.push({ narr: '<b>Fix:</b> make the base\'s copy/move assignment <code>protected</code> (or <code>= delete</code>), so <code>r = rex</code> does not compile. Polymorphic bases rarely need public assignment.', parts: [{ type: 'code', label: 'Prevention', lang: 'cpp', code: 'struct Animal {\n    virtual ~Animal() = default;\nprotected:\n    Animal(const Animal&) = default;\n    Animal& operator=(const Animal&) = default;\n};', hl: { 3: 'ok', 4: 'ok', 5: 'ok' } }] });
+          return frames;
+        }
+        var codeMap = {
+          value: 'void feed(Animal a) { cout << a.speak(); }\nfeed(rex);',
+          vector: 'std::vector<Animal> zoo;\nzoo.push_back(rex);\ncout << zoo[0].speak();',
+          'catch': 'struct MyError : std::exception { string msg; ... };\ntry { throw MyError{"disk full"}; }\ncatch (std::exception e) { cout << e.what(); }'
+        };
+        var where = { value: 'the by-value parameter <code>a</code>', vector: 'the vector\'s element <code>zoo[0]</code>', 'catch': 'the handler\'s by-value object <code>e</code>' }[sc];
+        var cline = { value: 2, vector: 2, 'catch': 3 }[sc];
+        frames.push({ narr: 'The code creates a <b>new object of base type</b>: ' + where + '. To build it, the compiler calls <b>Animal\'s copy constructor</b> with <code>const Animal&amp; = rex</code> — legal, since a Dog is-an Animal.', parts: [{ type: 'code', label: 'Code', lang: 'cpp', code: codeMap[sc], hl: one(cline, 'cur') }, dog('rex (source)', dogCells, baseHl), animal('new Animal object (empty slot)', ['?', '?', '?'])] });
+        frames.push({ narr: 'Animal\'s copy constructor copies <b>name</b> and <b>legs</b>. It has no idea breed and tricks exist.', parts: [dog('rex (source)', dogCells, { 1: 'ok', 2: 'ok' }), animal('new Animal object', ['?', 'name="Rex"', 'legs=4'], { 1: 'ok', 2: 'ok' })] });
+        frames.push({ narr: '<span class="c-r">breed and tricks are sliced off</span> — there is simply no room for them in an Animal.', parts: [dog('rex (source)', dogCells, { 3: 'bad', 4: 'bad' }), animal('new Animal object', ['?', 'name="Rex"', 'legs=4'])] });
+        frames.push({ narr: 'And the vptr: the copy is being constructed <b>as an Animal</b>, so Animal\'s constructor sets its vptr to the <b>Animal vtable</b>. The new object is a real, complete Animal — not a Dog.', parts: [animal('new Animal object', ['vptr→Animal', 'name="Rex"', 'legs=4'], { 0: 'bad' })] });
+        var res = sc === 'catch' ? 'std::exception' : 'Rex: ...';
+        frames.push({ narr: (sc === 'catch' ? '<code>e.what()</code>' : '<code>speak()</code>') + ' is virtual, but this object\'s vptr says Animal, so the <b>base version</b> runs: <b>' + esc(res) + '</b>' + (sc === 'catch' ? ' (libstdc++ prints the base class message, not "disk full").' : ' instead of "Woof".'), parts: [animal('sliced copy', ['vptr→Animal', 'name="Rex"', 'legs=4'], { 0: 'cur' }), out(res)] });
+        var fix = { value: 'Take <code>const Animal&amp; a</code> instead of <code>Animal a</code>.', vector: 'Use <code>std::vector&lt;std::unique_ptr&lt;Animal&gt;&gt;</code> and <code>std::make_unique&lt;Dog&gt;(…)</code>.', 'catch': 'Always <code>catch (const std::exception&amp; e)</code> — catch by const reference.' }[sc];
+        frames.push({ narr: '<b>Fix:</b> ' + fix + ' Extra safety: make polymorphic bases abstract or give them protected copy operations, so the slicing line does not even compile.', parts: [{ type: 'table', label: 'Slicing summary', columns: ['', 'before', 'after fix'], rows: [['object type at runtime', 'Animal', 'Dog'], ['Dog members', 'lost', 'kept'], ['virtual calls go to', 'Animal::…', 'Dog::…']], hl: { 0: 'ok', 1: 'ok', 2: 'ok' } }] });
+        return frames;
+      }
+    },
+    examples: [
+      {
+        title: 'Predict the output: vector&lt;Base&gt;',
+        html: `<p>Each <code>push_back</code> makes an <b>Animal</b> copy. All three elements are plain Animals, so the loop prints <b>"...", "...", "..."</b>. Note that even the Cat's extra members are gone forever: you cannot "cast back" to Cat (a <code>static_cast&lt;Cat&amp;&gt;(zoo[1])</code> would be undefined behaviour).</p>`,
+        code: R`
+          struct Animal { virtual ~Animal() = default; virtual const char* sound() const { return "..."; } };
+          struct Dog : Animal { const char* sound() const override { return "Woof"; } };
+          struct Cat : Animal { const char* sound() const override { return "Meow"; } };
+          int main() {
+              std::vector<Animal> zoo;
+              zoo.push_back(Dog{});
+              zoo.push_back(Cat{});
+              zoo.push_back(Animal{});
+              for (const auto& a : zoo) std::cout << a.sound() << ' ';   // ... ... ...
+          }
+        `
+      },
+      {
+        title: 'Catch by value slices exceptions',
+        html: `<p>The thrown object is a <code>std::runtime_error</code> carrying "disk full". <code>catch (std::exception e)</code> copy-constructs a <b>plain</b> <code>std::exception</code> from it, so <code>what()</code> prints the generic message ("std::exception" in libstdc++). <code>catch (const std::exception&amp; e)</code> binds to the original object and prints "disk full". Bonus: rethrowing with <code>throw e;</code> would throw the <b>sliced</b> copy; use plain <code>throw;</code> to rethrow the original.</p>`,
+        code: R`
+          int main() {
+              try { throw std::runtime_error("disk full"); }
+              catch (std::exception e) { std::cout << e.what() << '\n'; }          // std::exception (sliced)
+              try { throw std::runtime_error("disk full"); }
+              catch (const std::exception& e) { std::cout << e.what() << '\n'; }   // disk full
+          }
+        `
+      },
+      {
+        title: 'Make slicing a compile error',
+        html: `<p>If <code>Animal</code> is abstract, <code>void feed(Animal a)</code> and <code>std::vector&lt;Animal&gt;</code> fail to compile (you cannot create Animal objects). If it must be concrete, make its copy operations <code>protected</code>: derived classes can still use them in their own copy constructors, but outside code cannot copy-construct an Animal from a Dog.</p>`,
+        code: R`
+          class Animal {
+          public:
+              virtual ~Animal() = default;
+              virtual std::string speak() const = 0;            // abstract: no Animal objects at all
+          protected:
+              Animal() = default;
+              Animal(const Animal&) = default;                  // usable by Dog's copy ctor only
+              Animal& operator=(const Animal&) = default;
+          };
+          class Dog final : public Animal {
+          public:
+              std::string speak() const override { return "Woof"; }
+          };
+          int main() {
+              Dog a, b = a;                                     // fine: Dog's copy ctor calls protected Animal copy
+              // Animal x = a;                                  // error: Animal is abstract / copy is protected
+              std::cout << b.speak() << '\n';
+          }
+        `
+      },
+      {
+        title: 'Virtual clone(): copying without slicing',
+        html: `<p>To duplicate an object you only know as <code>const Animal&amp;</code>, ask the object to copy <b>itself</b>: each class overrides <code>clone()</code> and calls its own copy constructor. The result is returned as <code>std::unique_ptr&lt;Animal&gt;</code> but the heap object is a full Dog. This is the "virtual constructor" idiom.</p>`,
+        code: R`
+          struct Animal {
+              virtual ~Animal() = default;
+              virtual std::unique_ptr<Animal> clone() const = 0;
+              virtual std::string speak() const = 0;
+          };
+          struct Dog final : Animal {
+              std::string breed = "Lab";
+              std::unique_ptr<Animal> clone() const override { return std::make_unique<Dog>(*this); }   // full copy
+              std::string speak() const override { return breed + ": Woof"; }
+          };
+          int main() {
+              Dog d;
+              const Animal& a = d;
+              std::unique_ptr<Animal> copy = a.clone();          // a whole Dog, not a slice
+              std::cout << copy->speak() << '\n';                // Lab: Woof
+          }
+        `
+      }
+    ],
+    deepDive: `<p><b>Mechanics.</b> Slicing is not a special language rule; it is ordinary overload resolution. <code>Animal a = dog;</code> looks for an Animal constructor accepting a Dog; <code>Animal(const Animal&amp;)</code> matches via derived-to-base reference binding. The copy constructor runs as part of constructing an <i>Animal</i>, so it sets the Animal vptr. Moves slice the same way (<code>Animal(Animal&amp;&amp;)</code>), and the moved-from Dog is left with a gutted Animal part but intact Dog members — another inconsistent state.</p>
+      <p><b>Why polymorphic classes and value semantics clash.</b> Value semantics need the static type to know the full size of the object (stack slot, vector element). Polymorphism means the full size is only known at runtime. C++ resolves the tension by putting polymorphic objects on the heap behind pointers — or with modern tools: <code>std::variant</code> (closed set, size = largest alternative), type erasure (<code>std::function</code>, Sean Parent's "runtime polymorphism without inheritance"), small-buffer optimized polymorphic wrappers, and C++26 <code>std::polymorphic&lt;T&gt;</code>, which deep-copies through an internal clone mechanism.</p>
+      <p><b>Covariant return types.</b> <code>Dog* clone() const override</code> is allowed to override <code>Animal* clone() const</code> (raw pointers/references only), but not with <code>unique_ptr&lt;Dog&gt;</code> vs <code>unique_ptr&lt;Animal&gt;</code> — smart pointers are unrelated class types. The common workaround is a private virtual <code>clone_impl()</code> returning raw pointers plus public non-virtual wrappers returning smart pointers, or a CRTP <code>Cloneable&lt;Derived, Base&gt;</code> helper.</p>
+      <p><b>Detection.</b> clang-tidy has <code>cppcoreguidelines-slicing</code> (flags copies that discard derived state or override vtable entries) and <code>bugprone-throw-keyword-missing</code>/<code>misc-throw-by-value-catch-by-reference</code>. GCC warns <code>-Wcatch-value</code> for catching polymorphic exceptions by value (enabled by -Wall).</p>
+      <p><b>Partial assignment and invariants.</b> If Dog maintains an invariant linking base and derived fields (e.g. "legs == 4 for non-Pug breeds"), assignment through <code>Animal&amp;</code> can break it silently. Some codebases make <code>operator=</code> virtual to "fix" this, but a virtual <code>operator=(const Animal&amp;)</code> in Dog would then need to handle a right-hand side that is a Cat — usually a sign the type should not be assignable through the base at all.</p>`,
+    aiEra: `<p><b>What AI changes:</b> slicing bugs survive code review because the code reads naturally: <code>std::vector&lt;Shape&gt; shapes;</code> looks fine at a glance, and LLM-generated code produces exactly this when asked to "store shapes in a vector". Tests that only check the count of elements will pass.</p>
+      <p><b>Use AI as a partner:</b> <code>Scan this code for object slicing: by-value base parameters, containers of base type, catch-by-value, assignment through base references.</code> Pair it with <code>-Wall -Wextra</code> and clang-tidy's <code>cppcoreguidelines-slicing</code> so the tools, not just the model, check it.</p>
+      <p><b>Where AI goes wrong:</b> suggesting <code>static_cast&lt;Dog&amp;&gt;</code> on a sliced object to "get the Dog back" (undefined behaviour — the Dog data no longer exists), using <code>std::vector&lt;std::reference_wrapper&lt;Animal&gt;&gt;</code> without thinking about lifetimes, and writing a non-virtual <code>clone()</code>.</p>
+      <p><b>What you must still own:</b> recognising the four slicing sites on sight, explaining the vptr consequence, and choosing among references, smart pointers, abstract bases, clone and variants for a given design.</p>`,
+    problems: [
+      {
+        title: 'Unslice the Zoo: Store Animals Polymorphically and Copy Them Safely',
+        level: 'Medium', tags: ['object slicing', 'unique_ptr', 'clone', 'polymorphism'], companies: ['Bloomberg', 'Electronic Arts', 'Morgan Stanley'],
+        statement: `<p>A zoo app stores <code>std::vector&lt;Animal&gt;</code>; all animals print "..." instead of their sound and Dog breeds are lost. (1) Fix storage so each animal keeps its real type. (2) Implement <code>Zoo</code> copy construction so that copying a zoo <b>deep-copies</b> every animal with its real type (no slicing, no shared animals).</p>`,
+        constraints: `<p>Up to 10<sup>4</sup> animals; types: Dog (has breed), Cat (has lives). Zoo copies must be independent.</p>`,
+        example: `<p>Zoo z: [Dog "Lab", Cat 9]. <code>Zoo z2 = z;</code> then change z2's dog breed to "Pug" → ${H.c('g', 'z still prints "Lab: Woof", "Meow x9"')}; z2 prints ${H.c('b', '"Pug: Woof", "Meow x9"')}.</p>`,
+        brute: {
+          why: `<p>The brute version stores <code>std::vector&lt;Animal&gt;</code>. Each insertion slices: Dog's breed and Cat's lives are discarded and every element's vptr points to Animal's vtable. A naive "fix" with <code>std::vector&lt;Animal*&gt;</code> and the default Zoo copy constructor would make two zoos <b>share</b> the same animals (shallow copy) and double-delete them.</p>`,
+          code: R`
+            #include <iostream>
+            #include <string>
+            #include <vector>
+            struct Animal { virtual ~Animal() = default; virtual std::string sound() const { return "..."; } };
+            struct Dog : Animal { std::string breed = "Lab"; std::string sound() const override { return breed + ": Woof"; } };
+            struct Cat : Animal { int lives = 9; std::string sound() const override { return "Meow x" + std::to_string(lives); } };
+            struct Zoo {
+                std::vector<Animal> animals;                    // SLICES every animal
+                void add(const Animal& a) { animals.push_back(a); }
+                void show() const { for (const auto& a : animals) std::cout << a.sound() << '\n'; }
+            };
+          `
+        },
+        mcq: { q: 'Zoo stores <code>std::vector&lt;std::unique_ptr&lt;Animal&gt;&gt;</code>. What does the compiler-generated Zoo copy constructor do?', options: ['It is deleted, because unique_ptr is not copyable', 'It deep-copies all animals automatically', 'It shallow-copies the pointers', 'It slices each animal'], answer: 0, explain: 'A vector of unique_ptr is move-only, so Zoo\'s implicit copy constructor is defined as deleted. To get copies you must write one that clones each element.' },
+        hints: [
+          `<p>Hint 1: store <code>std::unique_ptr&lt;Animal&gt;</code> so each object stays whole on the heap and is owned by exactly one zoo.</p>`,
+          `<p>Hint 2: add a pure virtual <code>clone() const</code> returning <code>std::unique_ptr&lt;Animal&gt;</code>; each class returns <code>std::make_unique&lt;Self&gt;(*this)</code>.</p>`,
+          `<p>Hint 3: write <code>Zoo(const Zoo&amp; o)</code> that reserves and pushes <code>a-&gt;clone()</code> for each element; implement copy assignment with copy-and-swap; default the moves (they are cheap and noexcept).</p>`
+        ],
+        solution: {
+          approach: `<p>Polymorphic storage via <code>unique_ptr&lt;Animal&gt;</code> fixes slicing. Deep copy requires asking each object to copy itself (<code>clone</code>), because only the object knows its dynamic type. Zoo follows the Rule of Five: custom copy ctor/assignment (cloning), defaulted noexcept moves, defaulted destructor.</p>`,
+          code: R`
+            #include <iostream>
+            #include <memory>
+            #include <string>
+            #include <utility>
+            #include <vector>
+
+            struct Animal {
+                virtual ~Animal() = default;
+                virtual std::string sound() const = 0;
+                virtual std::unique_ptr<Animal> clone() const = 0;
+            };
+            struct Dog final : Animal {
+                std::string breed = "Lab";
+                std::string sound() const override { return breed + ": Woof"; }
+                std::unique_ptr<Animal> clone() const override { return std::make_unique<Dog>(*this); }
+            };
+            struct Cat final : Animal {
+                int lives = 9;
+                std::string sound() const override { return "Meow x" + std::to_string(lives); }
+                std::unique_ptr<Animal> clone() const override { return std::make_unique<Cat>(*this); }
+            };
+
+            class Zoo {
+                std::vector<std::unique_ptr<Animal>> animals_;
+            public:
+                Zoo() = default;
+                Zoo(const Zoo& o) {                                    // deep, type-preserving copy
+                    animals_.reserve(o.animals_.size());
+                    for (const auto& a : o.animals_) animals_.push_back(a->clone());
+                }
+                Zoo& operator=(Zoo o) noexcept { std::swap(animals_, o.animals_); return *this; }   // copy-and-swap
+                Zoo(Zoo&&) noexcept = default;
+                ~Zoo() = default;
+
+                void add(std::unique_ptr<Animal> a) { animals_.push_back(std::move(a)); }
+                Animal& at(std::size_t i) { return *animals_[i]; }
+                void show() const { for (const auto& a : animals_) std::cout << a->sound() << '\n'; }
+            };
+
+            int main() {
+                Zoo z;
+                z.add(std::make_unique<Dog>());
+                z.add(std::make_unique<Cat>());
+                Zoo z2 = z;                                            // clones: Dog stays Dog, Cat stays Cat
+                static_cast<Dog&>(z2.at(0)).breed = "Pug";             // safe: we know element 0 is a Dog
+                z.show();                                              // Lab: Woof / Meow x9
+                z2.show();                                             // Pug: Woof / Meow x9
+            }
+          `,
+          dry: { head: ['Step', 'z.animals_', 'z2.animals_', 'Note'], rows: [
+            ['add Dog, add Cat', '[Dog@A, Cat@B]', '—', 'objects whole on heap'],
+            ['<code>Zoo z2 = z</code>', '[Dog@A, Cat@B]', '[Dog@C, Cat@D]', 'clone() per element'],
+            ['z2 dog breed = Pug', 'Dog@A breed Lab', 'Dog@C breed Pug', H.c('g', 'independent')],
+            ['end of main', 'A, B freed', 'C, D freed', 'each freed once']
+          ] },
+          complexity: `<p>Copying a zoo: O(N) clones, each O(size of animal). Moving a zoo: O(1). Calls: one virtual call per animal per operation.</p>`,
+          followUps: ['Implement clone once with a CRTP helper <code>Cloneable&lt;Derived, Animal&gt;</code>.', 'Redo the zoo with <code>std::variant&lt;Dog, Cat&gt;</code> — what do you gain and lose?', 'How would C++26 <code>std::polymorphic&lt;Animal&gt;</code> simplify Zoo?']
+        }
+      }
+    ]
+  });
+
 registerModule({ id: 'cpp05', title: 'Advanced OOP', intro: '<p>x</p>', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();
