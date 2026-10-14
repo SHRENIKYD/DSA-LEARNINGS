@@ -1443,6 +1443,218 @@ ORDER BY path;` },
     }]
   });
 
+  /* =====================================================================
+     TOPIC 7 — Readability & performance: choosing and rewriting
+     ===================================================================== */
+  topics.push({
+    title: 'Readability & Performance: Subquery vs JOIN vs CTE vs Window',
+    analogy: `<p>Four routes lead to the same restaurant: the highway, the scenic road, the shortcut through the market and the metro. All arrive, but at rush hour the difference is huge. SQL is similar: a correlated subquery, a JOIN to a grouped table, a CTE and a window function can return <b>exactly the same rows</b>, yet one may read 32 rows and another 10<sup>12</sup>.</p>
+<p>The <b>optimizer</b> is your sat-nav: it often reroutes you automatically. Your job is to write a route it understands, and to check its plan (<code>EXPLAIN</code>) when the trip feels slow.</p>`,
+    explain: `<p>One question, four correct answers — "employees paid above their department average":</p>
+${H.table(['Style', 'Shape', 'Reads like', 'Typical cost'], [
+  ['Correlated subquery', '<code>WHERE salary &gt; (SELECT AVG … WHERE e2.dept_id = e.dept_id)</code>', 'English: "above <i>their</i> average"', 'N × (inner cost) unless the engine decorrelates, memoizes or uses an index'],
+  ['JOIN to derived table', '<code>JOIN (SELECT dept_id, AVG(salary) … GROUP BY dept_id) d</code>', 'two steps in one block', '~2N: aggregate once, hash join'],
+  ['CTE', '<code>WITH d AS (…) SELECT … JOIN d</code>', 'named steps, top to bottom', 'same as the JOIN (usually inlined)'],
+  ['Window function', '<code>AVG(salary) OVER (PARTITION BY dept_id)</code> in a CTE, filter outside', 'one pass, no join', 'one sort/hash pass: often fastest']
+])}
+<p><b>A simple decision guide:</b></p>
+<ul>
+<li><b>"Does a related row exist?"</b> → <code>EXISTS</code> / <code>NOT EXISTS</code> (semi/anti-join). Not JOIN + DISTINCT, never NOT IN on nullable columns.</li>
+<li><b>One global number</b> (overall average, max) → uncorrelated scalar subquery: runs once, cheap and clear.</li>
+<li><b>Compare each row with its group</b> → window function if available; otherwise a JOIN to a grouped CTE. A correlated subquery is fine when the group column is indexed and the table is small/medium.</li>
+<li><b>Several columns from the same related rows</b> (count AND sum AND max of orders per customer) → one grouped CTE + LEFT JOIN, not three correlated subqueries in SELECT (each one re-reads the orders).</li>
+<li><b>Multi-step logic</b> → CTEs for readability; check the plan if the engine materializes them.</li>
+<li><b>Unknown depth</b> → recursive CTE, with an index on the parent column.</li>
+</ul>
+<p><b>Read the plan.</b> In SQLite prefix the query with <code>EXPLAIN QUERY PLAN</code>. Look for:</p>
+${H.table(['Plan line', 'Meaning', 'Good / bad'], [['<code>SCALAR SUBQUERY</code>', 'uncorrelated, runs once', '<span class="c-g">fine</span>'], ['<code>CORRELATED SCALAR SUBQUERY</code> → <code>SEARCH … USING INDEX</code>', 'per-row, but each run is an index seek', '<span class="c-g">usually fine</span>'], ['<code>CORRELATED SCALAR SUBQUERY</code> → <code>SCAN</code>', 'per-row FULL scan → O(N×M)', '<span class="c-r">add an index or rewrite</span>'], ['<code>LIST SUBQUERY</code>', 'IN-list built once into a temp b-tree', '<span class="c-g">fine</span>'], ['<code>CO-ROUTINE</code> / <code>MATERIALIZE</code>', 'subquery/CTE computed into a stream or temp table', 'fine, but no index on it']])}`,
+    clues: [
+      '"The query is correct but takes minutes on production data" → read EXPLAIN, look for correlated SCAN',
+      '"Rewrite this without a correlated subquery" → JOIN to a grouped derived table / CTE, or a window function',
+      'SELECT list contains 2+ subqueries hitting the <b>same table</b> → aggregate once in a CTE and LEFT JOIN',
+      '"Which is faster, IN or EXISTS?" → "modern optimizers plan both as semi-joins; check the plan; NOT IN differs because of NULLs"',
+      '"Make this readable for the team" → CTEs with named steps; keep filters consistent across steps',
+      'Engine-specific hints: PostgreSQL ≤ 11 CTE fence, SQL Server re-executes CTEs, MySQL 5.x poor subquery optimization'
+    ],
+    code: [
+      { lang: 'sql', db: 'company', title: 'Same answer, four ways', code: `-- 1) Correlated subquery
+SELECT e.name FROM employees e
+WHERE e.salary > (SELECT AVG(e2.salary) FROM employees e2 WHERE e2.dept_id = e.dept_id);
+
+-- 2) JOIN to a grouped derived table (decorrelated by hand)
+SELECT e.name FROM employees e
+JOIN (SELECT dept_id, AVG(salary) AS avg_sal FROM employees GROUP BY dept_id) d
+  ON d.dept_id = e.dept_id
+WHERE e.salary > d.avg_sal;
+
+-- 3) CTE (same plan as 2 in most engines)
+WITH d AS (SELECT dept_id, AVG(salary) AS avg_sal FROM employees GROUP BY dept_id)
+SELECT e.name FROM employees e JOIN d ON d.dept_id = e.dept_id
+WHERE e.salary > d.avg_sal;
+
+-- 4) Window function (one pass, no join) — filter in an outer query
+SELECT name FROM (
+    SELECT name, salary, AVG(salary) OVER (PARTITION BY dept_id) AS avg_sal
+    FROM employees WHERE dept_id IS NOT NULL) t
+WHERE salary > avg_sal;` },
+      { lang: 'sql', db: 'company', title: 'Reading the plan before and after an index', code: `-- Before: the correlated subquery SCANs e2 for every outer row → O(N^2)
+EXPLAIN QUERY PLAN
+SELECT e.name FROM employees e
+WHERE e.salary > (SELECT AVG(e2.salary) FROM employees e2 WHERE e2.dept_id = e.dept_id);
+
+-- Add a composite index on (correlation column, aggregated column)
+CREATE INDEX idx_emp_dept_salary ON employees(dept_id, salary);
+
+-- After: SEARCH e2 USING COVERING INDEX idx_emp_dept_salary (dept_id=?)
+EXPLAIN QUERY PLAN
+SELECT e.name FROM employees e
+WHERE e.salary > (SELECT AVG(e2.salary) FROM employees e2 WHERE e2.dept_id = e.dept_id);` },
+      { lang: 'sql', db: 'shop', title: 'Index the column NOT EXISTS probes', code: `-- orders.customer_id is a foreign key, but SQLite/PostgreSQL do NOT index FKs automatically
+EXPLAIN QUERY PLAN
+SELECT c.name FROM customers c
+WHERE NOT EXISTS (SELECT 1 FROM orders o WHERE o.customer_id = c.id);   -- SCAN o per customer
+
+CREATE INDEX idx_orders_customer ON orders(customer_id);
+
+EXPLAIN QUERY PLAN
+SELECT c.name FROM customers c
+WHERE NOT EXISTS (SELECT 1 FROM orders o WHERE o.customer_id = c.id);   -- SEARCH o USING COVERING INDEX` }
+    ],
+    codeTitle: ['Four equivalent rewrites', 'EXPLAIN QUERY PLAN + index', 'Indexing anti-join probes'],
+    viz: {
+      title: 'How much work? Correlated vs indexed vs decorrelated vs window',
+      input: '100000 50',
+      inputLabel: 'N employees and D departments (e.g. "100000 50")',
+      gen: function (input) {
+        var m = String(input || '').trim().split(/[\s,]+/).map(Number);
+        if (m.length !== 2 || !m.every(function (x) { return isFinite(x) && x >= 1; })) throw new Error('Enter two positive numbers: N D, e.g. "100000 50"');
+        var N = Math.min(Math.round(m[0]), 1e9), D = Math.max(1, Math.min(Math.round(m[1]), N));
+        var lg = Math.max(1, Math.ceil(Math.log(N) / Math.LN2)), grp = Math.ceil(N / D);
+        var S = [
+          ['Correlated, no index', N + N * N, 'outer scan N, and for EACH row a full scan of N'],
+          ['Correlated + index (dept_id, salary)', N + N * (lg + grp), 'each inner run = index seek (log N) + read its group (N/D)'],
+          ['Correlated + memoize per dept', N + D * N, 'inner query runs once per DISTINCT dept (D full scans)'],
+          ['Decorrelated: GROUP BY once + hash join', 2 * N, 'one pass to aggregate, one pass to join'],
+          ['Window: AVG() OVER (PARTITION BY dept)', N, 'one pass (plus a sort/hash by dept)']
+        ];
+        function fmt(x) { if (x >= 1e12) return (x / 1e12).toFixed(1) + ' trillion'; if (x >= 1e9) return (x / 1e9).toFixed(1) + ' billion'; if (x >= 1e6) return (x / 1e6).toFixed(1) + ' million'; if (x >= 1e3) return (x / 1e3).toFixed(1) + 'k'; return String(x); }
+        function plan(k) {
+          var P = [
+            { nodes: [['o', 'SCAN e (outer)', 20, 12], ['f', 'FILTER salary > ?', 52, 12], ['s', 'SUBQUERY: SCAN e2', 52, 32], ['r', 'result', 85, 12]], edges: [['o', 'f'], ['s', 'f', 'per row'], ['f', 'r']] },
+            { nodes: [['o', 'SCAN e (outer)', 20, 12], ['f', 'FILTER salary > ?', 52, 12], ['s', 'SEARCH e2 USING INDEX', 52, 32], ['r', 'result', 85, 12]], edges: [['o', 'f'], ['s', 'f', 'per row'], ['f', 'r']] },
+            { nodes: [['o', 'SCAN e (outer)', 20, 12], ['f', 'FILTER salary > ?', 52, 12], ['c', 'MEMOIZE by dept', 52, 32], ['s', 'SCAN e2', 20, 32], ['r', 'result', 85, 12]], edges: [['o', 'f'], ['s', 'c', 'miss'], ['c', 'f'], ['f', 'r']] },
+            { nodes: [['a', 'SCAN employees', 14, 32], ['g', 'HASH GROUP BY dept', 40, 32], ['o', 'SCAN e', 40, 12], ['j', 'HASH JOIN + FILTER', 68, 22], ['r', 'result', 90, 22]], edges: [['a', 'g'], ['g', 'j', 'build'], ['o', 'j', 'probe'], ['j', 'r']] },
+            { nodes: [['a', 'SCAN employees', 14, 22], ['w', 'SORT/HASH by dept + AVG OVER', 46, 22], ['f', 'FILTER', 74, 22], ['r', 'result', 92, 22]], edges: [['a', 'w'], ['w', 'f'], ['f', 'r']] }
+          ][k];
+          return { type: 'graph', label: 'Plan shape', directed: true, height: 42, nodes: P.nodes.map(function (n) { return { id: n[0], label: n[1], x: n[2], y: n[3], shape: 'box' }; }), edges: P.edges, hl: (function () { var h = {}; P.nodes.forEach(function (n) { h[n[0]] = n[0] === 's' && k === 0 ? 'bad' : n[0] === 'r' ? 'sel' : ''; }); return h; })() };
+        }
+        var frames = [];
+        frames.push({ narr: 'Workload: <b>' + fmt(N) + '</b> employees in <b>' + D + '</b> departments (about ' + fmt(grp) + ' per department). Query: employees paid above their department average. We will count <b>rows read</b> for each strategy (log scale bars).', parts: [
+          { type: 'code', label: 'Query (correlated form)', lang: 'sql', code: 'SELECT e.name FROM employees e\nWHERE e.salary > (SELECT AVG(e2.salary)\n                  FROM employees e2\n                  WHERE e2.dept_id = e.dept_id);', hl: { 4: 'cur' } },
+          { type: 'vars', label: 'Inputs', vals: { N: N, D: D, 'rows per dept': grp, 'log2 N': lg } }
+        ] });
+        var vals = [], texts = [];
+        S.forEach(function (st, k) {
+          vals.push(Math.round(Math.log(st[1]) / Math.LN10 * 10) / 10); texts.push(fmt(st[1]));
+          var hb = {}; hb[k] = k === 0 ? 'bad' : k >= 3 ? 'ok' : 'cur';
+          frames.push({ narr: '<b>' + st[0] + '</b>: ' + st[2] + ' → about <b>' + fmt(st[1]) + '</b> row reads.' + (k === 0 ? ' <span class="c-r">This is the plan SQLite uses when there is no index on dept_id.</span>' : k === 1 ? ' SQLite shows this as <code>CORRELATED SCALAR SUBQUERY</code> → <code>SEARCH e2 USING COVERING INDEX</code>.' : k === 2 ? ' PostgreSQL 14+ can do this with a Memoize node; SQL Server with a lazy spool.' : k === 3 ? ' This is what SQL Server / Oracle / DuckDB often do <b>automatically</b> (decorrelation); in SQLite you write the JOIN or CTE yourself.' : ' Usually the fastest and the easiest to extend (rank, running totals) — Module SQL 6.'), parts: [
+            plan(k),
+            { type: 'bars', label: 'log10(rows read) — shorter is better', values: vals.slice(), texts: texts.slice(), idxLabels: S.slice(0, k + 1).map(function (s, i) { return 'S' + (i + 1); }), hl: hb }
+          ] });
+        });
+        var rows = S.map(function (st, i) { return ['S' + (i + 1), st[0], fmt(st[1])]; });
+        frames.push({ narr: 'Summary. For tiny tables every strategy is instant, so <b>pick the clearest</b>. At scale the naive correlated plan is ' + fmt(Math.round(S[0][1] / S[3][1])) + '× more work than the decorrelated one. Always confirm with <code>EXPLAIN</code> — optimizers may already have rewritten your query.', parts: [
+          { type: 'table', label: 'Strategies compared', columns: ['#', 'strategy', 'rows read'], rows: rows, hl: { 0: 'bad', 3: 'ok', 4: 'sel' } }
+        ] });
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'Three correlated subqueries vs one grouped CTE', html: `<p>Each scalar subquery in the SELECT list re-reads the orders for every customer — 3 lookups × C customers. The CTE aggregates orders <b>once</b> and a LEFT JOIN attaches the numbers (Eli and Fatima get 0 via COALESCE). Same output, one pass.</p>`, code: { lang: 'sql', db: 'shop', code: `WITH stats AS (
+        SELECT o.customer_id,
+               COUNT(DISTINCT o.id)          AS orders,
+               SUM(oi.qty * oi.unit_price)   AS spend,
+               MAX(o.order_date)             AS last_order
+        FROM orders o JOIN order_items oi ON oi.order_id = o.id
+        WHERE o.status <> 'cancelled'
+        GROUP BY o.customer_id)
+SELECT c.name,
+       COALESCE(s.orders, 0) AS orders,
+       COALESCE(s.spend, 0)  AS spend,
+       s.last_order
+FROM customers c
+LEFT JOIN stats s ON s.customer_id = c.id
+ORDER BY spend DESC;` } },
+      { title: 'Uncorrelated subquery shows up as SCALAR SUBQUERY (runs once)', html: `<p>Compare the plans: the company-wide average is a <code>SCALAR SUBQUERY</code> (executed once), while the per-department version is a <code>CORRELATED SCALAR SUBQUERY</code>. That one word tells you whether the inner query is evaluated once or per row.</p>`, code: { lang: 'sql', db: 'company', code: `EXPLAIN QUERY PLAN
+SELECT name FROM employees WHERE salary > (SELECT AVG(salary) FROM employees);
+
+EXPLAIN QUERY PLAN
+SELECT e.name FROM employees e
+WHERE e.salary > (SELECT AVG(e2.salary) FROM employees e2 WHERE e2.dept_id = e.dept_id);` } },
+      { title: 'IN builds a list once (LIST SUBQUERY)', html: `<p>For <code>dept_id IN (SELECT id FROM departments WHERE location = 'Mumbai')</code> SQLite builds the list of ids once into a temporary b-tree and probes it — no per-row re-execution, even without an index. IN with an uncorrelated subquery is not the slow pattern people fear.</p>`, code: { lang: 'sql', db: 'company', code: `EXPLAIN QUERY PLAN
+SELECT name FROM employees
+WHERE dept_id IN (SELECT id FROM departments WHERE location = 'Mumbai');` } },
+      { title: 'Readability refactor: nested → CTE', html: `<p>The nested version below answers "departments whose payroll is above the average department payroll" inside-out. The CTE version names <code>payroll</code> once and uses it twice. Same plan, but a reviewer can check each step on its own.</p>`, code: { lang: 'sql', db: 'company', code: `-- Nested (hard to read, payroll logic duplicated)
+SELECT dept_id, total FROM (
+    SELECT dept_id, SUM(salary) AS total FROM employees WHERE dept_id IS NOT NULL GROUP BY dept_id) t
+WHERE total > (SELECT AVG(total) FROM (
+    SELECT SUM(salary) AS total FROM employees WHERE dept_id IS NOT NULL GROUP BY dept_id) x);
+
+-- CTE (one definition, used twice)
+WITH payroll AS (
+    SELECT dept_id, SUM(salary) AS total FROM employees WHERE dept_id IS NOT NULL GROUP BY dept_id)
+SELECT dept_id, total FROM payroll
+WHERE total > (SELECT AVG(total) FROM payroll);` } }
+    ],
+    deepDive: `<p><b>Decorrelation in theory.</b> Any correlated subquery can be rewritten as a join with an <i>Apply</i>/<i>lateral</i> operator, and many can then be "unnested" into ordinary joins + group-bys (the classic papers: Kim 1982, Galindo-Legaria &amp; Joshi 2001, and Neumann &amp; Kemper 2015 "Unnesting Arbitrary Queries", which DuckDB and Umbra implement fully). Who does what today: SQL Server and Oracle unnest aggressively; PostgreSQL pulls up <code>IN</code>/<code>EXISTS</code> into semi/anti-joins and memoizes, but leaves correlated scalar subqueries as SubPlans; MySQL 8.0.24+ can transform scalar correlated subqueries into derived tables; SQLite mostly executes as written (nested loops) — so in SQLite the shape you write and the indexes you add matter most.</p>
+<p><b>The COUNT bug.</b> Rewriting <code>WHERE x = (SELECT COUNT(*) … correlated)</code> as a JOIN to a grouped table loses groups with zero rows (COUNT should be 0, the inner join produces nothing). Correct unnesting needs a LEFT JOIN + COALESCE. Interviewers love this subtlety; so do bug trackers.</p>
+<p><b>LATERAL.</b> PostgreSQL/MySQL 8 <code>JOIN LATERAL (SELECT … WHERE inner.k = outer.k ORDER BY … LIMIT 3)</code> (SQL Server: <code>CROSS APPLY</code>) is a correlated <i>table</i> subquery — perfect for "top 3 orders per customer" with an index on <code>(customer_id, amount DESC)</code>: C index seeks instead of sorting the whole table. SQLite has no LATERAL; use window functions.</p>
+<p><b>CTEs and statistics.</b> Materialized CTEs and derived tables have no statistics, so the planner guesses their cardinality (PostgreSQL often guesses 200 rows for unknowns). A wrong guess leads to nested-loop joins over millions of rows. Remedies: let the CTE inline, break the pipeline into an indexed temp table + <code>ANALYZE</code>, or simplify predicates.</p>
+<p><b>Index recipes.</b> Correlated aggregate by group → index <code>(group_col, agg_col)</code> so the inner query is covering. EXISTS/NOT EXISTS probe → index the probed foreign key. Top-down hierarchy → index <code>parent_id</code>. Use <code>EXPLAIN QUERY PLAN</code> (SQLite), <code>EXPLAIN (ANALYZE, BUFFERS)</code> (PostgreSQL), actual execution plans (SQL Server) to verify, and measure on realistic data volumes — 16 rows tell you nothing about 16 million.</p>`,
+    aiEra: `<p><b>What AI changes:</b> AI tools are good at mechanical rewrites (correlated → join → window) and at explaining plans line by line. That makes performance work faster — provided you verify equivalence and measure.</p>
+<p><b>Use AI as a partner:</b> <code>Here is my query and its EXPLAIN (ANALYZE) output on PostgreSQL 16. Which node dominates, and give me two rewrites with the indexes each needs</code>. <code>Prove these two queries return the same rows, including NULL and zero-row groups; if not, give a counterexample dataset</code>. Then actually run both on the counterexample.</p>
+<p><b>Where AI goes wrong:</b> "EXISTS is always faster than IN" folklore; unnesting COUNT subqueries with inner joins (the COUNT bug); recommending indexes that already exist or that the planner cannot use (function on the column, leading-column mismatch); claiming CTEs are always materialized (outdated since PostgreSQL 12); and judging speed on toy data.</p>
+<p><b>What you must still own:</b> equivalence (same rows for every edge case), reading real plans, choosing indexes against the whole workload (every index slows writes), and the final call on readability vs speed for your team.</p>`,
+    problems: [{
+      title: 'Speed Up a Customer Report Built From Correlated Subqueries',
+      level: 'Medium', tags: ['performance', 'decorrelation', 'CTE', 'LEFT JOIN'], companies: ['Amazon', 'Stripe', 'Razorpay'],
+      statement: `<p>A dashboard query lists every customer with their number of non-cancelled orders and total spend. It uses two correlated subqueries per customer and is timing out on a table with millions of orders. Rewrite it so orders and items are read <b>once</b>, keeping customers with no orders (show 0) and the same ordering (spend DESC, then name).</p>`,
+      constraints: `<p>Exclude cancelled orders. Customers without orders must appear with 0 orders and 0 spend. Output columns: <code>name, orders, spend</code>.</p>`,
+      example: `${H.table(['name', 'orders', 'spend'], [['Asha', '3', '2625'], ['Dana', '1', '1190'], ['Ben', '2', '1060'], ['Chen', '1', '390'], ['<span class="c-y">Eli</span>', '<span class="c-y">0</span>', '<span class="c-y">0</span>'], ['<span class="c-y">Fatima</span>', '0', '0']])}<p>Chen has two orders but one is cancelled, so orders = 1.</p>`,
+      brute: { why: `<p>Correct output, but every customer triggers two separate scans of <code>orders</code> (and a join to <code>order_items</code>). With C customers and O orders and no index that is O(C × O) — 10<sup>5</sup> customers × 10<sup>7</sup> orders = 10<sup>12</sup> row visits. Even with indexes it is 2C separate index probes plus joins.</p>`, code: { lang: 'sql', db: 'shop', code: `SELECT c.name,
+       (SELECT COUNT(*) FROM orders o
+        WHERE o.customer_id = c.id AND o.status <> 'cancelled') AS orders,
+       (SELECT COALESCE(SUM(oi.qty * oi.unit_price), 0)
+        FROM orders o JOIN order_items oi ON oi.order_id = o.id
+        WHERE o.customer_id = c.id AND o.status <> 'cancelled') AS spend
+FROM customers c
+ORDER BY spend DESC, c.name;` } },
+      mcq: { q: 'You replace the correlated subqueries with an INNER JOIN to a grouped CTE. What breaks?', options: ['Customers with no orders disappear (the "COUNT bug")', 'Spend doubles', 'Nothing — it is identical', 'ORDER BY stops working'], answer: 0, explain: 'COUNT over zero rows is 0, but an inner join to a grouped table has no row for those customers, so they vanish. Use LEFT JOIN and COALESCE to 0.' },
+      hints: [`<p>Hint 1: Both subqueries read the same rows (non-cancelled orders of a customer). Aggregate them once, grouped by customer.</p>`, `<p>Hint 2: Count orders with <code>COUNT(DISTINCT o.id)</code> — after joining to order_items each order appears once per line item.</p>`, `<p>Hint 3: <code>customers LEFT JOIN stats</code> and <code>COALESCE(…, 0)</code> to keep customers with no orders. Recipe: CTE stats(customer_id, orders, spend) → LEFT JOIN → COALESCE → ORDER BY spend DESC, name.</p>`],
+      solution: {
+        approach: `<p>Decorrelate by hand: one grouped CTE reads orders + items once, then a LEFT JOIN attaches the numbers to every customer. <code>COUNT(DISTINCT o.id)</code> avoids counting line items as orders, and COALESCE restores the zero rows that the correlated COUNT used to produce.</p>`,
+        code: { lang: 'sql', db: 'shop', code: `WITH stats AS (
+        SELECT o.customer_id,
+               COUNT(DISTINCT o.id)        AS orders,   -- DISTINCT: one order has many items
+               SUM(oi.qty * oi.unit_price) AS spend
+        FROM orders o
+        JOIN order_items oi ON oi.order_id = o.id
+        WHERE o.status <> 'cancelled'
+        GROUP BY o.customer_id
+     )
+SELECT c.name,
+       COALESCE(s.orders, 0) AS orders,
+       COALESCE(s.spend, 0)  AS spend
+FROM customers c
+LEFT JOIN stats s ON s.customer_id = c.id     -- LEFT: keep customers with no orders
+ORDER BY spend DESC, c.name;` },
+        dry: { head: ['step', 'work', 'output'], rows: [['stats CTE', 'one pass over 14 non-cancelled line items', '4 customer rows'], ['LEFT JOIN', 'hash join 6 customers × 4 stats', '6 rows (Eli, Fatima → NULL)'], ['COALESCE', 'NULL → 0', 'Eli 0/0, Fatima 0/0'], ['ORDER BY', 'spend DESC, name', 'Asha, Dana, Ben, Chen, Eli, Fatima']] },
+        complexity: `<p>O(O + I) to aggregate orders and items once plus O(C) for the hash join: linear, versus O(C × O) for the unindexed correlated version.</p>`,
+        followUps: ['Add the last order date without another subquery.', 'Which index would make the original correlated version acceptable?', 'Write the same report with window functions.']
+      }
+    }]
+  });
+
   registerModule({
     id: 'sql05',
     title: 'Subqueries, CTEs & Recursive CTEs',

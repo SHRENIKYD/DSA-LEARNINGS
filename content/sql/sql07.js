@@ -790,7 +790,7 @@ SELECT * FROM addresses;`) }
       example: `${H.table(['#', 'result', 'why'], [
         ['1', H.c('g', 'stored'), 'all rules pass'], ['2', H.c('r', 'rejected'), 'UNIQUE sku A1'], ['3', H.c('r', 'rejected'), 'CHECK price &gt; 0'],
         ['4', H.c('g', 'stored'), 'NULL passes CHECK; price is nullable'], ['5', H.c('r', 'rejected'), 'PRIMARY KEY id 1'], ['6', H.c('r', 'rejected'), 'NOT NULL sku'],
-        ['7', H.c('g', 'stored'), 'stock omitted → DEFAULT 0'], ['8', H.c('r', 'rejected'), 'explicit NULL stock → NOT NULL']])}<p>Answer: rows 1, 4, 7 survive (3 rows).</p>`,
+        ['7', H.c('g', 'stored'), 'stock omitted → DEFAULT 0'], ['8', H.c('r', 'rejected'), 'explicit NULL stock → NOT NULL']])}<p>Answer: attempts #1, #4 and #7 survive — the table ends with ids 1, 4 and 6 (3 rows).</p>`,
       brute: {
         why: `<p>The "validate in the app" approach: a table with no constraints and a hope that every code path checks. All 8 rows go in — a duplicate SKU, a negative price, a duplicate id and a NULL SKU. Every report built on this table is now wrong, and you only find out when a customer is charged −₹1.</p>`,
         code: lab(`CREATE TABLE products_nocheck (id INTEGER, sku TEXT, price_cents INTEGER, stock INTEGER);
@@ -817,20 +817,323 @@ FROM products_nocheck;`)
 );
 CREATE TABLE attempts (n INTEGER, stored INTEGER);
 
-INSERT OR IGNORE INTO products VALUES (1, 'A1', 500, 10);   INSERT INTO attempts VALUES (1, changes());
-INSERT OR IGNORE INTO products VALUES (2, 'A1', 700, 5);    INSERT INTO attempts SELECT 2, 0 WHERE NOT EXISTS (SELECT 1 FROM products WHERE id = 2);
-INSERT OR IGNORE INTO products VALUES (3, 'B2', -100, 1);   INSERT INTO attempts SELECT 3, EXISTS (SELECT 1 FROM products WHERE id = 3);
-INSERT OR IGNORE INTO products VALUES (4, 'C3', NULL, 2);   INSERT INTO attempts SELECT 4, EXISTS (SELECT 1 FROM products WHERE id = 4);
-INSERT OR IGNORE INTO products VALUES (1, 'D4', 900, 1);    INSERT INTO attempts SELECT 5, EXISTS (SELECT 1 FROM products WHERE sku = 'D4');
-INSERT OR IGNORE INTO products VALUES (5, NULL, 100, 1);    INSERT INTO attempts SELECT 6, EXISTS (SELECT 1 FROM products WHERE id = 5);
+INSERT OR IGNORE INTO products VALUES (1, 'A1', 500, 10);    INSERT INTO attempts VALUES (1, changes());
+INSERT OR IGNORE INTO products VALUES (2, 'A1', 700, 5);     INSERT INTO attempts VALUES (2, changes());
+INSERT OR IGNORE INTO products VALUES (3, 'B2', -100, 1);    INSERT INTO attempts VALUES (3, changes());
+INSERT OR IGNORE INTO products VALUES (4, 'C3', NULL, 2);    INSERT INTO attempts VALUES (4, changes());
+INSERT OR IGNORE INTO products VALUES (1, 'D4', 900, 1);     INSERT INTO attempts VALUES (5, changes());
+INSERT OR IGNORE INTO products VALUES (5, NULL, 100, 1);     INSERT INTO attempts VALUES (6, changes());
 INSERT OR IGNORE INTO products (id, sku, price_cents) VALUES (6, 'E5', 250);
-                                                            INSERT INTO attempts SELECT 7, EXISTS (SELECT 1 FROM products WHERE id = 6);
-INSERT OR IGNORE INTO products VALUES (7, 'F6', 300, NULL); INSERT INTO attempts SELECT 8, EXISTS (SELECT 1 FROM products WHERE id = 7);
+                                                             INSERT INTO attempts VALUES (7, changes());
+INSERT OR IGNORE INTO products VALUES (7, 'F6', 300, NULL);  INSERT INTO attempts VALUES (8, changes());
+-- changes() = rows written by the PREVIOUS statement: 1 = stored, 0 = rejected
 
 SELECT n AS attempt, CASE stored WHEN 1 THEN 'stored' ELSE 'rejected' END AS result FROM attempts ORDER BY n;
 SELECT * FROM products ORDER BY id;`),
         complexity: `<p>Each insert costs O(1) for NOT NULL/CHECK plus O(log N) per unique index (id and sku). Verification is O(1) per attempt via the PK/UNIQUE indexes.</p>`,
         followUps: ['Which attempts would change if the table were STRICT? (none here — all values are already integers/text)', 'Rewrite attempt #2 as an upsert that updates the price instead of failing.']
+      }
+    }]
+  });
+  /* ======================= TOPIC 4: FOREIGN KEYS & CASCADES ======================= */
+  topics.push({
+    title: 'Foreign Keys & Cascading Actions (ON DELETE / ON UPDATE)',
+    analogy: `<p>A foreign key is a <b>library card number written on a loan slip</b>. The slip is only valid if that card number exists in the members' register. Now a member leaves. The library must decide: <b>tear up all their loan slips too</b> (CASCADE), <b>keep the slips but blank out the name</b> (SET NULL), or <b>refuse to let them leave until every book is back</b> (RESTRICT). A database makes you choose one of these rules up front, so nobody has to remember at 2 a.m.</p>`,
+    explain: `<p>A <b>foreign key (FK)</b> is a column (or columns) in a <b>child</b> table whose value must match a key in a <b>parent</b> table — or be NULL. It guarantees <b>referential integrity</b>: no order can point to a customer that does not exist (no "orphans").</p>
+<pre>CREATE TABLE orders (
+  id          INTEGER PRIMARY KEY,
+  customer_id INTEGER NOT NULL
+              REFERENCES customers(id)      -- the parent key (must be PK or UNIQUE)
+              ON DELETE RESTRICT            -- what happens when the parent row is deleted
+              ON UPDATE CASCADE             -- what happens when the parent key value changes
+);</pre>
+<p><b>⚠ SQLite gotcha:</b> foreign keys are <b>OFF by default</b> for backward compatibility. Run <code>PRAGMA foreign_keys = ON;</code> on <i>every connection</i>, or SQLite silently accepts orphans. (Postgres and MySQL InnoDB always enforce them.)</p>
+<h4>The five referential actions</h4>
+${H.table(['Action', 'When the parent row is deleted…', 'Good for'], [
+  ['<code>CASCADE</code>', H.c('r', 'child rows are deleted too') + ' (and their children, and theirs…)', 'parts that cannot live alone: order_items of an order, addresses of a user'],
+  ['<code>SET NULL</code>', 'child FK is set to NULL; child row stays', 'history worth keeping: reviews by a deleted user ("anonymous")'],
+  ['<code>SET DEFAULT</code>', 'child FK is set to its DEFAULT (which must exist in the parent)', 'reassign to an "unassigned" bucket'],
+  ['<code>RESTRICT</code>', H.c('y', 'the delete is refused immediately') + ' if any child exists', 'money/legal records: orders, invoices'],
+  ['<code>NO ACTION</code> (default)', 'like RESTRICT, but checked at the end of the statement (or at COMMIT if deferred)', 'the safe default']
+])}
+<p>The same actions exist for <code>ON UPDATE</code> (when the parent's key value changes) — mostly relevant for natural keys like country codes, because surrogate ids never change.</p>
+<h4>Two things an FK also does on INSERT/UPDATE of the child</h4>
+<ol><li>Inserting <code>orders(customer_id = 999)</code> fails if customer 999 doesn't exist.</li><li>A NULL FK is allowed (it points nowhere) unless the column is also <code>NOT NULL</code>. "Every order must have a customer" = <code>NOT NULL</code> + FK.</li></ol>
+<h4>Index the child column!</h4>
+<p>When a parent is deleted, the database must find its children: <code>SELECT ... FROM orders WHERE customer_id = ?</code>. Without an index on <code>orders.customer_id</code> that is a full table scan for every parent delete. Postgres and SQLite do <b>not</b> create this index for you (MySQL InnoDB does).</p>`,
+    clues: [
+      '"what happens to the orders when a user deletes their account?" → choose ON DELETE CASCADE / SET NULL / RESTRICT per relationship',
+      '"orphan rows" / "order points to a customer that doesn\'t exist" → missing FK (or SQLite without <code>PRAGMA foreign_keys = ON</code>)',
+      '"GDPR: delete all of a user\'s data" → CASCADE on personal data, SET NULL/anonymise on shared history, RESTRICT on financial records',
+      '"deleting one row took minutes / locked the table" → unindexed FK column or a huge cascade tree',
+      '"keep the review but remove the author" → <code>ON DELETE SET NULL</code> (FK column must be nullable)',
+      '"cannot delete product, it is referenced" → RESTRICT working as designed → soft delete (<code>is_active = 0</code>)',
+      '"country code changed from UK to GB" → natural key + <code>ON UPDATE CASCADE</code>'
+    ],
+    code: [
+      shop(`-- shop: orders -> order_items is ON DELETE CASCADE
+SELECT 'items of order 3 before' AS step, COUNT(*) AS n FROM order_items WHERE order_id = 3;
+DELETE FROM orders WHERE id = 3;                       -- one statement...
+SELECT 'items of order 3 after'  AS step, COUNT(*) AS n FROM order_items WHERE order_id = 3;  -- ...children gone too
+
+-- See every FK declared on a table and its actions
+SELECT "table" AS parent, "from" AS child_col, "to" AS parent_col, on_update, on_delete
+FROM pragma_foreign_key_list('order_items');`, 'CASCADE in the shop database'),
+      shop(`-- Customer 4 (Dara) has an address (CASCADE) and a review (SET NULL), but no orders.
+SELECT 'before' AS step,
+       (SELECT COUNT(*) FROM addresses WHERE customer_id = 4) AS dara_addresses,
+       (SELECT COUNT(*) FROM reviews WHERE id = 3 AND customer_id = 4) AS dara_reviews;
+DELETE FROM customers WHERE id = 4;
+SELECT 'after' AS step,
+       (SELECT COUNT(*) FROM addresses WHERE customer_id = 4) AS dara_addresses,  -- 0: cascaded
+       (SELECT COUNT(*) FROM reviews WHERE id = 3) AS review_3_still_there;      -- 1: kept
+SELECT id, product_id, quote(customer_id) AS customer_id, rating, body FROM reviews WHERE id = 3;  -- author NULL
+
+-- Customer 3 has an order, and orders.customer_id is ON DELETE RESTRICT:
+-- DELETE FROM customers WHERE id = 3;   -- uncomment: Error: FOREIGN KEY constraint failed
+SELECT 'blockers for customer 3' AS note, COUNT(*) AS orders FROM orders WHERE customer_id = 3;`, 'SET NULL, CASCADE and RESTRICT side by side')
+    ],
+    codeTitle: ['Cascade an order', 'Three policies in one delete'],
+    viz: [{
+      title: 'ON DELETE in slow motion: CASCADE vs SET NULL vs RESTRICT',
+      input: '1 cascade',
+      inputLabel: 'customer id (1-4) and action: cascade | setnull | restrict',
+      gen: function (input) {
+        var w = String(input === undefined || input === null ? '' : input).trim().toLowerCase().split(/\s+/);
+        var cid = Number(w[0]), act = (w[1] || 'cascade').replace(/[^a-z]/g, '');
+        if (!w[0] || !isFinite(cid) || Math.floor(cid) !== cid) throw new Error('Format: <customer id> <action>, e.g. 1 cascade or 2 restrict');
+        if (['cascade', 'setnull', 'restrict'].indexOf(act) < 0) throw new Error('Action must be cascade, setnull or restrict');
+        var label = { cascade: 'CASCADE', setnull: 'SET NULL', restrict: 'RESTRICT' }[act];
+        var C = [[1, 'Asha'], [2, 'Ben'], [3, 'Chen'], [4, 'Dara']];
+        var O = [[10, 1, 'paid'], [11, 1, 'shipped'], [12, 2, 'pending'], [13, 3, 'paid']];
+        var I = [[100, 10, 'Phone'], [101, 10, 'Cable'], [102, 11, 'Book'], [103, 12, 'Cable'], [104, 13, 'Lamp']];
+        var dc = 0, doo = 0, di = 0, nulled = 0;
+        function show(v) { return v === null ? 'NULL' : v; }
+        function g(hl, ehl) {
+          return { type: 'graph', directed: true, height: 34, label: 'foreign keys (child → parent)', nodes: [
+            { id: 'c', label: 'customers', x: 14, y: 17, shape: 'box' }, { id: 'o', label: 'orders', x: 50, y: 17, shape: 'box' }, { id: 'i', label: 'order_items', x: 86, y: 17, shape: 'box' }],
+            edges: [['o', 'c', label], ['i', 'o', 'CASCADE']], hl: hl || {}, ehl: ehl || {} };
+        }
+        function tables(ch, oh, ih) {
+          return [
+            { type: 'table', label: 'customers', columns: ['id', 'name'], rows: copyRows(C), hl: ch || {} },
+            { type: 'table', label: 'orders (customer_id → customers ON DELETE ' + label + ')', columns: ['id', 'customer_id', 'status'], rows: copyRows(O).map(function (r) { return [r[0], show(r[1]), r[2]]; }), hl: oh || {} },
+            { type: 'table', label: 'order_items (order_id → orders ON DELETE CASCADE)', columns: ['id', 'order_id', 'product'], rows: copyRows(I), hl: ih || {} }
+          ];
+        }
+        function idxWhere(rows, col, val) { var h = {}; rows.forEach(function (r, k) { if (r[col] === val) h[k] = arguments.length ? 'cur' : 'cur'; }); return h; }
+        var frames = [];
+        frames.push({ narr: 'Three tables in a chain. <b>orders.customer_id</b> uses <b>ON DELETE ' + label + '</b>; <b>order_items.order_id</b> uses ON DELETE CASCADE. (In SQLite this only works after <code>PRAGMA foreign_keys = ON;</code>.)', parts: [g()].concat(tables()) });
+        var ci = -1; C.forEach(function (r, k) { if (r[0] === cid) ci = k; });
+        if (ci < 0) {
+          frames.push({ narr: '<code>DELETE FROM customers WHERE id = ' + cid + '</code> matches <b>no row</b>. Nothing to cascade.', parts: [{ type: 'code', lang: 'sql', code: 'DELETE FROM customers WHERE id = ' + cid + ';', hl: { 1: 'cur' } }].concat(tables()) });
+          frames.push({ narr: '0 rows deleted — deleting a missing parent is not an error.', parts: [{ type: 'vars', vals: { deleted: 0 } }] });
+          frames.push({ narr: 'Try customer 1 (two orders), 3 (one order) or 4 (no orders).', parts: [{ type: 'text', html: 'Example inputs: <code>1 cascade</code>, <code>1 setnull</code>, <code>1 restrict</code>, <code>4 restrict</code>' }] });
+          return frames;
+        }
+        frames.push({ narr: 'Run <code>DELETE FROM customers WHERE id = ' + cid + '</code>. The target parent row is highlighted.', parts: [{ type: 'code', lang: 'sql', code: 'PRAGMA foreign_keys = ON;\nDELETE FROM customers WHERE id = ' + cid + ';', hl: { 2: 'cur' } }, g({ c: 'cur' })].concat(tables(one(ci, 'cur'))) });
+        var kids = idxWhere(O, 1, cid), kidIds = O.filter(function (r) { return r[1] === cid; }).map(function (r) { return r[0]; });
+        frames.push({ narr: 'Before removing it, the engine looks for <b>children</b>: <code>SELECT … FROM orders WHERE customer_id = ' + cid + '</code> (fast only if orders.customer_id is indexed). Found <b>' + kidIds.length + '</b> order(s)' + (kidIds.length ? ': ' + kidIds.join(', ') : '') + '.', parts: [g({ c: 'cur', o: kidIds.length ? 'cur' : '' }, { 'o-c': 'cur' })].concat(tables(one(ci, 'cur'), kids)) });
+        if (!kidIds.length) {
+          C.splice(ci, 1); dc++;
+          frames.push({ narr: 'No children, so every action behaves the same: the customer row is simply deleted. ' + (act === 'restrict' ? 'RESTRICT only blocks when children exist.' : ''), parts: [g({}, {})].concat(tables()).concat([{ type: 'vars', label: 'rows removed', vals: { customers: dc, orders: 0, order_items: 0 } }]) });
+          frames.push({ narr: 'Done: 1 row deleted in total.', parts: [{ type: 'vars', label: 'rows removed', vals: { customers: dc, orders: 0, order_items: 0 } }] });
+          return frames;
+        }
+        if (act === 'restrict') {
+          var bh = {}; Object.keys(kids).forEach(function (k) { bh[k] = 'bad'; });
+          frames.push({ narr: '<span class="c-r">RESTRICT: children exist → "FOREIGN KEY constraint failed".</span> The DELETE statement is aborted.', parts: [{ type: 'code', lang: 'sql', code: 'DELETE FROM customers WHERE id = ' + cid + ';\n-- Error: FOREIGN KEY constraint failed', hl: { 1: 'bad', 2: 'bad' } }, g({ c: 'bad', o: 'bad' }, { 'o-c': 'bad' })].concat(tables(one(ci, 'bad'), bh)) });
+          frames.push({ narr: 'Nothing changed — the whole statement rolled back. To delete this customer you must first deal with the orders (archive, reassign, or soft-delete the customer instead). For money records this "no" is exactly what you want.', parts: [g()].concat(tables()).concat([{ type: 'vars', label: 'rows removed', vals: { customers: 0, orders: 0, order_items: 0 }, hl: { customers: 'bad' } }]) });
+          return frames;
+        }
+        if (act === 'setnull') {
+          var sh = {}; O.forEach(function (r, k) { if (r[1] === cid) { r[1] = null; sh[k] = 'sel'; nulled++; } });
+          frames.push({ narr: 'SET NULL: each child order keeps living, but its <b>customer_id becomes NULL</b> (purple). Their order_items are untouched. This only works because customer_id is nullable — with NOT NULL it would fail.', parts: [g({ o: 'sel' }, { 'o-c': 'sel' })].concat(tables(one(ci, 'cur'), sh)) });
+          C.splice(ci, 1); dc++;
+          frames.push({ narr: 'Now the customer row itself is deleted. Result: ' + nulled + ' order(s) kept as "anonymous" history.', parts: [g()].concat(tables({}, sh)).concat([{ type: 'vars', label: 'effect', vals: { 'customers deleted': dc, 'orders set NULL': nulled, 'items deleted': 0 }, hl: { 'orders set NULL': 'sel' } }]) });
+          frames.push({ narr: 'Trade-off: history survives (good for revenue reports), but these orders no longer tell you who bought them. For GDPR that may be exactly the point.', parts: [{ type: 'text', html: 'SET NULL = keep the child, forget the parent. Needs a nullable FK column.' }] });
+          return frames;
+        }
+        kidIds.forEach(function (oid) {
+          var ih = idxWhere(I, 1, oid), oi = -1; O.forEach(function (r, k) { if (r[0] === oid) oi = k; });
+          var ihb = {}; Object.keys(ih).forEach(function (k) { ihb[k] = 'bad'; });
+          frames.push({ narr: 'CASCADE reaches order <b>' + oid + '</b>. It has its own children: order_items with order_id = ' + oid + ' (red). Those cascade too — deletes ripple down the whole tree.', parts: [g({ c: 'cur', o: 'bad', i: 'bad' }, { 'o-c': 'bad', 'i-o': 'bad' })].concat(tables(one(ci, 'cur'), one(oi, 'bad'), ihb)) });
+          var n = I.length; I = I.filter(function (r) { return r[1] !== oid; }); di += n - I.length;
+          O.splice(oi, 1); doo++;
+          frames.push({ narr: 'Order ' + oid + ' and its ' + (n - I.length) + ' item(s) are gone.', parts: [g({ c: 'cur' })].concat(tables(one(ci, 'cur'))).concat([{ type: 'vars', label: 'rows removed so far', vals: { customers: dc, orders: doo, order_items: di } }]) });
+        });
+        C.splice(ci, 1); dc++;
+        frames.push({ narr: 'Finally the customer row goes. <b>One DELETE removed ' + (dc + doo + di) + ' rows</b> across three tables. Powerful — and dangerous: a typo in the WHERE clause cascades just as fast. That is why money tables usually use RESTRICT plus soft deletes.', parts: [g()].concat(tables()).concat([{ type: 'vars', label: 'rows removed', vals: { customers: dc, orders: doo, order_items: di }, hl: { orders: 'bad', order_items: 'bad' } }]) });
+        return frames;
+      }
+    }, {
+      title: 'FK guard on INSERT (and what happens with PRAGMA foreign_keys OFF)',
+      input: 'ON | 20,1; 21,9; 22,NULL; 23,2; 24,7',
+      inputLabel: 'ON or OFF | orders "id,customer_id" separated by ; (customers 1, 2, 3 exist)',
+      gen: function (input) {
+        var p = String(input === undefined || input === null ? '' : input).split('|');
+        if (p.length !== 2) throw new Error('Format: ON | 20,1; 21,9   (or OFF | ...)');
+        var mode = p[0].trim().toUpperCase();
+        if (mode !== 'ON' && mode !== 'OFF') throw new Error('First part must be ON or OFF');
+        var specs = p[1].split(';').map(function (s) { return s.trim(); }).filter(function (s) { return s; });
+        if (!specs.length || specs.length > 10) throw new Error('Give 1 to 10 orders like 20,1');
+        var parents = [1, 2, 3], orders = [], frames = [], orphans = [];
+        frames.push({ narr: 'Parent table <b>customers</b> holds ids 1, 2, 3. Child table <b>orders</b> declares <code>customer_id REFERENCES customers(id)</code>. Foreign key enforcement is <b>' + mode + '</b>.', parts: [
+          { type: 'code', lang: 'sql', code: 'PRAGMA foreign_keys = ' + mode + ';\nCREATE TABLE orders (id INTEGER PRIMARY KEY,\n  customer_id INTEGER REFERENCES customers(id));', hl: { 1: mode === 'ON' ? 'ok' : 'bad' } },
+          { type: 'set', label: 'customers.id (parent keys)', items: parents.slice() },
+          { type: 'table', label: 'orders', columns: ['id', 'customer_id'], rows: [] }
+        ] });
+        specs.forEach(function (s) {
+          var f = s.split(',').map(function (x) { return x.trim(); });
+          if (f.length !== 2 || !/^\d+$/.test(f[0]) || !(/^\d+$/.test(f[1]) || /^null$/i.test(f[1]))) throw new Error('Each order must look like id,customer_id (customer_id may be NULL), got "' + s + '"');
+          var id = Number(f[0]), cid = /^null$/i.test(f[1]) ? null : Number(f[1]);
+          var exists = cid === null || parents.indexOf(cid) >= 0, dupId = orders.some(function (r) { return r[0] === id; });
+          var row = [id, cid === null ? 'NULL' : cid], shown = copyRows(orders), hl = {}, narr, sh = {};
+          if (cid !== null) sh[cid] = exists ? 'ok' : 'bad';
+          if (dupId) { shown.push(row); hl[shown.length - 1] = 'bad'; narr = '<span class="c-r">Rejected: PRIMARY KEY id ' + id + ' already exists.</span>'; }
+          else if (cid === null) { orders.push(row); shown = copyRows(orders); hl[shown.length - 1] = 'ok'; narr = 'customer_id is <b>NULL</b> → the FK is not checked at all (NULL points nowhere). Accepted. Add NOT NULL if every order needs a customer.'; }
+          else if (exists) { orders.push(row); shown = copyRows(orders); hl[shown.length - 1] = 'ok'; narr = 'Lookup customer ' + cid + ' in the parent key index → found. <span class="c-g">Accepted.</span>'; }
+          else if (mode === 'ON') { shown.push(row); hl[shown.length - 1] = 'bad'; narr = 'Lookup customer ' + cid + ' → <b>not found</b>. <span class="c-r">Rejected: FOREIGN KEY constraint failed.</span> The red row never lands.'; }
+          else { orders.push(row); orphans.push(id); shown = copyRows(orders); hl[shown.length - 1] = 'bad'; narr = 'Customer ' + cid + ' does not exist, but enforcement is <b>OFF</b> → <span class="c-r">silently accepted as an orphan</span>. No error, no warning.'; }
+          frames.push({ narr: 'INSERT order (' + id + ', ' + (cid === null ? 'NULL' : cid) + '): ' + narr, parts: [
+            { type: 'code', lang: 'sql', code: 'INSERT INTO orders VALUES (' + id + ', ' + (cid === null ? 'NULL' : cid) + ');', hl: { 1: hl[shown.length - 1] === 'ok' ? 'ok' : 'bad' } },
+            { type: 'set', label: 'customers.id (parent keys)', items: parents.slice(), hl: sh },
+            { type: 'table', label: 'orders', columns: ['id', 'customer_id'], rows: shown, hl: hl }
+          ] });
+        });
+        if (mode === 'OFF') {
+          frames.push({ narr: orphans.length ? 'Detective tool: <code>PRAGMA foreign_key_check;</code> lists every row that breaks a declared FK — it works even while enforcement is off. Here: ' + orphans.length + ' orphan(s).' : 'No orphans this time — but nothing would have stopped them.', parts: [
+            { type: 'code', lang: 'sql', code: 'PRAGMA foreign_key_check;', hl: { 1: 'cur' } },
+            { type: 'table', label: 'foreign_key_check result', columns: ['table', 'rowid', 'parent'], rows: orphans.map(function (o) { return ['orders', o, 'customers']; }), hl: orphans.reduce(function (h, o, k) { h[k] = 'bad'; return h; }, {}) }
+          ] });
+        } else {
+          frames.push({ narr: 'With enforcement ON the child table can never contain an orphan. Run the same input with <code>OFF | …</code> to see why <code>PRAGMA foreign_keys = ON;</code> is the first line of every SQLite connection.', parts: [
+            { type: 'table', label: 'orders (final)', columns: ['id', 'customer_id'], rows: copyRows(orders) },
+            { type: 'text', html: 'Postgres/MySQL InnoDB: always ON. SQLite: OFF by default, per connection.' }
+          ] });
+        }
+        return frames;
+      }
+    }],
+    examples: [
+      { title: 'The SQLite trap: FKs declared but not enforced', html: `<p>Same schema, enforcement switched off: the orphan goes in without a sound. <code>PRAGMA foreign_key_check</code> finds it afterwards. Many ORMs and drivers turn the pragma on for you — check yours, and make it part of your connection setup.</p>`,
+        code: lab(`PRAGMA foreign_keys = OFF;
+CREATE TABLE parent (id INTEGER PRIMARY KEY);
+CREATE TABLE child (id INTEGER PRIMARY KEY, parent_id INTEGER REFERENCES parent(id));
+INSERT INTO parent VALUES (1);
+INSERT INTO child VALUES (1, 1), (2, 999);      -- 999 does not exist: accepted while OFF
+PRAGMA foreign_key_check;                       -- table, rowid, parent, fkid of each orphan
+PRAGMA foreign_keys = ON;
+-- INSERT INTO child VALUES (3, 777);           -- now: Error: FOREIGN KEY constraint failed
+SELECT COUNT(*) AS orphans FROM child c LEFT JOIN parent p ON p.id = c.parent_id WHERE p.id IS NULL;`) },
+      { title: 'ON UPDATE CASCADE with a natural key', html: `<p>Countries are keyed by their 2-letter code. When the code changes, ON UPDATE CASCADE rewrites every child row in the same statement. With surrogate integer ids you rarely need ON UPDATE at all — another argument for surrogates.</p>`,
+        code: lab(`CREATE TABLE countries (code TEXT PRIMARY KEY, name TEXT NOT NULL);
+CREATE TABLE cities (id INTEGER PRIMARY KEY, name TEXT NOT NULL,
+                     country_code TEXT NOT NULL REFERENCES countries(code) ON UPDATE CASCADE ON DELETE RESTRICT);
+INSERT INTO countries VALUES ('UK', 'United Kingdom'), ('IN', 'India');
+INSERT INTO cities (name, country_code) VALUES ('London', 'UK'), ('Leeds', 'UK'), ('Pune', 'IN');
+UPDATE countries SET code = 'GB' WHERE code = 'UK';     -- children follow automatically
+SELECT name, country_code FROM cities ORDER BY id;`) },
+      { title: 'Self-referencing FK: category tree with SET NULL', html: `<p>A table can reference itself. In the shop, <code>categories.parent_id → categories.id ON DELETE SET NULL</code>. Deleting "Electronics" turns "Phones" into a top-level category, and products in Electronics become uncategorised (their FK is also SET NULL) — nothing is lost.</p>`,
+        code: shop(`DELETE FROM categories WHERE id = 1;   -- Electronics
+SELECT id, name, quote(parent_id) AS parent_id FROM categories;
+SELECT name, quote(category_id) AS category_id FROM products ORDER BY id;`) },
+      { title: 'RESTRICT protects history → use soft delete instead', html: `<p><code>order_items.product_id</code> is ON DELETE RESTRICT, so a product that was ever sold cannot be deleted — old invoices would lose their line items. The standard answer is a <b>soft delete</b>: a flag (<code>is_active</code>) or timestamp (<code>deleted_at</code>) that hides the row from the catalogue but keeps it for history.</p>`,
+        code: shop(`-- DELETE FROM products WHERE id = 3;   -- Error: FOREIGN KEY constraint failed (it was sold)
+SELECT p.name, COUNT(oi.order_id) AS times_sold
+FROM products p LEFT JOIN order_items oi ON oi.product_id = p.id
+GROUP BY p.id ORDER BY p.id;
+UPDATE products SET is_active = 0 WHERE id = 3;          -- soft delete instead
+SELECT name, is_active FROM products WHERE is_active = 1; -- catalogue view`) }
+    ],
+    deepDive: `<h4>How cascades actually execute</h4>
+<p>For each parent row deleted, the engine runs an internal lookup on the child table's FK column and applies the action to every match — recursively for multi-level cascades. With an index it is O(log N + k) per parent; without one it is a full scan of the child table <b>per parent row</b>, so deleting 10,000 customers from an unindexed child of 50M rows can take hours. Always index FK columns (or make them the leading column of a composite index).</p>
+<h4>RESTRICT vs NO ACTION</h4>
+<p>Both refuse to orphan children. <code>RESTRICT</code> checks immediately, row by row. <code>NO ACTION</code> checks at the end of the statement — or at COMMIT if the constraint is <code>DEFERRABLE INITIALLY DEFERRED</code>. That difference matters when one statement or transaction both deletes a parent and fixes its children (e.g. re-pointing them), or for circular references (employee.department_id ↔ department.manager_id) where you must insert both rows before either can be valid.</p>
+<h4>Locks and blast radius</h4>
+<p>A cascading delete runs inside one transaction and locks every row it touches. Deleting a tenant with 30 million descendant rows in one statement can bloat WAL/undo logs, stall replicas and block other writers. Production pattern: delete leaves first in batches (<code>DELETE ... WHERE id IN (SELECT id ... LIMIT 5000)</code> in a loop), then the parent. Some teams forbid CASCADE on large aggregates for exactly this reason.</p>
+<h4>Cascades and triggers / application events</h4>
+<p>Cascaded deletes happen inside the database, so your ORM's <code>on_delete</code> hooks, audit logs and search-index updaters never hear about the child rows. If other systems mirror those tables (Elasticsearch, caches, CDC consumers), make sure they listen to the database's change stream (CDC / logical replication) rather than to app events — or avoid CASCADE for those tables.</p>
+<h4>When teams skip FKs entirely</h4>
+<p>Some very large sharded systems (historically at companies running Vitess/MySQL at huge scale) drop database-level FKs because the parent and child live on different shards, and enforce integrity in application code plus offline orphan-detection jobs. That is a deliberate trade-off at extreme scale, not a default: for a single database, FKs are cheap insurance.</p>
+<h4>SQLite specifics</h4>
+<p><code>PRAGMA foreign_keys</code> is per connection and is a no-op inside a transaction. The parent key must be PRIMARY KEY or have a UNIQUE index, otherwise you get "foreign key mismatch". <code>PRAGMA foreign_key_list(t)</code> shows declared FKs, <code>PRAGMA foreign_key_check</code> finds violations, <code>PRAGMA defer_foreign_keys = ON</code> defers all checks to COMMIT for the current transaction.</p>`,
+    aiEra: `<p><b>What AI changes:</b> agents that "clean up test data" or "delete this user's account" now issue DELETE statements directly. With CASCADE, one confident agent call can remove an entire customer history; with RESTRICT, the database says no and the agent has to ask. Your ON DELETE choices are now also <b>AI safety policy</b>.</p>
+<p><b>Use AI as a partner:</b> give the assistant your schema and ask <code>"Draw the delete-dependency tree from customers. For each edge, tell me the current ON DELETE action and whether it is right for GDPR erasure, financial retention (7 years) and analytics."</code> Ask it to generate a pre-flight query that counts every row a given DELETE would cascade into, and run that before any destructive operation.</p>
+<p><b>Where AI goes wrong:</b> it sprinkles <code>ON DELETE CASCADE</code> everywhere because it makes tests pass, forgets <code>PRAGMA foreign_keys = ON</code> for SQLite, and rarely adds indexes on FK columns. <b>What you must still own:</b> the data-retention policy per relationship, giving agents a least-privilege role (no DELETE on financial tables), and soft-delete patterns for anything the business may need to explain later.</p>`,
+    problems: [{
+      title: 'Cascading Delete: What Is Left?',
+      level: 'Medium', tags: ['foreign keys', 'ON DELETE', 'cascade'], companies: ['Meta', 'Uber', 'Zomato'],
+      statement: `<p>Schema: <code>orders.customer_id</code> → customers <b>CASCADE</b>; <code>order_items.order_id</code> → orders <b>CASCADE</b>; <code>wishlist.customer_id</code> → customers <b>CASCADE</b>; <code>reviews.customer_id</code> → customers <b>SET NULL</b>; <code>invoices.order_id</code> → orders <b>RESTRICT</b>.</p><p>Data: customers 1, 2, 3; orders 10, 11 (customer 1), 12, 13 (customer 2), 14 (customer 3); 7 order items; 4 reviews; 3 wishlist rows; invoices for orders 10 and 14.</p><p>(a) After <code>DELETE FROM customers WHERE id = 2</code>, how many rows remain in each table? (b) What happens with <code>DELETE FROM customers WHERE id = 1</code>? Write SQL that proves (a) and that predicts (b) <i>without</i> running the failing delete.</p>`,
+      constraints: `<ul><li>Use SQLite with <code>PRAGMA foreign_keys = ON</code>.</li><li>The script must run without errors.</li></ul>`,
+      example: `${H.table(['table', 'before', 'after deleting customer 2'], [['customers', '3', H.c('g', '2')], ['orders', '5', H.c('g', '3')], ['order_items', '7', H.c('g', '4')], ['wishlist', '3', H.c('g', '1')], ['reviews', '4', H.c('y', '4 (2 now anonymous)')], ['invoices', '2', '2']])}<p>(b) Customer 1 → cascades to order 10 → order 10 has an invoice with RESTRICT → <span class="c-r">the whole DELETE fails</span>, nothing is removed — even the rows the cascade had already "planned".</p>`,
+      brute: {
+        why: `<p>No foreign keys; the application "remembers" to clean up. Someone writes <code>DELETE FROM customers</code> and <code>DELETE FROM orders</code>, forgets order_items and wishlist. The result: orphaned items and wishlist rows pointing to nothing, reports that double-count, and no way for the database to tell you. And nobody notices the invoice that should have blocked the delete.</p>`,
+        code: lab(`CREATE TABLE customers (id INTEGER PRIMARY KEY, name TEXT);
+CREATE TABLE orders (id INTEGER PRIMARY KEY, customer_id INTEGER);
+CREATE TABLE order_items (id INTEGER PRIMARY KEY, order_id INTEGER);
+CREATE TABLE wishlist (id INTEGER PRIMARY KEY, customer_id INTEGER);
+INSERT INTO customers VALUES (1,'Asha'),(2,'Ben'),(3,'Chen');
+INSERT INTO orders VALUES (10,1),(11,1),(12,2),(13,2),(14,3);
+INSERT INTO order_items VALUES (1,10),(2,10),(3,11),(4,12),(5,12),(6,13),(7,14);
+INSERT INTO wishlist VALUES (1,1),(2,2),(3,2);
+-- "app-side cascade" that forgets two tables:
+DELETE FROM orders WHERE customer_id = 2;
+DELETE FROM customers WHERE id = 2;
+SELECT 'orphan order_items' AS problem, COUNT(*) AS n FROM order_items oi LEFT JOIN orders o ON o.id = oi.order_id WHERE o.id IS NULL
+UNION ALL
+SELECT 'orphan wishlist rows', COUNT(*) FROM wishlist w LEFT JOIN customers c ON c.id = w.customer_id WHERE c.id IS NULL;`)
+      },
+      mcq: { q: 'Deleting customer 1 cascades to order 10, which has an invoice with ON DELETE RESTRICT. What is deleted?', options: ['Customer 1 only', 'Customer 1 and order 11, but not order 10', 'Nothing — the whole statement fails and rolls back', 'Everything except the invoice'], answer: 2, explain: 'A statement is atomic. One RESTRICT violation anywhere in the cascade tree aborts the entire DELETE.' },
+      hints: [
+        '<p>Hint 1: Draw the tree from customers: orders (CASCADE) → order_items (CASCADE) and invoices (RESTRICT); wishlist (CASCADE); reviews (SET NULL).</p>',
+        '<p>Hint 2: SET NULL keeps rows — only the FK value changes. RESTRICT anywhere below the deleted parent blocks the whole statement.</p>',
+        '<p>Hint 3: Prove (a) with one <code>UNION ALL</code> count query after the delete. Predict (b) with a "pre-flight" join: invoices → orders WHERE customer_id = 1; any row means the delete will fail.</p>'
+      ],
+      solution: {
+        approach: `<p>Declare every relationship with the right action, switch FKs on, delete customer 2 and count. For customer 1 run a pre-flight query that walks the same path the cascade would take and looks for RESTRICT blockers — the safe way to check a destructive operation before doing it.</p>`,
+        code: lab(`PRAGMA foreign_keys = ON;
+CREATE TABLE customers (id INTEGER PRIMARY KEY, name TEXT NOT NULL);
+CREATE TABLE orders (id INTEGER PRIMARY KEY,
+  customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE);
+CREATE TABLE order_items (id INTEGER PRIMARY KEY,
+  order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE, product TEXT NOT NULL);
+CREATE TABLE wishlist (id INTEGER PRIMARY KEY,
+  customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE, product TEXT NOT NULL);
+CREATE TABLE reviews (id INTEGER PRIMARY KEY,
+  customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL, rating INTEGER NOT NULL);
+CREATE TABLE invoices (id INTEGER PRIMARY KEY,
+  order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE RESTRICT);
+CREATE INDEX idx_orders_cust ON orders(customer_id);
+CREATE INDEX idx_items_order ON order_items(order_id);
+CREATE INDEX idx_wish_cust ON wishlist(customer_id);
+CREATE INDEX idx_reviews_cust ON reviews(customer_id);
+CREATE INDEX idx_invoices_order ON invoices(order_id);
+
+INSERT INTO customers VALUES (1,'Asha'),(2,'Ben'),(3,'Chen');
+INSERT INTO orders VALUES (10,1),(11,1),(12,2),(13,2),(14,3);
+INSERT INTO order_items VALUES (1,10,'Phone'),(2,10,'Cable'),(3,11,'Book'),(4,12,'Lamp'),(5,12,'Cable'),(6,13,'Mug'),(7,14,'Pen');
+INSERT INTO wishlist VALUES (1,1,'Watch'),(2,2,'Shoes'),(3,2,'Bag');
+INSERT INTO reviews VALUES (1,1,5),(2,2,4),(3,2,3),(4,3,5);
+INSERT INTO invoices VALUES (500,10),(501,14);
+
+-- (a) delete customer 2 and count what is left
+DELETE FROM customers WHERE id = 2;
+SELECT 'customers' AS tbl, COUNT(*) AS n FROM customers
+UNION ALL SELECT 'orders', COUNT(*) FROM orders
+UNION ALL SELECT 'order_items', COUNT(*) FROM order_items
+UNION ALL SELECT 'wishlist', COUNT(*) FROM wishlist
+UNION ALL SELECT 'reviews (total)', COUNT(*) FROM reviews
+UNION ALL SELECT 'reviews (anonymous)', COUNT(*) FROM reviews WHERE customer_id IS NULL
+UNION ALL SELECT 'invoices', COUNT(*) FROM invoices;
+
+-- (b) pre-flight for customer 1: any RESTRICT blocker in the cascade path?
+SELECT i.id AS blocking_invoice, o.id AS via_order
+FROM invoices i JOIN orders o ON o.id = i.order_id
+WHERE o.customer_id = 1;
+-- one row returned => DELETE FROM customers WHERE id = 1 would fail and change nothing`),
+        complexity: `<p>With FK indexes each cascaded row is found in O(log N); the delete touches O(k) rows where k is the size of the subtree (here 2 orders + 3 items + 2 wishlist + 2 review updates). The pre-flight query is one indexed join.</p>`,
+        followUps: ['Change the design so a customer with invoices can still be "deleted" for GDPR (anonymise personal columns + soft delete).', 'How would you delete a customer with 5 million order_items without locking the tables for minutes?']
       }
     }]
   });

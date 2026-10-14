@@ -1950,5 +1950,249 @@ rl_create(nullptr, -1, 0) → ${H.c('r', 'NULL')} (invalid args, no exception es
       }
     }]
   });
+
+  /* ======================================================================
+     TOPIC 8 — TRICKY INTERVIEW QUESTIONS & OUTPUT PREDICTION
+     ====================================================================== */
+  var OUTQ = [
+    { name: 'Virtual call inside a constructor', code: 'struct Base {\n  Base() { hello(); }\n  virtual void hello() { cout << "Base "; }\n};\nstruct Derived : Base {\n  Derived() { hello(); }\n  void hello() override { cout << "Derived "; }\n};\nint main() { Derived d; }',
+      steps: [[9, '', '<code>Derived d;</code> — construction always starts with the <b>base</b> sub-object.'], [2, '', 'Inside <code>Base()</code> the object is <b>only a Base so far</b>: the vptr points to Base\'s vtable. Derived\'s members don\'t exist yet, so C++ refuses to dispatch to Derived.'], [3, 'Base ', 'So <code>hello()</code> resolves to <code>Base::hello</code> → prints "Base ".'], [6, '', 'Base is done; the vptr is switched to Derived\'s vtable and <code>Derived()</code>\'s body runs.'], [7, 'Base Derived ', 'Now <code>hello()</code> dispatches to <code>Derived::hello</code>. Same rule applies in destructors, in reverse.']] },
+    { name: 'Default argument + virtual function', code: 'struct A {\n  virtual void f(int x = 1) { cout << "A" << x; }\n};\nstruct B : A {\n  void f(int x = 2) override { cout << "B" << x; }\n};\nint main() {\n  B b; A& r = b;\n  r.f();\n}',
+      steps: [[8, '', '<code>r</code> has <b>static type</b> A&amp; but <b>dynamic type</b> B.'], [9, '', 'Default arguments are filled in at <b>compile time</b> from the <b>static</b> type → the call becomes <code>r.f(1)</code>.'], [5, 'B1', 'The function body is chosen at <b>run time</b> from the dynamic type → <code>B::f</code> runs with x = 1. Output "B1" — a mix of both! Rule: never give overriding functions different default arguments.']] },
+    { name: 'Construction & destruction order', code: 'struct M { const char* n;\n  M(const char* s) : n(s) { cout << "M" << n << " "; }\n  ~M() { cout << "~M" << n << " "; } };\nstruct Base { Base() { cout << "Base "; } ~Base() { cout << "~Base "; } };\nstruct D : Base {\n  M b{"b"}; M a{"a"};\n  D() { cout << "D "; } ~D() { cout << "~D "; }\n};\nint main() { D d; }',
+      steps: [[9, '', 'Order of construction: <b>bases</b> → <b>members in declaration order</b> → <b>constructor body</b>.'], [4, 'Base ', 'Base first.'], [6, 'Base Mb Ma ', 'Members in <b>declaration</b> order: b then a (the order in an initializer list would not matter).'], [7, 'Base Mb Ma D ', 'Then D\'s body.'], [7, 'Base Mb Ma D ~D ', 'At the end of main: destruction is the exact <b>reverse</b>: body first…'], [6, 'Base Mb Ma D ~D ~Ma ~Mb ', '…members in reverse declaration order…'], [4, 'Base Mb Ma D ~D ~Ma ~Mb ~Base ', '…base last.']] },
+    { name: 'Object slicing', code: 'struct A { virtual string name() const { return "A"; } };\nstruct B : A { string name() const override { return "B"; } };\nvoid byVal(A a)        { cout << a.name(); }\nvoid byRef(const A& a) { cout << a.name(); }\nint main() { B b; byVal(b); byRef(b); }',
+      steps: [[5, '', 'Two calls with the same B object.'], [3, 'A', '<code>byVal(A a)</code> copy-constructs a <b>new A</b> from the A-part of b: the B part is <b>sliced off</b> and the copy\'s vptr is A\'s. → "A".'], [4, 'AB', '<code>byRef</code> binds a reference to the original B → virtual dispatch works → "B". Pass polymorphic objects by reference or pointer.']] },
+    { name: 'vector growth: copy or move?', code: 'struct T { T() {}\n  T(const T&) { cout << "C"; }\n  T(T&&)      { cout << "M"; } };   // not noexcept!\nint main() {\n  vector<T> v; v.reserve(1);\n  v.push_back(T());\n  v.push_back(T());\n}',
+      steps: [[5, '', 'Capacity 1.'], [6, 'M', 'First push_back: the temporary is <b>moved</b> into the buffer → "M".'], [7, 'MM', 'Second push_back: no room → reallocate. libstdc++ first constructs the new element in the new buffer (moved) → "M".'], [7, 'MMC', 'Then it must relocate the old element. The move ctor is <b>not noexcept</b>, so to keep the strong guarantee vector uses <code>move_if_noexcept</code> → it <b>copies</b> → "C". Mark move constructors <code>noexcept</code> and you get "MMM".']] },
+    { name: 'Template specialization vs overload', code: 'template <class T> void g(T)  { cout << "T "; }\ntemplate <> void g<int*>(int*) { cout << "spec "; }\ntemplate <class T> void g(T*) { cout << "T* "; }\nint main() { int x; g(&x); }',
+      steps: [[4, '', 'Call <code>g(int*)</code>. Overload resolution only considers <b>primary templates</b>: <code>g(T)</code> and <code>g(T*)</code>.'], [2, '', 'The explicit specialization belongs to the template declared <b>before</b> it — <code>g(T)</code>. It doesn\'t take part in overload resolution itself.'], [3, 'T* ', '<code>g(T*)</code> is more specialized than <code>g(T)</code> → it wins → "T* ". The <code>spec</code> version is never used! Prefer plain overloads over function template specializations.']] },
+    { name: 'mutable lambda copies', code: 'int main() {\n  auto c = [n = 0]() mutable { return ++n; };\n  auto d = c;          // copies the closure (n = 0)\n  cout << c() << c() << d();\n}',
+      steps: [[2, '', 'A lambda is an object; the init-capture <code>n</code> is a data member. <code>mutable</code> lets <code>operator()</code> change it.'], [3, '', '<code>d</code> is a <b>copy</b> of the closure, with its own n = 0.'], [4, '1', 'C++17 sequences <code>&lt;&lt;</code> operands left to right. c() → 1'], [4, '12', 'c() → 2'], [4, '121', 'd() uses its own counter → 1. Output "121".']] },
+    { name: 'Diamond with virtual inheritance', code: 'struct A { A() { cout << "A"; } };\nstruct B : virtual A { B() { cout << "B"; } };\nstruct C : virtual A { C() { cout << "C"; } };\nstruct D : B, C { D() { cout << "D"; } };\nint main() { D d; }',
+      steps: [[5, '', 'D inherits A twice, but <b>virtually</b> → only one shared A sub-object.'], [1, 'A', 'Virtual bases are constructed <b>first</b>, by the most-derived class (D) → "A".'], [2, 'AB', 'Then non-virtual bases left to right: B (which skips its A — already built).'], [3, 'ABC', 'C (also skips A).'], [4, 'ABCD', 'Finally D\'s body. Without <code>virtual</code> you\'d get "ABACD" — two A sub-objects.']] },
+    { name: 'Copy elision (C++17)', code: 'struct T {\n  T()            { cout << "ctor "; }\n  T(const T&)    { cout << "copy "; }\n  T(T&&)         { cout << "move "; }\n  ~T()           { cout << "dtor "; } };\nT make() { return T(); }\nint main() { T t = make(); }',
+      steps: [[7, '', '<code>T t = make();</code> initializes t from a <b>prvalue</b>.'], [6, 'ctor ', '<code>return T();</code> is also a prvalue. Since C++17 prvalues are not "temporary objects that get copied" — they directly initialize the final target. → one "ctor ".'], [7, 'ctor ', 'No copy, no move: <b>guaranteed copy elision</b> (even if copy/move were deleted it would compile).'], [5, 'ctor dtor ', 'End of main: t destroyed. Output "ctor dtor ".']] },
+    { name: 'Signed vs unsigned comparison', code: 'int main() {\n  unsigned u = 1; int i = -1;\n  cout << (i < u) << " " << (-1 < 1);\n}',
+      steps: [[2, '', 'Mixed <code>int</code> and <code>unsigned int</code> in a comparison → the usual arithmetic conversions turn the int into <b>unsigned</b>.'], [3, '0', '-1 becomes 4294967295 (2<sup>32</sup> − 1), which is not &lt; 1 → false → prints 0.'], [3, '0 1', 'Both ints → normal comparison → 1. Use <code>std::cmp_less(i, u)</code> (C++20) for a mathematically correct comparison; compile with <code>-Wsign-compare</code>.']] }
+  ];
+
+  function outputViz(input) {
+    var k = intIn(input, '1', 1, OUTQ.length, 'Question number');
+    var q = OUTQ[k - 1], frames = [];
+    frames.push({ narr: '<b>Question ' + k + ': ' + q.name + '.</b> Read the code and predict the exact output <i>before</i> stepping. (Type another number 1–' + OUTQ.length + ' in the box to switch questions.)',
+      parts: [codePart('predict the output', q.code, {}), { type: 'vars', label: 'stdout', vals: { output: '(nothing yet)' } }] });
+    q.steps.forEach(function (s, i) {
+      var h = {}; h[s[0]] = s[1] !== (i ? q.steps[i - 1][1] : '') ? 'ok' : 'cur';
+      frames.push({ narr: s[2], parts: [codePart('predict the output', q.code, h), { type: 'vars', label: 'stdout', vals: { output: s[1] === '' ? '(nothing yet)' : '"' + s[1] + '"' }, hl: s[1] !== (i ? q.steps[i - 1][1] : '') ? { output: 'ok' } : {} }] });
+    });
+    frames.push({ narr: 'Final answer for Q' + k + ': <b>' + H.esc(q.steps[q.steps.length - 1][1]) + '</b>. Did your prediction match? If not, the step where you diverged is the rule to memorize.',
+      parts: [{ type: 'table', label: 'all questions in this visualizer', columns: ['#', 'topic', 'output'], rows: OUTQ.map(function (x, j) { return [String(j + 1), x.name, x.steps[x.steps.length - 1][1]]; }), hl: (function () { var o = {}; o[k - 1] = 'sel'; return o; })() }] });
+    return frames;
+  }
+
+  topics.push({
+    title: 'Tricky C++ Interview Questions & Output Prediction',
+    analogy: `<p>Output-prediction questions are like <b>magic tricks</b>: the audience watches the obvious hand while the real work happens in the other one. In C++ the "other hand" is always one of a few hidden rules — the <i>static</i> type vs the <i>dynamic</i> type, the order objects are born and die, a silent conversion, a copy that was elided, or plain undefined behavior. Learn the handful of hidden hands and every trick becomes obvious.</p>`,
+    explain: `<p>🟢 <b>A 7-step checklist for any "what does this print?" question:</b></p>
+      <ol>
+        <li><b>Is there undefined behavior?</b> Unsequenced modifications (<code>i++ + i++</code>), reading uninitialized members, dangling references, signed overflow, deleting through a non-virtual base destructor. If yes, the answer is "UB" — say so confidently.</li>
+        <li><b>Lifetimes:</b> construction = virtual bases → bases (left to right) → members (<b>declaration</b> order, not initializer-list order) → body. Destruction = exact reverse. Temporaries die at the end of the full expression (unless bound to a const&amp; / &amp;&amp; local).</li>
+        <li><b>Static vs dynamic type:</b> virtual calls use the dynamic type, but <b>default arguments, overload resolution, name lookup and access checks use the static type</b>. Virtual calls in constructors/destructors don't go further down than the class being built. Pass-by-value <b>slices</b>.</li>
+        <li><b>Name lookup:</b> a name in a derived class <b>hides</b> all base overloads with that name (fix: <code>using Base::f;</code>).</li>
+        <li><b>Overload resolution:</b> exact match &gt; promotion (<code>char→int</code>, <code>float→double</code>) &gt; conversion (<code>int→long</code>, <code>int→double</code>) &gt; user-defined; non-template beats template on a tie; specializations don't participate.</li>
+        <li><b>Copies and moves:</b> prvalues are elided (C++17 guaranteed); NRVO is allowed but optional; returning a local or parameter by name moves it; <code>std::move</code> on a <code>const</code> object copies; containers copy during reallocation unless the move is <code>noexcept</code>.</li>
+        <li><b>Arithmetic:</b> integer promotion (<code>char + 1</code> is an <code>int</code>), signed→unsigned in mixed comparisons, integer division truncates toward zero (<code>-7/2 == -3</code>, <code>-7%2 == -1</code>), <code>?:</code> unifies to a common type (<code>true ? 1 : 2.5</code> is the double 1).</li>
+      </ol>
+      <p><b>Evaluation order (C++17):</b> <code>a &lt;&lt; b &lt;&lt; c</code>, <code>a &gt;&gt; b</code>, <code>a = b</code> (right before left), <code>a[b]</code>, <code>a.b</code>, <code>a-&gt;*b</code> are sequenced; <b>function arguments</b> are still evaluated in an <b>unspecified</b> order (but not interleaved); <code>&amp;&amp;</code>, <code>||</code> and <code>,</code> are left-to-right with short-circuit.</p>
+      ${H.table(['you see…', 'think…'], [['virtual call in ctor/dtor', 'no dispatch beyond the current class'], ['different default args in override', 'static type picks the default'], ['pass by value of a base type', 'slicing'], ['<code>f(double)</code> in derived, call <code>f(1)</code>', 'name hiding'], ['<code>vector&lt;T&gt;</code> + push_back + prints in copy/move', 'reallocation + noexcept'], ['<code>sizeof</code> of a class', 'padding, vptr, empty base, alignment'], ['<code>unsigned</code> anywhere in a comparison', 'signed → unsigned conversion']])}`,
+    clues: [
+      '"What is the output of this program?" + a class hierarchy → static vs dynamic type, ctor/dtor order, slicing',
+      '"Will this compile?" → name hiding, ambiguous overloads, deleted functions, most vexing parse',
+      'Print statements inside copy/move constructors → elision, NRVO, noexcept + vector reallocation',
+      '<code>sizeof(...)</code> in the question → padding, alignment, vptr, empty base optimization',
+      '<code>i++</code> twice in one expression, or reading a moved-from value → UB / unspecified — say it',
+      'Mixed <code>int</code>/<code>unsigned</code>/<code>char</code> arithmetic → integer promotions and usual arithmetic conversions'
+    ],
+    code: [R`
+      #include <iostream>
+      #include <string>
+      #include <utility>
+
+      // A "Tracer" is the best tool for output questions: it logs every special member call.
+      struct Tracer {
+          std::string name;
+          explicit Tracer(std::string n) : name(std::move(n)) { std::cout << "ctor(" << name << ") "; }
+          Tracer(const Tracer& o) : name(o.name + "'") { std::cout << "copy(" << name << ") "; }
+          Tracer(Tracer&& o) noexcept : name(std::move(o.name)) { o.name = "~"; std::cout << "move(" << name << ") "; }
+          Tracer& operator=(const Tracer& o) { name = o.name + "="; std::cout << "copy=(" << name << ") "; return *this; }
+          Tracer& operator=(Tracer&& o) noexcept { name = std::move(o.name); o.name = "~"; std::cout << "move=(" << name << ") "; return *this; }
+          ~Tracer() { std::cout << "dtor(" << name << ") "; }
+      };
+      Tracer make(const char* n) { return Tracer(n); }       // prvalue: guaranteed elision
+      Tracer pass(Tracer t) { return t; }                    // parameter: implicitly MOVED on return
+
+      int main() {
+          Tracer a("a");                 std::cout << "\n";  // ctor(a)
+          Tracer b = a;                  std::cout << "\n";  // copy(a')
+          Tracer c = make("c");          std::cout << "\n";  // ctor(c)            <- no copy, no move
+          b = std::move(c);              std::cout << "\n";  // move=(c)
+          Tracer d = pass(a);            std::cout << "\n";  // copy(a') move(a') dtor(~)
+      }                                                      // dtor(a') dtor(~) dtor(c) dtor(a)  <- reverse order
+    `],
+    codeTitle: ['The Tracer: your microscope for every copy/move/elision question'],
+    viz: { title: 'Predict-the-output: step through 10 classic traps', input: '1', inputLabel: 'Question number (1-10)', gen: outputViz },
+    examples: [
+      { title: 'Name hiding: the derived overload swallows the base one', html: `<p>Output: <b>B::f(double)</b>. Name lookup stops at the first scope that contains the name <code>f</code> — class B. <code>A::f(int)</code> is never even considered, so 1 converts to double. Add <code>using A::f;</code> inside B to bring it back (then <code>b.f(1)</code> prints <code>A::f(int)</code>).</p>`,
+        code: R`
+          #include <iostream>
+          struct A { void f(int)    { std::cout << "A::f(int) "; } };
+          struct B : A { void f(double) { std::cout << "B::f(double) "; } };
+          int main() { B b; b.f(1); }          // B::f(double)` },
+      { title: 'Static locals and C++17 left-to-right <<', html: `<p>Output: <b>123</b>. The static local is initialized once (thread-safely) and keeps its value between calls. Since C++17, the operands of <code>&lt;&lt;</code> are evaluated left to right, so this is <b>guaranteed</b> — before C++17 it was unspecified and "321" was a legal output.</p>`,
+        code: R`
+          #include <iostream>
+          int f() { static int n = 0; return ++n; }
+          int main() { std::cout << f() << f() << f() << "\n"; }    // 123` },
+      { title: 'sizeof: padding, vptr and the empty base', html: `<p>Output on x86-64 (GCC/Clang): <b>14 8 128</b>. <code>sizeof(E)</code> = 1 (every object needs a distinct address); <code>D : E { int x; }</code> = 4 (empty base optimization); a class with a virtual function = 8 (the vptr); <code>{char; int; char}</code> = 12 (padding before the int and at the end to keep alignment 4), but reordered <code>{int; char; char}</code> = 8. Sort members by decreasing alignment.</p>
+        ${H.table(['type', 'layout', 'sizeof'], [['struct E {}', '1 byte placeholder', '1'], ['struct D : E { int x; }', 'x (EBO)', '4'], ['struct V { virtual void f(); }', 'vptr', '8'], ['struct P { char c; int i; char d; }', 'c ___ iiii d ___', '12'], ['struct Q { int i; char c; char d; }', 'iiii c d __', '8']])}`,
+        code: R`
+          #include <iostream>
+          struct E {}; struct D : E { int x; }; struct V { virtual void f() {} };
+          struct P { char c; int i; char d; }; struct Q { int i; char c; char d; };
+          int main() { std::cout << sizeof(E) << sizeof(D) << " " << sizeof(V) << " " << sizeof(P) << sizeof(Q) << "\n"; }   // 14 8 128` },
+      { title: 'Overload resolution grab bag', html: `<p>Output: <b>int double int ptr long</b>. <code>'a'</code> → <code>int</code> by <b>promotion</b> (beats conversion to long/double). <code>1.0f</code> → <code>double</code> by promotion. <code>0</code> is an <code>int</code> literal → exact match (not the pointer!). <code>nullptr</code> → only converts to pointers. <code>1L</code> → exact match long.</p>`,
+        code: R`
+          #include <iostream>
+          void f(int)    { std::cout << "int "; }
+          void f(double) { std::cout << "double "; }
+          void f(long)   { std::cout << "long "; }
+          void f(char*)  { std::cout << "ptr "; }
+          int main() { f('a'); f(1.0f); f(0); f(nullptr); f(1L); }   // int double int ptr long` },
+      { title: 'NRVO is not guaranteed', html: `<p>Output (GCC): <b>ctor ctor move dtor dtor | dtor</b>. With two possible named return objects, the compiler can't construct "the" result in place, so it <b>moves</b> the chosen local into the return slot. With a single named local (<code>T x; return x;</code>) GCC/Clang usually elide (NRVO), but the standard only <i>allows</i> it. Only <code>return T();</code> (a prvalue) is guaranteed.</p>`,
+        code: R`
+          #include <iostream>
+          struct T { T() { std::cout << "ctor "; } T(const T&) { std::cout << "copy "; }
+                     T(T&&) { std::cout << "move "; } ~T() { std::cout << "dtor "; } };
+          T make(bool b) { T x, y; if (b) return x; return y; }
+          int main() { T t = make(true); std::cout << "| "; }        // ctor ctor move dtor dtor | dtor` },
+      { title: 'Deleting through a base without a virtual destructor', html: `<p>Output: <b>~VD ~VB ~Base</b>. With a virtual destructor, <code>delete p</code> runs the full chain. <code>unique_ptr&lt;Base&gt;</code> holding a <code>Der</code> calls <code>delete</code> on a <code>Base*</code>: since <code>~Base</code> isn't virtual, only <code>~Base</code> runs — and formally the behavior is <b>undefined</b>. (<code>shared_ptr&lt;Base&gt;(new Der)</code> or <code>make_shared&lt;Der&gt;</code> would call <code>~Der</code>, because its deleter is type-erased at creation.)</p>`,
+        code: R`
+          #include <iostream>
+          #include <memory>
+          struct Base { ~Base() { std::cout << "~Base "; } };
+          struct Der : Base { ~Der() { std::cout << "~Der "; } };
+          struct VB { virtual ~VB() { std::cout << "~VB "; } };
+          struct VD : VB { ~VD() override { std::cout << "~VD "; } };
+          int main() {
+              VB* p = new VD; delete p;                         // ~VD ~VB
+              std::unique_ptr<Base> q = std::make_unique<Der>();  // UB at destruction: prints only ~Base
+          }` },
+      { title: 'Catch by value slices the exception', html: `<p>Output: <b>BaseDer</b>. <code>catch (Base b)</code> copy-constructs a Base from the thrown Der → sliced → <code>name()</code> says "Base". <code>catch (const Base&amp; b)</code> binds to the real exception object → "Der". Rule: <b>throw by value, catch by (const) reference</b>; rethrow with <code>throw;</code> (not <code>throw b;</code>, which slices again).</p>`,
+        code: R`
+          #include <iostream>
+          struct Base { virtual const char* name() const { return "Base"; } virtual ~Base() = default; };
+          struct Der : Base { const char* name() const override { return "Der"; } };
+          int main() {
+              try { throw Der(); } catch (Base b) { std::cout << b.name(); }          // Base (sliced copy)
+              try { throw Der(); } catch (const Base& b) { std::cout << b.name(); }   // Der
+          }` },
+      { title: 'Small expressions, big surprises', html: `<p>Output: <b>1 97 -3 -1 0 66B</b> then <b>40 23 3</b>.</p>
+        ${H.table(['expression', 'value', 'why'], [['<code>true ? 1 : 2.5</code>', '1 (a double)', 'common type is double; prints as 1'], ['<code>false ? 1 : \'a\'</code>', '97', 'common type int'], ['<code>-7/2</code>, <code>-7%2</code>', '-3, -1', 'division truncates toward zero'], ['<code>unsigned char c = 255; c++;</code>', '0', 'unsigned wraps modulo 256'], ['<code>\'A\' + 1</code>', '66', 'char promoted to int'], ['<code>sizeof(i++)</code>', '4, i unchanged', 'sizeof does not evaluate its operand'], ['<code>2[a]</code>', 'a[2]', '<code>a[b]</code> is <code>*(a+b)</code>, commutative'], ['<code>(1, 2, 3)</code>', '3', 'comma operator yields the last']])}`,
+        code: R`
+          #include <iostream>
+          int main() {
+              std::cout << (true ? 1 : 2.5) << " " << (false ? 1 : 'a') << " " << -7 / 2 << " " << -7 % 2;
+              unsigned char c = 255; c++; std::cout << " " << int(c);
+              char ch = 'A'; std::cout << " " << ch + 1 << char(ch + 1) << "\n";      // 1 97 -3 -1 0 66B
+              int i = 0; std::cout << sizeof(i++) << i;
+              int a[] = {1, 2, 3}; std::cout << " " << *(a + 1) << 2[a];
+              int x = (1, 2, 3); std::cout << " " << x << "\n";                       // 40 23 3
+          }` },
+      { title: 'shared_ptr and weak_ptr counts', html: `<p>Output: <b>322</b>. p, q and r share one control block → 3 inside the block; r dies → 2; a <code>weak_ptr</code> increments the <b>weak</b> count, not <code>use_count()</code> → still 2.</p>`,
+        code: R`
+          #include <iostream>
+          #include <memory>
+          int main() {
+              auto p = std::make_shared<int>(5);
+              auto q = p;
+              { auto r = q; std::cout << p.use_count(); }   // 3
+              std::cout << p.use_count();                    // 2
+              std::weak_ptr<int> w = p;
+              std::cout << p.use_count() << "\n";            // 2
+          }` }
+    ],
+    deepDive: `<p>🟣 <b>The rules behind the tricks, stated precisely.</b></p>
+      <ul>
+        <li><b>Virtual calls during construction/destruction</b> ([class.cdtor]): while a constructor or destructor of class X runs, the dynamic type is X. A call to a <i>pure</i> virtual function from there is UB (often "pure virtual function called" abort).</li>
+        <li><b>Initialization order</b> is fixed by declaration order; compilers warn (<code>-Wreorder</code>) when the mem-initializer list is written in a different order, because <code>S(int x) : b(x), a(b + 1)</code> reads an <b>uninitialized</b> b if a is declared first.</li>
+        <li><b>Copy elision:</b> since C++17 a prvalue is just "a recipe for initializing an object"; returning one or initializing from one never creates an intermediate. NRVO, elision of throw/catch copies, and elision from <code>std::move</code>'d locals are separate: optional, or (for <code>return std::move(x);</code>) actively <b>prevented</b> — don't write it.</li>
+        <li><b>Implicit move on return</b> (C++11, broadened in C++20/23): <code>return local;</code> and <code>return param;</code> first try to move. That's why <code>pass(Tracer t)</code> prints <code>move</code>.</li>
+        <li><b>vector reallocation</b> uses <code>std::move_if_noexcept</code>: if the move constructor may throw and a copy constructor exists, it copies to keep <code>push_back</code>'s strong guarantee. The order "construct new element, then relocate old ones" is a libstdc++ implementation detail — say "implementation-specific" if asked about exact order.</li>
+        <li><b>Unspecified vs undefined vs implementation-defined:</b> argument evaluation order is <b>unspecified</b> (one of the valid orders happens); <code>sizeof(int)</code> is <b>implementation-defined</b> (documented by the compiler); <code>i = i++ + 1</code> was UB before C++17 and is now well-defined, but <code>i++ + i++</code> is still UB. Interviewers reward candidates who know which bucket an example is in.</li>
+        <li><b>Tools to settle debates:</b> Compiler Explorer (godbolt.org) with <code>-O0</code> and <code>-O2</code>, C++ Insights (cppinsights.io) to see implicit conversions, generated special members and lambda classes, and <code>-fsanitize=address,undefined</code> to expose UB that "seems to work".</li>
+      </ul>`,
+    aiEra: `<p>🤖 <b>What AI changes:</b> "what does this print?" can be answered by pasting into an assistant or a compiler — so interviewers increasingly ask <b>why</b>, ask about UB, or hand you code where the obvious output is wrong. Your value is the reasoning, not the recall.</p>
+      <p><b>Use AI as a partner:</b> generate fresh variations ("give me 5 output questions mixing slicing and default arguments, answers hidden"), then verify each with a real compiler and sanitizers — and ask the AI to explain the standard rule for each.</p>
+      <p><b>Where AI goes wrong:</b> it confidently predicts outputs for UB code, assumes NRVO is guaranteed, gets pre-C++17 evaluation order wrong, mixes up which overload a literal <code>0</code> picks, and claims the specialization <code>g&lt;int*&gt;</code> is chosen in the Dimov–Abrahams example. Always run it.</p>
+      <p><b>What you must own:</b> the 7-step checklist above, applied out loud, quickly. That's what the interviewer is scoring.</p>`,
+    problems: [{
+      title: 'Predict the Special-Member Call Sequence', level: 'Medium', tags: ['output prediction', 'copy elision', 'move semantics'], companies: ['Bloomberg', 'Optiver', 'IMC', 'Microsoft'],
+      statement: `<p>Using the <code>Tracer</code> class from this topic (it logs <code>ctor</code>, <code>copy</code>, <code>move</code>, <code>copy=</code>, <code>move=</code>, <code>dtor</code>; copies append <code>'</code>; moved-from objects are renamed <code>~</code>), predict the <b>exact</b> output of the program below, line by line, then explain each call. Finally, change <b>one character</b> in <code>pass</code> so that line 5 prints one fewer special member call.</p>
+        <pre>Tracer a("a");          // line 1
+Tracer b = a;           // line 2
+Tracer c = make("c");   // line 3   make: return Tracer(n);
+b = std::move(c);       // line 4
+Tracer d = pass(a);     // line 5   pass(Tracer t): return t;
+}                       // end of main</pre>`,
+      constraints: `<p>C++20, GCC/Clang. Assume no extra optimizations beyond what the standard guarantees, except that you must state where NRVO-style optional elision might apply.</p>`,
+      example: `<pre>line 1: ${H.c('g', 'ctor(a)')}
+line 3: ${H.c('g', 'ctor(c)')}           ← guaranteed elision, no move
+line 5: ${H.c('y', "copy(a') move(a') dtor(~)")}</pre>`,
+      brute: { why: `<p>The "brute" answer assumes every <code>=</code> and every <code>return</code> makes a copy: it predicts copies on lines 3 and 5 and a copy-assignment on line 4. It ignores guaranteed elision (prvalues), the implicit move on <code>return param;</code>, and that <code>std::move</code> selects the move-assignment.</p>`,
+        code: R`
+          #include <iostream>
+          // The naive mental model, written out as the (wrong) prediction it produces.
+          int main() {
+              std::cout << "ctor(a)\n";                       // line 1  (right)
+              std::cout << "copy(a')\n";                      // line 2  (right)
+              std::cout << "ctor(c) copy(c') dtor(c)\n";      // line 3  WRONG: no copy since C++17
+              std::cout << "copy=(c=)\n";                     // line 4  WRONG: std::move picks move=
+              std::cout << "copy(a') copy(a'') dtor(a')\n";   // line 5  WRONG: return t; moves
+          }` },
+      mcq: { q: 'Why does <code>return t;</code> in <code>Tracer pass(Tracer t)</code> <b>move</b> instead of copy, but cannot be elided?', options: ['Returning a named parameter is an implicit-move context, but parameters live in the caller-built slot so NRVO does not apply', 'Because Tracer has a noexcept move constructor', 'Because the function is inline', 'It actually copies'], answer: 0, explain: 'C++ treats <code>return local_or_param;</code> as an rvalue first (implicit move). NRVO is only permitted for local variables, not function parameters.' },
+      hints: [`<p>Lines 1–2 are ordinary construction and copy-construction. Line 3: <code>make</code> returns a <b>prvalue</b> → guaranteed elision, so only one constructor runs.</p>`, `<p>Line 4: <code>std::move(c)</code> is an xvalue → move-assignment; c\'s name becomes <code>~</code>. Line 5: <code>a</code> is copied into the by-value parameter <code>t</code>, then <code>return t;</code> implicitly moves into <code>d</code>, then <code>t</code> (now <code>~</code>) is destroyed.</p>`, `<p>End of main destroys d, c, b, a (reverse order). To save a call on line 5, take the parameter by const reference and return a copy? No — that still copies once. Instead make <code>pass</code> take <code>Tracer&amp;&amp;</code>... or simply call <code>pass(std::move(a))</code> to turn the copy into a move. Think about which is "one character" (hint: change the parameter to <code>const Tracer&amp;</code> and <code>return t;</code> copies once with NRVO impossible — count calls!).</p>`],
+      solution: {
+        approach: `<p>Apply the rules in order: prvalue elision (line 3), xvalue → move-assignment (line 4), parameter copy + implicit move on return + parameter destruction (line 5), reverse-order destruction at the end. For the one-character change: declare the parameter as <code>const Tracer&amp; t</code> — then <code>return t;</code> must copy once into the return slot (no parameter object exists), giving <code>copy(a')</code> only: one call instead of three (copy, move, dtor).</p>`,
+        code: R`
+          #include <iostream>
+          #include <string>
+          #include <utility>
+          struct Tracer {
+              std::string name;
+              explicit Tracer(std::string n) : name(std::move(n)) { std::cout << "ctor(" << name << ") "; }
+              Tracer(const Tracer& o) : name(o.name + "'") { std::cout << "copy(" << name << ") "; }
+              Tracer(Tracer&& o) noexcept : name(std::move(o.name)) { o.name = "~"; std::cout << "move(" << name << ") "; }
+              Tracer& operator=(const Tracer& o) { name = o.name + "="; std::cout << "copy=(" << name << ") "; return *this; }
+              Tracer& operator=(Tracer&& o) noexcept { name = std::move(o.name); o.name = "~"; std::cout << "move=(" << name << ") "; return *this; }
+              ~Tracer() { std::cout << "dtor(" << name << ") "; }
+          };
+          Tracer make(const char* n) { return Tracer(n); }
+          Tracer pass(const Tracer& t) { return t; }       // the one-character change: '&' (plus const for clarity)
+          int main() {
+              Tracer a("a");                 std::cout << "\n";   // ctor(a)
+              Tracer b = a;                  std::cout << "\n";   // copy(a')
+              Tracer c = make("c");          std::cout << "\n";   // ctor(c)
+              b = std::move(c);              std::cout << "\n";   // move=(c)
+              Tracer d = pass(a);            std::cout << "\n";   // copy(a')   (was: copy(a') move(a') dtor(~))
+          }                                                       // dtor(a') dtor(~) dtor(c) dtor(a)`,
+        dry: { head: ['line', 'rule applied', 'output'], rows: [
+          ['1', 'direct construction', 'ctor(a)'], ['2', 'copy-initialization from lvalue', "copy(a')"], ['3', 'prvalue → guaranteed elision', 'ctor(c)'], ['4', 'xvalue → move-assignment', 'move=(c)'],
+          ['5 (by value)', 'copy into param, implicit move on return, param dies', "copy(a') move(a') dtor(~)"], ['5 (const&amp;)', 'copy from reference into return slot', "copy(a')"], ['}', 'reverse destruction d, c, b, a', "dtor(a') dtor(~) dtor(c) dtor(a)"]] },
+        complexity: `<p>Not an algorithmic problem: the "cost" is the number of special-member calls — 3 → 1 on line 5 after the change.</p>`,
+        followUps: ['What prints if <code>Tracer</code>\'s move constructor is deleted? (Line 3 still compiles — guaranteed elision needs no move.)', 'What changes if <code>make</code> is <code>Tracer x(n); return x;</code>? (Optional NRVO: usually still just ctor.)', 'Why is <code>return std::move(x);</code> a pessimization for a local x?']
+      }
+    }]
+  });
   registerModule({ id: 'cpp13', title: 'Expert Idioms + Question Bank', intro: '<p>stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub stub</p>', goals: ['aaaaaaaaaaaa','bbbbbbbbbbbbbb','cccccccccccc'], prereqs: 'xxxxxxxxxxxxxxxxxxxx', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview });
 })();
