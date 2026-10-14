@@ -1978,5 +1978,288 @@ console.log(defaults.editor.tabSize, defaults.editor.font.size); // 2 12 — unt
     }]
   });
 
+  /* ================= TOPIC 9: JSON ================= */
+  topics.push({
+    title: 'JSON: stringify, parse, What Gets Lost & Deep Copies',
+    analogy: `<p>JSON is like <b>vacuum-packing clothes for shipping</b>. <code>JSON.stringify</code> squeezes your living JavaScript object into a flat, portable <b>text</b> package that any language can open. <code>JSON.parse</code> unpacks it on the other side. But the vacuum bag only fits plain things: shirts (strings), socks (numbers), trousers (booleans), boxes (objects/arrays) and empty space (<code>null</code>). Batteries (functions), mystery items (<code>undefined</code>) and fancy gadgets (Dates, Maps) get <b>thrown out or flattened</b> on the way.</p>`,
+    explain: `<p>🟢 <b>What JSON is.</b> JSON (JavaScript Object Notation) is a <b>text format</b> for data — the language of web APIs, config files and local storage. It looks like a JS object literal but is stricter:</p>
+${H.table(['Rule', 'Valid JSON', '<span class="c-r">Invalid JSON</span>'], [
+  ['keys in double quotes', '<code>{"name": "Asha"}</code>', "<code>{name: 'Asha'}</code>"],
+  ['strings in double quotes', '<code>"hi"</code>', "<code>'hi'</code>"],
+  ['no trailing commas', '<code>[1, 2]</code>', '<code>[1, 2,]</code>'],
+  ['no comments', '—', '<code>// note</code>'],
+  ['allowed values', 'string, number, true/false, null, object, array', 'undefined, NaN, Infinity, functions, Dates']
+])}
+<p><b>Two functions do all the work:</b></p>
+<ul><li><code>JSON.stringify(value, replacer?, space?)</code> → JS value to JSON <b>text</b>. Pass <code>space = 2</code> for pretty, indented output.</li>
+<li><code>JSON.parse(text, reviver?)</code> → JSON text back to a JS value. Invalid text throws <code>SyntaxError</code>, so wrap untrusted input in <code>try/catch</code>.</li></ul>
+<p><b>What stringify does with awkward values:</b></p>
+${H.table(['JS value', 'Inside an object', 'Inside an array', 'At the top level'], [
+  ['<code>undefined</code>, functions, Symbols', '<span class="c-r">key dropped</span>', '<code>null</code>', '<code>undefined</code> (not a string!)'],
+  ['<code>NaN</code>, <code>Infinity</code>', '<code>null</code>', '<code>null</code>', '<code>"null"</code>'],
+  ['<code>Date</code>', 'ISO string (via <code>toJSON</code>)', 'ISO string', 'ISO string'],
+  ['<code>Map</code>, <code>Set</code>', '<code>{}</code> (data lost)', '<code>{}</code>', '<code>"{}"</code>'],
+  ['<code>BigInt</code>', '<span class="c-r">TypeError</span>', '<span class="c-r">TypeError</span>', '<span class="c-r">TypeError</span>'],
+  ['circular reference', '<span class="c-r">TypeError</span>', '<span class="c-r">TypeError</span>', '—']
+])}
+<p><b>Round trip is not perfect.</b> After <code>JSON.parse(JSON.stringify(x))</code>, Dates come back as <b>strings</b>, Maps as empty objects, class instances as plain objects, and <code>undefined</code> fields vanish. Use a <b>reviver</b> to rebuild Dates, and <code>structuredClone</code> when you just need a deep copy in memory.</p>`,
+    clues: [
+      '"send/receive data from an API" / "save to localStorage" → <code>JSON.stringify</code> / <code>JSON.parse</code>',
+      '"Unexpected token … in JSON" / "is not valid JSON" → <code>SyntaxError</code>; wrap parse in try/catch',
+      '"my Date became a string after parse" → reviver or convert explicitly',
+      '"deep clone an object" → <code>structuredClone</code> (JSON trick loses Dates, Maps, undefined)',
+      '"Converting circular structure to JSON" → cycles; use a replacer with a WeakSet or restructure',
+      '"hide the password field when logging" → replacer function or <code>toJSON</code>',
+      '"pretty print" → <code>JSON.stringify(obj, null, 2)</code>'
+    ],
+    code: [{ lang: 'js', run: true, title: 'stringify & parse basics (runnable)', code: `const user = { name: 'Asha', age: 30, skills: ['js', 'sql'], active: true, manager: null };
+
+// Object -> JSON text
+const text = JSON.stringify(user);
+console.log(text);           // {"name":"Asha","age":30,"skills":["js","sql"],"active":true,"manager":null}
+console.log(typeof text);    // string
+
+// Pretty print with 2-space indentation
+console.log(JSON.stringify({ a: 1, b: [1, 2] }, null, 2));
+
+// JSON text -> object (a brand-new object)
+const back = JSON.parse(text);
+console.log(back.skills[1], back === user); // sql false
+
+// What gets lost or changed
+const tricky = {
+  missing: undefined,          // dropped
+  fn() { return 1; },          // dropped
+  notANumber: NaN,             // null
+  when: new Date('2026-01-15T10:00:00Z'), // ISO string
+  lookup: new Map([['k', 1]]), // {}
+  list: [undefined, () => 1, Infinity],   // [null, null, null]
+};
+console.log(JSON.stringify(tricky));
+// {"notANumber":null,"when":"2026-01-15T10:00:00.000Z","lookup":{},"list":[null,null,null]}
+
+// Top-level oddities
+console.log(JSON.stringify(undefined), JSON.stringify(() => 1)); // undefined undefined (not strings!)
+console.log(JSON.stringify('hi'), JSON.stringify(42));           // "hi" 42
+
+// Invalid JSON throws
+for (const bad of ["{name: 'x'}", '[1, 2,]', '']) {
+  try {
+    JSON.parse(bad);
+  } catch (e) {
+    console.log('SyntaxError for', JSON.stringify(bad), '->', e.name);
+  }
+}` },
+    { lang: 'js', run: true, title: 'replacer, toJSON, reviver and structuredClone', code: `const account = { id: 7, user: 'asha', password: 'hunter2', balance: 1500 };
+
+// Replacer ARRAY: whitelist of keys
+console.log(JSON.stringify(account, ['id', 'user'])); // {"id":7,"user":"asha"}
+
+// Replacer FUNCTION: called for every key/value; return undefined to drop
+const masked = JSON.stringify(account, (key, value) =>
+  key === 'password' ? '***' : value
+);
+console.log(masked); // {"id":7,"user":"asha","password":"***","balance":1500}
+
+// toJSON: an object decides how it is serialised
+class Money {
+  constructor(paise) { this.paise = paise; }
+  toJSON() { return (this.paise / 100).toFixed(2) + ' INR'; }
+}
+console.log(JSON.stringify({ total: new Money(123450) })); // {"total":"1234.50 INR"}
+
+// Reviver: rebuild Dates while parsing
+const ISO = /^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$/;
+const json = '{"title":"launch","at":"2026-03-01T09:30:00.000Z"}';
+const plain = JSON.parse(json);
+const revived = JSON.parse(json, (key, value) =>
+  typeof value === 'string' && ISO.test(value) ? new Date(value) : value
+);
+console.log(typeof plain.at, revived.at instanceof Date); // string true
+
+// Deep copy: JSON trick vs structuredClone
+const original = { when: new Date(0), tags: new Set(['a']), nested: { n: 1 }, gone: undefined };
+const viaJson = JSON.parse(JSON.stringify(original));
+const viaClone = structuredClone(original);
+console.log(typeof viaJson.when, viaJson.tags, 'gone' in viaJson);          // string {} false
+console.log(viaClone.when instanceof Date, viaClone.tags.has('a'), 'gone' in viaClone); // true true true
+viaClone.nested.n = 99;
+console.log(original.nested.n); // 1 — truly independent` }],
+    codeTitle: ['stringify & parse', 'replacer / toJSON / reviver / structuredClone'],
+    viz: [{
+      title: 'JSON.stringify walks an object: kept, converted, dropped',
+      gen: function () {
+        var code = ['JSON.stringify({', "  id: 42,", "  item: 'pen',", '  price: NaN,', '  note: undefined,', '  print() {},', "  tags: ['a', undefined],", "  created: new Date('2026-01-15T10:00:00Z'),", "  meta: new Map([['k', 1]]),", '});'].join('\n');
+        var steps = [
+          ['id', '42', '42', 'number → kept', 'ok', 2],
+          ['item', "'pen'", '"pen"', 'string → double quotes', 'ok', 3],
+          ['price', 'NaN', 'null', 'NaN/Infinity are not valid JSON numbers', 'cur', 4],
+          ['note', 'undefined', '(key dropped)', 'undefined has no JSON form', 'bad', 5],
+          ['print', 'ƒ print', '(key dropped)', 'functions are not data', 'bad', 6],
+          ['tags', "['a', undefined]", '["a",null]', 'inside arrays undefined becomes null (to keep positions)', 'cur', 7],
+          ['created', 'Date object', '"2026-01-15T10:00:00.000Z"', 'Date has toJSON() → ISO string', 'cur', 8],
+          ['meta', "Map { 'k' → 1 }", '{}', 'Map has no own enumerable props → data lost!', 'bad', 9]
+        ];
+        var f = [], rows = [], out = [];
+        f.push(fr('stringify visits each <b>own enumerable</b> property in order and decides: keep, convert, or drop.', [cp(code, 1), { type: 'table', label: 'Decisions so far', columns: ['key', 'JS value', 'JSON', 'why'], rows: [] }]));
+        steps.forEach(function (s) {
+          rows.push([s[0], s[1], s[2], s[3]]);
+          if (s[2] !== '(key dropped)') out.push('"' + s[0] + '":' + s[2]);
+          var hl = {}; hl[rows.length - 1] = s[4] === 'ok' ? 'ok' : s[4] === 'bad' ? 'bad' : 'cur';
+          f.push(fr('<b>' + s[0] + '</b>: ' + esc(s[3]) + '.', [cp(code, s[5], s[4] === 'bad' ? 'bad' : s[4] === 'ok' ? 'ok' : 'cur'), { type: 'table', label: 'Decisions so far', columns: ['key', 'JS value', 'JSON', 'why'], rows: rows.slice(), hl: hl }, tx('<code>' + esc('{' + out.join(',') + '}') + '</code>', 'JSON text being built')]));
+        });
+        f.push(fr('Final text. <b>2 keys vanished</b>, NaN became null, the Date became a string, the Map became <code>{}</code>. Parsing this back will NOT give you the original object.', [tx('<code>' + esc('{' + out.join(',') + '}') + '</code>', 'Result of JSON.stringify'), vp({ 'keys in': 8, 'keys out': out.length }, 'keys out', 'bad', 'Summary')]));
+        return f;
+      }
+    }, {
+      title: 'JSON.parse with a reviver: the order of calls',
+      input: '{"name":"Asha","born":"1995-06-01T00:00:00.000Z","tags":["x","y"]}',
+      inputLabel: 'JSON text (short, ≤ 200 chars)',
+      gen: function (input) {
+        var text = String(input === undefined ? '' : input).trim();
+        if (!text) throw new Error('Enter some JSON text, e.g. {"a":1,"b":[2,3]}');
+        if (text.length > 200) throw new Error('Keep the JSON under 200 characters');
+        var calls = [], ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/;
+        var result;
+        try {
+          result = JSON.parse(text, function (key, value) {
+            var conv = typeof value === 'string' && ISO.test(value);
+            calls.push({ key: key, value: value, conv: conv });
+            return conv ? new Date(value) : value;
+          });
+        } catch (e) {
+          throw new Error('Not valid JSON (' + e.message + '). Remember: double quotes, no trailing commas.');
+        }
+        if (calls.length > 25) throw new Error('Too many values for the animation — use a smaller JSON (≤ 25 values)');
+        function brief(v) {
+          if (v instanceof Date) return 'Date(' + v.toISOString().slice(0, 10) + ')';
+          if (Array.isArray(v)) return '[' + v.length + ' items]';
+          if (v && typeof v === 'object') return '{' + Object.keys(v).join(', ') + '}';
+          return show(v);
+        }
+        var f = [], rows = [];
+        f.push(fr('JSON.parse first builds the whole value, then calls the reviver <b>bottom-up</b>: children before their parent, and finally the root with key <code>""</code>. Our reviver turns ISO date strings into <b>Date</b> objects.', [tx('<code>' + esc(text) + '</code>', 'Input text'), { type: 'table', label: 'Reviver calls', columns: ['#', 'key', 'value received', 'returned'], rows: [] }]));
+        calls.forEach(function (c, i) {
+          rows.push([String(i + 1), c.key === '' ? '"" (root)' : c.key, c.conv ? show(c.value) : brief(c.value), c.conv ? 'Date object ✔' : 'unchanged']);
+          var hl = {}; hl[i] = c.conv ? 'ok' : c.key === '' ? 'sel' : 'cur';
+          var why = c.key === '' ? 'Last call: the <b>root</b> value with key <code>""</code>. Whatever you return here is the final result.' : c.conv ? 'Key <b>' + esc(c.key) + '</b> holds an ISO date string → reviver returns <b>new Date(…)</b>.' : (c.value !== null && typeof c.value === 'object') ? 'Key <b>' + esc(c.key) + '</b> is a container — all its children were already revived.' : 'Key <b>' + esc(c.key) + '</b> is a plain value → returned unchanged.';
+          f.push(fr('Call #' + (i + 1) + ': ' + why + ' (Returning <code>undefined</code> would delete the key.)', [{ type: 'table', label: 'Reviver calls', columns: ['#', 'key', 'value received', 'returned'], rows: rows.slice(), hl: hl }]));
+        });
+        f.push(fr('Done after <b>' + calls.length + '</b> calls. Result: <b>' + esc(brief(result)) + '</b>' + (calls.some(function (c) { return c.conv; }) ? ' with real Date objects inside.' : '. No ISO dates found, so nothing was converted.'), [vp({ 'reviver calls': calls.length, 'dates revived': calls.filter(function (c) { return c.conv; }).length }, 'dates revived', 'sel', 'Summary')]));
+        return f;
+      }
+    }],
+    examples: [
+      { title: 'Predict the output: the round-trip surprise', html: `<p>Look at each field before and after <code>JSON.parse(JSON.stringify(x))</code>.</p>${H.table(['Field', 'Before', 'After round trip'], [['<code>n</code>', '1', '1 ✔'], ['<code>d</code>', 'Date', '<span class="c-r">string</span>'], ['<code>u</code>', 'undefined', '<span class="c-r">key missing</span>'], ['<code>inf</code>', 'Infinity', '<span class="c-r">null</span>'], ['<code>s</code>', 'Set {1, 2}', '<span class="c-r">{}</span>']])}`, code: { lang: 'js', run: true, code: `const x = { n: 1, d: new Date(0), u: undefined, inf: Infinity, s: new Set([1, 2]) };
+const y = JSON.parse(JSON.stringify(x));
+console.log(y);                    // { n: 1, d: '1970-01-01T00:00:00.000Z', inf: null, s: {} }
+console.log(typeof y.d, 'u' in y); // string false` } },
+      { title: 'Safe parse for untrusted input', html: `<p>Data from users, files, or the network can be broken. Never let one bad payload crash your app: catch the <code>SyntaxError</code> and return a fallback — and remember valid JSON can still be the <b>wrong shape</b>, so check what you got.</p>${H.table(['Input', 'Result'], [['<code>\'{"a":1}\'</code>', '{ ok: true, value: { a: 1 } }'], ["<code>'{a:1}'</code>", '{ ok: false, error: \'SyntaxError…\' }'], ["<code>'null'</code>", '{ ok: true, value: null } — valid but maybe not what you expect!']])}`, code: { lang: 'js', run: true, code: `function safeParse(text) {
+  try {
+    return { ok: true, value: JSON.parse(text) };
+  } catch (e) {
+    return { ok: false, error: e.name + ': ' + e.message };
+  }
+}
+console.log(safeParse('{"a":1}'));
+console.log(safeParse('{a:1}').ok);  // false
+console.log(safeParse('null'));      // { ok: true, value: null }` } },
+      { title: 'Circular references', html: `<p>An object that (directly or indirectly) contains itself cannot be written as finite text. stringify throws <code>TypeError: Converting circular structure to JSON</code>. A replacer with a <code>WeakSet</code> of seen objects can substitute a marker.</p>`, code: { lang: 'js', run: true, code: `const node = { name: 'root', children: [] };
+node.children.push({ name: 'child', parent: node }); // cycle
+
+try { JSON.stringify(node); } catch (e) { console.log(e.name); } // TypeError
+
+function safeStringify(value) {
+  const seen = new WeakSet();
+  return JSON.stringify(value, (key, v) => {
+    if (v !== null && typeof v === 'object') {
+      if (seen.has(v)) return '[Circular]';
+      seen.add(v);
+    }
+    return v;
+  });
+}
+console.log(safeStringify(node)); // {"name":"root","children":[{"name":"child","parent":"[Circular]"}]}` } },
+      { title: 'Big numbers lose precision', html: `<p>JSON numbers become JS doubles, which are exact only up to 2<sup>53</sup> − 1 = 9 007 199 254 740 991. IDs from databases (e.g. 64-bit snowflake IDs) can be silently changed. APIs therefore send big IDs as <b>strings</b>.</p>${H.table(['JSON text', 'Parsed'], [['<code>{"id": 9007199254740993}</code>', '<span class="c-r">9007199254740992</span>'], ['<code>{"id": "9007199254740993"}</code>', '<span class="c-g">"9007199254740993"</span> → <code>BigInt(id)</code>']])}`, code: { lang: 'js', run: true, code: `const parsed = JSON.parse('{"id": 9007199254740993}');
+console.log(parsed.id);                      // 9007199254740992 (changed!)
+const safe = JSON.parse('{"id": "9007199254740993"}');
+console.log(BigInt(safe.id) + 1n);           // 9007199254740994n
+try { JSON.stringify({ big: 10n }); } catch (e) { console.log(e.name, '-', e.message); }` } }
+    ],
+    deepDive: `<p>🟣 <b>stringify algorithm in order:</b> for each value — (1) if it has a <code>toJSON</code> method, call it (Date does this); (2) call the replacer function (with <code>this</code> = the containing object); (3) unwrap Number/String/Boolean wrapper objects; (4) serialise by type. Only <b>own enumerable string-keyed</b> properties are included, in normal property order. The <code>space</code> argument is capped at 10 characters. Well-formed stringify (ES2019) escapes lone surrogates as <code>\\uDXXX</code>, so output is always valid UTF-8.</p>
+<p><b>parse details.</b> The grammar is strict (RFC 8259): no comments, no single quotes, no leading zeros (<code>012</code>), no <code>NaN</code>. Duplicate keys are allowed and the <b>last one wins</b>. A key named <code>"__proto__"</code> becomes an ordinary own property (JSON.parse does not set the prototype) — the danger appears later if your code <b>merges</b> that parsed object into another with naive assignment, which is how prototype-pollution bugs happen. Newer engines (V8 / Chrome 114+, Node 21+) also pass a third <code>context</code> argument to the reviver with the <b>source text</b> of primitives, enabling exact big-number parsing.</p>
+<p><b>Performance.</b> JSON.parse is extremely fast — V8 has a dedicated parser, and parsing a JSON string can even be faster than evaluating an equivalent JS object literal for large data (a known trick for big embedded configs). stringify on huge objects blocks the main thread; for multi-MB payloads consider streaming or doing it in a Worker. <code>structuredClone</code> uses the HTML structured-clone algorithm (the same one used by <code>postMessage</code>), so its cost is similar to stringify+parse but it keeps types.</p>
+<p><b>JSON vs JS object literal.</b> All JSON is (almost) valid JS, but not the other way round. JSON has no dates, no comments, no references — formats like JSON5, YAML, or MessagePack/CBOR exist for those needs, and schema tools (JSON Schema, Zod) validate the <b>shape</b> after parsing.</p>`,
+    aiEra: `<p>🤖 <b>What AI changes:</b> LLMs speak JSON natively: tool/function calling, "structured outputs" and agent protocols all exchange JSON. That makes <code>JSON.parse</code> on <b>model output</b> a daily task — and model output may include markdown fences, trailing commas or truncated text. Robust code wraps parse in try/catch, strips fences, and validates the shape with a schema (e.g. Zod) before trusting it.</p>
+<p><b>Use AI as a partner:</b> <code>"Generate a JSON Schema and a Zod validator for this payload"</code>, <code>"Which fields of this object will be lost or changed by JSON.stringify?"</code>, <code>"Write a reviver that restores Dates and BigInt IDs"</code>.</p>
+<p><b>Where AI goes wrong:</b> recommending <code>JSON.parse(JSON.stringify(x))</code> as a universal deep clone, comparing objects with <code>JSON.stringify(a) === JSON.stringify(b)</code> (key order breaks it), and assuming API numbers are safe for 64-bit IDs.</p>
+<p><b>What you must still own:</b> the exact loss table (undefined, functions, NaN, Date, Map, BigInt, cycles), safe parsing of untrusted text, and choosing JSON vs structuredClone vs a schema validator.</p>`,
+    problems: [{
+      title: 'Round-Trip Objects with Dates (safe parse + reviver)',
+      level: 'Medium', tags: ['JSON', 'reviver', 'error handling', 'Date'], companies: ['Stripe', 'Zomato', 'Salesforce'],
+      statement: `<p>Write <code>save(obj)</code> → JSON text and <code>load(text)</code> → <code>{ ok: true, value }</code> or <code>{ ok: false, error }</code>. After <code>load(save(obj))</code>, every field that was a <code>Date</code> must be a <code>Date</code> again (equal time), at any depth (objects and arrays). Invalid text must not throw.</p>`,
+      constraints: `<p>Payload ≤ 1 MB; no cycles; strings that merely <i>look</i> like a date but were plain strings may also be revived (document this trade-off).</p>`,
+      example: `<p><code>save({ title: 'launch', at: new Date('2026-03-01T09:30:00Z'), steps: [{ due: new Date(0) }] })</code><br>→ <code>'{"title":"launch","at":"2026-03-01T09:30:00.000Z","steps":[{"due":"1970-01-01T00:00:00.000Z"}]}'</code><br><code>load(...)</code> → ${H.c('g', 'value.at instanceof Date === true, value.steps[0].due.getTime() === 0')}<br><code>load('{oops}')</code> → ${H.c('r', "{ ok: false, error: 'SyntaxError: …' }")}</p>`,
+      brute: { why: `<p>Plain <code>JSON.parse</code> leaves dates as strings, so callers sprinkle <code>new Date(obj.at)</code> everywhere — and forget the nested ones. It also throws on bad input, crashing whoever calls it.</p>`, code: { lang: 'js', run: true, code: `function save(obj) { return JSON.stringify(obj); }
+function load(text) {
+  const value = JSON.parse(text);          // throws on bad input!
+  if (value.at) value.at = new Date(value.at); // only the field we remembered
+  return { ok: true, value };
+}
+const r = load(save({ at: new Date(0), steps: [{ due: new Date(0) }] }));
+console.log(r.value.at instanceof Date, r.value.steps[0].due instanceof Date); // true false` } },
+      mcq: { q: 'Why does a reviver reach nested dates automatically?', options: ['JSON.parse calls it for every key at every depth, children before parents', 'It only runs on top-level keys, so you must recurse yourself', 'Dates are revived by default', 'Because stringify stored type information'], answer: 0, explain: 'The reviver is invoked bottom-up for every property in every object and array, ending with the root (key ""). JSON itself stores no type information — that is why we must recognise the ISO pattern.' },
+      hints: [`<p>stringify already turns Dates into ISO strings via <code>Date.prototype.toJSON</code>. The hard part is going back.</p>`, `<p>Use a reviver that tests strings against an ISO-8601 regex and returns <code>new Date(value)</code>. It runs on every nested value for free.</p>`, `<p>Wrap <code>JSON.parse</code> in try/catch and return <code>{ ok: false, error }</code>. Also reject an invalid date (<code>isNaN(d.getTime())</code>) by leaving the string as it was.</p>`],
+      solution: {
+        approach: `<p>Serialise with plain <code>JSON.stringify</code> (Dates become ISO strings). Deserialise with <code>JSON.parse</code> plus a reviver that recognises the exact ISO format stringify produces and rebuilds valid Dates. try/catch turns syntax errors into a result object instead of an exception.</p>`,
+        code: { lang: 'js', run: true, code: `// Exactly the format Date.prototype.toJSON produces: 2026-03-01T09:30:00.000Z
+const ISO_DATE = /^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$/;
+
+function save(obj) {
+  return JSON.stringify(obj);
+}
+
+function reviveDates(key, value) {
+  if (typeof value === 'string' && ISO_DATE.test(value)) {
+    const d = new Date(value);
+    if (!Number.isNaN(d.getTime())) return d; // only real dates
+  }
+  return value;
+}
+
+function load(text) {
+  try {
+    return { ok: true, value: JSON.parse(text, reviveDates) };
+  } catch (e) {
+    return { ok: false, error: e.name + ': ' + e.message };
+  }
+}
+
+const original = {
+  title: 'launch',
+  at: new Date('2026-03-01T09:30:00Z'),
+  steps: [{ due: new Date(0) }, { due: new Date('2026-02-20T00:00:00Z') }],
+};
+const text = save(original);
+const result = load(text);
+console.log(text);
+console.log(result.ok, result.value.at instanceof Date);             // true true
+console.log(result.value.at.getTime() === original.at.getTime());     // true
+console.log(result.value.steps.map(s => s.due instanceof Date));      // [ true, true ]
+console.log(load('{oops}'));                                          // { ok: false, error: ... }` },
+        dry: { head: ['reviver call', 'key', 'value', 'returned'], rows: [
+          ['1', 'title', '"launch"', 'unchanged'],
+          ['2', 'at', '"2026-03-01T09:30:00.000Z"', '<span class="c-g">Date</span>'],
+          ['3', 'due', '"1970-01-01T00:00:00.000Z"', '<span class="c-g">Date</span>'],
+          ['4', '0', '{ due: Date }', 'unchanged (object)'],
+          ['…', 'steps', '[ … ]', 'unchanged'],
+          ['last', '"" (root)', '{ title, at, steps }', 'final value']
+        ] },
+        complexity: `<p>Time O(size of text) — one parse plus one regex test per string. Space O(size of resulting object).</p>`,
+        followUps: ['Tag types explicitly instead of guessing: <code>{"$date": "…"}</code>, and also support Map and BigInt', 'Validate the shape with a schema after parsing', 'Stream-parse a 500 MB file without loading it all']
+      }
+    }]
+  });
+
   registerModule({ id: 'js02', title: 'Functions, Arrays & Objects', intro: '<p>stub</p>', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview });
 })();
