@@ -1303,6 +1303,680 @@ class ExportDemo {
     }]
   });
 
+  /* ======================= TOPIC 6: CHAIN OF RESPONSIBILITY ======================= */
+  topics.push({
+    title: 'Chain of Responsibility: Pass It Along Until Someone Handles It',
+    analogy: `<p>Call a <b>customer support line</b>. The bot tries first. If it cannot help, you go to a level-1 agent; if they cannot, to a specialist; then to a manager. You (the caller) do not choose who solves it — the request <b>walks down a line of handlers</b> until one can deal with it. Office <b>expense approvals</b> work the same: your team lead can approve up to ₹1,000, a manager up to ₹10,000, a director up to ₹50,000; bigger bills go further up.</p>`,
+    explain: `<p><b>Chain of Responsibility (CoR) in one line:</b> link handler objects into a chain; send the request to the first one; each handler either <b>handles it</b> or <b>passes it to the next</b>. The sender does not know which handler will act.</p>
+${H.table(['Role', 'Job', 'Expense example'], [
+  ['<b>Handler</b> (abstract)', 'Has a <code>next</code> link and <code>handle(request)</code>', '<code>Approver</code>'],
+  ['<b>Concrete handlers</b>', 'Decide: handle, pass on, or both', '<code>TeamLead</code>, <code>Manager</code>, <code>Director</code>, <code>CFO</code>'],
+  ['<b>Client</b>', 'Builds the chain once and sends requests to its head', 'expense service']
+])}
+<p><b>The naive way:</b> <code>if (amount &lt;= 1000) teamLead.approve(); else if (amount &lt;= 10000) manager.approve(); else if …</code> in the expense service. Approval limits, the order of approvers and special rules ("travel expenses skip the manager") are all hard-coded in one method. Reorganisation (add a "Senior Manager" level) = edit and redeploy that method. ${H.c('r', 'The sender knows every receiver and the routing rules.')}</p>
+<p><b>With CoR:</b> each approver only knows its own limit and its <code>next</code>. The chain is assembled in one place (config) and can be re-ordered or extended without touching handlers.</p>
+<p><b>Two flavours you must name in interviews:</b></p>
+<ul>
+<li>${H.c('b', 'Pure CoR (first one wins)')} — exactly one handler handles the request and the walk stops: approvals, support escalation, ATM note dispensing, event bubbling to the first interested UI element.</li>
+<li>${H.c('p', 'Pipeline / filter chain (everyone may act)')} — each handler does its part and calls <code>next</code>; any can <b>short-circuit</b> (reject): servlet filters, Spring Security filter chain, Express/Koa middleware, logging frameworks passing a log record to multiple appenders.</li>
+</ul>`,
+    clues: [
+      '"<b>Escalate</b> to the next level if the current one cannot handle it" / "approval hierarchy" → CoR.',
+      '"A request passes through a series of <b>checks / filters / middleware</b> (auth, rate limit, validation, logging)" → filter chain.',
+      '"The <b>order of processing steps should be configurable</b>" / "add a new check without changing others".',
+      '"Sender should not know who handles the request" → decouple sender and receivers.',
+      'Machine-coding: ATM cash dispenser (2000/500/200/100 notes), logger with levels (DEBUG→INFO→ERROR), support ticket routing, discount rule chains, spam filters, HTTP middleware.',
+      'Code smell: a long <code>if/else if</code> where each branch is "can <i>this</i> one deal with it?" → each branch becomes a handler.'
+    ],
+    code: [{ lang: 'java', title: 'Approval chain (first handler that can approve wins)', code: `record Expense(String employee, long amount, String category) {}
+
+abstract class Approver {
+    private Approver next;
+    private final String title;
+    protected Approver(String title) { this.title = title; }
+
+    // Returns 'next' so chains can be built fluently: a.linkTo(b).linkTo(c)
+    Approver linkTo(Approver next) { this.next = next; return next; }
+
+    // The walking logic lives ONCE in the base class.
+    final String handle(Expense e) {
+        if (canApprove(e)) return title + " approved " + e.amount() + " for " + e.employee();
+        if (next == null) return "REJECTED: nobody can approve " + e.amount();
+        return next.handle(e);
+    }
+    protected abstract boolean canApprove(Expense e);
+}
+
+class TeamLead extends Approver {
+    TeamLead() { super("TeamLead"); }
+    protected boolean canApprove(Expense e) { return e.amount() <= 1_000; }
+}
+class Manager extends Approver {
+    Manager() { super("Manager"); }
+    protected boolean canApprove(Expense e) { return e.amount() <= 10_000; }
+}
+class Director extends Approver {
+    Director() { super("Director"); }
+    // Special rule lives with the handler that owns it, not in a central if/else.
+    protected boolean canApprove(Expense e) {
+        return e.amount() <= 50_000 || (e.category().equals("TRAINING") && e.amount() <= 80_000);
+    }
+}
+class Cfo extends Approver {
+    Cfo() { super("CFO"); }
+    protected boolean canApprove(Expense e) { return e.amount() <= 200_000; }
+}
+
+class ApprovalDemo {
+    public static void main(String[] args) {
+        Approver head = new TeamLead();
+        head.linkTo(new Manager()).linkTo(new Director()).linkTo(new Cfo());   // assembled once
+        for (long amt : new long[]{500, 7_500, 70_000, 999_999})
+            System.out.println(head.handle(new Expense("asha", amt, amt == 70_000 ? "TRAINING" : "TRAVEL")));
+    }
+}` }, { lang: 'java', title: 'Middleware pipeline (every handler may act, any may stop)', code: `record Request(String path, String token, String ip) {}
+record Response(int status, String body) {}
+
+// A middleware receives the request and a "next" function it MAY call.
+@FunctionalInterface
+interface Middleware { Response handle(Request r, Function<Request, Response> next); }
+
+class Pipeline {
+    private final List<Middleware> chain = new ArrayList<>();
+    private final Function<Request, Response> endpoint;
+    Pipeline(Function<Request, Response> endpoint) { this.endpoint = endpoint; }
+    Pipeline use(Middleware m) { chain.add(m); return this; }
+
+    Response handle(Request r) { return call(0, r); }
+    private Response call(int i, Request r) {
+        if (i == chain.size()) return endpoint.apply(r);                // end of chain: real handler
+        return chain.get(i).handle(r, req -> call(i + 1, req));         // give it a 'next'
+    }
+
+    public static void main(String[] args) {
+        Map<String, Integer> hits = new HashMap<>();
+        Pipeline p = new Pipeline(r -> new Response(200, "orders for " + r.token()))
+            .use((r, next) -> {                                          // logging: before AND after
+                long t0 = System.nanoTime();
+                Response res = next.apply(r);
+                System.out.println(r.path() + " -> " + res.status() + " in " + (System.nanoTime() - t0) / 1000 + "us");
+                return res;
+            })
+            .use((r, next) -> r.token() == null ? new Response(401, "login first") : next.apply(r))   // auth
+            .use((r, next) -> hits.merge(r.ip(), 1, Integer::sum) > 2 ? new Response(429, "slow down") : next.apply(r));
+        for (int i = 0; i < 4; i++) System.out.println(p.handle(new Request("/orders", i == 0 ? null : "asha", "1.2.3.4")).body());
+    }
+}` }],
+    codeTitle: ['Pure chain: approvals', 'Filter chain: middleware'],
+    viz: {
+      title: 'Chain of Responsibility: an expense walking up the approval chain',
+      input: '500 7500 120000 999999',
+      inputLabel: 'Expense amounts (space separated, up to 6)',
+      gen: function (input) {
+        var amts = tokens(input, /[\s,]+/, 6, 'Example: 500 7500 120000').map(function (x) {
+          var v = Number(x); if (isNaN(v) || v <= 0 || v > 1e9) throw new Error('Amounts must be positive numbers'); return v;
+        });
+        var H_ = [{ id: 'TL', name: 'TeamLead', lim: 1000 }, { id: 'MG', name: 'Manager', lim: 10000 }, { id: 'DR', name: 'Director', lim: 50000 }, { id: 'CF', name: 'CFO', lim: 200000 }];
+        var nodes = [B('RQ', 'Expense request', 8, 30)].concat(H_.map(function (h, i) { return B(h.id, h.name + ' (≤' + h.lim.toLocaleString('en-US') + ')', 28 + i * 20, 30); })).concat([B('RJ', 'end of chain → REJECT', 88, 62)]);
+        var edges = [['RQ', 'TL', 'handle()'], ['TL', 'MG', 'next'], ['MG', 'DR', 'next'], ['DR', 'CF', 'next'], ['CF', 'RJ', 'null']];
+        var frames = [], summary = [];
+        frames.push(F('<b>Structure.</b> Each approver holds a <code>next</code> link and only knows <b>its own limit</b>. The client sends every expense to the <b>head</b> (TeamLead). Nobody — not even the client — has an if/else listing all approvers.',
+          [G('The chain (built once from config)', nodes, edges, { h: 70, hl: { TL: 'sel' } }), { type: 'list', label: 'linked handlers', values: H_.map(function (h) { return h.name; }) }]));
+        amts.forEach(function (a) {
+          var hl = { RQ: 'cur' }, ehl = { 'RQ-TL': 'cur' }, tags = {};
+          frames.push(F('New request: <b>₹' + a.toLocaleString('en-US') + '</b>. The client calls <code>head.handle(expense)</code> — it has no idea who will approve.', [G('Request enters the chain', nodes, edges, { h: 70, hl: hl, ehl: ehl }), VARS('request', { amount: a })]));
+          var handled = false, prev = 'RQ';
+          for (var i = 0; i < H_.length; i++) {
+            var h = H_[i];
+            var h2 = clone(hl), e2 = clone(ehl);
+            e2[prev + '-' + h.id] = 'cur'; h2[h.id] = 'cur';
+            if (a <= h.lim) {
+              h2[h.id] = 'ok'; e2[prev + '-' + h.id] = 'ok'; tags[h.id] = 'APPROVED';
+              frames.push(F('<b>' + h.name + '</b>: ₹' + a.toLocaleString('en-US') + ' ≤ ' + h.lim.toLocaleString('en-US') + ' → ' + H.c('g', 'I can handle it.') + ' Approved, and the walk <b>stops here</b>. Handlers after it are never even asked.',
+                [G('Handled', nodes, edges, { h: 70, hl: h2, ehl: e2, tags: clone(tags) }), VARS('request', { amount: a, approvedBy: h.name, hops: i + 1 }, { approvedBy: 'ok' })]));
+              summary.push(['₹' + a.toLocaleString('en-US'), h.name, String(i + 1)]);
+              handled = true; break;
+            }
+            tags[h.id] = 'pass';
+            frames.push(F('<b>' + h.name + '</b>: ₹' + a.toLocaleString('en-US') + ' &gt; my limit ' + h.lim.toLocaleString('en-US') + ' → not mine, call <code>next.handle(e)</code>.',
+              [G('Passing along', nodes, edges, { h: 70, hl: h2, ehl: e2, tags: clone(tags) }), VARS('request', { amount: a, at: h.name, hops: i + 1 })]));
+            hl[h.id] = 'done'; ehl[prev + '-' + h.id] = 'done'; prev = h.id;
+          }
+          if (!handled) {
+            var h3 = clone(hl); h3.RJ = 'bad'; var e3 = clone(ehl); e3['CF-RJ'] = 'bad';
+            frames.push(F('CFO passed it on, but <code>next == null</code>: the request ' + H.c('r', 'fell off the end of the chain') + '. Always decide what happens then (reject, log, default handler) — an unhandled request silently disappearing is a classic CoR bug.',
+              [G('Unhandled', nodes, edges, { h: 70, hl: h3, ehl: e3, tags: { RJ: 'REJECTED' } }), VARS('request', { amount: a, result: 'REJECTED' }, { result: 'bad' })]));
+            summary.push(['₹' + a.toLocaleString('en-US'), 'nobody (rejected)', String(H_.length)]);
+          }
+        });
+        frames.push(F('Summary. Small requests stop early (cheap); big ones travel further. To add a "Senior Manager (≤25,000)" we would create one class and link it between Manager and Director — no other code changes.',
+          [{ type: 'table', label: 'Who handled what', columns: ['Amount', 'Handled by', 'Hops'], rows: summary, hl: {} }]));
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'Logger with levels', html: `<p>Handlers: <code>ConsoleLogger(DEBUG)</code> → <code>FileLogger(INFO)</code> → <code>AlertLogger(ERROR)</code>. Here it is a <b>pipeline</b>: an ERROR message is written by <i>all three</i> (each handles if level ≥ its threshold, then passes on). A DEBUG message is only printed to console. Log4j/Logback appenders and logger hierarchies follow this idea (and LLD 12 builds a full logging framework).</p>` },
+      { title: 'Servlet filters and Spring Security', html: `<p>Every HTTP request passes through <code>FilterChain.doFilter()</code>: CORS → authentication → authorization → CSRF → your controller. A filter can stop the chain (return 401) or modify the request/response. Spring Security is literally a configurable chain of ~15 filters; adding a custom JWT filter means inserting a handler at the right position.</p>` },
+      { title: 'Discount rules: first match or stack them?', html: `<p>Checkout runs <code>EmployeeDiscount → CouponDiscount → LoyaltyDiscount</code>. If the business says "only the best single discount applies", it is first-match (or evaluate all and pick max). If "discounts stack", it is a pipeline where each one reduces the price and passes it on. Same chain object, different semantics — clarify in the interview!</p>`, code: `List<UnaryOperator<Double>> rules = List.of(p -> p * 0.9, p -> p - 50, p -> Math.max(p, 100));
+double price = 1000;
+for (UnaryOperator<Double> r : rules) price = r.apply(price);   // stacking pipeline
+System.out.println(price);   // 850.0` },
+      { title: 'Event bubbling in UIs', html: `<p>Click a button inside a card inside a page: the click goes to the button first; if it does not handle it (no listener or does not stop propagation) it bubbles to the card, then the page, then the document. The DOM event model is a chain of responsibility along the parent links.</p>` }
+    ],
+    deepDive: `<p><b>Guarantee of handling:</b> CoR does not guarantee anyone handles the request. Put a <b>terminal default handler</b> at the end (reject/log/404) and make "unhandled" an explicit result, not a <code>null</code>.</p>
+<p><b>Building the chain:</b> do it in one place (factory, DI configuration, Spring <code>@Order</code>) so ordering is visible and testable. Avoid each handler creating its own <code>next</code> — that hard-codes the chain again. Guard against <b>cycles</b> (A → B → A) when chains are configurable: validate on build.</p>
+<p><b>Recursion vs loop:</b> a recursive <code>next.handle()</code> uses one stack frame per handler — fine for 10 handlers, risky for 10,000 (StackOverflowError). A list-based pipeline (iterate an <code>ArrayList&lt;Handler&gt;</code> with an index) avoids deep stacks and makes re-ordering trivial.</p>
+<p><b>Performance:</b> the average cost is the number of hops; put the most common handler first, or index requests by type (Map from type to handler) when the chain becomes long and the decision is a simple key lookup — at that point a dispatch table beats a chain.</p>
+<p><b>Pre/post processing:</b> in the middleware style, code before <code>next.apply()</code> runs on the way in, code after runs on the way out (timing, response headers, transaction commit/rollback). This "onion" model is Express/Koa/ASP.NET middleware and Netty's <code>ChannelPipeline</code>. <b>Thread-safety:</b> handlers are shared across requests, so keep them stateless or use thread-safe counters (e.g. a rate limiter's <code>ConcurrentHashMap</code>).</p>`,
+    aiEra: `<p><b>What AI changes:</b> AI-powered systems are full of chains: <i>guardrail → PII redaction → cache lookup → cheap model → escalate to expensive model → human review</i>. That is CoR with escalation: try the cheapest handler first, pass on only what it cannot handle confidently. Model routers and fallback chains (primary provider → backup provider) are the same pattern.</p>
+<p><b>Use AI as a partner:</b> ask it to generate the chain's test matrix ("for each handler, a request it must handle, one it must pass, and the unhandled case"). <b>Where AI goes wrong:</b> it often hard-codes the chain inside handlers, forgets the end-of-chain case, or mixes first-match and pipeline semantics. <b>What you own:</b> deciding the semantics (stop vs continue), ordering, the default handler, and observability (log which handler acted).</p>`,
+    problems: [{
+      title: 'ATM Cash Dispenser', level: 'Medium', tags: ['chain of responsibility'], companies: ['Amazon', 'NCR', 'Flipkart'],
+      statement: `<p>An ATM holds notes of ₹2000, ₹500, ₹200 and ₹100 with limited counts. <code>withdraw(amount)</code> must dispense using the <b>largest notes first</b>, respecting available counts, and return the note breakdown. If the exact amount cannot be made, dispense <b>nothing</b> and report failure. New denominations (₹50) should be addable without editing existing dispensers.</p>`,
+      constraints: `Amount 1 – 10<sup>6</sup>. Note counts 0 – 10<sup>4</sup>. Greedy largest-first is the bank's policy (these denominations make greedy correct when stock is unlimited; with limited stock we must check and roll back).`,
+      example: `<p>Stock: 2000×1, 500×3, 200×5, 100×2. withdraw(3700) → ${H.c('b', '2000×1')} (1700 left) → ${H.c('b', '500×3')} (200 left) → ${H.c('b', '200×1')} (0 left). Output {2000=1, 500=3, 200=1}. withdraw(50) → ${H.c('r', 'fail')}, nothing dispensed.</p>`,
+      brute: { why: `<p>One method with a hard-coded block per denomination: compute count for 2000, subtract, then 500, then 200, then 100. Adding ₹50 means editing this method; checking stock and rolling back is copy-pasted per block; and stock is decremented before we know the whole amount can be made.</p>`, code: `class NaiveAtm {
+    int c2000 = 1, c500 = 3, c200 = 5, c100 = 2;
+    String withdraw(int amt) {
+        int n2000 = Math.min(amt / 2000, c2000); amt -= n2000 * 2000; c2000 -= n2000;   // mutates early!
+        int n500 = Math.min(amt / 500, c500);    amt -= n500 * 500;   c500 -= n500;
+        int n200 = Math.min(amt / 200, c200);    amt -= n200 * 200;   c200 -= n200;
+        int n100 = Math.min(amt / 100, c100);    amt -= n100 * 100;   c100 -= n100;
+        if (amt != 0) return "FAIL (and stock is already wrong!)";
+        return n2000 + "x2000 " + n500 + "x500 " + n200 + "x200 " + n100 + "x100";
+    }
+}` },
+      mcq: { q: 'withdraw(50) cannot be made from 100+ notes. When should stock be decremented?', options: ['Only after the whole chain confirms the remainder reached 0 (plan first, commit after)', 'Each handler decrements immediately as it goes', 'Before the chain starts', 'Never; the ATM recounts nightly'], answer: 0, explain: 'Two-phase: handlers build a plan (how many notes each), and only if the remainder is 0 do we commit. Otherwise a failed withdrawal would leak notes.' },
+      hints: [`<p>Hint 1: Each denomination is a handler: "take as many of my notes as I can, pass the remainder to the next".</p>`, `<p>Hint 2: Pass a mutable <b>plan</b> (Map denomination → count) along the chain instead of touching stock directly. The last handler (or the ATM) checks remainder == 0.</p>`, `<p>Hint 3: Commit = each handler subtracts its planned count. Keep denominations sorted descending when building the chain. Synchronize withdraw (two customers, one ATM is rare but stock must stay consistent).</p>`],
+      solution: {
+        approach: `<p>Each <code>NoteDispenser</code> owns one denomination and its stock, and links to the next smaller one. <code>plan(remaining, plan)</code> takes <code>min(remaining / value, stock)</code> notes, records it in the plan, and passes the remainder down. The ATM calls the head; if the final remainder is not 0, it discards the plan (nothing changed). Otherwise it calls <code>commit(plan)</code> down the chain. Adding ₹50 = new dispenser linked at the end.</p>`,
+        code: `class NoteDispenser {
+    final int value; private int stock; private NoteDispenser next;
+    NoteDispenser(int value, int stock) { this.value = value; this.stock = stock; }
+    NoteDispenser linkTo(NoteDispenser n) { this.next = n; return n; }
+
+    // Phase 1: plan only, no side effects. Returns the remainder nobody could serve.
+    int plan(int remaining, Map<Integer, Integer> plan) {
+        int take = Math.min(remaining / value, stock);
+        if (take > 0) plan.put(value, take);
+        int left = remaining - take * value;
+        return (next == null || left == 0) ? left : next.plan(left, plan);
+    }
+    // Phase 2: apply the plan along the chain.
+    void commit(Map<Integer, Integer> plan) {
+        stock -= plan.getOrDefault(value, 0);
+        if (next != null) next.commit(plan);
+    }
+    int stock() { return stock; }
+}
+
+class Atm {
+    private final NoteDispenser head;
+    Atm(NoteDispenser head) { this.head = head; }
+
+    synchronized Optional<Map<Integer, Integer>> withdraw(int amount) {
+        if (amount <= 0) return Optional.empty();
+        Map<Integer, Integer> plan = new LinkedHashMap<>();
+        int left = head.plan(amount, plan);
+        if (left != 0) return Optional.empty();       // cannot make exact amount: nothing dispensed
+        head.commit(plan);
+        return Optional.of(plan);
+    }
+
+    public static void main(String[] args) {
+        NoteDispenser d2000 = new NoteDispenser(2000, 1);
+        d2000.linkTo(new NoteDispenser(500, 3)).linkTo(new NoteDispenser(200, 5)).linkTo(new NoteDispenser(100, 2));
+        Atm atm = new Atm(d2000);
+        System.out.println(atm.withdraw(3700));   // Optional[{2000=1, 500=3, 200=1}]
+        System.out.println(atm.withdraw(50));     // Optional.empty
+        System.out.println(atm.withdraw(1000));   // 2000s and 500s are gone: {200=4, 100=2}
+    }
+}`,
+        complexity: `<p>O(D) per withdrawal, D = number of denominations. No stock changes on failure.</p>`,
+        followUps: ['Greedy fails with limited stock: 600 with stock 500×1, 200×3 → greedy takes 500 and gets stuck at 100. How would you fix it? (try fewer large notes: bounded backtracking / DP)', 'How would you add ₹50 notes?', 'Should the dispenser chain or the ATM own the policy "max 40 notes per withdrawal"?']
+      }
+    }]
+  });
+
+  /* ======================= TOPIC 7: ITERATOR ======================= */
+  topics.push({
+    title: 'Iterator: Walk Any Collection Without Knowing Its Insides',
+    analogy: `<p>A <b>TV remote</b> has "next channel" and "previous channel" buttons. You do not know (or care) whether channels come from cable, satellite or the internet, or how they are stored — you just press <b>next</b>. A <b>music playlist</b> is the same: "next song" works whether the playlist is in order, shuffled or on repeat. The remote button is an <b>iterator</b>: a uniform way to go through items one by one.</p>`,
+    explain: `<p><b>Iterator in one line:</b> give a collection a separate object that walks over its elements one at a time through a tiny interface — <code>hasNext()</code> and <code>next()</code> — so code using the collection never depends on how it is stored (array, linked list, tree, hash table, database cursor, network pages).</p>
+${H.table(['Role', 'Java type', 'Job'], [
+  ['<b>Aggregate</b>', '<code>Iterable&lt;T&gt;</code>', 'Has <code>iterator()</code> → enables the for-each loop'],
+  ['<b>Iterator</b>', '<code>Iterator&lt;T&gt;</code>', '<code>hasNext()</code>, <code>next()</code>, optional <code>remove()</code>; remembers <i>where we are</i>'],
+  ['<b>Concrete iterator</b>', 'your class', 'Knows the internal structure: an index, a node pointer, a stack for trees, a page token']
+])}
+<p><b>The naive way:</b> expose the internals: <code>playlist.getSongsArray()</code> and let callers write <code>for (int i = 0; …)</code>. Now every caller depends on "it is an array". Switching to a linked list or adding shuffle mode breaks all of them. For a tree, every caller must write their own recursive traversal (and gets it wrong). ${H.c('r', 'Traversal logic is duplicated and the data structure can never change.')}</p>
+<p><b>With Iterator:</b> the collection hands out iterators; callers write <code>for (Song s : playlist)</code>. The collection is free to change its storage, and can offer several traversal orders (<code>inOrder()</code>, <code>levelOrder()</code>, <code>shuffled()</code>) — each is just another iterator. Multiple iterators can walk the same collection independently because the "cursor" lives in the iterator, not the collection.</p>
+<p><b>Lazy power:</b> an iterator computes the next element only when asked. A BST iterator holds just O(height) nodes on a stack instead of copying N nodes into a list. Paged API iterators fetch page 2 only when page 1 is used up. Infinite sequences (IDs, Fibonacci) are possible.</p>`,
+    clues: [
+      '"Design an iterator for…" (BST, nested list, zigzag of two lists, peeking iterator, flatten 2D vector) → classic LeetCode iterator questions; aim for O(1) amortised <code>next()</code> and O(h) memory.',
+      '"Traverse a custom collection <b>without exposing its internal representation</b>" → Iterable + Iterator.',
+      '"Support <b>multiple traversal orders</b>" (in-order/pre-order, shuffle/repeat) → one iterator class per order.',
+      '"Data is too big to load at once" / "paginated API" / "stream records from a file" → lazy iterator.',
+      '"Modify the collection while iterating" → fail-fast iterators and <code>ConcurrentModificationException</code>, or <code>iterator.remove()</code>.',
+      'Machine-coding: playlist (shuffle/repeat), file system walker, social feed paging, database cursor, menu traversal (with Composite).'
+    ],
+    code: [{ lang: 'java', title: 'Custom Iterable playlist with fail-fast iterator and two orders', code: `record Song(String title) {}
+
+class Playlist implements Iterable<Song> {
+    private Song[] songs = new Song[2];      // internal storage: hidden from callers
+    private int size, modCount;              // modCount detects changes during iteration
+
+    void add(Song s) {
+        if (size == songs.length) songs = Arrays.copyOf(songs, size * 2);
+        songs[size++] = s;
+        modCount++;
+    }
+
+    @Override public Iterator<Song> iterator() { return new InOrder(); }
+
+    // A second traversal order is just another iterator: callers do not change.
+    Iterable<Song> shuffled(long seed) {
+        return () -> {
+            List<Integer> idx = new ArrayList<>();
+            for (int i = 0; i < size; i++) idx.add(i);
+            Collections.shuffle(idx, new Random(seed));
+            Iterator<Integer> it = idx.iterator();
+            return new Iterator<Song>() {
+                public boolean hasNext() { return it.hasNext(); }
+                public Song next() { return songs[it.next()]; }
+            };
+        };
+    }
+
+    private class InOrder implements Iterator<Song> {
+        private int cursor = 0;                          // the "where am I" lives HERE
+        private final int expectedMod = modCount;
+        public boolean hasNext() { return cursor < size; }
+        public Song next() {
+            if (modCount != expectedMod) throw new ConcurrentModificationException();
+            if (!hasNext()) throw new NoSuchElementException();
+            return songs[cursor++];
+        }
+    }
+
+    public static void main(String[] args) {
+        Playlist p = new Playlist();
+        for (String t : List.of("Intro", "Blue", "Rain")) p.add(new Song(t));
+        for (Song s : p) System.out.print(s.title() + " ");          // for-each uses iterator()
+        System.out.println();
+        for (Song s : p.shuffled(42)) System.out.print(s.title() + " ");
+        System.out.println();
+        try { for (Song s : p) p.add(new Song("Oops")); }            // modify while iterating
+        catch (ConcurrentModificationException e) { System.out.println("fail-fast: CME"); }
+    }
+}` }],
+    codeTitle: ['Iterable playlist'],
+    viz: {
+      title: 'Lazy BST in-order iterator with an explicit stack',
+      input: '8 4 12 2 6 10 14 1 3',
+      inputLabel: 'Tree in level order (heap layout, "null" for missing, up to 15 values)',
+      gen: function (input) {
+        var t = tokens(input, /[\s,]+/, 15, 'Example: 8 4 12 2 6 10 14');
+        var arr = t.map(function (x) { if (/^null$/i.test(x)) return null; var v = Number(x); if (isNaN(v)) throw new Error('Use numbers or null'); return v; });
+        if (arr[0] === null) throw new Error('Root cannot be null');
+        var L = function (i) { var c = 2 * i + 1; return c < arr.length && arr[c] !== null ? c : -1; };
+        var R = function (i) { var c = 2 * i + 2; return c < arr.length && arr[c] !== null ? c : -1; };
+        for (var k = 1; k < arr.length; k++) if (arr[k] !== null && arr[Math.floor((k - 1) / 2)] === null) throw new Error('Node at position ' + k + ' has a null parent');
+        var code = 'BSTIterator(TreeNode root) { pushLeft(root); }\nvoid pushLeft(TreeNode n) {\n  while (n != null) { stack.push(n); n = n.left; }\n}\nboolean hasNext() { return !stack.isEmpty(); }\nint next() {\n  TreeNode n = stack.pop();\n  pushLeft(n.right);\n  return n.val;\n}';
+        var stack = [], out = [], frames = [], visited = {};
+        var snap = function (narr, hlTree, codeHl, extraHlStack) {
+          var hs = {}; if (extraHlStack !== undefined) hs[extraHlStack] = 'cur';
+          var hlt = clone(visited); for (var q in hlTree) hlt[q] = hlTree[q];
+          stack.forEach(function (i) { if (!hlt[i]) hlt[i] = 'win'; });
+          frames.push(F(narr, [{ type: 'tree', label: 'BST (blue = on stack, faded = already returned)', arr: arr, hl: hlt },
+            { type: 'stack', label: 'iterator stack (top = next smallest)', items: stack.map(function (i) { return arr[i]; }), hl: hs },
+            { type: 'array', label: 'values returned so far', values: out.length ? out.slice() : ['—'] },
+            CODE('BSTIterator', code, codeHl)]));
+        };
+        var pushLeft = function (i, why) {
+          while (i >= 0) {
+            stack.push(i);
+            var h = {}; h[i] = 'cur';
+            snap(why + ' push <b>' + arr[i] + '</b>, then go to its left child' + (L(i) < 0 ? ' — none, stop.' : '.'), h, { 3: 'cur' }, stack.length - 1);
+            i = L(i);
+          }
+        };
+        snap('Constructor. Instead of copying all ' + arr.filter(function (x) { return x !== null; }).length + ' nodes into a list (O(N) memory), we keep only the <b>path of left children</b> on a stack: at most O(height) nodes.', {}, { 1: 'cur' });
+        pushLeft(0, 'pushLeft(root):');
+        var guard = 0;
+        while (stack.length && guard++ < 20) {
+          snap('<code>hasNext()</code> → stack not empty → <b>true</b>. The top of the stack is always the smallest value not yet returned.', {}, { 5: 'cur' }, stack.length - 1);
+          var n = stack.pop();
+          out.push(arr[n]);
+          var h1 = {}; h1[n] = 'ok';
+          snap('<code>next()</code>: pop <b>' + arr[n] + '</b> and return it. ' + (R(n) >= 0 ? 'It has a right child (' + arr[R(n)] + '), so everything in that right subtree comes next — pushLeft(right).' : 'No right child, nothing to push; the next value is already on top of the stack.'), h1, { 7: 'ok', 9: 'ok' });
+          visited[n] = 'done';
+          if (R(n) >= 0) pushLeft(R(n), 'pushLeft(' + arr[R(n)] + '):');
+        }
+        snap('<code>hasNext()</code> → stack empty → <b>false</b>. Output is sorted: ' + out.join(', ') + '. Each node was pushed and popped exactly once, so <code>next()</code> is <b>O(1) amortised</b> and memory is O(h).', {}, { 5: 'sel' });
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'for-each is the Iterator pattern', html: `<p><code>for (String s : list)</code> compiles to <code>Iterator&lt;String&gt; it = list.iterator(); while (it.hasNext()) { String s = it.next(); … }</code>. Any class implementing <code>Iterable</code> gets the loop syntax. That is why the same loop works over <code>ArrayList</code>, <code>HashSet</code>, <code>TreeMap.keySet()</code> and your own classes.</p>` },
+      { title: 'Removing while iterating — the right way', html: `<p>Calling <code>list.remove(x)</code> inside a for-each throws <code>ConcurrentModificationException</code> on the next step (fail-fast: the iterator sees modCount changed). Use <code>iterator.remove()</code> or <code>removeIf</code>. Concurrent collections (<code>ConcurrentHashMap</code>, <code>CopyOnWriteArrayList</code>) give <b>weakly consistent / snapshot</b> iterators that never throw CME.</p>`, code: `List<Integer> nums = new ArrayList<>(List.of(1, 2, 3, 4, 5, 6));
+Iterator<Integer> it = nums.iterator();
+while (it.hasNext()) if (it.next() % 2 == 0) it.remove();   // safe removal
+System.out.println(nums);                                   // [1, 3, 5]
+nums.removeIf(x -> x > 3);                                  // even simpler
+System.out.println(nums);                                   // [1, 3]` },
+      { title: 'Paginated API iterator', html: `<p>A REST API returns 100 orders per page with a <code>nextPageToken</code>. Wrap it in an <code>Iterator&lt;Order&gt;</code>: <code>hasNext()</code> checks the local buffer; when it is empty and a token exists, fetch the next page. Callers just loop over orders; they never see tokens, and pages are fetched lazily — stop early and you never download the rest. AWS and Google SDKs ship exactly these "paginators".</p>` },
+      { title: 'Internal vs external iteration', html: `<p><b>External</b> (Iterator): the caller drives — call <code>next()</code> when it wants, can stop, can interleave two iterators (merge two sorted lists). <b>Internal</b> (<code>forEach</code>, Streams): the collection drives and calls your lambda for each element — less control, but the library can parallelise (<code>parallelStream</code>) and optimise. <code>Spliterator</code> is Java's iterator designed for splitting work across threads.</p>` }
+    ],
+    deepDive: `<p><b>Iterator contract details:</b> <code>next()</code> must throw <code>NoSuchElementException</code> when exhausted (not return null); <code>hasNext()</code> must be idempotent (calling it twice must not skip an element) — a common bug when <code>hasNext()</code> advances state. If <code>hasNext()</code> needs to look ahead (filtering iterator, flatten nested list), cache the looked-ahead element in a field.</p>
+<p><b>Fail-fast vs fail-safe:</b> <code>ArrayList</code>/<code>HashMap</code> iterators compare a <code>modCount</code> snapshot and throw CME on structural change — a best-effort bug detector, <i>not</i> a thread-safety guarantee. <code>CopyOnWriteArrayList</code> iterates a frozen snapshot; <code>ConcurrentHashMap</code> iterators are weakly consistent (may or may not reflect updates, never throw).</p>
+<p><b>Memory & complexity:</b> a lazy tree iterator uses O(h) memory and O(1) amortised time per <code>next()</code> (each node pushed and popped once) versus O(N) for flattening up front. For a balanced tree h = log N; for a degenerate tree h = N — mention it.</p>
+<p><b>Resource-backed iterators</b> (DB cursors, file lines) must be closed: implement <code>AutoCloseable</code> or expose a <code>Stream</code> with <code>onClose</code> (<code>Files.lines</code> must be used in try-with-resources). <b>Iterator + Composite:</b> iterating a tree of menus/folders uniformly is the textbook combo. <b>Generators</b> in Python/JS (<code>yield</code>) are iterators written as functions — Java needs explicit state machines, which is exactly what the stack in the BST iterator is.</p>`,
+    aiEra: `<p><b>What AI changes:</b> LLM APIs stream tokens and agent frameworks stream events — consumed through iterators/async iterators. Paginated tool outputs for agents (search results, DB rows) should be wrapped in lazy iterators so the agent fetches only what it needs, saving tokens and latency.</p>
+<p><b>Use AI as a partner:</b> "Write property tests that compare my BST iterator's output with a recursive in-order traversal on 1,000 random trees." <b>Where AI goes wrong:</b> generated iterators often flatten everything into a list (O(N) memory — fails the follow-up), make <code>hasNext()</code> non-idempotent, return null instead of throwing, or forget CME semantics. <b>What you own:</b> the lazy design, the complexity argument (amortised O(1)), and resource cleanup.</p>`,
+    problems: [{
+      title: 'Binary Search Tree Iterator', level: 'Medium', tags: ['iterator', 'stack', 'bst'], companies: ['Meta', 'Google', 'Microsoft', 'LinkedIn'],
+      statement: `<p>Implement <code>BSTIterator</code> over a binary search tree: constructor takes the root; <code>next()</code> returns the next smallest number; <code>hasNext()</code> says whether one exists. Calls are interleaved arbitrarily. Target: <code>next()</code> and <code>hasNext()</code> in O(1) amortised time and <b>O(h)</b> memory, where h is the tree height.</p>`,
+      constraints: `1 ≤ nodes ≤ 10<sup>5</sup>, 0 ≤ val ≤ 10<sup>6</sup>, at most 10<sup>5</sup> calls. <code>next()</code> is only called when <code>hasNext()</code> is true.`,
+      example: `<p>Tree [7, 3, 15, null, null, 9, 20]. Calls: next→${H.c('g', '3')}, next→${H.c('g', '7')}, hasNext→true, next→${H.c('g', '9')}, hasNext→true, next→${H.c('g', '15')}, next→${H.c('g', '20')}, hasNext→${H.c('r', 'false')}. Values come out sorted because in-order traversal of a BST is sorted.</p>`,
+      brute: { why: `<p>Do a full in-order traversal in the constructor and store every value in a list; <code>next()</code> returns list[i++]. Simple and O(1) per call, but uses <b>O(N) memory</b> and does O(N) work up front even if the caller only wants the first 3 values. Fails the follow-up "the tree has 10<sup>9</sup> nodes on disk".</p>`, code: `class FlatBSTIterator {
+    private final List<Integer> vals = new ArrayList<>();
+    private int i = 0;
+    FlatBSTIterator(TreeNode root) { inorder(root); }        // O(N) time and memory up front
+    private void inorder(TreeNode n) {
+        if (n == null) return;
+        inorder(n.left); vals.add(n.val); inorder(n.right);
+    }
+    int next() { return vals.get(i++); }
+    boolean hasNext() { return i < vals.size(); }
+}` },
+      mcq: { q: 'Why is next() O(1) amortised even though it may push several nodes?', options: ['Every node is pushed once and popped once over the whole iteration, so N calls do O(N) total work', 'Because the stack is small', 'Because the tree is balanced', 'It is actually O(log N) worst case per call, and that is the same'], answer: 0, explain: 'Total pushes = N, total pops = N across all calls. A single call may push h nodes, but averaged over N calls the cost is constant.' },
+      hints: [`<p>Hint 1: Simulate the recursive in-order traversal yourself; what the recursion keeps on the call stack, keep on an explicit stack.</p>`, `<p>Hint 2: The smallest unreturned value is always on top of a stack containing the "left spine" of what remains. Helper <code>pushLeft(node)</code>: push node and go left until null.</p>`, `<p>Hint 3: Constructor: pushLeft(root). next(): pop n; pushLeft(n.right); return n.val. hasNext(): !stack.isEmpty(). Use ArrayDeque, not the legacy Stack class.</p>`],
+      solution: {
+        approach: `<p>Keep an explicit stack that mirrors the paused recursion of an in-order traversal. Initially push the left spine of the root. Each <code>next()</code> pops the top (the smallest remaining), then pushes the left spine of its right subtree — exactly the nodes that come next in sorted order. Each node is pushed and popped once, giving O(1) amortised per call and O(h) memory. Implementing <code>Iterator&lt;Integer&gt;</code> lets callers use it with standard Java tooling.</p>`,
+        code: `class BSTIterator implements Iterator<Integer> {
+    private final Deque<TreeNode> stack = new ArrayDeque<>();
+
+    BSTIterator(TreeNode root) { pushLeft(root); }
+
+    private void pushLeft(TreeNode n) {
+        while (n != null) { stack.push(n); n = n.left; }
+    }
+
+    @Override public boolean hasNext() { return !stack.isEmpty(); }   // idempotent: no side effects
+
+    @Override public Integer next() {
+        if (stack.isEmpty()) throw new NoSuchElementException();
+        TreeNode n = stack.pop();
+        pushLeft(n.right);                  // the right subtree's smallest comes next
+        return n.val;
+    }
+
+    public static void main(String[] args) {
+        TreeNode root = new TreeNode(7, new TreeNode(3), new TreeNode(15, new TreeNode(9), new TreeNode(20)));
+        BSTIterator it = new BSTIterator(root);
+        StringBuilder sb = new StringBuilder();
+        while (it.hasNext()) sb.append(it.next()).append(' ');
+        System.out.println(sb.toString().trim());   // 3 7 9 15 20
+    }
+}`,
+        complexity: `<p>Time: O(1) amortised per <code>next()</code> (O(h) worst case for a single call); <code>hasNext()</code> O(1). Memory: O(h) — O(log N) balanced, O(N) for a skewed tree.</p>`,
+        followUps: ['Add a peek() method without consuming the value', 'Iterate in descending order (mirror: push right spine)', 'Support prev() as well (bidirectional) — what extra state do you need?']
+      }
+    }]
+  });
+
+  /* ======================= TOPIC 8: MEDIATOR ======================= */
+  topics.push({
+    title: 'Mediator: One Hub Instead of Everyone Talking to Everyone',
+    analogy: `<p>Planes near an airport never radio <i>each other</i> to decide who lands first. They all talk to the <b>air traffic control tower</b>, and the tower coordinates. With 30 planes, imagine the chaos if each plane had to negotiate with the other 29! A <b>WhatsApp group</b> is the same: you send one message to the group, and the group server delivers it to everyone — you do not hold a connection to every member's phone.</p>`,
+    explain: `<p><b>Mediator in one line:</b> objects that need to cooperate (<b>colleagues</b>) do not reference each other; they only talk to a central <b>mediator</b>, which contains the coordination rules and forwards messages.</p>
+${H.table(['Role', 'Job', 'Chat example'], [
+  ['<b>Mediator</b> (interface)', 'Receives events from colleagues, decides who reacts', '<code>ChatMediator.send(from, msg)</code>'],
+  ['<b>Concrete mediator</b>', 'Holds references to all colleagues + the coordination rules', '<code>ChatRoom</code> (mute list, direct messages, history)'],
+  ['<b>Colleagues</b>', 'Know only the mediator', '<code>User</code>']
+])}
+<p><b>The naive way:</b> each user holds a list of all other users and calls <code>other.receive(msg)</code> directly. With N users that is <b>N × (N−1)</b> references. Add a rule "muted users cannot post" → copy it into every user. Add a new user → update every existing user's list. ${H.c('r', 'A tangled mesh: every object depends on every other.')}</p>
+${H.table(['Users N', 'Mesh links N(N−1)/2', 'Hub links N'], [['4', '6', '4'], ['10', '45', '10'], ['100', '4,950', '100']])}
+<p><b>With Mediator:</b> each user has <b>one</b> reference (to the room). Rules (muting, @direct messages, rate limits, history) live in one class. Users are reusable in other rooms. The trade-off: the mediator can grow into a "god object" if you dump unrelated logic into it.</p>
+<p>Real places: UI dialogs (a form "mediator" enables the Submit button only when fields are valid — fields do not know each other), air traffic control, chat servers, an auction house coordinating bidders, a <b>smart-home hub</b>, an <b>event bus</b> inside an app, and MVC controllers coordinating views and models. In Java, <code>ExecutorService</code> mediates between task submitters and worker threads.</p>`,
+    clues: [
+      '"Many objects need to <b>coordinate</b> / interact, and the interactions are complex" → centralise them in a mediator.',
+      '"Chat room", "group", "auction house", "air traffic control", "control tower", "smart-home hub" → Mediator by name.',
+      '"Changing one component forces changes in many others because they reference each other" → mesh → hub.',
+      '"UI widgets depend on each other (checkbox enables a textbox, dropdown filters another dropdown)" → dialog mediator.',
+      'Contrast question: "<b>Observer vs Mediator</b>?" → Observer = one-to-many broadcast, subject does not know the logic; Mediator = many-to-many with coordination logic in the hub.',
+      'Machine-coding: chat application, ride-matching (driver ↔ rider via dispatcher), meeting-room booking coordinator, multiplayer game lobby.'
+    ],
+    code: [{ lang: 'java', title: 'Chat room mediator with direct messages and muting', code: `interface ChatMediator {
+    void join(User u);
+    void leave(User u);
+    void send(User from, String text);
+}
+
+class User {
+    final String name;
+    private final ChatMediator room;           // the ONLY reference a user holds
+    final List<String> inbox = new ArrayList<>();
+    User(String name, ChatMediator room) { this.name = name; this.room = room; }
+    void say(String text) { room.send(this, text); }
+    void receive(String from, String text) { inbox.add(from + ": " + text); }
+}
+
+class ChatRoom implements ChatMediator {
+    private final Map<String, User> members = new LinkedHashMap<>();
+    private final Set<String> muted = new HashSet<>();
+    private final List<String> history = new ArrayList<>();
+
+    public void join(User u)  { members.put(u.name, u); broadcast("system", u.name + " joined", null); }
+    public void leave(User u) { members.remove(u.name); broadcast("system", u.name + " left", null); }
+    void mute(String name)    { muted.add(name); }
+
+    // All coordination rules live here, in ONE place.
+    public void send(User from, String text) {
+        if (!members.containsKey(from.name)) return;                  // not in the room
+        if (muted.contains(from.name)) { from.receive("system", "you are muted"); return; }
+        history.add(from.name + ": " + text);
+        if (text.startsWith("@")) {                                   // direct message rule
+            String to = text.substring(1, text.indexOf(' ') > 0 ? text.indexOf(' ') : text.length());
+            User target = members.get(to);
+            if (target != null) target.receive(from.name + " (private)", text);
+            else from.receive("system", "no user " + to);
+            return;
+        }
+        broadcast(from.name, text, from);
+    }
+    private void broadcast(String from, String text, User except) {
+        for (User u : members.values()) if (u != except) u.receive(from, text);
+    }
+
+    public static void main(String[] args) {
+        ChatRoom room = new ChatRoom();
+        User a = new User("alice", room), b = new User("bob", room), c = new User("carol", room);
+        room.join(a); room.join(b); room.join(c);
+        a.say("hi all");
+        b.say("@carol lunch?");
+        room.mute("alice");
+        a.say("spam spam");
+        System.out.println("bob:   " + b.inbox);
+        System.out.println("carol: " + c.inbox);
+        System.out.println("alice: " + a.inbox);
+    }
+}` }],
+    codeTitle: ['Chat room mediator'],
+    viz: {
+      title: 'Mediator: mesh vs hub, then messages routed through the chat room',
+      input: 'alice: hi all; bob: @carol lunch?; dave joins; carol: sure; mute bob; bob: hello?',
+      inputLabel: 'Events separated by ; — "name: text", "name: @to text", "name joins", "name leaves", "mute name" (names: alice, bob, carol, dave, eve)',
+      gen: function (input) {
+        var ev = tokens(input, ';', 10, 'Example: alice: hi; bob: @carol hey; dave joins');
+        var POS = { alice: [12, 8], bob: [88, 8], carol: [12, 62], dave: [88, 62], eve: [50, 70] };
+        var members = ['alice', 'bob', 'carol'], muted = {}, frames = [];
+        var uNodes = function (list) { return list.map(function (n) { return B(n, n, POS[n][0], POS[n][1]); }); };
+        var hub = function () { return [B('ROOM', 'ChatRoom (mediator)', 50, 36)].concat(uNodes(members)); };
+        var hubEdges = function () { var e = []; members.forEach(function (n) { e.push([n, 'ROOM']); }); return e; };
+        // mesh comparison
+        var all4 = ['alice', 'bob', 'carol', 'dave'], mesh = [];
+        for (var i = 0; i < all4.length; i++) for (var j = i + 1; j < all4.length; j++) mesh.push([all4[i], all4[j]]);
+        frames.push(F('<b>Without a mediator</b> every user references every other user: 4 users → ' + mesh.length + ' links (N(N−1)/2). Add a 5th user and every existing user must learn about them. Rules like muting must be copied into each user.',
+          [G('Mesh: everyone knows everyone', uNodes(all4), mesh, { h: 70, undirected: true, ehl: paint(mesh, 'bad') }), VARS('coupling', { users: 4, links: mesh.length }, { links: 'bad' })]));
+        var hubAll = [B('ROOM', 'ChatRoom (mediator)', 50, 36)].concat(uNodes(all4)), hubAllE = all4.map(function (n) { return [n, 'ROOM']; });
+        frames.push(F('<b>With a mediator</b> each user knows only the room: 4 users → 4 links (N). The room holds the coordination rules (who receives what, muting, @direct messages).',
+          [G('Hub: everyone knows only the mediator', hubAll, hubAllE, { h: 76, hl: { ROOM: 'sel' }, ehl: paint(hubAllE, 'ok') }), VARS('coupling', { users: 4, links: 4 }, { links: 'ok' })]));
+        frames.push(F('Our room starts with <b>' + members.join(', ') + '</b>. Let us play the events.', [G('ChatRoom', hub(), hubEdges(), { h: 76, hl: { ROOM: 'sel' } }), { type: 'list', label: 'members', values: members.slice() }]));
+        ev.forEach(function (raw) {
+          var m;
+          if ((m = /^(\w+)\s+(joins|leaves)$/i.exec(raw))) {
+            var who = m[1].toLowerCase(); if (!POS[who]) throw new Error('Unknown user "' + who + '". Use alice, bob, carol, dave or eve');
+            if (m[2].toLowerCase() === 'joins') { if (members.indexOf(who) < 0) members.push(who); }
+            else members = members.filter(function (x) { return x !== who; });
+            var hj = { ROOM: 'cur' }; hj[who] = m[2].toLowerCase() === 'joins' ? 'ok' : 'bad';
+            frames.push(F('<b>' + who + '</b> ' + m[2].toLowerCase() + '. Only the <b>mediator</b> updates its member map — no other user changes. ' + H.c('g', 'Adding a colleague costs one link.'),
+              [G('Membership change', hub().concat(members.indexOf(who) < 0 ? [B(who, who, POS[who][0], POS[who][1])] : []), hubEdges(), { h: 76, hl: hj }), { type: 'list', label: 'members', values: members.slice() }]));
+            return;
+          }
+          if ((m = /^mute\s+(\w+)$/i.exec(raw))) {
+            var mu = m[1].toLowerCase(); muted[mu] = true;
+            var hm = { ROOM: 'cur' }; hm[mu] = 'bad';
+            frames.push(F('Moderator calls <code>room.mute("' + mu + '")</code>. The rule is stored <b>once</b>, in the mediator. Users do not need to know who is muted.',
+              [G('Rule added to mediator', hub(), hubEdges(), { h: 76, hl: hm, tags: (function () { var t = {}; t[mu] = 'muted'; return t; })() }), { type: 'set', label: 'muted', items: Object.keys(muted) }]));
+            return;
+          }
+          if ((m = /^(\w+)\s*:\s*(.+)$/.exec(raw))) {
+            var from = m[1].toLowerCase(), text = m[2];
+            if (!POS[from]) throw new Error('Unknown user "' + from + '"');
+            if (members.indexOf(from) < 0) {
+              frames.push(F('<b>' + from + '</b> is not in the room, so the mediator ignores the message.', [G('Ignored', hub(), hubEdges(), { h: 76, hl: { ROOM: 'bad' } })]));
+              return;
+            }
+            var hs = { ROOM: 'cur' }; hs[from] = 'cur'; var es = {}; es[from + '-ROOM'] = 'cur';
+            frames.push(F('<b>' + from + '</b> calls <code>room.send(this, "' + esc(text) + '")</code>. The user does not know who else is in the room — it only talks to the mediator.',
+              [G('Colleague → mediator', hub(), hubEdges(), { h: 76, hl: hs, ehl: es }), VARS('message', { from: from, text: text })]));
+            if (muted[from]) {
+              var hb = { ROOM: 'bad' }; hb[from] = 'bad';
+              frames.push(F('Mediator rule: <b>' + from + '</b> is muted → message dropped, sender gets "you are muted". ' + H.c('r', 'Nobody else is touched.'), [G('Blocked by rule', hub(), hubEdges(), { h: 76, hl: hb })]));
+              return;
+            }
+            var targets;
+            var dm = /^@(\w+)/.exec(text);
+            if (dm) {
+              var to = dm[1].toLowerCase();
+              targets = members.indexOf(to) >= 0 ? [to] : [];
+              if (!targets.length) {
+                frames.push(F('Direct message to <b>' + to + '</b>, but they are not a member → mediator replies "no user ' + to + '".', [G('Unknown recipient', hub(), hubEdges(), { h: 76, hl: { ROOM: 'bad' } })]));
+                return;
+              }
+            } else targets = members.filter(function (x) { return x !== from; });
+            var hd = { ROOM: 'cur' }, ed = {}, tg = {};
+            hd[from] = 'done';
+            targets.forEach(function (tname) { hd[tname] = 'ok'; ed[tname + '-ROOM'] = 'ok'; tg[tname] = 'got it'; });
+            frames.push(F('Mediator decides recipients: ' + (dm ? '<b>@' + dm[1] + '</b> rule → only ' + targets[0] : 'broadcast to everyone except the sender → ' + targets.join(', ')) + '. Arrows light up for each delivery (<code>user.receive(...)</code>).',
+              [G('Mediator → recipients', hub(), hubEdges(), { h: 76, hl: hd, ehl: ed, tags: tg }), VARS('routing', { rule: dm ? 'direct' : 'broadcast', recipients: targets.length })]));
+            return;
+          }
+          throw new Error('Cannot read "' + raw + '". Use "name: text", "name joins", "name leaves" or "mute name"');
+        });
+        frames.push(F('All routing and rules (broadcast, @direct, mute, membership) lived in <b>one class</b>. Users stayed tiny and reusable. Watch out: if the mediator keeps absorbing unrelated features, it becomes a god object — split it by concern.', [G('Final room', hub(), hubEdges(), { h: 76, hl: { ROOM: 'sel' } }), { type: 'list', label: 'members', values: members.slice() }]));
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'Sign-up form dialog', html: `<p>Widgets: email field, password field, "I accept terms" checkbox, Submit button. Rule: Submit is enabled only when email is valid, password ≥ 8 chars and the box is ticked. Without a mediator, each widget would need references to the others. With a <code>SignupDialog</code> mediator, each widget calls <code>dialog.changed(this)</code> and the dialog re-evaluates the rule and enables/disables Submit.</p>`, code: `class SignupDialog {
+    String email = ""; String password = ""; boolean accepted; boolean submitEnabled;
+    void changed() {   // every widget calls this; the rule lives in one place
+        submitEnabled = email.contains("@") && password.length() >= 8 && accepted;
+    }
+}
+SignupDialog d = new SignupDialog();
+d.email = "a@b.com"; d.changed();
+d.password = "secret123"; d.changed();
+d.accepted = true; d.changed();
+System.out.println("submit enabled? " + d.submitEnabled);` },
+      { title: 'Ride matching dispatcher', html: `<p>Riders and drivers never contact each other directly at first. The <b>dispatcher</b> receives "need a ride" and "I am available" events, applies matching rules (nearest driver, rating, surge) and introduces a pair. Swapping the matching algorithm touches only the dispatcher (which might hold a Strategy for it — patterns combine).</p>` },
+      { title: 'Observer vs Mediator side by side', html: `<p><b>Observer:</b> a stock ticker broadcasts "price changed"; it does not decide anything about who should react or how. <b>Mediator:</b> the control tower receives "plane 7 wants to land", <i>checks</i> runway state, <i>tells</i> plane 7 to land and plane 9 to circle. A mediator is often <i>implemented with</i> observer-style notifications, but its point is the coordination logic in the middle.</p>` },
+      { title: 'Event bus inside an application', html: `<p>Modules publish events to an in-app bus (Guava EventBus, Spring <code>ApplicationEventPublisher</code>) and subscribe to the types they care about. Modules no longer import each other — the bus mediates. Downside: control flow becomes implicit ("who handles this event?"), so keep event names explicit and log them.</p>` }
+    ],
+    deepDive: `<p><b>God-object risk:</b> the mediator concentrates complexity. Keep it about <i>coordination</i> only; push domain logic into colleagues or into strategies the mediator uses (e.g. <code>MatchingStrategy</code> inside the dispatcher). Several small mediators (one per dialog/room) beat one global one.</p>
+<p><b>Memory and lifecycle:</b> the mediator holds strong references to all colleagues — remove them on leave/close or you leak (same as Observer). If colleagues are created by the mediator, it can own their lifecycle.</p>
+<p><b>Concurrency:</b> a chat room receives messages from many threads. Either make the mediator single-threaded (an actor: one thread consumes a message queue — this also guarantees message order) or use concurrent collections and avoid calling colleagues while holding a lock (they may call back → deadlock). The actor model (Akka, Erlang) is essentially mediators that process one message at a time.</p>
+<p><b>Distributed version:</b> at scale the mediator becomes a service (chat server, matching service, orchestrator). Then you add persistence, delivery acknowledgements, fan-out workers and presence. Orchestration-style sagas (a central coordinator telling services what to do) are Mediator; choreography-style sagas (services reacting to each other's events) are Observer/pub-sub.</p>
+<p><b>Testing:</b> colleagues are tested with a fake mediator that records calls; the mediator is tested with fake colleagues — both are simple because neither knows the concrete other.</p>`,
+    aiEra: `<p><b>What AI changes:</b> multi-agent systems face the mesh-vs-hub decision directly. Letting N agents chat freely with each other gets chaotic and expensive (N² conversations, loops). Most production setups use an <b>orchestrator/supervisor agent</b> — a mediator — that receives results, decides who acts next, and enforces budgets and stop conditions. MCP hosts play a similar role between a model and many tool servers.</p>
+<p><b>Where AI goes wrong:</b> generated code often lets components call each other directly "because it was quicker", or stuffs all business rules into one 2,000-line coordinator. <b>What you own:</b> drawing the interaction graph, deciding which rules belong in the hub, keeping it thin, and choosing in-process vs service-level mediation.</p>`,
+    problems: [{
+      title: 'Air Traffic Control Tower', level: 'Medium', tags: ['mediator', 'queue'], companies: ['Boeing', 'Airbus', 'Honeywell', 'Amazon'],
+      statement: `<p>An airport has <b>R runways</b>. Planes call <code>tower.requestLanding(plane)</code>. If a runway is free, the tower assigns it and tells the plane to land; otherwise the plane is told to <b>hold</b> and is queued (emergency planes go to the front). When a plane calls <code>tower.landed(plane)</code>, its runway is freed and the tower immediately clears the next waiting plane. Planes must never reference each other.</p>`,
+      constraints: `1 ≤ R ≤ 10, up to 10<sup>4</sup> planes. FIFO among normal planes; emergencies before all normal planes (FIFO among emergencies).`,
+      example: `<p>R = 1. A requests → ${H.c('g', 'A lands on runway 0')}. B requests → ${H.c('y', 'B holds')}. EMERGENCY E requests → ${H.c('y', 'E holds, queued before B')}. A landed → runway 0 freed → ${H.c('g', 'E lands')}. E landed → ${H.c('g', 'B lands')}.</p>`,
+      brute: { why: `<p>Each plane holds a list of all other planes and, before landing, asks each one "are you on the runway?" and "were you waiting before me?". That is O(N) messages per request and N² references overall; emergency priority must be coded in every plane; two planes can both decide the runway is free at the same moment (race).</p>`, code: `class NaivePlane {
+    final String id; boolean onRunway, waiting; final List<NaivePlane> others = new ArrayList<>();
+    NaivePlane(String id) { this.id = id; }
+    boolean tryLand() {
+        for (NaivePlane p : others) if (p.onRunway) { waiting = true; return false; }   // asks everyone
+        for (NaivePlane p : others) if (p.waiting) { waiting = true; return false; }    // fairness? priority?
+        onRunway = true; waiting = false; return true;     // two planes can do this at once
+    }
+}` },
+      mcq: { q: 'Which object should decide that an emergency plane jumps the queue?', options: ['The tower (mediator) — it owns the queue and runway rules', 'Each plane, by checking the others', 'The runway object', 'The emergency plane itself, by landing anyway'], answer: 0, explain: 'Coordination rules belong to the mediator. Planes only report events (request, landed) and obey instructions.' },
+      hints: [`<p>Hint 1: Planes know only the tower. The tower knows runways (free/occupied) and a waiting queue.</p>`, `<p>Hint 2: Two deques (emergency, normal) or a PriorityQueue keyed by (priority, arrival sequence). An array of runway owners, null = free.</p>`, `<p>Hint 3: <code>landed()</code> frees the runway then calls a private <code>dispatchNext()</code>. Make tower methods <code>synchronized</code> so two planes cannot grab the same runway. Recipe: request → free runway? assign : enqueue; landed → free → dispatch.</p>`],
+      solution: {
+        approach: `<p>The <code>Tower</code> is the mediator: it owns runway occupancy and two FIFO queues (emergency first). Planes are colleagues that only call <code>requestLanding</code> / <code>landed</code> and receive instructions via <code>clearToLand(runway)</code> or <code>hold()</code>. All rules — priority, fairness, runway assignment — live in the tower, in synchronized methods, so there are no races and planes never reference each other.</p>`,
+        code: `class Plane {
+    final String id; final boolean emergency;
+    Plane(String id, boolean emergency) { this.id = id; this.emergency = emergency; }
+    void clearToLand(int runway) { System.out.println(id + ": landing on runway " + runway); }
+    void hold() { System.out.println(id + ": holding pattern"); }
+}
+
+class Tower {
+    private final Plane[] runways;                     // null = free
+    private final Deque<Plane> emergencyQ = new ArrayDeque<>(), normalQ = new ArrayDeque<>();
+    Tower(int r) { runways = new Plane[r]; }
+
+    synchronized void requestLanding(Plane p) {
+        int free = freeRunway();
+        if (free >= 0) { assign(free, p); return; }
+        (p.emergency ? emergencyQ : normalQ).addLast(p);
+        p.hold();
+    }
+
+    synchronized void landed(Plane p) {
+        for (int i = 0; i < runways.length; i++) {
+            if (runways[i] == p) {
+                runways[i] = null;
+                System.out.println("tower: runway " + i + " free");
+                dispatchNext(i);
+                return;
+            }
+        }
+        throw new IllegalStateException(p.id + " was not on a runway");
+    }
+
+    private void dispatchNext(int runway) {
+        Plane next = !emergencyQ.isEmpty() ? emergencyQ.pollFirst() : normalQ.pollFirst();
+        if (next != null) assign(runway, next);
+    }
+    private int freeRunway() {
+        for (int i = 0; i < runways.length; i++) if (runways[i] == null) return i;
+        return -1;
+    }
+    private void assign(int i, Plane p) { runways[i] = p; p.clearToLand(i); }
+
+    public static void main(String[] args) {
+        Tower t = new Tower(1);
+        Plane a = new Plane("A", false), b = new Plane("B", false), e = new Plane("E", true);
+        t.requestLanding(a);
+        t.requestLanding(b);
+        t.requestLanding(e);
+        t.landed(a);      // E lands before B
+        t.landed(e);      // then B
+    }
+}`,
+        complexity: `<p>request/landed: O(R) to scan runways (R ≤ 10) + O(1) queue ops. Memory O(R + waiting planes).</p>`,
+        followUps: ['Planes also take off from the same runways — how do you mix takeoff and landing queues fairly?', 'How would you notify planes asynchronously (they are remote)?', 'Add a rule: heavy planes need a 2-minute gap — where does it live?']
+      }
+    }]
+  });
+
   registerModule({
     id: 'lld06',
     title: 'Behavioral Design Patterns',
