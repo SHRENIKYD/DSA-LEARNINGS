@@ -1779,6 +1779,9 @@ class Stress {
           { type: 'array', label: 'a — best subarray', values: a, hl: fin },
           { type: 'bars', label: 'Steps for N = ' + n + ' by version', values: [n * (n + 1) * (n + 2) / 6, n * (n + 1) / 2, n], texts: [String(n * (n + 1) * (n + 2) / 6), String(n * (n + 1) / 2), String(n)], idxLabels: ['O(N³)', 'O(N²)', 'O(N)'], hl: { 0: 'bad', 1: 'cur', 2: 'ok' } }
         ] });
+        frames.push({ narr: 'How to say it in an interview: "The brute force checks all N(N+1)/2 subarrays with a running sum, O(N<sup>2</sup>). For N up to a few thousand that is fine; for 10<sup>5</sup> I need to remove the repeated work."', parts: [
+          { type: 'table', label: 'Brute-force recipe applied', columns: ['step', 'here'], rows: [['1. candidates', 'every subarray a[i..j]'], ['2. enumerate', 'loop i, loop j ≥ i'], ['3. check', 'running sum in O(1)'], ['4. keep best', 'best = max(best, sum) → ' + best]], hl: { 3: 'sel' } }
+        ] });
         return frames;
       }
     },
