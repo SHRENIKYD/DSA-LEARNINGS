@@ -1037,4 +1037,490 @@ with tempfile.TemporaryDirectory() as d:
       }
     }]
   });
+
+  /* ================= TOPIC 5: Type hints + typing module ================= */
+  topics.push({
+    title: 'Type Hints and the typing Module: Labels That Tools (Not Python) Check',
+    analogy: `<p>Type hints are like <b>labels on moving boxes</b>: "KITCHEN — plates". The truck driver (the Python interpreter) does not read labels; he carries whatever you give him, even if the "plates" box is full of shoes. But the <b>person unpacking</b> (you, your teammates, your editor and a checker like mypy) reads every label, and can shout <i>"this box says plates but you're putting shoes in it!"</i> <b>before</b> anything breaks.</p>`,
+    explain: `<p>🟢 <b>The plain idea.</b> A type hint says what kind of value a variable, parameter or return value should hold:</p>
+<pre>def greet(name: str, times: int = 1) -&gt; str:
+    return ('hi ' + name + '! ') * times
+
+count: int = 0
+scores: dict[str, list[int]] = {}</pre>
+<p><b>Python itself ignores them at runtime.</b> <code>greet(5, 'x')</code> still runs (and crashes or misbehaves). Hints are read by <b>tools</b>: mypy/pyright (type checkers), your IDE (autocomplete, red squiggles), and libraries like pydantic, FastAPI and dataclasses that read them on purpose.</p>
+<p>🔵 <b>The vocabulary you need (Python 3.10+ spelling):</b></p>
+${H.table(['Write', 'Means', 'Example'], [['<code>int</code>, <code>str</code>, <code>bool</code>, <code>None</code>', 'that exact type', '<code>def f() -&gt; None</code>'], ['<code>list[int]</code>, <code>dict[str, float]</code>, <code>set[str]</code>', 'container of …', '<code>ids: list[int]</code>'], ['<code>tuple[int, str]</code> / <code>tuple[int, ...]</code>', 'fixed pair / any length of ints', '<code>point: tuple[float, float]</code>'], ['<code>int | str</code>', 'either (Union)', '<code>key: int | str</code>'], ['<code>str | None</code> (= <code>Optional[str]</code>)', 'may be None', '<code>middle_name: str | None = None</code>'], ['<code>Callable[[int, int], bool]</code>', 'a function taking two ints returning bool', 'comparators, callbacks'], ['<code>Iterable[str]</code>, <code>Sequence[int]</code>, <code>Mapping[str, int]</code>', 'anything that behaves like… (from <code>collections.abc</code>)', 'flexible parameters'], ['<code>Any</code>', 'turn checking OFF for this value', 'escape hatch'], ['<code>object</code>', 'anything, but you may only use what every object has', 'safe "anything"'], ['<code>Literal["r", "w"]</code>', 'only these exact values', 'modes, flags'], ['<code>Final</code>', 'must not be reassigned', '<code>MAX: Final = 10</code>']])}
+<p><b>Generics: functions that keep the type.</b> <code>def first(xs: list[T]) -&gt; T</code> says "whatever type goes in, the same comes out". With a <code>TypeVar</code> (or the 3.12 syntax <code>def first[T](xs: list[T]) -&gt; T</code>), mypy knows <code>first([1, 2])</code> is an <code>int</code> and <code>first(['a'])</code> is a <code>str</code>.</p>
+<p><b>Shapes of data:</b> <code>TypedDict</code> describes a dict with known keys (JSON!), <code>NamedTuple</code>/<code>dataclass</code> describe records, and <code>Protocol</code> describes "anything with these methods" — static duck typing.</p>
+<p><b>Golden rule:</b> be <b>generous in what you accept</b> (<code>Iterable[str]</code>, <code>Mapping</code>, <code>Sequence</code>) and <b>specific in what you return</b> (<code>list[str]</code>, <code>dict[str, int]</code>).</p>`,
+    clues: [
+      '"make the code self-documenting / safer to refactor in a large codebase" → type hints + a checker in CI',
+      '"this function returns either a value or nothing" → <code>X | None</code> (and callers must handle None)',
+      '"function works for any element type and returns the same type" → generics (TypeVar or <code>def f[T]</code>)',
+      '"accept anything with a .read() / .area() method" → <code>Protocol</code> (structural typing), not a base class',
+      '"JSON object with known fields" → <code>TypedDict</code> (static) or pydantic model (runtime validation)',
+      '"do type hints make Python faster / enforce types?" → No: CPython ignores them at runtime (mypyc and Cython can use them to compile)',
+      '"Any vs object" → Any disables checking; object allows only operations every object supports'
+    ],
+    code: [{ lang: 'python', run: true, title: 'A tour of the typing vocabulary (runs fine: hints are not enforced)', code: `from collections.abc import Callable, Iterable, Mapping, Sequence
+from typing import Final, Literal, NamedTuple, Protocol, TypedDict, TypeVar
+
+T = TypeVar('T')
+MAX_RETRIES: Final = 3
+
+
+def first(items: Sequence[T]) -> T | None:
+    """Generic: first([1, 2]) is int | None, first(['a']) is str | None."""
+    return items[0] if items else None
+
+
+def apply_all(fn: Callable[[int], int], xs: Iterable[int]) -> list[int]:
+    return [fn(x) for x in xs]          # accept any iterable, return a concrete list
+
+
+def open_mode(mode: Literal['r', 'w']) -> str:
+    return f'opening in {mode!r} mode'
+
+
+class Point(NamedTuple):
+    x: float
+    y: float
+
+
+class UserJSON(TypedDict):
+    id: int
+    name: str
+    tags: list[str]
+
+
+class HasArea(Protocol):                  # structural: no inheritance needed
+    def area(self) -> float: ...
+
+
+class Square:
+    def __init__(self, side: float) -> None:
+        self.side = side
+
+    def area(self) -> float:
+        return self.side ** 2
+
+
+def total_area(shapes: Iterable[HasArea]) -> float:
+    return sum(s.area() for s in shapes)
+
+
+def word_lengths(counts: Mapping[str, int]) -> dict[str, int]:
+    return {w: len(w) * n for w, n in counts.items()}
+
+
+print(first([10, 20]), first([]), first('xyz'))
+print(apply_all(lambda v: v * v, range(4)))
+print(open_mode('r'))
+print(Point(1.5, 2.0))
+user: UserJSON = {'id': 1, 'name': 'Asha', 'tags': ['admin']}
+print(user['name'], total_area([Square(2), Square(3)]))
+print(word_lengths({'hi': 2}), MAX_RETRIES)` }, { lang: 'python', run: true, title: 'Hints live in __annotations__ and are NOT enforced', code: `import typing
+
+
+def double(x: int) -> int:
+    return x * 2
+
+
+print(double.__annotations__)        # {'x': <class 'int'>, 'return': <class 'int'>}
+print(double(21))                    # 42
+print(double('ab'))                  # 'abab' - Python happily ignores the hint!
+print(double([1]))                   # [1, 1]
+
+
+class Config:
+    host: str
+    port: int = 8080
+
+
+print(typing.get_type_hints(Config))   # resolved hints, also from base classes
+print(hasattr(Config, 'host'))         # False: annotation without value creates no attribute` }],
+    codeTitle: ['typing vocabulary tour', 'Annotations at runtime'],
+    viz: [{
+      title: 'Hints are labels: Python stores them, the checker reads them, the runtime ignores them',
+      input: "'ab'",
+      inputLabel: "Argument to pass to double(x: int) -> int  (try: 21 · 'ab' · [1, 2] · None)",
+      gen: function (input) {
+        var raw = String(input === undefined ? '' : input).trim();
+        if (!raw) throw new Error("Type a Python literal: 21, 'ab', [1, 2] or None");
+        var kind, rt, res, err = null;
+        if (/^-?\d+$/.test(raw)) { kind = 'int'; res = String(parseInt(raw, 10) * 2); }
+        else if (/^-?\d+\.\d+$/.test(raw)) { kind = 'float'; res = String(parseFloat(raw) * 2); }
+        else if (/^'[^']*'$/.test(raw) || /^"[^"]*"$/.test(raw)) { kind = 'str'; var inner = raw.slice(1, -1); res = "'" + inner + inner + "'"; }
+        else if (/^\[.*\]$/.test(raw)) { kind = 'list[int]'; var body = raw.slice(1, -1).trim(); res = '[' + (body ? body + ', ' + body : '') + ']'; }
+        else if (raw === 'None') { kind = 'None'; err = "TypeError: unsupported operand type(s) for *: 'NoneType' and 'int'"; }
+        else if (raw === 'True' || raw === 'False') { kind = 'bool'; res = String(raw === 'True' ? 2 : 0); }
+        else throw new Error("Use a simple literal: 21, 2.5, 'ab', [1, 2], None, True");
+        var code = ['def double(x: int) -> int:', '    return x * 2', '', 'print(double.__annotations__)', 'print(double(' + raw + '))'].join('\n');
+        var frames = [];
+        frames.push(fr('Python runs the <code>def</code>. It evaluates the annotations and stores them in a dict on the function — that is <b>all</b> it does with them.', [cp(code, 1, 'cur'), { type: 'map', label: 'double.__annotations__', entries: [['x', "<class 'int'>"], ['return', "<class 'int'>"]], hl: { x: 'ok', return: 'ok' } }]));
+        frames.push(fr('Printing <code>__annotations__</code> shows the stored labels. Frameworks like FastAPI, pydantic and dataclasses read exactly this dict.', [cp(code, 4, 'ok'), tx("<pre>{'x': &lt;class 'int'&gt;, 'return': &lt;class 'int'&gt;}</pre>", 'Printed')]));
+        frames.push(fr('Now the call <code>double(' + esc(raw) + ')</code>. The argument\'s real type is <b>' + kind + '</b>. Does Python check it against <code>int</code>? <b>No.</b> It just binds <code>x</code>.', [cp(code, 5, 'cur'), vp({ x: raw, 'type(x)': kind, 'hint says': 'int' }, 'type(x)', kind === 'int' || kind === 'bool' ? 'ok' : 'bad')]));
+        if (err) frames.push(fr('The body runs <code>x * 2</code> and fails <b>at runtime</b>, deep inside — the hint did not stop the bad value at the door.', [cp(code, 2, 'bad'), tx('<span class="c-r">' + esc(err) + '</span>', 'Runtime result')]));
+        else frames.push(fr('The body runs <code>x * 2</code>' + (kind === 'int' ? ' as intended.' : kind === 'bool' ? ' — bool is a subclass of int, so this is even type-correct.' : ' and <b>silently does something else</b>: <code>*</code> means repetition for ' + kind + '. No error, wrong meaning.'), [cp(code, 2, kind === 'int' || kind === 'bool' ? 'ok' : 'cur'), tx('<b>' + esc(res) + '</b>', 'Returned at runtime')]));
+        var ok = kind === 'int' || kind === 'bool';
+        frames.push(fr('Now run <b>mypy</b> (a separate program that reads the source without running it). It compares the argument\'s type to the label <code>int</code>.', [cp(code, 5, ok ? 'ok' : 'bad', 'mypy reading the source'), tx(ok ? '<span class="c-g">Success: no issues found in 1 source file</span>' : '<span class="c-r">app.py:5: error: Argument 1 to "double" has incompatible type "' + (kind === 'list[int]' ? 'list[int]' : kind) + '"; expected "int"  [arg-type]</span>', '$ mypy app.py')]));
+        frames.push(fr('Takeaway: hints catch bugs <b>before</b> running (in your editor and CI), document intent, and power tools — but they are <b>not</b> runtime validation. For untrusted input (HTTP, JSON, files) validate at runtime too (pydantic, manual checks).', [{ type: 'table', label: 'Who reads the hints?', columns: ['reader', 'reads hints?', 'effect'], rows: [['CPython interpreter', 'stores only', 'no checking, no speed-up'], ['mypy / pyright / IDE', 'yes', 'errors before running'], ['pydantic / FastAPI / dataclasses', 'yes, at runtime', 'validation, parsing, generated code'], ['mypyc / Cython', 'yes', 'compile to faster C']], hl: { 1: 'ok' } }]));
+        return frames;
+      }
+    }],
+    examples: [
+      { title: 'Optional means "you must handle None"', html: `<p><code>dict.get</code> returns <code>V | None</code>. mypy forces you to deal with the None before calling string methods — exactly the bug class (<code>AttributeError: 'NoneType' object has no attribute …</code>) that is most common in Python production crashes.</p>`, code: { lang: 'python', run: true, code: `def find_email(users: dict[str, str], name: str) -> str | None:
+    return users.get(name)
+
+
+def shout_email(users: dict[str, str], name: str) -> str:
+    email = find_email(users, name)
+    # email.upper() here -> mypy: Item "None" of "str | None" has no attribute "upper"
+    if email is None:
+        return 'no email'
+    return email.upper()        # mypy knows email is str here (narrowing)
+
+
+print(shout_email({'asha': 'a@x.com'}, 'asha'), shout_email({}, 'bob'))` } },
+      { title: 'Protocol: static duck typing', html: `<p>Any class with a matching <code>read()</code> method satisfies <code>Readable</code> — no inheritance, no registration. <code>@runtime_checkable</code> additionally lets <code>isinstance</code> check that the method <b>exists</b> (not its signature). Output: ${H.c('g', '5 4 True')}.</p>`, code: { lang: 'python', run: true, code: `import io
+from typing import Protocol, runtime_checkable
+
+
+@runtime_checkable
+class Readable(Protocol):
+    def read(self) -> str: ...
+
+
+class FakeFile:
+    def read(self) -> str:
+        return 'hello'
+
+
+def count_chars(src: Readable) -> int:
+    return len(src.read())
+
+
+print(count_chars(FakeFile()), count_chars(io.StringIO('abcd')), isinstance(FakeFile(), Readable))` } },
+      { title: 'TypedDict for JSON payloads', html: `<p>A TypedDict is a plain dict at runtime (zero cost) but mypy checks the keys and value types. <code>NotRequired</code> marks optional keys.</p>${H.table(['code', 'mypy says'], [['<code>u["nmae"]</code>', H.c('r', 'TypedDict "User" has no key "nmae"')], ['<code>u["id"] + "x"</code>', H.c('r', 'Unsupported operand types for + ("int" and "str")')], ['<code>u.get("nick")</code>', H.c('g', 'OK, type str | None')]])}`, code: { lang: 'python', run: true, code: `from typing import NotRequired, TypedDict
+
+
+class User(TypedDict):
+    id: int
+    name: str
+    nick: NotRequired[str]
+
+
+def label(u: User) -> str:
+    return f"#{u['id']} {u.get('nick', u['name'])}"
+
+
+print(label({'id': 7, 'name': 'Asha'}), label({'id': 8, 'name': 'Ben', 'nick': 'B'}))
+print(type({'id': 1, 'name': 'x'}))     # just a dict at runtime` } },
+      { title: 'New syntax cheat sheet (3.12+)', html: `${H.table(['old style', 'modern', 'since'], [['<code>List[int]</code>, <code>Dict[str, int]</code>', '<code>list[int]</code>, <code>dict[str, int]</code>', '3.9'], ['<code>Union[int, str]</code>, <code>Optional[str]</code>', '<code>int | str</code>, <code>str | None</code>', '3.10'], ['<code>T = TypeVar("T")</code> + <code>def f(x: T) -&gt; T</code>', '<code>def f[T](x: T) -&gt; T</code>', '3.12'], ['<code>Vector: TypeAlias = list[float]</code>', '<code>type Vector = list[float]</code>', '3.12'], ['<code>"Node"</code> forward-reference strings', 'plain <code>Node</code> (lazy annotations, PEP 649)', '3.14']])}` }
+    ],
+    deepDive: `<p>🟣 <b>When annotations are evaluated.</b> Before 3.14, annotations on functions and classes are evaluated at definition time (so forward references to a class not yet defined need quotes: <code>-&gt; "Node"</code>). <code>from __future__ import annotations</code> (PEP 563) turns them all into strings. Python 3.14 (PEP 649/749) makes annotations <b>lazy</b> by default: they are computed only when someone reads <code>__annotations__</code> (via <code>annotationlib</code>), which fixes forward references and import-time cost. Annotations on local variables inside functions are never evaluated at all.</p>
+<p><b>Variance (an interview favourite).</b> <code>list[int]</code> is <b>not</b> a <code>list[float]</code>, even though an int is acceptable where a float is expected (mypy special-cases int→float). Lists are <b>mutable</b>, so a function taking <code>list[float]</code> could append <code>3.14</code> into your list of ints. Read-only types are <b>covariant</b>: <code>Sequence[int]</code> <i>is</i> a <code>Sequence[float]</code>. Callables are contravariant in their arguments. This is why "accept Sequence/Iterable/Mapping" is not just style — it makes your function accept more callers.</p>
+<p><b>Advanced tools you will see:</b> <code>@overload</code> (different return types for different argument types), <code>ParamSpec</code> + <code>Concatenate</code> (typing decorators that keep the wrapped signature), <code>Self</code> (3.11, for fluent methods/classmethods), <code>NewType("UserId", int)</code> (zero-cost distinct type), <code>Annotated[int, Gt(0)]</code> (attach metadata that pydantic/FastAPI read), <code>TypeGuard</code>/<code>TypeIs</code> (user-defined narrowing functions; TypeIs is 3.13), <code>Never</code> (functions that always raise), <code>@override</code> (3.12).</p>
+<p><b>Runtime cost.</b> Hints cost a tiny bit of import time (building the annotation dicts) and nothing per call. <code>typing.get_type_hints</code> resolves string annotations and is what frameworks call. <code>isinstance(x, list[int])</code> raises TypeError — parametrised generics cannot be checked at runtime, which is why libraries like pydantic/beartype exist.</p>`,
+    aiEra: `<p>🤖 <b>What AI changes:</b> type hints are now one of the best ways to <b>steer</b> code assistants: a precise signature (<code>def merge(a: Mapping[str, int], b: Mapping[str, int]) -&gt; dict[str, int]</code>) acts as a mini-spec, and the checker immediately flags generated code that does not fit. Typed codebases get noticeably better AI completions and safer AI refactors.</p>
+<p><b>Use AI as a partner:</b> "add type hints to this module, prefer Protocol/Sequence for parameters, run under mypy --strict" is a great mechanical task to delegate. Structured-output APIs and agent tool definitions are typically generated from pydantic models or TypedDicts, so typing skills now directly shape how LLMs call your code.</p>
+<p><b>Where AI goes wrong:</b> sprinkling <code>Any</code> to make errors disappear, outdated spellings (<code>List</code>, <code>Optional</code> everywhere in new code), <code>cast()</code> to silence real bugs, and believing hints validate input at runtime. <b>What you must still own:</b> designing good types — they are your API contract.</p>`,
+    problems: [{
+      title: 'Typed group_by: a Generic Function',
+      level: 'Medium', tags: ['generics', 'TypeVar', 'Callable'], companies: ['Meta', 'Dropbox'],
+      statement: `<p>Write a fully typed <code>group_by(items, key)</code> that groups any iterable of elements by the value of a key function, preserving input order inside each group. A type checker must infer precise types: grouping <code>list[str]</code> by <code>len</code> must give <code>dict[int, list[str]]</code>.</p>`,
+      constraints: `items is any Iterable (possibly a one-shot generator); key returns a hashable value; do not use Any.`,
+      example: `<p><code>group_by(['apple', 'fig', 'kiwi', 'pear'], len)</code> → ${H.c('g', "{5: ['apple'], 3: ['fig'], 4: ['kiwi', 'pear']}")}, inferred type ${H.c('b', 'dict[int, list[str]]')} — because T = str (from the items) and K = int (from len's return type).</p>`,
+      brute: { why: `<p>Annotating with <code>list</code>, <code>dict</code> and <code>Callable</code> (unparametrised) or <code>Any</code> runs fine but throws the type information away: callers get <code>dict[Any, Any]</code>, so a typo like <code>groups[3][0].uper()</code> is not caught.</p>`, code: `from typing import Any, Callable
+
+def group_by_loose(items: list, key: Callable) -> dict[Any, Any]:
+    out: dict[Any, Any] = {}
+    for x in items:
+        out.setdefault(key(x), []).append(x)
+    return out` },
+      mcq: { q: 'Why two type variables (T and K) instead of one?', options: ['The element type and the key type are independent (str elements, int keys)', 'TypeVars must always come in pairs', 'K is needed only for performance', 'One TypeVar cannot appear in a return type'], answer: 0, explain: 'T links the element type to the lists in the result; K links the key function\'s return type to the dict keys. They vary independently, so they need separate variables.' },
+      hints: [`<p>Hint 1: Declare <code>T = TypeVar('T')</code> and <code>K = TypeVar('K', bound=Hashable)</code>, or use 3.12 syntax <code>def group_by[T, K: Hashable](...)</code>.</p>`, `<p>Hint 2: Parameters: <code>items: Iterable[T]</code>, <code>key: Callable[[T], K]</code>. Return: <code>dict[K, list[T]]</code>.</p>`, `<p>Hint 3: Body: one pass with <code>out.setdefault(key(x), []).append(x)</code> (or defaultdict, converting back to dict). Annotate the empty dict: <code>out: dict[K, list[T]] = {}</code>.</p>`],
+      solution: {
+        approach: `<p>Two TypeVars connect inputs to outputs: elements flow into the lists (T), key results become dict keys (K, bounded by Hashable). Accept the most general input (<code>Iterable</code>) and return a concrete <code>dict</code>.</p>`,
+        code: { lang: 'python', run: true, code: `from collections.abc import Callable, Hashable, Iterable
+from typing import TypeVar
+
+T = TypeVar('T')
+K = TypeVar('K', bound=Hashable)
+
+
+def group_by(items: Iterable[T], key: Callable[[T], K]) -> dict[K, list[T]]:
+    out: dict[K, list[T]] = {}
+    for x in items:                       # single pass: works for generators too
+        out.setdefault(key(x), []).append(x)
+    return out
+
+
+words = ['apple', 'fig', 'kiwi', 'pear']
+by_len = group_by(words, len)              # mypy: dict[int, list[str]]
+print(by_len)
+evens = group_by(range(7), lambda n: n % 2 == 0)   # dict[bool, list[int]]
+print(evens)
+print(group_by((w for w in words), lambda w: w[0]))  # generator input` },
+        alt: [{ lang: 'python', code: `# Python 3.12+ type-parameter syntax: no module-level TypeVars needed
+from collections.abc import Callable, Hashable, Iterable
+
+
+def group_by[T, K: Hashable](items: Iterable[T], key: Callable[[T], K]) -> dict[K, list[T]]:
+    out: dict[K, list[T]] = {}
+    for x in items:
+        out.setdefault(key(x), []).append(x)
+    return out` }],
+        dry: { head: ['x', 'key(x)', 'out after'], rows: [["'apple'", '5', "{5: ['apple']}"], ["'fig'", '3', "{5: ['apple'], 3: ['fig']}"], ["'kiwi'", '4', "{…, 4: ['kiwi']}"], ["'pear'", '4', "{…, 4: ['kiwi', 'pear']}"]] },
+        complexity: `<p>O(N) time (one key call and one amortised O(1) append per element), O(N) space. Type checking cost is zero at runtime.</p>`,
+        followUps: ['Add an optional value function: group_by(items, key, value=lambda x: x) — how do the types change (a third TypeVar V)?', 'Use @overload so that omitting value returns dict[K, list[T]] but passing it returns dict[K, list[V]].', 'Why would itertools.groupby give a different result on this input?']
+      }
+    }]
+  });
+
+  /* ================= TOPIC 6: mypy, narrowing, gradual typing ================= */
+  topics.push({
+    title: 'mypy in Practice: Type Narrowing, Gradual Typing, Strict Mode and Escape Hatches',
+    analogy: `<p>mypy is a <b>spell-checker for meaning</b>. A spell-checker reads your essay without "performing" it, and underlines words that cannot be right. mypy reads your code without running it and underlines calls that cannot be right: "you might be calling <code>.upper()</code> on <code>None</code> here". Like a spell-checker, it learns from context: after you write "if the name is missing, stop", it knows that <b>below that line</b> the name is definitely present. That learning is called <b>narrowing</b>.</p>`,
+    explain: `<p>🟢 <b>What mypy does.</b> <code>pip install mypy</code>, then <code>mypy src/</code>. It reads your annotations, <b>infers</b> types for everything else (<code>x = [1, 2]</code> → <code>list[int]</code>), and reports places where types cannot fit. It never runs your code.</p>
+<pre>$ mypy app.py
+app.py:12: error: Item "None" of "str | None" has no attribute "upper"  [union-attr]
+Found 1 error in 1 file (checked 1 source file)</pre>
+<p>🔵 <b>Narrowing — how mypy follows your if-statements.</b> Inside a branch, mypy shrinks a union based on the check you wrote:</p>
+${H.table(['check', 'inside the if', 'after an early return'], [['<code>if x is None:</code>', '<code>None</code>', 'everything except None'], ['<code>if isinstance(x, int):</code>', '<code>int</code>', 'the rest of the union'], ['<code>if x:</code> (on <code>str | None</code>)', '<code>str</code> (non-empty)', '<code>str | None</code>'], ['<code>if mode == "r":</code> (on a Literal)', '<code>Literal["r"]</code>', 'remaining literals'], ['<code>assert x is not None</code>', '—', 'not None'], ['<code>match</code> statement cases', 'the matched class', 'remaining cases']])}
+<p><b>Gradual typing.</b> You do not have to annotate everything at once. By default mypy <b>skips the bodies of unannotated functions</b> and treats unknown things as <code>Any</code>. Teams adopt typing module by module, then tighten flags:</p>
+<ul>
+<li><code>--strict</code> turns on the useful extras: <code>disallow_untyped_defs</code>, <code>warn_return_any</code>, <code>no_implicit_optional</code>, <code>strict_equality</code>, and more.</li>
+<li>Configure per-module in <code>pyproject.toml</code> under <code>[tool.mypy]</code> and <code>[[tool.mypy.overrides]]</code>.</li>
+</ul>
+<p><b>Escape hatches</b> (use sparingly, leave a comment why):</p>
+<ul>
+<li><code>reveal_type(expr)</code> — mypy prints what it thinks the type is. Your best debugging tool.</li>
+<li><code>cast(int, value)</code> — "trust me". No runtime effect, no check. Lies here become runtime crashes.</li>
+<li><code># type: ignore[arg-type]</code> — silence one specific error code on one line (with <code>warn_unused_ignores</code> so stale ignores get flagged).</li>
+<li><code>Any</code> — opt out completely for that value; it spreads silently, so contain it at the edges.</li>
+</ul>
+<p><b>Libraries without hints</b> need <b>stubs</b> (<code>.pyi</code> files): many ship them (a <code>py.typed</code> marker), others have <code>types-requests</code>-style packages from <b>typeshed</b>.</p>`,
+    clues: [
+      '"Item None of X | None has no attribute …" → add a None check (narrowing) or change the design so None is impossible',
+      '"we have a big untyped codebase, how do we adopt types?" → gradual typing: start with new modules, CI on changed files, per-module strictness overrides, ratchet up',
+      '"mypy says Incompatible types: list[int] vs list[float]" → invariance; accept <code>Sequence[float]</code> instead',
+      '"I am sure it is not None but mypy disagrees" → narrow with an <code>if</code>/<code>assert</code>, not <code>cast</code> or ignore',
+      '"what type does mypy think this is?" → <code>reveal_type(x)</code>',
+      '"Library has no type hints" → install <code>types-…</code> stubs, or write a <code>.pyi</code> stub, or <code>ignore_missing_imports</code> for that module only',
+      '"mypy vs pyright" → both are static checkers following the same PEPs; pyright powers VS Code\'s Pylance and is faster; results differ in edge cases'
+    ],
+    code: [{ lang: 'python', run: true, title: 'Narrowing patterns mypy understands (all valid under --strict)', code: `from typing import Literal, assert_never
+
+Shape = Literal['circle', 'square']
+
+
+def describe(x: int | str | None) -> str:
+    if x is None:
+        return 'nothing'                 # x: None
+    if isinstance(x, int):
+        return f'number {x + 1}'         # x: int
+    return x.upper()                     # x: str (only option left)
+
+
+def area(shape: Shape, size: float) -> float:
+    if shape == 'circle':
+        return 3.14159 * size ** 2       # shape: Literal['circle']
+    elif shape == 'square':
+        return size * size
+    else:
+        assert_never(shape)              # mypy errors here if a case is forgotten
+
+
+def first_word(text: str | None) -> str:
+    if not text:                          # None AND '' handled together
+        return ''
+    return text.split()[0]
+
+
+for v in (None, 41, 'hi', True):
+    print(repr(v), '->', describe(v))     # True is an int subclass -> 'number 2'
+print(area('circle', 1.0), area('square', 3.0), repr(first_word('')), first_word('hello world'))` }, { lang: 'python', run: true, title: 'Variance: why list[int] is not a list[float]', code: `from collections.abc import Sequence
+
+
+def add_pi(xs: list[float]) -> None:
+    xs.append(3.14)                       # legal for a list[float]
+
+
+def total(xs: Sequence[float]) -> float:  # read-only view: covariant, accepts list[int]
+    return sum(xs)
+
+
+ints: list[int] = [1, 2, 3]
+print(total(ints))                         # fine for mypy AND at runtime
+add_pi(ints)                               # mypy: Argument 1 has incompatible type "list[int]"; expected "list[float]"
+print(ints)                                # [1, 2, 3, 3.14] - our list[int] now holds a float!
+try:
+    print([n.bit_length() for n in ints])  # code trusting list[int] breaks later
+except AttributeError as e:
+    print('runtime crash far away:', e)` }, { lang: 'text', check: false, title: 'pyproject.toml: a realistic gradual-strictness setup', code: `[tool.mypy]
+python_version = "3.12"
+strict = true                     # new code: everything typed
+warn_unused_ignores = true
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = ["legacy.*"]             # old code: checked, but not strictly
+disallow_untyped_defs = false
+check_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = ["some_untyped_lib.*"]   # third-party without stubs
+ignore_missing_imports = true` }],
+    codeTitle: ['Narrowing patterns', 'Variance trap', 'mypy configuration'],
+    viz: [{
+      title: 'Type narrowing: what mypy believes on each line vs what actually runs',
+      input: 'None',
+      inputLabel: "Runtime value for x (try: None · 41 · 'hi' · True)",
+      gen: function (input) {
+        var raw = String(input === undefined ? '' : input).trim();
+        var kind;
+        if (raw === 'None') kind = 'None';
+        else if (raw === 'True' || raw === 'False') kind = 'bool';
+        else if (/^-?\d+$/.test(raw)) kind = 'int';
+        else if (/^'[^']*'$/.test(raw) || /^"[^"]*"$/.test(raw)) kind = 'str';
+        else throw new Error("Type None, an integer like 41, a string like 'hi', or True");
+        var code = ['def describe(x: int | str | None) -> str:', '    if x is None:', "        return 'nothing'", '    if isinstance(x, int):', "        return f'number {x + 1}'", '    return x.upper()'].join('\n');
+        var frames = [];
+        function tbl(hlRow) { return { type: 'table', label: 'mypy\'s view of x, line by line', columns: ['line', 'static type of x', 'why'], rows: [['1', 'int | str | None', 'the annotation'], ['3', 'None', 'inside "if x is None"'], ['4', 'int | str', 'None was returned on line 3'], ['5', 'int', 'inside isinstance(x, int)'], ['6', 'str', 'int returned on line 5 → only str left']], hl: hlRow === undefined ? {} : (function () { var h = {}; h[hlRow] = 'cur'; return h; })() }; }
+        frames.push(fr('mypy reads the signature: <code>x</code> may be <b>int, str or None</b>. Calling <code>x.upper()</code> right here would be an error ("Item int has no attribute upper").', [cp(code, 1), tbl(0), vp({ 'runtime x': raw, 'runtime type': kind })]));
+        frames.push(fr('<code>if x is None:</code> — mypy splits the world in two. Inside the branch, x is <b>None</b>; after the branch (because it returns), x is <b>int | str</b>.', [cp(code, 2), tbl(1), vp({ 'runtime x': raw, 'x is None?': kind === 'None' ? 'True' : 'False' }, 'x is None?', kind === 'None' ? 'ok' : 'bad')]));
+        if (kind === 'None') {
+          frames.push(fr('At runtime x really is None → return <code>\'nothing\'</code>. The remaining lines never run, but mypy still checked them for every possible type.', [cp(code, 3, 'ok'), tbl(1), tx("<b>'nothing'</b>", 'Returned')]));
+        } else {
+          frames.push(fr('Not None at runtime → continue. mypy now knows x: <b>int | str</b>.', [cp(code, 4), tbl(2), vp({ 'runtime x': raw })]));
+          var isInt = kind === 'int' || kind === 'bool';
+          frames.push(fr('<code>isinstance(x, int)</code> narrows again: inside → <b>int</b>, after → <b>str</b>.' + (kind === 'bool' ? ' Note: <code>True</code> is a <b>bool</b>, and bool is a subclass of int, so this is True!' : ''), [cp(code, 4, isInt ? 'ok' : 'bad'), tbl(3), vp({ 'isinstance(x, int)': isInt ? 'True' : 'False' }, 'isinstance(x, int)', isInt ? 'ok' : 'bad')]));
+          if (isInt) {
+            var n = kind === 'bool' ? (raw === 'True' ? 1 : 0) : parseInt(raw, 10);
+            frames.push(fr('mypy allows <code>x + 1</code> because x is an int here. Runtime result: <b>number ' + (n + 1) + '</b>.', [cp(code, 5, 'ok'), tbl(3), tx("<b>'number " + (n + 1) + "'</b>", 'Returned')]));
+          } else {
+            var s = raw.slice(1, -1);
+            frames.push(fr('Only <b>str</b> is left, so <code>x.upper()</code> type-checks — no cast, no ignore. Runtime result: <b>' + esc(s.toUpperCase()) + '</b>.', [cp(code, 6, 'ok'), tbl(4), tx("<b>'" + esc(s.toUpperCase()) + "'</b>", 'Returned')]));
+          }
+        }
+        frames.push(fr('If you deleted the <code>if x is None</code> check, mypy would report on line 6: <span class="c-r">Item "None" of "str | None" has no attribute "upper"</span> — the bug is caught without running a single test.', [cp(code.replace("    if x is None:\n        return 'nothing'\n", ''), 4, 'bad', 'Without the None check'), tx('<span class="c-r">error: Item "None" of "str | None" has no attribute "upper"  [union-attr]</span>', '$ mypy')]));
+        return frames;
+      }
+    }, {
+      title: 'Why list[int] cannot be passed as list[float] (invariance)',
+      gen: function () {
+        var code = ['def add_pi(xs: list[float]) -> None:', '    xs.append(3.14)', '', 'ints: list[int] = [1, 2, 3]', 'add_pi(ints)          # mypy error', 'ints[3].bit_length()  # runtime crash'].join('\n');
+        return [
+          fr('<code>ints</code> is declared as a list of ints. Code elsewhere trusts that every element has int methods like <code>bit_length()</code>.', [cp(code, 4), { type: 'array', label: 'ints (list[int])', values: [1, 2, 3] }]),
+          fr('<code>add_pi</code> takes a <code>list[float]</code>. An int is acceptable as a float, so it is tempting to think a list of ints is a list of floats…', [cp(code, 1), { type: 'array', label: 'ints', values: [1, 2, 3] }]),
+          fr('…but <code>add_pi</code> is allowed to <b>append a float</b> to a list[float]. Passing our list in would let it write 3.14 into a list[int].', [cp(code, 2, 'bad'), { type: 'array', label: 'ints (now polluted)', values: [1, 2, 3, 3.14], hl: { 3: 'bad' } }]),
+          fr('Later, code that trusted list[int] crashes: <code>float</code> has no <code>bit_length</code>. That is why <b>mutable</b> containers are <b>invariant</b> and mypy rejects line 5.', [cp(code, 6, 'bad'), tx('<span class="c-r">AttributeError: \'float\' object has no attribute \'bit_length\'</span>', 'Runtime')]),
+          fr('Fix: if the function only <b>reads</b>, accept <code>Sequence[float]</code> (read-only, <b>covariant</b>) — then list[int] is accepted safely. If it must write, it needs exactly list[float].', [{ type: 'table', label: 'Variance cheat sheet', columns: ['type', 'variance', 'list[int] accepted where X[float] expected?'], rows: [['list[T], dict[K, V], set[T]', 'invariant (mutable)', 'no'], ['Sequence[T], Iterable[T], tuple[T, ...], Mapping[K, V] values', 'covariant (read-only)', 'yes'], ['Callable[[T], R] arguments', 'contravariant', 'reversed']], hl: { 1: 'ok' } }])
+        ];
+      }
+    }],
+    examples: [
+      { title: 'reveal_type: ask mypy what it thinks', html: `<p><code>reveal_type</code> is understood by mypy/pyright; since 3.11 it also exists in <code>typing</code> at runtime (prints the runtime type to stderr and returns the value). mypy output for this file:</p>${H.table(['line', 'mypy note'], [['<code>reveal_type(nums)</code>', 'Revealed type is "builtins.list[builtins.int]"'], ['<code>reveal_type(lookup)</code>', 'Revealed type is "builtins.dict[builtins.str, builtins.float]"'], ['<code>reveal_type(lookup.get("a"))</code>', 'Revealed type is "builtins.float | None"']])}`, code: { lang: 'python', run: true, code: `from typing import reveal_type
+
+nums = [1, 2, 3]
+lookup = {'a': 1.5}
+reveal_type(nums)                 # at runtime: prints "Runtime type is 'list'" to stderr
+x = reveal_type(lookup.get('a'))  # returns its argument unchanged
+print('value passed through:', x)` } },
+      { title: 'cast lies, narrowing proves', html: `<p><code>cast</code> changes nothing at runtime — it only silences mypy. If the assumption is wrong, the crash just moves. Prefer a real check that both mypy and the runtime respect.</p>`, code: { lang: 'python', run: true, code: `from typing import cast
+
+
+def parse_id_cast(raw: object) -> int:
+    return cast(int, raw) + 1          # mypy happy; runtime: TypeError if raw is a str
+
+
+def parse_id_checked(raw: object) -> int:
+    if not isinstance(raw, int):       # narrowing: object -> int
+        raise TypeError(f'expected int, got {type(raw).__name__}')
+    return raw + 1
+
+
+print(parse_id_checked(41))
+for fn in (parse_id_cast, parse_id_checked):
+    try:
+        fn('41')
+    except TypeError as e:
+        print(fn.__name__, '->', e)` } },
+      { title: 'Gradual typing: unannotated bodies are skipped', html: `<p>By default, mypy does not check inside a function with <b>no</b> annotations, so this obvious bug passes. Adding a single annotation (or <code>check_untyped_defs = true</code>, or <code>--strict</code>) makes mypy look inside.</p>${H.table(['function', 'default mypy', '--strict'], [['<code>def total(xs): return sum(xs) + "!"</code>', H.c('y', 'not checked'), H.c('r', 'error: missing annotations')], ['<code>def total(xs: list[int]) -&gt; int: return sum(xs) + "!"</code>', H.c('r', 'Unsupported operand types for + ("int" and "str")'), H.c('r', 'same error')]])}` },
+      { title: 'TypeGuard / TypeIs: teach mypy your own checks', html: `<p>A helper like <code>is_str_list(x)</code> returns bool, so mypy cannot narrow from it — unless its return type is <code>TypeGuard[list[str]]</code> (3.10) or <code>TypeIs[...]</code> (3.13, which also narrows the else-branch). The code below uses TypeGuard so it runs on 3.10+.</p>`, code: { lang: 'python', run: true, code: `from typing import TypeGuard
+
+
+def is_str_list(val: list[object]) -> TypeGuard[list[str]]:
+    return all(isinstance(x, str) for x in val)
+
+
+def join_words(val: list[object]) -> str:
+    if is_str_list(val):
+        return ' '.join(val)          # mypy: val is list[str] here
+    return '<mixed list>'
+
+
+print(join_words(['type', 'guards']), join_words([1, 'a']))` } }
+    ],
+    deepDive: `<p>🟣 <b>How a checker works.</b> mypy parses every module, builds a symbol table, resolves imports (including stubs from typeshed), then type-checks each function body with <b>flow-sensitive</b> analysis: it tracks the narrowed type of each variable along each branch, joining types where branches merge. It caches results in <code>.mypy_cache</code> and supports a daemon (<code>dmypy</code>) for fast incremental runs on huge codebases.</p>
+<p><b>The ecosystem in 2026.</b> <b>mypy</b> is the reference checker (and powers <code>mypyc</code>, which compiles typed Python to C extensions — mypy itself is compiled with it). <b>pyright</b> (Microsoft; inside VS Code's Pylance) is faster and stricter about inference. Newer Rust-based checkers from Astral (<code>ty</code>) and Meta (<code>pyrefly</code>) aim at much higher speed for monorepos. They implement the same typing PEPs but disagree in corners — pick one for CI and stick to it.</p>
+<p><b>Soundness limits.</b> Python typing is <b>not sound</b>: <code>Any</code>, <code>cast</code>, ignores, untyped libraries, runtime monkeypatching and the int→float promotion all let wrong types through. Narrowing on <b>attributes</b> (<code>if self.x is not None: self.method(); self.x.foo()</code>) is invalidated by calls that may change the attribute — copy to a local first. Mutable-default and <code>**kwargs</code> typing need <code>TypedDict</code> + <code>Unpack</code>.</p>
+<p><b>Runtime checking options.</b> For trust boundaries (HTTP bodies, configs, LLM outputs!), static types are not enough: use <b>pydantic</b> (parse + validate into typed models), <b>msgspec</b>/<b>attrs</b>, or <b>beartype</b>/<b>typeguard</b> (decorators that check hints on every call, mostly for tests). A common architecture: validate at the edge once, then pass well-typed objects inward where mypy guarantees the rest.</p>
+<p><b>Adoption strategy that works:</b> (1) run mypy in CI with a baseline; (2) require hints on new/changed code; (3) turn on <code>strict</code> per package as it gets clean; (4) track the count of <code>Any</code>/ignores as a metric.</p>`,
+    aiEra: `<p>🤖 <b>What AI changes:</b> type checkers are the cheapest, fastest <b>verifier</b> for AI-written code. An agent loop of "generate → run mypy/pyright → fix the reported errors" catches a large share of hallucinated attributes, wrong argument orders and forgotten None-checks before any test runs. Many teams now run the checker as a pre-commit and as a tool the coding agent must satisfy.</p>
+<p><b>Where AI goes wrong:</b> when asked to "fix the mypy errors", models often reach for <code>cast</code>, <code>Any</code> or <code># type: ignore</code> instead of narrowing or fixing the design. Insist: "fix without cast/ignore/Any; explain each change". They also confuse mypy and pyright behaviour and outdated flags.</p>
+<p><b>What you must still own:</b> reading error messages (union-attr, arg-type, return-value), knowing variance, and choosing where runtime validation must live.</p>`,
+    problems: [{
+      title: 'parse_port: Pass mypy --strict Without cast or ignore',
+      level: 'Medium', tags: ['narrowing', 'mypy', 'unions'], companies: ['Google', 'Shopify'],
+      statement: `<p>Implement <code>parse_port(value: str | int | None, default: int = 8080) -&gt; int</code> so that it passes <code>mypy --strict</code> with <b>no</b> <code>cast</code>, <code>Any</code> or <code># type: ignore</code>.</p><ul><li><code>None</code> → <code>default</code></li><li><code>int</code> → itself, if 1 ≤ port ≤ 65535</li><li><code>str</code> → stripped and converted; empty string → <code>default</code></li><li>out of range or non-numeric → <code>ValueError</code> with a clear message</li><li><code>bool</code> is technically an int — reject it with <code>TypeError</code>.</li></ul>`,
+      constraints: `Pure function, no I/O. Must be correct at runtime too: mypy cannot stop someone passing a float from untyped code.`,
+      example: `<p><code>parse_port(None)</code> → ${H.c('g', '8080')}; <code>parse_port(' 443 ')</code> → ${H.c('g', '443')}; <code>parse_port(70000)</code> → ${H.c('r', 'ValueError: port must be 1-65535, got 70000')}; <code>parse_port(True)</code> → ${H.c('r', 'TypeError')}.</p>`,
+      brute: { why: `<p>The "make mypy quiet" version uses <code>cast</code> and <code>int(value)</code> blindly: mypy passes, but <code>int(True)</code> is 1, <code>int(None)</code> raises a confusing TypeError, and range is never checked. Static silence is not correctness.</p>`, code: `from typing import cast
+
+def parse_port_bad(value: str | int | None, default: int = 8080) -> int:
+    return int(cast(str, value)) if value else default   # lies to mypy` },
+      mcq: { q: 'In which order should the checks go so mypy narrows correctly and bools are rejected?', options: ['None → bool → int → str', 'int → bool → None → str', 'str → int → None', 'Order does not matter'], answer: 0, explain: 'Handle None first (removes it from the union). bool must be checked before int, because isinstance(True, int) is True. After int is handled, mypy knows only str is left.' },
+      hints: [`<p>Hint 1: Each <code>isinstance</code>/<code>is None</code> check that returns early removes one member from the union; after them mypy knows exactly what is left.</p>`, `<p>Hint 2: Check <code>isinstance(value, bool)</code> <b>before</b> <code>isinstance(value, int)</code>. Put the range check in a small helper used by both branches.</p>`, `<p>Hint 3: For str: <code>s = value.strip()</code>; empty → default; <code>try: n = int(s) except ValueError as e: raise ValueError(f'not a number: {value!r}') from e</code>. Final fallback for weird runtime types: raise TypeError.</p>`],
+      solution: {
+        approach: `<p>Narrow step by step: None → bool → int → str. Each branch returns, so mypy\'s view of <code>value</code> shrinks until only <code>str</code> remains. A final defensive <code>TypeError</code> handles calls from untyped code (mypy marks it unreachable, which is fine).</p>`,
+        code: { lang: 'python', run: true, code: `def _check_range(port: int) -> int:
+    if not 1 <= port <= 65535:
+        raise ValueError(f'port must be 1-65535, got {port}')
+    return port
+
+
+def parse_port(value: str | int | None, default: int = 8080) -> int:
+    if value is None:                      # value: str | int | None -> None
+        return default
+    if isinstance(value, bool):            # bool is an int subclass: reject first
+        raise TypeError('bool is not a valid port')
+    if isinstance(value, int):             # value: int
+        return _check_range(value)
+    if isinstance(value, str):             # value: str (only option left)
+        s = value.strip()
+        if not s:
+            return default
+        try:
+            n = int(s)
+        except ValueError as e:
+            raise ValueError(f'not a number: {value!r}') from e
+        return _check_range(n)
+    # Unreachable for mypy, but untyped callers can still pass a float:
+    raise TypeError(f'unsupported type {type(value).__name__}')
+
+
+for v in (None, 443, ' 8443 ', '', 70000, 'http', True, 80.0):
+    try:
+        print(repr(v), '->', parse_port(v))   # 80.0 tests the runtime fallback
+    except (ValueError, TypeError) as e:
+        print(repr(v), '->', type(e).__name__ + ':', e)` },
+        dry: { head: ['value', 'branch taken', 'static type there', 'result'], rows: [['None', 'is None', 'None', '8080'], ['443', 'isinstance int', 'int', '443'], ["' 8443 '", 'isinstance str', 'str', '8443'], ["''", 'str, empty', 'str', '8080'], ['70000', 'int → _check_range', 'int', '<span class="c-r">ValueError</span>'], ['True', 'isinstance bool', 'bool', '<span class="c-r">TypeError</span>'], ['80.0', 'none match', 'Never (unreachable)', '<span class="c-r">TypeError</span>']] },
+        complexity: `<p>O(L) for a string of length L, O(1) otherwise. Statically: zero casts, zero ignores, zero Any.</p>`,
+        followUps: ['Accept "localhost:8080" and return (host, port) — what return type?', 'Make the default configurable via an environment variable; how do you type os.environ.get?', 'Rewrite the branching with a match statement — does mypy narrow the same way?']
+      }
+    }]
+  });
 registerModule({ id: 'py09', title: 'Errors, Type Hints & Testing', intro: `<p>tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro</p>`, goals: ['aaaaaaaaaaaa','bbbbbbbbbbbbb','cccccccccccc'], prereqs: `aaaaaaaaaaaaaaaaaaaa`, hours: 10, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();

@@ -469,7 +469,7 @@ for b, a in zip(before, after):
           else if (base === 'LOAD_CONST') { stack.push(0); narr = '<code>LOAD_CONST 0</code> pushes the constant 0.'; }
           else if (base === 'STORE_FAST') { var v = stack.pop(); var slot = ins[pc][1].indexOf('total') >= 0 ? 'total' : 'i'; loc[slot] = v; narr = '<code>STORE_FAST ' + slot + '</code> pops ' + v + ' into the fast-local array slot for <code>' + slot + '</code> (a C array index, no dict).'; }
           else if (base === 'LOAD_GLOBAL') { stack.push('range'); narr = '<code>' + op + '</code> looks up <code>range</code>: not in module globals, found in builtins. Pushes the builtin.'; }
-          else if (base === 'LOAD_FAST') { var nm = /\((\w+)\)/.exec(ins[pc][1])[1]; stack.push(loc[nm]); narr = '<code>LOAD_FAST ' + nm + '</code> pushes <b>' + loc[nm] + '</b> straight from the locals array. (3.13 would fuse the two loads on line 4 into <code>LOAD_FAST_LOAD_FAST</code>.)'; }
+          else if (base === 'LOAD_FAST') { var nm = /\((\w+)\)/.exec(ins[pc][1])[1]; stack.push(loc[nm]); narr = '<code>LOAD_FAST ' + nm + '</code> pushes <b>' + loc[nm] + '</b> straight from the locals array.' + (ins[pc][2] === 4 ? ' (3.13 fuses the two loads on line 4 into one <code>LOAD_FAST_LOAD_FAST</code> superinstruction.)' : ''); }
           else if (base === 'CALL') { stack.pop(); stack.pop(); stack.push('range(0, ' + n + ')'); narr = '<code>' + op + ' 1</code> calls <code>range(n)</code> with 1 argument and pushes the range object. This is a C function, so no new Python frame is needed.'; }
           else if (base === 'GET_ITER') { stack.pop(); it = 0; stack.push('range_iterator'); narr = '<code>GET_ITER</code> replaces the range with <code>iter(range)</code>. The iterator stays on the stack for the whole loop.'; }
           else if (base === 'FOR_ITER') {
@@ -656,6 +656,515 @@ except RuntimeError as e:
         dry: { head: ['pc', 'op', 'stack after', 'env'], rows: [['0–3', 'init', '[]', 'i=0, s=0'], ['4–6', 'LOAD i, LOAD 5, LT', '[True]', 'i=0'], ['7', 'POP_JUMP_IF_FALSE', '[] (falls through)', ''], ['8–11', 's = s + i', '[]', 's=0'], ['12–16', 'i = i + 1; JUMP 4', '[]', 'i=1'], ['… 4 more loops', '', '', 's=10, i=5'], ['6–7', '5 &lt; 5 is False → jump 17', '[]', ''], ['17–18', 'LOAD s; RETURN', H.c('g', 'returns 10'), '']] },
         complexity: R`<p>O(1) per executed instruction, so O(steps) time; O(max stack depth + #names) memory.</p>`,
         followUps: ['Add <code>CALL_FUNCTION</code> with a frame stack so programs can call sub-programs.', 'Add a "specialization" pass that rewrites <code>BINARY_ADD</code> to <code>BINARY_ADD_INT</code> after seeing ints twice, with a guard and deopt.']
+      }
+    }]
+  });
+
+  /* ======================================================================
+     TOPIC 3: The Object Model (PyObject, type objects, layouts)
+     ====================================================================== */
+  topics.push({
+    title: 'The Object Model: PyObject, Types & Memory Layout',
+    analogy: R`<p>In a giant warehouse, every box (no matter what is inside) has the <b>same sticker</b> on its lid with two fields: <i>"how many order slips point at me"</i> and <i>"my product category card"</i>. The category card is itself stored in a box and says how to open, print, compare and add things of that kind. Boxes holding a variable number of pieces (a tray of eggs) have one extra field: <i>"number of pieces"</i>. Python variables are just <b>order slips</b>: they point at boxes, they are not boxes. That sticker is <code>PyObject</code>, the category card is the <b>type object</b>, and the order slips are references.</p>`,
+    explain: R`<p>🟢 <b>The plain idea.</b> In CPython <b>everything</b> is an object: ints, functions, classes, modules, even <code>None</code> and types themselves. Every object starts with the same C header:</p>
+      <pre>typedef struct {
+    Py_ssize_t   ob_refcnt;   // how many references point here
+    PyTypeObject *ob_type;    // pointer to the type object (int, list, MyClass ...)
+} PyObject;
+
+typedef struct {               // for variable-size objects (list, tuple, int*, str*)
+    PyObject   ob_base;
+    Py_ssize_t ob_size;        // number of items
+} PyVarObject;</pre>
+      <p>Because every object begins with this header, C code can treat any object as a <code>PyObject*</code>, read its type, and ask the type what to do. That is how one interpreter loop can add ints, concatenate strings and call your <code>__add__</code> with the same <code>BINARY_OP</code> instruction.</p>
+      <p><b>Variables are references.</b> <code>a = [1, 2]</code> creates a list object and makes the name <code>a</code> point to it. <code>b = a</code> copies the <b>pointer</b>, not the list. <code>id(x)</code> in CPython is the memory address of the object; <code>a is b</code> compares addresses; <code>a == b</code> calls <code>__eq__</code> to compare values.</p>
+      <p><b>Type objects hold the behaviour</b> in "slots" (C function pointers):</p>
+      ${H.table(['Python operation', 'Type slot CPython calls', 'Dunder that fills it'], [
+        ['<code>repr(x)</code>', '<code>tp_repr</code>', '<code>__repr__</code>'],
+        ['<code>hash(x)</code>', '<code>tp_hash</code>', '<code>__hash__</code>'],
+        ['<code>a + b</code>', '<code>tp_as_number-&gt;nb_add</code>', '<code>__add__</code> / <code>__radd__</code>'],
+        ['<code>len(x)</code>', '<code>sq_length</code> / <code>mp_length</code>', '<code>__len__</code>'],
+        ['<code>x.attr</code>', '<code>tp_getattro</code>', '<code>__getattribute__</code> / <code>__getattr__</code>'],
+        ['<code>x()</code>', '<code>tp_call</code>', '<code>__call__</code>'],
+        ['<code>del</code> last reference', '<code>tp_dealloc</code>', '(<code>__del__</code> via <code>tp_finalize</code>)']
+      ])}
+      <p>When you define <code>__add__</code> in a class, CPython puts a small C "slot wrapper" in <code>nb_add</code> that calls your Python method. That is why dunders are looked up on the <b>type</b>, not the instance: <code>obj.__len__ = lambda: 5</code> does not change <code>len(obj)</code>.</p>
+      <p><b>Three layouts worth knowing:</b></p>
+      ${H.table(['Type', 'Layout', 'Consequence'], [
+        ['<code>int</code>', 'header + size/sign + array of <b>30-bit digits</b>', 'arbitrary precision; <code>getsizeof(2**30)</code> &gt; <code>getsizeof(2**30 - 1)</code>'],
+        ['<code>list</code>', 'header + size + pointer to a separate array of <code>PyObject*</code> + <code>allocated</code>', 'append is amortized O(1) thanks to over-allocation'],
+        ['<code>tuple</code>', 'header + size + pointers <b>inline</b>', 'one allocation, immutable, smaller than a list'],
+        ['<code>str</code>', 'PEP 393 compact: 1, 2 or 4 bytes per char depending on the widest char', '<code>"é" * 1000</code> uses 1 byte/char, one emoji makes it 4']
+      ])}`,
+    clues: [
+      '"Everything in Python is an object, what does that mean in C?" → PyObject header with refcount + type pointer',
+      '"Difference between <code>is</code> and <code>==</code>?" → address comparison vs <code>__eq__</code>',
+      '"Why is a tuple smaller/faster to create than a list?" → items inline, one allocation, no over-allocation',
+      '"Why is <code>sys.getsizeof</code> of a list of big strings so small?" → it is shallow: the list stores pointers',
+      '"How does Python have unlimited-size ints?" → array of 30-bit digits, arbitrary length',
+      '"Why does setting <code>obj.__len__</code> not change <code>len(obj)</code>?" → special methods are looked up on the type (slots)'
+    ],
+    code: [{ lang: 'python', title: 'Inspect headers, types and sizes (runnable)', run: true, code: R`import sys
+
+a = [1, 2]
+b = a                      # copies the reference, not the list
+print("same object?", a is b, "| id equal?", id(a) == id(b))
+print("type of a:", type(a), "| type of list:", type(list), "| type of type:", type(type))
+
+# Shallow sizes (64-bit CPython; exact numbers vary by version)
+for obj in [0, 2**30, 2**60, "", "hello", (), (1, 2), [], [1, 2], {}, object()]:
+    print(f"{obj!r:>22}  {type(obj).__name__:<7} {sys.getsizeof(obj):>4} bytes")
+
+# A list stores POINTERS: its size does not depend on how big the items are
+small = ["x"] * 3
+big = ["x" * 10_000] * 3
+print("list sizes:", sys.getsizeof(small), sys.getsizeof(big))
+` }],
+    codeTitle: ['Objects, types, sizes'],
+    viz: [{
+      title: 'How CPython stores an int: 30-bit digits',
+      input: '1234567890123456789',
+      inputLabel: 'An integer (up to 60 digits, may be negative)',
+      gen: function (input) {
+        var s = String(input).trim().replace(/_/g, '');
+        if (!/^-?\d{1,60}$/.test(s)) throw new Error('Enter an integer like 1234567890123 (max 60 digits)');
+        var big = BigInt(s), neg = big < 0n, mag = neg ? -big : big, BASE = 1n << 30n;
+        var digits = [], frames = [], rest = mag;
+        frames.push({ narr: 'We want to store <b>' + esc(s) + '</b>. CPython does not use a fixed 64-bit box: it splits the magnitude into "digits" in <b>base 2<sup>30</sup></b> (= 1,073,741,824), least significant first, and stores the sign separately.', parts: [
+          { type: 'vars', label: 'PyLongObject (3.12+ layout)', vals: { ob_refcnt: '…', ob_type: '&int', lv_tag: '(digit count + sign, filled below)', ob_digit: '[ ]' } },
+          { type: 'text', html: 'Why 30 bits? Two digits multiplied fit in a 64-bit C integer with room for carries, so the C code stays simple and fast.' }
+        ] });
+        if (mag === 0n) digits.push(0);
+        var guard = 0;
+        while (rest > 0n && guard++ < 20) {
+          var d = rest % BASE, q = rest / BASE;
+          digits.push(Number(d));
+          frames.push({ narr: 'divmod(' + rest.toString() + ', 2<sup>30</sup>) → quotient <b>' + q.toString() + '</b>, remainder <b>' + d.toString() + '</b>. The remainder becomes <code>ob_digit[' + (digits.length - 1) + ']</code>.', parts: [
+            { type: 'array', label: 'ob_digit (least significant first)', values: digits.slice(), hl: (function () { var h = {}; h[digits.length - 1] = 'ok'; return h; })(), showIdx: true },
+            { type: 'bits', label: 'ob_digit[' + (digits.length - 1) + '] as 30 bits', value: Number(d), width: 30, showDec: true },
+            { type: 'vars', vals: { remaining: q.toString() } }
+          ] });
+          rest = q;
+        }
+        var nd = Math.max(1, digits.length);
+        var size = 24 + 4 * nd;
+        frames.push({ narr: 'Done: <b>' + digits.length + '</b> digit(s). The header records the digit count and sign (' + (neg ? 'negative' : mag === 0n ? 'zero' : 'positive') + '). <code>sys.getsizeof</code> on 3.12+ (64-bit) = 24-byte header + 4 bytes × ' + nd + ' digit(s) = <b>' + size + ' bytes</b>.', parts: [
+          { type: 'vars', label: 'PyLongObject', vals: { ob_refcnt: '…', ob_type: '&int', 'digit count': digits.length, sign: neg ? '−' : (mag === 0n ? '0' : '+'), 'getsizeof (3.12+)': size }, hl: { 'getsizeof (3.12+)': 'sel' } },
+          { type: 'array', label: 'ob_digit', values: digits.slice(), showIdx: true }
+        ] });
+        var terms = digits.map(function (d, i) { return d + '×2<sup>' + (30 * i) + '</sup>'; });
+        frames.push({ narr: 'Reading it back: value = ' + (neg ? '−(' : '') + terms.join(' + ') + (neg ? ')' : '') + ' = <b>' + esc(s) + '</b>. Arithmetic works digit by digit like long multiplication at school (Karatsuba kicks in for very large numbers).', parts: [
+          { type: 'table', label: 'Reconstruction', columns: ['i', 'ob_digit[i]', 'weight', 'contribution'], rows: digits.map(function (d, i) { return [i, d, '2^' + (30 * i), (BigInt(d) << BigInt(30 * i)).toString()]; }) }
+        ] });
+        var n = Number(s);
+        var small = Math.abs(n) < 1e6 && n >= -5 && n <= 256;
+        frames.push({ narr: small ? '<b>' + esc(s) + '</b> is in the range −5…256, so CPython never builds a new object for it: it hands out the <b>pre-built, cached (and since 3.12 immortal)</b> small int. Every <code>' + esc(s) + '</code> in your program is the same object.' : 'This value is outside −5…256, so each computation that produces it may create a <b>fresh object</b>. Ints are <b>immutable</b>: <code>x += 1</code> never changes this object, it builds a new one and rebinds <code>x</code>.', parts: [
+          { type: 'vars', vals: { 'small-int cache?': small ? 'yes (shared singleton)' : 'no (new object per result)', mutable: 'never' }, hl: { 'small-int cache?': small ? 'ok' : 'cur' } }
+        ] });
+        return frames;
+      }
+    }, {
+      title: 'list.append and over-allocation (ob_size vs allocated)',
+      input: '18',
+      inputLabel: 'Number of appends (1 to 40)',
+      gen: function (input) {
+        var n = parseInt(String(input).trim(), 10);
+        if (isNaN(n) || n < 1 || n > 40) throw new Error('Enter a number of appends between 1 and 40');
+        var frames = [], size = 0, alloc = 0, reallocs = 0, copies = 0;
+        function view(hlNew, grew) {
+          var vals = [], hl = {};
+          for (var i = 0; i < alloc; i++) { vals.push(i < size ? 'p' + i : '·'); hl[i] = i < size ? (i === hlNew ? 'cur' : 'ok') : 'done'; }
+          if (!vals.length) { vals.push('(NULL)'); }
+          return [
+            { type: 'array', label: 'ob_item[] (pointer slots; · = spare capacity)', values: vals, hl: hl, showIdx: true },
+            { type: 'vars', label: 'PyListObject', vals: { ob_size: size, allocated: alloc, 'getsizeof': 56 + 8 * alloc, reallocations: reallocs, 'pointers copied': copies }, hl: grew ? { allocated: 'sel', getsizeof: 'sel' } : { ob_size: 'ok' } }
+          ];
+        }
+        frames.push({ narr: '<code>lst = []</code>: a 56-byte header (refcount, type, ob_size, the <code>ob_item</code> pointer, <code>allocated</code>, plus the GC links) and <b>no item array yet</b>.', parts: view(-1, false) });
+        for (var k = 0; k < n; k++) {
+          var newsize = size + 1, grew = false, old = alloc, narr;
+          if (newsize > alloc) {
+            var na = (newsize + (newsize >> 3) + 6) & ~3;
+            copies += size; reallocs++; alloc = na; grew = true;
+          }
+          size = newsize;
+          if (grew) narr = 'append #' + (k + 1) + ': no free slot (' + (size - 1) + ' of ' + old + ' used). CPython reallocates to <code>(n + n//8 + 6) &amp; ~3</code> = <b>' + alloc + '</b> slots and copies ' + (size - 1) + ' pointer(s). Growth is ~12.5% plus a little, which keeps the <b>average</b> cost of append O(1).';
+          else narr = 'append #' + (k + 1) + ': a spare slot exists, so CPython just writes the pointer and bumps <code>ob_size</code> to ' + size + '. O(1), no copying.';
+          if (!grew && k + 1 !== n && n > 14 && size % 3 !== 0) continue;
+          frames.push({ narr: narr, parts: view(size - 1, grew) });
+        }
+        frames.push({ narr: 'Finished ' + n + ' appends with only <b>' + reallocs + '</b> reallocations and ' + copies + ' pointer copies in total (' + (copies / n).toFixed(2) + ' per append on average; with a growth factor of about 1.125 this settles near 8 for big lists, a constant, so append is amortized O(1). In practice <code>realloc</code> can often grow the block in place without copying at all). Note: <code>sys.getsizeof</code> counts the pointer array but not the objects the pointers lead to.', parts: view(-1, false) });
+        return frames;
+      }
+    }],
+    examples: [
+      { title: 'The [[0]*3]*3 trap explained by references', html: R`<p><code>grid = [[0] * 3] * 3</code> builds <b>one</b> inner list and then a list holding <b>three pointers to it</b>. Changing <code>grid[0][0]</code> shows up in every row. A comprehension calls <code>[0] * 3</code> three times, giving three separate lists.</p>
+        ${H.table(['Expression', 'distinct inner lists', 'grid after grid[0][0] = 9'], [['<code>[[0]*3]*3</code>', H.c('r', '1'), '[[9,0,0],[9,0,0],[9,0,0]]'], ['<code>[[0]*3 for _ in range(3)]</code>', H.c('g', '3'), '[[9,0,0],[0,0,0],[0,0,0]]']])}`, code: { lang: 'python', run: true, code: R`bad = [[0] * 3] * 3
+good = [[0] * 3 for _ in range(3)]
+bad[0][0] = good[0][0] = 9
+print(bad)
+print(good)
+print("distinct rows:", len({id(r) for r in bad}), "vs", len({id(r) for r in good}))
+` } },
+      { title: 'Immutable rebinding vs in-place mutation', html: R`<p><code>+=</code> means different things for immutable and mutable objects. For an int, <code>x += 1</code> builds a <b>new</b> object and rebinds the name (the id changes). For a list, <code>+=</code> calls <code>list.__iadd__</code>, which <b>extends in place</b> (same id), so every other name pointing at that list sees the change.</p>`, code: { lang: 'python', run: true, code: R`x = 1000
+before = id(x)
+x += 1
+print("int  same object after += ?", id(x) == before)
+
+items = [1, 2]
+alias = items
+before = id(items)
+items += [3]
+print("list same object after += ?", id(items) == before, "| alias sees:", alias)
+` } },
+      { title: 'Dunders are looked up on the type', html: R`<p>Because built-in operations go through <b>type slots</b>, assigning a dunder on an instance has no effect on the operator, while assigning it on the class does. This also makes operators fast: no instance dict lookup on every <code>len()</code>.</p>
+        ${H.table(['Assignment', 'len(obj) uses it?'], [['<code>obj.__len__ = …</code>', H.c('r', 'no')], ['<code>Cls.__len__ = …</code>', H.c('g', 'yes (slot updated)')]])}`, code: { lang: 'python', run: true, code: R`class Box:
+    def __len__(self):
+        return 1
+
+b = Box()
+b.__len__ = lambda: 99          # instance attribute: ignored by len()
+print(len(b), b.__len__())     # 1 99
+Box.__len__ = lambda self: 42   # class attribute: slot is updated
+print(len(b))                   # 42
+` } }
+    ],
+    deepDive: R`<p>🟣 <b>Hidden headers.</b> Container objects that can form cycles (lists, dicts, instances, …) carry an extra <code>PyGC_Head</code> <b>before</b> the <code>PyObject</code> header (two pointers used by the cyclic GC). <code>sys.getsizeof</code> includes it; <code>type.__basicsize__</code> does not. Instances of ordinary classes also reserve space for <code>__dict__</code> and <code>__weakref__</code>. Since 3.11 instance attributes are often stored as <b>inline values</b> with keys shared by all instances of the class (an evolution of PEP 412 key-sharing dicts); the real <code>dict</code> is only materialized if you touch <code>obj.__dict__</code> in unusual ways. <code>__slots__</code> removes the per-instance dict entirely and stores attributes at fixed offsets (exposed as member descriptors).</p>
+      <p><b>Allocation.</b> Small objects (≤ 512 bytes) come from <b>pymalloc</b>: memory is grouped into arenas (1 MiB since 3.10) split into pools (16 KiB) of fixed-size blocks in 16-byte size classes. This avoids calling <code>malloc</code> for every tiny int or tuple and is why freed memory is often reused by the next object of the same size. Free lists for floats, tuples, lists and dicts recycle whole objects. The free-threaded build uses <b>mimalloc</b> instead, because it needs thread-safe allocation and the ability to scan the heap.</p>
+      <p><b>Immortal objects (PEP 683, 3.12).</b> <code>None</code>, <code>True</code>, small ints, many interned strings and static types have a refcount marked "immortal": increments and decrements do not change it, which avoids cache-line writes on hugely shared objects and is essential for per-interpreter GIL and free threading. That is why <code>sys.getrefcount(None)</code> shows a huge fixed number.</p>
+      <p><b>Free-threaded header.</b> In PEP 703 builds each object also stores an owning thread id plus a local and a shared reference count (<b>biased reference counting</b>): the owning thread updates its count without atomics, other threads use atomic operations on the shared count.</p>
+      <p><b>Identity caveat:</b> <code>id()</code> is only unique among objects that are alive at the same time. After an object dies its address can be reused, so <code>id([]) == id([])</code> is often <code>True</code> (two short-lived lists at the same address).</p>`,
+    aiEra: R`<p>🤖 <b>What AI changes:</b> an assistant can instantly produce struct diagrams of <code>PyObject</code>, <code>PyListObject</code> or <code>PyDictObject</code> and explain fields. These diagrams are frequently <b>out of date</b> (pre-3.11 dict layout, <code>ob_size</code> for ints instead of the 3.12 <code>lv_tag</code>, missing the managed dict). Cross-check with <code>Include/cpython/*.h</code> for your version.</p>
+      <p><b>Use AI as a partner:</b> <code>Estimate the memory of 10 million instances of this class with and without __slots__ on 64-bit CPython 3.13, then give me a tracemalloc script to measure it.</code> The estimate is a hypothesis; the measurement is the truth.</p>
+      <p><b>Where AI goes wrong:</b> treating <code>sys.getsizeof</code> as deep size, saying Python ints are 64-bit, or claiming <code>is</code> is a "faster <code>==</code>" you can use for numbers and strings.</p>
+      <p><b>What you must still own:</b> the reference-vs-object mental model (it explains aliasing bugs, default-argument bugs and copy semantics), knowing which types are mutable, and being able to reason about memory from layouts.</p>`,
+    problems: [{
+      title: 'Detect list Capacity Jumps',
+      level: 'Medium', tags: ['object model', 'sys.getsizeof', 'amortized analysis'], companies: ['Microsoft', 'Dropbox'],
+      statement: R`<p>Write <code>capacity_jumps(n)</code> that appends <code>n</code> items to an empty list one by one and returns a list of <code>(length_after_append, new_capacity)</code> pairs for every append that triggered a reallocation. Derive capacity from <code>sys.getsizeof</code> (do not hard-code the growth formula). Then compute the average number of pointer copies per append.</p>`,
+      constraints: R`<p>1 ≤ n ≤ 10<sup>5</sup>. 64-bit CPython (pointer = 8 bytes). Must work across versions (the empty-list size differs).</p>`,
+      example: R`<p><code>capacity_jumps(20)</code> on CPython 3.9+ returns ${H.c('g', '[(1, 4), (5, 8), (9, 16), (17, 24)]')}. Why: capacity grows to (n + n//8 + 6) &amp; ~3 each time the list is full.</p>`,
+      brute: { why: R`<p>Hard-coding the formula (<code>(n + (n &gt;&gt; 3) + 6) &amp; ~3</code>) "works" but only proves you memorised the C source of one version; it breaks on PyPy, older CPython (different formula) or future changes. Measuring the actual object is version-proof.</p>`, code: R`def capacity_jumps_hardcoded(n):
+    out, cap = [], 0
+    for size in range(1, n + 1):
+        if size > cap:
+            cap = (size + (size >> 3) + 6) & ~3
+            out.append((size, cap))
+    return out
+
+print(capacity_jumps_hardcoded(20))
+` },
+      mcq: { q: 'Why does <code>sys.getsizeof</code> of a list change only at some appends?', options: ['It measures the header plus the allocated pointer array, which grows in jumps', 'Python garbage-collects the list every few appends', 'Small ints are stored inline in the list', 'getsizeof is random by design'], answer: 0, explain: 'The list over-allocates its pointer array. Until capacity runs out, appends only bump <code>ob_size</code>, so the allocated size (what getsizeof reports beyond the header) stays the same.' },
+      hints: [R`<p>Hint 1: <code>capacity = (getsizeof(lst) - getsizeof([])) // 8</code> because each slot is an 8-byte pointer on 64-bit.</p>`, R`<p>Hint 2: remember the previous capacity; whenever it changes after an append, record <code>(len(lst), capacity)</code>. When capacity jumps, the old <code>len - 1</code> pointers were copied.</p>`, R`<p>Hint 3: use <code>struct.calcsize("P")</code> for the pointer size to be safe. Recipe: base = getsizeof([]); loop; compute cap; compare; accumulate copies; return jumps and copies / n.</p>`],
+      solution: {
+        approach: R`<p>Measure, do not assume: derive capacity from the actual object size, record each jump, and count how many pointers had to be moved. The average settles at a constant (about 8 copies per append for a 1.125 growth factor, since 1/(1.125 − 1) = 8, and often less because <code>realloc</code> can grow in place), which is the practical proof that <code>append</code> is amortized O(1).</p>`,
+        code: { lang: 'python', run: true, code: R`import struct
+import sys
+
+PTR = struct.calcsize("P")          # 8 on 64-bit builds
+
+def capacity_jumps(n):
+    lst = []
+    base = sys.getsizeof(lst)        # header only (no item array yet)
+    prev_cap, jumps, copies = 0, [], 0
+    for i in range(n):
+        lst.append(i)
+        cap = (sys.getsizeof(lst) - base) // PTR
+        if cap != prev_cap:
+            jumps.append((len(lst), cap))
+            copies += len(lst) - 1   # old items moved to the new array
+            prev_cap = cap
+    return jumps, copies / n
+
+jumps, avg = capacity_jumps(20)
+print(jumps)
+_, avg_big = capacity_jumps(100_000)
+print(f"average pointer copies per append (n=100000): {avg_big:.2f}")
+` },
+        dry: { head: ['append #', 'len', 'getsizeof − base', 'cap', 'jump?'], rows: [['1', '1', '32', '4', H.c('g', 'yes (1, 4)')], ['2–4', '2–4', '32', '4', 'no'], ['5', '5', '64', '8', H.c('g', 'yes (5, 8)')], ['9', '9', '128', '16', H.c('g', 'yes (9, 16)')], ['17', '17', '192', '24', H.c('g', 'yes (17, 24)')]] },
+        complexity: R`<p>O(n) time, O(n) memory for the list itself; the jump list has O(log n) entries because capacity grows geometrically (factor ≈ 1.125).</p>`,
+        followUps: ['Why does a 12.5% growth factor still give amortized O(1)? (Any constant factor &gt; 1 does.)', 'What does <code>[None] * n</code> do differently from n appends? (Exact allocation, no spare slots.)']
+      }
+    }]
+  });
+
+  /* ======================================================================
+     TOPIC 4: Reference Counting
+     ====================================================================== */
+  function refcountSim(input) {
+    var L = String(input || '').replace(/\r/g, '').split(/[\n;]+/).map(function (s) { return s.trim(); }).filter(Boolean);
+    if (!L.length) throw new Error('One command per line, e.g.  a = []   b = a   a.append(b)   del a   b = None');
+    if (L.length > 12) throw new Error('Use at most 12 commands');
+    var names = {}, nameOrder = [], objs = [], frames = [];
+    function obj(id) { return objs[id - 1]; }
+    function label(id) { return 'list#' + id; }
+    function snapshot(narr, li, hlObjs, hlNames) {
+      var nodes = [], edges = [], hl = {}, tags = {}, live = objs;
+      nameOrder.forEach(function (nm, i) {
+        nodes.push({ id: 'n_' + nm, label: nm, x: 10, y: 8 + i * (52 / Math.max(1, nameOrder.length)), shape: 'box' });
+        if (names[nm] !== undefined && names[nm] !== null) edges.push(['n_' + nm, 'o' + names[nm]]);
+        if (hlNames && hlNames[nm]) hl['n_' + nm] = hlNames[nm];
+      });
+      live.forEach(function (o, i) {
+        var col = i % 2, row = Math.floor(i / 2);
+        nodes.push({ id: 'o' + o.id, label: label(o.id), x: 52 + col * 30, y: 10 + row * 18 + (col ? 8 : 0) });
+        tags['o' + o.id] = o.alive ? 'rc=' + o.rc : 'freed';
+        if (!o.alive) hl['o' + o.id] = 'done';
+        if (o.alive) o.children.forEach(function (c) { edges.push(['o' + o.id, 'o' + c]); });
+        if (hlObjs && hlObjs[o.id]) hl['o' + o.id] = hlObjs[o.id];
+      });
+      var rows = objs.map(function (o) { return [label(o.id), o.alive ? o.rc : 0, o.children.map(label).join(', ') || '—', o.alive ? 'alive' : 'FREED']; });
+      var rowHl = {}; objs.forEach(function (o, i) { if (hlObjs && hlObjs[o.id]) rowHl[i] = hlObjs[o.id]; else if (!o.alive) rowHl[i] = 'done'; });
+      var nameVals = {}; nameOrder.forEach(function (nm) { nameVals[nm] = names[nm] === undefined ? '(deleted)' : names[nm] === null ? 'None' : '→ ' + label(names[nm]); });
+      frames.push({ narr: narr, parts: [
+        { type: 'code', label: 'Program', lang: 'python', code: L.join('\n'), hl: li >= 0 ? lines([li + 1], 'cur') : {} },
+        { type: 'graph', label: 'Names (boxes) → objects (circles)', directed: true, height: 62, nodes: nodes.length ? nodes : [{ id: 'empty', label: '(nothing yet)', x: 50, y: 30, shape: 'box' }], edges: edges, hl: hl, tags: tags },
+        { type: 'table', label: 'Heap objects', columns: ['object', 'ob_refcnt', 'holds pointers to', 'status'], rows: rows.length ? rows : [['—', '—', '—', '—']], hl: rowHl },
+        { type: 'vars', label: 'Namespace', vals: nameOrder.length ? nameVals : { '(empty)': '' } }
+      ] });
+    }
+    var freedLog;
+    function decref(id) {
+      var o = obj(id); if (!o || !o.alive) return;
+      o.rc--;
+      if (o.rc === 0) {
+        o.alive = false; freedLog.push(label(id));
+        var kids = o.children.slice(); o.children = [];
+        kids.forEach(decref);
+      }
+    }
+    function incref(id) { obj(id).rc++; }
+    function addName(nm) { if (nameOrder.indexOf(nm) < 0) { if (nameOrder.length >= 6) throw new Error('Use at most 6 different names'); nameOrder.push(nm); } }
+    function bound(nm, li) { if (names[nm] === undefined || names[nm] === null) throw new Error('Line ' + (li + 1) + ': "' + nm + '" is not bound to a list'); return names[nm]; }
+    snapshot('Start: an empty namespace. Each line will add or remove <b>references</b>; watch <code>ob_refcnt</code> on every object.', -1);
+    L.forEach(function (line, li) {
+      var m, narr, hlO = {}, hlN = {};
+      freedLog = [];
+      if ((m = /^([A-Za-z_]\w*)\s*=\s*\[\s*\]$/.exec(line))) {
+        if (objs.length >= 6) throw new Error('Use at most 6 lists');
+        var id = objs.length + 1; objs.push({ id: id, rc: 0, children: [], alive: true });
+        addName(m[1]); var old = names[m[1]];
+        incref(id); names[m[1]] = id; if (old) decref(old);
+        hlO[id] = 'ok'; hlN[m[1]] = 'ok';
+        narr = '<code>' + esc(line) + '</code> allocates <b>' + label(id) + '</b> and binds <code>' + m[1] + '</code> to it → refcount 1.' + (old ? ' The name used to point at ' + label(old) + ', so that object loses one reference.' : '');
+      } else if ((m = /^([A-Za-z_]\w*)\s*=\s*None$/.exec(line))) {
+        addName(m[1]); var o2 = names[m[1]]; names[m[1]] = null;
+        if (o2) { decref(o2); hlO[o2] = obj(o2).alive ? 'cur' : 'bad'; }
+        hlN[m[1]] = 'cur';
+        narr = '<code>' + esc(line) + '</code> rebinds <code>' + m[1] + '</code> to <code>None</code> (an immortal singleton, so its count never matters).' + (o2 ? ' ' + label(o2) + ' drops to ' + obj(o2).rc + '.' : '');
+      } else if ((m = /^([A-Za-z_]\w*)\s*=\s*([A-Za-z_]\w*)$/.exec(line))) {
+        var tgt = bound(m[2], li); addName(m[1]); var o3 = names[m[1]];
+        incref(tgt); names[m[1]] = tgt; if (o3) decref(o3);
+        hlO[tgt] = 'ok'; hlN[m[1]] = 'ok';
+        narr = '<code>' + esc(line) + '</code> copies the <b>reference</b>, not the list. Both names now point at ' + label(tgt) + ', whose refcount rises to <b>' + obj(tgt).rc + '</b>.';
+      } else if ((m = /^del\s+([A-Za-z_]\w*)$/.exec(line))) {
+        if (names[m[1]] === undefined) throw new Error('Line ' + (li + 1) + ': NameError, "' + m[1] + '" is not defined');
+        var o4 = names[m[1]]; delete names[m[1]];
+        if (o4) { decref(o4); hlO[o4] = obj(o4).alive ? 'cur' : 'bad'; }
+        hlN[m[1]] = 'bad';
+        narr = '<code>' + esc(line) + '</code> deletes the <b>name</b>, not the object. ' + (o4 ? label(o4) + ' loses one reference → ' + obj(o4).rc + '.' : '');
+      } else if ((m = /^([A-Za-z_]\w*)\.append\(\s*([A-Za-z_]\w*)\s*\)$/.exec(line))) {
+        var host = bound(m[1], li), item = bound(m[2], li);
+        obj(host).children.push(item); incref(item);
+        hlO[item] = 'ok'; hlO[host] = 'cur';
+        narr = '<code>' + esc(line) + '</code> stores a pointer to ' + label(item) + ' <b>inside</b> ' + label(host) + '. Containers hold references too: ' + label(item) + ' is now at <b>' + obj(item).rc + '</b>.' + (host === item ? ' <span class="c-y">A list containing itself: a reference cycle!</span>' : '');
+      } else if ((m = /^([A-Za-z_]\w*)\.clear\(\)$/.exec(line))) {
+        var h2 = bound(m[1], li), kids = obj(h2).children.slice(); obj(h2).children = [];
+        kids.forEach(function (k) { decref(k); hlO[k] = obj(k).alive ? 'cur' : 'bad'; });
+        narr = '<code>' + esc(line) + '</code> drops the pointers stored inside ' + label(h2) + '; each former item loses one reference.';
+      } else {
+        throw new Error('Line ' + (li + 1) + ' not understood. Use: x = [] | x = y | x = None | del x | x.append(y) | x.clear()');
+      }
+      if (freedLog.length) narr += ' <span class="c-r">Refcount hit 0 → freed immediately: ' + freedLog.join(', ') + (freedLog.length > 1 ? ' (a cascade: freeing a container decrements everything it held).' : '.') + '</span>';
+      snapshot(narr, li, hlO, hlN);
+    });
+    var leaked = objs.filter(function (o) { return o.alive; }).filter(function (o) {
+      // reachable from a name?
+      var seen = {}, st = nameOrder.map(function (nm) { return names[nm]; }).filter(function (x) { return x; });
+      while (st.length) { var c = st.pop(); if (seen[c]) continue; seen[c] = 1; obj(c).children.forEach(function (k) { st.push(k); }); }
+      return !seen[o.id];
+    });
+    var lk = {}; leaked.forEach(function (o) { lk[o.id] = 'bad'; });
+    snapshot(leaked.length ? '<b>End.</b> <span class="c-r">' + leaked.map(function (o) { return label(o.id); }).join(', ') + ' cannot be reached from any name, yet refcount &gt; 0</span> because they point at each other (a cycle). Reference counting alone can never free them; the <b>cyclic garbage collector</b> (next topic) exists for exactly this.' : '<b>End.</b> Every object is either reachable from a name or already freed. Reference counting handled everything with no pauses, freeing each object the instant its last reference vanished.', -1, lk);
+    return frames;
+  }
+
+  topics.push({
+    title: 'Reference Counting: Who Is Holding This Object?',
+    analogy: R`<p>Think of a <b>helium balloon</b> held by strings. Every variable, list slot or attribute that refers to the object is one string. Tie on a new string: count + 1. Cut a string: count − 1. The instant the <b>last</b> string is cut, the balloon floats away (memory is freed) right then, not later. If the balloon was holding other balloons' strings, those strings are cut too, so a whole bunch can float away at once. The catch: two balloons tied <b>only to each other</b> keep each other "held" forever, even though nobody on the ground holds either.</p>`,
+    explain: R`<p>🟢 <b>The plain idea.</b> Every object's header has <code>ob_refcnt</code>, the number of references pointing at it. CPython's C code calls <code>Py_INCREF</code> whenever it creates a new reference and <code>Py_DECREF</code> when one goes away. When the count reaches <b>0</b>, the object's type <code>tp_dealloc</code> runs <b>immediately</b>: it decrements everything the object referenced and returns the memory.</p>
+      ${H.table(['Action', 'Refcount effect'], [
+        ['<code>x = obj</code>, passing <code>obj</code> to a function, <code>lst.append(obj)</code>, <code>self.a = obj</code>', H.c('g', '+1')],
+        ['pushing <code>obj</code> on the value stack during an expression', H.c('g', '+1 (temporary)')],
+        ['<code>del x</code>, rebinding <code>x = other</code>, a local going out of scope at return', H.c('r', '−1')],
+        ['removing from a container, the container itself dying', H.c('r', '−1 for each item')],
+        ['a <b>weak</b> reference (<code>weakref.ref(obj)</code>)', H.c('m', '0, does not keep it alive')]
+      ])}
+      <p><b><code>del</code> removes a name, not an object.</b> The object is destroyed only when <b>all</b> references are gone. Conversely, an object you no longer use is still alive if anything (a cache, a global list, a closure, an exception traceback) still points at it: that is a Python "memory leak".</p>
+      <p><b>Measuring:</b> <code>sys.getrefcount(x)</code> returns the count <b>plus one</b>, because passing <code>x</code> as the argument creates a temporary reference. A brand-new list bound to one name shows <code>2</code>. For <code>None</code>, small ints and other <b>immortal</b> objects (3.12+) it returns a huge constant.</p>
+      <p><b>Why CPython chose refcounting:</b></p>
+      ${H.table(['Pro', 'Con'], [
+        ['Memory is freed immediately and predictably (files and sockets close when the last reference dies)', 'Every assignment touches memory (<code>INCREF</code>/<code>DECREF</code>), costing time and cache traffic'],
+        ['No long "stop the world" pauses for most garbage', 'Not thread-safe without a lock: a big reason the <b>GIL</b> exists'],
+        ['Simple mental model; C extensions manage lifetimes explicitly', 'Cannot free <b>reference cycles</b> → needs a separate cycle collector']
+      ])}`,
+    clues: [
+      '"When is an object freed in CPython?" → the moment its refcount hits zero (or when the cycle GC collects it)',
+      '"What does <code>del x</code> do?" → unbinds the name and decrements the object\'s count; it does not force destruction',
+      '"Why does <code>sys.getrefcount</code> return 2 for a new object?" → the argument itself is a temporary reference',
+      '"Memory keeps growing, nothing is leaking in C" → something still references the objects (cache, global, closure, traceback)',
+      '"Why does Python have a GIL?" → refcount updates must be atomic; a single lock made that cheap',
+      '"Cache that should not keep objects alive" → <code>weakref</code> / <code>WeakValueDictionary</code>'
+    ],
+    code: [{ lang: 'python', title: 'Watch refcounts move (runnable)', run: true, code: R`import sys
+
+data = []                               # one reference: the name 'data'
+print("fresh list     :", sys.getrefcount(data))   # 2 = name + argument
+
+alias = data
+holder = [data, data]                  # a list holds references too
+print("after alias + 2 slots:", sys.getrefcount(data))
+
+del alias                              # removes a NAME, not the object
+holder.clear()
+print("after del + clear:", sys.getrefcount(data))
+
+class Noisy:
+    def __del__(self):
+        print("  Noisy freed")
+
+print("creating Noisy and dropping the only reference ...")
+n = Noisy()
+n = None                               # refcount -> 0, freed right here
+print("... next line runs after the object is already gone")
+print("None is immortal, refcount reports:", sys.getrefcount(None))
+` }],
+    codeTitle: ['Refcounts in action'],
+    viz: {
+      title: 'Reference counting step by step (try making a cycle!)',
+      input: 'a = []\nb = a\nc = []\nc.append(a)\ndel a\nb = None\ndel c\nd = []\nd.append(d)\ndel d',
+      inputLabel: 'Commands, one per line: x = [] | x = y | x = None | del x | x.append(y) | x.clear()',
+      gen: refcountSim
+    },
+    examples: [
+      { title: 'Predict the output: when does __del__ run?', html: R`<p>Three names point at one object. The finalizer runs only when the <b>third</b> reference disappears, not at the first <code>del</code>.</p>
+        ${H.table(['Line', 'refcount after', 'printed'], [['<code>a = Res("db")</code>', '1', '—'], ['<code>b = a; c = [a]</code>', '3', '—'], ['<code>del a</code>', '2', '—'], ['<code>b = None</code>', '1', '—'], ['<code>c.pop()</code>', '0', H.c('g', 'closing db')]])}`, code: { lang: 'python', run: true, code: R`class Res:
+    def __init__(self, name):
+        self.name = name
+    def __del__(self):
+        print("closing", self.name)
+
+a = Res("db")
+b = a
+c = [a]
+del a
+print("after del a")
+b = None
+print("after b = None")
+c.pop()                 # last reference gone -> __del__ runs now
+print("after pop")
+` } },
+      { title: 'Exceptions keep frames (and locals) alive', html: R`<p>A traceback references every frame it passed through, and frames reference their locals. Keep an exception around and you keep huge local data alive. That is why Python <b>automatically deletes</b> the name in <code>except E as e:</code> at the end of the block, and why storing <code>sys.exc_info()</code> or exceptions in a list can leak memory.</p>`, code: { lang: 'python', run: true, code: R`import weakref
+
+class Big:
+    pass
+
+saved = []
+
+def work():
+    payload = Big()                    # a local that should die at return
+    ref = weakref.ref(payload)
+    try:
+        raise ValueError("boom")
+    except ValueError as e:
+        saved.append(e)                # e.__traceback__ -> frame -> payload
+    return ref
+
+r = work()
+print("payload alive while exception is saved?", r() is not None)
+saved.clear()
+print("payload alive after clearing?", r() is not None)
+` } },
+      { title: 'weakref: point at something without keeping it alive', html: R`<p>A <b>weak reference</b> does not increase <code>ob_refcnt</code>. Calling it returns the object, or <code>None</code> once the object is gone. <code>weakref.WeakValueDictionary</code> builds caches that evaporate automatically; <code>weakref.finalize</code> is a safer alternative to <code>__del__</code> for cleanup.</p>
+        ${H.kv([['strong refs', '1 → 0'], ['weak refs', 'do not count'], ['after last strong ref dies', 'wr() → None']])}`, code: { lang: 'python', run: true, code: R`import weakref
+
+class Image:
+    def __init__(self, name):
+        self.name = name
+
+cache = weakref.WeakValueDictionary()
+img = Image("cat.png")
+cache["cat"] = img
+weakref.finalize(img, print, "finalizer: cat.png released")
+print("in cache:", "cat" in cache)
+del img                                   # last strong reference
+print("in cache after del:", "cat" in cache)
+` } }
+    ],
+    deepDive: R`<p>🟣 <b>Borrowed vs new references (C API).</b> Every C API function documents whether it returns a <b>new</b> reference (you must <code>Py_DECREF</code> it) or a <b>borrowed</b> one (you must not). Most extension-module memory bugs are a missing or extra DECREF: missing → leak, extra → use-after-free crash. Tools: debug builds track the total refcount (<code>sys.gettotalrefcount()</code>), and <code>tracemalloc</code> shows where leaked memory was allocated.</p>
+      <p><b>Deallocation cascades and the "trashcan".</b> Freeing the head of a 1-million-node linked list would recurse 1 million levels deep in C. CPython's <i>trashcan</i> mechanism limits the nesting depth of deallocations and defers the rest, preventing C stack overflows.</p>
+      <p><b><code>__del__</code> caveats.</b> It runs when the count hits zero, which may be at an unexpected point (inside another function's DECREF), it may <b>resurrect</b> the object by storing <code>self</code> somewhere, exceptions inside it are only printed as "Exception ignored in…", and at interpreter shutdown globals may already be <code>None</code>. Prefer context managers (<code>with</code>) for deterministic cleanup and <code>weakref.finalize</code> for "when it dies" hooks. Also: PyPy, GraalPy and Jython do not use refcounting, so code relying on "the file closes when the variable is overwritten" is CPython-only.</p>
+      <p><b>Modern refcounting.</b> 3.12 immortal objects skip count updates for shared singletons. 3.14 reduces refcount traffic further: the compiler emits <code>LOAD_FAST_BORROW</code> when it can prove a local outlives its stack use, so <code>sys.getrefcount</code> may report <b>smaller</b> numbers than older versions (do not write tests that assert exact counts). The free-threaded build uses <b>biased reference counting</b> (cheap non-atomic updates by the owning thread, atomic for others) and <b>deferred reference counting</b> for objects like functions and modules that many threads touch.</p>
+      <p><b>Production leak hunting:</b> <code>tracemalloc.take_snapshot()</code> + <code>compare_to</code> to find growing allocation sites; <code>gc.get_referrers(obj)</code> to see who holds an object; <code>objgraph</code>/memray to visualize; and the usual suspects: unbounded module-level dicts, <code>functools.lru_cache</code> on methods (it holds <code>self</code>), callbacks/event listeners never unregistered, and saved exceptions.</p>`,
+    aiEra: R`<p>🤖 <b>What AI changes:</b> assistants are quick at spotting classic leaks in a code review ("this module-level dict grows forever", "this lru_cache on a method pins every instance") and at writing <code>tracemalloc</code> harnesses. That is real leverage on large codebases.</p>
+      <p><b>Use AI as a partner:</b> <code>Here is a tracemalloc compare_to diff from two snapshots 10 minutes apart. Rank the top suspects and tell me what reference is likely keeping them alive.</code> Then confirm with <code>gc.get_referrers</code>.</p>
+      <p><b>Where AI goes wrong:</b> recommending <code>del x</code> or <code>gc.collect()</code> everywhere "to free memory" (it rarely helps; the real fix is removing the lingering reference), asserting exact <code>getrefcount</code> numbers that change between versions, or generating C extension code with unbalanced <code>Py_INCREF</code>/<code>Py_DECREF</code>.</p>
+      <p><b>What you must still own:</b> the reasoning "who still points at this object?", the difference between names and objects, and the judgement of when to use weak references, context managers or a bounded cache.</p>`,
+    problems: [{
+      title: 'Prove an Object Gets Freed',
+      level: 'Medium', tags: ['weakref', 'refcount', 'testing'], companies: ['Instagram', 'Dropbox', 'Netflix'],
+      statement: R`<p>Write <code>is_freed_after(make, release)</code>: it calls <code>make()</code> to create an object, takes a <b>weak</b> reference to it, calls <code>release(obj)</code> (which should drop the references your code created), deletes its own local reference, and returns <code>True</code> if the object is gone. Use it to show that a bounded design frees objects while a "registry" leaks them.</p>`,
+      constraints: R`<p>The object's class must support weak references (normal classes do; <code>int</code>/<code>tuple</code> do not). Must not depend on exact refcount numbers.</p>`,
+      example: R`<p>If <code>release</code> stores the object in a global list, the answer is ${H.c('r', 'False')} (a strong reference survives). If <code>release</code> does nothing, the answer is ${H.c('g', 'True')} once our own local is deleted.</p>`,
+      brute: { why: R`<p>Comparing <code>sys.getrefcount</code> before and after is fragile: the number includes temporary references, differs across versions (3.14 borrows references), and cannot tell you whether the object was actually deallocated. A weak reference answers the real question directly.</p>`, code: R`import sys
+
+def is_freed_brute(make, release):
+    obj = make()
+    before = sys.getrefcount(obj)
+    release(obj)
+    after = sys.getrefcount(obj)
+    return after <= before          # does not prove anything about freeing
+
+print(is_freed_brute(lambda: [], lambda o: None))
+` },
+      mcq: { q: 'Your weakref still returns the object after you deleted your variable. What is the most likely cause?', options: ['Something else still holds a strong reference', 'Weak references always keep objects alive for one GC cycle', 'del only works inside functions', 'The object is immortal because it is a list'], answer: 0, explain: 'A weakref dies with the object. If it still resolves, a strong reference exists somewhere (a registry, a closure, a traceback, a cycle not yet collected). Lists are not immortal.' },
+      hints: [R`<p>Hint 1: <code>wr = weakref.ref(obj)</code> does not change the refcount; <code>wr()</code> returns <code>None</code> once the object is gone.</p>`, R`<p>Hint 2: after <code>release(obj)</code>, run <code>del obj</code> so your own function no longer holds it. If cycles might be involved, call <code>gc.collect()</code> before checking.</p>`, R`<p>Hint 3: recipe: obj = make(); wr = weakref.ref(obj); release(obj); del obj; gc.collect(); return wr() is None. Test one leaking release and one clean release.</p>`],
+      solution: {
+        approach: R`<p>A weak reference is the ground truth for "is it alive?". We drop our own strong reference, optionally run the cycle collector (so cycles do not give false negatives), and check whether the weakref is dead.</p>`,
+        code: { lang: 'python', run: true, code: R`import gc
+import weakref
+
+def is_freed_after(make, release, collect_cycles=True):
+    obj = make()
+    wr = weakref.ref(obj)          # does not keep obj alive
+    release(obj)
+    del obj                        # drop OUR reference
+    if collect_cycles:
+        gc.collect()               # cycles are not freed by refcounting
+    return wr() is None
+
+class Session:
+    pass
+
+REGISTRY = []
+
+def leaky_release(s):
+    REGISTRY.append(s)             # strong reference survives -> leak
+
+def clean_release(s):
+    pass
+
+def cyclic_release(s):
+    s.me = s                       # self-cycle: needs the cycle GC
+
+print("leaky :", is_freed_after(Session, leaky_release))
+print("clean :", is_freed_after(Session, clean_release))
+print("cycle (no gc.collect):", is_freed_after(Session, cyclic_release, collect_cycles=False))
+print("cycle (with collect) :", is_freed_after(Session, cyclic_release))
+` },
+        dry: { head: ['release', 'strong refs after del obj', 'gc.collect needed?', 'result'], rows: [['leaky_release', '1 (REGISTRY)', 'no help', H.c('r', 'False')], ['clean_release', '0', 'no', H.c('g', 'True')], ['cyclic_release, no collect', '1 (s.me → s)', 'yes', H.c('r', 'False')], ['cyclic_release, collect', '1 but unreachable', 'collected', H.c('g', 'True')]] },
+        complexity: R`<p>O(1) apart from <code>gc.collect()</code>, which is O(number of tracked container objects). Use it in tests, not hot paths.</p>`,
+        followUps: ['Turn this into a pytest fixture that fails a test when a request handler leaks its request object.', 'How would you find WHO holds the object when the answer is False? (<code>gc.get_referrers</code>)']
       }
     }]
   });

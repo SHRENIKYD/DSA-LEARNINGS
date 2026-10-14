@@ -1581,4 +1581,512 @@ print(letter_combinations("23"))
       }
     }]
   });
+
+  /* ================= TOPIC 6: functools.lru_cache / cache ================= */
+  topics.push({
+    title: 'functools.lru_cache & cache: Memoization in One Line',
+    analogy: `<p>A student doing homework writes every answer she works out on a <b>sticky note</b> on her desk. When the same question appears again, she reads the sticky note instead of solving it again. If her desk only fits 128 notes, she throws away the note she hasn't looked at for the longest time. That desk is <code>@lru_cache(maxsize=128)</code>; a desk with unlimited space is <code>@cache</code>.</p>`,
+    explain: `<p>🟢 <b>The plain idea.</b> Many recursive solutions (Fibonacci, climbing stairs, word break, grid paths, knapsack) solve the <b>same sub-problem again and again</b>. <b>Memoization</b> = remember the answer for each set of arguments. In Python you get it by adding one decorator line on top of the recursive function — this is "top-down DP".</p>
+${H.table(['Decorator', 'Meaning', 'When'], [
+  ['<code>@functools.cache</code> (3.9+)', 'unbounded memo = <code>lru_cache(maxsize=None)</code>', 'interview DP — fastest, simplest'],
+  ['<code>@functools.lru_cache(maxsize=128)</code>', 'keep only the 128 most recently used results', 'long-running services with bounded memory'],
+  ['<code>@lru_cache(maxsize=None)</code>', 'same as <code>@cache</code>', 'works on Python 3.2–3.8 too'],
+  ['<code>typed=True</code>', '<code>f(3)</code> and <code>f(3.0)</code> cached separately', 'rarely needed']
+])}
+<p>🔵 <b>See the effect.</b> Plain recursive <code>fib(30)</code> makes about <b>2.7 million</b> calls (O(φ<sup>n</sup>)). With <code>@cache</code> it makes <b>31</b> misses and ~28 hits → O(n).</p>
+${H.table(['fib(n)', 'calls without cache', 'calls with @cache'], [['10', '177', '19'], ['20', '21 891', '39'], ['30', '2 692 537', '59']])}
+<p>🔵 <b>Inspecting and resetting:</b> <code>f.cache_info()</code> → <code>CacheInfo(hits, misses, maxsize, currsize)</code>; <code>f.cache_clear()</code> empties it; <code>f.__wrapped__</code> is the original function.</p>
+<p>🔵 <b>Three rules:</b></p>
+<ol>
+<li><b>Arguments must be hashable</b> — they become a dict key. Lists/dicts/sets raise <code>TypeError: unhashable type</code>. Pass a tuple, a frozenset, or (better) an index into an outer list.</li>
+<li><b>The function must be pure</b> for the arguments it receives: same args → same result, no dependence on changing outer state (or the cache returns stale answers).</li>
+<li><b>Scope the cache to one input.</b> On LeetCode, define the cached helper <b>inside</b> the method so each test case gets a fresh cache; a module-level cached function remembers answers across test cases (wrong results if it reads outer data, plus memory growth).</li>
+</ol>
+<p><b>Top-down vs bottom-up:</b> the memoized recursion is usually the fastest way to a <i>correct</i> DP. Converting it to a bottom-up table (loops) removes recursion-depth limits and function-call overhead — mention this trade-off in interviews.</p>`,
+    clues: [
+      '"number of ways", "minimum cost/steps", "can you reach / can you form" with overlapping choices → top-down DP with <code>@cache</code>',
+      'You wrote a recursion and the same arguments appear in several branches of the call tree → memoize',
+      'State fits in a few ints/strings (index, remaining capacity, mask) → hashable → <code>@cache</code> works directly',
+      '"expensive pure function called repeatedly" (config parsing, permission lookups) in production → <code>@lru_cache(maxsize=N)</code>',
+      'N up to ~10<sup>4</sup> recursion depth or more → memoized recursion may hit RecursionError → bottom-up instead',
+      'Arguments are lists/grids → pass indices, or convert to tuple, before caching'
+    ],
+    code: [{ lang: 'python', run: true, title: 'lru_cache / cache tour (runnable)', code: `
+from functools import cache, lru_cache
+
+calls = 0
+def fib_plain(n):
+    global calls
+    calls += 1
+    return n if n < 2 else fib_plain(n - 1) + fib_plain(n - 2)
+
+fib_plain(20)
+print("plain calls:", calls)            # 21891
+
+@cache
+def fib(n):
+    return n if n < 2 else fib(n - 1) + fib(n - 2)
+
+print(fib(20), fib.cache_info())        # misses=21, hits=18
+print(fib(90))                          # instant, exact big int
+
+@lru_cache(maxsize=2)                   # tiny cache to watch eviction
+def square(x):
+    print("  computing", x)
+    return x * x
+
+square(1); square(2); square(1)         # 1 is a hit
+square(3)                               # evicts 2 (least recently used)
+square(2)                               # recomputed
+print(square.cache_info())              # hits=1 misses=4 maxsize=2 currsize=2
+square.cache_clear()
+print(square.cache_info())
+
+try:
+    @cache
+    def total(xs):
+        return sum(xs)
+    total([1, 2, 3])
+except TypeError as e:
+    print("TypeError:", e)              # unhashable type: 'list'
+print(total((1, 2, 3)))                 # tuples are fine
+` }],
+    codeTitle: ['lru_cache / cache tour (runnable)'],
+    viz: {
+      title: '@cache on fib(n): call stack, hits and misses',
+      input: '6',
+      inputLabel: 'n (1–12)',
+      gen: function (input) {
+        var n = parseInt(input, 10);
+        if (isNaN(n) || n < 1 || n > 12) throw new Error('Enter n between 1 and 12');
+        var CODE = '@cache\ndef fib(n):\n    if n < 2:\n        return n\n    return fib(n - 1) + fib(n - 2)';
+        var memo = {}, order = [], stack = [], frames = [], hits = 0, misses = 0, plain = 0;
+        (function cnt(k) { plain++; if (k >= 2) { cnt(k - 1); cnt(k - 2); } })(n);
+        function snap(narr, hlKey, cls, codeHl) {
+          var h = {}; if (hlKey !== null && hlKey !== undefined) h[String(hlKey)] = cls;
+          frames.push(fr(narr, [
+            { type: 'stack', label: 'call stack (top = running)', items: stack.slice(), hl: stack.length ? one(stack.length - 1, 'cur') : {} },
+            { type: 'map', label: 'cache {n: fib(n)}', entries: order.map(function (k) { return ['fib(' + k + ')', memo[k]]; }), hl: hlKey !== null && hlKey !== undefined ? (function () { var o = {}; o['fib(' + hlKey + ')'] = cls; return o; })() : {} },
+            vp({ hits: hits, misses: misses }, cls === 'ok' ? 'hits' : (cls === 'cur' ? 'misses' : ''), cls === 'ok' ? 'ok' : 'cur', 'cache_info()'),
+            cp(CODE, codeHl || {})
+          ]));
+        }
+        function f(k) {
+          if (Object.prototype.hasOwnProperty.call(memo, k)) {
+            hits++;
+            snap('Call <b>fib(' + k + ')</b> → found in the cache → <span class="c-g">HIT</span>, return ' + memo[k] + ' immediately. The whole sub-tree under it is skipped.', k, 'ok', { 1: 'ok' });
+            return memo[k];
+          }
+          misses++;
+          stack.push('fib(' + k + ')');
+          snap('Call <b>fib(' + k + ')</b> → not in the cache → <span class="c-y">MISS</span>, actually run the body.', null, 'cur', { 2: 'cur' });
+          var r;
+          if (k < 2) { r = k; }
+          else { var a = f(k - 1); var b = f(k - 2); r = a + b; }
+          memo[k] = r; order.push(k);
+          snap('fib(' + k + ') = <b>' + r + '</b> → store it in the cache, then return to the caller (pop the stack).', k, 'sel', { 4: k < 2 ? 'ok' : '', 5: k < 2 ? '' : 'ok' });
+          stack.pop();
+          return r;
+        }
+        var res = f(n);
+        frames.push(fr('Done: fib(' + n + ') = <b>' + res + '</b> with <b>' + misses + '</b> misses and <b>' + hits + '</b> hits = ' + (hits + misses) + ' calls. Without the cache: <b>' + plain + '</b> calls. Linear instead of exponential.', [
+          { type: 'bars', label: 'calls: with cache vs without', values: [hits + misses, plain], idxLabels: ['@cache', 'plain'], texts: [String(hits + misses), String(plain)] },
+          { type: 'map', label: 'final cache', entries: order.map(function (k) { return ['fib(' + k + ')', memo[k]]; }) },
+          vp({ hits: hits, misses: misses, currsize: order.length }, 'hits', 'ok', 'cache_info()')
+        ]));
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'Unique paths in a grid with obstacles — state = (r, c)', html: `<p>Ways to reach (r, c) = ways from above + ways from the left. Two ints are a perfect cache key. The grid itself is <b>not</b> an argument (unhashable) — it's read from the enclosing scope, which is fine because it doesn't change during the call.</p>${H.table(['', 'c0', 'c1', 'c2'], [['r0', '1', '1', '1'], ['r1', '1', H.c('r', '#'), '1'], ['r2', '1', '1', H.c('g', '2')]])}`, code: { lang: 'python', run: true, code: `
+from functools import cache
+
+def unique_paths_with_obstacles(grid):
+    R, C = len(grid), len(grid[0])
+
+    @cache                                  # fresh cache per call of the outer function
+    def ways(r, c):
+        if r < 0 or c < 0 or grid[r][c] == 1:
+            return 0
+        if r == 0 and c == 0:
+            return 1
+        return ways(r - 1, c) + ways(r, c - 1)
+
+    return ways(R - 1, C - 1)
+
+print(unique_paths_with_obstacles([[0, 0, 0], [0, 1, 0], [0, 0, 0]]))  # 2
+` } },
+      { title: '0/1 knapsack top-down: state = (index, capacity left)', html: `<p>Each item: skip it, or take it if it fits. The state <code>(i, cap)</code> has at most n × W combinations, so memoization makes it O(n·W). Without the cache it would be O(2<sup>n</sup>).</p>${H.table(['item', 'weight', 'value'], [['0', '1', '1'], ['1', '3', '4'], ['2', '4', '5'], ['3', '5', '7']])}<p>Capacity 7 → take items 1 and 2 (weight 7, value <b>9</b>).</p>`, code: { lang: 'python', run: true, code: `
+from functools import cache
+
+def knapsack(weights, values, W):
+    n = len(weights)
+
+    @cache
+    def best(i, cap):
+        if i == n:
+            return 0
+        skip = best(i + 1, cap)
+        if weights[i] <= cap:
+            return max(skip, values[i] + best(i + 1, cap - weights[i]))
+        return skip
+
+    ans = best(0, W)
+    print("states computed:", best.cache_info().currsize)
+    return ans
+
+print(knapsack([1, 3, 4, 5], [1, 4, 5, 7], 7))  # 9
+` } },
+      { title: 'The hidden-state bug: caching something that is not pure', html: `<p>If the cached function reads a <b>mutable outer variable</b>, the cache returns answers computed for the <i>old</i> value. This is the classic bug when a module-level <code>@cache</code> helper is reused across LeetCode test cases.</p>${H.table(['call', 'outer data', 'returned', 'correct?'], [['count_ge(5)', '[1, 6, 9]', '2', H.c('g', 'yes')], ['count_ge(5)', '[7, 8, 9, 10]', '2 (stale!)', H.c('r', 'no — should be 4')]])}`, code: { lang: 'python', run: true, code: `
+from functools import cache
+
+data = [1, 6, 9]
+
+@cache
+def count_ge(x):
+    return sum(1 for v in data if v >= x)    # depends on OUTER mutable state!
+
+print(count_ge(5))       # 2
+data = [7, 8, 9, 10]
+print(count_ge(5))       # still 2 -> stale cached answer
+count_ge.cache_clear()
+print(count_ge(5))       # 4 after clearing
+` } },
+      { title: 'Memoizing methods without leaking memory', html: `<p><code>@lru_cache</code> on a method includes <code>self</code> in the key and keeps every instance alive as long as the cache lives (a memory leak in long-running services). For a per-instance computed value use <code>functools.cached_property</code>; for per-call DP put the cached helper inside the method.</p>`, code: { lang: 'python', run: true, code: `
+from functools import cached_property, cache
+
+class Report:
+    def __init__(self, rows):
+        self.rows = rows
+
+    @cached_property                 # computed once per instance, stored on it
+    def total(self):
+        print("  summing...")
+        return sum(self.rows)
+
+    def ways_to_climb(self, n):
+        @cache                       # helper cache lives only during this call
+        def ways(k):
+            return 1 if k <= 1 else ways(k - 1) + ways(k - 2)
+        return ways(n)
+
+r = Report([3, 4, 5])
+print(r.total, r.total)          # 'summing...' printed once
+print(r.ways_to_climb(10))       # 89
+` } }
+    ],
+    deepDive: `<p>🟣 <b>How lru_cache is built.</b> CPython's <code>lru_cache</code> is implemented in C (<code>_functools._lru_cache_wrapper</code>). It builds a key from the arguments (<code>_make_key</code>: positional args, then a marker, then keyword items; a single int/str argument is used directly as the key for speed), looks it up in a dict, and — for bounded caches — keeps entries on a <b>circular doubly linked list</b> so it can move hits to the front and evict the oldest in O(1) (the same design as the LRU Cache problem). With <code>maxsize=None</code> there is no linked list at all — just a dict — which is why <code>@cache</code> is slightly faster.</p>
+<p><b>Keyword order matters:</b> <code>f(a=1, b=2)</code> and <code>f(b=2, a=1)</code> may be cached as two separate entries, and <code>f(1)</code> vs <code>f(a=1)</code> too. Always call memoized helpers the same way.</p>
+<p><b>Recursion depth:</b> memoized recursion still recurses — <code>fib(5000)</code> on an empty cache needs ~5000 nested frames and raises <code>RecursionError</code> with the default limit of 1000. Fixes: warm the cache bottom-up (<code>for i in range(n): fib(i)</code>), raise the limit carefully, or write the DP iteratively. Each memoized call also costs a hash + dict lookup — a bottom-up list-based DP is often 2–5× faster in CPython.</p>
+<p><b>Thread safety:</b> the cache's internal structure is protected, but the wrapped function may run more than once for the same key if two threads miss simultaneously — fine for pure functions, a problem if the function has side effects.</p>
+<p><b>Production uses:</b> caching config/feature-flag parsing, regex compilation (<code>re</code> already caches internally), DNS-like lookups. For TTL-based or distributed caching use Redis or <code>cachetools.TTLCache</code>; <code>lru_cache</code> has no expiry.</p>`,
+    aiEra: `<p>🤖 <b>What AI changes:</b> "add <code>@cache</code> to the recursion" is the first thing an assistant suggests for any DP — and often it's right. The interview now probes whether you can name the <b>state</b>, count the states (that's your complexity), and convert to bottom-up when depth or speed matters.</p>
+<p><b>Use AI as a partner:</b> <code>"Here is my memoized recursion — convert it to a bottom-up table and explain the iteration order"</code>; <code>"What is the number of distinct states for this cache key?"</code>.</p>
+<p><b>Where AI goes wrong:</b> passes lists into cached functions (TypeError), caches functions that read mutable globals (stale answers), puts <code>@cache</code> on a module-level helper reused across test cases, forgets RecursionError for n ≈ 10<sup>5</sup>, and claims the complexity is O(n) when the state space is really O(n·W).</p>
+<p><b>What you must still own:</b> defining the recurrence and base cases, proving overlapping sub-problems exist, computing time = (#states) × (work per state), and explaining the LRU eviction mechanism if asked.</p>`,
+    problems: [{
+      title: 'Word Break', level: 'Medium', tags: ['DP', 'memoization', 'lru_cache', 'string'], companies: ['Amazon', 'Google', 'Meta', 'Bloomberg'],
+      statement: `<p>Given a string <code>s</code> and a list of dictionary words <code>wordDict</code>, return <code>True</code> if <code>s</code> can be split into a sequence of one or more dictionary words (words may be reused).</p>`,
+      constraints: `1 ≤ len(s) ≤ 300, 1 ≤ len(wordDict) ≤ 1000, 1 ≤ len(word) ≤ 20, all lowercase, words unique`,
+      example: `<p>s = "leetcode", words = ["leet", "code"] → ${H.c('g', 'True')} ("leet" + "code"). s = "catsandog", words = ["cats","dog","sand","and","cat"] → ${H.c('r', 'False')}: every split leaves "og" or similar unmatched.</p>`,
+      brute: { why: `<p>Try every prefix that is a word and recurse on the rest. For an input like "aaaa…ab" with words ["a", "aa", "aaa"], the same suffix is re-solved through exponentially many paths: O(2<sup>n</sup>). The wasted work: <code>can(i)</code> ("can the suffix starting at i be split?") depends only on i, yet we recompute it every time we reach i.</p>`, code: `
+def word_break_brute(s, word_dict):
+    words = set(word_dict)
+    def can(i):                                  # no memo -> exponential
+        if i == len(s):
+            return True
+        return any(s[i:j] in words and can(j) for j in range(i + 1, len(s) + 1))
+    return can(0)
+
+print(word_break_brute("leetcode", ["leet", "code"]))  # True
+` },
+      mcq: { q: 'What is the right cache key for the memoized helper?', options: ['The start index i of the remaining suffix', 'The remaining suffix string <code>s[i:]</code>', 'The list of words used so far', 'Nothing — Word Break has no overlapping sub-problems'], answer: 0, explain: 'The answer for a suffix depends only on where it starts. An int key is cheap; the suffix string would also work but costs O(n) to slice and hash; the list of used words is unhashable and wrong (it makes states distinct that are really the same).' },
+      hints: [`<p>Hint 1: Define <code>can(i)</code> = "can s[i:] be segmented?". Then <code>can(i)</code> is True if some word matches at i and <code>can(i + len(word))</code> is True.</p>`, `<p>Hint 2: <code>can(i)</code> only depends on i → only n+1 states. Put <code>@cache</code> on it. Use a <code>set</code> for O(1) word lookups, and only try lengths up to the longest word.</p>`, `<p>Hint 3: Base case <code>can(len(s)) = True</code>. Recipe: for L in 1..maxlen: if s[i:i+L] in words and can(i+L): return True; return False. Bottom-up: dp[i] over i from n down to 0.</p>`],
+      solution: {
+        approach: `<p>Top-down DP: <code>can(i)</code> tries every dictionary word length at position i and recurses. With <code>@cache</code> each i is solved once. Limiting lengths to the longest word keeps work per state ≤ 20 slices. The bottom-up alt fills <code>dp</code> from the end and avoids recursion entirely.</p>`,
+        code: { lang: 'python', run: true, code: `
+from functools import cache
+from typing import List
+
+def word_break(s: str, word_dict: List[str]) -> bool:
+    words = set(word_dict)
+    max_len = max(map(len, words))
+
+    @cache
+    def can(i: int) -> bool:          # can s[i:] be split into words?
+        if i == len(s):
+            return True
+        for j in range(i + 1, min(len(s), i + max_len) + 1):
+            if s[i:j] in words and can(j):
+                return True
+        return False
+
+    return can(0)
+
+print(word_break("leetcode", ["leet", "code"]))                          # True
+print(word_break("applepenapple", ["apple", "pen"]))                     # True
+print(word_break("catsandog", ["cats", "dog", "sand", "and", "cat"]))    # False
+print(word_break("a" * 200 + "b", ["a", "aa", "aaa"]))                   # False, instantly
+` },
+        alt: [{ lang: 'python', title: 'Bottom-up (no recursion)', run: true, code: `
+def word_break(s, word_dict):
+    words = set(word_dict)
+    max_len = max(map(len, words))
+    n = len(s)
+    dp = [False] * (n + 1)          # dp[i] = s[i:] can be segmented
+    dp[n] = True
+    for i in range(n - 1, -1, -1):
+        for j in range(i + 1, min(n, i + max_len) + 1):
+            if dp[j] and s[i:j] in words:
+                dp[i] = True
+                break
+    return dp[0]
+
+print(word_break("leetcode", ["leet", "code"]))   # True
+` }],
+        dry: { head: ['call', 'tries', 'result', 'cache'], rows: [
+          ['can(0)', '"l","le","lee","leet"✓ → can(4)', '…', 'miss'],
+          ['can(4)', '"c","co","cod","code"✓ → can(8)', '…', 'miss'],
+          ['can(8)', 'i == len(s)', H.c('g', 'True'), 'miss → stored'],
+          ['can(4)', '—', H.c('g', 'True'), 'stored'],
+          ['can(0)', '—', H.c('g', 'True'), 'stored']
+        ] },
+        complexity: `<p>States: n + 1. Work per state: up to L slices of length ≤ L (L = longest word) → O(n · L²) time, O(n) cache + recursion depth.</p>`,
+        followUps: ['Word Break II — return all sentences (memoize lists of sentences per i)', 'Huge dictionary — use a trie to stop early when no word has the prefix', 'Recursion depth for len(s) = 10<sup>5</sup>? Switch to bottom-up']
+      }
+    }]
+  });
+
+  /* ================= TOPIC 7: Sorting with keys ================= */
+  topics.push({
+    title: 'Sorting with Keys: Tuples, Stability & cmp_to_key',
+    analogy: `<p>A teacher sorts exam papers. She doesn't compare whole papers — she looks at <b>one label</b> on each (the score) and sorts by that. If two papers have the same score, she leaves them in the order they were in the pile (that's <b>stability</b>). Want "highest score first, then alphabetical by name"? She writes a <b>two-part label</b> on each paper: (−score, name). That label is the <code>key</code>.</p>`,
+    explain: `<p>🟢 <b>The plain idea.</b> Python sorts with <code>sorted(iterable)</code> (returns a new list) or <code>lst.sort()</code> (in place, returns <code>None</code>). Instead of writing a comparison function, you give a <b>key function</b> that turns each item into a value Python already knows how to compare — a number, a string, or a <b>tuple</b>.</p>
+${H.table(['Goal', 'Code'], [
+  ['by length', '<code>sorted(words, key=len)</code>'],
+  ['case-insensitive', '<code>sorted(names, key=str.lower)</code>'],
+  ['by 2nd field', '<code>sorted(pairs, key=lambda p: p[1])</code> or <code>key=itemgetter(1)</code>'],
+  ['by attribute', '<code>sorted(people, key=attrgetter("age"))</code>'],
+  ['descending', '<code>sorted(xs, reverse=True)</code>'],
+  ['score desc, then name asc', '<code>sorted(rows, key=lambda r: (-r.score, r.name))</code>'],
+  ['dict by value', '<code>sorted(d.items(), key=lambda kv: kv[1])</code>'],
+  ['pairwise rule ("a before b if…")', '<code>sorted(xs, key=cmp_to_key(cmp))</code>']
+])}
+<p>🔵 <b>Tuples compare left to right</b>, like words in a dictionary: <code>(1, 'b') &lt; (2, 'a')</code> because 1 &lt; 2; only on a tie does the second item matter. So a tuple key = "sort by this, then by that".</p>
+<p>🔵 <b>Mixed directions.</b> For numbers, negate: <code>(-score, name)</code>. You can't negate a string, so either use <b>two stable passes</b> (sort by the secondary key first, then by the primary key) or <code>cmp_to_key</code>.</p>
+<p>🔵 <b>Stability</b> — Python's sort (Timsort, with the Powersort merge policy since 3.11) is <b>guaranteed stable</b>: items with equal keys keep their original relative order. That's what makes the two-pass trick correct:</p>
+<pre>rows.sort(key=lambda r: r.name)                 # secondary first
+rows.sort(key=lambda r: r.score, reverse=True)  # primary last</pre>
+<p>(<code>reverse=True</code> also preserves stability — equal items are <i>not</i> reversed.)</p>
+<p>🔵 <b>cmp_to_key</b> wraps an old-style comparator <code>cmp(a, b)</code> returning negative / 0 / positive. Use it when the order is defined by a relation between two items, e.g. "put a before b if a+b &gt; b+a" (Largest Number).</p>
+<p>Also: <code>min</code>, <code>max</code>, <code>heapq.nlargest</code> and <code>itertools.groupby</code> take the same <code>key=</code>. Sorting costs <b>O(n log n)</b>, but Timsort is O(n) on already-sorted or reverse-sorted data and fast on data with long sorted runs.</p>`,
+    clues: [
+      '"sort by X, then by Y" / "ties broken by" → tuple key <code>(x, y)</code>',
+      '"descending by count, ascending by name" → <code>key=lambda w: (-count[w], w)</code>',
+      '"arrange numbers to form the largest number", "custom order defined by pairs" → <code>cmp_to_key</code>',
+      '"merge intervals", "meeting rooms", "minimum arrows" → sort by start (or end) first: <code>intervals.sort(key=lambda x: x[0])</code>',
+      '"relative order must be preserved" / "stable" → Python sort is stable; multi-pass works',
+      '"sort characters by frequency", "custom alphabet order" → key from a Counter or a rank dict',
+      'N ≤ 10<sup>5</sup>–10<sup>6</sup> → one O(N log N) sort then a linear sweep is usually the intended solution'
+    ],
+    code: [{ lang: 'python', run: true, title: 'Sorting with keys (runnable)', code: `
+from functools import cmp_to_key
+from operator import itemgetter, attrgetter
+from collections import namedtuple
+
+words = ["banana", "Apple", "fig", "cherry", "date"]
+print(sorted(words))                         # uppercase first (ASCII order)
+print(sorted(words, key=str.lower))          # case-insensitive
+print(sorted(words, key=len))                # stable: equal lengths keep order
+print(sorted(words, key=lambda w: (len(w), w.lower())))
+
+Student = namedtuple("Student", "name score")
+rows = [Student("ann", 90), Student("bob", 85), Student("cat", 90), Student("dan", 85)]
+print([s.name for s in sorted(rows, key=lambda s: (-s.score, s.name))])  # score desc, name asc
+print([s.name for s in sorted(rows, key=attrgetter("score"))])          # stable ties
+
+# two stable passes: name DESC (secondary) then score ASC (primary)
+tmp = sorted(rows, key=attrgetter("name"), reverse=True)
+print([s.name for s in sorted(tmp, key=attrgetter("score"))])
+
+pairs = [(1, "b"), (3, "a"), (2, "c")]
+print(sorted(pairs, key=itemgetter(1)))
+d = {"x": 3, "y": 1, "z": 2}
+print(sorted(d, key=d.get), max(d, key=d.get))
+
+def cmp(a, b):                              # negative -> a first
+    return -1 if a + b > b + a else (1 if a + b < b + a else 0)
+print("".join(sorted(["3", "30", "34", "5", "9"], key=cmp_to_key(cmp))))  # 9534330
+
+xs = [3, 1, 2]
+print(xs.sort())                            # None! sort() works in place
+print(xs)
+` }],
+    codeTitle: ['Sorting with keys (runnable)'],
+    viz: {
+      title: 'Stable sort in slow motion: key = score (ties keep their order)',
+      input: 'ann:90 bob:85 cat:90 dan:70 eve:85',
+      inputLabel: 'name:score pairs (≤ 8)',
+      gen: function (input) {
+        var toks = words(input);
+        if (!toks.length || toks.length > 8) throw new Error('Give 1-8 pairs like ann:90 bob:85');
+        var items = toks.map(function (t, i) {
+          var p = t.split(':');
+          if (p.length !== 2 || isNaN(Number(p[1]))) throw new Error('Each pair must look like name:score, e.g. ann:90');
+          return { name: p[0], score: Number(p[1]), orig: i };
+        });
+        var CODE = 'rows.sort(key=lambda r: r.score)\n# Timsort sorts short runs with binary insertion sort:\nfor i in range(1, n):\n    x = rows[i]\n    j = i - 1\n    while j >= 0 and key(rows[j]) > key(x):   # strictly greater!\n        rows[j + 1] = rows[j]; j -= 1\n    rows[j + 1] = x';
+        var frames = [];
+        function lab(a) { return a.map(function (o) { return o.name + ':' + o.score; }); }
+        function tags(a) { return a.map(function (o) { return '#' + o.orig; }); }
+        frames.push(fr('Step 1 — Python calls the key function <b>once per item</b> (decorate). Here key = score. The original position (#) is shown so we can check stability.', [
+          { type: 'table', label: 'decorated items', columns: ['item', 'key', 'original #'], rows: items.map(function (o) { return [o.name, o.score, o.orig]; }) },
+          cp(CODE, { 1: 'cur' })
+        ]));
+        var a = items.slice();
+        for (var i = 1; i < a.length; i++) {
+          var x = a[i], j = i - 1, moved = 0;
+          while (j >= 0 && a[j].score > x.score) { a[j + 1] = a[j]; j--; moved++; }
+          a[j + 1] = x;
+          var hl = {}; for (var t = 0; t <= i; t++) hl[t] = 'win'; hl[j + 1] = 'cur';
+          var tie = j >= 0 && a[j].score === x.score;
+          frames.push(fr('Insert <b>' + esc(x.name) + ':' + x.score + '</b>. ' + (moved ? 'It moves left past ' + moved + ' item(s) with a <b>bigger</b> key.' : 'Nothing to its left has a bigger key, so it stays.') + (tie ? ' <span class="c-g">It stops behind ' + esc(a[j].name) + ' (equal key)</span> — we only move past <i>strictly</i> greater keys, which is exactly why the sort is <b>stable</b>.' : ''), [
+            { type: 'array', label: 'rows (sorted prefix in blue)', values: lab(a), hl: hl, idxLabels: tags(a) },
+            cp(CODE, { 6: moved ? 'cur' : 'ok', 8: 'ok' })
+          ]));
+        }
+        var hl2 = {};
+        for (var k = 1; k < a.length; k++) if (a[k].score === a[k - 1].score) { hl2[k] = 'sel'; hl2[k - 1] = 'sel'; }
+        frames.push(fr('Sorted by score ascending. Equal scores (purple) appear in their <b>original</b> order (check the # labels). Real Timsort uses binary insertion for small runs and merges larger runs — always stable.', [
+          { type: 'array', label: 'sorted rows', values: lab(a), hl: hl2, idxLabels: tags(a) }
+        ]));
+        var b = items.slice().sort(function (p, q) { return (q.score - p.score) || (p.name < q.name ? -1 : p.name > q.name ? 1 : 0); });
+        frames.push(fr('Multi-key: <code>key=lambda r: (-r.score, r.name)</code> → tuples compare left to right: higher score first (negated), ties alphabetical.', [
+          { type: 'table', label: 'tuple keys', columns: ['item', 'key tuple'], rows: b.map(function (o) { return [o.name, '(' + (-o.score) + ", '" + o.name + "')"]; }) },
+          { type: 'array', label: 'sorted by (-score, name)', values: lab(b), hl: { 0: 'ok' } }
+        ]));
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'Merge intervals: sort by start, then sweep', html: `<p>After sorting by start, overlapping intervals are neighbours. Extend the last merged interval when the next one starts before it ends.</p>${H.table(['interval', 'merged list'], [['[1,3]', '[[1,3]]'], ['[2,6]', '[[1,6]] (overlap)'], ['[8,10]', '[[1,6],[8,10]]'], ['[15,18]', '[[1,6],[8,10],[15,18]]']])}`, code: { lang: 'python', run: true, code: `
+def merge(intervals):
+    intervals.sort(key=lambda iv: iv[0])     # by start
+    merged = []
+    for start, end in intervals:
+        if merged and start <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], end)   # overlap -> extend
+        else:
+            merged.append([start, end])
+    return merged
+
+print(merge([[8, 10], [1, 3], [15, 18], [2, 6]]))  # [[1, 6], [8, 10], [15, 18]]
+` } },
+      { title: 'Sort characters by frequency, ties alphabetical', html: `<p>Key = <code>(-count, char)</code>: most frequent first, ties broken by letter. Multiply each char by its count to build the answer.</p>${H.kv([['t', '1'], ['r', '1'], ['e', '2']], { label: 'Counter("tree")' })}<p>→ "eert" (e twice, then r before t).</p>`, code: { lang: 'python', run: true, code: `
+from collections import Counter
+
+def frequency_sort(s):
+    c = Counter(s)
+    return "".join(ch * c[ch] for ch in sorted(c, key=lambda ch: (-c[ch], ch)))
+
+print(frequency_sort("tree"))     # eert
+print(frequency_sort("Aabb"))     # bbAa  ('A' < 'a' in ASCII)
+` } },
+      { title: 'Custom alphabet: is the alien dictionary sorted?', html: `<p>Build a rank dict from the alien order and map each word to a tuple of ranks. Then "sorted?" is just comparing neighbouring keys (or <code>words == sorted(words, key=rank_key)</code>).</p>${H.table(['word', 'key (ranks)'], [['hello', '(0, …)'], ['leetcode', '(1, …)']])}`, code: { lang: 'python', run: true, code: `
+from itertools import pairwise   # Python 3.10+
+
+def is_alien_sorted(words, order):
+    rank = {ch: i for i, ch in enumerate(order)}
+    keys = [tuple(rank[ch] for ch in w) for w in words]
+    return all(a <= b for a, b in pairwise(keys))
+
+print(is_alien_sorted(["hello", "leetcode"], "hlabcdefgijkmnopqrstuvwxyz"))  # True
+print(is_alien_sorted(["apple", "app"], "abcdefghijklmnopqrstuvwxyz"))      # False
+` } },
+      { title: 'Sorting objects that are not comparable', html: `<p>Sorting a list of dicts or custom objects without a key raises <code>TypeError: '&lt;' not supported</code>. Fix: give a key, or define <code>__lt__</code> (e.g. <code>@dataclass(order=True)</code>). <code>None</code> mixed with numbers also fails — key it as <code>(x is None, x)</code> to push Nones to the end.</p>`, code: { lang: 'python', run: true, code: `
+from dataclasses import dataclass, field
+
+tasks = [{"name": "b", "pri": 2}, {"name": "a", "pri": 1}]
+print(sorted(tasks, key=lambda t: t["pri"]))
+
+@dataclass(order=True)
+class Job:
+    pri: int
+    name: str = field(compare=False)     # excluded from ordering
+
+print(sorted([Job(3, "x"), Job(1, "y")]))
+
+vals = [3, None, 1, None, 2]
+print(sorted(vals, key=lambda v: (v is None, v if v is not None else 0)))  # Nones last
+` } }
+    ],
+    deepDive: `<p>🟣 <b>Timsort internals.</b> CPython's <code>list.sort</code> scans for natural <b>runs</b> (already ascending, or strictly descending which it reverses in place), extends short runs to <code>minrun</code> (32–64) with <b>binary insertion sort</b>, and merges runs using a stack whose policy since 3.11 is <b>Powersort</b> (near-optimal merge order). Merging uses <b>galloping</b> (exponential search) when one run keeps "winning", so data with structure sorts in close to O(n). Worst case O(n log n), extra memory up to n/2 pointers.</p>
+<p><b>Key functions are called exactly once per element</b> (decorate-sort-undecorate is built in), so an expensive key is fine. <code>cmp_to_key</code> instead calls your comparator O(n log n) times through a Python wrapper object — noticeably slower; prefer a key whenever one exists.</p>
+<p><b>Stability guarantees</b> are part of the language spec (since 2.2), not an implementation accident — you can rely on multi-pass sorts. <code>reverse=True</code> keeps equal items in original order (it is not "sort then reverse").</p>
+<p><b>Comparator contract:</b> a cmp function must be consistent (antisymmetric and transitive). The Largest Number comparator <code>a+b vs b+a</code> is provably transitive; random or inconsistent comparators produce arbitrary orders (Python won't crash, Java may throw "Comparison method violates its general contract").</p>
+<p><b>Performance tips:</b> <code>operator.itemgetter</code>/<code>attrgetter</code> are a bit faster than lambdas; sorting a list of tuples by default compares full tuples (may hit incomparable fields — use a key); <code>list.sort()</code> avoids a copy; for top-k use <code>heapq.nsmallest</code>. During a sort the list is temporarily empty — mutating it from a key function raises <code>ValueError: list modified during sort</code>.</p>`,
+    aiEra: `<p>🤖 <b>What AI changes:</b> generating sort calls is trivial; the value you add is getting the <b>tie-breaking and direction</b> exactly right and choosing whether sorting is even needed (heap? counting sort? bucket?).</p>
+<p><b>Use AI as a partner:</b> <code>"List 6 tie cases for this ranking rule and expected outputs"</code>; <code>"Is my cmp function transitive? Try to find a counterexample"</code>.</p>
+<p><b>Where AI goes wrong:</b> writes <code>sorted(..., reverse=True)</code> when only the primary key should be descending; negates a string (<code>-name</code> → TypeError); uses <code>xs = xs.sort()</code> (now None); forgets that uppercase sorts before lowercase in ASCII; uses <code>cmp_to_key</code> where a key works (slower).</p>
+<p><b>What you must still own:</b> stating the order precisely ("by end time ascending because…" for greedy interval problems), knowing sort is stable and O(n log n), and justifying custom comparators.</p>`,
+    problems: [{
+      title: 'Largest Number', level: 'Medium', tags: ['sorting', 'cmp_to_key', 'greedy', 'string'], companies: ['Amazon', 'Microsoft', 'Google', 'Goldman Sachs'],
+      statement: `<p>Given a list of non-negative integers <code>nums</code>, arrange them so they form the <b>largest</b> possible number and return it as a string (it can be too large for an int in other languages).</p>`,
+      constraints: `1 ≤ len(nums) ≤ 100, 0 ≤ nums[i] ≤ 10<sup>9</sup>`,
+      example: `<p>nums = ${H.arr([3, 30, 34, 5, 9])} → ${H.c('g', '"9534330"')}. Note "3" must come before "30" because "330" &gt; "303".</p>`,
+      brute: { why: `<p>Try all n! orderings and keep the largest concatenation. n = 10 is already 3.6 million permutations; n = 100 is impossible. Sorting the numbers descending numerically is wrong (gives 34 30 9 5 3 → "34309..."), and sorting strings descending is wrong too ("30" before "3" → "...303"). We need a <b>pairwise</b> rule.</p>`, code: `
+from itertools import permutations
+
+def largest_number_brute(nums):
+    best = max("".join(p) for p in permutations(map(str, nums)))   # O(n! * n)
+    return "0" if best[0] == "0" else best
+
+print(largest_number_brute([3, 30, 34, 5, 9]))   # 9534330 (only feasible for tiny n)
+` },
+      mcq: { q: 'For strings a and b, when should a come before b?', options: ['When <code>a + b &gt; b + a</code>', 'When <code>int(a) &gt; int(b)</code>', 'When <code>a &gt; b</code> as strings', 'When <code>len(a) &lt; len(b)</code>'], answer: 0, explain: 'Compare the two possible concatenations directly. "3"+"30" = "330" &gt; "303" so 3 goes first even though 30 &gt; 3 numerically and "30" &gt; "3" as strings.' },
+      hints: [`<p>Hint 1: Look at just two numbers: which order makes the bigger string? Compare <code>a+b</code> with <code>b+a</code>.</p>`, `<p>Hint 2: That pairwise rule is a valid (transitive) ordering, so sort with <code>key=cmp_to_key(cmp)</code> where cmp returns −1 if a+b &gt; b+a.</p>`, `<p>Hint 3: Edge case: all zeros → "0", not "000". Recipe: strs = map(str, nums); sort with the comparator; join; if result starts with "0" return "0".</p>`],
+      solution: {
+        approach: `<p>Convert to strings and sort with a comparator: a before b iff a+b &gt; b+a. Join the result and fix the all-zeros case. The ordering is transitive (it equals comparing a/(10<sup>|a|</sup>−1) style infinite repetitions), so a comparison sort gives the global optimum.</p>`,
+        code: { lang: 'python', run: true, code: `
+from functools import cmp_to_key
+from typing import List
+
+def largest_number(nums: List[int]) -> str:
+    strs = list(map(str, nums))
+
+    def cmp(a: str, b: str) -> int:
+        if a + b > b + a:
+            return -1        # a should come first
+        if a + b < b + a:
+            return 1         # b should come first
+        return 0
+
+    strs.sort(key=cmp_to_key(cmp))
+    result = "".join(strs)
+    return "0" if result[0] == "0" else result   # [0, 0] -> "0"
+
+print(largest_number([10, 2]))              # 210
+print(largest_number([3, 30, 34, 5, 9]))    # 9534330
+print(largest_number([0, 0]))               # 0
+` },
+        alt: [{ lang: 'python', title: 'Key-only trick (repeat string)', run: true, code: `
+def largest_number(nums):
+    strs = list(map(str, nums))
+    # Repeating each string to a common length mimics the a+b vs b+a rule
+    # (since nums[i] <= 10**9 has at most 10 digits, x*10 is long enough).
+    strs.sort(key=lambda s: s * 10, reverse=True)
+    result = "".join(strs)
+    return "0" if result[0] == "0" else result
+
+print(largest_number([3, 30, 34, 5, 9]))    # 9534330
+` }],
+        dry: { head: ['compare', 'a+b', 'b+a', 'order'], rows: [
+          ['3 vs 30', '330', '303', '3 first'], ['34 vs 3', '343', '334', '34 first'], ['9 vs 5', '95', '59', '9 first'],
+          ['result', '—', '—', H.c('g', '9 5 34 3 30 → 9534330')]
+        ] },
+        complexity: `<p>O(n log n) comparisons, each O(L) for string concatenation (L ≤ 10 digits) → O(n · L · log n). Space O(n · L).</p>`,
+        followUps: ['Smallest number instead (reverse the comparator, handle leading zeros)', 'Prove the comparator is transitive', 'Why is the key-only trick s*10 valid here but not for arbitrary lengths?']
+      }
+    }]
+  });
 registerModule({ id: 'py11', title: 'T', intro: `<p>xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx</p>`, goals: ['aaaaaaaaaaaa','bbbbbbbbbbbbb','ccccccccccccc'], prereqs: `ppppppppppppppppppp`, hours: 10, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();

@@ -1293,8 +1293,9 @@
           frames.push({ narr: '<b>Computing L[' + C + ']</b> with ' + bs.length + ' bases. Start the result with <code>' + C + '</code> itself, then merge: ' + names.join(', ') + '. Rule: take the first <b>head</b> (front item) that is not in any list\'s <b>tail</b> (everything after the front).', parts: [graph(hS)].concat(listParts()) });
           var guard = 0;
           while (guard++ < 60) {
-            seqs = seqs.filter(function (s) { return s.length; });
-            names = names.filter(function (_, i) { return true; });
+            var keep = seqs.map(function (s) { return s.length > 0; });
+            seqs = seqs.filter(function (_, i) { return keep[i]; });
+            names = names.filter(function (_, i) { return keep[i]; });
             if (!seqs.length) break;
             var picked = null;
             for (var si = 0; si < seqs.length; si++) {
@@ -1545,6 +1546,656 @@
         ] },
         complexity: R`<p>For a class whose MRO has length m and k direct bases, each of the m steps scans up to k+1 heads and checks membership in tails of total length O(m·k): O(m²k²) worst case per class, tiny in practice. Memoisation computes each class once. Space O(total MRO lengths).</p>`,
         followUps: ['Return a helpful error naming the conflicting pair of classes', 'Why is the final list of direct bases needed? Find a hierarchy where omitting it gives a wrong answer', 'How would you compute MROs for all classes in topological order instead of recursion?']
+      }
+    }]
+  });
+
+  /* ======================================================================
+     TOPIC 5: Properties — managed attributes and the attribute lookup order
+     ====================================================================== */
+  var PROP_CODE = [
+    'import functools',
+    'class Circle:',
+    '    kind = "shape"                       # class attribute',
+    '    def __init__(self, radius, name):',
+    '        self.radius = radius             # runs the property setter!',
+    '        self.name = name                 # plain instance attribute',
+    '    @property',
+    '    def radius(self): return self._radius',
+    '    @radius.setter',
+    '    def radius(self, value):',
+    '        if value < 0: raise ValueError("radius must be >= 0")',
+    '        self._radius = value',
+    '    @property',
+    '    def area(self): return round(3.14159 * self._radius ** 2, 2)',
+    '    @functools.cached_property',
+    '    def report(self): return f"{self.name}: area {self.area}"',
+    '    def describe(self): return f"{self.name} r={self._radius}"',
+    '    def __getattr__(self, attr): return f"<no {attr}>"',
+    '',
+    'c = Circle(2, "wheel")'
+  ].join('\n');
+
+  topics.push({
+    title: 'Properties: Managed Attributes & the Attribute Lookup Order',
+    analogy: R`<p>A <b>bank teller window</b>. Customers think they are simply "reading the balance" or "setting a deposit", exactly like touching a drawer. But behind the glass a teller checks the request: refuses negative deposits, computes the interest-adjusted balance on the fly, logs the access. A <code>@property</code> is that teller: callers keep the simple syntax <code>acct.balance</code> and <code>acct.balance = 50</code>, while your code quietly validates and computes.</p>`,
+    explain: R`<p>🟢 <b>The plain idea.</b> In Java you write <code>getRadius()</code>/<code>setRadius()</code> "just in case". In Python you start with a <b>plain attribute</b> (<code>self.radius = r</code>). If you later need validation or a computed value, you turn it into a <b>property</b> and <b>no caller has to change</b>, because the syntax stays <code>c.radius</code>. This is called the <b>uniform access principle</b>, and it is why Pythonic classes rarely have getters and setters.</p>
+      ${H.table(['Want', 'Write', 'Effect'], [
+        ['read-only computed value', '<code>@property</code> <code>def area(self)</code>', '<code>c.area</code> runs the method; <code>c.area = 5</code> → AttributeError'],
+        ['validated attribute', '<code>@property</code> + <code>@radius.setter</code>', '<code>c.radius = -1</code> runs your check'],
+        ['cleanup on delete', '<code>@radius.deleter</code>', '<code>del c.radius</code> runs your code'],
+        ['compute once, then cache', '<code>@functools.cached_property</code>', 'first access computes and stores in <code>__dict__</code>']
+      ])}
+      <p>🔵 <b>Three rules to remember:</b></p>
+      <ol>
+        <li><b>Store the real value under a different name</b>, usually with a leading underscore (<code>self._radius</code>). Writing <code>self.radius = value</code> <i>inside</i> the radius setter calls the setter again → infinite recursion → <code>RecursionError</code>.</li>
+        <li><b>Assign through the property in <code>__init__</code></b> (<code>self.radius = radius</code>, not <code>self._radius = radius</code>) so the validation also protects construction.</li>
+        <li><b>Keep properties cheap and side-effect free.</b> Callers expect attribute access to be fast and safe to call twice. Slow work (network, DB) should be a method with a verb name (<code>fetch_orders()</code>), or a <code>cached_property</code>.</li>
+      </ol>
+      <p><b>How does Python know?</b> A property is an object stored on the <b>class</b> that has <code>__get__</code> and <code>__set__</code> methods; such objects are called <b>data descriptors</b>, and they win over the instance's own <code>__dict__</code>. The full lookup order for <code>obj.attr</code>:</p>
+      ${H.table(['#', 'Where Python looks', 'Example'], [
+        ['1', 'a <b>data descriptor</b> (has <code>__set__</code>/<code>__delete__</code>) found in <code>type(obj).__mro__</code>', '<code>@property</code>, <code>__slots__</code> members'],
+        ['2', 'the instance <code>__dict__</code>', '<code>self.name = ...</code>'],
+        ['3', 'a <b>non-data descriptor</b> or plain class attribute from the MRO', 'methods (functions), <code>cached_property</code>, <code>kind = "shape"</code>'],
+        ['4', 'nothing found → <code>__getattr__(name)</code> if defined, else <code>AttributeError</code>', 'fallbacks, proxies']
+      ])}
+      <p>That ordering explains a lot: a property cannot be shadowed by an instance value (step 1 beats step 2), but a <b>method</b> or class attribute <i>can</i> be shadowed (step 2 beats step 3). And <code>cached_property</code> works by being a non-data descriptor that, on first use, writes the answer into the instance <code>__dict__</code>, so step 2 finds it next time without running the method.</p>`,
+    clues: [
+      '"validate on assignment", "radius must be non-negative", "email must contain @" → <code>@property</code> + setter',
+      '"read-only attribute" / "derived value like area, full_name, age from birthdate" → getter-only property',
+      '"we exposed a public attribute and now need logic without breaking callers" → convert to a property (uniform access)',
+      '"expensive value computed once per object" → <code>functools.cached_property</code> (needs a <code>__dict__</code>)',
+      '"why can I override a method on an instance but not a property?" → data vs non-data descriptors in the lookup order',
+      '"<code>RecursionError</code> in a setter" → setter assigns to its own name instead of the backing <code>_field</code>'
+    ],
+    code: [{ lang: 'python', run: true, title: 'Validated, computed and cached attributes', code: R`
+      import functools
+
+      class Temperature:
+          def __init__(self, celsius):
+              self.celsius = celsius              # goes through the setter -> validated
+
+          @property
+          def celsius(self):
+              return self._celsius                # backing field has a different name
+
+          @celsius.setter
+          def celsius(self, value):
+              if value < -273.15:
+                  raise ValueError(f"{value} is below absolute zero")
+              self._celsius = float(value)
+
+          @property
+          def fahrenheit(self):                   # computed, always in sync
+              return self._celsius * 9 / 5 + 32
+
+          @fahrenheit.setter
+          def fahrenheit(self, value):            # set via the other unit
+              self.celsius = (value - 32) * 5 / 9
+
+          @functools.cached_property
+          def label(self):                        # computed once, then cached in __dict__
+              print("  (computing label...)")
+              return f"{self._celsius:.1f}°C"
+
+      t = Temperature(25)
+      print(t.celsius, t.fahrenheit)
+      t.fahrenheit = 212
+      print(t.celsius)                            # 100.0
+      print(t.label, t.label)                     # computed only once
+      try:
+          t.celsius = -300
+      except ValueError as e:
+          print("ValueError:", e)
+      try:
+          Temperature(-500)                       # __init__ is protected too
+      except ValueError as e:
+          print("ValueError:", e)
+    ` }, { lang: 'python', run: true, title: 'Lookup order in action: property vs instance dict vs method', code: R`
+      class Widget:
+          size = 10                               # plain class attribute
+
+          @property
+          def area(self):                         # data descriptor
+              return 42
+
+          def greet(self):                        # function = non-data descriptor
+              return "hello"
+
+      w = Widget()
+      w.__dict__["area"] = "sneaky"               # put values straight into the instance dict
+      w.__dict__["greet"] = "shadowed!"
+      w.size = 99                                 # creates an instance attribute
+
+      print(w.area)       # 42: data descriptor (step 1) beats the instance dict
+      print(w.greet)      # 'shadowed!': instance dict (step 2) beats the method (step 3)
+      print(w.size, Widget.size)                  # 99 10: the class attribute is untouched
+      print(type(Widget.__dict__["area"]).__name__, hasattr(Widget.area, "__set__"))
+    ` }],
+    codeTitle: ['Temperature with two linked properties and a cached one (runnable)', 'Data descriptors win, methods can be shadowed (runnable)'],
+    viz: {
+      title: 'What happens on c.attr (and c.attr = value)?',
+      input: 'name area kind describe report report nope radius=5 area radius=-1 area=3 kind=disc kind',
+      inputLabel: 'Space-separated reads (name, area, radius, kind, describe, report, anything) and writes (radius=5, area=3, name=x, kind=x)',
+      gen: function (input) {
+        var toks = String(input === undefined ? 'name area kind describe report report nope radius=5 area radius=-1 area=3 kind=disc kind' : input).trim().split(/\s+/).filter(Boolean);
+        if (!toks.length) throw new Error('Type attribute names like: area name report');
+        if (toks.length > 14) throw new Error('Use at most 14 operations');
+        var inst = { _radius: 2, name: "'wheel'" }, instOrder = ['_radius', 'name'];
+        var classAttrs = { kind: 'str "shape"', radius: 'property (get+set)', area: 'property (get only)', report: 'cached_property', describe: 'function', __getattr__: 'function' };
+        var DATA = { radius: 1, area: 1 }, NONDATA = { report: 1, describe: 1 }, PLAIN = { kind: '\'shape\'' };
+        function area() { return String(Math.round(3.14159 * inst._radius * inst._radius * 100) / 100); }
+        function instPart(hlk) { var h = {}; if (hlk) h[hlk] = 'ok'; return { type: 'map', label: 'c.__dict__ (instance)', entries: instOrder.map(function (k) { return [k, inst[k]]; }), hl: h }; }
+        function clsPart(hlk, cls) { var h = {}; if (hlk) h[hlk] = cls || 'cur'; return { type: 'map', label: 'Circle.__dict__ (class)', entries: Object.keys(classAttrs).map(function (k) { return [k, classAttrs[k]]; }), hl: h }; }
+        var steps = [
+          { id: 'S1', label: '1. data descriptor on the class?', x: 46, y: 6 },
+          { id: 'S2', label: '2. key in c.__dict__?', x: 46, y: 19 },
+          { id: 'S3', label: '3. non-data descriptor / class attr?', x: 46, y: 32 },
+          { id: 'S4', label: '4. __getattr__ fallback', x: 46, y: 45 }
+        ];
+        function G(expr, lit, res, okId) {
+          var nodes = [{ id: 'E', label: expr, shape: 'box', x: 10, y: 26 }].concat(steps.map(function (s) { return { id: s.id, label: s.label, shape: 'box', x: s.x, y: s.y }; }));
+          nodes.push({ id: 'R', label: res, shape: 'box', x: 88, y: 26 });
+          var edges = [['E', 'S1'], ['S1', 'S2', 'no'], ['S2', 'S3', 'no'], ['S3', 'S4', 'no']];
+          if (okId) edges.push([okId, 'R', 'yes']);
+          var hl = {}, ehl = {};
+          lit.forEach(function (id) { hl[id] = 'done'; });
+          if (okId) { hl[okId] = 'ok'; hl.R = 'sel'; ehl[okId + '-R'] = 'ok'; }
+          for (var i = 0; i < lit.length; i++) { var a = lit[i], b = lit[i + 1]; if (b) ehl[a + '-' + b] = 'cur'; }
+          ehl['E-S1'] = 'cur';
+          return { type: 'graph', label: 'Lookup ladder for reading c.' + (expr.split('.')[1] || ''), directed: true, height: 52, nodes: nodes, edges: edges, hl: hl, ehl: ehl };
+        }
+        var frames = [];
+        frames.push({ narr: 'We created <code>c = Circle(2, "wheel")</code>. Note that <code>self.radius = radius</code> in <code>__init__</code> went through the <b>setter</b>, which stored the value as <code>_radius</code>. The instance dict holds only <code>_radius</code> and <code>name</code>; everything else lives on the class.', parts: [{ type: 'code', label: 'Circle', lang: 'python', code: PROP_CODE, hl: { 5: 'cur', 12: 'ok', 6: 'cur' } }, instPart(), clsPart()] });
+        toks.forEach(function (tk) {
+          var w = /^([A-Za-z_]\w*)=(.+)$/.exec(tk);
+          if (w) {
+            var nm = w[1], val = w[2];
+            if (nm === 'radius') {
+              var num = Number(val);
+              if (isNaN(num)) throw new Error('radius needs a number, e.g. radius=5');
+              if (num < 0) {
+                frames.push({ narr: '<code>c.radius = ' + esc(val) + '</code>: on assignment Python also checks the class first. <code>radius</code> is a <b>data descriptor</b> (property with a setter) → <code>property.__set__</code> runs our setter → <span class="c-r">ValueError: radius must be &gt;= 0</span>. The instance dict is untouched: validation works.', parts: [{ type: 'code', label: 'Circle', lang: 'python', code: PROP_CODE, hl: { 10: 'cur', 11: 'bad' } }, instPart(), clsPart('radius', 'bad')] });
+              } else {
+                inst._radius = num;
+                frames.push({ narr: '<code>c.radius = ' + esc(val) + '</code>: <code>radius</code> is a data descriptor on the class, so assignment calls the <b>setter</b>, which validates and stores <code>_radius = ' + esc(val) + '</code>. Notice <code>area</code> will now be different: it is computed on every read.', parts: [{ type: 'code', label: 'Circle', lang: 'python', code: PROP_CODE, hl: { 10: 'cur', 11: 'ok', 12: 'ok' } }, instPart('_radius'), clsPart('radius', 'ok')] });
+              }
+            } else if (nm === 'area') {
+              frames.push({ narr: '<code>c.area = ' + esc(val) + '</code>: <code>area</code> is a property <b>without</b> a setter, but it is still a data descriptor (property always defines <code>__set__</code>, which raises). → <span class="c-r">AttributeError: property \'area\' of \'Circle\' object has no setter</span>. Read-only by design.', parts: [{ type: 'code', label: 'Circle', lang: 'python', code: PROP_CODE, hl: { 13: 'bad', 14: 'bad' } }, instPart(), clsPart('area', 'bad')] });
+            } else {
+              if (DATA[nm]) return;
+              if (!(nm in inst)) instOrder.push(nm);
+              inst[nm] = "'" + val + "'";
+              var shadow = PLAIN[nm] !== undefined || NONDATA[nm];
+              frames.push({ narr: '<code>c.' + esc(nm) + ' = \'' + esc(val) + '\'</code>: no data descriptor named <code>' + esc(nm) + '</code> on the class, so Python simply stores it in the <b>instance dict</b>.' + (shadow ? ' <span class="c-y">This now <b>shadows</b> the class attribute <code>' + esc(nm) + '</code> for this object only; <code>Circle.' + esc(nm) + '</code> and other instances are unchanged.</span>' : ''), parts: [instPart(nm), clsPart(shadow ? nm : null, 'cur')] });
+            }
+            return;
+          }
+          var a = tk, expr = 'c.' + a;
+          if (!/^[A-Za-z_]\w{0,14}$/.test(a)) throw new Error('"' + tk + '" is not a valid attribute name');
+          if (DATA[a]) {
+            var v = a === 'area' ? area() : String(inst._radius);
+            frames.push({ narr: '<code>' + expr + '</code>: step 1 finds <code>' + a + '</code> in <code>Circle.__dict__</code> and it is a <b>property</b>, a data descriptor. Python calls <code>property.__get__(c, Circle)</code>, which runs the getter → <b>' + v + '</b>. The instance dict is never consulted (even if it had an "' + a + '" key).', parts: [G(expr, ['S1'], v, 'S1'), { type: 'code', label: 'Circle', lang: 'python', code: PROP_CODE, hl: a === 'area' ? { 13: 'cur', 14: 'ok' } : { 7: 'cur', 8: 'ok' } }, clsPart(a, 'ok'), instPart()] });
+          } else if (a in inst) {
+            frames.push({ narr: '<code>' + expr + '</code>: step 1: no data descriptor named <code>' + a + '</code> on the class. Step 2: found in <code>c.__dict__</code> → <b>' + esc(inst[a]) + '</b>.' + (PLAIN[a] !== undefined || NONDATA[a] ? ' (It shadows the class-level <code>' + a + '</code>.)' : ''), parts: [G(expr, ['S1', 'S2'], inst[a], 'S2'), instPart(a), clsPart(a, 'cur')] });
+          } else if (a === 'report') {
+            var rep = "'" + inst.name.replace(/'/g, '') + ': area ' + area() + "'";
+            frames.push({ narr: '<code>c.report</code> (first time): step 1: <code>cached_property</code> has only <code>__get__</code>, so it is a <b>non-data</b> descriptor and does not qualify. Step 2: no "report" key in the instance dict. Step 3: call its <code>__get__</code> → runs the method → <b>' + esc(rep) + '</b>, and <b>stores it into <code>c.__dict__["report"]</code></b>.', parts: [G(expr, ['S1', 'S2', 'S3'], rep, 'S3'), { type: 'code', label: 'Circle', lang: 'python', code: PROP_CODE, hl: { 15: 'cur', 16: 'ok' } }, clsPart('report', 'ok')] });
+            inst.report = rep; instOrder.push('report');
+            frames.push({ narr: 'Now the cached value sits in the instance dict. The next <code>c.report</code> will stop at <b>step 2</b> and never run the method again, even if <code>radius</code> changes (so the cache can go <b>stale</b>; <code>del c.report</code> clears it).', parts: [instPart('report'), clsPart('report', 'done')] });
+          } else if (a === 'describe' || a === '__getattr__') {
+            frames.push({ narr: '<code>' + expr + '</code>: steps 1 and 2 miss. Step 3 finds a <b>function</b> on the class. Functions are non-data descriptors: <code>function.__get__(c, Circle)</code> returns a <b>bound method</b> that remembers <code>c</code> as <code>self</code>. That is the whole secret of how <code>self</code> gets passed.', parts: [G(expr, ['S1', 'S2', 'S3'], 'bound method', 'S3'), clsPart(a, 'ok'), instPart()] });
+          } else if (PLAIN[a] !== undefined) {
+            frames.push({ narr: '<code>' + expr + '</code>: steps 1 and 2 miss. Step 3: a plain class attribute (no <code>__get__</code>) is returned as is → <b>' + PLAIN[a] + '</b>. Every instance shares it until one assigns its own.', parts: [G(expr, ['S1', 'S2', 'S3'], PLAIN[a], 'S3'), clsPart(a, 'ok'), instPart()] });
+          } else {
+            var fb = "'<no " + a + ">'";
+            frames.push({ narr: '<code>' + expr + '</code>: nothing in steps 1 to 3, so the normal lookup raises <code>AttributeError</code> internally. Because <code>Circle</code> defines <code>__getattr__</code>, Python calls it as a <b>last resort</b> → <b>' + esc(fb) + '</b>. (<code>__getattr__</code> only runs for <b>missing</b> attributes; <code>__getattribute__</code> would run for every access.)', parts: [G(expr, ['S1', 'S2', 'S3', 'S4'], fb, 'S4'), { type: 'code', label: 'Circle', lang: 'python', code: PROP_CODE, hl: { 18: 'cur' } }, instPart()] });
+          }
+        });
+        frames.push({ narr: 'Final state. Data descriptors (properties) guard <code>radius</code> and <code>area</code>; plain data lives in the instance dict; methods, cached properties and shared defaults live on the class. Reads walk the ladder 1 → 2 → 3 → 4; writes check only "is there a data descriptor?" and otherwise go to the instance dict.', parts: [instPart(), clsPart()] });
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'Refactor a public attribute without breaking callers', html: R`<p>Version 1 shipped with <code>user.email</code> as a plain attribute. Months later you need to normalise and validate it. Turning it into a property keeps <b>every</b> existing <code>user.email</code> read and <code>user.email = …</code> write working, now with validation. In Java this would have required getters from day one.</p>`, code: { lang: 'python', run: true, code: R`
+        class User:
+            def __init__(self, email):
+                self.email = email                    # same line as v1, now validated
+
+            @property
+            def email(self):
+                return self._email
+
+            @email.setter
+            def email(self, value):
+                value = value.strip().lower()
+                if "@" not in value:
+                    raise ValueError(f"invalid email: {value!r}")
+                self._email = value
+
+        u = User("  Ada@Example.COM ")
+        print(u.email)                                # old caller code, unchanged
+        u.email = "grace@navy.mil"
+        print(u.email)
+        try:
+            u.email = "nope"
+        except ValueError as e:
+            print("ValueError:", e)
+      ` } },
+      { title: 'Predict the output: the recursive setter bug', html: R`<p>The setter assigns <code>self.price = value</code>, which calls the setter, which assigns <code>self.price</code>, … until Python gives up with <code>RecursionError</code>. Fix: store into <code>self._price</code>.</p>`, code: { lang: 'python', run: true, code: R`
+        class Product:
+            def __init__(self, price):
+                self.price = price
+
+            @property
+            def price(self):
+                return self._price
+
+            @price.setter
+            def price(self, value):
+                if value < 0:
+                    raise ValueError("negative")
+                self.price = value              # BUG: should be self._price
+
+        try:
+            Product(10)
+        except RecursionError as e:
+            print("RecursionError:", str(e)[:40])
+      ` } },
+      { title: 'property() without decorators, and the deleter', html: R`<p>The decorator form is sugar for <code>name = property(fget, fset, fdel, doc)</code>. Accessing the property on the <b>class</b> returns the property object itself (no instance to bind), which is how documentation tools find the docstring.</p>`, code: { lang: 'python', run: true, code: R`
+        class Session:
+            def __init__(self):
+                self._token = "abc123"
+
+            def _get(self): return self._token
+            def _set(self, v): self._token = v
+            def _del(self):
+                print("  logging out, wiping token")
+                self._token = None
+
+            token = property(_get, _set, _del, "The auth token (deleting logs out).")
+
+        s = Session()
+        print(s.token)
+        del s.token
+        print(s.token)
+        print(type(Session.token).__name__, "|", Session.token.__doc__)
+      ` } },
+      { title: 'cached_property: great for lazy work, but it can go stale', html: R`<p><code>cached_property</code> computes on first access and stores the result in the instance <code>__dict__</code>. If the inputs change later, the cached value does <b>not</b> update until you <code>del</code> it. It also needs an instance <code>__dict__</code>, so it does not work on classes with <code>__slots__</code> (unless <code>'__dict__'</code> is a slot).</p>`, code: { lang: 'python', run: true, code: R`
+        from functools import cached_property
+
+        class Dataset:
+            def __init__(self, rows):
+                self.rows = rows
+
+            @cached_property
+            def total(self):
+                print("  summing...")
+                return sum(self.rows)
+
+        d = Dataset([1, 2, 3])
+        print(d.total, d.total)          # sums once
+        d.rows.append(100)
+        print(d.total)                   # 6: stale!
+        del d.total                      # invalidate the cache
+        print(d.total)                   # 106
+      ` } }
+    ],
+    deepDive: R`<p>🟣 <b>The descriptor protocol under the hood.</b> Any class attribute whose type defines <code>__get__</code> is a <b>descriptor</b>; if it also defines <code>__set__</code> or <code>__delete__</code> it is a <b>data</b> descriptor. <code>object.__getattribute__</code> (C: <code>PyObject_GenericGetAttr</code>) does: <code>meta = _PyType_Lookup(type(obj), name)</code> (an MRO walk, method-cached); if <code>meta</code> is a data descriptor → return <code>meta.__get__(obj, type(obj))</code>; else if <code>name</code> in <code>obj.__dict__</code> → return it; else if <code>meta</code> has <code>__get__</code> → call it; else if <code>meta</code> exists → return it; else raise <code>AttributeError</code>, which makes <code>type(obj).__getattr__</code> run if defined. <code>property</code>, <code>classmethod</code>, <code>staticmethod</code>, functions, <code>__slots__</code> member descriptors and <code>cached_property</code> are all built on this one protocol. You can write your own with <code>__set_name__</code> (3.6+) to get the attribute name automatically, which is how ORMs (Django model fields, SQLAlchemy columns) and validation libraries work.</p>
+      <p><b>Performance and correctness notes.</b> A property read costs a Python function call (~30 to 60 ns on modern CPython versus ~10 ns for a plain attribute); CPython 3.12+ specialises <code>LOAD_ATTR</code> for properties, narrowing the gap, but do not put properties in the innermost loop of numeric code. A getter that raises <code>AttributeError</code> by accident (e.g. a typo inside it) triggers <code>__getattr__</code>, hiding the real bug: a classic debugging trap with proxies. Since 3.12, <code>cached_property</code> no longer takes a lock (the old per-class lock caused contention), so two threads may compute the value twice. Subclasses can extend a parent property with <code>@Parent.prop.setter</code> to create a new property object reusing the parent getter. And properties live on the class, so you cannot give one instance a property.</p>
+      <p><b>Design guidance:</b> start with plain attributes; promote to a property when you need validation, computation or backward compatibility; prefer methods when the work is slow, can fail for external reasons, or takes arguments. For many validated fields, a dataclass with <code>__post_init__</code>, a custom descriptor, or pydantic is less repetitive than a dozen hand-written setters.</p>`,
+    aiEra: R`<p>🤖 <b>What AI changes:</b> assistants trained on lots of Java-style code still generate <code>get_x()</code>/<code>set_x()</code> pairs, or the opposite, a property for every field. Your job is to apply the Python idiom: plain attributes by default, properties for logic.</p>
+      <p><b>Prompt that helps:</b> <code>Review this class: which attributes need validation or are derived and should be properties, which should stay plain, and which properties do slow I/O and should become methods? Explain each in one line.</code> Asking for a classification forces the model to justify, not just generate.</p>
+      <p><b>Where AI goes wrong:</b> recursive setters (<code>self.x = v</code> inside the <code>x</code> setter); setting <code>self._x</code> directly in <code>__init__</code> so construction bypasses validation; properties that hit the network or database (surprising latency in a loop, N+1 queries); <code>cached_property</code> on a <code>__slots__</code> class; and claims that properties make attributes "private" (they do not; <code>obj._x</code> is still reachable). <b>What you must own:</b> the four-step lookup ladder (data descriptor → instance dict → non-data descriptor/class attr → <code>__getattr__</code>), which explains properties, methods, <code>cached_property</code> and <code>__slots__</code> with one idea.</p>`
+  });
+
+  /* ======================================================================
+     TOPIC 6: Dataclasses — what @dataclass generates and every option that matters
+     ====================================================================== */
+  function parseDataclass(input) {
+    var parts = String(input).split('|');
+    var fieldTxt = parts[0].trim(), optTxt = (parts[1] || '').trim();
+    if (!fieldTxt) throw new Error('Format: name: str, qty: int = 0 | order frozen');
+    var opts = { eq: true, order: false, frozen: false, slots: false, kw_only: false, unsafe_hash: false };
+    optTxt.split(/[\s,]+/).filter(Boolean).forEach(function (o) {
+      if (o === 'eq=False' || o === 'noeq') opts.eq = false;
+      else if (opts.hasOwnProperty(o)) opts[o] = true;
+      else throw new Error('Unknown option "' + o + '". Use: order frozen slots kw_only unsafe_hash eq=False');
+    });
+    var fields = fieldTxt.split(/,(?![^()]*\))/).map(function (s) { return s.trim(); }).filter(Boolean);
+    if (fields.length > 6) throw new Error('Use at most 6 fields');
+    var out = [];
+    fields.forEach(function (f) {
+      var m = /^([A-Za-z_]\w{0,11})\s*:\s*([A-Za-z_][\w\[\], .]{0,24}?)\s*(?:=\s*(.+))?$/.exec(f);
+      if (!m) throw new Error('Could not read field "' + f + '". Example: qty: int = 0');
+      var d = m[3] === undefined ? null : m[3].trim(), kind = 'required', val = null;
+      if (d !== null) {
+        var fm = /^field\(\s*default_factory\s*=\s*(\w+)\s*\)$/.exec(d), fd = /^field\(\s*default\s*=\s*(.+)\)$/.exec(d);
+        if (fm) { kind = 'factory'; val = fm[1]; }
+        else if (fd) { kind = 'default'; val = fd[1].trim(); }
+        else if (/^(\[.*\]|\{.*\}|set\(\)|list\(\)|dict\(\))$/.test(d)) { kind = 'mutable'; val = d; }
+        else { kind = 'default'; val = d; }
+      }
+      out.push({ name: m[1], type: m[2].trim(), kind: kind, val: val, classvar: /^ClassVar/.test(m[2].trim()) });
+    });
+    return { fields: out, opts: opts };
+  }
+
+  topics.push({
+    title: 'Dataclasses: Generated __init__, __repr__, __eq__, Ordering, Frozen & Slots',
+    analogy: R`<p>Ordering a <b>custom suit</b>. You could cut the fabric, sew every seam and stitch every buttonhole yourself (hand-written <code>__init__</code>, <code>__repr__</code>, <code>__eq__</code>). Or you give the tailor a <b>measurement card</b> (the field list with types and defaults) plus a few ticked boxes ("make it sortable", "make it unchangeable"), and the tailor produces the whole suit, perfectly consistent, in seconds. <code>@dataclass</code> is the tailor; the class body is the measurement card.</p>`,
+    explain: R`<p>🟢 <b>The plain idea.</b> Many classes are mostly <b>data</b>: a Point, an Order, a Config. Writing <code>__init__</code>, <code>__repr__</code> and <code>__eq__</code> for them is repetitive and error-prone (add a field, forget to update <code>__eq__</code>…). <code>@dataclass</code> reads the <b>annotated class attributes</b> and writes those methods for you, at class-creation time, as real Python code.</p>
+      ${H.table(['Option / tool', 'What you get', 'Typical use'], [
+        ['<code>@dataclass</code> (defaults)', '<code>__init__</code>, <code>__repr__</code>, <code>__eq__</code>, <code>__match_args__</code>; <code>__hash__ = None</code>', 'plain records'],
+        ['<code>order=True</code>', '<code>__lt__ __le__ __gt__ __ge__</code> comparing fields as a tuple, in definition order', 'sortable records'],
+        ['<code>frozen=True</code>', 'assignment raises <code>FrozenInstanceError</code>; with eq → <code>__hash__</code> generated', 'dict keys, set members, safe sharing'],
+        ['<code>slots=True</code> (3.10+)', '<code>__slots__</code> from the fields: less memory, typo-proof', 'many small objects'],
+        ['<code>kw_only=True</code> / <code>KW_ONLY</code> (3.10+)', 'keyword-only <code>__init__</code> params', 'many fields, clearer calls'],
+        ['<code>field(default_factory=list)</code>', 'a <b>fresh</b> list per instance', 'mutable defaults'],
+        ['<code>field(init=False / repr=False / compare=False)</code>', 'exclude a field from <code>__init__</code> / repr / eq+order', 'derived, secret or cache fields'],
+        ['<code>__post_init__</code>', 'runs at the end of the generated <code>__init__</code>', 'validation, derived fields']
+      ])}
+      <p>🔵 <b>Rules that bite:</b></p>
+      <ul>
+        <li><b>Only annotated names are fields.</b> <code>count = 0</code> (no annotation) is a plain class attribute; <code>count: ClassVar[int] = 0</code> is explicitly not a field.</li>
+        <li><b>No mutable defaults.</b> <code>tags: list = []</code> raises <code>ValueError: mutable default &lt;class 'list'&gt; for field tags is not allowed: use default_factory</code>. It would otherwise be <b>one list shared by every instance</b> (the classic mutable-default bug), so dataclasses refuse it. Use <code>field(default_factory=list)</code>.</li>
+        <li><b>Fields without defaults cannot follow fields with defaults</b> (same rule as function parameters): <code>TypeError: non-default argument 'y' follows default argument 'x'</code>. Inheritance makes this easy to hit; <code>kw_only</code> fixes it.</li>
+        <li><b>Hashing follows a table:</b> <code>eq=True</code> + not frozen → <code>__hash__ = None</code> (unhashable, because it is mutable); <code>eq=True, frozen=True</code> → hash of the field tuple; <code>eq=False</code> → identity hash kept.</li>
+        <li><b>Type hints are not enforced.</b> <code>Item(name=42)</code> happily stores an int. Validate in <code>__post_init__</code> or use pydantic/attrs validators if you need runtime checks.</li>
+      </ul>
+      <p>Utilities: <code>dataclasses.replace(obj, qty=5)</code> (copy with changes, essential for frozen objects), <code>asdict(obj)</code> / <code>astuple(obj)</code> (recursive conversion, e.g. for JSON), <code>fields(obj)</code> (introspection), <code>is_dataclass(x)</code>.</p>`,
+    clues: [
+      '"model a record / DTO / value object / config with N fields" → <code>@dataclass</code> (frozen if it must be hashable)',
+      '"sort these objects by priority, then name" → <code>order=True</code> with field order (or a hidden <code>sort_index</code> field)',
+      '"use as dict key / put in a set" → <code>@dataclass(frozen=True)</code>',
+      '"every instance shares the same list!" → <code>field(default_factory=list)</code>',
+      '"validate fields / compute derived field on creation" → <code>__post_init__</code> + <code>field(init=False)</code>',
+      '"millions of instances, memory matters" → <code>@dataclass(slots=True)</code>',
+      '"<code>TypeError: non-default argument follows default argument</code>" when subclassing → <code>kw_only=True</code> or reorder fields'
+    ],
+    code: [{ lang: 'python', run: true, title: 'The everyday dataclass toolkit', code: R`
+      from dataclasses import dataclass, field, replace, asdict, fields
+
+      @dataclass(order=True)
+      class Task:
+          priority: int                                   # compared first
+          title: str                                      # then title
+          tags: list[str] = field(default_factory=list, compare=False)   # fresh list, ignored by ==/<
+          done: bool = field(default=False, compare=False)
+
+          def __post_init__(self):                        # runs after the generated __init__
+              if self.priority < 0:
+                  raise ValueError("priority must be >= 0")
+              self.title = self.title.strip()
+
+      a = Task(2, "  write tests ")
+      b = Task(1, "fix bug", ["urgent"])
+      c = Task(2, "write tests", done=True)
+      print(a)                                    # generated __repr__
+      print(a == c)                               # True: tags/done excluded from compare
+      print(sorted([a, b, c])[0].title)           # 'fix bug' (priority 1 sorts first)
+      a.tags.append("qa")
+      print(b.tags, Task(3, "x").tags)            # each instance has its own list
+      print(replace(b, done=True))                # copy with one change
+      print(asdict(b))                            # dict, ready for json.dumps
+      print([f.name for f in fields(Task)])
+      print(Task.__hash__)                        # None: eq=True and not frozen -> unhashable
+    ` }, { lang: 'python', run: true, title: 'frozen, slots, kw_only and the hash table', code: R`
+      from dataclasses import dataclass, FrozenInstanceError, replace
+
+      @dataclass(frozen=True, slots=True)
+      class Point:
+          x: float
+          y: float = 0.0
+
+      p = Point(1.5)
+      try:
+          p.x = 9                                  # frozen: generated __setattr__ raises
+      except FrozenInstanceError as e:
+          print("FrozenInstanceError:", e)
+      print({p: "start"}[Point(1.5, 0.0)])         # hashable: hash((x, y))
+      print(hasattr(p, "__dict__"), Point.__slots__)
+      print(replace(p, y=2.0))                     # the way to "change" a frozen object
+
+      @dataclass(kw_only=True)
+      class Config:
+          host: str = "localhost"
+          port: int                                # no default AFTER a default is fine with kw_only
+          debug: bool = False
+
+      print(Config(port=8080))
+      try:
+          Config("example.com", 80)               # positional args are rejected
+      except TypeError as e:
+          print("TypeError:", e)
+    ` }],
+    codeTitle: ['order, field(), __post_init__, replace, asdict (runnable)', 'frozen + slots + kw_only (runnable)'],
+    viz: {
+      title: 'Watch @dataclass write your methods',
+      input: 'name: str, price: float, qty: int = 0, tags: list = field(default_factory=list) | order',
+      inputLabel: 'Fields "name: type = default", comma separated | options (order frozen slots kw_only unsafe_hash eq=False). Try "x: int = 0, y: int" or "tags: list = []"',
+      gen: function (input) {
+        var P = parseDataclass(input === undefined ? 'name: str, price: float, qty: int = 0, tags: list = field(default_factory=list) | order' : input);
+        var F = P.fields, O = P.opts, frames = [], cls = 'Item';
+        var optText = Object.keys(O).filter(function (k) { return k === 'eq' ? !O.eq : O[k]; }).map(function (k) { return k === 'eq' ? 'eq=False' : k + '=True'; }).join(', ');
+        var src = '@dataclass' + (optText ? '(' + optText + ')' : '') + '\nclass ' + cls + ':\n' + F.map(function (f) {
+          return '    ' + f.name + ': ' + f.type + (f.kind === 'required' ? '' : f.kind === 'factory' ? ' = field(default_factory=' + f.val + ')' : ' = ' + f.val);
+        }).join('\n');
+        function tbl(upto, hlRow) {
+          var rows = F.slice(0, upto).map(function (f) {
+            return [f.name, f.type, f.classvar ? 'ClassVar: not a field' : f.kind === 'required' ? '(required)' : f.kind === 'factory' ? f.val + '() per instance' : f.val, f.classvar ? 'skipped' : f.kind];
+          });
+          var h = {}; if (hlRow !== undefined) h[hlRow] = hlRow < 0 ? '' : 'cur';
+          return { type: 'table', label: 'Fields collected (in definition order)', columns: ['name', 'type', 'default', 'kind'], rows: rows, hl: h };
+        }
+        frames.push({ narr: 'When Python finishes the class body, the decorator runs. It reads <code>' + cls + '.__annotations__</code> <b>in order</b>: every annotated name is a field (except <code>ClassVar</code>). Options: ' + (optText ? '<code>' + esc(optText) + '</code>' : 'none (defaults: init, repr, eq)') + '.', parts: [{ type: 'code', label: 'What you wrote', lang: 'python', code: src }, tbl(0)] });
+        var real = [], sawDefault = null;
+        for (var i = 0; i < F.length; i++) {
+          var f = F[i];
+          if (f.classvar) { frames.push({ narr: '<code>' + f.name + '</code> is annotated <code>ClassVar</code>: a shared class attribute, <b>not</b> a field. It will not appear in <code>__init__</code>, repr or comparisons.', parts: [tbl(i + 1, i)] }); continue; }
+          if (f.kind === 'mutable') {
+            frames.push({ narr: '<code>' + f.name + ' = ' + esc(f.val) + '</code>: the default is <b>unhashable</b> (a list/dict/set), which almost always means "shared mutable default". <span class="c-r">ValueError: mutable default &lt;class \'' + (f.val.charAt(0) === '[' || f.val === 'list()' ? 'list' : f.val === 'set()' ? 'set' : 'dict') + '\'&gt; for field ' + f.name + ' is not allowed: use default_factory</span>. Fix: <code>' + f.name + ': ' + esc(f.type) + ' = field(default_factory=' + (f.val.charAt(0) === '[' || f.val === 'list()' ? 'list' : f.val === 'set()' ? 'set' : 'dict') + ')</code>.', parts: [tbl(i + 1, i), { type: 'text', html: '<b>Why:</b> a default is evaluated <b>once</b>, when the class is created. Every instance would share that single list.' }] });
+            return frames.concat([{ narr: 'Class creation stopped with an error, before any method was generated. Change the default to a factory and press Load again.', parts: [{ type: 'code', label: 'What you wrote', lang: 'python', code: src, hl: (function () { var h = {}; h[3 + i] = 'bad'; return h; })() }] }]);
+          }
+          if (f.kind === 'required' && sawDefault && !O.kw_only) {
+            frames.push({ narr: '<code>' + f.name + '</code> has no default but comes after <code>' + sawDefault + '</code>, which has one. The generated <code>__init__(self, …, ' + sawDefault + '=…, ' + f.name + ')</code> would be invalid Python. <span class="c-r">TypeError: non-default argument \'' + f.name + '\' follows default argument \'' + sawDefault + '\'</span>. Fixes: reorder, give it a default, or use <code>kw_only=True</code> / a <code>_: KW_ONLY</code> marker.', parts: [tbl(i + 1, i)] });
+            return frames.concat([{ narr: 'Class creation failed. Try adding <code>| kw_only</code> to the input: keyword-only parameters may appear in any order.', parts: [{ type: 'code', label: 'What you wrote', lang: 'python', code: src, hl: (function () { var h = {}; h[3 + i] = 'bad'; return h; })() }] }]);
+          }
+          if (f.kind !== 'required') sawDefault = sawDefault || f.name;
+          real.push(f);
+          frames.push({ narr: 'Field <code>' + f.name + ': ' + esc(f.type) + '</code> → ' + (f.kind === 'required' ? 'required (no default).' : f.kind === 'factory' ? 'default <b>factory</b> <code>' + esc(f.val) + '</code>: called anew for each instance, so no sharing.' : 'default <code>' + esc(f.val) + '</code> (immutable, safe to share).'), parts: [tbl(i + 1, i)] });
+        }
+        if (!real.length) throw new Error('Add at least one real (non-ClassVar) field');
+        var sig = real.map(function (f) { return f.name + ': ' + f.type + (f.kind === 'required' ? '' : f.kind === 'factory' ? ' = _HAS_DEFAULT_FACTORY' : ' = ' + f.val); });
+        var setLine = function (n, v) { return O.frozen ? "    object.__setattr__(self, '" + n + "', " + v + ')' : '    self.' + n + ' = ' + v; };
+        var init = 'def __init__(self, ' + (O.kw_only ? '*, ' : '') + sig.join(', ') + '):\n' + real.map(function (f) {
+          return setLine(f.name, f.kind === 'factory' ? f.val + '() if ' + f.name + ' is _HAS_DEFAULT_FACTORY else ' + f.name : f.name);
+        }).join('\n') + '\n    # if the class defines __post_init__, it is called here';
+        frames.push({ narr: 'Generate <code>__init__</code>: one parameter per field, in order' + (O.kw_only ? ', all <b>keyword-only</b> (note the <code>*</code>)' : '') + '. Factory fields get a sentinel default and call the factory when no value is passed.' + (O.frozen ? ' Because the class is <b>frozen</b>, assignments go through <code>object.__setattr__</code> (the normal path is blocked).' : '') + ' The code is built as text and <code>exec</code>-ed once, so it runs as fast as hand-written code.', parts: [{ type: 'code', label: 'Generated __init__', lang: 'python', code: init, hl: { 1: 'ok' } }] });
+        var repr = 'def __repr__(self):\n    return f"' + cls + '(' + real.map(function (f) { return f.name + '={self.' + f.name + '!r}'; }).join(', ') + ')"';
+        frames.push({ narr: 'Generate <code>__repr__</code>: class name plus every field (unless <code>repr=False</code>), each with <code>!r</code>, e.g. <code>' + cls + '(' + real.map(function (f) { return f.name + '=…'; }).join(', ') + ')</code>. It is also protected against infinite recursion for self-referencing objects.', parts: [{ type: 'code', label: 'Generated __repr__', lang: 'python', code: repr, hl: { 2: 'ok' } }] });
+        var tup = function (o) { return '(' + real.map(function (f) { return o + '.' + f.name; }).join(', ') + (real.length === 1 ? ',' : '') + ')'; };
+        if (O.eq) {
+          frames.push({ narr: 'Generate <code>__eq__</code>: only for the <b>exact same class</b> (a subclass instance is not equal), comparing the fields in order (shown as tuples; 3.13+ compares field by field, same result). Other types get <code>NotImplemented</code>.', parts: [{ type: 'code', label: 'Generated __eq__', lang: 'python', code: 'def __eq__(self, other):\n    if other.__class__ is self.__class__:\n        return ' + tup('self') + ' == ' + tup('other') + '\n    return NotImplemented', hl: { 2: 'cur', 3: 'ok' } }] });
+        }
+        if (O.order) {
+          if (!O.eq) throw new Error('order=True requires eq=True (Python raises ValueError: eq must be true if order is true)');
+          frames.push({ narr: '<code>order=True</code> → generate <code>__lt__</code>, <code>__le__</code>, <code>__gt__</code>, <code>__ge__</code>, each comparing the field tuples. So sorting is by <b>' + real[0].name + '</b> first, then ' + (real[1] ? '<b>' + real[1].name + '</b>, …' : 'nothing else') + '. Field <b>order</b> in the class body is the sort key: put the most important field first, or exclude fields with <code>compare=False</code>.', parts: [{ type: 'code', label: 'Generated ordering (one of four)', lang: 'python', code: 'def __lt__(self, other):\n    if other.__class__ is self.__class__:\n        return ' + tup('self') + ' < ' + tup('other') + '\n    return NotImplemented', hl: { 3: 'ok' } }] });
+        }
+        var hashRow = !O.eq ? 0 : O.unsafe_hash ? 3 : O.frozen ? 2 : 1;
+        frames.push({ narr: 'Decide <code>__hash__</code> from the table. ' + ['<code>eq=False</code>: keep the inherited identity hash.', '<code>eq=True</code>, not frozen: set <code>__hash__ = None</code>. Instances are <b>unhashable</b> (mutable objects whose equality can change must not live in sets).', '<code>eq=True</code> and <code>frozen=True</code>: generate <code>__hash__</code> = <code>hash(' + tup('self') + ')</code>. Safe, because fields cannot change.', '<code>unsafe_hash=True</code>: generate a hash even though the object is mutable. Your responsibility not to mutate it while hashed.'][hashRow], parts: [{ type: 'table', label: 'dataclass __hash__ rules', columns: ['eq', 'frozen', 'unsafe_hash', '__hash__ becomes'], rows: [['False', 'any', 'False', 'inherited (identity)'], ['True', 'False', 'False', 'None (unhashable)'], ['True', 'True', 'False', 'hash of field tuple'], ['any', 'any', 'True', 'hash of field tuple']], hl: (function () { var h = {}; h[hashRow] = 'sel'; return h; })() }] });
+        if (O.frozen) frames.push({ narr: '<code>frozen=True</code> → generate <code>__setattr__</code> and <code>__delattr__</code> that raise <code>FrozenInstanceError</code> for fields. "Changing" an object now means <code>dataclasses.replace(obj, field=new)</code>, which builds a new instance. (Frozen is shallow: a list inside can still be mutated.)', parts: [{ type: 'code', label: 'Generated (frozen)', lang: 'python', code: 'def __setattr__(self, name, value):\n    raise FrozenInstanceError(f"cannot assign to field {name!r}")\ndef __delattr__(self, name):\n    raise FrozenInstanceError(f"cannot delete field {name!r}")', hl: { 2: 'bad', 4: 'bad' } }] });
+        if (O.slots) frames.push({ narr: '<code>slots=True</code> → the decorator builds a <b>new class</b> with <code>__slots__ = (' + real.map(function (f) { return "'" + f.name + "'"; }).join(', ') + ')</code>: no per-instance <code>__dict__</code>, less memory, and typos like <code>obj.prise = 1</code> raise <code>AttributeError</code>.', parts: [{ type: 'array', label: '__slots__', values: real.map(function (f) { return f.name; }), hl: (function () { var h = {}; real.forEach(function (_, k) { h[k] = 'g'; }); return h; })() }] });
+        var ma = O.kw_only ? [] : real.map(function (f) { return f.name; });
+        frames.push({ narr: 'Finally <code>__match_args__ = (' + ma.map(function (n) { return "'" + n + "'"; }).join(', ') + (ma.length === 1 ? ',' : '') + ')</code>, so <code>match item: case ' + cls + '(' + (ma[0] || 'x=') + (ma[0] ? ', …' : '…') + '):</code> works positionally' + (O.kw_only ? ' (empty here because all fields are keyword-only)' : '') + '. Summary of everything written for you ↓', parts: [{ type: 'table', label: 'Generated for ' + cls, columns: ['method / attribute', 'generated?'], rows: [
+          ['__init__', 'yes'], ['__repr__', 'yes'], ['__eq__', O.eq ? 'yes' : 'no'], ['__lt__ / __le__ / __gt__ / __ge__', O.order ? 'yes' : 'no'], ['__hash__', ['inherited', 'set to None', 'yes', 'yes (unsafe)'][hashRow]], ['__setattr__ / __delattr__ (frozen)', O.frozen ? 'yes' : 'no'], ['__slots__', O.slots ? 'yes (new class)' : 'no'], ['__match_args__', 'yes']
+        ], hl: { 0: 'ok', 1: 'ok' } }] });
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'Predict the output: the shared default list (and how dataclasses save you)', html: R`<p>A hand-written class with <code>def __init__(self, items=[])</code> shares <b>one list</b> between all instances that use the default, so carts leak items into each other. The dataclass version with <code>default_factory</code> creates a new list per instance. Output: <code>['apple'] ['apple']</code> then <code>['apple'] []</code>.</p>`, code: { lang: 'python', run: true, code: R`
+        from dataclasses import dataclass, field
+
+        class CartOld:
+            def __init__(self, items=[]):          # default evaluated ONCE at def time
+                self.items = items
+
+        a, b = CartOld(), CartOld()
+        a.items.append("apple")
+        print(a.items, b.items)                    # both see 'apple'
+
+        @dataclass
+        class Cart:
+            items: list[str] = field(default_factory=list)
+
+        c, d = Cart(), Cart()
+        c.items.append("apple")
+        print(c.items, d.items)
+      ` } },
+      { title: 'Derived fields with init=False, and InitVar', html: R`<p>A field with <code>init=False</code> is not a constructor parameter; compute it in <code>__post_init__</code>. An <code>InitVar</code> is the opposite: a constructor parameter that is passed to <code>__post_init__</code> but <b>not</b> stored as a field (great for secrets or raw inputs). Here we hash a password without ever storing it.</p>`, code: { lang: 'python', run: true, code: R`
+        import hashlib
+        from dataclasses import dataclass, field, InitVar, fields
+
+        @dataclass
+        class Account:
+            username: str
+            password: InitVar[str]                       # passed to __post_init__, not stored
+            pw_hash: str = field(init=False, repr=False) # computed, hidden from repr
+            name_len: int = field(init=False)
+
+            def __post_init__(self, password):
+                if len(password) < 8:
+                    raise ValueError("password too short")
+                self.pw_hash = hashlib.sha256(password.encode()).hexdigest()[:12]
+                self.name_len = len(self.username)
+
+        acc = Account("ada", "correct horse")
+        print(acc)                                       # no password, no hash in repr
+        print(acc.pw_hash, [f.name for f in fields(acc)])
+        print(hasattr(acc, "password"))                  # False
+      ` } },
+      { title: 'Sorting by a computed key: the sort_index pattern', html: R`<p><code>order=True</code> compares fields in definition order. To sort by something else (e.g. descending score, then name) add a hidden first field <code>sort_index</code> with <code>init=False, repr=False</code> and fill it in <code>__post_init__</code>.</p>`, code: { lang: 'python', run: true, code: R`
+        from dataclasses import dataclass, field
+
+        @dataclass(order=True)
+        class Player:
+            sort_index: tuple = field(init=False, repr=False)
+            name: str = field(compare=False)
+            score: int = field(compare=False)
+
+            def __post_init__(self):
+                self.sort_index = (-self.score, self.name)   # high score first, then A-Z
+
+        board = [Player("zoe", 50), Player("amy", 70), Player("bob", 50)]
+        print(sorted(board))
+      ` } },
+      { title: 'dataclass vs NamedTuple vs attrs vs pydantic', html: R`<p>Pick by need. <b>NamedTuple</b>: immutable, tuple-compatible (unpacking, indexing), very light; but it <i>is</i> a tuple, so <code>Point(1, 2) == (1, 2)</code> is True, which can surprise. <b>dataclass</b>: standard library, mutable or frozen, no runtime validation. <b>attrs</b>: the project dataclasses were modelled on, with validators and converters. <b>pydantic</b> (v2, Rust core): parses and <b>validates</b> untrusted input (JSON from APIs, LLM tool outputs) and coerces types. Rule of thumb: internal data → dataclass; external, untrusted data → pydantic.</p>`, code: { lang: 'python', run: true, code: R`
+        from dataclasses import dataclass
+        from typing import NamedTuple
+
+        class PointNT(NamedTuple):
+            x: int
+            y: int
+
+        @dataclass(frozen=True)
+        class PointDC:
+            x: int
+            y: int
+
+        print(PointNT(1, 2) == (1, 2), PointDC(1, 2) == (1, 2))   # True False
+        x, y = PointNT(3, 4)                                     # tuple unpacking works
+        print(x + y, PointNT(3, 4)[0])
+        print(PointDC("not", "ints"))                            # no runtime type checking!
+      ` } }
+    ],
+    deepDive: R`<p>🟣 <b>How it works.</b> <code>dataclass</code> is an ordinary function. It walks the MRO collecting <code>__dataclass_fields__</code> from base dataclasses (base fields come first, a subclass can override a field's default), then for the class's own <code>__annotations__</code> builds <code>Field</code> objects, and finally generates source text for each method and <code>exec</code>s it (via a small internal helper) with the defaults and factories injected as globals, so the generated <code>__init__</code> is a normal Python function with no per-call overhead beyond hand-written code. Methods you define yourself are <b>not</b> overwritten (except where explicitly documented; e.g. defining <code>__eq__</code> with <code>order=True</code> leaves your <code>__eq__</code>, but defining <code>__lt__</code> with <code>order=True</code> raises <code>TypeError</code>). <code>slots=True</code> must create a brand-new class (slots cannot be added after creation), which breaks zero-argument <code>super()</code> in methods on older versions (fixed in 3.14) and anything holding a reference to the original class.</p>
+      <p><b>Subtleties interviewers probe.</b> (1) The mutable-default check (3.11+) rejects any <b>unhashable</b> default, not just list/dict/set; a custom mutable class with <code>__hash__</code> slips through. (2) <code>frozen</code> is shallow and costs a little at construction (each field set via <code>object.__setattr__</code>); inheritance cannot mix frozen and non-frozen dataclasses (<code>TypeError</code>). (3) <code>asdict</code> deep-copies recursively, which can be slow for big nested structures; write a custom serializer for hot paths. (4) <code>eq</code> requires the <b>same class</b>, so a subclass instance is never equal to a parent instance. (5) <code>field(hash=None)</code> defaults to <code>compare</code>; <code>compare=False</code> fields are excluded from <code>__eq__</code>, ordering and the generated hash. (6) Since 3.10, <code>KW_ONLY</code> as a pseudo-field marks the rest as keyword-only, and <code>match_args</code>/<code>weakref_slot</code> options exist. (7) <code>typing.dataclass_transform</code> (PEP 681) lets libraries (pydantic, SQLAlchemy 2.0 mapped classes, attrs) tell type checkers "I behave like a dataclass".</p>
+      <p><b>Performance:</b> with <code>slots=True</code> a dataclass is as small as a hand-slotted class; creation speed is similar to hand-written <code>__init__</code>. If you need hundreds of thousands of records for analytics, a list of dataclasses still pays per-object overhead: consider NumPy structured arrays, pandas, or Polars instead.</p>`,
+    aiEra: R`<p>🤖 <b>What AI changes:</b> AI tools now default to dataclasses or pydantic models for any data shape, and they generate them instantly from a JSON sample or an API spec. The skill shifts to choosing options correctly: frozen or not, ordering semantics, which fields participate in equality, and where validation happens.</p>
+      <p><b>Prompts that help:</b> <code>Convert this JSON sample to Python dataclasses. Use frozen=True and slots=True, default_factory for collections, and tell me which fields should be excluded from equality.</code> And for LLM pipelines: <code>Generate a pydantic v2 model for this tool's output and a matching plain dataclass for internal use; explain why the boundary uses pydantic.</code> Structured outputs from LLM APIs are commonly declared as pydantic models (or JSON Schema derived from them), so knowing the difference between "describes data" (dataclass) and "validates untrusted data" (pydantic) is directly practical.</p>
+      <p><b>Where AI goes wrong:</b> <code>tags: list = []</code> in a plain class or with pydantic-style assumptions; expecting type hints to be enforced at runtime; <code>order=True</code> with fields in an order that does not match the intended sort; making a mutable dataclass hashable with <code>unsafe_hash=True</code> to silence an error; and putting <code>cached_property</code> on a <code>slots=True</code> dataclass. <b>What you must own:</b> the generated-methods table, the hash rules, and the mutable-default reasoning.</p>`,
+    problems: [{
+      title: 'Product catalog: validated, sortable, hashable records',
+      level: 'Medium', tags: ['dataclass', 'order', 'frozen', '__post_init__'], companies: ['Shopify', 'Amazon', 'Flipkart', 'Instacart'],
+      statement: R`<p>Model a <code>Product</code> with <code>name: str</code>, <code>price: Decimal</code>, <code>stock: int = 0</code> and <code>tags: tuple[str, ...] = ()</code> using a dataclass. Requirements: (1) <code>price &lt; 0</code> or <code>stock &lt; 0</code> raises <code>ValueError</code>; names are stripped; tags are normalised to a sorted tuple of lower-case strings (accept any iterable). (2) Products are <b>immutable and hashable</b> (usable in sets/dict keys). (3) <code>sorted(products)</code> orders by <b>price ascending, then name</b>; <code>stock</code> and <code>tags</code> do not affect equality or ordering. (4) A <code>restock(n)</code> method returns a <b>new</b> product with more stock.</p>`,
+      constraints: R`Up to 10<sup>5</sup> products; Decimal prices with 2 decimals.`,
+      example: R`<p><code>Product(" Mug ", Decimal("9.50"), 3, ["Kitchen", "gift"])</code> → ${H.c('g', "Product(name='Mug', price=Decimal('9.50'), stock=3, tags=('gift', 'kitchen'))")}<br><code>sorted([pen 1.20, mug 9.50, cup 1.20])</code> → ${H.c('b', 'cup, pen, mug')} (tie on price → by name)<br><code>Product("Mug", Decimal("9.50"), 99) == Product("Mug", Decimal("9.50"), 0)</code> → ${H.c('g', 'True')} (stock not compared)</p>`,
+      brute: {
+        why: R`<p>Hand-write <code>__init__</code>, <code>__repr__</code>, <code>__eq__</code>, <code>__hash__</code>, <code>__lt__</code> and friends: ~50 lines where every new field must be added in five places. It is easy to make <code>__eq__</code> and <code>__hash__</code> disagree (e.g. hash includes stock but eq does not), and the class stays mutable, so hashed products can be corrupted.</p>`,
+        code: R`
+          from decimal import Decimal
+
+          class ProductManual:
+              def __init__(self, name, price, stock=0):
+                  self.name, self.price, self.stock = name.strip(), Decimal(price), stock
+              def __repr__(self):
+                  return f"ProductManual({self.name!r}, {self.price!r}, {self.stock!r})"
+              def __eq__(self, o):
+                  return isinstance(o, ProductManual) and (self.price, self.name) == (o.price, o.name)
+              def __hash__(self):
+                  return hash((self.price, self.name, self.stock))   # BUG: stock is not in __eq__
+              def __lt__(self, o):
+                  return (self.price, self.name) < (o.price, o.name)
+
+          a, b = ProductManual("Mug", "9.50", 1), ProductManual("Mug", "9.50", 2)
+          print(a == b, hash(a) == hash(b))      # True False -> contract broken
+        `
+      },
+      mcq: { q: 'Which dataclass decorator call satisfies "immutable, hashable, sortable by fields"?', options: ['<code>@dataclass(frozen=True, order=True)</code>', '<code>@dataclass(order=True)</code>', '<code>@dataclass(unsafe_hash=True)</code>', '<code>@dataclass(eq=False, order=True)</code>'], answer: 0, explain: 'frozen + eq (default) generates a safe <code>__hash__</code>; order generates the comparisons. <code>unsafe_hash</code> on a mutable class risks corrupting sets; <code>eq=False</code> with <code>order=True</code> is rejected.' },
+      hints: [
+        R`<p>Hint 1: Order the fields so that the <b>compared</b> fields come first in the order you want to sort: <code>price</code>, then <code>name</code>. Mark <code>stock</code> and <code>tags</code> with <code>field(compare=False)</code> (they then also leave the hash).</p>`,
+        R`<p>Hint 2: Frozen objects cannot assign in <code>__post_init__</code> normally: use <code>object.__setattr__(self, "name", self.name.strip())</code> for normalisation. Validate before normalising.</p>`,
+        R`<p>Hint 3: <code>restock</code> returns <code>dataclasses.replace(self, stock=self.stock + n)</code> (which re-runs <code>__post_init__</code>, so validation still applies). Tags must be a tuple (hashable), not a list. Since <code>price</code> comes first, make it a required field and give <code>name</code> no default either.</p>`
+      ],
+      solution: {
+        approach: R`<p><code>@dataclass(frozen=True, order=True)</code> with fields declared as <code>price, name, stock, tags</code>; <code>stock</code>/<code>tags</code> use <code>compare=False</code>. <code>__post_init__</code> validates and normalises via <code>object.__setattr__</code>. Everything else (init, repr, eq, ordering, hash) is generated consistently from one field list. A small factory classmethod gives the friendlier <code>name</code>-first call signature.</p>`,
+        code: { lang: 'python', run: true, code: R`
+          from dataclasses import dataclass, field, replace
+          from decimal import Decimal
+
+          @dataclass(frozen=True, order=True)
+          class Product:
+              price: Decimal                                   # sort key 1
+              name: str                                        # sort key 2
+              stock: int = field(default=0, compare=False)
+              tags: tuple = field(default=(), compare=False)
+
+              def __post_init__(self):
+                  price = Decimal(str(self.price))
+                  if price < 0 or self.stock < 0:
+                      raise ValueError("price and stock must be >= 0")
+                  object.__setattr__(self, "price", price.quantize(Decimal("0.01")))
+                  object.__setattr__(self, "name", self.name.strip())
+                  object.__setattr__(self, "tags", tuple(sorted({t.lower() for t in self.tags})))
+
+              @classmethod
+              def of(cls, name, price, stock=0, tags=()):     # name-first convenience
+                  return cls(price, name, stock, tuple(tags))
+
+              def restock(self, n):
+                  return replace(self, stock=self.stock + n)   # new object; __post_init__ runs again
+
+          mug = Product.of(" Mug ", "9.50", 3, ["Kitchen", "gift"])
+          print(mug)
+          catalog = [Product.of("pen", "1.20"), mug, Product.of("cup", "1.20")]
+          print([p.name for p in sorted(catalog)])
+          print(mug == Product.of("Mug", "9.50", 99), len({mug, mug.restock(5)}))
+          print(mug.restock(2).stock, mug.stock)
+          try:
+              Product.of("bad", "-1")
+          except ValueError as e:
+              print("ValueError:", e)
+        ` },
+        dry: { head: ['call', 'what runs', 'result'], rows: [
+          ['Product.of(" Mug ", "9.50", 3, [...])', 'generated __init__ → __post_init__ (validate, strip, sort tags)', "Product(price=Decimal('9.50'), name='Mug', stock=3, tags=('gift', 'kitchen'))"],
+          ['sorted(catalog)', 'generated __lt__ on (price, name)', 'cup 1.20, pen 1.20, mug 9.50'],
+          ['mug == Product.of("Mug", "9.50", 99)', 'generated __eq__ on (price, name) only', 'True'],
+          ['{mug, mug.restock(5)}', 'generated __hash__ = hash((price, name))', '1 element'],
+          ['mug.restock(2)', 'replace → new instance, __post_init__ again', 'stock 5; original still 3']
+        ] },
+        complexity: R`<p>Construction O(t log t) for t tags; comparisons and hashing O(1) (two fields); sorting n products O(n log n).</p>`,
+        followUps: ['Add <code>slots=True</code>: what changes, and why must <code>__post_init__</code> still use <code>object.__setattr__</code>?', 'Keep the natural <code>name, price</code> constructor order but still sort by price: compare the sort_index pattern with the classmethod approach', 'Load products from untrusted JSON: would you switch to pydantic? Where is the boundary?']
       }
     }]
   });

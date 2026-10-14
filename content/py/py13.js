@@ -541,5 +541,515 @@ print(f"{timeit.timeit(lambda: top_k(big, 10), number=1) * 1000:.1f} ms for 200k
       }
     }]
   });
+
+  /* ======================================================================
+     TOPIC 3: Vectorization with NumPy
+     ====================================================================== */
+  topics.push({
+    title: 'Vectorization with NumPy: Loops in C, Broadcasting, Views & dtypes',
+    analogy: R`<p>A teacher has to add 5 bonus marks to 1,000 exam papers. The <b>loop way</b>: pick up paper, read mark, add 5, write, put down — 1,000 times, with all the picking-up overhead each time. The <b>vectorized way</b>: the marks are already typed in one spreadsheet column; type <code>=A1+5</code> once and fill down — the machine does the whole column in one go. NumPy is that spreadsheet: data packed tightly in one block, one instruction for the whole column.</p>`,
+    explain: R`<p>🟢 <b>The plain idea.</b> A Python list holds <b>pointers</b> to separate int objects scattered in memory; each <code>x * x</code> in a loop means: fetch object, check its type, unbox, multiply, allocate a new int object, ~50 ns of overhead. A NumPy <code>ndarray</code> holds <b>raw numbers side by side</b> in one block with one shared type (the <b>dtype</b>, e.g. <code>int64</code>, <code>float64</code>). An expression like <code>a * a</code> calls one compiled C loop (a <b>ufunc</b> = "universal function") that runs over the whole block, often using SIMD CPU instructions. That is <b>vectorization</b>: replace a Python-level loop with whole-array operations.</p>
+${H.table(['Python loop', 'NumPy vectorized'], [
+  ['<code>[x * 2 for x in a]</code>', '<code>a * 2</code>'],
+  ['<code>sum(x for x in a if x &gt; 0)</code>', '<code>a[a &gt; 0].sum()</code> (boolean mask)'],
+  ['<code>[x if x &gt; 0 else 0 for x in a]</code>', '<code>np.where(a &gt; 0, a, 0)</code> or <code>np.maximum(a, 0)</code>'],
+  ['nested loop over rows and columns', '<code>m.sum(axis=0)</code> / <code>m.mean(axis=1)</code>'],
+  ['loop computing distances to each centre', 'broadcasting: <code>pts[:, None, :] - centres[None, :, :]</code>']
+])}
+<p>🔵 <b>Broadcasting</b> is how NumPy combines arrays of different shapes without copying: line the shapes up from the <b>right</b>; two dimensions are compatible if they are <b>equal or one of them is 1</b>; a size-1 dimension is "stretched" (virtually repeated). Example: <code>(3, 1) + (1, 4) → (3, 4)</code>; <code>(3,) + (4,)</code> → ${H.c('r', 'ValueError')}.</p>
+<p><b>When NOT to vectorize:</b> tiny arrays (each NumPy call has ~1 µs fixed overhead, so for 10 elements a plain loop wins), logic with complex per-element branching or early exit (use Numba or Cython), and when converting a list to an array costs more than the work itself.</p>`,
+    clues: [
+      '"Process millions of numbers / pixels / prices in Python" → vectorize with NumPy (or pandas/Polars on top of it)',
+      '"Replace this for loop over an array" → ufuncs, boolean masks, <code>np.where</code>, <code>axis=</code> reductions',
+      '"Pairwise distances" / "every point to every centre" → broadcasting with <code>None</code>/<code>np.newaxis</code>',
+      '"Why did modifying my slice change the original?" → slices are <b>views</b>; use <code>.copy()</code>',
+      '"Sum overflowed / negative total" with NumPy ints → fixed-width dtype wraps silently (unlike Python int)',
+      '"np.vectorize made it no faster" → it is a convenience loop, not real vectorization'
+    ],
+    code: [{ lang: 'python', check: false, title: 'Loop vs vectorized, side by side (NumPy required)', code: R`
+import time
+import numpy as np
+
+n = 1_000_000
+prices = np.random.default_rng(0).uniform(10, 500, n)   # float64 array
+qty = np.random.default_rng(1).integers(1, 10, n)       # int64 array
+
+# Python loop: one bytecode round-trip per element
+t = time.perf_counter()
+total_loop = 0.0
+for p, q in zip(prices.tolist(), qty.tolist()):
+    if p > 100:
+        total_loop += p * q
+t_loop = time.perf_counter() - t
+
+# Vectorized: mask + multiply + sum, all loops in C
+t = time.perf_counter()
+mask = prices > 100                     # boolean array, same shape
+total_vec = (prices[mask] * qty[mask]).sum()
+t_vec = time.perf_counter() - t
+
+print(f"loop {t_loop*1000:.1f} ms  vectorized {t_vec*1000:.2f} ms  "
+      f"same={np.isclose(total_loop, total_vec)}")
+` }, { lang: 'python', check: false, title: 'Broadcasting, views vs copies, dtype overflow', code: R`
+import numpy as np
+
+# Broadcasting: (3,1) + (1,4) -> (3,4)
+col = np.array([[1], [2], [3]])
+row = np.array([[10, 20, 30, 40]])
+print(col + row)
+
+# Pairwise distances: 5 points vs 3 centres, no Python loop
+pts = np.arange(10, dtype=float).reshape(5, 2)
+centres = np.array([[0.0, 0.0], [5.0, 5.0], [9.0, 9.0]])
+d = np.sqrt(((pts[:, None, :] - centres[None, :, :]) ** 2).sum(axis=2))   # shape (5, 3)
+print(d.argmin(axis=1))                 # nearest centre per point
+
+# Views: basic slicing shares memory
+a = np.arange(6)
+v = a[1:4]           # view, no copy
+v[0] = 99
+print(a)             # [ 0 99  2  3  4  5]  <- original changed!
+c = a[[1, 2, 3]]     # fancy indexing ALWAYS copies
+c[0] = -1
+print(a[1])          # still 99
+
+# dtype overflow wraps silently (Python ints never overflow)
+small = np.array([200, 100], dtype=np.uint8)
+print(small.sum(dtype=np.uint8), small.sum())   # 44 (wrapped)  vs 300
+` }, { lang: 'python', run: true, title: 'Runnable without NumPy: the broadcasting rule as code', code: R`
+def broadcast_shape(a, b):
+    """Return the broadcast result shape, or raise ValueError like NumPy."""
+    result = []
+    # compare dimensions from the RIGHT
+    for i in range(1, max(len(a), len(b)) + 1):
+        x = a[-i] if i <= len(a) else 1
+        y = b[-i] if i <= len(b) else 1
+        if x != y and 1 not in (x, y):
+            raise ValueError(f"shapes {a} and {b} not compatible at dim -{i}: {x} vs {y}")
+        result.append(max(x, y))
+    return tuple(reversed(result))
+
+for a, b in [((3, 1), (1, 4)), ((5, 1, 2), (3, 2)), ((8, 3), (3,)), ((3,), (4,))]:
+    try:
+        print(a, "+", b, "->", broadcast_shape(a, b))
+    except ValueError as e:
+        print("ValueError:", e)
+` }],
+    viz: [{
+      title: 'Loop vs vectorized timing as N grows (the crossover)',
+      input: '10 100 1000 100000 1000000',
+      inputLabel: 'Array sizes N (space separated, up to 8)',
+      gen: function (input) {
+        var ns = nums(input, 8, 'Enter sizes like 10 100 1000 1000000');
+        if (ns.some(function (x) { return x < 1 || x > 100000000; })) throw new Error('Sizes must be between 1 and 100,000,000');
+        // simple cost model (µs) calibrated on CPython 3.13 + NumPy 2.x on a laptop
+        function loopUs(n) { return 0.3 + 0.058 * n; }
+        function vecUs(n) { return 1.5 + 0.0015 * n; }
+        function convUs(n) { return 0.5 + 0.02 * n; }
+        var frames = [];
+        frames.push(fr('Cost model (from real timings): Python loop ≈ <b>58 ns per element</b>; a NumPy expression ≈ <b>1.5 µs fixed overhead</b> + 1.5 ns per element; converting a list to an array ≈ 20 ns per element. Let us see who wins at each size.', [
+          { type: 'vars', label: 'model (µs)', vals: { loop: '0.3 + 0.058·N', numpy: '1.5 + 0.0015·N', list_to_array: '0.5 + 0.02·N' } },
+          { type: 'code', label: 'the two contenders', lang: 'python', code: 's = sum(x * x for x in lst)      # loop\ns = int((arr * arr).sum())       # vectorized', hl: {} }
+        ]));
+        var ratios = [], labels = [];
+        ns.forEach(function (n) {
+          var L = loopUs(n), V = vecUs(n), C = convUs(n) + V;
+          var winner = L < V ? 'loop' : 'numpy';
+          ratios.push(round1(L / V)); labels.push('N=' + n);
+          frames.push(fr('<b>N = ' + n.toLocaleString() + '</b>: loop ≈ ' + round1(L) + ' µs, NumPy ≈ ' + round1(V) + ' µs' + (winner === 'loop' ? ' → <span class="c-y">the plain loop wins</span>: NumPy\'s fixed call overhead dominates tiny arrays.' : ' → <span class="c-g">NumPy wins ' + round1(L / V) + '×</span>.') + ' If the data starts as a Python list, add conversion: ' + round1(C) + ' µs total' + (C > L ? ' — <span class="c-r">then the loop is still better</span>!' : '.'), [
+            { type: 'bars', label: 'time in µs at N = ' + n, values: [round1(L), round1(V), round1(C)], idxLabels: ['Python loop', 'NumPy (array ready)', 'NumPy incl. list→array'], hl: winner === 'loop' ? { 0: 'ok', 1: 'bad' } : { 0: 'bad', 1: 'ok', 2: C > L ? 'bad' : 'win' } }
+          ]));
+        });
+        frames.push(fr('Speed-up of NumPy over the loop at each size. Below 1.0 the loop is faster. Rule of thumb: vectorize when arrays have <b>thousands+</b> of elements and the data <b>already lives</b> in NumPy (or is read straight into it).', [
+          { type: 'bars', label: 'speed-up (loop time ÷ NumPy time)', values: ratios, idxLabels: labels, hl: (function () { var h = {}; ratios.forEach(function (r, i) { h[i] = r < 1 ? 'bad' : 'ok'; }); return h; })() }
+        ]));
+        return frames;
+      }
+    }, {
+      title: 'Broadcasting: (3,1) + (1,4) → (3,4) without copying',
+      input: '1 2 3 | 10 20 30 40',
+      inputLabel: 'column values | row values',
+      gen: function (input) {
+        var halves = String(input).split('|');
+        if (halves.length !== 2) throw new Error('Format: 1 2 3 | 10 20 30 40');
+        var col = nums(halves[0], 6, 'Column: up to 6 numbers'), row = nums(halves[1], 6, 'Row: up to 6 numbers');
+        var r = col.length, c = row.length, frames = [];
+        var colHead = row.map(function (_, j) { return 'j' + j; }), rowHead = col.map(function (_, i) { return 'i' + i; });
+        frames.push(fr('Shapes: column <b>(' + r + ', 1)</b> and row <b>(1, ' + c + ')</b>. Align from the right: ' + c + ' vs 1 → OK (one is 1); 1 vs ' + r + ' → OK. Result shape <b>(' + r + ', ' + c + ')</b>.', [
+          { type: 'grid', label: 'col  shape (' + r + ',1)', rows: col.map(function (v) { return [v]; }), rowHead: rowHead, colHead: ['j0'] },
+          { type: 'grid', label: 'row  shape (1,' + c + ')', rows: [row.slice()], rowHead: ['i0'], colHead: colHead }
+        ]));
+        var stretchedCol = col.map(function (v) { return row.map(function () { return v; }); });
+        var hl1 = {}; for (var i = 0; i < r; i++) for (var j = 1; j < c; j++) hl1[i + ',' + j] = 'win';
+        frames.push(fr('The size-1 column dimension is <b>virtually stretched</b> to ' + c + ' columns. Blue cells are not real copies: NumPy uses a <b>stride of 0</b>, so it re-reads the same number.', [
+          { type: 'grid', label: 'col stretched → (' + r + ',' + c + ')', rows: stretchedCol, rowHead: rowHead, colHead: colHead, hl: hl1 }
+        ]));
+        var stretchedRow = col.map(function () { return row.slice(); });
+        var hl2 = {}; for (i = 1; i < r; i++) for (j = 0; j < c; j++) hl2[i + ',' + j] = 'win';
+        frames.push(fr('Same for the row: its size-1 row dimension is stretched to ' + r + ' rows (stride 0 again — zero extra memory).', [
+          { type: 'grid', label: 'row stretched → (' + r + ',' + c + ')', rows: stretchedRow, rowHead: rowHead, colHead: colHead, hl: hl2 }
+        ]));
+        var res = [], hl3 = {};
+        for (i = 0; i < r; i++) {
+          res.push([]);
+          for (j = 0; j < c; j++) res[i].push('');
+        }
+        for (i = 0; i < r; i++) {
+          for (j = 0; j < c; j++) { res[i][j] = col[i] + row[j]; }
+          hl3 = {}; for (j = 0; j < c; j++) hl3[i + ',' + j] = 'ok';
+          frames.push(fr('Row i' + i + ': ' + col[i] + ' + each row value → ' + res[i].join(', ') + '. One C loop fills the whole result; no Python iteration.', [
+            { type: 'grid', label: 'result = col + row', rows: res.map(function (x) { return x.slice(); }), rowHead: rowHead, colHead: colHead, hl: hl3 }
+          ]));
+        }
+        frames.push(fr('Counter-example: shapes <b>(' + r + ',)</b> and <b>(' + c + ',)</b> (two flat 1-D arrays). Aligned from the right: ' + r + ' vs ' + c + (r === c ? ' are equal, so they would add element-wise — but a 1-D + 1-D never makes a table. You need the extra axis: <code>col[:, None] + row[None, :]</code>.' : ' — neither is 1 → <span class="c-r">ValueError: operands could not be broadcast together</span>. Fix: <code>col[:, None] + row</code>.'), [
+          { type: 'code', label: 'fix with np.newaxis', lang: 'python', code: 'a = np.array(' + pyList(col) + ')   # shape (' + r + ',)\nb = np.array(' + pyList(row) + ')   # shape (' + c + ',)\nouter = a[:, None] + b   # (' + r + ',1) + (' + c + ',) -> (' + r + ',' + c + ')', hl: { 3: 'ok' } }
+        ]));
+        return frames;
+      }
+    }],
+    examples: [
+      { title: 'Boolean masks replace if-inside-loop', html: R`<p>"Give every score below 40 a +5 bonus, cap at 100." Loop: per-element if. Vectorized: build a <b>mask</b> (an array of True/False), use it to select, then clip:</p>`, code: { lang: 'python', check: false, code: R`
+import numpy as np
+scores = np.array([35, 90, 38, 99, 60])
+scores[scores < 40] += 5            # mask selects 35 and 38 only
+scores = np.minimum(scores, 100)    # element-wise cap
+print(scores)                        # [ 40  90  43  99  60]` } },
+      { title: 'axis= : summing rows vs columns', html: R`<p>For a matrix of sales (rows = stores, columns = days): <code>m.sum(axis=0)</code> collapses the rows → one total <b>per day</b>; <code>m.sum(axis=1)</code> collapses the columns → one total <b>per store</b>. Memory trick: <i>axis=k is the dimension that disappears</i>.</p>${H.table(['', 'Mon', 'Tue', 'axis=1 (per store)'], [['store A', '3', '5', '<b>8</b>'], ['store B', '2', '7', '<b>9</b>'], ['axis=0 (per day)', '<b>5</b>', '<b>12</b>', '']])}` },
+      { title: 'np.vectorize is NOT vectorization', html: R`<p><code>np.vectorize(f)</code> just wraps a Python loop so it accepts arrays — the docs say it is "provided primarily for convenience, not for performance". Real speed comes from expressing <code>f</code> with ufuncs (<code>np.where</code>, <code>np.select</code>, arithmetic) or compiling it with <b>Numba</b> (<code>@njit</code>), which turns the loop into machine code.</p>`, code: { lang: 'python', check: false, code: R`
+import numpy as np
+from numba import njit       # pip install numba
+
+def grade(x):
+    return 2 if x >= 90 else (1 if x >= 50 else 0)
+
+a = np.random.default_rng(0).integers(0, 100, 1_000_000)
+slow = np.vectorize(grade)(a)                       # Python loop in disguise
+fast = np.select([a >= 90, a >= 50], [2, 1], 0)     # true vectorization
+
+@njit
+def grade_all(arr):
+    out = np.empty_like(arr)
+    for i in range(arr.size):          # compiled to machine code by Numba
+        out[i] = 2 if arr[i] >= 90 else (1 if arr[i] >= 50 else 0)
+    return out
+print((slow == fast).all(), (grade_all(a) == fast).all())` } },
+      { title: 'pandas: avoid iterrows / apply(axis=1)', html: R`<p>pandas columns are NumPy (or Arrow) arrays. <code>df.iterrows()</code> builds a Series object per row — often 100× slower than a column expression. Write <code>df["total"] = df["price"] * df["qty"]</code>, use <code>np.where</code> for conditions, <code>groupby().agg()</code> for group stats. For very large data, <b>Polars</b> (Rust, multi-threaded, lazy query optimiser) is the 2026 go-to.</p>` }
+    ],
+    deepDive: R`<p>🟣 <b>Why it is fast.</b> An <code>ndarray</code> is a header (dtype, shape, <b>strides</b> — bytes to step per dimension) plus a pointer to one contiguous buffer. Ufuncs are C loops specialised per dtype; NumPy 2.x dispatches to SIMD kernels (SSE/AVX2/AVX-512/NEON) chosen at runtime, and BLAS (OpenBLAS/MKL/Accelerate) handles <code>@</code>/<code>dot</code> with multithreading and cache blocking. Transposes and basic slices just change strides — O(1), no copy — which is why they are <b>views</b>. Reductions over a non-contiguous axis are slower because of cache misses; <code>np.ascontiguousarray</code> can help.</p>
+<p><b>Hidden costs:</b> each operation in <code>a*b + c*d - e</code> allocates a temporary array the size of the input; for huge arrays memory bandwidth becomes the limit. Fix with in-place ops (<code>np.multiply(a, b, out=a)</code>), <code>numexpr</code>, or Numba fusing the loop. <b>dtypes:</b> fixed-width ints wrap on overflow (NumPy may warn for scalars but arrays wrap silently); <code>float32</code> halves memory and doubles SIMD width but loses precision; NumPy 2.0 adopted <b>NEP 50</b> promotion rules, so <code>np.float32(3) + 3.0</code> now stays <code>float32</code> (Python scalars are "weak"). Object dtype arrays (<code>dtype=object</code>) lose every benefit — they are a list of pointers again.</p>
+<p><b>Beyond NumPy:</b> the Array API standard lets the same code run on NumPy, CuPy (GPU), PyTorch and JAX. JAX adds <code>jit</code> + <code>vmap</code> (automatic vectorization), Numba compiles loops, and Polars/DuckDB vectorize dataframe and SQL work across cores.</p>`,
+    aiEra: R`<p><b>What AI changes:</b> translating a nested Python loop into a broadcasting expression is exactly the kind of mechanical rewrite assistants do well, and they are good at explaining shape errors. <b>Use AI as a partner:</b> <i>"Vectorize this loop with NumPy; annotate the shape of every intermediate array in a comment"</i> — then check those shapes yourself with <code>.shape</code> on small data. <b>Where AI goes wrong:</b> silently creating an (n, n) intermediate that needs 80 GB for n = 100,000, using <code>np.vectorize</code> and calling it vectorized, mixing views and copies so writes vanish, and ignoring integer overflow in <code>int32</code>/<code>uint8</code>. <b>What you must still own:</b> the memory math of intermediates, deciding when a loop is actually fine (small N), and testing the vectorized version against the loop version on random inputs (<code>np.allclose</code>).</p>`,
+    problems: [{
+      title: 'Moving Average of Prices: O(n·k) → O(n)',
+      level: 'Medium', tags: ['prefix sum', 'vectorization', 'numpy'], companies: ['Two Sigma', 'Bloomberg', 'Citadel'],
+      statement: R`<p>Given daily prices and a window size <code>k</code>, return the list of <b>k-day moving averages</b> (one value for each full window, in order). The current nested-loop code is too slow for 10<sup>6</sup> prices with k = 1,000. Write an O(n) version, and show how NumPy would vectorize it.</p>`,
+      constraints: R`1 ≤ k ≤ n ≤ 10<sup>6</sup>; prices are floats. Output length n − k + 1.`,
+      example: R`<p>prices = <code>[2, 4, 6, 8, 10]</code>, k = 3 → <code>${H.c('g', '[4.0, 6.0, 8.0]')}</code>. Windows: (2+4+6)/3 = 4, (4+6+8)/3 = 6, (6+8+10)/3 = 8.</p>`,
+      brute: { why: R`<p>Each window is re-summed from scratch: k additions × (n − k + 1) windows = <b>O(n·k)</b>, about 10<sup>9</sup> Python additions for n = 10<sup>6</sup>, k = 10<sup>3</sup> — minutes in CPython. Neighbouring windows share k − 1 numbers, so almost all that work is repeated.</p>`, code: { lang: 'python', run: true, code: R`
+def moving_avg_slow(prices, k):
+    out = []
+    for i in range(len(prices) - k + 1):
+        out.append(sum(prices[i:i + k]) / k)   # re-sums k items every window
+    return out
+
+print(moving_avg_slow([2, 4, 6, 8, 10], 3))` } },
+      mcq: { q: 'Which identity removes the repeated summing?', options: ['window(i) = prefix[i+k] − prefix[i] where prefix holds running totals', 'Sort the prices first', 'Use a set to skip duplicate prices', 'Divide each price by k first'], answer: 0, explain: 'With prefix sums, any window sum is one subtraction. NumPy does exactly this with cumsum, all in C.' },
+      hints: [R`<p>Hint 1: the window sliding right by one loses one number on the left and gains one on the right.</p>`, R`<p>Hint 2: running totals <code>prefix[0] = 0, prefix[i+1] = prefix[i] + p[i]</code> (that is <code>itertools.accumulate</code> or <code>np.cumsum</code>). Then window sum = <code>prefix[i+k] − prefix[i]</code>.</p>`, R`<p>Hint 3: recipe — build prefix (length n+1), output <code>[(prefix[i+k] − prefix[i]) / k for i in range(n − k + 1)]</code>. Edge cases: k = n (one value), k = 1 (the prices themselves). Float drift over 10<sup>6</sup> additions is tiny but real; use <code>math.fsum</code> or periodic re-summing if exactness matters.</p>`],
+      solution: {
+        approach: R`<p>Prefix sums turn each window into one subtraction: O(n) total. In pure Python, <code>itertools.accumulate</code> builds the prefix in C. In NumPy, the whole thing is three vectorized operations: <code>c = np.cumsum(np.insert(p, 0, 0)); (c[k:] - c[:-k]) / k</code>. (<code>np.convolve(p, np.ones(k)/k, "valid")</code> is the same idea, O(n·k) but in C.)</p>`,
+        code: { lang: 'python', run: true, code: R`
+from itertools import accumulate
+
+def moving_avg(prices, k):
+    prefix = [0.0, *accumulate(prices)]          # prefix[i] = sum of first i prices
+    return [(prefix[i + k] - prefix[i]) / k for i in range(len(prices) - k + 1)]
+
+print(moving_avg([2, 4, 6, 8, 10], 3))           # [4.0, 6.0, 8.0]
+
+import random, time
+random.seed(7)
+p = [random.uniform(90, 110) for _ in range(300_000)]
+t = time.perf_counter(); r = moving_avg(p, 1000); dt = time.perf_counter() - t
+print(f"{len(r):,} averages in {dt*1000:.1f} ms")
+` },
+        alt: [{ lang: 'python', check: false, title: 'NumPy vectorized', code: R`
+import numpy as np
+
+def moving_avg_np(prices, k):
+    p = np.asarray(prices, dtype=float)
+    c = np.cumsum(np.concatenate(([0.0], p)))     # prefix sums in C
+    return (c[k:] - c[:-k]) / k                   # every window at once
+
+print(moving_avg_np([2, 4, 6, 8, 10], 3))         # [4. 6. 8.]
+# Also possible: np.lib.stride_tricks.sliding_window_view(p, k).mean(axis=1)  (O(n*k))` }],
+        dry: { head: ['i', 'prefix[i+k]', 'prefix[i]', 'window sum', 'average'], rows: [
+          ['prefix', '[0, 2, 6, 12, 20, 30]', '', '', ''],
+          ['0', 'prefix[3] = 12', 'prefix[0] = 0', '12', '<span class="c-g">4.0</span>'],
+          ['1', 'prefix[4] = 20', 'prefix[1] = 2', '18', '<span class="c-g">6.0</span>'],
+          ['2', 'prefix[5] = 30', 'prefix[2] = 6', '24', '<span class="c-g">8.0</span>']
+        ] },
+        complexity: R`<p>Time O(n), space O(n) for the prefix array (O(1) extra with a running-sum sliding window). NumPy version: same Big-O, but ~50× smaller constant because all loops run in C.</p>`,
+        followUps: ['Exponential moving average (each value depends on the previous) — why is it hard to vectorize, and how does Numba or scipy.signal.lfilter help?', 'Moving median instead of mean', 'Stream prices one at a time with O(1) memory per update']
+      }
+    }]
+  });
+
+  /* ======================================================================
+     TOPIC 4: Memory optimization
+     ====================================================================== */
+  var MEM_LAYOUTS = [
+    { name: 'list of dicts', b: 268, why: 'Each record is a full hash table (~192 bytes for 3 keys incl. list slot) plus 3 boxed values (~76 bytes). Flexible, but the most expensive.' },
+    { name: 'class instances', b: 180, why: 'Since 3.11 instances store attribute values inline and only build a real __dict__ if you ask for it, so plain objects are much cheaper than dicts.' },
+    { name: 'namedtuple', b: 156, why: 'A tuple with field names stored once on the class. Immutable, compact, readable.' },
+    { name: '__slots__ class', b: 140, why: 'Fixed attribute slots, no per-instance __dict__ at all. Smallest object form, and attribute access is fast.' },
+    { name: 'array columns', b: 24, why: 'Column-oriented: array("d") / array("q") (or NumPy) store raw 8-byte numbers back to back — no per-value object header at all.' }
+  ];
+  topics.push({
+    title: 'Memory Optimization: getsizeof, tracemalloc, __slots__, Generators & Compact Storage',
+    analogy: R`<p>Packing for a trip: putting every T-shirt in its <b>own suitcase</b> (each with handle, wheels and lock) wastes most of the space on suitcases, not shirts. That is a list of tiny Python objects — each number wears a 24–28 byte "suitcase" (object header). Rolling all the shirts tightly into <b>one</b> bag is an <code>array</code> or NumPy column. And if you only need one outfit per day, you do not pack the whole wardrobe — you <b>stream</b> it, one day at a time, with a generator.</p>`,
+    explain: R`<p>🟢 <b>The plain idea.</b> In CPython <b>everything is an object</b> with a header (reference count + type pointer = 16 bytes, more for containers). So a small int costs <b>28 bytes</b>, a float <b>24</b>, an empty string <b>41</b>, and a list stores <b>8-byte pointers</b> to those objects. A million ints in a list ≈ 8 MB of pointers + 28 MB of int objects. The same million numbers in <code>array("i")</code> take <b>4 MB</b>.</p>
+<p>The memory toolbox, from easiest to most powerful:</p>
+<ol>
+<li><b>Measure:</b> <code>sys.getsizeof(obj)</code> — size of the object itself (${H.c('r', 'shallow')}: does not include what it points to). <code>tracemalloc</code> — tracks every allocation, shows peak memory and which line allocated it. Third-party <code>memray</code> gives flame graphs of allocations.</li>
+<li><b>Do not hold it all:</b> generators and iterators process one item at a time: <code>sum(len(line) for line in f)</code> never stores the file. Read files in chunks; stream query results.</li>
+<li><b>Smaller per-object shape:</b> <code>__slots__</code> classes, <code>namedtuple</code>/tuples instead of dicts per record, <code>@dataclass(slots=True)</code>.</li>
+<li><b>Compact storage:</b> <code>array</code> module, <code>bytes</code>/<code>bytearray</code>, NumPy arrays with the smallest safe dtype, pandas <code>category</code> dtype for repeated strings, <code>sys.intern</code> for many duplicate strings.</li>
+<li><b>Release references:</b> unbounded caches (<code>@lru_cache(maxsize=None)</code>), global lists that only grow, and reference cycles holding big objects are the classic "leaks". Use <code>maxsize</code>, <code>weakref</code>, and <code>del</code>.</li>
+</ol>
+${H.table(['object (CPython 3.13, 64-bit)', 'sys.getsizeof'], [['<code>0</code> … small int', '28 bytes'], ['<code>1.0</code>', '24'], ['<code>""</code> / <code>"a"</code>', '41 / 42'], ['<code>(1, 2, 3)</code>', '64'], ['<code>{"x":1,"y":2,"z":3}</code>', '184'], ['<code>list(range(10**6))</code>', '8,000,056 (pointers only!)'], ['<code>array("i", range(10**6))</code>', '~4,000,000']])}`,
+    clues: [
+      '"Process a 50 GB file on a 4 GB machine" → stream with generators / chunks, never <code>readlines()</code>',
+      '"Millions of small objects" / "OOM in a Python service" → <code>__slots__</code>, tuples, arrays, NumPy columns',
+      '"Memory keeps growing over days" → leak hunt with <code>tracemalloc</code> snapshots, unbounded caches, cycles',
+      '"How big is this object really?" → <code>getsizeof</code> is shallow; walk references or use tracemalloc',
+      '"Same string repeated millions of times" (country codes, status) → <code>sys.intern</code> / category dtype',
+      '"Slicing a huge bytes buffer is slow" → <code>memoryview</code> slices without copying'
+    ],
+    code: [{ lang: 'python', run: true, title: 'getsizeof is shallow; tracemalloc sees everything', code: R`
+import sys
+import tracemalloc
+
+nums = list(range(100_000))
+print("getsizeof(list):", sys.getsizeof(nums), "bytes  <- pointers only")
+print("plus the int objects:", sys.getsizeof(nums) + sum(map(sys.getsizeof, nums)), "bytes")
+
+def deep_size(obj, seen=None):
+    """Rough recursive size: follows containers, counts each object once."""
+    seen = set() if seen is None else seen
+    if id(obj) in seen:
+        return 0
+    seen.add(id(obj))
+    size = sys.getsizeof(obj)
+    if isinstance(obj, dict):
+        size += sum(deep_size(k, seen) + deep_size(v, seen) for k, v in obj.items())
+    elif isinstance(obj, (list, tuple, set, frozenset)):
+        size += sum(deep_size(x, seen) for x in obj)
+    return size
+
+record = {"name": "Asha", "tags": ["admin", "ops"], "score": 97.5}
+print("shallow:", sys.getsizeof(record), " deep:", deep_size(record))
+
+tracemalloc.start()
+squares = [i * i for i in range(200_000)]            # materialised list
+current, peak = tracemalloc.get_traced_memory()
+print(f"list version   current {current/1e6:.1f} MB  peak {peak/1e6:.1f} MB")
+tracemalloc.reset_peak()
+del squares
+total = sum(i * i for i in range(200_000))           # generator: one item at a time
+current, peak = tracemalloc.get_traced_memory()
+print(f"generator      current {current/1e6:.2f} MB  peak {peak/1e6:.2f} MB  total={total}")
+tracemalloc.stop()
+` }, { lang: 'python', run: true, title: '__slots__, dataclass(slots=True) and compact arrays', code: R`
+import sys
+import tracemalloc
+from array import array
+from dataclasses import dataclass
+
+class Point:                     # normal class: can add any attribute later
+    def __init__(self, x, y):
+        self.x, self.y = x, y
+
+class SlotPoint:                 # fixed set of attributes, no per-instance __dict__
+    __slots__ = ("x", "y")
+    def __init__(self, x, y):
+        self.x, self.y = x, y
+
+@dataclass(slots=True)           # Python 3.10+: dataclass generates __slots__
+class DPoint:
+    x: float
+    y: float
+
+def measure(make, n=50_000):
+    tracemalloc.start()
+    objs = [make(float(i), float(i)) for i in range(n)]
+    cur, _ = tracemalloc.get_traced_memory()
+    tracemalloc.stop()
+    return cur / n, objs
+
+factories = [("Point", Point), ("SlotPoint", SlotPoint), ("DPoint", DPoint),
+             ("tuple", lambda x, y: (x, y))]
+for name, make in factories:
+    per, _ = measure(make)
+    print(f"{name:<10} ~{per:6.1f} bytes per point (incl. 2 floats)")
+
+xs = array("d", (float(i) for i in range(50_000)))   # raw doubles, 8 bytes each
+print("array('d') bytes per value:", sys.getsizeof(xs) / len(xs))
+
+try:
+    SlotPoint(1, 2).z = 3
+except AttributeError as e:
+    print("slots forbid new attributes:", e)
+` }],
+    viz: [{
+      title: 'Bytes per record: dicts vs objects vs __slots__ vs arrays',
+      input: '1000000',
+      inputLabel: 'Number of records (each: 2 floats + 1 int)',
+      gen: function (input) {
+        var n = Number(String(input).trim());
+        if (!isFinite(n) || n < 1 || n > 1e9) throw new Error('Enter a record count between 1 and 1,000,000,000');
+        var frames = [], vals = [], names = [];
+        frames.push(fr('We store <b>' + n.toLocaleString() + '</b> records like <code>{x: 1.5, y: 3.0, id: 1042}</code> five different ways. Numbers are measured with <code>tracemalloc</code> on CPython 3.13 (64-bit) and include the boxed float/int values.', [
+          { type: 'bars', label: 'bytes per record', values: [0], idxLabels: ['start'] },
+          tx('Every Python value is a full object: float = 24 bytes, small int = 28 bytes. Containers add their own header and pointer slots on top.', 'Why Python objects are big')
+        ]));
+        MEM_LAYOUTS.forEach(function (m, i) {
+          vals.push(m.b); names.push(m.name);
+          var hl = {}; hl[i] = i === MEM_LAYOUTS.length - 1 ? 'ok' : 'cur';
+          var totalMB = Math.round(m.b * n / 1e6);
+          frames.push(fr('<b>' + esc(m.name) + '</b> ≈ ' + m.b + ' bytes/record → <b>' + totalMB.toLocaleString() + ' MB</b> for ' + n.toLocaleString() + ' records. ' + m.why, [
+            { type: 'bars', label: 'bytes per record (lower is better)', values: vals.slice(), idxLabels: names.slice(), hl: hl },
+            { type: 'vars', label: 'total for your N', vals: { layout: m.name, total_MB: totalMB } }
+          ]));
+        });
+        frames.push(fr('From dicts to columns is an <b>' + round1(268 / 24) + '×</b> saving. Typical path in production: dicts → <code>@dataclass(slots=True)</code> (easy, keeps OOP) → NumPy/pandas/Polars columns when you need millions of rows and vectorized maths.', [
+          { type: 'bars', label: 'total MB for ' + n.toLocaleString() + ' records', values: MEM_LAYOUTS.map(function (m) { return Math.round(m.b * n / 1e6); }), idxLabels: names.slice(), hl: { 0: 'bad', 4: 'sel' } }
+        ]));
+        return frames;
+      }
+    }, {
+      title: 'Streaming pipeline: list holds everything, generator holds one item',
+      input: '5 12 7 3 9 14',
+      inputLabel: 'Line lengths in a "file" (space separated)',
+      gen: function (input) {
+        var a = nums(input, 10, 'Enter line lengths, e.g. 5 12 7 3');
+        var frames = [], held = [], total = 0;
+        frames.push(fr('Goal: total characters of all lines. Version A: <code>lines = f.readlines()</code> then sum. Version B: <code>sum(len(l) for l in f)</code>. Watch what each keeps in memory.', [
+          { type: 'code', label: 'two versions', lang: 'python', code: 'lines = f.readlines()              # A: whole file in RAM\ntotal = sum(len(l) for l in lines)\n\ntotal = sum(len(l) for l in f)     # B: one line at a time', hl: {} }
+        ]));
+        a.forEach(function (v, i) {
+          held.push('line' + i);
+          frames.push(fr('A: <code>readlines()</code> loads line ' + i + ' and <b>keeps it</b>. Memory grows with the file: ' + held.length + ' line object(s) alive.', [
+            { type: 'stack', label: 'A: list in memory', items: held.slice(), hl: (function () { var h = {}; h[held.length - 1] = 'bad'; return h; })() },
+            { type: 'vars', vals: { objects_alive: held.length } }
+          ]));
+        });
+        a.forEach(function (v, i) {
+          total += v;
+          frames.push(fr('B: the generator pulls <b>line ' + i + '</b> (' + v + ' chars), adds it to the running total, and the line is freed immediately (refcount → 0). Only <b>one</b> line is ever alive.', [
+            { type: 'queue', label: 'B: file → genexpr → sum()', items: ['line' + i], hl: { 0: 'ok' }, frontLabel: 'in flight', backLabel: '' },
+            { type: 'vars', vals: { running_total: total, objects_alive: 1 }, hl: { running_total: 'ok' } }
+          ]));
+        });
+        frames.push(fr('Same answer (<b>' + total + '</b>), but A needed memory ∝ file size while B needs O(1). For a 50 GB log, A crashes; B runs fine. Trade-off: a generator can be consumed <b>only once</b>.', [
+          { type: 'bars', label: 'peak objects alive', values: [a.length, 1], idxLabels: ['A: readlines()', 'B: generator'], hl: { 0: 'bad', 1: 'ok' } }
+        ]));
+        return frames;
+      }
+    }],
+    examples: [
+      { title: 'Find a leak with tracemalloc snapshots', html: R`<p>Take a snapshot, run the suspicious code, take another, and <b>diff</b>. The top line points at the file and line number that allocated the most new memory — here an "audit log" list that only ever grows.</p>`, code: { lang: 'python', run: true, code: R`
+import tracemalloc
+
+AUDIT = []                         # module-level list that is never trimmed -> leak
+
+def handle_request(i):
+    AUDIT.append({"req": i, "payload": "x" * 200})
+
+tracemalloc.start()
+before = tracemalloc.take_snapshot()
+for i in range(5_000):
+    handle_request(i)
+after = tracemalloc.take_snapshot()
+for stat in after.compare_to(before, "lineno")[:2]:
+    print(stat)                    # points at the AUDIT.append line
+tracemalloc.stop()` } },
+      { title: 'memoryview: slice big buffers without copying', html: R`<p><code>data[1000:]</code> on <code>bytes</code> <b>copies</b> everything after index 1000. A <code>memoryview</code> slice is a window onto the same memory: O(1) and zero extra bytes. Essential for network protocol parsers.</p>`, code: { lang: 'python', run: true, code: R`
+data = bytearray(b"HEADER" + b"x" * 1_000_000)
+view = memoryview(data)
+body = view[6:]                 # no copy: just a new window
+print(len(body), body[:3].tobytes())
+view[0:6] = b"header"           # writes go to the original buffer
+print(data[:6])` } },
+      { title: 'sys.intern for millions of repeated strings', html: R`<p>Parsing a CSV creates a <b>new</b> string object for every "IN" or "US" cell even if the text is identical. <code>sys.intern(s)</code> returns one canonical shared copy, so a million rows hold a million pointers to a handful of strings. pandas does the same with <code>astype("category")</code>.</p>`, code: { lang: 'python', run: true, code: R`
+import sys
+rows = ["IN,1", "US,2", "IN,3"] * 3
+countries = [sys.intern(r.split(",")[0]) for r in rows]
+print(countries[0] is countries[3], len({id(c) for c in countries}), "distinct objects")` } },
+      { title: 'Unbounded cache = memory leak', html: R`<p><code>@lru_cache(maxsize=None)</code> on a function called with ever-new arguments (user IDs, timestamps) grows forever. Use a bounded <code>maxsize</code>, check <code>.cache_info()</code>, and never cache on <b>methods</b> naively: <code>self</code> becomes part of the key and keeps every instance alive. Use <code>functools.cached_property</code> or a per-instance dict instead.</p>` }
+    ],
+    deepDive: R`<p>🟣 <b>How CPython manages memory.</b> Objects ≤ 512 bytes come from <b>pymalloc</b>: 16 KB pools inside 1 MB arenas (sizes vary by version). Memory returns to the OS only when an entire arena is empty, so after freeing millions of small objects the process RSS may stay high even though Python can reuse the space — that is <b>fragmentation</b>, not a leak. Most objects die as soon as their <b>reference count</b> hits zero; the cyclic garbage collector (generational; 3.14 introduced an incremental collector) only cleans up reference <b>cycles</b>. Objects with <code>__del__</code> in cycles are collectable since 3.4 (PEP 442).</p>
+<p><b>Object layouts:</b> since 3.11, instances keep attribute values in an inline array with a shared key table on the class, and only materialise a <code>__dict__</code> on demand — which is why plain objects beat dicts in the viz. <code>__slots__</code> still wins (no dict pointer, no weakref slot unless you add <code>"__weakref__"</code>), but costs flexibility: no new attributes, and multiple inheritance with non-empty slots in two bases fails with a layout conflict. Lists over-allocate by ~12.5% for amortised O(1) append; <code>tuple</code> is exact-size. Ints up to 2<sup>30</sup>−1 use one 30-bit "digit" (28 bytes); bigger ints grow 4 bytes per digit.</p>
+<p><b>Tools in production:</b> <code>memray</code> (native + Python allocations, flame graphs, live mode), <code>tracemalloc</code> (stdlib, ~2× slowdown while tracing), <code>objgraph</code> for "who is keeping this alive?" (<code>gc.get_referrers</code>), and container limits + OOM-killer metrics. For data, columnar formats (Arrow, Parquet) and <code>mmap</code> let you work with files bigger than RAM; Polars streams lazily.</p>`,
+    aiEra: R`<p><b>What AI changes:</b> assistants can convert a dict-per-record pipeline into dataclasses with slots or Arrow columns in minutes, and they read <code>memray</code>/<code>tracemalloc</code> output well. <b>Use AI as a partner:</b> <i>"Here is the tracemalloc top-10 diff after 1 hour of traffic — which allocation sites grow, and what holds references to them?"</i> <b>Where AI goes wrong:</b> it trusts <code>sys.getsizeof</code> as a deep size, quotes pre-3.11 numbers for instance size, suggests <code>gc.collect()</code> calls as a "fix" for leaks that are really live references, and adds <code>__slots__</code> to classes that need dynamic attributes or pickling quirks. <b>What you must still own:</b> measuring peak memory with realistic data, understanding refcounts vs cycles, and the product decision of streaming vs materialising (a generator can only be read once).</p>`,
+    problems: [{
+      title: 'Aggregate a Huge Access Log in Constant Memory',
+      level: 'Medium', tags: ['generators', 'memory', 'streaming'], companies: ['Cloudflare', 'Datadog', 'Netflix'],
+      statement: R`<p>An access log has one request per line: <code>&lt;status&gt; &lt;bytes&gt; &lt;path&gt;</code>. Return a dict mapping each status code to the <b>total bytes</b> served. The file is <b>80 GB</b>; the machine has 2 GB of RAM. The current code reads the whole file into lists and crashes with <code>MemoryError</code>.</p>`,
+      constraints: R`Up to 10<sup>9</sup> lines; at most ~50 distinct status codes; malformed lines must be skipped, not crash the job.`,
+      example: R`<p>Lines <code>200 512 /a</code>, <code>404 0 /x</code>, <code>200 1024 /b</code>, <code>oops</code>, <code>500 10 /c</code> → <code>${H.c('g', "{'200': 1536, '404': 0, '500': 10}")}</code>. The "oops" line has the wrong shape and is skipped.</p>`,
+      brute: { why: R`<p><code>f.read().splitlines()</code> holds the whole 80 GB file as string objects (more like 150 GB with object overhead), then a second list of parsed tuples doubles it. Memory is O(file size) even though the answer needs only ~50 numbers.</p>`, code: { lang: 'python', run: true, code: R`
+import io
+
+def totals_slow(f):
+    lines = f.read().splitlines()                  # entire file in RAM
+    parsed = [ln.split() for ln in lines]          # and again, as lists
+    out = {}
+    for p in parsed:
+        if len(p) == 3 and p[1].isdigit():
+            out[p[0]] = out.get(p[0], 0) + int(p[1])
+    return out
+
+log = io.StringIO("200 512 /a\n404 0 /x\n200 1024 /b\noops\n500 10 /c\n")
+print(totals_slow(log))` } },
+      mcq: { q: 'What memory does a streaming solution need?', options: ['O(number of distinct status codes) — one counter per status', 'O(number of lines)', 'O(file size / 2)', 'O(longest line × number of lines)'], answer: 0, explain: 'Iterating a file object yields one line at a time; only the per-status totals (≈50 entries) and one line are alive at any moment.' },
+      hints: [R`<p>Hint 1: a file object is already an iterator of lines — <code>for line in f</code> reads lazily with a small buffer.</p>`, R`<p>Hint 2: build a generator pipeline: lines → split → filter valid → accumulate into a <code>defaultdict(int)</code>. Each stage passes one item along.</p>`, R`<p>Hint 3: recipe — for each line: parts = line.split(); skip unless len == 3 and parts[1].isdigit(); totals[parts[0]] += int(parts[1]). Open the real file with <code>open(path, buffering=1 &lt;&lt; 20)</code>; for gzip logs use <code>gzip.open(path, "rt")</code> — still streaming.</p>`],
+      solution: {
+        approach: R`<p>Treat the file as a stream. A generator parses and validates each line and yields <code>(status, bytes)</code>; the consumer adds into a small dict. Peak memory = one line + the totals dict, independent of file size. The same code works for <code>sys.stdin</code>, gzip files, or a network socket wrapped as a text stream.</p>`,
+        code: { lang: 'python', run: true, code: R`
+import io
+from collections import defaultdict
+
+def parse(lines):
+    """Generator: yields (status, nbytes) for valid lines, skips bad ones."""
+    for line in lines:
+        parts = line.split()
+        if len(parts) == 3 and parts[1].isdigit():
+            yield parts[0], int(parts[1])
+
+def totals(f):
+    out = defaultdict(int)
+    for status, nbytes in parse(f):      # one line alive at a time
+        out[status] += nbytes
+    return dict(out)
+
+log = io.StringIO("200 512 /a\n404 0 /x\n200 1024 /b\noops\n500 10 /c\n")
+print(totals(log))                       # {'200': 1536, '404': 0, '500': 10}
+
+# Simulate a big stream without ever building it in memory
+big = (f"{200 if i % 10 else 503} {i % 1000} /p{i}\n" for i in range(300_000))
+print(totals(big))
+` },
+        dry: { head: ['line', 'parts', 'valid?', 'totals after'], rows: [
+          ['200 512 /a', "['200','512','/a']", 'yes', "{'200': 512}"],
+          ['404 0 /x', "['404','0','/x']", 'yes', "{'200': 512, '404': 0}"],
+          ['200 1024 /b', "['200','1024','/b']", 'yes', "{'200': 1536, '404': 0}"],
+          ['oops', "['oops']", '<span class="c-r">no → skip</span>', 'unchanged'],
+          ['500 10 /c', "['500','10','/c']", 'yes', "<span class=\"c-g\">{'200': 1536, '404': 0, '500': 10}</span>"]
+        ] },
+        complexity: R`<p>Time O(total bytes of the file) — one pass. Memory O(s) for s distinct statuses plus one line buffer, i.e. O(1) with respect to file size.</p>`,
+        followUps: ['Split the 80 GB file into byte ranges and process them in parallel with multiprocessing — how do you handle lines that cross a boundary?', 'Also report the p99 response size per status with bounded memory (t-digest / reservoir sampling)', 'What changes if the log is gzip-compressed?']
+      }
+    }]
+  });
   registerModule({ id: 'py13', title: 'Performance & Expert Python + Gotchas Bank', intro: '<p>x</p>', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview });
 })();

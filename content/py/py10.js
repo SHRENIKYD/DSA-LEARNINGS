@@ -997,4 +997,530 @@ if __name__ == "__main__":
     }]
   });
 
+  /* ================= TOPIC 5: asyncio event loop ================= */
+  topics.push({
+    title: 'The asyncio Event Loop and async/await: One Thread, Many Waiting Tasks',
+    analogy: `<p>A single <b>waiter</b> serves ten tables. She takes table 1's order, gives it to the kitchen, and <b>instead of standing there waiting</b>, walks to table 2. When the kitchen rings the bell, she picks up the dish and carries it out. One waiter, many tables, nobody idle. The waiter is the <b>event loop</b>, each table is a <b>task</b>, "give the order and walk away" is <code>await</code>, and the kitchen bell is the operating system saying "your data has arrived". The one rule: a waiter who stops to <b>cook a three-course meal herself</b> (CPU work or a blocking call) freezes the whole restaurant.</p>`,
+    explain: `<p>🟢 <b>asyncio</b> runs many I/O tasks <b>concurrently on a single thread</b>. There is no GIL fight and no locking of every variable, because only one task runs at a time and it only switches at <code>await</code> points you can see.</p>
+<pre>import asyncio
+
+async def brew(name, secs):          # "async def" makes a coroutine function
+    print(name, "start")
+    await asyncio.sleep(secs)        # pause HERE, let other tasks run
+    print(name, "done")
+    return name
+
+async def main():
+    results = await asyncio.gather(brew("tea", 2), brew("coffee", 1))
+    print(results)                   # ['tea', 'coffee'] after ~2 s, not 3
+
+asyncio.run(main())                  # create a loop, run main(), close the loop</pre>
+<p>🔵 <b>The words, plainly:</b></p>
+${H.table(['Word', 'Meaning'], [['<b>coroutine function</b>', 'a function defined with <code>async def</code>'], ['<b>coroutine object</b>', 'what calling it returns — <b>nothing runs yet</b>! It is a paused recipe'], ['<code>await x</code>', '"run x; if it has to wait, pause me and let the loop run others"'], ['<b>awaitable</b>', 'anything you can await: coroutines, Tasks, Futures'], ['<b>Task</b>', 'a coroutine scheduled on the loop to run on its own (<code>asyncio.create_task</code>)'], ['<b>event loop</b>', 'the scheduler: runs ready tasks, waits for I/O and timers, wakes tasks up']])}
+<p><b>What the loop does, over and over:</b></p>
+<ol>
+<li>Take each task from the <b>ready queue</b> and run it until its next <code>await</code> that really has to wait.</li>
+<li>That task is now <b>parked</b>: waiting on a timer, a socket, or another Future.</li>
+<li>When the ready queue is empty, ask the OS (<code>epoll</code>/<code>kqueue</code>/IOCP via <code>selectors</code>): "which sockets are ready? sleep until the next timer at most".</li>
+<li>Move the woken tasks back to the ready queue. Repeat.</li>
+</ol>
+<p><b>Cooperative, not preemptive:</b> a task keeps the thread until it awaits. That makes reasoning easier (no surprise switches between two lines without an <code>await</code>), but one slow function blocks everyone.</p>
+${H.table(['', 'Threads', 'asyncio'], [['who switches', 'OS/interpreter, any time', 'only at <code>await</code>'], ['cost per unit', '~8 MB virtual stack, OS thread', '~2 KB coroutine object'], ['practical count', 'hundreds–low thousands', 'tens of thousands+'], ['works with blocking libs (requests)', H.c('g', 'yes'), H.c('r', 'no — need async libs (httpx, aiohttp, asyncpg) or to_thread')], ['shared-state bugs', 'anywhere', 'only across awaits']])}
+<p>🟣 <b>Also know:</b> <code>async with</code> (async context managers: connections, locks), <code>async for</code> (async iterators: streaming responses), <code>asyncio.sleep(0)</code> = "yield to others right now". Production servers (FastAPI/Uvicorn) often swap in <b>uvloop</b>, a faster loop written on libuv.</p>`,
+    clues: [
+      '"handle 10,000 concurrent connections / websockets / chat clients" → asyncio (cheap tasks, one thread)',
+      '"call 100 APIs concurrently using httpx / aiohttp" → asyncio + gather/TaskGroup',
+      '"RuntimeWarning: coroutine was never awaited" → you called an async function without await or create_task',
+      '"what does await actually do?" → suspend this coroutine, return control to the event loop until the awaitable is done',
+      '"single-threaded but concurrent" / "cooperative multitasking" → event loop',
+      '"output order puzzle with asyncio.sleep" → trace ready queue + timers by hand'
+    ],
+    code: [{ lang: 'python', title: 'A coroutine is a pausable object — drive one by hand (runnable)', run: true, code: `import types
+
+@types.coroutine
+def pause(reason):
+    """A tiny awaitable: yields a message up to whoever drives the coroutine."""
+    reply = yield reason          # this is exactly how asyncio Futures suspend
+    return reply
+
+async def order_coffee():
+    print("  coroutine: placing order")
+    size = await pause("need cup size")
+    print("  coroutine: got size", size)
+    temp = await pause("need temperature")
+    print("  coroutine: got temp", temp)
+    return f"{size} {temp} coffee"
+
+coro = order_coffee()             # NOTHING runs yet - it's just an object
+print("created:", type(coro).__name__)
+
+msg = coro.send(None)             # start it; runs until the first await pauses
+print("driver got:", msg)
+msg = coro.send("large")          # resume with a value
+print("driver got:", msg)
+try:
+    coro.send("hot")              # resume again; this time it returns
+except StopIteration as done:
+    print("finished with:", done.value)
+` }, { lang: 'python', title: 'The classic interleaving puzzle (run locally)', code: `import asyncio
+import time
+
+async def task(name, delay):
+    print(f"{time.perf_counter() - T0:.1f}s {name} start")
+    await asyncio.sleep(delay)            # parks the task on a timer
+    print(f"{time.perf_counter() - T0:.1f}s {name} end")
+    return name
+
+async def main():
+    # create_task schedules all three immediately; gather waits for all
+    results = await asyncio.gather(task("A", 2), task("B", 1), task("C", 3))
+    print("results in argument order:", results)
+
+T0 = time.perf_counter()
+asyncio.run(main())
+# 0.0s A start / 0.0s B start / 0.0s C start
+# 1.0s B end / 2.0s A end / 3.0s C end
+# results in argument order: ['A', 'B', 'C']   total ≈ 3 s, not 6 s
+` }],
+    codeTitle: ['Hand-driven coroutine', 'Interleaving demo'],
+    viz: {
+      title: 'Inside the event loop: ready queue, sleeping tasks, and the clock',
+      input: 'A:2 B:1 C:3',
+      inputLabel: 'tasks as name:sleepSeconds (up to 5, seconds 0-9)',
+      gen: function (input) {
+        var toks = words(input || 'A:2 B:1 C:3');
+        if (!toks.length || toks.length > 5) throw new Error('Give 1-5 tasks like A:2 B:1 C:3');
+        var tasks = toks.map(function (t) {
+          var m = /^([A-Za-z]\w{0,5}):(\d)$/.exec(t);
+          if (!m) throw new Error('Each task must look like A:2 (name:seconds 0-9)');
+          return { name: m[1], d: Number(m[2]), stage: 0, wake: -1 };
+        });
+        var code = 'async def worker(name, secs):\n    print(name, "start")\n    await asyncio.sleep(secs)\n    print(name, "end")\n    return name';
+        var ready = tasks.map(function (t, i) { return i; }), sleeping = [], out = [], clock = 0, frames = [], seq = 0;
+        function snap(narr, line, cls, running) {
+          var hl = {}; if (line) hl[line] = cls || 'cur';
+          sleeping.sort(function (a, b) { return tasks[a].wake - tasks[b].wake || tasks[a].seq - tasks[b].seq; });
+          frames.push(fr(narr, [
+            cp(code, hl, running !== undefined ? 'Running now: task ' + tasks[running].name : 'Coroutine code'),
+            { type: 'queue', label: 'Ready queue (will run next, in order)', items: ready.map(function (i) { return tasks[i].name; }), frontLabel: 'next', backLabel: 'last' },
+            { type: 'table', label: 'Parked tasks: waiting on a timer (heap ordered by wake time)', columns: ['task', 'awaiting', 'wakes at'], rows: sleeping.map(function (i) { return [tasks[i].name, 'sleep(' + tasks[i].d + ')', tasks[i].wake + 's']; }), hl: sleeping.length ? { 0: 'win' } : {} },
+            vp({ 'loop clock': clock + 's', 'running task': running !== undefined ? tasks[running].name : '(loop itself)', 'tasks finished': tasks.filter(function (t) { return t.stage === 2; }).length + ' / ' + tasks.length }, 'loop clock', 'cur'),
+            outBox(out)
+          ]));
+        }
+        snap('<code>asyncio.gather</code> wraps each coroutine in a <b>Task</b>. New tasks go to the back of the <b>ready queue</b>. Nothing has run yet — the loop starts its first pass.');
+        var guard = 0;
+        while (guard++ < 60) {
+          if (ready.length) {
+            var i = ready.shift(), t = tasks[i];
+            if (t.stage === 0) {
+              out.push(clock + 's ' + t.name + ' start');
+              snap('Loop pops <b>' + t.name + '</b> from the ready queue and runs it. It prints "' + t.name + ' start".', 2, 'cur', i);
+              t.stage = 1; t.wake = clock + t.d; t.seq = seq++;
+              if (t.d === 0) {
+                ready.push(i);
+                snap('<code>await asyncio.sleep(0)</code> is special: it just <b>yields</b> — ' + t.name + ' goes straight to the back of the ready queue so others get a turn.', 3, 'cur', i);
+              } else {
+                sleeping.push(i);
+                snap('<b>' + t.name + '</b> hits <code>await asyncio.sleep(' + t.d + ')</code>. The loop sets a timer for t=' + t.wake + 's and <b>parks</b> the task. Control returns to the loop instantly — no thread is blocked.', 3, 'win', i);
+              }
+            } else {
+              out.push(clock + 's ' + t.name + ' end');
+              t.stage = 2;
+              snap('Loop resumes <b>' + t.name + '</b> right after its await. It prints "' + t.name + ' end" and returns → the Task is <b>done</b> and its result is stored for gather.', 5, 'ok', i);
+            }
+          } else if (sleeping.length) {
+            sleeping.sort(function (a, b) { return tasks[a].wake - tasks[b].wake || tasks[a].seq - tasks[b].seq; });
+            var nextWake = tasks[sleeping[0]].wake, woke = [];
+            var waitFor = nextWake - clock;
+            clock = nextWake;
+            while (sleeping.length && tasks[sleeping[0]].wake === clock) { var w = sleeping.shift(); ready.push(w); woke.push(tasks[w].name); }
+            snap('Ready queue is empty, so the loop calls the OS selector: "wake me when a socket is ready, or in ' + waitFor + 's at most" (the nearest timer). The thread sleeps using 0% CPU. Clock jumps to <b>' + clock + 's</b>; timer(s) for <b>' + woke.join(', ') + '</b> fire → moved to the ready queue.', 3, 'ok');
+          } else break;
+        }
+        snap('<b>All tasks done at t = ' + clock + 's.</b> Sequential code would take ' + tasks.reduce(function (s, t) { return s + t.d; }, 0) + 's. Concurrency here = the waits overlapped; total = the longest single wait. gather returns results in <b>argument order</b>: [' + tasks.map(function (t) { return "'" + t.name + "'"; }).join(', ') + '].');
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'Calling without await does nothing', html: `<p><code>brew("tea", 1)</code> on its own line just creates a coroutine object and throws it away. Python warns: <code>RuntimeWarning: coroutine 'brew' was never awaited</code>. Nothing printed, nothing brewed.</p>${H.table(['You wrote', 'What happens'], [['<code>brew("tea", 1)</code>', H.c('r', 'object created, never run')], ['<code>await brew("tea", 1)</code>', H.c('g', 'runs now, you wait for it')], ['<code>asyncio.create_task(brew("tea", 1))</code>', H.c('g', 'runs in the background; keep the task reference!')]])}` },
+      { title: 'await one-by-one is still sequential', html: `<p>This takes <b>3 s</b>, not 2 s:</p><pre>await brew("tea", 2)      # waits 2 s
+await brew("coffee", 1)   # only starts after tea finishes</pre><p>Awaiting a coroutine directly runs it to completion before moving on. To overlap, schedule them first (<code>gather</code>, <code>TaskGroup</code>, or <code>create_task</code>), then await. That is the #1 "my async code isn't faster" bug.</p>` },
+      { title: 'Order puzzle with sleep(0)', html: `<p>Tasks X and Y each print twice with <code>await asyncio.sleep(0)</code> between prints. Output: <b>X1 Y1 X2 Y2</b>. <code>sleep(0)</code> puts X at the back of the ready queue, so Y gets its turn. Without the sleep, X would print X1 X2 before Y ever ran — there is no await, so no switch.</p>`, code: `import asyncio
+
+async def show(name):
+    print(name + "1")
+    await asyncio.sleep(0)     # yield to the loop
+    print(name + "2")
+
+async def main():
+    await asyncio.gather(show("X"), show("Y"))
+
+asyncio.run(main())   # X1 Y1 X2 Y2` },
+      { title: 'async with and async for', html: `<p>Async context managers and iterators let setup/teardown and each "next item" await I/O:</p><pre>async with httpx.AsyncClient() as client:        # opens/closes a connection pool
+    r = await client.get(url)
+
+async for chunk in response.aiter_bytes():        # each chunk may wait on the network
+    sink.write(chunk)</pre><p>Under the hood these call <code>__aenter__</code>/<code>__aexit__</code> and <code>__aiter__</code>/<code>__anext__</code>, which return awaitables.</p>` }
+    ],
+    deepDive: `<p><b>Coroutines are generators in disguise.</b> A native coroutine is implemented with the same frame-suspension machinery as generators. <code>await x</code> calls <code>x.__await__()</code> and delegates to it like <code>yield from</code>. At the bottom of every await chain sits an <code>asyncio.Future</code> whose <code>__await__</code> literally <code>yield</code>s itself to the Task driving the coroutine. The Task (a Future subclass) then adds a done-callback to that Future: "when you're done, schedule my <code>__step</code> again". That callback goes into the loop's <code>_ready</code> deque. <b>That is the whole trick.</b></p>
+<p><b>One loop iteration (<code>_run_once</code>):</b> compute timeout = 0 if <code>_ready</code> is non-empty, else time until the earliest timer in the <code>_scheduled</code> heap; call <code>selector.select(timeout)</code> and add callbacks for ready file descriptors; pop all due timers into <code>_ready</code>; then run exactly the callbacks that are in <code>_ready</code> <b>at this moment</b> (new ones wait for the next iteration — this prevents starvation). <code>asyncio.sleep(d)</code> = create a Future + <code>loop.call_later(d, fut.set_result, None)</code>.</p>
+<p><b>Thread safety.</b> The loop is <b>not</b> thread-safe. From another thread use <code>loop.call_soon_threadsafe(cb)</code> (writes to a self-pipe to wake the selector) or <code>asyncio.run_coroutine_threadsafe(coro, loop)</code>, which returns a <code>concurrent.futures.Future</code>. Each thread has at most one running loop; <code>asyncio.run</code> refuses to start inside a running loop (that's why Jupyter users use top-level <code>await</code> instead).</p>
+<p><b>Performance reality.</b> A task switch costs a few microseconds; a pure-asyncio loop can do roughly tens of thousands of simple network round-trips per second per core; uvloop is ~2–4× faster. Python 3.12 added <code>asyncio.eager_task_factory</code> (start running a task synchronously until its first real suspension, saving a loop round-trip), and 3.14 added <code>python -m asyncio ps PID</code> / <code>pstree</code> to inspect the tasks of a running process. Beyond one core you run several processes, each with its own loop (e.g. <code>uvicorn --workers 4</code>).</p>`,
+    aiEra: `<p><b>What AI changes:</b> AI writes async endpoints and clients fluently, and modern LLM SDKs (Anthropic, OpenAI) ship async clients, so fan-out of many model calls with asyncio is now everyday code. Your job is to make sure the code is <b>actually concurrent</b> and <b>never blocks the loop</b>.</p>
+<p><b>Use AI as a partner:</b> <code>Mark every line in this async function where the event loop could switch tasks</code>; <code>Find blocking calls (requests, time.sleep, open(), heavy JSON) inside async def</code>; <code>Predict the output order of this asyncio snippet and explain using the ready queue</code> — then verify by running it.</p>
+<p><b>Where AI goes wrong:</b> sequential <code>await</code>s in a loop where it meant to overlap work; calling <code>asyncio.run()</code> inside an already-running loop (Jupyter, FastAPI handlers); mixing <code>requests</code> into async code; inventing APIs like <code>asyncio.run_all</code>.</p>
+<p><b>What you must still own:</b> the event-loop mental model (ready queue, parked tasks, selector), predicting interleavings, and deciding between asyncio, threads and processes for a given workload.</p>`,
+    problems: [{
+      title: 'Build a Mini Event Loop with Generators', level: 'Hard', tags: ['generators', 'event loop', 'scheduling', 'heapq'], companies: ['Google', 'Jane Street', 'Meta'],
+      statement: `<p>Implement <code>run(tasks)</code>, a tiny cooperative scheduler. Each task is a <b>generator</b> that can <code>yield ("sleep", secs)</code> to pause for simulated seconds, or <code>yield None</code> to just give others a turn. Use a <b>simulated clock</b> (no real waiting). Tasks that are ready run in FIFO order; when none are ready, jump the clock to the earliest wake-up. Return the log of <code>(time, message)</code> pairs the tasks produced via a <code>log</code> helper.</p>`,
+      constraints: `<p>Up to 10<sup>4</sup> tasks, up to 10<sup>5</sup> yields total. Ties in wake-up time are resolved by the order the sleeps were requested.</p>`,
+      example: `<p>Task A: log "A1", sleep 2, log "A2". Task B: log "B1", sleep 1, log "B2".<br>Output: ${H.c('g', '[(0, A1), (0, B1), (1, B2), (2, A2)]')} — both start at t=0; B wakes first at t=1; A wakes at t=2. Exactly what asyncio prints for the same sleeps.</p>`,
+      brute: { why: `<p>Running each generator to completion one after another ignores sleeps as concurrency points: B can't start until A finishes, so time adds up (A's 2 s + B's 1 s) and the log order is wrong.</p>`, code: `def run_sequential(tasks):
+    clock, log = 0, []
+    for name, gen in tasks:
+        for req in gen(log, lambda: clock):
+            if req and req[0] == "sleep":
+                clock += req[1]
+    return log
+
+print(run_sequential([]))` },
+      mcq: { q: 'The ready queue is empty and two tasks are sleeping until t=5 and t=3. What should the loop do?', options: ['Busy-loop, incrementing the clock by 1', 'Jump the clock to 3 and wake that task', 'Wake both tasks now', 'Stop: nothing is ready'], answer: 1, explain: 'A real loop asks the OS to sleep until the nearest timer (or I/O). In simulation we jump the clock straight to the earliest wake time — a min-heap gives it in O(log n).' },
+      hints: [`<p>Hint 1: You need two structures: a FIFO <b>ready deque</b> and a <b>min-heap</b> of sleepers keyed by (wake_time, sequence_number).</p>`, `<p>Hint 2: To run a task one step: <code>req = next(gen)</code> inside try/except StopIteration. If req is ("sleep", s) push (clock + s, seq, gen) on the heap; if None, append back to the ready deque.</p>`, `<p>Hint 3: Main loop: while ready or heap: if ready → step one task; else pop the earliest sleeper, set clock to its time, and also move every other sleeper with the same time (keeping seq order). The sequence counter breaks ties and avoids comparing generators.</p>`],
+      solution: {
+        approach: `<p>This is asyncio's core in 30 lines: a ready deque (like <code>loop._ready</code>), a timer heap (like <code>loop._scheduled</code>), and a "step" that resumes a coroutine until its next yield. The simulated clock replaces <code>selector.select(timeout)</code>.</p>`,
+        code: { lang: 'python', run: true, code: `import heapq
+from collections import deque
+
+def run(tasks):
+    """tasks: list of (name, generator_function(log, now))."""
+    clock = 0
+    log = []
+    ready = deque()
+    sleepers = []                       # heap of (wake_time, seq, gen)
+    seq = 0
+
+    def now():
+        return clock
+
+    for name, fn in tasks:
+        ready.append(fn(lambda msg: log.append((clock, msg)), now))
+
+    while ready or sleepers:
+        if not ready:                   # nothing runnable: jump to next timer
+            wake, _, gen = heapq.heappop(sleepers)
+            clock = wake
+            ready.append(gen)
+            while sleepers and sleepers[0][0] == clock:
+                ready.append(heapq.heappop(sleepers)[2])
+            continue
+        gen = ready.popleft()
+        try:
+            req = next(gen)             # run until the task's next yield
+        except StopIteration:
+            continue                    # task finished
+        if req is None:
+            ready.append(gen)           # like await asyncio.sleep(0)
+        elif req[0] == "sleep":
+            heapq.heappush(sleepers, (clock + req[1], seq, gen))
+            seq += 1
+    return log
+
+def task_a(log, now):
+    log("A1")
+    yield ("sleep", 2)
+    log("A2")
+
+def task_b(log, now):
+    log("B1")
+    yield ("sleep", 1)
+    log("B2")
+    yield None
+    log("B3 at t=" + str(now()))
+
+print(run([("A", task_a), ("B", task_b)]))
+# [(0, 'A1'), (0, 'B1'), (1, 'B2'), (1, 'B3 at t=1'), (2, 'A2')]
+` },
+        dry: { head: ['clock', 'ready deque', 'sleepers heap', 'action', 'log'], rows: [['0', 'A, B', '[]', 'step A → sleep 2', 'A1'], ['0', 'B', '[(2,A)]', 'step B → sleep 1', 'A1, B1'], ['1', 'B', '[(2,A)]', 'jump clock; step B → yield None; step B → done', '+ B2, B3'], ['2', 'A', '[]', 'jump clock; step A → done', '+ A2']] },
+        complexity: `<p>Each yield costs O(1) for a ready requeue or O(log S) for a heap push, where S = number of sleepers. Total O(Y log S) for Y yields; memory O(T) for T tasks.</p>`,
+        followUps: ['Add I/O readiness: tasks yield ("read", fd) and you use selectors.select(timeout).', 'Add a join: a task yields ("wait", other_task) and resumes when it finishes.', 'How does asyncio avoid starving timers when tasks keep yielding None?']
+      }
+    }]
+  });
+
+  /* ================= TOPIC 6: Tasks, gather, TaskGroup ================= */
+  topics.push({
+    title: 'Tasks, gather, TaskGroup, Timeouts, Cancellation and Rate Limiting',
+    analogy: `<p>You are a <b>tour guide</b> with a group. <code>gather</code> is "everyone go explore, meet me here" — if one tourist gets lost, you hear about it, but the others <b>keep wandering</b> and you may forget about them. <code>TaskGroup</code> is a <b>strict school trip</b>: if one kid gets hurt, the teacher <b>calls everyone back</b> immediately, waits until all are on the bus, then reports what happened. A <b>timeout</b> is "the bus leaves at 5 pm, ready or not". A <b>Semaphore</b> is a museum that only lets <b>3 of your group</b> inside at once.</p>`,
+    explain: `<p>🟢 <b>Getting things to overlap.</b> A coroutine only runs concurrently once it is wrapped in a <b>Task</b>. Three common ways:</p>
+<pre>t = asyncio.create_task(fetch(a))          # start now in the background; await t later
+results = await asyncio.gather(fetch(a), fetch(b))   # run all, results in argument order
+async with asyncio.TaskGroup() as tg:      # 3.11+: structured concurrency
+    t1 = tg.create_task(fetch(a))
+    t2 = tg.create_task(fetch(b))
+# here both are finished (or everything was cancelled and an ExceptionGroup is raised)</pre>
+<p>🔵 <b>What happens when one task fails?</b></p>
+${H.table(['Tool', 'One task raises…', 'Other tasks', 'You get'], [['<code>gather(...)</code>', 'first exception is raised to the awaiter right away', H.c('r', 'keep running, unwatched'), 'that one exception'], ['<code>gather(..., return_exceptions=True)</code>', 'nothing raised', 'keep running', 'a list mixing results and exception objects'], ['<code>TaskGroup</code>', 'group cancels all siblings', H.c('g', 'cancelled and awaited'), '<code>ExceptionGroup</code> (catch with <code>except*</code>)']])}
+<p><b>Timeouts:</b> <code>async with asyncio.timeout(2):</code> (3.11+) or <code>await asyncio.wait_for(coro, 2)</code>. When time runs out the inner task is <b>cancelled</b> and you get <code>TimeoutError</code>.</p>
+<p><b>Cancellation</b> works by throwing <code>asyncio.CancelledError</code> <b>into the task at its current await</b>. That lets <code>try/finally</code> and <code>async with</code> clean up (close sockets, release locks). Rules: don't swallow <code>CancelledError</code> (re-raise it after cleanup); <code>asyncio.shield(x)</code> protects an inner operation from an outer cancel.</p>
+<p><b>Limiting concurrency:</b> firing 10,000 requests at once gets you rate-limited or banned. Use <code>asyncio.Semaphore(k)</code>:</p>
+<pre>sem = asyncio.Semaphore(10)
+async def limited(url):
+    async with sem:                 # at most 10 bodies inside at once
+        return await fetch(url)</pre>
+<p>…or a fixed pool of <b>worker tasks</b> reading from an <code>asyncio.Queue</code> — better for very large or endless inputs because you don't create a task per item up front.</p>
+<p>🟣 <b>More tools:</b> <code>asyncio.as_completed(aws)</code> (finish order), <code>asyncio.wait(tasks, return_when=FIRST_COMPLETED)</code>, <code>asyncio.Event</code>, <code>asyncio.Lock</code> (protects state <b>across awaits</b>), <code>asyncio.Queue</code> (with <code>shutdown()</code> in 3.13+), <code>asyncio.Barrier</code> (3.11).</p>`,
+    clues: [
+      '"run N async calls concurrently and collect results" → gather / TaskGroup',
+      '"if any call fails, cancel the rest" / "no orphan tasks" → TaskGroup (structured concurrency)',
+      '"at most K requests in flight" / "respect a rate limit" → asyncio.Semaphore or K worker tasks + Queue',
+      '"each call must finish within 2 s" → asyncio.timeout / wait_for',
+      '"collect partial results even if some fail" → gather(return_exceptions=True)',
+      '"stream results as they arrive" → asyncio.as_completed',
+      '"process an endless stream with bounded memory" → asyncio.Queue(maxsize) + worker tasks'
+    ],
+    code: [{ lang: 'python', title: 'gather vs TaskGroup on failure (run locally)', code: `import asyncio
+
+async def job(name, secs, fail=False):
+    try:
+        await asyncio.sleep(secs)
+        if fail:
+            raise ValueError(f"{name} failed")
+        print("  finished", name)
+        return name
+    except asyncio.CancelledError:
+        print("  cancelled", name)
+        raise                                  # always re-raise after cleanup
+
+async def with_gather():
+    try:
+        await asyncio.gather(job("A", 0.2), job("B", 0.1, fail=True), job("C", 0.3))
+    except ValueError as e:
+        print("gather raised:", e)             # A and C are STILL running here
+    await asyncio.sleep(0.3)                   # ...and they finish on their own
+
+async def with_taskgroup():
+    try:
+        async with asyncio.TaskGroup() as tg:
+            tg.create_task(job("A", 0.2))
+            tg.create_task(job("B", 0.1, fail=True))
+            tg.create_task(job("C", 0.3))
+    except* ValueError as eg:                  # ExceptionGroup handling (3.11+)
+        print("TaskGroup raised:", [str(e) for e in eg.exceptions])
+
+print("--- gather"); asyncio.run(with_gather())
+print("--- TaskGroup"); asyncio.run(with_taskgroup())
+` }, { lang: 'python', title: 'Semaphore + timeout + as_completed (run locally)', code: `import asyncio
+import random
+
+async def fetch(i):
+    await asyncio.sleep(random.uniform(0.05, 0.3))   # pretend network call
+    return i * 10
+
+async def main():
+    sem = asyncio.Semaphore(3)                        # max 3 in flight
+    in_flight = peak = 0
+
+    async def limited(i):
+        nonlocal in_flight, peak
+        async with sem:
+            in_flight += 1
+            peak = max(peak, in_flight)
+            try:
+                async with asyncio.timeout(1.0):      # per-call deadline
+                    return await fetch(i)
+            finally:
+                in_flight -= 1
+
+    tasks = [asyncio.create_task(limited(i)) for i in range(10)]
+    for coro in asyncio.as_completed(tasks):          # finish order
+        print("got", await coro)
+    print("peak concurrency:", peak)                  # never above 3
+
+asyncio.run(main())
+` }],
+    codeTitle: ['Failure semantics', 'Limits and deadlines'],
+    viz: {
+      title: 'Sequential vs gather vs TaskGroup when one task fails',
+      input: '3 1x 2',
+      inputLabel: 'task durations in seconds (1-9); add x to make one fail, e.g. 3 1x 2',
+      gen: function (input) {
+        var toks = words(input || '3 1x 2');
+        if (!toks.length || toks.length > 4) throw new Error('Give 1-4 durations like 3 1x 2');
+        var T = toks.map(function (t, i) {
+          var m = /^(\d)(x?)$/i.exec(t);
+          if (!m || m[1] === '0') throw new Error('Each item is a digit 1-9, optionally followed by x (fails), e.g. 3 1x 2');
+          return { name: String.fromCharCode(65 + i), d: Number(m[1]), fail: !!m[2] };
+        });
+        var frames = [];
+        function sim(mode) {
+          var start = T.map(function () { return mode === 'seq' ? null : 0; }), end = [], failAt = null, horizon = 0, i;
+          if (mode === 'seq') {
+            var acc = 0;
+            for (i = 0; i < T.length; i++) { start[i] = acc; acc += T[i].d; if (T[i].fail) { failAt = acc; break; } }
+          } else {
+            T.forEach(function (t) { if (t.fail && (failAt === null || t.d < failAt)) failAt = t.d; });
+          }
+          T.forEach(function (t, k) {
+            if (start[k] === null) { end[k] = { s: 'never', at: 0 }; return; }
+            var finish = start[k] + t.d;
+            if (mode === 'tg' && failAt !== null && finish > failAt) end[k] = { s: 'cancel', at: failAt };
+            else end[k] = { s: t.fail ? 'fail' : 'ok', at: finish };
+            horizon = Math.max(horizon, end[k].at);
+          });
+          return { start: start, end: end, horizon: horizon, failAt: failAt };
+        }
+        var modes = [['seq', 'Sequential awaits', 'await a(); await b(); await c()'], ['gather', 'asyncio.gather', 'await asyncio.gather(a(), b(), c())'], ['tg', 'asyncio.TaskGroup', 'async with TaskGroup() as tg: tg.create_task(...) x3']];
+        var summary = [];
+        modes.forEach(function (md) {
+          var r = sim(md[0]), H2 = Math.max(1, r.horizon);
+          var grid = T.map(function () { return []; });
+          frames.push(fr('<b>' + md[1] + '</b>: <code>' + md[2] + '</code>. Tasks: ' + T.map(function (t) { return t.name + ' (' + t.d + 's' + (t.fail ? ', raises' : '') + ')'; }).join(', ') + '. Watch the timeline second by second.', [tx('<b>' + md[1] + '</b> — legend: <b>run</b> = awaiting I/O, ✓ = finished in that second, ✗ = raised, ⊘ = cancelled, · = not started, — = already over', 'Mode')]));
+          for (var s = 0; s < H2; s++) {
+            var events = [];
+            T.forEach(function (t, i) {
+              var st = r.start[i], e = r.end[i];
+              var cell = '·';
+              if (st !== null && s >= st && s < e.at - 1) cell = 'run';
+              else if (st !== null && s === e.at - 1) cell = e.s === 'ok' ? 'run ✓' : e.s === 'fail' ? 'run ✗' : 'run ⊘';
+              else if (st !== null && s >= e.at) cell = '—';
+              if (st !== null && s === e.at - 1) {
+                if (e.s === 'ok') events.push(t.name + ' finishes at ' + e.at + 's');
+                if (e.s === 'fail') events.push('<span class="c-r">' + t.name + ' raises at ' + e.at + 's</span>');
+              }
+              if (e.s === 'cancel' && s === e.at - 1) events.push('<span class="c-y">' + t.name + ' gets CancelledError at ' + e.at + 's</span>');
+              grid[i].push(cell);
+            });
+            var hl = {};
+            grid.forEach(function (row, i) { row.forEach(function (c, j) { hl[i + ',' + j] = c === 'run' ? (j === s ? 'cur' : 'win') : c === 'run ✓' ? 'ok' : c === 'run ✗' ? 'bad' : c === 'run ⊘' ? 'sel' : 'done'; }); });
+            var extra = '';
+            if (r.failAt !== null && s === r.failAt - 1) {
+              if (md[0] === 'seq') extra = ' The exception propagates out of the function: later awaits <b>never start</b>.';
+              if (md[0] === 'gather') extra = ' <code>gather</code> raises to the caller <b>now</b> — but the other tasks are <b>not cancelled</b>; they keep running with nobody watching.';
+              if (md[0] === 'tg') extra = ' The TaskGroup <b>cancels every sibling</b>, waits for them to unwind, then raises an <code>ExceptionGroup</code>.';
+            }
+            frames.push(fr('<b>' + md[1] + ', t = ' + s + '→' + (s + 1) + 's.</b> ' + (events.length ? events.join('; ') + '.' : 'Tasks are awaiting I/O.') + extra, [
+              { type: 'grid', label: md[1] + ' timeline (columns = seconds)', rows: grid.map(function (g) { return g.slice(); }), rowHead: T.map(function (t) { return t.name; }), colHead: range(grid[0].length, function (j) { return j + '-' + (j + 1) + 's'; }), hl: hl }
+            ]));
+          }
+          var caller = r.failAt !== null ? 'caller sees the error at ' + r.failAt + 's' : 'caller gets all results at ' + r.horizon + 's';
+          summary.push([md[1], r.horizon + 's', caller, md[0] === 'gather' && r.failAt !== null ? 'yes — siblings ran on unwatched' : md[0] === 'tg' && r.failAt !== null ? 'no — siblings cancelled' : md[0] === 'seq' && r.failAt !== null ? 'later tasks never ran' : 'none']);
+        });
+        frames.push(fr('<b>Compare.</b> Sequential is slowest. <code>gather</code> overlaps the waits but can leave <b>orphan tasks</b> after a failure. <code>TaskGroup</code> overlaps the waits <b>and</b> guarantees that when the block exits, no child task is still running. Prefer TaskGroup in new code; use <code>gather(return_exceptions=True)</code> when you want partial results.', [
+          { type: 'table', label: 'Summary', columns: ['mode', 'last activity ends', 'caller', 'orphans?'], rows: summary, hl: { 2: 'ok' } }
+        ]));
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'The lost-task bug: create_task without keeping a reference', html: `<p><code>asyncio.create_task(send_email())</code> on its own line: the loop keeps only a <b>weak</b> reference to tasks, so a task with no other reference can be garbage-collected mid-flight and silently disappear (the docs warn about this). ${H.c('g', 'Fix:')} keep tasks in a set and discard them when done — or better, use a TaskGroup.</p>`, code: `import asyncio
+
+background = set()
+
+def fire_and_forget(coro):
+    task = asyncio.create_task(coro)
+    background.add(task)                       # strong reference
+    task.add_done_callback(background.discard) # remove when finished
+    return task` },
+      { title: 'Timeouts that clean up properly', html: `<p>With <code>asyncio.timeout(2)</code>, the inner await receives <code>CancelledError</code> at 2 s; <code>finally</code> blocks run; then the context manager converts it to <code>TimeoutError</code> for you.</p>${H.table(['t', 'event'], [['0 s', 'enter timeout(2), start download'], ['2 s', 'deadline → CancelledError thrown into the await'], ['2 s', '<code>finally:</code> closes the connection'], ['2 s', H.c('r', 'TimeoutError raised to your code')]])}`, code: `import asyncio
+
+async def slow():
+    try:
+        await asyncio.sleep(10)
+    finally:
+        print("cleanup ran")          # runs on cancellation too
+
+async def main():
+    try:
+        async with asyncio.timeout(0.1):
+            await slow()
+    except TimeoutError:
+        print("timed out")
+
+asyncio.run(main())` },
+      { title: 'Worker pool with asyncio.Queue (bounded memory)', html: `<p>For 1,000,000 URLs, creating 1,000,000 tasks costs memory. Instead: a queue with <code>maxsize=100</code>, <b>K worker tasks</b> that loop on <code>await q.get()</code>, and a producer that <code>await q.put()</code>s (pausing when the queue is full — back-pressure). Finish with <code>await q.join()</code> and cancel the workers, or use <code>q.shutdown()</code> on 3.13+.</p>`, code: `import asyncio
+
+async def worker(name, q, results):
+    while True:
+        n = await q.get()
+        try:
+            await asyncio.sleep(0.01)          # pretend I/O
+            results.append(n * n)
+        finally:
+            q.task_done()
+
+async def main():
+    q = asyncio.Queue(maxsize=5)
+    results = []
+    workers = [asyncio.create_task(worker(f"w{i}", q, results)) for i in range(3)]
+    for n in range(20):
+        await q.put(n)                         # waits when the queue is full
+    await q.join()                             # every item processed
+    for w in workers:
+        w.cancel()
+    await asyncio.gather(*workers, return_exceptions=True)
+    print(len(results), "results")
+
+asyncio.run(main())` }
+    ],
+    deepDive: `<p><b>How cancellation really works.</b> <code>task.cancel()</code> sets a flag and, at the task's next step, the Task calls <code>coro.throw(CancelledError)</code> at the current <code>await</code>. If the awaited thing is itself a Task/Future it is cancelled too, so cancellation flows <b>down</b> the await chain. Since 3.11 tasks track a cancel <b>count</b> (<code>task.cancelling()</code>, <code>task.uncancel()</code>) so <code>asyncio.timeout</code> and TaskGroup can tell "my own cancellation" from "someone cancelled the outer task" — which is why swallowing <code>CancelledError</code> breaks them. <code>CancelledError</code> inherits from <code>BaseException</code> (3.8+) so a plain <code>except Exception</code> won't catch it by accident.</p>
+<p><b>gather's sharp edges.</b> If the gather Future itself is cancelled, all children are cancelled. But if a child fails (without <code>return_exceptions</code>), the others continue, and their later exceptions go to the "Task exception was never retrieved" log at garbage-collection time. TaskGroup (inspired by Trio's nurseries) fixes this with <b>structured concurrency</b>: a child's lifetime is bounded by the <code>async with</code> block, like a function call. Python 3.11 also added <code>ExceptionGroup</code> and <code>except*</code> for exactly this.</p>
+<p><b>Rate limiting vs concurrency limiting.</b> A Semaphore caps <b>in-flight</b> requests; it does not cap <b>requests per second</b>. For "100 requests/minute" use a token bucket (refill tokens over time with <code>loop.time()</code>) or a library like <code>aiolimiter</code>, and honour <code>Retry-After</code> headers with exponential backoff + jitter. LLM APIs typically limit both requests and tokens per minute — you often need both a Semaphore and a token bucket.</p>
+<p><b>Tasks and memory.</b> A Task costs roughly 1–2 KB plus its coroutine frame. 100k tasks are fine; 10M is not. <code>asyncio.as_completed</code> in 3.13+ can also be used with <code>async for</code> and yields the original tasks. <code>asyncio.wait</code> requires Tasks/Futures (not bare coroutines) since 3.11.</p>`,
+    aiEra: `<p><b>What AI changes:</b> fan-out to many LLM calls ("summarise these 5,000 documents") is now a daily task, and it is exactly TaskGroup + Semaphore + timeout + retries. AI writes that skeleton quickly; you must verify the <b>failure semantics</b> and the <b>limits</b>.</p>
+<p><b>Use AI as a partner:</b> <code>Rewrite this gather to a TaskGroup and explain what changes when one call fails</code>; <code>Add a semaphore of 8, a 30 s per-call timeout and 3 retries with jittered backoff that respects Retry-After</code>; <code>Write a test that proves no more than 8 calls are ever in flight</code>.</p>
+<p><b>Where AI goes wrong:</b> creating tasks without keeping references, catching <code>CancelledError</code> and continuing, treating a Semaphore as a requests-per-second limit, using <code>wait_for</code> on a coroutine in a loop and recreating it on retry incorrectly, or forgetting that <code>gather</code> doesn't cancel siblings.</p>
+<p><b>What you must still own:</b> choosing all-or-nothing vs partial-results semantics, setting limits from the provider's quotas, and making cancellation and shutdown clean.</p>`,
+    problems: [{
+      title: 'Bounded Concurrent Fetcher with Timeouts (Order Preserved)', level: 'Medium', tags: ['asyncio', 'Semaphore', 'timeout', 'gather'], companies: ['Stripe', 'Anthropic', 'Airbnb'],
+      statement: `<p>Write <code>async def fetch_all(urls, fetch, limit, per_call_timeout)</code>. It must call <code>await fetch(url)</code> for every URL with <b>at most <code>limit</code> calls in flight</b>, give each call at most <code>per_call_timeout</code> seconds, and return a list <b>in the same order as urls</b> where each entry is either the result or the string <code>"timeout"</code> / <code>"error: &lt;msg&gt;"</code>. One failure must not stop the others.</p>`,
+      constraints: `<p>1 ≤ len(urls) ≤ 10<sup>5</sup>, 1 ≤ limit ≤ 200, timeout in seconds (float).</p>`,
+      example: `<p>urls = ${H.c('b', '[u0 (0.1 s), u1 (5 s), u2 (raises)]')}, limit = 2, timeout = 1 → ${H.c('g', '["R0", "timeout", "error: boom"]')}. u2 waits for a free slot (only 2 at a time) and then fails; order still matches input.</p>`,
+      brute: { why: `<p>A plain <code>for</code> loop with <code>await fetch(u)</code> is sequential (sum of latencies). An unbounded <code>gather</code> of all 10<sup>5</sup> calls opens 10<sup>5</sup> sockets at once → rate limits, exhausted file descriptors, and one exception aborts the whole gather.</p>`, code: `import asyncio
+
+async def fetch_all_naive(urls, fetch):
+    return await asyncio.gather(*(fetch(u) for u in urls))   # unbounded, fails fast
+
+async def demo(u):
+    return u.upper()
+
+print(asyncio.run(fetch_all_naive(["a", "b"], demo)))` },
+      mcq: { q: 'Where should the timeout go so that time spent waiting for a semaphore slot does NOT count against a call?', options: ['Around the whole gather', 'Inside "async with sem", around await fetch(url)', 'Outside "async with sem"', 'Timeouts cannot be combined with semaphores'], answer: 1, explain: 'The per-call budget should start when the call actually starts, i.e. after acquiring the slot. Wrapping outside would let queueing time eat the budget.' },
+      hints: [`<p>Hint 1: Write a small wrapper <code>one(url)</code> that does everything for one URL and <b>never raises</b> — it returns a result or an error string.</p>`, `<p>Hint 2: Inside it: <code>async with sem:</code> then <code>async with asyncio.timeout(t): return await fetch(url)</code>; catch <code>TimeoutError</code> and <code>Exception</code> separately. Don't catch <code>CancelledError</code>.</p>`, `<p>Hint 3: <code>await asyncio.gather(*(one(u) for u in urls))</code> keeps input order. For 10<sup>5</sup> URLs this creates 10<sup>5</sup> tasks (fine, ~100–200 MB worst case); for millions, switch to a Queue + workers.</p>`],
+      solution: {
+        approach: `<p>Wrap each URL in a coroutine that (1) waits for a semaphore slot, (2) applies the per-call timeout, (3) converts errors into values. Because each wrapper never raises, <code>gather</code> cannot fail fast, and it returns results in argument order.</p>`,
+        code: `import asyncio
+
+async def fetch_all(urls, fetch, limit, per_call_timeout):
+    sem = asyncio.Semaphore(limit)
+
+    async def one(url):
+        async with sem:                                   # wait for a free slot
+            try:
+                async with asyncio.timeout(per_call_timeout):
+                    return await fetch(url)
+            except TimeoutError:
+                return "timeout"
+            except Exception as e:                        # CancelledError is not an Exception
+                return f"error: {e}"
+
+    return await asyncio.gather(*(one(u) for u in urls))
+
+async def fake_fetch(url):
+    delays = {"u0": 0.1, "u1": 5, "u2": 0.05}
+    await asyncio.sleep(delays[url])
+    if url == "u2":
+        raise ValueError("boom")
+    return "R" + url[1:]
+
+if __name__ == "__main__":
+    print(asyncio.run(fetch_all(["u0", "u1", "u2"], fake_fetch, 2, 1.0)))
+    # ['R0', 'timeout', 'error: boom']`,
+        dry: { head: ['time', 'slots used', 'u0', 'u1', 'u2'], rows: [['0.0 s', '2/2', 'running', 'running', 'waiting for slot'], ['0.1 s', '2/2', '<span class="c-g">R0</span>, slot freed', 'running', 'gets slot, running'], ['0.15 s', '1/2', 'done', 'running', '<span class="c-r">error: boom</span>'], ['1.0 s', '0/2', 'done', '<span class="c-y">timeout</span>', 'done']] },
+        complexity: `<p>Wall time ≈ (N / limit) × typical latency, capped per call by the timeout. Memory O(N) for tasks + results. At most <code>limit</code> open connections.</p>`,
+        followUps: ['Add retries with exponential backoff only for timeouts and 5xx errors.', 'Change it to a requests-per-second limit (token bucket).', 'Make it cancel everything if more than 10% of calls fail.']
+      }
+    }]
+  });
+
 registerModule({ id: 'py10', title: 'Concurrency', intro: '<p>x</p>', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();

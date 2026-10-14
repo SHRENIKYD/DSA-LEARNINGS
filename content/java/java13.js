@@ -11,7 +11,7 @@
     // parses "a=1 b=2 c=x,y" into an object, falling back to defaults
     var o = {}, k;
     for (k in defs) o[k] = defs[k];
-    String(input || '').replace(/([a-zA-Z]+)\s*=\s*([^\s]+)/g, function (_, key, val) { o[key] = val; return ''; });
+    String(input || '').replace(/([a-zA-Z][a-zA-Z0-9]*)\s*=\s*([^\s]+)/g, function (_, key, val) { o[key] = val; return ''; });
     return o;
   }
   function num(v, lo, hi, name) {
@@ -2508,18 +2508,20 @@ class WeakEventBus<E> {
 
     public static void main(String[] args) throws InterruptedException {
         WeakEventBus<String> bus = new WeakEventBus<>();
-        Consumer<String> screenA = e -> System.out.println("A got " + e);   // strongly held by this local
-        Consumer<String> screenB = e -> System.out.println("B got " + e);
+        String nameA = "A", nameB = "B";
+        // Capturing lambdas: a NEW listener object per evaluation (non-capturing ones are cached singletons).
+        Consumer<String> screenA = e -> System.out.println(nameA + " got " + e);   // strongly held by this local
+        Consumer<String> screenB = e -> System.out.println(nameB + " got " + e);
         bus.subscribe(screenA);
         bus.subscribe(screenB);
         screenB = null;                                   // screen B closed
         for (int i = 0; i < 5; i++) { System.gc(); Thread.sleep(20); }   // demo only
-        System.out.println("delivered=" + bus.publish("tick") + " size=" + bus.size());
+        System.out.println("delivered=" + bus.publish("tick") + " size=" + bus.size());   // delivered=1 size=1
         System.out.println(screenA != null);              // keep A reachable until here
     }
 }`,
       complexity: `<p>publish O(L) for L registered listeners; purging is amortised into publish. Memory bounded by live subscribers.</p>`,
-      followUps: ['Why might the demo still print delivered=2 on some JVMs (non-capturing lambdas are cached singletons)?', 'Compare with returning an AutoCloseable subscription handle', 'Use a ReferenceQueue to purge without waiting for publish']
+      followUps: ['Why would the demo print delivered=2 if the lambdas captured nothing (hint: non-capturing lambdas are cached singletons)?', 'Compare with returning an AutoCloseable subscription handle', 'Use a ReferenceQueue to purge without waiting for publish']
     }
   });
 
@@ -2751,4 +2753,291 @@ class GcAdvisor {
     }
   });
 
-registerModule({ id: 'java13', title: 'JVM Internals & Performance', intro: '<p>x</p>', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();
+  /* ======================================================================
+     PRACTICE — Hard
+     ====================================================================== */
+  practice.push({
+    title: 'Mark–Compact: Compute Forwarding Addresses and Fix References (LISP2)',
+    level: 'Hard', tags: ['GC', 'compaction', 'simulation'], companies: ['Oracle', 'Azul', 'Google'],
+    statement: `<p>The heap holds objects in address order starting at 0: ${C('size[i]')} bytes each, ${C('live[i]')} from the mark phase, and ${C('refs[i]')} = indices of objects that object i references (live objects only reference live objects). Implement sliding compaction: compute each live object's <b>new address</b> (live objects packed from address 0 in the same order), the new heap <b>top</b>, and every live object's references rewritten as <b>new addresses</b>. Dead objects get new address −1.</p>`,
+    constraints: `n ≤ 10<sup>6</sup>, total refs ≤ 3·10<sup>6</sup>. Must run in O(n + refs) time and O(n) extra memory (no second heap).`,
+    example: `<p>size = [16, 32, 24, 16, 8], live = [T, F, T, F, T], refs = {0: [2], 2: [4, 0], 4: []}</p>${H.table(['obj', 'old addr', 'live', 'new addr'], [['0', '0', 'T', H.c('g', '0')], ['1', '16', H.c('r', 'F'), '−1'], ['2', '48', 'T', H.c('g', '16')], ['3', '72', H.c('r', 'F'), '−1'], ['4', '88', 'T', H.c('g', '40')]])}<p>top = ${H.c('g', '48')}; refs become 0 → [16], 2 → [40, 0]. Live objects keep their relative order, so locality is preserved.</p>`,
+    brute: { why: `<p>Slide objects one at a time: each time an object moves, scan <b>every</b> reference in the heap to patch pointers to it — O(n × refs). Or copy live objects into a fresh second heap (a copying collector), which needs up to 2× memory — exactly what compaction of an old generation tries to avoid.</p>`, code: `
+class NaiveCompact {
+    static long[] compact(int[] size, boolean[] live, int[][] refs, long[][] refAddr) {
+        int n = size.length;
+        long[] addr = new long[n];
+        for (int i = 1; i < n; i++) addr[i] = addr[i - 1] + size[i - 1];
+        long top = 0;
+        for (int i = 0; i < n; i++) {
+            if (!live[i]) { addr[i] = -1; continue; }
+            long oldAddr = addr[i];
+            addr[i] = top; top += size[i];
+            for (int j = 0; j < n; j++)                            // patch every pointer to i: O(n * refs)
+                if (live[j]) for (int k = 0; k < refs[j].length; k++)
+                    if (refAddr[j][k] == oldAddr && refs[j][k] == i) refAddr[j][k] = addr[i];
+        }
+        return addr;
+    }
+}` },
+    mcq: { q: 'Why does LISP2 need a separate pass to compute forwarding addresses before moving anything?', options: ['References may point forward to objects not yet visited; their new address must be known before pointers are updated and objects overwritten', 'To sort objects by size', 'Because the JVM requires three passes', 'To free dead objects first'], answer: 0, explain: 'Pass 1 computes all new addresses; pass 2 rewrites every reference using them; pass 3 slides the bytes. Moving earlier would overwrite objects whose data or forwarding info is still needed.' },
+    hints: [`<p>Hint 1: Pass 1 — a running ${C('top')} over objects in address order: live object i gets ${C('forward[i] = top')}; ${C('top += size[i]')}. This is the forwarding table (HotSpot stores it in the object header).</p>`, `<p>Hint 2: Pass 2 — for every live object, map each referenced index ${C('j')} to ${C('forward[j]')}. Because pass 1 is complete, forward references are already known.</p>`, `<p>Hint 3: Pass 3 (moving bytes) is a left-to-right slide: since new address ≤ old address, copying in increasing order never overwrites an unmoved live object. You only need to return the results here.</p>`],
+    solution: {
+      approach: `<p>Classic LISP2 sliding compaction: (1) compute forwarding addresses with a prefix sum over live sizes, (2) update all references through the forwarding table, (3) slide objects (implied). Linear time, no extra heap. Parallel GCs split the heap into regions and compute per-region prefix sums so threads can work independently.</p>`,
+      code: `
+class Lisp2Compactor {
+    record Compacted(long[] newAddress, long top, long[][] newRefs) {}
+
+    static Compacted compact(int[] size, boolean[] live, int[][] refs) {
+        int n = size.length;
+        long[] forward = new long[n];
+        long top = 0;
+        for (int i = 0; i < n; i++) {                          // pass 1: forwarding addresses
+            if (live[i]) { forward[i] = top; top += size[i]; }
+            else forward[i] = -1;
+        }
+        long[][] newRefs = new long[n][];
+        for (int i = 0; i < n; i++) {                          // pass 2: rewrite references
+            if (!live[i]) { newRefs[i] = new long[0]; continue; }
+            newRefs[i] = new long[refs[i].length];
+            for (int k = 0; k < refs[i].length; k++) {
+                int target = refs[i][k];
+                if (!live[target]) throw new IllegalStateException("live object " + i + " points to dead " + target);
+                newRefs[i][k] = forward[target];
+            }
+        }
+        // pass 3 (moving bytes) would copy each live object from its old to its new address, in address order.
+        return new Compacted(forward, top, newRefs);
+    }
+
+    public static void main(String[] args) {
+        int[] size = { 16, 32, 24, 16, 8 };
+        boolean[] live = { true, false, true, false, true };
+        int[][] refs = { {2}, {}, {4, 0}, {}, {} };
+        Compacted c = compact(size, live, refs);
+        System.out.println(Arrays.toString(c.newAddress()) + " top=" + c.top());   // [0, -1, 16, -1, 40] top=48
+        System.out.println(Arrays.toString(c.newRefs()[0]) + " " + Arrays.toString(c.newRefs()[2]));   // [16] [40, 0]
+    }
+}`,
+      dry: { head: ['i', 'size', 'live', 'forward[i]', 'top after'], rows: [['0', '16', 'T', '0', '16'], ['1', '32', 'F', '−1', '16'], ['2', '24', 'T', '16', '40'], ['3', '16', 'F', '−1', '40'], ['4', '8', 'T', '40', H.c('g', '48')]] },
+      complexity: `<p>O(n + refs) time over three linear passes; O(n) for the forwarding table (real collectors reuse the object header). The cost is proportional to the <b>whole heap</b> (dead objects are walked too), which is why full compactions of large old gens are slow and why G1/ZGC compact region by region.</p>`,
+      followUps: ['How would you parallelise pass 1 across GC threads?', 'Compare with copying collection: what does each cost in time and space?', 'Why must GC roots (stack slots) be updated in pass 2 too?']
+    }
+  });
+
+  practice.push({
+    title: 'Generational GC Simulator: Count Promotions and Premature Promotions',
+    level: 'Hard', tags: ['GC', 'generations', 'simulation'], companies: ['LinkedIn', 'Twitter/X', 'Oracle'],
+    statement: `<p>Simulate a young generation. Objects are allocated in order into Eden (capacity ${C('edenCap')} objects); object k survives exactly ${C('life[k]')} minor GCs. When Eden is full and a new object arrives, run a minor GC over Eden + the FROM survivor: dead objects vanish; each survivor's age +1; if age ≥ ${C('tenure')} it is <b>promoted</b>; else it goes to the TO survivor if there is room (capacity ${C('survCap')}), otherwise it is promoted <b>prematurely</b>. Process Eden objects first (allocation order), then FROM objects. TO becomes FROM. Return ${C('[minorGCs, promotions, prematurePromotions]')}.</p>`,
+    constraints: `N ≤ 10<sup>6</sup> objects; edenCap, survCap ≥ 1; 1 ≤ tenure ≤ 15.`,
+    example: `<p>edenCap = 2, survCap = 1, tenure = 3, life = [2, 2, 0, 5, 0, 0]</p>${H.table(['event', 'what happens'], [['alloc o1, o2', 'Eden full'], ['alloc o3 → GC#1', 'o1 → TO (age 1); o2 survives but TO full → ' + H.c('r', 'premature promotion')], ['alloc o3, o4; alloc o5 → GC#2', 'o3 dead; o4 → TO (age 1); o1 (age 2 &lt; 3) TO full → ' + H.c('r', 'premature')], ['alloc o5, o6', 'end']])}<p>Output ${H.c('g', '[2, 2, 2]')}. Both promotions were premature — o1 even dies right after landing in Old (floating garbage there).</p>`,
+    brute: { why: `<p>Keep one list of <b>every object ever allocated</b> with a state field and, at each GC, rescan the entire history to find Eden/survivor objects: O(N) per GC → O(N<sup>2</sup>/edenCap) overall. Real collectors only touch the young spaces — dead objects are never even visited, which is the whole efficiency argument of copying collection.</p>`, code: `
+class GenSimBrute {
+    static int[] simulate(int edenCap, int survCap, int tenure, int[] life) {
+        List<int[]> all = new ArrayList<>();                    // {left, age, space: 0 eden, 1 surv, 2 old, 3 dead}
+        int gcs = 0, promoted = 0, premature = 0, inEden = 0;
+        for (int l : life) {
+            if (inEden == edenCap) {
+                gcs++; int toCount = 0;
+                List<int[]> movers = new ArrayList<>();
+                for (int[] o : all) if (o[2] == 0) movers.add(o);           // full history scan
+                for (int[] o : all) if (o[2] == 1) movers.add(o);           // and again
+                for (int[] o : movers) {
+                    if (o[0] == 0) { o[2] = 3; continue; }
+                    o[0]--; o[1]++;
+                    if (o[1] >= tenure) { o[2] = 2; promoted++; }
+                    else if (toCount >= survCap) { o[2] = 2; promoted++; premature++; }
+                    else { o[2] = 1; toCount++; }
+                }
+                inEden = 0;
+            }
+            all.add(new int[] { l, 0, 0 }); inEden++;
+        }
+        return new int[] { gcs, promoted, premature };
+    }
+}` },
+    mcq: { q: 'Premature promotions are high. Which change most directly reduces them?', options: ['Bigger survivor spaces / young gen so medium-lived objects can age in place', 'Lowering MaxTenuringThreshold to 1', 'Calling System.gc() more often', 'Switching to Epsilon GC'], answer: 0, explain: 'Premature promotion happens when survivors overflow. More survivor/young space lets objects die young; lowering the threshold promotes even more.' },
+    hints: [`<p>Hint 1: Model only what a real minor GC touches: an Eden list and a FROM list. Each object is just ${C('{lifeLeft, age}')} — an ${C('int[2]')} or a tiny record.</p>`, `<p>Hint 2: At GC time build TO from scratch: iterate Eden then FROM; dead (lifeLeft == 0) → skip; else decrement life, increment age, then promote / copy / premature-promote in that order of checks.</p>`, `<p>Hint 3: After the GC: Eden cleared, ${C('from = to')}. Count a GC only when an allocation finds Eden full — no GC at the very end.</p>`],
+    solution: {
+      approach: `<p>Direct simulation of a copying young collector: work per GC is proportional to Eden + survivor occupancy (bounded by edenCap + survCap), never to the allocation history. Objects promoted to Old are only counted, as minor GCs never revisit them.</p>`,
+      code: `
+class GenSim {
+    static int[] simulate(int edenCap, int survCap, int tenure, int[] life) {
+        List<int[]> eden = new ArrayList<>(), from = new ArrayList<>();   // object = {lifeLeft, age}
+        int gcs = 0, promoted = 0, premature = 0;
+        for (int l : life) {
+            if (eden.size() == edenCap) {                    // allocation failure -> minor GC
+                gcs++;
+                List<int[]> to = new ArrayList<>();
+                List<int[]> movers = new ArrayList<>(eden);
+                movers.addAll(from);
+                for (int[] o : movers) {
+                    if (o[0] == 0) continue;                 // unreachable: never copied, freed for free
+                    o[0]--; o[1]++;
+                    if (o[1] >= tenure) promoted++;          // old enough: tenure it
+                    else if (to.size() >= survCap) { promoted++; premature++; }   // survivor overflow
+                    else to.add(o);                          // copy into TO survivor
+                }
+                eden.clear();
+                from = to;                                   // survivors swap roles
+            }
+            eden.add(new int[] { l, 0 });
+        }
+        return new int[] { gcs, promoted, premature };
+    }
+
+    public static void main(String[] args) {
+        System.out.println(Arrays.toString(simulate(2, 1, 3, new int[] { 2, 2, 0, 5, 0, 0 })));   // [2, 2, 2]
+        System.out.println(Arrays.toString(simulate(4, 2, 2,
+            new int[] { 0, 1, 0, 3, 0, 0, 5, 1, 0, 2, 0, 0, 1, 4, 0, 0, 0, 2, 0, 0 })));           // [4, 3, 0]
+    }
+}`,
+      dry: { head: ['step', 'Eden', 'FROM', 'event', 'promoted / premature'], rows: [['alloc o1,o2', '[o1,o2]', '[]', '—', '0 / 0'], ['alloc o3 → GC1', '[]', '[o1 a1]', 'o2: TO full → premature', '1 / 1'], ['alloc o3,o4', '[o3,o4]', '[o1 a1]', '—', '1 / 1'], ['alloc o5 → GC2', '[]', '[o4 a1]', 'o3 dead; o1 age 2 &lt; 3, TO full', '2 / 2'], ['alloc o5,o6', '[o5,o6]', '[o4 a1]', 'end', H.c('g', '[2, 2, 2]')]] },
+      complexity: `<p>O(N + G·(edenCap + survCap)) = O(N) amortised, since each object is copied at most tenure times. Memory O(edenCap + survCap).</p>`,
+      followUps: ['Add an Old capacity and a full GC when promotion does not fit', 'Implement HotSpot\'s adaptive tenuring threshold (TargetSurvivorRatio)', 'Measure how premature promotions change as survCap grows']
+    }
+  });
+
+  practice.push({
+    title: 'Leak Suspects from Class-Histogram Snapshots',
+    level: 'Hard', tags: ['memory leak', 'jcmd GC.class_histogram', 'trend analysis'], companies: ['Datadog', 'New Relic', 'Amazon'],
+    statement: `<p>Every hour a job runs ${C('jcmd <pid> GC.class_histogram')} and stores bytes per class. Given k ≥ 2 snapshots (${C('List<Map<String, Long>>')}, missing class = 0 bytes), report leak suspects: classes whose bytes <b>strictly increased</b> in at least ⌈0.8 × (k − 1)⌉ of the consecutive pairs <b>and</b> whose net growth (last − first) ≥ ${C('minGrowth')}. Rank by growth descending, then name; return the top ${C('topN')} as ${C('"name:+growth"')}.</p>`,
+    constraints: `k ≤ 1000 snapshots, ≤ 50,000 classes per snapshot. Robust to noisy classes (byte[] fluctuating) and warm-up caches (grow once, then flat).`,
+    example: `${H.table(['class', 't0', 't1', 't2', 't3', 'increases', 'suspect?'], [['byte[]', '500', '900', '300', '950', '2/3', H.c('m', 'no (noise)')], ['com.shop.Session', '100', '200', '300', '400', '3/3', H.c('r', 'YES +300')], ['com.shop.CacheEntry', '0', '400', '400', '400', '1/3', H.c('m', 'no (warm-up)')], ['java.util.HashMap$Node', '50', '80', '110', '140', '3/3', H.c('r', 'YES +90')]])}<p>minGrowth = 50 → ${H.c('g', '[com.shop.Session:+300, java.util.HashMap$Node:+90]')}. Sessions are the leak; HashMap nodes grow because sessions are stored in a map.</p>`,
+    brute: { why: `<p>Compare only the first and last snapshot. It flags the warm-up cache (+400, the "biggest leak"!) and any class that happened to be high at the last sample (byte[] +450), sending the team to chase ghosts. Trend <b>consistency</b> is what separates a leak from noise.</p>`, code: `
+class FirstLastDiff {
+    static List<String> suspects(List<Map<String, Long>> snaps, long minGrowth) {
+        Map<String, Long> first = snaps.get(0), last = snaps.get(snaps.size() - 1);
+        List<String> out = new ArrayList<>();
+        for (String cls : last.keySet()) {
+            long growth = last.get(cls) - first.getOrDefault(cls, 0L);
+            if (growth >= minGrowth) out.add(cls + ":+" + growth);   // flags warm-up and noise too
+        }
+        return out;
+    }
+}` },
+    mcq: { q: 'A class grows steadily, but only during business hours, and drops every night. Is it a leak?', options: ['Probably not — it tracks load; compare post-GC floors at the same time of day across days', 'Yes, any growth is a leak', 'Yes, because byte[] is involved', 'Cannot be known without a heap dump'], answer: 0, explain: 'Load-proportional growth that is released later is normal. A leak keeps growing across comparable load periods; compare like with like (same hour, same load).' },
+    hints: [`<p>Hint 1: Collect the union of class names across all snapshots; treat missing entries as 0 with ${C('getOrDefault(cls, 0L)')}.</p>`, `<p>Hint 2: For each class count strict increases over consecutive pairs and compute ${C('last - first')}; required increases = ${C('(int) Math.ceil(0.8 * (k - 1))')}.</p>`, `<p>Hint 3: Sort candidates with ${C('Comparator.comparingLong(growth).reversed().thenComparing(name)')} and take the top N. Snapshots should be taken after a GC (the histogram's :live option forces one) so garbage doesn't add noise.</p>`],
+    solution: {
+      approach: `<p>Score each class on two independent signals — trend consistency (fraction of increasing steps) and magnitude (net growth) — and require both. This filters noise (inconsistent) and warm-up (consistent only once). It mirrors what APM leak detectors do on post-GC heap metrics.</p>`,
+      code: `
+class LeakSuspects {
+    record Candidate(String name, long growth) {}
+
+    static List<String> suspects(List<Map<String, Long>> snaps, long minGrowth, int topN) {
+        int k = snaps.size();
+        if (k < 2) return List.of();
+        int needed = (int) Math.ceil(0.8 * (k - 1));
+        Set<String> classes = new TreeSet<>();
+        for (Map<String, Long> s : snaps) classes.addAll(s.keySet());
+        List<Candidate> found = new ArrayList<>();
+        for (String cls : classes) {
+            int increases = 0;
+            for (int i = 1; i < k; i++) {
+                if (snaps.get(i).getOrDefault(cls, 0L) > snaps.get(i - 1).getOrDefault(cls, 0L)) increases++;
+            }
+            long growth = snaps.get(k - 1).getOrDefault(cls, 0L) - snaps.get(0).getOrDefault(cls, 0L);
+            if (increases >= needed && growth >= minGrowth) found.add(new Candidate(cls, growth));
+        }
+        found.sort(Comparator.comparingLong(Candidate::growth).reversed().thenComparing(Candidate::name));
+        List<String> out = new ArrayList<>();
+        for (int i = 0; i < Math.min(topN, found.size()); i++) out.add(found.get(i).name() + ":+" + found.get(i).growth());
+        return out;
+    }
+
+    public static void main(String[] args) {
+        List<Map<String, Long>> snaps = List.of(
+            Map.of("byte[]", 500L, "com.shop.Session", 100L, "java.util.HashMap$Node", 50L),
+            Map.of("byte[]", 900L, "com.shop.Session", 200L, "com.shop.CacheEntry", 400L, "java.util.HashMap$Node", 80L),
+            Map.of("byte[]", 300L, "com.shop.Session", 300L, "com.shop.CacheEntry", 400L, "java.util.HashMap$Node", 110L),
+            Map.of("byte[]", 950L, "com.shop.Session", 400L, "com.shop.CacheEntry", 400L, "java.util.HashMap$Node", 140L));
+        System.out.println(suspects(snaps, 50, 5));   // [com.shop.Session:+300, java.util.HashMap$Node:+90]
+    }
+}`,
+      dry: { head: ['class', 'increases (need 3)', 'growth', 'verdict'], rows: [['byte[]', '2', '450', 'reject: inconsistent'], ['com.shop.CacheEntry', '1', '400', 'reject: warm-up'], ['com.shop.Session', '3', '300', H.c('r', 'suspect #1')], ['java.util.HashMap$Node', '3', '90', H.c('r', 'suspect #2')]] },
+      complexity: `<p>O(C · k) for C classes and k snapshots, plus O(C log C) to sort. Memory O(C).</p>`,
+      followUps: ['Normalise by request count to separate load from leaks', 'After finding com.shop.Session, which heap-dump view proves who holds them?', 'How would you run this safely in production (histogram:live pauses)?']
+    }
+  });
+
+  /* ======================================================================
+     QUIZ
+     ====================================================================== */
+  quiz.push(
+    { q: 'What does <code>String.class.getClassLoader()</code> return?', options: ['null', 'the application class loader', 'the platform class loader', 'a new ClassLoader each time'], answer: 0, explain: 'Core classes are defined by the native bootstrap loader, which is represented as null in Java APIs.' },
+    { q: 'In parent delegation, when does the application class loader search the classpath itself?', options: ['Only after its parent chain (platform, bootstrap) failed to find the class', 'Always first', 'Only for classes in java.*', 'Never — only bootstrap loads classes'], answer: 0, explain: 'loadClass checks the cache, asks the parent, and only then calls its own findClass. That is why your classpath cannot override java.lang.String.' },
+    { q: 'Which of these does NOT trigger initialization of class <code>Config</code>?', options: ['Reading <code>Config.MAX</code> where <code>static final int MAX = 10</code>', 'Calling <code>Config.load()</code> (static method)', '<code>new Config()</code>', '<code>Class.forName("Config")</code>'], answer: 0, explain: 'Compile-time constants are inlined into the caller by javac, so reading them never touches the Config class at runtime.' },
+    { q: 'Which bytecode instruction does Java 9+ javac use for <code>"a" + x + "b"</code>?', options: ['invokedynamic (StringConcatFactory)', 'invokevirtual StringBuilder.append only', 'invokespecial String.concat', 'iadd'], answer: 0, explain: 'JEP 280 compiles concatenation to an indy call site so the JDK can pick the best strategy at runtime.' },
+    { q: 'What is the typical tiered compilation path for a hot method?', options: ['Tier 0 (interpreter) → Tier 3 (C1 with profiling) → Tier 4 (C2)', 'Tier 4 → Tier 0', 'C2 first, C1 later', 'Interpreter only, unless -server is passed'], answer: 0, explain: 'C1 compiles quickly and collects profiles; C2 later uses the profile for speculative optimisation.' },
+    { q: 'Escape analysis lets C2 replace an object with its fields in registers when…', options: ['the object never escapes the compiled method (not stored, returned, or passed to non-inlined code)', 'the object is immutable', 'the class is final', 'the object is smaller than 64 bytes'], answer: 0, explain: 'Scalar replacement requires NoEscape after inlining; immutability or finality alone is not enough.' },
+    { q: 'Where do static field VALUES live in Java 8+?', options: ['On the heap, with the java.lang.Class mirror object', 'In PermGen', 'In Metaspace with the method bytecode', 'On the main thread\'s stack'], answer: 0, explain: 'PermGen was removed in Java 8; class metadata went to Metaspace, while static values live with the Class mirror on the heap.' },
+    { q: 'Why can Java free two objects that reference each other?', options: ['It uses tracing from GC roots, so unreachable cycles are garbage', 'It uses reference counting with cycle breaking', 'finalize() breaks cycles', 'It cannot — that is a leak'], answer: 0, explain: 'Liveness is reachability from roots; references between dead objects do not matter.' },
+    { q: 'A minor GC\'s cost is mostly proportional to…', options: ['the number/size of SURVIVING objects', 'the size of Eden', 'the number of allocations since the last GC', 'the size of the old generation'], answer: 0, explain: 'Copying collectors only touch live objects; dead objects in Eden are reclaimed wholesale for free.' },
+    { q: 'Which collector is the default on a server-class machine in JDK 9 through 25?', options: ['G1', 'Parallel', 'CMS', 'ZGC'], answer: 0, explain: 'G1 became the default in JDK 9. Parallel was the default in JDK 8; CMS was removed in JDK 14; ZGC must be selected explicitly.' },
+    { q: 'In G1, an object is "humongous" when it is…', options: ['at least half a region in size', 'older than the tenuring threshold', 'referenced from more than 64 regions', 'a String'], answer: 0, explain: 'Humongous objects are allocated directly in contiguous regions in old space; many of them cause fragmentation and early marking.' },
+    { q: 'ZGC keeps pause times under a millisecond mainly because…', options: ['marking and relocation run concurrently, guarded by load barriers and coloured pointers', 'it never collects old objects', 'it uses a tiny heap', 'it stops only one thread at a time'], answer: 0, explain: 'Pauses only handle roots; the expensive work runs concurrently with the application.' },
+    { q: 'The old-gen occupancy right AFTER each full/mixed GC keeps rising over days. What is most likely?', options: ['A memory leak (reachable but unused objects)', 'A too-small Eden', 'JIT deoptimization', 'Normal warm-up'], answer: 0, explain: 'A rising post-GC floor means live data grows — the classic leak signature.' },
+    { q: 'top -H shows thread 23456 burning CPU. What do you search for in a jstack dump?', options: ['nid=0x5ba0', 'tid=23456', '#23456', 'prio=23456'], answer: 0, explain: 'jstack prints the native (OS) thread id in hex as nid; 23456 decimal = 0x5ba0.' },
+    { q: 'Which tool gives continuous, low-overhead (~1%) production profiling built into the JDK?', options: ['Java Flight Recorder (JFR)', 'jmap -dump', 'jstack every second', 'System.out timing logs'], answer: 0, explain: 'JFR records CPU samples, allocations, GC, locks and I/O with very low overhead; heap dumps and frequent jstacks are heavyweight.' }
+  );
+
+  /* ======================================================================
+     INTERVIEW Q&A
+     ====================================================================== */
+  interview.push(
+    { q: 'Explain the class loader hierarchy and the parent delegation model. Why does Java use it?', level: 'I', a: `<p>Since Java 9 there are three built-in loaders: <b>bootstrap</b> (native, loads ${C('java.base')} and other core modules, shows as ${C('null')}), <b>platform</b> (other JDK modules such as ${C('java.sql')}) and <b>application</b> (classpath/module path). On ${C('loadClass')}, a loader checks its cache, delegates to its parent, and only searches itself if the parent fails. Benefits: <b>security</b> (no one can replace ${C('java.lang.String')}), <b>consistency</b> (one Class object per core type) and no duplicate loading. Class identity is (name, defining loader), so the same class loaded by two loaders gives two distinct types. Frameworks deliberately break delegation (child-first web-app loaders, TCCL for ServiceLoader/JDBC) to isolate apps or let core code find implementations.</p>`, followUps: ['How would you implement a child-first loader safely?', 'What is the thread context class loader for?', 'Why does a "Cart cannot be cast to Cart" ClassCastException happen?'] },
+    { q: 'ClassNotFoundException vs NoClassDefFoundError — what is the difference and how do you debug each?', level: 'I', a: `<p>${C('ClassNotFoundException')} is a <b>checked exception</b> thrown when code asks for a class <b>by name</b> at runtime (${C('Class.forName')}, ${C('loadClass')}) and no loader finds it — typical with JDBC drivers or plugins. ${C('NoClassDefFoundError')} is an <b>Error</b>: the class was present at compile time and referenced directly, but at runtime it is missing (jar not deployed, version conflict) <b>or</b> its static initializer failed earlier — then the message is "Could not initialize class X" and the root cause is an earlier ${C('ExceptionInInitializerError')}. Debug with ${C('-Xlog:class+load')}, ${C('mvn dependency:tree')}, check which jar provides the class, and always search the log for the <b>first</b> error.</p>`, followUps: ['What happens to a class whose &lt;clinit&gt; threw?', 'How can shading cause NoSuchMethodError?'] },
+    { q: 'Walk me through the phases of class loading. When does a static block run?', level: 'I', a: `<p><b>Loading</b>: find bytes, parse, create the Class object, put metadata in Metaspace. <b>Linking</b>: <i>verify</i> bytecode safety (StackMapTable type-checking), <i>prepare</i> static fields with default values (0/null), <i>resolve</i> symbolic references (lazily in HotSpot). <b>Initialization</b>: run ${C('<clinit>')} — static initializers and static blocks in source order, exactly once, under an init lock. It runs on the first <b>active use</b>: ${C('new')}, static method call, non-constant static field access, ${C('Class.forName')}, subclass initialization. It does not run for ${C('Foo.class')}, array creation, or reading compile-time constants. The init lock makes the lazy holder singleton idiom thread-safe without volatile.</p>`, followUps: ['Can class initialization deadlock? How?', 'Why does reading a static final String constant not initialize the class but reading a static final List does?'] },
+    { q: 'What is bytecode and how does the JVM execute it? Explain the operand stack.', level: 'B', a: `<p>${C('javac')} compiles source to platform-independent <b>bytecode</b>: one-byte opcodes for a <b>stack machine</b>. Each method invocation gets a frame with a <b>local variable array</b> (this, parameters, locals; long/double take two slots) and an <b>operand stack</b>. Instructions pop operands and push results: ${C('a * b + 2')} is ${C('iload_0, iload_1, imul, iconst_2, iadd')}. The JVM starts by <b>interpreting</b> bytecode and JIT-compiles hot methods to native code. ${C('javap -c')} shows the instructions — useful for output-prediction puzzles like ${C('i = i++')}, for seeing hidden boxing (${C('Integer.valueOf')}), and for understanding lambdas (${C('invokedynamic')}).</p>`, followUps: ['What are the five invoke instructions?', 'How is a lambda compiled?', 'What does "major version 65" mean?'] },
+    { q: 'Explain JIT compilation in HotSpot: C1, C2, tiered compilation and deoptimization.', level: 'A', a: `<p>Code starts in the <b>interpreter</b> (tier 0) which counts invocations and loop back-edges. Hot methods (~hundreds of calls) are compiled by <b>C1</b> (tier 3) — fast to compile, with profiling counters that record receiver types and branch frequencies. Very hot methods (~thousands of calls) are recompiled by <b>C2</b> (tier 4), which uses the profile to <b>speculate</b>: inline monomorphic/bimorphic virtual calls behind type guards, eliminate dead branches, do escape analysis, unroll and vectorise loops. If an assumption breaks (a new type, an "impossible" branch, a newly loaded subclass invalidating CHA), the code hits an <b>uncommon trap</b>: the frame is converted back to an interpreter frame (<b>deoptimization</b>), the compiled code is "made not entrant", and the method is recompiled later. Long loops in rarely called methods use <b>OSR</b> compilation. Warm-up is why benchmarks need JMH and why services see slow first requests.</p>`, followUps: ['What makes a call site megamorphic and why does it matter?', 'How do Leyden\'s AOT cache and GraalVM native image address warm-up?', 'What happens when the code cache fills?'] },
+    { q: 'What is escape analysis? Does Java allocate objects on the stack?', level: 'A', a: `<p>Escape analysis (C2, after inlining) determines whether an object can be seen outside the compiled region: <b>NoEscape</b>, <b>ArgEscape</b> (passed to a callee but not stored), or <b>GlobalEscape</b> (stored in a field/static, returned, thrown). For NoEscape objects HotSpot does <b>scalar replacement</b> — it doesn't allocate the object at all, keeping its fields in registers/stack slots — and <b>lock elision</b> for synchronization on non-escaping objects. So strictly HotSpot doesn't do "stack allocation" of whole objects; it removes them. It only works in C2-compiled code, depends on inlining (big or megamorphic callees break it), and objects merging at control-flow joins can defeat it. Allocation that remains is still cheap (TLAB pointer bump); the main cost is later GC work.</p>`, followUps: ['Why can object pooling make performance worse?', 'How would you verify that an allocation was eliminated (JMH -prof gc)?'] },
+    { q: 'Describe the JVM memory areas. What lives on the stack vs heap vs Metaspace?', level: 'B', a: `<p><b>Per thread</b>: the JVM stack (frames with local variables — primitives and references — and the operand stack; overflow → ${C('StackOverflowError')}), the PC register and the native method stack. <b>Shared</b>: the <b>heap</b> (all objects and arrays, the String pool since Java 7, static field values with the Class mirror; ${C('-Xmx')}), <b>Metaspace</b> (class metadata, bytecode, runtime constant pool — native memory since Java 8, unlimited unless ${C('MaxMetaspaceSize')}), the <b>code cache</b> (JIT output), and other native memory (direct buffers, thread stacks, GC structures). A local reference is on the stack while the object it points to is on the heap; an int <i>field</i> lives on the heap inside its object. Process RSS = heap + all native areas, so containers need headroom beyond Xmx.</p>`, followUps: ['How do you see native memory usage?', 'Why did PermGen disappear?', 'What is the compressed oops 32 GB cliff?'] },
+    { q: 'How does garbage collection decide what is garbage, and what are GC roots?', level: 'B', a: `<p>HotSpot uses <b>tracing</b>: starting from <b>GC roots</b> — local variables and operands in all thread stacks, static fields, active threads, JNI references, monitors held, and some JVM-internal references — it marks every object reachable through reference chains. Everything unmarked is garbage, including cycles that reference each other (which reference counting could never free). Collectors then reclaim memory by sweeping, compacting or — for young generations — copying survivors elsewhere and wiping the region. Because "reachable" is the rule, a Java memory leak is always an unwanted reference path from a root.</p>`, followUps: ['How do concurrent collectors stay correct while the application mutates references?', 'What is the card table for?'] },
+    { q: 'Explain the generational heap: Eden, Survivor spaces, Old generation, promotion and tenuring.', level: 'I', a: `<p>The <b>weak generational hypothesis</b> says most objects die young. New objects are allocated in <b>Eden</b> (via thread-local TLABs). When Eden fills, a <b>minor GC</b> copies live objects from Eden and the "from" survivor into the "to" survivor, incrementing their <b>age</b>; objects older than the tenuring threshold (adaptive, max 15) or that don't fit in the survivor are <b>promoted</b> to the <b>old generation</b>. Survivor spaces swap roles each GC. Minor GCs are cheap because cost ∝ survivors. Old-gen garbage is handled by major/mixed/full collections, which are rarer and costlier. Old→young references are tracked with a card table (remembered sets in G1) via write barriers so minor GCs don't scan all of old. Survivor overflow causes <b>premature promotion</b>, which fills old with short-lived data.</p>`, followUps: ['How would you detect premature promotion in logs?', 'What is the effect of a much bigger young generation?'] },
+    { q: 'Compare Serial, Parallel, G1 and ZGC. Which would you pick for which workload?', level: 'A', a: `<p><b>Serial</b>: single-threaded stop-the-world copying/mark-compact; minimal overhead — small heaps, 1-CPU containers, CLIs. <b>Parallel</b>: same model with many threads; best <b>throughput</b>, long full-GC pauses — batch/ETL. <b>G1</b> (default since 9): region-based, parallel STW evacuation of young + chosen old regions ("garbage-first") with concurrent marking, pause-time goal (default 200 ms) — general services with heaps of a few to tens of GB. <b>ZGC</b> (generational since 21, default mode from 23): concurrent marking and relocation with load barriers and coloured pointers, <b>sub-millisecond pauses</b> independent of heap size (up to 16 TB) at some CPU/memory cost — latency-critical services and huge heaps. Shenandoah is a similar concurrent-compaction option. CMS is gone (removed in 14). I'd pick by goal: throughput → Parallel; balanced → G1; strict tail latency or giant heap → ZGC — and verify with GC logs under real load.</p>`, followUps: ['What is an allocation stall in ZGC?', 'Why can setting MaxGCPauseMillis=10 on G1 backfire?', 'What does the JVM choose in a 1-CPU container?'] },
+    { q: 'How does G1 work internally? Explain regions, young/mixed collections, IHOP, remembered sets and humongous objects.', level: 'E', a: `<p>G1 splits the heap into ~2048 equal <b>regions</b> (1–32 MB) that can be Eden, Survivor, Old, Humongous or free. <b>Young GCs</b> evacuate all young regions in parallel STW pauses, with young size adapted to meet ${C('MaxGCPauseMillis')}. Each region has a <b>remembered set</b> of incoming references (maintained by post-write barriers and concurrent refinement), so a region can be evacuated without scanning the heap. When old occupancy crosses the adaptive <b>IHOP</b>, a <b>concurrent marking</b> cycle runs (SATB pre-write barriers preserve correctness), ending with Remark and Cleanup that compute per-region liveness and free empty regions. <b>Mixed GCs</b> then evacuate young regions plus the old regions with the most reclaimable space, choosing how many using cost prediction to stay under the pause goal; regions above ~85% live are skipped. Objects ≥ half a region are <b>humongous</b>, placed in contiguous regions and never moved; heavy humongous allocation fragments the heap. If evacuation runs out of space ("to-space exhausted"), G1 may fall back to a parallel <b>Full GC</b>.</p>`, followUps: ['How would you fix frequent "G1 Humongous Allocation" GCs?', 'What is SATB and why is it needed?'] },
+    { q: 'A service\'s p99 latency spikes every few minutes. How do you determine whether GC is the cause and fix it?', level: 'A', a: `<p>First confirm correlation: enable ${C('-Xlog:gc*,safepoint')} (or use JFR) and line up pause timestamps with latency spikes. Then classify: long <b>young</b> pauses (too many survivors, CPU throttling), <b>mixed/full</b> GCs (old filling: promotion, leak, marking too late), <b>humongous</b> allocations, or <b>non-GC</b> stalls (time-to-safepoint, swapping, CFS throttling) which look like GC from outside. Measure allocation rate, promotion rate and the post-GC live set. Fixes in order of value: reduce allocation/large temporary objects (JFR allocation profiling), right-size the heap (3–4× live set, Xms = Xmx, container headroom), adjust collector settings (region size, IHOP, pause goal), or switch to ZGC for strict tail-latency goals. Change one thing at a time and verify over a long, realistic run, comparing percentiles.</p>`, followUps: ['What if pause logs are short but the app still freezes?', 'How do you size Xmx inside Kubernetes?'] },
+    { q: 'Can Java have memory leaks? Give examples and explain how you would find one in production.', level: 'I', a: `<p>Yes — a Java leak is an object that is <b>reachable but no longer needed</b>. Classics: unbounded static maps/caches, listeners never unregistered, ${C('ThreadLocal')} values on pooled threads without ${C('remove()')}, inner classes/lambdas capturing a large outer object, mutable keys in hash maps, unclosed resources (native memory/file handles), unbounded queues, and class loader leaks on redeploy (Metaspace). Finding it: watch the <b>post-GC old-gen floor</b> rise; compare ${C('jcmd <pid> GC.class_histogram')} snapshots to see which classes grow; capture a heap dump (${C('jcmd GC.heap_dump')} or ${C('HeapDumpOnOutOfMemoryError')}); in Eclipse MAT use Leak Suspects, the <b>dominator tree</b> (retained size) and <b>path to GC roots</b> to find the holder; or use JFR's Old Object Sample with path-to-gc-roots for low-overhead production analysis. Fix the lifecycle (bounds, deregistration, try/finally), then verify the floor is flat under load.</p>`, followUps: ['Shallow vs retained size?', 'Why does WeakHashMap sometimes still leak?', 'How do you safely take a heap dump of a 30 GB heap in production?'] },
+    { q: 'Your Java service is at 100% CPU. Walk me through diagnosing it.', level: 'A', a: `<p>1) Is it the JVM or the app? ${C('top -H -p <pid>')} lists per-thread CPU. 2) Convert the hot TID to hex and find ${C('nid=0x…')} in 2–3 ${C('jstack')}/${C('jcmd Thread.print')} dumps taken seconds apart. 3) If it's <b>GC threads</b>, check GC logs / ${C('jstat -gcutil')}: heap near full with live data (leak or undersized heap) → GC thrash. If it's <b>C2 compiler threads</b>, it's warm-up or a deopt storm. 4) If it's application threads, record a <b>CPU flame graph</b> with JFR or async-profiler (avoids safepoint bias) to find the hot method — typical culprits: regex backtracking, accidental O(n²), busy-spin loops, hash collisions, logging/serialization. 5) Fix, redeploy, and compare flame graphs and CPU metrics.</p>`, followUps: ['Why can RUNNABLE in socketRead0 mislead you?', 'What is safepoint bias?'] },
+    { q: 'What is Java Flight Recorder and how would you use it? How does it compare to async-profiler and heap dumps?', level: 'E', a: `<p><b>JFR</b> is an event recorder built into HotSpot (free in OpenJDK since 11). It writes binary events to thread-local buffers with ~1% overhead: CPU execution samples, allocation samples, GC phases and pauses, safepoints, JIT compilations and deoptimizations, lock contention, socket/file I/O, exceptions, plus your own ${C('jdk.jfr.Event')} subclasses. Run it continuously (${C('-XX:StartFlightRecording=disk=true,maxage=6h')}) and dump on incidents (${C('jcmd JFR.dump')}); analyse in JDK Mission Control or with the ${C('jfr')} CLI, or stream events live via ${C('RecordingStream')}. <b>async-profiler</b> excels at CPU/alloc/lock/wall flame graphs including native and kernel frames. <b>Heap dumps</b> are heavyweight snapshots that answer "who holds this memory". A typical workflow: JFR always on for "what happened", async-profiler for deep CPU work, heap dumps only for leak root-causing.</p>`, followUps: ['How would you find the allocation hot spots with JFR?', 'How do you dump virtual threads?'] },
+    { q: 'How does the JVM behave inside containers, and how would you configure memory for a 4 GiB pod?', level: 'A', a: `<p>Since JDK 10 (and 8u191) the JVM reads cgroup limits (${C('UseContainerSupport')}) for CPU count and memory. Without ${C('-Xmx')}, max heap defaults to <b>25%</b> of the limit (${C('MaxRAMPercentage')}) — usually too small for a dedicated service. With &lt; 2 visible CPUs or small memory, ergonomics selects <b>Serial GC</b>. For a 4 GiB pod: estimate non-heap (metaspace ~150–300 MB, threads × stack size, code cache, direct buffers, GC structures), then set ${C('-XX:MaxRAMPercentage=65..75')} (≈2.6–3 GB heap), equal initial size for predictability, ${C('ExitOnOutOfMemoryError')} plus heap dumps to a volume, and GC logs. Verify with NMT and container metrics; if RSS approaches the limit, the kernel OOM-killer (exit 137) kills the process with no Java stack trace.</p>`, followUps: ['Why might CPU limits cause GC pauses to look longer?', 'How do virtual threads change the thread-stack budget?'] }
+  );
+
+  /* ---------- vary the position of correct answers (authored with the answer first) ---------- */
+  function rotate(q, k) {
+    if (!q || !q.options) return;
+    var n = q.options.length; k = k % n;
+    if (!k) return;
+    q.options = q.options.slice(k).concat(q.options.slice(0, k));
+    q.answer = (q.answer - k + n) % n;
+  }
+  quiz.forEach(function (q, i) { rotate(q, (i * 3 + 1) % 4); });
+  var allProblems = practice.slice();
+  topics.forEach(function (t) { (t.problems || []).forEach(function (p) { allProblems.push(p); }); });
+  allProblems.forEach(function (p, i) { rotate(p.mcq, (i * 2 + 1) % 3); });
+
+  registerModule({
+    id: 'java13',
+    title: 'JVM Internals & Performance',
+    intro: `<p>This is the module where Java stops being a black box. You will follow a class from a ${C('.class')} file through the <b>class loaders</b> and into <b>Metaspace</b>, read the <b>bytecode</b> javac really produced, watch the <b>JIT</b> turn hot methods into speculative machine code (and throw it away again), and see exactly where every variable and object lives in <b>memory</b>.</p>
+<p>Then we go deep on <b>garbage collection</b>: how tracing finds garbage, why most objects die in <b>Eden</b>, how objects age through <b>survivor</b> spaces into the <b>old generation</b>, and how <b>Serial, Parallel, G1 and ZGC</b> trade throughput for pause time. Finally you learn the production skills senior interviews probe: <b>GC tuning</b> from logs, <b>hunting memory leaks</b> with histograms and heap dumps, and diagnosing hangs and CPU spikes with <b>jcmd, jstack, jmap, JFR</b> and async-profiler.</p>
+<p>Every topic starts with an everyday analogy, has step-by-step visualizers you can feed your own input (delegation walks, a bytecode stack machine, tiered compilation, an Eden/Survivor/Old aging simulator, G1 regions, a leak floor, deadlock graphs), and ends with an expert deep dive and what changes in the AI era. Practice problems include coding exercises, leak hunts and GC/tuning scenarios.</p>`,
+    goals: [
+      'Explain parent delegation, the load → link → initialize lifecycle, and debug ClassNotFoundException vs NoClassDefFoundError and class loader leaks',
+      'Read <code>javap -c</code> output, trace the operand stack by hand and settle output-prediction puzzles with bytecode',
+      'Describe tiered compilation (C1/C2), inlining, escape analysis and deoptimization, and write benchmarks that survive the JIT',
+      'Place any variable or object in the right memory area (stack, heap, Metaspace, code cache, native) and size a container correctly',
+      'Explain GC roots, mark–sweep–compact, copying and generational collection (Eden, Survivor, Old, tenuring, premature promotion)',
+      'Choose between Serial, Parallel, G1 and ZGC for a workload and explain G1 regions, mixed GCs and ZGC load barriers',
+      'Tune GC from evidence: compute allocation rate, promotion rate, live set and pause percentiles from logs, and size the heap',
+      'Find and fix memory leaks (static caches, listeners, ThreadLocals, class loaders) using histograms, heap dumps and JFR',
+      'Diagnose hangs, deadlocks and CPU spikes with jcmd, jstack, jstat, JFR/JMC and async-profiler'
+    ],
+    prereqs: `<p>Java 11 (Concurrency I: threads, synchronized, the memory model) and Java 12 (java.util.concurrent, thread pools, virtual threads) — thread dumps and deadlocks build on them. Java 10 (Collections Internals) helps for the cache/LRU and HashMap parts. Basic graph traversal (BFS/DFS, DSA track) is used in the GC marking and deadlock problems. Comfortable with a terminal for running <code>java</code>, <code>javap</code> and <code>jcmd</code>.</p>`,
+    hours: 24,
+    topics: topics,
+    practice: practice,
+    quiz: quiz,
+    interview: interview
+  });
+})();
