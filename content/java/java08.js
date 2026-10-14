@@ -2308,12 +2308,12 @@ class EventBus {
 
     private static Set<Class<?>> supertypes(Class<?> start) {
         Set<Class<?>> seen = new LinkedHashSet<>();
-        Deque<Class<?>> todo = new ArrayDeque<>(List.of(start));
-        while (!todo.isEmpty()) {
-            Class<?> c = todo.poll();
+        Deque<Class<?>> pending = new ArrayDeque<>(List.of(start));
+        while (!pending.isEmpty()) {
+            Class<?> c = pending.poll();
             if (!seen.add(c)) continue;
-            if (c.getSuperclass() != null) todo.add(c.getSuperclass());
-            todo.addAll(Arrays.asList(c.getInterfaces()));
+            if (c.getSuperclass() != null) pending.add(c.getSuperclass());
+            pending.addAll(Arrays.asList(c.getInterfaces()));
         }
         return seen;
     }

@@ -910,4 +910,818 @@ print(empty)                   # ['x']    - caller's list was used` },
       }
     }]
   });
+
+  /* ================= TOPIC 5: lists & tuples ================= */
+  topics.push({
+    title: 'Lists and Tuples: Ordered Collections',
+    analogy: `<p>A <b>list</b> is a <b>row of numbered lockers you can rearrange</b>: add a locker at the end, squeeze one in the middle (everyone after it shifts down one), take one out. A <b>tuple</b> is a <b>sealed envelope</b> with a fixed set of things inside — you can read what is in it, but you cannot add, remove or swap items once it is sealed.</p>`,
+    explain: `<p>🟢 <b>Lists</b> hold items <b>in order</b>, allow duplicates, can mix types, and can change (they are <b>mutable</b>).</p>
+<pre>nums = [10, 20, 30]
+nums[0]        # 10   (indexes start at 0)
+nums[-1]       # 30   (negative = count from the end)
+len(nums)      # 3</pre>
+${H.arr([10, 20, 30], { label: 'nums', idx: true })}
+<p><b>Most used list methods</b> (all change the list <b>in place</b> and mostly return <code>None</code>):</p>
+${H.table(['Operation', 'Example → result', 'Cost'], [['append(x)', '<code>[1,2].append(3)</code> → [1,2,3]', 'O(1) amortised'], ['extend(iter)', '<code>[1].extend([2,3])</code> → [1,2,3]', 'O(k)'], ['insert(i, x)', '<code>[1,3].insert(1, 2)</code> → [1,2,3]', 'O(n) (shifts)'], ['pop()', 'removes &amp; returns last', 'O(1)'], ['pop(0)', 'removes &amp; returns first', '<span class="c-r">O(n)</span>'], ['remove(x)', 'deletes first x (ValueError if missing)', 'O(n)'], ['x in lst / index(x) / count(x)', 'linear search', 'O(n)'], ['sort() / sorted(lst)', 'in place / new list', 'O(n log n)'], ['reverse() / lst[::-1]', 'in place / new list', 'O(n)']])}
+<p><b>sort() vs sorted():</b> <code>lst.sort()</code> changes the list and returns <code>None</code> (so <code>x = lst.sort()</code> makes x None!). <code>sorted(lst)</code> returns a <b>new</b> list and works on any iterable. Both accept <code>key=</code> and <code>reverse=True</code>.</p>
+<p>🟢 <b>Tuples</b> are like lists but <b>immutable</b>: <code>point = (3, 4)</code>. The comma makes the tuple, not the brackets: <code>t = 5,</code> is a tuple, <code>(5)</code> is just the int 5, so a one-item tuple is <code>(5,)</code>. Use tuples for <b>fixed records</b> (x, y), function returns, and dictionary keys (lists cannot be keys).</p>
+<p>🟢 <b>Names are labels, not boxes.</b> <code>b = a</code> does <b>not</b> copy a list — both names point at the <b>same</b> list. Change it through b and a "changes" too. To copy: <code>a[:]</code>, <code>list(a)</code> or <code>a.copy()</code> (these are <b>shallow</b> copies — module py05 covers deep copies).</p>
+<p><b>Grid trap:</b> <code>[[0] * 3] * 3</code> repeats the <b>same inner list</b> three times; use <code>[[0] * 3 for _ in range(3)]</code>.</p>`,
+    clues: [
+      '"ordered collection that grows" / "stack" → list with <code>append</code> + <code>pop()</code> (both O(1))',
+      '"remove from the front repeatedly" / "queue" → <b>not</b> <code>list.pop(0)</code> (O(n)); use <code>collections.deque</code>',
+      '"fixed record like (x, y)" / "use as a dict key" / "return several values" → tuple',
+      '"sorted copy, keep the original" → <code>sorted(lst)</code>; "sort in place, save memory" → <code>lst.sort()</code>',
+      '"sort by second field / length / case-insensitive" → <code>key=</code> (e.g. <code>key=len</code>, <code>key=lambda p: p[1]</code>)',
+      '"2-D grid / matrix" → list comprehension of rows, never <code>[[0]*m]*n</code>',
+      '"check membership many times" → convert the list to a set first (O(1) vs O(n))'
+    ],
+    code: [{ lang: 'python', run: true, title: 'List and tuple essentials (runnable)', code: `fruits = ['apple', 'kiwi', 'fig']
+fruits.append('mango')          # add to end
+fruits.insert(1, 'banana')      # squeeze in at index 1
+print(fruits)
+print(fruits.pop(), fruits)     # removes and returns last item
+fruits.remove('kiwi')           # remove by value (first match)
+print(fruits, len(fruits), 'fig' in fruits)
+
+# sort vs sorted
+nums = [5, 2, 9, 1]
+print(sorted(nums), nums)       # new list; original unchanged
+result = nums.sort()            # in place, returns None
+print(result, nums)
+words = ['Pear', 'fig', 'apple']
+print(sorted(words, key=str.lower))          # case-insensitive
+print(sorted(words, key=len, reverse=True))  # longest first
+
+# tuples: immutable, comma makes the tuple
+point = (3, 4)
+single = (5,)
+not_tuple = (5)
+print(type(single).__name__, type(not_tuple).__name__)
+try:
+    point[0] = 10
+except TypeError as e:
+    print('TypeError:', e)
+
+# aliasing vs copying
+a = [1, 2, 3]
+b = a            # same list, two names
+c = a[:]         # new (shallow) copy
+b.append(4)
+print(a, c, a is b, a is c)
+
+# grid trap
+bad = [[0] * 3] * 3
+bad[0][0] = 1
+good = [[0] * 3 for _ in range(3)]
+good[0][0] = 1
+print(bad)
+print(good)` }],
+    codeTitle: ['Lists & tuples'],
+    viz: [{
+      title: 'List operations, one at a time (with their cost)',
+      input: 'append 5; insert 0 9; append 7; pop 0; remove 5; extend 3 1; sort; reverse; pop',
+      inputLabel: 'start = [4, 8]; ops separated by ; (append x, insert i x, pop, pop i, remove x, extend a b, sort, reverse)',
+      gen: function (input) {
+        var ops = String(input).split(';').map(function (s) { return s.trim(); }).filter(function (s) { return s.length; });
+        if (!ops.length) throw new Error('Enter operations like: append 5; pop');
+        if (ops.length > 14) throw new Error('At most 14 operations');
+        var L = [4, 8], frames = [fr('Start with <code>lst = [4, 8]</code>. A Python list is a dynamic array: items sit in consecutive slots, so the <b>end</b> is cheap to change and the <b>front/middle</b> requires shifting.', [{ type: 'array', label: 'lst', values: L.slice() }, cp('lst = [4, 8]', 1, 'ok')])];
+        ops.forEach(function (op) {
+          var p = op.split(/\s+/), name = p[0], hl = {}, narr = '', cls = 'ok', line = 'lst.' + op;
+          var args = p.slice(1).map(lit);
+          if (name === 'append') {
+            if (args.length !== 1) throw new Error('append needs exactly one value');
+            L.push(args[0]); hl[L.length - 1] = 'ok';
+            line = 'lst.append(' + rp(args[0]) + ')';
+            narr = 'append puts <b>' + esc(rp(args[0])) + '</b> in the next free slot at the end. Nothing moves → <b>O(1)</b> (amortised: occasionally the array grows and copies).';
+          } else if (name === 'insert') {
+            if (args.length !== 2 || typeof args[0] !== 'number') throw new Error('insert needs: insert index value');
+            var i = args[0]; if (i < 0) i = Math.max(0, L.length + i); if (i > L.length) i = L.length;
+            L.splice(i, 0, args[1]); hl[i] = 'ok';
+            for (var s = i + 1; s < L.length; s++) hl[s] = 'win';
+            line = 'lst.insert(' + args[0] + ', ' + rp(args[1]) + ')';
+            narr = 'insert at index ' + i + ': the ' + (L.length - 1 - i) + ' item(s) after it shift right one slot (blue) → <b>O(n)</b>. (Out-of-range indexes are clamped, never an error.)';
+          } else if (name === 'pop') {
+            if (!L.length) { frames.push(fr('<span class="c-r">IndexError: pop from empty list</span>. Always check <code>if lst:</code> first.', [{ type: 'array', label: 'lst', values: ['(empty)'] }, cp('lst.pop()', 1, 'bad')])); return; }
+            var j = args.length ? args[0] : L.length - 1; if (j < 0) j += L.length;
+            if (j < 0 || j >= L.length) { frames.push(fr('<span class="c-r">IndexError: pop index out of range</span>.', [{ type: 'array', label: 'lst', values: L.map(rp) }, cp('lst.' + op, 1, 'bad')])); return; }
+            var before = L.slice(), hb = {}; hb[j] = 'bad';
+            var v = L.splice(j, 1)[0];
+            line = 'x = lst.pop(' + (args.length ? args[0] : '') + ')';
+            frames.push(fr('pop' + (args.length ? '(' + args[0] + ')' : '()') + ' removes and <b>returns</b> ' + esc(rp(v)) + (j === before.length - 1 ? ' from the end → <b>O(1)</b>.' : '. Everything after index ' + j + ' must shift left → <b>O(n)</b>. That is why queues use <code>deque.popleft()</code>.'), [{ type: 'array', label: 'lst (before)', values: before.map(rp), hl: hb }, { type: 'array', label: 'lst (after)', values: L.length ? L.map(rp) : ['(empty)'] }, vp({ x: v }, 'x'), cp(line, 1, j === before.length - 1 ? 'ok' : 'bad')]));
+            return;
+          } else if (name === 'remove') {
+            var k = -1;
+            for (var q = 0; q < L.length; q++) if (rp(L[q]) === rp(args[0])) { k = q; break; }
+            if (k < 0) { frames.push(fr('remove(' + esc(rp(args[0])) + '): scanned all ' + L.length + ' items, not found → <span class="c-r">ValueError: list.remove(x): x not in list</span>.', [{ type: 'array', label: 'lst', values: L.map(rp), hl: L.reduce(function (h, _, i2) { h[i2] = 'done'; return h; }, {}) }, cp('lst.remove(' + rp(args[0]) + ')', 1, 'bad')])); return; }
+            var bf = L.slice(), hr = {}; for (var r = 0; r < k; r++) hr[r] = 'done'; hr[k] = 'bad';
+            L.splice(k, 1);
+            frames.push(fr('remove(' + esc(rp(args[0])) + ') searches left to right (' + (k + 1) + ' comparison(s)), deletes the <b>first</b> match at index ' + k + ', then shifts the rest left → <b>O(n)</b>.', [{ type: 'array', label: 'lst (before)', values: bf.map(rp), hl: hr }, { type: 'array', label: 'lst (after)', values: L.length ? L.map(rp) : ['(empty)'] }, cp('lst.remove(' + rp(args[0]) + ')', 1, 'ok')]));
+            return;
+          } else if (name === 'extend') {
+            var st = L.length; args.forEach(function (x) { L.push(x); });
+            for (var e = st; e < L.length; e++) hl[e] = 'ok';
+            line = 'lst.extend(' + rp(args) + ')';
+            narr = 'extend appends <b>each</b> item of the iterable (k = ' + args.length + ') → O(k). Compare: <code>append([3, 1])</code> would add <b>one</b> nested list.';
+          } else if (name === 'sort') {
+            L.sort(function (x, y) { return (typeof x === 'number' && typeof y === 'number') ? x - y : String(x) < String(y) ? -1 : String(x) > String(y) ? 1 : 0; });
+            L.forEach(function (_, i3) { hl[i3] = 'sel'; });
+            line = 'lst.sort()'; cls = 'sel';
+            narr = 'sort() reorders <b>in place</b> using Timsort, O(n log n), and returns <b>None</b>. Use <code>sorted(lst)</code> if you need a new list.';
+          } else if (name === 'reverse') {
+            L.reverse(); L.forEach(function (_, i4) { hl[i4] = 'win'; });
+            line = 'lst.reverse()';
+            narr = 'reverse() flips the list in place in O(n) and returns None. <code>lst[::-1]</code> gives a reversed <b>copy</b> instead.';
+          } else {
+            throw new Error('Unknown operation "' + name + '". Use append, insert, pop, remove, extend, sort, reverse');
+          }
+          frames.push(fr(narr, [{ type: 'array', label: 'lst', values: L.length ? L.map(rp) : ['(empty)'], hl: hl }, cp(line, 1, cls), vp({ 'len(lst)': L.length })]));
+        });
+        frames.push(fr('Final list: <b>' + esc(rp(L)) + '</b>. Rule of thumb: work at the <b>end</b> of a list whenever you can.', [{ type: 'array', label: 'lst', values: L.length ? L.map(rp) : ['(empty)'] }]));
+        while (frames.length < 4) frames.push(fr('Add more operations to see more steps.', [{ type: 'array', label: 'lst', values: L.length ? L.map(rp) : ['(empty)'] }]));
+        return frames;
+      }
+    }, {
+      title: 'Names are labels: b = a vs c = a[:]',
+      gen: function () {
+        function g(edges, hl, ehl, tags, objs) {
+          var nodes = [{ id: 'a', label: 'a', x: 10, y: 12, shape: 'box', w: 10 }, { id: 'b', label: 'b', x: 10, y: 32, shape: 'box', w: 10 }, { id: 'c', label: 'c', x: 10, y: 52, shape: 'box', w: 10 }, { id: 'L1', label: objs[0], x: 65, y: 20, shape: 'box', w: 40 }];
+          if (objs[1]) nodes.push({ id: 'L2', label: objs[1], x: 65, y: 50, shape: 'box', w: 40 });
+          return { type: 'graph', label: 'names (left) → list objects (right)', directed: true, height: 62, nodes: nodes.filter(function (n) { return n.id === 'L1' || n.id === 'L2' || edges.some(function (e) { return e[0] === n.id; }); }), edges: edges, hl: hl || {}, ehl: ehl || {}, tags: tags || {} };
+        }
+        var code = ['a = [1, 2, 3]', 'b = a', 'c = a[:]', 'b.append(4)', 'print(a, b, c)'].join('\n');
+        return [
+          fr('<code>a = [1, 2, 3]</code> creates a list object and ties the name <b>a</b> to it. The name is a label, the list lives elsewhere in memory.', [cp(code, 1, 'ok'), g([['a', 'L1']], { L1: 'ok' }, { 'a-L1': 'ok' }, { L1: 'id 0x01' }, ['[1, 2, 3]'])]),
+          fr('<code>b = a</code> copies <b>nothing</b>. It just ties a second label to the <b>same</b> object. Now <code>a is b</code> is True.', [cp(code, 2, 'cur'), g([['a', 'L1'], ['b', 'L1']], { b: 'cur' }, { 'b-L1': 'cur' }, { L1: 'id 0x01' }, ['[1, 2, 3]'])]),
+          fr('<code>c = a[:]</code> slices the whole list, which <b>builds a new list object</b> with the same items. <code>a is c</code> is False, <code>a == c</code> is True.', [cp(code, 3, 'ok'), g([['a', 'L1'], ['b', 'L1'], ['c', 'L2']], { c: 'ok', L2: 'ok' }, { 'c-L2': 'ok' }, { L1: 'id 0x01', L2: 'id 0x02' }, ['[1, 2, 3]', '[1, 2, 3]'])]),
+          fr('<code>b.append(4)</code> mutates the object that <b>b</b> points to — which is also <b>a</b>\'s object. The copy behind <b>c</b> is untouched.', [cp(code, 4, 'bad'), g([['a', 'L1'], ['b', 'L1'], ['c', 'L2']], { L1: 'bad' }, { 'a-L1': 'bad', 'b-L1': 'bad' }, { L1: 'mutated!' }, ['[1, 2, 3, 4]', '[1, 2, 3]'])]),
+          fr('Output: <code>[1, 2, 3, 4] [1, 2, 3, 4] [1, 2, 3]</code>. Remember: <b>assignment never copies</b>. Use <code>a[:]</code>, <code>list(a)</code> or <code>a.copy()</code> for a shallow copy.', [cp(code, 5, 'sel'), tx('<code>[1, 2, 3, 4] [1, 2, 3, 4] [1, 2, 3]</code>', 'stdout')]),
+          fr('The same trap hides in <code>[[0] * 3] * 3</code>: the outer <code>* 3</code> copies the <b>reference</b> to one inner list three times, so changing <code>grid[0][0]</code> changes every row.', [g([['a', 'L1'], ['b', 'L1'], ['c', 'L1']], { L1: 'bad' }, {}, { L1: 'one inner list' }, ['[0, 0, 0]']), tx('Think of a, b, c here as grid[0], grid[1], grid[2].', 'analogy')])
+        ];
+      }
+    }],
+    examples: [
+      { title: 'append vs extend vs +', html: `<p><code>append</code> adds <b>one</b> item (even if it is a list). <code>extend</code> adds <b>each</b> item. <code>+</code> builds a <b>new</b> list; <code>+=</code> on a list behaves like <code>extend</code> (in place).</p>`, code: { lang: 'python', run: true, code: `a = [1, 2]
+a.append([3, 4])
+print(a)            # [1, 2, [3, 4]]
+b = [1, 2]
+b.extend([3, 4])
+print(b)            # [1, 2, 3, 4]
+c = b + [5]
+print(c, b)         # new list; b unchanged` } },
+      { title: 'Sorting records with key=', html: `<p>Tuples sort element by element (lexicographically), so sorting by "score descending, then name" can use a key returning a tuple.</p>`, code: { lang: 'python', run: true, code: `people = [('Ben', 82), ('Asha', 95), ('Cy', 82)]
+print(sorted(people, key=lambda p: p[1]))            # by score (stable: Ben before Cy)
+print(sorted(people, key=lambda p: (-p[1], p[0])))   # score desc, then name
+print(max(people, key=lambda p: p[1]))               # top scorer` } },
+      { title: 'Tuples as dictionary keys', html: `<p>Because tuples are immutable (and hashable when their items are), they can be keys — perfect for grid coordinates.</p>`, code: { lang: 'python', run: true, code: `board = {(0, 0): 'X', (1, 1): 'O'}
+print(board[(1, 1)])
+print((2, 2) in board)
+try:
+    bad = {[0, 0]: 'X'}
+except TypeError as e:
+    print('TypeError:', e)` } },
+      { title: 'A list as a stack', html: `<p><code>append</code> = push, <code>pop()</code> = pop, <code>lst[-1]</code> = peek. All O(1). Classic use: checking balanced brackets.</p>`, code: { lang: 'python', run: true, code: `def balanced(s):
+    pairs = {')': '(', ']': '[', '}': '{'}
+    stack = []
+    for ch in s:
+        if ch in '([{':
+            stack.append(ch)
+        elif ch in pairs:
+            if not stack or stack.pop() != pairs[ch]:
+                return False
+    return not stack
+
+print(balanced('([]{})'), balanced('(]'), balanced('(('))` } }
+    ],
+    deepDive: `<p>🟣 <b>A list is an array of pointers.</b> CPython's <code>PyListObject</code> stores a C array of <code>PyObject*</code> plus <code>size</code> and <code>allocated</code>. That is why a list can mix types (every slot is just a pointer) and why indexing is O(1).</p>
+<p><b>Amortised O(1) append.</b> When the array is full, CPython allocates a bigger one (growth ≈ 1.125× plus a small constant) and copies the pointers. Copies are rare enough that the average cost per append stays constant. You can watch it: <code>sys.getsizeof([])</code> jumps in steps as you append.</p>
+<p><b>Timsort</b> (Python's sort since 2002, with Powersort merge-policy since 3.11) is a hybrid merge/insertion sort: O(n log n) worst case, O(n) on already-sorted or reversed data, and <b>stable</b> — equal keys keep their original order, which allows multi-pass sorting (sort by name, then by score). <code>key=</code> is computed once per item (decorate-sort-undecorate under the hood).</p>
+<p><b>Tuples are leaner.</b> A tuple stores its items inline in one allocation, has no spare capacity, and small tuples are recycled via free lists — so they are a bit smaller and faster to create than lists. Tuple immutability is <b>shallow</b>: <code>t = ([1], 2)</code>; <code>t[0].append(3)</code> works. Famous puzzle: <code>t[0] += [4]</code> mutates the list <i>and then</i> raises TypeError (the item assignment fails after the in-place add succeeded).</p>
+<p><b>Hashability:</b> a tuple is hashable only if all its items are; <code>hash((1, [2]))</code> raises TypeError.</p>`,
+    aiEra: `<p>🤖 <b>What AI changes:</b> AI writes list-manipulating code fast, but it frequently picks the wrong structure: <code>list.pop(0)</code> in a BFS queue, <code>x in big_list</code> inside a loop (accidental O(n²)), or <code>[[0]*m]*n</code> grids. Spotting those costs is now your main value.</p>
+<p><b>Use AI as a partner:</b> <code>"Annotate each line of this function with its Big-O"</code> and check its answers against the table above; <code>"Is this sort stable and does my code depend on that?"</code>.</p>
+<p><b>Where AI goes wrong:</b> writing <code>x = lst.sort()</code> and using x (None), confusing <code>append</code> with <code>extend</code>, or claiming tuples are "faster in every case". It may also mutate a list argument the caller did not expect to change.</p>
+<p><b>What you must still own:</b> the cost model of lists (end = cheap, front/middle = O(n)), aliasing vs copying, and the sort-vs-sorted return values — all frequent "predict the output" interview items.</p>`,
+    problems: [{
+      title: 'Merge Two Sorted Lists (array version)', level: 'Medium', tags: ['lists', 'two pointers', 'sorting'], companies: ['Amazon', 'Microsoft', 'Apple'],
+      statement: `<p>Given two lists <code>a</code> and <code>b</code>, each sorted in non-decreasing order, return one new sorted list containing all their items. Do not modify the inputs.</p>`,
+      constraints: `0 ≤ len(a), len(b) ≤ 10<sup>5</sup>; values fit in normal Python ints.`,
+      example: `${H.arr([1, 4, 7], { label: 'a' })}${H.arr([2, 3, 9, 10], { label: 'b' })}${H.arr([1, 2, 3, 4, 7, 9, 10], { label: 'result', hl: { 0: 'g', 3: 'g', 4: 'g' } })}<p>Green items came from a; the rest from b. Each step takes the <b>smaller front</b> item.</p>`,
+      brute: { why: `<p><code>sorted(a + b)</code> is short and correct, but costs O((n+m) log(n+m)) and throws away the fact that both inputs are already sorted. (In practice Timsort detects the two runs and is fast — but interviewers want the O(n+m) merge.)</p>`, code: `def merge(a, b):
+    return sorted(a + b)` },
+      mcq: { q: 'With pointers i (in a) and j (in b), when should you take a[i]?', options: ['When a[i] <= b[j]', 'When i < j', 'Always alternate a, b, a, b'], answer: 0, explain: 'Take the smaller front element; using <= keeps the merge stable (a\'s equal items first).' },
+      hints: [`<p>Hint 1: The smallest remaining item is always at the front of a or the front of b.</p>`, `<p>Hint 2: Keep two indexes i, j. Compare a[i] and b[j], append the smaller, move that pointer.</p>`, `<p>Hint 3: When one list runs out, the rest of the other is already sorted — <code>result.extend(a[i:])</code> and <code>result.extend(b[j:])</code>.</p>`],
+      solution: {
+        approach: `<p>Two-pointer merge: compare fronts, append the smaller, advance its pointer; when one side is exhausted, extend with the remainder. Each item is touched once.</p>`,
+        code: { lang: 'python', run: true, code: `def merge(a, b):
+    i, j = 0, 0
+    result = []
+    while i < len(a) and j < len(b):
+        if a[i] <= b[j]:          # <= keeps equal items from a first (stable)
+            result.append(a[i])
+            i += 1
+        else:
+            result.append(b[j])
+            j += 1
+    result.extend(a[i:])          # leftovers (at most one of these is non-empty)
+    result.extend(b[j:])
+    return result
+
+print(merge([1, 4, 7], [2, 3, 9, 10]))   # [1, 2, 3, 4, 7, 9, 10]
+print(merge([], [5]), merge([2, 2], [2]))` },
+        alt: [{ lang: 'python', code: `import heapq
+
+def merge(a, b):
+    # standard library: lazy k-way merge of sorted iterables
+    return list(heapq.merge(a, b))` }],
+        dry: { head: ['i', 'j', 'a[i]', 'b[j]', 'take', 'result'], rows: [['0', '0', '1', '2', 'a', '[1]'], ['1', '0', '4', '2', 'b', '[1, 2]'], ['1', '1', '4', '3', 'b', '[1, 2, 3]'], ['1', '2', '4', '9', 'a', '[1, 2, 3, 4]'], ['2', '2', '7', '9', 'a', '[1, 2, 3, 4, 7]'], ['3', '2', '—', '—', 'extend b[2:]', '[1, 2, 3, 4, 7, 9, 10]']] },
+        complexity: `<p>Time O(n + m), extra space O(n + m) for the output.</p>`,
+        followUps: ['Merge k sorted lists → heap, O(N log k).', 'Merge in place into a with spare room at the end (fill from the back).']
+      }
+    }]
+  });
+
+  /* ================= TOPIC 6: dicts & sets ================= */
+  topics.push({
+    title: 'Dictionaries and Sets: Fast Lookup by Key',
+    analogy: `<p>A <b>dictionary</b> is a <b>phone contacts app</b>: you type a name (the <b>key</b>) and instantly get the number (the <b>value</b>) — you never scroll through the whole list. A <b>set</b> is a <b>guest list at the door</b>: it only cares <i>whether</i> a name is on it, each name appears once, and checking is instant.</p>`,
+    explain: `<p>🟢 <b>dict = key → value pairs.</b></p>
+<pre>ages = {'asha': 31, 'ben': 25}
+ages['asha']          # 31
+ages['cy'] = 40       # add or overwrite
+'ben' in ages         # True   (checks KEYS, O(1) on average)
+ages.get('zed')       # None   (no KeyError)
+ages.get('zed', 0)    # 0      (custom default)
+del ages['ben']       # remove (KeyError if missing)
+ages.pop('cy', None)  # remove and return, safe default</pre>
+${H.kv([['asha', 31], ['ben', 25], ['cy', 40]], { label: 'ages', hl: { cy: 'g' } })}
+<p><b>Looping:</b> <code>for k in d</code> (keys), <code>for v in d.values()</code>, <code>for k, v in d.items()</code>. Since Python 3.7, dicts <b>remember insertion order</b> — they print and loop in the order keys were first added.</p>
+<p><b>Keys must be hashable</b> (immutable-ish): str, int, float, tuple of those, frozenset. Lists, dicts and sets cannot be keys. Values can be anything.</p>
+<p><b>Two everyday patterns:</b></p>
+${H.table(['Pattern', 'Code'], [['Counting', '<code>counts[w] = counts.get(w, 0) + 1</code>'], ['Grouping', '<code>groups.setdefault(key, []).append(item)</code>'], ['Invert a mapping', '<code>{v: k for k, v in d.items()}</code>'], ['Merge (3.9+)', '<code>merged = d1 | d2</code> (right side wins)']])}
+<p>🟢 <b>set = unique items, no order, O(1) membership.</b></p>
+<pre>seen = {3, 1, 3, 2}   # {1, 2, 3} - duplicates vanish
+seen.add(5)
+seen.discard(9)       # no error if missing (remove() would raise)
+empty = set()         # NOT {} - that is an empty dict!</pre>
+<p><b>Set maths:</b> <code>a | b</code> union, <code>a &amp; b</code> intersection, <code>a - b</code> difference, <code>a ^ b</code> symmetric difference (in one but not both), <code>a &lt;= b</code> subset.</p>
+${H.chips([1, 2, 3, 4], { label: 'a', hl: { 3: 'g', 4: 'g' } })}${H.chips([3, 4, 5], { label: 'b', hl: { 3: 'g', 4: 'g' } })}<p>a &amp; b = {3, 4} (green) · a | b = {1, 2, 3, 4, 5} · a − b = {1, 2} · a ^ b = {1, 2, 5}</p>`,
+    clues: [
+      '"count occurrences / frequency / most common" → dict counting (or <code>collections.Counter</code>, module py11)',
+      '"have I seen this before?" / "duplicates" / "unique" → set',
+      '"find a pair with sum / complement" → dict of value → index (Two Sum pattern), O(n)',
+      '"group by" / "anagrams" / "bucket items by a property" → dict of lists with <code>setdefault</code> or <code>defaultdict(list)</code>',
+      '"common elements" / "in A but not in B" → set intersection / difference',
+      '"lookup inside a loop over another list" → precompute a set/dict to turn O(n·m) into O(n + m)',
+      '"preserve first-seen order while removing duplicates" → <code>list(dict.fromkeys(items))</code>'
+    ],
+    code: [{ lang: 'python', run: true, title: 'dict and set essentials (runnable)', code: `ages = {'asha': 31, 'ben': 25}
+ages['cy'] = 40                  # insert
+ages['ben'] += 1                 # update
+print(ages, len(ages))
+print(ages.get('zed'), ages.get('zed', 0))
+for name, age in ages.items():   # insertion order is guaranteed (3.7+)
+    print(name, age)
+
+# counting words
+text = 'the cat and the hat and the bat'
+counts = {}
+for w in text.split():
+    counts[w] = counts.get(w, 0) + 1
+print(counts)
+print(max(counts, key=counts.get))   # most frequent word
+
+# grouping by first letter
+groups = {}
+for w in ['apple', 'avocado', 'banana', 'blueberry', 'cherry']:
+    groups.setdefault(w[0], []).append(w)
+print(groups)
+
+# sets: uniqueness and set algebra
+a = {1, 2, 3, 4}
+b = {3, 4, 5}
+print(a | b, a & b, a - b, a ^ b)
+print({1, 2} <= a, 5 in a)
+print(type({}).__name__, type(set()).__name__)
+
+# order-preserving de-duplication
+items = ['b', 'a', 'b', 'c', 'a']
+print(list(dict.fromkeys(items)))    # ['b', 'a', 'c']
+print(sorted(set(items)))            # ['a', 'b', 'c'] (order lost, then sorted)` }],
+    codeTitle: ['Dicts & sets'],
+    viz: [{
+      title: 'Counting words with dict.get(word, 0) + 1',
+      input: 'the cat and the hat and the bat',
+      inputLabel: 'words (space separated, ≤ 16)',
+      gen: function (input) {
+        var w = words(input);
+        if (!w.length) throw new Error('Enter some words');
+        if (w.length > 16) throw new Error('At most 16 words');
+        var code = ['counts = {}', 'for w in words:', '    counts[w] = counts.get(w, 0) + 1', 'print(counts)'].join('\n');
+        var counts = [], frames = [fr('Start with an empty dict. For each word we ask "how many so far?" with <code>get(w, 0)</code> — 0 if the key is new — add 1, and store it back.', [cp(code, 1, 'ok'), { type: 'array', label: 'words', values: w }, { type: 'map', label: 'counts', entries: [] }])];
+        w.forEach(function (word, k) {
+          var idx = -1;
+          for (var i = 0; i < counts.length; i++) if (counts[i][0] === word) idx = i;
+          var old = idx < 0 ? 0 : counts[idx][1];
+          if (idx < 0) counts.push([word, 1]); else counts[idx][1] = old + 1;
+          var hl = {}; hl[word] = idx < 0 ? 'ok' : 'cur';
+          var ah = {}, ap = {}; for (var d = 0; d < k; d++) ah[d] = 'done'; ah[k] = 'cur'; ap[k] = 'w';
+          frames.push(fr('<b>w = \'' + esc(word) + '\'</b>: ' + (idx < 0 ? 'not a key yet → <code>get</code> returns the default <b>0</b>; store 0 + 1 = <b>1</b>. New keys go to the <b>end</b> (insertion order).' : 'already a key with value ' + old + ' → store ' + old + ' + 1 = <b>' + (old + 1) + '</b>. The key keeps its original position.') + ' Hash lookup: O(1) on average.', [cp(code, 3, idx < 0 ? 'ok' : 'cur'), { type: 'array', label: 'words', values: w, hl: ah, ptr: ap }, { type: 'map', label: 'counts', entries: counts.map(function (e) { return [e[0], e[1]]; }), hl: hl }]));
+        });
+        var best = counts.reduce(function (b, e) { return e[1] > b[1] ? e : b; }, counts[0]);
+        var hb = {}; hb[best[0]] = 'sel';
+        frames.push(fr('Done: one pass, O(n). <code>max(counts, key=counts.get)</code> → <b>\'' + esc(best[0]) + '\'</b> (' + best[1] + ' times; ties go to the first key in insertion order). Without a dict you would rescan the list for every word: O(n²).', [cp(code, 4, 'sel'), { type: 'map', label: 'counts', entries: counts.map(function (e) { return [e[0], e[1]]; }), hl: hb }]));
+        return frames;
+      }
+    }, {
+      title: 'Set algebra: |  &  -  ^',
+      input: '1 2 3 4 | 3 4 5',
+      inputLabel: 'set A | set B (numbers or words)',
+      gen: function (input) {
+        var halves = String(input).split('|');
+        if (halves.length !== 2) throw new Error('Use the format: 1 2 3 | 3 4');
+        function uniq(xs) { var o = []; xs.forEach(function (x) { if (o.indexOf(x) < 0) o.push(x); }); return o; }
+        var rawA = words(halves[0]), rawB = words(halves[1]);
+        var A = uniq(rawA), B = uniq(rawB);
+        if (!A.length || !B.length) throw new Error('Both sets need at least one item');
+        if (A.length > 12 || B.length > 12) throw new Error('At most 12 items per set');
+        function hl(items, pick) { var h = {}; items.forEach(function (x) { if (pick(x)) h[x] = 'ok'; }); return h; }
+        var inA = function (x) { return A.indexOf(x) >= 0; }, inB = function (x) { return B.indexOf(x) >= 0; };
+        var U = uniq(A.concat(B)), I = A.filter(inB), D = A.filter(function (x) { return !inB(x); }), S = U.filter(function (x) { return inA(x) !== inB(x); });
+        var frames = [];
+        frames.push(fr('Building the sets removes duplicates automatically' + (rawA.length !== A.length || rawB.length !== B.length ? ' (some of your repeats vanished!)' : '') + '. A set stores each item once, keyed by its hash.', [{ type: 'set', label: 'A', items: A }, { type: 'set', label: 'B', items: B }, cp('A = {' + A.join(', ') + '}\nB = {' + B.join(', ') + '}', 1, 'ok')]));
+        frames.push(fr('<b>Union</b> <code>A | B</code>: everything in <i>either</i> set → {' + U.join(', ') + '}.', [{ type: 'set', label: 'A', items: A, hl: hl(A, function () { return true; }) }, { type: 'set', label: 'B', items: B, hl: hl(B, function () { return true; }) }, { type: 'set', label: 'A | B', items: U, hl: hl(U, function () { return true; }) }]));
+        frames.push(fr('<b>Intersection</b> <code>A &amp; B</code>: only items in <i>both</i> → {' + I.join(', ') + '}' + (I.length ? '' : ' (empty: shown as set())') + '. Python loops over the smaller set and checks the other in O(1).', [{ type: 'set', label: 'A', items: A, hl: hl(A, inB) }, { type: 'set', label: 'B', items: B, hl: hl(B, inA) }, { type: 'set', label: 'A & B', items: I }]));
+        frames.push(fr('<b>Difference</b> <code>A - B</code>: in A but <i>not</i> in B → {' + D.join(', ') + '}. Order matters: <code>B - A</code> would be different.', [{ type: 'set', label: 'A', items: A, hl: hl(A, function (x) { return !inB(x); }) }, { type: 'set', label: 'B', items: B }, { type: 'set', label: 'A - B', items: D }]));
+        frames.push(fr('<b>Symmetric difference</b> <code>A ^ B</code>: in exactly one of them → {' + S.join(', ') + '}. Equals <code>(A | B) - (A &amp; B)</code>.', [{ type: 'set', label: 'A', items: A, hl: hl(A, function (x) { return !inB(x); }) }, { type: 'set', label: 'B', items: B, hl: hl(B, function (x) { return !inA(x); }) }, { type: 'set', label: 'A ^ B', items: S }]));
+        frames.push(fr('Membership: <code>' + esc(A[0]) + ' in B</code> → <b>' + (inB(A[0]) ? 'True' : 'False') + '</b>, computed by hashing — no scan, O(1) on average. With lists it would be O(n).', [{ type: 'set', label: 'B', items: B, hl: (function () { var h = {}; if (inB(A[0])) h[A[0]] = 'sel'; return h; })() }, { type: 'table', label: 'summary', columns: ['expression', 'result'], rows: [['A | B', '{' + U.join(', ') + '}'], ['A & B', I.length ? '{' + I.join(', ') + '}' : 'set()'], ['A - B', D.length ? '{' + D.join(', ') + '}' : 'set()'], ['A ^ B', S.length ? '{' + S.join(', ') + '}' : 'set()']] }]));
+        return frames;
+      }
+    }],
+    examples: [
+      { title: 'KeyError vs get vs in', html: `<p>Square brackets raise <code>KeyError</code> for a missing key. Use <code>in</code> to check, <code>get</code> for a default, or <code>try/except</code> when a missing key is truly exceptional.</p>`, code: { lang: 'python', run: true, code: `stock = {'apple': 5}
+print('pear' in stock, stock.get('pear', 0))
+try:
+    stock['pear']
+except KeyError as e:
+    print('KeyError:', e)` } },
+      { title: 'Group anagrams with a dict of lists', html: `<p>Words that are anagrams share the same sorted letters, so use that as the key.</p>`, code: { lang: 'python', run: true, code: `words = ['eat', 'tea', 'tan', 'ate', 'nat', 'bat']
+groups = {}
+for w in words:
+    key = ''.join(sorted(w))          # 'aet' for eat/tea/ate
+    groups.setdefault(key, []).append(w)
+print(list(groups.values()))   # [['eat', 'tea', 'ate'], ['tan', 'nat'], ['bat']]` } },
+      { title: 'Do not change a dict while looping over it', html: `<p>Adding/removing keys during iteration raises <code>RuntimeError</code>. Loop over a snapshot (<code>list(d)</code>) or build a new dict.</p>`, code: { lang: 'python', run: true, code: `prices = {'a': 0, 'b': 3, 'c': 0}
+try:
+    for k in prices:
+        if prices[k] == 0:
+            del prices[k]
+except RuntimeError as e:
+    print('RuntimeError:', e)
+
+prices = {'a': 0, 'b': 3, 'c': 0}
+prices = {k: v for k, v in prices.items() if v != 0}
+print(prices)` } },
+      { title: 'Speed-up: list lookups → set lookups', html: `<p>Checking membership in a list inside a loop is O(n·m). Converting once to a set makes it O(n + m).</p>`, code: { lang: 'python', run: true, code: `import time
+banned = list(range(0, 4000, 2))
+users = list(range(4000))
+
+t = time.perf_counter()
+ok_slow = [u for u in users if u not in banned]        # list scan each time
+t_list = time.perf_counter() - t
+
+banned_set = set(banned)
+t = time.perf_counter()
+ok_fast = [u for u in users if u not in banned_set]    # hash lookup
+t_set = time.perf_counter() - t
+
+print(ok_slow == ok_fast, f'list {t_list:.3f}s vs set {t_set:.5f}s')` } }
+    ],
+    deepDive: `<p>🟣 <b>Hash tables under the hood.</b> <code>hash(key)</code> turns a key into a big integer; its low bits choose a slot. CPython dicts (since 3.6) use a <b>compact layout</b>: a small sparse <i>index table</i> plus a dense <i>entries array</i> in insertion order. That design saves memory and is why insertion order is preserved (made a language guarantee in 3.7).</p>
+<p><b>Collisions</b> use open addressing with a perturbed probe sequence (not linked lists). The table is resized when about 2/3 full, so lookups stay O(1) on average. Worst case is O(n) if many keys collide; string hashes are randomised per process (<code>PYTHONHASHSEED</code>) to stop attackers from crafting colliding keys (hash-flooding DoS).</p>
+<p><b>The hash/eq contract:</b> if <code>a == b</code> then <code>hash(a) == hash(b)</code>. Note <code>1 == 1.0 == True</code>, so <code>{1: 'a', 1.0: 'b', True: 'c'}</code> is a dict with <b>one</b> key (1) and value 'c'. Mutable objects are unhashable because their hash would change after insertion and they would be "lost" in the wrong slot.</p>
+<p><b>Sets</b> are hash tables with keys only (no values) and are <b>not</b> ordered — iteration order depends on hashes and can differ between runs for strings. <code>frozenset</code> is the immutable, hashable version (can be a dict key or live inside another set).</p>
+<p><b>Memory:</b> dicts and sets trade memory for speed — an empty dict is ~64 bytes and each entry costs tens of bytes. For millions of small records, consider tuples, <code>__slots__</code> classes, or arrays.</p>`,
+    aiEra: `<p>🤖 <b>What AI changes:</b> "use a hash map" is the first optimisation AI suggests — and it is usually right. Your value is recognising <i>which</i> key to use (sorted letters for anagrams, complement for Two Sum, (row, col) tuples for grids) and checking hashability.</p>
+<p><b>Use AI as a partner:</b> <code>"This function is O(n²); can a dict or set bring it to O(n)?"</code>; <code>"Generate tricky keys for this dict: 1 vs 1.0 vs True, tuples with lists"</code>.</p>
+<p><b>Where AI goes wrong:</b> deleting keys while iterating, writing <code>{}</code> to mean an empty set, assuming set iteration order is stable, and using <code>dict[key]</code> where a missing key is normal (KeyError in production at 3 a.m.).</p>
+<p><b>What you must still own:</b> the O(1)-average / O(n)-worst story, the hash/eq contract, why lists cannot be keys, and the counting/grouping/complement patterns that unlock dozens of interview problems.</p>`,
+    problems: [{
+      title: 'Two Sum (return indexes)', level: 'Easy', tags: ['dict', 'hashing', 'complement'], companies: ['Amazon', 'Google', 'Meta', 'Adobe'],
+      statement: `<p>Given a list <code>nums</code> and an integer <code>target</code>, return the indexes <code>[i, j]</code> (i &lt; j) of the two numbers that add up to <code>target</code>. Exactly one answer exists; you may not use the same element twice.</p>`,
+      constraints: `2 ≤ len(nums) ≤ 10<sup>5</sup>; −10<sup>9</sup> ≤ nums[i], target ≤ 10<sup>9</sup>`,
+      example: `${H.arr([2, 7, 11, 15], { label: 'nums', hl: { 0: 'g', 1: 'g' } })}<p>target = 9 → <b>[0, 1]</b> because ${H.c('g', '2 + 7 = 9')}. At index 1 we need 9 − 7 = 2, and 2 was already seen at index 0.</p>`,
+      brute: { why: `<p>Check every pair (i, j): n(n−1)/2 ≈ 5·10<sup>9</sup> pairs for n = 10<sup>5</sup> — far too slow in Python. The waste: for each number we <i>rescan</i> to find its partner instead of remembering what we have seen.</p>`, code: `def two_sum(nums, target):
+    n = len(nums)
+    for i in range(n):
+        for j in range(i + 1, n):
+            if nums[i] + nums[j] == target:
+                return [i, j]
+    return []` },
+      mcq: { q: 'At index j with value x, what should you look up in the dict?', options: ['target - x', 'x', 'target + x', 'j - target'], answer: 0, explain: 'You need a partner p with p + x = target, i.e. p = target − x, seen earlier.' },
+      hints: [`<p>Hint 1: For each number x you need its <b>complement</b> target − x. Have you seen it before?</p>`, `<p>Hint 2: A dict <code>value → index</code> of numbers seen so far answers that in O(1).</p>`, `<p>Hint 3: Check <b>before</b> inserting the current number (so you never pair an element with itself). Recipe: for j, x in enumerate(nums): if target-x in seen → return [seen[target-x], j]; else seen[x] = j.</p>`],
+      solution: {
+        approach: `<p>One pass with <code>enumerate</code>. Keep <code>seen = {value: index}</code>. For each x, if <code>target − x</code> is in seen, we found the pair; otherwise record x. Checking before inserting handles duplicates like [3, 3] with target 6.</p>`,
+        code: { lang: 'python', run: true, code: `def two_sum(nums, target):
+    seen = {}                       # value -> index where we saw it
+    for j, x in enumerate(nums):
+        need = target - x
+        if need in seen:            # O(1) average lookup
+            return [seen[need], j]
+        seen[x] = j                 # insert AFTER the check
+    return []
+
+print(two_sum([2, 7, 11, 15], 9))   # [0, 1]
+print(two_sum([3, 2, 4], 6))        # [1, 2]
+print(two_sum([3, 3], 6))           # [0, 1]` },
+        dry: { head: ['j', 'x', 'need = 9 − x', 'need in seen?', 'seen after'], rows: [['0', '2', '7', 'no', '{2: 0}'], ['1', '7', '2', '<span class="c-g">yes → [0, 1]</span>', '—']] },
+        complexity: `<p>Time O(n) average, space O(n) for the dict.</p>`,
+        followUps: ['Input is sorted → two pointers with O(1) extra space.', 'Return all unique pairs / count pairs → dict of counts.', 'Three Sum → sort + two pointers, O(n²).']
+      }
+    }]
+  });
+
+  /* ================= TOPIC 7: slicing ================= */
+  topics.push({
+    title: 'Slicing: seq[start:stop:step] Without Off-by-One Errors',
+    analogy: `<p>Slicing is <b>cutting a loaf of bread with a ruler</b>. The numbers on the ruler mark the <b>gaps between slices</b>, not the slices themselves. <code>bread[2:5]</code> means "cut at mark 2 and at mark 5" — you get the 3 slices in between. The step is "take every 2nd slice". And you can measure from the <b>back end</b> of the loaf with negative numbers.</p>`,
+    explain: `<p>🟢 <b>The shape:</b> <code>seq[start:stop:step]</code> works on lists, tuples, strings, ranges and bytes. It always returns a <b>new</b> object of the same type and <b>never raises IndexError</b> — out-of-range bounds are simply clamped.</p>
+<ul><li><b>start</b> is included, <b>stop</b> is excluded (half-open, just like <code>range</code>).</li><li>Leave any part out to use the default: start → beginning, stop → end, step → 1.</li><li>Negative indexes count from the end: <code>-1</code> is the last item.</li></ul>
+${H.arr(['P', 'Y', 'T', 'H', 'O', 'N'], { label: 's = "PYTHON"', hl: { 1: 'g', 2: 'g', 3: 'g' } })}
+${H.table(['Slice', 'Result', 'How to read it'], [['<code>s[1:4]</code>', "'YTH'", 'items 1, 2, 3 (stop 4 excluded)'], ['<code>s[:3]</code>', "'PYT'", 'first 3'], ['<code>s[3:]</code>', "'HON'", 'from index 3 to the end'], ['<code>s[-2:]</code>', "'ON'", 'last 2'], ['<code>s[:-1]</code>', "'PYTHO'", 'everything except the last'], ['<code>s[::2]</code>', "'PTO'", 'every 2nd item'], ['<code>s[::-1]</code>', "'NOHTYP'", 'reversed copy'], ['<code>s[1:100]</code>', "'YTHON'", 'stop clamped, no error'], ['<code>s[4:1]</code>', "''", 'empty: start is after stop with a positive step']])}
+<p><b>Handy facts:</b> <code>len(s[a:b]) == b - a</code> (for valid non-negative a ≤ b); <code>s[:k] + s[k:] == s</code> for every k — the two halves always rebuild the original. <code>lst[:]</code> is the classic shallow copy.</p>
+<p><b>Negative step</b> walks backwards, so start should be to the <b>right</b> of stop: <code>s[4:1:-1]</code> → 'OHT' (indexes 4, 3, 2).</p>
+<p><b>Lists also allow slice assignment and deletion</b> (strings and tuples do not — they are immutable):</p>
+<pre>nums = [0, 1, 2, 3, 4, 5]
+nums[1:3] = ['a', 'b', 'c']   # replace 2 items with 3 → [0,'a','b','c',3,4,5]
+del nums[::2]                  # delete every 2nd item
+nums[:] = []                   # empty the SAME list (others holding it see it)</pre>`,
+    clues: [
+      '"first k / last k elements" → <code>a[:k]</code>, <code>a[-k:]</code> (careful: <code>a[-0:]</code> is the whole list when k = 0)',
+      '"reverse a string/list" / "palindrome" → <code>s[::-1]</code>',
+      '"rotate by k" → <code>a[-k:] + a[:-k]</code> after <code>k %= n</code>',
+      '"every other element" / "even positions" → <code>a[::2]</code>, odd positions <code>a[1::2]</code>',
+      '"copy the list before changing it" → <code>a[:]</code> or <code>a.copy()</code>',
+      '"substring from i to j inclusive" → <code>s[i:j+1]</code> (stop is exclusive)',
+      'slicing inside a loop over n items → hidden O(n²) copies; prefer indexes or <code>itertools.islice</code>'
+    ],
+    code: [{ lang: 'python', run: true, title: 'Slicing cookbook (runnable)', code: `s = 'PYTHON'
+print(s[1:4], s[:3], s[3:], s[-2:], s[:-1])
+print(s[::2], s[1::2], s[::-1], s[4:1:-1])
+print(repr(s[1:100]), repr(s[4:1]))        # clamped / empty, never an error
+
+nums = list(range(10))
+print(nums[2:8:3])            # [2, 5]
+print(nums[-3:])              # last three
+k = 3
+print(nums[-k:] + nums[:-k])  # rotate right by 3
+
+# s[:k] + s[k:] always rebuilds s
+print(all(s[:i] + s[i:] == s for i in range(-10, 10)))
+
+# slice assignment / deletion (lists only)
+nums = [0, 1, 2, 3, 4, 5]
+nums[1:3] = ['a', 'b', 'c']
+print(nums)
+del nums[::2]
+print(nums)
+
+# a slice is a copy: changing it does not touch the original
+orig = [1, 2, 3]
+part = orig[:2]
+part[0] = 99
+print(orig, part)
+
+# palindrome check
+word = 'Racecar'
+print(word.lower() == word.lower()[::-1])
+
+# slice objects can be named and reused
+LAST_TWO = slice(-2, None)
+print('PYTHON'[LAST_TWO], [1, 2, 3, 4][LAST_TWO])` }],
+    codeTitle: ['Slicing'],
+    viz: [{
+      title: 'Slice explorer: how Python picks indexes',
+      input: 'P Y T H O N | 1:5:2',
+      inputLabel: 'items | start:stop:step (any part may be blank, e.g. ::-1 or -3:)',
+      gen: function (input) {
+        var halves = String(input).split('|');
+        if (halves.length !== 2) throw new Error('Use the format: a b c d | 1:3  (or ::-1)');
+        var items = words(halves[0]);
+        if (!items.length || items.length > 12) throw new Error('Give 1–12 items');
+        var sp = halves[1].trim().split(':');
+        if (sp.length < 2 || sp.length > 3) throw new Error('Slice must look like start:stop or start:stop:step');
+        function num(t) { t = (t || '').trim(); if (!t.length) return null; var v = parseInt(t, 10); if (isNaN(v) || String(v) !== t.replace(/^\+/, '')) throw new Error('Slice parts must be integers or blank'); return v; }
+        var a0 = num(sp[0]), b0 = num(sp[1]), c0 = sp.length === 3 ? num(sp[2]) : null;
+        var n = items.length, step = c0 === null ? 1 : c0;
+        if (step === 0) throw new Error('ValueError: slice step cannot be zero');
+        var idxL = items.map(function (_, i) { return i + ' / ' + (i - n); });
+        var txt = '[' + (a0 === null ? '' : a0) + ':' + (b0 === null ? '' : b0) + (sp.length === 3 ? ':' + (c0 === null ? '' : c0) : '') + ']';
+        var frames = [fr('Each item has two addresses: a <b>positive</b> index (from the front, 0…' + (n - 1) + ') and a <b>negative</b> one (from the back, −' + n + '…−1). We will evaluate <code>seq' + txt + '</code>.', [{ type: 'array', label: 'seq (index / negative index)', values: items, idxLabels: idxL }, vp({ 'len(seq)': n, step: step })])];
+        var start, stop, why = [];
+        if (step > 0) {
+          if (a0 === null) { start = 0; why.push('start blank → 0 (front)'); } else { start = a0 < 0 ? a0 + n : a0; if (a0 < 0) why.push('start ' + a0 + ' → ' + a0 + ' + ' + n + ' = ' + start); if (start < 0) { start = 0; why.push('clamped to 0'); } if (start > n) { start = n; why.push('clamped to ' + n); } }
+          if (b0 === null) { stop = n; why.push('stop blank → ' + n + ' (just past the end)'); } else { stop = b0 < 0 ? b0 + n : b0; if (b0 < 0) why.push('stop ' + b0 + ' → ' + b0 + ' + ' + n + ' = ' + stop); if (stop < 0) { stop = 0; why.push('stop clamped to 0'); } if (stop > n) { stop = n; why.push('stop clamped to ' + n + ' (no IndexError!)'); } }
+        } else {
+          if (a0 === null) { start = n - 1; why.push('start blank with negative step → ' + (n - 1) + ' (last item)'); } else { start = a0 < 0 ? a0 + n : a0; if (a0 < 0) why.push('start ' + a0 + ' → ' + start); if (start < 0) { start = -1; why.push('start before the front → nothing to take'); } if (start >= n) { start = n - 1; why.push('start clamped to ' + (n - 1)); } }
+          if (b0 === null) { stop = -1; why.push('stop blank with negative step → "before index 0" (so index 0 is included)'); } else { stop = b0 < 0 ? b0 + n : b0; if (b0 < 0) why.push('stop ' + b0 + ' → ' + stop); if (stop < 0) { stop = -1; why.push('stop clamped to "before 0"'); } if (stop >= n) { stop = n - 1; why.push('stop clamped to ' + (n - 1)); } }
+        }
+        frames.push(fr('Step 1 — normalise the bounds: ' + why.join('; ') + '. Now: start = <b>' + start + '</b>, stop = <b>' + (stop === -1 && step < 0 ? 'before 0' : stop) + '</b> (excluded), step = <b>' + step + '</b>.', [{ type: 'array', label: 'seq', values: items, idxLabels: idxL, ptr: (function () { var p = {}; if (start >= 0 && start < n) p[start] = 'start'; if (stop >= 0 && stop < n) p[stop] = (p[stop] ? p[stop] + '/' : '') + 'stop'; return p; })() }, vp({ start: start, stop: stop, step: step }, 'start,stop')]));
+        var picked = [], res = [], i = start, guard = 0;
+        while ((step > 0 ? i < stop : i > stop) && guard++ < 40) {
+          picked.push(i); res.push(items[i]);
+          var hl = {}, ptr = {}; picked.forEach(function (q) { hl[q] = 'done'; }); hl[i] = 'ok'; ptr[i] = 'i';
+          frames.push(fr('i = ' + i + ' is ' + (step > 0 ? 'below' : 'above') + ' stop → take <b>' + esc(items[i]) + '</b>, then i ' + (step > 0 ? '+' : '−') + '= ' + Math.abs(step) + '.', [{ type: 'array', label: 'seq', values: items, idxLabels: idxL, hl: hl, ptr: ptr }, { type: 'array', label: 'result so far', values: res.slice() }, vp({ i: i, step: step })]));
+          i += step;
+        }
+        frames.push(fr('i = ' + i + ' has ' + (step > 0 ? 'reached/passed' : 'reached/passed') + ' stop → done. <code>seq' + txt + '</code> = <b>' + (res.length ? '[' + res.map(esc).join(', ') + ']' : '[] (empty — no error)') + '</b>, a brand-new object of ' + res.length + ' item(s).', [{ type: 'array', label: 'seq', values: items, idxLabels: idxL, hl: picked.reduce(function (h, q) { h[q] = 'sel'; return h; }, {}) }, { type: 'array', label: 'result', values: res.length ? res : ['(empty)'], hl: res.reduce(function (h, _, q) { h[q] = 'sel'; return h; }, {}) }]));
+        return frames;
+      }
+    }, {
+      title: 'Slice assignment: replacing a range with a different-length list',
+      gen: function () {
+        var code = ['nums = [0, 1, 2, 3, 4, 5]', "nums[1:3] = ['a', 'b', 'c']", 'del nums[::2]', 'nums[:0] = [9]'].join('\n');
+        return [
+          fr('Start: six items. Slice assignment can <b>grow or shrink</b> a list in one move — something plain indexing cannot do.', [cp(code, 1, 'ok'), { type: 'array', label: 'nums', values: [0, 1, 2, 3, 4, 5] }]),
+          fr('<code>nums[1:3]</code> selects the gap between marks 1 and 3: items <b>1, 2</b> (red).', [cp(code, 2, 'cur'), { type: 'array', label: 'nums', values: [0, 1, 2, 3, 4, 5], hl: { 1: 'bad', 2: 'bad' }, ptr: { 1: 'start', 3: 'stop' } }]),
+          fr('They are replaced by <b>three</b> new items — the list grows by one and the tail shifts right. Result: [0, \'a\', \'b\', \'c\', 3, 4, 5].', [cp(code, 2, 'ok'), { type: 'array', label: 'nums', values: [0, "'a'", "'b'", "'c'", 3, 4, 5], hl: { 1: 'ok', 2: 'ok', 3: 'ok', 4: 'win', 5: 'win', 6: 'win' } }]),
+          fr('<code>del nums[::2]</code> removes indexes 0, 2, 4, 6 (every second item, starting at 0).', [cp(code, 3, 'bad'), { type: 'array', label: 'nums', values: [0, "'a'", "'b'", "'c'", 3, 4, 5], hl: { 0: 'bad', 2: 'bad', 4: 'bad', 6: 'bad' } }]),
+          fr('Left: [\'a\', \'c\', 4].', [cp(code, 3, 'ok'), { type: 'array', label: 'nums', values: ["'a'", "'c'", 4] }]),
+          fr('<code>nums[:0] = [9]</code> assigns into the <b>empty</b> slice at the front → an insert at index 0: [9, \'a\', \'c\', 4]. (Same as <code>nums.insert(0, 9)</code>, and also O(n).)', [cp(code, 4, 'ok'), { type: 'array', label: 'nums', values: [9, "'a'", "'c'", 4], hl: { 0: 'ok' } }]),
+          fr('Strings and tuples are immutable: <code>s[0:2] = \'hi\'</code> raises <span class="c-r">TypeError</span>. Build a new string instead: <code>s = \'hi\' + s[2:]</code>.', [tx('<code>TypeError: \'str\' object does not support item assignment</code>', 'error')])
+        ];
+      }
+    }],
+    examples: [
+      { title: 'Inclusive substring i..j', html: `<p>Because stop is exclusive, an inclusive range i..j needs <code>j + 1</code>.</p>`, code: { lang: 'python', run: true, code: `s = 'interview'
+i, j = 2, 5
+print(s[i:j + 1])    # 'terv' (indexes 2, 3, 4, 5)
+print(len(s[i:j + 1]) == j - i + 1)` } },
+      { title: 'The k = 0 trap with negative slices', html: `<p><code>a[-k:]</code> is meant to be "the last k items", but when k = 0, <code>-0</code> is <code>0</code> and you get the <b>whole</b> list. Guard it or use <code>a[len(a)-k:]</code>.</p>`, code: { lang: 'python', run: true, code: `a = [1, 2, 3, 4]
+for k in [2, 1, 0]:
+    print(k, a[-k:], a[len(a) - k:])
+# k=0: a[-0:] -> whole list (!), a[4:] -> []` } },
+      { title: 'Chunks of size k', html: `<p>Slicing with a range of start positions splits a sequence into pieces; the last chunk may be shorter (slices never fail).</p>`, code: { lang: 'python', run: true, code: `data = list(range(1, 11))
+k = 4
+chunks = [data[i:i + k] for i in range(0, len(data), k)]
+print(chunks)   # [[1, 2, 3, 4], [5, 6, 7, 8], [9, 10]]` } },
+      { title: 'In-place clear vs rebinding', html: `<p><code>lst[:] = []</code> (or <code>lst.clear()</code>) empties the <b>same</b> object, so every other name holding it sees the change. <code>lst = []</code> just points one name at a new list.</p>`, code: { lang: 'python', run: true, code: `a = [1, 2, 3]
+b = a
+a = []              # rebinding: b still sees the old list
+print(b)            # [1, 2, 3]
+a = b
+a[:] = []           # mutate in place: b sees it
+print(b)            # []` } }
+    ],
+    deepDive: `<p>🟣 <b>Slices are objects.</b> <code>s[1:5:2]</code> calls <code>s.__getitem__(slice(1, 5, 2))</code>. <code>slice(1, 5, 2).indices(len(s))</code> returns the normalised <code>(start, stop, step)</code> — exactly the clamping rules the visualizer shows. Your own classes can support slicing by handling a <code>slice</code> argument in <code>__getitem__</code> (module py08).</p>
+<p><b>Cost model.</b> Slicing a list/str/tuple <b>copies</b> the selected references: O(k) time and memory for k items. So <code>while s: s = s[1:]</code> is O(n²), and recursive helpers like <code>f(arr[1:])</code> or <code>binary_search(arr[mid:])</code> silently turn O(log n) into O(n). Pass indexes instead. <code>s[::-1]</code> is O(n) but runs in C, so it is still the fastest way to reverse a string in Python.</p>
+<p><b>Zero-copy alternatives:</b> <code>memoryview(b)[a:b]</code> slices bytes without copying; NumPy slices are <b>views</b> that share memory with the original (mutating a view changes the array — the opposite of list slicing!). <code>itertools.islice(it, a, b)</code> lazily slices any iterator (no negative indexes).</p>
+<p><b>Shallow copy reminder:</b> <code>grid[:]</code> copies the outer list only; inner lists are shared. <code>copy.deepcopy</code> copies recursively.</p>
+<p><b>Extended slice assignment</b> (step ≠ 1) must keep the same length: <code>a[::2] = [0]</code> on a 4-item list raises <code>ValueError: attempt to assign sequence of size 1 to extended slice of size 2</code>.</p>`,
+    aiEra: `<p>🤖 <b>What AI changes:</b> slicing one-liners are where AI is both most helpful and most dangerous: it will happily write <code>arr[-k:] + arr[:-k]</code> and forget <code>k %= n</code> or the k = 0 case. Treat every generated slice as a boundary-condition test target.</p>
+<p><b>Use AI as a partner:</b> <code>"List the edge cases for this slice expression: empty list, k = 0, k &gt; n, negative k"</code>; <code>"Is there a hidden O(n²) from slicing in this recursive function?"</code>.</p>
+<p><b>Where AI goes wrong:</b> recursion on <code>arr[1:]</code> in "efficient" solutions, assuming NumPy slices are copies (or that list slices are views), and off-by-one errors with inclusive ranges (<code>s[i:j]</code> vs <code>s[i:j+1]</code>).</p>
+<p><b>What you must still own:</b> the half-open rule, defaults for negative steps, clamping instead of errors, and slice-copy cost — they come up in nearly every "predict the output" round.</p>`,
+    problems: [{
+      title: 'Rotate a List Right by k', level: 'Easy', tags: ['slicing', 'lists', 'modulo'], companies: ['Microsoft', 'Amazon', 'Bloomberg'],
+      statement: `<p>Given a list <code>nums</code> and a non-negative integer <code>k</code>, return a new list rotated to the right by <code>k</code> steps (the last k items move to the front).</p>`,
+      constraints: `0 ≤ len(nums) ≤ 10<sup>5</sup>; 0 ≤ k ≤ 10<sup>9</sup>`,
+      example: `${H.arr([1, 2, 3, 4, 5, 6, 7], { label: 'nums', hl: { 4: 'b', 5: 'b', 6: 'b' } })}<p>k = 3 → ${H.arr([5, 6, 7, 1, 2, 3, 4], { hl: { 0: 'b', 1: 'b', 2: 'b' } })} The last 3 (blue) jump to the front. With k = 10 the answer is the same, because 10 % 7 = 3.</p>`,
+      brute: { why: `<p>Rotating by one step k times (pop the last, insert at front) costs O(n) per step because <code>insert(0, x)</code> shifts everything: O(n·k) — with k up to 10<sup>9</sup>, hopeless. The waste: rotating by n brings you back to the start, and you can move all k items in one go.</p>`, code: `def rotate(nums, k):
+    nums = nums[:]
+    for _ in range(k):
+        if nums:
+            nums.insert(0, nums.pop())
+    return nums` },
+      mcq: { q: 'Why compute k %= len(nums) first?', options: ['Rotating by n gives the original list, so only k mod n matters', 'Slices fail for big k', 'To make k negative'], answer: 0, explain: 'Rotation repeats every n steps, so only k mod n matters. It also keeps the cut point n - k inside the list for huge k.' },
+      hints: [`<p>Hint 1: The answer is just "the last k items" followed by "everything else".</p>`, `<p>Hint 2: <code>nums[-k:] + nums[:-k]</code> — but watch out when k = 0: <code>nums[-0:]</code> is the whole list and <code>nums[:-0]</code> is empty… which happens to give the right answer, yet a version with <code>len(nums) - k</code> is clearer.</p>`, `<p>Hint 3: Handle the empty list (avoid modulo by zero), reduce k with <code>k %= n</code>, then split at <code>n - k</code>: <code>nums[n-k:] + nums[:n-k]</code>.</p>`],
+      solution: {
+        approach: `<p>Reduce k modulo n, then glue two slices: the tail of length k and the head of length n − k. Splitting at index <code>n − k</code> avoids negative-zero confusion.</p>`,
+        code: { lang: 'python', run: true, code: `def rotate(nums, k):
+    n = len(nums)
+    if n == 0:
+        return []
+    k %= n                       # rotating by n changes nothing
+    cut = n - k                  # head is nums[:cut], tail is nums[cut:]
+    return nums[cut:] + nums[:cut]
+
+print(rotate([1, 2, 3, 4, 5, 6, 7], 3))    # [5, 6, 7, 1, 2, 3, 4]
+print(rotate([1, 2, 3, 4, 5, 6, 7], 10))   # same, 10 % 7 == 3
+print(rotate([1, 2], 0), rotate([], 5))` },
+        alt: [{ lang: 'python', code: `from collections import deque
+
+def rotate(nums, k):
+    d = deque(nums)
+    d.rotate(k)          # positive k rotates right, in C
+    return list(d)` }],
+        dry: { head: ['nums', 'k', 'n', 'k % n', 'cut = n − k', 'nums[cut:] + nums[:cut]'], rows: [['[1..7]', '3', '7', '3', '4', '[5,6,7] + [1,2,3,4]'], ['[1..7]', '10', '7', '3', '4', '[5,6,7,1,2,3,4]'], ['[1, 2]', '0', '2', '0', '2', '[] + [1, 2]'], ['[]', '5', '0', '—', '—', '[] (early return)']] },
+        complexity: `<p>Time O(n), extra space O(n) for the new list. In-place O(1)-space version: reverse all, reverse first k, reverse the rest.</p>`,
+        followUps: ['Rotate in place with the triple-reverse trick.', 'Rotate left instead (use k → n − k).', 'Check whether string b is a rotation of a: <code>len(a) == len(b) and b in a + a</code>.']
+      }
+    }]
+  });
+
+  /* ================= TOPIC 8: unpacking ================= */
+  topics.push({
+    title: 'Unpacking: Tuple Assignment, Swaps, *rest and ** Spreading',
+    analogy: `<p>Unpacking is <b>emptying a grocery bag onto labelled spots on the counter</b>: "first item → fridge, last item → shelf, <i>everything in between</i> → basket". Packing is the reverse — sweeping loose items into a bag. Python does both with commas and stars.</p>`,
+    explain: `<p>🟢 <b>Packing:</b> writing values separated by commas makes a tuple: <code>t = 1, 2, 3</code>.</p>
+<p><b>Unpacking:</b> put several names on the left; Python hands out the items in order:</p>
+<pre>x, y = (3, 4)             # x = 3, y = 4
+name, age = ['Asha', 31]  # works with any iterable
+a, b, c = 'hey'           # a='h', b='e', c='y'</pre>
+<p>The number of names must match the number of items — otherwise <code>ValueError: too many values to unpack</code> / <code>not enough values to unpack</code>.</p>
+<p><b>The famous swap.</b> <code>a, b = b, a</code> works without a temporary variable because Python <b>evaluates the entire right side first</b> (building the tuple <code>(b, a)</code>), and only then assigns left to right.</p>
+<p><b>Star catches "the rest"</b> (as a <b>list</b>, possibly empty):</p>
+${H.arr([1, 2, 3, 4, 5], { label: 'first, *middle, last = [1, 2, 3, 4, 5]', hl: { 0: 'g', 1: 'b', 2: 'b', 3: 'b', 4: 'y' } })}
+<p>→ <code>first = 1</code>, <code>middle = [2, 3, 4]</code>, <code>last = 5</code>. Only <b>one</b> starred name is allowed per assignment.</p>
+${H.table(['Where', 'Example', 'Meaning'], [['Loop targets', '<code>for k, v in d.items()</code>', 'unpack each pair'], ['Nested', '<code>(a, b), c = (1, 2), 3</code>', 'shape on the left mirrors the right'], ['Ignore parts', '<code>_, ext = name.rsplit(\'.\', 1)</code>', '<code>_</code> = "don\'t care" by convention'], ['Call with a list', '<code>print(*[1, 2, 3])</code>', 'same as <code>print(1, 2, 3)</code>'], ['Call with a dict', '<code>f(**{\'sep\': \'-\'})</code>', 'same as <code>f(sep=\'-\')</code>'], ['Build lists', '<code>[*a, *b, 0]</code>', 'concatenate any iterables'], ['Merge dicts', '<code>{**d1, **d2}</code>', 'later keys win']])}`,
+    clues: [
+      '"swap two values" / "update two variables at once" → <code>a, b = b, a</code> (right side evaluated first)',
+      '"function returns several values" → return a tuple, unpack at the call site',
+      '"first element and the rest" / "head and tail" → <code>head, *tail = items</code>',
+      '"ignore some fields" / "only need the extension" → <code>_</code> placeholders',
+      '"pass a list as separate arguments" → <code>f(*lst)</code>; "pass options from a dict" → <code>f(**opts)</code>',
+      '"merge configs, later overrides earlier" → <code>{**defaults, **user}</code> or <code>defaults | user</code> (3.9+)',
+      '"iterate pairs/records" → unpack in the for target: <code>for name, (x, y) in points</code>'
+    ],
+    code: [{ lang: 'python', run: true, title: 'Unpacking in all its forms (runnable)', code: `# packing and unpacking
+point = 3, 4                 # packing -> tuple
+x, y = point                 # unpacking
+print(x, y, type(point).__name__)
+
+# swap: right side is fully evaluated first
+a, b = 1, 2
+a, b = b, a
+print(a, b)
+
+# star unpacking
+first, *middle, last = [1, 2, 3, 4, 5]
+print(first, middle, last)
+head, *tail = 'abc'
+print(head, tail)            # tail is a list of characters
+*init, final = [42]
+print(init, final)           # [] 42 - star can be empty
+
+# nested and ignored parts
+(name, age), city = ('Asha', 31), 'Pune'
+print(name, age, city)
+_, ext = 'report.final.pdf'.rsplit('.', 1)
+print(ext)
+
+# unpacking in loops
+scores = {'asha': 91, 'ben': 78}
+for who, score in scores.items():
+    print(who, score)
+for i, (px, py) in enumerate([(0, 0), (2, 5)]):
+    print(i, px, py)
+
+# * and ** at call sites and in literals
+nums = [3, 1, 2]
+print(*nums, sep=' | ')
+opts = {'sep': '-', 'end': '!\\n'}
+print('a', 'b', **opts)
+merged = [*nums, *'xy', 0]
+print(merged)
+defaults = {'color': 'red', 'size': 'M'}
+user = {'size': 'L'}
+print({**defaults, **user})
+
+# mismatched counts raise ValueError
+try:
+    p, q = [1, 2, 3]
+except ValueError as e:
+    print('ValueError:', e)` }],
+    codeTitle: ['Unpacking'],
+    viz: [{
+      title: 'Starred assignment: who gets what?',
+      input: 'first, *middle, last = 1 2 3 4 5',
+      inputLabel: 'names = values  (e.g. a, b = 1 2   or   *init, x = 7 8 9)',
+      gen: function (input) {
+        var m = String(input).split('=');
+        if (m.length !== 2) throw new Error('Use the format: a, *b, c = 1 2 3 4');
+        var names = m[0].split(',').map(function (s) { return s.trim(); }).filter(function (s) { return s.length; });
+        var vals = words(m[1]).map(lit);
+        if (!names.length || names.length > 6) throw new Error('Use 1–6 names on the left');
+        if (vals.length > 12) throw new Error('At most 12 values');
+        names.forEach(function (n) { if (!/^\*?[A-Za-z_]\w*$/.test(n)) throw new Error('Bad name "' + n + '" — use plain names, at most one starred'); });
+        var stars = names.filter(function (n) { return n[0] === '*'; }).length;
+        var code = names.join(', ') + ' = ' + rp(vals);
+        var frames = [fr('Python first evaluates the <b>right side</b> completely and turns it into a sequence of ' + vals.length + ' item(s). Only then does it look at the names on the left.', [cp(code, 1, 'cur'), { type: 'array', label: 'right-hand side', values: vals.length ? vals.map(rp) : ['(empty)'] }])];
+        if (stars > 1) { frames.push(fr('<span class="c-r">SyntaxError: multiple starred expressions in assignment</span> — Python could not know how to split the middle.', [cp(code, 1, 'bad'), tx('Only one <code>*name</code> per assignment.', 'rule')])); frames.push(fr('Fix: keep one star, e.g. <code>a, *rest = …</code>.', [cp(code, 1, 'bad'), { type: 'array', label: 'values', values: vals.map(rp) }])); return frames; }
+        var fixed = names.length - stars;
+        if (stars === 0 && vals.length !== names.length) {
+          var msg = vals.length > names.length ? 'ValueError: too many values to unpack (expected ' + names.length + ')' : 'ValueError: not enough values to unpack (expected ' + names.length + ', got ' + vals.length + ')';
+          frames.push(fr('No star, so the counts must match exactly: ' + names.length + ' name(s) vs ' + vals.length + ' value(s) → <span class="c-r">' + esc(msg) + '</span>.', [cp(code, 1, 'bad'), { type: 'array', label: 'right-hand side', values: vals.length ? vals.map(rp) : ['(empty)'], hl: vals.reduce(function (h, _, i) { if (i >= names.length) h[i] = 'bad'; return h; }, {}) }, tx(esc(msg), 'error')]));
+          frames.push(fr('Fixes: add/remove names, slice the right side, or add a starred name to absorb extras.', [cp(names.concat(['*rest']).join(', ') + ' = ' + rp(vals), 1, 'ok'), tx('A star absorbs any extra items (it may also be empty).', 'tip')]));
+          return frames;
+        }
+        if (stars === 1 && vals.length < fixed) {
+          var msg2 = 'ValueError: not enough values to unpack (expected at least ' + fixed + ', got ' + vals.length + ')';
+          frames.push(fr('Even with a star, the ' + fixed + ' plain name(s) each need one item → <span class="c-r">' + esc(msg2) + '</span>.', [cp(code, 1, 'bad'), tx(esc(msg2), 'error')]));
+          frames.push(fr('The star can take <b>zero</b> items, but never fewer.', [cp(code, 1, 'bad'), { type: 'array', label: 'values', values: vals.length ? vals.map(rp) : ['(empty)'] }]));
+          return frames;
+        }
+        var si = names.findIndex(function (n) { return n[0] === '*'; }), bound = {}, colors = ['ok', 'cur', 'sel', 'win', 'ok', 'cur'];
+        var nBefore = si < 0 ? names.length : si, nAfter = si < 0 ? 0 : names.length - si - 1;
+        var vh = {};
+        for (var i = 0; i < nBefore; i++) {
+          bound[names[i]] = vals[i]; vh[i] = 'ok';
+          frames.push(fr('Name <b>' + names[i] + '</b> (position ' + i + ' from the left) takes item ' + i + ': <b>' + esc(rp(vals[i])) + '</b>.', [cp(code, 1, 'cur'), { type: 'array', label: 'right-hand side', values: vals.map(rp), hl: JSON.parse(JSON.stringify(vh)), ptr: (function () { var p = {}; p[i] = names[i]; return p; })() }, vp(bound, names[i])]));
+        }
+        for (var j = 0; j < nAfter; j++) {
+          var nm = names[names.length - 1 - j], vi = vals.length - 1 - j;
+          bound[nm] = vals[vi]; vh[vi] = 'sel';
+          frames.push(fr('Names after the star are filled <b>from the right end</b>: <b>' + nm + '</b> takes item ' + vi + ': <b>' + esc(rp(vals[vi])) + '</b>.', [cp(code, 1, 'cur'), { type: 'array', label: 'right-hand side', values: vals.map(rp), hl: JSON.parse(JSON.stringify(vh)), ptr: (function () { var p = {}; p[vi] = nm; return p; })() }, vp(bound, nm)]));
+        }
+        if (si >= 0) {
+          var mid = vals.slice(nBefore, vals.length - nAfter), sname = names[si].slice(1);
+          for (var q = nBefore; q < vals.length - nAfter; q++) vh[q] = 'win';
+          bound[sname] = mid;
+          frames.push(fr('The starred name <b>' + sname + '</b> collects everything left in the middle as a <b>list</b> (not a tuple!): <b>' + esc(rp(mid)) + '</b>' + (mid.length ? '' : ' — empty is fine') + '.', [cp(code, 1, 'ok'), { type: 'array', label: 'right-hand side', values: vals.map(rp), hl: vh }, vp(bound, sname, 'win')]));
+        }
+        var ordered = {}; names.forEach(function (n) { var k = n.replace('*', ''); ordered[k] = bound[k]; });
+        frames.push(fr('Done. Every name is bound; the right-hand tuple is thrown away.', [cp(code, 1, 'sel'), vp(ordered, Object.keys(ordered).join(','), 'sel')]));
+        while (frames.length < 4) frames.push(fr('Try a longer example such as <code>a, *b, c = 1 2 3 4 5</code>.', [cp(code, 1, 'sel'), vp(ordered)]));
+        return frames;
+      }
+    }, {
+      title: 'a, b = b, a + b — the right side is built first (Fibonacci)',
+      input: '7',
+      inputLabel: 'number of steps (1–15)',
+      gen: function (input) {
+        var n = parseInt(String(input).trim(), 10);
+        if (isNaN(n) || n < 1 || n > 15) throw new Error('Enter an integer from 1 to 15');
+        var code = ['a, b = 0, 1', 'for _ in range(n):', '    a, b = b, a + b', 'print(a)'].join('\n');
+        var a = 0, b = 1, seq = [0], frames = [fr('Start: <code>a, b = 0, 1</code>. We will step n = ' + n + ' times; after k steps, a holds the k-th Fibonacci number.', [cp(code, 1, 'ok'), vp({ a: a, b: b }, 'a,b'), { type: 'bars', label: 'a after each step', values: seq.slice() }])];
+        for (var k = 1; k <= n; k++) {
+          var t0 = b, t1 = a + b;
+          frames.push(fr('Step ' + k + ', phase 1: evaluate the <b>whole right side</b> using the <b>old</b> values → temporary tuple <b>(' + t0 + ', ' + t1 + ')</b>. Nothing is assigned yet.', [cp(code, 3, 'cur'), vp({ a: a, b: b }), { type: 'stack', label: 'temporary tuple (right side)', items: ['b = ' + t0, 'a + b = ' + t1] }]));
+          a = t0; b = t1; seq.push(a);
+          frames.push(fr('Phase 2: unpack the tuple into <code>a, b</code> → a = <b>' + a + '</b>, b = <b>' + b + '</b>. With two separate lines (<code>a = b; b = a + b</code>) the second line would see the <i>new</i> a and break the sequence.', [cp(code, 3, 'ok'), vp({ a: a, b: b }, 'a,b'), { type: 'bars', label: 'a after each step', values: seq.slice(), hl: (function () { var h = {}; h[seq.length - 1] = 'ok'; return h; })() }]));
+        }
+        frames.push(fr('Loop done: <code>print(a)</code> → <b>' + a + '</b> (F(' + n + ')). O(n) time, O(1) memory, zero temp variables in your code.', [cp(code, 4, 'sel'), vp({ a: a, b: b }, 'a', 'sel'), { type: 'bars', label: 'Fibonacci numbers produced', values: seq.slice() }]));
+        return frames;
+      }
+    }],
+    examples: [
+      { title: 'Swap list items in one line', html: `<p>Works for list positions too — useful in reversing and sorting algorithms.</p>`, code: { lang: 'python', run: true, code: `a = [1, 2, 3, 4, 5]
+i, j = 0, len(a) - 1
+while i < j:
+    a[i], a[j] = a[j], a[i]
+    i, j = i + 1, j - 1
+print(a)   # [5, 4, 3, 2, 1]` } },
+      { title: 'Parsing records', html: `<p>Split a line and unpack straight into names; a star absorbs optional fields.</p>`, code: { lang: 'python', run: true, code: `lines = ['asha,31,pune', 'ben,25,delhi,admin,beta']
+for line in lines:
+    name, age, city, *flags = line.split(',')
+    print(name, int(age), city, flags)` } },
+      { title: 'Transpose and unzip with *', html: `<p><code>zip(*rows)</code> spreads each row into a separate argument; combined with unpacking you split columns into names.</p>`, code: { lang: 'python', run: true, code: `rows = [('asha', 91), ('ben', 78), ('cy', 85)]
+names, scores = zip(*rows)
+print(names)
+print(scores, sum(scores) / len(scores))` } },
+      { title: 'A tricky order-of-assignment puzzle', html: `<p>The right side is evaluated first, but targets on the left are assigned <b>left to right</b>. When a later target depends on an earlier one, results surprise people.</p>`, code: { lang: 'python', run: true, code: `nums = [1, 0]
+i = 0
+i, nums[i] = 1, 9      # i becomes 1 first, THEN nums[1] = 9
+print(i, nums)         # 1 [1, 9]` } }
+    ],
+    deepDive: `<p>🟣 <b>Bytecode view.</b> <code>a, b = b, a</code> compiles to "load b, load a, swap, store a, store b" — CPython optimises small tuple swaps into stack operations (<code>SWAP</code>) without allocating a tuple at all. For longer right sides, it builds a tuple then runs <code>UNPACK_SEQUENCE</code>; starred targets use <code>UNPACK_EX</code>, which always builds a <b>list</b> for the starred part.</p>
+<p><b>Assignment order:</b> the right side is fully evaluated first; then targets are assigned <b>left to right</b>. That is why <code>i, nums[i] = 1, 9</code> writes to <code>nums[1]</code>, and why <code>nums[i], i = 9, 1</code> writes to <code>nums[0]</code>. In linked-list reversal, <code>prev, cur.next, cur = cur, prev, cur.next</code> only works with targets in the right order — a classic interview trap.</p>
+<p><b>Unpacking consumes iterators.</b> <code>a, b = some_generator()</code> pulls items with <code>next()</code> and then checks there is nothing left (it must pull one extra item to raise "too many values"). Unpacking a dict gives its <b>keys</b>: <code>x, y = {'p': 1, 'q': 2}</code> → x = 'p'.</p>
+<p><b>Generalisations (PEP 448, 3.5+):</b> multiple stars in calls and literals (<code>f(*a, *b, **c, **d)</code>, <code>[*a, *b]</code>, <code>{**d1, **d2}</code>). Duplicate keyword names across <code>**</code> spreads in a <b>call</b> raise TypeError, while in a <b>dict literal</b> the later one silently wins.</p>
+<p><b>Pattern matching</b> (<code>match</code>, 3.10+) extends unpacking with type checks: <code>case [first, *rest]:</code> or <code>case {'type': 'click', 'pos': (x, y)}:</code>.</p>`,
+    aiEra: `<p>🤖 <b>What AI changes:</b> AI tools love dense unpacking one-liners. They are great when clear (<code>lo, hi = hi, lo</code>), but multi-target assignments that depend on each other (linked-list pointer juggling) are exactly where generated code quietly breaks.</p>
+<p><b>Use AI as a partner:</b> <code>"Expand this tuple assignment into explicit steps with a temporary tuple and tell me the order"</code>; <code>"Write a test where the starred part is empty"</code>.</p>
+<p><b>Where AI goes wrong:</b> assuming the starred variable is a tuple (it is a list), unpacking a dict expecting values, mixing up <code>*</code> and <code>**</code> at call sites, and reordering targets in <code>a, b.next, b = …</code> style statements.</p>
+<p><b>What you must still own:</b> the two-phase rule (evaluate right side, then assign left to right), the ValueError messages, and when a plain two-line version is simply clearer for your teammates.</p>`,
+    problems: [{
+      title: 'Nth Fibonacci Number with Tuple Assignment', level: 'Easy', tags: ['unpacking', 'loops', 'dp'], companies: ['Amazon', 'Adobe', 'TCS'],
+      statement: `<p>Return F(n) where F(0) = 0, F(1) = 1 and F(n) = F(n−1) + F(n−2). Your solution must handle n up to 10<sup>5</sup> quickly (Python ints never overflow).</p>`,
+      constraints: `0 ≤ n ≤ 10<sup>5</sup>`,
+      example: `<p>F(0..10) = ${H.arr([0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55], { hl: { 10: 'g' } })} so <b>fib(10) = 55</b>: each value is the sum of the two before it.</p>`,
+      brute: { why: `<p>Direct recursion recomputes the same subproblems again and again: fib(n) calls fib(n−1) and fib(n−2), which both call fib(n−3)… about φ<sup>n</sup> ≈ 1.6<sup>n</sup> calls. fib(40) already takes seconds; fib(10<sup>5</sup>) also hits the recursion limit (1000).</p>`, code: `def fib(n):
+    if n < 2:
+        return n
+    return fib(n - 1) + fib(n - 2)` },
+      mcq: { q: 'Why does a, b = b, a + b work while a = b; b = a + b does not?', options: ['The right side is fully evaluated using old values before any assignment', 'Tuples are faster', 'Python assigns right to left'], answer: 0, explain: 'Phase 1 builds (b, a + b) from the old a and b; phase 2 assigns. The two-line version uses the new a in the second line.' },
+      hints: [`<p>Hint 1: You only ever need the last two values — keep them in two variables.</p>`, `<p>Hint 2: Each step, the pair (a, b) becomes (b, a + b). Tuple assignment updates both at once using the old values.</p>`, `<p>Hint 3: Start with a, b = 0, 1, loop n times, return a. Check n = 0 → 0 and n = 1 → 1 without special cases.</p>`],
+      solution: {
+        approach: `<p>Iterate n times, sliding the pair (a, b) forward with one tuple assignment. After k steps, a = F(k). Constant memory, no recursion.</p>`,
+        code: { lang: 'python', run: true, code: `def fib(n):
+    a, b = 0, 1
+    for _ in range(n):
+        a, b = b, a + b      # right side uses OLD a and b
+    return a
+
+print([fib(i) for i in range(11)])
+print(fib(100))
+# Big ints never overflow. (str() of ints over 4300 digits is blocked by
+# default since 3.11 as a DoS guard, so measure bits instead.)
+print(fib(100_000).bit_length(), 'bits')` },
+        dry: { head: ['step', 'old (a, b)', 'right side (b, a+b)', 'new (a, b)'], rows: [['1', '(0, 1)', '(1, 1)', '(1, 1)'], ['2', '(1, 1)', '(1, 2)', '(1, 2)'], ['3', '(1, 2)', '(2, 3)', '(2, 3)'], ['4', '(2, 3)', '(3, 5)', '(3, 5)'], ['5', '(3, 5)', '(5, 8)', '(5, 8) → fib(5) = 5']] },
+        complexity: `<p>O(n) additions (each on growing big ints, so truly ~O(n²) bit operations for huge n), O(1) variables.</p>`,
+        followUps: ['Memoised recursion with <code>functools.lru_cache</code> (module py06).', 'O(log n) with matrix exponentiation or fast doubling.', 'Return F(n) mod 10<sup>9</sup>+7 for n up to 10<sup>18</sup>.']
+      }
+    }]
+  });
 registerModule({ id: 'py02', title: 'tmp', intro: 'x', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();

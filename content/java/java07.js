@@ -2003,6 +2003,939 @@ System.out.println(t2);                          // {null=1, a=2}`
     }]
   });
 
+  /* ======================================================================
+     PRACTICE — Easy
+     ====================================================================== */
+  practice.push({
+    title: 'Predict & Fix: Remove a Value from a List<Integer>',
+    level: 'Easy', tags: ['List', 'overloading', 'autoboxing', 'predict the output'], companies: ['TCS', 'Cognizant', 'Amazon'],
+    statement: `<p>First, predict what this prints:</p>
+<pre>List&lt;Integer&gt; a = new ArrayList&lt;&gt;(List.of(5, 200, 7, 200));
+a.remove(1);
+System.out.println(a);</pre>
+<p>Then write <code>boolean removeValue(List&lt;Integer&gt; list, int v)</code> that removes the <b>first occurrence of the value</b> <code>v</code> (not index v) and returns whether anything was removed.</p>`,
+    constraints: `0 ≤ n ≤ 10<sup>5</sup>; values may be any int (including values outside −128..127).`,
+    example: `<p>The snippet prints ${H.c('r', '[5, 7, 200]')} — <code>remove(1)</code> picks the <code>remove(int index)</code> overload and deletes index 1 (the first 200).<br><code>removeValue([5, 200, 7, 200], 200)</code> → list becomes ${H.c('g', '[5, 7, 200]')}, returns true. <code>removeValue([5, 7], 1)</code> → unchanged, returns false.</p>`,
+    brute: {
+      why: `<p>A hand-written scan that compares with <code>list.get(i) == v</code> where <code>v</code> is an <code>Integer</code> compares <b>references</b>. It works for −128..127 (the Integer cache returns shared objects) and silently fails for 200. It also re-implements what <code>List.remove(Object)</code> already does.</p>`,
+      code: `class Solution {
+    boolean removeValue(List<Integer> list, Integer v) {
+        for (int i = 0; i < list.size(); i++) {
+            if (list.get(i) == v) {          // BUG: reference comparison of two Integers
+                list.remove(i);
+                return true;
+            }
+        }
+        return false;
+    }
+}`
+    },
+    mcq: { q: 'On a <code>List&lt;Integer&gt;</code>, which call removes the VALUE 7?', options: ['<code>list.remove(Integer.valueOf(7))</code>', '<code>list.remove(7)</code>', '<code>list.remove((int) 7)</code>', '<code>list.removeAll(7)</code>'], answer: 0, explain: 'Passing an Integer object selects remove(Object). A plain int literal selects remove(int index). removeAll needs a Collection.' },
+    hints: [
+      `<p>Hint 1: Overload resolution prefers an exact primitive match (phase 1, no boxing) over boxing. That is why <code>remove(1)</code> is the index version.</p>`,
+      `<p>Hint 2: Force the Object overload by passing an <code>Integer</code>: <code>list.remove(Integer.valueOf(v))</code> or <code>list.remove((Integer) v)</code>. It uses <code>equals</code>, so 200 matches 200.</p>`,
+      `<p>Hint 3: <code>remove(Object)</code> already returns a boolean "was something removed?" and removes only the first occurrence. To remove all occurrences use <code>list.removeIf(x -&gt; x == v)</code> (here x unboxes to int, so == is numeric).</p>`
+    ],
+    solution: {
+      approach: `<p>Box the value explicitly so the compiler chooses <code>remove(Object)</code>, which finds the first element <code>equals</code> to it, removes it and reports success.</p>`,
+      code: `class Solution {
+    boolean removeValue(List<Integer> list, int v) {
+        return list.remove(Integer.valueOf(v));   // remove(Object): first equal element
+    }
+
+    public static void main(String[] args) {
+        List<Integer> a = new ArrayList<>(List.of(5, 200, 7, 200));
+        a.remove(1);                                // remove(int index)
+        System.out.println(a);                      // [5, 7, 200]
+        List<Integer> b = new ArrayList<>(List.of(5, 200, 7, 200));
+        System.out.println(new Solution().removeValue(b, 200) + " " + b);   // true [5, 7, 200]
+    }
+}`,
+      dry: { head: ['Call', 'Overload chosen', 'List after'], rows: [
+        ['a.remove(1)', 'remove(int index)', '[5, 7, 200]'],
+        ['b.remove(Integer.valueOf(200))', 'remove(Object)', '[5, 7, 200]'],
+        ['b.remove(Integer.valueOf(1))', 'remove(Object) → not found', 'unchanged, returns false']
+      ] },
+      complexity: `<p>O(n) time (scan + shift), O(1) space.</p>`,
+      followUps: ['Remove ALL occurrences in O(n).', 'Why does <code>Integer a = 127, b = 127; a == b</code> print true but 128 prints false?']
+    }
+  });
+
+  practice.push({
+    title: 'Two Sum with a HashMap',
+    level: 'Easy', tags: ['HashMap', 'complement lookup'], companies: ['Amazon', 'Google', 'Adobe', 'Infosys'],
+    statement: `<p>Given <code>int[] nums</code> and <code>target</code>, return indices <code>[i, j]</code> (i &lt; j) such that <code>nums[i] + nums[j] == target</code>. Exactly one answer exists; you may not use the same element twice.</p>`,
+    constraints: `2 ≤ n ≤ 10<sup>4</sup>; −10<sup>9</sup> ≤ nums[i], target ≤ 10<sup>9</sup>.`,
+    example: `${H.arr([2, 7, 11, 15], { label: 'target = 9', hl: { 0: 'g', 1: 'g' } })}<p>Answer ${H.c('g', '[0, 1]')} because 2 + 7 = 9. At index 1 we need 9 − 7 = 2, which the map already holds at index 0.</p>`,
+    brute: {
+      why: `<p>Check every pair (i, j): n(n−1)/2 ≈ 5·10<sup>7</sup> additions for n = 10<sup>4</sup>. The wasted work: for each j we rescan everything before it to find the complement, instead of remembering what we have seen.</p>`,
+      code: `class Solution {
+    int[] twoSum(int[] nums, int target) {
+        for (int i = 0; i < nums.length; i++)
+            for (int j = i + 1; j < nums.length; j++)
+                if ((long) nums[i] + nums[j] == target) return new int[]{i, j};
+        return new int[0];
+    }
+}`
+    },
+    mcq: { q: 'What should the map store so the lookup is O(1)?', options: ['value → index of numbers already seen', 'index → value', 'sum → pair', 'target → index'], answer: 0, explain: 'For each x we ask "have I seen target − x?" — a key lookup by value, returning where it was.' },
+    hints: [
+      `<p>Hint 1: For the current number x, the partner must be exactly <code>target − x</code>. The question becomes "have I seen that value before, and where?".</p>`,
+      `<p>Hint 2: Keep a <code>HashMap&lt;Integer, Integer&gt;</code> from value → index of everything to the left of the current position.</p>`,
+      `<p>Hint 3: Look up the complement <b>before</b> inserting the current number, so an element is never paired with itself (e.g. target 6, nums [3, …]). Duplicates like [3, 3] work because the first 3 is already in the map when the second arrives.</p>`
+    ],
+    solution: {
+      approach: `<p>One pass. For each index j, compute <code>need = target − nums[j]</code>; if the map contains it, return its index and j. Otherwise record <code>nums[j] → j</code>.</p>`,
+      code: `class Solution {
+    int[] twoSum(int[] nums, int target) {
+        Map<Integer, Integer> seen = new HashMap<>();          // value -> index
+        for (int j = 0; j < nums.length; j++) {
+            Integer i = seen.get(target - nums[j]);             // complement seen before?
+            if (i != null) return new int[]{i, j};
+            seen.put(nums[j], j);                               // insert AFTER the check
+        }
+        return new int[0];
+    }
+
+    public static void main(String[] args) {
+        System.out.println(Arrays.toString(new Solution().twoSum(new int[]{2, 7, 11, 15}, 9)));   // [0, 1]
+        System.out.println(Arrays.toString(new Solution().twoSum(new int[]{3, 3}, 6)));           // [0, 1]
+    }
+}`,
+      dry: { head: ['j', 'nums[j]', 'need', 'map before', 'action'], rows: [
+        ['0', '2', '7', '{}', 'put 2→0'],
+        ['1', '7', '2', '{2=0}', '<span class="c-g">found 2 at 0 → [0, 1]</span>']
+      ] },
+      complexity: `<p>Time O(n) average, space O(n).</p>`,
+      followUps: ['Return all pairs with distinct values.', 'If the array is sorted, solve it in O(1) extra space (two pointers).']
+    }
+  });
+
+  practice.push({
+    title: 'Valid Parentheses with ArrayDeque',
+    level: 'Easy', tags: ['ArrayDeque', 'stack'], companies: ['Amazon', 'Meta', 'Bloomberg', 'Wipro'],
+    statement: `<p>Given a string of the characters <code>()[]{}</code>, return true if every opening bracket is closed by the same type of bracket in the correct order.</p>`,
+    constraints: `1 ≤ s.length ≤ 10<sup>4</sup>.`,
+    example: `<p><code>"([]{})"</code> → ${H.c('g', 'true')}. <code>"([)]"</code> → ${H.c('r', 'false')}: when <code>)</code> arrives, the most recent unclosed bracket is <code>[</code>, not <code>(</code>.</p>`,
+    brute: {
+      why: `<p>Repeatedly delete adjacent pairs "()", "[]", "{}" until nothing changes. Each pass is O(n) and creates a new String; nested input like "((((…))))" needs n/2 passes → O(n²) time and lots of garbage.</p>`,
+      code: `class Solution {
+    boolean isValid(String s) {
+        String prev;
+        do {
+            prev = s;
+            s = s.replace("()", "").replace("[]", "").replace("{}", "");   // O(n) per pass
+        } while (!s.equals(prev));
+        return s.isEmpty();
+    }
+}`
+    },
+    mcq: { q: 'Why is a stack (LIFO) the natural fit?', options: ['The most recently opened bracket must be the first one closed', 'Brackets must be sorted', 'We need O(1) random access', 'Duplicates must be removed'], answer: 0, explain: 'Nesting is last-opened, first-closed — exactly LIFO. ArrayDeque.push/pop gives O(1) at the top.' },
+    hints: [
+      `<p>Hint 1: Read left to right. An opener is a promise to be kept later; a closer must keep the <b>latest</b> unkept promise.</p>`,
+      `<p>Hint 2: <code>Deque&lt;Character&gt; st = new ArrayDeque&lt;&gt;()</code>. Push the <b>expected closer</b> when you see an opener (push ')' for '('); when you see a closer, pop and compare.</p>`,
+      `<p>Hint 3: Fail if you meet a closer while the stack is empty (<code>pop()</code> would throw — check <code>isEmpty()</code> or use <code>pollFirst()</code> which returns null). At the end the stack must be empty ("((" is invalid). Odd length → immediately false.</p>`
+    ],
+    solution: {
+      approach: `<p>Use ArrayDeque as a stack of expected closing brackets. Each opener pushes its partner; each closer must equal the popped top. Valid iff no mismatch and the stack ends empty.</p>`,
+      code: `class Solution {
+    boolean isValid(String s) {
+        if (s.length() % 2 == 1) return false;
+        Deque<Character> st = new ArrayDeque<>();
+        for (char c : s.toCharArray()) {
+            if (c == '(') st.push(')');
+            else if (c == '[') st.push(']');
+            else if (c == '{') st.push('}');
+            else if (st.isEmpty() || st.pop() != c) return false;   // wrong or missing opener
+        }
+        return st.isEmpty();                                        // nothing left unclosed
+    }
+
+    public static void main(String[] args) {
+        Solution sol = new Solution();
+        System.out.println(sol.isValid("([]{})") + " " + sol.isValid("([)]") + " " + sol.isValid("(("));   // true false false
+    }
+}`,
+      dry: { head: ['char', 'action', 'stack (top first)'], rows: [
+        ['(', 'push )', '[)]'],
+        ['[', 'push ]', '[], )]'],
+        [']', 'pop ] == ] ✓', '[)]'],
+        ['{', 'push }', '[}, )]'],
+        ['}', 'pop } == } ✓', '[)]'],
+        [')', 'pop ) == ) ✓', '<span class="c-g">[] → true</span>']
+      ] },
+      complexity: `<p>Time O(n), space O(n) in the worst case (all openers).</p>`,
+      followUps: ['Return the length of the longest valid parentheses substring.', 'Why is <code>st.pop() != c</code> safe here even though it compares a Character with a char? (Unboxing to char.)']
+    }
+  });
+
+  practice.push({
+    title: 'Sorted Intersection of Two Arrays',
+    level: 'Easy', tags: ['HashSet', 'TreeSet', 'retainAll'], companies: ['Google', 'Facebook', 'Accenture'],
+    statement: `<p>Given two int arrays, return the values that appear in <b>both</b>, each value once, in <b>ascending</b> order.</p>`,
+    constraints: `1 ≤ n, m ≤ 10<sup>5</sup>; values fit in int.`,
+    example: `<p>a = [4, 9, 5, 4], b = [9, 4, 9, 8, 4] → common values {4, 9} → ${H.c('g', '[4, 9]')}.</p>`,
+    brute: {
+      why: `<p>For every element of a, scan all of b (O(n·m) = 10<sup>10</sup> in the worst case) and also check the result list for duplicates (another linear scan). Two different "have I seen it?" questions, both answered by slow scans.</p>`,
+      code: `class Solution {
+    List<Integer> intersect(int[] a, int[] b) {
+        List<Integer> res = new ArrayList<>();
+        for (int x : a)
+            for (int y : b)
+                if (x == y && !res.contains(x)) { res.add(x); break; }   // O(m) + O(res)
+        Collections.sort(res);
+        return res;
+    }
+}`
+    },
+    mcq: { q: 'Which pair of Set operations gives a sorted intersection most directly?', options: ['Build TreeSet from a, then retainAll(set of b)', 'HashSet of a, then addAll(b)', 'TreeSet of a, then removeAll(b)', 'ArrayList of a, then sort'], answer: 0, explain: 'retainAll keeps only elements also in the other set (intersection). A TreeSet keeps the result sorted. Make the argument a HashSet so each contains check is O(1).' },
+    hints: [
+      `<p>Hint 1: "Appears in both, each once" is set intersection. Sets remove duplicates for free.</p>`,
+      `<p>Hint 2: Put b into a <code>HashSet</code> (O(1) contains). Then put a into a <code>TreeSet</code> and call <code>retainAll(bSet)</code>.</p>`,
+      `<p>Hint 3: <code>retainAll</code> calls <code>bSet.contains</code> for each element — fast because bSet is hashed. Empty intersection → empty list. Alternative: sort both arrays and walk with two pointers in O(n log n) with O(1) extra space.</p>`
+    ],
+    solution: {
+      approach: `<p>Hash the second array, keep a sorted set of the first, intersect with retainAll, and copy into a list.</p>`,
+      code: `class Solution {
+    List<Integer> intersect(int[] a, int[] b) {
+        Set<Integer> inB = new HashSet<>();
+        for (int y : b) inB.add(y);
+        TreeSet<Integer> res = new TreeSet<>();
+        for (int x : a) res.add(x);          // unique + sorted
+        res.retainAll(inB);                   // intersection, O(n) contains checks
+        return new ArrayList<>(res);
+    }
+
+    public static void main(String[] args) {
+        System.out.println(new Solution().intersect(new int[]{4, 9, 5, 4}, new int[]{9, 4, 9, 8, 4}));   // [4, 9]
+    }
+}`,
+      dry: { head: ['Step', 'Set contents'], rows: [
+        ['inB from b', '{4, 8, 9}'],
+        ['TreeSet from a', '[4, 5, 9]'],
+        ['retainAll(inB)', '5 not in inB → removed'],
+        ['result', '<span class="c-g">[4, 9]</span>']
+      ] },
+      complexity: `<p>Time O(n log n + m) (TreeSet inserts), space O(n + m).</p>`,
+      followUps: ['Keep duplicates as many times as they appear in both (multiset intersection — use a count map).', 'What if b is too big for memory but sorted on disk?']
+    }
+  });
+
+  /* ======================================================================
+     PRACTICE — Medium
+     ====================================================================== */
+  practice.push({
+    title: 'Group Anagrams',
+    level: 'Medium', tags: ['HashMap', 'computeIfAbsent', 'grouping'], companies: ['Amazon', 'Uber', 'Goldman Sachs'],
+    statement: `<p>Given an array of lowercase words, group the anagrams together (words made of the same letters). Return the groups in any order.</p>`,
+    constraints: `1 ≤ n ≤ 10<sup>4</sup>; 0 ≤ word length ≤ 100; lowercase a–z.`,
+    example: `<p>["eat","tea","tan","ate","nat","bat"] → ${H.c('g', '[[eat, tea, ate], [tan, nat], [bat]]')}. "eat", "tea", "ate" all sort to the key "aet".</p>`,
+    brute: {
+      why: `<p>Compare every word with every existing group by checking "are these anagrams?" (sort both or count letters) — O(n · groups · L). With many distinct groups that approaches O(n²·L). The waste: we recompute a comparison instead of computing one canonical <b>key</b> per word.</p>`,
+      code: `class Solution {
+    List<List<String>> groupAnagrams(String[] words) {
+        List<List<String>> groups = new ArrayList<>();
+        for (String w : words) {
+            boolean placed = false;
+            for (List<String> g : groups) {
+                if (isAnagram(g.get(0), w)) { g.add(w); placed = true; break; }   // scan all groups
+            }
+            if (!placed) groups.add(new ArrayList<>(List.of(w)));
+        }
+        return groups;
+    }
+    private boolean isAnagram(String a, String b) {
+        char[] x = a.toCharArray(), y = b.toCharArray();
+        Arrays.sort(x); Arrays.sort(y);
+        return Arrays.equals(x, y);
+    }
+}`
+    },
+    mcq: { q: 'What is a good HashMap key for "same letters, any order"?', options: ['The word with its letters sorted (e.g. "aet")', 'The word itself', 'The word length', 'The first letter'], answer: 0, explain: 'All anagrams share the same sorted form, and non-anagrams differ. A 26-count signature like "1#0#0#…" also works in O(L).' },
+    hints: [
+      `<p>Hint 1: Turn each word into a <b>canonical key</b> that is identical for all its anagrams.</p>`,
+      `<p>Hint 2: Sort the characters: <code>char[] c = w.toCharArray(); Arrays.sort(c); String key = new String(c);</code>. Then <code>map.computeIfAbsent(key, k -&gt; new ArrayList&lt;&gt;()).add(w)</code>.</p>`,
+      `<p>Hint 3: Return <code>new ArrayList&lt;&gt;(map.values())</code>. Empty string is its own group (key ""). For long words, a count-based key avoids the L log L sort.</p>`
+    ],
+    solution: {
+      approach: `<p>Map each word to its sorted-letter key and group with <code>computeIfAbsent</code>. The map's values are the answer.</p>`,
+      code: `class Solution {
+    List<List<String>> groupAnagrams(String[] words) {
+        Map<String, List<String>> groups = new HashMap<>();
+        for (String w : words) {
+            char[] c = w.toCharArray();
+            Arrays.sort(c);                                         // canonical form
+            groups.computeIfAbsent(new String(c), k -> new ArrayList<>()).add(w);
+        }
+        return new ArrayList<>(groups.values());
+    }
+
+    public static void main(String[] args) {
+        List<List<String>> g = new Solution().groupAnagrams(new String[]{"eat", "tea", "tan", "ate", "nat", "bat"});
+        g.sort(Comparator.comparing((List<String> l) -> -l.size()).thenComparing(l -> l.get(0)));
+        System.out.println(g);   // [[eat, tea, ate], [tan, nat], [bat]]
+    }
+}`,
+      dry: { head: ['word', 'key', 'map after'], rows: [
+        ['eat', 'aet', '{aet=[eat]}'],
+        ['tea', 'aet', '{aet=[eat, tea]}'],
+        ['tan', 'ant', '{aet=[eat, tea], ant=[tan]}'],
+        ['ate', 'aet', '{aet=[eat, tea, ate], ant=[tan]}'],
+        ['nat', 'ant', '{…, ant=[tan, nat]}'],
+        ['bat', 'abt', '<span class="c-g">3 groups</span>']
+      ] },
+      complexity: `<p>Time O(n · L log L), space O(n · L).</p>`,
+      followUps: ['Use a 26-letter count signature for O(n · L).', 'Return only groups of size ≥ 2, sorted by size.']
+    }
+  });
+
+  practice.push({
+    title: 'Top K Frequent Elements',
+    level: 'Medium', tags: ['HashMap', 'PriorityQueue', 'bucket sort'], companies: ['Amazon', 'Facebook', 'Yelp'],
+    statement: `<p>Given an int array and k, return the k most frequent elements (any order). The answer is unique.</p>`,
+    constraints: `1 ≤ n ≤ 10<sup>5</sup>; 1 ≤ k ≤ number of distinct elements. Aim for better than O(n log n).`,
+    example: `<p>[1,1,1,2,2,3], k = 2 → counts {1:3, 2:2, 3:1} → ${H.c('g', '[1, 2]')}.</p>`,
+    brute: {
+      why: `<p>Count with a map (fine), then sort <b>all</b> distinct entries by count — O(m log m) — even though only k are needed. Acceptable, but the heap gets O(m log k) and bucket sort O(n).</p>`,
+      code: `class Solution {
+    int[] topKFrequent(int[] nums, int k) {
+        Map<Integer, Integer> cnt = new HashMap<>();
+        for (int x : nums) cnt.merge(x, 1, Integer::sum);
+        List<Map.Entry<Integer, Integer>> all = new ArrayList<>(cnt.entrySet());
+        all.sort((a, b) -> Integer.compare(b.getValue(), a.getValue()));   // sorts everything
+        int[] res = new int[k];
+        for (int i = 0; i < k; i++) res[i] = all.get(i).getKey();
+        return res;
+    }
+}`
+    },
+    mcq: { q: 'To keep the k MOST frequent with a heap of size k, the heap should be ordered by…', options: ['count ascending (min-heap) so the least frequent of the top k is evicted', 'count descending (max-heap)', 'value ascending', 'insertion order'], answer: 0, explain: 'Same idea as k-th largest: the root is the weakest member of the club; anything better replaces it.' },
+    hints: [
+      `<p>Hint 1: Two jobs: count (HashMap + merge), then select the best k by count.</p>`,
+      `<p>Hint 2: Min-heap of map entries ordered by value, capped at size k: offer, and poll when size &gt; k.</p>`,
+      `<p>Hint 3: For O(n): bucket sort — <code>List&lt;Integer&gt;[] buckets</code> indexed by frequency (max n), then walk from the highest bucket down until you have k. k equal to distinct count → return all keys.</p>`
+    ],
+    solution: {
+      approach: `<p>Count with merge, keep a size-k min-heap keyed on frequency, then drain it. O(n + m log k).</p>`,
+      code: `class Solution {
+    int[] topKFrequent(int[] nums, int k) {
+        Map<Integer, Integer> cnt = new HashMap<>();
+        for (int x : nums) cnt.merge(x, 1, Integer::sum);
+        PriorityQueue<Map.Entry<Integer, Integer>> heap =
+                new PriorityQueue<>(Map.Entry.comparingByValue());          // min-heap by count
+        for (Map.Entry<Integer, Integer> e : cnt.entrySet()) {
+            heap.offer(e);
+            if (heap.size() > k) heap.poll();                               // drop least frequent
+        }
+        int[] res = new int[k];
+        for (int i = k - 1; i >= 0; i--) res[i] = heap.poll().getKey();     // most frequent first
+        return res;
+    }
+
+    public static void main(String[] args) {
+        System.out.println(Arrays.toString(new Solution().topKFrequent(new int[]{1, 1, 1, 2, 2, 3}, 2)));   // [1, 2]
+    }
+}`,
+      dry: { head: ['entry offered', 'heap (by count)', 'size > 2?'], rows: [
+        ['1=3', '[1=3]', 'no'],
+        ['2=2', '[2=2, 1=3]', 'no'],
+        ['3=1', '[3=1, 1=3, 2=2]', 'yes → poll 3=1'],
+        ['drain', '2=2 then 1=3', '<span class="c-g">res = [1, 2]</span>']
+      ] },
+      complexity: `<p>Time O(n + m log k) where m = distinct values; space O(m). Bucket sort variant: O(n).</p>`,
+      followUps: ['Top k frequent <b>words</b>, ties broken alphabetically (LeetCode 692).', 'Streaming version with limited memory (Count-Min Sketch + heap).']
+    }
+  });
+
+  practice.push({
+    title: 'Design a Hit Counter (last 5 minutes)',
+    level: 'Medium', tags: ['ArrayDeque', 'queue', 'design', 'sliding window'], companies: ['Dropbox', 'Google', 'Microsoft'],
+    statement: `<p>Design <code>HitCounter</code> with <code>void hit(int timestamp)</code> and <code>int getHits(int timestamp)</code> returning the number of hits in the past 300 seconds, i.e. in <code>(timestamp − 300, timestamp]</code>. Calls arrive in non-decreasing timestamp order; several hits may share a timestamp.</p>`,
+    constraints: `1 ≤ timestamp ≤ 2·10<sup>9</sup>; up to 10<sup>5</sup> calls.`,
+    example: `<p>hit(1), hit(2), hit(3), getHits(4) → ${H.c('g', '3')}; hit(300), getHits(300) → ${H.c('g', '4')}; getHits(301) → ${H.c('g', '3')} (the hit at 1 is now older than 300 s).</p>`,
+    brute: {
+      why: `<p>Store every hit in a list forever and count matching timestamps on each <code>getHits</code>: O(total hits) per query and unbounded memory. The waste: hits older than 300 s can never matter again, yet we keep scanning them.</p>`,
+      code: `class HitCounter {
+    private final List<Integer> hits = new ArrayList<>();
+    void hit(int t) { hits.add(t); }
+    int getHits(int t) {
+        int c = 0;
+        for (int h : hits) if (h > t - 300) c++;   // scans everything, forever
+        return c;
+    }
+}`
+    },
+    mcq: { q: 'Timestamps arrive in order. Which structure lets you drop expired hits cheaply?', options: ['A FIFO queue (ArrayDeque): expired hits are always at the front', 'A HashSet', 'A TreeSet of all hits', 'A stack'], answer: 0, explain: 'Oldest hits are at the head, so poll from the front while they are expired — each hit is added once and removed once (amortised O(1)).' },
+    hints: [
+      `<p>Hint 1: Because time only moves forward, the hits that expire first are the ones that arrived first — FIFO.</p>`,
+      `<p>Hint 2: <code>ArrayDeque&lt;Integer&gt;</code>: <code>hit</code> → <code>offerLast(t)</code>; <code>getHits(t)</code> → while <code>peekFirst() &lt;= t - 300</code>, <code>pollFirst()</code>; return <code>size()</code>.</p>`,
+      `<p>Hint 3: Many hits per second? Store <code>int[]{time, count}</code> pairs and merge equal timestamps into the last pair to bound memory to 300 entries. Use <code>&lt;=</code> so a hit exactly 300 s old is expired.</p>`
+    ],
+    solution: {
+      approach: `<p>Queue of timestamps. Evict from the front everything at or before <code>t − 300</code>, then the queue size is the answer. Each timestamp is enqueued once and dequeued at most once.</p>`,
+      code: `class HitCounter {
+    private final Deque<Integer> q = new ArrayDeque<>();
+
+    void hit(int timestamp) { q.offerLast(timestamp); }
+
+    int getHits(int timestamp) {
+        while (!q.isEmpty() && q.peekFirst() <= timestamp - 300) q.pollFirst();   // expire old hits
+        return q.size();
+    }
+
+    public static void main(String[] args) {
+        HitCounter hc = new HitCounter();
+        hc.hit(1); hc.hit(2); hc.hit(3);
+        System.out.print(hc.getHits(4) + " ");     // 3
+        hc.hit(300);
+        System.out.print(hc.getHits(300) + " ");   // 4
+        System.out.println(hc.getHits(301));       // 3
+    }
+}`,
+      dry: { head: ['call', 'evicted', 'queue', 'answer'], rows: [
+        ['hit 1,2,3', '', '[1, 2, 3]', ''],
+        ['getHits(4)', 'none (≤ −296)', '[1, 2, 3]', '3'],
+        ['hit(300)', '', '[1, 2, 3, 300]', ''],
+        ['getHits(300)', 'none (≤ 0)', '[1, 2, 3, 300]', '4'],
+        ['getHits(301)', '<span class="c-r">1</span> (≤ 1)', '[2, 3, 300]', '<span class="c-g">3</span>']
+      ] },
+      complexity: `<p>Amortised O(1) per call; memory O(hits in the window) — O(300) with the merged-count variant.</p>`,
+      followUps: ['Make it thread-safe for a web server.', 'Use a fixed circular array of 300 buckets instead of a queue.']
+    }
+  });
+
+  practice.push({
+    title: 'My Calendar: Book Without Overlaps (TreeMap)',
+    level: 'Medium', tags: ['TreeMap', 'floorKey', 'ceilingKey', 'intervals'], companies: ['Google', 'Uber', 'Atlassian'],
+    statement: `<p>Implement <code>MyCalendar</code> with <code>boolean book(int start, int end)</code> for the half-open interval <code>[start, end)</code>. Add the booking and return true only if it does not overlap any existing booking; otherwise return false and do not add it.</p>`,
+    constraints: `0 ≤ start &lt; end ≤ 10<sup>9</sup>; up to 10<sup>4</sup> (follow-up: 10<sup>5</sup>) calls.`,
+    example: `<p>book(10, 20) → ${H.c('g', 'true')}; book(15, 25) → ${H.c('r', 'false')} (overlaps 10–20); book(20, 30) → ${H.c('g', 'true')} (touching at 20 is fine because intervals are half-open).</p>`,
+    brute: {
+      why: `<p>Keep a list of bookings and test the new interval against every one: O(n) per call, O(n²) overall. The waste: only the two bookings <b>nearest</b> to <code>start</code> can possibly overlap.</p>`,
+      code: `class MyCalendar {
+    private final List<int[]> booked = new ArrayList<>();
+    boolean book(int start, int end) {
+        for (int[] b : booked)
+            if (start < b[1] && b[0] < end) return false;   // overlap test against all
+        booked.add(new int[]{start, end});
+        return true;
+    }
+}`
+    },
+    mcq: { q: 'With bookings stored as TreeMap start → end, which two lookups decide overlap for [s, e)?', options: ['floorKey(s) (previous booking) and ceilingKey(s) (next booking)', 'firstKey() and lastKey()', 'get(s) and get(e)', 'headMap(s) and tailMap(e) sizes'], answer: 0, explain: 'Only the booking starting at or before s (it must end ≤ s) and the one starting at or after s (it must start ≥ e) can collide.' },
+    hints: [
+      `<p>Hint 1: Existing bookings never overlap each other, so sorted by start they are also sorted by end. Only the neighbours of the new start matter.</p>`,
+      `<p>Hint 2: <code>TreeMap&lt;Integer, Integer&gt; cal</code> (start → end). <code>Integer prev = cal.floorKey(start)</code>, <code>Integer next = cal.ceilingKey(start)</code>.</p>`,
+      `<p>Hint 3: Overlap if <code>prev != null &amp;&amp; cal.get(prev) &gt; start</code> or <code>next != null &amp;&amp; next &lt; end</code>. Half-open: end == next start is allowed. Both lookups may return null (no neighbour).</p>`
+    ],
+    solution: {
+      approach: `<p>TreeMap from start to end. For a new [s, e) check only the floor neighbour (must end ≤ s) and the ceiling neighbour (must start ≥ e). Insert on success. Each call is O(log n).</p>`,
+      code: `class MyCalendar {
+    private final TreeMap<Integer, Integer> cal = new TreeMap<>();   // start -> end
+
+    boolean book(int start, int end) {
+        Integer prev = cal.floorKey(start);          // booking starting at or before start
+        if (prev != null && cal.get(prev) > start) return false;
+        Integer next = cal.ceilingKey(start);        // booking starting at or after start
+        if (next != null && next < end) return false;
+        cal.put(start, end);
+        return true;
+    }
+
+    public static void main(String[] args) {
+        MyCalendar c = new MyCalendar();
+        System.out.println(c.book(10, 20) + " " + c.book(15, 25) + " " + c.book(20, 30));   // true false true
+    }
+}`,
+      dry: { head: ['call', 'floor (prev)', 'ceiling (next)', 'result', 'calendar'], rows: [
+        ['book(10,20)', 'null', 'null', 'true', '{10=20}'],
+        ['book(15,25)', '10 → ends 20 &gt; 15', '—', '<span class="c-r">false</span>', '{10=20}'],
+        ['book(20,30)', '10 → ends 20, not &gt; 20', 'null', '<span class="c-g">true</span>', '{10=20, 20=30}']
+      ] },
+      complexity: `<p>O(log n) per booking, O(n) space. Brute force O(n) per booking.</p>`,
+      followUps: ['My Calendar II: allow double booking but not triple (count map with a sweep).', 'Return the maximum number of simultaneous bookings (TreeMap of +1/−1 deltas).']
+    }
+  });
+
+  practice.push({
+    title: 'Meeting Rooms II: Minimum Rooms Needed',
+    level: 'Medium', tags: ['PriorityQueue', 'sorting', 'intervals'], companies: ['Facebook', 'Google', 'Amazon', 'Bloomberg'],
+    statement: `<p>Given meeting intervals <code>[start, end)</code>, return the minimum number of conference rooms required so that no two overlapping meetings share a room.</p>`,
+    constraints: `1 ≤ n ≤ 10<sup>4</sup>; 0 ≤ start &lt; end ≤ 10<sup>6</sup>.`,
+    example: `<p>[[0,30],[5,10],[15,20]] → ${H.c('g', '2')}: [0,30] needs a room; [5,10] overlaps it → second room; [15,20] reuses the room freed at 10.</p>`,
+    brute: {
+      why: `<p>For every time point that is a start, count how many meetings are active at that moment by scanning all meetings: O(n²). The waste: we re-scan all meetings instead of tracking which rooms free up next.</p>`,
+      code: `class Solution {
+    int minMeetingRooms(int[][] m) {
+        int best = 0;
+        for (int[] a : m) {
+            int active = 0;
+            for (int[] b : m) if (b[0] <= a[0] && a[0] < b[1]) active++;   // meetings live at a's start
+            best = Math.max(best, active);
+        }
+        return best;
+    }
+}`
+    },
+    mcq: { q: 'After sorting by start time, what should the PriorityQueue hold?', options: ['End times of meetings currently using a room (min-heap)', 'Start times', 'Meeting lengths', 'Room numbers in a max-heap'], answer: 0, explain: 'The room that frees up soonest is the min end time. If it is ≤ the new start, reuse that room (poll), then push the new end.' },
+    hints: [
+      `<p>Hint 1: Process meetings in start order. For each, ask "has any room become free by now?" — only the room that frees up earliest matters.</p>`,
+      `<p>Hint 2: Min-heap of end times. If <code>heap.peek() &lt;= start</code>, poll it (reuse the room). Always offer the new end.</p>`,
+      `<p>Hint 3: The answer is the heap's maximum size, which equals its final size with this algorithm. Sort with <code>Arrays.sort(m, Comparator.comparingInt(x -&gt; x[0]))</code>. Back-to-back meetings ([5,10] then [10,15]) share a room because of <code>&lt;=</code>.</p>`
+    ],
+    solution: {
+      approach: `<p>Sort by start. Keep a min-heap of end times for occupied rooms. For each meeting, free the earliest-ending room if it is done, then occupy a room with this meeting's end. The heap size is the number of rooms in use; it never shrinks below the peak because we poll at most one per meeting.</p>`,
+      code: `class Solution {
+    int minMeetingRooms(int[][] meetings) {
+        int[][] m = meetings.clone();
+        Arrays.sort(m, Comparator.comparingInt(x -> x[0]));      // by start time
+        PriorityQueue<Integer> ends = new PriorityQueue<>();      // end times of busy rooms
+        for (int[] mt : m) {
+            if (!ends.isEmpty() && ends.peek() <= mt[0]) ends.poll();   // reuse freed room
+            ends.offer(mt[1]);
+        }
+        return ends.size();
+    }
+
+    public static void main(String[] args) {
+        System.out.println(new Solution().minMeetingRooms(new int[][]{{0, 30}, {5, 10}, {15, 20}}));   // 2
+    }
+}`,
+      dry: { head: ['meeting', 'heap.peek() ≤ start?', 'heap after', 'rooms'], rows: [
+        ['[0,30]', 'empty', '[30]', '1'],
+        ['[5,10]', '30 ≤ 5? no', '[10, 30]', '2'],
+        ['[15,20]', '10 ≤ 15? yes → poll', '[20, 30]', '<span class="c-g">2</span>']
+      ] },
+      complexity: `<p>Time O(n log n), space O(n).</p>`,
+      followUps: ['Return which room each meeting gets (heap of [end, roomId]).', 'Solve with a TreeMap of +1/−1 deltas (sweep line).']
+    }
+  });
+
+  practice.push({
+    title: 'Time-Based Key-Value Store',
+    level: 'Medium', tags: ['HashMap', 'TreeMap', 'floorEntry', 'design'], companies: ['Netflix', 'Lyft', 'Google'],
+    statement: `<p>Design <code>TimeMap</code>: <code>set(key, value, timestamp)</code> stores a value at a time; <code>get(key, timestamp)</code> returns the value set for <code>key</code> at the largest timestamp ≤ the given one, or <code>""</code> if none.</p>`,
+    constraints: `Up to 2·10<sup>5</sup> calls; timestamps for each key may arrive in any order; 1 ≤ timestamp ≤ 10<sup>7</sup>.`,
+    example: `<p>set("foo","bar",1); get("foo",1) → ${H.c('g', '"bar"')}; get("foo",3) → ${H.c('g', '"bar"')} (latest ≤ 3 is time 1); set("foo","bar2",4); get("foo",4) → ${H.c('g', '"bar2"')}; get("foo",0) → ${H.c('m', '""')}.</p>`,
+    brute: {
+      why: `<p>Keep a list of (time, value) per key and scan it on every <code>get</code> for the best timestamp ≤ t: O(versions) per query. The waste: the versions could be kept sorted so the answer is found by a O(log n) search.</p>`,
+      code: `class TimeMap {
+    private final Map<String, List<Object[]>> data = new HashMap<>();
+    void set(String key, String value, int t) {
+        data.computeIfAbsent(key, k -> new ArrayList<>()).add(new Object[]{t, value});
+    }
+    String get(String key, int t) {
+        String best = ""; int bestT = -1;
+        for (Object[] e : data.getOrDefault(key, List.of())) {      // linear scan of versions
+            int et = (Integer) e[0];
+            if (et <= t && et > bestT) { bestT = et; best = (String) e[1]; }
+        }
+        return best;
+    }
+}`
+    },
+    mcq: { q: 'Which TreeMap method answers "value at the largest timestamp ≤ t"?', options: ['floorEntry(t)', 'ceilingEntry(t)', 'higherEntry(t)', 'firstEntry()'], answer: 0, explain: 'floor = greatest key less than or equal to t. ceiling would be the smallest ≥ t (the future), higher the smallest > t.' },
+    hints: [
+      `<p>Hint 1: Two levels of lookup: by key (exact → hash map), then by time (nearest at or below → sorted map).</p>`,
+      `<p>Hint 2: <code>Map&lt;String, TreeMap&lt;Integer, String&gt;&gt;</code>; set uses <code>computeIfAbsent(key, k -&gt; new TreeMap&lt;&gt;()).put(t, v)</code>.</p>`,
+      `<p>Hint 3: get: fetch the TreeMap (may be null → ""), call <code>floorEntry(t)</code> (may be null → ""), return its value. Works even if timestamps arrive out of order.</p>`
+    ],
+    solution: {
+      approach: `<p>HashMap from key to a TreeMap of timestamp → value. Lookups use <code>floorEntry</code> for the latest version at or before t in O(log v).</p>`,
+      code: `class TimeMap {
+    private final Map<String, TreeMap<Integer, String>> data = new HashMap<>();
+
+    void set(String key, String value, int timestamp) {
+        data.computeIfAbsent(key, k -> new TreeMap<>()).put(timestamp, value);
+    }
+
+    String get(String key, int timestamp) {
+        TreeMap<Integer, String> versions = data.get(key);
+        if (versions == null) return "";
+        Map.Entry<Integer, String> e = versions.floorEntry(timestamp);   // latest <= timestamp
+        return e == null ? "" : e.getValue();
+    }
+
+    public static void main(String[] args) {
+        TimeMap tm = new TimeMap();
+        tm.set("foo", "bar", 1);
+        System.out.print(tm.get("foo", 1) + " " + tm.get("foo", 3) + " ");   // bar bar
+        tm.set("foo", "bar2", 4);
+        System.out.println(tm.get("foo", 4) + " [" + tm.get("foo", 0) + "]");  // bar2 []
+    }
+}`,
+      dry: { head: ['call', 'TreeMap for foo', 'floorEntry', 'result'], rows: [
+        ['set(foo,bar,1)', '{1=bar}', '', ''],
+        ['get(foo,3)', '{1=bar}', '1=bar', 'bar'],
+        ['set(foo,bar2,4)', '{1=bar, 4=bar2}', '', ''],
+        ['get(foo,4)', '{1=bar, 4=bar2}', '4=bar2', 'bar2'],
+        ['get(foo,0)', '{1=bar, 4=bar2}', 'null', '<span class="c-m">""</span>']
+      ] },
+      complexity: `<p>set and get O(log v) where v = versions of that key; space O(total sets).</p>`,
+      followUps: ['If timestamps per key always increase, replace the TreeMap with an ArrayList + binary search (less memory).', 'Add <code>delete(key, t)</code> and range queries (subMap).']
+    }
+  });
+
+  /* ======================================================================
+     PRACTICE — Hard
+     ====================================================================== */
+  practice.push({
+    title: 'Sliding Window Maximum (Monotonic ArrayDeque)',
+    level: 'Hard', tags: ['ArrayDeque', 'monotonic deque', 'sliding window'], companies: ['Amazon', 'Google', 'Citadel'],
+    statement: `<p>Given <code>int[] nums</code> and window size <code>k</code>, return the maximum of every contiguous window of size k, left to right.</p>`,
+    constraints: `1 ≤ k ≤ n ≤ 10<sup>5</sup>; −10<sup>4</sup> ≤ nums[i] ≤ 10<sup>4</sup>. Target O(n).`,
+    example: `${H.arr([1, 3, -1, -3, 5, 3, 6, 7], { label: 'k = 3' })}<p>Windows: [1,3,−1]→3, [3,−1,−3]→3, [−1,−3,5]→5, [−3,5,3]→5, [5,3,6]→6, [3,6,7]→7 → ${H.c('g', '[3, 3, 5, 5, 6, 7]')}.</p>`,
+    brute: {
+      why: `<p>Recompute the max of each window from scratch: (n − k + 1) · k comparisons — about 2.5·10<sup>9</sup> for n = 10<sup>5</sup>, k = 5·10<sup>4</sup>. A max-heap with lazy deletion gets O(n log n); the deque gets O(n) by throwing away elements that can never be a maximum.</p>`,
+      code: `class Solution {
+    int[] maxSlidingWindow(int[] nums, int k) {
+        int[] res = new int[nums.length - k + 1];
+        for (int i = 0; i + k <= nums.length; i++) {
+            int m = Integer.MIN_VALUE;
+            for (int j = i; j < i + k; j++) m = Math.max(m, nums[j]);   // O(k) per window
+            res[i] = m;
+        }
+        return res;
+    }
+}`
+    },
+    mcq: { q: 'Why can index j be discarded when a later index i has nums[i] ≥ nums[j]?', options: ['j leaves the window before i and is never bigger, so it can never be a maximum again', 'Because j is smaller than k', 'To keep the deque sorted by index', 'It cannot be discarded'], answer: 0, explain: 'A newer, bigger-or-equal element dominates every older smaller element for all future windows. Removing dominated indices keeps the deque values decreasing; the front is always the max.' },
+    hints: [
+      `<p>Hint 1: Keep only "candidates" — elements that could still be the maximum of some future window. Older elements smaller than a newer one are hopeless.</p>`,
+      `<p>Hint 2: <code>Deque&lt;Integer&gt; dq</code> of <b>indices</b> with decreasing values. For each i: pop from the back while <code>nums[back] &lt;= nums[i]</code>; push i at the back; pop the front if it is outside the window (<code>front &lt;= i - k</code>).</p>`,
+      `<p>Hint 3: Once <code>i &gt;= k - 1</code>, record <code>nums[dq.peekFirst()]</code>. Store indices (not values) so you can tell when the front expires. Each index is pushed and popped at most once → O(n).</p>`
+    ],
+    solution: {
+      approach: `<p>Monotonic deque of indices whose values strictly decrease from front to back. The front is the current window's maximum; dominated elements are popped from the back, expired ones from the front.</p>`,
+      code: `class Solution {
+    int[] maxSlidingWindow(int[] nums, int k) {
+        int n = nums.length;
+        int[] res = new int[n - k + 1];
+        Deque<Integer> dq = new ArrayDeque<>();                 // indices, values decreasing
+        for (int i = 0; i < n; i++) {
+            while (!dq.isEmpty() && nums[dq.peekLast()] <= nums[i]) dq.pollLast();   // drop dominated
+            dq.offerLast(i);
+            if (dq.peekFirst() <= i - k) dq.pollFirst();       // front slid out of the window
+            if (i >= k - 1) res[i - k + 1] = nums[dq.peekFirst()];
+        }
+        return res;
+    }
+
+    public static void main(String[] args) {
+        System.out.println(Arrays.toString(new Solution().maxSlidingWindow(new int[]{1, 3, -1, -3, 5, 3, 6, 7}, 3)));
+        // [3, 3, 5, 5, 6, 7]
+    }
+}`,
+      dry: { head: ['i', 'nums[i]', 'deque (indices → values)', 'output'], rows: [
+        ['0', '1', '[0→1]', ''],
+        ['1', '3', '[1→3] (popped 0)', ''],
+        ['2', '-1', '[1→3, 2→-1]', '3'],
+        ['3', '-3', '[1→3, 2→-1, 3→-3]', '3'],
+        ['4', '5', '[4→5] (popped 3,2,1)', '5'],
+        ['5', '3', '[4→5, 5→3]', '5'],
+        ['6', '6', '[6→6]', '6'],
+        ['7', '7', '[7→7]', '<span class="c-g">7</span>']
+      ] },
+      complexity: `<p>Time O(n) amortised (each index enters and leaves once), space O(k).</p>`,
+      followUps: ['Sliding window minimum — what flips?', 'Shortest subarray with sum ≥ K with negatives (LeetCode 862) uses the same deque idea on prefix sums.']
+    }
+  });
+
+  practice.push({
+    title: 'Merge K Sorted Linked Lists',
+    level: 'Hard', tags: ['PriorityQueue', 'linked list', 'k-way merge'], companies: ['Amazon', 'Meta', 'Microsoft', 'Airbnb'],
+    statement: `<p>Given an array of k sorted linked lists (<code>ListNode</code> with <code>val</code> and <code>next</code>), merge them into one sorted list and return its head.</p>`,
+    constraints: `0 ≤ k ≤ 10<sup>4</sup>; total nodes N ≤ 10<sup>4</sup>…10<sup>5</sup>; values in [−10<sup>4</sup>, 10<sup>4</sup>].`,
+    example: `<p>[1→4→5, 1→3→4, 2→6] → ${H.c('g', '1→1→2→3→4→4→5→6')}. At each step the smallest of the k current heads is taken.</p>`,
+    brute: {
+      why: `<p>Dump every value into an ArrayList, sort, and rebuild: O(N log N) time and O(N) extra nodes/values — it ignores that each list is already sorted. Merging lists one by one is worse: O(k·N).</p>`,
+      code: `class Solution {
+    ListNode mergeKLists(ListNode[] lists) {
+        List<Integer> all = new ArrayList<>();
+        for (ListNode l : lists)
+            for (ListNode p = l; p != null; p = p.next) all.add(p.val);
+        Collections.sort(all);                                  // ignores existing order
+        ListNode dummy = new ListNode(0), tail = dummy;
+        for (int v : all) { tail.next = new ListNode(v); tail = tail.next; }
+        return dummy.next;
+    }
+}`
+    },
+    mcq: { q: 'What does the PriorityQueue hold in the k-way merge?', options: ['The current head node of each non-empty list (at most k nodes)', 'All N nodes', 'Only the values, not nodes', 'The tails of each list'], answer: 0, explain: 'Keeping only the k frontier nodes makes every poll/offer O(log k), for O(N log k) total.' },
+    hints: [
+      `<p>Hint 1: The next node in the output is always one of the k current heads — the smallest one.</p>`,
+      `<p>Hint 2: <code>PriorityQueue&lt;ListNode&gt; pq = new PriorityQueue&lt;&gt;(Comparator.comparingInt(n -&gt; n.val))</code>. Seed it with all non-null heads.</p>`,
+      `<p>Hint 3: Loop: poll the smallest node, append it to the result (reuse the node), and if it has a <code>next</code>, offer that. Skip null lists (k may contain nulls, or be 0). Use a dummy head to avoid special cases.</p>`
+    ],
+    solution: {
+      approach: `<p>Min-heap of the frontier nodes ordered by value. Repeatedly take the smallest, link it into the output and push its successor. Nodes are relinked, not copied.</p>`,
+      code: `class Solution {
+    ListNode mergeKLists(ListNode[] lists) {
+        PriorityQueue<ListNode> pq = new PriorityQueue<>(Comparator.comparingInt(n -> n.val));
+        for (ListNode head : lists) if (head != null) pq.offer(head);   // k frontier nodes
+        ListNode dummy = new ListNode(0), tail = dummy;
+        while (!pq.isEmpty()) {
+            ListNode smallest = pq.poll();
+            tail.next = smallest;                                       // relink, no copy
+            tail = smallest;
+            if (smallest.next != null) pq.offer(smallest.next);
+        }
+        return dummy.next;
+    }
+
+    public static void main(String[] args) {
+        ListNode a = new ListNode(1, new ListNode(4, new ListNode(5)));
+        ListNode b = new ListNode(1, new ListNode(3, new ListNode(4)));
+        ListNode c = new ListNode(2, new ListNode(6));
+        StringBuilder sb = new StringBuilder();
+        for (ListNode p = new Solution().mergeKLists(new ListNode[]{a, b, c}); p != null; p = p.next) sb.append(p.val).append(' ');
+        System.out.println(sb.toString().trim());   // 1 1 2 3 4 4 5 6
+    }
+}`,
+      dry: { head: ['poll', 'offer next', 'heap values after', 'output so far'], rows: [
+        ['1 (a)', '4', '{1, 2, 4}', '1'],
+        ['1 (b)', '3', '{2, 3, 4}', '1 1'],
+        ['2 (c)', '6', '{3, 4, 6}', '1 1 2'],
+        ['3 (b)', '4', '{4, 4, 6}', '1 1 2 3'],
+        ['4, 4, 5, 6', '…', '{}', '<span class="c-g">1 1 2 3 4 4 5 6</span>']
+      ] },
+      complexity: `<p>Time O(N log k), extra space O(k) for the heap.</p>`,
+      followUps: ['Divide and conquer: merge pairs of lists — also O(N log k) with O(1) extra space (besides recursion).', 'Merge k sorted <b>arrays</b> (heap of [value, arrayIndex, elementIndex]).']
+    }
+  });
+
+  practice.push({
+    title: 'Find Median from a Data Stream (Two Heaps)',
+    level: 'Hard', tags: ['PriorityQueue', 'two heaps', 'design'], companies: ['Google', 'Amazon', 'Apple', 'Two Sigma'],
+    statement: `<p>Design <code>MedianFinder</code> with <code>void addNum(int num)</code> and <code>double findMedian()</code>. The median of an even count is the mean of the two middle values.</p>`,
+    constraints: `Up to 5·10<sup>4</sup> calls; values in [−10<sup>5</sup>, 10<sup>5</sup>]; findMedian is called only when at least one number exists.`,
+    example: `<p>addNum(1), addNum(2) → findMedian() = ${H.c('g', '1.5')}; addNum(3) → findMedian() = ${H.c('g', '2.0')}.</p>`,
+    brute: {
+      why: `<p>Keep a sorted ArrayList and insert each number at its binary-search position: finding the spot is O(log n) but the insert shifts O(n) elements, so n additions cost O(n²). Sorting on every findMedian is worse: O(n log n) per query.</p>`,
+      code: `class MedianFinder {
+    private final List<Integer> sorted = new ArrayList<>();
+    void addNum(int num) {
+        int i = Collections.binarySearch(sorted, num);
+        if (i < 0) i = -i - 1;
+        sorted.add(i, num);                                     // O(n) shift
+    }
+    double findMedian() {
+        int n = sorted.size();
+        return n % 2 == 1 ? sorted.get(n / 2) : (sorted.get(n / 2 - 1) + (double) sorted.get(n / 2)) / 2;
+    }
+}`
+    },
+    mcq: { q: 'In the two-heap design, which heap holds the LOWER half?', options: ['A max-heap, so its top is the largest of the small numbers', 'A min-heap', 'Either, it does not matter', 'A TreeSet'], answer: 0, explain: 'The median sits at the boundary: the largest of the lower half (max-heap top) and the smallest of the upper half (min-heap top).' },
+    hints: [
+      `<p>Hint 1: You never need the whole order — only the two middle values. Split the numbers into a lower half and an upper half.</p>`,
+      `<p>Hint 2: <code>low</code> = max-heap (<code>Comparator.reverseOrder()</code>), <code>high</code> = min-heap. Invariant: every low ≤ every high, and <code>low.size()</code> is equal to or one more than <code>high.size()</code>.</p>`,
+      `<p>Hint 3: addNum: push into low, move low's top to high (keeps order), then if high is bigger move high's top back to low. Median: odd count → <code>low.peek()</code>; even → <code>(low.peek() + (double) high.peek()) / 2</code> (cast to avoid int division/overflow).</p>`
+    ],
+    solution: {
+      approach: `<p>Two heaps meeting at the middle. Each insertion does at most three heap operations (O(log n)); the median is read from the tops in O(1).</p>`,
+      code: `class MedianFinder {
+    private final PriorityQueue<Integer> low = new PriorityQueue<>(Comparator.reverseOrder()); // max-heap
+    private final PriorityQueue<Integer> high = new PriorityQueue<>();                         // min-heap
+
+    void addNum(int num) {
+        low.offer(num);
+        high.offer(low.poll());                     // largest of low moves up: keeps low <= high
+        if (high.size() > low.size()) low.offer(high.poll());   // rebalance: low has the extra one
+    }
+
+    double findMedian() {
+        return low.size() > high.size() ? low.peek() : (low.peek() + (double) high.peek()) / 2.0;
+    }
+
+    public static void main(String[] args) {
+        MedianFinder mf = new MedianFinder();
+        mf.addNum(1); mf.addNum(2);
+        System.out.print(mf.findMedian() + " ");    // 1.5
+        mf.addNum(3);
+        System.out.println(mf.findMedian());        // 2.0
+    }
+}`,
+      dry: { head: ['add', 'low (max-heap)', 'high (min-heap)', 'median'], rows: [
+        ['1', '[1]', '[]', '1.0'],
+        ['2', '[1]', '[2]', '1.5'],
+        ['3', '[2, 1]', '[3]', '<span class="c-g">2.0</span>']
+      ] },
+      complexity: `<p>addNum O(log n), findMedian O(1), space O(n).</p>`,
+      followUps: ['Sliding window median (needs deletions: two TreeMaps with counts, or lazy deletion).', 'If all numbers are in 0..100, use a count array for O(1) add and O(100) median.']
+    }
+  });
+
+  practice.push({
+    title: 'Maximum Frequency Stack',
+    level: 'Hard', tags: ['HashMap', 'ArrayDeque', 'design', 'stack of stacks'], companies: ['Amazon', 'Google', 'Apple'],
+    statement: `<p>Design <code>FreqStack</code>: <code>push(int val)</code> and <code>int pop()</code>, where pop removes and returns the <b>most frequent</b> element; if several tie, the one pushed <b>most recently</b> among them.</p>`,
+    constraints: `Up to 2·10<sup>4</sup> calls; pop is only called on a non-empty stack. O(1) per operation is possible.`,
+    example: `<p>push 5, 7, 5, 7, 4, 5 → pop() = ${H.c('g', '5')} (freq 3), pop() = ${H.c('g', '7')} (5 and 7 now tie at 2; 7 is more recent), pop() = ${H.c('g', '5')}, pop() = ${H.c('g', '4')}.</p>`,
+    brute: {
+      why: `<p>Keep all pushes in a list; on pop, count frequencies of everything (O(n)), find the max, then scan backwards for the most recent element with that frequency and remove it (O(n)). Every pop is O(n), so n pops cost O(n²).</p>`,
+      code: `class FreqStack {
+    private final List<Integer> all = new ArrayList<>();
+    void push(int val) { all.add(val); }
+    int pop() {
+        Map<Integer, Integer> f = new HashMap<>();
+        int max = 0;
+        for (int v : all) max = Math.max(max, f.merge(v, 1, Integer::sum));   // recount: O(n)
+        for (int i = all.size() - 1; i >= 0; i--)
+            if (f.get(all.get(i)) == max) return all.remove(i);               // remove(int): O(n)
+        throw new IllegalStateException("empty");
+    }
+}`
+    },
+    mcq: { q: 'What is the key trick for O(1) pops?', options: ['A map from frequency → stack of values pushed at that frequency, plus the current max frequency', 'A PriorityQueue keyed by frequency only', 'Sorting on each pop', 'A single TreeMap'], answer: 0, explain: 'When a value reaches frequency f it is pushed onto stack f. The top of stack[maxFreq] is the answer; ties are resolved by LIFO automatically. A heap with (freq, time) also works in O(log n).' },
+    hints: [
+      `<p>Hint 1: Track each value's current count in a <code>HashMap&lt;Integer, Integer&gt; freq</code>.</p>`,
+      `<p>Hint 2: Also keep <code>Map&lt;Integer, Deque&lt;Integer&gt;&gt; group</code>: when a push makes val's count f, push val onto <code>group[f]</code>. A value with count 3 appears in groups 1, 2 and 3 — that is intended.</p>`,
+      `<p>Hint 3: pop: take <code>group[maxFreq].pop()</code>, decrement its count; if that stack became empty, <code>maxFreq--</code>. Recency ties are handled by each group being a stack.</p>`
+    ],
+    solution: {
+      approach: `<p>Stack of stacks indexed by frequency. Pushing a value with new frequency f adds it to group f; the answer is always the top of the highest non-empty group. All operations are O(1).</p>`,
+      code: `class FreqStack {
+    private final Map<Integer, Integer> freq = new HashMap<>();
+    private final Map<Integer, Deque<Integer>> group = new HashMap<>();
+    private int maxFreq = 0;
+
+    void push(int val) {
+        int f = freq.merge(val, 1, Integer::sum);                   // new count of val
+        maxFreq = Math.max(maxFreq, f);
+        group.computeIfAbsent(f, k -> new ArrayDeque<>()).push(val);
+    }
+
+    int pop() {
+        Deque<Integer> top = group.get(maxFreq);
+        int val = top.pop();                                         // most recent at max freq
+        freq.merge(val, -1, Integer::sum);
+        if (top.isEmpty()) maxFreq--;
+        return val;
+    }
+
+    public static void main(String[] args) {
+        FreqStack fs = new FreqStack();
+        for (int v : new int[]{5, 7, 5, 7, 4, 5}) fs.push(v);
+        System.out.println(fs.pop() + " " + fs.pop() + " " + fs.pop() + " " + fs.pop());   // 5 7 5 4
+    }
+}`,
+      dry: { head: ['op', 'freq', 'groups (top first)', 'maxFreq', 'return'], rows: [
+        ['push ×6', '{5:3, 7:2, 4:1}', '1:[4,7,5] 2:[7,5] 3:[5]', '3', ''],
+        ['pop', '{5:2, 7:2, 4:1}', '3:[] → maxFreq 2', '2', '<span class="c-g">5</span>'],
+        ['pop', '{5:2, 7:1, 4:1}', '2:[5]', '2', '<span class="c-g">7</span>'],
+        ['pop', '{5:1, 7:1, 4:1}', '2:[] → maxFreq 1', '1', '<span class="c-g">5</span>'],
+        ['pop', '{5:1, 7:1, 4:0}', '1:[7,5]', '1', '<span class="c-g">4</span>']
+      ] },
+      complexity: `<p>O(1) average per push and pop; O(n) space.</p>`,
+      followUps: ['Implement with a PriorityQueue of (freq, pushTime, val) — O(log n) — and compare.', 'Support <code>peek()</code> and <code>getMaxFrequency()</code>.']
+    }
+  });
+
+  /* ======================================================================
+     QUIZ
+     ====================================================================== */
+  quiz.push({ q: 'Which of these does <b>not</b> extend <code>java.util.Collection</code>?', options: ['<code>Map</code>', '<code>Deque</code>', '<code>Set</code>', '<code>List</code>'], answer: 0, explain: 'Map stores key–value pairs and sits in its own hierarchy. You reach its contents through the keySet(), values() and entrySet() views.' });
+  quiz.push({ q: 'What does this print?<br><code>List&lt;Integer&gt; l = new ArrayList&lt;&gt;(List.of(10, 20, 30)); l.remove(1); System.out.println(l);</code>', options: ['<code>[10, 30]</code>', '<code>[20, 30]</code>', '<code>[10, 20, 30]</code>', 'It throws an exception'], answer: 0, explain: 'The int literal 1 matches remove(int index) exactly (no boxing needed), so index 1 (the value 20) is removed.' });
+  quiz.push({ q: 'What happens on <code>List.of(1, 2, 3).add(4)</code>?', options: ['<code>UnsupportedOperationException</code> at runtime', 'Compile error', 'Returns false', 'The list becomes [1, 2, 3, 4]'], answer: 0, explain: 'List.of returns an unmodifiable list. The add method exists on the List interface (optional operation), so it compiles, but throws UOE when called.' });
+  quiz.push({ q: 'Which set prints its elements in the order they were first added?', options: ['<code>LinkedHashSet</code>', '<code>HashSet</code>', '<code>TreeSet</code>', '<code>EnumSet</code> always'], answer: 0, explain: 'LinkedHashSet threads a linked list through its entries in insertion order. HashSet has no order promise; TreeSet sorts; EnumSet uses enum declaration order.' });
+  quiz.push({ q: '<code>Set&lt;String&gt; s = new TreeSet&lt;&gt;(Comparator.comparingInt(String::length)); s.addAll(List.of("cat", "dog", "ox"));</code> What is <code>s.size()</code>?', options: ['2', '3', '1', 'It throws ClassCastException'], answer: 0, explain: 'TreeSet decides equality with the comparator. "cat" and "dog" both have length 3 → compare returns 0 → "dog" is treated as a duplicate and dropped. Set = [ox, cat].' });
+  quiz.push({ q: 'A <code>PriorityQueue&lt;Integer&gt;</code> received 5, 1, 8, 3 via <code>add</code>. What is guaranteed about <code>System.out.println(pq)</code>?', options: ['Only that the first printed element is 1', 'It prints [1, 3, 5, 8]', 'It prints [8, 5, 3, 1]', 'It prints in insertion order'], answer: 0, explain: 'toString walks the internal heap array. The heap only guarantees the root is the minimum; the rest is in heap order, not sorted (here [1, 3, 8, 5]).' });
+  quiz.push({ q: 'You remove the second-to-last element of an ArrayList inside a for-each loop. What usually happens?', options: ['The loop ends silently without CME and skips the last element', 'ConcurrentModificationException immediately', 'An infinite loop', 'Compile error'], answer: 0, explain: 'After removal cursor == size, so hasNext() returns false before next() can check modCount. It "works" by accident — and never visits the last element.' });
+  quiz.push({ q: 'Which call removes elements safely while iterating a HashMap\'s entries?', options: ['<code>map.entrySet().removeIf(e -&gt; e.getValue() == 0)</code>', '<code>map.remove(k)</code> inside <code>for (K k : map.keySet())</code>', '<code>map.put(k, null)</code>', '<code>map.keySet().add(k)</code>'], answer: 0, explain: 'removeIf on the live entrySet view uses the iterator\'s own remove internally. Calling map.remove inside a for-each changes modCount behind the iterator\'s back.' });
+  quiz.push({ q: '<code>Collections.binarySearch(List.of(10, 20, 30, 40), 35)</code> returns…', options: ['-4', '-3', '3', '-1'], answer: 0, explain: '35 would be inserted at index 3 (before 40). Not found → -(insertionPoint) - 1 = -(3) - 1 = -4.' });
+  quiz.push({ q: 'Best choice for "for each timestamp query, find the latest price at or before time t"?', options: ['<code>TreeMap&lt;Long, Price&gt;</code> with <code>floorEntry(t)</code>', '<code>HashMap&lt;Long, Price&gt;</code> with <code>get(t)</code>', '<code>ArrayList</code> scanned from the start', '<code>PriorityQueue</code> of prices'], answer: 0, explain: 'floorEntry returns the greatest key ≤ t in O(log n). A HashMap can only answer exact keys.' });
+  quiz.push({ q: 'Which is the recommended stack implementation in modern Java?', options: ['<code>ArrayDeque</code> with push/pop/peek', '<code>Stack</code>', '<code>Vector</code>', '<code>LinkedList</code> with add/remove(size-1)'], answer: 0, explain: 'Stack extends Vector (synchronized, exposes index operations). The Deque javadoc itself recommends ArrayDeque for LIFO stacks.' });
+  quiz.push({ q: '<code>Collections.unmodifiableList(base)</code> vs <code>List.copyOf(base)</code>: after <code>base.add(x)</code>…', options: ['the unmodifiable view shows x; the copyOf list does not', 'both show x', 'neither shows x', 'both throw UnsupportedOperationException'], answer: 0, explain: 'unmodifiableList is a read-only view over base (changes show through). List.copyOf makes an independent immutable snapshot.' });
+  quiz.push({ q: 'What is the time complexity of <code>get(i)</code> on a <code>LinkedList</code> of size n?', options: ['O(n) — it walks from the nearer end', 'O(1)', 'O(log n)', 'O(1) amortised'], answer: 0, explain: 'LinkedList.node(i) starts at the head if i &lt; n/2, else at the tail, and follows pointers. At most n/2 hops, still O(n).' });
+
+  /* ======================================================================
+     INTERVIEW Q&A
+     ====================================================================== */
+  interview.push({
+    q: 'Explain the Java Collections Framework hierarchy. Why is Map not a Collection?', level: 'B',
+    a: `<p><code>Iterable</code> is at the root (anything usable in for-each). <code>Collection</code> extends it with add/remove/contains/size. Three main sub-interfaces: <code>List</code> (indexed, duplicates allowed), <code>Set</code> (no duplicates; <code>SortedSet</code> → <code>NavigableSet</code>) and <code>Queue</code> (head-based; <code>Deque</code> adds both ends). Implementations: ArrayList/LinkedList, HashSet/LinkedHashSet/TreeSet, PriorityQueue/ArrayDeque.</p>
+<p><code>Map</code> is a separate tree (<code>SortedMap</code> → <code>NavigableMap</code>; HashMap, LinkedHashMap, TreeMap) because its unit is a key–value <b>pair</b>; <code>Collection.add(E)</code> takes a single element, so the contract does not fit. Instead Map exposes three Collection <b>views</b>: <code>keySet()</code>, <code>values()</code>, <code>entrySet()</code>.</p>`,
+    followUps: ['What is the difference between Collection and Collections?', 'Which interfaces does LinkedList implement?', 'What did Java 21 add to the hierarchy (SequencedCollection)?']
+  });
+  interview.push({
+    q: 'ArrayList vs LinkedList — when would you use each?', level: 'B',
+    a: `<p><b>ArrayList</b> is a resizable array: O(1) <code>get(i)</code>, amortised O(1) append, O(n) insert/remove in the middle (a fast memory shift). <b>LinkedList</b> is a doubly linked list: O(1) at the ends, but O(n) to reach index i, ~24 bytes per node and poor cache locality.</p>
+<p>In practice ArrayList wins almost everywhere — even for middle insertions, because LinkedList must first <i>walk</i> to the position. For queue/stack use <b>ArrayDeque</b>. LinkedList only shines when you already hold a <code>ListIterator</code> at the spot and do many inserts/removes there. I would back any claim with a JMH benchmark.</p>`,
+    followUps: ['How does ArrayList grow?', 'Why is a for-each loop fine on LinkedList but an index loop is O(n²)?', 'What does RandomAccess mean?']
+  });
+  interview.push({
+    q: 'HashSet vs LinkedHashSet vs TreeSet — differences and when to use each.', level: 'B',
+    a: `<p>All three reject duplicates. <b>HashSet</b> (backed by HashMap) gives O(1) average add/contains/remove and no order guarantee. <b>LinkedHashSet</b> adds a linked list through entries for predictable <b>insertion order</b>, same O(1), a little more memory. <b>TreeSet</b> (backed by TreeMap, a red-black tree) keeps elements <b>sorted</b>, costs O(log n), forbids null with natural ordering, and adds navigation: <code>floor</code>, <code>ceiling</code>, <code>higher</code>, <code>lower</code>, <code>headSet</code>, <code>tailSet</code>.</p>
+<p>Use HashSet for pure membership, LinkedHashSet for "dedupe but keep order", TreeSet for sorted output or nearest-value queries. HashSet/LinkedHashSet rely on equals/hashCode; TreeSet relies on compareTo/compare.</p>`,
+    followUps: ['What happens if a TreeSet comparator is inconsistent with equals?', 'Why should elements in a HashSet be immutable?']
+  });
+  interview.push({
+    q: 'What is a fail-fast iterator? How is it implemented, and how do you avoid ConcurrentModificationException?', level: 'I',
+    a: `<p>Non-concurrent collections keep a <code>modCount</code> incremented on every structural change (size change). An iterator records <code>expectedModCount</code> when created and, in <code>next()</code>, throws <code>ConcurrentModificationException</code> if they differ. It is "best effort" — e.g. removing the second-to-last element of an ArrayList inside for-each exits silently because <code>hasNext()</code> only checks <code>cursor != size</code>.</p>
+<p>Avoid it with <code>Iterator.remove()</code>, <code>removeIf</code>, <code>ListIterator.set/add</code>, <code>map.entrySet().removeIf</code>, iterating a copy, or collecting changes and applying them after the loop. In multi-threaded code use concurrent collections: <code>CopyOnWriteArrayList</code> (snapshot iterator) or <code>ConcurrentHashMap</code> (weakly consistent iterator, never throws CME).</p>`,
+    followUps: ['Fail-fast vs fail-safe vs weakly consistent?', 'Does list.set() inside a for-each throw CME?', 'Can CME occur in single-threaded code?']
+  });
+  interview.push({
+    q: 'How does a HashMap decide where to put a key, and what must equals and hashCode guarantee?', level: 'I',
+    a: `<p>It calls <code>hashCode()</code>, spreads the bits (<code>h ^ (h &gt;&gt;&gt; 16)</code>) and uses <code>hash &amp; (capacity − 1)</code> as the bucket index. Within a bucket it compares hashes and then <code>equals</code>. The table doubles when size exceeds capacity × 0.75; long chains become red-black trees (threshold 8, table ≥ 64).</p>
+<p>The contract: equal objects <b>must</b> have equal hash codes (otherwise lookups miss), hashCode must be stable while the object is in the map, and equals must be reflexive, symmetric, transitive and consistent. Unequal objects may share hash codes (collisions) — that only costs performance. Using mutable fields in hashCode and then changing them strands the entry. Records generate a correct pair automatically.</p>`,
+    followUps: ['What happens if you override equals but not hashCode?', 'Why is the capacity a power of two?', 'How does Java 8 protect against hash-flooding attacks?']
+  });
+  interview.push({
+    q: 'Explain getOrDefault, putIfAbsent, computeIfAbsent and merge with use cases.', level: 'I',
+    a: `<p><code>getOrDefault(k, d)</code> reads with a fallback (no insertion). <code>putIfAbsent(k, v)</code> inserts only if missing and returns the existing value — but evaluates <code>v</code> eagerly. <code>computeIfAbsent(k, fn)</code> computes the value lazily only when missing and returns the current value — perfect for grouping: <code>map.computeIfAbsent(dept, d -&gt; new ArrayList&lt;&gt;()).add(emp)</code>. <code>merge(k, v, fn)</code> inserts v if absent or replaces with <code>fn(old, v)</code> — perfect for counting: <code>count.merge(word, 1, Integer::sum)</code>; if fn returns null the entry is removed.</p>
+<p>On <code>ConcurrentHashMap</code> these are atomic per key, which makes them the right tool for concurrent counters and caches.</p>`,
+    followUps: ['Why is putIfAbsent(k, new ArrayList&lt;&gt;()) wasteful?', 'What happens if the computeIfAbsent function modifies the same map?']
+  });
+  interview.push({
+    q: 'How does PriorityQueue work? How do you make a max-heap or order custom objects?', level: 'I',
+    a: `<p>PriorityQueue is a binary <b>min-heap</b> stored in an array (children of i at 2i+1 and 2i+2). <code>offer</code> appends and sifts up; <code>poll</code> moves the last element to the root and sifts down — both O(log n); <code>peek</code> is O(1); <code>contains</code>/<code>remove(Object)</code> are O(n). Iteration and <code>toString</code> are in array order, not sorted. It is not thread-safe (PriorityBlockingQueue is) and not stable.</p>
+<p>Max-heap: <code>new PriorityQueue&lt;&gt;(Comparator.reverseOrder())</code>. Objects: <code>Comparator.comparingInt(Task::priority).thenComparing(Task::createdAt)</code>. Avoid <code>(a, b) -&gt; b - a</code>, which overflows for large values. Building from a collection uses O(n) heapify.</p>`,
+    followUps: ['How do you get the k largest elements of a stream in O(n log k)?', 'How would you implement decrease-key for Dijkstra?']
+  });
+  interview.push({
+    q: 'Why is ArrayDeque preferred over Stack and LinkedList? What are its limitations?', level: 'I',
+    a: `<p>ArrayDeque is a resizable <b>circular array</b> with head and tail indices: O(1) amortised at both ends, no per-element node allocation, cache-friendly. <code>Stack</code> extends <code>Vector</code> — every method is synchronized and it exposes index operations (you can insert below the top). <code>LinkedList</code> allocates a node per element and has worse locality.</p>
+<p>Limitations: no <code>null</code> elements (null is the "empty" signal of poll/peek), not thread-safe (use <code>ConcurrentLinkedDeque</code> or a <code>BlockingDeque</code>), no index access, and <code>remove(Object)</code>/<code>contains</code> are O(n). Note iteration order differs: ArrayDeque used as a stack iterates top-first, Stack iterates bottom-first.</p>`,
+    followUps: ['Show push/pop vs offer/poll on the same ArrayDeque.', 'How does ArrayDeque grow?']
+  });
+  interview.push({
+    q: 'What are the differences between Collections.unmodifiableList, List.copyOf, List.of and Arrays.asList?', level: 'I',
+    a: `<p><code>Collections.unmodifiableList(l)</code>: a read-only <b>view</b>; the owner can still modify l and the view reflects it; allows nulls. <code>List.copyOf(c)</code>: an immutable <b>snapshot</b>; rejects nulls; returns the same instance if c is already an immutable list. <code>List.of(…)</code>: immutable, rejects nulls (even <code>contains(null)</code> throws NPE). <code>Arrays.asList(arr)</code>: a fixed-size, <b>write-through</b> view of the array — <code>set</code> works and changes the array, <code>add/remove</code> throw UnsupportedOperationException; allows nulls.</p>
+<p>For defensive copies of internal state, return <code>List.copyOf</code>; for a cheap read-only window, return the unmodifiable view.</p>`,
+    followUps: ['Is an unmodifiable collection thread-safe?', 'Why does Arrays.asList(int[]) give a List&lt;int[]&gt;?']
+  });
+  interview.push({
+    q: 'TreeMap: what navigation methods does it offer and what real problems do they solve?', level: 'I',
+    a: `<p><code>firstKey/lastKey</code>, <code>floorKey(k)</code> (greatest ≤ k), <code>ceilingKey(k)</code> (smallest ≥ k), <code>lowerKey/higherKey</code> (strict), their <code>…Entry</code> versions, <code>headMap/tailMap/subMap</code> (live range views), <code>pollFirstEntry/pollLastEntry</code> and <code>descendingMap</code>. All O(log n) thanks to the red-black tree.</p>
+<p>Uses: price/tax bands (floorEntry), time-series "value as of time t", calendar overlap checks (floor + ceiling neighbours), order books (best bid = lastKey, best ask = firstKey), leaderboards and range counts, interval merging and sweep lines (TreeMap of deltas). A HashMap cannot answer any "nearest key" question.</p>`,
+    followUps: ['How would you count events in a time range efficiently?', 'Why does TreeMap reject a null key?']
+  });
+  interview.push({
+    q: 'Design an LRU cache in Java. What are the trade-offs of using LinkedHashMap?', level: 'A',
+    a: `<p>Fast path: extend <code>LinkedHashMap</code> with <code>accessOrder = true</code> (constructor <code>(16, 0.75f, true)</code>) and override <code>removeEldestEntry</code> to return <code>size() &gt; capacity</code>. Every get/put moves the entry to the tail; the head is the least recently used and is evicted after a put. O(1) for get and put.</p>
+<p>Manual version: <code>HashMap&lt;K, Node&gt;</code> + a doubly linked list with sentinel head/tail; get unlinks and re-appends the node; put evicts <code>head.next</code> when full. Trade-offs of LinkedHashMap: not thread-safe (and in access-order mode even <code>get</code> is a structural modification, so concurrent readers corrupt it), no TTL, no size-by-weight. In production use a library such as Caffeine (W-TinyLFU, concurrent, expiry).</p>`,
+    followUps: ['Make it thread-safe — what is the simplest correct approach?', 'How would you implement LFU?', 'Why does get() count as a modification in access-order mode?']
+  });
+  interview.push({
+    q: 'What does "amortised O(1)" mean for ArrayList.add? Walk through the growth policy.', level: 'A',
+    a: `<p>A no-arg ArrayList starts with a shared empty array; the first add allocates 10 slots. When full, it allocates <code>old + (old &gt;&gt; 1)</code> (1.5×) and copies with <code>System.arraycopy</code>. Most adds are a single store; occasionally one add costs O(n) for the copy. Across n adds the copies sum to a geometric series bounded by a small constant × n, so the <b>average cost per add is O(1)</b> — that is amortised analysis (worst case per call is still O(n)).</p>
+<p>Practical consequences: pre-size with <code>new ArrayList&lt;&gt;(n)</code> or <code>ensureCapacity</code> when n is known; latency-sensitive code may see an occasional spike; capacity never shrinks automatically (<code>trimToSize()</code>). HashMap is similar: it doubles at 75% load, and <code>HashMap.newHashMap(n)</code> (Java 19+) pre-sizes correctly.</p>`,
+    followUps: ['Why 1.5× and not 2×?', 'How many resizes does it take to reach one million elements?']
+  });
+  interview.push({
+    q: 'How do you choose a collection when the code is multi-threaded?', level: 'A',
+    a: `<p>Map: <code>ConcurrentHashMap</code> (fine-grained locking/CAS per bin, atomic <code>merge/compute</code>, weakly consistent iterators) — not <code>Hashtable</code> or <code>Collections.synchronizedMap</code>, which serialise everything. Sorted map/set: <code>ConcurrentSkipListMap/Set</code>. Read-mostly lists (listeners, config): <code>CopyOnWriteArrayList</code> — snapshot iteration, O(n) writes. Queues: <code>ConcurrentLinkedQueue/Deque</code> (non-blocking) or <code>BlockingQueue</code> (<code>ArrayBlockingQueue</code>, <code>LinkedBlockingQueue</code>, <code>PriorityBlockingQueue</code>) for producer–consumer.</p>
+<p>Synchronized wrappers still need external locking for compound actions and iteration (<code>synchronized (list) { for (…) }</code>). Often the best design is to avoid sharing: confine mutable collections to one thread and publish immutable snapshots (<code>List.copyOf</code>).</p>`,
+    followUps: ['Is "if (!map.containsKey(k)) map.put(k, v)" safe on ConcurrentHashMap?', 'When is CopyOnWriteArrayList a bad idea?']
+  });
+  interview.push({
+    q: 'An AI assistant generated code that removes items from a list inside a for-each and tests pass. How do you review it?', level: 'E',
+    a: `<p>I would flag it regardless of the green tests: removal inside for-each is undefined-by-design — it throws CME for most positions and silently skips the last element when the removed item is second-to-last, so a test with that shape can pass while production data crashes. I would ask for <code>removeIf</code> (O(n), intent-revealing) or an explicit <code>Iterator.remove()</code>, and add tests covering: adjacent matches, a match at the last index, all elements matching, none matching, and an empty list.</p>
+<p>I would also check the collection type (on a <code>List&lt;Integer&gt;</code>, is <code>remove</code> picking the index overload?), whether the list is a <code>List.of</code>/<code>Arrays.asList</code> that cannot shrink, and whether it is shared across threads. The point of review in the AI era is exactly these contract-level checks the generator does not reason about.</p>`,
+    followUps: ['What static-analysis rules (SpotBugs/ErrorProne/IntelliJ inspections) catch this?', 'How would you write a property-based test for a filter function?']
+  });
+
 
   registerModule({
     id: 'java07',

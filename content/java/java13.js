@@ -1013,4 +1013,271 @@ class IterativeReach {
     }]
   });
 
+  /* ======================================================================
+     TOPIC 5 — GC fundamentals: reachability, mark/sweep/compact/copy, generations
+     ====================================================================== */
+  topics.push({
+    title: 'Garbage Collection Fundamentals: GC Roots, Mark–Sweep–Compact & Generations (Eden, Survivor, Old)',
+    analogy: `<p>Think of a hotel with a <b>guest register</b> at the front desk (the <b>GC roots</b>). Housekeeping does not ask each room "are you still needed?". Instead it starts from the register, follows every "guest → their luggage → luggage tags → linked rooms" chain, and puts a sticker on every room it reaches. Any room without a sticker is cleaned out — even two empty rooms whose doors point at each other. And because most guests check out after one night, the hotel keeps a cheap, quickly-cleaned <b>day-guest wing</b> (Eden) and moves long-stay guests to the quiet <b>residents' wing</b> (Old) that is cleaned rarely.</p>`,
+    explain: `<p><b>Garbage collection</b> (GC) automatically frees heap objects your program can no longer reach. You never call ${C('free')}; the JVM finds dead objects for you.</p>
+<h4>1. "Reachable" is the only rule</h4>
+<p>An object is <b>live</b> if there is a chain of references to it from a <b>GC root</b>. Roots are:</p>
+<ul><li>local variables and operands in every thread's stack frames,</li><li>static fields of loaded classes,</li><li>active threads themselves, JNI references, objects used as locks (monitors),</li><li>some JVM internals (class loaders of loaded classes, the String table…).</li></ul>
+<p>Everything else is <b>garbage</b> — even groups of objects that point at each other in a cycle. That is why Java uses <b>tracing</b>, not reference counting (which can never free cycles).</p>
+<h4>2. The three basic moves</h4>
+${H.table(['Technique', 'How', 'Good', 'Bad'], [
+  ['<b>Mark–Sweep</b>', 'mark live objects, then free the unmarked ones in place', 'no copying', 'leaves holes → <b>fragmentation</b>; allocation needs free-lists'],
+  ['<b>Mark–Compact</b>', 'mark, then slide live objects together', 'no fragmentation, bump-pointer allocation', 'moving + updating references is slow on big heaps'],
+  ['<b>Copying</b> (evacuation)', 'copy live objects to an empty space; the old space is wiped in one go', 'cost ∝ <b>live</b> objects only, compacts for free', 'needs spare space to copy into']
+])}
+<h4>3. The generational hypothesis</h4>
+<p>"<b>Most objects die young.</b>" Request objects, iterators, temporary Strings and DTOs live for microseconds. So HotSpot splits the heap:</p>
+${H.table(['Space', 'Role', 'Collected by'], [
+  ['<b>Eden</b>', 'every new object is born here (in TLABs)', 'minor / young GC (copying)'],
+  ['<b>Survivor S0 / S1</b>', 'two small spaces; objects that survived a young GC bounce between them, aging by 1 each time', 'minor GC'],
+  ['<b>Old (tenured)</b>', 'objects that survived enough GCs (age ≥ tenuring threshold, max 15) get <b>promoted</b> here', 'major / mixed / full GC (rarer, bigger)']
+])}
+<p>A <b>minor GC</b> copies the few live objects out of Eden + the "from" survivor into the "to" survivor (age +1) or into Old (if old enough or if the survivor is full). Then Eden and "from" are wiped wholesale. Because ~90%+ of Eden is dead, this is fast — work is proportional to the <i>survivors</i>, not to Eden's size.</p>
+<h4>4. Stop-the-world and safepoints</h4>
+<p>Some GC phases need the application threads paused (<b>stop-the-world</b>, STW) at a <b>safepoint</b> — a point where every thread's references are known. Modern collectors (G1, ZGC, Shenandoah) do most marking concurrently with your threads and keep pauses short; the next topic compares them.</p>
+<h4>5. You cannot force it (and should not try)</h4>
+<p>${C('System.gc()')} is only a <i>hint</i> (often a full STW GC, or ignored with ${C('-XX:+DisableExplicitGC')}). ${C('finalize()')} is deprecated for removal (JEP 421) — use ${C('try-with-resources')} or ${C('java.lang.ref.Cleaner')} instead.</p>`,
+    clues: [
+      '"How does Java handle circular references?" → tracing from GC roots, cycles are collected',
+      '"What are GC roots?" → stacks, statics, threads, JNI handles, monitors',
+      '"Why are short-lived objects cheap?" → Eden + copying collection, cost ∝ survivors',
+      '"Minor vs major vs full GC", "eden / survivor / tenured", "tenuring threshold"',
+      '"Old generation fills up quickly although objects are short-lived" → premature promotion (survivor overflow)',
+      '"Does setting obj = null help?" → only if that reference was the last path from a root (rarely needed for locals)'
+    ],
+    code: [`
+// Demonstrates that tracing GC collects cycles, using a WeakReference as a probe.
+import java.lang.ref.*;
+
+class CycleDemo {
+    static class Node { Node other; byte[] payload = new byte[1024]; }
+
+    public static void main(String[] args) throws InterruptedException {
+        Node a = new Node(), b = new Node();
+        a.other = b; b.other = a;                        // a <-> b cycle
+        WeakReference<Node> probe = new WeakReference<>(a);
+        a = null; b = null;                              // drop the only ROOT references
+        // Reference counting would keep both alive forever (each has count 1).
+        for (int i = 0; i < 10 && probe.get() != null; i++) {
+            System.gc();                                 // a hint; fine for a demo, never in production code
+            Thread.sleep(50);
+        }
+        System.out.println("cycle collected? " + (probe.get() == null));   // true on HotSpot collectors
+    }
+}`, { lang: 'bash', title: 'Watch generations in action', code: `java -Xmx256m -Xmn64m -XX:+UseSerialGC -Xlog:gc,gc+age=trace App
+# [gc,age] Desired survivor size 3342336 bytes, new threshold 15 (max threshold 15)
+# [gc,age] - age   1:    1048576 bytes,    1048576 total
+# [gc,age] - age   2:     524288 bytes,    1572864 total
+# [gc     ] GC(3) Pause Young (Allocation Failure) 58M->9M(247M) 3.211ms
+#   58M before, 9M after: ~85% of the young objects were already dead` }],
+    codeTitle: ['Cycles are garbage too', 'Seeing ages and minor GCs in the log'],
+    viz: [{
+      title: 'Mark phase: trace from GC roots, everything unmarked is garbage',
+      input: 'roots=A,F edges=A>B,B>C,C>A,D>E,E>D,F>G,H>F',
+      inputLabel: 'roots=… edges=X>Y,… (single letters, up to 12 objects)',
+      gen: function (input) {
+        var o = kvParse(input, { roots: 'A,F', edges: 'A>B,B>C,C>A,D>E,E>D,F>G,H>F' });
+        var roots = String(o.roots).split(',').filter(Boolean), es = String(o.edges).split(',').filter(Boolean);
+        var ids = [], adj = {}, edges = [];
+        function add(x) { if (!/^[A-Za-z]$/.test(x)) throw new Error('Object names must be single letters, e.g. edges=A>B,B>C'); if (ids.indexOf(x) < 0) { ids.push(x); adj[x] = []; } }
+        roots.forEach(add);
+        es.forEach(function (e) { var p = e.split('>'); if (p.length !== 2) throw new Error('Write edges like A>B'); add(p[0]); add(p[1]); adj[p[0]].push(p[1]); edges.push([p[0], p[1]]); });
+        if (ids.length > 12) throw new Error('Use at most 12 objects');
+        var nodes = [{ id: 'ROOTS', label: 'GC roots', x: 50, y: 6, shape: 'box', w: 18 }];
+        ids.forEach(function (id, i) { var ang = 2 * Math.PI * i / ids.length; nodes.push({ id: id, label: id, x: Math.round(50 + 36 * Math.cos(ang)), y: Math.round(42 + 26 * Math.sin(ang)) }); });
+        var allEdges = roots.map(function (r) { return ['ROOTS', r]; }).concat(edges);
+        var marked = {}, F = [], queue = [];
+        function snap(narr, cur, ehl, extra) {
+          var hl = { ROOTS: 'sel' };
+          ids.forEach(function (id) { if (marked[id]) hl[id] = 'ok'; });
+          if (cur) hl[cur] = 'cur';
+          var parts = [{ type: 'graph', label: 'Heap object graph', directed: true, height: 74, nodes: nodes, edges: allEdges, hl: hl, ehl: ehl || {} }, { type: 'queue', label: 'Mark worklist (grey objects)', items: queue.slice() }, { type: 'set', label: 'Marked (live)', items: ids.filter(function (x) { return marked[x]; }) }];
+          (extra || []).forEach(function (p) { parts.push(p); });
+          F.push({ narr: narr, parts: parts });
+        }
+        snap('The heap has ' + ids.length + ' objects. Roots (stack locals, statics, threads) point directly at <b>' + roots.join(', ') + '</b>. GC begins by assuming <b>everything is dead</b> (white).');
+        roots.forEach(function (r) { if (!marked[r]) { marked[r] = true; queue.push(r); } });
+        var ehl0 = {}; roots.forEach(function (r) { ehl0['ROOTS-' + r] = 'ok'; });
+        snap('Scan the roots: mark ' + roots.join(', ') + ' and put them in the worklist ("grey" = reached but children not scanned yet).', null, ehl0);
+        while (queue.length) {
+          var u = queue.shift(), ehl = {}, newly = [];
+          adj[u].forEach(function (v) { ehl[u + '-' + v] = marked[v] ? 'done' : 'ok'; if (!marked[v]) { marked[v] = true; queue.push(v); newly.push(v); } });
+          snap('Scan <b>' + u + '</b>: follow its fields. ' + (adj[u].length ? (newly.length ? 'Newly marked: <b>' + newly.join(', ') + '</b>.' : 'Its targets are already marked — no extra work, this is how cycles stop the tracer from looping forever.') : 'It has no outgoing references.') + ' ' + u + ' is now <b>black</b> (fully scanned).', u, ehl);
+        }
+        var dead = ids.filter(function (x) { return !marked[x]; });
+        var hlDead = {}; dead.forEach(function (d) { hlDead[d] = 'bad'; });
+        ids.forEach(function (id) { if (marked[id]) hlDead[id] = 'ok'; });
+        hlDead.ROOTS = 'sel';
+        F.push({ narr: 'Worklist empty → marking done. Unmarked objects: <b>' + (dead.length ? dead.join(', ') : 'none') + '</b>. ' + (dead.length ? 'They are garbage even if they point at each other or at live objects (e.g. H→F does not keep H alive: references only keep their <i>targets</i> alive).' : 'Everything is reachable.'), parts: [{ type: 'graph', label: 'Result: green = live, red = garbage', directed: true, height: 74, nodes: nodes, edges: allEdges, hl: hlDead }, { type: 'set', label: 'Garbage to reclaim', items: dead, hl: dead.reduce(function (a, d) { a[d] = 'bad'; return a; }, {}) }] });
+        F.push({ narr: 'Now the collector reclaims memory: a <b>sweeper</b> frees the red objects in place (leaving holes), a <b>compactor</b> slides the green ones together, or a <b>copying</b> collector had already copied the green ones elsewhere and wipes the whole old area. Cost of marking ∝ <b>live</b> objects + references.', parts: [{ type: 'array', label: 'Heap before (by address)', values: ids, hl: ids.reduce(function (a, d, i) { a[i] = marked[d] ? 'g' : 'r'; return a; }, {}) }, { type: 'array', label: 'Heap after compaction', values: ids.filter(function (x) { return marked[x]; }).concat(dead.map(function () { return '·'; })), hl: ids.filter(function (x) { return marked[x]; }).reduce(function (a, d, i) { a[i] = 'g'; return a; }, {}) }] });
+        return F;
+      }
+    }, {
+      title: 'Generational heap: objects age through minor GCs (Eden → Survivor → Old)',
+      input: 'eden=4 surv=2 tenure=2 old=8 life=0,1,0,3,0,0,5,1,0,2,0,0,1,4,0,0,0,2,0,0',
+      inputLabel: 'eden/surv/old capacities, tenure threshold, life = how many GCs each new object survives',
+      gen: function (input) {
+        var o = kvParse(input, { eden: 4, surv: 2, tenure: 2, old: 8, life: '0,1,0,3,0,0,5,1,0,2,0,0,1,4,0,0,0,2,0,0' });
+        var E = num(o.eden, 2, 8, 'eden'), S = num(o.surv, 1, 6, 'surv'), T = num(o.tenure, 1, 15, 'tenure'), O = num(o.old, 2, 12, 'old');
+        var L = String(o.life).split(',').map(function (x) { return num(x, 0, 20, 'each life value'); });
+        if (L.length > 30) throw new Error('Use at most 30 objects');
+        var W = Math.max(E, S, O), eden = [], from = [], to = [], old = [], F = [], gcs = 0, promoted = 0, premature = 0;
+        function cell(ob) { return ob ? ob.name + ' a' + ob.age + (ob.dead ? ' †' : '') : ''; }
+        function row(arr) { var r = []; for (var i = 0; i < W; i++) r.push(i < arr.length ? cell(arr[i]) : ''); return r; }
+        function frame(narr, hl, extraVars) {
+          var vals = { 'minor GCs': gcs, promoted: promoted, 'premature promotions': premature };
+          F.push({ narr: narr, parts: [
+            { type: 'grid', label: 'Heap spaces (name aAge; † = dead but still occupying Old)', rowHead: ['Eden (' + E + ')', 'Survivor FROM (' + S + ')', 'Survivor TO (' + S + ')', 'Old (' + O + ')'], colHead: Array.apply(null, Array(W)).map(function (_, i) { return String(i); }), rows: [row(eden), row(from), row(to), row(old)], hl: hl || {} },
+            { type: 'vars', label: 'Counters', vals: extraVars ? Object.assign(vals, extraVars) : vals }
+          ] });
+        }
+        function fullGC() {
+          var before = old.length;
+          old = old.filter(function (ob) { return !ob.dead; });
+          frame('<b>Old is full → FULL / major GC</b> (long stop-the-world in Serial/Parallel; G1 tries to avoid this with concurrent marking + mixed GCs). It removes ' + (before - old.length) + ' dead object(s) from Old.', {}, { 'full GCs': 1 });
+          if (old.length >= O) { frame('<span class="c-r">Old is still full of LIVE objects → OutOfMemoryError: Java heap space.</span> Either the live set really is bigger than the heap, or there is a leak.'); return false; }
+          return true;
+        }
+        function minor() {
+          gcs++;
+          var hl = {};
+          eden.forEach(function (ob, i) { hl['0,' + i] = ob.left > 0 ? 'ok' : 'bad'; });
+          from.forEach(function (ob, i) { hl['1,' + i] = ob.left > 0 ? 'ok' : 'bad'; });
+          var liveN = eden.concat(from).filter(function (ob) { return ob.left > 0; }).length;
+          frame('<b>Eden is full</b> → minor GC #' + gcs + ' (stop-the-world, but short). Trace from roots: <span class="c-g">green</span> objects are still reachable, <span class="c-r">red</span> are dead. Only ' + liveN + ' of ' + (eden.length + from.length) + ' are alive — most objects die young.', hl);
+          to = []; var hl2 = {}, notes = [];
+          old.forEach(function (ob) { if (!ob.dead) { if (ob.left <= 0) ob.dead = true; else ob.left--; } });
+          var movers = eden.concat(from);
+          for (var i = 0; i < movers.length; i++) {
+            var ob = movers[i];
+            if (ob.left <= 0) continue;
+            ob.left--; ob.age++;
+            if (ob.age >= T || to.length >= S) {
+              if (old.length >= O && !fullGC()) return false;
+              if (ob.age < T) { premature++; notes.push(ob.name + ' (survivor full!)'); ob.prem = true; } else notes.push(ob.name + ' (age ' + ob.age + ')');
+              promoted++; old.push(ob); hl2['3,' + (old.length - 1)] = ob.prem ? 'bad' : 'sel';
+            } else { to.push(ob); hl2['2,' + (to.length - 1)] = 'ok'; }
+          }
+          eden = []; from = [];
+          frame('Copy phase: live objects get <b>age +1</b> and are copied to Survivor TO, or <b>promoted</b> to Old when age ≥ ' + T + '. ' + (notes.length ? 'Promoted: ' + notes.join(', ') + '. ' : '') + (premature ? '<span class="c-r">Red in Old = premature promotion</span>: survivor overflowed, so short-lived objects polluted Old. ' : '') + 'Eden and FROM are now wiped in one step.', hl2);
+          from = to; to = [];
+          var hl3 = {}; from.forEach(function (ob, i) { hl3['1,' + i] = 'win'; });
+          frame('The survivors swap roles: TO becomes the new FROM (the "S0/S1 ping-pong"). Eden is empty and allocation continues with a fresh bump pointer.', hl3);
+          return true;
+        }
+        frame('Empty heap. Every object you <code>new</code> is born in <b>Eden</b>. Each object\'s <i>life</i> value says how many GCs it will survive before becoming unreachable.');
+        for (var i = 0; i < L.length; i++) {
+          if (eden.length >= E && !minor()) return F;
+          var ob = { name: 'o' + (i + 1), left: L[i], age: 0 };
+          eden.push(ob);
+          var h = {}; h['0,' + (eden.length - 1)] = 'cur';
+          frame('<code>new</code> → <b>' + ob.name + '</b> allocated in Eden by bumping the TLAB pointer (fast, no locking). It will survive ' + L[i] + ' GC(s).', h);
+        }
+        frame('Done. ' + gcs + ' minor GCs, ' + promoted + ' promotions (' + premature + ' premature). Notice the GC work was proportional to the <b>few survivors</b>, not to the number of allocations (' + L.length + '). Try <code>surv=1</code> to see premature promotion, or a large life value to see tenuring.');
+        return F;
+      }
+    }],
+    examples: [
+      { title: 'Why "obj = null" rarely matters', html: `<p>Inside a method, once a local is no longer used, the JIT's liveness analysis already treats it as dead — it is not a root anymore even before the method returns. Nulling helps only for long-lived references: a field in a long-lived object, a slot in your own array-based stack (${C('elements[--size] = null;')} in a hand-written stack — Effective Java's "obsolete references" example), or a static.</p>`, code: `
+class MyStack {
+    private Object[] elements = new Object[16];
+    private int size;
+    void push(Object o) { if (size == elements.length) elements = Arrays.copyOf(elements, size * 2); elements[size++] = o; }
+    Object pop() {
+        Object o = elements[--size];
+        elements[size] = null;      // without this, the array keeps the popped object reachable (a leak)
+        return o;
+    }
+}` },
+      { title: 'Reading a young GC line', html: `<p>${C('GC(42) Pause Young (Normal) (G1 Evacuation Pause) 1530M->212M(4096M) 11.4ms')}: before the pause 1530 MB was used, after it 212 MB; total heap committed 4096 MB; pause 11.4 ms. About 1.3 GB of garbage was reclaimed by copying only the survivors. If "after" keeps creeping up across hours of young GCs, Old is filling — a promotion or leak problem.</p>` },
+      { title: 'Premature promotion in a batch job', html: `<p>A job loads 200 MB of rows per batch and keeps them for ~3 seconds. Survivor spaces are 30 MB each, so most rows overflow straight into Old after one young GC, then die there. Old fills with garbage → frequent major GCs. Fixes: bigger young generation (${C('-Xmn')} or let G1 size it), process smaller batches, or stream rows instead of materialising them.</p>` },
+      { title: 'Cleaner instead of finalize', html: `<p>Finalizers ran at unpredictable times on one thread, resurrected objects and slowed GC. Modern code uses try-with-resources for deterministic release, and ${C('Cleaner')} only as a safety net.</p>`, code: `
+import java.lang.ref.Cleaner;
+class NativeBuffer implements AutoCloseable {
+    private static final Cleaner CLEANER = Cleaner.create();
+    private final Cleaner.Cleanable cleanable;
+    NativeBuffer() {
+        long handle = 42L;                                   // pretend native handle
+        // The cleanup action must NOT reference 'this', or the object can never become unreachable.
+        cleanable = CLEANER.register(this, () -> System.out.println("free handle " + handle));
+    }
+    @Override public void close() { cleanable.clean(); }   // deterministic path; runs at most once
+}` }
+    ],
+    deepDive: `<p><b>Tri-colour marking.</b> White = not yet seen, grey = reached but fields not scanned, black = fully scanned. Marking is done when no grey objects remain. Concurrent collectors must preserve the invariant "no black object points to a white object" while the application keeps mutating references — they use <b>write barriers</b> (G1's SATB: snapshot-at-the-beginning records the <i>old</i> value of overwritten references) or <b>load barriers</b> (ZGC) to avoid losing live objects.</p>
+<p><b>Card tables and remembered sets.</b> A minor GC must find Old→Young references without scanning all of Old. Every reference store into Old runs a tiny <b>write barrier</b> that marks a 512-byte <b>card</b> dirty; the minor GC scans only dirty cards as extra roots. G1 generalises this to per-region <b>remembered sets</b>. This is why storing references into old objects (e.g. huge long-lived caches being constantly updated) makes young GCs slower.</p>
+<p><b>Tenuring is adaptive.</b> ${C('MaxTenuringThreshold')} (default 15, the object header has 4 age bits) is an upper bound; HotSpot computes the actual threshold each GC so that survivors fill at most ${C('TargetSurvivorRatio')} (50%) of a survivor space. Objects larger than a limit may be allocated directly in Old (Serial/Parallel with ${C('PretenureSizeThreshold')}; G1 "humongous" objects ≥ half a region).</p>
+<p><b>Throughput, latency, footprint — pick two.</b> Every collector trades these. Bigger heaps mean fewer GCs (throughput) but, for STW collectors, longer full pauses (latency). Concurrent collectors cut pauses by spending extra CPU and memory on barriers and concurrent threads. Allocation <i>rate</i> (MB/s) and <i>live set</i> size are the two numbers that decide everything.</p>
+<p><b>Reference types.</b> ${C('SoftReference')} (cleared under memory pressure — tempting for caches, but makes GC behaviour unpredictable), ${C('WeakReference')} (cleared at the next GC that finds the referent only weakly reachable — used by ${C('WeakHashMap')}), ${C('PhantomReference')} (post-mortem cleanup; basis of ${C('Cleaner')}). Each adds work to reference processing during GC.</p>
+<p><b>Safepoint bias.</b> STW phases require all threads at a safepoint. A thread in a long counted loop without safepoint polls used to delay everyone ("time to safepoint"); modern HotSpot uses loop strip mining and thread-local handshakes to keep this short, but it still appears in logs as the gap between "safepoint begin" and "at safepoint".</p>`,
+    aiEra: `<p><b>What AI changes:</b> assistants are good at turning raw GC logs into a story ("young GCs every 400 ms, 30% of survivors promoted early, old occupancy rises 2%/min") and at drawing the reachability chain from a heap-dump excerpt. Tools like GCeasy and JDK Mission Control's automated analysis increasingly come with AI summaries.</p>
+<p><b>Where AI goes wrong:</b> claiming Java uses reference counting, saying ${C('System.gc()')} "frees memory immediately", suggesting finalizers, or recommending ${C('-XX:+UseConcMarkSweepGC')} (CMS was removed in JDK 14). It also confuses "GC freed little" with "GC is broken" when the live set simply is large.</p>
+<p><b>What you still own:</b> the reachability mental model (it explains every leak), knowing the generational trade-offs well enough to judge a suggested flag, and validating any change with before/after GC logs under realistic load. AI explanations should be checked against the actual log lines.</p>`,
+    problems: [{
+      title: 'Find the Garbage: Simulate the Mark Phase',
+      level: 'Medium', tags: ['GC', 'graph traversal', 'BFS'], companies: ['Amazon', 'Microsoft', 'Oracle'],
+      statement: `<p>The heap has ${C('n')} objects numbered 0..n−1. ${C('refs[i]')} lists the objects that object i points to. ${C('roots')} lists the objects referenced directly by GC roots. Return the <b>sorted list of garbage objects</b> (unreachable from any root). Then explain why a reference-counting collector would free a different set.</p>`,
+      constraints: `1 ≤ n ≤ 10<sup>6</sup>, total references ≤ 3·10<sup>6</sup>. Cycles allowed. Self-references allowed.`,
+      example: `<p>n = 6, refs = [[1], [2], [0], [4], [3], [5]], roots = [0]</p>${H.table(['object', 'reachable?', 'why'], [['0,1,2', H.c('g', 'yes'), 'root → 0 → 1 → 2 → 0'], ['3,4', H.c('r', 'no'), 'cycle 3 ↔ 4, nobody from a root points in'], ['5', H.c('r', 'no'), 'only points to itself']])}<p>Output ${H.c('g', '[3, 4, 5]')}. Reference counting would free <b>nothing</b>: every object has count ≥ 1.</p>`,
+      brute: { why: `<p>For each object, run a separate search from the roots to see whether it is reachable: n searches × O(n + E) each = O(n·(n+E)) — 10<sup>12</sup> operations. Real collectors do <b>one</b> traversal that marks everything reachable.</p>`, code: `
+class GarbageBrute {
+    static List<Integer> garbage(int n, int[][] refs, int[] roots) {
+        List<Integer> out = new ArrayList<>();
+        for (int target = 0; target < n; target++) {
+            boolean[] seen = new boolean[n];               // fresh search per object: O(n * (n + E))
+            Deque<Integer> st = new ArrayDeque<>();
+            for (int r : roots) { st.push(r); seen[r] = true; }
+            boolean found = false;
+            while (!st.isEmpty() && !found) {
+                int u = st.pop();
+                if (u == target) found = true;
+                for (int v : refs[u]) if (!seen[v]) { seen[v] = true; st.push(v); }
+            }
+            if (!found) out.add(target);
+        }
+        return out;
+    }
+}` },
+      mcq: { q: 'Object X is referenced only by object Y, and Y is garbage. Is X garbage?', options: ['Yes — incoming references from garbage do not count; only paths from roots matter', 'No — it has a reference so it is live', 'Only if X is in the old generation', 'Only after finalize() runs'], answer: 0, explain: 'Liveness is reachability from roots. A reference from a dead object does not make anything live.' },
+      hints: [`<p>Hint 1: Garbage = complement of "reachable from roots". Compute reachable <b>once</b> with a single BFS/DFS seeded with <b>all</b> roots.</p>`, `<p>Hint 2: Use a ${C('boolean[] marked')} (that is literally the GC's mark bitmap) and an explicit ${C('int[]')} worklist so a 10<sup>6</sup>-long chain does not overflow the stack.</p>`, `<p>Hint 3: Recipe — mark every root, push it. Pop u, for each v in refs[u] not marked: mark, push. Finally scan 0..n−1 and collect unmarked indices (already sorted).</p>`],
+      solution: {
+        approach: `<p>Exactly the mark phase of a tracing collector: one multi-source traversal over the object graph using a mark bitmap and an explicit worklist (grey set). The sweep phase is a linear scan of the bitmap. Cycles are handled naturally because marked objects are never pushed again.</p>`,
+        code: `
+class MarkPhase {
+    static List<Integer> garbage(int n, int[][] refs, int[] roots) {
+        boolean[] marked = new boolean[n];          // the "mark bitmap"
+        int[] work = new int[n];                    // grey worklist; each object pushed at most once
+        int top = 0;
+        for (int r : roots) if (!marked[r]) { marked[r] = true; work[top++] = r; }
+        while (top > 0) {
+            int u = work[--top];                    // u becomes black once its fields are scanned
+            for (int v : refs[u]) {
+                if (!marked[v]) { marked[v] = true; work[top++] = v; }
+            }
+        }
+        List<Integer> dead = new ArrayList<>();     // "sweep": everything unmarked is garbage
+        for (int i = 0; i < n; i++) if (!marked[i]) dead.add(i);
+        return dead;
+    }
+
+    public static void main(String[] args) {
+        int[][] refs = { {1}, {2}, {0}, {4}, {3}, {5} };
+        System.out.println(garbage(6, refs, new int[] { 0 }));   // [3, 4, 5]
+    }
+}`,
+        dry: { head: ['step', 'pop', 'newly marked', 'worklist', 'marked set'], rows: [
+          ['roots', '—', '0', '[0]', '{0}'], ['1', '0', '1', '[1]', '{0,1}'], ['2', '1', '2', '[2]', '{0,1,2}'],
+          ['3', '2', '— (0 already marked: cycle stops here)', '[]', '{0,1,2}'], ['sweep', '—', '—', '—', H.c('r', 'garbage = [3,4,5]')]
+        ] },
+        complexity: `<p>O(n + E) time, O(n) extra memory (bitmap + worklist). Real collectors parallelise this with work-stealing queues across GC threads and run it concurrently using barriers.</p>`,
+        followUps: ['How would a concurrent marker stay correct if the program moves a reference while you trace?', 'Add generations: how do you find old→young references without scanning old? (card table)', 'Return the size of garbage in bytes given object sizes']
+      }
+    }]
+  });
+
 registerModule({ id: 'java13', title: 'JVM Internals & Performance', intro: '<p>x</p>', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();

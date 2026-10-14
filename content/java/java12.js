@@ -1621,6 +1621,246 @@ public class LogPipeline {
     }]
   });
 
+  /* ======================================================================
+     TOPIC 7 — CompletableFuture
+     ====================================================================== */
+  topics.push({
+    title: 'CompletableFuture: Async Pipelines, Combining, Errors & Timeouts',
+    analogy: `<p>Ordering in a <b>food court</b> with a buzzer. You order a burger at one stall and a smoothie at another — both are being made <b>at the same time</b>. You don't stand and stare: you tell each stall "<i>when it's ready, put it on my tray</i>" (a callback). When <b>both</b> are on the tray, you sit and eat (combine). If the smoothie machine breaks you take a bottle of water instead (fallback), and if the burger takes longer than 15 minutes you cancel it (timeout). A plain ${C('Future')} is a buzzer you must keep staring at; a ${C('CompletableFuture')} is a buzzer that can <b>trigger the next step for you</b>.</p>`,
+    explain: `<p><b>Plain idea:</b> ${C('CompletableFuture<T>')} (Java 8) is a Future you can <b>chain</b>: "when this value is ready, transform it, then call another async service with it, combine it with a third result, and if anything fails, use a default". No thread sits blocked in ${C('get()')} between steps — each step runs when its inputs are ready.</p>
+<h4>Starting</h4>
+${H.table(['Method', 'Meaning'], [
+  [C('supplyAsync(supplier, executor)'), 'run a value-producing task asynchronously'],
+  [C('runAsync(runnable, executor)'), 'async task with no result'],
+  [C('completedFuture(v)') + ' / ' + C('failedFuture(ex)'), 'already finished (tests, caches)'],
+  [C('new CompletableFuture<>()') + ' + ' + C('complete(v)'), 'you complete it yourself (bridge from callbacks)']
+])}
+<p>Without an executor argument, async methods use ${C('ForkJoinPool.commonPool()')} — shared with parallel streams and sized to cores − 1. <b>Never run blocking I/O there</b>; pass your own executor.</p>
+<h4>Chaining — the stream-like vocabulary</h4>
+${H.table(['Method', 'Input → output', 'Like'], [
+  [C('thenApply(fn)'), 'T → U (sync transform)', C('Stream.map')],
+  [C('thenCompose(fn)'), 'T → CompletableFuture&lt;U&gt; (next async call)', C('Stream.flatMap')],
+  [C('thenCombine(other, bifn)'), '(T, U) → V when <b>both</b> are done', 'zip'],
+  [C('thenAccept(consumer)'), 'T → nothing', C('forEach')],
+  [C('thenRun(runnable)'), 'ignore value, just run', ''],
+  [C('allOf(cfs...)'), 'wait for all (returns Void)', 'join all'],
+  [C('anyOf(cfs...)'), 'first to complete (Object)', 'race']
+])}
+<p><b>thenApply vs thenCompose</b> is the #1 question: if your function returns a CompletableFuture, ${C('thenApply')} gives you a nested ${C('CompletableFuture<CompletableFuture<U>>')}; ${C('thenCompose')} flattens it.</p>
+<h4>Async variants and threads</h4>
+<p>${C('thenApply(fn)')} runs fn on whichever thread completes the previous stage (or the caller if it is already done). ${C('thenApplyAsync(fn, executor)')} always hands fn to the executor. Use the Async form when fn is slow, so you don't steal the completing thread.</p>
+<h4>Errors</h4>
+${H.table(['Method', 'Called when', 'Can recover?'], [
+  [C('exceptionally(ex -> fallback)'), 'only on failure', H.c('g', 'yes, returns a value')],
+  [C('handle((v, ex) -> ...)'), 'always (one of v / ex is null)', H.c('g', 'yes')],
+  [C('whenComplete((v, ex) -> ...)'), 'always', H.c('r', 'no — side effects only (logging), result passes through')],
+  [C('exceptionallyCompose(fn)'), 'failure, fallback is async (Java 12+)', 'yes']
+])}
+<p>Failures <b>skip</b> downstream ${C('thenApply')} stages and arrive wrapped in ${C('CompletionException')} — unwrap with ${C('getCause()')}. ${C('join()')} throws unchecked CompletionException; ${C('get()')} throws checked ExecutionException.</p>
+<h4>Timeouts (Java 9+)</h4>
+<p>${C('orTimeout(2, SECONDS)')} fails the future with TimeoutException; ${C('completeOnTimeout(fallback, 2, SECONDS)')} completes it with a default. Note: neither stops the underlying work — it just stops waiting for it.</p>`,
+    clues: ['"call 3 services in parallel and combine the results" → supplyAsync × 3 + thenCombine / allOf', '"the second call needs the first call\'s result" → thenCompose', '"non-blocking" / "don\'t tie up a thread while waiting" → CompletableFuture chain', '"use a default if the service is slow or down" → completeOnTimeout / exceptionally', '"first response wins" → anyOf', '"convert a callback API to a future" → new CompletableFuture + complete()', '"why is my parallel stream slow when async calls run?" → common pool shared/starved'],
+    code: [`
+public class CheckoutService {
+    record User(int id, String name) {}
+    record Quote(String user, double price) {}
+
+    static final ExecutorService IO = Executors.newFixedThreadPool(8);
+
+    static void sleep(long ms) {
+        try { Thread.sleep(ms); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+    }
+
+    static CompletableFuture<User> fetchUser(int id) {
+        return CompletableFuture.supplyAsync(() -> { sleep(100); return new User(id, "asha"); }, IO);
+    }
+    static CompletableFuture<Integer> fetchCartTotal(User u) {          // needs the user first
+        return CompletableFuture.supplyAsync(() -> { sleep(80); return 1200; }, IO);
+    }
+    static CompletableFuture<Double> fetchDiscount() {                  // independent
+        return CompletableFuture.supplyAsync(() -> { sleep(120); return 0.10; }, IO);
+    }
+
+    public static void main(String[] args) {
+        long t0 = System.currentTimeMillis();
+        CompletableFuture<User> user = fetchUser(7);
+        CompletableFuture<Double> discount = fetchDiscount()               // runs in parallel with user
+                .completeOnTimeout(0.0, 300, TimeUnit.MILLISECONDS);       // slow? no discount
+
+        CompletableFuture<Quote> quote = user
+                .thenCompose(u -> fetchCartTotal(u)                        // dependent async call
+                        .thenApply(total -> new Quote(u.name(), total)))  // keep the user name
+                .thenCombine(discount, (q, d) -> new Quote(q.user(), q.price() * (1 - d)))
+                .orTimeout(1, TimeUnit.SECONDS)
+                .exceptionally(ex -> new Quote("guest", -1));             // any failure -> fallback
+
+        Quote q = quote.join();                                            // only blocking point
+        System.out.println(q + " in ~" + (System.currentTimeMillis() - t0) + " ms"); // ~180 ms, not 300
+        IO.shutdown();
+    }
+}`, `
+// allOf: fan out N calls, then collect all results (allOf itself returns Void)
+static List<String> fetchAll(List<String> ids, ExecutorService ex) {
+    List<CompletableFuture<String>> cfs = ids.stream()
+            .map(id -> CompletableFuture.supplyAsync(() -> "item-" + id, ex)
+                    .exceptionally(e -> "missing-" + id))      // one failure must not sink the batch
+            .toList();
+    return CompletableFuture.allOf(cfs.toArray(new CompletableFuture[0]))
+            .thenApply(v -> cfs.stream().map(CompletableFuture::join).toList()) // join never blocks here
+            .join();
+}`],
+    codeTitle: ['thenCompose + thenCombine + timeouts + fallback', 'Fan-out / fan-in with allOf'],
+    viz: {
+      title: 'CompletableFuture dependency graph over time',
+      input: 'user=100 cart=80 discount=120 timeout=400 fail=none',
+      inputLabel: 'user/cart/discount ms, timeout ms, fail=none|user|cart|discount',
+      gen: function (input) {
+        var s = String(input), get = function (k, d) { var m = new RegExp(k + '\\s*=\\s*(\\w+)').exec(s); return m ? m[1] : d; };
+        var tu = +get('user', 100), tc = +get('cart', 80), td = +get('discount', 120), to = +get('timeout', 400), fail = get('fail', 'none');
+        if ([tu, tc, td, to].some(function (x) { return !(x >= 1 && x <= 5000); })) throw new Error('Times must be 1..5000 ms, e.g. user=100 cart=80 discount=120 timeout=400');
+        if (['none', 'user', 'cart', 'discount'].indexOf(fail) < 0) throw new Error('fail must be none, user, cart or discount');
+        var st = { U: 'running', C: 'waiting for user', D: 'running', Q: 'waiting', R: 'waiting' }, frames = [];
+        function g(hl, ehl) {
+          return { type: 'graph', label: 'Stages (edges = "runs when this completes")', directed: true, height: 60, nodes: [
+            { id: 'U', label: 'fetchUser: ' + st.U, x: 14, y: 12, shape: 'box', w: 24 },
+            { id: 'C', label: 'thenCompose cart: ' + st.C, x: 45, y: 12, shape: 'box', w: 28 },
+            { id: 'D', label: 'fetchDiscount: ' + st.D, x: 14, y: 48, shape: 'box', w: 24 },
+            { id: 'Q', label: 'thenCombine: ' + st.Q, x: 76, y: 30, shape: 'box', w: 24 },
+            { id: 'R', label: 'orTimeout+exceptionally: ' + st.R, x: 76, y: 54, shape: 'box', w: 30 }
+          ], edges: [['U', 'C'], ['C', 'Q'], ['D', 'Q'], ['Q', 'R']], hl: hl || {}, ehl: ehl || {} };
+        }
+        function fr(t, narr, hl, ehl) { frames.push({ narr: '<b>t = ' + t + ' ms</b> — ' + narr, parts: [g(hl, ehl), { type: 'vars', label: 'Stage states', vals: copyObj(st), hl: {} }] }); }
+        fr(0, 'supplyAsync starts <b>fetchUser</b> and <b>fetchDiscount</b> at the same time on the IO pool. The cart call cannot start yet: it needs the user (thenCompose). main is free — it has only built a graph of callbacks.', { U: 'cur', D: 'cur' });
+        var events = [];
+        var uEnd = tu, cEnd = tu + tc, dEnd = td;
+        events.push({ t: uEnd, k: 'U' });
+        if (fail !== 'user') events.push({ t: cEnd, k: 'C' });
+        events.push({ t: dEnd, k: 'D' });
+        events.sort(function (a, b) { return a.t - b.t; });
+        var failed = false, done = false, cDone = false, dDone = false;
+        for (var i = 0; i < events.length && !done; i++) {
+          var e = events[i];
+          if (e.t >= to) break;
+          if (e.k === 'U') {
+            if (fail === 'user') { st.U = 'FAILED'; st.C = 'skipped'; st.Q = 'skipped'; failed = true; fr(e.t, 'fetchUser <span class="c-r">throws</span>. Every dependent stage (thenCompose, thenCombine) is <b>skipped</b> — the exception travels down the chain wrapped in CompletionException, straight to exceptionally.', { U: 'bad', C: 'bad', Q: 'bad' }, { 'U-C': 'bad', 'C-Q': 'bad' }); }
+            else { st.U = 'done (asha)'; st.C = 'running'; fr(e.t, 'User arrives → the thenCompose function runs and <b>launches fetchCartTotal(user)</b>, which returns another CompletableFuture. thenCompose flattens it (thenApply would give a future-of-a-future).', { U: 'ok', C: 'cur' }, { 'U-C': 'ok' }); }
+          } else if (e.k === 'C') {
+            if (fail === 'cart') { st.C = 'FAILED'; st.Q = 'skipped'; failed = true; fr(e.t, 'fetchCartTotal <span class="c-r">fails</span> → thenCombine is skipped even though discount may be fine.', { C: 'bad', Q: 'bad' }, { 'C-Q': 'bad' }); }
+            else { st.C = 'done (1200)'; cDone = true; fr(e.t, 'Cart total ready (1200). thenCombine still needs the discount' + (dDone ? ' — which is already here!' : ' — it waits, no thread blocked.'), { C: 'ok' }, { 'C-Q': 'ok' }); }
+          } else if (e.k === 'D') {
+            if (fail === 'discount') { st.D = 'FAILED'; st.Q = 'skipped'; failed = true; fr(e.t, 'fetchDiscount <span class="c-r">fails</span> → thenCombine needs BOTH inputs, so it fails too. (Wrap the discount in its own exceptionally(ex -> 0.0) to make it optional.)', { D: 'bad', Q: 'bad' }, { 'D-Q': 'bad' }); }
+            else { st.D = 'done (10%)'; dDone = true; fr(e.t, 'Discount ready (10%). ' + (cDone ? 'Cart is ready too.' : 'Waiting for the cart side.'), { D: 'ok' }, { 'D-Q': 'ok' }); }
+          }
+          if (failed) { st.R = 'fallback guest'; fr(e.t, '<b>exceptionally</b> catches the failure and returns the fallback Quote("guest", -1). join() returns normally — the caller never sees an exception.', { R: 'sel' }, { 'Q-R': 'ok' }); done = true; }
+          else if (cDone && dDone) { st.Q = 'done 1080'; st.R = 'done 1080'; fr(Math.max(cEnd, dEnd), '<b>thenCombine</b> fires because both inputs are complete: 1200 × (1 − 0.10) = <b>1080</b>. Total latency = max(user+cart, discount) = max(' + cEnd + ', ' + dEnd + ') = ' + Math.max(cEnd, dEnd) + ' ms instead of ' + (tu + tc + td) + ' ms sequentially.', { Q: 'ok', R: 'sel' }, { 'Q-R': 'ok' }); done = true; }
+        }
+        if (!done) {
+          st.R = 'TIMEOUT → fallback';
+          fr(to, '<b>orTimeout(' + to + ' ms)</b> fires first: the result future completes exceptionally with TimeoutException, and exceptionally turns it into the fallback. <span class="c-y">The slow calls are not cancelled</span> — they keep running in the pool; their results are simply ignored.', { R: 'bad' }, {});
+        }
+        fr(Math.max(to, cEnd, dEnd), 'Lesson: build the graph once, let completions drive it. Try <b>fail=discount</b>, or <b>timeout=150</b>, or make <b>discount=500</b> to see the critical path change.', {});
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'thenApply vs thenCompose types', html: `<p>${C('getUser()')} returns ${C('CompletableFuture<User>')}, ${C('getOrders(User)')} returns ${C('CompletableFuture<List<Order>>')}.</p>${H.table(['call', 'type you get'], [[C('getUser().thenApply(this::getOrders)'), H.c('r', C('CompletableFuture<CompletableFuture<List<Order>>>'))], [C('getUser().thenCompose(this::getOrders)'), H.c('g', C('CompletableFuture<List<Order>>'))]])}<p>Same as ${C('map')} vs ${C('flatMap')} on streams and Optional.</p>` },
+      { title: 'handle vs exceptionally vs whenComplete', html: `<p>Given a stage that fails with "boom": ${C('exceptionally(e -> 0)')} → 0. ${C('handle((v, e) -> e == null ? v : -1)')} → -1 (and would also transform a success). ${C('whenComplete((v, e) -> log(e))')} → still failed; it only observes.</p>`, code: `
+CompletableFuture<Integer> boom = CompletableFuture.supplyAsync(() -> { throw new IllegalStateException("boom"); });
+System.out.println(boom.exceptionally(e -> 0).join());                     // 0
+System.out.println(boom.handle((v, e) -> e == null ? v : -1).join());      // -1
+System.out.println(boom.whenComplete((v, e) -> System.out.println("saw " + e.getCause().getMessage()))
+        .isCompletedExceptionally());                                       // saw boom ... true` },
+      { title: 'Bridging a callback API', html: `<p>Old libraries call you back with ${C('onSuccess/onError')}. Create a ${C('CompletableFuture')}, complete it from the callback, and return it — now callers can chain.</p>`, code: `
+interface Callback { void onSuccess(String body); void onError(Exception e); }
+
+class LegacyHttp {
+    void get(String url, Callback cb) { cb.onSuccess("<html>" + url); }   // pretend async
+
+    CompletableFuture<String> getAsync(String url) {
+        CompletableFuture<String> cf = new CompletableFuture<>();
+        get(url, new Callback() {
+            public void onSuccess(String body) { cf.complete(body); }
+            public void onError(Exception e) { cf.completeExceptionally(e); }
+        });
+        return cf;
+    }
+}` },
+      { title: 'anyOf for hedged requests', html: `<p>Send the same read to two replicas; use whichever answers first. ${C('anyOf')} returns ${C('CompletableFuture<Object>')} — cast the result. Careful: if the fastest one <b>fails</b>, anyOf fails too (unlike ${C('invokeAny')}), so attach ${C('exceptionally')} fallbacks or filter failures yourself.</p>`, code: `
+CompletableFuture<String> a = CompletableFuture.supplyAsync(() -> "replica-A");
+CompletableFuture<String> b = CompletableFuture.supplyAsync(() -> "replica-B");
+String first = (String) CompletableFuture.anyOf(a, b).join();
+System.out.println(first);` }
+    ],
+    deepDive: `<p><b>Internals:</b> a CompletableFuture has a ${C('volatile Object result')} (null = incomplete; a value, a NIL marker for null, or an ${C('AltResult')} wrapping an exception) and a lock-free <b>Treiber stack of dependent Completions</b>. ${C('thenApply')} on an incomplete future pushes a ${C('UniApply')} node; ${C('complete()')} CASes the result and then pops and fires dependents (${C('postComplete')}), iteratively to avoid stack overflow on long chains. If the future is already complete when you call ${C('thenApply')}, the function runs <b>immediately on the calling thread</b> — a frequent surprise when someone expects it to be async.</p>
+<p><b>Which thread runs my callback?</b> Non-async stages run on the thread that completes the previous stage (could be a pool thread, an HTTP client's selector thread, or your main thread). If that callback blocks, you block that thread — in Netty-style event loops this is disastrous. Rule: blocking or heavy callbacks → ${C('*Async(fn, executor)')}.</p>
+<p><b>Common pool starvation:</b> ${C('commonPool')} has (cores − 1) threads. If you run blocking HTTP calls on it with ${C('supplyAsync(supplier)')}, a few slow calls occupy all threads, and unrelated parallel streams and CompletableFutures in the same JVM stall. Also, in containers with 1-2 CPUs the common pool can be just 1 thread (or, when parallelism is 1, it spawns a new thread per task). Always pass an executor for I/O.</p>
+<p><b>Cancellation:</b> ${C('cf.cancel(true)')} completes the future with CancellationException but does <b>not</b> interrupt the running task (the CF has no reference to the thread). For real cancellation, keep the underlying Future or use structured concurrency / virtual threads.</p>
+<p><b>Java 21+ perspective:</b> with virtual threads, plain blocking code (${C('var u = fetchUser(); var t = fetchCart(u);')}) is cheap again and far easier to debug (real stack traces). CompletableFuture remains great for fan-out/fan-in and composing libraries that already return futures; structured concurrency (${C('StructuredTaskScope')}, preview in 21-24, finalized in later releases) adds scoped cancellation and error propagation for the same use cases.</p>`,
+    aiEra: `<p><b>What AI changes:</b> AI writes long, plausible CompletableFuture chains quickly — and they are notoriously hard to review: wrong thread pools, swallowed exceptions, nested futures, a stray ${C('join()')} in the middle that serialises everything. <b>Use AI as a partner:</b> ask it to "<i>annotate each stage with the thread it runs on and what happens on failure</i>", or to rewrite the chain in virtual-thread style and compare readability. Ask for a test that injects failures and delays at each stage. <b>Where AI goes wrong:</b> ${C('supplyAsync')} without an executor for blocking I/O, ${C('thenApply')} where ${C('thenCompose')} is needed, believing ${C('orTimeout')} or ${C('cancel')} stops the work, and ${C('allOf(...).join()')} followed by ignoring individual failures. <b>What you must still own:</b> the latency budget (which calls are on the critical path), the fallback semantics (is a missing discount acceptable? a missing price is not), and the choice between async composition and simple blocking code on virtual threads.</p>`,
+    problems: [{
+      title: 'Best Price Aggregator with Per-Vendor Timeouts',
+      level: 'Hard', tags: ['CompletableFuture', 'timeouts', 'fan-out'], companies: ['Booking.com', 'Expedia', 'Amazon', 'Skyscanner'],
+      statement: `<p>Implement ${C('Optional<Double> bestPrice(List<Vendor> vendors, long timeoutMs, Executor ex)')}. Query all vendors <b>in parallel</b>. A vendor that fails or does not answer within ${C('timeoutMs')} is ignored. Return the lowest price among the successful answers, or empty if none answered. The total time must be ≈ timeoutMs at most, regardless of how many vendors there are.</p>`,
+      constraints: `1 ≤ vendors ≤ 50; each vendor call takes 10 ms - 10 s and may throw.`,
+      example: `<p>Vendors A: 120 ms → 499.0, B: throws, C: 3 s (too slow), D: 80 ms → 520.0, timeout 500 ms → ${H.c('g', 'Optional[499.0]')} after ~500 ms: B is ignored (failed), C is ignored (still running when the 500 ms window closes), and min(499, 520) = 499.</p>`,
+      brute: { why: `<p>Calling vendors one by one: total time = sum of latencies (could be 50 × 10 s). Even a parallel version that calls ${C('get()')} without a timeout waits for the <b>slowest</b> vendor, and one exception aborts the whole result.</p>`, code: `
+interface Vendor { double quote() throws Exception; }
+
+static Optional<Double> bestPriceSequential(List<Vendor> vendors) {
+    double best = Double.MAX_VALUE;
+    boolean any = false;
+    for (Vendor v : vendors) {
+        try { best = Math.min(best, v.quote()); any = true; }  // waits for each in turn
+        catch (Exception e) { /* skip failing vendor */ }
+    }
+    return any ? Optional.of(best) : Optional.empty();
+}` },
+      mcq: { q: 'You want each vendor\'s failure or slowness to be ignored individually. Where do you attach completeOnTimeout/exceptionally?', options: ['On the allOf(...) future', 'On each vendor\'s future before allOf', 'On the final thenApply', 'Nowhere — allOf ignores failures'], answer: 1, explain: 'allOf fails if any input fails, and a timeout on allOf would discard everyone. Making each vendor future "always succeed" (with an empty marker on failure/timeout) lets allOf complete and keeps all good answers.' },
+      hints: [`<p>Hint 1: turn every vendor call into a future that <b>never fails</b>: success → ${C('Optional.of(price)')}, failure or timeout → ${C('Optional.empty()')}.</p>`, `<p>Hint 2: ${C('supplyAsync(() -> quote(v), ex).thenApply(Optional::of).exceptionally(e -> Optional.empty()).completeOnTimeout(Optional.empty(), timeoutMs, MILLISECONDS)')}. Checked exceptions inside the supplier must be wrapped (CompletionException).</p>`, `<p>Hint 3: ${C('allOf(...).join()')} then stream the futures, ${C('join()')} each (already complete), flatMap the Optionals, take ${C('min')}. Edge: empty list → Optional.empty().</p>`],
+      solution: {
+        approach: `<p>Fan out one CompletableFuture per vendor on a dedicated executor. Normalise each into ${C('Optional<Double>')} with ${C('exceptionally')} (failures) and ${C('completeOnTimeout')} (slowness), so every future completes within timeoutMs. Fan in with ${C('allOf')}, then pick the minimum present value. Late answers are ignored; the underlying calls may continue in the background (bound the executor so they cannot pile up).</p>`,
+        code: `
+public class BestPrice {
+    interface Vendor { double quote() throws Exception; }
+
+    static Optional<Double> bestPrice(List<Vendor> vendors, long timeoutMs, Executor ex) {
+        List<CompletableFuture<Optional<Double>>> cfs = new ArrayList<>();
+        for (Vendor v : vendors) {
+            CompletableFuture<Optional<Double>> cf = CompletableFuture
+                    .supplyAsync(() -> {
+                        try { return v.quote(); }
+                        catch (Exception e) { throw new CompletionException(e); }  // wrap checked
+                    }, ex)
+                    .thenApply(Optional::of)
+                    .exceptionally(e -> Optional.empty())                         // failed vendor
+                    .completeOnTimeout(Optional.empty(), timeoutMs, TimeUnit.MILLISECONDS); // slow vendor
+            cfs.add(cf);
+        }
+        CompletableFuture.allOf(cfs.toArray(new CompletableFuture[0])).join();   // <= ~timeoutMs
+        return cfs.stream()
+                .map(CompletableFuture::join)        // all complete: no blocking
+                .flatMap(Optional::stream)
+                .min(Double::compare);
+    }
+
+    static Vendor slow(long ms, double price) {
+        return () -> { Thread.sleep(ms); return price; };
+    }
+
+    public static void main(String[] args) {
+        ExecutorService ex = Executors.newFixedThreadPool(8);
+        List<Vendor> vs = List.of(slow(120, 499.0), () -> { throw new IOException("down"); }, slow(3000, 450.0), slow(80, 520.0));
+        System.out.println(bestPrice(vs, 500, ex));  // Optional[499.0]
+        ex.shutdownNow();                            // interrupts the 3 s vendor
+    }
+}`,
+        dry: { head: ['vendor', 'outcome', 'normalised value', 'completes at'], rows: [['A', '499.0 after 120 ms', 'Optional[499.0]', '120 ms'], ['B', 'IOException', 'Optional.empty (exceptionally)', '~0 ms'], ['C', 'needs 3000 ms', 'Optional.empty (completeOnTimeout)', '500 ms'], ['D', '520.0 after 80 ms', 'Optional[520.0]', '80 ms'], ['allOf → min', '', H.c('g', 'min(499, 520) = 499.0'), '500 ms']] },
+        complexity: `<p>Wall time ≤ timeoutMs (+ scheduling noise) regardless of vendor count, as long as the executor has a thread per concurrent vendor call (or use virtual threads). Work O(V), memory O(V).</p>`,
+        followUps: ['Return early as soon as K vendors answered', 'Cancel/interrupt slow vendor calls instead of letting them run', 'Rewrite with virtual threads and StructuredTaskScope-like semantics']
+      }
+    }]
+  });
+
   registerModule({
     id: 'java12',
     title: 'Concurrency II: java.util.concurrent',
