@@ -1543,7 +1543,7 @@ class ComplexityBudget {
         System.out.println(maxAllowed(2000, 1));                  // O(N^2 log N)
         System.out.println(maxAllowed(100_000, 1));               // O(N sqrt N)
         System.out.println(maxAllowed(10_000_000, 1));            // O(N)
-        System.out.println(maxAllowed(1_000_000_000_000_000L, 1)); // O(log N)
+        System.out.println(maxAllowed(1_000_000_000_000_000_000L, 1)); // O(log N)
     }
 }`],
     codeTitle: ['Constraint → maximum complexity, computed in log space'],
@@ -2154,7 +2154,7 @@ class Solution {
 
     public static void main(String[] args) {
         System.out.println(modPow(3, 13, 1000));                         // 323
-        System.out.println(modPow(2, 1_000_000_000_000_000_000L, 1_000_000_007L)); // 2^(1e18) mod 1e9+7
+        System.out.println(modPow(2, 1_000_000_000_000_000_000L, 1_000_000_007L)); // 719476260
         System.out.println(modPow(5, 0, 1));                              // 0
     }
 }`,
@@ -2421,7 +2421,7 @@ class Solution {
     public static void main(String[] args) {
         System.out.println(totalDigits(13));    // 17
         System.out.println(totalDigits(100));   // 192
-        System.out.println(totalDigits(100_000_000_000_000_000L)); // 10^17 pages
+        System.out.println(totalDigits(100_000_000_000_000_000L)); // 1688888888888888907
     }
 }`,
       dry: {
@@ -2548,7 +2548,7 @@ class Solution {
 
     public static void main(String[] args) {
         System.out.println(harmonicCount(10));                   // 27
-        System.out.println(harmonicCount(1_000_000_000_000L));   // ~2.8e13
+        System.out.println(harmonicCount(1_000_000_000_000L));   // 27785452449086 (about n ln n)
     }
 }`,
       dry: {
@@ -2623,7 +2623,7 @@ class Solution {
         System.out.println(gpSum(2, 5, 100));                         // 31
         System.out.println(gpSum(3, 4, 6));                           // 4
         System.out.println(gpSum(1, 1_000_000_000_000_000_000L, 1_000_000_000L)); // 10^18 mod 10^9 = 0
-        System.out.println(gpSum(7, 1_000_000_000_000_000_000L, 999_999_937L));   // fast even for n = 10^18
+        System.out.println(gpSum(7, 1_000_000_000_000_000_000L, 999_999_937L));   // 261696442, instantly
     }
 }`,
       dry: {
