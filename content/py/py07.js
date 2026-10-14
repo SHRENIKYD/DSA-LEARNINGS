@@ -744,4 +744,826 @@ print(list(flatten(deep)))               # ['bottom'], no RecursionError` },
       }
     }]
   });
+
+  /* ================= TOPIC 4: Generator pipelines ================= */
+  topics.push({
+    title: 'Generator Pipelines: Streaming Data Through Small Lazy Stages',
+    analogy: `<p>Picture a <b>car-wash tunnel</b>: soap → brushes → rinse → dryer. Each car moves through every station one after another, and the next car enters as soon as there is room. Nobody parks all 500 cars in a giant lot, soaps them all, then brushes them all. A generator pipeline is that tunnel: each item flows through every stage <b>before</b> the next item is even read, so memory holds about one car at a time.</p>`,
+    explain: `<p>🟢 <b>The plain idea.</b> Write each processing step as a tiny generator that takes an iterable in and yields results out. Then <b>plug them together</b> like Lego or Unix pipes (<code>cat log | grep ERROR | wc -l</code>):</p>
+<pre>def read_lines(path):
+    with open(path) as f:
+        for line in f:
+            yield line.rstrip('\\n')
+
+def parse(lines):
+    for line in lines:
+        level, service, msg = line.split(' ', 2)
+        yield level, service, msg
+
+def errors_only(records):
+    for rec in records:
+        if rec[0] == 'ERROR':
+            yield rec
+
+pipeline = errors_only(parse(read_lines('app.log')))   # nothing has run yet!
+for level, service, msg in pipeline:                    # pulling starts the flow
+    print(service, msg)</pre>
+<p>🔵 <b>How the flow works — "pull" model.</b> Building the pipeline does nothing. The <b>consumer at the end</b> calls <code>next()</code> on the last stage; that stage calls <code>next()</code> on the one before it, and so on back to the source. One line is read, travels forward through each stage, and pops out the end (or gets dropped by a filter). Then the next line.</p>
+${H.table(['', 'Eager (lists at each step)', 'Lazy pipeline (generators)'], [['Memory', 'O(n) per stage — 3 stages = 3 full copies', 'O(1) — about one item in flight'], ['First result appears', 'after the WHOLE file is processed', 'after the first matching line'], ['Stop early (first 10 errors)', 'still reads everything', 'stops reading at the 10th'], ['Infinite input (tail -f, socket)', '❌ never finishes', '✅ works'], ['Re-iterate', '✅', '❌ rebuild the pipeline']])}
+<p><b>Generator expressions make one-line stages:</b></p>
+<pre>lines   = (line.strip() for line in open('access.log'))
+fields  = (line.split() for line in lines)
+sizes   = (int(f[-1]) for f in fields if f[-1].isdigit())
+print(sum(sizes))        # one pass, flat memory, even for a 50 GB log</pre>
+<p><b>Stage types you will write again and again:</b> <i>source</i> (read file/DB/API pages), <i>map</i> (transform each item), <i>filter</i> (drop items), <i>stateful</i> (dedupe with a <code>seen</code> set, sliding windows, batching), and <i>sink</i> (<code>sum</code>, <code>Counter</code>, write to file, insert into DB). Keep each stage small, single-purpose, and testable with a plain list as input.</p>`,
+    clues: [
+      '"log file is 50 GB / does not fit in memory" → generator pipeline: read → parse → filter → aggregate in one pass',
+      '"process records as they arrive" / "streaming" / "tail -f" → lazy stages, consumer pulls',
+      '"find the first N matching" in huge input → lazy pipeline + <code>islice</code>; stops reading early',
+      '"paginated API — fetch all pages" → a source generator that yields items page by page',
+      '"ETL step", "data cleaning stages", "composable transformations" → small generator functions chained together',
+      '"batch inserts of 1000 rows" → a batching stage (<code>itertools.batched</code>) right before the sink'
+    ],
+    code: [{ lang: 'python', run: true, title: 'A log-processing pipeline (fake file in memory)', code: `import io
+from collections import Counter
+
+LOG = io.StringIO("""INFO auth user logged in
+ERROR payments card declined
+WARN search slow query
+ERROR payments timeout
+ERROR auth bad token
+INFO search ok
+""")
+
+def read_lines(f):
+    for line in f:                      # files are lazy line iterators
+        line = line.strip()
+        if line:
+            yield line
+
+def parse(lines):
+    for line in lines:
+        level, service, msg = line.split(' ', 2)
+        yield {'level': level, 'service': service, 'msg': msg}
+
+def only(level, records):
+    return (r for r in records if r['level'] == level)   # genexp stage
+
+errors = only('ERROR', parse(read_lines(LOG)))   # nothing has run yet
+counts = Counter(r['service'] for r in errors)   # the sink pulls everything through
+print(counts.most_common())                      # [('payments', 2), ('auth', 1)]` }, { lang: 'python', run: true, title: 'Watching the interleaving (trace prints)', code: `def source(xs):
+    for x in xs:
+        print(f'read   {x}')
+        yield x
+
+def double(xs):
+    for x in xs:
+        print(f'double {x}')
+        yield x * 2
+
+def evens_over_4(xs):
+    for x in xs:
+        if x > 4:
+            print(f'keep   {x}')
+            yield x
+
+for result in evens_over_4(double(source([1, 3, 5]))):
+    print(f'GOT    {result}')
+# read 1, double 1 (dropped), read 3, double 3, keep 6, GOT 6, read 5 ...` }],
+    codeTitle: ['Pipeline + Counter sink', 'Proof that items flow one at a time'],
+    viz: [{
+      title: 'Items flowing one at a time through a pipeline of generator stages',
+      input: '5 -2 x 3 12',
+      inputLabel: 'Raw lines (space separated; non-numbers are junk)',
+      gen: function (input) {
+        var raw = words(input);
+        if (!raw.length) throw new Error('Type a few values, e.g. 5 -2 x 3 12');
+        if (raw.length > 8) throw new Error('Use at most 8 values');
+        var code = ['def parse(lines):', '    for s in lines:', "        if s.lstrip('-').isdigit():", '            yield int(s)', 'def positive(ns):', '    for n in ns:', '        if n > 0: yield n', 'def square(ns):', '    for n in ns: yield n * n', '', 'total = sum(square(positive(parse(src))))'].join('\n');
+        var nodes = [{ id: 'S', label: 'src', x: 6, y: 25, shape: 'box' }, { id: 'P', label: 'parse', x: 28, y: 25, shape: 'box' }, { id: 'F', label: 'positive', x: 50, y: 25, shape: 'box' }, { id: 'M', label: 'square', x: 72, y: 25, shape: 'box' }, { id: 'K', label: 'sum()', x: 93, y: 25, shape: 'box' }];
+        var edges = [['S', 'P'], ['P', 'F'], ['F', 'M'], ['M', 'K']];
+        function g(hl, ehl, tags) { return { type: 'graph', label: 'Pipeline (consumer pulls from the right)', directed: true, height: 50, nodes: nodes, edges: edges, hl: hl || {}, ehl: ehl || {}, tags: tags || {} }; }
+        var frames = [], total = 0, done = [];
+        function srcArr(i, cls) { var h = {}; for (var k = 0; k < i; k++) h[k] = 'done'; if (i < raw.length && cls) h[i] = cls; return { type: 'array', label: 'src lines', values: raw.slice(), hl: h, ptr: i < raw.length ? (function () { var p = {}; p[i] = 'next'; return p; })() : {} }; }
+        frames.push(fr('Building <code>square(positive(parse(src)))</code> creates three paused generators and runs <b>nothing</b>. Only when <code>sum()</code> starts pulling does data move.', [g({ K: 'cur' }), cp(code, 11), srcArr(0), vp({ total: 0, 'items in flight': 0 })]));
+        raw.forEach(function (s, i) {
+          frames.push(fr('<code>sum()</code> asks square → positive → parse → src for a value. src hands over <b>' + esc(s) + '</b>.', [g({ S: 'cur', P: 'win' }, { 'S-P': 'cur' }, { P: s }), cp(code, 2), srcArr(i, 'cur'), vp({ total: total, 'items in flight': 1 }, 'items in flight', 'cur')]));
+          var isNum = /^-?\d+$/.test(s);
+          if (!isNum) {
+            frames.push(fr('parse: <b>' + esc(s) + '</b> is not a number → dropped. parse simply loops and asks src for the next line. square and positive are still waiting; they never saw it.', [g({ P: 'bad' }, {}, { P: s + ' ✗' }), cp(code, 3, 'bad'), srcArr(i, 'bad'), vp({ total: total, 'items in flight': 0 })]));
+            return;
+          }
+          var n = parseInt(s, 10);
+          frames.push(fr('parse yields int <b>' + n + '</b> to positive.', [g({ P: 'ok', F: 'cur' }, { 'P-F': 'ok' }, { F: String(n) }), cp(code, 4, 'ok'), srcArr(i, 'cur'), vp({ total: total, 'items in flight': 1 })]));
+          if (n <= 0) {
+            frames.push(fr('positive: ' + n + ' is not &gt; 0 → dropped. positive asks parse for another value, which asks src… The pull chain restarts from the source.', [g({ F: 'bad' }, {}, { F: n + ' ✗' }), cp(code, 7, 'bad'), srcArr(i, 'bad'), vp({ total: total, 'items in flight': 0 })]));
+            return;
+          }
+          frames.push(fr('positive yields ' + n + ' → square yields <b>' + (n * n) + '</b>.', [g({ F: 'ok', M: 'ok' }, { 'F-M': 'ok', 'M-K': 'cur' }, { M: String(n * n) }), cp(code, 9, 'ok'), srcArr(i, 'cur'), vp({ total: total, 'items in flight': 1 })]));
+          total += n * n; done.push(n * n);
+          frames.push(fr('sum() adds ' + (n * n) + ' → total = <b>' + total + '</b>. The item is gone from memory; only the running total and the paused generator frames remain.', [g({ K: 'sel' }, { 'M-K': 'ok' }, { K: String(total) }), cp(code, 11, 'sel'), srcArr(i + 1), vp({ total: total, 'items in flight': 0 }, 'total', 'sel')]));
+        });
+        frames.push(fr('src is exhausted → StopIteration propagates parse → positive → square → <code>sum()</code> returns <b>' + total + '</b>. Peak memory held about <b>one</b> item, whatever the input size. Values summed: ' + (done.length ? done.join(' + ') : '(none)') + '.', [g({ S: 'done', P: 'done', F: 'done', M: 'done', K: 'sel' }, {}, { K: String(total) }), cp(code, 11, 'sel'), srcArr(raw.length), vp({ total: total }, 'total', 'sel')]));
+        return frames;
+      }
+    }, {
+      title: 'Eager lists vs lazy pipeline: order of work',
+      input: '1 3 5',
+      inputLabel: 'Numbers (max 5)',
+      gen: function (input) {
+        var xs = nums(input, 5);
+        var eager = [], lazy = [];
+        xs.forEach(function (x) { eager.push(['read ' + x]); });
+        xs.forEach(function (x) { eager.push(['double ' + x + ' → ' + (2 * x)]); });
+        xs.forEach(function (x) { if (2 * x > 4) eager.push(['keep ' + (2 * x)]); });
+        xs.forEach(function (x) { lazy.push(['read ' + x]); lazy.push(['double ' + x + ' → ' + (2 * x)]); if (2 * x > 4) { lazy.push(['keep ' + (2 * x)]); lazy.push(['GOT ' + (2 * x)]); } });
+        var firstGotEager = eager.length + 1, firstGotLazy = -1;
+        lazy.forEach(function (r, i) { if (firstGotLazy < 0 && r[0].indexOf('GOT') === 0) firstGotLazy = i + 1; });
+        var frames = [];
+        frames.push(fr('Same job twice: double each number and keep results &gt; 4. <b>Eager</b> builds a full list after each step; <b>lazy</b> chains generators.', [cpm(['# eager', 'a = [x for x in src]', 'b = [x * 2 for x in a]', 'c = [x for x in b if x > 4]', '', '# lazy', 'a = (x for x in src)', 'b = (x * 2 for x in a)', 'c = (x for x in b if x > 4)'].join('\n'), { 2: 'cur', 7: 'win' }), vp({ input: '[' + xs.join(', ') + ']' })]));
+        for (var k = 1; k <= Math.max(eager.length, lazy.length); k += Math.max(1, Math.floor(Math.max(eager.length, lazy.length) / 4))) {
+          frames.push(fr('After ' + k + ' units of work. Eager is still doing step-by-step whole-list passes; lazy has already ' + (firstGotLazy > 0 && k >= firstGotLazy ? '<span class="c-g">delivered a result</span>' : 'sent the first item through every stage') + '.', [{ type: 'table', label: 'Eager trace', columns: ['work done (in order)'], rows: eager.slice(0, k), hl: (function () { var h = {}; h[Math.min(k, eager.length) - 1] = 'cur'; return h; })() }, { type: 'table', label: 'Lazy trace', columns: ['work done (in order)'], rows: lazy.slice(0, k), hl: (function () { var h = {}; h[Math.min(k, lazy.length) - 1] = lazy[Math.min(k, lazy.length) - 1][0].indexOf('GOT') === 0 ? 'sel' : 'cur'; return h; })() }]));
+        }
+        frames.push(fr('<b>Result:</b> both produce the same values, but the lazy pipeline delivered its first result after <b>' + (firstGotLazy > 0 ? firstGotLazy : '—') + '</b> steps while eager needs all <b>' + eager.length + '</b> steps (plus 3 full lists in memory) before anything is usable. With 10<sup>9</sup> lines, that is the difference between "instant + flat memory" and "out of memory".', [{ type: 'table', label: 'Eager (complete)', columns: ['work'], rows: eager }, { type: 'table', label: 'Lazy (complete)', columns: ['work'], rows: lazy, hl: (function () { var h = {}; lazy.forEach(function (r, i) { if (r[0].indexOf('GOT') === 0) h[i] = 'sel'; }); return h; })() }]));
+        return frames;
+      }
+    }],
+    examples: [
+      { title: 'Stop early: the first 2 errors in a "huge" stream', html: `<p>Because each stage is lazy, <code>islice(..., 2)</code> stops pulling after the 2nd match and the source is never read further. The counter proves that only 5 of 1,000,000 lines were touched.</p>`, code: { lang: 'python', run: true, code: `from itertools import islice
+
+touched = 0
+def lines():
+    global touched
+    for i in range(1_000_000):
+        touched += 1
+        yield 'ERROR db down' if i in (2, 4) else 'INFO ok'
+
+errors = (l for l in lines() if l.startswith('ERROR'))
+print(list(islice(errors, 2)))
+print('lines read:', touched)    # 5, not 1,000,000` } },
+      { title: 'Stateful stages: dedupe and batching', html: `<p>Stages can keep state between items: a <code>seen</code> set for de-duplication, or a buffer for batches. Here we dedupe user ids and send them to a fake DB in batches of 3 (<code>itertools.batched</code>, Python 3.12+).</p>${H.arr(['u1', 'u2', 'u1', 'u3', 'u4', 'u2', 'u5'], { label: 'stream', hl: { 2: 'r', 5: 'r' } })}<p>Red = duplicates dropped; batches: (u1,u2,u3) (u4,u5).</p>`, code: { lang: 'python', run: true, code: `from itertools import batched
+
+def unique(items):
+    seen = set()                 # state that lives across next() calls
+    for x in items:
+        if x not in seen:
+            seen.add(x)
+            yield x
+
+stream = ['u1', 'u2', 'u1', 'u3', 'u4', 'u2', 'u5']
+for batch in batched(unique(stream), 3):
+    print('INSERT batch', batch)` } },
+      { title: 'Predict the output: errors surface at consumption time', html: `<p>A bad value in the input does not fail when you <b>build</b> the pipeline — only when the consumer reaches it. The traceback points at the stage, but the trigger is the consumer. Good pipelines validate or catch per item.</p>${H.table(['Line', 'What happens'], [['<code>p = (int(s) for s in data)</code>', 'nothing — lazy'], ['<code>next(p)</code>', '1'], ['<code>next(p)</code>', '2'], ['<code>next(p)</code>', H.c('r', 'ValueError: invalid literal')]])}`, code: { lang: 'python', run: true, code: `data = ['1', '2', 'oops', '4']
+p = (int(s) for s in data)        # no error here
+print(next(p), next(p))           # 1 2
+try:
+    next(p)
+except ValueError as e:
+    print('failed late:', e)
+
+def safe_ints(items):
+    for s in items:
+        try:
+            yield int(s)
+        except ValueError:
+            continue              # skip bad rows (log them in real code)
+print(list(safe_ints(data)))      # [1, 2, 4]` } },
+      { title: 'A paginated API as a source generator', html: `<p>Clients of paginated APIs (GitHub, Stripe, cloud SDK "paginators") expose a generator that hides the page-fetching. Callers just loop over items; pages are fetched only when needed.</p>`, code: { lang: 'python', run: true, code: `FAKE_API = {None: ([1, 2, 3], 'p2'), 'p2': ([4, 5], 'p3'), 'p3': ([6], None)}
+calls = 0
+
+def fetch_page(token):
+    global calls
+    calls += 1
+    return FAKE_API[token]          # (items, next_token)
+
+def all_items():
+    token = None
+    while True:
+        items, token = fetch_page(token)
+        yield from items
+        if token is None:
+            return
+
+print(next(x for x in all_items() if x > 2), 'after', calls, 'call(s)')   # 3 after 1 call
+print(list(all_items()))` } }
+    ],
+    deepDive: `<p>🟣 <b>Cost model.</b> Every stage adds one generator resume per item — roughly 30–80 ns in CPython 3.12/3.13. Five stages over 10<sup>8</sup> lines is tens of seconds of pure overhead. Fusing stages (one generator doing parse+filter), using built-ins in C (<code>map</code> with a builtin, <code>filter(None, …)</code>, <code>itertools</code>), or switching to columnar tools (polars, pandas, DuckDB, Arrow) for numeric workloads can be 10–100× faster. Pipelines shine for I/O-bound, heterogeneous, or unbounded streams; dataframes shine for bounded numeric/tabular data.</p>
+<p><b>Resource lifetime.</b> A source like <code>with open(path) as f: yield from f</code> keeps the file open while the generator is suspended. If the consumer stops early and keeps a reference to the pipeline, the file stays open until the generator is closed or garbage-collected (immediate in CPython via refcounting, delayed in PyPy). Production code wraps the pipeline: <code>with contextlib.closing(pipeline) as p:</code> or makes the caller own the resource and pass the open file in.</p>
+<p><b>Push vs pull.</b> Generators are pull-based: the consumer controls the speed, giving natural back-pressure. Push-based pipelines (callbacks, <code>send()</code>-based coroutine sinks, reactive streams) let the producer drive. For async I/O, use <b>async generators</b> (<code>async def … yield</code>, consumed with <code>async for</code>) so a slow network read doesn't block the event loop — same pipeline shape, cooperative concurrency.</p>
+<p><b>Fan-out and parallelism.</b> One generator cannot be consumed by two stages independently; <code>itertools.tee</code> buffers the difference (memory grows if one branch lags). Generators cannot be pickled, so you cannot ship them to <code>multiprocessing</code> workers — instead feed items with <code>pool.imap(func, iterable, chunksize=…)</code>, which is itself lazy and order-preserving.</p>`,
+    aiEra: `<p>🤖 <b>What AI changes:</b> data and ML pipelines (embedding millions of documents, cleaning training data, streaming LLM outputs to a UI) are exactly generator pipelines. Assistants happily scaffold them, but they love <code>readlines()</code>, <code>list(...)</code> "for safety", and <code>json.load</code> on a 20 GB file — each one silently converts your stream back into an out-of-memory crash.</p>
+<p><b>Use AI as a partner:</b> <code>"Mark every place in this pipeline where the whole dataset is materialised in memory"</code>; <code>"Add batching of 100 before the embedding API call and retry with backoff per batch"</code>; <code>"Write tests that feed each stage a 3-item list"</code>.</p>
+<p><b>Where AI goes wrong:</b> it reuses an exhausted generator between two stages, opens files inside a generator without closing on early exit, swallows all exceptions in a stage (data silently disappears), and assumes pipeline order when it uses thread pools that reorder results.</p>
+<p><b>What you must own:</b> the pull model, where memory is actually held, where errors surface, and the judgment call of when a generator pipeline should be replaced by a dataframe, DuckDB query, or a proper streaming system (Kafka/Beam/Flink).</p>`,
+    problems: [{
+      title: 'Top Failing Services in a Huge Log', level: 'Medium', tags: ['generator pipeline', 'Counter', 'streaming'], companies: ['Datadog', 'Amazon', 'Splunk', 'Cloudflare'],
+      statement: `<p>A log file has lines like <code>2026-10-14T10:00:01 ERROR payments card declined</code> (timestamp, level, service, message). Some lines are malformed (fewer than 4 fields). Return the <code>k</code> services with the most <code>ERROR</code> lines as <code>[(service, count), …]</code>, highest first. The file is 80 GB — use constant memory with respect to the number of lines.</p>`,
+      constraints: `Lines ≤ 10<sup>9</sup>, distinct services ≤ 10<sup>4</sup>, 1 ≤ k ≤ 100. Memory: O(services), not O(lines).`,
+      example: `<p>Lines: ERROR payments, ERROR auth, INFO search, ERROR payments, <span class="c-r">garbage</span>, ERROR search → counts ${H.kv([['payments', 2], ['auth', 1], ['search', 1]], { hl: { payments: 'g' } })} k = 2 → <code>[('payments', 2), ('auth', 1)]</code> (ties keep first-seen order with Counter.most_common).</p>`,
+      brute: { why: `<p><code>f.readlines()</code> loads all 80 GB into a list, then a list of split lines, then a filtered list — three full copies. It dies with MemoryError long before counting. The wasted work: keeping every line alive when each one is needed for only an instant.</p>`, code: `import io
+
+def top_failing_brute(f, k):
+    lines = f.readlines()                       # whole file in RAM
+    parts = [l.split(' ', 3) for l in lines]    # second full copy
+    errors = [p for p in parts if len(p) == 4 and p[1] == 'ERROR']   # third copy
+    counts = {}
+    for p in errors:
+        counts[p[2]] = counts.get(p[2], 0) + 1
+    return sorted(counts.items(), key=lambda kv: -kv[1])[:k]
+
+print(top_failing_brute(io.StringIO('t ERROR a x\\nt ERROR a y\\nt INFO b z\\n'), 1))` },
+      mcq: { q: 'Which piece of the solution is allowed to grow with the input size?', options: ['Only the Counter of services (bounded by distinct services)', 'A list of all ERROR lines', 'A list of all lines', 'Nothing may grow at all, not even counts'], answer: 0, explain: 'Lines stream through generators one at a time. The only accumulated state is the per-service count, which is bounded by the number of distinct services (10^4), not by the 10^9 lines.' },
+      hints: [`<p>Hint 1: A file object is already a lazy iterator of lines. Never call <code>read()</code> or <code>readlines()</code>.</p>`, `<p>Hint 2: Stages: <code>parse</code> (split with maxsplit=3, skip malformed lines) → <code>filter</code> level == 'ERROR' → <code>map</code> to service → sink <code>Counter</code>. <code>Counter(iterable)</code> consumes the pipeline.</p>`, `<p>Hint 3: <code>counter.most_common(k)</code> uses a heap internally (O(m log k)). Edge cases: blank lines, lines with extra spaces in the message (maxsplit keeps them together), lowercase levels if the format is messy.</p>`],
+      solution: {
+        approach: `<p>Three small generator stages and a Counter sink. Each line is split once, inspected and dropped. Memory is O(distinct services). <code>most_common(k)</code> picks the top k with a heap.</p>`,
+        code: { lang: 'python', run: true, code: `import io
+from collections import Counter
+
+def parse(lines):
+    """Yield (level, service) for well-formed lines; skip garbage."""
+    for line in lines:
+        parts = line.split(' ', 3)      # ts, level, service, message
+        if len(parts) == 4:
+            yield parts[1], parts[2]
+
+def errors_by_service(records):
+    return (service for level, service in records if level == 'ERROR')
+
+def top_failing(f, k):
+    return Counter(errors_by_service(parse(f))).most_common(k)
+
+log = io.StringIO(
+    "t1 ERROR payments card declined\\n"
+    "t2 ERROR auth bad token\\n"
+    "t3 INFO search ok\\n"
+    "t4 ERROR payments timeout\\n"
+    "garbage\\n"
+    "t5 ERROR search index missing\\n")
+print(top_failing(log, 2))   # [('payments', 2), ('auth', 1)]` },
+        dry: { head: ['line', 'parse yields', 'is ERROR?', 'Counter after'], rows: [['t1 ERROR payments …', "('ERROR','payments')", 'yes', '{payments:1}'], ['t2 ERROR auth …', "('ERROR','auth')", 'yes', '{payments:1, auth:1}'], ['t3 INFO search ok', "('INFO','search')", '<span class="c-r">no</span>', 'unchanged'], ['t4 ERROR payments …', "('ERROR','payments')", 'yes', '{payments:2, auth:1}'], ['garbage', '<span class="c-r">skipped</span>', '—', 'unchanged'], ['t5 ERROR search …', "('ERROR','search')", 'yes', '{payments:2, auth:1, search:1}']] },
+        complexity: `<p>Time O(L) for L lines + O(S log k) for the top-k. Memory O(S) for S distinct services (plus one line in flight).</p>`,
+        followUps: ['Count errors per service per hour without keeping lines (key = (service, ts[:13])).', 'The file is gzip-compressed: what changes? (gzip.open(path, "rt") is also a lazy line iterator.)', 'How would you parallelise over 50 files? (multiprocessing.Pool.imap_unordered per file + merge Counters with +=.)']
+      }
+    }]
+  });
+
+  /* ================= TOPIC 5: itertools ================= */
+  topics.push({
+    title: 'itertools: The Standard Toolbox of Lazy Building Blocks',
+    analogy: `<p><code>itertools</code> is a <b>professional kitchen's knife roll</b>. You could cut everything with one butter knife (hand-written loops), but the chef reaches for the right blade: a peeler (<code>islice</code>), a mandoline that slices forever (<code>count</code>, <code>cycle</code>), a sorter that bunches same items together (<code>groupby</code>), a set of moulds that make every combination (<code>product</code>, <code>permutations</code>, <code>combinations</code>). Each tool is sharp (written in C), tested, and works on a conveyor belt (lazy).</p>`,
+    explain: `<p>🟢 <b>The plain idea.</b> <code>itertools</code> is a standard-library module of functions that take iterables and return <b>lazy iterators</b>. They let you express loops as small, readable building blocks — and they run at C speed.</p>
+<h4>1. Infinite iterators (always pair with something that stops them)</h4>
+${H.table(['Tool', 'Yields', 'Example'], [['<code>count(start=0, step=1)</code>', 'start, start+step, …', '<code>count(10, 5)</code> → 10 15 20 …'], ['<code>cycle(it)</code>', 'items of it, again and again', '<code>cycle("AB")</code> → A B A B …'], ['<code>repeat(x, n=∞)</code>', 'x, x, x …', '<code>repeat(0, 3)</code> → 0 0 0']])}
+<h4>2. Iterators that slice, filter, combine</h4>
+${H.table(['Tool', 'What it does', 'Example → result'], [['<code>islice(it, stop)</code> / <code>(it, start, stop, step)</code>', 'slice ANY iterator lazily', '<code>islice(count(), 2, 8, 2)</code> → 2 4 6'], ['<code>chain(a, b, …)</code>, <code>chain.from_iterable(xs)</code>', 'glue iterables end to end', '<code>chain("ab", [1])</code> → a b 1'], ['<code>accumulate(it, func=add, initial=None)</code>', 'running totals (or running max, product…)', '<code>accumulate([1,2,3])</code> → 1 3 6'], ['<code>pairwise(it)</code> (3.10+)', 'overlapping pairs', '<code>pairwise("abc")</code> → ab bc'], ['<code>batched(it, n)</code> (3.12+)', 'tuples of size n (last may be short)', '<code>batched("abcde", 2)</code> → ab cd e'], ['<code>groupby(it, key=None)</code>', 'runs of <b>consecutive</b> equal keys', '<code>groupby("aabca")</code> → a:aa b:b c:c a:a'], ['<code>takewhile(p, it)</code> / <code>dropwhile(p, it)</code>', 'take / skip while predicate holds, then stop / pass rest', '<code>takewhile(lambda x: x&lt;3, [1,2,5,1])</code> → 1 2'], ['<code>filterfalse(p, it)</code>, <code>compress(data, selectors)</code>', 'opposite of filter; mask filter', '<code>compress("abc", [1,0,1])</code> → a c'], ['<code>starmap(f, it)</code>', '<code>f(*args)</code> for each tuple', '<code>starmap(pow, [(2,3)])</code> → 8'], ['<code>zip_longest(a, b, fillvalue=None)</code>', 'zip that pads the shorter one', '<code>zip_longest("ab", "x", fillvalue="-")</code> → (a,x) (b,-)'], ['<code>tee(it, n=2)</code>', 'split one iterator into n independent ones', 'buffers items until all copies read them']])}
+<h4>3. Combinatoric iterators</h4>
+${H.table(['Tool', 'Meaning', 'Count for n items, length r', '"ABC", r=2'], [['<code>product(A, repeat=r)</code>', 'every r-length sequence (nested loops)', 'n<sup>r</sup>', 'AA AB AC BA BB BC CA CB CC (9)'], ['<code>permutations(A, r)</code>', 'ordered, no reuse', 'n! / (n−r)!', 'AB AC BA BC CA CB (6)'], ['<code>combinations(A, r)</code>', 'unordered, no reuse', 'C(n, r)', 'AB AC BC (3)'], ['<code>combinations_with_replacement(A, r)</code>', 'unordered, reuse allowed', 'C(n+r−1, r)', 'AA AB AC BB BC CC (6)']])}
+<p>All combinatoric outputs come in <b>lexicographic order of input positions</b> — if the input is sorted, the output is sorted. They treat elements by <b>position</b>, not value, so duplicates in the input give duplicate outputs (<code>set()</code> them or use a smarter algorithm).</p>
+<p>🔵 <b>The groupby trap.</b> <code>groupby</code> only groups <b>neighbours</b>. To group all equal keys, <b>sort by the same key first</b> — or just use a <code>defaultdict(list)</code>. Also, each group is a sub-iterator sharing the parent's bookmark: advance the outer iterator and the previous group becomes empty, so convert with <code>list(group)</code> right away if you need it later.</p>`,
+    clues: [
+      '"run-length encoding" / "compress consecutive characters" / "longest streak" → <code>groupby</code>',
+      '"all pairs / all subsets of size k / every ordering" with small n (≤ 10–12) → <code>combinations</code>, <code>permutations</code>, <code>product</code>',
+      '"every combination of options/flags/grid of hyper-parameters" → <code>product(*option_lists)</code> instead of nested loops',
+      '"running sum / prefix sums / running max" → <code>accumulate</code> (with <code>initial=0</code> for prefix sums)',
+      '"compare each element with the next" / "differences between consecutive" → <code>pairwise</code>',
+      '"first k items of a generator" / "skip the header" → <code>islice</code>; "chunks of size n" → <code>batched</code>',
+      '"round-robin / repeat a pattern" → <code>cycle</code>; "infinite IDs" → <code>count</code>'
+    ],
+    code: [{ lang: 'python', run: true, title: 'A tour of the most-used tools', code: `from itertools import (count, cycle, islice, chain, accumulate, pairwise,
+                       batched, groupby, takewhile, dropwhile, product,
+                       permutations, combinations, zip_longest, starmap)
+import operator
+
+print(list(islice(count(10, 5), 4)))                  # [10, 15, 20, 25]
+print(list(islice(cycle('AB'), 5)))                   # ['A', 'B', 'A', 'B', 'A']
+print(list(chain([1, 2], 'ab', range(2))))            # [1, 2, 'a', 'b', 0, 1]
+print(list(accumulate([3, 1, 4, 1, 5])))              # running sum [3, 4, 8, 9, 14]
+print(list(accumulate([3, 1, 4, 1, 5], max)))         # running max [3, 3, 4, 4, 5]
+print(list(accumulate([1, 2, 3], initial=0)))         # prefix sums [0, 1, 3, 6]
+print([b - a for a, b in pairwise([1, 4, 9, 16])])    # differences [3, 5, 7]
+print(list(batched('abcdefg', 3)))                    # [('a','b','c'), ('d','e','f'), ('g',)]
+print([(k, len(list(g))) for k, g in groupby('aaabccaa')])   # runs, not totals
+print(list(takewhile(lambda x: x < 5, [1, 3, 7, 2])))  # [1, 3]
+print(list(dropwhile(lambda x: x < 5, [1, 3, 7, 2])))  # [7, 2]
+print(list(zip_longest('abc', [1], fillvalue='-')))   # [('a', 1), ('b', '-'), ('c', '-')]
+print(list(starmap(operator.mul, [(2, 3), (4, 5)])))  # [6, 20]
+print(len(list(product('ABC', repeat=2))),            # 9
+      len(list(permutations('ABC', 2))),              # 6
+      len(list(combinations('ABC', 2))))              # 3` }],
+    codeTitle: ['itertools tour (runnable)'],
+    viz: [{
+      title: 'groupby: grouping CONSECUTIVE equal keys',
+      input: 'AAABBCAA',
+      inputLabel: 'A string (max 14 chars)',
+      gen: function (input) {
+        var s = String(input).replace(/\s+/g, '');
+        if (!s.length) throw new Error('Type a string like AAABBCAA');
+        if (s.length > 14) throw new Error('Use at most 14 characters');
+        var chars = s.split(''), frames = [], rows = [], code = ['from itertools import groupby', 'for key, group in groupby(' + "'" + s + "'" + '):', '    print(key, list(group))'].join('\n');
+        frames.push(fr('<code>groupby</code> walks the string <b>once</b>, left to right. It starts a new group <b>every time the key changes</b> from the previous character.', [cp(code, 2), { type: 'array', label: 'input', values: chars }, { type: 'table', label: 'Groups produced', columns: ['key', 'group'], rows: [] }]));
+        var i = 0, gi = 0, colors = ['ok', 'win', 'sel', 'cur'];
+        while (i < chars.length) {
+          var j = i;
+          while (j < chars.length && chars[j] === chars[i]) j++;
+          var hl = {};
+          for (var k = 0; k < i; k++) hl[k] = 'done';
+          for (k = i; k < j; k++) hl[k] = colors[gi % colors.length];
+          var ptr = {}; ptr[i] = 'start'; if (j < chars.length) ptr[j] = 'key changes';
+          var seenBefore = rows.some(function (r) { return r[0] === chars[i]; });
+          rows.push([chars[i], '[' + chars.slice(i, j).map(function (c) { return "'" + c + "'"; }).join(', ') + ']']);
+          var rhl = {}; rhl[rows.length - 1] = seenBefore ? 'bad' : 'ok';
+          frames.push(fr('New key <b>' + esc(chars[i]) + '</b> at index ' + i + '. groupby keeps pulling while the key stays <b>' + esc(chars[i]) + '</b> → a run of length ' + (j - i) + '.' + (seenBefore ? ' <span class="c-r">Notice: key ' + esc(chars[i]) + ' appears again as a SEPARATE group</span> because the earlier run was not adjacent.' : ''), [cp(code, 3, 'ok'), { type: 'array', label: 'input', values: chars, hl: hl, ptr: ptr }, vp({ key: "'" + chars[i] + "'", 'run length': j - i, 'groups so far': rows.length }, 'key'), { type: 'table', label: 'Groups produced', columns: ['key', 'group'], rows: rows.map(function (r) { return r.slice(); }), hl: rhl }]));
+          i = j; gi++;
+        }
+        var sorted = chars.slice().sort(), totals = [];
+        var a = 0;
+        while (a < sorted.length) { var b = a; while (b < sorted.length && sorted[b] === sorted[a]) b++; totals.push([sorted[a], String(b - a)]); a = b; }
+        frames.push(fr('Done: ' + rows.length + ' groups. If you wanted <b>totals per letter</b>, sort first (<code>groupby(sorted(s))</code>) — then equal keys become neighbours. Or skip groupby and use <code>Counter(s)</code>.', [{ type: 'array', label: 'sorted(input)', values: sorted }, { type: 'table', label: 'groupby(sorted(s)) → totals', columns: ['key', 'count'], rows: totals }, { type: 'table', label: 'groupby(s) → runs (what RLE needs)', columns: ['key', 'group'], rows: rows }]));
+        frames.push(fr('<b>Shared-iterator trap:</b> each <code>group</code> reads from the same underlying iterator. <code>groups = list(groupby(s))</code> then <code>list(groups[0][1])</code> gives <b>[]</b> — the parent already moved past it. Always consume or <code>list()</code> each group inside the loop.', [cpm(['g = list(groupby(' + "'" + s + "'" + '))', 'print(list(g[0][1]))   # [] - already consumed!', '', 'safe = [(k, list(grp)) for k, grp in groupby(' + "'" + s + "'" + ')]'].join('\n'), { 2: 'bad', 4: 'ok' })]));
+        return frames;
+      }
+    }, {
+      title: 'combinations(): the index "odometer" that generates C(n, r) tuples in order',
+      input: 'ABCD 2',
+      inputLabel: 'Items then r, e.g. ABCD 2 (max 6 items)',
+      gen: function (input) {
+        var p = words(input);
+        if (p.length !== 2 || !/^\d+$/.test(p[1])) throw new Error('Format: letters then r, e.g. ABCD 2');
+        var items = p[0].split(''), r = parseInt(p[1], 10), n = items.length;
+        if (n > 6 || n < 1) throw new Error('Use 1 to 6 items');
+        if (r < 1 || r > n) throw new Error('r must be between 1 and the number of items');
+        var idx = [], frames = [], got = [];
+        for (var i = 0; i < r; i++) idx.push(i);
+        function fact(x) { var f = 1; for (var q = 2; q <= x; q++) f *= q; return f; }
+        var total = fact(n) / (fact(r) * fact(n - r));
+        var code = ['def combinations(pool, r):', '    n = len(pool)', '    idx = list(range(r))', '    yield tuple(pool[i] for i in idx)', '    while True:', '        for i in reversed(range(r)):', '            if idx[i] != i + n - r: break', '        else: return', '        idx[i] += 1', '        for j in range(i + 1, r): idx[j] = idx[j - 1] + 1', '        yield tuple(pool[i] for i in idx)'].join('\n');
+        function snap(narr, line, cls, bumped) {
+          var hl = {}, ptr = {};
+          idx.forEach(function (v, k) { hl[v] = k === bumped ? 'cur' : 'ok'; ptr[v] = 'i' + k; });
+          frames.push(fr(narr, [cp(code, line, cls), { type: 'array', label: 'pool', values: items, hl: hl, ptr: ptr }, vp({ idx: '[' + idx.join(', ') + ']', 'produced': got.length + ' / ' + total }, 'idx'), { type: 'table', label: 'Tuples yielded so far', columns: ['#', 'tuple'], rows: got.map(function (t, k) { return [k + 1, t]; }), hl: (function () { var h = {}; if (got.length) h[got.length - 1] = 'sel'; return h; })() }]));
+        }
+        got.push('(' + idx.map(function (v) { return items[v]; }).join(', ') + ')');
+        snap('Start with the smallest indices <code>[' + idx.join(', ') + ']</code> and yield the first tuple. Total to produce: C(' + n + ', ' + r + ') = <b>' + total + '</b>.', 4, 'sel', -1);
+        var guard = 0;
+        while (guard++ < 40) {
+          var i2 = -1;
+          for (var k = r - 1; k >= 0; k--) if (idx[k] !== k + n - r) { i2 = k; break; }
+          if (i2 < 0) {
+            frames.push(fr('Every index is at its maximum (idx[i] = i + n − r for all i) → <code>return</code> → StopIteration. Exactly <b>' + got.length + '</b> tuples, in lexicographic order, each produced lazily with O(r) work.', [cp(code, 8, 'sel'), vp({ idx: '[' + idx.join(', ') + ']', produced: got.length + ' / ' + total }, 'produced', 'sel'), { type: 'table', label: 'All tuples', columns: ['#', 'tuple'], rows: got.map(function (t, q) { return [q + 1, t]; }) }]));
+            break;
+          }
+          idx[i2]++;
+          for (var j = i2 + 1; j < r; j++) idx[j] = idx[j - 1] + 1;
+          got.push('(' + idx.map(function (v) { return items[v]; }).join(', ') + ')');
+          snap('Rightmost index that can still move is <b>i' + i2 + '</b>: bump it, then reset everything to its right to consecutive values. Like an odometer whose digits must stay strictly increasing. Yield <b>' + got[got.length - 1] + '</b>.', 9, 'cur', i2);
+        }
+        return frames;
+      }
+    }],
+    examples: [
+      { title: 'product() replaces nested loops (grid search)', html: `<p>Three nested loops over hyper-parameters become one flat loop. With <code>product(*lists)</code> you can even handle a variable number of dimensions — impossible with hard-coded nested loops.</p>${H.table(['lr', 'batch', 'layers'], [['0.1', '32', '2'], ['0.1', '32', '3'], ['…', '…', '…'], ['0.01', '64', '3']])}`, code: { lang: 'python', run: true, code: `from itertools import product
+
+grid = {'lr': [0.1, 0.01], 'batch': [32, 64], 'layers': [2, 3]}
+for values in product(*grid.values()):
+    config = dict(zip(grid, values))
+    print(config)
+print(len(list(product(*grid.values()))), 'configs')   # 2 * 2 * 2 = 8` } },
+      { title: 'Predict the output: groupby without sorting', html: `<p>Students expect <code>{'a': 3, 'b': 2}</code>, but groupby only merges neighbours, and a dict comprehension overwrites the first 'a' group with the second.</p>${H.arr(['a', 'a', 'b', 'b', 'a'], { hl: { 0: 'g', 1: 'g', 2: 'b', 3: 'b', 4: 'y' } })}<p>Output: <code>{'a': 1, 'b': 2}</code> — the last 'a' run (length 1) wins.</p>`, code: { lang: 'python', run: true, code: `from itertools import groupby
+s = 'aabba'
+print({k: len(list(g)) for k, g in groupby(s)})          # {'a': 1, 'b': 2}
+print({k: len(list(g)) for k, g in groupby(sorted(s))})  # {'a': 3, 'b': 2}` } },
+      { title: 'Two-sum style: combinations vs a hash map', html: `<p><code>combinations(nums, 2)</code> is a clean brute force — O(n²) pairs. Great for small n or for quickly writing a reference solution to test your O(n) answer against. Know both, and say which one you would ship.</p>`, code: { lang: 'python', run: true, code: `from itertools import combinations
+
+nums, target = [2, 7, 11, 15, 3, 6], 9
+pairs = [(a, b) for a, b in combinations(nums, 2) if a + b == target]
+print(pairs)                         # [(2, 7), (3, 6)]
+
+seen, fast = set(), []
+for x in nums:                       # O(n) version
+    if target - x in seen:
+        fast.append((target - x, x))
+    seen.add(x)
+print(fast)` } },
+      { title: 'Longest streak with groupby', html: `<p>"Longest run of consecutive wins" or "longest streak of days with commits" is groupby + max. <code>sum(1 for _ in g)</code> counts a group without building a list.</p>${H.arr(['W', 'W', 'L', 'W', 'W', 'W', 'L'], { hl: { 3: 'g', 4: 'g', 5: 'g' } })}`, code: { lang: 'python', run: true, code: `from itertools import groupby
+
+games = 'WWLWWWL'
+best = max((sum(1 for _ in g) for k, g in groupby(games) if k == 'W'), default=0)
+print('longest win streak:', best)        # 3` } },
+      { title: 'tee(): two passes over one iterator (and its memory cost)', html: `<p><code>tee</code> gives independent iterators over one source by buffering. If one copy runs far ahead of the other, the buffer holds everything in between — sometimes it is simpler to just use <code>list()</code>. Never touch the original iterator after teeing it.</p>`, code: { lang: 'python', run: true, code: `from itertools import tee, pairwise
+
+def gen():
+    yield from [3, 1, 4, 1, 5]
+
+a, b = tee(gen())
+print(max(a), min(b))          # 5 1  (b was buffered while max consumed a)
+print(list(pairwise(gen())))   # pairwise uses the same trick internally` } }
+    ],
+    deepDive: `<p>🟣 <b>Why itertools is fast.</b> Every tool is a C type implementing <code>tp_iternext</code> directly, so there is no Python frame per item. <code>sum(islice(...))</code>, <code>chain.from_iterable</code> or <code>accumulate</code> can be several times faster than the equivalent generator function. Combining <code>map</code>/<code>starmap</code> with built-in C functions (<code>operator.mul</code>, <code>str.upper</code>) keeps the whole loop in C.</p>
+<p><b>Semantics worth knowing:</b> <code>islice</code> on an iterator <i>consumes</i> the skipped items (it cannot jump). Negative indices are not allowed because the length is unknown. <code>zip</code> stops at the shortest input and has <code>strict=True</code> (3.10+) to raise on length mismatch; <code>zip_longest</code> pads. <code>accumulate</code> accepts any binary function and an <code>initial</code> value (3.8+). <code>batched</code> got <code>strict=True</code> in 3.13 to raise if the last batch is short. <code>groupby</code> calls <code>key</code> once per element and compares with <code>==</code>.</p>
+<p><b>Combinatorial explosion.</b> permutations of 12 items = 479,001,600; product of 20 binary flags = 1,048,576; combinations(50, 6) = 15,890,700. Lazy generation means you can iterate without storing them, but the <b>time</b> is still exponential. Interview signal: n ≤ 10–12 → permutations/backtracking OK; n ≤ 20 → subsets (2<sup>20</sup>) OK; bigger → you need DP, greedy, or maths, not itertools.</p>
+<p><b>Recipes and beyond.</b> The docs have an official "Itertools Recipes" section (<code>take</code>, <code>nth</code>, <code>sliding_window</code>, <code>roundrobin</code>, <code>unique_everseen</code>, <code>partition</code>, <code>powerset</code>…). Many recipes became built-ins over time (<code>pairwise</code> in 3.10, <code>batched</code> in 3.12). The third-party <code>more-itertools</code> package ships all recipes plus <code>chunked</code>, <code>peekable</code>, <code>windowed</code>, <code>bucket</code>, and is a common dependency in production code.</p>`,
+    aiEra: `<p>🤖 <b>What AI changes:</b> assistants know every itertools function and will happily produce "clever" one-liners chaining six of them. Readability is now the bottleneck: you must judge whether <code>chain.from_iterable(starmap(...))</code> is clearer than a 4-line loop for your team.</p>
+<p><b>Use AI as a partner:</b> <code>"Rewrite this nested loop with itertools and explain the time complexity"</code>; <code>"Is there an itertools recipe for this?"</code>; <code>"Generate property-based tests (hypothesis) comparing my groupby-based function with a naive loop"</code>.</p>
+<p><b>Where AI goes wrong:</b> uses <code>groupby</code> on unsorted data expecting totals, stores groupby groups for later (they become empty), suggests <code>batched</code>/<code>pairwise</code> in environments stuck on old Python versions, and proposes <code>permutations</code> brute force for n = 15 (1.3 trillion tuples).</p>
+<p><b>What you must own:</b> which tool fits which phrase in a question, the exact counting formulas for combinatoric iterators, the groupby adjacency rule, and when exponential enumeration is acceptable.</p>`,
+    problems: [{
+      title: 'Run-Length Encode and Decode', level: 'Easy', tags: ['groupby', 'chain', 'repeat', 'strings'], companies: ['Amazon', 'Microsoft', 'Goldman Sachs'],
+      statement: `<p>Implement <code>encode(s)</code> that compresses runs of the same character as <i>char + count</i>: <code>"aaabccdddd"</code> → <code>"a3b1c2d4"</code>, and <code>decode(t)</code> that reverses it (counts may have several digits, e.g. <code>"x12"</code>). Use itertools.</p>`,
+      constraints: `0 ≤ len(s) ≤ 10<sup>6</sup>; s has no digits; counts in t fit in an int.`,
+      example: `<p>${H.arr(['a', 'a', 'a', 'b', 'c', 'c', 'd', 'd', 'd', 'd'], { hl: { 0: 'g', 1: 'g', 2: 'g', 3: 'b', 4: 'y', 5: 'y', 6: 'p', 7: 'p', 8: 'p', 9: 'p' } })} runs a×3, b×1, c×2, d×4 → <code>"a3b1c2d4"</code>. Decoding <code>"x12y1"</code> → 12 x's then one y.</p>`,
+      brute: { why: `<p>Manual index juggling with a while loop and string concatenation <code>out += ch + str(cnt)</code> works but is bug-prone (forgetting the final run is the classic bug), and repeated <code>+=</code> on strings can be O(n²) in non-CPython implementations.</p>`, code: `def encode_brute(s):
+    if not s:
+        return ''
+    out = ''
+    cnt = 1
+    for i in range(1, len(s)):
+        if s[i] == s[i - 1]:
+            cnt += 1
+        else:
+            out += s[i - 1] + str(cnt)
+            cnt = 1
+    out += s[-1] + str(cnt)          # easy to forget the last run!
+    return out
+
+print(encode_brute('aaabccdddd'))` },
+      mcq: { q: 'Which tool finds "runs of the same character" in one lazy pass?', options: ['groupby(s)', 'Counter(s)', 'combinations(s, 2)', 'accumulate(s)'], answer: 0, explain: 'groupby groups CONSECUTIVE equal items — exactly a run. Counter would merge all a\'s anywhere in the string, which breaks RLE.' },
+      hints: [`<p>Hint 1: <code>groupby(s)</code> yields <code>(char, run_iterator)</code> for each run; the run length is <code>sum(1 for _ in run)</code>.</p>`, `<p>Hint 2: Build pieces in a generator and <code>''.join(...)</code> them — O(n). For decoding, a regex <code>([^0-9])([0-9]+)</code> splits t into (char, count) pairs; or use groupby with <code>key=str.isdigit</code> to separate letters from digit runs.</p>`, `<p>Hint 3: Decode = <code>''.join(ch * int(n) for ch, n in pairs)</code> or <code>chain.from_iterable(repeat(ch, int(n)) …)</code>. Edge cases: empty string, single char, multi-digit counts like 12.</p>`],
+      solution: {
+        approach: `<p><b>Encode:</b> groupby gives each run; emit char + length. <b>Decode:</b> groupby with <code>key=str.isdigit</code> alternates letter-groups and digit-groups, so pairing them gives (char, count). Both are single O(n) passes.</p>`,
+        code: { lang: 'python', run: true, code: `from itertools import groupby, chain, repeat
+
+def encode(s):
+    return ''.join(f'{ch}{sum(1 for _ in run)}' for ch, run in groupby(s))
+
+def decode(t):
+    # Split into alternating non-digit / digit chunks: 'x12y1' -> 'x','12','y','1'
+    chunks = [''.join(g) for _, g in groupby(t, key=str.isdigit)]
+    pairs = zip(chunks[0::2], chunks[1::2])            # ('x','12'), ('y','1')
+    return ''.join(chain.from_iterable(repeat(ch, int(n)) for ch, n in pairs))
+
+for s in ['aaabccdddd', 'x' * 12 + 'y', 'a', '']:
+    e = encode(s)
+    print(repr(s), '->', repr(e), '->', decode(e) == s)` },
+        dry: { head: ['run from groupby', 'char', 'length', 'output so far'], rows: [["'aaa'", 'a', '3', 'a3'], ["'b'", 'b', '1', 'a3b1'], ["'cc'", 'c', '2', 'a3b1c2'], ["'dddd'", 'd', '4', 'a3b1c2d4']] },
+        complexity: `<p>Encode and decode are O(n) time; output size O(n). groupby uses O(1) extra memory per run.</p>`,
+        followUps: ['Only compress runs of length ≥ 3 (LeetCode 443 "String Compression" in place).', 'Encode a huge stream lazily: yield pieces instead of joining.', 'Decode "3[a2[c]]" nested encoding (LeetCode 394) — what structure replaces groupby?']
+      }
+    }]
+  });
+
+  /* ================= TOPIC 6: Context managers ================= */
+  topics.push({
+    title: 'Context Managers: with, __enter__/__exit__ and contextlib',
+    analogy: `<p>A <b>hotel room key card</b>: at check-in (<code>__enter__</code>) you get the room set up and a key; you do whatever you like inside (the <code>with</code> body); at check-out (<code>__exit__</code>) the hotel cleans up — <b>even if</b> you leave in a hurry because the fire alarm rang (an exception). You never have to remember to clean the room yourself; the check-out step is guaranteed.</p>`,
+    explain: `<p>🟢 <b>The plain idea.</b> Many things must be <b>undone</b> after use: close a file, release a lock, commit or roll back a transaction, restore a setting, stop a timer. If an exception happens in the middle, people forget the undo step. The <code>with</code> statement makes the undo <b>automatic and guaranteed</b>:</p>
+<pre>with open('notes.txt', 'w') as f:   # setup
+    f.write('hello')                # your code
+# here the file is closed — even if write() raised</pre>
+<p>🔵 <b>The protocol.</b> Any object with two methods is a <b>context manager</b>:</p>
+<ul>
+<li><code>__enter__(self)</code> — runs at the start. Its <b>return value</b> is what <code>as name</code> binds (often <code>self</code>, but not always).</li>
+<li><code>__exit__(self, exc_type, exc, tb)</code> — always runs at the end. If the body finished normally, all three arguments are <code>None</code>. If it raised, you get the exception's type, object and traceback. <b>Return a truthy value to swallow the exception</b>; return <code>None</code>/<code>False</code> to let it continue.</li>
+</ul>
+<p>Python runs <code>with EXPR as x: BODY</code> roughly like this:</p>
+<pre>mgr = EXPR
+x = mgr.__enter__()
+try:
+    BODY
+except BaseException as e:
+    if not mgr.__exit__(type(e), e, e.__traceback__):
+        raise                       # not suppressed → keep propagating
+else:
+    mgr.__exit__(None, None, None)</pre>
+<p>Notice: if <code>__enter__</code> itself fails, <code>__exit__</code> is <b>not</b> called (nothing was set up yet).</p>
+<p><b>The easy way: <code>@contextlib.contextmanager</code>.</b> Write a generator with exactly <b>one</b> <code>yield</code>: code before the yield is <code>__enter__</code>, the yielded value is bound by <code>as</code>, code after the yield is <code>__exit__</code>. Wrap the yield in <code>try/finally</code> so cleanup runs on errors (an exception in the body is re-raised <i>at the yield</i>).</p>
+<pre>from contextlib import contextmanager
+import time
+
+@contextmanager
+def timer(label):
+    start = time.perf_counter()        # __enter__
+    try:
+        yield                          # the with-body runs here
+    finally:
+        print(label, time.perf_counter() - start)   # __exit__</pre>
+${H.table(['contextlib tool', 'Use it for'], [['<code>suppress(KeyError, …)</code>', 'ignore specific exceptions in a block'], ['<code>closing(obj)</code>', 'call <code>obj.close()</code> at the end (objects with close() but no with-support, generators)'], ['<code>redirect_stdout(buf)</code>', 'capture prints into a StringIO'], ['<code>nullcontext(x)</code>', '"optional" context manager that does nothing'], ['<code>ExitStack()</code>', 'enter a <b>dynamic number</b> of managers; register callbacks; unwind LIFO'], ['<code>chdir(path)</code> (3.11+)', 'temporarily change the working directory'], ['<code>ContextDecorator</code>', 'make a manager usable as a decorator too']])}
+<p><b>Several at once:</b> <code>with open(a) as src, open(b, 'w') as dst:</code> — entered left to right, exited right to left. Since 3.10 you can wrap them in parentheses across lines.</p>`,
+    clues: [
+      '"make sure X is always closed/released/restored, even on error" → context manager (<code>with</code>)',
+      '"acquire a lock", "transaction: commit or roll back", "temporary setting/env var/cwd" → <code>__enter__</code>/<code>__exit__</code> or <code>@contextmanager</code> with try/finally',
+      '"measure how long this block takes" → timer context manager',
+      '"ignore FileNotFoundError when deleting" → <code>contextlib.suppress</code>',
+      '"open an unknown number of files/connections" → <code>ExitStack</code>',
+      '"mock/patch something only inside a test" → <code>unittest.mock.patch</code> is a context manager (and decorator)',
+      '"what happens if __exit__ returns True?" → the exception is swallowed'
+    ],
+    code: [{ lang: 'python', run: true, title: 'Class-based context manager: see every call', code: `class Resource:
+    def __init__(self, name):
+        self.name = name
+
+    def __enter__(self):
+        print(f'enter {self.name}')
+        return self                      # bound to the 'as' variable
+
+    def __exit__(self, exc_type, exc, tb):
+        print(f'exit  {self.name}: exc_type={exc_type.__name__ if exc_type else None}')
+        return exc_type is KeyError      # swallow KeyError only
+
+with Resource('A') as r:
+    print('  body uses', r.name)
+
+with Resource('B'):
+    {}['missing']                        # KeyError -> suppressed by __exit__
+print('after B: still running')
+
+try:
+    with Resource('C'):
+        1 / 0                            # ZeroDivisionError -> NOT suppressed
+except ZeroDivisionError:
+    print('caught ZeroDivisionError outside')` }, { lang: 'python', run: true, title: '@contextmanager, suppress, redirect_stdout, ExitStack', code: `import io, time
+from contextlib import contextmanager, suppress, redirect_stdout, ExitStack
+
+@contextmanager
+def timer(label):
+    start = time.perf_counter()
+    try:
+        yield start                      # value for 'as'
+    finally:
+        took = time.perf_counter() - start
+        print(f'{label} took {took * 1000:.2f} ms')
+
+with timer('sum'):
+    total = sum(range(100_000))
+
+with suppress(KeyError):
+    {}['x']                              # silently ignored
+print('suppress OK')
+
+buf = io.StringIO()
+with redirect_stdout(buf):
+    print('captured!')
+print('buffer has:', buf.getvalue().strip())
+
+@contextmanager
+def tag(name):
+    print(f'<{name}>')
+    try:
+        yield
+    finally:
+        print(f'</{name}>')
+
+with ExitStack() as stack:               # dynamic number of managers
+    for name in ['html', 'body', 'p']:
+        stack.enter_context(tag(name))
+    print('   hello')                    # closes p, body, html (LIFO)` }],
+    codeTitle: ['__enter__ / __exit__ in action', 'contextlib toolbox'],
+    viz: [{
+      title: 'with-statement flow: enter → body → exit (normal, error, suppressed)',
+      input: 'error',
+      inputLabel: 'Scenario: ok | error | suppress',
+      gen: function (input) {
+        var mode = String(input).trim().toLowerCase();
+        if (['ok', 'error', 'suppress'].indexOf(mode) < 0) throw new Error('Type one of: ok, error, suppress');
+        var code = ['class Guard:', '    def __enter__(self):', "        print('setup')", '        return self', '    def __exit__(self, et, e, tb):', "        print('cleanup')", '        return ' + (mode === 'suppress' ? 'True' : 'False') + '   # suppress?', '', 'with Guard() as g:', "    print('working')", '    ' + (mode === 'ok' ? "print('done')" : "raise ValueError('bad')"), "print('after with')"].join('\n');
+        var nodes = [{ id: 'E', label: 'Guard()', x: 8, y: 30, shape: 'box' }, { id: 'N', label: '__enter__', x: 28, y: 30, shape: 'box' }, { id: 'B', label: 'body', x: 48, y: 30, shape: 'box' }, { id: 'X', label: '__exit__', x: 68, y: 30, shape: 'box' }, { id: 'A', label: 'after with', x: 90, y: 12, shape: 'box' }, { id: 'P', label: 'exception propagates', x: 90, y: 50, shape: 'box', w: 22 }];
+        var edges = [['E', 'N'], ['N', 'B', 'as g'], ['B', 'X'], ['X', 'A'], ['X', 'P']];
+        function g(hl, ehl, tags) { return { type: 'graph', label: 'Control flow', directed: true, height: 62, nodes: nodes, edges: edges, hl: hl || {}, ehl: ehl || {}, tags: tags || {} }; }
+        var out = [], frames = [];
+        frames.push(fr('<code>with Guard() as g:</code> — first Python evaluates the expression <code>Guard()</code>, creating the manager object.', [g({ E: 'cur' }), cp(code, 9), vp({ mgr: 'Guard object' }), outBox(out)]));
+        out.push('setup');
+        frames.push(fr('Python calls <code>mgr.__enter__()</code>. It does the setup work and <b>returns self</b>, which is bound to <code>g</code>. From this moment, <code>__exit__</code> is <b>guaranteed</b> to run.', [g({ N: 'cur' }, { 'E-N': 'ok' }), cpm(code, { 2: 'cur', 3: 'cur', 4: 'ok' }), vp({ mgr: 'Guard object', g: 'same Guard object' }, 'g'), outBox(out)]));
+        out.push('working');
+        frames.push(fr('The body runs.', [g({ B: 'cur' }, { 'N-B': 'ok' }), cp(code, 10), vp({ g: 'Guard object' }), outBox(out)]));
+        if (mode === 'ok') {
+          out.push('done');
+          frames.push(fr('The body finishes normally.', [g({ B: 'ok' }), cp(code, 11, 'ok'), vp({ g: 'Guard object' }), outBox(out)]));
+          out.push('cleanup');
+          frames.push(fr('Python calls <code>__exit__(None, None, None)</code> — all three are None because there was no exception. Cleanup runs. The return value is ignored in this case.', [g({ X: 'cur' }, { 'B-X': 'ok' }), cpm(code, { 5: 'cur', 6: 'cur' }), vp({ et: 'None', e: 'None', tb: 'None' }, 'et'), outBox(out)]));
+          out.push('after with');
+          frames.push(fr('Execution continues after the with block. Normal path complete: setup → body → cleanup.', [g({ A: 'sel' }, { 'X-A': 'ok' }), cp(code, 12, 'sel'), outBox(out)]));
+        } else {
+          frames.push(fr('<code>raise ValueError(\'bad\')</code> — the body is <b>abandoned</b> mid-way. Before the exception can leave the with block, Python must call <code>__exit__</code>.', [g({ B: 'bad' }), cp(code, 11, 'bad'), vp({ exception: "ValueError('bad')" }, 'exception', 'bad'), outBox(out)]));
+          out.push('cleanup');
+          frames.push(fr('Python calls <code>__exit__(ValueError, ValueError(\'bad\'), &lt;traceback&gt;)</code>. Cleanup <b>still runs</b> — this is the whole point of with.', [g({ X: 'cur' }, { 'B-X': 'bad' }), cpm(code, { 5: 'cur', 6: 'cur' }), vp({ et: 'ValueError', e: "ValueError('bad')", tb: '&lt;traceback&gt;' }, 'et,e', 'bad'), outBox(out)]));
+          if (mode === 'suppress') {
+            frames.push(fr('<code>__exit__</code> returns <b>True</b> → Python treats the exception as <b>handled</b> and swallows it. (Use this power rarely: hiding errors is dangerous. <code>contextlib.suppress</code> does exactly this for listed types.)', [g({ X: 'ok' }), cp(code, 7, 'sel'), vp({ 'return value': 'True', exception: 'swallowed' }, 'return value', 'sel'), outBox(out)]));
+            out.push('after with');
+            frames.push(fr('Execution continues after the with block as if nothing happened. Note: the rest of the body (anything after the raise) was still skipped.', [g({ A: 'sel' }, { 'X-A': 'ok' }), cp(code, 12, 'sel'), outBox(out)]));
+          } else {
+            frames.push(fr('<code>__exit__</code> returns <b>False</b> (None would do the same) → the exception is <b>not</b> suppressed.', [g({ X: 'cur' }), cp(code, 7, 'bad'), vp({ 'return value': 'False' }, 'return value', 'bad'), outBox(out)]));
+            frames.push(fr('The original ValueError propagates out of the with statement. <code>print(\'after with\')</code> never runs; an outer <code>try/except</code> (or the top level) handles it. Cleanup already happened.', [g({ P: 'bad' }, { 'X-P': 'bad' }), cp(code, 12, 'done'), vp({ exception: "ValueError('bad') propagating" }, 'exception', 'bad'), outBox(out.concat(['Traceback ... ValueError: bad']))]));
+          }
+        }
+        return frames;
+      }
+    }, {
+      title: 'ExitStack: dynamic resources, LIFO cleanup, partial failure',
+      input: 'db cache !file log',
+      inputLabel: 'Resource names (prefix ! = its __enter__ fails), max 6',
+      gen: function (input) {
+        var names = words(input);
+        if (!names.length) throw new Error('Type resource names, e.g. db cache file');
+        if (names.length > 6) throw new Error('Use at most 6 names');
+        var code = ['with ExitStack() as stack:', '    for name in names:', '        stack.enter_context(open_resource(name))', '    work()', '# on leaving: callbacks run in REVERSE order'].join('\n');
+        var st = [], out = [], frames = [], failed = null;
+        frames.push(fr('ExitStack is a <b>stack of exit callbacks</b>. Each successful <code>enter_context</code> pushes that manager\'s <code>__exit__</code>. Perfect when you do not know how many resources you will open.', [cp(code, 1), { type: 'stack', label: 'ExitStack callbacks (top = runs first)', items: [] }, outBox(out)]));
+        for (var i = 0; i < names.length; i++) {
+          var nm = names[i].replace(/^!/, '');
+          if (names[i].charAt(0) === '!') {
+            failed = nm;
+            out.push('open ' + nm + ' FAILED');
+            frames.push(fr('Entering <b>' + esc(nm) + '</b> raises an exception inside its <code>__enter__</code>. It is <b>not</b> pushed (it never opened), so its exit will not run. Now the stack must unwind everything opened so far.', [cp(code, 3, 'bad'), { type: 'stack', label: 'ExitStack callbacks (top = runs first)', items: st.slice(), hl: {} }, vp({ entering: nm, error: 'OSError' }, 'error', 'bad'), outBox(out)]));
+            break;
+          }
+          st.push('exit ' + nm);
+          out.push('open ' + nm);
+          var h = {}; h[st.length - 1] = 'ok';
+          frames.push(fr('<code>enter_context</code> calls <b>' + esc(nm) + '</b>.__enter__() → success → push its exit onto the stack.', [cp(code, 3, 'ok'), { type: 'stack', label: 'ExitStack callbacks (top = runs first)', items: st.slice(), hl: h }, outBox(out)]));
+        }
+        if (!failed) {
+          out.push('work with ' + st.length + ' resources');
+          frames.push(fr('All resources are open; the body does its work.', [cp(code, 4), { type: 'stack', label: 'ExitStack callbacks (top = runs first)', items: st.slice() }, outBox(out)]));
+        }
+        while (st.length) {
+          var top = st.pop();
+          out.push(top.replace('exit', 'close'));
+          frames.push(fr('Leaving the with block: pop and run <b>' + esc(top) + '</b>. Cleanup is <b>LIFO</b> — the last thing opened is the first thing closed, just like nested with blocks.' + (failed ? ' (We are unwinding because ' + esc(failed) + ' failed.)' : ''), [cp(code, 5, failed ? 'bad' : 'cur'), { type: 'stack', label: 'ExitStack callbacks (top = runs first)', items: st.slice() }, vp({ running: top }, 'running', 'cur'), outBox(out)]));
+        }
+        frames.push(fr(failed ? 'Every resource that <b>did</b> open got closed, in reverse order, and then the error from <b>' + esc(failed) + '</b> propagates. No leaks — even with partial failure. Doing this by hand needs one nested try/finally per resource.' : 'All callbacks ran in reverse order. Equivalent to ' + names.length + ' nested with statements, but the number of resources was decided at run time.', [{ type: 'stack', label: 'ExitStack callbacks', items: [] }, outBox(out)]));
+        return frames;
+      }
+    }],
+    examples: [
+      { title: 'Predict the output: return inside with, and exit order', html: `<p><code>__exit__</code> runs even when the body <code>return</code>s (or <code>break</code>s/<code>continue</code>s). Multiple managers in one with-statement exit in <b>reverse</b> order.</p>${H.table(['Printed', 'Why'], [['enter 1, enter 2', 'left to right'], ['body', ''], ['exit 2, exit 1', 'right to left, even though the body returned'], ['result: 42', 'return value preserved']])}`, code: { lang: 'python', run: true, code: `from contextlib import contextmanager
+
+@contextmanager
+def cm(n):
+    print('enter', n)
+    try:
+        yield
+    finally:
+        print('exit', n)
+
+def f():
+    with cm(1), cm(2):
+        print('body')
+        return 42
+
+print('result:', f())` } },
+      { title: 'The classic @contextmanager bug: no try/finally', html: `<p>Without <code>try/finally</code>, an exception in the body is re-raised <b>at the yield</b> and the code after the yield never runs — your "cleanup" silently does not happen. Compare the two versions.</p>${H.table(['Version', 'Cleanup on error?'], [['<code>yield</code> then cleanup', H.c('r', 'NO')], ['<code>try: yield finally: cleanup</code>', H.c('g', 'YES')]])}`, code: { lang: 'python', run: true, code: `from contextlib import contextmanager
+
+@contextmanager
+def leaky():
+    print('acquire')
+    yield
+    print('release')          # skipped when the body raises!
+
+@contextmanager
+def safe():
+    print('acquire')
+    try:
+        yield
+    finally:
+        print('release')      # always runs
+
+for cm in (leaky, safe):
+    try:
+        with cm():
+            raise RuntimeError('boom')
+    except RuntimeError:
+        print(cm.__name__, 'handled error')` } },
+      { title: 'Transactions: commit on success, roll back on error (sqlite3)', html: `<p>A <code>sqlite3</code> connection is a context manager for <b>transactions</b>: it commits if the block succeeds and rolls back if it raises. (Careful: it does NOT close the connection — use <code>contextlib.closing</code> for that.)</p>`, code: { lang: 'python', run: true, code: `import sqlite3
+from contextlib import closing
+
+with closing(sqlite3.connect(':memory:')) as conn:
+    conn.execute('CREATE TABLE acct(name TEXT, bal INT)')
+    with conn:                                    # transaction 1: commits
+        conn.execute("INSERT INTO acct VALUES ('asha', 100), ('ben', 0)")
+    try:
+        with conn:                                # transaction 2: rolls back
+            conn.execute("UPDATE acct SET bal = bal - 70 WHERE name = 'asha'")
+            raise ValueError('transfer failed half-way')
+    except ValueError as e:
+        print('error:', e)
+    print(conn.execute('SELECT * FROM acct').fetchall())   # asha still has 100` } },
+      { title: 'Locks: never forget to release', html: `<p><code>threading.Lock</code> is a context manager: <code>with lock:</code> acquires and always releases. Forgetting <code>release()</code> after an exception is a classic deadlock bug; the with form makes it impossible.</p>`, code: { lang: 'python', run: true, code: `import threading
+
+lock = threading.Lock()
+counter = 0
+
+def work():
+    global counter
+    for _ in range(10_000):
+        with lock:              # acquire ... release, even on errors
+            counter += 1
+
+threads = [threading.Thread(target=work) for _ in range(4)]
+for t in threads: t.start()
+for t in threads: t.join()
+print(counter, 'locked now?', lock.locked())   # 40000 False` } },
+      { title: 'One object, two jobs: ContextDecorator', html: `<p>Inherit from <code>ContextDecorator</code> (or use <code>@contextmanager</code>, whose result is also a ContextDecorator) and the same manager works as <code>@decorator</code> around a whole function. That is how <code>mock.patch</code> works both ways.</p>`, code: { lang: 'python', run: true, code: `from contextlib import ContextDecorator
+
+class logged(ContextDecorator):
+    def __enter__(self):
+        print('start')
+        return self
+    def __exit__(self, *exc):
+        print('end')
+        return False
+
+@logged()
+def job():
+    print('  job running')
+
+job()
+with logged():
+    print('  block running')` } }
+    ],
+    deepDive: `<p>🟣 <b>Exact semantics.</b> Python looks up <code>__enter__</code> and <code>__exit__</code> on the <b>type</b>, not the instance (setting them on an instance does nothing). The lookup happens <b>before</b> <code>__enter__</code> is called, so a missing <code>__exit__</code> fails early with <code>TypeError: '…' object does not support the context manager protocol</code>. <code>__exit__</code> receives <code>BaseException</code>s too, including <code>KeyboardInterrupt</code> and <code>SystemExit</code> — be careful when returning True. If <code>__exit__</code> itself raises, that new exception replaces the original (which is attached as <code>__context__</code>).</p>
+<p><b>How <code>@contextmanager</code> works.</b> It wraps your generator in a <code>_GeneratorContextManager</code>: <code>__enter__</code> calls <code>next(gen)</code>; normal <code>__exit__</code> calls <code>next(gen)</code> again and expects <code>StopIteration</code> (a second yield raises <code>RuntimeError: generator didn't stop</code>); exceptional <code>__exit__</code> calls <code>gen.throw(exc)</code> — that is why the error appears <b>at the yield</b>. If your generator catches it and does not re-raise, the exception is suppressed.</p>
+<p><b>Async variants.</b> <code>async with</code> uses <code>__aenter__</code>/<code>__aexit__</code> (coroutines). <code>contextlib.asynccontextmanager</code>, <code>AsyncExitStack</code>, and <code>aclosing</code> are the async twins. Connection pools, HTTP clients (<code>httpx.AsyncClient</code>), DB sessions and <code>asyncio.TaskGroup</code>/<code>asyncio.timeout()</code> are all async context managers.</p>
+<p><b>Production patterns.</b> (1) Prefer <code>with</code> over relying on <code>__del__</code>/garbage collection — PyPy and reference cycles make GC timing unpredictable. (2) <code>ExitStack.callback(fn, *args)</code> registers arbitrary cleanup; <code>stack.pop_all()</code> transfers ownership (build several resources, and only if all succeed hand them to the caller). (3) Re-entrancy: a <code>Lock</code> cannot be re-entered in the same thread (use <code>RLock</code>); many file-like managers are single-use. (4) Since 3.11, the <code>with</code> statement's setup is "zero-cost" for the no-exception path, so context managers are cheap.</p>`,
+    aiEra: `<p>🤖 <b>What AI changes:</b> AI agents increasingly run code that touches real resources — sandboxes, browser sessions, DB connections, GPU memory, MCP tool clients. Leaked resources in long-running agent loops are a top production failure, and context managers (sync and async) are the fix. Frameworks expose clients as <code>with</code>/<code>async with</code> objects for exactly this reason.</p>
+<p><b>Use AI as a partner:</b> <code>"Find every open()/connect()/acquire() in this repo that is not inside a with block"</code>; <code>"Convert this try/finally to a @contextmanager and write a test that the cleanup runs when the body raises"</code>.</p>
+<p><b>Where AI goes wrong:</b> generated <code>@contextmanager</code> code without <code>try/finally</code> (cleanup skipped on error), <code>__exit__</code> that returns True "to be safe" (swallowing every bug), using <code>with sqlite3.connect()</code> believing it closes the connection, and mixing sync <code>with</code> on async clients.</p>
+<p><b>What you must own:</b> the exact enter/exit/suppression rules, the generator mechanics behind <code>@contextmanager</code>, LIFO unwinding, and the design instinct to reach for a context manager whenever something must be undone.</p>`,
+    problems: [{
+      title: 'Temporarily Override a Setting, Always Restore It', level: 'Medium', tags: ['context manager', 'contextlib', 'testing'], companies: ['Stripe', 'Dropbox', 'Bloomberg'],
+      statement: `<p>Write a context manager <code>override(obj, **changes)</code> that sets the given attributes on <code>obj</code> for the duration of a <code>with</code> block and restores the original values afterwards — <b>even if the block raises</b>. If an attribute did not exist before, it must be <b>deleted</b> afterwards (not set to None). Nested overrides of the same attribute must restore correctly. Provide both a class-based and a <code>@contextmanager</code> version.</p>`,
+      constraints: `Any number of attributes. Must not swallow exceptions from the body. O(k) for k attributes.`,
+      example: `<p><code>cfg.debug = False</code>; inside <code>with override(cfg, debug=True, trace='x')</code>: debug is True and trace is 'x'. After the block: ${H.kv([['debug', 'False'], ['trace', '(deleted)']], { hl: { trace: 'y' } })} — also after an exception inside the block.</p>`,
+      brute: { why: `<p>Set the attributes, run the code, and set them back on the last line. When the code raises, the "set back" line never runs and the global setting stays corrupted for every later test/request. It also sets brand-new attributes to <code>None</code> instead of deleting them.</p>`, code: `class Config:
+    debug = False
+
+cfg = Config()
+
+def run_with_debug(fn):
+    old = cfg.debug
+    cfg.debug = True
+    fn()                 # if fn raises, the next line never runs!
+    cfg.debug = old
+
+run_with_debug(lambda: print('debug is', cfg.debug))
+print('restored:', cfg.debug)` },
+      mcq: { q: 'In the @contextmanager version, where must the restore code go?', options: ['In a finally block around the yield', 'Right after the yield, no try needed', 'Before the yield', 'In an except block that returns True'], answer: 0, explain: 'Exceptions from the body are thrown into the generator AT the yield. Only a finally around the yield guarantees the restore runs; an except that swallows would also hide the caller\'s error.' },
+      hints: [`<p>Hint 1: Before changing anything, save the old state. Use a sentinel object to remember "did not exist": <code>getattr(obj, name, MISSING)</code>.</p>`, `<p>Hint 2: Restore in reverse order inside <code>finally</code> (or <code>__exit__</code>): if the saved value is MISSING → <code>delattr</code>, else <code>setattr</code>. Return False/None from <code>__exit__</code> so errors propagate.</p>`, `<p>Hint 3: Nesting works automatically if each <code>with</code> saves its own snapshot on entry. Test: normal exit, exception exit, new attribute, nested override of the same attribute.</p>`],
+      solution: {
+        approach: `<p>Snapshot on enter (with a sentinel for "absent"), apply changes, and undo in <code>finally</code>/<code>__exit__</code>. The class version stores the snapshot on the instance; the generator version keeps it in a local variable. Neither suppresses exceptions. This is a mini version of <code>unittest.mock.patch.object</code>.</p>`,
+        code: { lang: 'python', run: true, code: `from contextlib import contextmanager
+
+_MISSING = object()
+
+class override:
+    def __init__(self, obj, **changes):
+        self.obj, self.changes = obj, changes
+
+    def __enter__(self):
+        self.saved = {k: getattr(self.obj, k, _MISSING) for k in self.changes}
+        for k, v in self.changes.items():
+            setattr(self.obj, k, v)
+        return self.obj
+
+    def __exit__(self, exc_type, exc, tb):
+        for k, old in reversed(list(self.saved.items())):
+            if old is _MISSING:
+                delattr(self.obj, k)
+            else:
+                setattr(self.obj, k, old)
+        return False                       # never swallow errors
+
+@contextmanager
+def override_gen(obj, **changes):
+    saved = {k: getattr(obj, k, _MISSING) for k in changes}
+    for k, v in changes.items():
+        setattr(obj, k, v)
+    try:
+        yield obj
+    finally:
+        for k, old in reversed(list(saved.items())):
+            if old is _MISSING:
+                delattr(obj, k)
+            else:
+                setattr(obj, k, old)
+
+class Config:
+    pass
+
+cfg = Config()
+cfg.debug = False
+for impl in (override, override_gen):
+    try:
+        with impl(cfg, debug=True, trace='x'):
+            with impl(cfg, debug='nested'):
+                print(impl.__name__, 'inner:', cfg.debug)
+            print(impl.__name__, 'outer:', cfg.debug, cfg.trace)
+            raise RuntimeError('boom')
+    except RuntimeError:
+        pass
+    print(impl.__name__, 'after:', cfg.debug, hasattr(cfg, 'trace'))` },
+        dry: { head: ['moment', 'cfg.debug', 'cfg.trace', 'saved snapshot'], rows: [['before', 'False', '(absent)', '—'], ['outer enter', 'True', "'x'", "{debug: False, trace: MISSING}"], ['inner enter', "'nested'", "'x'", "{debug: True}"], ['inner exit', 'True', "'x'", 'restored True'], ['raise → outer exit', 'False', '(deleted)', 'restored, error propagates']] },
+        complexity: `<p>O(k) time and space for k overridden attributes per with block.</p>`,
+        followUps: ['Support dictionary keys too (like mock.patch.dict).', 'Make it thread-safe — or explain why mutating a shared object is inherently unsafe across threads and what contextvars offers instead.', 'Make it usable as a decorator (ContextDecorator).']
+      }
+    }]
+  });
 registerModule({ id: 'py07', title: 'Iterators, Generators & Context Managers', intro: `<p>tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro</p>`, goals: ['aaaaaaaaaaaa','bbbbbbbbbbbbb','cccccccccccc'], prereqs: `aaaaaaaaaaaaaaaaaaaa`, hours: 10, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();

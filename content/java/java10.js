@@ -749,7 +749,7 @@ class TreeifyDemo {
           var h = 64 * i + 5;
           if (tree) {
             rbInsert(tree, h, function () {});
-            var ta = rbArr(tree, h);
+            var ta = rbArr(tree, h) || { arr: [h], hl: {}, tags: {} };
             frames.push({ narr: 'put(hash ' + h + '): bucket 5 is a tree bin → <code>putTreeVal</code> walks about log₂(' + tree.size + ') ≈ ' + Math.ceil(Math.log2(tree.size)) + ' levels instead of ' + tree.size + ' nodes.', parts: [{ type: 'tree', label: 'bucket 5 as a red-black tree (ordered by hash)', arr: ta.arr, hl: ta.hl, tags: ta.tags }, vars({ 'bucket 5 nodes': 'ok' })] });
             continue;
           }
@@ -764,7 +764,7 @@ class TreeifyDemo {
               tree = rbNew();
               var stepFrames = [];
               chain.forEach(function (k) { rbInsert(tree, k, function () {}); });
-              var a2 = rbArr(tree);
+              var a2 = rbArr(tree) || { arr: [tree.root.k], hl: {}, tags: {} };
               frames.push({ narr: 'Table length is ' + cap + ' (≥ 64) → <b>treeify</b>: the ' + chain.length + ' Nodes are replaced by TreeNodes and inserted into a red-black tree ordered by hash (Comparable keys break ties). They also keep a <code>next</code> link so iteration and untreeify are cheap. Height is now ' + rbHeight(tree.root) + ' instead of ' + chain.length + '.', parts: [{ type: 'tree', label: 'bucket 5 as a red-black tree', arr: a2.arr, hl: a2.hl, tags: a2.tags }, vars({ 'bucket kind': 'ok' })] });
               chain = [];
             }
@@ -929,6 +929,7 @@ class LRUCache<K, V> extends LinkedHashMap<K, V> {
             frames.push({ narr: 'After eviction: ' + order.join(' → ') + '. The cache never exceeds ' + cap + ' entries.', parts: parts() });
           }
         });
+        if (frames.length < 3) frames.push({ narr: 'Tip: every get or put touches one hash bucket and a few list pointers — O(1) no matter how big the cache is. Add more puts to see an eviction.', parts: parts() });
         frames.push({ narr: 'Done. Iterating this map prints keys from LRU to MRU: <b>[' + order.join(', ') + ']</b>. Hits ' + hits + ', misses ' + misses + '.', parts: parts() });
         return frames;
       }
@@ -1187,13 +1188,13 @@ class RedBlackTree {
         var t = rbNew(), frames = [], tooDeep = false;
         function snap(narr, focus) {
           var a = rbArr(t, focus);
-          if (!a) { tooDeep = true; return; }
+          if (!a) { frames.push({ narr: narr, parts: [note('This intermediate shape is more than 5 levels deep, too tall to draw here. The next fix-up step shortens it.', 'TreeMap')] }); return; }
           frames.push({ narr: narr, parts: [{ type: 'tree', label: 'TreeMap (red nodes highlighted red, amber = node being fixed)', arr: a.arr, hl: a.hl, tags: a.tags }, { type: 'vars', label: 'tree stats', vals: { size: t.size, height: rbHeight(t.root), 'black height': t.root ? rbBlackHeight(t.root) - 1 : 0, 'max allowed height 2·log₂(n+1)': (2 * Math.log2(t.size + 1)).toFixed(1) } }] });
         }
         frames.push({ narr: 'Empty TreeMap: <code>root = null</code>. We insert ' + keys.join(', ') + ' one by one. Watch for the two repair moves: <b>recolour</b> and <b>rotate</b>.', parts: [{ type: 'text', label: 'TreeMap', html: '<span class="c-m">(empty tree)</span>' }] });
         keys.forEach(function (k) { if (!tooDeep) rbInsert(t, k, snap); });
-        if (tooDeep) throw new Error('That sequence makes the tree too deep to draw; try fewer keys');
         var a = rbArr(t);
+        if (!a) throw new Error('The final tree is too deep to draw; try fewer keys');
         frames.push({ narr: 'All inserted. Check the rules: root is black ✔, no red node has a red child ✔, every root-to-null path has the same number of black nodes ✔ (black height ' + (rbBlackHeight(t.root) - 1) + '). Height ' + rbHeight(t.root) + ' for ' + t.size + ' keys.', parts: [{ type: 'tree', label: 'final red-black tree', arr: a.arr, hl: a.hl, tags: a.tags }] });
         if (q !== null) {
           var n = t.root, best = null, path = [];
@@ -1451,6 +1452,7 @@ class PQRecipes {
           }
           if (i === 0 && h.length > 1) frames.push({ narr: op + ' reached the root — it is the new minimum.', parts: parts(one(0, 'ok')) });
         });
+        if (frames.length < 3) frames.push({ narr: 'Tip: <code>peek()</code> just reads <code>queue[0]</code> in O(1); <code>poll()</code> on an empty queue returns null while <code>remove()</code> throws. Try offering a few numbers to watch sift-up.', parts: parts({}) });
         frames.push({ narr: 'Final array: [' + h.join(', ') + ']. Note it is <b>not sorted</b> — <code>System.out.println(pq)</code> prints this array order. Only repeated poll() gives sorted output.', parts: parts({}) });
         return frames;
       }
@@ -1850,6 +1852,7 @@ class EventBus<E> {
             frames.push({ narr: 'get(' + gi + ') = <b>' + arr[gi] + '</b>: one volatile read of <code>array</code> + an index — no lock, never blocked by writers.', parts: parts(one(gi, 'sel')) });
           } else throw new Error('Unknown op "' + o.join(' ') + '" — use add X, remove X, set i X, iter, next, get i');
         });
+        if (frames.length < 3) frames.push({ narr: 'Tip: reads (get, size, iteration) never copy and never lock; only add/set/remove pay the O(n) copy. Add a few writes to see new array versions appear.', parts: parts() });
         frames.push({ narr: 'Summary: ' + copies + ' write(s) allocated ' + copies + ' new arrays and copied ' + copied + ' element references in total. Reads cost nothing extra. That trade-off only pays when reads dominate.', parts: parts() });
         return frames;
       }

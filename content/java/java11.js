@@ -945,7 +945,7 @@ public class VolatileIsNotAtomic {
         Runnable job = () -> { for (int i = 0; i < 100_000; i++) count++; };  // LOAD, ADD, STORE
         Thread a = new Thread(job), b = new Thread(job);
         a.start(); b.start(); a.join(); b.join();
-        System.out.println(count);     // usually < 200000
+        System.out.println(count);     // often < 200000 on a multi-core machine; varies per run
     }
 }`],
     codeTitle: ['volatile stop flag (the right use)', 'volatile count++ (the wrong use)'],

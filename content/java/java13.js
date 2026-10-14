@@ -1955,4 +1955,276 @@ class PriceCache {
     }]
   });
 
+  /* ======================================================================
+     TOPIC 9 — Profiling & diagnostics: jcmd, jstack, jmap, jstat, JFR, async-profiler
+     ====================================================================== */
+  topics.push({
+    title: 'Profiling & Diagnostic Tools: jcmd, jstack, jmap, jstat, JFR/JMC, async-profiler',
+    analogy: `<p>A doctor does not guess — she picks the right instrument for the symptom. A <b>thermometer</b> for fever (jstat: quick GC numbers), a <b>snapshot X-ray</b> of where every bone is right now (jstack: what every thread is doing this instant), a full <b>MRI</b> of the body (jmap/heap dump: every object), and a <b>24-hour heart monitor</b> you wear while living normally (JFR: a low-overhead flight recorder that captures everything over time). The skill is knowing which instrument answers which question, and reading the result.</p>`,
+    explain: `<p>The JDK ships a full diagnostic toolbox. All of it works on a running process by PID, mostly with low overhead, and much of it is safe in production.</p>
+${H.table(['Tool', 'Answers', 'Example', 'Cost'], [
+  [C('jps') + ' / ' + C('jcmd -l'), 'Which Java processes are running?', C('jcmd -l'), 'none'],
+  ['<b>' + C('jcmd') + '</b>', 'The Swiss-army knife: threads, heap, GC, JFR, flags, NMT, system properties', C('jcmd <pid> help'), 'per command'],
+  [C('jstack') + ' / ' + C('jcmd Thread.print'), 'What is every thread doing <b>right now</b>? Deadlocks?', C('jstack -l <pid>'), 'brief pause (safepoint)'],
+  [C('jmap') + ' / ' + C('jcmd GC.heap_dump') + ', ' + C('GC.class_histogram'), 'What objects fill the heap?', C('jcmd <pid> GC.class_histogram'), 'histogram: short pause; dump: long pause + big file'],
+  [C('jstat'), 'Live GC numbers every N ms', C('jstat -gcutil <pid> 1000'), 'none'],
+  ['<b>JFR</b> (Java Flight Recorder) + <b>JMC</b>', 'CPU hot methods, allocation sites, locks, GC, I/O, exceptions — over time', C('jcmd <pid> JFR.start duration=60s filename=rec.jfr'), '~1–2% (default settings)'],
+  ['<b>async-profiler</b>', 'Flame graphs of CPU, allocation, lock and wall-clock time, incl. native/kernel frames', C('asprof -d 30 -e cpu -f cpu.html <pid>'), 'low'],
+  ['VisualVM / IntelliJ profiler', 'GUI for monitoring, sampling, heap dumps', '—', 'varies'],
+  ['Eclipse MAT', 'Heap dump analysis: leak suspects, dominator tree, paths to GC roots', 'open .hprof', 'offline'],
+  ['NMT', 'Native memory by category', C('jcmd <pid> VM.native_memory summary'), '5–10% when enabled']
+])}
+<h4>Reading a thread dump</h4>
+${P(`
+"http-nio-8080-exec-7" #41 daemon prio=5 os_prio=0 cpu=812.33ms elapsed=3600s tid=0x00007f.. nid=0x5ba0 waiting for monitor entry
+   java.lang.Thread.State: BLOCKED (on object monitor)
+        at com.shop.Inventory.reserve(Inventory.java:42)
+        - waiting to lock <0x00000006c0a1b2c8> (a com.shop.Inventory)
+        at com.shop.OrderService.place(OrderService.java:88)
+
+"http-nio-8080-exec-3" #37 ... nid=0x5b9c runnable
+   java.lang.Thread.State: RUNNABLE
+        at java.net.SocketInputStream.socketRead0(Native Method)     <- holding the lock while doing network I/O!
+        at com.shop.Inventory.callWarehouse(Inventory.java:77)
+        - locked <0x00000006c0a1b2c8> (a com.shop.Inventory)`)}
+${H.table(['State', 'Meaning', 'Smell when many threads are in it'], [
+  [C('RUNNABLE'), 'running on CPU or in native code / I/O', 'CPU-bound hot spot, or blocking I/O (JVM still says RUNNABLE)'],
+  [C('BLOCKED'), 'waiting to enter a ' + C('synchronized') + ' block', 'lock contention — find who holds that address'],
+  [C('WAITING'), C('wait()') + ', ' + C('park()') + ', ' + C('join()') + ' with no timeout', 'pool threads idle (normal) or stuck on a future that never completes'],
+  [C('TIMED_WAITING'), 'sleep / wait / park with timeout', 'usually idle or polling']
+])}
+<p><b>Rule:</b> one dump is a photo; take <b>3 dumps ~5 s apart</b>. Threads stuck on the same line in all three are the story.</p>
+<h4>High CPU: find the guilty thread in 4 steps</h4>
+<ol><li>${C('top -H -p <pid>')} → the busiest thread's id, e.g. <b>23456</b> (decimal).</li>
+<li>Convert to hex: ${C('printf "%x" 23456')} → <b>5ba0</b>.</li>
+<li>${C('jstack <pid> | grep -A 20 "nid=0x5ba0"')} → that thread's stack.</li>
+<li>If it is a GC or C2 compiler thread, it's GC/JIT pressure; otherwise it's your code — confirm with a JFR or async-profiler flame graph.</li></ol>
+<h4>JFR in one minute</h4>
+${P(`
+# Start at launch (continuous, keep last 6 h on disk, dump on exit)
+java -XX:StartFlightRecording=disk=true,maxage=6h,dumponexit=true,filename=/rec/app.jfr -jar app.jar
+# Or attach to a running JVM, then dump
+jcmd <pid> JFR.start name=incident settings=profile duration=120s filename=/tmp/incident.jfr
+jcmd <pid> JFR.dump name=incident
+# Inspect without a GUI
+jfr summary /tmp/incident.jfr
+jfr print --events jdk.ExecutionSample /tmp/incident.jfr | head
+jfr print --events jdk.GarbageCollection,jdk.ObjectAllocationSample /tmp/incident.jfr`)}`,
+    clues: [
+      '"Application is hung / requests stuck" → 3 thread dumps (jstack / jcmd Thread.print), look for BLOCKED and deadlocks',
+      '"CPU at 100% on one core" → top -H → hex tid → jstack nid, then flame graph',
+      '"Memory keeps growing" → jcmd GC.class_histogram over time, heap dump + MAT',
+      '"Profile in production with low overhead" → JFR (continuous), async-profiler',
+      '"Find who allocates the most" → JFR allocation samples / async-profiler -e alloc',
+      '"Lock contention" → JFR jdk.JavaMonitorEnter, async-profiler -e lock, BLOCKED threads in dumps'
+    ],
+    code: [`
+import java.lang.management.*;
+
+// Programmatic deadlock detection + a thread dump, e.g. for a health-check endpoint.
+class DeadlockWatchdog {
+    public static void main(String[] args) throws Exception {
+        Object a = new Object(), b = new Object();
+        Thread t1 = new Thread(() -> { synchronized (a) { pause(); synchronized (b) { } } }, "worker-1");
+        Thread t2 = new Thread(() -> { synchronized (b) { pause(); synchronized (a) { } } }, "worker-2");
+        t1.setDaemon(true); t2.setDaemon(true);
+        t1.start(); t2.start();
+        Thread.sleep(300);                                       // let them deadlock
+
+        ThreadMXBean mx = ManagementFactory.getThreadMXBean();
+        long[] ids = mx.findDeadlockedThreads();                // monitors AND j.u.c locks
+        if (ids == null) { System.out.println("no deadlock"); return; }
+        for (ThreadInfo info : mx.getThreadInfo(ids, true, true)) {
+            System.out.println(info.getThreadName() + " is " + info.getThreadState()
+                    + " waiting for " + info.getLockName() + " held by " + info.getLockOwnerName());
+        }
+    }
+    static void pause() { try { Thread.sleep(100); } catch (InterruptedException e) { Thread.currentThread().interrupt(); } }
+}`, `
+import jdk.jfr.*;
+
+// Custom JFR event: shows up in JMC next to GC, CPU and lock events, ~zero cost when disabled.
+@Name("com.shop.Checkout")
+@Label("Checkout")
+@Category("Shop")
+class CheckoutEvent extends Event {
+    @Label("Order id") long orderId;
+    @Label("Items") int items;
+}
+
+class JfrDemo {
+    public static void main(String[] args) {
+        for (long id = 1; id <= 3; id++) {
+            CheckoutEvent e = new CheckoutEvent();
+            e.begin();                       // start timing
+            e.orderId = id;
+            e.items = (int) (id * 2);
+            busyWork();
+            e.commit();                      // recorded only if a recording with this event enabled is running
+        }
+        System.out.println("run with -XX:StartFlightRecording=filename=shop.jfr and open shop.jfr in JMC");
+    }
+    static void busyWork() { long x = 0; for (int i = 0; i < 1_000_000; i++) x += i; if (x == 42) System.out.println(x); }
+}`, { lang: 'bash', title: 'Day-to-day commands', code: `jcmd -l                                         # list JVMs
+jcmd <pid> VM.version ; jcmd <pid> VM.flags      # what is running, with which flags
+jcmd <pid> Thread.print -l > dump1.txt           # thread dump (with j.u.c lock info)
+jcmd <pid> Thread.dump_to_file -format=json vt.json   # includes VIRTUAL threads (JDK 21+)
+jcmd <pid> GC.class_histogram | head -20         # top classes by bytes
+jcmd <pid> GC.heap_dump /tmp/heap.hprof          # full heap dump (pause + large file!)
+jcmd <pid> GC.heap_info                          # regions/generations summary
+jstat -gcutil <pid> 1000                         # S0 S1 E O M CCS YGC YGCT FGC FGCT GCT every second
+asprof -d 30 -e cpu   -f cpu.html   <pid>        # CPU flame graph (async-profiler)
+asprof -d 30 -e alloc -f alloc.html <pid>        # allocation flame graph
+asprof -d 30 -e wall -t -f wall.html <pid>       # wall-clock per thread: finds blocking/waiting` }],
+    codeTitle: ['Detect deadlocks from inside the JVM', 'Custom JFR events', 'Command cheat-sheet'],
+    viz: [{
+      title: 'Deadlock detection: follow "waiting for → held by" until it loops',
+      input: 'T1:A>B, T2:B>C, T3:C>A, T4:D>A',
+      inputLabel: 'Thread:holds>wants, … (from a thread dump)',
+      gen: function (input) {
+        var specs = String(input || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+        if (!specs.length || specs.length > 6) throw new Error('Give 1–6 entries like T1:A>B');
+        var holds = {}, wants = {}, threads = [], locks = [];
+        specs.forEach(function (s) {
+          var m = /^(\w+):(\w+)>(\w+)$/.exec(s);
+          if (!m) throw new Error('Format each entry as Thread:HeldLock>WantedLock, e.g. T1:A>B');
+          threads.push(m[1]); holds[m[2]] = m[1]; wants[m[1]] = m[3];
+          if (locks.indexOf(m[2]) < 0) locks.push(m[2]); if (locks.indexOf(m[3]) < 0) locks.push(m[3]);
+        });
+        if (locks.length > 8) throw new Error('Use at most 8 distinct locks');
+        var nodes = [], edges = [];
+        threads.forEach(function (t, i) { nodes.push({ id: 't_' + t, label: t, x: 15, y: 8 + i * Math.floor(56 / Math.max(1, threads.length - 1 || 1)), shape: 'box', w: 10 }); });
+        locks.forEach(function (l, i) { nodes.push({ id: 'l_' + l, label: 'lock ' + l, x: 80, y: 8 + i * Math.floor(56 / Math.max(1, locks.length - 1 || 1)) }); });
+        threads.forEach(function (t) { edges.push(['t_' + t, 'l_' + wants[t], 'waits']); });
+        Object.keys(holds).forEach(function (l) { edges.push(['l_' + l, 't_' + holds[l], 'held by']); });
+        function g(hl, ehl) { return { type: 'graph', label: 'Wait-for graph (thread → wanted lock → owner thread)', directed: true, height: 70, nodes: nodes, edges: edges, hl: hl || {}, ehl: ehl || {} }; }
+        var F = [];
+        F.push({ narr: 'From the dump: each thread <b>holds</b> one lock ("- locked &lt;0x…&gt;") and is <b>BLOCKED</b> waiting for another ("- waiting to lock &lt;0x…&gt;"). Build a graph: thread → lock it wants → thread that holds it.', parts: [g()] });
+        var cycle = null;
+        for (var s = 0; s < threads.length && !cycle; s++) {
+          var path = [], seen = {}, cur = threads[s];
+          while (cur && !seen[cur]) {
+            seen[cur] = true; path.push(cur);
+            var hl = {}, ehl = {};
+            path.forEach(function (p) { hl['t_' + p] = 'cur'; });
+            var want = wants[cur]; hl['l_' + want] = 'cur'; ehl['t_' + cur + '-l_' + want] = 'cur';
+            var owner = holds[want];
+            if (owner) ehl['l_' + want + '-t_' + owner] = 'cur';
+            F.push({ narr: 'Start ' + threads[s] + ': <b>' + cur + '</b> waits for lock <b>' + want + '</b>, ' + (owner ? 'which is held by <b>' + owner + '</b>.' : 'which nobody in this list holds (it may just be slow, not deadlocked).'), parts: [g(hl, ehl), { type: 'stack', label: 'Path so far', items: path.slice() }] });
+            if (owner && seen[owner]) { cycle = path.slice(path.indexOf(owner)); break; }
+            cur = owner;
+          }
+        }
+        if (cycle) {
+          var hl2 = {}, ehl2 = {};
+          cycle.forEach(function (t) { hl2['t_' + t] = 'bad'; hl2['l_' + wants[t]] = 'bad'; ehl2['t_' + t + '-l_' + wants[t]] = 'bad'; ehl2['l_' + wants[t] + '-t_' + holds[wants[t]]] = 'bad'; });
+          F.push({ narr: '<span class="c-r"><b>Cycle found: ' + cycle.join(' → ') + ' → ' + cycle[0] + '</b></span>. None of them can ever proceed. This is what <code>jstack</code> prints as "Found one Java-level deadlock". Threads that wait on the cycle but are not part of it (like a T4 waiting for A) are stuck as victims.', parts: [g(hl2, ehl2), { type: 'set', label: 'Deadlocked threads', items: cycle, hl: cycle.reduce(function (a, t) { a[t] = 'bad'; return a; }, {}) }] });
+          F.push({ narr: 'Fixes: acquire locks in one <b>global order</b> (e.g. always A before B before C), use <code>tryLock(timeout)</code> and back off, shrink lock scope (never call out to I/O or foreign code while holding a lock), or replace shared locking with message passing. Restarting only clears it until next time.', parts: [note('Prevention', '<code>Lock first = idA &lt; idB ? a : b; Lock second = idA &lt; idB ? b : a;</code> — a consistent order makes cycles impossible.')] });
+        } else {
+          F.push({ narr: '<span class="c-g">No cycle</span>: every chain ends at a thread that is not waiting (or at a lock no listed thread holds). Threads may be slow (contention), but not deadlocked. Take another dump in 5 s and compare.', parts: [g(), note('Contention vs deadlock', 'Contention: the same lock owner changes between dumps. Deadlock: identical BLOCKED stacks in every dump, forever.')] });
+        }
+        return F;
+      }
+    }, {
+      title: 'High-CPU triage: from top -H to the guilty line of code',
+      input: 'tid=23456',
+      inputLabel: 'Decimal thread id from top -H',
+      gen: function (input) {
+        var tid = num(kvParse(input, { tid: 23456 }).tid, 1, 4194304, 'tid');
+        var hex = tid.toString(16);
+        var nodes = [{ id: 'SYM', label: 'Symptom: CPU 100%', x: 12, y: 10, shape: 'box', w: 20 }, { id: 'TOP', label: 'top -H -p PID', x: 40, y: 10, shape: 'box', w: 18 }, { id: 'HEX', label: 'decimal → hex', x: 68, y: 10, shape: 'box', w: 16 }, { id: 'JS', label: 'jstack: nid=0x' + hex, x: 68, y: 40, shape: 'box', w: 22 }, { id: 'GC', label: 'GC / C2 thread?', x: 40, y: 40, shape: 'box', w: 18 }, { id: 'FG', label: 'flame graph (JFR / async-profiler)', x: 15, y: 40, shape: 'box', w: 26 }];
+        var edges = [['SYM', 'TOP'], ['TOP', 'HEX'], ['HEX', 'JS'], ['JS', 'GC'], ['GC', 'FG']];
+        function g(hl, ehl) { return { type: 'graph', label: 'Triage path', directed: true, height: 52, nodes: nodes, edges: edges, hl: hl, ehl: ehl || {} }; }
+        return [
+          { narr: 'Alert: the service burns 100% of one core and latency rises. Don\'t guess — follow the evidence chain.', parts: [g({ SYM: 'bad' })] },
+          { narr: '<code>top -H -p &lt;pid&gt;</code> shows per-thread CPU. The hottest Linux thread id (TID) is <b>' + tid + '</b>.', parts: [g({ TOP: 'cur' }, { 'SYM-TOP': 'cur' }), { type: 'table', label: 'top -H output', columns: ['PID (TID)', '%CPU', 'COMMAND'], rows: [[String(tid), '98.7', 'java'], [String(tid + 7), '3.1', 'java'], [String(tid - 40), '0.3', 'java']], hl: { 0: 'bad' } }] },
+          { narr: 'Thread dumps print the native id in <b>hex</b> as <code>nid=0x…</code>. ' + tid + ' in hex = <b>0x' + hex + '</b> (<code>printf "%x" ' + tid + '</code>).', parts: [g({ HEX: 'cur' }, { 'TOP-HEX': 'cur' }), { type: 'bits', label: 'TID in binary (low 24 bits)', value: tid & 0xFFFFFF, width: 24 }, { type: 'vars', label: 'Conversion', vals: { decimal: tid, hex: '0x' + hex } }] },
+          { narr: '<code>jstack &lt;pid&gt; | grep -A 15 "nid=0x' + hex + '"</code> finds the thread. Take 3 dumps a few seconds apart: it is in the same method each time.', parts: [g({ JS: 'cur' }, { 'HEX-JS': 'cur' }), { type: 'code', label: 'Matching stack', lang: 'text', code: '"pricing-worker-2" #57 prio=5 nid=0x' + hex + ' runnable\n   java.lang.Thread.State: RUNNABLE\n     at java.util.regex.Pattern$Loop.match(Pattern.java:5045)\n     at java.util.regex.Matcher.matches(Matcher.java:729)\n     at com.shop.PromoParser.isValid(PromoParser.java:31)', hl: { 5: 'bad' } }] },
+          { narr: 'Is it a JVM thread? Names like <code>G1 Conc#0</code>, <code>GC Thread#3</code> → GC pressure (check GC logs/heap). <code>C2 CompilerThread0</code> → JIT warm-up or a deopt storm. Here it is an application thread → our code.', parts: [g({ GC: 'cur' }, { 'JS-GC': 'cur' }), { type: 'table', label: 'Thread name → meaning', columns: ['name pattern', 'points to'], rows: [['GC Thread#n / G1 Conc#n / ZWorker', 'garbage collection'], ['C1/C2 CompilerThread', 'JIT compilation'], ['VM Thread', 'safepoint operations'], ['your pool names', 'application code']], hl: { 3: 'sel' } }] },
+          { narr: 'Confirm and quantify with a <b>CPU flame graph</b> (JFR or async-profiler): 85% of samples sit in <code>PromoParser.isValid</code> → a regex with catastrophic backtracking on long promo codes. Fix the regex (possessive quantifiers / simpler pattern), add an input length limit, redeploy, compare flame graphs.', parts: [g({ FG: 'ok' }, { 'GC-FG': 'ok' }), { type: 'bars', label: 'CPU samples by method (%)', values: [85, 6, 4, 5], idxLabels: ['PromoParser.isValid', 'JSON encode', 'GC', 'other'], hl: { 0: 'bad' } }] }
+        ];
+      }
+    }],
+    examples: [
+      { title: 'Hung service: three dumps tell the story', html: `<p>All 200 Tomcat threads are ${C('WAITING')} at ${C('HikariPool.getConnection')} in all three dumps, while 10 threads are ${C('RUNNABLE')} in ${C('socketRead0')} inside a slow SQL query. Not a deadlock: <b>pool exhaustion</b> caused by slow queries holding all 10 connections. Fix: query timeout, index the query, size the pool deliberately, and add a timeout on ${C('getConnection')}.</p>` },
+      { title: 'jstat: spotting GC thrash without logs', html: `<p>${C('jstat -gcutil <pid> 1000')} prints every second: ${C('S0 S1 E O M CCS YGC YGCT FGC FGCT GCT')}. If <b>O</b> (old %) stays at 98–99 and <b>FGC</b> increases every few seconds, the heap is full of live data: leak or undersized heap. If <b>E</b> cycles 0→100 several times per second, the allocation rate is very high.</p>${H.table(['O %', 'FGC', 'YGC/s', 'Diagnosis'], [['40 → 45 → 40', 'flat', '2', 'healthy'], ['97 → 99 → 98', '+1 every 3 s', '5', H.c('r', 'thrashing: leak or heap too small')], ['30', 'flat', '40', H.c('y', 'very high allocation rate')]])}` },
+      { title: 'Allocation flame graph finds a hidden cost', html: `<p>A service allocates 2 GB/s. ${C('asprof -e alloc')} shows 60% of allocations under ${C('String.format')} in a debug log statement that was not guarded by ${C('log.isDebugEnabled()')} — the string is built even though it is never printed. Switching to parameterised logging (${C('log.debug("x={}", x)')}) cut the allocation rate by half and young GCs by half.</p>` },
+      { title: 'Profilers that lie: safepoint bias', html: `<p>Classic samplers (old VisualVM sampler, repeated ${C('jstack')}) can only see threads at <b>safepoints</b>, so time spent in tight loops is attributed to the nearest safepoint poll — the "hot" method shown may be wrong. JFR samples with its own mechanism and async-profiler uses ${C('AsyncGetCallTrace')} + perf events, avoiding most of this bias. Choose your profiler knowingly.</p>` }
+    ],
+    deepDive: `<p><b>How attach works.</b> ${C('jcmd')}/${C('jstack')} use the Attach API: they create a trigger file and send ${C('SIGQUIT')}; the JVM's Attach Listener thread opens a UNIX socket and executes diagnostic commands. Consequences: you must run as the <b>same user</b> (and in containers, in the same PID/mount namespace — use ${C('kubectl exec')} into the container or ${C('jattach')}); ${C('-XX:+DisableAttachMechanism')} blocks it. ${C('kill -3 <pid>')} prints a thread dump to stdout without any tool.</p>
+<p><b>JFR internals.</b> Events are written to thread-local buffers, then to global buffers and disk chunks in a binary format — no locks on the hot path, which is why overhead is ~1%. The default settings sample Java stacks every 20 ms (10 ms in "profile"), allocation via ${C('jdk.ObjectAllocationSample')} (throttled to a fixed rate), and record GC, safepoints, compilation, lock contention above thresholds, socket/file I/O above 20 ms, and exceptions. JFR streaming (${C('RecordingStream')}, JDK 14+) lets you consume events live — e.g. export GC pauses to your metrics system. Recent JDKs added CPU-time sampling on Linux and method timing/tracing events, improving accuracy for CPU-bound and per-method investigations.</p>
+<p><b>Heap dumps vs histograms.</b> A class histogram is cheap and often enough to spot a leak (instance counts growing). A heap dump is expensive (pause ∝ heap, file ∝ used heap) but answers "who holds it". In Kubernetes, write dumps to a mounted volume — the container filesystem disappears with the pod — and remember dumps contain secrets.</p>
+<p><b>Virtual threads.</b> ${C('jstack')} shows platform threads; virtual threads are not listed individually. Use ${C('jcmd <pid> Thread.dump_to_file -format=json')} to dump them (grouped by executor/scope). Since JDK 24, virtual threads no longer pin their carrier inside ${C('synchronized')} (JEP 491); JFR's ${C('jdk.VirtualThreadPinned')} event finds remaining pinning (e.g. native frames).</p>
+<p><b>Wall-clock vs CPU profiling.</b> CPU profiles show where CPU is burned; they hide time spent waiting on locks, I/O and queues. For "why is this request slow?" use wall-clock mode (async-profiler ${C('-e wall')}) or JFR's latency events, ideally filtered to the slow request's thread — distributed tracing (OpenTelemetry) tells you <i>which</i> service, the profiler tells you <i>which line</i>.</p>`,
+    aiEra: `<p><b>What AI changes:</b> thread dumps with 800 threads and flame graphs with thousands of frames are exactly the kind of text an assistant summarises well: "612 threads WAITING in HikariPool.getConnection, 10 RUNNABLE in socketRead0 under OrderRepository.findOpen". JDK Mission Control's automated analysis rules, profiler vendors and observability platforms now ship AI explanations of JFR recordings. Agentic tools can even run ${C('jcmd')} commands in a sandbox and iterate.</p>
+<p><b>Where AI goes wrong:</b> it may invent JFR event names or ${C('jcmd')} subcommands (always check ${C('jcmd <pid> help')} and ${C('jfr summary')}), misread ${C('RUNNABLE')} in ${C('socketRead0')} as "CPU busy", and draw conclusions from a single dump. Giving an external AI raw heap dumps or full JFR files can leak secrets and customer data — share summaries, and follow your company's data rules.</p>
+<p><b>What you still own:</b> choosing the right instrument for the symptom, collecting evidence correctly (3 dumps, recording during the incident, same load), the reasoning from evidence to root cause, and verifying the fix with the same tool. AI speeds up reading; it does not replace knowing what to measure.</p>`,
+    problems: [{
+      title: 'Deadlock Detector from Thread-Dump Data',
+      level: 'Medium', tags: ['deadlock', 'graph', 'cycle detection', 'thread dump'], companies: ['Amazon', 'Goldman Sachs', 'Microsoft'],
+      statement: `<p>You parsed a thread dump into: ${C('Map<String, String> waitingFor')} (thread → lock it is BLOCKED on) and ${C('Map<String, String> ownerOf')} (lock → thread that holds it). Return the threads that form a deadlock cycle (in cycle order, starting from the lexicographically smallest thread name), or an empty list if there is none. If several cycles exist, return the one containing the smallest thread name.</p>`,
+      constraints: `Up to 10<sup>5</sup> threads. Each thread waits for at most one lock; each lock has at most one owner (monitors are exclusive).`,
+      example: `<p>waitingFor = {T1→A, T2→B, T3→C, T4→A}, ownerOf = {A→T2, B→T3, C→T1}.</p><p>T1 → A → T2 → B → T3 → C → T1: cycle ${H.c('r', '[T1, T2, T3]')}. T4 waits for A but is not in the cycle: it is a victim, not a participant.</p>`,
+      brute: { why: `<p>From every thread, walk the chain and keep a fresh ${C('HashSet')} of visited threads to detect a repeat. That is O(n) per start → O(n<sup>2</sup>) for 10<sup>5</sup> threads, and it re-walks the same long chains of victims again and again.</p>`, code: `
+class DeadlockBrute {
+    static List<String> find(Map<String, String> waitingFor, Map<String, String> ownerOf) {
+        for (String start : new TreeSet<>(waitingFor.keySet())) {
+            List<String> path = new ArrayList<>();
+            Set<String> seen = new HashSet<>();                       // fresh per start: O(n^2) total
+            String cur = start;
+            while (cur != null && seen.add(cur)) {
+                path.add(cur);
+                String lock = waitingFor.get(cur);
+                cur = lock == null ? null : ownerOf.get(lock);
+            }
+            if (cur != null && cur.equals(start)) return path;        // only report cycles through start
+        }
+        return List.of();
+    }
+}` },
+      mcq: { q: 'Each thread waits for at most ONE lock and each lock has ONE owner. What graph shape does that give?', options: ['A functional graph: every node has out-degree ≤ 1, so each component has at most one cycle', 'A tree', 'A DAG — cycles are impossible', 'A complete graph'], answer: 0, explain: 'Thread → owner-of-wanted-lock is a function. Following it from any node either ends or enters exactly one cycle — the deadlock — which makes linear-time detection easy.' },
+      hints: [`<p>Hint 1: Collapse the two maps into one function: ${C('next(t) = ownerOf.get(waitingFor.get(t))')}. Now it is cycle detection in a functional graph.</p>`, `<p>Hint 2: Use three colours: 0 = unvisited, 1 = on the current walk, 2 = finished. Walking into a colour-1 node means you found a cycle; into colour-2 means "already explained, stop" — this makes the total work O(n).</p>`, `<p>Hint 3: Iterate starts in sorted order. When a cycle is found, extract it from the current path (from the first occurrence of the repeated node), rotate so the smallest name is first, and keep it if it beats the best so far.</p>`],
+      solution: {
+        approach: `<p>Treat "thread → owner of the lock it wants" as a functional graph and do colour-marking walks. Every node is visited a constant number of times overall, so the algorithm is linear. This is essentially what HotSpot's deadlock detection in ${C('findDeadlockedThreads')} and the "Found one Java-level deadlock" section of jstack compute.</p>`,
+        code: `
+class DeadlockDetector {
+    static List<String> find(Map<String, String> waitingFor, Map<String, String> ownerOf) {
+        Map<String, Integer> color = new HashMap<>();             // absent=0 unvisited, 1=on path, 2=done
+        List<String> best = List.of();
+        for (String start : new TreeSet<>(waitingFor.keySet())) {
+            if (color.getOrDefault(start, 0) != 0) continue;
+            List<String> path = new ArrayList<>();
+            String cur = start;
+            while (cur != null && color.getOrDefault(cur, 0) == 0) {
+                color.put(cur, 1);
+                path.add(cur);
+                String lock = waitingFor.get(cur);
+                cur = lock == null ? null : ownerOf.get(lock);
+            }
+            if (cur != null && color.get(cur) == 1) {                // closed a loop on THIS walk
+                List<String> cycle = new ArrayList<>(path.subList(path.indexOf(cur), path.size()));
+                int minAt = cycle.indexOf(Collections.min(cycle));
+                Collections.rotate(cycle, -minAt);                   // start from smallest name
+                if (best.isEmpty() || cycle.get(0).compareTo(best.get(0)) < 0) best = cycle;
+            }
+            for (String t : path) color.put(t, 2);                  // everything on this walk is explained
+        }
+        return best;
+    }
+
+    public static void main(String[] args) {
+        Map<String, String> waiting = Map.of("T1", "A", "T2", "B", "T3", "C", "T4", "A");
+        Map<String, String> owner = Map.of("A", "T2", "B", "T3", "C", "T1");
+        System.out.println(find(waiting, owner));   // [T1, T2, T3]
+    }
+}`,
+        dry: { head: ['start', 'walk', 'stops because', 'cycle?'], rows: [
+          ['T1', 'T1 → T2 → T3 → (T1)', 'T1 has colour 1', H.c('r', '[T1, T2, T3]')], ['T2', '—', 'already colour 2', '—'], ['T3', '—', 'already colour 2', '—'], ['T4', 'T4 → (T2)', 'T2 has colour 2', 'no (victim)']
+        ] },
+        complexity: `<p>O(n log n) for sorting starts (O(n) without the ordering requirement) and O(n) for the walks; O(n) memory for colours and the path.</p>`,
+        followUps: ['ReadWriteLocks can have many owners — how does the graph change?', 'How would you detect a deadlock that involves a thread waiting on a Future (no lock at all)?', 'Design an automatic watchdog that dumps threads when findDeadlockedThreads() is non-null']
+      }
+    }]
+  });
+
 registerModule({ id: 'java13', title: 'JVM Internals & Performance', intro: '<p>x</p>', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();
